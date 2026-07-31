@@ -1,0 +1,37 @@
+{
+  "name": "doorbell-commons",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "npm@11.9.0",
+  "engines": {
+    "node": ">=24",
+    "npm": ">=11"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run build -w @doorbell/protocol && concurrently --kill-others-on-fail --names server,web \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:server": "npm run dev -w @doorbell/server",
+    "dev:web": "npm run dev -w @doorbell/web",
+    "build": "npm run build -w @doorbell/protocol && npm run build -w @doorbell/server && npm run build -w @doorbell/web",
+    "typecheck": "npm run typecheck -w @doorbell/protocol && npm run typecheck -w @doorbell/server && npm run typecheck -w @doorbell/web",
+    "test": "npm run build -w @doorbell/protocol && npm run test -w @doorbell/server",
+    "format": "biome check --write .",
+    "format:check": "biome check .",
+    "check": "npm run format:check && npm run typecheck && npm run test && npm run build"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.6",
+    "@types/node": "24.13.3",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "@vitejs/plugin-react": "6.0.5",
+    "concurrently": "10.0.4",
+    "tsx": "4.23.1",
+    "typescript": "6.0.3",
+    "vite": "8.2.0"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "@doorbell/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --import tsx --test src/app.test.ts"
+  },
+  "dependencies": {
+    "@doorbell/protocol": "*",
+    "fastify": "5.11.0"
+  }
+}
