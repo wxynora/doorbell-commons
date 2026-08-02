@@ -2,26 +2,50 @@ import assert from "node:assert/strict";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { after, test } from "node:test";
 import {
+  farmLookupErrorSchema,
+  farmLookupSuccessSchema,
   qqGroupEligibilityErrorSchema,
   qqGroupEligibilitySuccessSchema,
   serviceHealthSchema,
 } from "@doorbell/protocol";
 import { buildApp } from "./app.js";
+import { CommunityDatabase } from "./community-database.js";
 import { COMMUNITY_QQ_GROUP_ID } from "./config.js";
+import {
+  type FarmDirectoryReader,
+  FarmDirectoryUnavailableError,
+  FarmNotFoundError,
+} from "./farm-directory-client.js";
 import { OneBotGroupMembershipClient } from "./qq-group-membership.js";
+import { RegistrationAuthService } from "./registration-auth.js";
 
+const healthDatabase = new CommunityDatabase(":memory:");
+const healthMembership = {
+  async isCurrentMember() {
+    throw new Error("Health-route test must not query OneBot");
+  },
+};
+const unusedFarmDirectory: FarmDirectoryReader = {
+  async lookupFarm() {
+    throw new Error("This test must not query the farm directory");
+  },
+};
 const app = buildApp({
   groupId: COMMUNITY_QQ_GROUP_ID,
-  groupMembership: {
-    async isCurrentMember() {
-      throw new Error("Health-route test must not query OneBot");
-    },
-  },
+  groupMembership: healthMembership,
+  registrationAuth: new RegistrationAuthService({
+    database: healthDatabase,
+    farmDirectory: unusedFarmDirectory,
+    groupMembership: healthMembership,
+    groupId: COMMUNITY_QQ_GROUP_ID,
+  }),
+  secureCookies: false,
   logger: false,
 });
 
 after(async () => {
   await app.close();
+  healthDatabase.close();
 });
 
 test("GET /api/health returns the shared health contract", async () => {
@@ -107,14 +131,64 @@ async function startFakeOneBot(options: FakeOneBotOptions): Promise<FakeOneBot> 
 }
 
 function buildEligibilityApp(fakeOneBot: FakeOneBot) {
-  return buildApp({
+  const database = new CommunityDatabase(":memory:");
+  const groupMembership = new OneBotGroupMembershipClient({
+    apiBaseUrl: fakeOneBot.baseUrl,
+    apiToken: "local-test-token",
+  });
+  const eligibilityApp = buildApp({
     groupId: COMMUNITY_QQ_GROUP_ID,
-    groupMembership: new OneBotGroupMembershipClient({
-      apiBaseUrl: fakeOneBot.baseUrl,
-      apiToken: "local-test-token",
+    groupMembership,
+    registrationAuth: new RegistrationAuthService({
+      database,
+      farmDirectory: unusedFarmDirectory,
+      groupMembership,
+      groupId: COMMUNITY_QQ_GROUP_ID,
     }),
+    secureCookies: false,
     logger: false,
   });
+  eligibilityApp.addHook("onClose", () => {
+    database.close();
+  });
+  return eligibilityApp;
+}
+
+class FakeFarmDirectory implements FarmDirectoryReader {
+  result: "found" | "missing" | "unavailable" = "found";
+  readonly calls: string[] = [];
+
+  async lookupFarm(farmDoorplate: string) {
+    this.calls.push(farmDoorplate);
+    if (this.result === "missing") {
+      throw new FarmNotFoundError(farmDoorplate);
+    }
+    if (this.result === "unavailable") {
+      throw new FarmDirectoryUnavailableError("fake farm directory unavailable");
+    }
+    return { farmDoorplate, farmName: "渡的小农场" };
+  }
+}
+
+function buildFarmLookupApp(farmDirectory: FakeFarmDirectory) {
+  const database = new CommunityDatabase(":memory:");
+  const registrationAuth = new RegistrationAuthService({
+    database,
+    farmDirectory,
+    groupMembership: healthMembership,
+    groupId: COMMUNITY_QQ_GROUP_ID,
+  });
+  const lookupApp = buildApp({
+    groupId: COMMUNITY_QQ_GROUP_ID,
+    groupMembership: healthMembership,
+    registrationAuth,
+    secureCookies: false,
+    logger: false,
+  });
+  lookupApp.addHook("onClose", () => {
+    database.close();
+  });
+  return lookupApp;
 }
 
 test("current QQ group member passes registration eligibility", async (context) => {
@@ -243,4 +317,60 @@ test("invalid registration input is rejected before OneBot is called", async (co
   assert.equal(response.statusCode, 400);
   assert.equal(qqGroupEligibilityErrorSchema.parse(response.json()).error.code, "invalid_request");
   assert.deepEqual(fakeOneBot.requests, []);
+});
+
+test("farm lookup returns the exact current farm name without creating registration state", async () => {
+  const farmDirectory = new FakeFarmDirectory();
+  const lookupApp = buildFarmLookupApp(farmDirectory);
+  try {
+    const response = await lookupApp.inject({
+      method: "POST",
+      url: "/api/registration/farm-lookup",
+      payload: { farm_doorplate: "3ET3FE" },
+    });
+
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(farmLookupSuccessSchema.parse(response.json()), {
+      farm_doorplate: "3ET3FE",
+      farm_name: "渡的小农场",
+    });
+    assert.deepEqual(farmDirectory.calls, ["3ET3FE"]);
+  } finally {
+    await lookupApp.close();
+  }
+});
+
+test("farm lookup keeps missing farms, upstream outages, and invalid input distinct", async () => {
+  const farmDirectory = new FakeFarmDirectory();
+  const lookupApp = buildFarmLookupApp(farmDirectory);
+  try {
+    farmDirectory.result = "missing";
+    const missing = await lookupApp.inject({
+      method: "POST",
+      url: "/api/registration/farm-lookup",
+      payload: { farm_doorplate: "3ET3FE" },
+    });
+    assert.equal(missing.statusCode, 404);
+    assert.equal(farmLookupErrorSchema.parse(missing.json()).error.code, "farm_not_found");
+
+    farmDirectory.result = "unavailable";
+    const unavailable = await lookupApp.inject({
+      method: "POST",
+      url: "/api/registration/farm-lookup",
+      payload: { farm_doorplate: "3ET3FE" },
+    });
+    assert.equal(unavailable.statusCode, 503);
+    assert.equal(farmLookupErrorSchema.parse(unavailable.json()).error.code, "farm_unavailable");
+
+    const invalid = await lookupApp.inject({
+      method: "POST",
+      url: "/api/registration/farm-lookup",
+      payload: { farm_doorplate: "3ET3FE", farm_name: "do not accept extras" },
+    });
+    assert.equal(invalid.statusCode, 400);
+    assert.equal(farmLookupErrorSchema.parse(invalid.json()).error.code, "invalid_request");
+    assert.deepEqual(farmDirectory.calls, ["3ET3FE", "3ET3FE"]);
+  } finally {
+    await lookupApp.close();
+  }
 });
