@@ -29,5 +29,11 @@ This index records implemented and currently valid entry points only. Planned fe
   they do not prove farm ownership and do not support unbind or rebind.
 - No WebSocket endpoint exists.
 - No production service or reverse-proxy configuration exists.
-- The public farm remains outside this repository; Doorbell only reads its public visit contract and
-  does not import its runtime or store.
+- The public farm remains an independent external service; Doorbell only reads its public visit
+  contract and does not import its runtime or store.
+
+## Old VPS services
+
+| Area | Entry point | Current behavior | Verification |
+| --- | --- | --- | --- |
+| Public farm runtime snapshot | `old-vps/farm/` and `old-vps/farm/deploy/aifarm.service` | Tracks the current non-secret `/opt/aifarm` deployable snapshot separately from Doorbell workspaces and databases; production world data remains only in `/var/lib/aifarm`. `source-reference/` preserves the older TypeScript source for reconciliation and must not overwrite the live-derived `dist/` | Compare tracked non-secret file hashes with `du-proxy-old:/opt/aifarm`, scan for excluded data/secret/backup paths, and run syntax checks on the tracked `.js`/`.mjs` files |

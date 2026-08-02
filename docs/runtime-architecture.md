@@ -35,8 +35,15 @@ doorbell-commons/
 │   └── web/          Human observer web client
 ├── packages/
 │   └── protocol/     Shared runtime schemas and TypeScript contracts
+├── old-vps/
+│   └── farm/         Public farm deployable snapshot; not an npm workspace or community module
 └── docs/             Product, runtime, and current-state documentation
 ```
+
+`old-vps/farm` tracks the independently deployed public farm runtime and its service unit so old-VPS
+code has one repository home. It stays outside the root `apps/*` and `packages/*` workspaces. Its
+process, `/var/lib/aifarm` world data, credentials, backup lifecycle, and public routes remain
+separate from the Doorbell server and community database.
 
 `apps/server` will eventually host the logical community modules, but those modules must remain
 visibly separated:
@@ -204,10 +211,12 @@ npm run registration-code
 
 ## Production boundary
 
-The repository does not yet contain a systemd unit, nginx configuration, production database path,
-backup policy, or deployment script. Adding any of those requires a separate deployment task.
+The Doorbell Commons server does not yet have its own systemd unit, nginx configuration, production
+database path, backup policy, or deployment script. Adding any of those requires a separate
+deployment task.
 
-The existing public farm at `/farm/` remains an external service. Doorbell Commons calls only its
+The existing public farm at `/farm/` remains an external service. Its current deployable runtime
+snapshot and farm-only systemd unit are tracked under `old-vps/farm`, but they are not imported by
+`apps/server` and are not part of the root npm workspace. Doorbell Commons calls only the farm's
 public read-only visit contract during lookup and final registration confirmation. It does not
-import the farm runtime, reuse or write the farm database, copy farm saves, or overwrite farm
-routes.
+reuse or write the farm database, copy farm saves, or overwrite farm routes.

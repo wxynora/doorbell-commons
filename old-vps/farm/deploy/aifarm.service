@@ -1,0 +1,31 @@
+[Unit]
+Description=Public AI Farm
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=aifarm
+Group=aifarm
+WorkingDirectory=/opt/aifarm
+Environment=PORT=8091
+Environment=HOST=127.0.0.1
+Environment=PUBLIC_BASE_URL=https://doorbellcommons.com/farm
+Environment=AIFARM_DATA_DIR=/var/lib/aifarm
+ExecStart=/usr/bin/node /opt/aifarm/dist/index.js
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=/var/lib/aifarm
+
+[Install]
+WantedBy=multi-user.target
