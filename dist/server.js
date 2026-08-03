@@ -2,7 +2,7 @@
 import { createServer } from "node:http";
 import { randomUUID, randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
-import { advance, steal, canStealNow, stealAvailability, stealShieldRemain, isUgcCrop, visitorWater, tryWaterReward, humanHarvest, humanHarvestLeft, ranchRoamLine, buyPotionSet, refreshShop, ranchCollect, ranchRemit, ranchBuyAccessory, ranchBuyDecoration, ranchWearAccessory, ranchTakeOffAccessory, ranchPlaceDecoration, ranchUnplaceDecoration, ranchUpgradeAnimal, ranchNameAnimal, ranchNamePet, ranchNamePatrolGoose, ranchTogglePin, dispatchRanchRaid, catchRanchRaid, settleRanchRaids, ensureHumanKey, takeInbox, takeRanchNotices, pushSocialInbox, potionDailyLeft, designCrop, craft, nextUpgradeReq, toggleStar } from "./engine.js";
+import { advance, steal, canStealNow, stealAvailability, stealShieldRemain, isUgcCrop, visitorWater, tryWaterReward, humanHarvestAll, humanHarvestLeft, ranchRoamLine, buyPotionSet, refreshShop, ranchCollect, ranchRemit, ranchBuyAccessory, ranchBuyDecoration, ranchWearAccessory, ranchTakeOffAccessory, ranchPlaceDecoration, ranchUnplaceDecoration, ranchUpgradeAnimal, ranchNameAnimal, ranchNamePet, ranchNamePatrolGoose, ranchTogglePin, dispatchRanchRaid, catchRanchRaid, settleRanchRaids, ensureHumanKey, takeInbox, takeRanchNotices, pushSocialInbox, potionDailyLeft, designCrop, craft, nextUpgradeReq, toggleStar } from "./engine.js";
 import { dispatch, HELP, farmView, viewShop, viewEncyclopedia, viewBag, shopBrief, viewMarket, buyFromMarket, visitView, ranchAgentSection, refPrice, tendNpc, buyNpcSeed, randomTip, hasDamagedPublicName } from "./game.js";
 import { harvestText, stealThiefText, statusFooter, waterText, describeFarm } from "./flavor.js";
 import { createFarm, getFarm, allFarms, playerFarms, save } from "./store.js";
@@ -1185,22 +1185,26 @@ export function startServer(port, host = "127.0.0.1") {
                         save();
                     return uiHumanNotices(html, notices);
                 };
-                // 🌾 人类帮自己的 AI 收一块成熟作物：只认本页 humanKey，成功才消耗每日 3 次额度。
+                // 🌾 人类帮自己的 AI 一键收完当时全部成熟作物：只认本页 humanKey，成功一批才消耗每日 1 次额度。
                 if (section === "harvest" && method === "POST") {
-                    const form = await readFormBody(req);
-                    const plotId = Number(form.plot);
-                    const plot = Number.isSafeInteger(plotId) ? f.plots.find((p) => p.id === plotId) : undefined;
-                    const canRollSeason = !!plot?.crop?.ripe && humanHarvestLeft(f, now) > 0;
+                    const canRollSeason = f.plots.some((p) => p.crop?.ripe) && humanHarvestLeft(f, now) > 0;
                     const se = canRollSeason ? rollSeasonHarvest(f, now) : null;
-                    const r = humanHarvest(f, plotId, now, se?.mod);
+                    const r = humanHarvestAll(f, now, se?.mod);
                     let flash;
                     if (!r.ok) {
                         flash = `⚠️ ${r.error}`;
                     }
                     else {
-                        const gain = r.value + (r.codexReward ?? 0) + (r.bonus?.extraCoins ?? 0);
-                        const extras = `${r.isNew ? " · 新图鉴" : ""}${r.drop ? ` · 掉落${r.drop.name}` : ""}${r.potionDrop ? " · 掉落加速药水" : ""}${se ? ` · ${se.hit.name}` : ""}`;
-                        flash = `🌾 帮${f.aiName || f.name || "TA"}收下「${r.crop.name}」（${r.quality.name}），+${gain} 金${extras}；今日已帮收 ${r.used}/${HUMAN_HARVEST_DAILY_CAP} 次`;
+                        const cropCounts = new Map();
+                        for (const item of r.results)
+                            cropCounts.set(item.crop.name, (cropCounts.get(item.crop.name) ?? 0) + 1);
+                        const crops = [...cropCounts].map(([name, n]) => `「${name}」${n > 1 ? `×${n}` : ""}`).join("、");
+                        const gain = r.results.reduce((sum, item) => sum + item.value + (item.codexReward ?? 0) + (item.bonus?.extraCoins ?? 0), 0);
+                        const newCount = r.results.filter((item) => item.isNew).length;
+                        const drops = r.results.flatMap((item) => item.drop ? [item.drop.name] : []);
+                        const potionCount = r.results.filter((item) => item.potionDrop).length;
+                        const extras = `${newCount ? ` · 新图鉴×${newCount}` : ""}${drops.length ? ` · 掉落${drops.join("、")}` : ""}${potionCount ? ` · 加速药水×${potionCount}` : ""}${se ? ` · ${se.hit.name}` : ""}`;
+                        flash = `🌾 一键帮${f.aiName || f.name || "TA"}收下 ${r.count} 株：${crops}，共 +${gain} 金${extras}；今日已帮收 ${r.used}/${HUMAN_HARVEST_DAILY_CAP} 次`;
                     }
                     save();
                     res.writeHead(303, { ...AGENT_HEADERS, Location: `${BASE}/ui/${key}?flash=${encodeURIComponent(flash)}` });

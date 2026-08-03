@@ -165,7 +165,8 @@ nav a.on,nav a:hover{color:var(--leaf-deep);background:#e6f3d8}
 .plot .ico{font-size:22px;display:block;line-height:1.2}
 .plot.empty{opacity:.5}
 .plot.ripe{border-color:var(--SSR);background:#fff7e6;box-shadow:0 0 0 1px #e0a63c44 inset}
-.plot .harvest-form{margin:7px 0 0}.plot .harvest-btn{width:100%;padding:6px 2px;font-size:11px;white-space:nowrap;border-radius:8px}
+.field-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.field-head h3{margin:0}.field-head form{margin:0}.field-head .btn{white-space:nowrap}
 .bar,.pminibar{height:6px;border-radius:5px;background:#e3efd9;overflow:hidden}
 .pminibar{margin-top:5px}
 .bar>span,.pminibar>span{display:block;height:100%;border-radius:5px}
@@ -418,19 +419,17 @@ export function uiHome(f, now, key, flash) {
         const eta = c.ripe
             ? `<span class="small" style="color:var(--SSR)">🥕 可收获</span>`
             : `<span class="small muted" title="${fmtDur(remain)}后成熟">🕒 ${clock(now + remain)}熟</span>`;
-        const harvestForm = c.ripe
-            ? `<form class="harvest-form" method="post" action="${BASE}/ui/${key}/harvest"><input type="hidden" name="plot" value="${p.id}">
-        <button class="btn ghost harvest-btn" type="submit"${harvestLeft > 0 ? "" : " disabled"}>${harvestLeft > 0 ? "🌾 帮TA收" : "今日已收满"}</button></form>`
-            : "";
         return `<div class="plot ${c.ripe ? "ripe" : ""}"><span class="ico">${ico}</span>
       <span class="small muted">${lbl} · 💧${c.waterCount}</span>
       <div class="pminibar">${barFill(gp, c.ripe ? "var(--SSR)" : "var(--leaf)")}</div>
-      ${eta}${harvestForm}</div>`;
+      ${eta}</div>`;
     }).join("");
     const ripeN = f.plots.filter((p) => p.crop?.ripe).length;
     const growN = f.plots.filter((p) => p.crop && !p.crop.ripe).length;
+    const harvestLabel = harvestLeft <= 0 ? "今日次数已用完" : ripeN <= 0 ? "暂无成熟作物" : `🌾 一键帮TA收（${ripeN}株）`;
     const field = `<div class="card">
-    <h3>🌱 他的田　<span class="muted small" style="font-weight:400">在种 ${growN} · 成熟 ${ripeN} · 今日可帮收 ${harvestLeft}/${HUMAN_HARVEST_DAILY_CAP}（00:00 刷新）</span></h3>
+    <div class="field-head"><h3>🌱 他的田　<span class="muted small" style="font-weight:400">在种 ${growN} · 成熟 ${ripeN} · 今日可一键帮收 ${harvestLeft}/${HUMAN_HARVEST_DAILY_CAP} 次（00:00 刷新）</span></h3>
+    <form method="post" action="${BASE}/ui/${key}/harvest"><button class="btn ghost" type="submit"${harvestLeft > 0 && ripeN > 0 ? "" : " disabled"}>${harvestLabel}</button></form></div>
     <div class="plots" style="margin-top:10px">${plots}</div></div>`;
     // 此刻 · 季节
     const seasonCrops = (season.topCrops ?? []).map((id) => cropById.get(id)?.name ?? id).filter(Boolean).slice(0, 4);

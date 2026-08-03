@@ -350,26 +350,26 @@ export function harvest(farm, plotId, now, seasonMod) {
     pushLog(farm, `收获 ${crop.name}（${quality.name}），+${value}${drop ? ` 掉素材[${drop.name}]` : ""}${potionDrop ? " 掉药水" : ""}`);
     return { ok: true, crop, quality, value, isNew, codexReward, bonus, drop, potionDrop };
 }
-/** 人类当天还可替自己的 AI 收几块菜；所有每日限制统一按 UTC+8 零点换日。 */
+/** 人类当天还可替自己的 AI 执行几次一键收获；所有每日限制统一按 UTC+8 零点换日。 */
 export function humanHarvestLeft(farm, now) {
     const day = currentDayIndex(now);
     const used = farm.humanHarvestDaily?.day === day ? farm.humanHarvestDaily.n ?? 0 : 0;
     return Math.max(0, HUMAN_HARVEST_DAILY_CAP - used);
 }
-/** humanKey 页面单块收获：成功才计次，空地／未成熟／非法地块均不消耗次数。 */
-export function humanHarvest(farm, plotId, now, seasonMod) {
+/** humanKey 页面一键收获：当批至少收到一株才计 1 次，没有成熟作物不消耗次数。 */
+export function humanHarvestAll(farm, now, seasonMod) {
     const day = currentDayIndex(now);
     const daily = farm.humanHarvestDaily?.day === day
         ? farm.humanHarvestDaily
         : { day, n: 0 };
     if ((daily.n ?? 0) >= HUMAN_HARVEST_DAILY_CAP)
-        return { ok: false, error: `今天已经帮 TA 收满 ${HUMAN_HARVEST_DAILY_CAP} 次菜了，明天再来吧。` };
-    const result = harvest(farm, plotId, now, seasonMod);
-    if (!result.ok)
-        return result;
+        return { ok: false, error: `今天已经帮 TA 一键收过 ${HUMAN_HARVEST_DAILY_CAP} 次菜了，明天再来吧。` };
+    const results = harvestAll(farm, now, seasonMod);
+    if (!results.length)
+        return { ok: false, error: "现在没有成熟的作物可收。" };
     farm.humanHarvestDaily = daily;
     daily.n = (daily.n ?? 0) + 1;
-    return { ...result, used: daily.n, left: Math.max(0, HUMAN_HARVEST_DAILY_CAP - daily.n) };
+    return { ok: true, results, count: results.length, used: daily.n, left: Math.max(0, HUMAN_HARVEST_DAILY_CAP - daily.n) };
 }
 // —— 熔炼：投 CRAFT_COUNT 个素材 → 出一颗限定种子（混合：命中隐藏配方=固定，否则随机）——
 export function craft(farm, materialIds, _now) {
