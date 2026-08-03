@@ -237,20 +237,24 @@ nav a.on,nav a:hover{color:var(--leaf-deep);background:#e6f3d8}
 .ranch-owned-name{display:block;margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--serif);font-weight:700}
 .ranch-owned-level{display:block;margin-top:1px;color:var(--ink-soft);font-size:11px}
 .ranch-animal-back{z-index:70;overflow-y:auto}
-.ranch-animal-sheet{max-width:520px;margin:auto 0;flex:0 0 auto;border-top-color:var(--leaf);padding-top:18px}
+.sheet.ranch-animal-sheet{max-width:480px;margin:auto 0;flex:0 0 auto;border-top-color:var(--leaf);padding:15px 17px 14px}
 .ranch-animal-x{position:absolute;top:10px;right:10px;width:32px;height:32px;display:grid;place-items:center;border:0;border-radius:50%;
   background:transparent;color:var(--ink-soft);font:700 16px/1 system-ui;cursor:pointer}
 .ranch-animal-x:hover{color:var(--leaf-deep);background:#e8f3de}
 .ranch-animal-x:focus-visible,.ranch-animal-sheet .btn:focus-visible,.ranch-animal-sheet :is(input,select):focus-visible{outline:2px solid var(--leaf-deep);outline-offset:2px}
-.ranch-animal-head{display:grid;grid-template-columns:104px minmax(0,1fr);gap:14px;align-items:center;padding-right:28px}
-.ranch-animal-head .ranch-sprite{width:104px;background-color:#e6f3d8}
-.ranch-animal-head h2{margin:0;font-family:var(--serif);font-size:23px;color:#2f5a31}
-.ranch-animal-intro{margin:5px 0 0;color:var(--ink-soft);font-size:12.5px;line-height:1.65}
-.ranch-animal-status{margin-top:14px;padding:11px 12px;border:1px solid var(--line);border-radius:12px;background:#f5faef}
-.ranch-animal-actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:12px}
+.ranch-animal-sheet .small{font-size:11.5px;line-height:1.45}
+.ranch-animal-sheet .btn{padding:6px 10px;font-size:12px}
+.ranch-animal-sheet .inp{padding:6px 8px;font-size:12px}
+.ranch-animal-head{display:grid;grid-template-columns:84px minmax(0,1fr);gap:11px;align-items:center;padding-right:28px}
+.ranch-animal-head .ranch-sprite{width:84px;background-color:#e6f3d8}
+.ranch-animal-head h2{margin:0;font-family:var(--serif);font-size:19px;line-height:1.35;color:#2f5a31}
+.ranch-animal-intro{margin:3px 0 0;color:var(--ink-soft);font-size:11.5px;line-height:1.45}
+.ranch-animal-status{margin-top:9px;padding:8px 9px;border:1px solid var(--line);border-radius:10px;background:#f5faef}
+.ranch-animal-actions{display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin-top:8px}
 .ranch-animal-actions>form{max-width:100%}
 .ranch-animal-actions input[name="name"]{min-width:0;flex:1 1 130px}
-.ranch-animal-dispatch{margin-top:13px;padding-top:11px;border-top:1px dashed var(--line)}
+.ranch-animal-dispatch{margin-top:8px}
+.ranch-animal-sheet .raid-form{gap:6px;margin-top:0;padding-top:7px}
 .raid-form{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0 0;padding-top:8px;border-top:1px dashed var(--line)}
 .raid-form label{display:flex;gap:5px;align-items:center;color:var(--ink-soft);white-space:nowrap}
 .raid-form select{max-width:260px}.raid-form .raid-hours{width:76px}
@@ -276,9 +280,10 @@ nav a.on,nav a:hover{color:var(--leaf-deep);background:#e6f3d8}
   .ranch-codex-item{padding:7px}
   .ranch-owned-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
   .ranch-owned-tile{padding:7px 5px 8px}.ranch-owned-tile .ranch-sprite{width:100%}
-  .ranch-animal-back{align-items:flex-end;padding:10px}
-  .ranch-animal-sheet{max-height:90vh;padding:17px 15px 15px;border-radius:18px 18px 12px 12px}
-  .ranch-animal-head{grid-template-columns:82px minmax(0,1fr);gap:11px}.ranch-animal-head .ranch-sprite{width:82px}
+  .mback.ranch-animal-back{align-items:flex-end;padding:8px}
+  .sheet.ranch-animal-sheet{max-height:88vh;padding:13px 12px 12px;border-radius:16px 16px 11px 11px}
+  .ranch-animal-head{grid-template-columns:68px minmax(0,1fr);gap:9px}.ranch-animal-head .ranch-sprite{width:68px}
+  .ranch-animal-head h2{font-size:17px}.ranch-animal-x{top:6px;right:6px;width:28px;height:28px;font-size:14px}
   .ranch-animal-actions form[method="post"]{flex-wrap:wrap}
   .raid-form{align-items:stretch}
   .raid-form label:first-of-type{flex:1 1 100%}.raid-form select{width:100%;max-width:none}
@@ -813,12 +818,7 @@ export function uiRanch(f, now, key, flash) {
             const k = animalById.get(a.kindId);
             const nm = a.name || k?.name || a.kindId;
             const lvl = a.level ?? 1;
-            const ticksLeft = k ? Math.max(0, k.produceEveryTicks - a.ticksSinceProduce) : 0;
-            const ready = a.pending > 0
-                ? `<span class="ready">📦 1 份可收（收了才会产下一份）</span>`
-                : `<span class="small muted">产出中 · 约 ${Math.ceil(ticksLeft * TICK_MS / 60000)} 分钟后可收 1 份</span>`;
             const effPrice = k ? Math.round(k.producePrice * (1 + (lvl - 1) * RANCH_LEVEL_INCOME_STEP)) : 0;
-            const info = k ? `Lv.${lvl} · 产${esc(k.produce)}·${effPrice}金/份${lvl > 1 ? `（升级加成）` : ""}` : "";
             const wearing = (a.acc ?? []).map((id) => accessoryById.get(id)?.name).filter(Boolean);
             const worn = wearing.length
                 ? `<div class="small" style="color:var(--leaf-deep);margin-top:2px">👒 穿戴：${wearing.map(esc).join("、")}</div>`
@@ -847,7 +847,7 @@ export function uiRanch(f, now, key, flash) {
             <input type="hidden" name="animal" value="${i}">
             <label class="small">去 <select class="inp" name="to" required>${targetOptions}</select></label>
             <label class="small">潜伏 <input class="inp raid-hours" type="number" name="hours" min="1" step="1" required> 小时</label>
-            <button class="btn" type="submit">🥷 派去偷金币</button>
+            <button class="btn" type="submit">派遣</button>
             <span class="small muted">${RANCH_RAID_COINS_PER_HOUR} 金/小时，出发先冻结同额保证金</span>
           </form>`
                 : `<div class="small muted" style="margin-top:6px">暂时没有其他玩家农场可以派遣。</div>`;
@@ -859,10 +859,10 @@ export function uiRanch(f, now, key, flash) {
             const tile = `<button type="button" class="ranch-owned-tile" data-ranch-animal="animal-${i}" aria-haspopup="dialog" aria-controls="ranchAnimalModal">
         ${animalIcon}<span class="ranch-owned-name">${esc(nm)}</span><span class="ranch-owned-level">Lv.${lvl}</span></button>`;
             const detail = `<template id="ranch-animal-template-animal-${i}"><div class="ranch-animal-detail">
-        <div class="ranch-animal-head">${animalIcon}<div><h2>${esc(nm)} · Lv.${lvl}</h2><p class="ranch-animal-intro">${intro}</p></div></div>
-        <div class="ranch-animal-status"><div class="small muted">${info}</div><div style="margin-top:4px">${ready}</div>${worn}${raidLine}</div>
+        <div class="ranch-animal-head">${animalIcon}<div><h2>${esc(nm)} · Lv.${lvl} · ${a.pending > 0 ? "1份可收" : "生产中"}</h2><p class="ranch-animal-intro">${intro}</p></div></div>
+        <div class="ranch-animal-status">${worn}${raidLine}</div>
         <div class="ranch-animal-actions">${pinBtn(a.kindId)}${upBtn}${nameForm}</div>
-        ${raid ? "" : `<div class="ranch-animal-dispatch"><b>🥷 派遣偷金币</b>${dispatchForm}</div>`}
+        ${raid ? "" : `<div class="ranch-animal-dispatch">${dispatchForm}</div>`}
       </div></template>`;
             return { tile, detail };
         });
@@ -931,6 +931,7 @@ export function uiRanch(f, now, key, flash) {
       <div class="sheet ranch-animal-sheet"><button type="button" class="ranch-animal-x" data-ranch-animal-close aria-label="关闭">✕</button><div id="ranchAnimalBody"></div></div>
     </div><script>(function(){
       var modal=document.getElementById('ranchAnimalModal'),body=document.getElementById('ranchAnimalBody'),opener=null;if(!modal||!body)return;
+      document.body.appendChild(modal);
       function openAnimal(index,trigger){var template=document.getElementById('ranch-animal-template-'+index);if(!template)return;opener=trigger;body.replaceChildren(template.content.cloneNode(true));modal.classList.add('show');modal.setAttribute('aria-hidden','false');var close=modal.querySelector('[data-ranch-animal-close]');if(close&&close.focus)close.focus();}
       function closeAnimal(){if(!modal.classList.contains('show'))return;modal.classList.remove('show');modal.setAttribute('aria-hidden','true');body.replaceChildren();if(opener&&opener.focus)opener.focus();opener=null;}
       document.addEventListener('click',function(event){var trigger=event.target.closest('[data-ranch-animal]');if(trigger){event.preventDefault();openAnimal(trigger.getAttribute('data-ranch-animal'),trigger);return;}if(event.target===modal||event.target.closest('[data-ranch-animal-close]'))closeAnimal();});
