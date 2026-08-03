@@ -1,0 +1,12 @@
+node_modules/
+.env
+.env.*
+data/
+backups/
+world.json
+credentials.json
+*.before-*
+*.bak
+*.bak.*
+*.tmp
+*.corrupt
