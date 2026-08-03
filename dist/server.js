@@ -1093,8 +1093,9 @@ export function startServer(port, host = "127.0.0.1") {
             return maintenanceOut(req, res, parts, method);
         const publicPng = method === "GET" && parts.length === 2 && parts[0] === "assets" ? PUBLIC_PNG_ASSETS.get(parts[1]) : undefined;
         if (publicPng) {
-            res.writeHead(200, { "Content-Type": "image/png", "Cache-Control": "public, max-age=86400" });
-            return res.end(readFileSync(publicPng));
+            const png = readFileSync(publicPng);
+            res.writeHead(200, { "Content-Type": "image/png", "Content-Length": png.byteLength, "Cache-Control": "public, max-age=86400" });
+            return res.end(png);
         }
         const now = Date.now();
         const ip = clientIp(req);

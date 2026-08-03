@@ -191,26 +191,35 @@ nav a.on,nav a:hover{color:var(--leaf-deep);background:#e6f3d8}
 .animal .ready{font-family:var(--serif);font-size:20px;color:var(--gold)}
 .ranch-scene-card{padding:0;overflow:hidden;background:#dff0bd}
 .ranch-scene{position:relative;isolation:isolate;width:100%;aspect-ratio:16/9;overflow:hidden;
-  background:#8dcc54 url("${BASE}/assets/ranch-scene-background.png?v=20260803") center/cover no-repeat}
+  background:#8dcc54 url("${BASE}/assets/ranch-scene-background.png?v=20260803c") center/cover no-repeat}
 .ranch-scene::after{content:"";position:absolute;inset:0;z-index:90;pointer-events:none;box-shadow:inset 0 0 0 1px #ffffff55}
 .ranch-scene-title{position:absolute;top:10px;left:12px;z-index:95;padding:3px 10px;border:1px solid #ffffff88;border-radius:999px;
   background:#fffdf0d9;color:#48663c;font-size:12px;font-weight:700;box-shadow:0 4px 12px #315b2433;backdrop-filter:blur(3px)}
 .ranch-scene-empty{position:absolute;left:50%;top:62%;z-index:3;transform:translate(-50%,-50%);width:min(78%,320px);padding:8px 12px;
   border-radius:12px;background:#fffdf0d9;color:#5d754f;text-align:center;font-size:12px;box-shadow:0 5px 15px #315b2433}
 .ranch-anchor{position:absolute;width:clamp(54px,7.2vw,88px);aspect-ratio:1;transform:translate(-50%,-100%);will-change:left,top}
+.ranch-anchor.ranch-visitor{appearance:none;padding:0;border:0;background:transparent;color:inherit;font:inherit;cursor:inherit}
+.ranch-anchor.ranch-visitor:focus-visible{outline:2px dashed #fff7d0;outline-offset:1px}
 .ranch-resident{width:100%;height:100%}
 .ranch-scale{display:block;width:100%;height:100%;transform:scale(var(--scale,1));transform-origin:50% 100%}
 .ranch-face{display:block;width:100%;height:100%}
 .ranch-scene-sprite{border-radius:0;box-shadow:none;animation:ranch-step .72s step-end var(--delay) infinite;image-rendering:pixelated}
 @keyframes ranch-step{0%,32%{transform:translateY(0)}33%,65%{transform:translateY(-2px)}66%,100%{transform:translateY(1px)}}
-.ranch-codex-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
-.ranch-codex-head h3{font-family:var(--serif);font-size:20px;margin:0;color:#2f5a31}
+.ranch-codex{padding:0;overflow:hidden}
+.ranch-codex>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;padding:11px 16px;
+  cursor:pointer;list-style:none;color:var(--wood);font-family:var(--serif);font-weight:700}
+.ranch-codex>summary::-webkit-details-marker{display:none}
+.ranch-codex>summary::after{content:"⌄";order:3;font-family:var(--sans);font-size:18px;color:var(--ink-soft);transition:transform .15s ease}
+.ranch-codex[open]>summary::after{transform:rotate(180deg)}
+.ranch-codex>summary:focus-visible{outline:2px solid var(--leaf-deep);outline-offset:-3px}
+.ranch-codex>summary:active{background:#eef7e3}
+.ranch-codex-body{padding:4px 16px 16px;border-top:1px dashed var(--line)}
 .ranch-codex-section{margin-top:14px}
 .ranch-codex-subtitle{display:flex;align-items:baseline;gap:8px;margin:0 0 8px;color:var(--wood);font-weight:700}
 .ranch-codex-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(142px,1fr));gap:10px}
 .ranch-codex-item{min-width:0;padding:9px;border:1px solid var(--line);border-radius:13px;background:rgba(247,252,242,.82)}
 .ranch-codex-item.locked{background:rgba(242,245,239,.68)}
-.ranch-sprite{display:block;width:100%;aspect-ratio:1;border-radius:10px;background-image:url("${BASE}/assets/animal-codex-atlas.png?v=20260803b");
+.ranch-sprite{display:block;width:100%;aspect-ratio:1;border-radius:10px;background-image:url("${BASE}/assets/animal-codex-atlas.png?v=20260803c");
   background-repeat:no-repeat;background-size:400% 400%;background-position:var(--sx) var(--sy)}
 .ranch-codex-item.locked .ranch-sprite{filter:grayscale(.85);opacity:.58}
 .ranch-codex-name{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:8px;font-family:var(--serif);font-weight:700}
@@ -242,8 +251,6 @@ nav a.on,nav a:hover{color:var(--leaf-deep);background:#e6f3d8}
 .ranch-animal-actions>form{max-width:100%}
 .ranch-animal-actions input[name="name"]{min-width:0;flex:1 1 130px}
 .ranch-animal-dispatch{margin-top:13px;padding-top:11px;border-top:1px dashed var(--line)}
-.ranch-incoming{margin-top:15px;padding-top:12px;border-top:1px dashed var(--line)}
-.ranch-incoming h4{margin:0 0 4px;color:var(--wood);font-family:var(--serif)}
 .raid-form{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0 0;padding-top:8px;border-top:1px dashed var(--line)}
 .raid-form label{display:flex;gap:5px;align-items:center;color:var(--ink-soft);white-space:nowrap}
 .raid-form select{max-width:260px}.raid-form .raid-hours{width:76px}
@@ -263,7 +270,7 @@ nav a.on,nav a:hover{color:var(--leaf-deep);background:#e6f3d8}
   .animal{flex-wrap:wrap;gap:6px 10px}
   .animal .am{flex:1 1 100%}
   .animal .ready{font-size:16px}
-  .ranch-scene{aspect-ratio:1;background-image:url("${BASE}/assets/ranch-scene-background-mobile.png?v=20260803");background-position:center}
+  .ranch-scene{aspect-ratio:1;background-image:url("${BASE}/assets/ranch-scene-background-mobile.png?v=20260803c");background-position:center}
   .ranch-anchor{width:clamp(40px,12vw,48px)}
   .ranch-codex-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
   .ranch-codex-item{padding:7px}
@@ -689,14 +696,15 @@ export function uiRanch(f, now, key, flash) {
             scale: sceneScale[entry.kindId] ?? 1,
         })),
         ...(patrolGoose ? [{ spriteIndex: animals.length + pets.length, name: patrolGoose.name || RANCH_PATROL_GOOSE_NAME, scale: .88 }] : []),
-        ...incoming.map(({ owner, raid }) => {
+        ...incoming.map(({ owner, raid }, incomingIndex) => {
             const animal = owner.ranch?.animals.find((entry) => entry.kindId === raid.animalKindId);
             const kind = animalById.get(raid.animalKindId);
             return {
                 spriteIndex: animalSpriteIndex.get(raid.animalKindId),
-                name: `${farmLabel(owner)}家的${animal?.name || kind?.name || raid.animalKindId}`,
+                name: animal?.name || kind?.name || raid.animalKindId,
                 scale: sceneScale[raid.animalKindId] ?? 1,
                 visitor: true,
+                panelId: `visitor-${incomingIndex}`,
             };
         }),
     ].filter((entry) => Number.isInteger(entry.spriteIndex));
@@ -717,9 +725,13 @@ export function uiRanch(f, now, key, flash) {
     const sceneResidentHtml = sceneResidents.map((entry, index) => {
         const [x, y] = sceneSpots[index % sceneSpots.length];
         const delay = -(index * .17);
-        return `<span class="ranch-anchor" data-roamer${entry.visitor ? ` data-visitor="true"` : ""} data-x="${x.toFixed(2)}" data-y="${y.toFixed(2)}" title="${esc(entry.name)}" style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%;z-index:${Math.round(y)};--delay:${delay}s;--scale:${entry.scale}">
+        const tag = entry.visitor ? "button" : "span";
+        const visitorAttrs = entry.visitor
+            ? ` type="button" class="ranch-anchor ranch-visitor" data-visitor="true" data-ranch-animal="${entry.panelId}" aria-haspopup="dialog" aria-controls="ranchAnimalModal" aria-label="查看移动中的${esc(entry.name)}"`
+            : ` class="ranch-anchor" title="${esc(entry.name)}"`;
+        return `<${tag}${visitorAttrs} data-roamer data-x="${x.toFixed(2)}" data-y="${y.toFixed(2)}" style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%;z-index:${Math.round(y)};--delay:${delay}s;--scale:${entry.scale}">
         <span class="ranch-resident"><span class="ranch-scale"><span class="ranch-face">${sprite(entry.spriteIndex, entry.name, "ranch-scene-sprite")}</span></span></span>
-      </span>`;
+      </${tag}>`;
     }).join("");
     const ranchSceneCard = `<section class="card ranch-scene-card" aria-label="牧场动态场景"><div class="ranch-scene">
       <div class="ranch-scene-title">🌿 牧场里 · ${residentCount} 位居民${sceneVisitorCount ? ` · ${sceneVisitorCount} 位来客` : ""}</div>
@@ -783,22 +795,21 @@ export function uiRanch(f, now, key, flash) {
         <div class="ranch-codex-effect">${esc(kind.buffText)}</div>
       </article>`;
     }).join("");
-    const codexCard = `<section class="card ranch-codex"><div class="ranch-codex-head"><div>
-      <h3>🐾 牧场动物图鉴</h3>
-      <p class="small muted" style="margin:3px 0 0">生产动物和普通宠物会随 ${ai} 的作物图鉴进度解锁；巡逻鹅是独立常驻守卫，不计入这里。</p>
-    </div><span class="tag">已入住 <b>${ownedAnimalIds.size + ownedPetIds.size}/${animals.length + pets.length}</b></span></div>
-    <div class="ranch-codex-section"><div class="ranch-codex-subtitle">🥚 生产动物 <span class="small muted">${ownedAnimalIds.size}/${animals.length}</span></div><div class="ranch-codex-grid">${animalCodexRows}</div></div>
-    <div class="ranch-codex-section"><div class="ranch-codex-subtitle">🐾 普通宠物 <span class="small muted">${ownedPetIds.size}/${pets.length}</span></div><div class="ranch-codex-grid">${petCodexRows}</div></div>
-    </section>`;
+    const codexCard = `<details class="card ranch-codex"><summary><span>🐾 牧场动物图鉴</span>
+      <span class="tag">已入住 <b>${ownedAnimalIds.size + ownedPetIds.size}/${animals.length + pets.length}</b></span></summary>
+      <div class="ranch-codex-body"><p class="small muted" style="margin:8px 0 0">生产动物和普通宠物会随 ${ai} 的作物图鉴进度解锁；巡逻鹅是独立常驻守卫，不计入这里。</p>
+      <div class="ranch-codex-section"><div class="ranch-codex-subtitle">🥚 生产动物 <span class="small muted">${ownedAnimalIds.size}/${animals.length}</span></div><div class="ranch-codex-grid">${animalCodexRows}</div></div>
+      <div class="ranch-codex-section"><div class="ranch-codex-subtitle">🐾 普通宠物 <span class="small muted">${ownedPetIds.size}/${pets.length}</span></div><div class="ranch-codex-grid">${petCodexRows}</div></div></div>
+    </details>`;
     // 动物清单（逐只列，显示穿戴与产出）+ 一键收获
     let animalsCard;
-    if (!list.length && !incoming.length) {
+    if (!residentCount && !incoming.length) {
         animalsCard = `<div class="card"><h3>🐾 牧场空荡荡</h3>
       <p class="small muted" style="margin:0 0 6px">还没有动物——让 <b>${ai}</b>（AI）在它的商店里 <code>buy-animal</code> 买一只送进来，你就能开始养了。</p>
       <p class="small muted" style="margin:0">${ai}的图鉴集得越多，能解锁、能买给你的动物越多。</p></div>`;
     }
     else {
-        const ownPanels = list.map((a, i) => {
+        const animalPanels = list.map((a, i) => {
             const k = animalById.get(a.kindId);
             const nm = a.name || k?.name || a.kindId;
             const lvl = a.level ?? 1;
@@ -845,9 +856,9 @@ export function uiRanch(f, now, key, flash) {
             const intro = k
                 ? `${esc(k.category)}动物 · 每${fmtDur(k.produceEveryTicks * TICK_MS)}产一份「${esc(k.produce)}」，当前每份折算 ${num(effPrice)} 金。`
                 : "";
-            const tile = `<button type="button" class="ranch-owned-tile" data-ranch-animal="${i}" aria-haspopup="dialog" aria-controls="ranchAnimalModal">
+            const tile = `<button type="button" class="ranch-owned-tile" data-ranch-animal="animal-${i}" aria-haspopup="dialog" aria-controls="ranchAnimalModal">
         ${animalIcon}<span class="ranch-owned-name">${esc(nm)}</span><span class="ranch-owned-level">Lv.${lvl}</span></button>`;
-            const detail = `<template id="ranch-animal-template-${i}"><div class="ranch-animal-detail">
+            const detail = `<template id="ranch-animal-template-animal-${i}"><div class="ranch-animal-detail">
         <div class="ranch-animal-head">${animalIcon}<div><h2>${esc(nm)} · Lv.${lvl}</h2><p class="ranch-animal-intro">${intro}</p></div></div>
         <div class="ranch-animal-status"><div class="small muted">${info}</div><div style="margin-top:4px">${ready}</div>${worn}${raidLine}</div>
         <div class="ranch-animal-actions">${pinBtn(a.kindId)}${upBtn}${nameForm}</div>
@@ -855,21 +866,68 @@ export function uiRanch(f, now, key, flash) {
       </div></template>`;
             return { tile, detail };
         });
+        const petPanels = petList.map((p, i) => {
+            const k = petById.get(p.kindId);
+            const nm = p.name || k?.name || p.kindId;
+            const wearing = (p.acc ?? []).map((id) => accessoryById.get(id)?.name).filter(Boolean);
+            const worn = wearing.length
+                ? `<div class="small" style="color:var(--leaf-deep);margin-top:2px">👒 穿戴：${wearing.map(esc).join("、")}</div>`
+                : `<div class="small muted" style="margin-top:2px">还没打扮</div>`;
+            const nameForm = `<form method="post" action="${base}/name-pet" style="display:flex;gap:6px;margin:0">
+        <input type="hidden" name="pet" value="${i}">
+        <input class="inp" type="text" name="name" maxlength="12" value="${esc(p.name ?? "")}" placeholder="给它起个名字" style="width:auto">
+        <button class="btn ghost" type="submit">🏷️ 改名</button></form>`;
+            const spriteIndex = petSpriteIndex.get(p.kindId);
+            const petIcon = Number.isInteger(spriteIndex) ? sprite(spriteIndex, nm) : `<span role="img" aria-label="${esc(nm)}">${k?.emoji ?? "🐾"}</span>`;
+            const tile = `<button type="button" class="ranch-owned-tile" data-ranch-animal="pet-${i}" aria-haspopup="dialog" aria-controls="ranchAnimalModal">
+        ${petIcon}<span class="ranch-owned-name">${esc(nm)}</span><span class="ranch-owned-level">宠物</span></button>`;
+            const detail = `<template id="ranch-animal-template-pet-${i}"><div class="ranch-animal-detail">
+        <div class="ranch-animal-head">${petIcon}<div><h2>${esc(nm)} · 宠物</h2><p class="ranch-animal-intro">${k ? esc(k.tag) : "普通宠物"}</p></div></div>
+        <div class="ranch-animal-status">${k ? `<div class="small muted">✨ ${esc(k.buffText)}</div>` : ""}${worn}</div>
+        <div class="ranch-animal-actions">${pinBtn(p.kindId)}${nameForm}</div>
+      </div></template>`;
+            return { tile, detail };
+        });
+        const goosePanels = patrolGoose ? (() => {
+            const gooseName = patrolGoose.name || RANCH_PATROL_GOOSE_NAME;
+            const wearing = (patrolGoose.acc ?? []).map((id) => accessoryById.get(id)?.name).filter(Boolean);
+            const worn = wearing.length
+                ? `<div class="small" style="color:var(--leaf-deep);margin-top:2px">👒 穿戴：${wearing.map(esc).join("、")}</div>`
+                : `<div class="small muted" style="margin-top:2px">还没打扮</div>`;
+            const catches = ranch?.patrolGooseCatches?.day === today ? ranch.patrolGooseCatches.n : 0;
+            const nameForm = `<form method="post" action="${base}/name-goose" style="display:flex;gap:6px;margin:0">
+        <input class="inp" type="text" name="name" maxlength="12" value="${esc(patrolGoose.name ?? "")}" placeholder="给它起个名字" style="width:auto">
+        <button class="btn ghost" type="submit">🏷️ 改名</button></form>`;
+            const gooseIcon = sprite(animals.length + pets.length, gooseName);
+            const tile = `<button type="button" class="ranch-owned-tile" data-ranch-animal="goose" aria-haspopup="dialog" aria-controls="ranchAnimalModal">
+        ${gooseIcon}<span class="ranch-owned-name">${esc(gooseName)}</span><span class="ranch-owned-level">常驻守卫</span></button>`;
+            const detail = `<template id="ranch-animal-template-goose"><div class="ranch-animal-detail">
+        <div class="ranch-animal-head">${gooseIcon}<div><h2>${esc(gooseName)} · 巡逻鹅</h2><p class="ranch-animal-intro">独立常驻牧场守卫</p></div></div>
+        <div class="ranch-animal-status"><div class="small muted">今日已成功赶走 ${num(catches)}/${RANCH_PATROL_GOOSE_DAILY_CAP} 次</div>
+        <div class="small muted" style="margin-top:3px">未被你提前抓住的偷金币动物结束潜伏时，有 25% 概率被巡逻鹅赶走；每天最多成功 3 次。成功时对方保证金全额退回且不受罚，系统按该动物当前一次完整产出价值的 50% 额外奖励你。</div>${worn}</div>
+        <div class="ranch-animal-actions">${pinBtn(RANCH_PATROL_GOOSE_ID)}${nameForm}</div>
+      </div></template>`;
+            return [{ tile, detail }];
+        })() : [];
+        const ownPanels = [...animalPanels, ...petPanels, ...goosePanels];
         const ownTiles = ownPanels.map((entry) => entry.tile).join("");
-        const ownDetails = ownPanels.map((entry) => entry.detail).join("");
-        const incomingRows = incoming.map(({ owner, raid }) => {
+        const incomingPanels = incoming.map(({ owner, raid }, incomingIndex) => {
             const animal = owner.ranch?.animals.find((a) => a.kindId === raid.animalKindId);
             const kind = animalById.get(raid.animalKindId);
             const nm = animal?.name || kind?.name || raid.animalKindId;
             const compensation = ranchRaidCoins(raid, now);
-            return `<div class="animal">
-        <div class="am"><div><b>${kind?.emoji ?? "🐾"}${esc(nm)}</b> <span class="small muted">（${esc(farmLabel(owner))}家的）</span></div>
-          <div class="small" style="color:var(--gold);margin-top:3px">🥷 正在你家潜伏 · 已潜伏赔偿 ${compensation} 金 · ${fmtDur(raid.endsAt - now)}后跑掉</div></div>
-        <form method="post" action="${base}/catch-raid" style="margin:0"><input type="hidden" name="raid" value="${esc(raid.id)}">
-          <button class="btn" type="submit">抓住</button></form></div>`;
-        }).join("");
+            const spriteIndex = animalSpriteIndex.get(raid.animalKindId);
+            const visitorIcon = Number.isInteger(spriteIndex) ? sprite(spriteIndex, nm) : `<span role="img" aria-label="${esc(nm)}">${kind?.emoji ?? "🐾"}</span>`;
+            return `<template id="ranch-animal-template-visitor-${incomingIndex}"><div class="ranch-animal-detail">
+        <div class="ranch-animal-head">${visitorIcon}<div><h2>${esc(nm)} · 潜伏来客</h2><p class="ranch-animal-intro">来自「${esc(farmLabel(owner))}」的${esc(kind?.name || raid.animalKindId)}</p></div></div>
+        <div class="ranch-animal-status"><div class="small" style="color:var(--gold)">🥷 正在你家潜伏 · 现在抓住可获赔 ${num(compensation)} 金 · ${fmtDur(Math.max(0, raid.endsAt - now))}后跑掉</div></div>
+        <div class="ranch-animal-actions"><form method="post" action="${base}/catch-raid" style="margin:0"><input type="hidden" name="raid" value="${esc(raid.id)}">
+          <button class="btn" type="submit">抓住</button></form></div>
+      </div></template>`;
+        });
+        const allDetails = [...ownPanels.map((entry) => entry.detail), ...incomingPanels].join("");
         const canCollect = pendingGross > 0;
-        const animalModal = ownPanels.length ? `${ownDetails}<div class="mback ranch-animal-back" id="ranchAnimalModal" role="dialog" aria-modal="true" aria-label="动物详情" aria-hidden="true">
+        const animalModal = ownPanels.length || incomingPanels.length ? `${allDetails}<div class="mback ranch-animal-back" id="ranchAnimalModal" role="dialog" aria-modal="true" aria-label="动物详情" aria-hidden="true">
       <div class="sheet ranch-animal-sheet"><button type="button" class="ranch-animal-x" data-ranch-animal-close aria-label="关闭">✕</button><div id="ranchAnimalBody"></div></div>
     </div><script>(function(){
       var modal=document.getElementById('ranchAnimalModal'),body=document.getElementById('ranchAnimalBody'),opener=null;if(!modal||!body)return;
@@ -883,7 +941,6 @@ export function uiRanch(f, now, key, flash) {
           <button class="btn" type="submit"${canCollect ? "" : " disabled"}>📦 一键收获${canCollect ? `（+${num(pendingValue)}金）` : "（暂无可收）"}</button>
         </form></div>
       ${ownTiles ? `<div class="ranch-owned-grid">${ownTiles}</div>` : `<p class="small muted" style="margin:12px 0 0">还没有自家动物。</p>`}
-      ${incomingRows ? `<div class="ranch-incoming"><h4>🥷 潜伏进来的动物</h4>${incomingRows}</div>` : ""}
       ${animalModal}
       <p class="small muted" style="margin:10px 0 0">给动物买的衣服配饰，会出现在<b>${ai}打开农场时看到的描述里</b>（“一只戴着棒球帽的鸡在田里散步”）——这是 TA 能感觉到你心意的地方。收获时还有几率掉一瓶加速药水直接进${ai}仓库。</p>
       <p class="small muted" style="margin:6px 0 0">📌 <b>pin</b>：被你 pin 的动物/宠物，才会随机出现在 ${ai} 农场的氛围描述里；<b>只 pin 一只就固定只出现它</b>。都不 pin＝全部随机（默认）。</p></div>`;
@@ -941,47 +998,6 @@ export function uiRanch(f, now, key, flash) {
     const historyCard = `<div class="card"><h3>🧾 金币往来</h3>
     <p class="small muted" style="margin:0 0 6px">你和 ${ai} 互相寄过的金币（最近 12 笔）。</p>
     ${histRows}</div>`;
-    // 🪿 独立常驻牧场守卫：不属于动物或宠物，改名/穿戴/pin 只影响展示。
-    let patrolGooseCard = "";
-    if (patrolGoose) {
-        const gooseName = patrolGoose.name || RANCH_PATROL_GOOSE_NAME;
-        const wearing = (patrolGoose.acc ?? []).map((id) => accessoryById.get(id)?.name).filter(Boolean);
-        const worn = wearing.length
-            ? `<div class="small" style="color:var(--leaf-deep);margin-top:2px">👒 穿戴：${wearing.map(esc).join("、")}</div>`
-            : `<div class="small muted" style="margin-top:2px">还没打扮</div>`;
-        const catches = ranch?.patrolGooseCatches?.day === today ? ranch.patrolGooseCatches.n : 0;
-        const nameForm = `<form method="post" action="${base}/name-goose" style="display:flex;gap:6px;margin:0">
-        <input class="inp" type="text" name="name" maxlength="12" value="${esc(patrolGoose.name ?? "")}" placeholder="给它起个名字" style="width:auto">
-        <button class="btn ghost" type="submit">🏷️ 改名</button></form>`;
-        patrolGooseCard = `<div class="card"><h3>🪿 牧场守卫　<span class="muted small" style="font-weight:400">独立常驻</span></h3>
-      <div class="animal"><div class="am"><div><b>🪿${esc(gooseName)}</b> <span class="small muted">今日已成功赶走 ${num(catches)}/${RANCH_PATROL_GOOSE_DAILY_CAP} 次</span></div>
-      <div class="small muted" style="margin-top:3px">未被你提前抓住的偷金币动物结束潜伏时，有 25% 概率被巡逻鹅赶走；每天最多成功 3 次。成功时对方保证金全额退回且不受罚，系统按该动物当前一次完整产出价值的 50% 额外奖励你。</div>
-      ${worn}<div style="display:flex;gap:6px;align-items:center;margin-top:6px">${pinBtn(RANCH_PATROL_GOOSE_ID)}${nameForm}</div></div></div></div>`;
-    }
-    // 🐱 宠物（AI 买来归你养：不产出、给农场温和加成；你可改名 / 打扮）
-    let petsCard = "";
-    if (petList.length) {
-        const petRows = petList.map((p, i) => {
-            const k = petById.get(p.kindId);
-            const nm = p.name || k?.name || p.kindId;
-            const wearing = (p.acc ?? []).map((id) => accessoryById.get(id)?.name).filter(Boolean);
-            const worn = wearing.length
-                ? `<div class="small" style="color:var(--leaf-deep);margin-top:2px">👒 穿戴：${wearing.map(esc).join("、")}</div>`
-                : `<div class="small muted" style="margin-top:2px">还没打扮</div>`;
-            const buff = k ? `<div class="small muted" style="margin-top:2px">✨ ${esc(k.buffText)}</div>` : "";
-            const nameForm = `<form method="post" action="${base}/name-pet" style="display:flex;gap:6px;margin:0">
-        <input type="hidden" name="pet" value="${i}">
-        <input class="inp" type="text" name="name" maxlength="12" value="${esc(p.name ?? "")}" placeholder="给它起个名字" style="width:auto">
-        <button class="btn ghost" type="submit">🏷️ 改名</button></form>`;
-            return `<div class="animal"><div class="am">
-        <div><b>${k?.emoji ?? ""}${esc(nm)}</b> <span class="small muted">${k ? esc(k.tag) : ""}</span></div>
-        ${buff}${worn}
-        <div style="display:flex;gap:6px;align-items:center;margin-top:6px">${pinBtn(p.kindId)}${nameForm}</div></div></div>`;
-        }).join("");
-        petsCard = `<div class="card"><h3>🐱 我的宠物　<span class="muted small" style="font-weight:400">${ai}买来送你养的</span></h3>
-      <p class="small muted" style="margin:0 0 6px">宠物不产出东西，只是常在田里转悠陪着${ai}，并悄悄给农场一份温和加成。你可以给它<b>起名字</b>，或在 <b>🧰 牧场仓库</b> 给它<b>戴上配饰</b>（${ai}打开农场看得到）。</p>
-      ${petRows}</div>`;
-    }
     // 🧰 牧场仓库：买来的配饰/装饰先进这里，再从这儿给动物/宠物/巡逻鹅戴上、把装饰摆出来。
     const decorName = (id) => (decorationById.get(id) ?? expDecorById.get(id))?.name ?? id;
     const decorVisit = (id) => (decorationById.get(id) ?? expDecorById.get(id))?.visitLine;
@@ -1047,8 +1063,6 @@ ${ranchSceneCard}
 ${raidHistoryCard}
 ${codexCard}
 ${animalsCard}
-${patrolGooseCard}
-${petsCard}
 ${warehouseCard}
 ${shopCard}
 <div class="grid c2">${remitCard}${historyCard}</div>`;
