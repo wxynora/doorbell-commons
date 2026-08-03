@@ -10,7 +10,7 @@ import { MAX_BODY_BYTES, SYNC_MAX_BODY_BYTES, MAX_FARMS, MESSAGE_TEXT_MAX, MESSA
 import { allowRequest, allowCreate, sweepGuard } from "./guard.js";
 import { mintNonce, takeNonce, sweepNonces, htmlAgentPage, htmlReadme, htmlGuide, htmlNotice, htmlGenLink } from "./agent.js";
 import { mcpDispatch } from "./mcp.js";
-import { uiHome, uiRanch, uiTa, uiCodex, uiMessages, uiLeaderboard, uiInvalid, uiExpedition, uiHumanNotices, FARM_UI_CSS_ASSET } from "./web.js";
+import { uiHome, uiRanch, uiTa, uiCodex, uiMessages, uiLeaderboard, uiInvalid, uiExpedition, uiHumanNotices } from "./web.js";
 import { expRoll, expSetCharm } from "./expedition.js";
 import { viewLeaderboard } from "./leaderboard.js";
 import { onTaskEvent, tickTask, hasOpenOffer, offerSummary } from "./tasks.js";
@@ -1061,7 +1061,6 @@ const PUBLIC_PNG_ASSETS = new Map([
     ["ranch-scene-background.png", new URL("../assets/ranch-scene-background.png", import.meta.url)],
     ["ranch-scene-background-mobile.png", new URL("../assets/ranch-scene-background-mobile.png", import.meta.url)],
 ]);
-const PUBLIC_FARM_CSS = new URL(`../assets/${FARM_UI_CSS_ASSET}`, import.meta.url);
 const MAINTENANCE_FILE = `${process.env.AIFARM_DATA_DIR || "./data"}/maintenance`;
 const MAINTENANCE_API_TEXT = "农场正在维护，暂时不能操作，请稍后再来。";
 const MAINTENANCE_HTML = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>农场维护中</title>
@@ -1092,12 +1091,6 @@ export function startServer(port, host = "127.0.0.1") {
         const method = req.method ?? "GET";
         if (existsSync(MAINTENANCE_FILE))
             return maintenanceOut(req, res, parts, method);
-        const publicFarmCss = method === "GET" && parts.length === 2 && parts[0] === "assets" && parts[1] === FARM_UI_CSS_ASSET;
-        if (publicFarmCss) {
-            const css = readFileSync(PUBLIC_FARM_CSS);
-            res.writeHead(200, { "Content-Type": "text/css; charset=utf-8", "Content-Length": css.byteLength, "Cache-Control": "public, max-age=31536000, immutable" });
-            return res.end(css);
-        }
         const publicPng = method === "GET" && parts.length === 2 && parts[0] === "assets" ? PUBLIC_PNG_ASSETS.get(parts[1]) : undefined;
         if (publicPng) {
             const png = readFileSync(publicPng);
