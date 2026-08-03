@@ -1,12 +1,12 @@
-// 人类可见的只读看板（HTML，零依赖，服务端渲染）。给小猫看她的 AI 伴侣（小克）的农场。
-// 与给 AI 玩的文字接口完全分开：这里只「展示」，不提供任何写操作。
+// 人类可见的伴侣看板（HTML，零依赖，服务端渲染）。给人类看自己 AI 伴侣的农场。
+// 与给 AI 玩的文字接口完全分开：主页只开放每日 3 次的单块帮收，其他田间动作仍由 AI 完成。
 // 绑定方式：/ui/<humanKey> —— 只认低权限观光钥匙；页面内跳转也只继续传这把钥匙，不暴露主 token。
 // 视觉基调：暖田园·标本馆（米麻底 + 木质暖褐 + 草木绿），靠稀有度色彩体系与排版质感出彩（零图片）。
 //
 // 本文件目前是「农场主页/总览」打样页 + 全站共享外壳（外壳定义视觉语言，其余页之后复用）。
-import { advance, collectionPct, codexCountByCategory, nextUpgradeReq, refreshShop, shopOffer, refreshRanchShop, animalUpgradeCost, plotRemainMs, isStarred, ranchRaidCoins, ranchRaidForAnimal, ranchRaidDebtTotal, RANCH_RAID_DAILY_CAP } from "./engine.js";
+import { advance, collectionPct, codexCountByCategory, nextUpgradeReq, refreshShop, shopOffer, refreshRanchShop, animalUpgradeCost, plotRemainMs, isStarred, ranchRaidCoins, ranchRaidForAnimal, ranchRaidDebtTotal, humanHarvestLeft, RANCH_RAID_DAILY_CAP } from "./engine.js";
 import { cropById, getCrop, animalById, petById, accessoryById, decorationById, landTierByLevel, totalCropCount, cropsByCategory, qualities, materialById, recipes, expMaps, expEventById, expMapById, expDecorById } from "./content.js";
-import { BASE, TICK_MS, RANCH_ANIMAL_MAX_LEVEL, RANCH_LEVEL_INCOME_STEP, RANCH_RAID_COINS_PER_HOUR, RANCH_PATROL_GOOSE_ID, RANCH_PATROL_GOOSE_NAME, RANCH_PATROL_GOOSE_DAILY_CAP, UGC_DESIGN_FEE, UGC_SEED_YIELD, UGC_NAME_MAX, UGC_DESC_MAX, UGC_PLANT_MAX, UGC_HARVEST_MAX, MESSAGE_TEXT_MAX, WELCOME_MAX, EXP_DC, EXP_DAILY_CAP, EXP_BLESSING_MAX } from "./config.js";
+import { BASE, TICK_MS, HUMAN_HARVEST_DAILY_CAP, RANCH_ANIMAL_MAX_LEVEL, RANCH_LEVEL_INCOME_STEP, RANCH_RAID_COINS_PER_HOUR, RANCH_PATROL_GOOSE_ID, RANCH_PATROL_GOOSE_NAME, RANCH_PATROL_GOOSE_DAILY_CAP, UGC_DESIGN_FEE, UGC_SEED_YIELD, UGC_NAME_MAX, UGC_DESC_MAX, UGC_PLANT_MAX, UGC_HARVEST_MAX, MESSAGE_TEXT_MAX, WELCOME_MAX, EXP_DC, EXP_DAILY_CAP, EXP_BLESSING_MAX } from "./config.js";
 import { currentSeason, activeFestivals, currentDayIndex } from "./time.js";
 import { playerFarms } from "./store.js";
 import { allUgc } from "./ugc.js";
@@ -165,6 +165,7 @@ nav a.on,nav a:hover{color:var(--leaf-deep);background:#e6f3d8}
 .plot .ico{font-size:22px;display:block;line-height:1.2}
 .plot.empty{opacity:.5}
 .plot.ripe{border-color:var(--SSR);background:#fff7e6;box-shadow:0 0 0 1px #e0a63c44 inset}
+.plot .harvest-form{margin:7px 0 0}.plot .harvest-btn{width:100%;padding:6px 2px;font-size:11px;white-space:nowrap;border-radius:8px}
 .bar,.pminibar{height:6px;border-radius:5px;background:#e3efd9;overflow:hidden}
 .pminibar{margin-top:5px}
 .bar>span,.pminibar>span{display:block;height:100%;border-radius:5px}
@@ -350,7 +351,7 @@ const barFill = (pct, color) => `<span style="width:${Math.max(0, Math.min(100, 
 // ——————————————————————————————————————————————————————————————
 // 🏡 农场主页 / 总览（打样）
 // ——————————————————————————————————————————————————————————————
-export function uiHome(f, now, key) {
+export function uiHome(f, now, key, flash) {
     advance(f, now);
     checkTitles(f); // 补结算称号解锁（佩戴下拉用最新已解锁列表）
     refreshShop(f, now);
@@ -404,6 +405,7 @@ export function uiHome(f, now, key) {
       <p class="small muted" style="margin:10px 0 0">🎯 ${upText}</p>
     </div></div></div>`;
     // 他的田 mini
+    const harvestLeft = humanHarvestLeft(f, now);
     const plots = f.plots.map((p) => {
         if (!p.crop)
             return `<div class="plot empty"><span class="ico">🟫</span><span class="small">空地</span></div>`;
@@ -416,15 +418,19 @@ export function uiHome(f, now, key) {
         const eta = c.ripe
             ? `<span class="small" style="color:var(--SSR)">🥕 可收获</span>`
             : `<span class="small muted" title="${fmtDur(remain)}后成熟">🕒 ${clock(now + remain)}熟</span>`;
+        const harvestForm = c.ripe
+            ? `<form class="harvest-form" method="post" action="${BASE}/ui/${key}/harvest"><input type="hidden" name="plot" value="${p.id}">
+        <button class="btn ghost harvest-btn" type="submit"${harvestLeft > 0 ? "" : " disabled"}>${harvestLeft > 0 ? "🌾 帮TA收" : "今日已收满"}</button></form>`
+            : "";
         return `<div class="plot ${c.ripe ? "ripe" : ""}"><span class="ico">${ico}</span>
       <span class="small muted">${lbl} · 💧${c.waterCount}</span>
       <div class="pminibar">${barFill(gp, c.ripe ? "var(--SSR)" : "var(--leaf)")}</div>
-      ${eta}</div>`;
+      ${eta}${harvestForm}</div>`;
     }).join("");
     const ripeN = f.plots.filter((p) => p.crop?.ripe).length;
     const growN = f.plots.filter((p) => p.crop && !p.crop.ripe).length;
     const field = `<div class="card">
-    <h3>🌱 他的田　<span class="muted small" style="font-weight:400">在种 ${growN} · 成熟 ${ripeN}</span></h3>
+    <h3>🌱 他的田　<span class="muted small" style="font-weight:400">在种 ${growN} · 成熟 ${ripeN} · 今日可帮收 ${harvestLeft}/${HUMAN_HARVEST_DAILY_CAP}（00:00 刷新）</span></h3>
     <div class="plots" style="margin-top:10px">${plots}</div></div>`;
     // 此刻 · 季节
     const seasonCrops = (season.topCrops ?? []).map((id) => cropById.get(id)?.name ?? id).filter(Boolean).slice(0, 4);
@@ -502,7 +508,8 @@ export function uiHome(f, now, key) {
       <span class="tag">🍃 <b>${esc(season.name)}</b></span>
       <span class="tag">📖 已集 <b>${got}</b> 种</span>
       <span class="tag">🌱 开张 <b>${days}</b> 天</span></div></div>`;
-    const body = `${plaque}
+    const flashHtml = flash ? `<div class="flash">${esc(flash)}</div>` : "";
+    const body = `${plaque}${flashHtml}
 ${ripeBroadcast}
 ${hero}
 ${field}

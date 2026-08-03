@@ -2,7 +2,7 @@
 import { Rng } from "./rng.js";
 import { rollCrop, rollQuality, cropValue } from "./gacha.js";
 import { currentSeason, activeFestivals, currentHour, currentDayIndex } from "./time.js";
-import { TICK_MS, GROW_TICKS, SEED_PRICE, WATER_LUCK_PER, WATER_LUCK_CAP, MAX_LOG, TRAIL_MAX, LAND_UPGRADE_REQ, NEW_CODEX_REWARD, HARVEST_EVENT_CHANCE, MATERIAL_DROP_CHANCE, MATERIAL_DROP_WEIGHT, ITEMS, POTION_DROP_CHANCE, POTION_DAILY_CAP, POTION_CAP_LINE, POTION_SET_QTY, POTION_SET_PRICE, POTION_SET_CHANCE, WATER_REWARD_DAILY_CAP, STEAL_COOLDOWN_MS, STEAL_DAILY_CAP, STEAL_SHIELD_MS, RANCH_POTION_DROP_CHANCE, RANCH_POTION_DAILY_CAP, LEDGER_MAX, RANCH_ANIMAL_MAX_LEVEL, RANCH_LEVEL_INCOME_STEP, RANCH_UPGRADE_COST_FACTOR, RANCH_RAID_COINS_PER_HOUR, RANCH_PATROL_GOOSE_ID, RANCH_PATROL_GOOSE_NAME, RANCH_PATROL_GOOSE_BUY_COST, RANCH_PATROL_GOOSE_CATCH_CHANCE, RANCH_PATROL_GOOSE_DAILY_CAP, PET_NAME_MAX, CRAFT_COUNT, FUSION_POINTS, LIMITED_BASE_WEIGHT, FUSION_LUCK_DIVISOR, FUSION_SOFT_PITY, FUSION_SPECIAL_UNLOCKED_RATE, rarityIndex, SHOP_REFRESH_MS, SHOP_RECIPE_CHANCE, RECIPE_PRICE, NPC_LIMITED_SEED_CHANCE, NPC_ID, UGC_DESIGN_FEE, UGC_SEED_YIELD, UGC_VALUE, UGC_HARVEST_VALUE, UGC_GROW_TICKS, UGC_NAME_MAX, UGC_DESC_MAX, UGC_PLANT_MAX, UGC_HARVEST_MAX, MAX_UGC, UGC_RARITY, } from "./config.js";
+import { TICK_MS, GROW_TICKS, SEED_PRICE, WATER_LUCK_PER, WATER_LUCK_CAP, MAX_LOG, TRAIL_MAX, LAND_UPGRADE_REQ, NEW_CODEX_REWARD, HARVEST_EVENT_CHANCE, MATERIAL_DROP_CHANCE, MATERIAL_DROP_WEIGHT, ITEMS, POTION_DROP_CHANCE, POTION_DAILY_CAP, POTION_CAP_LINE, POTION_SET_QTY, POTION_SET_PRICE, POTION_SET_CHANCE, WATER_REWARD_DAILY_CAP, STEAL_COOLDOWN_MS, STEAL_DAILY_CAP, STEAL_SHIELD_MS, HUMAN_HARVEST_DAILY_CAP, RANCH_POTION_DROP_CHANCE, RANCH_POTION_DAILY_CAP, LEDGER_MAX, RANCH_ANIMAL_MAX_LEVEL, RANCH_LEVEL_INCOME_STEP, RANCH_UPGRADE_COST_FACTOR, RANCH_RAID_COINS_PER_HOUR, RANCH_PATROL_GOOSE_ID, RANCH_PATROL_GOOSE_NAME, RANCH_PATROL_GOOSE_BUY_COST, RANCH_PATROL_GOOSE_CATCH_CHANCE, RANCH_PATROL_GOOSE_DAILY_CAP, PET_NAME_MAX, CRAFT_COUNT, FUSION_POINTS, LIMITED_BASE_WEIGHT, FUSION_LUCK_DIVISOR, FUSION_SOFT_PITY, FUSION_SPECIAL_UNLOCKED_RATE, rarityIndex, SHOP_REFRESH_MS, SHOP_RECIPE_CHANCE, RECIPE_PRICE, NPC_LIMITED_SEED_CHANCE, NPC_ID, UGC_DESIGN_FEE, UGC_SEED_YIELD, UGC_VALUE, UGC_HARVEST_VALUE, UGC_GROW_TICKS, UGC_NAME_MAX, UGC_DESC_MAX, UGC_PLANT_MAX, UGC_HARVEST_MAX, MAX_UGC, UGC_RARITY, } from "./config.js";
 import { crops, cropById, getCrop, animals, animalById, pets, petById, accessories, decorations, accessoryById, decorationById, landTiers, totalCropCount, qualities, materials, materialById, recipes, specialEvents, expDecorById, } from "./content.js";
 import { registerUgc, ugcCount } from "./ugc.js";
 import { onTaskEvent } from "./tasks.js";
@@ -349,6 +349,27 @@ export function harvest(farm, plotId, now, seasonMod) {
     onTaskEvent(farm, "harvest", now, { rarity: crop.rarity, isNew, isUgc: crop.category === "ugc" }); // 随机任务：收获N株R/SR/收新图鉴
     pushLog(farm, `收获 ${crop.name}（${quality.name}），+${value}${drop ? ` 掉素材[${drop.name}]` : ""}${potionDrop ? " 掉药水" : ""}`);
     return { ok: true, crop, quality, value, isNew, codexReward, bonus, drop, potionDrop };
+}
+/** 人类当天还可替自己的 AI 收几块菜；所有每日限制统一按 UTC+8 零点换日。 */
+export function humanHarvestLeft(farm, now) {
+    const day = currentDayIndex(now);
+    const used = farm.humanHarvestDaily?.day === day ? farm.humanHarvestDaily.n ?? 0 : 0;
+    return Math.max(0, HUMAN_HARVEST_DAILY_CAP - used);
+}
+/** humanKey 页面单块收获：成功才计次，空地／未成熟／非法地块均不消耗次数。 */
+export function humanHarvest(farm, plotId, now, seasonMod) {
+    const day = currentDayIndex(now);
+    const daily = farm.humanHarvestDaily?.day === day
+        ? farm.humanHarvestDaily
+        : { day, n: 0 };
+    if ((daily.n ?? 0) >= HUMAN_HARVEST_DAILY_CAP)
+        return { ok: false, error: `今天已经帮 TA 收满 ${HUMAN_HARVEST_DAILY_CAP} 次菜了，明天再来吧。` };
+    const result = harvest(farm, plotId, now, seasonMod);
+    if (!result.ok)
+        return result;
+    farm.humanHarvestDaily = daily;
+    daily.n = (daily.n ?? 0) + 1;
+    return { ...result, used: daily.n, left: Math.max(0, HUMAN_HARVEST_DAILY_CAP - daily.n) };
 }
 // —— 熔炼：投 CRAFT_COUNT 个素材 → 出一颗限定种子（混合：命中隐藏配方=固定，否则随机）——
 export function craft(farm, materialIds, _now) {

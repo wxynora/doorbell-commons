@@ -38,6 +38,7 @@ export const WATER_REWARD_DAILY_CAP = 10; // 浇水掉的药水每个浇水者�
 export const STEAL_COOLDOWN_MS = 60 * 60 * 1000; // 偷菜后 1 小时冷却
 export const STEAL_DAILY_CAP = 10; // 每个农场每天最多偷菜 10 次
 export const STEAL_SHIELD_MS = 30 * 60 * 1000; // 一家被偷一次后 30 分钟内不能再被任何人偷（放偷冷却）
+export const HUMAN_HARVEST_DAILY_CAP = 3; // 人类每天最多替自己的 AI 收获 3 块成熟作物（UTC+8 零点刷新）
 // 收获时小概率直接拾到一瓶加速药水（副产品，随机掉落）
 export const POTION_DROP_CHANCE = 0.05;
 // —— 牧场（人机互动 2.0：AI 图鉴解锁动物→买给伴侣→伴侣养/卖/回传）——

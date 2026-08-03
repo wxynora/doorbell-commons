@@ -2,11 +2,11 @@
 import { createServer } from "node:http";
 import { randomUUID, randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
-import { advance, steal, canStealNow, stealAvailability, stealShieldRemain, isUgcCrop, visitorWater, tryWaterReward, ranchRoamLine, buyPotionSet, refreshShop, ranchCollect, ranchRemit, ranchBuyAccessory, ranchBuyDecoration, ranchWearAccessory, ranchTakeOffAccessory, ranchPlaceDecoration, ranchUnplaceDecoration, ranchUpgradeAnimal, ranchNameAnimal, ranchNamePet, ranchNamePatrolGoose, ranchTogglePin, dispatchRanchRaid, catchRanchRaid, settleRanchRaids, ensureHumanKey, takeInbox, takeRanchNotices, pushSocialInbox, potionDailyLeft, designCrop, craft, nextUpgradeReq, toggleStar } from "./engine.js";
+import { advance, steal, canStealNow, stealAvailability, stealShieldRemain, isUgcCrop, visitorWater, tryWaterReward, humanHarvest, humanHarvestLeft, ranchRoamLine, buyPotionSet, refreshShop, ranchCollect, ranchRemit, ranchBuyAccessory, ranchBuyDecoration, ranchWearAccessory, ranchTakeOffAccessory, ranchPlaceDecoration, ranchUnplaceDecoration, ranchUpgradeAnimal, ranchNameAnimal, ranchNamePet, ranchNamePatrolGoose, ranchTogglePin, dispatchRanchRaid, catchRanchRaid, settleRanchRaids, ensureHumanKey, takeInbox, takeRanchNotices, pushSocialInbox, potionDailyLeft, designCrop, craft, nextUpgradeReq, toggleStar } from "./engine.js";
 import { dispatch, HELP, farmView, viewShop, viewEncyclopedia, viewBag, shopBrief, viewMarket, buyFromMarket, visitView, ranchAgentSection, refPrice, tendNpc, buyNpcSeed, randomTip, hasDamagedPublicName } from "./game.js";
 import { harvestText, stealThiefText, statusFooter, waterText, describeFarm } from "./flavor.js";
 import { createFarm, getFarm, allFarms, playerFarms, save } from "./store.js";
-import { MAX_BODY_BYTES, SYNC_MAX_BODY_BYTES, MAX_FARMS, MESSAGE_TEXT_MAX, MESSAGES_MAX, POTION_DAILY_CAP, POTION_CAP_LINE, NPC_ID, SEED_PRICE, RECIPE_PRICE, WELCOME_MAX, EXP_DAILY_CAP, EXP_MAX_CHARGES_PER_ENTRY, BASE, REGISTRATION_OPEN, REGISTRATION_CLOSED_TEXT, REGISTRATION_CAP, REGISTRATION_FULL_TEXT, SHOW_MIGRATION_NOTICE, MIGRATION_NOTICE_TEXT, MIGRATION_NOTICE_HTML } from "./config.js";
+import { MAX_BODY_BYTES, SYNC_MAX_BODY_BYTES, MAX_FARMS, MESSAGE_TEXT_MAX, MESSAGES_MAX, POTION_DAILY_CAP, POTION_CAP_LINE, HUMAN_HARVEST_DAILY_CAP, NPC_ID, SEED_PRICE, RECIPE_PRICE, WELCOME_MAX, EXP_DAILY_CAP, EXP_MAX_CHARGES_PER_ENTRY, BASE, REGISTRATION_OPEN, REGISTRATION_CLOSED_TEXT, REGISTRATION_CAP, REGISTRATION_FULL_TEXT, SHOW_MIGRATION_NOTICE, MIGRATION_NOTICE_TEXT, MIGRATION_NOTICE_HTML } from "./config.js";
 import { allowRequest, allowCreate, sweepGuard } from "./guard.js";
 import { mintNonce, takeNonce, sweepNonces, htmlAgentPage, htmlReadme, htmlGuide, htmlNotice, htmlGenLink } from "./agent.js";
 import { mcpDispatch } from "./mcp.js";
@@ -16,7 +16,7 @@ import { viewLeaderboard } from "./leaderboard.js";
 import { onTaskEvent, tickTask, hasOpenOffer, offerSummary } from "./tasks.js";
 import { bumpDaily } from "./daily.js";
 import { checkTitles, equipTitle } from "./titles.js";
-import { rollSeasonStatus, seasonHeadline } from "./season-events.js";
+import { rollSeasonHarvest, rollSeasonStatus, seasonHeadline } from "./season-events.js";
 import { allUgc } from "./ugc.js";
 import { getCrop, materialById, expEventById } from "./content.js";
 import { currentDayIndex } from "./time.js";
@@ -1185,6 +1185,27 @@ export function startServer(port, host = "127.0.0.1") {
                         save();
                     return uiHumanNotices(html, notices);
                 };
+                // 🌾 人类帮自己的 AI 收一块成熟作物：只认本页 humanKey，成功才消耗每日 3 次额度。
+                if (section === "harvest" && method === "POST") {
+                    const form = await readFormBody(req);
+                    const plotId = Number(form.plot);
+                    const plot = Number.isSafeInteger(plotId) ? f.plots.find((p) => p.id === plotId) : undefined;
+                    const canRollSeason = !!plot?.crop?.ripe && humanHarvestLeft(f, now) > 0;
+                    const se = canRollSeason ? rollSeasonHarvest(f, now) : null;
+                    const r = humanHarvest(f, plotId, now, se?.mod);
+                    let flash;
+                    if (!r.ok) {
+                        flash = `⚠️ ${r.error}`;
+                    }
+                    else {
+                        const gain = r.value + (r.codexReward ?? 0) + (r.bonus?.extraCoins ?? 0);
+                        const extras = `${r.isNew ? " · 新图鉴" : ""}${r.drop ? ` · 掉落${r.drop.name}` : ""}${r.potionDrop ? " · 掉落加速药水" : ""}${se ? ` · ${se.hit.name}` : ""}`;
+                        flash = `🌾 帮${f.aiName || f.name || "TA"}收下「${r.crop.name}」（${r.quality.name}），+${gain} 金${extras}；今日已帮收 ${r.used}/${HUMAN_HARVEST_DAILY_CAP} 次`;
+                    }
+                    save();
+                    res.writeHead(303, { ...AGENT_HEADERS, Location: `${BASE}/ui/${key}?flash=${encodeURIComponent(flash)}` });
+                    return res.end();
+                }
                 // 🎖️ 佩戴称号：主页名字旁的下拉提交到这里。POST /ui/<key>/title → 存 titleEquipped → 303 跳回主页。
                 if (section === "title" && method === "POST") {
                     const form = await readFormBody(req);
@@ -1194,7 +1215,7 @@ export function startServer(port, host = "127.0.0.1") {
                     res.writeHead(303, { ...AGENT_HEADERS, Location: `${BASE}/ui/${key}` });
                     return res.end();
                 }
-                // 🐮 牧场：/ui 里唯一「能写」的页。POST 收获/回传 → 做完 303 跳回（PRG，刷新不会重复提交）。
+                // 🐮 牧场：人类主要经营页。POST 收获/回传 → 做完 303 跳回（PRG，刷新不会重复提交）。
                 if (section === "ranch") {
                     const act = parts[3];
                     if (method === "POST" && (act === "collect" || act === "remit" || act === "dress" || act === "decorate" || act === "wear" || act === "takeoff" || act === "place" || act === "unplace" || act === "upgrade" || act === "name-animal" || act === "name-pet" || act === "name-goose" || act === "pin" || act === "dispatch-raid" || act === "catch-raid")) {
@@ -1428,7 +1449,7 @@ export function startServer(port, host = "127.0.0.1") {
                     return res.end(renderHuman(uiMessages(f, now, key)));
                 if (section === "leaderboard")
                     return res.end(renderHuman(uiLeaderboard(f, now, key)));
-                return res.end(renderHuman(uiHome(f, now, key)));
+                return res.end(renderHuman(uiHome(f, now, key, url.searchParams.get("flash") ?? undefined)));
             }
             // —— Agent 控制页（HTML，给只能点页面里现成链接的 AI）——
             if (parts[0] === "agent" && parts.length >= 2) {
