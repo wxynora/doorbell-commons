@@ -1,7 +1,7 @@
 // 开放 HTTP 接口（node:http，零依赖）。业务逻辑复用 game.ts，保证与 CLI 同一套规则。
 import { createServer } from "node:http";
 import { randomUUID, randomBytes } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { advance, steal, canStealNow, stealAvailability, stealShieldRemain, isUgcCrop, visitorWater, tryWaterReward, humanHarvestAll, humanHarvestLeft, ranchRoamLine, buyPotionSet, refreshShop, ranchCollect, ranchRemit, ranchBuyAccessory, ranchBuyDecoration, ranchWearAccessory, ranchTakeOffAccessory, ranchPlaceDecoration, ranchUnplaceDecoration, ranchUpgradeAnimal, ranchNameAnimal, ranchNamePet, ranchNamePatrolGoose, ranchTogglePin, dispatchRanchRaid, catchRanchRaid, settleRanchRaids, ensureHumanKey, takeInbox, takeRanchNotices, pushSocialInbox, potionDailyLeft, designCrop, craft, nextUpgradeReq, toggleStar } from "./engine.js";
 import { dispatch, HELP, farmView, viewShop, viewEncyclopedia, viewBag, shopBrief, viewMarket, buyFromMarket, visitView, ranchAgentSection, refPrice, tendNpc, buyNpcSeed, randomTip, hasDamagedPublicName } from "./game.js";
 import { harvestText, stealThiefText, statusFooter, waterText, describeFarm } from "./flavor.js";
@@ -1056,6 +1056,11 @@ function agentDo(playKey, nonce, now) {
     return agentRedirect(playKey, { kind: "self", banner: stripFooter(banner) }, now);
 }
 const AGENT_HEADERS = { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache", "Expires": "0", "X-Robots-Tag": "noindex" };
+const PUBLIC_PNG_ASSETS = new Map([
+    ["animal-codex-atlas.png", new URL("../assets/animal-codex-atlas.png", import.meta.url)],
+    ["ranch-scene-background.png", new URL("../assets/ranch-scene-background.png", import.meta.url)],
+    ["ranch-scene-background-mobile.png", new URL("../assets/ranch-scene-background-mobile.png", import.meta.url)],
+]);
 const MAINTENANCE_FILE = `${process.env.AIFARM_DATA_DIR || "./data"}/maintenance`;
 const MAINTENANCE_API_TEXT = "农场正在维护，暂时不能操作，请稍后再来。";
 const MAINTENANCE_HTML = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>农场维护中</title>
@@ -1086,6 +1091,11 @@ export function startServer(port, host = "127.0.0.1") {
         const method = req.method ?? "GET";
         if (existsSync(MAINTENANCE_FILE))
             return maintenanceOut(req, res, parts, method);
+        const publicPng = method === "GET" && parts.length === 2 && parts[0] === "assets" ? PUBLIC_PNG_ASSETS.get(parts[1]) : undefined;
+        if (publicPng) {
+            res.writeHead(200, { "Content-Type": "image/png", "Cache-Control": "public, max-age=86400" });
+            return res.end(readFileSync(publicPng));
+        }
         const now = Date.now();
         const ip = clientIp(req);
         if (!allowRequest(ip, now))
@@ -1205,6 +1215,7 @@ export function startServer(port, host = "127.0.0.1") {
                         const potionCount = r.results.filter((item) => item.potionDrop).length;
                         const extras = `${newCount ? ` · 新图鉴×${newCount}` : ""}${drops.length ? ` · 掉落${drops.join("、")}` : ""}${potionCount ? ` · 加速药水×${potionCount}` : ""}${se ? ` · ${se.hit.name}` : ""}`;
                         flash = `🌾 一键帮${f.aiName || f.name || "TA"}收下 ${r.count} 株：${crops}，共 +${gain} 金${extras}；今日已帮收 ${r.used}/${HUMAN_HARVEST_DAILY_CAP} 次`;
+                        pushSocialInbox(f, `🌾 ${f.humanName || "你的伴侣"}刚帮你一键收了 ${r.count} 株，空出了 ${r.count} 块地。`, now);
                     }
                     save();
                     res.writeHead(303, { ...AGENT_HEADERS, Location: `${BASE}/ui/${key}?flash=${encodeURIComponent(flash)}` });

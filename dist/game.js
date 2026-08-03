@@ -186,6 +186,7 @@ function fmtHarvest(r, harvesterId) {
         t += "\n" + potionDropText();
     return t;
 }
+const replantReminder = (count) => `🌱 已空出 ${count} 块地，记得及时补种。`;
 function fmtCodexReveal(r, harvesterId) {
     const byDesigner = !!harvesterId && r.crop?.designerId === harvesterId;
     return harvestText(r.crop, r.quality, r.value, true, r.codexReward, byDesigner);
@@ -976,11 +977,11 @@ function dispatchImpl(f, b, now) {
                 const r = harvest(f, Number(b.plotId), now, se?.mod);
                 if (!r.ok)
                     return { ok: false, text: r.error };
-                return { ok: true, text: withFooter(f, now, (se ? seasonHeadline(se.hit) + "\n" : "") + fmtHarvest(r, f.id)) };
+                return { ok: true, text: withFooter(f, now, (se ? seasonHeadline(se.hit) + "\n" : "") + fmtHarvest(r, f.id) + "\n" + replantReminder(1)) };
             }
             const se = f.plots.some((p) => p.crop?.ripe) ? rollSeasonHarvest(f, now) : null;
             const hs = harvestAll(f, now, se?.mod);
-            return { ok: hs.length > 0, text: hs.length ? withFooter(f, now, (se ? seasonHeadline(se.hit) + "\n" : "") + `【收获 ${hs.length} 株】\n` + composeHarvests(hs, b.compact !== false, f.id)) : "没有成熟的作物" };
+            return { ok: hs.length > 0, text: hs.length ? withFooter(f, now, (se ? seasonHeadline(se.hit) + "\n" : "") + `【收获 ${hs.length} 株】\n` + composeHarvests(hs, b.compact !== false, f.id) + "\n" + replantReminder(hs.length)) : "没有成熟的作物" };
         }
         case "use": {
             if (b.auto || b.potion === "auto")
