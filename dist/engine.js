@@ -642,7 +642,7 @@ export function cookingDebuffReason(farm, action, body, now) {
     if (!blocked)
         return "";
     const minutes = Math.max(1, Math.ceil((debuff.until - now) / 60000));
-    return `🥴 你吃下的微妙料理还在发作：${debuff.name}（约 ${minutes} 分钟后恢复）。这个限制只影响 AI 使用农场工具，人类伴侣仍可正常操作。`;
+    return `🥴 你吃下的微妙料理还在发作：${debuff.name}（约 ${minutes} 分钟后恢复）。这个效果只影响你使用农场工具，人类伴侣仍可正常操作。`;
 }
 /** 料理台当前的真实库存、商店、配方与效果，AI 与人类页共用。 */
 export function kitchenView(farm, now) {
@@ -783,7 +783,7 @@ export function kitchenUse(farm, dishId, target, now) {
         return { ok: false, error: "料理柜里没有这份料理。" };
     if (target === "self") {
         if (dish.recipeId !== "odd_dish")
-            return { ok: false, error: "正常料理不能让 AI 自己吃；可以喂猫狗、回收、摆摊或贿赂看家狗。" };
+            return { ok: false, error: "正常料理不能由你吃下；你可以把它喂给猫狗、交给系统回收、摆摊，或用来贿赂看家狗。" };
         const rng = new Rng(farm.rngState ?? 1);
         const debuff = ODD_DEBUFFS[Math.floor(rng.next() * ODD_DEBUFFS.length)];
         farm.rngState = rng.state;
@@ -823,7 +823,7 @@ export function kitchenSell(farm, itemId, to, price, now) {
     if (!dish)
         return { ok: false, error: "只有正常料理能摆进玩家摊位；牧场原产物只能系统回收。" };
     if (dish.recipeId === "odd_dish")
-        return { ok: false, error: "微妙的料理不能摆摊，只能 1 金系统回收或让 AI 自己吃。" };
+        return { ok: false, error: "微妙的料理不能摆摊；你可以把它交给系统回收 1 金，或自己吃下。" };
     const silverPrice = Math.floor(Number(price));
     if (!Number.isSafeInteger(silverPrice) || silverPrice <= 0)
         return { ok: false, error: "摆摊价格要填写正整数银币。" };
@@ -1379,7 +1379,7 @@ export function ranchTakeOffAccessory(farm, target, idx, accId) {
     (ranch.wardrobe ??= []).push(acc.id);
     return { ok: true, name: acc.name, wearer: nm };
 }
-/** 伴侣收牧场产品：欠款存在时按动物稳定顺序整份回收还债；其余锁价进入料理食材柜。 */
+/** 伴侣收牧场产品：欠款存在时按动物稳定顺序整份回收还债；可烹饪产物锁价入柜，其余当场回收为牧场金币。 */
 export function ranchCollect(farm, farms, now) {
     const ranch = farm.ranch;
     if (!ranch || !ranch.animals.length)
@@ -1389,7 +1389,10 @@ export function ranchCollect(farm, farms, now) {
     let gain = 0;
     let debtPaid = 0;
     let storedCount = 0;
+    let nonCookableCount = 0;
+    let nonCookableGain = 0;
     const autoRecycled = [];
+    const nonCookableDetail = {};
     const detail = {};
     const receive = (item) => {
         gross += item.value;
@@ -1399,6 +1402,12 @@ export function ranchCollect(farm, farms, now) {
             gain += credited.gain;
             debtPaid += credited.debtPaid;
             autoRecycled.push(item);
+        }
+        else if (!cookingProductById.get(item.itemId)?.cookable) {
+            ranch.coins += item.value;
+            nonCookableCount += 1;
+            nonCookableGain += item.value;
+            nonCookableDetail[item.name] = (nonCookableDetail[item.name] ?? 0) + 1;
         }
         else {
             kitchen.products.push(item);
@@ -1450,7 +1459,7 @@ export function ranchCollect(farm, farms, now) {
             pushLedger(farm, "potion", 1, `${humanDisplay(farm)}收获时掉落，入仓库`, now);
         }
     }
-    return { ok: true, gain, gross, debtPaid, detail, potion, storedCount, autoRecycled };
+    return { ok: true, gain, gross, debtPaid, detail, potion, storedCount, autoRecycled, nonCookableCount, nonCookableGain, nonCookableDetail };
 }
 /** 把某动物升到下一级要花多少牧场金币（cost = buyCost ×(当前等级+1)× 系数）。 */
 export function animalUpgradeCost(kind, level) {

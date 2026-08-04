@@ -24,6 +24,10 @@ import { claimSyncedFarm, exportSyncedFarm, PublicSyncError, registerSyncedFarm,
 // 首页只展开 POST/REST（核心玩法）；只能 GET / 只能点链接的接入写法收进 /get；/readme 是给人类伴侣看的新手攻略。
 // 机读默认紧凑 JSON；需要人工读时设环境变量 FARM_PRETTY=1 缩进输出。
 const PRETTY = process.env.FARM_PRETTY === "1";
+const MCP_HELP = `🌾 完整动作表
+所有调用都使用 farm 工具：把动作名放在 action，其余参数与 action 放在同一级。
+
+${HELP.match(/  👋[\s\S]*/)?.[0] ?? HELP}`;
 const SOCIAL_HELP = `
 
 ————————————————————————————————————————
@@ -315,6 +319,20 @@ function ripeBroadcastText(now) {
         return "📣 此刻谁家菜熟了：现在没有成熟未收的菜。";
     return `📣 此刻谁家菜熟了：\n${entries.map((entry) => `${entry.number}. ${farmLabel(entry.farm)}：${entry.ripe} 块待收`).join("\n")}`;
 }
+function stolenTodayText(thief, now) {
+    const day = currentDayIndex(now);
+    const npc = getFarm(NPC_ID);
+    const entries = [
+        ...(npc ? [{ number: 0, farm: npc }] : []),
+        ...numberedPlayerFarms(),
+    ].filter(({ farm }) => farm.id !== thief.id
+        && farm.stealCooldowns?.[thief.id] !== undefined
+        && currentDayIndex(farm.stealCooldowns[thief.id]) === day);
+    if (!entries.length)
+        return "🥷 你今天还没偷过任何一家。";
+    const names = entries.map(({ number, farm }) => `${number}号「${number === 0 ? farm.name : farmLabel(farm)}」`).join("、");
+    return `🥷 你今天已偷过：${names}；今天不能再偷这些家（被看家狗挡下也会记入）。`;
+}
 function wanderResult(b, now, numbered = false) {
     const meId = String(b.by ?? "");
     const me = meId ? getFarm(meId) : undefined;
@@ -452,7 +470,7 @@ function runFarm(farmId, action, b, encArg, now) {
         return { status: 400, json: { ok: false, text: debuffText, ...vf(principal) } };
     // 视图（主人私有）
     if (!action || action === "status") {
-        const text = `${dispatch(f, { action: "status" }, now).text}\n\n${ripeBroadcastText(now)}`; // 内部会 roll 季节事件（可能已改农场）
+        const text = `${dispatch(f, { action: "status" }, now).text}\n\n${ripeBroadcastText(now)}\n${stolenTodayText(f, now)}`; // 内部会 roll 季节事件（可能已改农场）
         bumpDaily(f, now, "logins"); // 网瘾榜（今日开自己农场主页次数）
         save(); // 落盘：登录计数 + 状态里可能触发的季节事件
         return { status: 200, json: { ok: true, text, ...vf(f) } };
@@ -1409,7 +1427,7 @@ export function startServer(port, host = "127.0.0.1") {
                         else if (act === "collect") {
                             const r = ranchCollect(f, playerFarms(), now);
                             flash = r.ok
-                                ? `📦 收获：${Object.entries(r.detail).map(([k, v]) => `${v} 份${k}`).join("、")}；${r.storedCount ? `${r.storedCount} 份已锁定当前价值并放进料理台食材柜` : ""}${r.autoRecycled.length ? `${r.storedCount ? "；" : ""}${r.autoRecycled.length} 份因欠款自动整份回收` : ""}${r.debtPaid ? `，偿还欠款 ${r.debtPaid} 金` : ""}${r.gain ? `，回收余款 +${r.gain} 牧场金币` : ""}${r.potion ? `；还掉了 ${r.potion} 瓶加速药水进${ai}的仓库 🧪` : ""}`
+                                ? `📦 收获：${Object.entries(r.detail).map(([k, v]) => `${v} 份${k}`).join("、")}；${r.storedCount ? `${r.storedCount} 份已锁定当前价值并放进料理台食材柜` : ""}${r.nonCookableCount ? `${r.storedCount ? "；" : ""}${Object.entries(r.nonCookableDetail).map(([k, v]) => `${v} 份${k}`).join("、")}不能下锅，已自动回收 +${r.nonCookableGain} 牧场金币` : ""}${r.autoRecycled.length ? `${r.storedCount || r.nonCookableCount ? "；" : ""}${r.autoRecycled.length} 份因欠款自动整份回收` : ""}${r.debtPaid ? `，偿还欠款 ${r.debtPaid} 金` : ""}${r.gain ? `，回收余款 +${r.gain} 牧场金币` : ""}${r.potion ? `；还掉了 ${r.potion} 瓶加速药水进${ai}的仓库 🧪` : ""}`
                                 : r.error;
                         }
                         else if (act === "feed") {
@@ -1747,6 +1765,8 @@ export function startServer(port, host = "127.0.0.1") {
                 const rpc = await readBody(req);
                 const run = (action, params) => {
                     const b = { ...params };
+                    if (action === "help")
+                        return { ok: true, text: MCP_HELP };
                     if (action === "wander") {
                         const w = wanderResult({ ...b, by: me.id }, now, true);
                         return { ok: w.ok !== false, text: String(w.text ?? "") };

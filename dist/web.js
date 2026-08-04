@@ -415,8 +415,9 @@ nav a.on,nav a:hover{color:var(--leaf-deep);background:#e6f3d8}
 .cook-stage.is-cooking .cook-sparks{animation:cook-sparks 1s ease .42s both}
 .cook-pot-items{position:absolute;z-index:7;left:37%;top:45%;width:26%;min-height:9%;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:3px;transition:opacity .16s ease,transform .16s ease}
 .cook-stage.is-cooking .cook-pot-items{opacity:0;transform:scale(.82)}
-.cook-pot-chip{display:grid;place-items:center;width:31px;height:31px;border:1px solid #fff2c4;border-radius:50%;background:#fff8dbc9;font-size:18px;box-shadow:0 3px 8px #3b1c1544;animation:cook-chip-in .22s ease both}
-button.cook-pot-chip{padding:0;cursor:pointer;color:inherit}
+.cook-pot-chip{position:relative;display:grid;place-items:center;width:44px;height:44px;border:1px solid #fff2c4;border-radius:50%;background:#fff8dbc9;font-size:21px;box-shadow:0 3px 8px #3b1c1544;animation:cook-chip-in .22s ease both}
+button.cook-pot-chip{padding:0;cursor:pointer;color:inherit;touch-action:manipulation}
+button.cook-pot-chip::after{content:"×";position:absolute;right:-3px;top:-5px;display:grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#713b2f;color:#fff8e7;font-size:13px;font-weight:800;box-shadow:0 2px 5px #32160855}
 .cook-counter{position:absolute;left:12px;bottom:10px;z-index:8;padding:4px 10px;border-radius:999px;background:#2d1d18c9;color:#fff7dd;font-size:12px;backdrop-filter:blur(4px)}
 .cook-pick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px}
 .cook-pick{appearance:none;min-height:72px;padding:8px;border:1px solid var(--line);border-radius:13px;background:#fffdf7;color:var(--ink);font:inherit;cursor:pointer;text-align:center;transition:transform .14s ease,border-color .14s ease,box-shadow .14s ease}
@@ -1173,12 +1174,13 @@ export function uiCooking(f, now, key, flash, resultRaw) {
       const picker=document.getElementById("cookPicker"),pot=document.getElementById("cookPotItems"),hidden=document.getElementById("cookItems"),count=document.getElementById("cookCount"),start=document.getElementById("cookStart"),clear=document.getElementById("cookClear"),form=document.getElementById("cookForm"),stage=document.getElementById("cookStage");
       if(!picker||!pot||!form)return;let chosen=[];
       const buttons=[...picker.querySelectorAll("[data-cook-ref]")];
+      function removeChoice(index){if(!Number.isInteger(index)||index<0||index>=chosen.length)return;chosen.splice(index,1);render();}
       function render(){hidden.value=JSON.stringify(chosen.map(x=>x.ref));count.textContent=String(chosen.length);start.disabled=chosen.length<2;
         pot.innerHTML=chosen.map((x,i)=>'<button type="button" class="cook-pot-chip" data-remove="'+i+'" title="取出'+x.name+'" aria-label="取出'+x.name+'">'+x.emoji+'</button>').join("");
+        for(const chip of pot.querySelectorAll("[data-remove]"))chip.addEventListener("click",()=>removeChoice(Number(chip.dataset.remove)));
         for(const b of buttons){const used=chosen.filter(x=>x.ref===b.dataset.cookRef).length;b.setAttribute("aria-pressed",used>0?"true":"false");b.disabled=used>=Number(b.dataset.cookStock||1)||chosen.length>=5;}
       }
       picker.addEventListener("click",e=>{const b=e.target.closest("[data-cook-ref]");if(!b||b.disabled||chosen.length>=5)return;chosen.push({ref:b.dataset.cookRef,name:b.dataset.cookName,emoji:b.dataset.cookEmoji});render();});
-      pot.addEventListener("click",e=>{const b=e.target.closest("[data-remove]");if(!b)return;chosen.splice(Number(b.dataset.remove),1);render();});
       clear.addEventListener("click",()=>{chosen=[];render();});
       form.addEventListener("submit",e=>{if(chosen.length<2){e.preventDefault();return;}e.preventDefault();start.disabled=true;start.textContent="🍳 烹饪中…";clear.disabled=true;for(const b of buttons)b.disabled=true;stage.classList.remove("is-cooking");void stage.offsetWidth;stage.classList.add("is-cooking");const wait=matchMedia("(prefers-reduced-motion: reduce)").matches?320:1650;setTimeout(()=>form.submit(),wait);});
       render();
@@ -1207,7 +1209,7 @@ export function uiCooking(f, now, key, flash, resultRaw) {
         const odd = dish.recipeId === "odd_dish";
         const image = dishSprite(odd ? "odd_dish" : dish.recipeId, dish.name);
         const use = odd
-            ? `<form method="post" action="${base}/use" style="margin:0"><input type="hidden" name="dishId" value="${esc(dish.id)}"><input type="hidden" name="target" value="self"><button class="btn ghost" type="submit">让 AI 吃</button></form>`
+            ? `<form method="post" action="${base}/use" style="margin:0"><input type="hidden" name="dishId" value="${esc(dish.id)}"><input type="hidden" name="target" value="self"><button class="btn ghost" type="submit">立即让 AI 吃</button></form>`
             : `<form method="post" action="${base}/use" style="display:flex;gap:5px;margin:0"><input type="hidden" name="dishId" value="${esc(dish.id)}"><button class="btn ghost" name="target" value="cat" type="submit">喂猫</button><button class="btn ghost" name="target" value="dog" type="submit">喂狗</button></form>`;
         const market = odd ? "" : `<form method="post" action="${base}/sell" style="display:flex;gap:5px;margin:0"><input type="hidden" name="itemId" value="${esc(dish.id)}"><input type="hidden" name="to" value="market"><input class="inp" type="number" name="price" min="1" step="1" placeholder="银币价" required><button class="btn ghost" type="submit">摆摊</button></form>`;
         return `<div class="cook-stock-row"><div style="display:grid;grid-template-columns:54px minmax(0,1fr);gap:9px;align-items:center">${image}<div><b>${esc(dish.name)}</b> ${rarityDot(dish.rarity)}<div class="small muted">锁定系统回收价 ${num(dish.value)} 牧场金币${odd ? " · 禁止摆摊/喂宠物/贿赂" : ""}</div></div></div>

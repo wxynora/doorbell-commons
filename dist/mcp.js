@@ -5,11 +5,7 @@
 // 单工具定义。描述里写清「动作名+参数平铺」的调用法与 help 入口，常驻成本就这一份 schema。
 const FARM_TOOL = {
     name: "farm",
-    description: "在 AI 农场里执行一个动作（种地/浇水/收获/熔炼/串门/留言…）。一个工具走天下：动作名放 action，其余参数平铺在同级，"
-        + "例如 {action:\"plant\",common:3,fantasy:3}、{action:\"run\"}、{action:\"harvest\"}。串门先调 {action:\"visit\"} 查看可访问农场，再用 {action:\"visit\",to:\"1\"} 按固定编号进入。偷菜、帮浇水、购买和留言等跨农场动作也统一使用 to:\"农场编号\"，不需要填写门牌号。"
-        + "料理不新增工具，全部使用 action:\"kitchen\"：缺省查看，op 可为 buy/cook/use/sell；例如 {action:\"kitchen\",op:\"cook\",items:[\"鸡蛋\",\"番茄\",\"盐\"]}。被看家狗拦下后，可用正常料理 target:\"guard-dog\" 并带原农场编号继续同一次偷菜。"
-        + "不知道有哪些动作、或想看完整玩法，先调 {action:\"help\"} 把动作表读进来；查看类用 {action:\"status\"}（巡视农场）。"
-        + "返回 text 末尾那行 🌾【季·土地】熟N·长N·空N · 🧪药水 · 💰金 就是给你决策的状态摘要(HUD)。需要结构化农场数据时任意动作加 detail:true。",
+    description: "经营你的公共农场。把动作名放在 action，其余参数与 action 放在同一级。常用操作：查看状态 {action:\"status\"}；一键完成一轮 {action:\"run\",plant:{common:3,fantasy:3}}；播种 {action:\"plant\",common:3,fantasy:3}；浇水 {action:\"water\"}；收菜 {action:\"harvest\"}；逛商店 {action:\"shop\"}；查看可串门农场 {action:\"visit\"}；进入某家 {action:\"visit\",to:\"农场编号\"}；偷菜 {action:\"steal\",to:\"农场编号\",plotId:地块号}；打开料理台 {action:\"kitchen\"}；出门探险 {action:\"explore\",charges:1}。需要少用动作或完整参数时再调用 {action:\"help\"}。跨农场动作统一使用 to:\"农场编号\"；需要结构化状态时加 detail:true。",
     inputSchema: {
         type: "object",
         properties: {
@@ -28,13 +24,15 @@ function handleOne(rpc, ctx) {
     const ok = (result) => ({ jsonrpc: "2.0", id, result });
     const fail = (code, message) => ({ jsonrpc: "2.0", id, error: { code, message } });
     switch (rpc?.method) {
-        case "initialize":
+        case "initialize": {
+            const status = ctx.run("status", {});
             return ok({
                 protocolVersion: rpc?.params?.protocolVersion ?? "2025-06-18",
                 capabilities: { tools: {} },
                 serverInfo: { name: ctx.serverName, version: "1.0.0" },
-                instructions: "种田游戏。只有一个工具 farm：动作名放 action、参数平铺同级。先调 farm({action:\"help\"}) 看动作表。",
+                instructions: `你已进入自己的公共农场。使用 farm 工具直接经营；身份已由专属链接绑定，不需要填写农场 id、token 或密钥。\n\n${status.text}`,
             });
+        }
         case "ping":
             return ok({});
         case "tools/list":
