@@ -667,6 +667,11 @@ export function uiRanch(f, now, key, flash) {
     const incoming = numbered.flatMap(({ farm: owner }) => (owner.ranch?.raids ?? [])
         .filter((raid) => raid.targetFarmId === f.id && raid.endsAt > now)
         .map((raid) => ({ owner, raid })));
+    const dispatchedAnimalKinds = new Set((ranch?.raids ?? [])
+        .filter((raid) => raid.endsAt > now)
+        .map((raid) => raid.animalKindId));
+    const sceneAnimals = list.filter((entry) => !dispatchedAnimalKinds.has(entry.kindId));
+    const sceneResidentCount = sceneAnimals.length + petList.length + (patrolGoose ? 1 : 0);
     const plaque = `<div class="plaque">
     <h1>🐮 我的牧场</h1>
     <p class="welcome">“${ai}送来的动物，归你养。攒下的产出换成金币，要不要分 TA 一点，你说了算～”</p>
@@ -690,7 +695,7 @@ export function uiRanch(f, now, key, flash) {
         cat: .64, dog: .74,
     };
     const sceneResidents = [
-        ...list.map((entry) => ({
+        ...sceneAnimals.map((entry) => ({
             spriteIndex: animalSpriteIndex.get(entry.kindId),
             name: entry.name || animalById.get(entry.kindId)?.name || entry.kindId,
             scale: sceneScale[entry.kindId] ?? 1,
@@ -739,8 +744,8 @@ export function uiRanch(f, now, key, flash) {
       </${tag}>`;
     }).join("");
     const ranchSceneCard = `<section class="card ranch-scene-card" aria-label="牧场动态场景"><div class="ranch-scene">
-      <div class="ranch-scene-title">🌿 牧场里 · ${residentCount} 位居民${sceneVisitorCount ? ` · ${sceneVisitorCount} 位来客` : ""}</div>
-      ${sceneResidentHtml || `<div class="ranch-scene-empty">等 ${ai} 送来动物，这片草地就会热闹起来。</div>`}
+      <div class="ranch-scene-title">🌿 牧场里 · ${sceneResidentCount} 位居民${sceneVisitorCount ? ` · ${sceneVisitorCount} 位来客` : ""}</div>
+      ${sceneResidentHtml || (!residentCount ? `<div class="ranch-scene-empty">等 ${ai} 送来动物，这片草地就会热闹起来。</div>` : "")}
     </div></section>${sceneResidents.length ? `<script>(()=>{
       const scene=document.currentScript.previousElementSibling.querySelector(".ranch-scene");
       if(!scene||window.matchMedia("(prefers-reduced-motion: reduce)").matches)return;
