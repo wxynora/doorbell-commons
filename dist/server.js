@@ -2,7 +2,7 @@
 import { createServer } from "node:http";
 import { randomUUID, randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { advance, steal, canStealNow, stealAvailability, stealShieldRemain, isUgcCrop, visitorWater, tryWaterReward, humanHarvestAll, humanHarvestLeft, ranchRoamLine, buyPotionSet, refreshShop, ranchCollect, ranchRemit, ranchBuyAccessory, ranchBuyDecoration, ranchWearAccessory, ranchTakeOffAccessory, ranchPlaceDecoration, ranchUnplaceDecoration, ranchUpgradeAnimal, ranchNameAnimal, ranchNamePet, ranchNamePatrolGoose, ranchTogglePin, dispatchRanchRaid, catchRanchRaid, settleRanchRaids, ensureHumanKey, takeInbox, takeRanchNotices, pushSocialInbox, potionDailyLeft, designCrop, craft, nextUpgradeReq, toggleStar, cookingDebuffReason, bribeGuardDog, kitchenBuy, kitchenCook, kitchenUse, kitchenSell, ranchFeedAnimal, kitchenView } from "./engine.js";
+import { advance, steal, canStealNow, stealAvailability, stealShieldRemain, isUgcCrop, visitorWater, tryWaterReward, humanHarvestAll, humanHarvestLeft, ranchRoamLine, buyPotionSet, refreshShop, ranchCollect, ranchRemit, ranchBuyAccessory, ranchBuyDecoration, ranchWearAccessory, ranchTakeOffAccessory, ranchPlaceDecoration, ranchUnplaceDecoration, ranchUpgradeAnimal, ranchNameAnimal, ranchNamePet, ranchNamePatrolGoose, ranchTogglePin, dispatchRanchRaid, catchRanchRaid, settleRanchRaids, ensureHumanKey, takeInbox, takeRanchNotices, pushSocialInbox, potionDailyLeft, designCrop, craft, nextUpgradeReq, toggleStar, cookingDebuffReason, cookingDebuffStatusText, bribeGuardDog, kitchenBuy, kitchenCook, kitchenUse, kitchenSell, ranchFeedAnimal, kitchenView } from "./engine.js";
 import { dispatch, HELP, farmView, viewShop, viewEncyclopedia, viewBag, shopBrief, viewMarket, buyFromMarket, visitView, ranchAgentSection, refPrice, tendNpc, buyNpcSeed, randomTip, hasDamagedPublicName, viewKitchen } from "./game.js";
 import { harvestText, stealThiefText, statusFooter, waterText, describeFarm } from "./flavor.js";
 import { createFarm, getFarm, allFarms, playerFarms, save } from "./store.js";
@@ -470,7 +470,8 @@ function runFarm(farmId, action, b, encArg, now) {
         return { status: 400, json: { ok: false, text: debuffText, ...vf(principal) } };
     // 视图（主人私有）
     if (!action || action === "status") {
-        const text = `${dispatch(f, { action: "status" }, now).text}\n\n${ripeBroadcastText(now)}\n${stolenTodayText(f, now)}`; // 内部会 roll 季节事件（可能已改农场）
+        const cookingStatus = cookingDebuffStatusText(f, now);
+        const text = [dispatch(f, { action: "status" }, now).text, cookingStatus, ripeBroadcastText(now), stolenTodayText(f, now)].filter(Boolean).join("\n\n"); // 内部会 roll 季节事件（可能已改农场）
         bumpDaily(f, now, "logins"); // 网瘾榜（今日开自己农场主页次数）
         save(); // 落盘：登录计数 + 状态里可能触发的季节事件
         return { status: 200, json: { ok: true, text, ...vf(f) } };
@@ -1377,6 +1378,10 @@ export function startServer(port, host = "127.0.0.1") {
                         }
                         else if (act === "use") {
                             const r = kitchenUse(f, String(form.dishId), String(form.target), now);
+                            if (r.ok && r.target === "self") {
+                                r.debuff.fedBy = f.humanName || "你的伴侣";
+                                r.debuff.dishName = r.dish.name;
+                            }
                             flash = r.ok
                                 ? r.target === "self"
                                     ? `🥴 吃下微妙的料理：${r.debuff.name}，持续 2 小时；只影响 AI 工具，人类操作不受影响`

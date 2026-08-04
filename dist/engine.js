@@ -635,7 +635,7 @@ export function cookingDebuffReason(farm, action, body, now) {
     const debuff = activeCookingDebuff(farm, now);
     if (!debuff)
         return "";
-    const blocked = debuff.kind === "farm_lock"
+    const blocked = (debuff.kind === "farm_lock" && !!action && action !== "status")
         || (debuff.kind === "no_steal" && action === "steal")
         || (debuff.kind === "no_water" && action === "water")
         || (debuff.kind === "no_harvest" && (action === "harvest" || (action === "run" && (body?.harvest || body?.harvestFirst || body?.harvestAfter))));
@@ -769,6 +769,29 @@ const ODD_DEBUFFS = [
     { kind: "farm_lock", name: "料理后劲太大，农场工具暂时罢工" },
     { kind: "dog_disliked", name: "狗都嫌，去有狗的人家偷菜会 100% 被拦" },
 ];
+const COOKING_DEBUFF_STATUS = {
+    no_steal: { label: "手脚发软", impact: "暂时不能偷菜" },
+    no_harvest: { label: "眼冒金星", impact: "暂时不能收菜" },
+    no_water: { label: "闻水就晕", impact: "暂时不能浇水" },
+    farm_lock: { label: "料理后劲太大", impact: "除查看状态外，农场工具暂时无法使用" },
+    dog_disliked: { label: "狗都嫌", impact: "去有看家狗的人家偷菜会 100% 被拦住" },
+};
+/** 当前料理负面状态：连接 status 持续展示，到期后由 activeCookingDebuff 自动清除。 */
+export function cookingDebuffStatusText(farm, now = Date.now()) {
+    const debuff = activeCookingDebuff(farm, now);
+    if (!debuff)
+        return "";
+    const status = COOKING_DEBUFF_STATUS[debuff.kind] ?? { label: debuff.name, impact: debuff.name };
+    const totalMinutes = Math.max(1, Math.ceil((debuff.until - now) / 60000));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    const remaining = hours ? `${hours} 小时${minutes ? ` ${minutes} 分钟` : ""}` : `${minutes} 分钟`;
+    const dishName = debuff.dishName || "微妙的料理";
+    const source = debuff.fedBy
+        ? `${debuff.fedBy}给你喂了「${dishName}」；`
+        : `你吃下了「${dishName}」；`;
+    return `🍽️ ${source}你当前处于「${status.label}」状态，剩余 ${remaining}：${status.impact}。这个效果只影响你使用农场工具，人类伴侣仍可正常操作。`;
+}
 function takeDish(kitchen, dishId) {
     const dish = kitchen.dishes.find((item) => item.id === String(dishId));
     if (!dish)
