@@ -4,9 +4,9 @@
 // 视觉基调：暖田园·标本馆（米麻底 + 木质暖褐 + 草木绿），靠稀有度色彩体系与排版质感出彩（零图片）。
 //
 // 本文件目前是「农场主页/总览」打样页 + 全站共享外壳（外壳定义视觉语言，其余页之后复用）。
-import { advance, collectionPct, codexCountByCategory, nextUpgradeReq, refreshShop, shopOffer, refreshRanchShop, animalUpgradeCost, plotRemainMs, isStarred, ranchRaidCoins, ranchRaidForAnimal, ranchRaidDebtTotal, humanHarvestLeft, RANCH_RAID_DAILY_CAP } from "./engine.js";
-import { cropById, getCrop, animals, animalById, pets, petById, accessoryById, decorationById, landTierByLevel, totalCropCount, cropsByCategory, qualities, materialById, recipes, expMaps, expEventById, expMapById, expDecorById } from "./content.js";
-import { BASE, TICK_MS, HUMAN_HARVEST_DAILY_CAP, RANCH_ANIMAL_MAX_LEVEL, RANCH_LEVEL_INCOME_STEP, RANCH_RAID_COINS_PER_HOUR, RANCH_PATROL_GOOSE_ID, RANCH_PATROL_GOOSE_NAME, RANCH_PATROL_GOOSE_DAILY_CAP, UGC_DESIGN_FEE, UGC_SEED_YIELD, UGC_NAME_MAX, UGC_DESC_MAX, UGC_PLANT_MAX, UGC_HARVEST_MAX, MESSAGE_TEXT_MAX, WELCOME_MAX, EXP_DC, EXP_DAILY_CAP, EXP_BLESSING_MAX } from "./config.js";
+import { advance, collectionPct, codexCountByCategory, nextUpgradeReq, refreshShop, shopOffer, refreshRanchShop, animalUpgradeCost, plotRemainMs, isStarred, ranchRaidCoins, ranchRaidForAnimal, ranchRaidDebtTotal, humanHarvestLeft, RANCH_RAID_DAILY_CAP, kitchenView } from "./engine.js";
+import { cropById, getCrop, animals, animalById, pets, petById, accessoryById, decorationById, landTierByLevel, totalCropCount, cropsByCategory, qualities, materialById, recipes, expMaps, expEventById, expMapById, expDecorById, cooking, cookingProductById, cookingIngredientById } from "./content.js";
+import { BASE, TICK_MS, HUMAN_HARVEST_DAILY_CAP, RANCH_ANIMAL_MAX_LEVEL, RANCH_LEVEL_INCOME_STEP, RANCH_RAID_COINS_PER_HOUR, RANCH_PATROL_GOOSE_ID, RANCH_PATROL_GOOSE_NAME, RANCH_PATROL_GOOSE_DAILY_CAP, RANCH_FEED_DAILY_CAP, RANCH_FEED_COST_RATE, UGC_DESIGN_FEE, UGC_SEED_YIELD, UGC_NAME_MAX, UGC_DESC_MAX, UGC_PLANT_MAX, UGC_HARVEST_MAX, MESSAGE_TEXT_MAX, WELCOME_MAX, EXP_DC, EXP_DAILY_CAP, EXP_BLESSING_MAX } from "./config.js";
 import { currentSeason, activeFestivals, currentDayIndex } from "./time.js";
 import { playerFarms } from "./store.js";
 import { allUgc } from "./ugc.js";
@@ -49,6 +49,20 @@ const CAT_LABEL = { common: "普通", fantasy: "奇幻", limited: "限定", ugc:
 const RARITY_VAR = { N: "--N", R: "--R", SR: "--SR", SSR: "--SSR", SP: "--SP", OR: "--OR" };
 /** 稀有度小色标，如 SR（带专属色边框）。 */
 const rarityDot = (r) => `<span class="rdot" style="--c:var(${RARITY_VAR[r] ?? "--N"})">${esc(r)}</span>`;
+const cookingRecipeIndex = new Map(cooking.recipes.map((recipe, index) => [recipe.id, index]));
+const cookingItemIndex = new Map([...cooking.products.filter((item) => item.cookable), ...cooking.ingredients].map((item, index) => [item.id, index]));
+function dishSprite(recipeId, name, className = "") {
+    const index = cookingRecipeIndex.get(recipeId);
+    if (index === undefined)
+        return `<img class="dish-thumb ${className}" src="${BASE}/assets/cooking/odd-dish.webp?v=20260804b" alt="${esc(name)}料理小图">`;
+    return `<span class="dish-sprite ${className}" role="img" aria-label="${esc(name)}料理小图" style="--dish-x:${index % 6};--dish-y:${Math.floor(index / 6)}"></span>`;
+}
+function cookingItemSprite(itemId, name) {
+    const index = cookingItemIndex.get(itemId);
+    if (index === undefined)
+        return "";
+    return `<span class="cook-pick-icon" role="img" aria-label="${esc(name)}图标" style="--item-x:${index % 6};--item-y:${Math.floor(index / 6)}"></span>`;
+}
 /** 已收集的原创(ugc)物种数。 */
 const ugcGot = (f) => Object.keys(f.codex).filter((id) => getCrop(id)?.category === "ugc").length;
 /** 最近收录的若干条图鉴（codex 键按收集顺序插入，取末尾即最新）。 */
@@ -387,11 +401,48 @@ nav a.on,nav a:hover{color:var(--leaf-deep);background:#e6f3d8}
   border-radius:999px;background:#f3f8ed;color:#3f6340;font-size:13px}
 .fprof-empty{margin-top:4px;color:var(--ink-soft)}
 @media(max-width:480px){.fprof-door{gap:8px}}
+/* 料理台：背景、锅、木盖三层分离；动画只动 transform/opacity。 */
+.cook-layout{display:grid;grid-template-columns:minmax(0,1.18fr) minmax(280px,.82fr);gap:14px;align-items:start}
+.cook-stage-card{padding:0;overflow:hidden;background:#6f3f28}
+.cook-stage{position:relative;isolation:isolate;aspect-ratio:1;overflow:hidden;background:#ad744c url("${BASE}/assets/cooking/cooking-scene-bg.webp?v=20260804a") center/cover no-repeat}
+.cook-pot{position:absolute;z-index:3;left:19.7%;top:30.8%;width:60.5%;filter:drop-shadow(0 10px 8px #32160866);image-rendering:pixelated;transform-origin:50% 75%}
+.cook-lid{position:absolute;z-index:5;left:22.2%;top:32.2%;width:55.7%;filter:drop-shadow(0 8px 6px #32160855);image-rendering:pixelated;transform:translateY(-54%) rotate(-7deg);transform-origin:50% 85%;opacity:.96}
+.cook-stage.is-cooking .cook-lid{animation:cook-lid-close 1.55s cubic-bezier(.4,0,.2,1) both}
+.cook-stage.is-cooking .cook-pot{animation:cook-shake .18s steps(2,end) .42s 6}
+.cook-fire{position:absolute;z-index:4;left:50%;top:66%;width:18%;aspect-ratio:1;transform:translate(-50%,-50%) scale(.4);opacity:0;border-radius:50%;background:radial-gradient(circle,#fff59d 0 16%,#ffb229 18% 38%,#ef5b2e 40% 58%,transparent 60%);filter:blur(1px)}
+.cook-stage.is-cooking .cook-fire{animation:cook-fire 1.15s ease .35s both}
+.cook-sparks{position:absolute;z-index:6;left:50%;top:46%;width:42%;height:30%;transform:translate(-50%,-50%);opacity:0;background:radial-gradient(circle at 12% 70%,#ffd461 0 2%,transparent 3%),radial-gradient(circle at 80% 45%,#fff2a0 0 2%,transparent 3%),radial-gradient(circle at 60% 12%,#ff9b42 0 2.4%,transparent 3.4%),radial-gradient(circle at 35% 28%,#ffe891 0 2%,transparent 3%)}
+.cook-stage.is-cooking .cook-sparks{animation:cook-sparks 1s ease .42s both}
+.cook-pot-items{position:absolute;z-index:7;left:31%;top:39%;width:38%;min-height:12%;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:4px}
+.cook-pot-chip{display:grid;place-items:center;width:31px;height:31px;border:1px solid #fff2c4;border-radius:50%;background:#fff8dbc9;font-size:18px;box-shadow:0 3px 8px #3b1c1544;animation:cook-chip-in .22s ease both}
+button.cook-pot-chip{padding:0;cursor:pointer;color:inherit}
+.cook-counter{position:absolute;left:12px;bottom:10px;z-index:8;padding:4px 10px;border-radius:999px;background:#2d1d18c9;color:#fff7dd;font-size:12px;backdrop-filter:blur(4px)}
+.cook-pick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px}
+.cook-pick{appearance:none;min-height:72px;padding:8px;border:1px solid var(--line);border-radius:13px;background:#fffdf7;color:var(--ink);font:inherit;cursor:pointer;text-align:center;transition:transform .14s ease,border-color .14s ease,box-shadow .14s ease}
+.cook-pick:hover{transform:translateY(-2px);border-color:#e6a854;box-shadow:0 8px 16px #67401d22}.cook-pick:focus-visible{outline:2px solid #d58b35;outline-offset:2px}
+.cook-pick[aria-pressed="true"]{border-color:#d58b35;background:#fff0cf;box-shadow:0 0 0 2px #e3a44f33 inset}
+.cook-pick-icon{display:block;width:42px;height:42px;margin:0 auto 3px;background:url("${BASE}/assets/cooking/ingredient-atlas.webp?v=20260805a") calc(var(--item-x)*20%) calc(var(--item-y)*20%)/600% 600% no-repeat;image-rendering:pixelated}.cook-pick-name{display:block;font-size:12px;font-weight:700}.cook-pick-stock{display:block;font-size:10px;color:var(--ink-soft)}
+.cook-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}.cook-actions .btn{min-height:44px}
+.cook-result{position:fixed;inset:0;z-index:120;display:grid;place-items:center;padding:20px;background:#25140fa8;backdrop-filter:blur(5px);animation:cook-fade .2s ease both}
+.cook-result-card{position:relative;width:min(360px,100%);padding:22px;border:3px solid var(--rarity,var(--N));border-radius:22px;background:linear-gradient(180deg,#fffdf5,#f5ead5);box-shadow:0 24px 70px #1f0d09aa;text-align:center;animation:cook-card-pop .42s cubic-bezier(.2,.9,.3,1.2) both}
+.dish-sprite{display:block;width:54px;height:54px;background:url("${BASE}/assets/cooking/dish-atlas.webp?v=20260804b") calc(var(--dish-x)*20%) calc(var(--dish-y)*20%)/600% 600% no-repeat;image-rendering:pixelated}
+.dish-thumb{display:block;width:54px;height:54px;object-fit:contain;image-rendering:pixelated}
+.cook-result-card :is(.dish-sprite,.dish-thumb){width:160px;height:160px;margin:0 auto 10px}.cook-result-card h2{margin:0;font-family:var(--serif);color:#50351f}.cook-result-x{position:absolute;top:8px;right:8px;width:44px;height:44px;border:0;border-radius:50%;background:transparent;color:#715849;font-size:20px;cursor:pointer}
+.cook-rarity{display:inline-block;margin:7px 0;padding:2px 10px;border:1px solid var(--rarity,var(--N));border-radius:999px;color:var(--rarity,var(--N));font-weight:800}
+.cook-stock-list{max-height:330px;overflow:auto;overscroll-behavior:contain}.cook-stock-row{padding:8px 0;border-top:1px dashed var(--line)}
+@keyframes cook-lid-close{0%{transform:translateY(-54%) rotate(-7deg)}28%,72%{transform:translateY(0) rotate(0)}100%{transform:translateY(-54%) rotate(7deg)}}
+@keyframes cook-shake{0%,100%{transform:translateX(0) rotate(0)}50%{transform:translateX(3px) rotate(1deg)}}
+@keyframes cook-fire{0%{opacity:0;transform:translate(-50%,-50%) scale(.3)}25%,78%{opacity:.9;transform:translate(-50%,-50%) scale(1.08)}100%{opacity:0;transform:translate(-50%,-50%) scale(.45)}}
+@keyframes cook-sparks{0%{opacity:0;transform:translate(-50%,-35%) scale(.7)}35%,70%{opacity:1}100%{opacity:0;transform:translate(-50%,-76%) scale(1.12)}}
+@keyframes cook-chip-in{from{opacity:0;transform:translateY(8px) scale(.75)}}@keyframes cook-fade{from{opacity:0}}@keyframes cook-card-pop{from{opacity:0;transform:translateY(28px) scale(.86)}}
+@media(max-width:760px){.cook-layout{grid-template-columns:1fr}.cook-stage{aspect-ratio:1}.cook-pick-grid{grid-template-columns:repeat(3,1fr)}.cook-result-card{padding:18px}.cook-result-card :is(.dish-sprite,.dish-thumb){width:132px;height:132px}}
+@media(max-width:390px){.cook-pick-grid{grid-template-columns:repeat(2,1fr)}}
+@media(prefers-reduced-motion:reduce){.cook-stage *,.cook-result,.cook-result-card,.cook-pick{animation:none!important;transition:none!important}.cook-lid{transform:translateY(-54%) rotate(-7deg)}}
 footer{color:var(--ink-soft);font-size:12px;text-align:center;padding:30px 0 0}
 `;
 function nav(key, active) {
     const items = [
-        ["", "🏡 主页"], ["ranch", "🐮 我的牧场"], ["ta", "✍️ TA的农场"], ["expedition", "🗺️ 探险"], ["codex", "📖 图鉴册"], ["messages", "📮 留言板"], ["leaderboard", "🏆 排行榜"],
+        ["", "🏡 主页"], ["ranch", "🐮 我的牧场"], ["cooking", "🍳 料理台"], ["ta", "✍️ TA的农场"], ["expedition", "🗺️ 探险"], ["codex", "📖 图鉴册"], ["messages", "📮 留言板"], ["leaderboard", "🏆 排行榜"],
     ];
     return items.map(([seg, label]) => {
         const href = `${BASE}/ui/${key}${seg ? "/" + seg : ""}`;
@@ -648,10 +699,14 @@ export function uiRanch(f, now, key, flash) {
     let pendingGross = 0; // 与 engine.ranchCollect 的毛收入口径一致：逐只按等级系数算、逐只取整
     for (const a of list) {
         const k = animalById.get(a.kindId);
-        if (k)
-            pendingGross += Math.round(a.pending * k.producePrice * (1 + ((a.level ?? 1) - 1) * RANCH_LEVEL_INCOME_STEP));
+        if (k) {
+            const value = Math.round(k.producePrice * (1 + ((a.level ?? 1) - 1) * RANCH_LEVEL_INCOME_STEP));
+            const pending = Math.max(0, Math.floor(Number(a.pending) || 0));
+            pendingGross += pending * value + (pending > 0 && a.pendingBoost ? Math.round(value * 1.1) - value : 0);
+            pendingGross += (a.pendingMeat ?? 0) * Math.round(value * cooking.meatValueMultiplier);
+        }
     }
-    const pendingValue = Math.max(0, pendingGross - ranchRaidDebtTotal(f));
+    const pendingValue = pendingGross;
     const coins = ranch?.coins ?? 0;
     const ai = esc(f.aiName || "小克"); // AI 昵称（注册时定，回落"小克"）
     const human = esc(f.humanName || "你"); // 人类昵称（注册时定，回落"你"）
@@ -660,6 +715,7 @@ export function uiRanch(f, now, key, flash) {
     const numberById = new Map(numbered.map((entry) => [entry.farm.id, entry.number]));
     const labelById = new Map(numbered.map((entry) => [entry.farm.id, farmLabel(entry.farm)]));
     const today = currentDayIndex(now);
+    const feedUsed = ranch?.feedDaily?.day === today ? ranch.feedDaily.n ?? 0 : 0;
     const todayRaidIncome = ranch?.raidIncome?.day === today ? ranch.raidIncome.n : 0;
     const raidCapReached = todayRaidIncome >= RANCH_RAID_DAILY_CAP;
     const targets = numbered.filter((entry) => entry.farm.id !== f.id);
@@ -677,7 +733,7 @@ export function uiRanch(f, now, key, flash) {
     <p class="welcome">“${ai}送来的动物，归你养。攒下的产出换成金币，要不要分 TA 一点，你说了算～”</p>
     <div class="tags"><span class="tag">💰 牧场金币 <b>${num(coins)}</b></span>
       <span class="tag">🐾 牧场居民 <b>${residentCount}</b> 位</span>
-      <span class="tag">📦 可收产出值 <b>${num(pendingValue)}</b> 金</span></div></div>${flashHtml}`;
+      <span class="tag">📦 可收产出值 <b>${num(pendingValue)}</b> 金</span>${ranchRaidDebtTotal(f) ? `<span class="tag">⚠️ 待还欠款 <b>${num(ranchRaidDebtTotal(f))}</b> 金</span>` : ""}</div></div>${flashHtml}`;
     const officialGot = codexGot(f);
     const ownedAnimalIds = new Set(list.map((entry) => entry.kindId));
     const ownedPetIds = new Set(petList.map((entry) => entry.kindId));
@@ -841,6 +897,10 @@ export function uiRanch(f, now, key, flash) {
                     return `<form method="post" action="${base}/upgrade" style="margin:0"><input type="hidden" name="animal" value="${i}">
               <button class="btn ghost" type="submit"${can ? "" : " disabled"}>⬆ 升 Lv.${lvl + 1}（${cost}金）</button></form>`;
                 })();
+            const feedCost = Math.max(1, Math.round(effPrice * RANCH_FEED_COST_RATE));
+            const canFeed = !raid && (a.pending ?? 0) <= 0 && (a.pendingMeat ?? 0) <= 0 && !a.feedBoostPending && feedUsed < RANCH_FEED_DAILY_CAP && f.silver >= feedCost;
+            const feedLabel = a.feedBoostPending ? "🥣 下份 +10% 已登记" : `🥣 投喂（🪙${feedCost}）`;
+            const feedBtn = `<form method="post" action="${base}/feed" style="margin:0"><input type="hidden" name="animal" value="${i}"><button class="btn ghost" type="submit"${canFeed ? "" : " disabled"}>${feedLabel}</button></form>`;
             const nameForm = `<form method="post" action="${base}/name-animal" style="display:flex;gap:6px;margin:0">
         <input type="hidden" name="animal" value="${i}">
         <input class="inp" type="text" name="name" maxlength="12" value="${esc(a.name ?? "")}" placeholder="给它起个名字" style="width:auto">
@@ -864,9 +924,9 @@ export function uiRanch(f, now, key, flash) {
             const tile = `<button type="button" class="ranch-owned-tile" data-ranch-animal="animal-${i}" aria-haspopup="dialog" aria-controls="ranchAnimalModal">
         ${animalIcon}<span class="ranch-owned-name">${esc(nm)}</span><span class="ranch-owned-level">Lv.${lvl}</span></button>`;
             const detail = `<template id="ranch-animal-template-animal-${i}"><div class="ranch-animal-detail">
-        <div class="ranch-animal-head">${animalIcon}<div><h2>${esc(nm)} · Lv.${lvl} · ${a.pending > 0 ? "1份可收" : "生产中"}</h2><p class="ranch-animal-intro">${intro}</p></div></div>
-        <div class="ranch-animal-status">${worn}${raidLine}</div>
-        <div class="ranch-animal-actions">${pinBtn(a.kindId)}${upBtn}${nameForm}</div>
+        <div class="ranch-animal-head">${animalIcon}<div><h2>${esc(nm)} · Lv.${lvl} · ${a.pending > 0 ? `1份可收${a.pendingMeat ? " + 额外肉" : ""}${a.pendingBoost ? " · +10%" : ""}` : "生产中"}</h2><p class="ranch-animal-intro">${intro}</p></div></div>
+        <div class="ranch-animal-status">${worn}${raidLine}<div class="small muted" style="margin-top:3px">银币投喂每天 ${RANCH_FEED_DAILY_CAP} 次，今日已用 ${feedUsed}/${RANCH_FEED_DAILY_CAP}；只提高下一份正常产物，不影响派遣或巡逻鹅。</div></div>
+        <div class="ranch-animal-actions">${pinBtn(a.kindId)}${upBtn}${feedBtn}${nameForm}</div>
         ${raid ? "" : `<div class="ranch-animal-dispatch">${dispatchForm}</div>`}
       </div></template>`;
             return { tile, detail };
@@ -944,11 +1004,11 @@ export function uiRanch(f, now, key, flash) {
     })();</script>` : "";
         animalsCard = `<div class="card"><div class="line"><h3 style="margin:0">🐾 在养的动物</h3>
         <form method="post" action="${base}/collect" style="margin:0">
-          <button class="btn" type="submit"${canCollect ? "" : " disabled"}>📦 一键收获${canCollect ? `（+${num(pendingValue)}金）` : "（暂无可收）"}</button>
+          <button class="btn" type="submit"${canCollect ? "" : " disabled"}>📦 一键收获${canCollect ? `（价值 ${num(pendingValue)}金）` : "（暂无可收）"}</button>
         </form></div>
       ${ownTiles ? `<div class="ranch-owned-grid">${ownTiles}</div>` : `<p class="small muted" style="margin:12px 0 0">还没有自家动物。</p>`}
       ${animalModal}
-      <p class="small muted" style="margin:10px 0 0">给动物买的衣服配饰，会出现在<b>${ai}打开农场时看到的描述里</b>（“一只戴着棒球帽的鸡在田里散步”）——这是 TA 能感觉到你心意的地方。收获时还有几率掉一瓶加速药水直接进${ai}仓库。</p>
+      <p class="small muted" style="margin:10px 0 0">收获后的动物产物会按当前等级和投喂效果锁定价值，放进顶部「🍳 料理台」的食材柜；欠款存在时会先按动物顺序整份回收还债。鸡、鸭、普通鹅、羊、牛每个完整生产周期另有 5% 概率多带回一份肉。</p>
       <p class="small muted" style="margin:6px 0 0">📌 <b>pin</b>：被你 pin 的动物/宠物，才会随机出现在 ${ai} 农场的氛围描述里；<b>只 pin 一只就固定只出现它</b>。都不 pin＝全部随机（默认）。</p></div>`;
     }
     const raidHistory = ranch?.raidHistory?.day === today ? ranch.raidHistory.entries : [];
@@ -1073,6 +1133,102 @@ ${warehouseCard}
 ${shopCard}
 <div class="grid c2">${remitCard}${historyCard}</div>`;
     return page(`${f.name} · 我的牧场`, key, "ranch", body, farmNames(f));
+}
+// ——————————————————————————————————————————————————————————————
+// 🍳 料理台：三层像素场景 + 点料入锅；食材/料理实例都使用收取或出锅时锁定的价值。
+// ——————————————————————————————————————————————————————————————
+export function uiCooking(f, now, key, flash, resultRaw) {
+    advance(f, now);
+    const base = `${BASE}/ui/${key}/cooking`;
+    const view = kitchenView(f, now);
+    const ranchCoins = f.ranch?.coins ?? 0;
+    const flashHtml = flash ? `<div class="flash">${esc(flash)}</div>` : "";
+    const productButtons = view.products.map((item) => {
+        const def = cookingProductById.get(item.itemId);
+        if (!def?.cookable)
+            return "";
+        return `<button type="button" class="cook-pick" data-cook-ref="${esc(item.id)}" data-cook-unique="1" data-cook-stock="1" data-cook-name="${esc(item.name)}" data-cook-emoji="${esc(item.emoji || def.emoji || "🥚")}" aria-pressed="false">
+      ${cookingItemSprite(item.itemId, item.name)}<span class="cook-pick-name">${esc(item.name)}</span><span class="cook-pick-stock">锁价 ${num(item.value)} 金</span></button>`;
+    }).join("");
+    const ingredientButtons = view.ownedIngredients.map((item) => `<button type="button" class="cook-pick" data-cook-ref="${esc(item.id)}" data-cook-stock="${item.qty}" data-cook-name="${esc(item.name)}" data-cook-emoji="${esc(item.emoji)}" aria-pressed="false">
+      ${cookingItemSprite(item.id, item.name)}<span class="cook-pick-name">${esc(item.name)}</span><span class="cook-pick-stock">库存 ${item.qty}</span></button>`).join("");
+    const selection = productButtons || ingredientButtons
+        ? `${productButtons}${ingredientButtons}`
+        : `<div class="small muted" style="grid-column:1/-1;padding:12px;text-align:center">食材柜还是空的。先去牧场收动物产物，或在右边食材铺买一点。</div>`;
+    const stage = `<section class="card cook-stage-card"><div class="cook-stage" id="cookStage" aria-label="俯视料理灶台">
+      <img class="cook-pot" src="${BASE}/assets/cooking/cooking-pot.webp?v=20260804a" alt="像素铁锅">
+      <div class="cook-fire" aria-hidden="true"></div><div class="cook-sparks" aria-hidden="true"></div>
+      <img class="cook-lid" src="${BASE}/assets/cooking/pot-lid.webp?v=20260804a" alt="木头锅盖">
+      <div class="cook-pot-items" id="cookPotItems" aria-live="polite"></div>
+      <div class="cook-counter"><span id="cookCount">0</span>/5 · 点锅里的食材可取出</div>
+    </div></section>`;
+    const cookPanel = `<div class="card"><h3>🧺 食材柜　<span class="muted small" style="font-weight:400">点一下放进锅，最多 5 份</span></h3>
+      <div class="cook-pick-grid" id="cookPicker">${selection}</div>
+      <form method="post" action="${base}/cook" id="cookForm"><input type="hidden" name="items" id="cookItems" value="[]">
+        <div class="cook-actions"><button class="btn" id="cookStart" type="submit" disabled>🔥 开火</button><button class="btn ghost" id="cookClear" type="button">清空锅</button><span class="small muted">正确组合必定成功并解锁；错误组合会消耗全部食材，得到微妙的料理。</span></div>
+      </form></div>`;
+    const cookScript = `<script>(()=>{
+      const picker=document.getElementById("cookPicker"),pot=document.getElementById("cookPotItems"),hidden=document.getElementById("cookItems"),count=document.getElementById("cookCount"),start=document.getElementById("cookStart"),clear=document.getElementById("cookClear"),form=document.getElementById("cookForm"),stage=document.getElementById("cookStage");
+      if(!picker||!pot||!form)return;let chosen=[];
+      const buttons=[...picker.querySelectorAll("[data-cook-ref]")];
+      function render(){hidden.value=JSON.stringify(chosen.map(x=>x.ref));count.textContent=String(chosen.length);start.disabled=chosen.length<2;
+        pot.innerHTML=chosen.map((x,i)=>'<button type="button" class="cook-pot-chip" data-remove="'+i+'" title="取出'+x.name+'" aria-label="取出'+x.name+'">'+x.emoji+'</button>').join("");
+        for(const b of buttons){const used=chosen.filter(x=>x.ref===b.dataset.cookRef).length;b.setAttribute("aria-pressed",used>0?"true":"false");b.disabled=used>=Number(b.dataset.cookStock||1)||chosen.length>=5;}
+      }
+      picker.addEventListener("click",e=>{const b=e.target.closest("[data-cook-ref]");if(!b||b.disabled||chosen.length>=5)return;chosen.push({ref:b.dataset.cookRef,name:b.dataset.cookName,emoji:b.dataset.cookEmoji});render();});
+      pot.addEventListener("click",e=>{const b=e.target.closest("[data-remove]");if(!b)return;chosen.splice(Number(b.dataset.remove),1);render();});
+      clear.addEventListener("click",()=>{chosen=[];render();});
+      form.addEventListener("submit",e=>{if(chosen.length<2){e.preventDefault();return;}e.preventDefault();stage.classList.add("is-cooking");start.disabled=true;clear.disabled=true;for(const b of buttons)b.disabled=true;const wait=matchMedia("(prefers-reduced-motion: reduce)").matches?0:1550;setTimeout(()=>form.submit(),wait);});
+      render();
+    })();</script>`;
+    const ingredientShop = view.ingredients.map((item) => {
+        const left = cooking.dailyBuyLimit - item.bought;
+        const can = left > 0 && f.silver >= item.price;
+        return `<div class="cook-stock-row line small"><span>${esc(item.emoji)} <b>${esc(item.name)}</b>　<span class="muted">🪙${item.price} · 有 ${item.owned} · 今日 ${item.bought}/${cooking.dailyBuyLimit}</span></span>
+      <form method="post" action="${base}/buy-ingredient" style="margin:0"><input type="hidden" name="id" value="${esc(item.id)}"><input type="hidden" name="qty" value="1"><button class="btn ghost" type="submit"${can ? "" : " disabled"}>买 1 份</button></form></div>`;
+    }).join("");
+    const recipeShop = view.recipeOffers.length ? view.recipeOffers.map((recipe) => {
+        const can = !recipe.known && f.silver >= recipe.price;
+        return `<div class="cook-stock-row line small"><span>${rarityDot(recipe.rarity)} <b>${esc(recipe.name)}</b>　<span class="muted">🪙${recipe.price}</span></span>
+      <form method="post" action="${base}/buy-recipe" style="margin:0"><input type="hidden" name="id" value="${esc(recipe.id)}"><button class="btn ghost" type="submit"${can ? "" : " disabled"}>${recipe.known ? "已解锁" : "买食谱"}</button></form></div>`;
+    }).join("") : `<p class="small muted">今天没有未知食谱可卖；正确试做仍能直接解锁。</p>`;
+    const shopCard = `<div class="card"><h3>🛒 今日料理铺　<span class="muted small" style="font-weight:400">UTC+8 零点换货</span></h3>
+      <div class="tags" style="margin:0 0 8px"><span class="tag">🪙 银币 <b>${num(f.silver)}</b></span><span class="tag">每种食材限购 <b>3</b></span><span class="tag">每日未知食谱 <b>2</b></span></div>
+      <details open><summary><b>食材铺 · 基础常驻 + 每日 6 种</b></summary><div class="cook-stock-list">${ingredientShop}</div></details>
+      <details style="margin-top:10px"><summary><b>食谱铺</b></summary>${recipeShop}</details></div>`;
+    const productRows = view.products.length ? view.products.map((item) => {
+        const def = cookingProductById.get(item.itemId);
+        return `<div class="cook-stock-row line small"><span>${esc(item.emoji || def?.emoji || "📦")} <b>${esc(item.name)}</b>　<span class="muted">${def?.cookable ? "可下锅 · " : "不可下锅 · "}锁价 ${num(item.value)} 金</span></span>
+      <form method="post" action="${base}/sell" style="margin:0"><input type="hidden" name="itemId" value="${esc(item.id)}"><input type="hidden" name="to" value="system"><button class="btn ghost" type="submit">系统回收</button></form></div>`;
+    }).join("") : `<p class="small muted">还没有动物产物。</p>`;
+    const dishRows = view.dishes.length ? view.dishes.map((dish) => {
+        const odd = dish.recipeId === "odd_dish";
+        const image = dishSprite(odd ? "odd_dish" : dish.recipeId, dish.name);
+        const use = odd
+            ? `<form method="post" action="${base}/use" style="margin:0"><input type="hidden" name="dishId" value="${esc(dish.id)}"><input type="hidden" name="target" value="self"><button class="btn ghost" type="submit">让 AI 吃</button></form>`
+            : `<form method="post" action="${base}/use" style="display:flex;gap:5px;margin:0"><input type="hidden" name="dishId" value="${esc(dish.id)}"><button class="btn ghost" name="target" value="cat" type="submit">喂猫</button><button class="btn ghost" name="target" value="dog" type="submit">喂狗</button></form>`;
+        const market = odd ? "" : `<form method="post" action="${base}/sell" style="display:flex;gap:5px;margin:0"><input type="hidden" name="itemId" value="${esc(dish.id)}"><input type="hidden" name="to" value="market"><input class="inp" type="number" name="price" min="1" step="1" placeholder="银币价" required><button class="btn ghost" type="submit">摆摊</button></form>`;
+        return `<div class="cook-stock-row"><div style="display:grid;grid-template-columns:54px minmax(0,1fr);gap:9px;align-items:center">${image}<div><b>${esc(dish.name)}</b> ${rarityDot(dish.rarity)}<div class="small muted">锁定系统回收价 ${num(dish.value)} 牧场金币${odd ? " · 禁止摆摊/喂宠物/贿赂" : ""}</div></div></div>
+        <div class="cook-actions" style="margin-top:7px">${use}<form method="post" action="${base}/sell" style="margin:0"><input type="hidden" name="itemId" value="${esc(dish.id)}"><input type="hidden" name="to" value="system"><button class="btn ghost" type="submit">系统回收</button></form>${market}</div></div>`;
+    }).join("") : `<p class="small muted">锅还没开过，料理柜空着。</p>`;
+    const pantryCard = `<div class="card"><h3>📦 食材柜　<span class="muted small" style="font-weight:400">牧场金币 ${num(ranchCoins)}</span></h3><div class="cook-stock-list">${productRows}</div></div>`;
+    const dishesCard = `<div class="card"><h3>🍲 料理柜　<span class="muted small" style="font-weight:400">${view.dishes.length} 份</span></h3><div class="cook-stock-list">${dishRows}</div></div>`;
+    const known = view.knownRecipes.length ? view.knownRecipes.map((recipe) => `<div class="cook-stock-row small"><b>${esc(recipe.name)}</b> ${rarityDot(recipe.rarity)}<div class="muted">${recipe.ingredients.map((id) => esc(cookingProductById.get(id)?.name ?? cookingIngredientById.get(id)?.name ?? id)).join(" + ")}</div></div>`).join("") : `<p class="small muted">买食谱，或直接试出正确组合，就会记在这里。</p>`;
+    const recipeCard = `<details class="card"><summary><b>📖 已解锁食谱 ${view.knownRecipes.length}/${cooking.recipes.length}</b></summary><div class="cook-stock-list" style="margin-top:8px">${known}</div></details>`;
+    const debuff = view.debuff ? `<div class="flash">🥴 AI 当前效果：${esc(view.debuff.name)}（剩 ${fmtDur(view.debuff.until - now)}）。只影响 AI 使用农场工具，人类操作不受影响。</div>` : "";
+    let resultHtml = "";
+    if (resultRaw) {
+        try {
+            const result = JSON.parse(resultRaw);
+            const recipeId = result.odd ? "odd_dish" : (result.recipeId ?? String(result.image ?? "").replace(/\.webp$/, ""));
+            const image = dishSprite(recipeId, result.name, "cook-result-image");
+            resultHtml = `<div class="cook-result" id="cookResult" role="dialog" aria-modal="true" aria-labelledby="cookResultTitle"><div class="cook-result-card" style="--rarity:var(${RARITY_VAR[result.rarity] ?? "--N"})"><button class="cook-result-x" type="button" data-close-result aria-label="关闭">✕</button>${image}<div class="cook-rarity">${esc(result.rarity)}</div><h2 id="cookResultTitle">${esc(result.name)}</h2><p class="small muted">${result.odd ? "没有命中固定配方 · 微妙的料理" : `锁定系统回收价 ${num(result.value)} 牧场金币${result.discovered ? " · 新食谱已解锁" : ""}`}</p><button class="btn" type="button" data-close-result>收进料理柜</button></div></div><script>(()=>{const box=document.getElementById("cookResult");if(!box)return;const u=new URL(location.href);u.searchParams.delete("result");history.replaceState(null,"",u);const close=()=>box.remove();box.addEventListener("click",e=>{if(e.target===box||e.target.closest("[data-close-result]"))close()});addEventListener("keydown",e=>{if(e.key==="Escape")close()},{once:true});})();</script>`;
+        }
+        catch { /* 忽略损坏的结果参数 */ }
+    }
+    const plaque = `<div class="plaque"><h1>🍳 料理台</h1><p class="welcome">“从食材柜点几样放进锅里，盖上木盖，听它噼里啪啦。”</p><div class="tags"><span class="tag">🪙 银币 <b>${num(f.silver)}</b></span><span class="tag">💰 牧场金币 <b>${num(ranchCoins)}</b></span><span class="tag">📖 食谱 <b>${view.knownRecipes.length}/${cooking.recipes.length}</b></span></div></div>${flashHtml}${debuff}`;
+    const body = `${plaque}<div class="cook-layout"><div>${stage}${cookPanel}</div><div class="grid">${shopCard}${recipeCard}</div></div><div class="grid c2">${pantryCard}${dishesCard}</div>${cookScript}${resultHtml}`;
+    return page(`${f.name} · 料理台`, key, "cooking", body, farmNames(f));
 }
 // ——————————————————————————————————————————————————————————————
 // ✍️ TA 的农场（需要"打字"的协作动作：替 AI 改称呼 / 设计原创作物 / 给邻居留言 / 指定组合熔炼）

@@ -2,8 +2,8 @@
 import { Rng } from "./rng.js";
 import { rollCrop, rollQuality, cropValue } from "./gacha.js";
 import { currentSeason, activeFestivals, currentHour, currentDayIndex } from "./time.js";
-import { TICK_MS, GROW_TICKS, SEED_PRICE, WATER_LUCK_PER, WATER_LUCK_CAP, MAX_LOG, TRAIL_MAX, LAND_UPGRADE_REQ, NEW_CODEX_REWARD, HARVEST_EVENT_CHANCE, MATERIAL_DROP_CHANCE, MATERIAL_DROP_WEIGHT, ITEMS, POTION_DROP_CHANCE, POTION_DAILY_CAP, POTION_CAP_LINE, POTION_SET_QTY, POTION_SET_PRICE, POTION_SET_CHANCE, WATER_REWARD_DAILY_CAP, STEAL_COOLDOWN_MS, STEAL_DAILY_CAP, STEAL_SHIELD_MS, HUMAN_HARVEST_DAILY_CAP, RANCH_POTION_DROP_CHANCE, RANCH_POTION_DAILY_CAP, LEDGER_MAX, RANCH_ANIMAL_MAX_LEVEL, RANCH_LEVEL_INCOME_STEP, RANCH_UPGRADE_COST_FACTOR, RANCH_RAID_COINS_PER_HOUR, RANCH_PATROL_GOOSE_ID, RANCH_PATROL_GOOSE_NAME, RANCH_PATROL_GOOSE_BUY_COST, RANCH_PATROL_GOOSE_CATCH_CHANCE, RANCH_PATROL_GOOSE_DAILY_CAP, PET_NAME_MAX, CRAFT_COUNT, FUSION_POINTS, LIMITED_BASE_WEIGHT, FUSION_LUCK_DIVISOR, FUSION_SOFT_PITY, FUSION_SPECIAL_UNLOCKED_RATE, rarityIndex, SHOP_REFRESH_MS, SHOP_RECIPE_CHANCE, RECIPE_PRICE, NPC_LIMITED_SEED_CHANCE, NPC_ID, UGC_DESIGN_FEE, UGC_SEED_YIELD, UGC_VALUE, UGC_HARVEST_VALUE, UGC_GROW_TICKS, UGC_NAME_MAX, UGC_DESC_MAX, UGC_PLANT_MAX, UGC_HARVEST_MAX, MAX_UGC, UGC_RARITY, } from "./config.js";
-import { crops, cropById, getCrop, animals, animalById, pets, petById, accessories, decorations, accessoryById, decorationById, landTiers, totalCropCount, qualities, materials, materialById, recipes, specialEvents, expDecorById, } from "./content.js";
+import { TICK_MS, GROW_TICKS, SEED_PRICE, WATER_LUCK_PER, WATER_LUCK_CAP, MAX_LOG, TRAIL_MAX, LAND_UPGRADE_REQ, NEW_CODEX_REWARD, HARVEST_EVENT_CHANCE, MATERIAL_DROP_CHANCE, MATERIAL_DROP_WEIGHT, ITEMS, POTION_DROP_CHANCE, POTION_DAILY_CAP, POTION_CAP_LINE, POTION_SET_QTY, POTION_SET_PRICE, POTION_SET_CHANCE, WATER_REWARD_DAILY_CAP, STEAL_COOLDOWN_MS, STEAL_DAILY_CAP, STEAL_SHIELD_MS, HUMAN_HARVEST_DAILY_CAP, RANCH_POTION_DROP_CHANCE, RANCH_POTION_DAILY_CAP, LEDGER_MAX, RANCH_ANIMAL_MAX_LEVEL, RANCH_LEVEL_INCOME_STEP, RANCH_UPGRADE_COST_FACTOR, RANCH_RAID_COINS_PER_HOUR, RANCH_PATROL_GOOSE_ID, RANCH_PATROL_GOOSE_NAME, RANCH_PATROL_GOOSE_BUY_COST, RANCH_PATROL_GOOSE_CATCH_CHANCE, RANCH_PATROL_GOOSE_DAILY_CAP, RANCH_FEED_DAILY_CAP, RANCH_FEED_COST_RATE, RANCH_FEED_BONUS_RATE, COOKING_DEBUFF_MS, PET_NAME_MAX, CRAFT_COUNT, FUSION_POINTS, LIMITED_BASE_WEIGHT, FUSION_LUCK_DIVISOR, FUSION_SOFT_PITY, FUSION_SPECIAL_UNLOCKED_RATE, rarityIndex, SHOP_REFRESH_MS, SHOP_RECIPE_CHANCE, RECIPE_PRICE, NPC_LIMITED_SEED_CHANCE, NPC_ID, UGC_DESIGN_FEE, UGC_SEED_YIELD, UGC_VALUE, UGC_HARVEST_VALUE, UGC_GROW_TICKS, UGC_NAME_MAX, UGC_DESC_MAX, UGC_PLANT_MAX, UGC_HARVEST_MAX, MAX_UGC, UGC_RARITY, } from "./config.js";
+import { crops, cropById, getCrop, animals, animalById, pets, petById, accessories, decorations, accessoryById, decorationById, landTiers, totalCropCount, qualities, materials, materialById, recipes, specialEvents, expDecorById, cooking, cookingProducts, cookingIngredients, cookingRecipes, cookingProductById, cookingIngredientById, cookingRecipeById, } from "./content.js";
 import { registerUgc, ugcCount } from "./ugc.js";
 import { onTaskEvent } from "./tasks.js";
 import { randomUUID } from "node:crypto";
@@ -49,6 +49,13 @@ export function advance(farm, now) {
                 a.ticksSinceProduce += elapsed;
                 if (a.ticksSinceProduce >= kind.produceEveryTicks) {
                     a.pending = 1;
+                    a.pendingBoost = !!a.feedBoostPending;
+                    a.feedBoostPending = false;
+                    if (kind.meatId) {
+                        const rng = new Rng(farm.rngState ?? 1);
+                        a.pendingMeat = rng.next() < cooking.meatDropChance ? 1 : 0;
+                        farm.rngState = rng.state;
+                    }
                     a.ticksSinceProduce = 0;
                 }
             }
@@ -477,15 +484,19 @@ function recordStealAttempt(thief, now) {
     q.lastAt = now;
 }
 // —— 偷菜（访客；继承该株浇水运气；每次后 1 小时冷却、每天最多 10 次；得金币+图鉴）——
-export function steal(victim, plotId, by, now, thief) {
+export function steal(victim, plotId, by, now, thief, options = {}) {
     if (victim.id === by)
         return { ok: false, error: "不能偷自己的菜；收自己地里的作物请用 harvest" };
-    const avail = stealAvailability(thief, now);
-    if (!avail.ok)
-        return { ok: false, error: avail.reason };
+    if (!options.resumeGuard && thief)
+        delete ensureKitchen(thief).pendingGuard;
+    if (!options.resumeGuard) {
+        const avail = stealAvailability(thief, now);
+        if (!avail.ok)
+            return { ok: false, error: avail.reason };
+    }
     // 同一家每天只能被同一小偷偷 1 次（被看家狗吓退也算用掉机会）；该限制不消耗小偷的全局每日次数。
     const lastHit = victim.stealCooldowns[by];
-    if (lastHit !== undefined && currentDayIndex(lastHit) === currentDayIndex(now))
+    if (!options.resumeGuard && lastHit !== undefined && currentDayIndex(lastHit) === currentDayIndex(now))
         return { ok: false, error: "今天已经偷过这家了，明天再来（同一家每天只能偷一次）" };
     // 放偷冷却：这家刚被偷过，30 分钟内谁都下不了手
     const shieldMs = stealShieldRemain(victim, now);
@@ -500,19 +511,25 @@ export function steal(victim, plotId, by, now, thief) {
     if (isUgcCrop(plot.crop))
         return { ok: false, error: "这是别人的原创作物，受保护偷不了——想要就去集市买它的种子自己种。" };
     // 看家狗：概率把小偷吓退（被吓退也算用掉小偷今天对这家的机会——狗真的护住了这块地）
-    const foil = petBuffs(victim).foil;
-    if (foil > 0) {
-        const grng = new Rng(victim.rngState);
-        const foiled = grng.next() < foil;
-        victim.rngState = grng.state;
+    const foil = petBuffs(victim, now).foil;
+    if (!options.resumeGuard && foil > 0) {
+        const disliked = activeCookingDebuff(thief, now)?.kind === "dog_disliked";
+        const grng = disliked ? null : new Rng(victim.rngState);
+        const foiled = disliked || grng.next() < foil;
+        if (grng)
+            victim.rngState = grng.state;
         if (foiled) {
             const guard = (victim.ranch?.pets ?? []).map((p) => ({ p, k: petById.get(p.kindId) })).find((x) => x.k?.buff === "guard");
             const dogName = guard ? (guard.p.name || guard.k.name) : "看家狗";
             recordStealAttempt(thief, now);
             victim.stealCooldowns[by] = now;
+            if (thief) {
+                const kitchen = ensureKitchen(thief);
+                kitchen.pendingGuard = { victimId: victim.id, plotId, by, at: now };
+            }
             pushLog(victim, `🐶 ${by} 想偷 ${plotId} 号地，被${dogName}一通狂吠吓跑了！`);
             pushTrail(victim, { t: now, kind: "foiled", by: thief?.name ?? by, plotId }); // 足迹：谁来偷被狗吓退
-            return { ok: false, error: `刚摸到 ${plotId} 号地，${dogName}就冲出来狂吠，你只好空手溜走。` };
+            return { ok: false, guardBlocked: true, dogName, error: `刚摸到 ${plotId} 号地，${dogName}就冲出来狂吠，你只好空手溜走。` };
         }
     }
     const revealed = reveal(victim, plot, now);
@@ -525,7 +542,8 @@ export function steal(victim, plotId, by, now, thief) {
     if (refund > 0)
         victim.coins += refund;
     plot.crop = null;
-    recordStealAttempt(thief, now);
+    if (!options.resumeGuard)
+        recordStealAttempt(thief, now);
     victim.stealCooldowns[by] = now;
     if (victim.id !== NPC_ID)
         victim.stealShieldUntil = now + STEAL_SHIELD_MS; // 放偷冷却：这家 30 分钟内谁都偷不了（阿土是常驻练手靶，豁免）
@@ -561,8 +579,303 @@ export function shopAnimals(farm) {
 export function nextLockedAnimal(farm) {
     return animals.filter((a) => !animalUnlocked(farm, a)).sort((a, b) => a.unlockCodex - b.unlockCodex)[0] ?? null;
 }
-function ensureRanch(farm) {
-    return (farm.ranch ??= { coins: 0, animals: [] });
+export function ensureRanch(farm) {
+    const ranch = (farm.ranch ??= { coins: 0, animals: [] });
+    ranch.coins ??= 0;
+    ranch.animals ??= [];
+    ranch.pets ??= [];
+    ranch.raids ??= [];
+    ranch.raidDebts ??= [];
+    return ranch;
+}
+export function ensureKitchen(farm) {
+    const ranch = ensureRanch(farm);
+    const kitchen = (ranch.kitchen ??= {});
+    kitchen.products ??= [];
+    kitchen.ingredients ??= {};
+    kitchen.dishes ??= [];
+    kitchen.knownRecipes ??= [];
+    return kitchen;
+}
+function shuffledWithFarmRng(farm, values) {
+    const out = [...values];
+    const rng = new Rng(farm.rngState ?? 1);
+    for (let i = out.length - 1; i > 0; i--) {
+        const j = Math.floor(rng.next() * (i + 1));
+        [out[i], out[j]] = [out[j], out[i]];
+    }
+    farm.rngState = rng.state;
+    return out;
+}
+/** 每座牧场自己的每日食材/食谱货架；UTC+8 零点刷新。 */
+export function refreshKitchenShop(farm, now) {
+    const kitchen = ensureKitchen(farm);
+    const day = currentDayIndex(now);
+    if (kitchen.shop?.day === day)
+        return kitchen.shop;
+    const rotating = cookingIngredients.filter((item) => !item.staple).map((item) => item.id);
+    const unknown = cookingRecipes.filter((recipe) => !kitchen.knownRecipes.includes(recipe.id)).map((recipe) => recipe.id);
+    kitchen.shop = {
+        day,
+        ingredientIds: shuffledWithFarmRng(farm, rotating).slice(0, cooking.dailyRotatingCount),
+        recipeIds: shuffledWithFarmRng(farm, unknown).slice(0, cooking.dailyRecipeCount),
+        bought: {},
+    };
+    return kitchen.shop;
+}
+export function activeCookingDebuff(farm, now = Date.now()) {
+    if (!farm)
+        return null;
+    const kitchen = ensureKitchen(farm);
+    if (kitchen.debuff && kitchen.debuff.until <= now)
+        delete kitchen.debuff;
+    return kitchen.debuff ?? null;
+}
+export function cookingDebuffReason(farm, action, body, now) {
+    const debuff = activeCookingDebuff(farm, now);
+    if (!debuff)
+        return "";
+    const blocked = debuff.kind === "farm_lock"
+        || (debuff.kind === "no_steal" && action === "steal")
+        || (debuff.kind === "no_water" && action === "water")
+        || (debuff.kind === "no_harvest" && (action === "harvest" || (action === "run" && (body?.harvest || body?.harvestFirst || body?.harvestAfter))));
+    if (!blocked)
+        return "";
+    const minutes = Math.max(1, Math.ceil((debuff.until - now) / 60000));
+    return `🥴 你吃下的微妙料理还在发作：${debuff.name}（约 ${minutes} 分钟后恢复）。这个限制只影响 AI 使用农场工具，人类伴侣仍可正常操作。`;
+}
+/** 料理台当前的真实库存、商店、配方与效果，AI 与人类页共用。 */
+export function kitchenView(farm, now) {
+    const kitchen = ensureKitchen(farm);
+    const shop = refreshKitchenShop(farm, now);
+    const ingredients = cookingIngredients
+        .filter((item) => item.staple || shop.ingredientIds.includes(item.id))
+        .map((item) => ({ ...item, owned: kitchen.ingredients[item.id] ?? 0, bought: shop.bought[`ingredient:${item.id}`] ?? 0 }));
+    const recipeOffers = shop.recipeIds.map((id) => cookingRecipeById.get(id)).filter(Boolean)
+        .map((recipe) => ({ ...recipe, price: cooking.recipePrices[recipe.rarity], known: kitchen.knownRecipes.includes(recipe.id) }));
+    return {
+        products: kitchen.products,
+        ingredients,
+        ownedIngredients: Object.entries(kitchen.ingredients).filter(([, qty]) => qty > 0)
+            .map(([id, qty]) => ({ ...cookingIngredientById.get(id), id, qty })),
+        dishes: kitchen.dishes,
+        recipeOffers,
+        knownRecipes: kitchen.knownRecipes.map((id) => cookingRecipeById.get(id)).filter(Boolean),
+        debuff: activeCookingDebuff(farm, now),
+        shop,
+    };
+}
+export function kitchenBuy(farm, kind, id, qty, now) {
+    const kitchen = ensureKitchen(farm);
+    const shop = refreshKitchenShop(farm, now);
+    if (kind === "ingredient") {
+        const item = cookingIngredientById.get(String(id));
+        if (!item || (!item.staple && !shop.ingredientIds.includes(item.id)))
+            return { ok: false, error: "今天的食材铺没有这个。" };
+        const n = Math.max(1, Math.floor(Number(qty) || 1));
+        const key = `ingredient:${item.id}`;
+        const bought = shop.bought[key] ?? 0;
+        if (bought + n > cooking.dailyBuyLimit)
+            return { ok: false, error: `每种食材每天最多买 ${cooking.dailyBuyLimit} 份，今天还可买 ${Math.max(0, cooking.dailyBuyLimit - bought)} 份。` };
+        const cost = item.price * n;
+        if (farm.silver < cost)
+            return { ok: false, error: `银币不足，买 ${n} 份${item.name}要 🪙${cost}（你有 ${farm.silver}）。` };
+        farm.silver -= cost;
+        kitchen.ingredients[item.id] = (kitchen.ingredients[item.id] ?? 0) + n;
+        shop.bought[key] = bought + n;
+        return { ok: true, kind, name: item.name, qty: n, cost };
+    }
+    if (kind === "recipe") {
+        const recipe = cookingRecipeById.get(String(id));
+        if (!recipe || !shop.recipeIds.includes(recipe.id))
+            return { ok: false, error: "今天的食谱铺没有这张食谱。" };
+        if (kitchen.knownRecipes.includes(recipe.id))
+            return { ok: false, error: `已经会做「${recipe.name}」了。` };
+        const cost = cooking.recipePrices[recipe.rarity];
+        if (farm.silver < cost)
+            return { ok: false, error: `银币不足，这张 ${recipe.rarity} 食谱要 🪙${cost}（你有 ${farm.silver}）。` };
+        farm.silver -= cost;
+        kitchen.knownRecipes.push(recipe.id);
+        return { ok: true, kind, name: recipe.name, rarity: recipe.rarity, cost };
+    }
+    return { ok: false, error: "kind 只能是 ingredient 或 recipe。" };
+}
+const cookingKey = (ids) => [...ids].sort().join("|");
+function selectCookingItems(kitchen, refs) {
+    if (!Array.isArray(refs) || refs.length < 2 || refs.length > 5)
+        return { ok: false, error: "每次请放 2～5 份食材。" };
+    const usedProducts = new Set();
+    const ingredientCounts = {};
+    const selected = [];
+    for (const raw of refs) {
+        const ref = String(raw ?? "").trim();
+        let product = kitchen.products.find((item) => item.id === ref && !usedProducts.has(item.id));
+        const productDef = cookingProductById.get(ref) ?? cookingProducts.find((item) => item.name === ref);
+        if (!product && productDef)
+            product = kitchen.products.find((item) => item.itemId === productDef.id && !usedProducts.has(item.id));
+        if (product) {
+            const def = cookingProductById.get(product.itemId);
+            if (!def?.cookable)
+                return { ok: false, error: `「${def?.name ?? product.name}」不能下锅，可以直接系统回收。` };
+            usedProducts.add(product.id);
+            selected.push({ source: "product", id: product.itemId, instanceId: product.id, name: def.name, value: product.value });
+            continue;
+        }
+        const ingredient = cookingIngredientById.get(ref) ?? cookingIngredients.find((item) => item.name === ref);
+        if (!ingredient)
+            return { ok: false, error: `食材柜里找不到「${ref}」。` };
+        ingredientCounts[ingredient.id] = (ingredientCounts[ingredient.id] ?? 0) + 1;
+        if ((kitchen.ingredients[ingredient.id] ?? 0) < ingredientCounts[ingredient.id])
+            return { ok: false, error: `「${ingredient.name}」数量不够。` };
+        selected.push({ source: "ingredient", id: ingredient.id, name: ingredient.name, value: ingredient.price });
+    }
+    return { ok: true, selected, usedProducts, ingredientCounts };
+}
+export function kitchenCook(farm, refs, now) {
+    const kitchen = ensureKitchen(farm);
+    const picked = selectCookingItems(kitchen, refs);
+    if (!picked.ok)
+        return picked;
+    const recipe = cookingRecipes.find((item) => cookingKey(item.ingredients) === cookingKey(picked.selected.map((item) => item.id)));
+    kitchen.products = kitchen.products.filter((item) => !picked.usedProducts.has(item.id));
+    for (const [id, n] of Object.entries(picked.ingredientCounts)) {
+        kitchen.ingredients[id] -= n;
+        if (kitchen.ingredients[id] <= 0)
+            delete kitchen.ingredients[id];
+    }
+    const baseValue = picked.selected.reduce((sum, item) => sum + item.value, 0);
+    let dish;
+    let discovered = false;
+    if (recipe) {
+        discovered = !kitchen.knownRecipes.includes(recipe.id);
+        if (discovered)
+            kitchen.knownRecipes.push(recipe.id);
+        dish = {
+            id: randomUUID(), recipeId: recipe.id, name: recipe.name, rarity: recipe.rarity,
+            value: Math.round(baseValue * cooking.recyclePremium[recipe.rarity]),
+            image: `${recipe.id}.webp`, createdAt: now,
+        };
+    }
+    else {
+        dish = { id: randomUUID(), recipeId: "odd_dish", name: "微妙的料理", rarity: "N", value: 1, image: "odd-dish.webp", createdAt: now };
+    }
+    kitchen.dishes.push(dish);
+    return { ok: true, dish, recipe, discovered, odd: !recipe, ingredients: picked.selected.map((item) => item.name), baseValue };
+}
+const ODD_DEBUFFS = [
+    { kind: "no_steal", name: "手脚发软，暂时不能偷菜" },
+    { kind: "no_harvest", name: "眼冒金星，暂时不能收菜" },
+    { kind: "no_water", name: "闻水就晕，暂时不能浇水" },
+    { kind: "farm_lock", name: "料理后劲太大，农场工具暂时罢工" },
+    { kind: "dog_disliked", name: "狗都嫌，去有狗的人家偷菜会 100% 被拦" },
+];
+function takeDish(kitchen, dishId) {
+    const dish = kitchen.dishes.find((item) => item.id === String(dishId));
+    if (!dish)
+        return null;
+    kitchen.dishes = kitchen.dishes.filter((item) => item !== dish);
+    return dish;
+}
+export function kitchenUse(farm, dishId, target, now) {
+    const kitchen = ensureKitchen(farm);
+    const dish = kitchen.dishes.find((item) => item.id === String(dishId));
+    if (!dish)
+        return { ok: false, error: "料理柜里没有这份料理。" };
+    if (target === "self") {
+        if (dish.recipeId !== "odd_dish")
+            return { ok: false, error: "正常料理不能让 AI 自己吃；可以喂猫狗、回收、摆摊或贿赂看家狗。" };
+        const rng = new Rng(farm.rngState ?? 1);
+        const debuff = ODD_DEBUFFS[Math.floor(rng.next() * ODD_DEBUFFS.length)];
+        farm.rngState = rng.state;
+        kitchen.debuff = { ...debuff, until: now + COOKING_DEBUFF_MS };
+        takeDish(kitchen, dish.id);
+        return { ok: true, target, dish, debuff: kitchen.debuff };
+    }
+    if (target !== "cat" && target !== "dog")
+        return { ok: false, error: "target 只能是 cat、dog、self 或 guard-dog。" };
+    if (dish.recipeId === "odd_dish")
+        return { ok: false, error: "微妙的料理不能喂宠物。" };
+    const pet = (farm.ranch?.pets ?? []).find((item) => item.kindId === target);
+    if (!pet)
+        return { ok: false, error: `牧场还没有${target === "cat" ? "小猫" : "小狗"}。` };
+    const buff = cooking.petDishBuffs[dish.rarity];
+    pet.dishBuff = { bonus: buff.bonus, endsAt: now + buff.hours * HOUR_MS, dishName: dish.name, rarity: dish.rarity };
+    takeDish(kitchen, dish.id);
+    return { ok: true, target, dish, buff: pet.dishBuff };
+}
+export function kitchenSell(farm, itemId, to, price, now) {
+    const kitchen = ensureKitchen(farm);
+    const product = kitchen.products.find((item) => item.id === String(itemId));
+    const dish = kitchen.dishes.find((item) => item.id === String(itemId));
+    if (!product && !dish)
+        return { ok: false, error: "食材柜或料理柜里没有这个实例。" };
+    if (to === "system") {
+        const item = product ?? dish;
+        if (product)
+            kitchen.products = kitchen.products.filter((entry) => entry !== product);
+        else
+            kitchen.dishes = kitchen.dishes.filter((entry) => entry !== dish);
+        ensureRanch(farm).coins += item.value;
+        return { ok: true, to, name: item.name, value: item.value, item };
+    }
+    if (to !== "market")
+        return { ok: false, error: "to 只能是 system 或 market。" };
+    if (!dish)
+        return { ok: false, error: "只有正常料理能摆进玩家摊位；牧场原产物只能系统回收。" };
+    if (dish.recipeId === "odd_dish")
+        return { ok: false, error: "微妙的料理不能摆摊，只能 1 金系统回收或让 AI 自己吃。" };
+    const silverPrice = Math.floor(Number(price));
+    if (!Number.isSafeInteger(silverPrice) || silverPrice <= 0)
+        return { ok: false, error: "摆摊价格要填写正整数银币。" };
+    kitchen.dishes = kitchen.dishes.filter((entry) => entry !== dish);
+    (farm.market ??= []).push({ kind: "dish", id: dish.id, qty: 1, price: silverPrice, dish: structuredClone(dish), listedAt: now });
+    return { ok: true, to, name: dish.name, price: silverPrice, item: dish };
+}
+/** 每天三次银币投喂：只给生产动物的下一份普通产物 +10%。 */
+export function ranchFeedAnimal(farm, animalIdx, now) {
+    const ranch = ensureRanch(farm);
+    const animal = ranch.animals[Math.floor(Number(animalIdx))];
+    if (!animal)
+        return { ok: false, error: "选的动物不存在。" };
+    if (ranchRaidForAnimal(farm, animal.kindId))
+        return { ok: false, error: "这只动物正在外面派遣，回来后再投喂。" };
+    if ((animal.pending ?? 0) > 0 || (animal.pendingMeat ?? 0) > 0)
+        return { ok: false, error: "它已经有产出可收，先收进食材柜再投喂。" };
+    if (animal.feedBoostPending)
+        return { ok: false, error: "这只动物的下一份 +10% 已经登记，不能叠加。" };
+    const day = currentDayIndex(now);
+    if (!ranch.feedDaily || ranch.feedDaily.day !== day)
+        ranch.feedDaily = { day, n: 0 };
+    if (ranch.feedDaily.n >= RANCH_FEED_DAILY_CAP)
+        return { ok: false, error: `今天已经投喂 ${RANCH_FEED_DAILY_CAP} 次了，明天零点刷新。` };
+    const value = ranchAnimalCurrentProduceValue(animal);
+    const cost = Math.max(1, Math.round(value * RANCH_FEED_COST_RATE));
+    if (farm.silver < cost)
+        return { ok: false, error: `银币不足，这次投喂要 🪙${cost}（你有 ${farm.silver}）。` };
+    farm.silver -= cost;
+    animal.feedBoostPending = true;
+    ranch.feedDaily.n += 1;
+    return { ok: true, animal: animal.name || animalById.get(animal.kindId)?.name || animal.kindId, cost, bonus: RANCH_FEED_BONUS_RATE, left: RANCH_FEED_DAILY_CAP - ranch.feedDaily.n };
+}
+/** 看家狗已拦住的同一次偷菜，用一份正常料理续上；不会再记次数或冷却。 */
+export function bribeGuardDog(thief, victim, dishId, now) {
+    const kitchen = ensureKitchen(thief);
+    const pending = kitchen.pendingGuard;
+    if (!pending || pending.victimId !== victim.id || currentDayIndex(pending.at) !== currentDayIndex(now)) {
+        delete kitchen.pendingGuard;
+        return { ok: false, error: "现在没有这家的看家狗拦截可继续。" };
+    }
+    const dish = kitchen.dishes.find((item) => item.id === String(dishId));
+    if (!dish)
+        return { ok: false, error: "料理柜里没有这份料理。" };
+    if (dish.recipeId === "odd_dish")
+        return { ok: false, error: "微妙的料理连狗都不收，不能拿来贿赂。" };
+    const result = steal(victim, pending.plotId, pending.by, now, thief, { resumeGuard: true });
+    delete kitchen.pendingGuard;
+    if (!result.ok)
+        return { ...result, dishKept: true };
+    takeDish(kitchen, dish.id);
+    return { ...result, bribed: true, dishName: dish.name };
 }
 const HOUR_MS = 60 * 60 * 1000;
 export const RANCH_RAID_DAILY_CAP = 1000;
@@ -851,7 +1164,7 @@ export function nextLockedPet(farm) {
     return pets.filter((p) => !petUnlocked(farm, p)).sort((a, b) => a.unlockCodex - b.unlockCodex)[0] ?? null;
 }
 /** 聚合当前农场所有宠物的 buff：luck=收获额外运气（累加）、dropMult=素材/药水掉落倍率（连乘）、foil=偷菜被吓退概率（取最大）。 */
-export function petBuffs(farm) {
+export function petBuffs(farm, now = Date.now()) {
     let luck = 0, dropMult = 1, foil = 0;
     for (const p of farm.ranch?.pets ?? []) {
         const k = petById.get(p.kindId);
@@ -861,8 +1174,17 @@ export function petBuffs(farm) {
         if (k.params.dropMult)
             dropMult *= k.params.dropMult;
         foil = Math.max(foil, k.params.foil ?? 0);
+        const dishBuff = p.dishBuff;
+        if (dishBuff?.endsAt > now) {
+            if (k.buff === "luck") {
+                luck *= 1 + dishBuff.bonus;
+                dropMult *= 1 + dishBuff.bonus;
+            }
+            if (k.buff === "guard")
+                foil += dishBuff.bonus;
+        }
     }
-    return { luck, dropMult, foil };
+    return { luck, dropMult, foil: Math.min(1, foil) };
 }
 /** AI 买一只已解锁的宠物送给伴侣（花 farm.coins，宠物进牧场；每种限 1 只）。 */
 export function buyPetForPartner(farm, id, now) {
@@ -1057,27 +1379,58 @@ export function ranchTakeOffAccessory(farm, target, idx, accId) {
     (ranch.wardrobe ??= []).push(acc.id);
     return { ok: true, name: acc.name, wearer: nm };
 }
-/** 伴侣在人类前端收获产品：产出折成牧场金币 + 概率掉一瓶加速药水直接入 AI 仓库（每日封顶）。 */
+/** 伴侣收牧场产品：欠款存在时按动物稳定顺序整份回收还债；其余锁价进入料理食材柜。 */
 export function ranchCollect(farm, farms, now) {
     const ranch = farm.ranch;
     if (!ranch || !ranch.animals.length)
         return { ok: false, error: `牧场还没有动物——让${aiDisplay(farm)}在商店买一只送进来。` };
+    const kitchen = ensureKitchen(farm);
+    let gross = 0;
     let gain = 0;
+    let debtPaid = 0;
+    let storedCount = 0;
+    const autoRecycled = [];
     const detail = {};
+    const receive = (item) => {
+        gross += item.value;
+        detail[item.name] = (detail[item.name] ?? 0) + 1;
+        if (ranchRaidDebtTotal(farm) > 0) {
+            const credited = creditRanchHarvestAfterDebts(farm, farms, item.value);
+            gain += credited.gain;
+            debtPaid += credited.debtPaid;
+            autoRecycled.push(item);
+        }
+        else {
+            kitchen.products.push(item);
+            storedCount += 1;
+        }
+    };
     for (const a of ranch.animals) {
         const kind = animalById.get(a.kindId);
-        if (!kind || a.pending <= 0)
+        if (!kind)
             continue;
-        detail[kind.produce] = (detail[kind.produce] ?? 0) + a.pending;
-        // 升级只提每份收入（线性）：lv1=1.0× … lv5=1+(5-1)×step。份数不变。
-        const lvlMult = 1 + ((a.level ?? 1) - 1) * RANCH_LEVEL_INCOME_STEP;
-        gain += Math.round(a.pending * kind.producePrice * lvlMult);
-        a.pending = 0;
+        const pending = Math.max(0, Math.floor(Number(a.pending) || 0));
+        if (pending > 0) {
+            const def = cookingProductById.get(kind.produceId);
+            const base = ranchAnimalCurrentProduceValue(a);
+            for (let i = 0; i < pending; i++) {
+                const value = i === 0 && a.pendingBoost ? Math.round(base * (1 + RANCH_FEED_BONUS_RATE)) : base;
+                receive({ id: randomUUID(), itemId: kind.produceId, name: def?.name ?? kind.produce, emoji: def?.emoji ?? kind.emoji, value, createdAt: now });
+            }
+            a.pending = 0;
+            a.pendingBoost = false;
+        }
+        const pendingMeat = Math.max(0, Math.floor(Number(a.pendingMeat) || 0));
+        if (pendingMeat > 0 && kind.meatId) {
+            const def = cookingProductById.get(kind.meatId);
+            const value = Math.round(ranchAnimalCurrentProduceValue(a) * cooking.meatValueMultiplier);
+            for (let i = 0; i < pendingMeat; i++)
+                receive({ id: randomUUID(), itemId: kind.meatId, name: def?.name ?? kind.meat, emoji: def?.emoji ?? "🥩", value, createdAt: now });
+            a.pendingMeat = 0;
+        }
     }
-    if (gain <= 0)
+    if (gross <= 0)
         return { ok: false, error: "暂时没有可收的产出，再等等动物攒一攒。" };
-    const gross = gain;
-    const credited = creditRanchHarvestAfterDebts(farm, farms, gross);
     // 掉药水 → AI 仓库（概率 + 每日封顶，防伴侣狂收刷药水）
     let potion = 0;
     const day = currentDayIndex(now);
@@ -1097,7 +1450,7 @@ export function ranchCollect(farm, farms, now) {
             pushLedger(farm, "potion", 1, `${humanDisplay(farm)}收获时掉落，入仓库`, now);
         }
     }
-    return { ok: true, gain: credited.gain, gross, debtPaid: credited.debtPaid, detail, potion };
+    return { ok: true, gain, gross, debtPaid, detail, potion, storedCount, autoRecycled };
 }
 /** 把某动物升到下一级要花多少牧场金币（cost = buyCost ×(当前等级+1)× 系数）。 */
 export function animalUpgradeCost(kind, level) {

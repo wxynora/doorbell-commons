@@ -212,7 +212,9 @@ function additivePath(path) {
         return true;
     if (root === "plots" && ["progress", "waterCount"].includes(leaf))
         return true;
-    if (root === "ranch" && ["coins", "pending", "ticksSinceProduce"].includes(leaf))
+    if (root === "ranch" && ["coins", "pending", "pendingMeat", "ticksSinceProduce"].includes(leaf))
+        return true;
+    if (root === "ranch" && path.includes("kitchen") && path.includes("ingredients"))
         return true;
     return false;
 }

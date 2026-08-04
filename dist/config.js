@@ -55,6 +55,10 @@ export const RANCH_PATROL_GOOSE_NAME = "巡逻鹅";
 export const RANCH_PATROL_GOOSE_BUY_COST = 9999;
 export const RANCH_PATROL_GOOSE_CATCH_CHANCE = 0.25;
 export const RANCH_PATROL_GOOSE_DAILY_CAP = 3;
+export const RANCH_FEED_DAILY_CAP = 3;
+export const RANCH_FEED_COST_RATE = 0.05;
+export const RANCH_FEED_BONUS_RATE = 0.1;
+export const COOKING_DEBUFF_MS = 2 * 60 * 60 * 1000;
 // 宠物（AI 买、归伴侣养、不产出、给农场温和 buff；解锁/价格/buff 数值都在 content/pets.json 调）
 export const PET_NAME_MAX = 12; // 伴侣给宠物起名的最长字数
 // —— 种子价 ——

@@ -2,15 +2,15 @@
 import { createServer } from "node:http";
 import { randomUUID, randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { advance, steal, canStealNow, stealAvailability, stealShieldRemain, isUgcCrop, visitorWater, tryWaterReward, humanHarvestAll, humanHarvestLeft, ranchRoamLine, buyPotionSet, refreshShop, ranchCollect, ranchRemit, ranchBuyAccessory, ranchBuyDecoration, ranchWearAccessory, ranchTakeOffAccessory, ranchPlaceDecoration, ranchUnplaceDecoration, ranchUpgradeAnimal, ranchNameAnimal, ranchNamePet, ranchNamePatrolGoose, ranchTogglePin, dispatchRanchRaid, catchRanchRaid, settleRanchRaids, ensureHumanKey, takeInbox, takeRanchNotices, pushSocialInbox, potionDailyLeft, designCrop, craft, nextUpgradeReq, toggleStar } from "./engine.js";
-import { dispatch, HELP, farmView, viewShop, viewEncyclopedia, viewBag, shopBrief, viewMarket, buyFromMarket, visitView, ranchAgentSection, refPrice, tendNpc, buyNpcSeed, randomTip, hasDamagedPublicName } from "./game.js";
+import { advance, steal, canStealNow, stealAvailability, stealShieldRemain, isUgcCrop, visitorWater, tryWaterReward, humanHarvestAll, humanHarvestLeft, ranchRoamLine, buyPotionSet, refreshShop, ranchCollect, ranchRemit, ranchBuyAccessory, ranchBuyDecoration, ranchWearAccessory, ranchTakeOffAccessory, ranchPlaceDecoration, ranchUnplaceDecoration, ranchUpgradeAnimal, ranchNameAnimal, ranchNamePet, ranchNamePatrolGoose, ranchTogglePin, dispatchRanchRaid, catchRanchRaid, settleRanchRaids, ensureHumanKey, takeInbox, takeRanchNotices, pushSocialInbox, potionDailyLeft, designCrop, craft, nextUpgradeReq, toggleStar, cookingDebuffReason, bribeGuardDog, kitchenBuy, kitchenCook, kitchenUse, kitchenSell, ranchFeedAnimal, kitchenView } from "./engine.js";
+import { dispatch, HELP, farmView, viewShop, viewEncyclopedia, viewBag, shopBrief, viewMarket, buyFromMarket, visitView, ranchAgentSection, refPrice, tendNpc, buyNpcSeed, randomTip, hasDamagedPublicName, viewKitchen } from "./game.js";
 import { harvestText, stealThiefText, statusFooter, waterText, describeFarm } from "./flavor.js";
 import { createFarm, getFarm, allFarms, playerFarms, save } from "./store.js";
 import { MAX_BODY_BYTES, SYNC_MAX_BODY_BYTES, MAX_FARMS, MESSAGE_TEXT_MAX, MESSAGES_MAX, POTION_DAILY_CAP, POTION_CAP_LINE, HUMAN_HARVEST_DAILY_CAP, NPC_ID, SEED_PRICE, RECIPE_PRICE, WELCOME_MAX, EXP_DAILY_CAP, EXP_MAX_CHARGES_PER_ENTRY, BASE, REGISTRATION_OPEN, REGISTRATION_CLOSED_TEXT, REGISTRATION_CAP, REGISTRATION_FULL_TEXT, SHOW_MIGRATION_NOTICE, MIGRATION_NOTICE_TEXT, MIGRATION_NOTICE_HTML } from "./config.js";
 import { allowRequest, allowCreate, sweepGuard } from "./guard.js";
 import { mintNonce, takeNonce, sweepNonces, htmlAgentPage, htmlReadme, htmlGuide, htmlNotice, htmlGenLink } from "./agent.js";
 import { mcpDispatch } from "./mcp.js";
-import { uiHome, uiRanch, uiTa, uiCodex, uiMessages, uiLeaderboard, uiInvalid, uiExpedition, uiHumanNotices } from "./web.js";
+import { uiHome, uiRanch, uiCooking, uiTa, uiCodex, uiMessages, uiLeaderboard, uiInvalid, uiExpedition, uiHumanNotices } from "./web.js";
 import { expRoll, expSetCharm } from "./expedition.js";
 import { viewLeaderboard } from "./leaderboard.js";
 import { onTaskEvent, tickTask, hasOpenOffer, offerSummary } from "./tasks.js";
@@ -229,7 +229,7 @@ function newAgentKey() {
 }
 // 只读视图动作（允许 GET）；其余动作改动状态，必须 POST——防止链接预取/抓取/unfurl 误触发
 // （尤其 new-token 会轮换主 token，GET 预取一次就把农场钥匙刷掉）。/a 和 /farms 两条通道共用。
-const READONLY_ACTIONS = new Set(["status", "shop", "bag", "market", "encyclopedia", "ledger", "leaderboard", "ranking", "wander", "visit", "expedition", "exp", "help"]);
+const READONLY_ACTIONS = new Set(["status", "shop", "bag", "market", "encyclopedia", "ledger", "leaderboard", "ranking", "wander", "visit", "expedition", "exp", "help", "kitchen"]);
 const mutatingViaGet = (method, action) => method !== "POST" && !!action && !READONLY_ACTIONS.has(action);
 // 农场专属链接的 key（= agentKey，和 /agent 点击页同一把）。缺了就懒生成，让每座农场都能用 /a/<key> 通道。
 function ensureAgentKey(f) {
@@ -435,7 +435,8 @@ function runFarm(farmId, action, b, encArg, now) {
     // 默认所有响应只回文字（text 末尾已含一行 HUD，AI 直接读）；不附结构化 farm，省 token。
     // detail:true（兼容旧名 verbose）：私有动作返回完整自家快照；公开 visit 只返回目标公开地块结构。
     const token = String(b.token ?? "");
-    const isByAction = action === "steal" || action === "buy" || action === "message" || (action === "water" && !!b.by) || (action === "delete-message" && !!b.by) || (action === "buy-potion-set" && !!b.by);
+    const isGuardBribe = action === "kitchen" && b.op === "use" && b.target === "guard-dog" && !!b.by;
+    const isByAction = action === "steal" || action === "buy" || action === "message" || isGuardBribe || (action === "water" && !!b.by) || (action === "delete-message" && !!b.by) || (action === "buy-potion-set" && !!b.by);
     const byId = isByAction ? String(b.by ?? "") : "";
     const principal = isByAction ? getFarm(byId) : f;
     if (!principal || !principal.token || token !== principal.token)
@@ -446,6 +447,9 @@ function runFarm(farmId, action, b, encArg, now) {
         const hint = action === "water" ? "给自己的地浇水请去掉 by，用主人浇水。" : "收自己地里的作物请用 harvest。";
         return { status: 400, json: { ok: false, text: `不能把串门动作对自己使用。${hint}` } };
     }
+    const debuffText = cookingDebuffReason(principal, action, b, now);
+    if (debuffText)
+        return { status: 400, json: { ok: false, text: debuffText, ...vf(principal) } };
     // 视图（主人私有）
     if (!action || action === "status") {
         const text = `${dispatch(f, { action: "status" }, now).text}\n\n${ripeBroadcastText(now)}`; // 内部会 roll 季节事件（可能已改农场）
@@ -459,6 +463,8 @@ function runFarm(farmId, action, b, encArg, now) {
         return { status: 200, json: { ok: true, text: viewMarket(f, true), ...vf(f) } };
     if (action === "encyclopedia")
         return { status: 200, json: { ok: true, text: viewEncyclopedia(f, encArg), ...vf(f) } };
+    if (action === "kitchen" && (!b.op || b.op === "view"))
+        return { status: 200, json: { ok: true, text: viewKitchen(f, now), ...vf(f) } };
     // 重置 token（凭当前 token 换新；旧 token 立即失效——URL 里的 key 万一泄露就用它撤销）
     if (action === "new-token") {
         f.token = randomUUID().replace(/-/g, "");
@@ -499,11 +505,28 @@ function runFarm(farmId, action, b, encArg, now) {
         if (r.ok)
             pushSocialInbox(f, `🥷 「${thief.name}」偷了你的菜`, now);
         save();
-        if (!r.ok)
-            return { status: 400, json: { ok: false, text: r.error, ...vf(f) } };
+        if (!r.ok) {
+            const bribe = r.guardBlocked
+                ? `\n🍲 可以用一份正常料理贿赂${r.dogName}，继续这同一次偷菜：{"action":"kitchen","op":"use","dishId":"料理实例id","target":"guard-dog","to":"${b.targetRef ?? "农场编号"}"}。不会再计次数或冷却。`
+                : "";
+            return { status: 400, json: { ok: false, text: r.error + bribe, ...vf(thief) } };
+        }
         const got = stealThiefText(r.crop) + `（${r.quality.name}·+${r.value}金）`;
         const reveal = r.isNewForThief ? `\n${harvestText(r.crop, r.quality, r.value, true, r.codexReward, false)}` : "";
         return { status: 200, json: { ok: true, text: `${got}${reveal}\n${statusFooter(thief, now)}`, ...vf(thief) } };
+    }
+    if (isGuardBribe) {
+        const thief = getFarm(byId);
+        const r = bribeGuardDog(thief, f, String(b.dishId), now);
+        if (!r.ok) {
+            save();
+            return { status: 400, json: { ok: false, text: `${r.error}${r.dishKept ? "（料理没有消耗，本次尝试结束。）" : ""}`, ...vf(thief) } };
+        }
+        pushSocialInbox(f, `🥷 「${thief.name}」用料理哄住看家狗后偷了你的菜`, now);
+        save();
+        const got = stealThiefText(r.crop) + `（${r.quality.name}·+${r.value}金）`;
+        const reveal = r.isNewForThief ? `\n${harvestText(r.crop, r.quality, r.value, true, r.codexReward, false)}` : "";
+        return { status: 200, json: { ok: true, text: `🍖 用「${r.dishName}」哄住了看家狗，继续原本那次偷菜；料理已消耗，没有重复计算出手或冷却。\n${got}${reveal}\n${statusFooter(thief, now)}`, ...vf(thief) } };
     }
     // 帮别人浇水：给对方加速 30 分钟 + 给浇水者(by)掉 1 瓶加速药水（1 家 1 天只能浇 1 次，防互刷）
     if (action === "water" && b.by) {
@@ -645,6 +668,7 @@ function selfActions(f, now) {
     L.push({ label: "🎒 看背包 / 素材", action: "bag", params: {} });
     L.push({ label: "🏪 看商店", action: "shop", params: {} });
     L.push({ label: "🧺 看我的摊位", action: "market", params: {} });
+    L.push({ label: "🍳 打开料理台", action: "kitchen", params: {} });
     L.push({ label: "🏡 查看我的公开农场 / 留言板（别人串门看到的页）", action: "mypage", params: {} });
     L.push({ label: "🚶 出门随机逛逛（找别家偷 / 串门）", action: "wander", params: {} });
     // 🗺️ 探险：按当前状态给上下文按钮
@@ -739,6 +763,55 @@ function bagActions(f) {
     const mats = Object.values(f.materials).reduce((a, b) => a + b, 0);
     if (mats >= 3)
         L.push({ label: "⚗️ 熔炼（自动取 3 个素材出限定种子）", action: "craft", params: { auto: true } });
+    L.push({ label: "🔙 回我的农场", action: "status", params: {} });
+    return L;
+}
+function kitchenAgentActions(f, now) {
+    const view = kitchenView(f, now);
+    const L = [];
+    for (const item of view.ingredients.slice(0, 10))
+        if (item.bought < 3 && f.silver >= item.price)
+            L.push({ label: `🧺 买${item.name}×1（🪙${item.price}·今日 ${item.bought}/3）`, action: "kitchen", params: { op: "buy", kind: "ingredient", id: item.id, qty: 1 } });
+    for (const recipe of view.recipeOffers)
+        if (!recipe.known && f.silver >= recipe.price)
+            L.push({ label: `📜 买食谱「${recipe.name}·${recipe.rarity}」（🪙${recipe.price}）`, action: "kitchen", params: { op: "buy", kind: "recipe", id: recipe.id } });
+    const availableRefs = (recipe) => {
+        const products = [...view.products];
+        const counts = Object.fromEntries(view.ownedIngredients.map((item) => [item.id, item.qty]));
+        const refs = [];
+        for (const id of recipe.ingredients) {
+            const product = products.find((item) => item.itemId === id);
+            if (product) {
+                refs.push(product.id);
+                products.splice(products.indexOf(product), 1);
+            }
+            else if ((counts[id] ?? 0) > 0) {
+                refs.push(id);
+                counts[id] -= 1;
+            }
+            else
+                return null;
+        }
+        return refs;
+    };
+    for (const recipe of view.knownRecipes.slice(0, 12)) {
+        const items = availableRefs(recipe);
+        if (items)
+            L.push({ label: `🍲 做「${recipe.name}·${recipe.rarity}」`, action: "kitchen", params: { op: "cook", items } });
+    }
+    for (const dish of view.dishes.slice(0, 8)) {
+        if (dish.recipeId === "odd_dish")
+            L.push({ label: "🥴 自己吃「微妙的料理」", action: "kitchen", params: { op: "use", dishId: dish.id, target: "self" } });
+        else {
+            if (f.ranch?.pets?.some((pet) => pet.kindId === "cat"))
+                L.push({ label: `🐱 把「${dish.name}·${dish.rarity}」喂猫`, action: "kitchen", params: { op: "use", dishId: dish.id, target: "cat" } });
+            if (f.ranch?.pets?.some((pet) => pet.kindId === "dog"))
+                L.push({ label: `🐶 把「${dish.name}·${dish.rarity}」喂狗`, action: "kitchen", params: { op: "use", dishId: dish.id, target: "dog" } });
+        }
+        L.push({ label: `♻️ 系统回收「${dish.name}」（${dish.value}牧场金）`, action: "kitchen", params: { op: "sell", itemId: dish.id, to: "system" } });
+    }
+    for (const product of view.products.slice(0, 6))
+        L.push({ label: `♻️ 系统回收「${product.name}」（${product.value}牧场金）`, action: "kitchen", params: { op: "sell", itemId: product.id, to: "system" } });
     L.push({ label: "🔙 回我的农场", action: "status", params: {} });
     return L;
 }
@@ -867,7 +940,7 @@ function renderVisitPage(playKey, targetId, now) {
             offers.push({ label: `🛒 买限定种子「${getCrop(s.id)?.name ?? s.id}」×1（💰${s.price}金，每天限 1）`, action: "buy", params: { target: targetId, kind: "seed", id: s.id, qty: 1 } });
         }
         for (const m of (target.market ?? []).slice(0, 4)) {
-            const nm = m.kind === "material" ? (materialById.get(m.id)?.name ?? m.id) : (getCrop(m.id)?.name ?? m.id);
+            const nm = m.kind === "material" ? (materialById.get(m.id)?.name ?? m.id) : m.kind === "dish" ? (m.dish?.name ?? "料理") : (getCrop(m.id)?.name ?? m.id);
             offers.push({ label: `🛒 买「${nm}」×1（🪙${m.price}银）`, action: "buy", params: { target: targetId, kind: m.kind, id: m.id, qty: 1 } });
         }
     }
@@ -927,10 +1000,13 @@ function renderBagPage(playKey, f, now, banner) {
     const note = matCount >= 3 ? "" : "\n\n素材不足 3 个；集齐后这里会自动出现「熔炼」链接。"; // 无熔炼链接时的空状态提示
     return htmlAgentPage(playKey, agentNaturalText(viewBag(f)) + note, links(playKey, bagActions(f), now), banner ? agentNaturalText(banner) : "🎒 背包 / 素材");
 }
+function renderKitchenPage(playKey, f, now, banner) {
+    return htmlAgentPage(playKey, agentNaturalText(viewKitchen(f, now)), links(playKey, kitchenAgentActions(f, now), now), banner ? agentNaturalText(banner) : "🍳 料理台");
+}
 function renderMarketPage(playKey, f, now, banner) {
     const offers = [];
     for (const m of (f.market ?? []).slice(0, 8)) {
-        const nm = m.kind === "material" ? (materialById.get(m.id)?.name ?? m.id) : (getCrop(m.id)?.name ?? m.id);
+        const nm = m.kind === "material" ? (materialById.get(m.id)?.name ?? m.id) : m.kind === "dish" ? (m.dish?.name ?? "料理") : (getCrop(m.id)?.name ?? m.id);
         offers.push({ label: `📦 下架「${nm}」`, action: "unlist", params: { kind: m.kind, id: m.id } });
     }
     offers.push(...listInventoryActions(f)); // 上架链接：背包里有种子/素材时出现
@@ -977,6 +1053,8 @@ function renderAgentTarget(playKey, f, now, target) {
         return renderBagPage(playKey, f, now, target.banner);
     if (target.kind === "market")
         return renderMarketPage(playKey, f, now, target.banner);
+    if (target.kind === "kitchen")
+        return renderKitchenPage(playKey, f, now, target.banner);
     if (target.kind === "leaderboard")
         return renderLeaderboardPage(playKey, now, target.banner);
     if (target.kind === "mypage")
@@ -1002,6 +1080,8 @@ function agentDo(playKey, nonce, now) {
         return agentRedirect(playKey, { kind: "bag" }, now);
     if (a === "market")
         return agentRedirect(playKey, { kind: "market" }, now);
+    if (a === "kitchen" && !p.op)
+        return agentRedirect(playKey, { kind: "kitchen" }, now);
     if (a === "leaderboard")
         return agentRedirect(playKey, { kind: "leaderboard" }, now);
     if (a === "mypage")
@@ -1045,6 +1125,10 @@ function agentDo(playKey, nonce, now) {
         banner = runFarm(f.id, a, { token: tok, ...p }, undefined, now).json.text;
         return agentRedirect(playKey, { kind: "market", banner: stripFooter(banner) }, now);
     }
+    else if (a === "kitchen") {
+        banner = runFarm(f.id, a, { token: tok, ...p }, undefined, now).json.text;
+        return agentRedirect(playKey, { kind: "kitchen", banner: stripFooter(banner) }, now);
+    }
     else if (a === "delete-message" || a === "guestbook") {
         // 「我的公开页/留言板」里的管理动作——做完回到那页，看到更新后的留言板
         const t = runFarm(f.id, a, { token: tok, ...p }, undefined, now).json.text;
@@ -1061,6 +1145,7 @@ const PUBLIC_PNG_ASSETS = new Map([
     ["ranch-scene-background.png", new URL("../assets/ranch-scene-background.png", import.meta.url)],
     ["ranch-scene-background-mobile.png", new URL("../assets/ranch-scene-background-mobile.png", import.meta.url)],
 ]);
+const COOKING_ASSET_DIR = new URL("../assets/cooking/", import.meta.url);
 const MAINTENANCE_FILE = `${process.env.AIFARM_DATA_DIR || "./data"}/maintenance`;
 const MAINTENANCE_API_TEXT = "农场正在维护，暂时不能操作，请稍后再来。";
 const MAINTENANCE_HTML = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>农场维护中</title>
@@ -1096,6 +1181,16 @@ export function startServer(port, host = "127.0.0.1") {
             const png = readFileSync(publicPng);
             res.writeHead(200, { "Content-Type": "image/png", "Content-Length": png.byteLength, "Cache-Control": "public, max-age=86400" });
             return res.end(png);
+        }
+        const cookingAsset = method === "GET" && parts[0] === "assets" && parts[1] === "cooking"
+            && ((parts.length === 3 && /^[a-z0-9-]+\.webp$/.test(parts[2]))
+                || (parts.length === 4 && parts[2] === "dishes" && /^[a-z0-9-]+\.webp$/.test(parts[3])))
+            ? new URL(parts.length === 3 ? parts[2] : `dishes/${parts[3]}`, COOKING_ASSET_DIR)
+            : undefined;
+        if (cookingAsset && existsSync(cookingAsset)) {
+            const webp = readFileSync(cookingAsset);
+            res.writeHead(200, { "Content-Type": "image/webp", "Content-Length": webp.byteLength, "Cache-Control": "public, max-age=86400" });
+            return res.end(webp);
         }
         const now = Date.now();
         const ip = clientIp(req);
@@ -1231,10 +1326,63 @@ export function startServer(port, host = "127.0.0.1") {
                     res.writeHead(303, { ...AGENT_HEADERS, Location: `${BASE}/ui/${key}` });
                     return res.end();
                 }
+                // 🍳 料理台：食材铺、配方、下锅动画结算、料理柜使用/回收/摆摊。
+                if (section === "cooking") {
+                    const act = parts[3];
+                    if (method === "POST" && ["buy-ingredient", "buy-recipe", "cook", "use", "sell"].includes(act)) {
+                        const form = await readFormBody(req);
+                        let flash;
+                        let result;
+                        if (act === "buy-ingredient") {
+                            const r = kitchenBuy(f, "ingredient", String(form.id), form.qty, now);
+                            flash = r.ok ? `🧺 买下${r.name}×${r.qty}（-🪙${r.cost}）` : r.error;
+                        }
+                        else if (act === "buy-recipe") {
+                            const r = kitchenBuy(f, "recipe", String(form.id), 1, now);
+                            flash = r.ok ? `📜 学会了「${r.name}·${r.rarity}」（-🪙${r.cost}）` : r.error;
+                        }
+                        else if (act === "cook") {
+                            let items = [];
+                            try {
+                                items = JSON.parse(String(form.items ?? "[]"));
+                            }
+                            catch { /* 引擎给出数量提示 */ }
+                            const r = kitchenCook(f, items, now);
+                            if (r.ok) {
+                                flash = r.odd
+                                    ? "🥴 没有命中固定配方，食材已全部消耗，得到一份微妙的料理"
+                                    : `🍲 做出「${r.dish.name}·${r.dish.rarity}」，锁定系统回收价 ${r.dish.value} 金${r.discovered ? "；正确试做同时解锁了食谱" : ""}`;
+                                result = JSON.stringify({ id: r.dish.id, recipeId: r.dish.recipeId, name: r.dish.name, rarity: r.dish.rarity, value: r.dish.value, image: r.dish.image, odd: r.odd, discovered: r.discovered });
+                            }
+                            else
+                                flash = r.error;
+                        }
+                        else if (act === "use") {
+                            const r = kitchenUse(f, String(form.dishId), String(form.target), now);
+                            flash = r.ok
+                                ? r.target === "self"
+                                    ? `🥴 吃下微妙的料理：${r.debuff.name}，持续 2 小时；只影响 AI 工具，人类操作不受影响`
+                                    : `🍽️ ${r.target === "cat" ? "小猫" : "小狗"}吃下「${r.dish.name}」，${Math.round(r.buff.bonus * 100)}% 加成已替换旧效果`
+                                : r.error;
+                        }
+                        else {
+                            const r = kitchenSell(f, String(form.itemId), String(form.to), form.price, now);
+                            flash = r.ok
+                                ? r.to === "system" ? `♻️ 系统回收「${r.name}」，+${r.value} 牧场金币` : `🧺 「${r.name}」已按 🪙${r.price} 摆上摊位`
+                                : r.error;
+                        }
+                        save();
+                        const suffix = result ? `&result=${encodeURIComponent(result)}` : "";
+                        res.writeHead(303, { ...AGENT_HEADERS, Location: `${BASE}/ui/${key}/cooking?flash=${encodeURIComponent(flash)}${suffix}` });
+                        return res.end();
+                    }
+                    res.writeHead(200, AGENT_HEADERS);
+                    return res.end(renderHuman(uiCooking(f, now, key, url.searchParams.get("flash") ?? undefined, url.searchParams.get("result") ?? undefined)));
+                }
                 // 🐮 牧场：人类主要经营页。POST 收获/回传 → 做完 303 跳回（PRG，刷新不会重复提交）。
                 if (section === "ranch") {
                     const act = parts[3];
-                    if (method === "POST" && (act === "collect" || act === "remit" || act === "dress" || act === "decorate" || act === "wear" || act === "takeoff" || act === "place" || act === "unplace" || act === "upgrade" || act === "name-animal" || act === "name-pet" || act === "name-goose" || act === "pin" || act === "dispatch-raid" || act === "catch-raid")) {
+                    if (method === "POST" && (act === "collect" || act === "feed" || act === "remit" || act === "dress" || act === "decorate" || act === "wear" || act === "takeoff" || act === "place" || act === "unplace" || act === "upgrade" || act === "name-animal" || act === "name-pet" || act === "name-goose" || act === "pin" || act === "dispatch-raid" || act === "catch-raid")) {
                         const form = await readFormBody(req);
                         let flash;
                         const ai = f.aiName || f.name || "对方";
@@ -1261,8 +1409,12 @@ export function startServer(port, host = "127.0.0.1") {
                         else if (act === "collect") {
                             const r = ranchCollect(f, playerFarms(), now);
                             flash = r.ok
-                                ? `📦 收获：${Object.entries(r.detail).map(([k, v]) => `${v} 份${k}`).join("、")}，+${r.gain} 金${r.debtPaid ? `；另有 ${r.debtPaid} 金自动偿还此前欠款` : ""}${r.potion ? `；还掉了 ${r.potion} 瓶加速药水进${ai}的仓库 🧪` : ""}`
+                                ? `📦 收获：${Object.entries(r.detail).map(([k, v]) => `${v} 份${k}`).join("、")}；${r.storedCount ? `${r.storedCount} 份已锁定当前价值并放进料理台食材柜` : ""}${r.autoRecycled.length ? `${r.storedCount ? "；" : ""}${r.autoRecycled.length} 份因欠款自动整份回收` : ""}${r.debtPaid ? `，偿还欠款 ${r.debtPaid} 金` : ""}${r.gain ? `，回收余款 +${r.gain} 牧场金币` : ""}${r.potion ? `；还掉了 ${r.potion} 瓶加速药水进${ai}的仓库 🧪` : ""}`
                                 : r.error;
+                        }
+                        else if (act === "feed") {
+                            const r = ranchFeedAnimal(f, Number(form.animal), now);
+                            flash = r.ok ? `🥣 给${r.animal}投喂成功（-🪙${r.cost}），下一份正常产物 +10%；今天还可投喂 ${r.left} 次` : r.error;
                         }
                         else if (act === "remit") {
                             const r = ranchRemit(f, Number(form.amount), now);
@@ -1603,7 +1755,9 @@ export function startServer(port, host = "127.0.0.1") {
                         const listed = visitListResult(me);
                         return { ok: listed.ok !== false, text: String(listed.text ?? "") };
                     }
-                    const social = b.to !== undefined && String(b.to) !== ""; // 有 to = 在别人家做事
+                    const social = action === "kitchen"
+                        ? b.op === "use" && b.target === "guard-dog" && b.to !== undefined && String(b.to) !== ""
+                        : b.to !== undefined && String(b.to) !== ""; // kitchen 的 to 还可表示 system/market，只有贿赂才是跨农场
                     const resolved = social ? resolveNumberedTarget(b.to, me) : undefined;
                     if (resolved?.error)
                         return { ok: false, text: resolved.error };
@@ -1639,6 +1793,8 @@ export function startServer(port, host = "127.0.0.1") {
                 for (const [k, v] of sp)
                     if (b[k] === undefined)
                         b[k] = v;
+                if (method !== "POST" && action === "kitchen" && b.op && b.op !== "view")
+                    return jsonOut(res, 405, { ok: false, text: "料理台的 buy/cook/use/sell 会改动状态，请用 POST；GET 只可查看。" });
                 if (typeof b.limited === "string")
                     b.limited = b.limited.split(",");
                 if (typeof b.materials === "string")
@@ -1647,7 +1803,9 @@ export function startServer(port, host = "127.0.0.1") {
                     return jsonOut(res, 200, wanderResult({ ...b, by: me.id }, now, true));
                 if (action === "visit" && (b.to === undefined || String(b.to).trim() === ""))
                     return jsonOut(res, 200, visitListResult(me));
-                const social = b.to !== undefined && String(b.to) !== ""; // 有 to = 在别人家做事
+                const social = action === "kitchen"
+                    ? b.op === "use" && b.target === "guard-dog" && b.to !== undefined && String(b.to) !== ""
+                    : b.to !== undefined && String(b.to) !== ""; // kitchen 的 to 还可表示 system/market，只有贿赂才是跨农场
                 const resolved = social ? resolveNumberedTarget(b.to, me) : undefined;
                 if (resolved?.error)
                     return jsonOut(res, 400, { ok: false, text: resolved.error });
@@ -1665,6 +1823,8 @@ export function startServer(port, host = "127.0.0.1") {
                 for (const [k, v] of sp)
                     if (b[k] === undefined)
                         b[k] = v;
+                if (method !== "POST" && parts[2] === "kitchen" && b.op && b.op !== "view")
+                    return jsonOut(res, 405, { ok: false, text: "料理台的 buy/cook/use/sell 会改动状态，请用 POST；GET 只可查看。" });
                 if (typeof b.limited === "string")
                     b.limited = b.limited.split(",");
                 if (typeof b.materials === "string")

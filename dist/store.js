@@ -32,6 +32,18 @@ export function normalizeFarm(f) {
         f.ranch.coins ??= 0;
         f.ranch.raids ??= [];
         f.ranch.raidDebts ??= [];
+        f.ranch.pets ??= [];
+        f.ranch.kitchen ??= {};
+        f.ranch.kitchen.products ??= [];
+        f.ranch.kitchen.ingredients ??= {};
+        f.ranch.kitchen.dishes ??= [];
+        f.ranch.kitchen.knownRecipes ??= [];
+        for (const animal of f.ranch.animals) {
+            animal.pending ??= 0;
+            animal.pendingMeat ??= 0;
+            animal.feedBoostPending ??= false;
+            animal.pendingBoost ??= false;
+        }
     }
     return f;
 }
