@@ -405,15 +405,16 @@ nav a.on,nav a:hover{color:var(--leaf-deep);background:#e6f3d8}
 .cook-layout{display:grid;grid-template-columns:minmax(0,1.18fr) minmax(280px,.82fr);gap:14px;align-items:start}
 .cook-stage-card{padding:0;overflow:hidden;background:#6f3f28}
 .cook-stage{position:relative;isolation:isolate;aspect-ratio:1;overflow:hidden;background:#ad744c url("${BASE}/assets/cooking/cooking-scene-bg.webp?v=20260804a") center/cover no-repeat}
-.cook-pot{position:absolute;z-index:3;left:19.7%;top:30.8%;width:60.5%;filter:drop-shadow(0 10px 8px #32160866);image-rendering:pixelated;transform-origin:50% 75%}
-.cook-lid{position:absolute;z-index:5;left:22.2%;top:32.2%;width:55.7%;filter:drop-shadow(0 8px 6px #32160855);image-rendering:pixelated;transform:translateY(-54%) rotate(-7deg);transform-origin:50% 85%;opacity:.96}
-.cook-stage.is-cooking .cook-lid{animation:cook-lid-close 1.55s cubic-bezier(.4,0,.2,1) both}
-.cook-stage.is-cooking .cook-pot{animation:cook-shake .18s steps(2,end) .42s 6}
+.cook-pot{position:absolute;z-index:3;left:28.5%;top:41%;width:43%;filter:drop-shadow(0 8px 7px #32160866);image-rendering:pixelated;transform-origin:50% 75%}
+.cook-lid{position:absolute;visibility:hidden;z-index:8;left:30.2%;top:42%;width:39.6%;filter:drop-shadow(0 6px 5px #32160855);image-rendering:pixelated;transform:translateY(-82%) rotate(-8deg) scale(.94);transform-origin:50% 85%;opacity:0;pointer-events:none}
+.cook-stage.is-cooking .cook-lid{visibility:visible;animation:cook-lid-close 1.55s cubic-bezier(.22,.78,.24,1) both}
+.cook-stage.is-cooking .cook-pot{animation:cook-shake .16s steps(2,end) .53s 7}
 .cook-fire{position:absolute;z-index:4;left:50%;top:66%;width:18%;aspect-ratio:1;transform:translate(-50%,-50%) scale(.4);opacity:0;border-radius:50%;background:radial-gradient(circle,#fff59d 0 16%,#ffb229 18% 38%,#ef5b2e 40% 58%,transparent 60%);filter:blur(1px)}
 .cook-stage.is-cooking .cook-fire{animation:cook-fire 1.15s ease .35s both}
-.cook-sparks{position:absolute;z-index:6;left:50%;top:46%;width:42%;height:30%;transform:translate(-50%,-50%);opacity:0;background:radial-gradient(circle at 12% 70%,#ffd461 0 2%,transparent 3%),radial-gradient(circle at 80% 45%,#fff2a0 0 2%,transparent 3%),radial-gradient(circle at 60% 12%,#ff9b42 0 2.4%,transparent 3.4%),radial-gradient(circle at 35% 28%,#ffe891 0 2%,transparent 3%)}
+.cook-sparks{position:absolute;z-index:9;left:50%;top:48%;width:32%;height:24%;transform:translate(-50%,-50%);opacity:0;background:radial-gradient(circle at 12% 70%,#ffd461 0 2%,transparent 3%),radial-gradient(circle at 80% 45%,#fff2a0 0 2%,transparent 3%),radial-gradient(circle at 60% 12%,#ff9b42 0 2.4%,transparent 3.4%),radial-gradient(circle at 35% 28%,#ffe891 0 2%,transparent 3%)}
 .cook-stage.is-cooking .cook-sparks{animation:cook-sparks 1s ease .42s both}
-.cook-pot-items{position:absolute;z-index:7;left:31%;top:39%;width:38%;min-height:12%;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:4px}
+.cook-pot-items{position:absolute;z-index:7;left:37%;top:45%;width:26%;min-height:9%;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:3px;transition:opacity .16s ease,transform .16s ease}
+.cook-stage.is-cooking .cook-pot-items{opacity:0;transform:scale(.82)}
 .cook-pot-chip{display:grid;place-items:center;width:31px;height:31px;border:1px solid #fff2c4;border-radius:50%;background:#fff8dbc9;font-size:18px;box-shadow:0 3px 8px #3b1c1544;animation:cook-chip-in .22s ease both}
 button.cook-pot-chip{padding:0;cursor:pointer;color:inherit}
 .cook-counter{position:absolute;left:12px;bottom:10px;z-index:8;padding:4px 10px;border-radius:999px;background:#2d1d18c9;color:#fff7dd;font-size:12px;backdrop-filter:blur(4px)}
@@ -430,14 +431,15 @@ button.cook-pot-chip{padding:0;cursor:pointer;color:inherit}
 .cook-result-card :is(.dish-sprite,.dish-thumb){width:160px;height:160px;margin:0 auto 10px}.cook-result-card h2{margin:0;font-family:var(--serif);color:#50351f}.cook-result-x{position:absolute;top:8px;right:8px;width:44px;height:44px;border:0;border-radius:50%;background:transparent;color:#715849;font-size:20px;cursor:pointer}
 .cook-rarity{display:inline-block;margin:7px 0;padding:2px 10px;border:1px solid var(--rarity,var(--N));border-radius:999px;color:var(--rarity,var(--N));font-weight:800}
 .cook-stock-list{max-height:330px;overflow:auto;overscroll-behavior:contain}.cook-stock-row{padding:8px 0;border-top:1px dashed var(--line)}
-@keyframes cook-lid-close{0%{transform:translateY(-54%) rotate(-7deg)}28%,72%{transform:translateY(0) rotate(0)}100%{transform:translateY(-54%) rotate(7deg)}}
+@keyframes cook-lid-close{0%{opacity:0;transform:translateY(-82%) rotate(-8deg) scale(.94)}18%{opacity:1}38%{opacity:1;transform:translateY(0) rotate(0) scale(1)}48%{transform:translateY(-3%) rotate(-1deg) scale(1)}58%,100%{opacity:1;transform:translateY(0) rotate(0) scale(1)}}
+@keyframes cook-lid-reduced{from{opacity:0;transform:translateY(-18%) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
 @keyframes cook-shake{0%,100%{transform:translateX(0) rotate(0)}50%{transform:translateX(3px) rotate(1deg)}}
 @keyframes cook-fire{0%{opacity:0;transform:translate(-50%,-50%) scale(.3)}25%,78%{opacity:.9;transform:translate(-50%,-50%) scale(1.08)}100%{opacity:0;transform:translate(-50%,-50%) scale(.45)}}
 @keyframes cook-sparks{0%{opacity:0;transform:translate(-50%,-35%) scale(.7)}35%,70%{opacity:1}100%{opacity:0;transform:translate(-50%,-76%) scale(1.12)}}
 @keyframes cook-chip-in{from{opacity:0;transform:translateY(8px) scale(.75)}}@keyframes cook-fade{from{opacity:0}}@keyframes cook-card-pop{from{opacity:0;transform:translateY(28px) scale(.86)}}
 @media(max-width:760px){.cook-layout{grid-template-columns:1fr}.cook-stage{aspect-ratio:1}.cook-pick-grid{grid-template-columns:repeat(3,1fr)}.cook-result-card{padding:18px}.cook-result-card :is(.dish-sprite,.dish-thumb){width:132px;height:132px}}
 @media(max-width:390px){.cook-pick-grid{grid-template-columns:repeat(2,1fr)}}
-@media(prefers-reduced-motion:reduce){.cook-stage *,.cook-result,.cook-result-card,.cook-pick{animation:none!important;transition:none!important}.cook-lid{transform:translateY(-54%) rotate(-7deg)}}
+@media(prefers-reduced-motion:reduce){.cook-stage *,.cook-result,.cook-result-card,.cook-pick{animation:none!important;transition:none!important}.cook-stage.is-cooking .cook-lid{animation:cook-lid-reduced .24s ease-out both!important}.cook-lid{transform:translateY(-18%) scale(.98)}}
 footer{color:var(--ink-soft);font-size:12px;text-align:center;padding:30px 0 0}
 `;
 function nav(key, active) {
@@ -1158,7 +1160,7 @@ export function uiCooking(f, now, key, flash, resultRaw) {
     const stage = `<section class="card cook-stage-card"><div class="cook-stage" id="cookStage" aria-label="俯视料理灶台">
       <img class="cook-pot" src="${BASE}/assets/cooking/cooking-pot.webp?v=20260804a" alt="像素铁锅">
       <div class="cook-fire" aria-hidden="true"></div><div class="cook-sparks" aria-hidden="true"></div>
-      <img class="cook-lid" src="${BASE}/assets/cooking/pot-lid.webp?v=20260804a" alt="木头锅盖">
+      <img class="cook-lid" src="${BASE}/assets/cooking/pot-lid.webp?v=20260804a" alt="" aria-hidden="true">
       <div class="cook-pot-items" id="cookPotItems" aria-live="polite"></div>
       <div class="cook-counter"><span id="cookCount">0</span>/5 · 点锅里的食材可取出</div>
     </div></section>`;
@@ -1178,7 +1180,7 @@ export function uiCooking(f, now, key, flash, resultRaw) {
       picker.addEventListener("click",e=>{const b=e.target.closest("[data-cook-ref]");if(!b||b.disabled||chosen.length>=5)return;chosen.push({ref:b.dataset.cookRef,name:b.dataset.cookName,emoji:b.dataset.cookEmoji});render();});
       pot.addEventListener("click",e=>{const b=e.target.closest("[data-remove]");if(!b)return;chosen.splice(Number(b.dataset.remove),1);render();});
       clear.addEventListener("click",()=>{chosen=[];render();});
-      form.addEventListener("submit",e=>{if(chosen.length<2){e.preventDefault();return;}e.preventDefault();stage.classList.add("is-cooking");start.disabled=true;clear.disabled=true;for(const b of buttons)b.disabled=true;const wait=matchMedia("(prefers-reduced-motion: reduce)").matches?0:1550;setTimeout(()=>form.submit(),wait);});
+      form.addEventListener("submit",e=>{if(chosen.length<2){e.preventDefault();return;}e.preventDefault();start.disabled=true;start.textContent="🍳 烹饪中…";clear.disabled=true;for(const b of buttons)b.disabled=true;stage.classList.remove("is-cooking");void stage.offsetWidth;stage.classList.add("is-cooking");const wait=matchMedia("(prefers-reduced-motion: reduce)").matches?320:1650;setTimeout(()=>form.submit(),wait);});
       render();
     })();</script>`;
     const ingredientShop = view.ingredients.map((item) => {
