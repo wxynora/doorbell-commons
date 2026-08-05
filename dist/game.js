@@ -1,5 +1,5 @@
 // 共享游戏核心：HTTP 服务和 CLI 适配器都调这里，保证同一套规则与存档结构。
-import { advance, plant, water, harvest, upgradeLand, shopOffer, collectionPct, codexCountByCategory, nextUpgradeReq, buyItem, useItem, craft, designCrop, plantBatch, waterAll, harvestAll, usePotionBatch, refreshShop, buyRecipe, affordablePotions, buyPotionSet, potionDailyLeft, shopAnimals, nextLockedAnimal, buyAnimalForPartner, ranchRoamLine, decorLines, takeInbox, shopPets, nextLockedPet, buyPetForPartner, buyPatrolGoose, farmSendRanch, potionTargets, circledNum, isUgcCrop, ensureKitchen, kitchenView, kitchenBuy, kitchenCook, kitchenUse, kitchenSell, ranchFeedAnimal, } from "./engine.js";
+import { advance, plant, water, harvest, upgradeLand, shopOffer, collectionPct, codexCountByCategory, nextUpgradeReq, buyItem, useItem, craft, designCrop, plantBatch, waterAll, harvestAll, usePotionBatch, refreshShop, buyRecipe, affordablePotions, buyPotionSet, potionDailyLeft, shopAnimals, nextLockedAnimal, buyAnimalForPartner, ranchRoamLine, decorLines, takeInbox, shopPets, nextLockedPet, buyPetForPartner, buyPatrolGoose, farmSendRanch, potionTargets, circledNum, isUgcCrop, ensureKitchen, kitchenView, kitchenBuy, kitchenCook, kitchenUse, kitchenSell, ranchFeedAnimal, dishSystemRecycleSilver, } from "./engine.js";
 import { describeFarm, harvestText, bonusEventText, dropText, potionDropText, plantText, waterText, statusFooter, } from "./flavor.js";
 import { expExplore, expChoose, expRetreat, expRoll, expView } from "./expedition.js";
 import { currentSeason, currentDayIndex } from "./time.js";
@@ -493,7 +493,7 @@ export function viewKitchen(f, now) {
         ? view.ownedIngredients.map((item) => `${item.emoji}${item.name}〔${item.id}〕×${item.qty}`).join("、")
         : "（空）";
     const dishes = view.dishes.length
-        ? view.dishes.map((dish) => `${dish.name}·${dish.rarity}〔${dish.id}〕·系统回收 ${dish.value} 金${dish.recipeId === "odd_dish" ? "" : ` + 🪙${cooking.systemRecycleSilver[dish.rarity] ?? 0}`}`).join("\n  ")
+        ? view.dishes.map((dish) => `${dish.name}·${dish.rarity}〔${dish.id}〕·系统回收 ${dish.value} 金${dish.recipeId === "odd_dish" ? "" : ` + 🪙${dish.recycleSilver}`}`).join("\n  ")
         : "（空）";
     const offers = view.recipeOffers.length
         ? view.recipeOffers.map((recipe) => `${recipe.name}·${recipe.rarity}〔${recipe.id}〕 🪙${recipe.price}${recipe.known ? "（已会）" : ""}`).join("\n  ")
@@ -898,7 +898,7 @@ function dispatchImpl(f, b, now) {
                     return { ok: false, text: r.error };
                 const line = r.odd
                     ? `🥴 锅里端出了一份「微妙的料理」：只能 1 金系统回收，或由你自己吃下并随机承受 2 小时负面效果。`
-                    : `🍲 做出了【${r.dish.name}·${r.dish.rarity}】！系统回收价已锁定为 ${r.dish.value} 牧场金币 + ${cooking.systemRecycleSilver[r.dish.rarity] ?? 0} 银。${r.discovered ? "还通过这次正确试做解锁了食谱。" : ""}`;
+                    : `🍲 做出了【${r.dish.name}·${r.dish.rarity}】！系统回收价已锁定为 ${r.dish.value} 牧场金币 + ${dishSystemRecycleSilver(r.dish)} 银。${r.discovered ? "还通过这次正确试做解锁了食谱。" : ""}`;
                 return { ok: true, text: withFooter(f, now, line) };
             }
             if (op === "use") {

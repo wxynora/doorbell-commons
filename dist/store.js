@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from "
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { makeFarm, genCode, makeNpcFarm } from "./game.js";
-import { normalizeDishPricing } from "./engine.js";
+import { normalizeDishPricing, pushInbox, pushRanchNotice } from "./engine.js";
 import { dumpUgc, loadUgc } from "./ugc.js";
 import { NPC_ID } from "./config.js";
 import { ensureFishing } from "./fishing.js";
@@ -14,6 +14,10 @@ const WORLD_FILE = resolve(DATA_DIR, "world.json");
 const DATA_FILE = resolve(DATA_DIR, "farms.json");
 const UGC_FILE = resolve(DATA_DIR, "ugc.json");
 const farms = new Map();
+const MAINTENANCE_SILVER_GRANT_ID = "maintenance-20260805-cooking-silver";
+const MAINTENANCE_SILVER_GRANT_AMOUNT = 100;
+const MAINTENANCE_SILVER_GRANT_NOTICE = "🎁 公共农场维护福利：已补发 🪙100 银币，感谢你来照看这座农场。";
+let appliedMaintenanceGrantIds = [];
 export function normalizeFarm(f) {
     f.materials ??= {};
     f.seeds ??= {};
@@ -68,6 +72,22 @@ export const getFarm = (id) => farms.get(id);
 export const allFarms = () => [...farms.values()];
 /** 真实玩家农场（排除常驻 NPC 阿土）——排行榜等"只算玩家"的地方用。 */
 export const playerFarms = () => [...farms.values()].filter((f) => f.id !== NPC_ID);
+/** 在本次生产启动时给当时已经存在的真实玩家一次性发放维护福利；全局 ID 与余额同一次原子保存。 */
+export function applyMaintenanceSilverGrant(farmValues = farms.values(), now = Date.now()) {
+    if (appliedMaintenanceGrantIds.includes(MAINTENANCE_SILVER_GRANT_ID))
+        return { applied: false, count: 0, amount: MAINTENANCE_SILVER_GRANT_AMOUNT };
+    let count = 0;
+    for (const farm of farmValues) {
+        if (!farm || farm.id === NPC_ID)
+            continue;
+        farm.silver = Math.max(0, Math.floor(Number(farm.silver) || 0)) + MAINTENANCE_SILVER_GRANT_AMOUNT;
+        pushInbox(farm, MAINTENANCE_SILVER_GRANT_NOTICE, now);
+        pushRanchNotice(farm, MAINTENANCE_SILVER_GRANT_NOTICE, now);
+        count += 1;
+    }
+    appliedMaintenanceGrantIds.push(MAINTENANCE_SILVER_GRANT_ID);
+    return { applied: true, count, amount: MAINTENANCE_SILVER_GRANT_AMOUNT };
+}
 export function insertFarm(farm) {
     if (farms.has(farm.id))
         throw new Error(`farm id already exists: ${farm.id}`);
@@ -112,6 +132,7 @@ export function save() {
     writeAtomic(WORLD_FILE, JSON.stringify({
         format: "aifarm-world",
         version: 1,
+        maintenanceGrantIds: appliedMaintenanceGrantIds,
         farms: [...farms.values()],
         ugc: dumpUgc(),
     }, null, 2));
@@ -123,12 +144,19 @@ export function load() {
             if (world?.format !== "aifarm-world" || world?.version !== 1 || !Array.isArray(world?.farms)) {
                 throw new Error("unknown world format");
             }
+            appliedMaintenanceGrantIds = Array.isArray(world.maintenanceGrantIds)
+                ? world.maintenanceGrantIds.map(String)
+                : [];
             loadUgc(Array.isArray(world.ugc) ? world.ugc : []);
             farms.clear();
             for (const f of world.farms)
                 farms.set(f.id, normalizeFarm(f));
             console.log(`[store] 已载入 ${farms.size} 个农场`);
-            if (ensureNpc())
+            const npcCreated = ensureNpc();
+            const grant = applyMaintenanceSilverGrant();
+            if (grant.applied)
+                console.log(`[store] 维护福利已发放 ${grant.count} 个玩家农场，每家 ${grant.amount} 银`);
+            if (npcCreated || grant.applied)
                 save();
             return;
         }
@@ -147,8 +175,10 @@ export function load() {
         }
         catch { /* 忽略 */ }
     }
+    appliedMaintenanceGrantIds = [];
     if (!existsSync(DATA_FILE)) {
         ensureNpc();
+        applyMaintenanceSilverGrant();
         save();
         return;
     } // 全新启动：先把常驻 NPC 阿土建出来
@@ -168,6 +198,9 @@ export function load() {
         console.error(`[store] 存档损坏，已备份到 ${bak}，以空状态启动:`, err);
     }
     ensureNpc();
+    const grant = applyMaintenanceSilverGrant();
+    if (grant.applied)
+        console.log(`[store] 维护福利已发放 ${grant.count} 个玩家农场，每家 ${grant.amount} 银`);
     save(); // 老格式只读一次，随后迁入单文件原子 world.json
 }
 //# sourceMappingURL=store.js.map

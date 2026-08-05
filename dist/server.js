@@ -2,7 +2,7 @@
 import { createServer } from "node:http";
 import { randomUUID, randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { advance, steal, canStealNow, stealAvailability, stealShieldRemain, isUgcCrop, visitorWater, tryWaterReward, humanHarvestAll, humanHarvestLeft, ranchRoamLine, buyPotionSet, refreshShop, ranchCollect, ranchRemit, ranchBuyAccessory, ranchBuyDecoration, ranchWearAccessory, ranchTakeOffAccessory, ranchPlaceDecoration, ranchUnplaceDecoration, ranchUpgradeAnimal, ranchNameAnimal, ranchNamePet, ranchNamePatrolGoose, ranchTogglePin, dispatchRanchRaid, catchRanchRaid, settleRanchRaids, ensureHumanKey, takeInbox, takeRanchNotices, pushSocialInbox, potionDailyLeft, designCrop, craft, nextUpgradeReq, toggleStar, cookingDebuffReason, cookingDebuffStatusText, bribeGuardDog, kitchenBuy, kitchenCook, kitchenUse, kitchenSell, ranchFeedAnimal, kitchenView } from "./engine.js";
+import { advance, steal, canStealNow, stealAvailability, stealShieldRemain, isUgcCrop, visitorWater, tryWaterReward, humanHarvestAll, humanHarvestLeft, ranchRoamLine, buyPotionSet, refreshShop, ranchCollect, ranchRemit, ranchBuyAccessory, ranchBuyDecoration, ranchWearAccessory, ranchTakeOffAccessory, ranchPlaceDecoration, ranchUnplaceDecoration, ranchUpgradeAnimal, ranchNameAnimal, ranchNamePet, ranchNamePatrolGoose, ranchTogglePin, dispatchRanchRaid, catchRanchRaid, settleRanchRaids, ensureHumanKey, takeInbox, takeRanchNotices, pushSocialInbox, potionDailyLeft, designCrop, craft, nextUpgradeReq, toggleStar, cookingDebuffReason, cookingDebuffStatusText, bribeGuardDog, kitchenBuy, kitchenCook, kitchenUse, kitchenSell, ranchFeedAnimal, kitchenView, dishSystemRecycleSilver } from "./engine.js";
 import { dispatch, HELP, farmView, viewShop, viewEncyclopedia, viewBag, shopBrief, viewMarket, buyFromMarket, visitView, ranchAgentSection, refPrice, tendNpc, buyNpcSeed, randomTip, hasDamagedPublicName, viewKitchen } from "./game.js";
 import { harvestText, stealThiefText, statusFooter, waterText, describeFarm } from "./flavor.js";
 import { createFarm, getFarm, allFarms, playerFarms, save } from "./store.js";
@@ -836,7 +836,7 @@ function kitchenAgentActions(f, now) {
             if (f.ranch?.pets?.some((pet) => pet.kindId === "dog"))
                 L.push({ label: `🐶 把「${dish.name}·${dish.rarity}」喂狗`, action: "kitchen", params: { op: "use", dishId: dish.id, target: "dog" } });
         }
-        L.push({ label: `♻️ 系统回收「${dish.name}」（${dish.value}牧场金）`, action: "kitchen", params: { op: "sell", itemId: dish.id, to: "system" } });
+        L.push({ label: `♻️ 系统回收「${dish.name}」（${dish.value}牧场金${dish.recipeId === "odd_dish" ? "" : ` + ${dish.recycleSilver}银`}）`, action: "kitchen", params: { op: "sell", itemId: dish.id, to: "system" } });
     }
     for (const product of view.products.slice(0, 6))
         L.push({ label: `♻️ 系统回收「${product.name}」（${product.value}牧场金）`, action: "kitchen", params: { op: "sell", itemId: product.id, to: "system" } });
@@ -1380,8 +1380,8 @@ export function startServer(port, host = "127.0.0.1") {
                             if (r.ok) {
                                 flash = r.odd
                                     ? "🥴 没有命中固定配方，食材已全部消耗，得到一份微妙的料理"
-                                    : `🍲 做出「${r.dish.name}·${r.dish.rarity}」，锁定系统回收价 ${r.dish.value} 金${r.discovered ? "；正确试做同时解锁了食谱" : ""}`;
-                                result = JSON.stringify({ id: r.dish.id, recipeId: r.dish.recipeId, name: r.dish.name, rarity: r.dish.rarity, value: r.dish.value, image: r.dish.image, odd: r.odd, discovered: r.discovered });
+                                    : `🍲 做出「${r.dish.name}·${r.dish.rarity}」，锁定系统回收价 ${r.dish.value} 金 + ${dishSystemRecycleSilver(r.dish)} 银${r.discovered ? "；正确试做同时解锁了食谱" : ""}`;
+                                result = JSON.stringify({ id: r.dish.id, recipeId: r.dish.recipeId, name: r.dish.name, rarity: r.dish.rarity, value: r.dish.value, recycleSilver: dishSystemRecycleSilver(r.dish), image: r.dish.image, odd: r.odd, discovered: r.discovered });
                             }
                             else
                                 flash = r.error;

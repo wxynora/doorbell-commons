@@ -640,6 +640,14 @@ export function normalizeDishPricing(dish) {
     dish.pricingVersion = COOKING_PRICE_VERSION;
     return true;
 }
+/** 正常料理回收返银：保留稀有度下限，并按锁定金币价值额外返约 1/50。 */
+export function dishSystemRecycleSilver(dish) {
+    if (!dish || dish.recipeId === "odd_dish")
+        return 0;
+    const rarityFloor = Math.max(0, Math.floor(Number(cooking.systemRecycleSilver[dish.rarity]) || 0));
+    const valueReward = Math.max(0, Math.round((Number(dish.value) || 0) / 50));
+    return Math.max(rarityFloor, valueReward);
+}
 function shuffledWithFarmRng(farm, values) {
     const out = [...values];
     const rng = new Rng(farm.rngState ?? 1);
@@ -701,7 +709,7 @@ export function kitchenView(farm, now) {
         ingredients,
         ownedIngredients: Object.entries(kitchen.ingredients).filter(([, qty]) => qty > 0)
             .map(([id, qty]) => ({ ...cookingIngredientById.get(id), id, qty })),
-        dishes: kitchen.dishes,
+        dishes: kitchen.dishes.map((dish) => ({ ...dish, recycleSilver: dishSystemRecycleSilver(dish) })),
         recipeOffers,
         knownRecipes: kitchen.knownRecipes.map((id) => cookingRecipeById.get(id)).filter(Boolean),
         debuff: activeCookingDebuff(farm, now),
@@ -896,7 +904,7 @@ export function kitchenSell(farm, itemId, to, price, now) {
         else
             kitchen.dishes = kitchen.dishes.filter((entry) => entry !== dish);
         ensureRanch(farm).coins += item.value;
-        const silver = dish && dish.recipeId !== "odd_dish" ? (cooking.systemRecycleSilver[dish.rarity] ?? 0) : 0;
+        const silver = dishSystemRecycleSilver(dish);
         farm.silver += silver;
         return { ok: true, to, name: item.name, value: item.value, silver, item };
     }
