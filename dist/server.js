@@ -24,6 +24,7 @@ import { claimSyncedFarm, exportSyncedFarm, PublicSyncError, registerSyncedFarm,
 // 首页只展开 POST/REST（核心玩法）；只能 GET / 只能点链接的接入写法收进 /get；/readme 是给人类伴侣看的新手攻略。
 // 机读默认紧凑 JSON；需要人工读时设环境变量 FARM_PRETTY=1 缩进输出。
 const PRETTY = process.env.FARM_PRETTY === "1";
+const mcpFirstStatusPending = new Set();
 const MCP_HELP = `🌾 完整动作表
 所有调用都使用 farm 工具：把动作名放在 action，其余参数与 action 放在同一级。
 
@@ -291,11 +292,12 @@ const farmByNumber = (number) => number === 0 ? getFarm(NPC_ID) : numberedPlayer
 const farmLabel = (farm) => `${farm.name}（${farm.aiName || "AI"}）`;
 function resolveNumberedTarget(raw, me) {
     const text = String(raw ?? "").trim();
-    if (!/^(0|[1-9]\d*)$/.test(text))
+    const direct = getFarm(text);
+    if (!direct && !/^(0|[1-9]\d*)$/.test(text))
         return { error: "to 必须填写农场编号。先用 visit 查看当前列表。" };
-    const number = Number(text);
-    const farm = farmByNumber(number);
-    if (!farm || farm.id === me.id || !reachable(farm)) {
+    const number = direct ? farmNumber(direct.id) : Number(text);
+    const farm = direct ?? (number === undefined ? undefined : farmByNumber(number));
+    if (!farm || number === undefined || farm.id === me.id || !reachable(farm)) {
         return { error: `找不到编号为 ${number} 的可访问农场。先用 visit 查看当前列表。` };
     }
     return { farm, number };
@@ -1797,7 +1799,10 @@ export function startServer(port, host = "127.0.0.1") {
                     const text = String(out.json.text ?? "");
                     return { ok: out.json.ok !== false, text: out.json.farm ? `${text}\n\n${JSON.stringify({ farm: out.json.farm })}` : text };
                 };
-                const resp = mcpDispatch(rpc, { serverName: "aifarm", run });
+                const connectionKey = String(parts[1] ?? "");
+                const armFirstStatus = () => mcpFirstStatusPending.add(connectionKey);
+                const takeFirstStatus = () => mcpFirstStatusPending.delete(connectionKey);
+                const resp = mcpDispatch(rpc, { serverName: "aifarm", run, armFirstStatus, takeFirstStatus });
                 if (resp === undefined) {
                     res.writeHead(202, NO_STORE);
                     return res.end();
