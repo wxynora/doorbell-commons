@@ -411,13 +411,14 @@ nav a.on,nav a:hover{color:var(--leaf-deep);background:#e6f3d8}
 .cook-stage.is-cooking .cook-pot{animation:cook-shake .96s ease-in-out .56s both}
 .cook-fire{position:absolute;z-index:4;left:50%;top:66%;width:18%;aspect-ratio:1;transform:translate(-50%,-50%) scale(.4);opacity:0;border-radius:50%;background:radial-gradient(circle,#fff59d 0 16%,#ffb229 18% 38%,#ef5b2e 40% 58%,transparent 60%);filter:blur(1px)}
 .cook-stage.is-cooking .cook-fire{animation:cook-fire 1.15s ease .35s both}
-.cook-sparks{position:absolute;z-index:9;left:50%;top:48%;width:32%;height:24%;transform:translate(-50%,-50%);opacity:0;background:radial-gradient(circle at 12% 70%,#ffd461 0 2%,transparent 3%),radial-gradient(circle at 80% 45%,#fff2a0 0 2%,transparent 3%),radial-gradient(circle at 60% 12%,#ff9b42 0 2.4%,transparent 3.4%),radial-gradient(circle at 35% 28%,#ffe891 0 2%,transparent 3%)}
+.cook-sparks{position:absolute;z-index:9;left:50%;top:48%;width:32%;height:24%;transform:translate(-50%,-50%);opacity:0;pointer-events:none;background:radial-gradient(circle at 12% 70%,#ffd461 0 2%,transparent 3%),radial-gradient(circle at 80% 45%,#fff2a0 0 2%,transparent 3%),radial-gradient(circle at 60% 12%,#ff9b42 0 2.4%,transparent 3.4%),radial-gradient(circle at 35% 28%,#ffe891 0 2%,transparent 3%)}
 .cook-stage.is-cooking .cook-sparks{animation:cook-sparks 1s ease .42s both}
 .cook-pot-items{position:absolute;z-index:7;left:37%;top:45%;width:26%;min-height:9%;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:3px;transition:opacity .16s ease,transform .16s ease}
 .cook-stage.is-cooking .cook-pot-items{opacity:0;transform:scale(.82)}
 .cook-pot-chip{position:relative;display:grid;place-items:center;width:44px;height:44px;border:1px solid #fff2c4;border-radius:50%;background:#fff8dbc9;font-size:21px;box-shadow:0 3px 8px #3b1c1544;animation:cook-chip-in .22s ease both}
-button.cook-pot-chip{padding:0;cursor:pointer;color:inherit;touch-action:manipulation}
-button.cook-pot-chip::after{content:"×";position:absolute;right:-3px;top:-5px;display:grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#713b2f;color:#fff8e7;font-size:13px;font-weight:800;box-shadow:0 2px 5px #32160855}
+button.cook-pot-chip{padding:0;cursor:pointer;color:inherit;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+button.cook-pot-chip:active{transform:scale(.92);background:#fff1b8}
+.cook-pot-qty{position:absolute;right:-5px;top:-6px;min-width:22px;height:20px;display:grid;place-items:center;padding:0 4px;border-radius:999px;background:#713b2f;color:#fff8e7;font:800 12px/1 system-ui;box-shadow:0 2px 5px #32160855;pointer-events:none}
 .cook-counter{position:absolute;left:12px;bottom:10px;z-index:8;padding:4px 10px;border-radius:999px;background:#2d1d18c9;color:#fff7dd;font-size:12px;backdrop-filter:blur(4px)}
 .cook-pick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px}
 .cook-pick{appearance:none;min-height:72px;padding:8px;border:1px solid var(--line);border-radius:13px;background:#fffdf7;color:var(--ink);font:inherit;cursor:pointer;text-align:center;transition:transform .14s ease,border-color .14s ease,box-shadow .14s ease}
@@ -437,7 +438,7 @@ button.cook-pot-chip::after{content:"×";position:absolute;right:-3px;top:-5px;d
 @keyframes cook-shake{0%,100%{transform:rotate(0)}12.5%{transform:rotate(-15deg)}25%{transform:rotate(15deg)}37.5%{transform:rotate(-15deg)}50%{transform:rotate(15deg)}62.5%{transform:rotate(-15deg)}75%{transform:rotate(15deg)}87.5%{transform:rotate(-10deg)}}
 @keyframes cook-fire{0%{opacity:0;transform:translate(-50%,-50%) scale(.3)}25%,78%{opacity:.9;transform:translate(-50%,-50%) scale(1.08)}100%{opacity:0;transform:translate(-50%,-50%) scale(.45)}}
 @keyframes cook-sparks{0%{opacity:0;transform:translate(-50%,-35%) scale(.7)}35%,70%{opacity:1}100%{opacity:0;transform:translate(-50%,-76%) scale(1.12)}}
-@keyframes cook-chip-in{from{opacity:0;transform:translateY(8px) scale(.75)}}@keyframes cook-fade{from{opacity:0}}@keyframes cook-card-pop{from{opacity:0;transform:translateY(28px) scale(.86)}}
+@keyframes cook-chip-in{from{opacity:0;transform:translateY(8px)}}@keyframes cook-fade{from{opacity:0}}@keyframes cook-card-pop{from{opacity:0;transform:translateY(28px) scale(.86)}}
 @media(max-width:760px){.cook-layout{grid-template-columns:1fr}.cook-stage{aspect-ratio:1}.cook-pick-grid{grid-template-columns:repeat(3,1fr)}.cook-result-card{padding:18px}.cook-result-card :is(.dish-sprite,.dish-thumb){width:132px;height:132px}}
 @media(max-width:390px){.cook-pick-grid{grid-template-columns:repeat(2,1fr)}}
 @media(prefers-reduced-motion:reduce){.cook-stage *,.cook-result,.cook-result-card,.cook-pick{animation:none!important;transition:none!important}.cook-stage.is-cooking .cook-lid{animation:cook-lid-reduced .24s ease-out both!important}.cook-lid{transform:translateY(-18%) scale(.98)}}
@@ -1176,8 +1177,9 @@ export function uiCooking(f, now, key, flash, resultRaw) {
       const buttons=[...picker.querySelectorAll("[data-cook-ref]")];
       function removeChoice(index){if(!Number.isInteger(index)||index<0||index>=chosen.length)return;chosen.splice(index,1);render();}
       function render(){hidden.value=JSON.stringify(chosen.map(x=>x.ref));count.textContent=String(chosen.length);start.disabled=chosen.length<2;
-        pot.innerHTML=chosen.map((x,i)=>'<button type="button" class="cook-pot-chip" data-remove="'+i+'" title="取出'+x.name+'" aria-label="取出'+x.name+'">'+x.emoji+'</button>').join("");
-        for(const chip of pot.querySelectorAll("[data-remove]"))chip.addEventListener("click",()=>removeChoice(Number(chip.dataset.remove)));
+        const groups=[];for(const item of chosen){const group=groups.find(x=>x.ref===item.ref);if(group)group.qty+=1;else groups.push({...item,qty:1});}
+        pot.innerHTML=groups.map((x,i)=>'<button type="button" class="cook-pot-chip" data-remove-group="'+i+'" title="取出一份'+x.name+'" aria-label="取出一份'+x.name+'，锅内共'+x.qty+'份">'+x.emoji+'<span class="cook-pot-qty" aria-hidden="true">×'+x.qty+'</span></button>').join("");
+        for(const chip of pot.querySelectorAll("[data-remove-group]"))chip.addEventListener("click",()=>{const group=groups[Number(chip.dataset.removeGroup)];if(!group)return;removeChoice(chosen.map(x=>x.ref).lastIndexOf(group.ref));});
         for(const b of buttons){const used=chosen.filter(x=>x.ref===b.dataset.cookRef).length;b.setAttribute("aria-pressed",used>0?"true":"false");b.disabled=used>=Number(b.dataset.cookStock||1)||chosen.length>=5;}
       }
       picker.addEventListener("click",e=>{const b=e.target.closest("[data-cook-ref]");if(!b||b.disabled||chosen.length>=5)return;chosen.push({ref:b.dataset.cookRef,name:b.dataset.cookName,emoji:b.dataset.cookEmoji});render();});
