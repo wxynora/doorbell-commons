@@ -4,10 +4,12 @@ import {
     fishing, fishingSpots, fishingFish, fishingBaits, fishingEvents, fishingItems,
     fishingSpotById, fishingFishById, fishingBaitById, fishingEventById, fishingItemById,
 } from "./content.js";
-import { currentSeason } from "./time.js";
+import { currentSeason, currentDayIndex } from "./time.js";
 import { randomUUID } from "node:crypto";
 
 const RARITY_RANK = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4, mythic: 5 };
+const ECOLOGY_NOTICE = "🌿 为了让鱼群休息、繁衍，也给水域留一点恢复时间，每座农场每天最多钓 20 竿。无论钓到鱼、宝箱还是旧靴子，只要鱼线抛进水里都算一竿；北京时间 0 点刷新。";
+const DAILY_LIMIT_REACHED = "🌿 今天已经钓满 20 竿啦。鱼群需要休息，水面也该安静一会儿；先整理鱼篓、卖鱼或做料理吧，北京时间 0 点后再来。";
 
 class FishingRng {
     constructor(state, calls = 0) {
@@ -61,6 +63,9 @@ export function ensureFishing(farm) {
     state.stats.totalCasts = cleanCount(state.stats.totalCasts);
     state.stats.totalCaught = cleanCount(state.stats.totalCaught);
     state.stats.totalChests = cleanCount(state.stats.totalChests);
+    state.dailyCasts = (state.dailyCasts && typeof state.dailyCasts === "object") ? state.dailyCasts : {};
+    state.dailyCasts.day = Number.isSafeInteger(state.dailyCasts.day) ? state.dailyCasts.day : -1;
+    state.dailyCasts.count = cleanCount(state.dailyCasts.count);
     state.fever = cleanCount(state.fever);
     state.freeBait = cleanCount(state.freeBait);
     state.lastBaitId = fishingBaitById.has(state.lastBaitId) ? state.lastBaitId : "basic_worm";
@@ -79,11 +84,19 @@ const seasonDef = (now) => {
 
 const sumBait = (state) => Object.values(state.baitInventory).reduce((sum, n) => sum + cleanCount(n), 0);
 
+function dailyCasts(state, now) {
+    const day = currentDayIndex(now);
+    if (state.dailyCasts.day !== day)
+        state.dailyCasts = { day, count: 0 };
+    return state.dailyCasts;
+}
+
 export function fishingStatusLine(farm, now) {
     const state = ensureFishing(farm);
     const spot = fishingSpotById.get(state.locationId);
     const season = seasonDef(now);
-    return `🎣 ${spot?.name ?? "农场鱼塘"}·${season.name}｜余饵 ${sumBait(state)}｜鱼篓 ${state.catchInventory.length}｜图鉴 ${Object.keys(state.codex).length}/${fishingFish.length}｜💰${farm.coins}｜🪙${farm.silver}`;
+    const today = dailyCasts(state, now);
+    return `🎣 ${spot?.name ?? "农场鱼塘"}·${season.name}｜余饵 ${sumBait(state)}｜鱼篓 ${state.catchInventory.length}｜图鉴 ${Object.keys(state.codex).length}/${fishingFish.length}｜今日 ${today.count}/${fishing.dailyCastLimit} 竿｜💰${farm.coins}｜🪙${farm.silver}`;
 }
 
 function activeAtSpot(farms, spotId, now, excludeId) {
@@ -262,6 +275,7 @@ function castStep(farm, state, rng, bait, now) {
         state.baitInventory[bait.id]--;
     state.lastBaitId = bait.id;
     state.stats.totalCasts++;
+    dailyCasts(state, now).count++;
     if (rng.next() < fishing.eventChance)
         return { consumed: true, ...resolveFishingEvent(farm, state, rng) };
     const junkChance = fishing.junkChance * (bait.effects?.junk_chance_mult ?? 1);
@@ -324,6 +338,14 @@ function castMany(farm, state, farms, params, now) {
     const parsedStop = parseStop(params.stop);
     if (!parsedStop.ok)
         return { ok: false, text: parsedStop.error };
+    const today = dailyCasts(state, now);
+    const remaining = Math.max(0, fishing.dailyCastLimit - today.count);
+    if (remaining === 0)
+        return { ok: false, text: DAILY_LIMIT_REACHED };
+    const castTimes = Math.min(times, remaining);
+    const ecologyLimit = times > remaining
+        ? `🌿 今天只剩 ${remaining} 竿生态额度，本次已自动按 ${remaining} 竿收竿。再多抛就要把鱼群吓跑啦。`
+        : "";
     const chosen = chooseCastBait(state, params.bait);
     if (!chosen.ok)
         return { ok: false, text: chosen.error };
@@ -334,7 +356,7 @@ function castMany(farm, state, farms, params, now) {
     const highlights = [];
     const caught = new Map();
     let done = 0, fishCount = 0, junkCount = 0, eventCount = 0, stopReason = "";
-    for (let i = 0; i < times; i++) {
+    for (let i = 0; i < castTimes; i++) {
         const nextBait = chooseCastBait(state, params.bait);
         if (!nextBait.ok) {
             highlights.push(nextBait.error);
@@ -369,7 +391,8 @@ function castMany(farm, state, farms, params, now) {
         return { ok: true, text: highlights.join("\n") };
     const haul = [...caught].map(([name, count]) => `${name}×${count}`).join("、") || "无";
     const summary = `🎣 连钓 ${done} 竿${stopReason}｜鱼 ${fishCount} 条：${haul}｜垃圾/空竿 ${junkCount}｜事件 ${eventCount}`;
-    return { ok: true, text: highlights.length ? `${highlights.join("\n———\n")}\n\n${summary}` : summary };
+    const text = highlights.length ? `${highlights.join("\n———\n")}\n\n${summary}` : summary;
+    return { ok: true, text: ecologyLimit ? `${text}\n${ecologyLimit}` : text };
 }
 
 function buyBait(farm, state, requested, qty) {
@@ -503,7 +526,7 @@ function spotsView(farm, state, farms, now) {
         const fishCount = fishingFish.filter((item) => eligibleFish(item, spot.id, season.id)).length;
         return `${state.locationId === spot.id ? "✦" : "·"} ${spot.name}〔${spot.id}〕 ${occupied}/${fishing.capacityPerSpot}｜${season.name}季 ${fishCount} 种鱼`;
     });
-    return `🎣 钓点（每处最多 ${fishing.capacityPerSpot} 家，抛竿后占位 10 分钟）\n${rows.join("\n")}`;
+    return `🎣 钓点（每处最多 ${fishing.capacityPerSpot} 家，抛竿后占位 10 分钟）\n${rows.join("\n")}\n\n${ECOLOGY_NOTICE}`;
 }
 
 export function fishingKitchenProducts(farm) {

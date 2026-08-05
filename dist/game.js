@@ -114,6 +114,7 @@ export const HELP = `🌾 你的农场
      回收或摆摊                 kitchen {"op":"sell","itemId":"实例id","to":"system|market","price":银币价}
   🥣 给生产动物投喂            ranch-feed {"animal":0}            （每天 3 次；花银币，下一份正常产物 +10%，不能叠加）
   🎣 去钓鱼                    fish {"times":10}                  （无参抛 1 竿；可同次买饵、换钓点并连钓）
+                              每天最多 20 竿；鱼获、事件和垃圾都计入，让鱼群和水域有时间恢复，北京时间 0 点刷新。
      查看鱼篓/图鉴/钓点         fish {"view":"basket|codex|spots"}
      卖鱼/开宝箱/离开钓位       fish {"sell":"all"} / {"open":"宝箱id"} / {"leave":true}
 

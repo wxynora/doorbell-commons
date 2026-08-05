@@ -1,6 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { makeFarm } from "./game.js";
-import { getCrop } from "./content.js";
+import { fishing, getCrop } from "./content.js";
 import { allUgc, dumpUgc, loadUgc, registerUgc } from "./ugc.js";
 import { allFarms, getFarm, insertFarm, normalizeFarm, replaceFarm } from "./store.js";
 export class PublicSyncError extends Error {
@@ -240,6 +240,19 @@ function mergeThreeWay(base, owner, server, path = []) {
         return clone(owner);
     if (same(owner, base))
         return clone(server);
+    if (path[0] === "fishing" && path.at(-1) === "dailyCasts"
+        && isRecord(base) && isRecord(owner) && isRecord(server)) {
+        const day = (value) => Number.isSafeInteger(value.day) ? value.day : -1;
+        const count = (value) => Math.max(0, Math.floor(Number(value.count) || 0));
+        const ownerDay = day(owner), serverDay = day(server);
+        if (ownerDay !== serverDay)
+            return clone(ownerDay > serverDay ? owner : server);
+        const baseCount = day(base) === ownerDay ? count(base) : 0;
+        return {
+            day: ownerDay,
+            count: Math.min(fishing.dailyCastLimit, Math.max(0, count(owner) + count(server) - baseCount)),
+        };
+    }
     if (path[0] === "fishing" && path.includes("codex") && path.at(-1) === "maxSize"
         && typeof owner === "number" && typeof server === "number")
         return Math.max(owner, server);

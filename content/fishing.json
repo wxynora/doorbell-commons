@@ -8,6 +8,7 @@
   },
   "capacityPerSpot": 3,
   "leaseMs": 600000,
+  "dailyCastLimit": 20,
   "initialLocationId": "moonlit_pond",
   "initialBaitInventory": {
     "basic_worm": 5
@@ -1293,14 +1294,14 @@
     {
       "id": "basic_worm",
       "name": "普通蚯蚓",
-      "cost": 10,
+      "cost": 30,
       "description": "最朴素的蚯蚓，没有任何特殊效果，胜在便宜。",
       "effects": {}
     },
     {
       "id": "glow_bait",
       "name": "夜光饵",
-      "cost": 35,
+      "cost": 100,
       "description": "在黑暗中散发幽幽蓝光，对夜行性鱼类格外有吸引力。",
       "effects": {
         "rarity_weight_mult": {
@@ -1316,7 +1317,7 @@
     {
       "id": "golden_lure",
       "name": "黄金亮片",
-      "cost": 80,
+      "cost": 300,
       "description": "华丽的金色旋转亮片，专挑大货：压住普通小鱼的咬口、把机会让给稀有及以上的稀客，还更少缠上杂物。（这片水域有稀有鱼时才划算）",
       "effects": {
         "rarity_weight_mult": {
