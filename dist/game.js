@@ -113,10 +113,8 @@ export const HELP = `🌾 你的农场
      使用料理                   kitchen {"op":"use","dishId":"料理实例id","target":"cat|dog|self|guard-dog"}
      回收或摆摊                 kitchen {"op":"sell","itemId":"实例id","to":"system|market","price":银币价}
   🥣 给生产动物投喂            ranch-feed {"animal":0}            （每天 3 次；花银币，下一份正常产物 +10%，不能叠加）
-  🎣 去钓鱼                    fish {"times":10}                  （无参抛 1 竿；可同次买饵、换钓点并连钓）
-                              每天最多 20 竿；鱼获、事件和垃圾都计入，让鱼群和水域有时间恢复，北京时间 0 点刷新。
-     查看鱼篓/图鉴/钓点         fish {"view":"basket|codex|spots"}
-     卖鱼/开宝箱/离开钓位       fish {"sell":"all"} / {"open":"宝箱id"} / {"leave":true}
+  🎣 钓鱼（每日最多 20 竿）：抛竿 {"action":"fish","times":10,"bait":"普通蚯蚓","location":"月光池塘","stop":"rare"}；买饵并钓 {"action":"fish","bait":"普通蚯蚓","buy":10,"times":10}；查看 {"action":"fish","view":"basket|codex|spots"}；卖鱼 {"action":"fish","sell":"all"}；开宝箱 {"action":"fish","open":"宝箱id"}；离开钓位 {"action":"fish","leave":true}。stop 可填 new、rare、event。
+                              鱼获、事件和垃圾都计入，让鱼群和水域有时间恢复，北京时间 0 点刷新。
 
 作物按真的时辰长：寻常约 3 小时、奇幻约 6 小时、限定看缘分；喂药水可立刻催熟。地越肥，越招稀罕作物。
 收成时偶尔掉材料（龙的指甲、海神鳞片、路边石头…），攒够三样熔成限定种子，什么时候想种就种。
