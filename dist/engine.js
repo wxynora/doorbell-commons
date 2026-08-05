@@ -6,6 +6,7 @@ import { TICK_MS, GROW_TICKS, SEED_PRICE, WATER_LUCK_PER, WATER_LUCK_CAP, MAX_LO
 import { crops, cropById, getCrop, animals, animalById, pets, petById, accessories, decorations, accessoryById, decorationById, landTiers, totalCropCount, qualities, materials, materialById, recipes, specialEvents, expDecorById, cooking, cookingProducts, cookingIngredients, cookingRecipes, cookingProductById, cookingIngredientById, cookingRecipeById, } from "./content.js";
 import { registerUgc, ugcCount } from "./ugc.js";
 import { onTaskEvent } from "./tasks.js";
+import { fishingKitchenProducts, removeFishingCatchIds } from "./fishing.js";
 import { randomUUID } from "node:crypto";
 /** 取（必要时补发）人类前端钥匙。老农场没有就现生成一把；调用方负责 save()。 */
 export function ensureHumanKey(farm) {
@@ -654,7 +655,7 @@ export function kitchenView(farm, now) {
     const recipeOffers = shop.recipeIds.map((id) => cookingRecipeById.get(id)).filter(Boolean)
         .map((recipe) => ({ ...recipe, price: cooking.recipePrices[recipe.rarity], known: kitchen.knownRecipes.includes(recipe.id) }));
     return {
-        products: kitchen.products,
+        products: [...kitchen.products, ...fishingKitchenProducts(farm)],
         ingredients,
         ownedIngredients: Object.entries(kitchen.ingredients).filter(([, qty]) => qty > 0)
             .map(([id, qty]) => ({ ...cookingIngredientById.get(id), id, qty })),
@@ -701,10 +702,13 @@ export function kitchenBuy(farm, kind, id, qty, now) {
     return { ok: false, error: "kind 只能是 ingredient 或 recipe。" };
 }
 const cookingKey = (ids) => [...ids].sort().join("|");
-function selectCookingItems(kitchen, refs) {
+function selectCookingItems(farm, refs) {
+    const kitchen = ensureKitchen(farm);
     if (!Array.isArray(refs) || refs.length < 2 || refs.length > 5)
         return { ok: false, error: "每次请放 2～5 份食材。" };
     const usedProducts = new Set();
+    const usedFish = new Set();
+    const fishProducts = fishingKitchenProducts(farm);
     const ingredientCounts = {};
     const selected = [];
     for (const raw of refs) {
@@ -721,23 +725,34 @@ function selectCookingItems(kitchen, refs) {
             selected.push({ source: "product", id: product.itemId, instanceId: product.id, name: def.name, value: product.value });
             continue;
         }
+        let fish = fishProducts.find((item) => item.id === ref && !usedFish.has(item.id));
+        if (!fish && ref === "fish:any")
+            fish = fishProducts.find((item) => !usedFish.has(item.id));
+        if (!fish)
+            fish = fishProducts.find((item) => (item.fishId === ref || item.name === ref) && !usedFish.has(item.id));
+        if (fish) {
+            usedFish.add(fish.id);
+            selected.push({ source: "fish", id: "fish:any", instanceId: fish.id, name: fish.name, value: fish.value });
+            continue;
+        }
         const ingredient = cookingIngredientById.get(ref) ?? cookingIngredients.find((item) => item.name === ref);
         if (!ingredient)
             return { ok: false, error: `食材柜里找不到「${ref}」。` };
         ingredientCounts[ingredient.id] = (ingredientCounts[ingredient.id] ?? 0) + 1;
         if ((kitchen.ingredients[ingredient.id] ?? 0) < ingredientCounts[ingredient.id])
             return { ok: false, error: `「${ingredient.name}」数量不够。` };
-        selected.push({ source: "ingredient", id: ingredient.id, name: ingredient.name, value: ingredient.price });
+        selected.push({ source: "ingredient", id: ingredient.id, name: ingredient.name, value: ingredient.price * cooking.ingredientRecycleValueMultiplier });
     }
-    return { ok: true, selected, usedProducts, ingredientCounts };
+    return { ok: true, selected, usedProducts, usedFish, ingredientCounts };
 }
 export function kitchenCook(farm, refs, now) {
     const kitchen = ensureKitchen(farm);
-    const picked = selectCookingItems(kitchen, refs);
+    const picked = selectCookingItems(farm, refs);
     if (!picked.ok)
         return picked;
     const recipe = cookingRecipes.find((item) => cookingKey(item.ingredients) === cookingKey(picked.selected.map((item) => item.id)));
     kitchen.products = kitchen.products.filter((item) => !picked.usedProducts.has(item.id));
+    removeFishingCatchIds(farm, picked.usedFish);
     for (const [id, n] of Object.entries(picked.ingredientCounts)) {
         kitchen.ingredients[id] -= n;
         if (kitchen.ingredients[id] <= 0)
@@ -752,7 +767,7 @@ export function kitchenCook(farm, refs, now) {
             kitchen.knownRecipes.push(recipe.id);
         dish = {
             id: randomUUID(), recipeId: recipe.id, name: recipe.name, rarity: recipe.rarity,
-            value: Math.round(baseValue * cooking.recyclePremium[recipe.rarity]),
+            value: Math.round(baseValue * (1 + cooking.processingFeeRate) * cooking.recyclePremium[recipe.rarity]),
             image: `${recipe.id}.webp`, createdAt: now,
         };
     }
@@ -839,7 +854,9 @@ export function kitchenSell(farm, itemId, to, price, now) {
         else
             kitchen.dishes = kitchen.dishes.filter((entry) => entry !== dish);
         ensureRanch(farm).coins += item.value;
-        return { ok: true, to, name: item.name, value: item.value, item };
+        const silver = dish && dish.recipeId !== "odd_dish" ? (cooking.systemRecycleSilver[dish.rarity] ?? 0) : 0;
+        farm.silver += silver;
+        return { ok: true, to, name: item.name, value: item.value, silver, item };
     }
     if (to !== "market")
         return { ok: false, error: "to 只能是 system 或 market。" };

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { makeFarm, genCode, makeNpcFarm } from "./game.js";
 import { dumpUgc, loadUgc } from "./ugc.js";
 import { NPC_ID } from "./config.js";
+import { ensureFishing } from "./fishing.js";
 const DATA_DIR = process.env.AIFARM_DATA_DIR
     ? resolve(process.env.AIFARM_DATA_DIR)
     : resolve(dirname(fileURLToPath(import.meta.url)), "../data");
@@ -45,6 +46,7 @@ export function normalizeFarm(f) {
             animal.pendingBoost ??= false;
         }
     }
+    ensureFishing(f);
     return f;
 }
 export function createFarm(name, opts) {

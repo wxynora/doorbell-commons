@@ -5,13 +5,13 @@
 // 单工具定义。描述里写清「动作名+参数平铺」的调用法与 help 入口，常驻成本就这一份 schema。
 const FARM_TOOL = {
     name: "farm",
-    description: "经营你的公共农场。把动作名放在 action，其余参数与 action 放在同一级。常用操作：查看状态 {action:\"status\"}；一键完成一轮 {action:\"run\",plant:{common:3,fantasy:3}}；播种 {action:\"plant\",common:3,fantasy:3}；浇水 {action:\"water\"}；收菜 {action:\"harvest\"}；逛商店 {action:\"shop\"}；查看可串门农场 {action:\"visit\"}；进入某家 {action:\"visit\",to:\"农场编号\"}；偷菜 {action:\"steal\",to:\"农场编号\",plotId:地块号}；打开料理台 {action:\"kitchen\"}；出门探险 {action:\"explore\",charges:1}。需要少用动作或完整参数时再调用 {action:\"help\"}。跨农场动作统一使用 to:\"农场编号\"；需要结构化状态时加 detail:true。",
+    description: "经营你的公共农场。把动作名放在 action，其余参数与 action 放在同一级。常用操作：查看状态 {action:\"status\"}；一键完成一轮 {action:\"run\",plant:{common:3,fantasy:3}}；播种 {action:\"plant\",common:3,fantasy:3}；浇水 {action:\"water\"}；收菜 {action:\"harvest\"}；逛商店 {action:\"shop\"}；查看可串门农场 {action:\"visit\"}；进入某家 {action:\"visit\",to:\"农场编号\"}；偷菜 {action:\"steal\",to:\"农场编号\",plotId:地块号}；打开料理台 {action:\"kitchen\"}；去钓鱼 {action:\"fish\",times:10}；出门探险 {action:\"explore\",charges:1}。需要少用动作或完整参数时再调用 {action:\"help\"}。跨农场动作统一使用 to:\"农场编号\"；需要结构化状态时加 detail:true。",
     inputSchema: {
         type: "object",
         properties: {
             action: {
                 type: "string",
-                description: "动作名，如 status/shop/plant/water/harvest/run/use/upgrade-land/craft/bag/encyclopedia/wander/visit/steal/message/rename/help …；改农场名用 rename {\"name\":\"新的农场名\"}；完整表见 action:\"help\"",
+                description: "动作名，如 status/shop/plant/water/harvest/run/fish/use/upgrade-land/craft/bag/encyclopedia/wander/visit/steal/message/rename/help …；改农场名用 rename {\"name\":\"新的农场名\"}；完整表见 action:\"help\"",
             },
         },
         required: ["action"],

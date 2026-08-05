@@ -216,6 +216,14 @@ function additivePath(path) {
         return true;
     if (root === "ranch" && path.includes("kitchen") && path.includes("ingredients"))
         return true;
+    if (root === "fishing" && (path.includes("baitInventory") || path.includes("items")))
+        return true;
+    if (root === "fishing" && path.includes("stats") && ["totalCasts", "totalCaught", "totalChests"].includes(leaf))
+        return true;
+    if (root === "fishing" && path.includes("codex") && leaf === "count")
+        return true;
+    if (root === "fishing" && ["freeBait", "fever"].includes(leaf))
+        return true;
     return false;
 }
 function stableArrayKey(value) {
@@ -232,6 +240,9 @@ function mergeThreeWay(base, owner, server, path = []) {
         return clone(owner);
     if (same(owner, base))
         return clone(server);
+    if (path[0] === "fishing" && path.includes("codex") && path.at(-1) === "maxSize"
+        && typeof owner === "number" && typeof server === "number")
+        return Math.max(owner, server);
     if (typeof base === "number" && typeof owner === "number" && typeof server === "number" && additivePath(path)) {
         return owner + (server - base);
     }
@@ -266,8 +277,18 @@ function mergeThreeWay(base, owner, server, path = []) {
             const s = server[key];
             if (!(key in server) && !(key in owner))
                 continue;
-            if (!(key in base))
-                out[key] = clone((key in server) ? s : o);
+            if (!(key in base)) {
+                if (path[0] === "fishing" && path.includes("items") && typeof o === "number" && typeof s === "number")
+                    out[key] = o + s;
+                else if (path[0] === "fishing" && path.includes("codex") && isRecord(o) && isRecord(s))
+                    out[key] = {
+                        ...clone(s),
+                        count: Number(o.count ?? 0) + Number(s.count ?? 0),
+                        maxSize: Math.max(Number(o.maxSize ?? 0), Number(s.maxSize ?? 0)),
+                    };
+                else
+                    out[key] = clone((key in server) ? s : o);
+            }
             else if (!(key in owner))
                 out[key] = clone(s);
             else if (!(key in server))

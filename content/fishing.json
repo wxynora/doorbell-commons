@@ -1,0 +1,1616 @@
+{
+  "source": {
+    "repository": "https://github.com/tutusagi/ai-fishing-game",
+    "commit": "25e9af0010a9a3ab24d0e65b7e6b096197edb84d",
+    "branch": "v1.2-lite",
+    "license": "PolyForm Noncommercial License 1.0.0",
+    "requiredNotice": "Copyright 2026 tutusagi"
+  },
+  "capacityPerSpot": 3,
+  "leaseMs": 600000,
+  "initialLocationId": "moonlit_pond",
+  "initialBaitInventory": {
+    "basic_worm": 5
+  },
+  "rarities": {
+    "common": {
+      "label": "常见",
+      "tag": "C",
+      "weight": 1000,
+      "firstBonusSilver": 2,
+      "silverFloor": 1
+    },
+    "uncommon": {
+      "label": "少见",
+      "tag": "U",
+      "weight": 350,
+      "firstBonusSilver": 2,
+      "silverFloor": 2
+    },
+    "rare": {
+      "label": "稀有",
+      "tag": "R",
+      "weight": 90,
+      "firstBonusSilver": 2,
+      "silverFloor": 5
+    },
+    "epic": {
+      "label": "史诗",
+      "tag": "E",
+      "weight": 22,
+      "firstBonusSilver": 2,
+      "silverFloor": 10
+    },
+    "legendary": {
+      "label": "传说",
+      "tag": "L",
+      "weight": 5,
+      "firstBonusSilver": 2,
+      "silverFloor": 25
+    },
+    "mythic": {
+      "label": "神话",
+      "tag": "M",
+      "weight": 1,
+      "firstBonusSilver": 2,
+      "silverFloor": 50
+    }
+  },
+  "seasons": [
+    {
+      "id": "spring",
+      "name": "春",
+      "order": 0,
+      "description": "水暖花开，鱼群活跃。",
+      "tag_weight_mult": {
+        "freshwater": 1.15
+      }
+    },
+    {
+      "id": "summer",
+      "name": "夏",
+      "order": 1,
+      "description": "烈日当头，火元素的水域沸腾。",
+      "tag_weight_mult": {
+        "fire": 1.5
+      }
+    },
+    {
+      "id": "autumn",
+      "name": "秋",
+      "order": 2,
+      "description": "水温转凉，洄游的鱼群增多。",
+      "tag_weight_mult": {
+        "nocturnal": 1.2
+      }
+    },
+    {
+      "id": "winter",
+      "name": "冬",
+      "order": 3,
+      "description": "万物沉静，深海的霜冷生物浮现。",
+      "tag_weight_mult": {
+        "deepsea": 1.3
+      }
+    }
+  ],
+  "spots": [
+    {
+      "id": "moonlit_pond",
+      "name": "月光池塘",
+      "tagWeightMult": {
+        "freshwater": 1.3,
+        "nocturnal": 1.5,
+        "swamp": 1.6,
+        "poison": 1.4
+      }
+    },
+    {
+      "id": "mangrove_shoal",
+      "name": "红树林浅滩",
+      "tagWeightMult": {
+        "brackish": 1.5,
+        "armored": 1.3,
+        "glowing": 1.4,
+        "migratory": 1.6
+      }
+    },
+    {
+      "id": "abyssal_trench",
+      "name": "深渊海沟",
+      "tagWeightMult": {
+        "deepsea": 1.5,
+        "glowing": 1.4,
+        "ancient": 1.7
+      }
+    },
+    {
+      "id": "geyser_falls",
+      "name": "间歇泉瀑布",
+      "tagWeightMult": {
+        "fire": 1.6,
+        "mineral": 1.6
+      }
+    },
+    {
+      "id": "crystal_cave",
+      "name": "水晶洞",
+      "tagWeightMult": {
+        "crystal": 1.7,
+        "glowing": 1.4
+      }
+    },
+    {
+      "id": "floating_lake",
+      "name": "浮空之湖",
+      "tagWeightMult": {
+        "fantasy": 1.4,
+        "wind": 1.5
+      }
+    }
+  ],
+  "fish": [
+    {
+      "id": "mud_carp",
+      "name": "泥鲤",
+      "rarity": "common",
+      "size_min": 10,
+      "size_max": 35,
+      "size_unit": "cm",
+      "base_value": 6,
+      "seasons": [
+        "spring",
+        "summer",
+        "autumn",
+        "winter"
+      ],
+      "tags": [
+        "freshwater"
+      ],
+      "spots": [
+        "moonlit_pond",
+        "mangrove_shoal"
+      ]
+    },
+    {
+      "id": "ghost_shrimp",
+      "name": "幽灵虾",
+      "rarity": "common",
+      "size_min": 3,
+      "size_max": 12,
+      "size_unit": "cm",
+      "base_value": 5,
+      "seasons": [
+        "spring",
+        "summer",
+        "autumn",
+        "winter"
+      ],
+      "tags": [
+        "freshwater",
+        "nocturnal"
+      ],
+      "spots": [
+        "moonlit_pond",
+        "mangrove_shoal"
+      ]
+    },
+    {
+      "id": "flicker_minnow",
+      "name": "荧鳞鲦",
+      "rarity": "common",
+      "size_min": 4,
+      "size_max": 14,
+      "size_unit": "cm",
+      "base_value": 4,
+      "seasons": [
+        "spring",
+        "summer",
+        "autumn"
+      ],
+      "tags": [
+        "freshwater",
+        "nocturnal"
+      ],
+      "spots": [
+        "moonlit_pond"
+      ]
+    },
+    {
+      "id": "angler_fry",
+      "name": "灯鮟鱇",
+      "rarity": "common",
+      "size_min": 4,
+      "size_max": 18,
+      "size_unit": "cm",
+      "base_value": 7,
+      "seasons": [
+        "spring",
+        "summer",
+        "autumn",
+        "winter"
+      ],
+      "tags": [
+        "deepsea",
+        "glowing"
+      ],
+      "spots": [
+        "abyssal_trench"
+      ]
+    },
+    {
+      "id": "sky_skipper",
+      "name": "跃空鱼",
+      "rarity": "common",
+      "size_min": 8,
+      "size_max": 22,
+      "size_unit": "cm",
+      "base_value": 7,
+      "seasons": [
+        "spring",
+        "summer",
+        "autumn"
+      ],
+      "tags": [
+        "fantasy",
+        "wind"
+      ],
+      "spots": [
+        "floating_lake",
+        "mangrove_shoal"
+      ]
+    },
+    {
+      "id": "frost_drifter",
+      "name": "霜漂鱼",
+      "rarity": "common",
+      "size_min": 6,
+      "size_max": 20,
+      "size_unit": "cm",
+      "base_value": 6,
+      "seasons": [
+        "autumn"
+      ],
+      "tags": [
+        "fantasy",
+        "wind"
+      ],
+      "spots": [
+        "floating_lake",
+        "mangrove_shoal"
+      ]
+    },
+    {
+      "id": "scorched_tetra",
+      "name": "焦鳞灯鱼",
+      "rarity": "common",
+      "size_min": 5,
+      "size_max": 15,
+      "size_unit": "cm",
+      "base_value": 8,
+      "seasons": [
+        "spring",
+        "summer",
+        "autumn",
+        "winter"
+      ],
+      "tags": [
+        "fire"
+      ],
+      "spots": [
+        "geyser_falls"
+      ]
+    },
+    {
+      "id": "shard_fish",
+      "name": "晶片鱼",
+      "rarity": "common",
+      "size_min": 7,
+      "size_max": 18,
+      "size_unit": "cm",
+      "base_value": 7,
+      "seasons": [
+        "spring",
+        "summer",
+        "autumn",
+        "winter"
+      ],
+      "tags": [
+        "crystal",
+        "glowing"
+      ],
+      "spots": [
+        "crystal_cave"
+      ]
+    },
+    {
+      "id": "jelly_phantom",
+      "name": "幻水母",
+      "rarity": "common",
+      "size_min": 8,
+      "size_max": 25,
+      "size_unit": "cm",
+      "base_value": 6,
+      "seasons": [
+        "spring",
+        "summer"
+      ],
+      "tags": [
+        "fantasy",
+        "glowing"
+      ],
+      "spots": [
+        "floating_lake",
+        "crystal_cave"
+      ]
+    },
+    {
+      "id": "winter_cinder",
+      "name": "冬烬鱼",
+      "rarity": "common",
+      "size_min": 5,
+      "size_max": 14,
+      "size_unit": "cm",
+      "base_value": 6,
+      "seasons": [
+        "winter"
+      ],
+      "tags": [
+        "fire"
+      ],
+      "spots": [
+        "geyser_falls"
+      ]
+    },
+    {
+      "id": "silver_pike",
+      "name": "银梭鱼",
+      "rarity": "uncommon",
+      "size_min": 20,
+      "size_max": 55,
+      "size_unit": "cm",
+      "base_value": 26,
+      "seasons": [
+        "spring",
+        "autumn"
+      ],
+      "tags": [
+        "freshwater"
+      ],
+      "spots": [
+        "moonlit_pond"
+      ]
+    },
+    {
+      "id": "dusk_eel",
+      "name": "暮色鳗",
+      "rarity": "uncommon",
+      "size_min": 25,
+      "size_max": 60,
+      "size_unit": "cm",
+      "base_value": 24,
+      "seasons": [
+        "spring",
+        "autumn"
+      ],
+      "tags": [
+        "freshwater",
+        "nocturnal"
+      ],
+      "spots": [
+        "moonlit_pond",
+        "mangrove_shoal"
+      ]
+    },
+    {
+      "id": "copper_bream",
+      "name": "铜鲂",
+      "rarity": "uncommon",
+      "size_min": 18,
+      "size_max": 45,
+      "size_unit": "cm",
+      "base_value": 22,
+      "seasons": [
+        "summer",
+        "autumn"
+      ],
+      "tags": [
+        "freshwater",
+        "armored"
+      ],
+      "spots": [
+        "moonlit_pond"
+      ]
+    },
+    {
+      "id": "cinder_loach",
+      "name": "余烬泥鳅",
+      "rarity": "uncommon",
+      "size_min": 10,
+      "size_max": 28,
+      "size_unit": "cm",
+      "base_value": 28,
+      "seasons": [
+        "spring",
+        "summer",
+        "autumn"
+      ],
+      "tags": [
+        "fire"
+      ],
+      "spots": [
+        "geyser_falls"
+      ]
+    },
+    {
+      "id": "deep_sculpin",
+      "name": "深岩杜父鱼",
+      "rarity": "uncommon",
+      "size_min": 15,
+      "size_max": 40,
+      "size_unit": "cm",
+      "base_value": 30,
+      "seasons": [
+        "spring",
+        "summer",
+        "autumn",
+        "winter"
+      ],
+      "tags": [
+        "deepsea",
+        "armored"
+      ],
+      "spots": [
+        "abyssal_trench"
+      ]
+    },
+    {
+      "id": "mangrove_snapper",
+      "name": "红树鲷",
+      "rarity": "uncommon",
+      "size_min": 20,
+      "size_max": 50,
+      "size_unit": "cm",
+      "base_value": 25,
+      "seasons": [
+        "spring",
+        "summer",
+        "autumn"
+      ],
+      "tags": [
+        "brackish",
+        "armored"
+      ],
+      "spots": [
+        "mangrove_shoal"
+      ]
+    },
+    {
+      "id": "winter_betta",
+      "name": "雪华斗鱼",
+      "rarity": "uncommon",
+      "size_min": 12,
+      "size_max": 30,
+      "size_unit": "cm",
+      "base_value": 27,
+      "seasons": [
+        "winter"
+      ],
+      "tags": [
+        "freshwater",
+        "fantasy"
+      ],
+      "spots": [
+        "moonlit_pond",
+        "floating_lake",
+        "mangrove_shoal"
+      ]
+    },
+    {
+      "id": "zephyr_dancer",
+      "name": "流风舞者",
+      "rarity": "uncommon",
+      "size_min": 15,
+      "size_max": 40,
+      "size_unit": "cm",
+      "base_value": 24,
+      "seasons": [
+        "spring",
+        "summer",
+        "autumn"
+      ],
+      "tags": [
+        "wind",
+        "fantasy"
+      ],
+      "spots": [
+        "floating_lake",
+        "mangrove_shoal"
+      ]
+    },
+    {
+      "id": "geyser_wyrm",
+      "name": "间歇泉龙",
+      "rarity": "uncommon",
+      "size_min": 30,
+      "size_max": 80,
+      "size_unit": "cm",
+      "base_value": 29,
+      "seasons": [
+        "winter"
+      ],
+      "tags": [
+        "fire",
+        "fantasy"
+      ],
+      "spots": [
+        "geyser_falls"
+      ]
+    },
+    {
+      "id": "crystal_angler",
+      "name": "晶刺鮟鱇",
+      "rarity": "rare",
+      "size_min": 15,
+      "size_max": 45,
+      "size_unit": "cm",
+      "base_value": 100,
+      "seasons": [
+        "spring",
+        "summer",
+        "autumn",
+        "winter"
+      ],
+      "tags": [
+        "deepsea",
+        "glowing",
+        "crystal"
+      ],
+      "spots": [
+        "crystal_cave",
+        "abyssal_trench"
+      ]
+    },
+    {
+      "id": "stormray",
+      "name": "风暴鳐",
+      "rarity": "rare",
+      "size_min": 40,
+      "size_max": 80,
+      "size_unit": "cm",
+      "base_value": 110,
+      "seasons": [
+        "spring",
+        "autumn"
+      ],
+      "tags": [
+        "fantasy",
+        "wind",
+        "electric"
+      ],
+      "spots": [
+        "floating_lake",
+        "mangrove_shoal"
+      ]
+    },
+    {
+      "id": "magma_salamander",
+      "name": "岩浆蝾螈",
+      "rarity": "rare",
+      "size_min": 25,
+      "size_max": 55,
+      "size_unit": "cm",
+      "base_value": 120,
+      "seasons": [
+        "spring",
+        "summer",
+        "autumn"
+      ],
+      "tags": [
+        "fire",
+        "fantasy"
+      ],
+      "spots": [
+        "geyser_falls"
+      ]
+    },
+    {
+      "id": "void_jellyfish",
+      "name": "虚空水母",
+      "rarity": "epic",
+      "size_min": 50,
+      "size_max": 90,
+      "size_unit": "cm",
+      "base_value": 200,
+      "seasons": [
+        "autumn",
+        "winter"
+      ],
+      "tags": [
+        "deepsea",
+        "glowing",
+        "shadow"
+      ],
+      "spots": [
+        "abyssal_trench"
+      ]
+    },
+    {
+      "id": "cloud_serpent",
+      "name": "云鳞蛟",
+      "rarity": "epic",
+      "size_min": 60,
+      "size_max": 130,
+      "size_unit": "cm",
+      "base_value": 220,
+      "seasons": [
+        "spring"
+      ],
+      "tags": [
+        "fantasy",
+        "wind",
+        "migratory"
+      ],
+      "spots": [
+        "floating_lake",
+        "mangrove_shoal"
+      ]
+    },
+    {
+      "id": "ember_barb",
+      "name": "烬棘鱼",
+      "rarity": "epic",
+      "size_min": 35,
+      "size_max": 65,
+      "size_unit": "cm",
+      "base_value": 180,
+      "seasons": [
+        "summer"
+      ],
+      "tags": [
+        "fire",
+        "armored"
+      ],
+      "spots": [
+        "geyser_falls"
+      ]
+    },
+    {
+      "id": "moon_phoenix_fish",
+      "name": "月凰鱼",
+      "rarity": "legendary",
+      "size_min": 50,
+      "size_max": 90,
+      "size_unit": "cm",
+      "base_value": 450,
+      "seasons": [
+        "winter"
+      ],
+      "tags": [
+        "freshwater",
+        "nocturnal",
+        "fantasy"
+      ],
+      "spots": [
+        "moonlit_pond"
+      ]
+    },
+    {
+      "id": "starwhale",
+      "name": "星鲸",
+      "rarity": "legendary",
+      "size_min": 200,
+      "size_max": 450,
+      "size_unit": "cm",
+      "base_value": 480,
+      "seasons": [
+        "winter"
+      ],
+      "tags": [
+        "deepsea",
+        "fantasy",
+        "glowing"
+      ],
+      "spots": [
+        "abyssal_trench",
+        "floating_lake"
+      ]
+    },
+    {
+      "id": "time_eater",
+      "name": "时噬鱼",
+      "rarity": "mythic",
+      "size_min": 1,
+      "size_max": 999,
+      "size_unit": "cm",
+      "base_value": 1000,
+      "seasons": [
+        "all"
+      ],
+      "tags": [
+        "fantasy",
+        "shadow",
+        "deepsea"
+      ],
+      "spots": [
+        "all"
+      ],
+      "individual_weight": 0.3
+    },
+    {
+      "id": "bog_creeper",
+      "name": "沼行鱼",
+      "rarity": "common",
+      "size_min": 8,
+      "size_max": 22,
+      "size_unit": "cm",
+      "base_value": 7,
+      "seasons": [
+        "spring",
+        "summer",
+        "autumn",
+        "winter"
+      ],
+      "tags": [
+        "freshwater",
+        "swamp",
+        "nocturnal"
+      ],
+      "spots": [
+        "moonlit_pond"
+      ]
+    },
+    {
+      "id": "bloat_toadfish",
+      "name": "鼓蟾鱼",
+      "rarity": "uncommon",
+      "size_min": 15,
+      "size_max": 38,
+      "size_unit": "cm",
+      "base_value": 27,
+      "seasons": [
+        "spring",
+        "summer",
+        "autumn"
+      ],
+      "tags": [
+        "freshwater",
+        "swamp",
+        "poison"
+      ],
+      "spots": [
+        "moonlit_pond"
+      ]
+    },
+    {
+      "id": "wraithwood_fish",
+      "name": "朽木灵鱼",
+      "rarity": "rare",
+      "size_min": 25,
+      "size_max": 55,
+      "size_unit": "cm",
+      "base_value": 105,
+      "seasons": [
+        "spring",
+        "autumn"
+      ],
+      "tags": [
+        "freshwater",
+        "swamp",
+        "nocturnal",
+        "poison"
+      ],
+      "spots": [
+        "moonlit_pond"
+      ]
+    },
+    {
+      "id": "star_sand_darter",
+      "name": "星沙镖鲈",
+      "rarity": "common",
+      "size_min": 6,
+      "size_max": 16,
+      "size_unit": "cm",
+      "base_value": 7,
+      "seasons": [
+        "spring",
+        "autumn"
+      ],
+      "tags": [
+        "brackish",
+        "glowing",
+        "migratory"
+      ],
+      "spots": [
+        "mangrove_shoal"
+      ]
+    },
+    {
+      "id": "tidal_trout",
+      "name": "潮信鳟",
+      "rarity": "uncommon",
+      "size_min": 30,
+      "size_max": 60,
+      "size_unit": "cm",
+      "base_value": 26,
+      "seasons": [
+        "spring",
+        "autumn"
+      ],
+      "tags": [
+        "brackish",
+        "migratory",
+        "fantasy"
+      ],
+      "spots": [
+        "mangrove_shoal"
+      ]
+    },
+    {
+      "id": "star_barge_whisker",
+      "name": "星舟巨鲶",
+      "rarity": "epic",
+      "size_min": 120,
+      "size_max": 220,
+      "size_unit": "cm",
+      "base_value": 220,
+      "seasons": [
+        "spring"
+      ],
+      "tags": [
+        "brackish",
+        "fantasy",
+        "glowing",
+        "migratory"
+      ],
+      "spots": [
+        "mangrove_shoal"
+      ]
+    },
+    {
+      "id": "urn_hermit",
+      "name": "瓮居蟹",
+      "rarity": "common",
+      "size_min": 5,
+      "size_max": 15,
+      "size_unit": "cm",
+      "base_value": 6,
+      "seasons": [
+        "spring",
+        "summer",
+        "autumn",
+        "winter"
+      ],
+      "tags": [
+        "deepsea",
+        "ancient"
+      ],
+      "spots": [
+        "abyssal_trench"
+      ]
+    },
+    {
+      "id": "rune_cod",
+      "name": "铭文鳕",
+      "rarity": "uncommon",
+      "size_min": 30,
+      "size_max": 65,
+      "size_unit": "cm",
+      "base_value": 28,
+      "seasons": [
+        "autumn",
+        "winter"
+      ],
+      "tags": [
+        "deepsea",
+        "ancient",
+        "glowing"
+      ],
+      "spots": [
+        "abyssal_trench"
+      ]
+    },
+    {
+      "id": "sunken_wraith",
+      "name": "沉城幽魂鱼",
+      "rarity": "epic",
+      "size_min": 70,
+      "size_max": 130,
+      "size_unit": "cm",
+      "base_value": 230,
+      "seasons": [
+        "autumn",
+        "winter"
+      ],
+      "tags": [
+        "deepsea",
+        "ancient",
+        "glowing",
+        "shadow"
+      ],
+      "spots": [
+        "abyssal_trench"
+      ]
+    },
+    {
+      "id": "sulfur_killie",
+      "name": "硫华鳉",
+      "rarity": "common",
+      "size_min": 4,
+      "size_max": 12,
+      "size_unit": "cm",
+      "base_value": 8,
+      "seasons": [
+        "summer",
+        "autumn"
+      ],
+      "tags": [
+        "fire",
+        "mineral"
+      ],
+      "spots": [
+        "geyser_falls"
+      ]
+    },
+    {
+      "id": "steam_ray",
+      "name": "蒸汽鳐",
+      "rarity": "uncommon",
+      "size_min": 35,
+      "size_max": 70,
+      "size_unit": "cm",
+      "base_value": 29,
+      "seasons": [
+        "spring",
+        "summer"
+      ],
+      "tags": [
+        "fire",
+        "mineral"
+      ],
+      "spots": [
+        "geyser_falls"
+      ]
+    },
+    {
+      "id": "magma_peacock_bass",
+      "name": "熔岩孔雀鲷",
+      "rarity": "rare",
+      "size_min": 28,
+      "size_max": 52,
+      "size_unit": "cm",
+      "base_value": 110,
+      "seasons": [
+        "summer"
+      ],
+      "tags": [
+        "fire",
+        "mineral",
+        "fantasy"
+      ],
+      "spots": [
+        "geyser_falls"
+      ]
+    },
+    {
+      "id": "mudskipper_perch",
+      "name": "泥蟹攀鲈",
+      "rarity": "common",
+      "size_min": 12,
+      "size_max": 28,
+      "size_unit": "cm",
+      "base_value": 6,
+      "seasons": [
+        "spring",
+        "summer",
+        "autumn"
+      ],
+      "tags": [
+        "brackish",
+        "armored"
+      ],
+      "spots": [
+        "mangrove_shoal"
+      ]
+    },
+    {
+      "id": "root_dragon",
+      "name": "气根龙",
+      "rarity": "rare",
+      "size_min": 40,
+      "size_max": 75,
+      "size_unit": "cm",
+      "base_value": 95,
+      "seasons": [
+        "spring",
+        "summer"
+      ],
+      "tags": [
+        "brackish",
+        "fantasy"
+      ],
+      "spots": [
+        "mangrove_shoal"
+      ]
+    },
+    {
+      "id": "prism_lanternfish",
+      "name": "棱镜灯鱼",
+      "rarity": "uncommon",
+      "size_min": 10,
+      "size_max": 25,
+      "size_unit": "cm",
+      "base_value": 28,
+      "seasons": [
+        "spring",
+        "summer",
+        "autumn",
+        "winter"
+      ],
+      "tags": [
+        "crystal",
+        "glowing"
+      ],
+      "spots": [
+        "crystal_cave"
+      ]
+    },
+    {
+      "id": "shard_shrimp",
+      "name": "碎晶虾",
+      "rarity": "uncommon",
+      "size_min": 12,
+      "size_max": 30,
+      "size_unit": "cm",
+      "base_value": 30,
+      "seasons": [
+        "spring",
+        "summer",
+        "autumn",
+        "winter"
+      ],
+      "tags": [
+        "crystal",
+        "armored"
+      ],
+      "spots": [
+        "crystal_cave"
+      ]
+    },
+    {
+      "id": "crystal_leviathan",
+      "name": "洞天晶龙",
+      "rarity": "legendary",
+      "size_min": 150,
+      "size_max": 280,
+      "size_unit": "cm",
+      "base_value": 480,
+      "seasons": [
+        "winter"
+      ],
+      "tags": [
+        "crystal",
+        "glowing",
+        "fantasy"
+      ],
+      "spots": [
+        "crystal_cave"
+      ],
+      "individual_weight": 0.6
+    },
+    {
+      "id": "crucian",
+      "name": "鲫鱼",
+      "rarity": "common",
+      "size_min": 8,
+      "size_max": 25,
+      "size_unit": "cm",
+      "base_value": 6,
+      "seasons": [
+        "all"
+      ],
+      "tags": [
+        "freshwater"
+      ],
+      "spots": [
+        "moonlit_pond"
+      ]
+    },
+    {
+      "id": "silver_dace",
+      "name": "银鲦",
+      "rarity": "common",
+      "size_min": 6,
+      "size_max": 18,
+      "size_unit": "cm",
+      "base_value": 5,
+      "seasons": [
+        "all"
+      ],
+      "tags": [
+        "freshwater"
+      ],
+      "spots": [
+        "moonlit_pond"
+      ]
+    },
+    {
+      "id": "reed_perch",
+      "name": "芦苇鲈",
+      "rarity": "uncommon",
+      "size_min": 15,
+      "size_max": 40,
+      "size_unit": "cm",
+      "base_value": 22,
+      "seasons": [
+        "spring",
+        "summer"
+      ],
+      "tags": [
+        "freshwater"
+      ],
+      "spots": [
+        "moonlit_pond"
+      ]
+    },
+    {
+      "id": "glow_jelly",
+      "name": "光水母",
+      "rarity": "uncommon",
+      "size_min": 10,
+      "size_max": 35,
+      "size_unit": "cm",
+      "base_value": 28,
+      "seasons": [
+        "all"
+      ],
+      "tags": [
+        "deepsea",
+        "glowing",
+        "nocturnal"
+      ],
+      "spots": [
+        "abyssal_trench"
+      ]
+    },
+    {
+      "id": "moonscale_carp",
+      "name": "月鳞鲤",
+      "rarity": "rare",
+      "size_min": 20,
+      "size_max": 60,
+      "size_unit": "cm",
+      "base_value": 80,
+      "seasons": [
+        "autumn",
+        "winter"
+      ],
+      "tags": [
+        "freshwater",
+        "nocturnal"
+      ],
+      "spots": [
+        "moonlit_pond"
+      ]
+    },
+    {
+      "id": "ember_carp",
+      "name": "熔岩鲤",
+      "rarity": "rare",
+      "size_min": 18,
+      "size_max": 55,
+      "size_unit": "cm",
+      "base_value": 110,
+      "seasons": [
+        "summer"
+      ],
+      "tags": [
+        "fire"
+      ],
+      "spots": [
+        "geyser_falls"
+      ]
+    },
+    {
+      "id": "windveil_ray",
+      "name": "风纱鳐",
+      "rarity": "epic",
+      "size_min": 25,
+      "size_max": 70,
+      "size_unit": "cm",
+      "base_value": 180,
+      "seasons": [
+        "spring",
+        "summer",
+        "autumn"
+      ],
+      "tags": [
+        "fantasy",
+        "wind"
+      ],
+      "spots": [
+        "floating_lake"
+      ]
+    },
+    {
+      "id": "frostfin_eel",
+      "name": "霜鳍鳗",
+      "rarity": "epic",
+      "size_min": 30,
+      "size_max": 90,
+      "size_unit": "cm",
+      "base_value": 220,
+      "seasons": [
+        "winter"
+      ],
+      "tags": [
+        "deepsea",
+        "glowing"
+      ],
+      "spots": [
+        "abyssal_trench"
+      ]
+    },
+    {
+      "id": "clockwork_koi",
+      "name": "发条锦鲤",
+      "rarity": "legendary",
+      "size_min": 30,
+      "size_max": 80,
+      "size_unit": "cm",
+      "base_value": 400,
+      "seasons": [
+        "all"
+      ],
+      "tags": [
+        "fantasy"
+      ],
+      "spots": [
+        "floating_lake"
+      ]
+    },
+    {
+      "id": "the_first_drop",
+      "name": "「第一滴水」",
+      "rarity": "mythic",
+      "size_min": 1,
+      "size_max": 30,
+      "size_unit": "cm",
+      "base_value": 1000,
+      "seasons": [
+        "all"
+      ],
+      "tags": [
+        "fantasy"
+      ],
+      "spots": [
+        "all"
+      ],
+      "individual_weight": 1.0
+    }
+  ],
+  "baits": [
+    {
+      "id": "basic_worm",
+      "name": "普通蚯蚓",
+      "cost": 10,
+      "description": "最朴素的蚯蚓，没有任何特殊效果，胜在便宜。",
+      "effects": {}
+    },
+    {
+      "id": "glow_bait",
+      "name": "夜光饵",
+      "cost": 35,
+      "description": "在黑暗中散发幽幽蓝光，对夜行性鱼类格外有吸引力。",
+      "effects": {
+        "rarity_weight_mult": {
+          "rare": 1.5,
+          "epic": 1.3
+        },
+        "tag_weight_mult": {
+          "nocturnal": 2.0
+        },
+        "junk_chance_mult": 0.8
+      }
+    },
+    {
+      "id": "golden_lure",
+      "name": "黄金亮片",
+      "cost": 80,
+      "description": "华丽的金色旋转亮片，专挑大货：压住普通小鱼的咬口、把机会让给稀有及以上的稀客，还更少缠上杂物。（这片水域有稀有鱼时才划算）",
+      "effects": {
+        "rarity_weight_mult": {
+          "common": 0.5,
+          "uncommon": 0.8,
+          "rare": 1.4,
+          "epic": 1.6,
+          "legendary": 2.0,
+          "mythic": 2.0
+        },
+        "junk_chance_mult": 0.7
+      }
+    }
+  ],
+  "junkChance": 0.1,
+  "junk": [
+    "一团湿漉漉的水草",
+    "一只灌满水的旧靴子",
+    "半截生锈的罐头",
+    "一团缠死的旧鱼线",
+    "一块被水磨圆的碎瓷片",
+    "一张破了洞的旧渔网",
+    "邻居家漂走的塑料小鸭"
+  ],
+  "eventChance": 0.05,
+  "luckChance": 0.05,
+  "feverCatches": 3,
+  "freeBaitCasts": 3,
+  "luckyEvents": [
+    {
+      "id": "split_hook",
+      "weight": 28
+    },
+    {
+      "id": "golden_touch",
+      "weight": 24
+    },
+    {
+      "id": "fever",
+      "weight": 16
+    },
+    {
+      "id": "river_blessing",
+      "weight": 16
+    },
+    {
+      "id": "tide_record",
+      "weight": 8
+    },
+    {
+      "id": "lucky_pearl",
+      "weight": 8
+    }
+  ],
+  "events": [
+    {
+      "id": "drift_bottle",
+      "name": "漂流瓶",
+      "type": "bottle",
+      "weight": 145,
+      "unique": true,
+      "messages": [
+        "（致捞到这只瓶子的人：今天也辛苦啦，愿你下一竿就是大鱼。——一个把烦恼塞进瓶子扔进海里的人）",
+        "（瓶子里只有一句话：如果你读到这里，说明海把它送对了人。祝你好运。）",
+        "（一张被海水泡得发皱的纸条，上面画着一条歪歪扭扭的鱼，旁边写着：我钓了一整天，只钓到这只瓶子。哈。）",
+        "（恭喜你捞到一只空瓶——里面什么都没有，连张纸条都没有。就当大海跟你打了个招呼吧。）",
+        "（纸条上是一行陌生的字：愿你所求皆有回响，愿你所钓皆有惊喜。落款是一个谁也认不出的签名。）",
+        "（瓶里卷着半角旧海图，海岸线早被水泡得模糊，只有一处被红笔圈住，写着「这片海的鱼最好钓」——可惜没人知道是哪片海。）"
+      ]
+    },
+    {
+      "id": "floating_coral_pearl",
+      "name": "漂来的珊瑚珠",
+      "type": "treasure",
+      "weight": 18,
+      "rewards": {
+        "items": [
+          {
+            "id": "coral_pearl",
+            "qty": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "ambergris_chunk",
+      "name": "浮香的龙涎",
+      "type": "treasure",
+      "weight": 10,
+      "rewards": {
+        "items": [
+          {
+            "id": "ambergris",
+            "qty": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "rusty_chest",
+      "name": "锈迹宝箱",
+      "type": "chest",
+      "weight": 25,
+      "lock": {
+        "orGold": 80
+      },
+      "lootTable": [
+        {
+          "weight": 60,
+          "reward": {
+            "silverRange": [
+              10,
+              20
+            ]
+          }
+        },
+        {
+          "weight": 15,
+          "reward": {
+            "items": [
+              {
+                "id": "ancient_key",
+                "qty": 1
+              }
+            ]
+          }
+        },
+        {
+          "weight": 15,
+          "reward": {
+            "items": [
+              {
+                "id": "gem_sapphire",
+                "qty": 1
+              }
+            ]
+          }
+        },
+        {
+          "weight": 5,
+          "reward": {
+            "bait": [
+              {
+                "id": "golden_lure",
+                "qty": 1
+              }
+            ]
+          }
+        },
+        {
+          "weight": 5,
+          "reward": {
+            "items": [
+              {
+                "id": "shipwreck_coin",
+                "qty": 1
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "barnacle_chest",
+      "name": "藤壶密箱",
+      "type": "chest",
+      "weight": 20,
+      "lock": {
+        "orGold": 60
+      },
+      "lootTable": [
+        {
+          "weight": 50,
+          "reward": {
+            "silverRange": [
+              8,
+              18
+            ]
+          }
+        },
+        {
+          "weight": 30,
+          "reward": {
+            "items": [
+              {
+                "id": "moonstone",
+                "qty": 1
+              }
+            ]
+          }
+        },
+        {
+          "weight": 20,
+          "reward": {
+            "bait": [
+              {
+                "id": "glow_bait",
+                "qty": 3
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "ancient_captain_chest",
+      "name": "船长遗箱",
+      "type": "chest",
+      "weight": 8,
+      "lock": {
+        "requiresItem": "ancient_key",
+        "orGold": 200
+      },
+      "lootTable": [
+        {
+          "weight": 40,
+          "reward": {
+            "silverRange": [
+              15,
+              30
+            ]
+          }
+        },
+        {
+          "weight": 35,
+          "reward": {
+            "items": [
+              {
+                "id": "moonstone",
+                "qty": 1
+              },
+              {
+                "id": "gem_sapphire",
+                "qty": 1
+              }
+            ]
+          }
+        },
+        {
+          "weight": 25,
+          "reward": {
+            "bait": [
+              {
+                "id": "golden_lure",
+                "qty": 2
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "items": [
+    {
+      "id": "coral_pearl",
+      "name": "珊瑚珍珠",
+      "type": "treasure",
+      "sellSilver": 15,
+      "sellable": true
+    },
+    {
+      "id": "gem_sapphire",
+      "name": "蓝宝石",
+      "type": "treasure",
+      "sellSilver": 30,
+      "sellable": true
+    },
+    {
+      "id": "moonstone",
+      "name": "月光石",
+      "type": "treasure",
+      "sellSilver": 45,
+      "sellable": true
+    },
+    {
+      "id": "ambergris",
+      "name": "龙涎香",
+      "type": "treasure",
+      "sellSilver": 50,
+      "sellable": true
+    },
+    {
+      "id": "shipwreck_coin",
+      "name": "沉船金币",
+      "type": "treasure",
+      "sellSilver": 20,
+      "sellable": true
+    },
+    {
+      "id": "ancient_key",
+      "name": "古老的钥匙",
+      "type": "key",
+      "sellSilver": 0,
+      "sellable": false
+    }
+  ]
+}

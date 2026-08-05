@@ -21,6 +21,7 @@ import { allUgc } from "./ugc.js";
 import { getCrop, materialById, expEventById } from "./content.js";
 import { currentDayIndex } from "./time.js";
 import { claimSyncedFarm, exportSyncedFarm, PublicSyncError, registerSyncedFarm, syncFarm, syncPageHtml, } from "./public-sync.js";
+import { runFishing } from "./fishing.js";
 // 首页只展开 POST/REST（核心玩法）；只能 GET / 只能点链接的接入写法收进 /get；/readme 是给人类伴侣看的新手攻略。
 // 机读默认紧凑 JSON；需要人工读时设环境变量 FARM_PRETTY=1 缩进输出。
 const PRETTY = process.env.FARM_PRETTY === "1";
@@ -470,6 +471,11 @@ function runFarm(farmId, action, b, encArg, now) {
     const debuffText = cookingDebuffReason(principal, action, b, now);
     if (debuffText)
         return { status: 400, json: { ok: false, text: debuffText, ...vf(principal) } };
+    if (action === "fish") {
+        const r = runFishing(f, b, now, playerFarms());
+        save();
+        return { status: r.ok ? 200 : 400, json: { ok: r.ok, text: r.text, ...vf(f) } };
+    }
     // 视图（主人私有）
     if (!action || action === "status") {
         const cookingStatus = cookingDebuffStatusText(f, now);
@@ -1204,14 +1210,15 @@ export function startServer(port, host = "127.0.0.1") {
             return res.end(png);
         }
         const cookingAsset = method === "GET" && parts[0] === "assets" && parts[1] === "cooking"
-            && ((parts.length === 3 && /^[a-z0-9-]+\.webp$/.test(parts[2]))
+            && ((parts.length === 3 && /^[a-z0-9-]+\.(?:webp|png)$/.test(parts[2]))
                 || (parts.length === 4 && parts[2] === "dishes" && /^[a-z0-9-]+\.webp$/.test(parts[3])))
             ? new URL(parts.length === 3 ? parts[2] : `dishes/${parts[3]}`, COOKING_ASSET_DIR)
             : undefined;
         if (cookingAsset && existsSync(cookingAsset)) {
-            const webp = readFileSync(cookingAsset);
-            res.writeHead(200, { "Content-Type": "image/webp", "Content-Length": webp.byteLength, "Cache-Control": "public, max-age=86400" });
-            return res.end(webp);
+            const asset = readFileSync(cookingAsset);
+            const contentType = cookingAsset.pathname.endsWith(".png") ? "image/png" : "image/webp";
+            res.writeHead(200, { "Content-Type": contentType, "Content-Length": asset.byteLength, "Cache-Control": "public, max-age=86400" });
+            return res.end(asset);
         }
         const now = Date.now();
         const ip = clientIp(req);
@@ -1393,7 +1400,7 @@ export function startServer(port, host = "127.0.0.1") {
                         else {
                             const r = kitchenSell(f, String(form.itemId), String(form.to), form.price, now);
                             flash = r.ok
-                                ? r.to === "system" ? `♻️ 系统回收「${r.name}」，+${r.value} 牧场金币` : `🧺 「${r.name}」已按 🪙${r.price} 摆上摊位`
+                                ? r.to === "system" ? `♻️ 系统回收「${r.name}」，+${r.value} 牧场金币${r.silver ? ` + ${r.silver} 银` : ""}` : `🧺 「${r.name}」已按 🪙${r.price} 摆上摊位`
                                 : r.error;
                         }
                         save();

@@ -5,7 +5,10 @@
   "dailyBuyLimit": 3,
   "dailyRecipeCount": 2,
   "recipePrices": { "N": 30, "R": 80, "SR": 200, "SSR": 500, "SP": 1200 },
+  "ingredientRecycleValueMultiplier": 5,
+  "processingFeeRate": 0.1,
   "recyclePremium": { "N": 1.15, "R": 1.25, "SR": 1.4, "SSR": 1.6, "SP": 1.9 },
+  "systemRecycleSilver": { "N": 1, "R": 2, "SR": 3, "SSR": 5, "SP": 8 },
   "petDishBuffs": {
     "N": { "bonus": 0.02, "hours": 2 },
     "R": { "bonus": 0.04, "hours": 4 },
@@ -85,6 +88,12 @@
     { "id": "warm_souffle", "name": "暖火舒芙蕾", "rarity": "SSR", "ingredients": ["warm_egg", "fresh_milk", "vanilla", "flour", "sugar"] },
     { "id": "warm_truffle_egg", "name": "暖火松露烘蛋", "rarity": "SSR", "ingredients": ["warm_egg", "truffle", "spice"] },
     { "id": "warm_strawberry_tart", "name": "暖火草莓挞", "rarity": "SSR", "ingredients": ["warm_egg", "fresh_milk", "strawberry", "star_sugar", "flour"] },
-    { "id": "star_honey_goose", "name": "星糖蜜汁烤鹅", "rarity": "SSR", "ingredients": ["goose_meat", "honey", "star_sugar", "spice"] }
+    { "id": "star_honey_goose", "name": "星糖蜜汁烤鹅", "rarity": "SSR", "ingredients": ["goose_meat", "honey", "star_sugar", "spice"] },
+    { "id": "pan_fried_fish", "name": "香煎鲜鱼", "rarity": "N", "ingredients": ["fish:any", "salt"] },
+    { "id": "fish_rice_ball", "name": "鱼肉饭团", "rarity": "N", "ingredients": ["fish:any", "rice", "salt"] },
+    { "id": "tomato_fish_soup", "name": "番茄鱼汤", "rarity": "R", "ingredients": ["fish:any", "tomato", "onion", "salt"] },
+    { "id": "herb_grilled_fish", "name": "香草烤鱼", "rarity": "R", "ingredients": ["fish:any", "basil", "spice"] },
+    { "id": "honey_roast_fish", "name": "蜂蜜烤鱼", "rarity": "SR", "ingredients": ["fish:any", "honey", "spice"] },
+    { "id": "starlight_fish_feast", "name": "星河鱼宴", "rarity": "SSR", "ingredients": ["fish:any", "star_sugar", "rainbow_corn", "spice"] }
   ]
 }
