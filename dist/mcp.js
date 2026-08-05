@@ -25,7 +25,6 @@ function handleOne(rpc, ctx) {
     const fail = (code, message) => ({ jsonrpc: "2.0", id, error: { code, message } });
     switch (rpc?.method) {
         case "initialize": {
-            ctx.armFirstStatus?.();
             return ok({
                 protocolVersion: rpc?.params?.protocolVersion ?? "2025-06-18",
                 capabilities: { tools: {} },
@@ -36,7 +35,6 @@ function handleOne(rpc, ctx) {
         case "ping":
             return ok({});
         case "tools/list":
-            ctx.armFirstStatus?.();
             return ok({ tools: [FARM_TOOL] });
         case "tools/call": {
             if (rpc?.params?.name !== "farm")
@@ -45,9 +43,9 @@ function handleOne(rpc, ctx) {
             const { action, ...params } = args;
             if (!action || typeof action !== "string")
                 return fail(-32602, "缺少 action（动作名）。先调 farm({action:\"help\"}) 看动作表。");
-            const first = ctx.takeFirstStatus?.() === true;
+            const appendStatus = ctx.noteToolCall?.() === true;
             const out = ctx.run(action, params);
-            const status = first && action !== "status" ? ctx.run("status", {}) : undefined;
+            const status = appendStatus && action !== "status" ? ctx.run("status", {}) : undefined;
             const text = status ? `${out.text}\n\n${status.text}` : out.text;
             // 业务报错（如金币不够）走 isError:true + 文字，不当协议错误抛——让 AI 读 text 自己纠正。
             return ok({ content: [{ type: "text", text }], isError: !out.ok });

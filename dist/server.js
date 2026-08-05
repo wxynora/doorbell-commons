@@ -25,7 +25,8 @@ import { runFishing } from "./fishing.js";
 // 首页只展开 POST/REST（核心玩法）；只能 GET / 只能点链接的接入写法收进 /get；/readme 是给人类伴侣看的新手攻略。
 // 机读默认紧凑 JSON；需要人工读时设环境变量 FARM_PRETTY=1 缩进输出。
 const PRETTY = process.env.FARM_PRETTY === "1";
-const mcpFirstStatusPending = new Set();
+const MCP_STATUS_IDLE_MS = 10 * 60 * 1000;
+const mcpLastToolAt = new Map();
 const MCP_HELP = `🌾 完整动作表
 所有调用都使用 farm 工具：把动作名放在 action，其余参数与 action 放在同一级。
 
@@ -1806,10 +1807,13 @@ export function startServer(port, host = "127.0.0.1") {
                     const text = String(out.json.text ?? "");
                     return { ok: out.json.ok !== false, text: out.json.farm ? `${text}\n\n${JSON.stringify({ farm: out.json.farm })}` : text };
                 };
-                const connectionKey = String(parts[1] ?? "");
-                const armFirstStatus = () => mcpFirstStatusPending.add(connectionKey);
-                const takeFirstStatus = () => mcpFirstStatusPending.delete(connectionKey);
-                const resp = mcpDispatch(rpc, { serverName: "aifarm", run, armFirstStatus, takeFirstStatus });
+                const playerKey = me.id;
+                const noteToolCall = () => {
+                    const previous = mcpLastToolAt.get(playerKey);
+                    mcpLastToolAt.set(playerKey, now);
+                    return previous === undefined || now - previous >= MCP_STATUS_IDLE_MS;
+                };
+                const resp = mcpDispatch(rpc, { serverName: "aifarm", run, noteToolCall });
                 if (resp === undefined) {
                     res.writeHead(202, NO_STORE);
                     return res.end();
