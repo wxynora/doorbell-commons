@@ -421,10 +421,11 @@ button.cook-pot-chip:active{transform:scale(.92);background:#fff1b8}
 .cook-pot-qty{position:absolute;right:-5px;top:-6px;min-width:22px;height:20px;display:grid;place-items:center;padding:0 4px;border-radius:999px;background:#713b2f;color:#fff8e7;font:800 12px/1 system-ui;box-shadow:0 2px 5px #32160855;pointer-events:none}
 .cook-counter{position:absolute;left:12px;bottom:10px;z-index:8;padding:4px 10px;border-radius:999px;background:#2d1d18c9;color:#fff7dd;font-size:12px;backdrop-filter:blur(4px)}
 .cook-pick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px}
-.cook-pick{appearance:none;min-height:72px;padding:8px;border:1px solid var(--line);border-radius:13px;background:#fffdf7;color:var(--ink);font:inherit;cursor:pointer;text-align:center;transition:transform .14s ease,border-color .14s ease,box-shadow .14s ease}
+.cook-pick{position:relative;appearance:none;min-height:72px;padding:8px;border:1px solid var(--line);border-radius:13px;background:#fffdf7;color:var(--ink);font:inherit;cursor:pointer;text-align:center;transition:transform .14s ease,border-color .14s ease,box-shadow .14s ease}
 .cook-pick:hover{transform:translateY(-2px);border-color:#e6a854;box-shadow:0 8px 16px #67401d22}.cook-pick:focus-visible{outline:2px solid #d58b35;outline-offset:2px}
 .cook-pick[aria-pressed="true"]{border-color:#d58b35;background:#fff0cf;box-shadow:0 0 0 2px #e3a44f33 inset}
 .cook-pick-icon{display:block;width:42px;height:42px;margin:0 auto 3px;background:url("${BASE}/assets/cooking/ingredient-atlas.webp?v=20260805a") calc(var(--item-x)*20%) calc(var(--item-y)*20%)/600% 600% no-repeat;image-rendering:pixelated}.cook-pick-name{display:block;font-size:12px;font-weight:700}.cook-pick-stock{display:block;font-size:10px;color:var(--ink-soft)}
+.cook-pick-qty{position:absolute;right:5px;top:5px;min-width:25px;height:21px;display:grid;place-items:center;padding:0 5px;border-radius:999px;background:#713b2f;color:#fff8e7;font:800 12px/1 system-ui;box-shadow:0 2px 5px #32160844;pointer-events:none}
 .cook-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}.cook-actions .btn{min-height:44px}
 .cook-result{position:fixed;inset:0;z-index:120;display:grid;place-items:center;padding:20px;background:#25140fa8;backdrop-filter:blur(5px);animation:cook-fade .2s ease both}
 .cook-result-card{position:relative;width:min(360px,100%);padding:22px;border:3px solid var(--rarity,var(--N));border-radius:22px;background:linear-gradient(180deg,#fffdf5,#f5ead5);box-shadow:0 24px 70px #1f0d09aa;text-align:center;animation:cook-card-pop .42s cubic-bezier(.2,.9,.3,1.2) both}
@@ -1147,14 +1148,31 @@ export function uiCooking(f, now, key, flash, resultRaw) {
     const view = kitchenView(f, now);
     const ranchCoins = f.ranch?.coins ?? 0;
     const flashHtml = flash ? `<div class="flash">${esc(flash)}</div>` : "";
-    const productButtons = view.products.map((item) => {
-        const def = cookingProductById.get(item.itemId);
+    const productGroups = [];
+    for (const item of view.products) {
+        let group = productGroups.find((entry) => entry.itemId === item.itemId);
+        if (!group) {
+            group = { itemId: item.itemId, items: [] };
+            productGroups.push(group);
+        }
+        group.items.push(item);
+    }
+    const productValueText = (items) => {
+        const values = items.map((item) => Number(item.value) || 0);
+        const min = Math.min(...values);
+        const max = Math.max(...values);
+        return min === max ? `锁价 ${num(min)} 金/份` : `锁价 ${num(min)}–${num(max)} 金/份`;
+    };
+    const productButtons = productGroups.map((group) => {
+        const item = group.items[0];
+        const def = cookingProductById.get(group.itemId);
         if (!def?.cookable)
             return "";
-        return `<button type="button" class="cook-pick" data-cook-ref="${esc(item.id)}" data-cook-unique="1" data-cook-stock="1" data-cook-name="${esc(item.name)}" data-cook-emoji="${esc(item.emoji || def.emoji || "🥚")}" aria-pressed="false">
-      ${cookingItemSprite(item.itemId, item.name)}<span class="cook-pick-name">${esc(item.name)}</span><span class="cook-pick-stock">锁价 ${num(item.value)} 金</span></button>`;
+        const refs = esc(JSON.stringify(group.items.map((entry) => entry.id)));
+        return `<button type="button" class="cook-pick" data-cook-key="${esc(group.itemId)}" data-cook-refs="${refs}" data-cook-stock="${group.items.length}" data-cook-name="${esc(item.name)}" data-cook-emoji="${esc(item.emoji || def.emoji || "🥚")}" aria-pressed="false">
+      <span class="cook-pick-qty" aria-hidden="true">×${group.items.length}</span>${cookingItemSprite(group.itemId, item.name)}<span class="cook-pick-name">${esc(item.name)}</span><span class="cook-pick-stock">库存 ${group.items.length} · ${productValueText(group.items)}</span></button>`;
     }).join("");
-    const ingredientButtons = view.ownedIngredients.map((item) => `<button type="button" class="cook-pick" data-cook-ref="${esc(item.id)}" data-cook-stock="${item.qty}" data-cook-name="${esc(item.name)}" data-cook-emoji="${esc(item.emoji)}" aria-pressed="false">
+    const ingredientButtons = view.ownedIngredients.map((item) => `<button type="button" class="cook-pick" data-cook-key="${esc(item.id)}" data-cook-ref="${esc(item.id)}" data-cook-stock="${item.qty}" data-cook-name="${esc(item.name)}" data-cook-emoji="${esc(item.emoji)}" aria-pressed="false">
       ${cookingItemSprite(item.id, item.name)}<span class="cook-pick-name">${esc(item.name)}</span><span class="cook-pick-stock">库存 ${item.qty}</span></button>`).join("");
     const selection = productButtons || ingredientButtons
         ? `${productButtons}${ingredientButtons}`
@@ -1174,15 +1192,15 @@ export function uiCooking(f, now, key, flash, resultRaw) {
     const cookScript = `<script>(()=>{
       const picker=document.getElementById("cookPicker"),pot=document.getElementById("cookPotItems"),hidden=document.getElementById("cookItems"),count=document.getElementById("cookCount"),start=document.getElementById("cookStart"),clear=document.getElementById("cookClear"),form=document.getElementById("cookForm"),stage=document.getElementById("cookStage");
       if(!picker||!pot||!form)return;let chosen=[];
-      const buttons=[...picker.querySelectorAll("[data-cook-ref]")];
+      const buttons=[...picker.querySelectorAll("[data-cook-key]")];
       function removeChoice(index){if(!Number.isInteger(index)||index<0||index>=chosen.length)return;chosen.splice(index,1);render();}
       function render(){hidden.value=JSON.stringify(chosen.map(x=>x.ref));count.textContent=String(chosen.length);start.disabled=chosen.length<2;
-        const groups=[];for(const item of chosen){const group=groups.find(x=>x.ref===item.ref);if(group)group.qty+=1;else groups.push({...item,qty:1});}
+        const groups=[];for(const item of chosen){const group=groups.find(x=>x.key===item.key);if(group)group.qty+=1;else groups.push({...item,qty:1});}
         pot.innerHTML=groups.map((x,i)=>'<button type="button" class="cook-pot-chip" data-remove-group="'+i+'" title="取出一份'+x.name+'" aria-label="取出一份'+x.name+'，锅内共'+x.qty+'份">'+x.emoji+'<span class="cook-pot-qty" aria-hidden="true">×'+x.qty+'</span></button>').join("");
-        for(const chip of pot.querySelectorAll("[data-remove-group]"))chip.addEventListener("click",()=>{const group=groups[Number(chip.dataset.removeGroup)];if(!group)return;removeChoice(chosen.map(x=>x.ref).lastIndexOf(group.ref));});
-        for(const b of buttons){const used=chosen.filter(x=>x.ref===b.dataset.cookRef).length;b.setAttribute("aria-pressed",used>0?"true":"false");b.disabled=used>=Number(b.dataset.cookStock||1)||chosen.length>=5;}
+        for(const chip of pot.querySelectorAll("[data-remove-group]"))chip.addEventListener("click",()=>{const group=groups[Number(chip.dataset.removeGroup)];if(!group)return;removeChoice(chosen.map(x=>x.key).lastIndexOf(group.key));});
+        for(const b of buttons){const used=chosen.filter(x=>x.key===b.dataset.cookKey).length;b.setAttribute("aria-pressed",used>0?"true":"false");b.disabled=used>=Number(b.dataset.cookStock||1)||chosen.length>=5;}
       }
-      picker.addEventListener("click",e=>{const b=e.target.closest("[data-cook-ref]");if(!b||b.disabled||chosen.length>=5)return;chosen.push({ref:b.dataset.cookRef,name:b.dataset.cookName,emoji:b.dataset.cookEmoji});render();});
+      picker.addEventListener("click",e=>{const b=e.target.closest("[data-cook-key]");if(!b||b.disabled||chosen.length>=5)return;const key=b.dataset.cookKey,used=chosen.filter(x=>x.key===key).length,refs=b.dataset.cookRefs?JSON.parse(b.dataset.cookRefs):null,ref=refs?refs[used]:b.dataset.cookRef;if(!ref)return;chosen.push({ref,key,name:b.dataset.cookName,emoji:b.dataset.cookEmoji});render();});
       clear.addEventListener("click",()=>{chosen=[];render();});
       form.addEventListener("submit",e=>{if(chosen.length<2){e.preventDefault();return;}e.preventDefault();start.disabled=true;start.textContent="🍳 烹饪中…";clear.disabled=true;for(const b of buttons)b.disabled=true;stage.classList.remove("is-cooking");void stage.offsetWidth;stage.classList.add("is-cooking");const wait=matchMedia("(prefers-reduced-motion: reduce)").matches?320:1650;setTimeout(()=>form.submit(),wait);});
       render();
@@ -1202,10 +1220,11 @@ export function uiCooking(f, now, key, flash, resultRaw) {
       <div class="tags" style="margin:0 0 8px"><span class="tag">🪙 银币 <b>${num(f.silver)}</b></span><span class="tag">每种食材限购 <b>3</b></span><span class="tag">每日未知食谱 <b>2</b></span></div>
       <details open><summary><b>食材铺 · 基础常驻 + 每日 6 种</b></summary><div class="cook-stock-list">${ingredientShop}</div></details>
       <details style="margin-top:10px"><summary><b>食谱铺</b></summary>${recipeShop}</details></div>`;
-    const productRows = view.products.length ? view.products.map((item) => {
-        const def = cookingProductById.get(item.itemId);
-        return `<div class="cook-stock-row line small"><span>${esc(item.emoji || def?.emoji || "📦")} <b>${esc(item.name)}</b>　<span class="muted">${def?.cookable ? "可下锅 · " : "不可下锅 · "}锁价 ${num(item.value)} 金</span></span>
-      <form method="post" action="${base}/sell" style="margin:0"><input type="hidden" name="itemId" value="${esc(item.id)}"><input type="hidden" name="to" value="system"><button class="btn ghost" type="submit">系统回收</button></form></div>`;
+    const productRows = productGroups.length ? productGroups.map((group) => {
+        const item = group.items[0];
+        const def = cookingProductById.get(group.itemId);
+        return `<div class="cook-stock-row line small"><span>${esc(item.emoji || def?.emoji || "📦")} <b>${esc(item.name)} ×${group.items.length}</b>　<span class="muted">${def?.cookable ? "可下锅 · " : "不可下锅 · "}${productValueText(group.items)}</span></span>
+      <form method="post" action="${base}/sell" style="margin:0"><input type="hidden" name="itemId" value="${esc(item.id)}"><input type="hidden" name="to" value="system"><button class="btn ghost" type="submit">回收 1 份</button></form></div>`;
     }).join("") : `<p class="small muted">还没有动物产物。</p>`;
     const dishRows = view.dishes.length ? view.dishes.map((dish) => {
         const odd = dish.recipeId === "odd_dish";
