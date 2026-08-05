@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from "
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { makeFarm, genCode, makeNpcFarm } from "./game.js";
+import { normalizeDishPricing } from "./engine.js";
 import { dumpUgc, loadUgc } from "./ugc.js";
 import { NPC_ID } from "./config.js";
 import { ensureFishing } from "./fishing.js";
@@ -39,6 +40,12 @@ export function normalizeFarm(f) {
         f.ranch.kitchen.ingredients ??= {};
         f.ranch.kitchen.dishes ??= [];
         f.ranch.kitchen.knownRecipes ??= [];
+        for (const dish of f.ranch.kitchen.dishes)
+            normalizeDishPricing(dish);
+        for (const listing of f.market) {
+            if (listing?.kind === "dish" && listing.dish)
+                normalizeDishPricing(listing.dish);
+        }
         for (const animal of f.ranch.animals) {
             animal.pending ??= 0;
             animal.pendingMeat ??= 0;
