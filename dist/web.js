@@ -242,7 +242,7 @@ nav a.on,nav a:hover{color:var(--leaf-deep);background:#e6f3d8}
 .ranch-codex-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(142px,1fr));gap:10px}
 .ranch-codex-item{min-width:0;padding:9px;border:1px solid var(--line);border-radius:13px;background:rgba(247,252,242,.82)}
 .ranch-codex-item.locked{background:rgba(242,245,239,.68)}
-.ranch-sprite{display:block;width:100%;aspect-ratio:1;border-radius:10px;background-image:url("${BASE}/assets/animal-codex-atlas.png?v=20260806a");
+.ranch-sprite{display:block;width:100%;aspect-ratio:1;border-radius:10px;background-image:url("${BASE}/assets/animal-codex-atlas.png?v=20260806b");
   background-repeat:no-repeat;background-size:500% 400%;background-position:var(--sx) var(--sy)}
 .ranch-codex-item.locked .ranch-sprite{filter:grayscale(.85);opacity:.58}
 .ranch-codex-name{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:8px;font-family:var(--serif);font-weight:700}
