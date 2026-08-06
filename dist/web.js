@@ -1246,12 +1246,12 @@ export function uiCooking(f, now, key, flash, resultRaw) {
         const refs = esc(JSON.stringify(group.items.map((entry) => entry.id)));
         const iconIndex = cookingItemIndex.get(group.itemId) ?? 0;
         const name = isFish ? "鲜鱼" : item.name;
-        return `<button type="button" class="cook-pick" data-cook-key="${esc(group.itemId)}" data-cook-refs="${refs}" data-cook-stock="${group.items.length}" data-cook-name="${esc(name)}" data-cook-x="${iconIndex % 6}" data-cook-y="${Math.floor(iconIndex / 6)}" data-cook-asset="${isFish ? "fish" : "main"}" aria-pressed="false">
+        return `<button type="button" class="cook-pick" data-cook-key="${esc(group.itemId)}" data-cook-refs="${refs}" data-cook-stock="${group.items.length}" data-cook-name="${esc(name)}" data-cook-x="${iconIndex % 7}" data-cook-y="${Math.floor(iconIndex / 7)}" data-cook-asset="${isFish ? "fish" : "main"}" aria-pressed="false">
       <span class="cook-pick-qty" aria-hidden="true">×${group.items.length}</span>${cookingItemSprite(group.itemId, name)}<span class="cook-pick-name">${esc(name)}</span><span class="cook-pick-stock">库存 ${group.items.length} · ${productValueText(group.items)}</span></button>`;
     }).join("");
     const ingredientButtons = view.ownedIngredients.map((item) => {
         const iconIndex = cookingItemIndex.get(item.id) ?? 0;
-        return `<button type="button" class="cook-pick" data-cook-key="${esc(item.id)}" data-cook-ref="${esc(item.id)}" data-cook-stock="${item.qty}" data-cook-name="${esc(item.name)}" data-cook-x="${iconIndex % 6}" data-cook-y="${Math.floor(iconIndex / 6)}" aria-pressed="false">
+        return `<button type="button" class="cook-pick" data-cook-key="${esc(item.id)}" data-cook-ref="${esc(item.id)}" data-cook-stock="${item.qty}" data-cook-name="${esc(item.name)}" data-cook-x="${iconIndex % 7}" data-cook-y="${Math.floor(iconIndex / 7)}" aria-pressed="false">
       ${cookingItemSprite(item.id, item.name)}<span class="cook-pick-name">${esc(item.name)}</span><span class="cook-pick-stock">库存 ${item.qty}</span></button>`;
     }).join("");
     const selection = productButtons || ingredientButtons
@@ -1270,11 +1270,11 @@ export function uiCooking(f, now, key, flash, resultRaw) {
             const asset = id === "fish:any" ? "fish" : "main";
             if (productIndex >= 0) {
                 const product = products.splice(productIndex, 1)[0];
-                items.push({ ref: product.id, key: id, name: product.name || itemName, x: iconIndex % 6, y: Math.floor(iconIndex / 6), asset });
+                items.push({ ref: product.id, key: id, name: product.name || itemName, x: iconIndex % 7, y: Math.floor(iconIndex / 7), asset });
             }
             else if ((counts[id] ?? 0) > 0) {
                 counts[id] -= 1;
-                items.push({ ref: id, key: id, name: itemName, x: iconIndex % 6, y: Math.floor(iconIndex / 6), asset });
+                items.push({ ref: id, key: id, name: itemName, x: iconIndex % 7, y: Math.floor(iconIndex / 7), asset });
             }
             else {
                 missing.set(id, (missing.get(id) ?? 0) + 1);
