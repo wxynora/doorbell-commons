@@ -244,7 +244,7 @@ nav a.on,nav a:hover{color:var(--leaf-deep);background:#e6f3d8}
 .ranch-codex-item.locked{background:rgba(242,245,239,.68)}
 .ranch-sprite{display:block;width:100%;aspect-ratio:1;border-radius:10px;background-image:url("${BASE}/assets/animal-codex-atlas.png?v=20260806b");
   background-repeat:no-repeat;background-size:500% 400%;background-position:var(--sx) var(--sy)}
-.ranch-sprite-alpaca{background-image:url("${BASE}/assets/alpaca-codex.png?v=20260806a");background-size:100% 100%;background-position:center}
+.ranch-sprite-alpaca{background-image:url("${BASE}/assets/alpaca-codex.png?v=20260806b");background-size:100% 100%;background-position:center}
 .ranch-codex-item.locked .ranch-sprite{filter:grayscale(.85);opacity:.58}
 .ranch-codex-name{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:8px;font-family:var(--serif);font-weight:700}
 .ranch-codex-state{flex:0 0 auto;border-radius:999px;padding:0 6px;font:600 10px/1.8 system-ui;color:var(--ink-soft);background:#edf2e8}
