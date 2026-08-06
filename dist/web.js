@@ -244,7 +244,7 @@ nav a.on,nav a:hover{color:var(--leaf-deep);background:#e6f3d8}
 .ranch-codex-item.locked{background:rgba(242,245,239,.68)}
 .ranch-sprite{display:block;width:100%;aspect-ratio:1;border-radius:10px;background-image:url("${BASE}/assets/animal-codex-atlas.png?v=20260806b");
   background-repeat:no-repeat;background-size:500% 400%;background-position:var(--sx) var(--sy)}
-.ranch-sprite-alpaca{background-image:url("${BASE}/assets/alpaca-codex.png?v=20260806b");background-size:100% 100%;background-position:center}
+.ranch-sprite-alpaca{background-image:url("${BASE}/assets/alpaca-codex.png?v=20260806c");background-size:100% 100%;background-position:center}
 .ranch-codex-item.locked .ranch-sprite{filter:grayscale(.85);opacity:.58}
 .ranch-codex-name{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:8px;font-family:var(--serif);font-weight:700}
 .ranch-codex-state{flex:0 0 auto;border-radius:999px;padding:0 6px;font:600 10px/1.8 system-ui;color:var(--ink-soft);background:#edf2e8}
@@ -794,10 +794,12 @@ export function uiRanch(f, now, key, flash) {
     const officialGot = codexGot(f);
     const ownedAnimalIds = new Set(list.map((entry) => entry.kindId));
     const ownedPetIds = new Set(petList.map((entry) => entry.kindId));
+    const alpacaSpriteIndex = animals.findIndex((kind) => kind.id === "alpaca");
     const sprite = (index, name, extraClass = "") => {
         const col = index % 5;
         const row = Math.floor(index / 5);
-        return `<span class="ranch-sprite${extraClass ? ` ${extraClass}` : ""}" role="img" aria-label="${esc(name)}像素画" style="--sx:${col * 25}%;--sy:${row * 100 / 3}%"></span>`;
+        const classes = [extraClass, index === alpacaSpriteIndex ? "ranch-sprite-alpaca" : ""].filter(Boolean).join(" ");
+        return `<span class="ranch-sprite${classes ? ` ${classes}` : ""}" role="img" aria-label="${esc(name)}像素画" style="--sx:${col * 25}%;--sy:${row * 100 / 3}%"></span>`;
     };
     const animalSpriteIndex = new Map(animals.map((kind, index) => [kind.id, index]));
     const petSpriteIndex = new Map(pets.map((kind, index) => [kind.id, animals.length + index]));
@@ -898,7 +900,7 @@ export function uiRanch(f, now, key, flash) {
                 ? `<span class="ranch-codex-state open">已解锁</span>`
                 : `<span class="ranch-codex-state">未解锁</span>`;
         return `<article class="ranch-codex-item${unlocked ? "" : " locked"}">
-        ${sprite(index, kind.name, kind.id === "alpaca" ? "ranch-sprite-alpaca" : "")}
+        ${sprite(index, kind.name)}
         <div class="ranch-codex-name"><span>${esc(kind.name)}</span>${state}</div>
         <div class="ranch-codex-meta"><b>${esc(kind.produce)}</b> · ${num(currentPrice)} 金/份<br>${fmtDur(kind.produceEveryTicks * TICK_MS)}一份 · 入手 ${num(kind.buyCost)} 金<br>${unlocked ? esc(kind.category) : `🔒 ${esc(kind.unlockCond)}`}</div>
       </article>`;
