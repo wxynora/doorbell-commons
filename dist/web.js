@@ -244,6 +244,7 @@ nav a.on,nav a:hover{color:var(--leaf-deep);background:#e6f3d8}
 .ranch-codex-item.locked{background:rgba(242,245,239,.68)}
 .ranch-sprite{display:block;width:100%;aspect-ratio:1;border-radius:10px;background-image:url("${BASE}/assets/animal-codex-atlas.png?v=20260806a");
   background-repeat:no-repeat;background-size:500% 400%;background-position:var(--sx) var(--sy)}
+.ranch-codex-sprite-alpaca{transform:translateY(12%)}
 .ranch-codex-item.locked .ranch-sprite{filter:grayscale(.85);opacity:.58}
 .ranch-codex-name{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:8px;font-family:var(--serif);font-weight:700}
 .ranch-codex-state{flex:0 0 auto;border-radius:999px;padding:0 6px;font:600 10px/1.8 system-ui;color:var(--ink-soft);background:#edf2e8}
@@ -897,7 +898,7 @@ export function uiRanch(f, now, key, flash) {
                 ? `<span class="ranch-codex-state open">已解锁</span>`
                 : `<span class="ranch-codex-state">未解锁</span>`;
         return `<article class="ranch-codex-item${unlocked ? "" : " locked"}">
-        ${sprite(index, kind.name)}
+        ${sprite(index, kind.name, kind.id === "alpaca" ? "ranch-codex-sprite-alpaca" : "")}
         <div class="ranch-codex-name"><span>${esc(kind.name)}</span>${state}</div>
         <div class="ranch-codex-meta"><b>${esc(kind.produce)}</b> · ${num(currentPrice)} 金/份<br>${fmtDur(kind.produceEveryTicks * TICK_MS)}一份 · 入手 ${num(kind.buyCost)} 金<br>${unlocked ? esc(kind.category) : `🔒 ${esc(kind.unlockCond)}`}</div>
       </article>`;
