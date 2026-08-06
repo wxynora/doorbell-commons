@@ -1171,6 +1171,7 @@ function agentDo(playKey, nonce, now) {
 const AGENT_HEADERS = { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache", "Expires": "0", "X-Robots-Tag": "noindex" };
 const PUBLIC_PNG_ASSETS = new Map([
     ["animal-codex-atlas.png", new URL("../assets/animal-codex-atlas.png", import.meta.url)],
+    ["alpaca-codex.png", new URL("../assets/alpaca-codex.png", import.meta.url)],
     ["ranch-scene-background.png", new URL("../assets/ranch-scene-background.png", import.meta.url)],
     ["ranch-scene-background-mobile.png", new URL("../assets/ranch-scene-background-mobile.png", import.meta.url)],
 ]);
