@@ -509,6 +509,34 @@ const COOKING_ASYNC_SCRIPT = `<script>(()=>{
     }catch{location.reload();}
   });
 })();</script>`;
+/** 牧场操作沿用现有 POST/303，只替换牧场动态内容，保留滚动、折叠与当前动物弹窗。 */
+const RANCH_ASYNC_SCRIPT = `<script>(()=>{
+  if(window.__farmRanchAsync)return;window.__farmRanchAsync=true;
+  const root=document.getElementById("ranchPage");if(!root)return;
+  const showNotice=next=>{const source=next.getElementById("human-notice");if(!source)return;document.getElementById("human-notice")?.remove();const box=document.importNode(source,true);document.body.appendChild(box);const close=()=>box.classList.remove("show");box.addEventListener("click",e=>{if(e.target===box||e.target.closest("[data-close]"))close();});const key=e=>{if(e.key==="Escape"){close();document.removeEventListener("keydown",key);}};document.addEventListener("keydown",key);};
+  document.addEventListener("submit",async event=>{
+    const form=event.target.closest?.('form[method="post"]');
+    if(!form||event.defaultPrevented||(!form.closest("#ranchPage")&&!form.closest("#ranchAnimalModal")))return;
+    event.preventDefault();
+    if(event.submitter)event.submitter.disabled=true;
+    const body=new URLSearchParams();
+    for(const [name,value] of new FormData(form))if(typeof value==="string")body.append(name,value);
+    if(event.submitter?.name&&!body.has(event.submitter.name))body.append(event.submitter.name,event.submitter.value);
+    try{
+      const response=await fetch(form.action,{method:"POST",body,credentials:"same-origin"});
+      if(!response.ok)throw new Error("request failed");
+      const next=new DOMParser().parseFromString(await response.text(),"text/html");
+      const source=next.getElementById("ranchPage");if(!source)throw new Error("invalid page");
+      const clean=source.cloneNode(true),incomingModal=clean.querySelector("#ranchAnimalModal");
+      if(incomingModal)incomingModal.remove();clean.querySelectorAll("script").forEach(script=>script.remove());
+      const opened=[...root.querySelectorAll("details")].map(details=>details.open),x=scrollX,y=scrollY;
+      root.innerHTML=clean.innerHTML;
+      [...root.querySelectorAll("details")].forEach((details,index)=>details.open=opened[index]??details.open);
+      window.__farmInitRanchScenes?.(root);window.__farmRanchModal?.refresh();showNotice(next);
+      requestAnimationFrame(()=>scrollTo(x,y));
+    }catch{location.reload();}
+  });
+})();</script>`;
 function page(title, key, active, body, names) {
     const human = esc(names?.human || "伴侣");
     const ai = esc(names?.ai || "AI");
@@ -861,34 +889,23 @@ export function uiRanch(f, now, key, flash) {
     const ranchSceneCard = `<section class="card ranch-scene-card" aria-label="牧场动态场景"><div class="ranch-scene">
       <div class="ranch-scene-title">🌿 牧场里 · ${sceneResidentCount} 位居民${sceneVisitorCount ? ` · ${sceneVisitorCount} 位来客` : ""}</div>
       ${sceneResidentHtml || (!residentCount ? `<div class="ranch-scene-empty">等 ${ai} 送来动物，这片草地就会热闹起来。</div>` : "")}
-    </div></section>${sceneResidents.length ? `<script>(()=>{
-      const scene=document.currentScript.previousElementSibling.querySelector(".ranch-scene");
-      if(!scene||window.matchMedia("(prefers-reduced-motion: reduce)").matches)return;
-      const roamers=[...scene.querySelectorAll("[data-roamer]")];
-      const random=(min,max)=>min+Math.random()*(max-min);
-      for(const anchor of roamers){
-        let x=Number(anchor.dataset.x),y=Number(anchor.dataset.y);
-        const homeX=x,homeY=y;
-        const face=anchor.querySelector(".ranch-face");
-        const move=()=>{
-          let nx,ny;
-          do{
-            nx=Math.max(10,Math.min(82,random(homeX-9,homeX+9)));
-            ny=Math.max(42,Math.min(84,random(homeY-7,homeY+7)));
-          }while(Math.hypot(nx-x,ny-y)<4);
-          if(face)face.style.transform=nx>=x?"scaleX(-1)":"scaleX(1)";
-          const px=Math.hypot((nx-x)*scene.clientWidth/100,(ny-y)*scene.clientHeight/100);
-          const motion=anchor.animate([{left:String(x)+"%",top:String(y)+"%"},{left:String(nx)+"%",top:String(ny)+"%"}],{
-            duration:Math.max(2800,px*random(48,70)),easing:"ease-in-out",fill:"forwards"
-          });
-          motion.onfinish=()=>{
-            x=nx;y=ny;anchor.style.left=String(x)+"%";anchor.style.top=String(y)+"%";anchor.style.zIndex=String(Math.round(y));motion.cancel();
-            window.setTimeout(move,random(350,1600));
-          };
-        };
-        window.setTimeout(move,random(120,1300));
-      }
-    })();</script>` : ""}`;
+    </div></section><script>(()=>{
+      if(!window.__farmInitRanchScenes)window.__farmInitRanchScenes=(root=document)=>{
+        if(window.matchMedia("(prefers-reduced-motion: reduce)").matches)return;
+        const random=(min,max)=>min+Math.random()*(max-min);
+        for(const scene of root.querySelectorAll(".ranch-scene")){
+          if(scene.dataset.roamReady)return;scene.dataset.roamReady="true";
+          for(const anchor of scene.querySelectorAll("[data-roamer]")){
+            let x=Number(anchor.dataset.x),y=Number(anchor.dataset.y);const homeX=x,homeY=y,face=anchor.querySelector(".ranch-face");
+            const move=()=>{let nx,ny;do{nx=Math.max(10,Math.min(82,random(homeX-9,homeX+9)));ny=Math.max(42,Math.min(84,random(homeY-7,homeY+7)));}while(Math.hypot(nx-x,ny-y)<4);
+              if(face)face.style.transform=nx>=x?"scaleX(-1)":"scaleX(1)";const px=Math.hypot((nx-x)*scene.clientWidth/100,(ny-y)*scene.clientHeight/100);
+              const motion=anchor.animate([{left:String(x)+"%",top:String(y)+"%"},{left:String(nx)+"%",top:String(ny)+"%"}],{duration:Math.max(2800,px*random(48,70)),easing:"ease-in-out",fill:"forwards"});
+              motion.onfinish=()=>{x=nx;y=ny;anchor.style.left=String(x)+"%";anchor.style.top=String(y)+"%";anchor.style.zIndex=String(Math.round(y));motion.cancel();window.setTimeout(move,random(350,1600));};};
+            window.setTimeout(move,random(120,1300));
+          }
+        }
+      };window.__farmInitRanchScenes(document);
+    })();</script>`;
     const animalCodexRows = animals.map((kind, index) => {
         const owned = list.find((entry) => entry.kindId === kind.id);
         const unlocked = officialGot >= kind.unlockCodex;
@@ -1056,10 +1073,12 @@ export function uiRanch(f, now, key, flash) {
     </div><script>(function(){
       var modal=document.getElementById('ranchAnimalModal'),body=document.getElementById('ranchAnimalBody'),opener=null;if(!modal||!body)return;
       document.body.appendChild(modal);
-      function openAnimal(index,trigger){var template=document.getElementById('ranch-animal-template-'+index);if(!template)return;opener=trigger;body.replaceChildren(template.content.cloneNode(true));modal.classList.add('show');modal.setAttribute('aria-hidden','false');var close=modal.querySelector('[data-ranch-animal-close]');if(close&&close.focus)close.focus();}
-      function closeAnimal(){if(!modal.classList.contains('show'))return;modal.classList.remove('show');modal.setAttribute('aria-hidden','true');body.replaceChildren();if(opener&&opener.focus)opener.focus();opener=null;}
+      function openAnimal(index,trigger){var template=document.getElementById('ranch-animal-template-'+index);if(!template)return;opener=trigger;modal.dataset.panel=index;body.replaceChildren(template.content.cloneNode(true));modal.classList.add('show');modal.setAttribute('aria-hidden','false');var close=modal.querySelector('[data-ranch-animal-close]');if(close&&close.focus)close.focus();}
+      function closeAnimal(){if(!modal.classList.contains('show'))return;modal.classList.remove('show');modal.setAttribute('aria-hidden','true');delete modal.dataset.panel;body.replaceChildren();if(opener&&opener.focus)opener.focus();opener=null;}
+      function refreshAnimal(){if(!modal.classList.contains('show'))return;var index=modal.dataset.panel,template=document.getElementById('ranch-animal-template-'+index);if(!template){closeAnimal();return;}body.replaceChildren(template.content.cloneNode(true));opener=[...document.querySelectorAll('[data-ranch-animal]')].find(function(node){return node.getAttribute('data-ranch-animal')===index;})||opener;var focus=body.querySelector('input:not([type="hidden"]),select,button');if(focus)focus.focus({preventScroll:true});}
       document.addEventListener('click',function(event){var trigger=event.target.closest('[data-ranch-animal]');if(trigger){event.preventDefault();openAnimal(trigger.getAttribute('data-ranch-animal'),trigger);return;}if(event.target===modal||event.target.closest('[data-ranch-animal-close]'))closeAnimal();});
       document.addEventListener('keydown',function(event){if(event.key==='Escape')closeAnimal();});
+      window.__farmRanchModal={refresh:refreshAnimal,close:closeAnimal};
     })();</script>` : "";
         animalsCard = `<div class="card"><div class="line"><h3 style="margin:0">🐾 在养的动物</h3>
         <form method="post" action="${base}/collect" style="margin:0">
@@ -1191,7 +1210,7 @@ ${animalsCard}
 ${warehouseCard}
 ${shopCard}
 <div class="grid c2">${remitCard}${historyCard}</div>`;
-    return page(`${f.name} · 我的牧场`, key, "ranch", body, farmNames(f));
+    return page(`${f.name} · 我的牧场`, key, "ranch", `<div id="ranchPage">${body}</div>${RANCH_ASYNC_SCRIPT}`, farmNames(f));
 }
 // ——————————————————————————————————————————————————————————————
 // 🍳 料理台：三层像素场景 + 点料入锅；食材/料理实例都使用收取或出锅时锁定的价值。
