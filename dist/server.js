@@ -474,6 +474,7 @@ function runFarm(farmId, action, b, encArg, now) {
         return { status: 400, json: { ok: false, text: debuffText, ...vf(principal) } };
     if (action === "fish") {
         const r = runFishing(f, b, now, playerFarms());
+        checkTitles(f);
         save();
         return { status: r.ok ? 200 : 400, json: { ok: r.ok, text: r.text, ...vf(f) } };
     }
@@ -1304,6 +1305,9 @@ export function startServer(port, host = "127.0.0.1") {
                     return res.end(uiInvalid());
                 }
                 const raidSettlement = settleRanchRaids(playerFarms(), now);
+                if (raidSettlement.settled > 0)
+                    for (const farm of playerFarms())
+                        checkTitles(farm);
                 advance(f, now);
                 if (!f.humanFrontendSeen) {
                     f.humanFrontendSeen = true;
@@ -1341,6 +1345,7 @@ export function startServer(port, host = "127.0.0.1") {
                         const extras = `${newCount ? ` · 新图鉴×${newCount}` : ""}${drops.length ? ` · 掉落${drops.join("、")}` : ""}${potionCount ? ` · 加速药水×${potionCount}` : ""}${se ? ` · ${se.hit.name}` : ""}`;
                         flash = `🌾 一键帮${f.aiName || f.name || "TA"}收下 ${r.count} 株：${crops}，共 +${gain} 金${extras}；今日已帮收 ${r.used}/${HUMAN_HARVEST_DAILY_CAP} 次`;
                         pushSocialInbox(f, `🌾 ${f.humanName || "你的伴侣"}刚帮你一键收了 ${r.count} 株，空出了 ${r.count} 块地。`, now);
+                        checkTitles(f);
                     }
                     save();
                     res.writeHead(303, { ...AGENT_HEADERS, Location: `${BASE}/ui/${key}?flash=${encodeURIComponent(flash)}` });
@@ -1404,6 +1409,7 @@ export function startServer(port, host = "127.0.0.1") {
                                 ? r.to === "system" ? `♻️ 系统回收「${r.name}」，+${r.value} 牧场金币${r.silver ? ` + ${r.silver} 银` : ""}` : `🧺 「${r.name}」已按 🪙${r.price} 摆上摊位`
                                 : r.error;
                         }
+                        checkTitles(f);
                         save();
                         const suffix = result ? `&result=${encodeURIComponent(result)}` : "";
                         res.writeHead(303, { ...AGENT_HEADERS, Location: `${BASE}/ui/${key}/cooking?flash=${encodeURIComponent(flash)}${suffix}` });

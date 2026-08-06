@@ -396,6 +396,141 @@
     "flavor": ""
   },
   {
+    "id": "cooking_1",
+    "cat": "料理",
+    "tier": 1,
+    "field": "cookingRecipeCount",
+    "min": 8,
+    "name": "锅来",
+    "flavor": ""
+  },
+  {
+    "id": "cooking_2",
+    "cat": "料理",
+    "tier": 2,
+    "field": "cookingRecipeCount",
+    "min": 24,
+    "name": "食在必得",
+    "flavor": ""
+  },
+  {
+    "id": "cooking_3",
+    "cat": "料理",
+    "tier": 3,
+    "field": "cookingRecipeCount",
+    "min": 40,
+    "name": "厨类拔萃",
+    "flavor": ""
+  },
+  {
+    "id": "cooking_4",
+    "cat": "料理",
+    "tier": 4,
+    "field": "cookingRecipeCount",
+    "min": 64,
+    "name": "饭统天下",
+    "flavor": ""
+  },
+  {
+    "id": "fishing_1",
+    "cat": "垂钓",
+    "tier": 1,
+    "field": "fishingCaught",
+    "min": 10,
+    "name": "空军退役",
+    "flavor": ""
+  },
+  {
+    "id": "fishing_2",
+    "cat": "垂钓",
+    "tier": 2,
+    "field": "fishingCaught",
+    "min": 50,
+    "name": "鱼你有缘",
+    "flavor": ""
+  },
+  {
+    "id": "fishing_3",
+    "cat": "垂钓",
+    "tier": 3,
+    "field": "fishingCaught",
+    "min": 200,
+    "name": "钓系天花板",
+    "flavor": ""
+  },
+  {
+    "id": "fishing_4",
+    "cat": "垂钓",
+    "tier": 4,
+    "field": "fishingCaught",
+    "min": 500,
+    "name": "姜太公再就业",
+    "flavor": ""
+  },
+  {
+    "id": "ranch_1",
+    "cat": "牧场",
+    "tier": 1,
+    "field": "ranchAnimalCount",
+    "min": 4,
+    "name": "牛马开会",
+    "flavor": ""
+  },
+  {
+    "id": "ranch_2",
+    "cat": "牧场",
+    "tier": 2,
+    "field": "ranchAnimalCount",
+    "min": 8,
+    "name": "鸡飞羊跳",
+    "flavor": ""
+  },
+  {
+    "id": "ranch_3",
+    "cat": "牧场",
+    "tier": 3,
+    "field": "ranchAnimalCount",
+    "min": 12,
+    "name": "全员吃我家饭",
+    "flavor": ""
+  },
+  {
+    "id": "ranch_4",
+    "cat": "牧场",
+    "tier": 4,
+    "field": "ranchAnimalCount",
+    "min": 16,
+    "name": "诺亚方舟二号",
+    "flavor": ""
+  },
+  {
+    "id": "goose_guard_1",
+    "cat": "守鹅",
+    "tier": 1,
+    "field": "patrolGooseCatchesDaily",
+    "min": 3,
+    "name": "鹅法鹅天",
+    "flavor": ""
+  },
+  {
+    "id": "human_harvest_1",
+    "cat": "帮收",
+    "tier": 1,
+    "field": "humanHarvestDaily",
+    "min": 3,
+    "name": "人类外挂",
+    "flavor": ""
+  },
+  {
+    "id": "raid_income_1",
+    "cat": "摸金",
+    "tier": 1,
+    "field": "raidIncomeDaily",
+    "min": 1000,
+    "name": "畜谋已久",
+    "flavor": ""
+  },
+  {
     "id": "concord_1",
     "cat": "默契",
     "tier": 1,

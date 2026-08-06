@@ -18,6 +18,12 @@ export function metricValue(f, field) {
         case "gotStolen": return f.gotStolen ?? 0;
         case "tasksDone": return f.tasksDone ?? 0;
         case "expConcord": return Math.min(100, f.expConcord ?? 0); // 默契度（封顶 100）
+        case "cookingRecipeCount": return f.ranch?.kitchen?.knownRecipes?.length ?? 0;
+        case "fishingCaught": return f.fishing?.stats?.totalCaught ?? 0;
+        case "ranchAnimalCount": return f.ranch?.animals?.length ?? 0;
+        case "patrolGooseCatchesDaily": return f.ranch?.patrolGooseCatches?.n ?? 0;
+        case "humanHarvestDaily": return f.humanHarvestDaily?.n ?? 0;
+        case "raidIncomeDaily": return f.ranch?.raidIncome?.n ?? 0;
         default: return 0;
     }
 }
