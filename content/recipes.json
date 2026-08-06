@@ -43,5 +43,41 @@
     ],
     "output": "origin_vine",
     "hint": "微光碎晶、不死枯藤与开天辟地的回响，唤醒最初的蔓。"
+  },
+  {
+    "materials": [
+      "sea_glass",
+      "deepsea_nacre",
+      "stardust_sand"
+    ],
+    "output": "star_tide_coral_grass",
+    "hint": "让海玻璃、深海珍珠母与星沙听见同一阵潮声。"
+  },
+  {
+    "materials": [
+      "ambergris_fragment",
+      "rusted_gear",
+      "old_vine"
+    ],
+    "output": "amber_pendulum_vine",
+    "hint": "以凝香作坠、旧齿轮计时，让枯藤重新摆动。"
+  },
+  {
+    "materials": [
+      "crystal_shard",
+      "fluorite",
+      "sea_god_scale"
+    ],
+    "output": "sky_prism_flower",
+    "hint": "碎晶、萤石与海神鳞片会把同一道天光折成花。"
+  },
+  {
+    "materials": [
+      "world_tree_seed",
+      "ancient_resin",
+      "creation_echo"
+    ],
+    "output": "world_root_crown",
+    "hint": "用世界树之籽、古树脂与创世余音接回最初的根。"
   }
 ]

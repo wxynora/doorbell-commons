@@ -34,6 +34,23 @@
     "unlockCond": "图鉴集齐 4 种解锁"
   },
   {
+    "id": "quail",
+    "name": "鹌鹑",
+    "emoji": "🐦",
+    "desc": "小小一只，最喜欢贴着草边快步巡游。",
+    "roam": "鹌鹑贴着草沿嗒嗒跑过，一眨眼又钻进了矮叶间。",
+    "category": "普通",
+    "produceId": "quail_egg",
+    "produce": "鹌鹑蛋",
+    "meatId": "quail_meat",
+    "meat": "鹌鹑肉",
+    "produceEveryTicks": 2,
+    "producePrice": 55,
+    "buyCost": 450,
+    "unlockCodex": 6,
+    "unlockCond": "图鉴集齐 6 种解锁"
+  },
+  {
     "id": "rabbit",
     "name": "兔子",
     "emoji": "🐰",
@@ -83,6 +100,23 @@
     "unlockCond": "图鉴集齐 16 种解锁"
   },
   {
+    "id": "goat",
+    "name": "山羊",
+    "emoji": "🐐",
+    "desc": "稳稳站在高处，总能找到回家的那条小路。",
+    "roam": "山羊踏上牧场里最高的一块石头，得意地向四周张望。",
+    "category": "普通",
+    "produceId": "goat_milk",
+    "produce": "山羊奶",
+    "meatId": "goat_meat",
+    "meat": "山羊肉",
+    "produceEveryTicks": 9,
+    "producePrice": 420,
+    "buyCost": 4200,
+    "unlockCodex": 18,
+    "unlockCond": "图鉴集齐 18 种解锁"
+  },
+  {
     "id": "cow",
     "name": "奶牛",
     "emoji": "🐮",
@@ -115,6 +149,23 @@
     "unlockCond": "图鉴集齐 26 种解锁"
   },
   {
+    "id": "turkey",
+    "name": "火鸡",
+    "emoji": "🦃",
+    "desc": "尾羽一开像把小扇子，走起路来很有阵仗。",
+    "roam": "火鸡抖开圆圆尾羽，在草地上慢悠悠转了一整圈。",
+    "category": "普通",
+    "produceId": "turkey_egg",
+    "produce": "火鸡蛋",
+    "meatId": "turkey_meat",
+    "meat": "火鸡肉",
+    "produceEveryTicks": 15,
+    "producePrice": 1050,
+    "buyCost": 11000,
+    "unlockCodex": 28,
+    "unlockCond": "图鉴集齐 28 种解锁"
+  },
+  {
     "id": "pig",
     "name": "猪",
     "emoji": "🐷",
@@ -128,6 +179,21 @@
     "buyCost": 14000,
     "unlockCodex": 32,
     "unlockCond": "图鉴集齐 32 种解锁"
+  },
+  {
+    "id": "alpaca",
+    "name": "羊驼",
+    "emoji": "🦙",
+    "desc": "蓬松长毛像一团会散步的云，脾气倒很从容。",
+    "roam": "羊驼迈着慢吞吞的小步，把一绺软毛留在了篱笆边。",
+    "category": "普通",
+    "produceId": "alpaca_wool",
+    "produce": "羊驼毛",
+    "produceEveryTicks": 18,
+    "producePrice": 1600,
+    "buyCost": 17500,
+    "unlockCodex": 36,
+    "unlockCond": "图鉴集齐 36 种解锁"
   },
   {
     "id": "silk_moth",
