@@ -2,7 +2,7 @@
 import { createServer } from "node:http";
 import { randomUUID, randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { advance, steal, canStealNow, stealAvailability, stealShieldRemain, isUgcCrop, visitorWater, tryWaterReward, humanHarvestAll, humanHarvestLeft, ranchRoamLine, buyPotionSet, refreshShop, ranchCollect, ranchRemit, ranchBuyAccessory, ranchBuyDecoration, ranchWearAccessory, ranchTakeOffAccessory, ranchPlaceDecoration, ranchUnplaceDecoration, ranchUpgradeAnimal, ranchNameAnimal, ranchNamePet, ranchNamePatrolGoose, ranchTogglePin, dispatchRanchRaid, catchRanchRaid, settleRanchRaids, ensureHumanKey, takeInbox, takeRanchNotices, pushSocialInbox, potionDailyLeft, designCrop, craft, nextUpgradeReq, toggleStar, cookingDebuffReason, cookingDebuffStatusText, bribeGuardDog, kitchenBuy, kitchenCook, kitchenUse, kitchenSell, ranchFeedAnimal, kitchenView, dishSystemRecycleSilver } from "./engine.js";
+import { advance, steal, canStealNow, stealAvailability, stealShieldRemain, isUgcCrop, visitorWater, tryWaterReward, humanHarvestAll, humanHarvestLeft, ranchRoamLine, buyPotionSet, refreshShop, ranchCollect, ranchRemit, ranchBuyAccessory, ranchBuyDecoration, ranchWearAccessory, ranchTakeOffAccessory, ranchPlaceDecoration, ranchUnplaceDecoration, ranchUpgradeAnimal, ranchNameAnimal, ranchNamePet, ranchNamePatrolGoose, ranchTogglePin, dispatchRanchRaid, catchRanchRaid, settleRanchRaids, ensureHumanKey, takeInbox, takeRanchNotices, pushSocialInbox, potionDailyLeft, designCrop, craft, nextUpgradeReq, toggleStar, cookingDebuffReason, cookingDebuffStatusText, bribeGuardDog, kitchenBuy, kitchenCook, kitchenUse, kitchenSell, kitchenSellMany, ranchFeedAnimal, kitchenView, dishSystemRecycleSilver } from "./engine.js";
 import { dispatch, HELP, farmView, viewShop, viewEncyclopedia, viewBag, shopBrief, viewMarket, buyFromMarket, visitView, ranchAgentSection, refPrice, tendNpc, buyNpcSeed, randomTip, hasDamagedPublicName, viewKitchen } from "./game.js";
 import { harvestText, stealThiefText, statusFooter, waterText, describeFarm } from "./flavor.js";
 import { createFarm, getFarm, allFarms, playerFarms, save } from "./store.js";
@@ -1405,9 +1405,16 @@ export function startServer(port, host = "127.0.0.1") {
                                 : r.error;
                         }
                         else {
-                            const r = kitchenSell(f, String(form.itemId), String(form.to), form.price, now);
+                            let itemIds;
+                            try {
+                                itemIds = JSON.parse(String(form.itemIds ?? "[]"));
+                            }
+                            catch { /* 批量引擎给出数量提示 */ }
+                            if (!Array.isArray(itemIds) || itemIds.length === 0)
+                                itemIds = [String(form.itemId ?? "")];
+                            const r = kitchenSellMany(f, itemIds, form.qty ?? 1, String(form.to), form.price, now);
                             flash = r.ok
-                                ? r.to === "system" ? `♻️ 系统回收「${r.name}」，+${r.value} 牧场金币${r.silver ? ` + ${r.silver} 银` : ""}` : `🧺 「${r.name}」已按 🪙${r.price} 摆上摊位`
+                                ? r.to === "system" ? `♻️ 系统回收「${r.name}」×${r.qty}，+${r.value} 牧场金币${r.silver ? ` + ${r.silver} 银` : ""}` : `🧺 「${r.name}」×${r.qty} 已按 🪙${r.price}/份摆上摊位`
                                 : r.error;
                         }
                         checkTitles(f);

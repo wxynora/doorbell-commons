@@ -1,5 +1,5 @@
 // 共享游戏核心：HTTP 服务和 CLI 适配器都调这里，保证同一套规则与存档结构。
-import { advance, plant, water, harvest, upgradeLand, shopOffer, collectionPct, codexCountByCategory, nextUpgradeReq, buyItem, useItem, craft, designCrop, plantBatch, waterAll, harvestAll, usePotionBatch, refreshShop, buyRecipe, affordablePotions, buyPotionSet, potionDailyLeft, shopAnimals, nextLockedAnimal, buyAnimalForPartner, ranchRoamLine, decorLines, takeInbox, shopPets, nextLockedPet, buyPetForPartner, buyPatrolGoose, farmSendRanch, potionTargets, circledNum, isUgcCrop, ensureKitchen, kitchenView, kitchenBuy, kitchenCook, kitchenUse, kitchenSell, ranchFeedAnimal, dishSystemRecycleSilver, } from "./engine.js";
+import { advance, plant, water, harvest, upgradeLand, shopOffer, collectionPct, codexCountByCategory, nextUpgradeReq, buyItem, useItem, craft, designCrop, plantBatch, waterAll, harvestAll, usePotionBatch, refreshShop, buyRecipe, affordablePotions, buyPotionSet, potionDailyLeft, shopAnimals, nextLockedAnimal, buyAnimalForPartner, ranchRoamLine, decorLines, takeInbox, shopPets, nextLockedPet, buyPetForPartner, buyPatrolGoose, farmSendRanch, potionTargets, circledNum, isUgcCrop, ensureKitchen, kitchenView, kitchenBuy, kitchenCook, kitchenUse, kitchenSellSelected, ranchFeedAnimal, dishSystemRecycleSilver, } from "./engine.js";
 import { describeFarm, harvestText, bonusEventText, dropText, potionDropText, plantText, waterText, statusFooter, } from "./flavor.js";
 import { expExplore, expChoose, expRetreat, expRoll, expView } from "./expedition.js";
 import { currentSeason, currentDayIndex } from "./time.js";
@@ -111,7 +111,7 @@ export const HELP = `🌾 你的农场
      买食材/食谱               kitchen {"op":"buy","kind":"ingredient|recipe","id":"id","qty":1}
      下锅料理                   kitchen {"op":"cook","items":["鸡蛋","番茄","盐"]}
      使用料理                   kitchen {"op":"use","dishId":"料理实例id","target":"cat|dog|self|guard-dog"}
-     回收或摆摊                 kitchen {"op":"sell","itemId":"实例id","to":"system|market","price":银币价}
+     回收或摆摊                 kitchen {"op":"sell","itemId":"产物名或料理名","qty":数量,"to":"system|market","price":每份银币价}
   🥣 给生产动物投喂            ranch-feed {"animal":0}            （每天 3 次；花银币，下一份正常产物 +10%，不能叠加）
   🎣 钓鱼（每日最多 20 竿）：抛竿 {"action":"fish","times":10,"bait":"普通蚯蚓","location":"月光池塘","stop":"rare"}；买饵并钓 {"action":"fish","bait":"普通蚯蚓","buy":10,"times":10}；查看 {"action":"fish","view":"basket|codex|spots"}；卖鱼 {"action":"fish","sell":"all"}；开宝箱 {"action":"fish","open":"宝箱id"}；离开钓位 {"action":"fish","leave":true}。stop 可填 new、rare、event。
                               鱼获、事件和垃圾都计入，让鱼群和水域有时间恢复，北京时间 0 点刷新。
@@ -481,19 +481,45 @@ export function viewBag(f) {
     ].join("\n");
 }
 const kitchenItemName = (id) => id === "fish:any" ? "任意鱼" : cookingProductById.get(id)?.name ?? cookingIngredientById.get(id)?.name ?? id;
+const kitchenValueRange = (items, valueOf) => {
+    const values = items.map(valueOf);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    return min === max ? String(min) : `${min}–${max}`;
+};
+const kitchenGroups = (items, keyOf) => {
+    const groups = [];
+    for (const item of items) {
+        const key = keyOf(item);
+        let group = groups.find((entry) => entry.key === key);
+        if (!group) {
+            group = { key, items: [] };
+            groups.push(group);
+        }
+        group.items.push(item);
+    }
+    return groups;
+};
 export function viewKitchen(f, now) {
     const view = kitchenView(f, now);
     const products = view.products.length
-        ? view.products.map((item) => item.source === "fish"
-            ? `${item.emoji ?? ""}${item.name}〔${item.id}〕·入菜估值 ${item.value} 金（直接卖鱼 🪙${item.sellSilver}）`
-            : `${item.emoji ?? ""}${item.name}〔${item.id}〕·回收 ${item.value} 金`).join("\n  ")
+        ? kitchenGroups(view.products, (item) => item.source === "fish" ? `fish:${item.fishId}` : `product:${item.itemId}`).map((group) => {
+            const item = group.items[0];
+            const label = `${item.emoji ?? ""}${item.emoji ? " " : ""}${item.name} ×${group.items.length}`;
+            return item.source === "fish"
+                ? `${label} · 入菜估值 ${kitchenValueRange(group.items, (entry) => entry.value)} 金/份（直接卖鱼 🪙${kitchenValueRange(group.items, (entry) => entry.sellSilver)}/份）`
+                : `${label} · 回收 ${kitchenValueRange(group.items, (entry) => entry.value)} 金/份`;
+        }).join("\n  ")
         : "（空；去牧场收取动物产出）";
     const ingredients = view.ingredients.map((item) => `${item.emoji}${item.name}〔${item.id}〕 🪙${item.price}·有 ${item.owned}·今日已买 ${item.bought}/3`).join("\n  ");
     const ownedIngredients = view.ownedIngredients.length
         ? view.ownedIngredients.map((item) => `${item.emoji}${item.name}〔${item.id}〕×${item.qty}`).join("、")
         : "（空）";
     const dishes = view.dishes.length
-        ? view.dishes.map((dish) => `${dish.name}·${dish.rarity}〔${dish.id}〕·系统回收 ${dish.value} 金${dish.recipeId === "odd_dish" ? "" : ` + 🪙${dish.recycleSilver}`}`).join("\n  ")
+        ? kitchenGroups(view.dishes, (dish) => dish.recipeId || dish.name).map((group) => {
+            const dish = group.items[0];
+            return `${dish.name}·${dish.rarity} ×${group.items.length} · 系统回收 ${kitchenValueRange(group.items, (entry) => entry.value)} 金${dish.recipeId === "odd_dish" ? "" : ` + 🪙${kitchenValueRange(group.items, (entry) => entry.recycleSilver)}/份`}`;
+        }).join("\n  ")
         : "（空）";
     const offers = view.recipeOffers.length
         ? view.recipeOffers.map((recipe) => `${recipe.name}·${recipe.rarity}〔${recipe.id}〕 🪙${recipe.price}${recipe.known ? "（已会）" : ""}`).join("\n  ")
@@ -502,7 +528,7 @@ export function viewKitchen(f, now) {
         ? view.knownRecipes.map((recipe) => `${recipe.name}·${recipe.rarity}：${recipe.ingredients.map(kitchenItemName).join(" + ")}`).join("\n  ")
         : "（还没解锁；买食谱或用正确组合试做都能解锁）";
     const debuff = view.debuff ? `\n🥴 当前效果：${view.debuff.name}` : "";
-    return `🍳 料理台 · 🪙${f.silver} · 牧场金币 ${f.ranch?.coins ?? 0}${debuff}\n\n🥚 动物产物／渔获：\n  ${products}\n\n🧂 已有商店食材：\n  ${ownedIngredients}\n\n🧺 今日食材铺：\n  ${ingredients}\n\n📜 今日食谱铺：\n  ${offers}\n\n🍲 料理柜：\n  ${dishes}\n\n📖 已解锁食谱：\n  ${known}\n\n操作都使用同一个 kitchen 动作：\n· {"action":"kitchen"}\n· {"action":"kitchen","op":"buy","kind":"ingredient","id":"strawberry","qty":1}\n· {"action":"kitchen","op":"buy","kind":"recipe","id":"recipe id"}\n· {"action":"kitchen","op":"cook","items":["鱼的实例id","盐"]}\n· {"action":"kitchen","op":"use","dishId":"dish instance id","target":"cat|dog|self|guard-dog"}\n· {"action":"kitchen","op":"sell","itemId":"instance id","to":"system|market","price":银币价}`;
+    return `🍳 料理台 · 🪙${f.silver} · 牧场金币 ${f.ranch?.coins ?? 0}${debuff}\n\n🥚 动物产物／渔获：\n  ${products}\n\n🧂 已有商店食材：\n  ${ownedIngredients}\n\n🧺 今日食材铺：\n  ${ingredients}\n\n📜 今日食谱铺：\n  ${offers}\n\n🍲 料理柜：\n  ${dishes}\n\n📖 已解锁食谱：\n  ${known}\n\n操作都使用同一个 kitchen 动作：\n· {"action":"kitchen"}\n· {"action":"kitchen","op":"buy","kind":"ingredient","id":"strawberry","qty":1}\n· {"action":"kitchen","op":"buy","kind":"recipe","id":"recipe id"}\n· {"action":"kitchen","op":"cook","items":["鸡蛋","番茄","盐"]}\n· {"action":"kitchen","op":"use","dishId":"香煎蛋","target":"cat|dog|self|guard-dog"}\n· {"action":"kitchen","op":"sell","itemId":"鸡蛋","qty":5,"to":"system"}\n· {"action":"kitchen","op":"sell","itemId":"香煎蛋","qty":2,"to":"market","price":80}`;
 }
 // ——— 2.0 玩家市场：上架素材/种子，串门购买 ———
 const invOf = (f, kind) => (kind === "material" ? f.materials : f.seeds);
@@ -913,12 +939,12 @@ function dispatchImpl(f, b, now) {
                 return { ok: true, text: withFooter(f, now, line) };
             }
             if (op === "sell") {
-                const r = kitchenSell(f, String(b.itemId), String(b.to), b.price, now);
+                const r = kitchenSellSelected(f, String(b.itemId), b.qty ?? 1, String(b.to), b.price, now);
                 if (!r.ok)
                     return { ok: false, text: r.error };
                 const line = r.to === "system"
-                    ? `♻️ 系统回收「${r.name}」，+${r.value} 牧场金币${r.silver ? ` + ${r.silver} 银` : ""}。`
-                    : `🧺 「${r.name}」已按 🪙${r.price} 摆上玩家摊位，成交后扣 10% 手续费。`;
+                    ? `♻️ 系统回收「${r.name}」×${r.qty}，+${r.value} 牧场金币${r.silver ? ` + ${r.silver} 银` : ""}。`
+                    : `🧺 「${r.name}」×${r.qty} 已按 🪙${r.price}/份摆上玩家摊位，成交后扣 10% 手续费。`;
                 return { ok: true, text: withFooter(f, now, line) };
             }
             return { ok: false, text: "kitchen op 只能是 view、buy、cook、use 或 sell。" };

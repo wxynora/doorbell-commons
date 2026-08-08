@@ -450,6 +450,7 @@ button.cook-pot-slot:active{background:#fff1b8}
 .cook-recipe-make{min-height:44px;margin-top:7px;padding:7px 12px}.cook-recipe-missing{margin-top:7px;color:#8d4f2e;font-size:11px;font-weight:700;line-height:1.45}
 .silver-coin{display:inline-grid;width:1.05em;height:1.05em;margin-right:2px;vertical-align:-.14em;border:1px solid #7f8a91;border-radius:50%;background:radial-gradient(circle at 34% 28%,#fff 0 10%,#dce3e6 32%,#9ca8ae 72%,#eef1f2 100%);box-shadow:inset 0 0 0 2px #f7f9f988,0 1px 1px #32434a33}.silver-coin::after{content:"";width:42%;height:42%;place-self:center;border:1px solid #879299;border-radius:50%;box-shadow:inset 0 1px #fff9}
 .cook-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}.cook-actions .btn{min-height:44px}
+.cook-sell-form{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0}.cook-sell-qty{display:flex;align-items:center;gap:4px;color:var(--ink-soft);white-space:nowrap}.cook-sell-qty .inp{width:62px;padding:7px 6px;text-align:center}.cook-sell-form .cook-price{width:102px}
 .cook-result{position:fixed;inset:0;z-index:120;display:grid;place-items:center;padding:20px;background:#25140fa8;backdrop-filter:blur(5px);animation:cook-fade .2s ease both}
 .cook-result-card{position:relative;width:min(360px,100%);padding:22px;border:3px solid var(--rarity,var(--N));border-radius:22px;background:linear-gradient(180deg,#fffdf5,#f5ead5);box-shadow:0 24px 70px #1f0d09aa;text-align:center;animation:cook-card-pop .42s cubic-bezier(.2,.9,.3,1.2) both}
 .dish-sprite{display:block;width:54px;height:54px;background:url("${BASE}/assets/cooking/dish-atlas.webp?v=20260806a") calc(var(--dish-x)*20%) calc(var(--dish-y)*11.111111%)/600% 1000% no-repeat;image-rendering:pixelated}
@@ -1097,7 +1098,7 @@ export function uiRanch(f, now, key, flash) {
                 : entry.status === "caught"
                     ? `<b style="color:var(--SP)">被人类抓住 -${num(entry.coins ?? 0)} 金</b>`
                     : entry.status === "goose-caught"
-                        ? `<b style="color:var(--SP)">被巡逻鹅抓住 · 偷金币失败 · 保证金全退 · 对方带回了部分「${esc(entry.produce ?? "未知产物")}」（已折算 ${num(entry.rewardCoins ?? 0)} 金）</b>`
+                        ? `<b style="color:var(--SP)">被巡逻鹅抓住 · 偷金币失败 · 保证金全退 · 对方巡逻鹅带走了部分「${esc(entry.produce ?? "未知产物")}」（已折算 ${num(entry.rewardCoins ?? 0)} 金）</b>`
                     : `<b style="color:var(--leaf-deep)">成功偷到 +${num(entry.coins ?? 0)} 金</b>`;
             return `<div class="line small" style="flex-wrap:wrap;padding:7px 0"><span><span class="muted">${esc(fmtTime(entry.startedAt))}</span>　${esc(entry.animalName)} → ${esc(entry.targetName)}</span>${result}</div>`;
         }).join("")
@@ -1237,6 +1238,10 @@ export function uiCooking(f, now, key, flash, resultRaw) {
         const max = Math.max(...values);
         return min === max ? `锁价 ${num(min)} 金/份` : `锁价 ${num(min)}–${num(max)} 金/份`;
     };
+    const sellIds = (items) => esc(JSON.stringify(items.map((item) => item.id)));
+    const sellQty = (count, name) => count > 1
+        ? `<label class="cook-sell-qty">数量 <input class="inp" type="number" name="qty" min="1" max="${count}" step="1" value="1" inputmode="numeric" aria-label="售卖${esc(name)}的数量，最多${count}份"></label>`
+        : `<input type="hidden" name="qty" value="1">`;
     const productButtons = productGroups.map((group) => {
         const item = group.items[0];
         const def = cookingProductById.get(group.itemId);
@@ -1344,8 +1349,9 @@ export function uiCooking(f, now, key, flash, resultRaw) {
         const item = group.items[0];
         const def = cookingProductById.get(group.itemId);
         const isFish = group.itemId === "fish:any";
+        const name = isFish ? "鲜鱼" : item.name;
         return `<div class="cook-stock-row line small"><span>${esc(item.emoji || def?.emoji || "📦")} <b>${esc(isFish ? "鲜鱼" : item.name)} ×${group.items.length}</b>　<span class="muted">${isFish || def?.cookable ? "可下锅 · " : "不可下锅 · "}${productValueText(group.items)}</span></span>
-      ${isFish ? "" : `<form method="post" action="${base}/sell" data-cooking-async style="margin:0"><input type="hidden" name="itemId" value="${esc(item.id)}"><input type="hidden" name="to" value="system"><button class="btn ghost" type="submit">回收 1 份</button></form>`}</div>`;
+      ${isFish ? "" : `<form class="cook-sell-form" method="post" action="${base}/sell" data-cooking-async><input type="hidden" name="itemIds" value="${sellIds(group.items)}"><input type="hidden" name="to" value="system">${sellQty(group.items.length, name)}<button class="btn ghost" type="submit">系统回收</button></form>`}</div>`;
     }).join("") : `<p class="small muted">还没有动物产物。</p>`;
     const dishGroups = [];
     for (const dish of view.dishes) {
@@ -1372,9 +1378,10 @@ export function uiCooking(f, now, key, flash, resultRaw) {
         const use = odd
             ? `<form method="post" action="${base}/use" style="margin:0"><input type="hidden" name="dishId" value="${esc(dish.id)}"><input type="hidden" name="target" value="self"><button class="btn ghost" type="submit">立即让 AI 吃</button></form>`
             : `<form method="post" action="${base}/use" style="display:flex;gap:5px;margin:0"><input type="hidden" name="dishId" value="${esc(dish.id)}"><button class="btn ghost" name="target" value="cat" type="submit">喂猫</button><button class="btn ghost" name="target" value="dog" type="submit">喂狗</button></form>`;
-        const market = odd ? "" : `<form method="post" action="${base}/sell" data-cooking-async style="display:flex;gap:5px;margin:0"><input type="hidden" name="itemId" value="${esc(dish.id)}"><input type="hidden" name="to" value="market"><input class="inp" type="number" name="price" min="1" step="1" placeholder="银币价" required><button class="btn ghost" type="submit">摆摊</button></form>`;
+        const itemIds = sellIds(group.dishes);
+        const market = odd ? "" : `<form class="cook-sell-form" method="post" action="${base}/sell" data-cooking-async><input type="hidden" name="itemIds" value="${itemIds}"><input type="hidden" name="to" value="market">${sellQty(group.dishes.length, dish.name)}<input class="inp cook-price" type="number" name="price" min="1" step="1" placeholder="每份银币价" aria-label="每份银币价" required><button class="btn ghost" type="submit">摆摊</button></form>`;
         return `<div class="cook-stock-row"><div style="display:grid;grid-template-columns:54px minmax(0,1fr);gap:9px;align-items:center">${image}<div><b>${esc(dish.name)} ×${group.dishes.length}</b> ${rarityDot(dish.rarity)}<div class="small muted">锁定系统回收价 ${valueText} 牧场金币${odd ? " · 禁止摆摊/喂宠物/贿赂" : ` + ${silverIcon}${silverText} 银`}</div></div></div>
-        <div class="cook-actions" style="margin-top:7px">${use}<form method="post" action="${base}/sell" data-cooking-async style="margin:0"><input type="hidden" name="itemId" value="${esc(dish.id)}"><input type="hidden" name="to" value="system"><button class="btn ghost" type="submit">系统回收</button></form>${market}</div></div>`;
+        <div class="cook-actions" style="margin-top:7px">${use}<form class="cook-sell-form" method="post" action="${base}/sell" data-cooking-async><input type="hidden" name="itemIds" value="${itemIds}"><input type="hidden" name="to" value="system">${sellQty(group.dishes.length, dish.name)}<button class="btn ghost" type="submit">系统回收</button></form>${market}</div></div>`;
     }).join("") : `<p class="small muted">锅还没开过，料理柜空着。</p>`;
     const pantryCard = `<div class="card" id="cookingPantry"><h3>📦 食材柜　<span class="muted small" style="font-weight:400">牧场金币 ${num(ranchCoins)}</span></h3><div class="cook-stock-list">${productRows}</div></div>`;
     const dishesCard = `<div class="card" id="cookingDishes"><h3>🍲 料理柜　<span class="muted small" style="font-weight:400">${view.dishes.length} 份</span></h3><div class="cook-stock-list">${dishRows}</div></div>`;

@@ -866,7 +866,9 @@ function takeDish(kitchen, dishId) {
 }
 export function kitchenUse(farm, dishId, target, now) {
     const kitchen = ensureKitchen(farm);
-    const dish = kitchen.dishes.find((item) => item.id === String(dishId));
+    const selector = String(dishId);
+    const dish = kitchen.dishes.find((item) => item.id === selector)
+        ?? kitchen.dishes.find((item) => item.recipeId === selector || item.name === selector);
     if (!dish)
         return { ok: false, error: "料理柜里没有这份料理。" };
     if (target === "self") {
@@ -920,6 +922,70 @@ export function kitchenSell(farm, itemId, to, price, now) {
     kitchen.dishes = kitchen.dishes.filter((entry) => entry !== dish);
     (farm.market ??= []).push({ kind: "dish", id: dish.id, qty: 1, price: silverPrice, dish: structuredClone(dish), listedAt: now });
     return { ok: true, to, name: dish.name, price: silverPrice, item: dish };
+}
+/** 人类料理台批量售卖：先完整校验所选实例，再一次性回收或逐份上架，避免中途失败造成部分扣除。 */
+export function kitchenSellMany(farm, itemIds, qty, to, price, now) {
+    const kitchen = ensureKitchen(farm);
+    const ids = Array.isArray(itemIds) ? itemIds.map((id) => String(id)) : [];
+    const n = Number(qty);
+    if (!Number.isSafeInteger(n) || n < 1)
+        return { ok: false, error: "售卖数量要填写正整数。" };
+    if (n > ids.length)
+        return { ok: false, error: `当前这一组最多只能售卖 ${ids.length} 份。` };
+    const selectedIds = ids.slice(0, n);
+    if (new Set(selectedIds).size !== selectedIds.length)
+        return { ok: false, error: "售卖清单里有重复实例，请刷新页面后重试。" };
+    const selected = [];
+    for (const id of selectedIds) {
+        const product = kitchen.products.find((item) => item.id === id);
+        const dish = kitchen.dishes.find((item) => item.id === id);
+        if (!product && !dish)
+            return { ok: false, error: "食材柜或料理柜里的数量已经变化，请刷新后重试。" };
+        selected.push({ kind: product ? "product" : "dish", item: product ?? dish });
+    }
+    const name = selected.every((entry) => entry.item.name === selected[0].item.name)
+        ? selected[0].item.name
+        : `${selected.length} 份物品`;
+    if (to === "system") {
+        const productIds = new Set(selected.filter((entry) => entry.kind === "product").map((entry) => entry.item.id));
+        const dishIds = new Set(selected.filter((entry) => entry.kind === "dish").map((entry) => entry.item.id));
+        const value = selected.reduce((sum, entry) => sum + entry.item.value, 0);
+        const silver = selected.reduce((sum, entry) => sum + (entry.kind === "dish" ? dishSystemRecycleSilver(entry.item) : 0), 0);
+        kitchen.products = kitchen.products.filter((entry) => !productIds.has(entry.id));
+        kitchen.dishes = kitchen.dishes.filter((entry) => !dishIds.has(entry.id));
+        ensureRanch(farm).coins += value;
+        farm.silver += silver;
+        return { ok: true, to, name, qty: n, value, silver, items: selected.map((entry) => entry.item) };
+    }
+    if (to !== "market")
+        return { ok: false, error: "to 只能是 system 或 market。" };
+    if (selected.some((entry) => entry.kind !== "dish"))
+        return { ok: false, error: "只有正常料理能摆进玩家摊位；牧场原产物只能系统回收。" };
+    if (selected.some((entry) => entry.item.recipeId === "odd_dish"))
+        return { ok: false, error: "微妙的料理不能摆摊；你可以把它交给系统回收 1 金，或自己吃下。" };
+    const silverPrice = Math.floor(Number(price));
+    if (!Number.isSafeInteger(silverPrice) || silverPrice <= 0)
+        return { ok: false, error: "摆摊价格要填写正整数银币。" };
+    const dishIds = new Set(selected.map((entry) => entry.item.id));
+    kitchen.dishes = kitchen.dishes.filter((entry) => !dishIds.has(entry.id));
+    for (const entry of selected)
+        (farm.market ??= []).push({ kind: "dish", id: entry.item.id, qty: 1, price: silverPrice, dish: structuredClone(entry.item), listedAt: now });
+    return { ok: true, to, name, qty: n, price: silverPrice, items: selected.map((entry) => entry.item) };
+}
+/** AI 工具可直接用中文产物名／料理名；旧实例 UUID 继续兼容。 */
+export function kitchenSellSelected(farm, selectorRaw, qty, to, price, now) {
+    const kitchen = ensureKitchen(farm);
+    const selector = String(selectorRaw);
+    const exactProduct = kitchen.products.find((item) => item.id === selector);
+    const exactDish = kitchen.dishes.find((item) => item.id === selector);
+    if (exactProduct || exactDish)
+        return kitchenSellMany(farm, [(exactProduct ?? exactDish).id], qty, to, price, now);
+    let matches = kitchen.products.filter((item) => item.itemId === selector || item.name === selector);
+    if (matches.length === 0)
+        matches = kitchen.dishes.filter((item) => item.recipeId === selector || item.name === selector);
+    if (matches.length === 0)
+        return { ok: false, error: `食材柜或料理柜里没有「${selector}」。` };
+    return kitchenSellMany(farm, matches.map((item) => item.id), qty, to, price, now);
 }
 /** 每天三次银币投喂：只给生产动物的下一份普通产物 +10%。 */
 export function ranchFeedAnimal(farm, animalIdx, now) {
@@ -1142,7 +1208,7 @@ export function settleRanchRaids(farms, now) {
                         reservedCoins: raid.reservedCoins,
                     });
                     const defenderText = `🪿 巡逻鹅赶走了「${ownerLabel}」派来的${animalName}，阻止了本次偷金币；它带回了部分「${produce}」（已折算 ${rewardCoins} 金），由系统额外发放到牧场钱包。`;
-                    const attackerText = `🪿 你的${animalName}在「${targetLabel}」被巡逻鹅赶回，本次偷金币失败；动物已返回，${raid.reservedCoins} 金保证金已全额退回，没有罚款或新增欠款。对方巡逻鹅带回了部分「${produce}」（已折算 ${rewardCoins} 金），奖励由系统额外发放。`;
+                    const attackerText = `🪿 你的${animalName}在「${targetLabel}」被巡逻鹅赶回，本次偷金币失败；动物已返回，${raid.reservedCoins} 金保证金已全额退回，没有罚款或新增欠款。对方巡逻鹅带走了部分「${produce}」（已折算 ${rewardCoins} 金），奖励由系统额外发放。`;
                     pushSocialInbox(target, defenderText, now);
                     pushSocialInbox(owner, attackerText, now);
                     pushRanchNotice(target, defenderText.replace("发放到牧场钱包", "发放到你的牧场钱包"), now, "ranch");
