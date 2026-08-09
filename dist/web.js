@@ -827,8 +827,14 @@ export function uiGlimmer(f, world, now, key) {
     const statsCard = `<section class="card"><h3>🏡 我家的原野概况</h3><div class="tags"><span class="tag">奇遇 <b>${num(data.stats.encounters)}</b></span><span class="tag">异色 <b>${num(data.stats.variants)}</b></span><span class="tag">协作 <b>${num(data.stats.coops)}</b></span></div><div style="margin-top:10px">${historyRows}</div></section>`;
     const achievements = titleDefs.filter((item) => ["glimmerEncounters", "glimmerVariants", "glimmerCoops"].includes(item.field));
     const metric = { glimmerEncounters: data.stats.encounters, glimmerVariants: data.stats.variants, glimmerCoops: data.stats.coops };
-    const achievementRows = achievements.map((item) => `<div class="line small"><span>🎖️ ${esc(item.name)}</span><span class="${metric[item.field] >= item.min ? "cta" : "muted"}">${metric[item.field] >= item.min ? "已解锁" : `${num(metric[item.field])}/${num(item.min)}`}</span></div>`).join("");
-    const achievementCard = `<section class="card"><h3>🎖️ 流光原野成就</h3>${achievementRows}</section>`;
+    const achievementRows = achievements.map((item) => {
+        const reached = metric[item.field] >= item.min;
+        const rewarded = data.rewardedAchievements.has(item.id);
+        const reward = `${num(item.reward?.coins ?? 0)} 金 + ${num(item.reward?.silver ?? 0)} 银`;
+        const status = rewarded ? `已领取 · ${reward}` : reached ? `待补发 · ${reward}` : `${num(metric[item.field])}/${num(item.min)} · 奖励 ${reward}`;
+        return `<div class="line small"><span>🎖️ ${esc(item.name)}</span><span class="${reached ? "cta" : "muted"}">${status}</span></div>`;
+    }).join("");
+    const achievementCard = `<section class="card"><h3>🎖️ 流光原野成就</h3><p class="small muted" style="margin:0 0 8px">首次达成自动发奖；历史已达标奖励在本次更新后自动补发。</p>${achievementRows}</section>`;
     const hero = `<section class="glimmer-scene"><div class="glimmer-scene-copy"><h1>✨ 流光原野 · ${esc(data.season)}</h1><p>${esc(data.status)}</p>${data.open ? `<p>${esc(data.buffText)}</p>` : ""}<p class="small">这里只记录和展示。探索、协作与捕捉由 AI 自己完成。</p></div></section>`;
     const body = `${hero}<div class="grid c2">${trackCard}${coopCard}</div>${logCard}${variantCodex}${encounterCard}<div class="grid c2">${statsCard}${achievementCard}</div>`;
     return page(`${f.name} · 流光原野`, key, "glimmer", body, farmNames(f));

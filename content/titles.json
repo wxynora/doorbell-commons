@@ -577,50 +577,62 @@
   },
   {
     "id": "glimmer_encounter_1", "cat": "原野奇遇", "tier": 1,
-    "field": "glimmerEncounters", "min": 1, "name": "门票不能白买", "flavor": ""
+    "field": "glimmerEncounters", "min": 1, "name": "门票不能白买", "flavor": "",
+    "reward": {"coins": 200, "silver": 20}
   },
   {
     "id": "glimmer_encounter_2", "cat": "原野奇遇", "tier": 2,
-    "field": "glimmerEncounters", "min": 10, "name": "走哪哪有剧情", "flavor": ""
+    "field": "glimmerEncounters", "min": 10, "name": "走哪哪有剧情", "flavor": "",
+    "reward": {"coins": 500, "silver": 60}
   },
   {
     "id": "glimmer_encounter_3", "cat": "原野奇遇", "tier": 3,
-    "field": "glimmerEncounters", "min": 30, "name": "随机事件钉子户", "flavor": ""
+    "field": "glimmerEncounters", "min": 30, "name": "随机事件钉子户", "flavor": "",
+    "reward": {"coins": 1000, "silver": 150}
   },
   {
     "id": "glimmer_encounter_4", "cat": "原野奇遇", "tier": 4,
-    "field": "glimmerEncounters", "min": 80, "name": "主线绕着我长", "flavor": ""
+    "field": "glimmerEncounters", "min": 80, "name": "主线绕着我长", "flavor": "",
+    "reward": {"coins": 2000, "silver": 300}
   },
   {
     "id": "glimmer_variant_1", "cat": "异色收集", "tier": 1,
-    "field": "glimmerVariants", "min": 1, "name": "这只颜色不对", "flavor": ""
+    "field": "glimmerVariants", "min": 1, "name": "这只颜色不对", "flavor": "",
+    "reward": {"coins": 200, "silver": 20}
   },
   {
     "id": "glimmer_variant_2", "cat": "异色收集", "tier": 2,
-    "field": "glimmerVariants", "min": 4, "name": "色差不是 Bug", "flavor": ""
+    "field": "glimmerVariants", "min": 4, "name": "色差不是 Bug", "flavor": "",
+    "reward": {"coins": 500, "silver": 60}
   },
   {
     "id": "glimmer_variant_3", "cat": "异色收集", "tier": 3,
-    "field": "glimmerVariants", "min": 8, "name": "原野调色师", "flavor": ""
+    "field": "glimmerVariants", "min": 8, "name": "原野调色师", "flavor": "",
+    "reward": {"coins": 1000, "silver": 150}
   },
   {
     "id": "glimmer_variant_4", "cat": "异色收集", "tier": 4,
-    "field": "glimmerVariants", "min": 16, "name": "全牧场高光", "flavor": ""
+    "field": "glimmerVariants", "min": 16, "name": "全牧场高光", "flavor": "",
+    "reward": {"coins": 2000, "silver": 300}
   },
   {
     "id": "glimmer_coop_1", "cat": "原野协作", "tier": 1,
-    "field": "glimmerCoops", "min": 1, "name": "临时群聊已建立", "flavor": ""
+    "field": "glimmerCoops", "min": 1, "name": "临时群聊已建立", "flavor": "",
+    "reward": {"coins": 200, "silver": 20}
   },
   {
     "id": "glimmer_coop_2", "cat": "原野协作", "tier": 2,
-    "field": "glimmerCoops", "min": 5, "name": "人多力量大概大", "flavor": ""
+    "field": "glimmerCoops", "min": 5, "name": "人多力量大概大", "flavor": "",
+    "reward": {"coins": 500, "silver": 60}
   },
   {
     "id": "glimmer_coop_3", "cat": "原野协作", "tier": 3,
-    "field": "glimmerCoops", "min": 15, "name": "公共项目包工头", "flavor": ""
+    "field": "glimmerCoops", "min": 15, "name": "公共项目包工头", "flavor": "",
+    "reward": {"coins": 1000, "silver": 150}
   },
   {
     "id": "glimmer_coop_4", "cat": "原野协作", "tier": 4,
-    "field": "glimmerCoops", "min": 30, "name": "全服都欠我个人情", "flavor": ""
+    "field": "glimmerCoops", "min": 30, "name": "全服都欠我个人情", "flavor": "",
+    "reward": {"coins": 2000, "silver": 300}
   }
 ]

@@ -2,13 +2,16 @@ import { randomUUID } from "node:crypto";
 import {
     glimmer, glimmerVariants, glimmerEncounters, glimmerCoopEvents, glimmerVariantById,
     animals, animalById, pets, petById, cropById, cooking, cookingIngredients,
-    cookingIngredientById, cookingRecipes, cookingRecipeById, fishingBaitById,
+    cookingIngredientById, cookingRecipes, cookingRecipeById, fishingBaitById, titles,
 } from "./content.js";
 import { currentDayIndex, currentSeason } from "./time.js";
 import { Rng } from "./rng.js";
 
 const MAX_HISTORY = 30;
 const MAX_PUBLIC_LOGS = 10;
+const GLIMMER_ACHIEVEMENT_FIELDS = new Set(["glimmerEncounters", "glimmerVariants", "glimmerCoops"]);
+const GLIMMER_ACHIEVEMENTS = titles.filter((item) => GLIMMER_ACHIEVEMENT_FIELDS.has(item.field));
+const GLIMMER_ACHIEVEMENT_IDS = new Set(GLIMMER_ACHIEVEMENTS.map((item) => item.id));
 const ANIMAL_INDEX = new Map(animals.map((item, index) => [item.id, index]));
 const PET_INDEX = new Map(pets.map((item, index) => [item.id, animals.length + index]));
 const GOOSE_INDEX = animals.length + pets.length;
@@ -31,6 +34,8 @@ export function normalizeGlimmerFarm(farm) {
         ? [...new Set(state.encounterSeen.map(String))] : [];
     state.favoriteSeen = Array.isArray(state.favoriteSeen)
         ? [...new Set(state.favoriteSeen.map(String))] : [];
+    state.achievementRewards = Array.isArray(state.achievementRewards)
+        ? [...new Set(state.achievementRewards.map(String).filter((id) => GLIMMER_ACHIEVEMENT_IDS.has(id)))] : [];
     state.pending = state.pending && typeof state.pending === "object" ? state.pending : null;
     state.history = Array.isArray(state.history) ? state.history.slice(0, MAX_HISTORY) : [];
     state.stats = state.stats && typeof state.stats === "object" ? state.stats : {};
@@ -513,6 +518,20 @@ function ticket(farm, now) {
     return { ok: true, text: withStatus(farm, now, "🎫 买下「流光原野」今日通票，-500 金。今天开放期间可以反复进入。") };
 }
 
+function glimmerDishInventoryLine(farm) {
+    const counts = new Map();
+    for (const dish of farm.ranch?.kitchen?.dishes ?? []) {
+        if (!dish || dish.recipeId === "odd_dish")
+            continue;
+        const name = String(dish.name ?? "").trim();
+        if (name)
+            counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+    if (!counts.size)
+        return "🍲 可用于诱捕的料理：暂无正常料理；先去料理台制作。";
+    return `🍲 可用于诱捕的料理：${[...counts].map(([name, count]) => `${name}×${count}`).join("、")}`;
+}
+
 export function glimmerView(farm, worldValue, now = Date.now()) {
     const state = resetDaily(farm, now);
     const world = ensureWorldDay(worldValue, now);
@@ -523,6 +542,7 @@ export function glimmerView(farm, worldValue, now = Date.now()) {
         glimmerStatusLine(farm, now),
         glimmerBuffActive(now) ? GLIMMER_BUFF_TEXT : "",
         `🐾 今日动物踪迹：${tracks.map((item) => item.name).join("、")}`,
+        glimmerDishInventoryLine(farm),
         `🤝 今日协作：〔${event.name}〕· ${Math.min(world.coop.contributors.length, glimmer.coopRequired)}/${glimmer.coopRequired}${world.coop.completedAt ? " · 已完成，额外稀有踪迹已出现" : ""}`,
         world.logs.length ? `📜 最新公共事件：\n${world.logs.map((item) => item.text).join("\n")}` : "📜 最新公共事件：暂无",
     ].filter(Boolean);
@@ -534,7 +554,46 @@ export function glimmerView(farm, worldValue, now = Date.now()) {
     return lines.join("\n");
 }
 
-export function runGlimmer(farm, worldValue, params, now = Date.now()) {
+function achievementMetric(state, field) {
+    if (field === "glimmerEncounters")
+        return state.stats.encounters;
+    if (field === "glimmerVariants")
+        return state.stats.variants;
+    if (field === "glimmerCoops")
+        return state.stats.coops;
+    return 0;
+}
+
+export function settleGlimmerAchievementRewards(farm) {
+    const state = normalizeGlimmerFarm(farm);
+    const rewarded = new Set(state.achievementRewards);
+    const grants = [];
+    for (const achievement of GLIMMER_ACHIEVEMENTS) {
+        if (rewarded.has(achievement.id) || achievementMetric(state, achievement.field) < achievement.min)
+            continue;
+        const coins = cleanCount(achievement.reward?.coins);
+        const silver = cleanCount(achievement.reward?.silver);
+        farm.coins = cleanCount(farm.coins) + coins;
+        farm.silver = cleanCount(farm.silver) + silver;
+        state.achievementRewards.push(achievement.id);
+        rewarded.add(achievement.id);
+        grants.push({ id: achievement.id, name: achievement.name, coins, silver });
+    }
+    return grants;
+}
+
+export function glimmerAchievementRewardText(grants, legacy = false) {
+    if (!grants.length)
+        return "";
+    if (legacy) {
+        const coins = grants.reduce((sum, item) => sum + item.coins, 0);
+        const silver = grants.reduce((sum, item) => sum + item.silver, 0);
+        return `🎁 流光原野成就补发：已补发 ${grants.length} 项，共 ${coins} 金、${silver} 银。`;
+    }
+    return grants.map((item) => `🎖️ 成就达成「${item.name}」：获得 ${item.coins} 金、${item.silver} 银。`).join("\n");
+}
+
+function runGlimmerAction(farm, worldValue, params, now) {
     const world = ensureWorldDay(worldValue, now);
     const op = String(params?.op ?? "view");
     if (op === "view")
@@ -550,6 +609,14 @@ export function runGlimmer(farm, worldValue, params, now = Date.now()) {
     if (op === "assist")
         return { ...assist(farm, world, now, params?.item), changed: true };
     return { ok: false, text: "glimmer op 只接受 view、ticket、explore、choose、catch、assist。", changed: false };
+}
+
+export function runGlimmer(farm, worldValue, params, now = Date.now()) {
+    const legacyGrants = settleGlimmerAchievementRewards(farm);
+    const result = runGlimmerAction(farm, worldValue, params, now);
+    const freshGrants = settleGlimmerAchievementRewards(farm);
+    const rewardText = [glimmerAchievementRewardText(legacyGrants, true), glimmerAchievementRewardText(freshGrants)].filter(Boolean).join("\n");
+    return rewardText ? { ...result, text: `${result.text}\n${rewardText}` } : result;
 }
 
 export function glimmerVariantSpriteInfo(entity, kindId, type = "animal") {
@@ -602,6 +669,7 @@ export function glimmerHumanData(farm, worldValue, now = Date.now()) {
         variants: glimmerVariants,
         unlocked: new Set(state.unlocked),
         encounterSeen: new Set(state.encounterSeen),
+        rewardedAchievements: new Set(state.achievementRewards),
         encounters: glimmerEncounters,
         stats: state.stats,
         history: state.history,

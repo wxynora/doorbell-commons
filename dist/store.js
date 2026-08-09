@@ -7,7 +7,7 @@ import { normalizeDishPricing, pushInbox, pushRanchNotice } from "./engine.js";
 import { dumpUgc, loadUgc } from "./ugc.js";
 import { NPC_ID } from "./config.js";
 import { ensureFishing } from "./fishing.js";
-import { normalizeGlimmerFarm, normalizeGlimmerWorld } from "./glimmer.js";
+import { glimmerAchievementRewardText, normalizeGlimmerFarm, normalizeGlimmerWorld, settleGlimmerAchievementRewards } from "./glimmer.js";
 const DATA_DIR = process.env.AIFARM_DATA_DIR
     ? resolve(process.env.AIFARM_DATA_DIR)
     : resolve(dirname(fileURLToPath(import.meta.url)), "../data");
@@ -92,6 +92,28 @@ export function applyMaintenanceSilverGrant(farmValues = farms.values(), now = D
     appliedMaintenanceGrantIds.push(MAINTENANCE_SILVER_GRANT_ID);
     return { applied: true, count, amount: MAINTENANCE_SILVER_GRANT_AMOUNT };
 }
+/** 启动时补发已经达标但尚未领取的流光原野成就奖励；每项成就 ID 自身保证幂等。 */
+export function applyGlimmerAchievementRewardBackfill(farmValues = farms.values(), now = Date.now()) {
+    let count = 0;
+    let achievements = 0;
+    let coins = 0;
+    let silver = 0;
+    for (const farm of farmValues) {
+        if (!farm || farm.id === NPC_ID)
+            continue;
+        const grants = settleGlimmerAchievementRewards(farm);
+        if (!grants.length)
+            continue;
+        const notice = glimmerAchievementRewardText(grants, true);
+        pushInbox(farm, notice, now);
+        pushRanchNotice(farm, notice, now);
+        count += 1;
+        achievements += grants.length;
+        coins += grants.reduce((sum, item) => sum + item.coins, 0);
+        silver += grants.reduce((sum, item) => sum + item.silver, 0);
+    }
+    return { applied: count > 0, count, achievements, coins, silver };
+}
 export function insertFarm(farm) {
     if (farms.has(farm.id))
         throw new Error(`farm id already exists: ${farm.id}`);
@@ -162,7 +184,10 @@ export function load() {
             const grant = applyMaintenanceSilverGrant();
             if (grant.applied)
                 console.log(`[store] 维护福利已发放 ${grant.count} 个玩家农场，每家 ${grant.amount} 银`);
-            if (npcCreated || grant.applied)
+            const achievementBackfill = applyGlimmerAchievementRewardBackfill();
+            if (achievementBackfill.applied)
+                console.log(`[store] 流光原野成就奖励已补发 ${achievementBackfill.count} 个玩家农场、${achievementBackfill.achievements} 项，共 ${achievementBackfill.coins} 金、${achievementBackfill.silver} 银`);
+            if (npcCreated || grant.applied || achievementBackfill.applied)
                 save();
             return;
         }
@@ -208,6 +233,9 @@ export function load() {
     const grant = applyMaintenanceSilverGrant();
     if (grant.applied)
         console.log(`[store] 维护福利已发放 ${grant.count} 个玩家农场，每家 ${grant.amount} 银`);
+    const achievementBackfill = applyGlimmerAchievementRewardBackfill();
+    if (achievementBackfill.applied)
+        console.log(`[store] 流光原野成就奖励已补发 ${achievementBackfill.count} 个玩家农场、${achievementBackfill.achievements} 项，共 ${achievementBackfill.coins} 金、${achievementBackfill.silver} 银`);
     save(); // 老格式只读一次，随后迁入单文件原子 world.json
 }
 //# sourceMappingURL=store.js.map
