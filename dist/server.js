@@ -536,7 +536,7 @@ function runFarm(farmId, action, b, encArg, now) {
         save();
         if (!r.ok) {
             const bribe = r.guardBlocked
-                ? `\n🍲 可以用一份正常料理贿赂${r.dogName}，继续这同一次偷菜：{"action":"kitchen","op":"use","dishId":"料理实例id","target":"guard-dog","to":"${b.targetRef ?? "农场编号"}"}。不会再计次数或冷却。`
+                ? `\n🍲 可以用一份正常料理贿赂${r.dogName}，继续这同一次偷菜：{"action":"kitchen","op":"use","dishId":"料理名","target":"guard-dog","to":"${b.targetRef ?? "农场编号"}"}。不会再计次数或冷却。`
                 : "";
             return { status: 400, json: { ok: false, text: r.error + bribe, ...vf(thief) } };
         }

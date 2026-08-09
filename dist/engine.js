@@ -1021,7 +1021,9 @@ export function bribeGuardDog(thief, victim, dishId, now) {
         delete kitchen.pendingGuard;
         return { ok: false, error: "现在没有这家的看家狗拦截可继续。" };
     }
-    const dish = kitchen.dishes.find((item) => item.id === String(dishId));
+    const selector = String(dishId);
+    const dish = kitchen.dishes.find((item) => item.id === selector)
+        ?? kitchen.dishes.find((item) => item.recipeId === selector || item.name === selector);
     if (!dish)
         return { ok: false, error: "料理柜里没有这份料理。" };
     if (dish.recipeId === "odd_dish")

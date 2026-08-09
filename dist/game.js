@@ -110,7 +110,8 @@ export const HELP = `🌾 你的农场
   🍳 打开料理台                kitchen                             （全部料理操作都收在这一个动作里）
      买食材/食谱               kitchen {"op":"buy","kind":"ingredient|recipe","id":"id","qty":1}
      下锅料理                   kitchen {"op":"cook","items":["鸡蛋","番茄","盐"]}
-     使用料理                   kitchen {"op":"use","dishId":"料理实例id","target":"cat|dog|self|guard-dog"}
+     使用料理                   kitchen {"op":"use","dishId":"料理名","target":"cat|dog|self"}
+     贿赂看家狗                 kitchen {"op":"use","dishId":"料理名","target":"guard-dog","to":"农场编号"} （仅在刚被这家看家狗拦下后继续同一次偷菜）
      回收或摆摊                 kitchen {"op":"sell","itemId":"产物名或料理名","qty":数量,"to":"system|market","price":每份银币价}
   🥣 给生产动物投喂            ranch-feed {"animal":0}            （每天 3 次；花银币，下一份正常产物 +10%，不能叠加）
   🎣 钓鱼（每日最多 20 竿）：抛竿 {"action":"fish","times":10,"bait":"普通蚯蚓","location":"月光池塘","stop":"rare"}；买饵并钓 {"action":"fish","bait":"普通蚯蚓","buy":10,"times":10}；查看 {"action":"fish","view":"basket|codex|spots"}；卖鱼 {"action":"fish","sell":"all"}；开宝箱 {"action":"fish","open":"宝箱id"}；离开钓位 {"action":"fish","leave":true}。stop 可填 new、rare、event。
@@ -528,7 +529,7 @@ export function viewKitchen(f, now) {
         ? view.knownRecipes.map((recipe) => `${recipe.name}·${recipe.rarity}：${recipe.ingredients.map(kitchenItemName).join(" + ")}`).join("\n  ")
         : "（还没解锁；买食谱或用正确组合试做都能解锁）";
     const debuff = view.debuff ? `\n🥴 当前效果：${view.debuff.name}` : "";
-    return `🍳 料理台 · 🪙${f.silver} · 牧场金币 ${f.ranch?.coins ?? 0}${debuff}\n\n🥚 动物产物／渔获：\n  ${products}\n\n🧂 已有商店食材：\n  ${ownedIngredients}\n\n🧺 今日食材铺：\n  ${ingredients}\n\n📜 今日食谱铺：\n  ${offers}\n\n🍲 料理柜：\n  ${dishes}\n\n📖 已解锁食谱：\n  ${known}\n\n操作都使用同一个 kitchen 动作：\n· {"action":"kitchen"}\n· {"action":"kitchen","op":"buy","kind":"ingredient","id":"strawberry","qty":1}\n· {"action":"kitchen","op":"buy","kind":"recipe","id":"recipe id"}\n· {"action":"kitchen","op":"cook","items":["鸡蛋","番茄","盐"]}\n· {"action":"kitchen","op":"use","dishId":"香煎蛋","target":"cat|dog|self|guard-dog"}\n· {"action":"kitchen","op":"sell","itemId":"鸡蛋","qty":5,"to":"system"}\n· {"action":"kitchen","op":"sell","itemId":"香煎蛋","qty":2,"to":"market","price":80}`;
+    return `🍳 料理台 · 🪙${f.silver} · 牧场金币 ${f.ranch?.coins ?? 0}${debuff}\n\n🥚 动物产物／渔获：\n  ${products}\n\n🧂 已有商店食材：\n  ${ownedIngredients}\n\n🧺 今日食材铺：\n  ${ingredients}\n\n📜 今日食谱铺：\n  ${offers}\n\n🍲 料理柜：\n  ${dishes}\n\n📖 已解锁食谱：\n  ${known}\n\n操作都使用同一个 kitchen 动作：\n· {"action":"kitchen"}\n· {"action":"kitchen","op":"buy","kind":"ingredient","id":"strawberry","qty":1}\n· {"action":"kitchen","op":"buy","kind":"recipe","id":"recipe id"}\n· {"action":"kitchen","op":"cook","items":["鸡蛋","番茄","盐"]}\n· {"action":"kitchen","op":"use","dishId":"香煎蛋","target":"cat|dog"}\n· {"action":"kitchen","op":"use","dishId":"微妙的料理","target":"self"}\n· {"action":"kitchen","op":"use","dishId":"香煎蛋","target":"guard-dog","to":"农场编号"}\n· {"action":"kitchen","op":"sell","itemId":"鸡蛋","qty":5,"to":"system"}\n· {"action":"kitchen","op":"sell","itemId":"香煎蛋","qty":2,"to":"market","price":80}`;
 }
 // ——— 2.0 玩家市场：上架素材/种子，串门购买 ———
 const invOf = (f, kind) => (kind === "material" ? f.materials : f.seeds);
