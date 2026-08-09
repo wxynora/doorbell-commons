@@ -26,6 +26,10 @@ export const fishingFish = fishing.fish;
 export const fishingBaits = fishing.baits;
 export const fishingEvents = fishing.events;
 export const fishingItems = fishing.items;
+export const glimmer = load("glimmer");
+export const glimmerVariants = glimmer.variants;
+export const glimmerEncounters = glimmer.encounters;
+export const glimmerCoopEvents = glimmer.coopEvents;
 export const titles = load("titles");
 const ranchItems = load("ranch-items");
 export const accessories = ranchItems.accessories;
@@ -56,6 +60,8 @@ export const fishingFishById = new Map(fishingFish.map((item) => [item.id, item]
 export const fishingBaitById = new Map(fishingBaits.map((item) => [item.id, item]));
 export const fishingEventById = new Map(fishingEvents.map((item) => [item.id, item]));
 export const fishingItemById = new Map(fishingItems.map((item) => [item.id, item]));
+export const glimmerVariantById = new Map(glimmerVariants.map((item) => [item.id, item]));
+export const glimmerEncounterById = new Map(glimmerEncounters.map((item) => [item.id, item]));
 export const cropsByCategory = (cat) => crops.filter((c) => c.category === cat);
 export const totalCropCount = crops.length;
 export function seasonByName(name) {

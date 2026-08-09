@@ -7,6 +7,7 @@ import { normalizeDishPricing, pushInbox, pushRanchNotice } from "./engine.js";
 import { dumpUgc, loadUgc } from "./ugc.js";
 import { NPC_ID } from "./config.js";
 import { ensureFishing } from "./fishing.js";
+import { normalizeGlimmerFarm, normalizeGlimmerWorld } from "./glimmer.js";
 const DATA_DIR = process.env.AIFARM_DATA_DIR
     ? resolve(process.env.AIFARM_DATA_DIR)
     : resolve(dirname(fileURLToPath(import.meta.url)), "../data");
@@ -14,10 +15,11 @@ const WORLD_FILE = resolve(DATA_DIR, "world.json");
 const DATA_FILE = resolve(DATA_DIR, "farms.json");
 const UGC_FILE = resolve(DATA_DIR, "ugc.json");
 const farms = new Map();
-const MAINTENANCE_SILVER_GRANT_ID = "maintenance-20260805-cooking-silver";
-const MAINTENANCE_SILVER_GRANT_AMOUNT = 100;
-const MAINTENANCE_SILVER_GRANT_NOTICE = "🎁 公共农场维护福利：已补发 🪙100 银币，感谢你来照看这座农场。";
+const MAINTENANCE_SILVER_GRANT_ID = "maintenance-20260809-glimmer-meadow";
+const MAINTENANCE_SILVER_GRANT_AMOUNT = 150;
+const MAINTENANCE_SILVER_GRANT_NOTICE = "🎁 流光原野更新福利：已发放 🪙150 银币。";
 let appliedMaintenanceGrantIds = [];
+let glimmerWorld = normalizeGlimmerWorld({});
 export function normalizeFarm(f) {
     f.materials ??= {};
     f.seeds ??= {};
@@ -58,6 +60,7 @@ export function normalizeFarm(f) {
         }
     }
     ensureFishing(f);
+    normalizeGlimmerFarm(f);
     return f;
 }
 export function createFarm(name, opts) {
@@ -72,6 +75,7 @@ export const getFarm = (id) => farms.get(id);
 export const allFarms = () => [...farms.values()];
 /** 真实玩家农场（排除常驻 NPC 阿土）——排行榜等"只算玩家"的地方用。 */
 export const playerFarms = () => [...farms.values()].filter((f) => f.id !== NPC_ID);
+export const getGlimmerWorld = () => glimmerWorld;
 /** 在本次生产启动时给当时已经存在的真实玩家一次性发放维护福利；全局 ID 与余额同一次原子保存。 */
 export function applyMaintenanceSilverGrant(farmValues = farms.values(), now = Date.now()) {
     if (appliedMaintenanceGrantIds.includes(MAINTENANCE_SILVER_GRANT_ID))
@@ -135,6 +139,7 @@ export function save() {
         maintenanceGrantIds: appliedMaintenanceGrantIds,
         farms: [...farms.values()],
         ugc: dumpUgc(),
+        glimmer: glimmerWorld,
     }, null, 2));
 }
 export function load() {
@@ -147,6 +152,7 @@ export function load() {
             appliedMaintenanceGrantIds = Array.isArray(world.maintenanceGrantIds)
                 ? world.maintenanceGrantIds.map(String)
                 : [];
+            glimmerWorld = normalizeGlimmerWorld(world.glimmer);
             loadUgc(Array.isArray(world.ugc) ? world.ugc : []);
             farms.clear();
             for (const f of world.farms)
@@ -176,6 +182,7 @@ export function load() {
         catch { /* 忽略 */ }
     }
     appliedMaintenanceGrantIds = [];
+    glimmerWorld = normalizeGlimmerWorld({});
     if (!existsSync(DATA_FILE)) {
         ensureNpc();
         applyMaintenanceSilverGrant();

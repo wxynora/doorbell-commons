@@ -7,6 +7,7 @@ import { crops, cropById, getCrop, animals, animalById, pets, petById, accessori
 import { registerUgc, ugcCount } from "./ugc.js";
 import { onTaskEvent } from "./tasks.js";
 import { fishingKitchenProducts, removeFishingCatchIds } from "./fishing.js";
+import { glimmerBuffMultiplier } from "./glimmer.js";
 import { randomUUID } from "node:crypto";
 /** 取（必要时补发）人类前端钥匙。老农场没有就现生成一把；调用方负责 save()。 */
 export function ensureHumanKey(farm) {
@@ -329,6 +330,7 @@ export function harvest(farm, plotId, now, seasonMod) {
         value = Math.round(value * (Number(ev.param) || 1));
     if (apply && seasonMod.type === "value_mult")
         value = Math.round(value * (seasonMod.value ?? 1)); // 知时雨/雪被：本批价值×2
+    value = Math.round(value * glimmerBuffMultiplier("cropValue", now));
     if (apply && seasonMod.capLeft)
         seasonMod.capLeft.n -= 1; // 吃掉一株名额
     farm.coins += value;
@@ -817,7 +819,7 @@ export function kitchenCook(farm, refs, now) {
             kitchen.knownRecipes.push(recipe.id);
         dish = {
             id: randomUUID(), recipeId: recipe.id, name: recipe.name, rarity: recipe.rarity,
-            value: Math.round(baseValue * (1 + cooking.processingFeeRate) * cooking.recyclePremium[recipe.rarity]),
+            value: Math.round(baseValue * (1 + cooking.processingFeeRate) * cooking.recyclePremium[recipe.rarity] * glimmerBuffMultiplier("dishValue", now)),
             image: `${recipe.id}.webp`, createdAt: now, pricingVersion: COOKING_PRICE_VERSION,
         };
     }
@@ -1047,12 +1049,15 @@ export function ranchRaidForAnimal(farm, animalKindId) {
     return (farm.ranch?.raids ?? []).find((raid) => raid.animalKindId === animalKindId);
 }
 /** 动物当前等级的一次完整产出折现金额；与牧场收获、页面展示使用同一取整顺序。 */
-export function ranchAnimalCurrentProduceValue(animal) {
+export function ranchAnimalCurrentProduceValue(animal, now = Date.now()) {
     const kind = animalById.get(animal?.kindId);
     if (!kind)
         return 0;
     const level = Math.min(RANCH_ANIMAL_MAX_LEVEL, Math.max(1, Math.floor(Number(animal.level) || 1)));
-    return Math.round(kind.producePrice * (1 + (level - 1) * RANCH_LEVEL_INCOME_STEP));
+    let value = Math.round(kind.producePrice * (1 + (level - 1) * RANCH_LEVEL_INCOME_STEP));
+    if (animal.glimmerBoost || (animal.glimmerVariants?.length ?? 0) > 0)
+        value = Math.round(value * 1.2);
+    return Math.round(value * glimmerBuffMultiplier("ranchValue", now));
 }
 function finishRanchRaidHistory(ranch, raid, status, coins, details) {
     const history = ranch.raidHistory;

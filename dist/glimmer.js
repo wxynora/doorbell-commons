@@ -1,0 +1,609 @@
+import { randomUUID } from "node:crypto";
+import {
+    glimmer, glimmerVariants, glimmerEncounters, glimmerCoopEvents, glimmerVariantById,
+    animals, animalById, pets, petById, cropById, cooking, cookingIngredients,
+    cookingIngredientById, cookingRecipes, cookingRecipeById, fishingBaitById,
+} from "./content.js";
+import { currentDayIndex, currentSeason } from "./time.js";
+import { Rng } from "./rng.js";
+
+const MAX_HISTORY = 30;
+const MAX_PUBLIC_LOGS = 10;
+const ANIMAL_INDEX = new Map(animals.map((item, index) => [item.id, index]));
+const PET_INDEX = new Map(pets.map((item, index) => [item.id, animals.length + index]));
+const GOOSE_INDEX = animals.length + pets.length;
+
+function cleanCount(value) {
+    return Math.max(0, Math.floor(Number(value) || 0));
+}
+
+export function normalizeGlimmerFarm(farm) {
+    const state = farm.glimmer && typeof farm.glimmer === "object" ? farm.glimmer : (farm.glimmer = {});
+    state.ticketDay = Number.isSafeInteger(state.ticketDay) ? state.ticketDay : -1;
+    state.daily = state.daily && typeof state.daily === "object" ? state.daily : {};
+    state.daily.day = Number.isSafeInteger(state.daily.day) ? state.daily.day : -1;
+    state.daily.explores = cleanCount(state.daily.explores);
+    state.daily.captures = cleanCount(state.daily.captures);
+    state.daily.lastCatchAt = Number.isFinite(state.daily.lastCatchAt) ? Math.max(0, state.daily.lastCatchAt) : 0;
+    state.unlocked = Array.isArray(state.unlocked)
+        ? [...new Set(state.unlocked.map(String).filter((id) => glimmerVariantById.has(id)))] : [];
+    state.encounterSeen = Array.isArray(state.encounterSeen)
+        ? [...new Set(state.encounterSeen.map(String))] : [];
+    state.favoriteSeen = Array.isArray(state.favoriteSeen)
+        ? [...new Set(state.favoriteSeen.map(String))] : [];
+    state.pending = state.pending && typeof state.pending === "object" ? state.pending : null;
+    state.history = Array.isArray(state.history) ? state.history.slice(0, MAX_HISTORY) : [];
+    state.stats = state.stats && typeof state.stats === "object" ? state.stats : {};
+    state.stats.encounters = cleanCount(state.stats.encounters);
+    state.stats.variants = Math.max(cleanCount(state.stats.variants), state.unlocked.length);
+    state.stats.coops = cleanCount(state.stats.coops);
+    const unlocked = new Set(state.unlocked);
+    for (const animal of farm.ranch?.animals ?? []) {
+        animal.glimmerVariants = Array.isArray(animal.glimmerVariants)
+            ? [...new Set(animal.glimmerVariants.filter((id) => unlocked.has(id)))]
+            : glimmerVariants.filter((v) => v.type === "animal" && v.kindId === animal.kindId && unlocked.has(v.id)).map((v) => v.id);
+        if (animal.variantId && !animal.glimmerVariants.includes(animal.variantId))
+            delete animal.variantId;
+        animal.glimmerBoost = animal.glimmerVariants.length > 0;
+    }
+    for (const pet of farm.ranch?.pets ?? []) {
+        pet.glimmerVariants = Array.isArray(pet.glimmerVariants)
+            ? [...new Set(pet.glimmerVariants.filter((id) => unlocked.has(id)))]
+            : glimmerVariants.filter((v) => v.type === "pet" && v.kindId === pet.kindId && unlocked.has(v.id)).map((v) => v.id);
+        if (pet.variantId && !pet.glimmerVariants.includes(pet.variantId))
+            delete pet.variantId;
+    }
+    if (farm.ranch?.patrolGoose) {
+        const goose = farm.ranch.patrolGoose;
+        goose.glimmerVariants = Array.isArray(goose.glimmerVariants)
+            ? [...new Set(goose.glimmerVariants.filter((id) => unlocked.has(id)))]
+            : glimmerVariants.filter((v) => v.type === "goose" && unlocked.has(v.id)).map((v) => v.id);
+        if (goose.variantId && !goose.glimmerVariants.includes(goose.variantId))
+            delete goose.variantId;
+    }
+    return state;
+}
+
+export function normalizeGlimmerWorld(value) {
+    const world = value && typeof value === "object" ? value : {};
+    world.day = Number.isSafeInteger(world.day) ? world.day : -1;
+    world.coop = world.coop && typeof world.coop === "object" ? world.coop : null;
+    world.logs = Array.isArray(world.logs) ? world.logs.slice(0, MAX_PUBLIC_LOGS) : [];
+    return world;
+}
+
+function resetDaily(farm, now) {
+    const state = normalizeGlimmerFarm(farm);
+    const day = currentDayIndex(now);
+    if (state.daily.day !== day) {
+        state.daily = { day, explores: 0, captures: 0, lastCatchAt: 0 };
+        state.pending = null;
+    }
+    return state;
+}
+
+function hash(text) {
+    let value = 2166136261;
+    for (const ch of String(text)) {
+        value ^= ch.charCodeAt(0);
+        value = Math.imul(value, 16777619);
+    }
+    return value >>> 0;
+}
+
+function pickByDay(items, day, salt) {
+    return items[hash(`${day}:${salt}`) % items.length];
+}
+
+function ensureWorldDay(worldValue, now) {
+    const world = normalizeGlimmerWorld(worldValue);
+    const day = currentDayIndex(now);
+    if (world.day !== day) {
+        const event = pickByDay(glimmerCoopEvents, day, "coop");
+        world.day = day;
+        world.coop = { eventId: event.id, contributors: [], completedAt: 0 };
+    }
+    world.coop.contributors = Array.isArray(world.coop.contributors) ? world.coop.contributors : [];
+    return world;
+}
+
+function localParts(now) {
+    const d = new Date(now + 8 * 60 * 60 * 1000);
+    return { hour: d.getUTCHours(), minute: d.getUTCMinutes() };
+}
+
+export function glimmerBuffActive(now = Date.now()) {
+    const { hour } = localParts(now);
+    return hour >= glimmer.openHour && hour < glimmer.closeHour;
+}
+
+export function glimmerBuffMultiplier(kind, now = Date.now()) {
+    return glimmerBuffActive(now) ? Number(glimmer.buffs[kind] ?? 1) : 1;
+}
+
+function fmtCooldown(ms) {
+    const minutes = Math.max(1, Math.ceil(ms / 60000));
+    return minutes >= 60 ? `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分钟` : `${minutes} 分钟`;
+}
+
+function hasTicket(state, now) {
+    return state.ticketDay === currentDayIndex(now);
+}
+
+export function glimmerStatusLine(farm, now = Date.now()) {
+    const state = resetDaily(farm, now);
+    const { hour } = localParts(now);
+    if (hour < glimmer.openHour)
+        return "✨ 流光原野今日 20:00–22:00 开放。";
+    if (hour >= glimmer.closeHour)
+        return "✨ 流光原野已关闭｜下次明日 20:00 开放";
+    if (!hasTicket(state, now))
+        return "✨ 流光原野开放中（至 22:00）｜今日通票：未购买（500 金）｜全服增益已生效";
+    const wait = Math.max(0, state.daily.lastCatchAt + glimmer.captureCooldownMs - now);
+    return `✨ 流光原野开放中（至 22:00）｜今日通票：已购买｜奇遇剩 ${Math.max(0, glimmer.dailyExploreLimit - state.daily.explores)}/${glimmer.dailyExploreLimit}｜异色捕获 ${state.daily.captures}/${glimmer.dailyCaptureLimit}｜诱捕冷却：${wait ? fmtCooldown(wait) : "可用"}`;
+}
+
+export const GLIMMER_BUFF_TEXT = "🌟 流光时刻：种地收成 +15%，正常料理锁价 +10%，牧场产物 +10%，钓鱼稀有及以上权重 ×1.5、垃圾率减半；原每日上限不变。";
+
+function officialCodexCount(farm) {
+    return Object.keys(farm.codex ?? {}).filter((id) => cropById.has(id)).length;
+}
+
+function variantBase(variant) {
+    if (variant.type === "animal")
+        return animalById.get(variant.kindId);
+    if (variant.type === "pet")
+        return petById.get(variant.kindId);
+    return { id: "patrol_goose", name: "巡逻鹅", category: "普通", unlockCodex: 0 };
+}
+
+function variantIsFantasy(variant) {
+    return variant.type === "animal" && animalById.get(variant.kindId)?.category === "奇幻";
+}
+
+function trackPools() {
+    const earlyIds = new Set(animals.filter((item) => item.category !== "奇幻" && item.unlockCodex <= 12).map((item) => item.id));
+    const ordinaryIds = new Set(animals.filter((item) => item.category !== "奇幻" && item.unlockCodex > 12).map((item) => item.id));
+    return {
+        early: glimmerVariants.filter((item) => item.type === "animal" && earlyIds.has(item.kindId)),
+        ordinary: glimmerVariants.filter((item) => (item.type === "animal" && ordinaryIds.has(item.kindId)) || item.type === "pet" || item.type === "goose"),
+        rare: glimmerVariants.filter((item) => variantIsFantasy(item)),
+    };
+}
+
+export function glimmerTracks(now, worldValue) {
+    const day = currentDayIndex(now);
+    const pools = trackPools();
+    const base = [
+        pickByDay(pools.early, day, "early"),
+        pickByDay(pools.ordinary, day, "ordinary"),
+        pickByDay(pools.rare, day, "rare"),
+    ];
+    const world = ensureWorldDay(worldValue, now);
+    if (world.coop.completedAt) {
+        const extra = pickByDay(pools.rare.filter((item) => item.id !== base[2].id), day, "extra");
+        base.push(extra);
+    }
+    return base;
+}
+
+function timeLabel(at) {
+    return new Date(at).toLocaleTimeString("zh-CN", { timeZone: "Asia/Shanghai", hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
+function publicLog(world, farm, text, now, kind, refId) {
+    world.logs.unshift({ at: now, farmId: farm.id, farmName: farm.name, text, kind, refId });
+    if (world.logs.length > MAX_PUBLIC_LOGS)
+        world.logs.length = MAX_PUBLIC_LOGS;
+}
+
+function history(farm, item) {
+    const state = normalizeGlimmerFarm(farm);
+    state.history.unshift(item);
+    if (state.history.length > MAX_HISTORY)
+        state.history.length = MAX_HISTORY;
+}
+
+function withStatus(farm, now, text) {
+    return `${text}\n${glimmerStatusLine(farm, now)}`;
+}
+
+function requireOpenTicket(farm, now) {
+    if (!glimmerBuffActive(now))
+        return { ok: false, text: `流光原野现在没有开放。下次开放时间：${localParts(now).hour < glimmer.openHour ? "今日 20:00" : "明日 20:00"}。` };
+    const state = resetDaily(farm, now);
+    if (!hasTicket(state, now))
+        return { ok: false, text: "还没有今天的流光原野通票。先购买当天通票：glimmer {\"op\":\"ticket\"}" };
+    return { ok: true, state };
+}
+
+function dishValue(recipe) {
+    const animalValue = new Map(animals.map((item) => [item.produceId, item.producePrice]));
+    const base = recipe.ingredients.reduce((sum, id) => sum + (cookingIngredientById.get(id)?.price ?? animalValue.get(id) ?? (id === "fish:any" ? 100 : 10)), 0);
+    return Math.max(1, Math.round(base * (1 + cooking.processingFeeRate) * cooking.recyclePremium[recipe.rarity] * glimmer.buffs.dishValue));
+}
+
+function grantReward(farm, reward, rng, now) {
+    if (!reward || reward.kind === "none")
+        return "";
+    if (reward.kind === "coins") {
+        farm.coins += reward.amount;
+        return "";
+    }
+    if (reward.kind === "silver") {
+        farm.silver = (farm.silver ?? 0) + reward.amount;
+        return "";
+    }
+    if (reward.kind === "item") {
+        farm.items[reward.id] = (farm.items[reward.id] ?? 0) + reward.amount;
+        return "";
+    }
+    if (reward.kind === "bait") {
+        farm.fishing ??= {};
+        farm.fishing.baitInventory ??= {};
+        farm.fishing.baitInventory[reward.id] = (farm.fishing.baitInventory[reward.id] ?? 0) + reward.amount;
+        return "";
+    }
+    const kitchen = ((farm.ranch ??= { coins: 0, animals: [], pets: [] }).kitchen ??= { products: [], ingredients: {}, dishes: [], knownRecipes: [] });
+    kitchen.products ??= [];
+    kitchen.ingredients ??= {};
+    kitchen.dishes ??= [];
+    kitchen.knownRecipes ??= [];
+    if (reward.kind === "ingredient") {
+        const item = rng.pick(cookingIngredients);
+        kitchen.ingredients[item.id] = (kitchen.ingredients[item.id] ?? 0) + 1;
+        return `\n🎁 获得「${item.name}」×1。`;
+    }
+    if (reward.kind === "dish") {
+        const pool = cookingRecipes.filter((item) => item.rarity !== "SP");
+        const recipe = rng.pick(pool);
+        kitchen.dishes.push({ id: randomUUID(), recipeId: recipe.id, name: recipe.name, rarity: recipe.rarity, value: dishValue(recipe), image: `${recipe.id}.webp`, createdAt: now, pricingVersion: 2 });
+        return `\n🎁 获得「${recipe.name}」×1。`;
+    }
+    if (reward.kind === "egg") {
+        const pool = animals.filter((item) => item.produceId?.includes("egg"));
+        const animal = rng.pick(pool);
+        kitchen.products.push({ id: randomUUID(), itemId: animal.produceId, name: animal.produce, emoji: "🥚", value: animal.producePrice, createdAt: now });
+        return `\n🎁 获得「${animal.produce}」×1。`;
+    }
+    if (reward.kind === "favorite") {
+        const state = normalizeGlimmerFarm(farm);
+        const unseen = Object.keys(glimmer.favorites).filter((kindId) => !state.favoriteSeen.includes(kindId));
+        const kindId = rng.pick(unseen.length ? unseen : Object.keys(glimmer.favorites));
+        if (!state.favoriteSeen.includes(kindId))
+            state.favoriteSeen.push(kindId);
+        const variant = glimmerVariants.find((item) => item.kindId === kindId);
+        const recipe = cookingRecipeById.get(glimmer.favorites[kindId]);
+        return `\n💡 ${variantBase(variant)?.name ?? kindId}喜欢「${recipe?.name ?? glimmer.favorites[kindId]}」。`;
+    }
+    return "";
+}
+
+function encounterPrompt(event) {
+    if (event.type !== "choice")
+        return event.text;
+    return `${event.text}\nA. ${event.options.A.label}\nB. ${event.options.B.label}\n继续：glimmer {\"op\":\"choose\",\"option\":\"A\"}`;
+}
+
+function explore(farm, world, now) {
+    const gate = requireOpenTicket(farm, now);
+    if (!gate.ok)
+        return gate;
+    if (gate.state.pending)
+        return { ok: false, text: "先处理当前奇遇选择：glimmer {\"op\":\"choose\",\"option\":\"A\"}" };
+    if (gate.state.daily.explores >= glimmer.dailyExploreLimit)
+        return { ok: false, text: "今天的 3 次奇遇已经走完，北京时间 0 点刷新。" };
+    const rng = new Rng(farm.rngState ?? 1);
+    const unseen = glimmerEncounters.filter((item) => !gate.state.encounterSeen.includes(item.id));
+    const event = rng.pick(unseen.length ? unseen : glimmerEncounters);
+    farm.rngState = rng.state;
+    gate.state.daily.explores++;
+    gate.state.stats.encounters++;
+    if (!gate.state.encounterSeen.includes(event.id))
+        gate.state.encounterSeen.push(event.id);
+    publicLog(world, farm, `${timeLabel(now)} · 「${farm.name}」遇见了〔${event.name}〕`, now, "encounter", event.id);
+    history(farm, { at: now, kind: "encounter", refId: event.id, text: event.name });
+    let suffix = "";
+    if (event.type === "choice")
+        gate.state.pending = { eventId: event.id, day: currentDayIndex(now) };
+    else {
+        suffix = grantReward(farm, event.reward, rng, now);
+        farm.rngState = rng.state;
+    }
+    return { ok: true, text: withStatus(farm, now, encounterPrompt(event) + suffix) };
+}
+
+function choose(farm, now, option) {
+    const gate = requireOpenTicket(farm, now);
+    if (!gate.ok)
+        return gate;
+    const pending = gate.state.pending;
+    const event = pending ? glimmerEncounters.find((item) => item.id === pending.eventId) : null;
+    if (!event || event.type !== "choice") {
+        gate.state.pending = null;
+        return { ok: false, text: "现在没有待处理的流光原野选择。" };
+    }
+    const key = String(option ?? "").toUpperCase();
+    const selected = event.options[key];
+    if (!selected)
+        return { ok: false, text: "option 只接受 A 或 B。" };
+    gate.state.pending = null;
+    const rng = new Rng(farm.rngState ?? 1);
+    const suffix = grantReward(farm, selected.reward, rng, now);
+    farm.rngState = rng.state;
+    history(farm, { at: now, kind: "choice", refId: event.id, option: key, text: selected.text });
+    return { ok: true, text: withStatus(farm, now, selected.text + suffix) };
+}
+
+function findDish(farm, query) {
+    const dishes = farm.ranch?.kitchen?.dishes ?? [];
+    const q = String(query ?? "").trim();
+    return dishes.find((item) => item.id === q)
+        ?? dishes.find((item) => item.recipeId === q || item.name === q);
+}
+
+function resolveTrack(query, tracks) {
+    const q = String(query ?? "").trim();
+    return tracks.find((item) => item.id === q || item.name === q)
+        ?? tracks.find((item) => variantBase(item)?.name === q);
+}
+
+function baseUnlockError(farm, variant) {
+    if (variant.type === "goose")
+        return "";
+    const base = variantBase(variant);
+    return officialCodexCount(farm) >= (base?.unlockCodex ?? 0)
+        ? "" : `你还没有达到${base?.name ?? variant.kindId}的基础解锁条件，可以观察它，但暂时不能诱捕。料理没有消耗。`;
+}
+
+function addVariantToResident(resident, variant) {
+    resident.glimmerVariants ??= [];
+    if (!resident.glimmerVariants.includes(variant.id))
+        resident.glimmerVariants.push(variant.id);
+    resident.variantId = variant.id;
+}
+
+function catchVariant(farm, world, now, animalQuery, dishQuery) {
+    const gate = requireOpenTicket(farm, now);
+    if (!gate.ok)
+        return gate;
+    if (gate.state.daily.captures >= glimmer.dailyCaptureLimit)
+        return { ok: false, text: "今天已经成功捕获 1 只异色动物，料理没有消耗。" };
+    const wait = gate.state.daily.lastCatchAt + glimmer.captureCooldownMs - now;
+    if (wait > 0)
+        return { ok: false, text: `还要等 ${fmtCooldown(wait)} 才能再次诱捕，料理没有消耗。` };
+    const tracks = glimmerTracks(now, world);
+    const variant = resolveTrack(animalQuery, tracks);
+    if (!variant)
+        return { ok: false, text: "今日踪迹里没有这只异色动物，料理没有消耗。" };
+    if (gate.state.unlocked.includes(variant.id))
+        return { ok: false, text: `「${variant.name}」已经收录，料理没有消耗。` };
+    const locked = baseUnlockError(farm, variant);
+    if (locked)
+        return { ok: false, text: locked };
+    const dish = findDish(farm, dishQuery);
+    if (!dish || dish.recipeId === "odd_dish")
+        return { ok: false, text: "料理柜里没有这份正常料理，料理没有消耗。" };
+    const dishes = farm.ranch.kitchen.dishes;
+    const favorite = dish.recipeId === glimmer.favorites[variant.kindId];
+    const chance = variantIsFantasy(variant)
+        ? (favorite ? glimmer.fantasyFavoriteChance : glimmer.fantasyChance)
+        : (favorite ? glimmer.ordinaryFavoriteChance : glimmer.ordinaryChance);
+    dishes.splice(dishes.findIndex((item) => item.id === dish.id), 1);
+    gate.state.daily.lastCatchAt = now;
+    const rng = new Rng(farm.rngState ?? 1);
+    const success = rng.next() < chance;
+    farm.rngState = rng.state;
+    if (!success) {
+        const text = favorite
+            ? `🐾 ${variant.name}很喜欢「${dish.name}」，但最后还是没有跟你走。料理已消耗；20 分钟后可以再次尝试。`
+            : `🐾 ${variant.name}吃完「${dish.name}」，绕着你看了两圈，还是跑进了草丛。料理已消耗；20 分钟后可以再次尝试。`;
+        history(farm, { at: now, kind: "capture-fail", refId: variant.id, dish: dish.name });
+        return { ok: true, text: withStatus(farm, now, text), success: false };
+    }
+    gate.state.unlocked.push(variant.id);
+    gate.state.daily.captures++;
+    gate.state.stats.variants = gate.state.unlocked.length;
+    farm.ranch ??= { coins: 0, animals: [], pets: [] };
+    farm.ranch.animals ??= [];
+    farm.ranch.pets ??= [];
+    let existing = false;
+    let resultText;
+    if (variant.type === "animal") {
+        const base = animalById.get(variant.kindId);
+        let resident = farm.ranch.animals.find((item) => item.kindId === variant.kindId);
+        existing = !!resident;
+        if (!resident) {
+            resident = { kindId: variant.kindId, ticksSinceProduce: 0, pending: 0, pendingMeat: 0, level: 1, feedBoostPending: false, pendingBoost: false };
+            farm.ranch.animals.push(resident);
+        }
+        const oldValue = Math.round(base.producePrice * (1 + ((resident.level ?? 1) - 1) * 0.2));
+        addVariantToResident(resident, variant);
+        resident.glimmerBoost = true;
+        const newValue = Math.round(oldValue * 1.2);
+        resultText = existing
+            ? `🌈 捕捉成功！${variant.name}认出了牧场里的同伴。原有${base.name}保留等级、名字、生产进度和当前状态，并永久获得当前等级产值 +20%（${oldValue}→${newValue} 金/份）。今日异色捕获 1/1。`
+            : `🌈 捕捉成功！${variant.name}吃完「${dish.name}」后跟你回了牧场，成为一只 1 级${variant.name}。它的当前等级产值永久提高 20%。今日异色捕获 1/1。`;
+    }
+    else if (variant.type === "pet") {
+        let resident = farm.ranch.pets.find((item) => item.kindId === variant.kindId);
+        existing = !!resident;
+        if (!resident) {
+            resident = { kindId: variant.kindId };
+            farm.ranch.pets.push(resident);
+        }
+        addVariantToResident(resident, variant);
+        resultText = `🌈 捕捉成功！${variant.name}吃完「${dish.name}」后跟你回了牧场。${existing ? "原有宠物的名字、穿戴和状态不变。" : "它已经入住牧场。"}今日异色捕获 1/1。`;
+    }
+    else {
+        const goose = farm.ranch.patrolGoose;
+        if (goose)
+            addVariantToResident(goose, variant);
+        resultText = `🌈 捕捉成功！已解锁巡逻鹅服装「${variant.name}」。${goose ? "巡逻鹅已经换上新装。" : "购买巡逻鹅后即可穿戴；本次不会免费获得巡逻鹅。"}今日异色捕获 1/1。`;
+    }
+    publicLog(world, farm, `${timeLabel(now)} · 「${farm.name}」带走了异色外观「${variant.name}」`, now, "variant", variant.id);
+    history(farm, { at: now, kind: "capture", refId: variant.id, dish: dish.name });
+    return { ok: true, text: withStatus(farm, now, resultText), success: true, variant };
+}
+
+function takeCoopItem(farm, event, query) {
+    const q = String(query ?? "").trim();
+    const kitchen = farm.ranch?.kitchen;
+    if (event.kind === "dish") {
+        const item = (kitchen?.dishes ?? []).find((entry) => entry.id === q || entry.recipeId === q || entry.name === q);
+        if (!item || item.recipeId === "odd_dish")
+            return null;
+        return { name: item.name, consume: () => kitchen.dishes.splice(kitchen.dishes.indexOf(item), 1) };
+    }
+    if (event.kind === "product") {
+        const item = (kitchen?.products ?? []).find((entry) => entry.id === q || entry.itemId === q || entry.name === q);
+        if (!item)
+            return null;
+        return { name: item.name, consume: () => kitchen.products.splice(kitchen.products.indexOf(item), 1) };
+    }
+    if (event.kind === "ingredient") {
+        const item = cookingIngredientById.get(q) ?? cookingIngredients.find((entry) => entry.name === q);
+        if (!item || (kitchen?.ingredients?.[item.id] ?? 0) < 1)
+            return null;
+        return { name: item.name, consume: () => { kitchen.ingredients[item.id]--; if (kitchen.ingredients[item.id] <= 0) delete kitchen.ingredients[item.id]; } };
+    }
+    const bait = fishingBaitById.get(q) ?? [...fishingBaitById.values()].find((entry) => entry.name === q);
+    if (!bait || (farm.fishing?.baitInventory?.[bait.id] ?? 0) < 1)
+        return null;
+    return { name: bait.name, consume: () => { farm.fishing.baitInventory[bait.id]--; } };
+}
+
+function assist(farm, world, now, itemQuery) {
+    const gate = requireOpenTicket(farm, now);
+    if (!gate.ok)
+        return gate;
+    ensureWorldDay(world, now);
+    const event = glimmerCoopEvents.find((item) => item.id === world.coop.eventId);
+    if (world.coop.contributors.some((item) => item.farmId === farm.id))
+        return { ok: false, text: "🤝 今天已经为这个事件贡献过一次，物品没有消耗。" };
+    const item = takeCoopItem(farm, event, itemQuery);
+    if (!item)
+        return { ok: false, text: `〔${event.name}〕需要提交${event.requirement}，你填写的「${String(itemQuery ?? "")}」不符合要求，没有消耗。` };
+    item.consume();
+    world.coop.contributors.push({ farmId: farm.id, farmName: farm.name, at: now, item: item.name });
+    farm.coins += glimmer.coopRewardCoins;
+    farm.silver = (farm.silver ?? 0) + glimmer.coopRewardSilver;
+    gate.state.stats.coops++;
+    publicLog(world, farm, `${timeLabel(now)} · 「${farm.name}」为〔${event.name}〕补上了「${item.name}」`, now, "coop", event.id);
+    history(farm, { at: now, kind: "coop", refId: event.id, item: item.name });
+    const count = world.coop.contributors.length;
+    if (count >= glimmer.coopRequired && !world.coop.completedAt) {
+        world.coop.completedAt = now;
+        return { ok: true, text: withStatus(farm, now, `🤝 你为〔${event.name}〕交出「${item.name}」，共享进度 ${count}/${glimmer.coopRequired}。\n✨〔${event.name}〕协作完成！至少三家农场已经接力，流光原野出现了一条额外稀有踪迹。你获得 100 金、20 银。`) };
+    }
+    return { ok: true, text: withStatus(farm, now, `🤝 你为〔${event.name}〕交出「${item.name}」，共享进度 ${Math.min(count, glimmer.coopRequired)}/${glimmer.coopRequired}。\n你获得 100 金、20 银。`) };
+}
+
+function ticket(farm, now) {
+    if (!glimmerBuffActive(now))
+        return { ok: false, text: `流光原野现在没有开放，不能提前购买通票。下次开放时间：${localParts(now).hour < glimmer.openHour ? "今日 20:00" : "明日 20:00"}。` };
+    const state = resetDaily(farm, now);
+    if (hasTicket(state, now))
+        return { ok: true, text: withStatus(farm, now, "🎫 今天的通票已经买过了，不会重复扣款。") };
+    if (farm.coins < glimmer.ticketCost)
+        return { ok: false, text: `金币不足，通票要 500 金（你有 ${farm.coins} 金）。` };
+    farm.coins -= glimmer.ticketCost;
+    state.ticketDay = currentDayIndex(now);
+    history(farm, { at: now, kind: "ticket", text: "今日通票" });
+    return { ok: true, text: withStatus(farm, now, "🎫 买下「流光原野」今日通票，-500 金。今天开放期间可以反复进入。") };
+}
+
+export function glimmerView(farm, worldValue, now = Date.now()) {
+    const state = resetDaily(farm, now);
+    const world = ensureWorldDay(worldValue, now);
+    const tracks = glimmerTracks(now, world);
+    const event = glimmerCoopEvents.find((item) => item.id === world.coop.eventId);
+    const lines = [
+        `✨ 流光原野 · ${currentSeason(now).name}`,
+        glimmerStatusLine(farm, now),
+        glimmerBuffActive(now) ? GLIMMER_BUFF_TEXT : "",
+        `🐾 今日动物踪迹：${tracks.map((item) => item.name).join("、")}`,
+        `🤝 今日协作：〔${event.name}〕· ${Math.min(world.coop.contributors.length, glimmer.coopRequired)}/${glimmer.coopRequired}${world.coop.completedAt ? " · 已完成，额外稀有踪迹已出现" : ""}`,
+        world.logs.length ? `📜 最新公共事件：\n${world.logs.map((item) => item.text).join("\n")}` : "📜 最新公共事件：暂无",
+    ].filter(Boolean);
+    if (state.pending) {
+        const pending = glimmerEncounters.find((item) => item.id === state.pending.eventId);
+        if (pending)
+            lines.push(encounterPrompt(pending));
+    }
+    return lines.join("\n");
+}
+
+export function runGlimmer(farm, worldValue, params, now = Date.now()) {
+    const world = ensureWorldDay(worldValue, now);
+    const op = String(params?.op ?? "view");
+    if (op === "view")
+        return { ok: true, text: glimmerView(farm, world, now), changed: true };
+    if (op === "ticket")
+        return { ...ticket(farm, now), changed: true };
+    if (op === "explore")
+        return { ...explore(farm, world, now), changed: true };
+    if (op === "choose")
+        return { ...choose(farm, now, params?.option), changed: true };
+    if (op === "catch")
+        return { ...catchVariant(farm, world, now, params?.animal, params?.dish), changed: true };
+    if (op === "assist")
+        return { ...assist(farm, world, now, params?.item), changed: true };
+    return { ok: false, text: "glimmer op 只接受 view、ticket、explore、choose、catch、assist。", changed: false };
+}
+
+export function glimmerVariantSpriteInfo(entity, kindId, type = "animal") {
+    const variant = glimmerVariantById.get(entity?.variantId);
+    const index = type === "animal" ? ANIMAL_INDEX.get(kindId) : type === "pet" ? PET_INDEX.get(kindId) : GOOSE_INDEX;
+    return { index, set: variant?.set ?? 0, variant };
+}
+
+export function glimmerVariantsFor(farm, kindId, type) {
+    const state = normalizeGlimmerFarm(farm);
+    return glimmerVariants.filter((item) => item.kindId === kindId && item.type === type && state.unlocked.includes(item.id));
+}
+
+export function setGlimmerVariant(farm, type, kindId, variantId) {
+    const variants = glimmerVariantsFor(farm, kindId, type);
+    let resident;
+    if (type === "animal")
+        resident = farm.ranch?.animals?.find((item) => item.kindId === kindId);
+    else if (type === "pet")
+        resident = farm.ranch?.pets?.find((item) => item.kindId === kindId);
+    else
+        resident = farm.ranch?.patrolGoose;
+    if (!resident)
+        return { ok: false, error: "牧场里还没有这只动物。" };
+    if (variantId === "base") {
+        delete resident.variantId;
+        return { ok: true, name: "原始" };
+    }
+    const variant = variants.find((item) => item.id === variantId);
+    if (!variant)
+        return { ok: false, error: "这个异色外观还没有解锁。" };
+    addVariantToResident(resident, variant);
+    return { ok: true, name: variant.name };
+}
+
+export function glimmerHumanData(farm, worldValue, now = Date.now()) {
+    const state = resetDaily(farm, now);
+    const world = ensureWorldDay(worldValue, now);
+    const tracks = glimmerTracks(now, world);
+    const event = glimmerCoopEvents.find((item) => item.id === world.coop.eventId);
+    return {
+        name: glimmer.name,
+        season: currentSeason(now).name,
+        open: glimmerBuffActive(now),
+        status: glimmerStatusLine(farm, now),
+        buffText: GLIMMER_BUFF_TEXT,
+        tracks,
+        coop: { ...world.coop, event },
+        logs: world.logs,
+        variants: glimmerVariants,
+        unlocked: new Set(state.unlocked),
+        encounterSeen: new Set(state.encounterSeen),
+        encounters: glimmerEncounters,
+        stats: state.stats,
+        history: state.history,
+    };
+}

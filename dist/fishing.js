@@ -6,6 +6,7 @@ import {
 } from "./content.js";
 import { currentSeason, currentDayIndex } from "./time.js";
 import { randomUUID } from "node:crypto";
+import { glimmerBuffMultiplier } from "./glimmer.js";
 
 const RARITY_RANK = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4, mythic: 5 };
 const ECOLOGY_NOTICE = "🌿 为了让鱼群休息、繁衍，也给水域留一点恢复时间，每座农场每天最多钓 20 竿。无论钓到鱼、宝箱还是旧靴子，只要鱼线抛进水里都算一竿；北京时间 0 点刷新。";
@@ -139,7 +140,7 @@ function eligibleFish(fish, spotId, seasonId) {
         && (fish.seasons.includes("all") || fish.seasons.includes(seasonId));
 }
 
-function fishWeight(fishDef, spot, season, bait) {
+function fishWeight(fishDef, spot, season, bait, now) {
     let weight = fishing.rarities[fishDef.rarity].weight * (fishDef.individual_weight ?? 1);
     for (const tag of fishDef.tags ?? []) {
         weight *= spot.tagWeightMult?.[tag] ?? 1;
@@ -147,6 +148,8 @@ function fishWeight(fishDef, spot, season, bait) {
         weight *= bait.effects?.tag_weight_mult?.[tag] ?? 1;
     }
     weight *= bait.effects?.rarity_weight_mult?.[fishDef.rarity] ?? 1;
+    if ((RARITY_RANK[fishDef.rarity] ?? 0) >= RARITY_RANK.rare)
+        weight *= glimmerBuffMultiplier("fishingRareWeight", now);
     return weight;
 }
 
@@ -234,7 +237,7 @@ function rollLuckyEvent(farm, state, rng, pool, bait, primary) {
     if (event.id === "split_hook") {
         const got = [];
         for (let i = 0; i < 2; i++) {
-            const fishDef = weightedPick(rng, pool, (item) => fishWeight(item, fishingSpotById.get(state.locationId), seasonDef(primary.now), bait));
+            const fishDef = weightedPick(rng, pool, (item) => fishWeight(item, fishingSpotById.get(state.locationId), seasonDef(primary.now), bait, primary.now));
             const result = recordCatch(farm, state, fishDef, rollSize(rng, fishDef));
             got.push(`${fishDef.name}${result.first ? "★新" : ""}`);
         }
@@ -278,7 +281,7 @@ function castStep(farm, state, rng, bait, now) {
     dailyCasts(state, now).count++;
     if (rng.next() < fishing.eventChance)
         return { consumed: true, ...resolveFishingEvent(farm, state, rng) };
-    const junkChance = fishing.junkChance * (bait.effects?.junk_chance_mult ?? 1);
+    const junkChance = fishing.junkChance * (bait.effects?.junk_chance_mult ?? 1) * glimmerBuffMultiplier("fishingJunk", now);
     if (rng.next() < junkChance) {
         const junk = fishing.junk[rng.int(0, fishing.junk.length - 1)];
         return { consumed: true, kind: "junk", text: `🪣 钓上来${junk}。空军一竿。` };
@@ -288,7 +291,7 @@ function castStep(farm, state, rng, bait, now) {
     const pool = fishingFish.filter((fishDef) => eligibleFish(fishDef, spot.id, season.id));
     if (!pool.length)
         return { consumed: true, kind: "empty", text: `浮标纹丝不动……${spot.name}这个季节没有鱼咬钩。` };
-    const fishDef = weightedPick(rng, pool, (item) => fishWeight(item, spot, season, bait));
+    const fishDef = weightedPick(rng, pool, (item) => fishWeight(item, spot, season, bait, now));
     const caught = recordCatch(farm, state, fishDef, rollSize(rng, fishDef));
     let feverText = "";
     if (state.fever > 0) {

@@ -5,12 +5,12 @@ import { existsSync, readFileSync } from "node:fs";
 import { advance, steal, canStealNow, stealAvailability, stealShieldRemain, isUgcCrop, visitorWater, tryWaterReward, humanHarvestAll, humanHarvestLeft, ranchRoamLine, buyPotionSet, refreshShop, ranchCollect, ranchRemit, ranchBuyAccessory, ranchBuyDecoration, ranchWearAccessory, ranchTakeOffAccessory, ranchPlaceDecoration, ranchUnplaceDecoration, ranchUpgradeAnimal, ranchNameAnimal, ranchNamePet, ranchNamePatrolGoose, ranchTogglePin, dispatchRanchRaid, catchRanchRaid, settleRanchRaids, ensureHumanKey, takeInbox, takeRanchNotices, pushSocialInbox, potionDailyLeft, designCrop, craft, nextUpgradeReq, toggleStar, cookingDebuffReason, cookingDebuffStatusText, bribeGuardDog, kitchenBuy, kitchenCook, kitchenUse, kitchenSell, kitchenSellMany, ranchFeedAnimal, kitchenView, dishSystemRecycleSilver } from "./engine.js";
 import { dispatch, HELP, farmView, viewShop, viewEncyclopedia, viewBag, shopBrief, viewMarket, buyFromMarket, visitView, ranchAgentSection, refPrice, tendNpc, buyNpcSeed, randomTip, hasDamagedPublicName, viewKitchen } from "./game.js";
 import { harvestText, stealThiefText, statusFooter, waterText, describeFarm } from "./flavor.js";
-import { createFarm, getFarm, allFarms, playerFarms, save } from "./store.js";
+import { createFarm, getFarm, allFarms, playerFarms, save, getGlimmerWorld } from "./store.js";
 import { MAX_BODY_BYTES, SYNC_MAX_BODY_BYTES, MAX_FARMS, MESSAGE_TEXT_MAX, MESSAGES_MAX, POTION_DAILY_CAP, POTION_CAP_LINE, HUMAN_HARVEST_DAILY_CAP, NPC_ID, SEED_PRICE, RECIPE_PRICE, WELCOME_MAX, EXP_DAILY_CAP, EXP_MAX_CHARGES_PER_ENTRY, BASE, REGISTRATION_OPEN, REGISTRATION_CLOSED_TEXT, REGISTRATION_CAP, REGISTRATION_FULL_TEXT, SHOW_MIGRATION_NOTICE, MIGRATION_NOTICE_TEXT, MIGRATION_NOTICE_HTML } from "./config.js";
 import { allowRequest, allowCreate, sweepGuard } from "./guard.js";
 import { mintNonce, takeNonce, sweepNonces, htmlAgentPage, htmlReadme, htmlGuide, htmlNotice, htmlGenLink } from "./agent.js";
 import { mcpDispatch } from "./mcp.js";
-import { uiHome, uiRanch, uiCooking, uiTa, uiCodex, uiMessages, uiLeaderboard, uiInvalid, uiExpedition, uiHumanNotices } from "./web.js";
+import { uiHome, uiRanch, uiCooking, uiTa, uiCodex, uiMessages, uiLeaderboard, uiInvalid, uiExpedition, uiGlimmer, uiHumanNotices } from "./web.js";
 import { expRoll, expSetCharm } from "./expedition.js";
 import { viewLeaderboard } from "./leaderboard.js";
 import { onTaskEvent, tickTask, hasOpenOffer, offerSummary } from "./tasks.js";
@@ -22,6 +22,7 @@ import { getCrop, materialById, expEventById } from "./content.js";
 import { currentDayIndex } from "./time.js";
 import { claimSyncedFarm, exportSyncedFarm, PublicSyncError, registerSyncedFarm, syncFarm, syncPageHtml, } from "./public-sync.js";
 import { runFishing } from "./fishing.js";
+import { runGlimmer, setGlimmerVariant } from "./glimmer.js";
 // 首页只展开 POST/REST（核心玩法）；只能 GET / 只能点链接的接入写法收进 /get；/readme 是给人类伴侣看的新手攻略。
 // 机读默认紧凑 JSON；需要人工读时设环境变量 FARM_PRETTY=1 缩进输出。
 const PRETTY = process.env.FARM_PRETTY === "1";
@@ -236,7 +237,7 @@ function newAgentKey() {
 }
 // 只读视图动作（允许 GET）；其余动作改动状态，必须 POST——防止链接预取/抓取/unfurl 误触发
 // （尤其 new-token 会轮换主 token，GET 预取一次就把农场钥匙刷掉）。/a 和 /farms 两条通道共用。
-const READONLY_ACTIONS = new Set(["status", "shop", "bag", "market", "encyclopedia", "ledger", "leaderboard", "ranking", "wander", "visit", "expedition", "exp", "help", "kitchen"]);
+const READONLY_ACTIONS = new Set(["status", "shop", "bag", "market", "encyclopedia", "ledger", "leaderboard", "ranking", "wander", "visit", "expedition", "exp", "help", "kitchen", "glimmer"]);
 const mutatingViaGet = (method, action) => method !== "POST" && !!action && !READONLY_ACTIONS.has(action);
 // 农场专属链接的 key（= agentKey，和 /agent 点击页同一把）。缺了就懒生成，让每座农场都能用 /a/<key> 通道。
 function ensureAgentKey(f) {
@@ -472,6 +473,12 @@ function runFarm(farmId, action, b, encArg, now) {
     const debuffText = cookingDebuffReason(principal, action, b, now);
     if (debuffText)
         return { status: 400, json: { ok: false, text: debuffText, ...vf(principal) } };
+    if (action === "glimmer") {
+        const r = runGlimmer(f, getGlimmerWorld(), b, now);
+        checkTitles(f);
+        save();
+        return { status: r.ok ? 200 : 400, json: { ok: r.ok, text: r.text, ...vf(f) } };
+    }
     if (action === "fish") {
         const r = runFishing(f, b, now, playerFarms());
         checkTitles(f);
@@ -1174,6 +1181,10 @@ const PUBLIC_PNG_ASSETS = new Map([
     ["alpaca-codex.png", new URL("../assets/alpaca-codex.png", import.meta.url)],
     ["ranch-scene-background.png", new URL("../assets/ranch-scene-background.png", import.meta.url)],
     ["ranch-scene-background-mobile.png", new URL("../assets/ranch-scene-background-mobile.png", import.meta.url)],
+    ["glimmer/variant-1.png", new URL("../assets/glimmer/variant-1.png", import.meta.url)],
+    ["glimmer/variant-2.png", new URL("../assets/glimmer/variant-2.png", import.meta.url)],
+    ["glimmer/variant-3.png", new URL("../assets/glimmer/variant-3.png", import.meta.url)],
+    ["glimmer/map-scene.png", new URL("../assets/glimmer/map-scene.png", import.meta.url)],
 ]);
 const COOKING_ASSET_DIR = new URL("../assets/cooking/", import.meta.url);
 const MAINTENANCE_FILE = `${process.env.AIFARM_DATA_DIR || "./data"}/maintenance`;
@@ -1206,7 +1217,7 @@ export function startServer(port, host = "127.0.0.1") {
         const method = req.method ?? "GET";
         if (existsSync(MAINTENANCE_FILE))
             return maintenanceOut(req, res, parts, method);
-        const publicPng = method === "GET" && parts.length === 2 && parts[0] === "assets" ? PUBLIC_PNG_ASSETS.get(parts[1]) : undefined;
+        const publicPng = method === "GET" && parts[0] === "assets" ? PUBLIC_PNG_ASSETS.get(parts.slice(1).join("/")) : undefined;
         if (publicPng) {
             const png = readFileSync(publicPng);
             res.writeHead(200, { "Content-Type": "image/png", "Content-Length": png.byteLength, "Cache-Control": "public, max-age=86400" });
@@ -1427,9 +1438,13 @@ export function startServer(port, host = "127.0.0.1") {
                     return res.end(renderHuman(uiCooking(f, now, key, url.searchParams.get("flash") ?? undefined, url.searchParams.get("result") ?? undefined)));
                 }
                 // 🐮 牧场：人类主要经营页。POST 收获/回传 → 做完 303 跳回（PRG，刷新不会重复提交）。
+                if (section === "glimmer") {
+                    res.writeHead(200, AGENT_HEADERS);
+                    return res.end(renderHuman(uiGlimmer(f, getGlimmerWorld(), now, key)));
+                }
                 if (section === "ranch") {
                     const act = parts[3];
-                    if (method === "POST" && (act === "collect" || act === "feed" || act === "remit" || act === "dress" || act === "decorate" || act === "wear" || act === "takeoff" || act === "place" || act === "unplace" || act === "upgrade" || act === "name-animal" || act === "name-pet" || act === "name-goose" || act === "pin" || act === "dispatch-raid" || act === "catch-raid")) {
+                    if (method === "POST" && (act === "collect" || act === "feed" || act === "remit" || act === "dress" || act === "decorate" || act === "wear" || act === "takeoff" || act === "place" || act === "unplace" || act === "upgrade" || act === "name-animal" || act === "name-pet" || act === "name-goose" || act === "pin" || act === "variant" || act === "dispatch-raid" || act === "catch-raid")) {
                         const form = await readFormBody(req);
                         let flash;
                         const ai = f.aiName || f.name || "对方";
@@ -1505,6 +1520,10 @@ export function startServer(port, host = "127.0.0.1") {
                         else if (act === "pin") {
                             const r = ranchTogglePin(f, String(form.kind ?? ""));
                             flash = r.ok ? (r.pinned ? `📌 已 pin「${r.name}」——它会出现在${ai}农场的氛围里` : `已取消 pin「${r.name}」`) : r.error;
+                        }
+                        else if (act === "variant") {
+                            const r = setGlimmerVariant(f, String(form.type ?? ""), String(form.kind ?? ""), String(form.variant ?? ""));
+                            flash = r.ok ? `🌈 已换成「${r.name}」外观` : r.error;
                         }
                         else {
                             const r = ranchBuyDecoration(f, String(form.decor ?? ""), now);
@@ -1850,6 +1869,8 @@ export function startServer(port, host = "127.0.0.1") {
                         b[k] = v;
                 if (method !== "POST" && action === "kitchen" && b.op && b.op !== "view")
                     return jsonOut(res, 405, { ok: false, text: "料理台的 buy/cook/use/sell 会改动状态，请用 POST；GET 只可查看。" });
+                if (method !== "POST" && action === "glimmer" && b.op && b.op !== "view")
+                    return jsonOut(res, 405, { ok: false, text: "流光原野的 ticket/explore/catch/assist/choose 会改动状态，请用 POST；GET 只可查看。" });
                 if (typeof b.limited === "string")
                     b.limited = b.limited.split(",");
                 if (typeof b.materials === "string")
@@ -1880,6 +1901,8 @@ export function startServer(port, host = "127.0.0.1") {
                         b[k] = v;
                 if (method !== "POST" && parts[2] === "kitchen" && b.op && b.op !== "view")
                     return jsonOut(res, 405, { ok: false, text: "料理台的 buy/cook/use/sell 会改动状态，请用 POST；GET 只可查看。" });
+                if (method !== "POST" && parts[2] === "glimmer" && b.op && b.op !== "view")
+                    return jsonOut(res, 405, { ok: false, text: "流光原野的 ticket/explore/catch/assist/choose 会改动状态，请用 POST；GET 只可查看。" });
                 if (typeof b.limited === "string")
                     b.limited = b.limited.split(",");
                 if (typeof b.materials === "string")

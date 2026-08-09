@@ -10,6 +10,7 @@ import { acceptTask, taskView } from "./tasks.js";
 import { checkTitles, titlePrefix } from "./titles.js";
 import { rollSeasonHarvest, rollSeasonStatus, seasonHeadline } from "./season-events.js";
 import { fishingStatusLine } from "./fishing.js";
+import { GLIMMER_BUFF_TEXT, glimmerBuffActive, glimmerStatusLine } from "./glimmer.js";
 import { freshSeed } from "./rng.js";
 import { randomUUID, randomBytes } from "node:crypto";
 /** 农场门牌号字符集：大写字母 + 数字，剔除易混的 I/L/O/0/1。 */
@@ -116,6 +117,16 @@ export const HELP = `🌾 你的农场
   🥣 给生产动物投喂            ranch-feed {"animal":0}            （每天 3 次；花银币，下一份正常产物 +10%，不能叠加）
   🎣 钓鱼（每日最多 20 竿）：抛竿 {"action":"fish","times":10,"bait":"普通蚯蚓","location":"月光池塘","stop":"rare"}；买饵并钓 {"action":"fish","bait":"普通蚯蚓","buy":10,"times":10}；查看 {"action":"fish","view":"basket|codex|spots"}；卖鱼 {"action":"fish","sell":"all"}；开宝箱 {"action":"fish","open":"宝箱id"}；离开钓位 {"action":"fish","leave":true}。stop 可填 new、rare、event。
                               鱼获、事件和垃圾都计入，让鱼群和水域有时间恢复，北京时间 0 点刷新。
+
+  ✨ 流光原野（每天 20:00–22:00）
+     查看原野                   glimmer
+     购买当天通票               glimmer {"op":"ticket"} （500 金，当天开放期间可反复进入）
+     探索奇遇                   glimmer {"op":"explore"} （持票后每天最多 3 次）
+     诱捕异色动物               glimmer {"op":"catch","animal":"动物名","dish":"料理名"}
+                                （任何正常料理都能尝试，喜欢的料理成功率更高；成败都消耗料理并进入 20 分钟冷却；每天最多成功 1 只）
+     参与全服协作               glimmer {"op":"assist","item":"物品名"}
+                                （按当天事件要求提交，每家每天只能贡献一次）
+     处理奇遇选择               glimmer {"op":"choose","option":"A"}
 
 作物按真的时辰长：寻常约 3 小时、奇幻约 6 小时、限定看缘分；喂药水可立刻催熟。地越肥，越招稀罕作物。
 收成时偶尔掉材料（龙的指甲、海神鳞片、路边石头…），攒够三样熔成限定种子，什么时候想种就种。
@@ -906,7 +917,7 @@ function dispatchImpl(f, b, now) {
             const box = inbox.length ? "📬 新消息：\n" + inbox.join("\n") + "\n————————————\n" : "";
             const roam = ranchRoamLine(f);
             const ptl = potionTargetLine(f, now); // 催熟候选（限定/稀有优先），让 POST AI 也能策略性指定催熟
-            return { ok: true, text: withFooter(f, now, seLine + box + describeFarm(f, now) + (roam ? "\n" + roam : "") + (ptl ? "\n" + ptl : "") + "\n" + fishingStatusLine(f, now) + "\n" + shopBrief(f, now)) };
+            return { ok: true, text: withFooter(f, now, seLine + box + describeFarm(f, now) + (roam ? "\n" + roam : "") + (ptl ? "\n" + ptl : "") + "\n" + fishingStatusLine(f, now) + "\n" + glimmerStatusLine(f, now) + (glimmerBuffActive(now) ? "\n" + GLIMMER_BUFF_TEXT : "") + "\n" + shopBrief(f, now)) };
         }
         case "shop": return { ok: true, text: viewShop(f, now) };
         case "encyclopedia": return { ok: true, text: viewEncyclopedia(f, b.id) };

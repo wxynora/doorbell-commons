@@ -24,6 +24,9 @@ export function metricValue(f, field) {
         case "patrolGooseCatchesDaily": return f.ranch?.patrolGooseCatches?.n ?? 0;
         case "humanHarvestDaily": return f.humanHarvestDaily?.n ?? 0;
         case "raidIncomeDaily": return f.ranch?.raidIncome?.n ?? 0;
+        case "glimmerEncounters": return f.glimmer?.stats?.encounters ?? 0;
+        case "glimmerVariants": return f.glimmer?.stats?.variants ?? f.glimmer?.unlocked?.length ?? 0;
+        case "glimmerCoops": return f.glimmer?.stats?.coops ?? 0;
         default: return 0;
     }
 }
