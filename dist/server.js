@@ -1185,6 +1185,10 @@ const PUBLIC_PNG_ASSETS = new Map([
     ["glimmer/variant-2.png", new URL("../assets/glimmer/variant-2.png", import.meta.url)],
     ["glimmer/variant-3.png", new URL("../assets/glimmer/variant-3.png", import.meta.url)],
     ["glimmer/map-scene.png", new URL("../assets/glimmer/map-scene.png", import.meta.url)],
+    ["glimmer/variant-1.webp", new URL("../assets/glimmer/variant-1.webp", import.meta.url)],
+    ["glimmer/variant-2.webp", new URL("../assets/glimmer/variant-2.webp", import.meta.url)],
+    ["glimmer/variant-3.webp", new URL("../assets/glimmer/variant-3.webp", import.meta.url)],
+    ["glimmer/map-scene.webp", new URL("../assets/glimmer/map-scene.webp", import.meta.url)],
 ]);
 const COOKING_ASSET_DIR = new URL("../assets/cooking/", import.meta.url);
 const MAINTENANCE_FILE = `${process.env.AIFARM_DATA_DIR || "./data"}/maintenance`;
@@ -1220,7 +1224,8 @@ export function startServer(port, host = "127.0.0.1") {
         const publicPng = method === "GET" && parts[0] === "assets" ? PUBLIC_PNG_ASSETS.get(parts.slice(1).join("/")) : undefined;
         if (publicPng) {
             const png = readFileSync(publicPng);
-            res.writeHead(200, { "Content-Type": "image/png", "Content-Length": png.byteLength, "Cache-Control": "public, max-age=86400" });
+            const contentType = publicPng.pathname.endsWith(".webp") ? "image/webp" : "image/png";
+            res.writeHead(200, { "Content-Type": contentType, "Content-Length": png.byteLength, "Cache-Control": "public, max-age=86400" });
             return res.end(png);
         }
         const cookingAsset = method === "GET" && parts[0] === "assets" && parts[1] === "cooking"

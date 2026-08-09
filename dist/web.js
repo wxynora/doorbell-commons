@@ -30,7 +30,7 @@ function ranchSprite(index, name, extraClass = "", variantId) {
     const row = Math.floor(index / 5);
     const variant = glimmerVariantById.get(variantId);
     const classes = [extraClass, index === alpacaSpriteIndex && !variant ? "ranch-sprite-alpaca" : "", variant ? "ranch-sprite-variant" : ""].filter(Boolean).join(" ");
-    const sheet = variant ? `--ranch-sheet:url('${BASE}/assets/glimmer/variant-${variant.set}.png?v=20260809a');` : "";
+    const sheet = variant ? `--ranch-sheet:url('${BASE}/assets/glimmer/variant-${variant.set}.webp?v=20260809b');` : "";
     return `<span class="ranch-sprite${classes ? ` ${classes}` : ""}" role="img" aria-label="${esc(name)}像素画" style="${sheet}--sx:${col * 25}%;--sy:${row * 100 / 3}%"></span>`;
 }
 /** UTC+8 时钟 HH:MM（作物预计成熟时间用）。 */
@@ -325,7 +325,7 @@ nav a.on,nav a:hover{color:var(--leaf-deep);background:#e6f3d8}
 @media(prefers-reduced-motion:reduce){.ranch-scene-sprite{animation:none!important}}
 
 /* 流光原野：人类只读观察页 */
-.glimmer-scene{position:relative;min-height:300px;border-radius:18px;overflow:hidden;background:#223c45 url("${BASE}/assets/glimmer/map-scene.png?v=20260809a") center/cover no-repeat;color:#fff;box-shadow:inset 0 0 0 1px #ffffff44}
+.glimmer-scene{position:relative;min-height:300px;border-radius:18px;overflow:hidden;background:#223c45 url("${BASE}/assets/glimmer/map-scene.webp?v=20260809b") center/cover no-repeat;color:#fff;box-shadow:inset 0 0 0 1px #ffffff44}
 .glimmer-scene::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,#102b3130 25%,#102b31d8 100%);pointer-events:none}
 .glimmer-scene-copy{position:absolute;z-index:1;left:20px;right:20px;bottom:18px;text-shadow:0 2px 8px #102b31}
 .glimmer-scene-copy h1{margin:0 0 5px;font-family:var(--serif);font-size:30px}.glimmer-scene-copy p{margin:3px 0;line-height:1.65}
