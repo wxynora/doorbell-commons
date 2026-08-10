@@ -1416,9 +1416,9 @@ export function uiCooking(f, now, key, flash, resultRaw) {
       render();
     })();</script>`;
     const ingredientShop = view.ingredients.map((item) => {
-        const left = cooking.dailyBuyLimit - item.bought;
+        const left = item.dailyBuyLimit - item.bought;
         const can = left > 0 && f.silver >= item.price;
-        return `<div class="cook-stock-row line small"><span>${esc(item.emoji)} <b>${esc(item.name)}</b>　<span class="muted">${silverIcon}${num(item.price)} · 有 ${item.owned} · 今日 ${item.bought}/${cooking.dailyBuyLimit}</span></span>
+        return `<div class="cook-stock-row line small"><span>${esc(item.emoji)} <b>${esc(item.name)}</b>　<span class="muted">${silverIcon}${num(item.price)} · 有 ${item.owned} · 今日 ${item.bought}/${item.dailyBuyLimit}</span></span>
       <form method="post" action="${base}/buy-ingredient" data-cooking-async style="margin:0"><input type="hidden" name="id" value="${esc(item.id)}"><input type="hidden" name="qty" value="1"><button class="btn ghost" type="submit"${can ? "" : " disabled"}>买 1 份</button></form></div>`;
     }).join("");
     const recipeShop = view.recipeOffers.length ? view.recipeOffers.map((recipe) => {
@@ -1427,7 +1427,7 @@ export function uiCooking(f, now, key, flash, resultRaw) {
       <form method="post" action="${base}/buy-recipe" data-cooking-async style="margin:0"><input type="hidden" name="id" value="${esc(recipe.id)}"><button class="btn ghost" type="submit"${can ? "" : " disabled"}>${recipe.known ? "已解锁" : "买食谱"}</button></form></div>`;
     }).join("") : `<p class="small muted">今天没有未知食谱可卖；正确试做仍能直接解锁。</p>`;
     const shopCard = `<div class="card" id="cookingShop"><h3>🛒 今日料理铺　<span class="muted small" style="font-weight:400">UTC+8 零点换货</span></h3>
-      <div class="tags" style="margin:0 0 8px"><span class="tag">${silverIcon} 银币 <b>${num(f.silver)}</b></span><span class="tag">每种食材限购 <b>3</b></span><span class="tag">每日未知食谱 <b>2</b></span></div>
+      <div class="tags" style="margin:0 0 8px"><span class="tag">${silverIcon} 银币 <b>${num(f.silver)}</b></span><span class="tag">盐／面粉／砂糖 <b>10</b> · 其他食材 <b>${cooking.dailyBuyLimit}</b></span><span class="tag">每日未知食谱 <b>2</b></span></div>
       <details open><summary><b>食材铺 · 基础常驻 + 每日 6 种</b></summary><div class="cook-stock-list">${ingredientShop}</div></details>
       <details style="margin-top:10px"><summary><b>食谱铺</b></summary>${recipeShop}</details></div>`;
     const productRows = productGroups.length ? productGroups.map((group) => {

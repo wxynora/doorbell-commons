@@ -525,7 +525,7 @@ export function viewKitchen(f, now) {
                 : `${label} · 回收 ${kitchenValueRange(group.items, (entry) => entry.value)} 金/份`;
         }).join("\n  ")
         : "（空；去牧场收取动物产出）";
-    const ingredients = view.ingredients.map((item) => `${item.emoji}${item.name}〔${item.id}〕 🪙${item.price}·有 ${item.owned}·今日已买 ${item.bought}/3`).join("\n  ");
+    const ingredients = view.ingredients.map((item) => `${item.emoji}${item.name}〔${item.id}〕 🪙${item.price}·有 ${item.owned}·今日已买 ${item.bought}/${item.dailyBuyLimit}`).join("\n  ");
     const ownedIngredients = view.ownedIngredients.length
         ? view.ownedIngredients.map((item) => `${item.emoji}${item.name}〔${item.id}〕×${item.qty}`).join("、")
         : "（空）";

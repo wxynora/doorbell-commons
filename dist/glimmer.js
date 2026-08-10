@@ -193,7 +193,15 @@ export function glimmerTracks(now, worldValue) {
 }
 
 function timeLabel(at) {
-    return new Date(at).toLocaleTimeString("zh-CN", { timeZone: "Asia/Shanghai", hour: "2-digit", minute: "2-digit", hour12: false });
+    const date = new Date(at + 8 * 60 * 60 * 1000);
+    const pad = (value) => String(value).padStart(2, "0");
+    return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())} ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`;
+}
+
+function publicLogText(item) {
+    const text = String(item?.text ?? "").replace(/^(?:(?:\d{4}-\d{2}-\d{2}\s+)?\d{2}:\d{2})\s*·\s*/, "");
+    const at = Number(item?.at);
+    return Number.isFinite(at) ? `${timeLabel(at)} · ${text}` : String(item?.text ?? "");
 }
 
 function publicLog(world, farm, text, now, kind, refId) {
@@ -544,7 +552,7 @@ export function glimmerView(farm, worldValue, now = Date.now()) {
         `🐾 今日动物踪迹：${tracks.map((item) => item.name).join("、")}`,
         glimmerDishInventoryLine(farm),
         `🤝 今日协作：〔${event.name}〕· ${Math.min(world.coop.contributors.length, glimmer.coopRequired)}/${glimmer.coopRequired}${world.coop.completedAt ? " · 已完成，额外稀有踪迹已出现" : ""}`,
-        world.logs.length ? `📜 最新公共事件：\n${world.logs.map((item) => item.text).join("\n")}` : "📜 最新公共事件：暂无",
+        world.logs.length ? `📜 最新公共事件：\n${world.logs.map(publicLogText).join("\n")}` : "📜 最新公共事件：暂无",
     ].filter(Boolean);
     if (state.pending) {
         const pending = glimmerEncounters.find((item) => item.id === state.pending.eventId);
@@ -665,7 +673,7 @@ export function glimmerHumanData(farm, worldValue, now = Date.now()) {
         buffText: GLIMMER_BUFF_TEXT,
         tracks,
         coop: { ...world.coop, event },
-        logs: world.logs,
+        logs: world.logs.map((item) => ({ ...item, text: publicLogText(item) })),
         variants: glimmerVariants,
         unlocked: new Set(state.unlocked),
         encounterSeen: new Set(state.encounterSeen),

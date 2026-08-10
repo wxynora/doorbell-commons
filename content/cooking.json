@@ -43,9 +43,9 @@
     { "id": "alpaca_wool", "name": "羊驼毛", "emoji": "🧶", "cookable": false }
   ],
   "ingredients": [
-    { "id": "salt", "name": "盐", "emoji": "🧂", "price": 5, "staple": true },
-    { "id": "flour", "name": "面粉", "emoji": "🌾", "price": 8, "staple": true },
-    { "id": "sugar", "name": "砂糖", "emoji": "🍬", "price": 8, "staple": true },
+    { "id": "salt", "name": "盐", "emoji": "🧂", "price": 5, "staple": true, "dailyBuyLimit": 10 },
+    { "id": "flour", "name": "面粉", "emoji": "🌾", "price": 8, "staple": true, "dailyBuyLimit": 10 },
+    { "id": "sugar", "name": "砂糖", "emoji": "🍬", "price": 8, "staple": true, "dailyBuyLimit": 10 },
     { "id": "rice", "name": "大米", "emoji": "🍚", "price": 10, "staple": true },
     { "id": "onion", "name": "洋葱", "emoji": "🧅", "price": 8 },
     { "id": "potato", "name": "马铃薯", "emoji": "🥔", "price": 10 },

@@ -697,13 +697,16 @@ export function cookingDebuffReason(farm, action, body, now) {
     const minutes = Math.max(1, Math.ceil((debuff.until - now) / 60000));
     return `🥴 你吃下的微妙料理还在发作：${debuff.name}（约 ${minutes} 分钟后恢复）。这个效果只影响你使用农场工具，人类伴侣仍可正常操作。`;
 }
+function kitchenIngredientDailyBuyLimit(item) {
+    return Math.max(1, Math.floor(Number(item?.dailyBuyLimit) || cooking.dailyBuyLimit));
+}
 /** 料理台当前的真实库存、商店、配方与效果，AI 与人类页共用。 */
 export function kitchenView(farm, now) {
     const kitchen = ensureKitchen(farm);
     const shop = refreshKitchenShop(farm, now);
     const ingredients = cookingIngredients
         .filter((item) => item.staple || shop.ingredientIds.includes(item.id))
-        .map((item) => ({ ...item, owned: kitchen.ingredients[item.id] ?? 0, bought: shop.bought[`ingredient:${item.id}`] ?? 0 }));
+        .map((item) => ({ ...item, dailyBuyLimit: kitchenIngredientDailyBuyLimit(item), owned: kitchen.ingredients[item.id] ?? 0, bought: shop.bought[`ingredient:${item.id}`] ?? 0 }));
     const recipeOffers = shop.recipeIds.map((id) => cookingRecipeById.get(id)).filter(Boolean)
         .map((recipe) => ({ ...recipe, price: cooking.recipePrices[recipe.rarity], known: kitchen.knownRecipes.includes(recipe.id) }));
     return {
@@ -728,8 +731,9 @@ export function kitchenBuy(farm, kind, id, qty, now) {
         const n = Math.max(1, Math.floor(Number(qty) || 1));
         const key = `ingredient:${item.id}`;
         const bought = shop.bought[key] ?? 0;
-        if (bought + n > cooking.dailyBuyLimit)
-            return { ok: false, error: `每种食材每天最多买 ${cooking.dailyBuyLimit} 份，今天还可买 ${Math.max(0, cooking.dailyBuyLimit - bought)} 份。` };
+        const dailyBuyLimit = kitchenIngredientDailyBuyLimit(item);
+        if (bought + n > dailyBuyLimit)
+            return { ok: false, error: `${item.name}每天最多买 ${dailyBuyLimit} 份，今天还可买 ${Math.max(0, dailyBuyLimit - bought)} 份。` };
         const cost = item.price * n;
         if (farm.silver < cost)
             return { ok: false, error: `银币不足，买 ${n} 份${item.name}要 🪙${cost}（你有 ${farm.silver}）。` };
