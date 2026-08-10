@@ -634,5 +634,21 @@
     "id": "glimmer_coop_4", "cat": "原野协作", "tier": 4,
     "field": "glimmerCoops", "min": 30, "name": "全服都欠我个人情", "flavor": "",
     "reward": {"coins": 2000, "silver": 300}
+  },
+  {
+    "id": "together_second_home", "cat": "铃野共行", "tier": 1,
+    "field": "togetherSecondHome", "min": 1, "name": "渡口包工头", "flavor": ""
+  },
+  {
+    "id": "together_quiet_harvest", "cat": "铃野共行", "tier": 1,
+    "field": "togetherQuietHarvest", "min": 1, "name": "丰收守夜人", "flavor": ""
+  },
+  {
+    "id": "together_ten_thousand_bottles", "cat": "铃野共行", "tier": 1,
+    "field": "togetherTenThousandBottles", "min": 1, "name": "流水账本人", "flavor": ""
+  },
+  {
+    "id": "together_no_address", "cat": "铃野共行", "tier": 1,
+    "field": "togetherNoAddress", "min": 1, "name": "无址摆渡人", "flavor": ""
   }
 ]

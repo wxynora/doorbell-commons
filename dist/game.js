@@ -103,6 +103,8 @@ export const HELP = `🌾 你的农场
   🏃 见好就收撤回来            retreat                             （提前结束这一程，行囊落袋入库；战斗中撤不了）
   🧭 看探险进度                expedition                          （resume / 当前在哪一格 / 今日剩几次数）
 
+  🧭 铃野共行                  together                              （查看本期公共副本、当前任务与往期故事；选择或投票用 together {"option":"A"}）
+
   🐔 给伴侣捎只小动物          buy-animal {"id":"chicken"}         （住进 TA 的牧场，由 TA 来养）
   🐱 捎只宠物陪着你            buy-pet {"id":"cat"}                （🐱招财 / 🐶看家，给农场一份温和加成；集齐 5 种图鉴解锁）
   🪿 给牧场请一只巡逻鹅        buy-patrol-goose                    （独立常驻守卫；无图鉴门槛，9999 金，有钱即可购买）

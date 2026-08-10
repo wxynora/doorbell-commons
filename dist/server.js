@@ -2,15 +2,15 @@
 import { createServer } from "node:http";
 import { randomUUID, randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { advance, steal, canStealNow, stealAvailability, stealShieldRemain, isUgcCrop, visitorWater, tryWaterReward, humanHarvestAll, humanHarvestLeft, ranchRoamLine, buyPotionSet, refreshShop, ranchCollect, ranchRemit, ranchBuyAccessory, ranchBuyDecoration, ranchWearAccessory, ranchTakeOffAccessory, ranchPlaceDecoration, ranchUnplaceDecoration, ranchUpgradeAnimal, ranchNameAnimal, ranchNamePet, ranchNamePatrolGoose, ranchTogglePin, dispatchRanchRaid, catchRanchRaid, settleRanchRaids, ensureHumanKey, takeInbox, takeRanchNotices, pushSocialInbox, potionDailyLeft, designCrop, craft, nextUpgradeReq, toggleStar, cookingDebuffReason, cookingDebuffStatusText, bribeGuardDog, kitchenBuy, kitchenCook, kitchenUse, kitchenSell, kitchenSellMany, ranchFeedAnimal, kitchenView, dishSystemRecycleSilver } from "./engine.js";
+import { advance, steal, canStealNow, stealAvailability, stealShieldRemain, isUgcCrop, visitorWater, tryWaterReward, humanHarvestAll, humanHarvestLeft, ranchRoamLine, buyPotionSet, refreshShop, ranchCollect, ranchRemit, ranchBuyAccessory, ranchBuyDecoration, ranchWearAccessory, ranchTakeOffAccessory, ranchPlaceDecoration, ranchUnplaceDecoration, ranchUpgradeAnimal, ranchNameAnimal, ranchNamePet, ranchNamePatrolGoose, ranchTogglePin, dispatchRanchRaid, catchRanchRaid, settleRanchRaids, ensureHumanKey, takeInbox, takeRanchNotices, pushSocialInbox, pushLog, potionDailyLeft, designCrop, craft, nextUpgradeReq, toggleStar, cookingDebuffReason, cookingDebuffStatusText, bribeGuardDog, kitchenBuy, kitchenCook, kitchenUse, kitchenSell, kitchenSellMany, ranchFeedAnimal, kitchenView, dishSystemRecycleSilver } from "./engine.js";
 import { dispatch, HELP, farmView, viewShop, viewEncyclopedia, viewBag, shopBrief, viewMarket, buyFromMarket, visitView, ranchAgentSection, refPrice, tendNpc, buyNpcSeed, randomTip, hasDamagedPublicName, viewKitchen } from "./game.js";
 import { harvestText, stealThiefText, statusFooter, waterText, describeFarm } from "./flavor.js";
-import { createFarm, getFarm, allFarms, playerFarms, save, getGlimmerWorld } from "./store.js";
-import { MAX_BODY_BYTES, SYNC_MAX_BODY_BYTES, MAX_FARMS, MESSAGE_TEXT_MAX, MESSAGES_MAX, POTION_DAILY_CAP, POTION_CAP_LINE, HUMAN_HARVEST_DAILY_CAP, NPC_ID, SEED_PRICE, RECIPE_PRICE, WELCOME_MAX, EXP_DAILY_CAP, EXP_MAX_CHARGES_PER_ENTRY, BASE, REGISTRATION_OPEN, REGISTRATION_CLOSED_TEXT, REGISTRATION_CAP, REGISTRATION_FULL_TEXT, SHOW_MIGRATION_NOTICE, MIGRATION_NOTICE_TEXT, MIGRATION_NOTICE_HTML } from "./config.js";
+import { createFarm, getFarm, allFarms, playerFarms, save, getGlimmerWorld, getPublicExpeditionWorld } from "./store.js";
+import { MAX_BODY_BYTES, SYNC_MAX_BODY_BYTES, MAX_FARMS, MESSAGE_TEXT_MAX, MESSAGES_MAX, POTION_DAILY_CAP, POTION_CAP_LINE, HUMAN_HARVEST_DAILY_CAP, NPC_ID, SEED_PRICE, GROW_TICKS, RECIPE_PRICE, WELCOME_MAX, EXP_DAILY_CAP, EXP_MAX_CHARGES_PER_ENTRY, BASE, REGISTRATION_OPEN, REGISTRATION_CLOSED_TEXT, REGISTRATION_CAP, REGISTRATION_FULL_TEXT, SHOW_MIGRATION_NOTICE, MIGRATION_NOTICE_TEXT, MIGRATION_NOTICE_HTML } from "./config.js";
 import { allowRequest, allowCreate, sweepGuard } from "./guard.js";
 import { mintNonce, takeNonce, sweepNonces, htmlAgentPage, htmlReadme, htmlGuide, htmlNotice, htmlGenLink } from "./agent.js";
 import { mcpDispatch } from "./mcp.js";
-import { uiHome, uiRanch, uiCooking, uiTa, uiCodex, uiMessages, uiLeaderboard, uiInvalid, uiExpedition, uiGlimmer, uiHumanNotices } from "./web.js";
+import { uiHome, uiRanch, uiCooking, uiTa, uiCodex, uiMessages, uiLeaderboard, uiInvalid, uiExpedition, uiTogether, uiGlimmer, uiHumanNotices } from "./web.js";
 import { expRoll, expSetCharm } from "./expedition.js";
 import { viewLeaderboard } from "./leaderboard.js";
 import { onTaskEvent, tickTask, hasOpenOffer, offerSummary } from "./tasks.js";
@@ -23,15 +23,19 @@ import { currentDayIndex } from "./time.js";
 import { claimSyncedFarm, exportSyncedFarm, PublicSyncError, registerSyncedFarm, syncFarm, syncPageHtml, } from "./public-sync.js";
 import { runFishing } from "./fishing.js";
 import { runGlimmer, setGlimmerVariant } from "./glimmer.js";
+import { advancePublicExpedition, checkPublicContribution, currentPublicTask, findPublicDish, findPublicHarvestPlot, findPublicWaterTarget, markPublicTrialPlot, publicExpeditionStatusLine, publicExpeditionText, recordPublicContribution, runPublicChoice, takePublicAiNotices, takePublicDish } from "./public-expedition.js";
 // 首页只展开 POST/REST（核心玩法）；只能 GET / 只能点链接的接入写法收进 /get；/readme 是给人类伴侣看的新手攻略。
 // 机读默认紧凑 JSON；需要人工读时设环境变量 FARM_PRETTY=1 缩进输出。
 const PRETTY = process.env.FARM_PRETTY === "1";
 const MCP_STATUS_IDLE_MS = 10 * 60 * 1000;
 const mcpLastToolAt = new Map();
+const GUESTBOOK_HELP = `
+  💬 看看自己家的留言板 guestbook （只读最新 10 条，最新在前；开关用 guestbook {"on":false} / {"on":true}）`;
+const SHARED_HELP = HELP + GUESTBOOK_HELP;
 const MCP_HELP = `🌾 完整动作表
 所有调用都使用 farm 工具：把动作名放在 action，其余参数与 action 放在同一级。
 
-${HELP.match(/  👋[\s\S]*/)?.[0] ?? HELP}`;
+${SHARED_HELP.match(/  👋[\s\S]*/)?.[0] ?? SHARED_HELP}`;
 const SOCIAL_HELP = `
 
 ————————————————————————————————————————
@@ -237,7 +241,7 @@ function newAgentKey() {
 }
 // 只读视图动作（允许 GET）；其余动作改动状态，必须 POST——防止链接预取/抓取/unfurl 误触发
 // （尤其 new-token 会轮换主 token，GET 预取一次就把农场钥匙刷掉）。/a 和 /farms 两条通道共用。
-const READONLY_ACTIONS = new Set(["status", "shop", "bag", "market", "encyclopedia", "ledger", "leaderboard", "ranking", "wander", "visit", "expedition", "exp", "help", "kitchen", "glimmer"]);
+const READONLY_ACTIONS = new Set(["status", "shop", "bag", "market", "encyclopedia", "ledger", "leaderboard", "ranking", "wander", "visit", "expedition", "exp", "together", "help", "kitchen", "glimmer"]);
 const mutatingViaGet = (method, action) => method !== "POST" && !!action && !READONLY_ACTIONS.has(action);
 // 农场专属链接的 key（= agentKey，和 /agent 点击页同一把）。缺了就懒生成，让每座农场都能用 /a/<key> 通道。
 function ensureAgentKey(f) {
@@ -415,7 +419,7 @@ function wanderResult(b, now, numbered = false) {
     return { ok: true, text, farms };
 }
 // —— 农场作用域的动作/视图：POST、REST-GET、/c 三个入口共用同一套（按 action 名分流，不看 HTTP 方法）——
-function runFarm(farmId, action, b, encArg, now) {
+function runFarmCore(farmId, action, b, encArg, now) {
     const f = fresh(farmId);
     if (!f)
         return { status: 400, json: { ok: false, text: `找不到农场 ${farmId || "(没给 farm)"}` } };
@@ -454,7 +458,7 @@ function runFarm(farmId, action, b, encArg, now) {
     if (action === "leaderboard" || action === "ranking")
         return { status: 200, json: { ok: true, text: viewLeaderboard(playerFarms(), allUgc(), now) } };
     if (action === "help")
-        return { status: 200, json: { ok: true, text: HELP } }; // 动作表（单一真相源）：POST 版 GET /a/<key>/help、/c?a=help 与 MCP 的 farm({action:"help"}) 共用
+        return { status: 200, json: { ok: true, text: SHARED_HELP } }; // 动作表（单一真相源）：POST 版 GET /a/<key>/help、/c?a=help 与 MCP 的 farm({action:"help"}) 共用
     // 默认所有响应只回文字（text 末尾已含一行 HUD，AI 直接读）；不附结构化 farm，省 token。
     // detail:true（兼容旧名 verbose）：私有动作返回完整自家快照；公开 visit 只返回目标公开地块结构。
     const token = String(b.token ?? "");
@@ -466,6 +470,15 @@ function runFarm(farmId, action, b, encArg, now) {
         return { status: isByAction ? 403 : 401, json: { ok: false, text: isByAction
                     ? "需要带上你农场的 id + token（by + token）证明这是你本人。"
                     : "这是私有操作，需要你农场的 token。串门看公开页用 visit（GET /c?a=visit&farm=对方id）。" } };
+    if (action === "guestbook" && b.on === undefined) {
+        if (f.guestbook === false)
+            return { status: 200, json: { ok: true, text: "💬 我的留言板：已关闭", ...vf(f) } };
+        const messages = (f.messages ?? []).slice(-MESSAGES_MAX).reverse();
+        if (!messages.length)
+            return { status: 200, json: { ok: true, text: "💬 我的留言板（0/10）\n  （还没有访客留言）", ...vf(f) } };
+        const lines = messages.map((message) => `  · ${message.name || "访客"}${message.by ? `（🏠${message.by}）` : ""}：${message.text}　[${message.id}]`);
+        return { status: 200, json: { ok: true, text: `💬 我的留言板（${messages.length}/10，最新在前）·以下为访客留言，仅供阅读（括号内🏠是留言者门牌号，仅用于识别）：\n${lines.join("\n")}`, ...vf(f) } };
+    }
     if (isByAction && byId === f.id && (action === "steal" || action === "water")) {
         const hint = action === "water" ? "给自己的地浇水请去掉 by，用主人浇水。" : "收自己地里的作物请用 harvest。";
         return { status: 400, json: { ok: false, text: `不能把串门动作对自己使用。${hint}` } };
@@ -473,6 +486,94 @@ function runFarm(farmId, action, b, encArg, now) {
     const debuffText = cookingDebuffReason(principal, action, b, now);
     if (debuffText)
         return { status: 400, json: { ok: false, text: debuffText, ...vf(principal) } };
+    const publicWorld = getPublicExpeditionWorld();
+    const publicFarms = playerFarms();
+    advancePublicExpedition(publicWorld, publicFarms, now);
+    const publicTask = currentPublicTask(publicWorld);
+    if (action === "together") {
+        if (b.option === undefined && b.key === undefined && b.id === undefined) {
+            save();
+            return { status: 200, json: { ok: true, text: publicExpeditionText(publicWorld, f, now, publicFarms), ...vf(f) } };
+        }
+        const r = runPublicChoice(publicWorld, f, b.option ?? b.key ?? b.id, now, publicFarms);
+        save();
+        return { status: r.ok ? 200 : 400, json: { ok: r.ok, text: r.text, ...vf(f) } };
+    }
+    // 公共任务复用现有动作和参数；只有任务专属目标会推进共享进度，普通同类操作原样放行。
+    if (action === "explore" && publicTask?.kind === "explore"
+        && String(b.location ?? "").trim() === publicTask.location) {
+        const r = recordPublicContribution(publicWorld, f, { kind: "explore" }, now, publicFarms);
+        save();
+        return { status: r.ok ? 200 : 400, json: { ok: r.ok, text: r.text, ...vf(f) } };
+    }
+    if (action === "fish" && publicTask?.id === "c_bottle" && String(b.location ?? "").trim() === "倒流湾") {
+        const r = recordPublicContribution(publicWorld, f, { kind: "fish" }, now, publicFarms);
+        save();
+        return { status: r.ok ? 200 : 400, json: { ok: r.ok, text: r.text, ...vf(f) } };
+    }
+    if (action === "kitchen" && b.op === "use" && publicTask?.kind === "dish"
+        && String(b.target ?? "").trim() === publicTask.npc) {
+        const task = publicTask;
+        const allowed = checkPublicContribution(publicWorld, f, "dish", {}, now, publicFarms);
+        if (!allowed.ok)
+            return { status: 400, json: { ok: false, text: allowed.text, ...vf(f) } };
+        const dish = findPublicDish(f, task.dish, b.dishId);
+        if (!dish)
+            return { status: 400, json: { ok: false, text: `料理柜里没有任务需要的「${task.dish}」，这次没有消耗料理。`, ...vf(f) } };
+        const r = recordPublicContribution(publicWorld, f, { kind: "dish", dishName: dish.name }, now, publicFarms);
+        if (r.ok)
+            takePublicDish(f, dish);
+        save();
+        return { status: r.ok ? 200 : 400, json: { ok: r.ok, text: r.ok ? `🍲 已把「${dish.name}」交给公共任务 NPC。\n${r.text}` : r.text, ...vf(f) } };
+    }
+    if (action === "plant" && publicTask?.id === "b_plant"
+        && String(b.seedType ?? b.limitedId ?? "").trim() === "明日试验种") {
+        const allowed = checkPublicContribution(publicWorld, f, "plant", {}, now, publicFarms);
+        if (!allowed.ok)
+            return { status: 400, json: { ok: false, text: allowed.text, ...vf(f) } };
+        const plot = b.plotId != null
+            ? f.plots.find((item) => item.id === Number(b.plotId) && !item.crop)
+            : f.plots.find((item) => !item.crop);
+        if (!plot)
+            return { status: 400, json: { ok: false, text: b.plotId != null ? `${b.plotId} 号地不存在或不是空地。` : "没有空地可以进行剧情试种。", ...vf(f) } };
+        plot.crop = { seedType: "common", growTicks: GROW_TICKS.common, progress: 0, ripe: false, waterCount: 0 };
+        pushLog(f, `在 ${plot.id} 号地种下芽芽提供的明日试验种`);
+        const r = markPublicTrialPlot(publicWorld, f, plot, structuredClone(plot.crop), now, publicFarms);
+        save();
+        return { status: r.ok ? 200 : 400, json: { ok: r.ok, text: r.ok ? `🌱 已在 ${plot.id} 号地种下任务标记的明日试验种。\n${r.text}` : r.text, ...vf(f) } };
+    }
+    if (action === "water" && publicTask?.id === "b_water" && principal.id !== f.id) {
+        const target = findPublicWaterTarget(publicWorld, principal.id, [f], now);
+        if (target && (b.plotId == null || Number(b.plotId) === target.plot.id)) {
+            const allowed = checkPublicContribution(publicWorld, principal, "water", { targetFarmId: f.id }, now, publicFarms);
+            if (!allowed.ok)
+                return { status: 400, json: { ok: false, text: allowed.text, ...vf(principal) } };
+            const watered = visitorWater(f, principal.id, target.plot.id, principal.name, now);
+            if (!watered.ok)
+                return { status: 400, json: { ok: false, text: watered.error, ...vf(principal) } };
+            const got = tryWaterReward(f, principal, now);
+            pushSocialInbox(f, `💧 「${principal.name}」为铃野共行照料了你的 ${target.plot.id} 号试验田`, now);
+            const r = recordPublicContribution(publicWorld, principal, { kind: "water", targetFarmId: f.id, targetFarmName: f.name, plotId: target.plot.id }, now, publicFarms);
+            save();
+            return { status: r.ok ? 200 : 400, json: { ok: r.ok, text: r.ok ? `💧 已为「${f.name}」的 ${target.plot.id} 号任务试验田浇水${got ? "，并得到 1 瓶加速药水" : ""}。\n${r.text}` : r.text, ...vf(principal) } };
+        }
+    }
+    if (action === "harvest" && publicTask?.id === "b_harvest") {
+        const plot = findPublicHarvestPlot(publicWorld, f, publicFarms, now);
+        if (plot && b.plotId != null && Number(b.plotId) === plot.id) {
+            const allowed = checkPublicContribution(publicWorld, f, "harvest", {}, now, publicFarms);
+            if (!allowed.ok)
+                return { status: 400, json: { ok: false, text: allowed.text, ...vf(f) } };
+            plot.crop.ripe = true;
+            plot.crop.progress = plot.crop.growTicks;
+            const harvested = dispatch(f, { action: "harvest", plotId: plot.id }, now);
+            if (!harvested.ok)
+                return { status: 400, json: { ok: false, text: harvested.text, ...vf(f) } };
+            const r = recordPublicContribution(publicWorld, f, { kind: "harvest", plotId: plot.id }, now, publicFarms);
+            save();
+            return { status: r.ok ? 200 : 400, json: { ok: r.ok, text: r.ok ? `${harvested.text}\n${r.text}` : r.text, ...vf(f) } };
+        }
+    }
     if (action === "glimmer") {
         const r = runGlimmer(f, getGlimmerWorld(), b, now);
         checkTitles(f);
@@ -643,6 +744,34 @@ function runFarm(farmId, action, b, encArg, now) {
     const r = dispatch(f, { ...b, action }, now);
     save();
     return { status: r.ok ? 200 : 400, json: { ok: r.ok, text: r.text, ...vf(f) } };
+}
+function authenticatedResultFarm(farmId, body) {
+    const token = String(body?.token ?? "");
+    const by = body?.by ? getFarm(String(body.by)) : undefined;
+    if (by?.token && by.token === token)
+        return by;
+    const own = getFarm(farmId);
+    return own?.token && own.token === token ? own : undefined;
+}
+function runFarm(farmId, action, body = {}, encArg, now) {
+    const out = runFarmCore(farmId, action, body, encArg, now);
+    const viewer = authenticatedResultFarm(farmId, body);
+    if (!viewer || !out?.json || out.status === 401 || out.status === 403)
+        return out;
+    const world = getPublicExpeditionWorld();
+    const publicFarms = playerFarms();
+    advancePublicExpedition(world, publicFarms, now);
+    const notices = takePublicAiNotices(world, viewer, now);
+    const extras = [];
+    if (notices.length)
+        extras.push(notices.join("\n\n"));
+    if (!action || action === "status")
+        extras.push(`🧭 铃野共行：${publicExpeditionStatusLine(world, now)}。用 {"action":"together"} 查看完整故事。`);
+    if (extras.length) {
+        out.json.text = `${String(out.json.text ?? "")}\n\n${extras.join("\n\n")}`;
+        save();
+    }
+    return out;
 }
 // ——————————— Agent 控制页（HTML，给只能点链接的 AI）———————————
 function resolveAgent(playKey) {
@@ -1189,6 +1318,14 @@ const PUBLIC_PNG_ASSETS = new Map([
     ["glimmer/variant-2.webp", new URL("../assets/glimmer/variant-2.webp", import.meta.url)],
     ["glimmer/variant-3.webp", new URL("../assets/glimmer/variant-3.webp", import.meta.url)],
     ["glimmer/map-scene.webp", new URL("../assets/glimmer/map-scene.webp", import.meta.url)],
+    ["lingye-together/river-from-tomorrow-opening-v3.webp", new URL("../assets/lingye-together/river-from-tomorrow-opening-v3.webp", import.meta.url)],
+    ["lingye-together/future-wharf-v3.webp", new URL("../assets/lingye-together/future-wharf-v3.webp", import.meta.url)],
+    ["lingye-together/cooperative-investigation-v3.webp", new URL("../assets/lingye-together/cooperative-investigation-v3.webp", import.meta.url)],
+    ["lingye-together/river-fork-v3.webp", new URL("../assets/lingye-together/river-fork-v3.webp", import.meta.url)],
+    ["lingye-together/ending-second-home-v3.webp", new URL("../assets/lingye-together/ending-second-home-v3.webp", import.meta.url)],
+    ["lingye-together/ending-quiet-harvest-v3.webp", new URL("../assets/lingye-together/ending-quiet-harvest-v3.webp", import.meta.url)],
+    ["lingye-together/ending-ten-thousand-bottles-v3.webp", new URL("../assets/lingye-together/ending-ten-thousand-bottles-v3.webp", import.meta.url)],
+    ["lingye-together/ending-river-no-address-v3.webp", new URL("../assets/lingye-together/ending-river-no-address-v3.webp", import.meta.url)],
 ]);
 const COOKING_ASSET_DIR = new URL("../assets/cooking/", import.meta.url);
 const MAINTENANCE_FILE = `${process.env.AIFARM_DATA_DIR || "./data"}/maintenance`;
@@ -1336,6 +1473,9 @@ export function startServer(port, host = "127.0.0.1") {
                 const renderHuman = (html) => {
                     if (method !== "GET")
                         return html;
+                    const publicWorld = getPublicExpeditionWorld();
+                    const publicFarms = playerFarms();
+                    advancePublicExpedition(publicWorld, publicFarms, now);
                     const notices = takeRanchNotices(f, section);
                     if (notices.length)
                         save();
@@ -1646,6 +1786,14 @@ export function startServer(port, host = "127.0.0.1") {
                     res.writeHead(200, AGENT_HEADERS);
                     return res.end(renderHuman(uiTa(f, now, key, url.searchParams.get("flash") ?? undefined)));
                 }
+                // 🧭 铃野共行：独立于个人探险的全服公共副本，只读展示共享剧情、任务、结局与往期故事。
+                if (section === "together") {
+                    const world = getPublicExpeditionWorld();
+                    advancePublicExpedition(world, playerFarms(), now);
+                    save();
+                    res.writeHead(200, AGENT_HEADERS);
+                    return res.end(renderHuman(uiTogether(f, world, now, key)));
+                }
                 // 🗺️ 探险页：摇骰（伴侣替 AI 摇，同心+1）/ 出门前祈福。其余推进(explore/choose/retreat)是 AI 自己发，这页只看+摇骰+祈福。
                 if (section === "expedition") {
                     const act = parts[3];
@@ -1740,7 +1888,7 @@ export function startServer(port, host = "127.0.0.1") {
                 return jsonOut(res, 201, { ok: true, text: agentReadyText(f, humanUrl, aurl, true), humanUrl, agentUrl: aurl, instruction: `请立即把 humanUrl 和 agentUrl 都发送给${f.humanName || "伴侣"}，并提醒对方保存。` });
             }
             if (method === "GET" && parts.length === 0)
-                return textOut(res, 200, (SHOW_MIGRATION_NOTICE ? MIGRATION_NOTICE_TEXT + "\n\n" : "") + HELP + SOCIAL_HELP);
+                return textOut(res, 200, (SHOW_MIGRATION_NOTICE ? MIGRATION_NOTICE_TEXT + "\n\n" : "") + SHARED_HELP + SOCIAL_HELP);
             // GET 命令通道 /c：让只能 GET 的 AI 也能玩（query 当 body；建农场/串门/动作都走这里）
             if (parts[0] === "c") {
                 const b = Object.fromEntries(sp);
@@ -1876,6 +2024,8 @@ export function startServer(port, host = "127.0.0.1") {
                     return jsonOut(res, 405, { ok: false, text: "料理台的 buy/cook/use/sell 会改动状态，请用 POST；GET 只可查看。" });
                 if (method !== "POST" && action === "glimmer" && b.op && b.op !== "view")
                     return jsonOut(res, 405, { ok: false, text: "流光原野的 ticket/explore/catch/assist/choose 会改动状态，请用 POST；GET 只可查看。" });
+                if (method !== "POST" && action === "together" && (b.option !== undefined || b.key !== undefined || b.id !== undefined))
+                    return jsonOut(res, 405, { ok: false, text: "铃野共行的选择或投票会推进全服状态，请用 POST；GET 只可查看。" });
                 if (typeof b.limited === "string")
                     b.limited = b.limited.split(",");
                 if (typeof b.materials === "string")
@@ -1908,6 +2058,8 @@ export function startServer(port, host = "127.0.0.1") {
                     return jsonOut(res, 405, { ok: false, text: "料理台的 buy/cook/use/sell 会改动状态，请用 POST；GET 只可查看。" });
                 if (method !== "POST" && parts[2] === "glimmer" && b.op && b.op !== "view")
                     return jsonOut(res, 405, { ok: false, text: "流光原野的 ticket/explore/catch/assist/choose 会改动状态，请用 POST；GET 只可查看。" });
+                if (method !== "POST" && parts[2] === "together" && (b.option !== undefined || b.key !== undefined || b.id !== undefined))
+                    return jsonOut(res, 405, { ok: false, text: "铃野共行的选择或投票会推进全服状态，请用 POST；GET 只可查看。" });
                 if (typeof b.limited === "string")
                     b.limited = b.limited.split(",");
                 if (typeof b.materials === "string")

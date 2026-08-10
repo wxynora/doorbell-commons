@@ -27,6 +27,10 @@ export function metricValue(f, field) {
         case "glimmerEncounters": return f.glimmer?.stats?.encounters ?? 0;
         case "glimmerVariants": return f.glimmer?.stats?.variants ?? f.glimmer?.unlocked?.length ?? 0;
         case "glimmerCoops": return f.glimmer?.stats?.coops ?? 0;
+        case "togetherSecondHome": return f.publicExpeditionRewards?.endings?.includes("second_home") ? 1 : 0;
+        case "togetherQuietHarvest": return f.publicExpeditionRewards?.endings?.includes("quiet_harvest") ? 1 : 0;
+        case "togetherTenThousandBottles": return f.publicExpeditionRewards?.endings?.includes("ten_thousand_bottles") ? 1 : 0;
+        case "togetherNoAddress": return f.publicExpeditionRewards?.endings?.includes("no_address") ? 1 : 0;
         default: return 0;
     }
 }

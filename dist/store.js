@@ -8,6 +8,7 @@ import { dumpUgc, loadUgc } from "./ugc.js";
 import { NPC_ID } from "./config.js";
 import { ensureFishing } from "./fishing.js";
 import { glimmerAchievementRewardText, normalizeGlimmerFarm, normalizeGlimmerWorld, settleGlimmerAchievementRewards } from "./glimmer.js";
+import { normalizePublicExpeditionWorld } from "./public-expedition.js";
 const DATA_DIR = process.env.AIFARM_DATA_DIR
     ? resolve(process.env.AIFARM_DATA_DIR)
     : resolve(dirname(fileURLToPath(import.meta.url)), "../data");
@@ -20,6 +21,7 @@ const MAINTENANCE_SILVER_GRANT_AMOUNT = 150;
 const MAINTENANCE_SILVER_GRANT_NOTICE = "🎁 流光原野更新福利：已发放 🪙150 银币。";
 let appliedMaintenanceGrantIds = [];
 let glimmerWorld = normalizeGlimmerWorld({});
+let publicExpeditionWorld = normalizePublicExpeditionWorld({});
 export function normalizeFarm(f) {
     f.materials ??= {};
     f.seeds ??= {};
@@ -76,6 +78,7 @@ export const allFarms = () => [...farms.values()];
 /** 真实玩家农场（排除常驻 NPC 阿土）——排行榜等"只算玩家"的地方用。 */
 export const playerFarms = () => [...farms.values()].filter((f) => f.id !== NPC_ID);
 export const getGlimmerWorld = () => glimmerWorld;
+export const getPublicExpeditionWorld = () => publicExpeditionWorld;
 /** 在本次生产启动时给当时已经存在的真实玩家一次性发放维护福利；全局 ID 与余额同一次原子保存。 */
 export function applyMaintenanceSilverGrant(farmValues = farms.values(), now = Date.now()) {
     if (appliedMaintenanceGrantIds.includes(MAINTENANCE_SILVER_GRANT_ID))
@@ -162,6 +165,7 @@ export function save() {
         farms: [...farms.values()],
         ugc: dumpUgc(),
         glimmer: glimmerWorld,
+        publicExpedition: publicExpeditionWorld,
     }, null, 2));
 }
 export function load() {
@@ -175,6 +179,7 @@ export function load() {
                 ? world.maintenanceGrantIds.map(String)
                 : [];
             glimmerWorld = normalizeGlimmerWorld(world.glimmer);
+            publicExpeditionWorld = normalizePublicExpeditionWorld(world.publicExpedition);
             loadUgc(Array.isArray(world.ugc) ? world.ugc : []);
             farms.clear();
             for (const f of world.farms)
@@ -208,6 +213,7 @@ export function load() {
     }
     appliedMaintenanceGrantIds = [];
     glimmerWorld = normalizeGlimmerWorld({});
+    publicExpeditionWorld = normalizePublicExpeditionWorld({});
     if (!existsSync(DATA_FILE)) {
         ensureNpc();
         applyMaintenanceSilverGrant();
