@@ -66,11 +66,34 @@ const fishingRecipeIndex = new Map([
     "pan_fried_fish", "fish_rice_ball", "tomato_fish_soup",
     "herb_grilled_fish", "honey_roast_fish", "starlight_fish_feast",
 ].map((id, index) => [id, index]));
-const cookingItemIndex = new Map([...cooking.products.filter((item) => item.cookable), ...cooking.ingredients].map((item, index) => [item.id, index]));
+const cookingDishAtlas2Index = new Map([
+    "scallion_omelet", "scallion_pancake", "butter_fried_egg", "home_style_tofu", "butter_corn",
+    "soy_fried_rice", "plain_boiled_chicken", "red_braised_tofu", "tofu_egg_soup", "butter_cookie",
+    "goat_milk_bun", "soy_quail_eggs", "scallion_oil_chicken", "ginger_duck", "tea_smoked_duck",
+    "red_braised_goose", "scallion_lamb", "potato_beef", "yellow_wine_turkey", "yellow_wine_quail",
+    "goat_meat_rice", "truffle_tofu", "red_braised_pork", "custard_bun", "dongpo_pork",
+    "truffle_butter_steak",
+].map((id, index) => [id, index]));
+const cookingItemAtlas2Index = new Map([
+    "pork", "soy_sauce", "ginger", "scallion", "butter", "yellow_wine", "tofu",
+].map((id, index) => [id, index]));
+const cookingItemIndex = new Map([...cooking.products.filter((item) => item.cookable), ...cooking.ingredients]
+    .filter((item) => !cookingItemAtlas2Index.has(item.id))
+    .map((item, index) => [item.id, index]));
+function cookingItemLayout(itemId) {
+    const atlas2Index = cookingItemAtlas2Index.get(itemId);
+    if (atlas2Index !== undefined)
+        return { asset: "second", x: atlas2Index % 4, y: Math.floor(atlas2Index / 4) };
+    const index = cookingItemIndex.get(itemId);
+    return index === undefined ? null : { asset: "main", x: index % 7, y: Math.floor(index / 7) };
+}
 function dishSprite(recipeId, name, className = "") {
     const fishingIndex = fishingRecipeIndex.get(recipeId);
     if (fishingIndex !== undefined)
         return `<span class="dish-sprite fish-dish-sprite ${className}" role="img" aria-label="${esc(name)}料理小图" style="--fish-dish-x:${fishingIndex % 3};--fish-dish-y:${Math.floor(fishingIndex / 3)}"></span>`;
+    const atlas2Index = cookingDishAtlas2Index.get(recipeId);
+    if (atlas2Index !== undefined)
+        return `<span class="dish-sprite second-dish-sprite ${className}" role="img" aria-label="${esc(name)}料理小图" style="--dish2-x:${atlas2Index % 5};--dish2-y:${Math.floor(atlas2Index / 5)}"></span>`;
     const index = cookingRecipeIndex.get(recipeId);
     if (index === undefined)
         return `<img class="dish-thumb ${className}" src="${BASE}/assets/cooking/odd-dish.webp?v=20260804b" alt="${esc(name)}料理小图">`;
@@ -79,10 +102,10 @@ function dishSprite(recipeId, name, className = "") {
 function cookingItemSprite(itemId, name) {
     if (itemId === "fish:any")
         return `<span class="cook-pick-icon fish-item-icon" role="img" aria-label="${esc(name)}图标"></span>`;
-    const index = cookingItemIndex.get(itemId);
-    if (index === undefined)
+    const layout = cookingItemLayout(itemId);
+    if (!layout)
         return "";
-    return `<span class="cook-pick-icon" role="img" aria-label="${esc(name)}图标" style="--item-x:${index % 7};--item-y:${Math.floor(index / 7)}"></span>`;
+    return `<span class="cook-pick-icon${layout.asset === "second" ? " second-item-icon" : ""}" role="img" aria-label="${esc(name)}图标" style="--item-x:${layout.x};--item-y:${layout.y}"></span>`;
 }
 /** 已收集的原创(ugc)物种数。 */
 const ugcGot = (f) => Object.keys(f.codex).filter((id) => getCrop(id)?.category === "ugc").length;
@@ -464,6 +487,7 @@ button.cook-pot-slot:active{background:#fff1b8}
 .cook-pick:hover{transform:translateY(-2px);border-color:#e6a854;box-shadow:0 8px 16px #67401d22}.cook-pick:focus-visible{outline:2px solid #d58b35;outline-offset:2px}
 .cook-pick[aria-pressed="true"]{border-color:#d58b35;background:#fff0cf;box-shadow:0 0 0 2px #e3a44f33 inset}
 .cook-pick-icon{display:block;width:42px;height:42px;margin:0 auto 3px;background:url("${BASE}/assets/cooking/ingredient-atlas.webp?v=20260806a") calc(var(--item-x)*16.666667%) calc(var(--item-y)*20%)/700% 600% no-repeat;image-rendering:pixelated}.cook-pick-name{display:block;font-size:12px;font-weight:700}.cook-pick-stock{display:block;font-size:10px;color:var(--ink-soft)}
+.cook-slot-icon.second-item-icon,.cook-pick-icon.second-item-icon{background-image:url("${BASE}/assets/cooking/ingredient-atlas-2.webp?v=20260810a");background-position:calc(var(--item-x)*33.333333%) calc(var(--item-y)*100%);background-size:400% 200%}
 .cook-pick-qty{position:absolute;right:5px;top:5px;min-width:25px;height:21px;display:grid;place-items:center;padding:0 5px;border-radius:999px;background:#713b2f;color:#fff8e7;font:800 12px/1 system-ui;box-shadow:0 2px 5px #32160844;pointer-events:none}
 .cook-recipe-list{max-height:320px;overflow-y:auto;overscroll-behavior:contain;padding-right:3px}
 .cook-recipe-trigger{position:relative;appearance:none;font:inherit;cursor:pointer}.cook-recipe-trigger::before{content:"";position:absolute;inset:-6px}
@@ -481,6 +505,7 @@ button.cook-pot-slot:active{background:#fff1b8}
 .cook-result-card{position:relative;width:min(360px,100%);padding:22px;border:3px solid var(--rarity,var(--N));border-radius:22px;background:linear-gradient(180deg,#fffdf5,#f5ead5);box-shadow:0 24px 70px #1f0d09aa;text-align:center;animation:cook-card-pop .42s cubic-bezier(.2,.9,.3,1.2) both}
 .dish-sprite{display:block;width:54px;height:54px;background:url("${BASE}/assets/cooking/dish-atlas.webp?v=20260806a") calc(var(--dish-x)*20%) calc(var(--dish-y)*11.111111%)/600% 1000% no-repeat;image-rendering:pixelated}
 .dish-sprite.fish-dish-sprite{background-image:url("${BASE}/assets/cooking/fishing-cooking-atlas.png?v=20260805fish1");background-position:calc(var(--fish-dish-x)*50%) calc(var(--fish-dish-y)*50%);background-size:300% 300%}
+.dish-sprite.second-dish-sprite{background-image:url("${BASE}/assets/cooking/dish-atlas-2.webp?v=20260810a");background-position:calc(var(--dish2-x)*25%) calc(var(--dish2-y)*20%);background-size:500% 600%}
 .dish-thumb{display:block;width:54px;height:54px;object-fit:contain;image-rendering:pixelated}
 .cook-result-card :is(.dish-sprite,.dish-thumb){width:160px;height:160px;margin:0 auto 10px}.cook-result-card h2{margin:0;font-family:var(--serif);color:#50351f}.cook-result-x{position:absolute;top:8px;right:8px;width:44px;height:44px;border:0;border-radius:50%;background:transparent;color:#715849;font-size:20px;cursor:pointer}
 .cook-rarity{display:inline-block;margin:7px 0;padding:2px 10px;border:1px solid var(--rarity,var(--N));border-radius:999px;color:var(--rarity,var(--N));font-weight:800}
@@ -1334,14 +1359,14 @@ export function uiCooking(f, now, key, flash, resultRaw) {
         if (!isFish && !def?.cookable)
             return "";
         const refs = esc(JSON.stringify(group.items.map((entry) => entry.id)));
-        const iconIndex = cookingItemIndex.get(group.itemId) ?? 0;
+        const icon = cookingItemLayout(group.itemId) ?? { asset: "main", x: 0, y: 0 };
         const name = isFish ? "鲜鱼" : item.name;
-        return `<button type="button" class="cook-pick" data-cook-key="${esc(group.itemId)}" data-cook-refs="${refs}" data-cook-stock="${group.items.length}" data-cook-name="${esc(name)}" data-cook-x="${iconIndex % 7}" data-cook-y="${Math.floor(iconIndex / 7)}" data-cook-asset="${isFish ? "fish" : "main"}" aria-pressed="false">
+        return `<button type="button" class="cook-pick" data-cook-key="${esc(group.itemId)}" data-cook-refs="${refs}" data-cook-stock="${group.items.length}" data-cook-name="${esc(name)}" data-cook-x="${icon.x}" data-cook-y="${icon.y}" data-cook-asset="${isFish ? "fish" : icon.asset}" aria-pressed="false">
       <span class="cook-pick-qty" aria-hidden="true">×${group.items.length}</span>${cookingItemSprite(group.itemId, name)}<span class="cook-pick-name">${esc(name)}</span><span class="cook-pick-stock">库存 ${group.items.length} · ${productValueText(group.items)}</span></button>`;
     }).join("");
     const ingredientButtons = view.ownedIngredients.map((item) => {
-        const iconIndex = cookingItemIndex.get(item.id) ?? 0;
-        return `<button type="button" class="cook-pick" data-cook-key="${esc(item.id)}" data-cook-ref="${esc(item.id)}" data-cook-stock="${item.qty}" data-cook-name="${esc(item.name)}" data-cook-x="${iconIndex % 7}" data-cook-y="${Math.floor(iconIndex / 7)}" aria-pressed="false">
+        const icon = cookingItemLayout(item.id) ?? { asset: "main", x: 0, y: 0 };
+        return `<button type="button" class="cook-pick" data-cook-key="${esc(item.id)}" data-cook-ref="${esc(item.id)}" data-cook-stock="${item.qty}" data-cook-name="${esc(item.name)}" data-cook-x="${icon.x}" data-cook-y="${icon.y}" data-cook-asset="${icon.asset}" aria-pressed="false">
       ${cookingItemSprite(item.id, item.name)}<span class="cook-pick-name">${esc(item.name)}</span><span class="cook-pick-stock">库存 ${item.qty}</span></button>`;
     }).join("");
     const selection = productButtons || ingredientButtons
@@ -1356,15 +1381,14 @@ export function uiCooking(f, now, key, flash, resultRaw) {
         for (const id of recipe.ingredients) {
             const productIndex = products.findIndex((item) => item.itemId === id);
             const itemName = cookingItemName(id);
-            const iconIndex = cookingItemIndex.get(id) ?? 0;
-            const asset = id === "fish:any" ? "fish" : "main";
+            const icon = id === "fish:any" ? { asset: "fish", x: 0, y: 0 } : cookingItemLayout(id) ?? { asset: "main", x: 0, y: 0 };
             if (productIndex >= 0) {
                 const product = products.splice(productIndex, 1)[0];
-                items.push({ ref: product.id, key: id, name: product.name || itemName, x: iconIndex % 7, y: Math.floor(iconIndex / 7), asset });
+                items.push({ ref: product.id, key: id, name: product.name || itemName, x: icon.x, y: icon.y, asset: icon.asset });
             }
             else if ((counts[id] ?? 0) > 0) {
                 counts[id] -= 1;
-                items.push({ ref: id, key: id, name: itemName, x: iconIndex % 7, y: Math.floor(iconIndex / 7), asset });
+                items.push({ ref: id, key: id, name: itemName, x: icon.x, y: icon.y, asset: icon.asset });
             }
             else {
                 missing.set(id, (missing.get(id) ?? 0) + 1);
@@ -1401,7 +1425,7 @@ export function uiCooking(f, now, key, flash, resultRaw) {
       const closeRecipes=()=>{recipeBack?.classList.remove("show");openRecipes?.focus();};
       function removeChoice(index){if(!Number.isInteger(index)||index<0||index>=chosen.length)return;chosen.splice(index,1);render();}
       function render(){hidden.value=JSON.stringify(chosen.map(x=>x.ref));count.textContent=String(chosen.length);start.disabled=chosen.length<2;
-        pot.innerHTML=Array.from({length:5},(_,i)=>{const item=chosen[i];return item?'<button type="button" class="cook-pot-slot" data-remove="'+i+'" title="取出'+item.name+'" aria-label="从第'+(i+1)+'个槽位取出'+item.name+'"><span class="cook-slot-icon'+(item.asset==='fish'?' fish-item-icon':'')+'" style="--item-x:'+item.x+';--item-y:'+item.y+'" aria-hidden="true"></span></button>':'<span class="cook-pot-slot empty" aria-hidden="true"></span>';}).join("");
+        pot.innerHTML=Array.from({length:5},(_,i)=>{const item=chosen[i];const iconClass=item?(item.asset==='fish'?' fish-item-icon':item.asset==='second'?' second-item-icon':''):'';return item?'<button type="button" class="cook-pot-slot" data-remove="'+i+'" title="取出'+item.name+'" aria-label="从第'+(i+1)+'个槽位取出'+item.name+'"><span class="cook-slot-icon'+iconClass+'" style="--item-x:'+item.x+';--item-y:'+item.y+'" aria-hidden="true"></span></button>':'<span class="cook-pot-slot empty" aria-hidden="true"></span>';}).join("");
         for(const slot of pot.querySelectorAll("[data-remove]"))slot.addEventListener("click",()=>removeChoice(Number(slot.dataset.remove)));
         for(const b of buttons()){const used=chosen.filter(x=>x.key===b.dataset.cookKey).length;b.setAttribute("aria-pressed",used>0?"true":"false");b.disabled=used>=Number(b.dataset.cookStock||1)||chosen.length>=5;}
       }

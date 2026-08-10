@@ -68,8 +68,8 @@ export const SEED_PRICE = { common: 8, fantasy: 40 };
 export const RARITY_WEIGHT = { N: 100, R: 35, SR: 10, SSR: 2.5, SP: 0.4 };
 export const RARITY_ORDER = ["N", "R", "SR", "SSR", "SP"];
 export const rarityIndex = (r) => Math.max(0, RARITY_ORDER.indexOf(r));
-// 土地品阶的“运气”加成（roll 时把权重往高稀有抬）。顶阶=4阶（已砍5阶），4阶给满 1.5 补回稀有概率手感。
-export const LAND_LUCK = { 1: 0.15, 2: 0.45, 3: 0.9, 4: 1.5 };
+// 土地品阶的“运气”加成（roll 时把权重往高稀有抬）。5阶只扩地，不再提高稀有概率。
+export const LAND_LUCK = { 1: 0.15, 2: 0.45, 3: 0.9, 4: 1.5, 5: 1.5 };
 // —— 浇水运气 ——
 export const WATER_LUCK_PER = 0.05; // 每浇一次 +0.05
 export const WATER_LUCK_CAP = 0.3; // 封顶 +0.3（主人+访客共用）
@@ -77,11 +77,12 @@ export const WATER_LUCK_CAP = 0.3; // 封顶 +0.3（主人+访客共用）
 // 核心牵制：升级要求「集齐 N 种普通作物图鉴」，让普通作物始终有用。
 // commonCodex/fantasyCodex = 需集齐的不同普通/奇幻作物数量；codexPct = 总收集度%。
 // 升级费用很高——这是主线目标，要长期攒。coins 是关键调参，按实测收入再平衡。
-// 顶阶=4阶（已砍5阶：原5阶要40种普通但其中2种锁tier5=先有鸡先有蛋死锁）。费用按30天全收集目标下调。
+// 5阶只增加地块，沿用4阶已满足的图鉴门槛，避免新增作物前出现先有鸡先有蛋死锁。
 export const LAND_UPGRADE_REQ = {
     2: { coins: 3500, commonCodex: 6, fantasyCodex: 0, codexPct: 0 },
     3: { coins: 20000, commonCodex: 14, fantasyCodex: 3, codexPct: 0 },
     4: { coins: 90000, commonCodex: 24, fantasyCodex: 10, codexPct: 0 },
+    5: { coins: 160000, commonCodex: 24, fantasyCodex: 10, codexPct: 0 },
 };
 // —— 金钱来源：新图鉴奖励（收获到新物种额外给钱，越稀有越多）——
 export const NEW_CODEX_REWARD = { N: 30, R: 80, SR: 250, SSR: 800, SP: 2500 };

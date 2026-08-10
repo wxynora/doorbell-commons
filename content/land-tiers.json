@@ -30,5 +30,13 @@
     "maxRarity": "SP",
     "upgradeCost": null,
     "achieveText": ""
+  },
+  {
+    "tier": 5,
+    "name": "丰壤",
+    "plots": 20,
+    "maxRarity": "SP",
+    "upgradeCost": "160000 金币",
+    "achieveText": ""
   }
 ]

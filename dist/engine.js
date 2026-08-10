@@ -2023,7 +2023,9 @@ export function upgradeLand(farm, now) {
     for (let id = farm.plots.length + 1; id <= next.plots; id++)
         farm.plots.push({ id, crop: null });
     pushLog(farm, `土地升级为 ${next.name}`);
-    return { ok: true, tier: next.tier, name: next.name, text: `${next.achieveText}\n（解锁 ${newVarietiesAtTier(next.tier)} 种新作物；地块增至 ${next.plots}）` };
+    const unlocked = newVarietiesAtTier(next.tier);
+    const gains = [unlocked > 0 ? `解锁 ${unlocked} 种新作物` : "", `地块增至 ${next.plots}`].filter(Boolean).join("；");
+    return { ok: true, tier: next.tier, name: next.name, text: `${next.achieveText}\n（${gains}）` };
 }
 // ——————————— 批量动作（减少 AI 的 tool 往返）———————————
 /** 批量播种：按数量填入空地（普通/奇幻/限定 id 列表）。便宜的先种，买不起就停。 */
