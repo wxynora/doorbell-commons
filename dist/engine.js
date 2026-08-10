@@ -982,6 +982,30 @@ export function kitchenSellMany(farm, itemIds, qty, to, price, now) {
 export function kitchenSellSelected(farm, selectorRaw, qty, to, price, now) {
     const kitchen = ensureKitchen(farm);
     const selector = String(selectorRaw);
+    const ingredient = cookingIngredientById.get(selector) ?? cookingIngredients.find((item) => item.name === selector);
+    if (ingredient && to === "market") {
+        const n = Number(qty);
+        if (!Number.isSafeInteger(n) || n < 1)
+            return { ok: false, error: "售卖数量要填写正整数。" };
+        if ((kitchen.ingredients[ingredient.id] ?? 0) < n)
+            return { ok: false, error: `「${ingredient.name}」数量不够。` };
+        const silverPrice = Math.floor(Number(price));
+        if (!Number.isSafeInteger(silverPrice) || silverPrice <= 0)
+            return { ok: false, error: "摆摊价格要填写正整数银币。" };
+        kitchen.ingredients[ingredient.id] -= n;
+        if (kitchen.ingredients[ingredient.id] <= 0)
+            delete kitchen.ingredients[ingredient.id];
+        const listing = (farm.market ??= []).find((item) => item.kind === "ingredient" && item.id === ingredient.id);
+        if (listing) {
+            listing.qty += n;
+            listing.price = silverPrice;
+            listing.listedAt = now;
+        }
+        else {
+            farm.market.push({ kind: "ingredient", id: ingredient.id, qty: n, price: silverPrice, listedAt: now });
+        }
+        return { ok: true, to, name: ingredient.name, qty: n, price: silverPrice, item: ingredient };
+    }
     const exactProduct = kitchen.products.find((item) => item.id === selector);
     const exactDish = kitchen.dishes.find((item) => item.id === selector);
     if (exactProduct || exactDish)

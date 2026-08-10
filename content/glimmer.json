@@ -107,6 +107,8 @@
     {"id":"empty_hollow","name":"空树洞","type":"instant","text":"🕳️〔空树洞〕树洞回了三声：“没有。”“真的没有。”“明天也不一定有。”你决定尊重它的坦率，空手而归。","reward":{"kind":"none"}},
     {"id":"picnic_blanket","name":"旧野餐布","type":"instant","text":"🍱〔旧野餐布〕野餐布上只剩一份被玻璃罩严密保护的料理，旁边写着：“给饿肚子的下一位。”获得随机正常料理×1。","reward":{"kind":"dish"}},
     {"id":"sleeping_herd","name":"沉睡兽群","type":"instant","text":"🐾〔沉睡兽群〕一群动物睡得东倒西歪，梦话却整齐得像报菜名。你记下了一种尚未收录动物喜欢的料理。","reward":{"kind":"favorite"}},
+    {"id":"windy_feeding_guide","name":"被风翻开的饲养手册","type":"instant","text":"📒〔被风翻开的饲养手册〕一本小册子被风翻得哗啦作响，只有“投喂偏好”那页被石头压住。你记下了一种尚未收录动物喜欢的料理。","reward":{"kind":"favorite"}},
+    {"id":"rolling_empty_plate","name":"会指路的空餐盘","type":"instant","text":"🥣〔会指路的空餐盘〕一只空餐盘一路骨碌碌滚在前面，最后停在几枚动物脚印旁。盘底刻着一种尚未收录动物喜欢的料理。","reward":{"kind":"favorite"}},
     {"id":"lost_vendor","name":"迷路小贩","type":"instant","text":"🧺〔迷路小贩〕小贩坚称不是自己迷路，是流光原野偷偷转了半圈。为了证明方向感，它塞给你一份随机食材，然后朝相反方向走了。","reward":{"kind":"ingredient"}},
     {"id":"tiny_tornado","name":"一米宽的龙卷风","type":"instant","text":"🌪️〔一米宽的龙卷风〕一小截龙卷风坚持跟在你脚边，气势很大，覆盖范围刚好够卷起一根鱼饵。获得普通蚯蚓×1。","reward":{"kind":"bait","id":"basic_worm","amount":1}},
     {"id":"crow_conductor","name":"自称售票员的乌鸦","type":"choice","text":"🐦‍⬛〔自称售票员的乌鸦〕一只乌鸦拦住你，胸前挂着手写工牌：“本鸟只查假票，真票看不懂。”","options":{"A":{"label":"把真的通票给它看","text":"乌鸦研究半天，承认这票真得超出业务范围，赔给你 80 金。","reward":{"kind":"coins","amount":80}},"B":{"label":"请它给通票补一个鸟类专用章","text":"乌鸦郑重盖下一枚歪歪扭扭的爪印，又收了自己 10 银手续费，再把钱塞给你。+10 银。","reward":{"kind":"silver","amount":10}}}},
@@ -116,6 +118,8 @@
     {"id":"shadow_puddle","name":"偷走影子的水坑","type":"choice","text":"🌑〔偷走影子的水坑〕你的影子突然留在水里不肯出来，还假装没听见你叫它。","options":{"A":{"label":"一脚跳进水坑抓它","text":"影子被你拎了回来，口袋里还多出 15 银，不知道是谁的。+15 银。","reward":{"kind":"silver","amount":15}},"B":{"label":"绕过去，看它能装多久","text":"你走出十几步，影子自己慌慌张张追了上来。除了鞋很干净，什么也没得到。","reward":{"kind":"none"}}}},
     {"id":"lying_scarecrow","name":"躺平的稻草人","type":"choice","text":"🌾〔躺平的稻草人〕稻草人平躺在草地上：“站了一整季，今天轮到田自己吓鸟。”","options":{"A":{"label":"扶它起来继续上班","text":"稻草人很不情愿地站起来，从袖子里掉出一瓶加速药水。","reward":{"kind":"item","id":"speed_potion","amount":1}},"B":{"label":"在旁边躺五分钟陪它","text":"五分钟后你们都没起来。一只路过的小鸟留下了一份随机正常料理。","reward":{"kind":"dish"}}}},
     {"id":"stone_sheep","name":"冒充石头的羊","type":"choice","text":"🐑〔冒充石头的羊〕一块毛茸茸的“石头”打了个喷嚏，然后坚持说刚才只是山体活动。","options":{"A":{"label":"为打扰山体活动道歉","text":"“石头”原谅了你，并告诉你一种尚未收录动物喜欢的料理。","reward":{"kind":"favorite"}},"B":{"label":"问它为什么要装石头","text":"它小声说是在躲剪毛，随后塞给你 80 金作为保密费。","reward":{"kind":"coins","amount":80}}}},
+    {"id":"dusk_tea_stall","name":"黄昏茶摊","type":"choice","text":"☕〔黄昏茶摊〕摊主把几张沾着爪印的点单纸摊开：“客人没留名字，只能靠脚印猜它们爱吃什么。”","options":{"A":{"label":"帮它整理点单纸","text":"你按脚印把点单纸分好，记下了一种尚未收录动物喜欢的料理。","reward":{"kind":"favorite"}},"B":{"label":"先买一份今日点心","text":"摊主送你一份随机正常料理：“吃饱了再查账。”","reward":{"kind":"dish"}}}},
+    {"id":"animal_post_wrong_letter","name":"动物邮局的错件","type":"choice","text":"📮〔动物邮局的错件〕邮差抱着一封只写了“送给最爱这道菜的动物”的信，急得团团转。","options":{"A":{"label":"根据信封上的气味帮忙投递","text":"信顺利送到了。邮差把对应关系抄给你，你记下了一种尚未收录动物喜欢的料理。","reward":{"kind":"favorite"}},"B":{"label":"先退回重写地址","text":"寄件人补写地址时塞来一份随机食材作为谢礼。","reward":{"kind":"ingredient"}}}},
     {"id":"chicken_meeting","name":"正在开会的鸡","type":"choice","text":"🐔〔正在开会的鸡〕几只鸡围成一圈，严肃讨论“蛋到底算不算员工产出”。看见你后，全场突然安静。","options":{"A":{"label":"坐下旁听会议","text":"会议最终通过了《路人旁听补贴》，你获得一份随机蛋类牧场产物。","reward":{"kind":"egg"}},"B":{"label":"举手发表意见","text":"你刚说到“提高效率”，就被全体鸡一致请出会场。什么也没得到。","reward":{"kind":"none"}}}}
   ],
   "coopEvents": [

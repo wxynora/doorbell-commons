@@ -428,7 +428,7 @@ export function runPublicChoice(world, farm, rawOption, now = Date.now(), farms 
         markImmediateAiPhase(world, farm);
         return {
             ok: true,
-            text: `已记录你对 ${option}「${label}」的选择（当前 ${counts[option]}/${CHOICE_TARGET}）。同一选项得到至少 ${CHOICE_TARGET} 名玩家共同选择后，剧情才会推进。\n\n${publicExpeditionText(world, farm, now, farms)}`,
+            text: `已记录你对 ${option}「${label}」的选择。等其他农场也作出决定后，剧情才会推进。\n\n${publicExpeditionText(world, farm, now, farms)}`,
         };
     }
     const resolvedVotes = ballot.votes;
@@ -620,8 +620,7 @@ function optionsText(world) {
     const options = choiceOptions(world);
     if (!options)
         return "";
-    const counts = world.phase === "choice" ? choiceSupportCounts(world) : null;
-    return Object.entries(options).map(([key, label]) => `${key}．${label}${counts ? `（${counts[key] ?? 0}/${CHOICE_TARGET}）` : ""}`).join("\n");
+    return Object.entries(options).map(([key, label]) => `${key}．${label}`).join("\n");
 }
 
 function directCallGuide(world, farm, farms, now) {
@@ -687,8 +686,8 @@ function currentPromptText(world, farm, farms = [], now = Date.now()) {
     return "本轮结局与实际故事线已归档。";
 }
 
-function historyText(world) {
-    return world.history.map((entry) => {
+function historyText(entries) {
+    return entries.map((entry) => {
         if (entry.kind === "choice") {
             const names = entry.voters?.length ? entry.voters.map((item) => item.farmName).join("、") : entry.farmName;
             return `【共同选择 ${entry.step}】${entry.option}：${entry.label}${names ? `\n由 ${names} 共同决定` : ""}`;
@@ -703,23 +702,28 @@ function historyText(world) {
     }).join("\n\n");
 }
 
-export function publicExpeditionText(world, farm, now = Date.now(), farms = []) {
+export function publicExpeditionText(world, farm, now = Date.now(), farms = [], view = "recent") {
     advancePublicExpedition(world, farms, now);
     const route = routeDef(world);
     const header = `🧭 铃野共行｜本期故事：《${publicExpeditionContent.title}》｜第 ${world.round} 轮${route ? `｜${route.name}` : ""}`;
     const own = farm ? `你本轮已选择 ${world.choiceCounts[farm.id] ?? 0}/${MAX_CHOICES_PER_FARM} 次` : "";
     const ownReward = farm ? (world.rewards ?? []).find((reward) => reward.farmId === farm.id) : null;
     const clues = world.clues.length ? `｜线索 ${world.clues.length}/3` : "";
-    return `${header}\n全服进度：${publicExpeditionStatusLine(world, now)}${clues}${own ? `｜${own}` : ""}\n\n${historyText(world)}\n\n${currentPromptText(world, farm, farms, now)}${ownReward ? `\n\n${publicExpeditionRewardText(ownReward)}` : ""}`;
+    const fullHistory = view === "history";
+    const visibleHistory = fullHistory ? world.history : world.history.slice(-2);
+    const historyTitle = fullHistory ? "📚 前情提要（完整实际路线）" : "📖 最近剧情（当前段＋上一段）";
+    return `${header}\n全服进度：${publicExpeditionStatusLine(world, now, false)}${clues}${own ? `｜${own}` : ""}\n\n${historyTitle}\n${historyText(visibleHistory)}\n\n${currentPromptText(world, farm, farms, now)}${ownReward ? `\n\n${publicExpeditionRewardText(ownReward)}` : ""}`;
 }
 
-export function publicExpeditionStatusLine(world, now = Date.now()) {
+export function publicExpeditionStatusLine(world, now = Date.now(), showChoiceCounts = true) {
     if (world.phase === "task") {
         const task = currentPublicTask(world);
         const progress = world.tasks[task.id]?.contributions?.length ?? 0;
         return `公共任务【${task.name}】${progress}/${CONTRIBUTION_TARGET}`;
     }
     if (world.phase === "choice") {
+        if (!showChoiceCounts)
+            return `等待第 ${world.choiceIndex}/6 次全服选择`;
         const counts = choiceSupportCounts(world);
         return `等待第 ${world.choiceIndex}/6 次全服选择（A ${counts.A}/${CHOICE_TARGET}｜B ${counts.B}/${CHOICE_TARGET}｜C ${counts.C}/${CHOICE_TARGET}）`;
     }
@@ -762,7 +766,7 @@ function takeNotices(world, farm, side, now) {
     if (!phaseList.includes(phase)) {
         phaseList.push(phase);
         if (!opened && notices.length === 0)
-            notices.push(`🧭 铃野共行进展：${publicExpeditionStatusLine(world, now)}。用 {"action":"together"} 查看完整故事。`);
+            notices.push(`🧭 铃野共行进展：${publicExpeditionStatusLine(world, now, false)}。用 {"action":"together"} 查看当前剧情。`);
     }
     return notices;
 }
@@ -783,6 +787,9 @@ export function publicExpeditionHumanData(world, farm, now = Date.now()) {
         : -1;
     if (world.endingId) {
         artFile = ENDING_ART[world.endingId] ?? artFile;
+    }
+    else if (!world.route && world.secondNode && world.choiceIndex === 2) {
+        artFile = "future-wharf-v3.webp";
     }
     else if (world.route) {
         if (visualTaskIndex === 0 || (world.phase === "choice" && world.choiceIndex <= 4))

@@ -399,6 +399,8 @@ function catchVariant(farm, world, now, animalQuery, dishQuery) {
         return { ok: false, text: "料理柜里没有这份正常料理，料理没有消耗。" };
     const dishes = farm.ranch.kitchen.dishes;
     const favorite = dish.recipeId === glimmer.favorites[variant.kindId];
+    if (favorite && !gate.state.favoriteSeen.includes(variant.kindId))
+        gate.state.favoriteSeen.push(variant.kindId);
     const chance = variantIsFantasy(variant)
         ? (favorite ? glimmer.fantasyFavoriteChance : glimmer.fantasyChance)
         : (favorite ? glimmer.ordinaryFavoriteChance : glimmer.ordinaryChance);
@@ -540,6 +542,17 @@ function glimmerDishInventoryLine(farm) {
     return `🍲 可用于诱捕的料理：${[...counts].map(([name, count]) => `${name}×${count}`).join("、")}`;
 }
 
+function glimmerFavoriteLine(farm) {
+    const state = normalizeGlimmerFarm(farm);
+    const kindIds = state.favoriteSeen.filter((kindId) => glimmer.favorites[kindId]);
+    const entries = kindIds.map((kindId) => {
+        const variant = glimmerVariants.find((item) => item.kindId === kindId);
+        const recipe = cookingRecipeById.get(glimmer.favorites[kindId]);
+        return `${variant ? variantBase(variant)?.name ?? kindId : kindId}→${recipe?.name ?? glimmer.favorites[kindId]}`;
+    });
+    return `💡 已发现偏好 ${entries.length}/${Object.keys(glimmer.favorites).length}：${entries.length ? entries.join("｜") : "暂无"}`;
+}
+
 export function glimmerView(farm, worldValue, now = Date.now()) {
     const state = resetDaily(farm, now);
     const world = ensureWorldDay(worldValue, now);
@@ -551,6 +564,7 @@ export function glimmerView(farm, worldValue, now = Date.now()) {
         glimmerBuffActive(now) ? GLIMMER_BUFF_TEXT : "",
         `🐾 今日动物踪迹：${tracks.map((item) => item.name).join("、")}`,
         glimmerDishInventoryLine(farm),
+        glimmerFavoriteLine(farm),
         `🤝 今日协作：〔${event.name}〕· ${Math.min(world.coop.contributors.length, glimmer.coopRequired)}/${glimmer.coopRequired}${world.coop.completedAt ? " · 已完成，额外稀有踪迹已出现" : ""}`,
         world.logs.length ? `📜 最新公共事件：\n${world.logs.map(publicLogText).join("\n")}` : "📜 最新公共事件：暂无",
     ].filter(Boolean);

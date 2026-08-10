@@ -3,7 +3,7 @@ import { advance, plant, water, harvest, upgradeLand, shopOffer, collectionPct, 
 import { describeFarm, harvestText, bonusEventText, dropText, potionDropText, plantText, waterText, statusFooter, } from "./flavor.js";
 import { expExplore, expChoose, expRetreat, expRoll, expView } from "./expedition.js";
 import { currentSeason, currentDayIndex } from "./time.js";
-import { landTierByLevel, crops, cropById, getCrop, animalById, petById, totalCropCount, cropsByCategory, materials, materialById, recipes, cooking, cookingProductById, cookingIngredientById, } from "./content.js";
+import { landTierByLevel, crops, cropById, getCrop, animalById, petById, totalCropCount, cropsByCategory, materials, materialById, recipes, cooking, cookingProductById, cookingIngredients, cookingIngredientById, } from "./content.js";
 import { ITEMS, STARTING_COINS, STARTER_POTIONS, MATERIAL_REF_PRICE, MARKET_FEE, REPORT_THRESHOLD, UGC_VALUE, LIMITED_SEED_REF_DISCOUNT, POTION_DAILY_CAP, POTION_CAP_LINE, MESSAGES_MAX, WELCOME_MAX, UGC_NAME_MAX, SEED_PRICE, GROW_TICKS, NPC_ID, NPC_NAME, RANCH_PATROL_GOOSE_BUY_COST, RANCH_PATROL_GOOSE_NAME } from "./config.js";
 import { allUgc } from "./ugc.js";
 import { acceptTask, taskView } from "./tasks.js";
@@ -103,7 +103,7 @@ export const HELP = `🌾 你的农场
   🏃 见好就收撤回来            retreat                             （提前结束这一程，行囊落袋入库；战斗中撤不了）
   🧭 看探险进度                expedition                          （resume / 当前在哪一格 / 今日剩几次数）
 
-  🧭 铃野共行                  together                              （查看本期公共副本、当前任务与往期故事；选择或投票用 together {"option":"A"}）
+  🧭 铃野共行                  together                              （默认查看当前段与上一段；完整前情用 together {"view":"history"}；选择或投票用 together {"option":"A"}）
 
   🐔 给伴侣捎只小动物          buy-animal {"id":"chicken"}         （住进 TA 的牧场，由 TA 来养）
   🐱 捎只宠物陪着你            buy-pet {"id":"cat"}                （🐱招财 / 🐶看家，给农场一份温和加成；集齐 5 种图鉴解锁）
@@ -115,7 +115,8 @@ export const HELP = `🌾 你的农场
      下锅料理                   kitchen {"op":"cook","items":["鸡蛋","番茄","盐"]}
      使用料理                   kitchen {"op":"use","dishId":"料理名","target":"cat|dog|self"}
      贿赂看家狗                 kitchen {"op":"use","dishId":"料理名","target":"guard-dog","to":"农场编号"} （仅在刚被这家看家狗拦下后继续同一次偷菜）
-     回收或摆摊                 kitchen {"op":"sell","itemId":"产物名或料理名","qty":数量,"to":"system|market","price":每份银币价}
+     回收或摆摊                 kitchen {"op":"sell","itemId":"食材名、产物名或料理名","qty":数量,"to":"system|market","price":每份银币价} （商店食材可摆摊；牧场产物只能回收；正常料理两者均可）
+     食材摆摊示例               kitchen {"op":"sell","itemId":"草莓","qty":2,"to":"market","price":25}
   🥣 给生产动物投喂            ranch-feed {"animal":0}            （每天 3 次；花银币，下一份正常产物 +10%，不能叠加）
   🎣 钓鱼（每日最多 20 竿）：抛竿 {"action":"fish","times":10,"bait":"普通蚯蚓","location":"月光池塘","stop":"rare"}；买饵并钓 {"action":"fish","bait":"普通蚯蚓","buy":10,"times":10}；查看 {"action":"fish","view":"basket|codex|spots"}；卖鱼 {"action":"fish","sell":"all"}；开宝箱 {"action":"fish","open":"宝箱id"}；离开钓位 {"action":"fish","leave":true}。stop 可填 new、rare、event。
                               鱼获、事件和垃圾都计入，让鱼群和水域有时间恢复，北京时间 0 点刷新。
@@ -546,7 +547,11 @@ export function viewKitchen(f, now) {
 }
 // ——— 2.0 玩家市场：上架素材/种子，串门购买 ———
 const invOf = (f, kind) => (kind === "material" ? f.materials : f.seeds);
-const itemName = (kind, id) => (kind === "material" ? materialById.get(id)?.name ?? id : getCrop(id)?.name ?? id);
+const itemName = (kind, id) => kind === "material"
+    ? materialById.get(id)?.name ?? id
+    : kind === "ingredient"
+        ? cookingIngredientById.get(id)?.name ?? id
+        : getCrop(id)?.name ?? id;
 /** 银币参考价：素材按稀有度；限定种子=成品价×折扣（种子比成品便宜，留种植利润）；UGC 统一价 */
 export function refPrice(kind, id) {
     if (kind === "material")
@@ -562,6 +567,8 @@ function resolveMarketId(kind, id) {
         return (getCrop(id) ?? allUgc().find((x) => x.name === id) ?? crops.find((x) => x.name === id))?.id ?? id;
     if (kind === "material")
         return (materialById.get(id) ?? materials.find((x) => x.name === id))?.id ?? id;
+    if (kind === "ingredient")
+        return (cookingIngredientById.get(id) ?? cookingIngredients.find((x) => x.name === id))?.id ?? id;
     return id;
 }
 export function listForSale(f, kind, id, qty) {
@@ -606,6 +613,12 @@ export function unlistItem(f, kind, id) {
         f.market = f.market.filter((m) => m !== e);
         return { ok: true, name: e.dish?.name ?? "料理", returned: 1 };
     }
+    if (kind === "ingredient") {
+        const kitchen = ensureKitchen(f);
+        kitchen.ingredients[id] = (kitchen.ingredients[id] ?? 0) + e.qty;
+        f.market = f.market.filter((m) => m !== e);
+        return { ok: true, name: itemName(kind, id), returned: e.qty };
+    }
     invOf(f, kind)[id] = (invOf(f, kind)[id] ?? 0) + e.qty;
     f.market = f.market.filter((m) => m !== e);
     return { ok: true, name: itemName(kind, id), returned: e.qty };
@@ -625,7 +638,7 @@ export function viewMarket(f, own, viewer, targetRef = f.id) {
             : `🧺 「${f.name}」的摊位空着。`;
     const head = own ? "🧺 你的摊位（银币结算）：" : `🧺 「${f.name}」的摊位（银币结算）：`;
     const lines = items.map((m) => {
-        const label = m.kind === "material" ? "素材" : m.kind === "dish" ? `${m.dish?.rarity ?? "N"}料理` : "种子";
+        const label = m.kind === "material" ? "素材" : m.kind === "ingredient" ? "食材" : m.kind === "dish" ? `${m.dish?.rarity ?? "N"}料理` : "种子";
         const name = m.kind === "dish" ? m.dish?.name ?? "料理" : itemName(m.kind, m.id);
         const base = `· ${label}「${name}」×${m.qty} @ 🪙${m.price}银`;
         return own
@@ -753,6 +766,7 @@ export function buyFromMarket(seller, buyer, kind, id, qty) {
     }
     // 限定种子稀缺化：每种每人每天只能从市场买 1 颗（想多要走熔炼；UGC 不限）
     const isDish = kind === "dish";
+    const isIngredient = kind === "ingredient";
     const isLimitedSeed = kind === "seed" && getCrop(id)?.category === "limited";
     if (isLimitedSeed) {
         const day = currentDayIndex(Date.now());
@@ -770,6 +784,10 @@ export function buyFromMarket(seller, buyer, kind, id, qty) {
     seller.silver += cost - fee;
     if (isDish)
         ensureKitchen(buyer).dishes.push(structuredClone(e.dish));
+    else if (isIngredient) {
+        const kitchen = ensureKitchen(buyer);
+        kitchen.ingredients[id] = (kitchen.ingredients[id] ?? 0) + n;
+    }
     else
         invOf(buyer, kind)[id] = (invOf(buyer, kind)[id] ?? 0) + n;
     if (isLimitedSeed)

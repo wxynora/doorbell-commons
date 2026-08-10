@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import { randomUUID, randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { advance, steal, canStealNow, stealAvailability, stealShieldRemain, isUgcCrop, visitorWater, tryWaterReward, humanHarvestAll, humanHarvestLeft, ranchRoamLine, buyPotionSet, refreshShop, ranchCollect, ranchRemit, ranchBuyAccessory, ranchBuyDecoration, ranchWearAccessory, ranchTakeOffAccessory, ranchPlaceDecoration, ranchUnplaceDecoration, ranchUpgradeAnimal, ranchNameAnimal, ranchNamePet, ranchNamePatrolGoose, ranchTogglePin, dispatchRanchRaid, catchRanchRaid, settleRanchRaids, ensureHumanKey, takeInbox, takeRanchNotices, pushSocialInbox, pushLog, potionDailyLeft, designCrop, craft, nextUpgradeReq, toggleStar, cookingDebuffReason, cookingDebuffStatusText, bribeGuardDog, kitchenBuy, kitchenCook, kitchenUse, kitchenSell, kitchenSellMany, ranchFeedAnimal, kitchenView, dishSystemRecycleSilver } from "./engine.js";
+import { kitchenSellSelected } from "./engine.js";
 import { dispatch, HELP, farmView, viewShop, viewEncyclopedia, viewBag, shopBrief, viewMarket, buyFromMarket, visitView, ranchAgentSection, refPrice, tendNpc, buyNpcSeed, randomTip, hasDamagedPublicName, viewKitchen } from "./game.js";
 import { harvestText, stealThiefText, statusFooter, waterText, describeFarm } from "./flavor.js";
 import { createFarm, getFarm, allFarms, playerFarms, save, getGlimmerWorld, getPublicExpeditionWorld } from "./store.js";
@@ -19,6 +20,7 @@ import { checkTitles, equipTitle } from "./titles.js";
 import { rollSeasonHarvest, rollSeasonStatus, seasonHeadline } from "./season-events.js";
 import { allUgc } from "./ugc.js";
 import { getCrop, materialById, expEventById } from "./content.js";
+import { cookingIngredientById } from "./content.js";
 import { currentDayIndex } from "./time.js";
 import { claimSyncedFarm, exportSyncedFarm, PublicSyncError, registerSyncedFarm, syncFarm, syncPageHtml, } from "./public-sync.js";
 import { runFishing } from "./fishing.js";
@@ -492,8 +494,9 @@ function runFarmCore(farmId, action, b, encArg, now) {
     const publicTask = currentPublicTask(publicWorld);
     if (action === "together") {
         if (b.option === undefined && b.key === undefined && b.id === undefined) {
+            const view = String(b.view ?? "").trim().toLowerCase() === "history" ? "history" : "recent";
             save();
-            return { status: 200, json: { ok: true, text: publicExpeditionText(publicWorld, f, now, publicFarms), ...vf(f) } };
+            return { status: 200, json: { ok: true, text: publicExpeditionText(publicWorld, f, now, publicFarms, view), ...vf(f) } };
         }
         const r = runPublicChoice(publicWorld, f, b.option ?? b.key ?? b.id, now, publicFarms);
         save();
@@ -766,7 +769,7 @@ function runFarm(farmId, action, body = {}, encArg, now) {
     if (notices.length)
         extras.push(notices.join("\n\n"));
     if (!action || action === "status")
-        extras.push(`🧭 铃野共行：${publicExpeditionStatusLine(world, now)}。用 {"action":"together"} 查看完整故事。`);
+        extras.push(`🧭 铃野共行：${publicExpeditionStatusLine(world, now, false)}。用 {"action":"together"} 查看当前剧情。`);
     if (extras.length) {
         out.json.text = `${String(out.json.text ?? "")}\n\n${extras.join("\n\n")}`;
         save();
@@ -1105,7 +1108,7 @@ function renderVisitPage(playKey, targetId, now) {
             offers.push({ label: `🛒 买限定种子「${getCrop(s.id)?.name ?? s.id}」×1（💰${s.price}金，每天限 1）`, action: "buy", params: { target: targetId, kind: "seed", id: s.id, qty: 1 } });
         }
         for (const m of (target.market ?? []).slice(0, 4)) {
-            const nm = m.kind === "material" ? (materialById.get(m.id)?.name ?? m.id) : m.kind === "dish" ? (m.dish?.name ?? "料理") : (getCrop(m.id)?.name ?? m.id);
+            const nm = m.kind === "material" ? (materialById.get(m.id)?.name ?? m.id) : m.kind === "ingredient" ? (cookingIngredientById.get(m.id)?.name ?? m.id) : m.kind === "dish" ? (m.dish?.name ?? "料理") : (getCrop(m.id)?.name ?? m.id);
             offers.push({ label: `🛒 买「${nm}」×1（🪙${m.price}银）`, action: "buy", params: { target: targetId, kind: m.kind, id: m.id, qty: 1 } });
         }
     }
@@ -1171,7 +1174,7 @@ function renderKitchenPage(playKey, f, now, banner) {
 function renderMarketPage(playKey, f, now, banner) {
     const offers = [];
     for (const m of (f.market ?? []).slice(0, 8)) {
-        const nm = m.kind === "material" ? (materialById.get(m.id)?.name ?? m.id) : m.kind === "dish" ? (m.dish?.name ?? "料理") : (getCrop(m.id)?.name ?? m.id);
+        const nm = m.kind === "material" ? (materialById.get(m.id)?.name ?? m.id) : m.kind === "ingredient" ? (cookingIngredientById.get(m.id)?.name ?? m.id) : m.kind === "dish" ? (m.dish?.name ?? "料理") : (getCrop(m.id)?.name ?? m.id);
         offers.push({ label: `📦 下架「${nm}」`, action: "unlist", params: { kind: m.kind, id: m.id } });
     }
     offers.push(...listInventoryActions(f)); // 上架链接：背包里有种子/素材时出现
@@ -1561,14 +1564,20 @@ export function startServer(port, host = "127.0.0.1") {
                                 : r.error;
                         }
                         else {
-                            let itemIds;
-                            try {
-                                itemIds = JSON.parse(String(form.itemIds ?? "[]"));
+                            let r;
+                            if (form.itemIds !== undefined) {
+                                let itemIds;
+                                try {
+                                    itemIds = JSON.parse(String(form.itemIds ?? "[]"));
+                                }
+                                catch { /* 批量引擎给出数量提示 */ }
+                                if (!Array.isArray(itemIds) || itemIds.length === 0)
+                                    itemIds = [String(form.itemId ?? "")];
+                                r = kitchenSellMany(f, itemIds, form.qty ?? 1, String(form.to), form.price, now);
                             }
-                            catch { /* 批量引擎给出数量提示 */ }
-                            if (!Array.isArray(itemIds) || itemIds.length === 0)
-                                itemIds = [String(form.itemId ?? "")];
-                            const r = kitchenSellMany(f, itemIds, form.qty ?? 1, String(form.to), form.price, now);
+                            else {
+                                r = kitchenSellSelected(f, String(form.itemId ?? ""), form.qty ?? 1, String(form.to), form.price, now);
+                            }
                             flash = r.ok
                                 ? r.to === "system" ? `♻️ 系统回收「${r.name}」×${r.qty}，+${r.value} 牧场金币${r.silver ? ` + ${r.silver} 银` : ""}` : `🧺 「${r.name}」×${r.qty} 已按 🪙${r.price}/份摆上摊位`
                                 : r.error;
