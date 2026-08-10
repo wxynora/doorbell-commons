@@ -12,7 +12,11 @@ const DIR = resolve(dirname(fileURLToPath(import.meta.url)), "../content");
 export const publicExpeditionContent = JSON.parse(readFileSync(resolve(DIR, "public-expedition.json"), "utf8"));
 const VALID_OPTIONS = new Set(["A", "B", "C"]);
 const CONTRIBUTION_TARGET = 3;
+const CHOICE_TARGET = 3;
 const MAX_CHOICES_PER_FARM = 2;
+const HOUR_MS = 3600 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+const BEIJING_OFFSET_MS = 8 * HOUR_MS;
 const ENDING_REWARD_COINS = 1500;
 const ENDING_REWARD_SILVER = 150;
 const SP_SEEDS = crops.filter((crop) => crop.rarity === "SP" && crop.seedPrice === 3600);
@@ -52,7 +56,9 @@ function makeRound(round, now, archives = []) {
         clues: [],
         history: initialHistory(),
         choiceCounts: {},
+        choiceBallot: null,
         lastChooserFarmId: null,
+        cooldown: null,
         participants: [],
         endingId: null,
         endedAt: null,
@@ -86,7 +92,7 @@ export function normalizePublicExpeditionWorld(value, now = Date.now()) {
     world.storyTitle = String(world.storyTitle ?? publicExpeditionContent.title);
     world.round = Math.max(1, Math.floor(Number(world.round) || 1));
     world.startedAt = Number.isFinite(world.startedAt) ? world.startedAt : now;
-    world.phase = ["choice", "task", "ended", "vote", "closed"].includes(world.phase) ? world.phase : "choice";
+    world.phase = ["choice", "task", "cooldown", "ended", "vote", "closed"].includes(world.phase) ? world.phase : "choice";
     world.choiceIndex = Math.min(6, Math.max(1, Math.floor(Number(world.choiceIndex) || 1)));
     world.route = ["A", "B", "C"].includes(world.route) ? world.route : null;
     world.secondNode = ["A", "B", "C"].includes(world.secondNode) ? world.secondNode : null;
@@ -100,7 +106,24 @@ export function normalizePublicExpeditionWorld(value, now = Date.now()) {
     world.clues = Array.isArray(world.clues) ? world.clues : [];
     world.history = Array.isArray(world.history) && world.history.length ? world.history : initialHistory();
     world.choiceCounts = world.choiceCounts && typeof world.choiceCounts === "object" ? world.choiceCounts : {};
+    world.choiceBallot = world.choiceBallot && typeof world.choiceBallot === "object" ? world.choiceBallot : null;
+    if (world.choiceBallot) {
+        world.choiceBallot.key = String(world.choiceBallot.key ?? "");
+        world.choiceBallot.votes = world.choiceBallot.votes && typeof world.choiceBallot.votes === "object" ? world.choiceBallot.votes : {};
+    }
     world.lastChooserFarmId = world.lastChooserFarmId ? String(world.lastChooserFarmId) : null;
+    world.cooldown = world.cooldown && typeof world.cooldown === "object" ? world.cooldown : null;
+    if (world.cooldown) {
+        world.cooldown.taskId = String(world.cooldown.taskId ?? "");
+        world.cooldown.text = String(world.cooldown.text ?? "");
+        world.cooldown.nextChoiceIndex = Math.min(6, Math.max(1, Math.floor(Number(world.cooldown.nextChoiceIndex) || world.choiceIndex)));
+        world.cooldown.readyAt = Number.isFinite(world.cooldown.readyAt)
+            ? world.cooldown.readyAt
+            : Number.isSafeInteger(world.cooldown.readyDay)
+                ? world.cooldown.readyDay * DAY_MS - BEIJING_OFFSET_MS
+                : now;
+        delete world.cooldown.readyDay;
+    }
     world.participants = cleanIdList(world.participants);
     world.endingId = world.endingId && publicExpeditionContent.endings[world.endingId] ? world.endingId : null;
     world.endedAt = Number.isFinite(world.endedAt) ? world.endedAt : null;
@@ -191,6 +214,12 @@ export function publicExpeditionRewardText(grant) {
 
 export function advancePublicExpedition(world, farms = [], now = Date.now()) {
     const today = currentDayIndex(now);
+    if (world.phase === "cooldown" && world.cooldown && now >= world.cooldown.readyAt) {
+        world.phase = "choice";
+        world.choiceIndex = world.cooldown.nextChoiceIndex;
+        world.cooldown = null;
+        world.choiceBallot = null;
+    }
     if (world.phase === "ended" && Number.isSafeInteger(world.endedDay) && today > world.endedDay) {
         world.phase = "vote";
         world.vote = { day: world.endedDay + 1, votes: {} };
@@ -210,6 +239,25 @@ export function advancePublicExpedition(world, farms = [], now = Date.now()) {
     if (world.phase === "task")
         prepareCurrentTask(world, farms);
     return world;
+}
+
+function cooldownReadyAt(task, now) {
+    if (task.cooldownNextDay)
+        return (currentDayIndex(now) + 1) * DAY_MS - BEIJING_OFFSET_MS;
+    return now + Math.max(1, Number(task.cooldownHours) || 6) * HOUR_MS;
+}
+
+function cooldownReadyText(cooldown) {
+    if (!cooldown?.readyAt)
+        return "稍后";
+    return new Intl.DateTimeFormat("zh-CN", {
+        timeZone: "Asia/Shanghai",
+        month: "numeric",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+    }).format(new Date(cooldown.readyAt));
 }
 
 function routeDef(world) {
@@ -304,11 +352,34 @@ function addParticipant(world, farmId) {
         world.participants.push(farmId);
 }
 
-function recordChoice(world, farm, option, label) {
-    world.choiceCounts[farm.id] = (Math.floor(Number(world.choiceCounts[farm.id])) || 0) + 1;
-    world.lastChooserFarmId = farm.id;
-    addParticipant(world, farm.id);
-    world.history.push({ kind: "choice", step: world.choiceIndex, option, label, farmId: farm.id, farmName: farm.name });
+function choiceBallotKey(world) {
+    return `${world.storyId}:${world.round}:${world.choiceIndex}`;
+}
+
+function ensureChoiceBallot(world) {
+    const key = choiceBallotKey(world);
+    if (!world.choiceBallot || world.choiceBallot.key !== key)
+        world.choiceBallot = { key, votes: {} };
+    return world.choiceBallot;
+}
+
+function choiceSupportCounts(world) {
+    const counts = { A: 0, B: 0, C: 0 };
+    const ballot = world.phase === "choice" ? ensureChoiceBallot(world) : null;
+    for (const vote of Object.values(ballot?.votes ?? {})) {
+        const option = typeof vote === "string" ? vote : vote?.option;
+        if (VALID_OPTIONS.has(option))
+            counts[option] += 1;
+    }
+    return counts;
+}
+
+function recordResolvedChoice(world, option, label, votes) {
+    const voters = Object.entries(votes)
+        .filter(([, vote]) => (typeof vote === "string" ? vote : vote?.option) === option)
+        .map(([farmId, vote]) => ({ farmId, farmName: typeof vote === "string" ? farmId : String(vote?.farmName ?? farmId) }));
+    world.lastChooserFarmId = voters.at(-1)?.farmId ?? null;
+    world.history.push({ kind: "choice", step: world.choiceIndex, option, label, voters, farmName: voters.map((item) => item.farmName).join("、") });
 }
 
 function startTask(world, taskIndex, farms) {
@@ -333,6 +404,8 @@ export function runPublicChoice(world, farm, rawOption, now = Date.now(), farms 
     advancePublicExpedition(world, farms, now);
     const option = String(rawOption ?? "").trim().toUpperCase();
     const options = choiceOptions(world);
+    if (world.phase === "cooldown")
+        return { ok: false, text: currentPromptText(world, farm, farms, now) };
     if (!options || !options[option])
         return { ok: false, text: world.phase === "task" ? "当前公共任务尚未完成，还不能进入下一次选择。" : "当前没有这个公共选项。" };
     if (world.phase === "vote") {
@@ -340,12 +413,27 @@ export function runPublicChoice(world, farm, rawOption, now = Date.now(), farms 
         markImmediateAiPhase(world, farm);
         return { ok: true, text: `${option === "A" ? "🔁 已投票开启新一轮" : "📚 已投票保留本轮结局"}。截止前可以改票。\n${publicExpeditionText(world, farm, now, farms)}` };
     }
-    if ((world.choiceCounts[farm.id] ?? 0) >= MAX_CHOICES_PER_FARM)
-        return { ok: false, text: `你本轮已经提交过 ${MAX_CHOICES_PER_FARM} 次有效选择，可以继续阅读和完成公共任务，但不能再推进选择。` };
-    if (world.lastChooserFarmId === farm.id)
-        return { ok: false, text: "上一段刚由你推进，下一次选择需要由另一家接棒。" };
     const label = options[option];
-    recordChoice(world, farm, option, label);
+    const ballot = ensureChoiceBallot(world);
+    const previous = ballot.votes[farm.id];
+    if (!previous && (world.choiceCounts[farm.id] ?? 0) >= MAX_CHOICES_PER_FARM)
+        return { ok: false, text: `你本轮已经提交过 ${MAX_CHOICES_PER_FARM} 次有效选择，可以继续阅读和完成公共任务，但不能再推进选择。` };
+    if (!previous) {
+        world.choiceCounts[farm.id] = (Math.floor(Number(world.choiceCounts[farm.id])) || 0) + 1;
+        addParticipant(world, farm.id);
+    }
+    ballot.votes[farm.id] = { option, farmName: farm.name, at: now };
+    const counts = choiceSupportCounts(world);
+    if (counts[option] < CHOICE_TARGET) {
+        markImmediateAiPhase(world, farm);
+        return {
+            ok: true,
+            text: `已记录你对 ${option}「${label}」的选择（当前 ${counts[option]}/${CHOICE_TARGET}）。同一选项得到至少 ${CHOICE_TARGET} 名玩家共同选择后，剧情才会推进。\n\n${publicExpeditionText(world, farm, now, farms)}`,
+        };
+    }
+    const resolvedVotes = ballot.votes;
+    recordResolvedChoice(world, option, label, resolvedVotes);
+    world.choiceBallot = null;
     if (world.choiceIndex === 1) {
         world.secondNode = option;
         const node = publicExpeditionContent.secondNodes[option];
@@ -370,7 +458,7 @@ export function runPublicChoice(world, farm, rawOption, now = Date.now(), farms 
         finishWithEnding(world, endingId, now, farms);
     }
     markImmediateAiPhase(world, farm);
-    return { ok: true, text: publicExpeditionText(world, farm, now, farms) };
+    return { ok: true, text: `${option}「${label}」已得到 ${CHOICE_TARGET} 名玩家共同选择，成为本阶段决定。\n\n${publicExpeditionText(world, farm, now, farms)}` };
 }
 
 function clueId(world, task) {
@@ -429,18 +517,16 @@ export function recordPublicContribution(world, farm, meta = {}, now = Date.now(
         const clue = { id: clueId(world, task), taskId: task.id, title: task.clueTitle, text: task.clueText, at: now };
         world.clues.push(clue);
         world.history.push({ kind: "clue", title: clue.title, text: clue.text, taskName: task.name });
-        if (world.taskIndex === 0) {
-            world.phase = "choice";
-            world.choiceIndex = 3;
-        }
-        else if (world.taskIndex === 1) {
-            world.phase = "choice";
-            world.choiceIndex = 5;
-        }
-        else {
-            world.phase = "choice";
-            world.choiceIndex = 6;
-        }
+        const nextChoiceIndex = world.taskIndex === 0 ? 3 : world.taskIndex === 1 ? 5 : 6;
+        world.phase = "cooldown";
+        world.cooldown = {
+            taskId: task.id,
+            text: String(task.cooldownText ?? "大家正在整理刚刚得到的线索；下一段剧情准备好后再继续。"),
+            nextChoiceIndex,
+            readyAt: cooldownReadyAt(task, now),
+            startedAt: now,
+        };
+        world.choiceBallot = null;
         world.taskIndex = null;
     }
     markImmediateAiContribution(world, farm, task, completed);
@@ -534,7 +620,8 @@ function optionsText(world) {
     const options = choiceOptions(world);
     if (!options)
         return "";
-    return Object.entries(options).map(([key, label]) => `${key}．${label}`).join("\n");
+    const counts = world.phase === "choice" ? choiceSupportCounts(world) : null;
+    return Object.entries(options).map(([key, label]) => `${key}．${label}${counts ? `（${counts[key] ?? 0}/${CHOICE_TARGET}）` : ""}`).join("\n");
 }
 
 function directCallGuide(world, farm, farms, now) {
@@ -593,6 +680,8 @@ function currentPromptText(world, farm, farms = [], now = Date.now()) {
         return `【${world.choiceIndex}/6·${choiceTitle(world)}】\n${optionsText(world)}${guide ? `\n\n${guide}` : ""}`;
     if (world.phase === "vote")
         return `🔁 ${publicExpeditionContent.vote.title}\n${publicExpeditionContent.vote.text}\n\n${optionsText(world)}${guide ? `\n\n${guide}` : ""}`;
+    if (world.phase === "cooldown")
+        return `⏳ 本阶段暂告一段落\n${world.cooldown?.text ?? "大家正在整理刚刚得到的线索。"}\n\n下一段剧情将在北京时间 ${cooldownReadyText(world.cooldown)} 开放。`;
     if (world.phase === "ended")
         return "本轮结局已经产生；次日北京时间 00:00–23:59 开放重开投票。";
     return "本轮结局与实际故事线已归档。";
@@ -600,8 +689,10 @@ function currentPromptText(world, farm, farms = [], now = Date.now()) {
 
 function historyText(world) {
     return world.history.map((entry) => {
-        if (entry.kind === "choice")
-            return `【选择 ${entry.step}】${entry.farmName}选择 ${entry.option}：${entry.label}`;
+        if (entry.kind === "choice") {
+            const names = entry.voters?.length ? entry.voters.map((item) => item.farmName).join("、") : entry.farmName;
+            return `【共同选择 ${entry.step}】${entry.option}：${entry.label}${names ? `\n由 ${names} 共同决定` : ""}`;
+        }
         if (entry.kind === "task") {
             const rows = (entry.contributions ?? []).map((item) => `· ${item.farmName}：${item.fact}`).join("\n");
             return `【公共任务·${entry.title}】${entry.contributions?.length ?? 0}/${CONTRIBUTION_TARGET}\n${entry.text}${rows ? `\n\n已完成：\n${rows}` : ""}`;
@@ -628,8 +719,12 @@ export function publicExpeditionStatusLine(world, now = Date.now()) {
         const progress = world.tasks[task.id]?.contributions?.length ?? 0;
         return `公共任务【${task.name}】${progress}/${CONTRIBUTION_TARGET}`;
     }
-    if (world.phase === "choice")
-        return `等待第 ${world.choiceIndex}/6 次全服选择`;
+    if (world.phase === "choice") {
+        const counts = choiceSupportCounts(world);
+        return `等待第 ${world.choiceIndex}/6 次全服选择（A ${counts.A}/${CHOICE_TARGET}｜B ${counts.B}/${CHOICE_TARGET}｜C ${counts.C}/${CHOICE_TARGET}）`;
+    }
+    if (world.phase === "cooldown")
+        return `本阶段已完成，等待至北京时间 ${cooldownReadyText(world.cooldown)} 继续`;
     if (world.phase === "vote") {
         const votes = Object.values(world.vote?.votes ?? {});
         return `重开投票中（开启 ${votes.filter((vote) => vote === "A").length}｜保留 ${votes.filter((vote) => vote === "B").length}）`;
@@ -641,7 +736,7 @@ export function publicExpeditionStatusLine(world, now = Date.now()) {
 
 export function publicPhaseKey(world) {
     const task = currentPublicTask(world);
-    return `${world.storyId}:${world.round}:${world.phase}:${world.choiceIndex}:${task?.id ?? "-"}:${world.endingId ?? "-"}`;
+    return `${world.storyId}:${world.round}:${world.phase}:${world.choiceIndex}:${task?.id ?? world.cooldown?.taskId ?? "-"}:${world.cooldown?.readyAt ?? "-"}:${world.endingId ?? "-"}`;
 }
 
 function takeNotices(world, farm, side, now) {
@@ -682,15 +777,19 @@ export function takePublicHumanNotices(world, farm, now = Date.now()) {
 
 export function publicExpeditionHumanData(world, farm, now = Date.now()) {
     let artFile = "river-from-tomorrow-opening-v3.webp";
+    const visualTaskId = currentPublicTask(world)?.id ?? world.cooldown?.taskId ?? null;
+    const visualTaskIndex = visualTaskId
+        ? routeDef(world)?.tasks?.findIndex((task) => task.id === visualTaskId) ?? -1
+        : -1;
     if (world.endingId) {
         artFile = ENDING_ART[world.endingId] ?? artFile;
     }
     else if (world.route) {
-        if ((world.phase === "task" && world.taskIndex === 0) || (world.phase === "choice" && world.choiceIndex <= 4))
+        if (visualTaskIndex === 0 || (world.phase === "choice" && world.choiceIndex <= 4))
             artFile = "future-wharf-v3.webp";
-        else if ((world.phase === "task" && world.taskIndex === 1) || (world.phase === "choice" && world.choiceIndex === 5))
+        else if (visualTaskIndex === 1 || (world.phase === "choice" && world.choiceIndex === 5))
             artFile = "cooperative-investigation-v3.webp";
-        else if ((world.phase === "task" && world.taskIndex === 2) || (world.phase === "choice" && world.choiceIndex === 6))
+        else if (visualTaskIndex === 2 || (world.phase === "choice" && world.choiceIndex === 6))
             artFile = "river-fork-v3.webp";
     }
     return {
@@ -709,7 +808,9 @@ export function publicExpeditionHumanData(world, farm, now = Date.now()) {
             index: world.choiceIndex,
             title: choiceTitle(world),
             options: copy(choiceOptions(world)),
+            counts: world.phase === "choice" ? choiceSupportCounts(world) : null,
         } : null,
+        cooldown: world.phase === "cooldown" ? { ...copy(world.cooldown), readyText: cooldownReadyText(world.cooldown) } : null,
         ending: world.endingId ? copy(publicExpeditionContent.endings[world.endingId]) : null,
         rewards: copy(world.rewards ?? []),
         clues: copy(world.clues),

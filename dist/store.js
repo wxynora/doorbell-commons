@@ -16,9 +16,7 @@ const WORLD_FILE = resolve(DATA_DIR, "world.json");
 const DATA_FILE = resolve(DATA_DIR, "farms.json");
 const UGC_FILE = resolve(DATA_DIR, "ugc.json");
 const farms = new Map();
-const MAINTENANCE_SILVER_GRANT_ID = "maintenance-20260810-lingye-together";
-const MAINTENANCE_SILVER_GRANT_AMOUNT = 100;
-const MAINTENANCE_SILVER_GRANT_NOTICE = "🎁 铃野共行更新补偿：已发放 🪙100 银币。";
+const MAINTENANCE_GRANTS = JSON.parse(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "../content/maintenance-grants.json"), "utf8"));
 let appliedMaintenanceGrantIds = [];
 let glimmerWorld = normalizeGlimmerWorld({});
 let publicExpeditionWorld = normalizePublicExpeditionWorld({});
@@ -79,21 +77,25 @@ export const allFarms = () => [...farms.values()];
 export const playerFarms = () => [...farms.values()].filter((f) => f.id !== NPC_ID);
 export const getGlimmerWorld = () => glimmerWorld;
 export const getPublicExpeditionWorld = () => publicExpeditionWorld;
-/** 在本次生产启动时给当时已经存在的真实玩家一次性发放维护福利；全局 ID 与余额同一次原子保存。 */
+/** 启动时依次应用尚未发放的维护福利；以后只追加 content/maintenance-grants.json，不改发放逻辑。 */
 export function applyMaintenanceSilverGrant(farmValues = farms.values(), now = Date.now()) {
-    if (appliedMaintenanceGrantIds.includes(MAINTENANCE_SILVER_GRANT_ID))
-        return { applied: false, count: 0, amount: MAINTENANCE_SILVER_GRANT_AMOUNT };
-    let count = 0;
-    for (const farm of farmValues) {
-        if (!farm || farm.id === NPC_ID)
+    const players = [...farmValues].filter((farm) => farm && farm.id !== NPC_ID);
+    const campaigns = [];
+    for (const raw of MAINTENANCE_GRANTS) {
+        const id = String(raw?.id ?? "").trim();
+        const amount = Math.max(0, Math.floor(Number(raw?.silver) || 0));
+        const notice = String(raw?.notice ?? "").trim();
+        if (!id || amount <= 0 || !notice || appliedMaintenanceGrantIds.includes(id))
             continue;
-        farm.silver = Math.max(0, Math.floor(Number(farm.silver) || 0)) + MAINTENANCE_SILVER_GRANT_AMOUNT;
-        pushInbox(farm, MAINTENANCE_SILVER_GRANT_NOTICE, now);
-        pushRanchNotice(farm, MAINTENANCE_SILVER_GRANT_NOTICE, now);
-        count += 1;
+        for (const farm of players) {
+            farm.silver = Math.max(0, Math.floor(Number(farm.silver) || 0)) + amount;
+            pushInbox(farm, notice, now);
+            pushRanchNotice(farm, notice, now);
+        }
+        appliedMaintenanceGrantIds.push(id);
+        campaigns.push({ id, amount, count: players.length });
     }
-    appliedMaintenanceGrantIds.push(MAINTENANCE_SILVER_GRANT_ID);
-    return { applied: true, count, amount: MAINTENANCE_SILVER_GRANT_AMOUNT };
+    return { applied: campaigns.length > 0, campaigns };
 }
 /** 启动时补发已经达标但尚未领取的流光原野成就奖励；每项成就 ID 自身保证幂等。 */
 export function applyGlimmerAchievementRewardBackfill(farmValues = farms.values(), now = Date.now()) {
@@ -187,8 +189,8 @@ export function load() {
             console.log(`[store] 已载入 ${farms.size} 个农场`);
             const npcCreated = ensureNpc();
             const grant = applyMaintenanceSilverGrant();
-            if (grant.applied)
-                console.log(`[store] 维护福利已发放 ${grant.count} 个玩家农场，每家 ${grant.amount} 银`);
+            for (const campaign of grant.campaigns)
+                console.log(`[store] 维护福利 ${campaign.id} 已发放 ${campaign.count} 个玩家农场，每家 ${campaign.amount} 银`);
             const achievementBackfill = applyGlimmerAchievementRewardBackfill();
             if (achievementBackfill.applied)
                 console.log(`[store] 流光原野成就奖励已补发 ${achievementBackfill.count} 个玩家农场、${achievementBackfill.achievements} 项，共 ${achievementBackfill.coins} 金、${achievementBackfill.silver} 银`);
@@ -237,8 +239,8 @@ export function load() {
     }
     ensureNpc();
     const grant = applyMaintenanceSilverGrant();
-    if (grant.applied)
-        console.log(`[store] 维护福利已发放 ${grant.count} 个玩家农场，每家 ${grant.amount} 银`);
+    for (const campaign of grant.campaigns)
+        console.log(`[store] 维护福利 ${campaign.id} 已发放 ${campaign.count} 个玩家农场，每家 ${campaign.amount} 银`);
     const achievementBackfill = applyGlimmerAchievementRewardBackfill();
     if (achievementBackfill.applied)
         console.log(`[store] 流光原野成就奖励已补发 ${achievementBackfill.count} 个玩家农场、${achievementBackfill.achievements} 项，共 ${achievementBackfill.coins} 金、${achievementBackfill.silver} 银`);
