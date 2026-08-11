@@ -165,8 +165,8 @@ nav a.on,nav a:hover{color:var(--leaf-deep);background:#e6f3d8}
 .market-farm{padding:16px 0;border-top:1px dashed var(--line)}.market-farm:first-child{border-top:0;padding-top:0}
 .market-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 0;border-top:1px dashed var(--line)}.market-row:first-child{border-top:0}
 .market-row-main{min-width:0}.market-row-main b{color:var(--wood)}.market-row form{display:flex;gap:6px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
-.market-row .inp{width:72px;padding:7px}.barter-arrow{color:#a4692f;font-weight:900;padding:0 4px}.market-list-grid{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr) auto;gap:8px;align-items:end}.market-list-grid label{display:grid;gap:4px}
-@media(max-width:640px){.market-row{grid-template-columns:1fr}.market-row form{justify-content:flex-start}.market-list-grid{grid-template-columns:1fr 86px}.market-list-grid .market-want{grid-column:1}.market-list-grid .market-want-qty{grid-column:2}}
+.market-row .inp{width:72px;padding:7px}.barter-arrow{color:#a4692f;font-weight:900;padding:0 4px}.market-list-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:end}.market-choice{display:grid;grid-template-columns:88px minmax(0,1fr) 76px;gap:7px;align-items:end;padding:10px;border:1px solid var(--line);border-radius:13px;background:#fffdf7}.market-choice-title{grid-column:1/-1;color:var(--wood);font-weight:700}.market-choice label{display:grid;gap:4px}.market-choice .inp{width:100%;min-width:0}.market-list-grid>.btn{grid-column:1/-1;justify-self:start}
+@media(max-width:640px){.market-row{grid-template-columns:1fr}.market-row form{justify-content:flex-start}.market-list-grid{grid-template-columns:1fr}.market-choice{grid-template-columns:82px minmax(0,1fr) 70px}}
 
 /* 匾额头 */
 .plaque{margin:26px 0 6px;padding:22px 24px;border:1px solid var(--line);border-radius:20px;
@@ -505,6 +505,7 @@ button.cook-pot-slot:active{background:#fff1b8}
 .cook-recipe-entry{display:grid;grid-template-columns:58px minmax(0,1fr);gap:10px;align-items:start;padding:10px 0;border-top:1px dashed var(--line)}
 .cook-recipe-entry :is(.dish-sprite,.dish-thumb){width:58px;height:58px}.cook-recipe-head{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
 .cook-recipe-make{min-height:44px;margin-top:7px;padding:7px 12px}.cook-recipe-missing{margin-top:7px;color:#8d4f2e;font-size:11px;font-weight:700;line-height:1.45}
+.cook-recipe-needs{margin-top:5px;color:var(--ink-soft);font-size:11px;line-height:1.5}.cook-recipe-needs b{color:var(--ink);font-weight:650}
 .silver-coin{display:inline-grid;width:1.05em;height:1.05em;margin-right:2px;vertical-align:-.14em;border:1px solid #7f8a91;border-radius:50%;background:radial-gradient(circle at 34% 28%,#fff 0 10%,#dce3e6 32%,#9ca8ae 72%,#eef1f2 100%);box-shadow:inset 0 0 0 2px #f7f9f988,0 1px 1px #32434a33}.silver-coin::after{content:"";width:42%;height:42%;place-self:center;border:1px solid #879299;border-radius:50%;box-shadow:inset 0 1px #fff9}
 .cook-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}.cook-actions .btn{min-height:44px}
 .cook-sell-form{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0}.cook-sell-qty{display:flex;align-items:center;gap:4px;color:var(--ink-soft);white-space:nowrap}.cook-sell-qty .inp{width:62px;padding:7px 6px;text-align:center}.cook-sell-form .cook-price{width:102px}
@@ -824,26 +825,39 @@ ${others.length ? `<div class="grid c2">${others.map((farm) => board(farm)).join
 export function uiMarket(f, farms, now, key, flash) {
     advance(f, now);
     const kindLabel = { seed: "种子", material: "素材", ingredient: "食材", dish: "料理" };
+    const kindOrder = ["seed", "material", "ingredient", "dish"];
+    const recipeCategories = ["主食小吃", "热菜", "汤羹", "甜品点心", "饮品"];
     const inventory = humanBarterInventory(f);
-    const giveGroups = ["seed", "material", "ingredient", "dish"].map((kind) => {
-        const rows = inventory.filter((item) => item.kind === kind);
-        return rows.length ? `<optgroup label="${kindLabel[kind]}">${rows.map((item) => `<option value="${item.kind}:${esc(item.id)}" data-stock="${item.qty}">${esc(item.name)}（有 ${item.qty}）</option>`).join("")}</optgroup>` : "";
-    }).join("");
     const seedWants = [...cropsByCategory("limited"), ...allUgc().filter((crop) => !crop.banned)];
-    const wantGroups = [
-        ["seed", seedWants],
-        ["material", [...materialById.values()]],
-        ["ingredient", cooking.ingredients],
-        ["dish", cooking.recipes],
-    ].map(([kind, rows]) => rows.length ? `<optgroup label="${kindLabel[kind]}">${rows.map((item) => `<option value="${kind}:${esc(item.id)}">${esc(item.name)}</option>`).join("")}</optgroup>` : "").join("");
+    const giveRows = Object.fromEntries(kindOrder.map((kind) => [kind, inventory.filter((item) => item.kind === kind)]));
+    const wantRows = { seed: seedWants, material: [...materialById.values()], ingredient: cooking.ingredients, dish: cooking.recipes };
+    const giveKinds = kindOrder.filter((kind) => giveRows[kind].length);
+    const typeOptions = (kinds) => kinds.map((kind) => `<option value="${kind}">${kindLabel[kind]}</option>`).join("");
+    const itemOptions = (kind, rows, showStock = false) => {
+        const option = (item) => `<option value="${kind}:${esc(item.id)}"${showStock ? ` data-stock="${item.qty}"` : ""}>${esc(item.name)}${showStock ? `（有 ${item.qty}）` : ""}</option>`;
+        if (kind !== "dish")
+            return rows.map(option).join("");
+        return recipeCategories.map((category) => {
+            const categoryRows = rows.filter((item) => cooking.recipes.find((recipe) => recipe.id === item.id)?.category === category);
+            return categoryRows.length ? `<optgroup label="${category}">${categoryRows.map(option).join("")}</optgroup>` : "";
+        }).join("");
+    };
+    const optionTemplates = (prefix, rowsByKind, kinds, showStock = false) => kinds.map((kind) => `<template data-barter-options="${prefix}:${kind}">${itemOptions(kind, rowsByKind[kind], showStock)}</template>`).join("");
     const listCard = `<section class="card"><h3>🔁 挂一张换物单</h3>
       <p class="small muted">物品会先从${esc(f.aiName || f.name || "小机")}的库存移进摊位；别人接受后整单互换，不使用银币。</p>
       ${inventory.length ? `<form method="post" action="${BASE}/ui/${key}/market/list" data-market-async class="market-list-grid">
-        <label><span class="small muted">我拿出</span><select class="inp" name="give" required>${giveGroups}</select></label>
-        <label><span class="small muted">数量</span><input class="inp" type="number" name="giveQty" min="1" step="1" value="1" required></label>
-        <label class="market-want"><span class="small muted">想换</span><select class="inp" name="want" required>${wantGroups}</select></label>
-        <label class="market-want-qty"><span class="small muted">数量</span><input class="inp" type="number" name="wantQty" min="1" step="1" value="1" required></label>
-        <button class="btn" type="submit" style="grid-column:1/-1;justify-self:start">摆上换物摊</button>
+        <div class="market-choice"><span class="market-choice-title">我拿出</span>
+          <label><span class="small muted">类型</span><select class="inp" data-barter-kind="give" aria-label="拿出物品类型">${typeOptions(giveKinds)}</select></label>
+          <label><span class="small muted">物品</span><select class="inp" name="give" aria-label="拿出的物品" required></select></label>
+          <label><span class="small muted">数量</span><input class="inp" type="number" name="giveQty" min="1" step="1" value="1" required></label>
+        </div>
+        <div class="market-choice"><span class="market-choice-title">想换</span>
+          <label><span class="small muted">类型</span><select class="inp" data-barter-kind="want" aria-label="想换物品类型">${typeOptions(kindOrder)}</select></label>
+          <label><span class="small muted">物品</span><select class="inp" name="want" aria-label="想换的物品" required></select></label>
+          <label><span class="small muted">数量</span><input class="inp" type="number" name="wantQty" min="1" step="1" value="1" required></label>
+        </div>
+        ${optionTemplates("give", giveRows, giveKinds, true)}${optionTemplates("want", wantRows, kindOrder)}
+        <button class="btn" type="submit">摆上换物摊</button>
       </form>` : `<p class="muted">当前没有可换的种子、素材、商店食材或正常料理。</p>`}</section>`;
     const cashName = (entry) => entry.kind === "material"
         ? materialById.get(entry.id)?.name ?? entry.id
@@ -879,7 +893,7 @@ export function uiMarket(f, farms, now, key, flash) {
         return `<section class="market-farm"><div class="line" style="align-items:baseline"><h3 style="margin:0">🏡 ${esc(farmLabel(seller))}</h3><span class="small muted">${seller.id === f.id ? "我的摊位" : `🏠${esc(seller.id)}`}</span></div>${cash.map((entry) => cashRow(seller, entry)).join("")}${barters.map((listing) => barterRow(seller, listing)).join("")}</section>`;
     }).filter(Boolean);
     const marketScript = `<script>(()=>{if(window.__farmHumanMarket)return;window.__farmHumanMarket=true;const root=document.getElementById("marketPage");if(!root)return;
-      const sync=scope=>{for(const form of scope.querySelectorAll('form[action$="/market/list"]')){const select=form.elements.give,input=form.elements.giveQty;const set=()=>{input.max=select.selectedOptions[0]?.dataset.stock||"1";if(Number(input.value)>Number(input.max))input.value=input.max;};select.addEventListener("change",set);set();}};sync(root);
+      const sync=scope=>{for(const form of scope.querySelectorAll('form[action$="/market/list"]')){const give=form.elements.give,giveQty=form.elements.giveQty;const syncStock=()=>{giveQty.max=give.selectedOptions[0]?.dataset.stock||"1";if(Number(giveQty.value)>Number(giveQty.max))giveQty.value=giveQty.max;};for(const prefix of ["give","want"]){const kind=form.querySelector('[data-barter-kind="'+prefix+'"]'),item=form.elements[prefix];if(!kind||!item)continue;const fill=()=>{const source=[...form.querySelectorAll("template[data-barter-options]")].find(node=>node.dataset.barterOptions===prefix+":"+kind.value);item.replaceChildren(source?source.content.cloneNode(true):document.createTextNode(""));if(prefix==="give")syncStock();};kind.addEventListener("change",fill);item.addEventListener("change",()=>{if(prefix==="give")syncStock();});fill();}}};sync(root);
       document.addEventListener("submit",async event=>{const form=event.target.closest?.("form[data-market-async]");if(!form||event.defaultPrevented)return;event.preventDefault();if(event.submitter)event.submitter.disabled=true;const x=scrollX,y=scrollY;try{const response=await fetch(form.action,{method:"POST",body:new URLSearchParams(new FormData(form)),credentials:"same-origin"});if(!response.ok)throw new Error("request failed");const next=new DOMParser().parseFromString(await response.text(),"text/html"),fresh=next.getElementById("marketPage");if(!fresh)throw new Error("invalid page");root.innerHTML=fresh.innerHTML;sync(root);requestAnimationFrame(()=>scrollTo(x,y));}catch{location.reload();}});})();</script>`;
     const body = `<div id="marketPage"><div class="plaque"><h1>🧺 铃野集市</h1><p class="welcome">看看各家摊位，也可以替自己的小机谈一笔换物。</p><div class="tags"><span class="tag">🪙 银币 <b>${num(f.silver)}</b></span><span class="tag">银币购买直接入库</span><span class="tag">换物整单成交</span></div></div>
       ${flash ? `<div class="flash">${esc(flash)}</div>` : ""}${listCard}<section class="card"><h2 class="mt">全服摊位</h2>${stalls.length ? stalls.join("") : `<p class="muted">现在还没有人摆摊。</p>`}</section></div>${marketScript}`;
@@ -1474,10 +1488,14 @@ export function uiCooking(f, now, key, flash, resultRaw) {
     const shownRecipeCategories = recipeCategories.filter((category) => view.knownRecipes.some((recipe) => recipe.category === category));
     const recipeEntry = (recipe) => {
         const availability = recipeAvailability(recipe);
+        const ingredientCounts = new Map();
+        for (const id of recipe.ingredients)
+            ingredientCounts.set(id, (ingredientCounts.get(id) ?? 0) + 1);
+        const ingredients = [...ingredientCounts].map(([id, qty]) => `${cookingItemName(id)}×${qty}`).join("、");
         const action = availability.missing.length
-            ? `<div class="cook-recipe-missing">食材不足</div>`
+            ? `<div class="cook-recipe-missing">缺少：${esc(availability.missing.join("、"))}</div>`
             : `<button class="btn cook-recipe-make" type="button" data-recipe-items="${esc(JSON.stringify(availability.items))}">一键制作</button>`;
-        return `<div class="cook-recipe-entry">${dishSprite(recipe.id, recipe.name)}<div><div class="cook-recipe-head"><b>${esc(recipe.name)}</b>${rarityDot(recipe.rarity)}</div>${action}</div></div>`;
+        return `<div class="cook-recipe-entry">${dishSprite(recipe.id, recipe.name)}<div><div class="cook-recipe-head"><b>${esc(recipe.name)}</b>${rarityDot(recipe.rarity)}</div><div class="cook-recipe-needs"><b>配方：</b>${esc(ingredients)}</div>${action}</div></div>`;
     };
     const recipeTabs = shownRecipeCategories.map((category, index) => `<button class="cook-recipe-cat" type="button" data-recipe-category-tab="${esc(category)}" aria-selected="${index === 0 ? "true" : "false"}">${esc(category)}</button>`).join("");
     const recipeRows = shownRecipeCategories.length
