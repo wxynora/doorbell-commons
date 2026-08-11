@@ -1,5 +1,5 @@
 // 共享游戏核心：HTTP 服务和 CLI 适配器都调这里，保证同一套规则与存档结构。
-import { advance, plant, water, harvest, upgradeLand, shopOffer, collectionPct, codexCountByCategory, nextUpgradeReq, buyItem, useItem, craft, designCrop, plantBatch, waterAll, harvestAll, usePotionBatch, refreshShop, buyRecipe, affordablePotions, buyPotionSet, potionDailyLeft, shopAnimals, nextLockedAnimal, buyAnimalForPartner, ranchRoamLine, decorLines, takeInbox, shopPets, nextLockedPet, buyPetForPartner, buyPatrolGoose, farmSendRanch, potionTargets, circledNum, isUgcCrop, ensureKitchen, kitchenView, kitchenBuy, kitchenCook, kitchenUse, kitchenSellSelected, ranchFeedAnimal, dishSystemRecycleSilver, } from "./engine.js";
+import { advance, plant, water, harvest, upgradeLand, shopOffer, collectionPct, codexCountByCategory, nextUpgradeReq, buyItem, useItem, craft, designCrop, plantBatch, waterAll, harvestAll, usePotionBatch, refreshShop, buyRecipe, affordablePotions, buyPotionSet, potionDailyLeft, shopAnimals, nextLockedAnimal, buyAnimalForPartner, ranchRoamLine, decorLines, takeInbox, shopPets, nextLockedPet, buyPetForPartner, buyPatrolGoose, farmSendRanch, potionTargets, circledNum, isUgcCrop, ensureKitchen, kitchenView, kitchenBuy, kitchenCook, kitchenCookKnownRecipe, kitchenUse, kitchenSellSelected, ranchFeedAnimal, dishSystemRecycleSilver, } from "./engine.js";
 import { describeFarm, harvestText, bonusEventText, dropText, potionDropText, plantText, waterText, statusFooter, } from "./flavor.js";
 import { expExplore, expChoose, expRetreat, expRoll, expView } from "./expedition.js";
 import { currentSeason, currentDayIndex } from "./time.js";
@@ -112,7 +112,7 @@ export const HELP = `🌾 你的农场
   🧾 翻翻账本                  ledger                              （你和伴侣的金币往来 + 药水入库）
   🍳 打开料理台                kitchen                             （全部料理操作都收在这一个动作里）
      买食材/食谱               kitchen {"op":"buy","kind":"ingredient|recipe","id":"id","qty":1}
-     下锅料理                   kitchen {"op":"cook","items":["鸡蛋","番茄","盐"]}
+     下锅料理                   kitchen {"op":"cook","recipe":"已解锁食谱名"} （试做未知组合才使用 "items":["食材1","食材2"]）
      使用料理                   kitchen {"op":"use","dishId":"料理名","target":"cat|dog|self"}
      贿赂看家狗                 kitchen {"op":"use","dishId":"料理名","target":"guard-dog","to":"农场编号"} （仅在刚被这家看家狗拦下后继续同一次偷菜）
      回收或摆摊                 kitchen {"op":"sell","itemId":"食材名、产物名或料理名","qty":数量,"to":"system|market","price":每份银币价} （商店食材可摆摊；牧场产物只能回收；正常料理两者均可）
@@ -495,7 +495,6 @@ export function viewBag(f) {
         `   例（填 bag 里的中文名或 id 都行）：craft {"materials":["普通石头","萤石","龙的指甲"]}　种限定：plant {"limited":["星语花"]}`,
     ].join("\n");
 }
-const kitchenItemName = (id) => id === "fish:any" ? "任意鱼" : cookingProductById.get(id)?.name ?? cookingIngredientById.get(id)?.name ?? id;
 const kitchenValueRange = (items, valueOf) => {
     const values = items.map(valueOf);
     const min = Math.min(...values);
@@ -539,11 +538,18 @@ export function viewKitchen(f, now) {
     const offers = view.recipeOffers.length
         ? view.recipeOffers.map((recipe) => `${recipe.name}·${recipe.rarity}〔${recipe.id}〕 🪙${recipe.price}${recipe.known ? "（已会）" : ""}`).join("\n  ")
         : "（今天没有未知食谱可卖）";
-    const known = view.knownRecipes.length
-        ? view.knownRecipes.map((recipe) => `${recipe.name}·${recipe.rarity}：${recipe.ingredients.map(kitchenItemName).join(" + ")}`).join("\n  ")
-        : "（还没解锁；买食谱或用正确组合试做都能解锁）";
+    const recipeLine = (recipe) => `${recipe.name}·${recipe.rarity}${recipe.canCook ? " ✓可做" : "（缺料）"}`;
+    const recipeCategories = ["主食小吃", "热菜", "汤羹", "甜品点心", "饮品"];
+    const known = !view.knownRecipes.length
+        ? "（还没解锁；买食谱或用正确组合试做都能解锁）"
+        : view.knownRecipes.length <= 40
+            ? view.knownRecipes.map(recipeLine).join("、")
+            : recipeCategories.map((category) => {
+                const rows = view.knownRecipes.filter((recipe) => recipe.category === category);
+                return rows.length ? `【${category}】${rows.map(recipeLine).join("、")}` : "";
+            }).filter(Boolean).join("\n  ");
     const debuff = view.debuff ? `\n🥴 当前效果：${view.debuff.name}` : "";
-    return `🍳 料理台 · 🪙${f.silver} · 牧场金币 ${f.ranch?.coins ?? 0}${debuff}\n\n🥚 动物产物／渔获：\n  ${products}\n\n🧂 已有商店食材：\n  ${ownedIngredients}\n\n🧺 今日食材铺：\n  ${ingredients}\n\n📜 今日食谱铺：\n  ${offers}\n\n🍲 料理柜：\n  ${dishes}\n\n📖 已解锁食谱：\n  ${known}\n\n操作都使用同一个 kitchen 动作：\n· {"action":"kitchen"}\n· {"action":"kitchen","op":"buy","kind":"ingredient","id":"strawberry","qty":1}\n· {"action":"kitchen","op":"buy","kind":"recipe","id":"recipe id"}\n· {"action":"kitchen","op":"cook","items":["鸡蛋","番茄","盐"]}\n· {"action":"kitchen","op":"use","dishId":"香煎蛋","target":"cat|dog"}\n· {"action":"kitchen","op":"use","dishId":"微妙的料理","target":"self"}\n· {"action":"kitchen","op":"use","dishId":"香煎蛋","target":"guard-dog","to":"农场编号"}\n· {"action":"kitchen","op":"sell","itemId":"鸡蛋","qty":5,"to":"system"}\n· {"action":"kitchen","op":"sell","itemId":"香煎蛋","qty":2,"to":"market","price":80}`;
+    return `🍳 料理台 · 🪙${f.silver} · 牧场金币 ${f.ranch?.coins ?? 0}${debuff}\n\n🥚 动物产物／渔获：\n  ${products}\n\n🧂 已有商店食材：\n  ${ownedIngredients}\n\n🧺 今日食材铺：\n  ${ingredients}\n\n📜 今日食谱铺：\n  ${offers}\n\n🍲 料理柜：\n  ${dishes}\n\n📖 已解锁食谱：\n  ${known}\n\n操作都使用同一个 kitchen 动作：\n· {"action":"kitchen"}\n· {"action":"kitchen","op":"buy","kind":"ingredient","id":"strawberry","qty":1}\n· {"action":"kitchen","op":"buy","kind":"recipe","id":"recipe id"}\n· {"action":"kitchen","op":"cook","recipe":"已解锁食谱名"}\n· {"action":"kitchen","op":"cook","items":["食材1","食材2"]} （只用于试做未知组合）\n· {"action":"kitchen","op":"use","dishId":"香煎蛋","target":"cat|dog"}\n· {"action":"kitchen","op":"use","dishId":"微妙的料理","target":"self"}\n· {"action":"kitchen","op":"use","dishId":"香煎蛋","target":"guard-dog","to":"农场编号"}\n· {"action":"kitchen","op":"sell","itemId":"鸡蛋","qty":5,"to":"system"}\n· {"action":"kitchen","op":"sell","itemId":"香煎蛋","qty":2,"to":"market","price":80}`;
 }
 // ——— 2.0 玩家市场：上架素材/种子，串门购买 ———
 const invOf = (f, kind) => (kind === "material" ? f.materials : f.seeds);
@@ -951,7 +957,9 @@ function dispatchImpl(f, b, now) {
                 return { ok: r.ok, text: r.ok ? withFooter(f, now, `${r.kind === "recipe" ? "📜" : "🧺"} 买下${r.name}${r.qty ? `×${r.qty}` : ""}，-🪙${r.cost}。`) : r.error };
             }
             if (op === "cook") {
-                const r = kitchenCook(f, b.items, now);
+                const r = b.recipe != null
+                    ? kitchenCookKnownRecipe(f, b.recipe, now)
+                    : kitchenCook(f, b.items, now);
                 if (!r.ok)
                     return { ok: false, text: r.error };
                 const line = r.odd

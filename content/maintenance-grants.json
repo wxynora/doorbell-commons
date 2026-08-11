@@ -8,5 +8,10 @@
     "id": "maintenance-20260810-lingye-together",
     "silver": 100,
     "notice": "🎁 铃野共行更新补偿：已发放 🪙100 银币。"
+  },
+  {
+    "id": "maintenance-20260811-glimmer-capture-pity",
+    "silver": 300,
+    "notice": "🎁 流光原野保底更新补偿：历史抓捕次数无法完整回溯，已统一发放 🪙300 银币。每种动物的异色保底从本次更新后重新累计，第 20 次有效诱捕必定成功。"
   }
 ]

@@ -716,7 +716,8 @@ export function kitchenView(farm, now) {
             .map(([id, qty]) => ({ ...cookingIngredientById.get(id), id, qty })),
         dishes: kitchen.dishes.map((dish) => ({ ...dish, recycleSilver: dishSystemRecycleSilver(dish) })),
         recipeOffers,
-        knownRecipes: kitchen.knownRecipes.map((id) => cookingRecipeById.get(id)).filter(Boolean),
+        knownRecipes: kitchen.knownRecipes.map((id) => cookingRecipeById.get(id)).filter(Boolean)
+            .map((recipe) => ({ ...recipe, canCook: selectCookingItems(farm, recipe.ingredients).ok })),
         debuff: activeCookingDebuff(farm, now),
         shop,
     };
@@ -832,6 +833,17 @@ export function kitchenCook(farm, refs, now) {
     }
     kitchen.dishes.push(dish);
     return { ok: true, dish, recipe, discovered, odd: !recipe, ingredients: picked.selected.map((item) => item.name), baseValue };
+}
+/** 已解锁食谱可按名称或 id 直接制作；库存取用仍复用普通下锅的真实选择与扣除逻辑。 */
+export function kitchenCookKnownRecipe(farm, selector, now) {
+    const kitchen = ensureKitchen(farm);
+    const key = String(selector ?? "").trim();
+    const recipe = cookingRecipeById.get(key) ?? cookingRecipes.find((item) => item.name === key);
+    if (!recipe)
+        return { ok: false, error: `没有找到食谱「${key || "未填写"}」。` };
+    if (!kitchen.knownRecipes.includes(recipe.id))
+        return { ok: false, error: `还没有解锁「${recipe.name}」食谱。` };
+    return kitchenCook(farm, recipe.ingredients, now);
 }
 const ODD_DEBUFFS = [
     { kind: "no_steal", name: "手脚发软，暂时不能偷菜" },
@@ -1016,6 +1028,188 @@ export function kitchenSellSelected(farm, selectorRaw, qty, to, price, now) {
     if (matches.length === 0)
         return { ok: false, error: `食材柜或料理柜里没有「${selector}」。` };
     return kitchenSellMany(farm, matches.map((item) => item.id), qty, to, price, now);
+}
+const HUMAN_BARTER_KINDS = new Set(["seed", "material", "ingredient", "dish"]);
+function humanBarterDefinition(kindRaw, idRaw) {
+    const kind = String(kindRaw ?? "");
+    const key = String(idRaw ?? "").trim();
+    if (!HUMAN_BARTER_KINDS.has(kind))
+        return null;
+    if (kind === "material") {
+        const item = materialById.get(key) ?? materials.find((entry) => entry.name === key);
+        return item ? { kind, id: item.id, name: item.name } : null;
+    }
+    if (kind === "seed") {
+        const item = getCrop(key) ?? crops.find((entry) => entry.name === key);
+        return item && ["limited", "ugc"].includes(item.category) ? { kind, id: item.id, name: item.name } : null;
+    }
+    if (kind === "ingredient") {
+        const item = cookingIngredientById.get(key) ?? cookingIngredients.find((entry) => entry.name === key);
+        return item ? { kind, id: item.id, name: item.name } : null;
+    }
+    const item = cookingRecipeById.get(key) ?? cookingRecipes.find((entry) => entry.name === key);
+    return item ? { kind, id: item.id, name: item.name } : null;
+}
+function humanBarterQty(raw) {
+    const qty = Number(raw);
+    return Number.isSafeInteger(qty) && qty > 0 ? qty : null;
+}
+function humanBarterStockSelection(farm, def, qty) {
+    if (def.kind === "dish") {
+        const dishes = ensureKitchen(farm).dishes.filter((dish) => dish.recipeId === def.id && dish.recipeId !== "odd_dish").slice(0, qty);
+        return dishes.length >= qty
+            ? { ok: true, dishes }
+            : { ok: false, error: `「${def.name}」只有 ${dishes.length} 份，不够 ${qty} 份。` };
+    }
+    const stock = def.kind === "material"
+        ? farm.materials
+        : def.kind === "seed"
+            ? farm.seeds
+            : ensureKitchen(farm).ingredients;
+    const available = stock[def.id] ?? 0;
+    return available >= qty
+        ? { ok: true, dishes: [] }
+        : { ok: false, error: `「${def.name}」只有 ${available} 份，不够 ${qty} 份。` };
+}
+function humanBarterRemoveStock(farm, def, qty, selection) {
+    if (def.kind === "dish") {
+        const ids = new Set(selection.dishes.map((dish) => dish.id));
+        ensureKitchen(farm).dishes = ensureKitchen(farm).dishes.filter((dish) => !ids.has(dish.id));
+        return;
+    }
+    const stock = def.kind === "material"
+        ? farm.materials
+        : def.kind === "seed"
+            ? farm.seeds
+            : ensureKitchen(farm).ingredients;
+    stock[def.id] -= qty;
+    if (stock[def.id] <= 0)
+        delete stock[def.id];
+}
+function humanBarterAddStock(farm, def, qty, dishes = []) {
+    if (def.kind === "dish") {
+        ensureKitchen(farm).dishes.push(...dishes.map((dish) => structuredClone(dish)));
+        return;
+    }
+    const stock = def.kind === "material"
+        ? farm.materials
+        : def.kind === "seed"
+            ? farm.seeds
+            : ensureKitchen(farm).ingredients;
+    stock[def.id] = (stock[def.id] ?? 0) + qty;
+}
+export function humanBarterItemName(kind, id) {
+    return humanBarterDefinition(kind, id)?.name ?? String(id ?? "");
+}
+export function humanBarterInventoryCount(farm, kind, id) {
+    const def = humanBarterDefinition(kind, id);
+    if (!def)
+        return 0;
+    if (def.kind === "dish")
+        return ensureKitchen(farm).dishes.filter((dish) => dish.recipeId === def.id && dish.recipeId !== "odd_dish").length;
+    const stock = def.kind === "material"
+        ? farm.materials
+        : def.kind === "seed"
+            ? farm.seeds
+            : ensureKitchen(farm).ingredients;
+    return stock[def.id] ?? 0;
+}
+export function humanBarterInventory(farm) {
+    const kitchen = ensureKitchen(farm);
+    const rows = [];
+    for (const [id, qty] of Object.entries(farm.seeds ?? {})) {
+        const def = humanBarterDefinition("seed", id);
+        if (def && qty > 0)
+            rows.push({ ...def, qty });
+    }
+    for (const [id, qty] of Object.entries(farm.materials ?? {})) {
+        const def = humanBarterDefinition("material", id);
+        if (def && qty > 0)
+            rows.push({ ...def, qty });
+    }
+    for (const [id, qty] of Object.entries(kitchen.ingredients)) {
+        const def = humanBarterDefinition("ingredient", id);
+        if (def && qty > 0)
+            rows.push({ ...def, qty });
+    }
+    const dishCounts = new Map();
+    for (const dish of kitchen.dishes) {
+        if (dish.recipeId === "odd_dish")
+            continue;
+        dishCounts.set(dish.recipeId, (dishCounts.get(dish.recipeId) ?? 0) + 1);
+    }
+    for (const [id, qty] of dishCounts) {
+        const def = humanBarterDefinition("dish", id);
+        if (def)
+            rows.push({ ...def, qty });
+    }
+    return rows;
+}
+export function humanBarterListings(farm) {
+    return Array.isArray(farm.humanBarters) ? farm.humanBarters : [];
+}
+/** 人类集市上架一整单换物；物品先从小机库存移入订单，避免重复使用。 */
+export function humanBarterList(farm, giveKind, giveId, giveQtyRaw, wantKind, wantId, wantQtyRaw, now) {
+    const give = humanBarterDefinition(giveKind, giveId);
+    const want = humanBarterDefinition(wantKind, wantId);
+    const giveQty = humanBarterQty(giveQtyRaw);
+    const wantQty = humanBarterQty(wantQtyRaw);
+    if (!give || !want)
+        return { ok: false, error: "请选择可以交换的种子、素材、商店食材或正常料理。" };
+    if (!giveQty || !wantQty)
+        return { ok: false, error: "拿出数量和想换数量都要填写正整数。" };
+    if (give.kind === want.kind && give.id === want.id)
+        return { ok: false, error: "拿同一种东西换自己没有意义，换个目标吧。" };
+    const selected = humanBarterStockSelection(farm, give, giveQty);
+    if (!selected.ok)
+        return selected;
+    humanBarterRemoveStock(farm, give, giveQty, selected);
+    const listing = {
+        id: randomUUID(),
+        give: { ...give, qty: giveQty, ...(give.kind === "dish" ? { dishes: selected.dishes.map((dish) => structuredClone(dish)) } : {}) },
+        want: { ...want, qty: wantQty },
+        listedAt: now,
+    };
+    (farm.humanBarters ??= []).push(listing);
+    return { ok: true, listing, give, giveQty, want, wantQty };
+}
+export function humanBarterUnlist(farm, listingId) {
+    const listings = humanBarterListings(farm);
+    const listing = listings.find((entry) => entry.id === String(listingId));
+    if (!listing)
+        return { ok: false, error: "这张换物单已经不存在了。" };
+    const give = humanBarterDefinition(listing.give?.kind, listing.give?.id);
+    const giveQty = humanBarterQty(listing.give?.qty);
+    const dishes = Array.isArray(listing.give?.dishes) ? listing.give.dishes : [];
+    if (!give || !giveQty || (give.kind === "dish" && dishes.length !== giveQty))
+        return { ok: false, error: "这张换物单的数据不完整，暂时不能下架。" };
+    humanBarterAddStock(farm, give, giveQty, dishes);
+    farm.humanBarters = listings.filter((entry) => entry !== listing);
+    return { ok: true, give, giveQty };
+}
+/** 人类之间接受一张整单换物；先完整校验双方，再一次性互换。 */
+export function humanBarterAccept(seller, buyer, listingId) {
+    if (seller.id === buyer.id)
+        return { ok: false, error: "不能接受自己挂出的换物单；不想换了可以直接下架。" };
+    const listings = humanBarterListings(seller);
+    const listing = listings.find((entry) => entry.id === String(listingId));
+    if (!listing)
+        return { ok: false, error: "这张换物单已经被换走或下架了。" };
+    const give = humanBarterDefinition(listing.give?.kind, listing.give?.id);
+    const want = humanBarterDefinition(listing.want?.kind, listing.want?.id);
+    const giveQty = humanBarterQty(listing.give?.qty);
+    const wantQty = humanBarterQty(listing.want?.qty);
+    const giveDishes = Array.isArray(listing.give?.dishes) ? listing.give.dishes : [];
+    if (!give || !want || !giveQty || !wantQty || (give.kind === "dish" && giveDishes.length !== giveQty))
+        return { ok: false, error: "这张换物单的数据不完整，暂时不能交换。" };
+    const payment = humanBarterStockSelection(buyer, want, wantQty);
+    if (!payment.ok)
+        return payment;
+    humanBarterRemoveStock(buyer, want, wantQty, payment);
+    humanBarterAddStock(seller, want, wantQty, payment.dishes);
+    humanBarterAddStock(buyer, give, giveQty, giveDishes);
+    seller.humanBarters = listings.filter((entry) => entry !== listing);
+    return { ok: true, give, giveQty, want, wantQty };
 }
 /** 每天三次银币投喂：只给生产动物的下一份普通产物 +10%。 */
 export function ranchFeedAnimal(farm, animalIdx, now) {

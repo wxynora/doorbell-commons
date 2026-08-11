@@ -2,7 +2,7 @@
 import { createServer } from "node:http";
 import { randomUUID, randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { advance, steal, canStealNow, stealAvailability, stealShieldRemain, isUgcCrop, visitorWater, tryWaterReward, humanHarvestAll, humanHarvestLeft, ranchRoamLine, buyPotionSet, refreshShop, ranchCollect, ranchRemit, ranchBuyAccessory, ranchBuyDecoration, ranchWearAccessory, ranchTakeOffAccessory, ranchPlaceDecoration, ranchUnplaceDecoration, ranchUpgradeAnimal, ranchNameAnimal, ranchNamePet, ranchNamePatrolGoose, ranchTogglePin, dispatchRanchRaid, catchRanchRaid, settleRanchRaids, ensureHumanKey, takeInbox, takeRanchNotices, pushSocialInbox, pushLog, potionDailyLeft, designCrop, craft, nextUpgradeReq, toggleStar, cookingDebuffReason, cookingDebuffStatusText, bribeGuardDog, kitchenBuy, kitchenCook, kitchenUse, kitchenSell, kitchenSellMany, ranchFeedAnimal, kitchenView, dishSystemRecycleSilver } from "./engine.js";
+import { advance, steal, canStealNow, stealAvailability, stealShieldRemain, isUgcCrop, visitorWater, tryWaterReward, humanHarvestAll, humanHarvestLeft, ranchRoamLine, buyPotionSet, refreshShop, ranchCollect, ranchRemit, ranchBuyAccessory, ranchBuyDecoration, ranchWearAccessory, ranchTakeOffAccessory, ranchPlaceDecoration, ranchUnplaceDecoration, ranchUpgradeAnimal, ranchNameAnimal, ranchNamePet, ranchNamePatrolGoose, ranchTogglePin, dispatchRanchRaid, catchRanchRaid, settleRanchRaids, ensureHumanKey, takeInbox, takeRanchNotices, pushSocialInbox, pushLog, potionDailyLeft, designCrop, craft, nextUpgradeReq, toggleStar, cookingDebuffReason, cookingDebuffStatusText, bribeGuardDog, kitchenBuy, kitchenCook, kitchenUse, kitchenSell, kitchenSellMany, ranchFeedAnimal, kitchenView, dishSystemRecycleSilver, humanBarterList, humanBarterUnlist, humanBarterAccept } from "./engine.js";
 import { kitchenSellSelected } from "./engine.js";
 import { dispatch, HELP, farmView, viewShop, viewEncyclopedia, viewBag, shopBrief, viewMarket, buyFromMarket, visitView, ranchAgentSection, refPrice, tendNpc, buyNpcSeed, randomTip, hasDamagedPublicName, viewKitchen } from "./game.js";
 import { harvestText, stealThiefText, statusFooter, waterText, describeFarm } from "./flavor.js";
@@ -11,7 +11,7 @@ import { MAX_BODY_BYTES, SYNC_MAX_BODY_BYTES, MAX_FARMS, MESSAGE_TEXT_MAX, MESSA
 import { allowRequest, allowCreate, sweepGuard } from "./guard.js";
 import { mintNonce, takeNonce, sweepNonces, htmlAgentPage, htmlReadme, htmlGuide, htmlNotice, htmlGenLink } from "./agent.js";
 import { mcpDispatch } from "./mcp.js";
-import { uiHome, uiRanch, uiCooking, uiTa, uiCodex, uiMessages, uiLeaderboard, uiInvalid, uiExpedition, uiTogether, uiGlimmer, uiHumanNotices } from "./web.js";
+import { uiHome, uiRanch, uiCooking, uiMarket, uiTa, uiCodex, uiMessages, uiLeaderboard, uiInvalid, uiExpedition, uiTogether, uiGlimmer, uiHumanNotices } from "./web.js";
 import { expRoll, expSetCharm } from "./expedition.js";
 import { viewLeaderboard } from "./leaderboard.js";
 import { onTaskEvent, tickTask, hasOpenOffer, offerSummary } from "./tasks.js";
@@ -1519,6 +1519,65 @@ export function startServer(port, host = "127.0.0.1") {
                     save();
                     res.writeHead(303, { ...AGENT_HEADERS, Location: `${BASE}/ui/${key}` });
                     return res.end();
+                }
+                // 🧺 人类集市：浏览现有银币摊位；换物单只走 humanKey 页面，不进入 AI market/list/buy 工具。
+                if (section === "market") {
+                    const act = parts[3];
+                    if (method === "POST" && ["buy", "list", "trade", "unlist"].includes(act)) {
+                        const form = await readFormBody(req);
+                        const splitRef = (raw) => {
+                            const value = String(raw ?? "");
+                            const at = value.indexOf(":");
+                            return at > 0 ? { kind: value.slice(0, at), id: value.slice(at + 1) } : { kind: "", id: "" };
+                        };
+                        let flash;
+                        if (act === "buy") {
+                            const seller = getFarm(String(form.seller ?? ""));
+                            if (!seller) {
+                                flash = "⚠️ 这家摊位已经不存在了。";
+                            }
+                            else {
+                                const r = buyFromMarket(seller, f, String(form.kind), String(form.id), form.qty);
+                                if (r.ok) {
+                                    if (form.kind === "seed" && String(form.id).startsWith("ugc_"))
+                                        onTaskEvent(f, "buy_ugc", now);
+                                    checkTitles(f);
+                                    flash = `🛒 从「${seller.name}」买到「${r.name}」×${r.qty}，-🪙${r.cost} 银`;
+                                }
+                                else
+                                    flash = `⚠️ ${r.error}`;
+                            }
+                        }
+                        else if (act === "list") {
+                            const give = splitRef(form.give);
+                            const want = splitRef(form.want);
+                            const r = humanBarterList(f, give.kind, give.id, form.giveQty, want.kind, want.id, form.wantQty, now);
+                            flash = r.ok
+                                ? `🔁 已摆上：${r.give.name}×${r.giveQty} ⇄ ${r.want.name}×${r.wantQty}`
+                                : `⚠️ ${r.error}`;
+                        }
+                        else if (act === "trade") {
+                            const seller = getFarm(String(form.seller ?? ""));
+                            if (!seller) {
+                                flash = "⚠️ 这张换物单已经不存在了。";
+                            }
+                            else {
+                                const r = humanBarterAccept(seller, f, String(form.listing ?? ""));
+                                flash = r.ok
+                                    ? `🔁 已用${r.want.name}×${r.wantQty}换到${r.give.name}×${r.giveQty}`
+                                    : `⚠️ ${r.error}`;
+                            }
+                        }
+                        else {
+                            const r = humanBarterUnlist(f, String(form.listing ?? ""));
+                            flash = r.ok ? `📦 已下架并取回${r.give.name}×${r.giveQty}` : `⚠️ ${r.error}`;
+                        }
+                        save();
+                        res.writeHead(303, { ...AGENT_HEADERS, Location: `${BASE}/ui/${key}/market?flash=${encodeURIComponent(flash)}` });
+                        return res.end();
+                    }
+                    res.writeHead(200, AGENT_HEADERS);
+                    return res.end(renderHuman(uiMarket(f, playerFarms(), now, key, url.searchParams.get("flash") ?? undefined)));
                 }
                 // 🍳 料理台：食材铺、配方、下锅动画结算、料理柜使用/回收/摆摊。
                 if (section === "cooking") {

@@ -6,6 +6,7 @@
   "dailyExploreLimit": 3,
   "dailyCaptureLimit": 1,
   "captureCooldownMs": 1200000,
+  "capturePityLimit": 20,
   "ordinaryChance": 0.12,
   "ordinaryFavoriteChance": 0.35,
   "fantasyChance": 0.05,

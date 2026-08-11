@@ -12,6 +12,8 @@ const MAX_PUBLIC_LOGS = 10;
 const GLIMMER_ACHIEVEMENT_FIELDS = new Set(["glimmerEncounters", "glimmerVariants", "glimmerCoops"]);
 const GLIMMER_ACHIEVEMENTS = titles.filter((item) => GLIMMER_ACHIEVEMENT_FIELDS.has(item.field));
 const GLIMMER_ACHIEVEMENT_IDS = new Set(GLIMMER_ACHIEVEMENTS.map((item) => item.id));
+const GLIMMER_KIND_IDS = new Set(glimmerVariants.map((item) => item.kindId));
+const CAPTURE_PITY_LIMIT = Math.max(1, Math.floor(Number(glimmer.capturePityLimit) || 20));
 const ANIMAL_INDEX = new Map(animals.map((item, index) => [item.id, index]));
 const PET_INDEX = new Map(pets.map((item, index) => [item.id, animals.length + index]));
 const GOOSE_INDEX = animals.length + pets.length;
@@ -34,6 +36,13 @@ export function normalizeGlimmerFarm(farm) {
         ? [...new Set(state.encounterSeen.map(String))] : [];
     state.favoriteSeen = Array.isArray(state.favoriteSeen)
         ? [...new Set(state.favoriteSeen.map(String))] : [];
+    const capturePity = state.capturePity && typeof state.capturePity === "object" ? state.capturePity : {};
+    state.capturePity = {};
+    for (const [kindId, count] of Object.entries(capturePity)) {
+        const normalized = Math.min(CAPTURE_PITY_LIMIT - 1, cleanCount(count));
+        if (GLIMMER_KIND_IDS.has(kindId) && normalized > 0)
+            state.capturePity[kindId] = normalized;
+    }
     state.achievementRewards = Array.isArray(state.achievementRewards)
         ? [...new Set(state.achievementRewards.map(String).filter((id) => GLIMMER_ACHIEVEMENT_IDS.has(id)))] : [];
     state.pending = state.pending && typeof state.pending === "object" ? state.pending : null;
@@ -376,6 +385,10 @@ function addVariantToResident(resident, variant) {
     resident.variantId = variant.id;
 }
 
+function capturePityCount(state, kindId) {
+    return Math.min(CAPTURE_PITY_LIMIT - 1, cleanCount(state.capturePity?.[kindId]));
+}
+
 function catchVariant(farm, world, now, animalQuery, dishQuery) {
     const gate = requireOpenTicket(farm, now);
     if (!gate.ok)
@@ -401,21 +414,27 @@ function catchVariant(farm, world, now, animalQuery, dishQuery) {
     const favorite = dish.recipeId === glimmer.favorites[variant.kindId];
     if (favorite && !gate.state.favoriteSeen.includes(variant.kindId))
         gate.state.favoriteSeen.push(variant.kindId);
+    const pityBefore = capturePityCount(gate.state, variant.kindId);
+    const guaranteed = pityBefore + 1 >= CAPTURE_PITY_LIMIT;
     const chance = variantIsFantasy(variant)
         ? (favorite ? glimmer.fantasyFavoriteChance : glimmer.fantasyChance)
         : (favorite ? glimmer.ordinaryFavoriteChance : glimmer.ordinaryChance);
     dishes.splice(dishes.findIndex((item) => item.id === dish.id), 1);
     gate.state.daily.lastCatchAt = now;
     const rng = new Rng(farm.rngState ?? 1);
-    const success = rng.next() < chance;
+    const roll = rng.next();
+    const success = guaranteed || roll < chance;
     farm.rngState = rng.state;
     if (!success) {
+        const pityAfter = pityBefore + 1;
+        gate.state.capturePity[variant.kindId] = pityAfter;
         const text = favorite
-            ? `🐾 ${variant.name}很喜欢「${dish.name}」，但最后还是没有跟你走。料理已消耗；20 分钟后可以再次尝试。`
-            : `🐾 ${variant.name}吃完「${dish.name}」，绕着你看了两圈，还是跑进了草丛。料理已消耗；20 分钟后可以再次尝试。`;
-        history(farm, { at: now, kind: "capture-fail", refId: variant.id, dish: dish.name });
+            ? `🐾 ${variant.name}很喜欢「${dish.name}」，但最后还是没有跟你走。料理已消耗；该种异色保底 ${pityAfter}/${CAPTURE_PITY_LIMIT}，20 分钟后可以再次尝试。`
+            : `🐾 ${variant.name}吃完「${dish.name}」，绕着你看了两圈，还是跑进了草丛。料理已消耗；该种异色保底 ${pityAfter}/${CAPTURE_PITY_LIMIT}，20 分钟后可以再次尝试。`;
+        history(farm, { at: now, kind: "capture-fail", refId: variant.id, dish: dish.name, pity: pityAfter });
         return { ok: true, text: withStatus(farm, now, text), success: false };
     }
+    delete gate.state.capturePity[variant.kindId];
     gate.state.unlocked.push(variant.id);
     gate.state.daily.captures++;
     gate.state.stats.variants = gate.state.unlocked.length;
@@ -456,8 +475,10 @@ function catchVariant(farm, world, now, animalQuery, dishQuery) {
             addVariantToResident(goose, variant);
         resultText = `🌈 捕捉成功！已解锁巡逻鹅服装「${variant.name}」。${goose ? "巡逻鹅已经换上新装。" : "购买巡逻鹅后即可穿戴；本次不会免费获得巡逻鹅。"}今日异色捕获 1/1。`;
     }
+    if (guaranteed)
+        resultText += `\n🎯 第 ${CAPTURE_PITY_LIMIT} 次有效诱捕触发保底，该种异色保底已清零。`;
     publicLog(world, farm, `${timeLabel(now)} · 「${farm.name}」带走了异色外观「${variant.name}」`, now, "variant", variant.id);
-    history(farm, { at: now, kind: "capture", refId: variant.id, dish: dish.name });
+    history(farm, { at: now, kind: "capture", refId: variant.id, dish: dish.name, guaranteed });
     return { ok: true, text: withStatus(farm, now, resultText), success: true, variant };
 }
 
@@ -562,7 +583,7 @@ export function glimmerView(farm, worldValue, now = Date.now()) {
         `✨ 流光原野 · ${currentSeason(now).name}`,
         glimmerStatusLine(farm, now),
         glimmerBuffActive(now) ? GLIMMER_BUFF_TEXT : "",
-        `🐾 今日动物踪迹：${tracks.map((item) => item.name).join("、")}`,
+        `🐾 今日动物踪迹：${tracks.map((item) => `${item.name}（保底 ${capturePityCount(state, item.kindId)}/${CAPTURE_PITY_LIMIT}）`).join("、")}`,
         glimmerDishInventoryLine(farm),
         glimmerFavoriteLine(farm),
         `🤝 今日协作：〔${event.name}〕· ${Math.min(world.coop.contributors.length, glimmer.coopRequired)}/${glimmer.coopRequired}${world.coop.completedAt ? " · 已完成，额外稀有踪迹已出现" : ""}`,
