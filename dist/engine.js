@@ -148,11 +148,11 @@ function resolveLimitedRef(farm, ref) {
     if (!ref)
         return undefined;
     const direct = getCrop(ref); // 已经是 id
-    if (direct && (direct.category === "limited" || direct.category === "ugc"))
-        return ref;
+    if (direct && (direct.category === "limited" || direct.category === "ugc" || (farm.seeds[direct.id] ?? 0) > 0))
+        return direct.id;
     for (const id of Object.keys(farm.seeds)) { // 按中文名找背包里有的（含自己设计/熔炼/买来的）
         const c = getCrop(id);
-        if (c && c.name === ref && (c.category === "limited" || c.category === "ugc"))
+        if (c && c.name === ref && (c.category === "limited" || c.category === "ugc" || (farm.seeds[id] ?? 0) > 0))
             return id;
     }
     return crops.find((c) => c.category === "limited" && c.name === ref)?.id; // 官方限定按名字全库找
