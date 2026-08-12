@@ -13,13 +13,15 @@ export const publicExpeditionContent = JSON.parse(readFileSync(resolve(DIR, "pub
 const VALID_OPTIONS = new Set(["A", "B", "C"]);
 const CONTRIBUTION_TARGET = 3;
 const CHOICE_TARGET = 3;
-const MAX_CHOICES_PER_FARM = 3;
 const HOUR_MS = 3600 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 const BEIJING_OFFSET_MS = 8 * HOUR_MS;
 const ENDING_REWARD_COINS = 1500;
 const ENDING_REWARD_SILVER = 150;
+const CHOICE_REWARD_COINS = 1000;
+const CHOICE_REWARD_SILVER = 100;
 const SP_SEEDS = crops.filter((crop) => crop.rarity === "SP" && crop.seedPrice === 3600);
+const SSR_SEEDS = crops.filter((crop) => crop.rarity === "SSR");
 const ENDING_TITLE_ID = {
     second_home: "together_second_home",
     quiet_harvest: "together_quiet_harvest",
@@ -55,7 +57,6 @@ function makeRound(round, now, archives = []) {
         tasks: {},
         clues: [],
         history: initialHistory(),
-        choiceCounts: {},
         choiceBallot: null,
         lastChooserFarmId: null,
         cooldown: null,
@@ -105,7 +106,7 @@ export function normalizePublicExpeditionWorld(value, now = Date.now()) {
     }
     world.clues = Array.isArray(world.clues) ? world.clues : [];
     world.history = Array.isArray(world.history) && world.history.length ? world.history : initialHistory();
-    world.choiceCounts = world.choiceCounts && typeof world.choiceCounts === "object" ? world.choiceCounts : {};
+    delete world.choiceCounts;
     world.choiceBallot = world.choiceBallot && typeof world.choiceBallot === "object" ? world.choiceBallot : null;
     if (world.choiceBallot) {
         world.choiceBallot.key = String(world.choiceBallot.key ?? "");
@@ -162,22 +163,28 @@ export function settlePublicExpeditionRewards(world, farms = [], now = Date.now(
     if (!world.endingId)
         return [];
     const issueId = String(world.storyId);
-    const eligibleIds = new Set();
+    const contributorIds = new Set();
     for (const state of Object.values(world.tasks ?? {}))
         for (const contribution of state?.contributions ?? [])
-            eligibleIds.add(String(contribution.farmId));
+            contributorIds.add(String(contribution.farmId));
+    const participantIds = new Set(cleanIdList(world.participants));
     const grants = [];
     for (const farm of farms) {
-        if (!eligibleIds.has(String(farm.id)))
+        const farmId = String(farm.id);
+        const tier = contributorIds.has(farmId) ? "contribution" : participantIds.has(farmId) ? "choice" : null;
+        if (!tier)
             continue;
         const state = farmRewardState(farm);
         if (state.issues.includes(issueId))
             continue;
         const rng = new Rng(farm.rngState);
-        const seed = rng.pick(SP_SEEDS);
+        const seedRarity = tier === "contribution" ? "SP" : "SSR";
+        const seed = rng.pick(tier === "contribution" ? SP_SEEDS : SSR_SEEDS);
+        const coins = tier === "contribution" ? ENDING_REWARD_COINS : CHOICE_REWARD_COINS;
+        const silver = tier === "contribution" ? ENDING_REWARD_SILVER : CHOICE_REWARD_SILVER;
         farm.rngState = rng.state;
-        farm.coins = Math.max(0, Math.floor(Number(farm.coins) || 0)) + ENDING_REWARD_COINS;
-        farm.silver = Math.max(0, Math.floor(Number(farm.silver) || 0)) + ENDING_REWARD_SILVER;
+        farm.coins = Math.max(0, Math.floor(Number(farm.coins) || 0)) + coins;
+        farm.silver = Math.max(0, Math.floor(Number(farm.silver) || 0)) + silver;
         farm.seeds ??= {};
         farm.seeds[seed.id] = (farm.seeds[seed.id] ?? 0) + 1;
         state.issues.push(issueId);
@@ -187,6 +194,7 @@ export function settlePublicExpeditionRewards(world, farms = [], now = Date.now(
         const title = unlocked ?? titleById(ENDING_TITLE_ID[world.endingId]);
         const grant = {
             issueId,
+            tier,
             storyTitle: publicExpeditionContent.title,
             endingId: world.endingId,
             endingTitle: publicExpeditionContent.endings[world.endingId].title,
@@ -194,8 +202,9 @@ export function settlePublicExpeditionRewards(world, farms = [], now = Date.now(
             titleName: title?.name ?? null,
             seedId: seed.id,
             seedName: seed.name,
-            coins: ENDING_REWARD_COINS,
-            silver: ENDING_REWARD_SILVER,
+            seedRarity,
+            coins,
+            silver,
             at: now,
         };
         state.grants.push(grant);
@@ -204,15 +213,23 @@ export function settlePublicExpeditionRewards(world, farms = [], now = Date.now(
         pushRanchNotice(farm, notice, now);
         grants.push({ farm, grant });
     }
-    world.rewards = grants.map(({ farm, grant }) => ({ farmId: farm.id, farmName: farm.name, ...grant }));
+    const rewardsByFarm = new Map((world.rewards ?? []).map((reward) => [String(reward.farmId), reward]));
+    for (const { farm, grant } of grants)
+        rewardsByFarm.set(String(farm.id), { farmId: farm.id, farmName: farm.name, ...grant });
+    world.rewards = [...rewardsByFarm.values()];
     return grants;
 }
 
 export function publicExpeditionRewardText(grant) {
-    return `🎁 你参与的铃野共行《${grant.storyTitle}》已达成结局「${grant.endingTitle}」：获得 ${grant.coins} 金、${grant.silver} 银、SP 种子「${grant.seedName}」×1，并解锁称号「${grant.titleName}」。`;
+    return `🎁 你参与的铃野共行《${grant.storyTitle}》已达成结局「${grant.endingTitle}」：获得 ${grant.coins} 金、${grant.silver} 银、${grant.seedRarity ?? "SP"} 种子「${grant.seedName}」×1，并解锁称号「${grant.titleName}」。`;
 }
 
 export function advancePublicExpedition(world, farms = [], now = Date.now()) {
+    for (const archived of world.archives ?? [])
+        if (archived?.endingId)
+            settlePublicExpeditionRewards(archived, farms, now);
+    if (world.endingId)
+        settlePublicExpeditionRewards(world, farms, now);
     const today = currentDayIndex(now);
     if (world.phase === "cooldown" && world.cooldown && now >= world.cooldown.readyAt) {
         world.phase = "choice";
@@ -416,12 +433,8 @@ export function runPublicChoice(world, farm, rawOption, now = Date.now(), farms 
     const label = options[option];
     const ballot = ensureChoiceBallot(world);
     const previous = ballot.votes[farm.id];
-    if (!previous && (world.choiceCounts[farm.id] ?? 0) >= MAX_CHOICES_PER_FARM)
-        return { ok: false, text: `你本轮已经提交过 ${MAX_CHOICES_PER_FARM} 次有效选择，可以继续阅读和完成公共任务，但不能再推进选择。` };
-    if (!previous) {
-        world.choiceCounts[farm.id] = (Math.floor(Number(world.choiceCounts[farm.id])) || 0) + 1;
+    if (!previous)
         addParticipant(world, farm.id);
-    }
     ballot.votes[farm.id] = { option, farmName: farm.name, at: now };
     const counts = choiceSupportCounts(world);
     if (counts[option] < CHOICE_TARGET) {
@@ -706,13 +719,12 @@ export function publicExpeditionText(world, farm, now = Date.now(), farms = [], 
     advancePublicExpedition(world, farms, now);
     const route = routeDef(world);
     const header = `🧭 铃野共行｜本期故事：《${publicExpeditionContent.title}》｜第 ${world.round} 轮${route ? `｜${route.name}` : ""}`;
-    const own = farm ? `你本轮已选择 ${world.choiceCounts[farm.id] ?? 0}/${MAX_CHOICES_PER_FARM} 次` : "";
     const ownReward = farm ? (world.rewards ?? []).find((reward) => reward.farmId === farm.id) : null;
     const clues = world.clues.length ? `｜线索 ${world.clues.length}/3` : "";
     const fullHistory = view === "history";
     const visibleHistory = fullHistory ? world.history : world.history.slice(-2);
     const historyTitle = fullHistory ? "📚 前情提要（完整实际路线）" : "📖 最近剧情（当前段＋上一段）";
-    return `${header}\n全服进度：${publicExpeditionStatusLine(world, now, false)}${clues}${own ? `｜${own}` : ""}\n\n${historyTitle}\n${historyText(visibleHistory)}\n\n${currentPromptText(world, farm, farms, now)}${ownReward ? `\n\n${publicExpeditionRewardText(ownReward)}` : ""}`;
+    return `${header}\n全服进度：${publicExpeditionStatusLine(world, now, false)}${clues}\n\n${historyTitle}\n${historyText(visibleHistory)}\n\n${currentPromptText(world, farm, farms, now)}${ownReward ? `\n\n${publicExpeditionRewardText(ownReward)}` : ""}`;
 }
 
 export function publicExpeditionStatusLine(world, now = Date.now(), showChoiceCounts = true) {
@@ -821,7 +833,6 @@ export function publicExpeditionHumanData(world, farm, now = Date.now()) {
         ending: world.endingId ? copy(publicExpeditionContent.endings[world.endingId]) : null,
         rewards: copy(world.rewards ?? []),
         clues: copy(world.clues),
-        ownChoiceCount: farm ? world.choiceCounts[farm.id] ?? 0 : 0,
         archives: copy(world.archives),
     };
 }
