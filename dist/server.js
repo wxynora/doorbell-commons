@@ -604,7 +604,7 @@ function runFarmCore(farmId, action, b, encArg, now) {
     if (action === "encyclopedia")
         return { status: 200, json: { ok: true, text: viewEncyclopedia(f, encArg), ...vf(f) } };
     if (action === "kitchen" && (!b.op || b.op === "view"))
-        return { status: 200, json: { ok: true, text: viewKitchen(f, now), ...vf(f) } };
+        return { status: 200, json: { ok: true, text: viewKitchen(f, now, String(b.view ?? "overview")), ...vf(f) } };
     // 重置 token（凭当前 token 换新；旧 token 立即失效——URL 里的 key 万一泄露就用它撤销）
     if (action === "new-token") {
         f.token = randomUUID().replace(/-/g, "");
