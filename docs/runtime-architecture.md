@@ -621,11 +621,13 @@ The existing test VPS now runs the Doorbell Commons server through `doorbell-com
 `/opt/doorbell-commons`, bound to `127.0.0.1:3000`, with its environment in
 `/etc/doorbell-commons/doorbell-commons.env` and its mode-0600 authoritative SQLite at
 `/var/lib/doorbell-commons/doorbell.sqlite`. Nginx serves the built web application and proxies
-`/api/` and `/mcp` for `doorbellcommons.com`. The 2026-08-14 release kept the previous application
-directories and copied both the community and isolated-farm data into
-`/var/backups/doorbell-commons/releases/20260814-034054b` before switching. The test environment's
-MCP readiness was already `true` before that release and was preserved; no configuration value or
-credential was copied into the repository.
+`/api/` and `/mcp` for `doorbellcommons.com`. Community commit
+`4e354b1d6ae0627115c99d4474692db4069cced5` was deployed on 2026-08-14 from a clean runtime-only
+artifact. The previous application remains at `/opt/doorbell-commons.previous-20260814T021409Z`,
+and the pre-switch application, mode-0600 SQLite, and environment file are backed up under
+`/var/backups/doorbell-commons/releases/20260814T021345Z-pre-4e354b1`. The required upstream request
+deadline is explicitly `60000` ms on this test VPS. MCP readiness was already `true` before the
+release and was preserved; no credential or chosen deployment value was copied into the repository.
 
 The existing public farm at `/farm/` and port 8091 remains an independent external production
 service and was not changed by this release. Doorbell's creation, migration, and internal action
