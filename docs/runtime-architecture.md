@@ -63,8 +63,9 @@ without calling `req.destroy()` and rejects aborted/read-failed bodies explicitl
 `world.json` exists but cannot be parsed or does not match the supported world format, `load()`
 leaves that file in place and throws before the HTTP server starts; it no longer renames the main
 world and falls through to a legacy or empty-world startup. Legacy `farms.json` import behavior is
-unchanged. This is a local runtime change only; `/var/lib/aifarm` and the 8091 production service
-were not accessed or modified.
+unchanged. These request／store fail-closed changes were published to the 8091 production farm in
+farm commit `35a95d17944b4796175e0b88a11494ec41de4fe1`; deployment did not inspect or manually modify
+player saves, and the restarted service loaded the existing 11 farms normally.
 
 `apps/server` will eventually host the logical community modules, but those modules must remain
 visibly separated:
@@ -304,10 +305,12 @@ first-call／10-minute status attachment cadence is preserved in process memory 
 does not append a duplicate status.
 
 This implementation is deployed to the existing test VPS together with the isolated 8092 test farm.
-The test readiness was already `true` before the 2026-08-14 release and remains enabled, but neither
-internal farm endpoint has been published to the 8091 production farm and no real player has been
-migrated. The boundaries do not change farm settlement, saves, human `/ui`, doorplate, humanKey, or
-master token.
+Farm commit `35a95d17944b4796175e0b88a11494ec41de4fe1` has also published the farm-side creation,
+welcome-reward, migration, and controlled-action boundaries to the 8091 production runtime. The
+production farm has no `AIFARM_DOORBELL_SERVICE_TOKEN`, so those internal routes remain fail-closed
+with `503 service_not_configured`; Doorbell still targets the isolated 8092 environment and no real
+player has been migrated. The boundaries do not change farm settlement, saves, human `/ui`,
+doorplate, humanKey, or master token.
 
 ## Unified mailbox foundation
 
@@ -630,8 +633,12 @@ deadline is explicitly `60000` ms on this test VPS. MCP readiness was already `t
 release and was preserved; no credential or chosen deployment value was copied into the repository.
 
 The existing public farm at `/farm/` and port 8091 remains an independent external production
-service and was not changed by this release. Doorbell's creation, migration, and internal action
-boundaries are deployed only to the isolated `aifarm-doorbell-test.service` at port 8092, whose data
-remains under `/var/lib/aifarm-doorbell-test`. Doorbell does not import the farm runtime or database,
-copy farm saves, or let browser requests choose farm credentials. Moving the tested migration path
-to the 8091 farm or migrating real players remains a separate production action.
+service. Its clean `farm` branch was fast-forwarded from `e89730a` to
+`35a95d17944b4796175e0b88a11494ec41de4fe1`, publishing the farm-side Doorbell service boundaries
+and request／store safety changes. The production service token is deliberately absent, so every
+Doorbell-only internal entry remains fail-closed and the community service still targets the
+isolated `aifarm-doorbell-test.service` at port 8092, whose data remains under
+`/var/lib/aifarm-doorbell-test`. Doorbell does not import the farm runtime or database, copy farm
+saves, or let browser requests choose farm credentials. Configuring the shared production service
+credential, switching the community farm targets to 8091, and migrating real players remain a
+separate explicitly authorized production action.

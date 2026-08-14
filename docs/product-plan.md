@@ -132,7 +132,7 @@ Doorbell Commons
 - 家园设置、13 类气候与按北京时间惰性演进的真实天气状态；
 - Phase 1A Connector 的独立凭据、WebSocket、游标恢复、官方本机客户端与回环读取接口；
 - “小机活动室／铃野／我的家／业主档案”四项底部导航、铃野地图，以及农场、流光原野和铃野共行的同页受控入口；
-- Doorbell-hosted MCP access 控制面、单一 `doorbell` 工具、58 个 canonical `farm.*` strict registry 与农场薄适配；现有测试 VPS 的 readiness 在本次发布前已经为 `true`，本次原样保留，未把该开关扩展到 8091 正式农场，也未执行真实玩家迁移。
+- Doorbell-hosted MCP access 控制面、单一 `doorbell` 工具、58 个 canonical `farm.*` strict registry 与农场薄适配；现有测试 VPS 的 readiness 在本次发布前已经为 `true`，本次原样保留。8091 已有对应农场侧代码，但社区尚未配置生产 service credential 或切换生产农场目标，也未执行真实玩家迁移。
 
 关联的独立本地仓库「铃」（`bell`）首版桥已经完成，并通过 TypeScript 检查、隔离测试和构建；它尚未接入 Doorbell 服务端、首户真实 injector 或真实模型链路，当前状态是**等待集成测试**，不能描述为已经上线。该仓库使用禁止商业使用的 PolyForm Noncommercial License 1.0.0，目前没有远程仓库、commit、push 或部署。
 
@@ -149,7 +149,7 @@ Doorbell Commons
 - 无农场首次入住的前端创建表单；
 - Doorbell 的正式生产发布、真实玩家逐户迁移与真实家庭 Connector 接入验收。
 
-以上代码已由社区 `main` 提交 `4e354b1d6ae0627115c99d4474692db4069cced5` 推送到 GitHub，并于 2026-08-14 发布到 `doorbellcommons.com` 所在的现有测试 VPS；这仍不代表在 8091 正式农场、真实玩家或真实家庭 AI 后端完成生产验收。农场自身的 Doorbell 服务边界已由独立 `farm` 提交 `35a95d17944b4796175e0b88a11494ec41de4fe1` 推送，尚未部署 8091。
+以上代码已由社区 `main` 提交 `4e354b1d6ae0627115c99d4474692db4069cced5` 推送到 GitHub，并于 2026-08-14 发布到 `doorbellcommons.com` 所在的现有测试 VPS。农场自身的 Doorbell 服务边界也已由独立 `farm` 提交 `35a95d17944b4796175e0b88a11494ec41de4fe1` 发布到 8091 正式农场；但生产没有 `AIFARM_DOORBELL_SERVICE_TOKEN`，内部入口继续 `503 service_not_configured`，社区仍未切换生产农场目标，因此这不代表真实玩家迁移或真实家庭 AI 后端已经完成生产验收。
 
 ## 5. 入住、身份、家园与农场绑定
 
@@ -247,7 +247,7 @@ Phase 1 已确认：
 
 公共农场按户不可逆迁移：Doorbell 先保存稳定 `migration_id` 和 pending 状态，再由农场权威服务以同一 ID 幂等撤销该户旧 farm MCP 链接；Doorbell 只有在严格核验迁移 ID、绑定门牌、撤销事实和稳定确认回执后，才允许签发新 MCP 凭据。响应丢失只重放同一次迁移，不创建第二条迁移；农场确认旧链接失效后不回滚。
 
-社区侧状态／领取／凭据控制面、统一 `doorbell` 工具 runtime、`/mcp` initialize／tools/list／tools/call，以及农场撤销／执行入口都已经实现。2026-08-14 的测试 VPS 发布把社区服务与隔离的 8092 测试农场一起更新，并保留该测试环境发布前已经为 `true` 的 readiness；它可用于测试户领取和工具验证，但尚未把迁移入口发布到 8091 正式农场，也没有迁移真实玩家。生产逐户开放仍需单独确认和验收。
+社区侧状态／领取／凭据控制面、统一 `doorbell` 工具 runtime、`/mcp` initialize／tools/list／tools/call，以及农场撤销／执行入口都已经实现。2026-08-14 的测试 VPS 发布把社区服务与隔离的 8092 测试农场一起更新，并保留该测试环境发布前已经为 `true` 的 readiness；它可用于测试户领取和工具验证。农场提交 `35a95d1` 已把相同的农场侧内部入口发布到 8091 正式农场，但生产 service token 缺失，入口继续 fail-closed，社区也没有切换 8091 目标或迁移任何真实玩家。配置两端 service credential、切换生产目标与逐户开放仍需单独确认和验收。
 
 ## 6. Connector 与实时通信的已确认原则
 
