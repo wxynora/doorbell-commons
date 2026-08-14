@@ -73,6 +73,11 @@ const farmRewardGranter = new FarmRewardClient({
 const reportBellError = (error: unknown): void => {
   process.stderr.write(`[doorbell-bell] ${error instanceof Error ? error.name : "UnknownError"}\n`);
 };
+const reportMcpNotificationError = (error: unknown): void => {
+  process.stderr.write(
+    `[doorbell-mcp-notification] ${error instanceof Error ? error.name : "UnknownError"}\n`,
+  );
+};
 const bellService = new BellService({
   database,
   registrationAuth,
@@ -105,6 +110,7 @@ const mcpRuntime = new DoorbellMcpRuntime({
   registrationAuth,
   farmActions: farmMcpActions,
   mcpEndpoint: serverConfig.mcpEndpoint,
+  onNotificationDeliveryError: reportMcpNotificationError,
 });
 const mcpAccessService = new McpAccessService({
   database,

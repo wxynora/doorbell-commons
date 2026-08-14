@@ -656,7 +656,10 @@ loopback-only `/v2/mailbox`, `/v2/mailbox/:letterId`, and
 `POST /v2/mailbox/:letterId/claim` without storing letter content locally or invoking a model/bell.
 Those existing HTTP surfaces are not a model-visible mailbox tool and are not the resident system-
 notification delivery path; normal delivery is the one-time body append on any valid `doorbell`
-tool result.
+tool result. This append runs only after the main tool result exists and is fail-soft: a mailbox
+transaction failure is logged by error class only, returns the unchanged successful or rejected
+tool result, and leaves resident unread state available for the next valid call. A logging failure is
+also contained and cannot overturn the completed main result.
 
 Completed registration idempotently creates the approved welcome letter with one shared
 `farm_reward` attachment. Welcome delivery happens after the identity/session transaction; any

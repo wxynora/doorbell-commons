@@ -105,6 +105,7 @@ interface RuntimeHarness {
   database: CommunityDatabase;
   membership: FakeGroupMembership;
   farmActions: FakeFarmActions;
+  notificationErrors: unknown[];
   mcpRuntime: DoorbellMcpRuntime;
   now: { value: number };
   close(): Promise<void>;
@@ -146,6 +147,7 @@ function openRuntimeHarness(databasePath: string): RuntimeHarness {
     NOW + 2,
   );
   const farmActions = new FakeFarmActions();
+  const notificationErrors: unknown[] = [];
   const now = { value: NOW };
   const mcpRuntime = new DoorbellMcpRuntime({
     database,
@@ -153,6 +155,7 @@ function openRuntimeHarness(databasePath: string): RuntimeHarness {
     farmActions,
     mcpEndpoint: "https://doorbell.example/mcp",
     now: () => now.value,
+    onNotificationDeliveryError: (error) => notificationErrors.push(error),
   });
   const app = buildApp({
     groupId: COMMUNITY_QQ_GROUP_ID,
@@ -167,6 +170,7 @@ function openRuntimeHarness(databasePath: string): RuntimeHarness {
     database,
     membership,
     farmActions,
+    notificationErrors,
     mcpRuntime,
     now,
     close: async () => {
@@ -806,6 +810,69 @@ test("any valid doorbell call delivers resident system notifications once withou
     const rejectedResult = rejected.json().result;
     assert.equal(rejectedResult.content[0].text, "没有成熟作物\n\n失败结果里的系统通知。");
     assert.equal(rejectedResult.structuredContent.error.message, rejectedResult.content[0].text);
+  } finally {
+    await harness.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("notification delivery failure cannot overturn a completed farm action", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "doorbell-mcp-notification-fail-soft-"));
+  const harness = openRuntimeHarness(join(directory, "doorbell.sqlite"));
+  try {
+    const binding = harness.database.authenticateMcpCredentialHash(
+      hashMcpCredential(MCP_CREDENTIAL),
+    );
+    assert(binding);
+    const homeId = harness.database.findHomeIdByResidentId(binding.residentId);
+    assert(homeId);
+    const cadencePriming = await postMcp(harness, call("farm.status", {}));
+    assert.equal(cadencePriming.statusCode, 200);
+    harness.farmActions.calls.length = 0;
+    harness.database.deliverMailboxLetter({
+      letterId: "40000000-0000-4000-8000-000000000004",
+      homeId,
+      idempotencyKey: "system:resident-notice-fail-soft",
+      category: "system",
+      title: "不进入小机结果的标题",
+      body: "稍后补送的系统通知。",
+      createdAt: NOW + 40,
+      attachment: null,
+    });
+
+    const takeNotifications = harness.database.takeResidentMailboxNotifications.bind(
+      harness.database,
+    );
+    harness.database.takeResidentMailboxNotifications = () => {
+      throw new Error("simulated notification database failure");
+    };
+
+    const completed = await postMcp(harness, call("farm.harvest", {}));
+    assert.equal(completed.statusCode, 200);
+    assert.equal(completed.json().result.content[0].text, "harvest OK");
+    assert.equal(harness.farmActions.calls.length, 1);
+    assert.equal(harness.farmActions.calls[0]?.action, "harvest");
+    assert.equal(harness.notificationErrors.length, 1);
+    assert.equal(
+      harness.notificationErrors[0] instanceof Error
+        ? harness.notificationErrors[0].name
+        : "UnknownError",
+      "Error",
+    );
+    assert.equal(
+      harness.database.listMailboxLetters(homeId, "resident", 1, 8).letters[0]?.isNew,
+      true,
+    );
+
+    harness.database.takeResidentMailboxNotifications = takeNotifications;
+    const recovered = await postMcp(harness, call("farm.help", {}));
+    assert.match(recovered.json().result.content[0].text, /稍后补送的系统通知。$/u);
+    assert.equal(harness.farmActions.calls.length, 1);
+    assert.equal(harness.notificationErrors.length, 1);
+    assert.equal(
+      harness.database.listMailboxLetters(homeId, "resident", 1, 8).letters[0]?.isNew,
+      false,
+    );
   } finally {
     await harness.close();
     rmSync(directory, { recursive: true, force: true });

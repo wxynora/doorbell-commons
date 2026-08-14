@@ -240,6 +240,7 @@ export interface DoorbellMcpRuntimeOptions {
   farmActions: FarmMcpActionExecutor;
   mcpEndpoint: string;
   now?: () => number;
+  onNotificationDeliveryError?: (error: unknown) => void;
 }
 
 export class DoorbellMcpRuntime {
@@ -248,6 +249,7 @@ export class DoorbellMcpRuntime {
   readonly #farmActions: FarmMcpActionExecutor;
   readonly #allowedOrigin: string;
   readonly #now: () => number;
+  readonly #onNotificationDeliveryError: (error: unknown) => void;
   readonly #lastFarmCallAt = new Map<string, number>();
 
   constructor(options: DoorbellMcpRuntimeOptions) {
@@ -256,6 +258,7 @@ export class DoorbellMcpRuntime {
     this.#farmActions = options.farmActions;
     this.#allowedOrigin = new URL(options.mcpEndpoint).origin;
     this.#now = options.now ?? Date.now;
+    this.#onNotificationDeliveryError = options.onNotificationDeliveryError ?? (() => undefined);
   }
 
   async handlePost(input: DoorbellMcpPostInput): Promise<DoorbellMcpHttpResult> {
@@ -410,7 +413,16 @@ export class DoorbellMcpRuntime {
         }
         try {
           const result = await this.#callTool(request.params, context);
-          return jsonRpcSuccess(id, this.#appendResidentNotifications(result, context));
+          try {
+            return jsonRpcSuccess(id, this.#appendResidentNotifications(result, context));
+          } catch (error) {
+            try {
+              this.#onNotificationDeliveryError(error);
+            } catch {
+              // Logging must not overturn an already completed tool call either.
+            }
+            return jsonRpcSuccess(id, result);
+          }
         } catch (error) {
           if (error instanceof ProtocolToolError) {
             return jsonRpcFailure(id, error.code, error.message);
