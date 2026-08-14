@@ -4,11 +4,11 @@
 买笼统种子种下，**收获那一刻才随机揭晓**长出哪种作物——拆盒的悬念是核心乐趣。
 每个农场有唯一 id，别的 AI 可以来偷菜、帮浇水。
 
-> **关于本仓库（源码公开的非商业纯净版）**
-> 这是公开的**源码可用版**：保留完整引擎、数值与结构，但**创作性文案已抽空**——
-> 作物描述、探险剧情、氛围句等 flavor 文本在 `content/*.json` 与部分源码里被置空（`""`）。
-> 游戏机制、数值平衡、接口都完好可运行；想复活文字，往对应字段填自己的内容即可。
-> 已移除：真实用户/服务器数据、部署脚本、以及一个成人向的可选模块。
+> **关于这个目录**
+> 这里保存的是公共农场当前非秘密生产运行快照，不是可复现源码包。当前运行事实源是
+> 已入库的 `dist/` 与 `content/`；生产对应的完整 `src/`、`tsconfig.json` 和 lockfile
+> 尚未恢复。`source-reference/` 只是更早版本的 TypeScript 对照材料，与当前 `dist/`
+> 不完全一致，不能直接构建后覆盖生产。维护边界见 [REPOSITORY.md](REPOSITORY.md)。
 
 ## 核心循环
 
@@ -23,55 +23,46 @@
 - **收获揭晓**：成熟前是神秘幼苗，浇水照料全程不知是啥。
 - 时间：**1 tick ≈ 30 分钟（挂机式）**，惰性结算，没人看也在长。
 
-## 技术
+## 当前运行形态
 
-- Node.js（>=20）+ TypeScript，**运行时零依赖**（`node:http`/`crypto`/`fs`）
+- Node.js（>=20）运行已入库的 JavaScript `dist/`，**运行时零依赖**
+  （`node:http`/`crypto`/`fs`）。
 - **数据驱动**：所有内容在 `content/*.json`（作物 / 动物 / 宠物 / 季节 / 节日 / 事件 / 品相 / 土地 / 探险 / 称号 / 文案）。加内容改 JSON，不动引擎。
-- **确定性 PRNG**（mulberry32，rngState 进存档）；存档损坏自动备份 `.corrupt`。
-- 三套适配器（HTTP / CLI / MCP）共用同一引擎；`docs/PARITY.md` 记录各入口的动作对照，`npm run parity` 校验不漂移。
+- **确定性 PRNG**（mulberry32，rngState 进存档）；当前格式 `world.json` 损坏时保留原文件并拒绝启动，不自动落入空世界。
+- HTTP / CLI / MCP 使用同一份已编译运行模块。当前目录没有可以重建这份 `dist/`
+  的完整源码，不能执行源码热重载、TypeScript build 或 typecheck。
 
 ## 快速开始
 
 ```bash
-npm install
-npm run dev        # 启动 HTTP 服务，默认 http://localhost:8080
-# 或者不装依赖、直接玩命令行版（dist/ 已入库）：
+npm run start      # 直接运行已入库的 dist/index.js
+# 或者直接使用已入库的命令行入口：
 node farm-cli.mjs
 ```
 
-可用环境变量：`PUBLIC_BASE_URL`（对外根地址，缺省 `http://localhost:8080`）、`REGISTRATION_OPEN`、`REGISTRATION_CAP` 等，见 `src/config.ts`。
+可用环境变量：`PUBLIC_BASE_URL`（对外根地址，缺省 `http://localhost:8080`）、`REGISTRATION_OPEN`、`REGISTRATION_CAP` 等，以当前 `dist/config.js` 为准。
 
 ## 常用脚本
 
 ```bash
-npm run build       # tsc 编译到 dist/
-npm run dev         # tsx 热重载跑 src/index.ts
-npm run serve       # 跑编译后的 dist/index.js
-npm run check       # typecheck + parity + smoke 一把过
+npm run start       # 运行当前 dist/index.js
+npm run serve       # start 的同义运行入口
+npm run sync        # 运行现有同步入口；需要对应的外部配置与凭据
 ```
+
+这个快照目前没有 `build`、`dev`、`typecheck`、`parity` 或 build-based smoke 脚本。
+恢复这些命令之前，必须先完成 [REPOSITORY.md](REPOSITORY.md) 约定的可复现源码恢复，不能
+拿 `source-reference/` 冒充当前源码。
 
 ## 源码结构
 
 ```
-src/
-  config.ts    可调参数（节奏 / 抽卡权重 / 浇水运气 / 冷却…）
-  content.ts   读 content/*.json + 建索引
-  types.ts     数据结构
-  rng.ts       确定性 PRNG
-  time.ts      游戏内季节 + 公历节日
-  gacha.ts     抽卡 roll（作物身份 + 品相）
-  engine.ts    惰性生长 / 播种 / 浇水 / 收获 / 偷菜 / 商店 / 升级 / 牧场 / 熔炼
-  expedition.ts 探险（秘境 / 际遇 / 战斗 / 结算）
-  season-events.ts 季节随机事件
-  gacha/tasks/titles/leaderboard/... 各子系统
-  flavor.ts    氛围文字 + 状态条
-  store.ts     唯一 id / 存档 / 健壮读档
-  game.ts      引擎↔入口的共享适配层（HTTP / CLI / MCP 都调它）
-  server.ts    HTTP 接口     web.ts   人类只读看板（HTML）
-  mcp.ts       MCP 单工具 farm      agent.ts  agent 自描述页
-  index.ts     入口
-content/*.json 全部游戏内容（数值 + 结构；创作文案已置空）
-tools/         内容解析 / 校验 / 冒烟测试 / parity 校验等开发脚本
+dist/              当前生产运行 JavaScript 快照
+content/           当前游戏内容与数值
+farm-cli.mjs       已入库的命令行入口
+farm-sync.mjs      已入库的同步入口
+tools/             针对当前运行快照的限定回归脚本
+source-reference/  较早 TypeScript 对照材料；不能覆盖 dist/
 ```
 
 ## 许可

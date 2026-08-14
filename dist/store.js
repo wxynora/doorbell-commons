@@ -1,4 +1,5 @@
 // 农场仓库：唯一 id、内存索引、JSON 存档（含 rngState）、健壮读档。
+import { createHash, randomInt } from "node:crypto";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,6 +10,7 @@ import { NPC_ID } from "./config.js";
 import { ensureFishing } from "./fishing.js";
 import { glimmerAchievementRewardText, normalizeGlimmerFarm, normalizeGlimmerWorld, settleGlimmerAchievementRewards } from "./glimmer.js";
 import { normalizePublicExpeditionWorld } from "./public-expedition.js";
+import { crops } from "./content.js";
 const DATA_DIR = process.env.AIFARM_DATA_DIR
     ? resolve(process.env.AIFARM_DATA_DIR)
     : resolve(dirname(fileURLToPath(import.meta.url)), "../data");
@@ -18,8 +20,27 @@ const UGC_FILE = resolve(DATA_DIR, "ugc.json");
 const farms = new Map();
 const MAINTENANCE_GRANTS = JSON.parse(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "../content/maintenance-grants.json"), "utf8"));
 let appliedMaintenanceGrantIds = [];
+let doorbellWelcomeRewardGrants = [];
+let doorbellFarmCreations = [];
 let glimmerWorld = normalizeGlimmerWorld({});
 let publicExpeditionWorld = normalizePublicExpeditionWorld({});
+const DOORBELL_WELCOME_SILVER = 200;
+const SSR_CROPS = crops.filter((crop) => crop?.rarity === "SSR");
+export class DoorbellWelcomeRewardError extends Error {
+    constructor(status, code, message) {
+        super(message);
+        this.name = "DoorbellWelcomeRewardError";
+        this.status = status;
+        this.code = code;
+    }
+}
+export class DoorbellFarmCreationError extends Error {
+    constructor(code, message) {
+        super(message);
+        this.name = "DoorbellFarmCreationError";
+        this.code = code;
+    }
+}
 export function normalizeFarm(f) {
     f.materials ??= {};
     f.seeds ??= {};
@@ -71,6 +92,52 @@ export function createFarm(name, opts) {
     save();
     return farm;
 }
+function doorbellFarmCreationFingerprint(name, opts) {
+    return createHash("sha256").update(JSON.stringify([
+        String(name ?? "").trim(),
+        String(opts?.aiName ?? "").trim(),
+        String(opts?.humanName ?? "").trim(),
+    ]), "utf8").digest("hex");
+}
+export function findDoorbellFarmCreation(creationId, name, opts) {
+    const normalizedCreationId = String(creationId ?? "").trim();
+    const existing = doorbellFarmCreations.find((entry) => entry.creationId === normalizedCreationId);
+    if (!existing)
+        return undefined;
+    const fingerprint = doorbellFarmCreationFingerprint(name, opts);
+    if (existing.requestFingerprint !== fingerprint)
+        throw new DoorbellFarmCreationError("creation_conflict", "The creation ID is already bound to different farm details");
+    const farm = farms.get(existing.farmId);
+    if (!farm)
+        throw new DoorbellFarmCreationError("creation_contract_unavailable", "The creation receipt no longer resolves to a farm");
+    return { created: false, farm };
+}
+export function createDoorbellFarm(creationId, name, opts) {
+    const existing = findDoorbellFarmCreation(creationId, name, opts);
+    if (existing)
+        return existing;
+    const normalizedCreationId = String(creationId ?? "").trim();
+    const farm = makeFarm(name, undefined, opts);
+    while (farms.has(farm.id))
+        farm.id = genCode();
+    const record = {
+        creationId: normalizedCreationId,
+        farmId: farm.id,
+        requestFingerprint: doorbellFarmCreationFingerprint(name, opts),
+        createdAt: farm.createdAt,
+    };
+    farms.set(farm.id, farm);
+    doorbellFarmCreations.push(record);
+    try {
+        save();
+    }
+    catch (error) {
+        doorbellFarmCreations.pop();
+        farms.delete(farm.id);
+        throw error;
+    }
+    return { created: true, farm };
+}
 export const getFarm = (id) => farms.get(id);
 export const allFarms = () => [...farms.values()];
 /** 真实玩家农场（排除常驻 NPC 阿土）——排行榜等"只算玩家"的地方用。 */
@@ -119,6 +186,59 @@ export function applyGlimmerAchievementRewardBackfill(farmValues = farms.values(
     }
     return { applied: count > 0, count, achievements, coins, silver };
 }
+/** Doorbell 欢迎礼物：服务端 humanKey 定位、grantId 全局幂等，不复制到农场旧通知。 */
+export function grantDoorbellWelcomeReward(humanKey, grantId, now = Date.now(), chooseIndex = randomInt) {
+    const normalizedHumanKey = typeof humanKey === "string" ? humanKey : "";
+    const normalizedGrantId = typeof grantId === "string" ? grantId.trim() : "";
+    if (!normalizedHumanKey || !normalizedGrantId) {
+        throw new DoorbellWelcomeRewardError(400, "invalid_request", "human_key and grant_id are required");
+    }
+    const farm = playerFarms().find((candidate) => candidate.humanKey === normalizedHumanKey);
+    if (!farm) {
+        throw new DoorbellWelcomeRewardError(404, "farm_credential_invalid", "The farm human credential is invalid");
+    }
+    const existing = doorbellWelcomeRewardGrants.find((grant) => grant.grantId === normalizedGrantId);
+    if (existing) {
+        if (existing.farmId !== farm.id) {
+            throw new DoorbellWelcomeRewardError(409, "grant_target_mismatch", "The grant is already bound to another farm");
+        }
+        return { applied: false, ...existing };
+    }
+    if (SSR_CROPS.length === 0) {
+        throw new DoorbellWelcomeRewardError(503, "reward_catalog_unavailable", "No SSR seed is available");
+    }
+    const selectedIndex = chooseIndex(SSR_CROPS.length);
+    const seed = SSR_CROPS[selectedIndex];
+    if (!seed) {
+        throw new DoorbellWelcomeRewardError(503, "reward_catalog_unavailable", "No SSR seed is available");
+    }
+    normalizeFarm(farm);
+    const previousSilver = farm.silver;
+    const previousSeedCount = farm.seeds[seed.id] ?? 0;
+    const grant = {
+        grantId: normalizedGrantId,
+        farmId: farm.id,
+        seedId: seed.id,
+        seedName: seed.name,
+        grantedAt: now,
+    };
+    farm.silver = previousSilver + DOORBELL_WELCOME_SILVER;
+    farm.seeds[seed.id] = previousSeedCount + 1;
+    doorbellWelcomeRewardGrants.push(grant);
+    try {
+        save();
+    }
+    catch (error) {
+        farm.silver = previousSilver;
+        if (previousSeedCount === 0)
+            delete farm.seeds[seed.id];
+        else
+            farm.seeds[seed.id] = previousSeedCount;
+        doorbellWelcomeRewardGrants.pop();
+        throw error;
+    }
+    return { applied: true, ...grant };
+}
 export function insertFarm(farm) {
     if (farms.has(farm.id))
         throw new Error(`farm id already exists: ${farm.id}`);
@@ -164,6 +284,8 @@ export function save() {
         format: "aifarm-world",
         version: 1,
         maintenanceGrantIds: appliedMaintenanceGrantIds,
+        doorbellWelcomeRewardGrants,
+        doorbellFarmCreations,
         farms: [...farms.values()],
         ugc: dumpUgc(),
         glimmer: glimmerWorld,
@@ -179,6 +301,12 @@ export function load() {
             }
             appliedMaintenanceGrantIds = Array.isArray(world.maintenanceGrantIds)
                 ? world.maintenanceGrantIds.map(String)
+                : [];
+            doorbellWelcomeRewardGrants = Array.isArray(world.doorbellWelcomeRewardGrants)
+                ? world.doorbellWelcomeRewardGrants.filter((grant) => grant && typeof grant.grantId === "string" && typeof grant.farmId === "string" && typeof grant.seedId === "string" && typeof grant.seedName === "string" && Number.isFinite(grant.grantedAt))
+                : [];
+            doorbellFarmCreations = Array.isArray(world.doorbellFarmCreations)
+                ? world.doorbellFarmCreations.filter((entry) => entry && typeof entry.creationId === "string" && typeof entry.farmId === "string" && typeof entry.requestFingerprint === "string" && Number.isFinite(entry.createdAt))
                 : [];
             glimmerWorld = normalizeGlimmerWorld(world.glimmer);
             publicExpeditionWorld = normalizePublicExpeditionWorld(world.publicExpedition);
@@ -199,12 +327,8 @@ export function load() {
             return;
         }
         catch (err) {
-            const bak = WORLD_FILE + ".corrupt";
-            try {
-                renameSync(WORLD_FILE, bak);
-            }
-            catch { }
-            console.error(`[store] 联机世界存档损坏，已备份到 ${bak}:`, err);
+            console.error(`[store] 联机世界存档损坏，拒绝启动并保留原文件 ${WORLD_FILE}:`, err);
+            throw new Error(`联机世界存档损坏，拒绝启动：${WORLD_FILE}`, { cause: err });
         }
     }
     if (existsSync(UGC_FILE)) {
@@ -214,6 +338,8 @@ export function load() {
         catch { /* 忽略 */ }
     }
     appliedMaintenanceGrantIds = [];
+    doorbellWelcomeRewardGrants = [];
+    doorbellFarmCreations = [];
     glimmerWorld = normalizeGlimmerWorld({});
     publicExpeditionWorld = normalizePublicExpeditionWorld({});
     if (!existsSync(DATA_FILE)) {

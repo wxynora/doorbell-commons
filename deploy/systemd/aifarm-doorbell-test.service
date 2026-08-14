@@ -1,0 +1,32 @@
+[Unit]
+Description=Isolated AI Farm for Doorbell migration testing
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=aifarm
+Group=aifarm
+WorkingDirectory=/opt/aifarm-doorbell-test
+Environment=PORT=8092
+Environment=HOST=127.0.0.1
+Environment=PUBLIC_BASE_URL=https://doorbellcommons.com/farm-test
+Environment=AIFARM_DATA_DIR=/var/lib/aifarm-doorbell-test
+EnvironmentFile=/etc/doorbell-commons/aifarm-doorbell-test.env
+ExecStart=/usr/bin/node /opt/aifarm-doorbell-test/dist/index.js
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=/var/lib/aifarm-doorbell-test
+
+[Install]
+WantedBy=multi-user.target

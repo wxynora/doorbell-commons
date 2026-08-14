@@ -1,12 +1,12 @@
 // 开放 HTTP 接口（node:http，零依赖）。业务逻辑复用 game.ts，保证与 CLI 同一套规则。
 import { createServer } from "node:http";
-import { randomUUID, randomBytes } from "node:crypto";
+import { randomUUID, randomBytes, timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { advance, steal, canStealNow, stealAvailability, stealShieldRemain, isUgcCrop, visitorWater, tryWaterReward, humanHarvestAll, humanHarvestLeft, ranchRoamLine, buyPotionSet, refreshShop, ranchCollect, ranchRemit, ranchBuyAccessory, ranchBuyDecoration, ranchWearAccessory, ranchTakeOffAccessory, ranchPlaceDecoration, ranchUnplaceDecoration, ranchUpgradeAnimal, ranchNameAnimal, ranchNamePet, ranchNamePatrolGoose, ranchTogglePin, dispatchRanchRaid, catchRanchRaid, settleRanchRaids, ensureHumanKey, takeInbox, takeRanchNotices, pushSocialInbox, pushLog, potionDailyLeft, designCrop, craft, nextUpgradeReq, toggleStar, cookingDebuffReason, cookingDebuffStatusText, bribeGuardDog, kitchenBuy, kitchenCook, kitchenUse, kitchenSell, kitchenSellMany, ranchFeedAnimal, kitchenView, dishSystemRecycleSilver, humanBarterList, humanBarterUnlist, humanBarterAccept } from "./engine.js";
 import { kitchenSellSelected } from "./engine.js";
 import { dispatch, HELP, farmView, viewShop, viewEncyclopedia, viewBag, shopBrief, viewMarket, buyFromMarket, visitView, ranchAgentSection, refPrice, tendNpc, buyNpcSeed, randomTip, hasDamagedPublicName, viewKitchen } from "./game.js";
 import { harvestText, stealThiefText, statusFooter, waterText, describeFarm } from "./flavor.js";
-import { createFarm, getFarm, allFarms, playerFarms, save, getGlimmerWorld, getPublicExpeditionWorld } from "./store.js";
+import { createFarm, getFarm, allFarms, playerFarms, save, getGlimmerWorld, getPublicExpeditionWorld, DoorbellFarmCreationError, createDoorbellFarm, findDoorbellFarmCreation, DoorbellWelcomeRewardError, grantDoorbellWelcomeReward } from "./store.js";
 import { MAX_BODY_BYTES, SYNC_MAX_BODY_BYTES, MAX_FARMS, MESSAGE_TEXT_MAX, MESSAGES_MAX, POTION_DAILY_CAP, POTION_CAP_LINE, HUMAN_HARVEST_DAILY_CAP, NPC_ID, SEED_PRICE, GROW_TICKS, RECIPE_PRICE, WELCOME_MAX, EXP_DAILY_CAP, EXP_MAX_CHARGES_PER_ENTRY, BASE, REGISTRATION_OPEN, REGISTRATION_CLOSED_TEXT, REGISTRATION_CAP, REGISTRATION_FULL_TEXT, SHOW_MIGRATION_NOTICE, MIGRATION_NOTICE_TEXT, MIGRATION_NOTICE_HTML } from "./config.js";
 import { allowRequest, allowCreate, sweepGuard } from "./guard.js";
 import { mintNonce, takeNonce, sweepNonces, htmlAgentPage, htmlReadme, htmlGuide, htmlNotice, htmlGenLink } from "./agent.js";
@@ -29,6 +29,7 @@ import { advancePublicExpedition, checkPublicContribution, currentPublicTask, fi
 // 首页只展开 POST/REST（核心玩法）；只能 GET / 只能点链接的接入写法收进 /get；/readme 是给人类伴侣看的新手攻略。
 // 机读默认紧凑 JSON；需要人工读时设环境变量 FARM_PRETTY=1 缩进输出。
 const PRETTY = process.env.FARM_PRETTY === "1";
+const DOORBELL_SERVICE_TOKEN = process.env.AIFARM_DOORBELL_SERVICE_TOKEN ?? "";
 const MCP_STATUS_IDLE_MS = 10 * 60 * 1000;
 const mcpLastToolAt = new Map();
 const GUESTBOOK_HELP = `
@@ -67,6 +68,283 @@ function jsonOut(res, code, body) {
 function textOut(res, code, t) {
     res.writeHead(code, { "Content-Type": "text/plain; charset=utf-8", ...NO_STORE });
     res.end(t);
+}
+function serviceTokenMatches(authorization) {
+    const prefix = "Bearer ";
+    if (!DOORBELL_SERVICE_TOKEN || typeof authorization !== "string" || !authorization.startsWith(prefix))
+        return false;
+    const received = Buffer.from(authorization.slice(prefix.length), "utf8");
+    const expected = Buffer.from(DOORBELL_SERVICE_TOKEN, "utf8");
+    return received.length === expected.length && timingSafeEqual(received, expected);
+}
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const FARM_DOORPLATE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/;
+const DOORBELL_EXECUTION_RESERVED_PARAMS = new Set([
+    "action",
+    "token",
+    "by",
+    "farm",
+    "farmId",
+    "farm_id",
+    "humanKey",
+    "human_key",
+    "agentKey",
+    "agent_key",
+    "detail",
+    "verbose",
+]);
+const DOORBELL_EXECUTION_BLOCKED_ACTIONS = new Set([
+    "new-token",
+    "npc",
+    "hot",
+    "ranking",
+    "adventure",
+    "exp",
+]);
+const isPlainObject = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+const farmByHumanKey = (humanKey) => playerFarms().find((farm) => farm.humanKey === humanKey);
+const legacyAgentAccessRevoked = (farm) => farm?.doorbellMcpMigration?.legacyMcpRevoked === true;
+function migrationReceipt(farm) {
+    const migration = farm.doorbellMcpMigration;
+    return {
+        migration_id: migration.migrationId,
+        confirmation_id: migration.confirmationId,
+        farm_doorplate: farm.id,
+        legacy_mcp_revoked: true,
+        revoked_at: migration.revokedAt,
+    };
+}
+function internalServiceError(res, status, code, message) {
+    return jsonOut(res, status, { ok: false, error: { code, message } });
+}
+function requireDoorbellService(req, res, method) {
+    if (!DOORBELL_SERVICE_TOKEN) {
+        internalServiceError(res, 503, "service_not_configured", "Doorbell farm service is not configured");
+        return false;
+    }
+    if (!serviceTokenMatches(req.headers.authorization)) {
+        internalServiceError(res, 401, "authentication_required", "A valid Doorbell service credential is required");
+        return false;
+    }
+    if (method !== "POST") {
+        internalServiceError(res, 405, "method_not_allowed", "Use POST for this service endpoint");
+        return false;
+    }
+    return true;
+}
+function validateFarmBinding(body) {
+    const humanKey = typeof body?.farm_human_key === "string" ? body.farm_human_key : "";
+    const expectedDoorplate = typeof body?.expected_farm_doorplate === "string" ? body.expected_farm_doorplate : "";
+    if (!humanKey)
+        return { error: { status: 400, code: "invalid_request", message: "farm_human_key is required" } };
+    if (!FARM_DOORPLATE_RE.test(expectedDoorplate))
+        return { error: { status: 400, code: "invalid_request", message: "expected_farm_doorplate is invalid" } };
+    const farm = farmByHumanKey(humanKey);
+    if (!farm)
+        return { error: { status: 404, code: "farm_credential_not_found", message: "The farm human credential is invalid" } };
+    if (farm.id !== expectedDoorplate)
+        return { error: { status: 409, code: "farm_doorplate_mismatch", message: "The farm human credential does not match the expected doorplate" } };
+    return { farm };
+}
+function doorbellFarmCreationReceipt(creationId, result) {
+    const farm = result.farm;
+    return {
+        creation_id: creationId,
+        created: result.created,
+        farm_doorplate: farm.id,
+        farm_name: farm.name,
+        ai_name: farm.aiName,
+        human_name: farm.humanName,
+        farm_human_key: farm.humanKey,
+        created_at: new Date(farm.createdAt).toISOString(),
+    };
+}
+async function handleDoorbellFarmCreation(req, res, method) {
+    if (!requireDoorbellService(req, res, method))
+        return;
+    try {
+        const body = await readJsonBody(req, MAX_BODY_BYTES);
+        const keys = isPlainObject(body) ? Object.keys(body) : [];
+        if (keys.length !== 4 || !keys.includes("creation_id") || !keys.includes("farm_name") || !keys.includes("ai_name") || !keys.includes("human_name") || !UUID_RE.test(String(body?.creation_id ?? "")))
+            return internalServiceError(res, 400, "invalid_request", "Submit only a valid creation_id, farm_name, ai_name, and human_name");
+        const farmName = typeof body.farm_name === "string" ? body.farm_name : "";
+        const aiName = typeof body.ai_name === "string" ? body.ai_name : "";
+        const humanName = typeof body.human_name === "string" ? body.human_name : "";
+        if (!farmName.trim() || !aiName.trim() || !humanName.trim() || hasDamagedRegistrationName(farmName, aiName, humanName))
+            return internalServiceError(res, 400, "invalid_request", "Farm creation names are invalid");
+        const creationId = String(body.creation_id);
+        let result = findDoorbellFarmCreation(creationId, farmName, { aiName, humanName });
+        if (!result) {
+            if (!REGISTRATION_OPEN)
+                return internalServiceError(res, 503, "registration_unavailable", REGISTRATION_CLOSED_TEXT);
+            if (REGISTRATION_CAP > 0 && playerFarms().length >= REGISTRATION_CAP)
+                return internalServiceError(res, 503, "registration_unavailable", REGISTRATION_FULL_TEXT);
+            if (allFarms().length >= MAX_FARMS)
+                return internalServiceError(res, 503, "registration_unavailable", "Farm capacity is full");
+            result = createDoorbellFarm(creationId, farmName, { aiName, humanName });
+        }
+        return jsonOut(res, result.created ? 201 : 200, doorbellFarmCreationReceipt(creationId, result));
+    }
+    catch (error) {
+        if (error instanceof PublicSyncError)
+            return internalServiceError(res, 400, "invalid_request", "The request body must be valid JSON");
+        if (error instanceof DoorbellFarmCreationError) {
+            if (error.code === "creation_conflict")
+                return internalServiceError(res, 409, error.code, error.message);
+            return internalServiceError(res, 500, error.code, error.message);
+        }
+        console.error("[doorbell-farm-creation] farm creation failed");
+        return internalServiceError(res, 503, "farm_creation_unavailable", "The farm could not be created");
+    }
+}
+async function handleDoorbellMcpMigration(req, res, method) {
+    if (!requireDoorbellService(req, res, method))
+        return;
+    try {
+        const body = await readJsonBody(req, MAX_BODY_BYTES);
+        const keys = isPlainObject(body) ? Object.keys(body) : [];
+        if (keys.length !== 3 || !keys.includes("migration_id") || !keys.includes("farm_human_key") || !keys.includes("expected_farm_doorplate") || !UUID_RE.test(String(body.migration_id ?? "")))
+            return internalServiceError(res, 400, "invalid_request", "Submit only a valid migration_id, farm_human_key, and expected_farm_doorplate");
+        const binding = validateFarmBinding(body);
+        if (binding.error)
+            return internalServiceError(res, binding.error.status, binding.error.code, binding.error.message);
+        const farm = binding.farm;
+        const migrationId = String(body.migration_id);
+        const existing = farm.doorbellMcpMigration;
+        if (existing) {
+            if (existing.migrationId !== migrationId)
+                return internalServiceError(res, 409, "migration_conflict", "This farm was migrated by a different operation");
+            if (farm.agentKey !== undefined) {
+                const previousAgentKey = farm.agentKey;
+                farm.agentKey = undefined;
+                try {
+                    save();
+                }
+                catch (error) {
+                    farm.agentKey = previousAgentKey;
+                    throw error;
+                }
+            }
+            return jsonOut(res, 200, migrationReceipt(farm));
+        }
+        const previousAgentKey = farm.agentKey;
+        farm.agentKey = undefined;
+        farm.doorbellMcpMigration = {
+            migrationId,
+            confirmationId: randomUUID(),
+            revokedAt: new Date().toISOString(),
+            legacyMcpRevoked: true,
+        };
+        try {
+            save();
+        }
+        catch (error) {
+            farm.agentKey = previousAgentKey;
+            delete farm.doorbellMcpMigration;
+            throw error;
+        }
+        return jsonOut(res, 200, migrationReceipt(farm));
+    }
+    catch (error) {
+        if (error instanceof PublicSyncError)
+            return internalServiceError(res, 400, "invalid_request", "The request body must be valid JSON");
+        console.error("[doorbell-mcp-migration] farm access revocation failed");
+        return internalServiceError(res, 503, "migration_unavailable", "The farm migration could not be completed");
+    }
+}
+function executeDoorbellFarmAction(farm, action, params, detail, now) {
+    const body = { ...params };
+    if (action === "wander") {
+        const result = wanderResult({ ...body, by: farm.id }, now, true);
+        return { status: result.ok === false ? 400 : 200, json: { ...result, ...(detail ? { farm: farmView(farm, now) } : {}) } };
+    }
+    if (action === "visit" && (body.to === undefined || String(body.to).trim() === "")) {
+        const result = visitListResult(farm);
+        return { status: result.ok === false ? 400 : 200, json: { ...result, ...(detail ? { farm: farmView(farm, now) } : {}) } };
+    }
+    if ((action === "block" || action === "unblock") && body.to !== undefined && String(body.to).trim() !== "") {
+        const resolved = resolveNumberedTarget(body.to, farm);
+        if (resolved?.error)
+            return { status: 400, json: { ok: false, text: resolved.error } };
+        const { to: _to, ...ownParams } = body;
+        return runFarm(farm.id, action, { ...ownParams, id: resolved.farm.id, token: farm.token }, undefined, now, { detail });
+    }
+    const social = action === "kitchen"
+        ? body.op === "use" && body.target === "guard-dog" && body.to !== undefined && String(body.to) !== ""
+        : body.to !== undefined && String(body.to) !== "";
+    const resolved = social ? resolveNumberedTarget(body.to, farm) : undefined;
+    if (resolved?.error)
+        return { status: 400, json: { ok: false, text: resolved.error } };
+    const target = resolved?.farm?.id ?? farm.id;
+    fillRunDefaults(action, body);
+    const injected = social
+        ? { ...body, by: farm.id, token: farm.token, targetRef: String(resolved.number) }
+        : { ...body, token: farm.token };
+    return runFarm(target, action, injected, social ? farm.id : body.id, now, { detail });
+}
+async function handleDoorbellFarmExecution(req, res, method) {
+    if (!requireDoorbellService(req, res, method))
+        return;
+    try {
+        const body = await readJsonBody(req, MAX_BODY_BYTES);
+        const keys = isPlainObject(body) ? Object.keys(body) : [];
+        const allowedKeys = new Set(["farm_human_key", "expected_farm_doorplate", "action", "params", "detail"]);
+        if (!isPlainObject(body) || keys.some((key) => !allowedKeys.has(key)) || keys.some((key) => key !== "detail" && body[key] === undefined))
+            return internalServiceError(res, 400, "invalid_request", "Submit only farm_human_key, expected_farm_doorplate, action, params, and optional detail");
+        if (typeof body.action !== "string" || !body.action.trim() || !isPlainObject(body.params) || (body.detail !== undefined && typeof body.detail !== "boolean"))
+            return internalServiceError(res, 400, "invalid_request", "action, params, or detail is invalid");
+        if (DOORBELL_EXECUTION_BLOCKED_ACTIONS.has(body.action))
+            return internalServiceError(res, 400, "unsupported_action", "This legacy farm action is not available through Doorbell");
+        const forbidden = Object.keys(body.params).find((key) => DOORBELL_EXECUTION_RESERVED_PARAMS.has(key));
+        if (forbidden)
+            return internalServiceError(res, 400, "invalid_request", `params.${forbidden} is reserved`);
+        const binding = validateFarmBinding(body);
+        if (binding.error)
+            return internalServiceError(res, binding.error.status, binding.error.code, binding.error.message);
+        if (!legacyAgentAccessRevoked(binding.farm))
+            return internalServiceError(res, 409, "farm_migration_required", "Legacy farm access must be revoked before Doorbell execution is enabled");
+        const out = executeDoorbellFarmAction(binding.farm, body.action, body.params, body.detail === true, Date.now());
+        return jsonOut(res, out.status, out.json);
+    }
+    catch (error) {
+        if (error instanceof PublicSyncError)
+            return internalServiceError(res, 400, "invalid_request", "The request body must be valid JSON");
+        console.error("[doorbell-farm-execution] action failed");
+        return internalServiceError(res, 503, "farm_unavailable", "The farm action could not be completed");
+    }
+}
+async function handleDoorbellWelcomeReward(req, res, method) {
+    if (!DOORBELL_SERVICE_TOKEN)
+        return jsonOut(res, 503, { ok: false, error: { code: "service_not_configured", message: "Doorbell reward service is not configured" } });
+    if (!serviceTokenMatches(req.headers.authorization))
+        return jsonOut(res, 401, { ok: false, error: { code: "authentication_required", message: "A valid Doorbell service credential is required" } });
+    if (method !== "POST")
+        return jsonOut(res, 405, { ok: false, error: { code: "method_not_allowed", message: "Use POST for this service endpoint" } });
+    try {
+        const body = await readJsonBody(req, MAX_BODY_BYTES);
+        const keys = body && typeof body === "object" && !Array.isArray(body) ? Object.keys(body) : [];
+        if (keys.length !== 2 || !keys.includes("grant_id") || !keys.includes("human_key"))
+            throw new DoorbellWelcomeRewardError(400, "invalid_request", "Submit only grant_id and human_key");
+        const result = grantDoorbellWelcomeReward(body.human_key, body.grant_id);
+        return jsonOut(res, 200, {
+            ok: true,
+            applied: result.applied,
+            grant_id: result.grantId,
+            farm_doorplate: result.farmId,
+            reward: {
+                seed: { id: result.seedId, name: result.seedName, rarity: "SSR", quantity: 1 },
+                silver: 200,
+            },
+        });
+    }
+    catch (error) {
+        if (error instanceof DoorbellWelcomeRewardError)
+            return jsonOut(res, error.status, { ok: false, error: { code: error.code, message: error.message } });
+        if (error instanceof PublicSyncError)
+            return jsonOut(res, 400, { ok: false, error: { code: "invalid_request", message: "The request body must be valid JSON" } });
+        console.error("[doorbell-reward] grant failed");
+        return jsonOut(res, 503, { ok: false, error: { code: "reward_unavailable", message: "The farm reward could not be granted" } });
+    }
 }
 /** 在原始字节层智能解码：玩家是 AI、HTTP 工具五花八门，不少客户端（如 Windows 下的工具）
  *  把中文按 GBK 而非 UTF-8 发出。必须在 utf8 解码「之前」判断——一旦 buf.toString('utf8') 把
@@ -123,35 +401,59 @@ function smartParams(search) {
     }
     return sp;
 }
-function readBody(req) {
-    return new Promise((r) => {
+class RequestBodyError extends Error {
+    constructor(status, code, message) {
+        super(message);
+        this.name = "RequestBodyError";
+        this.status = status;
+        this.code = code;
+    }
+}
+function readRequestBytes(req, maxBytes = MAX_BODY_BYTES) {
+    return new Promise((resolveBody, rejectBody) => {
         const chunks = [];
-        let len = 0;
-        let over = false;
-        req.on("data", (c) => {
-            if (over)
+        let length = 0;
+        let settled = false;
+        const fail = (error) => {
+            if (settled)
                 return;
-            chunks.push(c);
-            len += c.length;
-            if (len > MAX_BODY_BYTES) {
-                over = true;
-                chunks.length = 0;
-                req.destroy();
-            } // 超大 body 直接掐断，防撑内存
+            settled = true;
+            chunks.length = 0;
+            rejectBody(error);
+        };
+        req.on("data", (chunk) => {
+            if (settled)
+                return;
+            length += chunk.length;
+            if (length > maxBytes) {
+                fail(new RequestBodyError(413, "body_too_large", `请求体超过 ${maxBytes} 字节限制。`));
+            }
+            else {
+                chunks.push(chunk);
+            }
         });
         req.on("end", () => {
-            if (over)
-                return r({});
-            const d = smartDecode(Buffer.concat(chunks));
-            try {
-                r(d ? JSON.parse(d) : {});
-            }
-            catch {
-                r({});
-            }
+            if (settled)
+                return;
+            settled = true;
+            resolveBody(Buffer.concat(chunks));
         });
-        req.on("error", () => r({}));
+        req.on("aborted", () => fail(new RequestBodyError(400, "request_body_aborted", "请求体传输未完成。")));
+        req.on("error", () => fail(new RequestBodyError(400, "request_body_read_failed", "请求体读取失败。")));
+        req.on("close", () => {
+            if (!settled && !req.complete)
+                fail(new RequestBodyError(400, "request_body_aborted", "请求体传输未完成。"));
+        });
     });
+}
+async function readBody(req) {
+    const d = smartDecode(await readRequestBytes(req));
+    try {
+        return d ? JSON.parse(d) : {};
+    }
+    catch {
+        throw new RequestBodyError(400, "invalid_json", "请求体不是有效 JSON。");
+    }
 }
 function readJsonBody(req, maxBytes) {
     return new Promise((resolveBody, rejectBody) => {
@@ -183,29 +485,12 @@ function readJsonBody(req, maxBytes) {
     });
 }
 /** 读 application/x-www-form-urlencoded 表单体（人类牧场页的 POST 表单用）。 */
-function readFormBody(req) {
-    return new Promise((r) => {
-        let d = "";
-        let over = false;
-        req.on("data", (c) => { if (over)
-            return; d += c; if (d.length > MAX_BODY_BYTES) {
-            over = true;
-            d = "";
-            req.destroy();
-        } });
-        req.on("end", () => {
-            if (over)
-                return r({});
-            const o = {};
-            try {
-                for (const [k, v] of new URLSearchParams(d))
-                    o[k] = v;
-            }
-            catch { /* 忽略 */ }
-            r(o);
-        });
-        req.on("error", () => r({}));
-    });
+async function readFormBody(req) {
+    const d = (await readRequestBytes(req)).toString("utf8");
+    const o = {};
+    for (const [k, v] of new URLSearchParams(d))
+        o[k] = v;
+    return o;
 }
 /** 取客户端 IP（兼容反代场景下的 X-Forwarded-For）。 */
 function clientIp(req) {
@@ -247,6 +532,8 @@ const READONLY_ACTIONS = new Set(["status", "shop", "bag", "market", "encycloped
 const mutatingViaGet = (method, action) => method !== "POST" && !!action && !READONLY_ACTIONS.has(action);
 // 农场专属链接的 key（= agentKey，和 /agent 点击页同一把）。缺了就懒生成，让每座农场都能用 /a/<key> 通道。
 function ensureAgentKey(f) {
+    if (legacyAgentAccessRevoked(f))
+        return undefined;
     if (!f.agentKey) {
         f.agentKey = newAgentKey();
         save();
@@ -421,11 +708,11 @@ function wanderResult(b, now, numbered = false) {
     return { ok: true, text, farms };
 }
 // —— 农场作用域的动作/视图：POST、REST-GET、/c 三个入口共用同一套（按 action 名分流，不看 HTTP 方法）——
-function runFarmCore(farmId, action, b, encArg, now) {
+function runFarmCore(farmId, action, b, encArg, now, options = {}) {
     const f = fresh(farmId);
     if (!f)
         return { status: 400, json: { ok: false, text: `找不到农场 ${farmId || "(没给 farm)"}` } };
-    const detail = b?.detail === true || b?.detail === "1" || b?.detail === "true"
+    const detail = options.detail === true || b?.detail === true || b?.detail === "1" || b?.detail === "true"
         || b?.verbose === true || b?.verbose === "1" || b?.verbose === "true";
     const vf = (ff) => detail ? { farm: farmView(ff, now) } : {};
     if (action === "visit") {
@@ -756,8 +1043,8 @@ function authenticatedResultFarm(farmId, body) {
     const own = getFarm(farmId);
     return own?.token && own.token === token ? own : undefined;
 }
-function runFarm(farmId, action, body = {}, encArg, now) {
-    const out = runFarmCore(farmId, action, body, encArg, now);
+function runFarm(farmId, action, body = {}, encArg, now, options = {}) {
+    const out = runFarmCore(farmId, action, body, encArg, now, options);
     const viewer = authenticatedResultFarm(farmId, body);
     if (!viewer || !out?.json || out.status === 401 || out.status === 403)
         return out;
@@ -780,7 +1067,7 @@ function runFarm(farmId, action, body = {}, encArg, now) {
 function resolveAgent(playKey) {
     if (!playKey)
         return undefined;
-    const f = allFarms().find((x) => x.agentKey === playKey);
+    const f = allFarms().find((x) => !legacyAgentAccessRevoked(x) && x.agentKey === playKey);
     return f ? (fresh(f.id) ?? undefined) : undefined;
 }
 /** 自动取 3 个素材（凑齐已学配方优先，否则按库存取前 3 个）*/
@@ -1379,6 +1666,14 @@ export function startServer(port, host = "127.0.0.1") {
             res.writeHead(200, { "Content-Type": contentType, "Content-Length": asset.byteLength, "Cache-Control": "public, max-age=86400" });
             return res.end(asset);
         }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "welcome-reward" && parts.length === 3)
+            return handleDoorbellWelcomeReward(req, res, method);
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "farm-creation" && parts.length === 3)
+            return handleDoorbellFarmCreation(req, res, method);
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "mcp-migrations" && parts[3] === "revoke-farm-access" && parts.length === 4)
+            return handleDoorbellMcpMigration(req, res, method);
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "farm-actions" && parts[3] === "execute" && parts.length === 4)
+            return handleDoorbellFarmExecution(req, res, method);
         const now = Date.now();
         const ip = clientIp(req);
         if (!allowRequest(ip, now))
@@ -1825,6 +2120,8 @@ export function startServer(port, host = "127.0.0.1") {
                         const action = act.slice(5);
                         if (["design", "message", "craft", "visit"].includes(action)) {
                             const agentKey = ensureAgentKey(f);
+                            if (!agentKey)
+                                return internalServiceError(res, 409, "legacy_agent_access_revoked", "Legacy agent access has been migrated to Doorbell");
                             const q = Object.fromEntries(sp);
                             const params = new URLSearchParams();
                             params.set("a", action);
@@ -1992,6 +2289,8 @@ export function startServer(port, host = "127.0.0.1") {
                         save();
                         return jsonOut(res, 200, { ok: true, text: "已撤销该农场的 Agent 链接（原链接立即失效）。" });
                     }
+                    if (legacyAgentAccessRevoked(f))
+                        return internalServiceError(res, 409, "legacy_agent_access_revoked", "Legacy agent access has been migrated to Doorbell");
                     f.token = randomUUID().replace(/-/g, ""); // 先轮换可能已泄露的 token
                     f.agentKey = newAgentKey();
                     ensureHumanKey(f); // 伴侣前端钥匙（稳定，token 轮换不影响它）
@@ -2141,6 +2440,8 @@ export function startServer(port, host = "127.0.0.1") {
             reply(res, false, `这条路走不通：${url.pathname}（GET / 看玩法）`);
         }
         catch (err) {
+            if (err instanceof RequestBodyError)
+                return jsonOut(res, err.status, { ok: false, error: { code: err.code, message: err.message } });
             if (err instanceof PublicSyncError)
                 return jsonOut(res, err.status, { ok: false, error: err.message });
             console.error(err);
@@ -2149,5 +2450,6 @@ export function startServer(port, host = "127.0.0.1") {
     });
     setInterval(() => { const t = Date.now(); sweepGuard(t); sweepNonces(t); sweepAgentFlashes(t); }, 60_000).unref(); // 周期清理限流表 + 过期 nonce/flash
     server.listen(port, host, () => console.log(`[server] 🌾 AI 农场已开门 http://${host}:${port}`));
+    return server;
 }
 //# sourceMappingURL=server.js.map

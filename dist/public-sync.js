@@ -419,6 +419,7 @@ export function syncFarm(farmId, syncKey, body) {
         merged.token = current.token;
         merged.humanKey = current.humanKey;
         merged.agentKey = current.agentKey;
+        merged.doorbellMcpMigration = current.doorbellMcpMigration;
         const events = remoteEvents(owner, merged);
         const nextHub = {
             ...hub,
