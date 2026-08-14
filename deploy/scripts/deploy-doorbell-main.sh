@@ -30,7 +30,7 @@ fi
 readonly TARGET_SHA="$1"
 readonly SHORT_SHA="${TARGET_SHA:0:7}"
 
-for required_command in curl git node npm systemctl; do
+for required_command in curl git node npm systemctl tar; do
   command -v "${required_command}" >/dev/null || {
     fail "required command is unavailable: ${required_command}"
     exit 1
@@ -82,20 +82,7 @@ git -C "${SOURCE_DIRECTORY}" merge --ff-only "${TARGET_SHA}"
   exit 1
 }
 
-(
-  cd "${SOURCE_DIRECTORY}"
-  npm ci
-  npm run build -w @doorbell/protocol
-  npm run build -w @doorbell/server
-  npm run build -w @doorbell/web
-  npm prune --omit=dev
-)
-
-[[ -z "$(git -C "${SOURCE_DIRECTORY}" status --porcelain)" ]] || {
-  fail "build changed tracked source files"
-  exit 1
-}
-
+build_directory="$(mktemp -d "/opt/.doorbell-commons.build.${SHORT_SHA}.XXXXXX")"
 candidate_directory="$(mktemp -d "/opt/.doorbell-commons.candidate.${SHORT_SHA}.XXXXXX")"
 previous_directory=""
 failed_directory=""
@@ -128,9 +115,27 @@ cleanup_and_rollback() {
   if [[ -n "${candidate_directory}" && -d "${candidate_directory}" ]]; then
     rm -rf -- "${candidate_directory}"
   fi
+  if [[ -n "${build_directory}" && -d "${build_directory}" ]]; then
+    rm -rf -- "${build_directory}"
+  fi
   exit "${exit_status}"
 }
 trap cleanup_and_rollback EXIT
+
+git -C "${SOURCE_DIRECTORY}" archive "${TARGET_SHA}" | tar -x -C "${build_directory}"
+(
+  cd "${build_directory}"
+  npm ci
+  npm run build -w @doorbell/protocol
+  npm run build -w @doorbell/server
+  npm run build -w @doorbell/web
+  npm prune --omit=dev
+)
+
+[[ -z "$(git -C "${SOURCE_DIRECTORY}" status --porcelain)" ]] || {
+  fail "build changed tracked source files"
+  exit 1
+}
 
 chmod 0755 "${candidate_directory}"
 install -d -m 0755 \
@@ -141,17 +146,17 @@ install -d -m 0755 \
 cp -a \
   "${SOURCE_DIRECTORY}/package.json" \
   "${SOURCE_DIRECTORY}/package-lock.json" \
-  "${SOURCE_DIRECTORY}/node_modules" \
+  "${build_directory}/node_modules" \
   "${candidate_directory}/"
 cp -a \
   "${SOURCE_DIRECTORY}/packages/protocol/package.json" \
-  "${SOURCE_DIRECTORY}/packages/protocol/dist" \
+  "${build_directory}/packages/protocol/dist" \
   "${candidate_directory}/packages/protocol/"
 cp -a \
   "${SOURCE_DIRECTORY}/apps/server/package.json" \
-  "${SOURCE_DIRECTORY}/apps/server/dist" \
+  "${build_directory}/apps/server/dist" \
   "${candidate_directory}/apps/server/"
-cp -a "${SOURCE_DIRECTORY}/apps/web/dist" "${candidate_directory}/apps/web/"
+cp -a "${build_directory}/apps/web/dist" "${candidate_directory}/apps/web/"
 cp -a \
   "${SOURCE_DIRECTORY}/deploy/scripts/backup-community-database.mjs" \
   "${SOURCE_DIRECTORY}/deploy/scripts/delivery-generation-authority.mjs" \
@@ -159,6 +164,8 @@ cp -a \
   "${SOURCE_DIRECTORY}/deploy/scripts/restore-community-database.mjs" \
   "${candidate_directory}/deploy/scripts/"
 printf '%s\n' "${TARGET_SHA}" >"${candidate_directory}/.doorbell-release-sha"
+rm -rf -- "${build_directory}"
+build_directory=""
 
 node --check "${candidate_directory}/apps/server/dist/index.js"
 (
