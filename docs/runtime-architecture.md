@@ -1,7 +1,7 @@
 # Doorbell Commons Runtime Architecture
 
 > 状态：第一版工程基线、人类注册、农场人类凭据薄代理与 Phase 1A Connector 基础闭环
-> 更新日期：2026-08-12
+> 更新日期：2026-08-14
 
 ## Runtime baseline
 
@@ -451,6 +451,16 @@ rewritten HTML or redirect value is rejected if the credential still appears. Li
 using the farm's existing `/together` handler and remains human-read-only; opening it is the user
 request that may run the farm's existing time advance, so Doorbell does not prefetch or poll it.
 
+`GET /api/lingye-glimmer` is already a separate no-key Doorbell route, but it currently resolves the
+same farm-authoritative `/ui/<farm_human_key>/glimmer` document that still serves users of the legacy
+farm Human link. Its `uiGlimmer()` renderer therefore intentionally continues to use the common farm
+page shell and navigation during the per-household migration period. The independent Glimmer Human
+shell is deferred until every existing player has migrated into Doorbell and all remaining legacy
+farm links have been disabled; changing the shared upstream renderer earlier would also remove the
+farm navigation from un-migrated users. Local `GLIMMER_STYLE` and `glimmerPage()` declarations are
+unwired drafts only: `uiGlimmer()` still calls the common `page()`, so they are neither runtime
+behavior nor a release candidate.
+
 The human-page proxy does not create a Doorbell JSON copy of balances, inventory, cooking, ranch,
 market, expedition, or Together state. It also does not share browser Cookies, passwords, databases,
 or expose the public doorplate as an authorization secret. Upstream credential `404`, transport or
@@ -715,10 +725,10 @@ checkout. The installed runtime records its exact source in `.doorbell-release-s
 the entry checks local health once per second for the confirmed maximum of 60 seconds; failure keeps
 the failed candidate, restores the previous runtime, and attempts to restart only Doorbell.
 
-Community commit `3ce9b1e0a5ca703f162c9af8c36c2e793c8258a6` was deployed through that entry on
+Community commit `069ad41ad4e104b13ea0b8917037a353b9bae770` was deployed through that entry on
 2026-08-14. The previous application remains at
-`/opt/doorbell-commons.previous-20260814T061519Z`. The root-only online SQLite backup is
-`/var/backups/doorbell-commons/releases/20260814T061519Z-pre-3ce9b1e/doorbell-2026-08-14T06-15-19.817Z.sqlite`.
+`/opt/doorbell-commons.previous-20260814T072620Z`. The root-only online SQLite backup is
+`/var/backups/doorbell-commons/releases/20260814T072620Z-pre-069ad41/doorbell-2026-08-14T07-26-20.273Z.sqlite`.
 The live database remains schema v3 with integrity OK and zero foreign-key violations. The external
 delivery generation authority remains `/etc/doorbell-commons/delivery-generation` as `root:root
 0600`, supplied only through the loaded systemd credential. The required upstream request deadline
