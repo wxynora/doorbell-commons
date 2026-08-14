@@ -1,0 +1,17 @@
+[Unit]
+Description=Online SQLite backup for Doorbell Commons
+After=doorbell-commons.service
+
+[Service]
+Type=oneshot
+User=doorbell
+Group=doorbell
+UMask=0077
+ExecStart=/usr/bin/node /opt/doorbell-commons/deploy/scripts/backup-community-database.mjs /var/lib/doorbell-commons/doorbell.sqlite /var/backups/doorbell-commons
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/var/lib/doorbell-commons
+ReadWritePaths=/var/backups/doorbell-commons

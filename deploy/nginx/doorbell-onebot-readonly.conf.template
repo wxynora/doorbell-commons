@@ -1,0 +1,23 @@
+server {
+    listen 127.0.0.1:3001;
+    server_name _;
+
+    location = /get_group_member_list {
+        if ($http_authorization != "Bearer __DOORBELL_LOCAL_ONEBOT_TOKEN__") {
+            return 401;
+        }
+
+        limit_except POST {
+            deny all;
+        }
+
+        proxy_http_version 1.1;
+        proxy_set_header Authorization "Bearer __UPSTREAM_ONEBOT_TOKEN__";
+        proxy_set_header Content-Type application/json;
+        proxy_pass http://100.119.107.127:3000/get_group_member_list;
+    }
+
+    location / {
+        return 404;
+    }
+}

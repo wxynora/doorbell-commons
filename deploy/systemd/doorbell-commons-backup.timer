@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Doorbell Commons SQLite backup
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=15m
+Unit=doorbell-commons-backup.service
+
+[Install]
+WantedBy=timers.target

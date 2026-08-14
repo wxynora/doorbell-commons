@@ -29,6 +29,18 @@ const unusedFarmDirectory: FarmDirectoryReader = {
   async lookupFarm() {
     throw new Error("This test must not query the farm directory");
   },
+  async lookupFarmByHumanKey(): Promise<never> {
+    throw new Error("This test must not query a farm human credential");
+  },
+  async readFarmOverview() {
+    throw new Error("This test must not query the farm directory");
+  },
+  async readFarmHumanPage(): Promise<never> {
+    throw new Error("This test must not query a farm human page");
+  },
+  async submitFarmHumanAction(): Promise<never> {
+    throw new Error("This test must not submit a farm human action");
+  },
 };
 const app = buildApp({
   groupId: COMMUNITY_QQ_GROUP_ID,
@@ -75,6 +87,7 @@ interface FakeOneBot {
 }
 
 interface FakeOneBotOptions {
+  delayMs?: number;
   statusCode?: number;
   responseBody: unknown;
 }
@@ -103,6 +116,9 @@ async function startFakeOneBot(options: FakeOneBotOptions): Promise<FakeOneBot> 
       authorization: request.headers.authorization,
       body: await readRequestBody(request),
     });
+    if (options.delayMs) {
+      await new Promise((resolve) => setTimeout(resolve, options.delayMs));
+    }
     sendJson(response, options.statusCode ?? 200, options.responseBody);
   });
 
@@ -130,11 +146,12 @@ async function startFakeOneBot(options: FakeOneBotOptions): Promise<FakeOneBot> 
   };
 }
 
-function buildEligibilityApp(fakeOneBot: FakeOneBot) {
+function buildEligibilityApp(fakeOneBot: FakeOneBot, requestTimeoutMs = 1_000) {
   const database = new CommunityDatabase(":memory:");
   const groupMembership = new OneBotGroupMembershipClient({
     apiBaseUrl: fakeOneBot.baseUrl,
     apiToken: "local-test-token",
+    requestTimeoutMs,
   });
   const eligibilityApp = buildApp({
     groupId: COMMUNITY_QQ_GROUP_ID,
@@ -167,6 +184,26 @@ class FakeFarmDirectory implements FarmDirectoryReader {
       throw new FarmDirectoryUnavailableError("fake farm directory unavailable");
     }
     return { farmDoorplate, farmName: "渡的小农场" };
+  }
+
+  async lookupFarmByHumanKey(): Promise<never> {
+    throw new Error("This test must not query a farm human credential");
+  }
+
+  async readFarmOverview(farmDoorplate: string) {
+    return {
+      farmDoorplate,
+      farmName: "渡的小农场",
+      plots: [],
+    };
+  }
+
+  async readFarmHumanPage(): Promise<never> {
+    throw new Error("This test must not query a farm human page");
+  }
+
+  async submitFarmHumanAction(): Promise<never> {
+    throw new Error("This test must not submit a farm human action");
   }
 }
 
@@ -257,6 +294,88 @@ test("QQ number absent from the current member list is rejected", async (context
     "qq_not_group_member",
   );
   assert.equal(fakeOneBot.requests[0]?.path, "/get_group_member_list");
+});
+
+test("malformed OneBot member data is unavailable even after the target member", async (context) => {
+  const fakeOneBot = await startFakeOneBot({
+    responseBody: {
+      status: "ok",
+      retcode: 0,
+      data: [{ user_id: 3877162412 }, {}],
+    },
+  });
+  const eligibilityApp = buildEligibilityApp(fakeOneBot);
+  context.after(async () => {
+    await eligibilityApp.close();
+    await fakeOneBot.close();
+  });
+
+  const response = await eligibilityApp.inject({
+    method: "POST",
+    url: "/api/registration/qq-group-eligibility",
+    payload: { qq_number: "3877162412" },
+  });
+
+  assert.equal(response.statusCode, 503);
+  assert.equal(
+    qqGroupEligibilityErrorSchema.parse(response.json()).error.code,
+    "onebot_unavailable",
+  );
+});
+
+test("malformed OneBot member data is unavailable before the target member", async (context) => {
+  const fakeOneBot = await startFakeOneBot({
+    responseBody: {
+      status: "ok",
+      retcode: 0,
+      data: [{}, { user_id: 3877162412 }],
+    },
+  });
+  const eligibilityApp = buildEligibilityApp(fakeOneBot);
+  context.after(async () => {
+    await eligibilityApp.close();
+    await fakeOneBot.close();
+  });
+
+  const response = await eligibilityApp.inject({
+    method: "POST",
+    url: "/api/registration/qq-group-eligibility",
+    payload: { qq_number: "3877162412" },
+  });
+
+  assert.equal(response.statusCode, 503);
+  assert.equal(
+    qqGroupEligibilityErrorSchema.parse(response.json()).error.code,
+    "onebot_unavailable",
+  );
+});
+
+test("a stalled OneBot request is aborted and remains unavailable", async (context) => {
+  const fakeOneBot = await startFakeOneBot({
+    delayMs: 100,
+    responseBody: {
+      status: "ok",
+      retcode: 0,
+      data: [{ user_id: 3877162412 }],
+    },
+  });
+  const eligibilityApp = buildEligibilityApp(fakeOneBot, 20);
+  context.after(async () => {
+    await eligibilityApp.close();
+    await fakeOneBot.close();
+  });
+
+  const response = await eligibilityApp.inject({
+    method: "POST",
+    url: "/api/registration/qq-group-eligibility",
+    payload: { qq_number: "3877162412" },
+  });
+
+  assert.equal(response.statusCode, 503);
+  assert.equal(
+    qqGroupEligibilityErrorSchema.parse(response.json()).error.code,
+    "onebot_unavailable",
+  );
 });
 
 test("OneBot failure is not reported as non-membership", async (context) => {

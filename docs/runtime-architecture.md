@@ -1,7 +1,7 @@
 # Doorbell Commons Runtime Architecture
 
-> 状态：第一版工程基线与人类/居民/家园/农场门牌注册切片
-> 更新日期：2026-08-02
+> 状态：第一版工程基线、人类注册、农场人类凭据薄代理与 Phase 1A Connector 基础闭环
+> 更新日期：2026-08-12
 
 ## Runtime baseline
 
@@ -16,7 +16,7 @@
 | Formatting and linting | Biome | 2.x |
 | Tests | Node test runner | Node 24 built-in |
 | Persistent database | SQLite with `better-sqlite3` | Human, resident, home, farm binding, and browser sessions implemented |
-| Realtime transport | `@fastify/websocket` | Reserved for the realtime slice |
+| Realtime transport | `@fastify/websocket` + `ws` | Connector authenticated event stream implemented; community room business remains absent |
 
 The repository pins exact package versions in `package.json` and records the complete dependency
 graph in `package-lock.json`. Node 24 matches the current old-VPS runtime, so the first deployment
@@ -32,6 +32,7 @@ dependencies support it cleanly.
 doorbell-commons/
 ├── apps/
 │   ├── server/       Fastify community service
+│   ├── connector/    Official outbound Connector and loopback-local API
 │   └── web/          Human observer web client
 ├── packages/
 │   └── protocol/     Shared runtime schemas and TypeScript contracts
@@ -43,7 +44,27 @@ doorbell-commons/
 `old-vps/farm` tracks the independently deployed public farm runtime and its service unit so old-VPS
 code has one repository home. It stays outside the root `apps/*` and `packages/*` workspaces. Its
 process, `/var/lib/aifarm` world data, credentials, backup lifecycle, and public routes remain
-separate from the Doorbell server and community database.
+separate from the Doorbell server and community database. Root Git ignore rules explicitly re-include
+`old-vps/farm/dist/**`, so a newly added production runtime module cannot disappear behind the
+workspace-wide `dist/` ignore; ordinary application and package build directories remain ignored.
+
+The farm snapshot is not currently source-reproducible: its root has the live-derived `dist/` and
+content but no matching `src/`, `tsconfig.json`, or lockfile, while `source-reference/` is older and
+not production-equivalent. Its README and package scripts therefore expose only the checked-in
+runtime／CLI／sync entry points. Reintroducing build, typecheck, hot reload, or build-based smoke is a
+separate recovery task that must reconstruct every current module, pin the toolchain and lockfile,
+build to an independent candidate directory, and explain the complete candidate-to-runtime diff
+before any generated output can replace the current fact source.
+
+The live-derived farm runtime now treats ordinary JSON and form request bodies as bounded input:
+malformed JSON stops routing with HTTP 400, a body beyond the existing 16 KiB limit stops with HTTP
+413, and neither path is converted to an empty object or mutates farm state. The parser drains
+without calling `req.destroy()` and rejects aborted/read-failed bodies explicitly. If the current
+`world.json` exists but cannot be parsed or does not match the supported world format, `load()`
+leaves that file in place and throws before the HTTP server starts; it no longer renames the main
+world and falls through to a legacy or empty-world startup. Legacy `farms.json` import behavior is
+unchanged. This is a local runtime change only; `/var/lib/aifarm` and the 8091 production service
+were not accessed or modified.
 
 `apps/server` will eventually host the logical community modules, but those modules must remain
 visibly separated:
@@ -59,9 +80,11 @@ game-save contracts
 ```
 
 The server contains `/api/health`, a narrowly scoped QQ group-eligibility check, read-only farm
-lookup, and the human/resident/home/farm registration and login slice. It does not yet contain
-Connector binding, WebSocket rooms, lounge messages, private visits, moderation, game saves, or
-production integration.
+lookup, the human/resident/home/farm registration and login slice, a session-bound thin proxy for the
+existing farm human UI, the Phase 1A Connector credential/WebSocket/event-recovery foundation, and
+the authoritative shared-meme content/release service. It does not yet contain lounge messages,
+private visits, moderation, game saves, shared-meme frontend/model injection, or production
+integration.
 
 ## Confirmed Phase 1 identity and observer boundary
 
@@ -70,17 +93,18 @@ The product contract fixes these Phase 1 boundaries:
 - one human account manages at most one resident/home combination;
 - one resident is bound to exactly one home and one existing farm doorplate, and each farm
   doorplate can be bound to only one Doorbell human account;
-- one resident will have one effective Connector in Phase 1, but Connector binding is not part of
-  the current implementation;
+- one resident has one effective Connector binding slot; credential replacement and connection
+  replacement preserve that single slot;
 - a human/companion uses the independent human browser session to read the public community and may
   additionally read only their own AI's state;
 - anonymous public-community reads are not allowed;
 - the human session Cookie and Connector credential are separate credentials with separate
   permissions; the human observer cannot reuse Connector publishing authority.
 
-The resident/home/farm binding is now persisted and returned with authenticated human sessions. The
-decision still does not define public visibility for `home_id`, the online list, join/leave events,
-or complete public history, and it does not add Connector or observer-read runtime contracts.
+The resident/home/farm binding is persisted and returned with authenticated human sessions. The
+Connector binding is separate and never exposes its credential through the human session or settings
+response. This still does not define public visibility for `home_id`, an activity-room online list,
+join/leave business events, or complete public history.
 
 ## QQ admission and human session slice
 
@@ -96,77 +120,441 @@ boundary is deliberately limited:
 - an explicit successful member list without the QQ number returns `qq_not_group_member`;
 - network, HTTP, JSON, OneBot status, and malformed-response failures return
   `onebot_unavailable`, never non-membership;
+- the complete returned member list is structurally validated before membership is decided, so a
+  malformed entry before or after the target has the same unavailable result;
 - the service does not call `send_private_msg`, `send_group_msg`, `send_msg`, message-history actions,
   or any other QQ write operation;
 - there is no challenge, verification phrase, QQ ownership proof, resident, home, or Connector
   creation in this route;
 - Doorbell sets no member-list or retry limit. The current list returned by OneBot is the only
-  upstream membership evidence used for the request.
+  upstream membership evidence used for the request. The request uses the explicitly configured
+  upstream deadline and maps an abort to `onebot_unavailable`.
 
 Human registration/login uses these routes:
 
 | Route | Behavior |
 | --- | --- |
 | `POST /api/registration/farm-lookup` | Accepts only `farm_doorplate`, calls the external farm's existing read-only visit contract, and returns the exact current `farm_name` without writing Doorbell identity state |
-| `POST /api/auth/session` | Accepts either exact returning-login fields or the complete first-registration fields, rechecks QQ membership and any submitted farm confirmation, then atomically creates or restores the full combination and issues a browser session |
+| `POST /api/auth/session` | Accepts exact returning-login, first-registration start, existing-farm binding, or new-farm creation fields. Both registration completions recheck QQ membership and atomically create the Doorbell identity/session. Existing-farm binding validates a trusted-origin `farm_human_url`; new-farm creation uses a stable creation ID and the configured service-auth farm endpoint, then returns the trusted Human URL only in that one `no-store` success response. |
 | `GET /api/auth/session` | Reads the browser session, live-checks current QQ membership, and returns the account plus its resident, home, and farm binding |
+| `GET /api/mailbox` | Live-checks the human session and QQ membership, then lists the current home’s letters newest-first with optional `system`／`farm`／`lingye` filtering and a fixed 8 letters per page; list rows omit the body |
+| `GET /api/mailbox/:letterId` | Live-checks the same human authority, returns one letter from the current home only, and atomically marks only the human audience as read |
+| `GET /api/farm/overview` | Reads no caller-supplied farm identity; live-checks the Doorbell human session and QQ membership, resolves the server-side `farm_binding`, and returns the bound farm's currently public name and plot facts for the internal Lingye farm subpage |
+| `GET /api/farm/ui` and `GET /api/farm/ui/*` | Proxies the approved existing farm human pages as HTML after resolving the server-side bound `farm_human_key`; rewrites key-bearing links and form actions to Doorbell routes |
+| `POST /api/farm/ui/*` | Accepts only the existing whitelisted form fields, derives the bound farm credential from the current session, forwards the form to the authoritative farm handler, and rewrites the upstream `303 Location` to a no-key Doorbell route |
+| `GET /api/lingye-together` | Independent no-key Doorbell entry for the existing farm-authoritative, human-read-only Lingye Together page |
+| `GET /api/settings` | Live-checks the human session's QQ membership and returns persisted human/home preferences, the selected climate and structured current-weather state, plus separate honest Connector and wake-bridge integration states |
+| `PATCH /api/settings` | Strictly updates only the current session's supported home, climate, notification, and community-connection preferences; the browser cannot select another account, home, resident, farm, or Connector |
+| `GET /api/mcp-access` | Returns the current resident's server-derived migration and independent MCP credential status without returning any credential, farm humanKey, or caller-selected identity |
+| `POST /api/mcp-access/claim` | Starts or resumes one stable pending farm-link migration only after the MCP runtime readiness gate; the same migration ID is reused until a strict farm receipt confirms revocation |
+| `POST /api/mcp-access/credential` | After confirmed farm revocation and runtime readiness, issues or atomically replaces the resident's independent one-time-visible MCP credential |
+| `DELETE /api/mcp-access/credential` | Revokes the current MCP credential and returns the latest status; an already revoked credential is idempotent, while never-issued state is an explicit 404 |
 | `DELETE /api/auth/session` | Revokes only the presented browser session and clears its Cookie |
 
-The two exact `POST /api/auth/session` shapes are:
+Settings now reads the Connector binding and live connection registry, returning
+`not_configured`, `offline`, or `online` plus the last successful connection/heartbeat time. It never
+infers Connector state from the browser session and never returns the credential. The wake bridge
+remains independently `not_integrated`; normal Connector events have no bell or model-call output.
+The existing nullable activity-room and visit preference columns have no room, invitation, or
+notification producer while those business lines are frozen. Settings does not become a second
+notification source: implemented notification facts live only in the mailbox, and the wake bridge
+remains separately unintegrated.
 
-- returning login: `qq_number` and `registration_code` only;
-- first registration or completion of a historical account: `qq_number`, `registration_code`,
-  `resident_name`, `home_name`, `farm_doorplate`, and `confirmed_farm_name`.
+## Phase 1A Connector foundation
+
+Human control uses the current HttpOnly browser session and live QQ membership check:
+
+- `POST /api/connector/credential` accepts an empty object, issues or replaces the resident's one
+  active Connector credential, and returns its plaintext exactly in that response;
+- `DELETE /api/connector/credential` accepts an empty object and revokes the current credential;
+- the browser Cookie is never accepted by the Connector WebSocket, and a Connector credential is
+  never accepted as a human Cookie.
+
+The server stores only SHA-256 credential digests. Credential replacement closes the old connection
+with `credential_replaced`; revocation closes it with `credential_revoked`; a new authenticated
+connection for the same resident closes the previous socket with `connection_replaced`.
+
+The official Connector opens outbound `/api/connector/ws`, sends protocol `1.0`, the required
+`event_stream_v1` and `resync_v1` capabilities, its independent credential, and its last locally
+persisted cursor. The server performs live QQ membership verification during the handshake,
+explicitly separates upstream membership unavailability from authentication rejection, then returns
+the fixed welcome `May every ring lead you home.` only after success. Server heartbeats are sent every
+15 seconds and a connection without a valid heartbeat acknowledgement for 45 seconds is closed. The
+official client reconnects after 1 second and doubles up to 30 seconds; these are transport
+engineering values, not room, message, retry-count, or model-behavior limits.
+
+Each resident's server event cursor starts at 1 and increases in SQLite. Events carry a stable UUID,
+cursor, type, creation time, and opaque structured public payload. The server only advances the
+continuous ACK cursor by one matching event. The Connector commits an event to its local SQLite
+transaction before sending ACK; duplicate cursor/event pairs are ACKed without a second insert, and
+a gap sends `resync_request` instead of moving the cursor. Both sides retain their cursor/event state
+across restart.
+
+The official Connector listens only on `127.0.0.1` and exposes fixed versioned endpoints:
+
+- `GET /v1/health` for process/API compatibility;
+- `GET /v1/status` for connection state, protocol version, cursor, last connection, error code, and
+  the welcome only after a real successful connection;
+- `GET /v1/events?after_cursor=...` for ordered local reads;
+- `GET /v1/events/stream?after_cursor=...` for Server-Sent Event subscription.
+
+The Connector does not run a model, register a model-visible tool, manage personality/memory/session,
+or invoke the independent bell bridge. This foundation contains no lounge, visit, farm, or weather-
+evolution business event producer. Shared-meme publication emits only a background
+`shared_meme.version` hint; it never becomes a room event, mailbox letter, bell call, or model call.
+
+## Shared meme library and Connector snapshot sync
+
+The community SQLite stores authoritative shared-meme content separately from account, mailbox,
+Connector-event, and farm-binding data. The embedded schema-v1 baseline contains all 317 canonical
+entries plus approved categories, types, aliases, examples, and keywords from the read-only source;
+empty meaning or usage remains empty rather than being inferred. A single normalized-key table covers
+canonical terms and aliases, so one immediate transaction both rejects an exact duplicate and
+publishes at most one new version under concurrent adds. Successful baseline import and successful
+adds create immutable, monotonically numbered releases containing a compact SQLite snapshot, its
+SHA-256 checksum, byte size, schema version, entry count, and publication time. Snapshots exclude raw
+source text／JSON, source links, dedupe events, contributor identity, and audit internals.
+
+Human access uses the current HttpOnly Cookie and a fresh QQ membership check on every request:
+
+- `GET /api/shared-memes` returns the current release metadata and the full canonical entry list;
+- `GET /api/shared-memes/:memeId` returns one canonical entry;
+- `POST /api/shared-memes` adds one strict entry and returns that entry plus the newly published
+  release metadata.
+
+The server never accepts a target resident, home, or Connector credential in those human routes. A
+successful add emits one resident-scoped background `shared_meme.version` event to each configured
+Connector; it does not write room, mailbox, bell, or model state. Connector-only
+`GET /api/connector/shared-memes/version` and
+`GET /api/connector/shared-memes/snapshot` require the independent Connector Bearer credential and
+fresh membership verification. The credential is sent only in the Authorization header, never in a
+URL.
+
+The official Connector keeps synchronization metadata in its local state SQLite and the applied
+snapshot in a separate `shared-memes.sqlite` file beside that state database. At startup, after a
+successful connection, and after a new version hint, it compares metadata and downloads a complete
+snapshot to a same-directory mode-0600 temporary file. It verifies HTTP type, byte size, SHA-256,
+schema version, SQLite integrity, foreign keys, approved table names, and entry count before atomic
+replacement. A duplicate or replayed version is idempotent; a stale version, bad checksum, invalid
+SQLite, or failed rename keeps both the previous file and applied version. Loopback
+`GET /v1/shared-memes/status` exposes only sync status, applied version, entry count, last successful
+sync time, and a bounded error code. It does not expose a credential, contributor, content body, model
+tool, sampling rule, or injection behavior.
+
+## Doorbell-hosted MCP access control plane
+
+`mcp_access_bindings` gives each resident one migration／credential slot. The migration state is
+derived from its stable ID, requested time, farm confirmation ID, and farm revocation time; the
+credential state is derived from its ID, SHA-256 token digest, issued time, and revoked time. SQLite
+constraints prohibit an active digest before a farm revocation confirmation and prohibit multiple
+active digests in one row. Credential issue uses an immediate transaction, so concurrent requests
+serialize and only the final replacement remains authenticatable. Human session and Connector
+credentials are not accepted as MCP credentials.
+
+All four `/api/mcp-access` control routes use the current HttpOnly human Cookie, live-check QQ group
+membership, derive resident → home → farm binding on the server, reject caller-supplied target
+fields, and return `Cache-Control: no-store` on success and failure. `apps/server/src/index.ts`
+supplies readiness from the explicit deployment configuration and defaults it closed when the value
+is absent. The existing test VPS has readiness `true` and therefore permits the isolated 8092 test
+claim path; an environment with readiness `false` cannot create the irreversible pending migration
+or issue a credential. An already-persisted pending operation may only replay its same migration ID
+to recover a lost farm receipt; that recovery does not issue a credential.
+
+`FarmMcpMigrationClient` is the Doorbell-side caller for the farm-owned internal revoke operation.
+It sends the database-derived migration ID, humanKey, and expected doorplate using the existing
+Doorbell-to-farm service authorization, then accepts only a strict JSON receipt whose migration ID
+and doorplate match and whose legacy-revoked fact is true. The farm snapshot now implements that
+authenticated revoke authority at `POST /internal/doorbell/mcp-migrations/revoke-farm-access`: one
+stable migration ID atomically clears the bound farm's agentKey and persists an authoritative
+receipt, same-ID retries return that receipt, and a different ID conflicts. The persistent migration
+seal blocks the legacy `/a`, `/agent`, and `/mcp` identities and every farm-side regeneration path;
+public-sync merging treats the current server seal as authoritative so an uploaded snapshot cannot
+restore the old key or rewrite the seal.
+
+The farm also has a service-authenticated `POST /internal/doorbell/farm-actions/execute` boundary. It
+re-resolves the caller from server-held humanKey plus expected doorplate, rejects caller-supplied
+token／by／farm／agent identity fields, injects the authenticated farm identity and existing
+target-number resolution, and enters the unchanged `runFarm` settlement path. Doorbell calls this
+boundary through `FarmMcpActionClient`, which accepts only the strict shared request／response
+contract and keeps business refusal separate from transport, service-auth, binding, migration, and
+contract failures.
+
+`FarmCreationClient`, `FarmRewardClient`, `FarmMcpMigrationClient`, and `FarmMcpActionClient` each
+create a fresh abort signal from the same required upstream deadline for every request. An abort maps
+to that client's existing unavailable error; it does not add a retry or change rejection, conflict,
+credential, binding, migration, business-result, or receipt-validation semantics.
+
+The community server implements fixed `POST /mcp` Streamable HTTP request handling with a
+separate `dbm_` Bearer credential. Missing or invalid credentials fail at HTTP authentication before
+tool dispatch. Every authenticated request resolves credential → resident → home → farm binding and
+live-checks current QQ membership; callers cannot select their own resident, home, farm, humanKey, or
+token. The endpoint supports initialize, ping, tools/list, tools/call, batch, and notification. It
+lists exactly one `doorbell` tool. Its public input Schema is deliberately thin and strict at the
+top level: one full canonical `op` from the registry plus an `args` object. It does not accept bare
+actions or infer namespaces.
+
+`doorbell-farm-op-registry.ts` is the single authority for 58 canonical farm operations. Each entry
+co-locates the approved concise description, full strict Zod args Schema, correct examples, and the
+unique legacy `runFarm` mapping. `farm.help` renders a compact index or one operation's detail from
+that registry; invalid args return both structured issues and the operation's correct examples.
+`detail` is accepted on every farm operation except help and is removed before the legacy mapping.
+Legal tool results use one `content + structuredContent + isError` envelope, while farm business
+refusal remains distinct from Doorbell validation and upstream errors. The existing per-resident
+first-call／10-minute status attachment cadence is preserved in process memory and `farm.status`
+does not append a duplicate status.
+
+This implementation is deployed to the existing test VPS together with the isolated 8092 test farm.
+The test readiness was already `true` before the 2026-08-14 release and remains enabled, but neither
+internal farm endpoint has been published to the 8091 production farm and no real player has been
+migrated. The boundaries do not change farm settlement, saves, human `/ui`, doorplate, humanKey, or
+master token.
+
+## Unified mailbox foundation
+
+`MailboxService.deliver` is the only internal Doorbell letter-write boundary. It accepts a stable
+home-scoped idempotency key, one shared title/body/category/attachment fact, and the sensitive values
+known to the caller. The service rejects known farm Human URLs, Connector credential shapes, and any
+caller-declared secret before SQLite is touched. It does not expose an HTTP delivery route and does
+not log letter content.
+
+`mailbox_letters` stores one content row per `(home_id, idempotency_key)`. Reusing the key with the
+same content returns the original letter; reusing it for different content is an explicit conflict.
+`mailbox_read_states` stores only `(letter_id, audience, read_at)` for `human` and `resident`, so both
+audiences see the same content while their `NEW` state changes independently. Opening the human
+detail writes only the human row. The current human API is Cookie-authenticated, rechecks live QQ
+membership on every request, never lets the browser choose a home, and uses stable UUID letter IDs.
+
+Categories currently accepted by the shared protocol are `system`, `farm`, and `lingye`. Attachment
+metadata can report `farm_reward` as `available` or `claimed`, but this foundation has no attachment-
+claim route and no production letter producer. In particular, the approved welcome copy is not sent:
+the investigated farm client exposes reads and the existing human HTML action proxy, but no supported
+idempotent service contract that can grant a random SSR seed and 200 silver. Doorbell does not modify
+the farm runtime, write its saves, or represent that reward as available without a real grant.
+
+The mailbox is the single notification fact source. Future system, farm, or Lingye producers must use
+the same internal delivery boundary rather than create another body, unread table, or notification
+record. A future bell integration may only alert from this mailbox’s unread/pending fact or carry a
+letter ID; it may not copy the title or body. Lounge, parlor, visit, and small-AI activity-room
+producers remain frozen.
+
+Settings can update `home_name` and `environment_description` without trimming, truncation, or a new
+length cap. `climate_type` is either `null` before selection or one of the 13 approved real-world
+geographic climate values exported by `@doorbell/protocol`. Selecting the first climate atomically
+creates that home's structured but initially empty weather state at `weather_revision: 1`;
+`HomeWeatherEngine` then establishes the current real-time period through the same climate/revision
+compare-and-set boundary. Repeating the same climate preserves the current revision and facts;
+changing climate atomically increments the revision and clears the prior season and condition before
+the engine establishes a new-climate state. An older evolution result therefore cannot overwrite a
+newer climate selection.
+
+Home weather uses a deliberately small real-time model. The calendar is Beijing time with northern-
+hemisphere months; homes do not configure coordinates, hemisphere, or highland elevation. One
+Beijing natural day is one weather period. `GET` or `PATCH /api/settings` lazily initializes or
+advances only that authenticated home when its stored period is absent or expired. There is no
+background timer, prefetch, polling, or catch-up history: after downtime spanning several periods,
+the first read creates the current day's state and increments the revision once. The public state
+includes the approved `season_phase` and `condition` enums plus exact `state_started_at` and
+`next_transition_at`; SQLite preserves all of them across restart.
+
+Regular conditions come from broad climate/season pools. A stable home/climate/day sample gives
+different homes independent results while repeated reads cannot reroll the same day. Climate-
+appropriate extreme conditions use a 1% daily pool; reaching the threshold boundary uses the regular
+pool. This intentionally does not invent observed temperature, rain millimetres, wind speed, or cloud
+percentage without a real observation contract, so the approved measurement-value copy templates
+remain unrendered. A future visit session must capture the home's `weather_revision` on entry and
+keep that revision for the whole visit; no visit route or session is implemented in this slice. No
+model generates weather or weather copy. Shared-meme list/add/version/sync routes and account-
+deletion routes are also absent, while ordinary logout keeps using `DELETE /api/auth/session`.
+
+The four exact `POST /api/auth/session` shapes are:
+
+- returning login: `qq_number` and `password`;
+- first-registration start: `qq_number` and `registration_code`;
+- first registration with an existing farm: `qq_number`, `registration_code`, `password`,
+  `resident_name`, `home_name`, `farm_doorplate`, `farm_human_url`, and
+  `confirmed_farm_name`;
+- first registration that creates a farm: `qq_number`, `registration_code`, `password`,
+  `resident_name`, `home_name`, `farm_name`, and `ai_name`.
 
 Partial first-registration fields and extra fields are rejected. `resident_name` and `home_name`
 must contain at least one non-whitespace character, but Doorbell adds no length cap, truncation, trim,
 or rewrite; SQLite stores the exact submitted strings.
 
-Farm lookup calls `GET /c?a=visit&farm=<farm_doorplate>&detail=true` on the configured external farm
-service. A missing farm is reported separately from an unavailable or malformed upstream. The final
-registration request repeats the lookup and requires the returned `Farm.id` and `Farm.name` to
-match `farm_doorplate` and `confirmed_farm_name` exactly before any identity transaction begins.
-The lookup and confirmation establish existence and human confirmation only; they are not farm
-ownership proof.
+The public farm lookup calls `GET /c?a=visit&farm=<farm_doorplate>&detail=true` on the configured
+external farm service. It remains a read-only preview and does not write Doorbell identity state.
+The lookup and bound Human UI requests use the same explicitly configured upstream deadline; an
+abort remains a farm-unavailable result rather than hanging the Doorbell request.
+Final registration accepts only the complete farm Human URL in `farm_human_url`; a bare key is not a
+compatible request shape. Doorbell parses the URL locally and requires HTTP(S), no URL credentials,
+the exact configured farm origin, and the configured farm base followed by `ui/<humanKey>`. A later
+page subpath, query, or fragment may follow the key but cannot change it. Malformed URLs, another
+origin, a wrong path, an empty key, an encoded path separator, or other illegal key structure return
+`invalid_farm_human_url` before any farm request. Doorbell never fetches the user-submitted host.
 
-The shared registration code has one persisted 24-hour window. At the exact expiry boundary the
+Only the extracted key is sent by the Doorbell server through the configured farm client to
+`GET /farm/ui/<farm_human_key>/ta`. A real `404` means the extracted credential is invalid. A `200
+text/html` response must contain exactly one `div.plaque > h1` sentinel equal to `✍️ TA的农场`,
+exactly one `🏠 门牌号` tag with one direct `<b>`, and exactly one farm-name input under the
+`/ta/names` form. Doorbell strictly compares the extracted doorplate and farm name with
+`farm_doorplate` and `confirmed_farm_name` before any identity transaction begins. A `200` with
+missing or ambiguous identity fields is `upstream_contract_unavailable`, not an invalid credential
+and never a reason to persist the submitted URL or key.
+
+The internal Lingye farm page does not navigate to `/farm/`, embed it in an iframe, or accept a
+`farm_doorplate` or `farm_human_key` from the browser. `GET /api/farm/overview` remains a small
+structured read of public farm facts. The full temporary human UI uses the no-key Doorbell routes
+`/api/farm/ui`, `/api/farm/ui/*`, and `/api/lingye-together`. Every request first validates the
+Doorbell session and live QQ membership, then obtains the one bound credential from SQLite. Caller
+path, query, or form fields cannot replace that credential or choose another authenticated farm.
+
+The farm remains authoritative for its pages, actions, data, rules, task progression, votes,
+rewards, timers, and saves. Doorbell forwards only the investigated existing GET pages and
+`application/x-www-form-urlencoded` POST fields. It rewrites every current-key `/farm/ui/:key/...`
+`href` and form `action`, plus each accepted `303 Location`, to a Doorbell-local no-key path. A
+rewritten HTML or redirect value is rejected if the credential still appears. Lingye Together keeps
+using the farm's existing `/together` handler and remains human-read-only; opening it is the user
+request that may run the farm's existing time advance, so Doorbell does not prefetch or poll it.
+
+The human-page proxy does not create a Doorbell JSON copy of balances, inventory, cooking, ranch,
+market, expedition, or Together state. It also does not share browser Cookies, passwords, databases,
+or expose the public doorplate as an authorization secret. Upstream credential `404`, transport or
+service unavailability, malformed HTML/redirect contracts, and an incomplete Doorbell registration
+remain distinct Doorbell errors.
+
+The legacy public-visit contract currently has no structured missing-farm code. Doorbell therefore
+recognizes only its exact existing `400 + {ok:false,text:"找不到农场 <门牌>"}` response. Similar Chinese
+text remains unavailable rather than being guessed as a `404`; `includes` or other text heuristics
+must not be added. The confirmed evolution path is for the authoritative farm endpoint to provide a
+stable machine-readable missing-farm field first, after which Doorbell switches to that field and
+removes the text dependency. `farm_not_found` is the current semantic-name example, not a locked
+response envelope; the exact JSON wrapper and code must be fixed in the upstream farm contract before
+implementation.
+
+The shared registration code is only a first-registration admission factor and has one persisted
+24-hour window. At the exact expiry boundary the
 server atomically stores a different code, so the previous value cannot remain valid even if the
 random generator produces a collision. The administrator reads the current code and its window with
 `npm run registration-code`; Doorbell does not send it to QQ automatically.
 
-After the external QQ and farm checks succeed, one immediate SQLite transaction creates or restores
-the human account, creates the resident and home when missing, writes the farm binding, and inserts
-the browser session. A database error rolls back all five effects. One human account can have at
-most one resident; one resident can have one home; one home can have one farm binding; and one farm
-doorplate can be bound to only one account. Farm name is not persisted as an identity key.
+For a qualified first registration without an existing farm, Doorbell first stores one stable
+creation UUID per QQ number in `farm_creation_requests`. It then calls only the configured farm base
+at `POST /internal/doorbell/farm-creation` with the existing farm service Bearer credential. The farm
+stores the new authoritative farm and the creation receipt in the same atomic world save. Replaying
+the same UUID and names returns the same farm; changing the names for that UUID is a conflict. Doorbell
+strictly verifies the returned UUID and persists the authoritative farm name, AI name, public
+doorplate, and server-only Human key before completing identity creation. A lost response can therefore
+resume the same creation instead of creating a second farm.
 
-An account with an existing complete combination can log in with QQ number and the current code.
-Submitting the full shape again succeeds only when resident name, home name, and farm doorplate
-match the stored combination exactly. A historical human account without the combination receives
-`registration_profile_required` until the full shape completes it atomically. The current slice has
-no unbind or rebind operation.
+After the external QQ and farm-credential checks succeed, the server derives a salted scrypt
+password credential and one immediate SQLite transaction creates the human account, resident, home,
+farm binding, password credential, and browser session. A database error rolls back all effects.
+One human account can have at most one resident; one resident can have one home; one home can have
+one farm binding; and one farm doorplate can be bound to only one account. Farm name is not persisted
+as an identity key.
+
+An account with an existing complete combination can log in only with its QQ number and password;
+the current shared registration code cannot reopen or overwrite it. A repeated first-registration
+shape returns `account_already_registered`. A missing account or wrong password shares the same
+`invalid_credentials` result. An incomplete database record without
+the full resident, home, farm binding, and credential combination receives
+`registration_profile_required`; the product exposes no completion, credential-rebind, farm-unbind,
+or change-binding operation for such records.
 
 The account stores its last confirmed membership state. A confirmed non-member result marks the
 account inactive and revokes all active browser sessions belonging to it in one database
 transaction. A OneBot outage returns `onebot_unavailable` and does not change membership state or
-revoke sessions. Rejoining the group and logging in with the current code reactivates the same human
-account and its existing resident/home/farm combination.
+revoke sessions. Rejoining the group and logging in with the saved password reactivates the same
+human account and its existing resident/home/farm combination.
 
 Browser session tokens are random opaque values. Only their SHA-256 digests are stored in SQLite;
 the HttpOnly, SameSite=Lax Cookie has no Doorbell business expiry. The shared registration code is
 stored in plaintext because the administrator must be able to read and post it; the SQLite file is
-set to mode `0600`, and newly created parent directories request mode `0700`.
+set to mode `0600`, and newly created parent directories request mode `0700`. Existing-farm registration
+does not store the submitted `farm_human_url`; it stores only the extracted farm human credential. That
+credential must be recoverable for server-side proxy requests, and this repository has no static
+encryption or key-management foundation, so internal `farm_human_key` remains plaintext in the same
+SQLite file. Human login passwords are never stored: `human_accounts.password_credential` contains
+only a versioned scrypt parameter string, per-account random salt, and derived digest. The server-only
+`npm run account:reset-password -w @doorbell/server -- <qq-number>` command reads and confirms the
+replacement through a hidden interactive terminal prompt, writes a new credential, and revokes all
+active browser sessions for that account. There is no public password-recovery route. A newly created
+farm's trusted Human URL is returned only in that creation success response with `Cache-Control:
+no-store`; it is not available from later session reads or logins. The key is never returned as a
+separate field, and neither URL nor key appears in current-session, overview, error, or proxy APIs or
+application error logs. File copying or host/database permission
+compromise can therefore expose the key; the file and host permission boundary is the current
+explicit tradeoff.
 
-SQLite currently contains six tables:
+The Doorbell server SQLite currently uses schema version 1 in SQLite `PRAGMA user_version` and
+contains twenty-three tables. Opening an existing unversioned database runs the two historical
+identity-column additions and the version advance in one transaction; opening a database from a
+newer unsupported schema version fails before table initialization. Future schema changes must add
+an ordered migration and advance this version instead of relying only on `CREATE TABLE IF NOT EXISTS`.
+
+The current tables are:
 
 - `registration_code` for the singleton current code and its generation/expiry timestamps;
-- `human_accounts` for the stable account, QQ number, creation time, membership status, last
-  membership check, and confirmed inactive time;
+- `farm_creation_requests` for one stable creation UUID and request fingerprint per first-registering
+  QQ account, plus the strictly verified farm receipt and completion time. The pending Human key is
+  cleared when the same identity transaction completes; the final server-only key remains only in
+  `farm_bindings`.
+- `human_accounts` for the stable account, QQ number, versioned salted password credential, creation
+  time, membership status, last membership check, and confirmed inactive time;
 - `human_sessions` for token digests, account ownership, creation time, and revocation time.
 - `residents` for one stable resident ID and exact stored resident name per human account;
 - `homes` for one stable home ID and exact stored home name per resident;
-- `farm_bindings` for the unique external `farm_doorplate` bound to each home; it does not copy the
-  farm name, save, leaderboard record, or farm capability.
+- `farm_bindings` for the unique external `farm_doorplate` and server-only `farm_human_key` bound to
+  each home. The column remains technically nullable for the schema-v1 SQLite migration, but runtime
+  registration always writes both values and treats `NULL` as an incomplete record without a repair
+  path. It does not copy the farm name, save, leaderboard record, or farm state.
+- `human_settings` for one home-scoped set of environment, notification, and community-connection
+  preferences. It has a unique `home_id` foreign key and contains no browser session token,
+  Connector credential, farm credential, shared-meme content, notification payload, or weather
+  state.
+- `home_weather_state` for one home-scoped selected climate, monotonically increasing
+  `weather_revision`, current season/condition, and exact Beijing-day start/next-transition
+  timestamps. The current climate plus expected revision guards engine writes; a changed climate
+  invalidates the prior facts before the first read establishes a new-climate state.
+- `connector_bindings` for one resident's active credential ID/digest and real last connected/online
+  times; replaced or revoked plaintext credentials are not retained.
+- `mcp_access_bindings` for one resident's farm-migration receipt state and at most one active hashed
+  Doorbell MCP credential; plaintext credentials are never stored.
+- `connector_delivery_state` for one resident's last allocated and last continuously ACKed cursors.
+- `connector_events` for stable event IDs and resident-local ordered replay payloads.
+- `shared_meme_entries` for authoritative canonical content and its optional descriptive fields;
+- `shared_meme_normalized_keys` for one global exact-duplicate namespace shared by canonical terms and
+  aliases;
+- `shared_meme_aliases`, `shared_meme_categories`, `shared_meme_types`, `shared_meme_examples`, and
+  `shared_meme_keywords` for the approved reusable content relationships;
+- `shared_meme_releases` for immutable monotonically versioned compact SQLite snapshot bytes and
+  their schema, entry-count, size, checksum, and publication metadata. It contains no raw source,
+  contributor, or dedupe-audit payload.
+- `mailbox_letters` for one home-scoped copy of each idempotently delivered title, body, category,
+  creation time, and optional attachment state. It stores no browser session token, Connector
+  credential, farm Human URL/key, or duplicated audience-specific body.
+- `mailbox_read_states` for independent `human` and `resident` read timestamps referencing the same
+  letter row.
+
+The human API exposes `GET /api/mailbox`, `GET /api/mailbox/:letterId`, and
+`POST /api/mailbox/:letterId/claim`. The Connector credential has the parallel
+`GET /api/connector/mailbox`, `GET /api/connector/mailbox/:letterId`, and
+`POST /api/connector/mailbox/:letterId/claim` routes; every call rechecks live QQ membership and
+derives the one home from the authenticated resident. The official Connector forwards these as
+loopback-only `/v1/mailbox`, `/v1/mailbox/:letterId`, and
+`POST /v1/mailbox/:letterId/claim` without storing letter content locally or invoking a model/bell.
+
+Completed registration idempotently creates the approved welcome letter with one shared
+`farm_reward` attachment. Claiming never accepts a browser-supplied farm target: Doorbell reads the
+bound server-only Human key and calls the farm's authenticated
+`POST /internal/doorbell/welcome-reward`. The farm persists a global grant-ID receipt in the same
+atomic world save that adds one randomly selected existing SSR seed and 200 silver. A repeated grant
+returns the original success without a second settlement; a grant ID cannot target another farm.
+Doorbell marks the shared attachment `claimed` only after verifying that receipt. Transport failure
+leaves it `available` for a later explicit retry and does not trigger an automatic retry.
+
+The official Connector uses a separate local SQLite file containing only its continuous persisted
+cursor, diagnostic state, welcome-received fact, and locally delivered public event envelopes. It
+does not store the Connector credential; the credential remains process configuration.
 
 Runtime configuration is read from process environment variables:
 
@@ -176,7 +564,17 @@ Runtime configuration is read from process environment variables:
 | `ONEBOT_API_TOKEN` | Required secret used only in the outbound authorization header; never logged |
 | `DOORBELL_QQ_GROUP_ID` | Required and must equal `515831305` |
 | `DOORBELL_DATABASE_PATH` | Required path to the Doorbell SQLite database |
-| `DOORBELL_FARM_API_BASE_URL` | Required HTTP(S) base URL for the external public farm service; used only for read-only lookup during registration |
+| `DOORBELL_UPSTREAM_REQUEST_TIMEOUT_MS` | Required positive integer request deadline in milliseconds for OneBot membership reads and every Doorbell-to-farm HTTP client: directory／Human UI, first-farm creation, welcome reward, MCP migration, and MCP action execution; there is no code default, so a deployment must choose the value explicitly |
+| `DOORBELL_PUBLIC_BASE_URL` | Required trusted public origin; HTTPS outside loopback development, with no credentials, path, query, or fragment; the server derives the fixed `/mcp` endpoint from it |
+| `DOORBELL_FARM_API_BASE_URL` | Required HTTP(S) internal base URL for server-to-server calls to the external farm service; used by public lookup, credential verification, controlled actions, and the no-key human-page proxy |
+| `DOORBELL_FARM_HUMAN_UI_BASE_URL` | Required trusted public base URL for Human farm pages, including the deployed farm path; first registration accepts a Human URL only below its `ui/` path and never compares that browser URL with the internal farm API origin |
+| `DOORBELL_FARM_SERVICE_TOKEN` | Required Doorbell-side secret sent only in authenticated farm-service Authorization headers |
+| `AIFARM_DOORBELL_SERVICE_TOKEN` | Matching farm-side secret that enables the controlled welcome-reward, MCP-migration-revoke, and internal farm-execution endpoints |
+
+The official Connector process uses `DOORBELL_SERVER_WS_URL`,
+`DOORBELL_CONNECTOR_CREDENTIAL`, `DOORBELL_CONNECTOR_DATABASE_PATH`, and optional
+`DOORBELL_CONNECTOR_PORT` (default `3100`). Its HTTP listener host is fixed in code to
+`127.0.0.1` and is not configurable to a public address.
 
 `.env.example` lists the variables without a real API URL or token. The repository does not load the
 file automatically and contains no production secret.
@@ -186,13 +584,21 @@ file automatically and contains no production secret.
 ```bash
 npm install
 npm run dev
+npm run dev:connector
 ```
 
-The development command starts:
+The development command first builds `@doorbell/protocol`, then starts:
 
+- the protocol TypeScript compiler in continuous emit mode;
 - Fastify on `127.0.0.1:3000`;
 - Vite on its local development address;
 - a Vite proxy from `/api` to the Fastify service.
+
+The protocol package resolves both consumer types and runtime imports from that same `dist` build
+(`index.d.ts` and `index.js`). The server watcher observes the linked protocol output and restarts
+when it changes. Root `npm run typecheck` also builds protocol first, so consumer checks cannot read a
+new source type beside an older runtime Schema. Direct consumer-only commands are not the supported
+entry after changing shared protocol source; use the root development or typecheck command.
 
 Useful checks:
 
@@ -209,14 +615,21 @@ To read or rotate the shared code when its persisted window has expired:
 npm run registration-code
 ```
 
-## Production boundary
+## Test deployment and production boundary
 
-The Doorbell Commons server does not yet have its own systemd unit, nginx configuration, production
-database path, backup policy, or deployment script. Adding any of those requires a separate
-deployment task.
+The existing test VPS now runs the Doorbell Commons server through `doorbell-commons.service` from
+`/opt/doorbell-commons`, bound to `127.0.0.1:3000`, with its environment in
+`/etc/doorbell-commons/doorbell-commons.env` and its mode-0600 authoritative SQLite at
+`/var/lib/doorbell-commons/doorbell.sqlite`. Nginx serves the built web application and proxies
+`/api/` and `/mcp` for `doorbellcommons.com`. The 2026-08-14 release kept the previous application
+directories and copied both the community and isolated-farm data into
+`/var/backups/doorbell-commons/releases/20260814-034054b` before switching. The test environment's
+MCP readiness was already `true` before that release and was preserved; no configuration value or
+credential was copied into the repository.
 
-The existing public farm at `/farm/` remains an external service. Its current deployable runtime
-snapshot and farm-only systemd unit are tracked under `old-vps/farm`, but they are not imported by
-`apps/server` and are not part of the root npm workspace. Doorbell Commons calls only the farm's
-public read-only visit contract during lookup and final registration confirmation. It does not
-reuse or write the farm database, copy farm saves, or overwrite farm routes.
+The existing public farm at `/farm/` and port 8091 remains an independent external production
+service and was not changed by this release. Doorbell's creation, migration, and internal action
+boundaries are deployed only to the isolated `aifarm-doorbell-test.service` at port 8092, whose data
+remains under `/var/lib/aifarm-doorbell-test`. Doorbell does not import the farm runtime or database,
+copy farm saves, or let browser requests choose farm credentials. Moving the tested migration path
+to the 8091 farm or migrating real players remains a separate production action.

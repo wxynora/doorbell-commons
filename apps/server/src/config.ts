@@ -9,6 +9,11 @@ export interface QqGroupEligibilityConfig {
 export interface DoorbellServerConfig extends QqGroupEligibilityConfig {
   databasePath: string;
   farmApiBaseUrl: string;
+  farmHumanUiBaseUrl: string;
+  farmServiceToken: string;
+  mcpEndpoint: string;
+  mcpRuntimeReady: boolean;
+  upstreamRequestTimeoutMs: number;
 }
 
 function readRequiredEnvironmentValue(environment: NodeJS.ProcessEnv, name: string): string {
@@ -46,6 +51,18 @@ export function readDatabasePath(environment: NodeJS.ProcessEnv = process.env): 
   return readRequiredEnvironmentValue(environment, "DOORBELL_DATABASE_PATH");
 }
 
+export function readUpstreamRequestTimeoutMs(environment: NodeJS.ProcessEnv = process.env): number {
+  const value = readRequiredEnvironmentValue(environment, "DOORBELL_UPSTREAM_REQUEST_TIMEOUT_MS");
+  if (!/^[1-9][0-9]*$/.test(value)) {
+    throw new Error("DOORBELL_UPSTREAM_REQUEST_TIMEOUT_MS must be a positive integer");
+  }
+  const timeoutMs = Number(value);
+  if (!Number.isSafeInteger(timeoutMs)) {
+    throw new Error("DOORBELL_UPSTREAM_REQUEST_TIMEOUT_MS must be a safe integer");
+  }
+  return timeoutMs;
+}
+
 export function readFarmApiBaseUrl(environment: NodeJS.ProcessEnv = process.env): string {
   const value = readRequiredEnvironmentValue(environment, "DOORBELL_FARM_API_BASE_URL");
   const parsedUrl = new URL(value);
@@ -55,6 +72,69 @@ export function readFarmApiBaseUrl(environment: NodeJS.ProcessEnv = process.env)
   return parsedUrl.toString();
 }
 
+export function readFarmHumanUiBaseUrl(environment: NodeJS.ProcessEnv = process.env): string {
+  const value = readRequiredEnvironmentValue(environment, "DOORBELL_FARM_HUMAN_UI_BASE_URL");
+  const parsedUrl = new URL(value);
+  const loopbackHttp =
+    parsedUrl.protocol === "http:" &&
+    (parsedUrl.hostname === "localhost" ||
+      parsedUrl.hostname === "127.0.0.1" ||
+      parsedUrl.hostname === "[::1]");
+  if (parsedUrl.protocol !== "https:" && !loopbackHttp) {
+    throw new Error("DOORBELL_FARM_HUMAN_UI_BASE_URL must use https outside loopback development");
+  }
+  if (
+    parsedUrl.username !== "" ||
+    parsedUrl.password !== "" ||
+    parsedUrl.search !== "" ||
+    parsedUrl.hash !== ""
+  ) {
+    throw new Error(
+      "DOORBELL_FARM_HUMAN_UI_BASE_URL must not contain credentials, query, or fragment",
+    );
+  }
+  if (!parsedUrl.pathname.endsWith("/")) {
+    parsedUrl.pathname += "/";
+  }
+  return parsedUrl.toString();
+}
+
+export function readMcpEndpoint(environment: NodeJS.ProcessEnv = process.env): string {
+  const value = readRequiredEnvironmentValue(environment, "DOORBELL_PUBLIC_BASE_URL");
+  const parsedUrl = new URL(value);
+  const loopbackHttp =
+    parsedUrl.protocol === "http:" &&
+    (parsedUrl.hostname === "localhost" ||
+      parsedUrl.hostname === "127.0.0.1" ||
+      parsedUrl.hostname === "[::1]");
+  if (parsedUrl.protocol !== "https:" && !loopbackHttp) {
+    throw new Error("DOORBELL_PUBLIC_BASE_URL must use https outside loopback development");
+  }
+  if (
+    parsedUrl.username !== "" ||
+    parsedUrl.password !== "" ||
+    (parsedUrl.pathname !== "" && parsedUrl.pathname !== "/") ||
+    parsedUrl.search !== "" ||
+    parsedUrl.hash !== ""
+  ) {
+    throw new Error(
+      "DOORBELL_PUBLIC_BASE_URL must be an origin without credentials, path, or query",
+    );
+  }
+  return new URL("/mcp", parsedUrl.origin).toString();
+}
+
+export function readMcpRuntimeReady(environment: NodeJS.ProcessEnv = process.env): boolean {
+  const value = environment.DOORBELL_MCP_RUNTIME_READY?.trim();
+  if (!value || value === "false") {
+    return false;
+  }
+  if (value === "true") {
+    return true;
+  }
+  throw new Error("DOORBELL_MCP_RUNTIME_READY must be true or false");
+}
+
 export function readDoorbellServerConfig(
   environment: NodeJS.ProcessEnv = process.env,
 ): DoorbellServerConfig {
@@ -62,5 +142,10 @@ export function readDoorbellServerConfig(
     ...readQqGroupEligibilityConfig(environment),
     databasePath: readDatabasePath(environment),
     farmApiBaseUrl: readFarmApiBaseUrl(environment),
+    farmHumanUiBaseUrl: readFarmHumanUiBaseUrl(environment),
+    farmServiceToken: readRequiredEnvironmentValue(environment, "DOORBELL_FARM_SERVICE_TOKEN"),
+    mcpEndpoint: readMcpEndpoint(environment),
+    mcpRuntimeReady: readMcpRuntimeReady(environment),
+    upstreamRequestTimeoutMs: readUpstreamRequestTimeoutMs(environment),
   };
 }

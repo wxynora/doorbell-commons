@@ -1,67 +1,75 @@
-export type ConnectionState = "checking" | "online" | "offline";
+export type CommunityArea = "activity-room" | "lingye" | "my-home" | "owner-profile";
 
 export interface NavigationItemViewModel {
-  href: `#${string}`;
+  id: CommunityArea;
+  label: "小机活动室" | "铃野" | "我的家" | "业主档案";
+  icon: "lounge" | "map" | "home" | "profile";
+}
+
+export type LingyePlaceId =
+  | "moonlight-pond"
+  | "crystal-cave"
+  | "geyser-waterfall"
+  | "floating-lake"
+  | "mangrove-shoal"
+  | "abyssal-trench"
+  | "glimmer-meadow"
+  | "doorbell-community"
+  | "farm-ranch"
+  | "vocational-school"
+  | "lingye-daily"
+  | "animal-hospital"
+  | "bank"
+  | "lingye-public-security-office"
+  | "detention-center"
+  | "commercial-street";
+
+export interface LingyePlaceViewModel {
+  id: LingyePlaceId;
   label: string;
-  eyebrow: string;
+  imageUrl: string;
+  left: number;
+  top: number;
 }
 
-export interface ResidentPresenceViewModel {
-  key: string;
-  name: string;
-  statusLabel: string;
+export interface HomeWeatherViewModel {
+  condition: string | null;
+  temperature: string | null;
+  updatedAt: string | null;
 }
 
-export interface IdleRoomViewModel {
-  name: string;
-  availability: "available" | "not-connected";
-  theme: string | null;
-  residents: readonly ResidentPresenceViewModel[];
-}
-
-interface PublicMessageBaseViewModel {
-  key: string;
-  senderName: string;
+export interface VisitEventViewModel {
+  id: string;
+  label: string;
   timeLabel: string;
-  dateTime: string;
-  replyTarget: string | null;
-  mentions: readonly string[];
-  activityLabel: string | null;
 }
 
-export type PublicMessageViewModel =
-  | (PublicMessageBaseViewModel & {
-      displayState: "visible";
-      body: string;
-    })
-  | (PublicMessageBaseViewModel & {
-      displayState: "withdrawn" | "temporarily-hidden";
-    });
-
-export interface PublicMessageStreamViewModel {
-  availability: "available" | "not-connected";
-  messages: readonly PublicMessageViewModel[];
+export interface MyHomeViewModel {
+  familyName: string;
+  homeDoorplate: string | null;
+  backgroundDescription: string | null;
+  climateName: string | null;
+  weather: HomeWeatherViewModel;
+  remainingVisitTime: string | null;
+  visitEvents: readonly VisitEventViewModel[];
 }
 
-export interface ActivityViewModel {
-  key: string;
-  title: string;
-  statusLabel: string;
-  timeLabel: string | null;
+export interface SocialConnectionViewModel {
+  id: string;
+  residentName: string;
+  directionLabel: string;
+  visitCount: number;
+  lastVisitLabel: string | null;
 }
 
-export interface ActivityBoardViewModel {
-  availability: "available" | "not-connected";
-  activities: readonly ActivityViewModel[];
+export interface OwnerProfileViewModel {
+  qqNumber: string;
+  residentName: string;
+  publicIntro: string | null;
+  publicLocation: string | null;
+  currentActivity: string | null;
+  connectorStatus: string | null;
+  familyName: string;
+  farmDoorplate: string;
+  socialConnections: readonly SocialConnectionViewModel[];
 }
-
-export type ResidentWatchViewModel =
-  | { state: "unbound" }
-  | {
-      state: "bound";
-      name: string;
-      onlineLabel: string;
-      locationLabel: string;
-      activityLabel: string | null;
-      socialGraphAvailable: boolean;
-    };

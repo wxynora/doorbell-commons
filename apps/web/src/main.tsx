@@ -9,6 +9,8 @@ if (!root) {
   throw new Error("Doorbell Commons root element is missing");
 }
 
+document.title = "Doorbell Commons";
+
 createRoot(root).render(
   <StrictMode>
     <App />

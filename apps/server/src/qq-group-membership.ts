@@ -13,6 +13,7 @@ interface OneBotGroupMembershipClientOptions {
   apiBaseUrl: string;
   apiToken: string;
   fetchImplementation?: typeof fetch;
+  requestTimeoutMs: number;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -28,11 +29,16 @@ export class OneBotGroupMembershipClient implements QqGroupMembershipReader {
   readonly #apiBaseUrl: string;
   readonly #apiToken: string;
   readonly #fetch: typeof fetch;
+  readonly #requestTimeoutMs: number;
 
   constructor(options: OneBotGroupMembershipClientOptions) {
+    if (!Number.isSafeInteger(options.requestTimeoutMs) || options.requestTimeoutMs <= 0) {
+      throw new TypeError("OneBot request timeout must be a positive integer in milliseconds");
+    }
     this.#apiBaseUrl = options.apiBaseUrl;
     this.#apiToken = options.apiToken;
     this.#fetch = options.fetchImplementation ?? fetch;
+    this.#requestTimeoutMs = options.requestTimeoutMs;
   }
 
   async isCurrentMember(groupId: string, qqNumber: string): Promise<boolean> {
@@ -49,6 +55,7 @@ export class OneBotGroupMembershipClient implements QqGroupMembershipReader {
           group_id: groupId,
           no_cache: true,
         }),
+        signal: AbortSignal.timeout(this.#requestTimeoutMs),
       });
     } catch (error) {
       throw new OneBotUnavailableError("OneBot request failed", { cause: error });
@@ -74,19 +81,16 @@ export class OneBotGroupMembershipClient implements QqGroupMembershipReader {
       throw new OneBotUnavailableError("OneBot returned an unsuccessful member-list result");
     }
 
-    for (const member of payload.data) {
+    const memberIds = payload.data.map((member) => {
       if (
         !isRecord(member) ||
         (typeof member.user_id !== "number" && typeof member.user_id !== "string")
       ) {
         throw new OneBotUnavailableError("OneBot returned malformed member data");
       }
+      return String(member.user_id);
+    });
 
-      if (String(member.user_id) === qqNumber) {
-        return true;
-      }
-    }
-
-    return false;
+    return memberIds.includes(qqNumber);
   }
 }

@@ -1,0 +1,545 @@
+import type { CommunityDatabase } from "./community-database.js";
+import {
+  DOORBELL_INITIALIZE_INSTRUCTIONS,
+  type DoorbellCallExample,
+  doorbellToolDefinition,
+  examplesForInvalidArgs,
+  type FarmOperationDefinition,
+  farmOperationByName,
+  renderFarmHelp,
+  stripDetail,
+} from "./doorbell-farm-op-registry.js";
+import { hashMcpCredential } from "./mcp-access-service.js";
+import {
+  FarmMcpActionBindingMismatchError,
+  FarmMcpActionContractUnavailableError,
+  FarmMcpActionCredentialInvalidError,
+  type FarmMcpActionExecutor,
+  FarmMcpActionMigrationRequiredError,
+  FarmMcpActionUnavailableError,
+} from "./mcp-farm-action-client.js";
+import { OneBotUnavailableError } from "./qq-group-membership.js";
+import {
+  AuthenticationRequiredError,
+  QqNotGroupMemberError,
+  type RegistrationAuthService,
+} from "./registration-auth.js";
+
+const MCP_PROTOCOL_VERSION = "2025-06-18";
+const FARM_STATUS_IDLE_MS = 10 * 60 * 1000;
+const MCP_CREDENTIAL_PATTERN = /^dbm_[A-Za-z0-9_-]{43}$/;
+
+type JsonRpcId = string | number | null;
+
+interface JsonRpcSuccess {
+  jsonrpc: "2.0";
+  id: JsonRpcId;
+  result: unknown;
+}
+
+interface JsonRpcFailure {
+  jsonrpc: "2.0";
+  id: JsonRpcId;
+  error: { code: number; message: string };
+}
+
+type JsonRpcResponse = JsonRpcSuccess | JsonRpcFailure;
+
+export interface DoorbellMcpHttpResult {
+  statusCode: number;
+  headers: Record<string, string>;
+  body?: unknown;
+}
+
+export interface DoorbellMcpPostInput {
+  authorization?: string;
+  origin?: string;
+  body: unknown;
+}
+
+interface DoorbellFarmContext {
+  residentId: string;
+  farmDoorplate: string;
+  farmHumanKey: string;
+}
+
+type DoorbellToolErrorCode =
+  | "ELIGIBILITY_REVOKED"
+  | "ELIGIBILITY_UNAVAILABLE"
+  | "FARM_NOT_BOUND"
+  | "FARM_MIGRATION_REQUIRED"
+  | "UNKNOWN_OP"
+  | "INVALID_ARGS"
+  | "UPSTREAM_UNAVAILABLE"
+  | "INTERNAL_ERROR";
+
+interface DoorbellIssue {
+  path: Array<string | number>;
+  code: string;
+  message: string;
+}
+
+class FarmNotBoundError extends Error {}
+class FarmMigrationRequiredError extends Error {}
+
+const TOOL_ERROR_MESSAGES = {
+  ELIGIBILITY_REVOKED: "当前社区资格已经失效，Doorbell 连接已停用。",
+  ELIGIBILITY_UNAVAILABLE: "暂时无法核验社区资格，本次操作没有执行，请稍后重试。",
+  FARM_NOT_BOUND: "当前居民没有可用的农场绑定，本次操作没有执行。",
+  FARM_MIGRATION_REQUIRED: "这户农场尚未完成 Doorbell 迁移，请由人类伴侣先领取新连接。",
+  UPSTREAM_UNAVAILABLE: "农场服务暂时不可用，本次操作没有执行。",
+  INTERNAL_ERROR: "Doorbell 暂时无法完成这次操作，本次操作没有执行。",
+} as const;
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function jsonRpcSuccess(id: JsonRpcId, result: unknown): JsonRpcSuccess {
+  return { jsonrpc: "2.0", id, result };
+}
+
+function jsonRpcFailure(id: JsonRpcId, code: number, message: string): JsonRpcFailure {
+  return { jsonrpc: "2.0", id, error: { code, message } };
+}
+
+function textContent(text: string) {
+  return [{ type: "text" as const, text }];
+}
+
+function doorbellToolError(
+  code: DoorbellToolErrorCode,
+  options: {
+    op?: string;
+    message?: string;
+    issues?: readonly DoorbellIssue[];
+    examples?: readonly DoorbellCallExample[];
+  } = {},
+) {
+  const message = options.message ?? TOOL_ERROR_MESSAGES[code as keyof typeof TOOL_ERROR_MESSAGES];
+  if (!message) {
+    throw new Error(`Missing Doorbell error message for ${code}`);
+  }
+  return {
+    content: textContent(message),
+    structuredContent: {
+      ok: false,
+      ...(options.op ? { op: options.op } : {}),
+      source: "doorbell",
+      error: {
+        code,
+        message,
+        ...(options.issues ? { issues: options.issues } : {}),
+        ...(options.examples ? { examples: options.examples } : {}),
+      },
+    },
+    isError: true,
+  };
+}
+
+function farmToolResult(op: string, text: string, ok: boolean, farm?: Record<string, unknown>) {
+  if (!ok) {
+    return {
+      content: textContent(text),
+      structuredContent: {
+        ok: false,
+        op,
+        source: "farm",
+        error: { code: "OP_REJECTED", message: text },
+      },
+      isError: true,
+    };
+  }
+  return {
+    content: textContent(text),
+    structuredContent: {
+      ok: true,
+      op,
+      source: "farm",
+      text,
+      ...(farm ? { farm } : {}),
+    },
+    isError: false,
+  };
+}
+
+function helpToolResult(op: string, text: string) {
+  return {
+    content: textContent(text),
+    structuredContent: { ok: true, op, source: "doorbell", text },
+    isError: false,
+  };
+}
+
+function formatIssues(operation: FarmOperationDefinition, error: { issues: readonly unknown[] }) {
+  return (
+    error.issues as Array<{
+      path?: Array<PropertyKey>;
+      code?: string;
+      message?: string;
+    }>
+  ).map((issue) => ({
+    path: [
+      "args",
+      ...(issue.path ?? []).map((part) =>
+        typeof part === "string" || typeof part === "number" ? part : String(part),
+      ),
+    ],
+    code: issue.code ?? "invalid_value",
+    message: issue.message ?? `参数不符合 ${operation.op} 的要求`,
+  }));
+}
+
+function transportAuthError(code: "AUTH_REQUIRED" | "AUTH_INVALID"): DoorbellMcpHttpResult {
+  const message =
+    code === "AUTH_REQUIRED"
+      ? "这次连接没有提供 Doorbell 凭据。请由人类伴侣在 Doorbell Commons 重新领取连接。"
+      : "这条 Doorbell 连接已经失效。请由人类伴侣在 Doorbell Commons 重新领取连接。";
+  return {
+    statusCode: 401,
+    headers: {
+      "cache-control": "no-store",
+      "www-authenticate": "Bearer",
+    },
+    body: { ok: false, error: { code, message } },
+  };
+}
+
+export interface DoorbellMcpRuntimeOptions {
+  database: CommunityDatabase;
+  registrationAuth: RegistrationAuthService;
+  farmActions: FarmMcpActionExecutor;
+  mcpEndpoint: string;
+  now?: () => number;
+}
+
+export class DoorbellMcpRuntime {
+  readonly #database: CommunityDatabase;
+  readonly #registrationAuth: RegistrationAuthService;
+  readonly #farmActions: FarmMcpActionExecutor;
+  readonly #allowedOrigin: string;
+  readonly #now: () => number;
+  readonly #lastFarmCallAt = new Map<string, number>();
+
+  constructor(options: DoorbellMcpRuntimeOptions) {
+    this.#database = options.database;
+    this.#registrationAuth = options.registrationAuth;
+    this.#farmActions = options.farmActions;
+    this.#allowedOrigin = new URL(options.mcpEndpoint).origin;
+    this.#now = options.now ?? Date.now;
+  }
+
+  async handlePost(input: DoorbellMcpPostInput): Promise<DoorbellMcpHttpResult> {
+    if (input.origin && input.origin !== this.#allowedOrigin) {
+      return { statusCode: 403, headers: { "cache-control": "no-store" } };
+    }
+    const bearer = this.#readBearerCredential(input.authorization);
+    if (bearer === "missing") {
+      return transportAuthError("AUTH_REQUIRED");
+    }
+    if (bearer === "invalid") {
+      return transportAuthError("AUTH_INVALID");
+    }
+    const binding = this.#database.authenticateMcpCredentialHash(hashMcpCredential(bearer));
+    if (!binding) {
+      return transportAuthError("AUTH_INVALID");
+    }
+
+    const context = this.#resolveContext(binding.residentId);
+    void context.catch(() => undefined);
+    if (Array.isArray(input.body)) {
+      if (input.body.length === 0) {
+        return this.#jsonResponse(jsonRpcFailure(null, -32600, "Invalid Request"));
+      }
+      const responses: JsonRpcResponse[] = [];
+      for (const request of input.body) {
+        const response = await this.#dispatchOne(request, context);
+        if (response) {
+          responses.push(response);
+        }
+      }
+      return responses.length === 0
+        ? { statusCode: 202, headers: { "cache-control": "no-store" } }
+        : this.#jsonResponse(responses);
+    }
+    const response = await this.#dispatchOne(input.body, context);
+    return response
+      ? this.#jsonResponse(response)
+      : { statusCode: 202, headers: { "cache-control": "no-store" } };
+  }
+
+  #jsonResponse(body: unknown): DoorbellMcpHttpResult {
+    return {
+      statusCode: 200,
+      headers: { "cache-control": "no-store", "content-type": "application/json" },
+      body,
+    };
+  }
+
+  #readBearerCredential(authorization: string | undefined): string | "missing" | "invalid" {
+    if (!authorization) {
+      return "missing";
+    }
+    const match = /^Bearer ([^ ]+)$/.exec(authorization);
+    if (!match?.[1] || !MCP_CREDENTIAL_PATTERN.test(match[1])) {
+      return "invalid";
+    }
+    return match[1];
+  }
+
+  async #resolveContext(residentId: string): Promise<DoorbellFarmContext> {
+    await this.#registrationAuth.confirmCurrentResidentMembership(residentId);
+    const homeId = this.#database.findHomeIdByResidentId(residentId);
+    const farmBinding = homeId ? this.#database.findFarmBindingByHomeId(homeId) : undefined;
+    if (!farmBinding || farmBinding.farmHumanKey === null) {
+      throw new FarmNotBoundError();
+    }
+    const accessBinding = this.#database.getMcpAccessBinding(residentId);
+    if (
+      !accessBinding ||
+      accessBinding.farmRevokedAt === null ||
+      accessBinding.farmConfirmationId === null ||
+      accessBinding.farmDoorplate !== farmBinding.farmDoorplate
+    ) {
+      throw new FarmMigrationRequiredError();
+    }
+    return {
+      residentId,
+      farmDoorplate: farmBinding.farmDoorplate,
+      farmHumanKey: farmBinding.farmHumanKey,
+    };
+  }
+
+  async #dispatchOne(
+    request: unknown,
+    contextPromise: Promise<DoorbellFarmContext>,
+  ): Promise<JsonRpcResponse | undefined> {
+    if (
+      !isPlainObject(request) ||
+      request.jsonrpc !== "2.0" ||
+      typeof request.method !== "string"
+    ) {
+      return jsonRpcFailure(null, -32600, "Invalid Request");
+    }
+    const hasId = Object.hasOwn(request, "id");
+    const id =
+      hasId &&
+      (typeof request.id === "string" || typeof request.id === "number" || request.id === null)
+        ? request.id
+        : null;
+    if (hasId && id === null && request.id !== null) {
+      return jsonRpcFailure(null, -32600, "Invalid Request");
+    }
+    const isNotification = !hasId;
+
+    let context: DoorbellFarmContext;
+    try {
+      context = await contextPromise;
+    } catch (error) {
+      if (isNotification) {
+        return undefined;
+      }
+      if (
+        request.method === "tools/call" &&
+        isPlainObject(request.params) &&
+        request.params.name === "doorbell"
+      ) {
+        return jsonRpcSuccess(id, this.#contextToolError(error));
+      }
+      return jsonRpcFailure(id, -32001, this.#contextProtocolMessage(error));
+    }
+
+    switch (request.method) {
+      case "initialize": {
+        if (isNotification) {
+          return undefined;
+        }
+        const requestedVersion =
+          isPlainObject(request.params) && typeof request.params.protocolVersion === "string"
+            ? request.params.protocolVersion
+            : MCP_PROTOCOL_VERSION;
+        return jsonRpcSuccess(id, {
+          protocolVersion: requestedVersion,
+          capabilities: { tools: {} },
+          serverInfo: { name: "doorbell-commons", version: "1.0.0" },
+          instructions: DOORBELL_INITIALIZE_INSTRUCTIONS,
+        });
+      }
+      case "ping":
+        return isNotification ? undefined : jsonRpcSuccess(id, {});
+      case "tools/list":
+        return isNotification ? undefined : jsonRpcSuccess(id, { tools: [doorbellToolDefinition] });
+      case "tools/call":
+        if (isNotification) {
+          return undefined;
+        }
+        try {
+          return jsonRpcSuccess(id, await this.#callTool(request.params, context));
+        } catch (error) {
+          if (error instanceof ProtocolToolError) {
+            return jsonRpcFailure(id, error.code, error.message);
+          }
+          throw error;
+        }
+      default:
+        if (isNotification) {
+          return undefined;
+        }
+        return jsonRpcFailure(id, -32601, "Method not found");
+    }
+  }
+
+  #contextToolError(error: unknown) {
+    if (error instanceof QqNotGroupMemberError) {
+      return doorbellToolError("ELIGIBILITY_REVOKED");
+    }
+    if (error instanceof OneBotUnavailableError) {
+      return doorbellToolError("ELIGIBILITY_UNAVAILABLE");
+    }
+    if (error instanceof FarmNotBoundError) {
+      return doorbellToolError("FARM_NOT_BOUND");
+    }
+    if (error instanceof FarmMigrationRequiredError) {
+      return doorbellToolError("FARM_MIGRATION_REQUIRED");
+    }
+    return doorbellToolError("INTERNAL_ERROR");
+  }
+
+  #contextProtocolMessage(error: unknown): string {
+    if (error instanceof QqNotGroupMemberError) {
+      return TOOL_ERROR_MESSAGES.ELIGIBILITY_REVOKED;
+    }
+    if (error instanceof OneBotUnavailableError) {
+      return TOOL_ERROR_MESSAGES.ELIGIBILITY_UNAVAILABLE;
+    }
+    if (error instanceof FarmNotBoundError) {
+      return TOOL_ERROR_MESSAGES.FARM_NOT_BOUND;
+    }
+    if (error instanceof FarmMigrationRequiredError) {
+      return TOOL_ERROR_MESSAGES.FARM_MIGRATION_REQUIRED;
+    }
+    if (error instanceof AuthenticationRequiredError) {
+      return "这条 Doorbell 连接已经失效。请由人类伴侣在 Doorbell Commons 重新领取连接。";
+    }
+    return TOOL_ERROR_MESSAGES.INTERNAL_ERROR;
+  }
+
+  async #callTool(params: unknown, context: DoorbellFarmContext) {
+    if (!isPlainObject(params) || params.name !== "doorbell") {
+      throw new ProtocolToolError(-32602, "Invalid params");
+    }
+    const call = params.arguments;
+    if (!isPlainObject(call)) {
+      return doorbellToolError("INVALID_ARGS", {
+        message:
+          "参数不符合 doorbell 的要求。请按 issues 修正 args，不要使用旧 action 参数或身份字段。",
+        issues: [{ path: ["arguments"], code: "invalid_type", message: "必须是对象" }],
+      });
+    }
+    const keys = Object.keys(call);
+    const op = typeof call.op === "string" ? call.op : undefined;
+    if (
+      keys.length !== 2 ||
+      !keys.includes("op") ||
+      !keys.includes("args") ||
+      !op ||
+      !isPlainObject(call.args)
+    ) {
+      return doorbellToolError("INVALID_ARGS", {
+        ...(op ? { op } : {}),
+        message: `参数不符合 ${op ?? "doorbell"} 的要求。请按 issues 修正 args，不要使用旧 action 参数或身份字段。`,
+        issues: [{ path: ["arguments"], code: "invalid_shape", message: "必须只包含 op 和 args" }],
+      });
+    }
+    const operation = farmOperationByName.get(op);
+    if (!operation) {
+      return doorbellToolError("UNKNOWN_OP", {
+        op,
+        message: `未开放的操作：${op}。请使用 doorbell 工具 Schema 中列出的完整 op。`,
+      });
+    }
+    const parsed = operation.argsSchema.safeParse(call.args);
+    if (!parsed.success) {
+      return doorbellToolError("INVALID_ARGS", {
+        op,
+        message: `参数不符合 ${op} 的要求。请按 issues 修正 args，不要使用旧 action 参数或身份字段。`,
+        issues: formatIssues(operation, parsed.error),
+        examples: examplesForInvalidArgs(operation, call.args),
+      });
+    }
+
+    const shouldAppendStatus = this.#noteValidFarmCall(context.residentId);
+    const { detail, businessArgs } = stripDetail(parsed.data);
+    const plan = operation.adapt(businessArgs);
+    if (plan.kind === "help") {
+      let text = renderFarmHelp(plan.operation);
+      if (shouldAppendStatus) {
+        text = await this.#appendStatusWhenAvailable(text, context);
+      }
+      return helpToolResult(op, text);
+    }
+
+    try {
+      const result = await this.#farmActions.execute({
+        farmDoorplate: context.farmDoorplate,
+        farmHumanKey: context.farmHumanKey,
+        action: plan.action,
+        params: plan.params,
+        detail,
+      });
+      let text = result.text;
+      if (shouldAppendStatus && op !== "farm.status") {
+        text = await this.#appendStatusWhenAvailable(text, context);
+      }
+      return farmToolResult(op, text, result.ok, result.farm);
+    } catch (error) {
+      if (
+        error instanceof FarmMcpActionCredentialInvalidError ||
+        error instanceof FarmMcpActionBindingMismatchError
+      ) {
+        return doorbellToolError("FARM_NOT_BOUND", { op });
+      }
+      if (error instanceof FarmMcpActionMigrationRequiredError) {
+        return doorbellToolError("FARM_MIGRATION_REQUIRED", { op });
+      }
+      if (error instanceof FarmMcpActionUnavailableError) {
+        return doorbellToolError("UPSTREAM_UNAVAILABLE", { op });
+      }
+      if (error instanceof FarmMcpActionContractUnavailableError) {
+        return doorbellToolError("INTERNAL_ERROR", { op });
+      }
+      return doorbellToolError("INTERNAL_ERROR", { op });
+    }
+  }
+
+  #noteValidFarmCall(residentId: string): boolean {
+    const now = this.#now();
+    const previous = this.#lastFarmCallAt.get(residentId);
+    this.#lastFarmCallAt.set(residentId, now);
+    return previous === undefined || now - previous >= FARM_STATUS_IDLE_MS;
+  }
+
+  async #appendStatusWhenAvailable(text: string, context: DoorbellFarmContext): Promise<string> {
+    try {
+      const status = await this.#farmActions.execute({
+        farmDoorplate: context.farmDoorplate,
+        farmHumanKey: context.farmHumanKey,
+        action: "status",
+        params: {},
+      });
+      return status.ok ? `${text}\n\n${status.text}` : text;
+    } catch {
+      return text;
+    }
+  }
+}
+
+class ProtocolToolError extends Error {
+  readonly code: number;
+
+  constructor(code: number, message: string) {
+    super(message);
+    this.name = "ProtocolToolError";
+    this.code = code;
+  }
+}

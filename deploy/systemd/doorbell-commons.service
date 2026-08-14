@@ -1,0 +1,31 @@
+[Unit]
+Description=Doorbell Commons community server
+After=network-online.target aifarm-doorbell-test.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=doorbell
+Group=doorbell
+WorkingDirectory=/opt/doorbell-commons
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=3000
+EnvironmentFile=/etc/doorbell-commons/doorbell-commons.env
+ExecStart=/usr/bin/node /opt/doorbell-commons/apps/server/dist/index.js
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=/var/lib/doorbell-commons
+
+[Install]
+WantedBy=multi-user.target

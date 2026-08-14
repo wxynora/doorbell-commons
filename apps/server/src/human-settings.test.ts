@@ -1,0 +1,512 @@
+import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { test } from "node:test";
+import {
+  climateTypeValues,
+  currentHumanSessionSuccessSchema,
+  humanSettingsErrorSchema,
+  humanSettingsSuccessSchema,
+} from "@doorbell/protocol";
+import { buildApp } from "./app.js";
+import { CommunityDatabase } from "./community-database.js";
+import { COMMUNITY_QQ_GROUP_ID } from "./config.js";
+import type {
+  BoundFarmOverview,
+  FarmDirectoryEntry,
+  FarmDirectoryReader,
+  FarmHumanActionRedirect,
+  FarmHumanPage,
+} from "./farm-directory-client.js";
+import { OneBotUnavailableError, type QqGroupMembershipReader } from "./qq-group-membership.js";
+import { RegistrationAuthService } from "./registration-auth.js";
+
+const NOW = Date.UTC(2026, 7, 12, 12, 0, 0);
+const FARM_HUMAN_KEY = "private-settings-farm-key";
+
+class FakeGroupMembership implements QqGroupMembershipReader {
+  readonly members = new Set<string>();
+  unavailable = false;
+
+  async isCurrentMember(_groupId: string, qqNumber: string): Promise<boolean> {
+    if (this.unavailable) {
+      throw new OneBotUnavailableError("fake OneBot unavailable");
+    }
+    return this.members.has(qqNumber);
+  }
+}
+
+class UnusedFarmDirectory implements FarmDirectoryReader {
+  calls = 0;
+
+  async lookupFarm(_farmDoorplate: string): Promise<FarmDirectoryEntry> {
+    this.calls += 1;
+    throw new Error("Settings must not query the farm");
+  }
+
+  async lookupFarmByHumanKey(_farmHumanKey: string): Promise<FarmDirectoryEntry> {
+    this.calls += 1;
+    throw new Error("Settings must not query the farm");
+  }
+
+  async readFarmOverview(_farmDoorplate: string): Promise<BoundFarmOverview> {
+    this.calls += 1;
+    throw new Error("Settings must not query the farm");
+  }
+
+  async readFarmHumanPage(
+    _farmHumanKey: string,
+    _pagePath: string,
+    _query: URLSearchParams,
+  ): Promise<FarmHumanPage> {
+    this.calls += 1;
+    throw new Error("Settings must not query the farm");
+  }
+
+  async submitFarmHumanAction(
+    _farmHumanKey: string,
+    _actionPath: string,
+    _form: URLSearchParams,
+  ): Promise<FarmHumanActionRedirect> {
+    this.calls += 1;
+    throw new Error("Settings must not query the farm");
+  }
+}
+
+function openHarness(databasePath: string, sessionTokens: string[]) {
+  const database = new CommunityDatabase(databasePath, {
+    generateSessionToken: () => sessionTokens.shift() ?? "unexpected-settings-session-token",
+  });
+  const membership = new FakeGroupMembership();
+  const farmDirectory = new UnusedFarmDirectory();
+  const registrationAuth = new RegistrationAuthService({
+    database,
+    farmDirectory,
+    groupMembership: membership,
+    groupId: COMMUNITY_QQ_GROUP_ID,
+    now: () => NOW,
+  });
+  const app = buildApp({
+    groupId: COMMUNITY_QQ_GROUP_ID,
+    groupMembership: membership,
+    registrationAuth,
+    secureCookies: false,
+    logger: false,
+  });
+  return {
+    app,
+    database,
+    farmDirectory,
+    membership,
+    close: async () => {
+      await app.close();
+      database.close();
+    },
+  };
+}
+
+function createRegisteredSession(
+  database: CommunityDatabase,
+  qqNumber: string,
+  residentName: string,
+  homeName: string,
+  farmDoorplate: string,
+) {
+  return database.createHumanSession(qqNumber, NOW, {
+    residentName,
+    homeName,
+    farmDoorplate,
+    farmHumanKey: `${FARM_HUMAN_KEY}-${qqNumber}`,
+  });
+}
+
+function cookie(token: string): string {
+  return `doorbell_session=${token}`;
+}
+
+test("settings expose honest integration state and persist supported fields across restart", async () => {
+  assert.deepEqual(climateTypeValues, [
+    "tropical_rainforest",
+    "tropical_savanna",
+    "tropical_monsoon",
+    "hot_desert",
+    "humid_subtropical",
+    "mediterranean",
+    "oceanic",
+    "temperate_monsoon",
+    "continental",
+    "subarctic",
+    "tundra",
+    "ice_cap",
+    "highland",
+  ]);
+  const directory = mkdtempSync(join(tmpdir(), "doorbell-human-settings-test-"));
+  const databasePath = join(directory, "doorbell.sqlite");
+  let harness = openHarness(databasePath, ["settings-session-token"]);
+  try {
+    const unauthenticated = await harness.app.inject({ method: "GET", url: "/api/settings" });
+    assert.equal(unauthenticated.statusCode, 401);
+    assert.equal(
+      humanSettingsErrorSchema.parse(unauthenticated.json()).error.code,
+      "authentication_required",
+    );
+
+    const created = createRegisteredSession(
+      harness.database,
+      "10001",
+      "小一",
+      "纸灯小屋",
+      "ABC234",
+    );
+    harness.membership.members.add("10001");
+    const sessionCookie = cookie(created.token);
+
+    const initial = await harness.app.inject({
+      method: "GET",
+      url: "/api/settings",
+      headers: { cookie: sessionCookie },
+    });
+    assert.equal(initial.statusCode, 200);
+    assert.deepEqual(humanSettingsSuccessSchema.parse(initial.json()), {
+      connection_status: {
+        connector: { status: "not_configured", last_online_at: null },
+        wake_bridge: { status: "not_integrated" },
+      },
+      home: {
+        home_name: "纸灯小屋",
+        environment_description: null,
+        climate_type: null,
+        weather_state: null,
+      },
+      notification_preferences: {
+        pause_all_wakeups: null,
+        visit_requests_and_invitations_enabled: null,
+        activity_invitations_enabled: null,
+        important_system_notifications_enabled: null,
+      },
+      community_connection_preferences: {
+        default_connection_duration_minutes: 5,
+        initial_recent_activity_count: null,
+        chat_mode: null,
+        allow_activity_room_warmup: null,
+      },
+    });
+    assert.doesNotMatch(initial.body, new RegExp(FARM_HUMAN_KEY));
+
+    const updatePayload = {
+      home: {
+        home_name: " 雨檐小屋 ",
+        environment_description: "  门前有一棵会听雨的树。  ",
+        climate_type: "temperate_monsoon",
+      },
+      notification_preferences: {
+        pause_all_wakeups: false,
+        visit_requests_and_invitations_enabled: true,
+        activity_invitations_enabled: false,
+        important_system_notifications_enabled: true,
+      },
+      community_connection_preferences: {
+        default_connection_duration_minutes: 17,
+        initial_recent_activity_count: 0,
+        chat_mode: "listening",
+        allow_activity_room_warmup: false,
+      },
+    };
+    const updated = await harness.app.inject({
+      method: "PATCH",
+      url: "/api/settings",
+      headers: { cookie: sessionCookie },
+      payload: updatePayload,
+    });
+    assert.equal(updated.statusCode, 200);
+    const updatedBody = humanSettingsSuccessSchema.parse(updated.json());
+    assert.deepEqual(updatedBody.home, {
+      home_name: " 雨檐小屋 ",
+      environment_description: "  门前有一棵会听雨的树。  ",
+      climate_type: "temperate_monsoon",
+      weather_state: {
+        weather_revision: 1,
+        season_phase: null,
+        condition: null,
+        state_started_at: null,
+        next_transition_at: null,
+      },
+    });
+    assert.deepEqual(updatedBody.notification_preferences, updatePayload.notification_preferences);
+    assert.deepEqual(
+      updatedBody.community_connection_preferences,
+      updatePayload.community_connection_preferences,
+    );
+    assert.doesNotMatch(updated.body, new RegExp(FARM_HUMAN_KEY));
+
+    const currentSession = await harness.app.inject({
+      method: "GET",
+      url: "/api/auth/session",
+      headers: { cookie: sessionCookie },
+    });
+    assert.equal(
+      currentHumanSessionSuccessSchema.parse(currentSession.json()).home.home_name,
+      " 雨檐小屋 ",
+    );
+
+    const invalidBodies = [
+      {},
+      { home: { climate_type: "mild" } },
+      { home: { home_name: " \n\t " } },
+      { community_connection_preferences: { default_connection_duration_minutes: 0 } },
+      { connector_credential: "must-not-be-accepted" },
+    ];
+    for (const payload of invalidBodies) {
+      const invalid = await harness.app.inject({
+        method: "PATCH",
+        url: "/api/settings",
+        headers: { cookie: sessionCookie },
+        payload,
+      });
+      assert.equal(invalid.statusCode, 400);
+      assert.equal(humanSettingsErrorSchema.parse(invalid.json()).error.code, "invalid_request");
+      assert.doesNotMatch(invalid.body, new RegExp(FARM_HUMAN_KEY));
+    }
+    assert.equal(harness.farmDirectory.calls, 0);
+
+    const initializedWeather = harness.database.updateHomeWeatherState(
+      created.community.home.homeId,
+      NOW,
+      {
+        climateType: "temperate_monsoon",
+        expectedWeatherRevision: 1,
+        seasonPhase: "summer",
+        condition: "rain",
+        stateStartedAt: null,
+        nextTransitionAt: null,
+      },
+    );
+    assert.deepEqual(initializedWeather, {
+      climateType: "temperate_monsoon",
+      weatherRevision: 2,
+      seasonPhase: "summer",
+      condition: "rain",
+      stateStartedAt: null,
+      nextTransitionAt: null,
+      updatedAt: NOW,
+    });
+    assert.equal(
+      harness.database.updateHomeWeatherState(created.community.home.homeId, NOW, {
+        climateType: "temperate_monsoon",
+        expectedWeatherRevision: 1,
+        seasonPhase: "winter",
+        condition: "snow",
+        stateStartedAt: null,
+        nextTransitionAt: null,
+      }),
+      undefined,
+    );
+    assert.deepEqual(
+      harness.database.getHumanSettings(created.community.home.homeId).weatherState,
+      initializedWeather,
+    );
+
+    await harness.close();
+    harness = openHarness(databasePath, []);
+    harness.membership.members.add("10001");
+    const afterRestart = await harness.app.inject({
+      method: "GET",
+      url: "/api/settings",
+      headers: { cookie: sessionCookie },
+    });
+    assert.equal(afterRestart.statusCode, 200);
+    const restartedBody = humanSettingsSuccessSchema.parse(afterRestart.json());
+    assert.deepEqual(restartedBody, {
+      ...updatedBody,
+      home: {
+        ...updatedBody.home,
+        weather_state: {
+          weather_revision: 2,
+          season_phase: "summer",
+          condition: "rain",
+          state_started_at: null,
+          next_transition_at: null,
+        },
+      },
+    });
+
+    const unchangedClimate = await harness.app.inject({
+      method: "PATCH",
+      url: "/api/settings",
+      headers: { cookie: sessionCookie },
+      payload: { home: { climate_type: "temperate_monsoon" } },
+    });
+    assert.equal(unchangedClimate.statusCode, 200);
+    assert.deepEqual(humanSettingsSuccessSchema.parse(unchangedClimate.json()), restartedBody);
+
+    const changedClimate = await harness.app.inject({
+      method: "PATCH",
+      url: "/api/settings",
+      headers: { cookie: sessionCookie },
+      payload: { home: { climate_type: "oceanic" } },
+    });
+    assert.equal(changedClimate.statusCode, 200);
+    assert.deepEqual(humanSettingsSuccessSchema.parse(changedClimate.json()).home, {
+      home_name: " 雨檐小屋 ",
+      environment_description: "  门前有一棵会听雨的树。  ",
+      climate_type: "oceanic",
+      weather_state: {
+        weather_revision: 3,
+        season_phase: null,
+        condition: null,
+        state_started_at: null,
+        next_transition_at: null,
+      },
+    });
+    assert.equal(
+      harness.database.updateHomeWeatherState(created.community.home.homeId, NOW, {
+        climateType: "temperate_monsoon",
+        expectedWeatherRevision: 2,
+        seasonPhase: "winter",
+        condition: "snow",
+        stateStartedAt: null,
+        nextTransitionAt: null,
+      }),
+      undefined,
+    );
+    assert.deepEqual(
+      harness.database.getHumanSettings(created.community.home.homeId).weatherState,
+      {
+        climateType: "oceanic",
+        weatherRevision: 3,
+        seasonPhase: null,
+        condition: null,
+        stateStartedAt: null,
+        nextTransitionAt: null,
+        updatedAt: NOW,
+      },
+    );
+    assert.equal(harness.farmDirectory.calls, 0);
+  } finally {
+    await harness.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("settings remain isolated by session and cannot target another home", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "doorbell-human-settings-isolation-test-"));
+  const harness = openHarness(join(directory, "doorbell.sqlite"), ["first-token", "second-token"]);
+  try {
+    const first = createRegisteredSession(harness.database, "10001", "小一", "第一座家", "ABC234");
+    const second = createRegisteredSession(harness.database, "10002", "小二", "第二座家", "DEF567");
+    harness.membership.members.add("10001");
+    harness.membership.members.add("10002");
+
+    const updateFirst = await harness.app.inject({
+      method: "PATCH",
+      url: "/api/settings",
+      headers: { cookie: cookie(first.token) },
+      payload: {
+        home: {
+          environment_description: "只属于第一座家",
+          climate_type: climateTypeValues[0],
+        },
+        community_connection_preferences: { chat_mode: "proactive" },
+      },
+    });
+    assert.equal(updateFirst.statusCode, 200);
+
+    const readSecond = await harness.app.inject({
+      method: "GET",
+      url: "/api/settings",
+      headers: { cookie: cookie(second.token) },
+    });
+    const secondSettings = humanSettingsSuccessSchema.parse(readSecond.json());
+    assert.equal(secondSettings.home.home_name, "第二座家");
+    assert.equal(secondSettings.home.environment_description, null);
+    assert.equal(secondSettings.home.climate_type, null);
+    assert.equal(secondSettings.home.weather_state, null);
+    assert.equal(secondSettings.community_connection_preferences.chat_mode, null);
+    assert.equal(harness.farmDirectory.calls, 0);
+  } finally {
+    await harness.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("settings recheck QQ membership and never mutate on outage or confirmed departure", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "doorbell-human-settings-membership-test-"));
+  const harness = openHarness(join(directory, "doorbell.sqlite"), ["membership-token"]);
+  try {
+    const created = createRegisteredSession(
+      harness.database,
+      "10001",
+      "小一",
+      "纸灯小屋",
+      "ABC234",
+    );
+    const sessionCookie = cookie(created.token);
+    harness.membership.members.add("10001");
+
+    harness.membership.unavailable = true;
+    const unavailable = await harness.app.inject({
+      method: "PATCH",
+      url: "/api/settings",
+      headers: { cookie: sessionCookie },
+      payload: {
+        home: {
+          environment_description: "不应保存",
+          climate_type: "highland",
+        },
+      },
+    });
+    assert.equal(unavailable.statusCode, 503);
+    assert.equal(
+      humanSettingsErrorSchema.parse(unavailable.json()).error.code,
+      "onebot_unavailable",
+    );
+    assert.equal(
+      harness.database.getHumanSettings(created.community.home.homeId).environmentDescription,
+      null,
+    );
+    assert.equal(
+      harness.database.getHumanSettings(created.community.home.homeId).climateType,
+      null,
+    );
+
+    harness.membership.unavailable = false;
+    const afterOutage = await harness.app.inject({
+      method: "GET",
+      url: "/api/settings",
+      headers: { cookie: sessionCookie },
+    });
+    assert.equal(afterOutage.statusCode, 200);
+
+    harness.membership.members.clear();
+    const departed = await harness.app.inject({
+      method: "PATCH",
+      url: "/api/settings",
+      headers: { cookie: sessionCookie },
+      payload: { home: { environment_description: "也不应保存" } },
+    });
+    assert.equal(departed.statusCode, 403);
+    assert.equal(humanSettingsErrorSchema.parse(departed.json()).error.code, "qq_not_group_member");
+    assert.match(String(departed.headers["set-cookie"]), /Max-Age=0/);
+    assert.equal(
+      harness.database.getHumanSettings(created.community.home.homeId).environmentDescription,
+      null,
+    );
+
+    harness.membership.members.add("10001");
+    const revoked = await harness.app.inject({
+      method: "GET",
+      url: "/api/settings",
+      headers: { cookie: sessionCookie },
+    });
+    assert.equal(revoked.statusCode, 401);
+    assert.equal(
+      humanSettingsErrorSchema.parse(revoked.json()).error.code,
+      "authentication_required",
+    );
+    assert.equal(harness.farmDirectory.calls, 0);
+  } finally {
+    await harness.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
