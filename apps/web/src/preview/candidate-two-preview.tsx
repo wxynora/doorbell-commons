@@ -1,5 +1,6 @@
 import {
   type ConnectorSettingsStatus,
+  type HumanSettingsChatMode,
   type SharedMemeAddRequest,
   type SharedMemeDetailSuccess,
   type SharedMemeListSuccess,
@@ -59,9 +60,17 @@ export type CandidateTwoHomeSettingsView =
   | { stage: "error"; message: string }
   | {
       stage: "ready";
+      activityInvitationsEnabled: boolean;
+      allowActivityRoomWarmup: boolean;
       climateType: string | null;
+      defaultConnectionDurationMinutes: number;
       environmentDescription: string | null;
       homeName: string;
+      importantSystemNotificationsEnabled: boolean;
+      initialRecentActivityCount: number | null;
+      chatMode: HumanSettingsChatMode;
+      pauseAllWakeups: boolean;
+      visitRequestsAndInvitationsEnabled: boolean;
       weatherSummary: string;
     };
 
@@ -380,9 +389,17 @@ export function buildCandidateTwoDemoPreset(
       },
       homeSettings: {
         stage: "ready",
+        activityInvitationsEnabled: true,
+        allowActivityRoomWarmup: true,
+        chatMode: "natural",
         climateType: candidateTwoDemoContent.settings.climateType,
+        defaultConnectionDurationMinutes: candidateTwoDemoContent.settings.loungeDurationMinutes,
         environmentDescription: candidateTwoDemoContent.environmentDescription,
         homeName: candidateTwoDemoIdentity.homeName,
+        importantSystemNotificationsEnabled: true,
+        initialRecentActivityCount: candidateTwoDemoContent.settings.initialMessageCount,
+        pauseAllWakeups: false,
+        visitRequestsAndInvitationsEnabled: true,
         weatherSummary: "多云 · 24°C",
       },
       homeSettingsIssueMessage: null,
@@ -437,6 +454,35 @@ export type CandidateTwoAction =
       field: "climateType" | "environmentDescription" | "homeName";
       value: string;
     }
+  | {
+      type: "notification-preference-save";
+      field:
+        | "activityInvitationsEnabled"
+        | "importantSystemNotificationsEnabled"
+        | "pauseAllWakeups"
+        | "visitRequestsAndInvitationsEnabled";
+      value: boolean;
+    }
+  | {
+      type: "community-connection-preference-save";
+      field: "allowActivityRoomWarmup";
+      value: boolean;
+    }
+  | {
+      type: "community-connection-preference-save";
+      field: "chatMode";
+      value: HumanSettingsChatMode;
+    }
+  | {
+      type: "community-connection-preference-save";
+      field: "defaultConnectionDurationMinutes";
+      value: number;
+    }
+  | {
+      type: "community-connection-preference-save";
+      field: "initialRecentActivityCount";
+      value: number | null;
+    }
   | { type: "logout" }
   | { type: "view-ready" }
   | { type: "shared-memes-open" }
@@ -459,6 +505,8 @@ const candidateTwoActionKeys = {
   "connector-credential-issue": ["type"],
   "connector-credential-revoke": ["type"],
   "home-settings-save": ["type", "field", "value"],
+  "notification-preference-save": ["type", "field", "value"],
+  "community-connection-preference-save": ["type", "field", "value"],
   logout: ["type"],
   "shared-memes-open": ["type"],
   "shared-meme-open": ["type", "memeId"],
@@ -551,6 +599,56 @@ export function parseCandidateTwoAction(value: unknown): CandidateTwoAction | nu
           value: value.value,
         }
       : null;
+  }
+
+  if (type === "notification-preference-save") {
+    return typeof value.field === "string" &&
+      [
+        "activityInvitationsEnabled",
+        "importantSystemNotificationsEnabled",
+        "pauseAllWakeups",
+        "visitRequestsAndInvitationsEnabled",
+      ].includes(value.field) &&
+      typeof value.value === "boolean"
+      ? {
+          type,
+          field: value.field as
+            | "activityInvitationsEnabled"
+            | "importantSystemNotificationsEnabled"
+            | "pauseAllWakeups"
+            | "visitRequestsAndInvitationsEnabled",
+          value: value.value,
+        }
+      : null;
+  }
+
+  if (type === "community-connection-preference-save") {
+    if (value.field === "allowActivityRoomWarmup" && typeof value.value === "boolean") {
+      return { type, field: value.field, value: value.value };
+    }
+    if (
+      value.field === "chatMode" &&
+      typeof value.value === "string" &&
+      ["natural", "proactive", "listening"].includes(value.value)
+    ) {
+      return { type, field: value.field, value: value.value as HumanSettingsChatMode };
+    }
+    if (
+      value.field === "defaultConnectionDurationMinutes" &&
+      typeof value.value === "number" &&
+      Number.isSafeInteger(value.value) &&
+      value.value > 0
+    ) {
+      return { type, field: value.field, value: value.value };
+    }
+    if (
+      value.field === "initialRecentActivityCount" &&
+      (value.value === null ||
+        (typeof value.value === "number" && Number.isSafeInteger(value.value) && value.value >= 0))
+    ) {
+      return { type, field: value.field, value: value.value as number | null };
+    }
+    return null;
   }
 
   if (type === "shared-meme-open") {
@@ -1047,18 +1145,18 @@ const SETTINGS_SCREEN = `
 
             <section class="candidate2-settings-section">
                 <div class="candidate2-settings-section-heading"><div><span>03</span><h2>通知与唤醒</h2></div><small>普通聊天不会唤醒</small></div>
-                <label class="candidate2-settings-toggle"><span>暂停所有唤醒<small>信箱仍会保留通知</small></span><input type="checkbox" disabled data-demo-setting><i></i></label>
-                <label class="candidate2-settings-toggle"><span>串门申请与邀请</span><input type="checkbox" checked disabled data-demo-setting><i></i></label>
-                <label class="candidate2-settings-toggle"><span>活动邀请</span><input type="checkbox" checked disabled data-demo-setting><i></i></label>
-                <label class="candidate2-settings-toggle"><span>重要系统通知</span><input type="checkbox" checked disabled data-demo-setting><i></i></label>
+                <label class="candidate2-settings-toggle"><span>暂停所有唤醒<small>信箱仍会保留通知</small></span><input class="settings-pause-all-wakeups" type="checkbox"><i></i></label>
+                <label class="candidate2-settings-toggle"><span>串门申请与邀请</span><input class="settings-visit-notifications" type="checkbox" checked><i></i></label>
+                <label class="candidate2-settings-toggle"><span>活动邀请</span><input class="settings-activity-notifications" type="checkbox" checked><i></i></label>
+                <label class="candidate2-settings-toggle"><span>重要系统通知</span><input class="settings-system-notifications" type="checkbox" checked><i></i></label>
             </section>
 
             <section class="candidate2-settings-section">
                 <div class="candidate2-settings-section-heading"><div><span>04</span><h2>社区连接偏好</h2></div></div>
-                <label class="candidate2-settings-row"><span>默认连接时长<small>小机主动进入活动室后生效</small></span><span class="candidate2-settings-number"><input class="settings-lounge-duration" type="number" min="1" inputmode="numeric" value="" disabled data-demo-control><em>分钟</em></span></label>
-                <label class="candidate2-settings-row"><span>首次读取动态<small>只影响本家小机的初始上下文</small></span><span class="candidate2-settings-number"><input class="settings-initial-message-count" type="number" min="0" inputmode="numeric" value="" disabled data-demo-control><em>条</em></span></label>
-                <label class="candidate2-settings-row"><span>闲聊模式</span><select disabled data-demo-control><option>自然</option><option>主动</option><option>倾听</option></select></label>
-                <label class="candidate2-settings-toggle"><span>允许活动室热场</span><input type="checkbox" checked disabled data-demo-setting><i></i></label>
+                <label class="candidate2-settings-row"><span>默认连接时长<small>小机主动进入活动室后生效</small></span><span class="candidate2-settings-number"><input class="settings-lounge-duration" type="number" min="1" inputmode="numeric" value="" required><em>分钟</em></span></label>
+                <label class="candidate2-settings-row"><span>首次读取动态<small>只影响本家小机的初始上下文</small></span><span class="candidate2-settings-number"><input class="settings-initial-message-count" type="number" min="0" inputmode="numeric" value=""><em>条</em></span></label>
+                <label class="candidate2-settings-row"><span>闲聊模式</span><select class="settings-chat-mode"><option value="natural">自然</option><option value="proactive">主动</option><option value="listening">倾听</option></select></label>
+                <label class="candidate2-settings-toggle"><span>允许活动室热场</span><input class="settings-activity-room-warmup" type="checkbox" checked><i></i></label>
             </section>
 
             <section class="candidate2-settings-section candidate2-settings-memes">
@@ -3742,6 +3840,14 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     const settingsHomeName = document.querySelector('.settings-home-name');
     const settingsEnvironment = document.querySelector('.settings-environment');
     const settingsClimate = document.querySelector('.settings-climate');
+    const settingsPauseAllWakeups = document.querySelector('.settings-pause-all-wakeups');
+    const settingsVisitNotifications = document.querySelector('.settings-visit-notifications');
+    const settingsActivityNotifications = document.querySelector('.settings-activity-notifications');
+    const settingsSystemNotifications = document.querySelector('.settings-system-notifications');
+    const settingsLoungeDuration = document.querySelector('.settings-lounge-duration');
+    const settingsInitialMessageCount = document.querySelector('.settings-initial-message-count');
+    const settingsChatMode = document.querySelector('.settings-chat-mode');
+    const settingsActivityRoomWarmup = document.querySelector('.settings-activity-room-warmup');
     const relationshipEditButton = document.getElementById('profile-relationship-edit');
     const relationshipEditor = document.getElementById('profile-relationship-editor');
     const relationshipCancelButton = document.getElementById('profile-relationship-cancel');
@@ -3752,7 +3858,8 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     let connectorConfirmationAction = '';
     let oneTimeConnectorSetupInstructions = '';
     let visibleSharedMemes = [];
-    let homeSettingsWasSaving = false;
+    let settingsSaveScope = '';
+    let settingsWasSaving = '';
     let permitTimer = 0;
     const homeScaleShell = document.querySelector('.candidate2-home-scale-shell');
     const homeDesignCanvas = document.querySelector('.candidate2-home-design-canvas');
@@ -3905,9 +4012,21 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     }
 
     function setHomeSettingsDisabled(disabled) {
-        settingsHomeName.disabled = disabled;
-        settingsEnvironment.disabled = disabled;
-        settingsClimate.disabled = disabled;
+        [
+            settingsHomeName,
+            settingsEnvironment,
+            settingsClimate,
+            settingsPauseAllWakeups,
+            settingsVisitNotifications,
+            settingsActivityNotifications,
+            settingsSystemNotifications,
+            settingsLoungeDuration,
+            settingsInitialMessageCount,
+            settingsChatMode,
+            settingsActivityRoomWarmup,
+        ].forEach((control) => {
+            control.disabled = disabled;
+        });
     }
 
     function applyHomeSettings(homeSettings, pending, issueMessage) {
@@ -3924,19 +4043,44 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         settingsHomeName.value = homeSettings.homeName;
         settingsEnvironment.value = homeSettings.environmentDescription || '';
         settingsClimate.value = homeSettings.climateType || '';
+        settingsPauseAllWakeups.checked = homeSettings.pauseAllWakeups;
+        settingsVisitNotifications.checked = homeSettings.visitRequestsAndInvitationsEnabled;
+        settingsActivityNotifications.checked = homeSettings.activityInvitationsEnabled;
+        settingsSystemNotifications.checked = homeSettings.importantSystemNotificationsEnabled;
+        settingsLoungeDuration.value = String(homeSettings.defaultConnectionDurationMinutes);
+        settingsInitialMessageCount.value = homeSettings.initialRecentActivityCount === null
+            ? ''
+            : String(homeSettings.initialRecentActivityCount);
+        settingsChatMode.value = homeSettings.chatMode;
+        settingsActivityRoomWarmup.checked = homeSettings.allowActivityRoomWarmup;
         settingsHomeName.dataset.savedValue = settingsHomeName.value;
         settingsEnvironment.dataset.savedValue = settingsEnvironment.value;
         settingsClimate.dataset.savedValue = settingsClimate.value;
+        settingsPauseAllWakeups.dataset.savedValue = String(settingsPauseAllWakeups.checked);
+        settingsVisitNotifications.dataset.savedValue = String(settingsVisitNotifications.checked);
+        settingsActivityNotifications.dataset.savedValue = String(settingsActivityNotifications.checked);
+        settingsSystemNotifications.dataset.savedValue = String(settingsSystemNotifications.checked);
+        settingsLoungeDuration.dataset.savedValue = settingsLoungeDuration.value;
+        settingsInitialMessageCount.dataset.savedValue = settingsInitialMessageCount.value;
+        settingsChatMode.dataset.savedValue = settingsChatMode.value;
+        settingsActivityRoomWarmup.dataset.savedValue = String(settingsActivityRoomWarmup.checked);
         document.querySelector('.home-name').textContent = homeSettings.homeName;
         document.querySelector('.home-weather-summary').lastChild.textContent = homeSettings.weatherSummary;
         setHomeSettingsDisabled(pending);
 
         if (pending) {
-            homeSettingsWasSaving = true;
-            setStatus(settingsFeedback, '正在保存家园设置……');
-        } else if (homeSettingsWasSaving) {
-            setStatus(settingsFeedback, issueMessage || '家园设置已保存');
-            homeSettingsWasSaving = false;
+            settingsWasSaving = settingsSaveScope || 'home';
+            setStatus(
+                settingsFeedback,
+                settingsWasSaving === 'home' ? '正在保存家园设置……' : '正在保存偏好设置……',
+            );
+        } else if (settingsWasSaving) {
+            setStatus(
+                settingsFeedback,
+                issueMessage || (settingsWasSaving === 'home' ? '家园设置已保存' : '偏好设置已保存'),
+            );
+            settingsSaveScope = '';
+            settingsWasSaving = '';
         } else if (issueMessage) {
             setStatus(settingsFeedback, issueMessage);
         }
@@ -4064,7 +4208,59 @@ const CANDIDATE_RUNTIME_SCRIPT = `
             showCandidateNotice('演示模式不会保存真实家园设置');
             return;
         }
+        settingsSaveScope = 'home';
         sendAction({ type: 'home-settings-save', field, value: control.value });
+    }
+
+    function saveNotificationPreference(field, control) {
+        const value = control.checked;
+        if (String(value) === control.dataset.savedValue) return;
+        if (window.__doorbellCandidateDemo) {
+            showCandidateNotice('演示设置已更新（不会保存）');
+            return;
+        }
+        settingsSaveScope = 'preferences';
+        sendAction({ type: 'notification-preference-save', field, value });
+    }
+
+    function saveCommunityBooleanPreference(field, control) {
+        const value = control.checked;
+        if (String(value) === control.dataset.savedValue) return;
+        if (window.__doorbellCandidateDemo) {
+            showCandidateNotice('演示设置已更新（不会保存）');
+            return;
+        }
+        settingsSaveScope = 'preferences';
+        sendAction({ type: 'community-connection-preference-save', field, value });
+    }
+
+    function saveCommunityNumberPreference(field, control) {
+        if (!control.checkValidity()) {
+            control.reportValidity();
+            return;
+        }
+        if (control.value === control.dataset.savedValue) return;
+        const value = control.value === '' ? null : Number(control.value);
+        if (window.__doorbellCandidateDemo) {
+            showCandidateNotice('演示设置已更新（不会保存）');
+            return;
+        }
+        settingsSaveScope = 'preferences';
+        sendAction({ type: 'community-connection-preference-save', field, value });
+    }
+
+    function saveCommunityChatMode(control) {
+        if (control.value === control.dataset.savedValue) return;
+        if (window.__doorbellCandidateDemo) {
+            showCandidateNotice('演示设置已更新（不会保存）');
+            return;
+        }
+        settingsSaveScope = 'preferences';
+        sendAction({
+            type: 'community-connection-preference-save',
+            field: 'chatMode',
+            value: control.value,
+        });
     }
 
     function showConnectorConfirmation(action) {
@@ -4431,6 +4627,14 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     settingsHomeName.addEventListener('change', () => saveHomeSetting('homeName', settingsHomeName));
     settingsEnvironment.addEventListener('change', () => saveHomeSetting('environmentDescription', settingsEnvironment));
     settingsClimate.addEventListener('change', () => saveHomeSetting('climateType', settingsClimate));
+    settingsPauseAllWakeups.addEventListener('change', () => saveNotificationPreference('pauseAllWakeups', settingsPauseAllWakeups));
+    settingsVisitNotifications.addEventListener('change', () => saveNotificationPreference('visitRequestsAndInvitationsEnabled', settingsVisitNotifications));
+    settingsActivityNotifications.addEventListener('change', () => saveNotificationPreference('activityInvitationsEnabled', settingsActivityNotifications));
+    settingsSystemNotifications.addEventListener('change', () => saveNotificationPreference('importantSystemNotificationsEnabled', settingsSystemNotifications));
+    settingsLoungeDuration.addEventListener('change', () => saveCommunityNumberPreference('defaultConnectionDurationMinutes', settingsLoungeDuration));
+    settingsInitialMessageCount.addEventListener('change', () => saveCommunityNumberPreference('initialRecentActivityCount', settingsInitialMessageCount));
+    settingsChatMode.addEventListener('change', () => saveCommunityChatMode(settingsChatMode));
+    settingsActivityRoomWarmup.addEventListener('change', () => saveCommunityBooleanPreference('allowActivityRoomWarmup', settingsActivityRoomWarmup));
 
     farmLookupButton.addEventListener('click', () => {
         sendAction({ type: 'farm-lookup', farmDoorplate: farmDoorplateInput.value });

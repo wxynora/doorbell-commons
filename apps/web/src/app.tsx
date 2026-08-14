@@ -1,5 +1,6 @@
 import {
   climateTypeSchema,
+  type HumanSettingsPatchRequest,
   type HumanSettingsSuccess,
   weatherConditionDetails,
 } from "@doorbell/protocol";
@@ -107,7 +108,7 @@ function homeSettingsView(homeSettings: HomeSettingsState): CandidateTwoHomeSett
     return homeSettings;
   }
 
-  const { home } = homeSettings.data;
+  const { community_connection_preferences, home, notification_preferences } = homeSettings.data;
   let weatherSummary = "尚未设置气候";
   if (home.climate_type) {
     weatherSummary = home.weather_state?.condition
@@ -116,11 +117,78 @@ function homeSettingsView(homeSettings: HomeSettingsState): CandidateTwoHomeSett
   }
   return {
     stage: "ready",
+    activityInvitationsEnabled: notification_preferences.activity_invitations_enabled ?? true,
+    allowActivityRoomWarmup: community_connection_preferences.allow_activity_room_warmup ?? true,
+    chatMode: community_connection_preferences.chat_mode ?? "natural",
     climateType: home.climate_type,
+    defaultConnectionDurationMinutes:
+      community_connection_preferences.default_connection_duration_minutes,
     environmentDescription: home.environment_description,
     homeName: home.home_name,
+    importantSystemNotificationsEnabled:
+      notification_preferences.important_system_notifications_enabled ?? true,
+    initialRecentActivityCount: community_connection_preferences.initial_recent_activity_count,
+    pauseAllWakeups: notification_preferences.pause_all_wakeups ?? false,
+    visitRequestsAndInvitationsEnabled:
+      notification_preferences.visit_requests_and_invitations_enabled ?? true,
     weatherSummary,
   };
+}
+
+export function preferencePatchForCandidateAction(
+  action: CandidateTwoAction,
+): HumanSettingsPatchRequest | null {
+  if (action.type === "notification-preference-save") {
+    if (action.field === "pauseAllWakeups") {
+      return { notification_preferences: { pause_all_wakeups: action.value } };
+    }
+    if (action.field === "visitRequestsAndInvitationsEnabled") {
+      return {
+        notification_preferences: {
+          visit_requests_and_invitations_enabled: action.value,
+        },
+      };
+    }
+    if (action.field === "activityInvitationsEnabled") {
+      return { notification_preferences: { activity_invitations_enabled: action.value } };
+    }
+    return {
+      notification_preferences: { important_system_notifications_enabled: action.value },
+    };
+  }
+
+  if (action.type !== "community-connection-preference-save") {
+    return null;
+  }
+  if (action.field === "defaultConnectionDurationMinutes") {
+    return {
+      community_connection_preferences: {
+        default_connection_duration_minutes: action.value,
+      },
+    };
+  }
+  if (action.field === "initialRecentActivityCount") {
+    return {
+      community_connection_preferences: { initial_recent_activity_count: action.value },
+    };
+  }
+  if (action.field === "chatMode") {
+    return { community_connection_preferences: { chat_mode: action.value } };
+  }
+  return {
+    community_connection_preferences: { allow_activity_room_warmup: action.value },
+  };
+}
+
+export async function loadSharedMemesAfterOpen(
+  onLoading: (state: Extract<CandidateTwoSharedMemeListView, { stage: "loading" }>) => void,
+  loader: typeof listSharedMemes = listSharedMemes,
+): Promise<CandidateTwoSharedMemeListView> {
+  onLoading({ stage: "loading" });
+  const result = await loader();
+  return result.ok
+    ? { stage: "ready", data: result.data }
+    : { stage: "error", message: sharedMemeIssueMessage(result.issue) };
 }
 
 function authenticatedState(
@@ -251,22 +319,20 @@ function LiveApp() {
         if (appState.stage !== "authenticated" || appState.sharedMemes.stage === "loading") {
           return;
         }
-        setAppState({
-          ...appState,
-          sharedMemeCreateMessage: null,
-          sharedMemeDetail: { stage: "idle" },
-          sharedMemes: { stage: "loading" },
+        const sharedMemes = await loadSharedMemesAfterOpen((loading) => {
+          setAppState((current) =>
+            current.stage === "authenticated"
+              ? {
+                  ...current,
+                  sharedMemeCreateMessage: null,
+                  sharedMemeDetail: { stage: "idle" },
+                  sharedMemes: loading,
+                }
+              : current,
+          );
         });
-        const result = await listSharedMemes();
         setAppState((current) =>
-          current.stage === "authenticated"
-            ? {
-                ...current,
-                sharedMemes: result.ok
-                  ? { stage: "ready", data: result.data }
-                  : { stage: "error", message: sharedMemeIssueMessage(result.issue) },
-              }
-            : current,
+          current.stage === "authenticated" ? { ...current, sharedMemes } : current,
         );
         return;
       }
@@ -389,6 +455,48 @@ function LiveApp() {
               home: { ...current.identity.home, home_name: result.data.home.home_name },
             },
           };
+        });
+        return;
+      }
+
+      if (
+        action.type === "notification-preference-save" ||
+        action.type === "community-connection-preference-save"
+      ) {
+        if (
+          appState.stage !== "authenticated" ||
+          appState.homeSettingsPending ||
+          appState.homeSettings.stage !== "ready"
+        ) {
+          return;
+        }
+
+        const patch = preferencePatchForCandidateAction(action);
+        if (!patch) {
+          return;
+        }
+        setAppState({
+          ...appState,
+          homeSettingsIssue: null,
+          homeSettingsPending: true,
+        });
+        const result = await updateHumanSettings(patch);
+        setAppState((current) => {
+          if (current.stage !== "authenticated") {
+            return current;
+          }
+          return result.ok
+            ? {
+                ...current,
+                homeSettings: { stage: "ready", data: result.data },
+                homeSettingsIssue: null,
+                homeSettingsPending: false,
+              }
+            : {
+                ...current,
+                homeSettingsIssue: result.issue,
+                homeSettingsPending: false,
+              };
         });
         return;
       }
