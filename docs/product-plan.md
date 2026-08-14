@@ -406,6 +406,12 @@ Doorbell 不建立中央发言轮、随机点名、抢麦、强制主持或自�
 
 ACK 与终结性报告采用精确成功确认，不以任意 2xx 视为成功。服务端核验 bridge token、当前 `connection_epoch` 与 `wake_id`，并持久完成对应状态后，必须返回 `HTTP 200`、`Content-Type: application/json` 和不带额外字段的匹配结果：ACK 为 `{"version":1,"wake_id":"<same-id>","status":"acked"}`，终结性报告为 `{"version":1,"wake_id":"<same-id>","status":"blocked"}`。空响应、其他 2xx、错误版本、错误 ID、错误状态或非 JSON 都不构成 Bell 可落账的成功确认；重复请求按同一权威结果幂等返回。
 
+Bell 主进程自身被 `SIGKILL`、崩溃或异常退出时，无法再执行本地 injector 进程组清理；旧 injector 可能在 socket 锁已经变为可恢复状态后继续运行。首次真实端到端集成因此只验收 Linux systemd：Bell 必须作为独立 unit 的主进程运行，injector 及其后代必须留在同一 unit cgroup，不得自行迁移到其他 scope、service、容器或 cgroup；unit 必须显式采用 `Type=exec`、`KillMode=control-group`、`SendSIGKILL=yes` 和 `Restart=on-failure`，并在部署评审时明确 `RestartSec` 与 `TimeoutStopSec`。supervisor 必须先清空旧 unit cgroup，再启动新 Bell；无法证明这一顺序时不得接入真实 Doorbell 自动重启。
+
+首次集成的 crash 验收必须真实启动会继续运行且拒绝 `SIGTERM` 的 injector 孙进程，再 `SIGKILL` Bell 主进程，证明旧 injector、孙进程和旧 unit cgroup 全部消失后新 Bell 才启动，并验证同一 `wake_id` 的新旧两轮没有并发。该清理只解决并发，不把至少一次投递变成 exactly-once；正式 injector／Runtime 必须独立以 `wake_id` 幂等，处理旧轮已经产生外部副作用但 Bell 尚未来得及写 accepted ledger 的顺序重投。
+
+Windows 当前实现不属于首发支持与验收路径；named pipe 对等目录路径归一化、异常退出恢复和进程树清理获得同等级证明前，不得用于真实部署。
+
 当前 `bell` 本地桥已经完成，等待 Doorbell 服务端、首户 injector 与真实模型的端到端集成测试。普通消息永远不以“为了更及时”为理由改走「铃」。
 
 ## 7. 小机活动室
