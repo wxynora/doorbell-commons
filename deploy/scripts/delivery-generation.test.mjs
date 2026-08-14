@@ -6,7 +6,10 @@ import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { writeDeliveryGeneration } from "./delivery-generation-authority.mjs";
-import { restoreCommunityDatabase } from "./restore-community-database.mjs";
+import {
+  restoreCommunityDatabase,
+  restoreStoppedCommunityDatabase,
+} from "./restore-community-database.mjs";
 
 const FIRST_GENERATION = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const SECOND_GENERATION = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -78,8 +81,8 @@ test("restore keeps Doorbell stopped through rotate, restore, integrity, and sch
       generation: FIRST_GENERATION,
       owner: null,
     });
-    createDatabase(databasePath, 3, "old-live");
-    createDatabase(backupPath, 3, "restored-backup");
+    createDatabase(databasePath, 4, "old-live");
+    createDatabase(backupPath, 4, "restored-backup");
 
     await restoreCommunityDatabase({
       authorityOwner: null,
@@ -130,8 +133,8 @@ test("restore never restarts after stop confirmation or restored schema failure"
       generation: FIRST_GENERATION,
       owner: null,
     });
-    createDatabase(databasePath, 3, "old-live");
-    createDatabase(backupPath, 2, "wrong-schema");
+    createDatabase(databasePath, 4, "old-live");
+    createDatabase(backupPath, 3, "wrong-schema");
 
     const dirtyStopCommands = [];
     await assert.rejects(
@@ -182,7 +185,7 @@ test("restore never restarts after stop confirmation or restored schema failure"
           return { stdout: "", stderr: "" };
         },
       }),
-      /schema version must be 3/,
+      /schema version must be 4/,
     );
     assert.equal(readFileSync(authorityPath, "utf8"), `${SECOND_GENERATION}\n`);
     assert.equal(readMarker(databasePath), "wrong-schema");
@@ -190,6 +193,57 @@ test("restore never restarts after stop confirmation or restored schema failure"
       schemaFailureCommands.some((command) => command.startsWith("start ")),
       false,
     );
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
+  }
+});
+
+test("failed release rollback rotates generation and restores the pre-release schema while stopped", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "doorbell-release-rollback-"));
+  const authorityPath = join(directory, "delivery-generation");
+  const databasePath = join(directory, "doorbell.sqlite");
+  const backupPath = join(directory, "pre-release.sqlite");
+  const commands = [];
+  try {
+    await writeDeliveryGeneration({
+      authorityPath,
+      generation: FIRST_GENERATION,
+      owner: null,
+    });
+    createDatabase(databasePath, 4, "failed-candidate");
+    createDatabase(backupPath, 3, "pre-release");
+
+    await restoreStoppedCommunityDatabase({
+      authorityOwner: null,
+      authorityPath,
+      backupPath,
+      databasePath,
+      expectedSchemaVersion: 3,
+      generateGeneration: () => SECOND_GENERATION,
+      runServiceCommand: async (arguments_) => {
+        commands.push(arguments_.join(" "));
+        if (arguments_[1] === "--property=ActiveState") {
+          return { stdout: "inactive\n", stderr: "" };
+        }
+        if (arguments_[1] === "--property=SubState") {
+          return { stdout: "dead\n", stderr: "" };
+        }
+        throw new Error(`unexpected service command: ${arguments_.join(" ")}`);
+      },
+    });
+
+    assert.deepEqual(commands, [
+      "show --property=ActiveState --value doorbell-commons.service",
+      "show --property=SubState --value doorbell-commons.service",
+    ]);
+    assert.equal(readFileSync(authorityPath, "utf8"), `${SECOND_GENERATION}\n`);
+    assert.equal(readMarker(databasePath), "pre-release");
+    const restored = new DatabaseSync(databasePath, { readOnly: true });
+    try {
+      assert.equal(restored.prepare("PRAGMA user_version").get().user_version, 3);
+    } finally {
+      restored.close();
+    }
   } finally {
     rmSync(directory, { force: true, recursive: true });
   }

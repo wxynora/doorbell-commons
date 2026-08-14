@@ -104,7 +104,7 @@ test("schema v0 upgrades missing identity columns in one versioned migration wit
   });
 });
 
-test("schema v1 preserves login security state while upgrading through v3", () => {
+test("schema v1 preserves login security state while upgrading through v4", () => {
   withTemporaryDatabase((databasePath) => {
     const versionOneDatabase = new Database(databasePath);
     versionOneDatabase.exec(`
@@ -139,7 +139,7 @@ test("schema v1 preserves login security state while upgrading through v3", () =
         migratedDatabase.pragma("user_version", { simple: true }),
         COMMUNITY_DATABASE_SCHEMA_VERSION,
       );
-      assert.equal(COMMUNITY_DATABASE_SCHEMA_VERSION, 3);
+      assert.equal(COMMUNITY_DATABASE_SCHEMA_VERSION, 4);
       assert.deepEqual(
         migratedDatabase
           .prepare("SELECT account_id, qq_number, password_credential FROM human_accounts")
@@ -285,6 +285,51 @@ test("schema v2 archives cursor-only Connector events without consuming the curr
       );
     } finally {
       communityDatabase.close();
+    }
+  });
+});
+
+test("schema v3 adds Bell delivery state without changing existing community rows", () => {
+  withTemporaryDatabase((databasePath) => {
+    const current = new CommunityDatabase(databasePath);
+    current.close();
+
+    const versionThreeDatabase = new Database(databasePath);
+    versionThreeDatabase.exec(`
+      DROP TABLE bell_wakes;
+      DROP TABLE bell_bindings;
+    `);
+    versionThreeDatabase.pragma("user_version = 3");
+    versionThreeDatabase.close();
+
+    const migrated = new CommunityDatabase(databasePath);
+    migrated.close();
+
+    const database = new Database(databasePath, { readonly: true });
+    try {
+      assert.equal(
+        database.pragma("user_version", { simple: true }),
+        COMMUNITY_DATABASE_SCHEMA_VERSION,
+      );
+      assert.deepEqual(
+        database
+          .prepare(
+            `SELECT name
+             FROM sqlite_master
+             WHERE type = 'table' AND name IN ('bell_bindings', 'bell_wakes')
+             ORDER BY name`,
+          )
+          .all(),
+        [{ name: "bell_bindings" }, { name: "bell_wakes" }],
+      );
+      const bindingColumns = database.pragma("table_info(bell_bindings)") as Array<{
+        name: string;
+      }>;
+      assert.ok(bindingColumns.some((column) => column.name === "last_wake_mailbox_revision"));
+      const homeColumns = database.pragma("table_info(homes)") as Array<{ name: string }>;
+      assert.ok(homeColumns.some((column) => column.name === "mailbox_revision"));
+    } finally {
+      database.close();
     }
   });
 });
