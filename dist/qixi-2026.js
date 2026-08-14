@@ -241,7 +241,7 @@ export function qixi2026ShopRows(farm, now = Date.now()) {
     });
 }
 
-export function buyQixi2026Seed(farm, ref, now = Date.now()) {
+export function buyQixi2026Seed(farm, ref, now = Date.now(), requestedQty = 1) {
     if (!isQixi2026Active(now))
         return { handled: false };
     const crop = [...QIXI_CROP_IDS].map((id) => cropById.get(id)).find((item) => item && (item.id === String(ref ?? "") || item.name === String(ref ?? "")));
@@ -254,12 +254,40 @@ export function buyQixi2026Seed(farm, ref, now = Date.now()) {
     const bought = cleanInt(buys[crop.id]);
     if (bought >= qixi2026.dailySeedLimit)
         return { handled: true, ok: false, error: `每种每天最多购买 ${qixi2026.dailySeedLimit} 颗。` };
-    if (farm.coins < crop.seedPrice)
-        return { handled: true, ok: false, error: `金币不足，${crop.name}种子要 ${crop.seedPrice}。` };
-    farm.coins -= crop.seedPrice;
-    farm.seeds[crop.id] = cleanInt(farm.seeds[crop.id]) + 1;
-    buys[crop.id] = bought + 1;
-    return { handled: true, ok: true, id: crop.id, name: crop.name, cost: crop.seedPrice, qty: 1, left: qixi2026.dailySeedLimit - buys[crop.id] };
+    if (!Number.isSafeInteger(requestedQty) || requestedQty <= 0)
+        return { handled: true, ok: false, error: "购买数量必须是正整数。" };
+    const qty = Math.min(requestedQty, qixi2026.dailySeedLimit - bought);
+    const cost = crop.seedPrice * qty;
+    if (farm.coins < cost)
+        return { handled: true, ok: false, error: `金币不足，${crop.name}种子要 ${cost}。` };
+    farm.coins -= cost;
+    farm.seeds ??= {};
+    farm.seeds[crop.id] = cleanInt(farm.seeds[crop.id]) + qty;
+    buys[crop.id] = bought + qty;
+    return { handled: true, ok: true, id: crop.id, name: crop.name, cost, qty, left: qixi2026.dailySeedLimit - buys[crop.id] };
+}
+
+export function buyAllQixi2026Seeds(farm, now = Date.now()) {
+    if (!isQixi2026Active(now))
+        return { handled: true, ok: false, error: "七夕限定种子已经下架。" };
+    const rows = qixi2026ShopRows(farm, now);
+    if (!rows.length)
+        return { handled: true, ok: false, error: "还没有已解锁的七夕限定种子。" };
+    const items = rows.filter((item) => item.left > 0).map((item) => ({ ...item, qty: item.left, cost: item.price * item.left }));
+    if (!items.length)
+        return { handled: true, ok: false, error: "今天已经把所有已解锁的七夕限定种子买满了。" };
+    const cost = items.reduce((sum, item) => sum + item.cost, 0);
+    if (farm.coins < cost)
+        return { handled: true, ok: false, error: `金币不足，全部买满还差 ${cost - farm.coins} 金，本次没有购买。` };
+    const state = normalizeQixi2026Farm(farm, now);
+    const buys = seedBuysForDay(state, now);
+    farm.coins -= cost;
+    farm.seeds ??= {};
+    for (const item of items) {
+        farm.seeds[item.id] = cleanInt(farm.seeds[item.id]) + item.qty;
+        buys[item.id] = cleanInt(buys[item.id]) + item.qty;
+    }
+    return { handled: true, ok: true, items, cost };
 }
 
 export function qixi2026TransferAllowed(farm, cropId, now = Date.now()) {

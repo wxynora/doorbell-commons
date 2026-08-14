@@ -6,6 +6,7 @@ import { ensureKitchen, harvest, humanBarterAccept, humanBarterList, kitchenCook
 import { metricValue, checkTitles, titlePrefix } from "../dist/titles.js";
 import { uiCooking, uiHome } from "../dist/web.js";
 import {
+    buyAllQixi2026Seeds,
     buyQixi2026Seed,
     isQixi2026Active,
     normalizeQixi2026Farm,
@@ -133,7 +134,7 @@ for (const item of qixi2026.tasks) {
     assert.ok(afterKitchen.dishes.some((dish) => dish.id === ended.dish.id));
 }
 
-// 活动货架只列已解锁品种；每种每天最多购买 5 颗。
+// 活动货架只列已解锁品种；单种可批量买到当日剩余额度。
 {
     const farm = freshFarm();
     const quiet = task("quiet");
@@ -142,11 +143,67 @@ for (const item of qixi2026.tasks) {
     state.quietSince = ACTIVE - quiet.target;
     settleQixi2026QuietTask(farm, ACTIVE);
     assert.deepEqual(qixi2026ShopRows(farm, ACTIVE).map((item) => item.id), [quiet.cropId]);
-    for (let i = 0; i < 5; i++)
-        assert.equal(buyQixi2026Seed(farm, quiet.cropId, ACTIVE).ok, true);
+    const bought = buyQixi2026Seed(farm, quiet.cropId, ACTIVE, 5);
+    assert.equal(bought.ok, true);
+    assert.equal(bought.qty, 5);
+    assert.equal(bought.cost, cropById.get(quiet.cropId).seedPrice * 5);
     assert.equal(buyQixi2026Seed(farm, quiet.cropId, ACTIVE).ok, false);
     assert.equal(qixi2026ShopRows(farm, ACTIVE)[0].left, 0);
     assert.deepEqual(qixi2026ShopRows(farm, ENDED), []);
+}
+
+// allin 原子买满所有已解锁品种；余额不足、未解锁和已经买满都不产生部分购买。
+{
+    const farm = freshFarm("全部买满");
+    const water = task("water");
+    const craft = task("craft");
+    recordQixi2026Progress(farm, "water", water.target, ACTIVE);
+    recordQixi2026Progress(farm, "craft", craft.target, ACTIVE);
+    const first = buyQixi2026Seed(farm, water.cropId, ACTIVE, 2);
+    assert.equal(first.ok, true);
+    const beforeCoins = farm.coins;
+    const all = buyAllQixi2026Seeds(farm, ACTIVE);
+    assert.equal(all.ok, true);
+    assert.deepEqual(all.items.map((item) => [item.id, item.qty]), [[water.cropId, 3], [craft.cropId, 5]]);
+    assert.equal(farm.coins, beforeCoins - all.cost);
+    assert.equal(qixi2026ShopRows(farm, ACTIVE).every((item) => item.left === 0), true);
+    assert.match(buyAllQixi2026Seeds(farm, ACTIVE).error, /今天已经/);
+
+    const poor = freshFarm("金币不足");
+    recordQixi2026Progress(poor, "water", water.target, ACTIVE);
+    recordQixi2026Progress(poor, "craft", craft.target, ACTIVE);
+    poor.coins = 1;
+    qixi2026ShopRows(poor, ACTIVE);
+    const poorSeeds = structuredClone(poor.seeds);
+    const poorBuys = structuredClone(poor.qixi2026.seedBuys);
+    const rejected = buyAllQixi2026Seeds(poor, ACTIVE);
+    assert.equal(rejected.ok, false);
+    assert.match(rejected.error, /本次没有购买/);
+    assert.equal(poor.coins, 1);
+    assert.deepEqual(poor.seeds, poorSeeds);
+    assert.deepEqual(poor.qixi2026.seedBuys, poorBuys);
+
+    const locked = freshFarm("尚未解锁");
+    assert.match(buyAllQixi2026Seeds(locked, ACTIVE).error, /还没有已解锁/);
+    assert.match(buyAllQixi2026Seeds(locked, ENDED).error, /已经下架/);
+}
+
+// 参数只挂在原 buy-seed；完整商店提示 allin，状态摘要和 Human 首页不展示。
+{
+    const farm = freshFarm("购买入口");
+    const water = task("water");
+    recordQixi2026Progress(farm, "water", water.target, ACTIVE);
+    const shop = dispatch(farm, { action: "shop" }, ACTIVE).text;
+    assert.match(shop, /buy-seed \{"id":"作物名","qty":5\}/);
+    assert.match(shop, /\{"allin":true\}，一次买满所有已解锁七夕种子的今日剩余额度/);
+    assert.doesNotMatch(dispatch(farm, { action: "status" }, ACTIVE).text, /allin/);
+    assert.doesNotMatch(uiHome(farm, ACTIVE, "human-key"), /allin/);
+    const bought = dispatch(farm, { action: "buy-seed", id: water.cropId, qty: 2 }, ACTIVE);
+    assert.equal(bought.ok, true);
+    assert.match(bought.text, /鹊桥藤」×2/);
+    const all = dispatch(farm, { action: "buy-seed", allin: true }, ACTIVE);
+    assert.equal(all.ok, true);
+    assert.ok(all.text.startsWith(`🛒 七夕限定种子已全部买满：鹊桥藤×3，共花费 ${cropById.get(water.cropId).seedPrice * 3} 金。`));
 }
 
 // 七夕作物不进入旧随机限定池；活动中不能绕过解锁直接种或从市场购买。

@@ -11,7 +11,7 @@ import { checkTitles, titlePrefix } from "./titles.js";
 import { rollSeasonHarvest, rollSeasonStatus, seasonHeadline } from "./season-events.js";
 import { fishingStatusLine } from "./fishing.js";
 import { GLIMMER_BUFF_TEXT, glimmerBuffActive, glimmerStatusLine } from "./glimmer.js";
-import { buyQixi2026Seed, qixi2026CompletionText, qixi2026ShopRows, qixi2026TaskText, qixi2026TransferAllowed, settleQixi2026QuietTask } from "./qixi-2026.js";
+import { buyAllQixi2026Seeds, buyQixi2026Seed, qixi2026CompletionText, qixi2026ShopRows, qixi2026TaskText, qixi2026TransferAllowed, settleQixi2026QuietTask } from "./qixi-2026.js";
 import { freshSeed } from "./rng.js";
 import { randomUUID, randomBytes } from "node:crypto";
 /** 农场门牌号字符集：大写字母 + 数字，剔除易混的 I/L/O/0/1。 */
@@ -311,7 +311,7 @@ export function viewShop(f, now) {
     const s = shopOffer(f, now);
     const qixi = qixi2026ShopRows(f, now);
     const lim = s.limited.length ? "\n🎏 限定种子刷出：" + s.limited.map((l) => `${l.name}(${l.price}金)`).join("、") + "　→ buy-seed 买（金币结算，每种每天限 1 颗；解锁的限定靠商店随机刷，没有常驻上架）" : "";
-    const qixiLine = qixi.length ? `\n🎋 七夕限定种子：${qixi.map((item) => `${item.name}·${item.rarity} ${item.price}金（今日 ${item.bought}/5）`).join("、")}　→ buy-seed {"id":"作物名"}` : "";
+    const qixiLine = qixi.length ? `\n🎋 七夕限定种子：${qixi.map((item) => `${item.name}·${item.rarity} ${item.price}金（今日 ${item.bought}/5）`).join("、")}　→ buy-seed {"id":"作物名","qty":5}\n　七夕期间可使用 {"allin":true}，一次买满所有已解锁七夕种子的今日剩余额度。` : "";
     const potion = ITEMS.speed_potion;
     // 第一层：官方商店
     let recipeLine = "📜 配方：（暂无，每隔几小时刷新，看缘分）";
@@ -1069,7 +1069,12 @@ function dispatchImpl(f, b, now) {
             return { ok: r.ok, text: r.ok ? withFooter(f, now, `🛒 从阿土买下限定种子「${r.name}」×${r.qty}，-💰${r.cost}金`) : r.error };
         }
         case "buy-seed": { // 买自己店当前刷出的限定种子（金币结算，每种每天限购 1；不填 id 默认买当前刷出的那颗）
-            const qixi = buyQixi2026Seed(f, b.id ?? f.shop.npcSeed?.id, now);
+            if (b.allin === true) {
+                const all = buyAllQixi2026Seeds(f, now);
+                const details = all.ok ? all.items.map((item) => `${item.name}×${item.qty}`).join("、") : "";
+                return { ok: all.ok, text: all.ok ? withFooter(f, now, `🛒 七夕限定种子已全部买满：${details}，共花费 ${all.cost} 金。`) : all.error };
+            }
+            const qixi = buyQixi2026Seed(f, b.id ?? f.shop.npcSeed?.id, now, b.qty ?? 1);
             if (qixi.handled) {
                 if (qixi.ok && f.shop.npcSeed?.id === qixi.id)
                     f.shop.npcSeed = null;
