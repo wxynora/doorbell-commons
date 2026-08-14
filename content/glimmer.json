@@ -126,7 +126,7 @@
   "coopEvents": [
     {"id":"migration_help","name":"给迁徙队补一顿夜宵","kind":"dish","requirement":"一份正常料理"},
     {"id":"fallen_tree","name":"把倒下的星光树扶起来","kind":"product","requirement":"一份牧场产物"},
-    {"id":"star_lamp","name":"点亮原野的旧星灯","kind":"ingredient","requirement":"一份食材"},
+    {"id":"star_lamp","name":"点亮原野的旧星灯","kind":"cookable","requirement":"一份食材"},
     {"id":"storm_nest","name":"替暴风雨后的水鸟补巢","kind":"bait","requirement":"一份鱼饵"}
   ]
 }

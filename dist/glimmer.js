@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import {
     glimmer, glimmerVariants, glimmerEncounters, glimmerCoopEvents, glimmerVariantById,
-    animals, animalById, pets, petById, cropById, cooking, cookingIngredients,
-    cookingIngredientById, cookingRecipes, cookingRecipeById, fishingBaitById, titles,
+    animals, animalById, pets, petById, cropById, cooking, cookingProducts,
+    cookingProductById, cookingIngredients, cookingIngredientById, cookingRecipes,
+    cookingRecipeById, fishingFishById, fishingBaitById, titles,
 } from "./content.js";
 import { currentDayIndex, currentSeason } from "./time.js";
 import { Rng } from "./rng.js";
@@ -497,7 +498,23 @@ function takeCoopItem(farm, event, query) {
             return null;
         return { name: item.name, consume: () => kitchen.products.splice(kitchen.products.indexOf(item), 1) };
     }
-    if (event.kind === "ingredient") {
+    if (event.kind === "cookable") {
+        const productDef = cookingProductById.get(q) ?? cookingProducts.find((entry) => entry.name === q);
+        const product = (kitchen?.products ?? []).find((entry) => entry.id === q || (productDef && entry.itemId === productDef.id));
+        if (product) {
+            const definition = cookingProductById.get(product.itemId);
+            if (!definition?.cookable)
+                return null;
+            return { name: definition.name, consume: () => kitchen.products.splice(kitchen.products.indexOf(product), 1) };
+        }
+        const catches = Array.isArray(farm.fishing?.catchInventory) ? farm.fishing.catchInventory : [];
+        const fish = catches.find((entry) => entry.id === q)
+            ?? (q === "fish:any" ? catches[0] : undefined)
+            ?? catches.find((entry) => entry.fishId === q || fishingFishById.get(entry.fishId)?.name === q);
+        if (fish) {
+            const definition = fishingFishById.get(fish.fishId);
+            return { name: definition?.name ?? fish.fishId, consume: () => catches.splice(catches.indexOf(fish), 1) };
+        }
         const item = cookingIngredientById.get(q) ?? cookingIngredients.find((entry) => entry.name === q);
         if (!item || (kitchen?.ingredients?.[item.id] ?? 0) < 1)
             return null;
@@ -515,6 +532,8 @@ function assist(farm, world, now, itemQuery) {
         return gate;
     ensureWorldDay(world, now);
     const event = glimmerCoopEvents.find((item) => item.id === world.coop.eventId);
+    if (world.coop.completedAt)
+        return { ok: false, text: `🤝〔${event.name}〕今日协作已经完成，物品没有消耗。` };
     if (world.coop.contributors.some((item) => item.farmId === farm.id))
         return { ok: false, text: "🤝 今天已经为这个事件贡献过一次，物品没有消耗。" };
     const item = takeCoopItem(farm, event, itemQuery);
