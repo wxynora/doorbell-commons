@@ -1,4 +1,6 @@
 import {
+  type ConnectorDeliveryGeneration,
+  type ConnectorEventEnvelope,
   connectorLocalEventsErrorSchema,
   connectorLocalEventsQuerySchema,
   connectorLocalEventsSuccessSchema,
@@ -84,14 +86,83 @@ export function buildConnectorLocalApi(client: ConnectorClient): FastifyInstance
         }),
       );
     }
+    const requestedGeneration = query.data.delivery_generation;
+    const pendingEvents: ConnectorEventEnvelope[] = [];
+    let pendingGeneration: ConnectorDeliveryGeneration | undefined;
+    let phase: "bootstrapping" | "live" | "closed" = "bootstrapping";
+    let lastSentCursor = query.data.after_cursor;
+    let cleanedUp = false;
+    let unsubscribeEvents = () => {};
+    let unsubscribeGeneration = () => {};
+    const cleanup = () => {
+      if (cleanedUp) {
+        return;
+      }
+      cleanedUp = true;
+      unsubscribeEvents();
+      unsubscribeGeneration();
+    };
+    const writeEvent = (event: ConnectorEventEnvelope) => {
+      if (
+        phase === "closed" ||
+        event.generation !== requestedGeneration ||
+        event.cursor <= lastSentCursor
+      ) {
+        return;
+      }
+      reply.raw.write(
+        `id: ${event.generation}:${event.cursor}\ndata: ${JSON.stringify(event)}\n\n`,
+      );
+      lastSentCursor = event.cursor;
+    };
+    const endForGenerationChange = (generation: ConnectorDeliveryGeneration) => {
+      if (phase === "closed") {
+        return;
+      }
+      phase = "closed";
+      const payload = connectorLocalGenerationChangedEventSchema.parse({
+        delivery_generation: generation,
+      });
+      reply.raw.write(`event: generation_changed\ndata: ${JSON.stringify(payload)}\n\n`);
+      cleanup();
+      reply.raw.end();
+    };
+
+    unsubscribeEvents = client.subscribe((event) => {
+      if (
+        phase === "closed" ||
+        pendingGeneration !== undefined ||
+        event.generation !== requestedGeneration ||
+        event.cursor <= query.data.after_cursor
+      ) {
+        return;
+      }
+      if (phase === "bootstrapping") {
+        pendingEvents.push(event);
+        return;
+      }
+      writeEvent(event);
+    });
+    unsubscribeGeneration = client.subscribeGenerationChanges((generation) => {
+      if (generation === requestedGeneration || phase === "closed") {
+        return;
+      }
+      if (phase === "bootstrapping") {
+        pendingGeneration ??= generation;
+        return;
+      }
+      endForGenerationChange(generation);
+    });
+
     const currentGeneration = client.getStatus().delivery_generation;
-    if (query.data.delivery_generation !== currentGeneration) {
+    if (requestedGeneration !== currentGeneration) {
+      cleanup();
       return reply.code(409).send(
         connectorLocalEventsErrorSchema.parse({
           error: {
             code: "delivery_generation_changed",
             message: "The requested delivery generation is no longer current",
-            requested_generation: query.data.delivery_generation,
+            requested_generation: requestedGeneration,
             current_generation: currentGeneration,
           },
         }),
@@ -104,34 +175,20 @@ export function buildConnectorLocalApi(client: ConnectorClient): FastifyInstance
       "content-type": "text/event-stream; charset=utf-8",
     });
     reply.raw.write(": connected\n\n");
-    for (const event of client.listEventsAfter(
-      query.data.delivery_generation,
-      query.data.after_cursor,
-    )) {
-      reply.raw.write(
-        `id: ${event.generation}:${event.cursor}\ndata: ${JSON.stringify(event)}\n\n`,
-      );
-    }
-    let unsubscribeEvents = () => {};
-    let unsubscribeGeneration = () => {};
-    const cleanup = () => {
-      unsubscribeEvents();
-      unsubscribeGeneration();
-    };
-    unsubscribeEvents = client.subscribe((event) => {
-      reply.raw.write(
-        `id: ${event.generation}:${event.cursor}\ndata: ${JSON.stringify(event)}\n\n`,
-      );
-    });
-    unsubscribeGeneration = client.subscribeGenerationChanges((generation) => {
-      const payload = connectorLocalGenerationChangedEventSchema.parse({
-        delivery_generation: generation,
-      });
-      reply.raw.write(`event: generation_changed\ndata: ${JSON.stringify(payload)}\n\n`);
-      cleanup();
-      reply.raw.end();
-    });
     reply.raw.once("close", cleanup);
+    const backlog = client.listEventsAfter(requestedGeneration, query.data.after_cursor);
+    if (pendingGeneration !== undefined) {
+      endForGenerationChange(pendingGeneration);
+      return;
+    }
+    for (const event of backlog) {
+      writeEvent(event);
+    }
+    pendingEvents.sort((left, right) => left.cursor - right.cursor);
+    for (const event of pendingEvents) {
+      writeEvent(event);
+    }
+    phase = "live";
   });
 
   app.get("/v2/shared-memes/status", async (request, reply) => {

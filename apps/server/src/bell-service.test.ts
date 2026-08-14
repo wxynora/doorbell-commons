@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
+import Database from "better-sqlite3";
 import { BellService, type BellStreamSink } from "./bell-service.js";
 import { CommunityDatabase } from "./community-database.js";
 import { MailboxService } from "./mailbox-service.js";
@@ -7,12 +11,12 @@ import { MailboxService } from "./mailbox-service.js";
 const TOKEN = "dbb_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 const TOKEN_HASH = "643e8661aa252b51405263db0c778704de8ef7455bcbb1bc0db365486a8870e6";
 
-function registeredDatabase(): {
+function registeredDatabase(path = ":memory:"): {
   database: CommunityDatabase;
   homeId: string;
   residentId: string;
 } {
-  const database = new CommunityDatabase(":memory:", {
+  const database = new CommunityDatabase(path, {
     generateAccountId: () => "account-1",
     generateHomeId: () => "home-1",
     generateResidentId: () => "resident-1",
@@ -47,7 +51,7 @@ function collectingSink(): {
   };
 }
 
-test("one unread mailbox fact produces one content-free wake and exact ACK confirmation", async () => {
+test("human mailbox delivery and opening never produce a Bell wake", async () => {
   const { database, homeId, residentId } = registeredDatabase();
   let nextLetter = 0;
   const mailbox = new MailboxService({
@@ -64,11 +68,9 @@ test("one unread mailbox fact produces one content-free wake and exact ACK confi
     title: "private title",
   });
 
-  let nextWake = 0;
   const service = new BellService({
     database,
     generateConnectionEpoch: () => "epoch-1",
-    generateWakeId: () => `wake-${++nextWake}`,
     heartbeatIntervalMs: 30_000,
     now: () => 3_000,
     registrationAuth: {
@@ -81,31 +83,14 @@ test("one unread mailbox fact produces one content-free wake and exact ACK confi
   const collected = collectingSink();
   const connection = await service.connect(TOKEN, collected.sink);
 
-  assert.deepEqual(collected.events.slice(0, 2), [
+  assert.deepEqual(collected.events, [
     { event: "connected", data: { version: 1, connection_epoch: "epoch-1" } },
-    {
-      event: "wake",
-      data: {
-        version: 1,
-        connection_epoch: "epoch-1",
-        wake_id: "wake-1",
-        reason: "mailbox_unread",
-        message: "📬 新消息：\nDoorbell Commons 信箱里有一封新信。",
-        created_at: new Date(3_000).toISOString(),
-      },
-    },
   ]);
-  assert.doesNotMatch(JSON.stringify(collected.events), /private title|this body/u);
-
-  assert.deepEqual(
-    await service.acknowledge(TOKEN, {
-      connectionEpoch: connection.connectionEpoch,
-      wakeId: "wake-1",
-    }),
-    { version: 1, wake_id: "wake-1", status: "acked" },
-  );
+  assert.equal(database.listPendingBellWakes(residentId).length, 0);
+  assert.equal(mailbox.listForAudience(homeId, "resident", 1).letters[0]?.isNew, true);
+  mailbox.openForAudience(homeId, "resident", "letter-1");
   service.refreshResident(residentId);
-  assert.equal(collected.events.filter((event) => event.event === "wake").length, 1);
+  assert.equal(collected.events.filter((event) => event.event === "wake").length, 0);
 
   mailbox.deliver({
     body: "a later body must also stay private",
@@ -115,85 +100,54 @@ test("one unread mailbox fact produces one content-free wake and exact ACK confi
     sensitiveValues: [],
     title: "later private title",
   });
-  service.refreshResident(residentId);
-  assert.equal(collected.events.filter((event) => event.event === "wake").length, 2);
+  service.refreshHome(homeId);
+  assert.equal(collected.events.filter((event) => event.event === "wake").length, 0);
   assert.doesNotMatch(JSON.stringify(collected.events), /later private title|later body/u);
-  assert.deepEqual(
-    await service.acknowledge(TOKEN, {
-      connectionEpoch: connection.connectionEpoch,
-      wakeId: "wake-1",
-    }),
-    { version: 1, wake_id: "wake-1", status: "acked" },
-  );
 
   connection.close();
   service.close();
   database.close();
 });
 
-test("multiple unread letters merge into one pending wake and reconnect replays the same wake", async () => {
-  const { database, homeId, residentId } = registeredDatabase();
-  const mailbox = new MailboxService({ database, now: () => 2_000 });
+test("a legacy pending mailbox wake is cancelled while terminal history is preserved", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "doorbell-bell-mailbox-removal-"));
+  const databasePath = join(directory, "community.sqlite");
+  const registered = registeredDatabase(databasePath);
+  const { homeId, residentId } = registered;
+  const mailbox = new MailboxService({ database: registered.database, now: () => 2_000 });
   mailbox.deliver({
-    body: "first",
+    body: "legacy unread",
     category: "system",
     homeId,
-    idempotencyKey: "system:first",
+    idempotencyKey: "system:legacy",
     sensitiveValues: [],
-    title: "first",
+    title: "legacy unread",
   });
-  mailbox.deliver({
-    body: "second",
-    category: "farm",
-    homeId,
-    idempotencyKey: "farm:second",
-    sensitiveValues: [],
-    title: "second",
-  });
+  registered.database.close();
 
-  let nextEpoch = 0;
+  const seed = new Database(databasePath);
+  seed
+    .prepare(
+      `INSERT INTO bell_wakes (
+         wake_id, resident_id, reason, status, created_at,
+         ended_at, block_reason, error_code
+       ) VALUES (?, ?, 'mailbox_unread', ?, ?, ?, NULL, NULL)`,
+    )
+    .run("wake-pending", residentId, "pending", 2_100, null);
+  seed
+    .prepare(
+      `INSERT INTO bell_wakes (
+         wake_id, resident_id, reason, status, created_at,
+         ended_at, block_reason, error_code
+       ) VALUES (?, ?, 'mailbox_unread', ?, ?, ?, NULL, NULL)`,
+    )
+    .run("wake-acked", residentId, "acked", 1_500, 1_600);
+  seed.close();
+
+  const database = new CommunityDatabase(databasePath);
   const service = new BellService({
     database,
-    generateConnectionEpoch: () => `epoch-${++nextEpoch}`,
-    generateWakeId: () => "wake-stable",
-    heartbeatIntervalMs: 30_000,
-    now: () => 3_000,
-    registrationAuth: { confirmCurrentResidentMembership: async () => undefined },
-    replayIntervalMs: 60_000,
-  });
-  const first = collectingSink();
-  const firstConnection = await service.connect(TOKEN, first.sink);
-  assert.equal(first.events.filter((event) => event.event === "wake").length, 1);
-  firstConnection.close();
-
-  const second = collectingSink();
-  const secondConnection = await service.connect(TOKEN, second.sink);
-  assert.equal(second.events.filter((event) => event.event === "wake").length, 1);
-  const replayedWake = second.events.find((event) => event.event === "wake");
-  assert.ok(replayedWake);
-  assert.equal((replayedWake.data as { wake_id: string }).wake_id, "wake-stable");
-  assert.equal(database.listPendingBellWakes(residentId).length, 1);
-
-  secondConnection.close();
-  service.close();
-  database.close();
-});
-
-test("pause settings cancel a queued mailbox wake without marking the letter read", async () => {
-  const { database, homeId } = registeredDatabase();
-  const mailbox = new MailboxService({ database, now: () => 2_000 });
-  mailbox.deliver({
-    body: "kept unread",
-    category: "system",
-    homeId,
-    idempotencyKey: "system:pause",
-    sensitiveValues: [],
-    title: "kept unread",
-  });
-  const service = new BellService({
-    database,
-    generateConnectionEpoch: () => "epoch-pause",
-    generateWakeId: () => "wake-pause",
+    generateConnectionEpoch: () => "epoch-cancel",
     heartbeatIntervalMs: 30_000,
     now: () => 3_000,
     registrationAuth: { confirmCurrentResidentMembership: async () => undefined },
@@ -201,20 +155,33 @@ test("pause settings cancel a queued mailbox wake without marking the letter rea
   });
   const collected = collectingSink();
   const connection = await service.connect(TOKEN, collected.sink);
-  database.updateHumanSettings(homeId, 4_000, { pauseAllWakeups: true });
-  service.refreshHome(homeId);
-
-  assert.deepEqual(collected.events.at(-1), {
-    event: "cancel",
-    data: {
-      version: 1,
-      connection_epoch: "epoch-pause",
-      wake_id: "wake-pause",
+  assert.deepEqual(collected.events, [
+    { event: "connected", data: { version: 1, connection_epoch: "epoch-cancel" } },
+    {
+      event: "cancel",
+      data: {
+        version: 1,
+        connection_epoch: "epoch-cancel",
+        wake_id: "wake-pending",
+      },
     },
-  });
-  assert.equal(mailbox.listForAudience(homeId, "resident", 1).letters[0]?.isNew, true);
+  ]);
+  assert.equal(database.listPendingBellWakes(residentId).length, 0);
 
   connection.close();
   service.close();
   database.close();
+  const inspection = new Database(databasePath, { readonly: true });
+  try {
+    assert.deepEqual(
+      inspection.prepare("SELECT wake_id, status FROM bell_wakes ORDER BY wake_id").all(),
+      [
+        { wake_id: "wake-acked", status: "acked" },
+        { wake_id: "wake-pending", status: "cancelled" },
+      ],
+    );
+  } finally {
+    inspection.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
 });

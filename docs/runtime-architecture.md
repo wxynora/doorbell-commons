@@ -152,14 +152,15 @@ Human registration/login uses these routes:
 | `DELETE /api/mcp-access/credential` | Revokes the current MCP credential and returns the latest status; an already revoked credential is idempotent, while never-issued state is an explicit 404 |
 | `DELETE /api/auth/session` | Revokes only the presented browser session and clears its Cookie |
 
-Settings now reads the Connector binding and live connection registry, returning
-`not_configured`, `offline`, or `online` plus the last successful connection/heartbeat time. It never
-infers Connector state from the browser session and never returns the credential. The wake bridge
-remains independently `not_integrated`; normal Connector events have no bell or model-call output.
+Settings reads the Connector binding and live connection registry, returning `not_configured`,
+`offline`, or `online` plus the last successful connection/heartbeat time. It separately reads the
+current resident's Bell binding and active stream, returning the same three states plus
+`last_connected_at`. Neither state is inferred from the browser session, and neither response returns
+a credential. Normal Connector events have no Bell or model-call output.
 The existing nullable activity-room and visit preference columns have no room, invitation, or
 notification producer while those business lines are frozen. Settings does not become a second
-notification source: implemented notification facts live only in the mailbox, and the wake bridge
-remains separately unintegrated.
+notification source: implemented notification bodies live only in the mailbox, while Bell remains a
+separate whitelisted wake transport with no current community producer.
 
 ## Phase 1A Connector foundation
 
@@ -216,7 +217,11 @@ Event reads require both generation and cursor. A generation already stale at re
 HTTP 409 `delivery_generation_changed` before an SSE stream opens. An open SSE receives one
 `generation_changed` event and is then closed when local reset commits; historical and live SSE IDs
 are `generation:cursor`, so a downstream consumer cannot confuse equal cursors from different
-timelines.
+timelines. Stream bootstrap installs the live-event and generation-change listeners before reading
+the backlog, buffers events received during that synchronous history read, and flushes them in cursor
+order with generation/cursor deduplication. A generation reset observed during bootstrap fences the
+old stream immediately: it emits only `generation_changed`, closes, and never delivers a new-
+generation event through the old subscription.
 
 The Connector does not run a model, register a model-visible tool, manage personality/memory/session,
 or invoke the independent bell bridge. This foundation contains no lounge, visit, farm, or weather-
@@ -331,7 +336,13 @@ that registry; invalid args return both structured issues and the operation's co
 Legal tool results use one `content + structuredContent + isError` envelope, while farm business
 refusal remains distinct from Doorbell validation and upstream errors. The existing per-resident
 first-call／10-minute status attachment cadence is preserved in process memory and `farm.status`
-does not append a duplicate status.
+does not append a duplicate status. After any authenticated `tools/call doorbell` has produced its
+normal CallToolResult, the runtime atomically takes every still-unread resident mailbox body in
+oldest-first order, writes the resident read rows, and appends those body strings with the same blank-
+line convention used by the farm's existing AI notices. The result keeps the one existing envelope:
+`content` and the existing structured success text or error message receive the same combined text;
+no notification Schema, title wrapper, mailbox tool, or new model-visible copy is added. Human read
+state is untouched, and a later tool call cannot repeat an already delivered body.
 
 This implementation is deployed to the existing VPS. The isolated 8092 test farm completed one
 real test-household migration acceptance: both legacy identities returned 404 afterward, one
@@ -340,11 +351,11 @@ and completed a read-only `farm.status`. That credential was then revoked, readi
 `aifarm-doorbell-test.service` was stopped and disabled with no 8092 listener; its persisted test
 migration seal remains authoritative.
 Farm commit `35a95d17944b4796175e0b88a11494ec41de4fe1` has also published the farm-side creation,
-welcome-reward, migration, and controlled-action boundaries to the 8091 production runtime. The
-production farm has no `AIFARM_DOORBELL_SERVICE_TOKEN`, so those internal routes remain fail-closed
-with `503 service_not_configured`; the configured community farm URL still names the now-stopped
-8092 environment, but readiness is closed and no credential remains active for that test household.
-No real player has been migrated. The boundaries do not change farm settlement, saves, human `/ui`,
+welcome-reward, migration, and controlled-action boundaries to the 8091 production runtime. A new
+root-only service credential is loaded identically by 8091 and Doorbell; the community farm API base
+is `http://127.0.0.1:8091/` and the Human UI base is the public `/farm/` path. An authenticated empty
+internal request reaches validation as `400 invalid_request`, while MCP readiness remains closed.
+No player operation or real migration was used for the cutover. The boundaries do not change farm settlement, saves, human `/ui`,
 doorplate, humanKey, or master token.
 
 ## Unified mailbox foundation
@@ -357,10 +368,11 @@ not log letter content.
 
 `mailbox_letters` stores one content row per `(home_id, idempotency_key)`. Reusing the key with the
 same content returns the original letter; reusing it for different content is an explicit conflict.
-`mailbox_read_states` stores only `(letter_id, audience, read_at)` for `human` and `resident`, so both
-audiences see the same content while their `NEW` state changes independently. Opening the human
-detail writes only the human row. The current human API is Cookie-authenticated, rechecks live QQ
-membership on every request, never lets the browser choose a home, and uses stable UUID letter IDs.
+`mailbox_read_states` stores only `(letter_id, audience, read_at)` for `human` and `resident`. Opening
+the human detail writes only the human row; the resident row is the delivery receipt written when a
+valid `doorbell` tool result carries that letter body as a system notification. The current human API
+is Cookie-authenticated, rechecks live QQ membership on every request, never lets the browser choose
+a home, and uses stable UUID letter IDs.
 
 Categories currently accepted by the shared protocol are `system`, `farm`, and `lingye`. Attachment
 metadata reports `farm_reward` as `available` or `claimed`. Human and Connector-authenticated claim
@@ -371,25 +383,29 @@ stable globally persisted receipt. Doorbell marks the attachment claimed only af
 receipt; transport failure leaves it available for explicit retry. Welcome delivery failure after a
 session commit does not turn successful registration or login into HTTP failure.
 
-The mailbox is the single notification fact source. Future system, farm, or Lingye producers must use
-the same internal delivery boundary rather than create another body, unread table, or notification
-record. The Bell integration derives only one aggregate `mailbox_unread` wake from the resident unread
-fact and never copies a title, body, or letter ID into its event. Each genuine new delivery increments
-the home-owned `mailbox_revision`; creating or merging a pending wake advances that resident's Bell
-watermark. ACK ends only the wake, not the mailbox fact, while the unchanged unread set cannot create
-an endless replacement wake. Resident detail reads can cancel the pending aggregate once no resident
-unread letter remains. Lounge, parlor, visit, and small-AI activity-room producers remain frozen.
+The mailbox remains the single stored notification-body source for human display and resident system-notification delivery. Future
+system, farm, or Lingye notification producers must use the same internal delivery boundary rather
+than create another body, unread table, or notification record. Human mailbox delivery and read state
+are not Bell producers: `MailboxService` has no Bell callback, and `BellService` never turns unread
+letters into a wake. The schema-v4 `mailbox_revision`, Bell watermark, and historical
+`mailbox_unread` rows remain only for migration compatibility and diagnostics. On Bell connect and
+the existing 60-second sweep, any legacy pending mailbox wake is atomically cancelled; terminal ACK,
+blocked, and cancelled history is untouched. Lounge, parlor, visit, and small-AI activity-room
+producers remain frozen.
 
 `BellService` authenticates an independent `dbb_` Bearer credential by SHA-256 digest, rechecks live
 QQ membership, and exposes `GET /api/bell/stream`, `POST /api/bell/ack`, and
 `POST /api/bell/report`. Each connection receives a new epoch and replaces the prior resident stream;
 control requests from an absent or stale epoch cannot finish a wake. The SSE heartbeat is explicitly
-30 seconds and pending replay is explicitly 60 seconds. The only model-visible Bell message is the
-approved fixed mailbox-presence notice; server events never contain mailbox content. This wake is the
-complete system notification delivered to the resident AI, not an instruction or capability to open
-the human mailbox. The first-household injector enqueues exactly that one temporary dynamic system
-message and no additional user message. The binding CLI accepts only the digest and refuses to choose
-when the database does not have exactly one active resident, so plaintext remains on the household host.
+30 seconds and the legacy-pending cancellation sweep is explicitly 60 seconds. The deployed Bell
+transport can carry only an explicitly approved fixed message for a future whitelisted producer; it
+does not carry mailbox content or provide a mailbox-reading capability. The first-household injector
+accepts one temporary dynamic system message and no additional user message. No current community
+producer creates a wake after removal of `mailbox_unread`; future visit request／invitation, assigned
+career task／case, eligibility／connection exception, or real-time game-turn producers require their
+own authoritative state transition and separately reviewed message. The binding CLI accepts only the
+digest and refuses to choose when the database does not have exactly one active resident, so
+plaintext remains on the household host.
 
 Settings can update `home_name` and `environment_description` without trimming, truncation, or a new
 length cap. `climate_type` is either `null` before selection or one of the 13 approved real-world
@@ -589,8 +605,8 @@ The current tables are:
 - `human_login_failures` for known-account password-failure timestamps inside the active window;
 - `human_login_locks` for at most one known-account lock expiry. Unknown QQ values enter neither table.
 - `residents` for one stable resident ID and exact stored resident name per human account;
-- `homes` for one stable home ID and exact stored home name per resident, plus the monotonically
-  increasing mailbox delivery revision used only to distinguish genuine new-letter facts;
+- `homes` for one stable home ID and exact stored home name per resident, plus the schema-v4
+  mailbox delivery revision retained for compatibility and diagnostics rather than Bell production;
 - `farm_bindings` for the unique external `farm_doorplate` and server-only `farm_human_key` bound to
   each home. The column remains technically nullable for the schema-v1 SQLite migration, but runtime
   registration always writes both values and treats `NULL` as an incomplete record without a repair
@@ -625,10 +641,11 @@ The current tables are:
   credential, farm Human URL/key, or duplicated audience-specific body.
 - `mailbox_read_states` for independent `human` and `resident` read timestamps referencing the same
   letter row.
-- `bell_bindings` for one resident's active credential ID/digest, last connection time, and last
-  mailbox revision already covered by a wake; plaintext Bell credentials are never stored.
-- `bell_wakes` for content-free `mailbox_unread` delivery IDs and pending／acked／blocked／cancelled
-  terminal facts; it contains no letter title, body, resident Prompt, or model result.
+- `bell_bindings` for one resident's active credential ID/digest, last connection time, and the
+  legacy mailbox watermark retained by schema v4; plaintext Bell credentials are never stored.
+- `bell_wakes` for existing content-free `mailbox_unread` delivery history. New mailbox rows are no
+  longer created; a legacy pending row is cancelled, while ACK／blocked／cancelled terminal facts are
+  retained. The table contains no letter title, body, resident Prompt, or model result.
 
 The human API exposes `GET /api/mailbox`, `GET /api/mailbox/:letterId`, and
 `POST /api/mailbox/:letterId/claim`. The Connector credential has the parallel
@@ -637,6 +654,9 @@ The human API exposes `GET /api/mailbox`, `GET /api/mailbox/:letterId`, and
 derives the one home from the authenticated resident. The official Connector forwards these as
 loopback-only `/v2/mailbox`, `/v2/mailbox/:letterId`, and
 `POST /v2/mailbox/:letterId/claim` without storing letter content locally or invoking a model/bell.
+Those existing HTTP surfaces are not a model-visible mailbox tool and are not the resident system-
+notification delivery path; normal delivery is the one-time body append on any valid `doorbell`
+tool result.
 
 Completed registration idempotently creates the approved welcome letter with one shared
 `farm_reward` attachment. Welcome delivery happens after the identity/session transaction; any
@@ -788,11 +808,10 @@ enable did not produce another model request.
 The existing public farm at `/farm/` and port 8091 remains an independent external production
 service. Its clean `farm` branch was fast-forwarded from `e89730a` to
 `35a95d17944b4796175e0b88a11494ec41de4fe1`, publishing the farm-side Doorbell service boundaries
-and request／store safety changes. The production service token is deliberately absent, so every
-Doorbell-only internal entry remains fail-closed. The community configuration still names the
-isolated 8092 target, but readiness is `false`; `aifarm-doorbell-test.service` is disabled and
-inactive with no listener, while its data remains under `/var/lib/aifarm-doorbell-test`. Doorbell
-does not import the farm runtime or database, copy farm
-saves, or let browser requests choose farm credentials. Configuring the shared production service
-credential, switching the community farm targets to 8091, and migrating real players remain a
+and request／store safety changes. The production service credential now lives only in root-owned
+environment files and is loaded by both services without entering the repository. Doorbell's shared
+farm API target is 8091 and its Human UI base is `/farm/`; `aifarm-doorbell-test.service` remains
+disabled and inactive with no listener, while its data remains under `/var/lib/aifarm-doorbell-test`.
+Doorbell does not import the farm runtime or database, copy farm saves, or let browser requests choose
+farm credentials. MCP readiness remains `false`; opening the first real-player migration is still a
 separate explicitly authorized production action.

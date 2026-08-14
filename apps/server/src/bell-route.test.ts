@@ -44,11 +44,12 @@ class UnusedFarmDirectory implements FarmDirectoryReader {
 
 async function readRecognizedEvents(
   reader: ReadableStreamDefaultReader<Uint8Array>,
+  expectedCount: number,
 ): Promise<Array<{ event: string; data: Record<string, unknown> }>> {
   const decoder = new TextDecoder();
   let buffer = "";
   const events: Array<{ event: string; data: Record<string, unknown> }> = [];
-  while (events.length < 2) {
+  while (events.length < expectedCount) {
     const chunk = await reader.read();
     if (chunk.done) break;
     buffer += decoder.decode(chunk.value, { stream: true });
@@ -63,7 +64,7 @@ async function readRecognizedEvents(
   return events;
 }
 
-test("Bell HTTP surface authenticates SSE and returns exact durable ACK confirmation", async () => {
+test("Bell HTTP surface authenticates SSE without turning human mail into a wake", async () => {
   const database = new CommunityDatabase(":memory:");
   const membership = new CurrentMember();
   const registrationAuth = new RegistrationAuthService({
@@ -91,12 +92,10 @@ test("Bell HTTP surface authenticates SSE and returns exact durable ACK confirma
     replayIntervalMs: 60_000,
     now: () => 3_000,
     generateConnectionEpoch: () => "epoch-http",
-    generateWakeId: () => "wake-http",
   });
   const mailbox = new MailboxService({
     database,
     now: () => 2_000,
-    onMailboxChanged: (homeId) => bellService.refreshHome(homeId),
   });
   mailbox.deliver({
     homeId: created.community.home.homeId,
@@ -129,17 +128,14 @@ test("Bell HTTP surface authenticates SSE and returns exact durable ACK confirma
     assert.equal(stream.headers.get("content-type"), "text/event-stream; charset=utf-8");
     assert.ok(stream.body);
     const reader = stream.body.getReader();
-    const events = await readRecognizedEvents(reader);
+    const events = await readRecognizedEvents(reader, 1);
     assert.deepEqual(
       events.map((event) => event.event),
-      ["connected", "wake"],
+      ["connected"],
     );
     assert.doesNotMatch(JSON.stringify(events), /private title|private body/u);
-    const wake = events[1]?.data;
-    assert.equal(wake?.wake_id, "wake-http");
-    assert.equal(wake?.connection_epoch, "epoch-http");
 
-    const acknowledged = await fetch(`${address}/api/bell/ack`, {
+    const rejectedControl = await fetch(`${address}/api/bell/ack`, {
       method: "POST",
       headers: {
         authorization: `Bearer ${TOKEN}`,
@@ -151,12 +147,7 @@ test("Bell HTTP surface authenticates SSE and returns exact durable ACK confirma
         connection_epoch: "epoch-http",
       }),
     });
-    assert.equal(acknowledged.status, 200);
-    assert.deepEqual(await acknowledged.json(), {
-      version: 1,
-      wake_id: "wake-http",
-      status: "acked",
-    });
+    assert.equal(rejectedControl.status, 409);
     await reader.cancel();
   } finally {
     await app.close();

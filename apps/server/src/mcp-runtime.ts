@@ -59,6 +59,7 @@ export interface DoorbellMcpPostInput {
 }
 
 interface DoorbellFarmContext {
+  homeId: string;
   residentId: string;
   farmDoorplate: string;
   farmHumanKey: string;
@@ -78,6 +79,15 @@ interface DoorbellIssue {
   path: Array<string | number>;
   code: string;
   message: string;
+}
+
+interface DoorbellCallToolResult {
+  content: Array<{ type: "text"; text: string }>;
+  structuredContent: Record<string, unknown> & {
+    text?: string;
+    error?: Record<string, unknown> & { message: string };
+  };
+  isError: boolean;
 }
 
 class FarmNotBoundError extends Error {}
@@ -116,7 +126,7 @@ function doorbellToolError(
     issues?: readonly DoorbellIssue[];
     examples?: readonly DoorbellCallExample[];
   } = {},
-) {
+): DoorbellCallToolResult {
   const message = options.message ?? TOOL_ERROR_MESSAGES[code as keyof typeof TOOL_ERROR_MESSAGES];
   if (!message) {
     throw new Error(`Missing Doorbell error message for ${code}`);
@@ -138,7 +148,12 @@ function doorbellToolError(
   };
 }
 
-function farmToolResult(op: string, text: string, ok: boolean, farm?: Record<string, unknown>) {
+function farmToolResult(
+  op: string,
+  text: string,
+  ok: boolean,
+  farm?: Record<string, unknown>,
+): DoorbellCallToolResult {
   if (!ok) {
     return {
       content: textContent(text),
@@ -164,7 +179,7 @@ function farmToolResult(op: string, text: string, ok: boolean, farm?: Record<str
   };
 }
 
-function helpToolResult(op: string, text: string) {
+function helpToolResult(op: string, text: string): DoorbellCallToolResult {
   return {
     content: textContent(text),
     structuredContent: { ok: true, op, source: "doorbell", text },
@@ -305,7 +320,10 @@ export class DoorbellMcpRuntime {
   async #resolveContext(residentId: string): Promise<DoorbellFarmContext> {
     await this.#registrationAuth.confirmCurrentResidentMembership(residentId);
     const homeId = this.#database.findHomeIdByResidentId(residentId);
-    const farmBinding = homeId ? this.#database.findFarmBindingByHomeId(homeId) : undefined;
+    if (!homeId) {
+      throw new FarmNotBoundError();
+    }
+    const farmBinding = this.#database.findFarmBindingByHomeId(homeId);
     if (!farmBinding || farmBinding.farmHumanKey === null) {
       throw new FarmNotBoundError();
     }
@@ -319,6 +337,7 @@ export class DoorbellMcpRuntime {
       throw new FarmMigrationRequiredError();
     }
     return {
+      homeId,
       residentId,
       farmDoorplate: farmBinding.farmDoorplate,
       farmHumanKey: farmBinding.farmHumanKey,
@@ -390,7 +409,8 @@ export class DoorbellMcpRuntime {
           return undefined;
         }
         try {
-          return jsonRpcSuccess(id, await this.#callTool(request.params, context));
+          const result = await this.#callTool(request.params, context);
+          return jsonRpcSuccess(id, this.#appendResidentNotifications(result, context));
         } catch (error) {
           if (error instanceof ProtocolToolError) {
             return jsonRpcFailure(id, error.code, error.message);
@@ -440,7 +460,7 @@ export class DoorbellMcpRuntime {
     return TOOL_ERROR_MESSAGES.INTERNAL_ERROR;
   }
 
-  async #callTool(params: unknown, context: DoorbellFarmContext) {
+  async #callTool(params: unknown, context: DoorbellFarmContext): Promise<DoorbellCallToolResult> {
     if (!isPlainObject(params) || params.name !== "doorbell") {
       throw new ProtocolToolError(-32602, "Invalid params");
     }
@@ -526,6 +546,36 @@ export class DoorbellMcpRuntime {
       }
       return doorbellToolError("INTERNAL_ERROR", { op });
     }
+  }
+
+  #appendResidentNotifications(
+    result: DoorbellCallToolResult,
+    context: DoorbellFarmContext,
+  ): DoorbellCallToolResult {
+    const notifications = this.#database.takeResidentMailboxNotifications(
+      context.homeId,
+      this.#now(),
+    );
+    if (notifications.length === 0) {
+      return result;
+    }
+    const suffix = notifications.join("\n\n");
+    const currentText = result.content[0]?.text ?? "";
+    const combinedText = currentText ? `${currentText}\n\n${suffix}` : suffix;
+    const structuredContent = { ...result.structuredContent };
+    if (typeof structuredContent.text === "string") {
+      structuredContent.text = combinedText;
+    } else if (structuredContent.error) {
+      structuredContent.error = {
+        ...structuredContent.error,
+        message: combinedText,
+      };
+    }
+    return {
+      ...result,
+      content: [{ type: "text", text: combinedText }],
+      structuredContent,
+    };
   }
 
   #noteValidFarmCall(residentId: string): boolean {

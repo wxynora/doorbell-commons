@@ -10,6 +10,7 @@ import {
   humanSettingsSuccessSchema,
 } from "@doorbell/protocol";
 import { buildApp } from "./app.js";
+import type { BellService, BellSettingsStatus } from "./bell-service.js";
 import { CommunityDatabase } from "./community-database.js";
 import { COMMUNITY_QQ_GROUP_ID } from "./config.js";
 import type {
@@ -74,7 +75,7 @@ class UnusedFarmDirectory implements FarmDirectoryReader {
   }
 }
 
-function openHarness(databasePath: string, sessionTokens: string[]) {
+function openHarness(databasePath: string, sessionTokens: string[], bellService?: BellService) {
   const database = new CommunityDatabase(databasePath, {
     generateSessionToken: () => sessionTokens.shift() ?? "unexpected-settings-session-token",
   });
@@ -91,6 +92,7 @@ function openHarness(databasePath: string, sessionTokens: string[]) {
     groupId: COMMUNITY_QQ_GROUP_ID,
     groupMembership: membership,
     registrationAuth,
+    ...(bellService ? { bellService } : {}),
     secureCookies: false,
     logger: false,
   });
@@ -104,6 +106,22 @@ function openHarness(databasePath: string, sessionTokens: string[]) {
       database.close();
     },
   };
+}
+
+function fakeBellService(status: BellSettingsStatus) {
+  const residentIds: string[] = [];
+  const refreshedHomeIds: string[] = [];
+  const service = {
+    getSettingsStatus(residentId: string) {
+      residentIds.push(residentId);
+      return status;
+    },
+    refreshHome(homeId: string) {
+      refreshedHomeIds.push(homeId);
+    },
+    close() {},
+  } as unknown as BellService;
+  return { service, residentIds, refreshedHomeIds };
 }
 
 function createRegisteredSession(
@@ -171,7 +189,7 @@ test("settings expose honest integration state and persist supported fields acro
     assert.deepEqual(humanSettingsSuccessSchema.parse(initial.json()), {
       connection_status: {
         connector: { status: "not_configured", last_online_at: null },
-        wake_bridge: { status: "not_integrated" },
+        wake_bridge: { status: "not_configured", last_connected_at: null },
       },
       home: {
         home_name: "纸灯小屋",
@@ -383,6 +401,63 @@ test("settings expose honest integration state and persist supported fields acro
       },
     );
     assert.equal(harness.farmDirectory.calls, 0);
+  } finally {
+    await harness.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("settings expose the resident Bell runtime status on read and update", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "doorbell-human-settings-bell-test-"));
+  const bell = fakeBellService({
+    status: "online",
+    last_connected_at: "2026-08-14T12:34:56.000Z",
+  });
+  const harness = openHarness(
+    join(directory, "doorbell.sqlite"),
+    ["bell-settings-token"],
+    bell.service,
+  );
+  try {
+    const created = createRegisteredSession(
+      harness.database,
+      "10001",
+      "小一",
+      "纸灯小屋",
+      "ABC234",
+    );
+    harness.membership.members.add("10001");
+    const sessionCookie = cookie(created.token);
+
+    const read = await harness.app.inject({
+      method: "GET",
+      url: "/api/settings",
+      headers: { cookie: sessionCookie },
+    });
+    assert.equal(read.statusCode, 200);
+    assert.deepEqual(read.json().connection_status.wake_bridge, {
+      status: "online",
+      last_connected_at: "2026-08-14T12:34:56.000Z",
+    });
+
+    const updated = await harness.app.inject({
+      method: "PATCH",
+      url: "/api/settings",
+      headers: { cookie: sessionCookie },
+      payload: { home: { environment_description: "门前有一盏灯。" } },
+    });
+    assert.equal(updated.statusCode, 200);
+    assert.deepEqual(updated.json().connection_status.wake_bridge, {
+      status: "online",
+      last_connected_at: "2026-08-14T12:34:56.000Z",
+    });
+    assert.deepEqual(bell.residentIds, [
+      created.community.resident.residentId,
+      created.community.resident.residentId,
+    ]);
+    assert.deepEqual(bell.refreshedHomeIds, [created.community.home.homeId]);
+    assert.doesNotMatch(read.body, /dbb_/u);
+    assert.doesNotMatch(updated.body, /dbb_/u);
   } finally {
     await harness.close();
     rmSync(directory, { recursive: true, force: true });

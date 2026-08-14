@@ -1,9 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
-import type { BellBindingState, BellWakeRecord, CommunityDatabase } from "./community-database.js";
+import type { BellBindingState, CommunityDatabase } from "./community-database.js";
 
 export const BELL_PROTOCOL_VERSION = 1 as const;
-export const BELL_MAILBOX_REASON = "mailbox_unread" as const;
-export const BELL_MAILBOX_MESSAGE = "📬 新消息：\nDoorbell Commons 信箱里有一封新信。";
 
 const BELL_CREDENTIAL_PATTERN = /^dbb_[A-Za-z0-9_-]{43}$/u;
 
@@ -29,7 +27,6 @@ export interface BellServiceOptions {
   replayIntervalMs: number;
   now?: () => number;
   generateConnectionEpoch?: () => string;
-  generateWakeId?: () => string;
   onError?: (error: unknown) => void;
 }
 
@@ -97,7 +94,6 @@ export class BellService {
   readonly #replayIntervalMs: number;
   readonly #now: () => number;
   readonly #generateConnectionEpoch: () => string;
-  readonly #generateWakeId: () => string;
   readonly #onError: (error: unknown) => void;
   readonly #connections = new Map<string, ActiveBellConnection>();
 
@@ -108,7 +104,6 @@ export class BellService {
     this.#replayIntervalMs = options.replayIntervalMs;
     this.#now = options.now ?? Date.now;
     this.#generateConnectionEpoch = options.generateConnectionEpoch ?? randomUUID;
-    this.#generateWakeId = options.generateWakeId ?? randomUUID;
     this.#onError = options.onError ?? (() => undefined);
   }
 
@@ -208,21 +203,13 @@ export class BellService {
   }
 
   refreshHome(homeId: string): void {
-    const result = this.#database.refreshBellMailboxWakeForHome(
-      homeId,
-      this.#generateWakeId(),
-      this.#now(),
-    );
-    this.#emitRefreshResult(result.residentId, result.wake, result.cancelledWakeId);
+    const result = this.#database.cancelPendingBellMailboxWakeForHome(homeId, this.#now());
+    this.#emitCancellation(result.residentId, result.cancelledWakeId);
   }
 
   refreshResident(residentId: string): void {
-    const result = this.#database.refreshBellMailboxWakeForResident(
-      residentId,
-      this.#generateWakeId(),
-      this.#now(),
-    );
-    this.#emitRefreshResult(result.residentId, result.wake, result.cancelledWakeId);
+    const result = this.#database.cancelPendingBellMailboxWakeForResident(residentId, this.#now());
+    this.#emitCancellation(result.residentId, result.cancelledWakeId);
   }
 
   getSettingsStatus(residentId: string): BellSettingsStatus {
@@ -260,14 +247,9 @@ export class BellService {
     return binding;
   }
 
-  #emitRefreshResult(
-    residentId: string | null,
-    wake: BellWakeRecord | null,
-    cancelledWakeId: string | null,
-  ): void {
+  #emitCancellation(residentId: string | null, cancelledWakeId: string | null): void {
     if (residentId !== null) {
       const active = this.#connections.get(residentId);
-      if (active && !active.closed && wake) this.#sendWake(active, wake);
       if (active && !active.closed && cancelledWakeId) {
         active.sink.send("cancel", {
           version: BELL_PROTOCOL_VERSION,
@@ -276,17 +258,6 @@ export class BellService {
         });
       }
     }
-  }
-
-  #sendWake(connection: ActiveBellConnection, wake: BellWakeRecord): void {
-    connection.sink.send("wake", {
-      version: BELL_PROTOCOL_VERSION,
-      connection_epoch: connection.connectionEpoch,
-      wake_id: wake.wakeId,
-      reason: BELL_MAILBOX_REASON,
-      message: BELL_MAILBOX_MESSAGE,
-      created_at: new Date(wake.createdAt).toISOString(),
-    });
   }
 
   #closeConnection(connection: ActiveBellConnection, closeSink: boolean): void {

@@ -1249,7 +1249,8 @@ export const humanSettingsSuccessSchema = z
         connector: connectorSettingsStatusSchema,
         wake_bridge: z
           .object({
-            status: z.literal("not_integrated"),
+            status: z.enum(["not_configured", "offline", "online"]),
+            last_connected_at: z.iso.datetime().nullable(),
           })
           .strict(),
       })

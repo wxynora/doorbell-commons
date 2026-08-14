@@ -176,9 +176,8 @@ export interface BellWakeRecord {
   errorCode: string | null;
 }
 
-export interface BellWakeRefreshResult {
+export interface BellWakeCancellationResult {
   residentId: string | null;
-  wake: BellWakeRecord | null;
   cancelledWakeId: string | null;
 }
 
@@ -2174,125 +2173,27 @@ export class CommunityDatabase {
     return result.changes === 1;
   }
 
-  refreshBellMailboxWakeForHome(
-    homeId: string,
-    wakeId: string,
-    now: number,
-  ): BellWakeRefreshResult {
+  cancelPendingBellMailboxWakeForHome(homeId: string, now: number): BellWakeCancellationResult {
     const row = this.#database
       .prepare("SELECT resident_id FROM homes WHERE home_id = ?")
       .get(homeId) as { resident_id: string } | undefined;
     return row
-      ? this.refreshBellMailboxWakeForResident(row.resident_id, wakeId, now)
-      : { residentId: null, wake: null, cancelledWakeId: null };
+      ? this.cancelPendingBellMailboxWakeForResident(row.resident_id, now)
+      : { residentId: null, cancelledWakeId: null };
   }
 
-  refreshBellMailboxWakeForResident(
+  cancelPendingBellMailboxWakeForResident(
     residentId: string,
-    wakeId: string,
     now: number,
-  ): BellWakeRefreshResult {
+  ): BellWakeCancellationResult {
     const transaction = this.#database.transaction(() => {
-      const state = this.#database
-        .prepare(
-          `SELECT h.home_id,
-                  h.mailbox_revision,
-                  b.credential_token_hash,
-                  b.credential_revoked_at,
-                  b.last_wake_mailbox_revision,
-                  s.pause_all_wakeups,
-                  s.important_system_notifications_enabled,
-                  EXISTS (
-                    SELECT 1
-                    FROM mailbox_letters AS l
-                    LEFT JOIN mailbox_read_states AS r
-                      ON r.letter_id = l.letter_id AND r.audience = 'resident'
-                    WHERE l.home_id = h.home_id AND r.letter_id IS NULL
-                  ) AS has_unread
-           FROM homes AS h
-           LEFT JOIN bell_bindings AS b ON b.resident_id = h.resident_id
-           LEFT JOIN human_settings AS s ON s.home_id = h.home_id
-           WHERE h.resident_id = ?`,
-        )
-        .get(residentId) as
-        | {
-            credential_revoked_at: number | null;
-            credential_token_hash: string | null;
-            has_unread: number;
-            home_id: string;
-            important_system_notifications_enabled: number | null;
-            last_wake_mailbox_revision: number | null;
-            mailbox_revision: number;
-            pause_all_wakeups: number | null;
-          }
-        | undefined;
       const pending = this.#database
         .prepare(
-          `SELECT wake_id, resident_id, reason, status, created_at, ended_at, block_reason, error_code
+          `SELECT wake_id
            FROM bell_wakes
            WHERE resident_id = ? AND status = 'pending'`,
         )
-        .get(residentId) as BellWakeRow | undefined;
-      const canWake = Boolean(
-        state?.credential_token_hash &&
-          state.credential_revoked_at === null &&
-          state.has_unread === 1 &&
-          state.pause_all_wakeups !== 1 &&
-          state.important_system_notifications_enabled !== 0,
-      );
-      if (canWake && state) {
-        const revisionIsAfterWatermark =
-          state.last_wake_mailbox_revision === null ||
-          state.mailbox_revision > state.last_wake_mailbox_revision;
-        if (pending) {
-          if (revisionIsAfterWatermark) {
-            this.#database
-              .prepare(
-                `UPDATE bell_bindings
-                 SET last_wake_mailbox_revision = ?
-                 WHERE resident_id = ?`,
-              )
-              .run(state.mailbox_revision, residentId);
-          }
-          return {
-            residentId,
-            wake: mapBellWake(pending),
-            cancelledWakeId: null,
-          };
-        }
-        if (!revisionIsAfterWatermark) {
-          return { residentId, wake: null, cancelledWakeId: null };
-        }
-        this.#database
-          .prepare(
-            `INSERT INTO bell_wakes (
-               wake_id, resident_id, reason, status, created_at,
-               ended_at, block_reason, error_code
-             ) VALUES (?, ?, 'mailbox_unread', 'pending', ?, NULL, NULL, NULL)`,
-          )
-          .run(wakeId, residentId, now);
-        this.#database
-          .prepare(
-            `UPDATE bell_bindings
-             SET last_wake_mailbox_revision = ?
-             WHERE resident_id = ?`,
-          )
-          .run(state.mailbox_revision, residentId);
-        return {
-          residentId,
-          wake: {
-            wakeId,
-            residentId,
-            reason: "mailbox_unread" as const,
-            status: "pending" as const,
-            createdAt: now,
-            endedAt: null,
-            blockReason: null,
-            errorCode: null,
-          },
-          cancelledWakeId: null,
-        };
-      }
+        .get(residentId) as { wake_id: string } | undefined;
       if (pending) {
         this.#database
           .prepare(
@@ -2301,9 +2202,9 @@ export class CommunityDatabase {
              WHERE wake_id = ? AND status = 'pending'`,
           )
           .run(now, pending.wake_id);
-        return { residentId, wake: null, cancelledWakeId: pending.wake_id };
+        return { residentId, cancelledWakeId: pending.wake_id };
       }
-      return { residentId, wake: null, cancelledWakeId: null };
+      return { residentId, cancelledWakeId: null };
     });
     return transaction.immediate();
   }
@@ -2459,6 +2360,34 @@ export class CommunityDatabase {
       });
     });
 
+    return transaction.immediate();
+  }
+
+  takeResidentMailboxNotifications(homeId: string, now: number): string[] {
+    const transaction = this.#database.transaction(() => {
+      const unread = this.#database
+        .prepare(
+          `SELECT l.letter_id, l.body
+           FROM mailbox_letters AS l
+           LEFT JOIN mailbox_read_states AS r
+             ON r.letter_id = l.letter_id AND r.audience = 'resident'
+           WHERE l.home_id = ? AND r.letter_id IS NULL
+           ORDER BY l.created_at ASC, l.letter_id ASC`,
+        )
+        .all(homeId) as Array<{ letter_id: string; body: string }>;
+      if (unread.length === 0) {
+        return [];
+      }
+      const markRead = this.#database.prepare(
+        `INSERT INTO mailbox_read_states (letter_id, audience, read_at)
+         VALUES (?, 'resident', ?)
+         ON CONFLICT(letter_id, audience) DO NOTHING`,
+      );
+      for (const letter of unread) {
+        markRead.run(letter.letter_id, now);
+      }
+      return unread.map((letter) => letter.body);
+    });
     return transaction.immediate();
   }
 

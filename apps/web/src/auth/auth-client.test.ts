@@ -40,7 +40,7 @@ const IDENTITY = {
 const SETTINGS = {
   connection_status: {
     connector: { status: "online" as const, last_online_at: "2026-08-12T02:03:04.000Z" },
-    wake_bridge: { status: "not_integrated" as const },
+    wake_bridge: { status: "online" as const, last_connected_at: "2026-08-12T02:03:04.000Z" },
   },
   home: {
     home_name: "渡的小屋",

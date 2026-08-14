@@ -83,8 +83,6 @@ const bellService = new BellService({
 const mailboxService = new MailboxService({
   database,
   farmRewardGranter,
-  onMailboxChanged: (homeId) => bellService.refreshHome(homeId),
-  onMailboxNotificationError: reportBellError,
 });
 const connectorService = new ConnectorService({
   database,

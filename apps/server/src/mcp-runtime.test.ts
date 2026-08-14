@@ -738,3 +738,76 @@ test("MCP calls validate strict args, self-correct, preserve status cadence, and
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("any valid doorbell call delivers resident system notifications once without reading human mail", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "doorbell-mcp-notification-piggyback-"));
+  const harness = openRuntimeHarness(join(directory, "doorbell.sqlite"));
+  try {
+    const binding = harness.database.authenticateMcpCredentialHash(
+      hashMcpCredential(MCP_CREDENTIAL),
+    );
+    assert(binding);
+    const homeId = harness.database.findHomeIdByResidentId(binding.residentId);
+    assert(homeId);
+    harness.database.deliverMailboxLetter({
+      letterId: "40000000-0000-4000-8000-000000000001",
+      homeId,
+      idempotencyKey: "system:resident-notice-1",
+      category: "system",
+      title: "只给人类信箱展示的标题一",
+      body: "第一条系统通知。",
+      createdAt: NOW + 10,
+      attachment: null,
+    });
+    harness.database.deliverMailboxLetter({
+      letterId: "40000000-0000-4000-8000-000000000002",
+      homeId,
+      idempotencyKey: "system:resident-notice-2",
+      category: "system",
+      title: "只给人类信箱展示的标题二",
+      body: "第二条系统通知。",
+      createdAt: NOW + 20,
+      attachment: null,
+    });
+
+    const delivered = await postMcp(harness, call("farm.help", {}));
+    const deliveredResult = delivered.json().result;
+    assert.match(deliveredResult.content[0].text, /第一条系统通知。\n\n第二条系统通知。$/u);
+    assert.equal(deliveredResult.structuredContent.text, deliveredResult.content[0].text);
+    assert.doesNotMatch(deliveredResult.content[0].text, /只给人类信箱展示的标题/u);
+    assert.deepEqual(
+      harness.database
+        .listMailboxLetters(homeId, "human", 1, 8)
+        .letters.map((letter) => letter.isNew),
+      [true, true],
+    );
+    assert.deepEqual(
+      harness.database
+        .listMailboxLetters(homeId, "resident", 1, 8)
+        .letters.map((letter) => letter.isNew),
+      [false, false],
+    );
+
+    const repeated = await postMcp(harness, call("farm.help", {}));
+    assert.doesNotMatch(repeated.json().result.content[0].text, /系统通知/u);
+
+    harness.database.deliverMailboxLetter({
+      letterId: "40000000-0000-4000-8000-000000000003",
+      homeId,
+      idempotencyKey: "system:resident-notice-3",
+      category: "system",
+      title: "失败结果也不展示标题",
+      body: "失败结果里的系统通知。",
+      createdAt: NOW + 30,
+      attachment: null,
+    });
+    harness.farmActions.nextResult = { ok: false, text: "没有成熟作物" };
+    const rejected = await postMcp(harness, call("farm.harvest", {}));
+    const rejectedResult = rejected.json().result;
+    assert.equal(rejectedResult.content[0].text, "没有成熟作物\n\n失败结果里的系统通知。");
+    assert.equal(rejectedResult.structuredContent.error.message, rejectedResult.content[0].text);
+  } finally {
+    await harness.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

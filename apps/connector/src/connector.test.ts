@@ -249,6 +249,129 @@ async function waitFor(
   }
 }
 
+async function readSseUntil(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  marker: RegExp,
+  timeoutMs = 250,
+): Promise<string> {
+  const decoder = new TextDecoder();
+  let text = "";
+  const deadline = Date.now() + timeoutMs;
+  while (!marker.test(text) && Date.now() < deadline) {
+    const remaining = Math.max(1, deadline - Date.now());
+    const result = await Promise.race([
+      reader.read(),
+      new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), remaining)),
+    ]);
+    if (result === "timeout" || result.done) {
+      break;
+    }
+    text += decoder.decode(result.value, { stream: true });
+  }
+  return text;
+}
+
+test("local SSE includes an event persisted during backlog bootstrap exactly once", async () => {
+  const backlogEvent = event(1);
+  const racedEvent = event(2);
+  const eventSubscribers = new Set<(value: ConnectorEventEnvelope) => void>();
+  const generationSubscribers = new Set<(value: string) => void>();
+  let emittedRace = false;
+  const fakeClient = {
+    getStatus: () => ({ delivery_generation: GENERATION_ONE }),
+    listEventsAfter: () => {
+      const backlog = [backlogEvent];
+      if (!emittedRace) {
+        emittedRace = true;
+        for (const subscriber of eventSubscribers) {
+          subscriber(racedEvent);
+        }
+      }
+      return backlog;
+    },
+    subscribe: (listener: (value: ConnectorEventEnvelope) => void) => {
+      eventSubscribers.add(listener);
+      return () => eventSubscribers.delete(listener);
+    },
+    subscribeGenerationChanges: (listener: (value: string) => void) => {
+      generationSubscribers.add(listener);
+      return () => generationSubscribers.delete(listener);
+    },
+  } as unknown as ConnectorClient;
+  const localApi = buildConnectorLocalApi(fakeClient);
+  const localAddress = await listenOnLoopback(localApi, 0);
+  const controller = new AbortController();
+  try {
+    const response = await fetch(
+      `${localAddress}/v2/events/stream?delivery_generation=${GENERATION_ONE}&after_cursor=0`,
+      { signal: controller.signal },
+    );
+    const reader = response.body?.getReader();
+    assert(reader);
+    const text = await readSseUntil(reader, /"cursor":2/);
+    assert.match(text, /"cursor":1/);
+    assert.match(text, /"cursor":2/);
+    assert.equal(text.match(new RegExp(`id: ${GENERATION_ONE}:2`, "g"))?.length, 1);
+    assert.ok(text.indexOf('"cursor":1') < text.indexOf('"cursor":2'));
+  } finally {
+    controller.abort();
+    await localApi.close();
+  }
+});
+
+test("local SSE fences a generation reset during backlog bootstrap", async () => {
+  const oldGenerationEvent = event(1);
+  const newGenerationEvent = event(1, randomUUID(), GENERATION_TWO);
+  const eventSubscribers = new Set<(value: ConnectorEventEnvelope) => void>();
+  const generationSubscribers = new Set<(value: string) => void>();
+  let currentGeneration = GENERATION_ONE;
+  let emittedReset = false;
+  const fakeClient = {
+    getStatus: () => ({ delivery_generation: currentGeneration }),
+    listEventsAfter: () => {
+      const backlog = [oldGenerationEvent];
+      if (!emittedReset) {
+        emittedReset = true;
+        currentGeneration = GENERATION_TWO;
+        for (const subscriber of generationSubscribers) {
+          subscriber(GENERATION_TWO);
+        }
+        for (const subscriber of eventSubscribers) {
+          subscriber(newGenerationEvent);
+        }
+      }
+      return backlog;
+    },
+    subscribe: (listener: (value: ConnectorEventEnvelope) => void) => {
+      eventSubscribers.add(listener);
+      return () => eventSubscribers.delete(listener);
+    },
+    subscribeGenerationChanges: (listener: (value: string) => void) => {
+      generationSubscribers.add(listener);
+      return () => generationSubscribers.delete(listener);
+    },
+  } as unknown as ConnectorClient;
+  const localApi = buildConnectorLocalApi(fakeClient);
+  const localAddress = await listenOnLoopback(localApi, 0);
+  const controller = new AbortController();
+  try {
+    const response = await fetch(
+      `${localAddress}/v2/events/stream?delivery_generation=${GENERATION_ONE}&after_cursor=0`,
+      { signal: controller.signal },
+    );
+    const reader = response.body?.getReader();
+    assert(reader);
+    const text = await readSseUntil(reader, /event: generation_changed/);
+    assert.match(text, /event: generation_changed/);
+    assert.match(text, new RegExp(GENERATION_TWO));
+    assert.doesNotMatch(text, new RegExp(newGenerationEvent.event_id));
+    assert.equal((await reader.read()).done, true);
+  } finally {
+    controller.abort();
+    await localApi.close();
+  }
+});
+
 test("official Connector persists before ACK, deduplicates, requests resync, and restores after restart", async () => {
   const directory = mkdtempSync(join(tmpdir(), "doorbell-official-connector-"));
   const databasePath = join(directory, "connector.sqlite");

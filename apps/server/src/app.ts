@@ -191,7 +191,11 @@ function communityResponse(community: {
   };
 }
 
-function humanSettingsResponse(settings: HumanSettingsRecord, connectorService?: ConnectorService) {
+function humanSettingsResponse(
+  settings: HumanSettingsRecord,
+  connectorService?: ConnectorService,
+  bellService?: BellService,
+) {
   return humanSettingsSuccessSchema.parse({
     connection_status: {
       connector: {
@@ -201,7 +205,10 @@ function humanSettingsResponse(settings: HumanSettingsRecord, connectorService?:
         }),
       },
       wake_bridge: {
-        status: "not_integrated",
+        ...(bellService?.getSettingsStatus(settings.residentId) ?? {
+          status: "not_configured",
+          last_connected_at: null,
+        }),
       },
     },
     home: {
@@ -2319,6 +2326,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       return humanSettingsResponse(
         options.weatherEngine?.ensureCurrent(settings) ?? settings,
         options.connectorService,
+        options.bellService,
       );
     } catch (error) {
       return sendHumanSettingsFailure(request, reply, error);
@@ -2363,12 +2371,13 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       } catch (error) {
         request.log.error(
           { error_name: error instanceof Error ? error.name : "UnknownError" },
-          "Bell mailbox wake refresh failed after settings were saved",
+          "Legacy Bell mailbox wake cancellation failed after settings were saved",
         );
       }
       return humanSettingsResponse(
         options.weatherEngine?.ensureCurrent(settings) ?? settings,
         options.connectorService,
+        options.bellService,
       );
     } catch (error) {
       return sendHumanSettingsFailure(request, reply, error);
