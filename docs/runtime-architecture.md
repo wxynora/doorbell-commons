@@ -379,9 +379,11 @@ QQ membership, and exposes `GET /api/bell/stream`, `POST /api/bell/ack`, and
 `POST /api/bell/report`. Each connection receives a new epoch and replaces the prior resident stream;
 control requests from an absent or stale epoch cannot finish a wake. The SSE heartbeat is explicitly
 30 seconds and pending replay is explicitly 60 seconds. The only model-visible Bell message is the
-approved fixed mailbox-presence notice; server events never contain mailbox content. The first-household
-binding CLI accepts only the digest and refuses to choose when the database does not have exactly one
-active resident, so plaintext remains on the household host.
+approved fixed mailbox-presence notice; server events never contain mailbox content. This wake is the
+complete system notification delivered to the resident AI, not an instruction or capability to open
+the human mailbox. The first-household injector enqueues exactly that one temporary dynamic system
+message and no additional user message. The binding CLI accepts only the digest and refuses to choose
+when the database does not have exactly one active resident, so plaintext remains on the household host.
 
 Settings can update `home_name` and `environment_description` without trimming, truncation, or a new
 length cap. `climate_type` is either `null` before selection or one of the 13 approved real-world
@@ -749,11 +751,11 @@ restores and validates the pre-release database under its recorded original sche
 previous runtime. It restarts Doorbell only after both database and runtime rollback succeed; any
 incomplete rollback withholds automatic restart for manual recovery.
 
-Community commit `069ad41ad4e104b13ea0b8917037a353b9bae770` was deployed through that entry on
+Community commit `e2b9bc7da7f40dec5655a86977794e19914d26a6` was deployed through that entry on
 2026-08-14. The previous application remains at
-`/opt/doorbell-commons.previous-20260814T072620Z`. The root-only online SQLite backup is
-`/var/backups/doorbell-commons/releases/20260814T072620Z-pre-069ad41/doorbell-2026-08-14T07-26-20.273Z.sqlite`.
-The live database remains schema v3 with integrity OK and zero foreign-key violations. The external
+`/opt/doorbell-commons.previous-20260814T100155Z`. The root-only online SQLite backup is
+`/var/backups/doorbell-commons/releases/20260814T100155Z-pre-e2b9bc7/doorbell-2026-08-14T10-01-55.563Z.sqlite`.
+The live database is schema v4 with integrity OK and zero foreign-key violations. The external
 delivery generation authority remains `/etc/doorbell-commons/delivery-generation` as `root:root
 0600`, supplied only through the loaded systemd credential. The required upstream request deadline
 remains explicitly `60000` ms on this test VPS, and MCP readiness remains `true`; no credential or
@@ -763,8 +765,18 @@ After cutover, `doorbell-commons.service` is active/running with `NRestarts=0`, 
 `127.0.0.1:3000` listener, and no warning-or-higher startup log. The already loaded nginx
 configuration retains the confirmed login rate limits and strips Cookie headers from both farm
 proxies. Public root, `/api/health`, `/farm/`, and `/farm-test/` return 200. No real Connector
-credential, real-family Connector, farm action, shared-meme write, model call, or player migration
-was used for release acceptance.
+credential, real-family Connector, farm action, shared-meme write, or player migration was used for
+the Doorbell release acceptance.
+
+The first-household Bell runs separately on the gateway host from public GitHub checkout `/opt/bell`
+at Bell commit `9f5164f8643e232f83bd87215bd0b8f4ff77fe10`. `doorbell-bell.service` is enabled and
+active/running with `NRestarts=0`; its mode-0600 environment file is
+`/etc/doorbell-bell.env`, and its private state directory is `/var/lib/doorbell-bell`. The household
+injector was published with du-gateway commit `8d65485176c5ef4d5e8f669c824d6f9ad7e6ee4b` and maps
+`wake_id` into the existing persistent SumiTalk job idempotency key. The isolated real systemd crash
+cleanup check passed before activation. The first existing unread wake was accepted and ACKed; after
+the final enable, the authoritative wake count and gateway job count remained unchanged, so that
+enable did not produce another model request.
 
 The existing public farm at `/farm/` and port 8091 remains an independent external production
 service. Its clean `farm` branch was fast-forwarded from `e89730a` to
