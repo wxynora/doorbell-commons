@@ -279,10 +279,10 @@ All four `/api/mcp-access` control routes use the current HttpOnly human Cookie,
 membership, derive resident → home → farm binding on the server, reject caller-supplied target
 fields, and return `Cache-Control: no-store` on success and failure. `apps/server/src/index.ts`
 supplies readiness from the explicit deployment configuration and defaults it closed when the value
-is absent. The existing test VPS has readiness `true` and therefore permits the isolated 8092 test
-claim path; an environment with readiness `false` cannot create the irreversible pending migration
-or issue a credential. An already-persisted pending operation may only replay its same migration ID
-to recover a lost farm receipt; that recovery does not issue a credential.
+is absent. After the one-household 8092 acceptance on 2026-08-14, the deployed readiness was set to
+`false`; it cannot create another irreversible pending migration or issue a credential. An
+already-persisted pending operation may only replay its same migration ID to recover a lost farm
+receipt; that recovery does not issue a credential.
 
 `FarmMcpMigrationClient` is the Doorbell-side caller for the farm-owned internal revoke operation.
 It sends the database-derived migration ID, humanKey, and expected doorplate using the existing
@@ -333,12 +333,18 @@ refusal remains distinct from Doorbell validation and upstream errors. The exist
 first-call／10-minute status attachment cadence is preserved in process memory and `farm.status`
 does not append a duplicate status.
 
-This implementation is deployed to the existing test VPS together with the isolated 8092 test farm.
+This implementation is deployed to the existing VPS. The isolated 8092 test farm completed one
+real test-household migration acceptance: both legacy identities returned 404 afterward, one
+temporary `dbm_` negotiated MCP `2025-06-18`, listed the single `doorbell` tool with 58 operations,
+and completed a read-only `farm.status`. That credential was then revoked, readiness was closed, and
+`aifarm-doorbell-test.service` was stopped and disabled with no 8092 listener; its persisted test
+migration seal remains authoritative.
 Farm commit `35a95d17944b4796175e0b88a11494ec41de4fe1` has also published the farm-side creation,
 welcome-reward, migration, and controlled-action boundaries to the 8091 production runtime. The
 production farm has no `AIFARM_DOORBELL_SERVICE_TOKEN`, so those internal routes remain fail-closed
-with `503 service_not_configured`; Doorbell still targets the isolated 8092 environment and no real
-player has been migrated. The boundaries do not change farm settlement, saves, human `/ui`,
+with `503 service_not_configured`; the configured community farm URL still names the now-stopped
+8092 environment, but readiness is closed and no credential remains active for that test household.
+No real player has been migrated. The boundaries do not change farm settlement, saves, human `/ui`,
 doorplate, humanKey, or master token.
 
 ## Unified mailbox foundation
@@ -758,15 +764,16 @@ Community commit `e2b9bc7da7f40dec5655a86977794e19914d26a6` was deployed through
 The live database is schema v4 with integrity OK and zero foreign-key violations. The external
 delivery generation authority remains `/etc/doorbell-commons/delivery-generation` as `root:root
 0600`, supplied only through the loaded systemd credential. The required upstream request deadline
-remains explicitly `60000` ms on this test VPS, and MCP readiness remains `true`; no credential or
-chosen deployment value was copied into the repository.
+remains explicitly `60000` ms on this VPS. MCP readiness was set back to `false` after the isolated
+migration acceptance; no credential or chosen deployment value was copied into the repository.
 
 After cutover, `doorbell-commons.service` is active/running with `NRestarts=0`, one
 `127.0.0.1:3000` listener, and no warning-or-higher startup log. The already loaded nginx
 configuration retains the confirmed login rate limits and strips Cookie headers from both farm
-proxies. Public root, `/api/health`, `/farm/`, and `/farm-test/` return 200. No real Connector
-credential, real-family Connector, farm action, shared-meme write, or player migration was used for
-the Doorbell release acceptance.
+proxies. Public root, `/api/health`, and `/farm/` remain available; `/farm-test/` no longer has an
+8092 upstream because that unit was disabled after its one-household migration acceptance. No real
+Connector credential, real-family Connector, shared-meme write, or real-player migration was used
+for the Doorbell release acceptance.
 
 The first-household Bell runs separately on the gateway host from public GitHub checkout `/opt/bell`
 at Bell commit `9f5164f8643e232f83bd87215bd0b8f4ff77fe10`. `doorbell-bell.service` is enabled and
@@ -782,9 +789,10 @@ The existing public farm at `/farm/` and port 8091 remains an independent extern
 service. Its clean `farm` branch was fast-forwarded from `e89730a` to
 `35a95d17944b4796175e0b88a11494ec41de4fe1`, publishing the farm-side Doorbell service boundaries
 and request／store safety changes. The production service token is deliberately absent, so every
-Doorbell-only internal entry remains fail-closed and the community service still targets the
-isolated `aifarm-doorbell-test.service` at port 8092, whose data remains under
-`/var/lib/aifarm-doorbell-test`. Doorbell does not import the farm runtime or database, copy farm
+Doorbell-only internal entry remains fail-closed. The community configuration still names the
+isolated 8092 target, but readiness is `false`; `aifarm-doorbell-test.service` is disabled and
+inactive with no listener, while its data remains under `/var/lib/aifarm-doorbell-test`. Doorbell
+does not import the farm runtime or database, copy farm
 saves, or let browser requests choose farm credentials. Configuring the shared production service
 credential, switching the community farm targets to 8091, and migrating real players remain a
 separate explicitly authorized production action.

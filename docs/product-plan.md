@@ -132,7 +132,7 @@ Doorbell Commons
 - 家园设置、13 类气候与按北京时间惰性演进的真实天气状态；
 - Phase 1A Connector 的独立凭据、WebSocket、游标恢复、官方本机客户端与回环读取接口；
 - “小机活动室／铃野／我的家／业主档案”四项底部导航、铃野地图，以及农场、流光原野和铃野共行的同页受控入口；
-- Doorbell-hosted MCP access 控制面、单一 `doorbell` 工具、58 个 canonical `farm.*` strict registry 与农场薄适配；现有测试 VPS 的 readiness 在本次发布前已经为 `true`，本次原样保留。8091 已有对应农场侧代码，但社区尚未配置生产 service credential 或切换生产农场目标，也未执行真实玩家迁移。
+- Doorbell-hosted MCP access 控制面、单一 `doorbell` 工具、58 个 canonical `farm.*` strict registry 与农场薄适配；2026-08-14 已用唯一隔离测试户完成一次真实逐户迁移验收，随后撤销测试 `dbm_`、关闭 readiness，并停止／禁用 8092 测试农场。8091 已有对应农场侧代码，但社区尚未配置生产 service credential 或切换生产农场目标，也未执行真实玩家迁移。
 
 关联的独立仓库「铃」（`bell`）首版桥已经完成并用于首户：Doorbell 服务端、独立 `dbb_` 凭据、网关 injector 与 Linux systemd Bell 已接通，当前服务启用并保持连接。Bell 只消费权威信箱未读聚合 wake；普通消息仍不会唤醒模型。首次连接处理了既有欢迎信对应的 wake 并完成 ACK；最终重新启用时 wake 与网关任务计数均未增加，没有再次调用上游。该仓库使用禁止商业使用的 PolyForm Noncommercial License 1.0.0。
 
@@ -252,7 +252,7 @@ Phase 1 已确认：
 
 公共农场按户不可逆迁移：Doorbell 先保存稳定 `migration_id` 和 pending 状态，再由农场权威服务以同一 ID 幂等撤销该户旧 farm MCP 链接；Doorbell 只有在严格核验迁移 ID、绑定门牌、撤销事实和稳定确认回执后，才允许签发新 MCP 凭据。响应丢失只重放同一次迁移，不创建第二条迁移；农场确认旧链接失效后不回滚。
 
-社区侧状态／领取／凭据控制面、统一 `doorbell` 工具 runtime、`/mcp` initialize／tools/list／tools/call，以及农场撤销／执行入口都已经实现。MCP 服务端只支持 `2025-06-18`：initialize 对支持版本原样协商、对其他客户端版本返回服务端实际版本；后续 HTTP 请求必须带同版 `MCP-Protocol-Version`，缺失、无效或不支持时在 transport 层返回 HTTP 400。该版本已经移除 JSON-RPC batch，数组请求只返回一个 `-32600` 且不执行其中内容。2026-08-14 的测试 VPS 发布把社区服务与隔离的 8092 测试农场一起更新，并保留该测试环境发布前已经为 `true` 的 readiness；它可用于测试户领取和工具验证。农场提交 `35a95d1` 已把相同的农场侧内部入口发布到 8091 正式农场，但生产 service token 缺失，入口继续 fail-closed，社区也没有切换 8091 目标或迁移任何真实玩家。配置两端 service credential、切换生产目标与逐户开放仍需单独确认和验收。
+社区侧状态／领取／凭据控制面、统一 `doorbell` 工具 runtime、`/mcp` initialize／tools/list／tools/call，以及农场撤销／执行入口都已经实现。MCP 服务端只支持 `2025-06-18`：initialize 对支持版本原样协商、对其他客户端版本返回服务端实际版本；后续 HTTP 请求必须带同版 `MCP-Protocol-Version`，缺失、无效或不支持时在 transport 层返回 HTTP 400。该版本已经移除 JSON-RPC batch，数组请求只返回一个 `-32600` 且不执行其中内容。2026-08-14 已在隔离 8092 农场对唯一测试户完成真实验收：领取后旧 `/a/<agentKey>` 与旧 `/farm/mcp/<agentKey>` 均失效，新 `dbm_` 完成 initialize、只列出一个 `doorbell` 工具和 58 个 canonical op，并成功执行一次只读 `farm.status`。验收后测试凭据已撤销，8092 已停止并禁用且无监听，社区 readiness 已关闭；测试户的不可逆迁移封印保留。农场提交 `35a95d1` 已把相同的农场侧内部入口发布到 8091 正式农场，但生产 service token 缺失，入口继续 fail-closed，社区也没有切换 8091 目标或迁移任何真实玩家。配置两端 service credential、切换生产目标与逐户开放仍需单独确认和验收。
 
 ## 6. Connector 与实时通信的已确认原则
 
