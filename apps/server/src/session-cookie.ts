@@ -5,11 +5,11 @@ function secureAttribute(secure: boolean): string {
 }
 
 export function serializeHumanSessionCookie(token: string, secure: boolean): string {
-  return `${HUMAN_SESSION_COOKIE_NAME}=${token}; HttpOnly; SameSite=Lax; Path=/${secureAttribute(secure)}`;
+  return `${HUMAN_SESSION_COOKIE_NAME}=${token}; HttpOnly; SameSite=Lax; Path=/api${secureAttribute(secure)}`;
 }
 
 export function serializeClearedHumanSessionCookie(secure: boolean): string {
-  return `${HUMAN_SESSION_COOKIE_NAME}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secureAttribute(secure)}`;
+  return `${HUMAN_SESSION_COOKIE_NAME}=; HttpOnly; SameSite=Lax; Path=/api; Max-Age=0${secureAttribute(secure)}`;
 }
 
 export function readHumanSessionToken(cookieHeader: string | undefined): string | undefined {

@@ -9,8 +9,11 @@ import { test } from "node:test";
 import {
   type ConnectorEventEnvelope,
   connectorAckFrameSchema,
+  connectorGenerationResetAckFrameSchema,
   connectorHelloFrameSchema,
+  connectorLocalEventsErrorSchema,
   connectorLocalEventsSuccessSchema,
+  connectorLocalGenerationChangedEventSchema,
   connectorLocalHealthSchema,
   connectorLocalMailboxErrorSchema,
   connectorLocalSharedMemeSyncSchema,
@@ -24,12 +27,14 @@ import {
 } from "@doorbell/protocol";
 import Database from "better-sqlite3";
 import { type RawData, type WebSocket, WebSocketServer } from "ws";
-import { ConnectorClient } from "./connector-client.js";
+import { ConnectorClient, ConnectorMailboxRequestError } from "./connector-client.js";
 import { ConnectorStateDatabase } from "./connector-state.js";
 import { buildConnectorLocalApi, listenOnLoopback } from "./local-api.js";
 import { SharedMemeSynchronizer } from "./shared-meme-sync.js";
 
 const CREDENTIAL = `dbc_${"C".repeat(43)}`;
+const GENERATION_ONE = "00000000-0000-4000-8000-000000000101";
+const GENERATION_TWO = "00000000-0000-4000-8000-000000000102";
 
 function createSharedMemeRelease(directory: string, version: number, term: string) {
   const path = join(directory, `shared-memes-v${version}-${randomUUID()}.sqlite`);
@@ -110,8 +115,13 @@ function nextFrame(inbox: FrameInbox): Promise<unknown> {
     : Promise.resolve(frame);
 }
 
-function event(cursor: number, eventId = randomUUID()): ConnectorEventEnvelope {
+function event(
+  cursor: number,
+  eventId = randomUUID(),
+  generation = GENERATION_ONE,
+): ConnectorEventEnvelope {
   return {
+    generation,
     event_id: eventId,
     cursor,
     event_type: "foundation.fact",
@@ -119,6 +129,111 @@ function event(cursor: number, eventId = randomUUID()): ConnectorEventEnvelope {
     payload: { cursor },
   };
 }
+
+test("Connector state migrates v1 delivery data to an unset v2 generation and resets idempotently", () => {
+  const directory = mkdtempSync(join(tmpdir(), "doorbell-connector-v2-migration-"));
+  const databasePath = join(directory, "connector.sqlite");
+  const legacy = new Database(databasePath);
+  legacy.exec(`
+    CREATE TABLE connector_state (
+      singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+      last_persisted_cursor INTEGER NOT NULL CHECK (last_persisted_cursor >= 0),
+      last_connected_at INTEGER,
+      last_error_code TEXT,
+      welcome_received INTEGER NOT NULL CHECK (welcome_received IN (0, 1))
+    );
+    CREATE TABLE connector_events (
+      cursor INTEGER PRIMARY KEY CHECK (cursor > 0),
+      event_id TEXT NOT NULL UNIQUE,
+      event_type TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      received_at INTEGER NOT NULL
+    );
+    INSERT INTO connector_state VALUES (1, 1, NULL, NULL, 0);
+    INSERT INTO connector_events VALUES (
+      1,
+      '00000000-0000-4000-8000-000000000201',
+      'foundation.fact',
+      '2026-08-14T00:00:00.000Z',
+      '{}',
+      1
+    );
+  `);
+  legacy.close();
+
+  let state = new ConnectorStateDatabase(databasePath);
+  try {
+    assert.deepEqual(state.getDeliveryCheckpoint(), {
+      generation: null,
+      lastPersistedCursor: 0,
+    });
+    const migrated = new Database(databasePath, { readonly: true });
+    try {
+      assert.equal(migrated.pragma("user_version", { simple: true }), 2);
+      assert.equal(
+        (
+          migrated.prepare("SELECT count(*) AS count FROM connector_events").get() as {
+            count: number;
+          }
+        ).count,
+        0,
+      );
+    } finally {
+      migrated.close();
+    }
+    assert.deepEqual(state.resetDeliveryGeneration(GENERATION_ONE), {
+      changed: true,
+      generation: GENERATION_ONE,
+      lastPersistedCursor: 0,
+    });
+    assert.equal(state.persistEvent(event(1), Date.now()).status, "persisted");
+    state.close();
+
+    state = new ConnectorStateDatabase(databasePath);
+    assert.deepEqual(state.getDeliveryCheckpoint(), {
+      generation: GENERATION_ONE,
+      lastPersistedCursor: 1,
+    });
+    assert.deepEqual(state.resetDeliveryGeneration(GENERATION_ONE), {
+      changed: false,
+      generation: GENERATION_ONE,
+      lastPersistedCursor: 1,
+    });
+    assert.deepEqual(
+      state.listEventsAfter(GENERATION_ONE, 0).map((stored) => stored.cursor),
+      [1],
+    );
+    assert.equal(
+      state.persistEvent(event(2, randomUUID(), GENERATION_TWO), Date.now()).status,
+      "generation_mismatch",
+    );
+    assert.equal(state.getLastPersistedCursor(), 1);
+    assert.deepEqual(state.resetDeliveryGeneration(GENERATION_TWO), {
+      changed: true,
+      generation: GENERATION_TWO,
+      lastPersistedCursor: 0,
+    });
+    assert.deepEqual(state.listEventsAfter(GENERATION_TWO, 0), []);
+  } finally {
+    state.close();
+    const inspection = new Database(databasePath, { readonly: true });
+    try {
+      assert.equal(inspection.pragma("user_version", { simple: true }), 2);
+      assert.equal(
+        (
+          inspection.prepare("SELECT count(*) AS count FROM connector_events").get() as {
+            count: number;
+          }
+        ).count,
+        0,
+      );
+    } finally {
+      inspection.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }
+});
 
 async function waitFor(
   predicate: () => boolean,
@@ -228,6 +343,7 @@ test("official Connector persists before ACK, deduplicates, requests resync, and
   let sharedMemeSync = new SharedMemeSynchronizer({
     serverWebSocketUrl: wsUrl,
     credential: CREDENTIAL,
+    httpRequestTimeoutMs: 300_000,
     state,
     snapshotPath: sharedMemeSnapshotPath,
     fetchImplementation: fakeFetch,
@@ -235,6 +351,7 @@ test("official Connector persists before ACK, deduplicates, requests resync, and
   const client = new ConnectorClient({
     serverWebSocketUrl: wsUrl,
     credential: CREDENTIAL,
+    httpRequestTimeoutMs: 300_000,
     state,
     reconnect: false,
     fetchImplementation: fakeFetch,
@@ -246,7 +363,8 @@ test("official Connector persists before ACK, deduplicates, requests resync, and
   try {
     assert.deepEqual(client.getStatus(), {
       connection_state: "stopped",
-      protocol_version: "1.0",
+      protocol_version: "2.0",
+      delivery_generation: null,
       last_persisted_cursor: 0,
       last_connected_at: null,
       last_error_code: null,
@@ -257,15 +375,29 @@ test("official Connector persists before ACK, deduplicates, requests resync, and
     const { socket: firstSocket, inbox: firstInbox } = await nextConnection();
     const hello = connectorHelloFrameSchema.parse(await nextFrame(firstInbox));
     assert.equal(hello.credential, CREDENTIAL);
+    assert.equal(hello.protocol_version, "2.0");
+    assert.equal(hello.generation, null);
     assert.equal(hello.last_persisted_cursor, 0);
+    firstSocket.send(
+      JSON.stringify({
+        type: "generation_reset_required",
+        generation: GENERATION_ONE,
+        reason: "initial_sync",
+      }),
+    );
+    assert.deepEqual(connectorGenerationResetAckFrameSchema.parse(await nextFrame(firstInbox)), {
+      type: "generation_reset_ack",
+      generation: GENERATION_ONE,
+    });
     firstSocket.send(
       JSON.stringify(
         connectorReadyFrameSchema.parse({
           type: "ready",
-          protocol_version: "1.0",
-          capabilities: ["event_stream_v1", "resync_v1"],
+          protocol_version: "2.0",
+          capabilities: ["event_stream_v2", "resync_v2"],
           connection_id: randomUUID(),
           resident_id: "resident-1",
+          generation: GENERATION_ONE,
           resume_after_cursor: 0,
           welcome: connectorWelcomeMessage,
         }),
@@ -291,17 +423,23 @@ test("official Connector persists before ACK, deduplicates, requests resync, and
     const firstEvent = event(1);
     firstSocket.send(JSON.stringify({ type: "event", event: firstEvent }));
     const firstAck = connectorAckFrameSchema.parse(await nextFrame(firstInbox));
-    assert.deepEqual(firstAck, { type: "ack", event_id: firstEvent.event_id, cursor: 1 });
+    assert.deepEqual(firstAck, {
+      type: "ack",
+      generation: GENERATION_ONE,
+      event_id: firstEvent.event_id,
+      cursor: 1,
+    });
     assert.equal(state.getLastPersistedCursor(), 1);
 
     firstSocket.send(JSON.stringify({ type: "event", event: firstEvent }));
     assert.equal(connectorAckFrameSchema.parse(await nextFrame(firstInbox)).cursor, 1);
-    assert.equal(state.listEventsAfter(0).length, 1);
+    assert.equal(state.listEventsAfter(GENERATION_ONE, 0).length, 1);
 
     const thirdEvent = event(3);
     firstSocket.send(JSON.stringify({ type: "event", event: thirdEvent }));
     assert.deepEqual(connectorResyncRequestFrameSchema.parse(await nextFrame(firstInbox)), {
       type: "resync_request",
+      generation: GENERATION_ONE,
       after_cursor: 1,
       reason: "cursor_gap",
     });
@@ -309,7 +447,12 @@ test("official Connector persists before ACK, deduplicates, requests resync, and
 
     const secondEvent = event(2);
     firstSocket.send(
-      JSON.stringify({ type: "resync_required", after_cursor: 1, reason: "ack_gap" }),
+      JSON.stringify({
+        type: "resync_required",
+        generation: GENERATION_ONE,
+        after_cursor: 1,
+        reason: "ack_gap",
+      }),
     );
     firstSocket.send(JSON.stringify({ type: "event", event: secondEvent }));
     assert.equal(connectorAckFrameSchema.parse(await nextFrame(firstInbox)).cursor, 2);
@@ -332,26 +475,28 @@ test("official Connector persists before ACK, deduplicates, requests resync, and
     assert.equal(connectorAckFrameSchema.parse(await nextFrame(firstInbox)).cursor, 4);
     assert.equal(sharedMemeRequests.length, requestsAfterVersionTwo);
     assert.deepEqual(
-      state.listEventsAfter(0).map((stored) => stored.cursor),
+      state.listEventsAfter(GENERATION_ONE, 0).map((stored) => stored.cursor),
       [1, 2, 3, 4],
     );
 
-    const healthResponse = await fetch(`${localAddress}/v1/health`);
+    const healthResponse = await fetch(`${localAddress}/v2/health`);
     assert.deepEqual(connectorLocalHealthSchema.parse(await healthResponse.json()), {
       service: "doorbell-connector",
-      api_version: "v1",
+      api_version: "v2",
       status: "ok",
     });
-    const statusResponse = await fetch(`${localAddress}/v1/status`);
+    const statusResponse = await fetch(`${localAddress}/v2/status`);
     const statusBody = connectorLocalStatusSchema.parse(await statusResponse.json());
     assert.equal(statusBody.connection_state, "online");
     assert.doesNotMatch(JSON.stringify(statusBody), new RegExp(CREDENTIAL));
-    const sharedMemeStatusResponse = await fetch(`${localAddress}/v1/shared-memes/status`);
+    const sharedMemeStatusResponse = await fetch(`${localAddress}/v2/shared-memes/status`);
     assert.deepEqual(
       connectorLocalSharedMemeSyncSchema.parse(await sharedMemeStatusResponse.json()),
       client.getSharedMemeSyncStatus(),
     );
-    const eventsResponse = await fetch(`${localAddress}/v1/events?after_cursor=1`);
+    const eventsResponse = await fetch(
+      `${localAddress}/v2/events?delivery_generation=${GENERATION_ONE}&after_cursor=1`,
+    );
     assert.deepEqual(
       connectorLocalEventsSuccessSchema
         .parse(await eventsResponse.json())
@@ -359,13 +504,38 @@ test("official Connector persists before ACK, deduplicates, requests resync, and
       [2, 3, 4],
     );
 
-    const mailboxResponse = await fetch(`${localAddress}/v1/mailbox?category=system`);
+    const staleEventsResponse = await fetch(
+      `${localAddress}/v2/events?delivery_generation=${GENERATION_TWO}&after_cursor=0`,
+    );
+    assert.equal(staleEventsResponse.status, 409);
+    assert.deepEqual(connectorLocalEventsErrorSchema.parse(await staleEventsResponse.json()), {
+      error: {
+        code: "delivery_generation_changed",
+        message: "The requested delivery generation is no longer current",
+        requested_generation: GENERATION_TWO,
+        current_generation: GENERATION_ONE,
+      },
+    });
+    const staleStreamResponse = await fetch(
+      `${localAddress}/v2/events/stream?delivery_generation=${GENERATION_TWO}&after_cursor=0`,
+    );
+    assert.equal(staleStreamResponse.status, 409);
+    assert.deepEqual(connectorLocalEventsErrorSchema.parse(await staleStreamResponse.json()), {
+      error: {
+        code: "delivery_generation_changed",
+        message: "The requested delivery generation is no longer current",
+        requested_generation: GENERATION_TWO,
+        current_generation: GENERATION_ONE,
+      },
+    });
+
+    const mailboxResponse = await fetch(`${localAddress}/v2/mailbox?category=system`);
     assert.equal(mailboxResponse.status, 200);
     const mailbox = mailboxListSuccessSchema.parse(await mailboxResponse.json());
     assert.equal(mailbox.letters[0]?.letter_id, mailboxLetterId);
     assert.equal("body" in (mailbox.letters[0] ?? {}), false);
 
-    const mailDetailResponse = await fetch(`${localAddress}/v1/mailbox/${mailboxLetterId}`);
+    const mailDetailResponse = await fetch(`${localAddress}/v2/mailbox/${mailboxLetterId}`);
     assert.equal(mailDetailResponse.status, 200);
     assert.equal(
       mailboxDetailSuccessSchema.parse(await mailDetailResponse.json()).letter.body,
@@ -375,7 +545,7 @@ test("official Connector persists before ACK, deduplicates, requests resync, and
     assert.ok(mailboxRequests.every((request) => request.authorization === `Bearer ${CREDENTIAL}`));
     assert.ok(mailboxRequests.every((request) => !request.url.includes(CREDENTIAL)));
 
-    const rejectedClaimTarget = await fetch(`${localAddress}/v1/mailbox/${mailboxLetterId}/claim`, {
+    const rejectedClaimTarget = await fetch(`${localAddress}/v2/mailbox/${mailboxLetterId}/claim`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ farm_doorplate: "DEF567" }),
@@ -383,7 +553,7 @@ test("official Connector persists before ACK, deduplicates, requests resync, and
     assert.equal(rejectedClaimTarget.status, 400);
     assert.equal(mailboxRequests.length, 2);
 
-    const claimResponse = await fetch(`${localAddress}/v1/mailbox/${mailboxLetterId}/claim`, {
+    const claimResponse = await fetch(`${localAddress}/v2/mailbox/${mailboxLetterId}/claim`, {
       method: "POST",
     });
     assert.equal(claimResponse.status, 200);
@@ -396,7 +566,7 @@ test("official Connector persists before ACK, deduplicates, requests resync, and
     assert.equal(mailboxRequests[2]?.authorization, `Bearer ${CREDENTIAL}`);
     assert.ok(mailboxRequests.every((request) => !request.url.includes(CREDENTIAL)));
 
-    const rejectedTarget = await fetch(`${localAddress}/v1/mailbox?home_id=another-home`);
+    const rejectedTarget = await fetch(`${localAddress}/v2/mailbox?home_id=another-home`);
     assert.equal(rejectedTarget.status, 400);
     assert.equal(
       connectorLocalMailboxErrorSchema.parse(await rejectedTarget.json()).error.code,
@@ -406,12 +576,98 @@ test("official Connector persists before ACK, deduplicates, requests resync, and
     assert.equal(readFileSync(databasePath).includes(Buffer.from(CREDENTIAL)), false);
 
     const streamController = new AbortController();
-    const streamResponse = await fetch(`${localAddress}/v1/events/stream?after_cursor=2`, {
-      signal: streamController.signal,
-    });
+    const streamResponse = await fetch(
+      `${localAddress}/v2/events/stream?delivery_generation=${GENERATION_ONE}&after_cursor=2`,
+      {
+        signal: streamController.signal,
+      },
+    );
     const streamChunk = await streamResponse.body?.getReader().read();
     streamController.abort();
-    assert.match(new TextDecoder().decode(streamChunk?.value), /"cursor":3/);
+    const replayText = new TextDecoder().decode(streamChunk?.value);
+    assert.match(replayText, /"cursor":3/);
+    assert.match(replayText, new RegExp(`id: ${GENERATION_ONE}:3`));
+
+    const generationStreamResponse = await fetch(
+      `${localAddress}/v2/events/stream?delivery_generation=${GENERATION_ONE}&after_cursor=4`,
+    );
+    const generationStreamReader = generationStreamResponse.body?.getReader();
+    assert(generationStreamReader);
+    await generationStreamReader.read();
+    const liveEvent = event(5);
+    firstSocket.send(JSON.stringify({ type: "event", event: liveEvent }));
+    assert.deepEqual(connectorAckFrameSchema.parse(await nextFrame(firstInbox)), {
+      type: "ack",
+      generation: GENERATION_ONE,
+      event_id: liveEvent.event_id,
+      cursor: 5,
+    });
+    const liveChunk = await generationStreamReader.read();
+    const liveText = new TextDecoder().decode(liveChunk.value);
+    assert.match(liveText, new RegExp(`id: ${GENERATION_ONE}:5`));
+    const requestsBeforeGenerationChange = sharedMemeRequests.length;
+    firstSocket.send(
+      JSON.stringify({
+        type: "generation_reset_required",
+        generation: GENERATION_TWO,
+        reason: "generation_changed",
+      }),
+    );
+    assert.deepEqual(connectorGenerationResetAckFrameSchema.parse(await nextFrame(firstInbox)), {
+      type: "generation_reset_ack",
+      generation: GENERATION_TWO,
+    });
+    const changedChunk = await generationStreamReader.read();
+    const changedText = new TextDecoder().decode(changedChunk.value);
+    assert.match(changedText, /event: generation_changed/);
+    const changedPayload = changedText
+      .split("\n")
+      .find((line) => line.startsWith("data: "))
+      ?.slice("data: ".length);
+    assert(changedPayload);
+    assert.deepEqual(connectorLocalGenerationChangedEventSchema.parse(JSON.parse(changedPayload)), {
+      delivery_generation: GENERATION_TWO,
+    });
+    assert.equal((await generationStreamReader.read()).done, true);
+    assert.deepEqual(state.getDeliveryCheckpoint(), {
+      generation: GENERATION_TWO,
+      lastPersistedCursor: 0,
+    });
+    await waitFor(
+      () => sharedMemeRequests.length > requestsBeforeGenerationChange,
+      "Generation reset did not re-check the authoritative shared meme snapshot",
+    );
+
+    const newGenerationEvent = event(1, randomUUID(), GENERATION_TWO);
+    firstSocket.send(JSON.stringify({ type: "event", event: newGenerationEvent }));
+    assert.deepEqual(connectorAckFrameSchema.parse(await nextFrame(firstInbox)), {
+      type: "ack",
+      generation: GENERATION_TWO,
+      event_id: newGenerationEvent.event_id,
+      cursor: 1,
+    });
+    firstSocket.send(
+      JSON.stringify({
+        type: "generation_reset_required",
+        generation: GENERATION_TWO,
+        reason: "generation_changed",
+      }),
+    );
+    assert.deepEqual(connectorGenerationResetAckFrameSchema.parse(await nextFrame(firstInbox)), {
+      type: "generation_reset_ack",
+      generation: GENERATION_TWO,
+    });
+    assert.equal(state.getLastPersistedCursor(), 1);
+
+    firstSocket.send(
+      JSON.stringify({
+        type: "event",
+        event: event(2, randomUUID(), GENERATION_ONE),
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    assert.equal(firstInbox.frames.length, 0);
+    assert.equal(state.getLastPersistedCursor(), 1);
 
     client.stop();
     await once(firstSocket, "close");
@@ -421,6 +677,7 @@ test("official Connector persists before ACK, deduplicates, requests resync, and
     sharedMemeSync = new SharedMemeSynchronizer({
       serverWebSocketUrl: wsUrl,
       credential: CREDENTIAL,
+      httpRequestTimeoutMs: 300_000,
       state,
       snapshotPath: sharedMemeSnapshotPath,
       fetchImplementation: fakeFetch,
@@ -428,6 +685,7 @@ test("official Connector persists before ACK, deduplicates, requests resync, and
     secondClient = new ConnectorClient({
       serverWebSocketUrl: wsUrl,
       credential: CREDENTIAL,
+      httpRequestTimeoutMs: 300_000,
       state,
       reconnect: false,
       sharedMemeSync,
@@ -435,18 +693,20 @@ test("official Connector persists before ACK, deduplicates, requests resync, and
     secondClient.start();
     const { socket: restartedSocket, inbox: restartedInbox } = await nextConnection();
     const restartedHello = connectorHelloFrameSchema.parse(await nextFrame(restartedInbox));
-    assert.equal(restartedHello.last_persisted_cursor, 4);
+    assert.equal(restartedHello.generation, GENERATION_TWO);
+    assert.equal(restartedHello.last_persisted_cursor, 1);
     assert.equal(state.getStatus("connecting").welcome_message, connectorWelcomeMessage);
     const requestsBeforeRestartReady = sharedMemeRequests.length;
     restartedSocket.send(
       JSON.stringify(
         connectorReadyFrameSchema.parse({
           type: "ready",
-          protocol_version: "1.0",
-          capabilities: ["event_stream_v1", "resync_v1"],
+          protocol_version: "2.0",
+          capabilities: ["event_stream_v2", "resync_v2"],
           connection_id: randomUUID(),
           resident_id: "resident-1",
-          resume_after_cursor: 4,
+          generation: GENERATION_TWO,
+          resume_after_cursor: 1,
           welcome: connectorWelcomeMessage,
         }),
       ),
@@ -492,6 +752,7 @@ test("shared meme sync keeps the last valid snapshot across corrupt, stale, and 
   const sync = new SharedMemeSynchronizer({
     serverWebSocketUrl: "ws://127.0.0.1:3000/api/connector/ws",
     credential: CREDENTIAL,
+    httpRequestTimeoutMs: 300_000,
     state,
     snapshotPath,
     fetchImplementation: fakeFetch,
@@ -546,6 +807,7 @@ test("shared meme sync keeps the last valid snapshot across corrupt, stale, and 
     const failingReplace = new SharedMemeSynchronizer({
       serverWebSocketUrl: "ws://127.0.0.1:3000/api/connector/ws",
       credential: CREDENTIAL,
+      httpRequestTimeoutMs: 300_000,
       state,
       snapshotPath,
       fetchImplementation: fakeFetch,
@@ -558,6 +820,212 @@ test("shared meme sync keeps the last valid snapshot across corrupt, stale, and 
     assert.equal(failingReplace.getStatus().applied_version, 2);
     assert.deepEqual(readFileSync(snapshotPath), release2.snapshot);
     assert.doesNotMatch(JSON.stringify(failingReplace.getStatus()), new RegExp(CREDENTIAL));
+  } finally {
+    state.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("Connector rejects remote plaintext WebSocket URLs", () => {
+  const directory = mkdtempSync(join(tmpdir(), "doorbell-connector-url-test-"));
+  const state = new ConnectorStateDatabase(join(directory, "connector.sqlite"));
+  try {
+    assert.throws(
+      () =>
+        new ConnectorClient({
+          serverWebSocketUrl: "ws://doorbell.example/api/connector/ws",
+          credential: CREDENTIAL,
+          httpRequestTimeoutMs: 300_000,
+          state,
+          reconnect: false,
+        }),
+      /wss|loopback/,
+    );
+  } finally {
+    state.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("Connector mailbox HTTP aborts a stalled request as unavailable", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "doorbell-connector-mailbox-timeout-"));
+  const state = new ConnectorStateDatabase(join(directory, "connector.sqlite"));
+  const observed: { signal: AbortSignal | undefined } = { signal: undefined };
+  const client = new ConnectorClient({
+    serverWebSocketUrl: "ws://127.0.0.1:3000/api/connector/ws",
+    credential: CREDENTIAL,
+    httpRequestTimeoutMs: 20,
+    state,
+    reconnect: false,
+    fetchImplementation: async (_input, init) => {
+      const signal = init?.signal ?? null;
+      observed.signal = signal ?? undefined;
+      if (!signal) {
+        throw new Error("missing abort signal");
+      }
+      return await new Promise<Response>((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+      });
+    },
+  });
+  try {
+    await assert.rejects(
+      client.listMailbox(1),
+      (error: unknown) =>
+        error instanceof ConnectorMailboxRequestError && error.code === "connector_unavailable",
+    );
+    assert.equal(observed.signal?.aborted, true);
+  } finally {
+    state.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("shared meme HTTP timeouts clear the active sync and permit a later retry", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "doorbell-shared-meme-timeout-"));
+  const state = new ConnectorStateDatabase(join(directory, "connector.sqlite"));
+  const snapshotPath = join(directory, "shared-memes.sqlite");
+  const release1 = createSharedMemeRelease(directory, 1, "超时前旧梗");
+  const release2 = createSharedMemeRelease(directory, 2, "超时后新梗");
+  let remote = release1;
+  let mode: "metadata-timeout" | "snapshot-timeout" | "valid" = "valid";
+  const observed: {
+    metadata: AbortSignal | undefined;
+    snapshot: AbortSignal | undefined;
+  } = { metadata: undefined, snapshot: undefined };
+  const waitForAbort = async (signal: AbortSignal | null): Promise<Response> => {
+    if (!signal) {
+      throw new Error("missing abort signal");
+    }
+    return await new Promise<Response>((_resolve, reject) => {
+      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    });
+  };
+  const sync = new SharedMemeSynchronizer({
+    serverWebSocketUrl: "ws://127.0.0.1:3000/api/connector/ws",
+    credential: CREDENTIAL,
+    httpRequestTimeoutMs: 20,
+    state,
+    snapshotPath,
+    fetchImplementation: async (input, init) => {
+      const url = new URL(input instanceof Request ? input.url : input.toString());
+      if (url.pathname.endsWith("/version")) {
+        observed.metadata = init?.signal ?? undefined;
+        return mode === "metadata-timeout"
+          ? waitForAbort(init?.signal ?? null)
+          : Response.json(remote.metadata);
+      }
+      observed.snapshot = init?.signal ?? undefined;
+      if (mode === "snapshot-timeout") {
+        return waitForAbort(init?.signal ?? null);
+      }
+      return new Response(remote.snapshot, {
+        headers: { "content-type": "application/vnd.sqlite3" },
+      });
+    },
+  });
+
+  try {
+    assert.equal(await sync.syncLatest(), true);
+    assert.equal(sync.getStatus().applied_version, 1);
+    assert.deepEqual(readFileSync(snapshotPath), release1.snapshot);
+
+    remote = release2;
+    mode = "metadata-timeout";
+    assert.equal(await sync.syncLatest(), false);
+    assert.equal(sync.getStatus().last_error_code, "metadata_unavailable");
+    assert.equal(observed.metadata?.aborted, true);
+    assert.equal(sync.getStatus().applied_version, 1);
+    assert.deepEqual(readFileSync(snapshotPath), release1.snapshot);
+
+    mode = "snapshot-timeout";
+    assert.equal(await sync.syncLatest(), false);
+    assert.equal(sync.getStatus().last_error_code, "snapshot_unavailable");
+    assert.equal(observed.snapshot?.aborted, true);
+    assert.equal(sync.getStatus().applied_version, 1);
+    assert.deepEqual(readFileSync(snapshotPath), release1.snapshot);
+
+    mode = "valid";
+    assert.equal(await sync.syncLatest(), true);
+    assert.equal(sync.getStatus().applied_version, 2);
+    assert.deepEqual(readFileSync(snapshotPath), release2.snapshot);
+  } finally {
+    state.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("shared meme snapshot enforces a streaming size ceiling and retries after broken streams", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "doorbell-shared-meme-stream-limit-"));
+  const state = new ConnectorStateDatabase(join(directory, "connector.sqlite"));
+  const snapshotPath = join(directory, "shared-memes.sqlite");
+  const release1 = createSharedMemeRelease(directory, 1, "旧梗");
+  const release2 = createSharedMemeRelease(directory, 2, "新梗");
+  let remote = release1;
+  let mode: "valid" | "oversized" | "broken" = "valid";
+  let arrayBufferCalled = false;
+  const sync = new SharedMemeSynchronizer({
+    serverWebSocketUrl: "ws://127.0.0.1:3000/api/connector/ws",
+    credential: CREDENTIAL,
+    httpRequestTimeoutMs: 300_000,
+    state,
+    snapshotPath,
+    fetchImplementation: async (input) => {
+      const url = new URL(input instanceof Request ? input.url : input.toString());
+      if (url.pathname.endsWith("/version")) {
+        return Response.json(remote.metadata);
+      }
+      let response: Response;
+      if (mode === "broken") {
+        response = new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.error(new Error("broken snapshot stream"));
+            },
+          }),
+          { headers: { "content-type": "application/vnd.sqlite3" } },
+        );
+      } else {
+        const body =
+          mode === "oversized"
+            ? Buffer.concat([remote.snapshot, Buffer.from([0])])
+            : remote.snapshot;
+        response = new Response(body, {
+          headers: { "content-type": "application/vnd.sqlite3" },
+        });
+      }
+      const readAll = response.arrayBuffer.bind(response);
+      Object.defineProperty(response, "arrayBuffer", {
+        value: async () => {
+          arrayBufferCalled = true;
+          return readAll();
+        },
+      });
+      return response;
+    },
+  });
+
+  try {
+    assert.equal(await sync.syncLatest(), true);
+    assert.deepEqual(readFileSync(snapshotPath), release1.snapshot);
+
+    remote = release2;
+    mode = "oversized";
+    arrayBufferCalled = false;
+    assert.equal(await sync.syncLatest(), false);
+    assert.equal(sync.getStatus().last_error_code, "size_mismatch");
+    assert.equal(arrayBufferCalled, false);
+    assert.deepEqual(readFileSync(snapshotPath), release1.snapshot);
+
+    mode = "broken";
+    assert.equal(await sync.syncLatest(), false);
+    assert.equal(sync.getStatus().last_error_code, "snapshot_unavailable");
+    assert.deepEqual(readFileSync(snapshotPath), release1.snapshot);
+
+    mode = "valid";
+    assert.equal(await sync.syncLatest(), true);
+    assert.equal(sync.getStatus().applied_version, 2);
+    assert.deepEqual(readFileSync(snapshotPath), release2.snapshot);
   } finally {
     state.close();
     rmSync(directory, { recursive: true, force: true });

@@ -37,6 +37,7 @@ import { OneBotUnavailableError, type QqGroupMembershipReader } from "./qq-group
 import { InvalidRegistrationCodeError, RegistrationAuthService } from "./registration-auth.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const MINUTE_MS = 60 * 1000;
 const QQ_NUMBER = "3877162412";
 const CURRENT_CODE = "DB-ABCD-2345";
 const OTHER_CODE = "DB-WXYZ-6789";
@@ -329,7 +330,8 @@ test("current code and current group member create an account and opaque browser
     assert.match(setCookie, /^doorbell_session=opaque-session-token-1;/);
     assert.match(setCookie, /; HttpOnly/);
     assert.match(setCookie, /; SameSite=Lax/);
-    assert.match(setCookie, /; Path=\//);
+    assert.match(setCookie, /; Path=\/api(?:;|$)/);
+    assert.doesNotMatch(setCookie, /; Path=\/(?:;|$)/);
     assert.match(setCookie, /; Secure/);
     assert.doesNotMatch(setCookie, /Max-Age/i);
     assert.doesNotMatch(setCookie, /Expires=/i);
@@ -418,6 +420,215 @@ test("current code and current group member create an account and opaque browser
     assert.equal(
       queryScalar(harness.databasePath, "SELECT COUNT(*) AS value FROM human_sessions"),
       2,
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("password failures from different IPs share one QQ lock and recover after 30 minutes", async () => {
+  const harness = createHarness();
+  try {
+    harness.membership.members.add(QQ_NUMBER);
+    const registered = await harness.app.inject({
+      method: "POST",
+      url: "/api/auth/session",
+      payload: FULL_REGISTRATION_PAYLOAD,
+    });
+    assert.equal(registered.statusCode, 200);
+
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const failed = await harness.app.inject({
+        method: "POST",
+        url: "/api/auth/session",
+        headers: { "x-forwarded-for": attempt < 5 ? "198.51.100.10" : "203.0.113.20" },
+        payload: { qq_number: QQ_NUMBER, password: "wrong password" },
+      });
+      assert.equal(failed.statusCode, 401);
+      assert.deepEqual(humanAuthenticationErrorSchema.parse(failed.json()), {
+        error: {
+          code: "invalid_credentials",
+          message: "The QQ number or password is incorrect",
+        },
+      });
+    }
+
+    const lockedCorrectPassword = await harness.app.inject({
+      method: "POST",
+      url: "/api/auth/session",
+      payload: { qq_number: QQ_NUMBER, password: PASSWORD },
+    });
+    assert.equal(lockedCorrectPassword.statusCode, 401);
+    assert.deepEqual(humanAuthenticationErrorSchema.parse(lockedCorrectPassword.json()), {
+      error: {
+        code: "invalid_credentials",
+        message: "The QQ number or password is incorrect",
+      },
+    });
+
+    harness.now.value += 30 * MINUTE_MS;
+    const recovered = await harness.app.inject({
+      method: "POST",
+      url: "/api/auth/session",
+      payload: { qq_number: QQ_NUMBER, password: PASSWORD },
+    });
+    assert.equal(recovered.statusCode, 200);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("password failure window resets after 15 minutes and a successful login clears prior failures", async () => {
+  const harness = createHarness();
+  const failNineTimes = async () => {
+    for (let attempt = 0; attempt < 9; attempt += 1) {
+      const failed = await harness.app.inject({
+        method: "POST",
+        url: "/api/auth/session",
+        payload: { qq_number: QQ_NUMBER, password: "wrong password" },
+      });
+      assert.equal(failed.statusCode, 401);
+    }
+  };
+  try {
+    harness.membership.members.add(QQ_NUMBER);
+    assert.equal(
+      (
+        await harness.app.inject({
+          method: "POST",
+          url: "/api/auth/session",
+          payload: FULL_REGISTRATION_PAYLOAD,
+        })
+      ).statusCode,
+      200,
+    );
+
+    await failNineTimes();
+    assert.equal(
+      queryScalar(harness.databasePath, "SELECT COUNT(*) AS value FROM human_login_failures"),
+      9,
+    );
+    const clearingSuccess = await harness.app.inject({
+      method: "POST",
+      url: "/api/auth/session",
+      payload: { qq_number: QQ_NUMBER, password: PASSWORD },
+    });
+    assert.equal(clearingSuccess.statusCode, 200);
+    assert.equal(
+      queryScalar(harness.databasePath, "SELECT COUNT(*) AS value FROM human_login_failures"),
+      0,
+    );
+
+    await failNineTimes();
+    harness.now.value += 15 * MINUTE_MS + 1;
+    assert.equal(
+      (
+        await harness.app.inject({
+          method: "POST",
+          url: "/api/auth/session",
+          payload: { qq_number: QQ_NUMBER, password: "wrong password" },
+        })
+      ).statusCode,
+      401,
+    );
+    assert.equal(
+      queryScalar(harness.databasePath, "SELECT COUNT(*) AS value FROM human_login_failures"),
+      1,
+    );
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      assert.equal(
+        (
+          await harness.app.inject({
+            method: "POST",
+            url: "/api/auth/session",
+            payload: { qq_number: QQ_NUMBER, password: "wrong password" },
+          })
+        ).statusCode,
+        401,
+      );
+    }
+    const afterNewWindow = await harness.app.inject({
+      method: "POST",
+      url: "/api/auth/session",
+      payload: { qq_number: QQ_NUMBER, password: PASSWORD },
+    });
+    assert.equal(afterNewWindow.statusCode, 200);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("unknown QQ login keeps dummy password work without persisting login-security garbage", async () => {
+  const harness = createHarness();
+  try {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const failed = await harness.app.inject({
+        method: "POST",
+        url: "/api/auth/session",
+        payload: { qq_number: "1000000000", password: "wrong password" },
+      });
+      assert.equal(failed.statusCode, 401);
+      assert.equal(
+        humanAuthenticationErrorSchema.parse(failed.json()).error.code,
+        "invalid_credentials",
+      );
+    }
+    assert.equal(
+      queryScalar(harness.databasePath, "SELECT COUNT(*) AS value FROM human_accounts"),
+      0,
+    );
+    assert.equal(
+      queryScalar(harness.databasePath, "SELECT COUNT(*) AS value FROM human_login_failures"),
+      0,
+    );
+    assert.equal(
+      queryScalar(harness.databasePath, "SELECT COUNT(*) AS value FROM human_login_locks"),
+      0,
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("welcome-letter conflicts cannot turn an already-created returning session into a failed login", async () => {
+  const harness = createHarness();
+  try {
+    harness.membership.members.add(QQ_NUMBER);
+    assert.equal(
+      (
+        await harness.app.inject({
+          method: "POST",
+          url: "/api/auth/session",
+          payload: FULL_REGISTRATION_PAYLOAD,
+        })
+      ).statusCode,
+      200,
+    );
+    const inspection = new Database(harness.databasePath);
+    try {
+      inspection
+        .prepare("UPDATE mailbox_letters SET body = ? WHERE idempotency_key = ?")
+        .run("旧版本欢迎信正文", `system:welcome:c60a5f78-9e87-4bc4-a06f-50df4e23d42d`);
+    } finally {
+      inspection.close();
+    }
+
+    const returning = await harness.app.inject({
+      method: "POST",
+      url: "/api/auth/session",
+      payload: { qq_number: QQ_NUMBER, password: PASSWORD },
+    });
+    assert.equal(returning.statusCode, 200);
+    assert.equal(
+      queryScalar(harness.databasePath, "SELECT COUNT(*) AS value FROM human_sessions"),
+      2,
+    );
+    assert.equal(
+      queryScalar(
+        harness.databasePath,
+        "SELECT body AS value FROM mailbox_letters WHERE idempotency_key = 'system:welcome:c60a5f78-9e87-4bc4-a06f-50df4e23d42d'",
+      ),
+      "旧版本欢迎信正文",
     );
   } finally {
     await harness.close();
@@ -1556,6 +1767,8 @@ test("logout revokes only the presented session and clears its cookie", async ()
     assert.equal(logout.statusCode, 200);
     assert.deepEqual(humanLogoutSuccessSchema.parse(logout.json()), { logged_out: true });
     assert.match(String(logout.headers["set-cookie"]), /Max-Age=0/);
+    assert.match(String(logout.headers["set-cookie"]), /; Path=\/api(?:;|$)/);
+    assert.doesNotMatch(String(logout.headers["set-cookie"]), /; Path=\/(?:;|$)/);
 
     const current = await harness.app.inject({
       method: "GET",

@@ -1,6 +1,8 @@
 import {
+  connectorLocalEventsErrorSchema,
   connectorLocalEventsQuerySchema,
   connectorLocalEventsSuccessSchema,
+  connectorLocalGenerationChangedEventSchema,
   connectorLocalHealthSchema,
   connectorLocalMailboxErrorSchema,
   connectorLocalSharedMemeSyncSchema,
@@ -29,34 +31,71 @@ function sendMailboxFailure(reply: FastifyReply, error: unknown) {
 export function buildConnectorLocalApi(client: ConnectorClient): FastifyInstance {
   const app = Fastify({ logger: false });
 
-  app.get("/v1/health", async () =>
+  app.get("/v2/health", async () =>
     connectorLocalHealthSchema.parse({
       service: "doorbell-connector",
-      api_version: "v1",
+      api_version: "v2",
       status: "ok",
     }),
   );
 
-  app.get("/v1/status", async () => connectorLocalStatusSchema.parse(client.getStatus()));
+  app.get("/v2/status", async () => connectorLocalStatusSchema.parse(client.getStatus()));
 
-  app.get("/v1/events", async (request, reply) => {
+  app.get("/v2/events", async (request, reply) => {
     const query = connectorLocalEventsQuerySchema.safeParse(request.query);
     if (!query.success) {
-      return reply.code(400).send({
-        error: { code: "invalid_request", message: "after_cursor must be a non-negative integer" },
-      });
+      return reply.code(400).send(
+        connectorLocalEventsErrorSchema.parse({
+          error: {
+            code: "invalid_request",
+            message: "delivery_generation and a non-negative after_cursor are required",
+          },
+        }),
+      );
+    }
+    const currentGeneration = client.getStatus().delivery_generation;
+    if (query.data.delivery_generation !== currentGeneration) {
+      return reply.code(409).send(
+        connectorLocalEventsErrorSchema.parse({
+          error: {
+            code: "delivery_generation_changed",
+            message: "The requested delivery generation is no longer current",
+            requested_generation: query.data.delivery_generation,
+            current_generation: currentGeneration,
+          },
+        }),
+      );
     }
     return connectorLocalEventsSuccessSchema.parse({
-      events: client.listEventsAfter(query.data.after_cursor),
+      delivery_generation: query.data.delivery_generation,
+      events: client.listEventsAfter(query.data.delivery_generation, query.data.after_cursor),
     });
   });
 
-  app.get("/v1/events/stream", async (request, reply) => {
+  app.get("/v2/events/stream", async (request, reply) => {
     const query = connectorLocalEventsQuerySchema.safeParse(request.query);
     if (!query.success) {
-      return reply.code(400).send({
-        error: { code: "invalid_request", message: "after_cursor must be a non-negative integer" },
-      });
+      return reply.code(400).send(
+        connectorLocalEventsErrorSchema.parse({
+          error: {
+            code: "invalid_request",
+            message: "delivery_generation and a non-negative after_cursor are required",
+          },
+        }),
+      );
+    }
+    const currentGeneration = client.getStatus().delivery_generation;
+    if (query.data.delivery_generation !== currentGeneration) {
+      return reply.code(409).send(
+        connectorLocalEventsErrorSchema.parse({
+          error: {
+            code: "delivery_generation_changed",
+            message: "The requested delivery generation is no longer current",
+            requested_generation: query.data.delivery_generation,
+            current_generation: currentGeneration,
+          },
+        }),
+      );
     }
     reply.hijack();
     reply.raw.writeHead(200, {
@@ -64,16 +103,38 @@ export function buildConnectorLocalApi(client: ConnectorClient): FastifyInstance
       connection: "keep-alive",
       "content-type": "text/event-stream; charset=utf-8",
     });
-    for (const event of client.listEventsAfter(query.data.after_cursor)) {
-      reply.raw.write(`id: ${event.cursor}\ndata: ${JSON.stringify(event)}\n\n`);
+    reply.raw.write(": connected\n\n");
+    for (const event of client.listEventsAfter(
+      query.data.delivery_generation,
+      query.data.after_cursor,
+    )) {
+      reply.raw.write(
+        `id: ${event.generation}:${event.cursor}\ndata: ${JSON.stringify(event)}\n\n`,
+      );
     }
-    const unsubscribe = client.subscribe((event) => {
-      reply.raw.write(`id: ${event.cursor}\ndata: ${JSON.stringify(event)}\n\n`);
+    let unsubscribeEvents = () => {};
+    let unsubscribeGeneration = () => {};
+    const cleanup = () => {
+      unsubscribeEvents();
+      unsubscribeGeneration();
+    };
+    unsubscribeEvents = client.subscribe((event) => {
+      reply.raw.write(
+        `id: ${event.generation}:${event.cursor}\ndata: ${JSON.stringify(event)}\n\n`,
+      );
     });
-    request.raw.once("close", unsubscribe);
+    unsubscribeGeneration = client.subscribeGenerationChanges((generation) => {
+      const payload = connectorLocalGenerationChangedEventSchema.parse({
+        delivery_generation: generation,
+      });
+      reply.raw.write(`event: generation_changed\ndata: ${JSON.stringify(payload)}\n\n`);
+      cleanup();
+      reply.raw.end();
+    });
+    reply.raw.once("close", cleanup);
   });
 
-  app.get("/v1/shared-memes/status", async (request, reply) => {
+  app.get("/v2/shared-memes/status", async (request, reply) => {
     if (!humanSettingsReadRequestSchema.safeParse(request.query).success) {
       return reply.code(400).send({
         error: {
@@ -85,7 +146,7 @@ export function buildConnectorLocalApi(client: ConnectorClient): FastifyInstance
     return connectorLocalSharedMemeSyncSchema.parse(client.getSharedMemeSyncStatus());
   });
 
-  app.get("/v1/mailbox", async (request, reply) => {
+  app.get("/v2/mailbox", async (request, reply) => {
     const query = mailboxListRequestSchema.safeParse(request.query);
     if (!query.success) {
       return reply.code(400).send(
@@ -106,7 +167,7 @@ export function buildConnectorLocalApi(client: ConnectorClient): FastifyInstance
     }
   });
 
-  app.get("/v1/mailbox/:letterId", async (request, reply) => {
+  app.get("/v2/mailbox/:letterId", async (request, reply) => {
     const query = humanSettingsReadRequestSchema.safeParse(request.query);
     const params = mailboxDetailRequestSchema.safeParse({
       letter_id: (request.params as { letterId?: unknown }).letterId,
@@ -125,7 +186,7 @@ export function buildConnectorLocalApi(client: ConnectorClient): FastifyInstance
     }
   });
 
-  app.post("/v1/mailbox/:letterId/claim", async (request, reply) => {
+  app.post("/v2/mailbox/:letterId/claim", async (request, reply) => {
     const query = humanSettingsReadRequestSchema.safeParse(request.query);
     const body = mailboxClaimBodySchema.safeParse(request.body ?? {});
     const params = mailboxDetailRequestSchema.safeParse({

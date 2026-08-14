@@ -1,8 +1,11 @@
 import {
+  type ConnectorDeliveryGeneration,
   type ConnectorEventEnvelope,
   type ConnectorLocalConnectionState,
   connectorAckFrameSchema,
   connectorEventFrameSchema,
+  connectorGenerationResetAckFrameSchema,
+  connectorGenerationResetRequiredFrameSchema,
   connectorHeartbeatAckFrameSchema,
   connectorHeartbeatFrameSchema,
   connectorHelloFrameSchema,
@@ -22,6 +25,7 @@ import {
   sharedMemeVersionHintPayloadSchema,
 } from "@doorbell/protocol";
 import WebSocket, { type RawData } from "ws";
+import { validateConnectorServerWebSocketUrl } from "./connector-config.js";
 import type { ConnectorStateDatabase } from "./connector-state.js";
 import type { SharedMemeSynchronizer } from "./shared-meme-sync.js";
 
@@ -31,6 +35,7 @@ const MAX_RECONNECT_DELAY_MS = 30_000;
 export interface ConnectorClientOptions {
   serverWebSocketUrl: string;
   credential: string;
+  httpRequestTimeoutMs: number;
   state: ConnectorStateDatabase;
   now?: () => number;
   createSocket?: (url: string) => WebSocket;
@@ -79,22 +84,29 @@ export class ConnectorClient {
   readonly #createSocket: (url: string) => WebSocket;
   readonly #reconnect: boolean;
   readonly #fetch: typeof fetch;
+  readonly #httpRequestTimeoutMs: number;
   readonly #sharedMemeSync: SharedMemeSynchronizer | undefined;
   readonly #subscribers = new Set<(event: ConnectorEventEnvelope) => void>();
+  readonly #generationSubscribers = new Set<(generation: ConnectorDeliveryGeneration) => void>();
   #connectionState: ConnectorLocalConnectionState = "stopped";
   #socket: WebSocket | undefined;
   #stopped = true;
   #reconnectDelayMs = INITIAL_RECONNECT_DELAY_MS;
   #reconnectTimer: NodeJS.Timeout | undefined;
+  #syncRequestedGeneration: ConnectorDeliveryGeneration | undefined;
 
   constructor(options: ConnectorClientOptions) {
-    this.#serverWebSocketUrl = options.serverWebSocketUrl;
+    if (!Number.isSafeInteger(options.httpRequestTimeoutMs) || options.httpRequestTimeoutMs <= 0) {
+      throw new TypeError("Connector HTTP timeout must be a positive integer in milliseconds");
+    }
+    this.#serverWebSocketUrl = validateConnectorServerWebSocketUrl(options.serverWebSocketUrl);
     this.#credential = options.credential;
     this.#state = options.state;
     this.#now = options.now ?? Date.now;
     this.#createSocket = options.createSocket ?? ((url) => new WebSocket(url));
     this.#reconnect = options.reconnect ?? true;
     this.#fetch = options.fetchImplementation ?? fetch;
+    this.#httpRequestTimeoutMs = options.httpRequestTimeoutMs;
     this.#sharedMemeSync = options.sharedMemeSync;
   }
 
@@ -125,13 +137,23 @@ export class ConnectorClient {
     return this.#sharedMemeSync?.getStatus() ?? this.#state.getSharedMemeSyncStatus();
   }
 
-  listEventsAfter(afterCursor: number): ConnectorEventEnvelope[] {
-    return this.#state.listEventsAfter(afterCursor);
+  listEventsAfter(
+    generation: ConnectorDeliveryGeneration,
+    afterCursor: number,
+  ): ConnectorEventEnvelope[] {
+    return this.#state.listEventsAfter(generation, afterCursor);
   }
 
   subscribe(listener: (event: ConnectorEventEnvelope) => void): () => void {
     this.#subscribers.add(listener);
     return () => this.#subscribers.delete(listener);
+  }
+
+  subscribeGenerationChanges(
+    listener: (generation: ConnectorDeliveryGeneration) => void,
+  ): () => void {
+    this.#generationSubscribers.add(listener);
+    return () => this.#generationSubscribers.delete(listener);
   }
 
   async listMailbox(page: number, category?: MailboxCategory): Promise<MailboxListSuccess> {
@@ -178,6 +200,7 @@ export class ConnectorClient {
           ...(method === "POST" ? { "content-type": "application/json" } : {}),
         },
         ...(method === "POST" ? { body: "{}" } : {}),
+        signal: AbortSignal.timeout(this.#httpRequestTimeoutMs),
       });
     } catch {
       throw new ConnectorMailboxRequestError(
@@ -220,16 +243,19 @@ export class ConnectorClient {
       return;
     }
     this.#connectionState = "connecting";
+    this.#syncRequestedGeneration = undefined;
     const socket = this.#createSocket(this.#serverWebSocketUrl);
     this.#socket = socket;
 
     socket.on("open", () => {
+      const checkpoint = this.#state.getDeliveryCheckpoint();
       const hello = connectorHelloFrameSchema.parse({
         type: "hello",
-        protocol_version: "1.0",
+        protocol_version: "2.0",
         capabilities: connectorRequiredCapabilities,
         credential: this.#credential,
-        last_persisted_cursor: this.#state.getLastPersistedCursor(),
+        generation: checkpoint.generation,
+        last_persisted_cursor: checkpoint.lastPersistedCursor,
       });
       socket.send(JSON.stringify(hello));
     });
@@ -272,10 +298,40 @@ export class ConnectorClient {
         socket.close(4000, "invalid_welcome_message");
         return;
       }
+      if (this.#state.getDeliveryCheckpoint().generation !== ready.data.generation) {
+        this.#state.recordError("delivery_generation_changed");
+        socket.close(4000, "delivery_generation_changed");
+        return;
+      }
       this.#connectionState = "online";
       this.#reconnectDelayMs = INITIAL_RECONNECT_DELAY_MS;
       this.#state.recordConnected(this.#now());
-      void this.#sharedMemeSync?.syncLatest();
+      if (this.#syncRequestedGeneration !== ready.data.generation) {
+        this.#syncRequestedGeneration = ready.data.generation;
+        void this.#sharedMemeSync?.syncLatest();
+      }
+      return;
+    }
+
+    const generationReset = connectorGenerationResetRequiredFrameSchema.safeParse(frame);
+    if (generationReset.success) {
+      const reset = this.#state.resetDeliveryGeneration(generationReset.data.generation);
+      socket.send(
+        JSON.stringify(
+          connectorGenerationResetAckFrameSchema.parse({
+            type: "generation_reset_ack",
+            generation: generationReset.data.generation,
+          }),
+        ),
+      );
+      if (reset.changed) {
+        this.#connectionState = "resyncing";
+        for (const subscriber of this.#generationSubscribers) {
+          subscriber(generationReset.data.generation);
+        }
+        this.#syncRequestedGeneration = generationReset.data.generation;
+        void this.#sharedMemeSync?.syncLatest();
+      }
       return;
     }
 
@@ -295,12 +351,17 @@ export class ConnectorClient {
     const eventFrame = connectorEventFrameSchema.safeParse(frame);
     if (eventFrame.success) {
       const result = this.#state.persistEvent(eventFrame.data.event, this.#now());
+      if (result.status === "generation_mismatch") {
+        this.#state.recordError("event_generation_mismatch");
+        return;
+      }
       if (result.status === "gap") {
         this.#connectionState = "resyncing";
         socket.send(
           JSON.stringify(
             connectorResyncRequestFrameSchema.parse({
               type: "resync_request",
+              generation: eventFrame.data.event.generation,
               after_cursor: result.lastPersistedCursor,
               reason: "cursor_gap",
             }),
@@ -312,6 +373,7 @@ export class ConnectorClient {
         JSON.stringify(
           connectorAckFrameSchema.parse({
             type: "ack",
+            generation: eventFrame.data.event.generation,
             event_id: eventFrame.data.event.event_id,
             cursor: eventFrame.data.event.cursor,
           }),
@@ -334,6 +396,10 @@ export class ConnectorClient {
 
     const resync = connectorResyncRequiredFrameSchema.safeParse(frame);
     if (resync.success) {
+      if (this.#state.getDeliveryCheckpoint().generation !== resync.data.generation) {
+        this.#state.recordError("resync_generation_mismatch");
+        return;
+      }
       this.#connectionState = "resyncing";
       return;
     }

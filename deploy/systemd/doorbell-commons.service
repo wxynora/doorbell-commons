@@ -12,6 +12,7 @@ Environment=NODE_ENV=production
 Environment=HOST=127.0.0.1
 Environment=PORT=3000
 EnvironmentFile=/etc/doorbell-commons/doorbell-commons.env
+LoadCredential=delivery-generation:/etc/doorbell-commons/delivery-generation
 ExecStart=/usr/bin/node /opt/doorbell-commons/apps/server/dist/index.js
 Restart=on-failure
 RestartSec=3

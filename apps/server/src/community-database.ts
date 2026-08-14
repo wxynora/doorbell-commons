@@ -16,7 +16,11 @@ import Database from "better-sqlite3";
 const REGISTRATION_CODE_WINDOW_MS = 24 * 60 * 60 * 1000;
 const REGISTRATION_CODE_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 const DEFAULT_CONNECTION_DURATION_MINUTES = 5;
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 1;
+export const HUMAN_LOGIN_FAILURE_WINDOW_MS = 15 * 60 * 1000;
+export const HUMAN_LOGIN_FAILURE_THRESHOLD = 10;
+export const HUMAN_LOGIN_LOCK_DURATION_MS = 30 * 60 * 1000;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 3;
+const LEGACY_CONNECTOR_DELIVERY_GENERATION = "00000000-0000-0000-0000-000000000000";
 
 export interface RegistrationCodeRecord {
   code: string;
@@ -135,6 +139,7 @@ export interface AuthenticatedConnectorBinding {
 }
 
 export interface ConnectorEventRecord {
+  generation: string;
   residentId: string;
   eventId: string;
   cursor: number;
@@ -242,6 +247,13 @@ export class HumanAccountAlreadyRegisteredError extends Error {
   constructor() {
     super("The QQ account already has a complete Doorbell registration");
     this.name = "HumanAccountAlreadyRegisteredError";
+  }
+}
+
+export class HumanLoginLockedError extends Error {
+  constructor() {
+    super("The human account login is temporarily locked");
+    this.name = "HumanLoginLockedError";
   }
 }
 
@@ -357,11 +369,13 @@ interface McpAccessBindingRow {
 }
 
 interface ConnectorDeliveryStateRow {
+  generation: string;
   last_event_cursor: number;
   last_acked_cursor: number;
 }
 
 interface ConnectorEventRow {
+  generation: string;
   resident_id: string;
   event_id: string;
   cursor: number;
@@ -525,6 +539,7 @@ function mapConnectorEvent(row: ConnectorEventRow): ConnectorEventRecord {
     throw new Error("Stored Connector event payload is invalid");
   }
   return {
+    generation: row.generation,
     residentId: row.resident_id,
     eventId: row.event_id,
     cursor: row.cursor,
@@ -823,7 +838,8 @@ export class CommunityDatabase {
         PRIMARY KEY (letter_id, audience)
       );
     `);
-    if (databaseSchemaVersion < 1) {
+    let migratedSchemaVersion = databaseSchemaVersion;
+    if (migratedSchemaVersion < 1) {
       this.#database.transaction(() => {
         const farmBindingColumns = this.#database.pragma("table_info(farm_bindings)") as Array<{
           name: string;
@@ -837,7 +853,91 @@ export class CommunityDatabase {
         if (!humanAccountColumns.some((column) => column.name === "password_credential")) {
           this.#database.exec("ALTER TABLE human_accounts ADD COLUMN password_credential TEXT");
         }
-        this.#database.pragma(`user_version = ${COMMUNITY_DATABASE_SCHEMA_VERSION}`);
+        this.#database.pragma("user_version = 1");
+      })();
+      migratedSchemaVersion = 1;
+    }
+    if (migratedSchemaVersion < 2) {
+      this.#database.transaction(() => {
+        this.#database.exec(`
+          CREATE TABLE human_login_failures (
+            account_id TEXT NOT NULL REFERENCES human_accounts(account_id) ON DELETE CASCADE,
+            failed_at INTEGER NOT NULL
+          );
+
+          CREATE INDEX human_login_failures_account_time
+            ON human_login_failures (account_id, failed_at);
+
+          CREATE TABLE human_login_locks (
+            account_id TEXT PRIMARY KEY REFERENCES human_accounts(account_id) ON DELETE CASCADE,
+            locked_until INTEGER NOT NULL
+          );
+        `);
+        this.#database.pragma("user_version = 2");
+      })();
+      migratedSchemaVersion = 2;
+    }
+    if (migratedSchemaVersion < 3) {
+      this.#database.transaction(() => {
+        this.#database.exec(`
+          ALTER TABLE connector_delivery_state RENAME TO connector_delivery_state_v2;
+          ALTER TABLE connector_events RENAME TO connector_events_v2;
+
+          CREATE TABLE connector_delivery_state (
+            generation TEXT NOT NULL CHECK (length(generation) > 0),
+            resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+            last_event_cursor INTEGER NOT NULL DEFAULT 0 CHECK (last_event_cursor >= 0),
+            last_acked_cursor INTEGER NOT NULL DEFAULT 0 CHECK (
+              last_acked_cursor >= 0 AND last_acked_cursor <= last_event_cursor
+            ),
+            PRIMARY KEY (generation, resident_id)
+          );
+
+          CREATE TABLE connector_events (
+            generation TEXT NOT NULL CHECK (length(generation) > 0),
+            resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+            cursor INTEGER NOT NULL CHECK (cursor > 0),
+            event_id TEXT NOT NULL UNIQUE,
+            event_type TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            payload_json TEXT NOT NULL,
+            PRIMARY KEY (generation, resident_id, cursor)
+          );
+
+          INSERT INTO connector_delivery_state (
+            generation,
+            resident_id,
+            last_event_cursor,
+            last_acked_cursor
+          )
+          SELECT '${LEGACY_CONNECTOR_DELIVERY_GENERATION}',
+                 resident_id,
+                 last_event_cursor,
+                 last_acked_cursor
+          FROM connector_delivery_state_v2;
+
+          INSERT INTO connector_events (
+            generation,
+            resident_id,
+            cursor,
+            event_id,
+            event_type,
+            created_at,
+            payload_json
+          )
+          SELECT '${LEGACY_CONNECTOR_DELIVERY_GENERATION}',
+                 resident_id,
+                 cursor,
+                 event_id,
+                 event_type,
+                 created_at,
+                 payload_json
+          FROM connector_events_v2;
+
+          DROP TABLE connector_events_v2;
+          DROP TABLE connector_delivery_state_v2;
+        `);
+        this.#database.pragma("user_version = 3");
       })();
     }
   }
@@ -1193,6 +1293,82 @@ export class CommunityDatabase {
     return row?.password_credential;
   }
 
+  isHumanLoginLocked(qqNumber: string, now: number): boolean {
+    const row = this.#database
+      .prepare(
+        `SELECT l.locked_until
+         FROM human_login_locks AS l
+         JOIN human_accounts AS a ON a.account_id = l.account_id
+         WHERE a.qq_number = ?`,
+      )
+      .get(qqNumber) as { locked_until: number } | undefined;
+    return row !== undefined && row.locked_until > now;
+  }
+
+  recordFailedHumanLogin(qqNumber: string, now: number): boolean {
+    const transaction = this.#database.transaction(() => {
+      const account = this.#database
+        .prepare("SELECT account_id FROM human_accounts WHERE qq_number = ?")
+        .get(qqNumber) as { account_id: string } | undefined;
+      if (!account) {
+        return false;
+      }
+
+      const activeLock = this.#database
+        .prepare("SELECT locked_until FROM human_login_locks WHERE account_id = ?")
+        .get(account.account_id) as { locked_until: number } | undefined;
+      if (activeLock && activeLock.locked_until > now) {
+        return true;
+      }
+
+      this.#database
+        .prepare("DELETE FROM human_login_locks WHERE account_id = ?")
+        .run(account.account_id);
+      this.#database
+        .prepare(
+          `DELETE FROM human_login_failures
+           WHERE account_id = ? AND failed_at <= ?`,
+        )
+        .run(account.account_id, now - HUMAN_LOGIN_FAILURE_WINDOW_MS);
+      this.#database
+        .prepare("INSERT INTO human_login_failures (account_id, failed_at) VALUES (?, ?)")
+        .run(account.account_id, now);
+      const failureCount = this.#database
+        .prepare("SELECT COUNT(*) AS count FROM human_login_failures WHERE account_id = ?")
+        .get(account.account_id) as { count: number };
+      if (failureCount.count < HUMAN_LOGIN_FAILURE_THRESHOLD) {
+        return false;
+      }
+
+      this.#database
+        .prepare(
+          `INSERT INTO human_login_locks (account_id, locked_until)
+           VALUES (?, ?)
+           ON CONFLICT(account_id) DO UPDATE SET locked_until = excluded.locked_until`,
+        )
+        .run(account.account_id, now + HUMAN_LOGIN_LOCK_DURATION_MS);
+      this.#database
+        .prepare("DELETE FROM human_login_failures WHERE account_id = ?")
+        .run(account.account_id);
+      return true;
+    });
+    return transaction.immediate();
+  }
+
+  unlockHumanAccount(qqNumber: string): boolean {
+    const transaction = this.#database.transaction(() => {
+      const account = this.#database
+        .prepare("SELECT account_id FROM human_accounts WHERE qq_number = ?")
+        .get(qqNumber) as { account_id: string } | undefined;
+      if (!account) {
+        return false;
+      }
+      this.#clearHumanLoginSecurity(account.account_id);
+      return true;
+    });
+    return transaction.immediate();
+  }
+
   createExistingHumanSession(qqNumber: string, now: number): CreatedHumanSession {
     const transaction = this.#database.transaction(() => {
       const account = this.#database
@@ -1204,6 +1380,12 @@ export class CommunityDatabase {
         .get(qqNumber) as HumanAccountRow | undefined;
       if (!account?.password_credential) {
         throw new RegistrationProfileRequiredError();
+      }
+      const loginLock = this.#database
+        .prepare("SELECT locked_until FROM human_login_locks WHERE account_id = ?")
+        .get(account.account_id) as { locked_until: number } | undefined;
+      if (loginLock && loginLock.locked_until > now) {
+        throw new HumanLoginLockedError();
       }
       const community = this.#findCommunityByAccountId(account.account_id);
       if (!community || community.farmBinding.farmHumanKey === null) {
@@ -1223,6 +1405,7 @@ export class CommunityDatabase {
       this.#database
         .prepare("INSERT INTO human_sessions (token_hash, account_id, created_at) VALUES (?, ?, ?)")
         .run(hashSessionToken(token), account.account_id, now);
+      this.#clearHumanLoginSecurity(account.account_id);
       return { community, accountCreated: false, token };
     });
     return transaction.immediate();
@@ -1246,9 +1429,15 @@ export class CommunityDatabase {
            WHERE account_id = ? AND revoked_at IS NULL`,
         )
         .run(now, account.account_id);
+      this.#clearHumanLoginSecurity(account.account_id);
       return updated.changes === 1;
     });
     return transaction.immediate();
+  }
+
+  #clearHumanLoginSecurity(accountId: string): void {
+    this.#database.prepare("DELETE FROM human_login_failures WHERE account_id = ?").run(accountId);
+    this.#database.prepare("DELETE FROM human_login_locks WHERE account_id = ?").run(accountId);
   }
 
   findActiveHumanSession(token: string): ActiveHumanSessionRecord | undefined {
@@ -1606,6 +1795,7 @@ export class CommunityDatabase {
   }
 
   appendConnectorEvent(
+    generation: string,
     residentId: string,
     eventId: string,
     eventType: string,
@@ -1617,41 +1807,44 @@ export class CommunityDatabase {
       this.#database
         .prepare(
           `INSERT INTO connector_delivery_state (
+             generation,
              resident_id,
              last_event_cursor,
              last_acked_cursor
-           ) VALUES (?, 0, 0)
-           ON CONFLICT(resident_id) DO NOTHING`,
+           ) VALUES (?, ?, 0, 0)
+           ON CONFLICT(generation, resident_id) DO NOTHING`,
         )
-        .run(residentId);
+        .run(generation, residentId);
       const state = this.#database
         .prepare(
-          `SELECT last_event_cursor, last_acked_cursor
+          `SELECT generation, last_event_cursor, last_acked_cursor
            FROM connector_delivery_state
-           WHERE resident_id = ?`,
+           WHERE generation = ? AND resident_id = ?`,
         )
-        .get(residentId) as ConnectorDeliveryStateRow;
+        .get(generation, residentId) as ConnectorDeliveryStateRow;
       const cursor = state.last_event_cursor + 1;
       this.#database
         .prepare(
           `INSERT INTO connector_events (
+             generation,
              resident_id,
              cursor,
              event_id,
              event_type,
              created_at,
              payload_json
-           ) VALUES (?, ?, ?, ?, ?, ?)`,
+           ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
         )
-        .run(residentId, cursor, eventId, eventType, now, payloadJson);
+        .run(generation, residentId, cursor, eventId, eventType, now, payloadJson);
       this.#database
         .prepare(
           `UPDATE connector_delivery_state
            SET last_event_cursor = ?
-           WHERE resident_id = ?`,
+           WHERE generation = ? AND resident_id = ?`,
         )
-        .run(cursor, residentId);
+        .run(cursor, generation, residentId);
       return {
+        generation,
         residentId,
         eventId,
         cursor,
@@ -1663,30 +1856,46 @@ export class CommunityDatabase {
     return transaction.immediate();
   }
 
-  listConnectorEventsAfter(residentId: string, afterCursor: number): ConnectorEventRecord[] {
+  listConnectorEventsAfter(
+    generation: string,
+    residentId: string,
+    afterCursor: number,
+  ): ConnectorEventRecord[] {
     const rows = this.#database
       .prepare(
-        `SELECT resident_id, event_id, cursor, event_type, created_at, payload_json
+        `SELECT generation, resident_id, event_id, cursor, event_type, created_at, payload_json
          FROM connector_events
-         WHERE resident_id = ? AND cursor > ?
+         WHERE generation = ? AND resident_id = ? AND cursor > ?
          ORDER BY cursor ASC`,
       )
-      .all(residentId, afterCursor) as ConnectorEventRow[];
+      .all(generation, residentId, afterCursor) as ConnectorEventRow[];
     return rows.map(mapConnectorEvent);
   }
 
-  getConnectorLastAckedCursor(residentId: string): number {
+  getConnectorLastAckedCursor(generation: string, residentId: string): number {
     const row = this.#database
       .prepare(
-        `SELECT last_event_cursor, last_acked_cursor
+        `SELECT generation, last_event_cursor, last_acked_cursor
          FROM connector_delivery_state
-         WHERE resident_id = ?`,
+         WHERE generation = ? AND resident_id = ?`,
       )
-      .get(residentId) as ConnectorDeliveryStateRow | undefined;
+      .get(generation, residentId) as ConnectorDeliveryStateRow | undefined;
     return row?.last_acked_cursor ?? 0;
   }
 
+  getConnectorLastEventCursor(generation: string, residentId: string): number {
+    const row = this.#database
+      .prepare(
+        `SELECT generation, last_event_cursor, last_acked_cursor
+         FROM connector_delivery_state
+         WHERE generation = ? AND resident_id = ?`,
+      )
+      .get(generation, residentId) as ConnectorDeliveryStateRow | undefined;
+    return row?.last_event_cursor ?? 0;
+  }
+
   acknowledgeConnectorEvent(
+    generation: string,
     residentId: string,
     cursor: number,
     eventId: string,
@@ -1694,19 +1903,19 @@ export class CommunityDatabase {
     const transaction = this.#database.transaction(() => {
       const state = this.#database
         .prepare(
-          `SELECT last_event_cursor, last_acked_cursor
+          `SELECT generation, last_event_cursor, last_acked_cursor
            FROM connector_delivery_state
-           WHERE resident_id = ?`,
+           WHERE generation = ? AND resident_id = ?`,
         )
-        .get(residentId) as ConnectorDeliveryStateRow | undefined;
+        .get(generation, residentId) as ConnectorDeliveryStateRow | undefined;
       const lastAckedCursor = state?.last_acked_cursor ?? 0;
       const event = this.#database
         .prepare(
-          `SELECT resident_id, event_id, cursor, event_type, created_at, payload_json
+          `SELECT generation, resident_id, event_id, cursor, event_type, created_at, payload_json
            FROM connector_events
-           WHERE resident_id = ? AND cursor = ?`,
+           WHERE generation = ? AND resident_id = ? AND cursor = ?`,
         )
-        .get(residentId, cursor) as ConnectorEventRow | undefined;
+        .get(generation, residentId, cursor) as ConnectorEventRow | undefined;
 
       if (cursor <= lastAckedCursor) {
         return {
@@ -1725,9 +1934,9 @@ export class CommunityDatabase {
         .prepare(
           `UPDATE connector_delivery_state
            SET last_acked_cursor = ?
-           WHERE resident_id = ? AND last_acked_cursor = ?`,
+           WHERE generation = ? AND resident_id = ? AND last_acked_cursor = ?`,
         )
-        .run(cursor, residentId, lastAckedCursor);
+        .run(cursor, generation, residentId, lastAckedCursor);
       return { status: "acked" as const, lastAckedCursor: cursor };
     });
     return transaction.immediate();

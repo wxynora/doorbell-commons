@@ -667,11 +667,27 @@ export const humanSettingsPatchRequestSchema = z
     message: "at least one supported settings group is required",
   });
 
-export const connectorProtocolVersionSchema = z.literal("1.0");
-export const connectorCapabilitySchema = z.enum(["event_stream_v1", "resync_v1"]);
-export const connectorRequiredCapabilities = ["event_stream_v1", "resync_v1"] as const;
+export const connectorProtocolVersionSchema = z.literal("2.0");
+export const connectorCapabilitySchema = z.enum(["event_stream_v2", "resync_v2"]);
+export const connectorRequiredCapabilities = ["event_stream_v2", "resync_v2"] as const;
+export const connectorCapabilitiesSchema = z
+  .array(connectorCapabilitySchema)
+  .length(connectorRequiredCapabilities.length)
+  .refine(
+    (capabilities) =>
+      connectorRequiredCapabilities.every((capability) => capabilities.includes(capability)),
+    { message: "all Connector v2 capabilities are required" },
+  );
 export const connectorCredentialSchema = z.string().regex(/^dbc_[A-Za-z0-9_-]{43}$/);
 export const connectorWelcomeMessage = "May every ring lead you home." as const;
+export const connectorDeliveryGenerationSchema = z.uuid();
+
+export const connectorBootstrapCheckpointSchema = z
+  .object({
+    delivery_generation: connectorDeliveryGenerationSchema,
+    through_cursor: z.number().int().nonnegative(),
+  })
+  .strict();
 
 export const connectorSettingsStatusSchema = z
   .object({
@@ -975,6 +991,7 @@ export const connectorControlErrorSchema = z
 
 export const connectorEventEnvelopeSchema = z
   .object({
+    generation: connectorDeliveryGenerationSchema,
     event_id: z.uuid(),
     cursor: z.number().int().positive(),
     event_type: z.string().min(1),
@@ -987,15 +1004,26 @@ export const connectorHelloFrameSchema = z
   .object({
     type: z.literal("hello"),
     protocol_version: connectorProtocolVersionSchema,
-    capabilities: z.array(connectorCapabilitySchema),
+    capabilities: connectorCapabilitiesSchema,
     credential: connectorCredentialSchema,
+    generation: connectorDeliveryGenerationSchema.nullable(),
     last_persisted_cursor: z.number().int().nonnegative(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if (value.generation === null && value.last_persisted_cursor !== 0) {
+      context.addIssue({
+        code: "custom",
+        path: ["last_persisted_cursor"],
+        message: "an unset generation must start at cursor 0",
+      });
+    }
+  });
 
 export const connectorAckFrameSchema = z
   .object({
     type: z.literal("ack"),
+    generation: connectorDeliveryGenerationSchema,
     event_id: z.uuid(),
     cursor: z.number().int().positive(),
   })
@@ -1004,6 +1032,7 @@ export const connectorAckFrameSchema = z
 export const connectorResyncRequestFrameSchema = z
   .object({
     type: z.literal("resync_request"),
+    generation: connectorDeliveryGenerationSchema,
     after_cursor: z.number().int().nonnegative(),
     reason: z.literal("cursor_gap"),
   })
@@ -1016,20 +1045,29 @@ export const connectorHeartbeatAckFrameSchema = z
   })
   .strict();
 
+export const connectorGenerationResetAckFrameSchema = z
+  .object({
+    type: z.literal("generation_reset_ack"),
+    generation: connectorDeliveryGenerationSchema,
+  })
+  .strict();
+
 export const connectorClientFrameSchema = z.discriminatedUnion("type", [
   connectorHelloFrameSchema,
   connectorAckFrameSchema,
   connectorResyncRequestFrameSchema,
   connectorHeartbeatAckFrameSchema,
+  connectorGenerationResetAckFrameSchema,
 ]);
 
 export const connectorReadyFrameSchema = z
   .object({
     type: z.literal("ready"),
     protocol_version: connectorProtocolVersionSchema,
-    capabilities: z.array(connectorCapabilitySchema),
+    capabilities: connectorCapabilitiesSchema,
     connection_id: z.uuid(),
     resident_id: z.string().min(1),
+    generation: connectorDeliveryGenerationSchema,
     resume_after_cursor: z.number().int().nonnegative(),
     welcome: z.literal(connectorWelcomeMessage),
   })
@@ -1053,8 +1091,17 @@ export const connectorHeartbeatFrameSchema = z
 export const connectorResyncRequiredFrameSchema = z
   .object({
     type: z.literal("resync_required"),
+    generation: connectorDeliveryGenerationSchema,
     after_cursor: z.number().int().nonnegative(),
     reason: z.enum(["ack_gap", "cursor_ahead", "event_mismatch"]),
+  })
+  .strict();
+
+export const connectorGenerationResetRequiredFrameSchema = z
+  .object({
+    type: z.literal("generation_reset_required"),
+    generation: connectorDeliveryGenerationSchema,
+    reason: z.enum(["initial_sync", "generation_changed"]),
   })
   .strict();
 
@@ -1067,6 +1114,7 @@ export const connectorServerErrorFrameSchema = z
       "missing_required_capability",
       "authentication_rejected",
       "membership_verification_unavailable",
+      "delivery_generation_inconsistent",
     ]),
   })
   .strict();
@@ -1076,6 +1124,7 @@ export const connectorServerFrameSchema = z.discriminatedUnion("type", [
   connectorEventFrameSchema,
   connectorHeartbeatFrameSchema,
   connectorResyncRequiredFrameSchema,
+  connectorGenerationResetRequiredFrameSchema,
   connectorServerErrorFrameSchema,
 ]);
 
@@ -1090,7 +1139,7 @@ export const connectorLocalConnectionStateSchema = z.enum([
 export const connectorLocalHealthSchema = z
   .object({
     service: z.literal("doorbell-connector"),
-    api_version: z.literal("v1"),
+    api_version: z.literal("v2"),
     status: z.literal("ok"),
   })
   .strict();
@@ -1099,22 +1148,81 @@ export const connectorLocalStatusSchema = z
   .object({
     connection_state: connectorLocalConnectionStateSchema,
     protocol_version: connectorProtocolVersionSchema,
+    delivery_generation: connectorDeliveryGenerationSchema.nullable(),
     last_persisted_cursor: z.number().int().nonnegative(),
     last_connected_at: z.iso.datetime().nullable(),
     last_error_code: z.string().nullable(),
     welcome_message: z.literal(connectorWelcomeMessage).nullable(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if (value.delivery_generation === null && value.last_persisted_cursor !== 0) {
+      context.addIssue({
+        code: "custom",
+        path: ["last_persisted_cursor"],
+        message: "an unset delivery_generation must start at cursor 0",
+      });
+    }
+  });
 
 export const connectorLocalEventsQuerySchema = z
   .object({
+    delivery_generation: connectorDeliveryGenerationSchema,
     after_cursor: z.coerce.number().int().nonnegative(),
   })
   .strict();
 
 export const connectorLocalEventsSuccessSchema = z
   .object({
+    delivery_generation: connectorDeliveryGenerationSchema,
     events: z.array(connectorEventEnvelopeSchema),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    value.events.forEach((event, index) => {
+      if (event.generation !== value.delivery_generation) {
+        context.addIssue({
+          code: "custom",
+          path: ["events", index, "generation"],
+          message: "event generation must match delivery_generation",
+        });
+      }
+    });
+  });
+
+export const connectorLocalEventsErrorCodeSchema = z.enum([
+  "invalid_request",
+  "delivery_generation_changed",
+]);
+
+export const connectorLocalEventsErrorSchema = z.union([
+  z
+    .object({
+      error: z
+        .object({
+          code: z.literal("invalid_request"),
+          message: z.string(),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      error: z
+        .object({
+          code: z.literal("delivery_generation_changed"),
+          message: z.string(),
+          requested_generation: connectorDeliveryGenerationSchema,
+          current_generation: connectorDeliveryGenerationSchema.nullable(),
+        })
+        .strict(),
+    })
+    .strict(),
+]);
+
+export const connectorLocalGenerationChangedEventSchema = z
+  .object({
+    delivery_generation: connectorDeliveryGenerationSchema,
   })
   .strict();
 
@@ -1283,6 +1391,8 @@ export type HumanSettingsError = z.infer<typeof humanSettingsErrorSchema>;
 export type ConnectorSettingsStatus = z.infer<typeof connectorSettingsStatusSchema>;
 export type ConnectorCredentialIssueSuccess = z.infer<typeof connectorCredentialIssueSuccessSchema>;
 export type ConnectorControlError = z.infer<typeof connectorControlErrorSchema>;
+export type ConnectorDeliveryGeneration = z.infer<typeof connectorDeliveryGenerationSchema>;
+export type ConnectorBootstrapCheckpoint = z.infer<typeof connectorBootstrapCheckpointSchema>;
 export type McpAccessMigrationStatus = z.infer<typeof mcpAccessMigrationStatusSchema>;
 export type McpAccessCredentialStatus = z.infer<typeof mcpAccessCredentialStatusSchema>;
 export type McpAccessStatusResponse = z.infer<typeof mcpAccessStatusResponseSchema>;
@@ -1302,5 +1412,9 @@ export type ConnectorClientFrame = z.infer<typeof connectorClientFrameSchema>;
 export type ConnectorServerFrame = z.infer<typeof connectorServerFrameSchema>;
 export type ConnectorLocalConnectionState = z.infer<typeof connectorLocalConnectionStateSchema>;
 export type ConnectorLocalStatus = z.infer<typeof connectorLocalStatusSchema>;
+export type ConnectorLocalEventsError = z.infer<typeof connectorLocalEventsErrorSchema>;
+export type ConnectorLocalGenerationChangedEvent = z.infer<
+  typeof connectorLocalGenerationChangedEventSchema
+>;
 export type HumanAuthenticationError = z.infer<typeof humanAuthenticationErrorSchema>;
 export type FarmHumanUiError = z.infer<typeof farmHumanUiErrorSchema>;

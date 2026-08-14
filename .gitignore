@@ -9,10 +9,11 @@
 
 node_modules/
 dist/
+!old-vps/farm/dist/
+!old-vps/farm/dist/**
 build/
 coverage/
 
 .local/
 .tmp/
 tmp/
-

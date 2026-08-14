@@ -733,10 +733,17 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
               qqNumber: parsedRequest.data.qq_number,
               password: parsedRequest.data.password,
             });
-      options.mailboxService?.ensureWelcomeLetter(
-        session.community.home.homeId,
-        session.community.farmBinding.farmHumanKey ?? "",
-      );
+      try {
+        options.mailboxService?.ensureWelcomeLetter(
+          session.community.home.homeId,
+          session.community.farmBinding.farmHumanKey ?? "",
+        );
+      } catch (error) {
+        request.log.error(
+          { error_name: error instanceof Error ? error.name : "UnknownError" },
+          "Welcome-letter delivery failed after the human session was created",
+        );
+      }
       reply.header("set-cookie", serializeHumanSessionCookie(session.token, options.secureCookies));
       if (session.createdFarm) {
         reply.header("cache-control", "no-store");
@@ -1487,9 +1494,14 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       const origin = Array.isArray(request.headers.origin)
         ? request.headers.origin[0]
         : request.headers.origin;
+      const protocolVersionHeader = request.headers["mcp-protocol-version"];
+      const protocolVersion = Array.isArray(protocolVersionHeader)
+        ? protocolVersionHeader[0]
+        : protocolVersionHeader;
       const result = await mcpRuntime.handlePost({
         ...(authorization ? { authorization } : {}),
         ...(origin ? { origin } : {}),
+        protocolVersion: protocolVersion ?? null,
         body: request.body,
       });
       for (const [name, value] of Object.entries(result.headers)) {

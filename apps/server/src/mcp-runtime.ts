@@ -54,6 +54,7 @@ export interface DoorbellMcpHttpResult {
 export interface DoorbellMcpPostInput {
   authorization?: string;
   origin?: string;
+  protocolVersion?: string | null;
   body: unknown;
 }
 
@@ -205,6 +206,19 @@ function transportAuthError(code: "AUTH_REQUIRED" | "AUTH_INVALID"): DoorbellMcp
   };
 }
 
+function protocolVersionError(
+  code:
+    | "MCP_PROTOCOL_VERSION_REQUIRED"
+    | "MCP_PROTOCOL_VERSION_INVALID"
+    | "MCP_PROTOCOL_VERSION_UNSUPPORTED",
+): DoorbellMcpHttpResult {
+  return {
+    statusCode: 400,
+    headers: { "cache-control": "no-store", "content-type": "application/json" },
+    body: { ok: false, error: { code, supported: [MCP_PROTOCOL_VERSION] } },
+  };
+}
+
 export interface DoorbellMcpRuntimeOptions {
   database: CommunityDatabase;
   registrationAuth: RegistrationAuthService;
@@ -245,23 +259,24 @@ export class DoorbellMcpRuntime {
       return transportAuthError("AUTH_INVALID");
     }
 
+    const isInitialize =
+      !Array.isArray(input.body) && isPlainObject(input.body) && input.body.method === "initialize";
+    if (!isInitialize && input.protocolVersion !== undefined) {
+      if (input.protocolVersion === null || input.protocolVersion === "") {
+        return protocolVersionError("MCP_PROTOCOL_VERSION_REQUIRED");
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(input.protocolVersion)) {
+        return protocolVersionError("MCP_PROTOCOL_VERSION_INVALID");
+      }
+      if (input.protocolVersion !== MCP_PROTOCOL_VERSION) {
+        return protocolVersionError("MCP_PROTOCOL_VERSION_UNSUPPORTED");
+      }
+    }
+    if (Array.isArray(input.body)) {
+      return this.#jsonResponse(jsonRpcFailure(null, -32600, "Invalid Request"));
+    }
     const context = this.#resolveContext(binding.residentId);
     void context.catch(() => undefined);
-    if (Array.isArray(input.body)) {
-      if (input.body.length === 0) {
-        return this.#jsonResponse(jsonRpcFailure(null, -32600, "Invalid Request"));
-      }
-      const responses: JsonRpcResponse[] = [];
-      for (const request of input.body) {
-        const response = await this.#dispatchOne(request, context);
-        if (response) {
-          responses.push(response);
-        }
-      }
-      return responses.length === 0
-        ? { statusCode: 202, headers: { "cache-control": "no-store" } }
-        : this.#jsonResponse(responses);
-    }
     const response = await this.#dispatchOne(input.body, context);
     return response
       ? this.#jsonResponse(response)
@@ -359,7 +374,8 @@ export class DoorbellMcpRuntime {
             ? request.params.protocolVersion
             : MCP_PROTOCOL_VERSION;
         return jsonRpcSuccess(id, {
-          protocolVersion: requestedVersion,
+          protocolVersion:
+            requestedVersion === MCP_PROTOCOL_VERSION ? requestedVersion : MCP_PROTOCOL_VERSION,
           capabilities: { tools: {} },
           serverInfo: { name: "doorbell-commons", version: "1.0.0" },
           instructions: DOORBELL_INITIALIZE_INSTRUCTIONS,

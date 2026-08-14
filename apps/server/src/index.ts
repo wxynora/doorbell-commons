@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { connectorDeliveryGenerationSchema } from "@doorbell/protocol";
 import { buildApp } from "./app.js";
 import { CommunityDatabase } from "./community-database.js";
 import { readDoorbellServerConfig } from "./config.js";
@@ -15,6 +18,28 @@ import { OneBotGroupMembershipClient } from "./qq-group-membership.js";
 import { RegistrationAuthService } from "./registration-auth.js";
 import { SharedMemeService } from "./shared-meme-service.js";
 
+function readDeliveryGenerationCredential(environment: NodeJS.ProcessEnv = process.env): string {
+  const credentialsDirectory = environment.CREDENTIALS_DIRECTORY?.trim();
+  if (!credentialsDirectory) {
+    throw new Error("The systemd delivery generation credential is required");
+  }
+  let rawCredential: string;
+  try {
+    rawCredential = readFileSync(join(credentialsDirectory, "delivery-generation"), "utf8");
+  } catch (error) {
+    throw new Error("The systemd delivery generation credential is required and must be readable", {
+      cause: error,
+    });
+  }
+  const candidate = rawCredential.endsWith("\n") ? rawCredential.slice(0, -1) : rawCredential;
+  const parsed = connectorDeliveryGenerationSchema.safeParse(candidate);
+  if (!parsed.success) {
+    throw new Error("The systemd delivery generation credential must contain one UUID");
+  }
+  return parsed.data;
+}
+
+const deliveryGeneration = readDeliveryGenerationCredential();
 const serverConfig = readDoorbellServerConfig();
 const database = new CommunityDatabase(serverConfig.databasePath);
 const groupMembership = new OneBotGroupMembershipClient({
@@ -45,7 +70,12 @@ const farmRewardGranter = new FarmRewardClient({
   serviceToken: serverConfig.farmServiceToken,
 });
 const mailboxService = new MailboxService({ database, farmRewardGranter });
-const connectorService = new ConnectorService({ database, registrationAuth, mailboxService });
+const connectorService = new ConnectorService({
+  database,
+  deliveryGeneration,
+  registrationAuth,
+  mailboxService,
+});
 const farmMcpMigration = new FarmMcpMigrationClient({
   apiBaseUrl: serverConfig.farmApiBaseUrl,
   requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,

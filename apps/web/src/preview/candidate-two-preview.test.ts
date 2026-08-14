@@ -393,6 +393,7 @@ test("copy-for-own-agent instructions use the official required env and workspac
     instructions,
     /DOORBELL_CONNECTOR_DATABASE_PATH="\/替换为本机绝对路径\/doorbell-connector\.sqlite"/,
   );
+  assert.match(instructions, /DOORBELL_CONNECTOR_HTTP_TIMEOUT_MS="300000"/);
   assert.match(instructions, /npm run build -w @doorbell\/connector/);
   assert.match(instructions, /npm run start -w @doorbell\/connector/);
   assert.match(instructions, /不会自动注册 AI/);

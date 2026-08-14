@@ -1,12 +1,17 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { once } from "node:events";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   connectorCredentialIssueSuccessSchema,
+  connectorEventFrameSchema,
+  connectorGenerationResetRequiredFrameSchema,
   connectorReadyFrameSchema,
+  connectorResyncRequiredFrameSchema,
   connectorServerErrorFrameSchema,
   connectorSettingsStatusSchema,
   connectorWelcomeMessage,
@@ -40,6 +45,9 @@ const NOW = Date.UTC(2026, 7, 12, 15, 0, 0);
 const HUMAN_SESSION_TOKEN = `dbc_${"S".repeat(43)}`;
 const FIRST_CONNECTOR_CREDENTIAL = `dbc_${"A".repeat(43)}`;
 const SECOND_CONNECTOR_CREDENTIAL = `dbc_${"B".repeat(43)}`;
+const DELIVERY_GENERATION = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const OLD_DELIVERY_GENERATION = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const SERVER_INDEX_PATH = fileURLToPath(new URL("./index.ts", import.meta.url));
 
 class FakeGroupMembership implements QqGroupMembershipReader {
   readonly members = new Set<string>();
@@ -111,6 +119,7 @@ async function openHarness(
   });
   const connectorService = new ConnectorService({
     database,
+    deliveryGeneration: DELIVERY_GENERATION,
     registrationAuth,
     mailboxService,
     generateCredential: () => credentials.shift() ?? `dbc_${"Z".repeat(43)}`,
@@ -209,12 +218,22 @@ async function openSocket(url: string): Promise<WebSocket> {
   return socket;
 }
 
-function hello(credential: string, lastPersistedCursor = 0) {
+async function queuedFrameCountAfterDelay(socket: WebSocket): Promise<number> {
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  return socketInboxes.get(socket)?.frames.length ?? 0;
+}
+
+function hello(
+  credential: string,
+  generation: string | null = DELIVERY_GENERATION,
+  lastPersistedCursor = 0,
+) {
   return {
     type: "hello",
-    protocol_version: "1.0",
-    capabilities: ["event_stream_v1", "resync_v1"],
+    protocol_version: "2.0",
+    capabilities: ["event_stream_v2", "resync_v2"],
     credential,
+    generation,
     last_persisted_cursor: lastPersistedCursor,
   };
 }
@@ -228,6 +247,31 @@ async function issueCredential(harness: ConnectorHarness) {
   });
   assert.equal(response.statusCode, 200);
   return connectorCredentialIssueSuccessSchema.parse(response.json());
+}
+
+function runServerIndex(credentialsDirectory: string) {
+  const environment: NodeJS.ProcessEnv = {
+    ...process.env,
+    CREDENTIALS_DIRECTORY: credentialsDirectory,
+  };
+  for (const name of [
+    "ONEBOT_API_BASE_URL",
+    "ONEBOT_API_TOKEN",
+    "DOORBELL_QQ_GROUP_ID",
+    "DOORBELL_DATABASE_PATH",
+    "DOORBELL_UPSTREAM_REQUEST_TIMEOUT_MS",
+    "DOORBELL_PUBLIC_BASE_URL",
+    "DOORBELL_FARM_API_BASE_URL",
+    "DOORBELL_FARM_HUMAN_UI_BASE_URL",
+    "DOORBELL_FARM_SERVICE_TOKEN",
+  ]) {
+    delete environment[name];
+  }
+  return spawnSync(process.execPath, ["--import", "tsx", SERVER_INDEX_PATH], {
+    encoding: "utf8",
+    env: environment,
+    timeout: 3_000,
+  });
 }
 
 test("Connector credential control separates the human Cookie and stores only a digest", async () => {
@@ -333,7 +377,7 @@ test("Connector negotiates version, replaces the resident connection, and times 
     const incompatible = await openSocket(harness.wsUrl);
     const incompatibleFrame = nextJson(incompatible);
     incompatible.send(
-      JSON.stringify({ ...hello(FIRST_CONNECTOR_CREDENTIAL), protocol_version: "2" }),
+      JSON.stringify({ ...hello(FIRST_CONNECTOR_CREDENTIAL), protocol_version: "1.0" }),
     );
     assert.equal(
       connectorServerErrorFrameSchema.parse(await incompatibleFrame).code,
@@ -345,7 +389,7 @@ test("Connector negotiates version, replaces the resident connection, and times 
     missingCapability.send(
       JSON.stringify({
         ...hello(FIRST_CONNECTOR_CREDENTIAL),
-        capabilities: ["event_stream_v1"],
+        capabilities: ["event_stream_v2"],
       }),
     );
     assert.equal(
@@ -531,6 +575,178 @@ test("Connector credential reads only its resident mailbox and marks only reside
   }
 });
 
+test("Connector v2 requires a matching generation reset ACK before event delivery", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "doorbell-connector-generation-reset-"));
+  const harness = await openHarness(join(directory, "doorbell.sqlite"), [
+    FIRST_CONNECTOR_CREDENTIAL,
+  ]);
+  let socket: WebSocket | undefined;
+  try {
+    const created = createCommunity(harness);
+    await issueCredential(harness);
+    const firstEvent = harness.connectorService.emitEvent(
+      created.community.resident.residentId,
+      "foundation.fact",
+      { value: 1 },
+    );
+
+    socket = await openSocket(harness.wsUrl);
+    const resetFrame = nextJson(socket);
+    socket.send(JSON.stringify(hello(FIRST_CONNECTOR_CREDENTIAL, null, 0)));
+    assert.deepEqual(connectorGenerationResetRequiredFrameSchema.parse(await resetFrame), {
+      type: "generation_reset_required",
+      generation: DELIVERY_GENERATION,
+      reason: "initial_sync",
+    });
+    assert.equal(await queuedFrameCountAfterDelay(socket), 0);
+
+    const repeatedReset = nextJson(socket);
+    socket.send(
+      JSON.stringify({
+        type: "generation_reset_ack",
+        generation: OLD_DELIVERY_GENERATION,
+      }),
+    );
+    assert.deepEqual(connectorGenerationResetRequiredFrameSchema.parse(await repeatedReset), {
+      type: "generation_reset_required",
+      generation: DELIVERY_GENERATION,
+      reason: "generation_changed",
+    });
+    assert.equal(await queuedFrameCountAfterDelay(socket), 0);
+
+    const readyAfterReset = nextJson(socket);
+    const deliveredAfterReset = nextJson(socket);
+    socket.send(JSON.stringify({ type: "generation_reset_ack", generation: DELIVERY_GENERATION }));
+    const ready = connectorReadyFrameSchema.parse(await readyAfterReset);
+    assert.equal(ready.protocol_version, "2.0");
+    assert.equal(ready.generation, DELIVERY_GENERATION);
+    assert.equal(ready.resume_after_cursor, 0);
+    const delivered = connectorEventFrameSchema.parse(await deliveredAfterReset).event;
+    assert.equal(delivered.generation, DELIVERY_GENERATION);
+    assert.equal(delivered.event_id, firstEvent.eventId);
+    assert.equal(delivered.cursor, 1);
+
+    socket.send(
+      JSON.stringify({
+        type: "ack",
+        generation: DELIVERY_GENERATION,
+        event_id: delivered.event_id,
+        cursor: delivered.cursor,
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.equal(
+      harness.database.getConnectorLastAckedCursor(
+        DELIVERY_GENERATION,
+        created.community.resident.residentId,
+      ),
+      1,
+    );
+
+    const wrongGenerationReset = nextJson(socket);
+    socket.send(
+      JSON.stringify({
+        type: "ack",
+        generation: OLD_DELIVERY_GENERATION,
+        event_id: delivered.event_id,
+        cursor: delivered.cursor,
+      }),
+    );
+    assert.deepEqual(
+      connectorGenerationResetRequiredFrameSchema.parse(await wrongGenerationReset),
+      {
+        type: "generation_reset_required",
+        generation: DELIVERY_GENERATION,
+        reason: "generation_changed",
+      },
+    );
+    const secondEvent = harness.connectorService.emitEvent(
+      created.community.resident.residentId,
+      "foundation.fact",
+      { value: 2 },
+    );
+    assert.equal(secondEvent.cursor, 2);
+    assert.equal(await queuedFrameCountAfterDelay(socket), 0);
+
+    const readyAfterWrongGeneration = nextJson(socket);
+    const replayedFirstFrame = nextJson(socket);
+    const replayedSecondFrame = nextJson(socket);
+    socket.send(JSON.stringify({ type: "generation_reset_ack", generation: DELIVERY_GENERATION }));
+    assert.equal(
+      connectorReadyFrameSchema.parse(await readyAfterWrongGeneration).resume_after_cursor,
+      0,
+    );
+    assert.equal(
+      connectorEventFrameSchema.parse(await replayedFirstFrame).event.event_id,
+      firstEvent.eventId,
+    );
+    assert.equal(
+      connectorEventFrameSchema.parse(await replayedSecondFrame).event.event_id,
+      secondEvent.eventId,
+    );
+
+    const wrongGenerationResync = nextJson(socket);
+    socket.send(
+      JSON.stringify({
+        type: "resync_request",
+        generation: OLD_DELIVERY_GENERATION,
+        after_cursor: 0,
+        reason: "cursor_gap",
+      }),
+    );
+    assert.deepEqual(
+      connectorGenerationResetRequiredFrameSchema.parse(await wrongGenerationResync),
+      {
+        type: "generation_reset_required",
+        generation: DELIVERY_GENERATION,
+        reason: "generation_changed",
+      },
+    );
+    assert.equal(
+      harness.database.getConnectorLastAckedCursor(
+        DELIVERY_GENERATION,
+        created.community.resident.residentId,
+      ),
+      1,
+    );
+  } finally {
+    socket?.close();
+    await harness.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("same-generation hello fails closed when its cursor is ahead of the server generation tail", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "doorbell-connector-generation-tail-"));
+  const harness = await openHarness(join(directory, "doorbell.sqlite"), [
+    FIRST_CONNECTOR_CREDENTIAL,
+  ]);
+  let socket: WebSocket | undefined;
+  try {
+    const created = createCommunity(harness);
+    await issueCredential(harness);
+    harness.connectorService.emitEvent(created.community.resident.residentId, "foundation.fact", {
+      value: 1,
+    });
+
+    socket = await openSocket(harness.wsUrl);
+    const errorFrame = nextJson(socket);
+    const closed = once(socket, "close");
+    socket.send(JSON.stringify(hello(FIRST_CONNECTOR_CREDENTIAL, DELIVERY_GENERATION, 2)));
+    assert.deepEqual(connectorServerErrorFrameSchema.parse(await errorFrame), {
+      type: "error",
+      code: "delivery_generation_inconsistent",
+    });
+    const [closeCode, closeReason] = await closed;
+    assert.equal(closeCode, 4000);
+    assert.equal(String(closeReason), "delivery_generation_inconsistent");
+  } finally {
+    socket?.close();
+    await harness.close();
+    rmSync(directory, { force: true, recursive: true });
+  }
+});
+
 test("Connector events keep resident order, reject ACK gaps, replay, and survive server restart", async () => {
   const directory = mkdtempSync(join(tmpdir(), "doorbell-connector-events-"));
   const databasePath = join(directory, "doorbell.sqlite");
@@ -569,12 +785,14 @@ test("Connector events keep resident order, reject ACK gaps, replay, and survive
     socket.send(
       JSON.stringify({
         type: "ack",
+        generation: DELIVERY_GENERATION,
         event_id: deliveredSecond.event.event_id,
         cursor: 2,
       }),
     );
-    assert.deepEqual(await resyncFrame, {
+    assert.deepEqual(connectorResyncRequiredFrameSchema.parse(await resyncFrame), {
       type: "resync_required",
+      generation: DELIVERY_GENERATION,
       after_cursor: 0,
       reason: "ack_gap",
     });
@@ -586,12 +804,29 @@ test("Connector events keep resident order, reject ACK gaps, replay, and survive
     };
     assert.equal(replayedFirst.event.cursor, 1);
     assert.equal(replayedSecond.event.cursor, 2);
-    socket.send(JSON.stringify({ type: "ack", event_id: firstEvent.eventId, cursor: 1 }));
-    socket.send(JSON.stringify({ type: "ack", event_id: secondEvent.eventId, cursor: 2 }));
+    socket.send(
+      JSON.stringify({
+        type: "ack",
+        generation: DELIVERY_GENERATION,
+        event_id: firstEvent.eventId,
+        cursor: 1,
+      }),
+    );
+    socket.send(
+      JSON.stringify({
+        type: "ack",
+        generation: DELIVERY_GENERATION,
+        event_id: secondEvent.eventId,
+        cursor: 2,
+      }),
+    );
 
     await new Promise((resolve) => setTimeout(resolve, 10));
     assert.equal(
-      harness.database.getConnectorLastAckedCursor(created.community.resident.residentId),
+      harness.database.getConnectorLastAckedCursor(
+        DELIVERY_GENERATION,
+        created.community.resident.residentId,
+      ),
       2,
     );
     socket.close(1000, "restart_test");
@@ -603,7 +838,7 @@ test("Connector events keep resident order, reject ACK gaps, replay, and survive
     harness.membership.members.add("10001");
     socket = await openSocket(harness.wsUrl);
     const restartedReadyFrame = nextJson(socket);
-    socket.send(JSON.stringify(hello(FIRST_CONNECTOR_CREDENTIAL, 2)));
+    socket.send(JSON.stringify(hello(FIRST_CONNECTOR_CREDENTIAL, DELIVERY_GENERATION, 2)));
     assert.equal(connectorReadyFrameSchema.parse(await restartedReadyFrame).resume_after_cursor, 2);
     const eventAfterRestart = harness.connectorService.emitEvent(
       created.community.resident.residentId,
@@ -617,5 +852,30 @@ test("Connector events keep resident order, reject ACK gaps, replay, and survive
     socket?.close();
     await harness.close().catch(() => undefined);
     rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("ordinary server startup requires one valid systemd delivery-generation credential", () => {
+  const directory = mkdtempSync(join(tmpdir(), "doorbell-delivery-generation-startup-"));
+  try {
+    const missing = runServerIndex(directory);
+    assert.notEqual(missing.status, 0);
+    assert.match(missing.stderr, /delivery generation credential/i);
+    assert.deepEqual(readdirSync(directory), []);
+
+    writeFileSync(join(directory, "delivery-generation"), "not-a-uuid\n", { mode: 0o600 });
+    const malformed = runServerIndex(directory);
+    assert.notEqual(malformed.status, 0);
+    assert.match(malformed.stderr, /delivery generation credential/i);
+
+    writeFileSync(join(directory, "delivery-generation"), `${DELIVERY_GENERATION}\n`, {
+      mode: 0o600,
+    });
+    const validCredential = runServerIndex(directory);
+    assert.notEqual(validCredential.status, 0);
+    assert.doesNotMatch(validCredential.stderr, /delivery generation credential/i);
+    assert.match(validCredential.stderr, /ONEBOT_API_BASE_URL is required/);
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
   }
 });

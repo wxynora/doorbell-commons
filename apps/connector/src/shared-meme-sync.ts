@@ -15,6 +15,7 @@ import {
   sharedMemeLibraryMetadataSchema,
 } from "@doorbell/protocol";
 import Database from "better-sqlite3";
+import { validateConnectorServerWebSocketUrl } from "./connector-config.js";
 import type { ConnectorStateDatabase } from "./connector-state.js";
 
 type SharedMemeSyncErrorCode =
@@ -42,6 +43,7 @@ class SharedMemeSyncError extends Error {
 export interface SharedMemeSynchronizerOptions {
   serverWebSocketUrl: string;
   credential: string;
+  httpRequestTimeoutMs: number;
   state: ConnectorStateDatabase;
   snapshotPath: string;
   fetchImplementation?: typeof fetch;
@@ -55,16 +57,21 @@ export class SharedMemeSynchronizer {
   readonly #state: ConnectorStateDatabase;
   readonly #snapshotPath: string;
   readonly #fetch: typeof fetch;
+  readonly #httpRequestTimeoutMs: number;
   readonly #now: () => number;
   readonly #replaceFile: (source: string, target: string) => void;
   #activeSync: Promise<boolean> | undefined;
 
   constructor(options: SharedMemeSynchronizerOptions) {
-    this.#serverWebSocketUrl = options.serverWebSocketUrl;
+    if (!Number.isSafeInteger(options.httpRequestTimeoutMs) || options.httpRequestTimeoutMs <= 0) {
+      throw new TypeError("Connector HTTP timeout must be a positive integer in milliseconds");
+    }
+    this.#serverWebSocketUrl = validateConnectorServerWebSocketUrl(options.serverWebSocketUrl);
     this.#credential = options.credential;
     this.#state = options.state;
     this.#snapshotPath = options.snapshotPath;
     this.#fetch = options.fetchImplementation ?? fetch;
+    this.#httpRequestTimeoutMs = options.httpRequestTimeoutMs;
     this.#now = options.now ?? Date.now;
     this.#replaceFile = options.replaceFile ?? renameSync;
   }
@@ -110,10 +117,7 @@ export class SharedMemeSynchronizer {
         return false;
       }
 
-      const snapshot = await this.#downloadSnapshot();
-      if (snapshot.length !== metadata.size_bytes) {
-        throw new SharedMemeSyncError("size_mismatch");
-      }
+      const snapshot = await this.#downloadSnapshot(metadata.size_bytes);
       const checksum = createHash("sha256").update(snapshot).digest("hex");
       if (checksum !== metadata.checksum_sha256) {
         throw new SharedMemeSyncError("checksum_mismatch");
@@ -159,6 +163,7 @@ export class SharedMemeSynchronizer {
     try {
       response = await this.#fetch(this.#serverUrl("/api/connector/shared-memes/version"), {
         headers: { authorization: `Bearer ${this.#credential}` },
+        signal: AbortSignal.timeout(this.#httpRequestTimeoutMs),
       });
     } catch {
       throw new SharedMemeSyncError("metadata_unavailable");
@@ -179,11 +184,12 @@ export class SharedMemeSynchronizer {
     return metadata.data;
   }
 
-  async #downloadSnapshot(): Promise<Buffer> {
+  async #downloadSnapshot(expectedSize: number): Promise<Buffer> {
     let response: Response;
     try {
       response = await this.#fetch(this.#serverUrl("/api/connector/shared-memes/snapshot"), {
         headers: { authorization: `Bearer ${this.#credential}` },
+        signal: AbortSignal.timeout(this.#httpRequestTimeoutMs),
       });
     } catch {
       throw new SharedMemeSyncError("snapshot_unavailable");
@@ -191,11 +197,43 @@ export class SharedMemeSynchronizer {
     if (!response.ok || response.headers.get("content-type") !== "application/vnd.sqlite3") {
       throw new SharedMemeSyncError("snapshot_unavailable");
     }
-    try {
-      return Buffer.from(await response.arrayBuffer());
-    } catch {
+    if (!response.body) {
       throw new SharedMemeSyncError("snapshot_unavailable");
     }
+
+    const reader = response.body.getReader();
+    const chunks: Buffer[] = [];
+    let receivedSize = 0;
+    try {
+      while (true) {
+        let result: ReadableStreamReadResult<Uint8Array>;
+        try {
+          result = await reader.read();
+        } catch {
+          throw new SharedMemeSyncError("snapshot_unavailable");
+        }
+        if (result.done) {
+          break;
+        }
+        const chunk = Buffer.from(result.value);
+        if (receivedSize + chunk.length > expectedSize) {
+          try {
+            await reader.cancel();
+          } catch {
+            // The size violation remains authoritative even if stream cancellation also fails.
+          }
+          throw new SharedMemeSyncError("size_mismatch");
+        }
+        receivedSize += chunk.length;
+        chunks.push(chunk);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    if (receivedSize !== expectedSize) {
+      throw new SharedMemeSyncError("size_mismatch");
+    }
+    return Buffer.concat(chunks, receivedSize);
   }
 
   #validateExistingSnapshot(metadata: SharedMemeLibraryMetadata): boolean {

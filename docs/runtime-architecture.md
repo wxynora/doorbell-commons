@@ -84,7 +84,7 @@ The server contains `/api/health`, a narrowly scoped QQ group-eligibility check,
 lookup, the human/resident/home/farm registration and login slice, a session-bound thin proxy for the
 existing farm human UI, the Phase 1A Connector credential/WebSocket/event-recovery foundation, and
 the authoritative shared-meme content/release service. It does not yet contain lounge messages,
-private visits, moderation, game saves, shared-meme frontend/model injection, or production
+private visits, moderation, game saves, shared-meme model injection, or production
 integration.
 
 ## Confirmed Phase 1 identity and observer boundary
@@ -136,7 +136,7 @@ Human registration/login uses these routes:
 | Route | Behavior |
 | --- | --- |
 | `POST /api/registration/farm-lookup` | Accepts only `farm_doorplate`, calls the external farm's existing read-only visit contract, and returns the exact current `farm_name` without writing Doorbell identity state |
-| `POST /api/auth/session` | Accepts exact returning-login, first-registration start, existing-farm binding, or new-farm creation fields. Both registration completions recheck QQ membership and atomically create the Doorbell identity/session. Existing-farm binding validates a trusted-origin `farm_human_url`; new-farm creation uses a stable creation ID and the configured service-auth farm endpoint, then returns the trusted Human URL only in that one `no-store` success response. |
+| `POST /api/auth/session` | Accepts exact returning-login, first-registration start, existing-farm binding, or new-farm creation fields. Returning password failures are counted per QQ; ten failures within fifteen minutes lock that account for thirty minutes while preserving the generic invalid-credentials response. Both registration completions recheck QQ membership and atomically create the Doorbell identity/session. Existing-farm binding validates a trusted-origin `farm_human_url`; new-farm creation uses a stable creation ID and the configured service-auth farm endpoint, then returns the trusted Human URL only in that one `no-store` success response. |
 | `GET /api/auth/session` | Reads the browser session, live-checks current QQ membership, and returns the account plus its resident, home, and farm binding |
 | `GET /api/mailbox` | Live-checks the human session and QQ membership, then lists the current home’s letters newest-first with optional `system`／`farm`／`lingye` filtering and a fixed 8 letters per page; list rows omit the body |
 | `GET /api/mailbox/:letterId` | Live-checks the same human authority, returns one letter from the current home only, and atomically marks only the human audience as read |
@@ -175,29 +175,48 @@ The server stores only SHA-256 credential digests. Credential replacement closes
 with `credential_replaced`; revocation closes it with `credential_revoked`; a new authenticated
 connection for the same resident closes the previous socket with `connection_replaced`.
 
-The official Connector opens outbound `/api/connector/ws`, sends protocol `1.0`, the required
-`event_stream_v1` and `resync_v1` capabilities, its independent credential, and its last locally
-persisted cursor. The server performs live QQ membership verification during the handshake,
-explicitly separates upstream membership unavailability from authentication rejection, then returns
-the fixed welcome `May every ring lead you home.` only after success. Server heartbeats are sent every
-15 seconds and a connection without a valid heartbeat acknowledgement for 45 seconds is closed. The
-official client reconnects after 1 second and doubles up to 30 seconds; these are transport
-engineering values, not room, message, retry-count, or model-behavior limits.
+The official Connector opens outbound `/api/connector/ws`; non-loopback targets require `wss`, while
+plain `ws` is accepted only for `localhost`, `127.0.0.1`, or `[::1]` development. It now speaks only
+the breaking protocol `2.0` with the complete `event_stream_v2` and `resync_v2` capability set;
+cursor-only v1 is rejected and there is no downgrade or dual-stack path. `hello`, `ready`, event,
+ACK, resync, and generation-reset delivery frames explicitly carry the delivery generation. The
+server performs live QQ membership verification during the handshake, explicitly separates upstream
+membership unavailability from authentication rejection, then returns the fixed welcome
+`May every ring lead you home.` only after success. Server heartbeats are sent every 15 seconds and a
+connection without a valid heartbeat acknowledgement for 45 seconds is closed. The official client
+reconnects after 1 second and doubles up to 30 seconds; these are transport engineering values, not
+room, message, retry-count, or model-behavior limits.
 
-Each resident's server event cursor starts at 1 and increases in SQLite. Events carry a stable UUID,
-cursor, type, creation time, and opaque structured public payload. The server only advances the
-continuous ACK cursor by one matching event. The Connector commits an event to its local SQLite
-transaction before sending ACK; duplicate cursor/event pairs are ACKed without a second insert, and
-a gap sends `resync_request` instead of moving the cursor. Both sides retain their cursor/event state
-across restart.
+Server events are identified by `(generation, resident_id, cursor)`. Cursor starts at 1 and only
+increases inside that one generation and resident; it has no cross-generation ordering meaning.
+Events also carry a stable UUID, type, creation time, and opaque structured public payload. The
+server advances the continuous ACK cursor only for the next matching event in the current
+generation. The Connector commits an event to its local SQLite transaction before sending ACK;
+duplicate generation/cursor/event tuples are ACKed without a second insert, a gap sends
+`resync_request`, and an event from another generation is neither stored nor ACKed.
 
-The official Connector listens only on `127.0.0.1` and exposes fixed versioned endpoints:
+On first v2 use or an authority change, the server sends `generation_reset_required` before `ready`
+and does not deliver events. The Connector atomically clears its old public event cache and cursor,
+stores the new generation at cursor 0, and only then returns `generation_reset_ack`; the server then
+sends `ready` and replays the current generation. Repeated reset after a crash between local commit
+and ACK is idempotent. A same-generation client checkpoint above the server's event tail is treated
+as evidence of a possible database restore without generation rotation: the server returns
+`delivery_generation_inconsistent` and closes fail-closed instead of guessing, rotating, or using
+ordinary `cursor_ahead` recovery.
 
-- `GET /v1/health` for process/API compatibility;
-- `GET /v1/status` for connection state, protocol version, cursor, last connection, error code, and
-  the welcome only after a real successful connection;
-- `GET /v1/events?after_cursor=...` for ordered local reads;
-- `GET /v1/events/stream?after_cursor=...` for Server-Sent Event subscription.
+The official Connector listens only on `127.0.0.1` and exposes only fixed `/v2` endpoints:
+
+- `GET /v2/health` for process/API compatibility;
+- `GET /v2/status` for connection state, protocol version, current delivery generation, cursor, last
+  connection, error code, and the welcome only after a real successful connection;
+- `GET /v2/events?delivery_generation=...&after_cursor=...` for ordered local reads;
+- `GET /v2/events/stream?delivery_generation=...&after_cursor=...` for Server-Sent Event subscription.
+
+Event reads require both generation and cursor. A generation already stale at request time returns
+HTTP 409 `delivery_generation_changed` before an SSE stream opens. An open SSE receives one
+`generation_changed` event and is then closed when local reset commits; historical and live SSE IDs
+are `generation:cursor`, so a downstream consumer cannot confuse equal cursors from different
+timelines.
 
 The Connector does not run a model, register a model-visible tool, manage personality/memory/session,
 or invoke the independent bell bridge. This foundation contains no lounge, visit, farm, or weather-
@@ -234,11 +253,15 @@ URL.
 The official Connector keeps synchronization metadata in its local state SQLite and the applied
 snapshot in a separate `shared-memes.sqlite` file beside that state database. At startup, after a
 successful connection, and after a new version hint, it compares metadata and downloads a complete
-snapshot to a same-directory mode-0600 temporary file. It verifies HTTP type, byte size, SHA-256,
+snapshot under the required 300000-millisecond total HTTP deadline. Snapshot bytes are streamed under
+the authoritative metadata size ceiling instead of being buffered without a limit; timeout, an
+oversized or broken stream, or any later validation failure retains the old snapshot and releases the
+active sync so a later hint or reconnect can retry. The Connector writes a same-directory mode-0600
+temporary file and verifies HTTP type, exact byte size, SHA-256,
 schema version, SQLite integrity, foreign keys, approved table names, and entry count before atomic
 replacement. A duplicate or replayed version is idempotent; a stale version, bad checksum, invalid
 SQLite, or failed rename keeps both the previous file and applied version. Loopback
-`GET /v1/shared-memes/status` exposes only sync status, applied version, entry count, last successful
+`GET /v2/shared-memes/status` exposes only sync status, applied version, entry count, last successful
 sync time, and a bounded error code. It does not expose a credential, contributor, content body, model
 tool, sampling rule, or injection behavior.
 
@@ -289,7 +312,13 @@ The community server implements fixed `POST /mcp` Streamable HTTP request handli
 separate `dbm_` Bearer credential. Missing or invalid credentials fail at HTTP authentication before
 tool dispatch. Every authenticated request resolves credential → resident → home → farm binding and
 live-checks current QQ membership; callers cannot select their own resident, home, farm, humanKey, or
-token. The endpoint supports initialize, ping, tools/list, tools/call, batch, and notification. It
+token. The runtime supports MCP `2025-06-18`. Initialize needs no protocol-version header: a matching
+client request returns that version, while another requested version returns the server's actual
+`2025-06-18` for explicit negotiation. Every non-initialize HTTP request must carry
+`MCP-Protocol-Version: 2025-06-18`; a missing, malformed, or unsupported value returns HTTP 400 at
+the transport layer before JSON-RPC or tool dispatch. The endpoint supports initialize, ping,
+tools/list, tools/call, and notification. Because this protocol version removed JSON-RPC batching,
+an array envelope returns one `-32600` response and executes no contained request. It
 lists exactly one `doorbell` tool. Its public input Schema is deliberately thin and strict at the
 top level: one full canonical `op` from the registry plus an `args` object. It does not accept bare
 actions or infer namespaces.
@@ -328,11 +357,13 @@ detail writes only the human row. The current human API is Cookie-authenticated,
 membership on every request, never lets the browser choose a home, and uses stable UUID letter IDs.
 
 Categories currently accepted by the shared protocol are `system`, `farm`, and `lingye`. Attachment
-metadata can report `farm_reward` as `available` or `claimed`, but this foundation has no attachment-
-claim route and no production letter producer. In particular, the approved welcome copy is not sent:
-the investigated farm client exposes reads and the existing human HTML action proxy, but no supported
-idempotent service contract that can grant a random SSR seed and 200 silver. Doorbell does not modify
-the farm runtime, write its saves, or represent that reward as available without a real grant.
+metadata reports `farm_reward` as `available` or `claimed`. Human and Connector-authenticated claim
+routes derive the one home and bound farm from authenticated state; neither accepts a caller-selected
+home, farm, Human key, or grant ID. Completed registration creates the approved welcome letter, and
+the service-authenticated farm contract grants one random existing SSR seed plus 200 silver under a
+stable globally persisted receipt. Doorbell marks the attachment claimed only after verifying that
+receipt; transport failure leaves it available for explicit retry. Welcome delivery failure after a
+session commit does not turn successful registration or login into HTTP failure.
 
 The mailbox is the single notification fact source. Future system, farm, or Lingye producers must use
 the same internal delivery boundary rather than create another body, unread table, or notification
@@ -366,8 +397,10 @@ pool. This intentionally does not invent observed temperature, rain millimetres,
 percentage without a real observation contract, so the approved measurement-value copy templates
 remain unrendered. A future visit session must capture the home's `weather_revision` on entry and
 keep that revision for the whole visit; no visit route or session is implemented in this slice. No
-model generates weather or weather copy. Shared-meme list/add/version/sync routes and account-
-deletion routes are also absent, while ordinary logout keeps using `DELETE /api/auth/session`.
+model generates weather or weather copy. Shared-meme human list／detail／add, Connector
+version／snapshot, and official synchronization routes are implemented in their dedicated section;
+model injection and account-deletion routes remain absent, while ordinary logout keeps using
+`DELETE /api/auth/session`.
 
 The four exact `POST /api/auth/session` shapes are:
 
@@ -463,6 +496,15 @@ the full resident, home, farm binding, and credential combination receives
 `registration_profile_required`; the product exposes no completion, credential-rebind, farm-unbind,
 or change-binding operation for such records.
 
+Known accounts share one persistent failure window across source addresses. The tenth wrong password
+inside fifteen minutes creates a thirty-minute lock; an active lock is not extended by more attempts.
+A correct password cannot bypass the lock, and the public response remains `invalid_credentials`.
+Successful session creation clears the failure and lock rows atomically. Unknown QQ values still run
+the same dummy scrypt but never create login-security rows. Password reset also clears the state, and
+`npm run account:unlock -w @doorbell/server -- <qq-number>` clears it early without changing the
+password. Nginx applies the confirmed per-IP and endpoint-wide leaky buckets only to exact
+`POST /api/auth/session`, returning HTTP 429 above either limit.
+
 The account stores its last confirmed membership state. A confirmed non-member result marks the
 account inactive and revokes all active browser sessions belonging to it in one database
 transaction. A OneBot outage returns `onebot_unavailable` and does not change membership state or
@@ -470,7 +512,11 @@ revoke sessions. Rejoining the group and logging in with the saved password reac
 human account and its existing resident/home/farm combination.
 
 Browser session tokens are random opaque values. Only their SHA-256 digests are stored in SQLite;
-the HttpOnly, SameSite=Lax Cookie has no Doorbell business expiry. The shared registration code is
+the HttpOnly, SameSite=Lax Cookie has no Doorbell business expiry and is scoped to `Path=/api` for
+both issue and clear. The nginx farm and farm-test proxies additionally remove the Cookie header
+before forwarding. This prevents ordinary browser navigation from carrying the community token into
+the farm processes; it does not make same-origin farm JavaScript a separate origin from `/api`.
+The shared registration code is
 stored in plaintext because the administrator must be able to read and post it; the SQLite file is
 set to mode `0600`, and newly created parent directories request mode `0700`. Existing-farm registration
 does not store the submitted `farm_human_url`; it stores only the extracted farm human credential. That
@@ -479,8 +525,9 @@ encryption or key-management foundation, so internal `farm_human_key` remains pl
 SQLite file. Human login passwords are never stored: `human_accounts.password_credential` contains
 only a versioned scrypt parameter string, per-account random salt, and derived digest. The server-only
 `npm run account:reset-password -w @doorbell/server -- <qq-number>` command reads and confirms the
-replacement through a hidden interactive terminal prompt, writes a new credential, and revokes all
-active browser sessions for that account. There is no public password-recovery route. A newly created
+replacement through a hidden interactive terminal prompt, writes a new credential, clears login
+failures／locks, and revokes all active browser sessions for that account. There is no public
+password-recovery route. A newly created
 farm's trusted Human URL is returned only in that creation success response with `Cache-Control:
 no-store`; it is not available from later session reads or logins. The key is never returned as a
 separate field, and neither URL nor key appears in current-session, overview, error, or proxy APIs or
@@ -488,9 +535,12 @@ application error logs. File copying or host/database permission
 compromise can therefore expose the key; the file and host permission boundary is the current
 explicit tradeoff.
 
-The Doorbell server SQLite currently uses schema version 1 in SQLite `PRAGMA user_version` and
-contains twenty-three tables. Opening an existing unversioned database runs the two historical
-identity-column additions and the version advance in one transaction; opening a database from a
+The Doorbell server SQLite currently uses schema version 3 in SQLite `PRAGMA user_version` and
+contains twenty-five tables. Opening an existing unversioned database first runs the historical
+identity-column additions and advances to v1, then the ordered v2 migration adds login failures and
+locks without replacing existing data. The ordered v3 migration changes Connector delivery identity
+from resident-local cursor alone to `(generation,resident_id,cursor)` and preserves pre-v3 delivery
+rows under a dedicated legacy generation instead of relabelling them as the current timeline. Opening a database from a
 newer unsupported schema version fails before table initialization. Future schema changes must add
 an ordered migration and advance this version instead of relying only on `CREATE TABLE IF NOT EXISTS`.
 
@@ -504,6 +554,8 @@ The current tables are:
 - `human_accounts` for the stable account, QQ number, versioned salted password credential, creation
   time, membership status, last membership check, and confirmed inactive time;
 - `human_sessions` for token digests, account ownership, creation time, and revocation time.
+- `human_login_failures` for known-account password-failure timestamps inside the active window;
+- `human_login_locks` for at most one known-account lock expiry. Unknown QQ values enter neither table.
 - `residents` for one stable resident ID and exact stored resident name per human account;
 - `homes` for one stable home ID and exact stored home name per resident;
 - `farm_bindings` for the unique external `farm_doorplate` and server-only `farm_human_key` bound to
@@ -522,8 +574,11 @@ The current tables are:
   times; replaced or revoked plaintext credentials are not retained.
 - `mcp_access_bindings` for one resident's farm-migration receipt state and at most one active hashed
   Doorbell MCP credential; plaintext credentials are never stored.
-- `connector_delivery_state` for one resident's last allocated and last continuously ACKed cursors.
-- `connector_events` for stable event IDs and resident-local ordered replay payloads.
+- `connector_delivery_state` for one generation and resident's last allocated and last continuously
+  ACKed cursors.
+- `connector_events` for stable event IDs and replay payloads keyed by
+  `(generation,resident_id,cursor)`; generation rotation does not delete rows that remain in the
+  restored database.
 - `shared_meme_entries` for authoritative canonical content and its optional descriptive fields;
 - `shared_meme_normalized_keys` for one global exact-duplicate namespace shared by canonical terms and
   aliases;
@@ -543,11 +598,13 @@ The human API exposes `GET /api/mailbox`, `GET /api/mailbox/:letterId`, and
 `GET /api/connector/mailbox`, `GET /api/connector/mailbox/:letterId`, and
 `POST /api/connector/mailbox/:letterId/claim` routes; every call rechecks live QQ membership and
 derives the one home from the authenticated resident. The official Connector forwards these as
-loopback-only `/v1/mailbox`, `/v1/mailbox/:letterId`, and
-`POST /v1/mailbox/:letterId/claim` without storing letter content locally or invoking a model/bell.
+loopback-only `/v2/mailbox`, `/v2/mailbox/:letterId`, and
+`POST /v2/mailbox/:letterId/claim` without storing letter content locally or invoking a model/bell.
 
 Completed registration idempotently creates the approved welcome letter with one shared
-`farm_reward` attachment. Claiming never accepts a browser-supplied farm target: Doorbell reads the
+`farm_reward` attachment. Welcome delivery happens after the identity/session transaction; any
+delivery exception, including a pre-existing stable key with older content, is logged by error class
+without turning the already-created session into an HTTP login failure. Claiming never accepts a browser-supplied farm target: Doorbell reads the
 bound server-only Human key and calls the farm's authenticated
 `POST /internal/doorbell/welcome-reward`. The farm persists a global grant-ID receipt in the same
 atomic world save that adds one randomly selected existing SSR seed and 200 silver. A repeated grant
@@ -555,9 +612,27 @@ returns the original success without a second settlement; a grant ID cannot targ
 Doorbell marks the shared attachment `claimed` only after verifying that receipt. Transport failure
 leaves it `available` for a later explicit retry and does not trigger an automatic retry.
 
-The official Connector uses a separate local SQLite file containing only its continuous persisted
-cursor, diagnostic state, welcome-received fact, and locally delivered public event envelopes. It
-does not store the Connector credential; the credential remains process configuration.
+The official Connector uses a separate local SQLite file containing only its current delivery
+generation/cursor checkpoint, diagnostic state, welcome-received fact, and locally delivered public
+event envelopes. Its local schema version is 2. The v1-to-v2 migration atomically clears the old
+cursor-only event cache, sets generation to unset and cursor to 0; a later real generation change
+uses the same atomic reset and never joins old cursor numbers to the new generation. Shared-meme
+snapshot state is not part of that event-cache reset and is reconciled through its own immutable
+versioned snapshot. The local database does not store the Connector credential; the credential
+remains process configuration.
+
+The current delivery generation is authoritative outside the community SQLite backup domain at
+`/etc/doorbell-commons/delivery-generation`, owned by `root:root` with mode `0600`. The systemd unit
+uses `LoadCredential` to give the unprivileged `doorbell` process a read-only copy. Server startup
+requires one valid UUID in that credential and fails before opening the community database when it is
+missing, unreadable, or malformed; ordinary startup never creates or rotates it.
+
+`deploy/scripts/init-delivery-generation.mjs` is the explicit root-only, create-once initializer.
+`deploy/scripts/restore-community-database.mjs` is the disaster-recovery entry: it stops Doorbell and
+confirms the unit is inactive/dead, atomically rotates the root authority, atomically restores the
+chosen SQLite backup, checks integrity, foreign keys, and schema v3, and only then starts Doorbell.
+Any failure after stop leaves the service stopped. The service cannot run between generation rotate
+and database restore, and the authority file is not part of the SQLite backup.
 
 Runtime configuration is read from process environment variables:
 
@@ -575,7 +650,8 @@ Runtime configuration is read from process environment variables:
 | `AIFARM_DOORBELL_SERVICE_TOKEN` | Matching farm-side secret that enables the controlled welcome-reward, MCP-migration-revoke, and internal farm-execution endpoints |
 
 The official Connector process uses `DOORBELL_SERVER_WS_URL`,
-`DOORBELL_CONNECTOR_CREDENTIAL`, `DOORBELL_CONNECTOR_DATABASE_PATH`, and optional
+`DOORBELL_CONNECTOR_CREDENTIAL`, `DOORBELL_CONNECTOR_DATABASE_PATH`, required fixed
+`DOORBELL_CONNECTOR_HTTP_TIMEOUT_MS=300000`, and optional
 `DOORBELL_CONNECTOR_PORT` (default `3100`). Its HTTP listener host is fixed in code to
 `127.0.0.1` and is not configurable to a public address.
 

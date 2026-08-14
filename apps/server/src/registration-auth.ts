@@ -9,6 +9,7 @@ import type {
 import {
   FarmCreationStateConflictError,
   HumanAccountAlreadyRegisteredError,
+  HumanLoginLockedError,
   RegistrationProfileRequiredError,
 } from "./community-database.js";
 import type { FarmCreator } from "./farm-creation-client.js";
@@ -235,16 +236,27 @@ export class RegistrationAuthService {
   }
 
   async createPasswordSession(input: CreatePasswordSessionInput): Promise<CreatedHumanSession> {
+    const now = this.#now();
     const credential = this.#database.findHumanPasswordCredentialByQq(input.qqNumber);
     if (!(await verifyHumanPassword(input.password, credential))) {
+      this.#database.recordFailedHumanLogin(input.qqNumber, now);
       throw new InvalidHumanCredentialsError();
     }
-    const now = this.#now();
+    if (this.#database.isHumanLoginLocked(input.qqNumber, now)) {
+      throw new InvalidHumanCredentialsError();
+    }
     if (!(await this.#groupMembership.isCurrentMember(this.#groupId, input.qqNumber))) {
       this.#database.revokeHumanAccountMembershipByQq(input.qqNumber, now);
       throw new QqNotGroupMemberError();
     }
-    return this.#database.createExistingHumanSession(input.qqNumber, now);
+    try {
+      return this.#database.createExistingHumanSession(input.qqNumber, now);
+    } catch (error) {
+      if (error instanceof HumanLoginLockedError) {
+        throw new InvalidHumanCredentialsError();
+      }
+      throw error;
+    }
   }
 
   async getCurrentSession(token: string): Promise<HumanCommunityRecord> {

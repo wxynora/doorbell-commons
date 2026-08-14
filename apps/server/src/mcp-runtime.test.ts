@@ -105,6 +105,7 @@ interface RuntimeHarness {
   database: CommunityDatabase;
   membership: FakeGroupMembership;
   farmActions: FakeFarmActions;
+  mcpRuntime: DoorbellMcpRuntime;
   now: { value: number };
   close(): Promise<void>;
 }
@@ -166,12 +167,21 @@ function openRuntimeHarness(databasePath: string): RuntimeHarness {
     database,
     membership,
     farmActions,
+    mcpRuntime,
     now,
     close: async () => {
       await app.close();
       database.close();
     },
   };
+}
+
+function postMcpRuntime(harness: RuntimeHarness, payload: unknown, protocolVersion: string | null) {
+  return harness.mcpRuntime.handlePost({
+    authorization: `Bearer ${MCP_CREDENTIAL}`,
+    body: payload,
+    protocolVersion,
+  });
 }
 
 function rpc(method: string, params?: Record<string, unknown>, id: number | string = 1) {
@@ -185,15 +195,22 @@ function call(op: string, args: Record<string, unknown>, id: number | string = 1
 function postMcp(
   harness: RuntimeHarness,
   payload: object,
-  options: { credential?: string | null; origin?: string } = {},
+  options: {
+    credential?: string | null;
+    origin?: string;
+    protocolVersion?: string | null;
+  } = {},
 ) {
   const credential = options.credential === undefined ? MCP_CREDENTIAL : options.credential;
+  const protocolVersion =
+    options.protocolVersion === undefined ? "2025-06-18" : options.protocolVersion;
   return harness.app.inject({
     method: "POST",
     url: "/mcp",
     headers: {
       ...(credential === null ? {} : { authorization: `Bearer ${credential}` }),
       ...(options.origin ? { origin: options.origin } : {}),
+      ...(protocolVersion === null ? {} : { "mcp-protocol-version": protocolVersion }),
     },
     payload,
   });
@@ -506,10 +523,37 @@ test("MCP transport authenticates dbm credentials and exposes one thin doorbell 
         capabilities: {},
         clientInfo: { name: "test", version: "1" },
       }),
+      { protocolVersion: null },
     );
     assert.equal(initialized.statusCode, 200);
     assert.equal(initialized.json().result.protocolVersion, "2025-06-18");
     assert.equal(initialized.json().result.capabilities.tools instanceof Object, true);
+
+    const negotiatedFallback = await postMcp(
+      harness,
+      rpc("initialize", {
+        protocolVersion: "2025-03-26",
+        capabilities: {},
+        clientInfo: { name: "older-test", version: "1" },
+      }),
+      { protocolVersion: null },
+    );
+    assert.equal(negotiatedFallback.statusCode, 200);
+    assert.equal(negotiatedFallback.json().result.protocolVersion, "2025-06-18");
+
+    for (const [protocolVersion, expectedCode] of [
+      [null, "MCP_PROTOCOL_VERSION_REQUIRED"],
+      ["not-a-version", "MCP_PROTOCOL_VERSION_INVALID"],
+      ["2025-03-26", "MCP_PROTOCOL_VERSION_UNSUPPORTED"],
+    ] as const) {
+      const rejectedVersion = await postMcp(harness, rpc("tools/list"), {
+        protocolVersion,
+      });
+      assert.equal(rejectedVersion.statusCode, 400);
+      assert.equal(rejectedVersion.json().error.code, expectedCode);
+      assert.equal("jsonrpc" in rejectedVersion.json(), false);
+      assert.equal("structuredContent" in rejectedVersion.json(), false);
+    }
 
     const listed = await postMcp(harness, rpc("tools/list"));
     const tools = listed.json().result.tools;
@@ -525,19 +569,73 @@ test("MCP transport authenticates dbm credentials and exposes one thin doorbell 
     assert.equal(notification.statusCode, 202);
     assert.equal(notification.body, "");
 
-    const batch = await postMcp(harness, [
+    const batchPayload = [
       rpc("ping", undefined, 1),
       { jsonrpc: "2.0", method: "notifications/initialized" },
       rpc("tools/list", undefined, 2),
-    ]);
-    assert.deepEqual(
-      batch.json().map((entry: { id: number }) => entry.id),
-      [1, 2],
-    );
+      call("farm.status", {}, 3),
+    ];
+    const membershipCallsBeforeBatch = harness.membership.calls;
+    const farmCallsBeforeBatch = harness.farmActions.calls.length;
+    const missingVersionBatch = await postMcp(harness, batchPayload, {
+      protocolVersion: null,
+    });
+    assert.equal(missingVersionBatch.statusCode, 400);
+    assert.equal(missingVersionBatch.json().error.code, "MCP_PROTOCOL_VERSION_REQUIRED");
+    assert.equal(harness.membership.calls, membershipCallsBeforeBatch);
+    assert.equal(harness.farmActions.calls.length, farmCallsBeforeBatch);
+
+    const batch = await postMcp(harness, batchPayload);
+    assert.equal(batch.statusCode, 200);
+    assert.equal(batch.json().id, null);
+    assert.equal(batch.json().error.code, -32600);
+    assert.equal(Array.isArray(batch.json()), false);
+    assert.equal(harness.membership.calls, membershipCallsBeforeBatch);
+    assert.equal(harness.farmActions.calls.length, farmCallsBeforeBatch);
 
     const get = await harness.app.inject({ method: "GET", url: "/mcp" });
     assert.equal(get.statusCode, 405);
     assert.equal(get.headers.allow, "POST");
+  } finally {
+    await harness.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("MCP runtime rejects missing, invalid, and unsupported subsequent protocol versions", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "doorbell-mcp-runtime-version-"));
+  const harness = openRuntimeHarness(join(directory, "doorbell.sqlite"));
+  try {
+    const initialized = await postMcpRuntime(
+      harness,
+      rpc("initialize", {
+        protocolVersion: "2025-06-18",
+        capabilities: {},
+        clientInfo: { name: "version-test", version: "1" },
+      }),
+      null,
+    );
+    assert.equal(initialized.statusCode, 200);
+    assert.equal(
+      (initialized.body as { result: { protocolVersion: string } }).result.protocolVersion,
+      "2025-06-18",
+    );
+
+    for (const [protocolVersion, expectedCode] of [
+      [null, "MCP_PROTOCOL_VERSION_REQUIRED"],
+      ["not-a-version", "MCP_PROTOCOL_VERSION_INVALID"],
+      ["2025-03-26", "MCP_PROTOCOL_VERSION_UNSUPPORTED"],
+    ] as const) {
+      const rejected = await postMcpRuntime(harness, call("farm.status", {}), protocolVersion);
+      assert.equal(rejected.statusCode, 400);
+      assert.equal((rejected.body as { error: { code: string } }).error.code, expectedCode);
+      assert.equal("jsonrpc" in (rejected.body as Record<string, unknown>), false);
+    }
+    assert.equal(harness.farmActions.calls.length, 0);
+
+    const accepted = await postMcpRuntime(harness, rpc("tools/list"), "2025-06-18");
+    assert.equal(accepted.statusCode, 200);
+    assert.equal((accepted.body as { result: { tools: unknown[] } }).result.tools.length, 1);
   } finally {
     await harness.close();
     rmSync(directory, { recursive: true, force: true });

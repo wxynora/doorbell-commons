@@ -5,6 +5,8 @@ import {
   type ConnectorSettingsStatus,
   connectorAckFrameSchema,
   connectorEventFrameSchema,
+  connectorGenerationResetAckFrameSchema,
+  connectorGenerationResetRequiredFrameSchema,
   connectorHeartbeatAckFrameSchema,
   connectorHeartbeatFrameSchema,
   connectorHelloFrameSchema,
@@ -38,10 +40,13 @@ interface ActiveConnectorConnection {
   credentialId: string;
   lastAliveAt: number;
   heartbeatTimer: NodeJS.Timeout;
+  resetRequired: boolean;
+  resetReason: "initial_sync" | "generation_changed";
 }
 
 export interface ConnectorServiceOptions {
   database: CommunityDatabase;
+  deliveryGeneration: string;
   registrationAuth: RegistrationAuthService;
   mailboxService: MailboxService;
   now?: () => number;
@@ -85,6 +90,7 @@ function parseJson(data: Buffer | ArrayBuffer | Buffer[]): unknown {
 
 function serializeEvent(event: ConnectorEventRecord): ConnectorEventEnvelope {
   return {
+    generation: event.generation,
     event_id: event.eventId,
     cursor: event.cursor,
     event_type: event.eventType,
@@ -95,6 +101,7 @@ function serializeEvent(event: ConnectorEventRecord): ConnectorEventEnvelope {
 
 export class ConnectorService {
   readonly #database: CommunityDatabase;
+  readonly #deliveryGeneration: string;
   readonly #registrationAuth: RegistrationAuthService;
   readonly #mailboxService: MailboxService;
   readonly #now: () => number;
@@ -107,6 +114,7 @@ export class ConnectorService {
 
   constructor(options: ConnectorServiceOptions) {
     this.#database = options.database;
+    this.#deliveryGeneration = options.deliveryGeneration;
     this.#registrationAuth = options.registrationAuth;
     this.#mailboxService = options.mailboxService;
     this.#now = options.now ?? Date.now;
@@ -244,6 +252,16 @@ export class ConnectorService {
           return;
         }
 
+        if (
+          hello.generation === this.#deliveryGeneration &&
+          hello.last_persisted_cursor >
+            this.#database.getConnectorLastEventCursor(this.#deliveryGeneration, binding.residentId)
+        ) {
+          this.#sendError(socket, "delivery_generation_inconsistent");
+          socket.close(4000, "delivery_generation_inconsistent");
+          return;
+        }
+
         clearTimeout(handshakeTimer);
         authenticatedResidentId = binding.residentId;
         const connectionId = this.#generateId();
@@ -282,30 +300,44 @@ export class ConnectorService {
           credentialId: binding.credentialId,
           lastAliveAt: now,
           heartbeatTimer,
+          resetRequired: hello.generation !== this.#deliveryGeneration,
+          resetReason: hello.generation === null ? "initial_sync" : "generation_changed",
         };
         this.#connections.set(binding.residentId, activeConnection);
 
-        const lastAckedCursor = this.#database.getConnectorLastAckedCursor(binding.residentId);
-        const resumeAfterCursor = Math.min(lastAckedCursor, hello.last_persisted_cursor);
-        this.#send(
-          socket,
-          connectorReadyFrameSchema.parse({
-            type: "ready",
-            protocol_version: "1.0",
-            capabilities: connectorRequiredCapabilities,
-            connection_id: connectionId,
-            resident_id: binding.residentId,
-            resume_after_cursor: resumeAfterCursor,
-            welcome: connectorWelcomeMessage,
-          }),
+        const lastAckedCursor = this.#database.getConnectorLastAckedCursor(
+          this.#deliveryGeneration,
+          binding.residentId,
         );
+        const resumeAfterCursor = activeConnection.resetRequired
+          ? 0
+          : Math.min(lastAckedCursor, hello.last_persisted_cursor);
+        if (activeConnection.resetRequired) {
+          this.#sendGenerationResetRequired(socket, activeConnection.resetReason);
+          return;
+        }
+        this.#sendReady(socket, activeConnection, binding.residentId, resumeAfterCursor);
         this.#sendEventsAfter(socket, binding.residentId, resumeAfterCursor);
         return;
       }
 
       const ack = connectorAckFrameSchema.safeParse(frame);
       if (ack.success) {
+        if (!activeConnection) {
+          return;
+        }
+        if (ack.data.generation !== this.#deliveryGeneration) {
+          activeConnection.resetRequired = true;
+          activeConnection.resetReason = "generation_changed";
+          this.#sendGenerationResetRequired(socket, activeConnection.resetReason);
+          return;
+        }
+        if (activeConnection.resetRequired) {
+          this.#sendGenerationResetRequired(socket, activeConnection.resetReason);
+          return;
+        }
         const result = this.#database.acknowledgeConnectorEvent(
+          this.#deliveryGeneration,
           authenticatedResidentId,
           ack.data.cursor,
           ack.data.event_id,
@@ -337,7 +369,21 @@ export class ConnectorService {
 
       const resync = connectorResyncRequestFrameSchema.safeParse(frame);
       if (resync.success) {
+        if (!activeConnection) {
+          return;
+        }
+        if (resync.data.generation !== this.#deliveryGeneration) {
+          activeConnection.resetRequired = true;
+          activeConnection.resetReason = "generation_changed";
+          this.#sendGenerationResetRequired(socket, activeConnection.resetReason);
+          return;
+        }
+        if (activeConnection.resetRequired) {
+          this.#sendGenerationResetRequired(socket, activeConnection.resetReason);
+          return;
+        }
         const events = this.#database.listConnectorEventsAfter(
+          this.#deliveryGeneration,
           authenticatedResidentId,
           resync.data.after_cursor,
         );
@@ -345,6 +391,25 @@ export class ConnectorService {
         this.#sendResyncRequired(socket, resync.data.after_cursor, reason);
         for (const event of events) {
           this.#sendEvent(socket, event);
+        }
+        return;
+      }
+
+      const resetAck = connectorGenerationResetAckFrameSchema.safeParse(frame);
+      if (resetAck.success) {
+        if (!activeConnection) {
+          return;
+        }
+        if (resetAck.data.generation !== this.#deliveryGeneration) {
+          activeConnection.resetRequired = true;
+          activeConnection.resetReason = "generation_changed";
+          this.#sendGenerationResetRequired(socket, activeConnection.resetReason);
+          return;
+        }
+        if (activeConnection.resetRequired) {
+          activeConnection.resetRequired = false;
+          this.#sendReady(socket, activeConnection, authenticatedResidentId, 0);
+          this.#sendEventsAfter(socket, authenticatedResidentId, 0);
         }
         return;
       }
@@ -372,6 +437,7 @@ export class ConnectorService {
     payload: Record<string, unknown>,
   ): ConnectorEventRecord {
     const event = this.#database.appendConnectorEvent(
+      this.#deliveryGeneration,
       residentId,
       this.#generateId(),
       eventType,
@@ -379,7 +445,7 @@ export class ConnectorService {
       this.#now(),
     );
     const connection = this.#connections.get(residentId);
-    if (connection) {
+    if (connection && !connection.resetRequired) {
       this.#sendEvent(connection.socket, event);
     }
     return event;
@@ -422,7 +488,7 @@ export class ConnectorService {
       socket.close(4000, "hello_required");
       return undefined;
     }
-    if (candidate.protocol_version !== "1.0") {
+    if (candidate.protocol_version !== "2.0") {
       this.#sendError(socket, "unsupported_protocol_version");
       socket.close(4000, "unsupported_protocol_version");
       return undefined;
@@ -443,7 +509,11 @@ export class ConnectorService {
   }
 
   #sendEventsAfter(socket: WebSocket, residentId: string, afterCursor: number): void {
-    for (const event of this.#database.listConnectorEventsAfter(residentId, afterCursor)) {
+    for (const event of this.#database.listConnectorEventsAfter(
+      this.#deliveryGeneration,
+      residentId,
+      afterCursor,
+    )) {
       this.#sendEvent(socket, event);
     }
   }
@@ -464,8 +534,44 @@ export class ConnectorService {
       socket,
       connectorResyncRequiredFrameSchema.parse({
         type: "resync_required",
+        generation: this.#deliveryGeneration,
         after_cursor: afterCursor,
         reason,
+      }),
+    );
+  }
+
+  #sendGenerationResetRequired(
+    socket: WebSocket,
+    reason: "initial_sync" | "generation_changed",
+  ): void {
+    this.#send(
+      socket,
+      connectorGenerationResetRequiredFrameSchema.parse({
+        type: "generation_reset_required",
+        generation: this.#deliveryGeneration,
+        reason,
+      }),
+    );
+  }
+
+  #sendReady(
+    socket: WebSocket,
+    connection: ActiveConnectorConnection,
+    residentId: string,
+    resumeAfterCursor: number,
+  ): void {
+    this.#send(
+      socket,
+      connectorReadyFrameSchema.parse({
+        type: "ready",
+        protocol_version: "2.0",
+        capabilities: connectorRequiredCapabilities,
+        connection_id: connection.connectionId,
+        resident_id: residentId,
+        generation: this.#deliveryGeneration,
+        resume_after_cursor: resumeAfterCursor,
+        welcome: connectorWelcomeMessage,
       }),
     );
   }
@@ -477,7 +583,8 @@ export class ConnectorService {
       | "unsupported_protocol_version"
       | "missing_required_capability"
       | "authentication_rejected"
-      | "membership_verification_unavailable",
+      | "membership_verification_unavailable"
+      | "delivery_generation_inconsistent",
   ): void {
     this.#send(socket, connectorServerErrorFrameSchema.parse({ type: "error", code }));
   }

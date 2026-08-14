@@ -104,6 +104,191 @@ test("schema v0 upgrades missing identity columns in one versioned migration wit
   });
 });
 
+test("schema v1 preserves login security state while upgrading through v3", () => {
+  withTemporaryDatabase((databasePath) => {
+    const versionOneDatabase = new Database(databasePath);
+    versionOneDatabase.exec(`
+      CREATE TABLE human_accounts (
+        account_id TEXT PRIMARY KEY,
+        qq_number TEXT NOT NULL UNIQUE,
+        password_credential TEXT,
+        created_at INTEGER NOT NULL,
+        membership_status TEXT NOT NULL,
+        membership_checked_at INTEGER NOT NULL,
+        membership_inactive_at INTEGER
+      );
+      INSERT INTO human_accounts VALUES (
+        'account-1',
+        '10001',
+        'scrypt-v1$credential',
+        1,
+        'active',
+        1,
+        NULL
+      );
+    `);
+    versionOneDatabase.pragma("user_version = 1");
+    versionOneDatabase.close();
+
+    const communityDatabase = new CommunityDatabase(databasePath);
+    communityDatabase.close();
+
+    const migratedDatabase = new Database(databasePath, { readonly: true });
+    try {
+      assert.equal(
+        migratedDatabase.pragma("user_version", { simple: true }),
+        COMMUNITY_DATABASE_SCHEMA_VERSION,
+      );
+      assert.equal(COMMUNITY_DATABASE_SCHEMA_VERSION, 3);
+      assert.deepEqual(
+        migratedDatabase
+          .prepare("SELECT account_id, qq_number, password_credential FROM human_accounts")
+          .get(),
+        {
+          account_id: "account-1",
+          password_credential: "scrypt-v1$credential",
+          qq_number: "10001",
+        },
+      );
+      assert.deepEqual(
+        migratedDatabase
+          .prepare(
+            `SELECT name
+             FROM sqlite_master
+             WHERE type = 'table' AND name IN ('human_login_failures', 'human_login_locks')
+             ORDER BY name`,
+          )
+          .all(),
+        [{ name: "human_login_failures" }, { name: "human_login_locks" }],
+      );
+    } finally {
+      migratedDatabase.close();
+    }
+  });
+});
+
+test("schema v2 archives cursor-only Connector events without consuming the current generation", () => {
+  withTemporaryDatabase((databasePath) => {
+    const versionTwoDatabase = new Database(databasePath);
+    versionTwoDatabase.exec(`
+      CREATE TABLE human_accounts (
+        account_id TEXT PRIMARY KEY,
+        qq_number TEXT NOT NULL UNIQUE,
+        password_credential TEXT,
+        created_at INTEGER NOT NULL,
+        membership_status TEXT NOT NULL,
+        membership_checked_at INTEGER NOT NULL,
+        membership_inactive_at INTEGER
+      );
+      CREATE TABLE residents (
+        resident_id TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL UNIQUE REFERENCES human_accounts(account_id) ON DELETE CASCADE,
+        resident_name TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE TABLE connector_delivery_state (
+        resident_id TEXT PRIMARY KEY REFERENCES residents(resident_id) ON DELETE CASCADE,
+        last_event_cursor INTEGER NOT NULL,
+        last_acked_cursor INTEGER NOT NULL
+      );
+      CREATE TABLE connector_events (
+        resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+        cursor INTEGER NOT NULL,
+        event_id TEXT NOT NULL UNIQUE,
+        event_type TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        payload_json TEXT NOT NULL,
+        PRIMARY KEY (resident_id, cursor)
+      );
+      INSERT INTO human_accounts VALUES ('account-1', '10001', NULL, 1, 'active', 1, NULL);
+      INSERT INTO residents VALUES ('resident-1', 'account-1', '小机', 1);
+      INSERT INTO connector_delivery_state VALUES ('resident-1', 2, 1);
+      INSERT INTO connector_events VALUES (
+        'resident-1', 1, '00000000-0000-4000-8000-000000000001',
+        'foundation.fact', 1, '{"value":1}'
+      );
+      INSERT INTO connector_events VALUES (
+        'resident-1', 2, '00000000-0000-4000-8000-000000000002',
+        'foundation.fact', 2, '{"value":2}'
+      );
+    `);
+    versionTwoDatabase.pragma("user_version = 2");
+    versionTwoDatabase.close();
+
+    const communityDatabase = new CommunityDatabase(databasePath);
+    const currentGeneration = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    try {
+      const migratedDatabase = new Database(databasePath, { readonly: true });
+      try {
+        assert.equal(
+          migratedDatabase.pragma("user_version", { simple: true }),
+          COMMUNITY_DATABASE_SCHEMA_VERSION,
+        );
+        const archivedState = migratedDatabase
+          .prepare(
+            `SELECT generation, resident_id, last_event_cursor, last_acked_cursor
+             FROM connector_delivery_state`,
+          )
+          .get() as {
+          generation: string;
+          last_acked_cursor: number;
+          last_event_cursor: number;
+          resident_id: string;
+        };
+        assert.notEqual(archivedState.generation, currentGeneration);
+        assert.deepEqual(
+          {
+            last_acked_cursor: archivedState.last_acked_cursor,
+            last_event_cursor: archivedState.last_event_cursor,
+            resident_id: archivedState.resident_id,
+          },
+          { last_acked_cursor: 1, last_event_cursor: 2, resident_id: "resident-1" },
+        );
+        assert.deepEqual(
+          migratedDatabase
+            .prepare(
+              `SELECT generation, cursor, event_id
+               FROM connector_events
+               ORDER BY cursor`,
+            )
+            .all(),
+          [
+            {
+              cursor: 1,
+              event_id: "00000000-0000-4000-8000-000000000001",
+              generation: archivedState.generation,
+            },
+            {
+              cursor: 2,
+              event_id: "00000000-0000-4000-8000-000000000002",
+              generation: archivedState.generation,
+            },
+          ],
+        );
+      } finally {
+        migratedDatabase.close();
+      }
+
+      const currentEvent = communityDatabase.appendConnectorEvent(
+        currentGeneration,
+        "resident-1",
+        "00000000-0000-4000-8000-000000000003",
+        "foundation.fact",
+        { value: 3 },
+        3,
+      );
+      assert.equal(currentEvent.generation, currentGeneration);
+      assert.equal(currentEvent.cursor, 1);
+      assert.equal(
+        communityDatabase.listConnectorEventsAfter(currentGeneration, "resident-1", 0).length,
+        1,
+      );
+    } finally {
+      communityDatabase.close();
+    }
+  });
+});
+
 test("a database from a newer schema version fails closed before initialization", () => {
   withTemporaryDatabase((databasePath) => {
     const futureDatabase = new Database(databasePath);
@@ -112,7 +297,11 @@ test("a database from a newer schema version fails closed before initialization"
 
     assert.throws(
       () => new CommunityDatabase(databasePath),
-      /Unsupported community database schema version: 2/,
+      new RegExp(
+        `Unsupported community database schema version: ${String(
+          COMMUNITY_DATABASE_SCHEMA_VERSION + 1,
+        )}`,
+      ),
     );
 
     const unchangedDatabase = new Database(databasePath, { readonly: true });

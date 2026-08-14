@@ -101,6 +101,7 @@ function createHarness() {
     database,
     registrationAuth,
     mailboxService,
+    deliveryGeneration: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
     now: () => now.value,
     generateCredential: () => CONNECTOR_CREDENTIAL,
     generateId: () => {

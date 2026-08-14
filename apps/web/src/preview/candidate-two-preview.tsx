@@ -583,6 +583,7 @@ export function buildConnectorSetupInstructions(connectorCredential: string) {
     'export DOORBELL_SERVER_WS_URL="wss://<替换为实际 Doorbell 域名>/api/connector/ws"',
     `export DOORBELL_CONNECTOR_CREDENTIAL="${connectorCredential}"`,
     'export DOORBELL_CONNECTOR_DATABASE_PATH="/替换为本机绝对路径/doorbell-connector.sqlite"',
+    'export DOORBELL_CONNECTOR_HTTP_TIMEOUT_MS="300000"',
     "npm run build -w @doorbell/connector",
     "npm run start -w @doorbell/connector",
   ].join("\n");
