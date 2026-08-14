@@ -701,12 +701,26 @@ The existing test VPS now runs the Doorbell Commons server through `doorbell-com
 `/etc/doorbell-commons/doorbell-commons.env` and its mode-0600 authoritative SQLite at
 `/var/lib/doorbell-commons/doorbell.sqlite`. Nginx serves the built web application and proxies
 `/api/` and `/mcp` for `doorbellcommons.com`. Community commit
-`4e354b1d6ae0627115c99d4474692db4069cced5` was deployed on 2026-08-14 from a clean runtime-only
-artifact. The previous application remains at `/opt/doorbell-commons.previous-20260814T021409Z`,
-and the pre-switch application, mode-0600 SQLite, and environment file are backed up under
-`/var/backups/doorbell-commons/releases/20260814T021345Z-pre-4e354b1`. The required upstream request
-deadline is explicitly `60000` ms on this test VPS. MCP readiness was already `true` before the
-release and was preserved; no credential or chosen deployment value was copied into the repository.
+`18cae09fb753735c339bc99f2b06ef746b8f30ca` was deployed on 2026-08-14 from a runtime-only
+artifact built from the exact GitHub main revision. The previous application remains at
+`/opt/doorbell-commons.previous-20260814T052524Z`, and the pre-switch application, mode-0600
+SQLite, environment file, nginx site, and systemd unit are backed up under
+`/var/backups/doorbell-commons/releases/20260814T052524Z-pre-18cae09`. The online SQLite backup is
+`doorbell-2026-08-14T05-26-27.479Z.sqlite` inside that root-only backup directory. The live database
+was migrated from schema v1 to v3 with integrity OK, zero foreign-key violations, and unchanged
+identity, farm-binding, shared-meme, mailbox, and Connector row counts. The external delivery
+generation authority was created at `/etc/doorbell-commons/delivery-generation` as `root:root 0600`
+and is supplied only through the loaded systemd credential. The required upstream request deadline
+remains explicitly `60000` ms on this test VPS. MCP readiness was already `true` before the release
+and was preserved; no credential or chosen deployment value was copied into the repository.
+
+After cutover, `doorbell-commons.service` is active/running with `NRestarts=0`, one
+`127.0.0.1:3000` listener, and no warning-or-higher startup log. The candidate nginx configuration
+passed `nginx -t` before reload; the loaded configuration contains the confirmed login rate limits
+and strips Cookie headers from both farm proxies. Public root, `/api/health`, `/farm/`, and
+`/farm-test/` return 200; unauthenticated `/mcp` and `/api/shared-memes` return 401. No real
+Connector credential, real-family Connector, farm action, shared-meme write, model call, or player
+migration was used for release acceptance.
 
 The existing public farm at `/farm/` and port 8091 remains an independent external production
 service. Its clean `farm` branch was fast-forwarded from `e89730a` to
