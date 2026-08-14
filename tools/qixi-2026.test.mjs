@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { qixi2026, cropById, titles } from "../dist/content.js";
 import { makeFarm, buyFromMarket, dispatch, listForSale } from "../dist/game.js";
-import { ensureKitchen, harvest, humanBarterAccept, humanBarterList, kitchenCook, limitedShopPool, plant } from "../dist/engine.js";
+import { ensureKitchen, harvest, humanBarterAccept, humanBarterList, kitchenCook, limitedShopPool, plant, takeInbox, takeRanchNotices } from "../dist/engine.js";
+import { applyQixi2026SeedPriceRefund } from "../dist/store.js";
 import { metricValue, checkTitles, titlePrefix } from "../dist/titles.js";
 import { uiCooking, uiHome } from "../dist/web.js";
 import {
@@ -204,6 +205,31 @@ for (const item of qixi2026.tasks) {
     const all = dispatch(farm, { action: "buy-seed", allin: true }, ACTIVE);
     assert.equal(all.ok, true);
     assert.ok(all.text.startsWith(`🛒 七夕限定种子已全部买满：鹊桥藤×3，共花费 ${cropById.get(water.cropId).seedPrice * 3} 金。`));
+}
+
+// 降价退款只按当日购买计数结算，任务赠送不计；AI／Human 各通知一次且全局幂等。
+{
+    const farm = freshFarm("高价购买者");
+    const untouched = freshFarm("没有购买");
+    const sr = task("harvest_fantasy");
+    const ssr = task("water");
+    const state = normalizeQixi2026Farm(farm, ACTIVE);
+    qixi2026ShopRows(farm, ACTIVE);
+    state.seedBuys.counts = { [sr.cropId]: 3, [ssr.cropId]: 2 };
+    const beforeCoins = farm.coins;
+    const refund = applyQixi2026SeedPriceRefund([farm, untouched], ACTIVE);
+    assert.deepEqual(refund, { applied: true, count: 1, coins: 2100, seeds: 5 });
+    assert.equal(farm.coins, beforeCoins + 2100);
+    assert.equal(untouched.coins, 100000);
+    const notice = "🎋 七夕限定种子已经降价，先前购买多付的 2100 金币已全部退回。";
+    assert.deepEqual(takeInbox(farm), [notice]);
+    assert.deepEqual(takeRanchNotices(farm), [notice]);
+    assert.deepEqual(takeInbox(untouched), []);
+    assert.deepEqual(takeRanchNotices(untouched), []);
+    assert.deepEqual(applyQixi2026SeedPriceRefund([farm, untouched], ACTIVE), { applied: false, count: 0, coins: 0, seeds: 0 });
+    assert.equal(farm.coins, beforeCoins + 2100);
+    assert.deepEqual(takeInbox(farm), []);
+    assert.deepEqual(takeRanchNotices(farm), []);
 }
 
 // 七夕作物不进入旧随机限定池；活动中不能绕过解锁直接种或从市场购买。

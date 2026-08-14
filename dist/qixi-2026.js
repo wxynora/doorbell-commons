@@ -8,6 +8,10 @@ const TASK_BY_ID = new Map(TASKS.map((task) => [task.id, task]));
 const TASK_BY_KIND = new Map(TASKS.map((task) => [task.kind, task]));
 const TASK_BY_CROP = new Map(TASKS.map((task) => [task.cropId, task]));
 const QIXI_CROP_IDS = new Set(TASKS.map((task) => task.cropId));
+const QIXI_2026_HIGH_SEED_PRICES = new Map(TASKS.map((task) => {
+    const crop = cropById.get(task.cropId);
+    return [task.cropId, crop?.rarity === "SSR" ? 1200 : 600];
+}));
 
 const cleanInt = (value) => Math.max(0, Math.floor(Number(value) || 0));
 const validTime = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -288,6 +292,29 @@ export function buyAllQixi2026Seeds(farm, now = Date.now()) {
         buys[item.id] = cleanInt(buys[item.id]) + item.qty;
     }
     return { handled: true, ok: true, items, cost };
+}
+
+export function settleQixi2026SeedPriceRefund(farm, now = Date.now()) {
+    const state = normalizeQixi2026Farm(farm, now);
+    if (!state || state.seedBuys.day !== currentDayIndex(now))
+        return { coins: 0, seeds: 0, items: [] };
+    const items = [];
+    let coins = 0;
+    let seeds = 0;
+    for (const task of TASKS) {
+        const crop = cropById.get(task.cropId);
+        const count = Math.min(qixi2026.dailySeedLimit, cleanInt(state.seedBuys.counts[task.cropId]));
+        const refundEach = Math.max(0, cleanInt(QIXI_2026_HIGH_SEED_PRICES.get(task.cropId)) - cleanInt(crop?.seedPrice));
+        if (!crop || count <= 0 || refundEach <= 0)
+            continue;
+        const refund = count * refundEach;
+        items.push({ id: crop.id, name: crop.name, count, refundEach, refund });
+        coins += refund;
+        seeds += count;
+    }
+    if (coins > 0)
+        farm.coins = cleanInt(farm.coins) + coins;
+    return { coins, seeds, items };
 }
 
 export function qixi2026TransferAllowed(farm, cropId, now = Date.now()) {

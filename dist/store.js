@@ -11,7 +11,7 @@ import { ensureFishing } from "./fishing.js";
 import { glimmerAchievementRewardText, normalizeGlimmerFarm, normalizeGlimmerWorld, settleGlimmerAchievementRewards } from "./glimmer.js";
 import { normalizePublicExpeditionWorld } from "./public-expedition.js";
 import { crops } from "./content.js";
-import { normalizeQixi2026Farm } from "./qixi-2026.js";
+import { normalizeQixi2026Farm, settleQixi2026SeedPriceRefund } from "./qixi-2026.js";
 const DATA_DIR = process.env.AIFARM_DATA_DIR
     ? resolve(process.env.AIFARM_DATA_DIR)
     : resolve(dirname(fileURLToPath(import.meta.url)), "../data");
@@ -27,6 +27,7 @@ let glimmerWorld = normalizeGlimmerWorld({});
 let publicExpeditionWorld = normalizePublicExpeditionWorld({});
 const DOORBELL_WELCOME_SILVER = 200;
 const SSR_CROPS = crops.filter((crop) => crop?.rarity === "SSR");
+const QIXI_2026_PRICE_REFUND_ID = "qixi-2026-seed-price-refund-20260815";
 export class DoorbellWelcomeRewardError extends Error {
     constructor(status, code, message) {
         super(message);
@@ -165,6 +166,29 @@ export function applyMaintenanceSilverGrant(farmValues = farms.values(), now = D
         campaigns.push({ id, amount, count: players.length });
     }
     return { applied: campaigns.length > 0, campaigns };
+}
+/** 七夕种子降价差额：只按冻结当日的真实购买计数结算一次，任务赠送的起步种子不计。 */
+export function applyQixi2026SeedPriceRefund(farmValues = farms.values(), now = Date.now()) {
+    if (appliedMaintenanceGrantIds.includes(QIXI_2026_PRICE_REFUND_ID))
+        return { applied: false, count: 0, coins: 0, seeds: 0 };
+    let count = 0;
+    let coins = 0;
+    let seeds = 0;
+    for (const farm of farmValues) {
+        if (!farm || farm.id === NPC_ID)
+            continue;
+        const refund = settleQixi2026SeedPriceRefund(farm, now);
+        if (refund.coins <= 0)
+            continue;
+        const notice = `🎋 七夕限定种子已经降价，先前购买多付的 ${refund.coins} 金币已全部退回。`;
+        pushInbox(farm, notice, now);
+        pushRanchNotice(farm, notice, now);
+        count += 1;
+        coins += refund.coins;
+        seeds += refund.seeds;
+    }
+    appliedMaintenanceGrantIds.push(QIXI_2026_PRICE_REFUND_ID);
+    return { applied: true, count, coins, seeds };
 }
 /** 启动时补发已经达标但尚未领取的流光原野成就奖励；每项成就 ID 自身保证幂等。 */
 export function applyGlimmerAchievementRewardBackfill(farmValues = farms.values(), now = Date.now()) {
@@ -321,10 +345,13 @@ export function load() {
             const grant = applyMaintenanceSilverGrant();
             for (const campaign of grant.campaigns)
                 console.log(`[store] 维护福利 ${campaign.id} 已发放 ${campaign.count} 个玩家农场，每家 ${campaign.amount} 银`);
+            const qixiRefund = applyQixi2026SeedPriceRefund();
+            if (qixiRefund.applied)
+                console.log(`[store] 七夕种子降价退款已发放 ${qixiRefund.count} 个玩家农场、${qixiRefund.seeds} 颗种子，共 ${qixiRefund.coins} 金`);
             const achievementBackfill = applyGlimmerAchievementRewardBackfill();
             if (achievementBackfill.applied)
                 console.log(`[store] 流光原野成就奖励已补发 ${achievementBackfill.count} 个玩家农场、${achievementBackfill.achievements} 项，共 ${achievementBackfill.coins} 金、${achievementBackfill.silver} 银`);
-            if (npcCreated || grant.applied || achievementBackfill.applied)
+            if (npcCreated || grant.applied || qixiRefund.applied || achievementBackfill.applied)
                 save();
             return;
         }
@@ -347,6 +374,7 @@ export function load() {
     if (!existsSync(DATA_FILE)) {
         ensureNpc();
         applyMaintenanceSilverGrant();
+        applyQixi2026SeedPriceRefund();
         save();
         return;
     } // 全新启动：先把常驻 NPC 阿土建出来
@@ -369,6 +397,9 @@ export function load() {
     const grant = applyMaintenanceSilverGrant();
     for (const campaign of grant.campaigns)
         console.log(`[store] 维护福利 ${campaign.id} 已发放 ${campaign.count} 个玩家农场，每家 ${campaign.amount} 银`);
+    const qixiRefund = applyQixi2026SeedPriceRefund();
+    if (qixiRefund.applied)
+        console.log(`[store] 七夕种子降价退款已发放 ${qixiRefund.count} 个玩家农场、${qixiRefund.seeds} 颗种子，共 ${qixiRefund.coins} 金`);
     const achievementBackfill = applyGlimmerAchievementRewardBackfill();
     if (achievementBackfill.applied)
         console.log(`[store] 流光原野成就奖励已补发 ${achievementBackfill.count} 个玩家农场、${achievementBackfill.achievements} 项，共 ${achievementBackfill.coins} 金、${achievementBackfill.silver} 银`);
