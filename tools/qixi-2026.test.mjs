@@ -52,7 +52,7 @@ const rarityCounts = qixi2026.tasks.reduce((out, item) => {
 assert.deepEqual(rarityCounts, { SR: 4, SSR: 3 });
 for (const item of qixi2026.tasks) {
     const crop = cropById.get(item.cropId);
-    assert.equal(crop.seedPrice, crop.rarity === "SSR" ? 1200 : 600);
+    assert.equal(crop.seedPrice, crop.rarity === "SSR" ? 600 : 300);
     assert.equal(crop.qixiSilverBase, crop.rarity === "SSR" ? 12 : 7);
 }
 
