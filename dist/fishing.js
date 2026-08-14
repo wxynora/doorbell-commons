@@ -7,6 +7,7 @@ import {
 import { currentSeason, currentDayIndex } from "./time.js";
 import { randomUUID } from "node:crypto";
 import { glimmerBuffMultiplier } from "./glimmer.js";
+import { qixi2026FishText, submitQixi2026Fish } from "./qixi-2026.js";
 
 const RARITY_RANK = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4, mythic: 5 };
 const ECOLOGY_NOTICE = "🌿 为了让鱼群休息、繁衍，也给水域留一点恢复时间，每座农场每天最多钓 20 竿。无论钓到鱼、宝箱还是旧靴子，只要鱼线抛进水里都算一竿；北京时间 0 点刷新。";
@@ -291,6 +292,7 @@ function castStep(farm, state, rng, bait, now) {
     const pool = fishingFish.filter((fishDef) => eligibleFish(fishDef, spot.id, season.id));
     if (!pool.length)
         return { consumed: true, kind: "empty", text: `浮标纹丝不动……${spot.name}这个季节没有鱼咬钩。` };
+    const beforeCatchIds = new Set(state.catchInventory.map((item) => item.id));
     const fishDef = weightedPick(rng, pool, (item) => fishWeight(item, spot, season, bait, now));
     const caught = recordCatch(farm, state, fishDef, rollSize(rng, fishDef));
     let feverText = "";
@@ -300,13 +302,19 @@ function castStep(farm, state, rng, bait, now) {
         feverText = `\n🔥 热潮翻倍：又得到一条${fishDef.name}〔${duplicate.instance.id}〕。`;
     }
     const lucky = rollLuckyEvent(farm, state, rng, pool, bait, { ...caught, now });
+    const newCatchIds = state.catchInventory.filter((item) => !beforeCatchIds.has(item.id)).map((item) => item.id);
+    const qixi = submitQixi2026Fish(farm, state, newCatchIds, now);
     const rarity = fishing.rarities[fishDef.rarity].label;
     const first = caught.first ? `\n🆕 首次收录，额外 +${caught.bonus} 银。` : "";
-    const luck = lucky ? `\n${lucky.text}` : "";
+    const luck = lucky && !(qixi?.submittedIds?.includes(caught.instance.id) && lucky.id === "golden_touch") ? `\n${lucky.text}` : "";
+    let text = `🐟 ${fishDef.name} · ${rarity} · ${caught.instance.size}${fishDef.size_unit} · 可卖 ${caught.instance.sellSilver} 银〔${caught.instance.id}〕${first}${feverText}${luck}`;
+    for (const id of qixi?.submittedIds ?? []) {
+        text = text.replace(new RegExp(` · 可卖 \\d+ 银〔${id}〕`), "").replaceAll(`〔${id}〕`, "");
+    }
     return {
         consumed: true, kind: "fish", fishName: fishDef.name, rarity: fishDef.rarity,
-        first: caught.first, luck: lucky?.id,
-        text: `🐟 ${fishDef.name} · ${rarity} · ${caught.instance.size}${fishDef.size_unit} · 可卖 ${caught.instance.sellSilver} 银〔${caught.instance.id}〕${first}${feverText}${luck}`,
+        first: caught.first, luck: lucky?.id, qixi,
+        text,
     };
 }
 
@@ -359,6 +367,7 @@ function castMany(farm, state, farms, params, now) {
     const highlights = [];
     const caught = new Map();
     let done = 0, fishCount = 0, junkCount = 0, eventCount = 0, stopReason = "";
+    let qixiResult = null;
     for (let i = 0; i < castTimes; i++) {
         const nextBait = chooseCastBait(state, params.bait);
         if (!nextBait.ok) {
@@ -371,6 +380,12 @@ function castMany(farm, state, farms, params, now) {
         if (result.kind === "fish") {
             fishCount++;
             caught.set(result.fishName, (caught.get(result.fishName) ?? 0) + 1);
+            if (result.qixi) {
+                qixiResult = {
+                    ...result.qixi,
+                    submitted: (qixiResult?.submitted ?? 0) + result.qixi.submitted,
+                };
+            }
         }
         else if (result.kind === "junk" || result.kind === "empty")
             junkCount++;
@@ -391,11 +406,11 @@ function castMany(farm, state, farms, params, now) {
     state.rngCalls = rng.calls;
     state.activeUntil = now + fishing.leaseMs;
     if (times === 1)
-        return { ok: true, text: highlights.join("\n") };
+        return { ok: true, text: [highlights.join("\n"), qixi2026FishText(qixiResult)].filter(Boolean).join("\n") };
     const haul = [...caught].map(([name, count]) => `${name}×${count}`).join("、") || "无";
     const summary = `🎣 连钓 ${done} 竿${stopReason}｜鱼 ${fishCount} 条：${haul}｜垃圾/空竿 ${junkCount}｜事件 ${eventCount}`;
     const text = highlights.length ? `${highlights.join("\n———\n")}\n\n${summary}` : summary;
-    return { ok: true, text: ecologyLimit ? `${text}\n${ecologyLimit}` : text };
+    return { ok: true, text: [text, ecologyLimit, qixi2026FishText(qixiResult)].filter(Boolean).join("\n") };
 }
 
 function buyBait(farm, state, requested, qty) {

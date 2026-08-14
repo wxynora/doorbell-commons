@@ -26,6 +26,7 @@ import { claimSyncedFarm, exportSyncedFarm, PublicSyncError, registerSyncedFarm,
 import { runFishing } from "./fishing.js";
 import { runGlimmer, setGlimmerVariant } from "./glimmer.js";
 import { advancePublicExpedition, checkPublicContribution, currentPublicTask, findPublicDish, findPublicHarvestPlot, findPublicWaterTarget, markPublicTrialPlot, publicExpeditionStatusLine, publicExpeditionText, recordPublicContribution, runPublicChoice, takePublicAiNotices, takePublicDish } from "./public-expedition.js";
+import { qixi2026CompletionText, recordQixi2026Progress, recordQixi2026StealAttempt, settleQixi2026QuietTask } from "./qixi-2026.js";
 // 首页只展开 POST/REST（核心玩法）；只能 GET / 只能点链接的接入写法收进 /get；/readme 是给人类伴侣看的新手攻略。
 // 机读默认紧凑 JSON；需要人工读时设环境变量 FARM_PRETTY=1 缩进输出。
 const PRETTY = process.env.FARM_PRETTY === "1";
@@ -759,6 +760,8 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         return { status: isByAction ? 403 : 401, json: { ok: false, text: isByAction
                     ? "需要带上你农场的 id + token（by + token）证明这是你本人。"
                     : "这是私有操作，需要你农场的 token。串门看公开页用 visit（GET /c?a=visit&farm=对方id）。" } };
+    if (action === "steal" && recordQixi2026StealAttempt(principal, now))
+        save(); // 已鉴权的偷菜发起即重置静默计时；后续业务拒绝也不回滚
     if (action === "guestbook" && b.on === undefined) {
         if (f.guestbook === false)
             return { status: 200, json: { ok: true, text: "💬 我的留言板：已关闭", ...vf(f) } };
@@ -842,10 +845,11 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
             if (!watered.ok)
                 return { status: 400, json: { ok: false, text: watered.error, ...vf(principal) } };
             const got = tryWaterReward(f, principal, now);
+            const qixi = recordQixi2026Progress(principal, "water", 1, now);
             pushSocialInbox(f, `💧 「${principal.name}」为铃野共行照料了你的 ${target.plot.id} 号试验田`, now);
             const r = recordPublicContribution(publicWorld, principal, { kind: "water", targetFarmId: f.id, targetFarmName: f.name, plotId: target.plot.id }, now, publicFarms);
             save();
-            return { status: r.ok ? 200 : 400, json: { ok: r.ok, text: r.ok ? `💧 已为「${f.name}」的 ${target.plot.id} 号任务试验田浇水${got ? "，并得到 1 瓶加速药水" : ""}。\n${r.text}` : r.text, ...vf(principal) } };
+            return { status: r.ok ? 200 : 400, json: { ok: r.ok, text: r.ok ? [`💧 已为「${f.name}」的 ${target.plot.id} 号任务试验田浇水${got ? "，并得到 1 瓶加速药水" : ""}。\n${r.text}`, qixi2026CompletionText(qixi)].filter(Boolean).join("\n") : r.text, ...vf(principal) } };
         }
     }
     if (action === "harvest" && publicTask?.id === "b_harvest") {
@@ -909,7 +913,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
             save();
             return { status: 200, json: { ok: true, text: `🛒 从「${f.name}」买到限定种子「${r.name}」×${r.qty}，-💰${r.cost}金\n${statusFooter(buyer, now)}`, ...vf(buyer) } };
         }
-        const r = buyFromMarket(f, buyer, String(b.kind), String(b.id), b.qty);
+        const r = buyFromMarket(f, buyer, String(b.kind), String(b.id), b.qty, now);
         if (!r.ok)
             return { status: 400, json: { ok: false, text: r.error, ...vf(buyer) } };
         if (b.kind === "seed" && String(b.id).startsWith("ugc_"))
@@ -969,12 +973,13 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
             return { status: 400, json: { ok: false, text: r.error } };
         visitor.watered = (visitor.watered ?? 0) + 1; // 热心榜累计：成功帮浇一次 +1
         onTaskEvent(visitor, "help_water", now); // 随机任务：帮邻居浇水（浇水者）
+        const qixi = recordQixi2026Progress(visitor, "water", 1, now);
         onTaskEvent(f, "got_watered", now); // 随机任务：被人浇水（被浇者）
         const got = tryWaterReward(f, visitor, now);
         checkTitles(visitor); // 热心称号
         pushSocialInbox(f, `💧 「${visitor.name}」给你浇了水`, now);
         save();
-        return { status: 200, json: { ok: true, text: `${waterText(false, visitor.name)}（帮「${f.name}」${r.plotId} 号地加速 30 分钟${r.ripened ? "，正好催熟啦" : ""}）${got ? "\n🧪 浇水有回报——掉了 1 瓶加速药水！" : ""}\n${statusFooter(visitor, now)}`, ...vf(visitor) } };
+        return { status: 200, json: { ok: true, text: [`${waterText(false, visitor.name)}（帮「${f.name}」${r.plotId} 号地加速 30 分钟${r.ripened ? "，正好催熟啦" : ""}）${got ? "\n🧪 浇水有回报——掉了 1 瓶加速药水！" : ""}`, qixi2026CompletionText(qixi), statusFooter(visitor, now)].filter(Boolean).join("\n"), ...vf(visitor) } };
     }
     // 串门买别家商店随机刷出的「药水套装」（钱由买家=by 出，每份每人限购 1）
     if (action === "buy-potion-set" && b.by) {
@@ -1793,12 +1798,15 @@ export function startServer(port, host = "127.0.0.1") {
                         for (const item of r.results)
                             cropCounts.set(item.crop.name, (cropCounts.get(item.crop.name) ?? 0) + 1);
                         const crops = [...cropCounts].map(([name, n]) => `「${name}」${n > 1 ? `×${n}` : ""}`).join("、");
-                        const gain = r.results.reduce((sum, item) => sum + item.value + (item.codexReward ?? 0) + (item.bonus?.extraCoins ?? 0), 0);
+                        const gold = r.results.reduce((sum, item) => sum + (item.currency === "silver" ? 0 : item.value) + (item.codexReward ?? 0) + (item.bonus?.extraCoins ?? 0), 0);
+                        const silver = r.results.reduce((sum, item) => sum + (item.currency === "silver" ? item.value : 0), 0);
                         const newCount = r.results.filter((item) => item.isNew).length;
                         const drops = r.results.flatMap((item) => item.drop ? [item.drop.name] : []);
                         const potionCount = r.results.filter((item) => item.potionDrop).length;
                         const extras = `${newCount ? ` · 新图鉴×${newCount}` : ""}${drops.length ? ` · 掉落${drops.join("、")}` : ""}${potionCount ? ` · 加速药水×${potionCount}` : ""}${se ? ` · ${se.hit.name}` : ""}`;
-                        flash = `🌾 一键帮${f.aiName || f.name || "TA"}收下 ${r.count} 株：${crops}，共 +${gain} 金${extras}；今日已帮收 ${r.used}/${HUMAN_HARVEST_DAILY_CAP} 次`;
+                        const gain = [gold ? `+${gold} 金` : "", silver ? `+${silver} 银` : ""].filter(Boolean).join(" · ");
+                        const qixi = [...new Set(r.results.map((item) => qixi2026CompletionText(item.qixi)).filter(Boolean))].join("\n");
+                        flash = [`🌾 一键帮${f.aiName || f.name || "TA"}收下 ${r.count} 株：${crops}，共 ${gain}${extras}；今日已帮收 ${r.used}/${HUMAN_HARVEST_DAILY_CAP} 次`, qixi].filter(Boolean).join("\n");
                         pushSocialInbox(f, `🌾 ${f.humanName || "你的伴侣"}刚帮你一键收了 ${r.count} 株，空出了 ${r.count} 块地。`, now);
                         checkTitles(f);
                     }
@@ -1832,7 +1840,7 @@ export function startServer(port, host = "127.0.0.1") {
                                 flash = "⚠️ 这家摊位已经不存在了。";
                             }
                             else {
-                                const r = buyFromMarket(seller, f, String(form.kind), String(form.id), form.qty);
+                                const r = buyFromMarket(seller, f, String(form.kind), String(form.id), form.qty, now);
                                 if (r.ok) {
                                     if (form.kind === "seed" && String(form.id).startsWith("ugc_"))
                                         onTaskEvent(f, "buy_ugc", now);
@@ -1857,7 +1865,7 @@ export function startServer(port, host = "127.0.0.1") {
                                 flash = "⚠️ 这张换物单已经不存在了。";
                             }
                             else {
-                                const r = humanBarterAccept(seller, f, String(form.listing ?? ""));
+                                const r = humanBarterAccept(seller, f, String(form.listing ?? ""), now);
                                 flash = r.ok
                                     ? `🔁 已用${r.want.name}×${r.wantQty}换到${r.give.name}×${r.giveQty}`
                                     : `⚠️ ${r.error}`;
@@ -1897,10 +1905,12 @@ export function startServer(port, host = "127.0.0.1") {
                             catch { /* 引擎给出数量提示 */ }
                             const r = kitchenCook(f, items, now);
                             if (r.ok) {
-                                flash = r.odd
+                                flash = r.qixi
+                                    ? "黄油曲奇 ×1 已提交至七夕任务。"
+                                    : r.odd
                                     ? "🥴 没有命中固定配方，食材已全部消耗，得到一份微妙的料理"
                                     : `🍲 做出「${r.dish.name}·${r.dish.rarity}」，锁定系统回收价 ${r.dish.value} 金 + ${dishSystemRecycleSilver(r.dish)} 银${r.discovered ? "；正确试做同时解锁了食谱" : ""}`;
-                                result = JSON.stringify({ id: r.dish.id, recipeId: r.dish.recipeId, name: r.dish.name, rarity: r.dish.rarity, value: r.dish.value, recycleSilver: dishSystemRecycleSilver(r.dish), image: r.dish.image, odd: r.odd, discovered: r.discovered });
+                                result = JSON.stringify({ id: r.dish.id, recipeId: r.dish.recipeId, name: r.dish.name, rarity: r.dish.rarity, value: r.dish.value, recycleSilver: dishSystemRecycleSilver(r.dish), image: r.dish.image, odd: r.odd, discovered: r.discovered, qixi: r.qixi });
                             }
                             else
                                 flash = r.error;
@@ -2201,7 +2211,11 @@ export function startServer(port, host = "127.0.0.1") {
                     return res.end(renderHuman(uiMessages(f, now, key)));
                 if (section === "leaderboard")
                     return res.end(renderHuman(uiLeaderboard(f, now, key)));
-                return res.end(renderHuman(uiHome(f, now, key, url.searchParams.get("flash") ?? undefined)));
+                const quiet = settleQixi2026QuietTask(f, now);
+                if (quiet)
+                    save();
+                const homeFlash = [url.searchParams.get("flash") ?? "", qixi2026CompletionText(quiet)].filter(Boolean).join("\n");
+                return res.end(renderHuman(uiHome(f, now, key, homeFlash || undefined)));
             }
             // —— Agent 控制页（HTML，给只能点页面里现成链接的 AI）——
             if (parts[0] === "agent" && parts.length >= 2) {

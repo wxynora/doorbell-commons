@@ -11,6 +11,7 @@ import { ensureFishing } from "./fishing.js";
 import { glimmerAchievementRewardText, normalizeGlimmerFarm, normalizeGlimmerWorld, settleGlimmerAchievementRewards } from "./glimmer.js";
 import { normalizePublicExpeditionWorld } from "./public-expedition.js";
 import { crops } from "./content.js";
+import { normalizeQixi2026Farm } from "./qixi-2026.js";
 const DATA_DIR = process.env.AIFARM_DATA_DIR
     ? resolve(process.env.AIFARM_DATA_DIR)
     : resolve(dirname(fileURLToPath(import.meta.url)), "../data");
@@ -82,6 +83,7 @@ export function normalizeFarm(f) {
     }
     ensureFishing(f);
     normalizeGlimmerFarm(f);
+    normalizeQixi2026Farm(f);
     return f;
 }
 export function createFarm(name, opts) {

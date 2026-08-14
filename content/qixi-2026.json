@@ -1,0 +1,61 @@
+{
+  "id": "qixi_2026",
+  "startsAt": "2026-08-14T00:00:00+08:00",
+  "endsAt": "2026-08-20T00:00:00+08:00",
+  "dailySeedLimit": 5,
+  "starterSeeds": 1,
+  "titleId": "qixi_2026_all_crops",
+  "tasks": [
+    {
+      "id": "quiet_48h",
+      "label": "48 小时不发起偷菜",
+      "kind": "quiet",
+      "target": 172800000,
+      "cropId": "moon_dew_balsam"
+    },
+    {
+      "id": "water_7",
+      "label": "替其他农场浇水 7 次",
+      "kind": "water",
+      "target": 7,
+      "cropId": "magpie_bridge_vine"
+    },
+    {
+      "id": "fish_3",
+      "label": "钓到并自动提交银鲦 3 条",
+      "kind": "fish",
+      "target": 3,
+      "itemId": "silver_dace",
+      "cropId": "silver_river_lotus"
+    },
+    {
+      "id": "dish_1",
+      "label": "做出并自动提交黄油曲奇 1 份",
+      "kind": "dish",
+      "target": 1,
+      "itemId": "butter_cookie",
+      "cropId": "qiaoguo_spike"
+    },
+    {
+      "id": "harvest_common_21",
+      "label": "收获普通作物 21 株",
+      "kind": "harvest_common",
+      "target": 21,
+      "cropId": "star_shuttle_wheat"
+    },
+    {
+      "id": "harvest_fantasy_7",
+      "label": "收获奇幻作物 7 株",
+      "kind": "harvest_fantasy",
+      "target": 7,
+      "cropId": "star_tether_bean"
+    },
+    {
+      "id": "craft_1",
+      "label": "成功熔炼 1 次",
+      "kind": "craft",
+      "target": 1,
+      "cropId": "cloud_brocade_cotton"
+    }
+  ]
+}

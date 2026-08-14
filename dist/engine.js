@@ -8,6 +8,7 @@ import { registerUgc, ugcCount } from "./ugc.js";
 import { onTaskEvent } from "./tasks.js";
 import { fishingKitchenProducts, removeFishingCatchIds } from "./fishing.js";
 import { glimmerBuffMultiplier } from "./glimmer.js";
+import { canPlantQixi2026Crop, isQixi2026CropId, qixi2026HarvestSilver, qixi2026TransferAllowed, recordQixi2026Harvest, recordQixi2026Progress, submitQixi2026Dish } from "./qixi-2026.js";
 import { randomUUID } from "node:crypto";
 /** 取（必要时补发）人类前端钥匙。老农场没有就现生成一把；调用方负责 save()。 */
 export function ensureHumanKey(farm) {
@@ -173,6 +174,8 @@ export function plant(farm, plotId, seedType, limitedId, now) {
             return { ok: false, error: "没有这种限定/自创作物（填它的中文名或 id，名字去 bag 抄）" };
         limitedId = resolved;
         const crop = getCrop(limitedId);
+        if (!canPlantQixi2026Crop(farm, limitedId, now))
+            return { ok: false, error: "完成对应七夕任务后解锁。" };
         // 限定/自创只能用手里已有的种子来种（熔炼产出 / 自己设计 / 商店随机刷出时花金币买来的）。
         // 不再有"满足解锁条件就花金币无限直接种"的途径——限定要稀缺，解锁只是让它能进商店随机库被 roll。
         if ((farm.seeds[limitedId] ?? 0) > 0) {
@@ -325,15 +328,23 @@ export function harvest(farm, plotId, now, seasonMod) {
         const ripened = ev.effectType === "连收" ? ripenAdjacent(farm, plot, Number(ev.param) || 0) : 0;
         bonus = { name: ev.name, text: ev.text, effectType: ev.effectType, extraCoins, ripened };
     }
-    let value = cropValue(crop, quality);
-    if (ev?.effectType === "倍率")
-        value = Math.round(value * (Number(ev.param) || 1));
-    if (apply && seasonMod.type === "value_mult")
-        value = Math.round(value * (seasonMod.value ?? 1)); // 知时雨/雪被：本批价值×2
-    value = Math.round(value * glimmerBuffMultiplier("cropValue", now));
+    const qixiSilver = qixi2026HarvestSilver(crop, quality);
+    if (qixiSilver !== null && bonus?.effectType === "倍率")
+        bonus = null; // 七夕作物只按审定的基础银币与品相倍率结算，不展示未生效的金币价值倍率事件
+    let value = qixiSilver ?? cropValue(crop, quality);
+    if (qixiSilver === null) {
+        if (ev?.effectType === "倍率")
+            value = Math.round(value * (Number(ev.param) || 1));
+        if (apply && seasonMod.type === "value_mult")
+            value = Math.round(value * (seasonMod.value ?? 1)); // 知时雨/雪被：本批价值×2
+        value = Math.round(value * glimmerBuffMultiplier("cropValue", now));
+    }
     if (apply && seasonMod.capLeft)
         seasonMod.capLeft.n -= 1; // 吃掉一株名额
-    farm.coins += value;
+    if (qixiSilver === null)
+        farm.coins += value;
+    else
+        farm.silver += value;
     if (bonus?.extraCoins)
         farm.coins += bonus.extraCoins;
     // 素材掉落（攒来熔炼限定种子；招财猫把概率温和拉高）
@@ -356,9 +367,10 @@ export function harvest(farm, plotId, now, seasonMod) {
         farm.coins += codexReward;
     plot.crop = null;
     farm.harvested = (farm.harvested ?? 0) + 1; // 勤劳榜累计
+    const qixiEvents = recordQixi2026Harvest(farm, crop, c.seedType, now);
     onTaskEvent(farm, "harvest", now, { rarity: crop.rarity, isNew, isUgc: crop.category === "ugc" }); // 随机任务：收获N株R/SR/收新图鉴
-    pushLog(farm, `收获 ${crop.name}（${quality.name}），+${value}${drop ? ` 掉素材[${drop.name}]` : ""}${potionDrop ? " 掉药水" : ""}`);
-    return { ok: true, crop, quality, value, isNew, codexReward, bonus, drop, potionDrop };
+    pushLog(farm, `收获 ${crop.name}（${quality.name}），+${value}${qixiSilver === null ? "金" : "银"}${drop ? ` 掉素材[${drop.name}]` : ""}${potionDrop ? " 掉药水" : ""}`);
+    return { ok: true, crop, quality, value, currency: qixiSilver === null ? "gold" : "silver", isNew, codexReward, bonus, drop, potionDrop, qixi: qixiEvents.find((event) => event.completed) };
 }
 /** 人类当天还可替自己的 AI 执行几次一键收获；所有每日限制统一按 UTC+8 零点换日。 */
 export function humanHarvestLeft(farm, now) {
@@ -423,7 +435,7 @@ export function craft(farm, materialIds, _now) {
         // 熔炼基础池=「纯熔炼组」：没有任何商店上架途径（非节日、无结构化解锁规则、非图鉴%解锁）的限定。
         // 这类作物的唯一发现来源就是熔炼，所以允许未收获就炼出（软保底帮你出没集齐的）。
         const normalPool = crops.filter((c) => c.category === "limited" && c.craftable !== false
-            && c.unlockType !== "festival" && c.unlockType !== "codex" && !c.unlockRule);
+            && c.unlockType !== "festival" && c.unlockType !== "codex" && !c.unlockRule && !isQixi2026CropId(c.id));
         // 软保底：本农场还没集齐的限定，权重 ×FUSION_SOFT_PITY（避免随机长尾让人一直撞重复；SP 仍要努力，没集齐的更易出）
         const normalWeights = normalPool.map((c) => {
             const base = (LIMITED_BASE_WEIGHT[c.rarity] ?? 1) * Math.pow(1 + luck, rarityIndex(c.rarity) - rarityIndex("SR"));
@@ -432,6 +444,7 @@ export function craft(farm, materialIds, _now) {
         // 节日 / 图鉴%/ 条件解锁 这三类（首获只能靠商店随机刷）——「本农场收获过 1 次(进图鉴)」之后，
         // 才以极低权重涓流进熔炼池：每个 ≈ FUSION_SPECIAL_UNLOCKED_RATE 概率。没收获过的永远不会被熔出。
         const specialPool = crops.filter((c) => c.category === "limited"
+            && !isQixi2026CropId(c.id)
             && (c.unlockType === "festival" || c.unlockType === "codex" || !!c.unlockRule) && farm.codex[c.id]);
         const normalSum = normalWeights.reduce((s, w) => s + w, 0);
         const specialWeights = specialPool.map(() => normalSum * FUSION_SPECIAL_UNLOCKED_RATE);
@@ -444,8 +457,9 @@ export function craft(farm, materialIds, _now) {
     const crop = cropById.get(cropId);
     farm.crafted = (farm.crafted ?? 0) + 1; // 匠人称号累计
     onTaskEvent(farm, "craft", _now); // 随机任务：熔炼一次
+    const qixi = recordQixi2026Progress(farm, "craft", 1, _now);
     pushLog(farm, `熔炼出限定种子：${crop.name}${byRecipe ? "（配方）" : ""}`);
-    return { ok: true, cropId, cropName: crop.name, rarity: crop.rarity, byRecipe };
+    return { ok: true, cropId, cropName: crop.name, rarity: crop.rarity, byRecipe, qixi };
 }
 function stealQuota(farm, now) {
     const day = currentDayIndex(now);
@@ -832,7 +846,8 @@ export function kitchenCook(farm, refs, now) {
         dish = { id: randomUUID(), recipeId: "odd_dish", name: "微妙的料理", rarity: "N", value: 1, image: "odd-dish.webp", createdAt: now, pricingVersion: COOKING_PRICE_VERSION };
     }
     kitchen.dishes.push(dish);
-    return { ok: true, dish, recipe, discovered, odd: !recipe, ingredients: picked.selected.map((item) => item.name), baseValue };
+    const qixi = submitQixi2026Dish(farm, kitchen, dish, now);
+    return { ok: true, dish, recipe, discovered, odd: !recipe, ingredients: picked.selected.map((item) => item.name), baseValue, qixi };
 }
 /** 已解锁食谱可按名称或 id 直接制作；库存取用仍复用普通下锅的真实选择与扣除逻辑。 */
 export function kitchenCookKnownRecipe(farm, selector, now) {
@@ -1188,7 +1203,7 @@ export function humanBarterUnlist(farm, listingId) {
     return { ok: true, give, giveQty };
 }
 /** 人类之间接受一张整单换物；先完整校验双方，再一次性互换。 */
-export function humanBarterAccept(seller, buyer, listingId) {
+export function humanBarterAccept(seller, buyer, listingId, now = Date.now()) {
     if (seller.id === buyer.id)
         return { ok: false, error: "不能接受自己挂出的换物单；不想换了可以直接下架。" };
     const listings = humanBarterListings(seller);
@@ -1202,6 +1217,9 @@ export function humanBarterAccept(seller, buyer, listingId) {
     const giveDishes = Array.isArray(listing.give?.dishes) ? listing.give.dishes : [];
     if (!give || !want || !giveQty || !wantQty || (give.kind === "dish" && giveDishes.length !== giveQty))
         return { ok: false, error: "这张换物单的数据不完整，暂时不能交换。" };
+    if ((give.kind === "seed" && !qixi2026TransferAllowed(buyer, give.id, now))
+        || (want.kind === "seed" && !qixi2026TransferAllowed(seller, want.id, now)))
+        return { ok: false, error: "完成对应七夕任务后解锁。" };
     const payment = humanBarterStockSelection(buyer, want, wantQty);
     if (!payment.ok)
         return payment;
@@ -2383,6 +2401,8 @@ export function limitedShopPool(farm, now, allUnlocked = false) {
     return [...cropById.values()].filter((c) => {
         if (c.category !== "limited")
             return false;
+        if (isQixi2026CropId(c.id))
+            return false;
         if (c.unlockType === "festival")
             return activeFestivals(now).some((f) => f.cropId === c.id);
         if (!c.unlockRule && c.unlockType !== "codex")
@@ -2413,7 +2433,7 @@ export function buyRecipe(farm, now) {
 //    没有任何限定常驻上架——解锁只是让它能进随机库被 roll。调用前请确保已 refreshShop(farm, now)。
 export function shopOffer(farm, _now) {
     const ns = farm.shop.npcSeed;
-    const lim = ns ? cropById.get(ns.id) : null;
+    const lim = ns && !isQixi2026CropId(ns.id) ? cropById.get(ns.id) : null;
     return {
         common: { type: "common", price: SEED_PRICE.common },
         fantasy: { type: "fantasy", price: SEED_PRICE.fantasy },

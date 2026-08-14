@@ -7,7 +7,10 @@ import { dailyScore } from "./daily.js";
 const officialCodex = (f) => Object.keys(f.codex ?? {}).filter((id) => cropById.has(id)).length;
 function top(farms, score, n = 5) {
     return farms
-        .map((f) => ({ name: f.name, code: f.id, value: score(f), title: equippedTitle(f)?.name }))
+        .map((f) => {
+        const title = equippedTitle(f);
+        return { name: f.name, code: f.id, value: score(f), title: title?.name, titleColor: title?.color };
+    })
         .filter((r) => r.value > 0)
         .sort((a, b) => b.value - a.value)
         .slice(0, n);

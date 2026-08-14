@@ -3,6 +3,7 @@
 // 佩戴后作为「名字前缀」展示在串门页和排行榜上。名字/flavor 在 titles.json 里改，不动引擎。
 import { titles, cropById } from "./content.js";
 import { pushLog } from "./engine.js";
+import { qixi2026CollectionComplete } from "./qixi-2026.js";
 /** 称号阈值判定用的指标值：把 field 名映射到农场当前数值。 */
 export function metricValue(f, field) {
     switch (field) {
@@ -31,6 +32,7 @@ export function metricValue(f, field) {
         case "togetherQuietHarvest": return f.publicExpeditionRewards?.endings?.includes("quiet_harvest") ? 1 : 0;
         case "togetherTenThousandBottles": return f.publicExpeditionRewards?.endings?.includes("ten_thousand_bottles") ? 1 : 0;
         case "togetherNoAddress": return f.publicExpeditionRewards?.endings?.includes("no_address") ? 1 : 0;
+        case "qixi2026Collection": return qixi2026CollectionComplete(f) ? 1 : 0;
         default: return 0;
     }
 }

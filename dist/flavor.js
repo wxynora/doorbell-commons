@@ -52,9 +52,10 @@ const SP_FANFARE = [""];
 // 稀有横幅分隔线（星点式，不假装包住文字）：SP 比 SSR 更密、两端加锚星
 const SSR_DIV = "✩ ⋆ ┄ ⋆ ✩ ⋆ ┄ ⋆ ✩ ⋆ ┄ ⋆ ✩ ⋆ ┄ ⋆ ✩";
 const SP_DIV = "✦ ✩ ⋆ ┄ ⋆ ✩ ⋆ ✦ ⋆ ✩ ⋆ ┄ ⋆ ✩ ✦";
-export function harvestText(crop, quality, value, isNew, codexReward = 0, byDesigner = false) {
+export function harvestText(crop, quality, value, isNew, codexReward = 0, byDesigner = false, currency = "gold") {
     const tag = isNew ? "  ✨新图鉴" : "";
-    const award = codexReward ? ` · 收录奖励 +${codexReward}` : ""; // 新图鉴金币奖励并入标题，省一行
+    const unit = currency === "silver" ? "银" : "金";
+    const award = codexReward ? ` · 收录奖励 +${codexReward}${currency === "silver" ? " 金" : ""}` : ""; // 新图鉴金币奖励并入标题，省一行
     const qline = quality.lines.length ? pick(quality.lines) : "";
     // OR：玩家自创作物——独一无二，给一份"原创"专属演出；署名归原设计者（不假设收的人=设计的人）
     if (crop.category === "ugc" || crop.rarity === "OR") {
@@ -69,7 +70,7 @@ export function harvestText(crop, quality, value, isNew, codexReward = 0, byDesi
             `   ${crop.desc}`,
             crop.lore ? `   ${crop.lore}` : "",
             qline ? `   ${qline}` : "",
-            `   ✦ ${quality.name} · 价值 ${value} 金${award} ✦${tag}`,
+            `   ✦ ${quality.name} · 价值 ${value} ${unit}${award} ✦${tag}`,
             OR_DIV,
         ].filter(Boolean).join("\n");
     }
@@ -78,7 +79,7 @@ export function harvestText(crop, quality, value, isNew, codexReward = 0, byDesi
         const lead = qline ? qline + " " : "";
         const rec = quality.tier === 5 ? "🏆 " : "";
         const head = isNew ? "✨新图鉴 " : "";
-        return `${head}${rec}${lead}${crop.desc}（${crop.name} · ${quality.name} · +${value} 金币${award}）`;
+        return `${head}${rec}${lead}${crop.desc}（${crop.name} · ${quality.name} · +${value} ${unit}币${award}）`;
     }
     // SP：史诗·天地异象
     if (crop.rarity === "SP") {
@@ -92,7 +93,7 @@ export function harvestText(crop, quality, value, isNew, codexReward = 0, byDesi
             `   ${crop.desc}`,
             crop.lore ? `   ${crop.lore}` : "",
             qline ? `   ${qline}` : "",
-            `   ✦ ${quality.name} · 价值 ${value} 金${award} ✦${tag}`,
+            `   ✦ ${quality.name} · 价值 ${value} ${unit}${award} ✦${tag}`,
             SP_DIV,
         ].filter(Boolean).join("\n");
     }
@@ -105,7 +106,7 @@ export function harvestText(crop, quality, value, isNew, codexReward = 0, byDesi
             `   ${crop.desc}`,
             crop.lore ? `   ${crop.lore}` : "",
             qline ? `   ${qline}` : "",
-            `   💰 价值 ${value} 金${award}${tag}`,
+            `   ${currency === "silver" ? "🪙" : "💰"} 价值 ${value} ${unit}${award}${tag}`,
             SSR_DIV,
         ].filter(Boolean).join("\n");
     }
@@ -113,7 +114,7 @@ export function harvestText(crop, quality, value, isNew, codexReward = 0, byDesi
     return [
         `✧･ﾟ SR ･ﾟ✧ ${crop.name} · ${quality.name}${tag}`,
         `   ${crop.latin}　${crop.desc}`,
-        qline ? `   ${qline}（价值 ${value} 金${award}）` : `   价值 ${value} 金${award}`,
+        qline ? `   ${qline}（价值 ${value} ${unit}${award}）` : `   价值 ${value} ${unit}${award}`,
     ].join("\n");
 }
 // —— 收获奖励事件 ——

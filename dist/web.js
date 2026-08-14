@@ -16,6 +16,7 @@ import { titles as titleDefs } from "./content.js";
 import { checkTitles, concordTierName, equippedTitle } from "./titles.js";
 import { glimmerHumanData, glimmerVariantsFor } from "./glimmer.js";
 import { publicExpeditionHumanData, publicExpeditionRewardText } from "./public-expedition.js";
+import { qixi2026ShopRows, qixi2026TaskView } from "./qixi-2026.js";
 // ——————————————————————————————————————————————————————————————
 // 小工具
 // ——————————————————————————————————————————————————————————————
@@ -636,6 +637,11 @@ export function uiHome(f, now, key, flash) {
     const pct = collectionPct(f) * 100;
     const days = Math.max(0, Math.floor((now - f.createdAt) / 86400000));
     const farms = playerFarms(); // 排除常驻 NPC 阿土（排名/计数只算真实玩家）
+    const qixiView = qixi2026TaskView(f, now);
+    const qixiTaskCard = qixiView && !qixiView.allComplete ? `<section class="card" style="border:2px solid #a9bd83;background:linear-gradient(180deg,#fbfff5,#f7f3e7)">
+      <div class="line" style="align-items:flex-start;gap:10px"><div><h2 style="margin:0;color:var(--leaf-deep)">🎋 七夕限定任务</h2><p class="small muted" style="margin:4px 0 0">完成一项，解锁对应限定种子。</p></div><span class="tag">${qixiView.tasks.length} 项进行中</span></div>
+      <div style="display:grid;gap:8px;margin-top:12px">${qixiView.tasks.map((task) => `<div style="padding:10px 12px;border:1px solid #d5dfc3;border-radius:13px;background:#fffdf7"><div class="line small"><b>${esc(task.label)}</b><span class="muted">${esc(task.progressText)}</span></div><div class="pminibar" style="margin-top:7px">${barFill(task.target ? task.progress / task.target * 100 : 0, "var(--leaf)")}</div><div class="small muted" style="margin-top:5px">解锁：${esc(task.cropName)}</div></div>`).join("")}</div>
+    </section>` : "";
     for (const farm of farms)
         advance(farm, now); // 广播读取此刻真实成熟状态，不写历史
     const ripeFarms = farms.map((farm, index) => ({
@@ -714,6 +720,7 @@ export function uiHome(f, now, key, flash) {
     ${fests.length ? `<p class="small">🎏 节日进行中：${fests.map((x) => `<b>${esc(x.name)}</b>`).join("、")}</p>` : ""}</div>`;
     // 今日商店（小克这座店此刻随机刷出的）
     const s = shopOffer(f, now);
+    const qixiShop = qixi2026ShopRows(f, now);
     const shopBits = [];
     if (f.shop.potionSet)
         shopBits.push(`🎁 药水套装（${f.shop.potionSet.qty} 瓶 / ${f.shop.potionSet.price} 金）`);
@@ -721,6 +728,8 @@ export function uiHome(f, now, key, flash) {
         shopBits.push(`📜 配方【${esc(cropById.get(f.shop.recipe)?.name ?? f.shop.recipe)}】`);
     if (s.limited?.length)
         shopBits.push(`🎏 限定：${s.limited.map((l) => esc(l.name)).join("、")}`);
+    for (const item of qixiShop)
+        shopBits.push(`🎋 ${esc(item.name)} · ${num(item.price)} 金 · 今日还可买 ${item.left}/5`);
     const shopCard = `<div class="card"><h3>🏪 今日商店</h3>
     ${shopBits.length
         ? shopBits.map((b) => `<div class="line small"><span>${b}</span></div>`).join("")
@@ -759,11 +768,12 @@ export function uiHome(f, now, key, flash) {
         ? `<div style="margin-top:6px;display:flex;flex-direction:column;gap:5px">${trail.map(trailRow).join("")}</div>`
         : `<p class="small muted" style="margin:6px 0 0">还没有访客来帮浇水或偷菜——门前静悄悄的。</p>`}</div>`;
     // 🎖️ 佩戴称号：放在主页最上方、农场名旁边。只列【已解锁】的，下拉选择；没解锁任何称号则不显示。
+    const selectedTitle = equippedTitle(f);
     const titleEquip = (() => {
         const owned = titleDefs.filter((t) => (f.titles ?? []).includes(t.id));
         if (!owned.length)
             return "";
-        const eqId = equippedTitle(f)?.id ?? "";
+        const eqId = selectedTitle?.id ?? "";
         const opts = `<option value=""${eqId ? "" : " selected"}>不佩戴称号</option>`
             + owned.map((t) => `<option value="${esc(t.id)}"${eqId === t.id ? " selected" : ""}>【${esc(t.name)}】</option>`).join("");
         return `<form method="post" action="${BASE}/ui/${key}/title" style="margin:6px 0 2px;display:inline-flex;gap:6px;align-items:center;flex-wrap:wrap">
@@ -772,9 +782,10 @@ export function uiHome(f, now, key, flash) {
       <button class="btn ghost" type="submit">佩戴</button>
     </form>`;
     })();
+    const titleBadge = selectedTitle ? `<span style="font-size:.55em;color:${esc(selectedTitle.color ?? "var(--wood)")};margin-right:7px;white-space:nowrap">✧${esc(selectedTitle.name)}✧</span>` : "";
     const welcome = f.welcome?.trim() || `这里是「${f.name}」，随便逛~`;
     const plaque = `<div class="plaque">
-    <h1>🌾 ${esc(f.name)}</h1>
+    <h1>${titleBadge}🌾 ${esc(f.name)}</h1>
     ${titleEquip}
     <p class="welcome">“${esc(welcome)}”</p>
     <div class="tags"><span class="tag">🏞️ <b>${esc(tier.name)}</b> · ${f.plots.length} 地</span>
@@ -783,6 +794,7 @@ export function uiHome(f, now, key, flash) {
       <span class="tag">🌱 开张 <b>${days}</b> 天</span></div></div>`;
     const flashHtml = flash ? `<div class="flash">${esc(flash)}</div>` : "";
     const body = `${plaque}${flashHtml}
+${qixiTaskCard}
 ${ripeBroadcast}
 ${hero}
 ${field}
@@ -1602,7 +1614,9 @@ export function uiCooking(f, now, key, flash, resultRaw) {
             const result = JSON.parse(resultRaw);
             const recipeId = result.odd ? "odd_dish" : (result.recipeId ?? String(result.image ?? "").replace(/\.webp$/, ""));
             const image = dishSprite(recipeId, result.name, "cook-result-image");
-            resultHtml = `<div class="cook-result" id="cookResult" role="dialog" aria-modal="true" aria-labelledby="cookResultTitle"><div class="cook-result-card" style="--rarity:var(${RARITY_VAR[result.rarity] ?? "--N"})"><button class="cook-result-x" type="button" data-close-result aria-label="关闭">✕</button>${image}<div class="cook-rarity">${esc(result.rarity)}</div><h2 id="cookResultTitle">${esc(result.name)}</h2><p class="small muted">${result.odd ? "没有命中固定配方 · 微妙的料理" : `锁定系统回收价 ${num(result.value)} 牧场金币 + ${silverIcon}${num(result.recycleSilver)} 银${result.discovered ? " · 新食谱已解锁" : ""}`}</p><button class="btn" type="button" data-close-result>收进料理柜</button></div></div><script>(()=>{const box=document.getElementById("cookResult");if(!box)return;const u=new URL(location.href);u.searchParams.delete("result");history.replaceState(null,"",u);const close=()=>box.remove();box.addEventListener("click",e=>{if(e.target===box||e.target.closest("[data-close-result]"))close()});addEventListener("keydown",e=>{if(e.key==="Escape")close()},{once:true});})();</script>`;
+            const qixi = result.qixi;
+            const completion = qixi?.completed ? `✅ 已解锁「${esc(qixi.cropName)}」，并获得种子 ×1。去商店购买更多七夕限定种子吧。` : "";
+            resultHtml = `<div class="cook-result" id="cookResult" role="dialog" aria-modal="true" aria-labelledby="cookResultTitle"><div class="cook-result-card" style="--rarity:var(${RARITY_VAR[result.rarity] ?? "--N"})"><button class="cook-result-x" type="button" data-close-result aria-label="关闭">✕</button>${image}<div class="cook-rarity">${esc(result.rarity)}</div><h2 id="cookResultTitle">${qixi ? "已自动提交" : esc(result.name)}</h2><p class="small muted">${qixi ? `黄油曲奇 ×1 已提交至七夕任务。<br>任务进度：${num(qixi.progress)}/${num(qixi.target)}` : result.odd ? "没有命中固定配方 · 微妙的料理" : `锁定系统回收价 ${num(result.value)} 牧场金币 + ${silverIcon}${num(result.recycleSilver)} 银${result.discovered ? " · 新食谱已解锁" : ""}`}</p>${completion ? `<p class="small" style="color:var(--leaf-deep);white-space:pre-wrap">${completion}</p>` : ""}<button class="btn" type="button" data-close-result>${qixi ? "知道了" : "收进料理柜"}</button></div></div><script>(()=>{const box=document.getElementById("cookResult");if(!box)return;const u=new URL(location.href);u.searchParams.delete("result");history.replaceState(null,"",u);const close=()=>box.remove();box.addEventListener("click",e=>{if(e.target===box||e.target.closest("[data-close-result]"))close()});addEventListener("keydown",e=>{if(e.key==="Escape")close()},{once:true});})();</script>`;
         }
         catch { /* 忽略损坏的结果参数 */ }
     }
@@ -2092,7 +2106,7 @@ ${modal}`;
 // ——————————————————————————————————————————————————————————————
 const medal = (i) => ["🥇", "🥈", "🥉"][i] ?? `#${i + 1}`;
 /** 一行榜单：相对值条形背景 + 名次 + 名字(可带署名) + 数值；isMe 高亮，off 为「不在前 5」的补行。*/
-function lbRow(rank, name, value, unit, max, isMe, by, off, title, code, byCode, valuePrefix = "") {
+function lbRow(rank, name, value, unit, max, isMe, by, off, title, code, byCode, valuePrefix = "", titleColor) {
     const pct = max > 0 ? Math.max(7, Math.round((value / max) * 100)) : 0;
     const fill = off ? "" : rank === 0 ? "linear-gradient(90deg,#fbe7c1,transparent)"
         : rank < 3 ? "linear-gradient(90deg,#edeee4,transparent)" : "linear-gradient(90deg,#e9f4db,transparent)";
@@ -2107,7 +2121,7 @@ function lbRow(rank, name, value, unit, max, isMe, by, off, title, code, byCode,
         : esc(by ?? "");
     const byEl = by ? ` <span class="by">/ ${byInner}</span>` : "";
     const meTag = isMe ? `<span class="metag">我们</span>` : "";
-    const titleEl = title ? `<span class="lbtitle">✧${esc(title)}✧</span>` : ""; // 佩戴的称号：描金渐变
+    const titleEl = title ? `<span class="lbtitle"${titleColor ? ` style="color:${esc(titleColor)};opacity:1"` : ""}>✧${esc(title)}✧</span>` : ""; // 佩戴的称号：描金渐变；活动称号可带审定色
     // 其他农场点名字看资料；自己仍点名字复制门牌号。无 code（如原创热门榜的作物名）则纯文本。
     const nameEl = code
         ? farmButton(name, code, isMe)
@@ -2160,11 +2174,13 @@ export function uiLeaderboard(f, now, key) {
         const inRows = d.rows.some((r) => r.code === f.id);
         const inTop = meVal > 0 && meRank <= 5;
         const rowsHtml = d.rows.length
-            ? d.rows.map((r, i) => lbRow(i, r.name, r.value, d.unit, max, r.code === f.id, undefined, false, r.title, r.code, undefined, d.valuePrefix)).join("")
+            ? d.rows.map((r, i) => lbRow(i, r.name, r.value, d.unit, max, r.code === f.id, undefined, false, r.title, r.code, undefined, d.valuePrefix, r.titleColor)).join("")
             : `<div class="small muted">还没有上榜的</div>`;
         let foot = "";
-        if (meVal > 0 && !inRows)
-            foot = lbRow(meRank - 1, f.name, meVal, d.unit, max, true, undefined, true, equippedTitle(f)?.name, f.id, undefined, d.valuePrefix);
+        if (meVal > 0 && !inRows) {
+            const title = equippedTitle(f);
+            foot = lbRow(meRank - 1, f.name, meVal, d.unit, max, true, undefined, true, title?.name, f.id, undefined, d.valuePrefix, title?.color);
+        }
         else if (meVal <= 0)
             foot = `<div class="lbnote">${aiDisp}还没上这个榜～</div>`;
         const subEl = d.sub ? `　<span class="muted small" style="font-weight:400">${d.sub}</span>` : "";

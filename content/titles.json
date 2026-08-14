@@ -650,5 +650,9 @@
   {
     "id": "together_no_address", "cat": "铃野共行", "tier": 1,
     "field": "togetherNoAddress", "min": 1, "name": "无址摆渡人", "flavor": ""
+  },
+  {
+    "id": "qixi_2026_all_crops", "cat": "七夕", "tier": 1,
+    "field": "qixi2026Collection", "min": 1, "name": "缘来是小机", "flavor": "", "color": "#E86AA6"
   }
 ]

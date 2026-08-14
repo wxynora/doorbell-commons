@@ -11,6 +11,7 @@ import { checkTitles, titlePrefix } from "./titles.js";
 import { rollSeasonHarvest, rollSeasonStatus, seasonHeadline } from "./season-events.js";
 import { fishingStatusLine } from "./fishing.js";
 import { GLIMMER_BUFF_TEXT, glimmerBuffActive, glimmerStatusLine } from "./glimmer.js";
+import { buyQixi2026Seed, qixi2026CompletionText, qixi2026ShopRows, qixi2026TaskText, qixi2026TransferAllowed, settleQixi2026QuietTask } from "./qixi-2026.js";
 import { freshSeed } from "./rng.js";
 import { randomUUID, randomBytes } from "node:crypto";
 /** 农场门牌号字符集：大写字母 + 数字，剔除易混的 I/L/O/0/1。 */
@@ -199,7 +200,7 @@ const withFooter = (f, now, t) => {
 };
 function fmtHarvest(r, harvesterId) {
     const byDesigner = !!harvesterId && r.crop?.designerId === harvesterId; // 收的人是否就是设计者
-    let t = harvestText(r.crop, r.quality, r.value, r.isNew, r.codexReward, byDesigner); // 收录奖励已并入标题
+    let t = harvestText(r.crop, r.quality, r.value, r.isNew, r.codexReward, byDesigner, r.currency); // 收录奖励已并入标题
     const bt = bonusEventText(r.bonus);
     if (bt)
         t += "\n" + bt;
@@ -208,12 +209,15 @@ function fmtHarvest(r, harvesterId) {
         t += "\n" + dt;
     if (r.potionDrop)
         t += "\n" + potionDropText();
+    const qt = qixi2026CompletionText(r.qixi);
+    if (qt)
+        t += "\n" + qt;
     return t;
 }
 const replantReminder = (count) => `🌱 已空出 ${count} 块地，记得及时补种。`;
 function fmtCodexReveal(r, harvesterId) {
     const byDesigner = !!harvesterId && r.crop?.designerId === harvesterId;
-    return harvestText(r.crop, r.quality, r.value, true, r.codexReward, byDesigner);
+    return harvestText(r.crop, r.quality, r.value, true, r.codexReward, byDesigner, r.currency);
 }
 /** 本轮收获若掉了素材，结尾给一句汇总（教学语只此一次，不再每株重复）。 */
 function materialSummary(rs) {
@@ -243,18 +247,24 @@ function composeHarvests(rs, compact, harvesterId) {
             out.push(fmtCodexReveal(r, harvesterId));
     if (rs.length) {
         const names = {};
-        let gold = 0;
+        let gold = 0, silver = 0;
         for (const r of rs) {
             names[r.crop.name] = (names[r.crop.name] ?? 0) + 1;
-            gold += r.value;
+            if (r.currency === "silver")
+                silver += r.value;
+            else
+                gold += r.value;
         }
-        out.push(`【收下】${Object.entries(names).map(([n, c]) => n + (c > 1 ? `×${c}` : "")).join("、")}（+${gold} 金）`);
+        const gains = [gold ? `+${gold} 金` : "", silver ? `+${silver} 银` : ""].filter(Boolean).join(" · ");
+        out.push(`【收下】${Object.entries(names).map(([n, c]) => n + (c > 1 ? `×${c}` : "")).join("、")}（${gains}）`);
     }
     for (const e of events)
         out.push(e);
     const ms = materialSummary(rs);
     if (ms)
         out.push(ms);
+    for (const text of [...new Set(rs.map((r) => qixi2026CompletionText(r.qixi)).filter(Boolean))])
+        out.push(text);
     return out.join("\n");
 }
 function summarizePlanted(p) {
@@ -284,6 +294,7 @@ export function potionTargetLine(f, now) {
 export function shopBrief(f, now) {
     refreshShop(f, now);
     const s = shopOffer(f, now);
+    const qixi = qixi2026ShopRows(f, now);
     let line = `🏪 商店：普通种子${s.common.price}金 · 奇幻种子${s.fantasy.price}金 · 🧪加速药水${ITEMS.speed_potion.price}金/瓶(今日已购${POTION_DAILY_CAP - potionDailyLeft(f, now)}/${POTION_DAILY_CAP})`;
     if (s.limited.length)
         line += ` · 🎏限定刷出:${s.limited.map((l) => `${l.name}(${l.price}金)`).join("/")}（→ buy-seed 买，每种每天限1）`;
@@ -291,12 +302,16 @@ export function shopBrief(f, now) {
         line += `\n🎁 药水套装在售（${f.shop.potionSet.qty}瓶 ${f.shop.potionSet.price}金，限购1）→ buy-potion-set`;
     if (f.shop.recipe)
         line += `\n📜 配方在售【${cropById.get(f.shop.recipe)?.name ?? f.shop.recipe}】（500金）→ buy-recipe`;
+    if (qixi.length)
+        line += `\n🎋 七夕限定种子：${qixi.map((item) => `${item.name}(${item.price}金·今日剩${item.left})`).join("、")} → buy-seed {"id":"作物名"}`;
     return line + "（完整两层商店看 shop）";
 }
 export function viewShop(f, now) {
     refreshShop(f, now);
     const s = shopOffer(f, now);
+    const qixi = qixi2026ShopRows(f, now);
     const lim = s.limited.length ? "\n🎏 限定种子刷出：" + s.limited.map((l) => `${l.name}(${l.price}金)`).join("、") + "　→ buy-seed 买（金币结算，每种每天限 1 颗；解锁的限定靠商店随机刷，没有常驻上架）" : "";
+    const qixiLine = qixi.length ? `\n🎋 七夕限定种子：${qixi.map((item) => `${item.name}·${item.rarity} ${item.price}金（今日 ${item.bought}/5）`).join("、")}　→ buy-seed {"id":"作物名"}` : "";
     const potion = ITEMS.speed_potion;
     // 第一层：官方商店
     let recipeLine = "📜 配方：（暂无，每隔几小时刷新，看缘分）";
@@ -310,7 +325,7 @@ export function viewShop(f, now) {
         : "🎁 药水套装：（暂无，每次刷新随机上架，看缘分；别人店里刷出的，串门也能买一份）";
     const layer1 = [
         "🏪 第一层 · 种子铺",
-        `普通种子 ${s.common.price}金 · 奇幻种子 ${s.fantasy.price}金${lim}`,
+        `普通种子 ${s.common.price}金 · 奇幻种子 ${s.fantasy.price}金${lim}${qixiLine}`,
         potionDailyLeft(f, now) > 0
             ? `🧪 ${potion.name} ${potion.price}金/瓶（官方店每天限 ${POTION_DAILY_CAP} 瓶/农场，今日已购 ${POTION_DAILY_CAP - potionDailyLeft(f, now)}/${POTION_DAILY_CAP}）`
             : `🧪 ${potion.name}：🌙 官方药水今日已购满 ${POTION_DAILY_CAP}/${POTION_DAILY_CAP}——${POTION_CAP_LINE}`,
@@ -583,7 +598,7 @@ function resolveMarketId(kind, id) {
         return (cookingIngredientById.get(id) ?? cookingIngredients.find((x) => x.name === id))?.id ?? id;
     return id;
 }
-export function listForSale(f, kind, id, qty) {
+export function listForSale(f, kind, id, qty, now = Date.now()) {
     if (kind !== "material" && kind !== "seed")
         return { ok: false, error: "只能上架 material 或 seed" };
     id = resolveMarketId(kind, id); // 允许用中文名上架（玩家看不到 ugc_xxx 的 id）
@@ -593,6 +608,8 @@ export function listForSale(f, kind, id, qty) {
         return { ok: false, error: `没有这种作物: ${id}` };
     if (kind === "seed" && getCrop(id)?.banned)
         return { ok: false, error: "该自创作物已被举报下架，无法上架" };
+    if (kind === "seed" && !qixi2026TransferAllowed(f, id, now))
+        return { ok: false, error: "完成对应七夕任务后解锁。" };
     qty = Math.max(1, Math.floor(Number(qty) || 1));
     const price = refPrice(kind, id); // 统一售价：一律用参考价，玩家不能自定价（否则可挂天价卖给系统 NPC 套现银币）
     const bag = invOf(f, kind);
@@ -765,7 +782,7 @@ export function buyNpcSeed(npc, buyer, id, now) {
     return { ok: true, name: c.name, qty: 1, cost: stock.price };
 }
 /** 跨农场购买（server 传入 seller + buyer）。市场用银币结算。 */
-export function buyFromMarket(seller, buyer, kind, id, qty) {
+export function buyFromMarket(seller, buyer, kind, id, qty, now = Date.now()) {
     if (seller.id === buyer.id)
         return { ok: false, error: "不能买自己摊位上的东西——要拿回直接 unlist 下架（自买会刷销量，已禁止）。" };
     id = resolveMarketId(kind, id); // 允许用中文名购买
@@ -776,12 +793,14 @@ export function buyFromMarket(seller, buyer, kind, id, qty) {
         seller.market = seller.market.filter((m) => m !== e);
         return { ok: false, error: "该自创作物已被举报下架" };
     }
+    if (kind === "seed" && !qixi2026TransferAllowed(buyer, id, now))
+        return { ok: false, error: "完成对应七夕任务后解锁。" };
     // 限定种子稀缺化：每种每人每天只能从市场买 1 颗（想多要走熔炼；UGC 不限）
     const isDish = kind === "dish";
     const isIngredient = kind === "ingredient";
     const isLimitedSeed = kind === "seed" && getCrop(id)?.category === "limited";
     if (isLimitedSeed) {
-        const day = currentDayIndex(Date.now());
+        const day = currentDayIndex(now);
         if (!buyer.limitedSeedBuys || buyer.limitedSeedBuys.day !== day)
             buyer.limitedSeedBuys = { day, ids: [] };
         if (buyer.limitedSeedBuys.ids.includes(id))
@@ -945,11 +964,13 @@ function dispatchImpl(f, b, now) {
         case "status": {
             const se = rollSeasonStatus(f, now); // 进农场季节事件（10% + 冷却；命中即结算到农场）
             const seLine = se ? seasonHeadline(se) + "\n————————————\n" : "";
+            const quiet = settleQixi2026QuietTask(f, now);
+            const qixi = [qixi2026CompletionText(quiet), qixi2026TaskText(f, now)].filter(Boolean).join("\n");
             const inbox = takeInbox(f);
             const box = inbox.length ? "📬 新消息：\n" + inbox.join("\n") + "\n————————————\n" : "";
             const roam = ranchRoamLine(f);
             const ptl = potionTargetLine(f, now); // 催熟候选（限定/稀有优先），让 POST AI 也能策略性指定催熟
-            return { ok: true, text: withFooter(f, now, seLine + box + describeFarm(f, now) + (roam ? "\n" + roam : "") + (ptl ? "\n" + ptl : "") + "\n" + fishingStatusLine(f, now) + "\n" + glimmerStatusLine(f, now) + (glimmerBuffActive(now) ? "\n" + GLIMMER_BUFF_TEXT : "") + "\n" + shopBrief(f, now)) };
+            return { ok: true, text: withFooter(f, now, seLine + box + describeFarm(f, now) + (qixi ? "\n" + qixi : "") + (roam ? "\n" + roam : "") + (ptl ? "\n" + ptl : "") + "\n" + fishingStatusLine(f, now) + "\n" + glimmerStatusLine(f, now) + (glimmerBuffActive(now) ? "\n" + GLIMMER_BUFF_TEXT : "") + "\n" + shopBrief(f, now)) };
         }
         case "shop": return { ok: true, text: viewShop(f, now) };
         case "encyclopedia": return { ok: true, text: viewEncyclopedia(f, b.id) };
@@ -968,6 +989,10 @@ function dispatchImpl(f, b, now) {
                     : kitchenCook(f, b.items, now);
                 if (!r.ok)
                     return { ok: false, text: r.error };
+                if (r.qixi) {
+                    const submitted = `黄油曲奇 ×1 已提交至七夕任务。`;
+                    return { ok: true, text: withFooter(f, now, [submitted, qixi2026CompletionText(r.qixi)].filter(Boolean).join("\n")) };
+                }
                 const line = r.odd
                     ? `🥴 锅里端出了一份「微妙的料理」：只能 1 金系统回收，或由你自己吃下并随机承受 2 小时负面效果。`
                     : `🍲 做出了【${r.dish.name}·${r.dish.rarity}】！系统回收价已锁定为 ${r.dish.value} 牧场金币 + ${dishSystemRecycleSilver(r.dish)} 银。${r.discovered ? "还通过这次正确试做解锁了食谱。" : ""}`;
@@ -1005,7 +1030,7 @@ function dispatchImpl(f, b, now) {
             return { ok: false, text: "🏆 排行榜是全服功能，单机 CLI 只有你这一座农场——联网 HTTP 服务看 GET /leaderboard（或 /c?a=leaderboard，公开免 token）。" };
         case "craft": {
             const r = craft(f, b.materials ?? [], now);
-            return { ok: r.ok, text: r.ok ? withFooter(f, now, `⚗️ 熔炼成功！得到限定种子【${r.cropName}·${r.rarity}】${r.byRecipe ? "（命中隐藏配方！）" : ""}\n${plantHint(f, r.cropId, r.cropName)}`) : r.error };
+            return { ok: r.ok, text: r.ok ? withFooter(f, now, [`⚗️ 熔炼成功！得到限定种子【${r.cropName}·${r.rarity}】${r.byRecipe ? "（命中隐藏配方！）" : ""}\n${plantHint(f, r.cropId, r.cropName)}`, qixi2026CompletionText(r.qixi)].filter(Boolean).join("\n")) : r.error };
         }
         case "buy-recipe": {
             const r = buyRecipe(f, now);
@@ -1030,7 +1055,7 @@ function dispatchImpl(f, b, now) {
             };
         }
         case "list": {
-            const r = listForSale(f, String(b.kind), String(b.id), b.qty);
+            const r = listForSale(f, String(b.kind), String(b.id), b.qty, now);
             return { ok: r.ok, text: r.ok ? withFooter(f, now, `🧺 上架「${r.name}」×${r.qty} @ 🪙${r.price}银（别人串门可买）`) : r.error };
         }
         case "unlist": {
@@ -1044,6 +1069,12 @@ function dispatchImpl(f, b, now) {
             return { ok: r.ok, text: r.ok ? withFooter(f, now, `🛒 从阿土买下限定种子「${r.name}」×${r.qty}，-💰${r.cost}金`) : r.error };
         }
         case "buy-seed": { // 买自己店当前刷出的限定种子（金币结算，每种每天限购 1；不填 id 默认买当前刷出的那颗）
+            const qixi = buyQixi2026Seed(f, b.id ?? f.shop.npcSeed?.id, now);
+            if (qixi.handled) {
+                if (qixi.ok && f.shop.npcSeed?.id === qixi.id)
+                    f.shop.npcSeed = null;
+                return { ok: qixi.ok, text: qixi.ok ? withFooter(f, now, `🛒 买下七夕限定种子「${qixi.name}」×${qixi.qty}，-💰${qixi.cost}金（今日还可购买 ${qixi.left} 颗）\n${plantHint(f, qixi.id, qixi.name)}`) : qixi.error };
+            }
             // 注意：这里不调 refreshShop——否则正好跨过 4h 刷新窗口时会在购买瞬间重 roll，把玩家正要买的那颗换掉。
             // 商店刷新只在查看(status/shop/agent 页)时发生；购买只认当前已刷出的 shop.npcSeed。
             if (!f.shop.npcSeed)
