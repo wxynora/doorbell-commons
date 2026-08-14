@@ -757,17 +757,17 @@ restores and validates the pre-release database under its recorded original sche
 previous runtime. It restarts Doorbell only after both database and runtime rollback succeed; any
 incomplete rollback withholds automatic restart for manual recovery.
 
-Community commit `e2b9bc7da7f40dec5655a86977794e19914d26a6` was deployed through that entry on
-2026-08-14. The previous application remains at
-`/opt/doorbell-commons.previous-20260814T100155Z`. The root-only online SQLite backup is
-`/var/backups/doorbell-commons/releases/20260814T100155Z-pre-e2b9bc7/doorbell-2026-08-14T10-01-55.563Z.sqlite`.
+Application-bearing community commit `e2b9bc7da7f40dec5655a86977794e19914d26a6` was deployed
+through that entry on 2026-08-14. Later documentation-only main releases use the same entry. Their
+exact release marker, previous-runtime path and root-only online-backup path are emitted by the
+release command and deliberately not hard-coded here as a self-staling “latest” record.
 The live database is schema v4 with integrity OK and zero foreign-key violations. The external
 delivery generation authority remains `/etc/doorbell-commons/delivery-generation` as `root:root
 0600`, supplied only through the loaded systemd credential. The required upstream request deadline
 remains explicitly `60000` ms on this VPS. MCP readiness was set back to `false` after the isolated
 migration acceptance; no credential or chosen deployment value was copied into the repository.
 
-After cutover, `doorbell-commons.service` is active/running with `NRestarts=0`, one
+The current `doorbell-commons.service` is active/running with `NRestarts=0`, one
 `127.0.0.1:3000` listener, and no warning-or-higher startup log. The already loaded nginx
 configuration retains the confirmed login rate limits and strips Cookie headers from both farm
 proxies. Public root, `/api/health`, and `/farm/` remain available; `/farm-test/` no longer has an
