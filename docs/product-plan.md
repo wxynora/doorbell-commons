@@ -149,7 +149,7 @@ Doorbell Commons
 - 无农场首次入住的前端创建表单；
 - Doorbell 的正式生产发布、真实玩家逐户迁移与真实家庭 Connector 接入验收。
 
-以上社区代码已由 `main` 提交 `18cae09fb753735c339bc99f2b06ef746b8f30ca` 推送到 GitHub，并于 2026-08-14 发布到 `doorbellcommons.com` 所在的现有测试 VPS；当前社区数据库为 schema v3，Connector Protocol 2.0、外置 delivery-generation authority、密码登录锁定与 nginx 限流／农场 Cookie 隔离、MCP 2025-06-18 版本协商均已随该版本上线。农场自身的 Doorbell 服务边界也已由独立 `farm` 提交 `35a95d17944b4796175e0b88a11494ec41de4fe1` 发布到 8091 正式农场；但生产没有 `AIFARM_DOORBELL_SERVICE_TOKEN`，内部入口继续 `503 service_not_configured`，社区仍未切换生产农场目标，因此这不代表真实玩家迁移或真实家庭 AI 后端已经完成生产验收。
+以上社区代码已由 `main` 提交 `3ce9b1e0a5ca703f162c9af8c36c2e793c8258a6` 从 GitHub 独立 main checkout 构建，并于 2026-08-14 发布到 `doorbellcommons.com` 所在的现有测试 VPS；当前社区数据库为 schema v3，Connector Protocol 2.0、外置 delivery-generation authority、密码登录锁定与 nginx 限流／农场 Cookie 隔离、MCP 2025-06-18 版本协商均已上线。社区与农场使用两个独立 checkout：社区只跟踪 `main`，农场 `/opt/aifarm` 只跟踪 `farm`，部署入口与服务互不切换。农场自身的 Doorbell 服务边界已由独立 `farm` 提交 `35a95d17944b4796175e0b88a11494ec41de4fe1` 发布到 8091 正式农场；但生产没有 `AIFARM_DOORBELL_SERVICE_TOKEN`，内部入口继续 `503 service_not_configured`，社区仍未切换生产农场目标，因此这不代表真实玩家迁移或真实家庭 AI 后端已经完成生产验收。
 
 ## 5. 入住、身份、家园与农场绑定
 
@@ -298,7 +298,7 @@ Connector Protocol 直接升级为破坏性的 `2.0`，服务端与官方 Connec
 
 旧 generation 的增量不得冒充新 generation 的权威状态。任何用于 generation 换代后重建状态的 bootstrap／snapshot 都必须同时携带 `delivery_generation` 与 `through_cursor`，其语义是已经包含该 generation 截至该 cursor 的全部权威变化。Connector 必须先暂停本地增量交付，取得并原子应用 authoritative bootstrap，再把本地 checkpoint 设为该 generation／`through_cursor`，之后只接受更大的 cursor。共享梗库继续以自身不可变 `library_version` snapshot 为权威；换代后重新 `syncLatest()`，`shared_meme.version` 事件仍只是一条可丢失提示。未来 Visit、房间、presence 等需要灾备恢复的模块必须先定义同样带水位的权威 bootstrap，不能依赖旧 generation 增量日志重建。
 
-当前实现状态：上述 Connector Protocol 2.0、服务端 schema v3 generation 事件身份、reset-before-ready 握手、同代 cursor 超前 fail-closed、官方 Connector 本地原子换代与 `/v2` generation-aware 回环接口均已完成并通过定向验证。root-only authority 的 systemd `LoadCredential` 接线、显式初始化脚本与严格停服恢复 wrapper 已进入仓库。社区提交 `18cae09fb753735c339bc99f2b06ef746b8f30ca` 已发布到现有测试 VPS：社区数据库由 v1 迁移到 v3，authority 已以 `root:root 0600` 初始化并由 systemd credential 只读注入，服务与 nginx 验收正常。当前仍没有真实家庭 Connector，也没有使用真实 Connector credential、模型、玩家迁移或农场动作做端到端验收；测试 VPS 已切换服务端 v2 不等于真实家庭端已经接入。
+当前实现状态：上述 Connector Protocol 2.0、服务端 schema v3 generation 事件身份、reset-before-ready 握手、同代 cursor 超前 fail-closed、官方 Connector 本地原子换代与 `/v2` generation-aware 回环接口均已完成并通过定向验证。root-only authority 的 systemd `LoadCredential` 接线、显式初始化脚本与严格停服恢复 wrapper 已进入仓库。社区运行版本 `3ce9b1e0a5ca703f162c9af8c36c2e793c8258a6` 已从 VPS 的独立 GitHub main checkout 发布：数据库保持 v3，authority 为 `root:root 0600` 并由 systemd credential 只读注入，服务验收正常。当前仍没有真实家庭 Connector，也没有使用真实 Connector credential、模型、玩家迁移或农场动作做端到端验收；测试 VPS 已切换服务端 v2 不等于真实家庭端已经接入。
 
 ### 6.2 控制面与实时面
 
