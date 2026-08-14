@@ -13,7 +13,7 @@ import {
 
 const DOORBELL_SERVICE = "doorbell-commons.service";
 const COMMUNITY_DATABASE_PATH = "/var/lib/doorbell-commons/doorbell.sqlite";
-const COMMUNITY_DATABASE_SCHEMA_VERSION = 3;
+const COMMUNITY_DATABASE_SCHEMA_VERSION = 4;
 
 function runSystemctl(arguments_) {
   return new Promise((resolvePromise, reject) => {
@@ -100,27 +100,7 @@ export function validateRestoredCommunityDatabase(
   }
 }
 
-export async function restoreCommunityDatabase({
-  backupPath,
-  authorityPath = DELIVERY_GENERATION_AUTHORITY_PATH,
-  authorityOwner = { uid: 0, gid: 0 },
-  databasePath = COMMUNITY_DATABASE_PATH,
-  generateGeneration = randomUUID,
-  runServiceCommand = runSystemctl,
-  serviceName = DOORBELL_SERVICE,
-} = {}) {
-  if (!backupPath) {
-    throw new Error("a community SQLite backup path is required");
-  }
-  const backupMetadata = await stat(resolve(backupPath));
-  if (!backupMetadata.isFile()) {
-    throw new Error("community SQLite backup path must be a regular file");
-  }
-  if (resolve(backupPath) === resolve(databasePath)) {
-    throw new Error("backup and live database paths must differ");
-  }
-
-  await runServiceCommand(["stop", serviceName]);
+async function requireStoppedService(runServiceCommand, serviceName) {
   const activeState = (
     await runServiceCommand(["show", "--property=ActiveState", "--value", serviceName])
   ).stdout.trim();
@@ -132,7 +112,33 @@ export async function restoreCommunityDatabase({
       `Doorbell service did not stop cleanly: ActiveState=${activeState} SubState=${subState}`,
     );
   }
+}
 
+export async function restoreStoppedCommunityDatabase({
+  backupPath,
+  authorityPath = DELIVERY_GENERATION_AUTHORITY_PATH,
+  authorityOwner = { uid: 0, gid: 0 },
+  databasePath = COMMUNITY_DATABASE_PATH,
+  expectedSchemaVersion = COMMUNITY_DATABASE_SCHEMA_VERSION,
+  generateGeneration = randomUUID,
+  runServiceCommand = runSystemctl,
+  serviceName = DOORBELL_SERVICE,
+} = {}) {
+  if (!backupPath) {
+    throw new Error("a community SQLite backup path is required");
+  }
+  if (!Number.isSafeInteger(expectedSchemaVersion) || expectedSchemaVersion < 1) {
+    throw new Error("expected community database schema version must be a positive integer");
+  }
+  const backupMetadata = await stat(resolve(backupPath));
+  if (!backupMetadata.isFile()) {
+    throw new Error("community SQLite backup path must be a regular file");
+  }
+  if (resolve(backupPath) === resolve(databasePath)) {
+    throw new Error("backup and live database paths must differ");
+  }
+
+  await requireStoppedService(runServiceCommand, serviceName);
   await writeDeliveryGeneration({
     authorityPath,
     generation: generateGeneration(),
@@ -140,16 +146,58 @@ export async function restoreCommunityDatabase({
     replace: true,
   });
   await atomicRestoreDatabase(backupPath, databasePath);
-  validateRestoredCommunityDatabase(databasePath);
+  validateRestoredCommunityDatabase(databasePath, expectedSchemaVersion);
+}
+
+export async function restoreCommunityDatabase({
+  backupPath,
+  authorityPath = DELIVERY_GENERATION_AUTHORITY_PATH,
+  authorityOwner = { uid: 0, gid: 0 },
+  databasePath = COMMUNITY_DATABASE_PATH,
+  generateGeneration = randomUUID,
+  runServiceCommand = runSystemctl,
+  serviceName = DOORBELL_SERVICE,
+} = {}) {
+  await runServiceCommand(["stop", serviceName]);
+  await restoreStoppedCommunityDatabase({
+    backupPath,
+    authorityPath,
+    authorityOwner,
+    databasePath,
+    generateGeneration,
+    runServiceCommand,
+    serviceName,
+  });
   await runServiceCommand(["start", serviceName]);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   requireRootExecution();
-  const backupPath = process.argv[2];
-  if (!backupPath || process.argv.length !== 3) {
-    throw new Error("usage: restore-community-database.mjs <backup.sqlite>");
+  if (process.argv[2] === "--stopped") {
+    const backupPath = process.argv[3];
+    const expectedSchemaText = process.argv[4];
+    if (
+      !backupPath ||
+      !/^[1-9][0-9]*$/.test(expectedSchemaText ?? "") ||
+      process.argv.length !== 5
+    ) {
+      throw new Error(
+        "usage: restore-community-database.mjs --stopped <backup.sqlite> <expected-schema-version>",
+      );
+    }
+    await restoreStoppedCommunityDatabase({
+      backupPath,
+      expectedSchemaVersion: Number(expectedSchemaText),
+    });
+    process.stdout.write(
+      "Doorbell community database restored while stopped under a new delivery generation.\n",
+    );
+  } else {
+    const backupPath = process.argv[2];
+    if (!backupPath || process.argv.length !== 3) {
+      throw new Error("usage: restore-community-database.mjs <backup.sqlite>");
+    }
+    await restoreCommunityDatabase({ backupPath });
+    process.stdout.write("Doorbell community database restored under a new delivery generation.\n");
   }
-  await restoreCommunityDatabase({ backupPath });
-  process.stdout.write("Doorbell community database restored under a new delivery generation.\n");
 }

@@ -86,30 +86,48 @@ build_directory="$(mktemp -d "/opt/.doorbell-commons.build.${SHORT_SHA}.XXXXXX")
 candidate_directory="$(mktemp -d "/opt/.doorbell-commons.candidate.${SHORT_SHA}.XXXXXX")"
 previous_directory=""
 failed_directory=""
+backup_path=""
+pre_release_schema=""
 service_stopped=0
 runtime_moved=0
 switched=0
 
 cleanup_and_rollback() {
   local exit_status=$?
+  local rollback_ok=1
   trap - EXIT
 
   if [[ ${exit_status} -ne 0 && ${service_stopped} -eq 1 ]]; then
     if [[ ${switched} -eq 1 ]]; then
-      systemctl stop "${SERVICE_NAME}" >/dev/null 2>&1 || true
+      systemctl stop "${SERVICE_NAME}" >/dev/null 2>&1 || rollback_ok=0
+      if [[ "$(systemctl show --property=ActiveState --value "${SERVICE_NAME}")" != "inactive" || \
+        "$(systemctl show --property=SubState --value "${SERVICE_NAME}")" != "dead" ]]; then
+        rollback_ok=0
+      fi
+      if [[ -n "${backup_path}" && -n "${pre_release_schema}" ]]; then
+        node "${SOURCE_DIRECTORY}/deploy/scripts/restore-community-database.mjs" \
+          --stopped "${backup_path}" "${pre_release_schema}" || rollback_ok=0
+      else
+        rollback_ok=0
+      fi
       if [[ -d "${RUNTIME_DIRECTORY}" ]]; then
-        mv "${RUNTIME_DIRECTORY}" "${failed_directory}" || true
+        mv "${RUNTIME_DIRECTORY}" "${failed_directory}" || rollback_ok=0
       fi
     fi
     if [[ ${runtime_moved} -eq 1 && -n "${previous_directory}" && \
       -d "${previous_directory}" && ! -e "${RUNTIME_DIRECTORY}" ]]; then
-      mv "${previous_directory}" "${RUNTIME_DIRECTORY}" || true
+      mv "${previous_directory}" "${RUNTIME_DIRECTORY}" || rollback_ok=0
     fi
-    if [[ -d "${RUNTIME_DIRECTORY}" ]]; then
-      systemctl start "${SERVICE_NAME}" >/dev/null 2>&1 || true
+    if [[ ${rollback_ok} -eq 1 && -d "${RUNTIME_DIRECTORY}" ]]; then
+      systemctl start "${SERVICE_NAME}" >/dev/null 2>&1 || rollback_ok=0
     fi
-    printf 'Doorbell deployment rolled back after failure; failed candidate path: %s\n' \
-      "${failed_directory}" >&2
+    if [[ ${rollback_ok} -eq 1 ]]; then
+      printf 'Doorbell deployment rolled back after failure; failed candidate path: %s\n' \
+        "${failed_directory}" >&2
+    else
+      systemctl stop "${SERVICE_NAME}" >/dev/null 2>&1 || true
+      printf 'Doorbell rollback did not complete; automatic restart withheld for manual recovery.\n' >&2
+    fi
   fi
 
   if [[ -n "${candidate_directory}" && -d "${candidate_directory}" ]]; then
@@ -186,6 +204,19 @@ node --check "${candidate_directory}/apps/server/dist/index.js"
     }
   ' "${DATABASE_PATH}"
 )
+pre_release_schema="$(node --input-type=module --eval '
+  import { DatabaseSync } from "node:sqlite";
+  const database = new DatabaseSync(process.argv[1], { readOnly: true });
+  try {
+    process.stdout.write(String(database.prepare("PRAGMA user_version").get().user_version));
+  } finally {
+    database.close();
+  }
+' "${DATABASE_PATH}")"
+[[ "${pre_release_schema}" =~ ^[1-9][0-9]*$ ]] || {
+  fail "community database schema version is invalid"
+  exit 1
+}
 
 RELEASE_TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 readonly RELEASE_TIMESTAMP

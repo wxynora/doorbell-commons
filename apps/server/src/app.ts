@@ -55,6 +55,13 @@ import Fastify, {
   type FastifyReply,
   type FastifyRequest,
 } from "fastify";
+import {
+  BellConnectionEpochMismatchError,
+  BellCredentialAuthenticationError,
+  type BellService,
+  type BellStreamSink,
+  BellWakeControlError,
+} from "./bell-service.js";
 import type {
   HumanSettingsPatch,
   HumanSettingsRecord,
@@ -137,6 +144,7 @@ export interface BuildAppOptions {
   groupId: string;
   groupMembership: QqGroupMembershipReader;
   registrationAuth: RegistrationAuthService;
+  bellService?: BellService;
   connectorService?: ConnectorService;
   weatherEngine?: HomeWeatherEngine;
   mailboxService?: MailboxService;
@@ -302,6 +310,31 @@ function readConnectorCredential(authorization: string | undefined): string | un
   }
   const parsed = connectorCredentialSchema.safeParse(authorization.slice("Bearer ".length));
   return parsed.success ? parsed.data : undefined;
+}
+
+function readBellCredential(authorization: string | undefined): string | undefined {
+  if (!authorization?.startsWith("Bearer ")) {
+    return undefined;
+  }
+  const credential = authorization.slice("Bearer ".length);
+  return /^dbb_[A-Za-z0-9_-]{43}$/u.test(credential) ? credential : undefined;
+}
+
+function exactObject(value: unknown, keys: readonly string[]): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const actual = Object.keys(value);
+  return actual.length === keys.length && keys.every((key) => actual.includes(key));
+}
+
+function bellControlText(value: unknown): value is string {
+  return (
+    typeof value === "string" && value.length > 0 && value.length <= 128 && value.trim() === value
+  );
+}
+
+function sendBellError(reply: FastifyReply, statusCode: 400 | 401 | 403 | 409 | 503, code: string) {
+  reply.header("cache-control", "no-store");
+  return reply.code(statusCode).send({ error: { code } });
 }
 
 function sendMailboxError(
@@ -587,6 +620,153 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       status: "ok",
     }),
   );
+
+  const bellService = options.bellService;
+  if (bellService) {
+    const sendBellFailure = (request: FastifyRequest, reply: FastifyReply, error: unknown) => {
+      if (
+        error instanceof BellCredentialAuthenticationError ||
+        error instanceof AuthenticationRequiredError
+      ) {
+        return sendBellError(reply, 401, "authentication_required");
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        return sendBellError(reply, 403, "qq_not_group_member");
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendBellError(reply, 503, "membership_verification_unavailable");
+      }
+      if (
+        error instanceof BellConnectionEpochMismatchError ||
+        error instanceof BellWakeControlError
+      ) {
+        return sendBellError(reply, 409, "wake_state_conflict");
+      }
+      throw error;
+    };
+
+    app.get("/api/bell/stream", async (request, reply) => {
+      if (!humanSettingsReadRequestSchema.safeParse(request.query).success) {
+        return sendBellError(reply, 400, "invalid_request");
+      }
+      const credential = readBellCredential(request.headers.authorization);
+      if (!credential) {
+        return sendBellError(reply, 401, "authentication_required");
+      }
+
+      let started = false;
+      const prepareStream = (): void => {
+        if (started) return;
+        started = true;
+        reply.hijack();
+        reply.raw.writeHead(200, {
+          "cache-control": "no-store",
+          connection: "keep-alive",
+          "content-type": "text/event-stream; charset=utf-8",
+          "x-accel-buffering": "no",
+        });
+      };
+      const sink: BellStreamSink = {
+        send: (event, data) => {
+          prepareStream();
+          reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+        },
+        heartbeat: () => {
+          prepareStream();
+          reply.raw.write(": heartbeat\n\n");
+        },
+        close: () => {
+          if (started && !reply.raw.writableEnded) reply.raw.end();
+        },
+      };
+      try {
+        const connection = await bellService.connect(credential, sink);
+        reply.raw.once("close", () => connection.close());
+        return reply;
+      } catch (error) {
+        if (started) {
+          if (!reply.raw.writableEnded) reply.raw.end();
+          return reply;
+        }
+        return sendBellFailure(request, reply, error);
+      }
+    });
+
+    app.post("/api/bell/ack", async (request, reply) => {
+      const body = request.body;
+      if (
+        !humanSettingsReadRequestSchema.safeParse(request.query).success ||
+        !exactObject(body, ["version", "wake_id", "connection_epoch"]) ||
+        body.version !== 1 ||
+        !bellControlText(body.wake_id) ||
+        !bellControlText(body.connection_epoch)
+      ) {
+        return sendBellError(reply, 400, "invalid_request");
+      }
+      const credential = readBellCredential(request.headers.authorization);
+      if (!credential) {
+        return sendBellError(reply, 401, "authentication_required");
+      }
+      try {
+        return await bellService.acknowledge(credential, {
+          wakeId: body.wake_id,
+          connectionEpoch: body.connection_epoch,
+        });
+      } catch (error) {
+        return sendBellFailure(request, reply, error);
+      }
+    });
+
+    app.post("/api/bell/report", async (request, reply) => {
+      const body = request.body;
+      const allowedReasons = new Set([
+        "busy_exhausted",
+        "retryable_exhausted",
+        "timeout_exhausted",
+        "permanent_error",
+      ]);
+      if (
+        !humanSettingsReadRequestSchema.safeParse(request.query).success ||
+        !exactObject(body, [
+          "version",
+          "wake_id",
+          "connection_epoch",
+          "status",
+          "reason",
+          "error_code",
+        ]) ||
+        body.version !== 1 ||
+        body.status !== "blocked" ||
+        !bellControlText(body.wake_id) ||
+        !bellControlText(body.connection_epoch) ||
+        typeof body.reason !== "string" ||
+        !allowedReasons.has(body.reason) ||
+        typeof body.error_code !== "string" ||
+        !/^[a-z0-9_]{1,64}$/u.test(body.error_code)
+      ) {
+        return sendBellError(reply, 400, "invalid_request");
+      }
+      const credential = readBellCredential(request.headers.authorization);
+      if (!credential) {
+        return sendBellError(reply, 401, "authentication_required");
+      }
+      try {
+        return await bellService.reportBlocked(credential, {
+          wakeId: body.wake_id,
+          connectionEpoch: body.connection_epoch,
+          blockReason: body.reason,
+          errorCode: body.error_code,
+        });
+      } catch (error) {
+        return sendBellFailure(request, reply, error);
+      }
+    });
+
+    app.addHook("onClose", () => {
+      bellService.close();
+    });
+  }
 
   app.post("/api/registration/qq-group-eligibility", async (request, reply) => {
     const parsedRequest = qqGroupEligibilityRequestSchema.safeParse(request.body);
@@ -2178,6 +2358,14 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         token,
         humanSettingsPatch(parsedRequest.data),
       );
+      try {
+        options.bellService?.refreshHome(settings.homeId);
+      } catch (error) {
+        request.log.error(
+          { error_name: error instanceof Error ? error.name : "UnknownError" },
+          "Bell mailbox wake refresh failed after settings were saved",
+        );
+      }
       return humanSettingsResponse(
         options.weatherEngine?.ensureCurrent(settings) ?? settings,
         options.connectorService,

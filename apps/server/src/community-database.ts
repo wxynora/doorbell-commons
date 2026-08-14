@@ -19,7 +19,7 @@ const DEFAULT_CONNECTION_DURATION_MINUTES = 5;
 export const HUMAN_LOGIN_FAILURE_WINDOW_MS = 15 * 60 * 1000;
 export const HUMAN_LOGIN_FAILURE_THRESHOLD = 10;
 export const HUMAN_LOGIN_LOCK_DURATION_MS = 30 * 60 * 1000;
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 3;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 4;
 const LEGACY_CONNECTOR_DELIVERY_GENERATION = "00000000-0000-0000-0000-000000000000";
 
 export interface RegistrationCodeRecord {
@@ -151,6 +151,35 @@ export interface ConnectorEventRecord {
 export interface ConnectorEventAckResult {
   status: "acked" | "duplicate" | "gap" | "mismatch";
   lastAckedCursor: number;
+}
+
+export interface AuthenticatedBellBinding {
+  residentId: string;
+  credentialId: string;
+}
+
+export interface BellBindingState {
+  configured: boolean;
+  lastConnectedAt: number | null;
+}
+
+export type BellWakeStatus = "pending" | "acked" | "blocked" | "cancelled";
+
+export interface BellWakeRecord {
+  wakeId: string;
+  residentId: string;
+  reason: "mailbox_unread";
+  status: BellWakeStatus;
+  createdAt: number;
+  endedAt: number | null;
+  blockReason: string | null;
+  errorCode: string | null;
+}
+
+export interface BellWakeRefreshResult {
+  residentId: string | null;
+  wake: BellWakeRecord | null;
+  cancelledWakeId: string | null;
 }
 
 export type MailboxAudience = "human" | "resident";
@@ -384,6 +413,26 @@ interface ConnectorEventRow {
   payload_json: string;
 }
 
+interface BellBindingRow {
+  resident_id: string;
+  credential_id: string;
+  credential_token_hash: string | null;
+  credential_revoked_at: number | null;
+  last_connected_at: number | null;
+  last_wake_mailbox_revision: number | null;
+}
+
+interface BellWakeRow {
+  wake_id: string;
+  resident_id: string;
+  reason: "mailbox_unread";
+  status: BellWakeStatus;
+  created_at: number;
+  ended_at: number | null;
+  block_reason: string | null;
+  error_code: string | null;
+}
+
 interface MailboxLetterRow {
   letter_id: string;
   home_id: string;
@@ -549,6 +598,19 @@ function mapConnectorEvent(row: ConnectorEventRow): ConnectorEventRecord {
   };
 }
 
+function mapBellWake(row: BellWakeRow): BellWakeRecord {
+  return {
+    wakeId: row.wake_id,
+    residentId: row.resident_id,
+    reason: row.reason,
+    status: row.status,
+    createdAt: row.created_at,
+    endedAt: row.ended_at,
+    blockReason: row.block_reason,
+    errorCode: row.error_code,
+  };
+}
+
 function mapMcpAccessBinding(row: McpAccessBindingRow): McpAccessBindingRecord {
   return {
     residentId: row.resident_id,
@@ -696,7 +758,8 @@ export class CommunityDatabase {
         home_id TEXT PRIMARY KEY,
         resident_id TEXT NOT NULL UNIQUE REFERENCES residents(resident_id) ON DELETE CASCADE,
         home_name TEXT NOT NULL,
-        created_at INTEGER NOT NULL
+        created_at INTEGER NOT NULL,
+        mailbox_revision INTEGER NOT NULL DEFAULT 0 CHECK (mailbox_revision >= 0)
       );
 
       CREATE TABLE IF NOT EXISTS farm_bindings (
@@ -837,6 +900,46 @@ export class CommunityDatabase {
         read_at INTEGER NOT NULL,
         PRIMARY KEY (letter_id, audience)
       );
+
+      CREATE TABLE IF NOT EXISTS bell_bindings (
+        resident_id TEXT PRIMARY KEY REFERENCES residents(resident_id) ON DELETE CASCADE,
+        credential_id TEXT NOT NULL UNIQUE,
+        credential_token_hash TEXT UNIQUE,
+        credential_issued_at INTEGER NOT NULL,
+        credential_revoked_at INTEGER,
+        last_connected_at INTEGER,
+        last_wake_mailbox_revision INTEGER CHECK (
+          last_wake_mailbox_revision IS NULL OR last_wake_mailbox_revision >= 0
+        ),
+        CHECK (
+          (credential_token_hash IS NOT NULL
+            AND credential_revoked_at IS NULL
+            AND length(credential_token_hash) = 64
+            AND credential_token_hash NOT GLOB '*[^0-9a-f]*')
+          OR (credential_token_hash IS NULL AND credential_revoked_at IS NOT NULL)
+        )
+      );
+
+      CREATE TABLE IF NOT EXISTS bell_wakes (
+        wake_id TEXT PRIMARY KEY,
+        resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+        reason TEXT NOT NULL CHECK (reason = 'mailbox_unread'),
+        status TEXT NOT NULL CHECK (status IN ('pending', 'acked', 'blocked', 'cancelled')),
+        created_at INTEGER NOT NULL,
+        ended_at INTEGER,
+        block_reason TEXT,
+        error_code TEXT,
+        CHECK (
+          (status = 'pending' AND ended_at IS NULL AND block_reason IS NULL AND error_code IS NULL)
+          OR (status = 'acked' AND ended_at IS NOT NULL AND block_reason IS NULL AND error_code IS NULL)
+          OR (status = 'blocked' AND ended_at IS NOT NULL AND block_reason IS NOT NULL AND error_code IS NOT NULL)
+          OR (status = 'cancelled' AND ended_at IS NOT NULL AND block_reason IS NULL AND error_code IS NULL)
+        )
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS bell_wakes_one_pending_per_resident
+        ON bell_wakes (resident_id)
+        WHERE status = 'pending';
     `);
     let migratedSchemaVersion = databaseSchemaVersion;
     if (migratedSchemaVersion < 1) {
@@ -939,6 +1042,21 @@ export class CommunityDatabase {
         `);
         this.#database.pragma("user_version = 3");
       })();
+      migratedSchemaVersion = 3;
+    }
+    if (migratedSchemaVersion < 4) {
+      this.#database.transaction(() => {
+        const homeColumns = this.#database.pragma("table_info(homes)") as Array<{
+          name: string;
+        }>;
+        if (!homeColumns.some((column) => column.name === "mailbox_revision")) {
+          this.#database.exec(
+            "ALTER TABLE homes ADD COLUMN mailbox_revision INTEGER NOT NULL DEFAULT 0 CHECK (mailbox_revision >= 0)",
+          );
+        }
+        this.#database.pragma("user_version = 4");
+      })();
+      migratedSchemaVersion = 4;
     }
   }
 
@@ -1942,6 +2060,329 @@ export class CommunityDatabase {
     return transaction.immediate();
   }
 
+  replaceFirstActiveBellCredential(
+    credentialId: string,
+    credentialTokenHash: string,
+    now: number,
+  ): { residentId: string; replacedPrevious: boolean } {
+    if (!/^[0-9a-f]{64}$/u.test(credentialTokenHash)) {
+      throw new Error("Bell credential hash must be one lowercase SHA-256 digest");
+    }
+    const transaction = this.#database.transaction(() => {
+      const residents = this.#database
+        .prepare(
+          `SELECT r.resident_id
+           FROM residents AS r
+           JOIN human_accounts AS a ON a.account_id = r.account_id
+           JOIN homes AS h ON h.resident_id = r.resident_id
+           WHERE a.membership_status = 'active'
+           ORDER BY r.resident_id ASC`,
+        )
+        .all() as Array<{ resident_id: string }>;
+      if (residents.length !== 1) {
+        throw new Error("First-household Bell setup requires exactly one active resident");
+      }
+      const residentId = residents[0]?.resident_id;
+      if (!residentId) {
+        throw new Error("First-household Bell setup could not resolve the active resident");
+      }
+      const existing = this.#database
+        .prepare(
+          `SELECT credential_token_hash, credential_revoked_at
+           FROM bell_bindings
+           WHERE resident_id = ?`,
+        )
+        .get(residentId) as
+        | { credential_token_hash: string | null; credential_revoked_at: number | null }
+        | undefined;
+      this.#database
+        .prepare(
+          `INSERT INTO bell_bindings (
+             resident_id,
+             credential_id,
+             credential_token_hash,
+             credential_issued_at,
+             credential_revoked_at,
+             last_connected_at
+           ) VALUES (?, ?, ?, ?, NULL, NULL)
+           ON CONFLICT(resident_id) DO UPDATE SET
+             credential_id = excluded.credential_id,
+             credential_token_hash = excluded.credential_token_hash,
+             credential_issued_at = excluded.credential_issued_at,
+             credential_revoked_at = NULL,
+             last_connected_at = NULL`,
+        )
+        .run(residentId, credentialId, credentialTokenHash, now);
+      return {
+        residentId,
+        replacedPrevious:
+          existing?.credential_token_hash !== null && existing?.credential_revoked_at === null,
+      };
+    });
+    return transaction.immediate();
+  }
+
+  authenticateBellCredentialHash(
+    credentialTokenHash: string,
+  ): AuthenticatedBellBinding | undefined {
+    const row = this.#database
+      .prepare(
+        `SELECT resident_id,
+                credential_id,
+                credential_token_hash,
+                credential_revoked_at,
+                last_connected_at,
+                last_wake_mailbox_revision
+         FROM bell_bindings
+         WHERE credential_token_hash = ?
+           AND credential_revoked_at IS NULL`,
+      )
+      .get(credentialTokenHash) as BellBindingRow | undefined;
+    return row ? { residentId: row.resident_id, credentialId: row.credential_id } : undefined;
+  }
+
+  getBellBindingState(residentId: string): BellBindingState {
+    const row = this.#database
+      .prepare(
+        `SELECT resident_id,
+                credential_id,
+                credential_token_hash,
+                credential_revoked_at,
+                last_connected_at,
+                last_wake_mailbox_revision
+         FROM bell_bindings
+         WHERE resident_id = ?`,
+      )
+      .get(residentId) as BellBindingRow | undefined;
+    return {
+      configured: row?.credential_token_hash !== null && row?.credential_revoked_at === null,
+      lastConnectedAt: row?.last_connected_at ?? null,
+    };
+  }
+
+  markBellConnected(residentId: string, credentialId: string, now: number): boolean {
+    const result = this.#database
+      .prepare(
+        `UPDATE bell_bindings
+         SET last_connected_at = ?
+         WHERE resident_id = ?
+           AND credential_id = ?
+           AND credential_token_hash IS NOT NULL
+           AND credential_revoked_at IS NULL`,
+      )
+      .run(now, residentId, credentialId);
+    return result.changes === 1;
+  }
+
+  refreshBellMailboxWakeForHome(
+    homeId: string,
+    wakeId: string,
+    now: number,
+  ): BellWakeRefreshResult {
+    const row = this.#database
+      .prepare("SELECT resident_id FROM homes WHERE home_id = ?")
+      .get(homeId) as { resident_id: string } | undefined;
+    return row
+      ? this.refreshBellMailboxWakeForResident(row.resident_id, wakeId, now)
+      : { residentId: null, wake: null, cancelledWakeId: null };
+  }
+
+  refreshBellMailboxWakeForResident(
+    residentId: string,
+    wakeId: string,
+    now: number,
+  ): BellWakeRefreshResult {
+    const transaction = this.#database.transaction(() => {
+      const state = this.#database
+        .prepare(
+          `SELECT h.home_id,
+                  h.mailbox_revision,
+                  b.credential_token_hash,
+                  b.credential_revoked_at,
+                  b.last_wake_mailbox_revision,
+                  s.pause_all_wakeups,
+                  s.important_system_notifications_enabled,
+                  EXISTS (
+                    SELECT 1
+                    FROM mailbox_letters AS l
+                    LEFT JOIN mailbox_read_states AS r
+                      ON r.letter_id = l.letter_id AND r.audience = 'resident'
+                    WHERE l.home_id = h.home_id AND r.letter_id IS NULL
+                  ) AS has_unread
+           FROM homes AS h
+           LEFT JOIN bell_bindings AS b ON b.resident_id = h.resident_id
+           LEFT JOIN human_settings AS s ON s.home_id = h.home_id
+           WHERE h.resident_id = ?`,
+        )
+        .get(residentId) as
+        | {
+            credential_revoked_at: number | null;
+            credential_token_hash: string | null;
+            has_unread: number;
+            home_id: string;
+            important_system_notifications_enabled: number | null;
+            last_wake_mailbox_revision: number | null;
+            mailbox_revision: number;
+            pause_all_wakeups: number | null;
+          }
+        | undefined;
+      const pending = this.#database
+        .prepare(
+          `SELECT wake_id, resident_id, reason, status, created_at, ended_at, block_reason, error_code
+           FROM bell_wakes
+           WHERE resident_id = ? AND status = 'pending'`,
+        )
+        .get(residentId) as BellWakeRow | undefined;
+      const canWake = Boolean(
+        state?.credential_token_hash &&
+          state.credential_revoked_at === null &&
+          state.has_unread === 1 &&
+          state.pause_all_wakeups !== 1 &&
+          state.important_system_notifications_enabled !== 0,
+      );
+      if (canWake && state) {
+        const revisionIsAfterWatermark =
+          state.last_wake_mailbox_revision === null ||
+          state.mailbox_revision > state.last_wake_mailbox_revision;
+        if (pending) {
+          if (revisionIsAfterWatermark) {
+            this.#database
+              .prepare(
+                `UPDATE bell_bindings
+                 SET last_wake_mailbox_revision = ?
+                 WHERE resident_id = ?`,
+              )
+              .run(state.mailbox_revision, residentId);
+          }
+          return {
+            residentId,
+            wake: mapBellWake(pending),
+            cancelledWakeId: null,
+          };
+        }
+        if (!revisionIsAfterWatermark) {
+          return { residentId, wake: null, cancelledWakeId: null };
+        }
+        this.#database
+          .prepare(
+            `INSERT INTO bell_wakes (
+               wake_id, resident_id, reason, status, created_at,
+               ended_at, block_reason, error_code
+             ) VALUES (?, ?, 'mailbox_unread', 'pending', ?, NULL, NULL, NULL)`,
+          )
+          .run(wakeId, residentId, now);
+        this.#database
+          .prepare(
+            `UPDATE bell_bindings
+             SET last_wake_mailbox_revision = ?
+             WHERE resident_id = ?`,
+          )
+          .run(state.mailbox_revision, residentId);
+        return {
+          residentId,
+          wake: {
+            wakeId,
+            residentId,
+            reason: "mailbox_unread" as const,
+            status: "pending" as const,
+            createdAt: now,
+            endedAt: null,
+            blockReason: null,
+            errorCode: null,
+          },
+          cancelledWakeId: null,
+        };
+      }
+      if (pending) {
+        this.#database
+          .prepare(
+            `UPDATE bell_wakes
+             SET status = 'cancelled', ended_at = ?
+             WHERE wake_id = ? AND status = 'pending'`,
+          )
+          .run(now, pending.wake_id);
+        return { residentId, wake: null, cancelledWakeId: pending.wake_id };
+      }
+      return { residentId, wake: null, cancelledWakeId: null };
+    });
+    return transaction.immediate();
+  }
+
+  listPendingBellWakes(residentId: string): BellWakeRecord[] {
+    const rows = this.#database
+      .prepare(
+        `SELECT wake_id, resident_id, reason, status, created_at, ended_at, block_reason, error_code
+         FROM bell_wakes
+         WHERE resident_id = ? AND status = 'pending'
+         ORDER BY created_at ASC, wake_id ASC
+         LIMIT 32`,
+      )
+      .all(residentId) as BellWakeRow[];
+    return rows.map(mapBellWake);
+  }
+
+  acknowledgeBellWake(
+    residentId: string,
+    wakeId: string,
+    now: number,
+  ): "acked" | "duplicate" | "conflict" | "missing" {
+    const transaction = this.#database.transaction(() => {
+      const row = this.#database
+        .prepare(
+          `SELECT wake_id, resident_id, reason, status, created_at, ended_at, block_reason, error_code
+           FROM bell_wakes
+           WHERE resident_id = ? AND wake_id = ?`,
+        )
+        .get(residentId, wakeId) as BellWakeRow | undefined;
+      if (!row) return "missing" as const;
+      if (row.status === "acked") return "duplicate" as const;
+      if (row.status !== "pending") return "conflict" as const;
+      this.#database
+        .prepare(
+          `UPDATE bell_wakes
+           SET status = 'acked', ended_at = ?
+           WHERE resident_id = ? AND wake_id = ? AND status = 'pending'`,
+        )
+        .run(now, residentId, wakeId);
+      return "acked" as const;
+    });
+    return transaction.immediate();
+  }
+
+  blockBellWake(
+    residentId: string,
+    wakeId: string,
+    now: number,
+    blockReason: string,
+    errorCode: string,
+  ): "blocked" | "duplicate" | "conflict" | "missing" {
+    const transaction = this.#database.transaction(() => {
+      const row = this.#database
+        .prepare(
+          `SELECT wake_id, resident_id, reason, status, created_at, ended_at, block_reason, error_code
+           FROM bell_wakes
+           WHERE resident_id = ? AND wake_id = ?`,
+        )
+        .get(residentId, wakeId) as BellWakeRow | undefined;
+      if (!row) return "missing" as const;
+      if (row.status === "blocked") {
+        return row.block_reason === blockReason && row.error_code === errorCode
+          ? ("duplicate" as const)
+          : ("conflict" as const);
+      }
+      if (row.status !== "pending") return "conflict" as const;
+      this.#database
+        .prepare(
+          `UPDATE bell_wakes
+           SET status = 'blocked', ended_at = ?, block_reason = ?, error_code = ?
+           WHERE resident_id = ? AND wake_id = ? AND status = 'pending'`,
+        )
+        .run(now, blockReason, errorCode, residentId, wakeId);
+      return "blocked" as const;
+    });
+    return transaction.immediate();
+  }
+
   deliverMailboxLetter(delivery: MailboxLetterDelivery): MailboxLetterRecord {
     const transaction = this.#database.transaction(() => {
       const existing = this.#database
@@ -2000,6 +2441,9 @@ export class CommunityDatabase {
           delivery.attachment?.status ?? null,
           delivery.createdAt,
         );
+      this.#database
+        .prepare("UPDATE homes SET mailbox_revision = mailbox_revision + 1 WHERE home_id = ?")
+        .run(delivery.homeId);
 
       return mapMailboxLetter({
         letter_id: delivery.letterId,

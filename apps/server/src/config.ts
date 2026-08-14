@@ -7,6 +7,8 @@ export interface QqGroupEligibilityConfig {
 }
 
 export interface DoorbellServerConfig extends QqGroupEligibilityConfig {
+  bellHeartbeatIntervalMs: number;
+  bellReplayIntervalMs: number;
   databasePath: string;
   farmApiBaseUrl: string;
   farmHumanUiBaseUrl: string;
@@ -14,6 +16,18 @@ export interface DoorbellServerConfig extends QqGroupEligibilityConfig {
   mcpEndpoint: string;
   mcpRuntimeReady: boolean;
   upstreamRequestTimeoutMs: number;
+}
+
+function readFixedPositiveInteger(
+  environment: NodeJS.ProcessEnv,
+  name: string,
+  expected: number,
+): number {
+  const value = readRequiredEnvironmentValue(environment, name);
+  if (!/^[1-9][0-9]*$/u.test(value) || Number(value) !== expected) {
+    throw new Error(`${name} must be ${String(expected)}`);
+  }
+  return expected;
 }
 
 function readRequiredEnvironmentValue(environment: NodeJS.ProcessEnv, name: string): string {
@@ -140,6 +154,16 @@ export function readDoorbellServerConfig(
 ): DoorbellServerConfig {
   return {
     ...readQqGroupEligibilityConfig(environment),
+    bellHeartbeatIntervalMs: readFixedPositiveInteger(
+      environment,
+      "DOORBELL_BELL_HEARTBEAT_INTERVAL_MS",
+      30_000,
+    ),
+    bellReplayIntervalMs: readFixedPositiveInteger(
+      environment,
+      "DOORBELL_BELL_REPLAY_INTERVAL_MS",
+      60_000,
+    ),
     databasePath: readDatabasePath(environment),
     farmApiBaseUrl: readFarmApiBaseUrl(environment),
     farmHumanUiBaseUrl: readFarmHumanUiBaseUrl(environment),

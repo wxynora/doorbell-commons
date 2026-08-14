@@ -27,6 +27,8 @@ export interface MailboxServiceOptions {
   farmRewardGranter?: FarmWelcomeRewardGranter;
   now?: () => number;
   generateLetterId?: () => string;
+  onMailboxChanged?: (homeId: string) => void;
+  onMailboxNotificationError?: (error: unknown) => void;
 }
 
 export class MailboxLetterNotFoundError extends Error {
@@ -77,17 +79,21 @@ export class MailboxService {
   readonly #farmRewardGranter: FarmWelcomeRewardGranter | undefined;
   readonly #now: () => number;
   readonly #generateLetterId: () => string;
+  readonly #onMailboxChanged: ((homeId: string) => void) | undefined;
+  readonly #onMailboxNotificationError: (error: unknown) => void;
 
   constructor(options: MailboxServiceOptions) {
     this.#database = options.database;
     this.#farmRewardGranter = options.farmRewardGranter;
     this.#now = options.now ?? Date.now;
     this.#generateLetterId = options.generateLetterId ?? randomUUID;
+    this.#onMailboxChanged = options.onMailboxChanged;
+    this.#onMailboxNotificationError = options.onMailboxNotificationError ?? (() => undefined);
   }
 
   deliver(input: MailboxDeliveryInput): MailboxLetterRecord {
     assertNoSecrets(input);
-    return this.#database.deliverMailboxLetter({
+    const letter = this.#database.deliverMailboxLetter({
       letterId: this.#generateLetterId(),
       homeId: input.homeId,
       idempotencyKey: input.idempotencyKey,
@@ -97,6 +103,8 @@ export class MailboxService {
       createdAt: this.#now(),
       attachment: input.attachment ?? null,
     });
+    this.#notifyMailboxChanged(input.homeId);
+    return letter;
   }
 
   listForAudience(
@@ -116,6 +124,9 @@ export class MailboxService {
     const letter = this.#database.openMailboxLetter(homeId, audience, letterId, this.#now());
     if (!letter) {
       throw new MailboxLetterNotFoundError();
+    }
+    if (audience === "resident") {
+      this.#notifyMailboxChanged(homeId);
     }
     return letter;
   }
@@ -160,5 +171,13 @@ export class MailboxService {
       this.#database.markMailboxAttachmentClaimed(homeId, letterId);
     }
     return this.openForAudience(homeId, audience, letterId);
+  }
+
+  #notifyMailboxChanged(homeId: string): void {
+    try {
+      this.#onMailboxChanged?.(homeId);
+    } catch (error) {
+      this.#onMailboxNotificationError(error);
+    }
   }
 }

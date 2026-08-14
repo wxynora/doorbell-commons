@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { connectorDeliveryGenerationSchema } from "@doorbell/protocol";
 import { buildApp } from "./app.js";
+import { BellService } from "./bell-service.js";
 import { CommunityDatabase } from "./community-database.js";
 import { readDoorbellServerConfig } from "./config.js";
 import { ConnectorService } from "./connector-service.js";
@@ -69,7 +70,22 @@ const farmRewardGranter = new FarmRewardClient({
   requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
   serviceToken: serverConfig.farmServiceToken,
 });
-const mailboxService = new MailboxService({ database, farmRewardGranter });
+const reportBellError = (error: unknown): void => {
+  process.stderr.write(`[doorbell-bell] ${error instanceof Error ? error.name : "UnknownError"}\n`);
+};
+const bellService = new BellService({
+  database,
+  registrationAuth,
+  heartbeatIntervalMs: serverConfig.bellHeartbeatIntervalMs,
+  replayIntervalMs: serverConfig.bellReplayIntervalMs,
+  onError: reportBellError,
+});
+const mailboxService = new MailboxService({
+  database,
+  farmRewardGranter,
+  onMailboxChanged: (homeId) => bellService.refreshHome(homeId),
+  onMailboxNotificationError: reportBellError,
+});
 const connectorService = new ConnectorService({
   database,
   deliveryGeneration,
@@ -105,6 +121,7 @@ const app = buildApp({
   groupId: serverConfig.qqGroupId,
   groupMembership,
   registrationAuth,
+  bellService,
   connectorService,
   weatherEngine,
   mailboxService,

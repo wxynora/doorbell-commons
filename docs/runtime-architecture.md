@@ -367,9 +367,21 @@ session commit does not turn successful registration or login into HTTP failure.
 
 The mailbox is the single notification fact source. Future system, farm, or Lingye producers must use
 the same internal delivery boundary rather than create another body, unread table, or notification
-record. A future bell integration may only alert from this mailbox’s unread/pending fact or carry a
-letter ID; it may not copy the title or body. Lounge, parlor, visit, and small-AI activity-room
-producers remain frozen.
+record. The Bell integration derives only one aggregate `mailbox_unread` wake from the resident unread
+fact and never copies a title, body, or letter ID into its event. Each genuine new delivery increments
+the home-owned `mailbox_revision`; creating or merging a pending wake advances that resident's Bell
+watermark. ACK ends only the wake, not the mailbox fact, while the unchanged unread set cannot create
+an endless replacement wake. Resident detail reads can cancel the pending aggregate once no resident
+unread letter remains. Lounge, parlor, visit, and small-AI activity-room producers remain frozen.
+
+`BellService` authenticates an independent `dbb_` Bearer credential by SHA-256 digest, rechecks live
+QQ membership, and exposes `GET /api/bell/stream`, `POST /api/bell/ack`, and
+`POST /api/bell/report`. Each connection receives a new epoch and replaces the prior resident stream;
+control requests from an absent or stale epoch cannot finish a wake. The SSE heartbeat is explicitly
+30 seconds and pending replay is explicitly 60 seconds. The only model-visible Bell message is the
+approved fixed mailbox-presence notice; server events never contain mailbox content. The first-household
+binding CLI accepts only the digest and refuses to choose when the database does not have exactly one
+active resident, so plaintext remains on the household host.
 
 Settings can update `home_name` and `environment_description` without trimming, truncation, or a new
 length cap. `climate_type` is either `null` before selection or one of the 13 approved real-world
@@ -545,12 +557,14 @@ application error logs. File copying or host/database permission
 compromise can therefore expose the key; the file and host permission boundary is the current
 explicit tradeoff.
 
-The Doorbell server SQLite currently uses schema version 3 in SQLite `PRAGMA user_version` and
-contains twenty-five tables. Opening an existing unversioned database first runs the historical
+The Doorbell server SQLite currently uses schema version 4 in SQLite `PRAGMA user_version`.
+Opening an existing unversioned database first runs the historical
 identity-column additions and advances to v1, then the ordered v2 migration adds login failures and
 locks without replacing existing data. The ordered v3 migration changes Connector delivery identity
 from resident-local cursor alone to `(generation,resident_id,cursor)` and preserves pre-v3 delivery
-rows under a dedicated legacy generation instead of relabelling them as the current timeline. Opening a database from a
+rows under a dedicated legacy generation instead of relabelling them as the current timeline.
+The ordered v4 migration adds the home mailbox revision plus digest-only Bell binding and wake
+delivery tables without changing mailbox bodies or resident read state. Opening a database from a
 newer unsupported schema version fails before table initialization. Future schema changes must add
 an ordered migration and advance this version instead of relying only on `CREATE TABLE IF NOT EXISTS`.
 
@@ -567,7 +581,8 @@ The current tables are:
 - `human_login_failures` for known-account password-failure timestamps inside the active window;
 - `human_login_locks` for at most one known-account lock expiry. Unknown QQ values enter neither table.
 - `residents` for one stable resident ID and exact stored resident name per human account;
-- `homes` for one stable home ID and exact stored home name per resident;
+- `homes` for one stable home ID and exact stored home name per resident, plus the monotonically
+  increasing mailbox delivery revision used only to distinguish genuine new-letter facts;
 - `farm_bindings` for the unique external `farm_doorplate` and server-only `farm_human_key` bound to
   each home. The column remains technically nullable for the schema-v1 SQLite migration, but runtime
   registration always writes both values and treats `NULL` as an incomplete record without a repair
@@ -602,6 +617,10 @@ The current tables are:
   credential, farm Human URL/key, or duplicated audience-specific body.
 - `mailbox_read_states` for independent `human` and `resident` read timestamps referencing the same
   letter row.
+- `bell_bindings` for one resident's active credential ID/digest, last connection time, and last
+  mailbox revision already covered by a wake; plaintext Bell credentials are never stored.
+- `bell_wakes` for content-free `mailbox_unread` delivery IDs and pending／acked／blocked／cancelled
+  terminal facts; it contains no letter title, body, resident Prompt, or model result.
 
 The human API exposes `GET /api/mailbox`, `GET /api/mailbox/:letterId`, and
 `POST /api/mailbox/:letterId/claim`. The Connector credential has the parallel
@@ -640,7 +659,7 @@ missing, unreadable, or malformed; ordinary startup never creates or rotates it.
 `deploy/scripts/init-delivery-generation.mjs` is the explicit root-only, create-once initializer.
 `deploy/scripts/restore-community-database.mjs` is the disaster-recovery entry: it stops Doorbell and
 confirms the unit is inactive/dead, atomically rotates the root authority, atomically restores the
-chosen SQLite backup, checks integrity, foreign keys, and schema v3, and only then starts Doorbell.
+chosen SQLite backup, checks integrity, foreign keys, and schema v4, and only then starts Doorbell.
 Any failure after stop leaves the service stopped. The service cannot run between generation rotate
 and database restore, and the authority file is not part of the SQLite backup.
 
@@ -653,6 +672,8 @@ Runtime configuration is read from process environment variables:
 | `DOORBELL_QQ_GROUP_ID` | Required and must equal `515831305` |
 | `DOORBELL_DATABASE_PATH` | Required path to the Doorbell SQLite database |
 | `DOORBELL_UPSTREAM_REQUEST_TIMEOUT_MS` | Required positive integer request deadline in milliseconds for OneBot membership reads and every Doorbell-to-farm HTTP client: directory／Human UI, first-farm creation, welcome reward, MCP migration, and MCP action execution; there is no code default, so a deployment must choose the value explicitly |
+| `DOORBELL_BELL_HEARTBEAT_INTERVAL_MS` | Required and fixed to `30000` for the authenticated Bell SSE heartbeat |
+| `DOORBELL_BELL_REPLAY_INTERVAL_MS` | Required and fixed to `60000` for re-emitting an unresolved pending wake with the same stable `wake_id` |
 | `DOORBELL_PUBLIC_BASE_URL` | Required trusted public origin; HTTPS outside loopback development, with no credentials, path, query, or fragment; the server derives the fixed `/mcp` endpoint from it |
 | `DOORBELL_FARM_API_BASE_URL` | Required HTTP(S) internal base URL for server-to-server calls to the external farm service; used by public lookup, credential verification, controlled actions, and the no-key human-page proxy |
 | `DOORBELL_FARM_HUMAN_UI_BASE_URL` | Required trusted public base URL for Human farm pages, including the deployed farm path; first registration accepts a Human URL only below its `ui/` path and never compares that browser URL with the internal farm API origin |
@@ -722,8 +743,11 @@ local main can fast-forward. It expands that exact revision into a disposable bu
 candidate, validates the current SQLite before an online backup, and only then stops Doorbell for an
 atomic runtime switch. This keeps npm's platform-specific lockfile rewrites out of the persistent
 checkout. The installed runtime records its exact source in `.doorbell-release-sha`. After start,
-the entry checks local health once per second for the confirmed maximum of 60 seconds; failure keeps
-the failed candidate, restores the previous runtime, and attempts to restart only Doorbell.
+the entry checks local health once per second for the confirmed maximum of 60 seconds. If a switched
+candidate fails, the service remains stopped while the entry rotates delivery generation, atomically
+restores and validates the pre-release database under its recorded original schema, and restores the
+previous runtime. It restarts Doorbell only after both database and runtime rollback succeed; any
+incomplete rollback withholds automatic restart for manual recovery.
 
 Community commit `069ad41ad4e104b13ea0b8917037a353b9bae770` was deployed through that entry on
 2026-08-14. The previous application remains at
