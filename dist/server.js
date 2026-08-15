@@ -1,16 +1,15 @@
 // 开放 HTTP 接口（node:http，零依赖）。业务逻辑复用 game.ts，保证与 CLI 同一套规则。
 import { createServer } from "node:http";
-import { randomUUID, randomBytes, timingSafeEqual } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { randomUUID, randomBytes } from "node:crypto";
+import { existsSync } from "node:fs";
 import { advance, steal, canStealNow, stealAvailability, stealShieldRemain, isUgcCrop, visitorWater, tryWaterReward, humanHarvestAll, humanHarvestLeft, ranchRoamLine, buyPotionSet, refreshShop, ranchCollect, ranchRemit, ranchBuyAccessory, ranchBuyDecoration, ranchWearAccessory, ranchTakeOffAccessory, ranchPlaceDecoration, ranchUnplaceDecoration, ranchUpgradeAnimal, ranchNameAnimal, ranchNamePet, ranchNamePatrolGoose, ranchTogglePin, dispatchRanchRaid, catchRanchRaid, settleRanchRaids, ensureHumanKey, takeInbox, takeRanchNotices, pushSocialInbox, pushLog, potionDailyLeft, designCrop, craft, nextUpgradeReq, toggleStar, cookingDebuffReason, cookingDebuffStatusText, bribeGuardDog, kitchenBuy, kitchenCook, kitchenUse, kitchenSell, kitchenSellMany, ranchFeedAnimal, kitchenView, dishSystemRecycleSilver, humanBarterList, humanBarterUnlist, humanBarterAccept } from "./engine.js";
 import { kitchenSellSelected } from "./engine.js";
 import { dispatch, HELP, farmView, viewShop, viewEncyclopedia, viewBag, shopBrief, viewMarket, buyFromMarket, visitView, ranchAgentSection, refPrice, tendNpc, buyNpcSeed, randomTip, hasDamagedPublicName, viewKitchen } from "./game.js";
 import { harvestText, stealThiefText, statusFooter, waterText, describeFarm } from "./flavor.js";
-import { createFarm, getFarm, allFarms, playerFarms, save, getGlimmerWorld, getPublicExpeditionWorld, DoorbellFarmCreationError, createDoorbellFarm, findDoorbellFarmCreation, DoorbellWelcomeRewardError, grantDoorbellWelcomeReward } from "./store.js";
-import { MAX_BODY_BYTES, SYNC_MAX_BODY_BYTES, MAX_FARMS, MESSAGE_TEXT_MAX, MESSAGES_MAX, POTION_DAILY_CAP, POTION_CAP_LINE, HUMAN_HARVEST_DAILY_CAP, NPC_ID, SEED_PRICE, GROW_TICKS, RECIPE_PRICE, WELCOME_MAX, EXP_DAILY_CAP, EXP_MAX_CHARGES_PER_ENTRY, BASE, REGISTRATION_OPEN, REGISTRATION_CLOSED_TEXT, REGISTRATION_CAP, REGISTRATION_FULL_TEXT, SHOW_MIGRATION_NOTICE, MIGRATION_NOTICE_TEXT, MIGRATION_NOTICE_HTML } from "./config.js";
+import { createFarm, getFarm, allFarms, playerFarms, save, getGlimmerWorld, getPublicExpeditionWorld } from "./store.js";
+import { MAX_FARMS, MESSAGE_TEXT_MAX, MESSAGES_MAX, POTION_DAILY_CAP, POTION_CAP_LINE, HUMAN_HARVEST_DAILY_CAP, NPC_ID, SEED_PRICE, GROW_TICKS, RECIPE_PRICE, WELCOME_MAX, EXP_DAILY_CAP, EXP_MAX_CHARGES_PER_ENTRY, BASE, REGISTRATION_OPEN, REGISTRATION_CLOSED_TEXT, REGISTRATION_CAP, REGISTRATION_FULL_TEXT, SHOW_MIGRATION_NOTICE, MIGRATION_NOTICE_TEXT, MIGRATION_NOTICE_HTML } from "./config.js";
 import { allowRequest, allowCreate, sweepGuard } from "./guard.js";
 import { mintNonce, takeNonce, sweepNonces, htmlAgentPage, htmlReadme, htmlGuide, htmlNotice, htmlGenLink } from "./agent.js";
-import { mcpDispatch } from "./mcp.js";
 import { uiHome, uiRanch, uiCooking, uiMarket, uiTa, uiCodex, uiMessages, uiLeaderboard, uiInvalid, uiExpedition, uiTogether, uiGlimmer, uiHumanNotices } from "./web.js";
 import { expRoll, expSetCharm } from "./expedition.js";
 import { viewLeaderboard } from "./leaderboard.js";
@@ -22,17 +21,17 @@ import { allUgc } from "./ugc.js";
 import { getCrop, materialById, expEventById } from "./content.js";
 import { cookingIngredientById } from "./content.js";
 import { currentDayIndex } from "./time.js";
-import { claimSyncedFarm, exportSyncedFarm, PublicSyncError, registerSyncedFarm, syncFarm, syncPageHtml, } from "./public-sync.js";
+import { PublicSyncError } from "./public-sync.js";
 import { runFishing } from "./fishing.js";
 import { runGlimmer, setGlimmerVariant } from "./glimmer.js";
 import { advancePublicExpedition, checkPublicContribution, currentPublicTask, findPublicDish, findPublicHarvestPlot, findPublicWaterTarget, markPublicTrialPlot, publicExpeditionStatusLine, publicExpeditionText, recordPublicContribution, runPublicChoice, takePublicAiNotices, takePublicDish } from "./public-expedition.js";
 import { qixi2026CompletionText, recordQixi2026Progress, recordQixi2026StealAttempt, settleQixi2026QuietTask } from "./qixi-2026.js";
+import { AGENT_HEADERS, RequestBodyError, clientIp, jsonOut, readBody, readFormBody, smartParams, textOut } from "./server/http.js";
+import { createAssetHandler } from "./server/assets.js";
+import { createDoorbellInternalHandler, internalServiceError, legacyAgentAccessRevoked } from "./server/doorbell-internal.js";
+import { handleSyncRoute } from "./server/sync.js";
+import { createLegacyMcpHandler } from "./server/legacy-mcp.js";
 // 首页只展开 POST/REST（核心玩法）；只能 GET / 只能点链接的接入写法收进 /get；/readme 是给人类伴侣看的新手攻略。
-// 机读默认紧凑 JSON；需要人工读时设环境变量 FARM_PRETTY=1 缩进输出。
-const PRETTY = process.env.FARM_PRETTY === "1";
-const DOORBELL_SERVICE_TOKEN = process.env.AIFARM_DOORBELL_SERVICE_TOKEN ?? "";
-const MCP_STATUS_IDLE_MS = 10 * 60 * 1000;
-const mcpLastToolAt = new Map();
 const GUESTBOOK_HELP = `
   💬 看看自己家的留言板 guestbook （只读最新 10 条，最新在前；开关用 guestbook {"on":false} / {"on":true}）`;
 const SHARED_HELP = HELP + GUESTBOOK_HELP;
@@ -58,201 +57,6 @@ const SOCIAL_HELP = `
   （也支持老派写法：POST /farms/<门牌号>/<动作> {...,"token":"..."}，串门带 "by":"你的门牌号"；token 可改放 X-Farm-Token 头。）
   （中文——农场名/作物名/留言——用 UTF-8 最稳，服务器也会自动纠正 GBK。想要能程序解析的整块农场数据，任意请求加 "detail":true。）
   🧳 本地单机存档迁入与同步：GET ${BASE}/sync`;
-// 动态接口一律禁缓存：响应里常含 token / humanUrl / 实时农场状态，且建农场走 GET（?name=…）——
-// 同名 URL 会被共享缓存按 URL 命中、把前一个注册者的密钥回放给别人（"误入别人农场" + token 泄露）。
-const NO_STORE = { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache", "Expires": "0" };
-function jsonOut(res, code, body) {
-    res.writeHead(code, { "Content-Type": "application/json; charset=utf-8", ...NO_STORE });
-    // 机读默认紧凑输出（省 25~45% 体积）；要人工调试可加 ?pretty=1（见 server 主路由）。
-    res.end(PRETTY ? JSON.stringify(body, null, 2) : JSON.stringify(body));
-}
-function textOut(res, code, t) {
-    res.writeHead(code, { "Content-Type": "text/plain; charset=utf-8", ...NO_STORE });
-    res.end(t);
-}
-function serviceTokenMatches(authorization) {
-    const prefix = "Bearer ";
-    if (!DOORBELL_SERVICE_TOKEN || typeof authorization !== "string" || !authorization.startsWith(prefix))
-        return false;
-    const received = Buffer.from(authorization.slice(prefix.length), "utf8");
-    const expected = Buffer.from(DOORBELL_SERVICE_TOKEN, "utf8");
-    return received.length === expected.length && timingSafeEqual(received, expected);
-}
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const FARM_DOORPLATE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/;
-const DOORBELL_EXECUTION_RESERVED_PARAMS = new Set([
-    "action",
-    "token",
-    "by",
-    "farm",
-    "farmId",
-    "farm_id",
-    "humanKey",
-    "human_key",
-    "agentKey",
-    "agent_key",
-    "detail",
-    "verbose",
-]);
-const DOORBELL_EXECUTION_BLOCKED_ACTIONS = new Set([
-    "new-token",
-    "npc",
-    "hot",
-    "ranking",
-    "adventure",
-    "exp",
-]);
-const isPlainObject = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
-const farmByHumanKey = (humanKey) => playerFarms().find((farm) => farm.humanKey === humanKey);
-const legacyAgentAccessRevoked = (farm) => farm?.doorbellMcpMigration?.legacyMcpRevoked === true;
-function migrationReceipt(farm) {
-    const migration = farm.doorbellMcpMigration;
-    return {
-        migration_id: migration.migrationId,
-        confirmation_id: migration.confirmationId,
-        farm_doorplate: farm.id,
-        legacy_mcp_revoked: true,
-        revoked_at: migration.revokedAt,
-    };
-}
-function internalServiceError(res, status, code, message) {
-    return jsonOut(res, status, { ok: false, error: { code, message } });
-}
-function requireDoorbellService(req, res, method) {
-    if (!DOORBELL_SERVICE_TOKEN) {
-        internalServiceError(res, 503, "service_not_configured", "Doorbell farm service is not configured");
-        return false;
-    }
-    if (!serviceTokenMatches(req.headers.authorization)) {
-        internalServiceError(res, 401, "authentication_required", "A valid Doorbell service credential is required");
-        return false;
-    }
-    if (method !== "POST") {
-        internalServiceError(res, 405, "method_not_allowed", "Use POST for this service endpoint");
-        return false;
-    }
-    return true;
-}
-function validateFarmBinding(body) {
-    const humanKey = typeof body?.farm_human_key === "string" ? body.farm_human_key : "";
-    const expectedDoorplate = typeof body?.expected_farm_doorplate === "string" ? body.expected_farm_doorplate : "";
-    if (!humanKey)
-        return { error: { status: 400, code: "invalid_request", message: "farm_human_key is required" } };
-    if (!FARM_DOORPLATE_RE.test(expectedDoorplate))
-        return { error: { status: 400, code: "invalid_request", message: "expected_farm_doorplate is invalid" } };
-    const farm = farmByHumanKey(humanKey);
-    if (!farm)
-        return { error: { status: 404, code: "farm_credential_not_found", message: "The farm human credential is invalid" } };
-    if (farm.id !== expectedDoorplate)
-        return { error: { status: 409, code: "farm_doorplate_mismatch", message: "The farm human credential does not match the expected doorplate" } };
-    return { farm };
-}
-function doorbellFarmCreationReceipt(creationId, result) {
-    const farm = result.farm;
-    return {
-        creation_id: creationId,
-        created: result.created,
-        farm_doorplate: farm.id,
-        farm_name: farm.name,
-        ai_name: farm.aiName,
-        human_name: farm.humanName,
-        farm_human_key: farm.humanKey,
-        created_at: new Date(farm.createdAt).toISOString(),
-    };
-}
-async function handleDoorbellFarmCreation(req, res, method) {
-    if (!requireDoorbellService(req, res, method))
-        return;
-    try {
-        const body = await readJsonBody(req, MAX_BODY_BYTES);
-        const keys = isPlainObject(body) ? Object.keys(body) : [];
-        if (keys.length !== 4 || !keys.includes("creation_id") || !keys.includes("farm_name") || !keys.includes("ai_name") || !keys.includes("human_name") || !UUID_RE.test(String(body?.creation_id ?? "")))
-            return internalServiceError(res, 400, "invalid_request", "Submit only a valid creation_id, farm_name, ai_name, and human_name");
-        const farmName = typeof body.farm_name === "string" ? body.farm_name : "";
-        const aiName = typeof body.ai_name === "string" ? body.ai_name : "";
-        const humanName = typeof body.human_name === "string" ? body.human_name : "";
-        if (!farmName.trim() || !aiName.trim() || !humanName.trim() || hasDamagedRegistrationName(farmName, aiName, humanName))
-            return internalServiceError(res, 400, "invalid_request", "Farm creation names are invalid");
-        const creationId = String(body.creation_id);
-        let result = findDoorbellFarmCreation(creationId, farmName, { aiName, humanName });
-        if (!result) {
-            if (!REGISTRATION_OPEN)
-                return internalServiceError(res, 503, "registration_unavailable", REGISTRATION_CLOSED_TEXT);
-            if (REGISTRATION_CAP > 0 && playerFarms().length >= REGISTRATION_CAP)
-                return internalServiceError(res, 503, "registration_unavailable", REGISTRATION_FULL_TEXT);
-            if (allFarms().length >= MAX_FARMS)
-                return internalServiceError(res, 503, "registration_unavailable", "Farm capacity is full");
-            result = createDoorbellFarm(creationId, farmName, { aiName, humanName });
-        }
-        return jsonOut(res, result.created ? 201 : 200, doorbellFarmCreationReceipt(creationId, result));
-    }
-    catch (error) {
-        if (error instanceof PublicSyncError)
-            return internalServiceError(res, 400, "invalid_request", "The request body must be valid JSON");
-        if (error instanceof DoorbellFarmCreationError) {
-            if (error.code === "creation_conflict")
-                return internalServiceError(res, 409, error.code, error.message);
-            return internalServiceError(res, 500, error.code, error.message);
-        }
-        console.error("[doorbell-farm-creation] farm creation failed");
-        return internalServiceError(res, 503, "farm_creation_unavailable", "The farm could not be created");
-    }
-}
-async function handleDoorbellMcpMigration(req, res, method) {
-    if (!requireDoorbellService(req, res, method))
-        return;
-    try {
-        const body = await readJsonBody(req, MAX_BODY_BYTES);
-        const keys = isPlainObject(body) ? Object.keys(body) : [];
-        if (keys.length !== 3 || !keys.includes("migration_id") || !keys.includes("farm_human_key") || !keys.includes("expected_farm_doorplate") || !UUID_RE.test(String(body.migration_id ?? "")))
-            return internalServiceError(res, 400, "invalid_request", "Submit only a valid migration_id, farm_human_key, and expected_farm_doorplate");
-        const binding = validateFarmBinding(body);
-        if (binding.error)
-            return internalServiceError(res, binding.error.status, binding.error.code, binding.error.message);
-        const farm = binding.farm;
-        const migrationId = String(body.migration_id);
-        const existing = farm.doorbellMcpMigration;
-        if (existing) {
-            if (existing.migrationId !== migrationId)
-                return internalServiceError(res, 409, "migration_conflict", "This farm was migrated by a different operation");
-            if (farm.agentKey !== undefined) {
-                const previousAgentKey = farm.agentKey;
-                farm.agentKey = undefined;
-                try {
-                    save();
-                }
-                catch (error) {
-                    farm.agentKey = previousAgentKey;
-                    throw error;
-                }
-            }
-            return jsonOut(res, 200, migrationReceipt(farm));
-        }
-        const previousAgentKey = farm.agentKey;
-        farm.agentKey = undefined;
-        farm.doorbellMcpMigration = {
-            migrationId,
-            confirmationId: randomUUID(),
-            revokedAt: new Date().toISOString(),
-            legacyMcpRevoked: true,
-        };
-        try {
-            save();
-        }
-        catch (error) {
-            farm.agentKey = previousAgentKey;
-            delete farm.doorbellMcpMigration;
-            throw error;
-        }
-        return jsonOut(res, 200, migrationReceipt(farm));
-    }
-    catch (error) {
-        if (error instanceof PublicSyncError)
-            return internalServiceError(res, 400, "invalid_request", "The request body must be valid JSON");
-        console.error("[doorbell-mcp-migration] farm access revocation failed");
-        return internalServiceError(res, 503, "migration_unavailable", "The farm migration could not be completed");
-    }
-}
 function executeDoorbellFarmAction(farm, action, params, detail, now) {
     const body = { ...params };
     if (action === "wander") {
@@ -283,223 +87,36 @@ function executeDoorbellFarmAction(farm, action, params, detail, now) {
         : { ...body, token: farm.token };
     return runFarm(target, action, injected, social ? farm.id : body.id, now, { detail });
 }
-async function handleDoorbellFarmExecution(req, res, method) {
-    if (!requireDoorbellService(req, res, method))
-        return;
-    try {
-        const body = await readJsonBody(req, MAX_BODY_BYTES);
-        const keys = isPlainObject(body) ? Object.keys(body) : [];
-        const allowedKeys = new Set(["farm_human_key", "expected_farm_doorplate", "action", "params", "detail"]);
-        if (!isPlainObject(body) || keys.some((key) => !allowedKeys.has(key)) || keys.some((key) => key !== "detail" && body[key] === undefined))
-            return internalServiceError(res, 400, "invalid_request", "Submit only farm_human_key, expected_farm_doorplate, action, params, and optional detail");
-        if (typeof body.action !== "string" || !body.action.trim() || !isPlainObject(body.params) || (body.detail !== undefined && typeof body.detail !== "boolean"))
-            return internalServiceError(res, 400, "invalid_request", "action, params, or detail is invalid");
-        if (DOORBELL_EXECUTION_BLOCKED_ACTIONS.has(body.action))
-            return internalServiceError(res, 400, "unsupported_action", "This legacy farm action is not available through Doorbell");
-        const forbidden = Object.keys(body.params).find((key) => DOORBELL_EXECUTION_RESERVED_PARAMS.has(key));
-        if (forbidden)
-            return internalServiceError(res, 400, "invalid_request", `params.${forbidden} is reserved`);
-        const binding = validateFarmBinding(body);
-        if (binding.error)
-            return internalServiceError(res, binding.error.status, binding.error.code, binding.error.message);
-        if (!legacyAgentAccessRevoked(binding.farm))
-            return internalServiceError(res, 409, "farm_migration_required", "Legacy farm access must be revoked before Doorbell execution is enabled");
-        const out = executeDoorbellFarmAction(binding.farm, body.action, body.params, body.detail === true, Date.now());
-        return jsonOut(res, out.status, out.json);
+function executeLegacyMcpAction(me, action, params, now) {
+    const b = { ...params };
+    if (action === "help")
+        return { ok: true, text: MCP_HELP };
+    if (action === "wander") {
+        const w = wanderResult({ ...b, by: me.id }, now, true);
+        return { ok: w.ok !== false, text: String(w.text ?? "") };
+    } // 随机串门走路由层撮合，不在 runFarm 里
+    if (action === "visit" && (b.to === undefined || String(b.to).trim() === "")) {
+        const listed = visitListResult(me);
+        return { ok: listed.ok !== false, text: String(listed.text ?? "") };
     }
-    catch (error) {
-        if (error instanceof PublicSyncError)
-            return internalServiceError(res, 400, "invalid_request", "The request body must be valid JSON");
-        console.error("[doorbell-farm-execution] action failed");
-        return internalServiceError(res, 503, "farm_unavailable", "The farm action could not be completed");
-    }
+    const social = action === "kitchen"
+        ? b.op === "use" && b.target === "guard-dog" && b.to !== undefined && String(b.to) !== ""
+        : b.to !== undefined && String(b.to) !== ""; // kitchen 的 to 还可表示 system/market，只有贿赂才是跨农场
+    const resolved = social ? resolveNumberedTarget(b.to, me) : undefined;
+    if (resolved?.error)
+        return { ok: false, text: resolved.error };
+    const target = resolved?.farm?.id ?? me.id;
+    if (typeof b.limited === "string")
+        b.limited = b.limited.split(",");
+    if (typeof b.materials === "string")
+        b.materials = b.materials.split(",");
+    fillRunDefaults(action, b);
+    const body = social ? { ...b, by: me.id, token: me.token, targetRef: String(resolved.number) } : { ...b, token: me.token };
+    const out = runFarm(target, action, body, social ? me.id : b.id, now);
+    const text = String(out.json.text ?? "");
+    return { ok: out.json.ok !== false, text: out.json.farm ? `${text}\n\n${JSON.stringify({ farm: out.json.farm })}` : text };
 }
-async function handleDoorbellWelcomeReward(req, res, method) {
-    if (!DOORBELL_SERVICE_TOKEN)
-        return jsonOut(res, 503, { ok: false, error: { code: "service_not_configured", message: "Doorbell reward service is not configured" } });
-    if (!serviceTokenMatches(req.headers.authorization))
-        return jsonOut(res, 401, { ok: false, error: { code: "authentication_required", message: "A valid Doorbell service credential is required" } });
-    if (method !== "POST")
-        return jsonOut(res, 405, { ok: false, error: { code: "method_not_allowed", message: "Use POST for this service endpoint" } });
-    try {
-        const body = await readJsonBody(req, MAX_BODY_BYTES);
-        const keys = body && typeof body === "object" && !Array.isArray(body) ? Object.keys(body) : [];
-        if (keys.length !== 2 || !keys.includes("grant_id") || !keys.includes("human_key"))
-            throw new DoorbellWelcomeRewardError(400, "invalid_request", "Submit only grant_id and human_key");
-        const result = grantDoorbellWelcomeReward(body.human_key, body.grant_id);
-        return jsonOut(res, 200, {
-            ok: true,
-            applied: result.applied,
-            grant_id: result.grantId,
-            farm_doorplate: result.farmId,
-            reward: {
-                seed: { id: result.seedId, name: result.seedName, rarity: "SSR", quantity: 1 },
-                silver: 200,
-            },
-        });
-    }
-    catch (error) {
-        if (error instanceof DoorbellWelcomeRewardError)
-            return jsonOut(res, error.status, { ok: false, error: { code: error.code, message: error.message } });
-        if (error instanceof PublicSyncError)
-            return jsonOut(res, 400, { ok: false, error: { code: "invalid_request", message: "The request body must be valid JSON" } });
-        console.error("[doorbell-reward] grant failed");
-        return jsonOut(res, 503, { ok: false, error: { code: "reward_unavailable", message: "The farm reward could not be granted" } });
-    }
-}
-/** 在原始字节层智能解码：玩家是 AI、HTTP 工具五花八门，不少客户端（如 Windows 下的工具）
- *  把中文按 GBK 而非 UTF-8 发出。必须在 utf8 解码「之前」判断——一旦 buf.toString('utf8') 把
- *  非法字节解成 U+FFFD 就不可逆了。优先 UTF-8；非法则按 gb18030(GBK 超集、ASCII 段与 UTF-8 一致、
- *  整段重解安全)回退；两者都非法才兜底 toString，绝不比现状差。纯 ASCII(token/id/数字)走快路不受影响。 */
-function smartDecode(buf) {
-    if (buf.length === 0)
-        return "";
-    try {
-        return new TextDecoder("utf-8", { fatal: true }).decode(buf);
-    }
-    catch {
-        try {
-            return new TextDecoder("gb18030", { fatal: true }).decode(buf);
-        }
-        catch {
-            return buf.toString("utf8");
-        }
-    }
-}
-/** 把 query 里单个片段还原成原始字节：%XX→该字节、+→空格、其余按字符码取低 8 位。
- *  不像 decodeURIComponent 那样按 UTF-8 解码——保留原始字节交给 smartDecode 判编码，
- *  这样 GBK 客户端把中文 %-编码成 GBK 字节时也能救回来（query 的 %XX 是 ASCII、未丢失）。 */
-function percentBytes(s) {
-    const out = [];
-    for (let i = 0; i < s.length; i++) {
-        const ch = s[i];
-        if (ch === "%" && i + 2 < s.length) {
-            const b = parseInt(s.slice(i + 1, i + 3), 16);
-            if (!Number.isNaN(b)) {
-                out.push(b);
-                i += 2;
-                continue;
-            }
-        }
-        out.push(ch === "+" ? 0x20 : s.charCodeAt(i) & 0xff);
-    }
-    return Buffer.from(out);
-}
-/** 智能解析 query string：等价 URLSearchParams，但每个 key/value 走 percentBytes+smartDecode，
- *  纠正 GBK 客户端（URLSearchParams 默认按 UTF-8 解 %XX→中文会乱码）。正常 UTF-8 客户端结果不变。 */
-function smartParams(search) {
-    const sp = new URLSearchParams();
-    const q = search.startsWith("?") ? search.slice(1) : search;
-    if (!q)
-        return sp;
-    for (const pair of q.split("&")) {
-        if (!pair)
-            continue;
-        const eq = pair.indexOf("=");
-        const k = eq < 0 ? pair : pair.slice(0, eq);
-        const v = eq < 0 ? "" : pair.slice(eq + 1);
-        sp.append(smartDecode(percentBytes(k)), smartDecode(percentBytes(v)));
-    }
-    return sp;
-}
-class RequestBodyError extends Error {
-    constructor(status, code, message) {
-        super(message);
-        this.name = "RequestBodyError";
-        this.status = status;
-        this.code = code;
-    }
-}
-function readRequestBytes(req, maxBytes = MAX_BODY_BYTES) {
-    return new Promise((resolveBody, rejectBody) => {
-        const chunks = [];
-        let length = 0;
-        let settled = false;
-        const fail = (error) => {
-            if (settled)
-                return;
-            settled = true;
-            chunks.length = 0;
-            rejectBody(error);
-        };
-        req.on("data", (chunk) => {
-            if (settled)
-                return;
-            length += chunk.length;
-            if (length > maxBytes) {
-                fail(new RequestBodyError(413, "body_too_large", `请求体超过 ${maxBytes} 字节限制。`));
-            }
-            else {
-                chunks.push(chunk);
-            }
-        });
-        req.on("end", () => {
-            if (settled)
-                return;
-            settled = true;
-            resolveBody(Buffer.concat(chunks));
-        });
-        req.on("aborted", () => fail(new RequestBodyError(400, "request_body_aborted", "请求体传输未完成。")));
-        req.on("error", () => fail(new RequestBodyError(400, "request_body_read_failed", "请求体读取失败。")));
-        req.on("close", () => {
-            if (!settled && !req.complete)
-                fail(new RequestBodyError(400, "request_body_aborted", "请求体传输未完成。"));
-        });
-    });
-}
-async function readBody(req) {
-    const d = smartDecode(await readRequestBytes(req));
-    try {
-        return d ? JSON.parse(d) : {};
-    }
-    catch {
-        throw new RequestBodyError(400, "invalid_json", "请求体不是有效 JSON。");
-    }
-}
-function readJsonBody(req, maxBytes) {
-    return new Promise((resolveBody, rejectBody) => {
-        const chunks = [];
-        let length = 0;
-        let over = false;
-        req.on("data", (chunk) => {
-            length += chunk.length;
-            if (length > maxBytes) {
-                over = true;
-                chunks.length = 0;
-            }
-            else if (!over) {
-                chunks.push(chunk);
-            }
-        });
-        req.on("end", () => {
-            if (over)
-                return rejectBody(new PublicSyncError(413, `同步存档超过 ${Math.trunc(maxBytes / 1024 / 1024)}MB。`));
-            try {
-                const text = smartDecode(Buffer.concat(chunks));
-                resolveBody(text ? JSON.parse(text) : {});
-            }
-            catch {
-                rejectBody(new PublicSyncError(400, "同步存档不是有效 JSON。"));
-            }
-        });
-        req.on("error", () => rejectBody(new PublicSyncError(400, "同步存档读取失败。")));
-    });
-}
-/** 读 application/x-www-form-urlencoded 表单体（人类牧场页的 POST 表单用）。 */
-async function readFormBody(req) {
-    const d = (await readRequestBytes(req)).toString("utf8");
-    const o = {};
-    for (const [k, v] of new URLSearchParams(d))
-        o[k] = v;
-    return o;
-}
-/** 取客户端 IP（兼容反代场景下的 X-Forwarded-For）。 */
-function clientIp(req) {
-    const xff = req.headers["x-forwarded-for"];
-    if (xff)
-        return String(xff).split(",")[0].trim();
-    return req.socket.remoteAddress ?? "unknown";
-}
+const handleDoorbellInternal = createDoorbellInternalHandler(executeDoorbellFarmAction);
 function fresh(id) {
     const f = getFarm(id);
     if (!f)
@@ -1075,6 +692,7 @@ function resolveAgent(playKey) {
     const f = allFarms().find((x) => !legacyAgentAccessRevoked(x) && x.agentKey === playKey);
     return f ? (fresh(f.id) ?? undefined) : undefined;
 }
+const handleLegacyMcp = createLegacyMcpHandler({ resolveAgent, executeAction: executeLegacyMcpAction });
 /** 自动取 3 个素材（凑齐已学配方优先，否则按库存取前 3 个）*/
 function autoPickMaterials(f) {
     const flat = [];
@@ -1599,30 +1217,7 @@ function agentDo(playKey, nonce, now) {
     }
     return agentRedirect(playKey, { kind: "self", banner: stripFooter(banner) }, now);
 }
-const AGENT_HEADERS = { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache", "Expires": "0", "X-Robots-Tag": "noindex" };
-const PUBLIC_PNG_ASSETS = new Map([
-    ["animal-codex-atlas.png", new URL("../assets/animal-codex-atlas.png", import.meta.url)],
-    ["alpaca-codex.png", new URL("../assets/alpaca-codex.png", import.meta.url)],
-    ["ranch-scene-background.png", new URL("../assets/ranch-scene-background.png", import.meta.url)],
-    ["ranch-scene-background-mobile.png", new URL("../assets/ranch-scene-background-mobile.png", import.meta.url)],
-    ["glimmer/variant-1.png", new URL("../assets/glimmer/variant-1.png", import.meta.url)],
-    ["glimmer/variant-2.png", new URL("../assets/glimmer/variant-2.png", import.meta.url)],
-    ["glimmer/variant-3.png", new URL("../assets/glimmer/variant-3.png", import.meta.url)],
-    ["glimmer/map-scene.png", new URL("../assets/glimmer/map-scene.png", import.meta.url)],
-    ["glimmer/variant-1.webp", new URL("../assets/glimmer/variant-1.webp", import.meta.url)],
-    ["glimmer/variant-2.webp", new URL("../assets/glimmer/variant-2.webp", import.meta.url)],
-    ["glimmer/variant-3.webp", new URL("../assets/glimmer/variant-3.webp", import.meta.url)],
-    ["glimmer/map-scene.webp", new URL("../assets/glimmer/map-scene.webp", import.meta.url)],
-    ["lingye-together/river-from-tomorrow-opening-v3.webp", new URL("../assets/lingye-together/river-from-tomorrow-opening-v3.webp", import.meta.url)],
-    ["lingye-together/future-wharf-v3.webp", new URL("../assets/lingye-together/future-wharf-v3.webp", import.meta.url)],
-    ["lingye-together/cooperative-investigation-v3.webp", new URL("../assets/lingye-together/cooperative-investigation-v3.webp", import.meta.url)],
-    ["lingye-together/river-fork-v3.webp", new URL("../assets/lingye-together/river-fork-v3.webp", import.meta.url)],
-    ["lingye-together/ending-second-home-v3.webp", new URL("../assets/lingye-together/ending-second-home-v3.webp", import.meta.url)],
-    ["lingye-together/ending-quiet-harvest-v3.webp", new URL("../assets/lingye-together/ending-quiet-harvest-v3.webp", import.meta.url)],
-    ["lingye-together/ending-ten-thousand-bottles-v3.webp", new URL("../assets/lingye-together/ending-ten-thousand-bottles-v3.webp", import.meta.url)],
-    ["lingye-together/ending-river-no-address-v3.webp", new URL("../assets/lingye-together/ending-river-no-address-v3.webp", import.meta.url)],
-]);
-const COOKING_ASSET_DIR = new URL("../assets/cooking/", import.meta.url);
+const tryServeAsset = createAssetHandler(new URL("../assets/", import.meta.url));
 const MAINTENANCE_FILE = `${process.env.AIFARM_DATA_DIR || "./data"}/maintenance`;
 const MAINTENANCE_API_TEXT = "农场正在维护，暂时不能操作，请稍后再来。";
 const MAINTENANCE_HTML = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>农场维护中</title>
@@ -1653,88 +1248,18 @@ export function startServer(port, host = "127.0.0.1") {
         const method = req.method ?? "GET";
         if (existsSync(MAINTENANCE_FILE))
             return maintenanceOut(req, res, parts, method);
-        const publicPng = method === "GET" && parts[0] === "assets" ? PUBLIC_PNG_ASSETS.get(parts.slice(1).join("/")) : undefined;
-        if (publicPng) {
-            const png = readFileSync(publicPng);
-            const contentType = publicPng.pathname.endsWith(".webp") ? "image/webp" : "image/png";
-            res.writeHead(200, { "Content-Type": contentType, "Content-Length": png.byteLength, "Cache-Control": "public, max-age=86400" });
-            return res.end(png);
-        }
-        const cookingAsset = method === "GET" && parts[0] === "assets" && parts[1] === "cooking"
-            && ((parts.length === 3 && /^[a-z0-9-]+\.(?:webp|png)$/.test(parts[2]))
-                || (parts.length === 4 && parts[2] === "dishes" && /^[a-z0-9-]+\.webp$/.test(parts[3])))
-            ? new URL(parts.length === 3 ? parts[2] : `dishes/${parts[3]}`, COOKING_ASSET_DIR)
-            : undefined;
-        if (cookingAsset && existsSync(cookingAsset)) {
-            const asset = readFileSync(cookingAsset);
-            const contentType = cookingAsset.pathname.endsWith(".png") ? "image/png" : "image/webp";
-            res.writeHead(200, { "Content-Type": contentType, "Content-Length": asset.byteLength, "Cache-Control": "public, max-age=86400" });
-            return res.end(asset);
-        }
-        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "welcome-reward" && parts.length === 3)
-            return handleDoorbellWelcomeReward(req, res, method);
-        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "farm-creation" && parts.length === 3)
-            return handleDoorbellFarmCreation(req, res, method);
-        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "mcp-migrations" && parts[3] === "revoke-farm-access" && parts.length === 4)
-            return handleDoorbellMcpMigration(req, res, method);
-        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "farm-actions" && parts[3] === "execute" && parts.length === 4)
-            return handleDoorbellFarmExecution(req, res, method);
+        if (tryServeAsset(method, parts, res))
+            return;
+        if (await handleDoorbellInternal(req, res, parts, method))
+            return;
         const now = Date.now();
         const ip = clientIp(req);
         if (!allowRequest(ip, now))
             return jsonOut(res, 429, { ok: false, text: "请求太频繁了，过几秒再来（限流）。" });
         try {
             // —— 本地优先同步：公共联机服只接收副本，不读取任何私有实例数据目录。——
-            if (parts[0] === "sync") {
-                if (method === "GET" && parts.length === 1) {
-                    res.writeHead(200, AGENT_HEADERS);
-                    return res.end(syncPageHtml());
-                }
-                if (method === "POST" && parts[1] === "register" && parts.length === 2) {
-                    if (!REGISTRATION_OPEN)
-                        throw new PublicSyncError(503, REGISTRATION_CLOSED_TEXT);
-                    if (REGISTRATION_CAP > 0 && playerFarms().length >= REGISTRATION_CAP)
-                        throw new PublicSyncError(503, REGISTRATION_FULL_TEXT);
-                    if (allFarms().length >= MAX_FARMS)
-                        throw new PublicSyncError(503, "全服农场数量已达上限。");
-                    if (!allowCreate(ip, now))
-                        throw new PublicSyncError(429, "迁入农场太频繁了，过会儿再来。");
-                    const body = await readJsonBody(req, SYNC_MAX_BODY_BYTES);
-                    const result = registerSyncedFarm(body);
-                    return jsonOut(res, 201, {
-                        ok: true,
-                        farmId: result.farm.id,
-                        farmName: result.farm.name,
-                        revision: result.revision,
-                        syncKey: result.syncKey,
-                        humanUrl: `${BASE}/ui/${result.farm.humanKey}`,
-                        playUrl: `${BASE}/a/${result.farm.agentKey}`,
-                        snapshot: result.snapshot,
-                        ugc: result.ugc,
-                    });
-                }
-                if (method === "POST" && parts[1] === "claim" && parts.length === 2) {
-                    const body = await readJsonBody(req, MAX_BODY_BYTES);
-                    const result = claimSyncedFarm(String(body.farmId ?? ""), String(body.token ?? ""));
-                    return jsonOut(res, 200, {
-                        ok: true,
-                        farmId: result.farm.id,
-                        revision: result.revision,
-                        syncKey: result.syncKey,
-                    });
-                }
-                const farmId = String(parts[1] ?? "");
-                const syncKey = String(req.headers["x-farm-sync-key"] ?? "");
-                if (method === "POST" && parts.length === 2) {
-                    const body = await readJsonBody(req, SYNC_MAX_BODY_BYTES);
-                    const result = syncFarm(farmId, syncKey, body);
-                    return jsonOut(res, 200, { ok: true, ...result });
-                }
-                if (method === "GET" && parts[2] === "export" && parts.length === 3) {
-                    return jsonOut(res, 200, { ok: true, ...exportSyncedFarm(farmId, syncKey) });
-                }
-                throw new PublicSyncError(404, "同步入口不存在。");
-            }
+            if (parts[0] === "sync")
+                return await handleSyncRoute({ req, res, parts, method, ip, now });
             // 玩法说明页（GET/agent 版，和首页平行，给只能 GET/点链接的 AI）。主路由 /get。
             //   /readme 给「人类伴侣」看的新手攻略（怎么分工、把哪条链接发给哪种 AI），纯阅读页、无其它入口。
             if (parts[0] === "readme" && parts.length === 1) {
@@ -2338,55 +1863,8 @@ export function startServer(port, host = "127.0.0.1") {
             }
             // MCP 适配器：POST /mcp/<key>（手写最小 JSON-RPC，第 4 个传输层）。<key> = agentKey（和 /a/<key> 同一把，可撤销）。
             //   单工具 farm：身份焊进链接里，调用只给 {action, ...参数}，薄转发到 runFarm——与 POST 版同规则、同存档、同 HUD。
-            if (parts[0] === "mcp") {
-                if (method !== "POST")
-                    return jsonOut(res, 405, { ok: false, text: "MCP 端点只收 POST（JSON-RPC over HTTP）。" });
-                const me = resolveAgent(parts[1] ?? "");
-                if (!me)
-                    return jsonOut(res, 404, { ok: false, text: "这个 MCP 链接无效或已被撤销（key 不对？）。重开见 GET / 的「开张 & 接入」。" });
-                const rpc = await readBody(req);
-                const run = (action, params) => {
-                    const b = { ...params };
-                    if (action === "help")
-                        return { ok: true, text: MCP_HELP };
-                    if (action === "wander") {
-                        const w = wanderResult({ ...b, by: me.id }, now, true);
-                        return { ok: w.ok !== false, text: String(w.text ?? "") };
-                    } // 随机串门走路由层撮合，不在 runFarm 里
-                    if (action === "visit" && (b.to === undefined || String(b.to).trim() === "")) {
-                        const listed = visitListResult(me);
-                        return { ok: listed.ok !== false, text: String(listed.text ?? "") };
-                    }
-                    const social = action === "kitchen"
-                        ? b.op === "use" && b.target === "guard-dog" && b.to !== undefined && String(b.to) !== ""
-                        : b.to !== undefined && String(b.to) !== ""; // kitchen 的 to 还可表示 system/market，只有贿赂才是跨农场
-                    const resolved = social ? resolveNumberedTarget(b.to, me) : undefined;
-                    if (resolved?.error)
-                        return { ok: false, text: resolved.error };
-                    const target = resolved?.farm?.id ?? me.id;
-                    if (typeof b.limited === "string")
-                        b.limited = b.limited.split(",");
-                    if (typeof b.materials === "string")
-                        b.materials = b.materials.split(",");
-                    fillRunDefaults(action, b);
-                    const body = social ? { ...b, by: me.id, token: me.token, targetRef: String(resolved.number) } : { ...b, token: me.token };
-                    const out = runFarm(target, action, body, social ? me.id : b.id, now);
-                    const text = String(out.json.text ?? "");
-                    return { ok: out.json.ok !== false, text: out.json.farm ? `${text}\n\n${JSON.stringify({ farm: out.json.farm })}` : text };
-                };
-                const playerKey = me.id;
-                const noteToolCall = () => {
-                    const previous = mcpLastToolAt.get(playerKey);
-                    mcpLastToolAt.set(playerKey, now);
-                    return previous === undefined || now - previous >= MCP_STATUS_IDLE_MS;
-                };
-                const resp = mcpDispatch(rpc, { serverName: "aifarm", run, noteToolCall });
-                if (resp === undefined) {
-                    res.writeHead(202, NO_STORE);
-                    return res.end();
-                } // 纯通知：202 空体
-                return jsonOut(res, 200, resp);
-            }
+            if (parts[0] === "mcp")
+                return await handleLegacyMcp({ req, res, parts, method, now });
             // 农场专属链接 /a/<key>：身份焊进链接，动作不带 token / by。<key> = 农场 agentKey（和 /agent 点击页同一把，可撤销）。
             //   自家事：POST /a/<key>/<动作> {参数}；串别家：参数加 "to":"对方门牌号"（steal/water/buy/message/buy-potion-set/visit）。
             //   视图走 GET /a/<key>/<status|shop|bag|market|encyclopedia|ledger|leaderboard>；随机逛 /a/<key>/wander。

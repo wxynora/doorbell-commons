@@ -347,9 +347,10 @@ for (const item of qixi2026.tasks) {
 }
 
 const webSource = readFileSync(new URL("../dist/web.js", import.meta.url), "utf8");
-assert.match(webSource, /已自动提交/);
-assert.match(webSource, /黄油曲奇 ×1 已提交至七夕任务。/);
-assert.match(webSource, /知道了/);
+const cookingSource = readFileSync(new URL("../dist/web/cooking.js", import.meta.url), "utf8");
+assert.match(cookingSource, /已自动提交/);
+assert.match(cookingSource, /黄油曲奇 ×1 已提交至七夕任务。/);
+assert.match(cookingSource, /知道了/);
 assert.match(webSource, /#E86AA6|titleColor/);
 
 console.log("qixi-2026 targeted tests passed");
