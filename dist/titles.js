@@ -1,5 +1,5 @@
 // 称号系统：纯数据驱动（content/titles.json）。
-// 每个称号 = 某个累计/即时指标达到阈值即自动解锁；人类前端可佩戴任意一个已解锁的称号，
+// 普通称号按累计/即时指标达到阈值自动解锁；manual 称号只认明确发放；人类前端可佩戴任意一个已解锁的称号，
 // 佩戴后作为「名字前缀」展示在串门页和排行榜上。名字/flavor 在 titles.json 里改，不动引擎。
 import { titles, cropById } from "./content.js";
 import { pushLog } from "./engine.js";
@@ -37,10 +37,14 @@ export function metricValue(f, field) {
     }
 }
 export const titleById = (id) => titles.find((t) => t.id === id);
-/** 已解锁（达到阈值）？ */
+/** 已解锁？普通称号看阈值，manual 称号看明确持有记录。 */
 export const isUnlocked = (f, id) => {
     const t = titleById(id);
-    return !!t && metricValue(f, t.field) >= t.min;
+    if (!t)
+        return false;
+    if (t.manual)
+        return (f.titles ?? []).includes(id);
+    return metricValue(f, t.field) >= t.min;
 };
 /**
  * 重新结算称号：把当前已达阈值、但还没登记进 farm.titles 的称号补登，返回本次新解锁的称号定义。
@@ -50,6 +54,8 @@ export function checkTitles(f) {
     f.titles ??= [];
     const fresh = [];
     for (const t of titles) {
+        if (t.manual)
+            continue;
         if (f.titles.includes(t.id))
             continue;
         if (metricValue(f, t.field) >= t.min) {

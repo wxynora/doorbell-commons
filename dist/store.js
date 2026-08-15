@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from "
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { makeFarm, genCode, makeNpcFarm } from "./game.js";
-import { normalizeDishPricing, pushInbox, pushRanchNotice } from "./engine.js";
+import { normalizeDishPricing, pushInbox, pushLog, pushRanchNotice } from "./engine.js";
 import { dumpUgc, loadUgc } from "./ugc.js";
 import { NPC_ID } from "./config.js";
 import { ensureFishing } from "./fishing.js";
@@ -28,6 +28,10 @@ let publicExpeditionWorld = normalizePublicExpeditionWorld({});
 const DOORBELL_WELCOME_SILVER = 200;
 const SSR_CROPS = crops.filter((crop) => crop?.rarity === "SSR");
 const QIXI_2026_PRICE_REFUND_ID = "qixi-2026-seed-price-refund-20260815";
+const NAZHI_EXCLUSIVE_TITLE_GRANT_ID = "exclusive-title-nazhi-wangwang-delivery-20260815";
+const NAZHI_FARM_ID = "4ZSDR3";
+const NAZHI_EXCLUSIVE_TITLE_ID = "nazhi_wangwang_delivery";
+const NAZHI_EXCLUSIVE_TITLE_NAME = "汪汪送餐员";
 export class DoorbellWelcomeRewardError extends Error {
     constructor(status, code, message) {
         super(message);
@@ -190,6 +194,23 @@ export function applyQixi2026SeedPriceRefund(farmValues = farms.values(), now = 
     appliedMaintenanceGrantIds.push(QIXI_2026_PRICE_REFUND_ID);
     return { applied: true, count, coins, seeds };
 }
+/** 那智专属称号：按稳定公开门牌只发一次，不开放全服条件或领取入口。 */
+export function applyNazhiExclusiveTitleGrant(farmValues = farms.values()) {
+    if (appliedMaintenanceGrantIds.includes(NAZHI_EXCLUSIVE_TITLE_GRANT_ID))
+        return { applied: false, count: 0, missing: false };
+    const target = [...farmValues].find((farm) => farm?.id === NAZHI_FARM_ID);
+    if (!target)
+        return { applied: false, count: 0, missing: true };
+    target.titles ??= [];
+    let count = 0;
+    if (!target.titles.includes(NAZHI_EXCLUSIVE_TITLE_ID)) {
+        target.titles.push(NAZHI_EXCLUSIVE_TITLE_ID);
+        pushLog(target, `🎖️ 解锁称号「${NAZHI_EXCLUSIVE_TITLE_NAME}」——可让 ${target.humanName || "伴侣"} 帮你佩戴`);
+        count = 1;
+    }
+    appliedMaintenanceGrantIds.push(NAZHI_EXCLUSIVE_TITLE_GRANT_ID);
+    return { applied: true, count, missing: false };
+}
 /** 启动时补发已经达标但尚未领取的流光原野成就奖励；每项成就 ID 自身保证幂等。 */
 export function applyGlimmerAchievementRewardBackfill(farmValues = farms.values(), now = Date.now()) {
     let count = 0;
@@ -348,10 +369,13 @@ export function load() {
             const qixiRefund = applyQixi2026SeedPriceRefund();
             if (qixiRefund.applied)
                 console.log(`[store] 七夕种子降价退款已发放 ${qixiRefund.count} 个玩家农场、${qixiRefund.seeds} 颗种子，共 ${qixiRefund.coins} 金`);
+            const nazhiTitleGrant = applyNazhiExclusiveTitleGrant();
+            if (nazhiTitleGrant.applied)
+                console.log(`[store] 那智专属称号已发放 ${nazhiTitleGrant.count} 个玩家农场`);
             const achievementBackfill = applyGlimmerAchievementRewardBackfill();
             if (achievementBackfill.applied)
                 console.log(`[store] 流光原野成就奖励已补发 ${achievementBackfill.count} 个玩家农场、${achievementBackfill.achievements} 项，共 ${achievementBackfill.coins} 金、${achievementBackfill.silver} 银`);
-            if (npcCreated || grant.applied || qixiRefund.applied || achievementBackfill.applied)
+            if (npcCreated || grant.applied || qixiRefund.applied || nazhiTitleGrant.applied || achievementBackfill.applied)
                 save();
             return;
         }
@@ -375,6 +399,7 @@ export function load() {
         ensureNpc();
         applyMaintenanceSilverGrant();
         applyQixi2026SeedPriceRefund();
+        applyNazhiExclusiveTitleGrant();
         save();
         return;
     } // 全新启动：先把常驻 NPC 阿土建出来
@@ -400,6 +425,9 @@ export function load() {
     const qixiRefund = applyQixi2026SeedPriceRefund();
     if (qixiRefund.applied)
         console.log(`[store] 七夕种子降价退款已发放 ${qixiRefund.count} 个玩家农场、${qixiRefund.seeds} 颗种子，共 ${qixiRefund.coins} 金`);
+    const nazhiTitleGrant = applyNazhiExclusiveTitleGrant();
+    if (nazhiTitleGrant.applied)
+        console.log(`[store] 那智专属称号已发放 ${nazhiTitleGrant.count} 个玩家农场`);
     const achievementBackfill = applyGlimmerAchievementRewardBackfill();
     if (achievementBackfill.applied)
         console.log(`[store] 流光原野成就奖励已补发 ${achievementBackfill.count} 个玩家农场、${achievementBackfill.achievements} 项，共 ${achievementBackfill.coins} 金、${achievementBackfill.silver} 银`);

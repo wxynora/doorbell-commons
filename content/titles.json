@@ -654,5 +654,9 @@
   {
     "id": "qixi_2026_all_crops", "cat": "七夕", "tier": 1,
     "field": "qixi2026Collection", "min": 1, "name": "缘来是小机", "flavor": "", "color": "#E86AA6"
+  },
+  {
+    "id": "nazhi_wangwang_delivery", "cat": "专属", "tier": 1,
+    "manual": true, "name": "汪汪送餐员", "flavor": ""
   }
 ]
