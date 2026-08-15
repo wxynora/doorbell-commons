@@ -429,12 +429,8 @@ function recordResolvedChoice(world, option, label, votes) {
     world.history.push({ kind: "choice", step: world.choiceIndex, option, label, voters, farmName: voters.map((item) => item.farmName).join("、") });
 }
 
-function determineEnding(world, finalOption) {
-    const max = Math.max(...SCORE_KEYS.map((key) => world.score[key] ?? 0));
-    const leaders = SCORE_KEYS.filter((key) => (world.score[key] ?? 0) === max);
-    const requested = publicExpeditionContent.finalTieBreak[finalOption];
-    const winner = leaders.length === 1 ? leaders[0] : leaders.includes(requested) ? requested : leaders[0];
-    return publicExpeditionContent.endingByScore[winner];
+function determineEnding(finalOption) {
+    return publicExpeditionContent.endingByFinalChoice[finalOption];
 }
 
 function finishWithEnding(world, endingId, now, farms) {
@@ -653,6 +649,8 @@ export function runPublicChoice(world, farm, rawOption, now = Date.now(), farms 
     }
     else if (index === 2) {
         world.letterChoice = option;
+        const result = publicExpeditionContent.stages.letters.choice.results[option];
+        world.history.push({ kind: "story", title: result.title, text: result.text });
         if (world.completedStages.includes("recipe"))
             openChoice(world, 3);
         else
@@ -663,7 +661,7 @@ export function runPublicChoice(world, farm, rawOption, now = Date.now(), farms 
         startService(world);
     }
     else {
-        finishWithEnding(world, determineEnding(world, option), now, farms);
+        finishWithEnding(world, determineEnding(option), now, farms);
     }
     markImmediateAiPhase(world, farm);
     return { ok: true, text: `${option}「${label}」已得到 ${CHOICE_TARGET} 名玩家共同选择，成为本阶段决定。\n\n${publicExpeditionText(world, farm, now, farms)}` };

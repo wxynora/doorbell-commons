@@ -653,12 +653,12 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         return { status: 200, json: { ok: true, text: "留言已删除。" } };
     }
     // 其余=主人对自己农场的操作（plant/harvest/craft/design/list/sell/run/rename/guestbook/block… 已校验 :id token）
-    const commonPlotsBefore = action === "plant" && publicTask?.kind === "plant_encounter"
-        ? new Set(f.plots.filter((plot) => plot.crop?.seedType === "common").map((plot) => plot.id))
+    const cropsBefore = publicTask?.kind === "plant_encounter"
+        ? new Map(f.plots.map((plot) => [plot.id, plot.crop]))
         : null;
     const r = dispatch(f, { ...b, action }, now);
-    if (r.ok && commonPlotsBefore
-        && f.plots.some((plot) => plot.crop?.seedType === "common" && !commonPlotsBefore.has(plot.id))) {
+    if (r.ok && cropsBefore
+        && f.plots.some((plot) => plot.crop?.seedType === "common" && cropsBefore.get(plot.id) !== plot.crop)) {
         const encounter = recordPublicPlantEncounter(publicWorld, f, now, publicFarms);
         if (encounter.triggered)
             r.text = `${r.text}\n${encounter.text}`;

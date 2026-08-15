@@ -48,7 +48,7 @@ export function uiTogether(f, publicWorld, now, key) {
     const body = `<div class="plaque"><h1>🧭 铃野共行</h1><p class="welcome">全服共同推进的公共故事；这里不会混入个人探险进度。</p>
       <div class="tags"><span class="tag">本期《${esc(shared.title)}》</span><span class="tag">${esc(shared.status)}</span></div></div>
       <section class="card" style="border:2px solid #a9bd83;background:linear-gradient(180deg,#fbfff5,#f7f3e7)">
-        <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap"><div><h2 style="margin:0;color:var(--leaf-deep)">《${esc(shared.title)}》</h2><p class="small muted" style="margin:4px 0 0">第 ${shared.round} 期${shared.routeName ? ` · ${esc(shared.routeName)}` : ""}</p></div><span class="tag">${esc(shared.status)}</span></div>
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap"><div><h2 style="margin:0;color:var(--leaf-deep)">《${esc(shared.title)}》</h2><p class="small muted" style="margin:4px 0 0">第 ${shared.round} 轮${shared.routeName ? ` · ${esc(shared.routeName)}` : ""}</p></div><span class="tag">${esc(shared.status)}</span></div>
         ${progressArt}${currentStory}${cooldown}${choice}${ownReward ? `<div class="flash" style="white-space:pre-wrap;margin-top:12px">${esc(publicExpeditionRewardText(ownReward))}</div>` : ""}
         <details style="margin-top:12px"><summary style="cursor:pointer;font-weight:700">📖 前情提要</summary><div style="margin-top:6px">${togetherHistoryHtml(shared.history)}</div></details>
         ${clueBook}
