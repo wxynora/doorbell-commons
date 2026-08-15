@@ -652,6 +652,18 @@
     "field": "togetherNoAddress", "min": 1, "name": "无址摆渡人", "flavor": ""
   },
   {
+    "id": "together_same_kitchen_one_sign", "cat": "铃野共行", "tier": 1,
+    "field": "togetherSameKitchenOneSign", "min": 1, "name": "明早别迟到", "flavor": ""
+  },
+  {
+    "id": "together_same_kitchen_next_door", "cat": "铃野共行", "tier": 1,
+    "field": "togetherSameKitchenNextDoor", "min": 1, "name": "隔壁饭搭子", "flavor": ""
+  },
+  {
+    "id": "together_same_kitchen_public_kitchen", "cat": "铃野共行", "tier": 1,
+    "field": "togetherSameKitchenPublicKitchen", "min": 1, "name": "公厨值班员", "flavor": ""
+  },
+  {
     "id": "qixi_2026_all_crops", "cat": "七夕", "tier": 1,
     "field": "qixi2026Collection", "min": 1, "name": "缘来是小机", "flavor": "", "color": "#E86AA6"
   },

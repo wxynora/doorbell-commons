@@ -1,4 +1,4 @@
-// 铃野共行：独立于每家 f.expedition 的全服共享分支故事。
+// 铃野共行：全服只维护一份公共故事状态；各农场只保存本人作答、阅读与奖励事实。
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,8 +11,8 @@ import { checkTitles, titleById } from "./titles.js";
 const DIR = resolve(dirname(fileURLToPath(import.meta.url)), "../content");
 export const publicExpeditionContent = JSON.parse(readFileSync(resolve(DIR, "public-expedition.json"), "utf8"));
 const VALID_OPTIONS = new Set(["A", "B", "C"]);
-const CONTRIBUTION_TARGET = 3;
-const CHOICE_TARGET = 3;
+const SCORE_KEYS = ["cooperation", "independent", "public"];
+const CHOICE_TARGET = Number(publicExpeditionContent.choiceTarget) || 3;
 const HOUR_MS = 3600 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 const BEIJING_OFFSET_MS = 8 * HOUR_MS;
@@ -22,21 +22,23 @@ const CHOICE_REWARD_COINS = 1000;
 const CHOICE_REWARD_SILVER = 100;
 const SP_SEEDS = crops.filter((crop) => crop.rarity === "SP" && crop.seedPrice === 3600);
 const SSR_SEEDS = crops.filter((crop) => crop.rarity === "SSR");
-const ENDING_TITLE_ID = {
-    second_home: "together_second_home",
-    quiet_harvest: "together_quiet_harvest",
-    ten_thousand_bottles: "together_ten_thousand_bottles",
-    no_address: "together_no_address",
-};
-const ENDING_ART = {
-    second_home: "ending-second-home-v3.webp",
-    quiet_harvest: "ending-quiet-harvest-v3.webp",
-    ten_thousand_bottles: "ending-ten-thousand-bottles-v3.webp",
-    no_address: "ending-river-no-address-v3.webp",
+const LEGACY_ENDINGS = {
+    second_home: { title: "泊泊找到了第二个家", titleId: "together_second_home" },
+    quiet_harvest: { title: "安静的丰年", titleId: "together_quiet_harvest" },
+    ten_thousand_bottles: { title: "一万只发光瓶", titleId: "together_ten_thousand_bottles" },
+    no_address: { title: "河没有留下地址", titleId: "together_no_address" },
 };
 
 const copy = (value) => structuredClone(value);
-const cleanIdList = (value) => Array.isArray(value) ? value.map(String) : [];
+const cleanIdList = (value) => Array.isArray(value) ? [...new Set(value.map(String))] : [];
+const cleanObject = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : {};
+const taskDefs = [
+    publicExpeditionContent.stages.recipe.question,
+    publicExpeditionContent.stages.recipe.dish,
+    publicExpeditionContent.stages.letters.task,
+    ...publicExpeditionContent.stages.service.orders,
+];
+const taskById = new Map(taskDefs.map((task) => [task.id, task]));
 
 function initialHistory() {
     return [{ kind: "story", title: publicExpeditionContent.opening.title, text: publicExpeditionContent.opening.text }];
@@ -44,24 +46,35 @@ function initialHistory() {
 
 function makeRound(round, now, archives = []) {
     return {
-        version: 1,
+        version: 2,
         storyId: publicExpeditionContent.id,
         storyTitle: publicExpeditionContent.title,
         round,
         startedAt: now,
         phase: "choice",
         choiceIndex: 1,
-        route: null,
-        secondNode: null,
-        taskIndex: null,
+        stage: "opening",
+        currentTaskId: null,
         tasks: {},
         clues: [],
         history: initialHistory(),
+        stageOpenings: [],
+        completedStages: [],
         choiceBallot: null,
         lastChooserFarmId: null,
         cooldown: null,
         participants: [],
+        openingChoice: null,
+        letterChoice: null,
+        serviceChoice: null,
+        score: { cooperation: 0, independent: 0, public: 0 },
+        questionAnswers: {},
+        encounterMisses: {},
+        serviceFarmIds: [],
         endingId: null,
+        endingTitle: null,
+        endingText: null,
+        endingTitleId: null,
         endedAt: null,
         endedDay: null,
         rewards: [],
@@ -70,8 +83,48 @@ function makeRound(round, now, archives = []) {
     };
 }
 
+function endingHistoryEntry(world) {
+    return [...(world.history ?? [])].reverse().find((entry) => entry?.kind === "ending");
+}
+
+function legacyStoryMeta(world) {
+    const legacy = LEGACY_ENDINGS[world.endingId];
+    const history = endingHistoryEntry(world);
+    return {
+        storyTitle: String(world.storyTitle ?? (world.storyId === "river_from_tomorrow" ? "河从明天流来" : world.storyId ?? "往期故事")),
+        endingTitle: String(world.endingTitle ?? legacy?.title ?? history?.title ?? world.endingId ?? "已完成"),
+        endingText: String(world.endingText ?? history?.text ?? ""),
+        titleId: String(world.endingTitleId ?? legacy?.titleId ?? ""),
+    };
+}
+
+function currentStoryMeta(world) {
+    const ending = publicExpeditionContent.endings[world.endingId];
+    if (!ending)
+        return legacyStoryMeta(world);
+    return {
+        storyTitle: String(world.storyTitle ?? publicExpeditionContent.title),
+        endingTitle: String(world.endingTitle ?? ending.title),
+        endingText: String(world.endingText ?? ending.text),
+        titleId: String(world.endingTitleId ?? ending.rewardTitleId),
+    };
+}
+
+function archiveRound(world) {
+    const archived = copy(world);
+    delete archived.archives;
+    if (archived.endingId) {
+        const meta = archived.storyId === publicExpeditionContent.id ? currentStoryMeta(archived) : legacyStoryMeta(archived);
+        archived.storyTitle = meta.storyTitle;
+        archived.endingTitle = meta.endingTitle;
+        archived.endingText = meta.endingText;
+        archived.endingTitleId = meta.titleId;
+    }
+    return archived;
+}
+
 function normalizeTaskState(value, task) {
-    const state = value && typeof value === "object" ? value : {};
+    const state = cleanObject(value);
     state.id = task.id;
     state.contributions = Array.isArray(state.contributions) ? state.contributions : [];
     state.completedAt = Number.isFinite(state.completedAt) ? state.completedAt : null;
@@ -79,63 +132,66 @@ function normalizeTaskState(value, task) {
 }
 
 export function normalizePublicExpeditionWorld(value, now = Date.now()) {
-    if (!value || typeof value !== "object")
+    if (!value || typeof value !== "object" || !value.storyId)
         return makeRound(1, now);
     if (value.storyId !== publicExpeditionContent.id) {
-        const archives = Array.isArray(value.archives) ? value.archives : [];
-        const archived = copy(value);
-        delete archived.archives;
-        archived.storyTitle ??= String(value.storyId ?? "往期故事");
-        return makeRound(1, now, [...archives, archived]);
+        const previousArchives = Array.isArray(value.archives) ? value.archives : [];
+        return makeRound(1, now, [...previousArchives, archiveRound(value)]);
     }
     const world = value;
-    world.version = 1;
+    world.version = 2;
     world.storyTitle = String(world.storyTitle ?? publicExpeditionContent.title);
     world.round = Math.max(1, Math.floor(Number(world.round) || 1));
     world.startedAt = Number.isFinite(world.startedAt) ? world.startedAt : now;
     world.phase = ["choice", "task", "cooldown", "ended", "vote", "closed"].includes(world.phase) ? world.phase : "choice";
-    world.choiceIndex = Math.min(6, Math.max(1, Math.floor(Number(world.choiceIndex) || 1)));
-    world.route = ["A", "B", "C"].includes(world.route) ? world.route : null;
-    world.secondNode = ["A", "B", "C"].includes(world.secondNode) ? world.secondNode : null;
-    world.taskIndex = world.taskIndex == null ? null : Math.min(2, Math.max(0, Math.floor(Number(world.taskIndex) || 0)));
-    world.tasks = world.tasks && typeof world.tasks === "object" ? world.tasks : {};
-    if (world.route) {
-        for (const task of publicExpeditionContent.routes[world.route].tasks)
-            if (world.tasks[task.id])
-                world.tasks[task.id] = normalizeTaskState(world.tasks[task.id], task);
-    }
+    world.choiceIndex = Math.min(4, Math.max(1, Math.floor(Number(world.choiceIndex) || 1)));
+    world.stage = ["opening", "recipe", "letters", "service", "final"].includes(world.stage) ? world.stage : "opening";
+    world.currentTaskId = taskById.has(world.currentTaskId) ? world.currentTaskId : null;
+    world.tasks = cleanObject(world.tasks);
+    for (const task of taskDefs)
+        if (world.tasks[task.id])
+            world.tasks[task.id] = normalizeTaskState(world.tasks[task.id], task);
     world.clues = Array.isArray(world.clues) ? world.clues : [];
     world.history = Array.isArray(world.history) && world.history.length ? world.history : initialHistory();
-    delete world.choiceCounts;
-    world.choiceBallot = world.choiceBallot && typeof world.choiceBallot === "object" ? world.choiceBallot : null;
-    if (world.choiceBallot) {
-        world.choiceBallot.key = String(world.choiceBallot.key ?? "");
-        world.choiceBallot.votes = world.choiceBallot.votes && typeof world.choiceBallot.votes === "object" ? world.choiceBallot.votes : {};
-    }
+    world.stageOpenings = cleanIdList(world.stageOpenings);
+    world.completedStages = cleanIdList(world.completedStages);
+    world.choiceBallot = cleanObject(world.choiceBallot);
+    if (!world.choiceBallot.key)
+        world.choiceBallot = null;
+    else
+        world.choiceBallot.votes = cleanObject(world.choiceBallot.votes);
     world.lastChooserFarmId = world.lastChooserFarmId ? String(world.lastChooserFarmId) : null;
     world.cooldown = world.cooldown && typeof world.cooldown === "object" ? world.cooldown : null;
     if (world.cooldown) {
-        world.cooldown.taskId = String(world.cooldown.taskId ?? "");
+        world.cooldown.readyAt = Number.isFinite(world.cooldown.readyAt) ? world.cooldown.readyAt : now;
+        world.cooldown.next = String(world.cooldown.next ?? "");
         world.cooldown.text = String(world.cooldown.text ?? "");
-        world.cooldown.nextChoiceIndex = Math.min(6, Math.max(1, Math.floor(Number(world.cooldown.nextChoiceIndex) || world.choiceIndex)));
-        world.cooldown.readyAt = Number.isFinite(world.cooldown.readyAt)
-            ? world.cooldown.readyAt
-            : Number.isSafeInteger(world.cooldown.readyDay)
-                ? world.cooldown.readyDay * DAY_MS - BEIJING_OFFSET_MS
-                : now;
-        delete world.cooldown.readyDay;
     }
     world.participants = cleanIdList(world.participants);
-    world.endingId = world.endingId && publicExpeditionContent.endings[world.endingId] ? world.endingId : null;
+    world.openingChoice = VALID_OPTIONS.has(world.openingChoice) ? world.openingChoice : null;
+    world.letterChoice = VALID_OPTIONS.has(world.letterChoice) ? world.letterChoice : null;
+    world.serviceChoice = VALID_OPTIONS.has(world.serviceChoice) ? world.serviceChoice : null;
+    world.score = cleanObject(world.score);
+    for (const key of SCORE_KEYS)
+        world.score[key] = Math.max(0, Math.floor(Number(world.score[key]) || 0));
+    world.questionAnswers = cleanObject(world.questionAnswers);
+    world.encounterMisses = cleanObject(world.encounterMisses);
+    world.serviceFarmIds = cleanIdList(world.serviceFarmIds);
+    world.endingId = publicExpeditionContent.endings[world.endingId] ? world.endingId : null;
+    world.endingTitle = world.endingTitle ? String(world.endingTitle) : null;
+    world.endingText = world.endingText ? String(world.endingText) : null;
+    world.endingTitleId = world.endingTitleId ? String(world.endingTitleId) : null;
     world.endedAt = Number.isFinite(world.endedAt) ? world.endedAt : null;
     world.endedDay = Number.isSafeInteger(world.endedDay) ? world.endedDay : null;
     world.rewards = Array.isArray(world.rewards) ? world.rewards : [];
     world.vote = world.vote && typeof world.vote === "object" ? world.vote : null;
     if (world.vote) {
         world.vote.day = Number.isSafeInteger(world.vote.day) ? world.vote.day : null;
-        world.vote.votes = world.vote.votes && typeof world.vote.votes === "object" ? world.vote.votes : {};
+        world.vote.votes = cleanObject(world.vote.votes);
     }
     world.archives = Array.isArray(world.archives) ? world.archives : [];
+    if (world.phase === "task" && !world.currentTaskId)
+        world.phase = "choice";
     return world;
 }
 
@@ -143,12 +199,6 @@ function replaceWorld(world, next) {
     for (const key of Object.keys(world))
         delete world[key];
     Object.assign(world, next);
-}
-
-function archiveRound(world) {
-    const archived = copy(world);
-    delete archived.archives;
-    return archived;
 }
 
 function farmRewardState(farm) {
@@ -160,9 +210,10 @@ function farmRewardState(farm) {
 }
 
 export function settlePublicExpeditionRewards(world, farms = [], now = Date.now()) {
-    if (!world.endingId)
+    if (!world?.endingId)
         return [];
     const issueId = String(world.storyId);
+    const meta = world.storyId === publicExpeditionContent.id ? currentStoryMeta(world) : legacyStoryMeta(world);
     const contributorIds = new Set();
     for (const state of Object.values(world.tasks ?? {}))
         for (const contribution of state?.contributions ?? [])
@@ -190,15 +241,15 @@ export function settlePublicExpeditionRewards(world, farms = [], now = Date.now(
         state.issues.push(issueId);
         if (!state.endings.includes(world.endingId))
             state.endings.push(world.endingId);
-        const unlocked = checkTitles(farm).find((title) => title.id === ENDING_TITLE_ID[world.endingId]);
-        const title = unlocked ?? titleById(ENDING_TITLE_ID[world.endingId]);
+        const unlocked = checkTitles(farm).find((title) => title.id === meta.titleId);
+        const title = unlocked ?? titleById(meta.titleId);
         const grant = {
             issueId,
             tier,
-            storyTitle: publicExpeditionContent.title,
+            storyTitle: meta.storyTitle,
             endingId: world.endingId,
-            endingTitle: publicExpeditionContent.endings[world.endingId].title,
-            titleId: ENDING_TITLE_ID[world.endingId],
+            endingTitle: meta.endingTitle,
+            titleId: meta.titleId,
             titleName: title?.name ?? null,
             seedId: seed.id,
             seedName: seed.name,
@@ -224,46 +275,6 @@ export function publicExpeditionRewardText(grant) {
     return `🎁 你参与的铃野共行《${grant.storyTitle}》已达成结局「${grant.endingTitle}」：获得 ${grant.coins} 金、${grant.silver} 银、${grant.seedRarity ?? "SP"} 种子「${grant.seedName}」×1，并解锁称号「${grant.titleName}」。`;
 }
 
-export function advancePublicExpedition(world, farms = [], now = Date.now()) {
-    for (const archived of world.archives ?? [])
-        if (archived?.endingId)
-            settlePublicExpeditionRewards(archived, farms, now);
-    if (world.endingId)
-        settlePublicExpeditionRewards(world, farms, now);
-    const today = currentDayIndex(now);
-    if (world.phase === "cooldown" && world.cooldown && now >= world.cooldown.readyAt) {
-        world.phase = "choice";
-        world.choiceIndex = world.cooldown.nextChoiceIndex;
-        world.cooldown = null;
-        world.choiceBallot = null;
-    }
-    if (world.phase === "ended" && Number.isSafeInteger(world.endedDay) && today > world.endedDay) {
-        world.phase = "vote";
-        world.vote = { day: world.endedDay + 1, votes: {} };
-    }
-    if (world.phase === "vote" && Number.isSafeInteger(world.vote?.day) && today > world.vote.day) {
-        const votes = Object.values(world.vote.votes ?? {});
-        const restart = votes.filter((vote) => vote === "A").length;
-        const keep = votes.filter((vote) => vote === "B").length;
-        if (restart > keep) {
-            const archives = [...world.archives, archiveRound(world)];
-            replaceWorld(world, makeRound(world.round + 1, now, archives));
-        }
-        else {
-            world.phase = "closed";
-        }
-    }
-    if (world.phase === "task")
-        prepareCurrentTask(world, farms);
-    return world;
-}
-
-function cooldownReadyAt(task, now) {
-    if (task.cooldownNextDay)
-        return (currentDayIndex(now) + 1) * DAY_MS - BEIJING_OFFSET_MS;
-    return now + Math.max(1, Number(task.cooldownHours) || 6) * HOUR_MS;
-}
-
 function cooldownReadyText(cooldown) {
     if (!cooldown?.readyAt)
         return "稍后";
@@ -277,14 +288,72 @@ function cooldownReadyText(cooldown) {
     }).format(new Date(cooldown.readyAt));
 }
 
-function routeDef(world) {
-    return world.route ? publicExpeditionContent.routes[world.route] : null;
+function pushStageOpening(world, stage, title, text) {
+    world.stage = stage;
+    if (world.stageOpenings.includes(stage))
+        return;
+    world.stageOpenings.push(stage);
+    world.history.push({ kind: "story", title, text });
 }
 
-export function currentPublicTask(world) {
-    if (world.phase !== "task" || !world.route || world.taskIndex == null)
-        return null;
-    return routeDef(world)?.tasks?.[world.taskIndex] ?? null;
+function setCurrentTask(world, task) {
+    world.phase = "task";
+    world.currentTaskId = task.id;
+    world.tasks[task.id] = normalizeTaskState(world.tasks[task.id], task);
+    world.choiceBallot = null;
+}
+
+function startRecipe(world) {
+    const stage = publicExpeditionContent.stages.recipe;
+    pushStageOpening(world, "recipe", stage.title, stage.opening);
+    setCurrentTask(world, stage.question);
+}
+
+function startLetters(world) {
+    const stage = publicExpeditionContent.stages.letters;
+    pushStageOpening(world, "letters", stage.title, stage.opening);
+    setCurrentTask(world, stage.task);
+}
+
+function openChoice(world, index) {
+    world.phase = "choice";
+    world.choiceIndex = index;
+    world.currentTaskId = null;
+    world.choiceBallot = null;
+    if (index === 2)
+        world.stage = "letters";
+    else if (index === 3) {
+        const stage = publicExpeditionContent.stages.service;
+        pushStageOpening(world, "service", stage.title, stage.opening);
+    }
+    else if (index === 4) {
+        const choice = publicExpeditionContent.choices["4"];
+        pushStageOpening(world, "final", choice.title, choice.text);
+    }
+}
+
+function startService(world) {
+    setCurrentTask(world, publicExpeditionContent.stages.service.orders[0]);
+}
+
+function addScore(world, key) {
+    if (SCORE_KEYS.includes(key))
+        world.score[key] = (world.score[key] ?? 0) + 1;
+}
+
+function completeStage(world, stage) {
+    if (!world.completedStages.includes(stage))
+        world.completedStages.push(stage);
+}
+
+function addParticipant(world, farmId) {
+    const id = String(farmId);
+    if (!world.participants.includes(id))
+        world.participants.push(id);
+}
+
+function taskTarget(task) {
+    return Math.max(1, Math.floor(Number(task?.target) || 1));
 }
 
 function currentTaskState(world) {
@@ -294,79 +363,40 @@ function currentTaskState(world) {
     return (world.tasks[task.id] ??= normalizeTaskState({}, task));
 }
 
-function findMarkedCrop(farm, storyId, round, taskId, preferredPlotId) {
-    const preferred = farm?.plots?.find((plot) => plot.id === preferredPlotId
-        && plot.crop?.publicExpedition?.storyId === storyId
-        && plot.crop?.publicExpedition?.round === round
-        && plot.crop?.publicExpedition?.taskId === taskId);
-    if (preferred)
-        return preferred;
-    return farm?.plots?.find((plot) => plot.crop?.publicExpedition?.storyId === storyId
-        && plot.crop?.publicExpedition?.round === round
-        && plot.crop?.publicExpedition?.taskId === taskId);
-}
-
-function restoreTrialCrop(world, farms, contribution, ripe) {
-    const farm = farms.find((item) => item.id === contribution.farmId);
-    if (!farm)
+export function currentPublicTask(world) {
+    if (world.phase !== "task")
         return null;
-    let plot = findMarkedCrop(farm, world.storyId, world.round, "b_plant", contribution.plotId);
-    if (!plot) {
-        plot = farm.plots.find((item) => !item.crop);
-        if (!plot)
-            return null;
-        plot.crop = copy(contribution.crop ?? { seedType: "common", growTicks: 8, progress: 0, ripe: false, waterCount: 0 });
-        plot.crop.publicExpedition = { storyId: world.storyId, round: world.round, taskId: "b_plant" };
-        contribution.plotId = plot.id;
-    }
-    if (ripe) {
-        plot.crop.ripe = true;
-        plot.crop.progress = plot.crop.growTicks;
-    }
-    else {
-        plot.crop.ripe = false;
-        plot.crop.progress = Math.min(plot.crop.progress ?? 0, Math.max(0, plot.crop.growTicks - 1));
-    }
-    return { farm, plot };
-}
-
-function prepareCurrentTask(world, farms) {
-    const task = currentPublicTask(world);
-    if (!task)
-        return;
-    currentTaskState(world);
-    if (task.id !== "b_water" && task.id !== "b_harvest")
-        return;
-    const planted = world.tasks.b_plant?.contributions ?? [];
-    for (const contribution of planted)
-        restoreTrialCrop(world, farms, contribution, false);
+    return taskById.get(world.currentTaskId) ?? null;
 }
 
 function choiceOptions(world) {
     if (world.phase === "vote")
         return publicExpeditionContent.vote.options;
+    if (world.phase === "task" && currentPublicTask(world)?.kind === "question")
+        return currentPublicTask(world).options;
     if (world.phase !== "choice")
         return null;
     if (world.choiceIndex === 1)
         return publicExpeditionContent.opening.options;
     if (world.choiceIndex === 2)
-        return publicExpeditionContent.secondNodes[world.secondNode]?.options ?? null;
-    return routeDef(world)?.choices?.[String(world.choiceIndex)]?.options ?? null;
+        return publicExpeditionContent.stages.letters.choice.options;
+    if (world.choiceIndex === 3)
+        return publicExpeditionContent.stages.service.choice.options;
+    return publicExpeditionContent.choices["4"].options;
 }
 
 function choiceTitle(world) {
     if (world.phase === "vote")
         return publicExpeditionContent.vote.title;
+    if (world.phase === "task" && currentPublicTask(world)?.kind === "question")
+        return currentPublicTask(world).name;
     if (world.choiceIndex === 1)
         return publicExpeditionContent.opening.title;
     if (world.choiceIndex === 2)
-        return publicExpeditionContent.secondNodes[world.secondNode]?.title ?? "选择路线";
-    return routeDef(world)?.choices?.[String(world.choiceIndex)]?.title ?? `第 ${world.choiceIndex} 次选择`;
-}
-
-function addParticipant(world, farmId) {
-    if (!world.participants.includes(farmId))
-        world.participants.push(farmId);
+        return publicExpeditionContent.stages.letters.choice.title;
+    if (world.choiceIndex === 3)
+        return publicExpeditionContent.stages.service.choice.title;
+    return publicExpeditionContent.choices["4"].title;
 }
 
 function choiceBallotKey(world) {
@@ -399,83 +429,136 @@ function recordResolvedChoice(world, option, label, votes) {
     world.history.push({ kind: "choice", step: world.choiceIndex, option, label, voters, farmName: voters.map((item) => item.farmName).join("、") });
 }
 
-function startTask(world, taskIndex, farms) {
-    world.phase = "task";
-    world.taskIndex = taskIndex;
-    const task = currentPublicTask(world);
-    world.tasks[task.id] = normalizeTaskState(world.tasks[task.id], task);
-    prepareCurrentTask(world, farms);
+function determineEnding(world, finalOption) {
+    const max = Math.max(...SCORE_KEYS.map((key) => world.score[key] ?? 0));
+    const leaders = SCORE_KEYS.filter((key) => (world.score[key] ?? 0) === max);
+    const requested = publicExpeditionContent.finalTieBreak[finalOption];
+    const winner = leaders.length === 1 ? leaders[0] : leaders.includes(requested) ? requested : leaders[0];
+    return publicExpeditionContent.endingByScore[winner];
 }
 
 function finishWithEnding(world, endingId, now, farms) {
     const ending = publicExpeditionContent.endings[endingId];
     world.endingId = endingId;
+    world.endingTitle = ending.title;
+    world.endingText = ending.text;
+    world.endingTitleId = ending.rewardTitleId;
     world.endedAt = now;
     world.endedDay = currentDayIndex(now);
     world.phase = "ended";
+    world.currentTaskId = null;
     world.history.push({ kind: "ending", title: ending.title, text: ending.text });
     settlePublicExpeditionRewards(world, farms, now);
 }
 
-export function runPublicChoice(world, farm, rawOption, now = Date.now(), farms = []) {
-    advancePublicExpedition(world, farms, now);
-    const option = String(rawOption ?? "").trim().toUpperCase();
-    const options = choiceOptions(world);
-    if (world.phase === "cooldown")
-        return { ok: false, text: currentPromptText(world, farm, farms, now) };
-    if (!options || !options[option])
-        return { ok: false, text: world.phase === "task" ? "当前公共任务尚未完成，还不能进入下一次选择。" : "当前没有这个公共选项。" };
-    if (world.phase === "vote") {
-        world.vote.votes[farm.id] = option;
-        markImmediateAiPhase(world, farm);
-        return { ok: true, text: `${option === "A" ? "🔁 已投票开启新一轮" : "📚 已投票保留本轮结局"}。截止前可以改票。\n${publicExpeditionText(world, farm, now, farms)}` };
-    }
-    const label = options[option];
-    const ballot = ensureChoiceBallot(world);
-    const previous = ballot.votes[farm.id];
-    if (!previous)
-        addParticipant(world, farm.id);
-    ballot.votes[farm.id] = { option, farmName: farm.name, at: now };
-    const counts = choiceSupportCounts(world);
-    if (counts[option] < CHOICE_TARGET) {
-        markImmediateAiPhase(world, farm);
-        return {
-            ok: true,
-            text: `已记录你对 ${option}「${label}」的选择。等其他农场也作出决定后，剧情才会推进。\n\n${publicExpeditionText(world, farm, now, farms)}`,
-        };
-    }
-    const resolvedVotes = ballot.votes;
-    recordResolvedChoice(world, option, label, resolvedVotes);
-    world.choiceBallot = null;
-    if (world.choiceIndex === 1) {
-        world.secondNode = option;
-        const node = publicExpeditionContent.secondNodes[option];
-        world.history.push({ kind: "story", title: node.title, text: node.text });
-        world.choiceIndex = 2;
-    }
-    else if (world.choiceIndex === 2) {
-        world.route = option;
-        startTask(world, 0, farms);
-    }
-    else if (world.choiceIndex === 3) {
-        world.choiceIndex = 4;
-    }
-    else if (world.choiceIndex === 4) {
-        startTask(world, 1, farms);
-    }
-    else if (world.choiceIndex === 5) {
-        startTask(world, 2, farms);
-    }
-    else if (world.choiceIndex === 6) {
-        const endingId = routeDef(world).choices["6"].endings[option];
-        finishWithEnding(world, endingId, now, farms);
-    }
-    markImmediateAiPhase(world, farm);
-    return { ok: true, text: `${option}「${label}」已得到 ${CHOICE_TARGET} 名玩家共同选择，成为本阶段决定。\n\n${publicExpeditionText(world, farm, now, farms)}` };
+function resumeCooldown(world) {
+    const next = world.cooldown?.next;
+    world.cooldown = null;
+    if (next === "letters")
+        startLetters(world);
+    else if (next === "choice3")
+        openChoice(world, 3);
+    else if (next === "final")
+        openChoice(world, 4);
 }
 
-function clueId(world, task) {
-    return `${world.storyId}:${world.round}:${task.id}`;
+export function advancePublicExpedition(world, farms = [], now = Date.now()) {
+    for (const archived of world.archives ?? [])
+        if (archived?.endingId)
+            settlePublicExpeditionRewards(archived, farms, now);
+    if (world.endingId)
+        settlePublicExpeditionRewards(world, farms, now);
+    const today = currentDayIndex(now);
+    if (world.phase === "cooldown" && world.cooldown && now >= world.cooldown.readyAt)
+        resumeCooldown(world);
+    if (world.phase === "ended" && Number.isSafeInteger(world.endedDay) && today > world.endedDay) {
+        world.phase = "vote";
+        world.vote = { day: world.endedDay + 1, votes: {} };
+    }
+    if (world.phase === "vote" && Number.isSafeInteger(world.vote?.day) && today > world.vote.day) {
+        const votes = Object.values(world.vote.votes ?? {});
+        const restart = votes.filter((vote) => vote === "A").length;
+        const keep = votes.filter((vote) => vote === "B").length;
+        if (restart > keep)
+            replaceWorld(world, makeRound(world.round + 1, now, [...world.archives, archiveRound(world)]));
+        else
+            world.phase = "closed";
+    }
+    return world;
+}
+
+function markTaskHistory(world, task, state) {
+    world.history.push({
+        kind: "task",
+        title: task.name,
+        text: task.opening,
+        target: taskTarget(task),
+        contributions: state.contributions.map((item) => ({ farmId: item.farmId, farmName: item.farmName, fact: item.fact })),
+    });
+}
+
+function finishCurrentTask(world, task, state, now) {
+    state.completedAt = now;
+    markTaskHistory(world, task, state);
+    if (task.id === "recipe_question") {
+        setCurrentTask(world, publicExpeditionContent.stages.recipe.dish);
+        return;
+    }
+    if (task.id === "recipe_dish") {
+        const result = publicExpeditionContent.stages.recipe.result;
+        completeStage(world, "recipe");
+        addScore(world, result.score);
+        world.history.push({ kind: "story", title: result.title, text: result.text });
+        world.phase = "cooldown";
+        world.currentTaskId = null;
+        world.cooldown = {
+            taskId: task.id,
+            text: result.cooldownText,
+            readyAt: now + result.cooldownHours * HOUR_MS,
+            startedAt: now,
+            next: world.completedStages.includes("letters") ? "choice3" : "letters",
+        };
+        return;
+    }
+    if (task.id === "letter_encounter") {
+        const stage = publicExpeditionContent.stages.letters;
+        const clue = {
+            id: `${world.storyId}:${world.round}:${task.id}`,
+            taskId: task.id,
+            title: task.clueTitle,
+            text: task.clueText,
+            at: now,
+        };
+        world.clues.push(clue);
+        world.history.push({ kind: "clue", title: clue.title, text: clue.text, taskName: task.name });
+        world.history.push({ kind: "story", title: stage.result.title, text: stage.result.text });
+        completeStage(world, "letters");
+        addScore(world, stage.result.score);
+        openChoice(world, 2);
+        return;
+    }
+    const serviceOrders = publicExpeditionContent.stages.service.orders;
+    const orderIndex = serviceOrders.findIndex((order) => order.id === task.id);
+    if (orderIndex < 0)
+        return;
+    const needsExtra = world.openingChoice === "C";
+    const lastIndex = needsExtra ? serviceOrders.length - 1 : serviceOrders.length - 2;
+    if (orderIndex < lastIndex) {
+        setCurrentTask(world, serviceOrders[orderIndex + 1]);
+        return;
+    }
+    const service = publicExpeditionContent.stages.service;
+    completeStage(world, "service");
+    world.history.push({ kind: "story", title: "三班船都已照常离岸", text: service.results[world.serviceChoice] });
+    world.phase = "cooldown";
+    world.currentTaskId = null;
+    world.cooldown = {
+        taskId: task.id,
+        text: service.cooldownText,
+        readyAt: now + service.cooldownHours * HOUR_MS,
+        startedAt: now,
+        next: "final",
+    };
 }
 
 function reads(farm) {
@@ -499,54 +582,91 @@ function markImmediateAiPhase(world, farm) {
 function markImmediateAiContribution(world, farm, task, completed) {
     const value = reads(farm);
     if (completed) {
-        const id = clueId(world, task);
+        const id = `${world.storyId}:${world.round}:${task.id}`;
         if (!value.aiClues.includes(id))
             value.aiClues.push(id);
     }
     markImmediateAiPhase(world, farm);
 }
 
-export function recordPublicContribution(world, farm, meta = {}, now = Date.now(), farms = []) {
-    advancePublicExpedition(world, farms, now);
+function answerQuestion(world, farm, option, now, farms) {
     const task = currentPublicTask(world);
-    const state = currentTaskState(world);
-    const allowed = checkPublicContribution(world, farm, meta.kind, meta, now, farms);
-    if (!allowed.ok)
-        return allowed;
-    const index = state.contributions.length;
-    const fact = task.contributions[index];
-    state.contributions.push({ farmId: farm.id, farmName: farm.name, at: now, fact, ...meta });
-    addParticipant(world, farm.id);
-    let completed = false;
-    if (state.contributions.length >= CONTRIBUTION_TARGET) {
-        completed = true;
-        state.completedAt = now;
-        world.history.push({
-            kind: "task",
-            title: task.name,
-            text: task.opening,
-            contributions: state.contributions.map((item) => ({ farmId: item.farmId, farmName: item.farmName, fact: item.fact })),
-        });
-        const clue = { id: clueId(world, task), taskId: task.id, title: task.clueTitle, text: task.clueText, at: now };
-        world.clues.push(clue);
-        world.history.push({ kind: "clue", title: clue.title, text: clue.text, taskName: task.name });
-        const nextChoiceIndex = world.taskIndex === 0 ? 3 : world.taskIndex === 1 ? 5 : 6;
-        world.phase = "cooldown";
-        world.cooldown = {
-            taskId: task.id,
-            text: String(task.cooldownText ?? "大家正在整理刚刚得到的线索；下一段剧情准备好后再继续。"),
-            nextChoiceIndex,
-            readyAt: cooldownReadyAt(task, now),
-            startedAt: now,
-        };
-        world.choiceBallot = null;
-        world.taskIndex = null;
+    const answers = world.questionAnswers;
+    const state = cleanObject(answers[farm.id]);
+    answers[farm.id] = state;
+    if (state.correctAt)
+        return { ok: false, text: "你已经答对这道题；全服推进后，后来加入的玩家不用补题。" };
+    if (Number(state.cooldownUntil) > now)
+        return { ok: false, text: `这次个人问答仍在冷却中，请在北京时间 ${cooldownReadyText({ readyAt: state.cooldownUntil })} 后再试。` };
+    if (option !== task.correct) {
+        state.lastOption = option;
+        state.cooldownUntil = now + task.wrongCooldownHours * HOUR_MS;
+        return { ok: false, text: "答案不对；只让你本人冷却 2 小时，不影响其他玩家或公共任务。" };
     }
-    markImmediateAiContribution(world, farm, task, completed);
-    let text = taskProgressText(world, task);
-    if (completed)
-        text += `\n\n🔎 公共线索【${task.clueTitle}】\n${task.clueText}\n\n${currentPromptText(world, farm, farms, now)}`;
-    return { ok: true, text, task, completed, fact };
+    state.correctAt = now;
+    state.cooldownUntil = null;
+    return recordPublicContribution(world, farm, { kind: "question", answer: option }, now, farms);
+}
+
+export function runPublicChoice(world, farm, rawOption, now = Date.now(), farms = []) {
+    advancePublicExpedition(world, farms, now);
+    const option = String(rawOption ?? "").trim().toUpperCase();
+    const options = choiceOptions(world);
+    if (world.phase === "task" && currentPublicTask(world)?.kind === "question") {
+        if (!options?.[option])
+            return { ok: false, text: "当前个人问答没有这个选项。" };
+        const result = answerQuestion(world, farm, option, now, farms);
+        markImmediateAiPhase(world, farm);
+        return result;
+    }
+    if (world.phase === "cooldown")
+        return { ok: false, text: currentPromptText(world, farm, farms, now) };
+    if (!options?.[option])
+        return { ok: false, text: world.phase === "task" ? "当前公共任务尚未完成，还不能进入下一次选择。" : "当前没有这个公共选项。" };
+    if (world.phase === "vote") {
+        world.vote.votes[farm.id] = option;
+        markImmediateAiPhase(world, farm);
+        return { ok: true, text: `${option === "A" ? "🔁 已投票开启新一轮" : "📚 已投票保留本轮结局"}。截止前可以改票。\n${publicExpeditionText(world, farm, now, farms)}` };
+    }
+    const label = options[option];
+    const ballot = ensureChoiceBallot(world);
+    if (!ballot.votes[farm.id])
+        addParticipant(world, farm.id);
+    ballot.votes[farm.id] = { option, farmName: farm.name, at: now };
+    const counts = choiceSupportCounts(world);
+    if (counts[option] < CHOICE_TARGET) {
+        markImmediateAiPhase(world, farm);
+        return { ok: true, text: `已记录你对 ${option}「${label}」的选择。等其他农场也作出决定后，剧情才会推进。\n\n${publicExpeditionText(world, farm, now, farms)}` };
+    }
+    const index = world.choiceIndex;
+    const resolvedVotes = ballot.votes;
+    recordResolvedChoice(world, option, label, resolvedVotes);
+    world.choiceBallot = null;
+    if (index <= 3)
+        addScore(world, publicExpeditionContent.scoreEffects[String(index)][option]);
+    if (index === 1) {
+        world.openingChoice = option;
+        if (option === "C")
+            startLetters(world);
+        else
+            startRecipe(world);
+    }
+    else if (index === 2) {
+        world.letterChoice = option;
+        if (world.completedStages.includes("recipe"))
+            openChoice(world, 3);
+        else
+            startRecipe(world);
+    }
+    else if (index === 3) {
+        world.serviceChoice = option;
+        startService(world);
+    }
+    else {
+        finishWithEnding(world, determineEnding(world, option), now, farms);
+    }
+    markImmediateAiPhase(world, farm);
+    return { ok: true, text: `${option}「${label}」已得到 ${CHOICE_TARGET} 名玩家共同选择，成为本阶段决定。\n\n${publicExpeditionText(world, farm, now, farms)}` };
 }
 
 export function checkPublicContribution(world, farm, kind, meta = {}, now = Date.now(), farms = []) {
@@ -559,54 +679,75 @@ export function checkPublicContribution(world, farm, kind, meta = {}, now = Date
         return { ok: false, text: `当前需要完成【${task.name}】，这次操作不属于任务要求。`, task };
     if (state.completedAt)
         return { ok: false, text: `【${task.name}】已经完成，这次没有消耗任务物品。`, task };
-    if (state.contributions.some((item) => item.farmId === farm.id))
+    if (state.contributions.some((item) => String(item.farmId) === String(farm.id)))
         return { ok: false, text: `你已经为【${task.name}】完成过一份关键贡献，这次没有消耗任务物品；等其他农场接棒吧。`, task };
+    if (task.id === "service_pancake" || task.id === "service_honey_tea") {
+        if (world.serviceFarmIds.includes(String(farm.id)))
+            return { ok: false, text: "前三张营业订单需要由三家不同农场依次送回；这次没有消耗料理。", task };
+    }
     if (meta.targetFarmId && state.contributions.some((item) => item.targetFarmId === meta.targetFarmId))
-        return { ok: false, text: "这块任务试验田已经得到过公共照料，请换另一块。", task };
+        return { ok: false, text: "这块任务目标已经得到过公共照料，请换另一块。", task };
     return { ok: true, task, state };
 }
 
-export function markPublicTrialPlot(world, farm, plot, cropSnapshot, now = Date.now(), farms = []) {
-    if (!plot?.crop)
-        return { ok: false, text: "剧情试种没有落到有效地块。" };
-    plot.crop.publicExpedition = { storyId: world.storyId, round: world.round, taskId: "b_plant" };
-    plot.crop.growTicks = Math.max(plot.crop.growTicks ?? 1, 1000000);
-    plot.crop.progress = 0;
-    plot.crop.ripe = false;
-    return recordPublicContribution(world, farm, {
-        kind: "plant",
-        plotId: plot.id,
-        crop: copy(cropSnapshot ?? plot.crop),
-    }, now, farms);
-}
-
-export function findPublicWaterTarget(world, visitorId, farms = [], now = Date.now()) {
+export function recordPublicContribution(world, farm, meta = {}, now = Date.now(), farms = []) {
     advancePublicExpedition(world, farms, now);
     const task = currentPublicTask(world);
-    if (task?.id !== "b_water")
-        return null;
     const state = currentTaskState(world);
-    const usedTargets = new Set(state.contributions.map((item) => item.targetFarmId));
-    const today = currentDayIndex(now);
-    for (const planted of world.tasks.b_plant?.contributions ?? []) {
-        if (planted.farmId === visitorId || usedTargets.has(planted.farmId))
-            continue;
-        const restored = restoreTrialCrop(world, farms, planted, false);
-        if (restored && restored.farm.waterVisits?.[visitorId] !== today)
-            return { target: restored.farm, plot: restored.plot };
+    const allowed = checkPublicContribution(world, farm, meta.kind, meta, now, farms);
+    if (!allowed.ok)
+        return allowed;
+    const index = state.contributions.length;
+    const fact = task.contributions[index] ?? task.contributions.at(-1) ?? "完成一份公共贡献。";
+    state.contributions.push({ farmId: String(farm.id), farmName: farm.name, at: now, fact, ...meta });
+    addParticipant(world, farm.id);
+    if (["service_rice_ball", "service_pancake", "service_honey_tea"].includes(task.id)
+        && !world.serviceFarmIds.includes(String(farm.id)))
+        world.serviceFarmIds.push(String(farm.id));
+    const completed = state.contributions.length >= taskTarget(task);
+    if (completed)
+        finishCurrentTask(world, task, state, now);
+    markImmediateAiContribution(world, farm, task, completed);
+    let text = `${taskProgressText(world, task)}\n\n${publicExpeditionContent.rewardNotice}`;
+    if (completed)
+        text += `\n\n${currentPromptText(world, farm, farms, now)}`;
+    return { ok: true, text, task, completed, fact };
+}
+
+export function recordPublicPlantEncounter(world, farm, now = Date.now(), farms = [], random = Math.random) {
+    advancePublicExpedition(world, farms, now);
+    const task = currentPublicTask(world);
+    if (task?.kind !== "plant_encounter")
+        return { ok: true, triggered: false, text: "" };
+    const allowed = checkPublicContribution(world, farm, "plant_encounter", {}, now, farms);
+    if (!allowed.ok)
+        return { ok: true, triggered: false, text: "" };
+    const beijingHour = new Date(now + BEIJING_OFFSET_MS).getUTCHours();
+    if (beijingHour < 8 || beijingHour >= 10)
+        return { ok: true, triggered: false, text: "" };
+    const misses = Math.max(0, Math.floor(Number(world.encounterMisses[farm.id]) || 0));
+    if (misses < 2 && Number(random()) >= 0.7) {
+        world.encounterMisses[farm.id] = misses + 1;
+        return { ok: true, triggered: false, text: "" };
     }
+    delete world.encounterMisses[farm.id];
+    const result = recordPublicContribution(world, farm, { kind: "plant_encounter" }, now, farms);
+    return { ...result, triggered: result.ok, text: result.ok ? `🫏 普通种子刚落进新土，灰背的旧货车在田边停了下来。\n${result.text}` : "" };
+}
+
+// 第一期曾使用的剧情试验田入口继续保留为兼容导出；第二期不会调用或创建任务地块。
+export function markPublicTrialPlot(world, farm, plot, cropSnapshot, now = Date.now(), farms = []) {
+    if (currentPublicTask(world)?.id !== "b_plant")
+        return { ok: false, text: "当前没有剧情试种任务。" };
+    return recordPublicContribution(world, farm, { kind: "plant", plotId: plot?.id, crop: copy(cropSnapshot) }, now, farms);
+}
+
+export function findPublicWaterTarget() {
     return null;
 }
 
-export function findPublicHarvestPlot(world, farm, farms = [], now = Date.now()) {
-    advancePublicExpedition(world, farms, now);
-    const task = currentPublicTask(world);
-    if (task?.id !== "b_harvest")
-        return null;
-    const planted = world.tasks.b_plant?.contributions?.find((item) => item.farmId === farm.id);
-    if (!planted)
-        return null;
-    return restoreTrialCrop(world, farms, planted, false)?.plot ?? null;
+export function findPublicHarvestPlot() {
+    return null;
 }
 
 export function findPublicDish(farm, requiredName, selector) {
@@ -626,62 +767,36 @@ export function takePublicDish(farm, dish) {
 function taskProgressText(world, task) {
     const state = world.tasks[task.id] ?? { contributions: [] };
     const rows = state.contributions.map((item) => `· ${item.farmName}：${item.fact}`).join("\n");
-    return `【公共任务·${task.name}】${state.contributions.length}/${CONTRIBUTION_TARGET}\n${task.opening}${rows ? `\n\n已完成：\n${rows}` : ""}`;
+    return `【公共任务·${task.name}】${state.contributions.length}/${taskTarget(task)}\n${task.opening}${rows ? `\n\n已完成：\n${rows}` : ""}`;
 }
 
 function optionsText(world) {
     const options = choiceOptions(world);
-    if (!options)
-        return "";
-    return Object.entries(options).map(([key, label]) => `${key}．${label}`).join("\n");
+    return options ? Object.entries(options).map(([key, label]) => `${key}．${label}`).join("\n") : "";
 }
 
-function directCallGuide(world, farm, farms, now) {
+function directCallGuide(world, farm) {
     if (!farm)
         return "";
-    if (world.phase === "choice" || world.phase === "vote") {
+    if (world.phase === "choice" || world.phase === "vote" || currentPublicTask(world)?.kind === "question") {
         const options = choiceOptions(world);
-        if (!options)
-            return "";
-        const calls = Object.keys(options).map((option) => `${option} → ${JSON.stringify({ action: "together", option })}`);
-        return `【可直接调用】\n${calls.join("\n")}`;
+        const calls = Object.keys(options ?? {}).map((option) => `${option} → ${JSON.stringify({ action: "together", option })}`);
+        return calls.length ? `【可直接调用】\n${calls.join("\n")}` : "";
     }
     const task = currentPublicTask(world);
     if (!task)
         return "";
     const state = world.tasks[task.id] ?? { contributions: [] };
-    if (state.contributions.some((item) => item.farmId === farm.id))
-        return `你已经为【${task.name}】完成过一份关键贡献，这次没有消耗任务物品；等其他农场接棒吧。`;
-    let call;
-    if (task.kind === "explore")
-        call = { action: "explore", location: task.location };
-    else if (task.id === "c_bottle")
-        call = { action: "fish", location: "倒流湾" };
-    else if (task.kind === "dish") {
+    if (state.contributions.some((item) => String(item.farmId) === String(farm.id)))
+        return `你已经为【${task.name}】完成过一份关键贡献；等其他农场接棒吧。`;
+    if (task.kind === "plant_encounter")
+        return "请把三条公共记录联系起来，直接尝试对应的普通农场行动。";
+    if (task.kind === "dish") {
         if (!findPublicDish(farm, task.dish, task.dish))
             return `料理柜里没有任务需要的「${task.dish}」，这次没有消耗料理。`;
-        call = { action: "kitchen", op: "use", dishId: task.dish, target: task.npc };
+        return `【可直接调用】\n${JSON.stringify({ action: "kitchen", op: "use", dishId: task.dish, target: task.npc })}`;
     }
-    else if (task.id === "b_plant") {
-        const plot = farm.plots.find((item) => !item.crop);
-        if (!plot)
-            return "没有空地可以进行剧情试种。";
-        call = { action: "plant", seedType: "明日试验种", plotId: plot.id };
-    }
-    else if (task.id === "b_water") {
-        const target = findPublicWaterTarget(world, farm.id, farms, now);
-        const number = target ? farms.findIndex((item) => item.id === target.target.id) + 1 : 0;
-        if (!target || number <= 0)
-            return "当前没有可由你照料的任务试验田；可能只剩你自己的地，或其他任务田今天已被你浇过。";
-        call = { action: "water", to: String(number), plotId: target.plot.id };
-    }
-    else if (task.id === "b_harvest") {
-        const plot = findPublicHarvestPlot(world, farm, farms, now);
-        if (!plot)
-            return "你没有可抢收的任务试验田；这项任务要由此前完成试种的三家分别收获。";
-        call = { action: "harvest", plotId: plot.id };
-    }
-    return call ? `【可直接调用】\n${JSON.stringify(call)}` : "";
+    return "";
 }
 
 function currentPromptText(world, farm, farms = [], now = Date.now()) {
@@ -689,11 +804,11 @@ function currentPromptText(world, farm, farms = [], now = Date.now()) {
     if (world.phase === "task")
         return `${taskProgressText(world, currentPublicTask(world))}${guide ? `\n\n${guide}` : ""}`;
     if (world.phase === "choice")
-        return `【${world.choiceIndex}/6·${choiceTitle(world)}】\n${optionsText(world)}${guide ? `\n\n${guide}` : ""}`;
+        return `【${world.choiceIndex}/4·${choiceTitle(world)}】\n${optionsText(world)}${guide ? `\n\n${guide}` : ""}`;
     if (world.phase === "vote")
         return `🔁 ${publicExpeditionContent.vote.title}\n${publicExpeditionContent.vote.text}\n\n${optionsText(world)}${guide ? `\n\n${guide}` : ""}`;
     if (world.phase === "cooldown")
-        return `⏳ 本阶段暂告一段落\n${world.cooldown?.text ?? "大家正在整理刚刚得到的线索。"}\n\n下一段剧情将在北京时间 ${cooldownReadyText(world.cooldown)} 开放。`;
+        return `⏳ 本阶段暂告一段落\n${world.cooldown?.text ?? "大家正在处理刚刚完成的事情。"}\n\n下一段剧情将在北京时间 ${cooldownReadyText(world.cooldown)} 开放。`;
     if (world.phase === "ended")
         return "本轮结局已经产生；次日北京时间 00:00–23:59 开放重开投票。";
     return "本轮结局与实际故事线已归档。";
@@ -707,7 +822,7 @@ function historyText(entries) {
         }
         if (entry.kind === "task") {
             const rows = (entry.contributions ?? []).map((item) => `· ${item.farmName}：${item.fact}`).join("\n");
-            return `【公共任务·${entry.title}】${entry.contributions?.length ?? 0}/${CONTRIBUTION_TARGET}\n${entry.text}${rows ? `\n\n已完成：\n${rows}` : ""}`;
+            return `【公共任务·${entry.title}】${entry.contributions?.length ?? 0}/${entry.target ?? 3}\n${entry.text}${rows ? `\n\n已完成：\n${rows}` : ""}`;
         }
         if (entry.kind === "clue")
             return `🔎 公共线索【${entry.title}】\n${entry.text}`;
@@ -717,10 +832,9 @@ function historyText(entries) {
 
 export function publicExpeditionText(world, farm, now = Date.now(), farms = [], view = "recent") {
     advancePublicExpedition(world, farms, now);
-    const route = routeDef(world);
-    const header = `🧭 铃野共行｜本期故事：《${publicExpeditionContent.title}》｜第 ${world.round} 轮${route ? `｜${route.name}` : ""}`;
-    const ownReward = farm ? (world.rewards ?? []).find((reward) => reward.farmId === farm.id) : null;
-    const clues = world.clues.length ? `｜线索 ${world.clues.length}/3` : "";
+    const header = `🧭 铃野共行｜本期故事：《${world.storyTitle ?? publicExpeditionContent.title}》｜第 ${world.round} 轮`;
+    const ownReward = farm ? (world.rewards ?? []).find((reward) => String(reward.farmId) === String(farm.id)) : null;
+    const clues = world.clues.length ? `｜线索 ${world.clues.length}/1` : "";
     const fullHistory = view === "history";
     const visibleHistory = fullHistory ? world.history : world.history.slice(-2);
     const historyTitle = fullHistory ? "📚 前情提要（完整实际路线）" : "📖 最近剧情（当前段＋上一段）";
@@ -731,13 +845,13 @@ export function publicExpeditionStatusLine(world, now = Date.now(), showChoiceCo
     if (world.phase === "task") {
         const task = currentPublicTask(world);
         const progress = world.tasks[task.id]?.contributions?.length ?? 0;
-        return `公共任务【${task.name}】${progress}/${CONTRIBUTION_TARGET}`;
+        return `公共任务【${task.name}】${progress}/${taskTarget(task)}`;
     }
     if (world.phase === "choice") {
         if (!showChoiceCounts)
-            return `等待第 ${world.choiceIndex}/6 次全服选择`;
+            return `等待第 ${world.choiceIndex}/4 次全服选择`;
         const counts = choiceSupportCounts(world);
-        return `等待第 ${world.choiceIndex}/6 次全服选择（A ${counts.A}/${CHOICE_TARGET}｜B ${counts.B}/${CHOICE_TARGET}｜C ${counts.C}/${CHOICE_TARGET}）`;
+        return `等待第 ${world.choiceIndex}/4 次全服选择（A ${counts.A}/${CHOICE_TARGET}｜B ${counts.B}/${CHOICE_TARGET}｜C ${counts.C}/${CHOICE_TARGET}）`;
     }
     if (world.phase === "cooldown")
         return `本阶段已完成，等待至北京时间 ${cooldownReadyText(world.cooldown)} 继续`;
@@ -745,9 +859,8 @@ export function publicExpeditionStatusLine(world, now = Date.now(), showChoiceCo
         const votes = Object.values(world.vote?.votes ?? {});
         return `重开投票中（开启 ${votes.filter((vote) => vote === "A").length}｜保留 ${votes.filter((vote) => vote === "B").length}）`;
     }
-    if (world.phase === "ended")
-        return `结局【${publicExpeditionContent.endings[world.endingId]?.title ?? "已完成"}】；次日开放重开投票`;
-    return `结局【${publicExpeditionContent.endings[world.endingId]?.title ?? "已完成"}】已归档`;
+    const title = world.endingTitle ?? publicExpeditionContent.endings[world.endingId]?.title ?? "已完成";
+    return world.phase === "ended" ? `结局【${title}】；次日开放重开投票` : `结局【${title}】已归档`;
 }
 
 export function publicPhaseKey(world) {
@@ -792,47 +905,43 @@ export function takePublicHumanNotices(world, farm, now = Date.now()) {
 }
 
 export function publicExpeditionHumanData(world, farm, now = Date.now()) {
-    let artFile = "river-from-tomorrow-opening-v3.webp";
-    const visualTaskId = currentPublicTask(world)?.id ?? world.cooldown?.taskId ?? null;
-    const visualTaskIndex = visualTaskId
-        ? routeDef(world)?.tasks?.findIndex((task) => task.id === visualTaskId) ?? -1
-        : -1;
-    if (world.endingId) {
-        artFile = ENDING_ART[world.endingId] ?? artFile;
-    }
-    else if (!world.route && world.secondNode && world.choiceIndex === 2) {
-        artFile = "future-wharf-v3.webp";
-    }
-    else if (world.route) {
-        if (visualTaskIndex === 0 || (world.phase === "choice" && world.choiceIndex <= 4))
-            artFile = "future-wharf-v3.webp";
-        else if (visualTaskIndex === 1 || (world.phase === "choice" && world.choiceIndex === 5))
-            artFile = "cooperative-investigation-v3.webp";
-        else if (visualTaskIndex === 2 || (world.phase === "choice" && world.choiceIndex === 6))
-            artFile = "river-fork-v3.webp";
-    }
+    let artFile = publicExpeditionContent.art.opening;
+    if (world.endingId)
+        artFile = publicExpeditionContent.art[world.endingId] ?? artFile;
+    else if (world.stage === "recipe")
+        artFile = publicExpeditionContent.art.recipe;
+    else if (world.stage === "letters")
+        artFile = publicExpeditionContent.art.letters;
+    else if (world.stage === "service")
+        artFile = publicExpeditionContent.art.service;
+    else if (world.stage === "final")
+        artFile = publicExpeditionContent.art.final;
+    const task = currentPublicTask(world);
     return {
-        title: publicExpeditionContent.title,
+        title: world.storyTitle ?? publicExpeditionContent.title,
         artFile,
         round: world.round,
-        routeName: routeDef(world)?.name ?? null,
+        routeName: null,
         status: publicExpeditionStatusLine(world, now),
         history: copy(world.history),
-        currentTask: currentPublicTask(world) ? {
-            ...copy(currentPublicTask(world)),
-            progress: world.tasks[currentPublicTask(world).id]?.contributions?.length ?? 0,
-            contributors: copy(world.tasks[currentPublicTask(world).id]?.contributions ?? []),
+        currentTask: task ? {
+            ...copy(task),
+            target: taskTarget(task),
+            progress: world.tasks[task.id]?.contributions?.length ?? 0,
+            contributors: copy(world.tasks[task.id]?.contributions ?? []),
         } : null,
         currentChoice: world.phase === "choice" || world.phase === "vote" ? {
-            index: world.choiceIndex,
+            index: world.phase === "choice" ? world.choiceIndex : null,
+            total: 4,
             title: choiceTitle(world),
             options: copy(choiceOptions(world)),
             counts: world.phase === "choice" ? choiceSupportCounts(world) : null,
         } : null,
         cooldown: world.phase === "cooldown" ? { ...copy(world.cooldown), readyText: cooldownReadyText(world.cooldown) } : null,
-        ending: world.endingId ? copy(publicExpeditionContent.endings[world.endingId]) : null,
+        ending: world.endingId ? { title: world.endingTitle, text: world.endingText, ...copy(publicExpeditionContent.endings[world.endingId]) } : null,
         rewards: copy(world.rewards ?? []),
         clues: copy(world.clues),
+        clueTarget: 1,
         archives: copy(world.archives),
     };
 }

@@ -32,6 +32,9 @@ export function metricValue(f, field) {
         case "togetherQuietHarvest": return f.publicExpeditionRewards?.endings?.includes("quiet_harvest") ? 1 : 0;
         case "togetherTenThousandBottles": return f.publicExpeditionRewards?.endings?.includes("ten_thousand_bottles") ? 1 : 0;
         case "togetherNoAddress": return f.publicExpeditionRewards?.endings?.includes("no_address") ? 1 : 0;
+        case "togetherSameKitchenOneSign": return f.publicExpeditionRewards?.endings?.includes("one_sign") ? 1 : 0;
+        case "togetherSameKitchenNextDoor": return f.publicExpeditionRewards?.endings?.includes("next_door") ? 1 : 0;
+        case "togetherSameKitchenPublicKitchen": return f.publicExpeditionRewards?.endings?.includes("public_kitchen") ? 1 : 0;
         case "qixi2026Collection": return qixi2026CollectionComplete(f) ? 1 : 0;
         default: return 0;
     }

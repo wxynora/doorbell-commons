@@ -24,7 +24,7 @@ import { currentDayIndex } from "./time.js";
 import { PublicSyncError } from "./public-sync.js";
 import { runFishing } from "./fishing.js";
 import { runGlimmer, setGlimmerVariant } from "./glimmer.js";
-import { advancePublicExpedition, checkPublicContribution, currentPublicTask, findPublicDish, findPublicHarvestPlot, findPublicWaterTarget, markPublicTrialPlot, publicExpeditionStatusLine, publicExpeditionText, recordPublicContribution, runPublicChoice, takePublicAiNotices, takePublicDish } from "./public-expedition.js";
+import { advancePublicExpedition, checkPublicContribution, currentPublicTask, findPublicDish, findPublicHarvestPlot, findPublicWaterTarget, markPublicTrialPlot, publicExpeditionStatusLine, publicExpeditionText, recordPublicContribution, recordPublicPlantEncounter, runPublicChoice, takePublicAiNotices, takePublicDish } from "./public-expedition.js";
 import { qixi2026CompletionText, recordQixi2026Progress, recordQixi2026StealAttempt, settleQixi2026QuietTask } from "./qixi-2026.js";
 import { AGENT_HEADERS, RequestBodyError, clientIp, jsonOut, readBody, readFormBody, smartParams, textOut } from "./server/http.js";
 import { createAssetHandler } from "./server/assets.js";
@@ -653,7 +653,16 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         return { status: 200, json: { ok: true, text: "留言已删除。" } };
     }
     // 其余=主人对自己农场的操作（plant/harvest/craft/design/list/sell/run/rename/guestbook/block… 已校验 :id token）
+    const commonPlotsBefore = action === "plant" && publicTask?.kind === "plant_encounter"
+        ? new Set(f.plots.filter((plot) => plot.crop?.seedType === "common").map((plot) => plot.id))
+        : null;
     const r = dispatch(f, { ...b, action }, now);
+    if (r.ok && commonPlotsBefore
+        && f.plots.some((plot) => plot.crop?.seedType === "common" && !commonPlotsBefore.has(plot.id))) {
+        const encounter = recordPublicPlantEncounter(publicWorld, f, now, publicFarms);
+        if (encounter.triggered)
+            r.text = `${r.text}\n${encounter.text}`;
+    }
     save();
     return { status: r.ok ? 200 : 400, json: { ok: r.ok, text: r.text, ...vf(f) } };
 }
