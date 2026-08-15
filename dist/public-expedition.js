@@ -799,8 +799,11 @@ function directCallGuide(world, farm) {
 
 function currentPromptText(world, farm, farms = [], now = Date.now()) {
     const guide = directCallGuide(world, farm, farms, now);
-    if (world.phase === "task")
-        return `${taskProgressText(world, currentPublicTask(world))}${guide ? `\n\n${guide}` : ""}`;
+    if (world.phase === "task") {
+        const task = currentPublicTask(world);
+        const options = task?.kind === "question" ? optionsText(world) : "";
+        return `${taskProgressText(world, task)}${options ? `\n\n${options}` : ""}${guide ? `\n\n${guide}` : ""}`;
+    }
     if (world.phase === "choice")
         return `【${world.choiceIndex}/4·${choiceTitle(world)}】\n${optionsText(world)}${guide ? `\n\n${guide}` : ""}`;
     if (world.phase === "vote")
