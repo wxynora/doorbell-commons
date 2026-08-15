@@ -56,6 +56,14 @@ separate recovery task that must reconstruct every current module, pin the toolc
 build to an independent candidate directory, and explain the complete candidate-to-runtime diff
 before any generated output can replace the current fact source.
 
+Production farm commit `f2a1f7576cb66424ffdd123ef18e509b0364a8d1` keeps `dist/server.js` and
+`dist/web.js` as the stable compatibility façades while moving already-characterized implementation
+into one-way leaf modules below `dist/server/` and `dist/web/`. The server leaves maintenance,
+Doorbell-internal, sync, legacy MCP, existing route order and `startServer` behavior intact; the Web
+façade preserves all 14 Human-page exports while the extracted pages import only shared shell or
+business modules and never import the façade back. `store.js`, save format, gameplay settlement,
+URLs, HTTP contracts, model-visible tools and source maps were not reorganized by this stage.
+
 The live-derived farm runtime now treats ordinary JSON and form request bodies as bounded input:
 malformed JSON stops routing with HTTP 400, a body beyond the existing 16 KiB limit stops with HTTP
 413, and neither path is converted to an empty object or mutates farm state. The parser drains
