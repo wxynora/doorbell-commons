@@ -10,6 +10,7 @@ import { FarmCreationClient } from "./farm-creation-client.js";
 import { FarmDirectoryClient } from "./farm-directory-client.js";
 import { FarmRewardClient } from "./farm-reward-client.js";
 import { HomeWeatherEngine } from "./home-weather-engine.js";
+import { LingyeDailyService } from "./lingye-daily-service.js";
 import { MailboxService } from "./mailbox-service.js";
 import { McpAccessService } from "./mcp-access-service.js";
 import { FarmMcpActionClient } from "./mcp-farm-action-client.js";
@@ -120,6 +121,10 @@ const mcpAccessService = new McpAccessService({
   isRuntimeReady: () => serverConfig.mcpRuntimeReady,
 });
 const weatherEngine = new HomeWeatherEngine({ database });
+const lingyeDailyService = new LingyeDailyService({
+  database,
+  publishToken: serverConfig.lingyeDailyPublishToken,
+});
 const sharedMemeService = new SharedMemeService({ databasePath: serverConfig.databasePath });
 const app = buildApp({
   groupId: serverConfig.qqGroupId,
@@ -128,6 +133,7 @@ const app = buildApp({
   bellService,
   connectorService,
   weatherEngine,
+  lingyeDailyService,
   mailboxService,
   mcpAccessService,
   mcpRuntime,

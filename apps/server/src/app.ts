@@ -22,6 +22,11 @@ import {
   humanSettingsPatchRequestSchema,
   humanSettingsReadRequestSchema,
   humanSettingsSuccessSchema,
+  lingyeDailyErrorSchema,
+  lingyeDailyLatestSuccessSchema,
+  lingyeDailyPublishRequestSchema,
+  lingyeDailyPublishSuccessSchema,
+  lingyeDailyReadRequestSchema,
   type McpAccessErrorCode,
   mailboxClaimBodySchema,
   mailboxDetailRequestSchema,
@@ -62,10 +67,12 @@ import {
   type BellStreamSink,
   BellWakeControlError,
 } from "./bell-service.js";
-import type {
-  HumanSettingsPatch,
-  HumanSettingsRecord,
-  MailboxLetterRecord,
+import {
+  type HumanSettingsPatch,
+  type HumanSettingsRecord,
+  LingyeDailyIdempotencyConflictError,
+  type LingyeDailyIssueRecord,
+  type MailboxLetterRecord,
 } from "./community-database.js";
 import {
   ConnectorCredentialAuthenticationError,
@@ -91,6 +98,10 @@ import {
   FarmRewardUnavailableError,
 } from "./farm-reward-client.js";
 import type { HomeWeatherEngine } from "./home-weather-engine.js";
+import {
+  LingyeDailyPublishAuthenticationError,
+  type LingyeDailyService,
+} from "./lingye-daily-service.js";
 import {
   MAILBOX_PAGE_SIZE,
   MailboxAttachmentNotClaimableError,
@@ -147,6 +158,7 @@ export interface BuildAppOptions {
   bellService?: BellService;
   connectorService?: ConnectorService;
   weatherEngine?: HomeWeatherEngine;
+  lingyeDailyService?: LingyeDailyService;
   mailboxService?: MailboxService;
   mcpAccessService?: McpAccessService;
   mcpRuntime?: DoorbellMcpRuntime;
@@ -311,6 +323,56 @@ function mailboxLetterSummaryResponse(letter: MailboxLetterRecord) {
   };
 }
 
+function lingyeDailyIssueResponse(issue: LingyeDailyIssueRecord) {
+  const imageUrls = new Map(
+    issue.edition.images.map((image) => [
+      image.image_id,
+      `data:${image.media_type};base64,${image.data_base64}`,
+    ]),
+  );
+  return {
+    issue_number: issue.issueNumber,
+    issue_date: issue.issueDate,
+    revision: issue.revision,
+    revision_note: issue.revisionNote,
+    period_start: issue.periodStart,
+    period_end: issue.periodEnd,
+    coverage_status: issue.coverageStatus,
+    coverage_note: issue.coverageNote,
+    generated_at: issue.generatedAt,
+    published_at: new Date(issue.publishedAt).toISOString(),
+    editor_model: issue.editorModel,
+    front_page: issue.edition.front_page
+      ? {
+          title: issue.edition.front_page.title,
+          paragraphs: issue.edition.front_page.paragraphs,
+          image_urls: issue.edition.front_page.image_ids.flatMap((imageId) => {
+            const imageUrl = imageUrls.get(imageId);
+            return imageUrl ? [imageUrl] : [];
+          }),
+        }
+      : null,
+    group_chat: {
+      summary: issue.edition.group_chat.summary,
+      topics: issue.edition.group_chat.topics.map((topic) => topic.text),
+    },
+    behavior_slices: issue.edition.behavior_slices.map(({ title, body, image_ids }) => ({
+      title,
+      body,
+      image_urls: image_ids.flatMap((imageId) => {
+        const imageUrl = imageUrls.get(imageId);
+        return imageUrl ? [imageUrl] : [];
+      }),
+    })),
+    quotes: issue.edition.quotes.map(({ text, source_label }) => ({ text, source_label })),
+    farm_observation: issue.edition.farm_observation,
+    submissions: issue.edition.submissions,
+    tomorrow_question: issue.edition.tomorrow_question
+      ? { text: issue.edition.tomorrow_question.text }
+      : null,
+  };
+}
+
 function readConnectorCredential(authorization: string | undefined): string | undefined {
   if (!authorization?.startsWith("Bearer ")) {
     return undefined;
@@ -384,6 +446,22 @@ function sendSharedMemeError(
 ) {
   reply.header("cache-control", "no-store");
   return reply.code(statusCode).send(sharedMemeErrorSchema.parse({ error: { code, message } }));
+}
+
+function sendLingyeDailyError(
+  reply: FastifyReply,
+  statusCode: 400 | 401 | 403 | 409 | 503,
+  code:
+    | "invalid_request"
+    | "authentication_required"
+    | "qq_not_group_member"
+    | "onebot_unavailable"
+    | "registration_profile_required"
+    | "idempotency_conflict",
+  message: string,
+) {
+  reply.header("cache-control", "no-store");
+  return reply.code(statusCode).send(lingyeDailyErrorSchema.parse({ error: { code, message } }));
 }
 
 function sendAuthenticationError(
@@ -1608,6 +1686,48 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     throw error;
   };
 
+  const sendLingyeDailyHumanFailure = (
+    request: FastifyRequest,
+    reply: FastifyReply,
+    error: unknown,
+  ) => {
+    if (error instanceof AuthenticationRequiredError) {
+      return sendLingyeDailyError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+    if (error instanceof QqNotGroupMemberError) {
+      reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
+      return sendLingyeDailyError(
+        reply,
+        403,
+        "qq_not_group_member",
+        "The session QQ number is no longer a current member of the community group",
+      );
+    }
+    if (error instanceof OneBotUnavailableError) {
+      reportOneBotUnavailable(request, error);
+      return sendLingyeDailyError(
+        reply,
+        503,
+        "onebot_unavailable",
+        "QQ group membership could not be verified",
+      );
+    }
+    if (error instanceof RegistrationProfileRequiredError) {
+      return sendLingyeDailyError(
+        reply,
+        409,
+        "registration_profile_required",
+        "A complete resident, home, and farm registration is required",
+      );
+    }
+    throw error;
+  };
+
   const sendConnectorControlFailure = (
     request: FastifyRequest,
     reply: FastifyReply,
@@ -2299,6 +2419,92 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
     app.addHook("onClose", () => {
       connectorService.close();
+    });
+  }
+
+  const lingyeDailyService = options.lingyeDailyService;
+  if (lingyeDailyService) {
+    app.post("/api/internal/lingye-daily/issues", async (request, reply) => {
+      if (!lingyeDailyReadRequestSchema.safeParse(request.query).success) {
+        return sendLingyeDailyError(
+          reply,
+          400,
+          "invalid_request",
+          "The Lingye Daily publish request does not accept query parameters",
+        );
+      }
+      const parsedRequest = lingyeDailyPublishRequestSchema.safeParse(request.body);
+      if (!parsedRequest.success) {
+        return sendLingyeDailyError(
+          reply,
+          400,
+          "invalid_request",
+          "The Lingye Daily issue does not match the supported publish contract",
+        );
+      }
+      try {
+        const published = lingyeDailyService.publish(
+          request.headers.authorization,
+          parsedRequest.data,
+        );
+        reply.header("cache-control", "no-store");
+        return lingyeDailyPublishSuccessSchema.parse({
+          published: true,
+          status: published.status,
+          issue_date: published.issue.issueDate,
+          issue_number: published.issue.issueNumber,
+          revision: published.issue.revision,
+          published_at: new Date(published.issue.publishedAt).toISOString(),
+        });
+      } catch (error) {
+        if (error instanceof LingyeDailyPublishAuthenticationError) {
+          return sendLingyeDailyError(
+            reply,
+            401,
+            "authentication_required",
+            "A valid Lingye Daily publish credential is required",
+          );
+        }
+        if (error instanceof LingyeDailyIdempotencyConflictError) {
+          return sendLingyeDailyError(
+            reply,
+            409,
+            "idempotency_conflict",
+            "The issue date or revision conflicts with the stored Lingye Daily issue",
+          );
+        }
+        throw error;
+      }
+    });
+
+    app.get("/api/lingye-daily/latest", async (request, reply) => {
+      if (!lingyeDailyReadRequestSchema.safeParse(request.query).success) {
+        return sendLingyeDailyError(
+          reply,
+          400,
+          "invalid_request",
+          "The Lingye Daily read request does not accept query parameters",
+        );
+      }
+      const token = readHumanSessionToken(request.headers.cookie);
+      if (!token) {
+        return sendLingyeDailyError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      try {
+        await options.registrationAuth.getCurrentSession(token);
+        const issue = lingyeDailyService.getLatest();
+        reply.header("cache-control", "no-store");
+        return lingyeDailyLatestSuccessSchema.parse({
+          issue: issue ? lingyeDailyIssueResponse(issue) : null,
+        });
+      } catch (error) {
+        return sendLingyeDailyHumanFailure(request, reply, error);
+      }
     });
   }
 

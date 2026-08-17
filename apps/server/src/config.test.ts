@@ -3,8 +3,20 @@ import { test } from "node:test";
 import {
   readFarmApiBaseUrl,
   readFarmHumanUiBaseUrl,
+  readLingyeDailyPublishToken,
   readUpstreamRequestTimeoutMs,
 } from "./config.js";
+
+test("Lingye Daily publish token is mandatory and remains opaque", () => {
+  assert.equal(
+    readLingyeDailyPublishToken({ DOORBELL_LINGYE_DAILY_PUBLISH_TOKEN: "daily-secret" }),
+    "daily-secret",
+  );
+  assert.throws(
+    () => readLingyeDailyPublishToken({}),
+    /DOORBELL_LINGYE_DAILY_PUBLISH_TOKEN is required/,
+  );
+});
 
 test("farm API base URL is required and accepts only HTTP or HTTPS", () => {
   assert.equal(

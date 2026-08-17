@@ -419,6 +419,280 @@ export const sharedMemeErrorSchema = z
   })
   .strict();
 
+export const lingyeDailyIssueDateSchema = z.iso.date();
+export const lingyeDailyCoverageStatusSchema = z.enum(["complete", "partial"]);
+
+export const lingyeDailyEventSourcesSchema = z.array(z.string().trim().min(1)).min(1);
+export const lingyeDailyImageIdSchema = z.string().trim().min(1);
+export const lingyeDailyImagePublishSchema = z
+  .object({
+    image_id: lingyeDailyImageIdSchema,
+    media_type: z.string().regex(/^image\/[a-z0-9.+-]+$/iu),
+    data_base64: z.string().min(1),
+  })
+  .strict();
+
+export const lingyeDailyFrontPagePublishSchema = z
+  .object({
+    title: z.string().trim().min(1),
+    paragraphs: z.array(z.string().trim().min(1)).min(1),
+    source_event_ids: lingyeDailyEventSourcesSchema,
+    image_ids: z.array(lingyeDailyImageIdSchema).default([]),
+  })
+  .strict();
+
+export const lingyeDailyTopicPublishSchema = z
+  .object({
+    text: z.string().trim().min(1),
+    source_event_ids: lingyeDailyEventSourcesSchema,
+  })
+  .strict();
+
+export const lingyeDailyGroupChatPublishSchema = z
+  .object({
+    summary: z.string().trim().min(1),
+    topics: z.array(lingyeDailyTopicPublishSchema),
+  })
+  .strict();
+
+export const lingyeDailyBehaviorSlicePublishSchema = z
+  .object({
+    title: z.string().trim().min(1),
+    body: z.string().trim().min(1),
+    source_event_ids: lingyeDailyEventSourcesSchema,
+    image_ids: z.array(lingyeDailyImageIdSchema).default([]),
+  })
+  .strict();
+
+export const lingyeDailyQuotePublishSchema = z
+  .object({
+    text: z.string().trim().min(1),
+    source_label: z.string().trim().min(1),
+    source_message_ids: z.array(z.string().trim().min(1)).min(1),
+  })
+  .strict();
+
+export const lingyeDailyFarmMetricSchema = z
+  .object({
+    label: z.string().trim().min(1),
+    value: z.string().trim().min(1),
+  })
+  .strict();
+
+export const lingyeDailyFarmObservationSchema = z
+  .object({
+    summary: z.string().trim().min(1).nullable(),
+    metrics: z.array(lingyeDailyFarmMetricSchema),
+  })
+  .strict()
+  .refine((value) => value.summary !== null || value.metrics.length > 0, {
+    message: "farm_observation must contain a summary or metrics",
+  });
+
+export const lingyeDailySubmissionSchema = z
+  .object({
+    text: z.string().trim().min(1),
+    source_label: z.string().trim().min(1),
+  })
+  .strict();
+
+export const lingyeDailyTomorrowQuestionPublishSchema = z
+  .object({
+    text: z.string().trim().min(1),
+    source_event_ids: lingyeDailyEventSourcesSchema,
+  })
+  .strict();
+
+export const lingyeDailyEditionPublishSchema = z
+  .object({
+    front_page: lingyeDailyFrontPagePublishSchema.nullable(),
+    group_chat: lingyeDailyGroupChatPublishSchema,
+    behavior_slices: z.array(lingyeDailyBehaviorSlicePublishSchema),
+    quotes: z.array(lingyeDailyQuotePublishSchema),
+    farm_observation: lingyeDailyFarmObservationSchema.nullable(),
+    submissions: z.array(lingyeDailySubmissionSchema),
+    tomorrow_question: lingyeDailyTomorrowQuestionPublishSchema.nullable(),
+    images: z.array(lingyeDailyImagePublishSchema).default([]),
+  })
+  .strict();
+
+export const lingyeDailyPublishRequestSchema = z
+  .object({
+    issue_date: lingyeDailyIssueDateSchema,
+    revision: z.number().int().positive(),
+    revision_note: z.string().trim().min(1).nullable(),
+    period_start: z.iso.datetime({ offset: true }),
+    period_end: z.iso.datetime({ offset: true }),
+    coverage_status: lingyeDailyCoverageStatusSchema,
+    coverage_note: z.string(),
+    generated_at: z.iso.datetime({ offset: true }),
+    editor_model: z.string().trim().min(1),
+    screening_model: z.string().trim().min(1),
+    front_page: lingyeDailyFrontPagePublishSchema.nullable(),
+    group_chat: lingyeDailyGroupChatPublishSchema,
+    behavior_slices: z.array(lingyeDailyBehaviorSlicePublishSchema),
+    quotes: z.array(lingyeDailyQuotePublishSchema),
+    farm_observation: lingyeDailyFarmObservationSchema.nullable(),
+    submissions: z.array(lingyeDailySubmissionSchema),
+    tomorrow_question: lingyeDailyTomorrowQuestionPublishSchema.nullable(),
+    images: z.array(lingyeDailyImagePublishSchema).default([]),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const imageIds = new Set<string>();
+    for (const [index, image] of value.images.entries()) {
+      if (imageIds.has(image.image_id)) {
+        context.addIssue({
+          code: "custom",
+          message: "image_id must be unique within one issue",
+          path: ["images", index, "image_id"],
+        });
+      }
+      imageIds.add(image.image_id);
+    }
+    const sectionImageIds = [
+      ...(value.front_page?.image_ids ?? []),
+      ...value.behavior_slices.flatMap((slice) => slice.image_ids),
+    ];
+    if (sectionImageIds.some((imageId) => !imageIds.has(imageId))) {
+      context.addIssue({
+        code: "custom",
+        message: "section image_ids must reference published images",
+        path: ["images"],
+      });
+    }
+    const issueDay = Date.parse(`${value.issue_date}T00:00:00Z`);
+    const previousDate = new Date(issueDay - 24 * 60 * 60 * 1_000).toISOString().slice(0, 10);
+    const expectedPeriodStart = Date.parse(`${previousDate}T05:00:00+08:00`);
+    const expectedPeriodEnd = Date.parse(`${value.issue_date}T04:59:59+08:00`);
+    if (value.revision === 1 && value.revision_note !== null) {
+      context.addIssue({
+        code: "custom",
+        message: "revision_note must be null for revision 1",
+        path: ["revision_note"],
+      });
+    }
+    if (value.revision > 1 && value.revision_note === null) {
+      context.addIssue({
+        code: "custom",
+        message: "revision_note is required after revision 1",
+        path: ["revision_note"],
+      });
+    }
+    if (value.coverage_status === "complete" && value.coverage_note.trim() !== "") {
+      context.addIssue({
+        code: "custom",
+        message: "coverage_note must be empty for complete coverage",
+        path: ["coverage_note"],
+      });
+    }
+    if (value.coverage_status === "partial" && value.coverage_note.trim() === "") {
+      context.addIssue({
+        code: "custom",
+        message: "coverage_note is required for partial coverage",
+        path: ["coverage_note"],
+      });
+    }
+    if (
+      Date.parse(value.period_start) !== expectedPeriodStart ||
+      Date.parse(value.period_end) !== expectedPeriodEnd
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "period must cover the previous Beijing 05:00 through issue-day 04:59:59",
+        path: ["period_start"],
+      });
+    }
+    if (Date.parse(value.generated_at) < expectedPeriodEnd) {
+      context.addIssue({
+        code: "custom",
+        message: "generated_at must not precede the completed issue period",
+        path: ["generated_at"],
+      });
+    }
+  });
+
+export const lingyeDailyPublishSuccessSchema = z
+  .object({
+    published: z.literal(true),
+    status: z.enum(["created", "revised", "duplicate"]),
+    issue_date: lingyeDailyIssueDateSchema,
+    issue_number: z.number().int().positive(),
+    revision: z.number().int().positive(),
+    published_at: z.iso.datetime(),
+  })
+  .strict();
+
+export const lingyeDailyReadRequestSchema = z.object({}).strict();
+
+export const lingyeDailyIssueSchema = z
+  .object({
+    issue_number: z.number().int().positive(),
+    issue_date: lingyeDailyIssueDateSchema,
+    revision: z.number().int().positive(),
+    revision_note: z.string().nullable(),
+    period_start: z.iso.datetime({ offset: true }),
+    period_end: z.iso.datetime({ offset: true }),
+    coverage_status: lingyeDailyCoverageStatusSchema,
+    coverage_note: z.string(),
+    generated_at: z.iso.datetime({ offset: true }),
+    published_at: z.iso.datetime(),
+    editor_model: z.string().min(1),
+    front_page: lingyeDailyFrontPagePublishSchema
+      .omit({ source_event_ids: true, image_ids: true })
+      .extend({ image_urls: z.array(z.string().min(1)) })
+      .nullable(),
+    group_chat: z
+      .object({
+        summary: z.string().min(1),
+        topics: z.array(z.string().min(1)),
+      })
+      .strict(),
+    behavior_slices: z.array(
+      lingyeDailyBehaviorSlicePublishSchema
+        .omit({ source_event_ids: true, image_ids: true })
+        .extend({ image_urls: z.array(z.string().min(1)) }),
+    ),
+    quotes: z.array(lingyeDailyQuotePublishSchema.omit({ source_message_ids: true })),
+    farm_observation: lingyeDailyFarmObservationSchema.nullable(),
+    submissions: z.array(lingyeDailySubmissionSchema),
+    tomorrow_question: lingyeDailyTomorrowQuestionPublishSchema
+      .omit({ source_event_ids: true })
+      .nullable(),
+  })
+  .strict();
+
+export const lingyeDailyLatestSuccessSchema = z
+  .object({
+    issue: lingyeDailyIssueSchema.nullable(),
+  })
+  .strict();
+
+export const lingyeDailyErrorCodeSchema = z.enum([
+  "invalid_request",
+  "authentication_required",
+  "qq_not_group_member",
+  "onebot_unavailable",
+  "registration_profile_required",
+  "idempotency_conflict",
+]);
+
+export const lingyeDailyErrorSchema = z
+  .object({
+    error: z
+      .object({
+        code: lingyeDailyErrorCodeSchema,
+        message: z.string(),
+      })
+      .strict(),
+  })
+  .strict();
+
+export type LingyeDailyPublishRequest = z.infer<typeof lingyeDailyPublishRequestSchema>;
+export type LingyeDailyEditionPublish = z.infer<typeof lingyeDailyEditionPublishSchema>;
+export type LingyeDailyPublishSuccess = z.infer<typeof lingyeDailyPublishSuccessSchema>;
+export type LingyeDailyIssue = z.infer<typeof lingyeDailyIssueSchema>;
+
 export const sharedMemeVersionHintEventType = "shared_meme.version" as const;
 
 export const sharedMemeVersionHintPayloadSchema = z

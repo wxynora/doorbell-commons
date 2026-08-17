@@ -13,6 +13,7 @@ export interface DoorbellServerConfig extends QqGroupEligibilityConfig {
   farmApiBaseUrl: string;
   farmHumanUiBaseUrl: string;
   farmServiceToken: string;
+  lingyeDailyPublishToken: string;
   mcpEndpoint: string;
   mcpRuntimeReady: boolean;
   upstreamRequestTimeoutMs: number;
@@ -149,6 +150,10 @@ export function readMcpRuntimeReady(environment: NodeJS.ProcessEnv = process.env
   throw new Error("DOORBELL_MCP_RUNTIME_READY must be true or false");
 }
 
+export function readLingyeDailyPublishToken(environment: NodeJS.ProcessEnv = process.env): string {
+  return readRequiredEnvironmentValue(environment, "DOORBELL_LINGYE_DAILY_PUBLISH_TOKEN");
+}
+
 export function readDoorbellServerConfig(
   environment: NodeJS.ProcessEnv = process.env,
 ): DoorbellServerConfig {
@@ -168,6 +173,7 @@ export function readDoorbellServerConfig(
     farmApiBaseUrl: readFarmApiBaseUrl(environment),
     farmHumanUiBaseUrl: readFarmHumanUiBaseUrl(environment),
     farmServiceToken: readRequiredEnvironmentValue(environment, "DOORBELL_FARM_SERVICE_TOKEN"),
+    lingyeDailyPublishToken: readLingyeDailyPublishToken(environment),
     mcpEndpoint: readMcpEndpoint(environment),
     mcpRuntimeReady: readMcpRuntimeReady(environment),
     upstreamRequestTimeoutMs: readUpstreamRequestTimeoutMs(environment),

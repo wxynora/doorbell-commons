@@ -104,7 +104,7 @@ test("schema v0 upgrades missing identity columns in one versioned migration wit
   });
 });
 
-test("schema v1 preserves login security state while upgrading through v4", () => {
+test("schema v1 preserves login security state while upgrading through v6", () => {
   withTemporaryDatabase((databasePath) => {
     const versionOneDatabase = new Database(databasePath);
     versionOneDatabase.exec(`
@@ -139,7 +139,7 @@ test("schema v1 preserves login security state while upgrading through v4", () =
         migratedDatabase.pragma("user_version", { simple: true }),
         COMMUNITY_DATABASE_SCHEMA_VERSION,
       );
-      assert.equal(COMMUNITY_DATABASE_SCHEMA_VERSION, 4);
+      assert.equal(COMMUNITY_DATABASE_SCHEMA_VERSION, 6);
       assert.deepEqual(
         migratedDatabase
           .prepare("SELECT account_id, qq_number, password_credential FROM human_accounts")
@@ -330,6 +330,119 @@ test("schema v3 adds Bell delivery state without changing existing community row
       assert.ok(homeColumns.some((column) => column.name === "mailbox_revision"));
     } finally {
       database.close();
+    }
+  });
+});
+
+test("schema v4 adds the final-only Lingye Daily archive without changing existing rows", () => {
+  withTemporaryDatabase((databasePath) => {
+    const current = new CommunityDatabase(databasePath);
+    current.close();
+
+    const versionFourDatabase = new Database(databasePath);
+    versionFourDatabase.exec("DROP TABLE lingye_daily_issues");
+    versionFourDatabase.pragma("user_version = 4");
+    versionFourDatabase.close();
+
+    const migrated = new CommunityDatabase(databasePath);
+    migrated.close();
+
+    const database = new Database(databasePath, { readonly: true });
+    try {
+      assert.equal(
+        database.pragma("user_version", { simple: true }),
+        COMMUNITY_DATABASE_SCHEMA_VERSION,
+      );
+      const columns = database.pragma("table_info(lingye_daily_issues)") as Array<{
+        name: string;
+      }>;
+      assert.ok(columns.some((column) => column.name === "edition_json"));
+      assert.ok(columns.some((column) => column.name === "revision_note"));
+      assert.equal(
+        columns.some((column) => /message|speaker|qq/iu.test(column.name)),
+        false,
+      );
+    } finally {
+      database.close();
+    }
+  });
+});
+
+test("schema v5 preserves an existing group-chat issue inside the seven-column edition", () => {
+  withTemporaryDatabase((databasePath) => {
+    const current = new CommunityDatabase(databasePath);
+    current.close();
+
+    const versionFiveDatabase = new Database(databasePath);
+    versionFiveDatabase.exec(`
+      DROP TABLE lingye_daily_issues;
+      CREATE TABLE lingye_daily_issues (
+        issue_date TEXT PRIMARY KEY,
+        issue_number INTEGER NOT NULL UNIQUE CHECK (issue_number > 0),
+        revision INTEGER NOT NULL CHECK (revision > 0),
+        revision_note TEXT,
+        period_start TEXT NOT NULL,
+        period_end TEXT NOT NULL,
+        coverage_status TEXT NOT NULL CHECK (coverage_status IN ('complete', 'partial')),
+        coverage_note TEXT NOT NULL,
+        generated_at TEXT NOT NULL,
+        published_at INTEGER NOT NULL,
+        editor_model TEXT NOT NULL,
+        screening_model TEXT NOT NULL,
+        group_chat_json TEXT NOT NULL
+      );
+      INSERT INTO lingye_daily_issues VALUES (
+        '2026-08-16',
+        1,
+        1,
+        NULL,
+        '2026-08-15T05:00:00+08:00',
+        '2026-08-16T04:59:59+08:00',
+        'complete',
+        '',
+        '2026-08-16T05:00:08+08:00',
+        1786838400000,
+        'gpt-5.6-terra',
+        'gpt-5.6-terra',
+        '{"summary":"旧版今日群聊","topics":["旧话题"],"topic_sources":[{"text":"旧话题","source_event_ids":["E1"]}]}'
+      );
+    `);
+    versionFiveDatabase.pragma("user_version = 5");
+    versionFiveDatabase.close();
+
+    const migrated = new CommunityDatabase(databasePath);
+    try {
+      const issue = migrated.getLatestLingyeDailyIssue();
+      assert.equal(issue?.edition.front_page, null);
+      assert.equal(issue?.edition.group_chat.summary, "旧版今日群聊");
+      assert.deepEqual(issue?.edition.group_chat.topics, [
+        { text: "旧话题", source_event_ids: ["E1"] },
+      ]);
+      assert.deepEqual(issue?.edition.behavior_slices, []);
+      assert.deepEqual(issue?.edition.quotes, []);
+      assert.equal(issue?.edition.farm_observation, null);
+      assert.deepEqual(issue?.edition.submissions, []);
+      assert.equal(issue?.edition.tomorrow_question, null);
+    } finally {
+      migrated.close();
+    }
+
+    const migratedDatabase = new Database(databasePath, { readonly: true });
+    try {
+      const columns = migratedDatabase.pragma("table_info(lingye_daily_issues)") as Array<{
+        name: string;
+      }>;
+      assert.ok(columns.some((column) => column.name === "edition_json"));
+      assert.equal(
+        columns.some((column) => column.name === "group_chat_json"),
+        false,
+      );
+      assert.equal(
+        migratedDatabase.pragma("user_version", { simple: true }),
+        COMMUNITY_DATABASE_SCHEMA_VERSION,
+      );
+    } finally {
+      migratedDatabase.close();
     }
   });
 });

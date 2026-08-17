@@ -81,8 +81,8 @@ test("restore keeps Doorbell stopped through rotate, restore, integrity, and sch
       generation: FIRST_GENERATION,
       owner: null,
     });
-    createDatabase(databasePath, 4, "old-live");
-    createDatabase(backupPath, 4, "restored-backup");
+    createDatabase(databasePath, 6, "old-live");
+    createDatabase(backupPath, 6, "restored-backup");
 
     await restoreCommunityDatabase({
       authorityOwner: null,
@@ -133,7 +133,7 @@ test("restore never restarts after stop confirmation or restored schema failure"
       generation: FIRST_GENERATION,
       owner: null,
     });
-    createDatabase(databasePath, 4, "old-live");
+    createDatabase(databasePath, 6, "old-live");
     createDatabase(backupPath, 3, "wrong-schema");
 
     const dirtyStopCommands = [];
@@ -185,7 +185,7 @@ test("restore never restarts after stop confirmation or restored schema failure"
           return { stdout: "", stderr: "" };
         },
       }),
-      /schema version must be 4/,
+      /schema version must be 6/,
     );
     assert.equal(readFileSync(authorityPath, "utf8"), `${SECOND_GENERATION}\n`);
     assert.equal(readMarker(databasePath), "wrong-schema");
