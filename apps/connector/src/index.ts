@@ -3,6 +3,7 @@ import { ConnectorClient } from "./connector-client.js";
 import { readConnectorHttpTimeoutMs, readConnectorServerWebSocketUrl } from "./connector-config.js";
 import { ConnectorStateDatabase } from "./connector-state.js";
 import { buildConnectorLocalApi, listenOnLoopback } from "./local-api.js";
+import { SharedMemeLibrary } from "./shared-meme-library.js";
 import { SharedMemeSynchronizer } from "./shared-meme-sync.js";
 
 function required(name: string): string {
@@ -18,12 +19,13 @@ const httpRequestTimeoutMs = readConnectorHttpTimeoutMs();
 const databasePath = required("DOORBELL_CONNECTOR_DATABASE_PATH");
 const credential = required("DOORBELL_CONNECTOR_CREDENTIAL");
 const database = new ConnectorStateDatabase(databasePath);
+const sharedMemeSnapshotPath = join(dirname(databasePath), "shared-memes.sqlite");
 const sharedMemeSync = new SharedMemeSynchronizer({
   serverWebSocketUrl: serverWebSocketUrl.toString(),
   credential,
   httpRequestTimeoutMs,
   state: database,
-  snapshotPath: join(dirname(databasePath), "shared-memes.sqlite"),
+  snapshotPath: sharedMemeSnapshotPath,
 });
 const client = new ConnectorClient({
   serverWebSocketUrl: serverWebSocketUrl.toString(),
@@ -32,7 +34,7 @@ const client = new ConnectorClient({
   state: database,
   sharedMemeSync,
 });
-const app = buildConnectorLocalApi(client);
+const app = buildConnectorLocalApi(client, new SharedMemeLibrary(sharedMemeSnapshotPath));
 const port = Number(process.env.DOORBELL_CONNECTOR_PORT ?? 3100);
 
 app.addHook("onClose", () => {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { once } from "node:events";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,6 +16,9 @@ import {
   connectorLocalGenerationChangedEventSchema,
   connectorLocalHealthSchema,
   connectorLocalMailboxErrorSchema,
+  connectorLocalSharedMemeDetailSuccessSchema,
+  connectorLocalSharedMemeErrorSchema,
+  connectorLocalSharedMemeListSuccessSchema,
   connectorLocalSharedMemeSyncSchema,
   connectorLocalStatusSchema,
   connectorReadyFrameSchema,
@@ -30,13 +33,23 @@ import { type RawData, type WebSocket, WebSocketServer } from "ws";
 import { ConnectorClient, ConnectorMailboxRequestError } from "./connector-client.js";
 import { ConnectorStateDatabase } from "./connector-state.js";
 import { buildConnectorLocalApi, listenOnLoopback } from "./local-api.js";
+import { SharedMemeLibrary } from "./shared-meme-library.js";
 import { SharedMemeSynchronizer } from "./shared-meme-sync.js";
 
 const CREDENTIAL = `dbc_${"C".repeat(43)}`;
 const GENERATION_ONE = "00000000-0000-4000-8000-000000000101";
 const GENERATION_TWO = "00000000-0000-4000-8000-000000000102";
 
+function normalizeSharedMemeText(value: string): string {
+  return value
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[\s.,?()'。“”~!:]/gu, "")
+    .replace(/x{3,}/g, "xx");
+}
+
 function createSharedMemeRelease(directory: string, version: number, term: string) {
+  const alias = `${term} 别名。`;
   const path = join(directory, `shared-memes-v${version}-${randomUUID()}.sqlite`);
   const database = new Database(path);
   database.exec(`
@@ -52,6 +65,33 @@ function createSharedMemeRelease(directory: string, version: number, term: strin
       origin TEXT NOT NULL,
       notes TEXT NOT NULL
     );
+    CREATE TABLE meme_aliases (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      meme_id INTEGER NOT NULL REFERENCES memes(id) ON DELETE CASCADE,
+      alias TEXT NOT NULL,
+      normalized_alias TEXT NOT NULL UNIQUE
+    );
+    CREATE TABLE meme_categories (
+      meme_id INTEGER NOT NULL REFERENCES memes(id) ON DELETE CASCADE,
+      category TEXT NOT NULL,
+      PRIMARY KEY (meme_id, category)
+    );
+    CREATE TABLE meme_types (
+      meme_id INTEGER NOT NULL REFERENCES memes(id) ON DELETE CASCADE,
+      type TEXT NOT NULL,
+      PRIMARY KEY (meme_id, type)
+    );
+    CREATE TABLE meme_examples (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      meme_id INTEGER NOT NULL REFERENCES memes(id) ON DELETE CASCADE,
+      example TEXT NOT NULL
+    );
+    CREATE TABLE meme_keywords (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      meme_id INTEGER NOT NULL REFERENCES memes(id) ON DELETE CASCADE,
+      keyword TEXT NOT NULL,
+      normalized_keyword TEXT NOT NULL
+    );
   `);
   database.prepare("INSERT INTO metadata (key, value) VALUES (?, ?)").run("schema_version", "1");
   database
@@ -65,9 +105,20 @@ function createSharedMemeRelease(directory: string, version: number, term: strin
     .prepare(
       `INSERT INTO memes (
          id, term, normalized_term, primary_category, primary_type, meaning, usage, origin, notes
-       ) VALUES (1, ?, ?, '', '', '', '', '', '')`,
+       ) VALUES (1, ?, ?, '社区', '用语', '批准释义', '批准用法', '铃野', '批准备注')`,
     )
-    .run(term, term.toLowerCase());
+    .run(term, normalizeSharedMemeText(term));
+  database
+    .prepare("INSERT INTO meme_aliases (meme_id, alias, normalized_alias) VALUES (1, ?, ?)")
+    .run(alias, normalizeSharedMemeText(alias));
+  database.prepare("INSERT INTO meme_categories (meme_id, category) VALUES (1, '社区')").run();
+  database.prepare("INSERT INTO meme_types (meme_id, type) VALUES (1, '用语')").run();
+  database.prepare("INSERT INTO meme_examples (meme_id, example) VALUES (1, '批准示例')").run();
+  database
+    .prepare(
+      "INSERT INTO meme_keywords (meme_id, keyword, normalized_keyword) VALUES (1, '铃野', '铃野')",
+    )
+    .run();
   database.close();
   const snapshot = readFileSync(path);
   rmSync(path, { force: true });
@@ -83,6 +134,93 @@ function createSharedMemeRelease(directory: string, version: number, term: strin
     },
   };
 }
+
+test("local shared meme API reads the installed snapshot and follows atomic replacement", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "doorbell-shared-meme-local-read-"));
+  const snapshotPath = join(directory, "shared-memes.sqlite");
+  const library = new SharedMemeLibrary(snapshotPath);
+  const localApi = buildConnectorLocalApi({} as ConnectorClient, library);
+  const localAddress = await listenOnLoopback(localApi, 0);
+  try {
+    const unavailableResponse = await fetch(`${localAddress}/v2/shared-memes`);
+    assert.equal(unavailableResponse.status, 503);
+    assert.equal(
+      connectorLocalSharedMemeErrorSchema.parse(await unavailableResponse.json()).error.code,
+      "shared_meme_unavailable",
+    );
+
+    const release1 = createSharedMemeRelease(directory, 1, "第一版梗");
+    writeFileSync(snapshotPath, release1.snapshot);
+
+    const listResponse = await fetch(`${localAddress}/v2/shared-memes`);
+    assert.equal(listResponse.status, 200);
+    const list = connectorLocalSharedMemeListSuccessSchema.parse(await listResponse.json());
+    assert.equal(list.library_version, 1);
+    assert.deepEqual(list.memes, [
+      {
+        meme_id: 1,
+        term: "第一版梗",
+        normalized_term: "第一版梗",
+        category: "社区",
+        type: "用语",
+        meaning: "批准释义",
+        usage: "批准用法",
+        origin: "铃野",
+        notes: "批准备注",
+        categories: ["社区"],
+        types: ["用语"],
+        aliases: ["第一版梗 别名。"],
+        examples: ["批准示例"],
+        keywords: ["铃野"],
+      },
+    ]);
+
+    for (const term of ["第一版梗", " 第一版梗 别名。 "]) {
+      const resolveResponse = await fetch(
+        `${localAddress}/v2/shared-memes?term=${encodeURIComponent(term)}`,
+      );
+      assert.equal(resolveResponse.status, 200);
+      assert.equal(
+        connectorLocalSharedMemeDetailSuccessSchema.parse(await resolveResponse.json()).meme
+          .meme_id,
+        1,
+      );
+    }
+
+    const detailResponse = await fetch(`${localAddress}/v2/shared-memes/1`);
+    assert.equal(detailResponse.status, 200);
+    assert.equal(
+      connectorLocalSharedMemeDetailSuccessSchema.parse(await detailResponse.json()).meme.term,
+      "第一版梗",
+    );
+
+    const missingResponse = await fetch(`${localAddress}/v2/shared-memes/999`);
+    assert.equal(missingResponse.status, 404);
+    assert.equal(
+      connectorLocalSharedMemeErrorSchema.parse(await missingResponse.json()).error.code,
+      "shared_meme_not_found",
+    );
+
+    const invalidResponse = await fetch(`${localAddress}/v2/shared-memes?extra=1`);
+    assert.equal(invalidResponse.status, 400);
+    assert.equal(
+      connectorLocalSharedMemeErrorSchema.parse(await invalidResponse.json()).error.code,
+      "invalid_request",
+    );
+
+    const release2 = createSharedMemeRelease(directory, 2, "第二版梗");
+    const replacementPath = join(directory, "shared-memes-replacement.sqlite");
+    writeFileSync(replacementPath, release2.snapshot);
+    renameSync(replacementPath, snapshotPath);
+    const replacedResponse = await fetch(`${localAddress}/v2/shared-memes`);
+    const replaced = connectorLocalSharedMemeListSuccessSchema.parse(await replacedResponse.json());
+    assert.equal(replaced.library_version, 2);
+    assert.equal(replaced.memes[0]?.term, "第二版梗");
+  } finally {
+    await localApi.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 interface FrameInbox {
   frames: unknown[];
@@ -298,7 +436,10 @@ test("local SSE includes an event persisted during backlog bootstrap exactly onc
       return () => generationSubscribers.delete(listener);
     },
   } as unknown as ConnectorClient;
-  const localApi = buildConnectorLocalApi(fakeClient);
+  const localApi = buildConnectorLocalApi(
+    fakeClient,
+    new SharedMemeLibrary(join(tmpdir(), `doorbell-unused-${randomUUID()}.sqlite`)),
+  );
   const localAddress = await listenOnLoopback(localApi, 0);
   const controller = new AbortController();
   try {
@@ -351,7 +492,10 @@ test("local SSE fences a generation reset during backlog bootstrap", async () =>
       return () => generationSubscribers.delete(listener);
     },
   } as unknown as ConnectorClient;
-  const localApi = buildConnectorLocalApi(fakeClient);
+  const localApi = buildConnectorLocalApi(
+    fakeClient,
+    new SharedMemeLibrary(join(tmpdir(), `doorbell-unused-${randomUUID()}.sqlite`)),
+  );
   const localAddress = await listenOnLoopback(localApi, 0);
   const controller = new AbortController();
   try {
@@ -480,7 +624,7 @@ test("official Connector persists before ACK, deduplicates, requests resync, and
     fetchImplementation: fakeFetch,
     sharedMemeSync,
   });
-  const localApi = buildConnectorLocalApi(client);
+  const localApi = buildConnectorLocalApi(client, new SharedMemeLibrary(sharedMemeSnapshotPath));
   const localAddress = await listenOnLoopback(localApi, 0);
   let secondClient: ConnectorClient | undefined;
   try {

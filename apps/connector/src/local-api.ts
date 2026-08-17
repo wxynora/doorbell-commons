@@ -7,6 +7,11 @@ import {
   connectorLocalGenerationChangedEventSchema,
   connectorLocalHealthSchema,
   connectorLocalMailboxErrorSchema,
+  connectorLocalSharedMemeDetailRequestSchema,
+  connectorLocalSharedMemeDetailSuccessSchema,
+  connectorLocalSharedMemeErrorSchema,
+  connectorLocalSharedMemeListSuccessSchema,
+  connectorLocalSharedMemeQuerySchema,
   connectorLocalSharedMemeSyncSchema,
   connectorLocalStatusSchema,
   humanSettingsReadRequestSchema,
@@ -18,6 +23,11 @@ import {
 } from "@doorbell/protocol";
 import Fastify, { type FastifyInstance, type FastifyReply } from "fastify";
 import { type ConnectorClient, ConnectorMailboxRequestError } from "./connector-client.js";
+import {
+  type SharedMemeLibrary,
+  SharedMemeLibraryUnavailableError,
+  SharedMemeNotFoundError,
+} from "./shared-meme-library.js";
 
 function sendMailboxFailure(reply: FastifyReply, error: unknown) {
   if (error instanceof ConnectorMailboxRequestError) {
@@ -30,7 +40,28 @@ function sendMailboxFailure(reply: FastifyReply, error: unknown) {
   throw error;
 }
 
-export function buildConnectorLocalApi(client: ConnectorClient): FastifyInstance {
+function sendSharedMemeFailure(reply: FastifyReply, error: unknown) {
+  if (error instanceof SharedMemeNotFoundError) {
+    return reply.code(404).send(
+      connectorLocalSharedMemeErrorSchema.parse({
+        error: { code: "shared_meme_not_found", message: error.message },
+      }),
+    );
+  }
+  if (error instanceof SharedMemeLibraryUnavailableError) {
+    return reply.code(503).send(
+      connectorLocalSharedMemeErrorSchema.parse({
+        error: { code: "shared_meme_unavailable", message: error.message },
+      }),
+    );
+  }
+  throw error;
+}
+
+export function buildConnectorLocalApi(
+  client: ConnectorClient,
+  sharedMemeLibrary: SharedMemeLibrary,
+): FastifyInstance {
   const app = Fastify({ logger: false });
 
   app.get("/v2/health", async () =>
@@ -201,6 +232,62 @@ export function buildConnectorLocalApi(client: ConnectorClient): FastifyInstance
       });
     }
     return connectorLocalSharedMemeSyncSchema.parse(client.getSharedMemeSyncStatus());
+  });
+
+  app.get("/v2/shared-memes", async (request, reply) => {
+    const query = connectorLocalSharedMemeQuerySchema.safeParse(request.query);
+    if (!query.success) {
+      return reply.code(400).send(
+        connectorLocalSharedMemeErrorSchema.parse({
+          error: {
+            code: "invalid_request",
+            message: "Shared meme list accepts only one non-empty term",
+          },
+        }),
+      );
+    }
+    try {
+      if (query.data.term !== undefined) {
+        const result = sharedMemeLibrary.resolve(query.data.term);
+        return connectorLocalSharedMemeDetailSuccessSchema.parse({
+          library_version: result.libraryVersion,
+          meme: result.meme,
+        });
+      }
+      const result = sharedMemeLibrary.list();
+      return connectorLocalSharedMemeListSuccessSchema.parse({
+        library_version: result.libraryVersion,
+        memes: result.memes,
+      });
+    } catch (error) {
+      return sendSharedMemeFailure(reply, error);
+    }
+  });
+
+  app.get("/v2/shared-memes/:memeId", async (request, reply) => {
+    const query = humanSettingsReadRequestSchema.safeParse(request.query);
+    const params = connectorLocalSharedMemeDetailRequestSchema.safeParse({
+      meme_id: (request.params as { memeId?: unknown }).memeId,
+    });
+    if (!query.success || !params.success) {
+      return reply.code(400).send(
+        connectorLocalSharedMemeErrorSchema.parse({
+          error: {
+            code: "invalid_request",
+            message: "Shared meme detail requires one positive meme ID",
+          },
+        }),
+      );
+    }
+    try {
+      const result = sharedMemeLibrary.getById(params.data.meme_id);
+      return connectorLocalSharedMemeDetailSuccessSchema.parse({
+        library_version: result.libraryVersion,
+        meme: result.meme,
+      });
+    } catch (error) {
+      return sendSharedMemeFailure(reply, error);
+    }
   });
 
   app.get("/v2/mailbox", async (request, reply) => {

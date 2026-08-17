@@ -275,8 +275,12 @@ schema version, SQLite integrity, foreign keys, approved table names, and entry 
 replacement. A duplicate or replayed version is idempotent; a stale version, bad checksum, invalid
 SQLite, or failed rename keeps both the previous file and applied version. Loopback
 `GET /v2/shared-memes/status` exposes only sync status, applied version, entry count, last successful
-sync time, and a bounded error code. It does not expose a credential, contributor, content body, model
-tool, sampling rule, or injection behavior.
+sync time, and a bounded error code. The same loopback service reads the currently installed snapshot
+through fresh read-only SQLite connections: `GET /v2/shared-memes` returns the complete approved list,
+the same route with one `term` resolves an exact normalized canonical term or alias, and
+`GET /v2/shared-memes/:memeId` returns one entry. A missing snapshot is an explicit unavailable result,
+and atomic replacement becomes visible on the next request without retaining an old connection. These
+routes do not expose a credential, contributor, model tool, sampling rule, or injection behavior.
 
 ## Doorbell-hosted MCP access control plane
 

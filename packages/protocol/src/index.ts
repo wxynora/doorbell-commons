@@ -711,6 +711,43 @@ export const connectorLocalSharedMemeSyncSchema = z
   })
   .strict();
 
+export const connectorLocalSharedMemeQuerySchema = z
+  .object({
+    term: z.string().trim().min(1).optional(),
+  })
+  .strict();
+
+export const connectorLocalSharedMemeDetailRequestSchema = z
+  .object({
+    meme_id: sharedMemeIdSchema,
+  })
+  .strict();
+
+export const connectorLocalSharedMemeListSuccessSchema = z
+  .object({
+    library_version: z.number().int().positive(),
+    memes: z.array(sharedMemeEntrySchema),
+  })
+  .strict();
+
+export const connectorLocalSharedMemeDetailSuccessSchema = z
+  .object({
+    library_version: z.number().int().positive(),
+    meme: sharedMemeEntrySchema,
+  })
+  .strict();
+
+export const connectorLocalSharedMemeErrorSchema = z
+  .object({
+    error: z
+      .object({
+        code: z.enum(["invalid_request", "shared_meme_not_found", "shared_meme_unavailable"]),
+        message: z.string(),
+      })
+      .strict(),
+  })
+  .strict();
+
 export const humanSettingsChatModeSchema = z.enum(["natural", "proactive", "listening"]);
 
 export const climateTypeValues = [
@@ -1658,6 +1695,13 @@ export type SharedMemeAddRequest = z.infer<typeof sharedMemeAddRequestSchema>;
 export type SharedMemeAddSuccess = z.infer<typeof sharedMemeAddSuccessSchema>;
 export type SharedMemeError = z.infer<typeof sharedMemeErrorSchema>;
 export type ConnectorLocalSharedMemeSync = z.infer<typeof connectorLocalSharedMemeSyncSchema>;
+export type ConnectorLocalSharedMemeListSuccess = z.infer<
+  typeof connectorLocalSharedMemeListSuccessSchema
+>;
+export type ConnectorLocalSharedMemeDetailSuccess = z.infer<
+  typeof connectorLocalSharedMemeDetailSuccessSchema
+>;
+export type ConnectorLocalSharedMemeError = z.infer<typeof connectorLocalSharedMemeErrorSchema>;
 export type ConnectorLocalMailboxError = z.infer<typeof connectorLocalMailboxErrorSchema>;
 export type HumanSettingsChatMode = z.infer<typeof humanSettingsChatModeSchema>;
 export type HumanSettingsPatchRequest = z.infer<typeof humanSettingsPatchRequestSchema>;
