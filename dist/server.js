@@ -22,7 +22,7 @@ import { getCrop, materialById, expEventById } from "./content.js";
 import { cookingIngredientById } from "./content.js";
 import { currentDayIndex } from "./time.js";
 import { PublicSyncError } from "./public-sync.js";
-import { runFishing } from "./fishing.js";
+import { runFishing, sellFishingCatchIds } from "./fishing.js";
 import { runGlimmer, setGlimmerVariant } from "./glimmer.js";
 import { advancePublicExpedition, checkPublicContribution, currentPublicTask, findPublicDish, findPublicHarvestPlot, findPublicWaterTarget, markPublicTrialPlot, publicExpeditionStatusLine, publicExpeditionText, recordPublicContribution, recordPublicPlantEncounter, runPublicChoice, takePublicAiNotices, takePublicDish } from "./public-expedition.js";
 import { qixi2026CompletionText, recordQixi2026Progress, recordQixi2026StealAttempt, settleQixi2026QuietTask } from "./qixi-2026.js";
@@ -1419,7 +1419,7 @@ export function startServer(port, host = "127.0.0.1") {
                 // 🍳 料理台：食材铺、配方、下锅动画结算、料理柜使用/回收/摆摊。
                 if (section === "cooking") {
                     const act = parts[3];
-                    if (method === "POST" && ["buy-ingredient", "buy-recipe", "cook", "use", "sell"].includes(act)) {
+                    if (method === "POST" && ["buy-ingredient", "buy-recipe", "cook", "use", "sell", "sell-fish"].includes(act)) {
                         const form = await readFormBody(req);
                         let flash;
                         let result;
@@ -1461,6 +1461,15 @@ export function startServer(port, host = "127.0.0.1") {
                                     : `🍽️ ${r.target === "cat" ? "小猫" : "小狗"}吃下「${r.dish.name}」，${Math.round(r.buff.bonus * 100)}% 加成已替换旧效果`
                                 : r.error;
                         }
+                        else if (act === "sell-fish") {
+                            let itemIds;
+                            try {
+                                itemIds = JSON.parse(String(form.itemIds ?? "[]"));
+                            }
+                            catch { /* 批量引擎给出数量提示 */ }
+                            const r = sellFishingCatchIds(f, itemIds, form.qty ?? 1);
+                            flash = r.ok ? `♻️ 卖出「${r.name}」×${r.qty}，+${r.silver} 银` : r.error;
+                        }
                         else {
                             let r;
                             if (form.itemIds !== undefined) {
@@ -1496,7 +1505,7 @@ export function startServer(port, host = "127.0.0.1") {
                 }
                 if (section === "ranch") {
                     const act = parts[3];
-                    if (method === "POST" && (act === "collect" || act === "feed" || act === "remit" || act === "dress" || act === "decorate" || act === "wear" || act === "takeoff" || act === "place" || act === "unplace" || act === "upgrade" || act === "name-animal" || act === "name-pet" || act === "name-goose" || act === "pin" || act === "variant" || act === "dispatch-raid" || act === "catch-raid")) {
+                    if (method === "POST" && (act === "collect" || act === "sell-product" || act === "feed" || act === "remit" || act === "dress" || act === "decorate" || act === "wear" || act === "takeoff" || act === "place" || act === "unplace" || act === "upgrade" || act === "name-animal" || act === "name-pet" || act === "name-goose" || act === "pin" || act === "variant" || act === "dispatch-raid" || act === "catch-raid")) {
                         const form = await readFormBody(req);
                         let flash;
                         const ai = f.aiName || f.name || "对方";
@@ -1525,6 +1534,17 @@ export function startServer(port, host = "127.0.0.1") {
                             flash = r.ok
                                 ? `📦 收获：${Object.entries(r.detail).map(([k, v]) => `${v} 份${k}`).join("、")}；${r.storedCount ? `${r.storedCount} 份已锁定当前价值并放进料理台食材柜` : ""}${r.nonCookableCount ? `${r.storedCount ? "；" : ""}${Object.entries(r.nonCookableDetail).map(([k, v]) => `${v} 份${k}`).join("、")}不能下锅，已自动回收 +${r.nonCookableGain} 牧场金币` : ""}${r.autoRecycled.length ? `${r.storedCount || r.nonCookableCount ? "；" : ""}${r.autoRecycled.length} 份因欠款自动整份回收` : ""}${r.debtPaid ? `，偿还欠款 ${r.debtPaid} 金` : ""}${r.gain ? `，回收余款 +${r.gain} 牧场金币` : ""}${r.potion ? `；还掉了 ${r.potion} 瓶加速药水进${ai}的仓库 🧪` : ""}`
                                 : r.error;
+                        }
+                        else if (act === "sell-product") {
+                            let itemIds;
+                            try {
+                                itemIds = JSON.parse(String(form.itemIds ?? "[]"));
+                            }
+                            catch { /* 批量引擎给出数量提示 */ }
+                            const r = kitchenSellMany(f, itemIds, form.qty ?? 1, "system", undefined, now);
+                            flash = r.ok ? `♻️ 系统回收「${r.name}」×${r.qty}，+${r.value} 牧场金币` : r.error;
+                            if (r.ok)
+                                checkTitles(f);
                         }
                         else if (act === "feed") {
                             const r = ranchFeedAnimal(f, Number(form.animal), now);

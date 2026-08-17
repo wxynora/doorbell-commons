@@ -387,6 +387,30 @@ export function uiRanch(f, now, key, flash) {
       <p class="small muted" style="margin:10px 0 0">收获后的动物产物会按当前等级和投喂效果锁定价值，放进顶部「🍳 料理台」的食材柜；欠款存在时会先按动物顺序整份回收还债。鸡、鸭、普通鹅、羊、牛每个完整生产周期另有 5% 概率多带回一份肉。</p>
       <p class="small muted" style="margin:6px 0 0">📌 <b>pin</b>：被你 pin 的动物/宠物，才会随机出现在 ${ai} 农场的氛围描述里；<b>只 pin 一只就固定只出现它</b>。都不 pin＝全部随机（默认）。</p></div>`;
     }
+    const productGroups = [];
+    for (const item of ranch?.kitchen?.products ?? []) {
+        let group = productGroups.find((entry) => entry.itemId === item.itemId);
+        if (!group) {
+            group = { itemId: item.itemId, items: [] };
+            productGroups.push(group);
+        }
+        group.items.push(item);
+    }
+    const productRows = productGroups.map((group) => {
+        const item = group.items[0];
+        const values = group.items.map((entry) => Number(entry.value) || 0);
+        const min = Math.min(...values);
+        const max = Math.max(...values);
+        const valueText = min === max ? `${num(min)} 金/份` : `${num(min)}–${num(max)} 金/份`;
+        const qty = group.items.length > 1
+            ? `<label class="small">数量 <input class="inp" type="number" name="qty" min="1" max="${group.items.length}" step="1" value="1" inputmode="numeric" style="width:72px" aria-label="回收${esc(item.name)}的数量，最多${group.items.length}份"></label>`
+            : `<input type="hidden" name="qty" value="1">`;
+        return `<div class="line small" style="flex-wrap:wrap"><span>${esc(item.emoji || "📦")} <b>${esc(item.name)} ×${group.items.length}</b>　<span class="muted">可下锅 · 锁价 ${valueText}</span></span>
+      <form method="post" action="${base}/sell-product" style="display:flex;gap:7px;align-items:center;margin:0"><input type="hidden" name="itemIds" value="${esc(JSON.stringify(group.items.map((entry) => entry.id)))}">${qty}<button class="btn ghost" type="submit">系统回收</button></form></div>`;
+    }).join("");
+    const productsCard = `<div class="card"><h3>📦 已收牧场产物　<span class="muted small" style="font-weight:400">共 ${ranch?.kitchen?.products?.length ?? 0} 份</span></h3>
+    <p class="small muted" style="margin:0 0 8px">可烹饪产物会留在同一份料理食材库存里；可以在这里按锁定价值换成牧场金币，也可以去料理台下锅。</p>
+    ${productRows || `<div class="small muted">还没有待处理的牧场产物。</div>`}</div>`;
     const raidHistory = ranch?.raidHistory?.day === today ? ranch.raidHistory.entries : [];
     const raidHistoryRows = raidHistory.length
         ? raidHistory.map((entry) => {
@@ -505,6 +529,7 @@ ${ranchSceneCard}
 ${raidHistoryCard}
 ${codexCard}
 ${animalsCard}
+${productsCard}
 ${warehouseCard}
 ${shopCard}
 <div class="grid c2">${remitCard}${historyCard}</div>`;

@@ -68,6 +68,16 @@ export function uiCooking(f, now, key, flash, resultRaw) {
         }
         group.items.push(item);
     }
+    const pantryGroups = [];
+    for (const item of view.products) {
+        const key = item.source === "fish" ? `fish:${item.fishId}` : item.itemId;
+        let group = pantryGroups.find((entry) => entry.key === key);
+        if (!group) {
+            group = { key, itemId: item.itemId, items: [] };
+            pantryGroups.push(group);
+        }
+        group.items.push(item);
+    }
     const productValueText = (items) => {
         const values = items.map((item) => Number(item.value) || 0);
         const min = Math.min(...values);
@@ -75,6 +85,12 @@ export function uiCooking(f, now, key, flash, resultRaw) {
         return min === max ? `锁价 ${num(min)} 金/份` : `锁价 ${num(min)}–${num(max)} 金/份`;
     };
     const sellIds = (items) => esc(JSON.stringify(items.map((item) => item.id)));
+    const fishSaleValueText = (items) => {
+        const values = items.map((item) => Number(item.sellSilver) || 0);
+        const min = Math.min(...values);
+        const max = Math.max(...values);
+        return min === max ? `可卖 ${num(min)} 银/条` : `可卖 ${num(min)}–${num(max)} 银/条`;
+    };
     const sellQty = (count, name) => count > 1
         ? `<label class="cook-sell-qty">数量 <input class="inp" type="number" name="qty" min="1" max="${count}" step="1" value="1" inputmode="numeric" aria-label="售卖${esc(name)}的数量，最多${count}份"></label>`
         : `<input type="hidden" name="qty" value="1">`;
@@ -191,14 +207,20 @@ export function uiCooking(f, now, key, flash, resultRaw) {
       <div class="tags" style="margin:0 0 8px"><span class="tag">${silverIcon} 银币 <b>${num(f.silver)}</b></span><span class="tag">盐／面粉／砂糖 <b>10</b> · 其他食材 <b>${cooking.dailyBuyLimit}</b></span><span class="tag">每日未知食谱 <b>2</b></span></div>
       <details open><summary><b>食材铺 · 基础常驻 + 每日 6 种</b></summary><div class="cook-stock-list">${ingredientShop}</div></details>
       <details style="margin-top:10px"><summary><b>食谱铺</b></summary>${recipeShop}</details></div>`;
-    const productRows = productGroups.length ? productGroups.map((group) => {
+    const productRows = pantryGroups.length ? pantryGroups.map((group) => {
         const item = group.items[0];
         const def = cookingProductById.get(group.itemId);
         const isFish = group.itemId === "fish:any";
-        const name = isFish ? "鲜鱼" : item.name;
-        return `<div class="cook-stock-row line small"><span>${esc(item.emoji || def?.emoji || "📦")} <b>${esc(isFish ? "鲜鱼" : item.name)} ×${group.items.length}</b>　<span class="muted">${isFish || def?.cookable ? "可下锅 · " : "不可下锅 · "}${productValueText(group.items)}</span></span>
-      ${isFish ? "" : `<form class="cook-sell-form" method="post" action="${base}/sell" data-cooking-async><input type="hidden" name="itemIds" value="${sellIds(group.items)}"><input type="hidden" name="to" value="system">${sellQty(group.items.length, name)}<button class="btn ghost" type="submit">系统回收</button></form>`}</div>`;
-    }).join("") : view.ownedIngredients.length ? "" : `<p class="small muted">还没有动物产物。</p>`;
+        const name = item.name;
+        const sellAction = isFish ? `${base}/sell-fish` : `${base}/sell`;
+        const valueText = isFish ? fishSaleValueText(group.items) : productValueText(group.items);
+        return `<div class="cook-stock-row line small"><span>${esc(item.emoji || def?.emoji || "📦")} <b>${esc(name)} ×${group.items.length}</b>　<span class="muted">${isFish || def?.cookable ? "可下锅 · " : "不可下锅 · "}${valueText}</span></span>
+      <form class="cook-sell-form" method="post" action="${sellAction}" data-cooking-async><input type="hidden" name="itemIds" value="${sellIds(group.items)}">${isFish ? "" : `<input type="hidden" name="to" value="system">`}${sellQty(group.items.length, name)}<button class="btn ghost" type="submit">${isFish ? "卖鱼" : "系统回收"}</button></form></div>`;
+    }).join("") : view.ownedIngredients.length ? "" : `<p class="small muted">还没有鱼获或牧场产物。</p>`;
+    const allFish = view.products.filter((item) => item.source === "fish");
+    const sellAllFish = allFish.length
+        ? `<form class="cook-sell-form" method="post" action="${base}/sell-fish" data-cooking-async style="margin:0"><input type="hidden" name="itemIds" value="${sellIds(allFish)}"><input type="hidden" name="qty" value="${allFish.length}"><button class="btn ghost" type="submit">全部卖鱼</button></form>`
+        : "";
     const ingredientRows = view.ownedIngredients.map((item) => `<div class="cook-stock-row line small"><span style="display:flex;align-items:center;gap:8px">${cookingItemSprite(item.id, item.name)}<b>${esc(item.name)} ×${item.qty}</b></span>
       <form class="cook-sell-form" method="post" action="${base}/sell" data-cooking-async><input type="hidden" name="itemId" value="${esc(item.id)}"><input type="hidden" name="to" value="market">${sellQty(item.qty, item.name)}<input class="inp cook-price" type="number" name="price" min="1" step="1" placeholder="每份银币价" aria-label="每份银币价" required><button class="btn ghost" type="submit">摆摊</button></form></div>`).join("");
     const dishGroups = [];
@@ -231,7 +253,7 @@ export function uiCooking(f, now, key, flash, resultRaw) {
         return `<div class="cook-stock-row"><div style="display:grid;grid-template-columns:54px minmax(0,1fr);gap:9px;align-items:center">${image}<div><b>${esc(dish.name)} ×${group.dishes.length}</b> ${rarityDot(dish.rarity)}<div class="small muted">锁定系统回收价 ${valueText} 牧场金币${odd ? " · 禁止摆摊/喂宠物/贿赂" : ` + ${silverIcon}${silverText} 银`}</div></div></div>
         <div class="cook-actions" style="margin-top:7px">${use}<form class="cook-sell-form" method="post" action="${base}/sell" data-cooking-async><input type="hidden" name="itemIds" value="${itemIds}"><input type="hidden" name="to" value="system">${sellQty(group.dishes.length, dish.name)}<button class="btn ghost" type="submit">系统回收</button></form>${market}</div></div>`;
     }).join("") : `<p class="small muted">锅还没开过，料理柜空着。</p>`;
-    const pantryCard = `<div class="card" id="cookingPantry"><h3>📦 食材柜　<span class="muted small" style="font-weight:400">牧场金币 ${num(ranchCoins)}</span></h3><div class="cook-stock-list">${productRows}${ingredientRows}</div></div>`;
+    const pantryCard = `<div class="card" id="cookingPantry"><div class="line" style="flex-wrap:wrap"><h3 style="margin:0">📦 食材柜　<span class="muted small" style="font-weight:400">牧场金币 ${num(ranchCoins)}</span></h3>${sellAllFish}</div><div class="cook-stock-list">${productRows}${ingredientRows}</div></div>`;
     const dishesCard = `<div class="card" id="cookingDishes"><h3>🍲 料理柜　<span class="muted small" style="font-weight:400">${view.dishes.length} 份</span></h3><div class="cook-stock-list">${dishRows}</div></div>`;
     const debuff = view.debuff ? `<div class="flash">🥴 AI 当前效果：${esc(view.debuff.name)}（剩 ${fmtDur(view.debuff.until - now)}）。只影响 AI 使用农场工具，人类操作不受影响。</div>` : "";
     let resultHtml = "";

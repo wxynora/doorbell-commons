@@ -568,6 +568,34 @@ export function removeFishingCatchIds(farm, ids) {
     state.catchInventory = state.catchInventory.filter((item) => !ids.has(item.id));
 }
 
+/** 人类页面按当前鱼获实例批量出售；先完整校验，再一次性扣除，避免页面过期时误卖其他鱼。 */
+export function sellFishingCatchIds(farm, itemIds, qty) {
+    const state = ensureFishing(farm);
+    const ids = Array.isArray(itemIds) ? itemIds.map((id) => String(id)) : [];
+    const n = Number(qty);
+    if (!Number.isSafeInteger(n) || n < 1)
+        return { ok: false, error: "售卖数量要填写正整数。" };
+    if (n > ids.length)
+        return { ok: false, error: `当前这一组最多只能售卖 ${ids.length} 条鱼。` };
+    const selectedIds = ids.slice(0, n);
+    if (new Set(selectedIds).size !== selectedIds.length)
+        return { ok: false, error: "售卖清单里有重复鱼获，请刷新页面后重试。" };
+    const selected = [];
+    for (const id of selectedIds) {
+        const item = state.catchInventory.find((entry) => entry.id === id);
+        if (!item)
+            return { ok: false, error: "鱼篓里的数量已经变化，请刷新页面后重试。" };
+        selected.push(item);
+    }
+    const soldIds = new Set(selectedIds);
+    const silver = selected.reduce((sum, item) => sum + cleanCount(item.sellSilver), 0);
+    const firstName = fishingFishById.get(selected[0].fishId)?.name ?? selected[0].fishId;
+    const name = selected.every((item) => item.fishId === selected[0].fishId) ? firstName : "鱼获";
+    state.catchInventory = state.catchInventory.filter((item) => !soldIds.has(item.id));
+    farm.silver += silver;
+    return { ok: true, name, qty: n, silver, items: selected };
+}
+
 /** 单一 farm 工具下的扁平 fish 动作。全服 farms 用于钓位容量判定。 */
 export function runFishing(farm, params, now, farms) {
     const state = ensureFishing(farm);
