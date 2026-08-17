@@ -22,7 +22,7 @@ import { getCrop, materialById, expEventById } from "./content.js";
 import { cookingIngredientById } from "./content.js";
 import { currentDayIndex } from "./time.js";
 import { PublicSyncError } from "./public-sync.js";
-import { runFishing, sellFishingCatchIds } from "./fishing.js";
+import { runFishing, sellFishingCatchIds, sellFishingTreasure } from "./fishing.js";
 import { runGlimmer, setGlimmerVariant } from "./glimmer.js";
 import { advancePublicExpedition, checkPublicContribution, currentPublicTask, findPublicDish, findPublicHarvestPlot, findPublicWaterTarget, markPublicTrialPlot, publicExpeditionStatusLine, publicExpeditionText, recordPublicContribution, recordPublicPlantEncounter, runPublicChoice, takePublicAiNotices, takePublicDish } from "./public-expedition.js";
 import { qixi2026CompletionText, recordQixi2026Progress, recordQixi2026StealAttempt, settleQixi2026QuietTask } from "./qixi-2026.js";
@@ -1419,7 +1419,7 @@ export function startServer(port, host = "127.0.0.1") {
                 // 🍳 料理台：食材铺、配方、下锅动画结算、料理柜使用/回收/摆摊。
                 if (section === "cooking") {
                     const act = parts[3];
-                    if (method === "POST" && ["buy-ingredient", "buy-recipe", "cook", "use", "sell", "sell-fish"].includes(act)) {
+                    if (method === "POST" && ["buy-ingredient", "buy-recipe", "cook", "use", "sell", "sell-fish", "sell-treasure"].includes(act)) {
                         const form = await readFormBody(req);
                         let flash;
                         let result;
@@ -1468,6 +1468,10 @@ export function startServer(port, host = "127.0.0.1") {
                             }
                             catch { /* 批量引擎给出数量提示 */ }
                             const r = sellFishingCatchIds(f, itemIds, form.qty ?? 1);
+                            flash = r.ok ? `♻️ 卖出「${r.name}」×${r.qty}，+${r.silver} 银` : r.error;
+                        }
+                        else if (act === "sell-treasure") {
+                            const r = sellFishingTreasure(f, form.itemId, form.qty ?? 1);
                             flash = r.ok ? `♻️ 卖出「${r.name}」×${r.qty}，+${r.silver} 银` : r.error;
                         }
                         else {

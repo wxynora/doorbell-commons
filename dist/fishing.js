@@ -568,6 +568,36 @@ export function removeFishingCatchIds(farm, ids) {
     state.catchInventory = state.catchInventory.filter((item) => !ids.has(item.id));
 }
 
+/** 人类页面只读取当前可出售财宝；数量和单价都来自鱼篓权威状态与内容表。 */
+export function fishingTreasureInventory(farm) {
+    const state = ensureFishing(farm);
+    return fishingItems.filter((item) => item.sellable && cleanCount(state.items[item.id]) > 0)
+        .map((item) => ({
+        id: item.id,
+        name: item.name,
+        qty: cleanCount(state.items[item.id]),
+        sellSilver: cleanCount(item.sellSilver),
+    }));
+}
+
+/** 人类页面按种类出售鱼篓财宝；先完整校验，再一次性扣除，避免页面过期时超卖。 */
+export function sellFishingTreasure(farm, itemId, qty) {
+    const state = ensureFishing(farm);
+    const item = fishingItemById.get(String(itemId ?? ""));
+    if (!item?.sellable)
+        return { ok: false, error: "鱼篓里没有可出售的这件财宝。" };
+    const n = Number(qty);
+    if (!Number.isSafeInteger(n) || n < 1)
+        return { ok: false, error: "售卖数量要填写正整数。" };
+    const available = cleanCount(state.items[item.id]);
+    if (n > available)
+        return { ok: false, error: "鱼篓里的数量已经变化，请刷新页面后重试。" };
+    const silver = cleanCount(item.sellSilver) * n;
+    state.items[item.id] = available - n;
+    farm.silver += silver;
+    return { ok: true, name: item.name, qty: n, silver, item };
+}
+
 /** 人类页面按当前鱼获实例批量出售；先完整校验，再一次性扣除，避免页面过期时误卖其他鱼。 */
 export function sellFishingCatchIds(farm, itemIds, qty) {
     const state = ensureFishing(farm);

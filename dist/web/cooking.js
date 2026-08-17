@@ -1,6 +1,7 @@
 import { advance, kitchenView } from "../engine.js";
 import { cooking, cookingProductById, cookingIngredientById } from "../content.js";
 import { BASE } from "../config.js";
+import { fishingTreasureInventory } from "../fishing.js";
 import { RARITY_VAR, esc, farmNames, fmtDur, num, page, rarityDot } from "./shell.js";
 
 const cookingRecipeIndex = new Map(cooking.recipes.map((recipe, index) => [recipe.id, index]));
@@ -221,6 +222,9 @@ export function uiCooking(f, now, key, flash, resultRaw) {
     const sellAllFish = allFish.length
         ? `<form class="cook-sell-form" method="post" action="${base}/sell-fish" data-cooking-async style="margin:0"><input type="hidden" name="itemIds" value="${sellIds(allFish)}"><input type="hidden" name="qty" value="${allFish.length}"><button class="btn ghost" type="submit">全部卖鱼</button></form>`
         : "";
+    const treasures = fishingTreasureInventory(f);
+    const treasureRows = treasures.length ? treasures.map((item) => `<div class="cook-stock-row line small"><span>🎁 <b>${esc(item.name)} ×${item.qty}</b>　<span class="muted">可卖 ${num(item.sellSilver)} 银/份</span></span>
+      <form class="cook-sell-form" method="post" action="${base}/sell-treasure" data-cooking-async><input type="hidden" name="itemId" value="${esc(item.id)}">${sellQty(item.qty, item.name)}<button class="btn ghost" type="submit">卖财宝</button></form></div>`).join("") : `<p class="small muted">鱼篓里暂时没有可出售的财宝。</p>`;
     const ingredientRows = view.ownedIngredients.map((item) => `<div class="cook-stock-row line small"><span style="display:flex;align-items:center;gap:8px">${cookingItemSprite(item.id, item.name)}<b>${esc(item.name)} ×${item.qty}</b></span>
       <form class="cook-sell-form" method="post" action="${base}/sell" data-cooking-async><input type="hidden" name="itemId" value="${esc(item.id)}"><input type="hidden" name="to" value="market">${sellQty(item.qty, item.name)}<input class="inp cook-price" type="number" name="price" min="1" step="1" placeholder="每份银币价" aria-label="每份银币价" required><button class="btn ghost" type="submit">摆摊</button></form></div>`).join("");
     const dishGroups = [];
@@ -253,7 +257,7 @@ export function uiCooking(f, now, key, flash, resultRaw) {
         return `<div class="cook-stock-row"><div style="display:grid;grid-template-columns:54px minmax(0,1fr);gap:9px;align-items:center">${image}<div><b>${esc(dish.name)} ×${group.dishes.length}</b> ${rarityDot(dish.rarity)}<div class="small muted">锁定系统回收价 ${valueText} 牧场金币${odd ? " · 禁止摆摊/喂宠物/贿赂" : ` + ${silverIcon}${silverText} 银`}</div></div></div>
         <div class="cook-actions" style="margin-top:7px">${use}<form class="cook-sell-form" method="post" action="${base}/sell" data-cooking-async><input type="hidden" name="itemIds" value="${itemIds}"><input type="hidden" name="to" value="system">${sellQty(group.dishes.length, dish.name)}<button class="btn ghost" type="submit">系统回收</button></form>${market}</div></div>`;
     }).join("") : `<p class="small muted">锅还没开过，料理柜空着。</p>`;
-    const pantryCard = `<div class="card" id="cookingPantry"><div class="line" style="flex-wrap:wrap"><h3 style="margin:0">📦 食材柜　<span class="muted small" style="font-weight:400">牧场金币 ${num(ranchCoins)}</span></h3>${sellAllFish}</div><div class="cook-stock-list">${productRows}${ingredientRows}</div></div>`;
+    const pantryCard = `<div class="card" id="cookingPantry"><div class="line" style="flex-wrap:wrap"><h3 style="margin:0">📦 食材柜　<span class="muted small" style="font-weight:400">牧场金币 ${num(ranchCoins)}</span></h3>${sellAllFish}</div><div class="cook-stock-list">${productRows}${ingredientRows}</div><div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--line)"><b>🎁 鱼篓财宝</b><div class="cook-stock-list">${treasureRows}</div></div></div>`;
     const dishesCard = `<div class="card" id="cookingDishes"><h3>🍲 料理柜　<span class="muted small" style="font-weight:400">${view.dishes.length} 份</span></h3><div class="cook-stock-list">${dishRows}</div></div>`;
     const debuff = view.debuff ? `<div class="flash">🥴 AI 当前效果：${esc(view.debuff.name)}（剩 ${fmtDur(view.debuff.until - now)}）。只影响 AI 使用农场工具，人类操作不受影响。</div>` : "";
     let resultHtml = "";
