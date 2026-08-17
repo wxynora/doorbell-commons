@@ -109,6 +109,34 @@ test("human mailbox delivery and opening never produce a Bell wake", async () =>
   database.close();
 });
 
+test("confirmed membership revocation closes the resident Bell stream immediately", async () => {
+  const { database, residentId } = registeredDatabase();
+  let closed = false;
+  const service = new BellService({
+    database,
+    generateConnectionEpoch: () => "epoch-membership-revoked",
+    heartbeatIntervalMs: 30_000,
+    now: () => 3_000,
+    registrationAuth: { confirmCurrentResidentMembership: async () => undefined },
+    replayIntervalMs: 60_000,
+  });
+  await service.connect(TOKEN, {
+    close: () => {
+      closed = true;
+    },
+    heartbeat: () => undefined,
+    send: () => undefined,
+  });
+  assert.equal(service.getSettingsStatus(residentId).status, "online");
+
+  service.disconnectResident(residentId);
+
+  assert.equal(closed, true);
+  assert.equal(service.getSettingsStatus(residentId).status, "offline");
+  service.close();
+  database.close();
+});
+
 test("a legacy pending mailbox wake is cancelled while terminal history is preserved", async () => {
   const directory = mkdtempSync(join(tmpdir(), "doorbell-bell-mailbox-removal-"));
   const databasePath = join(directory, "community.sqlite");

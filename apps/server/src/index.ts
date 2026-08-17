@@ -58,6 +58,7 @@ const farmCreator = new FarmCreationClient({
   requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
   serviceToken: serverConfig.farmServiceToken,
 });
+let disconnectRealtimeResident = (_residentId: string): void => undefined;
 const registrationAuth = new RegistrationAuthService({
   database,
   farmDirectory,
@@ -65,6 +66,7 @@ const registrationAuth = new RegistrationAuthService({
   groupMembership,
   groupId: serverConfig.qqGroupId,
   farmHumanUiBaseUrl: serverConfig.farmHumanUiBaseUrl,
+  onMembershipRevoked: (residentId) => disconnectRealtimeResident(residentId),
 });
 const farmRewardGranter = new FarmRewardClient({
   apiBaseUrl: serverConfig.farmApiBaseUrl,
@@ -77,6 +79,11 @@ const reportBellError = (error: unknown): void => {
 const reportMcpNotificationError = (error: unknown): void => {
   process.stderr.write(
     `[doorbell-mcp-notification] ${error instanceof Error ? error.name : "UnknownError"}\n`,
+  );
+};
+const reportRealtimeDisconnectError = (error: unknown): void => {
+  process.stderr.write(
+    `[doorbell-realtime-disconnect] ${error instanceof Error ? error.name : "UnknownError"}\n`,
   );
 };
 const bellService = new BellService({
@@ -96,6 +103,14 @@ const connectorService = new ConnectorService({
   registrationAuth,
   mailboxService,
 });
+disconnectRealtimeResident = (residentId): void => {
+  try {
+    connectorService.disconnectResident(residentId, 4003, "membership_revoked");
+  } catch (error) {
+    reportRealtimeDisconnectError(error);
+  }
+  bellService.disconnectResident(residentId);
+};
 const farmMcpMigration = new FarmMcpMigrationClient({
   apiBaseUrl: serverConfig.farmApiBaseUrl,
   requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,

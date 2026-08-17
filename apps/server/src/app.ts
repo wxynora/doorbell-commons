@@ -1631,7 +1631,14 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       try {
         const community = await options.registrationAuth.getCurrentSession(token);
         const created = sharedMemeService.add(input.data, community.account.accountId);
-        options.connectorService?.emitSharedMemeVersionHint(created.metadata.library_version);
+        try {
+          options.connectorService?.emitSharedMemeVersionHint(created.metadata.library_version);
+        } catch (error) {
+          request.log.error(
+            { error_name: error instanceof Error ? error.name : "UnknownError" },
+            "Shared meme version hint failed after publication",
+          );
+        }
         reply.header("cache-control", "no-store");
         return sharedMemeAddSuccessSchema.parse({
           created: true,

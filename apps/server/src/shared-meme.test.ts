@@ -138,6 +138,7 @@ function createHarness() {
     database,
     databasePath,
     directory,
+    connectorService,
     membership,
     now,
     sharedMemeService,
@@ -455,6 +456,29 @@ test("exact term and alias duplicates do not publish while concurrent add publis
     } finally {
       inspection.close();
     }
+  } finally {
+    await harness.close();
+  }
+});
+
+test("a failed Connector version hint cannot turn a published shared meme into an HTTP failure", async () => {
+  const harness = createHarness();
+  try {
+    harness.connectorService.emitSharedMemeVersionHint = () => {
+      throw new Error("simulated Connector hint failure");
+    };
+    const response = await harness.app.inject({
+      method: "POST",
+      url: "/api/shared-memes",
+      headers: { cookie: cookie() },
+      payload: { term: "通知失败也已成功发布" },
+    });
+    assert.equal(response.statusCode, 200);
+    const created = sharedMemeAddSuccessSchema.parse(response.json());
+    assert.equal(created.library.library_version, 2);
+    assert.equal(created.meme.normalized_term, "通知失败也已成功发布");
+    assert.equal(harness.sharedMemeService.getMetadata().library_version, 2);
+    assert.equal(harness.sharedMemeService.get(created.meme.meme_id).meme.term, created.meme.term);
   } finally {
     await harness.close();
   }

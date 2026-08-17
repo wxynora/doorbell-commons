@@ -417,6 +417,8 @@ test("delivery is idempotent and known or caller-declared secrets never reach SQ
   const harness = createHarness();
   const farmHumanUrl = "https://farm.example/farm/ui/private-key/ta";
   const connectorCredential = "dbc_private_connector_secret";
+  const mcpCredential = "dbm_private_mcp_secret";
+  const bellCredential = "dbb_private_bell_secret";
   const opaqueSecret = "opaque-private-value";
   try {
     const input = {
@@ -438,6 +440,8 @@ test("delivery is idempotent and known or caller-declared secrets never reach SQ
     for (const [body, sensitiveValues] of [
       [`打开 ${farmHumanUrl}`, []],
       [`凭据 ${connectorCredential}`, []],
+      [`凭据 ${mcpCredential}`, []],
+      [`凭据 ${bellCredential}`, []],
       [`敏感值 ${opaqueSecret}`, [opaqueSecret]],
     ] as const) {
       assert.throws(
@@ -452,7 +456,10 @@ test("delivery is idempotent and known or caller-declared secrets never reach SQ
           }),
         (error: unknown) => {
           assert.ok(error instanceof MailboxSecretRejectedError);
-          assert.doesNotMatch(error.message, /private-key|dbc_private|opaque-private/u);
+          assert.doesNotMatch(
+            error.message,
+            /private-key|dbc_private|dbm_private|dbb_private|opaque-private/u,
+          );
           return true;
         },
       );
@@ -474,7 +481,10 @@ test("delivery is idempotent and known or caller-declared secrets never reach SQ
   } finally {
     await harness.close();
     const databaseBytes = readFileSync(harness.databasePath).toString("utf8");
-    assert.doesNotMatch(databaseBytes, /private-key|dbc_private|opaque-private/u);
+    assert.doesNotMatch(
+      databaseBytes,
+      /private-key|dbc_private|dbm_private|dbb_private|opaque-private/u,
+    );
     rmSync(harness.directory, { recursive: true, force: true });
   }
 });

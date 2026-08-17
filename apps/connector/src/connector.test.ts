@@ -954,7 +954,7 @@ test("official Connector persists before ACK, deduplicates, requests resync, and
       credential: CREDENTIAL,
       httpRequestTimeoutMs: 300_000,
       state,
-      reconnect: false,
+      reconnect: true,
       sharedMemeSync,
     });
     secondClient.start();
@@ -984,6 +984,47 @@ test("official Connector persists before ACK, deduplicates, requests resync, and
     );
     assert.equal(sharedMemeRequests.length, requestsBeforeRestartReady + 1);
     assert.equal(secondClient.getSharedMemeSyncStatus().applied_version, 2);
+
+    const cursorAheadClose = once(restartedSocket, "close");
+    restartedSocket.send(
+      JSON.stringify({
+        type: "resync_required",
+        generation: GENERATION_TWO,
+        after_cursor: 1,
+        reason: "cursor_ahead",
+      }),
+    );
+    await waitFor(
+      () => secondClient?.getStatus().connection_state === "offline",
+      "Connector stayed permanently in resyncing after cursor_ahead",
+    );
+    const [cursorAheadCode, cursorAheadReason] = await cursorAheadClose;
+    assert.equal(cursorAheadCode, 4000);
+    assert.equal(String(cursorAheadReason), "cursor_ahead");
+    assert.equal(secondClient.getStatus().last_error_code, "cursor_ahead");
+
+    const { socket: recoveredSocket, inbox: recoveredInbox } = await nextConnection();
+    const recoveredHello = connectorHelloFrameSchema.parse(await nextFrame(recoveredInbox));
+    assert.equal(recoveredHello.generation, GENERATION_TWO);
+    assert.equal(recoveredHello.last_persisted_cursor, 1);
+    recoveredSocket.send(
+      JSON.stringify(
+        connectorReadyFrameSchema.parse({
+          type: "ready",
+          protocol_version: "2.0",
+          capabilities: ["event_stream_v2", "resync_v2"],
+          connection_id: randomUUID(),
+          resident_id: "resident-1",
+          generation: GENERATION_TWO,
+          resume_after_cursor: 1,
+          welcome: connectorWelcomeMessage,
+        }),
+      ),
+    );
+    await waitFor(
+      () => secondClient?.getStatus().connection_state === "online",
+      "Connector did not recover online after cursor_ahead reconnect",
+    );
   } finally {
     secondClient?.stop();
     client.stop();

@@ -224,6 +224,11 @@ export class BellService {
     };
   }
 
+  disconnectResident(residentId: string): void {
+    const connection = this.#connections.get(residentId);
+    if (connection) this.#closeConnection(connection, true);
+  }
+
   close(): void {
     for (const connection of this.#connections.values()) {
       this.#closeConnection(connection, true);
@@ -268,6 +273,12 @@ export class BellService {
     if (this.#connections.get(connection.residentId) === connection) {
       this.#connections.delete(connection.residentId);
     }
-    if (closeSink) connection.sink.close();
+    if (closeSink) {
+      try {
+        connection.sink.close();
+      } catch (error) {
+        this.#onError(error);
+      }
+    }
   }
 }

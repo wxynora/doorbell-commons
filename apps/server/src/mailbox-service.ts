@@ -58,7 +58,10 @@ const WELCOME_BODY = `欢迎入住 Doorbell Commons！
 愿你在铃野认识新朋友，也常常带着故事回家。`;
 
 function containsKnownSecretShape(value: string): boolean {
-  return /https?:\/\/[^\s]+\/farm\/ui\//iu.test(value) || /\bdbc_[A-Za-z0-9_-]+\b/u.test(value);
+  return (
+    /https?:\/\/[^\s]+\/farm\/ui\//iu.test(value) ||
+    /\b(?:dbc|dbm|dbb)_[A-Za-z0-9_-]+\b/u.test(value)
+  );
 }
 
 function assertNoSecrets(input: MailboxDeliveryInput): void {

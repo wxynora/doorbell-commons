@@ -222,6 +222,7 @@ interface AuthHarness {
   farmDirectory: FakeFarmDirectory;
   farmCreator: FakeFarmCreator;
   now: { value: number };
+  revokedResidentIds: string[];
   close(): Promise<void>;
 }
 
@@ -244,6 +245,7 @@ function createHarness(secureCookies = false): AuthHarness {
   const membership = new FakeGroupMembership();
   const farmDirectory = new FakeFarmDirectory();
   const farmCreator = new FakeFarmCreator();
+  const revokedResidentIds: string[] = [];
   const registrationAuth = new RegistrationAuthService({
     database,
     farmDirectory,
@@ -252,6 +254,7 @@ function createHarness(secureCookies = false): AuthHarness {
     groupId: COMMUNITY_QQ_GROUP_ID,
     farmHumanUiBaseUrl: FARM_HUMAN_UI_BASE_URL,
     now: () => now.value,
+    onMembershipRevoked: (residentId) => revokedResidentIds.push(residentId),
   });
   const mailboxService = new MailboxService({ database, now: () => now.value });
   const app = buildApp({
@@ -271,6 +274,7 @@ function createHarness(secureCookies = false): AuthHarness {
     farmCreator,
     membership,
     now,
+    revokedResidentIds,
     async close() {
       await app.close();
       database.close();
@@ -1331,6 +1335,17 @@ test("GET session preserves state on outage and confirmed departure revokes ever
     assert.equal(afterOutage.statusCode, 200);
 
     harness.membership.members.clear();
+    harness.database.replaceConnectorCredential(
+      currentBody.resident.resident_id,
+      "connector-credential-before-departure",
+      "a".repeat(64),
+      harness.now.value,
+    );
+    harness.database.replaceFirstActiveBellCredential(
+      "bell-credential-before-departure",
+      "b".repeat(64),
+      harness.now.value,
+    );
     const departed = await harness.app.inject({
       method: "GET",
       url: "/api/auth/session",
@@ -1355,6 +1370,15 @@ test("GET session preserves state on outage and confirmed departure revokes ever
         "SELECT COUNT(*) AS value FROM human_sessions WHERE revoked_at IS NULL",
       ),
       0,
+    );
+    assert.deepEqual(harness.revokedResidentIds, [currentBody.resident.resident_id]);
+    assert.equal(
+      harness.database.getConnectorBindingState(currentBody.resident.resident_id).configured,
+      false,
+    );
+    assert.equal(
+      harness.database.getBellBindingState(currentBody.resident.resident_id).configured,
+      false,
     );
 
     harness.membership.members.add(QQ_NUMBER);

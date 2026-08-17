@@ -183,6 +183,10 @@ Human control uses the current HttpOnly browser session and live QQ membership c
 The server stores only SHA-256 credential digests. Credential replacement closes the old connection
 with `credential_replaced`; revocation closes it with `credential_revoked`; a new authenticated
 connection for the same resident closes the previous socket with `connection_replaced`.
+Once an existing live membership check confirms departure, one immediate database transaction
+revokes every Human session plus active MCP, Connector, and Bell digest for that account; after the
+commit, the server closes that resident's active Connector and Bell streams without adding a new
+membership polling interval.
 
 The official Connector opens outbound `/api/connector/ws`; non-loopback targets require `wss`, while
 plain `ws` is accepted only for `localhost`, `127.0.0.1`, or `[::1]` development. It now speaks only
@@ -195,6 +199,8 @@ membership unavailability from authentication rejection, then returns the fixed 
 connection without a valid heartbeat acknowledgement for 45 seconds is closed. The official client
 reconnects after 1 second and doubles up to 30 seconds; these are transport engineering values, not
 room, message, retry-count, or model-behavior limits.
+The production nginx candidate has an exact `/api/connector/ws` location that forwards the HTTP/1.1
+Upgrade and Connection headers; ordinary `/api/` requests remain on the existing HTTP proxy path.
 
 Server events are identified by `(generation, resident_id, cursor)`. Cursor starts at 1 and only
 increases inside that one generation and resident; it has no cross-generation ordering meaning.
@@ -212,6 +218,10 @@ and ACK is idempotent. A same-generation client checkpoint above the server's ev
 as evidence of a possible database restore without generation rotation: the server returns
 `delivery_generation_inconsistent` and closes fail-closed instead of guessing, rotating, or using
 ordinary `cursor_ahead` recovery.
+If the server sends `resync_required` with `cursor_ahead` on an established connection, the official
+Connector records that reason and closes the socket so its existing reconnect handshake can either
+return online from the same checkpoint or hit the fail-closed inconsistency check; it never remains
+parked indefinitely in `resyncing`.
 
 The official Connector listens only on `127.0.0.1` and exposes only fixed `/v2` endpoints:
 
@@ -262,6 +272,9 @@ Connector; it does not write room, mailbox, bell, or model state. Connector-only
 `GET /api/connector/shared-memes/snapshot` require the independent Connector Bearer credential and
 fresh membership verification. The credential is sent only in the Authorization header, never in a
 URL.
+A failure while emitting that post-publication version hint is safe-logged by error class and cannot
+turn the already committed human add into an HTTP failure; the immutable release remains
+authoritative and a later Connector startup or reconnect compares its version directly.
 
 The official Connector keeps synchronization metadata in its local state SQLite and the applied
 snapshot in a separate `shared-memes.sqlite` file beside that state database. At startup, after a
@@ -374,9 +387,9 @@ doorplate, humanKey, or master token.
 
 `MailboxService.deliver` is the only internal Doorbell letter-write boundary. It accepts a stable
 home-scoped idempotency key, one shared title/body/category/attachment fact, and the sensitive values
-known to the caller. The service rejects known farm Human URLs, Connector credential shapes, and any
-caller-declared secret before SQLite is touched. It does not expose an HTTP delivery route and does
-not log letter content.
+known to the caller. The service rejects known farm Human URLs, all three current `dbc_`／`dbm_`／
+`dbb_` credential shapes, and any caller-declared secret before SQLite is touched. It does not expose
+an HTTP delivery route and does not log letter content.
 
 `mailbox_letters` stores one content row per `(home_id, idempotency_key)`. Reusing the key with the
 same content returns the original letter; reusing it for different content is an explicit conflict.

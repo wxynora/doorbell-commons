@@ -114,6 +114,7 @@ interface RegistrationAuthServiceOptions {
   groupId: string;
   farmHumanUiBaseUrl?: string;
   now?: () => number;
+  onMembershipRevoked?: (residentId: string) => void;
 }
 
 export interface CreatedFarmDelivery {
@@ -135,6 +136,7 @@ export class RegistrationAuthService {
   readonly #groupId: string;
   readonly #farmHumanUiBaseUrl: string | undefined;
   readonly #now: () => number;
+  readonly #onMembershipRevoked: (residentId: string) => void;
 
   constructor(options: RegistrationAuthServiceOptions) {
     this.#database = options.database;
@@ -144,6 +146,7 @@ export class RegistrationAuthService {
     this.#groupId = options.groupId;
     this.#farmHumanUiBaseUrl = options.farmHumanUiBaseUrl;
     this.#now = options.now ?? Date.now;
+    this.#onMembershipRevoked = options.onMembershipRevoked ?? (() => undefined);
   }
 
   lookupFarm(farmDoorplate: string): Promise<FarmDirectoryEntry> {
@@ -156,7 +159,7 @@ export class RegistrationAuthService {
       throw new InvalidRegistrationCodeError();
     }
     if (!(await this.#groupMembership.isCurrentMember(this.#groupId, input.qqNumber))) {
-      this.#database.revokeHumanAccountMembershipByQq(input.qqNumber, now);
+      this.#revokeMembershipByQq(input.qqNumber, now);
       throw new QqNotGroupMemberError();
     }
     if (this.#database.findHumanPasswordCredentialByQq(input.qqNumber) !== undefined) {
@@ -246,7 +249,7 @@ export class RegistrationAuthService {
       throw new InvalidHumanCredentialsError();
     }
     if (!(await this.#groupMembership.isCurrentMember(this.#groupId, input.qqNumber))) {
-      this.#database.revokeHumanAccountMembershipByQq(input.qqNumber, now);
+      this.#revokeMembershipByQq(input.qqNumber, now);
       throw new QqNotGroupMemberError();
     }
     try {
@@ -266,7 +269,7 @@ export class RegistrationAuthService {
     }
 
     if (!(await this.#groupMembership.isCurrentMember(this.#groupId, session.account.qqNumber))) {
-      this.#database.revokeHumanAccountMembership(session.account.accountId, this.#now());
+      this.#revokeMembership(session.account.accountId, this.#now());
       throw new QqNotGroupMemberError();
     }
     this.#database.confirmHumanAccountMembership(session.account.accountId, this.#now());
@@ -290,10 +293,22 @@ export class RegistrationAuthService {
       throw new AuthenticationRequiredError();
     }
     if (!(await this.#groupMembership.isCurrentMember(this.#groupId, account.qqNumber))) {
-      this.#database.revokeHumanAccountMembership(account.accountId, this.#now());
+      this.#revokeMembership(account.accountId, this.#now());
       throw new QqNotGroupMemberError();
     }
     this.#database.confirmHumanAccountMembership(account.accountId, this.#now());
+  }
+
+  #revokeMembership(accountId: string, now: number): void {
+    for (const residentId of this.#database.revokeHumanAccountMembership(accountId, now)) {
+      this.#onMembershipRevoked(residentId);
+    }
+  }
+
+  #revokeMembershipByQq(qqNumber: string, now: number): void {
+    for (const residentId of this.#database.revokeHumanAccountMembershipByQq(qqNumber, now)) {
+      this.#onMembershipRevoked(residentId);
+    }
   }
 
   async updateCurrentHumanSettings(

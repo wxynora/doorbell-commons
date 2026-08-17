@@ -3224,8 +3224,11 @@ export class CommunityDatabase {
       .run(now, accountId);
   }
 
-  revokeHumanAccountMembership(accountId: string, now: number): void {
+  revokeHumanAccountMembership(accountId: string, now: number): string[] {
     const transaction = this.#database.transaction(() => {
+      const residents = this.#database
+        .prepare("SELECT resident_id FROM residents WHERE account_id = ? ORDER BY resident_id ASC")
+        .all(accountId) as Array<{ resident_id: string }>;
       this.#database
         .prepare(
           `UPDATE human_accounts
@@ -3254,16 +3257,39 @@ export class CommunityDatabase {
              AND credential_revoked_at IS NULL`,
         )
         .run(now, accountId);
+      this.#database
+        .prepare(
+          `UPDATE connector_bindings
+           SET credential_token_hash = NULL,
+               credential_revoked_at = ?
+           WHERE resident_id IN (
+             SELECT resident_id FROM residents WHERE account_id = ?
+           )
+             AND credential_token_hash IS NOT NULL
+             AND credential_revoked_at IS NULL`,
+        )
+        .run(now, accountId);
+      this.#database
+        .prepare(
+          `UPDATE bell_bindings
+           SET credential_token_hash = NULL,
+               credential_revoked_at = ?
+           WHERE resident_id IN (
+             SELECT resident_id FROM residents WHERE account_id = ?
+           )
+             AND credential_token_hash IS NOT NULL
+             AND credential_revoked_at IS NULL`,
+        )
+        .run(now, accountId);
+      return residents.map((resident) => resident.resident_id);
     });
-    transaction.immediate();
+    return transaction.immediate();
   }
 
-  revokeHumanAccountMembershipByQq(qqNumber: string, now: number): void {
+  revokeHumanAccountMembershipByQq(qqNumber: string, now: number): string[] {
     const account = this.#database
       .prepare("SELECT account_id AS accountId FROM human_accounts WHERE qq_number = ?")
       .get(qqNumber) as { accountId: string } | undefined;
-    if (account) {
-      this.revokeHumanAccountMembership(account.accountId, now);
-    }
+    return account ? this.revokeHumanAccountMembership(account.accountId, now) : [];
   }
 }

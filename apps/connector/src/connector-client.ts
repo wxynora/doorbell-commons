@@ -400,6 +400,11 @@ export class ConnectorClient {
         this.#state.recordError("resync_generation_mismatch");
         return;
       }
+      if (resync.data.reason === "cursor_ahead") {
+        this.#state.recordError("cursor_ahead");
+        socket.close(4000, "cursor_ahead");
+        return;
+      }
       this.#connectionState = "resyncing";
       return;
     }
