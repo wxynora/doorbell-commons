@@ -30,6 +30,19 @@ export function createAssetHandler(assetRoot) {
         ["lingye-together/same-kitchen-ending-one-sign-v1.jpg", new URL("lingye-together/same-kitchen-ending-one-sign-v1.jpg", assetRoot)],
         ["lingye-together/same-kitchen-ending-next-door-v1.jpg", new URL("lingye-together/same-kitchen-ending-next-door-v1.jpg", assetRoot)],
         ["lingye-together/same-kitchen-ending-public-kitchen-v1.jpg", new URL("lingye-together/same-kitchen-ending-public-kitchen-v1.jpg", assetRoot)],
+        ["qixi-2026/objects-discovery-bg-v3.jpg", new URL("qixi-2026/objects-discovery-bg-v3.jpg", assetRoot)],
+        ["qixi-2026/objects-return-bg-v3.jpg", new URL("qixi-2026/objects-return-bg-v3.jpg", assetRoot)],
+        ["qixi-2026/lantern-night-bg-v4.jpg", new URL("qixi-2026/lantern-night-bg-v4.jpg", assetRoot)],
+        ["qixi-2026/qixi-stickers-v2.png", new URL("qixi-2026/qixi-stickers-v2.png", assetRoot)],
+        ["qixi-2026/qixi-lantern-bases-v2.png", new URL("qixi-2026/qixi-lantern-bases-v2.png", assetRoot)],
+        ["qixi-2026/qixi-lantern-decorations-v3.png", new URL("qixi-2026/qixi-lantern-decorations-v3.png", assetRoot)],
+        ["qixi-2026/qixi-letter-paper-v1.png", new URL("qixi-2026/qixi-letter-paper-v1.png", assetRoot)],
+        ["qixi-2026/qixi-letter-display-v1.png", new URL("qixi-2026/qixi-letter-display-v1.png", assetRoot)],
+        ["qixi-2026/qixi-scoop-net.svg", new URL("qixi-2026/qixi-scoop-net.svg", assetRoot)],
+        ["qixi-2026/qixi-release-lantern.svg", new URL("qixi-2026/qixi-release-lantern.svg", assetRoot)],
+        ["qixi-2026/qixi-action-plaque-v1.png", new URL("qixi-2026/qixi-action-plaque-v1.png", assetRoot)],
+        ["qixi-2026/qixi-decor-icon-v1.png", new URL("qixi-2026/qixi-decor-icon-v1.png", assetRoot)],
+        ["qixi-2026/qixi-scene-title-v1.png", new URL("qixi-2026/qixi-scene-title-v1.png", assetRoot)],
     ]);
     const cookingAssetDir = new URL("cooking/", assetRoot);
 
@@ -39,6 +52,8 @@ export function createAssetHandler(assetRoot) {
             const asset = readFileSync(publicAsset);
             const contentType = publicAsset.pathname.endsWith(".webp")
                 ? "image/webp"
+                : publicAsset.pathname.endsWith(".svg")
+                  ? "image/svg+xml"
                 : publicAsset.pathname.endsWith(".jpg") || publicAsset.pathname.endsWith(".jpeg")
                   ? "image/jpeg"
                   : "image/png";

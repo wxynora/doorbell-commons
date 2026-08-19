@@ -23,6 +23,7 @@ export { uiCodex } from "./web/codex.js";
 export { uiCooking } from "./web/cooking.js";
 export { uiLeaderboard } from "./web/leaderboard.js";
 export { uiHome } from "./web/home.js";
+export { uiQixiLantern } from "./web/qixi-lantern.js";
 // ——————————————————————————————————————————————————————————————
 // 小工具
 // ——————————————————————————————————————————————————————————————

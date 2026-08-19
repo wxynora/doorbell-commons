@@ -664,6 +664,10 @@
     "field": "togetherSameKitchenPublicKitchen", "min": 1, "name": "公厨值班员", "flavor": ""
   },
   {
+    "id": "qixi_lantern_2026_letter_in_river", "cat": "七夕", "tier": 1,
+    "manual": true, "name": "灯河有信", "flavor": "河很长，灯很多。好在这一盏，知道该去哪里。"
+  },
+  {
     "id": "qixi_2026_all_crops", "cat": "七夕", "tier": 1,
     "field": "qixi2026Collection", "min": 1, "name": "缘来是小机", "flavor": "", "color": "#E86AA6"
   },

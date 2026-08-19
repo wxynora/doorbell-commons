@@ -1,0 +1,194 @@
+{
+  "id": "qixi-lantern-2026",
+  "startsAt": "2026-08-19T00:00:00+08:00",
+  "finalStageAt": "2026-08-19T20:00:00+08:00",
+  "endsAt": "2026-08-20T00:00:00+08:00",
+  "theme": "愿今夜所有思念，都能顺水抵达归处。",
+  "compatibility": {
+    "intro": "线索当然可以给你们。不过今天是七夕，总不能让我白忙一趟。",
+    "setup": "她摆出三块小木牌，让人类和小机分开选择，谁也不能先看对方的答案。",
+    "questions": [
+      {
+        "text": "挑灯纸时，你会选哪一种颜色？",
+        "options": [
+          { "id": "A", "label": "月白" },
+          { "id": "B", "label": "桃粉" },
+          { "id": "C", "label": "淡青" }
+        ]
+      },
+      {
+        "text": "灯上只能挂一样小装饰，你会选什么？",
+        "options": [
+          { "id": "A", "label": "一枚小铃" },
+          { "id": "B", "label": "一束流苏" },
+          { "id": "C", "label": "一片木叶签" }
+        ]
+      },
+      {
+        "text": "灯放进河里以后，你会在哪里等它？",
+        "options": [
+          { "id": "A", "label": "留在桥上看它漂远" },
+          { "id": "B", "label": "沿着河岸陪它走一段" },
+          { "id": "C", "label": "先去下游等它过来" }
+        ]
+      }
+    ],
+    "sameReaction": "这一题倒是想在一块去了。喏，线索给你们。",
+    "differentReaction": "原来你们各自喜欢的是这个。也挺好，一盏灯上又不是只能放一样东西。"
+  },
+  "story": {
+    "opening": "天刚亮，泊泊把船停在被杂物堵住的河湾外。他量过水深，只在岸边钉下一块木牌：船有桨，撞一下还能退。灯没有。",
+    "qiaoqiao": "翘翘叼着一截湿漉漉的灯穗落在岸边，把捞起的旧物一件件摆上临时失物架。",
+    "finale": "旧物各自回到了主人手里。泊泊重新量过水路，翘翘在失物架顶上拍了拍翅膀：旧东西有地方回去，新写下的话也该出发啦。"
+  },
+  "objects": [
+    {
+      "id": "copper-bell",
+      "name": "旧铜铃",
+      "ownerId": "greyback",
+      "ownerName": "灰背",
+      "foundBy": "fish",
+      "foundText": "这一竿没有钓到鱼，却从水草里带起一枚发暗的旧铜铃。铃绳褪成蓝灰色，缝里还沾着一点车轴油。翘翘把它挂上失物架。",
+      "clues": [
+        {
+          "id": "route",
+          "foundBy": "explore",
+          "text": "探险途中找到半块旧装货牌，背面同样沾着车轴油，还留着一句：第二声靠岸铃后上船。泊泊看过以后说，这不是船铃，是修车时系在短绳上的提醒铃。"
+        },
+        {
+          "id": "thread",
+          "foundBy": "compatibility",
+          "text": "翘翘从失物架的缝里抽出一截同色蓝线：这是她从灰背那辆旧货车的篷布边上叼下来的。"
+        }
+      ],
+      "returnText": "灰背接过铜铃，在掌心里轻轻晃了一下。那是旧货车还跑七码头时用的短绳铃。他没有多说，只把一枚更轻的小铃递回来，挂在灯上不会压翻灯纸。",
+      "material": { "id": "fine-copper-bell", "name": "细铜铃", "slot": "ornament" }
+    },
+    {
+      "id": "qiaoguo-mold",
+      "name": "断角木模",
+      "ownerId": "heyi",
+      "ownerName": "鹤姨",
+      "foundBy": "harvest",
+      "foundText": "收下作物时，夹在田边草屑里的旧木块也被带了出来。晒干泥水后，木纹上露出细细的花样，凹槽里还留着糖粉和烘烤过的香气。",
+      "clues": [
+        {
+          "id": "tea",
+          "foundBy": "dish",
+          "text": "鹤姨正把七夕巧果一盘盘摆凉。喝过送来的蜂蜜茶，她才腾出手接过木块：这是旧厨房搬家时遗失的巧果模，断掉的一角正好和她留下的半边对得上。"
+        }
+      ],
+      "returnText": "鹤姨把木模洗净，用还能用的花纹在灯纸上轻轻压了一遍。她把压好的纸叠整齐，说河风起来以后，这种纹路比墨画更耐看。",
+      "material": { "id": "qiaoguo-paper", "name": "巧果压花纸", "slot": "paper" }
+    },
+    {
+      "id": "mailbag-buckle",
+      "name": "黄铜搭扣",
+      "ownerId": "chichi",
+      "ownerName": "迟迟",
+      "foundBy": "ranch-feed",
+      "foundText": "牧场伙伴吃饱后钻进河边芦苇，拱出一枚黄铜搭扣。扣眼里夹着涂蜡的防水布，边缘缠着七色细线。",
+      "clues": [
+        {
+          "id": "quiz",
+          "foundBy": "quiz",
+          "text": "迟迟把搭扣翻到背面，认出七码头旧邮袋才会用的双排针脚。它随码头改道那年一起失踪，七色线是七夕前给跨河信件做的临时记号。"
+        }
+      ],
+      "returnText": "迟迟沿着旧针孔把搭扣重新缝回邮袋，又裁下一枚新的防水封签：灯笺过水时贴在折口，字就不会被河汽洇开。",
+      "material": { "id": "waterproof-seal", "name": "防水封签", "slot": "seal" }
+    }
+  ],
+  "quiz": {
+    "intro": "迟迟没有立刻接过搭扣。他指了指泊泊用麻绳和木栓固定的船篷，又让你看鹤姨那只棉布、骨扣的账本袋，最后才把黄铜搭扣翻到涂蜡布那一面。",
+    "question": "这枚缠着七色线、连着防水布的搭扣，原来最可能属于哪一样东西？",
+    "options": [
+      { "id": "A", "label": "泊泊的船篷" },
+      { "id": "B", "label": "七码头的跨河邮袋" },
+      { "id": "C", "label": "鹤姨的厨房账本袋" }
+    ],
+    "answer": "B",
+    "wrongText": "迟迟把三样东西重新摆开：船篷是麻绳和木栓，账本袋是棉布和骨扣。搭扣没有交出去，你还可以再看一次。"
+  },
+  "lamp": {
+    "shapes": [
+      { "id": "square-palace", "name": "四角宫灯" },
+      { "id": "octagonal-palace", "name": "八角宫灯" },
+      { "id": "lotus-palace", "name": "莲瓣宫灯" }
+    ],
+    "colors": [
+      { "id": "moon-white", "name": "月白" },
+      { "id": "peach-pink", "name": "桃粉" },
+      { "id": "mist-blue", "name": "雾蓝" },
+      { "id": "apricot-gold", "name": "杏金" }
+    ],
+    "patterns": [
+      { "id": "none", "name": "不添加纹样" },
+      { "id": "star-speckle", "name": "细金星点", "requires": "qiaoguo-paper" },
+      { "id": "qiaoguo-pattern", "name": "巧果压花纹", "requires": "qiaoguo-paper" },
+      { "id": "river-glow", "name": "灯河涟漪", "requires": "qiaoguo-paper" },
+      { "id": "magpie-bridge", "name": "鹊桥星纹", "requires": "qiaoguo-paper" }
+    ],
+    "ornaments": [
+      { "id": "none", "name": "不添加挂件" },
+      { "id": "short-tassel", "name": "粉蓝短流苏", "requires": "fine-copper-bell" },
+      { "id": "fine-copper-bell", "name": "细铜铃", "requires": "fine-copper-bell" },
+      { "id": "magpie-ribbon", "name": "鹊羽星缎", "requires": "fine-copper-bell" },
+      { "id": "twin-jade-pendant", "name": "同心玉坠", "requires": "fine-copper-bell" }
+    ],
+    "seals": [
+      { "id": "none", "name": "不添加封签" },
+      { "id": "cotton-knot", "name": "棉线结", "requires": "waterproof-seal" },
+      { "id": "waterproof-seal", "name": "防水封签", "requires": "waterproof-seal" },
+      { "id": "cloud-knot", "name": "云纹绳结", "requires": "waterproof-seal" },
+      { "id": "twin-blossom-seal", "name": "并蒂花签", "requires": "waterproof-seal" }
+    ]
+  },
+  "npcLamps": [
+    {
+      "id": "bobo-river-light",
+      "authorId": "bobo",
+      "authorName": "泊泊",
+      "text": "总有人问我，天天撑船会不会腻。我倒觉得同一条河每天都不一样：清早的水凉，午后的风会把芦苇吹得很响，晚上最安静。要是明天没有急着赶路的人，我想把船停在桥洞下，听一会儿水声。",
+      "appearance": { "shape": "octagonal-palace", "color": "mist-blue", "pattern": "river-glow", "ornament": "short-tassel", "seal": "cloud-knot" }
+    },
+    {
+      "id": "qiaoqiao-empty-shelf",
+      "authorId": "qiaoqiao",
+      "authorName": "翘翘",
+      "text": "我总爱把亮闪闪的东西叼回去，大家都说我贪心。其实有些东西我根本不想要，只是怕它们落在没人看见的地方。等哪天我也丢了什么，希望捡到的人不要急着笑我，先替我收好。",
+      "appearance": { "shape": "lotus-palace", "color": "peach-pink", "pattern": "magpie-bridge", "ornament": "magpie-ribbon", "seal": "twin-blossom-seal" }
+    },
+    {
+      "id": "heyi-window-light",
+      "authorId": "heyi",
+      "authorName": "鹤姨",
+      "text": "厨房安静下来以后，我最喜欢最后那一点时间。炉火还没灭，案板已经擦干净，也没人催着上菜。我会给自己留一块边角不齐的点心，坐在门口慢慢吃。好看不好看不要紧，反正这一块只给我。",
+      "appearance": { "shape": "square-palace", "color": "apricot-gold", "pattern": "qiaoguo-pattern", "ornament": "twin-jade-pendant", "seal": "cotton-knot" }
+    },
+    {
+      "id": "chichi-seven-dock",
+      "authorId": "chichi",
+      "authorName": "迟迟",
+      "text": "我其实不讨厌迟到。有人跑得气喘吁吁，把信递过来，说幸好还来得及；这种时候我总会多等一会儿。真让我难过的是那些写好了又收回去的话。它们没有地址，我也送不了。",
+      "appearance": { "shape": "octagonal-palace", "color": "moon-white", "pattern": "river-glow", "ornament": "magpie-ribbon", "seal": "waterproof-seal" }
+    },
+    {
+      "id": "greyback-bridge-bell",
+      "authorId": "greyback",
+      "authorName": "灰背",
+      "text": "车旧了以后，慢一点反而听得见很多声音：轮轴响不响，篷布松没松，后面有没有人喊我。年轻时只顾赶路，总觉得停下来就是耽误。现在我不这么想了。能平平稳稳走到地方，也算本事。",
+      "appearance": { "shape": "square-palace", "color": "mist-blue", "pattern": "star-speckle", "ornament": "fine-copper-bell", "seal": "twin-blossom-seal" }
+    }
+  ],
+  "reward": {
+    "coins": 1314,
+    "silver": 520,
+    "titleId": "qixi_lantern_2026_letter_in_river",
+    "titleName": "灯河有信",
+    "titleDescription": "河很长，灯很多。好在这一盏，知道该去哪里。",
+    "achievementId": "qixi_lantern_2026_will_arrive",
+    "achievementName": "终会抵达",
+    "achievementDescription": "不是所有漂出去的话都有去处。\n但这一句有。"
+  }
+}

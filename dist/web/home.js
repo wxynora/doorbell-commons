@@ -5,6 +5,7 @@ import { currentSeason, activeFestivals } from "../time.js";
 import { playerFarms } from "../store.js";
 import { checkTitles, equippedTitle } from "../titles.js";
 import { qixi2026ShopRows, qixi2026TaskView } from "../qixi-2026.js";
+import { isQixiLantern2026Active } from "../qixi-lantern-2026.js";
 import { ago, clock, esc, farmLabel, farmNames, fmtDur, num, page, rarityDot, stamp } from "./shell.js";
 import { codexGot, rankOf } from "./stats.js";
 
@@ -31,9 +32,10 @@ export function uiHome(f, now, key, flash) {
     const days = Math.max(0, Math.floor((now - f.createdAt) / 86400000));
     const farms = playerFarms(); // 排除常驻 NPC 阿土（排名/计数只算真实玩家）
     const qixiView = qixi2026TaskView(f, now);
-    const qixiTaskCard = qixiView && !qixiView.allComplete ? `<section class="card" style="border:2px solid #a9bd83;background:linear-gradient(180deg,#fbfff5,#f7f3e7)">
-      <div class="line" style="align-items:flex-start;gap:10px"><div><h2 style="margin:0;color:var(--leaf-deep)">🎋 七夕限定任务</h2><p class="small muted" style="margin:4px 0 0">完成一项，解锁对应限定种子。</p></div><span class="tag">${qixiView.tasks.length} 项进行中</span></div>
-      <div style="display:grid;gap:8px;margin-top:12px">${qixiView.tasks.map((task) => `<div style="padding:10px 12px;border:1px solid #d5dfc3;border-radius:13px;background:#fffdf7"><div class="line small"><b>${esc(task.label)}</b><span class="muted">${esc(task.progressText)}</span></div><div class="pminibar" style="margin-top:7px">${barFill(task.target ? task.progress / task.target * 100 : 0, "var(--leaf)")}</div><div class="small muted" style="margin-top:5px">解锁：${esc(task.cropName)}</div></div>`).join("")}</div>
+    const qixiLanternCard = isQixiLantern2026Active(now) ? `<section class="card" style="border:1px solid #dfb982;background:linear-gradient(145deg,#fff8eb,#f6e5df);font-family:var(--serif)"><div class="line" style="align-items:center;gap:14px"><div><h2 style="margin:0;color:#855b65;font-family:var(--serif)">🏮 灯河有信</h2><p class="small" style="margin:5px 0 0;color:#786875;font-family:var(--serif);line-height:1.55">愿今夜所有思念，都能顺水抵达归处。</p></div><a class="btn ghost" style="flex:0 0 auto;border-color:#c99782;background:#b86f83;color:#fff8ee;box-shadow:none;font-family:var(--serif)" href="${BASE}/ui/${key}/qixi">进入活动</a></div></section>` : "";
+    const qixiTaskCard = qixiView && !qixiView.allComplete ? `<section class="card" style="border:1px solid #dfb982;background:linear-gradient(180deg,#fff9ed,#f7e8e2);font-family:var(--serif)">
+      <div class="line" style="align-items:flex-start;gap:10px"><div><h2 style="margin:0;color:#855b65;font-family:var(--serif)">🎋 七夕限定任务</h2><p class="small" style="margin:4px 0 0;color:#786875">完成一项，解锁对应限定种子。</p></div><span class="tag" style="border-color:#d3a382;background:#f7e2dc;color:#8b5f70">${qixiView.tasks.length} 项进行中</span></div>
+      <div style="display:grid;gap:8px;margin-top:12px">${qixiView.tasks.map((task) => `<div style="padding:10px 12px;border:1px solid #e1c5a1;border-radius:13px;background:#fffaf0"><div class="line small"><b>${esc(task.label)}</b><span style="color:#85747c">${esc(task.progressText)}</span></div><div class="pminibar" style="margin-top:7px;background:#eadfd7">${barFill(task.target ? task.progress / task.target * 100 : 0, "#ba788d")}</div><div class="small" style="margin-top:5px;color:#85747c">解锁：${esc(task.cropName)}</div></div>`).join("")}</div>
     </section>` : "";
     for (const farm of farms)
         advance(farm, now); // 广播读取此刻真实成熟状态，不写历史
@@ -187,6 +189,7 @@ export function uiHome(f, now, key, flash) {
       <span class="tag">🌱 开张 <b>${days}</b> 天</span></div></div>`;
     const flashHtml = flash ? `<div class="flash">${esc(flash)}</div>` : "";
     const body = `${plaque}${flashHtml}
+${qixiLanternCard}
 ${qixiTaskCard}
 ${ripeBroadcast}
 ${hero}
@@ -194,5 +197,5 @@ ${field}
 <div class="grid c2">${seasonCard}${shopCard}</div>
 <div class="grid c2">${rankCard}${msgCard}</div>
 ${trailCard}`;
-    return page(`${f.name} · 田园标本馆`, key, "", body, farmNames(f));
+    return page(`${f.name} · 田园标本馆`, key, "", body, farmNames(f), now);
 }

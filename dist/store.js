@@ -12,6 +12,7 @@ import { glimmerAchievementRewardText, normalizeGlimmerFarm, normalizeGlimmerWor
 import { normalizePublicExpeditionWorld } from "./public-expedition.js";
 import { crops } from "./content.js";
 import { normalizeQixi2026Farm, settleQixi2026SeedPriceRefund } from "./qixi-2026.js";
+import { normalizeQixiLantern2026Farm, normalizeQixiLantern2026World } from "./qixi-lantern-2026.js";
 const DATA_DIR = process.env.AIFARM_DATA_DIR
     ? resolve(process.env.AIFARM_DATA_DIR)
     : resolve(dirname(fileURLToPath(import.meta.url)), "../data");
@@ -25,6 +26,7 @@ let doorbellWelcomeRewardGrants = [];
 let doorbellFarmCreations = [];
 let glimmerWorld = normalizeGlimmerWorld({});
 let publicExpeditionWorld = normalizePublicExpeditionWorld({});
+let qixiLantern2026World = normalizeQixiLantern2026World({});
 const DOORBELL_WELCOME_SILVER = 200;
 const SSR_CROPS = crops.filter((crop) => crop?.rarity === "SSR");
 const QIXI_2026_PRICE_REFUND_ID = "qixi-2026-seed-price-refund-20260815";
@@ -89,6 +91,7 @@ export function normalizeFarm(f) {
     ensureFishing(f);
     normalizeGlimmerFarm(f);
     normalizeQixi2026Farm(f);
+    normalizeQixiLantern2026Farm(f);
     return f;
 }
 export function createFarm(name, opts) {
@@ -151,6 +154,7 @@ export const allFarms = () => [...farms.values()];
 export const playerFarms = () => [...farms.values()].filter((f) => f.id !== NPC_ID);
 export const getGlimmerWorld = () => glimmerWorld;
 export const getPublicExpeditionWorld = () => publicExpeditionWorld;
+export const getQixiLantern2026World = () => qixiLantern2026World;
 /** 启动时依次应用尚未发放的维护福利；以后只追加 content/maintenance-grants.json，不改发放逻辑。 */
 export function applyMaintenanceSilverGrant(farmValues = farms.values(), now = Date.now()) {
     const players = [...farmValues].filter((farm) => farm && farm.id !== NPC_ID);
@@ -337,6 +341,7 @@ export function save() {
         ugc: dumpUgc(),
         glimmer: glimmerWorld,
         publicExpedition: publicExpeditionWorld,
+        qixiLantern2026: qixiLantern2026World,
     }, null, 2));
 }
 export function load() {
@@ -357,6 +362,7 @@ export function load() {
                 : [];
             glimmerWorld = normalizeGlimmerWorld(world.glimmer);
             publicExpeditionWorld = normalizePublicExpeditionWorld(world.publicExpedition);
+            qixiLantern2026World = normalizeQixiLantern2026World(world.qixiLantern2026);
             loadUgc(Array.isArray(world.ugc) ? world.ugc : []);
             farms.clear();
             for (const f of world.farms)
@@ -395,6 +401,7 @@ export function load() {
     doorbellFarmCreations = [];
     glimmerWorld = normalizeGlimmerWorld({});
     publicExpeditionWorld = normalizePublicExpeditionWorld({});
+    qixiLantern2026World = normalizeQixiLantern2026World({});
     if (!existsSync(DATA_FILE)) {
         ensureNpc();
         applyMaintenanceSilverGrant();

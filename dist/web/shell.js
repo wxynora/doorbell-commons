@@ -1,5 +1,6 @@
 import { animals, glimmerVariantById } from "../content.js";
 import { BASE } from "../config.js";
+import { isQixiLantern2026Active } from "../qixi-lantern-2026.js";
 
 export function esc(s) {
     return String(s ?? "")
@@ -445,10 +446,12 @@ button.cook-pot-slot:active{background:#fff1b8}
 @media(prefers-reduced-motion:reduce){.cook-stage *,.cook-result,.cook-result-card,.cook-pick{animation:none!important;transition:none!important}.cook-stage.is-cooking .cook-lid{animation:cook-lid-reduced .24s ease-out both!important}.cook-lid{transform:translateY(-18%) scale(.98)}}
 footer{color:var(--ink-soft);font-size:12px;text-align:center;padding:30px 0 0}
 `;
-function nav(key, active) {
+function nav(key, active, now) {
     const items = [
         ["", "🏡 主页"], ["ranch", "🐮 我的牧场"], ["glimmer", "✨ 流光原野"], ["together", "🧭 铃野共行"], ["cooking", "🍳 料理台"], ["market", "🧺 集市"], ["ta", "✍️ TA的农场"], ["expedition", "🗺️ 探险"], ["codex", "📖 图鉴册"], ["messages", "📮 留言板"], ["leaderboard", "🏆 排行榜"],
     ];
+    if (isQixiLantern2026Active(now))
+        items.splice(1, 0, ["qixi", "🏮 灯河有信"]);
     return items.map(([seg, label]) => {
         const href = `${BASE}/ui/${key}${seg ? "/" + seg : ""}`;
         return `<a href="${href}"${seg === active ? ' class="on"' : ""}>${label}</a>`;
@@ -486,13 +489,13 @@ const COOKING_ASYNC_SCRIPT = `<script>(()=>{
   });
 })();</script>`;
 /** 牧场操作沿用现有 POST/303，只替换牧场动态内容，保留滚动、折叠与当前动物弹窗。 */
-export function page(title, key, active, body, names) {
+export function page(title, key, active, body, names, now = Date.now()) {
     const human = esc(names?.human || "伴侣");
     const ai = esc(names?.ai || "AI");
     return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
 <title>${esc(title)}</title><style>${STYLE}</style></head>
-<body><header class="top"><div class="topin"><span class="brand">🌾 田园标本馆</span><nav>${nav(key, active)}</nav></div></header>
+<body><header class="top"><div class="topin"><span class="brand">🌾 田园标本馆</span><nav>${nav(key, active, now)}</nav></div></header>
 <div class="wrap">${body}
 <footer><div style="color:var(--wood);font-weight:600;margin-bottom:4px">🔒 此链接含访问密钥，请勿转发或暴露给他人</div>
 这是只给${human}看的观光页 · 真正在田里劳作的是 ${ai}</footer></div>${COOKING_ASYNC_SCRIPT}</body></html>`;

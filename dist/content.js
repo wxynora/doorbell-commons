@@ -32,6 +32,7 @@ export const glimmerEncounters = glimmer.encounters;
 export const glimmerCoopEvents = glimmer.coopEvents;
 export const titles = load("titles");
 export const qixi2026 = load("qixi-2026");
+export const qixiLantern2026 = load("qixi-lantern-2026");
 const ranchItems = load("ranch-items");
 export const accessories = ranchItems.accessories;
 export const decorations = ranchItems.decorations;

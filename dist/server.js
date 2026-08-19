@@ -6,11 +6,11 @@ import { advance, steal, canStealNow, stealAvailability, stealShieldRemain, isUg
 import { kitchenSellSelected } from "./engine.js";
 import { dispatch, HELP, farmView, viewShop, viewEncyclopedia, viewBag, shopBrief, viewMarket, buyFromMarket, visitView, ranchAgentSection, refPrice, tendNpc, buyNpcSeed, randomTip, hasDamagedPublicName, viewKitchen } from "./game.js";
 import { harvestText, stealThiefText, statusFooter, waterText, describeFarm } from "./flavor.js";
-import { createFarm, getFarm, allFarms, playerFarms, save, getGlimmerWorld, getPublicExpeditionWorld } from "./store.js";
+import { createFarm, getFarm, allFarms, playerFarms, save, getGlimmerWorld, getPublicExpeditionWorld, getQixiLantern2026World } from "./store.js";
 import { MAX_FARMS, MESSAGE_TEXT_MAX, MESSAGES_MAX, POTION_DAILY_CAP, POTION_CAP_LINE, HUMAN_HARVEST_DAILY_CAP, NPC_ID, SEED_PRICE, GROW_TICKS, RECIPE_PRICE, WELCOME_MAX, EXP_DAILY_CAP, EXP_MAX_CHARGES_PER_ENTRY, BASE, REGISTRATION_OPEN, REGISTRATION_CLOSED_TEXT, REGISTRATION_CAP, REGISTRATION_FULL_TEXT, SHOW_MIGRATION_NOTICE, MIGRATION_NOTICE_TEXT, MIGRATION_NOTICE_HTML } from "./config.js";
 import { allowRequest, allowCreate, sweepGuard } from "./guard.js";
 import { mintNonce, takeNonce, sweepNonces, htmlAgentPage, htmlReadme, htmlGuide, htmlNotice, htmlGenLink } from "./agent.js";
-import { uiHome, uiRanch, uiCooking, uiMarket, uiTa, uiCodex, uiMessages, uiLeaderboard, uiInvalid, uiExpedition, uiTogether, uiGlimmer, uiHumanNotices } from "./web.js";
+import { uiHome, uiRanch, uiCooking, uiMarket, uiTa, uiCodex, uiMessages, uiLeaderboard, uiInvalid, uiExpedition, uiTogether, uiGlimmer, uiQixiLantern, uiHumanNotices } from "./web.js";
 import { expRoll, expSetCharm } from "./expedition.js";
 import { viewLeaderboard } from "./leaderboard.js";
 import { onTaskEvent, tickTask, hasOpenOffer, offerSummary } from "./tasks.js";
@@ -26,6 +26,7 @@ import { runFishing, sellFishingCatchIds, sellFishingTreasure } from "./fishing.
 import { runGlimmer, setGlimmerVariant } from "./glimmer.js";
 import { advancePublicExpedition, checkPublicContribution, currentPublicTask, findPublicDish, findPublicHarvestPlot, findPublicWaterTarget, markPublicTrialPlot, publicExpeditionStatusLine, publicExpeditionText, recordPublicContribution, recordPublicPlantEncounter, runPublicChoice, takePublicAiNotices, takePublicDish } from "./public-expedition.js";
 import { qixi2026CompletionText, recordQixi2026Progress, recordQixi2026StealAttempt, settleQixi2026QuietTask } from "./qixi-2026.js";
+import { answerQixiLantern2026Quiz, catchQixiLantern2026, isQixiLantern2026Active, qixiLantern2026StatusText, recordQixiLantern2026Answers, recordQixiLantern2026FarmAction, releaseQixiLantern2026, returnQixiLantern2026Object, runQixiLantern2026Ai, saveQixiLantern2026Draft, submitQixiLantern2026Dish } from "./qixi-lantern-2026.js";
 import { AGENT_HEADERS, RequestBodyError, clientIp, jsonOut, readBody, readFormBody, smartParams, textOut } from "./server/http.js";
 import { createAssetHandler } from "./server/assets.js";
 import { createDoorbellInternalHandler, internalServiceError, legacyAgentAccessRevoked } from "./server/doorbell-internal.js";
@@ -399,6 +400,26 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
     const publicFarms = playerFarms();
     advancePublicExpedition(publicWorld, publicFarms, now);
     const publicTask = currentPublicTask(publicWorld);
+    if (action === "qixi") {
+        const r = runQixiLantern2026Ai(f, getQixiLantern2026World(), b, now);
+        if (r.changed)
+            save();
+        return { status: r.ok ? 200 : 400, json: { ok: r.ok, text: r.text, ...vf(f) } };
+    }
+    if (isQixiLantern2026Active(now) && action === "kitchen" && b.op === "use" && String(b.target ?? "").trim() === "鹤姨") {
+        const dish = findPublicDish(f, "蜂蜜茶", b.dishId);
+        const r = submitQixiLantern2026Dish(f, dish, now);
+        if (!r.ok) {
+            const text = r.code === "object_not_found"
+                ? "先在正常收获时找到那块断角木模，鹤姨才知道你为什么来。"
+                : "料理柜里没有「蜂蜜茶」，这次没有消耗料理。";
+            return { status: 400, json: { ok: false, text, ...vf(f) } };
+        }
+        if (r.applied)
+            takePublicDish(f, dish);
+        save();
+        return { status: 200, json: { ok: true, text: r.text, ...vf(f) } };
+    }
     if (action === "together") {
         if (b.option === undefined && b.key === undefined && b.id === undefined) {
             const view = String(b.view ?? "").trim().toLowerCase() === "history" ? "history" : "recent";
@@ -493,6 +514,11 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
     }
     if (action === "fish") {
         const r = runFishing(f, b, now, playerFarms());
+        const castRequested = b.leave === undefined && b.view === undefined && b.sell === undefined && b.open === undefined
+            && (b.times !== undefined || (b.bait !== undefined && b.buy === undefined) || (b.buy === undefined && b.location === undefined));
+        const qixi = r.ok && castRequested ? recordQixiLantern2026FarmAction(f, getQixiLantern2026World(), "fish", now) : null;
+        if (qixi)
+            r.text = `${r.text}\n${qixi.text}`;
         checkTitles(f);
         save();
         return { status: r.ok ? 200 : 400, json: { ok: r.ok, text: r.text, ...vf(f) } };
@@ -656,12 +682,26 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
     const cropsBefore = publicTask?.kind === "plant_encounter"
         ? new Map(f.plots.map((plot) => [plot.id, plot.crop]))
         : null;
+    const qixiCropsBefore = isQixiLantern2026Active(now) && (action === "harvest" || action === "run")
+        ? new Map(f.plots.map((plot) => [plot.id, plot.crop]))
+        : null;
     const r = dispatch(f, { ...b, action }, now);
     if (r.ok && cropsBefore
         && f.plots.some((plot) => plot.crop?.seedType === "common" && cropsBefore.get(plot.id) !== plot.crop)) {
         const encounter = recordPublicPlantEncounter(publicWorld, f, now, publicFarms);
         if (encounter.triggered)
             r.text = `${r.text}\n${encounter.text}`;
+    }
+    if (r.ok && isQixiLantern2026Active(now)) {
+        let qixi = null;
+        if (action === "explore")
+            qixi = recordQixiLantern2026FarmAction(f, getQixiLantern2026World(), "explore", now);
+        else if (action === "ranch-feed")
+            qixi = recordQixiLantern2026FarmAction(f, getQixiLantern2026World(), "ranch-feed", now);
+        else if (qixiCropsBefore && f.plots.some((plot) => qixiCropsBefore.get(plot.id)?.ripe && qixiCropsBefore.get(plot.id) !== plot.crop))
+            qixi = recordQixiLantern2026FarmAction(f, getQixiLantern2026World(), "harvest", now);
+        if (qixi)
+            r.text = `${r.text}\n${qixi.text}`;
     }
     save();
     return { status: r.ok ? 200 : 400, json: { ok: r.ok, text: r.text, ...vf(f) } };
@@ -688,6 +728,8 @@ function runFarm(farmId, action, body = {}, encArg, now, options = {}) {
         extras.push(notices.join("\n\n"));
     if (!action || action === "status")
         extras.push(`🧭 铃野共行：${publicExpeditionStatusLine(world, now, false)}。用 {"action":"together"} 查看当前剧情。`);
+    if (isQixiLantern2026Active(now) && (!action || action === "status"))
+        extras.push('🏮 2026 七夕活动正在进行。用 {"action":"qixi"} 查看本户旧物、灯材和放灯进度。');
     if (extras.length) {
         out.json.text = `${String(out.json.text ?? "")}\n\n${extras.join("\n\n")}`;
         save();
@@ -1506,6 +1548,88 @@ export function startServer(port, host = "127.0.0.1") {
                 if (section === "glimmer") {
                     res.writeHead(200, AGENT_HEADERS);
                     return res.end(renderHuman(uiGlimmer(f, getGlimmerWorld(), now, key)));
+                }
+                if (section === "qixi") {
+                    if (!isQixiLantern2026Active(now)) {
+                        res.writeHead(404, AGENT_HEADERS);
+                        return res.end(uiInvalid());
+                    }
+                    if (method === "POST") {
+                        const form = await readFormBody(req);
+                        const world = getQixiLantern2026World();
+                        const act = parts[3];
+                        let changed = false;
+                        let showLetter = false;
+                        let selectedObjectId;
+                        let flash = "这次没有执行。";
+                        if (act === "compatibility") {
+                            selectedObjectId = "copper-bell";
+                            const result = recordQixiLantern2026Answers(f, "human", [form.answer1, form.answer2, form.answer3], now);
+                            changed = result.applied === true;
+                            flash = result.ok
+                                ? result.complete ? result.result.reaction : "三块木牌已经交给翘翘。小机一侧答完后，她会一起翻开。"
+                                : result.code === "object_not_found" ? "先从河里找到旧铜铃，翘翘才会拿出这三块木牌。" : "三道题都要选择 A、B 或 C。";
+                        }
+                        else if (act === "dish") {
+                            selectedObjectId = "qiaoguo-mold";
+                            const dish = findPublicDish(f, "蜂蜜茶", form.dishId);
+                            const result = submitQixiLantern2026Dish(f, dish, now);
+                            if (result.ok && result.applied) {
+                                takePublicDish(f, dish);
+                                changed = true;
+                            }
+                            flash = result.ok ? result.text : result.code === "object_not_found" ? "先在收获时找到断角木模。" : "料理柜里没有蜂蜜茶，这次没有消耗料理。";
+                        }
+                        else if (act === "quiz") {
+                            selectedObjectId = "mailbag-buckle";
+                            const result = answerQixiLantern2026Quiz(f, form.answer, now);
+                            changed = result.applied === true;
+                            flash = result.ok ? result.text : result.code === "object_not_found" ? "先照顾牧场伙伴，从芦苇里找到黄铜搭扣。" : "请选择 A、B 或 C。";
+                        }
+                        else if (act === "return") {
+                            selectedObjectId = String(form.item ?? "");
+                            const result = returnQixiLantern2026Object(f, world, form.item, form.owner, now);
+                            changed = result.applied === true;
+                            if (result.correct === true && result.allReturned === true)
+                                selectedObjectId = undefined;
+                            flash = !result.ok
+                                ? result.code === "clues_incomplete" ? "这件旧物的必要线索还没有齐。" : "这件旧物或主人不在失物架上。"
+                                : result.correct === false ? "物件特征和这位主人对不上，旧物还在失物架上。" : `${result.text}\n获得灯材「${result.material.name}」。`;
+                        }
+                        else if (act === "decorate") {
+                            const result = saveQixiLantern2026Draft(f, "human", {
+                                shape: form.shape,
+                                color: form.color,
+                                pattern: form.pattern,
+                                ornament: form.ornament,
+                                seal: form.seal,
+                            }, now);
+                            changed = result.applied === true;
+                            flash = result.ok ? result.applied ? "装扮已经收好，灯河开放前还可以继续换。" : "这套装扮已经保存。" : "灯型、颜色或装饰不在当前可选范围内。";
+                        }
+                        else if (act === "release") {
+                            const result = releaseQixiLantern2026(f, world, "human", {
+                                text: form.text,
+                                appearance: { shape: form.shape, color: form.color, pattern: form.pattern, ornament: form.ornament, seal: form.seal },
+                            }, now);
+                            changed = result.applied === true;
+                            flash = result.ok
+                                ? result.applied ? `灯已经放进河里，正在漂向小机。${result.reward?.applied ? " 同时获得 1314 金币、520 银币、限定称号「灯河有信」和限定成就「终会抵达」。" : ""}` : "你的灯已经放出，不能覆盖原来的灯笺。"
+                                : result.code === "final_stage_locked" ? "灯河还没有开放；今晚 20:00 开放放灯和捞灯。" : result.code === "empty_lamp_text" ? "灯笺正文不能为空。" : "灯的纸、挂饰或封口不在当前已取得的选择里。";
+                        }
+                        else if (act === "catch") {
+                            const result = catchQixiLantern2026(f, world, "human", now, false);
+                            changed = result.applied === true || (!result.delivered && !result.waiting);
+                            showLetter = Boolean(result.npcLamp || (result.delivered && result.lamp));
+                            flash = !result.ok ? "灯河还没有开放。" : result.waiting ? "小机的灯还没有放出，可以晚一点再来河边。" : !result.delivered ? result.npcLamp ? `这一回捞到的是${result.npcLamp.authorName}的路过灯。属于你的那盏还在水路上。` : "这一回捞到的是一盏路过的灯。属于你的那盏还在水路上。" : result.applied ? "你捞到了小机写来的灯。" : "你已经收好小机的灯。";
+                        }
+                        if (changed)
+                            save();
+                        res.writeHead(303, { ...AGENT_HEADERS, Location: `${BASE}/ui/${key}/qixi?flash=${encodeURIComponent(flash)}${selectedObjectId ? `&item=${encodeURIComponent(selectedObjectId)}` : ""}${showLetter ? "&letter=latest" : ""}` });
+                        return res.end();
+                    }
+                    res.writeHead(200, AGENT_HEADERS);
+                    return res.end(renderHuman(uiQixiLantern(f, getQixiLantern2026World(), now, key, url.searchParams.get("flash") ?? undefined, url.searchParams.get("letter") === "latest", url.searchParams.get("item") ?? undefined)));
                 }
                 if (section === "ranch") {
                     const act = parts[3];
