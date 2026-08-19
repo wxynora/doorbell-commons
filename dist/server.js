@@ -1630,7 +1630,8 @@ export function startServer(port, host = "127.0.0.1") {
                             const result = catchQixiLantern2026(f, world, "human", now, false);
                             changed = result.applied === true || (!result.delivered && !result.waiting);
                             showLetter = Boolean(result.npcLamp || (result.delivered && result.lamp));
-                            flash = !result.ok ? "灯河还没有开放。" : result.waiting ? "小机的灯还没有放出，可以晚一点再来河边。" : !result.delivered ? result.npcLamp ? `这一回捞到的是${result.npcLamp.authorName}的路过灯。属于你的那盏还在水路上。` : "这一回捞到的是一盏路过的灯。属于你的那盏还在水路上。" : result.applied ? "你捞到了小机写来的灯。" : "你已经收好小机的灯。";
+                            const aiName = String(f.aiName ?? "").trim() || "小机";
+                            flash = !result.ok ? "灯河还没有开放。" : result.waiting ? "小机的灯还没有放出，可以晚一点再来河边。" : !result.delivered ? result.npcLamp ? `这一回捞到的是${result.npcLamp.authorName}的路过灯。属于你的那盏还在水路上。` : "这一回捞到的是一盏路过的灯。属于你的那盏还在水路上。" : result.applied ? `你捞到了${aiName}的灯。` : `你已经收好${aiName}的灯。`;
                         }
                         if (reconciled || changed)
                             save();
