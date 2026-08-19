@@ -465,9 +465,10 @@ export function qixiLantern2026TaskView(farm, worldValue, now = Date.now()) {
         };
     });
     const allReturned = allObjectsReturnedByFarm(state);
+    const finalStageOpen = qixiLantern2026FinalStageOpen(world, now);
     return {
-        stage: qixiLantern2026FinalStageOpen(world, now) ? "lantern" : allDiscovered ? "return" : "objects",
-        finalStageOpen: qixiLantern2026FinalStageOpen(world, now),
+        stage: finalStageOpen && (allReturned || !allDiscovered) ? "lantern" : allDiscovered ? "return" : "objects",
+        finalStageOpen,
         allDiscovered,
         allReturned,
         objects,

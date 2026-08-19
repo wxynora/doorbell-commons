@@ -351,9 +351,9 @@ export function uiQixiLantern(farm, world, now, key, flash, showLetter = false, 
     const state = qixiLantern2026PrivateData(farm, now);
     const taskView = qixiLantern2026TaskView(farm, world, now);
     const waitingForFinal = taskView.allReturned && !taskView.finalStageOpen;
-    const stage = eventWindow.finalStageOpen ? "灯河开放中" : waitingForFinal ? "等待灯河开放" : taskView.allDiscovered ? "循线归还旧物" : "寻找三件旧物";
+    const stage = taskView.stage === "lantern" ? "灯河开放中" : waitingForFinal ? "等待灯河开放" : taskView.allDiscovered ? "循线归还旧物" : "寻找三件旧物";
     const isNight = now >= eventWindow.finalStageAt;
-    const scene = taskView.stage === "lantern"
+    const scene = taskView.finalStageOpen
         ? SCENE_URLS.lanternNight
         : SCENE_URLS[taskView.stage] ?? SCENE_URLS.objects;
     const flashHtml = flash ? `<div class="qixi-flash">${esc(flash)}</div>` : "";
@@ -365,7 +365,8 @@ export function uiQixiLantern(farm, world, now, key, flash, showLetter = false, 
         const art = object.found ? `<span class="qixi-sprite qixi-action-icon ${OBJECT_SPRITES[object.id]}"></span>` : `<span class="qixi-action-unknown" aria-hidden="true">?</span>`;
         return `<button type="button" data-qixi-open="lost" data-qixi-object-index="${index}">${art}<b>${esc(object.found ? object.name : "未知旧物")}</b><small>${status}</small></button>`;
     }).join("");
-    const activityDock = taskView.finalStageOpen ? "" : `<nav class="qixi-action-dock" aria-label="七夕活动入口">${dockItems}</nav>`;
+    const taskAccessOpen = taskView.stage !== "lantern";
+    const activityDock = taskAccessOpen ? `<nav class="qixi-action-dock" aria-label="七夕活动入口">${dockItems}</nav>` : "";
     const decorShortcut = state?.lamps?.human ? "" : `<button class="qixi-decor-shortcut" type="button" data-qixi-open="decorate" aria-label="装扮灯笼"></button>`;
     const lampPanel = `<section class="qixi-action">${lampAction(state, taskView, key)}</section>`;
     const decorPanel = `<section class="qixi-action">${lampAction(state, taskView, key, true)}</section>`;
@@ -376,20 +377,20 @@ export function uiQixiLantern(farm, world, now, key, flash, showLetter = false, 
     const personalReturnCount = taskView.objects.filter((object) => object.returned).length;
     const progressValue = taskView.stage === "objects" ? sharedDiscoveryCount : taskView.stage === "return" ? personalReturnCount : 3;
     const progressTrack = [1, 2, 3].map((step) => `<i class="${step <= progressValue ? "on" : ""}"></i>`).join("");
-    const body = `${QIXI_STYLE}<main class="qixi-page qixi-stage-${taskView.stage} qixi-time-${isNight ? "night" : "day"}" style="--qixi-scene:url('${scene}')" data-qixi-initial="${showLetter || taskView.finalStageOpen ? "home" : hasSelectedObject ? "lost" : "home"}" aria-label="灯河有信">
+    const body = `${QIXI_STYLE}<main class="qixi-page qixi-stage-${taskView.stage} qixi-time-${isNight ? "night" : "day"}" style="--qixi-scene:url('${scene}')" data-qixi-initial="${showLetter ? "home" : taskAccessOpen && hasSelectedObject ? "lost" : "home"}" aria-label="灯河有信">
       <section class="qixi-home" data-qixi-home>
         <a class="qixi-home-back" href="${BASE}/ui/${key}" aria-label="返回农场"></a>
         <img class="qixi-scene-title" src="${BASE}/assets/qixi-2026/qixi-scene-title-v1.png?v=1" alt="" aria-hidden="true">
         ${decorShortcut}
         ${riverActionPanel}
         <div class="qixi-home-bottom">
-          ${taskView.finalStageOpen
+          ${taskView.stage === "lantern"
             ? `<section class="qixi-progress-card" aria-label="全服活动进度"><div><small>第 ${stageNumber} 阶段</small><b>${esc(stage)}</b></div><strong>${progressValue} / 3</strong><div class="qixi-progress-track">${progressTrack}</div></section>`
             : `<section class="qixi-progress-card" aria-label="当前活动阶段"><div><small>第 ${stageNumber} 阶段</small><b>${esc(stage)}</b>${waitingForFinal ? "<span>今晚 20:00 开放放灯和打捞</span>" : ""}</div><strong>${progressValue} / 3</strong><div class="qixi-progress-track">${progressTrack}</div></section>`}
           ${activityDock}
         </div>
       </section>
-      ${taskView.finalStageOpen ? "" : `<section class="qixi-screen" data-qixi-screen="lost" hidden><div class="qixi-screen-card" role="dialog" aria-modal="true" aria-label="旧物任务"><button class="qixi-screen-close" type="button" data-qixi-close aria-label="关闭旧物详情">×</button>${hasSelectedObject ? flashHtml : ""}${lostRack(farm, taskView, state, key, selectedObjectIndex)}</div></section>`}
+      ${taskAccessOpen ? `<section class="qixi-screen" data-qixi-screen="lost" hidden><div class="qixi-screen-card" role="dialog" aria-modal="true" aria-label="旧物任务"><button class="qixi-screen-close" type="button" data-qixi-close aria-label="关闭旧物详情">×</button>${hasSelectedObject ? flashHtml : ""}${lostRack(farm, taskView, state, key, selectedObjectIndex)}</div></section>` : ""}
       <section class="qixi-screen" data-qixi-screen="decorate" hidden><div class="qixi-screen-card" role="dialog" aria-modal="true" aria-label="装扮灯笼"><button class="qixi-screen-close" type="button" data-qixi-close aria-label="关闭装扮灯笼">×</button>${decorPanel}</div></section>
       <section class="qixi-screen" data-qixi-screen="letters" hidden><div class="qixi-screen-card" role="dialog" aria-modal="true" aria-label="装饰与灯笺"><button class="qixi-screen-close" type="button" data-qixi-close aria-label="关闭装饰与灯笺">×</button>${lampPanel}<div class="qixi-letters">${sideCard("human", state, aiName)}</div></div></section>
       ${receivedLetterOverlay}
