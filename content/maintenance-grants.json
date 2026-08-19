@@ -28,5 +28,10 @@
     "id": "maintenance-20260817-human-selling",
     "silver": 150,
     "notice": "🎁 农场更新补偿：已发放 🪙150 银币。"
+  },
+  {
+    "id": "maintenance-20260819-ranch-feed-selector",
+    "silver": 100,
+    "notice": "🎁 农场投喂修复补偿：已发放 🪙100 银币。"
   }
 ]

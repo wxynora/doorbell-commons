@@ -48,7 +48,7 @@ function normalizeObjectState(value) {
 
 function objectReady(state, object) {
     const saved = state?.objects?.[object.id];
-    return Boolean(saved?.foundAt && object.clues.every((clue) => saved.clues?.[clue.id]));
+    return Boolean(saved && object.clues.every((clue) => saved.clues?.[clue.id]));
 }
 
 function allObjectsReturnedByFarm(state) {
@@ -290,8 +290,6 @@ export function recordQixiLantern2026Answers(farm, worldValue, sideValue, answer
         return { ok: false, code: "invalid_answers" };
     const state = normalizeQixiLantern2026Farm(farm, now, true);
     const bell = state.objects["copper-bell"];
-    if (!bell?.foundAt)
-        return { ok: false, code: "object_not_found" };
     if (state.answers[side]) {
         const result = compatibilityResult(state);
         return {
@@ -333,6 +331,8 @@ export function recordQixiLantern2026FarmAction(farm, worldValue, kindValue, now
     const state = normalizeQixiLantern2026Farm(farm, now, true);
     const world = normalizeQixiLantern2026World(worldValue);
     if (object) {
+        if (allObjectsDiscovered(world))
+            return null;
         const saved = state.objects[object.id];
         if (saved.foundAt)
             return null;
@@ -345,7 +345,7 @@ export function recordQixiLantern2026FarmAction(farm, worldValue, kindValue, now
             return null;
         const bell = OBJECT_BY_ID.get("copper-bell");
         const saved = state.objects[bell.id];
-        if (!saved.foundAt || saved.clues.route)
+        if (saved.clues.route)
             return null;
         const clue = bell.clues.find((item) => item.id === "route");
         saved.clues.route = now;
@@ -362,8 +362,6 @@ export function submitQixiLantern2026Dish(farm, worldValue, dish, now = Date.now
     const object = OBJECT_BY_ID.get("qiaoguo-mold");
     const state = normalizeQixiLantern2026Farm(farm, now, true);
     const saved = state.objects[object.id];
-    if (!saved.foundAt)
-        return { ok: false, code: "object_not_found" };
     if (saved.clues.tea)
         return { ok: true, applied: false, text: object.clues.find((item) => item.id === "tea").text };
     if (dish?.recipeId !== "honey_tea")
@@ -380,8 +378,6 @@ export function answerQixiLantern2026Quiz(farm, worldValue, answerValue, now = D
     const object = OBJECT_BY_ID.get("mailbag-buckle");
     const state = normalizeQixiLantern2026Farm(farm, now, true);
     const saved = state.objects[object.id];
-    if (!saved.foundAt)
-        return { ok: false, code: "object_not_found" };
     if (state.quiz.completedAt)
         return { ok: true, applied: false, correct: true, text: object.clues.find((item) => item.id === "quiz").text };
     const answer = String(answerValue ?? "").trim().toUpperCase();
@@ -434,6 +430,7 @@ export function returnQixiLantern2026Object(farm, worldValue, objectValue, owner
 export function qixiLantern2026TaskView(farm, worldValue, now = Date.now()) {
     const state = normalizeQixiLantern2026Farm(farm, now, false);
     const world = normalizeQixiLantern2026World(worldValue);
+    const allDiscovered = allObjectsDiscovered(world);
     const objects = OBJECTS.map((object) => {
         const saved = state?.objects?.[object.id] ?? {};
         return {
@@ -441,14 +438,13 @@ export function qixiLantern2026TaskView(farm, worldValue, now = Date.now()) {
             name: object.name,
             ownerId: object.ownerId,
             ownerName: object.ownerName,
-            found: Boolean(saved.foundAt),
-            ready: objectReady(state, object),
+            found: Boolean(saved.foundAt) || allDiscovered,
+            ready: allDiscovered && objectReady(state, object),
             returned: Boolean(saved.returnedAt),
             clues: object.clues.map((clue) => ({ id: clue.id, found: Boolean(saved.clues?.[clue.id]), text: saved.clues?.[clue.id] ? clue.text : undefined })),
             material: saved.returnedAt ? structuredClone(object.material) : undefined,
         };
     });
-    const allDiscovered = allObjectsDiscovered(world);
     const allReturned = allObjectsReturnedByFarm(state);
     return {
         stage: qixiLantern2026FinalStageOpen(world, now) ? "lantern" : allDiscovered ? "return" : "objects",

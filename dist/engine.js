@@ -9,6 +9,7 @@ import { onTaskEvent } from "./tasks.js";
 import { fishingKitchenProducts, removeFishingCatchIds } from "./fishing.js";
 import { glimmerBuffMultiplier } from "./glimmer.js";
 import { canPlantQixi2026Crop, isQixi2026CropId, qixi2026HarvestSilver, qixi2026TransferAllowed, recordQixi2026Harvest, recordQixi2026Progress, submitQixi2026Dish } from "./qixi-2026.js";
+import { isQixiLantern2026Active } from "./qixi-lantern-2026.js";
 import { randomUUID } from "node:crypto";
 /** 取（必要时补发）人类前端钥匙。老农场没有就现生成一把；调用方负责 save()。 */
 export function ensureHumanKey(farm) {
@@ -674,12 +675,17 @@ function shuffledWithFarmRng(farm, values) {
     farm.rngState = rng.state;
     return out;
 }
+function ensureQixiLanternTeaOffer(shop, now) {
+    if (isQixiLantern2026Active(now) && !shop.ingredientIds.includes("tea"))
+        shop.ingredientIds.push("tea");
+    return shop;
+}
 /** 每座牧场自己的每日食材/食谱货架；UTC+8 零点刷新。 */
 export function refreshKitchenShop(farm, now) {
     const kitchen = ensureKitchen(farm);
     const day = currentDayIndex(now);
     if (kitchen.shop?.day === day)
-        return kitchen.shop;
+        return ensureQixiLanternTeaOffer(kitchen.shop, now);
     const rotating = cookingIngredients.filter((item) => !item.staple).map((item) => item.id);
     const unknown = cookingRecipes.filter((recipe) => !kitchen.knownRecipes.includes(recipe.id)).map((recipe) => recipe.id);
     kitchen.shop = {
@@ -688,7 +694,7 @@ export function refreshKitchenShop(farm, now) {
         recipeIds: shuffledWithFarmRng(farm, unknown).slice(0, cooking.dailyRecipeCount),
         bought: {},
     };
-    return kitchen.shop;
+    return ensureQixiLanternTeaOffer(kitchen.shop, now);
 }
 export function activeCookingDebuff(farm, now = Date.now()) {
     if (!farm)
@@ -1229,10 +1235,25 @@ export function humanBarterAccept(seller, buyer, listingId, now = Date.now()) {
     seller.humanBarters = listings.filter((entry) => entry !== listing);
     return { ok: true, give, giveQty, want, wantQty };
 }
-/** 每天三次银币投喂：只给生产动物的下一份普通产物 +10%。 */
-export function ranchFeedAnimal(farm, animalIdx, now) {
+function ranchAnimalByRef(ranch, animalRef) {
+    const ref = typeof animalRef === "string" ? animalRef.trim() : animalRef;
+    const index = typeof ref === "number"
+        ? ref
+        : typeof ref === "string" && /^\d+$/.test(ref)
+            ? Number(ref)
+            : Number.NaN;
+    if (Number.isSafeInteger(index) && index >= 0)
+        return ranch.animals[index];
+    if (typeof ref !== "string" || !ref)
+        return undefined;
+    return ranch.animals.find((animal) => animal.kindId === ref
+        || animal.name === ref
+        || animalById.get(animal.kindId)?.name === ref);
+}
+/** 每天三次银币投喂：可按下标、动物 id、正式名称或本户昵称选择，只给下一份普通产物 +10%。 */
+export function ranchFeedAnimal(farm, animalRef, now) {
     const ranch = ensureRanch(farm);
-    const animal = ranch.animals[Math.floor(Number(animalIdx))];
+    const animal = ranchAnimalByRef(ranch, animalRef);
     if (!animal)
         return { ok: false, error: "选的动物不存在。" };
     if (ranchRaidForAnimal(farm, animal.kindId))
