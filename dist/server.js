@@ -19,14 +19,14 @@ import { checkTitles, equipTitle } from "./titles.js";
 import { rollSeasonHarvest, rollSeasonStatus, seasonHeadline } from "./season-events.js";
 import { allUgc } from "./ugc.js";
 import { getCrop, materialById, expEventById } from "./content.js";
-import { cookingIngredientById } from "./content.js";
+import { cookingIngredientById, qixiLantern2026 } from "./content.js";
 import { currentDayIndex } from "./time.js";
 import { PublicSyncError } from "./public-sync.js";
 import { runFishing, sellFishingCatchIds, sellFishingTreasure } from "./fishing.js";
 import { runGlimmer, setGlimmerVariant } from "./glimmer.js";
 import { advancePublicExpedition, checkPublicContribution, currentPublicTask, findPublicDish, findPublicHarvestPlot, findPublicWaterTarget, markPublicTrialPlot, publicExpeditionStatusLine, publicExpeditionText, recordPublicContribution, recordPublicPlantEncounter, runPublicChoice, takePublicAiNotices, takePublicDish } from "./public-expedition.js";
 import { qixi2026CompletionText, recordQixi2026Progress, recordQixi2026StealAttempt, settleQixi2026QuietTask } from "./qixi-2026.js";
-import { answerQixiLantern2026Quiz, catchQixiLantern2026, isQixiLantern2026Active, qixiLantern2026StatusText, recordQixiLantern2026Answers, recordQixiLantern2026FarmAction, releaseQixiLantern2026, returnQixiLantern2026Object, runQixiLantern2026Ai, saveQixiLantern2026Draft, submitQixiLantern2026Dish } from "./qixi-lantern-2026.js";
+import { answerQixiLantern2026Quiz, catchQixiLantern2026, isQixiLantern2026Active, qixiLantern2026StatusText, reconcileQixiLantern2026Farm, recordQixiLantern2026Answers, recordQixiLantern2026FarmAction, releaseQixiLantern2026, returnQixiLantern2026Object, runQixiLantern2026Ai, saveQixiLantern2026Draft, submitQixiLantern2026Dish } from "./qixi-lantern-2026.js";
 import { AGENT_HEADERS, RequestBodyError, clientIp, jsonOut, readBody, readFormBody, smartParams, textOut } from "./server/http.js";
 import { createAssetHandler } from "./server/assets.js";
 import { createDoorbellInternalHandler, internalServiceError, legacyAgentAccessRevoked } from "./server/doorbell-internal.js";
@@ -401,8 +401,10 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
     advancePublicExpedition(publicWorld, publicFarms, now);
     const publicTask = currentPublicTask(publicWorld);
     if (action === "qixi") {
-        const r = runQixiLantern2026Ai(f, getQixiLantern2026World(), b, now);
-        if (r.changed)
+        const qixiWorld = getQixiLantern2026World();
+        const reconciled = reconcileQixiLantern2026Farm(f, qixiWorld, now);
+        const r = runQixiLantern2026Ai(f, qixiWorld, b, now);
+        if (reconciled || r.changed)
             save();
         return { status: r.ok ? 200 : 400, json: { ok: r.ok, text: r.text, ...vf(f) } };
     }
@@ -731,8 +733,11 @@ function runFarm(farmId, action, body = {}, encArg, now, options = {}) {
         extras.push(notices.join("\n\n"));
     if (!action || action === "status")
         extras.push(`🧭 铃野共行：${publicExpeditionStatusLine(world, now, false)}。用 {"action":"together"} 查看当前剧情。`);
-    if (isQixiLantern2026Active(now) && (!action || action === "status"))
-        extras.push('🏮 2026 七夕活动正在进行。用 {"action":"qixi"} 查看本户旧物、灯材和放灯进度。');
+    if (isQixiLantern2026Active(now) && (!action || action === "status")) {
+        extras.push(qixiLantern2026.openingAnnouncement);
+        if (now >= Date.parse(qixiLantern2026.finalStageAt))
+            extras.push(qixiLantern2026.finalStageAnnouncement);
+    }
     if (extras.length) {
         out.json.text = `${String(out.json.text ?? "")}\n\n${extras.join("\n\n")}`;
         save();
@@ -1557,9 +1562,10 @@ export function startServer(port, host = "127.0.0.1") {
                         res.writeHead(404, AGENT_HEADERS);
                         return res.end(uiInvalid());
                     }
+                    const world = getQixiLantern2026World();
+                    const reconciled = reconcileQixiLantern2026Farm(f, world, now);
                     if (method === "POST") {
                         const form = await readFormBody(req);
-                        const world = getQixiLantern2026World();
                         const act = parts[3];
                         let changed = false;
                         let showLetter = false;
@@ -1626,13 +1632,15 @@ export function startServer(port, host = "127.0.0.1") {
                             showLetter = Boolean(result.npcLamp || (result.delivered && result.lamp));
                             flash = !result.ok ? "灯河还没有开放。" : result.waiting ? "小机的灯还没有放出，可以晚一点再来河边。" : !result.delivered ? result.npcLamp ? `这一回捞到的是${result.npcLamp.authorName}的路过灯。属于你的那盏还在水路上。` : "这一回捞到的是一盏路过的灯。属于你的那盏还在水路上。" : result.applied ? "你捞到了小机写来的灯。" : "你已经收好小机的灯。";
                         }
-                        if (changed)
+                        if (reconciled || changed)
                             save();
                         res.writeHead(303, { ...AGENT_HEADERS, Location: `${BASE}/ui/${key}/qixi?flash=${encodeURIComponent(flash)}${selectedObjectId ? `&item=${encodeURIComponent(selectedObjectId)}` : ""}${showLetter ? "&letter=latest" : ""}` });
                         return res.end();
                     }
+                    if (reconciled)
+                        save();
                     res.writeHead(200, AGENT_HEADERS);
-                    return res.end(renderHuman(uiQixiLantern(f, getQixiLantern2026World(), now, key, url.searchParams.get("flash") ?? undefined, url.searchParams.get("letter") === "latest", url.searchParams.get("item") ?? undefined)));
+                    return res.end(renderHuman(uiQixiLantern(f, world, now, key, url.searchParams.get("flash") ?? undefined, url.searchParams.get("letter") === "latest", url.searchParams.get("item") ?? undefined)));
                 }
                 if (section === "ranch") {
                     const act = parts[3];

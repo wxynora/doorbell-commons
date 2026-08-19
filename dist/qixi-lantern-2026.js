@@ -1,4 +1,5 @@
 import { qixiLantern2026 } from "./content.js";
+import { currentDayIndex } from "./time.js";
 
 const STARTS_AT = Date.parse(qixiLantern2026.startsAt);
 const FINAL_STAGE_AT = Date.parse(qixiLantern2026.finalStageAt);
@@ -279,6 +280,18 @@ export function normalizeQixiLantern2026Farm(farm, now = Date.now(), force = fal
     return state;
 }
 
+export function reconcileQixiLantern2026Farm(farm, worldValue, now = Date.now()) {
+    if (!isQixiLantern2026Active(now) || !allObjectsDiscovered(worldValue))
+        return false;
+    const state = normalizeQixiLantern2026Farm(farm, now, true);
+    const route = state.objects["copper-bell"].clues.route;
+    const exploredToday = farm.expDaily?.day === currentDayIndex(now) && cleanInt(farm.expDaily?.n) > 0;
+    if (route || !exploredToday)
+        return false;
+    state.objects["copper-bell"].clues.route = now;
+    return true;
+}
+
 export function recordQixiLantern2026Answers(farm, worldValue, sideValue, answers, now = Date.now()) {
     if (!isQixiLantern2026Active(now))
         return { ok: false, code: "event_unavailable" };
@@ -428,6 +441,7 @@ export function returnQixiLantern2026Object(farm, worldValue, objectValue, owner
 }
 
 export function qixiLantern2026TaskView(farm, worldValue, now = Date.now()) {
+    reconcileQixiLantern2026Farm(farm, worldValue, now);
     const state = normalizeQixiLantern2026Farm(farm, now, false);
     const world = normalizeQixiLantern2026World(worldValue);
     const allDiscovered = allObjectsDiscovered(world);
