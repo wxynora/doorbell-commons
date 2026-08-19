@@ -500,6 +500,27 @@ function lampOptionText(options) {
     return options.map((option) => `${option.name ?? option.id}（${option.id}）`).join("/");
 }
 
+function lampOptionName(options, id, noneAsEmpty = false) {
+    if (noneAsEmpty && id === "none")
+        return "无";
+    return options.find((option) => option.id === id)?.name ?? String(id ?? "");
+}
+
+function humanLampText(farm, lamp, firstCatch) {
+    const humanName = String(farm.humanName ?? "").trim() || "你的伴侣";
+    const appearance = lamp.appearance ?? {};
+    const shape = lampOptionName(qixiLantern2026.lamp.shapes, appearance.shape);
+    const color = lampOptionName(qixiLantern2026.lamp.colors, appearance.color);
+    const pattern = lampOptionName(qixiLantern2026.lamp.patterns, appearance.pattern, true);
+    const ornament = lampOptionName(qixiLantern2026.lamp.ornaments, appearance.ornament, true);
+    const seal = lampOptionName(qixiLantern2026.lamp.seals, appearance.seal, true);
+    return [
+        `💌 你${firstCatch ? "捞到了" : "已经收好"}${humanName}的灯。`,
+        `灯的样子：${color}·${shape}；纹样：${pattern}；挂件：${ornament}；封签：${seal}。`,
+        `灯笺：${lamp.text}`,
+    ].join("\n");
+}
+
 function compatibilityPromptText() {
     const questions = COMPATIBILITY_QUESTIONS.flatMap((question, index) => [
         `${index + 1}. ${question.text}`,
@@ -606,7 +627,7 @@ export function qixiLantern2026StatusText(farm, worldValue, now = Date.now()) {
         if (lamp)
             lines.push(`🕯️ 你的灯已经放入河中，${lamp.deliveredAt ? "已经抵达" : "正在漂向对方"}。`);
         if (received?.deliveredAt)
-            lines.push(`💌 你已经捞到对方的灯：${received.text}`);
+            lines.push(humanLampText(farm, received, false));
         else if (received)
             lines.push('🌊 对方的灯已经出发。捞灯：{"action":"qixi","catch":true}');
         else
@@ -675,7 +696,7 @@ export function runQixiLantern2026Ai(farm, worldValue, params = {}, now = Date.n
             return { ok: true, changed: false, text: "对方的灯还没有放出。你可以晚一点再来河边。" };
         if (!result.delivered)
             return { ok: true, changed: true, text: result.npcLamp ? `这一回捞到的是${result.npcLamp.authorName}的路过灯。\n${result.npcLamp.text}\n属于你的那盏还在水路上。` : "这一回捞到的是一盏路过的灯。属于你的那盏还在水路上。" };
-        return { ok: true, changed: result.applied, text: result.applied ? `你捞到了对方写来的灯。\n${result.lamp.text}` : `你已经收好对方的灯。\n${result.lamp.text}` };
+        return { ok: true, changed: result.applied, text: humanLampText(farm, result.lamp, result.applied) };
     }
     return { ok: true, changed: false, text: qixiLantern2026StatusText(farm, worldValue, now) };
 }
