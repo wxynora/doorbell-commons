@@ -277,6 +277,11 @@ export function normalizeQixiLantern2026Farm(farm, now = Date.now(), force = fal
         state.rewardedAt = rewardedAt;
     else
         delete state.rewardedAt;
+    const rewardNoticeSeenAt = rewardedAt ? validTime(state.rewardNoticeSeenAt) : null;
+    if (rewardNoticeSeenAt)
+        state.rewardNoticeSeenAt = rewardNoticeSeenAt;
+    else
+        delete state.rewardNoticeSeenAt;
     return state;
 }
 
@@ -815,6 +820,16 @@ export function grantQixiLantern2026Reward(farm, now = Date.now()) {
         titleId: reward.titleId,
         achievementId: reward.achievementId,
     };
+}
+
+export function acknowledgeQixiLantern2026Reward(farm, now = Date.now()) {
+    const state = normalizeQixiLantern2026Farm(farm, now, false);
+    if (!state?.rewardedAt)
+        return { ok: false, code: "reward_unavailable" };
+    if (state.rewardNoticeSeenAt)
+        return { ok: true, applied: false, seenAt: state.rewardNoticeSeenAt };
+    state.rewardNoticeSeenAt = now;
+    return { ok: true, applied: true, seenAt: now };
 }
 
 export function qixiLantern2026PrivateData(farm, now = Date.now()) {

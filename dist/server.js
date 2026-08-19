@@ -26,7 +26,7 @@ import { runFishing, sellFishingCatchIds, sellFishingTreasure } from "./fishing.
 import { runGlimmer, setGlimmerVariant } from "./glimmer.js";
 import { advancePublicExpedition, checkPublicContribution, currentPublicTask, findPublicDish, findPublicHarvestPlot, findPublicWaterTarget, markPublicTrialPlot, publicExpeditionStatusLine, publicExpeditionText, recordPublicContribution, recordPublicPlantEncounter, runPublicChoice, takePublicAiNotices, takePublicDish } from "./public-expedition.js";
 import { qixi2026CompletionText, recordQixi2026Progress, recordQixi2026StealAttempt, settleQixi2026QuietTask } from "./qixi-2026.js";
-import { answerQixiLantern2026Quiz, catchQixiLantern2026, isQixiLantern2026Active, qixiLantern2026StatusText, reconcileQixiLantern2026Farm, recordQixiLantern2026Answers, recordQixiLantern2026FarmAction, releaseQixiLantern2026, returnQixiLantern2026Object, runQixiLantern2026Ai, saveQixiLantern2026Draft, submitQixiLantern2026Dish } from "./qixi-lantern-2026.js";
+import { acknowledgeQixiLantern2026Reward, answerQixiLantern2026Quiz, catchQixiLantern2026, isQixiLantern2026Active, qixiLantern2026StatusText, reconcileQixiLantern2026Farm, recordQixiLantern2026Answers, recordQixiLantern2026FarmAction, releaseQixiLantern2026, returnQixiLantern2026Object, runQixiLantern2026Ai, saveQixiLantern2026Draft, submitQixiLantern2026Dish } from "./qixi-lantern-2026.js";
 import { AGENT_HEADERS, RequestBodyError, clientIp, jsonOut, readBody, readFormBody, smartParams, textOut } from "./server/http.js";
 import { createAssetHandler } from "./server/assets.js";
 import { createDoorbellInternalHandler, internalServiceError, legacyAgentAccessRevoked } from "./server/doorbell-internal.js";
@@ -1625,6 +1625,14 @@ export function startServer(port, host = "127.0.0.1") {
                             flash = result.ok
                                 ? result.applied ? `灯已经放进河里，正在漂向小机。${result.reward?.applied ? " 同时获得 1314 金币、520 银币、限定称号「灯河有信」和限定成就「终会抵达」。" : ""}` : "你的灯已经放出，不能覆盖原来的灯笺。"
                                 : result.code === "final_stage_locked" ? "灯河还没有开放；今晚 20:00 开放放灯和捞灯。" : result.code === "empty_lamp_text" ? "灯笺正文不能为空。" : "灯的纸、挂饰或封口不在当前已取得的选择里。";
+                        }
+                        else if (act === "reward-seen") {
+                            const result = acknowledgeQixiLantern2026Reward(f, now);
+                            changed = result.applied === true;
+                            if (reconciled || changed)
+                                save();
+                            res.writeHead(result.ok ? 204 : 409, AGENT_HEADERS);
+                            return res.end();
                         }
                         else if (act === "catch") {
                             const result = catchQixiLantern2026(f, world, "human", now, false);
