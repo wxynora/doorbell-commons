@@ -196,6 +196,8 @@ function objectTask(farm, state, taskView, object, key) {
         return `<p class="qixi-action-kicker">这件旧物还没出现</p><h2>翘翘只记下了一处异样</h2><div class="qixi-hint-list"><p><i>一</i><span>${esc(objectHint(object))}</span></p></div>`;
     if (object.returned)
         return `${currentClues(object)}<p class="qixi-done">已归还${esc(object.ownerName)}，取得灯材「${esc(object.material.name)}」。</p>`;
+    if (taskView.stage === "objects")
+        return `<p class="qixi-action-kicker">第一阶段</p><h2>这件旧物已经找到</h2><p>等失物架上的三样东西都出现后，再一起查看归还线索。</p>`;
     if (object.id === "copper-bell") {
         const compatibility = compatibilityAction(state, taskView, key);
         if (compatibility)
@@ -225,7 +227,7 @@ function objectTask(farm, state, taskView, object, key) {
 
 function lostRack(farm, taskView, state, key, selectedIndex = 0) {
     const objects = taskView.objects.map((object, index) => {
-        const status = object.returned ? "已经归还" : object.ready ? "可以判断主人" : object.found ? "继续寻找线索" : "等待小机发现";
+        const status = object.returned ? "已经归还" : taskView.stage === "objects" ? object.found ? "已经发现" : "等待小机发现" : object.ready ? "可以判断主人" : object.found ? "继续寻找线索" : "等待小机发现";
         const art = object.found ? `<span class="qixi-sprite ${OBJECT_SPRITES[object.id]}"></span>` : `<span class="qixi-object-unknown" aria-hidden="true">?</span>`;
         const name = object.found ? object.name : `未知旧物 ${index + 1}`;
         return `<article class="qixi-object${object.returned ? " done" : ""}" data-qixi-object-page="${index}"${index === selectedIndex ? "" : " hidden"}><div class="qixi-object-hero">${art}<div><h3>${esc(name)}</h3><p>${esc(status)}</p></div></div><div class="qixi-object-body"><section class="qixi-action">${objectTask(farm, state, taskView, object, key)}</section></div></article>`;

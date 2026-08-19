@@ -55,6 +55,11 @@ function allObjectsReturnedByFarm(state) {
     return OBJECTS.every((object) => Boolean(state?.objects?.[object.id]?.returnedAt));
 }
 
+function allObjectsDiscovered(worldValue) {
+    const world = normalizeQixiLantern2026World(worldValue);
+    return OBJECTS.every((object) => cleanInt(world.discoveredObjects[object.id]) > 0);
+}
+
 function optionAllowed(options, id, materials) {
     const option = options.find((item) => item.id === id);
     return Boolean(option && (!option.requires || materials.has(option.requires)));
@@ -274,9 +279,11 @@ export function normalizeQixiLantern2026Farm(farm, now = Date.now(), force = fal
     return state;
 }
 
-export function recordQixiLantern2026Answers(farm, sideValue, answers, now = Date.now()) {
+export function recordQixiLantern2026Answers(farm, worldValue, sideValue, answers, now = Date.now()) {
     if (!isQixiLantern2026Active(now))
         return { ok: false, code: "event_unavailable" };
+    if (!allObjectsDiscovered(worldValue))
+        return { ok: false, code: "stage_locked" };
     const side = sideOf(sideValue);
     const normalized = normalizeAnswers(answers);
     if (!side || !normalized)
@@ -334,6 +341,8 @@ export function recordQixiLantern2026FarmAction(farm, worldValue, kindValue, now
         return { type: "object", objectId: object.id, text: object.foundText };
     }
     if (kind === "explore") {
+        if (!allObjectsDiscovered(world))
+            return null;
         const bell = OBJECT_BY_ID.get("copper-bell");
         const saved = state.objects[bell.id];
         if (!saved.foundAt || saved.clues.route)
@@ -345,9 +354,11 @@ export function recordQixiLantern2026FarmAction(farm, worldValue, kindValue, now
     return null;
 }
 
-export function submitQixiLantern2026Dish(farm, dish, now = Date.now()) {
+export function submitQixiLantern2026Dish(farm, worldValue, dish, now = Date.now()) {
     if (!isQixiLantern2026Active(now))
         return { ok: false, code: "event_unavailable" };
+    if (!allObjectsDiscovered(worldValue))
+        return { ok: false, code: "stage_locked" };
     const object = OBJECT_BY_ID.get("qiaoguo-mold");
     const state = normalizeQixiLantern2026Farm(farm, now, true);
     const saved = state.objects[object.id];
@@ -361,9 +372,11 @@ export function submitQixiLantern2026Dish(farm, dish, now = Date.now()) {
     return { ok: true, applied: true, text: object.clues.find((item) => item.id === "tea").text };
 }
 
-export function answerQixiLantern2026Quiz(farm, answerValue, now = Date.now()) {
+export function answerQixiLantern2026Quiz(farm, worldValue, answerValue, now = Date.now()) {
     if (!isQixiLantern2026Active(now))
         return { ok: false, code: "event_unavailable" };
+    if (!allObjectsDiscovered(worldValue))
+        return { ok: false, code: "stage_locked" };
     const object = OBJECT_BY_ID.get("mailbag-buckle");
     const state = normalizeQixiLantern2026Farm(farm, now, true);
     const saved = state.objects[object.id];
@@ -385,6 +398,8 @@ export function answerQixiLantern2026Quiz(farm, answerValue, now = Date.now()) {
 export function returnQixiLantern2026Object(farm, worldValue, objectValue, ownerValue, now = Date.now()) {
     if (!isQixiLantern2026Active(now))
         return { ok: false, code: "event_unavailable" };
+    if (!allObjectsDiscovered(worldValue))
+        return { ok: false, code: "stage_locked" };
     const objectRef = String(objectValue ?? "").trim();
     const object = OBJECT_BY_ID.get(objectRef) ?? OBJECTS.find((item) => item.name === objectRef);
     const owner = String(ownerValue ?? "").trim();
@@ -433,7 +448,7 @@ export function qixiLantern2026TaskView(farm, worldValue, now = Date.now()) {
             material: saved.returnedAt ? structuredClone(object.material) : undefined,
         };
     });
-    const allDiscovered = OBJECTS.every((object) => cleanInt(world.discoveredObjects[object.id]) > 0);
+    const allDiscovered = allObjectsDiscovered(world);
     const allReturned = allObjectsReturnedByFarm(state);
     return {
         stage: qixiLantern2026FinalStageOpen(world, now) ? "lantern" : allDiscovered ? "return" : "objects",
@@ -496,6 +511,17 @@ function quizPromptText() {
 function objectProgressLines(view) {
     const lines = [];
     for (const object of view.objects) {
+        if (view.stage === "objects") {
+            if (!object.found) {
+                const hint = object.id === "copper-bell"
+                    ? "正常钓鱼时留意从水草里带起的东西。"
+                    : object.id === "qiaoguo-mold"
+                        ? "正常收获作物时留意田边带出的旧木块。"
+                        : "给牧场里的生产动物投喂一次，看看芦苇里有什么。";
+                lines.push(`▫️ ${object.name}：${hint}`);
+            }
+            continue;
+        }
         if (object.returned) {
             lines.push(`✅ ${object.name}已归还${object.ownerName}，取得${object.material.name}。`);
             continue;
@@ -574,21 +600,27 @@ export function runQixiLantern2026Ai(farm, worldValue, params = {}, now = Date.n
     if (!isQixiLantern2026Active(now))
         return { ok: false, text: "灯河有信现在没有开放。" };
     if (Array.isArray(params.answers)) {
-        const result = recordQixiLantern2026Answers(farm, "ai", params.answers, now);
+        const result = recordQixiLantern2026Answers(farm, worldValue, "ai", params.answers, now);
         if (!result.ok)
-            return { ok: false, text: result.code === "object_not_found" ? "先通过钓鱼找到旧铜铃，翘翘才会拿出三块木牌。" : "answers 必须按三道题依次提交 A、B 或 C。" };
+            return result.code === "stage_locked"
+                ? { ok: false, text: qixiLantern2026StatusText(farm, worldValue, now) }
+                : { ok: false, text: result.code === "object_not_found" ? "先通过钓鱼找到旧铜铃，翘翘才会拿出三块木牌。" : "answers 必须按三道题依次提交 A、B 或 C。" };
         return { ok: true, changed: result.applied, text: result.complete ? result.result.reaction : "三块木牌已经交给翘翘。人类一侧答完后，她会一起翻开。" };
     }
     if (params.quizAnswer !== undefined) {
-        const result = answerQixiLantern2026Quiz(farm, params.quizAnswer, now);
+        const result = answerQixiLantern2026Quiz(farm, worldValue, params.quizAnswer, now);
         if (!result.ok)
-            return { ok: false, text: result.code === "object_not_found" ? "先照顾牧场伙伴，从芦苇里找到黄铜搭扣。" : "quizAnswer 只接受 A、B 或 C。" };
+            return result.code === "stage_locked"
+                ? { ok: false, text: qixiLantern2026StatusText(farm, worldValue, now) }
+                : { ok: false, text: result.code === "object_not_found" ? "先照顾牧场伙伴，从芦苇里找到黄铜搭扣。" : "quizAnswer 只接受 A、B 或 C。" };
         return { ok: true, changed: result.applied, text: result.text };
     }
     if (params.return && typeof params.return === "object") {
         const result = returnQixiLantern2026Object(farm, worldValue, params.return.item, params.return.owner, now);
         if (!result.ok)
-            return { ok: false, text: result.code === "clues_incomplete" ? "这件旧物的必要线索还没有齐，暂时不能交出去。" : "item 或 owner 不在本期失物清单里。" };
+            return result.code === "stage_locked"
+                ? { ok: false, text: qixiLantern2026StatusText(farm, worldValue, now) }
+                : { ok: false, text: result.code === "clues_incomplete" ? "这件旧物的必要线索还没有齐，暂时不能交出去。" : "item 或 owner 不在本期失物清单里。" };
         if (result.correct === false)
             return { ok: false, text: "物件特征和这位主人对不上。旧物没有交出，可以继续核对线索。" };
         return { ok: true, changed: result.applied, text: `${result.text}\n获得灯材「${result.material.name}」。` };

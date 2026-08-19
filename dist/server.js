@@ -407,12 +407,15 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         return { status: r.ok ? 200 : 400, json: { ok: r.ok, text: r.text, ...vf(f) } };
     }
     if (isQixiLantern2026Active(now) && action === "kitchen" && b.op === "use" && String(b.target ?? "").trim() === "鹤姨") {
+        const qixiWorld = getQixiLantern2026World();
         const dish = findPublicDish(f, "蜂蜜茶", b.dishId);
-        const r = submitQixiLantern2026Dish(f, dish, now);
+        const r = submitQixiLantern2026Dish(f, qixiWorld, dish, now);
         if (!r.ok) {
-            const text = r.code === "object_not_found"
-                ? "先在正常收获时找到那块断角木模，鹤姨才知道你为什么来。"
-                : "料理柜里没有「蜂蜜茶」，这次没有消耗料理。";
+            const text = r.code === "stage_locked"
+                ? qixiLantern2026StatusText(f, qixiWorld, now)
+                : r.code === "object_not_found"
+                    ? "先在正常收获时找到那块断角木模，鹤姨才知道你为什么来。"
+                    : "料理柜里没有「蜂蜜茶」，这次没有消耗料理。";
             return { status: 400, json: { ok: false, text, ...vf(f) } };
         }
         if (r.applied)
@@ -1564,27 +1567,27 @@ export function startServer(port, host = "127.0.0.1") {
                         let flash = "这次没有执行。";
                         if (act === "compatibility") {
                             selectedObjectId = "copper-bell";
-                            const result = recordQixiLantern2026Answers(f, "human", [form.answer1, form.answer2, form.answer3], now);
+                            const result = recordQixiLantern2026Answers(f, world, "human", [form.answer1, form.answer2, form.answer3], now);
                             changed = result.applied === true;
                             flash = result.ok
                                 ? result.complete ? result.result.reaction : "三块木牌已经交给翘翘。小机一侧答完后，她会一起翻开。"
-                                : result.code === "object_not_found" ? "先从河里找到旧铜铃，翘翘才会拿出这三块木牌。" : "三道题都要选择 A、B 或 C。";
+                                : result.code === "stage_locked" ? "这次没有执行。" : result.code === "object_not_found" ? "先从河里找到旧铜铃，翘翘才会拿出这三块木牌。" : "三道题都要选择 A、B 或 C。";
                         }
                         else if (act === "dish") {
                             selectedObjectId = "qiaoguo-mold";
                             const dish = findPublicDish(f, "蜂蜜茶", form.dishId);
-                            const result = submitQixiLantern2026Dish(f, dish, now);
+                            const result = submitQixiLantern2026Dish(f, world, dish, now);
                             if (result.ok && result.applied) {
                                 takePublicDish(f, dish);
                                 changed = true;
                             }
-                            flash = result.ok ? result.text : result.code === "object_not_found" ? "先在收获时找到断角木模。" : "料理柜里没有蜂蜜茶，这次没有消耗料理。";
+                            flash = result.ok ? result.text : result.code === "stage_locked" ? "这次没有执行。" : result.code === "object_not_found" ? "先在收获时找到断角木模。" : "料理柜里没有蜂蜜茶，这次没有消耗料理。";
                         }
                         else if (act === "quiz") {
                             selectedObjectId = "mailbag-buckle";
-                            const result = answerQixiLantern2026Quiz(f, form.answer, now);
+                            const result = answerQixiLantern2026Quiz(f, world, form.answer, now);
                             changed = result.applied === true;
-                            flash = result.ok ? result.text : result.code === "object_not_found" ? "先照顾牧场伙伴，从芦苇里找到黄铜搭扣。" : "请选择 A、B 或 C。";
+                            flash = result.ok ? result.text : result.code === "stage_locked" ? "这次没有执行。" : result.code === "object_not_found" ? "先照顾牧场伙伴，从芦苇里找到黄铜搭扣。" : "请选择 A、B 或 C。";
                         }
                         else if (act === "return") {
                             selectedObjectId = String(form.item ?? "");
@@ -1593,7 +1596,7 @@ export function startServer(port, host = "127.0.0.1") {
                             if (result.correct === true && result.allReturned === true)
                                 selectedObjectId = undefined;
                             flash = !result.ok
-                                ? result.code === "clues_incomplete" ? "这件旧物的必要线索还没有齐。" : "这件旧物或主人不在失物架上。"
+                                ? result.code === "stage_locked" ? "这次没有执行。" : result.code === "clues_incomplete" ? "这件旧物的必要线索还没有齐。" : "这件旧物或主人不在失物架上。"
                                 : result.correct === false ? "物件特征和这位主人对不上，旧物还在失物架上。" : `${result.text}\n获得灯材「${result.material.name}」。`;
                         }
                         else if (act === "decorate") {
