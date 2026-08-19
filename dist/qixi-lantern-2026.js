@@ -496,6 +496,10 @@ function optionLines(options) {
         .join("\n");
 }
 
+function lampOptionText(options) {
+    return options.map((option) => `${option.name ?? option.id}（${option.id}）`).join("/");
+}
+
 function compatibilityPromptText() {
     const questions = COMPATIBILITY_QUESTIONS.flatMap((question, index) => [
         `${index + 1}. ${question.text}`,
@@ -584,7 +588,12 @@ export function qixiLantern2026StatusText(farm, worldValue, now = Date.now()) {
     const received = state.lamps.human;
     if (!lamp) {
         const choices = availableLampOptions(state);
-        lines.push(`🕯️ 现在就可以先装扮自己的灯。灯型：${choices.shapes.map((item) => item.id).join("/")}；颜色：${choices.colors.map((item) => item.id).join("/")}；纹样：${choices.patterns.map((item) => item.id).join("/")}；挂件：${choices.ornaments.map((item) => item.id).join("/")}；封签：${choices.seals.map((item) => item.id).join("/")}。`);
+        lines.push("🕯️ 现在就可以先装扮自己的灯。括号内是提交时填写的值。");
+        lines.push(`灯型：${lampOptionText(choices.shapes)}`);
+        lines.push(`颜色：${lampOptionText(choices.colors)}`);
+        lines.push(`纹样：${lampOptionText(choices.patterns)}`);
+        lines.push(`挂件：${lampOptionText(choices.ornaments)}`);
+        lines.push(`封签：${lampOptionText(choices.seals)}`);
         lines.push('保存装扮：{"action":"qixi","decorate":{"shape":"square-palace","color":"moon-white","pattern":"none","ornament":"none","seal":"none"}}');
         if (view.finalStageOpen)
             lines.push('放灯：{"action":"qixi","lamp":{"shape":"square-palace","color":"moon-white","pattern":"none","ornament":"none","seal":"none","text":"只写给对方的话"}}');
