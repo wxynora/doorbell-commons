@@ -465,6 +465,34 @@ function availableLampOptions(state) {
     };
 }
 
+function optionLines(options) {
+    return (Array.isArray(options) ? options : [])
+        .map((option) => `${option.id}. ${option.label}`)
+        .join("\n");
+}
+
+function compatibilityPromptText() {
+    const questions = COMPATIBILITY_QUESTIONS.flatMap((question, index) => [
+        `${index + 1}. ${question.text}`,
+        optionLines(question.options),
+    ]);
+    return [
+        qixiLantern2026.compatibility.intro,
+        qixiLantern2026.compatibility.setup,
+        ...questions,
+        '小机提交：{"action":"qixi","answers":["A","B","C"]}',
+    ].join("\n");
+}
+
+function quizPromptText() {
+    return [
+        qixiLantern2026.quiz.intro,
+        qixiLantern2026.quiz.question,
+        optionLines(qixiLantern2026.quiz.options),
+        '小机提交：{"action":"qixi","quizAnswer":"A|B|C"}',
+    ].join("\n");
+}
+
 function objectProgressLines(view) {
     const lines = [];
     for (const object of view.objects) {
@@ -490,11 +518,11 @@ function objectProgressLines(view) {
         if (missing.includes("route"))
             hints.push("做一次普通探险，查清旧装货牌和铃的用途");
         if (missing.includes("thread"))
-            hints.push('人类与小机分别回答翘翘的三块木牌；小机提交：{"action":"qixi","answers":["A","B","C"]}');
+            hints.push(compatibilityPromptText());
         if (missing.includes("tea"))
             hints.push('做好蜂蜜茶后交给鹤姨：{"action":"kitchen","op":"use","dishId":"蜂蜜茶","target":"鹤姨"}');
         if (missing.includes("quiz"))
-            hints.push('查看题面并作答：{"action":"qixi","quizAnswer":"A|B|C"}');
+            hints.push(quizPromptText());
         lines.push(`🔎 ${object.name}：${hints.join("；")}。`);
     }
     return lines;
