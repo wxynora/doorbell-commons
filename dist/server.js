@@ -733,7 +733,8 @@ function runFarm(farmId, action, body = {}, encArg, now, options = {}) {
         extras.push(notices.join("\n\n"));
     if (!action || action === "status")
         extras.push(`🧭 铃野共行：${publicExpeditionStatusLine(world, now, false)}。用 {"action":"together"} 查看当前剧情。`);
-    if (isQixiLantern2026Active(now) && (!action || action === "status")) {
+    const qixiAiLampReleased = Boolean(viewer.qixiLantern2026?.lamps?.ai?.releasedAt);
+    if (isQixiLantern2026Active(now) && !qixiAiLampReleased && (!action || action === "status")) {
         extras.push(qixiLantern2026.openingAnnouncement);
         if (now >= Date.parse(qixiLantern2026.finalStageAt))
             extras.push(qixiLantern2026.finalStageAnnouncement);
