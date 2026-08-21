@@ -2225,6 +2225,28 @@ export function useItem(farm, item, plotId) {
     }
     return { ok: false, error: `${def.name}暂无可用效果` };
 }
+/** 按明确地块集合原子催熟：任一目标无效或药水不足时整次不执行。 */
+export function usePotionPlots(farm, plotIds) {
+    if (!Array.isArray(plotIds) || plotIds.length === 0)
+        return { ok: false, error: "请在 plots 里填写至少一个地块编号" };
+    if (plotIds.some((id) => !Number.isSafeInteger(id) || id <= 0))
+        return { ok: false, error: "plots 里的地块编号必须是正整数" };
+    if (new Set(plotIds).size !== plotIds.length)
+        return { ok: false, error: "plots 里不能重复填写同一块地" };
+    for (const plotId of plotIds) {
+        const plot = farm.plots.find((item) => item.id === plotId);
+        if (!plot || !plot.crop)
+            return { ok: false, error: `${plotId} 号地没有作物` };
+        if (plot.crop.ripe)
+            return { ok: false, error: `${plotId} 号地的作物已经成熟了，不用加速` };
+    }
+    const have = farm.items.speed_potion ?? 0;
+    if (have < plotIds.length)
+        return { ok: false, error: `加速药水不足：要 ${plotIds.length} 瓶，现有 ${have} 瓶` };
+    for (const plotId of plotIds)
+        useItem(farm, "speed_potion", plotId);
+    return { ok: true, plotIds: [...plotIds], count: plotIds.length, left: farm.items.speed_potion ?? 0 };
+}
 // —— 土地升级（门槛：金币 + 普通图鉴种类数 + 高阶加奇幻/收集度；牵制普通作物）——
 export function nextUpgradeReq(farm) {
     const next = landTiers.find((t) => t.tier === farm.landTier + 1);

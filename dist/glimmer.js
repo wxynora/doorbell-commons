@@ -367,6 +367,8 @@ function findDish(farm, query) {
 
 function resolveTrack(query, tracks) {
     const q = String(query ?? "").trim();
+    if ((typeof query === "number" || /^\d+$/.test(q)) && Number.isSafeInteger(Number(q)))
+        return tracks[Number(q) - 1];
     return tracks.find((item) => item.id === q || item.name === q)
         ?? tracks.find((item) => variantBase(item)?.name === q);
 }
@@ -602,7 +604,7 @@ export function glimmerView(farm, worldValue, now = Date.now()) {
         `✨ 流光原野 · ${currentSeason(now).name}`,
         glimmerStatusLine(farm, now),
         glimmerBuffActive(now) ? GLIMMER_BUFF_TEXT : "",
-        `🐾 今日动物踪迹：${tracks.map((item) => `${item.name}（保底 ${capturePityCount(state, item.kindId)}/${CAPTURE_PITY_LIMIT}）`).join("、")}`,
+        `🐾 今日动物踪迹：${tracks.map((item, index) => `${index + 1}.${item.name}（保底 ${capturePityCount(state, item.kindId)}/${CAPTURE_PITY_LIMIT}）`).join("、")}`,
         glimmerDishInventoryLine(farm),
         glimmerFavoriteLine(farm),
         `🤝 今日协作：〔${event.name}〕· ${Math.min(world.coop.contributors.length, glimmer.coopRequired)}/${glimmer.coopRequired}${world.coop.completedAt ? " · 已完成，额外稀有踪迹已出现" : ""}`,

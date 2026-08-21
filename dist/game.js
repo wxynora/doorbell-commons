@@ -1,5 +1,5 @@
 // 共享游戏核心：HTTP 服务和 CLI 适配器都调这里，保证同一套规则与存档结构。
-import { advance, plant, water, harvest, upgradeLand, shopOffer, collectionPct, codexCountByCategory, nextUpgradeReq, buyItem, useItem, craft, designCrop, plantBatch, waterAll, harvestAll, usePotionBatch, refreshShop, buyRecipe, affordablePotions, buyPotionSet, potionDailyLeft, shopAnimals, nextLockedAnimal, buyAnimalForPartner, ranchRoamLine, decorLines, takeInbox, shopPets, nextLockedPet, buyPetForPartner, buyPatrolGoose, farmSendRanch, potionTargets, circledNum, isUgcCrop, ensureKitchen, kitchenView, kitchenBuy, kitchenCook, kitchenCookKnownRecipe, kitchenUse, kitchenSellSelected, ranchFeedAnimal, dishSystemRecycleSilver, } from "./engine.js";
+import { advance, plant, water, harvest, upgradeLand, shopOffer, collectionPct, codexCountByCategory, nextUpgradeReq, buyItem, useItem, craft, designCrop, plantBatch, waterAll, harvestAll, usePotionBatch, usePotionPlots, refreshShop, buyRecipe, affordablePotions, buyPotionSet, potionDailyLeft, shopAnimals, nextLockedAnimal, buyAnimalForPartner, ranchRoamLine, decorLines, takeInbox, shopPets, nextLockedPet, buyPetForPartner, buyPatrolGoose, farmSendRanch, potionTargets, circledNum, isUgcCrop, ensureKitchen, kitchenView, kitchenBuy, kitchenCook, kitchenCookKnownRecipe, kitchenUse, kitchenSellSelected, ranchFeedAnimal, dishSystemRecycleSilver, } from "./engine.js";
 import { describeFarm, harvestText, bonusEventText, dropText, potionDropText, plantText, waterText, statusFooter, } from "./flavor.js";
 import { expExplore, expChoose, expRetreat, expRoll, expView } from "./expedition.js";
 import { currentSeason, currentDayIndex } from "./time.js";
@@ -67,9 +67,9 @@ export const HELP = `🌾 你的农场
   👋 巡视农场，看此刻能做啥        status
   🌱 撒一把种子，看天意           plant {"common":3,"fantasy":3}      （想种限定：{"limited":["christmas_tree"]}）
   💧 给长着的苗浇浇水             water                               （沾了水的，更容易开出好的）
-  🔮 等不及，喂瓶催熟药水         use {"item":"speed_potion","all":true}   （"count":3 催几块 / "auto":true 按钱买够再催）
+  🔮 等不及，喂瓶催熟药水         ripen {"plots":[1,3,5]}            （只催熟写出的地块，一块也写成数组）
   🧺 把熟了的都收回来             harvest                             （一次全揭晓）
-  🌾 嫌一步步麻烦，忙活一整轮     run {"plant":{"common":3,"fantasy":3}}    （撒种+浇水+收成一条龙；要催熟加 "potion":"auto"，先收上轮腾地加 "harvestFirst":true）
+  🌾 嫌一步步麻烦，忙活一整轮     run {"plant":{"common":3,"fantasy":3}}    （撒种+浇水+收成一条龙；先收上轮腾地加 "harvestFirst":true）
 
   🛖 去铺子逛逛                  shop                                （官铺种子+偶尔藏的配方；再往里是别家摆的摊）
   📒 学一道隐藏配方             buy-recipe                          （买下铺子正上架的那道）
@@ -126,7 +126,7 @@ export const HELP = `🌾 你的农场
      查看原野                   glimmer
      购买当天通票               glimmer {"op":"ticket"} （500 金，当天开放期间可反复进入）
      探索奇遇                   glimmer {"op":"explore"} （持票后每天最多 3 次）
-     诱捕异色动物               glimmer {"op":"catch","animal":"动物名","dish":"料理名"}
+     诱捕异色动物               glimmer {"op":"catch","animal":2,"dish":"料理名"} （animal 填当天代号或动物名）
                                 （任何正常料理都能尝试，喜欢的料理成功率更高；成败都消耗料理并进入 20 分钟冷却；每天最多成功 1 只）
      参与全服协作               glimmer {"op":"assist","item":"物品名"}
                                 （按当天事件要求提交，每家每天只能贡献一次）
@@ -280,7 +280,7 @@ function summarizePlanted(p) {
 const matName = (id) => materialById.get(id)?.name ?? id;
 const humanDisplay = (f) => f.humanName || "伴侣";
 /** 催熟候选一行（药水有每日上限→催哪块是策略）：限定/稀有在前，标作物+剩余时间。
- *  POST/REST AI 看这行就能直接 use {plotId:N} 指定催熟；手头没药水或没生长中作物则空串。 */
+ *  POST/REST AI 看这行就能直接 ripen {plots:[N]} 指定催熟；手头没药水或没生长中作物则空串。 */
 export function potionTargetLine(f, now) {
     if ((f.items.speed_potion ?? 0) <= 0)
         return "";
@@ -288,7 +288,7 @@ export function potionTargetLine(f, now) {
     if (!ts.length)
         return "";
     const seg = ts.slice(0, 6).map((t) => `${circledNum(t.plotId)}${t.label}（剩${t.remain}）`).join("｜");
-    return `🎯 指定催熟：${seg}　催哪块是策略(限定/稀有优先)→ use {"item":"speed_potion","plotId":N}`;
+    return `🎯 指定催熟：${seg}　催哪块是策略(限定/稀有优先)→ ripen {"plots":[N]}`;
 }
 /** 精简商店（进农场/巡视时附带，免得单独查店）；完整两层见 viewShop */
 export function shopBrief(f, now) {
@@ -1173,6 +1173,15 @@ function dispatchImpl(f, b, now) {
             const se = f.plots.some((p) => p.crop?.ripe) ? rollSeasonHarvest(f, now) : null;
             const hs = harvestAll(f, now, se?.mod);
             return { ok: hs.length > 0, text: hs.length ? withFooter(f, now, (se ? seasonHeadline(se.hit) + "\n" : "") + `【收获 ${hs.length} 株】\n` + composeHarvests(hs, b.compact !== false, f.id) + "\n" + replantReminder(hs.length)) : "没有成熟的作物" };
+        }
+        case "ripen": {
+            const r = usePotionPlots(f, b.plots);
+            return {
+                ok: r.ok,
+                text: r.ok
+                    ? withFooter(f, now, `🧪 催熟了 ${r.plotIds.join("、")} 号地（用了 ${r.count} 瓶，剩 ${r.left} 瓶）`)
+                    : r.error,
+            };
         }
         case "use": {
             if (b.auto || b.potion === "auto")
