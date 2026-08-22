@@ -7,7 +7,7 @@ import { crops, cropById, getCrop, animals, animalById, pets, petById, accessori
 import { registerUgc, ugcCount } from "./ugc.js";
 import { onTaskEvent } from "./tasks.js";
 import { fishingKitchenProducts, removeFishingCatchIds } from "./fishing.js";
-import { glimmerBuffMultiplier } from "./glimmer.js";
+import { glimmerAnimalVariantMultiplier, glimmerBuffMultiplier } from "./glimmer.js";
 import { canPlantQixi2026Crop, isQixi2026CropId, qixi2026HarvestSilver, qixi2026TransferAllowed, recordQixi2026Harvest, recordQixi2026Progress, submitQixi2026Dish } from "./qixi-2026.js";
 import { isQixiLantern2026Active } from "./qixi-lantern-2026.js";
 import { randomUUID } from "node:crypto";
@@ -1316,8 +1316,7 @@ export function ranchAnimalCurrentProduceValue(animal, now = Date.now()) {
         return 0;
     const level = Math.min(RANCH_ANIMAL_MAX_LEVEL, Math.max(1, Math.floor(Number(animal.level) || 1)));
     let value = Math.round(kind.producePrice * (1 + (level - 1) * RANCH_LEVEL_INCOME_STEP));
-    if (animal.glimmerBoost || (animal.glimmerVariants?.length ?? 0) > 0)
-        value = Math.round(value * 1.2);
+    value = Math.round(value * glimmerAnimalVariantMultiplier(animal));
     return Math.round(value * glimmerBuffMultiplier("ranchValue", now));
 }
 function finishRanchRaidHistory(ranch, raid, status, coins, details) {

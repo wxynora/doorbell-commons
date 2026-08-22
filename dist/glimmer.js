@@ -7,6 +7,7 @@ import {
 } from "./content.js";
 import { currentDayIndex, currentSeason } from "./time.js";
 import { Rng } from "./rng.js";
+import { RANCH_LEVEL_INCOME_STEP } from "./config.js";
 
 const MAX_HISTORY = 30;
 const MAX_PUBLIC_LOGS = 10;
@@ -174,6 +175,16 @@ function variantBase(variant) {
 
 function variantIsFantasy(variant) {
     return variant.type === "animal" && animalById.get(variant.kindId)?.category === "奇幻";
+}
+
+export function glimmerAnimalVariantMultiplier(animal) {
+    const unlocked = new Set(Array.isArray(animal?.glimmerVariants) ? animal.glimmerVariants : []);
+    const variants = glimmerVariants.filter((item) => item.type === "animal" && item.kindId === animal?.kindId);
+    if (variants.length === 3 && variants.every((item) => unlocked.has(item.id)))
+        return 1.25;
+    if (animal?.glimmerBoost || unlocked.size)
+        return 1.2;
+    return 1;
 }
 
 function trackPools() {
@@ -454,13 +465,16 @@ function catchVariant(farm, world, now, animalQuery, dishQuery) {
             resident = { kindId: variant.kindId, ticksSinceProduce: 0, pending: 0, pendingMeat: 0, level: 1, feedBoostPending: false, pendingBoost: false };
             farm.ranch.animals.push(resident);
         }
-        const oldValue = Math.round(base.producePrice * (1 + ((resident.level ?? 1) - 1) * 0.2));
+        const oldValue = Math.round(base.producePrice * (1 + ((resident.level ?? 1) - 1) * RANCH_LEVEL_INCOME_STEP));
         addVariantToResident(resident, variant);
         resident.glimmerBoost = true;
-        const newValue = Math.round(oldValue * 1.2);
-        resultText = existing
-            ? `🌈 捕捉成功！${variant.name}认出了牧场里的同伴。原有${base.name}保留等级、名字、生产进度和当前状态，并永久获得当前等级产值 +20%（${oldValue}→${newValue} 金/份）。今日异色捕获 1/1。`
-            : `🌈 捕捉成功！${variant.name}吃完「${dish.name}」后跟你回了牧场，成为一只 1 级${variant.name}。它的当前等级产值永久提高 20%。今日异色捕获 1/1。`;
+        const variantMultiplier = glimmerAnimalVariantMultiplier(resident);
+        const newValue = Math.round(oldValue * variantMultiplier);
+        resultText = existing && variantMultiplier === 1.25
+            ? `🌈 捕捉成功！${variant.name}认出了牧场里的同伴。原有${base.name}保留等级、名字、生产进度和当前状态；同种三只异色已经集齐，当前等级产值加成由 20% 提高到 25%（${oldValue}→${newValue} 金/份）。今日异色捕获 1/1。`
+            : existing
+                ? `🌈 捕捉成功！${variant.name}认出了牧场里的同伴。原有${base.name}保留等级、名字、生产进度和当前状态，并永久获得当前等级产值 +20%（${oldValue}→${newValue} 金/份）。今日异色捕获 1/1。`
+                : `🌈 捕捉成功！${variant.name}吃完「${dish.name}」后跟你回了牧场，成为一只 1 级${variant.name}。它的当前等级产值永久提高 20%。今日异色捕获 1/1。`;
     }
     else if (variant.type === "pet") {
         let resident = farm.ranch.pets.find((item) => item.kindId === variant.kindId);
