@@ -118,8 +118,8 @@ join/leave business events, or complete public history.
 ## QQ admission and human session slice
 
 `POST /api/registration/qq-group-eligibility` accepts one strict field, `qq_number`, as a decimal
-string. The server never accepts a caller-supplied group number. It queries the fixed community group
-`515831305` through the read-only NapCat/OneBot `get_group_member_list` action with `no_cache: true`
+string. The server never accepts a caller-supplied group number. It queries the community group supplied
+only by private deployment config through the read-only NapCat/OneBot `get_group_member_list` action with `no_cache: true`
 and checks for an exact `user_id` match.
 
 The eligibility route remains a pure read-only query and never creates an account or session. Its
@@ -708,7 +708,7 @@ Runtime configuration is read from process environment variables:
 | --- | --- |
 | `ONEBOT_API_BASE_URL` | Required HTTP(S) base URL for the NapCat/OneBot API |
 | `ONEBOT_API_TOKEN` | Required secret used only in the outbound authorization header; never logged |
-| `DOORBELL_QQ_GROUP_ID` | Required and must equal `515831305` |
+| `DOORBELL_QQ_GROUP_ID` | Required positive decimal QQ group identifier supplied only by private deployment config |
 | `DOORBELL_DATABASE_PATH` | Required path to the Doorbell SQLite database |
 | `DOORBELL_UPSTREAM_REQUEST_TIMEOUT_MS` | Required positive integer request deadline in milliseconds for OneBot membership reads and every Doorbell-to-farm HTTP client: directory／Human UI, first-farm creation, welcome reward, MCP migration, and MCP action execution; there is no code default, so a deployment must choose the value explicitly |
 | `DOORBELL_BELL_HEARTBEAT_INTERVAL_MS` | Required and fixed to `30000` for the authenticated Bell SSE heartbeat |
@@ -810,7 +810,7 @@ The first-household Bell runs separately on the gateway host from public GitHub 
 at Bell commit `9f5164f8643e232f83bd87215bd0b8f4ff77fe10`. `doorbell-bell.service` is enabled and
 active/running with `NRestarts=0`; its mode-0600 environment file is
 `/etc/doorbell-bell.env`, and its private state directory is `/var/lib/doorbell-bell`. The household
-injector was published with du-gateway commit `8d65485176c5ef4d5e8f669c824d6f9ad7e6ee4b` and maps
+injector was published in its private household runtime and maps
 `wake_id` into the existing persistent SumiTalk job idempotency key. The isolated real systemd crash
 cleanup check passed before activation. The first existing unread wake was accepted and ACKed; after
 the final enable, the authoritative wake count and gateway job count remained unchanged, so that

@@ -3,8 +3,35 @@ import { test } from "node:test";
 import {
   readFarmApiBaseUrl,
   readFarmHumanUiBaseUrl,
+  readQqGroupEligibilityConfig,
   readUpstreamRequestTimeoutMs,
 } from "./config.js";
+
+test("QQ group eligibility uses only the required private deployment value", () => {
+  const config = readQqGroupEligibilityConfig({
+    ONEBOT_API_BASE_URL: "https://onebot.example/",
+    ONEBOT_API_TOKEN: "read-token",
+    DOORBELL_QQ_GROUP_ID: "12345",
+  });
+  assert.equal(config.qqGroupId, "12345");
+  assert.throws(
+    () =>
+      readQqGroupEligibilityConfig({
+        ONEBOT_API_BASE_URL: "https://onebot.example/",
+        ONEBOT_API_TOKEN: "read-token",
+      }),
+    /DOORBELL_QQ_GROUP_ID is required/,
+  );
+  assert.throws(
+    () =>
+      readQqGroupEligibilityConfig({
+        ONEBOT_API_BASE_URL: "https://onebot.example/",
+        ONEBOT_API_TOKEN: "read-token",
+        DOORBELL_QQ_GROUP_ID: "not-a-group-id",
+      }),
+    /must be a positive decimal identifier/,
+  );
+});
 
 test("farm API base URL is required and accepts only HTTP or HTTPS", () => {
   assert.equal(
