@@ -10,6 +10,7 @@ function ranchFarm() {
   const farm = makeFarm("牧场结构化测试农场");
   farm.id = "ABC234";
   farm.humanKey = "private-ranch-human-key";
+  farm.silver = 1000;
   farm.coins = 1234;
   farm.codex = {
     carrot: { starred: true },
@@ -29,6 +30,7 @@ function ranchFarm() {
         pendingMeat: 1,
         pendingBoost: true,
         acc: ["cap", "missing-accessory"],
+        variantId: "chicken_strawberry",
       },
       {
         kindId: "missing-animal",
@@ -70,6 +72,7 @@ function ranchFarm() {
       decor: ["pond", "missing-shop-decoration"],
     },
   };
+  farm.glimmer = { unlocked: ["chicken_strawberry", "cat_tuxedo"] };
   return farm;
 }
 
@@ -87,6 +90,27 @@ test("Human ranch projection is pure, strict-shaped, and does not leak private f
   assert.equal(result.data.residents.pets.length, 1);
   assert.equal(result.data.residents.patrol_goose.identity.kind_id, "patrol_goose");
   assert.equal(result.data.residents.animals[0].produce.item.pending_count, 1);
+  const chicken = result.data.residents.animals[0];
+  assert.deepEqual(chicken.variants, {
+    current_variant_id: "chicken_strawberry",
+    available_variant_ids: ["base", "chicken_strawberry"],
+  });
+  assert.deepEqual(chicken.allowed_actions.feed, {
+    enabled: false,
+    cost: { currency: "silver", amount: 2 },
+    reason: "这只动物正在外面派遣，回来后再投喂。",
+  });
+  assert.deepEqual(chicken.allowed_actions.upgrade, {
+    enabled: true,
+    cost: { currency: "ranch_coins", amount: 135 },
+    reason: null,
+  });
+  assert.equal(chicken.allowed_actions.rename.enabled, true);
+  assert.equal(chicken.allowed_actions.toggle_pin.enabled, true);
+  assert.equal(chicken.allowed_actions.wear_accessory.enabled, true);
+  assert.equal(chicken.allowed_actions.takeoff_accessory.enabled, true);
+  assert.equal(chicken.allowed_actions.set_variant.enabled, true);
+  assert.equal(Object.hasOwn(chicken, "slot"), false);
   assert.equal(result.data.dispatch.active.length, 2);
   assert.equal(result.data.dispatch.active[0].target_farm_doorplate, undefined);
   assert.equal(result.data.shop.accessories.shop_day, 2060);
@@ -107,6 +131,12 @@ test("Unknown or damaged Ranch IDs stay neutral unavailable instead of being gue
   assert.equal(unavailableAnimal.identity.status, "unavailable");
   assert.equal(unavailableAnimal.identity.kind_id, null);
   assert.equal(unavailableAnimal.identity.name, null);
+  assert.equal(unavailableAnimal.variants.current_variant_id, null);
+  assert.deepEqual(unavailableAnimal.variants.available_variant_ids, []);
+  for (const action of Object.values(unavailableAnimal.allowed_actions)) {
+    assert.equal(action.enabled, false);
+    assert.equal(typeof action.reason, "string");
+  }
   assert.equal(result.data.residents.animals[0].accessories.items[1].status, "unavailable");
   assert.equal(result.data.wardrobe.items[1].status, "unavailable");
   assert.equal(result.data.decorations.placed[1].status, "unavailable");
@@ -114,6 +144,22 @@ test("Unknown or damaged Ranch IDs stay neutral unavailable instead of being gue
   assert.equal(result.data.shop.decorations.items[1].status, "unavailable");
   assert.equal(result.data.dispatch.active[1].status, "unavailable");
   assert.equal(result.data.dispatch.active[1].animal_kind_id, null);
+});
+
+test("the original appearance is always available and is the only option until an alternate unlocks", () => {
+  const farm = ranchFarm();
+  farm.glimmer = { unlocked: [] };
+  const result = projectHumanRanch(farm, NOW);
+  const chicken = result.data.residents.animals[0];
+  assert.deepEqual(chicken.variants, {
+    current_variant_id: "base",
+    available_variant_ids: ["base"],
+  });
+  assert.deepEqual(chicken.allowed_actions.set_variant, {
+    enabled: false,
+    cost: { currency: null, amount: null },
+    reason: "没有可切换的异色外观",
+  });
 });
 
 test("A farm without an initialized ranch does not synthesize a shop or residents", () => {
@@ -131,4 +177,30 @@ test("A farm without an initialized ranch does not synthesize a shop or resident
   assert.deepEqual(result.data.residents.animals, []);
   assert.deepEqual(result.data.residents.pets, []);
   assert.equal(result.data.residents.patrol_goose, null);
+});
+
+test("resident action availability exposes authority fees and explicit disabled reasons without mutation", () => {
+  const farm = ranchFarm();
+  farm.silver = 0;
+  farm.ranch.raids = [];
+  farm.ranch.animals[0].pending = 0;
+  farm.ranch.animals[0].pendingMeat = 0;
+  farm.ranch.animals[0].pendingBoost = false;
+  farm.ranch.animals[0].feedBoostPending = false;
+  farm.ranch.wardrobe = ["cap"];
+  farm.ranch.animals[0].acc = [];
+  const before = structuredClone(farm);
+
+  const result = projectHumanRanch(farm, NOW);
+  const chicken = result.data.residents.animals[0];
+  assert.deepEqual(chicken.allowed_actions.feed, {
+    enabled: false,
+    cost: { currency: "silver", amount: 2 },
+    reason: "银币不足，这次投喂要 🪙2（你有 0）。",
+  });
+  assert.equal(chicken.allowed_actions.wear_accessory.enabled, true);
+  assert.equal(chicken.allowed_actions.takeoff_accessory.enabled, false);
+  assert.equal(chicken.allowed_actions.takeoff_accessory.reason, "这只居民没有已穿戴的配饰");
+  assert.equal(Object.hasOwn(chicken.allowed_actions.wear_accessory, "slot"), false);
+  assert.deepEqual(farm, before);
 });

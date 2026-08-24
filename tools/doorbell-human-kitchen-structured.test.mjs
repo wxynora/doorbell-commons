@@ -89,6 +89,7 @@ test("structured kitchen projection is pure, strict in its source boundary, and 
   assert.deepEqual(farm, farmBefore);
   assert.deepEqual(world, worldBefore);
   assert.equal(result.data.farm.farm_doorplate, FARM_ID);
+  assert.match(result.shop_revision, /^kitchen-v1:[0-9a-f]{64}$/);
   assert.deepEqual(result.data.balance.silver, { status: "available", value: 321, reason: null });
   assert.deepEqual(result.data.balance.ranch_coins, {
     status: "available",
@@ -198,4 +199,16 @@ test("uninitialized and stale lazy kitchen state stays unavailable without a wri
   assert.equal(staleResult.data.daily_shop.reason, "stale_shop");
   assert.deepEqual(staleResult.data.daily_shop.ingredients, []);
   assert.deepEqual(staleResult.data.daily_shop.recipes, []);
+});
+
+test("purchase revision is stable for the same state and changes with purchase-relevant state", () => {
+  const farm = kitchenFarm();
+  const first = projectHumanKitchen(farm, NOW);
+  const later = projectHumanKitchen(farm, NOW + 1_000);
+  assert.equal(later.shop_revision, first.shop_revision);
+  assert.notEqual(later.server_time, first.server_time);
+
+  farm.silver += 1;
+  const changed = projectHumanKitchen(farm, NOW);
+  assert.notEqual(changed.shop_revision, first.shop_revision);
 });

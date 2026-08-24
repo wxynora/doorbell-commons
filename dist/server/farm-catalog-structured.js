@@ -625,22 +625,24 @@ function projectMarket(farm) {
  */
 export function projectHumanFarmCatalog(farm, now = Date.now()) {
   if (!farm || typeof farm !== "object") throw new TypeError("Farm catalog requires a farm");
-  return {
-    data: {
-      farm: {
-        farm_doorplate: String(farm.id ?? ""),
-        farm_name: safeText(farm.name),
-      },
-      shop: projectShop(farm, now),
-      backpack: projectBackpack(farm),
-      codex: projectCodex(farm),
-      settings: projectSettings(farm),
-      expedition: projectExpedition(farm, now),
-      smelting: projectSmelting(farm),
-      bulletin: projectBulletin(farm),
-      neighborhood: projectNeighborhood(farm, now),
-      market: projectMarket(farm),
+  const data = {
+    farm: {
+      farm_doorplate: String(farm.id ?? ""),
+      farm_name: safeText(farm.name),
     },
+    shop: projectShop(farm, now),
+    backpack: projectBackpack(farm),
+    codex: projectCodex(farm),
+    settings: projectSettings(farm),
+    expedition: projectExpedition(farm, now),
+    smelting: projectSmelting(farm),
+    bulletin: projectBulletin(farm),
+    neighborhood: projectNeighborhood(farm, now),
+    market: projectMarket(farm),
+  };
+  return {
+    data,
+    revision: opaqueRevision({ farm: data.farm, settings: data.settings }),
     server_time: new Date(now).toISOString(),
   };
 }

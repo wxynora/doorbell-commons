@@ -153,6 +153,7 @@ function projectHumanTogether(world, farm, now = Date.now()) {
     clues: projectClues(shared.clues ?? []),
   };
   return {
+    subject: { farm_doorplate: String(farm.id) },
     data,
     server_time: new Date(now).toISOString(),
   };

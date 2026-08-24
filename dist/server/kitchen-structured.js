@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   cooking,
   cookingIngredientById,
@@ -20,6 +21,34 @@ const isRecord = (value) => typeof value === "object" && value !== null && !Arra
 const idOf = (value) => (typeof value === "string" && value.trim() ? value.trim() : null);
 const finiteInt = (value, min = 0) =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= min ? value : null;
+
+function canonicalize(value) {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (isRecord(value)) {
+    const sorted = {};
+    for (const key of Object.keys(value).sort()) sorted[key] = canonicalize(value[key]);
+    return sorted;
+  }
+  return value;
+}
+
+/**
+ * Opaque optimistic-concurrency token for Human kitchen purchases.  It covers
+ * every persisted value that can change purchase acceptance or its visible
+ * result, while excluding server_time and the idempotency receipt ledger.
+ */
+export function kitchenShopRevisionFromData(data) {
+  const state = {
+    balance: data?.balance ?? null,
+    tools: data?.tools ?? null,
+    stacked_ingredients: data?.stacked_ingredients ?? null,
+    known_recipes: data?.known_recipes ?? null,
+    daily_shop: data?.daily_shop ?? null,
+  };
+  return `kitchen-v1:${createHash("sha256")
+    .update(JSON.stringify(canonicalize(state)), "utf8")
+    .digest("hex")}`;
+}
 
 function unavailableSection(reason) {
   return { status: "unavailable", items: [], reason };
@@ -489,8 +518,7 @@ export function projectHumanKitchen(farm, now = Date.now()) {
   const fishing = isRecord(source.fishing) ? source.fishing : null;
   const knownRecipeIds = Array.isArray(kitchen?.knownRecipes) ? kitchen.knownRecipes : null;
 
-  return {
-    data: {
+  const data = {
       farm: {
         farm_doorplate: typeof source.id === "string" ? source.id : "",
         farm_name: typeof source.name === "string" ? source.name : null,
@@ -509,7 +537,11 @@ export function projectHumanKitchen(farm, now = Date.now()) {
       dish_instances: projectRawArraySection(kitchen?.dishes, projectDishInstance),
       known_recipes: projectRawArraySection(knownRecipeIds, projectRecipe),
       daily_shop: projectDailyShop(kitchen, at),
-    },
+    };
+
+  return {
+    data,
+    shop_revision: kitchenShopRevisionFromData(data),
     server_time: new Date(at).toISOString(),
   };
 }

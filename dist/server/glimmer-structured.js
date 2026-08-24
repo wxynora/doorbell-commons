@@ -131,6 +131,7 @@ export function projectHumanGlimmer(farm, world, now = Date.now()) {
     },
   };
   return {
+    subject: { farm_doorplate: String(farm.id) },
     data,
     server_time: new Date(now).toISOString(),
   };

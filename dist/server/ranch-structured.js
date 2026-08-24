@@ -8,6 +8,8 @@ import {
   cropById,
   decorationById,
   expDecorById,
+  glimmerVariantById,
+  glimmerVariants,
   pets,
   petById,
 } from "../content.js";
@@ -17,6 +19,14 @@ import {
   RANCH_ANIMAL_MAX_LEVEL,
   RANCH_LEVEL_INCOME_STEP,
 } from "../config.js";
+import {
+  animalUpgradeCost,
+  ranchFeedAnimal,
+  ranchTakeOffAccessory,
+  ranchTogglePin,
+  ranchUpgradeAnimal,
+  ranchWearAccessory,
+} from "../engine.js";
 import { glimmerAnimalVariantMultiplier, glimmerBuffMultiplier } from "../glimmer.js";
 
 const FARM_DOORPLATE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/;
@@ -202,7 +212,261 @@ function projectDispatchForResident(kindId, raids, now) {
   };
 }
 
-function projectResident(type, raw, now, raids, pinned) {
+const RESIDENT_ACTION_NAMES = [
+  "feed",
+  "upgrade",
+  "rename",
+  "toggle_pin",
+  "wear_accessory",
+  "takeoff_accessory",
+  "set_variant",
+];
+
+function actionCost(currency = null, amount = null) {
+  return { currency, amount };
+}
+
+function allowedAction(enabled, cost, reason = null) {
+  return {
+    enabled,
+    cost,
+    reason: enabled ? null : safeText(reason) ?? "当前不可用",
+  };
+}
+
+function unavailableActions(reason) {
+  return Object.fromEntries(
+    RESIDENT_ACTION_NAMES.map((action) => [action, allowedAction(false, actionCost(), reason)]),
+  );
+}
+
+function cloneProbeResident(value) {
+  if (!isRecord(value)) return value;
+  const copy = { ...value };
+  if (Array.isArray(value.acc)) copy.acc = [...value.acc];
+  if (Array.isArray(value.glimmerVariants)) copy.glimmerVariants = [...value.glimmerVariants];
+  return copy;
+}
+
+function cloneProbeCollection(value) {
+  return Array.isArray(value) ? value.map(cloneProbeResident) : value;
+}
+
+/**
+ * Build the smallest throw-away farm shape consumed by the existing ranch
+ * authorities.  None of the probe's mutations can reach the read farm.
+ */
+function actionProbe(farm) {
+  const ranch = farm?.ranch;
+  if (!isRecord(ranch)) return null;
+  return {
+    silver: farm?.silver,
+    ranch: {
+      ...ranch,
+      animals: cloneProbeCollection(ranch.animals),
+      pets: cloneProbeCollection(ranch.pets),
+      patrolGoose: cloneProbeResident(ranch.patrolGoose),
+      raids: cloneProbeCollection(ranch.raids),
+      pinned: Array.isArray(ranch.pinned) ? [...ranch.pinned] : ranch.pinned,
+      wardrobe: Array.isArray(ranch.wardrobe) ? [...ranch.wardrobe] : ranch.wardrobe,
+      feedDaily: isRecord(ranch.feedDaily) ? { ...ranch.feedDaily } : ranch.feedDaily,
+    },
+  };
+}
+
+function probeAuthority(farm, run) {
+  const probe = actionProbe(farm);
+  if (!probe) return null;
+  try {
+    return run(probe);
+  } catch {
+    return null;
+  }
+}
+
+function probeFeedCost(farm, animalIndex, now) {
+  const probe = actionProbe(farm);
+  const animal = probe?.ranch?.animals?.[animalIndex];
+  if (!isRecord(animal)) return null;
+  // Remove only the action blockers in the throw-away probe so the existing
+  // authority computes the exact fee even when the real resident is capped,
+  // already boosted, has pending output, or lacks silver.
+  animal.pending = 0;
+  animal.pendingMeat = 0;
+  animal.feedBoostPending = false;
+  probe.ranch.raids = [];
+  probe.ranch.feedDaily = undefined;
+  probe.silver = Number.MAX_SAFE_INTEGER;
+  try {
+    const result = ranchFeedAnimal(probe, animalIndex, now);
+    return result?.ok && safeMoney(result.cost) !== null ? result.cost : null;
+  } catch {
+    return null;
+  }
+}
+
+function actionResidentTarget(type) {
+  return type === "patrol_goose" ? "goose" : type;
+}
+
+function residentLevelForAction(raw) {
+  const value = raw?.level === undefined ? 1 : raw.level;
+  return Number.isSafeInteger(value) && value >= 1 && value <= RANCH_ANIMAL_MAX_LEVEL ? value : null;
+}
+
+function projectFeedAction(farm, type, raw, kind, index, now, known) {
+  if (type !== "animal") {
+    return allowedAction(false, actionCost(), "投喂仅适用于生产动物");
+  }
+  if (!known || !isRecord(raw)) {
+    return allowedAction(false, actionCost(), "居民资料不可用");
+  }
+  const cost = probeFeedCost(farm, index, now);
+  const costShape = actionCost(cost === null ? null : "silver", cost);
+  if (cost === null) return allowedAction(false, costShape, "投喂费用不可用");
+  if (safeMoney(farm?.silver) === null) {
+    return allowedAction(false, costShape, "银币余额不可用");
+  }
+  const result = probeAuthority(farm, (probe) => ranchFeedAnimal(probe, index, now));
+  if (!result) return allowedAction(false, costShape, "牧场投喂状态不可用");
+  if (!result.ok) return allowedAction(false, costShape, result.error);
+  return allowedAction(
+    true,
+    actionCost("silver", safeMoney(result.cost) === null ? cost : result.cost),
+  );
+}
+
+function projectUpgradeAction(farm, type, raw, kind, index, known) {
+  if (type !== "animal") {
+    return allowedAction(false, actionCost(), "升级仅适用于生产动物");
+  }
+  if (!known || !isRecord(raw) || !kind) {
+    return allowedAction(false, actionCost(), "居民资料不可用");
+  }
+  const level = residentLevelForAction(raw);
+  if (level === null) return allowedAction(false, actionCost(), "动物等级不可用");
+  if (level >= RANCH_ANIMAL_MAX_LEVEL) {
+    return allowedAction(false, actionCost(), "动物已经达到最高等级");
+  }
+  const cost = animalUpgradeCost(kind, level);
+  const costShape = actionCost("ranch_coins", safeMoney(cost) === null ? null : cost);
+  if (safeMoney(cost) === null) return allowedAction(false, costShape, "升级费用不可用");
+  if (safeMoney(farm?.ranch?.coins) === null) {
+    return allowedAction(false, costShape, "牧场金币余额不可用");
+  }
+  const result = probeAuthority(farm, (probe) => ranchUpgradeAnimal(probe, index));
+  if (!result) return allowedAction(false, costShape, "牧场升级状态不可用");
+  if (!result.ok) return allowedAction(false, costShape, result.error);
+  return allowedAction(
+    true,
+    actionCost("ranch_coins", safeMoney(result.cost) === null ? cost : result.cost),
+  );
+}
+
+function projectRenameAction(known) {
+  return known
+    ? allowedAction(true, actionCost())
+    : allowedAction(false, actionCost(), "居民资料不可用");
+}
+
+function projectTogglePinAction(farm, type, kind, pinned, known) {
+  if (!known || !kind) return allowedAction(false, actionCost(), "居民资料不可用");
+  if (pinned !== undefined && !Array.isArray(pinned)) {
+    return allowedAction(false, actionCost(), "pin 状态不可用");
+  }
+  const result = probeAuthority(farm, (probe) => ranchTogglePin(probe, kind.id));
+  if (!result) return allowedAction(false, actionCost(), "牧场 pin 状态不可用");
+  return result.ok
+    ? allowedAction(true, actionCost())
+    : allowedAction(false, actionCost(), result.error);
+}
+
+function knownAccessoryIds(value) {
+  return Array.isArray(value)
+    ? [...new Set(value.filter((id) => typeof id === "string" && accessoryById.has(id)))]
+    : null;
+}
+
+function projectWearAccessoryAction(farm, type, raw, index, known) {
+  if (!known || !isRecord(raw)) return allowedAction(false, actionCost(), "居民资料不可用");
+  const wardrobe = knownAccessoryIds(farm?.ranch?.wardrobe);
+  if (wardrobe === null) return allowedAction(false, actionCost(), "配饰仓库不可用");
+  const worn = raw.acc === undefined ? [] : knownAccessoryIds(raw.acc);
+  if (worn === null) return allowedAction(false, actionCost(), "已穿戴配饰状态不可用");
+  const candidate = wardrobe.find((id) => !worn.includes(id));
+  if (!candidate) return allowedAction(false, actionCost(), "没有可穿戴的配饰");
+  const result = probeAuthority(farm, (probe) =>
+    ranchWearAccessory(probe, actionResidentTarget(type), index, candidate),
+  );
+  if (!result) return allowedAction(false, actionCost(), "牧场配饰状态不可用");
+  return result.ok
+    ? allowedAction(true, actionCost())
+    : allowedAction(false, actionCost(), result.error);
+}
+
+function projectTakeoffAccessoryAction(farm, type, raw, index, known) {
+  if (!known || !isRecord(raw)) return allowedAction(false, actionCost(), "居民资料不可用");
+  const worn = raw.acc === undefined ? [] : knownAccessoryIds(raw.acc);
+  if (worn === null) return allowedAction(false, actionCost(), "已穿戴配饰状态不可用");
+  const candidate = worn[0];
+  if (!candidate) return allowedAction(false, actionCost(), "这只居民没有已穿戴的配饰");
+  const result = probeAuthority(farm, (probe) =>
+    ranchTakeOffAccessory(probe, actionResidentTarget(type), index, candidate),
+  );
+  if (!result) return allowedAction(false, actionCost(), "牧场配饰状态不可用");
+  return result.ok
+    ? allowedAction(true, actionCost())
+    : allowedAction(false, actionCost(), result.error);
+}
+
+function variantTypeForResident(type) {
+  return type === "patrol_goose" ? "goose" : type;
+}
+
+function projectResidentVariants(farm, type, raw, kindId) {
+  const unlocked = new Set(
+    Array.isArray(farm?.glimmer?.unlocked)
+      ? farm.glimmer.unlocked.filter((id) => typeof id === "string" && glimmerVariantById.has(id))
+      : [],
+  );
+  const variantType = variantTypeForResident(type);
+  const unlockedVariantIds = glimmerVariants
+    .filter((variant) => variant.type === variantType && variant.kindId === kindId)
+    .filter((variant) => unlocked.has(variant.id))
+    .map((variant) => variant.id)
+    .filter((id) => safeId(id) !== null);
+  const availableVariantIds = ["base", ...unlockedVariantIds.filter((id) => id !== "base")];
+  const currentVariantId =
+    typeof raw?.variantId === "string" && unlockedVariantIds.includes(raw.variantId)
+      ? raw.variantId
+      : "base";
+  return {
+    current_variant_id: currentVariantId,
+    available_variant_ids: availableVariantIds,
+  };
+}
+
+function projectSetVariantAction(variants, known) {
+  if (!known) return allowedAction(false, actionCost(), "居民资料不可用");
+  return variants.available_variant_ids.length > 1
+    ? allowedAction(true, actionCost())
+    : allowedAction(false, actionCost(), "没有可切换的异色外观");
+}
+
+function projectResidentAllowedActions(farm, type, raw, kind, index, now, pinned, variants, known) {
+  if (!known) return unavailableActions("居民资料不可用");
+  return {
+    feed: projectFeedAction(farm, type, raw, kind, index, now, known),
+    upgrade: projectUpgradeAction(farm, type, raw, kind, index, known),
+    rename: projectRenameAction(known),
+    toggle_pin: projectTogglePinAction(farm, type, kind, pinned, known),
+    wear_accessory: projectWearAccessoryAction(farm, type, raw, index, known),
+    takeoff_accessory: projectTakeoffAccessoryAction(farm, type, raw, index, known),
+    set_variant: projectSetVariantAction(variants, known),
+  };
+}
+
+function projectResident(type, raw, now, raids, pinned, farm, index) {
   const kindId = type === "patrol_goose" ? RANCH_PATROL_GOOSE_ID : raw?.kindId;
   const kind = type === "animal" ? animalById.get(kindId) : type === "pet" ? petById.get(kindId) : { id: RANCH_PATROL_GOOSE_ID, name: RANCH_PATROL_GOOSE_NAME };
   const identity = projectIdentity(type, raw, kind);
@@ -216,6 +480,9 @@ function projectResident(type, raw, now, raids, pinned) {
   const pinnedState = known
     ? Array.isArray(pinned) ? pinned.includes(kind.id) : pinned === undefined ? false : null
     : null;
+  const variants = known
+    ? projectResidentVariants(farm, type, raw, kindId)
+    : { current_variant_id: null, available_variant_ids: [] };
   return {
     status: identity.status,
     identity: {
@@ -225,6 +492,8 @@ function projectResident(type, raw, now, raids, pinned) {
     level,
     pinned: pinnedState,
     accessories,
+    variants,
+    allowed_actions: projectResidentAllowedActions(farm, type, raw, kind, index, now, pinned, variants, known),
     produce,
     dispatch: dispatch
       ? { state: dispatch.state, raid_id: dispatch.raid_id }
@@ -411,13 +680,15 @@ export function projectHumanRanch(farm, now = Date.now()) {
   const raids = ranch?.raids;
   const pinned = ranch?.pinned;
   const animalResidents = animalsAvailable
-    ? ranch.animals.map((animal) => projectResident("animal", animal, now, Array.isArray(raids) ? raids : [], pinned))
+    ? ranch.animals.map((animal, index) =>
+      projectResident("animal", animal, now, Array.isArray(raids) ? raids : [], pinned, farm, index),
+    )
     : [];
   const petResidents = petsAvailable
-    ? ranch.pets.map((pet) => projectResident("pet", pet, now, [], pinned))
+    ? ranch.pets.map((pet, index) => projectResident("pet", pet, now, [], pinned, farm, index))
     : [];
   const patrolGoose = ranch && Object.prototype.hasOwnProperty.call(ranch, "patrolGoose") && ranch.patrolGoose !== null
-    ? projectResident("patrol_goose", ranch.patrolGoose, now, [], pinned)
+    ? projectResident("patrol_goose", ranch.patrolGoose, now, [], pinned, farm, null)
     : null;
   const dispatch = projectDispatch(raids, now);
   const collectableEntries = [];

@@ -91,7 +91,9 @@ test("structured catalog reads every scoped section without mutating farm state"
 
   assert.deepEqual(after, before);
   assert.deepEqual(allUgc(), worldBefore);
-  assert.deepEqual(ownKeys(result), ["data", "server_time"]);
+  assert.deepEqual(ownKeys(result), ["data", "revision", "server_time"]);
+  assert.match(result.revision, /^farm-catalog-v1:[0-9a-f]{64}$/);
+  assert.equal(projectHumanFarmCatalog(farm, NOW + 1_000).revision, result.revision);
   assert.deepEqual(ownKeys(result.data), [
     "backpack",
     "bulletin",

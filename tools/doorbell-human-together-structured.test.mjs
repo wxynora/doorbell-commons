@@ -73,7 +73,8 @@ test("Doorbell Human Together read uses the authoritative advance/save path and 
 
   const first = await request(baseUrl, body);
   assert.equal(first.response.status, 200);
-  assert.deepEqual(Object.keys(first.body).sort(), ["data", "server_time"]);
+  assert.deepEqual(Object.keys(first.body).sort(), ["data", "server_time", "subject"]);
+  assert.deepEqual(first.body.subject, { farm_doorplate: FARM_ID });
   assert.deepEqual(Object.keys(first.body.data).sort(), [
     "art_asset_key",
     "clues",
