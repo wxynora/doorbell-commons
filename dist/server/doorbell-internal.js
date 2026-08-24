@@ -6,6 +6,7 @@ import {
     DoorbellFarmCreationError,
     DoorbellWelcomeRewardError,
     findDoorbellFarmCreation,
+    getGlimmerWorld,
     grantDoorbellWelcomeReward,
     playerFarms,
     save,
@@ -20,6 +21,13 @@ import {
 } from "../config.js";
 import { PublicSyncError } from "../public-sync.js";
 import { jsonOut, readJsonBody } from "./http.js";
+import { projectHumanField } from "./human-structured.js";
+import { handleHumanHarvestAssist } from "./human-harvest-assist.js";
+import { projectHumanFarmCatalog } from "./farm-catalog-structured.js";
+import { projectHumanGlimmer } from "./glimmer-structured.js";
+import { projectHumanKitchen } from "./kitchen-structured.js";
+import { projectHumanRanch } from "./ranch-structured.js";
+import { readHumanTogether } from "./together-structured.js";
 
 const DOORBELL_SERVICE_TOKEN = process.env.AIFARM_DOORBELL_SERVICE_TOKEN ?? "";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -65,6 +73,10 @@ export function internalServiceError(res, status, code, message) {
     return jsonOut(res, status, { ok: false, error: { code, message } });
 }
 
+function humanFieldError(res, status, code, message) {
+    return jsonOut(res, status, { error: { code, message } });
+}
+
 function serviceTokenMatches(authorization) {
     const prefix = "Bearer ";
     if (!DOORBELL_SERVICE_TOKEN || typeof authorization !== "string" || !authorization.startsWith(prefix))
@@ -85,6 +97,22 @@ function requireDoorbellService(req, res, method) {
     }
     if (method !== "POST") {
         internalServiceError(res, 405, "method_not_allowed", "Use POST for this service endpoint");
+        return false;
+    }
+    return true;
+}
+
+function requireDoorbellHumanFieldService(req, res, method) {
+    if (!DOORBELL_SERVICE_TOKEN) {
+        humanFieldError(res, 503, "farm_unavailable", "Doorbell farm service is not configured");
+        return false;
+    }
+    if (!serviceTokenMatches(req.headers.authorization)) {
+        humanFieldError(res, 401, "authentication_required", "A valid Doorbell service credential is required");
+        return false;
+    }
+    if (method !== "POST") {
+        humanFieldError(res, 405, "invalid_request", "Use POST for this service endpoint");
         return false;
     }
     return true;
@@ -117,6 +145,206 @@ function doorbellFarmCreationReceipt(creationId, result) {
         farm_human_key: farm.humanKey,
         created_at: new Date(farm.createdAt).toISOString(),
     };
+}
+
+async function handleDoorbellHumanFieldRead(req, res, method) {
+    if (!requireDoorbellHumanFieldService(req, res, method))
+        return;
+    try {
+        const body = await readJsonBody(req, MAX_BODY_BYTES);
+        const keys = isPlainObject(body) ? Object.keys(body) : [];
+        if (!isPlainObject(body)
+            || keys.length !== 2
+            || !keys.includes("farm_human_key")
+            || !keys.includes("expected_farm_doorplate")
+            || typeof body.farm_human_key !== "string"
+            || !body.farm_human_key
+            || typeof body.expected_farm_doorplate !== "string"
+            || !FARM_DOORPLATE_RE.test(body.expected_farm_doorplate))
+            return humanFieldError(res, 400, "invalid_request", "Submit only farm_human_key and expected_farm_doorplate");
+        const binding = validateFarmBinding(body);
+        if (binding.error)
+            return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
+        return jsonOut(res, 200, projectHumanField(binding.farm, Date.now()));
+    }
+    catch (error) {
+        if (error instanceof PublicSyncError)
+            return humanFieldError(res, 400, "invalid_request", "The request body must be valid JSON");
+        console.error("[doorbell-human-field] field read failed");
+        return humanFieldError(res, 503, "farm_unavailable", "The farm field could not be read");
+    }
+}
+
+async function handleDoorbellHumanCatalogRead(req, res, method) {
+    if (!requireDoorbellHumanFieldService(req, res, method))
+        return;
+    try {
+        const body = await readJsonBody(req, MAX_BODY_BYTES);
+        const keys = isPlainObject(body) ? Object.keys(body) : [];
+        if (!isPlainObject(body)
+            || keys.length !== 2
+            || !keys.includes("farm_human_key")
+            || !keys.includes("expected_farm_doorplate")
+            || typeof body.farm_human_key !== "string"
+            || !body.farm_human_key
+            || typeof body.expected_farm_doorplate !== "string"
+            || !FARM_DOORPLATE_RE.test(body.expected_farm_doorplate))
+            return humanFieldError(res, 400, "invalid_request", "Submit only farm_human_key and expected_farm_doorplate");
+        const binding = validateFarmBinding(body);
+        if (binding.error)
+            return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
+        return jsonOut(res, 200, projectHumanFarmCatalog(binding.farm, Date.now()));
+    }
+    catch (error) {
+        if (error instanceof PublicSyncError)
+            return humanFieldError(res, 400, "invalid_request", "The request body must be valid JSON");
+        console.error("[doorbell-human-catalog] read failed");
+        return humanFieldError(res, 503, "farm_unavailable", "The farm catalog could not be read");
+    }
+}
+
+async function handleDoorbellHumanKitchenRead(req, res, method) {
+    if (!requireDoorbellHumanFieldService(req, res, method))
+        return;
+    try {
+        const body = await readJsonBody(req, MAX_BODY_BYTES);
+        const keys = isPlainObject(body) ? Object.keys(body) : [];
+        if (!isPlainObject(body)
+            || keys.length !== 2
+            || !keys.includes("farm_human_key")
+            || !keys.includes("expected_farm_doorplate")
+            || typeof body.farm_human_key !== "string"
+            || !body.farm_human_key
+            || typeof body.expected_farm_doorplate !== "string"
+            || !FARM_DOORPLATE_RE.test(body.expected_farm_doorplate))
+            return humanFieldError(res, 400, "invalid_request", "Submit only farm_human_key and expected_farm_doorplate");
+        const binding = validateFarmBinding(body);
+        if (binding.error)
+            return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
+        return jsonOut(res, 200, projectHumanKitchen(binding.farm, Date.now()));
+    }
+    catch (error) {
+        if (error instanceof PublicSyncError)
+            return humanFieldError(res, 400, "invalid_request", "The request body must be valid JSON");
+        console.error("[doorbell-human-kitchen] read failed");
+        return humanFieldError(res, 503, "farm_unavailable", "The farm kitchen could not be read");
+    }
+}
+
+async function handleDoorbellHumanRanchRead(req, res, method) {
+    if (!requireDoorbellHumanFieldService(req, res, method))
+        return;
+    try {
+        const body = await readJsonBody(req, MAX_BODY_BYTES);
+        const keys = isPlainObject(body) ? Object.keys(body) : [];
+        if (!isPlainObject(body)
+            || keys.length !== 2
+            || !keys.includes("farm_human_key")
+            || !keys.includes("expected_farm_doorplate")
+            || typeof body.farm_human_key !== "string"
+            || !body.farm_human_key
+            || typeof body.expected_farm_doorplate !== "string"
+            || !FARM_DOORPLATE_RE.test(body.expected_farm_doorplate))
+            return humanFieldError(res, 400, "invalid_request", "Submit only farm_human_key and expected_farm_doorplate");
+        const binding = validateFarmBinding(body);
+        if (binding.error)
+            return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
+        return jsonOut(res, 200, projectHumanRanch(binding.farm, Date.now()));
+    }
+    catch (error) {
+        if (error instanceof PublicSyncError)
+            return humanFieldError(res, 400, "invalid_request", "The request body must be valid JSON");
+        console.error("[doorbell-human-ranch] read failed");
+        return humanFieldError(res, 503, "farm_unavailable", "The ranch could not be read");
+    }
+}
+async function handleDoorbellHumanHarvestAssist(req, res, method) {
+    if (!requireDoorbellHumanFieldService(req, res, method)) return;
+    try {
+        const body = await readJsonBody(req, MAX_BODY_BYTES);
+        const keys = isPlainObject(body) ? Object.keys(body) : [];
+        const allowedKeys = ["farm_human_key", "expected_farm_doorplate", "idempotency_key", "expected_revision", "payload"];
+        if (!isPlainObject(body)
+            || keys.length !== allowedKeys.length
+            || !keys.every((key) => allowedKeys.includes(key))
+            || typeof body.farm_human_key !== "string"
+            || !body.farm_human_key.trim()
+            || typeof body.idempotency_key !== "string"
+            || !body.idempotency_key.trim()
+            || typeof body.expected_revision !== "string"
+            || !body.expected_revision.trim()
+            || !isPlainObject(body.payload)
+            || Object.keys(body.payload).length)
+            return humanFieldError(res, 400, "invalid_request", "Submit exactly the five harvest-assist fields");
+        const binding = validateFarmBinding(body);
+        if (binding.error)
+            return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
+        const out = handleHumanHarvestAssist(binding.farm, body);
+        return jsonOut(res, out.status, out.json);
+    }
+    catch (error) {
+        if (error instanceof PublicSyncError) {
+            const tooLarge = error.status === 413;
+            return humanFieldError(res, tooLarge ? 413 : 400, tooLarge ? "body_too_large" : "invalid_request", tooLarge ? "The request body is too large" : "The request body must be valid JSON");
+        }
+        return humanFieldError(res, 503, "farm_unavailable", "The harvest could not be completed");
+    }
+}
+
+async function handleDoorbellHumanGlimmerRead(req, res, method) {
+    if (!requireDoorbellHumanFieldService(req, res, method))
+        return;
+    try {
+        const body = await readJsonBody(req, MAX_BODY_BYTES);
+        const keys = isPlainObject(body) ? Object.keys(body) : [];
+        if (!isPlainObject(body)
+            || keys.length !== 2
+            || !keys.includes("farm_human_key")
+            || !keys.includes("expected_farm_doorplate")
+            || typeof body.farm_human_key !== "string"
+            || !body.farm_human_key
+            || typeof body.expected_farm_doorplate !== "string"
+            || !FARM_DOORPLATE_RE.test(body.expected_farm_doorplate))
+            return humanFieldError(res, 400, "invalid_request", "Submit only farm_human_key and expected_farm_doorplate");
+        const binding = validateFarmBinding(body);
+        if (binding.error)
+            return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
+        return jsonOut(res, 200, projectHumanGlimmer(binding.farm, getGlimmerWorld(), Date.now()));
+    }
+    catch (error) {
+        if (error instanceof PublicSyncError)
+            return humanFieldError(res, 400, "invalid_request", "The request body must be valid JSON");
+        console.error("[doorbell-human-glimmer] read failed");
+        return humanFieldError(res, 503, "farm_unavailable", "The Glimmer field could not be read");
+    }
+}
+
+async function handleDoorbellHumanTogetherRead(req, res, method) {
+    if (!requireDoorbellHumanFieldService(req, res, method))
+        return;
+    try {
+        const body = await readJsonBody(req, MAX_BODY_BYTES);
+        const keys = isPlainObject(body) ? Object.keys(body) : [];
+        if (!isPlainObject(body)
+            || keys.length !== 2
+            || !keys.includes("farm_human_key")
+            || !keys.includes("expected_farm_doorplate")
+            || typeof body.farm_human_key !== "string"
+            || !body.farm_human_key
+            || typeof body.expected_farm_doorplate !== "string"
+            || !FARM_DOORPLATE_RE.test(body.expected_farm_doorplate))
+            return humanFieldError(res, 400, "invalid_request", "Submit only farm_human_key and expected_farm_doorplate");
+        const binding = validateFarmBinding(body);
+        if (binding.error)
+            return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
+        return jsonOut(res, 200, readHumanTogether(binding.farm, Date.now()));
+    }
+    catch (error) {
+        if (error instanceof PublicSyncError)
+            return humanFieldError(res, 400, "invalid_request", "The request body must be valid JSON");
+        console.error("[doorbell-human-together] read failed");
+        return humanFieldError(res, 503, "farm_unavailable", "The Together story could not be read");
+    }
 }
 
 async function handleDoorbellFarmCreation(req, res, method) {
@@ -282,6 +510,31 @@ async function handleDoorbellWelcomeReward(req, res, method) {
 
 export function createDoorbellInternalHandler(executeFarmAction) {
     return async function handleDoorbellInternal(req, res, parts, method) {
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "catalog" && parts[4] === "read" && parts.length === 5) {
+            await handleDoorbellHumanCatalogRead(req, res, method);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "kitchen" && parts[4] === "read" && parts.length === 5) {
+            await handleDoorbellHumanKitchenRead(req, res, method);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "glimmer" && parts[4] === "read" && parts.length === 5) {
+            await handleDoorbellHumanGlimmerRead(req, res, method);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "together" && parts[4] === "read" && parts.length === 5) {
+            await handleDoorbellHumanTogetherRead(req, res, method);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "field" && parts[4] === "read" && parts.length === 5) {
+            await handleDoorbellHumanFieldRead(req, res, method);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "ranch" && parts[4] === "read" && parts.length === 5) {
+            await handleDoorbellHumanRanchRead(req, res, method);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "field" && parts[4] === "harvest-assist" && parts.length === 5) { await handleDoorbellHumanHarvestAssist(req, res, method); return true; }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "welcome-reward" && parts.length === 3) {
             await handleDoorbellWelcomeReward(req, res, method);
             return true;
