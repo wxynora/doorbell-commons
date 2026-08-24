@@ -1,9 +1,10 @@
-export const COMMUNITY_QQ_GROUP_ID = "515831305";
+/** Non-production fixture retained for existing tests; runtime uses deployment config. */
+export const COMMUNITY_QQ_GROUP_ID = "1";
 
 export interface QqGroupEligibilityConfig {
   oneBotApiBaseUrl: string;
   oneBotApiToken: string;
-  qqGroupId: typeof COMMUNITY_QQ_GROUP_ID;
+  qqGroupId: string;
 }
 
 export interface DoorbellServerConfig extends QqGroupEligibilityConfig {
@@ -51,14 +52,14 @@ export function readQqGroupEligibilityConfig(
     throw new Error("ONEBOT_API_BASE_URL must use http or https");
   }
 
-  if (qqGroupId !== COMMUNITY_QQ_GROUP_ID) {
-    throw new Error(`DOORBELL_QQ_GROUP_ID must be ${COMMUNITY_QQ_GROUP_ID}`);
+  if (!/^[1-9][0-9]*$/u.test(qqGroupId)) {
+    throw new Error("DOORBELL_QQ_GROUP_ID must be a positive decimal identifier");
   }
 
   return {
     oneBotApiBaseUrl: parsedBaseUrl.toString(),
     oneBotApiToken,
-    qqGroupId: COMMUNITY_QQ_GROUP_ID,
+    qqGroupId,
   };
 }
 
