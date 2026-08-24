@@ -646,8 +646,9 @@ test("field identity plaque adds only authority-backed field status", () => {
   assert.doesNotMatch(styles, /\.farm-field-plaque::before|\.farm-field-plaque::after/);
 });
 
-test("moving ranch residents open one honest read-only detail surface", () => {
+test("moving ranch residents keep preview read-only and use authority-backed live actions", () => {
   const source = readFarmSources();
+  const pageSource = readFileSync(new URL("./farm-page.tsx", import.meta.url), "utf8");
   const ranchSource = readFileSync(
     new URL("./scenes/ranch/ranch-scene.tsx", import.meta.url),
     "utf8",
@@ -666,11 +667,92 @@ test("moving ranch residents open one honest read-only detail surface", () => {
   );
   assert.match(residentDetailSource, /animal\.produce/);
   assert.match(residentDetailSource, /animal\.effectLabel/);
-  assert.doesNotMatch(residentDetailSource, /投喂|升级|购买|金币回传|抓捕|一键收取/);
+  assert.match(
+    residentDetailSource,
+    /view\.kind === "live" && allowedActions && onAction && ranch/,
+  );
+  assert.match(residentDetailSource, /renderActionButton\("feed", "投喂"\)/);
+  assert.match(residentDetailSource, /renderActionButton\("upgrade", "升级"\)/);
+  assert.match(residentDetailSource, /allowedActions\.rename\.enabled/);
+  assert.match(residentDetailSource, /allowedActions\.wear_accessory\.enabled/);
+  assert.match(residentDetailSource, /allowedActions\.takeoff_accessory\.enabled/);
+  assert.match(residentDetailSource, /allowedActions\.set_variant\.enabled/);
+  assert.match(residentDetailSource, /action\.cost\.currency === "silver" \? "银币" : "牧场金币"/);
+  assert.match(residentDetailSource, /title=\{action\.reason \?\? undefined\}/);
+  assert.match(residentDetailSource, /expectedRevision: ranch\.revision/);
+  assert.match(residentDetailSource, /idempotencyKey: crypto\.randomUUID\(\)/);
+  assert.match(residentDetailSource, /residentType: liveResident\.residentType/);
+  assert.match(residentDetailSource, /maxLength=\{12\}/);
+  assert.match(residentDetailSource, /itemId === "base" \? "原始外观"/);
+  assert.match(residentDetailSource, /result\.data\.data\.result\.outcome/);
+  assert.match(source, /function ranchResidentOutcomeMessage/);
+  assert.match(source, /outcome\.remaining_today/);
+  assert.match(source, /outcome\.cost_ranch_coins/);
+  assert.match(
+    residentDetailSource,
+    /shouldRetryRanchResidentAction\(result\.issue\) \? attempt : null/,
+  );
+  assert.match(pageSource, /executeBoundRanchResidentAction\(input\)/);
+  assert.match(
+    pageSource,
+    /ranch:\s*\{[\s\S]*stage: "ready"[\s\S]*data: result\.data\.data\.resource[\s\S]*revision: result\.data\.revision/,
+  );
+  assert.match(
+    pageSource,
+    /onRanchResidentAction=\{previewData \? undefined : submitRanchResidentAction\}/,
+  );
+  assert.match(
+    pageSource,
+    /result\.data\.data\.result\.outcome\.kind === "feed"[\s\S]*requireResource\("kitchen", true\)/,
+  );
+  assert.doesNotMatch(residentDetailSource, /购买|金币回传|抓捕|一键收取/);
   assert.match(
     styles,
     /\.ranch-resident-detail\s*\{[^}]*position:\s*absolute[^}]*z-index:\s*90[^}]*place-items:\s*center/,
   );
+  assert.match(styles, /\.ranch-resident-detail__action-grid\s*\{[^}]*repeat\(3,/);
+  assert.match(
+    styles,
+    /\.ranch-resident-detail__action-row\s*\{[^}]*grid-template-columns:\s*11cqw minmax\(0, 1fr\) 15cqw/,
+  );
+});
+
+test("ranch collection stays a compact scene action and renders authority receipts", () => {
+  const source = readFarmSources();
+  const pageSource = readFileSync(new URL("./farm-page.tsx", import.meta.url), "utf8");
+  const styles = readFarmStyles();
+  const collectionSource =
+    source.match(
+      /function RanchCollectionControl[\s\S]*?(?=function getLiveCookingIngredientOptions)/,
+    )?.[0] ?? "";
+
+  assert.match(collectionSource, /className="farm-ranch-collect"/);
+  assert.match(collectionSource, /`一键收取 ×\$\{count\}`/);
+  assert.match(collectionSource, /result\.items\.map/);
+  assert.match(collectionSource, /destinationLabel\[item\.destination\]/);
+  assert.match(collectionSource, /重试同一次收取/);
+  assert.match(pageSource, /expectedRevision: ranch\.revision/);
+  assert.match(pageSource, /idempotencyKey: crypto\.randomUUID\(\)/);
+  assert.match(pageSource, /shouldRetryRanchCollection\(result\.issue\) \? attempt : null/);
+  assert.match(pageSource, /submitRanchCollection\(ranchCollectionAction\.attempt\)/);
+  assert.match(
+    pageSource,
+    /try\s*\{[\s\S]*await onRanchCollection\(attempt\)[\s\S]*code: "unexpected_response"/,
+  );
+  assert.match(pageSource, /collectBoundRanch\(input\)/);
+  assert.match(
+    pageSource,
+    /ranch:[\s\S]*data: result\.data\.data\.resource[\s\S]*revision: result\.data\.revision/,
+  );
+  assert.match(
+    pageSource,
+    /onRanchCollection=\{previewData \? undefined : submitRanchCollectionAction\}/,
+  );
+  assert.match(
+    styles,
+    /\.farm-ranch-collect\s*\{[^}]*top:[^}]*width:\s*calc\(var\(--farm-control-size\)[^}]*min-width:\s*calc\(var\(--farm-control-size\)[^}]*height:\s*calc\(var\(--farm-control-size\)/,
+  );
+  assert.doesNotMatch(styles, /\.farm-ranch-collect\s*\{[^}]*bottom:/);
 });
 
 test("paid cooking tools stay out of the scene until owned and live in the shop", () => {
@@ -1488,11 +1570,14 @@ test("all field, ranch and cooking tools use confirmed sections while settings s
   assert.match(source, /function FarmFeaturePanelContent/);
   assert.match(
     settingsPanelSource,
-    /<legend>农场名和称呼<\/legend>[\s\S]*<span>农场名<\/span>[\s\S]*name="farm-name"[\s\S]*<span>小机昵称<\/span>[\s\S]*name="ai-nickname"[\s\S]*<span>你的昵称<\/span>[\s\S]*name="human-nickname"[\s\S]*<span>欢迎语<\/span>[\s\S]*name="welcome-message"[\s\S]*<span>佩戴称号<\/span>[\s\S]*name="active-title"[\s\S]*<legend>社交开关<\/legend>/,
+    /<legend>农场名和称呼<\/legend>[\s\S]*<label htmlFor="farm-name">农场名<\/label>[\s\S]*name="farm-name"[\s\S]*<span>小机昵称<\/span>[\s\S]*name="ai-nickname"[\s\S]*<span>你的昵称<\/span>[\s\S]*name="human-nickname"[\s\S]*<label htmlFor="welcome-message">欢迎语<\/label>[\s\S]*name="welcome-message"[\s\S]*<label htmlFor="active-title">佩戴称号<\/label>[\s\S]*name="active-title"[\s\S]*<legend>社交开关<\/legend>/,
   );
   assert.match(settingsPanelSource, /name="farm-name"[\s\S]*type="text"/);
+  assert.match(settingsPanelSource, /maxLength=\{12\}[\s\S]*name="farm-name"/);
   assert.match(settingsPanelSource, /name="welcome-message"[\s\S]*rows=\{2\}/);
+  assert.match(settingsPanelSource, /maxLength=\{60\}[\s\S]*name="welcome-message"/);
   assert.match(settingsPanelSource, /name="active-title"[\s\S]*<option value="" \/>/);
+  assert.match(settingsPanelSource, /<option key=\{title\.id\} value=\{title\.id\}>/);
   assert.doesNotMatch(settingsFormSource, /placeholder="—"|<option value="">—<\/option>/);
   assert.match(settingsPanelSource, /name="ai-nickname"[\s\S]*type="text"/);
   assert.match(settingsPanelSource, /name="human-nickname"[\s\S]*type="text"/);
@@ -1521,19 +1606,32 @@ test("all field, ranch and cooking tools use confirmed sections while settings s
   );
   assert.match(styles, /\.farm-settings__switch:focus-visible \.farm-settings__switch-track\s*\{/);
   assert.doesNotMatch(settingsPanelSource, /addressing|socialEnabled/);
-  assert.match(settingsPanelSource, /disabled=\{!editable\}/);
-  assert.doesNotMatch(settingsPanelSource, /保存|已保存|fetch\(|localStorage|sessionStorage/);
+  assert.match(settingsPanelSource, /disabled=\{!previewEditable\}/);
+  assert.match(settingsPanelSource, /保存/);
+  assert.doesNotMatch(settingsPanelSource, /fetch\(|localStorage|sessionStorage/);
   assert.match(source, /FARM_FEATURE_PANELS\[activeScene\]\[tool\.id\]/);
   assert.match(
     source,
-    /tool\.id === "settings" \? \([\s\S]*<FarmSettingsPanelContent[\s\S]*draft=\{displaySettingsDraft\}[\s\S]*editable=\{preview\}[\s\S]*onChange=\{onChangeSettingsDraft\}/,
+    /tool\.id === "settings" \? \([\s\S]*<FarmSettingsPanelContent[\s\S]*catalogRevision=\{farmCatalog\?\.revision\}[\s\S]*draft=\{settingsDraft\}[\s\S]*editable=\{preview \|\| Boolean\(onFarmSettingsAction\)\}[\s\S]*onSave=\{onFarmSettingsAction\}/,
   );
   assert.match(
     source,
-    /useState<FarmSettingsDraft>\(\(\) => \(\{[\s\S]*activeTitle: field\.farm\.equipped_title\?\.name \?\? "",[\s\S]*aiNickname: "",[\s\S]*farmName: field\.farm\.farm_name,[\s\S]*humanNickname: "",[\s\S]*messagesAllowed: null,[\s\S]*theftAllowed: null,[\s\S]*visitsAllowed: null,[\s\S]*wateringHelpAllowed: null,[\s\S]*welcomeMessage: field\.farm\.welcome_message \?\? ""/,
+    /useState<FarmSettingsDraft>\(\(\) => \(\{[\s\S]*activeTitle: field\.farm\.equipped_title\?\.title_id \?\? "",[\s\S]*aiNickname: "",[\s\S]*farmName: field\.farm\.farm_name,[\s\S]*humanNickname: "",[\s\S]*messagesAllowed: null,[\s\S]*theftAllowed: null,[\s\S]*visitsAllowed: null,[\s\S]*wateringHelpAllowed: null,[\s\S]*welcomeMessage: field\.farm\.welcome_message \?\? ""/,
   );
   assert.match(source, /onChangeSettingsDraft=\{setSettingsDraft\}/);
+  assert.match(source, /onFarmSettingsAction=\{onFarmSettingsAction\}/);
   assert.match(source, /settingsDraft=\{settingsDraft\}/);
+  assert.match(settingsPanelSource, /expectedCatalogRevision: catalogRevision/);
+  assert.match(settingsPanelSource, /idempotencyKey: crypto\.randomUUID\(\)/);
+  assert.match(
+    settingsPanelSource,
+    /shouldRetryFarmSettingsAction\(result\.issue\) \? attempt : null/,
+  );
+  assert.match(source, /executeBoundFarmSettingsAction\(input\)/);
+  assert.match(
+    source,
+    /farmCatalog:\s*\{[\s\S]*data: result\.data\.data\.resource,[\s\S]*revision: result\.data\.revision,[\s\S]*server_time: result\.data\.server_time/,
+  );
   assert.match(source, /featureDefinition \? \(/);
   assert.match(source, /activeTab \? `\$\{activeTab\}暂无内容` : definition\.emptyLabel/);
   assert.match(source, /activeTab \? <span>\{definition\.emptyLabel\}<\/span> : null/);
@@ -1931,6 +2029,10 @@ test("temporary farm tool editor keeps icon and text as separately adjustable la
   const source = readFarmSources();
   const styles = readFarmStyles();
 
+  assert.match(
+    source,
+    /return import\.meta\.env\.DEV && isFarmToolEditorEnabled\(\) \? \([\s\S]*<FarmToolEditor/,
+  );
   assert.match(source, /get\("editor"\) === "farm-tools"/);
   assert.match(source, /FARM_TOOL_EDITOR_CANVAS_SIZE = 192/);
   assert.match(source, /FARM_TOOL_EDITOR_HASH_PREFIX = "#farmTools="/);

@@ -11,9 +11,13 @@ import { FarmCreationClient } from "./farm-creation-client.js";
 import { FarmDirectoryClient } from "./farm-directory-client.js";
 import { FarmHumanClient } from "./farm-human-client.js";
 import { FarmHumanKitchenClient } from "./farm-kitchen-client.js";
+import { FarmHumanKitchenPurchaseClient } from "./farm-kitchen-purchase-client.js";
 import { FarmLingyeClient } from "./farm-lingye-client.js";
+import { FarmHumanRanchResidentActionClient } from "./farm-ranch-action-client.js";
 import { FarmHumanRanchClient } from "./farm-ranch-client.js";
+import { FarmHumanRanchCollectionClient } from "./farm-ranch-collection-client.js";
 import { FarmRewardClient } from "./farm-reward-client.js";
+import { FarmHumanFarmSettingsActionClient } from "./farm-settings-action-client.js";
 import { HomeWeatherEngine } from "./home-weather-engine.js";
 import { LingyeDailyService } from "./lingye-daily-service.js";
 import { MailboxService } from "./mailbox-service.js";
@@ -78,7 +82,27 @@ const farmKitchenReader = new FarmHumanKitchenClient({
   requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
   serviceToken: serverConfig.farmServiceToken,
 });
+const farmKitchenPurchaser = new FarmHumanKitchenPurchaseClient({
+  apiBaseUrl: serverConfig.farmApiBaseUrl,
+  requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+  serviceToken: serverConfig.farmServiceToken,
+});
 const farmRanchReader = new FarmHumanRanchClient({
+  apiBaseUrl: serverConfig.farmApiBaseUrl,
+  requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+  serviceToken: serverConfig.farmServiceToken,
+});
+const farmRanchResidentActioner = new FarmHumanRanchResidentActionClient({
+  apiBaseUrl: serverConfig.farmApiBaseUrl,
+  requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+  serviceToken: serverConfig.farmServiceToken,
+});
+const farmRanchCollector = new FarmHumanRanchCollectionClient({
+  apiBaseUrl: serverConfig.farmApiBaseUrl,
+  requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+  serviceToken: serverConfig.farmServiceToken,
+});
+const farmSettingsActioner = new FarmHumanFarmSettingsActionClient({
   apiBaseUrl: serverConfig.farmApiBaseUrl,
   requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
   serviceToken: serverConfig.farmServiceToken,
@@ -96,8 +120,12 @@ const registrationAuth = new RegistrationAuthService({
   farmCatalogReader,
   farmHumanReader,
   farmKitchenReader,
+  farmKitchenPurchaser,
   farmLingyeReader,
   farmRanchReader,
+  farmRanchResidentActioner,
+  farmRanchCollector,
+  farmSettingsActioner,
   groupMembership,
   groupId: serverConfig.qqGroupId,
   farmHumanUiBaseUrl: serverConfig.farmHumanUiBaseUrl,

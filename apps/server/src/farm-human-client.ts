@@ -154,18 +154,18 @@ export class FarmHumanClient implements FarmHumanFieldReader {
       throw new FarmHumanFieldUnavailableError();
     }
 
+    if (response.status === 502) {
+      throw new FarmHumanFieldContractUnavailableError();
+    }
+    if (response.status >= 500) {
+      throw new FarmHumanFieldUnavailableError();
+    }
+
     let body: unknown;
     try {
       body = await response.json();
     } catch {
-      if (response.status >= 500) {
-        throw new FarmHumanFieldUnavailableError();
-      }
       throw new FarmHumanFieldContractUnavailableError();
-    }
-
-    if (response.status >= 500) {
-      throw new FarmHumanFieldUnavailableError();
     }
 
     if (response.ok) {

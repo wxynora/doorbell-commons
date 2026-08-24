@@ -439,6 +439,7 @@ export const farmHumanCatalogReadRequestSchema = z
 export const farmHumanCatalogReadSuccessSchema = z
   .object({
     data: farmCatalogDataSchema,
+    revision: z.string().min(1),
     server_time: z.iso.datetime(),
   })
   .strict();

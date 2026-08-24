@@ -1,5 +1,12 @@
 import { type CSSProperties, lazy, Suspense, useState } from "react";
+import type { ApiResult } from "../../auth/auth-client";
 import type { BoundFarmCatalogRead } from "../../auth/farm-catalog-client";
+import {
+  type BoundFarmSettingsAction,
+  type FarmSettingsActionInput,
+  type FarmSettingsActionIssue,
+  farmSettingsActionIssueMessage,
+} from "../../auth/farm-settings-action-client";
 import type { BoundKitchenRead } from "../../auth/kitchen-client";
 import type { BoundRanchRead } from "../../auth/ranch-client";
 import {
@@ -50,6 +57,10 @@ export interface FarmSettingsDraft {
   welcomeMessage: string;
 }
 
+export type FarmSettingsActionExecutor = (
+  input: FarmSettingsActionInput,
+) => Promise<ApiResult<BoundFarmSettingsAction, FarmSettingsActionIssue>>;
+
 export interface OriginalPlantDraft {
   description: string;
   harvestText: string;
@@ -80,6 +91,7 @@ export interface FarmToolPanelProps {
   onChangeCartQuantity: (cartKey: string, delta: number, maxQuantity?: number) => void;
   onChangeOriginalPlantDraft: (draft: OriginalPlantDraft) => void;
   onChangeSettingsDraft: (draft: FarmSettingsDraft) => void;
+  onFarmSettingsAction?: FarmSettingsActionExecutor | undefined;
   originalPlantDraft: OriginalPlantDraft;
   preview: boolean;
   selectedCookingIngredientIds: readonly string[];
@@ -918,39 +930,154 @@ function SmeltingPanelContent({
   );
 }
 
+interface FarmSettingsActionAttempt {
+  input: FarmSettingsActionInput;
+  label: string;
+}
+
+type FarmSettingsActionState =
+  | { stage: "idle" }
+  | { stage: "submitting"; attempt: FarmSettingsActionAttempt }
+  | { stage: "success"; message: string }
+  | {
+      stage: "error";
+      attempt: FarmSettingsActionAttempt | null;
+      issue: FarmSettingsActionIssue;
+    };
+
+function shouldRetryFarmSettingsAction(issue: FarmSettingsActionIssue): boolean {
+  return (
+    issue.code === "network_unavailable" ||
+    issue.code === "farm_unavailable" ||
+    issue.code === "upstream_contract_unavailable" ||
+    issue.code === "unexpected_response"
+  );
+}
+
 function FarmSettingsPanelContent({
   availableTitles = [],
+  baseline,
+  catalogRevision,
   draft,
   editable,
   onChange,
+  onSave,
 }: {
   availableTitles?: readonly { id: string; name: string }[];
+  baseline?: FarmSettingsDraft | undefined;
+  catalogRevision?: string | undefined;
   draft: FarmSettingsDraft;
   editable: boolean;
   onChange: (draft: FarmSettingsDraft) => void;
+  onSave?: FarmSettingsActionExecutor | undefined;
 }) {
+  const [actionState, setActionState] = useState<FarmSettingsActionState>({ stage: "idle" });
+  const busy = actionState.stage === "submitting";
+  const liveEditable = editable && Boolean(onSave && catalogRevision);
+  const previewEditable = editable && !onSave;
+
+  const submitSetting = async (
+    field: FarmSettingsActionInput["field"],
+    value: FarmSettingsActionInput["value"],
+    label: string,
+    retryAttempt?: FarmSettingsActionAttempt,
+  ) => {
+    if (!onSave || !catalogRevision) return;
+    const attempt =
+      retryAttempt ??
+      ({
+        input: {
+          expectedCatalogRevision: catalogRevision,
+          field,
+          idempotencyKey: crypto.randomUUID(),
+          value,
+        },
+        label,
+      } satisfies FarmSettingsActionAttempt);
+    setActionState({ stage: "submitting", attempt });
+    const result = await onSave(attempt.input);
+    if (result.ok) {
+      const settings = result.data.data.resource.settings;
+      if (settings.status === "available") onChange(farmSettingsDraftFromCatalog(settings));
+      setActionState({ stage: "success", message: `${label}已保存` });
+      return;
+    }
+    setActionState({
+      stage: "error",
+      attempt: shouldRetryFarmSettingsAction(result.issue) ? attempt : null,
+      issue: result.issue,
+    });
+  };
+
   return (
     <form
       aria-label="设置内容"
       className="farm-settings"
       onSubmit={(event) => event.preventDefault()}
     >
+      {actionState.stage === "success" ? (
+        <p className="farm-settings__status" role="status">
+          {actionState.message}
+        </p>
+      ) : actionState.stage === "error" ? (
+        <p className="farm-settings__status farm-settings__status--error" role="alert">
+          <span>{farmSettingsActionIssueMessage(actionState.issue)}</span>
+          {actionState.attempt ? (
+            <button
+              disabled={busy}
+              onClick={() => {
+                const attempt = actionState.attempt;
+                if (attempt) {
+                  void submitSetting(
+                    attempt.input.field,
+                    attempt.input.value,
+                    attempt.label,
+                    attempt,
+                  );
+                }
+              }}
+              type="button"
+            >
+              重试
+            </button>
+          ) : null}
+        </p>
+      ) : null}
       <fieldset className="farm-settings__group">
         <legend>农场名和称呼</legend>
-        <label className="farm-settings__item">
-          <span>农场名</span>
-          <input
-            disabled={!editable}
-            name="farm-name"
-            onChange={(event) => onChange({ ...draft, farmName: event.currentTarget.value })}
-            type="text"
-            value={draft.farmName}
-          />
-        </label>
+        <div className="farm-settings__item">
+          <label htmlFor="farm-name">农场名</label>
+          <div className="farm-settings__control">
+            <input
+              disabled={!editable || busy}
+              id="farm-name"
+              maxLength={12}
+              name="farm-name"
+              onChange={(event) => onChange({ ...draft, farmName: event.currentTarget.value })}
+              type="text"
+              value={draft.farmName}
+            />
+            {onSave ? (
+              <button
+                className="farm-settings__save"
+                disabled={
+                  !liveEditable ||
+                  busy ||
+                  !draft.farmName.trim() ||
+                  draft.farmName === baseline?.farmName
+                }
+                onClick={() => void submitSetting("farm_name", draft.farmName, "农场名")}
+                type="button"
+              >
+                保存
+              </button>
+            ) : null}
+          </div>
+        </div>
         <label className="farm-settings__item">
           <span>小机昵称</span>
           <input
-            disabled={!editable}
+            disabled={!previewEditable}
             name="ai-nickname"
             onChange={(event) => onChange({ ...draft, aiNickname: event.currentTarget.value })}
             type="text"
@@ -960,7 +1087,7 @@ function FarmSettingsPanelContent({
         <label className="farm-settings__item">
           <span>你的昵称</span>
           <input
-            disabled={!editable}
+            disabled={!previewEditable}
             name="human-nickname"
             onChange={(event) => onChange({ ...draft, humanNickname: event.currentTarget.value })}
             type="text"
@@ -968,36 +1095,70 @@ function FarmSettingsPanelContent({
           />
         </label>
       </fieldset>
-      <label className="farm-settings__item farm-settings__item--welcome">
-        <span>欢迎语</span>
-        <textarea
-          disabled={!editable}
-          name="welcome-message"
-          onChange={(event) => onChange({ ...draft, welcomeMessage: event.currentTarget.value })}
-          rows={2}
-          value={draft.welcomeMessage}
-        />
-      </label>
-      <label className="farm-settings__item">
-        <span>佩戴称号</span>
-        <select
-          disabled={!editable}
-          name="active-title"
-          onChange={(event) => onChange({ ...draft, activeTitle: event.currentTarget.value })}
-          value={draft.activeTitle}
-        >
-          <option value="" />
-          {availableTitles.map((title) => (
-            <option key={title.id} value={title.name}>
-              {title.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className="farm-settings__item farm-settings__item--welcome">
+        <label htmlFor="welcome-message">欢迎语</label>
+        <div className="farm-settings__control">
+          <textarea
+            disabled={!editable || busy}
+            id="welcome-message"
+            maxLength={60}
+            name="welcome-message"
+            onChange={(event) => onChange({ ...draft, welcomeMessage: event.currentTarget.value })}
+            rows={2}
+            value={draft.welcomeMessage}
+          />
+          {onSave ? (
+            <button
+              className="farm-settings__save"
+              disabled={
+                !liveEditable ||
+                busy ||
+                !draft.welcomeMessage.trim() ||
+                draft.welcomeMessage === baseline?.welcomeMessage
+              }
+              onClick={() => void submitSetting("welcome_message", draft.welcomeMessage, "欢迎语")}
+              type="button"
+            >
+              保存
+            </button>
+          ) : null}
+        </div>
+      </div>
+      <div className="farm-settings__item">
+        <label htmlFor="active-title">佩戴称号</label>
+        <div className="farm-settings__control">
+          <select
+            disabled={!editable || busy}
+            id="active-title"
+            name="active-title"
+            onChange={(event) => onChange({ ...draft, activeTitle: event.currentTarget.value })}
+            value={draft.activeTitle}
+          >
+            <option value="" />
+            {availableTitles.map((title) => (
+              <option key={title.id} value={title.id}>
+                {title.name}
+              </option>
+            ))}
+          </select>
+          {onSave ? (
+            <button
+              className="farm-settings__save"
+              disabled={!liveEditable || busy || draft.activeTitle === baseline?.activeTitle}
+              onClick={() =>
+                void submitSetting("equip_title", draft.activeTitle || null, "佩戴称号")
+              }
+              type="button"
+            >
+              保存
+            </button>
+          ) : null}
+        </div>
+      </div>
       <fieldset className="farm-settings__group">
         <legend>社交开关</legend>
         <FarmSettingsSwitch
-          editable={editable}
+          editable={previewEditable}
           label="来访"
           offLabel="谢绝来访"
           onChange={(visitsAllowed) => onChange({ ...draft, visitsAllowed })}
@@ -1005,19 +1166,19 @@ function FarmSettingsPanelContent({
           value={draft.visitsAllowed}
         />
         <FarmSettingsSwitch
-          editable={editable}
+          editable={previewEditable}
           label="偷菜"
           onChange={(theftAllowed) => onChange({ ...draft, theftAllowed })}
           value={draft.theftAllowed}
         />
         <FarmSettingsSwitch
-          editable={editable}
+          editable={previewEditable}
           label="帮浇水"
           onChange={(wateringHelpAllowed) => onChange({ ...draft, wateringHelpAllowed })}
           value={draft.wateringHelpAllowed}
         />
         <FarmSettingsSwitch
-          editable={editable}
+          editable={previewEditable}
           label="留言"
           onChange={(messagesAllowed) => onChange({ ...draft, messagesAllowed })}
           value={draft.messagesAllowed}
@@ -1032,7 +1193,7 @@ function farmSettingsDraftFromCatalog(
 ): FarmSettingsDraft {
   return {
     activeTitle:
-      settings.equipped_title?.identity_state === "known" ? settings.equipped_title.name : "",
+      settings.equipped_title?.identity_state === "known" ? settings.equipped_title.title_id : "",
     aiNickname: settings.ai_name ?? "",
     farmName: settings.farm_name,
     humanNickname: settings.human_name ?? "",
@@ -1380,6 +1541,7 @@ export function FarmToolPanel({
   onChangeCartQuantity,
   onChangeOriginalPlantDraft,
   onChangeSettingsDraft,
+  onFarmSettingsAction,
   originalPlantDraft,
   preview,
   selectedCookingIngredientIds,
@@ -1393,9 +1555,9 @@ export function FarmToolPanel({
     !preview && farmCatalog?.data.settings.status === "available"
       ? farmCatalog.data.settings
       : null;
-  const displaySettingsDraft = liveSettings
+  const baselineSettingsDraft = liveSettings
     ? farmSettingsDraftFromCatalog(liveSettings)
-    : settingsDraft;
+    : undefined;
   const availableTitles = liveSettings
     ? liveSettings.unlocked_titles
         .filter((title) => title.identity_state === "known")
@@ -1467,9 +1629,12 @@ export function FarmToolPanel({
         ) : (
           <FarmSettingsPanelContent
             availableTitles={availableTitles}
-            draft={displaySettingsDraft}
-            editable={preview}
+            baseline={baselineSettingsDraft}
+            catalogRevision={farmCatalog?.revision}
+            draft={settingsDraft}
+            editable={preview || Boolean(onFarmSettingsAction)}
             onChange={onChangeSettingsDraft}
+            onSave={onFarmSettingsAction}
           />
         )
       ) : featureDefinition ? (

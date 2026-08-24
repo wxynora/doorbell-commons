@@ -13,6 +13,7 @@ const FARM_HUMAN_KEY = "private-farm-human-key";
 const INPUT = { farmDoorplate: FARM_DOORPLATE, farmHumanKey: FARM_HUMAN_KEY };
 
 const GLIMMER_RESULT = {
+  subject: { farm_doorplate: FARM_DOORPLATE },
   data: {
     open: true,
     status: "流光原野开放中",
@@ -62,6 +63,7 @@ const GLIMMER_RESULT = {
 };
 
 const TOGETHER_RESULT = {
+  subject: { farm_doorplate: FARM_DOORPLATE },
   data: {
     story_id: "river_from_tomorrow",
     title: "河从明天流来",
@@ -186,6 +188,21 @@ test("farm Lingye client rejects malformed or unsafe structured payloads", async
   );
   await assert.rejects(
     readInvalid({ ...TOGETHER_RESULT, unexpected: true }),
+    FarmLingyeContractUnavailableError,
+  );
+});
+
+test("farm Lingye client rejects a success response for another farm", async () => {
+  await assert.rejects(
+    createClient(async () =>
+      Response.json({ ...GLIMMER_RESULT, subject: { farm_doorplate: "OTHER1" } }),
+    ).readGlimmer(INPUT),
+    FarmLingyeContractUnavailableError,
+  );
+  await assert.rejects(
+    createClient(async () =>
+      Response.json({ ...TOGETHER_RESULT, subject: { farm_doorplate: "OTHER1" } }),
+    ).readTogether(INPUT),
     FarmLingyeContractUnavailableError,
   );
 });

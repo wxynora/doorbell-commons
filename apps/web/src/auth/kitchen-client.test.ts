@@ -38,6 +38,7 @@ const KITCHEN_RESULT = {
       reason: "not_initialized",
     },
   },
+  shop_revision: `kitchen-v1:${"a".repeat(64)}`,
   server_time: "2026-08-24T04:00:00.000Z",
 };
 

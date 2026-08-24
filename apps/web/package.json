@@ -6,11 +6,19 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit -p tsconfig.json && vite build",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "npm run test:source && npm run test:interaction",
+    "test:source": "node scripts/run-source-tests.mjs",
+    "test:interaction": "vitest run --environment jsdom src/farm/farm-page.interaction.test.tsx"
   },
   "dependencies": {
     "@doorbell/protocol": "*",
     "react": "19.2.8",
     "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.2",
+    "jsdom": "^29.1.1",
+    "vitest": "^4.1.11"
   }
 }

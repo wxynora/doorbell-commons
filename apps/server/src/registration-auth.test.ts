@@ -11,12 +11,20 @@ import {
   boundFarmFieldSuccessSchema,
   boundFarmHarvestAssistErrorSchema,
   boundFarmHarvestAssistSuccessSchema,
+  boundFarmKitchenPurchaseErrorSchema,
+  boundFarmKitchenPurchaseSuccessSchema,
   boundFarmKitchenReadErrorSchema,
   boundFarmKitchenReadSuccessSchema,
   boundFarmOverviewErrorSchema,
   boundFarmOverviewSuccessSchema,
+  boundFarmRanchCollectionErrorSchema,
+  boundFarmRanchCollectionSuccessSchema,
   boundFarmRanchErrorSchema,
+  boundFarmRanchResidentActionErrorSchema,
+  boundFarmRanchResidentActionSuccessSchema,
   boundFarmRanchSuccessSchema,
+  boundFarmSettingsActionErrorSchema,
+  boundFarmSettingsActionSuccessSchema,
   boundGlimmerReadErrorSchema,
   boundGlimmerReadSuccessSchema,
   boundTogetherReadErrorSchema,
@@ -24,11 +32,15 @@ import {
   createdFarmHumanSessionSuccessSchema,
   currentHumanSessionSuccessSchema,
   type FarmHumanCatalogReadSuccess,
+  type FarmHumanFarmSettingsActionSuccess,
   type FarmHumanFieldHarvestAssistSuccess,
   type FarmHumanFieldReadSuccess,
   type FarmHumanGlimmerReadSuccess,
+  type FarmHumanKitchenPurchaseSuccess,
   type FarmHumanKitchenReadSuccess,
+  type FarmHumanRanchCollectionSuccess,
   type FarmHumanRanchReadSuccess,
+  type FarmHumanRanchResidentActionSuccess,
   type FarmHumanTogetherReadSuccess,
   farmHumanUiErrorSchema,
   humanAuthenticationErrorSchema,
@@ -82,6 +94,19 @@ import {
   FarmHumanKitchenUnavailableError,
 } from "./farm-kitchen-client.js";
 import {
+  FarmHumanKitchenPurchaseContractUnavailableError,
+  FarmHumanKitchenPurchaseCredentialInvalidError,
+  FarmHumanKitchenPurchaseIdempotencyConflictError,
+  type FarmHumanKitchenPurchaseInput,
+  FarmHumanKitchenPurchaseNotFoundError,
+  FarmHumanKitchenPurchaseRejectedError,
+  type FarmHumanKitchenPurchaser,
+  FarmHumanKitchenPurchaseShopChangedError,
+  FarmHumanKitchenPurchaseShopUnavailableError,
+  FarmHumanKitchenPurchaseStateConflictError,
+  FarmHumanKitchenPurchaseUnavailableError,
+} from "./farm-kitchen-purchase-client.js";
+import {
   FarmLingyeContractUnavailableError,
   FarmLingyeCredentialInvalidError,
   FarmLingyeNotFoundError,
@@ -90,6 +115,17 @@ import {
   FarmLingyeUnavailableError,
 } from "./farm-lingye-client.js";
 import {
+  FarmHumanRanchResidentActionContractUnavailableError,
+  FarmHumanRanchResidentActionCredentialInvalidError,
+  type FarmHumanRanchResidentActioner,
+  FarmHumanRanchResidentActionIdempotencyConflictError,
+  type FarmHumanRanchResidentActionInput,
+  FarmHumanRanchResidentActionNotFoundError,
+  FarmHumanRanchResidentActionRejectedError,
+  FarmHumanRanchResidentActionStateConflictError,
+  FarmHumanRanchResidentActionUnavailableError,
+} from "./farm-ranch-action-client.js";
+import {
   FarmHumanRanchContractUnavailableError,
   FarmHumanRanchCredentialInvalidError,
   FarmHumanRanchNotFoundError,
@@ -97,6 +133,29 @@ import {
   type FarmHumanRanchReadInput,
   FarmHumanRanchUnavailableError,
 } from "./farm-ranch-client.js";
+import {
+  FarmHumanRanchCollectionContractUnavailableError,
+  FarmHumanRanchCollectionCredentialInvalidError,
+  FarmHumanRanchCollectionIdempotencyConflictError,
+  type FarmHumanRanchCollectionInput,
+  FarmHumanRanchCollectionNoCollectableError,
+  FarmHumanRanchCollectionNotFoundError,
+  FarmHumanRanchCollectionRejectedError,
+  FarmHumanRanchCollectionStateConflictError,
+  FarmHumanRanchCollectionUnavailableError,
+  type FarmHumanRanchCollector,
+} from "./farm-ranch-collection-client.js";
+import {
+  FarmHumanFarmSettingsActionContractUnavailableError,
+  FarmHumanFarmSettingsActionCredentialInvalidError,
+  type FarmHumanFarmSettingsActioner,
+  FarmHumanFarmSettingsActionIdempotencyConflictError,
+  type FarmHumanFarmSettingsActionInput,
+  FarmHumanFarmSettingsActionNotFoundError,
+  FarmHumanFarmSettingsActionRejectedError,
+  FarmHumanFarmSettingsActionStateConflictError,
+  FarmHumanFarmSettingsActionUnavailableError,
+} from "./farm-settings-action-client.js";
 import { MailboxService } from "./mailbox-service.js";
 import { createHumanPasswordCredential, verifyHumanPassword } from "./password-auth.js";
 import { OneBotUnavailableError, type QqGroupMembershipReader } from "./qq-group-membership.js";
@@ -230,6 +289,7 @@ const FARM_HARVEST_ASSIST_RESULT = {
 } satisfies FarmHumanFieldHarvestAssistSuccess;
 
 const FARM_GLIMMER_RESULT = {
+  subject: { farm_doorplate: FARM_DOORPLATE },
   data: {
     open: true,
     status: "流光原野开放中",
@@ -258,6 +318,7 @@ const FARM_GLIMMER_RESULT = {
 } satisfies FarmHumanGlimmerReadSuccess;
 
 const FARM_TOGETHER_RESULT = {
+  subject: { farm_doorplate: FARM_DOORPLATE },
   data: {
     story_id: "river_from_tomorrow",
     title: "河从明天流来",
@@ -325,8 +386,22 @@ const FARM_CATALOG_RESULT = {
       message: "catalog market is not available in the fake reader",
     },
   },
+  revision: `farm-catalog-v1:${"a".repeat(64)}`,
   server_time: "2026-08-24T13:00:00.000Z",
 } satisfies FarmHumanCatalogReadSuccess;
+
+const FARM_SETTINGS_ACTION_KEY = "519ffb01-49cd-7020-84af-3d04fb1ed03d";
+const FARM_SETTINGS_ACTION_RESULT = {
+  data: {
+    result: {
+      receipt_id: FARM_SETTINGS_ACTION_KEY,
+      field: "farm_name",
+    },
+    resource: FARM_CATALOG_RESULT.data,
+  },
+  revision: `farm-catalog-v1:${"e".repeat(64)}`,
+  server_time: "2026-08-24T13:00:00.000Z",
+} satisfies FarmHumanFarmSettingsActionSuccess;
 
 const unavailableKitchenSection = () => ({
   status: "unavailable" as const,
@@ -359,8 +434,26 @@ const FARM_KITCHEN_RESULT = {
       reason: "not_initialized",
     },
   },
+  shop_revision: `kitchen-v1:${"a".repeat(64)}`,
   server_time: "2026-08-24T13:00:00.000Z",
 } satisfies FarmHumanKitchenReadSuccess;
+
+const FARM_KITCHEN_PURCHASE_KEY = "019ffb01-49cd-7020-84af-3d04fb1ed03d";
+const FARM_KITCHEN_PURCHASE_RESULT = {
+  data: {
+    result: {
+      receipt_id: FARM_KITCHEN_PURCHASE_KEY,
+      kind: "ingredient",
+      item_id: "salt",
+      quantity: 2,
+      total_price_silver: 20,
+      silver_balance: 301,
+    },
+    resource: FARM_KITCHEN_RESULT.data,
+  },
+  shop_revision: `kitchen-v1:${"b".repeat(64)}`,
+  server_time: "2026-08-24T13:00:00.000Z",
+} satisfies FarmHumanKitchenPurchaseSuccess;
 
 const unavailableRanchShopSection = () => ({
   status: "unavailable" as const,
@@ -397,6 +490,44 @@ const FARM_RANCH_RESULT = {
   revision: "ranch:opaque-version",
   server_time: "2026-08-24T13:00:00.000Z",
 } satisfies FarmHumanRanchReadSuccess;
+
+const FARM_RANCH_ACTION_KEY = "119ffb01-49cd-7020-84af-3d04fb1ed03d";
+const FARM_RANCH_ACTION_RESULT = {
+  data: {
+    result: {
+      receipt_id: FARM_RANCH_ACTION_KEY,
+      action: "rename",
+      resident_type: "animal",
+      kind_id: "chicken",
+      outcome: { kind: "rename", name: "新名字" },
+    },
+    resource: FARM_RANCH_RESULT.data,
+  },
+  revision: "ranch-v1:after",
+  server_time: "2026-08-24T13:00:00.000Z",
+} satisfies FarmHumanRanchResidentActionSuccess;
+
+const FARM_RANCH_COLLECTION_KEY = "619ffb01-49cd-7020-84af-3d04fb1ed03d";
+const FARM_RANCH_COLLECTION_RESULT = {
+  data: {
+    result: {
+      receipt_id: FARM_RANCH_COLLECTION_KEY,
+      items: [],
+      gross_value: 0,
+      ranch_coins_gained: 0,
+      debt_paid: 0,
+      stored_count: 0,
+      non_cookable_count: 0,
+      non_cookable_gain: 0,
+      potion_count: 0,
+      detail: {},
+      non_cookable_detail: {},
+    },
+    resource: FARM_RANCH_RESULT.data,
+  },
+  revision: "ranch-v1:after-collection",
+  server_time: "2026-08-24T13:00:00.000Z",
+} satisfies FarmHumanRanchCollectionSuccess;
 
 class FakeGroupMembership implements QqGroupMembershipReader {
   readonly members = new Set<string>();
@@ -657,6 +788,49 @@ class FakeFarmKitchenReader implements FarmHumanKitchenReader {
   }
 }
 
+class FakeFarmKitchenPurchaser implements FarmHumanKitchenPurchaser {
+  readonly calls: FarmHumanKitchenPurchaseInput[] = [];
+  result:
+    | "found"
+    | "credential"
+    | "missing"
+    | "unavailable"
+    | "contract"
+    | "shop_changed"
+    | "state_conflict"
+    | "shop_unavailable"
+    | "rejected"
+    | "idempotency_conflict" = "found";
+
+  async purchaseKitchen(
+    input: FarmHumanKitchenPurchaseInput,
+  ): Promise<FarmHumanKitchenPurchaseSuccess> {
+    this.calls.push(input);
+    switch (this.result) {
+      case "credential":
+        throw new FarmHumanKitchenPurchaseCredentialInvalidError();
+      case "missing":
+        throw new FarmHumanKitchenPurchaseNotFoundError();
+      case "unavailable":
+        throw new FarmHumanKitchenPurchaseUnavailableError();
+      case "contract":
+        throw new FarmHumanKitchenPurchaseContractUnavailableError();
+      case "shop_changed":
+        throw new FarmHumanKitchenPurchaseShopChangedError(`kitchen-v1:${"c".repeat(64)}`);
+      case "state_conflict":
+        throw new FarmHumanKitchenPurchaseStateConflictError(`kitchen-v1:${"d".repeat(64)}`);
+      case "shop_unavailable":
+        throw new FarmHumanKitchenPurchaseShopUnavailableError();
+      case "rejected":
+        throw new FarmHumanKitchenPurchaseRejectedError("银币不足");
+      case "idempotency_conflict":
+        throw new FarmHumanKitchenPurchaseIdempotencyConflictError();
+      default:
+        return FARM_KITCHEN_PURCHASE_RESULT;
+    }
+  }
+}
+
 class FakeFarmRanchReader implements FarmHumanRanchReader {
   readonly calls: FarmHumanRanchReadInput[] = [];
   result: "found" | "credential" | "missing" | "unavailable" | "contract" = "found";
@@ -674,6 +848,120 @@ class FakeFarmRanchReader implements FarmHumanRanchReader {
         throw new FarmHumanRanchContractUnavailableError();
       default:
         return FARM_RANCH_RESULT;
+    }
+  }
+}
+
+class FakeFarmRanchResidentActioner implements FarmHumanRanchResidentActioner {
+  readonly calls: FarmHumanRanchResidentActionInput[] = [];
+  result:
+    | "found"
+    | "credential"
+    | "missing"
+    | "unavailable"
+    | "contract"
+    | "state_conflict"
+    | "rejected"
+    | "idempotency_conflict" = "found";
+
+  async executeRanchResidentAction(
+    input: FarmHumanRanchResidentActionInput,
+  ): Promise<FarmHumanRanchResidentActionSuccess> {
+    this.calls.push(input);
+    switch (this.result) {
+      case "credential":
+        throw new FarmHumanRanchResidentActionCredentialInvalidError();
+      case "missing":
+        throw new FarmHumanRanchResidentActionNotFoundError();
+      case "unavailable":
+        throw new FarmHumanRanchResidentActionUnavailableError();
+      case "contract":
+        throw new FarmHumanRanchResidentActionContractUnavailableError();
+      case "state_conflict":
+        throw new FarmHumanRanchResidentActionStateConflictError("ranch-v1:current");
+      case "rejected":
+        throw new FarmHumanRanchResidentActionRejectedError("这只动物正在派遣");
+      case "idempotency_conflict":
+        throw new FarmHumanRanchResidentActionIdempotencyConflictError();
+      default:
+        return FARM_RANCH_ACTION_RESULT;
+    }
+  }
+}
+
+class FakeFarmRanchCollector implements FarmHumanRanchCollector {
+  readonly calls: FarmHumanRanchCollectionInput[] = [];
+  result:
+    | "found"
+    | "credential"
+    | "missing"
+    | "unavailable"
+    | "contract"
+    | "state_conflict"
+    | "no_collectable"
+    | "rejected"
+    | "idempotency_conflict" = "found";
+
+  async collectRanch(
+    input: FarmHumanRanchCollectionInput,
+  ): Promise<FarmHumanRanchCollectionSuccess> {
+    this.calls.push(input);
+    switch (this.result) {
+      case "credential":
+        throw new FarmHumanRanchCollectionCredentialInvalidError();
+      case "missing":
+        throw new FarmHumanRanchCollectionNotFoundError();
+      case "unavailable":
+        throw new FarmHumanRanchCollectionUnavailableError();
+      case "contract":
+        throw new FarmHumanRanchCollectionContractUnavailableError();
+      case "state_conflict":
+        throw new FarmHumanRanchCollectionStateConflictError("ranch-v1:current");
+      case "no_collectable":
+        throw new FarmHumanRanchCollectionNoCollectableError("ranch-v1:current");
+      case "rejected":
+        throw new FarmHumanRanchCollectionRejectedError("牧场拒绝收取");
+      case "idempotency_conflict":
+        throw new FarmHumanRanchCollectionIdempotencyConflictError();
+      default:
+        return FARM_RANCH_COLLECTION_RESULT;
+    }
+  }
+}
+
+class FakeFarmSettingsActioner implements FarmHumanFarmSettingsActioner {
+  readonly calls: FarmHumanFarmSettingsActionInput[] = [];
+  result:
+    | "found"
+    | "credential"
+    | "missing"
+    | "unavailable"
+    | "contract"
+    | "state_conflict"
+    | "rejected"
+    | "idempotency_conflict" = "found";
+
+  async updateFarmSettings(
+    input: FarmHumanFarmSettingsActionInput,
+  ): Promise<FarmHumanFarmSettingsActionSuccess> {
+    this.calls.push(input);
+    switch (this.result) {
+      case "credential":
+        throw new FarmHumanFarmSettingsActionCredentialInvalidError();
+      case "missing":
+        throw new FarmHumanFarmSettingsActionNotFoundError();
+      case "unavailable":
+        throw new FarmHumanFarmSettingsActionUnavailableError();
+      case "contract":
+        throw new FarmHumanFarmSettingsActionContractUnavailableError();
+      case "state_conflict":
+        throw new FarmHumanFarmSettingsActionStateConflictError("farm-catalog-v1:current");
+      case "rejected":
+        throw new FarmHumanFarmSettingsActionRejectedError("设置值不符合农场规则");
+      case "idempotency_conflict":
+        throw new FarmHumanFarmSettingsActionIdempotencyConflictError();
+      default:
+        return FARM_SETTINGS_ACTION_RESULT;
     }
   }
 }
@@ -711,7 +999,11 @@ interface AuthHarness {
   farmHumanReader: FakeFarmHumanReader;
   farmCatalogReader: FakeFarmCatalogReader;
   farmKitchenReader: FakeFarmKitchenReader;
+  farmKitchenPurchaser: FakeFarmKitchenPurchaser;
   farmRanchReader: FakeFarmRanchReader;
+  farmRanchResidentActioner: FakeFarmRanchResidentActioner;
+  farmRanchCollector: FakeFarmRanchCollector;
+  farmSettingsActioner: FakeFarmSettingsActioner;
   farmLingyeReader: FakeFarmLingyeReader;
   farmCreator: FakeFarmCreator;
   now: { value: number };
@@ -740,7 +1032,11 @@ function createHarness(secureCookies = false): AuthHarness {
   const farmHumanReader = new FakeFarmHumanReader();
   const farmCatalogReader = new FakeFarmCatalogReader();
   const farmKitchenReader = new FakeFarmKitchenReader();
+  const farmKitchenPurchaser = new FakeFarmKitchenPurchaser();
   const farmRanchReader = new FakeFarmRanchReader();
+  const farmRanchResidentActioner = new FakeFarmRanchResidentActioner();
+  const farmRanchCollector = new FakeFarmRanchCollector();
+  const farmSettingsActioner = new FakeFarmSettingsActioner();
   const farmLingyeReader = new FakeFarmLingyeReader();
   const farmCreator = new FakeFarmCreator();
   const revokedResidentIds: string[] = [];
@@ -751,7 +1047,11 @@ function createHarness(secureCookies = false): AuthHarness {
     farmHumanReader,
     farmCatalogReader,
     farmKitchenReader,
+    farmKitchenPurchaser,
     farmRanchReader,
+    farmRanchResidentActioner,
+    farmRanchCollector,
+    farmSettingsActioner,
     farmLingyeReader,
     groupMembership: membership,
     groupId: COMMUNITY_QQ_GROUP_ID,
@@ -777,7 +1077,11 @@ function createHarness(secureCookies = false): AuthHarness {
     farmHumanReader,
     farmCatalogReader,
     farmKitchenReader,
+    farmKitchenPurchaser,
     farmRanchReader,
+    farmRanchResidentActioner,
+    farmRanchCollector,
+    farmSettingsActioner,
     farmLingyeReader,
     farmCreator,
     membership,
@@ -2707,6 +3011,500 @@ test("structured farm catalog, kitchen, and ranch routes keep the binding and fa
       });
       assert.equal(restored.statusCode, 200);
       cookie = cookieFrom(restored);
+    }
+  } finally {
+    await harness.close();
+  }
+});
+
+test("bound kitchen purchase derives farm identity and rejects browser authority overrides", async () => {
+  const harness = createHarness();
+  try {
+    const unauthenticated = await harness.app.inject({
+      method: "POST",
+      url: "/api/farm/kitchen/purchases",
+      headers: { "idempotency-key": FARM_KITCHEN_PURCHASE_KEY },
+      payload: {
+        expected_shop_revision: FARM_KITCHEN_RESULT.shop_revision,
+        kind: "ingredient",
+        item_id: "salt",
+        quantity: 2,
+      },
+    });
+    assert.equal(unauthenticated.statusCode, 401);
+    assert.equal(
+      boundFarmKitchenPurchaseErrorSchema.parse(unauthenticated.json()).error.code,
+      "authentication_required",
+    );
+
+    harness.membership.members.add(QQ_NUMBER);
+    const code = harness.database.getCurrentRegistrationCode(harness.now.value);
+    const created = await harness.app.inject({
+      method: "POST",
+      url: "/api/auth/session",
+      payload: { ...FULL_REGISTRATION_PAYLOAD, registration_code: code.code },
+    });
+    const cookie = cookieFrom(created);
+    const payload = {
+      expected_shop_revision: FARM_KITCHEN_RESULT.shop_revision,
+      kind: "ingredient",
+      item_id: "salt",
+      quantity: 2,
+    } as const;
+
+    const response = await harness.app.inject({
+      method: "POST",
+      url: "/api/farm/kitchen/purchases",
+      headers: { cookie, "idempotency-key": FARM_KITCHEN_PURCHASE_KEY },
+      payload,
+    });
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.headers["cache-control"], "no-store");
+    assert.deepEqual(
+      boundFarmKitchenPurchaseSuccessSchema.parse(response.json()),
+      FARM_KITCHEN_PURCHASE_RESULT,
+    );
+    assert.doesNotMatch(response.body, new RegExp(FARM_HUMAN_KEY));
+    assert.deepEqual(harness.farmKitchenPurchaser.calls, [
+      {
+        farmDoorplate: FARM_DOORPLATE,
+        farmHumanKey: FARM_HUMAN_KEY,
+        expectedShopRevision: FARM_KITCHEN_RESULT.shop_revision,
+        idempotencyKey: FARM_KITCHEN_PURCHASE_KEY,
+        kind: "ingredient",
+        itemId: "salt",
+        quantity: 2,
+      },
+    ]);
+
+    const invalidRequests = [
+      {
+        url: "/api/farm/kitchen/purchases?farm_human_key=override",
+        headers: { cookie, "idempotency-key": FARM_KITCHEN_PURCHASE_KEY },
+        payload,
+      },
+      {
+        url: "/api/farm/kitchen/purchases",
+        headers: { cookie, "idempotency-key": FARM_KITCHEN_PURCHASE_KEY },
+        payload: { ...payload, farm_doorplate: "ZZZZZZ", price: 1 },
+      },
+      {
+        url: "/api/farm/kitchen/purchases",
+        headers: { cookie },
+        payload,
+      },
+    ];
+    for (const invalidRequest of invalidRequests) {
+      const invalid = await harness.app.inject({
+        method: "POST",
+        ...invalidRequest,
+      });
+      assert.equal(invalid.statusCode, 400);
+      assert.equal(
+        boundFarmKitchenPurchaseErrorSchema.parse(invalid.json()).error.code,
+        "invalid_request",
+      );
+    }
+    assert.equal(harness.farmKitchenPurchaser.calls.length, 1);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("bound kitchen purchase keeps business conflicts and upstream failures distinct", async () => {
+  const harness = createHarness();
+  try {
+    harness.membership.members.add(QQ_NUMBER);
+    const code = harness.database.getCurrentRegistrationCode(harness.now.value);
+    const created = await harness.app.inject({
+      method: "POST",
+      url: "/api/auth/session",
+      payload: { ...FULL_REGISTRATION_PAYLOAD, registration_code: code.code },
+    });
+    const cookie = cookieFrom(created);
+    const cases = [
+      ["shop_changed", 409, "shop_changed", `kitchen-v1:${"c".repeat(64)}`],
+      ["state_conflict", 409, "state_conflict", `kitchen-v1:${"d".repeat(64)}`],
+      ["shop_unavailable", 409, "shop_unavailable", undefined],
+      ["rejected", 409, "purchase_rejected", undefined],
+      ["idempotency_conflict", 409, "idempotency_conflict", undefined],
+      ["credential", 409, "farm_credential_invalid", undefined],
+      ["missing", 404, "farm_not_found", undefined],
+      ["contract", 502, "upstream_contract_unavailable", undefined],
+      ["unavailable", 503, "farm_unavailable", undefined],
+    ] as const;
+
+    for (const [result, statusCode, errorCode, currentShopRevision] of cases) {
+      harness.farmKitchenPurchaser.result = result;
+      const response = await harness.app.inject({
+        method: "POST",
+        url: "/api/farm/kitchen/purchases",
+        headers: { cookie, "idempotency-key": FARM_KITCHEN_PURCHASE_KEY },
+        payload: {
+          expected_shop_revision: FARM_KITCHEN_RESULT.shop_revision,
+          kind: "ingredient",
+          item_id: "salt",
+          quantity: 2,
+        },
+      });
+      assert.equal(response.statusCode, statusCode);
+      assert.equal(response.headers["cache-control"], "no-store");
+      const parsed = boundFarmKitchenPurchaseErrorSchema.parse(response.json());
+      assert.equal(parsed.error.code, errorCode);
+      assert.equal(parsed.error.current_shop_revision, currentShopRevision);
+      assert.doesNotMatch(response.body, new RegExp(FARM_HUMAN_KEY));
+    }
+
+    const callsBeforeDeparture = harness.farmKitchenPurchaser.calls.length;
+    harness.membership.members.clear();
+    const departed = await harness.app.inject({
+      method: "POST",
+      url: "/api/farm/kitchen/purchases",
+      headers: { cookie, "idempotency-key": FARM_KITCHEN_PURCHASE_KEY },
+      payload: {
+        expected_shop_revision: FARM_KITCHEN_RESULT.shop_revision,
+        kind: "ingredient",
+        item_id: "salt",
+        quantity: 2,
+      },
+    });
+    assert.equal(departed.statusCode, 403);
+    assert.equal(
+      boundFarmKitchenPurchaseErrorSchema.parse(departed.json()).error.code,
+      "qq_not_group_member",
+    );
+    assert.equal(harness.farmKitchenPurchaser.calls.length, callsBeforeDeparture);
+    assert.match(String(departed.headers["set-cookie"]), /Max-Age=0/);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("bound ranch resident action derives identity and rejects browser authority overrides", async () => {
+  const harness = createHarness();
+  try {
+    harness.membership.members.add(QQ_NUMBER);
+    const code = harness.database.getCurrentRegistrationCode(harness.now.value);
+    const created = await harness.app.inject({
+      method: "POST",
+      url: "/api/auth/session",
+      payload: { ...FULL_REGISTRATION_PAYLOAD, registration_code: code.code },
+    });
+    const cookie = cookieFrom(created);
+    const payload = {
+      expected_revision: FARM_RANCH_RESULT.revision,
+      action: "rename",
+      resident_type: "animal",
+      kind_id: "chicken",
+      payload: { name: "小太阳" },
+    } as const;
+
+    const response = await harness.app.inject({
+      method: "POST",
+      url: "/api/farm/ranch/resident-actions",
+      headers: { cookie, "idempotency-key": FARM_RANCH_ACTION_KEY },
+      payload,
+    });
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.headers["cache-control"], "no-store");
+    assert.deepEqual(
+      boundFarmRanchResidentActionSuccessSchema.parse(response.json()),
+      FARM_RANCH_ACTION_RESULT,
+    );
+    assert.doesNotMatch(response.body, new RegExp(FARM_HUMAN_KEY));
+    assert.deepEqual(harness.farmRanchResidentActioner.calls, [
+      {
+        farmDoorplate: FARM_DOORPLATE,
+        farmHumanKey: FARM_HUMAN_KEY,
+        expectedRevision: FARM_RANCH_RESULT.revision,
+        idempotencyKey: FARM_RANCH_ACTION_KEY,
+        action: "rename",
+        residentType: "animal",
+        kindId: "chicken",
+        payload: { name: "小太阳" },
+      },
+    ]);
+
+    const invalidRequests = [
+      {
+        url: "/api/farm/ranch/resident-actions?farm_human_key=override",
+        headers: { cookie, "idempotency-key": FARM_RANCH_ACTION_KEY },
+        payload,
+      },
+      {
+        url: "/api/farm/ranch/resident-actions",
+        headers: { cookie, "idempotency-key": FARM_RANCH_ACTION_KEY },
+        payload: { ...payload, farm_doorplate: "ZZZZZZ" },
+      },
+      {
+        url: "/api/farm/ranch/resident-actions",
+        headers: { cookie },
+        payload,
+      },
+    ];
+    for (const invalidRequest of invalidRequests) {
+      const invalid = await harness.app.inject({ method: "POST", ...invalidRequest });
+      assert.equal(invalid.statusCode, 400);
+      assert.equal(
+        boundFarmRanchResidentActionErrorSchema.parse(invalid.json()).error.code,
+        "invalid_request",
+      );
+    }
+    assert.equal(harness.farmRanchResidentActioner.calls.length, 1);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("bound ranch resident action keeps conflicts and upstream failures distinct", async () => {
+  const harness = createHarness();
+  try {
+    harness.membership.members.add(QQ_NUMBER);
+    const code = harness.database.getCurrentRegistrationCode(harness.now.value);
+    const created = await harness.app.inject({
+      method: "POST",
+      url: "/api/auth/session",
+      payload: { ...FULL_REGISTRATION_PAYLOAD, registration_code: code.code },
+    });
+    const cookie = cookieFrom(created);
+    const cases = [
+      ["state_conflict", 409, "state_conflict", "ranch-v1:current"],
+      ["rejected", 409, "action_rejected", undefined],
+      ["idempotency_conflict", 409, "idempotency_conflict", undefined],
+      ["credential", 409, "farm_credential_invalid", undefined],
+      ["missing", 404, "farm_not_found", undefined],
+      ["contract", 502, "upstream_contract_unavailable", undefined],
+      ["unavailable", 503, "farm_unavailable", undefined],
+    ] as const;
+
+    for (const [result, statusCode, errorCode, currentRevision] of cases) {
+      harness.farmRanchResidentActioner.result = result;
+      const response = await harness.app.inject({
+        method: "POST",
+        url: "/api/farm/ranch/resident-actions",
+        headers: { cookie, "idempotency-key": FARM_RANCH_ACTION_KEY },
+        payload: {
+          expected_revision: FARM_RANCH_RESULT.revision,
+          action: "rename",
+          resident_type: "animal",
+          kind_id: "chicken",
+          payload: { name: "小太阳" },
+        },
+      });
+      assert.equal(response.statusCode, statusCode);
+      const parsed = boundFarmRanchResidentActionErrorSchema.parse(response.json());
+      assert.equal(parsed.error.code, errorCode);
+      assert.equal(parsed.error.current_revision, currentRevision);
+    }
+
+    const callsBeforeDeparture = harness.farmRanchResidentActioner.calls.length;
+    harness.membership.members.clear();
+    const departed = await harness.app.inject({
+      method: "POST",
+      url: "/api/farm/ranch/resident-actions",
+      headers: { cookie, "idempotency-key": FARM_RANCH_ACTION_KEY },
+      payload: {
+        expected_revision: FARM_RANCH_RESULT.revision,
+        action: "rename",
+        resident_type: "animal",
+        kind_id: "chicken",
+        payload: { name: "小太阳" },
+      },
+    });
+    assert.equal(departed.statusCode, 403);
+    assert.equal(
+      boundFarmRanchResidentActionErrorSchema.parse(departed.json()).error.code,
+      "qq_not_group_member",
+    );
+    assert.equal(harness.farmRanchResidentActioner.calls.length, callsBeforeDeparture);
+    assert.match(String(departed.headers["set-cookie"]), /Max-Age=0/);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("bound ranch collection derives identity from the session and keeps UUID/revision errors distinct", async () => {
+  const harness = createHarness();
+  try {
+    harness.membership.members.add(QQ_NUMBER);
+    const code = harness.database.getCurrentRegistrationCode(harness.now.value);
+    const created = await harness.app.inject({
+      method: "POST",
+      url: "/api/auth/session",
+      payload: { ...FULL_REGISTRATION_PAYLOAD, registration_code: code.code },
+    });
+    const cookie = cookieFrom(created);
+    const headers = {
+      cookie,
+      "idempotency-key": FARM_RANCH_COLLECTION_KEY,
+      "if-match": `"${FARM_RANCH_RESULT.revision}"`,
+    };
+
+    const success = await harness.app.inject({
+      method: "POST",
+      url: "/api/farm/ranch/collect",
+      headers,
+      payload: {},
+    });
+    assert.equal(success.statusCode, 200);
+    assert.equal(success.headers["cache-control"], "no-store");
+    assert.deepEqual(
+      boundFarmRanchCollectionSuccessSchema.parse(success.json()),
+      FARM_RANCH_COLLECTION_RESULT,
+    );
+    assert.doesNotMatch(success.body, new RegExp(FARM_HUMAN_KEY));
+    assert.deepEqual(harness.farmRanchCollector.calls, [
+      {
+        farmDoorplate: FARM_DOORPLATE,
+        farmHumanKey: FARM_HUMAN_KEY,
+        expectedRevision: FARM_RANCH_RESULT.revision,
+        idempotencyKey: FARM_RANCH_COLLECTION_KEY,
+      },
+    ]);
+
+    const invalidRequests = [
+      {
+        headers,
+        payload: { unexpected: true },
+        url: "/api/farm/ranch/collect",
+      },
+      {
+        headers: { cookie, "if-match": `"${FARM_RANCH_RESULT.revision}"` },
+        payload: {},
+        url: "/api/farm/ranch/collect",
+      },
+      {
+        headers: {
+          cookie,
+          "idempotency-key": "not-a-uuid",
+          "if-match": `"${FARM_RANCH_RESULT.revision}"`,
+        },
+        payload: {},
+        url: "/api/farm/ranch/collect",
+      },
+      {
+        headers,
+        payload: {},
+        url: "/api/farm/ranch/collect?farm_human_key=override",
+      },
+    ] as const;
+    for (const invalidRequest of invalidRequests) {
+      const invalid = await harness.app.inject({
+        method: "POST",
+        url: invalidRequest.url,
+        headers: invalidRequest.headers,
+        payload: invalidRequest.payload,
+      });
+      assert.equal(invalid.statusCode, 400);
+      assert.equal(
+        boundFarmRanchCollectionErrorSchema.parse(invalid.json()).error.code,
+        "invalid_request",
+      );
+    }
+    assert.equal(harness.farmRanchCollector.calls.length, 1);
+
+    const cases = [
+      ["no_collectable", 409, "no_collectable", "ranch-v1:current"],
+      ["state_conflict", 409, "state_conflict", "ranch-v1:current"],
+      ["rejected", 409, "collection_rejected", undefined],
+      ["idempotency_conflict", 409, "idempotency_conflict", undefined],
+      ["credential", 409, "farm_credential_invalid", undefined],
+      ["missing", 404, "farm_not_found", undefined],
+      ["contract", 502, "upstream_contract_unavailable", undefined],
+      ["unavailable", 503, "farm_unavailable", undefined],
+    ] as const;
+    for (const [result, statusCode, errorCode, currentRevision] of cases) {
+      harness.farmRanchCollector.result = result;
+      const response = await harness.app.inject({
+        method: "POST",
+        url: "/api/farm/ranch/collect",
+        headers,
+        payload: {},
+      });
+      assert.equal(response.statusCode, statusCode);
+      const parsed = boundFarmRanchCollectionErrorSchema.parse(response.json());
+      assert.equal(parsed.error.code, errorCode);
+      assert.equal(parsed.error.current_revision, currentRevision);
+    }
+  } finally {
+    await harness.close();
+  }
+});
+
+test("bound farm settings action derives identity and keeps failures distinct", async () => {
+  const harness = createHarness();
+  try {
+    harness.membership.members.add(QQ_NUMBER);
+    const code = harness.database.getCurrentRegistrationCode(harness.now.value);
+    const created = await harness.app.inject({
+      method: "POST",
+      url: "/api/auth/session",
+      payload: { ...FULL_REGISTRATION_PAYLOAD, registration_code: code.code },
+    });
+    const cookie = cookieFrom(created);
+    const payload = {
+      expected_catalog_revision: `farm-catalog-v1:${"a".repeat(64)}`,
+      field: "farm_name",
+      value: "新农场名",
+    } as const;
+
+    const success = await harness.app.inject({
+      method: "POST",
+      url: "/api/farm/settings/actions",
+      headers: { cookie, "idempotency-key": FARM_SETTINGS_ACTION_KEY },
+      payload,
+    });
+    assert.equal(success.statusCode, 200);
+    assert.equal(success.headers["cache-control"], "no-store");
+    assert.deepEqual(
+      boundFarmSettingsActionSuccessSchema.parse(success.json()),
+      FARM_SETTINGS_ACTION_RESULT,
+    );
+    assert.deepEqual(harness.farmSettingsActioner.calls, [
+      {
+        farmDoorplate: FARM_DOORPLATE,
+        farmHumanKey: FARM_HUMAN_KEY,
+        expectedCatalogRevision: payload.expected_catalog_revision,
+        idempotencyKey: FARM_SETTINGS_ACTION_KEY,
+        field: "farm_name",
+        value: "新农场名",
+      },
+    ]);
+    assert.doesNotMatch(success.body, new RegExp(FARM_HUMAN_KEY));
+
+    const invalid = await harness.app.inject({
+      method: "POST",
+      url: "/api/farm/settings/actions?farm_human_key=override",
+      headers: { cookie, "idempotency-key": FARM_SETTINGS_ACTION_KEY },
+      payload,
+    });
+    assert.equal(invalid.statusCode, 400);
+    assert.equal(
+      boundFarmSettingsActionErrorSchema.parse(invalid.json()).error.code,
+      "invalid_request",
+    );
+
+    const cases = [
+      ["state_conflict", 409, "state_conflict", "farm-catalog-v1:current"],
+      ["rejected", 409, "action_rejected", undefined],
+      ["idempotency_conflict", 409, "idempotency_conflict", undefined],
+      ["credential", 409, "farm_credential_invalid", undefined],
+      ["missing", 404, "farm_not_found", undefined],
+      ["contract", 502, "upstream_contract_unavailable", undefined],
+      ["unavailable", 503, "farm_unavailable", undefined],
+    ] as const;
+    for (const [result, statusCode, errorCode, currentRevision] of cases) {
+      harness.farmSettingsActioner.result = result;
+      const response = await harness.app.inject({
+        method: "POST",
+        url: "/api/farm/settings/actions",
+        headers: { cookie, "idempotency-key": FARM_SETTINGS_ACTION_KEY },
+        payload,
+      });
+      assert.equal(response.statusCode, statusCode);
+      const parsed = boundFarmSettingsActionErrorSchema.parse(response.json());
+      assert.equal(parsed.error.code, errorCode);
+      assert.equal(parsed.error.current_revision, currentRevision);
     }
   } finally {
     await harness.close();

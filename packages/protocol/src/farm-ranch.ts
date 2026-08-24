@@ -48,6 +48,67 @@ export const farmRanchResidentIdentitySchema = z
   })
   .strict();
 
+const farmRanchActionCurrencySchema = z.enum(["silver", "ranch_coins"]);
+
+export const farmRanchResidentActionCostSchema = z
+  .object({
+    currency: farmRanchActionCurrencySchema.nullable(),
+    amount: nullableCountSchema,
+  })
+  .strict()
+  .superRefine((cost, context) => {
+    if ((cost.currency === null) !== (cost.amount === null)) {
+      context.addIssue({
+        code: "custom",
+        path: ["amount"],
+        message: "a resident action cost must expose both currency and amount, or neither",
+      });
+    }
+  });
+
+export const farmRanchResidentAllowedActionSchema = z
+  .object({
+    enabled: z.boolean(),
+    cost: farmRanchResidentActionCostSchema,
+    reason: ranchTextSchema.nullable(),
+  })
+  .strict()
+  .superRefine((action, context) => {
+    if (action.enabled && action.reason !== null) {
+      context.addIssue({
+        code: "custom",
+        path: ["reason"],
+        message: "an enabled resident action must not expose an unavailable reason",
+      });
+    }
+    if (!action.enabled && action.reason === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["reason"],
+        message: "a disabled resident action must expose an unavailable reason",
+      });
+    }
+  });
+
+export const farmRanchResidentAllowedActionsSchema = z
+  .object({
+    feed: farmRanchResidentAllowedActionSchema,
+    upgrade: farmRanchResidentAllowedActionSchema,
+    rename: farmRanchResidentAllowedActionSchema,
+    toggle_pin: farmRanchResidentAllowedActionSchema,
+    wear_accessory: farmRanchResidentAllowedActionSchema,
+    takeoff_accessory: farmRanchResidentAllowedActionSchema,
+    set_variant: farmRanchResidentAllowedActionSchema,
+  })
+  .strict();
+
+export const farmRanchResidentVariantsSchema = z
+  .object({
+    current_variant_id: ranchIdSchema.nullable(),
+    available_variant_ids: z.array(ranchIdSchema).max(16),
+  })
+  .strict();
+
 export const farmRanchResidentSchema = z
   .object({
     status: ranchItemStatusSchema,
@@ -60,6 +121,8 @@ export const farmRanchResidentSchema = z
         items: z.array(farmRanchOwnedAccessorySchema).max(64),
       })
       .strict(),
+    variants: farmRanchResidentVariantsSchema.optional(),
+    allowed_actions: farmRanchResidentAllowedActionsSchema.optional(),
     produce: farmRanchProduceSchema.nullable(),
     dispatch: z
       .object({
@@ -318,6 +381,10 @@ export const boundRanchReadErrorSchema = z
 export const boundFarmRanchErrorSchema = boundRanchReadErrorSchema;
 
 export type FarmRanchData = z.infer<typeof farmRanchDataSchema>;
+export type FarmRanchResidentActionCost = z.infer<typeof farmRanchResidentActionCostSchema>;
+export type FarmRanchResidentAllowedAction = z.infer<typeof farmRanchResidentAllowedActionSchema>;
+export type FarmRanchResidentAllowedActions = z.infer<typeof farmRanchResidentAllowedActionsSchema>;
+export type FarmRanchResidentVariants = z.infer<typeof farmRanchResidentVariantsSchema>;
 export type FarmHumanRanchReadRequest = z.infer<typeof farmHumanRanchReadRequestSchema>;
 export type FarmHumanRanchReadSuccess = z.infer<typeof farmHumanRanchReadSuccessSchema>;
 export type FarmHumanRanchReadError = z.infer<typeof farmHumanRanchReadErrorSchema>;

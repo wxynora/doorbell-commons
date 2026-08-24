@@ -269,8 +269,11 @@
   display: grid;
   box-sizing: border-box;
   width: 72cqw;
+  max-height: calc(100% - 12cqw);
   gap: 2.4cqw;
   padding: 5.2cqw 4.4cqw 4.2cqw;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   color: #60452e;
   border: 0.55cqw solid #755634;
   border-radius: 3cqw;
@@ -287,6 +290,12 @@
     0 0.75cqw 0 #5d4027,
     0 2.4cqw 5cqw rgba(62, 39, 20, 0.28);
   animation: farm-tool-pop 160ms ease-out;
+  scrollbar-width: none;
+}
+
+.ranch-resident-detail__paper::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .ranch-resident-detail__close {
@@ -415,6 +424,128 @@
 
 .ranch-resident-detail__fact-description dd {
   line-height: 1.45;
+}
+
+.ranch-resident-detail__actions {
+  display: grid;
+  gap: 1.8cqw;
+}
+
+.ranch-resident-detail__action-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.4cqw;
+}
+
+.ranch-resident-detail__action-item {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 0.7cqw;
+}
+
+.ranch-resident-detail__action-item > button,
+.ranch-resident-detail__action-row > button,
+.ranch-resident-detail__action-error > button {
+  box-sizing: border-box;
+  height: 9.5cqw;
+  min-height: 9.5cqw;
+  max-height: 9.5cqw;
+  padding: 0.8cqw 1.4cqw;
+  color: #fff7d9;
+  font-size: clamp(0.54rem, 2.25cqw, 0.68rem);
+  font-weight: 900;
+  line-height: 1.05;
+  border: 0.3cqw solid #526636;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #849c4b, #6c863b);
+  box-shadow:
+    inset 0 0.28cqw rgba(237, 247, 187, 0.32),
+    0 0.35cqw 0 #4d6034;
+  cursor: pointer;
+}
+
+.ranch-resident-detail__action-item > button {
+  display: grid;
+  place-content: center;
+  gap: 0.45cqw;
+}
+
+.ranch-resident-detail__action-item > button small {
+  color: #f3e6b7;
+  font-size: clamp(0.43rem, 1.75cqw, 0.54rem);
+  font-weight: 800;
+}
+
+.ranch-resident-detail__action-item > button:disabled,
+.ranch-resident-detail__action-row > button:disabled {
+  color: #f7efd8;
+  border-color: #91846a;
+  background: #aaa089;
+  box-shadow: none;
+  cursor: default;
+}
+
+.ranch-resident-detail__action-item > small,
+.ranch-resident-detail__action-reason {
+  color: #8a7052;
+  font-size: clamp(0.42rem, 1.72cqw, 0.52rem);
+  line-height: 1.25;
+  text-align: center;
+}
+
+.ranch-resident-detail__action-row {
+  display: grid;
+  grid-template-columns: 11cqw minmax(0, 1fr) 15cqw;
+  align-items: center;
+  gap: 1.2cqw;
+}
+
+.ranch-resident-detail__action-row label {
+  color: #806a4a;
+  font-size: clamp(0.52rem, 2.15cqw, 0.64rem);
+  font-weight: 900;
+}
+
+.ranch-resident-detail__action-row input,
+.ranch-resident-detail__action-row select {
+  box-sizing: border-box;
+  width: 100%;
+  height: 9.5cqw;
+  min-height: 9.5cqw;
+  padding: 0 2cqw;
+  color: #60452e;
+  font: inherit;
+  font-size: clamp(0.52rem, 2.15cqw, 0.64rem);
+  font-weight: 800;
+  border: 0.25cqw solid rgba(125, 98, 59, 0.36);
+  border-radius: 1.4cqw;
+  background: rgba(255, 253, 239, 0.76);
+}
+
+.ranch-resident-detail__action-status,
+.ranch-resident-detail__action-error {
+  margin: 0;
+  color: #6f843c;
+  font-size: clamp(0.5rem, 2.05cqw, 0.62rem);
+  font-weight: 900;
+  text-align: center;
+}
+
+.ranch-resident-detail__action-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.2cqw;
+  color: #9a513d;
+}
+
+.ranch-resident-detail__action-error > button {
+  width: auto;
+  height: 8cqw;
+  min-height: 8cqw;
+  max-height: 8cqw;
+  padding-inline: 2cqw;
 }
 
 .farm-scene::after {
@@ -1697,6 +1828,39 @@
   line-height: 1;
   text-align: center;
   text-shadow: 0 1px rgba(61, 46, 29, 0.72);
+}
+
+.farm-ranch-collect {
+  position: absolute;
+  top: calc(var(--farm-control-size) + var(--farm-control-size) / 2);
+  left: 50%;
+  z-index: 35;
+  box-sizing: border-box;
+  width: calc(var(--farm-control-size) + var(--farm-control-size) / 2);
+  min-width: calc(var(--farm-control-size) + var(--farm-control-size) / 2);
+  max-width: calc(var(--farm-control-size) + var(--farm-control-size) / 2);
+  height: calc(var(--farm-control-size) / 2);
+  min-height: calc(var(--farm-control-size) / 2);
+  max-height: calc(var(--farm-control-size) / 2);
+  padding: 0 calc(var(--farm-control-size) / 7);
+  color: #fff8dc;
+  font-size: calc(var(--farm-control-size) / 5.2);
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+  border: calc(var(--farm-control-size) / 24) solid #536837;
+  border-radius: calc(var(--farm-control-size) / 2);
+  background: linear-gradient(180deg, #8aa24d, #6d873b);
+  box-shadow:
+    inset 0 calc(var(--farm-control-size) / 28) rgba(239, 248, 195, 0.36),
+    0 calc(var(--farm-control-size) / 18) 0 #4d6034;
+  cursor: pointer;
+  transform: translateX(-50%);
+}
+
+.farm-ranch-collect:disabled {
+  cursor: wait;
+  opacity: 0.72;
 }
 
 .farm-scene-tabs span {

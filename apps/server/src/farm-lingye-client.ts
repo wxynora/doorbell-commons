@@ -58,6 +58,10 @@ interface SafeParser<T> {
   safeParse(value: unknown): { success: true; data: T } | { success: false };
 }
 
+interface FarmLingyeBoundSuccess {
+  subject: { farm_doorplate: string };
+}
+
 interface FarmLingyeErrorPayload {
   error: {
     code: string;
@@ -97,6 +101,7 @@ export class FarmLingyeClient implements FarmLingyeReader {
       requestBody,
       farmHumanGlimmerReadSuccessSchema,
       farmHumanGlimmerReadErrorSchema,
+      input.farmDoorplate,
     );
   }
 
@@ -110,14 +115,16 @@ export class FarmLingyeClient implements FarmLingyeReader {
       requestBody,
       farmHumanTogetherReadSuccessSchema,
       farmHumanTogetherReadErrorSchema,
+      input.farmDoorplate,
     );
   }
 
-  async #read<TSuccess>(
+  async #read<TSuccess extends FarmLingyeBoundSuccess>(
     endpoint: URL,
     requestBody: unknown,
     successSchema: SafeParser<TSuccess>,
     errorSchema: SafeParser<FarmLingyeErrorPayload>,
+    expectedFarmDoorplate: string,
   ): Promise<TSuccess> {
     let response: Response;
     try {
@@ -152,7 +159,7 @@ export class FarmLingyeClient implements FarmLingyeReader {
 
     if (response.ok) {
       const result = successSchema.safeParse(payload);
-      if (!result.success) {
+      if (!result.success || result.data.subject.farm_doorplate !== expectedFarmDoorplate) {
         throw new FarmLingyeContractUnavailableError();
       }
       return result.data;

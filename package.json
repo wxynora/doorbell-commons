@@ -20,7 +20,7 @@
     "dev:web": "npm run dev -w @doorbell/web",
     "build": "npm run build -w @doorbell/protocol && npm run build -w @doorbell/server && npm run build -w @doorbell/connector && npm run build -w @doorbell/web",
     "typecheck": "npm run build -w @doorbell/protocol && npm run typecheck -w @doorbell/server && npm run typecheck -w @doorbell/connector && npm run typecheck -w @doorbell/web",
-    "test": "npm run build -w @doorbell/protocol && npm run test -w @doorbell/server && npm run test -w @doorbell/connector",
+    "test": "npm run build -w @doorbell/protocol && npm run test -w @doorbell/server && npm run test -w @doorbell/web && npm run test -w @doorbell/connector",
     "registration-code": "npm run registration-code -w @doorbell/server",
     "format": "biome check --write .",
     "format:check": "biome check .",

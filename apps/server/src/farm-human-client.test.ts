@@ -242,6 +242,21 @@ test("farm Human client maps credential, missing farm, contract, and availabilit
   );
   await assert.rejects(
     createClient(async () => new Response("not json", { status: 502 })).readField(INPUT),
+    FarmHumanFieldContractUnavailableError,
+  );
+  await assert.rejects(
+    createClient(() =>
+      Promise.resolve(
+        Response.json(
+          { error: { code: "upstream_contract_unavailable", message: "bad contract" } },
+          { status: 502 },
+        ),
+      ),
+    ).readField(INPUT),
+    FarmHumanFieldContractUnavailableError,
+  );
+  await assert.rejects(
+    createClient(async () => new Response("not json", { status: 503 })).readField(INPUT),
     FarmHumanFieldUnavailableError,
   );
   await assert.rejects(

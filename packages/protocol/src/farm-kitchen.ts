@@ -207,9 +207,12 @@ export const farmHumanKitchenReadRequestSchema = z
   })
   .strict();
 
+export const farmKitchenShopRevisionSchema = z.string().regex(/^kitchen-v1:[0-9a-f]{64}$/);
+
 export const farmHumanKitchenReadSuccessSchema = z
   .object({
     data: farmKitchenDataSchema,
+    shop_revision: farmKitchenShopRevisionSchema,
     server_time: z.iso.datetime(),
   })
   .strict();

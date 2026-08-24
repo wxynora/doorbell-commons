@@ -2,7 +2,11 @@ import { z } from "zod";
 
 export * from "./farm-catalog.js";
 export * from "./farm-kitchen.js";
+export * from "./farm-kitchen-purchase.js";
 export * from "./farm-ranch.js";
+export * from "./farm-ranch-action.js";
+export * from "./farm-ranch-collection.js";
+export * from "./farm-settings-action.js";
 
 export const serviceHealthSchema = z.object({
   service: z.literal("doorbell-commons"),
@@ -407,6 +411,7 @@ export const farmHumanFieldReadErrorCodeSchema = z.enum([
   "farm_doorplate_mismatch",
   "farm_not_found",
   "farm_unavailable",
+  "upstream_contract_unavailable",
 ]);
 
 export const farmHumanFieldReadErrorSchema = z
@@ -553,6 +558,7 @@ export const farmGlimmerDataSchema = z
 
 export const farmHumanGlimmerReadSuccessSchema = z
   .object({
+    subject: z.object({ farm_doorplate: farmDoorplateSchema }).strict(),
     data: farmGlimmerDataSchema,
     server_time: z.iso.datetime(),
   })
@@ -760,6 +766,7 @@ export const farmTogetherDataSchema = z
 
 export const farmHumanTogetherReadSuccessSchema = z
   .object({
+    subject: z.object({ farm_doorplate: farmDoorplateSchema }).strict(),
     data: farmTogetherDataSchema,
     server_time: z.iso.datetime(),
   })

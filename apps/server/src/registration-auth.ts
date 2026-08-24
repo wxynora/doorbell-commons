@@ -33,11 +33,27 @@ import {
   FarmHumanKitchenContractUnavailableError,
   type FarmHumanKitchenReader,
 } from "./farm-kitchen-client.js";
+import {
+  FarmHumanKitchenPurchaseContractUnavailableError,
+  type FarmHumanKitchenPurchaser,
+} from "./farm-kitchen-purchase-client.js";
 import { FarmLingyeContractUnavailableError, type FarmLingyeReader } from "./farm-lingye-client.js";
+import {
+  FarmHumanRanchResidentActionContractUnavailableError,
+  type FarmHumanRanchResidentActioner,
+} from "./farm-ranch-action-client.js";
 import {
   FarmHumanRanchContractUnavailableError,
   type FarmHumanRanchReader,
 } from "./farm-ranch-client.js";
+import {
+  FarmHumanRanchCollectionContractUnavailableError,
+  type FarmHumanRanchCollector,
+} from "./farm-ranch-collection-client.js";
+import {
+  FarmHumanFarmSettingsActionContractUnavailableError,
+  type FarmHumanFarmSettingsActioner,
+} from "./farm-settings-action-client.js";
 import { createHumanPasswordCredential, verifyHumanPassword } from "./password-auth.js";
 import type { QqGroupMembershipReader } from "./qq-group-membership.js";
 
@@ -130,7 +146,11 @@ interface RegistrationAuthServiceOptions {
   farmHumanReader?: FarmHumanFieldReader;
   farmCatalogReader?: FarmHumanCatalogReader;
   farmKitchenReader?: FarmHumanKitchenReader;
+  farmKitchenPurchaser?: FarmHumanKitchenPurchaser;
   farmRanchReader?: FarmHumanRanchReader;
+  farmRanchResidentActioner?: FarmHumanRanchResidentActioner;
+  farmRanchCollector?: FarmHumanRanchCollector;
+  farmSettingsActioner?: FarmHumanFarmSettingsActioner;
   farmLingyeReader?: FarmLingyeReader;
   farmCreator?: FarmCreator;
   groupId: string;
@@ -157,7 +177,11 @@ export class RegistrationAuthService {
   readonly #farmHumanReader: FarmHumanFieldReader | undefined;
   readonly #farmCatalogReader: FarmHumanCatalogReader | undefined;
   readonly #farmKitchenReader: FarmHumanKitchenReader | undefined;
+  readonly #farmKitchenPurchaser: FarmHumanKitchenPurchaser | undefined;
   readonly #farmRanchReader: FarmHumanRanchReader | undefined;
+  readonly #farmRanchResidentActioner: FarmHumanRanchResidentActioner | undefined;
+  readonly #farmRanchCollector: FarmHumanRanchCollector | undefined;
+  readonly #farmSettingsActioner: FarmHumanFarmSettingsActioner | undefined;
   readonly #farmLingyeReader: FarmLingyeReader | undefined;
   readonly #farmCreator: FarmCreator | undefined;
   readonly #groupId: string;
@@ -172,7 +196,11 @@ export class RegistrationAuthService {
     this.#farmHumanReader = options.farmHumanReader;
     this.#farmCatalogReader = options.farmCatalogReader;
     this.#farmKitchenReader = options.farmKitchenReader;
+    this.#farmKitchenPurchaser = options.farmKitchenPurchaser;
     this.#farmRanchReader = options.farmRanchReader;
+    this.#farmRanchResidentActioner = options.farmRanchResidentActioner;
+    this.#farmRanchCollector = options.farmRanchCollector;
+    this.#farmSettingsActioner = options.farmSettingsActioner;
     this.#farmLingyeReader = options.farmLingyeReader;
     this.#farmCreator = options.farmCreator;
     this.#groupId = options.groupId;
@@ -401,6 +429,31 @@ export class RegistrationAuthService {
     });
   }
 
+  async purchaseCurrentFarmKitchen(
+    token: string,
+    input: {
+      expectedShopRevision: string;
+      idempotencyKey: string;
+      kind: "ingredient" | "recipe";
+      itemId: string;
+      quantity: number;
+    },
+  ) {
+    const community = await this.getCurrentSession(token);
+    const farmHumanKey = community.farmBinding.farmHumanKey;
+    if (farmHumanKey === null) {
+      throw new RegistrationProfileRequiredError();
+    }
+    if (!this.#farmKitchenPurchaser) {
+      throw new FarmHumanKitchenPurchaseContractUnavailableError();
+    }
+    return this.#farmKitchenPurchaser.purchaseKitchen({
+      farmDoorplate: community.farmBinding.farmDoorplate,
+      farmHumanKey,
+      ...input,
+    });
+  }
+
   async getCurrentFarmRanch(token: string) {
     const community = await this.getCurrentSession(token);
     const farmHumanKey = community.farmBinding.farmHumanKey;
@@ -413,6 +466,95 @@ export class RegistrationAuthService {
     return this.#farmRanchReader.readRanch({
       farmDoorplate: community.farmBinding.farmDoorplate,
       farmHumanKey,
+    });
+  }
+
+  async executeCurrentFarmRanchResidentAction(
+    token: string,
+    input: {
+      expectedRevision: string;
+      idempotencyKey: string;
+      action:
+        | "feed"
+        | "upgrade"
+        | "rename"
+        | "toggle_pin"
+        | "wear_accessory"
+        | "takeoff_accessory"
+        | "set_variant";
+      residentType: "animal" | "pet" | "patrol_goose";
+      kindId: string;
+      payload:
+        | Record<string, never>
+        | { name: string }
+        | { accessory_id: string }
+        | { variant_id: string };
+    },
+  ) {
+    const community = await this.getCurrentSession(token);
+    const farmHumanKey = community.farmBinding.farmHumanKey;
+    if (farmHumanKey === null) {
+      throw new RegistrationProfileRequiredError();
+    }
+    if (!this.#farmRanchResidentActioner) {
+      throw new FarmHumanRanchResidentActionContractUnavailableError();
+    }
+    return this.#farmRanchResidentActioner.executeRanchResidentAction({
+      farmDoorplate: community.farmBinding.farmDoorplate,
+      farmHumanKey,
+      ...input,
+    });
+  }
+
+  async collectCurrentFarmRanch(
+    token: string,
+    input: { expectedRevision: string; idempotencyKey: string },
+  ) {
+    const community = await this.getCurrentSession(token);
+    const farmHumanKey = community.farmBinding.farmHumanKey;
+    if (farmHumanKey === null) {
+      throw new RegistrationProfileRequiredError();
+    }
+    if (!this.#farmRanchCollector) {
+      throw new FarmHumanRanchCollectionContractUnavailableError();
+    }
+    return this.#farmRanchCollector.collectRanch({
+      farmDoorplate: community.farmBinding.farmDoorplate,
+      farmHumanKey,
+      ...input,
+    });
+  }
+
+  async updateCurrentFarmSettings(
+    token: string,
+    input: {
+      expectedCatalogRevision: string;
+      idempotencyKey: string;
+      field:
+        | "farm_name"
+        | "ai_name"
+        | "human_name"
+        | "welcome_message"
+        | "social.visit"
+        | "social.steal"
+        | "social.water"
+        | "social.message"
+        | "equip_title";
+      value: string | boolean | null;
+    },
+  ) {
+    const community = await this.getCurrentSession(token);
+    const farmHumanKey = community.farmBinding.farmHumanKey;
+    if (farmHumanKey === null) {
+      throw new RegistrationProfileRequiredError();
+    }
+    if (!this.#farmSettingsActioner) {
+      throw new FarmHumanFarmSettingsActionContractUnavailableError();
+    }
+    return this.#farmSettingsActioner.updateFarmSettings({
+      farmDoorplate: community.farmBinding.farmDoorplate,
+      farmHumanKey,
+      ...input,
     });
   }
 

@@ -19,6 +19,7 @@ const CATALOG_RESULT = {
     neighborhood: { status: "unavailable", reason: "no_authoritative_data", message: "暂不可用" },
     market: { status: "unavailable", reason: "no_authoritative_data", message: "暂不可用" },
   },
+  revision: `farm-catalog-v1:${"a".repeat(64)}`,
   server_time: "2026-08-24T04:00:00.000Z",
 };
 

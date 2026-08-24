@@ -21,12 +21,25 @@ import {
   farmCatalogIssueMessage,
   getBoundFarmCatalog,
 } from "../auth/farm-catalog-client";
+import { executeBoundFarmSettingsAction } from "../auth/farm-settings-action-client";
 import {
   type BoundKitchenRead,
   getBoundKitchen,
   kitchenIssueMessage,
 } from "../auth/kitchen-client";
+import {
+  executeBoundRanchResidentAction,
+  type RanchResidentActionInput,
+  type RanchResidentActionIssue,
+  ranchResidentActionIssueMessage,
+} from "../auth/ranch-action-client";
 import { type BoundRanchRead, getBoundRanch, ranchIssueMessage } from "../auth/ranch-client";
+import {
+  collectBoundRanch,
+  type RanchCollectionInput,
+  type RanchCollectionIssue,
+  ranchCollectionIssueMessage,
+} from "../auth/ranch-collection-client";
 import {
   type FarmAssetKey,
   type FarmAssetManifestEntry,
@@ -49,6 +62,7 @@ import {
   RANCH_SHOP_ANIMALS,
   type RanchShopAnimal,
 } from "./panels/ranch-animal-data";
+import type { FarmSettingsActionExecutor } from "./panels/tool-panel";
 import type { RanchSceneAnimalDefinition } from "./scenes/ranch/ranch-scene";
 import "./farm-page.css";
 
@@ -113,6 +127,51 @@ type FarmHarvestActionState =
       issue: FarmHarvestAssistIssue;
     }
   | { stage: "success"; result: BoundFarmHarvestAssist["data"]["result"] };
+
+type RanchResidentActionResult = Awaited<ReturnType<typeof executeBoundRanchResidentAction>>;
+type RanchResidentActionOutcome = Extract<
+  RanchResidentActionResult,
+  { ok: true }
+>["data"]["data"]["result"]["outcome"];
+type RanchResidentActionExecutor = (
+  input: RanchResidentActionInput,
+) => Promise<RanchResidentActionResult>;
+
+interface RanchResidentActionAttempt {
+  input: RanchResidentActionInput;
+  label: string;
+}
+
+type RanchResidentActionState =
+  | { stage: "idle" }
+  | { stage: "submitting"; attempt: RanchResidentActionAttempt }
+  | {
+      stage: "error";
+      attempt: RanchResidentActionAttempt | null;
+      issue: RanchResidentActionIssue;
+    }
+  | { stage: "success"; outcome: RanchResidentActionOutcome };
+
+type RanchCollectionResult = Awaited<ReturnType<typeof collectBoundRanch>>;
+type RanchCollectionExecutor = (input: RanchCollectionInput) => Promise<RanchCollectionResult>;
+
+interface RanchCollectionAttempt {
+  expectedRevision: string;
+  idempotencyKey: string;
+}
+
+type RanchCollectionState =
+  | { stage: "idle" }
+  | { stage: "submitting"; attempt: RanchCollectionAttempt }
+  | {
+      stage: "error";
+      attempt: RanchCollectionAttempt | null;
+      issue: RanchCollectionIssue;
+    }
+  | {
+      stage: "success";
+      result: Extract<RanchCollectionResult, { ok: true }>["data"]["data"]["result"];
+    };
 
 type FarmSceneId = "field" | "ranch" | "cooking" | "neighborhood";
 
@@ -589,6 +648,7 @@ interface LiveRanchResidentView {
   category: "动物" | "宠物" | "巡逻鹅";
   id: string;
   resident: FarmRanchResident;
+  residentType: RanchResidentActionInput["residentType"];
   spriteAnimal: RanchShopAnimal;
 }
 
@@ -600,15 +660,30 @@ function getLiveRanchResidents(ranch: BoundRanchRead | null): readonly LiveRanch
   const candidates: Array<{
     category: LiveRanchResidentView["category"];
     resident: FarmRanchResident;
+    residentType: LiveRanchResidentView["residentType"];
   }> = [
-    ...ranch.data.residents.animals.map((resident) => ({ category: "动物" as const, resident })),
-    ...ranch.data.residents.pets.map((resident) => ({ category: "宠物" as const, resident })),
+    ...ranch.data.residents.animals.map((resident) => ({
+      category: "动物" as const,
+      resident,
+      residentType: "animal" as const,
+    })),
+    ...ranch.data.residents.pets.map((resident) => ({
+      category: "宠物" as const,
+      resident,
+      residentType: "pet" as const,
+    })),
     ...(ranch.data.residents.patrol_goose
-      ? [{ category: "巡逻鹅" as const, resident: ranch.data.residents.patrol_goose }]
+      ? [
+          {
+            category: "巡逻鹅" as const,
+            resident: ranch.data.residents.patrol_goose,
+            residentType: "patrol_goose" as const,
+          },
+        ]
       : []),
   ];
 
-  return candidates.flatMap(({ category, resident }) => {
+  return candidates.flatMap(({ category, resident, residentType }) => {
     const kindId = resident.identity.kind_id;
     const name = resident.identity.custom_name ?? resident.identity.name;
     const spriteId = kindId === "patrol_goose" ? "goose" : kindId;
@@ -623,6 +698,7 @@ function getLiveRanchResidents(ranch: BoundRanchRead | null): readonly LiveRanch
             category,
             id: `${category}:${kindId}`,
             resident,
+            residentType,
             spriteAnimal,
           },
         ]
@@ -643,14 +719,42 @@ function getLiveRanchSceneLayout(index: number, total: number) {
   };
 }
 
+function ranchResidentOutcomeMessage(outcome: RanchResidentActionOutcome): string {
+  if (outcome.kind === "feed") {
+    return `投喂完成，花费 ${outcome.cost_silver} 银币，今天还可投喂 ${outcome.remaining_today} 次`;
+  }
+  if (outcome.kind === "upgrade") {
+    return `已升到 ${outcome.level} 级，花费 ${outcome.cost_ranch_coins} 牧场金币`;
+  }
+  if (outcome.kind === "rename") {
+    return `名字已改为 ${outcome.name}`;
+  }
+  if (outcome.kind === "toggle_pin") {
+    return outcome.pinned ? "已置顶" : "已取消置顶";
+  }
+  if (outcome.kind === "wear_accessory") {
+    return `${outcome.wearer_name}已佩戴${outcome.accessory_name}`;
+  }
+  if (outcome.kind === "takeoff_accessory") {
+    return `${outcome.wearer_name}已取下${outcome.accessory_name}`;
+  }
+  return `已切换为${outcome.variant_name}`;
+}
+
 function RanchResidentDetail({
+  onAction,
   view,
   onClose,
+  onReload,
+  ranch,
 }: {
+  onAction?: RanchResidentActionExecutor | undefined;
   view:
     | { kind: "preview"; animal: RanchShopAnimal }
     | { kind: "live"; resident: LiveRanchResidentView };
   onClose: () => void;
+  onReload?: (() => void) | undefined;
+  ranch: BoundRanchRead | null;
 }) {
   const animal = view.kind === "preview" ? view.animal : view.resident.spriteAnimal;
   const liveResident = view.kind === "live" ? view.resident : null;
@@ -660,6 +764,131 @@ function RanchResidentDetail({
       ? animal.name
       : (residentData?.identity.custom_name ?? residentData?.identity.name ?? "");
   const titleId = `ranch-resident-detail-${view.kind === "preview" ? animal.id : liveResident?.id}`;
+  const [renameDraft, setRenameDraft] = useState(name);
+  const [selectedWearAccessoryId, setSelectedWearAccessoryId] = useState("");
+  const [selectedTakeoffAccessoryId, setSelectedTakeoffAccessoryId] = useState("");
+  const [selectedVariantId, setSelectedVariantId] = useState("");
+  const [actionState, setActionState] = useState<RanchResidentActionState>({ stage: "idle" });
+  const allowedActions = residentData?.allowed_actions ?? null;
+  const submitting = actionState.stage === "submitting";
+  const wornAccessories =
+    residentData?.accessories.status === "available"
+      ? residentData.accessories.items.flatMap((accessory) =>
+          accessory.status === "known" && accessory.accessory_id && accessory.name
+            ? [{ id: accessory.accessory_id, name: accessory.name }]
+            : [],
+        )
+      : [];
+  const wornAccessoryIds = new Set(wornAccessories.map((accessory) => accessory.id));
+  const wearableAccessories =
+    ranch?.data.wardrobe.status === "available"
+      ? ranch.data.wardrobe.items.flatMap((accessory) =>
+          accessory.status === "known" &&
+          accessory.accessory_id &&
+          accessory.name &&
+          !wornAccessoryIds.has(accessory.accessory_id)
+            ? [{ id: accessory.accessory_id, name: accessory.name }]
+            : [],
+        )
+      : [];
+  const wearAccessoryId = wearableAccessories.some(
+    (accessory) => accessory.id === selectedWearAccessoryId,
+  )
+    ? selectedWearAccessoryId
+    : (wearableAccessories[0]?.id ?? "");
+  const takeoffAccessoryId = wornAccessories.some(
+    (accessory) => accessory.id === selectedTakeoffAccessoryId,
+  )
+    ? selectedTakeoffAccessoryId
+    : (wornAccessories[0]?.id ?? "");
+  const variantIds = residentData?.variants?.available_variant_ids ?? [];
+  const variantId = variantIds.includes(selectedVariantId)
+    ? selectedVariantId
+    : (residentData?.variants?.current_variant_id ?? variantIds[0] ?? "");
+
+  const submitAction = useCallback(
+    async (
+      action: RanchResidentActionInput["action"],
+      payload: RanchResidentActionInput["payload"],
+      label: string,
+      retryAttempt?: RanchResidentActionAttempt,
+    ) => {
+      const kindId = residentData?.identity.kind_id;
+      if (!onAction || !ranch || !liveResident || !kindId) {
+        return;
+      }
+      const attempt =
+        retryAttempt ??
+        ({
+          label,
+          input: {
+            action,
+            expectedRevision: ranch.revision,
+            idempotencyKey: crypto.randomUUID(),
+            kindId,
+            payload,
+            residentType: liveResident.residentType,
+          },
+        } satisfies RanchResidentActionAttempt);
+      setActionState({ stage: "submitting", attempt });
+
+      let result: RanchResidentActionResult;
+      try {
+        result = await onAction(attempt.input);
+      } catch {
+        setActionState({
+          stage: "error",
+          attempt: null,
+          issue: { code: "unexpected_response", currentRevision: null, serverMessage: null },
+        });
+        return;
+      }
+
+      if (result.ok) {
+        setActionState({ stage: "success", outcome: result.data.data.result.outcome });
+        return;
+      }
+      setActionState({
+        stage: "error",
+        attempt: shouldRetryRanchResidentAction(result.issue) ? attempt : null,
+        issue: result.issue,
+      });
+    },
+    [liveResident, onAction, ranch, residentData?.identity.kind_id],
+  );
+
+  const actionCostLabel = (
+    action: NonNullable<typeof allowedActions>[keyof NonNullable<typeof allowedActions>],
+  ) => {
+    if (action.cost.currency === null || action.cost.amount === null) {
+      return null;
+    }
+    return `${action.cost.currency === "silver" ? "银币" : "牧场金币"} ${action.cost.amount.toLocaleString("zh-CN")}`;
+  };
+
+  const renderActionButton = (
+    actionName: "feed" | "upgrade" | "toggle_pin",
+    label: string,
+    payload: RanchResidentActionInput["payload"] = {},
+  ) => {
+    const action = allowedActions?.[actionName];
+    if (!action) return null;
+    const costLabel = actionCostLabel(action);
+    return (
+      <span className="ranch-resident-detail__action-item">
+        <button
+          disabled={!action.enabled || submitting}
+          onClick={() => void submitAction(actionName, payload, label)}
+          title={action.reason ?? undefined}
+          type="button"
+        >
+          <strong>{label}</strong>
+          {costLabel ? <small>{costLabel}</small> : null}
+        </button>
+        {!action.enabled && action.reason ? <small>{action.reason}</small> : null}
+      </span>
+    );
+  };
 
   return (
     <section
@@ -768,6 +997,196 @@ function RanchResidentDetail({
             </div>
           ) : null}
         </dl>
+        {view.kind === "live" && allowedActions && onAction && ranch ? (
+          <div className="ranch-resident-detail__actions">
+            <div className="ranch-resident-detail__action-grid">
+              {liveResident?.residentType === "animal" ? renderActionButton("feed", "投喂") : null}
+              {liveResident?.residentType === "animal"
+                ? renderActionButton("upgrade", "升级")
+                : null}
+              {renderActionButton("toggle_pin", residentData?.pinned ? "取消置顶" : "置顶")}
+            </div>
+
+            <form
+              className="ranch-resident-detail__action-row"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const nextName = renameDraft.trim();
+                if (nextName && nextName !== name) {
+                  void submitAction("rename", { name: nextName }, "改名");
+                }
+              }}
+            >
+              <label htmlFor={`${titleId}-rename`}>名字</label>
+              <input
+                id={`${titleId}-rename`}
+                maxLength={12}
+                onChange={(event) => setRenameDraft(event.currentTarget.value)}
+                value={renameDraft}
+              />
+              <button
+                disabled={
+                  !allowedActions.rename.enabled ||
+                  submitting ||
+                  !renameDraft.trim() ||
+                  renameDraft.trim() === name
+                }
+                title={allowedActions.rename.reason ?? undefined}
+                type="submit"
+              >
+                改名
+              </button>
+            </form>
+            {!allowedActions.rename.enabled && allowedActions.rename.reason ? (
+              <small className="ranch-resident-detail__action-reason">
+                {allowedActions.rename.reason}
+              </small>
+            ) : null}
+
+            {wearableAccessories.length > 0 ? (
+              <div className="ranch-resident-detail__action-row">
+                <label htmlFor={`${titleId}-wear`}>配饰</label>
+                <select
+                  id={`${titleId}-wear`}
+                  onChange={(event) => setSelectedWearAccessoryId(event.currentTarget.value)}
+                  value={wearAccessoryId}
+                >
+                  {wearableAccessories.map((accessory) => (
+                    <option key={accessory.id} value={accessory.id}>
+                      {accessory.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  disabled={
+                    !allowedActions.wear_accessory.enabled || submitting || !wearAccessoryId
+                  }
+                  onClick={() =>
+                    void submitAction(
+                      "wear_accessory",
+                      { accessory_id: wearAccessoryId },
+                      "佩戴配饰",
+                    )
+                  }
+                  title={allowedActions.wear_accessory.reason ?? undefined}
+                  type="button"
+                >
+                  佩戴
+                </button>
+              </div>
+            ) : null}
+
+            {wornAccessories.length > 0 ? (
+              <div className="ranch-resident-detail__action-row">
+                <label htmlFor={`${titleId}-takeoff`}>已佩戴</label>
+                <select
+                  id={`${titleId}-takeoff`}
+                  onChange={(event) => setSelectedTakeoffAccessoryId(event.currentTarget.value)}
+                  value={takeoffAccessoryId}
+                >
+                  {wornAccessories.map((accessory) => (
+                    <option key={accessory.id} value={accessory.id}>
+                      {accessory.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  disabled={
+                    !allowedActions.takeoff_accessory.enabled || submitting || !takeoffAccessoryId
+                  }
+                  onClick={() =>
+                    void submitAction(
+                      "takeoff_accessory",
+                      { accessory_id: takeoffAccessoryId },
+                      "取下配饰",
+                    )
+                  }
+                  title={allowedActions.takeoff_accessory.reason ?? undefined}
+                  type="button"
+                >
+                  取下
+                </button>
+              </div>
+            ) : null}
+
+            {variantIds.length > 0 ? (
+              <div className="ranch-resident-detail__action-row">
+                <label htmlFor={`${titleId}-variant`}>外观</label>
+                <select
+                  id={`${titleId}-variant`}
+                  onChange={(event) => setSelectedVariantId(event.currentTarget.value)}
+                  value={variantId}
+                >
+                  {variantIds.map((itemId) => {
+                    const variantIndex = variantIds
+                      .filter((candidateId) => candidateId !== "base")
+                      .indexOf(itemId);
+                    return (
+                      <option key={itemId} value={itemId}>
+                        {itemId === "base" ? "原始外观" : `异色外观 ${variantIndex + 1}`}
+                        {itemId === residentData?.variants?.current_variant_id ? "（当前）" : ""}
+                      </option>
+                    );
+                  })}
+                </select>
+                <button
+                  disabled={
+                    !allowedActions.set_variant.enabled ||
+                    submitting ||
+                    !variantId ||
+                    variantId === residentData?.variants?.current_variant_id
+                  }
+                  onClick={() =>
+                    void submitAction("set_variant", { variant_id: variantId }, "更换外观")
+                  }
+                  title={allowedActions.set_variant.reason ?? undefined}
+                  type="button"
+                >
+                  更换
+                </button>
+              </div>
+            ) : null}
+
+            {actionState.stage === "submitting" ? (
+              <p className="ranch-resident-detail__action-status" role="status">
+                正在{actionState.attempt.label}…
+              </p>
+            ) : null}
+            {actionState.stage === "success" ? (
+              <p className="ranch-resident-detail__action-status" role="status">
+                {ranchResidentOutcomeMessage(actionState.outcome)}
+              </p>
+            ) : null}
+            {actionState.stage === "error" ? (
+              <div className="ranch-resident-detail__action-error" role="alert">
+                <span>{ranchResidentActionIssueMessage(actionState.issue)}</span>
+                {actionState.attempt ? (
+                  <button
+                    onClick={() => {
+                      const attempt = actionState.attempt;
+                      if (attempt) {
+                        void submitAction(
+                          attempt.input.action,
+                          attempt.input.payload,
+                          attempt.label,
+                          attempt,
+                        );
+                      }
+                    }}
+                    type="button"
+                  >
+                    重试
+                  </button>
+                ) : null}
+                {actionState.issue.code === "state_conflict" && onReload ? (
+                  <button onClick={onReload} type="button">
+                    重新读取
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </section>
   );
@@ -891,6 +1310,113 @@ function FarmHarvestNotice({
       ) : (
         <button className="farm-harvest-notice__action" onClick={onReload} type="button">
           重新读取农场
+        </button>
+      )}
+    </aside>
+  );
+}
+
+function RanchCollectionControl({
+  count,
+  onCollect,
+  submitting,
+}: {
+  count: number;
+  onCollect: () => void;
+  submitting: boolean;
+}) {
+  return (
+    <button
+      aria-label={`一键收取牧场产出，共 ${count} 份`}
+      className="farm-ranch-collect"
+      disabled={submitting}
+      onClick={onCollect}
+      type="button"
+    >
+      {submitting ? "收取中…" : `一键收取 ×${count}`}
+    </button>
+  );
+}
+
+function RanchCollectionReceipt({
+  onClose,
+  result,
+}: {
+  onClose: () => void;
+  result: Extract<RanchCollectionState, { stage: "success" }>["result"];
+}) {
+  const destinationLabel = {
+    debt: "偿还欠款",
+    kitchen: "进入料理柜",
+    ranch_coins: "自动回收",
+  } as const;
+  return (
+    <section
+      aria-label="牧场收取结果"
+      aria-modal="true"
+      className="farm-harvest-receipt farm-ranch-collection-receipt"
+      role="dialog"
+    >
+      <button
+        aria-label="关闭牧场收取结果"
+        className="farm-harvest-receipt__close"
+        onClick={onClose}
+        type="button"
+      >
+        ×
+      </button>
+      <header>
+        <span>牧场产出</span>
+        <strong>收取完成</strong>
+        <small>共处理 {result.items.reduce((sum, item) => sum + item.quantity, 0)} 份</small>
+      </header>
+      <ul className="farm-harvest-receipt__list">
+        {result.items.map((item, index) => (
+          <li key={item.instance_id ?? `${item.item_id}-${index}`}>
+            <span>
+              <strong>
+                {item.name} ×{item.quantity}
+              </strong>
+              <small>{destinationLabel[item.destination]}</small>
+            </span>
+            {item.unit_value === null ? null : <b>单价 {item.unit_value}</b>}
+          </li>
+        ))}
+      </ul>
+      <footer className="farm-harvest-receipt__summary">
+        {result.ranch_coins_gained > 0 ? <span>牧场金币 +{result.ranch_coins_gained}</span> : null}
+        {result.debt_paid > 0 ? <span>偿还欠款 {result.debt_paid}</span> : null}
+        {result.stored_count > 0 ? <span>料理柜 +{result.stored_count}</span> : null}
+        {result.potion_count > 0 ? <span>药水 +{result.potion_count}</span> : null}
+      </footer>
+    </section>
+  );
+}
+
+function RanchCollectionNotice({
+  action,
+  onClose,
+  onReload,
+  onRetry,
+}: {
+  action: Extract<RanchCollectionState, { stage: "error" }>;
+  onClose: () => void;
+  onReload: () => void;
+  onRetry: () => void;
+}) {
+  return (
+    <aside className="farm-harvest-notice farm-ranch-collection-notice" role="alert">
+      <button aria-label="关闭牧场收取提示" onClick={onClose} type="button">
+        ×
+      </button>
+      <p>{ranchCollectionIssueMessage(action.issue)}</p>
+      {action.attempt ? (
+        <button className="farm-harvest-notice__action" onClick={onRetry} type="button">
+          重试同一次收取
+        </button>
+      ) : (
+        <button className="farm-harvest-notice__action" onClick={onReload} type="button">
+          重新读取牧场
         </button>
       )}
     </aside>
@@ -1765,21 +2291,31 @@ export function FarmFieldContent({
   harvestAction = { stage: "idle" },
   onCloseHarvestAction,
   onHarvestAssist,
+  onFarmSettingsAction,
+  onRanchCollection,
+  onRanchResidentAction,
   onReloadAfterHarvestError,
+  onReloadRanch,
   onRequireResource,
   onRetryHarvestAssist,
   preview = false,
   resources = createInitialFarmReadResources(),
+  settingsInitializationKey = 0,
 }: {
   data: BoundFarmField;
   harvestAction?: FarmHarvestActionState;
   onCloseHarvestAction?: () => void;
   onHarvestAssist?: (() => void) | undefined;
+  onFarmSettingsAction?: FarmSettingsActionExecutor | undefined;
+  onRanchCollection?: RanchCollectionExecutor | undefined;
+  onRanchResidentAction?: RanchResidentActionExecutor | undefined;
   onReloadAfterHarvestError?: () => void;
+  onReloadRanch?: (() => void) | undefined;
   onRequireResource?: (resource: keyof FarmReadResources) => void;
   onRetryHarvestAssist?: () => void;
   preview?: boolean;
   resources?: FarmReadResources;
+  settingsInitializationKey?: number;
 }) {
   const field = data.data;
   const farmCatalog = resources.farmCatalog.stage === "ready" ? resources.farmCatalog.data : null;
@@ -1794,6 +2330,9 @@ export function FarmFieldContent({
   const [selectedCookingIngredientIds, setSelectedCookingIngredientIds] = useState<string[]>([]);
   const [cookingIngredientPickerOpen, setCookingIngredientPickerOpen] = useState(false);
   const [selectedRanchAnimalId, setSelectedRanchAnimalId] = useState<string | null>(null);
+  const [ranchCollectionAction, setRanchCollectionAction] = useState<RanchCollectionState>({
+    stage: "idle",
+  });
   const [sceneUiStates, setSceneUiStates] = useState<FarmSceneUiStateMap>(() =>
     createInitialSceneUiStates(),
   );
@@ -1806,7 +2345,7 @@ export function FarmFieldContent({
     sowingText: "",
   }));
   const [settingsDraft, setSettingsDraft] = useState<FarmSettingsDraft>(() => ({
-    activeTitle: field.farm.equipped_title?.name ?? "",
+    activeTitle: field.farm.equipped_title?.title_id ?? "",
     aiNickname: "",
     farmName: field.farm.farm_name,
     humanNickname: "",
@@ -1816,16 +2355,28 @@ export function FarmFieldContent({
     wateringHelpAllowed: null,
     welcomeMessage: field.farm.welcome_message ?? "",
   }));
-  const settingsInitializedFromCatalog = useRef(false);
+  const settingsCatalogInitializationRef = useRef<{
+    key: number;
+    revision: string;
+  } | null>(null);
   useEffect(() => {
     const settings = farmCatalog?.data.settings;
-    if (preview || settingsInitializedFromCatalog.current || settings?.status !== "available") {
+    if (
+      preview ||
+      settings?.status !== "available" ||
+      !farmCatalog ||
+      (settingsCatalogInitializationRef.current?.key === settingsInitializationKey &&
+        settingsCatalogInitializationRef.current.revision === farmCatalog.revision)
+    ) {
       return;
     }
-    settingsInitializedFromCatalog.current = true;
+    settingsCatalogInitializationRef.current = {
+      key: settingsInitializationKey,
+      revision: farmCatalog.revision,
+    };
     setSettingsDraft({
       activeTitle:
-        settings.equipped_title?.identity_state === "known" ? settings.equipped_title.name : "",
+        settings.equipped_title?.identity_state === "known" ? settings.equipped_title.title_id : "",
       aiNickname: settings.ai_name ?? "",
       farmName: settings.farm_name,
       humanNickname: settings.human_name ?? "",
@@ -1835,7 +2386,7 @@ export function FarmFieldContent({
       wateringHelpAllowed: settings.social.water,
       welcomeMessage: settings.welcome_message ?? "",
     });
-  }, [farmCatalog, preview]);
+  }, [farmCatalog, preview, settingsInitializationKey]);
   const selectedPlot = field.plots.find((plot) => plot.plot_id === selectedPlotId) ?? null;
   const liveRanchResidents = getLiveRanchResidents(ranch);
   const selectedRanchAnimal = preview
@@ -1844,6 +2395,11 @@ export function FarmFieldContent({
   const selectedLiveRanchResident = preview
     ? null
     : (liveRanchResidents.find((resident) => resident.id === selectedRanchAnimalId) ?? null);
+  const ranchCollectableCount =
+    ranch?.data.collectable.status === "available"
+      ? (ranch.data.collectable.total_pending_count ?? 0) +
+        (ranch.data.collectable.total_pending_meat_count ?? 0)
+      : 0;
   const activeSceneUiState = sceneUiStates[activeScene];
   const activeResourceKey = activeSceneUiState.bulletinOpen
     ? "farmCatalog"
@@ -1916,6 +2472,40 @@ export function FarmFieldContent({
       });
     },
     [],
+  );
+
+  const submitRanchCollection = useCallback(
+    async (retryAttempt?: RanchCollectionAttempt) => {
+      if (preview || !ranch || !onRanchCollection) return;
+      const attempt =
+        retryAttempt ??
+        ({
+          expectedRevision: ranch.revision,
+          idempotencyKey: crypto.randomUUID(),
+        } satisfies RanchCollectionAttempt);
+      setRanchCollectionAction({ stage: "submitting", attempt });
+      let result: RanchCollectionResult;
+      try {
+        result = await onRanchCollection(attempt);
+      } catch {
+        setRanchCollectionAction({
+          stage: "error",
+          attempt,
+          issue: { code: "unexpected_response", currentRevision: null, serverMessage: null },
+        });
+        return;
+      }
+      if (result.ok) {
+        setRanchCollectionAction({ stage: "success", result: result.data.data.result });
+        return;
+      }
+      setRanchCollectionAction({
+        stage: "error",
+        attempt: shouldRetryRanchCollection(result.issue) ? attempt : null,
+        issue: result.issue,
+      });
+    },
+    [onRanchCollection, preview, ranch],
   );
 
   const changeScene = (sceneId: FarmSceneId) => {
@@ -2004,6 +2594,36 @@ export function FarmFieldContent({
           }
         />
       ) : null}
+      {activeScene === "ranch" &&
+      !activeSceneUiState.selectedTool &&
+      !activeSceneUiState.bulletinOpen &&
+      !selectedLiveRanchResident &&
+      ranchCollectableCount > 0 &&
+      onRanchCollection ? (
+        <RanchCollectionControl
+          count={ranchCollectableCount}
+          onCollect={() => void submitRanchCollection()}
+          submitting={ranchCollectionAction.stage === "submitting"}
+        />
+      ) : null}
+      {activeScene === "ranch" && ranchCollectionAction.stage === "success" ? (
+        <RanchCollectionReceipt
+          onClose={() => setRanchCollectionAction({ stage: "idle" })}
+          result={ranchCollectionAction.result}
+        />
+      ) : null}
+      {activeScene === "ranch" && ranchCollectionAction.stage === "error" ? (
+        <RanchCollectionNotice
+          action={ranchCollectionAction}
+          onClose={() => setRanchCollectionAction({ stage: "idle" })}
+          onReload={() => onReloadRanch?.()}
+          onRetry={() => {
+            if (ranchCollectionAction.attempt) {
+              void submitRanchCollection(ranchCollectionAction.attempt);
+            }
+          }}
+        />
+      ) : null}
       {!activeSceneUiState.selectedTool &&
       !activeSceneUiState.bulletinOpen &&
       activeScene === "field" ? (
@@ -2061,12 +2681,15 @@ export function FarmFieldContent({
 
       {activeScene === "ranch" && (selectedRanchAnimal || selectedLiveRanchResident) ? (
         <RanchResidentDetail
+          onAction={onRanchResidentAction}
+          onClose={() => setSelectedRanchAnimalId(null)}
+          onReload={onReloadRanch}
+          ranch={ranch}
           view={
             selectedRanchAnimal
               ? { kind: "preview", animal: selectedRanchAnimal }
               : { kind: "live", resident: selectedLiveRanchResident as LiveRanchResidentView }
           }
-          onClose={() => setSelectedRanchAnimalId(null)}
         />
       ) : null}
 
@@ -2102,6 +2725,7 @@ export function FarmFieldContent({
                   }}
                   onChangeOriginalPlantDraft={setOriginalPlantDraft}
                   onChangeSettingsDraft={setSettingsDraft}
+                  onFarmSettingsAction={onFarmSettingsAction}
                   originalPlantDraft={originalPlantDraft}
                   preview={preview}
                   ranch={ranch}
@@ -2165,6 +2789,24 @@ function shouldRetryFarmHarvest(issue: FarmHarvestAssistIssue): boolean {
   );
 }
 
+function shouldRetryRanchResidentAction(issue: RanchResidentActionIssue): boolean {
+  return (
+    issue.code === "network_unavailable" ||
+    issue.code === "farm_unavailable" ||
+    issue.code === "upstream_contract_unavailable" ||
+    issue.code === "unexpected_response"
+  );
+}
+
+function shouldRetryRanchCollection(issue: RanchCollectionIssue): boolean {
+  return (
+    issue.code === "network_unavailable" ||
+    issue.code === "farm_unavailable" ||
+    issue.code === "upstream_contract_unavailable" ||
+    issue.code === "unexpected_response"
+  );
+}
+
 function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
   const [state, setState] = useState<FarmPageState>(
     previewData ? { stage: "ready", data: previewData } : { stage: "loading" },
@@ -2172,6 +2814,7 @@ function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
   const [resources, setResources] = useState<FarmReadResources>(() =>
     createInitialFarmReadResources(),
   );
+  const [settingsInitializationKey, setSettingsInitializationKey] = useState(0);
   const [harvestAction, setHarvestAction] = useState<FarmHarvestActionState>({ stage: "idle" });
   const requestControllerRef = useRef<AbortController | null>(null);
   const resourceControllersRef = useRef<Partial<Record<keyof FarmReadResources, AbortController>>>(
@@ -2180,8 +2823,8 @@ function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
   const requestedResourcesRef = useRef<Set<keyof FarmReadResources>>(new Set());
 
   const requireResource = useCallback(
-    (resource: keyof FarmReadResources) => {
-      if (previewData || requestedResourcesRef.current.has(resource)) {
+    (resource: keyof FarmReadResources, force = false) => {
+      if (previewData || (!force && requestedResourcesRef.current.has(resource))) {
         return;
       }
       requestedResourcesRef.current.add(resource);
@@ -2232,6 +2875,93 @@ function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
     [previewData],
   );
 
+  const refreshRequestedResources = useCallback(() => {
+    const requestedResources = [...requestedResourcesRef.current];
+    if (requestedResources.includes("farmCatalog")) {
+      setSettingsInitializationKey((current) => current + 1);
+    }
+    for (const resource of requestedResources) {
+      requireResource(resource, true);
+    }
+  }, [requireResource]);
+
+  const submitRanchResidentAction = useCallback(
+    async (input: RanchResidentActionInput): Promise<RanchResidentActionResult> => {
+      const result = await executeBoundRanchResidentAction(input);
+      if (result.ok) {
+        setResources((current) => ({
+          ...current,
+          ranch: {
+            stage: "ready",
+            data: {
+              data: result.data.data.resource,
+              revision: result.data.revision,
+              server_time: result.data.server_time,
+            },
+          },
+        }));
+        if (
+          result.data.data.result.outcome.kind === "feed" &&
+          requestedResourcesRef.current.has("kitchen")
+        ) {
+          requireResource("kitchen", true);
+        }
+      }
+      return result;
+    },
+    [requireResource],
+  );
+
+  const submitRanchCollectionAction = useCallback<RanchCollectionExecutor>(
+    async (input) => {
+      const result = await collectBoundRanch(input);
+      if (result.ok) {
+        setResources((current) => ({
+          ...current,
+          ranch: {
+            stage: "ready",
+            data: {
+              data: result.data.data.resource,
+              revision: result.data.revision,
+              server_time: result.data.server_time,
+            },
+          },
+        }));
+        if (requestedResourcesRef.current.has("kitchen")) requireResource("kitchen", true);
+      } else if (result.issue.code === "state_conflict") {
+        requireResource("ranch", true);
+      }
+      return result;
+    },
+    [requireResource],
+  );
+
+  const submitFarmSettingsAction = useCallback<FarmSettingsActionExecutor>(
+    async (input) => {
+      const result = await executeBoundFarmSettingsAction(input);
+      if (result.ok) {
+        setResources((current) => ({
+          ...current,
+          farmCatalog: {
+            stage: "ready",
+            data: {
+              data: result.data.data.resource,
+              revision: result.data.revision,
+              server_time: result.data.server_time,
+            },
+          },
+        }));
+        void getBoundFarmField().then((fieldResult) => {
+          if (fieldResult.ok) setState({ stage: "ready", data: fieldResult.data });
+        });
+      } else if (result.issue.code === "state_conflict") {
+        requireResource("farmCatalog", true);
+      }
+      return result;
+    },
+    [requireResource],
+  );
+
   const reload = useCallback(() => {
     setHarvestAction({ stage: "idle" });
     if (previewData) {
@@ -2242,6 +2972,7 @@ function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
     const controller = new AbortController();
     requestControllerRef.current = controller;
     setState({ stage: "loading" });
+    refreshRequestedResources();
     void getBoundFarmField({ signal: controller.signal }).then((result) => {
       if (controller.signal.aborted) {
         return;
@@ -2250,7 +2981,7 @@ function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
         result.ok ? { stage: "ready", data: result.data } : { stage: "error", issue: result.issue },
       );
     });
-  }, [previewData]);
+  }, [previewData, refreshRequestedResources]);
 
   const submitHarvestAssist = useCallback(
     async (retryAttempt?: FarmHarvestAttempt) => {
@@ -2275,6 +3006,7 @@ function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
           },
         });
         setHarvestAction({ stage: "success", result: result.data.data.result });
+        refreshRequestedResources();
         return;
       }
       setHarvestAction({
@@ -2283,7 +3015,7 @@ function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
         issue: result.issue,
       });
     },
-    [previewData, state],
+    [previewData, refreshRequestedResources, state],
   );
 
   useEffect(() => {
@@ -2349,7 +3081,11 @@ function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
             harvestAction={harvestAction}
             onCloseHarvestAction={() => setHarvestAction({ stage: "idle" })}
             onHarvestAssist={previewData ? undefined : () => void submitHarvestAssist()}
+            onFarmSettingsAction={previewData ? undefined : submitFarmSettingsAction}
+            onRanchCollection={previewData ? undefined : submitRanchCollectionAction}
+            onRanchResidentAction={previewData ? undefined : submitRanchResidentAction}
             onReloadAfterHarvestError={reload}
+            onReloadRanch={previewData ? undefined : () => requireResource("ranch", true)}
             onRequireResource={requireResource}
             onRetryHarvestAssist={() => {
               if (harvestAction.stage === "error" && harvestAction.attempt) {
@@ -2358,6 +3094,7 @@ function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
             }}
             preview={Boolean(previewData)}
             resources={resources}
+            settingsInitializationKey={settingsInitializationKey}
           />
         ) : null}
       </div>
@@ -2366,7 +3103,7 @@ function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
 }
 
 export function FarmPage(props: FarmPageProps) {
-  return isFarmToolEditorEnabled() ? (
+  return import.meta.env.DEV && isFarmToolEditorEnabled() ? (
     <FarmToolEditor onBack={props.onBack} />
   ) : (
     <LiveFarmPage {...props} />
