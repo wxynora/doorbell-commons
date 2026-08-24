@@ -1,4 +1,8 @@
 import {
+  boundFarmFieldErrorSchema,
+  boundFarmFieldSuccessSchema,
+  boundFarmHarvestAssistErrorSchema,
+  boundFarmHarvestAssistSuccessSchema,
   type ConnectorControlError,
   type ConnectorCredentialIssueSuccess,
   type CurrentHumanSessionSuccess,
@@ -62,6 +66,27 @@ export interface HumanIdentity {
   farmBinding: CurrentHumanSessionSuccess["farm_binding"];
 }
 
+export type BoundFarmField = ReturnType<typeof boundFarmFieldSuccessSchema.parse>;
+export type FarmFieldIssueCode =
+  | ReturnType<typeof boundFarmFieldErrorSchema.parse>["error"]["code"]
+  | ClientIssueCode;
+
+export interface FarmFieldIssue {
+  code: FarmFieldIssueCode;
+  serverMessage: string | null;
+}
+
+export type BoundFarmHarvestAssist = ReturnType<typeof boundFarmHarvestAssistSuccessSchema.parse>;
+export type FarmHarvestAssistIssueCode =
+  | ReturnType<typeof boundFarmHarvestAssistErrorSchema.parse>["error"]["code"]
+  | ClientIssueCode;
+
+export interface FarmHarvestAssistIssue {
+  code: FarmHarvestAssistIssueCode;
+  currentRevision: string | null;
+  serverMessage: string | null;
+}
+
 export type ApiResult<T, Issue = AuthIssue> = { ok: true; data: T } | { ok: false; issue: Issue };
 export type IdentityResult =
   | { ok: true; identity: HumanIdentity; accountCreated: boolean | null }
@@ -113,6 +138,29 @@ function parseSettingsIssue(payload: unknown): AuthIssue {
   }
   return {
     code: parsed.data.error.code,
+    serverMessage: parsed.data.error.message,
+  };
+}
+
+function parseFarmFieldIssue(payload: unknown): FarmFieldIssue {
+  const parsed = boundFarmFieldErrorSchema.safeParse(payload);
+  if (!parsed.success) {
+    return clientIssue("unexpected_response");
+  }
+  return {
+    code: parsed.data.error.code,
+    serverMessage: parsed.data.error.message,
+  };
+}
+
+function parseFarmHarvestAssistIssue(payload: unknown): FarmHarvestAssistIssue {
+  const parsed = boundFarmHarvestAssistErrorSchema.safeParse(payload);
+  if (!parsed.success) {
+    return { ...clientIssue("unexpected_response"), currentRevision: null };
+  }
+  return {
+    code: parsed.data.error.code,
+    currentRevision: parsed.data.error.current_revision ?? null,
     serverMessage: parsed.data.error.message,
   };
 }
@@ -258,6 +306,71 @@ export async function lookupFarm(
   return parsed.success
     ? { ok: true, data: parsed.data }
     : { ok: false, issue: clientIssue("unexpected_response") };
+}
+
+export async function getBoundFarmField(
+  options: { signal?: AbortSignal; fetcher?: FrontendFetcher } = {},
+): Promise<ApiResult<BoundFarmField, FarmFieldIssue>> {
+  const fetcher = options.fetcher ?? fetch;
+  let response: Response;
+  try {
+    response = await fetcher("/api/farm/field", {
+      credentials: "same-origin",
+      method: "GET",
+      ...(options.signal ? { signal: options.signal } : {}),
+    });
+  } catch {
+    return { ok: false, issue: clientIssue("network_unavailable") };
+  }
+
+  const payload = await readPayload(response);
+  if (!response.ok) {
+    return { ok: false, issue: parseFarmFieldIssue(payload) };
+  }
+
+  const parsed = boundFarmFieldSuccessSchema.safeParse(payload);
+  return parsed.success
+    ? { ok: true, data: parsed.data }
+    : { ok: false, issue: clientIssue("unexpected_response") };
+}
+
+export async function harvestBoundFarmField(
+  input: { expectedRevision: string; idempotencyKey: string },
+  options: { signal?: AbortSignal; fetcher?: FrontendFetcher } = {},
+): Promise<ApiResult<BoundFarmHarvestAssist, FarmHarvestAssistIssue>> {
+  const fetcher = options.fetcher ?? fetch;
+  let response: Response;
+  try {
+    response = await fetcher("/api/farm/field/harvest-assists", {
+      body: JSON.stringify({}),
+      credentials: "same-origin",
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": input.idempotencyKey,
+        "if-match": `"${input.expectedRevision}"`,
+      },
+      method: "POST",
+      ...(options.signal ? { signal: options.signal } : {}),
+    });
+  } catch {
+    return {
+      ok: false,
+      issue: { ...clientIssue("network_unavailable"), currentRevision: null },
+    };
+  }
+
+  const payload = await readPayload(response);
+  if (!response.ok) {
+    return { ok: false, issue: parseFarmHarvestAssistIssue(payload) };
+  }
+
+  const parsed = boundFarmHarvestAssistSuccessSchema.safeParse(payload);
+  return parsed.success
+    ? { ok: true, data: parsed.data }
+    : {
+        ok: false,
+        issue: { ...clientIssue("unexpected_response"), currentRevision: null },
+      };
 }
 
 export async function getHumanSettings(

@@ -1,0 +1,1122 @@
+.farm-shop,
+.ranch-shop {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 1.6cqw;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ranch-shop__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-rows: 26.8cqw;
+  gap: 0.9cqw 1.1cqw;
+  min-height: 0;
+  align-content: start;
+  margin: 0;
+  padding: 0.4cqw 1.2cqw 13cqw 0.4cqw;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: rgba(110, 135, 58, 0.68) transparent;
+  scrollbar-width: thin;
+  list-style: none;
+}
+
+.ranch-shop__grid > li {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  grid-template-rows: minmax(0, 1fr) 3.4cqw;
+  gap: 0.35cqw;
+  padding: 0.25cqw;
+  align-items: start;
+  justify-items: stretch;
+  overflow: hidden;
+}
+
+.ranch-shop__product-button {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  padding: 0;
+  color: #60452e;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.ranch-shop__portrait {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: 1.6cqw;
+  background: rgba(255, 253, 241, 0.68);
+}
+
+.ranch-shop__portrait-sprite {
+  position: absolute;
+  display: block;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%) scale(0.82);
+  transform-origin: center;
+}
+
+.ranch-shop__portrait > strong {
+  position: absolute;
+  right: 3%;
+  bottom: 4%;
+  left: 3%;
+  z-index: 2;
+  min-width: 0;
+  overflow: hidden;
+  color: #60452e;
+  font-size: clamp(0.62rem, 2.7cqw, 0.78rem);
+  font-weight: 900;
+  line-height: 1.15;
+  text-align: center;
+  text-overflow: ellipsis;
+  text-shadow:
+    1px 0 #fff9e8,
+    -1px 0 #fff9e8,
+    0 1px #fff9e8,
+    0 -1px #fff9e8;
+  white-space: nowrap;
+}
+
+.ranch-shop__price {
+  display: inline-flex;
+  width: 100%;
+  min-height: 3.3cqw;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7cqw;
+  color: #745634;
+  font-size: clamp(0.56rem, 2.35cqw, 0.68rem);
+  font-weight: 900;
+  line-height: 1;
+}
+
+.ranch-shop__price i {
+  width: 2.8cqw;
+  height: 2.8cqw;
+  border: 0.35cqw solid #a97024;
+  border-radius: 50%;
+  background: #f3c452;
+  box-shadow: inset 0 0 0 0.3cqw #ffe289;
+}
+
+.ranch-shop__portrait-sprite .ranch-shop__animal-sprite {
+  width: 100%;
+  max-width: none;
+}
+
+.ranch-shop--detail {
+  grid-template-rows: auto auto minmax(0, 1fr);
+  align-content: start;
+}
+
+.ranch-shop__back {
+  justify-self: start;
+  min-height: 5.6cqw;
+  padding: 0.3cqw 1.2cqw;
+  color: #fff7d9;
+  font-size: clamp(0.6rem, 2.4cqw, 0.72rem);
+  font-weight: 900;
+  border: 0.4cqw solid #5e7134;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #839c4b, #6e873a);
+  box-shadow: inset 0 -0.4cqw rgba(70, 88, 38, 0.3);
+  cursor: pointer;
+}
+
+.ranch-shop__detail-head {
+  display: grid;
+  grid-template-columns: 23cqw minmax(0, 1fr);
+  align-items: center;
+  gap: 2.4cqw;
+  padding: 1.8cqw 2cqw;
+  border-radius: 1.6cqw;
+  background: rgba(255, 253, 241, 0.68);
+}
+
+.ranch-shop__detail-head .ranch-shop__animal-sprite {
+  width: 23cqw;
+  max-width: none;
+}
+
+.ranch-shop__detail-head h3 {
+  margin: 0 0 0.5cqw;
+  color: #60452e;
+  font-size: clamp(1rem, 4.6cqw, 1.3rem);
+}
+
+.ranch-shop__category {
+  display: inline-block;
+  padding: 0.3cqw 1.2cqw;
+  color: #fff7d9;
+  font-size: clamp(0.58rem, 2.4cqw, 0.7rem);
+  font-weight: 800;
+  border-radius: 999px;
+  background: #7b913f;
+}
+
+.ranch-shop__detail-head p {
+  margin: 1.1cqw 0 0;
+  color: #786346;
+  font-size: clamp(0.62rem, 2.6cqw, 0.76rem);
+  line-height: 1.45;
+}
+
+.ranch-shop__facts {
+  display: grid;
+  align-content: start;
+  gap: 0.8cqw;
+  min-height: 0;
+  margin: 0;
+  padding: 0.8cqw 2cqw;
+  border-radius: 1.6cqw;
+  background: rgba(255, 253, 241, 0.68);
+}
+
+.ranch-shop__fact {
+  display: grid;
+  grid-template-columns: 18cqw minmax(0, 1fr);
+  align-items: center;
+  gap: 1.2cqw;
+  min-height: 8.4cqw;
+  padding: 0.5cqw 1cqw;
+  border: 0;
+  border-radius: 1.2cqw;
+  background: rgba(255, 249, 226, 0.52);
+}
+
+.ranch-shop__fact--description {
+  align-items: start;
+  padding: 1.4cqw 0;
+}
+
+.ranch-shop__fact--description dd {
+  line-height: 1.45;
+}
+
+.ranch-shop__facts dt,
+.ranch-shop__facts dd {
+  margin: 0;
+  font-size: clamp(0.64rem, 2.65cqw, 0.78rem);
+}
+
+.ranch-shop__facts dt {
+  color: #8a724e;
+  font-weight: 800;
+}
+
+.ranch-shop__facts dd {
+  color: #60452e;
+  font-weight: 900;
+  text-align: right;
+}
+
+.cooking-shop,
+.cooking-ingredient-catalog,
+.cooking-recipe-catalog,
+.cooking-tool-shop {
+  display: grid;
+  height: 100%;
+  min-height: 0;
+}
+
+.cooking-shop {
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 1.6cqw;
+  overflow: hidden;
+}
+
+.cooking-tool-shop {
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.cooking-tool-shop__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-rows: max-content;
+  gap: 1.4cqw;
+  min-height: 0;
+  align-content: start;
+  margin: 0;
+  padding: 0.6cqw 0.5cqw 13cqw;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: rgba(110, 135, 58, 0.68) transparent;
+  scrollbar-width: thin;
+  list-style: none;
+}
+
+.cooking-tool-shop__grid li {
+  display: grid;
+  min-width: 0;
+  justify-items: center;
+  gap: 0.55cqw;
+  color: #60452e;
+}
+
+.cooking-tool-shop__portrait {
+  display: grid;
+  width: 100%;
+  aspect-ratio: 1;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 1.6cqw;
+  background: rgba(255, 253, 241, 0.68);
+}
+
+.cooking-tool-shop__portrait img {
+  display: block;
+  width: 88%;
+  height: 88%;
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 0.45cqw 0 rgba(87, 65, 38, 0.15));
+}
+
+.cooking-tool-shop__grid strong {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: clamp(0.62rem, 2.6cqw, 0.76rem);
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cooking-tool-shop__owned,
+.cooking-tool-shop__price {
+  display: inline-flex;
+  min-height: 4cqw;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55cqw;
+  color: #7d683f;
+  font-size: clamp(0.52rem, 2.15cqw, 0.64rem);
+  font-weight: 900;
+}
+
+.cooking-tool-shop__owned {
+  color: #6f853c;
+}
+
+.cooking-recipe-catalog {
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 1.1cqw;
+  overflow: hidden;
+}
+
+.cooking-ingredient-catalog {
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 1.1cqw;
+  overflow: hidden;
+}
+
+.cooking-ingredient-catalog__refresh {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  min-width: 0;
+  min-height: 8cqw;
+  align-items: center;
+  gap: 1.1cqw;
+  margin: 0;
+  padding: 0.55cqw 1cqw 0.55cqw 1.5cqw;
+  color: #806a4b;
+  font-size: clamp(0.48rem, 1.95cqw, 0.58rem);
+  font-weight: 800;
+  border: 0;
+  border-radius: 1.3cqw;
+  background: rgba(255, 253, 241, 0.5);
+}
+
+.cooking-ingredient-catalog__refresh > span:first-child {
+  min-width: 0;
+}
+
+.cooking-ingredient-catalog__refresh strong {
+  color: #65492f;
+}
+
+.cooking-ingredient-catalog__refresh-cost {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55cqw;
+  color: #76542c;
+  font-weight: 900;
+}
+
+.cooking-ingredient-catalog__refresh-cost i {
+  width: 3.2cqw;
+  height: 3.2cqw;
+  border: 0.35cqw solid #a97024;
+  border-radius: 50%;
+  background: #f3c452;
+  box-shadow: inset 0 0 0 0.3cqw #ffe289;
+}
+
+.cooking-ingredient-catalog__refresh-button {
+  width: 12cqw;
+  min-width: 12cqw;
+  max-width: 12cqw;
+  height: 6cqw;
+  min-height: 6cqw;
+  max-height: 6cqw;
+  padding: 0;
+  color: #fff6d6;
+  font-size: clamp(0.5rem, 2.05cqw, 0.61rem);
+  font-weight: 900;
+  border: 0.28cqw solid #607238;
+  border-radius: 1.1cqw;
+  background: linear-gradient(180deg, #8da657, #748d42);
+  box-shadow: inset 0 -0.25cqw rgba(68, 88, 35, 0.28);
+  cursor: default;
+  opacity: 0.66;
+}
+
+.cooking-ingredient-catalog__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-rows: auto;
+  gap: 0.9cqw 1.1cqw;
+  min-height: 0;
+  align-content: start;
+  margin: 0;
+  padding: 0.3cqw 1.2cqw 13cqw 0.3cqw;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: rgba(110, 135, 58, 0.68) transparent;
+  scrollbar-width: thin;
+  list-style: none;
+}
+
+.cooking-ingredient-catalog__grid li {
+  display: grid;
+  min-width: 0;
+  grid-template-rows: auto auto;
+  gap: 0.35cqw;
+  padding: 0.25cqw;
+}
+
+.cooking-ingredient-catalog__portrait {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  padding: 0;
+  overflow: hidden;
+  color: inherit;
+  border: 0;
+  border-radius: 1.6cqw;
+  background: rgba(255, 253, 241, 0.68);
+  cursor: pointer;
+}
+
+.cooking-ingredient-catalog__portrait .cooking-catalog__sprite {
+  position: absolute;
+  inset: 2%;
+  width: 96%;
+  height: 96%;
+}
+
+.cooking-ingredient-catalog__portrait strong {
+  position: absolute;
+  right: 3%;
+  bottom: 4%;
+  left: 3%;
+  z-index: 1;
+  overflow: hidden;
+  color: #60452e;
+  font-size: clamp(0.58rem, 2.55cqw, 0.74rem);
+  font-weight: 900;
+  line-height: 1.15;
+  text-align: center;
+  text-overflow: ellipsis;
+  text-shadow:
+    1px 0 #fff9e8,
+    -1px 0 #fff9e8,
+    0 1px #fff9e8,
+    0 -1px #fff9e8;
+  white-space: nowrap;
+}
+
+.cooking-ingredient-catalog__meta {
+  display: flex;
+  min-width: 0;
+  min-height: 3.4cqw;
+  align-items: center;
+  justify-content: center;
+  gap: 1cqw;
+}
+
+.cooking-ingredient-catalog__categories {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.55cqw;
+}
+
+.cooking-ingredient-catalog__categories button {
+  min-width: 0;
+  min-height: 8.4cqw;
+  padding: 0.55cqw 0.25cqw;
+  color: #786346;
+  font-size: clamp(0.5rem, 2.05cqw, 0.62rem);
+  font-weight: 800;
+  line-height: 1.1;
+  border: 1px solid rgba(145, 112, 62, 0.34);
+  border-radius: 1.3cqw;
+  background: rgba(255, 249, 226, 0.7);
+  cursor: pointer;
+}
+
+.cooking-ingredient-catalog__categories button[aria-pressed="true"] {
+  color: #fff7d9;
+  border-color: #5e7134;
+  background: linear-gradient(180deg, #839c4b, #6e873a);
+  box-shadow: inset 0 -0.35cqw rgba(70, 88, 38, 0.3);
+}
+
+.cooking-recipe-catalog__list {
+  display: grid;
+  grid-auto-rows: 14cqw;
+  gap: 0.85cqw;
+  min-height: 0;
+  align-content: start;
+  margin: 0;
+  padding: 0.25cqw 0.4cqw;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+}
+
+.cooking-recipe-catalog__list--shop {
+  grid-template-rows: repeat(2, 18cqw);
+  overflow: hidden;
+}
+
+.cooking-recipe-shop {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.cooking-recipe-shop__refresh {
+  margin: 0;
+  color: #806c50;
+  font-size: clamp(0.54rem, 2.2cqw, 0.66rem);
+  font-weight: 800;
+  text-align: center;
+}
+
+.cooking-recipe-catalog__list li {
+  display: grid;
+  grid-template-columns: 11.4cqw minmax(0, 1fr) auto;
+  min-height: 0;
+  align-items: center;
+  gap: 1.6cqw;
+  padding: 1.05cqw 1.8cqw;
+  border-radius: 1.5cqw;
+  background: rgba(255, 253, 241, 0.62);
+}
+
+.cooking-recipe-catalog__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5cqw;
+}
+
+.cooking-recipe-catalog__copy {
+  display: grid;
+  min-width: 0;
+  gap: 0.65cqw;
+}
+
+.cooking-recipe-catalog__head {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 1cqw;
+}
+
+.cooking-recipe-catalog__head strong {
+  overflow: hidden;
+  color: #62482f;
+  font-size: clamp(0.63rem, 2.7cqw, 0.78rem);
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cooking-recipe-catalog__head small {
+  flex: 0 0 auto;
+  min-width: 5cqw;
+  padding: 0.35cqw 0.65cqw;
+  color: #6d583e;
+  font-size: clamp(0.43rem, 1.72cqw, 0.52rem);
+  font-weight: 900;
+  line-height: 1;
+  text-align: center;
+  border-radius: 999px;
+  background: #eadab6;
+}
+
+.cooking-recipe-catalog__head small[data-rarity="R"] {
+  color: #536638;
+  background: #dce7b9;
+}
+
+.cooking-recipe-catalog__head small[data-rarity="SR"] {
+  color: #48636d;
+  background: #cfe2df;
+}
+
+.cooking-recipe-catalog__head small[data-rarity="SSR"],
+.cooking-recipe-catalog__head small[data-rarity="SP"] {
+  color: #6e5872;
+  background: #e2d4df;
+}
+
+.cooking-recipe-catalog__ingredients {
+  overflow: hidden;
+  color: #927b5c;
+  font-size: clamp(0.46rem, 1.9cqw, 0.57rem);
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cooking-catalog__price {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6cqw;
+  color: #76542c;
+  font-size: clamp(0.54rem, 2.25cqw, 0.66rem);
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.cooking-catalog__silver-coin {
+  width: 3.2cqw;
+  height: 3.2cqw;
+  border: 0.35cqw solid #7f898b;
+  border-radius: 50%;
+  background: linear-gradient(145deg, #f2f1e9 12%, #c7cdcc 54%, #aab2b4 100%);
+  box-shadow:
+    inset 0 0 0 0.3cqw #e7e8e3,
+    inset -0.35cqw -0.35cqw 0 rgba(96, 108, 112, 0.18);
+}
+
+.cooking-tool-shop__price .cooking-catalog__silver-coin {
+  width: 3cqw;
+  height: 3cqw;
+}
+
+.farm-shop__categories {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7cqw;
+  padding-bottom: 0.4cqw;
+  border-bottom: 0;
+}
+
+.cooking-shop > .farm-shop__categories {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.shop-cart__shortcut {
+  position: absolute;
+  right: 4.8cqw;
+  bottom: 4.6cqw;
+  z-index: 4;
+  display: grid;
+  width: 8.8cqw;
+  height: 8.8cqw;
+  padding: 0;
+  place-items: center;
+  color: #6e873a;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.shop-cart__shortcut::before {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max(44px, 100%);
+  height: max(44px, 100%);
+  content: "";
+  transform: translate(-50%, -50%);
+}
+
+.shop-cart__shortcut svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.shop-cart__shortcut strong {
+  position: absolute;
+  top: -1.2cqw;
+  right: -1.2cqw;
+  display: grid;
+  min-width: 5.2cqw;
+  height: 5.2cqw;
+  padding: 0 0.6cqw;
+  place-items: center;
+  color: #657837;
+  font-size: clamp(0.5rem, 2cqw, 0.62rem);
+  border: 0.35cqw solid #6d5737;
+  border-radius: 999px;
+  background: #fff3c9;
+  box-shadow: 0 0.3cqw 0 rgba(89, 65, 37, 0.22);
+}
+
+.farm-shop__categories button {
+  min-width: 0;
+  min-height: 8.2cqw;
+  padding: 0.8cqw 0.5cqw;
+  color: #786346;
+  font-size: clamp(0.72rem, 3.1cqw, 0.88rem);
+  font-weight: 800;
+  line-height: 1.15;
+  border: 1px solid rgba(145, 112, 62, 0.38);
+  border-radius: 1.5cqw;
+  background: rgba(255, 249, 226, 0.72);
+  cursor: pointer;
+}
+
+.farm-shop__categories button[aria-pressed="true"] {
+  color: #fff7d9;
+  border-color: #5e7134;
+  background: #7b913f;
+  box-shadow: inset 0 -1px rgba(68, 86, 36, 0.42);
+}
+
+.farm-shop__items {
+  display: grid;
+  grid-auto-rows: 15.5cqw;
+  gap: 1cqw;
+  height: 100%;
+  min-height: 0;
+  align-content: start;
+  margin: 0;
+  padding: 0.4cqw 1.2cqw 13cqw 0.5cqw;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: rgba(110, 135, 58, 0.68) transparent;
+  scrollbar-width: thin;
+  list-style: none;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.farm-shop__items li {
+  display: grid;
+  grid-template-columns: 12.4cqw minmax(0, 1fr) auto 44px;
+  min-height: 0;
+  align-items: center;
+  gap: 1.1cqw;
+  padding: 1.25cqw 2.1cqw;
+  border: 0;
+  border-radius: 1.5cqw;
+  background: rgba(255, 253, 241, 0.62);
+  box-shadow: none;
+}
+
+.shop-cart__add {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  place-items: center;
+  color: #fff7dd;
+  font-size: clamp(0.9rem, 4cqw, 1.1rem);
+  font-weight: 900;
+  line-height: 1;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  isolation: isolate;
+}
+
+.shop-cart__add::before {
+  position: absolute;
+  z-index: -1;
+  width: 7.4cqw;
+  height: 7.4cqw;
+  content: "";
+  border: 0.4cqw solid #5e7134;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #839c4b, #6e873a);
+  box-shadow:
+    inset 0 -0.35cqw rgba(70, 88, 38, 0.3),
+    0 0.35cqw 0 rgba(78, 96, 45, 0.62);
+}
+
+.shop-cart__add:disabled {
+  color: rgba(255, 247, 221, 0.7);
+  cursor: default;
+}
+
+.shop-cart__add:disabled::before {
+  border-color: #91836a;
+  background: #b4aa8e;
+  box-shadow: inset 0 -0.3cqw rgba(99, 88, 66, 0.16);
+}
+
+.shop-cart {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 1.1cqw;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.shop-cart__header {
+  display: grid;
+  grid-template-columns: 8.8cqw minmax(0, 1fr) auto;
+  min-height: 44px;
+  align-items: center;
+  gap: 1.2cqw;
+}
+
+.shop-cart__header h3 {
+  margin: 0;
+  color: #65492f;
+  font-size: clamp(0.82rem, 3.5cqw, 1rem);
+}
+
+.shop-cart__header > span {
+  color: #856c4d;
+  font-size: clamp(0.56rem, 2.3cqw, 0.68rem);
+  font-weight: 800;
+}
+
+.shop-cart__back {
+  position: relative;
+  display: grid;
+  width: 8.8cqw;
+  height: 8.8cqw;
+  min-height: 8.8cqw;
+  padding: 0;
+  place-items: center;
+  color: #fff7d9;
+  font-size: clamp(1rem, 4.7cqw, 1.28rem);
+  font-weight: 900;
+  line-height: 1;
+  border: 0.45cqw solid #4e612f;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #839c4b, #6e873a);
+  box-shadow:
+    inset 0 -0.45cqw rgba(70, 88, 38, 0.3),
+    0 0.5cqw 0 rgba(78, 96, 45, 0.78);
+  cursor: pointer;
+}
+
+.shop-cart__back::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max(44px, 100%);
+  height: max(44px, 100%);
+  content: "";
+  transform: translate(-50%, -50%);
+}
+
+.shop-cart__items {
+  display: grid;
+  grid-auto-rows: 13.2cqw;
+  gap: 0.8cqw;
+  min-height: 0;
+  align-content: start;
+  margin: 0;
+  padding: 0 0.8cqw 0 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: rgba(110, 135, 58, 0.68) transparent;
+  scrollbar-width: thin;
+  list-style: none;
+}
+
+.shop-cart__items::-webkit-scrollbar {
+  width: 1.1cqw;
+}
+
+.shop-cart__items::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(110, 135, 58, 0.68);
+}
+
+.shop-cart__items li {
+  display: grid;
+  grid-template-columns: 10cqw minmax(0, 1fr) auto;
+  min-height: 0;
+  align-items: center;
+  gap: 1.2cqw;
+  padding: 0.6cqw 1cqw;
+  border-radius: 1.5cqw;
+  background: rgba(255, 253, 241, 0.62);
+}
+
+.shop-cart__visual {
+  position: relative;
+  display: grid;
+  width: 10cqw;
+  height: 10cqw;
+  place-items: center;
+}
+
+.shop-cart__visual > img,
+.shop-cart__visual .cooking-catalog__sprite,
+.shop-cart__visual .ranch-shop__animal-sprite {
+  width: 10cqw;
+  height: 10cqw;
+  object-fit: contain;
+}
+
+.shop-cart__item-copy {
+  display: grid;
+  min-width: 0;
+  gap: 0.35cqw;
+}
+
+.shop-cart__item-copy > strong {
+  overflow: hidden;
+  color: #62482f;
+  font-size: clamp(0.62rem, 2.65cqw, 0.76rem);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shop-cart__price {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55cqw;
+  color: #76542c;
+  font-size: clamp(0.52rem, 2.15cqw, 0.64rem);
+  font-weight: 900;
+}
+
+.shop-cart__price i {
+  display: block;
+  width: 3.2cqw;
+  height: 3.2cqw;
+  border-radius: 50%;
+}
+
+.shop-cart__price--gold i {
+  border: 0.35cqw solid #a97024;
+  background: #f3c452;
+  box-shadow: inset 0 0 0 0.3cqw #ffe289;
+}
+
+.shop-cart__price--silver i {
+  border: 0.35cqw solid #7f898b;
+  background: linear-gradient(145deg, #f2f1e9 12%, #c7cdcc 54%, #aab2b4 100%);
+  box-shadow: inset 0 0 0 0.3cqw #e7e8e3;
+}
+
+.shop-cart__quantity {
+  display: grid;
+  grid-template-columns: 44px minmax(4cqw, auto) 44px;
+  align-items: center;
+  justify-items: center;
+  gap: 0.2cqw;
+}
+
+.shop-cart__quantity button {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  place-items: center;
+  color: #6d583b;
+  font-size: clamp(0.92rem, 4cqw, 1.12rem);
+  font-weight: 900;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.shop-cart__quantity button:disabled {
+  color: #b3a58b;
+  cursor: default;
+}
+
+.shop-cart__quantity > strong {
+  color: #60452e;
+  font-size: clamp(0.6rem, 2.5cqw, 0.74rem);
+}
+
+.shop-cart__empty {
+  display: grid;
+  min-height: 20cqw;
+  align-content: center;
+  gap: 0.8cqw;
+  padding: 2cqw 2.4cqw;
+  color: #7c6748;
+  justify-items: center;
+  text-align: center;
+  border-radius: 1.5cqw;
+  background: rgba(255, 253, 241, 0.62);
+}
+
+.shop-cart__empty strong {
+  color: #695238;
+  font-size: clamp(0.78rem, 3.2cqw, 0.94rem);
+}
+
+.shop-cart__empty span {
+  font-size: clamp(0.58rem, 2.45cqw, 0.72rem);
+}
+
+.shop-cart__footer {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1.2cqw;
+  padding: 0;
+  color: #745634;
+  font-size: clamp(0.6rem, 2.45cqw, 0.72rem);
+  font-weight: 900;
+  border-radius: 0;
+  background: transparent;
+}
+
+.shop-cart__footer > button {
+  box-sizing: border-box;
+  width: 20cqw;
+  min-height: 34px;
+  padding: 0.45cqw 0.8cqw;
+  color: #fff7d9;
+  font-size: clamp(0.54rem, 2.15cqw, 0.66rem);
+  font-weight: 900;
+  white-space: nowrap;
+  border: 0.35cqw solid #857861;
+  border-radius: 999px;
+  background: #a69b80;
+}
+
+.shop-cart__footer > button:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.farm-shop__items img {
+  display: block;
+  width: 11.4cqw;
+  height: 11.4cqw;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 0 rgba(91, 65, 33, 0.2));
+}
+
+.farm-shop__item-copy {
+  display: grid;
+  min-width: 0;
+  gap: 0.45cqw;
+}
+
+.farm-shop__item-copy strong {
+  overflow: hidden;
+  color: #62482f;
+  font-size: clamp(0.63rem, 2.8cqw, 0.8rem);
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.farm-shop__item-copy small {
+  color: #978061;
+  font-size: clamp(0.47rem, 1.9cqw, 0.58rem);
+  line-height: 1;
+}
+
+.farm-shop__price {
+  display: flex;
+  align-items: center;
+  gap: 0.7cqw;
+  color: #76542c;
+  font-size: clamp(0.57rem, 2.4cqw, 0.7rem);
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.farm-shop__price i {
+  display: block;
+  width: 4.2cqw;
+  height: 4.2cqw;
+  border: 1px solid #9c6c28;
+  border-radius: 50%;
+  background: #e3b34f;
+  box-shadow:
+    inset 0 0 0 1px #ffe29a,
+    0 1px 0 rgba(98, 66, 31, 0.28);
+}
+
+.farm-shop__unavailable {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 20cqw;
+  align-content: center;
+  align-items: center;
+  justify-items: center;
+  gap: 0.7cqw;
+  padding: 2cqw 2.4cqw;
+  color: #7f6b4e;
+  text-align: center;
+  border-radius: 1.5cqw;
+  background: rgba(255, 253, 241, 0.62);
+}
+
+.farm-shop__unavailable img {
+  width: 12cqw;
+  height: 12cqw;
+  object-fit: contain;
+  opacity: 0.6;
+}
+
+.farm-shop__unavailable strong {
+  color: #695238;
+  font-size: clamp(0.76rem, 3.1cqw, 0.9rem);
+}
+
+.farm-shop__unavailable span {
+  font-size: clamp(0.52rem, 2.2cqw, 0.66rem);
+}
+
+.farm-shop__categories button:focus-visible,
+.cooking-ingredient-catalog__portrait:focus-visible,
+.shop-cart__shortcut:focus-visible,
+.shop-cart__add:focus-visible,
+.shop-cart__back:focus-visible,
+.shop-cart__quantity button:focus-visible,
+.shop-cart__footer > button:focus-visible {
+  outline: 3px solid #315d91;
+  outline-offset: 2px;
+}

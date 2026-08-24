@@ -12,6 +12,10 @@ import {
   HumanLoginLockedError,
   RegistrationProfileRequiredError,
 } from "./community-database.js";
+import {
+  FarmHumanCatalogContractUnavailableError,
+  type FarmHumanCatalogReader,
+} from "./farm-catalog-client.js";
 import type { FarmCreator } from "./farm-creation-client.js";
 import type {
   BoundFarmOverview,
@@ -20,7 +24,20 @@ import type {
   FarmHumanActionRedirect,
   FarmHumanPage,
 } from "./farm-directory-client.js";
+import {
+  FarmHumanFieldContractUnavailableError,
+  type FarmHumanFieldReader,
+} from "./farm-human-client.js";
 import { buildFarmHumanUrl, extractFarmHumanKey } from "./farm-human-url.js";
+import {
+  FarmHumanKitchenContractUnavailableError,
+  type FarmHumanKitchenReader,
+} from "./farm-kitchen-client.js";
+import { FarmLingyeContractUnavailableError, type FarmLingyeReader } from "./farm-lingye-client.js";
+import {
+  FarmHumanRanchContractUnavailableError,
+  type FarmHumanRanchReader,
+} from "./farm-ranch-client.js";
 import { createHumanPasswordCredential, verifyHumanPassword } from "./password-auth.js";
 import type { QqGroupMembershipReader } from "./qq-group-membership.js";
 
@@ -110,6 +127,11 @@ interface RegistrationAuthServiceOptions {
   database: CommunityDatabase;
   groupMembership: QqGroupMembershipReader;
   farmDirectory: FarmDirectoryReader;
+  farmHumanReader?: FarmHumanFieldReader;
+  farmCatalogReader?: FarmHumanCatalogReader;
+  farmKitchenReader?: FarmHumanKitchenReader;
+  farmRanchReader?: FarmHumanRanchReader;
+  farmLingyeReader?: FarmLingyeReader;
   farmCreator?: FarmCreator;
   groupId: string;
   farmHumanUiBaseUrl?: string;
@@ -132,6 +154,11 @@ export class RegistrationAuthService {
   readonly #database: CommunityDatabase;
   readonly #groupMembership: QqGroupMembershipReader;
   readonly #farmDirectory: FarmDirectoryReader;
+  readonly #farmHumanReader: FarmHumanFieldReader | undefined;
+  readonly #farmCatalogReader: FarmHumanCatalogReader | undefined;
+  readonly #farmKitchenReader: FarmHumanKitchenReader | undefined;
+  readonly #farmRanchReader: FarmHumanRanchReader | undefined;
+  readonly #farmLingyeReader: FarmLingyeReader | undefined;
   readonly #farmCreator: FarmCreator | undefined;
   readonly #groupId: string;
   readonly #farmHumanUiBaseUrl: string | undefined;
@@ -142,6 +169,11 @@ export class RegistrationAuthService {
     this.#database = options.database;
     this.#groupMembership = options.groupMembership;
     this.#farmDirectory = options.farmDirectory;
+    this.#farmHumanReader = options.farmHumanReader;
+    this.#farmCatalogReader = options.farmCatalogReader;
+    this.#farmKitchenReader = options.farmKitchenReader;
+    this.#farmRanchReader = options.farmRanchReader;
+    this.#farmLingyeReader = options.farmLingyeReader;
     this.#farmCreator = options.farmCreator;
     this.#groupId = options.groupId;
     this.#farmHumanUiBaseUrl = options.farmHumanUiBaseUrl;
@@ -322,6 +354,116 @@ export class RegistrationAuthService {
   async getCurrentFarmOverview(token: string): Promise<BoundFarmOverview> {
     const community = await this.getCurrentSession(token);
     return this.#farmDirectory.readFarmOverview(community.farmBinding.farmDoorplate);
+  }
+
+  async getCurrentFarmField(token: string) {
+    const community = await this.getCurrentSession(token);
+    const farmHumanKey = community.farmBinding.farmHumanKey;
+    if (farmHumanKey === null) {
+      throw new RegistrationProfileRequiredError();
+    }
+    if (!this.#farmHumanReader) {
+      throw new FarmHumanFieldContractUnavailableError();
+    }
+    return this.#farmHumanReader.readField({
+      farmDoorplate: community.farmBinding.farmDoorplate,
+      farmHumanKey,
+    });
+  }
+
+  async getCurrentFarmCatalog(token: string) {
+    const community = await this.getCurrentSession(token);
+    const farmHumanKey = community.farmBinding.farmHumanKey;
+    if (farmHumanKey === null) {
+      throw new RegistrationProfileRequiredError();
+    }
+    if (!this.#farmCatalogReader) {
+      throw new FarmHumanCatalogContractUnavailableError();
+    }
+    return this.#farmCatalogReader.readCatalog({
+      farmDoorplate: community.farmBinding.farmDoorplate,
+      farmHumanKey,
+    });
+  }
+
+  async getCurrentFarmKitchen(token: string) {
+    const community = await this.getCurrentSession(token);
+    const farmHumanKey = community.farmBinding.farmHumanKey;
+    if (farmHumanKey === null) {
+      throw new RegistrationProfileRequiredError();
+    }
+    if (!this.#farmKitchenReader) {
+      throw new FarmHumanKitchenContractUnavailableError();
+    }
+    return this.#farmKitchenReader.readKitchen({
+      farmDoorplate: community.farmBinding.farmDoorplate,
+      farmHumanKey,
+    });
+  }
+
+  async getCurrentFarmRanch(token: string) {
+    const community = await this.getCurrentSession(token);
+    const farmHumanKey = community.farmBinding.farmHumanKey;
+    if (farmHumanKey === null) {
+      throw new RegistrationProfileRequiredError();
+    }
+    if (!this.#farmRanchReader) {
+      throw new FarmHumanRanchContractUnavailableError();
+    }
+    return this.#farmRanchReader.readRanch({
+      farmDoorplate: community.farmBinding.farmDoorplate,
+      farmHumanKey,
+    });
+  }
+
+  async getCurrentFarmGlimmer(token: string) {
+    const community = await this.getCurrentSession(token);
+    const farmHumanKey = community.farmBinding.farmHumanKey;
+    if (farmHumanKey === null) {
+      throw new RegistrationProfileRequiredError();
+    }
+    if (!this.#farmLingyeReader) {
+      throw new FarmLingyeContractUnavailableError();
+    }
+    return this.#farmLingyeReader.readGlimmer({
+      farmDoorplate: community.farmBinding.farmDoorplate,
+      farmHumanKey,
+    });
+  }
+
+  async getCurrentFarmTogether(token: string) {
+    const community = await this.getCurrentSession(token);
+    const farmHumanKey = community.farmBinding.farmHumanKey;
+    if (farmHumanKey === null) {
+      throw new RegistrationProfileRequiredError();
+    }
+    if (!this.#farmLingyeReader) {
+      throw new FarmLingyeContractUnavailableError();
+    }
+    return this.#farmLingyeReader.readTogether({
+      farmDoorplate: community.farmBinding.farmDoorplate,
+      farmHumanKey,
+    });
+  }
+
+  async harvestCurrentFarmField(
+    token: string,
+    input: { expectedRevision: string; idempotencyKey: string },
+  ) {
+    const community = await this.getCurrentSession(token);
+    const farmHumanKey = community.farmBinding.farmHumanKey;
+    if (farmHumanKey === null) {
+      throw new RegistrationProfileRequiredError();
+    }
+    const farmHumanReader = this.#farmHumanReader;
+    if (!farmHumanReader?.harvestAssist) {
+      throw new FarmHumanFieldContractUnavailableError();
+    }
+    return farmHumanReader.harvestAssist({
+      farmDoorplate: community.farmBinding.farmDoorplate,
+      farmHumanKey,
+      ...input,
+    });
   }
 
   async getCurrentFarmHumanPage(

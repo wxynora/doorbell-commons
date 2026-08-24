@@ -6,8 +6,13 @@ import { BellService } from "./bell-service.js";
 import { CommunityDatabase } from "./community-database.js";
 import { readDoorbellServerConfig } from "./config.js";
 import { ConnectorService } from "./connector-service.js";
+import { FarmHumanCatalogClient } from "./farm-catalog-client.js";
 import { FarmCreationClient } from "./farm-creation-client.js";
 import { FarmDirectoryClient } from "./farm-directory-client.js";
+import { FarmHumanClient } from "./farm-human-client.js";
+import { FarmHumanKitchenClient } from "./farm-kitchen-client.js";
+import { FarmLingyeClient } from "./farm-lingye-client.js";
+import { FarmHumanRanchClient } from "./farm-ranch-client.js";
 import { FarmRewardClient } from "./farm-reward-client.js";
 import { HomeWeatherEngine } from "./home-weather-engine.js";
 import { LingyeDailyService } from "./lingye-daily-service.js";
@@ -58,11 +63,41 @@ const farmCreator = new FarmCreationClient({
   requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
   serviceToken: serverConfig.farmServiceToken,
 });
+const farmHumanReader = new FarmHumanClient({
+  apiBaseUrl: serverConfig.farmApiBaseUrl,
+  requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+  serviceToken: serverConfig.farmServiceToken,
+});
+const farmCatalogReader = new FarmHumanCatalogClient({
+  apiBaseUrl: serverConfig.farmApiBaseUrl,
+  requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+  serviceToken: serverConfig.farmServiceToken,
+});
+const farmKitchenReader = new FarmHumanKitchenClient({
+  apiBaseUrl: serverConfig.farmApiBaseUrl,
+  requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+  serviceToken: serverConfig.farmServiceToken,
+});
+const farmRanchReader = new FarmHumanRanchClient({
+  apiBaseUrl: serverConfig.farmApiBaseUrl,
+  requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+  serviceToken: serverConfig.farmServiceToken,
+});
+const farmLingyeReader = new FarmLingyeClient({
+  apiBaseUrl: serverConfig.farmApiBaseUrl,
+  requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+  serviceToken: serverConfig.farmServiceToken,
+});
 let disconnectRealtimeResident = (_residentId: string): void => undefined;
 const registrationAuth = new RegistrationAuthService({
   database,
   farmDirectory,
   farmCreator,
+  farmCatalogReader,
+  farmHumanReader,
+  farmKitchenReader,
+  farmLingyeReader,
+  farmRanchReader,
   groupMembership,
   groupId: serverConfig.qqGroupId,
   farmHumanUiBaseUrl: serverConfig.farmHumanUiBaseUrl,

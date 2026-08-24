@@ -7,6 +7,7 @@ import {
   sharedMemeAddRequestSchema,
 } from "@doorbell/protocol";
 import { useEffect, useMemo, useRef } from "react";
+import type { BoundGlimmerRead, BoundTogetherRead } from "../auth/lingye-client";
 import { candidateTwoHtml } from "./candidate-two-source";
 
 export type CandidateTwoScreen =
@@ -25,17 +26,257 @@ export type CandidateTwoDemoScreen =
   | "permit"
   | "lounge"
   | "lingye"
+  | "glimmer"
   | "home"
   | "profile"
   | "settings";
 
-const candidateTwoInternalPaths = [
-  "/api/farm/ui",
-  "/api/lingye-glimmer",
-  "/api/lingye-together",
+type CandidateTwoGlimmerAnimalId = "duck_peach" | "silk_moth_mist" | "turkey_maple";
+type CandidateTwoGlimmerAnimalPositionId = CandidateTwoGlimmerAnimalId | "mystery";
+
+type CandidateTwoGlimmerAnimalPositions = Record<
+  CandidateTwoGlimmerAnimalPositionId,
+  { x: number; y: number }
+>;
+
+interface CandidateTwoGlimmerVariant {
+  atlas?: string;
+  id: string;
+  name: string;
+  set: 1 | 2 | 3;
+  spriteIndex: number;
+  unlocked?: boolean;
+}
+
+type CandidateTwoGlimmerAchievementField = "glimmerCoops" | "glimmerEncounters" | "glimmerVariants";
+
+interface CandidateTwoGlimmerAchievementDefinition {
+  field: CandidateTwoGlimmerAchievementField;
+  id: string;
+  min: number;
+  name: string;
+  reward: { coins: number; silver: number };
+}
+
+interface CandidateTwoGlimmerEncounterDefinition {
+  id: string;
+  name: string;
+}
+
+const candidateTwoInternalPaths = ["/api/farm/ui"] as const;
+
+const candidateTwoGlimmerAnimalPositionParams: Record<
+  CandidateTwoGlimmerAnimalPositionId,
+  readonly [x: string, y: string]
+> = {
+  duck_peach: ["gaDuckX", "gaDuckY"],
+  mystery: ["gaMysteryX", "gaMysteryY"],
+  silk_moth_mist: ["gaMothX", "gaMothY"],
+  turkey_maple: ["gaTurkeyX", "gaTurkeyY"],
+};
+
+const candidateTwoGlimmerAlignedAnimalPositions: CandidateTwoGlimmerAnimalPositions = {
+  duck_peach: { x: -9.6, y: -0.5 },
+  mystery: { x: -3.1, y: -0.5 },
+  silk_moth_mist: { x: -9.6, y: -0.5 },
+  turkey_maple: { x: -9.6, y: -0.5 },
+};
+
+const candidateTwoLegacyGlimmerAnimalLabelPositionParams = [
+  "gaDuckLabelX",
+  "gaDuckLabelY",
+  "gaMothLabelX",
+  "gaMothLabelY",
+  "gaTurkeyLabelX",
+  "gaTurkeyLabelY",
 ] as const;
 
+const candidateTwoGlimmerVariants: readonly CandidateTwoGlimmerVariant[] = [
+  { id: "chicken_strawberry", name: "草莓冠鸡", set: 1, spriteIndex: 0 },
+  { id: "chicken_cream", name: "奶油花鸡", set: 2, spriteIndex: 0 },
+  { id: "chicken_cloud", name: "乌云鸡", set: 3, spriteIndex: 0 },
+  { id: "duck_mint", name: "薄荷鸭", set: 1, spriteIndex: 1 },
+  { id: "duck_peach", name: "蜜桃鸭", set: 2, spriteIndex: 1 },
+  { id: "duck_starry", name: "星河鸭", set: 3, spriteIndex: 1 },
+  { id: "quail_chestnut", name: "栗子鹌鹑", set: 1, spriteIndex: 2 },
+  { id: "quail_milkcandy", name: "奶糖鹌鹑", set: 2, spriteIndex: 2 },
+  { id: "quail_blueberry", name: "蓝莓鹌鹑", set: 3, spriteIndex: 2 },
+  { id: "rabbit_lop", name: "垂耳奶兔", set: 1, spriteIndex: 3 },
+  { id: "rabbit_strawberry", name: "草莓雪兔", set: 2, spriteIndex: 3 },
+  { id: "rabbit_moon", name: "月影兔", set: 3, spriteIndex: 3 },
+  { id: "goose_lake", name: "湖蓝鹅", set: 1, spriteIndex: 4 },
+  { id: "goose_peach", name: "蜜桃鹅", set: 2, spriteIndex: 4 },
+  { id: "goose_brownsugar", name: "黑糖鹅", set: 3, spriteIndex: 4 },
+  { id: "sheep_strawberry", name: "草莓绵羊", set: 1, spriteIndex: 5 },
+  { id: "sheep_mint", name: "薄荷绵羊", set: 2, spriteIndex: 5 },
+  { id: "sheep_cloud", name: "乌云绵羊", set: 3, spriteIndex: 5 },
+  { id: "goat_latte", name: "奶咖山羊", set: 1, spriteIndex: 6 },
+  { id: "goat_apple", name: "青苹果山羊", set: 2, spriteIndex: 6 },
+  { id: "goat_sesame", name: "黑芝麻山羊", set: 3, spriteIndex: 6 },
+  { id: "cow_strawberry", name: "草莓奶牛", set: 1, spriteIndex: 7 },
+  { id: "cow_blueberry", name: "蓝莓奶牛", set: 2, spriteIndex: 7 },
+  { id: "cow_caramel", name: "焦糖奶牛", set: 3, spriteIndex: 7 },
+  { id: "bee_cherry", name: "樱桃蜂", set: 1, spriteIndex: 8 },
+  { id: "bee_mint", name: "薄荷蜂", set: 2, spriteIndex: 8 },
+  { id: "bee_moon", name: "月光蜂", set: 3, spriteIndex: 8 },
+  { id: "turkey_maple", name: "枫糖火鸡", set: 1, spriteIndex: 9 },
+  { id: "turkey_blueberry", name: "蓝莓火鸡", set: 2, spriteIndex: 9 },
+  { id: "turkey_snow", name: "雪团火鸡", set: 3, spriteIndex: 9 },
+  { id: "pig_peach", name: "桃花猪", set: 1, spriteIndex: 10 },
+  { id: "pig_latte", name: "奶咖猪", set: 2, spriteIndex: 10 },
+  { id: "pig_blackbean", name: "黑豆猪", set: 3, spriteIndex: 10 },
+  { id: "alpaca_strawberry", name: "草莓羊驼", set: 1, spriteIndex: 11 },
+  { id: "alpaca_matcha", name: "抹茶羊驼", set: 2, spriteIndex: 11 },
+  { id: "alpaca_cocoa", name: "可可羊驼", set: 3, spriteIndex: 11 },
+  { id: "silk_moth_mist", name: "晨雾月光蚕", set: 1, spriteIndex: 12 },
+  { id: "silk_moth_peach", name: "桃霞月光蚕", set: 2, spriteIndex: 12 },
+  { id: "silk_moth_aurora", name: "极光月光蚕", set: 3, spriteIndex: 12 },
+  { id: "ember_hen_blue", name: "蓝焰母鸡", set: 1, spriteIndex: 13 },
+  { id: "ember_hen_cherry", name: "樱火母鸡", set: 2, spriteIndex: 13 },
+  { id: "ember_hen_white", name: "白烬母鸡", set: 3, spriteIndex: 13 },
+  { id: "cloud_sheep_sunset", name: "晚霞云绵羊", set: 1, spriteIndex: 14 },
+  { id: "cloud_sheep_storm", name: "雷雨云绵羊", set: 2, spriteIndex: 14 },
+  { id: "cloud_sheep_aurora", name: "极光云绵羊", set: 3, spriteIndex: 14 },
+  { id: "dream_cat_strawberry", name: "草莓梦貘猫", set: 1, spriteIndex: 15 },
+  { id: "dream_cat_mint", name: "薄荷梦貘猫", set: 2, spriteIndex: 15 },
+  { id: "dream_cat_starry", name: "星夜梦貘猫", set: 3, spriteIndex: 15 },
+  { id: "cat_tuxedo", name: "奶牛猫", set: 1, spriteIndex: 16 },
+  { id: "cat_british_blue", name: "英短蓝猫", set: 2, spriteIndex: 16 },
+  { id: "cat_calico", name: "三花猫", set: 3, spriteIndex: 16 },
+  { id: "dog_corgi", name: "柯基", set: 1, spriteIndex: 17 },
+  { id: "dog_golden", name: "金毛", set: 2, spriteIndex: 17 },
+  { id: "dog_samoyed", name: "萨摩耶", set: 3, spriteIndex: 17 },
+  { id: "patrol_goose_sheriff", name: "巡逻鹅·小警长", set: 1, spriteIndex: 18 },
+  { id: "patrol_goose_raincoat", name: "巡逻鹅·黄雨衣", set: 2, spriteIndex: 18 },
+  { id: "patrol_goose_detective", name: "巡逻鹅·小侦探", set: 3, spriteIndex: 18 },
+];
+
+const candidateTwoGlimmerEncounters: readonly CandidateTwoGlimmerEncounterDefinition[] = [
+  { id: "lost_backpack", name: "跑丢的背包" },
+  { id: "glimmer_spring", name: "流光泉" },
+  { id: "stardust_rain", name: "星屑雨" },
+  { id: "empty_hollow", name: "空树洞" },
+  { id: "picnic_blanket", name: "旧野餐布" },
+  { id: "sleeping_herd", name: "沉睡兽群" },
+  { id: "windy_feeding_guide", name: "被风翻开的饲养手册" },
+  { id: "rolling_empty_plate", name: "会指路的空餐盘" },
+  { id: "lost_vendor", name: "迷路小贩" },
+  { id: "tiny_tornado", name: "一米宽的龙卷风" },
+  { id: "crow_conductor", name: "自称售票员的乌鸦" },
+  { id: "upside_sign", name: "倒着长的路标" },
+  { id: "compliment_flower", name: "只收夸奖的花" },
+  { id: "returning_chest", name: "会退货的宝箱" },
+  { id: "shadow_puddle", name: "偷走影子的水坑" },
+  { id: "lying_scarecrow", name: "躺平的稻草人" },
+  { id: "stone_sheep", name: "冒充石头的羊" },
+  { id: "dusk_tea_stall", name: "黄昏茶摊" },
+  { id: "animal_post_wrong_letter", name: "动物邮局的错件" },
+  { id: "chicken_meeting", name: "正在开会的鸡" },
+];
+
+const candidateTwoGlimmerAchievements: readonly CandidateTwoGlimmerAchievementDefinition[] = [
+  {
+    field: "glimmerEncounters",
+    id: "glimmer_encounter_1",
+    min: 1,
+    name: "门票不能白买",
+    reward: { coins: 200, silver: 20 },
+  },
+  {
+    field: "glimmerEncounters",
+    id: "glimmer_encounter_2",
+    min: 10,
+    name: "走哪哪有剧情",
+    reward: { coins: 500, silver: 60 },
+  },
+  {
+    field: "glimmerEncounters",
+    id: "glimmer_encounter_3",
+    min: 30,
+    name: "随机事件钉子户",
+    reward: { coins: 1000, silver: 150 },
+  },
+  {
+    field: "glimmerEncounters",
+    id: "glimmer_encounter_4",
+    min: 80,
+    name: "主线绕着我长",
+    reward: { coins: 2000, silver: 300 },
+  },
+  {
+    field: "glimmerVariants",
+    id: "glimmer_variant_1",
+    min: 1,
+    name: "这只颜色不对",
+    reward: { coins: 200, silver: 20 },
+  },
+  {
+    field: "glimmerVariants",
+    id: "glimmer_variant_2",
+    min: 4,
+    name: "色差不是 Bug",
+    reward: { coins: 500, silver: 60 },
+  },
+  {
+    field: "glimmerVariants",
+    id: "glimmer_variant_3",
+    min: 8,
+    name: "原野调色师",
+    reward: { coins: 1000, silver: 150 },
+  },
+  {
+    field: "glimmerVariants",
+    id: "glimmer_variant_4",
+    min: 16,
+    name: "全牧场高光",
+    reward: { coins: 2000, silver: 300 },
+  },
+  {
+    field: "glimmerCoops",
+    id: "glimmer_coop_1",
+    min: 1,
+    name: "临时群聊已建立",
+    reward: { coins: 200, silver: 20 },
+  },
+  {
+    field: "glimmerCoops",
+    id: "glimmer_coop_2",
+    min: 5,
+    name: "人多力量大概大",
+    reward: { coins: 500, silver: 60 },
+  },
+  {
+    field: "glimmerCoops",
+    id: "glimmer_coop_3",
+    min: 15,
+    name: "公共项目包工头",
+    reward: { coins: 1000, silver: 150 },
+  },
+  {
+    field: "glimmerCoops",
+    id: "glimmer_coop_4",
+    min: 30,
+    name: "全服都欠我个人情",
+    reward: { coins: 2000, silver: 300 },
+  },
+];
+
+const candidateTwoDemoGlimmerStats = { coops: 0, encounters: 1, variants: 3 } as const;
+const candidateTwoDemoGlimmerAchievementMetrics: Record<
+  CandidateTwoGlimmerAchievementField,
+  number
+> = {
+  glimmerCoops: candidateTwoDemoGlimmerStats.coops,
+  glimmerEncounters: candidateTwoDemoGlimmerStats.encounters,
+  glimmerVariants: candidateTwoDemoGlimmerStats.variants,
+};
+const candidateTwoDemoGlimmerEncounterSeen = new Set(["glimmer_spring"]);
+
 type CandidateTwoInternalPath = (typeof candidateTwoInternalPaths)[number];
+
+export function shouldHandleCandidateNavigationInParent(path: CandidateTwoInternalPath): boolean {
+  return path === "/api/farm/ui";
+}
 
 export interface CandidateTwoIdentityView {
   farmDoorplate: string;
@@ -91,6 +332,13 @@ export type CandidateTwoSharedMemeDetailView =
   | { stage: "error"; message: string }
   | { stage: "ready"; data: SharedMemeDetailSuccess };
 
+export type CandidateTwoLingyeReadState<T> =
+  | { stage: "idle" }
+  | { stage: "loading" }
+  | { stage: "ready"; data: T }
+  | { stage: "empty" }
+  | { stage: "error"; message: string };
+
 export type CandidateTwoViewState =
   | { stage: "checking-session" }
   | { stage: "anonymous"; issueMessage: string | null; pending: boolean }
@@ -116,12 +364,44 @@ export type CandidateTwoViewState =
       sharedMemeCreatePending: boolean;
       sharedMemeDetail: CandidateTwoSharedMemeDetailView;
       sharedMemes: CandidateTwoSharedMemeListView;
+      lingye: {
+        glimmer: CandidateTwoLingyeReadState<BoundGlimmerRead>;
+        together: CandidateTwoLingyeReadState<BoundTogetherRead>;
+      };
     };
 
 interface CandidateTwoDemoContent {
   activities: readonly { icon: string; text: string; time: string }[];
   doorbellRequests: readonly string[];
   environmentDescription: string;
+  glimmer: {
+    achievements: readonly {
+      id: string;
+      name: string;
+      progress: string;
+      reward: string;
+      status: string;
+    }[];
+    encounters: readonly { id: string; name: string; status: string }[];
+    events: readonly { time: string; title: string }[];
+    openingHours: string;
+    status: string;
+    stats: { coops: number; encounters: number; variants: number };
+    task: { current: number; detail: string; title: string; total: number };
+    tracks: readonly (
+      | {
+          id: CandidateTwoGlimmerAnimalId;
+          name: string;
+          revealed: true;
+        }
+      | {
+          layoutId: "mystery";
+          revealed: false;
+        }
+    )[];
+    traceCount: string;
+    variants: readonly CandidateTwoGlimmerVariant[];
+  };
   mailboxMessages: readonly {
     actionable: boolean;
     category: "activity" | "notice" | "visit";
@@ -145,15 +425,48 @@ interface CandidateTwoDemoContent {
     sharedMemeLastSync: string;
     wakeBridgeState: string;
   };
+  together: {
+    artFile: string;
+    currentChoice: null | {
+      counts: { A: number; B: number; C: number } | null;
+      index: number | null;
+      options: Record<string, string>;
+      title: string;
+    };
+    currentSummary?: string | null;
+    currentTask: null | {
+      contributors: readonly { fact: string; farmName: string }[];
+      name: string;
+      opening: string;
+      progress: number;
+    };
+    stageCount: number;
+    stageIndex: number;
+    stageName: string;
+    tasks: readonly {
+      detail: string;
+      name: string;
+      progress: string;
+      status: string;
+    }[];
+    routeName: string | null;
+    round: number;
+    status: string;
+    title: string;
+  };
   visitors: readonly { name: string; tone: string }[];
 }
 
 export interface CandidateTwoDemoView {
   content: CandidateTwoDemoContent;
-  initialScreen: Extract<
-    CandidateTwoScreen,
-    "lounge" | "lingye" | "home" | "profile" | "settings"
-  > | null;
+  glimmerAnimalEditor: {
+    enabled: boolean;
+    positions: CandidateTwoGlimmerAnimalPositions;
+  };
+  initialScreen:
+    | Extract<CandidateTwoScreen, "lounge" | "lingye" | "home" | "profile" | "settings">
+    | "lingye-glimmer"
+    | null;
   registrationPrefill: {
     farmDoorplate: string;
     farmHumanUrl: string;
@@ -295,6 +608,54 @@ const candidateTwoDemoContent: CandidateTwoDemoContent = {
     { name: "七七", tone: "pink" },
   ],
   environmentDescription: "窗边留着一盏暖灯，门口挂着今天可以来访的小木牌。",
+  glimmer: {
+    achievements: candidateTwoGlimmerAchievements.map((achievement) => {
+      const current = candidateTwoDemoGlimmerAchievementMetrics[achievement.field];
+      return {
+        id: achievement.id,
+        name: achievement.name,
+        progress: `${current} / ${achievement.min}`,
+        reward: `${achievement.reward.coins} 金 + ${achievement.reward.silver} 银`,
+        status: current >= achievement.min ? "已达成" : "未达成",
+      };
+    }),
+    encounters: candidateTwoGlimmerEncounters.map((encounter) => ({
+      id: encounter.id,
+      name: encounter.name,
+      status: candidateTwoDemoGlimmerEncounterSeen.has(encounter.id) ? "已遇见" : "未遇见",
+    })),
+    events: [
+      {
+        time: "21:18",
+        title: "一家农场遇见了〔流光泉〕",
+      },
+      {
+        time: "21:06",
+        title: "第二家农场补上了一份料理食材",
+      },
+      {
+        time: "20:41",
+        title: "一家农场带走了异色外观「蜜桃鸭」",
+      },
+    ],
+    openingHours: "20:00—22:00",
+    status: "开放中",
+    stats: candidateTwoDemoGlimmerStats,
+    task: {
+      current: 2,
+      detail: "再有 1 家提交一份可烹饪食材，今晚的协作就完成了。",
+      title: "三家合力的料理食材",
+      total: 3,
+    },
+    tracks: [
+      { id: "duck_peach", name: "蜜桃鸭", revealed: true },
+      { id: "turkey_maple", name: "枫糖火鸡", revealed: true },
+      { id: "silk_moth_mist", name: "晨雾月光蚕", revealed: true },
+      { layoutId: "mystery", revealed: false },
+    ],
+    traceCount: "4 处",
+    variants: candidateTwoGlimmerVariants,
+  },
   relationships: [
     { name: "青禾", detail: "来访 3 次" },
     { name: "阿澄", detail: "拜访 2 次" },
@@ -309,6 +670,52 @@ const candidateTwoDemoContent: CandidateTwoDemoContent = {
     sharedMemeCount: 12,
     sharedMemeLastSync: "今天 04:18",
     wakeBridgeState: "连接正常",
+  },
+  together: {
+    artFile: "together.same-kitchen-opening",
+    currentChoice: {
+      counts: null,
+      index: 1,
+      options: {
+        A: "共同开门，打烊后再谈旧账",
+        B: "分成两班，各自负责自己的时段",
+        C: "先核对旧邮袋，再决定是否营业",
+      },
+      title: "开门前先做什么",
+    },
+    currentTask: {
+      contributors: [],
+      name: "阶段一 · 共同料理与旧账",
+      opening: "活动开放后，这里会跟随全服唯一状态显示当前剧情、实际阶段与下一项可接棒任务。",
+      progress: 0,
+    },
+    stageCount: 4,
+    stageIndex: 1,
+    stageName: "阶段一 · 共同料理与旧账",
+    tasks: [
+      {
+        detail: "公开需要共同核对的历史线索",
+        name: "整理旧采购账",
+        progress: "0 / 3",
+        status: "待开放",
+      },
+      {
+        detail: "由小机在现有料理台完成真实贡献",
+        name: "复现香草烤鱼",
+        progress: "0 / 3",
+        status: "待开放",
+      },
+      {
+        detail: "全服任务完成后继续实际故事",
+        name: "核对菜单署名",
+        progress: "0 / 3",
+        status: "待开放",
+      },
+    ],
+    routeName: null,
+    round: 2,
+    status: "尚未开放",
+    title: "同一间厨房",
   },
   activities: [
     { icon: "☕", text: "在小机活动室聊了两句", time: "10分钟前" },
@@ -328,6 +735,7 @@ const candidateTwoDemoScreens = new Set<CandidateTwoDemoScreen>([
   "permit",
   "lounge",
   "lingye",
+  "glimmer",
   "home",
   "profile",
   "settings",
@@ -335,17 +743,29 @@ const candidateTwoDemoScreens = new Set<CandidateTwoDemoScreen>([
 
 export function buildCandidateTwoDemoPreset(
   screen: CandidateTwoDemoScreen,
+  glimmerAnimalEditor = {
+    enabled: false,
+    positions: {
+      duck_peach: { ...candidateTwoGlimmerAlignedAnimalPositions.duck_peach },
+      mystery: { ...candidateTwoGlimmerAlignedAnimalPositions.mystery },
+      silk_moth_mist: { ...candidateTwoGlimmerAlignedAnimalPositions.silk_moth_mist },
+      turkey_maple: { ...candidateTwoGlimmerAlignedAnimalPositions.turkey_maple },
+    },
+  },
 ): CandidateTwoDemoPreset {
   const demo: CandidateTwoDemoView = {
     content: candidateTwoDemoContent,
+    glimmerAnimalEditor,
     initialScreen:
-      screen === "lounge" ||
-      screen === "lingye" ||
-      screen === "home" ||
-      screen === "profile" ||
-      screen === "settings"
-        ? screen
-        : null,
+      screen === "glimmer"
+        ? "lingye-glimmer"
+        : screen === "lounge" ||
+            screen === "lingye" ||
+            screen === "home" ||
+            screen === "profile" ||
+            screen === "settings"
+          ? screen
+          : null,
     registrationPrefill:
       screen === "registration"
         ? {
@@ -411,6 +831,10 @@ export function buildCandidateTwoDemoPreset(
       sharedMemeCreatePending: false,
       sharedMemeDetail: { stage: "idle" },
       sharedMemes: { stage: "idle" },
+      lingye: {
+        glimmer: { stage: "idle" },
+        together: { stage: "idle" },
+      },
     },
   };
 }
@@ -432,7 +856,43 @@ export function resolveCandidateTwoDemoPreset(
   const screen = candidateTwoDemoScreens.has(requestedScreen as CandidateTwoDemoScreen)
     ? (requestedScreen as CandidateTwoDemoScreen)
     : "home";
-  return buildCandidateTwoDemoPreset(screen);
+  const editorNumber = (name: string, fallback: number) => {
+    const rawValue = params.get(name);
+    if (rawValue === null) {
+      return fallback;
+    }
+    const value = Number(rawValue);
+    return Number.isFinite(value) ? value : fallback;
+  };
+  const editorEnabled = params.get("editor") === "glimmer-animals";
+  const glimmerAnimalLayoutNeedsAlignment =
+    editorEnabled &&
+    params.get("gaLayout") !== "5" &&
+    Object.values(candidateTwoGlimmerAnimalPositionParams).some(
+      ([xParam, yParam]) => params.has(xParam) || params.has(yParam),
+    );
+  const editorPosition = (
+    animalId: CandidateTwoGlimmerAnimalPositionId,
+    xParam: string,
+    yParam: string,
+  ) => {
+    const alignedPosition = candidateTwoGlimmerAlignedAnimalPositions[animalId];
+    return glimmerAnimalLayoutNeedsAlignment
+      ? { ...alignedPosition }
+      : {
+          x: editorNumber(xParam, alignedPosition.x),
+          y: editorNumber(yParam, alignedPosition.y),
+        };
+  };
+  return buildCandidateTwoDemoPreset(screen, {
+    enabled: editorEnabled,
+    positions: {
+      duck_peach: editorPosition("duck_peach", "gaDuckX", "gaDuckY"),
+      mystery: editorPosition("mystery", "gaMysteryX", "gaMysteryY"),
+      silk_moth_mist: editorPosition("silk_moth_mist", "gaMothX", "gaMothY"),
+      turkey_maple: editorPosition("turkey_maple", "gaTurkeyX", "gaTurkeyY"),
+    },
+  });
 }
 
 export type CandidateTwoAction =
@@ -485,9 +945,15 @@ export type CandidateTwoAction =
     }
   | { type: "logout" }
   | { type: "view-ready" }
+  | { type: "lingye-glimmer-open" }
+  | { type: "lingye-together-open" }
   | { type: "shared-memes-open" }
   | { type: "shared-meme-open"; memeId: number }
   | { type: "shared-meme-create"; input: SharedMemeAddRequest }
+  | {
+      type: "glimmer-animal-layout-change";
+      positions: CandidateTwoGlimmerAnimalPositions;
+    }
   | { type: "navigate"; path: CandidateTwoInternalPath };
 
 const candidateTwoActionKeys = {
@@ -508,9 +974,12 @@ const candidateTwoActionKeys = {
   "notification-preference-save": ["type", "field", "value"],
   "community-connection-preference-save": ["type", "field", "value"],
   logout: ["type"],
+  "lingye-glimmer-open": ["type"],
+  "lingye-together-open": ["type"],
   "shared-memes-open": ["type"],
   "shared-meme-open": ["type", "memeId"],
   "shared-meme-create": ["type", "input"],
+  "glimmer-animal-layout-change": ["type", "positions"],
   "view-ready": ["type"],
   navigate: ["type", "path"],
 } as const;
@@ -530,6 +999,30 @@ function isExactRecord(value: unknown, keys: readonly string[]): value is Record
 
 function hasStringFields(value: Record<string, unknown>, fields: readonly string[]) {
   return fields.every((field) => typeof value[field] === "string");
+}
+
+function parseGlimmerAnimalPositions(value: unknown): CandidateTwoGlimmerAnimalPositions | null {
+  const animalIds = ["duck_peach", "mystery", "silk_moth_mist", "turkey_maple"] as const;
+  if (!isExactRecord(value, animalIds)) {
+    return null;
+  }
+
+  const positions = {} as CandidateTwoGlimmerAnimalPositions;
+  for (const animalId of animalIds) {
+    const point = value[animalId];
+    if (
+      !isExactRecord(point, ["x", "y"]) ||
+      typeof point.x !== "number" ||
+      !Number.isFinite(point.x) ||
+      typeof point.y !== "number" ||
+      !Number.isFinite(point.y)
+    ) {
+      return null;
+    }
+    positions[animalId] = { x: point.x, y: point.y };
+  }
+
+  return positions;
 }
 
 export function parseCandidateTwoAction(value: unknown): CandidateTwoAction | null {
@@ -664,11 +1157,18 @@ export function parseCandidateTwoAction(value: unknown): CandidateTwoAction | nu
     return input.success ? { type, input: input.data } : null;
   }
 
+  if (type === "glimmer-animal-layout-change") {
+    const positions = parseGlimmerAnimalPositions(value.positions);
+    return positions ? { type, positions } : null;
+  }
+
   return type === "permit-complete" ||
     type === "connector-credential-issue" ||
     type === "connector-credential-revoke" ||
     type === "logout" ||
     type === "shared-memes-open" ||
+    type === "lingye-glimmer-open" ||
+    type === "lingye-together-open" ||
     type === "view-ready"
     ? { type }
     : null;
@@ -3625,6 +4125,174 @@ const LINGYE_SCREEN = `
         <button class="candidate2-lingye-together" type="button" aria-label="进入铃野共行" onclick="openLingyeTogether()">
             <img src="/lingye/lingye-together-game-icon-v4.png" alt="" draggable="false">
         </button>
+        <button class="candidate2-lingye-memories" type="button" aria-label="打开纪念册" onclick="openLingyeMemorial()">
+            <img src="/lingye/ui/memorial-album.png" alt="" width="256" height="256" draggable="false">
+        </button>
+    </div>
+`;
+
+const LINGYE_PLACE_SCREENS = `
+    <div id="screen-lingye-together" class="screen screen--lingye-place candidate2-together-page">
+        <div class="candidate2-together-paper">
+            <figure class="candidate2-together-cover">
+                <img class="candidate2-together-cover-image" alt="" width="1448" height="1086" hidden>
+                <button class="candidate2-place-back-link" type="button" aria-label="返回铃野地图" onclick="showScreen('screen-lingye')">
+                    <span aria-hidden="true">‹</span>
+                </button>
+                <button class="candidate2-together-history-button" type="button" aria-label="往期故事" disabled>
+                    <svg viewBox="0 0 32 32" aria-hidden="true">
+                        <path d="M7 7.5A3.5 3.5 0 0 1 10.5 4H25v21H10.5A3.5 3.5 0 0 0 7 28.5z"></path>
+                        <path d="M7 7.5A3.5 3.5 0 0 1 10.5 11H25M12 16h8M12 20h6"></path>
+                    </svg>
+                    <span class="candidate2-place-visually-hidden">往期故事</span>
+                </button>
+            </figure>
+
+            <section class="candidate2-together-section candidate2-together-current" aria-labelledby="candidate2-together-current-title">
+                <p class="candidate2-together-live-empty">进入后读取当前铃野共行状态。</p>
+                <div class="candidate2-together-current-content" hidden>
+                    <div class="candidate2-place-section-heading">
+                        <div>
+                            <span class="candidate2-together-current-kicker"></span>
+                            <h2 id="candidate2-together-current-title"></h2>
+                        </div>
+                        <span class="candidate2-place-status-chip candidate2-together-current-status"></span>
+                    </div>
+                    <div class="candidate2-together-stage-rail" aria-label="故事阶段"></div>
+                    <p class="candidate2-together-stage-name"></p>
+                    <p class="candidate2-place-body-copy candidate2-together-current-copy"></p>
+                </div>
+            </section>
+
+            <section class="candidate2-together-section" aria-labelledby="candidate2-together-task-title">
+                <div class="candidate2-place-section-heading">
+                    <div>
+                        <span class="candidate2-together-task-kicker"></span>
+                        <h2 id="candidate2-together-task-title"></h2>
+                    </div>
+                </div>
+                <div class="candidate2-together-task-list"></div>
+            </section>
+
+            <section class="candidate2-together-section candidate2-together-choice" aria-labelledby="candidate2-together-choice-title">
+                <div class="candidate2-place-section-heading">
+                    <div>
+                        <span class="candidate2-together-choice-kicker"></span>
+                        <h2 id="candidate2-together-choice-title"></h2>
+                    </div>
+                </div>
+                <p class="candidate2-place-body-copy candidate2-together-choice-copy"></p>
+                <div class="candidate2-together-choice-list" aria-label="公共选择"></div>
+            </section>
+
+            <section id="candidate2-together-rules" class="candidate2-together-rules" aria-label="铃野共行说明">
+                <strong class="candidate2-together-rules-title"></strong>
+                <p class="candidate2-together-rules-copy"></p>
+            </section>
+        </div>
+    </div>
+
+    <div id="screen-lingye-memorial" class="screen screen--lingye-place candidate2-memorial-page">
+        <div class="candidate2-memorial-paper">
+            <header class="candidate2-memorial-header">
+                <button class="candidate2-memorial-back" type="button" aria-label="返回铃野地图" onclick="showScreen('screen-lingye')">
+                    <span aria-hidden="true">‹</span>
+                </button>
+                <p>限时活动档案</p>
+                <h1>纪念册</h1>
+            </header>
+            <main class="candidate2-memorial-list" aria-label="限时活动纪念">
+                <p class="candidate2-memorial-empty">还没有可查看的活动档案。</p>
+                <article class="candidate2-memorial-demo" aria-label="2026 年七夕活动灯河有信" hidden>
+                    <div class="candidate2-memorial-meta"><span>2026</span><i aria-hidden="true"></i><span>七夕</span></div>
+                    <h2>灯河有信</h2>
+                    <p>愿今夜所有思念，都能顺水抵达归处。</p>
+                </article>
+            </main>
+        </div>
+    </div>
+
+    <div id="screen-lingye-glimmer" class="screen screen--lingye-place candidate2-glimmer-page">
+        <div class="candidate2-glimmer-backdrop" aria-hidden="true"></div>
+        <div class="candidate2-glimmer-hero">
+            <h1 class="candidate2-place-visually-hidden">流光原野</h1>
+            <button class="candidate2-glimmer-back-button" type="button" aria-label="返回铃野地图" onclick="showScreen('screen-lingye')">
+                <span aria-hidden="true">‹</span>
+            </button>
+            <details class="candidate2-glimmer-library">
+                <summary aria-label="打开原野资料">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5h10.5A2.5 2.5 0 0 1 18 7v12.5H7.5A2.5 2.5 0 0 1 5 17z"></path><path d="M8.5 8h6M8.5 11h6M8.5 14h4"></path></svg>
+                    <span class="candidate2-place-visually-hidden">原野资料</span>
+                </summary>
+                <div class="candidate2-glimmer-library-panel">
+                    <details open>
+                        <summary>异色动物图鉴</summary>
+                        <p class="candidate2-glimmer-variants-empty"><strong>还没有收录异色动物</strong>实际收录的异色外观会展示在这里。</p>
+                        <div class="candidate2-glimmer-variants-demo" hidden></div>
+                    </details>
+                    <details>
+                        <summary>奇遇图鉴</summary>
+                        <p class="candidate2-glimmer-encounters-empty"><strong>还没有遇见原野奇遇</strong>实际遇见的奇遇会记录在这里。</p>
+                        <ul class="candidate2-glimmer-encounters-demo" hidden></ul>
+                    </details>
+                    <details>
+                        <summary>流光原野成就</summary>
+                        <p class="candidate2-glimmer-achievements-empty"><strong>还没有成就进度</strong>实际成就与进度会展示在这里。</p>
+                        <div class="candidate2-glimmer-achievements-demo" hidden></div>
+                    </details>
+                </div>
+            </details>
+            <section class="candidate2-glimmer-status-overlay" aria-labelledby="candidate2-glimmer-status-title">
+                <h2 id="candidate2-glimmer-status-title">原野状态</h2>
+                <div class="candidate2-glimmer-status-grid">
+                    <div><span>开放</span><strong class="candidate2-glimmer-opening-value">—</strong></div>
+                    <div><span>状态</span><strong class="candidate2-glimmer-status-value">—</strong></div>
+                    <div><span>踪迹</span><strong class="candidate2-glimmer-trace-value">—</strong></div>
+                </div>
+            </section>
+        </div>
+
+        <main class="candidate2-glimmer-journal">
+            <section class="candidate2-glimmer-journal-feature" aria-labelledby="candidate2-glimmer-coop-title">
+                <h2 id="candidate2-glimmer-coop-title">今日协作任务</h2>
+                <div class="candidate2-glimmer-feature-empty candidate2-glimmer-live-empty">
+                    <span aria-hidden="true">✦</span>
+                    <div><strong class="candidate2-glimmer-feature-empty-title">进入后读取当前协作</strong><p class="candidate2-glimmer-feature-empty-copy">进入后读取真实的全服协作任务。</p></div>
+                </div>
+                <div class="candidate2-glimmer-feature-demo" hidden>
+                    <div>
+                        <strong class="candidate2-glimmer-task-title"></strong>
+                        <p class="candidate2-glimmer-task-detail"></p>
+                    </div>
+                    <div class="candidate2-glimmer-progress">
+                        <div><span>协作进度</span><strong class="candidate2-glimmer-task-progress"></strong></div>
+                        <div class="candidate2-glimmer-progress-track" aria-hidden="true"><i></i></div>
+                    </div>
+                </div>
+            </section>
+
+            <div class="candidate2-glimmer-journal-stream">
+                <section aria-labelledby="candidate2-glimmer-tracks-title">
+                    <h2 id="candidate2-glimmer-tracks-title">今日动物踪迹</h2>
+                    <p class="candidate2-glimmer-tracks-empty"><strong>还没有发现动物踪迹</strong>实际出现的异色动物会展示在这里。</p>
+                    <div class="candidate2-glimmer-tracks-demo" hidden></div>
+                </section>
+                <section aria-labelledby="candidate2-glimmer-events-title">
+                    <h2 id="candidate2-glimmer-events-title">公共事件</h2>
+                    <p class="candidate2-glimmer-events-empty"><strong>还没有公共事件</strong>原野实际发生的公开事件会按时间出现。</p>
+                    <ol class="candidate2-glimmer-events-demo" hidden></ol>
+                </section>
+                <section aria-labelledby="candidate2-glimmer-summary-title">
+                    <h2 id="candidate2-glimmer-summary-title">我家的原野概况</h2>
+                    <p class="candidate2-glimmer-summary-empty"><strong>还没有原野记录</strong>自家实际探索记录会汇总在这里。</p>
+                    <dl class="candidate2-glimmer-summary-demo" hidden>
+                        <div><dt>奇遇</dt><dd class="candidate2-glimmer-summary-encounters"></dd></div>
+                        <div><dt>异色</dt><dd class="candidate2-glimmer-summary-variants"></dd></div>
+                        <div><dt>协作</dt><dd class="candidate2-glimmer-summary-coops"></dd></div>
+                    </dl>
+                </section>
+            </div>
+        </main>
     </div>
 `;
 
@@ -3726,6 +4394,1224 @@ const LINGYE_STYLES = `
             -webkit-user-drag: none;
         }
 
+        .candidate2-lingye-memories {
+            position: absolute;
+            z-index: 30;
+            top: 86px;
+            right: 12px;
+            width: clamp(52px, 14vw, 60px);
+            aspect-ratio: 1;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            cursor: pointer;
+            touch-action: manipulation;
+        }
+
+        .candidate2-lingye-memories img {
+            display: block;
+            width: 100%;
+            height: 100%;
+            filter: drop-shadow(0 3px 5px rgba(64, 53, 38, 0.42));
+            object-fit: contain;
+            pointer-events: none;
+            user-select: none;
+            -webkit-user-drag: none;
+        }
+
+        .candidate2-lingye-memories:focus-visible {
+            outline: 3px solid rgba(255, 248, 222, 0.92);
+            outline-offset: 2px;
+            border-radius: 18px;
+        }
+
+        .screen.screen--lingye-place {
+            padding: 0 0 112px;
+            color: #51483f;
+            overscroll-behavior-y: contain;
+            scrollbar-width: thin;
+        }
+
+        .screen--lingye-place h1,
+        .screen--lingye-place h2 {
+            color: inherit;
+            font-family: 'Noto Serif SC', 'Songti SC', serif;
+            font-style: normal;
+        }
+
+        .candidate2-place-header {
+            position: relative;
+            z-index: 4;
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+        }
+
+        .candidate2-place-brand,
+        .candidate2-place-world {
+            margin: 0;
+        }
+
+        .candidate2-place-brand {
+            font-family: Georgia, serif;
+            font-size: 13px;
+            letter-spacing: 0.04em;
+        }
+
+        .candidate2-place-world {
+            margin-top: 2px;
+            font-family: 'Noto Serif SC', 'Songti SC', serif;
+            font-size: 22px;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+        }
+
+        .candidate2-place-header-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .candidate2-place-round-action {
+            display: inline-flex;
+            width: 52px;
+            min-height: 52px;
+            padding: 6px 4px 5px;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1px;
+            border: 1px solid rgba(119, 101, 74, 0.22);
+            border-radius: 50%;
+            color: #55483d;
+            background: rgba(255, 249, 233, 0.92);
+            box-shadow: 0 7px 18px rgba(81, 67, 45, 0.12);
+            cursor: pointer;
+        }
+
+        .candidate2-place-round-action svg {
+            width: 20px;
+            height: 20px;
+            fill: none;
+            stroke: currentColor;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            stroke-width: 1.6;
+        }
+
+        .candidate2-place-round-action span {
+            font-size: 9px;
+            font-weight: 700;
+        }
+
+        .candidate2-place-round-action:active {
+            transform: translateY(1px);
+        }
+
+        .candidate2-place-round-action:focus-visible,
+        .candidate2-place-back-link:focus-visible {
+            outline: 3px solid rgba(120, 137, 69, 0.5);
+            outline-offset: 2px;
+        }
+
+        .candidate2-place-card {
+            position: relative;
+            border: 1px solid rgba(136, 118, 83, 0.18);
+            border-radius: 18px;
+            background:
+                radial-gradient(circle at 8% 12%, rgba(126, 105, 67, 0.035) 0 0.7px, transparent 0.9px),
+                radial-gradient(circle at 76% 42%, rgba(126, 105, 67, 0.028) 0 0.65px, transparent 0.85px),
+                rgba(255, 251, 239, 0.94);
+            background-size: 15px 17px, 19px 21px, auto;
+            box-shadow: 0 9px 24px rgba(68, 55, 37, 0.09);
+        }
+
+        .candidate2-place-visually-hidden {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            overflow: hidden;
+            clip: rect(0 0 0 0);
+            clip-path: inset(50%);
+            border: 0;
+            white-space: nowrap;
+        }
+
+        .candidate2-place-section-heading {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .candidate2-place-section-heading span {
+            color: #8b7a69;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+        }
+
+        .candidate2-place-section-heading h2 {
+            margin: 3px 0 0;
+            font-size: 18px;
+            line-height: 1.35;
+        }
+
+        .candidate2-place-body-copy {
+            margin: 12px 0 0;
+            color: #76685c;
+            font-size: 12px;
+            line-height: 1.75;
+        }
+
+        .candidate2-place-status-chip {
+            flex: 0 0 auto;
+            padding: 5px 10px;
+            border-radius: 999px;
+            color: #716345 !important;
+            background: #ece5c6;
+            letter-spacing: 0 !important;
+        }
+
+        .candidate2-together-page {
+            --candidate2-together-page-bg: #f6f1df;
+            background: var(--candidate2-together-page-bg);
+        }
+
+        .candidate2-memorial-page {
+            padding: 0 !important;
+            color: #51483f;
+            background: #f3eedc;
+        }
+
+        .candidate2-memorial-paper {
+            min-height: 100%;
+            padding: 17px 22px 126px;
+            background:
+                radial-gradient(circle at 82% 8%, rgba(141, 157, 91, 0.12), transparent 25%),
+                linear-gradient(180deg, rgba(251, 248, 235, 0.98), rgba(242, 235, 213, 0.98));
+        }
+
+        .candidate2-memorial-header {
+            padding-bottom: 23px;
+            border-bottom: 1px solid rgba(118, 102, 73, 0.2);
+        }
+
+        .candidate2-memorial-back {
+            display: inline-flex;
+            min-height: 44px;
+            padding: 0;
+            align-items: center;
+            gap: 5px;
+            border: 0;
+            color: #728742;
+            background: transparent;
+            font: inherit;
+            font-size: 12px;
+            font-weight: 800;
+            cursor: pointer;
+        }
+
+        .candidate2-memorial-back span {
+            font-size: 25px;
+            line-height: 0;
+        }
+
+        .candidate2-memorial-back:focus-visible {
+            outline: 3px solid rgba(120, 137, 69, 0.5);
+            outline-offset: 2px;
+        }
+
+        .candidate2-memorial-header p {
+            margin: 20px 0 0;
+            color: #8c7e65;
+            font-size: 10px;
+            letter-spacing: 0.12em;
+        }
+
+        .candidate2-memorial-header h1 {
+            margin: 4px 0 0;
+            color: #4f463a;
+            font-size: 27px;
+            letter-spacing: 0.08em;
+        }
+
+        .candidate2-memorial-list {
+            padding-top: 10px;
+        }
+
+        .candidate2-memorial-empty,
+        .candidate2-memorial-demo {
+            margin: 0;
+            padding: 24px 2px;
+            border-bottom: 1px solid rgba(118, 102, 73, 0.16);
+        }
+
+        .candidate2-memorial-empty {
+            color: #8a7d69;
+            font-size: 11px;
+        }
+
+        .candidate2-memorial-demo[hidden] {
+            display: none;
+        }
+
+        .candidate2-memorial-meta {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #7b8950;
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+        }
+
+        .candidate2-memorial-meta i {
+            width: 18px;
+            height: 1px;
+            background: rgba(123, 137, 80, 0.46);
+        }
+
+        .candidate2-memorial-demo h2 {
+            margin: 10px 0 0;
+            color: #50463a;
+            font-size: 20px;
+            letter-spacing: 0.06em;
+        }
+
+        .candidate2-memorial-demo > p {
+            margin: 10px 0 0;
+            color: #786b5d;
+            font-family: 'Noto Serif SC', 'Songti SC', serif;
+            font-size: 12px;
+            line-height: 1.8;
+        }
+
+        .candidate2-together-paper {
+            min-height: 100%;
+            padding: 0 18px 20px;
+            background:
+                radial-gradient(circle at 12% 8%, rgba(123, 151, 102, 0.12), transparent 29%),
+                var(--candidate2-together-page-bg);
+        }
+
+        .candidate2-place-back-link {
+            position: absolute;
+            z-index: 2;
+            top: 15px;
+            left: 17px;
+            display: inline-flex;
+            min-height: 34px;
+            padding: 0;
+            align-items: center;
+            gap: 5px;
+            border: 0;
+            color: #fff9e9;
+            background: transparent;
+            font: inherit;
+            font-size: 11px;
+            font-weight: 800;
+            text-shadow: 0 2px 7px rgba(30, 37, 30, 0.78);
+            cursor: pointer;
+        }
+
+        .candidate2-place-back-link span {
+            font-size: 24px;
+            line-height: 0;
+        }
+
+        .candidate2-together-cover {
+            position: relative;
+            z-index: 1;
+            margin: 0 -18px;
+            overflow: hidden;
+            background: var(--candidate2-together-page-bg);
+        }
+
+        .candidate2-together-cover::after {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(
+                180deg,
+                rgba(25, 34, 28, 0.48) 0,
+                rgba(25, 34, 28, 0.03) 35%,
+                transparent 58%,
+                rgba(246, 241, 223, 0.24) 76%,
+                var(--candidate2-together-page-bg) 100%
+            );
+            content: '';
+            pointer-events: none;
+        }
+
+        .candidate2-together-history-button {
+            position: absolute;
+            z-index: 2;
+            top: 15px;
+            right: 15px;
+            display: grid;
+            width: 34px;
+            height: 34px;
+            padding: 4px;
+            place-items: center;
+            border: 0;
+            color: #fff9e9;
+            background: transparent;
+            filter: drop-shadow(0 2px 6px rgba(27, 33, 29, 0.72));
+        }
+
+        .candidate2-together-history-button svg {
+            width: 27px;
+            height: 27px;
+            fill: rgba(255, 249, 233, 0.08);
+            stroke: currentColor;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            stroke-width: 1.8;
+        }
+
+        .candidate2-together-cover img {
+            display: block;
+            width: 100%;
+            height: auto;
+            aspect-ratio: 4 / 3;
+            object-fit: cover;
+        }
+
+        .candidate2-together-section {
+            margin: 0;
+            padding: 19px 0 21px;
+            border-bottom: 1px solid rgba(126, 108, 75, 0.16);
+        }
+
+        .candidate2-together-cover + .candidate2-together-section {
+            padding-top: 37px;
+        }
+
+        .candidate2-together-stage-rail {
+            display: flex;
+            margin-top: 18px;
+            align-items: center;
+        }
+
+        .candidate2-together-stage-rail span {
+            display: grid;
+            width: 25px;
+            height: 25px;
+            flex: 0 0 auto;
+            place-items: center;
+            border: 1px solid #c7bda9;
+            border-radius: 50%;
+            color: #8e806f;
+            background: #faf4e7;
+            font-size: 11px;
+            font-weight: 800;
+        }
+
+        .candidate2-together-stage-rail span.is-current {
+            border-color: #839b4a;
+            color: #fffdf3;
+            background: #839b4a;
+        }
+
+        .candidate2-together-stage-rail i {
+            height: 1px;
+            flex: 1;
+            background: #d7cfbd;
+        }
+
+        .candidate2-together-stage-name {
+            margin: 12px 0 0;
+            color: #5b513f;
+            font-family: 'Noto Serif SC', 'Songti SC', serif;
+            font-size: 15px;
+            font-weight: 800;
+        }
+
+        .candidate2-together-task-list {
+            display: grid;
+            margin-top: 14px;
+            gap: 8px;
+        }
+
+        .candidate2-together-task-list article {
+            display: grid;
+            min-height: 55px;
+            padding: 9px 0;
+            grid-template-columns: 30px minmax(0, 1fr) auto;
+            align-items: center;
+            gap: 9px;
+            border-top: 1px solid rgba(129, 112, 80, 0.12);
+        }
+
+        .candidate2-task-mark {
+            display: grid;
+            width: 27px;
+            height: 27px;
+            place-items: center;
+            border-radius: 50%;
+            color: #fffdf4;
+            background: #98a65c;
+            font-size: 11px;
+            font-weight: 900;
+        }
+
+        .candidate2-together-task-list strong,
+        .candidate2-together-task-list p {
+            display: block;
+            margin: 0;
+        }
+
+        .candidate2-together-task-list strong {
+            color: #564a3d;
+            font-size: 12px;
+        }
+
+        .candidate2-together-task-list p {
+            margin-top: 3px;
+            color: #8a7b6e;
+            font-size: 10px;
+            line-height: 1.45;
+        }
+
+        .candidate2-together-task-list small {
+            color: #91846f;
+            font-size: 9px;
+            white-space: nowrap;
+        }
+
+        .candidate2-together-choice-list {
+            display: grid;
+            margin-top: 13px;
+            gap: 7px;
+        }
+
+        .candidate2-together-choice-list div {
+            display: grid;
+            min-height: 45px;
+            padding: 8px 0;
+            grid-template-columns: 27px 1fr;
+            align-items: center;
+            gap: 8px;
+            border-top: 1px solid rgba(129, 112, 80, 0.14);
+            color: #685b4c;
+            font-size: 11px;
+            line-height: 1.45;
+        }
+
+        .candidate2-together-choice-list b {
+            display: grid;
+            width: 24px;
+            height: 24px;
+            place-items: center;
+            border-radius: 50%;
+            color: #fffdf5;
+            background: #a89a69;
+            font-size: 10px;
+        }
+
+        .candidate2-together-rules {
+            padding: 4px 5px 18px;
+            color: #786b60;
+        }
+
+        .candidate2-together-rules strong {
+            color: #5f5549;
+            font-family: 'Noto Serif SC', 'Songti SC', serif;
+            font-size: 13px;
+        }
+
+        .candidate2-together-rules p {
+            margin: 5px 0 0;
+            font-size: 10px;
+            line-height: 1.65;
+        }
+
+        .candidate2-glimmer-page {
+            --glimmer-animal-caption-gap: -2px;
+            --glimmer-animal-column-gap: 10px;
+            --glimmer-animal-row-gap: 13px;
+            --glimmer-animal-size: 64px;
+            isolation: isolate;
+            padding-bottom: 0 !important;
+            padding-right: 16px !important;
+            padding-left: 16px !important;
+            color: #f5efe1;
+            background: #07172b;
+        }
+
+        .candidate2-glimmer-backdrop {
+            position: absolute;
+            z-index: -2;
+            inset: 0;
+            min-height: 100%;
+            background: #07172b url('/lingye/glimmer/glimmer-night-hero.jpg') top center / 100% auto no-repeat;
+            pointer-events: none;
+        }
+
+        .candidate2-glimmer-backdrop::after {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(180deg, transparent 0 24%, rgba(7, 23, 43, 0.18) 39%, rgba(7, 23, 43, 0.82) 74%, #07172b 100%);
+            content: '';
+        }
+
+        .candidate2-glimmer-hero {
+            position: relative;
+            z-index: 2;
+            width: 100%;
+            aspect-ratio: 25 / 23;
+        }
+
+        .candidate2-glimmer-hero:has(.candidate2-glimmer-library[open]) {
+            z-index: 4;
+        }
+
+        .candidate2-glimmer-back-button {
+            position: absolute;
+            z-index: 12;
+            top: 15px;
+            left: 0;
+            display: inline-flex;
+            min-height: 34px;
+            padding: 0;
+            align-items: center;
+            gap: 4px;
+            border: 0;
+            color: #fff9e9;
+            background: transparent;
+            font: inherit;
+            font-size: 11px;
+            font-weight: 800;
+            text-shadow: 0 2px 7px rgba(0, 0, 0, 0.72);
+            cursor: pointer;
+        }
+
+        .candidate2-glimmer-back-button::before {
+            position: absolute;
+            inset: -5px;
+            content: '';
+        }
+
+        .candidate2-glimmer-back-button:hover {
+            color: #fff2b5;
+        }
+
+        .candidate2-glimmer-back-button span {
+            font-size: 24px;
+            line-height: 0;
+        }
+
+        .candidate2-glimmer-library {
+            position: absolute;
+            z-index: 12;
+            top: 18px;
+            right: 2px;
+        }
+
+        .candidate2-glimmer-library > summary {
+            position: relative;
+            display: grid;
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            place-items: center;
+            border: 0;
+            color: #e5da9c;
+            background: transparent;
+            cursor: pointer;
+            list-style: none;
+            text-shadow: 0 2px 5px rgba(0, 0, 0, 0.52);
+        }
+
+        .candidate2-glimmer-library > summary::before {
+            position: absolute;
+            inset: -8px;
+            content: '';
+        }
+
+        .candidate2-glimmer-library > summary svg {
+            width: 19px;
+            height: 19px;
+            fill: none;
+            stroke: currentColor;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            stroke-width: 1.6;
+            filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.52));
+        }
+
+        .candidate2-glimmer-library > summary:hover,
+        .candidate2-glimmer-library[open] > summary {
+            color: #fff2b5;
+        }
+
+        .candidate2-glimmer-library > summary::-webkit-details-marker,
+        .candidate2-glimmer-library-panel > details > summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .candidate2-glimmer-back-button:focus-visible,
+        .candidate2-glimmer-library > summary:focus-visible {
+            outline: 2px solid rgba(255, 242, 181, 0.82);
+            outline-offset: 3px;
+        }
+
+        .candidate2-glimmer-library-panel {
+            position: absolute;
+            z-index: 1;
+            isolation: isolate;
+            top: 38px;
+            right: 0;
+            width: min(240px, calc(100vw - 54px));
+            max-height: 58vh;
+            padding: 4px 12px 9px;
+            overflow-y: auto;
+            border: 0;
+            color: #f5efe1;
+            background: #07172b;
+        }
+
+        .candidate2-glimmer-library-panel > details {
+            padding: 9px 0;
+        }
+
+        .candidate2-glimmer-library-panel > details > summary {
+            color: #f6efdd;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 750;
+            list-style: none;
+        }
+
+        .candidate2-glimmer-library-panel > details > summary::after {
+            float: right;
+            color: rgba(229, 218, 156, 0.7);
+            content: '+';
+        }
+
+        .candidate2-glimmer-library-panel > details[open] > summary::after {
+            content: '−';
+        }
+
+        .candidate2-glimmer-library-panel > details > :not(summary) {
+            margin-top: 8px;
+        }
+
+        .candidate2-glimmer-library-panel p {
+            margin-bottom: 0;
+            color: rgba(235, 231, 212, 0.58);
+            font-size: 8px;
+            line-height: 1.55;
+        }
+
+        .candidate2-glimmer-library-panel p strong {
+            display: block;
+            margin-bottom: 3px;
+            color: #f2ead6;
+            font-size: 9px;
+        }
+
+        .candidate2-glimmer-status-overlay {
+            position: absolute;
+            right: 0;
+            bottom: 18px;
+            left: 0;
+            padding-top: 13px;
+            border-top: 1px solid rgba(234, 224, 186, 0.46);
+            color: #f7efd8;
+            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.76);
+        }
+
+        .candidate2-glimmer-status-overlay h2 {
+            margin: 0;
+            color: #f7efd8;
+            font-size: 12px;
+            font-weight: 650;
+            letter-spacing: 0.14em;
+        }
+
+        .candidate2-glimmer-status-grid {
+            display: grid;
+            margin-top: 10px;
+            grid-template-columns: 1.5fr 0.75fr 0.75fr;
+        }
+
+        .candidate2-glimmer-status-grid div {
+            min-width: 0;
+            padding: 0 11px;
+        }
+
+        .candidate2-glimmer-status-grid div:first-child {
+            padding-left: 0;
+        }
+
+        .candidate2-glimmer-status-grid div + div {
+            border-left: 1px solid rgba(234, 224, 186, 0.28);
+        }
+
+        .candidate2-glimmer-status-grid span,
+        .candidate2-glimmer-status-grid strong {
+            display: block;
+        }
+
+        .candidate2-glimmer-status-grid span {
+            color: rgba(247, 239, 216, 0.66);
+            font-size: 9px;
+            letter-spacing: 0.08em;
+        }
+
+        .candidate2-glimmer-status-grid strong {
+            margin-top: 3px;
+            color: #fff8e8;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .candidate2-glimmer-journal {
+            position: relative;
+            z-index: 3;
+            min-height: 510px;
+            padding: 25px 4px 44px;
+            color: #f5efdf;
+        }
+
+        .candidate2-glimmer-journal::before {
+            position: absolute;
+            top: 0;
+            left: 4px;
+            width: 86px;
+            height: 1px;
+            background: linear-gradient(90deg, rgba(218, 211, 150, 0.78), rgba(218, 211, 150, 0));
+            box-shadow: 92px 0 rgba(218, 211, 150, 0.14);
+            content: '';
+        }
+
+        .candidate2-glimmer-journal-feature {
+            position: relative;
+            padding: 9px 0 29px;
+        }
+
+        .candidate2-glimmer-journal-feature h2,
+        .candidate2-glimmer-journal-stream h2 {
+            margin: 0;
+        }
+
+        .candidate2-glimmer-journal-feature h2 {
+            color: #fff8e8;
+            font-size: 15px;
+            letter-spacing: 0.04em;
+            text-shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
+        }
+
+        .candidate2-glimmer-feature-empty {
+            display: grid;
+            margin-top: 20px;
+            grid-template-columns: 30px minmax(0, 1fr);
+            align-items: start;
+            gap: 13px;
+        }
+
+        .candidate2-glimmer-feature-empty > span {
+            color: #d8d38a;
+            font-size: 24px;
+            line-height: 1;
+            transform: translateY(2px);
+            text-shadow: 0 0 15px rgba(218, 211, 138, 0.34);
+        }
+
+        .candidate2-glimmer-feature-empty strong,
+        .candidate2-glimmer-feature-empty p {
+            display: block;
+            margin: 0;
+        }
+
+        .candidate2-glimmer-feature-empty strong {
+            color: #f8f1df;
+            font-family: 'Noto Serif SC', 'Songti SC', serif;
+            font-size: 13px;
+        }
+
+        .candidate2-glimmer-feature-empty p {
+            margin-top: 5px;
+            color: rgba(235, 231, 212, 0.62);
+            font-size: 10px;
+            line-height: 1.65;
+        }
+
+        .candidate2-glimmer-feature-demo {
+            display: block;
+            margin-top: 18px;
+        }
+
+        .candidate2-glimmer-feature-demo strong,
+        .candidate2-glimmer-feature-demo p {
+            display: block;
+            margin: 0;
+        }
+
+        .candidate2-glimmer-task-title {
+            color: #f8f1df;
+            font-family: 'Noto Serif SC', 'Songti SC', serif;
+            font-size: 13px;
+        }
+
+        .candidate2-glimmer-task-detail {
+            margin-top: 5px !important;
+            color: rgba(235, 231, 212, 0.64);
+            font-size: 10px;
+            line-height: 1.6;
+        }
+
+        .candidate2-glimmer-progress > div:first-child {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .candidate2-glimmer-progress {
+            margin-top: 14px;
+        }
+
+        .candidate2-glimmer-progress span {
+            color: rgba(223, 222, 180, 0.64);
+            font-size: 8px;
+            letter-spacing: 0.08em;
+        }
+
+        .candidate2-glimmer-progress strong {
+            color: #f5e9b5;
+            font-size: 10px;
+        }
+
+        .candidate2-glimmer-progress-track {
+            height: 3px;
+            margin-top: 7px;
+            overflow: hidden;
+            background: rgba(243, 235, 201, 0.14);
+        }
+
+        .candidate2-glimmer-progress-track i {
+            display: block;
+            width: 0;
+            height: 100%;
+            background: linear-gradient(90deg, #9da85a, #ead899);
+            box-shadow: 0 0 9px rgba(230, 216, 151, 0.38);
+        }
+
+        .candidate2-glimmer-journal-stream section {
+            display: block;
+            padding: 22px 0;
+            border-top: 1px solid rgba(224, 218, 180, 0.16);
+        }
+
+        .candidate2-glimmer-journal-stream section > :not(:first-child) {
+            margin-top: 18px;
+        }
+
+        .candidate2-glimmer-journal-stream h2 {
+            margin-top: 3px;
+            color: #f6efdd;
+            font-size: 15px;
+            letter-spacing: 0.04em;
+        }
+
+        .candidate2-glimmer-journal-stream p {
+            margin: 1px 0 0;
+            color: rgba(235, 231, 212, 0.58);
+            font-size: 10px;
+            line-height: 1.65;
+        }
+
+        .candidate2-glimmer-journal-stream p strong {
+            display: block;
+            margin-bottom: 3px;
+            color: #f2ead6;
+            font-size: 12px;
+        }
+
+        .candidate2-glimmer-tracks-demo {
+            container-type: inline-size;
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            align-items: start;
+            gap: var(--glimmer-animal-row-gap) var(--glimmer-animal-column-gap);
+        }
+
+        .candidate2-glimmer-tracks-demo figure,
+        .candidate2-glimmer-variants-demo figure {
+            min-width: 0;
+            margin: 0;
+            text-align: center;
+        }
+
+        .candidate2-glimmer-page.is-animal-editor .candidate2-glimmer-tracks-demo figure {
+            position: relative;
+            z-index: 3;
+            cursor: grab;
+            touch-action: none;
+            user-select: none;
+            will-change: transform;
+            transform: translate3d(var(--glimmer-group-x, 0cqw), var(--glimmer-group-y, 0cqw), 0);
+        }
+
+        .candidate2-glimmer-page.is-animal-editor .candidate2-glimmer-tracks-demo {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            column-gap: 3.424658cqw;
+        }
+
+        .candidate2-glimmer-page.is-animal-editor .candidate2-glimmer-animal-visual {
+            width: min(100%, 21.917808cqw);
+        }
+
+        .candidate2-glimmer-page.is-animal-editor .candidate2-glimmer-animal-visual.is-mystery {
+            font-size: 14.383562cqw;
+        }
+
+        .candidate2-glimmer-page.is-animal-editor .candidate2-glimmer-tracks-demo figcaption {
+            margin-top: -0.684932cqw;
+        }
+
+        .candidate2-glimmer-page.is-animal-editor .candidate2-glimmer-tracks-demo figcaption strong {
+            font-size: 3.424658cqw;
+        }
+
+        .candidate2-glimmer-page.is-animal-editor .candidate2-glimmer-tracks-demo figure.is-dragging {
+            z-index: 8;
+            cursor: grabbing;
+        }
+
+        .candidate2-glimmer-page.is-animal-editor .candidate2-glimmer-tracks-demo figure:hover img,
+        .candidate2-glimmer-page.is-animal-editor .candidate2-glimmer-tracks-demo figure.is-dragging img {
+            filter: drop-shadow(0 0 9px rgba(244, 224, 139, 0.72));
+        }
+
+        .candidate2-glimmer-animal-visual {
+            display: grid;
+            width: min(100%, var(--glimmer-animal-size));
+            aspect-ratio: 1;
+            margin: 0 auto;
+            place-items: center;
+        }
+
+        .candidate2-glimmer-animal-visual img {
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            filter: drop-shadow(0 5px 8px rgba(0, 0, 0, 0.32));
+        }
+
+        .candidate2-glimmer-animal-visual.is-mystery {
+            color: rgba(245, 237, 216, 0.74);
+            font-family: 'Noto Serif SC', 'Songti SC', serif;
+            font-size: 42px;
+            line-height: 1;
+            text-shadow: 0 3px 13px rgba(0, 0, 0, 0.42);
+        }
+
+        .candidate2-glimmer-tracks-demo figcaption,
+        .candidate2-glimmer-variants-demo figcaption {
+            margin-top: var(--glimmer-animal-caption-gap);
+        }
+
+        .candidate2-glimmer-tracks-demo figcaption strong,
+        .candidate2-glimmer-variants-demo figcaption strong {
+            display: block;
+        }
+
+        .candidate2-glimmer-tracks-demo figcaption strong,
+        .candidate2-glimmer-variants-demo figcaption strong {
+            overflow: hidden;
+            color: #f5edd8;
+            font-size: 10px;
+            line-height: 1.35;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .candidate2-glimmer-events-demo {
+            position: relative;
+            display: grid;
+            gap: 0;
+            margin-bottom: 0;
+            padding: 0;
+            list-style: none;
+        }
+
+        .candidate2-glimmer-events-demo::before {
+            position: absolute;
+            top: 7px;
+            bottom: 9px;
+            left: 31px;
+            width: 1px;
+            background: rgba(218, 211, 150, 0.25);
+            content: '';
+        }
+
+        .candidate2-glimmer-events-demo li {
+            position: relative;
+            display: grid;
+            grid-template-columns: 38px minmax(0, 1fr);
+            gap: 11px;
+            padding: 0 0 17px;
+        }
+
+        .candidate2-glimmer-events-demo li:last-child {
+            padding-bottom: 0;
+        }
+
+        .candidate2-glimmer-events-demo li::before {
+            position: absolute;
+            top: 4px;
+            left: 28px;
+            width: 7px;
+            height: 7px;
+            border: 1px solid rgba(239, 226, 157, 0.86);
+            border-radius: 50%;
+            background: #091c32;
+            box-shadow: 0 0 8px rgba(231, 219, 146, 0.26);
+            content: '';
+        }
+
+        .candidate2-glimmer-events-demo time {
+            padding-right: 11px;
+            text-align: right;
+            color: rgba(223, 222, 180, 0.58);
+            font-size: 8px;
+            letter-spacing: 0.04em;
+        }
+
+        .candidate2-glimmer-events-demo strong {
+            display: block;
+            color: #f4ecd8;
+            font-size: 11px;
+            line-height: 1.45;
+        }
+
+        .candidate2-glimmer-variants-demo {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px 5px;
+        }
+
+        .candidate2-glimmer-variants-demo .candidate2-glimmer-animal-visual {
+            width: min(100%, 58px);
+        }
+
+        .candidate2-glimmer-variant-visual {
+            background-image: var(--glimmer-variant-sheet);
+            background-repeat: no-repeat;
+            background-position: var(--glimmer-variant-x) var(--glimmer-variant-y);
+            background-size: 500% 400%;
+            filter: drop-shadow(0 4px 7px rgba(0, 0, 0, 0.3));
+        }
+
+        .candidate2-glimmer-encounters-demo,
+        .candidate2-glimmer-achievements-demo {
+            display: grid;
+            gap: 0;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+
+        .candidate2-glimmer-encounters-demo li,
+        .candidate2-glimmer-achievements-demo article {
+            display: flex;
+            min-width: 0;
+            padding: 6px 0;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .candidate2-glimmer-encounters-demo strong,
+        .candidate2-glimmer-achievements-demo strong {
+            color: #f4ecd8;
+            font-size: 9px;
+            font-weight: 650;
+            line-height: 1.4;
+        }
+
+        .candidate2-glimmer-encounters-demo span,
+        .candidate2-glimmer-achievements-demo span,
+        .candidate2-glimmer-achievements-demo small {
+            color: rgba(223, 222, 180, 0.58);
+            font-size: 8px;
+        }
+
+        .candidate2-glimmer-achievements-demo article > div {
+            display: grid;
+            min-width: 0;
+            gap: 3px;
+        }
+
+        .candidate2-glimmer-achievements-demo article > div:last-child {
+            justify-items: end;
+            text-align: right;
+        }
+
+        .candidate2-glimmer-summary-demo {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            margin-bottom: 0;
+            text-align: center;
+        }
+
+        .candidate2-glimmer-summary-demo div {
+            min-width: 0;
+        }
+
+        .candidate2-glimmer-summary-demo dt {
+            color: rgba(223, 222, 180, 0.58);
+            font-size: 8px;
+        }
+
+        .candidate2-glimmer-summary-demo dd {
+            margin: 5px 0 0;
+            color: #f5e9b5;
+            font-size: 13px;
+        }
+
+        .candidate2-glimmer-feature-empty[hidden],
+        .candidate2-glimmer-feature-demo[hidden],
+        .candidate2-glimmer-tracks-demo[hidden],
+        .candidate2-glimmer-events-demo[hidden],
+        .candidate2-glimmer-variants-demo[hidden],
+        .candidate2-glimmer-encounters-demo[hidden],
+        .candidate2-glimmer-summary-demo[hidden],
+        .candidate2-glimmer-achievements-demo[hidden] {
+            display: none !important;
+        }
+
+        @media (max-width: 360px) {
+            .candidate2-together-paper {
+                padding-right: 15px;
+                padding-left: 15px;
+            }
+
+            .candidate2-together-cover {
+                margin-right: -15px;
+                margin-left: -15px;
+            }
+
+            .candidate2-together-task-list article {
+                grid-template-columns: 27px minmax(0, 1fr);
+            }
+
+            .candidate2-together-task-list small {
+                grid-column: 2;
+            }
+
+            .candidate2-glimmer-page {
+                padding-right: 13px !important;
+                padding-left: 13px !important;
+            }
+
+        }
+
 `;
 
 const LINGYE_SCRIPT = `
@@ -3734,7 +5620,7 @@ const LINGYE_SCRIPT = `
     }
 
     function openLingyeRoute(path, label) {
-        if (window.__doorbellCandidateDemo) {
+        if (window.__doorbellCandidateDemo && path !== '/api/farm/ui') {
             showLingyeNotice('演示模式：' + label + '未连接真实服务');
             return;
         }
@@ -3751,15 +5637,37 @@ const LINGYE_SCRIPT = `
             return;
         }
         if (placeId === 'glimmer-meadow') {
-            openLingyeRoute('/api/lingye-glimmer', label);
+            if (window.__doorbellCandidateDemo) {
+                showScreen('screen-lingye-glimmer');
+                return;
+            }
+            sendAction({ type: 'lingye-glimmer-open' });
             return;
         }
         showLingyeNotice(label + '暂未开放');
     }
 
     function openLingyeTogether() {
-        openLingyeRoute('/api/lingye-together', '铃野共行');
+        if (window.__doorbellCandidateDemo) {
+            showScreen('screen-lingye-together');
+            return;
+        }
+        sendAction({ type: 'lingye-together-open' });
     }
+
+    function openLingyeMemorial() {
+        if (window.__doorbellCandidateDemo) {
+            showScreen('screen-lingye-memorial');
+            return;
+        }
+        showLingyeNotice('纪念册还没有可查看的活动档案');
+    }
+
+    const glimmerTrackAssets = {
+        'duck_peach': '/lingye/glimmer/tracks/duck-peach.png',
+        'turkey_maple': '/lingye/glimmer/tracks/turkey-maple.png',
+        'silk_moth_mist': '/lingye/glimmer/tracks/silk-moth-mist.png',
+    };
 
     const lingyeViewport = document.querySelector('.candidate2-lingye-viewport');
     let lingyeDragging = false;
@@ -4351,6 +6259,381 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         if (demoElement) demoElement.hidden = !enabled;
     }
 
+    function buildGlimmerTrackFigure(animal) {
+        const figure = document.createElement('figure');
+        figure.dataset.glimmerAnimalId = animal.revealed ? animal.id : animal.layoutId;
+        figure.dataset.glimmerDragTarget = 'group';
+        const visual = document.createElement('span');
+        visual.className = 'candidate2-glimmer-animal-visual';
+        if (animal.revealed === false) {
+            visual.classList.add('is-mystery');
+            visual.setAttribute('role', 'img');
+            visual.setAttribute('aria-label', '未揭晓动物');
+            visual.textContent = '?';
+        } else {
+            const trackAsset = glimmerTrackAssets[animal.id];
+            if (animal.atlas === 'glimmer.variants' && animal.set && animal.spriteIndex != null) {
+                const column = animal.spriteIndex % 5;
+                const row = Math.floor(animal.spriteIndex / 5);
+                visual.classList.add('candidate2-glimmer-variant-visual');
+                visual.setAttribute('role', 'img');
+                visual.setAttribute('aria-label', animal.name + '异色动物图');
+                visual.style.setProperty(
+                    '--glimmer-variant-sheet',
+                    "url('/lingye/glimmer/variants/variant-" + animal.set + ".webp')",
+                );
+                visual.style.setProperty('--glimmer-variant-x', column * 25 + '%');
+                visual.style.setProperty('--glimmer-variant-y', row * 100 / 3 + '%');
+            } else if (trackAsset) {
+                const image = document.createElement('img');
+                image.src = trackAsset;
+                image.alt = animal.name + '异色动物图';
+                image.width = 200;
+                image.height = 200;
+                image.draggable = false;
+                visual.append(image);
+            } else {
+                visual.classList.add('is-mystery');
+                visual.setAttribute('role', 'img');
+                visual.setAttribute('aria-label', '已揭晓动物');
+                visual.textContent = '?';
+            }
+        }
+        figure.append(visual);
+        if (animal.revealed) {
+            const caption = document.createElement('figcaption');
+            const name = document.createElement('strong');
+            name.textContent = animal.name;
+            caption.append(name);
+            figure.append(caption);
+        }
+        return figure;
+    }
+
+    function buildGlimmerVariantFigure(variant) {
+        const figure = document.createElement('figure');
+        const visual = document.createElement('span');
+        const unlocked = variant.unlocked !== false;
+        const column = variant.spriteIndex % 5;
+        const row = Math.floor(variant.spriteIndex / 5);
+        visual.className = 'candidate2-glimmer-animal-visual candidate2-glimmer-variant-visual';
+        visual.setAttribute('role', 'img');
+        figure.dataset.glimmerUnlocked = String(unlocked);
+        visual.setAttribute('aria-label', variant.name + '异色动物图' + (unlocked ? '' : '（未解锁）'));
+        if (variant.atlas !== undefined && variant.atlas !== 'glimmer.variants') {
+            visual.classList.add('is-mystery');
+            visual.textContent = '?';
+        } else {
+            visual.style.setProperty(
+                '--glimmer-variant-sheet',
+                "url('/lingye/glimmer/variants/variant-" + variant.set + ".webp')",
+            );
+        }
+        visual.style.setProperty('--glimmer-variant-x', column * 25 + '%');
+        visual.style.setProperty('--glimmer-variant-y', row * 100 / 3 + '%');
+        const caption = document.createElement('figcaption');
+        const name = document.createElement('strong');
+        name.textContent = variant.name;
+        caption.append(name);
+        figure.append(visual, caption);
+        return figure;
+    }
+
+    const togetherCoverAssets = {
+        'together.same-kitchen-opening': '/lingye/together/same-kitchen-opening.jpg',
+        'together.same-kitchen-old-recipe': '/lingye/together/same-kitchen-old-recipe.jpg',
+        'together.same-kitchen-undelivered-letters': '/lingye/together/same-kitchen-undelivered-letters.jpg',
+        'together.same-kitchen-service': '/lingye/together/same-kitchen-service.jpg',
+        'together.same-kitchen-final-arrangement': '/lingye/together/same-kitchen-final-arrangement.jpg',
+        'together.same-kitchen-ending-one-sign': '/lingye/together/same-kitchen-ending-one-sign.jpg',
+        'together.same-kitchen-ending-next-door': '/lingye/together/same-kitchen-ending-next-door.jpg',
+        'together.same-kitchen-ending-public-kitchen': '/lingye/together/same-kitchen-ending-public-kitchen.jpg',
+    };
+
+    function setTogetherText(selector, value) {
+        const element = document.querySelector(selector);
+        if (element) element.textContent = value == null ? '' : String(value);
+    }
+
+    function renderTogetherData(data) {
+        const cover = document.querySelector('.candidate2-together-cover-image');
+        const coverAsset = data && togetherCoverAssets[data.artFile];
+        if (cover) {
+            cover.hidden = !coverAsset;
+            if (coverAsset) {
+                cover.src = coverAsset;
+                cover.alt = data.title ? '《' + data.title + '》活动封面' : '铃野共行活动封面';
+            } else {
+                cover.removeAttribute('src');
+                cover.alt = '';
+            }
+        }
+
+        const currentContent = document.querySelector('.candidate2-together-current-content');
+        const liveEmpty = document.querySelector('.candidate2-together-live-empty');
+        const taskList = document.querySelector('.candidate2-together-task-list');
+        const choiceList = document.querySelector('.candidate2-together-choice-list');
+        if (!data) {
+            if (currentContent) currentContent.hidden = true;
+            if (liveEmpty) liveEmpty.hidden = false;
+            if (taskList) taskList.replaceChildren();
+            if (choiceList) choiceList.replaceChildren();
+            setTogetherText('.candidate2-together-current-kicker', '');
+            setTogetherText('.candidate2-together-current-title', '');
+            setTogetherText('.candidate2-together-current-status', '');
+            setTogetherText('.candidate2-together-stage-name', '');
+            setTogetherText('.candidate2-together-current-copy', '');
+            setTogetherText('.candidate2-together-task-kicker', '');
+            setTogetherText('.candidate2-together-task-title', '');
+            setTogetherText('.candidate2-together-choice-kicker', '');
+            setTogetherText('.candidate2-together-choice-title', '');
+            setTogetherText('.candidate2-together-choice-copy', '');
+            setTogetherText('.candidate2-together-rules-title', '');
+            setTogetherText('.candidate2-together-rules-copy', '');
+            const emptyStageRail = document.querySelector('.candidate2-together-stage-rail');
+            if (emptyStageRail) emptyStageRail.replaceChildren();
+            return;
+        }
+
+        if (liveEmpty) liveEmpty.hidden = true;
+        if (currentContent) currentContent.hidden = false;
+        setTogetherText('.candidate2-together-current-kicker', '第 ' + data.round + ' 期');
+        setTogetherText('.candidate2-together-current-title', data.title);
+        setTogetherText('.candidate2-together-current-status', data.status);
+        setTogetherText('.candidate2-together-stage-name', data.stageName);
+        setTogetherText(
+            '.candidate2-together-current-copy',
+            data.currentSummary
+                || (data.currentTask ? data.currentTask.opening : '当前没有可读取的阶段任务。'),
+        );
+        setTogetherText('.candidate2-together-task-kicker', '当前阶段');
+        setTogetherText('.candidate2-together-task-title', '任务链');
+        setTogetherText('.candidate2-together-choice-kicker', '公共选择');
+        setTogetherText(
+            '.candidate2-together-choice-title',
+            data.currentChoice ? data.currentChoice.title : '当前没有公共选择',
+        );
+        setTogetherText(
+            '.candidate2-together-choice-copy',
+            data.currentChoice
+                ? (data.currentChoice.counts
+                    ? '这里只读展示全服实际选项与票数；Human 不替小机提交行动。'
+                    : '这里只读展示全服实际选项；Human 不替小机提交行动。')
+                : '当前阶段没有待处理的公共选择。',
+        );
+        setTogetherText('.candidate2-together-rules-title', '共行说明');
+        setTogetherText(
+            '.candidate2-together-rules-copy',
+            '全服共用同一条实际故事线。Human 页面只读剧情、插图、任务进度、公共选择与往期档案。',
+        );
+
+        const stageRail = document.querySelector('.candidate2-together-stage-rail');
+        if (stageRail) {
+            stageRail.replaceChildren();
+            for (let index = 1; index <= data.stageCount; index += 1) {
+                const stage = document.createElement('span');
+                stage.textContent = String(index);
+                if (index === data.stageIndex) stage.classList.add('is-current');
+                stageRail.append(stage);
+                if (index < data.stageCount) stageRail.append(document.createElement('i'));
+            }
+        }
+
+        if (taskList) {
+            taskList.replaceChildren(...(data.tasks || []).map((task, index) => {
+                const article = document.createElement('article');
+                const mark = document.createElement('span');
+                mark.className = 'candidate2-task-mark';
+                mark.textContent = String(index + 1);
+                const copy = document.createElement('div');
+                const name = document.createElement('strong');
+                name.textContent = task.name;
+                const detail = document.createElement('p');
+                detail.textContent = task.detail;
+                copy.append(name, detail);
+                const status = document.createElement('small');
+                status.textContent = task.progress ? task.status + ' · ' + task.progress : task.status;
+                article.append(mark, copy, status);
+                return article;
+            }));
+        }
+
+        if (choiceList) {
+            const choice = data.currentChoice;
+            choiceList.replaceChildren(
+                ...(choice
+                    ? Object.entries(choice.options).map(([option, label]) => {
+                        const row = document.createElement('div');
+                        const letter = document.createElement('b');
+                        letter.textContent = option;
+                        const text = document.createElement('span');
+                        const count = choice.counts && choice.counts[option];
+                        text.textContent = count == null ? label : label + '（' + count + '/3）';
+                        row.append(letter, text);
+                        return row;
+                    })
+                    : []),
+            );
+        }
+    }
+
+    const glimmerPage = document.querySelector('.candidate2-glimmer-page');
+    const glimmerTrackList = document.querySelector('.candidate2-glimmer-tracks-demo');
+    const glimmerAnimalLayoutWidth = 292;
+    let glimmerAnimalEditorEnabled = false;
+    let glimmerAnimalPositions = {
+        duck_peach: { x: 0, y: 0 },
+        mystery: { x: 0, y: 0 },
+        silk_moth_mist: { x: 0, y: 0 },
+        turkey_maple: { x: 0, y: 0 },
+    };
+    let glimmerAnimalDrag = null;
+
+    function applyGlimmerAnimalPositions(positions) {
+        glimmerAnimalPositions = positions;
+        glimmerTrackList.querySelectorAll('[data-glimmer-animal-id]').forEach((figure) => {
+            const position = positions[figure.dataset.glimmerAnimalId] || { x: 0, y: 0 };
+            figure.style.setProperty('--glimmer-group-x', position.x / glimmerAnimalLayoutWidth * 100 + 'cqw');
+            figure.style.setProperty('--glimmer-group-y', position.y / glimmerAnimalLayoutWidth * 100 + 'cqw');
+        });
+    }
+
+    function finishGlimmerAnimalDrag() {
+        if (!glimmerAnimalDrag) return;
+        glimmerAnimalDrag.target.classList.remove('is-dragging');
+        sendAction({
+            type: 'glimmer-animal-layout-change',
+            positions: glimmerAnimalPositions,
+        });
+        glimmerAnimalDrag = null;
+    }
+
+    glimmerTrackList.addEventListener('pointerdown', (event) => {
+        if (!glimmerAnimalEditorEnabled) return;
+        const figure = event.target.closest('[data-glimmer-animal-id][data-glimmer-drag-target="group"]');
+        if (!figure) return;
+        const animalId = figure.dataset.glimmerAnimalId;
+        const origin = glimmerAnimalPositions[animalId] || { x: 0, y: 0 };
+        glimmerAnimalDrag = {
+            animalId,
+            originX: origin.x,
+            originY: origin.y,
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startY: event.clientY,
+            target: figure,
+        };
+        figure.classList.add('is-dragging');
+        figure.setPointerCapture(event.pointerId);
+        event.preventDefault();
+    });
+
+    glimmerTrackList.addEventListener('pointermove', (event) => {
+        if (!glimmerAnimalDrag || glimmerAnimalDrag.pointerId !== event.pointerId) return;
+        const layoutScale = glimmerTrackList.clientWidth / glimmerAnimalLayoutWidth || 1;
+        const position = {
+            x: Math.round((glimmerAnimalDrag.originX + (event.clientX - glimmerAnimalDrag.startX) / layoutScale) * 10) / 10,
+            y: Math.round((glimmerAnimalDrag.originY + (event.clientY - glimmerAnimalDrag.startY) / layoutScale) * 10) / 10,
+        };
+        applyGlimmerAnimalPositions({
+            ...glimmerAnimalPositions,
+            [glimmerAnimalDrag.animalId]: position,
+        });
+    });
+
+    glimmerTrackList.addEventListener('pointerup', finishGlimmerAnimalDrag);
+    glimmerTrackList.addEventListener('pointercancel', finishGlimmerAnimalDrag);
+
+    function renderGlimmerData(glimmer) {
+        const enabled = Boolean(glimmer);
+        const tracks = glimmer && Array.isArray(glimmer.tracks) ? glimmer.tracks : [];
+        const events = glimmer && Array.isArray(glimmer.events) ? glimmer.events : [];
+        const variants = glimmer && Array.isArray(glimmer.variants) ? glimmer.variants : [];
+        const encounters = glimmer && Array.isArray(glimmer.encounters) ? glimmer.encounters : [];
+        const achievements = glimmer && Array.isArray(glimmer.achievements) ? glimmer.achievements : [];
+        setDemoVisibility('.candidate2-glimmer-feature-empty', '.candidate2-glimmer-feature-demo', Boolean(glimmer && glimmer.task));
+        setDemoVisibility('.candidate2-glimmer-tracks-empty', '.candidate2-glimmer-tracks-demo', tracks.length > 0);
+        setDemoVisibility('.candidate2-glimmer-events-empty', '.candidate2-glimmer-events-demo', events.length > 0);
+        setDemoVisibility('.candidate2-glimmer-variants-empty', '.candidate2-glimmer-variants-demo', variants.length > 0);
+        setDemoVisibility('.candidate2-glimmer-encounters-empty', '.candidate2-glimmer-encounters-demo', encounters.length > 0);
+        setDemoVisibility('.candidate2-glimmer-summary-empty', '.candidate2-glimmer-summary-demo', Boolean(glimmer));
+        setDemoVisibility('.candidate2-glimmer-achievements-empty', '.candidate2-glimmer-achievements-demo', achievements.length > 0);
+        document.querySelector('.candidate2-glimmer-opening-value').textContent = glimmer ? glimmer.openingHours : '—';
+        document.querySelector('.candidate2-glimmer-status-value').textContent = glimmer ? glimmer.status : '—';
+        document.querySelector('.candidate2-glimmer-trace-value').textContent = glimmer ? glimmer.traceCount : '—';
+        const glimmerEventList = document.querySelector('.candidate2-glimmer-events-demo');
+        const glimmerVariantList = document.querySelector('.candidate2-glimmer-variants-demo');
+        const glimmerEncounterList = document.querySelector('.candidate2-glimmer-encounters-demo');
+        const glimmerAchievementList = document.querySelector('.candidate2-glimmer-achievements-demo');
+        glimmerTrackList.replaceChildren();
+        glimmerEventList.replaceChildren();
+        glimmerVariantList.replaceChildren();
+        glimmerEncounterList.replaceChildren();
+        glimmerAchievementList.replaceChildren();
+        document.querySelector('.candidate2-glimmer-task-title').textContent = '';
+        document.querySelector('.candidate2-glimmer-task-detail').textContent = '';
+        document.querySelector('.candidate2-glimmer-task-progress').textContent = '';
+        document.querySelector('.candidate2-glimmer-progress-track i').style.width = '0%';
+        document.querySelector('.candidate2-glimmer-summary-encounters').textContent = '';
+        document.querySelector('.candidate2-glimmer-summary-variants').textContent = '';
+        document.querySelector('.candidate2-glimmer-summary-coops').textContent = '';
+        if (!enabled) return;
+
+        if (glimmer.task) {
+            document.querySelector('.candidate2-glimmer-task-title').textContent = glimmer.task.title;
+            document.querySelector('.candidate2-glimmer-task-detail').textContent = glimmer.task.detail;
+            document.querySelector('.candidate2-glimmer-task-progress').textContent =
+                glimmer.task.current + ' / ' + glimmer.task.total + ' 家';
+            const glimmerProgress = glimmer.task.total > 0
+                ? Math.max(0, Math.min(100, glimmer.task.current / glimmer.task.total * 100))
+                : 0;
+            document.querySelector('.candidate2-glimmer-progress-track i').style.width = glimmerProgress + '%';
+        }
+        glimmerTrackList.replaceChildren(...tracks.map(buildGlimmerTrackFigure));
+        applyGlimmerAnimalPositions(glimmerAnimalPositions);
+        glimmerEventList.replaceChildren(...events.map((eventItem) => {
+            const item = document.createElement('li');
+            const time = document.createElement('time');
+            time.textContent = eventItem.time;
+            const copy = document.createElement('div');
+            const title = document.createElement('strong');
+            title.textContent = eventItem.title;
+            copy.append(title);
+            item.append(time, copy);
+            return item;
+        }));
+        glimmerVariantList.replaceChildren(...variants.map(buildGlimmerVariantFigure));
+        glimmerEncounterList.replaceChildren(...encounters.map((encounter) => {
+            const item = document.createElement('li');
+            const name = document.createElement('strong');
+            name.textContent = encounter.name;
+            const status = document.createElement('span');
+            status.textContent = encounter.status;
+            item.append(name, status);
+            return item;
+        }));
+        document.querySelector('.candidate2-glimmer-summary-encounters').textContent = glimmer.stats.encounters + ' 次';
+        document.querySelector('.candidate2-glimmer-summary-variants').textContent = glimmer.stats.variants + ' 种';
+        document.querySelector('.candidate2-glimmer-summary-coops').textContent = glimmer.stats.coops + ' 次';
+        glimmerAchievementList.replaceChildren(...achievements.map((achievement) => {
+            const article = document.createElement('article');
+            const copy = document.createElement('div');
+            const name = document.createElement('strong');
+            name.textContent = achievement.name;
+            const reward = document.createElement('small');
+            reward.textContent = achievement.reward;
+            copy.append(name, reward);
+            const state = document.createElement('div');
+            const progress = document.createElement('span');
+            progress.textContent = achievement.progress;
+            const status = document.createElement('span');
+            status.textContent = achievement.status;
+            state.append(progress, status);
+            article.append(copy, state);
+            return article;
+        }));
+    }
+
     function applyDemoContent(demo) {
         const content = demo && demo.content;
         const enabled = Boolean(content);
@@ -4370,6 +6653,16 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         setDemoVisibility('.home-visitors-empty', '.candidate2-demo-visitors', enabled);
         setDemoVisibility('.profile-relationships-empty', '.candidate2-demo-relationship', enabled);
         setDemoVisibility('.candidate2-profile-empty', '.candidate2-demo-activity-list', enabled);
+        setDemoVisibility('.candidate2-memorial-empty', '.candidate2-memorial-demo', enabled);
+        const glimmerEditor = demo && demo.glimmerAnimalEditor;
+        glimmerAnimalEditorEnabled = Boolean(glimmerEditor && glimmerEditor.enabled);
+        glimmerPage.classList.toggle('is-animal-editor', glimmerAnimalEditorEnabled);
+        if (glimmerEditor) {
+            applyGlimmerAnimalPositions(glimmerEditor.positions);
+        }
+        const glimmer = content && content.glimmer;
+        renderGlimmerData(glimmer);
+        renderTogetherData(content && content.together);
         if (!content) return;
 
         document.querySelector('.home-doorbell-count').textContent = String(content.doorbellRequests.length).padStart(2, '0');
@@ -4439,6 +6732,164 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         moreButton.dataset.expanded = 'false';
         moreButton.textContent = 'More';
         relationshipEditButton.hidden = content.relationships.length === 0;
+    }
+
+    function normalizeLiveGlimmer(read) {
+        const data = read && read.data;
+        if (!data) return null;
+        return {
+            openingHours: data.open ? '开放中' : '未开放',
+            status: data.status,
+            traceCount: data.tracks.length + ' 条',
+            task: data.cooperation ? {
+                title: data.cooperation.event.name,
+                detail: data.cooperation.event.requirement,
+                current: data.cooperation.progress.current,
+                total: data.cooperation.progress.target,
+            } : null,
+            tracks: data.tracks.map((track) => track.revealed && track.variant ? {
+                revealed: true,
+                id: track.variant.id,
+                name: track.variant.name,
+                atlas: track.variant.atlas,
+                set: track.variant.set,
+                spriteIndex: track.variant.sprite_index,
+            } : { revealed: false, layoutId: 'mystery' }),
+            events: data.events.map((eventItem) => ({
+                time: eventItem.at.slice(11, 16),
+                title: eventItem.text,
+            })),
+            variants: data.variants.map((variant) => ({
+                id: variant.id,
+                name: variant.name,
+                atlas: variant.atlas,
+                set: variant.set,
+                spriteIndex: variant.sprite_index,
+                unlocked: variant.unlocked,
+            })),
+            encounters: data.encounters.map((encounter) => ({
+                id: encounter.id,
+                name: encounter.name,
+                status: encounter.seen ? '已遇见' : '未遇见',
+            })),
+            stats: {
+                coops: data.summary.cooperations,
+                encounters: data.summary.encounters,
+                variants: data.summary.variants,
+            },
+            achievements: data.achievements.map((achievement) => ({
+                id: achievement.id,
+                name: achievement.name,
+                progress: achievement.progress.current + ' / ' + achievement.progress.target,
+                reward: achievement.reward.coins + ' 金 + ' + achievement.reward.silver + ' 银',
+                status: achievement.rewarded ? '已达成' : '未达成',
+            })),
+        };
+    }
+
+    function normalizeLiveTogether(read) {
+        const data = read && read.data;
+        if (!data) return null;
+        const currentTask = data.current_task ? {
+            contributors: [],
+            name: data.current_task.title,
+            opening: data.current_task.text,
+            progress: data.current_task.target > 0
+                ? Math.round(data.current_task.progress / data.current_task.target * 100)
+                : 0,
+        } : null;
+        let currentSummary = currentTask ? currentTask.opening : null;
+        if (!currentSummary && data.ending) currentSummary = data.ending.text;
+        if (!currentSummary && data.cooldown) {
+            currentSummary = [data.cooldown.text, data.cooldown.ready_text].filter(Boolean).join(' · ');
+        }
+        return {
+            artFile: data.art_asset_key,
+            currentChoice: data.current_choice ? {
+                counts: data.current_choice.counts,
+                index: data.current_choice.index,
+                options: Object.fromEntries(data.current_choice.options.map((option) => [option.key, option.label])),
+                title: data.current_choice.title,
+            } : null,
+            currentTask,
+            currentSummary,
+            stageCount: data.stage.total,
+            stageIndex: data.stage.index,
+            stageName: data.stage.name,
+            tasks: data.current_task ? [{
+                detail: data.current_task.text,
+                name: data.current_task.title,
+                progress: data.current_task.progress + ' / ' + data.current_task.target,
+                status: data.phase === 'task' ? '进行中' : data.status,
+            }] : [],
+            routeName: data.story_id,
+            round: data.round,
+            status: data.status,
+            title: data.title,
+        };
+    }
+
+    function applyLiveGlimmerState(readState) {
+        if (readState.stage === 'idle') {
+            renderGlimmerData(null);
+            document.querySelector('.candidate2-glimmer-feature-empty-title').textContent = '进入后读取当前协作';
+            document.querySelector('.candidate2-glimmer-feature-empty-copy').textContent = '进入后读取真实的全服协作任务。';
+            return;
+        }
+        if (readState.stage === 'loading') {
+            showScreen('screen-lingye-glimmer');
+            renderGlimmerData(null);
+            document.querySelector('.candidate2-glimmer-status-value').textContent = '读取中';
+            document.querySelector('.candidate2-glimmer-feature-empty-title').textContent = '正在读取当前协作';
+            document.querySelector('.candidate2-glimmer-feature-empty-copy').textContent = '正在读取真实的全服协作任务。';
+            return;
+        }
+        if (readState.stage === 'ready') {
+            renderGlimmerData(normalizeLiveGlimmer(readState.data));
+            return;
+        }
+        renderGlimmerData(null);
+        if (readState.stage === 'empty') {
+            document.querySelector('.candidate2-glimmer-feature-empty-title').textContent = '当前没有流光原野数据';
+            document.querySelector('.candidate2-glimmer-feature-empty-copy').textContent = '稍后再进入这里读取全服协作状态。';
+            return;
+        }
+        if (readState.stage === 'error') {
+            document.querySelector('.candidate2-glimmer-status-value').textContent = '读取失败';
+            document.querySelector('.candidate2-glimmer-feature-empty-title').textContent = '流光原野暂时不可用';
+            document.querySelector('.candidate2-glimmer-feature-empty-copy').textContent = readState.message;
+        }
+    }
+
+    function applyLiveTogetherState(readState) {
+        if (readState.stage === 'idle') {
+            renderTogetherData(null);
+            setTogetherText('.candidate2-together-live-empty', '进入后读取当前铃野共行状态。');
+            return;
+        }
+        if (readState.stage === 'loading') {
+            showScreen('screen-lingye-together');
+            renderTogetherData(null);
+            setTogetherText('.candidate2-together-live-empty', '正在读取当前铃野共行状态。');
+            return;
+        }
+        if (readState.stage === 'ready') {
+            const data = normalizeLiveTogether(readState.data);
+            renderTogetherData(data);
+            if (!data) setTogetherText('.candidate2-together-live-empty', '当前没有铃野共行状态。');
+            return;
+        }
+        renderTogetherData(null);
+        setTogetherText(
+            '.candidate2-together-live-empty',
+            readState.stage === 'empty' ? '当前没有铃野共行状态。' : readState.message,
+        );
+    }
+
+    function applyLiveLingyeState(lingye) {
+        if (!lingye) return;
+        applyLiveGlimmerState(lingye.glimmer);
+        applyLiveTogetherState(lingye.together);
     }
 
     function closeRelationshipEditor() {
@@ -4529,6 +6980,9 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         currentStage = state.stage;
         window.__doorbellCandidateDemo = Boolean(demo);
         applyDemoContent(demo);
+        if (!demo && state.stage === 'authenticated') {
+            applyLiveLingyeState(state.lingye);
+        }
 
         if (state.stage === 'checking-session') {
             showScreen('screen-login');
@@ -4795,6 +7249,12 @@ const CANDIDATE_RUNTIME_SCRIPT = `
             clearOneTimeConnectorCredential();
         }
         originalShowScreen(screenId);
+        if (currentStage === 'authenticated') {
+            const glimmerPageOpen = screenId === 'screen-lingye-glimmer';
+            mainNav.style.display = glimmerPageOpen ? 'none' : 'flex';
+            if (glimmerPageOpen) mainNav.setAttribute('aria-hidden', 'true');
+            else mainNav.removeAttribute('aria-hidden');
+        }
         if (screenId === 'screen-home') syncHomeScale();
     };
 
@@ -4868,7 +7328,7 @@ export function buildCandidateTwoRuntimeHtml() {
   html = html
     .replace(
       '    <div id="screen-profile" class="screen"',
-      `${LINGYE_SCREEN}\n    <div id="screen-profile" class="screen"`,
+      `${LINGYE_SCREEN}\n${LINGYE_PLACE_SCREENS}\n    <div id="screen-profile" class="screen"`,
     )
     .replace(
       '    <nav class="bottom-nav"',
@@ -4957,11 +7417,30 @@ export function CandidateTwoPreview({
       }
 
       if (action.type === "navigate") {
-        if (demoRef.current) {
+        if (demoRef.current || shouldHandleCandidateNavigationInParent(action.path)) {
           onActionRef.current(action);
           return;
         }
         window.location.assign(action.path);
+        return;
+      }
+
+      if (action.type === "glimmer-animal-layout-change") {
+        if (!demoRef.current?.glimmerAnimalEditor.enabled) {
+          return;
+        }
+        const url = new URL(window.location.href);
+        for (const [animalId, [xParam, yParam]] of Object.entries(
+          candidateTwoGlimmerAnimalPositionParams,
+        ) as [CandidateTwoGlimmerAnimalPositionId, readonly [string, string]][]) {
+          url.searchParams.set(xParam, String(action.positions[animalId].x));
+          url.searchParams.set(yParam, String(action.positions[animalId].y));
+        }
+        url.searchParams.set("gaLayout", "5");
+        for (const legacyParam of candidateTwoLegacyGlimmerAnimalLabelPositionParams) {
+          url.searchParams.delete(legacyParam);
+        }
+        window.history.replaceState(null, "", url);
         return;
       }
 

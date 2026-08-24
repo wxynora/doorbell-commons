@@ -1,7 +1,29 @@
 import {
+  type BoundFarmHarvestAssistErrorCode,
+  boundFarmCatalogReadErrorSchema,
+  boundFarmCatalogReadRequestSchema,
+  boundFarmCatalogReadSuccessSchema,
+  boundFarmFieldErrorSchema,
+  boundFarmFieldRequestSchema,
+  boundFarmFieldSuccessSchema,
+  boundFarmHarvestAssistErrorSchema,
+  boundFarmHarvestAssistRequestSchema,
+  boundFarmHarvestAssistSuccessSchema,
+  boundFarmKitchenReadErrorSchema,
+  boundFarmKitchenReadRequestSchema,
+  boundFarmKitchenReadSuccessSchema,
   boundFarmOverviewErrorSchema,
   boundFarmOverviewRequestSchema,
   boundFarmOverviewSuccessSchema,
+  boundFarmRanchErrorSchema,
+  boundFarmRanchReadRequestSchema,
+  boundFarmRanchSuccessSchema,
+  boundGlimmerReadErrorSchema,
+  boundGlimmerReadRequestSchema,
+  boundGlimmerReadSuccessSchema,
+  boundTogetherReadErrorSchema,
+  boundTogetherReadRequestSchema,
+  boundTogetherReadSuccessSchema,
   connectorControlErrorSchema,
   connectorCredentialIssueSuccessSchema,
   connectorCredentialMutationRequestSchema,
@@ -9,6 +31,7 @@ import {
   connectorCredentialSchema,
   createdFarmHumanSessionSuccessSchema,
   currentHumanSessionSuccessSchema,
+  farmHumanFieldHarvestAssistIdempotencyKeySchema,
   farmHumanUiErrorSchema,
   farmLookupErrorSchema,
   farmLookupRequestSchema,
@@ -79,6 +102,12 @@ import {
   type ConnectorService,
 } from "./connector-service.js";
 import {
+  FarmHumanCatalogContractUnavailableError,
+  FarmHumanCatalogCredentialInvalidError,
+  FarmHumanCatalogNotFoundError,
+  FarmHumanCatalogUnavailableError,
+} from "./farm-catalog-client.js";
+import {
   FarmCreationConflictError,
   FarmCreationContractUnavailableError,
   FarmCreationRejectedError,
@@ -91,7 +120,35 @@ import {
   FarmNotPubliclyReadableError,
   FarmUpstreamContractUnavailableError,
 } from "./farm-directory-client.js";
+import {
+  FarmHumanFieldContractUnavailableError,
+  FarmHumanFieldCredentialInvalidError,
+  FarmHumanFieldIdempotencyConflictError,
+  FarmHumanFieldNotFoundError,
+  FarmHumanFieldStateConflictError,
+  FarmHumanFieldUnavailableError,
+  FarmHumanHarvestAssistExhaustedError,
+  FarmHumanNoRipePlotsError,
+} from "./farm-human-client.js";
 import { InvalidFarmHumanUrlError } from "./farm-human-url.js";
+import {
+  FarmHumanKitchenContractUnavailableError,
+  FarmHumanKitchenCredentialInvalidError,
+  FarmHumanKitchenNotFoundError,
+  FarmHumanKitchenUnavailableError,
+} from "./farm-kitchen-client.js";
+import {
+  FarmLingyeContractUnavailableError,
+  FarmLingyeCredentialInvalidError,
+  FarmLingyeNotFoundError,
+  FarmLingyeUnavailableError,
+} from "./farm-lingye-client.js";
+import {
+  FarmHumanRanchContractUnavailableError,
+  FarmHumanRanchCredentialInvalidError,
+  FarmHumanRanchNotFoundError,
+  FarmHumanRanchUnavailableError,
+} from "./farm-ranch-client.js";
 import {
   FarmRewardContractUnavailableError,
   FarmRewardCredentialInvalidError,
@@ -517,6 +574,167 @@ function sendBoundFarmError(
   );
 }
 
+function sendBoundFarmFieldError(
+  reply: FastifyReply,
+  statusCode: 400 | 401 | 403 | 404 | 409 | 502 | 503,
+  code:
+    | "invalid_request"
+    | "authentication_required"
+    | "qq_not_group_member"
+    | "onebot_unavailable"
+    | "registration_profile_required"
+    | "farm_not_found"
+    | "farm_credential_invalid"
+    | "farm_unavailable"
+    | "upstream_contract_unavailable",
+  message: string,
+) {
+  reply.header("cache-control", "no-store");
+  return reply.code(statusCode).send(
+    boundFarmFieldErrorSchema.parse({
+      error: { code, message },
+    }),
+  );
+}
+
+type BoundFarmStructuredErrorCode =
+  | "invalid_request"
+  | "authentication_required"
+  | "qq_not_group_member"
+  | "onebot_unavailable"
+  | "registration_profile_required"
+  | "farm_not_found"
+  | "farm_credential_invalid"
+  | "farm_unavailable"
+  | "upstream_contract_unavailable";
+
+type BoundFarmStructuredStatusCode = 400 | 401 | 403 | 404 | 409 | 502 | 503;
+
+function sendBoundFarmCatalogReadError(
+  reply: FastifyReply,
+  statusCode: BoundFarmStructuredStatusCode,
+  code: BoundFarmStructuredErrorCode,
+  message: string,
+) {
+  reply.header("cache-control", "no-store");
+  return reply.code(statusCode).send(
+    boundFarmCatalogReadErrorSchema.parse({
+      error: { code, message },
+    }),
+  );
+}
+
+function sendBoundFarmKitchenReadError(
+  reply: FastifyReply,
+  statusCode: BoundFarmStructuredStatusCode,
+  code: BoundFarmStructuredErrorCode,
+  message: string,
+) {
+  reply.header("cache-control", "no-store");
+  return reply.code(statusCode).send(
+    boundFarmKitchenReadErrorSchema.parse({
+      error: { code, message },
+    }),
+  );
+}
+
+function sendBoundFarmRanchReadError(
+  reply: FastifyReply,
+  statusCode: BoundFarmStructuredStatusCode,
+  code: BoundFarmStructuredErrorCode,
+  message: string,
+) {
+  reply.header("cache-control", "no-store");
+  return reply.code(statusCode).send(
+    boundFarmRanchErrorSchema.parse({
+      error: { code, message },
+    }),
+  );
+}
+
+function sendBoundGlimmerReadError(
+  reply: FastifyReply,
+  statusCode: 400 | 401 | 403 | 404 | 409 | 502 | 503,
+  code:
+    | "invalid_request"
+    | "authentication_required"
+    | "qq_not_group_member"
+    | "onebot_unavailable"
+    | "registration_profile_required"
+    | "farm_not_found"
+    | "farm_credential_invalid"
+    | "farm_unavailable"
+    | "upstream_contract_unavailable",
+  message: string,
+) {
+  reply.header("cache-control", "no-store");
+  return reply.code(statusCode).send(
+    boundGlimmerReadErrorSchema.parse({
+      error: { code, message },
+    }),
+  );
+}
+
+function sendBoundTogetherReadError(
+  reply: FastifyReply,
+  statusCode: 400 | 401 | 403 | 404 | 409 | 502 | 503,
+  code:
+    | "invalid_request"
+    | "authentication_required"
+    | "qq_not_group_member"
+    | "onebot_unavailable"
+    | "registration_profile_required"
+    | "farm_not_found"
+    | "farm_credential_invalid"
+    | "farm_unavailable"
+    | "upstream_contract_unavailable",
+  message: string,
+) {
+  reply.header("cache-control", "no-store");
+  return reply.code(statusCode).send(
+    boundTogetherReadErrorSchema.parse({
+      error: { code, message },
+    }),
+  );
+}
+
+function sendHarvestAssistError(
+  reply: FastifyReply,
+  statusCode: 400 | 401 | 403 | 404 | 409 | 502 | 503,
+  code: BoundFarmHarvestAssistErrorCode,
+  message: string,
+  currentRevision?: string,
+) {
+  reply.header("cache-control", "no-store");
+  return reply.code(statusCode).send(
+    boundFarmHarvestAssistErrorSchema.parse({
+      error: {
+        code,
+        message,
+        ...(currentRevision === undefined ? {} : { current_revision: currentRevision }),
+      },
+    }),
+  );
+}
+
+function parseIfMatchRevision(value: string | string[] | undefined): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  if (value.startsWith('"') || value.endsWith('"')) {
+    return /^"[^"]+"$/.test(value) ? value.slice(1, -1) : undefined;
+  }
+  return /^[^\s",]+$/.test(value) ? value : undefined;
+}
+
+function requestHasBody(request: FastifyRequest): boolean {
+  if (request.body !== undefined) {
+    return true;
+  }
+  const contentLength = request.headers["content-length"];
+  return typeof contentLength === "string" && Number(contentLength) > 0;
+}
+
 function sendHumanSettingsError(
   reply: FastifyReply,
   statusCode: 400 | 401 | 403 | 409 | 503,
@@ -600,6 +818,20 @@ function reportFarmUnavailable(
   error: FarmDirectoryUnavailableError | FarmUpstreamContractUnavailableError,
 ): void {
   request.log.error({ error_name: error.name }, "Farm directory lookup is unavailable");
+}
+
+function reportFarmHumanFieldUnavailable(
+  request: FastifyRequest,
+  error: FarmHumanFieldContractUnavailableError | FarmHumanFieldUnavailableError,
+): void {
+  request.log.error({ error_name: error.name }, "Farm Human field read is unavailable");
+}
+
+function reportFarmLingyeUnavailable(
+  request: FastifyRequest,
+  error: FarmLingyeContractUnavailableError | FarmLingyeUnavailableError,
+): void {
+  request.log.error({ error_name: error.name }, "Farm Lingye structured read is unavailable");
 }
 
 const FARM_HUMAN_GET_ROUTES = new Map<string, readonly string[]>([
@@ -2594,6 +2826,790 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       );
     } catch (error) {
       return sendHumanSettingsFailure(request, reply, error);
+    }
+  });
+
+  app.get("/api/farm/field", async (request, reply) => {
+    if (!boundFarmFieldRequestSchema.safeParse(request.query).success) {
+      return sendBoundFarmFieldError(
+        reply,
+        400,
+        "invalid_request",
+        "The bound farm field does not accept query parameters",
+      );
+    }
+
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendBoundFarmFieldError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+
+    try {
+      const field = await options.registrationAuth.getCurrentFarmField(token);
+      reply.header("cache-control", "no-store");
+      return boundFarmFieldSuccessSchema.parse(field);
+    } catch (error) {
+      if (error instanceof AuthenticationRequiredError) {
+        return sendBoundFarmFieldError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
+        return sendBoundFarmFieldError(
+          reply,
+          403,
+          "qq_not_group_member",
+          "The session QQ number is no longer a current member of the community group",
+        );
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendBoundFarmFieldError(
+          reply,
+          503,
+          "onebot_unavailable",
+          "QQ group membership could not be verified",
+        );
+      }
+      if (error instanceof RegistrationProfileRequiredError) {
+        return sendBoundFarmFieldError(
+          reply,
+          409,
+          "registration_profile_required",
+          "A resident, home, and farm binding are required",
+        );
+      }
+      if (error instanceof FarmHumanFieldCredentialInvalidError) {
+        return sendBoundFarmFieldError(
+          reply,
+          409,
+          "farm_credential_invalid",
+          "The bound farm human credential is no longer valid",
+        );
+      }
+      if (error instanceof FarmHumanFieldNotFoundError) {
+        return sendBoundFarmFieldError(
+          reply,
+          404,
+          "farm_not_found",
+          "The bound farm no longer exists",
+        );
+      }
+      if (error instanceof FarmHumanFieldContractUnavailableError) {
+        reportFarmHumanFieldUnavailable(request, error);
+        return sendBoundFarmFieldError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The farm field response could not be verified",
+        );
+      }
+      if (error instanceof FarmHumanFieldUnavailableError) {
+        reportFarmHumanFieldUnavailable(request, error);
+        return sendBoundFarmFieldError(
+          reply,
+          503,
+          "farm_unavailable",
+          "The farm field is unavailable",
+        );
+      }
+      throw error;
+    }
+  });
+
+  app.get("/api/farm/catalog", { exposeHeadRoute: false }, async (request, reply) => {
+    if (
+      !boundFarmCatalogReadRequestSchema.safeParse(request.query).success ||
+      requestHasBody(request)
+    ) {
+      return sendBoundFarmCatalogReadError(
+        reply,
+        400,
+        "invalid_request",
+        "The bound farm catalog does not accept query parameters or a request body",
+      );
+    }
+
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendBoundFarmCatalogReadError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+
+    try {
+      const catalog = await options.registrationAuth.getCurrentFarmCatalog(token);
+      reply.header("cache-control", "no-store");
+      return boundFarmCatalogReadSuccessSchema.parse(catalog);
+    } catch (error) {
+      if (error instanceof AuthenticationRequiredError) {
+        return sendBoundFarmCatalogReadError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
+        return sendBoundFarmCatalogReadError(
+          reply,
+          403,
+          "qq_not_group_member",
+          "The session QQ number is no longer a current member of the community group",
+        );
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendBoundFarmCatalogReadError(
+          reply,
+          503,
+          "onebot_unavailable",
+          "QQ group membership could not be verified",
+        );
+      }
+      if (error instanceof RegistrationProfileRequiredError) {
+        return sendBoundFarmCatalogReadError(
+          reply,
+          409,
+          "registration_profile_required",
+          "A resident, home, and farm binding are required",
+        );
+      }
+      if (error instanceof FarmHumanCatalogCredentialInvalidError) {
+        return sendBoundFarmCatalogReadError(
+          reply,
+          409,
+          "farm_credential_invalid",
+          "The bound farm human credential is no longer valid",
+        );
+      }
+      if (error instanceof FarmHumanCatalogNotFoundError) {
+        return sendBoundFarmCatalogReadError(
+          reply,
+          404,
+          "farm_not_found",
+          "The bound farm no longer exists",
+        );
+      }
+      if (error instanceof FarmHumanCatalogContractUnavailableError) {
+        request.log.error({ error_name: error.name }, "Farm catalog read is unavailable");
+        return sendBoundFarmCatalogReadError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The farm catalog response could not be verified",
+        );
+      }
+      if (error instanceof FarmHumanCatalogUnavailableError) {
+        request.log.error({ error_name: error.name }, "Farm catalog read is unavailable");
+        return sendBoundFarmCatalogReadError(
+          reply,
+          503,
+          "farm_unavailable",
+          "The farm catalog is unavailable",
+        );
+      }
+      throw error;
+    }
+  });
+
+  app.get("/api/farm/kitchen", { exposeHeadRoute: false }, async (request, reply) => {
+    if (
+      !boundFarmKitchenReadRequestSchema.safeParse(request.query).success ||
+      requestHasBody(request)
+    ) {
+      return sendBoundFarmKitchenReadError(
+        reply,
+        400,
+        "invalid_request",
+        "The bound farm kitchen does not accept query parameters or a request body",
+      );
+    }
+
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendBoundFarmKitchenReadError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+
+    try {
+      const kitchen = await options.registrationAuth.getCurrentFarmKitchen(token);
+      reply.header("cache-control", "no-store");
+      return boundFarmKitchenReadSuccessSchema.parse(kitchen);
+    } catch (error) {
+      if (error instanceof AuthenticationRequiredError) {
+        return sendBoundFarmKitchenReadError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
+        return sendBoundFarmKitchenReadError(
+          reply,
+          403,
+          "qq_not_group_member",
+          "The session QQ number is no longer a current member of the community group",
+        );
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendBoundFarmKitchenReadError(
+          reply,
+          503,
+          "onebot_unavailable",
+          "QQ group membership could not be verified",
+        );
+      }
+      if (error instanceof RegistrationProfileRequiredError) {
+        return sendBoundFarmKitchenReadError(
+          reply,
+          409,
+          "registration_profile_required",
+          "A resident, home, and farm binding are required",
+        );
+      }
+      if (error instanceof FarmHumanKitchenCredentialInvalidError) {
+        return sendBoundFarmKitchenReadError(
+          reply,
+          409,
+          "farm_credential_invalid",
+          "The bound farm human credential is no longer valid",
+        );
+      }
+      if (error instanceof FarmHumanKitchenNotFoundError) {
+        return sendBoundFarmKitchenReadError(
+          reply,
+          404,
+          "farm_not_found",
+          "The bound farm no longer exists",
+        );
+      }
+      if (error instanceof FarmHumanKitchenContractUnavailableError) {
+        request.log.error({ error_name: error.name }, "Farm kitchen read is unavailable");
+        return sendBoundFarmKitchenReadError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The farm kitchen response could not be verified",
+        );
+      }
+      if (error instanceof FarmHumanKitchenUnavailableError) {
+        request.log.error({ error_name: error.name }, "Farm kitchen read is unavailable");
+        return sendBoundFarmKitchenReadError(
+          reply,
+          503,
+          "farm_unavailable",
+          "The farm kitchen is unavailable",
+        );
+      }
+      throw error;
+    }
+  });
+
+  app.get("/api/farm/ranch", { exposeHeadRoute: false }, async (request, reply) => {
+    if (
+      !boundFarmRanchReadRequestSchema.safeParse(request.query).success ||
+      requestHasBody(request)
+    ) {
+      return sendBoundFarmRanchReadError(
+        reply,
+        400,
+        "invalid_request",
+        "The bound farm ranch does not accept query parameters or a request body",
+      );
+    }
+
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendBoundFarmRanchReadError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+
+    try {
+      const ranch = await options.registrationAuth.getCurrentFarmRanch(token);
+      reply.header("cache-control", "no-store");
+      return boundFarmRanchSuccessSchema.parse(ranch);
+    } catch (error) {
+      if (error instanceof AuthenticationRequiredError) {
+        return sendBoundFarmRanchReadError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
+        return sendBoundFarmRanchReadError(
+          reply,
+          403,
+          "qq_not_group_member",
+          "The session QQ number is no longer a current member of the community group",
+        );
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendBoundFarmRanchReadError(
+          reply,
+          503,
+          "onebot_unavailable",
+          "QQ group membership could not be verified",
+        );
+      }
+      if (error instanceof RegistrationProfileRequiredError) {
+        return sendBoundFarmRanchReadError(
+          reply,
+          409,
+          "registration_profile_required",
+          "A resident, home, and farm binding are required",
+        );
+      }
+      if (error instanceof FarmHumanRanchCredentialInvalidError) {
+        return sendBoundFarmRanchReadError(
+          reply,
+          409,
+          "farm_credential_invalid",
+          "The bound farm human credential is no longer valid",
+        );
+      }
+      if (error instanceof FarmHumanRanchNotFoundError) {
+        return sendBoundFarmRanchReadError(
+          reply,
+          404,
+          "farm_not_found",
+          "The bound farm no longer exists",
+        );
+      }
+      if (error instanceof FarmHumanRanchContractUnavailableError) {
+        request.log.error({ error_name: error.name }, "Farm ranch read is unavailable");
+        return sendBoundFarmRanchReadError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The farm ranch response could not be verified",
+        );
+      }
+      if (error instanceof FarmHumanRanchUnavailableError) {
+        request.log.error({ error_name: error.name }, "Farm ranch read is unavailable");
+        return sendBoundFarmRanchReadError(
+          reply,
+          503,
+          "farm_unavailable",
+          "The farm ranch is unavailable",
+        );
+      }
+      throw error;
+    }
+  });
+
+  app.get("/api/lingye/glimmer", { exposeHeadRoute: false }, async (request, reply) => {
+    if (
+      !boundGlimmerReadRequestSchema.safeParse(request.query).success ||
+      requestHasBody(request)
+    ) {
+      return sendBoundGlimmerReadError(
+        reply,
+        400,
+        "invalid_request",
+        "The structured Glimmer read does not accept query parameters or a request body",
+      );
+    }
+
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendBoundGlimmerReadError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+
+    try {
+      const result = await options.registrationAuth.getCurrentFarmGlimmer(token);
+      const parsed = boundGlimmerReadSuccessSchema.safeParse(result);
+      if (!parsed.success) {
+        reportFarmLingyeUnavailable(request, new FarmLingyeContractUnavailableError());
+        return sendBoundGlimmerReadError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The farm Glimmer response could not be verified",
+        );
+      }
+      reply.header("cache-control", "no-store");
+      return parsed.data;
+    } catch (error) {
+      if (error instanceof AuthenticationRequiredError) {
+        return sendBoundGlimmerReadError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
+        return sendBoundGlimmerReadError(
+          reply,
+          403,
+          "qq_not_group_member",
+          "The session QQ number is no longer a current member of the community group",
+        );
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendBoundGlimmerReadError(
+          reply,
+          503,
+          "onebot_unavailable",
+          "QQ group membership could not be verified",
+        );
+      }
+      if (error instanceof RegistrationProfileRequiredError) {
+        return sendBoundGlimmerReadError(
+          reply,
+          409,
+          "registration_profile_required",
+          "A resident, home, and farm binding are required",
+        );
+      }
+      if (error instanceof FarmLingyeCredentialInvalidError) {
+        return sendBoundGlimmerReadError(
+          reply,
+          409,
+          "farm_credential_invalid",
+          "The bound farm human credential is no longer valid",
+        );
+      }
+      if (error instanceof FarmLingyeNotFoundError) {
+        return sendBoundGlimmerReadError(
+          reply,
+          404,
+          "farm_not_found",
+          "The bound farm no longer exists",
+        );
+      }
+      if (error instanceof FarmLingyeContractUnavailableError) {
+        reportFarmLingyeUnavailable(request, error);
+        return sendBoundGlimmerReadError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The farm Glimmer response could not be verified",
+        );
+      }
+      if (error instanceof FarmLingyeUnavailableError) {
+        reportFarmLingyeUnavailable(request, error);
+        return sendBoundGlimmerReadError(
+          reply,
+          503,
+          "farm_unavailable",
+          "The farm Glimmer service is unavailable",
+        );
+      }
+      throw error;
+    }
+  });
+
+  app.get("/api/lingye/together", { exposeHeadRoute: false }, async (request, reply) => {
+    if (
+      !boundTogetherReadRequestSchema.safeParse(request.query).success ||
+      requestHasBody(request)
+    ) {
+      return sendBoundTogetherReadError(
+        reply,
+        400,
+        "invalid_request",
+        "The structured Together read does not accept query parameters or a request body",
+      );
+    }
+
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendBoundTogetherReadError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+
+    try {
+      const result = await options.registrationAuth.getCurrentFarmTogether(token);
+      const parsed = boundTogetherReadSuccessSchema.safeParse(result);
+      if (!parsed.success) {
+        reportFarmLingyeUnavailable(request, new FarmLingyeContractUnavailableError());
+        return sendBoundTogetherReadError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The farm Together response could not be verified",
+        );
+      }
+      reply.header("cache-control", "no-store");
+      return parsed.data;
+    } catch (error) {
+      if (error instanceof AuthenticationRequiredError) {
+        return sendBoundTogetherReadError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
+        return sendBoundTogetherReadError(
+          reply,
+          403,
+          "qq_not_group_member",
+          "The session QQ number is no longer a current member of the community group",
+        );
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendBoundTogetherReadError(
+          reply,
+          503,
+          "onebot_unavailable",
+          "QQ group membership could not be verified",
+        );
+      }
+      if (error instanceof RegistrationProfileRequiredError) {
+        return sendBoundTogetherReadError(
+          reply,
+          409,
+          "registration_profile_required",
+          "A resident, home, and farm binding are required",
+        );
+      }
+      if (error instanceof FarmLingyeCredentialInvalidError) {
+        return sendBoundTogetherReadError(
+          reply,
+          409,
+          "farm_credential_invalid",
+          "The bound farm human credential is no longer valid",
+        );
+      }
+      if (error instanceof FarmLingyeNotFoundError) {
+        return sendBoundTogetherReadError(
+          reply,
+          404,
+          "farm_not_found",
+          "The bound farm no longer exists",
+        );
+      }
+      if (error instanceof FarmLingyeContractUnavailableError) {
+        reportFarmLingyeUnavailable(request, error);
+        return sendBoundTogetherReadError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The farm Together response could not be verified",
+        );
+      }
+      if (error instanceof FarmLingyeUnavailableError) {
+        reportFarmLingyeUnavailable(request, error);
+        return sendBoundTogetherReadError(
+          reply,
+          503,
+          "farm_unavailable",
+          "The farm Together service is unavailable",
+        );
+      }
+      throw error;
+    }
+  });
+
+  app.post("/api/farm/field/harvest-assists", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    if (!boundFarmHarvestAssistRequestSchema.safeParse(request.query).success) {
+      return sendHarvestAssistError(
+        reply,
+        400,
+        "invalid_request",
+        "The harvest assist does not accept query parameters",
+      );
+    }
+    if (!boundFarmHarvestAssistRequestSchema.safeParse(request.body).success) {
+      return sendHarvestAssistError(
+        reply,
+        400,
+        "invalid_request",
+        "The harvest assist body must be empty",
+      );
+    }
+
+    const idempotencyKey = request.headers["idempotency-key"];
+    const expectedRevision = parseIfMatchRevision(request.headers["if-match"]);
+    if (
+      typeof idempotencyKey !== "string" ||
+      !farmHumanFieldHarvestAssistIdempotencyKeySchema.safeParse(idempotencyKey).success ||
+      expectedRevision === undefined
+    ) {
+      return sendHarvestAssistError(
+        reply,
+        400,
+        "invalid_request",
+        "Harvest assist requires a UUID Idempotency-Key and a valid If-Match revision",
+      );
+    }
+
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendHarvestAssistError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+
+    try {
+      const result = await options.registrationAuth.harvestCurrentFarmField(token, {
+        expectedRevision,
+        idempotencyKey,
+      });
+      const parsedResult = boundFarmHarvestAssistSuccessSchema.safeParse(result);
+      if (!parsedResult.success) {
+        return sendHarvestAssistError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The farm harvest response could not be verified",
+        );
+      }
+      return reply.send(parsedResult.data);
+    } catch (error) {
+      if (error instanceof AuthenticationRequiredError) {
+        return sendHarvestAssistError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
+        return sendHarvestAssistError(
+          reply,
+          403,
+          "qq_not_group_member",
+          "The session QQ number is no longer a current member of the community group",
+        );
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendHarvestAssistError(
+          reply,
+          503,
+          "onebot_unavailable",
+          "QQ group membership could not be verified",
+        );
+      }
+      if (error instanceof RegistrationProfileRequiredError) {
+        return sendHarvestAssistError(
+          reply,
+          409,
+          "registration_profile_required",
+          "A resident, home, and farm binding are required",
+        );
+      }
+      if (error instanceof FarmHumanHarvestAssistExhaustedError) {
+        return sendHarvestAssistError(
+          reply,
+          409,
+          "harvest_assist_exhausted",
+          "The daily harvest assist limit has been reached",
+          error.currentRevision,
+        );
+      }
+      if (error instanceof FarmHumanNoRipePlotsError) {
+        return sendHarvestAssistError(
+          reply,
+          409,
+          "no_ripe_plots",
+          "There are no ripe plots to harvest",
+          error.currentRevision,
+        );
+      }
+      if (error instanceof FarmHumanFieldStateConflictError) {
+        return sendHarvestAssistError(
+          reply,
+          409,
+          "state_conflict",
+          "The farm field has changed",
+          error.currentRevision,
+        );
+      }
+      if (error instanceof FarmHumanFieldIdempotencyConflictError) {
+        return sendHarvestAssistError(
+          reply,
+          409,
+          "idempotency_conflict",
+          "This idempotency key was used for a different request",
+        );
+      }
+      if (error instanceof FarmHumanFieldCredentialInvalidError) {
+        return sendHarvestAssistError(
+          reply,
+          409,
+          "farm_credential_invalid",
+          "The bound farm human credential is no longer valid",
+        );
+      }
+      if (error instanceof FarmHumanFieldNotFoundError) {
+        return sendHarvestAssistError(
+          reply,
+          404,
+          "farm_not_found",
+          "The bound farm no longer exists",
+        );
+      }
+      if (error instanceof FarmHumanFieldContractUnavailableError) {
+        reportFarmHumanFieldUnavailable(request, error);
+        return sendHarvestAssistError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The farm harvest response could not be verified",
+        );
+      }
+      if (error instanceof FarmHumanFieldUnavailableError) {
+        reportFarmHumanFieldUnavailable(request, error);
+        return sendHarvestAssistError(
+          reply,
+          503,
+          "farm_unavailable",
+          "The farm field is unavailable",
+        );
+      }
+      throw error;
     }
   });
 

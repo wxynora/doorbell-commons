@@ -5,10 +5,31 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import {
+  boundFarmCatalogReadErrorSchema,
+  boundFarmCatalogReadSuccessSchema,
+  boundFarmFieldErrorSchema,
+  boundFarmFieldSuccessSchema,
+  boundFarmHarvestAssistErrorSchema,
+  boundFarmHarvestAssistSuccessSchema,
+  boundFarmKitchenReadErrorSchema,
+  boundFarmKitchenReadSuccessSchema,
   boundFarmOverviewErrorSchema,
   boundFarmOverviewSuccessSchema,
+  boundFarmRanchErrorSchema,
+  boundFarmRanchSuccessSchema,
+  boundGlimmerReadErrorSchema,
+  boundGlimmerReadSuccessSchema,
+  boundTogetherReadErrorSchema,
+  boundTogetherReadSuccessSchema,
   createdFarmHumanSessionSuccessSchema,
   currentHumanSessionSuccessSchema,
+  type FarmHumanCatalogReadSuccess,
+  type FarmHumanFieldHarvestAssistSuccess,
+  type FarmHumanFieldReadSuccess,
+  type FarmHumanGlimmerReadSuccess,
+  type FarmHumanKitchenReadSuccess,
+  type FarmHumanRanchReadSuccess,
+  type FarmHumanTogetherReadSuccess,
   farmHumanUiErrorSchema,
   humanAuthenticationErrorSchema,
   humanLogoutSuccessSchema,
@@ -18,6 +39,14 @@ import Database from "better-sqlite3";
 import { buildApp } from "./app.js";
 import { CommunityDatabase } from "./community-database.js";
 import { COMMUNITY_QQ_GROUP_ID } from "./config.js";
+import {
+  FarmHumanCatalogContractUnavailableError,
+  FarmHumanCatalogCredentialInvalidError,
+  FarmHumanCatalogNotFoundError,
+  type FarmHumanCatalogReader,
+  type FarmHumanCatalogReadInput,
+  FarmHumanCatalogUnavailableError,
+} from "./farm-catalog-client.js";
 import {
   type FarmCreationInput,
   FarmCreationUnavailableError,
@@ -31,6 +60,43 @@ import {
   FarmNotPubliclyReadableError,
   FarmUpstreamContractUnavailableError,
 } from "./farm-directory-client.js";
+import {
+  FarmHumanFieldContractUnavailableError,
+  FarmHumanFieldCredentialInvalidError,
+  type FarmHumanFieldHarvestAssistInput,
+  FarmHumanFieldIdempotencyConflictError,
+  FarmHumanFieldNotFoundError,
+  type FarmHumanFieldReader,
+  type FarmHumanFieldReadInput,
+  FarmHumanFieldStateConflictError,
+  FarmHumanFieldUnavailableError,
+  FarmHumanHarvestAssistExhaustedError,
+  FarmHumanNoRipePlotsError,
+} from "./farm-human-client.js";
+import {
+  FarmHumanKitchenContractUnavailableError,
+  FarmHumanKitchenCredentialInvalidError,
+  FarmHumanKitchenNotFoundError,
+  type FarmHumanKitchenReader,
+  type FarmHumanKitchenReadInput,
+  FarmHumanKitchenUnavailableError,
+} from "./farm-kitchen-client.js";
+import {
+  FarmLingyeContractUnavailableError,
+  FarmLingyeCredentialInvalidError,
+  FarmLingyeNotFoundError,
+  type FarmLingyeReader,
+  type FarmLingyeReadInput,
+  FarmLingyeUnavailableError,
+} from "./farm-lingye-client.js";
+import {
+  FarmHumanRanchContractUnavailableError,
+  FarmHumanRanchCredentialInvalidError,
+  FarmHumanRanchNotFoundError,
+  type FarmHumanRanchReader,
+  type FarmHumanRanchReadInput,
+  FarmHumanRanchUnavailableError,
+} from "./farm-ranch-client.js";
 import { MailboxService } from "./mailbox-service.js";
 import { createHumanPasswordCredential, verifyHumanPassword } from "./password-auth.js";
 import { OneBotUnavailableError, type QqGroupMembershipReader } from "./qq-group-membership.js";
@@ -70,6 +136,267 @@ const CREATE_FARM_REGISTRATION_PAYLOAD = {
   farm_name: "辛玥的小农场",
   ai_name: FARM_AI_NAME,
 };
+const FARM_FIELD_RESULT = {
+  data: {
+    farm: {
+      farm_doorplate: FARM_DOORPLATE,
+      farm_name: FARM_NAME,
+      welcome_message: null,
+      equipped_title: null,
+    },
+    balance: { farm_coins: 1280 },
+    season: { name: "夏" },
+    land: { tier: 3, name: "沃野" },
+    plots: [
+      {
+        plot_id: 1,
+        state: "ripe",
+        seed_type: "common",
+        watered: 2,
+        progress: { current: 6, total: 6 },
+        matures_at: null,
+        identity_state: "hidden",
+        crop_identity: null,
+      },
+      {
+        plot_id: 2,
+        state: "growing",
+        seed_type: "limited",
+        watered: 1,
+        progress: { current: 2, total: 5 },
+        matures_at: "2026-08-23T12:30:00.000Z",
+        identity_state: "known",
+        crop_identity: {
+          crop_id: "star-shuttle-wheat",
+          name: "星梭麦",
+          category: "limited",
+        },
+      },
+      {
+        plot_id: 3,
+        state: "growing",
+        seed_type: "limited",
+        watered: 0,
+        progress: { current: 1, total: 4 },
+        matures_at: "2026-08-23T13:30:00.000Z",
+        identity_state: "unavailable",
+        crop_identity: null,
+      },
+    ],
+    harvest_assist: {
+      daily_limit: 3,
+      remaining: 2,
+      mature_plot_count: 1,
+      can_assist: true,
+      reset_at: "2026-08-24T00:00:00.000Z",
+    },
+  },
+  revision: "field:opaque-version",
+  server_time: "2026-08-23T10:00:00.000Z",
+} satisfies FarmHumanFieldReadSuccess;
+
+const FARM_HARVEST_ASSIST_RESULT = {
+  data: {
+    result: {
+      receipt_id: "019ffb01-49cd-7020-84af-3d04fb1ed03d",
+      harvested_count: 1,
+      farm_coins_gained: 100,
+      silver_gained: 0,
+      harvests: [
+        {
+          plot_id: 1,
+          crop: {
+            crop_id: "common-wheat",
+            name: "小麦",
+            category: "common",
+            rarity: "N",
+          },
+          quality: { name: "常品" },
+          value: 100,
+          currency: "gold",
+          is_new: false,
+          material_drop: null,
+          potion_drop: null,
+          bonus_value: 0,
+        },
+      ],
+      season_event: null,
+      new_titles: [],
+    },
+    resource: FARM_FIELD_RESULT.data,
+  },
+  revision: "field:new-version",
+  server_time: "2026-08-23T10:01:00.000Z",
+} satisfies FarmHumanFieldHarvestAssistSuccess;
+
+const FARM_GLIMMER_RESULT = {
+  data: {
+    open: true,
+    status: "流光原野开放中",
+    season: "夏",
+    tracks: [
+      {
+        revealed: true,
+        variant: {
+          id: "duck_peach",
+          name: "蜜桃鸭",
+          atlas: "glimmer.variants",
+          set: 2,
+          sprite_index: 1,
+        },
+      },
+      { revealed: false, variant: null },
+    ],
+    cooperation: null,
+    events: [],
+    variants: [],
+    encounters: [],
+    summary: { encounters: 0, variants: 0, cooperations: 0 },
+    achievements: [],
+  },
+  server_time: "2026-08-24T13:00:00.000Z",
+} satisfies FarmHumanGlimmerReadSuccess;
+
+const FARM_TOGETHER_RESULT = {
+  data: {
+    story_id: "river_from_tomorrow",
+    title: "河从明天流来",
+    round: 1,
+    phase: "choice",
+    status: "等待第 1/6 次全服选择",
+    stage: { index: 1, total: 6, name: "逆流而来的船" },
+    art_asset_key: "together.river-from-tomorrow-opening",
+    history: [{ kind: "story", title: "逆流而来的船", text: "旧沟里出现了逆流。" }],
+    current_task: null,
+    current_choice: null,
+    cooldown: null,
+    ending: null,
+    clues: [],
+  },
+  server_time: "2026-08-24T13:00:00.000Z",
+} satisfies FarmHumanTogetherReadSuccess;
+
+const FARM_CATALOG_RESULT = {
+  data: {
+    farm: { farm_doorplate: FARM_DOORPLATE, farm_name: FARM_NAME },
+    shop: {
+      status: "unavailable",
+      reason: "no_authoritative_data",
+      message: "catalog shop is not available in the fake reader",
+    },
+    backpack: {
+      status: "unavailable",
+      reason: "no_authoritative_data",
+      message: "catalog backpack is not available in the fake reader",
+    },
+    codex: {
+      status: "unavailable",
+      reason: "no_authoritative_data",
+      message: "catalog codex is not available in the fake reader",
+    },
+    settings: {
+      status: "unavailable",
+      reason: "no_authoritative_data",
+      message: "catalog settings are not available in the fake reader",
+    },
+    expedition: {
+      status: "unavailable",
+      reason: "no_authoritative_data",
+      message: "catalog expedition is not available in the fake reader",
+    },
+    smelting: {
+      status: "unavailable",
+      reason: "no_authoritative_data",
+      message: "catalog smelting is not available in the fake reader",
+    },
+    bulletin: {
+      status: "unavailable",
+      reason: "no_authoritative_data",
+      message: "catalog bulletin is not available in the fake reader",
+    },
+    neighborhood: {
+      status: "unavailable",
+      reason: "no_authoritative_data",
+      message: "catalog neighborhood is not available in the fake reader",
+    },
+    market: {
+      status: "unavailable",
+      reason: "no_authoritative_data",
+      message: "catalog market is not available in the fake reader",
+    },
+  },
+  server_time: "2026-08-24T13:00:00.000Z",
+} satisfies FarmHumanCatalogReadSuccess;
+
+const unavailableKitchenSection = () => ({
+  status: "unavailable" as const,
+  items: [],
+  reason: "not_initialized" as const,
+});
+
+const FARM_KITCHEN_RESULT = {
+  data: {
+    farm: { farm_doorplate: FARM_DOORPLATE, farm_name: FARM_NAME },
+    balance: {
+      silver: { status: "unavailable", value: null, reason: "not_initialized" },
+      ranch_coins: { status: "unavailable", value: null, reason: "not_initialized" },
+    },
+    tools: unavailableKitchenSection(),
+    stacked_ingredients: unavailableKitchenSection(),
+    product_instances: unavailableKitchenSection(),
+    fish_instances: unavailableKitchenSection(),
+    treasure_items: unavailableKitchenSection(),
+    dish_instances: unavailableKitchenSection(),
+    known_recipes: unavailableKitchenSection(),
+    daily_shop: {
+      status: "unavailable",
+      stored_day_index: null,
+      current_day_index: 0,
+      is_current_day: false,
+      refresh_at: "2026-08-25T00:00:00.000Z",
+      ingredients: [],
+      recipes: [],
+      reason: "not_initialized",
+    },
+  },
+  server_time: "2026-08-24T13:00:00.000Z",
+} satisfies FarmHumanKitchenReadSuccess;
+
+const unavailableRanchShopSection = () => ({
+  status: "unavailable" as const,
+  shop_day: null,
+  items: [],
+});
+
+const FARM_RANCH_RESULT = {
+  data: {
+    farm: { farm_doorplate: FARM_DOORPLATE },
+    balance: {
+      status: "unavailable",
+      ranch_coins: null,
+      debt_status: "unavailable",
+      debt_coins: null,
+    },
+    residents: { status: "unavailable", animals: [], pets: [], patrol_goose: null },
+    collectable: {
+      status: "unavailable",
+      total_pending_count: null,
+      total_pending_meat_count: null,
+      entries: [],
+    },
+    wardrobe: { status: "unavailable", items: [] },
+    decorations: { status: "unavailable", placed: [], stored: [] },
+    dispatch: { status: "unavailable", active: [] },
+    shop: {
+      animals: unavailableRanchShopSection(),
+      pets: unavailableRanchShopSection(),
+      accessories: unavailableRanchShopSection(),
+      decorations: unavailableRanchShopSection(),
+    },
+  },
+  revision: "ranch:opaque-version",
+  server_time: "2026-08-24T13:00:00.000Z",
+} satisfies FarmHumanRanchReadSuccess;
 
 class FakeGroupMembership implements QqGroupMembershipReader {
   readonly members = new Set<string>();
@@ -190,6 +517,167 @@ class FakeFarmDirectory implements FarmDirectoryReader {
   }
 }
 
+class FakeFarmHumanReader implements FarmHumanFieldReader {
+  readonly fieldCalls: FarmHumanFieldReadInput[] = [];
+  readonly harvestCalls: FarmHumanFieldHarvestAssistInput[] = [];
+  fieldResult: "found" | "credential" | "missing" | "unavailable" | "contract" = "found";
+  harvestResult:
+    | "found"
+    | "exhausted"
+    | "no_ripe"
+    | "state_conflict"
+    | "idempotency_conflict"
+    | "credential"
+    | "missing"
+    | "unavailable"
+    | "contract" = "found";
+
+  async readField(input: FarmHumanFieldReadInput): Promise<FarmHumanFieldReadSuccess> {
+    this.fieldCalls.push(input);
+    if (this.fieldResult === "credential") {
+      throw new FarmHumanFieldCredentialInvalidError();
+    }
+    if (this.fieldResult === "missing") {
+      throw new FarmHumanFieldNotFoundError();
+    }
+    if (this.fieldResult === "unavailable") {
+      throw new FarmHumanFieldUnavailableError();
+    }
+    if (this.fieldResult === "contract") {
+      throw new FarmHumanFieldContractUnavailableError();
+    }
+    return FARM_FIELD_RESULT;
+  }
+
+  async harvestAssist(
+    input: FarmHumanFieldHarvestAssistInput,
+  ): Promise<FarmHumanFieldHarvestAssistSuccess> {
+    this.harvestCalls.push(input);
+    switch (this.harvestResult) {
+      case "exhausted":
+        throw new FarmHumanHarvestAssistExhaustedError("field:current");
+      case "no_ripe":
+        throw new FarmHumanNoRipePlotsError("field:current");
+      case "state_conflict":
+        throw new FarmHumanFieldStateConflictError("field:current");
+      case "idempotency_conflict":
+        throw new FarmHumanFieldIdempotencyConflictError();
+      case "credential":
+        throw new FarmHumanFieldCredentialInvalidError();
+      case "missing":
+        throw new FarmHumanFieldNotFoundError();
+      case "unavailable":
+        throw new FarmHumanFieldUnavailableError();
+      case "contract":
+        throw new FarmHumanFieldContractUnavailableError();
+      default:
+        return FARM_HARVEST_ASSIST_RESULT;
+    }
+  }
+}
+
+class FakeFarmLingyeReader implements FarmLingyeReader {
+  readonly glimmerCalls: Array<{ farmDoorplate: string; farmHumanKey: string }> = [];
+  readonly togetherCalls: Array<{ farmDoorplate: string; farmHumanKey: string }> = [];
+  glimmerResult: "found" | "credential" | "missing" | "unavailable" | "contract" = "found";
+  togetherResult: "found" | "credential" | "missing" | "unavailable" | "contract" = "found";
+
+  async readGlimmer(input: FarmLingyeReadInput): Promise<FarmHumanGlimmerReadSuccess> {
+    this.glimmerCalls.push(input);
+    switch (this.glimmerResult) {
+      case "credential":
+        throw new FarmLingyeCredentialInvalidError();
+      case "missing":
+        throw new FarmLingyeNotFoundError();
+      case "unavailable":
+        throw new FarmLingyeUnavailableError();
+      case "contract":
+        throw new FarmLingyeContractUnavailableError();
+      default:
+        return FARM_GLIMMER_RESULT;
+    }
+  }
+
+  async readTogether(input: FarmLingyeReadInput): Promise<FarmHumanTogetherReadSuccess> {
+    this.togetherCalls.push(input);
+    switch (this.togetherResult) {
+      case "credential":
+        throw new FarmLingyeCredentialInvalidError();
+      case "missing":
+        throw new FarmLingyeNotFoundError();
+      case "unavailable":
+        throw new FarmLingyeUnavailableError();
+      case "contract":
+        throw new FarmLingyeContractUnavailableError();
+      default:
+        return FARM_TOGETHER_RESULT;
+    }
+  }
+}
+
+class FakeFarmCatalogReader implements FarmHumanCatalogReader {
+  readonly calls: FarmHumanCatalogReadInput[] = [];
+  result: "found" | "credential" | "missing" | "unavailable" | "contract" = "found";
+
+  async readCatalog(input: FarmHumanCatalogReadInput): Promise<FarmHumanCatalogReadSuccess> {
+    this.calls.push(input);
+    switch (this.result) {
+      case "credential":
+        throw new FarmHumanCatalogCredentialInvalidError();
+      case "missing":
+        throw new FarmHumanCatalogNotFoundError();
+      case "unavailable":
+        throw new FarmHumanCatalogUnavailableError();
+      case "contract":
+        throw new FarmHumanCatalogContractUnavailableError();
+      default:
+        return FARM_CATALOG_RESULT;
+    }
+  }
+}
+
+class FakeFarmKitchenReader implements FarmHumanKitchenReader {
+  readonly calls: FarmHumanKitchenReadInput[] = [];
+  result: "found" | "credential" | "missing" | "unavailable" | "contract" = "found";
+
+  async readKitchen(input: FarmHumanKitchenReadInput): Promise<FarmHumanKitchenReadSuccess> {
+    this.calls.push(input);
+    switch (this.result) {
+      case "credential":
+        throw new FarmHumanKitchenCredentialInvalidError();
+      case "missing":
+        throw new FarmHumanKitchenNotFoundError();
+      case "unavailable":
+        throw new FarmHumanKitchenUnavailableError();
+      case "contract":
+        throw new FarmHumanKitchenContractUnavailableError();
+      default:
+        return FARM_KITCHEN_RESULT;
+    }
+  }
+}
+
+class FakeFarmRanchReader implements FarmHumanRanchReader {
+  readonly calls: FarmHumanRanchReadInput[] = [];
+  result: "found" | "credential" | "missing" | "unavailable" | "contract" = "found";
+
+  async readRanch(input: FarmHumanRanchReadInput): Promise<FarmHumanRanchReadSuccess> {
+    this.calls.push(input);
+    switch (this.result) {
+      case "credential":
+        throw new FarmHumanRanchCredentialInvalidError();
+      case "missing":
+        throw new FarmHumanRanchNotFoundError();
+      case "unavailable":
+        throw new FarmHumanRanchUnavailableError();
+      case "contract":
+        throw new FarmHumanRanchContractUnavailableError();
+      default:
+        return FARM_RANCH_RESULT;
+    }
+  }
+}
+
 class FakeFarmCreator implements FarmCreator {
   readonly calls: FarmCreationInput[] = [];
   unavailableOnce = false;
@@ -220,6 +708,11 @@ interface AuthHarness {
   directory: string;
   membership: FakeGroupMembership;
   farmDirectory: FakeFarmDirectory;
+  farmHumanReader: FakeFarmHumanReader;
+  farmCatalogReader: FakeFarmCatalogReader;
+  farmKitchenReader: FakeFarmKitchenReader;
+  farmRanchReader: FakeFarmRanchReader;
+  farmLingyeReader: FakeFarmLingyeReader;
   farmCreator: FakeFarmCreator;
   now: { value: number };
   revokedResidentIds: string[];
@@ -244,12 +737,22 @@ function createHarness(secureCookies = false): AuthHarness {
   });
   const membership = new FakeGroupMembership();
   const farmDirectory = new FakeFarmDirectory();
+  const farmHumanReader = new FakeFarmHumanReader();
+  const farmCatalogReader = new FakeFarmCatalogReader();
+  const farmKitchenReader = new FakeFarmKitchenReader();
+  const farmRanchReader = new FakeFarmRanchReader();
+  const farmLingyeReader = new FakeFarmLingyeReader();
   const farmCreator = new FakeFarmCreator();
   const revokedResidentIds: string[] = [];
   const registrationAuth = new RegistrationAuthService({
     database,
     farmDirectory,
     farmCreator,
+    farmHumanReader,
+    farmCatalogReader,
+    farmKitchenReader,
+    farmRanchReader,
+    farmLingyeReader,
     groupMembership: membership,
     groupId: COMMUNITY_QQ_GROUP_ID,
     farmHumanUiBaseUrl: FARM_HUMAN_UI_BASE_URL,
@@ -271,6 +774,11 @@ function createHarness(secureCookies = false): AuthHarness {
     databasePath,
     directory,
     farmDirectory,
+    farmHumanReader,
+    farmCatalogReader,
+    farmKitchenReader,
+    farmRanchReader,
+    farmLingyeReader,
     farmCreator,
     membership,
     now,
@@ -1415,6 +1923,264 @@ test("GET session preserves state on outage and confirmed departure revokes ever
   }
 });
 
+test("bound farm field derives both private credentials from the authenticated binding", async () => {
+  const harness = createHarness();
+  try {
+    harness.membership.members.add(QQ_NUMBER);
+    const code = harness.database.getCurrentRegistrationCode(harness.now.value);
+    const created = await harness.app.inject({
+      method: "POST",
+      url: "/api/auth/session",
+      payload: { ...FULL_REGISTRATION_PAYLOAD, registration_code: code.code },
+    });
+    const cookie = cookieFrom(created);
+
+    const response = await harness.app.inject({
+      method: "GET",
+      url: "/api/farm/field",
+      headers: { cookie },
+    });
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.headers["cache-control"], "no-store");
+    assert.deepEqual(boundFarmFieldSuccessSchema.parse(response.json()), FARM_FIELD_RESULT);
+    assert.doesNotMatch(response.body, new RegExp(FARM_HUMAN_KEY));
+    assert.deepEqual(harness.farmHumanReader.fieldCalls, [
+      { farmDoorplate: FARM_DOORPLATE, farmHumanKey: FARM_HUMAN_KEY },
+    ]);
+
+    const overrideAttempt = await harness.app.inject({
+      method: "GET",
+      url: "/api/farm/field?farm_doorplate=ZZZZZZ",
+      headers: { cookie },
+    });
+    assert.equal(overrideAttempt.statusCode, 400);
+    assert.equal(overrideAttempt.headers["cache-control"], "no-store");
+    assert.equal(
+      boundFarmFieldErrorSchema.parse(overrideAttempt.json()).error.code,
+      "invalid_request",
+    );
+    assert.equal(harness.farmHumanReader.fieldCalls.length, 1);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("bound farm field maps authentication, membership, and upstream failures without fallback", async () => {
+  const harness = createHarness();
+  try {
+    const unauthenticated = await harness.app.inject({
+      method: "GET",
+      url: "/api/farm/field",
+    });
+    assert.equal(unauthenticated.statusCode, 401);
+    assert.equal(
+      boundFarmFieldErrorSchema.parse(unauthenticated.json()).error.code,
+      "authentication_required",
+    );
+
+    harness.membership.members.add(QQ_NUMBER);
+    const code = harness.database.getCurrentRegistrationCode(harness.now.value);
+    const created = await harness.app.inject({
+      method: "POST",
+      url: "/api/auth/session",
+      payload: { ...FULL_REGISTRATION_PAYLOAD, registration_code: code.code },
+    });
+    const cookie = cookieFrom(created);
+
+    harness.membership.unavailable = true;
+    const oneBotUnavailable = await harness.app.inject({
+      method: "GET",
+      url: "/api/farm/field",
+      headers: { cookie },
+    });
+    assert.equal(oneBotUnavailable.statusCode, 503);
+    assert.equal(
+      boundFarmFieldErrorSchema.parse(oneBotUnavailable.json()).error.code,
+      "onebot_unavailable",
+    );
+    assert.equal(harness.farmHumanReader.fieldCalls.length, 0);
+
+    harness.membership.unavailable = false;
+    const cases = [
+      ["credential", 409, "farm_credential_invalid"],
+      ["missing", 404, "farm_not_found"],
+      ["contract", 502, "upstream_contract_unavailable"],
+      ["unavailable", 503, "farm_unavailable"],
+    ] as const;
+    for (const [fieldResult, statusCode, errorCode] of cases) {
+      harness.farmHumanReader.fieldResult = fieldResult;
+      const response = await harness.app.inject({
+        method: "GET",
+        url: "/api/farm/field",
+        headers: { cookie },
+      });
+      assert.equal(response.statusCode, statusCode);
+      assert.equal(response.headers["cache-control"], "no-store");
+      assert.equal(boundFarmFieldErrorSchema.parse(response.json()).error.code, errorCode);
+    }
+
+    const fieldCallsBeforeDeparture = harness.farmHumanReader.fieldCalls.length;
+    harness.membership.members.clear();
+    const departed = await harness.app.inject({
+      method: "GET",
+      url: "/api/farm/field",
+      headers: { cookie },
+    });
+    assert.equal(departed.statusCode, 403);
+    assert.equal(
+      boundFarmFieldErrorSchema.parse(departed.json()).error.code,
+      "qq_not_group_member",
+    );
+    assert.match(String(departed.headers["set-cookie"]), /Max-Age=0/);
+    assert.equal(harness.farmHumanReader.fieldCalls.length, fieldCallsBeforeDeparture);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("bound farm harvest assist derives the binding and field revision without a plot selector", async () => {
+  const harness = createHarness();
+  try {
+    harness.membership.members.add(QQ_NUMBER);
+    const code = harness.database.getCurrentRegistrationCode(harness.now.value);
+    const created = await harness.app.inject({
+      method: "POST",
+      url: "/api/auth/session",
+      payload: { ...FULL_REGISTRATION_PAYLOAD, registration_code: code.code },
+    });
+    const cookie = cookieFrom(created);
+    const idempotencyKey = "019ffb01-49cd-7020-84af-3d04fb1ed03d";
+
+    const response = await harness.app.inject({
+      method: "POST",
+      url: "/api/farm/field/harvest-assists",
+      headers: {
+        cookie,
+        "idempotency-key": idempotencyKey,
+        "if-match": '"field:opaque-version"',
+      },
+      payload: {},
+    });
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.headers["cache-control"], "no-store");
+    assert.deepEqual(
+      boundFarmHarvestAssistSuccessSchema.parse(response.json()),
+      FARM_HARVEST_ASSIST_RESULT,
+    );
+    assert.doesNotMatch(response.body, new RegExp(FARM_HUMAN_KEY));
+    assert.deepEqual(harness.farmHumanReader.harvestCalls, [
+      {
+        farmDoorplate: FARM_DOORPLATE,
+        farmHumanKey: FARM_HUMAN_KEY,
+        expectedRevision: "field:opaque-version",
+        idempotencyKey,
+      },
+    ]);
+
+    const plotBody = await harness.app.inject({
+      method: "POST",
+      url: "/api/farm/field/harvest-assists",
+      headers: {
+        cookie,
+        "idempotency-key": "019ffb01-49cd-7020-84af-3d04fb1ed03e",
+        "if-match": "field:opaque-version",
+      },
+      payload: { plot_id: 1 },
+    });
+    assert.equal(plotBody.statusCode, 400);
+    assert.equal(
+      boundFarmHarvestAssistErrorSchema.parse(plotBody.json()).error.code,
+      "invalid_request",
+    );
+    assert.equal(harness.farmHumanReader.harvestCalls.length, 1);
+
+    const missingRevision = await harness.app.inject({
+      method: "POST",
+      url: "/api/farm/field/harvest-assists",
+      headers: {
+        cookie,
+        "idempotency-key": "019ffb01-49cd-7020-84af-3d04fb1ed03f",
+      },
+      payload: {},
+    });
+    assert.equal(missingRevision.statusCode, 400);
+    assert.equal(
+      boundFarmHarvestAssistErrorSchema.parse(missingRevision.json()).error.code,
+      "invalid_request",
+    );
+    assert.equal(harness.farmHumanReader.harvestCalls.length, 1);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("bound farm harvest assist maps business, binding, and availability failures", async () => {
+  const harness = createHarness();
+  try {
+    harness.membership.members.add(QQ_NUMBER);
+    const code = harness.database.getCurrentRegistrationCode(harness.now.value);
+    const created = await harness.app.inject({
+      method: "POST",
+      url: "/api/auth/session",
+      payload: { ...FULL_REGISTRATION_PAYLOAD, registration_code: code.code },
+    });
+    const cookie = cookieFrom(created);
+    const cases = [
+      ["exhausted", 409, "harvest_assist_exhausted", "field:current"],
+      ["no_ripe", 409, "no_ripe_plots", "field:current"],
+      ["state_conflict", 409, "state_conflict", "field:current"],
+      ["idempotency_conflict", 409, "idempotency_conflict", undefined],
+      ["credential", 409, "farm_credential_invalid", undefined],
+      ["missing", 404, "farm_not_found", undefined],
+      ["contract", 502, "upstream_contract_unavailable", undefined],
+      ["unavailable", 503, "farm_unavailable", undefined],
+    ] as const;
+
+    for (const [result, statusCode, errorCode, currentRevision] of cases) {
+      harness.farmHumanReader.harvestResult = result;
+      const response = await harness.app.inject({
+        method: "POST",
+        url: "/api/farm/field/harvest-assists",
+        headers: {
+          cookie,
+          "idempotency-key": "019ffb01-49cd-7020-84af-3d04fb1ed04e",
+          "if-match": "field:opaque-version",
+        },
+        payload: {},
+      });
+      assert.equal(response.statusCode, statusCode);
+      assert.equal(response.headers["cache-control"], "no-store");
+      const parsed = boundFarmHarvestAssistErrorSchema.parse(response.json());
+      assert.equal(parsed.error.code, errorCode);
+      assert.equal(parsed.error.current_revision, currentRevision);
+    }
+
+    const beforeDeparture = harness.farmHumanReader.harvestCalls.length;
+    harness.membership.members.clear();
+    const departed = await harness.app.inject({
+      method: "POST",
+      url: "/api/farm/field/harvest-assists",
+      headers: {
+        cookie,
+        "idempotency-key": "019ffb01-49cd-7020-84af-3d04fb1ed0ff",
+        "if-match": "field:opaque-version",
+      },
+      payload: {},
+    });
+    assert.equal(departed.statusCode, 403);
+    assert.equal(
+      boundFarmHarvestAssistErrorSchema.parse(departed.json()).error.code,
+      "qq_not_group_member",
+    );
+    assert.match(String(departed.headers["set-cookie"]), /Max-Age=0/);
+    assert.equal(harness.farmHumanReader.harvestCalls.length, beforeDeparture);
+  } finally {
+    await harness.close();
+  }
+});
+
 test("bound farm overview uses the authenticated session binding and returns only public farm facts", async () => {
   const harness = createHarness();
   try {
@@ -1686,6 +2452,262 @@ test("farm human UI proxy derives the credential and keeps independent pages exc
     assert.equal(farmHumanUiErrorSchema.parse(departed.json()).error.code, "qq_not_group_member");
     assert.equal(harness.farmDirectory.humanPageCalls.length, callsBeforeDeparture);
     assert.match(String(departed.headers["set-cookie"]), /Max-Age=0/);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("structured Lingye reads derive the bound farm and reject browser query/body overrides", async () => {
+  const harness = createHarness();
+  try {
+    const unauthenticated = await harness.app.inject({
+      method: "GET",
+      url: "/api/lingye/glimmer",
+    });
+    assert.equal(unauthenticated.statusCode, 401);
+    assert.equal(
+      boundGlimmerReadErrorSchema.parse(unauthenticated.json()).error.code,
+      "authentication_required",
+    );
+
+    harness.membership.members.add(QQ_NUMBER);
+    harness.database.getCurrentRegistrationCode(harness.now.value);
+    const created = await harness.app.inject({
+      method: "POST",
+      url: "/api/auth/session",
+      payload: FULL_REGISTRATION_PAYLOAD,
+    });
+    const cookie = cookieFrom(created);
+
+    const glimmer = await harness.app.inject({
+      method: "GET",
+      url: "/api/lingye/glimmer",
+      headers: { cookie },
+    });
+    assert.equal(glimmer.statusCode, 200);
+    assert.equal(glimmer.headers["cache-control"], "no-store");
+    assert.deepEqual(boundGlimmerReadSuccessSchema.parse(glimmer.json()), FARM_GLIMMER_RESULT);
+
+    const together = await harness.app.inject({
+      method: "GET",
+      url: "/api/lingye/together",
+      headers: { cookie },
+    });
+    assert.equal(together.statusCode, 200);
+    assert.equal(together.headers["cache-control"], "no-store");
+    assert.deepEqual(boundTogetherReadSuccessSchema.parse(together.json()), FARM_TOGETHER_RESULT);
+    assert.deepEqual(harness.farmLingyeReader.glimmerCalls, [
+      { farmDoorplate: FARM_DOORPLATE, farmHumanKey: FARM_HUMAN_KEY },
+    ]);
+    assert.deepEqual(harness.farmLingyeReader.togetherCalls, [
+      { farmDoorplate: FARM_DOORPLATE, farmHumanKey: FARM_HUMAN_KEY },
+    ]);
+
+    for (const url of ["/api/lingye/glimmer?farm_doorplate=ABC234", "/api/lingye/together?x=1"]) {
+      const queryOverride = await harness.app.inject({
+        method: "GET",
+        url,
+        headers: { cookie },
+      });
+      assert.equal(queryOverride.statusCode, 400);
+      assert.equal(
+        url.includes("glimmer")
+          ? boundGlimmerReadErrorSchema.parse(queryOverride.json()).error.code
+          : boundTogetherReadErrorSchema.parse(queryOverride.json()).error.code,
+        "invalid_request",
+      );
+    }
+
+    const callsBeforeBodyOverride = harness.farmLingyeReader.glimmerCalls.length;
+    const bodyOverride = await harness.app.inject({
+      method: "GET",
+      url: "/api/lingye/glimmer",
+      headers: { cookie },
+      payload: { farm_human_key: FARM_HUMAN_KEY, expected_farm_doorplate: FARM_DOORPLATE },
+    });
+    assert.equal(bodyOverride.statusCode, 400);
+    assert.equal(
+      boundGlimmerReadErrorSchema.parse(bodyOverride.json()).error.code,
+      "invalid_request",
+    );
+    assert.equal(harness.farmLingyeReader.glimmerCalls.length, callsBeforeBodyOverride);
+
+    harness.membership.members.clear();
+    const departed = await harness.app.inject({
+      method: "GET",
+      url: "/api/lingye/together",
+      headers: { cookie },
+    });
+    assert.equal(departed.statusCode, 403);
+    assert.equal(
+      boundTogetherReadErrorSchema.parse(departed.json()).error.code,
+      "qq_not_group_member",
+    );
+    assert.match(String(departed.headers["set-cookie"]), /Max-Age=0/);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("structured Lingye routes keep credential, farm, contract, and availability errors separate", async () => {
+  const harness = createHarness();
+  try {
+    harness.membership.members.add(QQ_NUMBER);
+    harness.database.getCurrentRegistrationCode(harness.now.value);
+    const created = await harness.app.inject({
+      method: "POST",
+      url: "/api/auth/session",
+      payload: FULL_REGISTRATION_PAYLOAD,
+    });
+    const cookie = cookieFrom(created);
+    const cases = [
+      ["credential", 409, "farm_credential_invalid"],
+      ["missing", 404, "farm_not_found"],
+      ["contract", 502, "upstream_contract_unavailable"],
+      ["unavailable", 503, "farm_unavailable"],
+    ] as const;
+
+    for (const [result, statusCode, errorCode] of cases) {
+      harness.farmLingyeReader.glimmerResult = result;
+      const response = await harness.app.inject({
+        method: "GET",
+        url: "/api/lingye/glimmer",
+        headers: { cookie },
+      });
+      assert.equal(response.statusCode, statusCode);
+      assert.equal(response.headers["cache-control"], "no-store");
+      assert.equal(boundGlimmerReadErrorSchema.parse(response.json()).error.code, errorCode);
+    }
+    harness.farmLingyeReader.togetherResult = "contract";
+    const together = await harness.app.inject({
+      method: "GET",
+      url: "/api/lingye/together",
+      headers: { cookie },
+    });
+    assert.equal(together.statusCode, 502);
+    assert.equal(
+      boundTogetherReadErrorSchema.parse(together.json()).error.code,
+      "upstream_contract_unavailable",
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("structured farm catalog, kitchen, and ranch routes keep the binding and failure boundary", async () => {
+  const harness = createHarness();
+  try {
+    harness.membership.members.add(QQ_NUMBER);
+    const code = harness.database.getCurrentRegistrationCode(harness.now.value);
+    const created = await harness.app.inject({
+      method: "POST",
+      url: "/api/auth/session",
+      payload: { ...FULL_REGISTRATION_PAYLOAD, registration_code: code.code },
+    });
+    let cookie = cookieFrom(created);
+    const routes = [
+      {
+        path: "/api/farm/catalog",
+        successSchema: boundFarmCatalogReadSuccessSchema,
+        errorSchema: boundFarmCatalogReadErrorSchema,
+        expected: FARM_CATALOG_RESULT,
+        reader: harness.farmCatalogReader,
+      },
+      {
+        path: "/api/farm/kitchen",
+        successSchema: boundFarmKitchenReadSuccessSchema,
+        errorSchema: boundFarmKitchenReadErrorSchema,
+        expected: FARM_KITCHEN_RESULT,
+        reader: harness.farmKitchenReader,
+      },
+      {
+        path: "/api/farm/ranch",
+        successSchema: boundFarmRanchSuccessSchema,
+        errorSchema: boundFarmRanchErrorSchema,
+        expected: FARM_RANCH_RESULT,
+        reader: harness.farmRanchReader,
+      },
+    ] as const;
+
+    for (const route of routes) {
+      const response = await harness.app.inject({
+        method: "GET",
+        url: route.path,
+        headers: { cookie },
+      });
+      assert.equal(response.statusCode, 200);
+      assert.equal(response.headers["cache-control"], "no-store");
+      assert.deepEqual(route.successSchema.parse(response.json()), route.expected);
+      assert.doesNotMatch(response.body, new RegExp(FARM_HUMAN_KEY));
+      assert.deepEqual(route.reader.calls, [
+        { farmDoorplate: FARM_DOORPLATE, farmHumanKey: FARM_HUMAN_KEY },
+      ]);
+
+      const queryOverride = await harness.app.inject({
+        method: "GET",
+        url: `${route.path}?farm_doorplate=ZZZZZZ&farm_human_key=override`,
+        headers: { cookie },
+      });
+      assert.equal(queryOverride.statusCode, 400);
+      assert.equal(queryOverride.headers["cache-control"], "no-store");
+      assert.equal(route.errorSchema.parse(queryOverride.json()).error.code, "invalid_request");
+      assert.equal(route.reader.calls.length, 1);
+
+      const bodyOverride = await harness.app.inject({
+        method: "GET",
+        url: route.path,
+        headers: { cookie },
+        payload: { farm_doorplate: "ZZZZZZ", farm_human_key: FARM_HUMAN_KEY },
+      });
+      assert.equal(bodyOverride.statusCode, 400);
+      assert.equal(bodyOverride.headers["cache-control"], "no-store");
+      assert.equal(route.errorSchema.parse(bodyOverride.json()).error.code, "invalid_request");
+      assert.equal(route.reader.calls.length, 1);
+    }
+
+    const errorCases = [
+      ["credential", 409, "farm_credential_invalid"],
+      ["contract", 502, "upstream_contract_unavailable"],
+      ["unavailable", 503, "farm_unavailable"],
+    ] as const;
+    for (const route of routes) {
+      for (const [result, statusCode, errorCode] of errorCases) {
+        route.reader.result = result;
+        const response = await harness.app.inject({
+          method: "GET",
+          url: route.path,
+          headers: { cookie },
+        });
+        assert.equal(response.statusCode, statusCode);
+        assert.equal(response.headers["cache-control"], "no-store");
+        assert.equal(route.errorSchema.parse(response.json()).error.code, errorCode);
+        assert.doesNotMatch(response.body, new RegExp(FARM_HUMAN_KEY));
+      }
+      route.reader.result = "found";
+    }
+
+    for (const route of routes) {
+      const callsBeforeDeparture = route.reader.calls.length;
+      harness.membership.members.clear();
+      const departed = await harness.app.inject({
+        method: "GET",
+        url: route.path,
+        headers: { cookie },
+      });
+      assert.equal(departed.statusCode, 403);
+      assert.equal(route.errorSchema.parse(departed.json()).error.code, "qq_not_group_member");
+      assert.equal(route.reader.calls.length, callsBeforeDeparture);
+      assert.match(String(departed.headers["set-cookie"]), /Max-Age=0/);
+
+      harness.membership.members.add(QQ_NUMBER);
+      const restored = await harness.app.inject({
+        method: "POST",
+        url: "/api/auth/session",
+        payload: { qq_number: QQ_NUMBER, password: PASSWORD },
+      });
+      assert.equal(restored.statusCode, 200);
+      cookie = cookieFrom(restored);
+    }
   } finally {
     await harness.close();
   }

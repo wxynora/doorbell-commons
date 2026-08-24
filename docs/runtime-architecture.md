@@ -148,10 +148,17 @@ Human registration/login uses these routes:
 | `GET /api/auth/session` | Reads the browser session, live-checks current QQ membership, and returns the account plus its resident, home, and farm binding |
 | `GET /api/mailbox` | Live-checks the human session and QQ membership, then lists the current home’s letters newest-first with optional `system`／`farm`／`lingye` filtering and a fixed 8 letters per page; list rows omit the body |
 | `GET /api/mailbox/:letterId` | Live-checks the same human authority, returns one letter from the current home only, and atomically marks only the human audience as read |
+| `GET /api/farm/field` | Accepts no caller-supplied identity; derives the bound farm key and expected doorplate from the live-checked Human session, calls the farm's strict structured field read, and returns real identity, field balance, season, land, plots, projected maturity, harvest-assist quota, action-safe opaque field revision, and server time with `no-store` |
+| `POST /api/farm/field/harvest-assists` | Accepts only an empty body plus UUID `Idempotency-Key` and quoted `If-Match`; derives farm identity from the same live-checked Human session, calls the farm's structured one-click harvest action, and returns the authoritative receipt, complete replacement field, new revision, and server time with `no-store` |
+| `GET /api/farm/ranch` | Accepts no query or body identity; derives the bound farm from the live-checked Human session and returns the farm's pure structured projection of real ranch balance, residents, collectable produce, wardrobe, decorations, dispatch state, and persisted shop snapshot with `no-store` |
+| `GET /api/farm/kitchen` | Uses the same session-derived binding and returns a pure structured projection of real kitchen balances, owned tools, stacked ingredients, product／fish／treasure／dish instances, known recipes, and the persisted daily shelf with explicit stale state and `no-store` |
+| `GET /api/farm/catalog` | Uses the same session-derived binding and returns only the currently persisted safe farm catalog sections: shop, backpack, crop codex, expedition, smelting, settings, bulletin, neighborhood, and market; missing or damaged identities remain explicit unavailable values and are never guessed |
 | `GET /api/farm/overview` | Reads no caller-supplied farm identity; live-checks the Doorbell human session and QQ membership, resolves the server-side `farm_binding`, and returns the bound farm's currently public name and plot facts for the internal Lingye farm subpage |
-| `GET /api/farm/ui` and `GET /api/farm/ui/*` | Proxies the approved existing farm human pages as HTML after resolving the server-side bound `farm_human_key`; rewrites key-bearing links and form actions to Doorbell routes |
-| `POST /api/farm/ui/*` | Accepts only the existing whitelisted form fields, derives the bound farm credential from the current session, forwards the form to the authoritative farm handler, and rewrites the upstream `303 Location` to a no-key Doorbell route |
-| `GET /api/lingye-together` | Independent no-key Doorbell entry for the existing farm-authoritative, human-read-only Lingye Together page |
+| `GET /api/farm/ui` and `GET /api/farm/ui/*` | Current migration-only compatibility proxy for existing farm Human HTML after resolving the server-side bound `farm_human_key`; it is not the target data source or rendering path for the new community farm UI |
+| `POST /api/farm/ui/*` | Current migration-only compatibility forwarding for existing whitelisted farm Human forms; the new community farm UI must use explicit structured action contracts instead of posting old HTML forms |
+| `GET /api/lingye/glimmer` | Accepts no caller-supplied identity; derives the bound farm from the live-checked Human session, calls the farm's strict structured Glimmer read, and returns only the safe Human projection with `no-store` |
+| `GET /api/lingye/together` | Accepts no caller-supplied identity; derives the same bound farm, calls the farm's strict structured Together read, and returns the current farm-authoritative shared-story projection with `no-store` |
+| `GET /api/lingye-glimmer` and `GET /api/lingye-together` | Migration-only no-key entries for the legacy farm-rendered Human HTML pages; the new community UI does not parse, embed, or fall back to these documents |
 | `GET /api/settings` | Live-checks the human session's QQ membership and returns persisted human/home preferences, the selected climate and structured current-weather state, plus separate honest Connector and wake-bridge integration states |
 | `PATCH /api/settings` | Strictly updates only the current session's supported home, climate, notification, and community-connection preferences; the browser cannot select another account, home, resident, farm, or Connector |
 | `GET /api/mcp-access` | Returns the current resident's server-derived migration and independent MCP credential status without returning any credential, farm humanKey, or caller-selected identity |
@@ -498,29 +505,87 @@ missing or ambiguous identity fields is `upstream_contract_unavailable`, not an 
 and never a reason to persist the submitted URL or key.
 
 The internal Lingye farm page does not navigate to `/farm/`, embed it in an iframe, or accept a
-`farm_doorplate` or `farm_human_key` from the browser. `GET /api/farm/overview` remains a small
-structured read of public farm facts. The full temporary human UI uses the no-key Doorbell routes
-`/api/farm/ui`, `/api/farm/ui/*`, and `/api/lingye-together`. Every request first validates the
-Doorbell session and live QQ membership, then obtains the one bound credential from SQLite. Caller
-path, query, or form fields cannot replace that credential or choose another authenticated farm.
+`farm_doorplate` or `farm_human_key` from the browser. Its React field page reads
+`GET /api/farm/field`; Doorbell derives the one bound credential and expected doorplate from the
+live-checked Human session, then sends them with service authentication to the farm's
+`POST /internal/doorbell/human/field/read`. The read route is a pure projection and does not advance
+or save game state. Ordinary and fantasy crop identity remains hidden even when ripe and is first
+revealed by the authoritative harvest result; limited and UGC identity is returned only when its
+persisted stable ID resolves. The opaque field digest includes projected maturity, complete hidden
+farm settlement dependencies, the current UTC+8 day, season, and a rule version, so the browser can
+use it as `If-Match` for `POST /api/farm/field/harvest-assists`. That route calls
+`POST /internal/doorbell/human/field/harvest-assist`, which runs the existing Human one-click harvest
+chain on a clone, persists the idempotency receipt and changed farm in one replacement, and returns
+the complete replacement field. React never calculates settlement locally. This source
+implementation is recorded in the 2026-08-24 main／farm Git commits; it has not been deployed or
+production-verified.
+
+Ranch, kitchen, and the remaining farm catalog now use three additional fixed read-only chains:
+`GET /api/farm/{ranch,kitchen,catalog}` calls the service-authenticated farm routes
+`POST /internal/doorbell/human/{ranch,kitchen,catalog}/read` with only the server-held Human key and
+expected doorplate. The ranch and kitchen projectors deliberately do not call the legacy
+write-coupled view functions: they do not advance production, initialize state, refresh a daily
+shelf, settle, consume randomness, or save. The catalog projector reads only already-persisted
+sections and leaves missing dynamic shops unavailable. Unknown IDs and malformed partial entries
+stay neutral unavailable rather than being named from React Demo catalogs. The React page requests
+only the resource needed by the entered scene or opened panel, keeps Demo isolated, shows read
+errors with a retry, and consumes real balances, residents, mixed kitchen instances, shop／inventory
+sections, bulletin, neighborhood, and market without enabling any new write. These three chains are
+recorded in the 2026-08-24 main／farm Git commits; they have not been deployed or
+production-verified.
+
+The Candidate Two Lingye pages now have separate structured reads. `GET /api/lingye/glimmer`
+derives the bound farm from the live Human session and calls
+`POST /internal/doorbell/human/glimmer/read`. The farm adapter projects Glimmer from cloned farm and
+world state, so reading the page cannot save, settle rewards, consume a pass, or change the real
+farm. It returns the real open state, current tracks, cooperation, public events, the complete
+57-entry variant codex with unlock state, 20 encounters, summary, and 12 achievements. The React
+page maps only known atlas identities and does not invent a URL for an unknown asset key.
+
+`GET /api/lingye/together` calls `POST /internal/doorbell/human/together/read`. Unlike Glimmer, this
+adapter deliberately preserves the existing farm Human read semantics: the farm-owned shared-story
+state machine performs its due time advancement and exactly one save before a strict safe projection
+is returned. Doorbell receives only the current story, phase, stage, controlled illustration key,
+history, task, choice, cooldown, ending, clues, and server time; it does not receive answer keys,
+private farm identifiers, raw participants, votes, full rewards, or archive internals. Candidate Two
+loads each page only after the Human clicks its entry, makes no prefetch or polling request, and never
+uses Demo data or legacy HTML as a Live fallback. This structured Lingye chain is recorded in the
+2026-08-24 main／farm Git commits; it has not been deployed or production-verified.
+
+`GET /api/farm/overview` remains a smaller migration-era public-fact read and is no longer the React
+field data source. The remaining legacy Human HTML compatibility flow uses the no-key Doorbell routes
+`/api/farm/ui`, `/api/farm/ui/*`, `/api/lingye-glimmer`, and `/api/lingye-together`. Every request
+first validates the Doorbell session and live QQ membership, then obtains the one bound credential
+from SQLite. Caller path, query, or form fields cannot replace that credential or choose another
+authenticated farm.
 
 The farm remains authoritative for its pages, actions, data, rules, task progression, votes,
 rewards, timers, and saves. Doorbell forwards only the investigated existing GET pages and
 `application/x-www-form-urlencoded` POST fields. It rewrites every current-key `/farm/ui/:key/...`
 `href` and form `action`, plus each accepted `303 Location`, to a Doorbell-local no-key path. A
-rewritten HTML or redirect value is rejected if the credential still appears. Lingye Together keeps
-using the farm's existing `/together` handler and remains human-read-only; opening it is the user
-request that may run the farm's existing time advance, so Doorbell does not prefetch or poll it.
+rewritten HTML or redirect value is rejected if the credential still appears. The legacy Lingye
+Together page keeps using the farm's existing `/together` handler and remains human-read-only;
+opening it is the user request that may run the farm's existing time advance, so Doorbell does not
+prefetch or poll it. The new structured Together adapter preserves the same authority and advancement
+semantics without forwarding the HTML document.
 
-`GET /api/lingye-glimmer` is already a separate no-key Doorbell route, but it currently resolves the
-same farm-authoritative `/ui/<farm_human_key>/glimmer` document that still serves users of the legacy
-farm Human link. Its `uiGlimmer()` renderer therefore intentionally continues to use the common farm
-page shell and navigation during the per-household migration period. The independent Glimmer Human
-shell is deferred until every existing player has migrated into Doorbell and all remaining legacy
-farm links have been disabled; changing the shared upstream renderer earlier would also remove the
-farm navigation from un-migrated users. Local `GLIMMER_STYLE` and `glimmerPage()` declarations are
-unwired drafts only: `uiGlimmer()` still calls the common `page()`, so they are neither runtime
-behavior nor a release candidate.
+These HTML proxy routes are transitional implementation facts, not the target Human UI architecture.
+The target farm UI is authored and rendered entirely by `apps/web` inside the existing Doorbell
+Commons shell. It must not fetch, embed, parse, restyle, rewrite, or inject the legacy farm Human
+HTML. Doorbell server endpoints expose explicit structured reads and actions derived from the
+authenticated community session and server-held farm binding; the `farm` service remains the
+authority for the game engine, state, actions, settlement, and saves. Once the new UI, structured
+contracts, player migration, and cutover are complete, the legacy Human HTML and its compatibility
+proxy are retired. The long-term `farm` branch does not own a second Human frontend.
+
+`GET /api/lingye-glimmer` still resolves the farm-authoritative
+`/ui/<farm_human_key>/glimmer` document for migration compatibility with legacy Human links. Its
+`uiGlimmer()` renderer therefore continues to use the common farm page shell and navigation; the new
+Candidate Two Glimmer page does not modify that renderer and instead uses the separate structured
+`GET /api/lingye/glimmer` route. Local `GLIMMER_STYLE` and `glimmerPage()` declarations remain
+unwired drafts only and are neither runtime behavior nor a release candidate. The same separation
+applies to legacy `GET /api/lingye-together`: it remains available during migration, while the new
+Candidate Two Together page reads `GET /api/lingye/together`.
 
 The human-page proxy does not create a Doorbell JSON copy of balances, inventory, cooking, ranch,
 market, expedition, or Together state. It also does not share browser Cookies, passwords, databases,

@@ -1,5 +1,9 @@
 import { z } from "zod";
 
+export * from "./farm-catalog.js";
+export * from "./farm-kitchen.js";
+export * from "./farm-ranch.js";
+
 export const serviceHealthSchema = z.object({
   service: z.literal("doorbell-commons"),
   status: z.literal("ok"),
@@ -126,6 +130,851 @@ export const boundFarmOverviewErrorSchema = z
       .object({
         code: boundFarmOverviewErrorCodeSchema,
         message: z.string(),
+      })
+      .strict(),
+  })
+  .strict();
+
+export const boundFarmFieldRequestSchema = z.object({}).strict();
+
+export const farmFieldCropIdentitySchema = z
+  .object({
+    crop_id: z.string().min(1),
+    name: z.string().min(1),
+    category: z.enum(["common", "fantasy", "limited", "ugc"]),
+  })
+  .strict();
+
+export const farmFieldPlotSchema = z
+  .object({
+    plot_id: z.number().int().positive(),
+    state: z.enum(["empty", "growing", "ripe"]),
+    seed_type: z.enum(["common", "fantasy", "limited"]).nullable(),
+    watered: z.number().int().nonnegative(),
+    progress: z
+      .object({
+        current: z.number().int().nonnegative(),
+        total: z.number().int().positive(),
+      })
+      .strict()
+      .nullable(),
+    matures_at: z.iso.datetime().nullable(),
+    identity_state: z.enum(["empty", "hidden", "known", "unavailable"]),
+    crop_identity: farmFieldCropIdentitySchema.nullable(),
+  })
+  .strict()
+  .superRefine((plot, context) => {
+    if (plot.progress !== null && plot.progress.current > plot.progress.total) {
+      context.addIssue({
+        code: "custom",
+        path: ["progress", "current"],
+        message: "current progress must not exceed total progress",
+      });
+    }
+
+    if (plot.state === "empty") {
+      for (const [path, value] of [
+        ["seed_type", plot.seed_type],
+        ["progress", plot.progress],
+        ["matures_at", plot.matures_at],
+        ["crop_identity", plot.crop_identity],
+      ] as const) {
+        if (value !== null) {
+          context.addIssue({
+            code: "custom",
+            path: [path],
+            message: `${path} must be null for an empty plot`,
+          });
+        }
+      }
+      if (plot.identity_state !== "empty") {
+        context.addIssue({
+          code: "custom",
+          path: ["identity_state"],
+          message: "an empty plot must use the empty identity state",
+        });
+      }
+      return;
+    }
+
+    if (plot.seed_type === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["seed_type"],
+        message: "a planted plot must expose its seed type",
+      });
+    }
+    if (plot.progress === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["progress"],
+        message: "a planted plot must expose its growth progress",
+      });
+    }
+    if (plot.state === "growing" && plot.matures_at === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["matures_at"],
+        message: "a growing plot must expose its expected maturity time",
+      });
+    }
+    if (plot.state === "ripe" && plot.matures_at !== null) {
+      context.addIssue({
+        code: "custom",
+        path: ["matures_at"],
+        message: "a ripe plot must not expose a future maturity time",
+      });
+    }
+    if (plot.identity_state === "empty") {
+      context.addIssue({
+        code: "custom",
+        path: ["identity_state"],
+        message: "a planted plot cannot use the empty identity state",
+      });
+    }
+    if (plot.identity_state === "hidden" && plot.crop_identity !== null) {
+      context.addIssue({
+        code: "custom",
+        path: ["crop_identity"],
+        message: "a hidden crop identity must remain null",
+      });
+    }
+    if (plot.identity_state === "unavailable" && plot.crop_identity !== null) {
+      context.addIssue({
+        code: "custom",
+        path: ["crop_identity"],
+        message: "an unavailable crop identity must remain null",
+      });
+    }
+    if (plot.identity_state === "known" && plot.crop_identity === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["crop_identity"],
+        message: "a known crop identity must include its stable identity",
+      });
+    }
+    if (
+      (plot.seed_type === "common" || plot.seed_type === "fantasy") &&
+      plot.identity_state !== "hidden"
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["identity_state"],
+        message: "common and fantasy crop identities stay hidden until harvest",
+      });
+    }
+    if (
+      plot.seed_type === "limited" &&
+      plot.identity_state !== "known" &&
+      plot.identity_state !== "unavailable"
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["identity_state"],
+        message: "limited and original crops must expose or explicitly mark their stored identity",
+      });
+    }
+    if (
+      plot.seed_type === "limited" &&
+      plot.crop_identity !== null &&
+      plot.crop_identity.category !== "limited" &&
+      plot.crop_identity.category !== "ugc"
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["crop_identity", "category"],
+        message: "a limited seed must identify a limited or original crop",
+      });
+    }
+    if (
+      plot.crop_identity !== null &&
+      (plot.crop_identity.category === "limited" || plot.crop_identity.category === "ugc") &&
+      plot.seed_type !== "limited"
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["seed_type"],
+        message: "limited and original crops must use the limited seed type",
+      });
+    }
+  });
+
+export const farmFieldDataSchema = z
+  .object({
+    farm: z
+      .object({
+        farm_doorplate: farmDoorplateSchema,
+        farm_name: z.string().min(1),
+        welcome_message: z.string().nullable(),
+        equipped_title: z
+          .object({
+            title_id: z.string().min(1),
+            name: z.string().min(1),
+          })
+          .strict()
+          .nullable(),
+      })
+      .strict(),
+    balance: z
+      .object({
+        farm_coins: z.number().int().nonnegative(),
+      })
+      .strict(),
+    season: z
+      .object({
+        name: z.string().min(1),
+      })
+      .strict(),
+    land: z
+      .object({
+        tier: z.number().int().positive(),
+        name: z.string().min(1),
+      })
+      .strict(),
+    plots: z.array(farmFieldPlotSchema),
+    harvest_assist: z
+      .object({
+        daily_limit: z.number().int().nonnegative(),
+        remaining: z.number().int().nonnegative(),
+        mature_plot_count: z.number().int().nonnegative(),
+        can_assist: z.boolean(),
+        reset_at: z.iso.datetime(),
+      })
+      .strict()
+      .superRefine((assist, context) => {
+        if (assist.remaining > assist.daily_limit) {
+          context.addIssue({
+            code: "custom",
+            path: ["remaining"],
+            message: "remaining assists must not exceed the daily limit",
+          });
+        }
+        if (assist.can_assist && (assist.remaining === 0 || assist.mature_plot_count === 0)) {
+          context.addIssue({
+            code: "custom",
+            path: ["can_assist"],
+            message: "an available assist requires both quota and mature plots",
+          });
+        }
+      }),
+  })
+  .strict();
+
+export const farmHumanFieldReadSuccessSchema = z
+  .object({
+    data: farmFieldDataSchema,
+    revision: z.string().min(1),
+    server_time: z.iso.datetime(),
+  })
+  .strict();
+
+export const boundFarmFieldSuccessSchema = farmHumanFieldReadSuccessSchema;
+
+export const boundFarmFieldErrorCodeSchema = z.enum([
+  "invalid_request",
+  "authentication_required",
+  "qq_not_group_member",
+  "onebot_unavailable",
+  "registration_profile_required",
+  "farm_not_found",
+  "farm_credential_invalid",
+  "farm_unavailable",
+  "upstream_contract_unavailable",
+]);
+
+export const boundFarmFieldErrorSchema = z
+  .object({
+    error: z
+      .object({
+        code: boundFarmFieldErrorCodeSchema,
+        message: z.string(),
+      })
+      .strict(),
+  })
+  .strict();
+
+export const farmHumanFieldReadRequestSchema = z
+  .object({
+    farm_human_key: farmHumanKeySchema,
+    expected_farm_doorplate: farmDoorplateSchema,
+  })
+  .strict();
+
+export const farmHumanFieldReadErrorCodeSchema = z.enum([
+  "invalid_request",
+  "authentication_required",
+  "farm_credential_not_found",
+  "farm_doorplate_mismatch",
+  "farm_not_found",
+  "farm_unavailable",
+]);
+
+export const farmHumanFieldReadErrorSchema = z
+  .object({
+    error: z
+      .object({
+        code: farmHumanFieldReadErrorCodeSchema,
+        message: z.string(),
+      })
+      .strict(),
+  })
+  .strict();
+
+const lingyeIdSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/);
+const lingyeAssetKeySchema = z.string().regex(/^[a-z0-9][a-z0-9._-]{0,127}$/);
+const lingyeTextSchema = z
+  .string()
+  .min(1)
+  .max(4096)
+  .refine((value) => !/[<>]/u.test(value) && !/(?:https?|javascript):/iu.test(value), {
+    message: "Lingye display text must not contain HTML or URLs",
+  });
+const lingyeShortTextSchema = z
+  .string()
+  .min(1)
+  .max(256)
+  .refine((value) => !/[<>]/u.test(value) && !/(?:https?|javascript):/iu.test(value), {
+    message: "Lingye display text must not contain HTML or URLs",
+  });
+const glimmerSetSchema = z.union([z.literal(1), z.literal(2), z.literal(3)]);
+const glimmerSpriteIndexSchema = z.number().int().nonnegative().max(255);
+
+export const farmGlimmerVariantSchema = z
+  .object({
+    id: lingyeIdSchema,
+    name: lingyeShortTextSchema,
+    atlas: lingyeAssetKeySchema,
+    set: glimmerSetSchema,
+    sprite_index: glimmerSpriteIndexSchema,
+  })
+  .strict();
+
+export const farmGlimmerTrackSchema = z
+  .object({
+    revealed: z.boolean(),
+    variant: farmGlimmerVariantSchema.nullable(),
+  })
+  .strict()
+  .superRefine((track, context) => {
+    if (track.revealed && track.variant === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["variant"],
+        message: "a revealed Glimmer track must expose its stable variant",
+      });
+    }
+    if (!track.revealed && track.variant !== null) {
+      context.addIssue({
+        code: "custom",
+        path: ["variant"],
+        message: "an unrevealed Glimmer track must hide its stable variant",
+      });
+    }
+  });
+
+const farmGlimmerCooperationSchema = z
+  .object({
+    event: z
+      .object({
+        id: lingyeIdSchema,
+        name: lingyeShortTextSchema,
+        requirement: lingyeShortTextSchema,
+      })
+      .strict(),
+    progress: z
+      .object({
+        current: z.number().int().nonnegative(),
+        target: z.number().int().positive(),
+      })
+      .strict(),
+    completed: z.boolean(),
+  })
+  .strict();
+
+const farmGlimmerPublicEventSchema = z
+  .object({
+    at: z.iso.datetime(),
+    text: lingyeTextSchema,
+  })
+  .strict();
+
+const farmGlimmerVariantEntrySchema = farmGlimmerVariantSchema
+  .extend({ unlocked: z.boolean() })
+  .strict();
+
+const farmGlimmerEncounterSchema = z
+  .object({
+    id: lingyeIdSchema,
+    name: lingyeShortTextSchema,
+    seen: z.boolean(),
+  })
+  .strict();
+
+const farmGlimmerAchievementSchema = z
+  .object({
+    id: lingyeIdSchema,
+    name: lingyeShortTextSchema,
+    progress: z
+      .object({
+        current: z.number().int().nonnegative(),
+        target: z.number().int().positive(),
+      })
+      .strict(),
+    rewarded: z.boolean(),
+    reward: z
+      .object({
+        coins: z.number().int().nonnegative(),
+        silver: z.number().int().nonnegative(),
+      })
+      .strict(),
+  })
+  .strict();
+
+export const farmGlimmerDataSchema = z
+  .object({
+    open: z.boolean(),
+    status: lingyeTextSchema,
+    season: lingyeShortTextSchema,
+    tracks: z.array(farmGlimmerTrackSchema).max(16),
+    cooperation: farmGlimmerCooperationSchema.nullable(),
+    events: z.array(farmGlimmerPublicEventSchema).max(10),
+    variants: z.array(farmGlimmerVariantEntrySchema).max(128),
+    encounters: z.array(farmGlimmerEncounterSchema).max(128),
+    summary: z
+      .object({
+        encounters: z.number().int().nonnegative(),
+        variants: z.number().int().nonnegative(),
+        cooperations: z.number().int().nonnegative(),
+      })
+      .strict(),
+    achievements: z.array(farmGlimmerAchievementSchema).max(128),
+  })
+  .strict();
+
+export const farmHumanGlimmerReadSuccessSchema = z
+  .object({
+    data: farmGlimmerDataSchema,
+    server_time: z.iso.datetime(),
+  })
+  .strict();
+
+export const boundGlimmerReadSuccessSchema = farmHumanGlimmerReadSuccessSchema;
+
+export const boundGlimmerReadRequestSchema = z.object({}).strict();
+
+export const farmHumanGlimmerReadRequestSchema = z
+  .object({
+    farm_human_key: farmHumanKeySchema,
+    expected_farm_doorplate: farmDoorplateSchema,
+  })
+  .strict();
+
+export const farmHumanGlimmerReadErrorCodeSchema = z.enum([
+  "invalid_request",
+  "authentication_required",
+  "farm_credential_not_found",
+  "farm_doorplate_mismatch",
+  "farm_credential_invalid",
+  "farm_not_found",
+  "farm_unavailable",
+  "upstream_contract_unavailable",
+]);
+
+export const farmHumanGlimmerReadErrorSchema = z
+  .object({
+    error: z
+      .object({
+        code: farmHumanGlimmerReadErrorCodeSchema,
+        message: lingyeTextSchema,
+      })
+      .strict(),
+  })
+  .strict();
+
+export const boundGlimmerReadErrorCodeSchema = z.enum([
+  "invalid_request",
+  "authentication_required",
+  "qq_not_group_member",
+  "onebot_unavailable",
+  "registration_profile_required",
+  "farm_not_found",
+  "farm_credential_invalid",
+  "farm_unavailable",
+  "upstream_contract_unavailable",
+]);
+
+export const boundGlimmerReadErrorSchema = z
+  .object({
+    error: z
+      .object({
+        code: boundGlimmerReadErrorCodeSchema,
+        message: lingyeTextSchema,
+      })
+      .strict(),
+  })
+  .strict();
+
+export const farmTogetherPhaseSchema = z.enum([
+  "choice",
+  "task",
+  "cooldown",
+  "ended",
+  "vote",
+  "closed",
+]);
+
+const farmTogetherHistorySchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("story"),
+      title: lingyeShortTextSchema,
+      text: lingyeTextSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("choice"),
+      step: z.number().int().positive(),
+      option: z.enum(["A", "B", "C"]),
+      label: lingyeShortTextSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("task"),
+      title: lingyeShortTextSchema,
+      text: lingyeTextSchema,
+      progress: z.number().int().nonnegative(),
+      target: z.number().int().positive(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("clue"),
+      title: lingyeShortTextSchema,
+      text: lingyeTextSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("ending"),
+      title: lingyeShortTextSchema,
+      text: lingyeTextSchema,
+    })
+    .strict(),
+]);
+
+const farmTogetherTaskSchema = z
+  .object({
+    id: lingyeIdSchema,
+    title: lingyeShortTextSchema,
+    text: lingyeTextSchema,
+    progress: z.number().int().nonnegative(),
+    target: z.number().int().positive(),
+  })
+  .strict();
+
+const farmTogetherChoiceSchema = z
+  .object({
+    index: z.number().int().positive().nullable(),
+    title: lingyeShortTextSchema,
+    options: z
+      .array(
+        z
+          .object({
+            key: z.enum(["A", "B", "C"]),
+            label: lingyeTextSchema,
+          })
+          .strict(),
+      )
+      .min(2)
+      .max(3),
+    counts: z
+      .object({
+        A: z.number().int().nonnegative(),
+        B: z.number().int().nonnegative(),
+        C: z.number().int().nonnegative(),
+      })
+      .strict()
+      .nullable(),
+  })
+  .strict()
+  .superRefine((choice, context) => {
+    const keys = choice.options.map((option) => option.key);
+    if (new Set(keys).size !== keys.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["options"],
+        message: "a public choice must not repeat an option key",
+      });
+    }
+  });
+
+const farmTogetherCooldownSchema = z
+  .object({
+    text: lingyeTextSchema,
+    ready_at: z.iso.datetime(),
+    ready_text: lingyeShortTextSchema,
+  })
+  .strict();
+
+const farmTogetherEndingSchema = z
+  .object({
+    id: lingyeIdSchema,
+    title: lingyeShortTextSchema,
+    text: lingyeTextSchema,
+  })
+  .strict();
+
+const farmTogetherClueSchema = z
+  .object({
+    id: lingyeIdSchema,
+    title: lingyeShortTextSchema,
+    text: lingyeTextSchema,
+  })
+  .strict();
+
+export const farmTogetherDataSchema = z
+  .object({
+    story_id: lingyeIdSchema,
+    title: lingyeShortTextSchema,
+    round: z.number().int().positive(),
+    phase: farmTogetherPhaseSchema,
+    status: lingyeTextSchema,
+    stage: z
+      .object({
+        index: z.number().int().positive(),
+        total: z.number().int().positive(),
+        name: lingyeShortTextSchema,
+      })
+      .strict(),
+    art_asset_key: lingyeAssetKeySchema,
+    history: z.array(farmTogetherHistorySchema).max(128),
+    current_task: farmTogetherTaskSchema.nullable(),
+    current_choice: farmTogetherChoiceSchema.nullable(),
+    cooldown: farmTogetherCooldownSchema.nullable(),
+    ending: farmTogetherEndingSchema.nullable(),
+    clues: z.array(farmTogetherClueSchema).max(32),
+  })
+  .strict();
+
+export const farmHumanTogetherReadSuccessSchema = z
+  .object({
+    data: farmTogetherDataSchema,
+    server_time: z.iso.datetime(),
+  })
+  .strict();
+
+export const boundTogetherReadSuccessSchema = farmHumanTogetherReadSuccessSchema;
+
+export const boundTogetherReadRequestSchema = z.object({}).strict();
+
+export const farmHumanTogetherReadRequestSchema = z
+  .object({
+    farm_human_key: farmHumanKeySchema,
+    expected_farm_doorplate: farmDoorplateSchema,
+  })
+  .strict();
+
+export const farmHumanTogetherReadErrorCodeSchema = z.enum([
+  "invalid_request",
+  "authentication_required",
+  "farm_credential_not_found",
+  "farm_doorplate_mismatch",
+  "farm_credential_invalid",
+  "farm_not_found",
+  "farm_unavailable",
+  "upstream_contract_unavailable",
+]);
+
+export const farmHumanTogetherReadErrorSchema = z
+  .object({
+    error: z
+      .object({
+        code: farmHumanTogetherReadErrorCodeSchema,
+        message: lingyeTextSchema,
+      })
+      .strict(),
+  })
+  .strict();
+
+export const boundTogetherReadErrorCodeSchema = z.enum([
+  "invalid_request",
+  "authentication_required",
+  "qq_not_group_member",
+  "onebot_unavailable",
+  "registration_profile_required",
+  "farm_not_found",
+  "farm_credential_invalid",
+  "farm_unavailable",
+  "upstream_contract_unavailable",
+]);
+
+export const boundTogetherReadErrorSchema = z
+  .object({
+    error: z
+      .object({
+        code: boundTogetherReadErrorCodeSchema,
+        message: lingyeTextSchema,
+      })
+      .strict(),
+  })
+  .strict();
+
+export const farmHumanFieldHarvestAssistIdempotencyKeySchema = z.uuid();
+
+export const farmHumanFieldHarvestAssistRequestSchema = z
+  .object({
+    farm_human_key: farmHumanKeySchema,
+    expected_farm_doorplate: farmDoorplateSchema,
+    idempotency_key: farmHumanFieldHarvestAssistIdempotencyKeySchema,
+    expected_revision: z.string().min(1),
+    payload: z.object({}).strict(),
+  })
+  .strict();
+
+export const boundFarmHarvestAssistRequestSchema = z.object({}).strict();
+
+const farmHarvestItemDropSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    quantity: z.number().int().positive(),
+  })
+  .strict();
+
+export const farmHumanFieldHarvestAssistResultSchema = z
+  .object({
+    receipt_id: z.string().min(1),
+    harvested_count: z.number().int().positive(),
+    farm_coins_gained: z.number().int().nonnegative(),
+    silver_gained: z.number().int().nonnegative(),
+    harvests: z
+      .array(
+        z
+          .object({
+            plot_id: z.number().int().positive().nullable(),
+            crop: z
+              .object({
+                crop_id: z.string().min(1),
+                name: z.string().min(1),
+                category: z.enum(["common", "fantasy", "limited", "ugc"]),
+                rarity: z.enum(["N", "R", "SR", "SSR", "SP", "OR"]),
+              })
+              .strict(),
+            quality: z
+              .object({
+                id: z.string().min(1).optional(),
+                name: z.string().min(1),
+              })
+              .strict()
+              .nullable(),
+            value: z.number().int().nonnegative(),
+            currency: z.enum(["gold", "silver"]),
+            is_new: z.boolean(),
+            material_drop: farmHarvestItemDropSchema.nullable(),
+            potion_drop: farmHarvestItemDropSchema.nullable(),
+            bonus_value: z.number().int().nonnegative(),
+          })
+          .strict(),
+      )
+      .min(1),
+    season_event: z
+      .object({
+        id: z.string().min(1),
+        label: z.string().min(1),
+      })
+      .strict()
+      .nullable(),
+    new_titles: z.array(
+      z
+        .object({
+          title_id: z.string().min(1),
+          name: z.string().min(1),
+        })
+        .strict(),
+    ),
+  })
+  .strict()
+  .superRefine((result, context) => {
+    if (result.harvested_count !== result.harvests.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["harvested_count"],
+        message: "harvested_count must equal the number of harvest receipts",
+      });
+    }
+  });
+
+export const farmHumanFieldHarvestAssistResourceSchema = farmFieldDataSchema;
+
+export const farmHumanFieldHarvestAssistSuccessSchema = z
+  .object({
+    data: z
+      .object({
+        result: farmHumanFieldHarvestAssistResultSchema,
+        resource: farmHumanFieldHarvestAssistResourceSchema,
+      })
+      .strict(),
+    revision: z.string().min(1),
+    server_time: z.iso.datetime(),
+  })
+  .strict();
+
+export const boundFarmHarvestAssistSuccessSchema = farmHumanFieldHarvestAssistSuccessSchema;
+export const boundFarmHarvestAssistResultSchema = farmHumanFieldHarvestAssistResultSchema;
+export const boundFarmHarvestAssistResourceSchema = farmHumanFieldHarvestAssistResourceSchema;
+
+export const farmHumanFieldHarvestAssistErrorCodeSchema = z.enum([
+  "harvest_assist_exhausted",
+  "no_ripe_plots",
+  "state_conflict",
+  "idempotency_conflict",
+  "invalid_request",
+  "authentication_required",
+  "farm_credential_not_found",
+  "farm_doorplate_mismatch",
+  "farm_credential_invalid",
+  "farm_not_found",
+  "farm_unavailable",
+  "upstream_contract_unavailable",
+]);
+
+export const farmHumanFieldHarvestAssistErrorSchema = z
+  .object({
+    error: z
+      .object({
+        code: farmHumanFieldHarvestAssistErrorCodeSchema,
+        message: z.string(),
+        current_revision: z.string().min(1).optional(),
+      })
+      .strict(),
+  })
+  .strict();
+
+export const boundFarmHarvestAssistErrorCodeSchema = z.enum([
+  "harvest_assist_exhausted",
+  "no_ripe_plots",
+  "state_conflict",
+  "idempotency_conflict",
+  "invalid_request",
+  "authentication_required",
+  "qq_not_group_member",
+  "onebot_unavailable",
+  "registration_profile_required",
+  "farm_not_found",
+  "farm_credential_invalid",
+  "farm_unavailable",
+  "upstream_contract_unavailable",
+]);
+
+export const boundFarmHarvestAssistErrorSchema = z
+  .object({
+    error: z
+      .object({
+        code: boundFarmHarvestAssistErrorCodeSchema,
+        message: z.string(),
+        current_revision: z.string().min(1).optional(),
       })
       .strict(),
   })
@@ -1680,6 +2529,58 @@ export type HumanSessionRequest = z.infer<typeof humanSessionRequestSchema>;
 export type FarmLookupRequest = z.infer<typeof farmLookupRequestSchema>;
 export type FarmLookupSuccess = z.infer<typeof farmLookupSuccessSchema>;
 export type FarmLookupError = z.infer<typeof farmLookupErrorSchema>;
+export type FarmFieldCropIdentity = z.infer<typeof farmFieldCropIdentitySchema>;
+export type FarmFieldPlot = z.infer<typeof farmFieldPlotSchema>;
+export type FarmFieldData = z.infer<typeof farmFieldDataSchema>;
+export type FarmHumanFieldReadRequest = z.infer<typeof farmHumanFieldReadRequestSchema>;
+export type FarmHumanFieldReadSuccess = z.infer<typeof farmHumanFieldReadSuccessSchema>;
+export type FarmHumanFieldReadErrorCode = z.infer<typeof farmHumanFieldReadErrorCodeSchema>;
+export type FarmHumanFieldReadError = z.infer<typeof farmHumanFieldReadErrorSchema>;
+export type BoundFarmFieldSuccess = z.infer<typeof boundFarmFieldSuccessSchema>;
+export type BoundFarmFieldError = z.infer<typeof boundFarmFieldErrorSchema>;
+export type FarmHumanFieldHarvestAssistRequest = z.infer<
+  typeof farmHumanFieldHarvestAssistRequestSchema
+>;
+export type FarmHumanFieldHarvestAssistSuccess = z.infer<
+  typeof farmHumanFieldHarvestAssistSuccessSchema
+>;
+export type FarmHumanFieldHarvestAssistResult = z.infer<
+  typeof farmHumanFieldHarvestAssistResultSchema
+>;
+export type FarmGlimmerVariant = z.infer<typeof farmGlimmerVariantSchema>;
+export type FarmGlimmerTrack = z.infer<typeof farmGlimmerTrackSchema>;
+export type FarmGlimmerData = z.infer<typeof farmGlimmerDataSchema>;
+export type FarmHumanGlimmerReadRequest = z.infer<typeof farmHumanGlimmerReadRequestSchema>;
+export type FarmHumanGlimmerReadSuccess = z.infer<typeof farmHumanGlimmerReadSuccessSchema>;
+export type FarmHumanGlimmerReadErrorCode = z.infer<typeof farmHumanGlimmerReadErrorCodeSchema>;
+export type FarmHumanGlimmerReadError = z.infer<typeof farmHumanGlimmerReadErrorSchema>;
+export type BoundGlimmerReadRequest = z.infer<typeof boundGlimmerReadRequestSchema>;
+export type BoundGlimmerReadSuccess = z.infer<typeof boundGlimmerReadSuccessSchema>;
+export type BoundGlimmerReadError = z.infer<typeof boundGlimmerReadErrorSchema>;
+export type FarmTogetherPhase = z.infer<typeof farmTogetherPhaseSchema>;
+export type FarmTogetherData = z.infer<typeof farmTogetherDataSchema>;
+export type FarmHumanTogetherReadRequest = z.infer<typeof farmHumanTogetherReadRequestSchema>;
+export type FarmHumanTogetherReadSuccess = z.infer<typeof farmHumanTogetherReadSuccessSchema>;
+export type FarmHumanTogetherReadErrorCode = z.infer<typeof farmHumanTogetherReadErrorCodeSchema>;
+export type FarmHumanTogetherReadError = z.infer<typeof farmHumanTogetherReadErrorSchema>;
+export type BoundTogetherReadRequest = z.infer<typeof boundTogetherReadRequestSchema>;
+export type BoundTogetherReadSuccess = z.infer<typeof boundTogetherReadSuccessSchema>;
+export type BoundTogetherReadError = z.infer<typeof boundTogetherReadErrorSchema>;
+export type FarmHumanFieldHarvestAssistResource = z.infer<
+  typeof farmHumanFieldHarvestAssistResourceSchema
+>;
+export type FarmHumanFieldHarvestAssistErrorCode = z.infer<
+  typeof farmHumanFieldHarvestAssistErrorCodeSchema
+>;
+export type FarmHumanFieldHarvestAssistError = z.infer<
+  typeof farmHumanFieldHarvestAssistErrorSchema
+>;
+export type BoundFarmHarvestAssistRequest = z.infer<typeof boundFarmHarvestAssistRequestSchema>;
+export type BoundFarmHarvestAssistSuccess = z.infer<typeof boundFarmHarvestAssistSuccessSchema>;
+export type BoundFarmHarvestAssistResult = z.infer<typeof boundFarmHarvestAssistResultSchema>;
+export type BoundFarmHarvestAssistResource = z.infer<typeof boundFarmHarvestAssistResourceSchema>;
+export type BoundFarmHarvestAssistErrorCode = z.infer<typeof boundFarmHarvestAssistErrorCodeSchema>;
+export type BoundFarmHarvestAssistError = z.infer<typeof boundFarmHarvestAssistErrorSchema>;
 export type HumanSessionSuccess = z.infer<typeof humanSessionSuccessSchema>;
 export type CreatedFarmHumanSessionSuccess = z.infer<typeof createdFarmHumanSessionSuccessSchema>;
 export type CurrentHumanSessionSuccess = z.infer<typeof currentHumanSessionSuccessSchema>;

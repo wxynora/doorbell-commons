@@ -7,9 +7,11 @@ import {
   createHumanSession,
   deleteHumanSession,
   type FrontendFetcher,
+  getBoundFarmField,
   getCurrentHumanSession,
   getHumanSettings,
   getMcpAccessStatus,
+  harvestBoundFarmField,
   issueConnectorCredential,
   issueMcpCredential,
   lookupFarm,
@@ -62,6 +64,95 @@ const SETTINGS = {
   },
 };
 
+const FARM_FIELD = {
+  data: {
+    farm: {
+      farm_doorplate: "3ET3FE",
+      farm_name: "渡的小农场",
+      welcome_message: "今天也慢慢来。",
+      equipped_title: { title_id: "title-sprout", name: "新芽守望者" },
+    },
+    balance: { farm_coins: 0 },
+    season: { name: "夏" },
+    land: { tier: 2, name: "沃土" },
+    plots: [
+      {
+        plot_id: 1,
+        state: "empty" as const,
+        seed_type: null,
+        watered: 0,
+        progress: null,
+        matures_at: null,
+        identity_state: "empty" as const,
+        crop_identity: null,
+      },
+      {
+        plot_id: 2,
+        state: "growing" as const,
+        seed_type: "common" as const,
+        watered: 2,
+        progress: { current: 3, total: 8 },
+        matures_at: "2026-08-23T08:30:00.000Z",
+        identity_state: "hidden" as const,
+        crop_identity: null,
+      },
+    ],
+    harvest_assist: {
+      daily_limit: 3,
+      remaining: 2,
+      mature_plot_count: 0,
+      can_assist: false,
+      reset_at: "2026-08-24T16:00:00.000Z",
+    },
+  },
+  revision: "field-v1:test",
+  server_time: "2026-08-23T08:00:00.000Z",
+};
+
+const FARM_HARVEST_ASSIST = {
+  data: {
+    result: {
+      receipt_id: "11111111-2222-4333-8444-555555555555",
+      harvested_count: 1,
+      farm_coins_gained: 45,
+      silver_gained: 0,
+      harvests: [
+        {
+          plot_id: 2,
+          crop: {
+            crop_id: "tomato",
+            name: "番茄",
+            category: "common" as const,
+            rarity: "N" as const,
+          },
+          quality: { id: "normal", name: "普通" },
+          value: 45,
+          currency: "gold" as const,
+          is_new: true,
+          material_drop: null,
+          potion_drop: null,
+          bonus_value: 0,
+        },
+      ],
+      season_event: null,
+      new_titles: [],
+    },
+    resource: {
+      ...FARM_FIELD.data,
+      balance: { farm_coins: 45 },
+      plots: [FARM_FIELD.data.plots[0]],
+      harvest_assist: {
+        ...FARM_FIELD.data.harvest_assist,
+        remaining: 1,
+        mature_plot_count: 0,
+        can_assist: false,
+      },
+    },
+  },
+  revision: "field-v1:after-harvest",
+  server_time: "2026-08-23T08:01:00.000Z",
+};
+
 function jsonResponse(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
     headers: { "content-type": "application/json" },
@@ -92,6 +183,186 @@ test("current session uses the GET contract and returns only server identity", a
     },
     accountCreated: null,
   });
+});
+
+test("bound farm field uses the no-parameter same-origin GET contract", async () => {
+  let observedUrl = "";
+  let observedInit: RequestInit | undefined;
+  const result = await getBoundFarmField({
+    fetcher: async (url, init) => {
+      observedUrl = url;
+      observedInit = init;
+      return jsonResponse(FARM_FIELD);
+    },
+  });
+
+  assert.equal(observedUrl, "/api/farm/field");
+  assert.deepEqual(observedInit, { credentials: "same-origin", method: "GET" });
+  assert.deepEqual(result, { ok: true, data: FARM_FIELD });
+});
+
+test("bound farm field keeps binding, contract and service errors distinct", async () => {
+  const credentialInvalid = await getBoundFarmField({
+    fetcher: async () =>
+      jsonResponse({ error: { code: "farm_credential_invalid", message: "binding changed" } }, 409),
+  });
+  const contractUnavailable = await getBoundFarmField({
+    fetcher: async () =>
+      jsonResponse(
+        { error: { code: "upstream_contract_unavailable", message: "field contract changed" } },
+        502,
+      ),
+  });
+  const unavailable = await getBoundFarmField({
+    fetcher: async () =>
+      jsonResponse(
+        { error: { code: "farm_unavailable", message: "The farm could not be queried" } },
+        503,
+      ),
+  });
+  const malformed = await getBoundFarmField({
+    fetcher: async () => jsonResponse({ ...FARM_FIELD, revision: "" }),
+  });
+
+  assert.deepEqual(credentialInvalid, {
+    ok: false,
+    issue: { code: "farm_credential_invalid", serverMessage: "binding changed" },
+  });
+  assert.deepEqual(contractUnavailable, {
+    ok: false,
+    issue: { code: "upstream_contract_unavailable", serverMessage: "field contract changed" },
+  });
+  assert.deepEqual(unavailable, {
+    ok: false,
+    issue: { code: "farm_unavailable", serverMessage: "The farm could not be queried" },
+  });
+  assert.deepEqual(malformed, {
+    ok: false,
+    issue: { code: "unexpected_response", serverMessage: null },
+  });
+});
+
+test("harvest assist sends only an empty body, idempotency key, and the quoted field revision", async () => {
+  let observedUrl = "";
+  let observedInit: RequestInit | undefined;
+  const result = await harvestBoundFarmField(
+    {
+      expectedRevision: FARM_FIELD.revision,
+      idempotencyKey: "11111111-2222-4333-8444-555555555555",
+    },
+    {
+      fetcher: async (url, init) => {
+        observedUrl = url;
+        observedInit = init;
+        return jsonResponse(FARM_HARVEST_ASSIST);
+      },
+    },
+  );
+
+  assert.equal(observedUrl, "/api/farm/field/harvest-assists");
+  assert.deepEqual(observedInit, {
+    body: JSON.stringify({}),
+    credentials: "same-origin",
+    headers: {
+      "content-type": "application/json",
+      "idempotency-key": "11111111-2222-4333-8444-555555555555",
+      "if-match": `"${FARM_FIELD.revision}"`,
+    },
+    method: "POST",
+  });
+  assert.deepEqual(result, { ok: true, data: FARM_HARVEST_ASSIST });
+  assert.equal(JSON.stringify(observedInit).includes("farm_human_key"), false);
+  assert.equal(JSON.stringify(observedInit).includes("farm_doorplate"), false);
+  assert.equal(JSON.stringify(observedInit).includes("plot_id"), false);
+});
+
+test("harvest assist preserves a conflict revision and rejects malformed success", async () => {
+  const conflict = await harvestBoundFarmField(
+    {
+      expectedRevision: FARM_FIELD.revision,
+      idempotencyKey: "11111111-2222-4333-8444-555555555555",
+    },
+    {
+      fetcher: async () =>
+        jsonResponse(
+          {
+            error: {
+              code: "state_conflict",
+              message: "field changed",
+              current_revision: "field-v1:newer",
+            },
+          },
+          409,
+        ),
+    },
+  );
+  const malformed = await harvestBoundFarmField(
+    {
+      expectedRevision: FARM_FIELD.revision,
+      idempotencyKey: "11111111-2222-4333-8444-555555555555",
+    },
+    {
+      fetcher: async () =>
+        jsonResponse({
+          ...FARM_HARVEST_ASSIST,
+          data: {
+            ...FARM_HARVEST_ASSIST.data,
+            result: { ...FARM_HARVEST_ASSIST.data.result, harvested_count: 2 },
+          },
+        }),
+    },
+  );
+
+  assert.deepEqual(conflict, {
+    ok: false,
+    issue: {
+      code: "state_conflict",
+      currentRevision: "field-v1:newer",
+      serverMessage: "field changed",
+    },
+  });
+  assert.deepEqual(malformed, {
+    ok: false,
+    issue: {
+      code: "unexpected_response",
+      currentRevision: null,
+      serverMessage: null,
+    },
+  });
+});
+
+test("harvest assist reports an unknown network outcome without changing the idempotency key", async () => {
+  const input = {
+    expectedRevision: FARM_FIELD.revision,
+    idempotencyKey: "11111111-2222-4333-8444-555555555555",
+  };
+  const observedInputs: (typeof input)[] = [];
+  const call = () => {
+    observedInputs.push(input);
+    return harvestBoundFarmField(input, {
+      fetcher: async () => {
+        throw new Error("connection closed");
+      },
+    });
+  };
+
+  assert.deepEqual(await call(), {
+    ok: false,
+    issue: {
+      code: "network_unavailable",
+      currentRevision: null,
+      serverMessage: null,
+    },
+  });
+  assert.deepEqual(await call(), {
+    ok: false,
+    issue: {
+      code: "network_unavailable",
+      currentRevision: null,
+      serverMessage: null,
+    },
+  });
+  assert.equal(observedInputs[0]?.idempotencyKey, observedInputs[1]?.idempotencyKey);
 });
 
 test("returning login sends exactly QQ and password", async () => {
@@ -306,6 +577,36 @@ test("settings update sends only the requested home patch and parses the saved s
     method: "PATCH",
   });
   assert.deepEqual(result, { ok: true, data: updatedSettings });
+});
+
+test("settings update sends exact notification and community preference patches", async () => {
+  const observedBodies: unknown[] = [];
+  const fetcher: FrontendFetcher = async (url, init) => {
+    assert.equal(url, "/api/settings");
+    assert.equal(init?.method, "PATCH");
+    observedBodies.push(JSON.parse(String(init?.body)));
+    return jsonResponse(SETTINGS);
+  };
+
+  const notificationResult = await updateHumanSettings(
+    { notification_preferences: { pause_all_wakeups: true } },
+    fetcher,
+  );
+  const communityResult = await updateHumanSettings(
+    {
+      community_connection_preferences: {
+        initial_recent_activity_count: 12,
+      },
+    },
+    fetcher,
+  );
+
+  assert.equal(notificationResult.ok, true);
+  assert.equal(communityResult.ok, true);
+  assert.deepEqual(observedBodies, [
+    { notification_preferences: { pause_all_wakeups: true } },
+    { community_connection_preferences: { initial_recent_activity_count: 12 } },
+  ]);
 });
 
 test("Connector credential issue and revoke send only an empty object body", async () => {
