@@ -90,6 +90,8 @@ function systemLoanRate(termDays) {
             return 600;
     }
 }
+const SYSTEM_LOAN_TERMS = new Set([14, 30, 60]);
+const TERM_DEPOSIT_TERMS = new Set([14, 30, 60]);
 function systemLoanLimit(creditPoints) {
     if (creditPoints >= 3)
         return 1_000_000;
@@ -104,7 +106,20 @@ function termRateAllowed(termDays, totalRatePpm) {
         60: [11_000, 16_000],
     };
     const range = ranges[termDays];
-    return Number.isInteger(totalRatePpm) && totalRatePpm >= range[0] && totalRatePpm <= range[1];
+    return TERM_DEPOSIT_TERMS.has(termDays) &&
+        Number.isInteger(totalRatePpm) &&
+        totalRatePpm >= range[0] &&
+        totalRatePpm <= range[1];
+}
+function assertPlayerLoanParty(loan, actorResidentId) {
+    if (actorResidentId !== loan.lender_resident_id && actorResidentId !== loan.borrower_resident_id) {
+        throw new EconomyError("UNAUTHORIZED_PARTY");
+    }
+}
+function assertPlayerLoanBorrower(loan, actorResidentId) {
+    if (actorResidentId !== loan.borrower_resident_id) {
+        throw new EconomyError("UNAUTHORIZED_PARTY");
+    }
 }
 function exchangeFee(silverAlreadyIssued, silverRequested) {
     let remaining = silverRequested;
@@ -729,6 +744,9 @@ export class EconomyService {
     }
     openSystemLoan(input) {
         assertPositiveInteger(input.principal);
+        if (!SYSTEM_LOAN_TERMS.has(input.termDays)) {
+            throw new EconomyError("LOAN_CONTRACT_INVALID", { termDays: input.termDays });
+        }
         if (this.#rules.minimumSystemLoanCreditDays === null) {
             throw new EconomyError("CREDIT_RULE_NOT_CONFIGURED");
         }
@@ -817,6 +835,10 @@ export class EconomyService {
     }
     proposePlayerLoan(input) {
         assertPositiveInteger(input.principal);
+        if ((input.actorResidentId !== input.lenderResidentId &&
+            input.actorResidentId !== input.borrowerResidentId)) {
+            throw new EconomyError("UNAUTHORIZED_PARTY");
+        }
         if (input.lenderResidentId === input.borrowerResidentId ||
             !Number.isInteger(input.termDays) ||
             input.termDays < 1 ||
@@ -843,15 +865,12 @@ export class EconomyService {
         });
     }
     confirmPlayerLoan(input) {
+        assertPlayerLoanParty(this.#playerLoan(input.loanId), input.actorResidentId);
         return this.#command("bank.player_loan.confirm", input.idempotencyKey, input.loanId, input, (journal, now) => {
             const loan = this.#playerLoan(input.loanId);
             if (loan.status !== "proposed")
                 return loan;
-            if (input.residentId !== loan.lender_resident_id &&
-                input.residentId !== loan.borrower_resident_id) {
-                throw new EconomyError("UNAUTHORIZED_PARTY");
-            }
-            const column = input.residentId === loan.lender_resident_id
+            const column = input.actorResidentId === loan.lender_resident_id
                 ? "lender_confirmed_at"
                 : "borrower_confirmed_at";
             this.#database
@@ -878,13 +897,14 @@ export class EconomyService {
             }
             else {
                 this.#contractEvent(journal, "player_loan", input.loanId, "party_confirmed", {
-                    residentId: input.residentId,
+                    residentId: input.actorResidentId,
                 });
             }
             return this.#playerLoan(input.loanId);
         });
     }
     cancelPlayerLoan(input) {
+        assertPlayerLoanParty(this.#playerLoan(input.loanId), input.actorResidentId);
         return this.#command("bank.player_loan.cancel", input.idempotencyKey, input.loanId, input, (journal, now) => {
             const loan = this.#playerLoan(input.loanId);
             if (loan.status === "cancelled")
@@ -901,6 +921,7 @@ export class EconomyService {
     }
     repayPlayerLoan(input) {
         assertPositiveInteger(input.amount);
+        assertPlayerLoanBorrower(this.#playerLoan(input.loanId), input.actorResidentId);
         return this.#command("bank.player_loan.repay", input.idempotencyKey, input.loanId, input, (journal, now) => {
             let loan = this.#playerLoan(input.loanId);
             if (loan.status === "repaid")

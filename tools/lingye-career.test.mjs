@@ -436,6 +436,63 @@ test("school enforces ordered paid courses, read-and-practice completion, fixed 
         harness.database.close();
     }
 });
+test("written exams expire at the session boundary and active certificates block duplicate registration", () => {
+    const harness = createHarness(beijingTimestamp("2026-08-26", 11));
+    try {
+        harness.school.selectCareer("exam-resident", "reporter");
+        completeLevelOneCourses(harness, "exam-resident", "reporter");
+        const expiredAttempt = harness.school.registerExam({
+            attemptId: "expired-attempt",
+            career: "reporter",
+            level: 1,
+            reservationReceipt: goldReceipt(harness, "exam-resident", "system_gold_reserve", 40_000, "career-exam:expired-attempt:reserve"),
+            residentId: "exam-resident",
+        });
+        harness.setNow(expiredAttempt.scheduledAt);
+        const expiredSettlement = goldReceipt(harness, "exam-resident", "system_gold_settle", 40_000, "career-exam:expired-attempt:settle");
+        harness.school.startExam(expiredAttempt.attemptId, expiredSettlement);
+        harness.setNow(expiredAttempt.scheduledAt + 2 * 60 * 60 * 1_000);
+        assert.equal(harness.school.submitWrittenExam(expiredAttempt.attemptId, 20), "expired");
+        assert.deepEqual({ ...harness.database
+            .prepare(`SELECT registration_status, correct_answers, settlement_receipt_id
+              FROM career_exam_attempts WHERE attempt_id = 'expired-attempt'`)
+            .get() }, {
+            correct_answers: null,
+            registration_status: "failed",
+            settlement_receipt_id: expiredSettlement.receiptId,
+        });
+        const passedAttempt = harness.school.registerExam({
+            attemptId: "passed-attempt",
+            career: "reporter",
+            level: 1,
+            reservationReceipt: goldReceipt(harness, "exam-resident", "system_gold_reserve", 20_000, "career-exam:passed-attempt:reserve"),
+            residentId: "exam-resident",
+        });
+        harness.setNow(passedAttempt.scheduledAt);
+        harness.school.startExam(passedAttempt.attemptId, goldReceipt(harness, "exam-resident", "system_gold_settle", 20_000, "career-exam:passed-attempt:settle"));
+        assert.equal(harness.school.submitWrittenExam(passedAttempt.attemptId, 20), "passed");
+        const attemptsBefore = harness.database
+            .prepare("SELECT COUNT(*) AS count FROM career_exam_attempts WHERE resident_id = 'exam-resident'")
+            .get().count;
+        const duplicateReservation = goldReceipt(harness, "exam-resident", "system_gold_reserve", 20_000, "career-exam:duplicate-attempt:reserve");
+        assert.throws(() => harness.school.registerExam({
+            attemptId: "duplicate-attempt",
+            career: "reporter",
+            level: 1,
+            reservationReceipt: duplicateReservation,
+            residentId: "exam-resident",
+        }), assertCareerError("certificate_already_active"));
+        assert.equal(harness.database
+            .prepare("SELECT COUNT(*) AS count FROM career_exam_attempts WHERE resident_id = 'exam-resident'")
+            .get().count, attemptsBefore);
+        assert.equal(harness.database
+            .prepare("SELECT COUNT(*) AS count FROM career_financial_receipts WHERE receipt_id = ?")
+            .get(duplicateReservation.receiptId).count, 0);
+    }
+    finally {
+        harness.database.close();
+    }
+});
 test("public institutions enforce two seats, next-day duty, base wage without work, and real-work performance", () => {
     const harness = createHarness(beijingTimestamp("2026-08-26", 0));
     try {
@@ -518,8 +575,16 @@ test("public institutions enforce two seats, next-day duty, base wage without wo
         const reporterTwoNext = nextDuties.find((duty) => duty.residentId === "reporter-2");
         assert.ok(reporterTwoNext);
         harness.employment.setAvailability("employment-2", "leave");
+        assert.equal(harness.database
+            .prepare("SELECT status FROM career_duty_days WHERE duty_id = ?")
+            .get(reporterTwoNext.dutyId).status, "invalidated");
+        harness.employment.setAvailability("employment-2", "available");
+        assert.ok(harness.employment.generateNextDutyDays().some((duty) => duty.dutyId === reporterTwoNext.dutyId));
+        assert.equal(harness.database
+            .prepare("SELECT status FROM career_duty_days WHERE duty_id = ?")
+            .get(reporterTwoNext.dutyId).status, "scheduled");
         harness.setNow(beijingTimestamp("2026-08-30", 0));
-        assert.throws(() => harness.employment.settleDutyDay(reporterTwoNext.dutyId, goldReceipt(harness, "reporter-2", "system_gold_credit", 2_000, `career-duty:${reporterTwoNext.dutyId}:wage`)), assertCareerError("duty_day_invalidated"));
+        assert.equal(harness.employment.settleDutyDay(reporterTwoNext.dutyId, goldReceipt(harness, "reporter-2", "system_gold_credit", 2_000, `career-duty:${reporterTwoNext.dutyId}:wage`)).totalGold, 2_000);
     }
     finally {
         harness.database.close();
@@ -662,8 +727,69 @@ test("jobs share one real-object lock and preserve terminal, cancellation, trans
         });
         assert.equal(transfer.transferred.status, "transferred");
         assert.equal(transfer.successor.status, "available");
+        assert.deepEqual(harness.job.transferJob({
+            jobId: "agri-transfer",
+            successorJobId: "agri-successor",
+            successorSourceId: "request-transfer-successor",
+            workerResidentId: "agronomist-1",
+        }), transfer);
         assert.equal(harness.job.expireJob("agri-successor", false).status, "expired");
         assert.throws(() => harness.job.expireJob("agri-job-2", true), assertCareerError("job_demand_still_exists"));
+    }
+    finally {
+        harness.database.close();
+    }
+});
+test("self jobs belong to their owner and cannot create an unclaimable transfer successor", () => {
+    const harness = createHarness(beijingTimestamp("2026-08-26", 9));
+    try {
+        seedCertificate(harness, "chef-owner", "chef", 1);
+        seedCertificate(harness, "other-chef", "chef", 1);
+        assert.throws(() => harness.job.createJob({
+            assignmentMode: "self",
+            career: "chef",
+            difficultyLevel: 1,
+            jobId: "invalid-self-job",
+            objectId: "recipe-draft-1",
+            objectType: "recipe_draft",
+            ownerResidentId: "chef-owner",
+            requiredLevel: 1,
+            selfWorkerResidentId: "other-chef",
+            sourceId: "invalid-self-source",
+            sourceType: "chef_research",
+        }), assertCareerError("self_owner_mismatch"));
+        harness.job.createJob({
+            assignmentMode: "self",
+            career: "chef",
+            difficultyLevel: 1,
+            jobId: "valid-self-job",
+            objectId: "recipe-draft-2",
+            objectType: "recipe_draft",
+            ownerResidentId: "chef-owner",
+            requiredLevel: 1,
+            selfWorkerResidentId: "chef-owner",
+            sourceId: "valid-self-source",
+            sourceType: "chef_research",
+        });
+        harness.job.recordDecision({
+            changesWorld: false,
+            consumesResources: false,
+            idempotencyKey: "self-check",
+            jobId: "valid-self-job",
+            kind: "check",
+            optionReference: "check-recipe",
+            resultReference: "needs-more-work",
+            workerResidentId: "chef-owner",
+        });
+        assert.throws(() => harness.job.transferJob({
+            jobId: "valid-self-job",
+            successorJobId: "invalid-self-successor",
+            successorSourceId: "invalid-self-successor-source",
+            workerResidentId: "chef-owner",
+        }), assertCareerError("job_not_transferable"));
+        assert.equal(harness.database
+            .prepare("SELECT COUNT(*) AS count FROM career_jobs WHERE parent_job_id = 'valid-self-job'")
+            .get().count, 0);
     }
     finally {
         harness.database.close();
@@ -786,6 +912,48 @@ test("constable interview uses human signup order and fails closed after the 24-
             .prepare(`SELECT status, effective_at FROM career_certificates
            WHERE resident_id = 'candidate' AND career = 'constable' AND qualification_level = 1`)
             .get() }, { effective_at: null, status: "pending_review_configuration" });
+    }
+    finally {
+        harness.database.close();
+    }
+});
+test("a postponed constable interview reopens signup at a new session", () => {
+    const harness = createHarness(beijingTimestamp("2026-08-26", 11));
+    try {
+        harness.school.selectCareer("postponed-candidate", "constable");
+        completeLevelOneCourses(harness, "postponed-candidate", "constable");
+        const attempt = harness.school.registerExam({
+            attemptId: "postponed-attempt",
+            career: "constable",
+            level: 1,
+            reservationReceipt: goldReceipt(harness, "postponed-candidate", "system_gold_reserve", 40_000, "career-exam:postponed-attempt:reserve"),
+            residentId: "postponed-candidate",
+        });
+        harness.setNow(attempt.scheduledAt);
+        harness.school.startExam(attempt.attemptId, goldReceipt(harness, "postponed-candidate", "system_gold_settle", 40_000, "career-exam:postponed-attempt:settle"));
+        assert.equal(harness.school.submitWrittenExam(attempt.attemptId, 20), "written_passed");
+        const firstSession = beijingTimestamp("2026-08-27", 20);
+        const interviewId = harness.school.scheduleConstableInterview(attempt.attemptId, firstSession);
+        harness.setNow(beijingTimestamp("2026-08-27", 8));
+        harness.school.signupConstableExaminer({
+            eligibilityReference: "postponed-eligibility",
+            examinerAccountId: "postponed-human",
+            examinerResidentId: "postponed-resident",
+            interviewId,
+        });
+        harness.setNow(firstSession);
+        assert.equal(harness.school.finalizeConstableExaminerPanel(interviewId), "postponed");
+        const secondSession = beijingTimestamp("2026-08-28", 20);
+        assert.equal(harness.school.scheduleConstableInterview(attempt.attemptId, secondSession), interviewId);
+        assert.deepEqual({ ...harness.database
+            .prepare("SELECT scheduled_at, status FROM career_constable_interviews WHERE interview_id = ?")
+            .get(interviewId) }, { scheduled_at: secondSession, status: "signup_open" });
+        assert.equal(harness.database
+            .prepare("SELECT registration_status FROM career_exam_attempts WHERE attempt_id = ?")
+            .get(attempt.attemptId).registration_status, "written_passed");
+        assert.equal(harness.database
+            .prepare("SELECT COUNT(*) AS count FROM career_constable_examiner_signups WHERE interview_id = ?")
+            .get(interviewId).count, 0);
     }
     finally {
         harness.database.close();

@@ -101,10 +101,21 @@ export class CareerEmploymentService {
             const result = [];
             for (const employment of employments) {
                 const existing = this.#database
-                    .prepare(`SELECT duty_id FROM career_duty_days
+                    .prepare(`SELECT duty_id, status FROM career_duty_days
              WHERE employment_id = ? AND duty_date = ?`)
                     .get(employment.employment_id, dutyDate);
                 if (existing) {
+                    if (existing.status === "invalidated") {
+                        const level = activeCertificateLevel(this.#database, employment.resident_id, employment.career);
+                        if (level === null)
+                            continue;
+                        this.#database
+                            .prepare(`UPDATE career_duty_days
+                 SET status = 'scheduled', qualification_level = ?, base_wage_gold = ?,
+                     generated_at = ?, invalidated_at = NULL
+                 WHERE duty_id = ?`)
+                            .run(level, BASE_WAGE_GOLD[level], now, existing.duty_id);
+                    }
                     result.push({
                         dutyDate,
                         dutyId: existing.duty_id,

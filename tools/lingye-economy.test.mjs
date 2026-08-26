@@ -590,11 +590,41 @@ test("system loans freeze interest at maturity, enforce grace restrictions and c
     });
     assert.equal(service.getAccount("resident-b").creditPoints, 1);
 });
+test("unsupported deposit and system-loan terms fail before any command or balance mutation", () => {
+    const { database, service } = createHarness();
+    importAccount(service, "resident-a", 2_000_000, 0);
+    const before = service.getAccount("resident-a");
+    const countsBefore = database
+        .prepare(`SELECT
+          (SELECT COUNT(*) FROM economy_commands) AS commands,
+          (SELECT COUNT(*) FROM economy_journals) AS journals`)
+        .get();
+    expectEconomyError("DEPOSIT_CONTRACT_INVALID", () => service.openTermDeposit({
+        idempotencyKey: "invalid-term-deposit",
+        principal: 1_000_000,
+        residentId: "resident-a",
+        termDays: 15,
+        totalRatePpm: 2_000,
+    }));
+    expectEconomyError("LOAN_CONTRACT_INVALID", () => service.openSystemLoan({
+        borrowerResidentId: "resident-a",
+        idempotencyKey: "invalid-system-loan-term",
+        principal: 100_000,
+        termDays: 15,
+    }));
+    assert.deepEqual(service.getAccount("resident-a"), before);
+    assert.deepEqual({ ...database
+        .prepare(`SELECT
+          (SELECT COUNT(*) FROM economy_commands) AS commands,
+          (SELECT COUNT(*) FROM economy_journals) AS journals`)
+        .get() }, { ...countsBefore });
+});
 test("player loans require both real parties, transfer existing silver and repay accrued interest", () => {
     const { service, setNow } = createHarness();
     importAccount(service, "resident-a", 0, 1_000);
     importAccount(service, "resident-b", 0, 5);
     const loan = service.proposePlayerLoan({
+        actorResidentId: "resident-a",
         lenderResidentId: "resident-a",
         borrowerResidentId: "resident-b",
         principal: 100,
@@ -603,13 +633,13 @@ test("player loans require both real parties, transfer existing silver and repay
         idempotencyKey: "player-loan-propose",
     });
     service.confirmPlayerLoan({
+        actorResidentId: "resident-b",
         loanId: loan.loan_id,
-        residentId: "resident-b",
         idempotencyKey: "player-loan-borrower",
     });
     const active = service.confirmPlayerLoan({
+        actorResidentId: "resident-a",
         loanId: loan.loan_id,
-        residentId: "resident-a",
         idempotencyKey: "player-loan-lender",
     });
     assert.equal(active.status, "active");
@@ -617,6 +647,7 @@ test("player loans require both real parties, transfer existing silver and repay
     assert.equal(service.getAccount("resident-b").availableSilver, 105);
     setNow(START + 5 * DAY);
     const repaid = service.repayPlayerLoan({
+        actorResidentId: "resident-b",
         loanId: loan.loan_id,
         amount: 105,
         idempotencyKey: "player-loan-repay",
@@ -626,6 +657,7 @@ test("player loans require both real parties, transfer existing silver and repay
     assert.equal(service.getAccount("resident-b").availableSilver, 0);
     importAccount(service, "resident-c", 0, 0);
     const cancelledProposal = service.proposePlayerLoan({
+        actorResidentId: "resident-a",
         lenderResidentId: "resident-a",
         borrowerResidentId: "resident-c",
         principal: 10,
@@ -634,9 +666,75 @@ test("player loans require both real parties, transfer existing silver and repay
         idempotencyKey: "cancelled-loan-propose",
     });
     assert.equal(service.cancelPlayerLoan({
+        actorResidentId: "resident-c",
         loanId: cancelledProposal.loan_id,
         idempotencyKey: "cancelled-loan-cancel",
     }).status, "cancelled");
+});
+test("player-loan authorization precedes proposal mutation and every replay state", () => {
+    const { service } = createHarness();
+    importAccount(service, "resident-a", 0, 1_000);
+    importAccount(service, "resident-b", 0, 0);
+    importAccount(service, "resident-c", 0, 0);
+    expectEconomyError("UNAUTHORIZED_PARTY", () => service.proposePlayerLoan({
+        actorResidentId: "resident-c",
+        borrowerResidentId: "resident-b",
+        idempotencyKey: "unauthorized-proposal",
+        lenderResidentId: "resident-a",
+        principal: 100,
+        termDays: 1,
+        totalRatePpm: 0,
+    }));
+    const loan = service.proposePlayerLoan({
+        actorResidentId: "resident-a",
+        borrowerResidentId: "resident-b",
+        idempotencyKey: "authorized-proposal",
+        lenderResidentId: "resident-a",
+        principal: 100,
+        termDays: 1,
+        totalRatePpm: 0,
+    });
+    expectEconomyError("UNAUTHORIZED_PARTY", () => service.confirmPlayerLoan({
+        actorResidentId: "resident-c",
+        idempotencyKey: "third-party-confirm-proposed",
+        loanId: loan.loan_id,
+    }));
+    expectEconomyError("UNAUTHORIZED_PARTY", () => service.cancelPlayerLoan({
+        actorResidentId: "resident-c",
+        idempotencyKey: "third-party-cancel-proposed",
+        loanId: loan.loan_id,
+    }));
+    service.confirmPlayerLoan({
+        actorResidentId: "resident-a",
+        idempotencyKey: "authorized-lender-confirm",
+        loanId: loan.loan_id,
+    });
+    expectEconomyError("UNAUTHORIZED_PARTY", () => service.confirmPlayerLoan({
+        actorResidentId: "resident-c",
+        idempotencyKey: "authorized-lender-confirm",
+        loanId: loan.loan_id,
+    }));
+    service.confirmPlayerLoan({
+        actorResidentId: "resident-b",
+        idempotencyKey: "authorized-borrower-confirm",
+        loanId: loan.loan_id,
+    });
+    expectEconomyError("UNAUTHORIZED_PARTY", () => service.confirmPlayerLoan({
+        actorResidentId: "resident-c",
+        idempotencyKey: "third-party-confirm-active",
+        loanId: loan.loan_id,
+    }));
+    service.repayPlayerLoan({
+        actorResidentId: "resident-b",
+        amount: 100,
+        idempotencyKey: "authorized-repayment",
+        loanId: loan.loan_id,
+    });
+    expectEconomyError("UNAUTHORIZED_PARTY", () => service.confirmPlayerLoan({
+        actorResidentId: "resident-c",
+        idempotencyKey: "third-party-confirm-repaid",
+        loanId: loan.loan_id,
+    }));
 });
 test("unconfirmed credit and daily restriction values fail closed instead of becoming hidden defaults", () => {
     const { service, setNow } = createHarness({
@@ -653,6 +751,7 @@ test("unconfirmed credit and daily restriction values fail closed instead of bec
     }));
     importAccount(service, "resident-b", 0, 0);
     const playerLoan = service.proposePlayerLoan({
+        actorResidentId: "resident-a",
         lenderResidentId: "resident-a",
         borrowerResidentId: "resident-b",
         principal: 100,
@@ -661,13 +760,13 @@ test("unconfirmed credit and daily restriction values fail closed instead of bec
         idempotencyKey: "unconfigured-player-loan",
     });
     service.confirmPlayerLoan({
+        actorResidentId: "resident-a",
         loanId: playerLoan.loan_id,
-        residentId: "resident-a",
         idempotencyKey: "unconfigured-player-loan-lender",
     });
     service.confirmPlayerLoan({
+        actorResidentId: "resident-b",
         loanId: playerLoan.loan_id,
-        residentId: "resident-b",
         idempotencyKey: "unconfigured-player-loan-borrower",
     });
     setNow(START + 4 * DAY);

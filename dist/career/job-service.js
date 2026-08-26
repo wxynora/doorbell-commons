@@ -42,6 +42,9 @@ export class CareerJobService {
                 if (!input.selfWorkerResidentId) {
                     throw new CareerDomainError("self_worker_required", "A self-directed job needs its owner");
                 }
+                if (!input.ownerResidentId || input.ownerResidentId !== input.selfWorkerResidentId) {
+                    throw new CareerDomainError("self_owner_mismatch", "A self-directed job must belong to its worker");
+                }
                 requireActiveCertificate(this.#database, input.selfWorkerResidentId, input.career, input.requiredLevel);
                 status = "accepted";
                 workerResidentId = input.selfWorkerResidentId;
@@ -200,6 +203,27 @@ export class CareerJobService {
         const now = this.#now();
         return runInTransaction(this.#database, () => {
             const job = this.#requireWorkerJob(input.jobId, input.workerResidentId);
+            const successorSourceType = `${job.source_type}:transfer`;
+            const existingSuccessor = this.#database
+                .prepare(`SELECT * FROM career_jobs
+           WHERE job_id = ? OR (source_type = ? AND source_id = ?)`)
+                .get(input.successorJobId, successorSourceType, input.successorSourceId);
+            if (existingSuccessor) {
+                if (job.status !== "transferred" ||
+                    existingSuccessor.job_id !== input.successorJobId ||
+                    existingSuccessor.parent_job_id !== job.job_id ||
+                    existingSuccessor.source_type !== successorSourceType ||
+                    existingSuccessor.source_id !== input.successorSourceId) {
+                    throw new CareerDomainError("job_transfer_conflict", "The transfer successor identity conflicts with another job");
+                }
+                return {
+                    successor: mapJob(existingSuccessor),
+                    transferred: mapJob(job),
+                };
+            }
+            if (job.assignment_mode === "self") {
+                throw new CareerDomainError("job_not_transferable", "A self-directed job cannot transfer");
+            }
             if (job.status !== "active") {
                 throw new CareerDomainError("job_not_transferable", "Only an active job can transfer");
             }
@@ -228,7 +252,7 @@ export class CareerJobService {
              owner_resident_id, required_level, difficulty_level, assignment_mode,
              status, created_at, updated_at
            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'available', ?, ?)`)
-                .run(input.successorJobId, job.job_id, job.career, `${job.source_type}:transfer`, input.successorSourceId, job.object_type, job.object_id, job.owner_resident_id, job.required_level, job.difficulty_level, job.assignment_mode, now, now);
+                .run(input.successorJobId, job.job_id, job.career, successorSourceType, input.successorSourceId, job.object_type, job.object_id, job.owner_resident_id, job.required_level, job.difficulty_level, job.assignment_mode, now, now);
             return {
                 successor: mapJob(this.#requireJob(input.successorJobId)),
                 transferred: mapJob(this.#requireJob(job.job_id)),

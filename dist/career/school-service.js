@@ -256,6 +256,14 @@ export class CareerSchoolService {
             if (attempt.registration_status !== "active") {
                 throw new CareerDomainError("exam_not_active", "The exam is not active");
             }
+            if (now >= attempt.scheduled_at + TWO_HOURS_MS) {
+                this.#database
+                    .prepare(`UPDATE career_exam_attempts
+             SET registration_status = 'failed', correct_answers = NULL, ended_at = ?
+             WHERE attempt_id = ?`)
+                    .run(now, attemptId);
+                return "expired";
+            }
             if (correctAnswers < EXAM_PASS_COUNT) {
                 this.#database
                     .prepare(`UPDATE career_exam_attempts
@@ -285,7 +293,8 @@ export class CareerSchoolService {
         const now = this.#now();
         return runInTransaction(this.#database, () => {
             const attempt = this.#requireExamAttempt(attemptId);
-            if (attempt.career !== "constable" || attempt.registration_status !== "written_passed") {
+            if (attempt.career !== "constable" ||
+                !["written_passed", "postponed"].includes(attempt.registration_status)) {
                 throw new CareerDomainError("constable_written_exam_required", "A current passed constable written exam is required");
             }
             if ((attempt.ended_at ?? now) + THIRTY_DAYS_MS < scheduledAt) {
@@ -295,8 +304,26 @@ export class CareerSchoolService {
                 throw new CareerDomainError("invalid_interview_session", "Constable interviews start at 20:00 Beijing time");
             }
             const existing = this.#database
-                .prepare("SELECT interview_id FROM career_constable_interviews WHERE attempt_id = ?")
+                .prepare("SELECT interview_id, scheduled_at, status FROM career_constable_interviews WHERE attempt_id = ?")
                 .get(attemptId);
+            if (existing?.status === "postponed") {
+                this.#database
+                    .prepare("DELETE FROM career_constable_examiner_signups WHERE interview_id = ?")
+                    .run(existing.interview_id);
+                this.#database
+                    .prepare("DELETE FROM career_constable_scores WHERE interview_id = ?")
+                    .run(existing.interview_id);
+                this.#database
+                    .prepare(`UPDATE career_constable_interviews
+             SET scheduled_at = ?, status = 'signup_open', finalized_at = NULL
+             WHERE interview_id = ?`)
+                    .run(scheduledAt, existing.interview_id);
+                this.#database
+                    .prepare(`UPDATE career_exam_attempts
+             SET registration_status = 'written_passed' WHERE attempt_id = ?`)
+                    .run(attemptId);
+                return existing.interview_id;
+            }
             if (existing)
                 return existing.interview_id;
             const interviewId = this.#generateId();
@@ -599,6 +626,13 @@ export class CareerSchoolService {
     }
     #requireExamEligibility(residentId, career, level) {
         requireCareerTrack(this.#database, residentId, career);
+        const activeCertificate = this.#database
+            .prepare(`SELECT 1 FROM career_certificates
+         WHERE resident_id = ? AND career = ? AND qualification_level = ? AND status = 'active'`)
+            .get(residentId, career, level);
+        if (activeCertificate) {
+            throw new CareerDomainError("certificate_already_active", "The qualification certificate is already active");
+        }
         this.#requireLevelPrerequisite(residentId, career, level);
         const courses = this.#database
             .prepare(`SELECT COUNT(*) AS count FROM career_courses

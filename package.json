@@ -4,12 +4,16 @@
   "description": "AI 农场联网小游戏 —— AI 自主种植养殖，玩家可联网偷菜/浇水",
   "type": "module",
   "scripts": {
+    "check:node": "node --input-type=module -e \"import { assertSupportedNodeVersion } from './dist/runtime-version.js'; assertSupportedNodeVersion();\"",
+    "prestart": "npm run check:node",
     "start": "node dist/index.js",
+    "preserve": "npm run check:node",
     "serve": "node dist/index.js",
-    "sync": "node farm-sync.mjs"
+    "sync": "node farm-sync.mjs",
+    "test:lingye-core": "npm run check:node && node --test tools/lingye-economy.test.mjs tools/lingye-career.test.mjs tools/farm-weather-nature.test.mjs tools/lingye-world-backend.test.mjs tools/farm-request-and-store-safety.test.mjs"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.16.0"
   },
   "license": "PolyForm-Noncommercial-1.0.0"
 }

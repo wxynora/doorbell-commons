@@ -9,8 +9,17 @@ import {
     registerLingyeResidentReference,
     runLingyeWorldTransaction,
 } from "../dist/lingye-world-database.js";
+import { assertSupportedNodeVersion } from "../dist/runtime-version.js";
 
 const NOW = Date.parse("2026-09-01T08:00:00+08:00");
+
+test("farm runtime rejects Node versions below the node:sqlite transaction contract", () => {
+    assert.doesNotThrow(() => assertSupportedNodeVersion("22.16.0"));
+    assert.doesNotThrow(() => assertSupportedNodeVersion("24.0.0"));
+    assert.throws(() => assertSupportedNodeVersion("22.15.9"), /Node\.js >=22\.16\.0 is required/u);
+    assert.throws(() => assertSupportedNodeVersion("20.20.0"), /Node\.js >=22\.16\.0 is required/u);
+    assert.doesNotThrow(() => assertSupportedNodeVersion());
+});
 
 function createHarness() {
     const directory = mkdtempSync(join(tmpdir(), "lingye-world-backend-"));
@@ -32,6 +41,15 @@ function createHarness() {
 test("Lingye world keeps resident references, economy and careers in one isolated authority", () => {
     const harness = createHarness();
     try {
+        assert.equal(harness.database.isTransaction, false);
+        assert.equal(runLingyeWorldTransaction(harness.database, () => {
+            assert.equal(harness.database.isTransaction, true);
+            return runLingyeWorldTransaction(harness.database, () => {
+                assert.equal(harness.database.isTransaction, true);
+                return "nested-transaction-ok";
+            });
+        }), "nested-transaction-ok");
+        assert.equal(harness.database.isTransaction, false);
         const resident = registerLingyeResidentReference(harness.database, {
             residentId: "resident-a",
             bindingReference: "migration-a",
