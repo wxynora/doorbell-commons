@@ -89,6 +89,7 @@ test("structured kitchen projection is pure, strict in its source boundary, and 
   assert.deepEqual(farm, farmBefore);
   assert.deepEqual(world, worldBefore);
   assert.equal(result.data.farm.farm_doorplate, FARM_ID);
+  assert.match(result.kitchen_inventory_revision, /^kitchen-inventory-v1:[0-9a-f]{64}$/);
   assert.match(result.shop_revision, /^kitchen-v1:[0-9a-f]{64}$/);
   assert.deepEqual(result.data.balance.silver, { status: "available", value: 321, reason: null });
   assert.deepEqual(result.data.balance.ranch_coins, {
@@ -96,8 +97,34 @@ test("structured kitchen projection is pure, strict in its source boundary, and 
     value: 654,
     reason: null,
   });
-  assert.equal(result.data.tools.status, "unavailable");
-  assert.equal(result.data.tools.reason, "not_persisted");
+  assert.equal(result.data.tools.status, "available");
+  assert.equal(result.data.tools.reason, null);
+  assert.deepEqual(result.data.tools.items, [
+    {
+      status: "available",
+      tool_id: "roast",
+      name: "烤炉",
+      price_silver: 800,
+      owned: false,
+      reason: null,
+    },
+    {
+      status: "available",
+      tool_id: "steam",
+      name: "蒸笼",
+      price_silver: 1200,
+      owned: false,
+      reason: null,
+    },
+    {
+      status: "available",
+      tool_id: "deep-fry",
+      name: "炸锅",
+      price_silver: 1600,
+      owned: false,
+      reason: null,
+    },
+  ]);
 
   const ingredients = result.data.stacked_ingredients.items;
   assert.equal(ingredients.find((item) => item.ingredient_id === "salt")?.name, "盐");
@@ -143,16 +170,16 @@ test("structured kitchen projection is pure, strict in its source boundary, and 
   const knownRecipe = result.data.known_recipes.items.find((item) => item.recipe_id === "honey_tea");
   assert.equal(knownRecipe?.name, "蜂蜜茶");
   assert.deepEqual(knownRecipe?.method, {
-    status: "unavailable",
-    id: null,
-    name: null,
-    reason: "not_persisted",
+    status: "available",
+    id: "drink",
+    name: "饮品",
+    reason: null,
   });
   assert.deepEqual(knownRecipe?.tool, {
-    status: "unavailable",
+    status: "available",
     id: null,
     name: null,
-    reason: "not_persisted",
+    reason: null,
   });
   assert.equal(
     result.data.known_recipes.items.find((item) => item.recipe_id === "not-a-recipe")?.reason,
@@ -187,6 +214,8 @@ test("uninitialized and stale lazy kitchen state stays unavailable without a wri
   assert.deepEqual(uninitialized, before);
   assert.equal(emptyResult.data.balance.silver.status, "available");
   assert.equal(emptyResult.data.balance.ranch_coins.status, "unavailable");
+  assert.equal(emptyResult.data.tools.status, "available");
+  assert.deepEqual(emptyResult.data.tools.items.map((tool) => tool.owned), [false, false, false]);
   assert.equal(emptyResult.data.stacked_ingredients.reason, "not_initialized");
   assert.equal(emptyResult.data.daily_shop.reason, "not_initialized");
 
@@ -201,6 +230,68 @@ test("uninitialized and stale lazy kitchen state stays unavailable without a wri
   assert.deepEqual(staleResult.data.daily_shop.recipes, []);
 });
 
+test("persisted kitchen tool ownership is projected without normalizing the save", () => {
+  const farm = kitchenFarm();
+  farm.ranch.kitchen.ownedTools = ["steam", "not-a-paid-tool"];
+  const before = structuredClone(farm);
+
+  const result = projectHumanKitchen(farm, NOW);
+
+  assert.deepEqual(farm, before);
+  assert.deepEqual(
+    result.data.tools.items.map((tool) => [tool.tool_id, tool.owned]),
+    [
+      ["roast", false],
+      ["steam", true],
+      ["deep-fry", false],
+    ],
+  );
+});
+
+test("recipe method and paid-tool requirements come from the 90-recipe authority", () => {
+  const farm = kitchenFarm();
+  farm.ranch.kitchen.knownRecipes = ["tomato_egg", "corn_custard", "onion_roast_duck"];
+
+  const result = projectHumanKitchen(farm, NOW);
+  const recipe = (id) => result.data.known_recipes.items.find((item) => item.recipe_id === id);
+  assert.deepEqual(recipe("tomato_egg")?.method, {
+    status: "available",
+    id: "stir-fry",
+    name: "炒",
+    reason: null,
+  });
+  assert.deepEqual(recipe("tomato_egg")?.tool, {
+    status: "available",
+    id: null,
+    name: null,
+    reason: null,
+  });
+  assert.deepEqual(recipe("corn_custard")?.method, {
+    status: "available",
+    id: "steam",
+    name: "蒸",
+    reason: null,
+  });
+  assert.deepEqual(recipe("corn_custard")?.tool, {
+    status: "available",
+    id: "steamer",
+    name: "蒸笼",
+    reason: null,
+  });
+  assert.deepEqual(recipe("onion_roast_duck")?.method, {
+    status: "available",
+    id: "roast",
+    name: "烤",
+    reason: null,
+  });
+  assert.deepEqual(recipe("onion_roast_duck")?.tool, {
+    status: "available",
+    id: "oven",
+    name: "烤炉",
+    reason: null,
+  });
+});
+
 test("purchase revision is stable for the same state and changes with purchase-relevant state", () => {
   const farm = kitchenFarm();
   const first = projectHumanKitchen(farm, NOW);
@@ -211,4 +302,8 @@ test("purchase revision is stable for the same state and changes with purchase-r
   farm.silver += 1;
   const changed = projectHumanKitchen(farm, NOW);
   assert.notEqual(changed.shop_revision, first.shop_revision);
+
+  farm.ranch.kitchen.ownedTools = ["roast"];
+  const changedByToolOwnership = projectHumanKitchen(farm, NOW);
+  assert.notEqual(changedByToolOwnership.shop_revision, changed.shop_revision);
 });

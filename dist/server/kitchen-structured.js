@@ -8,6 +8,7 @@ import {
   fishingItemById,
 } from "../content.js";
 import { currentDayIndex } from "../time.js";
+import { kitchenInventoryRevisionFromData } from "./kitchen-inventory-revision.js";
 
 const ODD_DISH = {
   id: "odd_dish",
@@ -16,6 +17,51 @@ const ODD_DISH = {
   category: null,
   ingredients: [],
 };
+
+// These are the paid cooking tools exposed by the Human kitchen shop.  The
+// free cooking methods remain implicit and do not need an ownership field in
+// a farm save.
+export const PAID_KITCHEN_TOOLS = [
+  { tool_id: "roast", name: "烤炉", price_silver: 800 },
+  { tool_id: "steam", name: "蒸笼", price_silver: 1_200 },
+  { tool_id: "deep-fry", name: "炸锅", price_silver: 1_600 },
+];
+
+// Recipe methods are authoritative content IDs.  The purchase catalog above
+// keeps its existing action IDs for compatibility; recipe tool IDs use the
+// stable physical-tool IDs below and are accepted together with those legacy
+// purchase IDs when checking one farm's persisted ownership.
+export const KITCHEN_METHODS = Object.freeze({
+  "stir-fry": Object.freeze({ method_id: "stir-fry", name: "炒", tool_id: null }),
+  "pan-fry": Object.freeze({ method_id: "pan-fry", name: "煎", tool_id: null }),
+  stew: Object.freeze({ method_id: "stew", name: "炖煮", tool_id: null }),
+  steam: Object.freeze({ method_id: "steam", name: "蒸", tool_id: "steamer" }),
+  roast: Object.freeze({ method_id: "roast", name: "烤", tool_id: "oven" }),
+  "deep-fry": Object.freeze({ method_id: "deep-fry", name: "油炸", tool_id: "fryer" }),
+  dessert: Object.freeze({ method_id: "dessert", name: "甜品", tool_id: null }),
+  drink: Object.freeze({ method_id: "drink", name: "饮品", tool_id: null }),
+});
+
+const KITCHEN_TOOLS = Object.freeze({
+  oven: Object.freeze({ tool_id: "oven", name: "烤炉" }),
+  steamer: Object.freeze({ tool_id: "steamer", name: "蒸笼" }),
+  fryer: Object.freeze({ tool_id: "fryer", name: "炸锅" }),
+});
+
+const PURCHASE_TOOL_TO_RECIPE_TOOL = Object.freeze({
+  roast: "oven",
+  steam: "steamer",
+  "deep-fry": "fryer",
+});
+const KITCHEN_METHOD_BY_ID = new Map(Object.values(KITCHEN_METHODS).map((item) => [item.method_id, item]));
+const KITCHEN_TOOL_BY_ID = new Map(
+  Object.entries(KITCHEN_TOOLS).flatMap(([id, item]) => [
+    [id, item],
+    ...Object.entries(PURCHASE_TOOL_TO_RECIPE_TOOL)
+      .filter(([, canonicalId]) => canonicalId === id)
+      .map(([legacyId]) => [legacyId, item]),
+  ]),
+);
 
 const isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
 const idOf = (value) => (typeof value === "string" && value.trim() ? value.trim() : null);
@@ -58,6 +104,58 @@ function availableSection(items) {
   return { status: "available", items, reason: null };
 }
 
+function availableRequirement(id = null, name = null) {
+  return { status: "available", id, name, reason: null };
+}
+
+export function kitchenMethodDefinition(methodId) {
+  return KITCHEN_METHOD_BY_ID.get(idOf(methodId)) ?? null;
+}
+
+export function kitchenRecipeMethodId(recipe) {
+  return idOf(recipe?.method_id ?? recipe?.method?.id);
+}
+
+export function kitchenRecipeToolId(recipe) {
+  if (Object.hasOwn(recipe ?? {}, "tool_id")) {
+    const raw = recipe.tool_id;
+    if (raw === null) return null;
+    return KITCHEN_TOOL_BY_ID.has(idOf(raw)) ? KITCHEN_TOOL_BY_ID.get(idOf(raw)).tool_id : idOf(raw);
+  }
+  if (Object.hasOwn(recipe ?? {}, "tool")) {
+    const raw = recipe.tool;
+    if (raw === null) return null;
+    const rawId = idOf(isRecord(raw) ? raw.id : raw);
+    return KITCHEN_TOOL_BY_ID.has(rawId) ? KITCHEN_TOOL_BY_ID.get(rawId).tool_id : rawId;
+  }
+  return kitchenMethodDefinition(kitchenRecipeMethodId(recipe))?.tool_id ?? null;
+}
+
+export function kitchenToolDefinition(toolId) {
+  return KITCHEN_TOOL_BY_ID.get(idOf(toolId)) ?? null;
+}
+
+export function kitchenToolIsOwned(kitchen, toolId) {
+  const required = kitchenToolDefinition(toolId);
+  if (!required) return false;
+  const owned = Array.isArray(kitchen?.ownedTools)
+    ? new Set(kitchen.ownedTools.filter((value) => typeof value === "string"))
+    : new Set();
+  return owned.has(required.tool_id) || Object.entries(PURCHASE_TOOL_TO_RECIPE_TOOL)
+    .some(([legacyId, canonicalId]) => canonicalId === required.tool_id && owned.has(legacyId));
+}
+
+function projectKitchenTools(kitchen) {
+  return availableSection(
+    PAID_KITCHEN_TOOLS.map((tool) => ({
+      status: "available",
+      ...tool,
+      owned: kitchenToolIsOwned(kitchen, tool.tool_id),
+      reason: null,
+    })),
+  );
+}
+
 function scalar(value) {
   if (value === undefined)
     return { status: "unavailable", value: null, reason: "not_initialized" };
@@ -77,21 +175,98 @@ function nextShanghaiMidnight(dayIndex) {
   return new Date((dayIndex + 1) * 86_400_000 - 8 * 3_600_000).toISOString();
 }
 
+function ingredientShopRefreshRules() {
+  const rules = cooking.ingredientShopRefresh;
+  const dailyLimit = rules?.dailyLimit;
+  const costStepCoins = rules?.costStepCoins;
+  if (
+    !Number.isSafeInteger(dailyLimit) ||
+    dailyLimit < 1 ||
+    !Number.isSafeInteger(costStepCoins) ||
+    costStepCoins < 1
+  ) {
+    return null;
+  }
+  return { dailyLimit, costStepCoins };
+}
+
+function projectIngredientShopRefresh(shop, currentDay, available) {
+  const rules = ingredientShopRefreshRules();
+  const fields = {
+    refresh_window_id: currentDay,
+    refresh_used_count: null,
+    refresh_remaining_count: null,
+    refresh_limit: rules?.dailyLimit ?? null,
+    next_cost_coins: null,
+    can_refresh: false,
+    refresh_reset_at: nextShanghaiMidnight(currentDay),
+  };
+  if (!rules || !available || !isRecord(shop)) return fields;
+  const hasWindow = shop.refreshWindowId !== undefined;
+  const hasCount = shop.refreshCount !== undefined;
+  if (hasWindow !== hasCount) return fields;
+  if (!hasWindow) {
+    fields.refresh_used_count = 0;
+  } else if (
+    !Number.isSafeInteger(shop.refreshWindowId) ||
+    shop.refreshWindowId < 0 ||
+    !Number.isSafeInteger(shop.refreshCount) ||
+    shop.refreshCount < 0 ||
+    shop.refreshCount > rules.dailyLimit
+  ) {
+    return fields;
+  } else {
+    fields.refresh_used_count = shop.refreshWindowId === currentDay ? shop.refreshCount : 0;
+  }
+  fields.refresh_remaining_count = rules.dailyLimit - fields.refresh_used_count;
+  fields.next_cost_coins = Math.min(
+    (fields.refresh_used_count + 1) * rules.costStepCoins,
+    rules.dailyLimit * rules.costStepCoins,
+  );
+  fields.can_refresh = fields.refresh_used_count < rules.dailyLimit;
+  return fields;
+}
+
 function unavailableRequirement(reason, id = null) {
   return { status: "unavailable", id, name: null, reason };
 }
 
-function projectRequirement(recipe, field) {
-  const raw = recipe?.[field] ?? recipe?.[`${field}_id`];
+function projectMethodRequirement(recipe) {
+  const raw = recipe?.method ?? recipe?.method_id;
   if (isRecord(raw)) {
     const id = idOf(raw.id);
+    const definition = kitchenMethodDefinition(id);
+    if (definition) return availableRequirement(definition.method_id, definition.name);
     const name = typeof raw.name === "string" && raw.name.trim() ? raw.name.trim() : null;
-    if (id && name)
-      return { status: "available", id, name, reason: null };
-    return unavailableRequirement("unknown_id", id);
+    return id && name ? availableRequirement(id, name) : unavailableRequirement("unknown_id", id);
   }
   const id = idOf(raw);
-  return id ? unavailableRequirement("unknown_id", id) : unavailableRequirement("not_persisted");
+  if (!id) return unavailableRequirement("not_persisted");
+  const definition = kitchenMethodDefinition(id);
+  return definition
+    ? availableRequirement(definition.method_id, definition.name)
+    : unavailableRequirement("unknown_id", id);
+}
+
+function projectToolRequirement(recipe) {
+  const hasTool = Object.hasOwn(recipe ?? {}, "tool") || Object.hasOwn(recipe ?? {}, "tool_id");
+  const raw = Object.hasOwn(recipe ?? {}, "tool") ? recipe.tool : recipe?.tool_id;
+  if (hasTool && raw === null) return availableRequirement();
+  const rawId = hasTool
+    ? idOf(isRecord(raw) ? raw.id : raw)
+    : kitchenRecipeToolId(recipe);
+  if (!rawId) {
+    return hasTool || kitchenMethodDefinition(kitchenRecipeMethodId(recipe))
+      ? availableRequirement()
+      : unavailableRequirement("not_persisted");
+  }
+  const definition = kitchenToolDefinition(rawId);
+  if (definition) return availableRequirement(definition.tool_id, definition.name);
+  if (isRecord(raw)) {
+    const name = typeof raw.name === "string" && raw.name.trim() ? raw.name.trim() : null;
+    if (name) return availableRequirement(rawId, name);
+  }
+  return unavailableRequirement("unknown_id", rawId);
 }
 
 function ingredientCounts(ids) {
@@ -139,8 +314,8 @@ function projectRecipe(recipeId) {
     rarity: recipe.rarity,
     category: recipe.category ?? null,
     ingredients,
-    method: projectRequirement(recipe, "method"),
-    tool: projectRequirement(recipe, "tool"),
+    method: projectMethodRequirement(recipe),
+    tool: projectToolRequirement(recipe),
     reason: null,
   };
 }
@@ -398,6 +573,7 @@ function projectShopRecipe(id, knownIds) {
 function projectDailyShop(kitchen, now) {
   const currentDay = currentDayIndex(now);
   const refreshAt = nextShanghaiMidnight(currentDay);
+  let refreshState = projectIngredientShopRefresh(null, currentDay, false);
   if (!isRecord(kitchen)) {
     return {
       status: "unavailable",
@@ -408,9 +584,11 @@ function projectDailyShop(kitchen, now) {
       ingredients: [],
       recipes: [],
       reason: "not_initialized",
+      ...refreshState,
     };
   }
   const shop = kitchen.shop;
+  refreshState = projectIngredientShopRefresh(shop, currentDay, false);
   if (!isRecord(shop)) {
     return {
       status: "unavailable",
@@ -421,6 +599,7 @@ function projectDailyShop(kitchen, now) {
       ingredients: [],
       recipes: [],
       reason: "not_initialized",
+      ...refreshState,
     };
   }
   const storedDay = finiteInt(shop.day);
@@ -437,6 +616,7 @@ function projectDailyShop(kitchen, now) {
       ingredients: [],
       recipes: [],
       reason: "invalid_shape",
+      ...refreshState,
     };
   }
   if (storedDay !== currentDay) {
@@ -449,8 +629,10 @@ function projectDailyShop(kitchen, now) {
       ingredients: [],
       recipes: [],
       reason: "stale_shop",
+      ...refreshState,
     };
   }
+  refreshState = projectIngredientShopRefresh(shop, currentDay, true);
   const ids = [];
   for (const item of cooking.ingredients) {
     if (item.staple) ids.push(item.id);
@@ -467,6 +649,7 @@ function projectDailyShop(kitchen, now) {
         ingredients: [],
         recipes: [],
         reason: "invalid_shape",
+        ...refreshState,
       };
     }
     if (!ids.includes(id)) ids.push(id);
@@ -487,10 +670,11 @@ function projectDailyShop(kitchen, now) {
         ingredients: [],
         recipes: [],
         reason: "invalid_shape",
+        ...refreshState,
       };
     }
     const recipe = projectShopRecipe(id, seenRecipes);
-    if (!recipe) return { status: "unavailable", stored_day_index: storedDay, current_day_index: currentDay, is_current_day: true, refresh_at: refreshAt, ingredients: [], recipes: [], reason: "invalid_shape" };
+    if (!recipe) return { status: "unavailable", stored_day_index: storedDay, current_day_index: currentDay, is_current_day: true, refresh_at: refreshAt, ingredients: [], recipes: [], reason: "invalid_shape", ...refreshState };
     recipes.push(recipe);
   }
   return {
@@ -502,6 +686,7 @@ function projectDailyShop(kitchen, now) {
     ingredients: ids.map((id) => projectShopIngredient(id, bought)),
     recipes,
     reason: null,
+    ...refreshState,
   };
 }
 
@@ -527,9 +712,7 @@ export function projectHumanKitchen(farm, now = Date.now()) {
         silver: scalar(source.silver),
         ranch_coins: scalar(ranch?.coins),
       },
-      // The current farm runtime does not persist kitchen tool ownership or
-      // recipe method/tool metadata, so neither is inferred from visuals or categories.
-      tools: unavailableSection("not_persisted"),
+      tools: projectKitchenTools(kitchen),
       stacked_ingredients: projectIngredients(kitchen),
       product_instances: projectRawArraySection(kitchen?.products, projectProductInstance),
       fish_instances: projectRawArraySection(fishing?.catchInventory, projectFishInstance),
@@ -542,6 +725,7 @@ export function projectHumanKitchen(farm, now = Date.now()) {
   return {
     data,
     shop_revision: kitchenShopRevisionFromData(data),
+    kitchen_inventory_revision: kitchenInventoryRevisionFromData(data),
     server_time: new Date(at).toISOString(),
   };
 }

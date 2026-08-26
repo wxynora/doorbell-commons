@@ -6,6 +6,7 @@ import {
     DoorbellFarmCreationError,
     DoorbellWelcomeRewardError,
     findDoorbellFarmCreation,
+    getFarm,
     getGlimmerWorld,
     grantDoorbellWelcomeReward,
     playerFarms,
@@ -24,12 +25,25 @@ import { jsonOut, readJsonBody } from "./http.js";
 import { projectHumanField } from "./human-structured.js";
 import { handleHumanHarvestAssist } from "./human-harvest-assist.js";
 import { projectHumanFarmCatalog } from "./farm-catalog-structured.js";
+import { projectHumanBulletin } from "./bulletin-structured.js";
+import { handleHumanCropCodexAction } from "./crop-codex-action.js";
+import { handleHumanSmeltingAction } from "./smelting-action.js";
 import { handleHumanFarmSettingsAction } from "./farm-settings-action.js";
+import { handleHumanExpeditionAction } from "./expedition-action.js";
 import { projectHumanGlimmer } from "./glimmer-structured.js";
 import { projectHumanKitchen } from "./kitchen-structured.js";
 import { handleHumanKitchenPurchase } from "./kitchen-purchase-action.js";
+import { handleHumanKitchenCookAction } from "./kitchen-cook-action.js";
+import { handleHumanKitchenInventoryAction } from "./kitchen-inventory-action.js";
+import { handleHumanKitchenShopRefresh } from "./kitchen-shop-refresh-action.js";
+import { handleHumanOriginalPlantAction } from "./original-plant-action.js";
+import { handleHumanMarketAction } from "./market-action.js";
+import { handleHumanCrossFarmMarketAction } from "./market-cross-farm-action.js";
+import { handleHumanNeighborhoodMessageAction } from "./neighborhood-message-action.js";
 import { projectHumanRanch } from "./ranch-structured.js";
 import { handleHumanRanchCollection } from "./ranch-collection-action.js";
+import { handleHumanRanchDecorationAction } from "./ranch-decoration-action.js";
+import { handleHumanRanchInteractionAction } from "./ranch-interaction-action.js";
 import { handleHumanRanchResidentAction } from "./ranch-resident-action.js";
 import { readHumanTogether } from "./together-structured.js";
 
@@ -207,6 +221,34 @@ async function handleDoorbellHumanCatalogRead(req, res, method) {
     }
 }
 
+async function handleDoorbellHumanBulletinRead(req, res, method) {
+    if (!requireDoorbellHumanFieldService(req, res, method))
+        return;
+    try {
+        const body = await readJsonBody(req, MAX_BODY_BYTES);
+        const keys = isPlainObject(body) ? Object.keys(body) : [];
+        if (!isPlainObject(body)
+            || keys.length !== 2
+            || !keys.includes("farm_human_key")
+            || !keys.includes("expected_farm_doorplate")
+            || typeof body.farm_human_key !== "string"
+            || !body.farm_human_key
+            || typeof body.expected_farm_doorplate !== "string"
+            || !FARM_DOORPLATE_RE.test(body.expected_farm_doorplate))
+            return humanFieldError(res, 400, "invalid_request", "Submit only farm_human_key and expected_farm_doorplate");
+        const binding = validateFarmBinding(body);
+        if (binding.error)
+            return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
+        return jsonOut(res, 200, projectHumanBulletin(binding.farm, Date.now()));
+    }
+    catch (error) {
+        if (error instanceof PublicSyncError)
+            return humanFieldError(res, 400, "invalid_request", "The request body must be valid JSON");
+        console.error("[doorbell-human-bulletin] read failed");
+        return humanFieldError(res, 503, "farm_unavailable", "The farm bulletin could not be read");
+    }
+}
+
 async function handleDoorbellHumanKitchenRead(req, res, method) {
     if (!requireDoorbellHumanFieldService(req, res, method))
         return;
@@ -283,6 +325,48 @@ async function handleDoorbellHumanKitchenPurchase(req, res, method) {
         return humanFieldError(res, 503, "farm_unavailable", "The kitchen purchase could not be completed");
     }
 }
+async function handleDoorbellHumanKitchenCook(req, res, method) {
+    if (!requireDoorbellHumanFieldService(req, res, method))
+        return;
+    try {
+        const body = await readJsonBody(req, MAX_BODY_BYTES);
+        if (!isPlainObject(body))
+            return humanFieldError(res, 400, "invalid_request", "The request body must be an object");
+        const binding = validateFarmBinding(body);
+        if (binding.error)
+            return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
+        const out = handleHumanKitchenCookAction(binding.farm, body);
+        return jsonOut(res, out.status, out.json);
+    }
+    catch (error) {
+        if (error instanceof PublicSyncError) {
+            const tooLarge = error.status === 413;
+            return humanFieldError(res, tooLarge ? 413 : 400, tooLarge ? "body_too_large" : "invalid_request", tooLarge ? "The request body is too large" : "The request body must be valid JSON");
+        }
+        return humanFieldError(res, 503, "farm_unavailable", "The kitchen cook could not be completed");
+    }
+}
+async function handleDoorbellHumanKitchenShopRefresh(req, res, method) {
+    if (!requireDoorbellHumanFieldService(req, res, method))
+        return;
+    try {
+        const body = await readJsonBody(req, MAX_BODY_BYTES);
+        if (!isPlainObject(body))
+            return humanFieldError(res, 400, "invalid_request", "The request body must be an object");
+        const binding = validateFarmBinding(body);
+        if (binding.error)
+            return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
+        const out = handleHumanKitchenShopRefresh(binding.farm, body);
+        return jsonOut(res, out.status, out.json);
+    }
+    catch (error) {
+        if (error instanceof PublicSyncError) {
+            const tooLarge = error.status === 413;
+            return humanFieldError(res, tooLarge ? 413 : 400, tooLarge ? "body_too_large" : "invalid_request", tooLarge ? "The request body is too large" : "The request body must be valid JSON");
+        }
+        return humanFieldError(res, 503, "farm_unavailable", "The kitchen shop refresh could not be completed");
+    }
+}
 async function handleDoorbellHumanRanchResidentAction(req, res, method) {
     if (!requireDoorbellHumanFieldService(req, res, method))
         return;
@@ -302,6 +386,27 @@ async function handleDoorbellHumanRanchResidentAction(req, res, method) {
             return humanFieldError(res, tooLarge ? 413 : 400, tooLarge ? "body_too_large" : "invalid_request", tooLarge ? "The request body is too large" : "The request body must be valid JSON");
         }
         return humanFieldError(res, 503, "farm_unavailable", "The ranch resident action could not be completed");
+    }
+}
+async function handleDoorbellHumanRanchDecorationAction(req, res, method) {
+    if (!requireDoorbellHumanFieldService(req, res, method))
+        return;
+    try {
+        const body = await readJsonBody(req, MAX_BODY_BYTES);
+        if (!isPlainObject(body))
+            return humanFieldError(res, 400, "invalid_request", "The request body must be an object");
+        const binding = validateFarmBinding(body);
+        if (binding.error)
+            return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
+        const out = handleHumanRanchDecorationAction(binding.farm, body);
+        return jsonOut(res, out.status, out.json);
+    }
+    catch (error) {
+        if (error instanceof PublicSyncError) {
+            const tooLarge = error.status === 413;
+            return humanFieldError(res, tooLarge ? 413 : 400, tooLarge ? "body_too_large" : "invalid_request", tooLarge ? "The request body is too large" : "The request body must be valid JSON");
+        }
+        return humanFieldError(res, 503, "farm_unavailable", "The ranch decoration action could not be completed");
     }
 }
 async function handleDoorbellHumanRanchCollection(req, res, method) {
@@ -344,6 +449,176 @@ async function handleDoorbellHumanFarmSettingsAction(req, res, method) {
             return humanFieldError(res, tooLarge ? 413 : 400, tooLarge ? "body_too_large" : "invalid_request", tooLarge ? "The request body is too large" : "The request body must be valid JSON");
         }
         return humanFieldError(res, 503, "farm_unavailable", "The farm settings could not be saved");
+    }
+}
+async function handleDoorbellHumanOriginalPlantAction(req, res, method) {
+    if (!requireDoorbellHumanFieldService(req, res, method))
+        return;
+    try {
+        const body = await readJsonBody(req, MAX_BODY_BYTES);
+        if (!isPlainObject(body))
+            return humanFieldError(res, 400, "invalid_request", "The request body must be an object");
+        const binding = validateFarmBinding(body);
+        if (binding.error)
+            return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
+        const out = handleHumanOriginalPlantAction(binding.farm, body);
+        return jsonOut(res, out.status, out.json);
+    }
+    catch (error) {
+        if (error instanceof PublicSyncError) {
+            const tooLarge = error.status === 413;
+            return humanFieldError(res, tooLarge ? 413 : 400, tooLarge ? "body_too_large" : "invalid_request", tooLarge ? "The request body is too large" : "The request body must be valid JSON");
+        }
+        return humanFieldError(res, 503, "farm_unavailable", "The original plant design could not be completed");
+    }
+}
+async function handleDoorbellHumanCropCodexAction(req, res, method) {
+    if (!requireDoorbellHumanFieldService(req, res, method))
+        return;
+    try {
+        const body = await readJsonBody(req, MAX_BODY_BYTES);
+        if (!isPlainObject(body))
+            return humanFieldError(res, 400, "invalid_request", "The request body must be an object");
+        const binding = validateFarmBinding(body);
+        if (binding.error)
+            return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
+        const out = handleHumanCropCodexAction(binding.farm, body);
+        return jsonOut(res, out.status, out.json);
+    }
+    catch (error) {
+        if (error instanceof PublicSyncError) {
+            const tooLarge = error.status === 413;
+            return humanFieldError(res, tooLarge ? 413 : 400, tooLarge ? "body_too_large" : "invalid_request", tooLarge ? "The request body is too large" : "The request body must be valid JSON");
+        }
+        return humanFieldError(res, 503, "farm_unavailable", "The crop codex action could not be completed");
+    }
+}
+async function handleDoorbellHumanSmeltingAction(req, res, method) {
+    if (!requireDoorbellHumanFieldService(req, res, method))
+        return;
+    try {
+        const body = await readJsonBody(req, MAX_BODY_BYTES);
+        if (!isPlainObject(body))
+            return humanFieldError(res, 400, "invalid_request", "The request body must be an object");
+        const binding = validateFarmBinding(body);
+        if (binding.error)
+            return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
+        const out = handleHumanSmeltingAction(binding.farm, body);
+        return jsonOut(res, out.status, out.json);
+    }
+    catch (error) {
+        if (error instanceof PublicSyncError) {
+            const tooLarge = error.status === 413;
+            return humanFieldError(res, tooLarge ? 413 : 400, tooLarge ? "body_too_large" : "invalid_request", tooLarge ? "The request body is too large" : "The request body must be valid JSON");
+        }
+        return humanFieldError(res, 503, "farm_unavailable", "The smelting action could not be completed");
+    }
+}
+async function handleDoorbellHumanKitchenInventoryAction(req, res, method) {
+    if (!requireDoorbellHumanFieldService(req, res, method))
+        return;
+    try {
+        const body = await readJsonBody(req, MAX_BODY_BYTES);
+        if (!isPlainObject(body))
+            return humanFieldError(res, 400, "invalid_request", "The request body must be an object");
+        const binding = validateFarmBinding(body);
+        if (binding.error)
+            return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
+        const out = handleHumanKitchenInventoryAction(binding.farm, body);
+        return jsonOut(res, out.status, out.json);
+    }
+    catch (error) {
+        if (error instanceof PublicSyncError) {
+            const tooLarge = error.status === 413;
+            return humanFieldError(res, tooLarge ? 413 : 400, tooLarge ? "body_too_large" : "invalid_request", tooLarge ? "The request body is too large" : "The request body must be valid JSON");
+        }
+        return humanFieldError(res, 503, "farm_unavailable", "The kitchen inventory action could not be completed");
+    }
+}
+async function handleDoorbellHumanExpeditionAction(req, res, method) {
+    if (!requireDoorbellHumanFieldService(req, res, method))
+        return;
+    try {
+        const body = await readJsonBody(req, MAX_BODY_BYTES);
+        if (!isPlainObject(body))
+            return humanFieldError(res, 400, "invalid_request", "The request body must be an object");
+        const binding = validateFarmBinding(body);
+        if (binding.error)
+            return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
+        const out = handleHumanExpeditionAction(binding.farm, body);
+        return jsonOut(res, out.status, out.json);
+    }
+    catch (error) {
+        if (error instanceof PublicSyncError) {
+            const tooLarge = error.status === 413;
+            return humanFieldError(res, tooLarge ? 413 : 400, tooLarge ? "body_too_large" : "invalid_request", tooLarge ? "The request body is too large" : "The request body must be valid JSON");
+        }
+        return humanFieldError(res, 503, "farm_unavailable", "The expedition action could not be completed");
+    }
+}
+async function handleDoorbellHumanRanchInteractionAction(req, res, method) {
+    if (!requireDoorbellHumanFieldService(req, res, method))
+        return;
+    try {
+        const body = await readJsonBody(req, MAX_BODY_BYTES);
+        if (!isPlainObject(body))
+            return humanFieldError(res, 400, "invalid_request", "The request body must be an object");
+        const binding = validateFarmBinding(body);
+        if (binding.error)
+            return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
+        const out = handleHumanRanchInteractionAction(binding.farm, body);
+        return jsonOut(res, out.status, out.json);
+    }
+    catch (error) {
+        if (error instanceof PublicSyncError) {
+            const tooLarge = error.status === 413;
+            return humanFieldError(res, tooLarge ? 413 : 400, tooLarge ? "body_too_large" : "invalid_request", tooLarge ? "The request body is too large" : "The request body must be valid JSON");
+        }
+        return humanFieldError(res, 503, "farm_unavailable", "The ranch interaction could not be completed");
+    }
+}
+async function handleDoorbellHumanMarketAction(req, res, method) {
+    if (!requireDoorbellHumanFieldService(req, res, method))
+        return;
+    try {
+        const body = await readJsonBody(req, MAX_BODY_BYTES);
+        if (!isPlainObject(body))
+            return humanFieldError(res, 400, "invalid_request", "The request body must be an object");
+        const binding = validateFarmBinding(body);
+        if (binding.error)
+            return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
+        const out = body.action === "buy" || body.action === "barter-accept"
+            ? handleHumanCrossFarmMarketAction(binding.farm, getFarm(body.seller_doorplate), body)
+            : handleHumanMarketAction(binding.farm, body);
+        return jsonOut(res, out.status, out.json);
+    }
+    catch (error) {
+        if (error instanceof PublicSyncError) {
+            const tooLarge = error.status === 413;
+            return humanFieldError(res, tooLarge ? 413 : 400, tooLarge ? "body_too_large" : "invalid_request", tooLarge ? "The request body is too large" : "The request body must be valid JSON");
+        }
+        return humanFieldError(res, 503, "farm_unavailable", "The market action could not be completed");
+    }
+}
+async function handleDoorbellHumanNeighborhoodMessageAction(req, res, method) {
+    if (!requireDoorbellHumanFieldService(req, res, method))
+        return;
+    try {
+        const body = await readJsonBody(req, MAX_BODY_BYTES);
+        if (!isPlainObject(body))
+            return humanFieldError(res, 400, "invalid_request", "The request body must be an object");
+        const binding = validateFarmBinding(body);
+        if (binding.error)
+            return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
+        const out = handleHumanNeighborhoodMessageAction(binding.farm, body);
+        return jsonOut(res, out.status, out.json);
+    }
+    catch (error) {
+        if (error instanceof PublicSyncError) {
+            const tooLarge = error.status === 413;
+            return humanFieldError(res, tooLarge ? 413 : 400, tooLarge ? "body_too_large" : "invalid_request", tooLarge ? "The request body is too large" : "The request body must be valid JSON");
+        }
+        return humanFieldError(res, 503, "farm_unavailable", "The neighborhood message could not be sent");
     }
 }
 async function handleDoorbellHumanHarvestAssist(req, res, method) {
@@ -602,12 +877,28 @@ export function createDoorbellInternalHandler(executeFarmAction) {
             await handleDoorbellHumanCatalogRead(req, res, method);
             return true;
         }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "bulletin" && parts[4] === "read" && parts.length === 5) {
+            await handleDoorbellHumanBulletinRead(req, res, method);
+            return true;
+        }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "kitchen" && parts[4] === "read" && parts.length === 5) {
             await handleDoorbellHumanKitchenRead(req, res, method);
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "kitchen" && parts[4] === "purchase" && parts.length === 5) {
             await handleDoorbellHumanKitchenPurchase(req, res, method);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "kitchen" && parts[4] === "cook" && parts.length === 5) {
+            await handleDoorbellHumanKitchenCook(req, res, method);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "kitchen" && parts[4] === "shop" && parts[5] === "refresh" && parts.length === 6) {
+            await handleDoorbellHumanKitchenShopRefresh(req, res, method);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "kitchen" && parts[4] === "inventory" && parts[5] === "action" && parts.length === 6) {
+            await handleDoorbellHumanKitchenInventoryAction(req, res, method);
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "glimmer" && parts[4] === "read" && parts.length === 5) {
@@ -630,12 +921,44 @@ export function createDoorbellInternalHandler(executeFarmAction) {
             await handleDoorbellHumanRanchResidentAction(req, res, method);
             return true;
         }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "ranch" && parts[4] === "decoration-action" && parts.length === 5) {
+            await handleDoorbellHumanRanchDecorationAction(req, res, method);
+            return true;
+        }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "ranch" && parts[4] === "collect" && parts.length === 5) {
             await handleDoorbellHumanRanchCollection(req, res, method);
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "settings" && parts[4] === "action" && parts.length === 5) {
             await handleDoorbellHumanFarmSettingsAction(req, res, method);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "original-plant" && parts[4] === "action" && parts.length === 5) {
+            await handleDoorbellHumanOriginalPlantAction(req, res, method);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "codex" && parts[4] === "action" && parts.length === 5) {
+            await handleDoorbellHumanCropCodexAction(req, res, method);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "smelting" && parts[4] === "action" && parts.length === 5) {
+            await handleDoorbellHumanSmeltingAction(req, res, method);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "expedition" && parts[4] === "action" && parts.length === 5) {
+            await handleDoorbellHumanExpeditionAction(req, res, method);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "ranch" && parts[4] === "interaction" && parts[5] === "action" && parts.length === 6) {
+            await handleDoorbellHumanRanchInteractionAction(req, res, method);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "market" && parts[4] === "action" && parts.length === 5) {
+            await handleDoorbellHumanMarketAction(req, res, method);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "neighborhood" && parts[4] === "message" && parts[5] === "action" && parts.length === 6) {
+            await handleDoorbellHumanNeighborhoodMessageAction(req, res, method);
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "field" && parts[4] === "harvest-assist" && parts.length === 5) { await handleDoorbellHumanHarvestAssist(req, res, method); return true; }

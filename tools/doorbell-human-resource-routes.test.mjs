@@ -14,17 +14,40 @@ const originalDateNow = Date.now;
 Date.now = () => NOW;
 
 const { makeFarm } = await import("../dist/game.js");
+const { humanBarterList } = await import("../dist/engine.js");
 const { getFarm, insertFarm } = await import("../dist/store.js");
 const { startServer } = await import("../dist/server.js");
 const { currentDayIndex } = await import("../dist/time.js");
+const { originalPlantActionRevision } = await import("../dist/server/original-plant-action.js");
+const { cropCodexActionRevision } = await import("../dist/server/crop-codex-revision.js");
+const { smeltingActionRevision } = await import("../dist/server/smelting-revision.js");
+const { kitchenInventoryRevision } = await import(
+  "../dist/server/kitchen-inventory-action.js"
+);
+const { kitchenCookRevision } = await import("../dist/server/kitchen-cook-action.js");
+const { expeditionActionRevision } = await import("../dist/server/expedition-action.js");
+const { marketActionRevision } = await import("../dist/server/market-action.js");
+const { neighborhoodMessageActionRevision } = await import(
+  "../dist/server/neighborhood-message-action.js"
+);
 
 const FARM_DOORPLATE = "ABC234";
 const FARM_HUMAN_KEY = "private-resource-human-key";
+const ORIGINAL_PLANT_DOORPLATE = "BCDFGH";
+const ORIGINAL_PLANT_HUMAN_KEY = "private-original-plant-resource-human-key";
+const POOR_ORIGINAL_PLANT_DOORPLATE = "CDEFGH";
+const POOR_ORIGINAL_PLANT_HUMAN_KEY = "private-poor-original-plant-resource-human-key";
+const NEIGHBOR_DOORPLATE = "DEF567";
+const MARKET_SELLER_DOORPLATE = "GHJ789";
+const MARKET_SELLER_HUMAN_KEY = "private-market-seller-human-key";
+const MARKET_BUYER_DOORPLATE = "JKM234";
+const MARKET_BUYER_HUMAN_KEY = "private-market-buyer-human-key";
 const PATHS = [
   "/internal/doorbell/human/catalog/read",
   "/internal/doorbell/human/kitchen/read",
   "/internal/doorbell/human/ranch/read",
 ];
+const BULLETIN_PATH = "/internal/doorbell/human/bulletin/read";
 
 async function readResource(baseUrl, path, payload) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -38,7 +61,7 @@ async function readResource(baseUrl, path, payload) {
   return { response, body: await response.json() };
 }
 
-test("Doorbell Human catalog, kitchen, and ranch reads are registered and keep credentials private", async (t) => {
+test("Doorbell Human catalog, bulletin, kitchen, and ranch reads are registered and keep credentials private", async (t) => {
   t.after(() => {
     Date.now = originalDateNow;
     rmSync(dataDirectory, { recursive: true, force: true });
@@ -49,6 +72,9 @@ test("Doorbell Human catalog, kitchen, and ranch reads are registered and keep c
   farm.humanKey = FARM_HUMAN_KEY;
   farm.coins = 123;
   farm.silver = 456;
+  farm.codex = { wheat: { count: 1, bestQuality: 1, firstAt: NOW - 1_000 } };
+  farm.starred = [];
+  farm.materials = { ordinary_stone: 1, dry_branch: 1, clay_lump: 1 };
   farm.ranch = {
     coins: 789,
     animals: [
@@ -69,11 +95,14 @@ test("Doorbell Human catalog, kitchen, and ranch reads are registered and keep c
     pinned: [],
     wardrobe: [],
     decor: [],
-    decorStore: [],
+    decorStore: ["flowerbed"],
     raidDebts: [],
     raids: [],
     kitchen: {
-      products: [],
+      products: [
+        { id: "route-egg", itemId: "chicken_egg", name: "鸡蛋", emoji: "🥚", value: 30 },
+        { id: "route-cook-egg", itemId: "chicken_egg", name: "鸡蛋", emoji: "🥚", value: 30 },
+      ],
       ingredients: {},
       dishes: [],
       knownRecipes: [],
@@ -86,6 +115,52 @@ test("Doorbell Human catalog, kitchen, and ranch reads are registered and keep c
     },
   };
   insertFarm(farm);
+
+  const neighbor = makeFarm("邻里留言目标农场");
+  neighbor.id = NEIGHBOR_DOORPLATE;
+  neighbor.humanKey = "private-neighbor-human-key";
+  neighbor.social = { visit: true, steal: true, water: true, message: true };
+  neighbor.messages = [];
+  insertFarm(neighbor);
+
+  const originalPlantFarm = makeFarm("原创植物资源测试农场");
+  originalPlantFarm.id = ORIGINAL_PLANT_DOORPLATE;
+  originalPlantFarm.humanKey = ORIGINAL_PLANT_HUMAN_KEY;
+  originalPlantFarm.coins = 500;
+  insertFarm(originalPlantFarm);
+
+  const poorOriginalPlantFarm = makeFarm("余额不足原创植物资源测试农场");
+  poorOriginalPlantFarm.id = POOR_ORIGINAL_PLANT_DOORPLATE;
+  poorOriginalPlantFarm.humanKey = POOR_ORIGINAL_PLANT_HUMAN_KEY;
+  poorOriginalPlantFarm.coins = 100;
+  insertFarm(poorOriginalPlantFarm);
+
+  const marketSeller = makeFarm("跨户集市卖家");
+  marketSeller.id = MARKET_SELLER_DOORPLATE;
+  marketSeller.humanKey = MARKET_SELLER_HUMAN_KEY;
+  marketSeller.materials = { ordinary_stone: 2 };
+  marketSeller.market = [{ kind: "material", id: "ordinary_stone", qty: 1, price: 10 }];
+  insertFarm(marketSeller);
+
+  const marketBuyer = makeFarm("跨户集市买家");
+  marketBuyer.id = MARKET_BUYER_DOORPLATE;
+  marketBuyer.humanKey = MARKET_BUYER_HUMAN_KEY;
+  marketBuyer.silver = 100;
+  marketBuyer.materials = { dry_branch: 1 };
+  insertFarm(marketBuyer);
+
+  const barter = humanBarterList(
+    marketSeller,
+    "material",
+    "ordinary_stone",
+    1,
+    "material",
+    "dry_branch",
+    1,
+    NOW,
+  );
+  assert.equal(barter.ok, true);
+  const marketBarterListingId = barter.listing.id;
 
   const server = startServer(0);
   await once(server, "listening");
@@ -110,12 +185,173 @@ test("Doorbell Human catalog, kitchen, and ranch reads are registered and keep c
     assert.equal(result.body.data.farm.farm_doorplate, FARM_DOORPLATE);
     assert.equal(JSON.stringify(result.body).includes(FARM_HUMAN_KEY), false);
     if (path.endsWith("/kitchen/read")) {
+      assert.match(
+        result.body.kitchen_inventory_revision,
+        /^kitchen-inventory-v1:[0-9a-f]{64}$/,
+      );
       assert.match(result.body.shop_revision, /^kitchen-v1:[0-9a-f]{64}$/);
     }
   }
 
+  const bulletinRead = await readResource(baseUrl, BULLETIN_PATH, payload);
+  assert.equal(bulletinRead.response.status, 200);
+  assert.equal(bulletinRead.body.subject.farm_doorplate, FARM_DOORPLATE);
+  assert.match(bulletinRead.body.revision, /^farm-bulletin-v1:[0-9a-f]{64}$/);
+  assert.equal(JSON.stringify(bulletinRead.body).includes(FARM_HUMAN_KEY), false);
+
+  const sellerBeforeCatalogRead = structuredClone(getFarm(MARKET_SELLER_DOORPLATE));
   const catalogRead = await readResource(baseUrl, PATHS[0], payload);
+  assert.deepEqual(getFarm(MARKET_SELLER_DOORPLATE), sellerBeforeCatalogRead);
   assert.match(catalogRead.body.revision, /^farm-catalog-v1:[0-9a-f]{64}$/);
+  assert.equal(
+    catalogRead.body.codex_revision,
+    cropCodexActionRevision(getFarm(FARM_DOORPLATE), NOW),
+  );
+  assert.match(catalogRead.body.expedition_revision, /^farm-expedition-v1:[0-9a-f]{64}$/);
+  assert.match(catalogRead.body.market_revision, /^farm-market-v1:[0-9a-f]{64}$/);
+  assert.equal(catalogRead.body.data.smelting.write_status, "available");
+  assert.equal(
+    catalogRead.body.data.smelting.revision,
+    smeltingActionRevision(getFarm(FARM_DOORPLATE)),
+  );
+  const cashListing = catalogRead.body.data.market.listings.find(
+    (listing) =>
+      listing.seller_farm_doorplate === MARKET_SELLER_DOORPLATE &&
+      listing.kind === "material" &&
+      listing.item_id === "ordinary_stone",
+  );
+  assert.equal(cashListing.quantity, 1);
+  assert.equal(cashListing.price, 10);
+  const barterListing = catalogRead.body.data.market.barter_listings.find(
+    (listing) =>
+      listing.seller_farm_doorplate === MARKET_SELLER_DOORPLATE &&
+      listing.listing_id === marketBarterListingId,
+  );
+  assert.equal(barterListing.give.item_id, "ordinary_stone");
+  assert.equal(barterListing.want.item_id, "dry_branch");
+  assert.equal(Object.hasOwn(barterListing, "listed_at"), false);
+  assert.equal(
+    catalogRead.body.data.market.listings.some((listing) => listing.listing_id === marketBarterListingId),
+    false,
+  );
+  assert.equal(JSON.stringify(catalogRead.body).includes(MARKET_SELLER_HUMAN_KEY), false);
+
+  const cropStar = await readResource(baseUrl, "/internal/doorbell/human/codex/action", {
+    ...payload,
+    crop_id: "wheat",
+    action: "star",
+    expected_codex_revision: catalogRead.body.codex_revision,
+    idempotency_key: "719ffb01-49cd-7020-84af-3d04fb1ed03d",
+  });
+  assert.equal(cropStar.response.status, 200);
+  assert.equal(cropStar.body.data.result.crop_id, "wheat");
+  assert.equal(cropStar.body.data.result.starred, true);
+
+  const smelting = await readResource(baseUrl, "/internal/doorbell/human/smelting/action", {
+    ...payload,
+    material_ids: ["ordinary_stone", "dry_branch", "clay_lump"],
+    expected_smelting_revision: catalogRead.body.data.smelting.revision,
+    idempotency_key: "819ffb01-49cd-7020-84af-3d04fb1ed03d",
+  });
+  assert.equal(smelting.response.status, 200);
+  assert.equal(smelting.body.data.result.receipt_id, "819ffb01-49cd-7020-84af-3d04fb1ed03d");
+  assert.deepEqual(smelting.body.data.result.material_ids, [
+    "ordinary_stone",
+    "dry_branch",
+    "clay_lump",
+  ]);
+  assert.equal(typeof smelting.body.data.result.crop_name, "string");
+  assert.equal(getFarm(FARM_DOORPLATE).materials.ordinary_stone, undefined);
+
+  const kitchenRecycle = await readResource(
+    baseUrl,
+    "/internal/doorbell/human/kitchen/inventory/action",
+    {
+      ...payload,
+      idempotency_key: "619ffb01-49cd-7020-84af-3d04fb1ed04d",
+      expected_kitchen_inventory_revision: kitchenInventoryRevision(
+        getFarm(FARM_DOORPLATE),
+        NOW,
+      ),
+      action: "recycle",
+      item_kind: "product",
+      item_instance_ids: ["route-egg"],
+      quantity: 1,
+    },
+  );
+  assert.equal(kitchenRecycle.response.status, 200);
+  assert.equal(kitchenRecycle.body.data.result.outcome.kind, "recycle");
+  assert.equal(kitchenRecycle.body.data.result.outcome.quantity, 1);
+
+  const unauthenticatedOriginalPlantAction = await fetch(
+    `${baseUrl}/internal/doorbell/human/original-plant/action`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    },
+  );
+  const unauthenticatedOriginalPlantActionBody = await unauthenticatedOriginalPlantAction.json();
+  assert.equal(unauthenticatedOriginalPlantAction.status, 401);
+  assert.equal(unauthenticatedOriginalPlantActionBody.error.code, "authentication_required");
+
+  const originalPlantPayload = {
+    farm_human_key: ORIGINAL_PLANT_HUMAN_KEY,
+    expected_farm_doorplate: ORIGINAL_PLANT_DOORPLATE,
+  };
+  const originalPlantRequest = {
+    ...originalPlantPayload,
+    idempotency_key: "619ffb01-49cd-7020-84af-3d04fb1ed03d",
+    expected_revision: originalPlantActionRevision(getFarm(ORIGINAL_PLANT_DOORPLATE), NOW),
+    payload: {
+      name: "月光番茄",
+      latin: "Solanum luna",
+      desc: "在月光里慢慢变甜的番茄。",
+      plant: "把一颗月光埋进土里。",
+      harvest: "月光从果实里流出来了。",
+    },
+  };
+  const originalPlantAction = await readResource(
+    baseUrl,
+    "/internal/doorbell/human/original-plant/action",
+    originalPlantRequest,
+  );
+  assert.equal(originalPlantAction.response.status, 200);
+  assert.equal(originalPlantAction.body.data.result.receipt_id, originalPlantRequest.idempotency_key);
+  assert.equal(originalPlantAction.body.data.result.fee, 200);
+  assert.equal(originalPlantAction.body.data.result.seeds, 5);
+  assert.equal(originalPlantAction.body.data.result.coins_balance, 300);
+  assert.equal(originalPlantAction.body.data.result.crop.name, "月光番茄");
+  assert.equal(originalPlantAction.body.data.result.crop.category, "ugc");
+  assert.match(originalPlantAction.body.revision, /^farm-original-plant-v1:[0-9a-f]{64}$/);
+  assert.equal(JSON.stringify(originalPlantAction.body).includes(ORIGINAL_PLANT_HUMAN_KEY), false);
+  assert.equal(getFarm(ORIGINAL_PLANT_DOORPLATE).coins, 300);
+
+  const originalPlantReplay = await readResource(
+    baseUrl,
+    "/internal/doorbell/human/original-plant/action",
+    originalPlantRequest,
+  );
+  assert.equal(originalPlantReplay.response.status, 200);
+  assert.deepEqual(originalPlantReplay.body, originalPlantAction.body);
+  assert.equal(getFarm(ORIGINAL_PLANT_DOORPLATE).coins, 300);
+
+  const poorOriginalPlantRequest = {
+    farm_human_key: POOR_ORIGINAL_PLANT_HUMAN_KEY,
+    expected_farm_doorplate: POOR_ORIGINAL_PLANT_DOORPLATE,
+    idempotency_key: "719ffb01-49cd-7020-84af-3d04fb1ed03d",
+    expected_revision: originalPlantActionRevision(getFarm(POOR_ORIGINAL_PLANT_DOORPLATE), NOW),
+    payload: originalPlantRequest.payload,
+  };
+  const poorOriginalPlantAction = await readResource(
+    baseUrl,
+    "/internal/doorbell/human/original-plant/action",
+    poorOriginalPlantRequest,
+  );
+  assert.equal(poorOriginalPlantAction.response.status, 409);
+  assert.equal(poorOriginalPlantAction.body.error.code, "action_rejected");
+  assert.equal(getFarm(POOR_ORIGINAL_PLANT_DOORPLATE).coins, 100);
+
   const settingsAction = await readResource(
     baseUrl,
     "/internal/doorbell/human/settings/action",
@@ -139,16 +375,84 @@ test("Doorbell Human catalog, kitchen, and ranch reads are registered and keep c
     ...payload,
     idempotency_key: "019ffb01-49cd-7020-84af-3d04fb1ed03d",
     expected_shop_revision: kitchenRead.body.shop_revision,
-    kind: "ingredient",
-    item_id: "salt",
-    quantity: 1,
+    items: [{ kind: "ingredient", item_id: "salt", quantity: 1 }],
   });
   assert.equal(purchase.response.status, 200);
-  assert.equal(purchase.body.data.result.item_id, "salt");
-  assert.equal(purchase.body.data.result.quantity, 1);
+  assert.equal(purchase.body.data.result.items[0].item_id, "salt");
+  assert.equal(purchase.body.data.result.items[0].quantity, 1);
   assert.equal(purchase.body.data.resource.balance.silver.value < 456, true);
   assert.equal(JSON.stringify(purchase.body).includes(FARM_HUMAN_KEY), false);
   assert.equal(getFarm(FARM_DOORPLATE).ranch.kitchen.ingredients.salt, 1);
+
+  const unauthenticatedRefresh = await fetch(
+    `${baseUrl}/internal/doorbell/human/kitchen/shop/refresh`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    },
+  );
+  const unauthenticatedRefreshBody = await unauthenticatedRefresh.json();
+  assert.equal(unauthenticatedRefresh.status, 401);
+  assert.equal(unauthenticatedRefreshBody.error.code, "authentication_required");
+
+  const refresh = await readResource(
+    baseUrl,
+    "/internal/doorbell/human/kitchen/shop/refresh",
+    {
+      ...payload,
+      idempotency_key: "029ffb01-49cd-7020-84af-3d04fb1ed03d",
+      expected_shop_revision: purchase.body.shop_revision,
+    },
+  );
+  assert.equal(refresh.response.status, 200);
+  assert.equal(refresh.body.data.result.cost_coins, 100);
+  assert.equal(refresh.body.data.result.coins_balance, 23);
+  assert.equal(refresh.body.data.result.refresh_used_count, 1);
+  assert.equal(refresh.body.data.result.refresh_remaining_count, 9);
+  assert.match(refresh.body.shop_revision, /^kitchen-v1:[0-9a-f]{64}$/);
+  assert.equal(JSON.stringify(refresh.body).includes(FARM_HUMAN_KEY), false);
+  assert.equal(getFarm(FARM_DOORPLATE).coins, 23);
+
+  const refreshError = await readResource(
+    baseUrl,
+    "/internal/doorbell/human/kitchen/shop/refresh",
+    {
+      ...payload,
+      idempotency_key: "039ffb01-49cd-7020-84af-3d04fb1ed03d",
+      expected_shop_revision: refresh.body.shop_revision,
+    },
+  );
+  assert.equal(refreshError.response.status, 409);
+  assert.equal(refreshError.body.error.code, "insufficient_coins");
+  assert.equal(getFarm(FARM_DOORPLATE).coins, 23);
+
+  const unauthenticatedCook = await fetch(
+    `${baseUrl}/internal/doorbell/human/kitchen/cook`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    },
+  );
+  const unauthenticatedCookBody = await unauthenticatedCook.json();
+  assert.equal(unauthenticatedCook.status, 401);
+  assert.equal(unauthenticatedCookBody.error.code, "authentication_required");
+
+  const kitchenCook = await readResource(baseUrl, "/internal/doorbell/human/kitchen/cook", {
+    ...payload,
+    idempotency_key: "b19ffb01-49cd-7020-84af-3d04fb1ed03d",
+    expected_kitchen_inventory_revision: kitchenCookRevision(getFarm(FARM_DOORPLATE), NOW),
+    items: ["route-cook-egg", "salt"],
+  });
+  assert.equal(kitchenCook.response.status, 200);
+  assert.equal(kitchenCook.body.data.result.receipt_id, "b19ffb01-49cd-7020-84af-3d04fb1ed03d");
+  assert.equal(kitchenCook.body.data.result.outcome.kind, "cook");
+  assert.equal(kitchenCook.body.data.result.outcome.recipe_id, "fried_egg");
+  assert.deepEqual(kitchenCook.body.data.result.outcome.item_refs, ["route-cook-egg", "salt"]);
+  assert.equal(JSON.stringify(kitchenCook.body).includes(FARM_HUMAN_KEY), false);
+  assert.equal(getFarm(FARM_DOORPLATE).ranch.kitchen.products.length, 0);
+  assert.equal(getFarm(FARM_DOORPLATE).ranch.kitchen.ingredients.salt, undefined);
 
   const ranchRead = await readResource(baseUrl, PATHS[2], payload);
   const ranchCollection = await readResource(
@@ -219,6 +523,185 @@ test("Doorbell Human catalog, kitchen, and ranch reads are registered and keep c
   assert.equal(ranchAction.body.data.result.kind_id, "chicken");
   assert.equal(JSON.stringify(ranchAction.body).includes(FARM_HUMAN_KEY), false);
   assert.equal(getFarm(FARM_DOORPLATE).ranch.animals[0].name, "小太阳");
+
+  const unauthenticatedDecorationAction = await fetch(
+    `${baseUrl}/internal/doorbell/human/ranch/decoration-action`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    },
+  );
+  const unauthenticatedDecorationActionBody = await unauthenticatedDecorationAction.json();
+  assert.equal(unauthenticatedDecorationAction.status, 401);
+  assert.equal(unauthenticatedDecorationActionBody.error.code, "authentication_required");
+
+  const decorationPlace = await readResource(
+    baseUrl,
+    "/internal/doorbell/human/ranch/decoration-action",
+    {
+      ...payload,
+      idempotency_key: "219ffb01-49cd-7020-84af-3d04fb1ed03d",
+      expected_revision: ranchAction.body.revision,
+      action: "place",
+      decoration_id: "flowerbed",
+    },
+  );
+  assert.equal(decorationPlace.response.status, 200);
+  assert.equal(decorationPlace.body.data.result.action, "place");
+  assert.equal(decorationPlace.body.data.result.decoration_id, "flowerbed");
+  assert.equal(decorationPlace.body.data.result.outcome.kind, "place");
+  assert.equal(decorationPlace.body.data.result.outcome.decoration_id, "flowerbed");
+  assert.equal(decorationPlace.body.data.resource.farm.farm_doorplate, FARM_DOORPLATE);
+  assert.equal(JSON.stringify(decorationPlace.body).includes(FARM_HUMAN_KEY), false);
+  assert.deepEqual(getFarm(FARM_DOORPLATE).ranch.decor, ["flowerbed"]);
+  assert.deepEqual(getFarm(FARM_DOORPLATE).ranch.decorStore, []);
+
+  const decorationUnplace = await readResource(
+    baseUrl,
+    "/internal/doorbell/human/ranch/decoration-action",
+    {
+      ...payload,
+      idempotency_key: "319ffb01-49cd-7020-84af-3d04fb1ed03d",
+      expected_revision: decorationPlace.body.revision,
+      action: "unplace",
+      decoration_id: "flowerbed",
+    },
+  );
+  assert.equal(decorationUnplace.response.status, 200);
+  assert.equal(decorationUnplace.body.data.result.action, "unplace");
+  assert.equal(decorationUnplace.body.data.result.decoration_id, "flowerbed");
+  assert.equal(decorationUnplace.body.data.result.outcome.kind, "unplace");
+  assert.deepEqual(getFarm(FARM_DOORPLATE).ranch.decor, []);
+  assert.deepEqual(getFarm(FARM_DOORPLATE).ranch.decorStore, ["flowerbed"]);
+
+  const ranchInteraction = await readResource(
+    baseUrl,
+    "/internal/doorbell/human/ranch/interaction/action",
+    {
+      ...payload,
+      idempotency_key: "419ffb01-49cd-7020-84af-3d04fb1ed03d",
+      expected_revision: decorationUnplace.body.revision,
+      action: "remit",
+      amount: 5,
+    },
+  );
+  assert.equal(ranchInteraction.response.status, 200);
+  assert.equal(ranchInteraction.body.data.result.action, "remit");
+  assert.equal(ranchInteraction.body.data.result.outcome.amount, 5);
+  assert.equal(ranchInteraction.body.data.resource.farm.farm_doorplate, FARM_DOORPLATE);
+  assert.equal(JSON.stringify(ranchInteraction.body).includes(FARM_HUMAN_KEY), false);
+
+  const expedition = await readResource(
+    baseUrl,
+    "/internal/doorbell/human/expedition/action",
+    {
+      ...payload,
+      idempotency_key: "819ffb01-49cd-7020-84af-3d04fb1ed03d",
+      expected_revision: expeditionActionRevision(getFarm(FARM_DOORPLATE), NOW),
+      action: "charm",
+      payload: { kind: "check", blessing: "平安回来。" },
+    },
+  );
+  assert.equal(expedition.response.status, 200);
+  assert.equal(expedition.body.data.result.action, "charm");
+  assert.equal(expedition.body.data.resource.farm.farm_doorplate, FARM_DOORPLATE);
+  assert.equal(JSON.stringify(expedition.body).includes(FARM_HUMAN_KEY), false);
+
+  const marketBrowse = await readResource(
+    baseUrl,
+    "/internal/doorbell/human/market/action",
+    {
+      ...payload,
+      idempotency_key: "919ffb01-49cd-7020-84af-3d04fb1ed03d",
+      expected_revision: marketActionRevision(getFarm(FARM_DOORPLATE), NOW),
+      action: "browse",
+    },
+  );
+  assert.equal(marketBrowse.response.status, 200);
+  assert.equal(marketBrowse.body.data.result.action, "browse");
+  assert.equal(marketBrowse.body.data.resource.farm.farm_doorplate, FARM_DOORPLATE);
+  assert.equal(JSON.stringify(marketBrowse.body).includes(FARM_HUMAN_KEY), false);
+
+  const marketBuy = await readResource(
+    baseUrl,
+    "/internal/doorbell/human/market/action",
+    {
+      farm_human_key: MARKET_BUYER_HUMAN_KEY,
+      expected_farm_doorplate: MARKET_BUYER_DOORPLATE,
+      idempotency_key: "b19ffb01-49cd-7020-84af-3d04fb1ed03d",
+      expected_revision: marketActionRevision(getFarm(MARKET_BUYER_DOORPLATE), NOW),
+      action: "buy",
+      seller_doorplate: MARKET_SELLER_DOORPLATE,
+      kind: "material",
+      item_id: "ordinary_stone",
+      qty: 1,
+    },
+  );
+  assert.equal(marketBuy.response.status, 200);
+  assert.equal(marketBuy.body.data.result.action, "buy");
+  assert.equal(marketBuy.body.data.result.outcome.seller_doorplate, MARKET_SELLER_DOORPLATE);
+  assert.equal(getFarm(MARKET_SELLER_DOORPLATE).market.length, 0);
+  assert.equal(getFarm(MARKET_BUYER_DOORPLATE).materials.ordinary_stone, 1);
+  assert.equal(JSON.stringify(marketBuy.body).includes(MARKET_BUYER_HUMAN_KEY), false);
+  assert.equal(JSON.stringify(marketBuy.body).includes(MARKET_SELLER_HUMAN_KEY), false);
+
+  const marketBarterAccept = await readResource(
+    baseUrl,
+    "/internal/doorbell/human/market/action",
+    {
+      farm_human_key: MARKET_BUYER_HUMAN_KEY,
+      expected_farm_doorplate: MARKET_BUYER_DOORPLATE,
+      idempotency_key: "c19ffb01-49cd-7020-84af-3d04fb1ed03d",
+      expected_revision: marketActionRevision(getFarm(MARKET_BUYER_DOORPLATE), NOW),
+      action: "barter-accept",
+      seller_doorplate: MARKET_SELLER_DOORPLATE,
+      listing_id: marketBarterListingId,
+    },
+  );
+  assert.equal(marketBarterAccept.response.status, 200);
+  assert.equal(marketBarterAccept.body.data.result.action, "barter-accept");
+  assert.equal(marketBarterAccept.body.data.result.outcome.listing_id, marketBarterListingId);
+  assert.equal(getFarm(MARKET_SELLER_DOORPLATE).humanBarters.length, 0);
+  assert.equal(getFarm(MARKET_BUYER_DOORPLATE).materials.ordinary_stone, 2);
+  assert.equal(getFarm(MARKET_SELLER_DOORPLATE).materials.dry_branch, 1);
+  assert.equal(JSON.stringify(marketBarterAccept.body).includes(MARKET_BUYER_HUMAN_KEY), false);
+  assert.equal(JSON.stringify(marketBarterAccept.body).includes(MARKET_SELLER_HUMAN_KEY), false);
+
+  const neighborhoodMessage = await readResource(
+    baseUrl,
+    "/internal/doorbell/human/neighborhood/message/action",
+    {
+      ...payload,
+      target_farm_doorplate: NEIGHBOR_DOORPLATE,
+      message: "来看看你家的花。",
+      expected_neighborhood_revision: neighborhoodMessageActionRevision(
+        getFarm(FARM_DOORPLATE),
+        NOW,
+      ),
+      idempotency_key: "a19ffb01-49cd-7020-84af-3d04fb1ed03d",
+    },
+  );
+  assert.equal(neighborhoodMessage.response.status, 200);
+  assert.equal(neighborhoodMessage.body.data.result.target_farm_doorplate, NEIGHBOR_DOORPLATE);
+  assert.equal(neighborhoodMessage.body.data.resource.messages[0].text, "来看看你家的花。");
+  assert.equal(JSON.stringify(neighborhoodMessage.body).includes(FARM_HUMAN_KEY), false);
+
+  const decorationReplay = await readResource(
+    baseUrl,
+    "/internal/doorbell/human/ranch/decoration-action",
+    {
+      ...payload,
+      idempotency_key: "319ffb01-49cd-7020-84af-3d04fb1ed03d",
+      expected_revision: decorationPlace.body.revision,
+      action: "unplace",
+      decoration_id: "flowerbed",
+    },
+  );
+  assert.equal(decorationReplay.response.status, 200);
+  assert.deepEqual(decorationReplay.body, decorationUnplace.body);
+  assert.deepEqual(getFarm(FARM_DOORPLATE).ranch.decor, []);
+  assert.deepEqual(getFarm(FARM_DOORPLATE).ranch.decorStore, ["flowerbed"]);
 
   const extraField = await readResource(baseUrl, PATHS[0], {
     ...payload,

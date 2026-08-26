@@ -32,6 +32,8 @@ import { createAssetHandler } from "./server/assets.js";
 import { createDoorbellInternalHandler, internalServiceError, legacyAgentAccessRevoked } from "./server/doorbell-internal.js";
 import { handleSyncRoute } from "./server/sync.js";
 import { createLegacyMcpHandler } from "./server/legacy-mcp.js";
+import { applyHumanFarmNames, applyHumanFarmSocialSetting, validateHumanFarmNames } from "./server/farm-settings-authority.js";
+import { handleHumanNeighborhoodMessageAction, neighborhoodMessageActionRevision } from "./server/neighborhood-message-action.js";
 // 首页只展开 POST/REST（核心玩法）；只能 GET / 只能点链接的接入写法收进 /get；/readme 是给人类伴侣看的新手攻略。
 const GUESTBOOK_HELP = `
   💬 看看自己家的留言板 guestbook （只读最新 10 条，最新在前；开关用 guestbook {"on":false} / {"on":true}）`;
@@ -1768,8 +1770,9 @@ export function startServer(port, host = "127.0.0.1") {
                             const farmName = String(form.farmName ?? "").trim();
                             const aiName = String(form.aiName ?? "").trim();
                             const humanName = String(form.humanName ?? "").trim();
-                            if (hasDamagedRegistrationName(farmName, aiName, humanName)) {
-                                flash = `⚠️ ${DAMAGED_PUBLIC_NAME_TEXT}`;
+                            const names = validateHumanFarmNames({ farmName, aiName, humanName });
+                            if (!names.ok) {
+                                flash = `⚠️ ${names.error}`;
                             }
                             else {
                                 const renamed = dispatch(f, { action: "rename", name: farmName }, now);
@@ -1777,10 +1780,14 @@ export function startServer(port, host = "127.0.0.1") {
                                     flash = `⚠️ ${renamed.text}`;
                                 }
                                 else {
-                                    f.aiName = aiName.slice(0, 12) || undefined;
-                                    f.humanName = humanName.slice(0, 12) || undefined;
-                                    save();
-                                    flash = `✅ 农场名已更新为「${f.name}」；称呼：AI「${f.aiName ?? "未设"}」· 你「${f.humanName ?? "未设"}」`;
+                                    const updated = applyHumanFarmNames(f, names.value);
+                                    if (!updated.ok) {
+                                        flash = `⚠️ ${updated.error}`;
+                                    }
+                                    else {
+                                        save();
+                                        flash = `✅ 农场名已更新为「${f.name}」；称呼：AI「${f.aiName ?? "未设"}」· 你「${f.humanName ?? "未设"}」`;
+                                    }
                                 }
                             }
                         }
@@ -1808,22 +1815,32 @@ export function startServer(port, host = "127.0.0.1") {
                         else if (act === "social") {
                             const k = String(form.key ?? "");
                             const on = String(form.on ?? "") === "1" || String(form.on ?? "") === "true";
-                            const LABELS = { visit: "来访 / 访问", steal: "偷菜", water: "帮浇水", message: "留言" };
-                            if (!(k in LABELS)) {
-                                flash = "⚠️ 未知的开关。";
+                            const updated = applyHumanFarmSocialSetting(f, k, on);
+                            if (!updated.ok) {
+                                flash = `⚠️ ${updated.error}`;
                             }
                             else {
-                                f.social ??= {};
-                                f.social[k] = on;
                                 save();
-                                flash = on ? `✅ 已开放「${LABELS[k]}」（双向）` : `🚫 已谢绝「${LABELS[k]}」（双向）${k === "visit" ? "——别人搜不到你、你也不能出门，且偷菜/浇水/留言一并封闭" : ""}`;
+                                flash = on ? `✅ 已开放「${updated.label}」（双向）` : `🚫 已谢绝「${updated.label}」（双向）${k === "visit" ? "——别人搜不到你、你也不能出门，且偷菜/浇水/留言一并封闭" : ""}`;
                             }
                         }
                         else {
-                            // 留言：以本农场名义（by=自己 id + 自己 token）在对方留言板留言，复用 runFarm 的校验逻辑
+                            // 留言：以本农场名义复用 Human 邻里权威；旧页面只补齐内部严格字段。
                             const target = String(form.target ?? "").trim();
-                            const out = runFarm(target, "message", { by: f.id, token: f.token, text: form.text }, undefined, now);
-                            flash = out.json.ok ? out.json.text : `⚠️ ${out.json.text}`;
+                            const out = handleHumanNeighborhoodMessageAction(f, {
+                                farm_human_key: f.humanKey,
+                                expected_farm_doorplate: f.id,
+                                target_farm_doorplate: target,
+                                message: String(form.text ?? ""),
+                                expected_neighborhood_revision: neighborhoodMessageActionRevision(f, now),
+                                idempotency_key: randomUUID(),
+                            }, now);
+                            if (out.status === 200) {
+                                flash = `💬 已在「${getFarm(target)?.name ?? target}」的留言板留言。`;
+                            }
+                            else {
+                                flash = `⚠️ ${out.json?.error?.message ?? "留言失败"}`;
+                            }
                         }
                         res.writeHead(303, { ...AGENT_HEADERS, Location: `${BASE}/ui/${key}/ta?flash=${encodeURIComponent(flash)}` });
                         return res.end();

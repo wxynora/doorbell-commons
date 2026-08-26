@@ -19,6 +19,11 @@ const {
   farmSettingsActionRevision,
   handleHumanFarmSettingsAction,
 } = await import("../dist/server/farm-settings-action.js");
+const {
+  applyHumanFarmNames,
+  applyHumanFarmSocialSetting,
+  validateHumanFarmNames,
+} = await import("../dist/server/farm-settings-authority.js");
 
 after(() => rmSync(dataDirectory, { recursive: true, force: true }));
 
@@ -90,7 +95,7 @@ test("title equipment uses the existing title authority and supports idempotent 
   assert.deepEqual(getFarm(farm.id), saved);
 });
 
-test("stale, idempotency-conflicting, and unsupported settings actions do not mutate the farm", () => {
+test("stale, invalid, and idempotency-conflicting settings actions do not mutate the farm", () => {
   const farm = addFarm("DEF567");
   const revision = farmSettingsActionRevision(farm, NOW);
   const before = structuredClone(farm);
@@ -103,13 +108,13 @@ test("stale, idempotency-conflicting, and unsupported settings actions do not mu
   assert.equal(stale.json.error.code, "state_conflict");
   assert.deepEqual(getFarm(farm.id), before);
 
-  const unsupported = handleHumanFarmSettingsAction(
+  const invalidNickname = handleHumanFarmSettingsAction(
     farm,
-    body(farm, revision, "social.visit", false, "219ffb01-49cd-7020-84af-3d04fb1ed03d"),
+    body(farm, revision, "ai_name", "坏�昵称", "219ffb01-49cd-7020-84af-3d04fb1ed03d"),
     NOW,
   );
-  assert.equal(unsupported.status, 409);
-  assert.equal(unsupported.json.error.code, "action_rejected");
+  assert.equal(invalidNickname.status, 409);
+  assert.equal(invalidNickname.json.error.code, "action_rejected");
   assert.deepEqual(getFarm(farm.id), before);
 
   const first = handleHumanFarmSettingsAction(
@@ -127,6 +132,58 @@ test("stale, idempotency-conflicting, and unsupported settings actions do not mu
   assert.equal(conflict.status, 409);
   assert.equal(conflict.json.error.code, "idempotency_conflict");
   assert.deepEqual(getFarm(farm.id), afterFirst);
+});
+
+test("nickname and social settings reuse the legacy authority and replay idempotently", () => {
+  const farm = addFarm("JKM234");
+  const names = validateHumanFarmNames({
+    farmName: " 设置后的农场 ",
+    aiName: " 小机的新称呼 ",
+    humanName: " ",
+  });
+  assert.equal(names.ok, true);
+  assert.equal(names.value.farmName, "设置后的农场");
+  assert.equal(names.value.aiName, "小机的新称呼");
+  assert.equal(names.value.humanName, undefined);
+  const appliedNames = applyHumanFarmNames(farm, names.value);
+  assert.equal(appliedNames.ok, true);
+  assert.equal(farm.aiName, "小机的新称呼");
+  assert.equal(farm.humanName, undefined);
+
+  const nicknameRevision = farmSettingsActionRevision(farm, NOW);
+  const nickname = handleHumanFarmSettingsAction(
+    farm,
+    body(farm, nicknameRevision, "human_name", "  伴侣昵称  ", "519ffb01-49cd-7020-84af-3d04fb1ed03d"),
+    NOW,
+  );
+  assert.equal(nickname.status, 200);
+  assert.equal(nickname.json.data.resource.settings.human_name, "伴侣昵称");
+
+  const socialRevision = nickname.json.revision;
+  const social = handleHumanFarmSettingsAction(
+    getFarm(farm.id),
+    body(getFarm(farm.id), socialRevision, "social.visit", false, "619ffb01-49cd-7020-84af-3d04fb1ed03d"),
+    NOW,
+  );
+  assert.equal(social.status, 200);
+  assert.equal(social.json.data.resource.settings.social.visit, false);
+  assert.equal(getFarm(farm.id).social.visit, false);
+
+  const saved = structuredClone(getFarm(farm.id));
+  const replay = handleHumanFarmSettingsAction(
+    getFarm(farm.id),
+    body(getFarm(farm.id), socialRevision, "social.visit", false, "619ffb01-49cd-7020-84af-3d04fb1ed03d"),
+    NOW,
+  );
+  assert.equal(replay.status, 200);
+  assert.deepEqual(replay.json, social.json);
+  assert.deepEqual(getFarm(farm.id), saved);
+
+  const directSocial = applyHumanFarmSocialSetting(getFarm(farm.id), "message", true);
+  assert.equal(directSocial.ok, true);
+  assert.equal(getFarm(farm.id).social.message, true);
+  const invalidSocial = applyHumanFarmSocialSetting(getFarm(farm.id), "unknown", true);
+  assert.equal(invalidSocial.ok, false);
 });
 
 test("settings revision is stable for the same persisted state and changes after a supported write", () => {

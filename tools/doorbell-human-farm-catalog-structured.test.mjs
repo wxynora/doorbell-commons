@@ -3,6 +3,11 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { projectHumanFarmCatalog } from "../dist/server/farm-catalog-structured.js";
+import { cropCodexActionRevision } from "../dist/server/crop-codex-revision.js";
+import { expeditionActionRevision } from "../dist/server/expedition-revision.js";
+import { marketActionRevision } from "../dist/server/market-revision.js";
+import { neighborhoodMessageActionRevision } from "../dist/server/neighborhood-revision.js";
+import { originalPlantActionRevision } from "../dist/server/original-plant-action.js";
 import { allUgc } from "../dist/ugc.js";
 
 const NOW = Date.parse("2026-08-24T04:00:00.000Z");
@@ -91,9 +96,28 @@ test("structured catalog reads every scoped section without mutating farm state"
 
   assert.deepEqual(after, before);
   assert.deepEqual(allUgc(), worldBefore);
-  assert.deepEqual(ownKeys(result), ["data", "revision", "server_time"]);
+  assert.deepEqual(ownKeys(result), [
+    "codex_revision",
+    "data",
+    "expedition_revision",
+    "market_revision",
+    "neighborhood_revision",
+    "original_plant_revision",
+    "revision",
+    "server_time",
+  ]);
   assert.match(result.revision, /^farm-catalog-v1:[0-9a-f]{64}$/);
+  assert.equal(result.codex_revision, cropCodexActionRevision(farm, NOW));
   assert.equal(projectHumanFarmCatalog(farm, NOW + 1_000).revision, result.revision);
+  assert.match(result.original_plant_revision, /^farm-original-plant-v1:[0-9a-f]{64}$/);
+  assert.equal(result.original_plant_revision, originalPlantActionRevision(farm, NOW));
+  assert.equal(
+    projectHumanFarmCatalog(farm, NOW + 1_000).original_plant_revision,
+    result.original_plant_revision,
+  );
+  assert.equal(result.expedition_revision, expeditionActionRevision(farm, NOW));
+  assert.equal(result.market_revision, marketActionRevision(farm, NOW));
+  assert.equal(result.neighborhood_revision, neighborhoodMessageActionRevision(farm, NOW));
   assert.deepEqual(ownKeys(result.data), [
     "backpack",
     "bulletin",

@@ -316,6 +316,58 @@ export function replaceFarm(id, farm) {
         throw err;
     }
 }
+function worldSnapshot(farmValues = farms.values(), ugcValues = dumpUgc()) {
+    return {
+        format: "aifarm-world",
+        version: 1,
+        maintenanceGrantIds: appliedMaintenanceGrantIds,
+        doorbellWelcomeRewardGrants,
+        doorbellFarmCreations,
+        farms: [...farmValues],
+        ugc: ugcValues,
+        glimmer: glimmerWorld,
+        publicExpedition: publicExpeditionWorld,
+        qixiLantern2026: qixiLantern2026World,
+    };
+}
+function writeWorldAtomic(world) {
+    mkdirSync(DATA_DIR, { recursive: true });
+    // 原子写：先写 .tmp 再 rename（rename 在同一文件系统是原子的）——避免写到一半进程崩导致整库损坏/清空。
+    const tmp = WORLD_FILE + ".tmp";
+    const data = JSON.stringify(world, null, 2);
+    writeFileSync(tmp, data, "utf8");
+    renameSync(tmp, WORLD_FILE);
+}
+/**
+ * Replace several existing farms and the shared UGC catalog in one durable
+ * world-file commit. The replacements must already be isolated working
+ * copies; the live maps are not touched until the single rename succeeds.
+ */
+export function replaceFarmsAtomic(replacements, ugcValues = dumpUgc()) {
+    if (!Array.isArray(replacements) || replacements.length === 0)
+        throw new TypeError("farm replacements must be a non-empty array");
+    const staged = new Map();
+    for (const entry of replacements) {
+        const id = String(entry?.id ?? entry?.farm?.id ?? "");
+        if (!id || staged.has(id))
+            throw new Error("farm replacements must contain each farm exactly once");
+        const before = farms.get(id);
+        if (!before)
+            throw new Error(`farm not found: ${id}`);
+        const farm = structuredClone(entry.farm);
+        farm.id = id;
+        staged.set(id, normalizeFarm(farm));
+    }
+    const nextUgc = structuredClone(ugcValues);
+    const nextFarms = [...farms.values()].map((farm) => staged.get(farm.id) ?? farm);
+    writeWorldAtomic(worldSnapshot(nextFarms, nextUgc));
+    // Map.set and loadUgc do not perform I/O; the world file is already
+    // committed, so publish both sides together after rename succeeds.
+    loadUgc(nextUgc);
+    for (const [id, farm] of staged)
+        farms.set(id, farm);
+    return [...staged.values()];
+}
 /** 确保常驻 NPC 阿土在库里（首次启动 / 老存档没有时建一座）。返回是否新建。 */
 function ensureNpc() {
     if (farms.has(NPC_ID))
@@ -324,25 +376,7 @@ function ensureNpc() {
     return true;
 }
 export function save() {
-    mkdirSync(DATA_DIR, { recursive: true });
-    // 原子写：先写 .tmp 再 rename（rename 在同一文件系统是原子的）——避免写到一半进程崩导致整库损坏/清空
-    const writeAtomic = (file, data) => {
-        const tmp = file + ".tmp";
-        writeFileSync(tmp, data, "utf8");
-        renameSync(tmp, file);
-    };
-    writeAtomic(WORLD_FILE, JSON.stringify({
-        format: "aifarm-world",
-        version: 1,
-        maintenanceGrantIds: appliedMaintenanceGrantIds,
-        doorbellWelcomeRewardGrants,
-        doorbellFarmCreations,
-        farms: [...farms.values()],
-        ugc: dumpUgc(),
-        glimmer: glimmerWorld,
-        publicExpedition: publicExpeditionWorld,
-        qixiLantern2026: qixiLantern2026World,
-    }, null, 2));
+    writeWorldAtomic(worldSnapshot());
 }
 export function load() {
     if (existsSync(WORLD_FILE)) {

@@ -3,6 +3,7 @@ import { dispatch } from "../game.js";
 import { replaceFarm } from "../store.js";
 import { equipTitle } from "../titles.js";
 import { projectHumanFarmCatalog } from "./farm-catalog-structured.js";
+import { applyHumanFarmNickname, applyHumanFarmSocialSetting } from "./farm-settings-authority.js";
 
 const FARM_DOORPLATE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -87,7 +88,9 @@ function validateBody(body) {
     typeof body.field !== "string" ||
     !FIELDS.has(body.field)
   ) return false;
-  if (TEXT_FIELDS.has(body.field)) return typeof body.value === "string" && body.value.length > 0;
+  if (TEXT_FIELDS.has(body.field)) {
+    return typeof body.value === "string" && (body.field === "ai_name" || body.field === "human_name" || body.value.length > 0);
+  }
   if (SOCIAL_FIELDS.has(body.field)) return typeof body.value === "boolean";
   return body.value === null || typeof body.value === "string";
 }
@@ -103,10 +106,11 @@ function applySupportedAction(farm, body, now) {
     return equipTitle(farm, body.value ?? "");
   }
   if (body.field === "ai_name" || body.field === "human_name") {
-    return { ok: false, error: "该昵称字段当前没有农场权威写入动作" };
+    return applyHumanFarmNickname(farm, body.field, body.value);
   }
   if (SOCIAL_FIELDS.has(body.field)) {
-    return { ok: false, error: "该社交开关当前没有农场权威写入动作" };
+    const [_, key] = body.field.split(".");
+    return applyHumanFarmSocialSetting(farm, key, body.value);
   }
   return { ok: false, error: "该设置字段当前没有农场权威写入动作" };
 }

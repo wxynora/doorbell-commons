@@ -11,6 +11,7 @@ import {
   cropById,
   crops,
   cookingIngredientById,
+  cookingRecipeById,
   expDecorById,
   expEventById,
   expMapById,
@@ -22,6 +23,12 @@ import { currentDayIndex } from "../time.js";
 import { titleById } from "../titles.js";
 import { buildLeaderboards } from "../leaderboard.js";
 import { playerFarms } from "../store.js";
+import { cropCodexActionRevision } from "./crop-codex-revision.js";
+import { originalPlantActionRevision } from "./original-plant-action.js";
+import { expeditionActionRevision } from "./expedition-revision.js";
+import { marketActionRevision } from "./market-revision.js";
+import { neighborhoodMessageActionRevision } from "./neighborhood-revision.js";
+import { smeltingActionRevision } from "./smelting-revision.js";
 
 const FARM_DOORPLATE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/;
 const RARITY_ORDER = new Map([
@@ -408,7 +415,8 @@ function projectSmelting(farm) {
   });
   return {
     status: "available",
-    write_status: "unavailable",
+    write_status: "available",
+    revision: smeltingActionRevision(farm),
     materials: materialRows,
     recipes: recipeRows,
   };
@@ -574,48 +582,79 @@ function projectNeighborhood(farm, now) {
   return { status: "available", rankings, messages, original_crops: originalCrops };
 }
 
+const MARKET_KINDS = new Set(["seed", "material", "ingredient", "dish"]);
+
+function marketDefinition(kind, itemId, ugcById, listing = null) {
+  if (kind === "seed") return cropDefinition(itemId, ugcById);
+  if (kind === "material") return materialById.get(itemId);
+  if (kind === "ingredient") return cookingIngredientById.get(itemId);
+  if (kind === "dish") return isObject(listing?.dish) ? listing.dish : cookingRecipeById.get(itemId);
+  return null;
+}
+
+function projectMarketPart(part, ugcById) {
+  if (!isObject(part) || !MARKET_KINDS.has(part.kind)) return null;
+  const itemId = typeof part.id === "string" && part.id ? part.id : null;
+  if (!itemId) return null;
+  const definition = marketDefinition(part.kind, itemId, ugcById);
+  return {
+    kind: part.kind,
+    item_id: itemId,
+    identity_state: definition ? "known" : "unavailable",
+    name: definition?.name ?? null,
+    rarity: RARITY_ORDER.has(definition?.rarity) ? definition.rarity : null,
+    quantity: nullableInt(part.qty),
+  };
+}
+
+function projectMarketListing(seller, listing, ugcById) {
+  if (!isObject(listing) || !MARKET_KINDS.has(listing.kind)) return null;
+  const itemId = typeof listing.id === "string" && listing.id ? listing.id : null;
+  if (!itemId) return null;
+  const definition = marketDefinition(listing.kind, itemId, ugcById, listing);
+  return {
+    seller_farm_doorplate: String(seller.id),
+    kind: listing.kind,
+    item_id: itemId,
+    identity_state: definition ? "known" : "unavailable",
+    name: definition?.name ?? null,
+    rarity: RARITY_ORDER.has(definition?.rarity) ? definition.rarity : null,
+    quantity: cleanInt(listing.qty),
+    price: nullableInt(listing.price),
+  };
+}
+
+function projectHumanBarterListing(seller, listing, ugcById) {
+  const listingId = typeof listing?.id === "string" && listing.id ? listing.id : null;
+  if (!listingId) return null;
+  const give = projectMarketPart(listing.give, ugcById);
+  const want = projectMarketPart(listing.want, ugcById);
+  if (!give || !want) return null;
+  return {
+    seller_farm_doorplate: String(seller.id),
+    listing_id: listingId,
+    give,
+    want,
+  };
+}
+
 function projectMarket(farm) {
   const ugcById = new Map(allUgc().map((item) => [item.id, item]));
+  const sellers = playerFarms().map((seller) => seller.id === farm.id ? farm : seller);
+  if (!sellers.some((seller) => seller.id === farm.id)) sellers.push(farm);
   const listings = [];
-  for (const listing of Array.isArray(farm.market) ? farm.market : []) {
-    if (!isObject(listing) || !["seed", "material", "ingredient", "dish"].includes(listing.kind)) continue;
-    const kind = listing.kind;
-    const rawId = typeof listing.id === "string" && listing.id ? listing.id : null;
-    let definition = null;
-    let itemId = rawId;
-    let name = null;
-    let rarity = null;
-    if (kind === "seed") {
-      definition = rawId ? cropDefinition(rawId, ugcById) : null;
-      name = definition?.name ?? null;
-      rarity = definition?.rarity ?? null;
-    } else if (kind === "material") {
-      definition = rawId ? materialById.get(rawId) : null;
-      name = definition?.name ?? null;
-      rarity = definition?.rarity ?? null;
-    } else if (kind === "ingredient") {
-      definition = rawId ? cookingIngredientById.get(rawId) : null;
-      name = definition?.name ?? null;
-    } else {
-      itemId = typeof listing.dish?.recipeId === "string" && listing.dish.recipeId
-        ? listing.dish.recipeId
-        : rawId;
-      name = typeof listing.dish?.name === "string" && listing.dish.name ? listing.dish.name : null;
-      rarity = listing.dish?.rarity ?? null;
-      definition = name ? listing.dish : null;
+  const barterListings = [];
+  for (const seller of sellers) {
+    for (const listing of Array.isArray(seller.market) ? seller.market : []) {
+      const projected = projectMarketListing(seller, listing, ugcById);
+      if (projected) listings.push(projected);
     }
-    listings.push({
-      seller_farm_doorplate: String(farm.id),
-      kind,
-      item_id: itemId,
-      identity_state: definition ? "known" : "unavailable",
-      name,
-      rarity: RARITY_ORDER.has(rarity) ? rarity : null,
-      quantity: cleanInt(listing.qty),
-      price: nullableInt(listing.price),
-    });
+    for (const listing of Array.isArray(seller.humanBarters) ? seller.humanBarters : []) {
+      const projected = projectHumanBarterListing(seller, listing, ugcById);
+      if (projected) barterListings.push(projected);
+    }
   }
-  return { status: "available", listings };
+  return { status: "available", listings, barter_listings: barterListings };
 }
 
 /**
@@ -643,6 +682,11 @@ export function projectHumanFarmCatalog(farm, now = Date.now()) {
   return {
     data,
     revision: opaqueRevision({ farm: data.farm, settings: data.settings }),
+    codex_revision: cropCodexActionRevision(farm, now),
+    original_plant_revision: originalPlantActionRevision(farm, now),
+    expedition_revision: expeditionActionRevision(farm, now),
+    market_revision: marketActionRevision(farm, now),
+    neighborhood_revision: neighborhoodMessageActionRevision(farm, now),
     server_time: new Date(now).toISOString(),
   };
 }
