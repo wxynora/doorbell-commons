@@ -16,8 +16,14 @@ Date.now = () => clock;
 
 const { HUMAN_HARVEST_DAILY_CAP, TICK_MS } = await import("../dist/config.js");
 const { makeFarm } = await import("../dist/game.js");
-const { insertFarm } = await import("../dist/store.js");
+const {
+  activateStoredNatureWorld,
+  getNatureWorld,
+  insertFarm,
+} = await import("../dist/store.js");
+const { natureSnapshot } = await import("../dist/nature.js");
 const { currentDayIndex, currentSeason } = await import("../dist/time.js");
+const { projectHumanField } = await import("../dist/server/human-structured.js");
 const { registerUgc } = await import("../dist/ugc.js");
 const { startServer } = await import("../dist/server.js");
 
@@ -137,6 +143,20 @@ test("Doorbell Human field read is strict, pure, projected, and keeps hidden cro
   brokenFarm.humanKey = "broken-human-field-key";
   insertFarm(brokenFarm);
   brokenFarm.landTier = 999;
+  const inactiveField = projectHumanField(farm, NOW);
+  const expectedLegacySeasonId = {
+    春: "spring",
+    夏: "summer",
+    秋: "autumn",
+    冬: "winter",
+  }[currentSeason(NOW).name];
+  assert.equal(inactiveField.data.season.id, expectedLegacySeasonId);
+  assert.equal(inactiveField.data.weather, null);
+  activateStoredNatureWorld({ now: NOW, seed: "human-field-weather-test" });
+  const expectedNature = natureSnapshot(getNatureWorld(), NOW);
+  assert.equal(expectedNature.status, "active");
+  assert.ok(expectedNature.season);
+  assert.ok(expectedNature.weather);
 
   const server = startServer(0);
   await once(server, "listening");
@@ -211,7 +231,11 @@ test("Doorbell Human field read is strict, pure, projected, and keeps hidden cro
       equipped_title: { title_id: "rich_1", name: "第一桶金" },
     },
     balance: { farm_coins: 1280 },
-    season: { name: currentSeason(NOW).name },
+    season: {
+      id: expectedNature.season.id,
+      name: currentSeason(NOW).name,
+    },
+    weather: { condition: expectedNature.weather.condition },
     land: { tier: 3, name: "沃土" },
     plots: [
       {

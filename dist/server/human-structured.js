@@ -2,8 +2,17 @@ import { createHash } from "node:crypto";
 import { HUMAN_HARVEST_DAILY_CAP } from "../config.js";
 import { getCrop, landTierByLevel } from "../content.js";
 import { advance, humanHarvestLeft, plotRemainMs } from "../engine.js";
+import { natureSnapshot } from "../nature.js";
+import { getNatureWorld } from "../store.js";
 import { currentDayIndex, currentSeason } from "../time.js";
 import { equippedTitle } from "../titles.js";
+
+const SEASON_IDS_BY_NAME = {
+    "春": "spring",
+    "夏": "summer",
+    "秋": "autumn",
+    "冬": "winter",
+};
 
 function canonicalize(value) {
     if (Array.isArray(value))
@@ -109,6 +118,13 @@ function readRevision(projectedFarm, data, dayIndex, now) {
  */
 export function projectHumanField(farm, now = Date.now()) {
     const dayIndex = currentDayIndex(now);
+    const currentNature = natureSnapshot(getNatureWorld(), now);
+    const legacySeason = currentSeason(now);
+    const season = currentNature.season
+        ? { id: currentNature.season.id, name: currentNature.season.name }
+        : { id: SEASON_IDS_BY_NAME[legacySeason.name], name: legacySeason.name };
+    if (!season.id)
+        throw new Error("Farm season is unavailable");
     // Lazy growth is projected on a clone.  This keeps field reads pure while
     // making the revision match the exact pre-action state after the old
     // Human UI's leading `advance(farm, now)` call.
@@ -134,7 +150,10 @@ export function projectHumanField(farm, now = Date.now()) {
             equipped_title: title ? { title_id: title.id, name: title.name } : null,
         },
         balance: { farm_coins: projectedFarm.coins },
-        season: { name: currentSeason(now).name },
+        season,
+        weather: currentNature.weather
+            ? { condition: currentNature.weather.condition }
+            : null,
         land: { tier: projectedFarm.landTier, name: land.name },
         plots,
         harvest_assist: {
