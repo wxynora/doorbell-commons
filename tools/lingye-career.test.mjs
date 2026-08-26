@@ -627,12 +627,29 @@ test("public institutions enforce two seats, next-day duty, base wage without wo
             workerResidentId: "reporter-1",
             worldResultReference: "published-article-v1",
         });
-        assert.deepEqual(harness.job.addReporterLikePerformance({
+        const reporterEvaluation = {
+            idempotencyKey: "report-evaluation-1",
             jobId: "report-job",
             sourceReference: "report-evaluation-1",
             validLikes: 15,
             wageReceipt: goldReceipt(harness, "reporter-1", "system_gold_credit", 2_000, "career-job:report-job:evaluation-performance"),
-        }), { performanceGold: 2_000, units: 2 });
+        };
+        assert.deepEqual(harness.job.addReporterLikePerformance(reporterEvaluation), { performanceGold: 2_000, units: 2 });
+        assert.deepEqual(harness.job.addReporterLikePerformance(reporterEvaluation), { performanceGold: 2_000, units: 2 });
+        assert.deepEqual({ ...harness.database
+            .prepare(`SELECT job_id, resident_id, source_reference, idempotency_key,
+              valid_likes, units, performance_gold, receipt_id
+              FROM career_reporter_evaluation_settlements WHERE job_id = ?`)
+            .get("report-job") }, {
+            job_id: "report-job",
+            resident_id: "reporter-1",
+            source_reference: "report-evaluation-1",
+            idempotency_key: "report-evaluation-1",
+            valid_likes: 15,
+            units: 2,
+            performance_gold: 2_000,
+            receipt_id: reporterEvaluation.wageReceipt.receiptId,
+        });
         harness.setNow(beijingTimestamp("2026-08-28", 0));
         const dutyOne = duties.find((duty) => duty.residentId === "reporter-1");
         const dutyTwo = duties.find((duty) => duty.residentId === "reporter-2");

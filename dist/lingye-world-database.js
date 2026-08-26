@@ -3,10 +3,12 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { CareerEmploymentService } from "./career/employment-service.js";
+import { CareerDomainError } from "./career/contracts.js";
 import { CareerJobService } from "./career/job-service.js";
 import { installCareerSchema } from "./career/schema.js";
 import { CareerSchoolService } from "./career/school-service.js";
 import { installEconomySchema } from "./economy/economy-schema.js";
+import { EconomyError } from "./economy/economy-errors.js";
 import { EconomyService } from "./economy/economy-service.js";
 
 export const LINGYE_WORLD_SCHEMA_VERSION = 1;
@@ -284,6 +286,7 @@ export function createLingyeWorldBackend(database, options) {
             addReporterLikePerformance: (input) => atomic(() => {
                 if (input.validLikes < 5) {
                     return jobs.addReporterLikePerformance({
+                        idempotencyKey: input.idempotencyKey,
                         jobId: input.jobId,
                         validLikes: input.validLikes,
                         sourceReference: input.sourceReference,
@@ -298,6 +301,7 @@ export function createLingyeWorldBackend(database, options) {
                     idempotencyKey: input.idempotencyKey,
                 });
                 return jobs.addReporterLikePerformance({
+                    idempotencyKey: input.idempotencyKey,
                     jobId: input.jobId,
                     validLikes: input.validLikes,
                     sourceReference: input.sourceReference,
@@ -337,14 +341,42 @@ export function createLingyeWorldBackend(database, options) {
         refreshDebtStatus: economyCommands.refreshDebtStatus,
         ...careerCommands,
     });
-    const queries = Object.freeze({
+    const trustedQueries = Object.freeze({
         getAccount: (residentId) => economy.getAccount(residentId),
         getFinancialReceipt: (receiptId) => economy.getFinancialReceipt(receiptId),
         previewExchange: (residentId, goldPrincipal, at) => economy.previewExchange(residentId, goldPrincipal, at),
         hasScheduledDuty: (residentId, career, dutyDate) => employment.hasScheduledDuty(residentId, career, dutyDate),
         getJob: (jobId) => jobs.getJob(jobId),
     });
-    const backend = { residentCommands, trustedSystemCommands, queries };
+    const forResident = (authenticatedResidentId) => {
+        if (typeof authenticatedResidentId !== "string" || authenticatedResidentId.length === 0)
+            throw new Error("Authenticated resident id is required");
+        return Object.freeze({
+            confirmTrade: (input) => residentCommands.confirmTrade({ ...input, actorResidentId: authenticatedResidentId }),
+            proposePlayerLoan: (input) => residentCommands.proposePlayerLoan({ ...input, actorResidentId: authenticatedResidentId }),
+            confirmPlayerLoan: (input) => residentCommands.confirmPlayerLoan({ ...input, actorResidentId: authenticatedResidentId }),
+            cancelPlayerLoan: (input) => residentCommands.cancelPlayerLoan({ ...input, actorResidentId: authenticatedResidentId }),
+            repayPlayerLoan: (input) => residentCommands.repayPlayerLoan({ ...input, actorResidentId: authenticatedResidentId }),
+            getOwnAccount: () => economy.getAccount(authenticatedResidentId),
+            getOwnFinancialReceipt: (receiptId) => {
+                const receipt = economy.getFinancialReceipt(receiptId);
+                if (receipt.residentId !== authenticatedResidentId)
+                    throw new EconomyError("FINANCIAL_RECEIPT_NOT_FOUND", { receiptId });
+                return receipt;
+            },
+            previewOwnExchange: (goldPrincipal, at) => economy.previewExchange(authenticatedResidentId, goldPrincipal, at),
+            hasOwnScheduledDuty: (career, dutyDate) => employment.hasScheduledDuty(authenticatedResidentId, career, dutyDate),
+            getVisibleJob: (jobId) => {
+                const job = jobs.getJob(jobId);
+                if (job.ownerResidentId !== authenticatedResidentId &&
+                    job.workerResidentId !== authenticatedResidentId) {
+                    throw new CareerDomainError("job_not_found", "Job not found");
+                }
+                return job;
+            },
+        });
+    };
+    const backend = { forResident, trustedSystemCommands, trustedQueries };
     if (options.exposeInternalsForTesting) {
         backend.testing = Object.freeze({
             economy,

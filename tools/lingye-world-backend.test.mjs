@@ -45,18 +45,24 @@ test("Lingye world keeps resident references, economy and careers in one isolate
     try {
         assert.equal(harness.database.isTransaction, false);
         assert.deepEqual(Object.keys(harness.backend).sort(), [
-            "queries",
-            "residentCommands",
+            "forResident",
             "testing",
+            "trustedQueries",
             "trustedSystemCommands",
         ]);
         assert.equal(Object.hasOwn(harness.backend, "commands"), false);
+        assert.equal(Object.hasOwn(harness.backend, "residentCommands"), false);
         assert.equal(Object.hasOwn(harness.backend, "economy"), false);
         assert.equal(Object.hasOwn(harness.backend, "career"), false);
-        assert.deepEqual(Object.keys(harness.backend.residentCommands).sort(), [
+        assert.deepEqual(Object.keys(harness.backend.forResident("resident-a")).sort(), [
             "cancelPlayerLoan",
             "confirmPlayerLoan",
             "confirmTrade",
+            "getOwnAccount",
+            "getOwnFinancialReceipt",
+            "getVisibleJob",
+            "hasOwnScheduledDuty",
+            "previewOwnExchange",
             "proposePlayerLoan",
             "repayPlayerLoan",
         ]);
@@ -68,7 +74,7 @@ test("Lingye world keeps resident references, economy and careers in one isolate
             "cancelTrade",
             "refundTrade",
         ]) {
-            assert.equal(Object.hasOwn(harness.backend.residentCommands, command), false);
+            assert.equal(Object.hasOwn(harness.backend.forResident("resident-a"), command), false);
             assert.equal(Object.hasOwn(harness.backend.trustedSystemCommands, command), true);
         }
         const publicBackend = createLingyeWorldBackend(harness.database, {
@@ -76,8 +82,8 @@ test("Lingye world keeps resident references, economy and careers in one isolate
             now: () => NOW,
         });
         assert.deepEqual(Object.keys(publicBackend).sort(), [
-            "queries",
-            "residentCommands",
+            "forResident",
+            "trustedQueries",
             "trustedSystemCommands",
         ]);
         assert.equal(Object.hasOwn(publicBackend, "testing"), false);
@@ -255,6 +261,98 @@ test("failed world command rolls back its economy writes inside a committed oute
     }
 });
 
+test("resident facade binds the authenticated actor and limits caller-selected reads", () => {
+    const harness = createHarness();
+    try {
+        for (const residentId of ["facade-a", "facade-b", "facade-c"]) {
+            registerLingyeResidentReference(harness.database, {
+                residentId,
+                bindingReference: `migration-${residentId}`,
+                registeredAt: NOW,
+            });
+            harness.backend.trustedSystemCommands.importLegacyBalances({
+                residentId,
+                gold: 0,
+                silver: residentId === "facade-a" ? 100 : 0,
+                migrationId: `economy-${residentId}`,
+                idempotencyKey: `economy-${residentId}`,
+            });
+        }
+
+        const payer = harness.backend.forResident("facade-a");
+        const payee = harness.backend.forResident("facade-b");
+        const unrelated = harness.backend.forResident("facade-c");
+        const trade = harness.backend.trustedSystemCommands.createTrade({
+            payerResidentId: "facade-a",
+            payeeResidentId: "facade-b",
+            currency: "silver",
+            amount: 40,
+            businessType: "resident-facade-test",
+            businessRef: "resident-facade-test",
+            idempotencyKey: "resident-facade-trade-create",
+        });
+
+        assert.throws(
+            () => unrelated.confirmTrade({
+                tradeId: trade.trade_id,
+                actorResidentId: "facade-b",
+                idempotencyKey: "resident-facade-unrelated-confirm",
+            }),
+            (error) => error?.code === "UNAUTHORIZED_PARTY",
+        );
+        payee.confirmTrade({
+            tradeId: trade.trade_id,
+            actorResidentId: "facade-c",
+            idempotencyKey: "resident-facade-payee-confirm",
+        });
+        payer.confirmTrade({
+            tradeId: trade.trade_id,
+            actorResidentId: "facade-c",
+            idempotencyKey: "resident-facade-payer-confirm",
+        });
+        const settled = harness.backend.trustedSystemCommands.settleTrade({
+            tradeId: trade.trade_id,
+            idempotencyKey: "resident-facade-trade-settle",
+        });
+
+        assert.equal(payer.getOwnAccount().availableSilver, 60);
+        assert.equal(payee.getOwnAccount().availableSilver, 40);
+        assert.deepEqual(
+            payee.getOwnFinancialReceipt(settled.financialReceipt.receiptId),
+            settled.financialReceipt,
+        );
+        assert.throws(
+            () => payer.getOwnFinancialReceipt(settled.financialReceipt.receiptId),
+            (error) => error?.code === "FINANCIAL_RECEIPT_NOT_FOUND",
+        );
+
+        harness.backend.trustedSystemCommands.createJob({
+            jobId: "resident-facade-job",
+            career: "reporter",
+            sourceType: "resident_facade_test",
+            sourceId: "resident-facade-source",
+            objectType: "article",
+            objectId: "resident-facade-article",
+            ownerResidentId: "facade-a",
+            requiredLevel: 1,
+            difficultyLevel: 1,
+            assignmentMode: "accepted",
+        });
+        assert.equal(payer.getVisibleJob("resident-facade-job").ownerResidentId, "facade-a");
+        assert.throws(
+            () => payee.getVisibleJob("resident-facade-job"),
+            (error) => error?.code === "job_not_found",
+        );
+        assert.equal(Object.hasOwn(payer, "trustedQueries"), false);
+        assert.equal(Object.hasOwn(payer, "actorResidentId"), false);
+    }
+    finally {
+        if (harness.database.isOpen)
+            harness.database.close();
+        rmSync(harness.directory, { recursive: true, force: true });
+    }
+});
+
 test("reporter evaluation below five valid likes records a legitimate zero award", () => {
     const harness = createHarness();
     try {
@@ -325,17 +423,46 @@ test("reporter evaluation below five valid likes records a legitimate zero award
         const beforeJournals = harness.database
             .prepare("SELECT COUNT(*) AS count FROM economy_journals")
             .get().count;
+        const zeroEvaluation = {
+            jobId: "reporter-zero-job",
+            residentId: "reporter-zero",
+            amount: 0,
+            validLikes: 4,
+            sourceReference: "reporter-zero-evaluation",
+            idempotencyKey: "reporter-zero-evaluation",
+        };
         assert.deepEqual(
-            harness.backend.trustedSystemCommands.addReporterLikePerformance({
-                jobId: "reporter-zero-job",
-                residentId: "reporter-zero",
-                amount: 0,
-                validLikes: 4,
-                sourceReference: "reporter-zero-evaluation",
-                idempotencyKey: "reporter-zero-evaluation",
-            }),
+            harness.backend.trustedSystemCommands.addReporterLikePerformance(zeroEvaluation),
             { performanceGold: 0, units: 0 },
         );
+        assert.deepEqual(
+            harness.backend.trustedSystemCommands.addReporterLikePerformance(zeroEvaluation),
+            { performanceGold: 0, units: 0 },
+        );
+        assert.deepEqual({ ...harness.database
+            .prepare(`SELECT job_id, resident_id, source_reference, idempotency_key,
+              valid_likes, units, performance_gold, receipt_id
+              FROM career_reporter_evaluation_settlements`)
+            .get() }, {
+            job_id: "reporter-zero-job",
+            resident_id: "reporter-zero",
+            source_reference: "reporter-zero-evaluation",
+            idempotency_key: "reporter-zero-evaluation",
+            valid_likes: 4,
+            units: 0,
+            performance_gold: 0,
+            receipt_id: null,
+        });
+        for (const conflicting of [
+            { ...zeroEvaluation, validLikes: 15, amount: 2_000 },
+            { ...zeroEvaluation, idempotencyKey: "reporter-zero-other-key" },
+            { ...zeroEvaluation, sourceReference: "reporter-zero-other-source" },
+        ]) {
+            assert.throws(
+                () => harness.backend.trustedSystemCommands.addReporterLikePerformance(conflicting),
+                (error) => error?.code === "reporter_evaluation_conflict",
+            );
+        }
         assert.equal(harness.services.economy.getAccount("reporter-zero").availableGold, beforeGold);
         assert.equal(
             harness.database.prepare("SELECT COUNT(*) AS count FROM economy_journals").get().count,
@@ -346,6 +473,12 @@ test("reporter evaluation below five valid likes records a legitimate zero award
                 .prepare("SELECT COUNT(*) AS count FROM economy_commands WHERE idempotency_key = ?")
                 .get("reporter-zero-evaluation").count,
             0,
+        );
+        assert.equal(
+            harness.database
+                .prepare("SELECT COUNT(*) AS count FROM career_reporter_evaluation_settlements")
+                .get().count,
+            1,
         );
     }
     finally {

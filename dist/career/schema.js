@@ -1,4 +1,4 @@
-export const CAREER_SCHEMA_VERSION = 1;
+export const CAREER_SCHEMA_VERSION = 2;
 export function installCareerSchema(database) {
     database.exec(`
     CREATE TABLE IF NOT EXISTS career_tracks (
@@ -244,6 +244,24 @@ export function installCareerSchema(database) {
       receipt_id TEXT NOT NULL UNIQUE REFERENCES career_financial_receipts(receipt_id),
       source_reference TEXT NOT NULL UNIQUE,
       recorded_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS career_reporter_evaluation_settlements (
+      settlement_id TEXT PRIMARY KEY,
+      job_id TEXT NOT NULL UNIQUE REFERENCES career_jobs(job_id),
+      resident_id TEXT NOT NULL,
+      source_reference TEXT NOT NULL UNIQUE,
+      idempotency_key TEXT NOT NULL UNIQUE,
+      valid_likes INTEGER NOT NULL CHECK (valid_likes >= 0),
+      units INTEGER NOT NULL CHECK (units BETWEEN 0 AND 3),
+      performance_gold INTEGER NOT NULL CHECK (performance_gold >= 0),
+      receipt_id TEXT UNIQUE REFERENCES career_financial_receipts(receipt_id),
+      settled_at INTEGER NOT NULL,
+      CHECK (
+        (units = 0 AND performance_gold = 0 AND receipt_id IS NULL)
+        OR
+        (units BETWEEN 1 AND 3 AND performance_gold > 0 AND receipt_id IS NOT NULL)
+      )
     );
   `);
 }

@@ -210,7 +210,7 @@ function commandExists(database, key) {
 }
 
 function readBankFacts(database, backend, rules, residentId) {
-    const account = backend.queries.getAccount(residentId);
+    const account = backend.forResident(residentId).getOwnAccount();
     const termDeposits = mapRows(database.prepare(`
       SELECT deposit_id, principal, term_days, total_rate_ppm, opened_day,
              maturity_day, state, interest_paid, created_at, ended_at
@@ -630,7 +630,7 @@ export function createLingyeActionExecutor(options) {
             if (!identity || identity.binding_reference !== input.bindingReference)
                 return failure("LINGYE_NOT_READY", "铃野居民身份或经济账户尚未完成迁移。");
             try {
-                backend.queries.getAccount(input.residentId);
+                backend.forResident(input.residentId).getOwnAccount();
                 if (input.op === "go.bank.view")
                     return bankView(database, backend, economyRules, input.residentId, input.args);
                 if (input.op === "go.bank.choose")

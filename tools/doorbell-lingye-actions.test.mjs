@@ -130,8 +130,8 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
     const replayedDeposit = execute(executor, "go.bank.choose", depositArgs);
     assert.equal(firstDeposit.ok, true);
     assert.deepEqual(replayedDeposit, firstDeposit);
-    assert.equal(backend.queries.getAccount(RESIDENT_ID).availableGold, 1_999_000);
-    assert.equal(backend.queries.getAccount(RESIDENT_ID).demandGold, 1_000);
+    assert.equal(backend.forResident(RESIDENT_ID).getOwnAccount().availableGold, 1_999_000);
+    assert.equal(backend.forResident(RESIDENT_ID).getOwnAccount().demandGold, 1_000);
 
     const beforeFailedCommands = database.prepare("SELECT COUNT(*) AS count FROM economy_commands").get().count;
     const latestBank = execute(executor, "go.bank.view", {});
@@ -148,7 +148,7 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
         },
     });
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM economy_commands").get().count, beforeFailedCommands);
-    assert.equal(backend.queries.getAccount(RESIDENT_ID).availableGold, 1_999_000);
+    assert.equal(backend.forResident(RESIDENT_ID).getOwnAccount().availableGold, 1_999_000);
 
     const schoolBefore = execute(executor, "go.school.view", {});
     assert.equal(schoolBefore.ok, true);

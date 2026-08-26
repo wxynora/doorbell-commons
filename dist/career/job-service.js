@@ -263,6 +263,12 @@ export class CareerJobService {
         if (!Number.isInteger(input.validLikes) || input.validLikes < 0) {
             throw new CareerDomainError("invalid_like_count", "Valid likes must be a nonnegative integer");
         }
+        if (typeof input.idempotencyKey !== "string" || input.idempotencyKey.trim().length === 0) {
+            throw new CareerDomainError("invalid_idempotency_key", "Reporter evaluation needs an idempotency key");
+        }
+        if (typeof input.sourceReference !== "string" || input.sourceReference.trim().length === 0) {
+            throw new CareerDomainError("invalid_source_reference", "Reporter evaluation needs a source reference");
+        }
         const now = this.#now();
         return runInTransaction(this.#database, () => {
             const job = this.#requireJob(input.jobId);
@@ -270,20 +276,28 @@ export class CareerJobService {
                 throw new CareerDomainError("reporter_performance_unavailable", "Only a published completed reporter job can receive evaluation performance");
             }
             const units = input.validLikes >= 30 ? 3 : input.validLikes >= 15 ? 2 : input.validLikes >= 5 ? 1 : 0;
-            const existing = this.#database
-                .prepare(`SELECT units, performance_gold, receipt_id
-           FROM career_performance_adjustments WHERE source_reference = ?`)
-                .get(input.sourceReference);
-            if (existing) {
-                if (existing.units !== units || existing.receipt_id !== input.wageReceipt?.receiptId) {
-                    throw new CareerDomainError("performance_adjustment_conflict", "The evaluation source was already applied with another result");
+            const settlements = this.#database
+                .prepare(`SELECT * FROM career_reporter_evaluation_settlements
+           WHERE job_id = ? OR source_reference = ? OR idempotency_key = ?
+           ORDER BY settlement_id`)
+                .all(job.job_id, input.sourceReference, input.idempotencyKey);
+            if (settlements.length > 0) {
+                const existing = settlements[0];
+                const expectedReceiptId = input.wageReceipt?.receiptId ?? null;
+                if (settlements.some((candidate) => candidate.settlement_id !== existing.settlement_id) ||
+                    existing.job_id !== job.job_id ||
+                    existing.resident_id !== job.worker_resident_id ||
+                    existing.source_reference !== input.sourceReference ||
+                    existing.idempotency_key !== input.idempotencyKey ||
+                    existing.valid_likes !== input.validLikes ||
+                    existing.units !== units ||
+                    existing.receipt_id !== expectedReceiptId) {
+                    throw new CareerDomainError("reporter_evaluation_conflict", "The reporter evaluation was already settled with another result");
                 }
-                return { performanceGold: existing.performance_gold, units };
+                return { performanceGold: existing.performance_gold, units: existing.units };
             }
-            if (units === 0)
-                return { performanceGold: 0, units: 0 };
-            if (!input.wageReceipt) {
-                throw new CareerDomainError("performance_wage_receipt_required", "Reporter evaluation performance needs its authoritative gold wage receipt");
+            if (units === 0 && input.wageReceipt) {
+                throw new CareerDomainError("performance_wage_receipt_unexpected", "A zero reporter evaluation cannot have a wage receipt");
             }
             const workRecord = this.#database
                 .prepare(`SELECT qualification_level FROM career_work_records
@@ -293,6 +307,18 @@ export class CareerJobService {
                 throw new CareerDomainError("reporter_work_record_missing", "The completed reporter work record is missing");
             }
             const performanceGold = units * PERFORMANCE_PAY_GOLD[workRecord.qualification_level];
+            if (units === 0) {
+                this.#database
+                    .prepare(`INSERT INTO career_reporter_evaluation_settlements (
+               settlement_id, job_id, resident_id, source_reference, idempotency_key,
+               valid_likes, units, performance_gold, receipt_id, settled_at
+             ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, NULL, ?)`)
+                    .run(this.#generateId(), job.job_id, job.worker_resident_id, input.sourceReference, input.idempotencyKey, input.validLikes, now);
+                return { performanceGold: 0, units: 0 };
+            }
+            if (!input.wageReceipt) {
+                throw new CareerDomainError("performance_wage_receipt_required", "Reporter evaluation performance needs its authoritative gold wage receipt");
+            }
             recordFinancialReceipt(this.#database, input.wageReceipt, {
                 amount: performanceGold,
                 businessReference: `career-job:${job.job_id}:evaluation-performance`,
@@ -306,6 +332,12 @@ export class CareerJobService {
              receipt_id, source_reference, recorded_at
            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
                 .run(this.#generateId(), job.job_id, job.worker_resident_id, units, performanceGold, input.wageReceipt.receiptId, input.sourceReference, now);
+            this.#database
+                .prepare(`INSERT INTO career_reporter_evaluation_settlements (
+             settlement_id, job_id, resident_id, source_reference, idempotency_key,
+             valid_likes, units, performance_gold, receipt_id, settled_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+                .run(this.#generateId(), job.job_id, job.worker_resident_id, input.sourceReference, input.idempotencyKey, input.validLikes, units, performanceGold, input.wageReceipt.receiptId, now);
             return { performanceGold, units };
         });
     }
