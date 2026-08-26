@@ -534,13 +534,21 @@ live-checked Human session, then sends them with service authentication to the f
 or save game state. Ordinary and fantasy crop identity remains hidden even when ripe and is first
 revealed by the authoritative harvest result; limited and UGC identity is returned only when its
 persisted stable ID resolves. The opaque field digest includes projected maturity, complete hidden
-farm settlement dependencies, the current UTC+8 day, season, and a rule version, so the browser can
+farm settlement dependencies, the current UTC+8 day, season, weather, and a rule version, so the browser can
 use it as `If-Match` for `POST /api/farm/field/harvest-assists`. That route calls
 `POST /internal/doorbell/human/field/harvest-assist`, which runs the existing Human one-click harvest
 chain on a clone, persists the idempotency receipt and changed farm in one replacement, and returns
 the complete replacement field. React never calculates settlement locally. This source
 implementation is recorded in the 2026-08-24 main／farm Git commits; it has not been deployed or
 production-verified.
+
+The same field projection now returns a strict season ID plus nullable farm weather condition from
+the farm-owned `nature` snapshot. When P4 is inactive, weather remains `null` and the existing
+authoritative season selects the field and ranch base scenes. When P4 is active, both pages receive
+the same condition from the same field response: rain／thunder conditions select their matching rain
+scenes and snow／blizzard conditions select their matching snow scenes. The browser never reads the
+separate community-home weather and never rolls weather per page. This wiring and its scene assets are
+local only; it does not install the missing scheduler, activate P4, or change gameplay settlement.
 
 Ranch, kitchen, and the remaining farm catalog now use three additional fixed read-only chains:
 `GET /api/farm/{ranch,kitchen,catalog}` calls the service-authenticated farm routes

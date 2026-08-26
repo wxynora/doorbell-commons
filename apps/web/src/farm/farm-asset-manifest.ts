@@ -147,6 +147,138 @@ export const FARM_ASSET_MANIFEST = {
     status: "production",
     usage: "wired",
   }),
+  "field.environment.spring": asset({
+    domain: "field",
+    entityKind: "environment",
+    entityId: "field",
+    visualState: "spring",
+    url: "/farm/scenes/field-spring.png",
+    pixelWidth: 864,
+    pixelHeight: 1821,
+    status: "production",
+    usage: "wired",
+  }),
+  "field.environment.summer": asset({
+    domain: "field",
+    entityKind: "environment",
+    entityId: "field",
+    visualState: "summer",
+    url: "/farm/scenes/field-summer.png",
+    pixelWidth: 864,
+    pixelHeight: 1821,
+    status: "production",
+    usage: "wired",
+  }),
+  "field.environment.autumn": asset({
+    domain: "field",
+    entityKind: "environment",
+    entityId: "field",
+    visualState: "autumn",
+    url: "/farm/scenes/field-autumn.png",
+    pixelWidth: 864,
+    pixelHeight: 1821,
+    status: "production",
+    usage: "wired",
+  }),
+  "field.environment.winter": asset({
+    domain: "field",
+    entityKind: "environment",
+    entityId: "field",
+    visualState: "winter",
+    url: "/farm/scenes/field-winter.png",
+    pixelWidth: 864,
+    pixelHeight: 1821,
+    status: "production",
+    usage: "wired",
+  }),
+  "field.environment.rain": asset({
+    domain: "field",
+    entityKind: "environment",
+    entityId: "field",
+    visualState: "rain",
+    url: "/farm/scenes/field-rain.png",
+    pixelWidth: 864,
+    pixelHeight: 1821,
+    status: "production",
+    usage: "wired",
+  }),
+  "field.environment.snow": asset({
+    domain: "field",
+    entityKind: "environment",
+    entityId: "field",
+    visualState: "snow",
+    url: "/farm/scenes/field-snow.png",
+    pixelWidth: 864,
+    pixelHeight: 1821,
+    status: "production",
+    usage: "wired",
+  }),
+  "ranch.environment.spring": asset({
+    domain: "ranch",
+    entityKind: "environment",
+    entityId: "ranch",
+    visualState: "spring",
+    url: "/farm/scenes/ranch-spring.png",
+    pixelWidth: 863,
+    pixelHeight: 1823,
+    status: "production",
+    usage: "wired",
+  }),
+  "ranch.environment.summer": asset({
+    domain: "ranch",
+    entityKind: "environment",
+    entityId: "ranch",
+    visualState: "summer",
+    url: "/farm/scenes/ranch-summer.png",
+    pixelWidth: 863,
+    pixelHeight: 1823,
+    status: "production",
+    usage: "wired",
+  }),
+  "ranch.environment.autumn": asset({
+    domain: "ranch",
+    entityKind: "environment",
+    entityId: "ranch",
+    visualState: "autumn",
+    url: "/farm/scenes/ranch-autumn.png",
+    pixelWidth: 863,
+    pixelHeight: 1823,
+    status: "production",
+    usage: "wired",
+  }),
+  "ranch.environment.winter": asset({
+    domain: "ranch",
+    entityKind: "environment",
+    entityId: "ranch",
+    visualState: "winter",
+    url: "/farm/scenes/ranch-winter.png",
+    pixelWidth: 863,
+    pixelHeight: 1823,
+    status: "production",
+    usage: "wired",
+  }),
+  "ranch.environment.rain": asset({
+    domain: "ranch",
+    entityKind: "environment",
+    entityId: "ranch",
+    visualState: "rain",
+    url: "/farm/scenes/ranch-rain.png",
+    pixelWidth: 863,
+    pixelHeight: 1823,
+    status: "production",
+    usage: "wired",
+  }),
+  "ranch.environment.snow": asset({
+    domain: "ranch",
+    entityKind: "environment",
+    entityId: "ranch",
+    visualState: "snow",
+    url: "/farm/scenes/ranch-snow.png",
+    pixelWidth: 863,
+    pixelHeight: 1823,
+    status: "production",
+    usage: "wired",
+  }),
   "panel.tool.shop": asset({
     domain: "panel",
     entityKind: "tool",
@@ -603,6 +735,58 @@ export function getFarmAsset(assetKey: FarmAssetKey): FarmAssetManifestEntry {
 
 export function getFarmAssetUrl(assetKey: FarmAssetKey): string {
   return getFarmAsset(assetKey).url;
+}
+
+export type FarmEnvironmentScene = "field" | "ranch";
+export type FarmEnvironmentSeasonId = "spring" | "summer" | "autumn" | "winter";
+export type FarmWeatherCondition =
+  | "sunny"
+  | "cloudy"
+  | "light_rain"
+  | "heavy_rain"
+  | "thunderstorm"
+  | "fog"
+  | "hot"
+  | "dry_wind"
+  | "light_snow"
+  | "blizzard";
+
+const FARM_ENVIRONMENT_ASSET_KEYS = {
+  field: {
+    spring: "field.environment.spring",
+    summer: "field.environment.summer",
+    autumn: "field.environment.autumn",
+    winter: "field.environment.winter",
+    rain: "field.environment.rain",
+    snow: "field.environment.snow",
+  },
+  ranch: {
+    spring: "ranch.environment.spring",
+    summer: "ranch.environment.summer",
+    autumn: "ranch.environment.autumn",
+    winter: "ranch.environment.winter",
+    rain: "ranch.environment.rain",
+    snow: "ranch.environment.snow",
+  },
+} as const satisfies Record<
+  FarmEnvironmentScene,
+  Record<FarmEnvironmentSeasonId | "rain" | "snow", FarmAssetKey>
+>;
+
+export function getFarmEnvironmentAssetUrl(
+  scene: FarmEnvironmentScene,
+  seasonId: FarmEnvironmentSeasonId,
+  weatherCondition: FarmWeatherCondition | null,
+): string {
+  const visualState =
+    weatherCondition === "light_rain" ||
+    weatherCondition === "heavy_rain" ||
+    weatherCondition === "thunderstorm"
+      ? "rain"
+      : weatherCondition === "light_snow" || weatherCondition === "blizzard"
+        ? "snow"
+        : seasonId;
+  return getFarmAssetUrl(FARM_ENVIRONMENT_ASSET_KEYS[scene][visualState]);
 }
 
 export function getRanchAnimalAsset(entityId: string): FarmAssetManifestEntry | undefined {

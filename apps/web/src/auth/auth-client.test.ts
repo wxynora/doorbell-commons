@@ -73,7 +73,8 @@ const FARM_FIELD = {
       equipped_title: { title_id: "title-sprout", name: "新芽守望者" },
     },
     balance: { farm_coins: 0 },
-    season: { name: "夏" },
+    season: { id: "summer", name: "夏" },
+    weather: { condition: "light_rain" },
     land: { tier: 2, name: "沃土" },
     plots: [
       {

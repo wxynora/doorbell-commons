@@ -99,7 +99,8 @@ const candidateTwoFarmPreview: BoundFarmField = {
       equipped_title: { title_id: "preview-title", name: "新芽守望者" },
     },
     balance: { farm_coins: 1280 },
-    season: { name: "夏" },
+    season: { id: "summer", name: "夏" },
+    weather: { condition: "light_rain" },
     land: { tier: 3, name: "葱郁田地" },
     plots: candidateTwoFarmPreviewPlots,
     harvest_assist: {

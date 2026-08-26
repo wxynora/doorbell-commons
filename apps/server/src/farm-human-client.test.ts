@@ -23,7 +23,8 @@ const FIELD_RESULT = {
       equipped_title: { title_id: "spring-helper", name: "春日帮手" },
     },
     balance: { farm_coins: 1280 },
-    season: { name: "夏" },
+    season: { id: "summer", name: "夏" },
+    weather: { condition: "light_rain" },
     land: { tier: 3, name: "沃野" },
     plots: [
       {

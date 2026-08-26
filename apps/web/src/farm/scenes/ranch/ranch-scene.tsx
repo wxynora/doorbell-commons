@@ -145,14 +145,20 @@ function RanchSceneAnimal({
 export function RanchScene({
   active,
   animals,
+  backgroundUrl,
   onSelectAnimal,
 }: {
   active: boolean;
   animals: readonly RanchSceneAnimalDefinition[];
+  backgroundUrl: string;
   onSelectAnimal: (animalId: string) => void;
 }) {
   return (
-    <section aria-labelledby="farm-ranch-title" className="farm-scene farm-scene--ranch">
+    <section
+      aria-labelledby="farm-ranch-title"
+      className="farm-scene farm-scene--ranch"
+      style={{ "--farm-scene-background": `url("${backgroundUrl}")` } as CSSProperties}
+    >
       <h2 className="farm-visually-hidden" id="farm-ranch-title">
         牧场
       </h2>

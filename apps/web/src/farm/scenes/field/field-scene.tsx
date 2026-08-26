@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { type FarmAssetKey, getFarmAssetUrl } from "../../farm-asset-manifest";
 import type { FarmPlot } from "../../farm-overview";
 import { farmPlotStateLabel } from "../../farm-overview";
@@ -69,18 +70,24 @@ function PlotPlant({ plot }: { plot: FarmPlot }) {
 }
 
 export function FieldScene({
+  backgroundUrl,
   plots,
   selectedPlot,
   onSelectPlot,
   onClosePlot,
 }: {
+  backgroundUrl: string;
   plots: readonly FarmPlot[];
   selectedPlot: FarmPlot | null;
   onSelectPlot: (plotId: number) => void;
   onClosePlot: () => void;
 }) {
   return (
-    <section aria-labelledby="farm-field-title" className="farm-scene farm-scene--field">
+    <section
+      aria-labelledby="farm-field-title"
+      className="farm-scene farm-scene--field"
+      style={{ "--farm-scene-background": `url("${backgroundUrl}")` } as CSSProperties}
+    >
       <h2 className="farm-visually-hidden" id="farm-field-title">
         农场
       </h2>

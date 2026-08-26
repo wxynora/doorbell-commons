@@ -113,7 +113,8 @@ const FIELD_BEFORE = {
       equipped_title: null,
     },
     balance: { farm_coins: 10 },
-    season: { name: "夏" },
+    season: { id: "summer", name: "夏" },
+    weather: { condition: "light_rain" },
     land: { tier: 1, name: "初土" },
     plots: [
       {

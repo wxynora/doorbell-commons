@@ -14,7 +14,7 @@ import {
   kitchenShopRefreshIssueMessage,
 } from "../../auth/kitchen-shop-refresh-client";
 import { type FarmSceneId, NEIGHBORHOOD_OPTIONS } from "../dev/farm-tool-layouts";
-import { getFarmAssetUrl } from "../farm-asset-manifest";
+import { getFarmAssetUrl, getFarmEnvironmentAssetUrl } from "../farm-asset-manifest";
 import {
   getRanchAnimalPlacementStyle,
   getRanchAnimalSpriteStyle,
@@ -710,6 +710,11 @@ export function FarmFieldContent({
             <Suspense fallback={null}>
               {scene.id === "field" ? (
                 <FieldScene
+                  backgroundUrl={getFarmEnvironmentAssetUrl(
+                    "field",
+                    field.season.id,
+                    field.weather?.condition ?? null,
+                  )}
                   onClosePlot={() => setSelectedPlotId(null)}
                   onSelectPlot={setSelectedPlotId}
                   plots={field.plots}
@@ -720,6 +725,11 @@ export function FarmFieldContent({
                 <RanchScene
                   active={activeScene === "ranch"}
                   animals={ranchSceneAnimals}
+                  backgroundUrl={getFarmEnvironmentAssetUrl(
+                    "ranch",
+                    field.season.id,
+                    field.weather?.condition ?? null,
+                  )}
                   onSelectAnimal={setSelectedRanchAnimalId}
                 />
               ) : null}

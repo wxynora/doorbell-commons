@@ -9,6 +9,7 @@ import {
   getCookingIngredientAsset,
   getCookingRecipeAsset,
   getFarmAsset,
+  getFarmEnvironmentAssetUrl,
   getRanchAnimalAsset,
   getSmeltingMaterialAsset,
   RANCH_ANIMAL_ASSET_KEYS,
@@ -39,7 +40,8 @@ const FIELD: BoundFarmField = {
       equipped_title: { title_id: "title-sprout", name: "新芽守望者" },
     },
     balance: { farm_coins: 0 },
-    season: { name: "夏" },
+    season: { id: "summer", name: "夏" },
+    weather: { condition: "light_rain" },
     land: { tier: 2, name: "沃土" },
     plots: [
       {
@@ -725,6 +727,46 @@ test("field identity plaque and environment status keep authority-backed facts s
     styles,
     /\.farm-field-environment\s*\{[^}]*position:\s*absolute[^}]*height:\s*calc\(var\(--farm-control-size\) \/ 2\)[^}]*pointer-events:\s*none/,
   );
+});
+
+test("field and ranch scenes use the same authority-backed season and weather selection", () => {
+  const source = readFarmSources();
+
+  assert.equal(
+    getFarmEnvironmentAssetUrl("field", "summer", null),
+    "/farm/scenes/field-summer.png",
+  );
+  assert.equal(
+    getFarmEnvironmentAssetUrl("ranch", "autumn", "cloudy"),
+    "/farm/scenes/ranch-autumn.png",
+  );
+  assert.equal(
+    getFarmEnvironmentAssetUrl("field", "spring", "thunderstorm"),
+    "/farm/scenes/field-rain.png",
+  );
+  assert.equal(
+    getFarmEnvironmentAssetUrl("ranch", "winter", "heavy_rain"),
+    "/farm/scenes/ranch-rain.png",
+  );
+  assert.equal(
+    getFarmEnvironmentAssetUrl("field", "winter", "blizzard"),
+    "/farm/scenes/field-snow.png",
+  );
+  assert.equal(
+    getFarmEnvironmentAssetUrl("ranch", "winter", "light_snow"),
+    "/farm/scenes/ranch-snow.png",
+  );
+  assert.equal((source.match(/field\.weather\?\.condition \?\? null/g) ?? []).length, 2);
+  assert.equal((source.match(/field\.season\.id/g) ?? []).length, 2);
+
+  for (const scene of ["field", "ranch"] as const) {
+    for (const state of ["spring", "summer", "autumn", "winter", "rain", "snow"] as const) {
+      const assetPath = new URL(`../../public/farm/scenes/${scene}-${state}.png`, import.meta.url);
+      const size = statSync(assetPath).size;
+      assert.ok(size > 0);
+      assert.ok(size < 1_100_000);
+    }
+  }
 });
 
 test("moving ranch residents keep preview read-only and use authority-backed live actions", () => {

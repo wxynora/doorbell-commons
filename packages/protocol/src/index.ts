@@ -316,6 +316,21 @@ export const farmFieldPlotSchema = z
     }
   });
 
+export const farmEnvironmentSeasonIdSchema = z.enum(["spring", "summer", "autumn", "winter"]);
+
+export const farmWeatherConditionSchema = z.enum([
+  "sunny",
+  "cloudy",
+  "light_rain",
+  "heavy_rain",
+  "thunderstorm",
+  "fog",
+  "hot",
+  "dry_wind",
+  "light_snow",
+  "blizzard",
+]);
+
 export const farmFieldDataSchema = z
   .object({
     farm: z
@@ -339,9 +354,16 @@ export const farmFieldDataSchema = z
       .strict(),
     season: z
       .object({
+        id: farmEnvironmentSeasonIdSchema,
         name: z.string().min(1),
       })
       .strict(),
+    weather: z
+      .object({
+        condition: farmWeatherConditionSchema,
+      })
+      .strict()
+      .nullable(),
     land: z
       .object({
         tier: z.number().int().positive(),
