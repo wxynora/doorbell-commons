@@ -1,8 +1,18 @@
-// 时间：游戏内加速季节 + 真实公历节日判定。
+// 时间：P4 启用前兼容旧加速季节；启用后统一读取世界存档中的 14 日生态季。
 import { TICK_MS, TZ, SEASON_LENGTH_TICKS } from "./config.js";
 import { seasons, festivals } from "./content.js";
-/** 游戏内加速季节（随真实时间推进，与真实季节无关） */
-export function currentSeason(now) {
+import { ecologicalSeasonAt } from "./nature.js";
+let natureWorldProvider = () => null;
+export function setNatureWorldProvider(provider) {
+    if (typeof provider !== "function")
+        throw new TypeError("nature world provider must be a function");
+    natureWorldProvider = provider;
+}
+/** P4 已启用时返回统一生态季；尚未启用的旧世界保持既有加速季节。 */
+export function currentSeason(now, natureWorld = natureWorldProvider()) {
+    const ecological = ecologicalSeasonAt(natureWorld, now);
+    if (ecological)
+        return ecological.definition;
     const totalTicks = Math.floor(now / TICK_MS);
     const idx = Math.floor(totalTicks / SEASON_LENGTH_TICKS) % seasons.length;
     return seasons[idx];

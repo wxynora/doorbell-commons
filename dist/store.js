@@ -10,6 +10,8 @@ import { NPC_ID } from "./config.js";
 import { ensureFishing } from "./fishing.js";
 import { glimmerAchievementRewardText, normalizeGlimmerFarm, normalizeGlimmerWorld, settleGlimmerAchievementRewards } from "./glimmer.js";
 import { normalizePublicExpeditionWorld } from "./public-expedition.js";
+import { activateNatureWorld, advanceNatureWorld, normalizeNatureWorld } from "./nature.js";
+import { setNatureWorldProvider } from "./time.js";
 import { crops } from "./content.js";
 import { normalizeQixi2026Farm, settleQixi2026SeedPriceRefund } from "./qixi-2026.js";
 import { normalizeQixiLantern2026Farm, normalizeQixiLantern2026World } from "./qixi-lantern-2026.js";
@@ -27,6 +29,8 @@ let doorbellFarmCreations = [];
 let glimmerWorld = normalizeGlimmerWorld({});
 let publicExpeditionWorld = normalizePublicExpeditionWorld({});
 let qixiLantern2026World = normalizeQixiLantern2026World({});
+let natureWorld = normalizeNatureWorld(null);
+setNatureWorldProvider(() => natureWorld);
 const DOORBELL_WELCOME_SILVER = 200;
 const SSR_CROPS = crops.filter((crop) => crop?.rarity === "SSR");
 const QIXI_2026_PRICE_REFUND_ID = "qixi-2026-seed-price-refund-20260815";
@@ -155,6 +159,28 @@ export const playerFarms = () => [...farms.values()].filter((f) => f.id !== NPC_
 export const getGlimmerWorld = () => glimmerWorld;
 export const getPublicExpeditionWorld = () => publicExpeditionWorld;
 export const getQixiLantern2026World = () => qixiLantern2026World;
+export const getNatureWorld = () => natureWorld;
+export function commitNatureWorld(next) {
+    const before = natureWorld;
+    natureWorld = normalizeNatureWorld(next);
+    try {
+        save();
+    }
+    catch (error) {
+        natureWorld = before;
+        throw error;
+    }
+    return natureWorld;
+}
+export function activateStoredNatureWorld({ now, seed }) {
+    return commitNatureWorld(activateNatureWorld(natureWorld, { now, seed }));
+}
+export function advanceStoredNatureWorld(now) {
+    const next = advanceNatureWorld(natureWorld, now);
+    if (JSON.stringify(next) === JSON.stringify(natureWorld))
+        return natureWorld;
+    return commitNatureWorld(next);
+}
 /** 启动时依次应用尚未发放的维护福利；以后只追加 content/maintenance-grants.json，不改发放逻辑。 */
 export function applyMaintenanceSilverGrant(farmValues = farms.values(), now = Date.now()) {
     const players = [...farmValues].filter((farm) => farm && farm.id !== NPC_ID);
@@ -328,6 +354,7 @@ function worldSnapshot(farmValues = farms.values(), ugcValues = dumpUgc()) {
         glimmer: glimmerWorld,
         publicExpedition: publicExpeditionWorld,
         qixiLantern2026: qixiLantern2026World,
+        nature: natureWorld,
     };
 }
 function writeWorldAtomic(world) {
@@ -397,6 +424,7 @@ export function load() {
             glimmerWorld = normalizeGlimmerWorld(world.glimmer);
             publicExpeditionWorld = normalizePublicExpeditionWorld(world.publicExpedition);
             qixiLantern2026World = normalizeQixiLantern2026World(world.qixiLantern2026);
+            natureWorld = normalizeNatureWorld(world.nature);
             loadUgc(Array.isArray(world.ugc) ? world.ugc : []);
             farms.clear();
             for (const f of world.farms)
@@ -436,6 +464,7 @@ export function load() {
     glimmerWorld = normalizeGlimmerWorld({});
     publicExpeditionWorld = normalizePublicExpeditionWorld({});
     qixiLantern2026World = normalizeQixiLantern2026World({});
+    natureWorld = normalizeNatureWorld(null);
     if (!existsSync(DATA_FILE)) {
         ensureNpc();
         applyMaintenanceSilverGrant();
