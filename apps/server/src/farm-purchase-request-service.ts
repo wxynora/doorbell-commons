@@ -244,8 +244,13 @@ export class FarmPurchaseRequestService {
       return undefined;
     }
 
+    const current = this.get(existing.residentId, existing.requestId);
+    if (!current) {
+      return undefined;
+    }
+
     const requestedItems = normalizeStableItems(input.items);
-    const existingItems = normalizeStableItems(existing.items);
+    const existingItems = normalizeStableItems(current.items);
     const sameItems =
       requestedItems.length === existingItems.length &&
       requestedItems.every((item, index) => {
@@ -257,23 +262,19 @@ export class FarmPurchaseRequestService {
           existingItem.qty === item.qty
         );
       });
-    if (
-      existing.shop !== input.shop ||
-      existing.shopRevision !== input.shopRevision ||
-      !sameItems
-    ) {
+    if (current.shop !== input.shop || current.shopRevision !== input.shopRevision || !sameItems) {
       throw new FarmPurchaseRequestIdempotencyConflictError();
     }
 
-    const storedWake = this.#database.getBellWake(existing.residentId, existing.wakeId);
+    const storedWake = this.#database.getBellWake(current.residentId, current.wakeId);
     const storedText = storedWake?.payload?.text;
     return {
-      request: existing,
+      request: current,
       created: false,
       notificationText:
         typeof storedText === "string"
           ? storedText
-          : buildFarmPurchaseNotificationText(existing.humanName, existing.shop, existing.items),
+          : buildFarmPurchaseNotificationText(current.humanName, current.shop, current.items),
     };
   }
 

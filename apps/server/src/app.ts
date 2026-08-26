@@ -867,14 +867,17 @@ function sendBoundFarmPurchaseRequestError(
 function sendBoundFarmPurchaseRequestSuccess(
   reply: FastifyReply,
   result: FarmPurchaseRequestCreateResult,
-  items: readonly { kind: string; item_id: string; qty: number }[],
 ) {
   reply.header("cache-control", "no-store");
   return boundFarmPurchaseRequestCreateSuccessSchema.parse({
     data: {
       shop: result.request.shop,
       shop_revision: result.request.shopRevision,
-      items,
+      items: result.request.items.map((item) => ({
+        kind: item.kind,
+        item_id: item.itemId,
+        qty: item.qty,
+      })),
       status: result.request.status,
       expires_at: new Date(result.request.expiresAt).toISOString(),
     },
@@ -3664,7 +3667,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         })),
       });
       if (replay) {
-        return sendBoundFarmPurchaseRequestSuccess(reply, replay, parsedBody.data.items);
+        return sendBoundFarmPurchaseRequestSuccess(reply, replay);
       }
       const catalog = await options.registrationAuth.getCurrentFarmCatalog(token);
       const settings = catalog.data.settings;
@@ -3785,7 +3788,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         idempotencyKey: parsedIdempotencyKey.data,
         items: requestItems,
       });
-      return sendBoundFarmPurchaseRequestSuccess(reply, created, parsedBody.data.items);
+      return sendBoundFarmPurchaseRequestSuccess(reply, created);
     } catch (error) {
       if (error instanceof AuthenticationRequiredError) {
         return sendBoundFarmPurchaseRequestError(

@@ -205,3 +205,46 @@ test("a request expires from its persisted timestamp and cancels its pending wak
     database.close();
   }
 });
+
+test("replay expires a stale request before returning its authoritative state", () => {
+  const database = registeredDatabase();
+  try {
+    const now = { value: 10_000 };
+    const cancellations: string[] = [];
+    const service = new FarmPurchaseRequestService({
+      database,
+      now: () => now.value,
+      generateRequestId: () => "request-1",
+      generateWakeId: () => "wake-1",
+      bellNotifier: {
+        notifyResident: () => undefined,
+        cancelWake: (_residentId, wakeId) => cancellations.push(wakeId),
+      },
+    });
+    const input = {
+      residentId: "resident-1",
+      homeId: "home-1",
+      humanName: "辛玥",
+      shop: "field" as const,
+      shopRevision: "shop-v1",
+      idempotencyKey: "00000000-0000-4000-8000-000000000003",
+      items: [{ kind: "seed", itemId: "ordinary_seed", qty: 1, displayName: "普通种子" }],
+    };
+    service.create(input);
+
+    now.value += FARM_PURCHASE_REQUEST_TTL_MS;
+    const replay = service.replay({
+      residentId: input.residentId,
+      shop: input.shop,
+      shopRevision: input.shopRevision,
+      idempotencyKey: input.idempotencyKey,
+      items: input.items,
+    });
+
+    assert.equal(replay?.request.status, "expired");
+    assert.deepEqual(cancellations, ["wake-1"]);
+    assert.equal(database.listPendingBellWakes("resident-1").length, 0);
+  } finally {
+    database.close();
+  }
+});

@@ -76,7 +76,7 @@ import {
 } from "@doorbell/protocol";
 import Database from "better-sqlite3";
 import { buildApp } from "./app.js";
-import { CommunityDatabase } from "./community-database.js";
+import { CommunityDatabase, FARM_PURCHASE_REQUEST_TTL_MS } from "./community-database.js";
 import { COMMUNITY_QQ_GROUP_ID } from "./config.js";
 import {
   FarmHumanCatalogContractUnavailableError,
@@ -3574,6 +3574,21 @@ test("bound farm purchase request persists one authoritative cart and returns no
           next_refresh_at: "2026-08-26T00:00:00.000Z",
           items: [
             {
+              kind: "seed",
+              item_id: "ordinary_seed",
+              identity_state: "known",
+              name: "普通种子",
+              rarity: "N",
+              price: 10,
+              currency: "gold",
+              quantity: null,
+              available_quantity: 6,
+              daily_limit: 6,
+              purchased_today: 0,
+              condition: null,
+              source: "persisted",
+            },
+            {
               kind: "potion",
               item_id: "speed_potion",
               identity_state: "known",
@@ -3618,13 +3633,19 @@ test("bound farm purchase request persists one authoritative cart and returns no
       payload: {
         shop: "field",
         shop_revision: shopRevision,
-        items: [{ kind: "potion", item_id: "speed_potion", qty: 2 }],
+        items: [
+          { kind: "seed", item_id: "ordinary_seed", qty: 1 },
+          { kind: "potion", item_id: "speed_potion", qty: 2 },
+        ],
       },
     });
     assert.equal(create.statusCode, 200);
     const created = boundFarmPurchaseRequestCreateSuccessSchema.parse(create.json());
     assert.equal(created.data.status, "requested");
-    assert.deepEqual(created.data.items, [{ kind: "potion", item_id: "speed_potion", qty: 2 }]);
+    assert.deepEqual(created.data.items, [
+      { kind: "potion", item_id: "speed_potion", qty: 2 },
+      { kind: "seed", item_id: "ordinary_seed", qty: 1 },
+    ]);
     const catalogCallsAfterCreate = harness.farmCatalogReader.calls.length;
     const currentShop = harness.farmCatalogReader.success.data.shop;
     assert.equal(currentShop.status, "available");
@@ -3648,7 +3669,10 @@ test("bound farm purchase request persists one authoritative cart and returns no
       payload: {
         shop: "field",
         shop_revision: shopRevision,
-        items: [{ kind: "potion", item_id: "speed_potion", qty: 2 }],
+        items: [
+          { kind: "potion", item_id: "speed_potion", qty: 2 },
+          { kind: "seed", item_id: "ordinary_seed", qty: 1 },
+        ],
       },
     });
     assert.equal(replay.statusCode, 200);
@@ -3656,6 +3680,40 @@ test("bound farm purchase request persists one authoritative cart and returns no
     assert.deepEqual(
       boundFarmPurchaseRequestCreateSuccessSchema.parse(replay.json()).data,
       created.data,
+    );
+    const pendingWake = harness.database.listPendingBellWakes(
+      "b60a5f78-9e87-4bc4-a06f-50df4e23d42d",
+    )[0];
+    assert.ok(pendingWake?.purchaseRequestId);
+    const stored = harness.farmPurchaseRequestService.get(
+      "b60a5f78-9e87-4bc4-a06f-50df4e23d42d",
+      pendingWake.purchaseRequestId,
+    );
+    assert.ok(stored);
+    assert.equal(stored.items[0]?.displayName, "加速药水");
+    assert.equal(
+      harness.database.getBellWake(stored.residentId, stored.wakeId)?.payload?.text,
+      "【📢来自铃野的通知】\n你的人类辛玥想要你给她买农场商店的加速药水 × 2、普通种子 × 1。",
+    );
+
+    harness.now.value += FARM_PURCHASE_REQUEST_TTL_MS;
+    const expiredReplay = await harness.app.inject({
+      method: "POST",
+      url: "/api/farm/purchase-requests",
+      headers: { cookie, "idempotency-key": idempotencyKey },
+      payload: {
+        shop: "field",
+        shop_revision: shopRevision,
+        items: [
+          { kind: "seed", item_id: "ordinary_seed", qty: 1 },
+          { kind: "potion", item_id: "speed_potion", qty: 2 },
+        ],
+      },
+    });
+    assert.equal(expiredReplay.statusCode, 200);
+    assert.equal(
+      boundFarmPurchaseRequestCreateSuccessSchema.parse(expiredReplay.json()).data.status,
+      "expired",
     );
 
     const conflictingReplay = await harness.app.inject({
@@ -3674,21 +3732,6 @@ test("bound farm purchase request persists one authoritative cart and returns no
       "idempotency_conflict",
     );
     assert.equal(harness.farmCatalogReader.calls.length, catalogCallsAfterCreate);
-
-    const pendingWake = harness.database.listPendingBellWakes(
-      "b60a5f78-9e87-4bc4-a06f-50df4e23d42d",
-    )[0];
-    assert.ok(pendingWake?.purchaseRequestId);
-    const stored = harness.farmPurchaseRequestService.get(
-      "b60a5f78-9e87-4bc4-a06f-50df4e23d42d",
-      pendingWake.purchaseRequestId,
-    );
-    assert.ok(stored);
-    assert.equal(stored.items[0]?.displayName, "加速药水");
-    assert.equal(
-      harness.database.getBellWake(stored.residentId, stored.wakeId)?.payload?.text,
-      "【📢来自铃野的通知】\n你的人类辛玥想要你给她买农场商店的加速药水 × 2。",
-    );
   } finally {
     await harness.close();
   }
