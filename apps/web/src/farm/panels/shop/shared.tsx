@@ -74,24 +74,27 @@ export function RanchShopAnimalSprite({ animal }: { animal: RanchShopAnimal }) {
   );
 }
 
-export function ShopCartAddButton({
-  disabled = false,
+export function ShopCartSelectionBadge({
   itemName,
-  onAdd,
+  onRemove,
+  quantity,
 }: {
-  disabled?: boolean;
   itemName: string;
-  onAdd: () => void;
+  onRemove: () => void;
+  quantity: number;
 }) {
+  if (quantity < 1) {
+    return null;
+  }
+
   return (
     <button
-      aria-label={`将${itemName}加入购物车`}
-      className="shop-cart__add"
-      disabled={disabled}
-      onClick={onAdd}
+      aria-label={`从购物车减少一份${itemName}`}
+      className="shop-cart__selection-count"
+      onClick={onRemove}
       type="button"
     >
-      +
+      {quantity}
     </button>
   );
 }

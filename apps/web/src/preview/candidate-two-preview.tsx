@@ -384,7 +384,7 @@ interface CandidateTwoDemoContent {
       status: string;
     }[];
     encounters: readonly { id: string; name: string; status: string }[];
-    events: readonly { time: string; title: string }[];
+    events: readonly { at: string; title: string }[];
     openingHours: string;
     status: string;
     stats: { coops: number; encounters: number; variants: number };
@@ -627,15 +627,15 @@ const candidateTwoDemoContent: CandidateTwoDemoContent = {
     })),
     events: [
       {
-        time: "21:18",
+        at: "2026-08-26T13:18:00.000Z",
         title: "一家农场遇见了〔流光泉〕",
       },
       {
-        time: "21:06",
+        at: "2026-08-26T13:06:00.000Z",
         title: "第二家农场补上了一份料理食材",
       },
       {
-        time: "20:41",
+        at: "2026-08-26T12:41:00.000Z",
         title: "一家农场带走了异色外观「蜜桃鸭」",
       },
     ],
@@ -2626,7 +2626,7 @@ const RUNTIME_STYLES = `
 
         .candidate2-lookup-button {
             width: 100%;
-            min-height: 44px;
+            min-height: 50px;
             margin-top: 0;
             padding: 12px 18px;
         }
@@ -2861,64 +2861,63 @@ const RUNTIME_STYLES = `
 
         .candidate2-profile-action-sheet {
             position: absolute;
-            top: 24px;
-            left: -14px;
-            z-index: 0;
-            display: grid;
-            width: 34%;
-            min-height: 112px;
-            align-content: start;
-            gap: 5px;
-            padding: 16px 10px;
+            inset: 0;
+            z-index: 3;
+            display: block;
+            width: auto;
+            height: auto;
+            padding: 0;
             border: 0;
-            background: #f1e7dd;
-            clip-path: polygon(
-                0.6% 1%,
-                21% 0.3%,
-                45% 0.8%,
-                70% 0%,
-                99.5% 0.7%,
-                99% 24%,
-                99.7% 49%,
-                99% 75%,
-                99.5% 99%,
-                76% 99.4%,
-                52% 98.8%,
-                27% 99.5%,
-                0.6% 98.8%,
-                1.1% 74%,
-                0.3% 51%,
-                0.9% 25%
-            );
-            filter:
-                drop-shadow(0 0 0.4px #d6c8bc)
-                drop-shadow(2px 3px 2px rgba(83, 63, 53, 0.08));
-            transform: rotate(-2.2deg);
+            background: transparent;
+            clip-path: none;
+            filter: none;
+            transform: none;
+            pointer-events: none;
         }
 
         .candidate2-profile-action {
-            position: relative;
-            width: fit-content;
-            min-height: 32px;
-            padding: 2px 0;
+            position: absolute;
+            top: 144px;
+            right: 4px;
+            width: 82px;
+            height: 26px;
+            min-height: 0;
+            padding: 1px 6px;
             border: 0;
             color: #60483f;
-            background: transparent;
-            font-size: 17px;
+            background: #efe3da;
+            clip-path: polygon(0.8% 1%, 99% 0, 97% 99%, 0 98%);
+            filter:
+                drop-shadow(0 0 0.4px #d6c8bc)
+                drop-shadow(1px 2px 1px rgba(83, 63, 53, 0.08));
+            font-size: 12px;
             line-height: 1;
+            text-align: center;
+            white-space: nowrap;
+            transform: rotate(0.8deg);
+            transform-origin: center;
             text-decoration: none;
             cursor: pointer;
+            pointer-events: auto;
         }
 
-        .candidate2-profile-action::after {
+        .candidate2-profile-action:first-child {
+            top: 20px;
+            right: auto;
+            left: 14px;
+            z-index: 1;
+            width: 50px;
+            height: 26px;
+            margin: 0;
+            padding: 1px 6px;
+            background: #e8e1d8;
+            transform: rotate(-1.6deg);
+        }
+
+        .candidate2-profile-action::before {
             position: absolute;
-            right: 0;
-            bottom: 4px;
-            left: 0;
-            height: 3px;
-            background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 6' preserveAspectRatio='none'%3E%3Cpath d='M1 3.9 C13 1.4 24 4.8 36 3.1 S60 1.8 72 3.6 S89 4.5 99 2.4' fill='none' stroke='%239e776c' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E") center / 100% 100% no-repeat;
+            inset: -12px 0;
             content: '';
-            pointer-events: none;
         }
 
         .candidate2-profile-note {
@@ -2926,7 +2925,7 @@ const RUNTIME_STYLES = `
             top: 0;
             right: -8px;
             z-index: 1;
-            width: 72%;
+            width: 86%;
             flex: 0 0 auto;
             margin: 0;
             padding: 20px 16px 8px;
@@ -3030,42 +3029,102 @@ const RUNTIME_STYLES = `
             flex: 0 0 auto;
         }
 
+        .candidate2-relationship-section {
+            position: relative;
+            z-index: 2;
+        }
+
         .candidate2-activity-section {
-            margin-top: 24px;
+            position: relative;
+            z-index: 5;
+            min-height: 196px;
+            margin: -140px 34px 0 4px;
+            padding: 20px 18px 16px 25px;
+            background: transparent;
+            box-shadow: none;
+            isolation: isolate;
+        }
+
+        .candidate2-activity-section::before {
+            position: absolute;
+            inset: 0;
+            z-index: -1;
+            background: #f1ddd6;
+            clip-path: polygon(0 5%, 8% 2%, 17% 5%, 27% 2%, 37% 6%, 48% 3%, 59% 7%, 71% 3%, 82% 5%, 94% 1%, 99% 3%, 97.5% 16%, 100% 29%, 98% 43%, 99.5% 57%, 97.5% 72%, 99% 85%, 98% 96%, 88% 97%, 77% 94%, 66% 98%, 54% 95%, 43% 98%, 31% 95%, 20% 99%, 9% 96%, 1% 98%, 0.5% 88%, 2% 76%, 0% 63%, 1.5% 50%, 0.5% 38%, 2% 25%, 0% 14%);
+            content: '';
+            filter: drop-shadow(2px 4px 5px rgba(83, 63, 53, 0.1));
+            pointer-events: none;
         }
 
         .candidate2-profile-section-title {
             position: relative;
             z-index: 3;
             width: fit-content;
-            margin: 0 0 -2px 4px;
+            margin: 0;
             color: #60483f;
             font-size: 19px;
             line-height: 1;
         }
 
+        .candidate2-relationship-section > .candidate2-profile-section-title {
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 6;
+            display: flex;
+            width: 132px;
+            min-height: 58px;
+            align-items: center;
+            margin: 0;
+            padding: 9px 12px 7px;
+            background: #eadfd4;
+            box-shadow: 1px 2px 2px rgba(83, 63, 53, 0.08);
+            line-height: 0.92;
+            transform: rotate(-1.2deg);
+        }
+
         .candidate2-activity-section .candidate2-profile-section-title {
-            margin-bottom: 10px;
+            margin: 0 0 10px -8px;
         }
 
         .candidate2-notebook-stack {
             position: relative;
-            height: 244px;
-            margin: 0 1px 10px 10px;
+            height: 460px;
+            margin: 0 2px 0 8px;
+        }
+
+        .candidate2-notebook-stack::before,
+        .candidate2-notebook-stack::after {
+            position: absolute;
+            z-index: 4;
+            width: 36px;
+            height: 36px;
+            clip-path: polygon(50% 0, 61% 38%, 100% 50%, 61% 62%, 50% 100%, 39% 62%, 0 50%, 39% 38%);
+            content: '';
+            pointer-events: none;
+        }
+
+        .candidate2-notebook-stack::before {
+            top: 188px;
+            left: -10px;
+            background: #d5e6df;
+            transform: rotate(8deg) scale(0.78);
+        }
+
+        .candidate2-notebook-stack::after {
+            top: 20px;
+            right: -4px;
+            background: #ead8c7;
+            transform: rotate(-7deg);
         }
 
         .candidate2-notebook-underlay {
-            position: absolute;
-            inset: 19px 0 0 14px;
-            border: 0.5px solid #d8cbbf;
-            background: #eadfd4;
-            box-shadow: 2px 3px 3px rgba(83, 63, 53, 0.08);
-            transform: rotate(2.1deg);
+            display: none;
         }
 
         .candidate2-demo-relationship-panel {
             position: absolute;
-            inset: 10px 12px 7px 0;
+            inset: 30px 10px 0 14px;
             display: block;
             height: auto;
             min-height: 0;
@@ -3074,14 +3133,16 @@ const RUNTIME_STYLES = `
             border: 0.5px solid #e1d5c9;
             border-radius: 1px;
             background-color: #fffaf0;
+            background-image: radial-gradient(circle, rgba(168, 149, 139, 0.28) 0 0.7px, transparent 0.85px);
+            background-size: 8px 8px;
             box-shadow: 2px 3px 4px rgba(83, 63, 53, 0.08);
-            transform: rotate(-0.8deg);
+            transform: rotate(0.5deg);
         }
 
         .candidate2-relationship-edit {
             position: absolute;
-            top: -1px;
-            right: 35px;
+            top: 19px;
+            right: 42px;
             z-index: 5;
             min-width: 49px;
             min-height: 27px;
@@ -3104,14 +3165,17 @@ const RUNTIME_STYLES = `
 
         .candidate2-relationship-editor {
             position: absolute;
-            inset: 17px 16px 12px 29px;
+            inset: 54px 14px 224px 20px;
             z-index: 4;
             display: grid;
             align-content: start;
             gap: 7px;
             padding: 5px 7px 4px;
+            border: 0;
             color: #60483f;
-            background: #fffaf0;
+            background: rgba(255, 250, 240, 0.94);
+            box-shadow: none;
+            transform: none;
         }
 
         .candidate2-relationship-editor[hidden] {
@@ -3180,30 +3244,20 @@ const RUNTIME_STYLES = `
         }
 
         .candidate2-notebook-holes {
-            position: absolute;
-            top: 16px;
-            bottom: 16px;
-            left: 9px;
-            z-index: 3;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            pointer-events: none;
-        }
-
-        .candidate2-notebook-holes i {
-            width: 10px;
-            height: 10px;
-            border: 1px solid #d8cbbf;
-            border-radius: 50%;
-            background: #f8f1e9;
-            box-shadow: inset 0 1px 2px rgba(83, 63, 53, 0.12);
+            display: none;
         }
 
         .candidate2-demo-relationship {
             position: absolute;
             z-index: 1;
-            inset: 0 0 0 18px;
+            inset: 54px 12px 224px 22px;
+        }
+
+        .profile-relationships-empty {
+            position: absolute;
+            inset: 54px 12px 224px 22px;
+            display: grid;
+            place-items: center;
         }
 
         .candidate2-demo-relation-lines {
@@ -3293,17 +3347,7 @@ const RUNTIME_STYLES = `
             display: grid;
             gap: 0;
             margin-left: 7px;
-            padding-left: 20px;
-        }
-
-        .candidate2-demo-activity-list::before {
-            position: absolute;
-            top: 8px;
-            bottom: 8px;
-            left: 6px;
-            width: 1px;
-            background: #eadfd4;
-            content: '';
+            padding-left: 0;
         }
 
         .candidate2-demo-activity {
@@ -3318,20 +3362,7 @@ const RUNTIME_STYLES = `
         }
 
         .candidate2-demo-activity > span:first-child {
-            position: absolute;
-            top: 50%;
-            left: -18px;
-            z-index: 1;
-            display: grid;
-            width: 8px;
-            height: 8px;
-            border: 1px solid var(--bg-cream);
-            border-radius: 50%;
-            place-items: center;
-            color: transparent;
-            background: var(--activity-tone, var(--soft-pink));
-            font-size: 0;
-            transform: translateY(-50%);
+            display: none;
         }
 
         .candidate2-demo-activity > span:nth-child(2) {
@@ -3350,17 +3381,20 @@ const RUNTIME_STYLES = `
 
         .candidate2-profile-more {
             display: block;
-            min-width: 44px;
-            min-height: 36px;
-            margin: 4px 0 0 auto;
-            padding: 4px 8px;
+            min-width: 56px;
+            height: 30px;
+            min-height: 0;
+            margin: -3px -18px 5px auto;
+            padding: 3px 8px 4px;
             border: 0;
-            color: var(--text-sub);
-            background: transparent;
-            font-size: 15px;
-            text-decoration: underline;
-            text-underline-offset: 3px;
+            color: #fffaf0;
+            background: #7b6760;
+            box-shadow: 1px 2px 3px rgba(83, 63, 53, 0.18);
+            clip-path: polygon(1% 5%, 24% 1%, 51% 4%, 76% 0, 99% 5%, 97% 96%, 72% 99%, 48% 96%, 23% 100%, 2% 95%);
+            font-size: 14px;
+            text-decoration: none;
             cursor: pointer;
+            transform: rotate(-2deg);
         }
 
         .candidate2-profile-more[hidden] {
@@ -5443,7 +5477,7 @@ const LINGYE_STYLES = `
             position: absolute;
             top: 7px;
             bottom: 9px;
-            left: 31px;
+            left: 39px;
             width: 1px;
             background: rgba(218, 211, 150, 0.25);
             content: '';
@@ -5452,7 +5486,7 @@ const LINGYE_STYLES = `
         .candidate2-glimmer-events-demo li {
             position: relative;
             display: grid;
-            grid-template-columns: 38px minmax(0, 1fr);
+            grid-template-columns: 47px minmax(0, 1fr);
             gap: 11px;
             padding: 0 0 17px;
         }
@@ -5464,7 +5498,7 @@ const LINGYE_STYLES = `
         .candidate2-glimmer-events-demo li::before {
             position: absolute;
             top: 4px;
-            left: 28px;
+            left: 36px;
             width: 7px;
             height: 7px;
             border: 1px solid rgba(239, 226, 157, 0.86);
@@ -5475,11 +5509,18 @@ const LINGYE_STYLES = `
         }
 
         .candidate2-glimmer-events-demo time {
+            display: grid;
             padding-right: 11px;
             text-align: right;
             color: rgba(223, 222, 180, 0.58);
             font-size: 8px;
             letter-spacing: 0.04em;
+            line-height: 1.25;
+        }
+
+        .candidate2-glimmer-events-demo time small {
+            color: rgba(223, 222, 180, 0.78);
+            font-size: inherit;
         }
 
         .candidate2-glimmer-events-demo strong {
@@ -6543,10 +6584,32 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     glimmerTrackList.addEventListener('pointerup', finishGlimmerAnimalDrag);
     glimmerTrackList.addEventListener('pointercancel', finishGlimmerAnimalDrag);
 
+    function formatGlimmerEventTimestamp(value) {
+        const parts = new Intl.DateTimeFormat('zh-CN', {
+            timeZone: 'Asia/Shanghai',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            hourCycle: 'h23',
+        }).formatToParts(new Date(value));
+        const part = (type) => parts.find((item) => item.type === type)?.value || '—';
+        return { date: part('month') + '/' + part('day'), time: part('hour') + ':' + part('minute') };
+    }
+
+    function recentGlimmerEvents(events) {
+        return [...events]
+            .filter((eventItem) => Number.isFinite(Date.parse(eventItem.at)))
+            .sort((left, right) => Date.parse(right.at) - Date.parse(left.at))
+            .slice(0, 10);
+    }
+
     function renderGlimmerData(glimmer) {
         const enabled = Boolean(glimmer);
         const tracks = glimmer && Array.isArray(glimmer.tracks) ? glimmer.tracks : [];
-        const events = glimmer && Array.isArray(glimmer.events) ? glimmer.events : [];
+        const events = recentGlimmerEvents(
+            glimmer && Array.isArray(glimmer.events) ? glimmer.events : [],
+        );
         const variants = glimmer && Array.isArray(glimmer.variants) ? glimmer.variants : [];
         const encounters = glimmer && Array.isArray(glimmer.encounters) ? glimmer.encounters : [];
         const achievements = glimmer && Array.isArray(glimmer.achievements) ? glimmer.achievements : [];
@@ -6593,7 +6656,13 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         glimmerEventList.replaceChildren(...events.map((eventItem) => {
             const item = document.createElement('li');
             const time = document.createElement('time');
-            time.textContent = eventItem.time;
+            const timestamp = formatGlimmerEventTimestamp(eventItem.at);
+            time.dateTime = eventItem.at;
+            const date = document.createElement('span');
+            date.textContent = timestamp.date;
+            const clock = document.createElement('small');
+            clock.textContent = timestamp.time;
+            time.append(date, clock);
             const copy = document.createElement('div');
             const title = document.createElement('strong');
             title.textContent = eventItem.title;
@@ -6755,7 +6824,7 @@ const CANDIDATE_RUNTIME_SCRIPT = `
                 spriteIndex: track.variant.sprite_index,
             } : { revealed: false, layoutId: 'mystery' }),
             events: data.events.map((eventItem) => ({
-                time: eventItem.at.slice(11, 16),
+                at: eventItem.at,
                 title: eventItem.text,
             })),
             variants: data.variants.map((variant) => ({

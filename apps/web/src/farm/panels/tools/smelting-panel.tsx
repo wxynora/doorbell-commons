@@ -175,12 +175,43 @@ export function SmeltingPanelContent({
     );
   }
 
-  const toggleMaterial = (materialId: string) => {
+  const materials = preview
+    ? SORTED_SMELTING_MATERIALS.map((material) => ({
+        id: material.id,
+        name: material.name,
+        rarity: material.rarity,
+        quantity: null as number | null,
+        known: true,
+      }))
+    : liveSmelting?.status === "available"
+      ? liveSmelting.materials.map((material) => ({
+          id: material.material_id,
+          name: material.identity_state === "known" ? material.name : null,
+          rarity: material.rarity,
+          quantity: material.quantity,
+          known: material.identity_state === "known" && material.name !== null,
+        }))
+      : [];
+
+  const addMaterial = (materialId: string, availableQuantity: number | null) => {
     setSelectedMaterialIds((current) => {
-      if (current.includes(materialId)) {
-        return current.filter((selectedId) => selectedId !== materialId);
+      const selectedCount = current.filter((selectedId) => selectedId === materialId).length;
+      if (
+        current.length >= 3 ||
+        (availableQuantity !== null && selectedCount >= availableQuantity)
+      ) {
+        return current;
       }
-      return current.length < 3 ? [...current, materialId] : [...current.slice(1), materialId];
+      return [...current, materialId];
+    });
+  };
+
+  const removeMaterial = (materialId: string) => {
+    setSelectedMaterialIds((current) => {
+      const selectedIndex = current.lastIndexOf(materialId);
+      return selectedIndex < 0
+        ? current
+        : current.filter((_, slotIndex) => slotIndex !== selectedIndex);
     });
   };
 
@@ -232,31 +263,23 @@ export function SmeltingPanelContent({
   return (
     <section aria-label="熔炼素材选择" className="smelting-catalog">
       <ul className="smelting-catalog__grid" aria-label="熔炼素材列表">
-        {(preview
-          ? SORTED_SMELTING_MATERIALS.map((material) => ({
-              id: material.id,
-              name: material.name,
-              rarity: material.rarity,
-              quantity: null as number | null,
-              known: true,
-            }))
-          : liveSmelting?.status === "available"
-            ? liveSmelting.materials.map((material) => ({
-                id: material.material_id,
-                name: material.identity_state === "known" ? material.name : null,
-                rarity: material.rarity,
-                quantity: material.quantity,
-                known: material.identity_state === "known" && material.name !== null,
-              }))
-            : []
-        ).map((material) => {
-          const selected = selectedMaterialIds.includes(material.id);
+        {materials.map((material) => {
+          const selectedCount = selectedMaterialIds.filter(
+            (selectedId) => selectedId === material.id,
+          ).length;
+          const selected = selectedCount > 0;
           return (
             <li key={material.id}>
               <button
-                aria-label={`${selected ? "取消选择" : "选择"}${material.name ?? "身份不可用素材"}`}
+                aria-label={`选择${material.name ?? "身份不可用素材"}${selectedCount > 0 ? `，已选 ${selectedCount} 份` : ""}`}
                 aria-pressed={selected}
-                onClick={() => toggleMaterial(material.id)}
+                className="smelting-catalog__material"
+                disabled={
+                  actionState.stage === "submitting" ||
+                  selectedMaterialIds.length >= 3 ||
+                  (material.quantity !== null && selectedCount >= material.quantity)
+                }
+                onClick={() => addMaterial(material.id, material.quantity)}
                 type="button"
               >
                 <SmeltingMaterialSprite
@@ -270,6 +293,17 @@ export function SmeltingPanelContent({
                   <small data-rarity={material.rarity}>{material.rarity}</small>
                 ) : null}
               </button>
+              {selectedCount > 0 ? (
+                <button
+                  aria-label={`减少一份${material.name ?? "身份不可用素材"}`}
+                  className="smelting-catalog__selected-count"
+                  disabled={actionState.stage === "submitting"}
+                  onClick={() => removeMaterial(material.id)}
+                  type="button"
+                >
+                  {selectedCount}
+                </button>
+              ) : null}
             </li>
           );
         })}

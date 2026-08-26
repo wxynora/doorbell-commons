@@ -9,7 +9,12 @@ import {
   getShopCartKey,
   type ShopCartQuantities,
 } from "./model";
-import { RanchShopAnimalSprite, ShopCartPanelContent, ShopCartShortcut } from "./shared";
+import {
+  RanchShopAnimalSprite,
+  ShopCartPanelContent,
+  ShopCartSelectionBadge,
+  ShopCartShortcut,
+} from "./shared";
 
 function RanchLiveShopPanelContent({
   cart,
@@ -79,6 +84,8 @@ function RanchLiveShopPanelContent({
       </nav>
       <ul className="ranch-shop__grid">
         {items.map((item) => {
+          const cartKey = getShopCartKey("ranch", item.id);
+          const quantity = cart[cartKey] ?? 0;
           const purchasable =
             item.owned === false && item.availableQuantity !== null && item.availableQuantity > 0;
           const unavailableLabel =
@@ -98,11 +105,7 @@ function RanchLiveShopPanelContent({
                 className="ranch-shop__product-button"
                 disabled={!purchasable}
                 onClick={() =>
-                  onChangeCartQuantity(
-                    getShopCartKey("ranch", item.id),
-                    1,
-                    Math.min(1, item.availableQuantity ?? 0),
-                  )
+                  onChangeCartQuantity(cartKey, 1, Math.min(1, item.availableQuantity ?? 0))
                 }
                 type="button"
               >
@@ -128,6 +131,11 @@ function RanchLiveShopPanelContent({
                   unavailableLabel
                 )}
               </span>
+              <ShopCartSelectionBadge
+                itemName={item.name}
+                onRemove={() => onChangeCartQuantity(cartKey, -1, 1)}
+                quantity={quantity}
+              />
             </li>
           );
         })}
@@ -272,44 +280,53 @@ export function RanchShopPanelContent({
         ))}
       </nav>
       <ul className="ranch-shop__grid">
-        {sectionAnimals.map((animal) => (
-          <li key={animal.id}>
-            <button
-              aria-label={
-                animal.demoOwned ? `查看${animal.name}详情` : `将${animal.name}加入购物车`
-              }
-              className="ranch-shop__product-button"
-              onClick={() => {
-                if (animal.demoOwned) {
-                  setSelectedAnimalId(animal.id);
-                  return;
+        {sectionAnimals.map((animal) => {
+          const cartKey = getShopCartKey("ranch", animal.id);
+          const quantity = cart[cartKey] ?? 0;
+          return (
+            <li key={animal.id}>
+              <button
+                aria-label={
+                  animal.demoOwned ? `查看${animal.name}详情` : `将${animal.name}加入购物车`
                 }
-                onChangeCartQuantity(getShopCartKey("ranch", animal.id), 1, 1);
-              }}
-              type="button"
-            >
-              <span className="ranch-shop__portrait">
-                <span
-                  className="ranch-shop__portrait-sprite"
-                  style={getRanchAnimalPlacementStyle(animal)}
-                >
-                  <RanchShopAnimalSprite animal={animal} />
+                className="ranch-shop__product-button"
+                onClick={() => {
+                  if (animal.demoOwned) {
+                    setSelectedAnimalId(animal.id);
+                    return;
+                  }
+                  onChangeCartQuantity(cartKey, 1, 1);
+                }}
+                type="button"
+              >
+                <span className="ranch-shop__portrait">
+                  <span
+                    className="ranch-shop__portrait-sprite"
+                    style={getRanchAnimalPlacementStyle(animal)}
+                  >
+                    <RanchShopAnimalSprite animal={animal} />
+                  </span>
+                  <strong>{animal.name}</strong>
                 </span>
-                <strong>{animal.name}</strong>
+              </button>
+              <span className="ranch-shop__price">
+                {animal.demoOwned ? (
+                  "已拥有"
+                ) : (
+                  <>
+                    <i aria-hidden="true" />
+                    {animal.buyCost.toLocaleString("zh-CN")}
+                  </>
+                )}
               </span>
-            </button>
-            <span className="ranch-shop__price">
-              {animal.demoOwned ? (
-                "已拥有"
-              ) : (
-                <>
-                  <i aria-hidden="true" />
-                  {animal.buyCost.toLocaleString("zh-CN")}
-                </>
-              )}
-            </span>
-          </li>
-        ))}
+              <ShopCartSelectionBadge
+                itemName={animal.name}
+                onRemove={() => onChangeCartQuantity(cartKey, -1, 1)}
+                quantity={quantity}
+              />
+            </li>
+          );
+        })}
       </ul>
       <ShopCartShortcut cart={cart} onOpen={() => setCartOpen(true)} />
     </section>

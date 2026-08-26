@@ -32,18 +32,20 @@ import {
 import {
   CookingCatalogSprite,
   CookingSilverPrice,
-  ShopCartAddButton,
   ShopCartPanelContent,
+  ShopCartSelectionBadge,
   ShopCartShortcut,
 } from "./shared";
 
 function CookingIngredientCatalog({
+  cart,
   liveIngredients,
   onChangeCartQuantity,
   onRefreshCookingShop,
   refreshFeedback,
   refreshState,
 }: {
+  cart: ShopCartQuantities;
   liveIngredients?: readonly LiveCookingIngredient[] | undefined;
   onChangeCartQuantity: (cartKey: string, delta: number, maxQuantity?: number) => void;
   onRefreshCookingShop?: (() => void) | undefined;
@@ -115,33 +117,36 @@ function CookingIngredientCatalog({
         </fieldset>
       ) : null}
       <ul className="cooking-ingredient-catalog__grid">
-        {categoryIngredients.map((ingredient) => (
-          <li key={ingredient.id}>
-            <button
-              aria-label={`将${ingredient.name}加入购物车`}
-              className="cooking-ingredient-catalog__portrait"
-              disabled={ingredient.maxQuantity === 0}
-              onClick={() =>
-                onChangeCartQuantity(
-                  getShopCartKey("ingredient", ingredient.id),
-                  1,
-                  ingredient.maxQuantity,
-                )
-              }
-              type="button"
-            >
-              <CookingCatalogSprite
-                entityId={ingredient.id}
-                kind="ingredient"
-                name={ingredient.name}
+        {categoryIngredients.map((ingredient) => {
+          const cartKey = getShopCartKey("ingredient", ingredient.id);
+          const quantity = cart[cartKey] ?? 0;
+          return (
+            <li key={ingredient.id}>
+              <button
+                aria-label={`将${ingredient.name}加入购物车`}
+                className="cooking-ingredient-catalog__portrait"
+                disabled={ingredient.maxQuantity === 0}
+                onClick={() => onChangeCartQuantity(cartKey, 1, ingredient.maxQuantity)}
+                type="button"
+              >
+                <CookingCatalogSprite
+                  entityId={ingredient.id}
+                  kind="ingredient"
+                  name={ingredient.name}
+                />
+                <strong>{ingredient.name}</strong>
+              </button>
+              <span className="cooking-ingredient-catalog__meta">
+                <CookingSilverPrice amount={ingredient.price} />
+              </span>
+              <ShopCartSelectionBadge
+                itemName={ingredient.name}
+                onRemove={() => onChangeCartQuantity(cartKey, -1, ingredient.maxQuantity)}
+                quantity={quantity}
               />
-              <strong>{ingredient.name}</strong>
-            </button>
-            <span className="cooking-ingredient-catalog__meta">
-              <CookingSilverPrice amount={ingredient.price} />
-            </span>
-          </li>
-        ))}
+            </li>
+          );
+        })}
       </ul>
     </section>
   );
@@ -157,30 +162,49 @@ function cookingRecipeIngredientText(ingredientIds: readonly string[]) {
     .join("、");
 }
 
-function CookingRecipeRow({ onAdd, recipe }: { onAdd: () => void; recipe: CookingCatalogRecipe }) {
+function CookingRecipeRow({
+  onAdd,
+  onRemove,
+  quantity,
+  recipe,
+}: {
+  onAdd: () => void;
+  onRemove: () => void;
+  quantity: number;
+  recipe: CookingCatalogRecipe;
+}) {
   return (
     <li>
-      <CookingCatalogSprite entityId={recipe.id} kind="recipe" name={recipe.name} />
-      <span className="cooking-recipe-catalog__copy">
-        <span className="cooking-recipe-catalog__head">
-          <strong>{recipe.name}</strong>
-          <small data-rarity={recipe.rarity}>{recipe.rarity}</small>
+      <button
+        aria-label={`将${recipe.name}加入购物车`}
+        onClick={onAdd}
+        style={{ display: "contents" }}
+        type="button"
+      >
+        <CookingCatalogSprite entityId={recipe.id} kind="recipe" name={recipe.name} />
+        <span className="cooking-recipe-catalog__copy">
+          <span className="cooking-recipe-catalog__head">
+            <strong>{recipe.name}</strong>
+            <small data-rarity={recipe.rarity}>{recipe.rarity}</small>
+          </span>
+          <span className="cooking-recipe-catalog__ingredients">
+            {cookingRecipeIngredientText(recipe.ingredients)}
+          </span>
         </span>
-        <span className="cooking-recipe-catalog__ingredients">
-          {cookingRecipeIngredientText(recipe.ingredients)}
+        <span className="cooking-recipe-catalog__actions">
+          <CookingSilverPrice amount={COOKING_RECIPE_PRICES[recipe.rarity]} />
         </span>
-      </span>
-      <span className="cooking-recipe-catalog__actions">
-        <CookingSilverPrice amount={COOKING_RECIPE_PRICES[recipe.rarity]} />
-        <ShopCartAddButton itemName={recipe.name} onAdd={onAdd} />
-      </span>
+      </button>
+      <ShopCartSelectionBadge itemName={recipe.name} onRemove={onRemove} quantity={quantity} />
     </li>
   );
 }
 
 function CookingRecipeShop({
+  cart,
   onChangeCartQuantity,
 }: {
+  cart: ShopCartQuantities;
   onChangeCartQuantity: (cartKey: string, delta: number, maxQuantity?: number) => void;
 }) {
   const recipeOffers = COOKING_SHOP_PREVIEW_RECIPE_IDS.flatMap((recipeId) => {
@@ -192,13 +216,18 @@ function CookingRecipeShop({
     <section aria-label="料理台商店今日食谱" className="cooking-recipe-catalog cooking-recipe-shop">
       <p className="cooking-recipe-shop__refresh">每日 2 道 · 北京时间 00:00 刷新</p>
       <ul className="cooking-recipe-catalog__list cooking-recipe-catalog__list--shop">
-        {recipeOffers.map((recipe) => (
-          <CookingRecipeRow
-            key={recipe.id}
-            onAdd={() => onChangeCartQuantity(getShopCartKey("recipe", recipe.id), 1, 1)}
-            recipe={recipe}
-          />
-        ))}
+        {recipeOffers.map((recipe) => {
+          const cartKey = getShopCartKey("recipe", recipe.id);
+          return (
+            <CookingRecipeRow
+              key={recipe.id}
+              onAdd={() => onChangeCartQuantity(cartKey, 1, 1)}
+              onRemove={() => onChangeCartQuantity(cartKey, -1, 1)}
+              quantity={cart[cartKey] ?? 0}
+              recipe={recipe}
+            />
+          );
+        })}
       </ul>
     </section>
   );
@@ -216,9 +245,11 @@ function formatCookingShopRefreshAt(refreshAt: string) {
 }
 
 function CookingLiveRecipeShop({
+  cart,
   kitchen,
   onChangeCartQuantity,
 }: {
+  cart: ShopCartQuantities;
   kitchen: BoundKitchenRead | null | undefined;
   onChangeCartQuantity: (cartKey: string, delta: number, maxQuantity?: number) => void;
 }) {
@@ -227,42 +258,52 @@ function CookingLiveRecipeShop({
   return (
     <section aria-label="料理台商店今日食谱" className="cooking-recipe-catalog cooking-recipe-shop">
       <ul className="cooking-recipe-catalog__list cooking-recipe-catalog__list--shop">
-        {recipeOffers.map((recipe) => (
-          <li key={recipe.id}>
-            <button
-              aria-label={`将${recipe.name}加入购物车`}
-              onClick={() => onChangeCartQuantity(getShopCartKey("recipe", recipe.id), 1, 1)}
-              style={{ display: "contents" }}
-              type="button"
-            >
-              <CookingCatalogSprite entityId={recipe.id} kind="recipe" name={recipe.name} />
-              <span className="cooking-recipe-catalog__copy">
-                <span className="cooking-recipe-catalog__head">
-                  <strong>{recipe.name}</strong>
-                  {recipe.rarity ? (
-                    <small data-rarity={recipe.rarity}>{recipe.rarity}</small>
-                  ) : null}
+        {recipeOffers.map((recipe) => {
+          const cartKey = getShopCartKey("recipe", recipe.id);
+          return (
+            <li key={recipe.id}>
+              <button
+                aria-label={`将${recipe.name}加入购物车`}
+                onClick={() => onChangeCartQuantity(cartKey, 1, 1)}
+                style={{ display: "contents" }}
+                type="button"
+              >
+                <CookingCatalogSprite entityId={recipe.id} kind="recipe" name={recipe.name} />
+                <span className="cooking-recipe-catalog__copy">
+                  <span className="cooking-recipe-catalog__head">
+                    <strong>{recipe.name}</strong>
+                    {recipe.rarity ? (
+                      <small data-rarity={recipe.rarity}>{recipe.rarity}</small>
+                    ) : null}
+                  </span>
+                  <span className="cooking-recipe-catalog__ingredients">
+                    {recipe.ingredientNames.join("、")}
+                  </span>
                 </span>
-                <span className="cooking-recipe-catalog__ingredients">
-                  {recipe.ingredientNames.join("、")}
+                <span className="cooking-recipe-catalog__actions">
+                  <CookingSilverPrice amount={recipe.price} />
                 </span>
-              </span>
-              <span className="cooking-recipe-catalog__actions">
-                <CookingSilverPrice amount={recipe.price} />
-              </span>
-            </button>
-          </li>
-        ))}
+              </button>
+              <ShopCartSelectionBadge
+                itemName={recipe.name}
+                onRemove={() => onChangeCartQuantity(cartKey, -1, 1)}
+                quantity={cart[cartKey] ?? 0}
+              />
+            </li>
+          );
+        })}
       </ul>
     </section>
   );
 }
 
 function CookingToolShop({
+  cart,
   kitchen,
   live = false,
   onChangeCartQuantity,
 }: {
+  cart: ShopCartQuantities;
   kitchen?: BoundKitchenRead | null | undefined;
   live?: boolean | undefined;
   onChangeCartQuantity: (cartKey: string, delta: number, maxQuantity?: number) => void;
@@ -281,6 +322,7 @@ function CookingToolShop({
       <section aria-label="料理台商店工具" className="cooking-tool-shop">
         <ul className="cooking-tool-shop__grid">
           {tools.map((tool) => {
+            const cartKey = getShopCartKey("tool", tool.id);
             const assetKey = getCookingToolAssetKey(tool.id);
             const canPurchase = tool.owned === false;
             const content = (
@@ -309,7 +351,7 @@ function CookingToolShop({
                 {canPurchase ? (
                   <button
                     aria-label={`将${tool.name}加入购物车`}
-                    onClick={() => onChangeCartQuantity(getShopCartKey("tool", tool.id), 1, 1)}
+                    onClick={() => onChangeCartQuantity(cartKey, 1, 1)}
                     style={{ display: "contents" }}
                     type="button"
                   >
@@ -318,6 +360,11 @@ function CookingToolShop({
                 ) : (
                   content
                 )}
+                <ShopCartSelectionBadge
+                  itemName={tool.name}
+                  onRemove={() => onChangeCartQuantity(cartKey, -1, 1)}
+                  quantity={cart[cartKey] ?? 0}
+                />
               </li>
             );
           })}
@@ -336,6 +383,7 @@ function CookingToolShop({
           }
 
           const owned = COOKING_PREVIEW_OWNED_PAID_TOOL_IDS.has(methodId);
+          const cartKey = getShopCartKey("tool", methodId);
           const price = COOKING_PAID_TOOL_PRICES[methodId];
           const content = (
             <>
@@ -361,13 +409,18 @@ function CookingToolShop({
               ) : (
                 <button
                   aria-label={`将${method.label}加入购物车`}
-                  onClick={() => onChangeCartQuantity(getShopCartKey("tool", methodId), 1, 1)}
+                  onClick={() => onChangeCartQuantity(cartKey, 1, 1)}
                   style={{ display: "contents" }}
                   type="button"
                 >
                   {content}
                 </button>
               )}
+              <ShopCartSelectionBadge
+                itemName={method.label}
+                onRemove={() => onChangeCartQuantity(cartKey, -1, 1)}
+                quantity={cart[cartKey] ?? 0}
+              />
             </li>
           );
         })}
@@ -460,6 +513,7 @@ export function CookingShopPanelContent({
         </div>
       ) : sectionId === "ingredients" ? (
         <CookingIngredientCatalog
+          cart={cart}
           liveIngredients={live ? getLiveCookingIngredients(kitchen) : undefined}
           onChangeCartQuantity={onChangeCartQuantity}
           onRefreshCookingShop={onRefreshCookingShop}
@@ -468,12 +522,17 @@ export function CookingShopPanelContent({
         />
       ) : sectionId === "recipes" ? (
         live ? (
-          <CookingLiveRecipeShop kitchen={kitchen} onChangeCartQuantity={onChangeCartQuantity} />
+          <CookingLiveRecipeShop
+            cart={cart}
+            kitchen={kitchen}
+            onChangeCartQuantity={onChangeCartQuantity}
+          />
         ) : (
-          <CookingRecipeShop onChangeCartQuantity={onChangeCartQuantity} />
+          <CookingRecipeShop cart={cart} onChangeCartQuantity={onChangeCartQuantity} />
         )
       ) : (
         <CookingToolShop
+          cart={cart}
           kitchen={live ? kitchen : undefined}
           live={live}
           onChangeCartQuantity={onChangeCartQuantity}

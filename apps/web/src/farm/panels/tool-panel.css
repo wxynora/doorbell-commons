@@ -309,11 +309,12 @@
 }
 
 .smelting-catalog__grid li {
+  position: relative;
   min-width: 0;
   min-height: 0;
 }
 
-.smelting-catalog__grid button {
+.smelting-catalog__material {
   position: relative;
   display: block;
   width: 100%;
@@ -327,9 +328,30 @@
   cursor: pointer;
 }
 
-.smelting-catalog__grid button[aria-pressed="true"] {
+.smelting-catalog__material[aria-pressed="true"] {
   background: rgba(232, 239, 203, 0.82);
   box-shadow: inset 0 0 0 0.65cqw #78933f;
+}
+
+.smelting-catalog__selected-count {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 3;
+  display: grid;
+  width: 5.2cqw;
+  height: 5.2cqw;
+  place-items: center;
+  padding: 0;
+  color: #fff8dc;
+  font-size: clamp(0.46rem, 1.9cqw, 0.58rem);
+  font-weight: 900;
+  line-height: 1;
+  border: 0.3cqw solid #edf3c4;
+  border-radius: 50%;
+  background: #78933f;
+  box-shadow: 0 0.35cqw 0 rgba(70, 91, 35, 0.28);
+  cursor: pointer;
 }
 
 .smelting-catalog__sprite {

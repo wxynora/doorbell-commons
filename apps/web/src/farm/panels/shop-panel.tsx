@@ -14,7 +14,7 @@ import {
   type ShopCartQuantities,
 } from "./shop/model";
 import { RanchShopPanelContent } from "./shop/ranch-shop";
-import { ShopCartAddButton, ShopCartPanelContent, ShopCartShortcut } from "./shop/shared";
+import { ShopCartPanelContent, ShopCartSelectionBadge, ShopCartShortcut } from "./shop/shared";
 import "./shop-panel.css";
 
 export type {
@@ -103,15 +103,13 @@ function FarmLiveShopPanelContent({
       <ul className="farm-shop__items">
         {items.map((item) => {
           const disabled = item.note === "已拥有" || item.availableQuantity === 0;
+          const cartKey = getShopCartKey("farm", item.id);
+          const quantity = cart[cartKey] ?? 0;
           const addToCart = () => {
             if (disabled) {
               return;
             }
-            onChangeCartQuantity(
-              getShopCartKey("farm", item.id),
-              1,
-              item.availableQuantity ?? undefined,
-            );
+            onChangeCartQuantity(cartKey, 1, item.availableQuantity ?? undefined);
           };
           return (
             <li key={item.id}>
@@ -135,6 +133,13 @@ function FarmLiveShopPanelContent({
                 <i aria-hidden="true" />
                 {item.price}
               </span>
+              <ShopCartSelectionBadge
+                itemName={item.name}
+                onRemove={() =>
+                  onChangeCartQuantity(cartKey, -1, item.availableQuantity ?? undefined)
+                }
+                quantity={quantity}
+              />
             </li>
           );
         })}
@@ -242,31 +247,43 @@ export function FarmShopPanelContent({
         ))}
       </nav>
       <ul className="farm-shop__items">
-        {previewItems.map((item) => (
-          <li key={item.id}>
-            {item.iconKey ? (
-              <img alt="" aria-hidden="true" src={getFarmAssetUrl(item.iconKey)} />
-            ) : null}
-            <span className="farm-shop__item-copy">
-              <strong>{item.name}</strong>
-              <small>{item.note}</small>
-            </span>
-            {item.price === undefined ? (
-              <span className="farm-shop__price farm-shop__price--variable">随机</span>
-            ) : (
-              <span className="farm-shop__price">
-                <span className="farm-visually-hidden">价格</span>
-                <i aria-hidden="true" />
-                {item.price}
-              </span>
-            )}
-            <ShopCartAddButton
-              disabled={item.price === undefined}
-              itemName={item.name}
-              onAdd={() => onChangeCartQuantity(getShopCartKey("farm", item.id), 1)}
-            />
-          </li>
-        ))}
+        {previewItems.map((item) => {
+          const cartKey = getShopCartKey("farm", item.id);
+          const quantity = cart[cartKey] ?? 0;
+          return (
+            <li key={item.id}>
+              <button
+                aria-label={`将${item.name}加入购物车`}
+                disabled={item.price === undefined}
+                onClick={() => onChangeCartQuantity(cartKey, 1)}
+                style={{ display: "contents" }}
+                type="button"
+              >
+                {item.iconKey ? (
+                  <img alt="" aria-hidden="true" src={getFarmAssetUrl(item.iconKey)} />
+                ) : null}
+                <span className="farm-shop__item-copy">
+                  <strong>{item.name}</strong>
+                  <small>{item.note}</small>
+                </span>
+                {item.price === undefined ? (
+                  <span className="farm-shop__price farm-shop__price--variable">随机</span>
+                ) : (
+                  <span className="farm-shop__price">
+                    <span className="farm-visually-hidden">价格</span>
+                    <i aria-hidden="true" />
+                    {item.price}
+                  </span>
+                )}
+              </button>
+              <ShopCartSelectionBadge
+                itemName={item.name}
+                onRemove={() => onChangeCartQuantity(cartKey, -1)}
+                quantity={quantity}
+              />
+            </li>
+          );
+        })}
       </ul>
       <ShopCartShortcut cart={cart} onOpen={() => setCartOpen(true)} />
     </section>

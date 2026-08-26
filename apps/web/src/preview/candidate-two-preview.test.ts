@@ -581,7 +581,7 @@ test("lingye demo opens distinct Together and Glimmer Human UI previews", () => 
   );
   assert.match(
     html,
-    /\.candidate2-glimmer-events-demo::before \{[\s\S]*\.candidate2-glimmer-events-demo li \{[\s\S]*grid-template-columns: 38px minmax\(0, 1fr\);/,
+    /\.candidate2-glimmer-events-demo::before \{[\s\S]*\.candidate2-glimmer-events-demo li \{[\s\S]*grid-template-columns: 47px minmax\(0, 1fr\);/,
   );
   assert.match(
     html,
@@ -641,11 +641,21 @@ test("lingye demo opens distinct Together and Glimmer Human UI previews", () => 
   );
   assert.match(html, /状态<\/span><strong class="candidate2-glimmer-status-value">—<\/strong>/);
   assert.match(html, />公共事件<\/h2>/);
+  assert.match(
+    html,
+    /function recentGlimmerEvents\(events\)[\s\S]*sort\(\(left, right\) => Date\.parse\(right\.at\) - Date\.parse\(left\.at\)\)[\s\S]*slice\(0, 10\)/,
+  );
+  assert.match(
+    html,
+    /function formatGlimmerEventTimestamp\(value\)[\s\S]*timeZone: 'Asia\/Shanghai'[\s\S]*month: '2-digit'[\s\S]*day: '2-digit'/,
+  );
+  assert.match(html, /time\.dateTime = eventItem\.at/);
   assert.doesNotMatch(html, /今日发现|原野日志/);
   assert.match(html, />我家的原野概况<\/h2>/);
   assert.doesNotMatch(html, /湖边遇见一只白尾小鹿|三家合力的料理食材/);
   assert.equal(demo?.demo.content.glimmer.task.title, "三家合力的料理食材");
   assert.equal(demo?.demo.content.glimmer.events[0]?.title, "一家农场遇见了〔流光泉〕");
+  assert.equal(demo?.demo.content.glimmer.events[0]?.at, "2026-08-26T13:18:00.000Z");
   assert.deepEqual(
     demo?.demo.content.glimmer.encounters.map((encounter) => [
       encounter.id,
@@ -1267,42 +1277,77 @@ test("runtime contains populated-demo slots without changing production empty st
   );
   assert.match(
     html,
-    /\.candidate2-profile-action-sheet\s*\{[^}]*left: -14px;[^}]*width: 34%;[^}]*min-height: 112px;/s,
+    /\.candidate2-profile-action-sheet\s*\{[^}]*inset: 0;[^}]*z-index: 3;[^}]*display: block;[^}]*width: auto;[^}]*height: auto;[^}]*padding: 0;[^}]*pointer-events: none;/s,
   );
   assert.match(
     html,
-    /\.candidate2-profile-action\s*\{[^}]*position: relative;[^}]*font-size: 17px;[^}]*text-decoration: none;/s,
+    /\.candidate2-profile-action\s*\{[^}]*position: absolute;[^}]*top: 144px;[^}]*right: 4px;[^}]*width: 82px;[^}]*height: 26px;[^}]*min-height: 0;[^}]*padding: 1px 6px;[^}]*background: #efe3da;[^}]*font-size: 12px;[^}]*text-align: center;[^}]*white-space: nowrap;[^}]*transform: rotate\(0\.8deg\);[^}]*text-decoration: none;[^}]*pointer-events: auto;/s,
   );
   assert.match(
     html,
-    /\.candidate2-profile-action::after\s*\{[^}]*height: 3px;[^}]*data:image\/svg\+xml,[^}]*stroke='%239e776c'[^}]*content: '';/s,
+    /\.candidate2-profile-action:first-child\s*\{[^}]*top: 20px;[^}]*right: auto;[^}]*left: 14px;[^}]*z-index: 1;[^}]*width: 50px;[^}]*height: 26px;[^}]*margin: 0;[^}]*padding: 1px 6px;[^}]*background: #e8e1d8;[^}]*transform: rotate\(-1\.6deg\);/s,
+  );
+  assert.doesNotMatch(
+    html,
+    /\.candidate2-profile-action:first-child\s*\{[^}]*(?:writing-mode|text-orientation):/s,
   );
   assert.match(
     html,
-    /\.candidate2-profile-note\s*\{[^}]*position: absolute;[^}]*right: -8px;[^}]*width: 72%;[^}]*transform: rotate\(1\.2deg\) scale\(1\.08\);[^}]*transform-origin: top right;/s,
+    /\.candidate2-profile-action::before\s*\{[^}]*position: absolute;[^}]*inset: -12px 0;[^}]*content: '';/s,
   );
-  assert.match(html, /\.candidate2-notebook-stack\s*\{[^}]*height: 244px;/s);
-  assert.doesNotMatch(html, /\.candidate2-demo-relationship-panel\s*\{[^}]*background-image:/s);
+  assert.doesNotMatch(html, /\.candidate2-profile-action:first-child::before/);
+  assert.doesNotMatch(html, /\.candidate2-profile-action::after/);
   assert.match(
     html,
-    /\.candidate2-profile-action-sheet\s*\{[^}]*border: 0;[^}]*background: #f1e7dd;[^}]*clip-path: polygon\([^}]*0\.6% 1%,[^}]*99\.5% 99%,[^}]*0\.9% 25%[^}]*\);[^}]*filter:[^}]*drop-shadow\(0 0 0\.4px #d6c8bc\)[^}]*drop-shadow\(2px 3px 2px rgba\(83, 63, 53, 0\.08\)\);/s,
-  );
-  assert.match(
-    html,
-    /\.candidate2-notebook-underlay\s*\{[^}]*border: 0\.5px solid #d8cbbf;[^}]*background: #eadfd4;[^}]*box-shadow: 2px 3px 3px rgba\(83, 63, 53, 0\.08\);/s,
+    /\.candidate2-profile-note\s*\{[^}]*position: absolute;[^}]*right: -8px;[^}]*width: 86%;[^}]*transform: rotate\(1\.2deg\) scale\(1\.08\);[^}]*transform-origin: top right;/s,
   );
   assert.match(
     html,
-    /\.candidate2-demo-relationship-panel\s*\{[^}]*border: 0\.5px solid #e1d5c9;[^}]*background-color: #fffaf0;[^}]*box-shadow: 2px 3px 4px rgba\(83, 63, 53, 0\.08\);/s,
+    /\.candidate2-relationship-section\s*\{[^}]*position: relative;[^}]*z-index: 2;/s,
   );
   assert.match(
     html,
-    /\.candidate2-notebook-holes i\s*\{[^}]*border: 1px solid #d8cbbf;[^}]*background: #f8f1e9;/s,
+    /\.candidate2-relationship-section > \.candidate2-profile-section-title\s*\{[^}]*top: 0;[^}]*left: 0;[^}]*width: 132px;[^}]*min-height: 58px;[^}]*padding: 9px 12px 7px;[^}]*background: #eadfd4;[^}]*transform: rotate\(-1\.2deg\);/s,
   );
-  assert.match(html, /\.candidate2-activity-section\s*\{[^}]*margin-top: 24px;/s);
   assert.match(
     html,
-    /\.candidate2-activity-section \.candidate2-profile-section-title\s*\{[^}]*margin-bottom: 10px;/s,
+    /\.candidate2-notebook-stack\s*\{[^}]*height: 460px;[^}]*margin: 0 2px 0 8px;/s,
+  );
+  assert.match(
+    html,
+    /\.candidate2-demo-relationship-panel\s*\{[^}]*background-color: #fffaf0;[^}]*background-image: radial-gradient\(circle, rgba\(168, 149, 139, 0\.28\) 0 0\.7px, transparent 0\.85px\);[^}]*background-size: 8px 8px;/s,
+  );
+  assert.match(
+    html,
+    /\.candidate2-profile-action-sheet\s*\{[^}]*border: 0;[^}]*background: transparent;[^}]*clip-path: none;[^}]*filter: none;[^}]*transform: none;/s,
+  );
+  assert.match(
+    html,
+    /\.candidate2-profile-action\s*\{[^}]*clip-path: polygon\(0\.8% 1%, 99% 0, 97% 99%, 0 98%\);[^}]*filter:[^}]*drop-shadow\(0 0 0\.4px #d6c8bc\)[^}]*drop-shadow\(1px 2px 1px rgba\(83, 63, 53, 0\.08\)\);/s,
+  );
+  assert.match(html, /\.candidate2-notebook-underlay\s*\{[^}]*display: none;/s);
+  assert.match(
+    html,
+    /\.candidate2-demo-relationship-panel\s*\{[^}]*inset: 30px 10px 0 14px;[^}]*overflow: hidden;[^}]*border: 0\.5px solid #e1d5c9;[^}]*box-shadow: 2px 3px 4px rgba\(83, 63, 53, 0\.08\);[^}]*transform: rotate\(0\.5deg\);/s,
+  );
+  assert.match(html, /\.candidate2-notebook-holes\s*\{[^}]*display: none;/s);
+  assert.match(
+    html,
+    /\.candidate2-notebook-stack::before,[\s\S]*\.candidate2-notebook-stack::after\s*\{[^}]*clip-path: polygon\(50% 0, 61% 38%, 100% 50%, 61% 62%, 50% 100%, 39% 62%, 0 50%, 39% 38%\);/s,
+  );
+  assert.match(
+    html,
+    /\.candidate2-activity-section\s*\{[^}]*z-index: 5;[^}]*min-height: 196px;[^}]*margin: -140px 34px 0 4px;[^}]*padding: 20px 18px 16px 25px;[^}]*background: transparent;[^}]*box-shadow: none;[^}]*isolation: isolate;/s,
+  );
+  assert.doesNotMatch(html, /\.candidate2-activity-section\s*\{[^}]*transform:/s);
+  assert.doesNotMatch(html, /\.candidate2-activity-section\s*\{[^}]*clip-path:/s);
+  assert.match(
+    html,
+    /\.candidate2-activity-section::before\s*\{[^}]*inset: 0;[^}]*z-index: -1;[^}]*background: #f1ddd6;[^}]*clip-path: polygon\([^;]*99% 3%, 97\.5% 16%, 100% 29%, 98% 43%, 99\.5% 57%, 97\.5% 72%, 99% 85%, 98% 96%[^;]*1% 98%, 0\.5% 88%, 2% 76%, 0% 63%, 1\.5% 50%, 0\.5% 38%, 2% 25%, 0% 14%\);[^}]*filter: drop-shadow\(2px 4px 5px rgba\(83, 63, 53, 0\.1\)\);[^}]*pointer-events: none;/s,
+  );
+  assert.doesNotMatch(
+    html,
+    /\.candidate2-activity-section \.candidate2-profile-section-title\s*\{[^}]*transform:/s,
   );
   assert.match(
     html,
@@ -1332,7 +1377,11 @@ test("runtime contains populated-demo slots without changing production empty st
   );
   assert.match(
     html,
-    /\.candidate2-relationship-edit\s*\{[^}]*top: -1px;[^}]*right: 35px;[^}]*background: #ead8c7;[^}]*clip-path: polygon[^}]*transform: rotate\(2deg\) scale\(1\.08\);[^}]*transform-origin: center;/s,
+    /\.candidate2-relationship-edit\s*\{[^}]*top: 19px;[^}]*right: 42px;[^}]*background: #ead8c7;[^}]*transform: rotate\(2deg\) scale\(1\.08\);[^}]*transform-origin: center;/s,
+  );
+  assert.match(
+    html,
+    /\.candidate2-relationship-editor\s*\{[^}]*inset: 54px 14px 224px 20px;[^}]*padding: 5px 7px 4px;[^}]*border: 0;[^}]*background: rgba\(255, 250, 240, 0\.94\);[^}]*box-shadow: none;[^}]*transform: none;/s,
   );
   assert.match(html, /id="profile-relationship-editor"[^>]*hidden/);
   assert.match(
@@ -1358,17 +1407,27 @@ test("runtime contains populated-demo slots without changing production empty st
   );
   assert.match(html, /setStatus\(settingsFeedback, '新凭据只显示这一次/);
   assert.match(html, /\.candidate2-demo-relation-node small \{ color: #a8958b; font-size: 8px;/);
+  assert.match(
+    html,
+    /\.candidate2-demo-activity\s*\{[^}]*grid-template-columns: minmax\(0, 1fr\) auto;[^}]*font-size: 11px;/s,
+  );
   assert.match(html, /\.candidate2-demo-activity > span:nth-child\(2\)\s*\{[^}]*color: #60483f;/s);
   assert.match(html, /\.candidate2-demo-activity time\s*\{[^}]*color: #a8958b;/s);
+  assert.doesNotMatch(html, /\.candidate2-demo-activity time\s*\{[^}]*text-align: right;/s);
+  assert.match(
+    html,
+    /\.candidate2-profile-more\s*\{[^}]*min-width: 56px;[^}]*height: 30px;[^}]*margin: -3px -18px 5px auto;[^}]*color: #fffaf0;[^}]*background: #7b6760;[^}]*box-shadow: 1px 2px 3px rgba\(83, 63, 53, 0\.18\);[^}]*text-decoration: none;[^}]*transform: rotate\(-2deg\);/s,
+  );
   assert.match(
     html,
     /\.candidate2-settings-number input\s*\{[^}]*width: min\(58px, 72%\);[^}]*font-size: 14px;[^}]*font-weight: 500;/s,
   );
-  assert.match(html, /\.candidate2-demo-activity-list::before\s*\{/s);
   assert.match(
     html,
-    /\.candidate2-demo-activity > span:first-child\s*\{[^}]*left: -18px;[^}]*width: 8px;[^}]*height: 8px;[^}]*border: 1px solid var\(--bg-cream\);/s,
+    /\.candidate2-demo-activity-list\s*\{[^}]*margin-left: 7px;[^}]*padding-left: 0;/s,
   );
+  assert.doesNotMatch(html, /\.candidate2-demo-activity-list::before\s*\{/s);
+  assert.match(html, /\.candidate2-demo-activity > span:first-child\s*\{[^}]*display: none;/s);
   assert.match(html, /\.candidate2-demo-activity\.is-collapsed:nth-child\(n \+ 5\)/);
   assert.match(html, /暂无可读取的门铃请求/);
   assert.match(html, /来往数据尚未接入/);
