@@ -74,8 +74,8 @@ function ownKeys(value) {
 }
 
 test("the legacy shop page is write-coupled, while structured catalog is a read", async () => {
-  const legacyGame = await readFile(new URL("../dist/game.js", import.meta.url), "utf8");
-  assert.match(legacyGame, /export function viewShop\(f, now\)\s*\{[\s\S]*?refreshShop\(f, now\)/);
+  const legacyShop = await readFile(new URL("../dist/game/presentation/shop.js", import.meta.url), "utf8");
+  assert.match(legacyShop, /export function viewShop\(f, now\)\s*\{[\s\S]*?refreshShop\(f, now\)/);
 
   const farm = fixtureFarm();
   const before = structuredClone(farm);

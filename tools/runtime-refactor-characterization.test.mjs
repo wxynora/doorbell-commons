@@ -196,6 +196,32 @@ test("representative dispatch actions preserve result shape and core state", () 
   assert.equal(ranch.feedDaily.n, 1);
 });
 
+test("ranch-feed accepts the animal references exposed to AI callers", () => {
+  const feedWith = (animal, name) => {
+    const farm = game.makeFarm("投喂选择器农场", 102030, {
+      aiName: "投喂小机",
+      humanName: "投喂伴侣",
+    });
+    const ranch = engine.ensureRanch(farm);
+    ranch.animals.push({ kindId: "chicken", name, ticksSinceProduce: 0, pending: 0, level: 1 });
+    farm.silver = 100;
+    return { farm, ranch, result: game.dispatch(farm, { action: "ranch-feed", animal }, NOW) };
+  };
+
+  for (const [animal, name] of [[0], ["0"], ["chicken"], ["鸡"], ["小咕", "小咕"]]) {
+    const { ranch, result } = feedWith(animal, name);
+    assert.equal(result.ok, true, `animal=${animal}`);
+    assert.match(result.text, /投喂成功/);
+    assert.equal(ranch.animals[0].feedBoostPending, true);
+  }
+
+  const unknown = feedWith("不存在");
+  assert.equal(unknown.result.ok, false);
+  assert.match(unknown.result.text, /选的动物不存在/);
+  assert.equal(unknown.farm.silver, 100);
+  assert.equal(unknown.ranch.animals[0].feedBoostPending, undefined);
+});
+
 test("server facade keeps representative Human and legacy Agent routes", async (t) => {
   const realDateNow = Date.now;
   let requestNow = NOW;

@@ -1,35 +1,200 @@
 // 核心引擎：惰性生长 + 抽卡收获 + 浇水运气 + 偷菜 + 商店 + 土地升级。
 import { Rng } from "./rng.js";
 import { rollCrop, rollQuality, cropValue } from "./gacha.js";
-import { currentSeason, activeFestivals, currentHour, currentDayIndex } from "./time.js";
-import { TICK_MS, GROW_TICKS, SEED_PRICE, WATER_LUCK_PER, WATER_LUCK_CAP, MAX_LOG, TRAIL_MAX, LAND_UPGRADE_REQ, NEW_CODEX_REWARD, HARVEST_EVENT_CHANCE, MATERIAL_DROP_CHANCE, MATERIAL_DROP_WEIGHT, ITEMS, POTION_DROP_CHANCE, POTION_DAILY_CAP, POTION_CAP_LINE, POTION_SET_QTY, POTION_SET_PRICE, POTION_SET_CHANCE, WATER_REWARD_DAILY_CAP, STEAL_COOLDOWN_MS, STEAL_DAILY_CAP, STEAL_SHIELD_MS, HUMAN_HARVEST_DAILY_CAP, RANCH_POTION_DROP_CHANCE, RANCH_POTION_DAILY_CAP, LEDGER_MAX, RANCH_ANIMAL_MAX_LEVEL, RANCH_LEVEL_INCOME_STEP, RANCH_UPGRADE_COST_FACTOR, RANCH_RAID_COINS_PER_HOUR, RANCH_PATROL_GOOSE_ID, RANCH_PATROL_GOOSE_NAME, RANCH_PATROL_GOOSE_BUY_COST, RANCH_PATROL_GOOSE_CATCH_CHANCE, RANCH_PATROL_GOOSE_DAILY_CAP, RANCH_FEED_DAILY_CAP, RANCH_FEED_COST_RATE, RANCH_FEED_BONUS_RATE, COOKING_DEBUFF_MS, PET_NAME_MAX, CRAFT_COUNT, FUSION_POINTS, LIMITED_BASE_WEIGHT, FUSION_LUCK_DIVISOR, FUSION_SOFT_PITY, FUSION_SPECIAL_UNLOCKED_RATE, rarityIndex, SHOP_REFRESH_MS, SHOP_RECIPE_CHANCE, RECIPE_PRICE, NPC_LIMITED_SEED_CHANCE, NPC_ID, UGC_DESIGN_FEE, UGC_SEED_YIELD, UGC_VALUE, UGC_HARVEST_VALUE, UGC_GROW_TICKS, UGC_NAME_MAX, UGC_DESC_MAX, UGC_PLANT_MAX, UGC_HARVEST_MAX, MAX_UGC, UGC_RARITY, } from "./config.js";
-import { crops, cropById, getCrop, animals, animalById, pets, petById, accessories, decorations, accessoryById, decorationById, landTiers, totalCropCount, qualities, materials, materialById, recipes, specialEvents, expDecorById, cooking, cookingProducts, cookingIngredients, cookingRecipes, cookingProductById, cookingIngredientById, cookingRecipeById, } from "./content.js";
-import { registerUgc, ugcCount } from "./ugc.js";
+import { currentSeason, currentDayIndex } from "./time.js";
+import { TICK_MS, SEED_PRICE, NEW_CODEX_REWARD, HARVEST_EVENT_CHANCE, MATERIAL_DROP_CHANCE, MATERIAL_DROP_WEIGHT, POTION_DROP_CHANCE, STEAL_COOLDOWN_MS, STEAL_DAILY_CAP, STEAL_SHIELD_MS, HUMAN_HARVEST_DAILY_CAP, NPC_ID, } from "./config.js";
+import { crops, getCrop, animals, animalById, pets, petById, qualities, materials, materialById, specialEvents, cookingIngredients, cookingRecipes, cookingIngredientById, cookingRecipeById, } from "./content.js";
 import { onTaskEvent } from "./tasks.js";
-import { fishingKitchenProducts, removeFishingCatchIds } from "./fishing.js";
-import { glimmerAnimalVariantMultiplier, glimmerBuffMultiplier } from "./glimmer.js";
-import { canPlantQixi2026Crop, isQixi2026CropId, qixi2026HarvestSilver, qixi2026TransferAllowed, recordQixi2026Harvest, recordQixi2026Progress, submitQixi2026Dish } from "./qixi-2026.js";
-import { isQixiLantern2026Active } from "./qixi-lantern-2026.js";
+import { glimmerBuffMultiplier } from "./glimmer.js";
+import { qixi2026HarvestSilver, qixi2026TransferAllowed, recordQixi2026Harvest } from "./qixi-2026.js";
+import { pushInbox, pushLog, pushSocialInbox, pushTrail, takeInbox } from "./domain/shared/notifications.js";
+import {
+    affordablePotions,
+    buyItem,
+    buyPotionSet,
+    buyRecipe,
+    circledNum,
+    codexCountByCategory,
+    collectionPct,
+    craft,
+    designCrop,
+    isLimitedAvailable,
+    isStarred,
+    limitedShopPool,
+    newVarietiesAtTier,
+    nextUpgradeReq,
+    officialCodexCount,
+    plant,
+    plantBatch,
+    plotRemainMs,
+    potionCost,
+    potionDailyLeft,
+    potionTargets,
+    refreshShop,
+    shopOffer,
+    toggleStar,
+    tryWaterReward,
+    upgradeLand,
+    useItem,
+    usePotionBatch,
+    usePotionPlots,
+    visitorWater,
+    water,
+    waterAll,
+} from "./domain/field/index.js";
+import { addCodex } from "./domain/field/codex.js";
+import {
+    activeCookingDebuff,
+    cookingDebuffReason,
+    cookingDebuffStatusText,
+    dishSystemRecycleSilver,
+    kitchenBuy,
+    kitchenCook,
+    kitchenCookKnownRecipe,
+    kitchenSell,
+    kitchenSellMany,
+    kitchenSellSelected,
+    kitchenUse,
+    kitchenView,
+    normalizeDishPricing,
+    refreshKitchenIngredients,
+    refreshKitchenShop,
+} from "./domain/kitchen/index.js";
+import { takeKitchenDish as takeDish } from "./domain/kitchen/selection.js";
+import {
+    RANCH_RAID_DAILY_CAP,
+    animalRoamLine,
+    animalUpgradeCost,
+    buyPatrolGoose,
+    catchRanchRaid,
+    decorLines,
+    dispatchRanchRaid,
+    farmSendRanch,
+    petBuffs,
+    petRoamLine,
+    ranchAnimalCurrentProduceValue,
+    ranchBuyAccessory,
+    ranchBuyDecoration,
+    ranchCollect,
+    ranchFeedAnimal,
+    ranchNameAnimal,
+    ranchNamePatrolGoose,
+    ranchNamePet,
+    ranchPlaceDecoration,
+    ranchRaidCoins,
+    ranchRaidDebtTotal,
+    ranchRaidForAnimal,
+    ranchRemit,
+    ranchRoamLine,
+    ranchTakeOffAccessory,
+    ranchTogglePin,
+    ranchUnplaceDecoration,
+    ranchUpgradeAnimal,
+    ranchWearAccessory,
+    refreshRanchShop,
+    settleRanchRaids,
+} from "./domain/ranch/index.js";
+import { ensureKitchen, ensureRanch } from "./domain/ranch/state.js";
+import { pushRanchNotice, takeRanchNotices } from "./domain/ranch/notices.js";
+import { advanceRanch } from "./domain/ranch/progression.js";
+import { aiDisplay, humanDisplay } from "./domain/ranch/display.js";
+import { pushLedger } from "./domain/ranch/ledger.js";
 import { randomUUID } from "node:crypto";
+export { pushInbox, pushLog, pushSocialInbox, pushTrail, takeInbox } from "./domain/shared/notifications.js";
+export {
+    affordablePotions,
+    buyItem,
+    buyPotionSet,
+    buyRecipe,
+    circledNum,
+    codexCountByCategory,
+    collectionPct,
+    craft,
+    designCrop,
+    isLimitedAvailable,
+    isStarred,
+    limitedShopPool,
+    newVarietiesAtTier,
+    nextUpgradeReq,
+    officialCodexCount,
+    plant,
+    plantBatch,
+    plotRemainMs,
+    potionCost,
+    potionDailyLeft,
+    potionTargets,
+    refreshShop,
+    shopOffer,
+    toggleStar,
+    tryWaterReward,
+    upgradeLand,
+    useItem,
+    usePotionBatch,
+    usePotionPlots,
+    visitorWater,
+    water,
+    waterAll,
+};
+export {
+    activeCookingDebuff,
+    cookingDebuffReason,
+    cookingDebuffStatusText,
+    dishSystemRecycleSilver,
+    kitchenBuy,
+    kitchenCook,
+    kitchenCookKnownRecipe,
+    kitchenSell,
+    kitchenSellMany,
+    kitchenSellSelected,
+    kitchenUse,
+    kitchenView,
+    normalizeDishPricing,
+    refreshKitchenIngredients,
+    refreshKitchenShop,
+};
+export {
+    RANCH_RAID_DAILY_CAP,
+    animalRoamLine,
+    animalUpgradeCost,
+    buyPatrolGoose,
+    catchRanchRaid,
+    decorLines,
+    dispatchRanchRaid,
+    ensureKitchen,
+    ensureRanch,
+    farmSendRanch,
+    petBuffs,
+    petRoamLine,
+    pushRanchNotice,
+    ranchAnimalCurrentProduceValue,
+    ranchBuyAccessory,
+    ranchBuyDecoration,
+    ranchCollect,
+    ranchFeedAnimal,
+    ranchNameAnimal,
+    ranchNamePatrolGoose,
+    ranchNamePet,
+    ranchPlaceDecoration,
+    ranchRaidCoins,
+    ranchRaidDebtTotal,
+    ranchRaidForAnimal,
+    ranchRemit,
+    ranchRoamLine,
+    ranchTakeOffAccessory,
+    ranchTogglePin,
+    ranchUnplaceDecoration,
+    ranchUpgradeAnimal,
+    ranchWearAccessory,
+    refreshRanchShop,
+    settleRanchRaids,
+    takeRanchNotices,
+};
 /** 取（必要时补发）人类前端钥匙。老农场没有就现生成一把；调用方负责 save()。 */
 export function ensureHumanKey(farm) {
     if (!farm.humanKey)
         farm.humanKey = randomUUID().replace(/-/g, "");
     return farm.humanKey;
 }
-export function pushLog(farm, msg) {
-    farm.log.push(msg);
-    if (farm.log.length > MAX_LOG)
-        farm.log.splice(0, farm.log.length - MAX_LOG);
-}
-/** 记一条足迹（别人对本农场的社交动作：帮浇水 / 偷菜得手 / 被狗吓退）；最新在前，超上限截尾。 */
-export function pushTrail(farm, ev) {
-    (farm.trail ??= []).unshift(ev);
-    if (farm.trail.length > TRAIL_MAX)
-        farm.trail.length = TRAIL_MAX;
-}
-const humanDisplay = (farm) => farm.humanName || "伴侣";
-const aiDisplay = (farm) => farm.aiName || farm.name || "对方";
 // —— 惰性结算（纯时间生长，无缺水停滞）——
 export function advance(farm, now) {
     const elapsed = Math.floor((now - farm.lastTickAt) / TICK_MS);
@@ -42,208 +207,9 @@ export function advance(farm, now) {
                 p.crop.ripe = true;
         }
     }
-    // 牧场动物随时间攒产出（伴侣在人类前端收）；等级越高每周期产得越多
-    if (farm.ranch)
-        for (const a of farm.ranch.animals) {
-            const kind = animalById.get(a.kindId);
-            if (!kind)
-                continue;
-            // 不累加：只在「没有未收产出」时推进生产，攒到 1 份就停，伴侣收了才产下一份（挂机不堆积）
-            if (a.pending < 1) {
-                a.ticksSinceProduce += elapsed;
-                if (a.ticksSinceProduce >= kind.produceEveryTicks) {
-                    a.pending = 1;
-                    a.pendingBoost = !!a.feedBoostPending;
-                    a.feedBoostPending = false;
-                    if (kind.meatId) {
-                        const rng = new Rng(farm.rngState ?? 1);
-                        a.pendingMeat = rng.next() < cooking.meatDropChance ? 1 : 0;
-                        farm.rngState = rng.state;
-                    }
-                    a.ticksSinceProduce = 0;
-                }
-            }
-        }
+    advanceRanch(farm, elapsed);
     farm.lastTickAt += elapsed * TICK_MS;
     return elapsed;
-}
-// —— 图鉴 ——
-function addCodex(farm, cropId, qualityTier, now) {
-    const prev = farm.codex[cropId];
-    if (!prev) {
-        farm.codex[cropId] = { count: 1, bestQuality: qualityTier, firstAt: now };
-        return true;
-    }
-    prev.count += 1;
-    prev.bestQuality = Math.max(prev.bestQuality, qualityTier);
-    return false;
-}
-/** 已解锁的官方作物图鉴种类数（UGC 不计）。 */
-export function officialCodexCount(farm) {
-    return Object.keys(farm.codex).filter((id) => cropById.has(id)).length;
-}
-export function collectionPct(farm) {
-    // 只算官方作物（UGC 自创不计入官方收集度）
-    return officialCodexCount(farm) / totalCropCount;
-}
-/** 图鉴星标：切换某作物的收藏态。返回 { ok, on, name }；on=切换后是否已收藏。 */
-export function toggleStar(farm, id) {
-    const crop = getCrop(id);
-    if (!crop)
-        return { ok: false, on: false };
-    farm.starred ??= [];
-    const i = farm.starred.indexOf(id);
-    if (i >= 0) {
-        farm.starred.splice(i, 1);
-        return { ok: true, on: false, name: crop.name };
-    }
-    farm.starred.push(id);
-    return { ok: true, on: true, name: crop.name };
-}
-/** 某作物是否被伴侣星标收藏。 */
-export function isStarred(farm, id) {
-    return !!farm.starred?.includes(id);
-}
-/** 按 农场id+日 的确定性 0~1 值（不消耗 rngState；同一天同一农场恒定）。给夜间商店「有概率刷出」用。 */
-function dayHash(id, day) {
-    let h = (2166136261 ^ day) >>> 0;
-    for (let i = 0; i < id.length; i++) {
-        h ^= id.charCodeAt(i);
-        h = Math.imul(h, 16777619);
-    }
-    return ((h >>> 0) % 100000) / 100000;
-}
-/** 已集齐的某类别作物种类数（升级牵制用） */
-export function codexCountByCategory(farm, cat) {
-    return Object.keys(farm.codex).filter((id) => cropById.get(id)?.category === cat).length;
-}
-// —— 限定作物可种判定（公历节日 + 结构化解锁规则 unlockRule；回落老的图鉴%文案）——
-export function isLimitedAvailable(crop, farm, now) {
-    if (crop.category !== "limited")
-        return false;
-    if (crop.unlockType === "festival") {
-        return activeFestivals(now).some((f) => f.cropId === crop.id);
-    }
-    // 结构化规则优先（action / 计数类 / 夜间商店）
-    const rule = crop.unlockRule;
-    if (rule) {
-        switch (rule.kind) {
-            case "codexCount": return officialCodexCount(farm) >= (rule.n ?? 0);
-            case "codexPct": return collectionPct(farm) * 100 >= (rule.n ?? 0);
-            case "landMax": return nextUpgradeReq(farm) === null;
-            case "nightShop": // 仅 UTC+8 凌晨 0:00–3:59，且当天 roll 命中（整段窗口稳定）
-                return currentHour(now) < 4 && dayHash(farm.id, currentDayIndex(now)) < (rule.chance ?? 0.2);
-            default: return false;
-        }
-    }
-    // 回落：老的图鉴百分比文案（"N%"）
-    if (crop.unlockType === "codex") {
-        const m = (crop.unlockCond ?? "").match(/(\d+)\s*%/);
-        return m ? collectionPct(farm) * 100 >= +m[1] : false;
-    }
-    return false;
-}
-/** 把"限定/自创种子"的引用解析成作物 id：接受 id 或中文名（背包/熔炼都给中文名，玩家自然照着填）。
- *  重名时优先用玩家背包里已有的那颗；官方限定（条件/金币种）按名字全库找。 */
-function resolveLimitedRef(farm, ref) {
-    ref = String(ref ?? "").trim();
-    if (!ref)
-        return undefined;
-    const direct = getCrop(ref); // 已经是 id
-    if (direct && (direct.category === "limited" || direct.category === "ugc" || (farm.seeds[direct.id] ?? 0) > 0))
-        return direct.id;
-    for (const id of Object.keys(farm.seeds)) { // 按中文名找背包里有的（含自己设计/熔炼/买来的）
-        const c = getCrop(id);
-        if (c && c.name === ref && (c.category === "limited" || c.category === "ugc" || (farm.seeds[id] ?? 0) > 0))
-            return id;
-    }
-    return crops.find((c) => c.category === "limited" && c.name === ref)?.id; // 官方限定按名字全库找
-}
-// —— 播种 ——
-export function plant(farm, plotId, seedType, limitedId, now) {
-    const plot = farm.plots.find((p) => p.id === plotId);
-    if (!plot)
-        return { ok: false, error: `没有 ${plotId} 号地` };
-    if (plot.crop)
-        return { ok: false, error: `${plotId} 号地已经种着东西了` };
-    // 防作弊：seedType 只能是这三种——非法值会让 SEED_PRICE[x]=undefined，把 coins 算成 NaN（之后任何价格判定都失效）
-    if (seedType !== "common" && seedType !== "fantasy" && seedType !== "limited")
-        return { ok: false, error: "种子类型只能是 common / fantasy / limited" };
-    if (seedType === "limited") {
-        const resolved = resolveLimitedRef(farm, String(limitedId ?? "")); // 兼容 id 和中文名
-        if (!resolved)
-            return { ok: false, error: "没有这种限定/自创作物（填它的中文名或 id，名字去 bag 抄）" };
-        limitedId = resolved;
-        const crop = getCrop(limitedId);
-        if (!canPlantQixi2026Crop(farm, limitedId, now))
-            return { ok: false, error: "完成对应七夕任务后解锁。" };
-        // 限定/自创只能用手里已有的种子来种（熔炼产出 / 自己设计 / 商店随机刷出时花金币买来的）。
-        // 不再有"满足解锁条件就花金币无限直接种"的途径——限定要稀缺，解锁只是让它能进商店随机库被 roll。
-        if ((farm.seeds[limitedId] ?? 0) > 0) {
-            farm.seeds[limitedId] -= 1;
-            if (farm.seeds[limitedId] <= 0)
-                delete farm.seeds[limitedId];
-        }
-        else {
-            return { ok: false, error: `你没有「${crop.name}」的种子——${crop.category === "ugc" ? "先设计它、或去摊位买" : "去熔炼，或等它在商店随机刷出来时买（每种每天限 1 颗）"}。` };
-        }
-        plot.crop = { seedType: "limited", limitedId, growTicks: crop.growTicks, progress: 0, ripe: false, waterCount: 0 };
-        if (crop.category === "ugc")
-            onTaskEvent(farm, "plant_ugc", now); // 随机任务：种下一株自创作物
-        pushLog(farm, `种下限定 ${crop.name}`);
-        return { ok: true, seedType: "limited", limitedId }; // 回传解析后的 id，供 plantBatch 记录专属文案
-    }
-    const price = SEED_PRICE[seedType];
-    if (farm.coins < price)
-        return { ok: false, error: `金币不足，${seedType === "common" ? "普通" : "奇幻"}种子要 ${price}` };
-    farm.coins -= price;
-    plot.crop = { seedType, growTicks: GROW_TICKS[seedType], progress: 0, ripe: false, waterCount: 0 };
-    pushLog(farm, `种下一颗${seedType === "common" ? "普通" : "奇幻"}种子`);
-    return { ok: true, seedType };
-}
-// —— 主人浇水（提升稀有概率，封顶；只用于自家地）——
-const WATER_CAP_COUNT = Math.round(WATER_LUCK_CAP / WATER_LUCK_PER);
-export function water(farm, plotId, by, isOwner) {
-    const plot = farm.plots.find((p) => p.id === plotId);
-    if (!plot || !plot.crop)
-        return { ok: false, error: `${plotId} 号地没有作物` };
-    const capped = plot.crop.waterCount >= WATER_CAP_COUNT;
-    if (!capped)
-        plot.crop.waterCount += 1;
-    pushLog(farm, `${by}给 ${plotId} 号地浇了水`);
-    return { ok: true, by, isOwner, capped };
-}
-// —— 串门浇水（帮别家加速：每浇 1 次让作物进度 +1 tick = 30 分钟；不提升稀有度）——
-// 给了 plotId 就浇那一块；否则默认浇「剩余时间最短」的生长地块（最接近成熟的先催）。
-// 防互刷：同一访客对同一农场每天只能帮浇 1 次（已浇过当天再来 → 提示明天再来）。
-const remainingTicks = (c) => c.growTicks - c.progress;
-export function visitorWater(farm, visitorId, plotId, by, now) {
-    const day = currentDayIndex(now);
-    if (farm.waterVisits?.[visitorId] === day)
-        return { ok: false, error: "已浇过水，明天再来吧。" };
-    let plot;
-    if (plotId != null) {
-        plot = farm.plots.find((p) => p.id === plotId);
-        if (!plot || !plot.crop)
-            return { ok: false, error: `${plotId} 号地没有作物` };
-        if (plot.crop.ripe)
-            return { ok: false, error: `${plotId} 号地的作物已经熟了，浇了也没用` };
-    }
-    else {
-        const growing = farm.plots.filter((p) => p.crop && !p.crop.ripe);
-        if (!growing.length)
-            return { ok: false, error: "对方没有可浇水的作物" };
-        plot = growing.reduce((best, p) => remainingTicks(p.crop) < remainingTicks(best.crop) ? p : best);
-    }
-    const crop = plot.crop;
-    crop.progress = Math.min(crop.growTicks, crop.progress + 1); // +1 tick = 30 分钟
-    const ripened = crop.progress >= crop.growTicks;
-    if (ripened)
-        crop.ripe = true;
-    (farm.waterVisits ??= {})[visitorId] = day; // 标记今天已帮这家浇过（每家每天 1 次）
-    pushLog(farm, `${by}帮 ${plot.id} 号地浇水，加速 30 分钟${ripened ? "，正好催熟" : ""}`);
-    pushTrail(farm, { t: now, kind: "watered", by, plotId: plot.id }); // 足迹：谁帮浇了水
-    return { ok: true, plotId: plot.id, ripened };
 }
 // —— 揭晓 roll（收获/偷菜共用）——
 function reveal(farm, plot, now) {
@@ -394,74 +360,6 @@ export function humanHarvestAll(farm, now, seasonMod) {
     daily.n = (daily.n ?? 0) + 1;
     return { ok: true, results, count: results.length, used: daily.n, left: Math.max(0, HUMAN_HARVEST_DAILY_CAP - daily.n) };
 }
-// —— 熔炼：投 CRAFT_COUNT 个素材 → 出一颗限定种子（混合：命中隐藏配方=固定，否则随机）——
-export function craft(farm, materialIds, _now) {
-    if (!Array.isArray(materialIds) || materialIds.length !== CRAFT_COUNT)
-        return { ok: false, error: `熔炼需要正好 ${CRAFT_COUNT} 个素材` };
-    // 接受素材 id 或中文名（bag 只展示中文名，AI 玩家自然照着填）
-    const ids = [];
-    for (const x of materialIds) {
-        const m = materialById.get(x) ?? materials.find((mm) => mm.name === x);
-        if (!m)
-            return { ok: false, error: `没有这种素材: ${x}` };
-        ids.push(m.id);
-    }
-    // 校验库存（含重复计数）
-    const need = {};
-    for (const id of ids)
-        need[id] = (need[id] ?? 0) + 1;
-    for (const [id, n] of Object.entries(need)) {
-        if ((farm.materials[id] ?? 0) < n)
-            return { ok: false, error: `素材不足: ${materialById.get(id).name}` };
-    }
-    // 消耗
-    for (const [id, n] of Object.entries(need)) {
-        farm.materials[id] -= n;
-        if (farm.materials[id] <= 0)
-            delete farm.materials[id];
-    }
-    const rng = new Rng(farm.rngState);
-    const sortedKey = [...ids].sort().join("+");
-    const recipe = recipes.find((r) => [...r.materials].sort().join("+") === sortedKey);
-    let cropId;
-    let byRecipe = false;
-    if (recipe && cropById.get(recipe.output)) {
-        cropId = recipe.output;
-        byRecipe = true;
-    }
-    else {
-        // 随机产出：按投入素材总点数决定运气，往高稀有限定抬。节日限定保持节日专属，不参与熔炼。
-        const points = ids.reduce((s, id) => s + (FUSION_POINTS[materialById.get(id).rarity] ?? 0), 0);
-        const luck = points / FUSION_LUCK_DIVISOR;
-        // 熔炼基础池=「纯熔炼组」：没有任何商店上架途径（非节日、无结构化解锁规则、非图鉴%解锁）的限定。
-        // 这类作物的唯一发现来源就是熔炼，所以允许未收获就炼出（软保底帮你出没集齐的）。
-        const normalPool = crops.filter((c) => c.category === "limited" && c.craftable !== false
-            && c.unlockType !== "festival" && c.unlockType !== "codex" && !c.unlockRule && !isQixi2026CropId(c.id));
-        // 软保底：本农场还没集齐的限定，权重 ×FUSION_SOFT_PITY（避免随机长尾让人一直撞重复；SP 仍要努力，没集齐的更易出）
-        const normalWeights = normalPool.map((c) => {
-            const base = (LIMITED_BASE_WEIGHT[c.rarity] ?? 1) * Math.pow(1 + luck, rarityIndex(c.rarity) - rarityIndex("SR"));
-            return farm.codex[c.id] ? base : base * FUSION_SOFT_PITY;
-        });
-        // 节日 / 图鉴%/ 条件解锁 这三类（首获只能靠商店随机刷）——「本农场收获过 1 次(进图鉴)」之后，
-        // 才以极低权重涓流进熔炼池：每个 ≈ FUSION_SPECIAL_UNLOCKED_RATE 概率。没收获过的永远不会被熔出。
-        const specialPool = crops.filter((c) => c.category === "limited"
-            && !isQixi2026CropId(c.id)
-            && (c.unlockType === "festival" || c.unlockType === "codex" || !!c.unlockRule) && farm.codex[c.id]);
-        const normalSum = normalWeights.reduce((s, w) => s + w, 0);
-        const specialWeights = specialPool.map(() => normalSum * FUSION_SPECIAL_UNLOCKED_RATE);
-        const pool = [...normalPool, ...specialPool];
-        const weights = [...normalWeights, ...specialWeights];
-        cropId = pool[rng.weighted(weights)].id;
-    }
-    farm.rngState = rng.state;
-    farm.seeds[cropId] = (farm.seeds[cropId] ?? 0) + 1;
-    const crop = cropById.get(cropId);
-    farm.crafted = (farm.crafted ?? 0) + 1; // 匠人称号累计
-    onTaskEvent(farm, "craft", _now); // 随机任务：熔炼一次
-    const qixi = recordQixi2026Progress(farm, "craft", 1, _now);
-    pushLog(farm, `熔炼出限定种子：${crop.name}${byRecipe ? "（配方）" : ""}`);
-    return { ok: true, cropId, cropName: crop.name, rarity: crop.rarity, byRecipe, qixi };
-}
 function stealQuota(farm, now) {
     const day = currentDayIndex(now);
     if (!farm.stealQuota || farm.stealQuota.day !== day)
@@ -596,547 +494,6 @@ export function shopAnimals(farm) {
 /** 还没解锁的下一只动物（给"再集 N 种图鉴解锁 X"的提示）。 */
 export function nextLockedAnimal(farm) {
     return animals.filter((a) => !animalUnlocked(farm, a)).sort((a, b) => a.unlockCodex - b.unlockCodex)[0] ?? null;
-}
-export function ensureRanch(farm) {
-    const ranch = (farm.ranch ??= { coins: 0, animals: [] });
-    ranch.coins ??= 0;
-    ranch.animals ??= [];
-    ranch.pets ??= [];
-    ranch.raids ??= [];
-    ranch.raidDebts ??= [];
-    return ranch;
-}
-export function ensureKitchen(farm) {
-    const ranch = ensureRanch(farm);
-    const kitchen = (ranch.kitchen ??= {});
-    kitchen.products ??= [];
-    kitchen.ingredients ??= {};
-    kitchen.dishes ??= [];
-    kitchen.knownRecipes ??= [];
-    return kitchen;
-}
-function kitchenIngredientRefreshRules() {
-    const rules = cooking.ingredientShopRefresh;
-    const dailyLimit = rules?.dailyLimit;
-    const costStepCoins = rules?.costStepCoins;
-    if (!Number.isSafeInteger(dailyLimit) || dailyLimit < 1 ||
-        !Number.isSafeInteger(costStepCoins) || costStepCoins < 1)
-        return null;
-    return { dailyLimit, costStepCoins };
-}
-function kitchenIngredientRefreshCount(shop, day, dailyLimit) {
-    if (shop.refreshWindowId === undefined && shop.refreshCount === undefined)
-        return 0;
-    if (!Number.isSafeInteger(shop.refreshWindowId) || shop.refreshWindowId < 0 ||
-        !Number.isSafeInteger(shop.refreshCount) || shop.refreshCount < 0 ||
-        shop.refreshCount > dailyLimit)
-        return null;
-    return shop.refreshWindowId === day ? shop.refreshCount : 0;
-}
-const COOKING_PRICE_VERSION = 2;
-const COOKING_PRICE_V2_DEPLOYED_AT = 1785908900000; // 2026-08-05 13:48:20 Asia/Shanghai；新公式首次生产生效
-/**
- * 统一新公式上线前已做好的料理锁价。
- * 旧倍率均大于 1，因此由旧成品价反推整数旧基价时至多命中一个值；不需要猜生产存档里的动态产物价值。
- */
-export function normalizeDishPricing(dish) {
-    if (!dish || typeof dish !== "object" || dish.pricingVersion === COOKING_PRICE_VERSION)
-        return false;
-    if (dish.recipeId === "odd_dish") {
-        dish.value = 1;
-        dish.pricingVersion = COOKING_PRICE_VERSION;
-        return true;
-    }
-    const createdAt = Number(dish.createdAt);
-    if (Number.isFinite(createdAt) && createdAt >= COOKING_PRICE_V2_DEPLOYED_AT) {
-        dish.pricingVersion = COOKING_PRICE_VERSION;
-        return true;
-    }
-    const recipe = cookingRecipeById.get(String(dish.recipeId));
-    const premium = Number(cooking.recyclePremium[dish.rarity]);
-    const oldValue = Number(dish.value);
-    if (!recipe || !Number.isFinite(premium) || premium <= 1 || !Number.isSafeInteger(oldValue) || oldValue < 1)
-        return false;
-    const ingredientValue = recipe.ingredients.reduce((sum, id) => sum + (cookingIngredientById.get(id)?.price ?? 0), 0);
-    const low = Math.max(0, Math.floor((oldValue - 0.5) / premium) - 1);
-    const high = Math.ceil((oldValue + 0.5) / premium) + 1;
-    let oldBaseValue;
-    for (let candidate = low; candidate <= high; candidate++) {
-        if (Math.round(candidate * premium) === oldValue) {
-            oldBaseValue = candidate;
-            break;
-        }
-    }
-    if (oldBaseValue === undefined || oldBaseValue < ingredientValue)
-        return false;
-    const dynamicProductValue = oldBaseValue - ingredientValue;
-    const currentBaseValue = dynamicProductValue + ingredientValue * cooking.ingredientRecycleValueMultiplier;
-    dish.value = Math.round(currentBaseValue * (1 + cooking.processingFeeRate) * premium);
-    dish.pricingVersion = COOKING_PRICE_VERSION;
-    return true;
-}
-/** 正常料理回收返银：保留稀有度下限，并按锁定金币价值额外返约 1/50。 */
-export function dishSystemRecycleSilver(dish) {
-    if (!dish || dish.recipeId === "odd_dish")
-        return 0;
-    const rarityFloor = Math.max(0, Math.floor(Number(cooking.systemRecycleSilver[dish.rarity]) || 0));
-    const valueReward = Math.max(0, Math.round((Number(dish.value) || 0) / 50));
-    return Math.max(rarityFloor, valueReward);
-}
-function shuffledWithFarmRng(farm, values) {
-    const out = [...values];
-    const rng = new Rng(farm.rngState ?? 1);
-    for (let i = out.length - 1; i > 0; i--) {
-        const j = Math.floor(rng.next() * (i + 1));
-        [out[i], out[j]] = [out[j], out[i]];
-    }
-    farm.rngState = rng.state;
-    return out;
-}
-function ensureQixiLanternTeaOffer(shop, now) {
-    if (isQixiLantern2026Active(now) && !shop.ingredientIds.includes("tea"))
-        shop.ingredientIds.push("tea");
-    return shop;
-}
-function kitchenRotatingIngredients() {
-    return cookingIngredients.filter((item) => !item.staple).map((item) => item.id);
-}
-/** 每座牧场自己的每日食材/食谱货架；UTC+8 零点刷新。 */
-export function refreshKitchenShop(farm, now) {
-    const kitchen = ensureKitchen(farm);
-    const day = currentDayIndex(now);
-    if (kitchen.shop?.day === day)
-        return ensureQixiLanternTeaOffer(kitchen.shop, now);
-    const rotating = kitchenRotatingIngredients();
-    const unknown = cookingRecipes.filter((recipe) => !kitchen.knownRecipes.includes(recipe.id)).map((recipe) => recipe.id);
-    kitchen.shop = {
-        day,
-        ingredientIds: shuffledWithFarmRng(farm, rotating).slice(0, cooking.dailyRotatingCount),
-        recipeIds: shuffledWithFarmRng(farm, unknown).slice(0, cooking.dailyRecipeCount),
-        bought: {},
-        refreshWindowId: day,
-        refreshCount: 0,
-    };
-    return ensureQixiLanternTeaOffer(kitchen.shop, now);
-}
-/**
- * 料理台食材栏的人工刷新权威结算：只重抽食材，不碰食谱、库存或购买计数。
- * 调用方应在外层 clone 后保存；本函数仍会在生成失败时保持输入不变。
- */
-export function refreshKitchenIngredients(farm, now = Date.now()) {
-    const rules = kitchenIngredientRefreshRules();
-    const day = currentDayIndex(now);
-    const kitchen = farm?.ranch?.kitchen;
-    const shop = kitchen?.shop;
-    if (!rules || !kitchen || !shop || shop.day !== day ||
-        !Array.isArray(shop.ingredientIds) || !Array.isArray(shop.recipeIds) ||
-        !shop.bought || typeof shop.bought !== "object" || Array.isArray(shop.bought)) {
-        return { ok: false, code: "shop_unavailable", error: "今天的食材铺不可刷新。" };
-    }
-    const usedCount = kitchenIngredientRefreshCount(shop, day, rules.dailyLimit);
-    if (usedCount === null)
-        return { ok: false, code: "farm_unavailable", error: "食材铺刷新状态无效。" };
-    if (usedCount >= rules.dailyLimit)
-        return { ok: false, code: "refresh_exhausted", error: "今天的食材铺刷新次数已用完。" };
-    if (!Number.isSafeInteger(farm.coins) || farm.coins < 0)
-        return { ok: false, code: "farm_unavailable", error: "农场金币余额无效。" };
-    const costCoins = (usedCount + 1) * rules.costStepCoins;
-    if (!Number.isSafeInteger(costCoins) || farm.coins < costCoins)
-        return { ok: false, code: "insufficient_coins", error: `金币不足，本次刷新需要 ${costCoins} 金币。` };
-
-    const rotating = kitchenRotatingIngredients();
-    if (!Array.isArray(rotating) || rotating.length < 1 || !Number.isSafeInteger(cooking.dailyRotatingCount) ||
-        cooking.dailyRotatingCount < 1) {
-        return { ok: false, code: "farm_unavailable", error: "食材刷新内容无效。" };
-    }
-    let generatedFarm;
-    let ingredientIds;
-    try {
-        generatedFarm = structuredClone(farm);
-        ingredientIds = shuffledWithFarmRng(generatedFarm, rotating)
-            .slice(0, cooking.dailyRotatingCount);
-        const generatedShop = { ...shop, ingredientIds: [...ingredientIds] };
-        ensureQixiLanternTeaOffer(generatedShop, now);
-        ingredientIds = generatedShop.ingredientIds;
-    }
-    catch {
-        return { ok: false, code: "farm_unavailable", error: "食材刷新生成失败。" };
-    }
-    if (!Array.isArray(ingredientIds) || ingredientIds.some((id) => typeof id !== "string" || !id))
-        return { ok: false, code: "farm_unavailable", error: "食材刷新生成失败。" };
-
-    farm.rngState = generatedFarm.rngState;
-    farm.coins -= costCoins;
-    shop.ingredientIds = ingredientIds;
-    shop.refreshWindowId = day;
-    shop.refreshCount = usedCount + 1;
-    return {
-        ok: true,
-        cost: costCoins,
-        coins: farm.coins,
-        refreshWindowId: day,
-        refreshCount: usedCount + 1,
-        refreshLimit: rules.dailyLimit,
-        nextCostCoins: Math.min(
-            (usedCount + 2) * rules.costStepCoins,
-            rules.dailyLimit * rules.costStepCoins,
-        ),
-        canRefresh: usedCount + 1 < rules.dailyLimit,
-    };
-}
-export function activeCookingDebuff(farm, now = Date.now()) {
-    if (!farm)
-        return null;
-    const kitchen = ensureKitchen(farm);
-    if (kitchen.debuff && kitchen.debuff.until <= now)
-        delete kitchen.debuff;
-    return kitchen.debuff ?? null;
-}
-export function cookingDebuffReason(farm, action, body, now) {
-    const debuff = activeCookingDebuff(farm, now);
-    if (!debuff)
-        return "";
-    const blocked = (debuff.kind === "farm_lock" && !!action && action !== "status")
-        || (debuff.kind === "no_steal" && action === "steal")
-        || (debuff.kind === "no_water" && action === "water")
-        || (debuff.kind === "no_harvest" && (action === "harvest" || (action === "run" && (body?.harvest || body?.harvestFirst || body?.harvestAfter))));
-    if (!blocked)
-        return "";
-    const minutes = Math.max(1, Math.ceil((debuff.until - now) / 60000));
-    return `🥴 你吃下的微妙料理还在发作：${debuff.name}（约 ${minutes} 分钟后恢复）。这个效果只影响你使用农场工具，人类伴侣仍可正常操作。`;
-}
-function kitchenIngredientDailyBuyLimit(item) {
-    return Math.max(1, Math.floor(Number(item?.dailyBuyLimit) || cooking.dailyBuyLimit));
-}
-/** 料理台当前的真实库存、商店、配方与效果，AI 与人类页共用。 */
-export function kitchenView(farm, now) {
-    const kitchen = ensureKitchen(farm);
-    const shop = refreshKitchenShop(farm, now);
-    const ingredients = cookingIngredients
-        .filter((item) => item.staple || shop.ingredientIds.includes(item.id))
-        .map((item) => ({ ...item, dailyBuyLimit: kitchenIngredientDailyBuyLimit(item), owned: kitchen.ingredients[item.id] ?? 0, bought: shop.bought[`ingredient:${item.id}`] ?? 0 }));
-    const recipeOffers = shop.recipeIds.map((id) => cookingRecipeById.get(id)).filter(Boolean)
-        .map((recipe) => ({ ...recipe, price: cooking.recipePrices[recipe.rarity], known: kitchen.knownRecipes.includes(recipe.id) }));
-    return {
-        products: [...kitchen.products, ...fishingKitchenProducts(farm)],
-        ingredients,
-        ownedIngredients: Object.entries(kitchen.ingredients).filter(([, qty]) => qty > 0)
-            .map(([id, qty]) => ({ ...cookingIngredientById.get(id), id, qty })),
-        dishes: kitchen.dishes.map((dish) => ({ ...dish, recycleSilver: dishSystemRecycleSilver(dish) })),
-        recipeOffers,
-        knownRecipes: kitchen.knownRecipes.map((id) => cookingRecipeById.get(id)).filter(Boolean)
-            .map((recipe) => ({ ...recipe, canCook: selectCookingItems(farm, recipe.ingredients).ok })),
-        debuff: activeCookingDebuff(farm, now),
-        shop,
-    };
-}
-export function kitchenBuy(farm, kind, id, qty, now) {
-    const kitchen = ensureKitchen(farm);
-    const shop = refreshKitchenShop(farm, now);
-    if (kind === "ingredient") {
-        const item = cookingIngredientById.get(String(id));
-        if (!item || (!item.staple && !shop.ingredientIds.includes(item.id)))
-            return { ok: false, error: "今天的食材铺没有这个。" };
-        const n = Math.max(1, Math.floor(Number(qty) || 1));
-        const key = `ingredient:${item.id}`;
-        const bought = shop.bought[key] ?? 0;
-        const dailyBuyLimit = kitchenIngredientDailyBuyLimit(item);
-        if (bought + n > dailyBuyLimit)
-            return { ok: false, error: `${item.name}每天最多买 ${dailyBuyLimit} 份，今天还可买 ${Math.max(0, dailyBuyLimit - bought)} 份。` };
-        const cost = item.price * n;
-        if (farm.silver < cost)
-            return { ok: false, error: `银币不足，买 ${n} 份${item.name}要 🪙${cost}（你有 ${farm.silver}）。` };
-        farm.silver -= cost;
-        kitchen.ingredients[item.id] = (kitchen.ingredients[item.id] ?? 0) + n;
-        shop.bought[key] = bought + n;
-        return { ok: true, kind, name: item.name, qty: n, cost };
-    }
-    if (kind === "recipe") {
-        const recipe = cookingRecipeById.get(String(id));
-        if (!recipe || !shop.recipeIds.includes(recipe.id))
-            return { ok: false, error: "今天的食谱铺没有这张食谱。" };
-        if (kitchen.knownRecipes.includes(recipe.id))
-            return { ok: false, error: `已经会做「${recipe.name}」了。` };
-        const cost = cooking.recipePrices[recipe.rarity];
-        if (farm.silver < cost)
-            return { ok: false, error: `银币不足，这张 ${recipe.rarity} 食谱要 🪙${cost}（你有 ${farm.silver}）。` };
-        farm.silver -= cost;
-        kitchen.knownRecipes.push(recipe.id);
-        return { ok: true, kind, name: recipe.name, rarity: recipe.rarity, cost };
-    }
-    return { ok: false, error: "kind 只能是 ingredient 或 recipe。" };
-}
-const cookingKey = (ids) => [...ids].sort().join("|");
-function selectCookingItems(farm, refs) {
-    const kitchen = ensureKitchen(farm);
-    if (!Array.isArray(refs) || refs.length < 2 || refs.length > 5)
-        return { ok: false, error: "每次请放 2～5 份食材。" };
-    const usedProducts = new Set();
-    const usedFish = new Set();
-    const fishProducts = fishingKitchenProducts(farm);
-    const ingredientCounts = {};
-    const selected = [];
-    for (const raw of refs) {
-        const ref = String(raw ?? "").trim();
-        let product = kitchen.products.find((item) => item.id === ref && !usedProducts.has(item.id));
-        const productDef = cookingProductById.get(ref) ?? cookingProducts.find((item) => item.name === ref);
-        if (!product && productDef)
-            product = kitchen.products.find((item) => item.itemId === productDef.id && !usedProducts.has(item.id));
-        if (product) {
-            const def = cookingProductById.get(product.itemId);
-            if (!def?.cookable)
-                return { ok: false, error: `「${def?.name ?? product.name}」不能下锅，可以直接系统回收。` };
-            usedProducts.add(product.id);
-            selected.push({ source: "product", id: product.itemId, instanceId: product.id, name: def.name, value: product.value });
-            continue;
-        }
-        let fish = fishProducts.find((item) => item.id === ref && !usedFish.has(item.id));
-        if (!fish && ref === "fish:any")
-            fish = fishProducts.find((item) => !usedFish.has(item.id));
-        if (!fish)
-            fish = fishProducts.find((item) => (item.fishId === ref || item.name === ref) && !usedFish.has(item.id));
-        if (fish) {
-            usedFish.add(fish.id);
-            selected.push({ source: "fish", id: "fish:any", instanceId: fish.id, name: fish.name, value: fish.value });
-            continue;
-        }
-        const ingredient = cookingIngredientById.get(ref) ?? cookingIngredients.find((item) => item.name === ref);
-        if (!ingredient)
-            return { ok: false, error: `食材柜里找不到「${ref}」。` };
-        ingredientCounts[ingredient.id] = (ingredientCounts[ingredient.id] ?? 0) + 1;
-        if ((kitchen.ingredients[ingredient.id] ?? 0) < ingredientCounts[ingredient.id])
-            return { ok: false, error: `「${ingredient.name}」数量不够。` };
-        selected.push({ source: "ingredient", id: ingredient.id, name: ingredient.name, value: ingredient.price * cooking.ingredientRecycleValueMultiplier });
-    }
-    return { ok: true, selected, usedProducts, usedFish, ingredientCounts };
-}
-export function kitchenCook(farm, refs, now) {
-    const kitchen = ensureKitchen(farm);
-    const picked = selectCookingItems(farm, refs);
-    if (!picked.ok)
-        return picked;
-    const recipe = cookingRecipes.find((item) => cookingKey(item.ingredients) === cookingKey(picked.selected.map((item) => item.id)));
-    kitchen.products = kitchen.products.filter((item) => !picked.usedProducts.has(item.id));
-    removeFishingCatchIds(farm, picked.usedFish);
-    for (const [id, n] of Object.entries(picked.ingredientCounts)) {
-        kitchen.ingredients[id] -= n;
-        if (kitchen.ingredients[id] <= 0)
-            delete kitchen.ingredients[id];
-    }
-    const baseValue = picked.selected.reduce((sum, item) => sum + item.value, 0);
-    let dish;
-    let discovered = false;
-    if (recipe) {
-        discovered = !kitchen.knownRecipes.includes(recipe.id);
-        if (discovered)
-            kitchen.knownRecipes.push(recipe.id);
-        dish = {
-            id: randomUUID(), recipeId: recipe.id, name: recipe.name, rarity: recipe.rarity,
-            value: Math.round(baseValue * (1 + cooking.processingFeeRate) * cooking.recyclePremium[recipe.rarity] * glimmerBuffMultiplier("dishValue", now)),
-            image: `${recipe.id}.webp`, createdAt: now, pricingVersion: COOKING_PRICE_VERSION,
-        };
-    }
-    else {
-        dish = { id: randomUUID(), recipeId: "odd_dish", name: "微妙的料理", rarity: "N", value: 1, image: "odd-dish.webp", createdAt: now, pricingVersion: COOKING_PRICE_VERSION };
-    }
-    kitchen.dishes.push(dish);
-    const qixi = submitQixi2026Dish(farm, kitchen, dish, now);
-    return { ok: true, dish, recipe, discovered, odd: !recipe, ingredients: picked.selected.map((item) => item.name), baseValue, qixi };
-}
-/** 已解锁食谱可按名称或 id 直接制作；库存取用仍复用普通下锅的真实选择与扣除逻辑。 */
-export function kitchenCookKnownRecipe(farm, selector, now) {
-    const kitchen = ensureKitchen(farm);
-    const key = String(selector ?? "").trim();
-    const recipe = cookingRecipeById.get(key) ?? cookingRecipes.find((item) => item.name === key);
-    if (!recipe)
-        return { ok: false, error: `没有找到食谱「${key || "未填写"}」。` };
-    if (!kitchen.knownRecipes.includes(recipe.id))
-        return { ok: false, error: `还没有解锁「${recipe.name}」食谱。` };
-    return kitchenCook(farm, recipe.ingredients, now);
-}
-const ODD_DEBUFFS = [
-    { kind: "no_steal", name: "手脚发软，暂时不能偷菜" },
-    { kind: "no_harvest", name: "眼冒金星，暂时不能收菜" },
-    { kind: "no_water", name: "闻水就晕，暂时不能浇水" },
-    { kind: "farm_lock", name: "料理后劲太大，农场工具暂时罢工" },
-    { kind: "dog_disliked", name: "狗都嫌，去有狗的人家偷菜会 100% 被拦" },
-];
-const COOKING_DEBUFF_STATUS = {
-    no_steal: { label: "手脚发软", impact: "暂时不能偷菜" },
-    no_harvest: { label: "眼冒金星", impact: "暂时不能收菜" },
-    no_water: { label: "闻水就晕", impact: "暂时不能浇水" },
-    farm_lock: { label: "料理后劲太大", impact: "除查看状态外，农场工具暂时无法使用" },
-    dog_disliked: { label: "狗都嫌", impact: "去有看家狗的人家偷菜会 100% 被拦住" },
-};
-/** 当前料理负面状态：连接 status 持续展示，到期后由 activeCookingDebuff 自动清除。 */
-export function cookingDebuffStatusText(farm, now = Date.now()) {
-    const debuff = activeCookingDebuff(farm, now);
-    if (!debuff)
-        return "";
-    const status = COOKING_DEBUFF_STATUS[debuff.kind] ?? { label: debuff.name, impact: debuff.name };
-    const totalMinutes = Math.max(1, Math.ceil((debuff.until - now) / 60000));
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-    const remaining = hours ? `${hours} 小时${minutes ? ` ${minutes} 分钟` : ""}` : `${minutes} 分钟`;
-    const dishName = debuff.dishName || "微妙的料理";
-    const source = debuff.fedBy
-        ? `${debuff.fedBy}给你喂了「${dishName}」；`
-        : `你吃下了「${dishName}」；`;
-    return `🍽️ ${source}你当前处于「${status.label}」状态，剩余 ${remaining}：${status.impact}。这个效果只影响你使用农场工具，人类伴侣仍可正常操作。`;
-}
-function takeDish(kitchen, dishId) {
-    const dish = kitchen.dishes.find((item) => item.id === String(dishId));
-    if (!dish)
-        return null;
-    kitchen.dishes = kitchen.dishes.filter((item) => item !== dish);
-    return dish;
-}
-export function kitchenUse(farm, dishId, target, now) {
-    const kitchen = ensureKitchen(farm);
-    const selector = String(dishId);
-    const dish = kitchen.dishes.find((item) => item.id === selector)
-        ?? kitchen.dishes.find((item) => item.recipeId === selector || item.name === selector);
-    if (!dish)
-        return { ok: false, error: "料理柜里没有这份料理。" };
-    if (target === "self") {
-        if (dish.recipeId !== "odd_dish")
-            return { ok: false, error: "正常料理不能由你吃下；你可以把它喂给猫狗、交给系统回收、摆摊，或用来贿赂看家狗。" };
-        const rng = new Rng(farm.rngState ?? 1);
-        const debuff = ODD_DEBUFFS[Math.floor(rng.next() * ODD_DEBUFFS.length)];
-        farm.rngState = rng.state;
-        kitchen.debuff = { ...debuff, until: now + COOKING_DEBUFF_MS };
-        takeDish(kitchen, dish.id);
-        return { ok: true, target, dish, debuff: kitchen.debuff };
-    }
-    if (target !== "cat" && target !== "dog")
-        return { ok: false, error: "target 只能是 cat、dog、self 或 guard-dog。" };
-    if (dish.recipeId === "odd_dish")
-        return { ok: false, error: "微妙的料理不能喂宠物。" };
-    const pet = (farm.ranch?.pets ?? []).find((item) => item.kindId === target);
-    if (!pet)
-        return { ok: false, error: `牧场还没有${target === "cat" ? "小猫" : "小狗"}。` };
-    const buff = cooking.petDishBuffs[dish.rarity];
-    pet.dishBuff = { bonus: buff.bonus, endsAt: now + buff.hours * HOUR_MS, dishName: dish.name, rarity: dish.rarity };
-    takeDish(kitchen, dish.id);
-    return { ok: true, target, dish, buff: pet.dishBuff };
-}
-export function kitchenSell(farm, itemId, to, price, now) {
-    const kitchen = ensureKitchen(farm);
-    const product = kitchen.products.find((item) => item.id === String(itemId));
-    const dish = kitchen.dishes.find((item) => item.id === String(itemId));
-    if (!product && !dish)
-        return { ok: false, error: "食材柜或料理柜里没有这个实例。" };
-    if (to === "system") {
-        const item = product ?? dish;
-        if (product)
-            kitchen.products = kitchen.products.filter((entry) => entry !== product);
-        else
-            kitchen.dishes = kitchen.dishes.filter((entry) => entry !== dish);
-        ensureRanch(farm).coins += item.value;
-        const silver = dishSystemRecycleSilver(dish);
-        farm.silver += silver;
-        return { ok: true, to, name: item.name, value: item.value, silver, item };
-    }
-    if (to !== "market")
-        return { ok: false, error: "to 只能是 system 或 market。" };
-    if (!dish)
-        return { ok: false, error: "只有正常料理能摆进玩家摊位；牧场原产物只能系统回收。" };
-    if (dish.recipeId === "odd_dish")
-        return { ok: false, error: "微妙的料理不能摆摊；你可以把它交给系统回收 1 金，或自己吃下。" };
-    const silverPrice = Math.floor(Number(price));
-    if (!Number.isSafeInteger(silverPrice) || silverPrice <= 0)
-        return { ok: false, error: "摆摊价格要填写正整数银币。" };
-    kitchen.dishes = kitchen.dishes.filter((entry) => entry !== dish);
-    (farm.market ??= []).push({ kind: "dish", id: dish.id, qty: 1, price: silverPrice, dish: structuredClone(dish), listedAt: now });
-    return { ok: true, to, name: dish.name, price: silverPrice, item: dish };
-}
-/** 人类料理台批量售卖：先完整校验所选实例，再一次性回收或逐份上架，避免中途失败造成部分扣除。 */
-export function kitchenSellMany(farm, itemIds, qty, to, price, now) {
-    const kitchen = ensureKitchen(farm);
-    const ids = Array.isArray(itemIds) ? itemIds.map((id) => String(id)) : [];
-    const n = Number(qty);
-    if (!Number.isSafeInteger(n) || n < 1)
-        return { ok: false, error: "售卖数量要填写正整数。" };
-    if (n > ids.length)
-        return { ok: false, error: `当前这一组最多只能售卖 ${ids.length} 份。` };
-    const selectedIds = ids.slice(0, n);
-    if (new Set(selectedIds).size !== selectedIds.length)
-        return { ok: false, error: "售卖清单里有重复实例，请刷新页面后重试。" };
-    const selected = [];
-    for (const id of selectedIds) {
-        const product = kitchen.products.find((item) => item.id === id);
-        const dish = kitchen.dishes.find((item) => item.id === id);
-        if (!product && !dish)
-            return { ok: false, error: "食材柜或料理柜里的数量已经变化，请刷新后重试。" };
-        selected.push({ kind: product ? "product" : "dish", item: product ?? dish });
-    }
-    const name = selected.every((entry) => entry.item.name === selected[0].item.name)
-        ? selected[0].item.name
-        : `${selected.length} 份物品`;
-    if (to === "system") {
-        const productIds = new Set(selected.filter((entry) => entry.kind === "product").map((entry) => entry.item.id));
-        const dishIds = new Set(selected.filter((entry) => entry.kind === "dish").map((entry) => entry.item.id));
-        const value = selected.reduce((sum, entry) => sum + entry.item.value, 0);
-        const silver = selected.reduce((sum, entry) => sum + (entry.kind === "dish" ? dishSystemRecycleSilver(entry.item) : 0), 0);
-        kitchen.products = kitchen.products.filter((entry) => !productIds.has(entry.id));
-        kitchen.dishes = kitchen.dishes.filter((entry) => !dishIds.has(entry.id));
-        ensureRanch(farm).coins += value;
-        farm.silver += silver;
-        return { ok: true, to, name, qty: n, value, silver, items: selected.map((entry) => entry.item) };
-    }
-    if (to !== "market")
-        return { ok: false, error: "to 只能是 system 或 market。" };
-    if (selected.some((entry) => entry.kind !== "dish"))
-        return { ok: false, error: "只有正常料理能摆进玩家摊位；牧场原产物只能系统回收。" };
-    if (selected.some((entry) => entry.item.recipeId === "odd_dish"))
-        return { ok: false, error: "微妙的料理不能摆摊；你可以把它交给系统回收 1 金，或自己吃下。" };
-    const silverPrice = Math.floor(Number(price));
-    if (!Number.isSafeInteger(silverPrice) || silverPrice <= 0)
-        return { ok: false, error: "摆摊价格要填写正整数银币。" };
-    const dishIds = new Set(selected.map((entry) => entry.item.id));
-    kitchen.dishes = kitchen.dishes.filter((entry) => !dishIds.has(entry.id));
-    for (const entry of selected)
-        (farm.market ??= []).push({ kind: "dish", id: entry.item.id, qty: 1, price: silverPrice, dish: structuredClone(entry.item), listedAt: now });
-    return { ok: true, to, name, qty: n, price: silverPrice, items: selected.map((entry) => entry.item) };
-}
-/** AI 工具可直接用中文产物名／料理名；旧实例 UUID 继续兼容。 */
-export function kitchenSellSelected(farm, selectorRaw, qty, to, price, now) {
-    const kitchen = ensureKitchen(farm);
-    const selector = String(selectorRaw);
-    const ingredient = cookingIngredientById.get(selector) ?? cookingIngredients.find((item) => item.name === selector);
-    if (ingredient && to === "market") {
-        const n = Number(qty);
-        if (!Number.isSafeInteger(n) || n < 1)
-            return { ok: false, error: "售卖数量要填写正整数。" };
-        if ((kitchen.ingredients[ingredient.id] ?? 0) < n)
-            return { ok: false, error: `「${ingredient.name}」数量不够。` };
-        const silverPrice = Math.floor(Number(price));
-        if (!Number.isSafeInteger(silverPrice) || silverPrice <= 0)
-            return { ok: false, error: "摆摊价格要填写正整数银币。" };
-        kitchen.ingredients[ingredient.id] -= n;
-        if (kitchen.ingredients[ingredient.id] <= 0)
-            delete kitchen.ingredients[ingredient.id];
-        const listing = (farm.market ??= []).find((item) => item.kind === "ingredient" && item.id === ingredient.id);
-        if (listing) {
-            listing.qty += n;
-            listing.price = silverPrice;
-            listing.listedAt = now;
-        }
-        else {
-            farm.market.push({ kind: "ingredient", id: ingredient.id, qty: n, price: silverPrice, listedAt: now });
-        }
-        return { ok: true, to, name: ingredient.name, qty: n, price: silverPrice, item: ingredient };
-    }
-    const exactProduct = kitchen.products.find((item) => item.id === selector);
-    const exactDish = kitchen.dishes.find((item) => item.id === selector);
-    if (exactProduct || exactDish)
-        return kitchenSellMany(farm, [(exactProduct ?? exactDish).id], qty, to, price, now);
-    let matches = kitchen.products.filter((item) => item.itemId === selector || item.name === selector);
-    if (matches.length === 0)
-        matches = kitchen.dishes.filter((item) => item.recipeId === selector || item.name === selector);
-    if (matches.length === 0)
-        return { ok: false, error: `食材柜或料理柜里没有「${selector}」。` };
-    return kitchenSellMany(farm, matches.map((item) => item.id), qty, to, price, now);
 }
 const HUMAN_BARTER_KINDS = new Set(["seed", "material", "ingredient", "dish"]);
 function humanBarterDefinition(kindRaw, idRaw) {
@@ -1323,47 +680,6 @@ export function humanBarterAccept(seller, buyer, listingId, now = Date.now()) {
     seller.humanBarters = listings.filter((entry) => entry !== listing);
     return { ok: true, give, giveQty, want, wantQty };
 }
-function ranchAnimalByRef(ranch, animalRef) {
-    const ref = typeof animalRef === "string" ? animalRef.trim() : animalRef;
-    const index = typeof ref === "number"
-        ? ref
-        : typeof ref === "string" && /^\d+$/.test(ref)
-            ? Number(ref)
-            : Number.NaN;
-    if (Number.isSafeInteger(index) && index >= 0)
-        return ranch.animals[index];
-    if (typeof ref !== "string" || !ref)
-        return undefined;
-    return ranch.animals.find((animal) => animal.kindId === ref
-        || animal.name === ref
-        || animalById.get(animal.kindId)?.name === ref);
-}
-/** 每天三次银币投喂：可按下标、动物 id、正式名称或本户昵称选择，只给下一份普通产物 +10%。 */
-export function ranchFeedAnimal(farm, animalRef, now) {
-    const ranch = ensureRanch(farm);
-    const animal = ranchAnimalByRef(ranch, animalRef);
-    if (!animal)
-        return { ok: false, error: "选的动物不存在。" };
-    if (ranchRaidForAnimal(farm, animal.kindId))
-        return { ok: false, error: "这只动物正在外面派遣，回来后再投喂。" };
-    if ((animal.pending ?? 0) > 0 || (animal.pendingMeat ?? 0) > 0)
-        return { ok: false, error: "它已经有产出可收，先收进食材柜再投喂。" };
-    if (animal.feedBoostPending)
-        return { ok: false, error: "这只动物的下一份 +10% 已经登记，不能叠加。" };
-    const day = currentDayIndex(now);
-    if (!ranch.feedDaily || ranch.feedDaily.day !== day)
-        ranch.feedDaily = { day, n: 0 };
-    if (ranch.feedDaily.n >= RANCH_FEED_DAILY_CAP)
-        return { ok: false, error: `今天已经投喂 ${RANCH_FEED_DAILY_CAP} 次了，明天零点刷新。` };
-    const value = ranchAnimalCurrentProduceValue(animal);
-    const cost = Math.max(1, Math.round(value * RANCH_FEED_COST_RATE));
-    if (farm.silver < cost)
-        return { ok: false, error: `银币不足，这次投喂要 🪙${cost}（你有 ${farm.silver}）。` };
-    farm.silver -= cost;
-    animal.feedBoostPending = true;
-    ranch.feedDaily.n += 1;
-    return { ok: true, animal: animal.name || animalById.get(animal.kindId)?.name || animal.kindId, cost, bonus: RANCH_FEED_BONUS_RATE, left: RANCH_FEED_DAILY_CAP - ranch.feedDaily.n };
-}
 /** 看家狗已拦住的同一次偷菜，用一份正常料理续上；不会再记次数或冷却。 */
 export function bribeGuardDog(thief, victim, dishId, now) {
     const kitchen = ensureKitchen(thief);
@@ -1385,263 +701,6 @@ export function bribeGuardDog(thief, victim, dishId, now) {
         return { ...result, dishKept: true };
     takeDish(kitchen, dish.id);
     return { ...result, bribed: true, dishName: dish.name };
-}
-const HOUR_MS = 60 * 60 * 1000;
-export const RANCH_RAID_DAILY_CAP = 1000;
-/** 派遣已经潜伏的时长所对应的整数金币；不会超过出发时冻结的保证金。 */
-export function ranchRaidCoins(raid, at) {
-    const elapsed = Math.max(0, Math.min(raid.endsAt, at) - raid.startedAt);
-    return Math.min(raid.reservedCoins, Math.floor(elapsed * RANCH_RAID_COINS_PER_HOUR / HOUR_MS));
-}
-/** 某只自家动物当前是否已经外出。 */
-export function ranchRaidForAnimal(farm, animalKindId) {
-    return (farm.ranch?.raids ?? []).find((raid) => raid.animalKindId === animalKindId);
-}
-/** 动物当前等级的一次完整产出折现金额；与牧场收获、页面展示使用同一取整顺序。 */
-export function ranchAnimalCurrentProduceValue(animal, now = Date.now()) {
-    const kind = animalById.get(animal?.kindId);
-    if (!kind)
-        return 0;
-    const level = Math.min(RANCH_ANIMAL_MAX_LEVEL, Math.max(1, Math.floor(Number(animal.level) || 1)));
-    let value = Math.round(kind.producePrice * (1 + (level - 1) * RANCH_LEVEL_INCOME_STEP));
-    value = Math.round(value * glimmerAnimalVariantMultiplier(animal));
-    return Math.round(value * glimmerBuffMultiplier("ranchValue", now));
-}
-function finishRanchRaidHistory(ranch, raid, status, coins, details) {
-    const history = ranch.raidHistory;
-    if (!history || history.day !== currentDayIndex(raid.startedAt))
-        return;
-    const entry = history.entries.find((item) => item.raidId === raid.id);
-    if (!entry)
-        return;
-    entry.status = status;
-    entry.coins = coins;
-    if (details)
-        Object.assign(entry, details);
-}
-/** 人类把自家一只动物派去另一座农场；出发时从牧场钱包冻结最高收益同额保证金。 */
-export function dispatchRanchRaid(owner, target, animalIdx, durationHours, now) {
-    const ranch = owner.ranch;
-    if (!ranch?.animals?.length)
-        return { ok: false, error: "牧场还没有可派遣的动物。" };
-    if (ranch.raidIncome?.day === currentDayIndex(now) && ranch.raidIncome.n >= RANCH_RAID_DAILY_CAP) {
-        return { ok: false, error: `今天偷金币已经达到 ${RANCH_RAID_DAILY_CAP} 金上限，不能再派遣动物。` };
-    }
-    if (target.id === owner.id)
-        return { ok: false, error: "不能派动物来偷自己家。" };
-    const idx = Math.floor(Number(animalIdx));
-    const animal = ranch.animals[idx];
-    if (!animal)
-        return { ok: false, error: "选的动物不存在。" };
-    if (ranchRaidForAnimal(owner, animal.kindId))
-        return { ok: false, error: "这只动物已经在外面潜伏了。" };
-    const hours = Number(durationHours);
-    if (!Number.isSafeInteger(hours) || hours <= 0)
-        return { ok: false, error: "派遣时长要填写正整数小时。" };
-    const reservedCoins = hours * RANCH_RAID_COINS_PER_HOUR;
-    if (!Number.isSafeInteger(reservedCoins) || !Number.isSafeInteger(now + hours * HOUR_MS))
-        return { ok: false, error: "派遣时长太大了。" };
-    if (ranch.coins < reservedCoins)
-        return { ok: false, error: `牧场金币不足：${hours} 小时需要冻结 ${reservedCoins} 金，现有 ${ranch.coins}。` };
-    const raid = {
-        id: randomUUID(),
-        animalKindId: animal.kindId,
-        targetFarmId: target.id,
-        startedAt: now,
-        endsAt: now + hours * HOUR_MS,
-        reservedCoins,
-    };
-    const animalName = animal.name || animalById.get(animal.kindId)?.name || animal.kindId;
-    ranch.coins -= reservedCoins;
-    (ranch.raids ??= []).push(raid);
-    const day = currentDayIndex(now);
-    if (!ranch.raidHistory || ranch.raidHistory.day !== day)
-        ranch.raidHistory = { day, entries: [] };
-    const historyEntry = {
-        raidId: raid.id,
-        animalName,
-        targetFarmId: target.id,
-        targetName: `${target.name}（${target.aiName || "AI"}）`,
-        startedAt: now,
-        status: "active",
-    };
-    ranch.raidHistory.entries.push(historyEntry);
-    return { ok: true, raid, animal: animalName };
-}
-/** 目标人类主动抓住仍在潜伏的外来动物；按实际潜伏时长收取等额赔偿，未用保证金退回。 */
-export function catchRanchRaid(target, owners, raidId, now) {
-    for (const owner of owners) {
-        const raids = owner.ranch?.raids ?? [];
-        const idx = raids.findIndex((raid) => raid.id === String(raidId));
-        if (idx < 0)
-            continue;
-        const raid = raids[idx];
-        if (raid.targetFarmId !== target.id)
-            return { ok: false, error: "这只动物不在你家。" };
-        if (now >= raid.endsAt)
-            return { ok: false, error: "它已经结束潜伏、跑回自己家了。" };
-        const compensation = ranchRaidCoins(raid, now);
-        owner.ranch.coins += raid.reservedCoins - compensation;
-        if (compensation > 0) {
-            const day = currentDayIndex(now);
-            if (!owner.ranch.raidLoss || owner.ranch.raidLoss.day !== day)
-                owner.ranch.raidLoss = { day, n: 0 };
-            owner.ranch.raidLoss.n += compensation;
-        }
-        ensureRanch(target).coins += compensation;
-        finishRanchRaidHistory(owner.ranch, raid, "caught", compensation);
-        raids.splice(idx, 1);
-        const animal = owner.ranch.animals.find((a) => a.kindId === raid.animalKindId);
-        const animalName = animal?.name || animalById.get(raid.animalKindId)?.name || raid.animalKindId;
-        const ownerLabel = `${owner.name}（${owner.aiName || "AI"}）`;
-        const targetLabel = `${target.name}（${target.aiName || "AI"}）`;
-        const caughtText = `🚨 你的${animalName}在「${targetLabel}」被人类抓住，赔给对方 ${compensation} 金`;
-        pushSocialInbox(owner, caughtText, now);
-        pushRanchNotice(owner, caughtText, now);
-        pushSocialInbox(target, `🚨 抓住了「${ownerLabel}」家的${animalName}，收到 ${compensation} 金赔偿`, now);
-        return {
-            ok: true,
-            owner: ownerLabel,
-            animal: animalName,
-            compensation,
-        };
-    }
-    return { ok: false, error: "这只外来动物已经不在了。" };
-}
-/** 到期派遣的巡逻鹅判定：每天只限制实际成功次数，未命中不占次数。 */
-function patrolGooseCatchesRaid(target, now) {
-    const ranch = target.ranch;
-    if (!ranch?.patrolGoose)
-        return false;
-    const day = currentDayIndex(now);
-    const catches = (ranch.patrolGooseCatches ??= { day, n: 0 });
-    if (catches.day !== day) {
-        catches.day = day;
-        catches.n = 0;
-    }
-    if (catches.n >= RANCH_PATROL_GOOSE_DAILY_CAP)
-        return false;
-    const rng = new Rng(target.rngState ?? 1);
-    const caught = rng.next() < RANCH_PATROL_GOOSE_CATCH_CHANCE;
-    target.rngState = rng.state;
-    if (caught)
-        catches.n += 1;
-    return caught;
-}
-/** 惰性结算所有已经到期、且没有被目标抓住的派遣。 */
-export function settleRanchRaids(farms, now) {
-    const byId = new Map(farms.map((farm) => [farm.id, farm]));
-    let settled = 0;
-    let gooseCaught = 0;
-    for (const owner of farms) {
-        const ranch = owner.ranch;
-        if (!ranch?.raids?.length)
-            continue;
-        const active = [];
-        for (const raid of ranch.raids) {
-            if (raid.endsAt > now) {
-                active.push(raid);
-                continue;
-            }
-            ranch.coins += raid.reservedCoins; // 未被抓：保证金全额解冻
-            let resultCoins = 0;
-            const target = byId.get(raid.targetFarmId);
-            if (target && target.id !== owner.id) {
-                const animal = ranch.animals.find((entry) => entry.kindId === raid.animalKindId);
-                const animalKind = animalById.get(raid.animalKindId);
-                const animalName = animal?.name || animalKind?.name || raid.animalKindId;
-                const ownerLabel = `${owner.name}（${owner.aiName || "AI"}）`;
-                const targetLabel = `${target.name}（${target.aiName || "AI"}）`;
-                if (animal && animalKind && patrolGooseCatchesRaid(target, now)) {
-                    const currentProduceValue = ranchAnimalCurrentProduceValue(animal);
-                    const rewardCoins = Math.round(currentProduceValue * 0.5);
-                    const produce = animalKind.produce;
-                    ensureRanch(target).coins += rewardCoins;
-                    finishRanchRaidHistory(ranch, raid, "goose-caught", 0, {
-                        produce,
-                        rewardCoins,
-                        reservedCoins: raid.reservedCoins,
-                    });
-                    const defenderText = `🪿 巡逻鹅赶走了「${ownerLabel}」派来的${animalName}，阻止了本次偷金币；它带回了部分「${produce}」（已折算 ${rewardCoins} 金），由系统额外发放到牧场钱包。`;
-                    const attackerText = `🪿 你的${animalName}在「${targetLabel}」被巡逻鹅赶回，本次偷金币失败；动物已返回，${raid.reservedCoins} 金保证金已全额退回，没有罚款或新增欠款。对方巡逻鹅带走了部分「${produce}」（已折算 ${rewardCoins} 金），奖励由系统额外发放。`;
-                    pushSocialInbox(target, defenderText, now);
-                    pushSocialInbox(owner, attackerText, now);
-                    pushRanchNotice(target, defenderText.replace("发放到牧场钱包", "发放到你的牧场钱包"), now, "ranch");
-                    pushRanchNotice(owner, attackerText, now, "ranch");
-                    gooseCaught += 1;
-                    settled += 1;
-                    continue;
-                }
-                const day = currentDayIndex(now);
-                if (!ranch.raidIncome || ranch.raidIncome.day !== day)
-                    ranch.raidIncome = { day, n: 0 };
-                const stolenCoins = Math.min(raid.reservedCoins, Math.max(0, RANCH_RAID_DAILY_CAP - ranch.raidIncome.n));
-                resultCoins = stolenCoins;
-                const targetRanch = ensureRanch(target);
-                const paidFromRanch = Math.min(targetRanch.coins, stolenCoins);
-                targetRanch.coins -= paidFromRanch;
-                const paidFromFarm = Math.min(target.coins, stolenCoins - paidFromRanch);
-                target.coins -= paidFromFarm;
-                const paidNow = paidFromRanch + paidFromFarm;
-                ranch.coins += stolenCoins; // 只结算今日剩余额度；目标两处余额都不足的部分记隐形负债
-                ranch.raidIncome.n += stolenCoins;
-                if (stolenCoins > 0) {
-                    if (!targetRanch.raidLoss || targetRanch.raidLoss.day !== day)
-                        targetRanch.raidLoss = { day, n: 0 };
-                    targetRanch.raidLoss.n += stolenCoins;
-                }
-                const debt = stolenCoins - paidNow;
-                if (debt > 0)
-                    (targetRanch.raidDebts ??= []).push({ creditorFarmId: owner.id, coins: debt });
-                if (stolenCoins > 0) {
-                    const capLine = stolenCoins < raid.reservedCoins ? `（今日累计已达 ${RANCH_RAID_DAILY_CAP} 金上限）` : "";
-                    pushSocialInbox(owner, `🥷 你的${animalName}从「${targetLabel}」带回 ${stolenCoins} 金，已进入牧场钱包${capLine}`, now);
-                    pushSocialInbox(target, `🥷 「${ownerLabel}」家的${animalName}从你的牧场拿走 ${stolenCoins} 金（现扣 ${paidNow}${debt > 0 ? `，另记欠款 ${debt}` : ""}）`, now);
-                }
-                else {
-                    pushSocialInbox(owner, `🥷 你的${animalName}结束潜伏，但今天偷金币已达 ${RANCH_RAID_DAILY_CAP} 金上限，空手回来；保证金已全部退回`, now);
-                }
-            }
-            finishRanchRaidHistory(ranch, raid, "returned", resultCoins);
-            settled += 1;
-        }
-        ranch.raids = active;
-    }
-    return { settled, gooseCaught };
-}
-/** 目标以后收牧场产出时先按欠款产生顺序扣除；偷方已经到账，不再重复入账。 */
-function creditRanchHarvestAfterDebts(farm, _farms, gross) {
-    const ranch = ensureRanch(farm);
-    let remaining = gross;
-    let debtPaid = 0;
-    const debts = ranch.raidDebts ?? [];
-    const left = [];
-    for (const debt of debts) {
-        if (remaining <= 0) {
-            left.push(debt);
-            continue;
-        }
-        if (debt.coins <= 0)
-            continue;
-        const paid = Math.min(remaining, debt.coins);
-        remaining -= paid;
-        debtPaid += paid;
-        debt.coins -= paid;
-        if (debt.coins > 0)
-            left.push(debt);
-    }
-    ranch.raidDebts = left;
-    ranch.coins += remaining;
-    return { gain: remaining, debtPaid };
-}
-export function ranchRaidDebtTotal(farm) {
-    return (farm.ranch?.raidDebts ?? []).reduce((sum, debt) => sum + Math.max(0, debt.coins), 0);
-}
-/** 往机⇄人流水里记一条（AI 唯一能看到的牧场信息），环形保留最近 LEDGER_MAX 条。 */
-function pushLedger(farm, type, amount, note, now) {
-    (farm.ledger ??= []).unshift({ at: now, type, amount, note });
-    if (farm.ledger.length > LEDGER_MAX)
-        farm.ledger.length = LEDGER_MAX;
 }
 /** AI 买一只已解锁的动物送给伴侣（花 farm.coins，动物进牧场；这是机→人的"金币互传往来"）。 */
 export function buyAnimalForPartner(farm, id, now) {
@@ -1674,29 +733,6 @@ export function shopPets(farm) {
 export function nextLockedPet(farm) {
     return pets.filter((p) => !petUnlocked(farm, p)).sort((a, b) => a.unlockCodex - b.unlockCodex)[0] ?? null;
 }
-/** 聚合当前农场所有宠物的 buff：luck=收获额外运气（累加）、dropMult=素材/药水掉落倍率（连乘）、foil=偷菜被吓退概率（取最大）。 */
-export function petBuffs(farm, now = Date.now()) {
-    let luck = 0, dropMult = 1, foil = 0;
-    for (const p of farm.ranch?.pets ?? []) {
-        const k = petById.get(p.kindId);
-        if (!k)
-            continue;
-        luck += k.params.luck ?? 0;
-        if (k.params.dropMult)
-            dropMult *= k.params.dropMult;
-        foil = Math.max(foil, k.params.foil ?? 0);
-        const dishBuff = p.dishBuff;
-        if (dishBuff?.endsAt > now) {
-            if (k.buff === "luck") {
-                luck *= 1 + dishBuff.bonus;
-                dropMult *= 1 + dishBuff.bonus;
-            }
-            if (k.buff === "guard")
-                foil += dishBuff.bonus;
-        }
-    }
-    return { luck, dropMult, foil: Math.min(1, foil) };
-}
 /** AI 买一只已解锁的宠物送给伴侣（花 farm.coins，宠物进牧场；每种限 1 只）。 */
 export function buyPetForPartner(farm, id, now) {
     const kind = petById.get(String(id));
@@ -1715,733 +751,6 @@ export function buyPetForPartner(farm, id, now) {
     pushLog(farm, `给伴侣买了一只${kind.name}（-${kind.buyCost}）`);
     return { ok: true, name: kind.name, cost: kind.buyCost };
 }
-/** AI 给伴侣的牧场请一只独立常驻巡逻鹅；无图鉴门槛，只检查余额和是否已拥有。 */
-export function buyPatrolGoose(farm, now) {
-    if (farm.ranch?.patrolGoose)
-        return { ok: false, error: `${RANCH_PATROL_GOOSE_NAME}已经在牧场常驻巡逻了，不需要重复购买。` };
-    if (farm.coins < RANCH_PATROL_GOOSE_BUY_COST)
-        return { ok: false, error: `金币不足，${RANCH_PATROL_GOOSE_NAME}要 ${RANCH_PATROL_GOOSE_BUY_COST} 金（你有 ${farm.coins}）` };
-    farm.coins -= RANCH_PATROL_GOOSE_BUY_COST;
-    const ranch = ensureRanch(farm);
-    ranch.patrolGoose = { boughtAt: now };
-    pushLedger(farm, "buy-patrol-goose", RANCH_PATROL_GOOSE_BUY_COST, `给牧场请来${RANCH_PATROL_GOOSE_NAME}`, now);
-    pushLog(farm, `给伴侣的牧场请来${RANCH_PATROL_GOOSE_NAME}（-${RANCH_PATROL_GOOSE_BUY_COST}）`);
-    return { ok: true, name: RANCH_PATROL_GOOSE_NAME, cost: RANCH_PATROL_GOOSE_BUY_COST };
-}
-/** 把一只宠物渲染成一句现身氛围句（名字 + 穿戴 + emoji）。 */
-function roamForPet(p) {
-    const kind = petById.get(p.kindId);
-    if (!kind || !kind.roam.length)
-        return "";
-    const line = kind.roam[Math.floor(Math.random() * kind.roam.length)];
-    const descs = (p.acc ?? []).map((id) => accessoryById.get(id)?.desc).filter(Boolean);
-    const acc = descs.length ? descs.join("、") + "的" : "";
-    const name = p.name || kind.name;
-    return (kind.emoji ? kind.emoji + " " : "") + line.replace("{acc}", acc).replace("{name}", name);
-}
-function roamForPatrolGoose(goose) {
-    const descs = (goose.acc ?? []).map((id) => accessoryById.get(id)?.desc).filter(Boolean);
-    const acc = descs.length ? descs.join("、") + "的" : "";
-    return `🪿 ${acc}${goose.name || RANCH_PATROL_GOOSE_NAME}：它会常驻牧场巡逻。`;
-}
-/** AI 状态里随机一句宠物现身氛围句（从全部宠物里随机；没养宠物则空串）。 */
-export function petRoamLine(farm) {
-    const list = farm.ranch?.pets ?? [];
-    if (!list.length)
-        return "";
-    return roamForPet(list[Math.floor(Math.random() * list.length)]);
-}
-/** 牧场氛围句：从动物 + 宠物 + 独立巡逻鹅里随机出一句（状态里只占一行）。
- *  伴侣 pin 了若干只时，只从被 pin 的里随机（只 pin 一只=固定只出现它）；没 pin 则全部参与。 */
-export function ranchRoamLine(farm) {
-    const ranch = farm.ranch;
-    if (!ranch)
-        return "";
-    const pinned = ranch.pinned ?? [];
-    const usePin = pinned.length > 0;
-    const cands = [];
-    for (const a of ranch.animals ?? [])
-        if (!usePin || pinned.includes(a.kindId))
-            cands.push(() => roamForAnimal(a));
-    for (const p of ranch.pets ?? [])
-        if (!usePin || pinned.includes(p.kindId))
-            cands.push(() => roamForPet(p));
-    if (ranch.patrolGoose && (!usePin || pinned.includes(RANCH_PATROL_GOOSE_ID)))
-        cands.push(() => roamForPatrolGoose(ranch.patrolGoose));
-    if (!cands.length)
-        return "";
-    return cands[Math.floor(Math.random() * cands.length)]();
-}
-/** 伴侣在前端 pin / 取消 pin 一只动物、宠物或巡逻鹅：被 pin 的才会出现在农场氛围句里。 */
-export function ranchTogglePin(farm, kindId) {
-    const ranch = farm.ranch;
-    if (!ranch)
-        return { ok: false, error: "还没有牧场。" };
-    const id = String(kindId);
-    const owns = (ranch.animals ?? []).some((a) => a.kindId === id)
-        || (ranch.pets ?? []).some((p) => p.kindId === id)
-        || (id === RANCH_PATROL_GOOSE_ID && !!ranch.patrolGoose);
-    if (!owns)
-        return { ok: false, error: "你还没养这只，不能 pin。" };
-    ranch.pinned ??= [];
-    let pinned;
-    if (ranch.pinned.includes(id)) {
-        ranch.pinned = ranch.pinned.filter((x) => x !== id);
-        pinned = false;
-    }
-    else {
-        ranch.pinned.push(id);
-        pinned = true;
-    }
-    const name = id === RANCH_PATROL_GOOSE_ID
-        ? ranch.patrolGoose?.name || RANCH_PATROL_GOOSE_NAME
-        : animalById.get(id)?.name ?? petById.get(id)?.name ?? id;
-    return { ok: true, pinned, name };
-}
-/** 伴侣在人类前端给动物改名（每只独特名字；和宠物一样）。 */
-export function ranchNameAnimal(farm, animalIdx, name) {
-    const ranch = farm.ranch;
-    if (!ranch?.animals?.length)
-        return { ok: false, error: "牧场还没有动物。" };
-    const a = ranch.animals[Math.floor(Number(animalIdx))];
-    if (!a)
-        return { ok: false, error: "选的动物不存在。" };
-    const nm = String(name).trim().slice(0, PET_NAME_MAX);
-    if (!nm)
-        return { ok: false, error: "名字不能为空。" };
-    a.name = nm;
-    return { ok: true, name: nm, kind: animalById.get(a.kindId)?.name ?? a.kindId };
-}
-/** 伴侣在人类前端给宠物改名（每只独特名字）。 */
-export function ranchNamePet(farm, petIdx, name) {
-    const ranch = farm.ranch;
-    if (!ranch?.pets?.length)
-        return { ok: false, error: "牧场还没有宠物。" };
-    const p = ranch.pets[Math.floor(Number(petIdx))];
-    if (!p)
-        return { ok: false, error: "选的宠物不存在。" };
-    const nm = String(name).trim().slice(0, PET_NAME_MAX);
-    if (!nm)
-        return { ok: false, error: "名字不能为空。" };
-    p.name = nm;
-    return { ok: true, name: nm, kind: petById.get(p.kindId)?.name ?? p.kindId };
-}
-/** 伴侣给独立常驻的巡逻鹅改名。 */
-export function ranchNamePatrolGoose(farm, name) {
-    const goose = farm.ranch?.patrolGoose;
-    if (!goose)
-        return { ok: false, error: `牧场还没有${RANCH_PATROL_GOOSE_NAME}。` };
-    const nm = String(name).trim().slice(0, PET_NAME_MAX);
-    if (!nm)
-        return { ok: false, error: "名字不能为空。" };
-    goose.name = nm;
-    return { ok: true, name: nm, kind: RANCH_PATROL_GOOSE_NAME };
-}
-function ranchAccessoryHost(ranch, target, idx) {
-    if (target === "goose")
-        return ranch.patrolGoose;
-    if (target === "pet")
-        return ranch.pets?.[Math.floor(Number(idx))];
-    return ranch.animals?.[Math.floor(Number(idx))];
-}
-function ranchAccessoryHostName(host, target) {
-    if (target === "goose")
-        return host.name || RANCH_PATROL_GOOSE_NAME;
-    return host.name || (target === "pet" ? petById.get(host.kindId)?.name : animalById.get(host.kindId)?.name) || host.kindId;
-}
-/** 从仓库取一件配饰，戴到某只动物、宠物或巡逻鹅身上。 */
-export function ranchWearAccessory(farm, target, idx, accId) {
-    const ranch = farm.ranch;
-    if (!ranch)
-        return { ok: false, error: "还没有牧场。" };
-    const acc = accessoryById.get(String(accId));
-    if (!acc)
-        return { ok: false, error: `没有这件配饰：${accId}` };
-    const wd = ranch.wardrobe ?? [];
-    if (!wd.includes(acc.id))
-        return { ok: false, error: `仓库里没有${acc.name}，先去牧场商店买一件。` };
-    const host = ranchAccessoryHost(ranch, target, idx);
-    if (!host)
-        return { ok: false, error: "选的对象不存在。" };
-    const nm = ranchAccessoryHostName(host, target);
-    host.acc ??= [];
-    if (host.acc.includes(acc.id))
-        return { ok: false, error: `${nm}已经戴着${acc.name}了。` };
-    if (host.acc.length >= ACC_PER_ANIMAL_MAX)
-        return { ok: false, error: `${nm}最多戴 ${ACC_PER_ANIMAL_MAX} 件。` };
-    wd.splice(wd.indexOf(acc.id), 1); // 从仓库移走这一件
-    ranch.wardrobe = wd;
-    host.acc.push(acc.id);
-    return { ok: true, name: acc.name, wearer: nm };
-}
-/** 把某只动物、宠物或巡逻鹅身上的一件配饰脱下，放回仓库。 */
-export function ranchTakeOffAccessory(farm, target, idx, accId) {
-    const ranch = farm.ranch;
-    if (!ranch)
-        return { ok: false, error: "还没有牧场。" };
-    const acc = accessoryById.get(String(accId));
-    if (!acc)
-        return { ok: false, error: `没有这件配饰：${accId}` };
-    const host = ranchAccessoryHost(ranch, target, idx);
-    if (!host || !(host.acc ?? []).includes(acc.id))
-        return { ok: false, error: `没穿着${acc.name}。` };
-    const nm = ranchAccessoryHostName(host, target);
-    host.acc.splice(host.acc.indexOf(acc.id), 1);
-    (ranch.wardrobe ??= []).push(acc.id);
-    return { ok: true, name: acc.name, wearer: nm };
-}
-/** 伴侣收牧场产品：欠款存在时按动物稳定顺序整份回收还债；可烹饪产物锁价入柜，其余当场回收为牧场金币。 */
-export function ranchCollect(farm, farms, now) {
-    const ranch = farm.ranch;
-    if (!ranch || !ranch.animals.length)
-        return { ok: false, error: `牧场还没有动物——让${aiDisplay(farm)}在商店买一只送进来。` };
-    const kitchen = ensureKitchen(farm);
-    let gross = 0;
-    let gain = 0;
-    let debtPaid = 0;
-    let storedCount = 0;
-    let nonCookableCount = 0;
-    let nonCookableGain = 0;
-    const autoRecycled = [];
-    const nonCookableDetail = {};
-    const detail = {};
-    const receive = (item) => {
-        gross += item.value;
-        detail[item.name] = (detail[item.name] ?? 0) + 1;
-        if (ranchRaidDebtTotal(farm) > 0) {
-            const credited = creditRanchHarvestAfterDebts(farm, farms, item.value);
-            gain += credited.gain;
-            debtPaid += credited.debtPaid;
-            autoRecycled.push(item);
-        }
-        else if (!cookingProductById.get(item.itemId)?.cookable) {
-            ranch.coins += item.value;
-            nonCookableCount += 1;
-            nonCookableGain += item.value;
-            nonCookableDetail[item.name] = (nonCookableDetail[item.name] ?? 0) + 1;
-        }
-        else {
-            kitchen.products.push(item);
-            storedCount += 1;
-        }
-    };
-    for (const a of ranch.animals) {
-        const kind = animalById.get(a.kindId);
-        if (!kind)
-            continue;
-        const pending = Math.max(0, Math.floor(Number(a.pending) || 0));
-        if (pending > 0) {
-            const def = cookingProductById.get(kind.produceId);
-            const base = ranchAnimalCurrentProduceValue(a);
-            for (let i = 0; i < pending; i++) {
-                const value = i === 0 && a.pendingBoost ? Math.round(base * (1 + RANCH_FEED_BONUS_RATE)) : base;
-                receive({ id: randomUUID(), itemId: kind.produceId, name: def?.name ?? kind.produce, emoji: def?.emoji ?? kind.emoji, value, createdAt: now });
-            }
-            a.pending = 0;
-            a.pendingBoost = false;
-        }
-        const pendingMeat = Math.max(0, Math.floor(Number(a.pendingMeat) || 0));
-        if (pendingMeat > 0 && kind.meatId) {
-            const def = cookingProductById.get(kind.meatId);
-            const value = Math.round(ranchAnimalCurrentProduceValue(a) * cooking.meatValueMultiplier);
-            for (let i = 0; i < pendingMeat; i++)
-                receive({ id: randomUUID(), itemId: kind.meatId, name: def?.name ?? kind.meat, emoji: def?.emoji ?? "🥩", value, createdAt: now });
-            a.pendingMeat = 0;
-        }
-    }
-    if (gross <= 0)
-        return { ok: false, error: "暂时没有可收的产出，再等等动物攒一攒。" };
-    // 掉药水 → AI 仓库（概率 + 每日封顶，防伴侣狂收刷药水）
-    let potion = 0;
-    const day = currentDayIndex(now);
-    const pd = (ranch.potionDrop ??= { day, n: 0 });
-    if (pd.day !== day) {
-        pd.day = day;
-        pd.n = 0;
-    }
-    if (pd.n < RANCH_POTION_DAILY_CAP) {
-        const rng = new Rng(farm.rngState);
-        const hit = rng.next() < RANCH_POTION_DROP_CHANCE;
-        farm.rngState = rng.state;
-        if (hit) {
-            potion = 1;
-            pd.n += 1;
-            farm.items.speed_potion = (farm.items.speed_potion ?? 0) + 1;
-            pushLedger(farm, "potion", 1, `${humanDisplay(farm)}收获时掉落，入仓库`, now);
-        }
-    }
-    return { ok: true, gain, gross, debtPaid, detail, potion, storedCount, autoRecycled, nonCookableCount, nonCookableGain, nonCookableDetail };
-}
-/** 把某动物升到下一级要花多少牧场金币（cost = buyCost ×(当前等级+1)× 系数）。 */
-export function animalUpgradeCost(kind, level) {
-    return Math.round(kind.buyCost * (level + 1) * RANCH_UPGRADE_COST_FACTOR);
-}
-/** 伴侣花牧场金币把某动物升一级（每级每周期多产 1 份，封顶 RANCH_ANIMAL_MAX_LEVEL）。 */
-export function ranchUpgradeAnimal(farm, animalIdx) {
-    const ranch = farm.ranch;
-    if (!ranch || !ranch.animals.length)
-        return { ok: false, error: "牧场还没有动物。" };
-    const a = ranch.animals[Math.floor(Number(animalIdx))];
-    if (!a)
-        return { ok: false, error: "选的动物不存在。" };
-    const kind = animalById.get(a.kindId);
-    if (!kind)
-        return { ok: false, error: "未知动物。" };
-    const lvl = a.level ?? 1;
-    if (lvl >= RANCH_ANIMAL_MAX_LEVEL)
-        return { ok: false, error: `${kind.name}已经满级（${RANCH_ANIMAL_MAX_LEVEL} 级）了。` };
-    const cost = animalUpgradeCost(kind, lvl);
-    if (ranch.coins < cost)
-        return { ok: false, error: `牧场金币不足（升到 ${lvl + 1} 级要 ${cost}，现有 ${ranch.coins}）。` };
-    ranch.coins -= cost;
-    a.level = lvl + 1;
-    return { ok: true, name: kind.name, level: a.level, cost };
-}
-/** 伴侣自己决定把牧场金币回传给 AI（人→机）。 */
-export function ranchRemit(farm, amount, now) {
-    const ranch = farm.ranch;
-    if (!ranch)
-        return { ok: false, error: "还没有牧场。" };
-    const amt = Math.floor(Number(amount));
-    if (!Number.isFinite(amt) || amt <= 0)
-        return { ok: false, error: "回传金额要是正整数。" };
-    if (ranch.coins < amt)
-        return { ok: false, error: `牧场金币不足（现有 ${ranch.coins}）。` };
-    ranch.coins -= amt;
-    farm.coins += amt;
-    const who = humanDisplay(farm);
-    pushLedger(farm, "remit", amt, `${who}回传金币`, now);
-    // 给 AI 留一条收件箱消息，下次打开农场就看到
-    (farm.inbox ??= []).push({ at: now, text: `💌 ${who} 给你寄来了 ${amt} 金币` });
-    if (farm.inbox.length > 10)
-        farm.inbox.splice(0, farm.inbox.length - 10);
-    return { ok: true, amount: amt, left: ranch.coins };
-}
-/** AI 把主农场金币寄给人类牧场（机→人）。 */
-export function farmSendRanch(farm, amount, now) {
-    const amt = Math.floor(Number(amount));
-    if (!Number.isFinite(amt) || amt <= 0)
-        return { ok: false, error: "转账金额要是正整数。" };
-    if (farm.coins < amt)
-        return { ok: false, error: `主农场金币不足（现有 ${farm.coins}）。` };
-    farm.coins -= amt;
-    const ranch = ensureRanch(farm);
-    ranch.coins += amt;
-    const ai = farm.aiName || farm.name;
-    pushLedger(farm, "send-ranch", amt, `${ai}给牧场寄金币`, now);
-    pushRanchNotice(farm, `💌 ${ai} 给你的牧场寄来了 ${amt} 金币`, now);
-    return { ok: true, amount: amt, farmLeft: farm.coins, ranchCoins: ranch.coins };
-}
-/** 取走 AI 收件箱里的未读消息（取出即清空）——打开农场(status)时调一次。 */
-export function takeInbox(farm) {
-    const msgs = (farm.inbox ?? []).map((m) => m.text);
-    farm.inbox = [];
-    return msgs;
-}
-/** 取走人类未读消息；指定 section 的消息只会在对应页面消费，老消息仍保持任意页一次性弹出。 */
-export function takeRanchNotices(farm, section) {
-    const notices = farm.ranch?.notices ?? [];
-    const taken = notices.filter((notice) => !notice.section || notice.section === section);
-    if (farm.ranch)
-        farm.ranch.notices = notices.filter((notice) => notice.section && notice.section !== section);
-    return taken.map((notice) => notice.text);
-}
-/** 给人类牧场页留一条下次打开自动弹出的消息。 */
-export function pushRanchNotice(farm, text, now, section) {
-    const ranch = ensureRanch(farm);
-    (ranch.notices ??= []).push(section ? { at: now, text, section } : { at: now, text });
-}
-/** 给 AI 收件箱塞一条消息（下次 status 看到即清空）。 */
-export function pushInbox(farm, text, now) {
-    (farm.inbox ??= []).push({ at: now, text });
-    if (farm.inbox.length > 10)
-        farm.inbox.splice(0, farm.inbox.length - 10);
-}
-/** 聚合别人对本农场的成功社交动作；下次 AI 打开农场时随 inbox 一次性读出并清空。 */
-export function pushSocialInbox(farm, text, now) {
-    const inbox = (farm.inbox ??= []);
-    const current = inbox.find((message) => message.kind === "social");
-    if (current) {
-        current.at = now;
-        current.text += `\n${text}`;
-        return;
-    }
-    inbox.push({ at: now, text: `👣 你不在时：\n${text}`, kind: "social" });
-    if (inbox.length > 10)
-        inbox.splice(0, inbox.length - 10);
-}
-// —— 礼物/装扮（伴侣花牧场金币让"小克"看见自己的心意；这些是人→机唯一"看得见"的情感通道）——
-const ACC_PER_ANIMAL_MAX = 3;
-const RANCH_SHOP_ACC_PER_DAY = 2; // 牧场商店每天随机刷几件配饰
-const RANCH_SHOP_DECOR_PER_DAY = 2; // 牧场商店每天随机刷几件装饰
-function pickN(rng, pool, n) {
-    const a = [...pool], out = [];
-    for (let i = 0; i < n && a.length; i++)
-        out.push(a.splice(rng.int(a.length), 1)[0]);
-    return out;
-}
-/** 牧场商店：每天随机刷新 2 件配饰 + 2 件装饰（装饰只从还没买过的里挑）。当天已刷过则不动。 */
-export function refreshRanchShop(farm, now) {
-    const ranch = farm.ranch;
-    if (!ranch)
-        return;
-    const day = currentDayIndex(now);
-    if (ranch.shop && ranch.shop.day === day)
-        return;
-    const rng = new Rng(farm.rngState);
-    const accPool = accessories.map((a) => a.id);
-    const owned = new Set([...(ranch.decor ?? []), ...(ranch.decorStore ?? [])]); // 已摆 + 仓库里的，都算已拥有，不再上架
-    const decoPool = decorations.filter((d) => !owned.has(d.id)).map((d) => d.id);
-    ranch.shop = { day, acc: pickN(rng, accPool, RANCH_SHOP_ACC_PER_DAY), decor: pickN(rng, decoPool, RANCH_SHOP_DECOR_PER_DAY) };
-    farm.rngState = rng.state;
-}
-/** AI 开场看到的一句动物现身描述：随机一只牧场动物 + 伴侣给它买的衣服/配饰。没养动物则空串。 */
-/** 把一只动物渲染成一句现身氛围句（物种 + 穿戴）。 */
-function roamForAnimal(a) {
-    const kind = animalById.get(a.kindId);
-    if (!kind)
-        return "";
-    const descs = (a.acc ?? []).map((id) => accessoryById.get(id)?.desc).filter(Boolean);
-    const acc = descs.length ? descs.join("、") + "的" : "";
-    // 和宠物一样：{name} 槽填伴侣起的名字，没起名回落种类名（roam 文案都带 {name} 槽）。
-    const name = a.name?.trim() || kind.name;
-    return kind.roam.replace("{acc}", acc).replace("{name}", name);
-}
-export function animalRoamLine(farm) {
-    const list = farm.ranch?.animals ?? [];
-    if (!list.length)
-        return "";
-    return roamForAnimal(list[Math.floor(Math.random() * list.length)]);
-}
-/** 别人 visit 时展示的装饰物描述（伴侣买的农场装饰）。没有则空串。 */
-export function decorLines(farm) {
-    return (farm.ranch?.decor ?? []).map((id) => (decorationById.get(id) ?? expDecorById.get(id))?.visitLine).filter(Boolean).join("\n");
-}
-/** 买一件配饰进仓库（花牧场金币；必须是今日商店上架的）。穿戴到动物/宠物在仓库页做。 */
-export function ranchBuyAccessory(farm, accId, now) {
-    const ranch = farm.ranch;
-    if (!ranch)
-        return { ok: false, error: `还没有牧场（先让${aiDisplay(farm)}买只动物送进来）。` };
-    refreshRanchShop(farm, now);
-    const acc = accessoryById.get(String(accId));
-    if (!acc)
-        return { ok: false, error: `没有这件配饰：${accId}` };
-    if (!ranch.shop?.acc.includes(acc.id))
-        return { ok: false, error: `${acc.name}不在今天的牧场商店里（每天随机刷 2 件，明天再看看）。` };
-    if (ranch.coins < acc.price)
-        return { ok: false, error: `牧场金币不足（${acc.name}要 ${acc.price}，现有 ${ranch.coins}）。` };
-    ranch.coins -= acc.price;
-    (ranch.wardrobe ??= []).push(acc.id);
-    return { ok: true, name: acc.name, cost: acc.price };
-}
-/** 买一件装饰进仓库（花牧场金币；必须是今日商店上架的）。摆出展示在仓库页做。 */
-export function ranchBuyDecoration(farm, decoId, now) {
-    const ranch = farm.ranch;
-    if (!ranch)
-        return { ok: false, error: `还没有牧场（先让${aiDisplay(farm)}买只动物送进来）。` };
-    refreshRanchShop(farm, now);
-    const deco = decorationById.get(String(decoId));
-    if (!deco)
-        return { ok: false, error: `没有这个装饰：${decoId}` };
-    if ((ranch.decor ?? []).includes(deco.id) || (ranch.decorStore ?? []).includes(deco.id))
-        return { ok: false, error: `「${deco.name}」你已经有了。` };
-    if (!ranch.shop?.decor.includes(deco.id))
-        return { ok: false, error: `「${deco.name}」不在今天的牧场商店里（每天随机刷 2 件，明天再看看）。` };
-    if (ranch.coins < deco.price)
-        return { ok: false, error: `牧场金币不足（${deco.name}要 ${deco.price}，现有 ${ranch.coins}）。` };
-    ranch.coins -= deco.price;
-    (ranch.decorStore ??= []).push(deco.id);
-    return { ok: true, name: deco.name, cost: deco.price };
-}
-/** 从仓库把一件装饰摆出来展示（别人 visit 时可见）。decoId 可为商店装饰或秘境装饰。 */
-export function ranchPlaceDecoration(farm, decoId) {
-    const ranch = farm.ranch;
-    if (!ranch)
-        return { ok: false, error: "还没有牧场。" };
-    const id = String(decoId);
-    const deco = decorationById.get(id) ?? expDecorById.get(id);
-    const store = ranch.decorStore ?? [];
-    if (!store.includes(id))
-        return { ok: false, error: `仓库里没有「${deco?.name ?? id}」。` };
-    store.splice(store.indexOf(id), 1);
-    ranch.decorStore = store;
-    (ranch.decor ??= []).push(id);
-    return { ok: true, name: deco?.name ?? id };
-}
-/** 把已摆出的装饰收回仓库。 */
-export function ranchUnplaceDecoration(farm, decoId) {
-    const ranch = farm.ranch;
-    if (!ranch)
-        return { ok: false, error: "还没有牧场。" };
-    const id = String(decoId);
-    const deco = decorationById.get(id) ?? expDecorById.get(id);
-    const decor = ranch.decor ?? [];
-    if (!decor.includes(id))
-        return { ok: false, error: `「${deco?.name ?? id}」没在展示。` };
-    decor.splice(decor.indexOf(id), 1);
-    ranch.decor = decor;
-    (ranch.decorStore ??= []).push(id);
-    return { ok: true, name: deco?.name ?? id };
-}
-/** 某品阶新解锁的作物种类数（升级提示用） */
-export function newVarietiesAtTier(tier) {
-    return crops.filter((c) => (c.category === "common" || c.category === "fantasy") && c.unlockTier === tier).length;
-}
-// —— UGC：设计自己的作物（付金币设计费 → 注册作物 + 送一批种子）——
-export function designCrop(farm, opts) {
-    const name = String(opts.name ?? "").trim();
-    const desc = String(opts.desc ?? "").trim();
-    // 可选自定义文案：播种文案(plantLine) / 收获文案(lore)；空则各自回落到通用演出
-    const plant = String(opts.plant ?? "").trim();
-    const harvest = String(opts.harvest ?? "").trim();
-    if (!name || !desc)
-        return { ok: false, error: "要给作物起名字 name 和写描述 desc" };
-    if (name.length > UGC_NAME_MAX)
-        return { ok: false, error: `名字最多 ${UGC_NAME_MAX} 字` };
-    if (desc.length > UGC_DESC_MAX)
-        return { ok: false, error: `描述最多 ${UGC_DESC_MAX} 字` };
-    if (plant.length > UGC_PLANT_MAX)
-        return { ok: false, error: `播种文案最多 ${UGC_PLANT_MAX} 字` };
-    if (harvest.length > UGC_HARVEST_MAX)
-        return { ok: false, error: `收获文案最多 ${UGC_HARVEST_MAX} 字` };
-    if (ugcCount() >= MAX_UGC)
-        return { ok: false, error: "全服自创作物已达上限，暂不能再设计新作物。" };
-    if (farm.coins < UGC_DESIGN_FEE)
-        return { ok: false, error: `设计自创作物要 ${UGC_DESIGN_FEE} 金，你只有 ${farm.coins}` };
-    farm.coins -= UGC_DESIGN_FEE;
-    const id = "ugc_" + randomUUID().replace(/-/g, "").slice(0, 8);
-    const crop = {
-        id, name, latin: String(opts.latin ?? "").trim() || `Creatio ${id.slice(4, 9)}`, desc,
-        category: "ugc", rarity: UGC_RARITY, growTicks: UGC_GROW_TICKS, water: null,
-        seedPrice: UGC_VALUE, sellPrice: UGC_HARVEST_VALUE, family: null, unlockTier: null,
-        mechanicText: null, mechanicStatus: "active", mechanicSystem: null,
-        unlockType: "craft", unlockCond: "自创作物", produce: null, designer: farm.aiName || farm.name, designerId: farm.id,
-        ...(plant ? { plantLine: plant } : {}),
-        ...(harvest ? { lore: harvest } : {}),
-    };
-    registerUgc(crop);
-    farm.seeds[id] = (farm.seeds[id] ?? 0) + UGC_SEED_YIELD;
-    farm.designCount = (farm.designCount ?? 0) + 1; // 创作称号累计
-    pushLog(farm, `设计了作物「${name}」（${UGC_RARITY}），获得 ${UGC_SEED_YIELD} 颗种子`);
-    return { ok: true, crop, fee: UGC_DESIGN_FEE, seeds: UGC_SEED_YIELD };
-}
-// —— 道具：买 / 用 ——
-/** 加速药水按瓶单价（官方店）。防作弊：非数/负数一律当 0，避免把 coins 算成 NaN。 */
-export function potionCost(qty) {
-    const q = Math.floor(Number(qty));
-    if (!Number.isFinite(q) || q <= 0)
-        return 0;
-    return q * ITEMS.speed_potion.price;
-}
-/** 现有金币最多能买几瓶加速药水。 */
-export function affordablePotions(coins) {
-    const price = ITEMS.speed_potion.price;
-    if (!Number.isFinite(coins) || coins < price)
-        return 0;
-    return Math.floor(coins / price);
-}
-/** 官方店今天这座农场还能买几瓶加速药水（每日上限 POTION_DAILY_CAP）。 */
-export function potionDailyLeft(farm, now) {
-    const day = currentDayIndex(now);
-    const bought = farm.potionBuy && farm.potionBuy.day === day ? farm.potionBuy.n : 0;
-    return Math.max(0, POTION_DAILY_CAP - bought);
-}
-export function buyItem(farm, item, qty = 1, now = Date.now()) {
-    const def = ITEMS[item];
-    if (!def)
-        return { ok: false, error: `没有这种物品: ${item}` };
-    // 防作弊：数量必须是正整数，否则按 1（杜绝 NaN/负数把 coins 算坏）
-    const q0 = Math.floor(Number(qty));
-    let want = Number.isFinite(q0) && q0 > 0 ? q0 : 1;
-    if (item === "speed_potion") {
-        // 官方店每天每农场限购：超过当日上限不卖，截到剩余额度内
-        const day = currentDayIndex(now);
-        if (!farm.potionBuy || farm.potionBuy.day !== day)
-            farm.potionBuy = { day, n: 0 };
-        const left = Math.max(0, POTION_DAILY_CAP - farm.potionBuy.n);
-        if (left <= 0)
-            return { ok: false, error: `🌙 官方药水今日已购满 ${POTION_DAILY_CAP}/${POTION_DAILY_CAP}——${POTION_CAP_LINE}（还能买随机「药水套装」buy-potion-set、给别人浇水、或等收获随机掉落）` };
-        want = Math.min(want, left);
-    }
-    const cost = item === "speed_potion" ? potionCost(want) : def.price * want;
-    if (farm.coins < cost)
-        return { ok: false, error: `金币不足，${want} 个${def.name}要 ${cost}` };
-    farm.coins -= cost;
-    farm.items[item] = (farm.items[item] ?? 0) + want;
-    if (item === "speed_potion")
-        farm.potionBuy.n += want;
-    pushLog(farm, `买了 ${want} 个${def.name}`);
-    return { ok: true, name: def.name, qty: want, left: farm.items[item], cost };
-}
-/** 跨农场购买商店随机刷新的「药水套装」：shopFarm 的店里有套装时，buyer 出钱买（每份每人限购 1）。
- *  自家买：shopFarm === buyer。串门买别家：shopFarm = 目标农场、buyer = 来访者。*/
-export function buyPotionSet(shopFarm, buyer, now) {
-    refreshShop(shopFarm, now);
-    const set = shopFarm.shop.potionSet;
-    if (!set)
-        return { ok: false, error: "这座农场的商店现在没有「药水套装」（随机刷新，看缘分）。" };
-    if (set.buyers.includes(buyer.id))
-        return { ok: false, error: "你已经买过这一份药水套装了（每份限购 1）。" };
-    if (buyer.coins < set.price)
-        return { ok: false, error: `金币不足，药水套装（${set.qty} 瓶）要 ${set.price}，你只有 ${buyer.coins}。` };
-    buyer.coins -= set.price;
-    buyer.items.speed_potion = (buyer.items.speed_potion ?? 0) + set.qty;
-    set.buyers.push(buyer.id);
-    pushLog(buyer, `买下药水套装（${set.qty} 瓶加速药水）`);
-    if (shopFarm.id !== buyer.id)
-        pushLog(shopFarm, `${buyer.name} 买走了你商店刷新的药水套装`);
-    return { ok: true, qty: set.qty, cost: set.price, left: buyer.items.speed_potion };
-}
-export function useItem(farm, item, plotId) {
-    const def = ITEMS[item];
-    if (!def)
-        return { ok: false, error: `没有这种物品: ${item}` };
-    if ((farm.items[item] ?? 0) <= 0)
-        return { ok: false, error: `你没有${def.name}了` };
-    if (item === "speed_potion") {
-        const plot = farm.plots.find((p) => p.id === plotId);
-        if (!plot || !plot.crop)
-            return { ok: false, error: `${plotId} 号地没有作物` };
-        if (plot.crop.ripe)
-            return { ok: false, error: "这株已经成熟了，不用加速" };
-        plot.crop.progress = plot.crop.growTicks;
-        plot.crop.ripe = true;
-        farm.items[item] -= 1;
-        pushLog(farm, `用${def.name}催熟了 ${plotId} 号地`);
-        return { ok: true, name: def.name, plotId, left: farm.items[item] };
-    }
-    return { ok: false, error: `${def.name}暂无可用效果` };
-}
-/** 按明确地块集合原子催熟：任一目标无效或药水不足时整次不执行。 */
-export function usePotionPlots(farm, plotIds) {
-    if (!Array.isArray(plotIds) || plotIds.length === 0)
-        return { ok: false, error: "请在 plots 里填写至少一个地块编号" };
-    if (plotIds.some((id) => !Number.isSafeInteger(id) || id <= 0))
-        return { ok: false, error: "plots 里的地块编号必须是正整数" };
-    if (new Set(plotIds).size !== plotIds.length)
-        return { ok: false, error: "plots 里不能重复填写同一块地" };
-    for (const plotId of plotIds) {
-        const plot = farm.plots.find((item) => item.id === plotId);
-        if (!plot || !plot.crop)
-            return { ok: false, error: `${plotId} 号地没有作物` };
-        if (plot.crop.ripe)
-            return { ok: false, error: `${plotId} 号地的作物已经成熟了，不用加速` };
-    }
-    const have = farm.items.speed_potion ?? 0;
-    if (have < plotIds.length)
-        return { ok: false, error: `加速药水不足：要 ${plotIds.length} 瓶，现有 ${have} 瓶` };
-    for (const plotId of plotIds)
-        useItem(farm, "speed_potion", plotId);
-    return { ok: true, plotIds: [...plotIds], count: plotIds.length, left: farm.items.speed_potion ?? 0 };
-}
-// —— 土地升级（门槛：金币 + 普通图鉴种类数 + 高阶加奇幻/收集度；牵制普通作物）——
-export function nextUpgradeReq(farm) {
-    const next = landTiers.find((t) => t.tier === farm.landTier + 1);
-    if (!next)
-        return null;
-    return { next, req: LAND_UPGRADE_REQ[next.tier] };
-}
-export function upgradeLand(farm, now) {
-    const nu = nextUpgradeReq(farm);
-    if (!nu)
-        return { ok: false, error: "已是最高品阶，无需升级" };
-    const { next, req } = nu;
-    const cc = codexCountByCategory(farm, "common");
-    const fc = codexCountByCategory(farm, "fantasy");
-    const pct = collectionPct(farm) * 100;
-    const miss = [];
-    if (farm.coins < req.coins)
-        miss.push(`金币 ${farm.coins}/${req.coins}`);
-    if (cc < req.commonCodex)
-        miss.push(`普通图鉴 ${cc}/${req.commonCodex} 种`);
-    if (req.fantasyCodex && fc < req.fantasyCodex)
-        miss.push(`奇幻图鉴 ${fc}/${req.fantasyCodex} 种`);
-    if (req.codexPct && pct < req.codexPct)
-        miss.push(`总收集度 ${pct.toFixed(1)}/${req.codexPct}%`);
-    if (miss.length)
-        return { ok: false, error: `升级到「${next.name}」还差：${miss.join("、")}` };
-    farm.coins -= req.coins;
-    farm.landTier = next.tier;
-    for (let id = farm.plots.length + 1; id <= next.plots; id++)
-        farm.plots.push({ id, crop: null });
-    pushLog(farm, `土地升级为 ${next.name}`);
-    const unlocked = newVarietiesAtTier(next.tier);
-    const gains = [unlocked > 0 ? `解锁 ${unlocked} 种新作物` : "", `地块增至 ${next.plots}`].filter(Boolean).join("；");
-    return { ok: true, tier: next.tier, name: next.name, text: `${next.achieveText}\n（${gains}）` };
-}
-// ——————————— 批量动作（减少 AI 的 tool 往返）———————————
-/** 批量播种：按数量填入空地（普通/奇幻/限定 id 列表）。便宜的先种，买不起就停。 */
-export function plantBatch(farm, spec, now) {
-    const queue = [];
-    for (let i = 0; i < (spec.common ?? 0); i++)
-        queue.push({ type: "common" });
-    for (let i = 0; i < (spec.fantasy ?? 0); i++)
-        queue.push({ type: "fantasy" });
-    // limited 容错：契约是 string[]，但 AI 常误传数字/单个字符串。数字 1 直接 for..of 会抛
-    // "number 1 is not iterable"；单字符串 for..of 会拆成单字。统一归一成干净的 id 数组。
-    const limitedList = typeof spec.limited === "string" ? [spec.limited]
-        : Array.isArray(spec.limited) ? spec.limited.filter((x) => typeof x === "string" && x.length > 0)
-            : [];
-    for (const id of limitedList)
-        queue.push({ type: "limited", id });
-    if (!queue.length)
-        return { ok: false, planted: {}, limitedIds: [], spent: 0, leftover: 0, error: "没说要种什么（common/fantasy/limited）" };
-    const before = farm.coins;
-    const planted = { common: 0, fantasy: 0, limited: 0 };
-    const limitedIds = []; // 实际种下的限定作物 id（给专属播种文案用）
-    const empties = farm.plots.filter((p) => !p.crop);
-    let qi = 0;
-    let lastErr; // 记下最后一次失败的真实原因（限定/UGC 种子失败不是"买不起"，是解析不到/没库存）
-    for (const plot of empties) {
-        if (qi >= queue.length)
-            break;
-        const s = queue[qi];
-        const r = plant(farm, plot.id, s.type, s.id, now);
-        if (r.ok) {
-            planted[s.type]++;
-            if (s.type === "limited" && r.limitedId)
-                limitedIds.push(r.limitedId);
-            qi++;
-        }
-        else {
-            lastErr = r.error;
-            break;
-        } // 买不起/不可种 → 停（队列已按便宜在前）
-    }
-    // 一颗都没种下时，把真实原因透传出去——限定/UGC 种子是从背包扣的、不花金币，别再一律甩"买不起"误导玩家
-    const error = qi > 0 ? undefined
-        : (empties.length === 0 ? "没有空地可种（先收获或升级土地）" : (lastErr ?? "买不起种子"));
-    return { ok: qi > 0, planted, limitedIds, spent: before - farm.coins, leftover: queue.length - qi, error };
-}
-/** 浇所有生长中的地（主人或访客）。helped = 真正涨了浇水运气的地块数（已封顶的不算，给"帮浇水掉药水"判定用）*/
-export function waterAll(farm, by, isOwner) {
-    let count = 0, helped = 0;
-    for (const p of farm.plots) {
-        if (p.crop && !p.crop.ripe) {
-            const r = water(farm, p.id, by, isOwner);
-            count++;
-            if (r.ok && !r.capped)
-                helped++;
-        }
-    }
-    return { ok: count > 0, count, helped };
-}
-/** 帮别人浇水的回报：给浇水者(visitor)掉 1 瓶加速药水。
- *  「1 家 1 天只浇 1 次」已由 visitorWater 拦在前面，故每家每天天然最多掉 1 瓶；
- *  这里只再压一道「浇水者每天最多 WATER_REWARD_DAILY_CAP 瓶」的总上限。*/
-export function tryWaterReward(target, visitor, now) {
-    if (target.id === visitor.id)
-        return false;
-    const day = currentDayIndex(now);
-    if (!visitor.waterReward || visitor.waterReward.day !== day)
-        visitor.waterReward = { day, n: 0 };
-    if (visitor.waterReward.n >= WATER_REWARD_DAILY_CAP)
-        return false;
-    visitor.items.speed_potion = (visitor.items.speed_potion ?? 0) + 1;
-    visitor.waterReward.n += 1;
-    pushLog(visitor, `帮「${target.name}」浇水，掉落 1 瓶加速药水 🧪`);
-    return true;
-}
 /** 收所有成熟的地（seasonMod=季节收获事件的本批修正，传同一个对象让 capLeft 跨株累计消费）*/
 export function harvestAll(farm, now, seasonMod) {
     const results = [];
@@ -2453,121 +762,5 @@ export function harvestAll(farm, now, seasonMod) {
         }
     }
     return results;
-}
-/** 批量用加速药水催熟生长中的地（all 或 count） */
-export function usePotionBatch(farm, opts) {
-    const growing = farm.plots.filter((p) => p.crop && !p.crop.ripe);
-    const want = opts.all ? growing.length : Math.max(0, Math.floor(opts.count ?? 0));
-    const use = Math.min(want, growing.length, farm.items.speed_potion ?? 0);
-    let count = 0;
-    for (const p of growing) {
-        if (count >= use)
-            break;
-        if (useItem(farm, "speed_potion", p.id).ok)
-            count++;
-    }
-    return { ok: count > 0, count, left: farm.items.speed_potion ?? 0 };
-}
-/** 圈数字 ①②③…⑳（>20 回落普通数字）：催熟候选列表展示用。 */
-export const circledNum = (n) => (n >= 1 && n <= 20) ? String.fromCodePoint(0x245F + n) : `${n}`;
-/** 催熟优先级：限定/自创（已知作物，按稀有度再抬）> 奇幻（未揭晓但整体更稀有）> 普通。 */
-function plotPriority(p) {
-    const c = p.crop;
-    if (c.seedType === "limited" && c.limitedId) {
-        const crop = cropById.get(c.limitedId) ?? getCrop(c.limitedId);
-        return 200 + (crop ? rarityIndex(crop.rarity) : 0);
-    }
-    return c.seedType === "fantasy" ? 100 : 10;
-}
-/** 这块离成熟还差多少（含当前未结算的零头，给真实倒计时）。 */
-export function plotRemainMs(p, farm, now) {
-    const c = p.crop;
-    const whole = (c.growTicks - c.progress) * TICK_MS;
-    const partial = Math.max(0, now - farm.lastTickAt);
-    return Math.max(0, whole - partial);
-}
-function fmtRemain(ms) {
-    const min = Math.max(1, Math.round(ms / 60000));
-    return min >= 60 ? `${Math.round(min / 6) / 10}小时` : `${min}分钟`;
-}
-/** 催熟时显示的作物标签：限定/自创已知作物给名+稀有度；普通/奇幻收获才揭晓，只标种子类型。 */
-function plotCropLabel(p) {
-    const c = p.crop;
-    if (c.seedType === "limited" && c.limitedId) {
-        const crop = cropById.get(c.limitedId) ?? getCrop(c.limitedId);
-        return crop ? `${crop.name}·${crop.rarity}` : "限定作物";
-    }
-    return c.seedType === "fantasy" ? "奇幻种子·?" : "普通种子·?";
-}
-/** "正在生长且可催熟"的地块，按催熟优先级排序（限定/稀有优先，其次剩余时间最长）。空地/已熟/无作物全部略过。 */
-export function potionTargets(farm, now) {
-    const ps = farm.plots.filter((p) => p.crop && !p.crop.ripe);
-    ps.sort((a, b) => (plotPriority(b) - plotPriority(a)) || (plotRemainMs(b, farm, now) - plotRemainMs(a, farm, now)));
-    return ps.map((p) => ({ plotId: p.id, label: plotCropLabel(p), remain: fmtRemain(plotRemainMs(p, farm, now)) }));
-}
-// —— 第一层商店：每 SHOP_REFRESH_MS 刷新一次，小概率上架一张未学的隐藏配方 ——
-export function refreshShop(farm, now) {
-    if (now - farm.shop.refreshAt < SHOP_REFRESH_MS)
-        return;
-    farm.shop.refreshAt = now;
-    const rng = new Rng(farm.rngState);
-    const unknown = recipes.filter((r) => !farm.knownRecipes.includes(r.output) && cropById.get(r.output));
-    farm.shop.recipe = unknown.length && rng.next() < SHOP_RECIPE_CHANCE ? unknown[rng.int(unknown.length)].output : null;
-    // 药水套装：随机刷出（不固定售卖），每份限购 1（buyers 记录已买过的农场，刷新即清空=新一份）
-    farm.shop.potionSet = rng.next() < POTION_SET_CHANCE ? { price: POTION_SET_PRICE, qty: POTION_SET_QTY, buyers: [] } : null;
-    // 限定种子：从「本农场可进随机库」的限定里，极小概率随机刷出一颗（金币结算，每种每天限购 1）。
-    // 阿土(NPC)是 magic vendor → 无视自身进度给全部可上架限定；普通玩家按自己解锁(isLimitedAvailable)。
-    const limPool = limitedShopPool(farm, now, farm.id === NPC_ID);
-    const lim = (rng.next() < NPC_LIMITED_SEED_CHANCE && limPool.length) ? limPool[rng.int(limPool.length)] : null;
-    farm.shop.npcSeed = lim ? { id: lim.id, price: lim.seedPrice } : null;
-    farm.rngState = rng.state;
-}
-/** 商店随机限定的候选池：
- *  · 节日限定 → 只在对应节日窗口出现；
- *  · 纯熔炼组（无解锁规则、非图鉴%）→ 永不进商店（只能熔炼）；
- *  · 其余（图鉴%/条件解锁/不可炼，如植物学家玫瑰）→ 按本农场是否已解锁。
- *  allUnlocked=true 时（阿土这类常驻 vendor）无视本农场进度，给出所有"能在商店出现"的限定。 */
-export function limitedShopPool(farm, now, allUnlocked = false) {
-    return [...cropById.values()].filter((c) => {
-        if (c.category !== "limited")
-            return false;
-        if (isQixi2026CropId(c.id))
-            return false;
-        if (c.unlockType === "festival")
-            return activeFestivals(now).some((f) => f.cropId === c.id);
-        if (!c.unlockRule && c.unlockType !== "codex")
-            return false; // 纯熔炼组：不进商店
-        return allUnlocked || isLimitedAvailable(c, farm, now);
-    });
-}
-/** 买下第一层在售的配方（学会它） */
-export function buyRecipe(farm, now) {
-    refreshShop(farm, now);
-    const out = farm.shop.recipe;
-    if (!out)
-        return { ok: false, error: "商店现在没有配方在售（每隔几小时刷新，看缘分）" };
-    if (farm.knownRecipes.includes(out)) {
-        farm.shop.recipe = null;
-        return { ok: false, error: "这个配方你已经学过了" };
-    }
-    if (farm.coins < RECIPE_PRICE)
-        return { ok: false, error: `金币不足，配方要 ${RECIPE_PRICE}` };
-    farm.coins -= RECIPE_PRICE;
-    farm.knownRecipes.push(out);
-    farm.shop.recipe = null;
-    const name = cropById.get(out)?.name ?? out;
-    pushLog(farm, `学会配方：${name}`);
-    return { ok: true, output: out, name };
-}
-// —— 商店：总是有普通/奇幻种子；限定只剩「本农场今日随机刷出的那一颗」（refreshShop 已写入 shop.npcSeed）。
-//    没有任何限定常驻上架——解锁只是让它能进随机库被 roll。调用前请确保已 refreshShop(farm, now)。
-export function shopOffer(farm, _now) {
-    const ns = farm.shop.npcSeed;
-    const lim = ns && !isQixi2026CropId(ns.id) ? cropById.get(ns.id) : null;
-    return {
-        common: { type: "common", price: SEED_PRICE.common },
-        fantasy: { type: "fantasy", price: SEED_PRICE.fantasy },
-        limited: lim ? [{ id: lim.id, name: lim.name, price: ns.price, cond: lim.unlockCond ?? "限定" }] : [],
-    };
 }
 //# sourceMappingURL=engine.js.map
