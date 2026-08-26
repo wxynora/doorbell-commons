@@ -1574,6 +1574,59 @@ describe("FarmPage Bell shopping request", () => {
     expect(screen.getByText("已通知 TA")).toBeTruthy();
     expect(screen.queryByText("刷新结果")).toBeNull();
   });
+
+  it("treats an expired replay as terminal and sends the next checkout with a new key", async () => {
+    clients.catalog.mockResolvedValue(fieldShopCatalogResult());
+    clients.farmPurchaseRequest.mockResolvedValueOnce({
+      ok: false,
+      issue: {
+        code: "purchase_request_expired",
+        currentShopRevision: null,
+        serverMessage: "之前的购物请求已过期，请重新发送。",
+      },
+    });
+    await renderLiveFarm();
+
+    fireEvent.click(screen.getByRole("button", { name: "商店" }));
+    const shop = await screen.findByRole("region", { name: "农场商店" });
+    fireEvent.click(within(shop).getByRole("button", { name: "将加速药水加入购物车" }));
+    fireEvent.click(within(shop).getByRole("button", { name: "查看购物车，1件" }));
+    fireEvent.click(screen.getByRole("button", { name: "喊 TA 来买" }));
+
+    expect(await screen.findByText("之前的购物请求已过期，请重新发送。")).toBeTruthy();
+    expect(screen.queryByText("已通知 TA")).toBeNull();
+    expect(screen.queryByRole("button", { name: "重试" })).toBeNull();
+    const firstKey = clients.farmPurchaseRequest.mock.calls[0]?.[0].idempotencyKey;
+
+    fireEvent.click(screen.getByRole("button", { name: "喊 TA 来买" }));
+    await waitFor(() => expect(clients.farmPurchaseRequest).toHaveBeenCalledTimes(2));
+    expect(clients.farmPurchaseRequest.mock.calls[1]?.[0].idempotencyKey).not.toBe(firstKey);
+  });
+
+  it("unlocks the cart after a failed replay", async () => {
+    clients.catalog.mockResolvedValue(fieldShopCatalogResult());
+    clients.farmPurchaseRequest.mockResolvedValueOnce({
+      ok: false,
+      issue: {
+        code: "purchase_request_failed",
+        currentShopRevision: null,
+        serverMessage: "TA 没能处理之前的请求，请重新发送。",
+      },
+    });
+    await renderLiveFarm();
+
+    fireEvent.click(screen.getByRole("button", { name: "商店" }));
+    const shop = await screen.findByRole("region", { name: "农场商店" });
+    fireEvent.click(within(shop).getByRole("button", { name: "将加速药水加入购物车" }));
+    fireEvent.click(within(shop).getByRole("button", { name: "查看购物车，1件" }));
+    fireEvent.click(screen.getByRole("button", { name: "喊 TA 来买" }));
+
+    expect(await screen.findByText("TA 没能处理之前的请求，请重新发送。")).toBeTruthy();
+    expect(screen.queryByText("已通知 TA")).toBeNull();
+    expect(screen.queryByRole("button", { name: "重试" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "减少加速药水数量" }));
+    expect(await screen.findByText("购物车还是空的")).toBeTruthy();
+  });
 });
 
 describe("FarmPage kitchen cart checkout", () => {

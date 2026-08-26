@@ -9,7 +9,9 @@ import type { ApiResult, ClientIssueCode, FrontendFetcher } from "./auth-client"
 
 export type FarmPurchaseRequestIssueCode =
   | ReturnType<typeof boundFarmPurchaseRequestErrorSchema.parse>["error"]["code"]
-  | ClientIssueCode;
+  | ClientIssueCode
+  | "purchase_request_expired"
+  | "purchase_request_failed";
 
 export interface FarmPurchaseRequestIssue {
   code: FarmPurchaseRequestIssueCode;
@@ -33,7 +35,7 @@ interface CreateFarmPurchaseRequestOptions extends CreateFarmPurchaseRequestInpu
   signal?: AbortSignal;
 }
 
-function clientIssue(code: ClientIssueCode): FarmPurchaseRequestIssue {
+function clientIssue(code: FarmPurchaseRequestIssueCode): FarmPurchaseRequestIssue {
   return { code, currentShopRevision: null, serverMessage: null };
 }
 
@@ -56,19 +58,43 @@ function parseServerIssue(payload: unknown): FarmPurchaseRequestIssue {
     : clientIssue("unexpected_response");
 }
 
-function requestItemsMatch(
+interface CanonicalPurchaseRequestLine {
+  itemId: string;
+  kind: CreateFarmPurchaseRequestInput["items"][number]["kind"];
+  quantity: number;
+}
+
+function canonicalizeRequestLines(
+  lines: readonly CanonicalPurchaseRequestLine[],
+): CanonicalPurchaseRequestLine[] {
+  return [...lines].sort((left, right) => {
+    const kindOrder = left.kind.localeCompare(right.kind);
+    return kindOrder === 0 ? left.itemId.localeCompare(right.itemId) : kindOrder;
+  });
+}
+
+function requestContentsMatch(
   input: CreateFarmPurchaseRequestInput,
   response: BoundFarmPurchaseRequestCreateSuccess,
 ): boolean {
+  const requested = canonicalizeRequestLines(input.items);
+  const returned = canonicalizeRequestLines(
+    response.data.items.map((item) => ({
+      itemId: item.item_id,
+      kind: item.kind,
+      quantity: item.qty,
+    })),
+  );
   return (
     response.data.shop === input.shop &&
     response.data.shop_revision === input.shopRevision &&
-    response.data.status === "requested" &&
-    response.data.items.length === input.items.length &&
-    input.items.every((item, index) => {
-      const result = response.data.items[index];
+    returned.length === requested.length &&
+    requested.every((item, index) => {
+      const result = returned[index];
       return (
-        result?.kind === item.kind && result.item_id === item.itemId && result.qty === item.quantity
+        result?.kind === item.kind &&
+        result.itemId === item.itemId &&
+        result.quantity === item.quantity
       );
     })
   );
@@ -109,9 +135,16 @@ export async function createBoundFarmPurchaseRequest(
     return { ok: false, issue: parseServerIssue(payload) };
   }
   const parsed = boundFarmPurchaseRequestCreateSuccessSchema.safeParse(payload);
-  return parsed.success && requestItemsMatch(options, parsed.data)
-    ? { ok: true, data: parsed.data }
-    : { ok: false, issue: clientIssue("unexpected_response") };
+  if (!parsed.success || !requestContentsMatch(options, parsed.data)) {
+    return { ok: false, issue: clientIssue("unexpected_response") };
+  }
+  if (parsed.data.data.status === "expired") {
+    return { ok: false, issue: clientIssue("purchase_request_expired") };
+  }
+  if (parsed.data.data.status === "failed") {
+    return { ok: false, issue: clientIssue("purchase_request_failed") };
+  }
+  return { ok: true, data: parsed.data };
 }
 
 export function farmPurchaseRequestIssueMessage(issue: FarmPurchaseRequestIssue): string {
@@ -130,6 +163,10 @@ export function farmPurchaseRequestIssueMessage(issue: FarmPurchaseRequestIssue)
       return "现在连不上 Doorbell，请稍后再试。";
     case "unexpected_response":
       return "请求结果无法识别，请稍后再试。";
+    case "purchase_request_expired":
+      return "之前的购物请求已过期，请重新发送。";
+    case "purchase_request_failed":
+      return "TA 没能处理之前的请求，请重新发送。";
     default:
       return issue.serverMessage || "这次请求没有完成，请稍后再试。";
   }

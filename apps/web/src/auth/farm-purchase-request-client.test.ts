@@ -57,6 +57,63 @@ test("purchase-request client creates one cart without browser identity or price
   assert.doesNotMatch(String(requests[0]?.init?.body), /price|human|doorplate|credential/u);
 });
 
+test("purchase-request client accepts canonical response order for a non-canonical cart", async () => {
+  const result = await createBoundFarmPurchaseRequest({
+    fetcher: async () =>
+      jsonResponse({
+        ...CREATE_RESULT,
+        data: {
+          ...CREATE_RESULT.data,
+          items: [
+            { kind: "potion", item_id: "speed_potion", qty: 1 },
+            { kind: "seed", item_id: "common", qty: 2 },
+          ],
+        },
+      }),
+    idempotencyKey: KEY,
+    shop: "field",
+    shopRevision: "field-shop-v1:test",
+    items: [
+      { kind: "seed", itemId: "common", quantity: 2 },
+      { kind: "potion", itemId: "speed_potion", quantity: 1 },
+    ],
+  });
+
+  assert.equal(result.ok, true);
+});
+
+test("purchase-request client exposes expired and failed replays as terminal outcomes", async () => {
+  for (const [status, code, message] of [
+    ["expired", "purchase_request_expired", "之前的购物请求已过期，请重新发送。"],
+    ["failed", "purchase_request_failed", "TA 没能处理之前的请求，请重新发送。"],
+  ] as const) {
+    const result = await createBoundFarmPurchaseRequest({
+      fetcher: async () =>
+        jsonResponse({
+          ...CREATE_RESULT,
+          data: { ...CREATE_RESULT.data, status },
+        }),
+      idempotencyKey: KEY,
+      shop: "field",
+      shopRevision: "field-shop-v1:test",
+      items: [{ kind: "seed", itemId: "common", quantity: 2 }],
+    });
+
+    assert.deepEqual(result, {
+      ok: false,
+      issue: { code, currentShopRevision: null, serverMessage: null },
+    });
+    assert.equal(
+      farmPurchaseRequestIssueMessage({
+        code,
+        currentShopRevision: null,
+        serverMessage: null,
+      }),
+      message,
+    );
+  }
+});
+
 test("purchase-request client preserves structured and network failures", async () => {
   const changed = await createBoundFarmPurchaseRequest({
     fetcher: async () =>
