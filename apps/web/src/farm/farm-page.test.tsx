@@ -149,12 +149,29 @@ function readFarmPanelSource(panel: keyof typeof FARM_PANEL_SOURCE_PATHS) {
 function readFarmSources() {
   return [
     readFileSync(new URL("./farm-page.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("./page/farm-field-content.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("./page/live-farm-page.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("./dev/farm-tool-layouts.ts", import.meta.url), "utf8"),
+    readFileSync(new URL("./dev/farm-tool-editor.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("./page/model.ts", import.meta.url), "utf8"),
+    readFileSync(new URL("./page/chrome.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("./page/action-feedback.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("./page/ranch-resident-detail.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("./page/cooking/model.ts", import.meta.url), "utf8"),
+    readFileSync(new URL("./page/cooking/prep-overlay.tsx", import.meta.url), "utf8"),
     readFarmPanelSource("bulletin"),
     readFarmPanelSource("tool"),
     readFarmPanelSource("shop"),
     readFileSync(new URL("./panels/ranch-animal-data.ts", import.meta.url), "utf8"),
   ].join("\n");
 }
+
+test("farm page facade keeps its stylesheet and FarmFieldContent compatibility export", () => {
+  const source = readFileSync(new URL("./farm-page.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /import "\.\/farm-page\.css";/);
+  assert.match(source, /export \{ FarmFieldContent \} from "\.\/page\/farm-field-content";/);
+});
 
 test("farm field summarizes only the plots returned by the server", () => {
   assert.deepEqual(summarizeFarmPlots(FIELD.data.plots), {
@@ -172,7 +189,7 @@ test("farm field summarizes only the plots returned by the server", () => {
 test("live farm reads only the strict field endpoint while preview keeps its isolated fixture", () => {
   const authClientSource = readFileSync(new URL("../auth/auth-client.ts", import.meta.url), "utf8");
   const appSource = readFileSync(new URL("../app.tsx", import.meta.url), "utf8");
-  const pageSource = readFileSync(new URL("./farm-page.tsx", import.meta.url), "utf8");
+  const pageSource = readFileSync(new URL("./page/live-farm-page.tsx", import.meta.url), "utf8");
   const migratedSource = `${authClientSource}\n${appSource}\n${pageSource}`;
 
   assert.match(authClientSource, /fetcher\("\/api\/farm\/field"/);
@@ -194,7 +211,11 @@ test("live farm reads only the strict field endpoint while preview keeps its iso
 });
 
 test("live resource failures stay visible and cooking instance identities stay authoritative", () => {
-  const source = readFileSync(new URL("./farm-page.tsx", import.meta.url), "utf8");
+  const source = readFarmSourceFiles([
+    "./page/farm-field-content.tsx",
+    "./page/live-farm-page.tsx",
+    "./page/cooking/model.ts",
+  ]);
 
   assert.match(source, /activeResourceState\?\.stage === "error"/);
   assert.match(source, /className="farm-tool-notice" role="alert"/);
@@ -705,14 +726,16 @@ test("field identity plaque and environment status keep authority-backed facts s
 
 test("moving ranch residents keep preview read-only and use authority-backed live actions", () => {
   const source = readFarmSources();
-  const pageSource = readFileSync(new URL("./farm-page.tsx", import.meta.url), "utf8");
+  const pageSource = readFileSync(new URL("./page/live-farm-page.tsx", import.meta.url), "utf8");
   const ranchSource = readFileSync(
     new URL("./scenes/ranch/ranch-scene.tsx", import.meta.url),
     "utf8",
   );
   const styles = readFarmStyles();
-  const residentDetailSource =
-    source.match(/function RanchResidentDetail[\s\S]*?(?=function FieldSceneOverlay)/)?.[0] ?? "";
+  const residentDetailSource = readFileSync(
+    new URL("./page/ranch-resident-detail.tsx", import.meta.url),
+    "utf8",
+  );
 
   assert.match(ranchSource, /className="farm-ranch-resident"/);
   assert.match(ranchSource, /onClick=\{\(\) => onSelectAnimal\(animal\.id\)\}/);
@@ -776,7 +799,11 @@ test("moving ranch residents keep preview read-only and use authority-backed liv
 
 test("ranch collection stays a compact scene action and renders authority receipts", () => {
   const source = readFarmSources();
-  const pageSource = readFileSync(new URL("./farm-page.tsx", import.meta.url), "utf8");
+  const contentSource = readFileSync(
+    new URL("./page/farm-field-content.tsx", import.meta.url),
+    "utf8",
+  );
+  const liveSource = readFileSync(new URL("./page/live-farm-page.tsx", import.meta.url), "utf8");
   const styles = readFarmStyles();
   const collectionSource =
     source.match(
@@ -788,21 +815,21 @@ test("ranch collection stays a compact scene action and renders authority receip
   assert.match(collectionSource, /result\.items\.map/);
   assert.match(collectionSource, /destinationLabel\[item\.destination\]/);
   assert.match(collectionSource, /重试同一次收取/);
-  assert.match(pageSource, /expectedRevision: ranch\.revision/);
-  assert.match(pageSource, /idempotencyKey: crypto\.randomUUID\(\)/);
-  assert.match(pageSource, /shouldRetryRanchCollection\(result\.issue\) \? attempt : null/);
-  assert.match(pageSource, /submitRanchCollection\(ranchCollectionAction\.attempt\)/);
+  assert.match(contentSource, /expectedRevision: ranch\.revision/);
+  assert.match(contentSource, /idempotencyKey: crypto\.randomUUID\(\)/);
+  assert.match(contentSource, /shouldRetryRanchCollection\(result\.issue\) \? attempt : null/);
+  assert.match(contentSource, /submitRanchCollection\(ranchCollectionAction\.attempt\)/);
   assert.match(
-    pageSource,
+    contentSource,
     /try\s*\{[\s\S]*await onRanchCollection\(attempt\)[\s\S]*code: "unexpected_response"/,
   );
-  assert.match(pageSource, /collectBoundRanch\(input\)/);
+  assert.match(liveSource, /collectBoundRanch\(input\)/);
   assert.match(
-    pageSource,
+    liveSource,
     /ranch:[\s\S]*data: result\.data\.data\.resource[\s\S]*revision: result\.data\.revision/,
   );
   assert.match(
-    pageSource,
+    liveSource,
     /onRanchCollection=\{previewData \? undefined : submitRanchCollectionAction\}/,
   );
   assert.match(
@@ -842,8 +869,10 @@ test("paid cooking tools stay out of the scene until owned and live in the shop"
 
 test("four farm pages retain mounted panels categories and scroll positions while switching", () => {
   const source = readFarmSources();
-  const contentSource =
-    source.match(/export function FarmFieldContent[\s\S]*?(?=function LiveFarmPage)/)?.[0] ?? "";
+  const contentSource = readFileSync(
+    new URL("./page/farm-field-content.tsx", import.meta.url),
+    "utf8",
+  );
   const changeSceneSource = contentSource.match(/const changeScene[\s\S]*?\n {2}};/)?.[0] ?? "";
 
   assert.match(source, /function createInitialSceneUiStates/);
@@ -861,7 +890,7 @@ test("four farm pages retain mounted panels categories and scroll positions whil
 });
 
 test("farm scenes cross four lazy JS and CSS boundaries before their first visit", () => {
-  const source = readFileSync(new URL("./farm-page.tsx", import.meta.url), "utf8");
+  const source = readFileSync(new URL("./page/farm-field-content.tsx", import.meta.url), "utf8");
   const commonStyles = readFileSync(new URL("./farm-page.css", import.meta.url), "utf8");
   const sceneIds = ["field", "ranch", "cooking", "neighborhood"] as const;
 
@@ -875,7 +904,7 @@ test("farm scenes cross four lazy JS and CSS boundaries before their first visit
       "utf8",
     );
 
-    assert.match(source, new RegExp(`import\\("\\./scenes/${sceneId}/${sceneId}-scene"\\)`));
+    assert.match(source, new RegExp(`import\\("\\.\\./scenes/${sceneId}/${sceneId}-scene"\\)`));
     assert.match(sceneSource, new RegExp(`import "\\./${sceneId}-scene\\.css"`));
     assert.match(sceneStyles, new RegExp(`${sceneId}-background\\.png`));
   }
@@ -887,7 +916,7 @@ test("farm scenes cross four lazy JS and CSS boundaries before their first visit
 });
 
 test("farm panels load only after their entry opens across real JS and CSS boundaries", () => {
-  const source = readFileSync(new URL("./farm-page.tsx", import.meta.url), "utf8");
+  const source = readFileSync(new URL("./page/farm-field-content.tsx", import.meta.url), "utf8");
   const commonStyles = readFileSync(new URL("./farm-page.css", import.meta.url), "utf8");
   const bulletinSource = readFarmPanelSource("bulletin");
   const bulletinStyles = readFileSync(
@@ -899,8 +928,8 @@ test("farm panels load only after their entry opens across real JS and CSS bound
   const shopSource = readFarmPanelSource("shop");
   const shopStyles = readFileSync(new URL("./panels/shop-panel.css", import.meta.url), "utf8");
 
-  assert.match(source, /import\("\.\/panels\/bulletin-panel"\)/);
-  assert.match(source, /import\("\.\/panels\/tool-panel"\)/);
+  assert.match(source, /import\("\.\.\/panels\/bulletin-panel"\)/);
+  assert.match(source, /import\("\.\.\/panels\/tool-panel"\)/);
   assert.match(toolSource, /import\("\.\/shop-panel"\)/);
   assert.match(source, /<Suspense fallback=\{null\}>[\s\S]*<DingdongBulletin/);
   assert.match(source, /<Suspense fallback=\{null\}>[\s\S]*<FarmToolPanel/);
@@ -936,17 +965,16 @@ test("three scene bodies expose complete honest management scaffolds without loc
     "utf8",
   );
   const styles = readFarmStyles();
-  const fieldOverlaySource =
-    source.match(/function FieldSceneOverlay[\s\S]*?(?=function CookingPrepOverlay)/)?.[0] ?? "";
-  const cookingOverlaySource =
-    source.match(/function CookingPrepOverlay[\s\S]*?(?=function CookingIngredientPicker)/)?.[0] ??
-    "";
-  const cookingResultSource =
-    source.match(/function CookingResultStylePreview[\s\S]*?(?=function SceneTabs)/)?.[0] ?? "";
-  const cookingIngredientPickerSource =
-    source.match(
-      /function CookingIngredientPicker[\s\S]*?(?=function CookingResultStylePreview)/,
-    )?.[0] ?? "";
+  const fieldOverlaySource = readFileSync(
+    new URL("./page/action-feedback.tsx", import.meta.url),
+    "utf8",
+  );
+  const cookingOverlaySource = readFileSync(
+    new URL("./page/cooking/prep-overlay.tsx", import.meta.url),
+    "utf8",
+  );
+  const cookingResultSource = cookingOverlaySource;
+  const cookingIngredientPickerSource = cookingOverlaySource;
 
   assert.doesNotMatch(fieldOverlaySource, /farmName|farmDoorplate|农场资料|门牌/);
   assert.doesNotMatch(fieldOverlaySource, /filter\(|plot\.state === "ripe"|ripeCount/);
@@ -1103,14 +1131,14 @@ test("three scene bodies expose complete honest management scaffolds without loc
 });
 
 test("live harvest assist submits one idempotent action and replaces the field from the receipt", () => {
-  const source = readFileSync(new URL("./farm-page.tsx", import.meta.url), "utf8");
+  const liveSource = readFileSync(new URL("./page/live-farm-page.tsx", import.meta.url), "utf8");
   const styles = readFarmStyles();
-  const liveSource =
-    source.match(/function LiveFarmPage[\s\S]*?(?=export function FarmPage)/)?.[0] ?? "";
-  const receiptSource =
-    source.match(/function FarmHarvestReceipt[\s\S]*?(?=function FarmHarvestNotice)/)?.[0] ?? "";
+  const receiptSource = readFileSync(
+    new URL("./page/action-feedback.tsx", import.meta.url),
+    "utf8",
+  );
 
-  assert.match(source, /harvestBoundFarmField/);
+  assert.match(liveSource, /harvestBoundFarmField/);
   assert.match(liveSource, /idempotencyKey: crypto\.randomUUID\(\)/);
   assert.match(liveSource, /expectedRevision: state\.data\.revision/);
   assert.match(liveSource, /const result = await harvestBoundFarmField\(attempt\)/);
@@ -1402,6 +1430,10 @@ test("farm shop follows the active scene and mirrors the existing store groups",
 
 test("three shop carts keep separate session drafts and expose only honest checkout paths", () => {
   const source = readFarmSources();
+  const fieldContentSource = readFileSync(
+    new URL("./page/farm-field-content.tsx", import.meta.url),
+    "utf8",
+  );
   const styles = readFarmStyles();
   const shopCartSources = readFarmSourceFiles([
     "./panels/shop/shared.tsx",
@@ -1418,7 +1450,7 @@ test("three shop carts keep separate session drafts and expose only honest check
     /function createEmptyShopCarts[\s\S]*field: \{\},[\s\S]*ranch: \{\},[\s\S]*cooking: \{\}/,
   );
   assert.match(
-    source,
+    fieldContentSource,
     /export function FarmFieldContent[\s\S]*useState<ShopCartState>\(\(\) => createEmptyShopCarts\(\)\)/,
   );
   assert.match(source, /setShopCarts\(\(current\) =>[\s\S]*\[sceneId\]: nextSceneCart/);
@@ -1622,9 +1654,13 @@ test("ranch shop separates animals and pets, scrolls its fixed grid and opens de
 });
 
 test("all field, ranch and cooking tools use confirmed sections while settings stay in one editable form", () => {
-  const source = readFarmSources();
+  const source = `${readFileSync(new URL("./page/model.ts", import.meta.url), "utf8")}\n${readFarmSources()}`;
   const styles = readFarmStyles();
-  const featurePanelSources = readFarmSourceFiles(["./panels/tools/common.tsx", "./farm-page.tsx"]);
+  const featurePanelSources = readFarmSourceFiles([
+    "./panels/tools/common.tsx",
+    "./dev/farm-tool-layouts.ts",
+    "./farm-page.tsx",
+  ]);
   const featurePanelsSource =
     featurePanelSources.match(
       /const FARM_FEATURE_PANELS:[\s\S]*?(?=const FARM_TOOL_LAYOUTS)/,
