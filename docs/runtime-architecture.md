@@ -48,27 +48,33 @@ separate from the Doorbell server and community database. Root Git ignore rules 
 `old-vps/farm/dist/**`, so a newly added production runtime module cannot disappear behind the
 workspace-wide `dist/` ignore; ordinary application and package build directories remain ignored.
 
-The `farm` branch now contains the unconnected Lingye economy／career／nature authority cores and
-their complete pre-integration contract repairs through commit
-`c7d0e2288aa3c7ebf518ea1232b16761655c82e0`, pushed to `origin/farm`.
+The `farm` branch now contains the Lingye economy／career／nature authority cores and their reviewed
+pre-production adapter contract repairs through commit
+`77c0ec5`, pushed to `origin/farm`.
 The farm package, startup gate and core CI require Node.js 22.16.0 or newer. Economy and careers
 share a separate `node:sqlite` database container whose default runtime
 file is `${AIFARM_DATA_DIR}/lingye-world.sqlite`; its resident table is only a stable `resident_id`
 reference and does not copy QQ identity, Human sessions, home profiles, or community credentials.
 Weather and public-disaster authority remains in the existing atomic `world.json` under its `nature`
-field so farm and ranch read one world fact. The formal world backend now separates
-`residentCommands`, `trustedSystemCommands`, and `queries`: only actions whose services already verify
-an explicit resident actor are resident-facing candidates, while system credit, import, settlement and
-the remaining authority workflows stay on the trusted surface. HTTP／MCP adapters still do not exist and
-must inject the authenticated actor rather than publishing either command table automatically. Nested
+field so farm and ranch read one world fact. The formal world backend exposes
+`forResident(authenticatedResidentId)`, `trustedSystemCommands`, and `trustedQueries` as separate
+surfaces. The resident facade closes over the authenticated identity, omits `actorResidentId` from its
+public shape, and limits account, receipt, exchange, duty, and job reads to that resident's own or
+participating records; system credit, import, settlement, and unrestricted authority queries remain on
+explicitly trusted surfaces. The Doorbell Lingye adapter now reads the caller's account through this
+facade instead of a caller-selected raw query, and no mixed or raw resident-command table is exported.
+Nested
 world commands use SQLite savepoints, so a failed command cannot leave its earlier economy writes inside
 an outer transaction that catches the error and later commits. Reporter performance below five valid
-likes remains a valid zero-award result with no financial receipt, and old idempotency results hydrate a
-referenced receipt from the current authoritative database before replay. Reservation settlements retain
+likes remains a valid zero-award result with no financial receipt or economy journal, but it now writes
+one final reporter-evaluation settlement keyed by job, source reference, and idempotency key; exact replay
+returns that fact, while changed likes, source, or key conflict instead of rewriting the result. Positive
+evaluations use the same settlement table with their authoritative receipt. Old idempotency results hydrate
+a referenced receipt from the current authoritative database before replay. Reservation settlements retain
 their originating hold identity, and farm／UGC／nature changes can share one durable world-file rename.
-These modules and their same-database transaction tests are not active at runtime: farm process startup,
-old-balance migration, gameplay adapters, Human／MCP routes, deployment, and production activation are
-not implemented by this entry.
+These modules and their same-database transaction tests are not active in production: old-balance
+migration, real-player readiness, deployment, and production activation are not implemented by this
+entry.
 
 The farm snapshot is not currently source-reproducible: its root has the live-derived `dist/` and
 content but no matching `src/`, `tsconfig.json`, or lockfile, while `source-reference/` is older and

@@ -64,12 +64,16 @@ interface CanonicalPurchaseRequestLine {
   quantity: number;
 }
 
+function compareText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
 function canonicalizeRequestLines(
   lines: readonly CanonicalPurchaseRequestLine[],
 ): CanonicalPurchaseRequestLine[] {
   return [...lines].sort((left, right) => {
-    const kindOrder = left.kind.localeCompare(right.kind);
-    return kindOrder === 0 ? left.itemId.localeCompare(right.itemId) : kindOrder;
+    const kindOrder = compareText(left.kind, right.kind);
+    return kindOrder === 0 ? compareText(left.itemId, right.itemId) : kindOrder;
   });
 }
 

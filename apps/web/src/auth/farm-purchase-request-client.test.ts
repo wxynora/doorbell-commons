@@ -82,6 +82,31 @@ test("purchase-request client accepts canonical response order for a non-canonic
   assert.equal(result.ok, true);
 });
 
+test("purchase-request client uses the server's exact code-unit ordering for Unicode item ids", async () => {
+  const result = await createBoundFarmPurchaseRequest({
+    fetcher: async () =>
+      jsonResponse({
+        ...CREATE_RESULT,
+        data: {
+          ...CREATE_RESULT.data,
+          items: [
+            { kind: "seed", item_id: "a\u0308", qty: 2 },
+            { kind: "seed", item_id: "ä", qty: 1 },
+          ],
+        },
+      }),
+    idempotencyKey: KEY,
+    shop: "field",
+    shopRevision: "field-shop-v1:test",
+    items: [
+      { kind: "seed", itemId: "ä", quantity: 1 },
+      { kind: "seed", itemId: "a\u0308", quantity: 2 },
+    ],
+  });
+
+  assert.equal(result.ok, true);
+});
+
 test("purchase-request client exposes expired and failed replays as terminal outcomes", async () => {
   for (const [status, code, message] of [
     ["expired", "purchase_request_expired", "之前的购物请求已过期，请重新发送。"],
