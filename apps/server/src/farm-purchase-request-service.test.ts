@@ -135,19 +135,40 @@ test("same resident and UUID replays one canonical request, while changed conten
       items: [{ kind: "animal", itemId: "duck", qty: 1, displayName: "鸭子" }],
     };
     const first = service.create(input);
-    const replay = service.create(input);
+    const replay = service.replay({
+      residentId: input.residentId,
+      shop: input.shop,
+      shopRevision: input.shopRevision,
+      idempotencyKey: input.idempotencyKey,
+      items: input.items,
+    });
     assert.equal(first.created, true);
+    assert.ok(replay);
     assert.equal(replay.created, false);
     assert.equal(replay.request.requestId, first.request.requestId);
     assert.equal(replay.request.wakeId, first.request.wakeId);
-    const renamedReplay = service.create({ ...input, humanName: "另一位人类" });
+    const renamedReplay = service.replay({
+      residentId: input.residentId,
+      shop: input.shop,
+      shopRevision: input.shopRevision,
+      idempotencyKey: input.idempotencyKey,
+      items: [{ kind: "animal", itemId: "duck", qty: 1 }],
+    });
+    assert.ok(renamedReplay);
     assert.equal(renamedReplay.created, false);
     assert.equal(renamedReplay.notificationText, first.notificationText);
     assert.equal(database.listPendingBellWakes("resident-1").length, 1);
     const firstItem = input.items[0];
     assert.ok(firstItem);
     assert.throws(
-      () => service.create({ ...input, items: [{ ...firstItem, qty: 2 }] }),
+      () =>
+        service.replay({
+          residentId: input.residentId,
+          shop: input.shop,
+          shopRevision: input.shopRevision,
+          idempotencyKey: input.idempotencyKey,
+          items: [{ ...firstItem, qty: 2 }],
+        }),
       FarmPurchaseRequestIdempotencyConflictError,
     );
     assert.equal(

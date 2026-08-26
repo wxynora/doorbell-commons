@@ -30,6 +30,7 @@ import {
   boundFarmOverviewErrorSchema,
   boundFarmOverviewSuccessSchema,
   boundFarmPurchaseRequestCreateSuccessSchema,
+  boundFarmPurchaseRequestErrorSchema,
   boundFarmRanchCollectionErrorSchema,
   boundFarmRanchCollectionSuccessSchema,
   boundFarmRanchDecorationActionErrorSchema,
@@ -3624,6 +3625,21 @@ test("bound farm purchase request persists one authoritative cart and returns no
     const created = boundFarmPurchaseRequestCreateSuccessSchema.parse(create.json());
     assert.equal(created.data.status, "requested");
     assert.deepEqual(created.data.items, [{ kind: "potion", item_id: "speed_potion", qty: 2 }]);
+    const catalogCallsAfterCreate = harness.farmCatalogReader.calls.length;
+    const currentShop = harness.farmCatalogReader.success.data.shop;
+    assert.equal(currentShop.status, "available");
+    if (currentShop.status !== "available") throw new Error("Expected an available field shop");
+    harness.farmCatalogReader.success = {
+      ...harness.farmCatalogReader.success,
+      data: {
+        ...harness.farmCatalogReader.success.data,
+        shop: {
+          ...currentShop,
+          revision: "field-shop-v2:removed",
+          items: [],
+        },
+      },
+    };
 
     const replay = await harness.app.inject({
       method: "POST",
@@ -3636,10 +3652,28 @@ test("bound farm purchase request persists one authoritative cart and returns no
       },
     });
     assert.equal(replay.statusCode, 200);
+    assert.equal(harness.farmCatalogReader.calls.length, catalogCallsAfterCreate);
     assert.deepEqual(
       boundFarmPurchaseRequestCreateSuccessSchema.parse(replay.json()).data,
       created.data,
     );
+
+    const conflictingReplay = await harness.app.inject({
+      method: "POST",
+      url: "/api/farm/purchase-requests",
+      headers: { cookie, "idempotency-key": idempotencyKey },
+      payload: {
+        shop: "field",
+        shop_revision: shopRevision,
+        items: [{ kind: "potion", item_id: "speed_potion", qty: 3 }],
+      },
+    });
+    assert.equal(conflictingReplay.statusCode, 409);
+    assert.equal(
+      boundFarmPurchaseRequestErrorSchema.parse(conflictingReplay.json()).error.code,
+      "idempotency_conflict",
+    );
+    assert.equal(harness.farmCatalogReader.calls.length, catalogCallsAfterCreate);
 
     const pendingWake = harness.database.listPendingBellWakes(
       "b60a5f78-9e87-4bc4-a06f-50df4e23d42d",

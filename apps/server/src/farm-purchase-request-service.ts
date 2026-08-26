@@ -5,6 +5,7 @@ import type {
   FarmPurchaseRequestRecord,
   FarmPurchaseShop,
 } from "./community-database.js";
+import { FarmPurchaseRequestIdempotencyConflictError } from "./community-database.js";
 
 export const FARM_PURCHASE_BELL_REASON = "farm_purchase_request" as const;
 
@@ -50,6 +51,14 @@ export interface FarmPurchaseRequestCreateResult {
   request: FarmPurchaseRequestRecord;
   created: boolean;
   notificationText: string;
+}
+
+export interface FarmPurchaseRequestReplayInput {
+  residentId: string;
+  shop: FarmPurchaseShop;
+  shopRevision: string;
+  idempotencyKey: string;
+  items: readonly Pick<FarmPurchaseRequestItemInput, "itemId" | "kind" | "qty">[];
 }
 
 export class FarmPurchaseRequestInputError extends Error {
@@ -131,6 +140,38 @@ function canonicalPayloadHash(
   return createHash("sha256").update(canonical, "utf8").digest("hex");
 }
 
+function normalizeStableItems(
+  items: readonly Pick<FarmPurchaseRequestItemInput, "itemId" | "kind" | "qty">[],
+): Array<Pick<FarmPurchaseRequestItemInput, "itemId" | "kind" | "qty">> {
+  if (items.length === 0) {
+    throw new FarmPurchaseRequestInputError("At least one purchase item is required");
+  }
+  const seen = new Set<string>();
+  const normalized = items.map((item) => {
+    if (
+      item.kind.length === 0 ||
+      item.itemId.length === 0 ||
+      !Number.isSafeInteger(item.qty) ||
+      item.qty <= 0
+    ) {
+      throw new FarmPurchaseRequestInputError(
+        "Purchase items must have stable IDs and positive quantities",
+      );
+    }
+    const key = farmPurchaseItemStatusKey(item);
+    if (seen.has(key)) {
+      throw new FarmPurchaseRequestInputError("A purchase item may appear only once per request");
+    }
+    seen.add(key);
+    return { itemId: item.itemId, kind: item.kind, qty: item.qty };
+  });
+  normalized.sort((left, right) => {
+    const kindOrder = compareText(left.kind, right.kind);
+    return kindOrder === 0 ? compareText(left.itemId, right.itemId) : kindOrder;
+  });
+  return normalized;
+}
+
 export class FarmPurchaseRequestService {
   readonly #database: CommunityDatabase;
   readonly #now: () => number;
@@ -181,6 +222,58 @@ export class FarmPurchaseRequestService {
     return {
       ...result,
       notificationText: typeof storedText === "string" ? storedText : notificationText,
+    };
+  }
+
+  replay(input: FarmPurchaseRequestReplayInput): FarmPurchaseRequestCreateResult | undefined {
+    if (!UUID_PATTERN.test(input.idempotencyKey)) {
+      throw new FarmPurchaseRequestInputError("Idempotency-Key must be a UUID");
+    }
+    if (!Object.hasOwn(SHOP_LABELS, input.shop)) {
+      throw new FarmPurchaseRequestInputError("Only the field and ranch shops can be requested");
+    }
+    if (input.shopRevision.length === 0) {
+      throw new FarmPurchaseRequestInputError("Shop revision is required");
+    }
+
+    const existing = this.#database.getFarmPurchaseRequestByIdempotencyKey(
+      input.residentId,
+      input.idempotencyKey.toLowerCase(),
+    );
+    if (!existing) {
+      return undefined;
+    }
+
+    const requestedItems = normalizeStableItems(input.items);
+    const existingItems = normalizeStableItems(existing.items);
+    const sameItems =
+      requestedItems.length === existingItems.length &&
+      requestedItems.every((item, index) => {
+        const existingItem = existingItems[index];
+        return (
+          existingItem !== undefined &&
+          existingItem.itemId === item.itemId &&
+          existingItem.kind === item.kind &&
+          existingItem.qty === item.qty
+        );
+      });
+    if (
+      existing.shop !== input.shop ||
+      existing.shopRevision !== input.shopRevision ||
+      !sameItems
+    ) {
+      throw new FarmPurchaseRequestIdempotencyConflictError();
+    }
+
+    const storedWake = this.#database.getBellWake(existing.residentId, existing.wakeId);
+    const storedText = storedWake?.payload?.text;
+    return {
+      request: existing,
+      created: false,
+      notificationText:
+        typeof storedText === "string"
+          ? storedText
+          : buildFarmPurchaseNotificationText(existing.humanName, existing.shop, existing.items),
     };
   }
 

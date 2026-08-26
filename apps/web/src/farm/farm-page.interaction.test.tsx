@@ -155,6 +155,15 @@ const FIELD_AFTER = {
   server_time: "2026-08-24T04:01:00.000Z",
 } as const;
 
+const FIELD_AFTER_CROSS_MUTATION = {
+  data: {
+    ...FIELD_BEFORE.data,
+    balance: { farm_coins: 12 },
+  },
+  revision: "field-v1:after-cross-mutation",
+  server_time: "2026-08-24T04:00:30.000Z",
+} as const;
+
 const HARVEST_SUCCESS = {
   ok: true,
   data: {
@@ -389,6 +398,35 @@ function marketCatalogResult() {
         },
       },
       market_revision: MARKET_BEFORE,
+    },
+  } as const;
+}
+
+function marketCookingCatalogResult(kind: "ingredient" | "dish") {
+  const base = marketCatalogResult();
+  const item =
+    kind === "ingredient"
+      ? { item_id: "salt", name: "盐" }
+      : { item_id: "honey_tea", name: "蜂蜜茶" };
+  return {
+    ...base,
+    data: {
+      ...base.data,
+      data: {
+        ...base.data.data,
+        market: {
+          ...base.data.data.market,
+          listings: [
+            {
+              ...base.data.data.market.listings[0],
+              kind,
+              item_id: item.item_id,
+              name: item.name,
+            },
+            ...base.data.data.market.listings.slice(1),
+          ],
+        },
+      },
     },
   } as const;
 }
@@ -1092,6 +1130,27 @@ describe("FarmPage authority resource lifecycle", () => {
     });
   });
 
+  it("uses the refreshed field revision for harvest after a kitchen mutation", async () => {
+    clients.field
+      .mockResolvedValueOnce({ ok: true, data: FIELD_BEFORE })
+      .mockResolvedValueOnce({ ok: true, data: FIELD_AFTER_CROSS_MUTATION });
+    await renderLiveFarm();
+
+    fireEvent.click(screen.getByRole("button", { name: "料理台" }));
+    await waitFor(() => expect(clients.kitchen).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "商店" }));
+    const shop = await screen.findByRole("region", { name: "料理台商店" });
+    fireEvent.click(within(shop).getByRole("button", { name: "刷新" }));
+    await waitFor(() => expect(clients.field).toHaveBeenCalledTimes(2));
+
+    fireEvent.click(screen.getByRole("button", { name: "农场" }));
+    fireEvent.click(await screen.findByRole("button", { name: "一键帮 TA 收" }));
+    await waitFor(() => expect(clients.harvest).toHaveBeenCalledTimes(1));
+    expect(clients.harvest.mock.calls[0]?.[0]).toMatchObject({
+      expectedRevision: FIELD_AFTER_CROSS_MUTATION.revision,
+    });
+  });
+
   it("reuses the same idempotency key when a network-unknown harvest is retried", async () => {
     clients.harvest
       .mockResolvedValueOnce({
@@ -1134,9 +1193,59 @@ describe("FarmPage authority resource lifecycle", () => {
     expect(screen.queryByText("旧种子")).toBeNull();
     expect(screen.getByText("新种子")).toBeTruthy();
   });
+
+  it("does not let an older field response overwrite a newer manual refresh", async () => {
+    const older = deferred<{ ok: true; data: typeof FIELD_AFTER_CROSS_MUTATION }>();
+    const newer = deferred<{ ok: true; data: typeof FIELD_AFTER }>();
+    clients.field
+      .mockResolvedValueOnce({ ok: true, data: FIELD_BEFORE })
+      .mockImplementationOnce(() => older.promise)
+      .mockImplementationOnce(() => newer.promise);
+    await renderLiveFarm();
+
+    fireEvent.click(screen.getByRole("button", { name: "料理台" }));
+    await waitFor(() => expect(clients.kitchen).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "商店" }));
+    const shop = await screen.findByRole("region", { name: "料理台商店" });
+    fireEvent.click(within(shop).getByRole("button", { name: "刷新" }));
+    await waitFor(() => expect(clients.field).toHaveBeenCalledTimes(2));
+
+    fireEvent.click(screen.getByRole("button", { name: "重新读取农场数据" }));
+    await waitFor(() => expect(clients.field).toHaveBeenCalledTimes(3));
+    await act(async () => {
+      newer.resolve({ ok: true, data: FIELD_AFTER });
+    });
+    await screen.findByRole("button", { name: "一键帮 TA 收" });
+    expect(screen.getByRole("status", { name: "农场金币余额 55" })).toBeTruthy();
+
+    await act(async () => {
+      older.resolve({ ok: true, data: FIELD_AFTER_CROSS_MUTATION });
+    });
+    expect(screen.getByRole("status", { name: "农场金币余额 55" })).toBeTruthy();
+  });
 });
 
 describe("FarmPage cross-farm market actions", () => {
+  it.each(["ingredient", "dish"] as const)(
+    "reloads an opened cooking inventory after buying a %s at the market",
+    async (kind) => {
+      clients.catalog.mockResolvedValue(marketCookingCatalogResult(kind));
+      clients.market.mockResolvedValue(marketBuySuccess("00000000-0000-4000-8000-000000000000"));
+      await renderLiveFarm();
+
+      fireEvent.click(screen.getByRole("button", { name: "料理台" }));
+      await waitFor(() => expect(clients.kitchen).toHaveBeenCalledTimes(1));
+      fireEvent.click(screen.getByRole("button", { name: "农场" }));
+      fireEvent.click(screen.getByRole("button", { name: "集市" }));
+      const market = await screen.findByRole("region", { name: "真实集市" });
+      fireEvent.click(within(market).getByRole("button", { name: "购买" }));
+
+      await waitFor(() => expect(clients.market).toHaveBeenCalledTimes(1));
+      expect(clients.market.mock.calls[0]?.[0]).toMatchObject({ kind });
+      await waitFor(() => expect(clients.kitchen).toHaveBeenCalledTimes(2));
+    },
+  );
+
   it("buys another farm's ordinary listing, accepts its barter listing, and keeps own listings removable", async () => {
     clients.catalog.mockResolvedValue(marketCatalogResult());
     clients.market.mockImplementation(async (input: { action: string; idempotencyKey: string }) =>
@@ -1313,7 +1422,20 @@ describe("FarmPage original plant and ranch decoration actions", () => {
   });
 
   it("places a stored ranch decoration and replaces the ranch resource", async () => {
-    clients.ranch.mockResolvedValue(RANCH_WITH_STORED_DECORATION);
+    clients.ranch.mockResolvedValueOnce(RANCH_WITH_STORED_DECORATION).mockResolvedValue({
+      ...RANCH_WITH_STORED_DECORATION,
+      data: {
+        ...RANCH_WITH_STORED_DECORATION.data,
+        data: {
+          ...RANCH_WITH_STORED_DECORATION.data.data,
+          decorations: {
+            status: "available",
+            placed: [{ status: "known", decoration_id: "lantern_warm", name: "暖灯" }],
+            stored: [],
+          },
+        },
+      },
+    });
     await renderLiveFarm();
 
     fireEvent.click(screen.getByRole("button", { name: "牧场" }));
@@ -1701,7 +1823,16 @@ describe("FarmPage kitchen cart checkout", () => {
 
 describe("FarmPage authoritative kitchen cooking", () => {
   it("submits two raw item refs, replaces kitchen data, clears prep, and shows the authority outcome", async () => {
-    clients.kitchen.mockResolvedValue(KITCHEN_COOK_RESULT);
+    const cookedKitchen = kitchenCookSuccess("00000000-0000-4000-8000-000000000000");
+    clients.kitchen.mockResolvedValueOnce(KITCHEN_COOK_RESULT).mockResolvedValue({
+      ok: true,
+      data: {
+        data: cookedKitchen.data.data.resource,
+        kitchen_inventory_revision: cookedKitchen.data.kitchen_inventory_revision,
+        shop_revision: KITCHEN_COOK_RESULT.data.shop_revision,
+        server_time: cookedKitchen.data.server_time,
+      },
+    });
     await renderLiveFarm();
 
     fireEvent.click(screen.getByRole("button", { name: "料理台" }));

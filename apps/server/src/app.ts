@@ -318,6 +318,7 @@ import {
   FarmHumanOriginalPlantActionUnavailableError,
 } from "./farm-original-plant-action-client.js";
 import {
+  type FarmPurchaseRequestCreateResult,
   FarmPurchaseRequestInputError,
   type FarmPurchaseRequestService,
 } from "./farm-purchase-request-service.js";
@@ -861,6 +862,24 @@ function sendBoundFarmPurchaseRequestError(
       },
     }),
   );
+}
+
+function sendBoundFarmPurchaseRequestSuccess(
+  reply: FastifyReply,
+  result: FarmPurchaseRequestCreateResult,
+  items: readonly { kind: string; item_id: string; qty: number }[],
+) {
+  reply.header("cache-control", "no-store");
+  return boundFarmPurchaseRequestCreateSuccessSchema.parse({
+    data: {
+      shop: result.request.shop,
+      shop_revision: result.request.shopRevision,
+      items,
+      status: result.request.status,
+      expires_at: new Date(result.request.expiresAt).toISOString(),
+    },
+    server_time: new Date().toISOString(),
+  });
 }
 
 type BoundFarmStructuredErrorCode =
@@ -3633,6 +3652,20 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
     try {
       const community = await options.registrationAuth.getCurrentSession(token);
+      const replay = options.farmPurchaseRequestService.replay({
+        residentId: community.resident.residentId,
+        shop: parsedBody.data.shop,
+        shopRevision: parsedBody.data.shop_revision,
+        idempotencyKey: parsedIdempotencyKey.data,
+        items: parsedBody.data.items.map((item) => ({
+          itemId: item.item_id,
+          kind: item.kind,
+          qty: item.qty,
+        })),
+      });
+      if (replay) {
+        return sendBoundFarmPurchaseRequestSuccess(reply, replay, parsedBody.data.items);
+      }
       const catalog = await options.registrationAuth.getCurrentFarmCatalog(token);
       const settings = catalog.data.settings;
       if (
@@ -3752,17 +3785,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         idempotencyKey: parsedIdempotencyKey.data,
         items: requestItems,
       });
-      reply.header("cache-control", "no-store");
-      return boundFarmPurchaseRequestCreateSuccessSchema.parse({
-        data: {
-          shop: created.request.shop,
-          shop_revision: created.request.shopRevision,
-          items: parsedBody.data.items,
-          status: created.request.status,
-          expires_at: new Date(created.request.expiresAt).toISOString(),
-        },
-        server_time: new Date().toISOString(),
-      });
+      return sendBoundFarmPurchaseRequestSuccess(reply, created, parsedBody.data.items);
     } catch (error) {
       if (error instanceof AuthenticationRequiredError) {
         return sendBoundFarmPurchaseRequestError(

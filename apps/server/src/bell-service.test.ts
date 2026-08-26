@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import Database from "better-sqlite3";
 import { BellService, type BellStreamSink } from "./bell-service.js";
-import { CommunityDatabase } from "./community-database.js";
+import { CommunityDatabase, FARM_PURCHASE_REQUEST_TTL_MS } from "./community-database.js";
 import { FarmPurchaseRequestService } from "./farm-purchase-request-service.js";
 import { MailboxService } from "./mailbox-service.js";
 
@@ -327,6 +327,115 @@ test("a new queued purchase wake reaches an online resident and reconnect replay
     ["purchase-wake-1", "purchase-wake-2"],
   );
   secondConnection.close();
+  service.close();
+  database.close();
+});
+
+test("an offline purchase request expires before reconnect and only emits cancellation", async () => {
+  const { database, residentId, homeId } = registeredDatabase();
+  const createdAt = 4_000;
+  const purchaseService = new FarmPurchaseRequestService({
+    database,
+    now: () => createdAt,
+    generateRequestId: () => "request-expired-offline",
+    generateWakeId: () => "wake-expired-offline",
+  });
+  const idempotencyKey = "00000000-0000-4000-8000-000000000014";
+  purchaseService.create({
+    residentId,
+    homeId,
+    humanName: "辛玥",
+    shop: "field",
+    shopRevision: "field-v1",
+    idempotencyKey,
+    items: [{ kind: "seed", itemId: "ordinary_seed", qty: 1, displayName: "普通种子" }],
+  });
+  assert.equal(
+    database.getFarmPurchaseRequestByIdempotencyKey(residentId, idempotencyKey)?.status,
+    "requested",
+  );
+
+  const service = new BellService({
+    database,
+    generateConnectionEpoch: () => "epoch-expired-offline",
+    heartbeatIntervalMs: 30_000,
+    now: () => createdAt + FARM_PURCHASE_REQUEST_TTL_MS + 1,
+    registrationAuth: { confirmCurrentResidentMembership: async () => undefined },
+    replayIntervalMs: 60_000,
+  });
+  const collected = collectingSink();
+  const connection = await service.connect(TOKEN, collected.sink);
+
+  assert.deepEqual(
+    collected.events.filter((event) => event.event),
+    [
+      { event: "connected", data: { version: 1, connection_epoch: "epoch-expired-offline" } },
+      {
+        event: "cancel",
+        data: {
+          version: 1,
+          connection_epoch: "epoch-expired-offline",
+          wake_id: "wake-expired-offline",
+        },
+      },
+    ],
+  );
+  assert.equal(collected.events.filter((event) => event.event === "wake").length, 0);
+  assert.equal(
+    database.getFarmPurchaseRequestByIdempotencyKey(residentId, idempotencyKey)?.status,
+    "expired",
+  );
+  assert.equal(database.getBellWake(residentId, "wake-expired-offline")?.status, "cancelled");
+
+  connection.close();
+  service.close();
+  database.close();
+});
+
+test("an online expired purchase request emits one cancellation across refreshes", async () => {
+  const { database, residentId, homeId } = registeredDatabase();
+  const createdAt = 4_000;
+  let now = 5_000;
+  const service = new BellService({
+    database,
+    generateConnectionEpoch: () => "epoch-expired-online",
+    heartbeatIntervalMs: 30_000,
+    now: () => now,
+    registrationAuth: { confirmCurrentResidentMembership: async () => undefined },
+    replayIntervalMs: 60_000,
+  });
+  const purchaseService = new FarmPurchaseRequestService({
+    database,
+    now: () => createdAt,
+    generateRequestId: () => "request-expired-online",
+    generateWakeId: () => "wake-expired-online",
+    bellNotifier: service,
+  });
+  const collected = collectingSink();
+  const connection = await service.connect(TOKEN, collected.sink);
+  const idempotencyKey = "00000000-0000-4000-8000-000000000015";
+  purchaseService.create({
+    residentId,
+    homeId,
+    humanName: "辛玥",
+    shop: "ranch",
+    shopRevision: "ranch-v1",
+    idempotencyKey,
+    items: [{ kind: "animal", itemId: "duck", qty: 1, displayName: "鸭子" }],
+  });
+  now = createdAt + FARM_PURCHASE_REQUEST_TTL_MS + 1;
+  service.refreshResident(residentId);
+  service.refreshResident(residentId);
+
+  assert.equal(collected.events.filter((event) => event.event === "wake").length, 1);
+  assert.equal(collected.events.filter((event) => event.event === "cancel").length, 1);
+  assert.equal(
+    database.getFarmPurchaseRequestByIdempotencyKey(residentId, idempotencyKey)?.status,
+    "expired",
+  );
+  assert.equal(database.getBellWake(residentId, "wake-expired-online")?.status, "cancelled");
+
+  connection.close();
   service.close();
   database.close();
 });

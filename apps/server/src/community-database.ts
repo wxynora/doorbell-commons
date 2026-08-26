@@ -3307,6 +3307,93 @@ export class CommunityDatabase {
     return this.#readFarmPurchaseRequest(requestId, residentId);
   }
 
+  getFarmPurchaseRequestByIdempotencyKey(
+    residentId: string,
+    idempotencyKey: string,
+  ): FarmPurchaseRequestRecord | undefined {
+    const row = this.#database
+      .prepare(
+        `SELECT request_id,
+                wake_id,
+                resident_id,
+                home_id,
+                idempotency_key,
+                shop,
+                shop_revision,
+                human_name,
+                status,
+                created_at,
+                expires_at,
+                payload_hash
+         FROM farm_purchase_requests
+         WHERE resident_id = ? AND idempotency_key = ?`,
+      )
+      .get(residentId, idempotencyKey) as FarmPurchaseRequestRow | undefined;
+    return row
+      ? mapFarmPurchaseRequest(row, this.#readFarmPurchaseRequestItems(row.request_id))
+      : undefined;
+  }
+
+  expirePendingFarmPurchaseRequestsForResident(
+    residentId: string,
+    now: number,
+  ): BellWakeCancellationResult {
+    const transaction = this.#database.transaction(() => {
+      this.#database
+        .prepare(
+          `UPDATE farm_purchase_requests
+           SET status = 'expired'
+           WHERE resident_id = ?
+             AND status = 'requested'
+             AND expires_at <= ?`,
+        )
+        .run(residentId, now);
+      const pending = this.#database
+        .prepare(
+          `SELECT wake_id
+           FROM bell_wakes
+           WHERE resident_id = ?
+             AND reason = 'farm_purchase_request'
+             AND status = 'pending'
+             AND purchase_request_id IN (
+               SELECT request_id
+               FROM farm_purchase_requests
+               WHERE resident_id = ?
+                 AND status = 'expired'
+                 AND expires_at <= ?
+             )
+           ORDER BY wake_id ASC`,
+        )
+        .all(residentId, residentId, now) as Array<{ wake_id: string }>;
+      if (pending.length === 0) {
+        return { residentId, cancelledWakeId: null, cancelledWakeIds: [] };
+      }
+      const cancelledWakeIds = pending.map((wake) => wake.wake_id);
+      this.#database
+        .prepare(
+          `UPDATE bell_wakes
+           SET status = 'cancelled', ended_at = ?
+           WHERE resident_id = ?
+             AND reason = 'farm_purchase_request'
+             AND status = 'pending'
+             AND purchase_request_id IN (
+               SELECT request_id
+               FROM farm_purchase_requests
+               WHERE resident_id = ?
+                 AND status = 'expired'
+                 AND expires_at <= ?
+             )`,
+        )
+        .run(now, residentId, residentId, now);
+      return {
+        residentId,
+        cancelledWakeId: cancelledWakeIds[0] ?? null,
+        cancelledWakeIds,
+      };
+    });
+    return transaction.immediate();
+  }
+
   expireFarmPurchaseRequest(
     residentId: string,
     requestId: string,

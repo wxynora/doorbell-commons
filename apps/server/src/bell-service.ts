@@ -217,8 +217,14 @@ export class BellService {
   }
 
   refreshResident(residentId: string): void {
-    const result = this.#database.cancelPendingBellMailboxWakeForResident(residentId, this.#now());
-    this.#emitCancellations(result);
+    const now = this.#now();
+    const expiredPurchases = this.#database.expirePendingFarmPurchaseRequestsForResident(
+      residentId,
+      now,
+    );
+    this.#emitCancellations(expiredPurchases);
+    const mailbox = this.#database.cancelPendingBellMailboxWakeForResident(residentId, now);
+    this.#emitCancellations(mailbox);
     this.#emitPendingWakes(residentId);
   }
 

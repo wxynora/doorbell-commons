@@ -197,7 +197,10 @@ test("live farm reads only the strict field endpoint while preview keeps its iso
     migratedSource,
     /\/api\/farm\/overview|BoundFarmOverview|getBoundFarmOverview/,
   );
-  assert.match(pageSource, /void getBoundFarmField\(\{ signal: controller\.signal \}\)/);
+  assert.match(
+    pageSource,
+    /const result = await getBoundFarmField\(\{ signal: controller\.signal \}\)/,
+  );
   assert.match(
     pageSource,
     /if \(previewData\) \{[\s\S]*setState\(\{ stage: "ready", data: previewData \}\)[\s\S]*return/,
@@ -783,7 +786,11 @@ test("moving ranch residents keep preview read-only and use authority-backed liv
   );
   assert.match(
     pageSource,
-    /result\.data\.data\.result\.outcome\.kind === "feed"[\s\S]*requireResource\("kitchen", true\)/,
+    /const invalidateAfterFarmMutation = useCallback\(async \(\) => \{[\s\S]*await refreshField\(\);[\s\S]*refreshRequestedResources\(\);/,
+  );
+  assert.match(
+    pageSource,
+    /executeBoundRanchResidentAction\(input\)[\s\S]*await invalidateAfterFarmMutation\(\)/,
   );
   assert.doesNotMatch(residentDetailSource, /购买|金币回传|抓捕|一键收取/);
   assert.match(
