@@ -32,6 +32,11 @@ interface OperationConfig {
 
 const nonEmptyString = z.string().trim().min(1);
 const positiveInteger = z.number().int().positive();
+const uniquePositiveIntegers = z
+  .array(positiveInteger)
+  .min(1)
+  .refine((values) => new Set(values).size === values.length, "地块编号不能重复");
+const animalName = nonEmptyString.refine((value) => !/^\d+$/.test(value), "动物名称不能是数字代号");
 const integer = z.number().int();
 const nonEmptyStrings = z.array(nonEmptyString);
 
@@ -140,19 +145,12 @@ const nonHelpOperations: FarmOperationDefinition[] = [
     [{}, { to: "6" }, { to: "6", plotId: 1 }],
   ),
   defineOperation({
-    op: "farm.use",
-    description:
-      "购买并自动使用加速药水、催熟全部或指定数量地块，或在指定地块使用指定物品；四种形式四选一。",
-    argsHint:
-      "{auto:true, detail?} 或 {all:true, detail?} 或 {count, detail?} 或 {item, plotId, detail?}",
-    branches: [
-      { auto: z.literal(true) },
-      { all: z.literal(true) },
-      { count: positiveInteger },
-      { item: nonEmptyString, plotId: positiveInteger },
-    ],
-    exampleArgs: [{ auto: true }, { all: true }, { count: 3 }, { item: "speed_potion", plotId: 1 }],
-    adapt: (args) => ({ kind: "farm", action: "use", params: args }),
+    op: "farm.ripen",
+    description: "使用加速药水催熟指定地块；plots 里写几个地块编号，就催熟哪几个。",
+    argsHint: "{plots, detail?}",
+    branches: [{ plots: uniquePositiveIntegers }],
+    exampleArgs: [{ plots: [1] }, { plots: [1, 3, 5] }],
+    adapt: (args) => ({ kind: "farm", action: "ripen", params: args }),
   }),
   direct(
     "farm.harvest",
@@ -165,15 +163,12 @@ const nonHelpOperations: FarmOperationDefinition[] = [
   defineOperation({
     op: "farm.run",
     description:
-      "按一次调用完成可选的收旧作物、播种、浇水、使用药水和收获步骤；未填写 water 或 harvest 时沿用当前一条龙默认执行。",
-    argsHint: "{plant?, water?, potion?, harvestFirst?, harvest?, compact?, detail?}",
+      "按一次调用完成可选的收旧作物、播种、浇水和收获步骤；未填写 water 或 harvest 时沿用当前一条龙默认执行。",
+    argsHint: "{plant?, water?, harvestFirst?, harvest?, compact?, detail?}",
     branches: [
       {
         plant: runPlantSchema,
         water: z.union([z.boolean(), z.literal("if-any")]).optional(),
-        potion: z
-          .union([integer, z.literal("auto"), z.literal("all"), z.literal("all-if-any")])
-          .optional(),
         harvestFirst: z.boolean().optional(),
         harvest: z.union([z.boolean(), z.literal("if-any")]).optional(),
         compact: z.boolean().optional(),
@@ -606,10 +601,13 @@ const nonHelpOperations: FarmOperationDefinition[] = [
   }),
   defineOperation({
     op: "farm.glimmer.catch",
-    description: "消耗指定料理尝试诱捕指定异色动物。",
+    description: "消耗指定料理诱捕流光原野当天动物；animal 可填写当天 1～4 代号或动物名称。",
     argsHint: "{animal, dish, detail?}",
-    branches: [{ animal: nonEmptyString, dish: nonEmptyString }],
-    exampleArgs: [{ animal: "动物名称", dish: "料理名称" }],
+    branches: [{ animal: z.union([positiveInteger.max(4), animalName]), dish: nonEmptyString }],
+    exampleArgs: [
+      { animal: 2, dish: "料理名称" },
+      { animal: "动物名称", dish: "料理名称" },
+    ],
     adapt: (args) => ({ kind: "farm", action: "glimmer", params: { op: "catch", ...args } }),
   }),
   defineOperation({

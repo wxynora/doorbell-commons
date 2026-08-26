@@ -63,6 +63,13 @@ const KITCHEN_RESULT = {
       current_day_index: 20700,
       is_current_day: true,
       refresh_at: "2026-08-25T00:00:00.000Z",
+      refresh_window_id: 20700,
+      refresh_used_count: 0,
+      refresh_remaining_count: 10,
+      refresh_limit: 10,
+      next_cost_coins: 100,
+      can_refresh: true,
+      refresh_reset_at: "2026-08-25T00:00:00.000Z",
       ingredients: [
         {
           status: "available",
@@ -79,6 +86,7 @@ const KITCHEN_RESULT = {
     },
   },
   shop_revision: `kitchen-v1:${"a".repeat(64)}`,
+  kitchen_inventory_revision: `kitchen-inventory-v1:${"b".repeat(64)}`,
   server_time: "2026-08-24T04:00:00.000Z",
 };
 

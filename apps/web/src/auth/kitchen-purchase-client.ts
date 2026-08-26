@@ -21,9 +21,11 @@ export interface KitchenPurchaseIssue {
 export interface KitchenPurchaseInput {
   idempotencyKey: string;
   expectedShopRevision: string;
-  kind: "ingredient" | "recipe";
-  itemId: string;
-  quantity: number;
+  items: Array<{
+    kind: "ingredient" | "recipe" | "tool";
+    itemId: string;
+    quantity: number;
+  }>;
 }
 
 interface KitchenPurchaseOptions extends KitchenPurchaseInput {
@@ -54,14 +56,34 @@ function parseServerIssue(payload: unknown): KitchenPurchaseIssue {
     : clientIssue("unexpected_response");
 }
 
+function receiptItemsMatch(
+  requestItems: KitchenPurchaseInput["items"],
+  receiptItems: BoundKitchenPurchase["data"]["result"]["items"],
+): boolean {
+  return (
+    requestItems.length === receiptItems.length &&
+    requestItems.every((item, index) => {
+      const receiptItem = receiptItems[index];
+      return (
+        receiptItem !== undefined &&
+        receiptItem.kind === item.kind &&
+        receiptItem.item_id === item.itemId &&
+        receiptItem.quantity === item.quantity
+      );
+    })
+  );
+}
+
 export async function purchaseBoundKitchenItem(
   options: KitchenPurchaseOptions,
 ): Promise<ApiResult<BoundKitchenPurchase, KitchenPurchaseIssue>> {
   const body = boundFarmKitchenPurchaseRequestSchema.parse({
     expected_shop_revision: options.expectedShopRevision,
-    kind: options.kind,
-    item_id: options.itemId,
-    quantity: options.quantity,
+    items: options.items.map((item) => ({
+      kind: item.kind,
+      item_id: item.itemId,
+      quantity: item.quantity,
+    })),
   });
   const idempotencyKey = farmKitchenPurchaseIdempotencyKeySchema.parse(options.idempotencyKey);
   const fetcher = options.fetcher ?? fetch;
@@ -89,9 +111,7 @@ export async function purchaseBoundKitchenItem(
   const parsed = boundFarmKitchenPurchaseSuccessSchema.safeParse(payload);
   return parsed.success &&
     parsed.data.data.result.receipt_id === idempotencyKey &&
-    parsed.data.data.result.kind === options.kind &&
-    parsed.data.data.result.item_id === options.itemId &&
-    parsed.data.data.result.quantity === options.quantity
+    receiptItemsMatch(options.items, parsed.data.data.result.items)
     ? { ok: true, data: parsed.data }
     : { ok: false, issue: clientIssue("unexpected_response") };
 }

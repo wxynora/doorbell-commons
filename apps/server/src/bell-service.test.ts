@@ -6,6 +6,7 @@ import { test } from "node:test";
 import Database from "better-sqlite3";
 import { BellService, type BellStreamSink } from "./bell-service.js";
 import { CommunityDatabase } from "./community-database.js";
+import { FarmPurchaseRequestService } from "./farm-purchase-request-service.js";
 import { MailboxService } from "./mailbox-service.js";
 
 const TOKEN = "dbb_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
@@ -212,4 +213,160 @@ test("a legacy pending mailbox wake is cancelled while terminal history is prese
     inspection.close();
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test("purchase wakes replay by stable wake ID, stay once per connection, and ACK changes no request data", async () => {
+  const { database, residentId, homeId } = registeredDatabase();
+  let nextRequestId = 0;
+  let nextWakeId = 0;
+  const purchaseService = new FarmPurchaseRequestService({
+    database,
+    now: () => 4_000,
+    generateRequestId: () => `request-${++nextRequestId}`,
+    generateWakeId: () => `purchase-wake-${++nextWakeId}`,
+  });
+  purchaseService.create({
+    residentId,
+    homeId,
+    humanName: "辛玥",
+    shop: "field",
+    shopRevision: "field-v1",
+    idempotencyKey: "00000000-0000-4000-8000-000000000010",
+    items: [{ kind: "seed", itemId: "ordinary_seed", qty: 2, displayName: "普通种子" }],
+  });
+
+  const service = new BellService({
+    database,
+    generateConnectionEpoch: () => "epoch-purchase-1",
+    heartbeatIntervalMs: 30_000,
+    now: () => 5_000,
+    registrationAuth: { confirmCurrentResidentMembership: async () => undefined },
+    replayIntervalMs: 60_000,
+  });
+  const first = collectingSink();
+  const connection = await service.connect(TOKEN, first.sink);
+  service.refreshResident(residentId);
+  assert.deepEqual(first.events, [
+    { event: "connected", data: { version: 1, connection_epoch: "epoch-purchase-1" } },
+    {
+      event: "wake",
+      data: {
+        version: 1,
+        connection_epoch: "epoch-purchase-1",
+        wake_id: "purchase-wake-1",
+        reason: "farm_purchase_request",
+        payload: {
+          text: "【📢来自铃野的通知】\n你的人类辛玥想要你给她买农场商店的普通种子 × 2。",
+        },
+      },
+    },
+  ]);
+  const ack = await service.acknowledge(TOKEN, {
+    connectionEpoch: "epoch-purchase-1",
+    wakeId: "purchase-wake-1",
+  });
+  assert.deepEqual(ack, { version: 1, wake_id: "purchase-wake-1", status: "acked" });
+  assert.equal(purchaseService.get(residentId, "request-1", 5_000)?.status, "requested");
+  connection.close();
+  service.close();
+  database.close();
+});
+
+test("a new queued purchase wake reaches an online resident and reconnect replays pending wakes", async () => {
+  const { database, residentId, homeId } = registeredDatabase();
+  let nextRequestId = 0;
+  let nextWakeId = 0;
+  const service = new BellService({
+    database,
+    generateConnectionEpoch: () => `epoch-purchase-${nextRequestId + 1}`,
+    heartbeatIntervalMs: 30_000,
+    now: () => 5_000,
+    registrationAuth: { confirmCurrentResidentMembership: async () => undefined },
+    replayIntervalMs: 60_000,
+  });
+  const purchaseService = new FarmPurchaseRequestService({
+    database,
+    now: () => 4_000,
+    generateRequestId: () => `request-${++nextRequestId}`,
+    generateWakeId: () => `purchase-wake-${++nextWakeId}`,
+    bellNotifier: service,
+  });
+  const first = collectingSink();
+  const firstConnection = await service.connect(TOKEN, first.sink);
+  purchaseService.create({
+    residentId,
+    homeId,
+    humanName: "辛玥",
+    shop: "field",
+    shopRevision: "field-v1",
+    idempotencyKey: "00000000-0000-4000-8000-000000000011",
+    items: [{ kind: "seed", itemId: "ordinary_seed", qty: 1, displayName: "普通种子" }],
+  });
+  purchaseService.create({
+    residentId,
+    homeId,
+    humanName: "辛玥",
+    shop: "ranch",
+    shopRevision: "ranch-v1",
+    idempotencyKey: "00000000-0000-4000-8000-000000000012",
+    items: [{ kind: "animal", itemId: "duck", qty: 1, displayName: "鸭子" }],
+  });
+  assert.deepEqual(
+    first.events
+      .filter((event) => event.event === "wake")
+      .map((event) => (event.data as { wake_id: string }).wake_id),
+    ["purchase-wake-1", "purchase-wake-2"],
+  );
+  firstConnection.close();
+  const second = collectingSink();
+  const secondConnection = await service.connect(TOKEN, second.sink);
+  assert.deepEqual(
+    second.events
+      .filter((event) => event.event === "wake")
+      .map((event) => (event.data as { wake_id: string }).wake_id),
+    ["purchase-wake-1", "purchase-wake-2"],
+  );
+  secondConnection.close();
+  service.close();
+  database.close();
+});
+
+test("a blocked farm purchase wake marks the notification request failed", async () => {
+  const { database, residentId, homeId } = registeredDatabase();
+  const purchaseService = new FarmPurchaseRequestService({
+    database,
+    now: () => 4_000,
+    generateRequestId: () => "request-blocked",
+    generateWakeId: () => "wake-blocked",
+  });
+  purchaseService.create({
+    residentId,
+    homeId,
+    humanName: "辛玥",
+    shop: "ranch",
+    shopRevision: "ranch-v1",
+    idempotencyKey: "00000000-0000-4000-8000-000000000013",
+    items: [{ kind: "animal", itemId: "duck", qty: 1, displayName: "鸭子" }],
+  });
+  const service = new BellService({
+    database,
+    generateConnectionEpoch: () => "epoch-blocked",
+    heartbeatIntervalMs: 30_000,
+    now: () => 5_000,
+    registrationAuth: { confirmCurrentResidentMembership: async () => undefined },
+    replayIntervalMs: 60_000,
+  });
+  const sink = collectingSink();
+  const connection = await service.connect(TOKEN, sink.sink);
+  const result = await service.reportBlocked(TOKEN, {
+    wakeId: "wake-blocked",
+    connectionEpoch: "epoch-blocked",
+    blockReason: "permanent_error",
+    errorCode: "not_available",
+  });
+  assert.deepEqual(result, { version: 1, wake_id: "wake-blocked", status: "blocked" });
+  assert.equal(purchaseService.get(residentId, "request-blocked", 5_000)?.status, "failed");
+  connection.close();
+  service.close();
+  database.close();
 });

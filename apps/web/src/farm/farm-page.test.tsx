@@ -116,8 +116,34 @@ function readFarmStyles() {
     .join("\n");
 }
 
-function readFarmPanelSource(panel: "bulletin" | "shop" | "tool") {
-  return readFileSync(new URL(`./panels/${panel}-panel.tsx`, import.meta.url), "utf8");
+const FARM_PANEL_SOURCE_PATHS = {
+  bulletin: ["./panels/bulletin-panel.tsx"],
+  shop: [
+    "./panels/shop-panel.tsx",
+    "./panels/shop/model.ts",
+    "./panels/shop/shared.tsx",
+    "./panels/shop/cooking-shop.tsx",
+    "./panels/shop/ranch-shop.tsx",
+  ],
+  tool: [
+    "./panels/tool-panel.tsx",
+    "./panels/tools/types.ts",
+    "./panels/tools/common.tsx",
+    "./panels/tools/backpack-panel.tsx",
+    "./panels/tools/cooking-recipe-catalog.tsx",
+    "./panels/tools/original-plant-creator.tsx",
+    "./panels/tools/remote-panels.tsx",
+    "./panels/tools/settings-panel.tsx",
+    "./panels/tools/smelting-panel.tsx",
+  ],
+} as const;
+
+function readFarmSourceFiles(paths: readonly string[]) {
+  return paths.map((path) => readFileSync(new URL(path, import.meta.url), "utf8")).join("\n");
+}
+
+function readFarmPanelSource(panel: keyof typeof FARM_PANEL_SOURCE_PATHS) {
+  return readFarmSourceFiles(FARM_PANEL_SOURCE_PATHS[panel]);
 }
 
 function readFarmSources() {
@@ -245,11 +271,17 @@ test("crop codex mirrors the authoritative built-in crop names as a text-only ca
   const source = readFarmSources();
   const styles = readFarmStyles();
   const catalogSource = readFileSync(new URL("./farm-crop-catalog.ts", import.meta.url), "utf8");
+  const actionPanelSource = readFileSync(
+    new URL("./panels/farm-action-panels.tsx", import.meta.url),
+    "utf8",
+  );
   const authoritativeCrops = JSON.parse(
     readFileSync(new URL("../../../../old-vps/farm/content/crops.json", import.meta.url), "utf8"),
   ) as Array<{ id: string; name: string; category: string; rarity: string }>;
   const codexSource =
-    source.match(/function FarmCropCodex[\s\S]*?(?=function getSmelting)/)?.[0] ?? "";
+    actionPanelSource.match(
+      /export function FarmCropCodex[\s\S]*?(?=export function FarmExpeditionPanelContent)/,
+    )?.[0] ?? "";
 
   assert.equal(FARM_CROP_CATALOG.length, 171);
   assert.deepEqual(
@@ -299,9 +331,18 @@ test("crop codex mirrors the authoritative built-in crop names as a text-only ca
 test("cooking catalogs keep complete authoritative categories in fixed scrolling ranges", () => {
   const source = readFarmSources();
   const styles = readFarmStyles();
+  const cookingShopModuleSource = readFarmSourceFiles(["./panels/shop/cooking-shop.tsx"]);
+  const cookingSharedModuleSource = readFarmSourceFiles(["./panels/shop/shared.tsx"]);
+  const cookingShopSource = `${cookingShopModuleSource.slice(
+    0,
+    cookingShopModuleSource.indexOf("function cookingRecipeIngredientText"),
+  )}\n${cookingSharedModuleSource.slice(
+    cookingSharedModuleSource.indexOf("export function CookingSilverPrice"),
+  )}`;
   const ingredientCatalogSource =
-    source.match(/function CookingIngredientCatalog[\s\S]*?(?=function CookingSilverPrice)/)?.[0] ??
-    "";
+    cookingShopSource.match(
+      /function CookingIngredientCatalog[\s\S]*?(?=function CookingSilverPrice)/,
+    )?.[0] ?? "";
   const recipeCatalogSource =
     source.match(/function CookingRecipeCatalog[\s\S]*?(?=function CookingRecipeShop)/)?.[0] ?? "";
   const categoryCounts = Object.fromEntries(
@@ -443,12 +484,15 @@ test("cooking catalogs keep complete authoritative categories in fixed scrolling
   );
   assert.match(source, /每日 2 道 · 北京时间 00:00 刷新/);
   assert.match(source, /<legend className="farm-visually-hidden">食材商店刷新状态<\/legend>/);
-  assert.match(source, /今日刷新 <strong>— \/ 10<\/strong>/);
+  assert.match(source, /liveRefresh\?\.refresh_used_count \?\? "—"/);
+  assert.match(source, /liveRefresh\?\.refresh_limit \?\? 10/);
   assert.match(source, /farm-visually-hidden">下次刷新金币/);
+  assert.match(source, /liveRefresh\?\.next_cost_coins \?\? "—"/);
   assert.match(
     source,
-    /<button className="cooking-ingredient-catalog__refresh-button" disabled type="button">\s*刷新\s*<\/button>/,
+    /disabled=\{!onRefreshCookingShop \|\| !liveRefresh\?\.can_refresh \|\| refreshSubmitting\}/,
   );
+  assert.match(source, /onClick=\{onRefreshCookingShop\}/);
   assert.match(source, /farm-visually-hidden">银币价格/);
   assert.match(source, /activeScene === "cooking" && tool\.id === "recipes"/);
   assert.match(
@@ -511,7 +555,7 @@ test("farm page does not invent economy values or successful operations", () => 
   const source = readFarmSources();
   assert.doesNotMatch(source, /购买成功|收获成功|料理完成|动物数量/);
   assert.doesNotMatch(source, /真实概览/);
-  assert.match(source, /当前不会消耗素材/);
+  assert.match(source, /executeBoundSmeltingAction\(input\)/);
   assert.doesNotMatch(source, /farm-game__identity/);
 });
 
@@ -575,6 +619,7 @@ test("ranch demo renders only catalog-owned animals on the shared scene canvas",
   assert.match(ranchSource, /data-animal-id=\{animal\.id\}/);
   assert.match(ranchSource, /className="farm-ranch-resident__roamer"/);
   assert.match(ranchSource, /className="farm-ranch-resident__portrait"/);
+  assert.match(ranchSource, /className="farm-ranch-resident__step"/);
   assert.match(ranchSource, /style=\{animal\.spriteStyle\}/);
   assert.match(
     source,
@@ -594,38 +639,46 @@ test("ranch demo renders only catalog-owned animals on the shared scene canvas",
     /\.farm-ranch-resident\s*\{[^}]*position:\s*absolute[^}]*aspect-ratio:\s*1[^}]*transform:\s*translate\(-50%, -100%\)/,
   );
   assert.match(styles, /@keyframes farm-ranch-step/);
+  assert.match(styles, /\.farm-ranch-resident__step\s*\{[^}]*animation:\s*farm-ranch-step/);
   assert.match(
     styles,
     /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.farm-ranch-resident__roamer[\s\S]*\.farm-ranch-resident__portrait[\s\S]*\.farm-ranch-resident \.ranch-shop__animal-sprite[\s\S]*animation:\s*none/,
   );
 });
 
-test("field identity plaque adds only authority-backed field status", () => {
+test("field identity plaque and environment status keep authority-backed facts separate", () => {
   const source = readFarmSources();
   const styles = readFarmStyles();
   const plaqueAsset = getFarmAsset("field.identity-plaque");
   const plaqueComponentSource =
-    source.match(/function FarmIdentityPlaque[\s\S]*?(?=function RanchResidentDetail)/)?.[0] ?? "";
+    source.match(/function FarmIdentityPlaque[\s\S]*?(?=function FarmEnvironmentStatus)/)?.[0] ??
+    "";
   const plaqueSource =
     plaqueComponentSource.match(/<aside[^>]*className="farm-field-plaque"[\s\S]*?<\/aside>/)?.[0] ??
+    "";
+  const environmentComponentSource =
+    source.match(/function FarmEnvironmentStatus[\s\S]*?(?=function RanchResidentDetail)/)?.[0] ??
     "";
 
   assert.match(plaqueComponentSource, /farmDoorplate: string/);
   assert.match(plaqueComponentSource, /farmName: string/);
   assert.match(plaqueComponentSource, /equippedTitle: string \| null/);
   assert.match(plaqueComponentSource, /welcomeMessage: string \| null/);
-  assert.match(plaqueComponentSource, /seasonName: string/);
-  assert.match(plaqueComponentSource, /landTier: number/);
-  assert.match(plaqueComponentSource, /landName: string/);
   assert.match(plaqueSource, /<strong>\{farmName\}<\/strong>/);
   assert.match(plaqueSource, /门牌[\s\S]*\{farmDoorplate\}/);
   assert.match(plaqueSource, /equippedTitle \? <small>\{equippedTitle\}<\/small> : null/);
-  assert.match(plaqueSource, /\{seasonName\} · 土地 \{landTier\} \{landName\}/);
   assert.match(plaqueSource, /welcomeMessage \? <em>\{welcomeMessage\}<\/em> : null/);
-  assert.doesNotMatch(plaqueSource, /主人|等级|天气|金币|银币/);
+  assert.doesNotMatch(plaqueSource, /主人|等级|天气|时节|土地|金币|银币/);
+  assert.match(environmentComponentSource, /aria-label="农场环境"/);
+  assert.match(environmentComponentSource, /seasonName: string/);
+  assert.match(environmentComponentSource, /landTier: number/);
+  assert.match(environmentComponentSource, /landName: string/);
+  assert.match(environmentComponentSource, /时节 \{seasonName\}/);
+  assert.match(environmentComponentSource, /土地 \{landTier\} · \{landName\}/);
+  assert.doesNotMatch(environmentComponentSource, /天气|weather/);
   assert.match(
     source,
-    /activeScene === "field"[\s\S]*equippedTitle=\{field\.farm\.equipped_title\?\.name \?\? null\}[\s\S]*farmDoorplate=\{field\.farm\.farm_doorplate\}[\s\S]*farmName=\{field\.farm\.farm_name\}[\s\S]*landName=\{field\.land\.name\}[\s\S]*landTier=\{field\.land\.tier\}[\s\S]*seasonName=\{field\.season\.name\}[\s\S]*welcomeMessage=\{field\.farm\.welcome_message\}/,
+    /activeScene === "field"[\s\S]*<FarmIdentityPlaque[\s\S]*equippedTitle=\{field\.farm\.equipped_title\?\.name \?\? null\}[\s\S]*farmDoorplate=\{field\.farm\.farm_doorplate\}[\s\S]*farmName=\{field\.farm\.farm_name\}[\s\S]*welcomeMessage=\{field\.farm\.welcome_message\}[\s\S]*<FarmEnvironmentStatus[\s\S]*landName=\{field\.land\.name\}[\s\S]*landTier=\{field\.land\.tier\}[\s\S]*seasonName=\{field\.season\.name\}/,
   );
   assert.equal(plaqueAsset?.url, "/farm/ui/field-plaque.png");
   assert.equal(plaqueAsset?.status, "production");
@@ -644,6 +697,10 @@ test("field identity plaque adds only authority-backed field status", () => {
   assert.doesNotMatch(styles, /\.farm-field-plaque__copy > span\s*\{[^}]*color:\s*#674123/);
   assert.doesNotMatch(styles, /\.farm-field-plaque\s*\{[^}]*repeating-linear-gradient/);
   assert.doesNotMatch(styles, /\.farm-field-plaque::before|\.farm-field-plaque::after/);
+  assert.match(
+    styles,
+    /\.farm-field-environment\s*\{[^}]*position:\s*absolute[^}]*height:\s*calc\(var\(--farm-control-size\) \/ 2\)[^}]*pointer-events:\s*none/,
+  );
 });
 
 test("moving ranch residents keep preview read-only and use authority-backed live actions", () => {
@@ -776,7 +833,6 @@ test("paid cooking tools stay out of the scene until owned and live in the shop"
   assert.doesNotMatch(cookingSceneSource, /data-access|farm-cooking__access|已解锁|未解锁/);
   assert.doesNotMatch(styles, /\.farm-cooking__access|\[data-access="locked"\]/);
   assert.match(source, /type CookingShopSectionId = "ingredients" \| "recipes" \| "tools"/);
-  assert.match(cookingToolShopSource, /roast[\s\S]*steam[\s\S]*deep-fry/);
   assert.match(cookingToolShopSource, /已拥有/);
   assert.match(cookingToolShopSource, /COOKING_PAID_TOOL_PRICES\[methodId\]/);
   assert.match(cookingToolShopSource, /price\.toLocaleString\("zh-CN"\)/);
@@ -926,7 +982,11 @@ test("three scene bodies expose complete honest management scaffolds without loc
   );
   assert.match(
     cookingOverlaySource,
-    /disabled=\{!preview \|\| selectedIngredientIds\.length === 0\}[\s\S]*onClick=\{\(\) => setResultPreviewOpen\(true\)\}[\s\S]*烹饪/,
+    /const liveCookEnabled =[\s\S]*kitchen !== null[\s\S]*selectedIngredientIds\.length >= 2[\s\S]*selectedIngredientIds\.length <= 5[\s\S]*cookAction\.stage === "idle"/,
+  );
+  assert.match(
+    cookingOverlaySource,
+    /disabled=\{preview \? selectedIngredientIds\.length === 0 : !liveCookEnabled\}[\s\S]*if \(preview\) \{[\s\S]*setResultPreviewOpen\(true\)[\s\S]*onCook\(\)/,
   );
   assert.match(cookingOverlaySource, /preview && resultPreviewOpen/);
   assert.match(cookingResultSource, /aria-label="料理结果样式预览"/);
@@ -942,6 +1002,8 @@ test("three scene bodies expose complete honest management scaffolds without loc
   assert.match(cookingResultSource, /收进料理柜/);
   assert.doesNotMatch(cookingResultSource, /×1/);
   assert.doesNotMatch(cookingResultSource, /methodLabel|ingredientIds=|等待农场返回料理结果/);
+  assert.match(source, /items: selectedCookingIngredientIds\.map\(toRawKitchenCookItemRef\)/);
+  assert.doesNotMatch(source, /method_id/);
   assert.match(cookingIngredientPickerSource, /aria-label="备料食材分类"/);
   assert.match(cookingIngredientPickerSource, /COOKING_PREP_CATEGORIES\.map/);
   assert.match(cookingIngredientPickerSource, /categoryIngredients\.map/);
@@ -1167,10 +1229,7 @@ test("neighborhood uses the approved scene and switches one honest section at a 
   assert.match(neighborhoodSource, /className="farm-neighborhood__section-head"/);
   assert.match(neighborhoodSource, /<h3>\{activeSection\.label\}<\/h3>/);
   assert.match(neighborhoodSource, /emptyLabels\[activeSection\.id\]/);
-  assert.match(neighborhoodSource, /aria-label=\{`\$\{activeSection\.label\}分页`\}/);
-  assert.match(neighborhoodSource, /<span>1 \/ 1<\/span>/);
-  assert.match(neighborhoodSource, /aria-label="上一页" disabled/);
-  assert.match(neighborhoodSource, /aria-label="下一页" disabled/);
+  assert.doesNotMatch(neighborhoodSource, /farm-neighborhood__pagination/);
   assert.match(source, /暂无可显示的排行榜数据。/);
   assert.match(source, /暂无可显示的留言。/);
   assert.match(source, /暂无可显示的原创作物。/);
@@ -1183,15 +1242,14 @@ test("neighborhood uses the approved scene and switches one honest section at a 
     styles,
     /\.farm-neighborhood__panel\s*\{[\s\S]*grid-template-rows:[\s\S]*border:\s*0;[\s\S]*box-shadow:\s*none;/,
   );
-  assert.match(styles, /\.farm-neighborhood__body\s*\{[\s\S]*grid-template-rows:/);
+  assert.match(styles, /\.farm-neighborhood__body\s*\{[\s\S]*overflow-y:\s*auto;/);
   assert.match(styles, /\.farm-neighborhood__tabs\s*\{[\s\S]*margin:\s*0;/);
   assert.match(
     styles,
     /\.farm-neighborhood__shell-frame\s*\{[\s\S]*bottom:\s*-3\.8cqw;[\s\S]*height:\s*calc\(100% \+ 3\.8cqw\);[\s\S]*object-fit:\s*fill;[\s\S]*pointer-events:\s*none;/,
   );
   assert.match(styles, /\.farm-neighborhood__section-head h3\s*\{/);
-  assert.match(styles, /\.farm-neighborhood__pagination\s*\{[\s\S]*align-self:\s*end;/);
-  assert.match(styles, /\.farm-neighborhood__pagination button:disabled\s*\{[\s\S]*opacity:\s*1;/);
+  assert.doesNotMatch(styles, /\.farm-neighborhood__pagination/);
   assert.doesNotMatch(styles, /\.farm-neighborhood\s*\{[\s\S]*top:\s*27%;/);
   assert.doesNotMatch(
     source,
@@ -1202,7 +1260,7 @@ test("neighborhood uses the approved scene and switches one honest section at a 
   assert.doesNotMatch(source, /铃兰的小屋|向日葵农场|薄荷糖の田/);
 });
 
-test("bulletin exposes only explicit empty states without fake activity", () => {
+test("bulletin reads authority-backed entries in one scrolling list and keeps demo empty states isolated", () => {
   const source = readFarmSources();
   const styles = readFarmStyles();
   const bulletinSource = readFarmPanelSource("bulletin");
@@ -1214,6 +1272,13 @@ test("bulletin exposes only explicit empty states without fake activity", () => 
   assert.match(bulletinSource, /aria-label="叮咚播报列表"/);
   assert.match(bulletinSource, /className="farm-bulletin__list"/);
   assert.match(bulletinSource, /DINGDONG_BULLETIN_OPTIONS\.map[\s\S]*<BulletinEmptyRow/);
+  assert.match(source, /type BoundBulletinRead/);
+  assert.match(source, /getBoundBulletin\(/);
+  assert.match(source, /activeSceneUiState\.bulletinOpen[\s\S]*\? "bulletin"/);
+  assert.match(bulletinSource, /available\.tasks\?\.map/);
+  assert.match(bulletinSource, /available\.mature_plots\?\.map/);
+  assert.match(bulletinSource, /available\.messages\?\.map/);
+  assert.match(bulletinSource, /available\.ranch_notifications\?\.map/);
   assert.doesNotMatch(bulletinSource, /useState|播报分类|tablist|aria-selected|role="tab"/);
   assert.match(source, /进行中任务尚未接入/);
   assert.match(source, /成熟提醒尚未接入/);
@@ -1291,7 +1356,7 @@ test("farm shop follows the active scene and mirrors the existing store groups",
   assert.match(source, /activeScene === "cooking"/);
   assert.match(
     source,
-    /<CookingShopPanelContent cart=\{cart\} onChangeCartQuantity=\{onChangeCartQuantity\} \/>/,
+    /return preview \? \([\s\S]*<CookingShopPanelContent[\s\S]*cart=\{cart\}[\s\S]*cookingCheckoutFeedback=\{cookingCheckoutFeedback\}[\s\S]*onChangeCartQuantity=\{onChangeCartQuantity\}/,
   );
   assert.match(
     source,
@@ -1308,7 +1373,7 @@ test("farm shop follows the active scene and mirrors the existing store groups",
   assert.match(source, /preview=\{Boolean\(previewData\)\}/);
   assert.match(source, /tool\.id === "shop"/);
   assert.match(source, /sceneId === "cooking" \? "确认购买" : "喊 TA 来买"/);
-  assert.doesNotMatch(source, /购买成功|已通知/);
+  assert.doesNotMatch(source, /购买成功|已全部买到|部分商品已买到/);
   assert.match(styles, /\.farm-shop[\s\S]*grid-template-rows:/);
   assert.doesNotMatch(styles, /farm-shop__preview-label|farm-shop__boundary/);
   assert.match(styles, /\.farm-shop__categories[\s\S]*grid-template-columns:\s*repeat\(2/);
@@ -1338,8 +1403,12 @@ test("farm shop follows the active scene and mirrors the existing store groups",
 test("three shop carts keep separate session drafts and expose only honest checkout paths", () => {
   const source = readFarmSources();
   const styles = readFarmStyles();
+  const shopCartSources = readFarmSourceFiles([
+    "./panels/shop/shared.tsx",
+    "./panels/shop/cooking-shop.tsx",
+  ]);
   const cartSource =
-    source.match(
+    shopCartSources.match(
       /function ShopCartPanelContent[\s\S]*?(?=function CookingIngredientCatalog)/,
     )?.[0] ?? "";
 
@@ -1361,13 +1430,20 @@ test("three shop carts keep separate session drafts and expose only honest check
   assert.match(source, /item\.price \* line\.quantity/);
   assert.match(source, /sceneId === "cooking" \? "silver" : "gold"/);
   assert.match(source, /sceneId === "cooking" \? "确认购买" : "喊 TA 来买"/);
-  assert.match(cartSource, /<button disabled type="button">[\s\S]*\{actionLabel\}/);
+  assert.match(
+    cartSource,
+    /disabled=\{sceneId === "cooking" \? !checkoutEnabled : !farmCheckoutEnabled\}[\s\S]*onCheckoutCookingCart\?\.\(checkoutLines\)[\s\S]*onCheckoutFarmCart\?\.\(farmCheckoutLines\)[\s\S]*\{actionLabel\}/,
+  );
+  assert.match(source, /purchaseBoundKitchenItem/);
+  assert.match(cartSource, /正在确认购买…/);
+  assert.match(cartSource, /已购 \{cookingCheckoutFeedback\.itemCount\} 件/);
   assert.doesNotMatch(source, /料理台直接购买合同尚未接入|购买请求合同尚未接入/);
   assert.doesNotMatch(cartSource, /aria-describedby|<small/);
   assert.match(cartSource, /\{items\.map\(\(\{ item, quantity \}\) => \(/);
   assert.doesNotMatch(cartSource, /CookingCatalogPagination|pageIndex|pageItems|pageCount/);
   assert.doesNotMatch(source, /SHOP_CART_PAGE_SIZE/);
-  assert.doesNotMatch(cartSource, /fetch\(|localStorage|sessionStorage|购买成功|已通知|已唤醒/);
+  assert.doesNotMatch(cartSource, /fetch\(|localStorage|sessionStorage|已唤醒/);
+  assert.match(cartSource, /已通知 TA/);
   assert.doesNotMatch(source, /className="farm-shop__toolbar"/);
   assert.doesNotMatch(source, /<span>购物车<\/span>/);
   assert.doesNotMatch(styles, /\.farm-shop__toolbar/);
@@ -1466,9 +1542,14 @@ test("ranch shop separates animals and pets, scrolls its fixed grid and opens de
   assert.match(ranchLayoutBlock, /dog: \{ x: 95\.109375, y: 110\.65234375, size: 192 \}/);
   assert.match(source, /animal\.shopSection === shopSection/);
   assert.match(source, /\["animals", "动物"\][\s\S]*\["pets", "宠物"\]/);
+  const ranchShopSources = readFarmSourceFiles([
+    "./panels/shop/ranch-shop.tsx",
+    "./panels/shop-panel.tsx",
+  ]);
   const ranchShopSource =
-    source.match(/function RanchShopPanelContent[\s\S]*?(?=function FarmShopPanelContent)/)?.[0] ??
-    "";
+    ranchShopSources.match(
+      /function RanchShopPanelContent[\s\S]*?(?=function FarmShopPanelContent)/,
+    )?.[0] ?? "";
   assert.match(ranchShopSource, /sectionAnimals\.map/);
   assert.doesNotMatch(ranchShopSource, /pageIndex|pageCount|pageAnimals|牧场商店分页/);
   assert.match(source, /setSelectedAnimalId\(animal\.id\)/);
@@ -1543,13 +1624,25 @@ test("ranch shop separates animals and pets, scrolls its fixed grid and opens de
 test("all field, ranch and cooking tools use confirmed sections while settings stay in one editable form", () => {
   const source = readFarmSources();
   const styles = readFarmStyles();
+  const featurePanelSources = readFarmSourceFiles(["./panels/tools/common.tsx", "./farm-page.tsx"]);
   const featurePanelsSource =
-    source.match(/const FARM_FEATURE_PANELS:[\s\S]*?(?=const FARM_TOOL_LAYOUTS)/)?.[0] ?? "";
+    featurePanelSources.match(
+      /const FARM_FEATURE_PANELS:[\s\S]*?(?=const FARM_TOOL_LAYOUTS)/,
+    )?.[0] ?? "";
+  const settingsPanelSources = readFarmSourceFiles([
+    "./panels/tools/settings-panel.tsx",
+    "./panels/tools/original-plant-creator.tsx",
+    "./panels/tool-panel.tsx",
+  ]);
   const settingsPanelSource =
-    source.match(/function FarmSettingsPanelContent[\s\S]*?(?=function FarmToolPanel)/)?.[0] ?? "";
+    settingsPanelSources.match(
+      /function FarmSettingsPanelContent[\s\S]*?(?=function FarmToolPanel)/,
+    )?.[0] ?? "";
+  const settingsFormSources = readFarmSourceFiles(["./panels/tools/settings-panel.tsx"]);
   const settingsFormSource =
-    source.match(/function FarmSettingsPanelContent[\s\S]*?(?=function FarmSettingsSwitch)/)?.[0] ??
-    "";
+    settingsFormSources.match(
+      /function FarmSettingsPanelContent[\s\S]*?(?=function FarmSettingsSwitch)/,
+    )?.[0] ?? "";
 
   assert.match(source, /const FARM_FEATURE_PANELS/);
   assert.match(source, /backpack:[\s\S]*tabs: \["种子与药水", "素材", "其他"\]/);
@@ -1570,7 +1663,7 @@ test("all field, ranch and cooking tools use confirmed sections while settings s
   assert.match(source, /function FarmFeaturePanelContent/);
   assert.match(
     settingsPanelSource,
-    /<legend>农场名和称呼<\/legend>[\s\S]*<label htmlFor="farm-name">农场名<\/label>[\s\S]*name="farm-name"[\s\S]*<span>小机昵称<\/span>[\s\S]*name="ai-nickname"[\s\S]*<span>你的昵称<\/span>[\s\S]*name="human-nickname"[\s\S]*<label htmlFor="welcome-message">欢迎语<\/label>[\s\S]*name="welcome-message"[\s\S]*<label htmlFor="active-title">佩戴称号<\/label>[\s\S]*name="active-title"[\s\S]*<legend>社交开关<\/legend>/,
+    /<legend>农场名和称呼<\/legend>[\s\S]*<label htmlFor="farm-name">农场名<\/label>[\s\S]*name="farm-name"[\s\S]*<label htmlFor="ai-nickname">小机昵称<\/label>[\s\S]*name="ai-nickname"[\s\S]*<label htmlFor="human-nickname">你的昵称<\/label>[\s\S]*name="human-nickname"[\s\S]*<label htmlFor="welcome-message">欢迎语<\/label>[\s\S]*name="welcome-message"[\s\S]*<label htmlFor="active-title">佩戴称号<\/label>[\s\S]*name="active-title"[\s\S]*<legend>社交开关<\/legend>/,
   );
   assert.match(settingsPanelSource, /name="farm-name"[\s\S]*type="text"/);
   assert.match(settingsPanelSource, /maxLength=\{12\}[\s\S]*name="farm-name"/);
@@ -1606,7 +1699,12 @@ test("all field, ranch and cooking tools use confirmed sections while settings s
   );
   assert.match(styles, /\.farm-settings__switch:focus-visible \.farm-settings__switch-track\s*\{/);
   assert.doesNotMatch(settingsPanelSource, /addressing|socialEnabled/);
-  assert.match(settingsPanelSource, /disabled=\{!previewEditable\}/);
+  assert.match(settingsPanelSource, /submitSetting\("ai_name", draft\.aiNickname, "小机昵称"\)/);
+  assert.match(
+    settingsPanelSource,
+    /submitSetting\("human_name", draft\.humanNickname, "你的昵称"\)/,
+  );
+  assert.match(settingsPanelSource, /submitSetting\("social\.visit", visitsAllowed, "来访开关"\)/);
   assert.match(settingsPanelSource, /保存/);
   assert.doesNotMatch(settingsPanelSource, /fetch\(|localStorage|sessionStorage/);
   assert.match(source, /FARM_FEATURE_PANELS\[activeScene\]\[tool\.id\]/);
@@ -1669,11 +1767,39 @@ test("all field, ranch and cooking tools use confirmed sections while settings s
   assert.match(styles, /\.farm-settings__switch\[data-state="on"\]/);
 });
 
-test("farm create tool keeps an honest session-only original plant design draft", () => {
+test("live market exposes cross-farm buy and barter actions without local settlement", () => {
+  const panelSource = readFileSync(
+    new URL("./panels/farm-action-panels.tsx", import.meta.url),
+    "utf8",
+  );
+  const source =
+    panelSource.match(
+      /export function FarmMarketPanelContent[\s\S]*?(?=type FarmCatalogCodexAvailable)/,
+    )?.[0] ?? "";
+  const styles = readFarmStyles();
+
+  assert.match(source, /market\.listings\.filter/);
+  assert.match(source, /market\.barter_listings/);
+  assert.match(source, /action: "buy"/);
+  assert.match(source, /action: "barter-accept"/);
+  assert.match(source, /action: "unlist"/);
+  assert.match(source, /action: "barter-unlist"/);
+  assert.match(source, /quantity: Math\.min\(1, listing\.quantity\)/);
+  assert.doesNotMatch(source, /跨农场购买与接受换物需要原子结算合同/);
+  assert.doesNotMatch(source, /farm_coins|silver_balance|localStorage|sessionStorage/);
+  assert.match(styles, /\.farm-crop-codex__list\s*\{[\s\S]*overflow-y:\s*auto/);
+});
+
+test("farm create tool submits the five-field draft to the authority action", () => {
   const source = readFarmSources();
   const styles = readFarmStyles();
+  const creatorSources = readFarmSourceFiles([
+    "./panels/tools/original-plant-creator.tsx",
+    "./panels/tool-panel.tsx",
+  ]);
   const creatorSource =
-    source.match(/function OriginalPlantCreator[\s\S]*?(?=function FarmToolPanel)/)?.[0] ?? "";
+    creatorSources.match(/function OriginalPlantCreator[\s\S]*?(?=function FarmToolPanel)/)?.[0] ??
+    "";
 
   assert.match(source, /interface OriginalPlantDraft/);
   assert.match(creatorSource, /aria-label="原创植物设计"/);
@@ -1683,12 +1809,17 @@ test("farm create tool keeps an honest session-only original plant design draft"
   assert.match(creatorSource, /name="original-plant-sowing-text"/);
   assert.match(creatorSource, /name="original-plant-harvest-text"/);
   assert.match(creatorSource, /完成设计/);
-  assert.match(creatorSource, /className="original-plant-creator__submit" disabled type="submit"/);
-  assert.doesNotMatch(creatorSource, /fetch\(|localStorage|sessionStorage|创建成功|扣费|发放/);
+  assert.match(creatorSource, /idempotencyKey: crypto\.randomUUID\(\)/);
+  assert.match(creatorSource, /expectedRevision: catalogRevision as string/);
+  assert.match(creatorSource, /result\.data\.data\.result/);
+  assert.match(creatorSource, /retryableAttempt/);
+  assert.doesNotMatch(creatorSource, /fetch\(|localStorage|sessionStorage/);
   assert.match(
     source,
-    /activeScene === "field" && tool\.id === "create"[\s\S]*<OriginalPlantCreator[\s\S]*draft=\{originalPlantDraft\}[\s\S]*editable=\{preview\}[\s\S]*onChange=\{onChangeOriginalPlantDraft\}/,
+    /activeScene === "field" && tool\.id === "create"[\s\S]*<OriginalPlantCreator[\s\S]*catalogRevision=\{farmCatalog\?\.original_plant_revision\}[\s\S]*draft=\{originalPlantDraft\}[\s\S]*onCreate=\{onOriginalPlantAction\}/,
   );
+  assert.match(source, /executeBoundOriginalPlantAction\(input\)/);
+  assert.match(source, /requireResource\("farmCatalog", true\)/);
   assert.match(source, /useState<OriginalPlantDraft>\(\(\) => \(\{/);
   assert.match(source, /onChangeOriginalPlantDraft=\{setOriginalPlantDraft\}/);
   assert.match(source, /originalPlantDraft=\{originalPlantDraft\}/);
@@ -1703,8 +1834,12 @@ test("smelting preview uses the authoritative 30-material atlas in a fixed four-
   const source = readFarmSources();
   const assetManifest = readFileSync(new URL("./farm-asset-manifest.ts", import.meta.url), "utf8");
   const styles = readFarmStyles();
+  const smeltingSources = readFarmSourceFiles([
+    "./panels/tools/smelting-panel.tsx",
+    "./panels/tools/settings-panel.tsx",
+  ]);
   const smeltingSource =
-    source.match(
+    smeltingSources.match(
       /function SmeltingMaterialSprite[\s\S]*?(?=function FarmSettingsPanelContent)/,
     )?.[0] ?? "";
   const materialCatalogSource =
@@ -1760,7 +1895,7 @@ test("smelting preview uses the authoritative 30-material atlas in a fixed four-
     smeltingSource,
     /current\.length < 3 \? \[\.\.\.current, materialId\] : \[\.\.\.current\.slice\(1\), materialId\]/,
   );
-  assert.match(smeltingSource, /useState\(false\)/);
+  assert.match(smeltingSource, /const \[actionState, setActionState\] = useState/);
   assert.match(smeltingSource, /aria-pressed=\{selected\}/);
   assert.match(smeltingSource, /SORTED_SMELTING_MATERIALS\.map\(\(material\) =>/);
   assert.match(
@@ -1774,14 +1909,17 @@ test("smelting preview uses the authoritative 30-material atlas in a fixed four-
   );
   assert.match(
     smeltingSource,
-    /aria-label="查看熔炼提示"[\s\S]*disabled=\{selectedMaterialIds\.length === 0\}[\s\S]*setShowUnavailableNotice\(true\)/,
+    /aria-label="开始熔炼"[\s\S]*disabled=\{selectedMaterialIds\.length !== 3 \|\| actionState\.stage === "submitting"\}[\s\S]*onClick=\{\(\) => void submit\(\)\}/,
   );
   assert.match(
     smeltingSource,
-    /aria-label="熔炼提示"[\s\S]*role="status"[\s\S]*已选素材[\s\S]*熔炼暂未开放[\s\S]*当前不会消耗素材。[\s\S]*返回选材/,
+    /aria-label="熔炼结果"[\s\S]*role="status"[\s\S]*actionState\.cropName[\s\S]*actionState\.rarity[\s\S]*actionState\.byRecipe/,
   );
-  assert.match(smeltingSource, /熔炼素材数据尚未接入/);
-  assert.doesNotMatch(smeltingSource, /fetch\(|购买成功|熔炼成功|扣除|获得种子/);
+  assert.match(smeltingSource, /liveSmelting\.write_status !== "available"/);
+  assert.match(smeltingSource, /expectedSmeltingRevision: liveSmelting\.revision/);
+  assert.match(smeltingSource, /await onSmeltingAction\(input\)/);
+  assert.match(smeltingSource, /熔炼暂时不可用/);
+  assert.doesNotMatch(smeltingSource, /fetch\(|购买成功|扣除|获得种子/);
   assert.match(source, /activeScene === "field" && tool\.id === "smelting"/);
   assert.match(styles, /\.smelting-catalog\s*\{[^}]*grid-template-rows:\s*minmax\(0, 1fr\) auto/);
   assert.match(

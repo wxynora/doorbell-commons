@@ -1,31 +1,78 @@
 import {
+  type BoundFarmCropCodexActionErrorCode,
+  type BoundFarmExpeditionActionErrorCode,
   type BoundFarmHarvestAssistErrorCode,
+  type BoundFarmKitchenCookErrorCode,
+  type BoundFarmKitchenInventoryActionErrorCode,
   type BoundFarmKitchenPurchaseErrorCode,
+  type BoundFarmKitchenShopRefreshErrorCode,
+  type BoundFarmMarketActionErrorCode,
+  type BoundFarmNeighborhoodMessageActionErrorCode,
+  type BoundFarmOriginalPlantActionErrorCode,
   type BoundFarmRanchCollectionErrorCode,
+  type BoundFarmRanchDecorationActionErrorCode,
+  type BoundFarmRanchInteractionActionErrorCode,
   type BoundFarmRanchResidentActionErrorCode,
   type BoundFarmSettingsActionErrorCode,
+  type BoundFarmSmeltingActionErrorCode,
+  boundFarmBulletinReadErrorSchema,
+  boundFarmBulletinReadRequestSchema,
+  boundFarmBulletinReadSuccessSchema,
   boundFarmCatalogReadErrorSchema,
   boundFarmCatalogReadRequestSchema,
   boundFarmCatalogReadSuccessSchema,
+  boundFarmCropCodexActionErrorSchema,
+  boundFarmCropCodexActionRequestSchema,
+  boundFarmCropCodexActionSuccessSchema,
+  boundFarmExpeditionActionErrorSchema,
+  boundFarmExpeditionActionRequestSchema,
+  boundFarmExpeditionActionSuccessSchema,
   boundFarmFieldErrorSchema,
   boundFarmFieldRequestSchema,
   boundFarmFieldSuccessSchema,
   boundFarmHarvestAssistErrorSchema,
   boundFarmHarvestAssistRequestSchema,
   boundFarmHarvestAssistSuccessSchema,
+  boundFarmKitchenCookErrorSchema,
+  boundFarmKitchenCookRequestSchema,
+  boundFarmKitchenCookSuccessSchema,
+  boundFarmKitchenInventoryActionErrorSchema,
+  boundFarmKitchenInventoryActionRequestSchema,
+  boundFarmKitchenInventoryActionSuccessSchema,
   boundFarmKitchenPurchaseErrorSchema,
   boundFarmKitchenPurchaseRequestSchema,
   boundFarmKitchenPurchaseSuccessSchema,
   boundFarmKitchenReadErrorSchema,
   boundFarmKitchenReadRequestSchema,
   boundFarmKitchenReadSuccessSchema,
+  boundFarmKitchenShopRefreshErrorSchema,
+  boundFarmKitchenShopRefreshRequestSchema,
+  boundFarmKitchenShopRefreshSuccessSchema,
+  boundFarmMarketActionErrorSchema,
+  boundFarmMarketActionRequestSchema,
+  boundFarmMarketActionSuccessSchema,
+  boundFarmNeighborhoodMessageActionErrorSchema,
+  boundFarmNeighborhoodMessageActionRequestSchema,
+  boundFarmNeighborhoodMessageActionSuccessSchema,
+  boundFarmOriginalPlantActionErrorSchema,
+  boundFarmOriginalPlantActionRequestSchema,
+  boundFarmOriginalPlantActionSuccessSchema,
   boundFarmOverviewErrorSchema,
   boundFarmOverviewRequestSchema,
   boundFarmOverviewSuccessSchema,
+  boundFarmPurchaseRequestCreateSchema,
+  boundFarmPurchaseRequestCreateSuccessSchema,
+  boundFarmPurchaseRequestErrorSchema,
   boundFarmRanchCollectionErrorSchema,
   boundFarmRanchCollectionRequestSchema,
   boundFarmRanchCollectionSuccessSchema,
+  boundFarmRanchDecorationActionErrorSchema,
+  boundFarmRanchDecorationActionRequestSchema,
+  boundFarmRanchDecorationActionSuccessSchema,
   boundFarmRanchErrorSchema,
+  boundFarmRanchInteractionActionErrorSchema,
+  boundFarmRanchInteractionActionRequestSchema,
+  boundFarmRanchInteractionActionSuccessSchema,
   boundFarmRanchReadRequestSchema,
   boundFarmRanchResidentActionErrorSchema,
   boundFarmRanchResidentActionRequestSchema,
@@ -34,6 +81,9 @@ import {
   boundFarmSettingsActionErrorSchema,
   boundFarmSettingsActionRequestSchema,
   boundFarmSettingsActionSuccessSchema,
+  boundFarmSmeltingActionErrorSchema,
+  boundFarmSmeltingActionRequestSchema,
+  boundFarmSmeltingActionSuccessSchema,
   boundGlimmerReadErrorSchema,
   boundGlimmerReadRequestSchema,
   boundGlimmerReadSuccessSchema,
@@ -47,15 +97,27 @@ import {
   connectorCredentialSchema,
   createdFarmHumanSessionSuccessSchema,
   currentHumanSessionSuccessSchema,
+  farmCropCodexActionIdempotencyKeySchema,
+  farmExpeditionActionIdempotencyKeySchema,
   farmHumanFieldHarvestAssistIdempotencyKeySchema,
   farmHumanRanchCollectionIdempotencyKeySchema,
   farmHumanUiErrorSchema,
+  farmKitchenCookIdempotencyKeySchema,
+  farmKitchenInventoryActionIdempotencyKeySchema,
   farmKitchenPurchaseIdempotencyKeySchema,
+  farmKitchenShopRefreshIdempotencyKeySchema,
   farmLookupErrorSchema,
   farmLookupRequestSchema,
   farmLookupSuccessSchema,
+  farmMarketActionIdempotencyKeySchema,
+  farmNeighborhoodMessageActionIdempotencyKeySchema,
+  farmOriginalPlantActionIdempotencyKeySchema,
+  farmPurchaseRequestIdempotencyKeySchema,
+  farmRanchDecorationActionIdempotencyKeySchema,
+  farmRanchInteractionActionIdempotencyKeySchema,
   farmRanchResidentActionIdempotencyKeySchema,
   farmSettingsActionIdempotencyKeySchema,
+  farmSmeltingActionIdempotencyKeySchema,
   type HumanSettingsPatchRequest,
   humanAuthenticationErrorSchema,
   humanLogoutSuccessSchema,
@@ -111,6 +173,7 @@ import {
   BellWakeControlError,
 } from "./bell-service.js";
 import {
+  FarmPurchaseRequestIdempotencyConflictError,
   type HumanSettingsPatch,
   type HumanSettingsRecord,
   LingyeDailyIdempotencyConflictError,
@@ -121,6 +184,12 @@ import {
   ConnectorCredentialAuthenticationError,
   type ConnectorService,
 } from "./connector-service.js";
+import {
+  FarmHumanBulletinContractUnavailableError,
+  FarmHumanBulletinCredentialInvalidError,
+  FarmHumanBulletinNotFoundError,
+  FarmHumanBulletinUnavailableError,
+} from "./farm-bulletin-client.js";
 import {
   FarmHumanCatalogContractUnavailableError,
   FarmHumanCatalogCredentialInvalidError,
@@ -134,12 +203,30 @@ import {
   FarmCreationUnavailableError,
 } from "./farm-creation-client.js";
 import {
+  FarmHumanCropCodexActionContractUnavailableError,
+  FarmHumanCropCodexActionCredentialInvalidError,
+  FarmHumanCropCodexActionIdempotencyConflictError,
+  FarmHumanCropCodexActionNotFoundError,
+  FarmHumanCropCodexActionRejectedError,
+  FarmHumanCropCodexActionStateConflictError,
+  FarmHumanCropCodexActionUnavailableError,
+} from "./farm-crop-codex-action-client.js";
+import {
   FarmDirectoryUnavailableError,
   FarmHumanCredentialInvalidError,
   FarmNotFoundError,
   FarmNotPubliclyReadableError,
   FarmUpstreamContractUnavailableError,
 } from "./farm-directory-client.js";
+import {
+  FarmHumanExpeditionActionContractUnavailableError,
+  FarmHumanExpeditionActionCredentialInvalidError,
+  FarmHumanExpeditionActionIdempotencyConflictError,
+  FarmHumanExpeditionActionNotFoundError,
+  FarmHumanExpeditionActionRejectedError,
+  FarmHumanExpeditionActionStateConflictError,
+  FarmHumanExpeditionActionUnavailableError,
+} from "./farm-expedition-action-client.js";
 import {
   FarmHumanFieldContractUnavailableError,
   FarmHumanFieldCredentialInvalidError,
@@ -158,6 +245,24 @@ import {
   FarmHumanKitchenUnavailableError,
 } from "./farm-kitchen-client.js";
 import {
+  FarmHumanKitchenCookContractUnavailableError,
+  FarmHumanKitchenCookCredentialInvalidError,
+  FarmHumanKitchenCookIdempotencyConflictError,
+  FarmHumanKitchenCookNotFoundError,
+  FarmHumanKitchenCookRejectedError,
+  FarmHumanKitchenCookStateConflictError,
+  FarmHumanKitchenCookUnavailableError,
+} from "./farm-kitchen-cook-client.js";
+import {
+  FarmHumanKitchenInventoryActionContractUnavailableError,
+  FarmHumanKitchenInventoryActionCredentialInvalidError,
+  FarmHumanKitchenInventoryActionIdempotencyConflictError,
+  FarmHumanKitchenInventoryActionNotFoundError,
+  FarmHumanKitchenInventoryActionRejectedError,
+  FarmHumanKitchenInventoryActionStateConflictError,
+  FarmHumanKitchenInventoryActionUnavailableError,
+} from "./farm-kitchen-inventory-action-client.js";
+import {
   FarmHumanKitchenPurchaseContractUnavailableError,
   FarmHumanKitchenPurchaseCredentialInvalidError,
   FarmHumanKitchenPurchaseIdempotencyConflictError,
@@ -169,11 +274,53 @@ import {
   FarmHumanKitchenPurchaseUnavailableError,
 } from "./farm-kitchen-purchase-client.js";
 import {
+  FarmHumanKitchenShopRefreshContractUnavailableError,
+  FarmHumanKitchenShopRefreshCredentialInvalidError,
+  FarmHumanKitchenShopRefreshIdempotencyConflictError,
+  FarmHumanKitchenShopRefreshNotFoundError,
+  FarmHumanKitchenShopRefreshRejectedError,
+  FarmHumanKitchenShopRefreshShopUnavailableError,
+  FarmHumanKitchenShopRefreshStateConflictError,
+  FarmHumanKitchenShopRefreshUnavailableError,
+} from "./farm-kitchen-shop-refresh-client.js";
+import {
   FarmLingyeContractUnavailableError,
   FarmLingyeCredentialInvalidError,
   FarmLingyeNotFoundError,
   FarmLingyeUnavailableError,
 } from "./farm-lingye-client.js";
+import {
+  FarmHumanMarketActionContractUnavailableError,
+  FarmHumanMarketActionCredentialInvalidError,
+  FarmHumanMarketActionCrossFarmAtomicityUnavailableError,
+  FarmHumanMarketActionIdempotencyConflictError,
+  FarmHumanMarketActionNotFoundError,
+  FarmHumanMarketActionRejectedError,
+  FarmHumanMarketActionStateConflictError,
+  FarmHumanMarketActionUnavailableError,
+} from "./farm-market-action-client.js";
+import {
+  FarmHumanNeighborhoodMessageActionContractUnavailableError,
+  FarmHumanNeighborhoodMessageActionCredentialInvalidError,
+  FarmHumanNeighborhoodMessageActionIdempotencyConflictError,
+  FarmHumanNeighborhoodMessageActionNotFoundError,
+  FarmHumanNeighborhoodMessageActionRejectedError,
+  FarmHumanNeighborhoodMessageActionStateConflictError,
+  FarmHumanNeighborhoodMessageActionUnavailableError,
+} from "./farm-neighborhood-message-action-client.js";
+import {
+  FarmHumanOriginalPlantActionContractUnavailableError,
+  FarmHumanOriginalPlantActionCredentialInvalidError,
+  FarmHumanOriginalPlantActionIdempotencyConflictError,
+  FarmHumanOriginalPlantActionNotFoundError,
+  FarmHumanOriginalPlantActionRejectedError,
+  FarmHumanOriginalPlantActionStateConflictError,
+  FarmHumanOriginalPlantActionUnavailableError,
+} from "./farm-original-plant-action-client.js";
+import {
+  FarmPurchaseRequestInputError,
+  type FarmPurchaseRequestService,
+} from "./farm-purchase-request-service.js";
 import {
   FarmHumanRanchResidentActionContractUnavailableError,
   FarmHumanRanchResidentActionCredentialInvalidError,
@@ -200,6 +347,24 @@ import {
   FarmHumanRanchCollectionUnavailableError,
 } from "./farm-ranch-collection-client.js";
 import {
+  FarmHumanRanchDecorationActionContractUnavailableError,
+  FarmHumanRanchDecorationActionCredentialInvalidError,
+  FarmHumanRanchDecorationActionIdempotencyConflictError,
+  FarmHumanRanchDecorationActionNotFoundError,
+  FarmHumanRanchDecorationActionRejectedError,
+  FarmHumanRanchDecorationActionStateConflictError,
+  FarmHumanRanchDecorationActionUnavailableError,
+} from "./farm-ranch-decoration-action-client.js";
+import {
+  FarmHumanRanchInteractionActionContractUnavailableError,
+  FarmHumanRanchInteractionActionCredentialInvalidError,
+  FarmHumanRanchInteractionActionIdempotencyConflictError,
+  FarmHumanRanchInteractionActionNotFoundError,
+  FarmHumanRanchInteractionActionRejectedError,
+  FarmHumanRanchInteractionActionStateConflictError,
+  FarmHumanRanchInteractionActionUnavailableError,
+} from "./farm-ranch-interaction-action-client.js";
+import {
   FarmRewardContractUnavailableError,
   FarmRewardCredentialInvalidError,
   FarmRewardUnavailableError,
@@ -213,6 +378,15 @@ import {
   FarmHumanFarmSettingsActionStateConflictError,
   FarmHumanFarmSettingsActionUnavailableError,
 } from "./farm-settings-action-client.js";
+import {
+  FarmHumanSmeltingActionContractUnavailableError,
+  FarmHumanSmeltingActionCredentialInvalidError,
+  FarmHumanSmeltingActionIdempotencyConflictError,
+  FarmHumanSmeltingActionNotFoundError,
+  FarmHumanSmeltingActionRejectedError,
+  FarmHumanSmeltingActionStateConflictError,
+  FarmHumanSmeltingActionUnavailableError,
+} from "./farm-smelting-action-client.js";
 import type { HomeWeatherEngine } from "./home-weather-engine.js";
 import {
   LingyeDailyPublishAuthenticationError,
@@ -271,6 +445,7 @@ export interface BuildAppOptions {
   groupId: string;
   groupMembership: QqGroupMembershipReader;
   registrationAuth: RegistrationAuthService;
+  farmPurchaseRequestService?: FarmPurchaseRequestService;
   bellService?: BellService;
   connectorService?: ConnectorService;
   weatherEngine?: HomeWeatherEngine;
@@ -656,6 +831,38 @@ function sendBoundFarmFieldError(
   );
 }
 
+function sendBoundFarmPurchaseRequestError(
+  reply: FastifyReply,
+  statusCode: 400 | 401 | 403 | 404 | 409 | 502 | 503,
+  code:
+    | "shop_changed"
+    | "idempotency_conflict"
+    | "operation_not_allowed"
+    | "state_conflict"
+    | "invalid_request"
+    | "authentication_required"
+    | "qq_not_group_member"
+    | "onebot_unavailable"
+    | "registration_profile_required"
+    | "farm_not_found"
+    | "farm_credential_invalid"
+    | "farm_unavailable"
+    | "upstream_contract_unavailable",
+  message: string,
+  currentShopRevision?: string,
+) {
+  reply.header("cache-control", "no-store");
+  return reply.code(statusCode).send(
+    boundFarmPurchaseRequestErrorSchema.parse({
+      error: {
+        code,
+        message,
+        ...(currentShopRevision ? { current_shop_revision: currentShopRevision } : {}),
+      },
+    }),
+  );
+}
+
 type BoundFarmStructuredErrorCode =
   | "invalid_request"
   | "authentication_required"
@@ -678,6 +885,20 @@ function sendBoundFarmCatalogReadError(
   reply.header("cache-control", "no-store");
   return reply.code(statusCode).send(
     boundFarmCatalogReadErrorSchema.parse({
+      error: { code, message },
+    }),
+  );
+}
+
+function sendBoundFarmBulletinReadError(
+  reply: FastifyReply,
+  statusCode: BoundFarmStructuredStatusCode,
+  code: BoundFarmStructuredErrorCode,
+  message: string,
+) {
+  reply.header("cache-control", "no-store");
+  return reply.code(statusCode).send(
+    boundFarmBulletinReadErrorSchema.parse({
       error: { code, message },
     }),
   );
@@ -713,6 +934,202 @@ function sendBoundFarmKitchenPurchaseError(
         ...(currentShopRevision === undefined
           ? {}
           : { current_shop_revision: currentShopRevision }),
+      },
+    }),
+  );
+}
+
+function sendBoundFarmKitchenCookError(
+  reply: FastifyReply,
+  statusCode: 400 | 401 | 403 | 404 | 409 | 502 | 503,
+  code: BoundFarmKitchenCookErrorCode,
+  message: string,
+  currentKitchenInventoryRevision?: string,
+) {
+  reply.header("cache-control", "no-store");
+  return reply.code(statusCode).send(
+    boundFarmKitchenCookErrorSchema.parse({
+      error: {
+        code,
+        message,
+        ...(currentKitchenInventoryRevision === undefined
+          ? {}
+          : { current_kitchen_inventory_revision: currentKitchenInventoryRevision }),
+      },
+    }),
+  );
+}
+
+function sendBoundFarmKitchenInventoryActionError(
+  reply: FastifyReply,
+  statusCode: 400 | 401 | 403 | 404 | 409 | 502 | 503,
+  code: BoundFarmKitchenInventoryActionErrorCode,
+  message: string,
+  currentInventoryRevision?: string,
+) {
+  reply.header("cache-control", "no-store");
+  return reply.code(statusCode).send(
+    boundFarmKitchenInventoryActionErrorSchema.parse({
+      error: {
+        code,
+        message,
+        ...(currentInventoryRevision === undefined
+          ? {}
+          : { current_kitchen_inventory_revision: currentInventoryRevision }),
+      },
+    }),
+  );
+}
+
+function sendBoundFarmKitchenShopRefreshError(
+  reply: FastifyReply,
+  statusCode: 400 | 401 | 403 | 404 | 409 | 502 | 503,
+  code: BoundFarmKitchenShopRefreshErrorCode,
+  message: string,
+  currentShopRevision?: string,
+) {
+  reply.header("cache-control", "no-store");
+  return reply.code(statusCode).send(
+    boundFarmKitchenShopRefreshErrorSchema.parse({
+      error: {
+        code,
+        message,
+        ...(currentShopRevision === undefined
+          ? {}
+          : { current_shop_revision: currentShopRevision }),
+      },
+    }),
+  );
+}
+
+function sendBoundFarmOriginalPlantActionError(
+  reply: FastifyReply,
+  statusCode: 400 | 401 | 403 | 404 | 409 | 502 | 503,
+  code: BoundFarmOriginalPlantActionErrorCode,
+  message: string,
+  currentRevision?: string,
+) {
+  reply.header("cache-control", "no-store");
+  return reply.code(statusCode).send(
+    boundFarmOriginalPlantActionErrorSchema.parse({
+      error: {
+        code,
+        message,
+        ...(currentRevision === undefined ? {} : { current_revision: currentRevision }),
+      },
+    }),
+  );
+}
+
+function sendBoundFarmCropCodexActionError(
+  reply: FastifyReply,
+  statusCode: 400 | 401 | 403 | 404 | 409 | 502 | 503,
+  code: BoundFarmCropCodexActionErrorCode,
+  message: string,
+  currentCodexRevision?: string,
+) {
+  reply.header("cache-control", "no-store");
+  return reply.code(statusCode).send(
+    boundFarmCropCodexActionErrorSchema.parse({
+      error: {
+        code,
+        message,
+        ...(currentCodexRevision === undefined ? {} : { current_revision: currentCodexRevision }),
+      },
+    }),
+  );
+}
+
+function sendBoundFarmSmeltingActionError(
+  reply: FastifyReply,
+  statusCode: 400 | 401 | 403 | 404 | 409 | 502 | 503,
+  code: BoundFarmSmeltingActionErrorCode,
+  message: string,
+  currentRevision?: string,
+) {
+  reply.header("cache-control", "no-store");
+  return reply.code(statusCode).send(
+    boundFarmSmeltingActionErrorSchema.parse({
+      error: {
+        code,
+        message,
+        ...(currentRevision === undefined ? {} : { current_revision: currentRevision }),
+      },
+    }),
+  );
+}
+
+function sendBoundFarmExpeditionActionError(
+  reply: FastifyReply,
+  statusCode: 400 | 401 | 403 | 404 | 409 | 502 | 503,
+  code: BoundFarmExpeditionActionErrorCode,
+  message: string,
+  currentRevision?: string,
+) {
+  reply.header("cache-control", "no-store");
+  return reply.code(statusCode).send(
+    boundFarmExpeditionActionErrorSchema.parse({
+      error: {
+        code,
+        message,
+        ...(currentRevision === undefined ? {} : { current_revision: currentRevision }),
+      },
+    }),
+  );
+}
+
+function sendBoundFarmRanchInteractionActionError(
+  reply: FastifyReply,
+  statusCode: 400 | 401 | 403 | 404 | 409 | 502 | 503,
+  code: BoundFarmRanchInteractionActionErrorCode,
+  message: string,
+  currentRevision?: string,
+) {
+  reply.header("cache-control", "no-store");
+  return reply.code(statusCode).send(
+    boundFarmRanchInteractionActionErrorSchema.parse({
+      error: {
+        code,
+        message,
+        ...(currentRevision === undefined ? {} : { current_revision: currentRevision }),
+      },
+    }),
+  );
+}
+
+function sendBoundFarmNeighborhoodMessageActionError(
+  reply: FastifyReply,
+  statusCode: 400 | 401 | 403 | 404 | 409 | 502 | 503,
+  code: BoundFarmNeighborhoodMessageActionErrorCode,
+  message: string,
+  currentRevision?: string,
+) {
+  reply.header("cache-control", "no-store");
+  return reply.code(statusCode).send(
+    boundFarmNeighborhoodMessageActionErrorSchema.parse({
+      error: {
+        code,
+        message,
+        ...(currentRevision === undefined ? {} : { current_revision: currentRevision }),
+      },
+    }),
+  );
+}
+
+function sendBoundFarmMarketActionError(
+  reply: FastifyReply,
+  statusCode: 400 | 401 | 403 | 404 | 409 | 502 | 503,
+  code: BoundFarmMarketActionErrorCode,
+  message: string,
+  currentRevision?: string,
+) {
+  reply.header("cache-control", "no-store");
+  return reply.code(statusCode).send(
+    boundFarmMarketActionErrorSchema.parse({
+      error: {
+        code,
+        message,
+        ...(currentRevision === undefined ? {} : { current_revision: currentRevision }),
       },
     }),
   );
@@ -761,6 +1178,25 @@ function sendBoundFarmRanchCollectionError(
   reply.header("cache-control", "no-store");
   return reply.code(statusCode).send(
     boundFarmRanchCollectionErrorSchema.parse({
+      error: {
+        code,
+        message,
+        ...(currentRevision === undefined ? {} : { current_revision: currentRevision }),
+      },
+    }),
+  );
+}
+
+function sendBoundFarmRanchDecorationActionError(
+  reply: FastifyReply,
+  statusCode: 400 | 401 | 403 | 404 | 409 | 502 | 503,
+  code: BoundFarmRanchDecorationActionErrorCode,
+  message: string,
+  currentRevision?: string,
+) {
+  reply.header("cache-control", "no-store");
+  return reply.code(statusCode).send(
+    boundFarmRanchDecorationActionErrorSchema.parse({
       error: {
         code,
         message,
@@ -3163,6 +3599,369 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     }
   });
 
+  app.post("/api/farm/purchase-requests", async (request, reply) => {
+    const parsedBody = boundFarmPurchaseRequestCreateSchema.safeParse(request.body);
+    const idempotencyHeader = request.headers["idempotency-key"];
+    const parsedIdempotencyKey = farmPurchaseRequestIdempotencyKeySchema.safeParse(
+      typeof idempotencyHeader === "string" ? idempotencyHeader : undefined,
+    );
+    if (!parsedBody.success || !parsedIdempotencyKey.success) {
+      return sendBoundFarmPurchaseRequestError(
+        reply,
+        400,
+        "invalid_request",
+        "A valid cart and Idempotency-Key are required",
+      );
+    }
+    if (!options.farmPurchaseRequestService) {
+      return sendBoundFarmPurchaseRequestError(
+        reply,
+        503,
+        "farm_unavailable",
+        "Farm purchase requests are unavailable",
+      );
+    }
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendBoundFarmPurchaseRequestError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+
+    try {
+      const community = await options.registrationAuth.getCurrentSession(token);
+      const catalog = await options.registrationAuth.getCurrentFarmCatalog(token);
+      const settings = catalog.data.settings;
+      if (
+        settings.status !== "available" ||
+        typeof settings.human_name !== "string" ||
+        settings.human_name.trim().length === 0
+      ) {
+        return sendBoundFarmPurchaseRequestError(
+          reply,
+          409,
+          "operation_not_allowed",
+          "Set the farm human name before creating a purchase request",
+        );
+      }
+
+      let currentRevision: string;
+      let requestItems: Array<{
+        itemId: string;
+        kind: string;
+        qty: number;
+        displayName: string;
+      }>;
+      if (parsedBody.data.shop === "field") {
+        const shop = catalog.data.shop;
+        if (shop.status !== "available") {
+          return sendBoundFarmPurchaseRequestError(
+            reply,
+            503,
+            "farm_unavailable",
+            "The farm shop is unavailable",
+          );
+        }
+        currentRevision = shop.revision;
+        if (currentRevision !== parsedBody.data.shop_revision) {
+          return sendBoundFarmPurchaseRequestError(
+            reply,
+            409,
+            "shop_changed",
+            "The farm shop has changed",
+            currentRevision,
+          );
+        }
+        requestItems = parsedBody.data.items.map((requested) => {
+          const item = shop.items.find(
+            (candidate) =>
+              candidate.kind === requested.kind && candidate.item_id === requested.item_id,
+          );
+          const supported =
+            (requested.kind === "potion" && requested.item_id === "speed_potion") ||
+            (requested.kind === "seed" && item?.source === "persisted") ||
+            (requested.kind === "recipe" && item?.source === "persisted") ||
+            (requested.kind === "potion_set" && item?.source === "persisted");
+          if (
+            !item ||
+            !supported ||
+            item.identity_state !== "known" ||
+            item.name === null ||
+            item.available_quantity === null ||
+            item.available_quantity < requested.qty ||
+            item.condition === "already_owned"
+          ) {
+            throw new FarmPurchaseRequestInputError("The requested field item is unavailable");
+          }
+          return {
+            itemId: requested.item_id,
+            kind: requested.kind,
+            qty: requested.qty,
+            displayName: item.name,
+          };
+        });
+      } else {
+        const ranch = await options.registrationAuth.getCurrentFarmRanch(token);
+        currentRevision = ranch.revision;
+        if (currentRevision !== parsedBody.data.shop_revision) {
+          return sendBoundFarmPurchaseRequestError(
+            reply,
+            409,
+            "shop_changed",
+            "The ranch shop has changed",
+            currentRevision,
+          );
+        }
+        requestItems = parsedBody.data.items.map((requested) => {
+          const section =
+            requested.kind === "animal"
+              ? ranch.data.shop.animals
+              : requested.kind === "pet"
+                ? ranch.data.shop.pets
+                : null;
+          const item = section?.items.find((candidate) => candidate.kind_id === requested.item_id);
+          if (
+            section?.status !== "available" ||
+            !item ||
+            item.status !== "known" ||
+            item.name === null ||
+            item.owned !== false ||
+            item.available_quantity === null ||
+            item.available_quantity < requested.qty
+          ) {
+            throw new FarmPurchaseRequestInputError("The requested ranch item is unavailable");
+          }
+          return {
+            itemId: requested.item_id,
+            kind: requested.kind,
+            qty: requested.qty,
+            displayName: item.name,
+          };
+        });
+      }
+
+      const created = options.farmPurchaseRequestService.create({
+        residentId: community.resident.residentId,
+        homeId: community.home.homeId,
+        humanName: settings.human_name,
+        shop: parsedBody.data.shop,
+        shopRevision: currentRevision,
+        idempotencyKey: parsedIdempotencyKey.data,
+        items: requestItems,
+      });
+      reply.header("cache-control", "no-store");
+      return boundFarmPurchaseRequestCreateSuccessSchema.parse({
+        data: {
+          shop: created.request.shop,
+          shop_revision: created.request.shopRevision,
+          items: parsedBody.data.items,
+          status: created.request.status,
+          expires_at: new Date(created.request.expiresAt).toISOString(),
+        },
+        server_time: new Date().toISOString(),
+      });
+    } catch (error) {
+      if (error instanceof AuthenticationRequiredError) {
+        return sendBoundFarmPurchaseRequestError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
+        return sendBoundFarmPurchaseRequestError(
+          reply,
+          403,
+          "qq_not_group_member",
+          "The session QQ number is no longer a current member of the community group",
+        );
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendBoundFarmPurchaseRequestError(
+          reply,
+          503,
+          "onebot_unavailable",
+          "QQ group membership could not be verified",
+        );
+      }
+      if (error instanceof RegistrationProfileRequiredError) {
+        return sendBoundFarmPurchaseRequestError(
+          reply,
+          409,
+          "registration_profile_required",
+          "A resident, home, and farm binding are required",
+        );
+      }
+      if (error instanceof FarmPurchaseRequestIdempotencyConflictError) {
+        return sendBoundFarmPurchaseRequestError(
+          reply,
+          409,
+          "idempotency_conflict",
+          "This Idempotency-Key was used for another cart",
+        );
+      }
+      if (error instanceof FarmPurchaseRequestInputError) {
+        return sendBoundFarmPurchaseRequestError(
+          reply,
+          409,
+          "operation_not_allowed",
+          error.message,
+        );
+      }
+      if (
+        error instanceof FarmHumanCatalogCredentialInvalidError ||
+        error instanceof FarmHumanRanchCredentialInvalidError
+      ) {
+        return sendBoundFarmPurchaseRequestError(
+          reply,
+          409,
+          "farm_credential_invalid",
+          "The bound farm human credential is no longer valid",
+        );
+      }
+      if (
+        error instanceof FarmHumanCatalogNotFoundError ||
+        error instanceof FarmHumanRanchNotFoundError
+      ) {
+        return sendBoundFarmPurchaseRequestError(
+          reply,
+          404,
+          "farm_not_found",
+          "The bound farm no longer exists",
+        );
+      }
+      if (
+        error instanceof FarmHumanCatalogContractUnavailableError ||
+        error instanceof FarmHumanRanchContractUnavailableError
+      ) {
+        return sendBoundFarmPurchaseRequestError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The farm shop response could not be verified",
+        );
+      }
+      if (
+        error instanceof FarmHumanCatalogUnavailableError ||
+        error instanceof FarmHumanRanchUnavailableError
+      ) {
+        return sendBoundFarmPurchaseRequestError(
+          reply,
+          503,
+          "farm_unavailable",
+          "The farm shop is unavailable",
+        );
+      }
+      throw error;
+    }
+  });
+
+  app.get("/api/farm/bulletin", { exposeHeadRoute: false }, async (request, reply) => {
+    if (
+      !boundFarmBulletinReadRequestSchema.safeParse(request.query).success ||
+      requestHasBody(request)
+    ) {
+      return sendBoundFarmBulletinReadError(
+        reply,
+        400,
+        "invalid_request",
+        "The bound farm bulletin does not accept query parameters or a request body",
+      );
+    }
+
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendBoundFarmBulletinReadError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+
+    try {
+      const bulletin = await options.registrationAuth.getCurrentFarmBulletin(token);
+      reply.header("cache-control", "no-store");
+      return boundFarmBulletinReadSuccessSchema.parse(bulletin);
+    } catch (error) {
+      if (error instanceof AuthenticationRequiredError) {
+        return sendBoundFarmBulletinReadError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
+        return sendBoundFarmBulletinReadError(
+          reply,
+          403,
+          "qq_not_group_member",
+          "The session QQ number is no longer a current member of the community group",
+        );
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendBoundFarmBulletinReadError(
+          reply,
+          503,
+          "onebot_unavailable",
+          "QQ group membership could not be verified",
+        );
+      }
+      if (error instanceof RegistrationProfileRequiredError) {
+        return sendBoundFarmBulletinReadError(
+          reply,
+          409,
+          "registration_profile_required",
+          "A resident, home, and farm binding are required",
+        );
+      }
+      if (error instanceof FarmHumanBulletinCredentialInvalidError) {
+        return sendBoundFarmBulletinReadError(
+          reply,
+          409,
+          "farm_credential_invalid",
+          "The bound farm human credential is no longer valid",
+        );
+      }
+      if (error instanceof FarmHumanBulletinNotFoundError) {
+        return sendBoundFarmBulletinReadError(
+          reply,
+          404,
+          "farm_not_found",
+          "The bound farm no longer exists",
+        );
+      }
+      if (error instanceof FarmHumanBulletinContractUnavailableError) {
+        request.log.error({ error_name: error.name }, "Farm bulletin read is unavailable");
+        return sendBoundFarmBulletinReadError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The farm bulletin response could not be verified",
+        );
+      }
+      if (error instanceof FarmHumanBulletinUnavailableError) {
+        request.log.error({ error_name: error.name }, "Farm bulletin read is unavailable");
+        return sendBoundFarmBulletinReadError(
+          reply,
+          503,
+          "farm_unavailable",
+          "The farm bulletin is unavailable",
+        );
+      }
+      throw error;
+    }
+  });
+
   app.get("/api/farm/kitchen", { exposeHeadRoute: false }, async (request, reply) => {
     if (
       !boundFarmKitchenReadRequestSchema.safeParse(request.query).success ||
@@ -3274,7 +4073,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         reply,
         400,
         "invalid_request",
-        "Submit one ingredient or recipe purchase without query parameters",
+        "Submit one kitchen cart without query parameters",
       );
     }
 
@@ -3306,9 +4105,11 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       const result = await options.registrationAuth.purchaseCurrentFarmKitchen(token, {
         expectedShopRevision: body.expected_shop_revision,
         idempotencyKey,
-        kind: body.kind,
-        itemId: body.item_id,
-        quantity: body.quantity,
+        items: body.items.map((item) => ({
+          kind: item.kind,
+          itemId: item.item_id,
+          quantity: item.quantity,
+        })),
       });
       const parsedResult = boundFarmKitchenPurchaseSuccessSchema.safeParse(result);
       if (!parsedResult.success) {
@@ -3424,6 +4225,1110 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
           503,
           "farm_unavailable",
           "The farm kitchen is unavailable",
+        );
+      }
+      throw error;
+    }
+  });
+
+  app.post("/api/farm/kitchen/cooks", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    const parsedBody = boundFarmKitchenCookRequestSchema.safeParse(request.body);
+    if (
+      !boundFarmKitchenReadRequestSchema.safeParse(request.query).success ||
+      !parsedBody.success
+    ) {
+      return sendBoundFarmKitchenCookError(
+        reply,
+        400,
+        "invalid_request",
+        "Submit one kitchen cook without query parameters",
+      );
+    }
+
+    const idempotencyKey = request.headers["idempotency-key"];
+    if (
+      typeof idempotencyKey !== "string" ||
+      !farmKitchenCookIdempotencyKeySchema.safeParse(idempotencyKey).success
+    ) {
+      return sendBoundFarmKitchenCookError(
+        reply,
+        400,
+        "invalid_request",
+        "Kitchen cook requires a UUID Idempotency-Key",
+      );
+    }
+
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendBoundFarmKitchenCookError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+
+    try {
+      const body = parsedBody.data;
+      const result = await options.registrationAuth.cookCurrentFarmKitchen(token, {
+        expectedKitchenInventoryRevision: body.expected_kitchen_inventory_revision,
+        idempotencyKey,
+        items: body.items,
+      });
+      const parsedResult = boundFarmKitchenCookSuccessSchema.safeParse(result);
+      if (!parsedResult.success) {
+        return sendBoundFarmKitchenCookError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The farm kitchen cook response could not be verified",
+        );
+      }
+      return reply.send(parsedResult.data);
+    } catch (error) {
+      if (error instanceof AuthenticationRequiredError) {
+        return sendBoundFarmKitchenCookError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
+        return sendBoundFarmKitchenCookError(
+          reply,
+          403,
+          "qq_not_group_member",
+          "The session QQ number is no longer a current member of the community group",
+        );
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendBoundFarmKitchenCookError(
+          reply,
+          503,
+          "onebot_unavailable",
+          "QQ group membership could not be verified",
+        );
+      }
+      if (error instanceof RegistrationProfileRequiredError) {
+        return sendBoundFarmKitchenCookError(
+          reply,
+          409,
+          "registration_profile_required",
+          "A resident, home, and farm binding are required",
+        );
+      }
+      if (error instanceof FarmHumanKitchenCookStateConflictError) {
+        return sendBoundFarmKitchenCookError(
+          reply,
+          409,
+          "state_conflict",
+          "The kitchen inventory has changed",
+          error.currentKitchenInventoryRevision,
+        );
+      }
+      if (error instanceof FarmHumanKitchenCookRejectedError) {
+        return sendBoundFarmKitchenCookError(reply, 409, "cook_rejected", error.message);
+      }
+      if (error instanceof FarmHumanKitchenCookIdempotencyConflictError) {
+        return sendBoundFarmKitchenCookError(
+          reply,
+          409,
+          "idempotency_conflict",
+          "This idempotency key was used for a different request",
+        );
+      }
+      if (error instanceof FarmHumanKitchenCookCredentialInvalidError) {
+        return sendBoundFarmKitchenCookError(
+          reply,
+          409,
+          "farm_credential_invalid",
+          "The bound farm human credential is no longer valid",
+        );
+      }
+      if (error instanceof FarmHumanKitchenCookNotFoundError) {
+        return sendBoundFarmKitchenCookError(
+          reply,
+          404,
+          "farm_not_found",
+          "The bound farm no longer exists",
+        );
+      }
+      if (error instanceof FarmHumanKitchenCookContractUnavailableError) {
+        request.log.error({ error_name: error.name }, "Farm kitchen cook is unavailable");
+        return sendBoundFarmKitchenCookError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The farm kitchen cook response could not be verified",
+        );
+      }
+      if (error instanceof FarmHumanKitchenCookUnavailableError) {
+        request.log.error({ error_name: error.name }, "Farm kitchen cook is unavailable");
+        return sendBoundFarmKitchenCookError(
+          reply,
+          503,
+          "farm_unavailable",
+          "The farm kitchen is unavailable",
+        );
+      }
+      throw error;
+    }
+  });
+
+  app.post("/api/farm/kitchen/inventory/actions", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    const parsedBody = boundFarmKitchenInventoryActionRequestSchema.safeParse(request.body);
+    if (
+      !boundFarmKitchenReadRequestSchema.safeParse(request.query).success ||
+      !parsedBody.success
+    ) {
+      return sendBoundFarmKitchenInventoryActionError(
+        reply,
+        400,
+        "invalid_request",
+        "Submit one kitchen inventory action without query parameters",
+      );
+    }
+
+    const idempotencyKey = request.headers["idempotency-key"];
+    if (
+      typeof idempotencyKey !== "string" ||
+      !farmKitchenInventoryActionIdempotencyKeySchema.safeParse(idempotencyKey).success
+    ) {
+      return sendBoundFarmKitchenInventoryActionError(
+        reply,
+        400,
+        "invalid_request",
+        "Kitchen inventory action requires a UUID Idempotency-Key",
+      );
+    }
+
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendBoundFarmKitchenInventoryActionError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+
+    try {
+      const body = parsedBody.data;
+      const actionInput = (() => {
+        switch (body.action) {
+          case "use":
+            return {
+              action: body.action,
+              dishInstanceId: body.dish_instance_id,
+              target: body.target,
+              expectedInventoryRevision: body.expected_kitchen_inventory_revision,
+              idempotencyKey,
+            };
+          case "recycle":
+            return {
+              action: body.action,
+              itemKind: body.item_kind,
+              itemInstanceIds: body.item_instance_ids,
+              quantity: body.quantity,
+              expectedInventoryRevision: body.expected_kitchen_inventory_revision,
+              idempotencyKey,
+            };
+          case "stall":
+            return {
+              action: body.action,
+              itemInstanceIds: body.item_instance_ids,
+              quantity: body.quantity,
+              price: body.price,
+              expectedInventoryRevision: body.expected_kitchen_inventory_revision,
+              idempotencyKey,
+            };
+          case "sell_fish":
+            return {
+              action: body.action,
+              catchInstanceIds: body.catch_instance_ids,
+              quantity: body.quantity,
+              expectedInventoryRevision: body.expected_kitchen_inventory_revision,
+              idempotencyKey,
+            };
+          case "sell_treasure":
+            return {
+              action: body.action,
+              treasureItemId: body.treasure_item_id,
+              quantity: body.quantity,
+              expectedInventoryRevision: body.expected_kitchen_inventory_revision,
+              idempotencyKey,
+            };
+        }
+      })();
+      const result = await options.registrationAuth.executeCurrentFarmKitchenInventoryAction(
+        token,
+        actionInput,
+      );
+      const parsedResult = boundFarmKitchenInventoryActionSuccessSchema.safeParse(result);
+      if (!parsedResult.success) {
+        return sendBoundFarmKitchenInventoryActionError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The farm kitchen inventory action response could not be verified",
+        );
+      }
+      return reply.send(parsedResult.data);
+    } catch (error) {
+      if (error instanceof AuthenticationRequiredError) {
+        return sendBoundFarmKitchenInventoryActionError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
+        return sendBoundFarmKitchenInventoryActionError(
+          reply,
+          403,
+          "qq_not_group_member",
+          "The session QQ number is no longer a current member of the community group",
+        );
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendBoundFarmKitchenInventoryActionError(
+          reply,
+          503,
+          "onebot_unavailable",
+          "QQ group membership could not be verified",
+        );
+      }
+      if (error instanceof RegistrationProfileRequiredError) {
+        return sendBoundFarmKitchenInventoryActionError(
+          reply,
+          409,
+          "registration_profile_required",
+          "A resident, home, and farm binding are required",
+        );
+      }
+      if (error instanceof FarmHumanKitchenInventoryActionStateConflictError) {
+        return sendBoundFarmKitchenInventoryActionError(
+          reply,
+          409,
+          "state_conflict",
+          "The kitchen inventory has changed",
+          error.currentInventoryRevision,
+        );
+      }
+      if (error instanceof FarmHumanKitchenInventoryActionRejectedError) {
+        return sendBoundFarmKitchenInventoryActionError(
+          reply,
+          409,
+          "action_rejected",
+          error.message,
+        );
+      }
+      if (error instanceof FarmHumanKitchenInventoryActionIdempotencyConflictError) {
+        return sendBoundFarmKitchenInventoryActionError(
+          reply,
+          409,
+          "idempotency_conflict",
+          "This idempotency key was used for a different request",
+        );
+      }
+      if (error instanceof FarmHumanKitchenInventoryActionCredentialInvalidError) {
+        return sendBoundFarmKitchenInventoryActionError(
+          reply,
+          409,
+          "farm_credential_invalid",
+          "The bound farm human credential is no longer valid",
+        );
+      }
+      if (error instanceof FarmHumanKitchenInventoryActionNotFoundError) {
+        return sendBoundFarmKitchenInventoryActionError(
+          reply,
+          404,
+          "farm_not_found",
+          "The bound farm no longer exists",
+        );
+      }
+      if (error instanceof FarmHumanKitchenInventoryActionContractUnavailableError) {
+        request.log.error(
+          { error_name: error.name },
+          "Farm kitchen inventory action is unavailable",
+        );
+        return sendBoundFarmKitchenInventoryActionError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The farm kitchen inventory action response could not be verified",
+        );
+      }
+      if (error instanceof FarmHumanKitchenInventoryActionUnavailableError) {
+        request.log.error(
+          { error_name: error.name },
+          "Farm kitchen inventory action is unavailable",
+        );
+        return sendBoundFarmKitchenInventoryActionError(
+          reply,
+          503,
+          "farm_unavailable",
+          "The farm kitchen inventory action is unavailable",
+        );
+      }
+      throw error;
+    }
+  });
+
+  app.post("/api/farm/kitchen/shop/refreshes", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    const parsedBody = boundFarmKitchenShopRefreshRequestSchema.safeParse(request.body);
+    if (
+      !boundFarmKitchenReadRequestSchema.safeParse(request.query).success ||
+      !parsedBody.success
+    ) {
+      return sendBoundFarmKitchenShopRefreshError(
+        reply,
+        400,
+        "invalid_request",
+        "Refresh the current kitchen ingredient shelf without query parameters",
+      );
+    }
+
+    const idempotencyKey = request.headers["idempotency-key"];
+    if (
+      typeof idempotencyKey !== "string" ||
+      !farmKitchenShopRefreshIdempotencyKeySchema.safeParse(idempotencyKey).success
+    ) {
+      return sendBoundFarmKitchenShopRefreshError(
+        reply,
+        400,
+        "invalid_request",
+        "Kitchen shop refresh requires a UUID Idempotency-Key",
+      );
+    }
+
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendBoundFarmKitchenShopRefreshError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+
+    try {
+      const result = await options.registrationAuth.refreshCurrentFarmKitchenShop(token, {
+        expectedShopRevision: parsedBody.data.expected_shop_revision,
+        idempotencyKey,
+      });
+      const parsedResult = boundFarmKitchenShopRefreshSuccessSchema.safeParse(result);
+      if (!parsedResult.success) {
+        return sendBoundFarmKitchenShopRefreshError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The kitchen shop refresh response could not be verified",
+        );
+      }
+      return reply.send(parsedResult.data);
+    } catch (error) {
+      if (error instanceof AuthenticationRequiredError) {
+        return sendBoundFarmKitchenShopRefreshError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
+        return sendBoundFarmKitchenShopRefreshError(
+          reply,
+          403,
+          "qq_not_group_member",
+          "The session QQ number is no longer a current member of the community group",
+        );
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendBoundFarmKitchenShopRefreshError(
+          reply,
+          503,
+          "onebot_unavailable",
+          "QQ group membership could not be verified",
+        );
+      }
+      if (error instanceof RegistrationProfileRequiredError) {
+        return sendBoundFarmKitchenShopRefreshError(
+          reply,
+          409,
+          "registration_profile_required",
+          "A resident, home, and farm binding are required",
+        );
+      }
+      if (error instanceof FarmHumanKitchenShopRefreshStateConflictError) {
+        return sendBoundFarmKitchenShopRefreshError(
+          reply,
+          409,
+          "state_conflict",
+          "The kitchen shop or farm balance has changed",
+          error.currentShopRevision,
+        );
+      }
+      if (error instanceof FarmHumanKitchenShopRefreshShopUnavailableError) {
+        return sendBoundFarmKitchenShopRefreshError(
+          reply,
+          409,
+          "shop_unavailable",
+          "The current kitchen shop is unavailable",
+        );
+      }
+      if (error instanceof FarmHumanKitchenShopRefreshRejectedError) {
+        return sendBoundFarmKitchenShopRefreshError(reply, 409, error.code, error.message);
+      }
+      if (error instanceof FarmHumanKitchenShopRefreshIdempotencyConflictError) {
+        return sendBoundFarmKitchenShopRefreshError(
+          reply,
+          409,
+          "idempotency_conflict",
+          "This idempotency key was used for a different request",
+        );
+      }
+      if (error instanceof FarmHumanKitchenShopRefreshCredentialInvalidError) {
+        return sendBoundFarmKitchenShopRefreshError(
+          reply,
+          409,
+          "farm_credential_invalid",
+          "The bound farm human credential is no longer valid",
+        );
+      }
+      if (error instanceof FarmHumanKitchenShopRefreshNotFoundError) {
+        return sendBoundFarmKitchenShopRefreshError(
+          reply,
+          404,
+          "farm_not_found",
+          "The bound farm no longer exists",
+        );
+      }
+      if (error instanceof FarmHumanKitchenShopRefreshContractUnavailableError) {
+        request.log.error({ error_name: error.name }, "Farm kitchen shop refresh is unavailable");
+        return sendBoundFarmKitchenShopRefreshError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The kitchen shop refresh response could not be verified",
+        );
+      }
+      if (error instanceof FarmHumanKitchenShopRefreshUnavailableError) {
+        request.log.error({ error_name: error.name }, "Farm kitchen shop refresh is unavailable");
+        return sendBoundFarmKitchenShopRefreshError(
+          reply,
+          503,
+          "farm_unavailable",
+          "The farm kitchen shop is unavailable",
+        );
+      }
+      throw error;
+    }
+  });
+
+  app.post("/api/farm/codex/actions", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    const parsedBody = boundFarmCropCodexActionRequestSchema.safeParse(request.body);
+    if (
+      !boundFarmCatalogReadRequestSchema.safeParse(request.query).success ||
+      !parsedBody.success
+    ) {
+      return sendBoundFarmCropCodexActionError(
+        reply,
+        400,
+        "invalid_request",
+        "Submit one crop codex action without query parameters",
+      );
+    }
+
+    const idempotencyKey = request.headers["idempotency-key"];
+    if (
+      typeof idempotencyKey !== "string" ||
+      !farmCropCodexActionIdempotencyKeySchema.safeParse(idempotencyKey).success
+    ) {
+      return sendBoundFarmCropCodexActionError(
+        reply,
+        400,
+        "invalid_request",
+        "Crop codex actions require a UUID Idempotency-Key",
+      );
+    }
+
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendBoundFarmCropCodexActionError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+
+    try {
+      const body = parsedBody.data;
+      const result = await options.registrationAuth.executeCurrentFarmCropCodexAction(token, {
+        cropId: body.crop_id,
+        action: body.action,
+        expectedCodexRevision: body.expected_codex_revision,
+        idempotencyKey,
+      });
+      const parsedResult = boundFarmCropCodexActionSuccessSchema.safeParse(result);
+      if (!parsedResult.success) {
+        return sendBoundFarmCropCodexActionError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The crop codex action response could not be verified",
+        );
+      }
+      return reply.send(parsedResult.data);
+    } catch (error) {
+      if (error instanceof AuthenticationRequiredError) {
+        return sendBoundFarmCropCodexActionError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
+        return sendBoundFarmCropCodexActionError(
+          reply,
+          403,
+          "qq_not_group_member",
+          "The session QQ number is no longer a current member of the community group",
+        );
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendBoundFarmCropCodexActionError(
+          reply,
+          503,
+          "onebot_unavailable",
+          "QQ group membership could not be verified",
+        );
+      }
+      if (error instanceof RegistrationProfileRequiredError) {
+        return sendBoundFarmCropCodexActionError(
+          reply,
+          409,
+          "registration_profile_required",
+          "A resident, home, and farm binding are required",
+        );
+      }
+      if (error instanceof FarmHumanCropCodexActionStateConflictError) {
+        return sendBoundFarmCropCodexActionError(
+          reply,
+          409,
+          "state_conflict",
+          "The crop codex has changed",
+          error.currentCodexRevision,
+        );
+      }
+      if (error instanceof FarmHumanCropCodexActionRejectedError) {
+        return sendBoundFarmCropCodexActionError(reply, 409, "action_rejected", error.message);
+      }
+      if (error instanceof FarmHumanCropCodexActionIdempotencyConflictError) {
+        return sendBoundFarmCropCodexActionError(
+          reply,
+          409,
+          "idempotency_conflict",
+          "This idempotency key was used for a different request",
+        );
+      }
+      if (error instanceof FarmHumanCropCodexActionCredentialInvalidError) {
+        return sendBoundFarmCropCodexActionError(
+          reply,
+          409,
+          "farm_credential_invalid",
+          "The bound farm human credential is no longer valid",
+        );
+      }
+      if (error instanceof FarmHumanCropCodexActionNotFoundError) {
+        return sendBoundFarmCropCodexActionError(
+          reply,
+          404,
+          "farm_not_found",
+          "The bound farm no longer exists",
+        );
+      }
+      if (error instanceof FarmHumanCropCodexActionContractUnavailableError) {
+        request.log.error({ error_name: error.name }, "Farm crop codex action is unavailable");
+        return sendBoundFarmCropCodexActionError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The crop codex action response could not be verified",
+        );
+      }
+      if (error instanceof FarmHumanCropCodexActionUnavailableError) {
+        request.log.error({ error_name: error.name }, "Farm crop codex action is unavailable");
+        return sendBoundFarmCropCodexActionError(
+          reply,
+          503,
+          "farm_unavailable",
+          "The farm crop codex is unavailable",
+        );
+      }
+      throw error;
+    }
+  });
+
+  app.post("/api/farm/smelting/actions", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    const parsedBody = boundFarmSmeltingActionRequestSchema.safeParse(request.body);
+    if (
+      !boundFarmCatalogReadRequestSchema.safeParse(request.query).success ||
+      !parsedBody.success
+    ) {
+      return sendBoundFarmSmeltingActionError(
+        reply,
+        400,
+        "invalid_request",
+        "Submit exactly three material ids without query parameters",
+      );
+    }
+
+    const idempotencyKey = request.headers["idempotency-key"];
+    if (
+      typeof idempotencyKey !== "string" ||
+      !farmSmeltingActionIdempotencyKeySchema.safeParse(idempotencyKey).success
+    ) {
+      return sendBoundFarmSmeltingActionError(
+        reply,
+        400,
+        "invalid_request",
+        "Smelting actions require a UUID Idempotency-Key",
+      );
+    }
+
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendBoundFarmSmeltingActionError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+
+    try {
+      const body = parsedBody.data;
+      const result = await options.registrationAuth.executeCurrentFarmSmeltingAction(token, {
+        materialIds: body.material_ids,
+        expectedSmeltingRevision: body.expected_smelting_revision,
+        idempotencyKey,
+      });
+      const parsedResult = boundFarmSmeltingActionSuccessSchema.safeParse(result);
+      if (!parsedResult.success) {
+        return sendBoundFarmSmeltingActionError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The smelting response could not be verified",
+        );
+      }
+      return reply.send(parsedResult.data);
+    } catch (error) {
+      if (error instanceof AuthenticationRequiredError) {
+        return sendBoundFarmSmeltingActionError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
+        return sendBoundFarmSmeltingActionError(
+          reply,
+          403,
+          "qq_not_group_member",
+          "The session QQ number is no longer a current member of the community group",
+        );
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendBoundFarmSmeltingActionError(
+          reply,
+          503,
+          "onebot_unavailable",
+          "QQ group membership could not be verified",
+        );
+      }
+      if (error instanceof RegistrationProfileRequiredError) {
+        return sendBoundFarmSmeltingActionError(
+          reply,
+          409,
+          "registration_profile_required",
+          "A resident, home, and farm binding are required",
+        );
+      }
+      if (error instanceof FarmHumanSmeltingActionStateConflictError) {
+        return sendBoundFarmSmeltingActionError(
+          reply,
+          409,
+          "state_conflict",
+          "The smelting inventory has changed",
+          error.currentSmeltingRevision,
+        );
+      }
+      if (error instanceof FarmHumanSmeltingActionRejectedError) {
+        return sendBoundFarmSmeltingActionError(reply, 409, "action_rejected", error.message);
+      }
+      if (error instanceof FarmHumanSmeltingActionIdempotencyConflictError) {
+        return sendBoundFarmSmeltingActionError(
+          reply,
+          409,
+          "idempotency_conflict",
+          "This idempotency key was used for a different request",
+        );
+      }
+      if (error instanceof FarmHumanSmeltingActionCredentialInvalidError) {
+        return sendBoundFarmSmeltingActionError(
+          reply,
+          409,
+          "farm_credential_invalid",
+          "The bound farm human credential is no longer valid",
+        );
+      }
+      if (error instanceof FarmHumanSmeltingActionNotFoundError) {
+        return sendBoundFarmSmeltingActionError(
+          reply,
+          404,
+          "farm_not_found",
+          "The bound farm no longer exists",
+        );
+      }
+      if (error instanceof FarmHumanSmeltingActionContractUnavailableError) {
+        request.log.error({ error_name: error.name }, "Farm smelting action is unavailable");
+        return sendBoundFarmSmeltingActionError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The smelting response could not be verified",
+        );
+      }
+      if (error instanceof FarmHumanSmeltingActionUnavailableError) {
+        request.log.error({ error_name: error.name }, "Farm smelting action is unavailable");
+        return sendBoundFarmSmeltingActionError(
+          reply,
+          503,
+          "farm_unavailable",
+          "The farm smelting service is unavailable",
+        );
+      }
+      throw error;
+    }
+  });
+
+  app.post("/api/farm/original-plant/actions", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    const parsedBody = boundFarmOriginalPlantActionRequestSchema.safeParse(request.body);
+    if (
+      !boundFarmCatalogReadRequestSchema.safeParse(request.query).success ||
+      !parsedBody.success
+    ) {
+      return sendBoundFarmOriginalPlantActionError(
+        reply,
+        400,
+        "invalid_request",
+        "Submit one original plant action without query parameters",
+      );
+    }
+
+    const idempotencyKey = request.headers["idempotency-key"];
+    if (
+      typeof idempotencyKey !== "string" ||
+      !farmOriginalPlantActionIdempotencyKeySchema.safeParse(idempotencyKey).success
+    ) {
+      return sendBoundFarmOriginalPlantActionError(
+        reply,
+        400,
+        "invalid_request",
+        "Original plant actions require a UUID Idempotency-Key",
+      );
+    }
+
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendBoundFarmOriginalPlantActionError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+
+    try {
+      const body = parsedBody.data;
+      const result = await options.registrationAuth.executeCurrentFarmOriginalPlantAction(token, {
+        expectedRevision: body.expected_revision,
+        idempotencyKey,
+        name: body.name,
+        latin: body.latin,
+        desc: body.desc,
+        plant: body.plant,
+        harvest: body.harvest,
+      });
+      const parsedResult = boundFarmOriginalPlantActionSuccessSchema.safeParse(result);
+      if (!parsedResult.success) {
+        return sendBoundFarmOriginalPlantActionError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The original plant action response could not be verified",
+        );
+      }
+      return reply.send(parsedResult.data);
+    } catch (error) {
+      if (error instanceof AuthenticationRequiredError) {
+        return sendBoundFarmOriginalPlantActionError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
+        return sendBoundFarmOriginalPlantActionError(
+          reply,
+          403,
+          "qq_not_group_member",
+          "The session QQ number is no longer a current member of the community group",
+        );
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendBoundFarmOriginalPlantActionError(
+          reply,
+          503,
+          "onebot_unavailable",
+          "QQ group membership could not be verified",
+        );
+      }
+      if (error instanceof RegistrationProfileRequiredError) {
+        return sendBoundFarmOriginalPlantActionError(
+          reply,
+          409,
+          "registration_profile_required",
+          "A resident, home, and farm binding are required",
+        );
+      }
+      if (error instanceof FarmHumanOriginalPlantActionStateConflictError) {
+        return sendBoundFarmOriginalPlantActionError(
+          reply,
+          409,
+          "state_conflict",
+          "The original plant catalog has changed",
+          error.currentRevision,
+        );
+      }
+      if (error instanceof FarmHumanOriginalPlantActionRejectedError) {
+        return sendBoundFarmOriginalPlantActionError(reply, 409, "action_rejected", error.message);
+      }
+      if (error instanceof FarmHumanOriginalPlantActionIdempotencyConflictError) {
+        return sendBoundFarmOriginalPlantActionError(
+          reply,
+          409,
+          "idempotency_conflict",
+          "This idempotency key was used for a different request",
+        );
+      }
+      if (error instanceof FarmHumanOriginalPlantActionCredentialInvalidError) {
+        return sendBoundFarmOriginalPlantActionError(
+          reply,
+          409,
+          "farm_credential_invalid",
+          "The bound farm human credential is no longer valid",
+        );
+      }
+      if (error instanceof FarmHumanOriginalPlantActionNotFoundError) {
+        return sendBoundFarmOriginalPlantActionError(
+          reply,
+          404,
+          "farm_not_found",
+          "The bound farm no longer exists",
+        );
+      }
+      if (error instanceof FarmHumanOriginalPlantActionContractUnavailableError) {
+        request.log.error({ error_name: error.name }, "Farm original plant action is unavailable");
+        return sendBoundFarmOriginalPlantActionError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The original plant action response could not be verified",
+        );
+      }
+      if (error instanceof FarmHumanOriginalPlantActionUnavailableError) {
+        request.log.error({ error_name: error.name }, "Farm original plant action is unavailable");
+        return sendBoundFarmOriginalPlantActionError(
+          reply,
+          503,
+          "farm_unavailable",
+          "The original plant action service is unavailable",
+        );
+      }
+      throw error;
+    }
+  });
+
+  app.post("/api/farm/expedition/actions", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    const parsedBody = boundFarmExpeditionActionRequestSchema.safeParse(request.body);
+    if (
+      !boundFarmCatalogReadRequestSchema.safeParse(request.query).success ||
+      !parsedBody.success
+    ) {
+      return sendBoundFarmExpeditionActionError(
+        reply,
+        400,
+        "invalid_request",
+        "Submit one expedition action without query parameters",
+      );
+    }
+
+    const idempotencyKey = request.headers["idempotency-key"];
+    if (
+      typeof idempotencyKey !== "string" ||
+      !farmExpeditionActionIdempotencyKeySchema.safeParse(idempotencyKey).success
+    ) {
+      return sendBoundFarmExpeditionActionError(
+        reply,
+        400,
+        "invalid_request",
+        "Expedition actions require a UUID Idempotency-Key",
+      );
+    }
+
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendBoundFarmExpeditionActionError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+
+    try {
+      const body = parsedBody.data;
+      const result = await options.registrationAuth.executeCurrentFarmExpeditionAction(token, {
+        expectedRevision: body.expected_revision,
+        idempotencyKey,
+        action: body.action,
+        payload: body.payload,
+      });
+      const parsedResult = boundFarmExpeditionActionSuccessSchema.safeParse(result);
+      if (!parsedResult.success) {
+        return sendBoundFarmExpeditionActionError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The expedition action response could not be verified",
+        );
+      }
+      return reply.send(parsedResult.data);
+    } catch (error) {
+      if (error instanceof AuthenticationRequiredError) {
+        return sendBoundFarmExpeditionActionError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
+        return sendBoundFarmExpeditionActionError(
+          reply,
+          403,
+          "qq_not_group_member",
+          "The session QQ number is no longer a current member of the community group",
+        );
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendBoundFarmExpeditionActionError(
+          reply,
+          503,
+          "onebot_unavailable",
+          "QQ group membership could not be verified",
+        );
+      }
+      if (error instanceof RegistrationProfileRequiredError) {
+        return sendBoundFarmExpeditionActionError(
+          reply,
+          409,
+          "registration_profile_required",
+          "A resident, home, and farm binding are required",
+        );
+      }
+      if (error instanceof FarmHumanExpeditionActionStateConflictError) {
+        return sendBoundFarmExpeditionActionError(
+          reply,
+          409,
+          "state_conflict",
+          "The expedition state has changed",
+          error.currentRevision,
+        );
+      }
+      if (error instanceof FarmHumanExpeditionActionRejectedError) {
+        return sendBoundFarmExpeditionActionError(reply, 409, "action_rejected", error.message);
+      }
+      if (error instanceof FarmHumanExpeditionActionIdempotencyConflictError) {
+        return sendBoundFarmExpeditionActionError(
+          reply,
+          409,
+          "idempotency_conflict",
+          "This idempotency key was used for a different request",
+        );
+      }
+      if (error instanceof FarmHumanExpeditionActionCredentialInvalidError) {
+        return sendBoundFarmExpeditionActionError(
+          reply,
+          409,
+          "farm_credential_invalid",
+          "The bound farm human credential is no longer valid",
+        );
+      }
+      if (error instanceof FarmHumanExpeditionActionNotFoundError) {
+        return sendBoundFarmExpeditionActionError(
+          reply,
+          404,
+          "farm_not_found",
+          "The bound farm no longer exists",
+        );
+      }
+      if (error instanceof FarmHumanExpeditionActionContractUnavailableError) {
+        request.log.error({ error_name: error.name }, "Farm expedition action is unavailable");
+        return sendBoundFarmExpeditionActionError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The expedition action response could not be verified",
+        );
+      }
+      if (error instanceof FarmHumanExpeditionActionUnavailableError) {
+        request.log.error({ error_name: error.name }, "Farm expedition action is unavailable");
+        return sendBoundFarmExpeditionActionError(
+          reply,
+          503,
+          "farm_unavailable",
+          "The expedition action service is unavailable",
         );
       }
       throw error;
@@ -3835,6 +5740,338 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     }
   });
 
+  app.post("/api/farm/ranch/decorations/actions", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    const parsedBody = boundFarmRanchDecorationActionRequestSchema.safeParse(request.body);
+    if (!boundFarmRanchReadRequestSchema.safeParse(request.query).success || !parsedBody.success) {
+      return sendBoundFarmRanchDecorationActionError(
+        reply,
+        400,
+        "invalid_request",
+        "Submit one ranch decoration action without query parameters",
+      );
+    }
+
+    const idempotencyKey = request.headers["idempotency-key"];
+    if (
+      typeof idempotencyKey !== "string" ||
+      !farmRanchDecorationActionIdempotencyKeySchema.safeParse(idempotencyKey).success
+    ) {
+      return sendBoundFarmRanchDecorationActionError(
+        reply,
+        400,
+        "invalid_request",
+        "Ranch decoration actions require a UUID Idempotency-Key",
+      );
+    }
+
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendBoundFarmRanchDecorationActionError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+
+    try {
+      const body = parsedBody.data;
+      const result = await options.registrationAuth.executeCurrentFarmRanchDecorationAction(token, {
+        expectedRevision: body.expected_revision,
+        idempotencyKey,
+        action: body.action,
+        decorationId: body.decoration_id,
+      });
+      const parsedResult = boundFarmRanchDecorationActionSuccessSchema.safeParse(result);
+      if (!parsedResult.success) {
+        return sendBoundFarmRanchDecorationActionError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The ranch decoration action response could not be verified",
+        );
+      }
+      return reply.send(parsedResult.data);
+    } catch (error) {
+      if (error instanceof AuthenticationRequiredError) {
+        return sendBoundFarmRanchDecorationActionError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
+        return sendBoundFarmRanchDecorationActionError(
+          reply,
+          403,
+          "qq_not_group_member",
+          "The session QQ number is no longer a current member of the community group",
+        );
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendBoundFarmRanchDecorationActionError(
+          reply,
+          503,
+          "onebot_unavailable",
+          "QQ group membership could not be verified",
+        );
+      }
+      if (error instanceof RegistrationProfileRequiredError) {
+        return sendBoundFarmRanchDecorationActionError(
+          reply,
+          409,
+          "registration_profile_required",
+          "A resident, home, and farm binding are required",
+        );
+      }
+      if (error instanceof FarmHumanRanchDecorationActionStateConflictError) {
+        return sendBoundFarmRanchDecorationActionError(
+          reply,
+          409,
+          "state_conflict",
+          "The ranch has changed",
+          error.currentRevision,
+        );
+      }
+      if (error instanceof FarmHumanRanchDecorationActionRejectedError) {
+        return sendBoundFarmRanchDecorationActionError(
+          reply,
+          409,
+          "action_rejected",
+          error.message,
+        );
+      }
+      if (error instanceof FarmHumanRanchDecorationActionIdempotencyConflictError) {
+        return sendBoundFarmRanchDecorationActionError(
+          reply,
+          409,
+          "idempotency_conflict",
+          "This idempotency key was used for a different request",
+        );
+      }
+      if (error instanceof FarmHumanRanchDecorationActionCredentialInvalidError) {
+        return sendBoundFarmRanchDecorationActionError(
+          reply,
+          409,
+          "farm_credential_invalid",
+          "The bound farm human credential is no longer valid",
+        );
+      }
+      if (error instanceof FarmHumanRanchDecorationActionNotFoundError) {
+        return sendBoundFarmRanchDecorationActionError(
+          reply,
+          404,
+          "farm_not_found",
+          "The bound farm no longer exists",
+        );
+      }
+      if (error instanceof FarmHumanRanchDecorationActionContractUnavailableError) {
+        request.log.error(
+          { error_name: error.name },
+          "Farm ranch decoration action is unavailable",
+        );
+        return sendBoundFarmRanchDecorationActionError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The ranch decoration action response could not be verified",
+        );
+      }
+      if (error instanceof FarmHumanRanchDecorationActionUnavailableError) {
+        request.log.error(
+          { error_name: error.name },
+          "Farm ranch decoration action is unavailable",
+        );
+        return sendBoundFarmRanchDecorationActionError(
+          reply,
+          503,
+          "farm_unavailable",
+          "The farm ranch is unavailable",
+        );
+      }
+      throw error;
+    }
+  });
+
+  app.post("/api/farm/ranch/interaction/actions", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    const parsedBody = boundFarmRanchInteractionActionRequestSchema.safeParse(request.body);
+    if (
+      !boundFarmCatalogReadRequestSchema.safeParse(request.query).success ||
+      !parsedBody.success
+    ) {
+      return sendBoundFarmRanchInteractionActionError(
+        reply,
+        400,
+        "invalid_request",
+        "Submit one ranch interaction action without query parameters",
+      );
+    }
+    const idempotencyKey = request.headers["idempotency-key"];
+    if (
+      typeof idempotencyKey !== "string" ||
+      !farmRanchInteractionActionIdempotencyKeySchema.safeParse(idempotencyKey).success
+    ) {
+      return sendBoundFarmRanchInteractionActionError(
+        reply,
+        400,
+        "invalid_request",
+        "Ranch interaction actions require a UUID Idempotency-Key",
+      );
+    }
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendBoundFarmRanchInteractionActionError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+    try {
+      const body = parsedBody.data;
+      const common = {
+        expectedRevision: body.expected_revision,
+        idempotencyKey,
+      };
+      const result =
+        body.action === "dispatch"
+          ? await options.registrationAuth.executeCurrentFarmRanchInteractionAction(token, {
+              ...common,
+              action: body.action,
+              targetFarmDoorplate: body.target_farm_doorplate,
+              animalKindId: body.animal_kind_id,
+              durationHours: body.duration_hours,
+            })
+          : body.action === "catch"
+            ? await options.registrationAuth.executeCurrentFarmRanchInteractionAction(token, {
+                ...common,
+                action: body.action,
+                raidId: body.raid_id,
+              })
+            : await options.registrationAuth.executeCurrentFarmRanchInteractionAction(token, {
+                ...common,
+                action: body.action,
+                amount: body.amount,
+              });
+      const parsedResult = boundFarmRanchInteractionActionSuccessSchema.safeParse(result);
+      if (!parsedResult.success) {
+        return sendBoundFarmRanchInteractionActionError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The ranch interaction response could not be verified",
+        );
+      }
+      return reply.send(parsedResult.data);
+    } catch (error) {
+      if (error instanceof AuthenticationRequiredError) {
+        return sendBoundFarmRanchInteractionActionError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
+        return sendBoundFarmRanchInteractionActionError(
+          reply,
+          403,
+          "qq_not_group_member",
+          "The session QQ number is no longer a current member of the community group",
+        );
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendBoundFarmRanchInteractionActionError(
+          reply,
+          503,
+          "onebot_unavailable",
+          "QQ group membership could not be verified",
+        );
+      }
+      if (error instanceof RegistrationProfileRequiredError) {
+        return sendBoundFarmRanchInteractionActionError(
+          reply,
+          409,
+          "registration_profile_required",
+          "A resident, home, and farm binding are required",
+        );
+      }
+      if (error instanceof FarmHumanRanchInteractionActionStateConflictError) {
+        return sendBoundFarmRanchInteractionActionError(
+          reply,
+          409,
+          "state_conflict",
+          "The ranch has changed",
+          error.currentRevision,
+        );
+      }
+      if (error instanceof FarmHumanRanchInteractionActionRejectedError) {
+        return sendBoundFarmRanchInteractionActionError(
+          reply,
+          409,
+          "action_rejected",
+          error.message,
+        );
+      }
+      if (error instanceof FarmHumanRanchInteractionActionIdempotencyConflictError) {
+        return sendBoundFarmRanchInteractionActionError(
+          reply,
+          409,
+          "idempotency_conflict",
+          "This idempotency key was used for a different request",
+        );
+      }
+      if (error instanceof FarmHumanRanchInteractionActionCredentialInvalidError) {
+        return sendBoundFarmRanchInteractionActionError(
+          reply,
+          409,
+          "farm_credential_invalid",
+          "The bound farm human credential is no longer valid",
+        );
+      }
+      if (error instanceof FarmHumanRanchInteractionActionNotFoundError) {
+        return sendBoundFarmRanchInteractionActionError(
+          reply,
+          404,
+          "farm_not_found",
+          "The ranch interaction target no longer exists",
+        );
+      }
+      if (error instanceof FarmHumanRanchInteractionActionContractUnavailableError) {
+        request.log.error(
+          { error_name: error.name },
+          "Farm ranch interaction action is unavailable",
+        );
+        return sendBoundFarmRanchInteractionActionError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The ranch interaction response could not be verified",
+        );
+      }
+      if (error instanceof FarmHumanRanchInteractionActionUnavailableError) {
+        request.log.error(
+          { error_name: error.name },
+          "Farm ranch interaction action is unavailable",
+        );
+        return sendBoundFarmRanchInteractionActionError(
+          reply,
+          503,
+          "farm_unavailable",
+          "The ranch interaction service is unavailable",
+        );
+      }
+      throw error;
+    }
+  });
+
   app.post("/api/farm/settings/actions", async (request, reply) => {
     reply.header("cache-control", "no-store");
     const parsedBody = boundFarmSettingsActionRequestSchema.safeParse(request.body);
@@ -3978,6 +6215,356 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
           503,
           "farm_unavailable",
           "The farm settings are unavailable",
+        );
+      }
+      throw error;
+    }
+  });
+
+  app.post("/api/farm/neighborhood/messages", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    const parsedBody = boundFarmNeighborhoodMessageActionRequestSchema.safeParse(request.body);
+    if (
+      !boundFarmCatalogReadRequestSchema.safeParse(request.query).success ||
+      !parsedBody.success
+    ) {
+      return sendBoundFarmNeighborhoodMessageActionError(
+        reply,
+        400,
+        "invalid_request",
+        "Submit one neighborhood message without query parameters",
+      );
+    }
+    const idempotencyKey = request.headers["idempotency-key"];
+    if (
+      typeof idempotencyKey !== "string" ||
+      !farmNeighborhoodMessageActionIdempotencyKeySchema.safeParse(idempotencyKey).success
+    ) {
+      return sendBoundFarmNeighborhoodMessageActionError(
+        reply,
+        400,
+        "invalid_request",
+        "Neighborhood messages require a UUID Idempotency-Key",
+      );
+    }
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendBoundFarmNeighborhoodMessageActionError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+    try {
+      const body = parsedBody.data;
+      const result = await options.registrationAuth.sendCurrentFarmNeighborhoodMessage(token, {
+        targetFarmDoorplate: body.target_farm_doorplate,
+        message: body.body,
+        expectedRevision: body.expected_revision,
+        idempotencyKey,
+      });
+      const parsedResult = boundFarmNeighborhoodMessageActionSuccessSchema.safeParse(result);
+      if (!parsedResult.success) {
+        return sendBoundFarmNeighborhoodMessageActionError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The neighborhood message response could not be verified",
+        );
+      }
+      return reply.send(parsedResult.data);
+    } catch (error) {
+      if (error instanceof AuthenticationRequiredError) {
+        return sendBoundFarmNeighborhoodMessageActionError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
+        return sendBoundFarmNeighborhoodMessageActionError(
+          reply,
+          403,
+          "qq_not_group_member",
+          "The session QQ number is no longer a current member of the community group",
+        );
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendBoundFarmNeighborhoodMessageActionError(
+          reply,
+          503,
+          "onebot_unavailable",
+          "QQ group membership could not be verified",
+        );
+      }
+      if (error instanceof RegistrationProfileRequiredError) {
+        return sendBoundFarmNeighborhoodMessageActionError(
+          reply,
+          409,
+          "registration_profile_required",
+          "A resident, home, and farm binding are required",
+        );
+      }
+      if (error instanceof FarmHumanNeighborhoodMessageActionStateConflictError) {
+        return sendBoundFarmNeighborhoodMessageActionError(
+          reply,
+          409,
+          "state_conflict",
+          "The neighborhood has changed",
+          error.currentRevision,
+        );
+      }
+      if (error instanceof FarmHumanNeighborhoodMessageActionRejectedError) {
+        return sendBoundFarmNeighborhoodMessageActionError(reply, 409, error.code, error.message);
+      }
+      if (error instanceof FarmHumanNeighborhoodMessageActionIdempotencyConflictError) {
+        return sendBoundFarmNeighborhoodMessageActionError(
+          reply,
+          409,
+          "idempotency_conflict",
+          "This idempotency key was used for a different request",
+        );
+      }
+      if (error instanceof FarmHumanNeighborhoodMessageActionCredentialInvalidError) {
+        return sendBoundFarmNeighborhoodMessageActionError(
+          reply,
+          409,
+          "farm_credential_invalid",
+          "The bound farm human credential is no longer valid",
+        );
+      }
+      if (error instanceof FarmHumanNeighborhoodMessageActionNotFoundError) {
+        return sendBoundFarmNeighborhoodMessageActionError(
+          reply,
+          404,
+          "farm_not_found",
+          "The target farm no longer exists",
+        );
+      }
+      if (error instanceof FarmHumanNeighborhoodMessageActionContractUnavailableError) {
+        request.log.error({ error_name: error.name }, "Farm neighborhood message is unavailable");
+        return sendBoundFarmNeighborhoodMessageActionError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The neighborhood message response could not be verified",
+        );
+      }
+      if (error instanceof FarmHumanNeighborhoodMessageActionUnavailableError) {
+        request.log.error({ error_name: error.name }, "Farm neighborhood message is unavailable");
+        return sendBoundFarmNeighborhoodMessageActionError(
+          reply,
+          503,
+          "farm_unavailable",
+          "The neighborhood message service is unavailable",
+        );
+      }
+      throw error;
+    }
+  });
+
+  app.post("/api/farm/market/actions", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    const parsedBody = boundFarmMarketActionRequestSchema.safeParse(request.body);
+    if (
+      !boundFarmCatalogReadRequestSchema.safeParse(request.query).success ||
+      !parsedBody.success
+    ) {
+      return sendBoundFarmMarketActionError(
+        reply,
+        400,
+        "invalid_request",
+        "Submit one market action without query parameters",
+      );
+    }
+    const idempotencyKey = request.headers["idempotency-key"];
+    if (
+      typeof idempotencyKey !== "string" ||
+      !farmMarketActionIdempotencyKeySchema.safeParse(idempotencyKey).success
+    ) {
+      return sendBoundFarmMarketActionError(
+        reply,
+        400,
+        "invalid_request",
+        "Market actions require a UUID Idempotency-Key",
+      );
+    }
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendBoundFarmMarketActionError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+    try {
+      const body = parsedBody.data;
+      const common = { expectedRevision: body.expected_revision, idempotencyKey };
+      const result =
+        body.action === "browse"
+          ? await options.registrationAuth.executeCurrentFarmMarketAction(token, {
+              ...common,
+              action: body.action,
+            })
+          : body.action === "list"
+            ? await options.registrationAuth.executeCurrentFarmMarketAction(token, {
+                ...common,
+                action: body.action,
+                kind: body.kind,
+                itemId: body.item_id,
+                quantity: body.qty,
+                ...(body.price === undefined ? {} : { price: body.price }),
+              })
+            : body.action === "buy"
+              ? await options.registrationAuth.executeCurrentFarmMarketAction(token, {
+                  ...common,
+                  action: body.action,
+                  sellerDoorplate: body.seller_doorplate,
+                  kind: body.kind,
+                  itemId: body.item_id,
+                  quantity: body.qty,
+                })
+              : body.action === "unlist"
+                ? await options.registrationAuth.executeCurrentFarmMarketAction(token, {
+                    ...common,
+                    action: body.action,
+                    kind: body.kind,
+                    itemId: body.item_id,
+                  })
+                : body.action === "barter-list"
+                  ? await options.registrationAuth.executeCurrentFarmMarketAction(token, {
+                      ...common,
+                      action: body.action,
+                      giveKind: body.give_kind,
+                      giveItemId: body.give_item_id,
+                      giveQuantity: body.give_qty,
+                      wantKind: body.want_kind,
+                      wantItemId: body.want_item_id,
+                      wantQuantity: body.want_qty,
+                    })
+                  : body.action === "barter-accept"
+                    ? await options.registrationAuth.executeCurrentFarmMarketAction(token, {
+                        ...common,
+                        action: body.action,
+                        sellerDoorplate: body.seller_doorplate,
+                        listingId: body.listing_id,
+                      })
+                    : await options.registrationAuth.executeCurrentFarmMarketAction(token, {
+                        ...common,
+                        action: body.action,
+                        listingId: body.listing_id,
+                      });
+      const parsedResult = boundFarmMarketActionSuccessSchema.safeParse(result);
+      if (!parsedResult.success) {
+        return sendBoundFarmMarketActionError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The market action response could not be verified",
+        );
+      }
+      return reply.send(parsedResult.data);
+    } catch (error) {
+      if (error instanceof AuthenticationRequiredError) {
+        return sendBoundFarmMarketActionError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
+        return sendBoundFarmMarketActionError(
+          reply,
+          403,
+          "qq_not_group_member",
+          "The session QQ number is no longer a current member of the community group",
+        );
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendBoundFarmMarketActionError(
+          reply,
+          503,
+          "onebot_unavailable",
+          "QQ group membership could not be verified",
+        );
+      }
+      if (error instanceof RegistrationProfileRequiredError) {
+        return sendBoundFarmMarketActionError(
+          reply,
+          409,
+          "registration_profile_required",
+          "A resident, home, and farm binding are required",
+        );
+      }
+      if (error instanceof FarmHumanMarketActionStateConflictError) {
+        return sendBoundFarmMarketActionError(
+          reply,
+          409,
+          "state_conflict",
+          "The market state has changed",
+          error.currentRevision,
+        );
+      }
+      if (error instanceof FarmHumanMarketActionRejectedError) {
+        return sendBoundFarmMarketActionError(reply, 409, "action_rejected", error.message);
+      }
+      if (error instanceof FarmHumanMarketActionCrossFarmAtomicityUnavailableError) {
+        return sendBoundFarmMarketActionError(
+          reply,
+          503,
+          "cross_farm_atomicity_unavailable",
+          error.message,
+          error.currentRevision,
+        );
+      }
+      if (error instanceof FarmHumanMarketActionIdempotencyConflictError) {
+        return sendBoundFarmMarketActionError(
+          reply,
+          409,
+          "idempotency_conflict",
+          "This idempotency key was used for a different request",
+        );
+      }
+      if (error instanceof FarmHumanMarketActionCredentialInvalidError) {
+        return sendBoundFarmMarketActionError(
+          reply,
+          409,
+          "farm_credential_invalid",
+          "The bound farm human credential is no longer valid",
+        );
+      }
+      if (error instanceof FarmHumanMarketActionNotFoundError) {
+        return sendBoundFarmMarketActionError(
+          reply,
+          404,
+          "farm_not_found",
+          "The market target no longer exists",
+        );
+      }
+      if (error instanceof FarmHumanMarketActionContractUnavailableError) {
+        request.log.error({ error_name: error.name }, "Farm market action is unavailable");
+        return sendBoundFarmMarketActionError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The market action response could not be verified",
+        );
+      }
+      if (error instanceof FarmHumanMarketActionUnavailableError) {
+        request.log.error({ error_name: error.name }, "Farm market action is unavailable");
+        return sendBoundFarmMarketActionError(
+          reply,
+          503,
+          "farm_unavailable",
+          "The market action service is unavailable",
         );
       }
       throw error;

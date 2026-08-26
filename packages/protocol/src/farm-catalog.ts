@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { farmOriginalPlantActionRevisionSchema } from "./farm-original-plant-action.js";
 
 /**
  * Structured, read-only Human catalog data for the farm UI.
@@ -11,6 +12,18 @@ import { z } from "zod";
 export const farmCatalogDoorplateSchema = z
   .string()
   .regex(/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/);
+
+export const farmCatalogCodexRevisionSchema = z.string().regex(/^farm-crop-codex-v1:[0-9a-f]{64}$/);
+export const farmCatalogExpeditionRevisionSchema = z
+  .string()
+  .regex(/^farm-expedition-v1:[0-9a-f]{64}$/);
+export const farmCatalogMarketRevisionSchema = z.string().regex(/^farm-market-v1:[0-9a-f]{64}$/);
+export const farmCatalogNeighborhoodRevisionSchema = z
+  .string()
+  .regex(/^farm-neighborhood-v1:[0-9a-f]{64}$/);
+export const farmCatalogSmeltingRevisionSchema = z
+  .string()
+  .regex(/^farm-smelting-v1:[0-9a-f]{64}$/);
 export const farmCatalogHumanKeySchema = z.string().min(1);
 
 export const farmCatalogSectionUnavailableReasonSchema = z.enum([
@@ -236,14 +249,32 @@ export const farmCatalogSmeltingRecipeSchema = z
   })
   .strict();
 
-export const farmCatalogSmeltingAvailableSchema = z
+const farmCatalogSmeltingFields = {
+  materials: z.array(farmCatalogSmeltingMaterialSchema),
+  recipes: z.array(farmCatalogSmeltingRecipeSchema),
+};
+
+export const farmCatalogSmeltingReadOnlySchema = z
   .object({
     status: z.literal("available"),
     write_status: z.literal("unavailable"),
-    materials: z.array(farmCatalogSmeltingMaterialSchema),
-    recipes: z.array(farmCatalogSmeltingRecipeSchema),
+    ...farmCatalogSmeltingFields,
   })
   .strict();
+
+export const farmCatalogSmeltingWritableSchema = z
+  .object({
+    status: z.literal("available"),
+    write_status: z.literal("available"),
+    revision: farmCatalogSmeltingRevisionSchema,
+    ...farmCatalogSmeltingFields,
+  })
+  .strict();
+
+export const farmCatalogSmeltingAvailableSchema = z.union([
+  farmCatalogSmeltingReadOnlySchema,
+  farmCatalogSmeltingWritableSchema,
+]);
 
 export const farmCatalogSmeltingSchema = z.union([
   farmCatalogSmeltingAvailableSchema,
@@ -397,10 +428,47 @@ export const farmCatalogMarketListingSchema = z
   })
   .strict();
 
+export const farmCatalogMarketBarterItemSchema = z
+  .object({
+    kind: z.enum(["seed", "material", "ingredient", "dish"]),
+    item_id: z.string().min(1).nullable(),
+    identity_state: farmCatalogItemIdentityStateSchema,
+    name: z.string().min(1).nullable(),
+    rarity: farmCatalogRaritySchema.nullable(),
+    quantity: z.number().int().positive(),
+  })
+  .strict()
+  .superRefine((item, context) => {
+    if (item.identity_state === "known" && item.name === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["name"],
+        message: "a known barter item must have a name",
+      });
+    }
+    if (item.identity_state === "unavailable" && item.name !== null) {
+      context.addIssue({
+        code: "custom",
+        path: ["name"],
+        message: "an unavailable barter item must not guess a name",
+      });
+    }
+  });
+
+export const farmCatalogMarketBarterListingSchema = z
+  .object({
+    seller_farm_doorplate: farmCatalogDoorplateSchema,
+    listing_id: z.uuid(),
+    give: farmCatalogMarketBarterItemSchema,
+    want: farmCatalogMarketBarterItemSchema,
+  })
+  .strict();
+
 export const farmCatalogMarketAvailableSchema = z
   .object({
     status: z.literal("available"),
     listings: z.array(farmCatalogMarketListingSchema),
+    barter_listings: z.array(farmCatalogMarketBarterListingSchema),
   })
   .strict();
 
@@ -440,6 +508,11 @@ export const farmHumanCatalogReadSuccessSchema = z
   .object({
     data: farmCatalogDataSchema,
     revision: z.string().min(1),
+    codex_revision: farmCatalogCodexRevisionSchema,
+    original_plant_revision: farmOriginalPlantActionRevisionSchema,
+    expedition_revision: farmCatalogExpeditionRevisionSchema,
+    market_revision: farmCatalogMarketRevisionSchema,
+    neighborhood_revision: farmCatalogNeighborhoodRevisionSchema,
     server_time: z.iso.datetime(),
   })
   .strict();

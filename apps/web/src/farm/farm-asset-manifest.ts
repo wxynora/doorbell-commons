@@ -1,3 +1,4 @@
+import { getFarmAssetRuntimeUrl } from "./farm-asset-source-map";
 import { COOKING_CATALOG_INGREDIENTS, COOKING_CATALOG_RECIPES } from "./farm-cooking-catalog";
 
 export type FarmAssetDomain = "shell" | "field" | "ranch" | "kitchen" | "neighborhood" | "panel";
@@ -29,6 +30,7 @@ export interface FarmAssetManifestEntry {
   pixelWidth: number;
   pixelHeight: number;
   aspectRatio: number;
+  /** Whether the declared source is an accepted production, fallback, or missing asset. */
   status: FarmAssetStatus;
   usage: FarmAssetUsage;
   fallbackKey?: string;
@@ -591,14 +593,16 @@ export const RANCH_ANIMAL_ASSET_KEYS = {
 } as const satisfies Record<string, FarmAssetKey>;
 
 export function getFarmAsset(assetKey: FarmAssetKey): FarmAssetManifestEntry {
+  const entry = FARM_ASSET_MANIFEST[assetKey];
   return {
-    ...FARM_ASSET_MANIFEST[assetKey],
+    ...entry,
+    url: getFarmAssetRuntimeUrl(entry.url),
     assetKey,
   };
 }
 
 export function getFarmAssetUrl(assetKey: FarmAssetKey): string {
-  return FARM_ASSET_MANIFEST[assetKey].url;
+  return getFarmAsset(assetKey).url;
 }
 
 export function getRanchAnimalAsset(entityId: string): FarmAssetManifestEntry | undefined {

@@ -35,6 +35,7 @@ import {
 import { AuthScreen, SessionCheckingScreen } from "./components/auth-screen";
 import { McpAccessPage } from "./components/mcp-access-panel";
 import { ResidencePermitTransition } from "./components/residence-permit-transition";
+import { DOORBELL_FARM_PATH, isDoorbellFarmPath } from "./routes";
 import {
   buildCandidateTwoDemoPreset,
   type CandidateTwoAction,
@@ -335,7 +336,9 @@ function authenticatedViewState(
 
 function LiveApp() {
   const [appState, setAppState] = useState<AppState>({ stage: "checking-session" });
-  const [activeInternalPage, setActiveInternalPage] = useState<"community" | "farm">("community");
+  const [activeInternalPage, setActiveInternalPage] = useState<"community" | "farm">(() =>
+    isDoorbellFarmPath(window.location.pathname) ? "farm" : "community",
+  );
   const [showMcpAfterPermit, setShowMcpAfterPermit] = useState(false);
   const [connectorCredentialDelivery, setConnectorCredentialDelivery] =
     useState<CandidateTwoConnectorCredentialDelivery | null>(null);
@@ -352,6 +355,35 @@ function LiveApp() {
     },
     [],
   );
+
+  useEffect(() => {
+    const syncInternalPageFromLocation = () => {
+      setActiveInternalPage(isDoorbellFarmPath(window.location.pathname) ? "farm" : "community");
+    };
+    window.addEventListener("popstate", syncInternalPageFromLocation);
+    return () => window.removeEventListener("popstate", syncInternalPageFromLocation);
+  }, []);
+
+  const openFarmPage = useCallback(() => {
+    if (!isDoorbellFarmPath(window.location.pathname)) {
+      window.history.pushState({ doorbellInternalPage: "farm" }, "", DOORBELL_FARM_PATH);
+    }
+    setActiveInternalPage("farm");
+  }, []);
+
+  const closeFarmPage = useCallback(() => {
+    if (
+      isDoorbellFarmPath(window.location.pathname) &&
+      window.history.state?.doorbellInternalPage === "farm"
+    ) {
+      window.history.back();
+      return;
+    }
+    if (isDoorbellFarmPath(window.location.pathname)) {
+      window.history.replaceState({}, "", "/");
+    }
+    setActiveInternalPage("community");
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -472,8 +504,8 @@ function LiveApp() {
   const handleCandidateAction = useCallback(
     async (action: CandidateTwoAction) => {
       if (action.type === "navigate") {
-        if (action.path === "/api/farm/ui" && appState.stage === "authenticated") {
-          setActiveInternalPage("farm");
+        if (action.path === DOORBELL_FARM_PATH && appState.stage === "authenticated") {
+          openFarmPage();
         }
         return;
       }
@@ -772,6 +804,9 @@ function LiveApp() {
         if (result.ok || result.issue.code === "authentication_required") {
           setConnectorCredentialDelivery(null);
           setShowMcpAfterPermit(false);
+          if (isDoorbellFarmPath(window.location.pathname)) {
+            window.history.replaceState({}, "", "/");
+          }
           setActiveInternalPage("community");
           setAppState({
             stage: "anonymous",
@@ -788,7 +823,7 @@ function LiveApp() {
         });
       }
     },
-    [appState, loadLingye],
+    [appState, loadLingye, openFarmPage],
   );
 
   const handleConnectorCredentialDelivered = useCallback((deliveryId: string) => {
@@ -835,9 +870,9 @@ function LiveApp() {
         onConnectorCredentialDelivered={handleConnectorCredentialDelivered}
         state={authenticatedViewState(appState)}
       />
-      {activeInternalPage === "farm" ? (
+      {appState.stage === "authenticated" && activeInternalPage === "farm" ? (
         <Suspense fallback={null}>
-          <FarmPage onBack={() => setActiveInternalPage("community")} />
+          <FarmPage onBack={closeFarmPage} />
         </Suspense>
       ) : null}
     </div>
@@ -850,7 +885,7 @@ function CandidateTwoDemoApp({ initialPreset }: { initialPreset: CandidateTwoDem
 
   const handleDemoAction = useCallback((action: CandidateTwoAction) => {
     if (action.type === "navigate") {
-      if (action.path === "/api/farm/ui") {
+      if (action.path === DOORBELL_FARM_PATH) {
         setActiveInternalPage("farm");
       }
       return;

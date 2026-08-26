@@ -205,6 +205,42 @@
   letter-spacing: 0.08em;
 }
 
+.farm-field-environment {
+  position: absolute;
+  top: calc(var(--farm-control-size) * 3);
+  left: 50%;
+  z-index: 8;
+  display: inline-flex;
+  box-sizing: border-box;
+  height: calc(var(--farm-control-size) / 2);
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--farm-control-size) / 7);
+  padding: 0 calc(var(--farm-control-size) / 3);
+  color: #60401f;
+  font-size: calc(var(--farm-control-size) / 5.2);
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+  border: calc(var(--farm-control-size) / 36) solid rgba(116, 83, 42, 0.58);
+  border-radius: calc(var(--farm-control-size) / 2);
+  background: linear-gradient(180deg, rgba(255, 250, 223, 0.96), rgba(239, 220, 167, 0.94));
+  box-shadow:
+    inset 0 calc(var(--farm-control-size) / 36) rgba(255, 255, 244, 0.88),
+    0 calc(var(--farm-control-size) / 24) 0 rgba(94, 65, 30, 0.58),
+    0 calc(var(--farm-control-size) / 12) calc(var(--farm-control-size) / 5) rgba(75, 51, 28, 0.18);
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.farm-field-environment__divider {
+  display: block;
+  width: calc(var(--farm-control-size) / 40);
+  height: calc(var(--farm-control-size) / 4);
+  border-radius: 999px;
+  background: rgba(113, 81, 43, 0.4);
+}
+
 .farm-ranch-resident {
   position: absolute;
   display: block;
@@ -242,6 +278,13 @@
   display: block;
   aspect-ratio: 1;
   transform: translate(-50%, -50%);
+}
+
+.farm-ranch-resident__step {
+  display: block;
+  width: 100%;
+  height: 100%;
+  animation: farm-ranch-step 0.54s steps(1, end) infinite;
 }
 
 .farm-ranch-resident:focus-visible {
@@ -1184,21 +1227,6 @@
   font-size: clamp(0.68rem, 2.8cqw, 0.82rem);
   font-weight: 700;
   text-align: center;
-}
-
-.farm-neighborhood__pagination {
-  position: relative;
-  z-index: 1;
-  align-self: end;
-  min-height: 13.2cqw;
-  margin-top: 0;
-  padding: 2.2cqw 0 2.8cqw;
-  background: transparent;
-}
-
-.farm-neighborhood__pagination button:disabled {
-  color: rgba(255, 247, 217, 0.68);
-  opacity: 1;
 }
 
 .farm-cooking__tool {
@@ -2412,6 +2440,7 @@
   .farm-cooking-result-preview__paper,
   .farm-ranch-resident__roamer,
   .farm-ranch-resident__portrait,
+  .farm-ranch-resident__step,
   .farm-ranch-resident .ranch-shop__animal-sprite {
     animation: none;
   }

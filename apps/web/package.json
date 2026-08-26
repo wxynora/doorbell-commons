@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit -p tsconfig.json && vite build",
+    "check:assets": "node --import tsx scripts/check-farm-asset-coverage.mjs",
+    "build": "npm run check:assets && tsc --noEmit -p tsconfig.json && vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "npm run test:source && npm run test:interaction",
+    "test": "npm run check:assets && npm run test:source && npm run test:interaction",
     "test:source": "node scripts/run-source-tests.mjs",
     "test:interaction": "vitest run --environment jsdom src/farm/farm-page.interaction.test.tsx"
   },

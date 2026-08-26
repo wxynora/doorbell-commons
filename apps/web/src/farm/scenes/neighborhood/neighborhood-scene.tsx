@@ -1,5 +1,12 @@
 import { type ReactNode, useState } from "react";
+import type { ApiResult } from "../../../auth/auth-client";
 import type { BoundFarmCatalogRead } from "../../../auth/farm-catalog-client";
+import {
+  type BoundNeighborhoodMessageAction,
+  type NeighborhoodMessageActionInput,
+  type NeighborhoodMessageActionIssue,
+  neighborhoodMessageActionIssueMessage,
+} from "../../../auth/neighborhood-message-action-client";
 import "./neighborhood-scene.css";
 
 export interface NeighborhoodSceneOption {
@@ -7,20 +14,41 @@ export interface NeighborhoodSceneOption {
   label: string;
 }
 
+export type NeighborhoodMessageActionExecutor = (
+  input: NeighborhoodMessageActionInput,
+) => Promise<ApiResult<BoundNeighborhoodMessageAction, NeighborhoodMessageActionIssue>>;
+
+type NeighborhoodMessageState =
+  | { stage: "idle" }
+  | { stage: "submitting" }
+  | { stage: "success"; result: BoundNeighborhoodMessageAction }
+  | { stage: "error"; issue: NeighborhoodMessageActionIssue };
+
+function messageActionKey(): string {
+  return globalThis.crypto.randomUUID();
+}
+
 export function NeighborhoodScene({
   emptyLabels,
   farmCatalog,
   options,
+  onMessageAction,
+  onMessageActionSuccess,
   preview = true,
   shellUrl,
 }: {
   emptyLabels: Readonly<Record<string, string>>;
   farmCatalog?: BoundFarmCatalogRead | null;
   options: readonly NeighborhoodSceneOption[];
+  onMessageAction?: NeighborhoodMessageActionExecutor | undefined;
+  onMessageActionSuccess?: ((result: BoundNeighborhoodMessageAction) => void) | undefined;
   preview?: boolean;
   shellUrl: string;
 }) {
   const [activeSectionId, setActiveSectionId] = useState(options[0]?.id ?? "");
+  const [messageTarget, setMessageTarget] = useState("");
+  const [messageDraft, setMessageDraft] = useState("");
+  const [messageState, setMessageState] = useState<NeighborhoodMessageState>({ stage: "idle" });
   const activeSection = options.find((option) => option.id === activeSectionId) ?? options[0];
 
   if (!activeSection) {
@@ -28,6 +56,27 @@ export function NeighborhoodScene({
   }
 
   const liveNeighborhood = farmCatalog?.data.neighborhood;
+  const neighborhoodRevision = farmCatalog?.neighborhood_revision ?? null;
+  const ownFarmDoorplate = farmCatalog?.data.farm.farm_doorplate ?? null;
+  const publicFarmTargets = (() => {
+    if (liveNeighborhood?.status !== "available") {
+      return [];
+    }
+    const targets = new Map<string, { doorplate: string; farmName: string }>();
+    for (const rows of Object.values(liveNeighborhood.rankings)) {
+      for (const row of rows) {
+        if (row.farm_doorplate === ownFarmDoorplate || targets.has(row.farm_doorplate)) {
+          continue;
+        }
+        targets.set(row.farm_doorplate, {
+          doorplate: row.farm_doorplate,
+          farmName: row.farm_name,
+        });
+      }
+    }
+    return [...targets.values()];
+  })();
+  const hasMessageTarget = publicFarmTargets.some((target) => target.doorplate === messageTarget);
   const liveUnavailableMessage =
     !preview && (!liveNeighborhood || liveNeighborhood.status === "unavailable")
       ? (liveNeighborhood?.message ?? "邻里数据尚未接入")
@@ -54,16 +103,113 @@ export function NeighborhoodScene({
       ) : null;
     }
     if (activeSection.id === "message-board") {
-      return liveNeighborhood.messages.length > 0 ? (
-        <ul className="farm-neighborhood__live-list" aria-label="真实留言板">
-          {liveNeighborhood.messages.map((message, index) => (
-            <li key={`message-${message.id ?? index}`}>
-              <strong>{message.author_name ?? "留言"}</strong>
-              <span>{message.text}</span>
-            </li>
-          ))}
-        </ul>
-      ) : null;
+      const submitMessage = async () => {
+        if (
+          !onMessageAction ||
+          !hasMessageTarget ||
+          !messageDraft.trim() ||
+          !neighborhoodRevision ||
+          messageState.stage === "submitting"
+        ) {
+          return;
+        }
+        const input = {
+          idempotencyKey: messageActionKey(),
+          expectedRevision: neighborhoodRevision,
+          targetFarmDoorplate: messageTarget,
+          body: messageDraft,
+        };
+        setMessageState({ stage: "submitting" });
+        let result = await onMessageAction(input);
+        if (!result.ok && result.issue.code === "network_unavailable") {
+          result = await onMessageAction(input);
+        }
+        if (result.ok) {
+          setMessageDraft("");
+          setMessageState({ stage: "success", result: result.data });
+          onMessageActionSuccess?.(result.data);
+        } else {
+          setMessageState({ stage: "error", issue: result.issue });
+        }
+      };
+
+      return (
+        <div className="farm-neighborhood__message-area">
+          {onMessageAction ? (
+            <form
+              className="farm-neighborhood__message-compose"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void submitMessage();
+              }}
+            >
+              <div className="farm-neighborhood__message-compose-row">
+                <label htmlFor="farm-neighborhood-message-target">留言给</label>
+                <select
+                  aria-label="选择留言目标农场"
+                  disabled={!hasMessageTarget || messageState.stage === "submitting"}
+                  id="farm-neighborhood-message-target"
+                  onChange={(event) => setMessageTarget(event.target.value)}
+                  value={messageTarget}
+                >
+                  <option value="">
+                    {publicFarmTargets.length > 0 ? "选择公开农场" : "暂无可留言的公开农场"}
+                  </option>
+                  {publicFarmTargets.map((target) => (
+                    <option key={target.doorplate} value={target.doorplate}>
+                      {target.farmName} · {target.doorplate}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="farm-neighborhood__message-compose-row">
+                <label htmlFor="farm-neighborhood-message-body">留言</label>
+                <textarea
+                  aria-label="留言内容"
+                  disabled={!hasMessageTarget || messageState.stage === "submitting"}
+                  id="farm-neighborhood-message-body"
+                  maxLength={100}
+                  onChange={(event) => setMessageDraft(event.target.value)}
+                  placeholder="写一句给邻居的话"
+                  rows={2}
+                  value={messageDraft}
+                />
+              </div>
+              <button
+                className="farm-neighborhood__message-submit"
+                disabled={
+                  !hasMessageTarget || !messageDraft.trim() || messageState.stage === "submitting"
+                }
+                type="submit"
+              >
+                {messageState.stage === "submitting" ? "发送中…" : "发送留言"}
+              </button>
+              {messageState.stage === "success" ? (
+                <p className="farm-neighborhood__message-feedback" role="status">
+                  已向 {messageState.result.data.result.target_farm_doorplate} 发送留言。
+                </p>
+              ) : null}
+              {messageState.stage === "error" ? (
+                <p className="farm-neighborhood__message-feedback is-error" role="alert">
+                  {neighborhoodMessageActionIssueMessage(messageState.issue)}
+                </p>
+              ) : null}
+            </form>
+          ) : null}
+          {liveNeighborhood.messages.length > 0 ? (
+            <ul className="farm-neighborhood__live-list" aria-label="真实留言板">
+              {liveNeighborhood.messages.map((message, index) => (
+                <li key={`message-${message.id ?? index}`}>
+                  <strong>{message.author_name ?? "留言"}</strong>
+                  <span>{message.text}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="farm-neighborhood__inline-empty">暂无可显示的留言。</p>
+          )}
+        </div>
+      );
     }
     return liveNeighborhood.original_crops.length > 0 ? (
       <ul className="farm-neighborhood__live-list" aria-label="真实原创作物">
@@ -125,18 +271,6 @@ export function NeighborhoodScene({
               </div>
             )}
           </div>
-          <nav
-            aria-label={`${activeSection.label}分页`}
-            className="farm-panel-pagination farm-neighborhood__pagination"
-          >
-            <button aria-label="上一页" disabled type="button">
-              ‹
-            </button>
-            <span>1 / 1</span>
-            <button aria-label="下一页" disabled type="button">
-              ›
-            </button>
-          </nav>
         </div>
       </section>
     </>

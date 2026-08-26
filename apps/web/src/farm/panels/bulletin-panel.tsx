@@ -1,11 +1,11 @@
-import type { BoundFarmCatalogRead } from "../../auth/farm-catalog-client";
+import type { BoundBulletinRead } from "../../auth/bulletin-client";
 import { type FarmAssetKey, getFarmAssetUrl } from "../farm-asset-manifest";
 import "./bulletin-panel.css";
 
 export type FarmBulletinSceneId = "field" | "ranch" | "cooking" | "neighborhood";
 
 export interface DingdongBulletinProps {
-  farmCatalog?: BoundFarmCatalogRead | null;
+  bulletin?: BoundBulletinRead | null;
   onClose: () => void;
   preview?: boolean;
   sceneId: FarmBulletinSceneId;
@@ -64,76 +64,113 @@ function BulletinEmptyRow({
   );
 }
 
-function BulletinLiveList({ farmCatalog }: { farmCatalog?: BoundFarmCatalogRead | null }) {
-  const bulletin = farmCatalog?.data.bulletin;
-  if (!bulletin || bulletin.status === "unavailable") {
+function BulletinLiveList({ bulletin }: { bulletin?: BoundBulletinRead | null }) {
+  if (!bulletin) {
     return (
       <ul aria-label="叮咚播报列表" className="farm-bulletin__list">
         <BulletinEmptyRow
-          description={bulletin?.message ?? "叮咚播报数据尚未接入。"}
+          description="正在读取当前农场的真实播报。"
           iconKey="neighborhood.message-board"
           label="叮咚播报"
-          title="当前没有可读取的真实播报"
+          title="正在读取"
         />
       </ul>
     );
   }
 
+  const available = bulletin.data.available;
+  const unavailable = bulletin.data.unavailable;
+  const hasEntries =
+    (available.tasks?.length ?? 0) > 0 ||
+    (available.mature_plots?.length ?? 0) > 0 ||
+    (available.messages?.length ?? 0) > 0 ||
+    (available.ranch_notifications?.length ?? 0) > 0;
+  const hasUnavailable = Object.keys(unavailable).length > 0;
+
   return (
     <ul aria-label="叮咚播报列表" className="farm-bulletin__list">
-      <BulletinEmptyRow
-        description={bulletin.tasks.message}
-        iconKey="panel.tool.dispatch"
-        label="进行中任务"
-        title="任务数据暂不可用"
-      />
-      <BulletinEmptyRow
-        description={bulletin.mature_broadcast.message}
-        iconKey="field.crop.ordinary-ripe"
-        label="成熟提醒"
-        title="成熟提醒数据暂不可用"
-      />
-      {bulletin.messages.length > 0 ? (
-        bulletin.messages.map((message) => (
-          <li
-            className="farm-bulletin__empty"
-            key={`message-${message.id ?? `${message.at ?? "message"}-${message.text}`}`}
-          >
-            <img alt="" aria-hidden="true" src={getFarmAssetUrl("neighborhood.message-board")} />
-            <div className="farm-bulletin__empty-copy">
-              <strong>{message.author_name ?? "留言"}</strong>
-              <span>{message.text}</span>
-              {message.at ? <small>{message.at}</small> : null}
-            </div>
-          </li>
-        ))
-      ) : (
+      {available.tasks?.map((task) => (
         <BulletinEmptyRow
-          description="当前没有真实留言。"
+          description={`${task.progress} / ${task.target} · 奖励 ${task.reward} ${task.currency === "silver" ? "银币" : "农场金币"}`}
+          iconKey="panel.tool.dispatch"
+          key={`task-${task.kind}`}
+          label="进行中任务"
+          title={task.description}
+        />
+      ))}
+      {available.mature_plots?.map((plot) => (
+        <BulletinEmptyRow
+          description={`已浇水 ${plot.watered} 次`}
+          iconKey="field.crop.ordinary-ripe"
+          key={`mature-${plot.plot_id}`}
+          label="成熟提醒"
+          title={`地块 ${plot.plot_id} 的作物已成熟`}
+        />
+      ))}
+      {available.messages?.map((message) => (
+        <BulletinEmptyRow
+          description={message.at ?? ""}
+          iconKey="neighborhood.message-board"
+          key={`message-${message.id ?? `${message.at ?? "message"}-${message.text}`}`}
+          label={message.author_name ?? "留言"}
+          title={message.text}
+        />
+      ))}
+      {available.ranch_notifications?.map((notice) => (
+        <BulletinEmptyRow
+          description={notice.at ?? ""}
+          iconKey="panel.tool.dispatch"
+          key={`ranch-notice-${notice.at ?? "notice"}-${notice.text}`}
+          label={notice.section ?? "牧场播报"}
+          title={notice.text}
+        />
+      ))}
+      {unavailable.tasks ? (
+        <BulletinEmptyRow
+          description={unavailable.tasks.message}
+          iconKey="panel.tool.dispatch"
+          label="进行中任务"
+          title="当前无法读取"
+        />
+      ) : null}
+      {unavailable.mature_plots ? (
+        <BulletinEmptyRow
+          description={unavailable.mature_plots.message}
+          iconKey="field.crop.ordinary-ripe"
+          label="成熟提醒"
+          title="当前无法读取"
+        />
+      ) : null}
+      {unavailable.messages ? (
+        <BulletinEmptyRow
+          description={unavailable.messages.message}
           iconKey="neighborhood.message-board"
           label="最近留言"
-          title="暂无留言"
+          title="当前无法读取"
         />
-      )}
-      {bulletin.ranch_notices.map((notice) => (
-        <li
-          className="farm-bulletin__empty"
-          key={`ranch-notice-${notice.at ?? "notice"}-${notice.text}`}
-        >
-          <img alt="" aria-hidden="true" src={getFarmAssetUrl("panel.tool.dispatch")} />
-          <div className="farm-bulletin__empty-copy">
-            <strong>{notice.section ?? "牧场播报"}</strong>
-            <span>{notice.text}</span>
-            {notice.at ? <small>{notice.at}</small> : null}
-          </div>
-        </li>
-      ))}
+      ) : null}
+      {unavailable.ranch_notifications ? (
+        <BulletinEmptyRow
+          description={unavailable.ranch_notifications.message}
+          iconKey="panel.tool.dispatch"
+          label="牧场播报"
+          title="当前无法读取"
+        />
+      ) : null}
+      {!hasEntries && !hasUnavailable ? (
+        <BulletinEmptyRow
+          description="任务、成熟提醒和最近留言都会按时间出现在这里。"
+          iconKey="neighborhood.message-board"
+          label="叮咚播报"
+          title="现在没有新播报"
+        />
+      ) : null}
     </ul>
   );
 }
 
 export function DingdongBulletin({
-  farmCatalog,
+  bulletin,
   onClose,
   preview = true,
   sceneId,
@@ -168,7 +205,7 @@ export function DingdongBulletin({
               ))}
             </ul>
           ) : (
-            <BulletinLiveList farmCatalog={farmCatalog ?? null} />
+            <BulletinLiveList bulletin={bulletin ?? null} />
           )}
         </div>
       </div>

@@ -7,6 +7,15 @@ import {
   loadSharedMemesAfterOpen,
   preferencePatchForCandidateAction,
 } from "./app";
+import { DOORBELL_FARM_PATH, isDoorbellFarmPath } from "./routes";
+
+test("the farm uses one formal community route instead of the legacy API proxy", () => {
+  assert.equal(DOORBELL_FARM_PATH, "/lingye/farm");
+  assert.equal(isDoorbellFarmPath("/lingye/farm"), true);
+  assert.equal(isDoorbellFarmPath("/lingye/farm/"), true);
+  assert.equal(isDoorbellFarmPath("/api/farm/ui"), false);
+  assert.equal(isDoorbellFarmPath("/lingye/farm/extra"), false);
+});
 
 test("candidate preference actions map to one exact settings field", () => {
   const cases = [

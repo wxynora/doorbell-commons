@@ -16,7 +16,7 @@ export const farmSettingsActionFieldSchema = z.enum([
   "equip_title",
 ]);
 
-const settingsTextSchema = z.string().min(1);
+const settingsTextSchema = z.string();
 const settingsValueSchema = z.union([settingsTextSchema, z.boolean(), z.null()]);
 
 const settingsActionFields = {
@@ -46,11 +46,25 @@ function refineSettingsAction(
     });
     return;
   }
+  if (request.field === "farm_name" && String(request.value).length === 0) {
+    context.addIssue({
+      code: "custom",
+      path: ["value"],
+      message: "farm_name must not be empty",
+    });
+  }
   if (request.field === "farm_name" && String(request.value).length > 12) {
     context.addIssue({
       code: "custom",
       path: ["value"],
       message: "farm_name must not exceed 12 characters",
+    });
+  }
+  if (request.field === "welcome_message" && String(request.value).length === 0) {
+    context.addIssue({
+      code: "custom",
+      path: ["value"],
+      message: "welcome_message must not be empty",
     });
   }
   if (request.field === "welcome_message" && String(request.value).length > 60) {

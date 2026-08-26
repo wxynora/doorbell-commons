@@ -13,10 +13,11 @@ const PURCHASE_RESULT = {
   data: {
     result: {
       receipt_id: IDEMPOTENCY_KEY,
-      kind: "ingredient",
-      item_id: "salt",
-      quantity: 2,
-      total_price_silver: 20,
+      items: [
+        { kind: "ingredient", item_id: "salt", quantity: 2, total_price_silver: 20 },
+        { kind: "recipe", item_id: "honey_tea", quantity: 1, total_price_silver: 30 },
+      ],
+      total_price_silver: 50,
       silver_balance: 301,
     },
     resource: {
@@ -38,6 +39,13 @@ const PURCHASE_RESULT = {
         current_day_index: 20700,
         is_current_day: true,
         refresh_at: "2026-08-25T00:00:00.000Z",
+        refresh_window_id: 20700,
+        refresh_used_count: 0,
+        refresh_remaining_count: 10,
+        refresh_limit: 10,
+        next_cost_coins: 100,
+        can_refresh: true,
+        refresh_reset_at: "2026-08-25T00:00:00.000Z",
         ingredients: [],
         recipes: [],
         reason: null,
@@ -55,6 +63,51 @@ function jsonResponse(payload: unknown, status = 200): Response {
   });
 }
 
+const INPUT = {
+  idempotencyKey: IDEMPOTENCY_KEY,
+  expectedShopRevision: SHOP_REVISION,
+  items: [
+    { kind: "ingredient" as const, itemId: "salt", quantity: 2 },
+    { kind: "recipe" as const, itemId: "honey_tea", quantity: 1 },
+  ],
+};
+
+const TOOL_IDEMPOTENCY_KEY = "019ffb02-49cd-7020-84af-3d04fb1ed03d";
+const TOOL_PURCHASE_RESULT = {
+  ...PURCHASE_RESULT,
+  data: {
+    ...PURCHASE_RESULT.data,
+    result: {
+      ...PURCHASE_RESULT.data.result,
+      receipt_id: TOOL_IDEMPOTENCY_KEY,
+      items: [{ kind: "tool", item_id: "steam", quantity: 1, total_price_silver: 1_200 }],
+      total_price_silver: 1_200,
+    },
+    resource: {
+      ...PURCHASE_RESULT.data.resource,
+      tools: {
+        status: "available",
+        items: [
+          {
+            status: "available",
+            tool_id: "steam",
+            name: "蒸笼",
+            price_silver: 1_200,
+            owned: false,
+            reason: null,
+          },
+        ],
+        reason: null,
+      },
+    },
+  },
+};
+const TOOL_INPUT = {
+  idempotencyKey: TOOL_IDEMPOTENCY_KEY,
+  expectedShopRevision: SHOP_REVISION,
+  items: [{ kind: "tool" as const, itemId: "steam", quantity: 1 }],
+};
+
 test("kitchen purchase browser error schema accepts community session failures", () => {
   const payload = {
     error: {
@@ -65,21 +118,14 @@ test("kitchen purchase browser error schema accepts community session failures",
   assert.deepEqual(boundFarmKitchenPurchaseErrorSchema.parse(payload), payload);
 });
 
-test("kitchen purchase browser client sends same-origin POST with idempotency header and no identity", async () => {
+test("kitchen purchase browser client sends one cart with idempotency header and no identity", async () => {
   const requests: Array<{ url: string; init: RequestInit | undefined }> = [];
   const fetcher: FrontendFetcher = async (url, init) => {
     requests.push({ url, init });
     return jsonResponse(PURCHASE_RESULT);
   };
 
-  const result = await purchaseBoundKitchenItem({
-    fetcher,
-    idempotencyKey: IDEMPOTENCY_KEY,
-    expectedShopRevision: SHOP_REVISION,
-    kind: "ingredient",
-    itemId: "salt",
-    quantity: 2,
-  });
+  const result = await purchaseBoundKitchenItem({ fetcher, ...INPUT });
 
   assert.deepEqual(result, { ok: true, data: PURCHASE_RESULT });
   assert.equal(requests.length, 1);
@@ -91,29 +137,87 @@ test("kitchen purchase browser client sends same-origin POST with idempotency he
   assert.equal(headers.get("idempotency-key"), IDEMPOTENCY_KEY);
   assert.deepEqual(JSON.parse(String(requests[0]?.init?.body)), {
     expected_shop_revision: SHOP_REVISION,
-    kind: "ingredient",
-    item_id: "salt",
-    quantity: 2,
+    items: [
+      { kind: "ingredient", item_id: "salt", quantity: 2 },
+      { kind: "recipe", item_id: "honey_tea", quantity: 1 },
+    ],
   });
   assert.equal(String(requests[0]?.init?.body).includes("farm_human_key"), false);
   assert.equal(String(requests[0]?.init?.body).includes("farm_doorplate"), false);
+  assert.equal(String(requests[0]?.init?.body).includes("idempotency_key"), false);
   assert.equal(String(requests[0]?.init?.body).includes("price"), false);
 });
 
-test("kitchen purchase browser client keeps malformed, network, and structured conflicts honest", async () => {
+test("kitchen purchase browser client forwards and verifies a tool line with its receipt price", async () => {
+  const requests: Array<{ url: string; init: RequestInit | undefined }> = [];
+  const result = await purchaseBoundKitchenItem({
+    fetcher: async (url, init) => {
+      requests.push({ url, init });
+      return jsonResponse(TOOL_PURCHASE_RESULT);
+    },
+    ...TOOL_INPUT,
+  });
+
+  assert.deepEqual(result, { ok: true, data: TOOL_PURCHASE_RESULT });
+  assert.deepEqual(JSON.parse(String(requests[0]?.init?.body)), {
+    expected_shop_revision: SHOP_REVISION,
+    items: [{ kind: "tool", item_id: "steam", quantity: 1 }],
+  });
+});
+
+test("kitchen purchase browser client rejects malformed and mismatched receipts", async () => {
   const malformed = await purchaseBoundKitchenItem({
     fetcher: async () => jsonResponse({ ...PURCHASE_RESULT, extra: true }),
-    idempotencyKey: IDEMPOTENCY_KEY,
-    expectedShopRevision: SHOP_REVISION,
-    kind: "ingredient",
-    itemId: "salt",
-    quantity: 2,
+    ...INPUT,
   });
   assert.deepEqual(malformed, {
     ok: false,
     issue: { code: "unexpected_response", currentShopRevision: null, serverMessage: null },
   });
 
+  const mismatchedKey = await purchaseBoundKitchenItem({
+    fetcher: async () =>
+      jsonResponse({
+        ...PURCHASE_RESULT,
+        data: {
+          ...PURCHASE_RESULT.data,
+          result: {
+            ...PURCHASE_RESULT.data.result,
+            receipt_id: "019ffb01-49cd-7020-84af-3d04fb1ed03e",
+          },
+        },
+      }),
+    ...INPUT,
+  });
+  assert.deepEqual(mismatchedKey, {
+    ok: false,
+    issue: { code: "unexpected_response", currentShopRevision: null, serverMessage: null },
+  });
+
+  const mismatched = await purchaseBoundKitchenItem({
+    fetcher: async () =>
+      jsonResponse({
+        ...PURCHASE_RESULT,
+        data: {
+          ...PURCHASE_RESULT.data,
+          result: {
+            ...PURCHASE_RESULT.data.result,
+            items: [
+              PURCHASE_RESULT.data.result.items[0],
+              { ...PURCHASE_RESULT.data.result.items[1], quantity: 2 },
+            ],
+          },
+        },
+      }),
+    ...INPUT,
+  });
+  assert.deepEqual(mismatched, {
+    ok: false,
+    issue: { code: "unexpected_response", currentShopRevision: null, serverMessage: null },
+  });
+});
+
+test("kitchen purchase browser client keeps network and structured conflicts honest", async () => {
   const stateConflict = await purchaseBoundKitchenItem({
     fetcher: async () =>
       jsonResponse(
@@ -126,11 +230,7 @@ test("kitchen purchase browser client keeps malformed, network, and structured c
         },
         409,
       ),
-    idempotencyKey: IDEMPOTENCY_KEY,
-    expectedShopRevision: SHOP_REVISION,
-    kind: "ingredient",
-    itemId: "salt",
-    quantity: 2,
+    ...INPUT,
   });
   assert.deepEqual(stateConflict, {
     ok: false,
@@ -144,11 +244,7 @@ test("kitchen purchase browser client keeps malformed, network, and structured c
   const rejected = await purchaseBoundKitchenItem({
     fetcher: async () =>
       jsonResponse({ error: { code: "purchase_rejected", message: "银币不足" } }, 409),
-    idempotencyKey: IDEMPOTENCY_KEY,
-    expectedShopRevision: SHOP_REVISION,
-    kind: "ingredient",
-    itemId: "salt",
-    quantity: 2,
+    ...INPUT,
   });
   assert.deepEqual(rejected, {
     ok: false,
@@ -159,11 +255,7 @@ test("kitchen purchase browser client keeps malformed, network, and structured c
     fetcher: async () => {
       throw new Error("offline");
     },
-    idempotencyKey: IDEMPOTENCY_KEY,
-    expectedShopRevision: SHOP_REVISION,
-    kind: "ingredient",
-    itemId: "salt",
-    quantity: 2,
+    ...INPUT,
   });
   assert.deepEqual(network, {
     ok: false,
@@ -179,7 +271,7 @@ test("kitchen purchase browser client keeps malformed, network, and structured c
   );
 });
 
-test("kitchen purchase browser client validates idempotency and recipe quantity before sending", async () => {
+test("kitchen purchase browser client rejects invalid idempotency, recipe quantity, and duplicates", async () => {
   let calls = 0;
   const fetcher: FrontendFetcher = async () => {
     calls += 1;
@@ -191,17 +283,28 @@ test("kitchen purchase browser client validates idempotency and recipe quantity 
       fetcher,
       idempotencyKey: "not-a-uuid",
       expectedShopRevision: SHOP_REVISION,
-      kind: "ingredient" as const,
-      itemId: "salt",
-      quantity: 1,
+      items: [{ kind: "ingredient" as const, itemId: "salt", quantity: 1 }],
     },
     {
       fetcher,
       idempotencyKey: IDEMPOTENCY_KEY,
       expectedShopRevision: SHOP_REVISION,
-      kind: "recipe" as const,
-      itemId: "honey_tea",
-      quantity: 2,
+      items: [{ kind: "recipe" as const, itemId: "honey_tea", quantity: 2 }],
+    },
+    {
+      fetcher,
+      idempotencyKey: TOOL_IDEMPOTENCY_KEY,
+      expectedShopRevision: SHOP_REVISION,
+      items: [{ kind: "tool" as const, itemId: "steam", quantity: 2 }],
+    },
+    {
+      fetcher,
+      idempotencyKey: IDEMPOTENCY_KEY,
+      expectedShopRevision: SHOP_REVISION,
+      items: [
+        { kind: "ingredient" as const, itemId: "salt", quantity: 1 },
+        { kind: "ingredient" as const, itemId: "salt", quantity: 2 },
+      ],
     },
   ]) {
     await assert.rejects(purchaseBoundKitchenItem(input));

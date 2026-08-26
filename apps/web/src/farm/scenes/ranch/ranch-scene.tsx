@@ -128,11 +128,13 @@ function RanchSceneAnimal({
       <span className="farm-ranch-resident__roamer" data-roamer ref={roamerRef}>
         <span className="farm-ranch-resident__portrait" ref={portraitRef}>
           <span className="farm-ranch-resident__portrait-sprite" style={animal.placementStyle}>
-            <span
-              aria-hidden="true"
-              className="ranch-shop__animal-sprite"
-              style={animal.spriteStyle}
-            />
+            <span className="farm-ranch-resident__step">
+              <span
+                aria-hidden="true"
+                className="ranch-shop__animal-sprite"
+                style={animal.spriteStyle}
+              />
+            </span>
           </span>
         </span>
       </span>

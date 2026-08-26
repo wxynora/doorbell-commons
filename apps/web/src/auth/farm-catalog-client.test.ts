@@ -20,6 +20,11 @@ const CATALOG_RESULT = {
     market: { status: "unavailable", reason: "no_authoritative_data", message: "暂不可用" },
   },
   revision: `farm-catalog-v1:${"a".repeat(64)}`,
+  codex_revision: `farm-crop-codex-v1:${"f".repeat(64)}`,
+  original_plant_revision: `farm-original-plant-v1:${"b".repeat(64)}`,
+  expedition_revision: `farm-expedition-v1:${"c".repeat(64)}`,
+  market_revision: `farm-market-v1:${"d".repeat(64)}`,
+  neighborhood_revision: `farm-neighborhood-v1:${"e".repeat(64)}`,
   server_time: "2026-08-24T04:00:00.000Z",
 };
 

@@ -22,7 +22,8 @@ const DEFAULT_CONNECTION_DURATION_MINUTES = 5;
 export const HUMAN_LOGIN_FAILURE_WINDOW_MS = 15 * 60 * 1000;
 export const HUMAN_LOGIN_FAILURE_THRESHOLD = 10;
 export const HUMAN_LOGIN_LOCK_DURATION_MS = 30 * 60 * 1000;
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 6;
+export const FARM_PURCHASE_REQUEST_TTL_MS = 24 * 60 * 60 * 1000;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 7;
 const LEGACY_CONNECTOR_DELIVERY_GENERATION = "00000000-0000-0000-0000-000000000000";
 
 export interface RegistrationCodeRecord {
@@ -168,20 +169,80 @@ export interface BellBindingState {
 
 export type BellWakeStatus = "pending" | "acked" | "blocked" | "cancelled";
 
+export const FARM_PURCHASE_SHOPS = ["field", "ranch"] as const;
+export type FarmPurchaseShop = (typeof FARM_PURCHASE_SHOPS)[number];
+
+export const FARM_PURCHASE_REQUEST_STATUSES = ["requested", "expired", "failed"] as const;
+export type FarmPurchaseRequestStatus = (typeof FARM_PURCHASE_REQUEST_STATUSES)[number];
+
+export type BellWakeReason = "mailbox_unread" | "farm_purchase_request";
+
+export interface FarmPurchaseItemInput {
+  itemId: string;
+  kind: string;
+  qty: number;
+  displayName: string;
+}
+
+export interface FarmPurchaseRequestInput {
+  requestId: string;
+  wakeId: string;
+  residentId: string;
+  homeId: string;
+  idempotencyKey: string;
+  shop: FarmPurchaseShop;
+  shopRevision: string;
+  humanName: string;
+  payloadHash: string;
+  notificationText: string;
+  items: readonly FarmPurchaseItemInput[];
+  createdAt: number;
+}
+
+export type FarmPurchaseItemRecord = FarmPurchaseItemInput;
+
+export interface FarmPurchaseRequestRecord {
+  requestId: string;
+  wakeId: string;
+  residentId: string;
+  homeId: string;
+  idempotencyKey: string;
+  shop: FarmPurchaseShop;
+  shopRevision: string;
+  humanName: string;
+  status: FarmPurchaseRequestStatus;
+  createdAt: number;
+  expiresAt: number;
+  items: FarmPurchaseItemRecord[];
+}
+
+export interface FarmPurchaseRequestCreationResult {
+  request: FarmPurchaseRequestRecord;
+  created: boolean;
+}
+
+export interface FarmPurchaseRequestExpiryResult {
+  request: FarmPurchaseRequestRecord;
+  cancelledWakeIds: string[];
+}
+
 export interface BellWakeRecord {
   wakeId: string;
   residentId: string;
-  reason: "mailbox_unread";
+  reason: BellWakeReason;
   status: BellWakeStatus;
   createdAt: number;
   endedAt: number | null;
   blockReason: string | null;
   errorCode: string | null;
+  purchaseRequestId: string | null;
+  payload: Record<string, unknown> | null;
 }
 
 export interface BellWakeCancellationResult {
   residentId: string | null;
   cancelledWakeId: string | null;
+  cancelledWakeIds: string[];
 }
 
 export type MailboxAudience = "human" | "resident";
@@ -346,6 +407,13 @@ export class McpAccessStateConflictError extends Error {
   }
 }
 
+export class FarmPurchaseRequestIdempotencyConflictError extends Error {
+  constructor() {
+    super("The farm purchase request idempotency key was already used for different content");
+    this.name = "FarmPurchaseRequestIdempotencyConflictError";
+  }
+}
+
 interface RegistrationCodeRow {
   code: string;
   generated_at: number;
@@ -457,12 +525,37 @@ interface BellBindingRow {
 interface BellWakeRow {
   wake_id: string;
   resident_id: string;
-  reason: "mailbox_unread";
+  reason: BellWakeReason;
   status: BellWakeStatus;
   created_at: number;
   ended_at: number | null;
   block_reason: string | null;
   error_code: string | null;
+  purchase_request_id: string | null;
+  payload_json: string | null;
+}
+
+interface FarmPurchaseRequestRow {
+  request_id: string;
+  wake_id: string;
+  resident_id: string;
+  home_id: string;
+  idempotency_key: string;
+  shop: FarmPurchaseShop;
+  shop_revision: string;
+  human_name: string;
+  status: FarmPurchaseRequestStatus;
+  created_at: number;
+  expires_at: number;
+  payload_hash: string;
+}
+
+interface FarmPurchaseItemRow {
+  request_id: string;
+  item_id: string;
+  kind: string;
+  qty: number;
+  display_name: string;
 }
 
 interface MailboxLetterRow {
@@ -647,6 +740,14 @@ function mapConnectorEvent(row: ConnectorEventRow): ConnectorEventRecord {
 }
 
 function mapBellWake(row: BellWakeRow): BellWakeRecord {
+  let payload: Record<string, unknown> | null = null;
+  if (row.payload_json !== null) {
+    const parsed = JSON.parse(row.payload_json) as unknown;
+    if (parsed === null || Array.isArray(parsed) || typeof parsed !== "object") {
+      throw new Error("Stored Bell wake payload is invalid");
+    }
+    payload = parsed as Record<string, unknown>;
+  }
   return {
     wakeId: row.wake_id,
     residentId: row.resident_id,
@@ -656,6 +757,33 @@ function mapBellWake(row: BellWakeRow): BellWakeRecord {
     endedAt: row.ended_at,
     blockReason: row.block_reason,
     errorCode: row.error_code,
+    purchaseRequestId: row.purchase_request_id,
+    payload,
+  };
+}
+
+function mapFarmPurchaseRequest(
+  row: FarmPurchaseRequestRow,
+  items: readonly FarmPurchaseItemRow[],
+): FarmPurchaseRequestRecord {
+  return {
+    requestId: row.request_id,
+    wakeId: row.wake_id,
+    residentId: row.resident_id,
+    homeId: row.home_id,
+    idempotencyKey: row.idempotency_key,
+    shop: row.shop,
+    shopRevision: row.shop_revision,
+    humanName: row.human_name,
+    status: row.status,
+    createdAt: row.created_at,
+    expiresAt: row.expires_at,
+    items: items.map((item) => ({
+      itemId: item.item_id,
+      kind: item.kind,
+      qty: item.qty,
+      displayName: item.display_name,
+    })),
   };
 }
 
@@ -1059,23 +1187,74 @@ export class CommunityDatabase {
       CREATE TABLE IF NOT EXISTS bell_wakes (
         wake_id TEXT PRIMARY KEY,
         resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
-        reason TEXT NOT NULL CHECK (reason = 'mailbox_unread'),
+        reason TEXT NOT NULL CHECK (reason IN ('mailbox_unread', 'farm_purchase_request')),
         status TEXT NOT NULL CHECK (status IN ('pending', 'acked', 'blocked', 'cancelled')),
         created_at INTEGER NOT NULL,
         ended_at INTEGER,
         block_reason TEXT,
         error_code TEXT,
+        purchase_request_id TEXT,
+        payload_json TEXT,
         CHECK (
           (status = 'pending' AND ended_at IS NULL AND block_reason IS NULL AND error_code IS NULL)
           OR (status = 'acked' AND ended_at IS NOT NULL AND block_reason IS NULL AND error_code IS NULL)
           OR (status = 'blocked' AND ended_at IS NOT NULL AND block_reason IS NOT NULL AND error_code IS NOT NULL)
           OR (status = 'cancelled' AND ended_at IS NOT NULL AND block_reason IS NULL AND error_code IS NULL)
+        ),
+        CHECK (
+          (reason = 'mailbox_unread' AND purchase_request_id IS NULL AND payload_json IS NULL)
+          OR (reason = 'farm_purchase_request'
+            AND purchase_request_id IS NOT NULL
+            AND payload_json IS NOT NULL)
         )
       );
 
-      CREATE UNIQUE INDEX IF NOT EXISTS bell_wakes_one_pending_per_resident
-        ON bell_wakes (resident_id)
-        WHERE status = 'pending';
+      CREATE TABLE IF NOT EXISTS farm_purchase_requests (
+        request_id TEXT PRIMARY KEY,
+        wake_id TEXT NOT NULL UNIQUE REFERENCES bell_wakes(wake_id) ON DELETE RESTRICT,
+        resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+        home_id TEXT NOT NULL REFERENCES homes(home_id) ON DELETE CASCADE,
+        idempotency_key TEXT NOT NULL,
+        shop TEXT NOT NULL CHECK (shop IN ('field', 'ranch')),
+        shop_revision TEXT NOT NULL,
+        human_name TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (
+          status IN (
+            'requested',
+            'processing',
+            'completed',
+            'partially_completed',
+            'declined',
+            'expired',
+            'failed'
+          )
+        ),
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL CHECK (expires_at = created_at + 86400000),
+        payload_hash TEXT NOT NULL,
+        UNIQUE (resident_id, idempotency_key)
+      );
+
+      CREATE INDEX IF NOT EXISTS farm_purchase_requests_resident_created
+        ON farm_purchase_requests (resident_id, created_at DESC, request_id DESC);
+
+      CREATE TABLE IF NOT EXISTS farm_purchase_request_items (
+        request_id TEXT NOT NULL REFERENCES farm_purchase_requests(request_id) ON DELETE CASCADE,
+        item_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        qty INTEGER NOT NULL CHECK (qty > 0),
+        display_name TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (
+          status IN ('pending', 'settled', 'declined', 'failed', 'expired')
+        ),
+        settled_qty INTEGER NOT NULL DEFAULT 0 CHECK (settled_qty >= 0 AND settled_qty <= qty),
+        receipt_id TEXT,
+        reason_code TEXT,
+        PRIMARY KEY (request_id, kind, item_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS farm_purchase_request_items_request
+        ON farm_purchase_request_items (request_id, kind, item_id);
     `);
     let migratedSchemaVersion = databaseSchemaVersion;
     if (migratedSchemaVersion < 1) {
@@ -1328,6 +1507,177 @@ export class CommunityDatabase {
       })();
       migratedSchemaVersion = 6;
     }
+    if (migratedSchemaVersion < 7) {
+      this.#database.transaction(() => {
+        const wakeColumns = this.#database.pragma("table_info(bell_wakes)") as Array<{
+          name: string;
+        }>;
+        const hasPurchaseRequestId = wakeColumns.some(
+          (column) => column.name === "purchase_request_id",
+        );
+        const hasPayloadJson = wakeColumns.some((column) => column.name === "payload_json");
+        const legacyRows =
+          !hasPurchaseRequestId || !hasPayloadJson
+            ? (this.#database
+                .prepare(
+                  `SELECT wake_id,
+                          resident_id,
+                          reason,
+                          status,
+                          created_at,
+                          ended_at,
+                          block_reason,
+                          error_code,
+                          ${hasPurchaseRequestId ? "purchase_request_id" : "NULL AS purchase_request_id"},
+                          ${hasPayloadJson ? "payload_json" : "NULL AS payload_json"}
+                   FROM bell_wakes`,
+                )
+                .all() as BellWakeRow[])
+            : [];
+
+        if (legacyRows.length > 0 || !hasPurchaseRequestId || !hasPayloadJson) {
+          this.#database.exec(`
+          DROP INDEX IF EXISTS bell_wakes_one_pending_per_resident;
+          DROP INDEX IF EXISTS bell_wakes_one_purchase_request;
+          ALTER TABLE bell_wakes RENAME TO bell_wakes_v6;
+
+          CREATE TABLE bell_wakes (
+            wake_id TEXT PRIMARY KEY,
+            resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+            reason TEXT NOT NULL CHECK (reason IN ('mailbox_unread', 'farm_purchase_request')),
+            status TEXT NOT NULL CHECK (status IN ('pending', 'acked', 'blocked', 'cancelled')),
+            created_at INTEGER NOT NULL,
+            ended_at INTEGER,
+            block_reason TEXT,
+            error_code TEXT,
+            purchase_request_id TEXT,
+            payload_json TEXT,
+            CHECK (
+              (status = 'pending' AND ended_at IS NULL AND block_reason IS NULL AND error_code IS NULL)
+              OR (status = 'acked' AND ended_at IS NOT NULL AND block_reason IS NULL AND error_code IS NULL)
+              OR (status = 'blocked' AND ended_at IS NOT NULL AND block_reason IS NOT NULL AND error_code IS NOT NULL)
+              OR (status = 'cancelled' AND ended_at IS NOT NULL AND block_reason IS NULL AND error_code IS NULL)
+            ),
+            CHECK (
+              (reason = 'mailbox_unread' AND purchase_request_id IS NULL AND payload_json IS NULL)
+              OR (reason = 'farm_purchase_request'
+                AND purchase_request_id IS NOT NULL
+                AND payload_json IS NOT NULL)
+            )
+          );
+        `);
+          const insertWake = this.#database.prepare(
+            `INSERT INTO bell_wakes (
+               wake_id,
+               resident_id,
+               reason,
+               status,
+               created_at,
+               ended_at,
+               block_reason,
+               error_code,
+               purchase_request_id,
+               payload_json
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          );
+          for (const row of legacyRows) {
+            insertWake.run(
+              row.wake_id,
+              row.resident_id,
+              row.reason,
+              row.status,
+              row.created_at,
+              row.ended_at,
+              row.block_reason,
+              row.error_code,
+              row.purchase_request_id,
+              row.payload_json,
+            );
+          }
+          this.#database.exec(`
+          DROP TABLE bell_wakes_v6;
+          CREATE UNIQUE INDEX IF NOT EXISTS bell_wakes_one_purchase_request
+            ON bell_wakes (purchase_request_id)
+            WHERE purchase_request_id IS NOT NULL;
+        `);
+        }
+        this.#database.exec(`
+          CREATE UNIQUE INDEX IF NOT EXISTS bell_wakes_one_purchase_request
+            ON bell_wakes (purchase_request_id)
+            WHERE purchase_request_id IS NOT NULL;
+
+          CREATE TABLE IF NOT EXISTS farm_purchase_requests (
+            request_id TEXT PRIMARY KEY,
+            wake_id TEXT NOT NULL UNIQUE REFERENCES bell_wakes(wake_id) ON DELETE RESTRICT,
+            resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+            home_id TEXT NOT NULL REFERENCES homes(home_id) ON DELETE CASCADE,
+            idempotency_key TEXT NOT NULL,
+            shop TEXT NOT NULL CHECK (shop IN ('field', 'ranch')),
+            shop_revision TEXT NOT NULL,
+            human_name TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (
+              status IN (
+                'requested',
+                'processing',
+                'completed',
+                'partially_completed',
+                'declined',
+                'expired',
+                'failed'
+              )
+            ),
+            created_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL CHECK (expires_at = created_at + 86400000),
+            payload_hash TEXT NOT NULL,
+            UNIQUE (resident_id, idempotency_key)
+          );
+
+          CREATE INDEX IF NOT EXISTS farm_purchase_requests_resident_created
+            ON farm_purchase_requests (resident_id, created_at DESC, request_id DESC);
+
+          CREATE TABLE IF NOT EXISTS farm_purchase_request_items (
+            request_id TEXT NOT NULL REFERENCES farm_purchase_requests(request_id) ON DELETE CASCADE,
+            item_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            qty INTEGER NOT NULL CHECK (qty > 0),
+            display_name TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (
+              status IN ('pending', 'settled', 'declined', 'failed', 'expired')
+            ),
+            settled_qty INTEGER NOT NULL DEFAULT 0 CHECK (settled_qty >= 0 AND settled_qty <= qty),
+            receipt_id TEXT,
+            reason_code TEXT,
+            PRIMARY KEY (request_id, kind, item_id)
+          );
+
+          CREATE INDEX IF NOT EXISTS farm_purchase_request_items_request
+            ON farm_purchase_request_items (request_id, kind, item_id);
+        `);
+        this.#database.pragma("user_version = 7");
+      })();
+      migratedSchemaVersion = 7;
+    }
+    this.#database.transaction(() => {
+      const itemColumns = this.#database.pragma(
+        "table_info(farm_purchase_request_items)",
+      ) as Array<{
+        name: string;
+      }>;
+      if (!itemColumns.some((column) => column.name === "settled_qty")) {
+        this.#database.exec(
+          "ALTER TABLE farm_purchase_request_items ADD COLUMN settled_qty INTEGER NOT NULL DEFAULT 0",
+        );
+      }
+      if (!itemColumns.some((column) => column.name === "receipt_id")) {
+        this.#database.exec("ALTER TABLE farm_purchase_request_items ADD COLUMN receipt_id TEXT");
+      }
+      if (!itemColumns.some((column) => column.name === "reason_code")) {
+        this.#database.exec("ALTER TABLE farm_purchase_request_items ADD COLUMN reason_code TEXT");
+      }
+    })();
+    this.#database.exec(
+      "CREATE UNIQUE INDEX IF NOT EXISTS bell_wakes_one_purchase_request ON bell_wakes (purchase_request_id) WHERE purchase_request_id IS NOT NULL",
+    );
   }
 
   publishLingyeDailyIssue(
@@ -2625,7 +2975,7 @@ export class CommunityDatabase {
       .get(homeId) as { resident_id: string } | undefined;
     return row
       ? this.cancelPendingBellMailboxWakeForResident(row.resident_id, now)
-      : { residentId: null, cancelledWakeId: null };
+      : { residentId: null, cancelledWakeId: null, cancelledWakeIds: [] };
   }
 
   cancelPendingBellMailboxWakeForResident(
@@ -2637,20 +2987,22 @@ export class CommunityDatabase {
         .prepare(
           `SELECT wake_id
            FROM bell_wakes
-           WHERE resident_id = ? AND status = 'pending'`,
+           WHERE resident_id = ? AND reason = 'mailbox_unread' AND status = 'pending'
+           ORDER BY created_at ASC, wake_id ASC`,
         )
-        .get(residentId) as { wake_id: string } | undefined;
-      if (pending) {
+        .all(residentId) as Array<{ wake_id: string }>;
+      if (pending.length > 0) {
+        const wakeIds = pending.map((wake) => wake.wake_id);
         this.#database
           .prepare(
             `UPDATE bell_wakes
              SET status = 'cancelled', ended_at = ?
-             WHERE wake_id = ? AND status = 'pending'`,
+             WHERE resident_id = ? AND reason = 'mailbox_unread' AND status = 'pending'`,
           )
-          .run(now, pending.wake_id);
-        return { residentId, cancelledWakeId: pending.wake_id };
+          .run(now, residentId);
+        return { residentId, cancelledWakeId: wakeIds[0] ?? null, cancelledWakeIds: wakeIds };
       }
-      return { residentId, cancelledWakeId: null };
+      return { residentId, cancelledWakeId: null, cancelledWakeIds: [] };
     });
     return transaction.immediate();
   }
@@ -2658,14 +3010,42 @@ export class CommunityDatabase {
   listPendingBellWakes(residentId: string): BellWakeRecord[] {
     const rows = this.#database
       .prepare(
-        `SELECT wake_id, resident_id, reason, status, created_at, ended_at, block_reason, error_code
+        `SELECT wake_id,
+                resident_id,
+                reason,
+                status,
+                created_at,
+                ended_at,
+                block_reason,
+                error_code,
+                purchase_request_id,
+                payload_json
          FROM bell_wakes
          WHERE resident_id = ? AND status = 'pending'
-         ORDER BY created_at ASC, wake_id ASC
-         LIMIT 32`,
+         ORDER BY created_at ASC, wake_id ASC`,
       )
       .all(residentId) as BellWakeRow[];
     return rows.map(mapBellWake);
+  }
+
+  getBellWake(residentId: string, wakeId: string): BellWakeRecord | undefined {
+    const row = this.#database
+      .prepare(
+        `SELECT wake_id,
+                resident_id,
+                reason,
+                status,
+                created_at,
+                ended_at,
+                block_reason,
+                error_code,
+                purchase_request_id,
+                payload_json
+         FROM bell_wakes
+         WHERE resident_id = ? AND wake_id = ?`,
+      )
+      .get(residentId, wakeId) as BellWakeRow | undefined;
+    return row ? mapBellWake(row) : undefined;
   }
 
   acknowledgeBellWake(
@@ -2676,7 +3056,16 @@ export class CommunityDatabase {
     const transaction = this.#database.transaction(() => {
       const row = this.#database
         .prepare(
-          `SELECT wake_id, resident_id, reason, status, created_at, ended_at, block_reason, error_code
+          `SELECT wake_id,
+                  resident_id,
+                  reason,
+                  status,
+                  created_at,
+                  ended_at,
+                  block_reason,
+                  error_code,
+                  purchase_request_id,
+                  payload_json
            FROM bell_wakes
            WHERE resident_id = ? AND wake_id = ?`,
         )
@@ -2706,7 +3095,16 @@ export class CommunityDatabase {
     const transaction = this.#database.transaction(() => {
       const row = this.#database
         .prepare(
-          `SELECT wake_id, resident_id, reason, status, created_at, ended_at, block_reason, error_code
+          `SELECT wake_id,
+                  resident_id,
+                  reason,
+                  status,
+                  created_at,
+                  ended_at,
+                  block_reason,
+                  error_code,
+                  purchase_request_id,
+                  payload_json
            FROM bell_wakes
            WHERE resident_id = ? AND wake_id = ?`,
         )
@@ -2725,7 +3123,214 @@ export class CommunityDatabase {
            WHERE resident_id = ? AND wake_id = ? AND status = 'pending'`,
         )
         .run(now, blockReason, errorCode, residentId, wakeId);
+      if (row.reason === "farm_purchase_request" && row.purchase_request_id !== null) {
+        this.#database
+          .prepare(
+            `UPDATE farm_purchase_requests
+             SET status = 'failed'
+             WHERE request_id = ?
+               AND resident_id = ?
+               AND status = 'requested'`,
+          )
+          .run(row.purchase_request_id, residentId);
+      }
       return "blocked" as const;
+    });
+    return transaction.immediate();
+  }
+
+  cancelBellWake(residentId: string, wakeId: string, now: number): BellWakeCancellationResult {
+    const transaction = this.#database.transaction(() => {
+      const row = this.#database
+        .prepare(
+          `SELECT wake_id
+           FROM bell_wakes
+           WHERE resident_id = ? AND wake_id = ? AND status = 'pending'`,
+        )
+        .get(residentId, wakeId) as { wake_id: string } | undefined;
+      if (!row) {
+        return { residentId, cancelledWakeId: null, cancelledWakeIds: [] };
+      }
+      this.#database
+        .prepare(
+          `UPDATE bell_wakes
+           SET status = 'cancelled', ended_at = ?
+           WHERE resident_id = ? AND wake_id = ? AND status = 'pending'`,
+        )
+        .run(now, residentId, wakeId);
+      return { residentId, cancelledWakeId: wakeId, cancelledWakeIds: [wakeId] };
+    });
+    return transaction.immediate();
+  }
+
+  createFarmPurchaseRequest(input: FarmPurchaseRequestInput): FarmPurchaseRequestCreationResult {
+    const transaction = this.#database.transaction(() => {
+      const home = this.#database
+        .prepare("SELECT resident_id FROM homes WHERE home_id = ?")
+        .get(input.homeId) as { resident_id: string } | undefined;
+      if (!home || home.resident_id !== input.residentId) {
+        throw new Error("The purchase request home does not belong to the resident");
+      }
+      const existing = this.#database
+        .prepare(
+          `SELECT request_id,
+                  wake_id,
+                  resident_id,
+                  home_id,
+                  idempotency_key,
+                  shop,
+                  shop_revision,
+                  human_name,
+                  status,
+                  created_at,
+                  expires_at,
+                  payload_hash
+           FROM farm_purchase_requests
+           WHERE resident_id = ? AND idempotency_key = ?`,
+        )
+        .get(input.residentId, input.idempotencyKey) as FarmPurchaseRequestRow | undefined;
+
+      if (existing) {
+        const existingItems = this.#readFarmPurchaseRequestItems(existing.request_id);
+        const sameItems =
+          existingItems.length === input.items.length &&
+          existingItems.every((item, index) => {
+            const requested = input.items[index];
+            return (
+              requested !== undefined &&
+              item.item_id === requested.itemId &&
+              item.kind === requested.kind &&
+              item.qty === requested.qty &&
+              item.display_name === requested.displayName
+            );
+          });
+        if (
+          existing.payload_hash !== input.payloadHash ||
+          existing.shop !== input.shop ||
+          existing.shop_revision !== input.shopRevision ||
+          !sameItems
+        ) {
+          throw new FarmPurchaseRequestIdempotencyConflictError();
+        }
+        return {
+          request: mapFarmPurchaseRequest(existing, existingItems),
+          created: false,
+        };
+      }
+
+      const expiresAt = input.createdAt + FARM_PURCHASE_REQUEST_TTL_MS;
+      this.#database
+        .prepare(
+          `INSERT INTO bell_wakes (
+             wake_id,
+             resident_id,
+             reason,
+             status,
+             created_at,
+             ended_at,
+             block_reason,
+             error_code,
+             purchase_request_id,
+             payload_json
+           ) VALUES (?, ?, 'farm_purchase_request', 'pending', ?, NULL, NULL, NULL, ?, ?)`,
+        )
+        .run(
+          input.wakeId,
+          input.residentId,
+          input.createdAt,
+          input.requestId,
+          JSON.stringify({ text: input.notificationText }),
+        );
+      this.#database
+        .prepare(
+          `INSERT INTO farm_purchase_requests (
+             request_id,
+             wake_id,
+             resident_id,
+             home_id,
+             idempotency_key,
+             shop,
+             shop_revision,
+             human_name,
+             status,
+             created_at,
+             expires_at,
+             payload_hash
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'requested', ?, ?, ?)`,
+        )
+        .run(
+          input.requestId,
+          input.wakeId,
+          input.residentId,
+          input.homeId,
+          input.idempotencyKey,
+          input.shop,
+          input.shopRevision,
+          input.humanName,
+          input.createdAt,
+          expiresAt,
+          input.payloadHash,
+        );
+      const insertItem = this.#database.prepare(
+        `INSERT INTO farm_purchase_request_items (
+           request_id,
+           item_id,
+           kind,
+           qty,
+           display_name,
+           status,
+           settled_qty,
+           receipt_id,
+           reason_code
+         ) VALUES (?, ?, ?, ?, ?, 'pending', 0, NULL, NULL)`,
+      );
+      for (const item of input.items) {
+        insertItem.run(input.requestId, item.itemId, item.kind, item.qty, item.displayName);
+      }
+      const created = this.#readFarmPurchaseRequest(input.requestId, input.residentId);
+      if (!created) {
+        throw new Error("The farm purchase request could not be read after creation");
+      }
+      return { request: created, created: true };
+    });
+    return transaction.immediate();
+  }
+
+  getFarmPurchaseRequest(
+    residentId: string,
+    requestId: string,
+    now?: number,
+  ): FarmPurchaseRequestRecord | undefined {
+    if (now !== undefined) {
+      this.expireFarmPurchaseRequest(residentId, requestId, now);
+    }
+    return this.#readFarmPurchaseRequest(requestId, residentId);
+  }
+
+  expireFarmPurchaseRequest(
+    residentId: string,
+    requestId: string,
+    now: number,
+  ): FarmPurchaseRequestExpiryResult | undefined {
+    const transaction = this.#database.transaction(() => {
+      const current = this.#readFarmPurchaseRequestRow(requestId, residentId);
+      if (!current) return undefined;
+      if (current.expires_at <= now && current.status === "requested") {
+        this.#database
+          .prepare(
+            `UPDATE farm_purchase_requests
+             SET status = 'expired'
+             WHERE resident_id = ? AND request_id = ? AND status = 'requested'`,
+          )
+          .run(residentId, requestId);
+      }
+      const cancelledWakeIds =
+        current.expires_at <= now && current.status === "requested"
+          ? this.#cancelPendingWakeIdsForRequest(requestId, now)
+          : [];
+      const request = this.#readFarmPurchaseRequest(requestId, residentId);
+      if (!request) throw new Error("The farm purchase request disappeared during expiry");
+      return { request, cancelledWakeIds };
     });
     return transaction.immediate();
   }
@@ -3147,6 +3752,75 @@ export class CommunityDatabase {
     });
 
     return transaction.immediate();
+  }
+
+  #readFarmPurchaseRequestRow(
+    requestId: string,
+    residentId: string,
+  ): FarmPurchaseRequestRow | undefined {
+    return this.#database
+      .prepare(
+        `SELECT request_id,
+                wake_id,
+                resident_id,
+                home_id,
+                idempotency_key,
+                shop,
+                shop_revision,
+                human_name,
+                status,
+                created_at,
+                expires_at,
+                payload_hash
+         FROM farm_purchase_requests
+         WHERE request_id = ? AND resident_id = ?`,
+      )
+      .get(requestId, residentId) as FarmPurchaseRequestRow | undefined;
+  }
+
+  #readFarmPurchaseRequestItems(requestId: string): FarmPurchaseItemRow[] {
+    return this.#database
+      .prepare(
+        `SELECT request_id,
+                item_id,
+                kind,
+                qty,
+                display_name
+         FROM farm_purchase_request_items
+         WHERE request_id = ?
+         ORDER BY kind ASC, item_id ASC`,
+      )
+      .all(requestId) as FarmPurchaseItemRow[];
+  }
+
+  #readFarmPurchaseRequest(
+    requestId: string,
+    residentId: string,
+  ): FarmPurchaseRequestRecord | undefined {
+    const row = this.#readFarmPurchaseRequestRow(requestId, residentId);
+    return row
+      ? mapFarmPurchaseRequest(row, this.#readFarmPurchaseRequestItems(requestId))
+      : undefined;
+  }
+
+  #cancelPendingWakeIdsForRequest(requestId: string, now: number): string[] {
+    const pending = this.#database
+      .prepare(
+        `SELECT wake_id
+         FROM bell_wakes
+         WHERE purchase_request_id = ? AND status = 'pending'
+         ORDER BY wake_id ASC`,
+      )
+      .all(requestId) as Array<{ wake_id: string }>;
+    if (pending.length === 0) return [];
+    this.#database
+      .prepare(
+        `UPDATE bell_wakes
+         SET status = 'cancelled', ended_at = ?
+         WHERE purchase_request_id = ? AND status = 'pending'`,
+      )
+      .run(now, requestId);
+    return pending.map((wake) => wake.wake_id);
   }
 
   #findHumanSettingsRow(homeId: string): HumanSettingsRow | undefined {

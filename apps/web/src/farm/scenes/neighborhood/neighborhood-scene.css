@@ -1,3 +1,132 @@
 .farm-scene--neighborhood {
   background-image: url("/farm/scenes/neighborhood-background.png");
 }
+
+.farm-neighborhood__body {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(126, 104, 62, 0.48) transparent;
+}
+
+.farm-neighborhood__live-list {
+  display: grid;
+  align-content: start;
+  gap: 1.15cqw;
+  margin: 0;
+  padding: 0.4cqw 0 2.8cqw;
+  list-style: none;
+}
+
+.farm-neighborhood__live-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1.2cqw;
+  align-items: baseline;
+  padding: 1.45cqw 1.8cqw;
+  border-bottom: 0.18cqw solid rgba(126, 104, 62, 0.18);
+  color: #6e5638;
+  font-size: clamp(0.66rem, 2.55cqw, 0.8rem);
+  line-height: 1.35;
+}
+
+.farm-neighborhood__live-list li strong {
+  min-width: 0;
+  color: #5e4329;
+  font-weight: 800;
+}
+
+.farm-neighborhood__live-list li span {
+  color: #806747;
+  text-align: right;
+}
+
+.farm-neighborhood__message-area {
+  min-height: 0;
+  padding-bottom: 2.8cqw;
+}
+
+.farm-neighborhood__message-compose {
+  display: grid;
+  gap: 1.35cqw;
+  margin: 0 0 1.8cqw;
+  padding: 0 0 2.2cqw;
+  border-bottom: 0.18cqw solid rgba(126, 104, 62, 0.2);
+}
+
+.farm-neighborhood__message-compose-row {
+  display: grid;
+  grid-template-columns: 11cqw minmax(0, 1fr);
+  gap: 1.3cqw;
+  align-items: center;
+}
+
+.farm-neighborhood__message-compose-row label {
+  color: #725536;
+  font-size: clamp(0.63rem, 2.35cqw, 0.76rem);
+  font-weight: 800;
+}
+
+.farm-neighborhood__message-compose select,
+.farm-neighborhood__message-compose textarea {
+  min-width: 0;
+  color: #60482f;
+  font: inherit;
+  font-size: clamp(0.63rem, 2.35cqw, 0.76rem);
+  background: rgba(255, 252, 234, 0.64);
+  border: 0.18cqw solid rgba(139, 111, 63, 0.34);
+  border-radius: 1.05cqw;
+  outline: none;
+}
+
+.farm-neighborhood__message-compose select {
+  height: 6.2cqw;
+  padding: 0 1.4cqw;
+}
+
+.farm-neighborhood__message-compose textarea {
+  min-height: 10cqw;
+  padding: 1.15cqw 1.4cqw;
+  resize: none;
+}
+
+.farm-neighborhood__message-compose select:focus-visible,
+.farm-neighborhood__message-compose textarea:focus-visible {
+  border-color: #7c9844;
+  box-shadow: 0 0 0 0.4cqw rgba(124, 152, 68, 0.18);
+}
+
+.farm-neighborhood__message-submit {
+  justify-self: end;
+  min-width: 22cqw;
+  min-height: 6.5cqw;
+  padding: 0 2.2cqw;
+  color: #fff8df;
+  font: inherit;
+  font-size: clamp(0.62rem, 2.35cqw, 0.76rem);
+  font-weight: 800;
+  border: 0;
+  border-radius: 1.2cqw;
+  background: linear-gradient(180deg, #839c4b, #6e873a);
+  box-shadow: inset 0 -0.4cqw rgba(67, 85, 39, 0.34);
+  cursor: pointer;
+}
+
+.farm-neighborhood__message-submit:disabled {
+  color: rgba(255, 248, 223, 0.72);
+  background: #aaa187;
+  box-shadow: inset 0 -0.3cqw rgba(87, 78, 59, 0.2);
+  cursor: not-allowed;
+}
+
+.farm-neighborhood__message-feedback,
+.farm-neighborhood__inline-empty {
+  margin: 0;
+  padding: 0.6cqw 1.4cqw 1.2cqw;
+  color: #806747;
+  font-size: clamp(0.61rem, 2.2cqw, 0.72rem);
+  line-height: 1.4;
+}
+
+.farm-neighborhood__message-feedback.is-error {
+  color: #9a5e45;
+}

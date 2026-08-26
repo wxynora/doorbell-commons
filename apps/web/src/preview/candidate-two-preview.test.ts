@@ -24,9 +24,9 @@ test("candidate bridge accepts only exact known child actions", () => {
       registrationCode: "DB-2345-6789",
     },
   );
-  assert.deepEqual(parseCandidateTwoAction({ type: "navigate", path: "/api/farm/ui" }), {
+  assert.deepEqual(parseCandidateTwoAction({ type: "navigate", path: "/lingye/farm" }), {
     type: "navigate",
-    path: "/api/farm/ui",
+    path: "/lingye/farm",
   });
   assert.deepEqual(parseCandidateTwoAction({ type: "shared-memes-open" }), {
     type: "shared-memes-open",
@@ -192,7 +192,7 @@ test("candidate bridge accepts only exact known child actions", () => {
 });
 
 test("only the farm entry stays inside the React community frontend", () => {
-  assert.equal(shouldHandleCandidateNavigationInParent("/api/farm/ui"), true);
+  assert.equal(shouldHandleCandidateNavigationInParent("/lingye/farm"), true);
 
   const componentSource = CandidateTwoPreview.toString();
   assert.match(componentSource, /shouldHandleCandidateNavigationInParent/);
@@ -565,11 +565,11 @@ test("lingye demo opens distinct Together and Glimmer Human UI previews", () => 
   assert.doesNotMatch(html, /\.candidate2-glimmer-feature-demo \{[^}]*grid-template-columns/);
   assert.match(
     html,
-    /\.candidate2-glimmer-tracks-demo \{[\s\S]*container-type: inline-size;[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/,
+    /\.candidate2-glimmer-tracks-demo \{[\s\S]*container-type: inline-size;[\s\S]*grid-template-columns: repeat\(4, minmax\(0, 1fr\)\);[\s\S]*gap: var\(--glimmer-animal-row-gap\) 3\.424658cqw;/,
   );
-  assert.match(
+  assert.doesNotMatch(
     html,
-    /\.candidate2-glimmer-page\.is-animal-editor \.candidate2-glimmer-tracks-demo \{[\s\S]*grid-template-columns: repeat\(4, minmax\(0, 1fr\)\);[\s\S]*column-gap: 3\.424658cqw;/,
+    /\.candidate2-glimmer-page\.is-animal-editor \.candidate2-glimmer-tracks-demo \{[^}]*grid-template-columns/,
   );
   assert.match(
     html,
@@ -751,7 +751,11 @@ test("lingye demo opens distinct Together and Glimmer Human UI previews", () => 
   );
   assert.match(
     html,
-    /\.candidate2-glimmer-page\.is-animal-editor \.candidate2-glimmer-tracks-demo figure \{[\s\S]*cursor: grab;[\s\S]*touch-action: none;[\s\S]*--glimmer-group-x[\s\S]*--glimmer-group-y/,
+    /\.candidate2-glimmer-tracks-demo figure \{[\s\S]*--glimmer-group-x[\s\S]*--glimmer-group-y/,
+  );
+  assert.match(
+    html,
+    /\.candidate2-glimmer-page\.is-animal-editor \.candidate2-glimmer-tracks-demo figure \{[\s\S]*cursor: grab;[\s\S]*touch-action: none;/,
   );
   assert.doesNotMatch(
     html,
@@ -841,12 +845,12 @@ test("lingye demo opens distinct Together and Glimmer Human UI previews", () => 
 test("runtime routes are click-only, no-key, and community returns inside the iframe", () => {
   const html = buildCandidateTwoRuntimeHtml();
 
-  assert.match(html, /openLingyeRoute\('\/api\/farm\/ui', label\)/);
+  assert.match(html, /openLingyeRoute\('\/lingye\/farm', label\)/);
   assert.match(html, /sendAction\(\{ type: 'lingye-glimmer-open' \}\)/);
   assert.match(html, /sendAction\(\{ type: 'lingye-together-open' \}\)/);
   assert.match(html, /sendAction\(\{ type: 'navigate', path \}\)/);
   assert.doesNotMatch(html, /doorbell-candidate2:navigate/);
-  assert.match(html, /window\.__doorbellCandidateDemo && path !== '\/api\/farm\/ui'/);
+  assert.match(html, /window\.__doorbellCandidateDemo && path !== '\/lingye\/farm'/);
   assert.match(html, /演示模式：.*未连接真实服务/);
   assert.match(html, /showLingyeNotice\(label \+ '暂未开放'\)/);
   assert.match(html, /function showLingyeNotice\(message\)\s*\{\s*showCandidateNotice\(message\);/);

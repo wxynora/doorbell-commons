@@ -1,0 +1,17 @@
+{
+  "name": "门铃社区",
+  "short_name": "门铃社区",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#eee7d5",
+  "background_color": "#eee7d5",
+  "icons": [
+    {
+      "src": "/community-icon.v1.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

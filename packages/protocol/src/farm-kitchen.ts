@@ -35,6 +35,7 @@ export const farmKitchenToolSchema = z
     status: farmKitchenAvailabilitySchema,
     tool_id: z.string().min(1),
     name: z.string().min(1).nullable(),
+    price_silver: z.number().int().nonnegative().nullable(),
     owned: z.boolean().nullable(),
     reason: farmKitchenUnavailableReasonSchema.nullable(),
   })
@@ -174,6 +175,13 @@ export const farmKitchenDailyShopSchema = z
     current_day_index: z.number().int(),
     is_current_day: z.boolean(),
     refresh_at: z.iso.datetime(),
+    refresh_window_id: z.number().int(),
+    refresh_used_count: z.number().int().nonnegative().nullable(),
+    refresh_remaining_count: z.number().int().nonnegative().nullable(),
+    refresh_limit: z.number().int().positive().nullable(),
+    next_cost_coins: z.number().int().nonnegative().nullable(),
+    can_refresh: z.boolean(),
+    refresh_reset_at: z.iso.datetime(),
     ingredients: z.array(farmKitchenShopIngredientSchema),
     recipes: z.array(farmKitchenShopRecipeSchema),
     reason: farmKitchenUnavailableReasonSchema.nullable(),
@@ -208,10 +216,14 @@ export const farmHumanKitchenReadRequestSchema = z
   .strict();
 
 export const farmKitchenShopRevisionSchema = z.string().regex(/^kitchen-v1:[0-9a-f]{64}$/);
+export const farmKitchenInventoryRevisionSchema = z
+  .string()
+  .regex(/^kitchen-inventory-v1:[0-9a-f]{64}$/);
 
 export const farmHumanKitchenReadSuccessSchema = z
   .object({
     data: farmKitchenDataSchema,
+    kitchen_inventory_revision: farmKitchenInventoryRevisionSchema,
     shop_revision: farmKitchenShopRevisionSchema,
     server_time: z.iso.datetime(),
   })
@@ -264,6 +276,7 @@ export const boundFarmKitchenReadErrorSchema = z
 
 export type FarmKitchenAvailability = z.infer<typeof farmKitchenAvailabilitySchema>;
 export type FarmKitchenUnavailableReason = z.infer<typeof farmKitchenUnavailableReasonSchema>;
+export type FarmKitchenInventoryRevision = z.infer<typeof farmKitchenInventoryRevisionSchema>;
 export type FarmKitchenData = z.infer<typeof farmKitchenDataSchema>;
 export type FarmKitchenRecipe = z.infer<typeof farmKitchenRecipeSchema>;
 export type FarmHumanKitchenReadRequest = z.infer<typeof farmHumanKitchenReadRequestSchema>;

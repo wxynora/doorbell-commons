@@ -17,16 +17,52 @@ import {
   harvestBoundFarmField,
 } from "../auth/auth-client";
 import {
+  type BoundBulletinRead,
+  bulletinIssueMessage,
+  getBoundBulletin,
+} from "../auth/bulletin-client";
+import { executeBoundCropCodexAction } from "../auth/crop-codex-action-client";
+import { executeBoundExpeditionAction } from "../auth/expedition-action-client";
+import {
   type BoundFarmCatalogRead,
   farmCatalogIssueMessage,
   getBoundFarmCatalog,
 } from "../auth/farm-catalog-client";
+import {
+  type CreateFarmPurchaseRequestInput,
+  createBoundFarmPurchaseRequest,
+  type FarmPurchaseRequestIssue,
+  farmPurchaseRequestIssueMessage,
+} from "../auth/farm-purchase-request-client";
 import { executeBoundFarmSettingsAction } from "../auth/farm-settings-action-client";
 import {
   type BoundKitchenRead,
   getBoundKitchen,
   kitchenIssueMessage,
 } from "../auth/kitchen-client";
+import {
+  type BoundKitchenCook,
+  executeBoundKitchenCook,
+  type KitchenCookInput,
+  type KitchenCookIssue,
+  kitchenCookIssueMessage,
+} from "../auth/kitchen-cook-client";
+import { executeBoundKitchenInventoryAction } from "../auth/kitchen-inventory-action-client";
+import {
+  type KitchenPurchaseInput,
+  type KitchenPurchaseIssue,
+  kitchenPurchaseIssueMessage,
+  purchaseBoundKitchenItem,
+} from "../auth/kitchen-purchase-client";
+import {
+  type KitchenShopRefreshInput,
+  type KitchenShopRefreshIssue,
+  kitchenShopRefreshIssueMessage,
+  refreshBoundKitchenShop,
+} from "../auth/kitchen-shop-refresh-client";
+import { executeBoundMarketAction } from "../auth/market-action-client";
+import { executeBoundNeighborhoodMessage } from "../auth/neighborhood-message-action-client";
+import { executeBoundOriginalPlantAction } from "../auth/original-plant-action-client";
 import {
   executeBoundRanchResidentAction,
   type RanchResidentActionInput,
@@ -40,6 +76,12 @@ import {
   type RanchCollectionIssue,
   ranchCollectionIssueMessage,
 } from "../auth/ranch-collection-client";
+import {
+  executeBoundRanchDecorationAction,
+  type RanchDecorationActionInput,
+} from "../auth/ranch-decoration-action-client";
+import { executeBoundRanchInteractionAction } from "../auth/ranch-interaction-action-client";
+import { executeBoundSmeltingAction } from "../auth/smelting-action-client";
 import {
   type FarmAssetKey,
   type FarmAssetManifestEntry,
@@ -62,7 +104,24 @@ import {
   RANCH_SHOP_ANIMALS,
   type RanchShopAnimal,
 } from "./panels/ranch-animal-data";
-import type { FarmSettingsActionExecutor } from "./panels/tool-panel";
+import type {
+  CookingCartCheckoutFeedback,
+  CookingCartCheckoutLine,
+  CookingShopRefreshFeedback,
+  FarmCartCheckoutFeedback,
+  FarmCartCheckoutLine,
+} from "./panels/shop-panel";
+import type {
+  CropCodexActionExecutor,
+  ExpeditionActionExecutor,
+  FarmSettingsActionExecutor,
+  KitchenInventoryActionExecutor,
+  MarketActionExecutor,
+  OriginalPlantActionExecutor,
+  RanchInteractionActionExecutor,
+  SmeltingActionExecutor,
+} from "./panels/tool-panel";
+import type { NeighborhoodMessageActionExecutor } from "./scenes/neighborhood/neighborhood-scene";
 import type { RanchSceneAnimalDefinition } from "./scenes/ranch/ranch-scene";
 import "./farm-page.css";
 
@@ -108,6 +167,7 @@ type FarmReadResourceState<T> =
   | { stage: "error"; message: string };
 
 interface FarmReadResources {
+  bulletin: FarmReadResourceState<BoundBulletinRead>;
   farmCatalog: FarmReadResourceState<BoundFarmCatalogRead>;
   kitchen: FarmReadResourceState<BoundKitchenRead>;
   ranch: FarmReadResourceState<BoundRanchRead>;
@@ -154,6 +214,10 @@ type RanchResidentActionState =
 
 type RanchCollectionResult = Awaited<ReturnType<typeof collectBoundRanch>>;
 type RanchCollectionExecutor = (input: RanchCollectionInput) => Promise<RanchCollectionResult>;
+type RanchDecorationActionResult = Awaited<ReturnType<typeof executeBoundRanchDecorationAction>>;
+type RanchDecorationActionExecutor = (
+  input: RanchDecorationActionInput,
+) => Promise<RanchDecorationActionResult>;
 
 interface RanchCollectionAttempt {
   expectedRevision: string;
@@ -172,6 +236,66 @@ type RanchCollectionState =
       stage: "success";
       result: Extract<RanchCollectionResult, { ok: true }>["data"]["data"]["result"];
     };
+
+type KitchenPurchaseResult = Awaited<ReturnType<typeof purchaseBoundKitchenItem>>;
+type KitchenPurchaseExecutor = (input: KitchenPurchaseInput) => Promise<KitchenPurchaseResult>;
+
+type KitchenPurchaseActionState =
+  | { stage: "idle" }
+  | { stage: "submitting"; attempt: KitchenPurchaseInput }
+  | {
+      stage: "error";
+      attempt: KitchenPurchaseInput | null;
+      issue: KitchenPurchaseIssue;
+    }
+  | {
+      stage: "success";
+      result: Extract<KitchenPurchaseResult, { ok: true }>["data"]["data"]["result"];
+    };
+
+type FarmPurchaseRequestResult = Awaited<ReturnType<typeof createBoundFarmPurchaseRequest>>;
+type FarmPurchaseRequestExecutor = (
+  input: CreateFarmPurchaseRequestInput,
+) => Promise<FarmPurchaseRequestResult>;
+
+type FarmPurchaseRequestActionState =
+  | { stage: "idle" }
+  | { stage: "submitting"; attempt: CreateFarmPurchaseRequestInput }
+  | {
+      stage: "error";
+      attempt: CreateFarmPurchaseRequestInput | null;
+      issue: FarmPurchaseRequestIssue;
+    }
+  | { stage: "success" };
+
+type KitchenShopRefreshResult = Awaited<ReturnType<typeof refreshBoundKitchenShop>>;
+type KitchenShopRefreshExecutor = (
+  input: KitchenShopRefreshInput,
+) => Promise<KitchenShopRefreshResult>;
+
+type KitchenShopRefreshActionState =
+  | { stage: "idle" }
+  | { stage: "submitting"; attempt: KitchenShopRefreshInput }
+  | {
+      stage: "error";
+      attempt: KitchenShopRefreshInput | null;
+      issue: KitchenShopRefreshIssue;
+    }
+  | { stage: "success" };
+
+type KitchenCookExecutor = (
+  input: KitchenCookInput,
+) => Promise<Awaited<ReturnType<typeof executeBoundKitchenCook>>>;
+type KitchenCookOutcome = BoundKitchenCook["data"]["result"]["outcome"];
+type KitchenCookActionState =
+  | { stage: "idle" }
+  | { stage: "submitting"; attempt: KitchenCookInput }
+  | {
+      stage: "error";
+      attempt: KitchenCookInput | null;
+      issue: KitchenCookIssue;
+    }
+  | { stage: "success"; outcome: KitchenCookOutcome };
 
 type FarmSceneId = "field" | "ranch" | "cooking" | "neighborhood";
 
@@ -391,6 +515,7 @@ function createInitialSceneUiStates(): FarmSceneUiStateMap {
 
 function createInitialFarmReadResources(): FarmReadResources {
   return {
+    bulletin: { stage: "idle" },
     farmCatalog: { stage: "idle" },
     kitchen: { stage: "idle" },
     ranch: { stage: "idle" },
@@ -406,13 +531,14 @@ function getSceneReadResource(sceneId: FarmSceneId): keyof FarmReadResources | n
 
 function getToolReadResource(sceneId: FarmSceneId, toolId: string): keyof FarmReadResources | null {
   if (toolId === "market" || toolId === "settings") return "farmCatalog";
-  if (sceneId === "field") return toolId === "create" ? null : "farmCatalog";
+  if (sceneId === "field") return "farmCatalog";
   if (sceneId === "ranch") return "ranch";
   if (sceneId === "cooking") return "kitchen";
   return null;
 }
 
 const FARM_READ_RESOURCE_LABELS: Readonly<Record<keyof FarmReadResources, string>> = {
+  bulletin: "叮咚播报",
   farmCatalog: "农场目录",
   kitchen: "料理数据",
   ranch: "牧场数据",
@@ -596,17 +722,11 @@ function FarmIdentityPlaque({
   equippedTitle,
   farmDoorplate,
   farmName,
-  landName,
-  landTier,
-  seasonName,
   welcomeMessage,
 }: {
   equippedTitle: string | null;
   farmDoorplate: string;
   farmName: string;
-  landName: string;
-  landTier: number;
-  seasonName: string;
   welcomeMessage: string | null;
 }) {
   return (
@@ -623,10 +743,27 @@ function FarmIdentityPlaque({
         <span>
           门牌 <b>{farmDoorplate}</b>
         </span>
-        <small>
-          {seasonName} · 土地 {landTier} {landName}
-        </small>
         {welcomeMessage ? <em>{welcomeMessage}</em> : null}
+      </span>
+    </aside>
+  );
+}
+
+function FarmEnvironmentStatus({
+  landName,
+  landTier,
+  seasonName,
+}: {
+  landName: string;
+  landTier: number;
+  seasonName: string;
+}) {
+  return (
+    <aside aria-label="农场环境" className="farm-field-environment">
+      <span>时节 {seasonName}</span>
+      <span aria-hidden="true" className="farm-field-environment__divider" />
+      <span>
+        土地 {landTier} · {landName}
       </span>
     </aside>
   );
@@ -1515,11 +1652,22 @@ function getLiveCookingIngredientOptions(
   return options;
 }
 
+function toRawKitchenCookItemRef(selectionId: string): string {
+  if (selectionId.startsWith("product:") || selectionId.startsWith("fish:")) {
+    return selectionId.slice(selectionId.indexOf(":") + 1);
+  }
+  return selectionId;
+}
+
 function CookingPrepOverlay({
+  cookAction,
   ingredientPickerOpen,
   onCloseIngredientPicker,
+  onCloseCookResult,
+  onCook,
   onOpenIngredientPicker,
   onRemoveIngredient,
+  onRetryCook,
   onSelectIngredient,
   selectedMethodId,
   selectedIngredientIds,
@@ -1527,10 +1675,14 @@ function CookingPrepOverlay({
   kitchen,
   preview,
 }: {
+  cookAction: KitchenCookActionState;
   ingredientPickerOpen: boolean;
   onCloseIngredientPicker: () => void;
+  onCloseCookResult: () => void;
+  onCook: () => void;
   onOpenIngredientPicker: () => void;
   onRemoveIngredient: (slotIndex: number) => void;
+  onRetryCook: () => void;
   onSelectIngredient: (ingredientId: string) => void;
   selectedMethodId: CookingMethodId;
   selectedIngredientIds: readonly string[];
@@ -1562,6 +1714,12 @@ function CookingPrepOverlay({
     DEFAULT_COOKING_METHOD;
   const nextMethod =
     visibleMethods[(selectedMethodIndex + 1) % visibleMethods.length] ?? DEFAULT_COOKING_METHOD;
+  const liveCookEnabled =
+    !preview &&
+    kitchen !== null &&
+    selectedIngredientIds.length >= 2 &&
+    selectedIngredientIds.length <= 5 &&
+    cookAction.stage === "idle";
 
   return (
     <>
@@ -1613,8 +1771,14 @@ function CookingPrepOverlay({
             放入食材
           </button>
           <button
-            disabled={!preview || selectedIngredientIds.length === 0}
-            onClick={() => setResultPreviewOpen(true)}
+            disabled={preview ? selectedIngredientIds.length === 0 : !liveCookEnabled}
+            onClick={() => {
+              if (preview) {
+                setResultPreviewOpen(true);
+              } else {
+                onCook();
+              }
+            }}
             type="button"
           >
             烹饪
@@ -1643,6 +1807,12 @@ function CookingPrepOverlay({
           onClose={() => setResultPreviewOpen(false)}
           result={COOKING_RESULT_STYLE_PREVIEW}
         />
+      ) : null}
+      {!preview && cookAction.stage === "success" ? (
+        <CookingResultReceipt onClose={onCloseCookResult} outcome={cookAction.outcome} />
+      ) : null}
+      {!preview && cookAction.stage === "error" ? (
+        <CookingCookNotice action={cookAction} onClose={onCloseCookResult} onRetry={onRetryCook} />
       ) : null}
     </>
   );
@@ -1755,6 +1925,82 @@ function CookingIngredientPicker({
         <p>当前还没有可选择的真实食材。</p>
       )}
     </section>
+  );
+}
+
+function CookingResultReceipt({
+  onClose,
+  outcome,
+}: {
+  onClose: () => void;
+  outcome: KitchenCookOutcome;
+}) {
+  return (
+    <section
+      aria-label="料理结果"
+      aria-modal="true"
+      className="farm-cooking-result-preview"
+      role="dialog"
+    >
+      <div className="farm-cooking-result-preview__paper" data-rarity={outcome.rarity}>
+        <button
+          aria-label="关闭料理结果"
+          className="farm-cooking-result-preview__close"
+          onClick={onClose}
+          type="button"
+        >
+          ×
+        </button>
+        <div className="farm-cooking-result-preview__main">
+          <span className="farm-cooking-result-preview__visual">
+            <CookingCatalogSprite entityId={outcome.recipe_id} kind="recipe" name={outcome.name} />
+          </span>
+          <span className="farm-cooking-result-preview__copy">
+            <small data-rarity={outcome.rarity}>{outcome.rarity}</small>
+            <strong>{outcome.name}</strong>
+            <span>{outcome.discovered ? "新食谱已解锁" : "料理已入柜"}</span>
+          </span>
+        </div>
+        <section aria-label="锁定系统回收价" className="farm-cooking-result-preview__value">
+          <span aria-label={`牧场金币 ${outcome.value_gold}`} role="img">
+            <i aria-hidden="true" data-currency="gold" />
+            <strong>{outcome.value_gold}</strong>
+          </span>
+          <em aria-hidden="true">+</em>
+          <span aria-label={`银币 ${outcome.recycle_silver}`} role="img">
+            <i aria-hidden="true" data-currency="silver" />
+            <strong>{outcome.recycle_silver}</strong>
+          </span>
+        </section>
+        <button className="farm-cooking-result-preview__collect" onClick={onClose} type="button">
+          收进料理柜
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function CookingCookNotice({
+  action,
+  onClose,
+  onRetry,
+}: {
+  action: Extract<KitchenCookActionState, { stage: "error" }>;
+  onClose: () => void;
+  onRetry: () => void;
+}) {
+  return (
+    <aside className="farm-harvest-notice" role="alert">
+      <button aria-label="关闭料理失败提示" onClick={onClose} type="button">
+        ×
+      </button>
+      <p>{kitchenCookIssueMessage(action.issue)}</p>
+      {action.attempt ? (
+        <button className="farm-harvest-notice__action" onClick={onRetry} type="button">
+          重试同一次料理
+        </button>
+      ) : null}
+    </aside>
   );
 }
 
@@ -2290,10 +2536,23 @@ export function FarmFieldContent({
   data,
   harvestAction = { stage: "idle" },
   onCloseHarvestAction,
+  onCropCodexAction,
+  onExpeditionAction,
+  onFarmPurchaseRequest,
   onHarvestAssist,
   onFarmSettingsAction,
+  onKitchenInventoryAction,
+  onKitchenCook,
+  onKitchenPurchase,
+  onKitchenShopRefresh,
+  onMarketAction,
+  onNeighborhoodMessageAction,
+  onOriginalPlantAction,
   onRanchCollection,
+  onRanchDecorationAction,
+  onRanchInteractionAction,
   onRanchResidentAction,
+  onSmeltingAction,
   onReloadAfterHarvestError,
   onReloadRanch,
   onRequireResource,
@@ -2305,10 +2564,23 @@ export function FarmFieldContent({
   data: BoundFarmField;
   harvestAction?: FarmHarvestActionState;
   onCloseHarvestAction?: () => void;
+  onCropCodexAction?: CropCodexActionExecutor | undefined;
+  onExpeditionAction?: ExpeditionActionExecutor | undefined;
+  onFarmPurchaseRequest?: FarmPurchaseRequestExecutor | undefined;
   onHarvestAssist?: (() => void) | undefined;
   onFarmSettingsAction?: FarmSettingsActionExecutor | undefined;
+  onKitchenInventoryAction?: KitchenInventoryActionExecutor | undefined;
+  onKitchenCook?: KitchenCookExecutor | undefined;
+  onKitchenPurchase?: KitchenPurchaseExecutor | undefined;
+  onKitchenShopRefresh?: KitchenShopRefreshExecutor | undefined;
+  onMarketAction?: MarketActionExecutor | undefined;
+  onNeighborhoodMessageAction?: NeighborhoodMessageActionExecutor | undefined;
+  onOriginalPlantAction?: OriginalPlantActionExecutor | undefined;
   onRanchCollection?: RanchCollectionExecutor | undefined;
+  onRanchDecorationAction?: RanchDecorationActionExecutor | undefined;
+  onRanchInteractionAction?: RanchInteractionActionExecutor | undefined;
   onRanchResidentAction?: RanchResidentActionExecutor | undefined;
+  onSmeltingAction?: SmeltingActionExecutor | undefined;
   onReloadAfterHarvestError?: () => void;
   onReloadRanch?: (() => void) | undefined;
   onRequireResource?: (resource: keyof FarmReadResources) => void;
@@ -2337,6 +2609,21 @@ export function FarmFieldContent({
     createInitialSceneUiStates(),
   );
   const [shopCarts, setShopCarts] = useState<ShopCartState>(() => createEmptyShopCarts());
+  const [kitchenPurchaseAction, setKitchenPurchaseAction] = useState<KitchenPurchaseActionState>({
+    stage: "idle",
+  });
+  const [farmPurchaseRequestActions, setFarmPurchaseRequestActions] = useState<
+    Record<"field" | "ranch", FarmPurchaseRequestActionState>
+  >({ field: { stage: "idle" }, ranch: { stage: "idle" } });
+  const [kitchenShopRefreshAction, setKitchenShopRefreshAction] =
+    useState<KitchenShopRefreshActionState>({ stage: "idle" });
+  const [kitchenCookAction, setKitchenCookAction] = useState<KitchenCookActionState>({
+    stage: "idle",
+  });
+  const hasRetryableKitchenPurchaseAttempt =
+    kitchenPurchaseAction.stage === "error" && kitchenPurchaseAction.attempt !== null;
+  const isKitchenPurchaseCartLocked =
+    kitchenPurchaseAction.stage === "submitting" || hasRetryableKitchenPurchaseAttempt;
   const [originalPlantDraft, setOriginalPlantDraft] = useState<OriginalPlantDraft>(() => ({
     description: "",
     harvestText: "",
@@ -2402,7 +2689,7 @@ export function FarmFieldContent({
       : 0;
   const activeSceneUiState = sceneUiStates[activeScene];
   const activeResourceKey = activeSceneUiState.bulletinOpen
-    ? "farmCatalog"
+    ? "bulletin"
     : activeSceneUiState.selectedTool
       ? getToolReadResource(activeScene, activeSceneUiState.selectedTool.id)
       : getSceneReadResource(activeScene);
@@ -2435,6 +2722,51 @@ export function FarmFieldContent({
     DEFAULT_COOKING_METHOD;
   const selectedCookingLayout =
     COOKING_TOOL_LAYOUTS[getCookingToolLayoutId(selectedCookingMethod.id)];
+  const cookingCheckoutFeedback: CookingCartCheckoutFeedback =
+    kitchenPurchaseAction.stage === "submitting"
+      ? { stage: "submitting" }
+      : kitchenPurchaseAction.stage === "success"
+        ? {
+            stage: "success",
+            itemCount: kitchenPurchaseAction.result.items.reduce(
+              (sum, item) => sum + item.quantity,
+              0,
+            ),
+            totalPriceSilver: kitchenPurchaseAction.result.total_price_silver,
+          }
+        : kitchenPurchaseAction.stage === "error"
+          ? {
+              stage: "error",
+              message: kitchenPurchaseIssueMessage(kitchenPurchaseAction.issue),
+              retryable: hasRetryableKitchenPurchaseAttempt,
+            }
+          : { stage: "idle" };
+  const cookingShopRefreshFeedback: CookingShopRefreshFeedback =
+    kitchenShopRefreshAction.stage === "submitting"
+      ? { stage: "submitting" }
+      : kitchenShopRefreshAction.stage === "error"
+        ? {
+            stage: "error",
+            message: kitchenShopRefreshIssueMessage(kitchenShopRefreshAction.issue),
+            retryable: kitchenShopRefreshAction.attempt !== null,
+          }
+        : kitchenShopRefreshAction.stage === "success"
+          ? { stage: "success" }
+          : { stage: "idle" };
+
+  const getFarmCheckoutFeedback = (sceneId: "field" | "ranch"): FarmCartCheckoutFeedback => {
+    const action = farmPurchaseRequestActions[sceneId];
+    if (action.stage === "submitting") return { stage: "submitting" };
+    if (action.stage === "error") {
+      return {
+        stage: "error",
+        message: farmPurchaseRequestIssueMessage(action.issue),
+        retryable: action.attempt !== null,
+      };
+    }
+    if (action.stage === "success") return { stage: "success" };
+    return { stage: "idle" };
+  };
 
   const updateSceneUiState = useCallback(
     (sceneId: FarmSceneId, update: Partial<FarmSceneUiState>) => {
@@ -2448,6 +2780,24 @@ export function FarmFieldContent({
 
   const changeShopCartQuantity = useCallback(
     (sceneId: ShopCartSceneId, cartKey: string, delta: number, maxQuantity?: number) => {
+      if (sceneId === "cooking") {
+        if (isKitchenPurchaseCartLocked) {
+          return;
+        }
+        setKitchenPurchaseAction({ stage: "idle" });
+      } else {
+        const requestAction = farmPurchaseRequestActions[sceneId];
+        if (
+          requestAction.stage === "submitting" ||
+          (requestAction.stage === "error" && requestAction.attempt !== null)
+        ) {
+          return;
+        }
+        setFarmPurchaseRequestActions((current) => ({
+          ...current,
+          [sceneId]: { stage: "idle" },
+        }));
+      }
       setShopCarts((current) => {
         const currentQuantity = current[sceneId][cartKey] ?? 0;
         const nextQuantity = Math.min(
@@ -2471,7 +2821,224 @@ export function FarmFieldContent({
         };
       });
     },
-    [],
+    [farmPurchaseRequestActions, isKitchenPurchaseCartLocked],
+  );
+
+  const submitFarmPurchaseRequest = useCallback(
+    async (
+      sceneId: "field" | "ranch",
+      items: FarmCartCheckoutLine[],
+      retryAttempt?: CreateFarmPurchaseRequestInput,
+    ): Promise<void> => {
+      if (preview || !onFarmPurchaseRequest) return;
+      const shopRevision =
+        sceneId === "field"
+          ? farmCatalog?.data.shop.status === "available"
+            ? farmCatalog.data.shop.revision
+            : null
+          : (ranch?.revision ?? null);
+      if (!shopRevision) return;
+      const attempt =
+        retryAttempt ??
+        ({
+          idempotencyKey: crypto.randomUUID(),
+          shop: sceneId,
+          shopRevision,
+          items: items.map((item) => ({ ...item })),
+        } satisfies CreateFarmPurchaseRequestInput);
+      if (attempt.items.length === 0) return;
+
+      setFarmPurchaseRequestActions((current) => ({
+        ...current,
+        [sceneId]: { stage: "submitting", attempt },
+      }));
+      let result: FarmPurchaseRequestResult;
+      try {
+        result = await onFarmPurchaseRequest(attempt);
+      } catch {
+        setFarmPurchaseRequestActions((current) => ({
+          ...current,
+          [sceneId]: {
+            stage: "error",
+            attempt,
+            issue: {
+              code: "unexpected_response",
+              currentShopRevision: null,
+              serverMessage: null,
+            },
+          },
+        }));
+        return;
+      }
+
+      if (result.ok) {
+        setShopCarts((current) => ({ ...current, [sceneId]: {} }));
+        setFarmPurchaseRequestActions((current) => ({
+          ...current,
+          [sceneId]: { stage: "success" },
+        }));
+        return;
+      }
+      if (result.issue.code === "shop_changed" || result.issue.code === "state_conflict") {
+        setShopCarts((current) => ({ ...current, [sceneId]: {} }));
+        setFarmPurchaseRequestActions((current) => ({
+          ...current,
+          [sceneId]: { stage: "idle" },
+        }));
+        return;
+      }
+      setFarmPurchaseRequestActions((current) => ({
+        ...current,
+        [sceneId]: {
+          stage: "error",
+          attempt: shouldRetryFarmPurchaseRequest(result.issue) ? attempt : null,
+          issue: result.issue,
+        },
+      }));
+    },
+    [farmCatalog, onFarmPurchaseRequest, preview, ranch],
+  );
+
+  const submitKitchenPurchase = useCallback(
+    async (
+      items: CookingCartCheckoutLine[],
+      retryAttempt?: KitchenPurchaseInput,
+    ): Promise<void> => {
+      if (preview || !kitchen || !onKitchenPurchase) return;
+      const attempt =
+        retryAttempt ??
+        ({
+          expectedShopRevision: kitchen.shop_revision,
+          idempotencyKey: crypto.randomUUID(),
+          items: items.map((item) => ({ ...item })),
+        } satisfies KitchenPurchaseInput);
+      if (attempt.items.length === 0) return;
+
+      setKitchenPurchaseAction({ stage: "submitting", attempt });
+      let result: KitchenPurchaseResult;
+      try {
+        result = await onKitchenPurchase(attempt);
+      } catch {
+        setKitchenPurchaseAction({
+          stage: "error",
+          attempt,
+          issue: {
+            code: "unexpected_response",
+            currentShopRevision: null,
+            serverMessage: null,
+          },
+        });
+        return;
+      }
+
+      if (result.ok) {
+        setShopCarts((current) => ({ ...current, cooking: {} }));
+        setKitchenPurchaseAction({ stage: "success", result: result.data.data.result });
+        return;
+      }
+      if (result.issue.code === "shop_changed" || result.issue.code === "state_conflict") {
+        setShopCarts((current) => ({ ...current, cooking: {} }));
+        setKitchenPurchaseAction({ stage: "idle" });
+        return;
+      }
+      setKitchenPurchaseAction({
+        stage: "error",
+        attempt: shouldRetryKitchenPurchase(result.issue) ? attempt : null,
+        issue: result.issue,
+      });
+    },
+    [kitchen, onKitchenPurchase, preview],
+  );
+
+  const submitKitchenShopRefresh = useCallback(
+    async (retryAttempt?: KitchenShopRefreshInput): Promise<void> => {
+      if (
+        preview ||
+        !kitchen ||
+        kitchen.data.daily_shop.status !== "available" ||
+        !onKitchenShopRefresh
+      ) {
+        return;
+      }
+      const attempt =
+        retryAttempt ??
+        ({
+          expectedShopRevision: kitchen.shop_revision,
+          idempotencyKey: crypto.randomUUID(),
+        } satisfies KitchenShopRefreshInput);
+      setKitchenShopRefreshAction({ stage: "submitting", attempt });
+      let result: KitchenShopRefreshResult;
+      try {
+        result = await onKitchenShopRefresh(attempt);
+      } catch {
+        setKitchenShopRefreshAction({
+          stage: "error",
+          attempt,
+          issue: {
+            code: "unexpected_response",
+            currentShopRevision: null,
+            serverMessage: null,
+          },
+        });
+        return;
+      }
+      if (result.ok) {
+        setKitchenShopRefreshAction({ stage: "success" });
+        return;
+      }
+      setKitchenShopRefreshAction({
+        stage: "error",
+        attempt: shouldRetryKitchenShopRefresh(result.issue) ? attempt : null,
+        issue: result.issue,
+      });
+    },
+    [kitchen, onKitchenShopRefresh, preview],
+  );
+
+  const submitKitchenCook = useCallback(
+    async (retryAttempt?: KitchenCookInput): Promise<void> => {
+      if (preview || !kitchen || !onKitchenCook) return;
+      const attempt =
+        retryAttempt ??
+        ({
+          expectedFarmDoorplate: field.farm.farm_doorplate,
+          expectedKitchenInventoryRevision: kitchen.kitchen_inventory_revision,
+          idempotencyKey: crypto.randomUUID(),
+          items: selectedCookingIngredientIds.map(toRawKitchenCookItemRef),
+        } satisfies KitchenCookInput);
+      if (attempt.items.length < 2 || attempt.items.length > 5) return;
+
+      setKitchenCookAction({ stage: "submitting", attempt });
+      let result: Awaited<ReturnType<KitchenCookExecutor>>;
+      try {
+        result = await onKitchenCook(attempt);
+      } catch {
+        setKitchenCookAction({
+          stage: "error",
+          attempt,
+          issue: {
+            code: "unexpected_response",
+            currentKitchenInventoryRevision: null,
+            serverMessage: null,
+          },
+        });
+        return;
+      }
+      if (result.ok) {
+        setSelectedCookingIngredientIds([]);
+        setKitchenCookAction({
+          stage: "success",
+          outcome: result.data.data.result.outcome,
+        });
+        return;
+      }
+      setKitchenCookAction({
+        stage: "error",
+        attempt: shouldRetryKitchenCook(result.issue) ? attempt : null,
+        issue: result.issue,
+      });
+    },
+    [field.farm.farm_doorplate, kitchen, onKitchenCook, preview, selectedCookingIngredientIds],
   );
 
   const submitRanchCollection = useCallback(
@@ -2560,6 +3127,7 @@ export function FarmFieldContent({
                 <NeighborhoodScene
                   emptyLabels={NEIGHBORHOOD_EMPTY_LABELS}
                   farmCatalog={farmCatalog}
+                  onMessageAction={onNeighborhoodMessageAction}
                   options={NEIGHBORHOOD_OPTIONS}
                   preview={preview}
                   shellUrl={getFarmAssetUrl("neighborhood.shell")}
@@ -2570,15 +3138,19 @@ export function FarmFieldContent({
         ) : null,
       )}
       {activeScene === "field" ? (
-        <FarmIdentityPlaque
-          equippedTitle={field.farm.equipped_title?.name ?? null}
-          farmDoorplate={field.farm.farm_doorplate}
-          farmName={field.farm.farm_name}
-          landName={field.land.name}
-          landTier={field.land.tier}
-          seasonName={field.season.name}
-          welcomeMessage={field.farm.welcome_message}
-        />
+        <>
+          <FarmIdentityPlaque
+            equippedTitle={field.farm.equipped_title?.name ?? null}
+            farmDoorplate={field.farm.farm_doorplate}
+            farmName={field.farm.farm_name}
+            welcomeMessage={field.farm.welcome_message}
+          />
+          <FarmEnvironmentStatus
+            landName={field.land.name}
+            landTier={field.land.tier}
+            seasonName={field.season.name}
+          />
+        </>
       ) : null}
       {activeScene !== "neighborhood" ? (
         <SceneBalance
@@ -2658,15 +3230,23 @@ export function FarmFieldContent({
         }
       >
         <CookingPrepOverlay
+          cookAction={kitchenCookAction}
           ingredientPickerOpen={cookingIngredientPickerOpen}
           kitchen={kitchen}
           onCloseIngredientPicker={() => setCookingIngredientPickerOpen(false)}
+          onCloseCookResult={() => setKitchenCookAction({ stage: "idle" })}
+          onCook={() => void submitKitchenCook()}
           onOpenIngredientPicker={() => setCookingIngredientPickerOpen(true)}
           onRemoveIngredient={(slotIndex) =>
             setSelectedCookingIngredientIds((current) =>
               current.filter((_, index) => index !== slotIndex),
             )
           }
+          onRetryCook={() => {
+            if (kitchenCookAction.stage === "error" && kitchenCookAction.attempt) {
+              void submitKitchenCook(kitchenCookAction.attempt);
+            }
+          }}
           onSelectIngredient={(ingredientId) =>
             setSelectedCookingIngredientIds((current) =>
               current.length >= COOKING_PREP_SLOT_IDS.length ? current : [...current, ingredientId],
@@ -2695,6 +3275,7 @@ export function FarmFieldContent({
 
       {SCENE_OPTIONS.map((scene) => {
         const sceneState = sceneUiStates[scene.id];
+        const purchaseSceneId = scene.id === "field" || scene.id === "ranch" ? scene.id : null;
         return (
           <div
             className="farm-page-state-layer"
@@ -2704,7 +3285,7 @@ export function FarmFieldContent({
             <Suspense fallback={null}>
               {sceneState.bulletinOpen ? (
                 <DingdongBulletin
-                  farmCatalog={farmCatalog}
+                  bulletin={resources.bulletin.stage === "ready" ? resources.bulletin.data : null}
                   onClose={() => updateSceneUiState(scene.id, { bulletinOpen: false })}
                   preview={preview}
                   sceneId={scene.id}
@@ -2714,6 +3295,11 @@ export function FarmFieldContent({
                 <FarmToolPanel
                   activeScene={scene.id}
                   cart={scene.id === "neighborhood" ? EMPTY_SHOP_CART : shopCarts[scene.id]}
+                  cookingCheckoutFeedback={cookingCheckoutFeedback}
+                  cookingShopRefreshFeedback={cookingShopRefreshFeedback}
+                  farmCheckoutFeedback={
+                    purchaseSceneId ? getFarmCheckoutFeedback(purchaseSceneId) : undefined
+                  }
                   farmCatalog={farmCatalog}
                   kitchen={kitchen}
                   key={`${scene.id}-${sceneState.selectedTool.id}`}
@@ -2723,9 +3309,57 @@ export function FarmFieldContent({
                       changeShopCartQuantity(scene.id, cartKey, delta, maxQuantity);
                     }
                   }}
+                  onCheckoutCookingCart={
+                    onKitchenPurchase
+                      ? (items) => {
+                          void submitKitchenPurchase(items);
+                        }
+                      : undefined
+                  }
+                  onCheckoutFarmCart={
+                    purchaseSceneId && onFarmPurchaseRequest
+                      ? (items) => {
+                          void submitFarmPurchaseRequest(purchaseSceneId, items);
+                        }
+                      : undefined
+                  }
                   onChangeOriginalPlantDraft={setOriginalPlantDraft}
                   onChangeSettingsDraft={setSettingsDraft}
+                  onCropCodexAction={onCropCodexAction}
+                  onExpeditionAction={onExpeditionAction}
                   onFarmSettingsAction={onFarmSettingsAction}
+                  onKitchenInventoryAction={onKitchenInventoryAction}
+                  onMarketAction={onMarketAction}
+                  onOriginalPlantAction={onOriginalPlantAction}
+                  onRanchDecorationAction={onRanchDecorationAction}
+                  onRanchInteractionAction={onRanchInteractionAction}
+                  onSmeltingAction={onSmeltingAction}
+                  onRetryCookingCheckout={() => {
+                    if (kitchenPurchaseAction.stage === "error" && kitchenPurchaseAction.attempt) {
+                      void submitKitchenPurchase([], kitchenPurchaseAction.attempt);
+                    }
+                  }}
+                  onRetryFarmCheckout={
+                    purchaseSceneId
+                      ? () => {
+                          const action = farmPurchaseRequestActions[purchaseSceneId];
+                          if (action.stage !== "error") return;
+                          if (action.attempt) {
+                            void submitFarmPurchaseRequest(purchaseSceneId, [], action.attempt);
+                          }
+                        }
+                      : undefined
+                  }
+                  onRefreshCookingShop={() => {
+                    if (
+                      kitchenShopRefreshAction.stage === "error" &&
+                      kitchenShopRefreshAction.attempt
+                    ) {
+                      void submitKitchenShopRefresh(kitchenShopRefreshAction.attempt);
+                      return;
+                    }
+                    void submitKitchenShopRefresh();
+                  }}
                   originalPlantDraft={originalPlantDraft}
                   preview={preview}
                   ranch={ranch}
@@ -2746,7 +3380,7 @@ export function FarmFieldContent({
             setCookingIngredientPickerOpen(false);
           }
           if (!preview) {
-            onRequireResource?.("farmCatalog");
+            onRequireResource?.("bulletin");
           }
           updateSceneUiState(activeScene, { bulletinOpen: true, selectedTool: null });
         }}
@@ -2789,6 +3423,16 @@ function shouldRetryFarmHarvest(issue: FarmHarvestAssistIssue): boolean {
   );
 }
 
+function shouldRetryFarmPurchaseRequest(issue: FarmPurchaseRequestIssue): boolean {
+  return (
+    issue.code === "network_unavailable" ||
+    issue.code === "farm_unavailable" ||
+    issue.code === "onebot_unavailable" ||
+    issue.code === "upstream_contract_unavailable" ||
+    issue.code === "unexpected_response"
+  );
+}
+
 function shouldRetryRanchResidentAction(issue: RanchResidentActionIssue): boolean {
   return (
     issue.code === "network_unavailable" ||
@@ -2807,6 +3451,33 @@ function shouldRetryRanchCollection(issue: RanchCollectionIssue): boolean {
   );
 }
 
+function shouldRetryKitchenPurchase(issue: KitchenPurchaseIssue): boolean {
+  return (
+    issue.code === "network_unavailable" ||
+    issue.code === "farm_unavailable" ||
+    issue.code === "upstream_contract_unavailable" ||
+    issue.code === "unexpected_response"
+  );
+}
+
+function shouldRetryKitchenShopRefresh(issue: KitchenShopRefreshIssue): boolean {
+  return (
+    issue.code === "network_unavailable" ||
+    issue.code === "farm_unavailable" ||
+    issue.code === "upstream_contract_unavailable" ||
+    issue.code === "unexpected_response"
+  );
+}
+
+function shouldRetryKitchenCook(issue: KitchenCookIssue): boolean {
+  return (
+    issue.code === "network_unavailable" ||
+    issue.code === "farm_unavailable" ||
+    issue.code === "upstream_contract_unavailable" ||
+    issue.code === "unexpected_response"
+  );
+}
+
 function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
   const [state, setState] = useState<FarmPageState>(
     previewData ? { stage: "ready", data: previewData } : { stage: "loading" },
@@ -2816,6 +3487,7 @@ function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
   );
   const [settingsInitializationKey, setSettingsInitializationKey] = useState(0);
   const [harvestAction, setHarvestAction] = useState<FarmHarvestActionState>({ stage: "idle" });
+  const fieldDoorplateRef = useRef(previewData?.data.farm.farm_doorplate ?? null);
   const requestControllerRef = useRef<AbortController | null>(null);
   const resourceControllersRef = useRef<Partial<Record<keyof FarmReadResources, AbortController>>>(
     {},
@@ -2856,6 +3528,28 @@ function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
             kitchen: result.ok
               ? { stage: "ready", data: result.data }
               : { stage: "error", message: kitchenIssueMessage(result.issue) },
+          }));
+        });
+        return;
+      }
+
+      if (resource === "bulletin") {
+        const expectedFarmDoorplate = fieldDoorplateRef.current;
+        if (!expectedFarmDoorplate) {
+          requestedResourcesRef.current.delete(resource);
+          return;
+        }
+        void getBoundBulletin({
+          expectedFarmDoorplate,
+          signal: controller.signal,
+        }).then((result) => {
+          if (controller.signal.aborted) return;
+          if (!result.ok) requestedResourcesRef.current.delete(resource);
+          setResources((current) => ({
+            ...current,
+            bulletin: result.ok
+              ? { stage: "ready", data: result.data }
+              : { stage: "error", message: bulletinIssueMessage(result.issue) },
           }));
         });
         return;
@@ -2936,13 +3630,13 @@ function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
     [requireResource],
   );
 
-  const submitFarmSettingsAction = useCallback<FarmSettingsActionExecutor>(
+  const submitRanchDecorationAction = useCallback<RanchDecorationActionExecutor>(
     async (input) => {
-      const result = await executeBoundFarmSettingsAction(input);
+      const result = await executeBoundRanchDecorationAction(input);
       if (result.ok) {
         setResources((current) => ({
           ...current,
-          farmCatalog: {
+          ranch: {
             stage: "ready",
             data: {
               data: result.data.data.resource,
@@ -2951,11 +3645,237 @@ function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
             },
           },
         }));
+      } else if (result.issue.code === "state_conflict") {
+        requireResource("ranch", true);
+      }
+      return result;
+    },
+    [requireResource],
+  );
+
+  const submitExpeditionAction = useCallback<ExpeditionActionExecutor>(
+    async (input) => {
+      const result = await executeBoundExpeditionAction(input);
+      if (result.ok || result.issue.code === "state_conflict") {
+        requireResource("farmCatalog", true);
+      }
+      return result;
+    },
+    [requireResource],
+  );
+
+  const submitCropCodexAction = useCallback<CropCodexActionExecutor>(
+    async (input) => {
+      const result = await executeBoundCropCodexAction(input);
+      if (result.ok || result.issue.code === "state_conflict") {
+        requireResource("farmCatalog", true);
+      }
+      return result;
+    },
+    [requireResource],
+  );
+
+  const submitSmeltingAction = useCallback<SmeltingActionExecutor>(
+    async (input) => {
+      const result = await executeBoundSmeltingAction(input);
+      if (result.ok || result.issue.code === "state_conflict") {
+        requireResource("farmCatalog", true);
+      }
+      return result;
+    },
+    [requireResource],
+  );
+
+  const submitMarketAction = useCallback<MarketActionExecutor>(
+    async (input) => {
+      const result = await executeBoundMarketAction(input);
+      if (result.ok || result.issue.code === "state_conflict") {
+        requireResource("farmCatalog", true);
+      }
+      return result;
+    },
+    [requireResource],
+  );
+
+  const submitRanchInteractionAction = useCallback<RanchInteractionActionExecutor>(
+    async (input) => {
+      const result = await executeBoundRanchInteractionAction(input);
+      if (result.ok) {
+        requireResource("ranch", true);
+        void getBoundFarmField().then((fieldResult) => {
+          if (fieldResult.ok) setState({ stage: "ready", data: fieldResult.data });
+        });
+        if (requestedResourcesRef.current.has("farmCatalog")) {
+          requireResource("farmCatalog", true);
+        }
+        if (requestedResourcesRef.current.has("kitchen")) {
+          requireResource("kitchen", true);
+        }
+      } else if (result.issue.code === "state_conflict") {
+        requireResource("ranch", true);
+      }
+      return result;
+    },
+    [requireResource],
+  );
+
+  const submitOriginalPlantAction = useCallback<OriginalPlantActionExecutor>(
+    async (input) => {
+      const result = await executeBoundOriginalPlantAction(input);
+      if (result.ok) {
+        setState((current) =>
+          current.stage === "ready"
+            ? {
+                stage: "ready",
+                data: {
+                  ...current.data,
+                  data: {
+                    ...current.data.data,
+                    balance: { farm_coins: result.data.data.result.coins_balance },
+                  },
+                },
+              }
+            : current,
+        );
+        requireResource("farmCatalog", true);
         void getBoundFarmField().then((fieldResult) => {
           if (fieldResult.ok) setState({ stage: "ready", data: fieldResult.data });
         });
       } else if (result.issue.code === "state_conflict") {
         requireResource("farmCatalog", true);
+      }
+      return result;
+    },
+    [requireResource],
+  );
+
+  const submitNeighborhoodMessageAction = useCallback<NeighborhoodMessageActionExecutor>(
+    async (input) => {
+      const result = await executeBoundNeighborhoodMessage(input);
+      if (result.ok || result.issue.code === "state_conflict") {
+        requireResource("farmCatalog", true);
+      }
+      return result;
+    },
+    [requireResource],
+  );
+
+  const submitKitchenInventoryAction = useCallback<KitchenInventoryActionExecutor>(
+    async (input) => {
+      const result = await executeBoundKitchenInventoryAction(input);
+      if (result.ok) {
+        requireResource("kitchen", true);
+        if (requestedResourcesRef.current.has("ranch")) {
+          requireResource("ranch", true);
+        }
+        if (requestedResourcesRef.current.has("farmCatalog")) {
+          requireResource("farmCatalog", true);
+        }
+      } else if (result.issue.code === "state_conflict") {
+        requireResource("kitchen", true);
+      }
+      return result;
+    },
+    [requireResource],
+  );
+
+  const submitFarmSettingsAction = useCallback<FarmSettingsActionExecutor>(
+    async (input) => {
+      const result = await executeBoundFarmSettingsAction(input);
+      if (result.ok) {
+        setSettingsInitializationKey((current) => current + 1);
+        requireResource("farmCatalog", true);
+        void getBoundFarmField().then((fieldResult) => {
+          if (fieldResult.ok) setState({ stage: "ready", data: fieldResult.data });
+        });
+      } else if (result.issue.code === "state_conflict") {
+        requireResource("farmCatalog", true);
+      }
+      return result;
+    },
+    [requireResource],
+  );
+
+  const submitFarmPurchaseRequestAction = useCallback<FarmPurchaseRequestExecutor>(
+    async (input) => {
+      const result = await createBoundFarmPurchaseRequest(input);
+      if (
+        !result.ok &&
+        (result.issue.code === "shop_changed" || result.issue.code === "state_conflict")
+      ) {
+        requireResource(input.shop === "field" ? "farmCatalog" : "ranch", true);
+      }
+      return result;
+    },
+    [requireResource],
+  );
+
+  const submitKitchenPurchaseAction = useCallback<KitchenPurchaseExecutor>(
+    async (input) => {
+      const result = await purchaseBoundKitchenItem(input);
+      if (result.ok) {
+        requireResource("kitchen", true);
+      } else if (result.issue.code === "shop_changed" || result.issue.code === "state_conflict") {
+        requireResource("kitchen", true);
+      }
+      return result;
+    },
+    [requireResource],
+  );
+
+  const submitKitchenShopRefreshAction = useCallback<KitchenShopRefreshExecutor>(
+    async (input) => {
+      const result = await refreshBoundKitchenShop(input);
+      if (result.ok) {
+        requireResource("kitchen", true);
+        setState((current) =>
+          current.stage === "ready"
+            ? {
+                stage: "ready",
+                data: {
+                  ...current.data,
+                  data: {
+                    ...current.data.data,
+                    balance: {
+                      farm_coins: result.data.data.result.coins_balance,
+                    },
+                  },
+                },
+              }
+            : current,
+        );
+      } else if (
+        result.issue.code === "state_conflict" ||
+        result.issue.code === "shop_unavailable"
+      ) {
+        requireResource("kitchen", true);
+      }
+      return result;
+    },
+    [requireResource],
+  );
+
+  const submitKitchenCookAction = useCallback<KitchenCookExecutor>(
+    async (input) => {
+      const result = await executeBoundKitchenCook(input);
+      if (result.ok) {
+        setResources((current) => {
+          if (current.kitchen.stage !== "ready") return current;
+          return {
+            ...current,
+            kitchen: {
+              stage: "ready",
+              data: {
+                data: result.data.data.resource,
+                kitchen_inventory_revision: result.data.kitchen_inventory_revision,
+                shop_revision: current.kitchen.data.shop_revision,
+                server_time: result.data.server_time,
+              },
+            },
+          };
+        });
+      } else if (result.issue.code === "state_conflict") {
+        requireResource("kitchen", true);
       }
       return result;
     },
@@ -2976,6 +3896,9 @@ function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
     void getBoundFarmField({ signal: controller.signal }).then((result) => {
       if (controller.signal.aborted) {
         return;
+      }
+      if (result.ok) {
+        fieldDoorplateRef.current = result.data.data.farm.farm_doorplate;
       }
       setState(
         result.ok ? { stage: "ready", data: result.data } : { stage: "error", issue: result.issue },
@@ -3080,10 +4003,23 @@ function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
             data={state.data}
             harvestAction={harvestAction}
             onCloseHarvestAction={() => setHarvestAction({ stage: "idle" })}
+            onCropCodexAction={previewData ? undefined : submitCropCodexAction}
+            onExpeditionAction={previewData ? undefined : submitExpeditionAction}
+            onFarmPurchaseRequest={previewData ? undefined : submitFarmPurchaseRequestAction}
             onHarvestAssist={previewData ? undefined : () => void submitHarvestAssist()}
             onFarmSettingsAction={previewData ? undefined : submitFarmSettingsAction}
+            onKitchenInventoryAction={previewData ? undefined : submitKitchenInventoryAction}
+            onKitchenCook={previewData ? undefined : submitKitchenCookAction}
+            onKitchenPurchase={previewData ? undefined : submitKitchenPurchaseAction}
+            onKitchenShopRefresh={previewData ? undefined : submitKitchenShopRefreshAction}
+            onMarketAction={previewData ? undefined : submitMarketAction}
+            onNeighborhoodMessageAction={previewData ? undefined : submitNeighborhoodMessageAction}
+            onOriginalPlantAction={previewData ? undefined : submitOriginalPlantAction}
             onRanchCollection={previewData ? undefined : submitRanchCollectionAction}
+            onRanchDecorationAction={previewData ? undefined : submitRanchDecorationAction}
+            onRanchInteractionAction={previewData ? undefined : submitRanchInteractionAction}
             onRanchResidentAction={previewData ? undefined : submitRanchResidentAction}
+            onSmeltingAction={previewData ? undefined : submitSmeltingAction}
             onReloadAfterHarvestError={reload}
             onReloadRanch={previewData ? undefined : () => requireResource("ranch", true)}
             onRequireResource={requireResource}

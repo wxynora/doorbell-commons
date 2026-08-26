@@ -382,8 +382,20 @@
   border-radius: 1.1cqw;
   background: linear-gradient(180deg, #8da657, #748d42);
   box-shadow: inset 0 -0.25cqw rgba(68, 88, 35, 0.28);
+  cursor: pointer;
+}
+
+.cooking-ingredient-catalog__refresh-button:disabled {
   cursor: default;
-  opacity: 0.66;
+  opacity: 0.58;
+}
+
+.cooking-ingredient-catalog__refresh-feedback {
+  grid-column: 1 / -1;
+  color: #87543e;
+  font-size: clamp(0.42rem, 1.65cqw, 0.5rem);
+  font-weight: 700;
+  line-height: 1.25;
 }
 
 .cooking-ingredient-catalog__grid {
@@ -1023,9 +1035,44 @@
   background: #a69b80;
 }
 
+.shop-cart__footer > button:not(:disabled) {
+  border-color: #52682f;
+  background: linear-gradient(180deg, #829d49, #6d8739);
+  box-shadow: inset 0 -0.35cqw rgba(67, 86, 35, 0.28);
+  cursor: pointer;
+}
+
 .shop-cart__footer > button:disabled {
   cursor: default;
   opacity: 1;
+}
+
+.shop-cart__feedback {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: 1.2cqw;
+  min-width: 0;
+  margin: 0;
+  color: #6d7f3f;
+  font-size: clamp(0.5rem, 2.05cqw, 0.62rem);
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.shop-cart__feedback--error {
+  color: #9a563e;
+}
+
+.shop-cart__feedback > button {
+  flex: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
 }
 
 .farm-shop__items img {

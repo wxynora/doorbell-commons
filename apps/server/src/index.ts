@@ -6,18 +6,31 @@ import { BellService } from "./bell-service.js";
 import { CommunityDatabase } from "./community-database.js";
 import { readDoorbellServerConfig } from "./config.js";
 import { ConnectorService } from "./connector-service.js";
+import { FarmHumanBulletinClient } from "./farm-bulletin-client.js";
 import { FarmHumanCatalogClient } from "./farm-catalog-client.js";
 import { FarmCreationClient } from "./farm-creation-client.js";
+import { FarmHumanCropCodexActionClient } from "./farm-crop-codex-action-client.js";
 import { FarmDirectoryClient } from "./farm-directory-client.js";
+import { FarmHumanExpeditionActionClient } from "./farm-expedition-action-client.js";
 import { FarmHumanClient } from "./farm-human-client.js";
 import { FarmHumanKitchenClient } from "./farm-kitchen-client.js";
+import { FarmHumanKitchenCookClient } from "./farm-kitchen-cook-client.js";
+import { FarmHumanKitchenInventoryActionClient } from "./farm-kitchen-inventory-action-client.js";
 import { FarmHumanKitchenPurchaseClient } from "./farm-kitchen-purchase-client.js";
+import { FarmHumanKitchenShopRefreshClient } from "./farm-kitchen-shop-refresh-client.js";
 import { FarmLingyeClient } from "./farm-lingye-client.js";
+import { FarmHumanMarketActionClient } from "./farm-market-action-client.js";
+import { FarmHumanNeighborhoodMessageActionClient } from "./farm-neighborhood-message-action-client.js";
+import { FarmHumanOriginalPlantActionClient } from "./farm-original-plant-action-client.js";
+import { FarmPurchaseRequestService } from "./farm-purchase-request-service.js";
 import { FarmHumanRanchResidentActionClient } from "./farm-ranch-action-client.js";
 import { FarmHumanRanchClient } from "./farm-ranch-client.js";
 import { FarmHumanRanchCollectionClient } from "./farm-ranch-collection-client.js";
+import { FarmHumanRanchDecorationActionClient } from "./farm-ranch-decoration-action-client.js";
+import { FarmHumanRanchInteractionActionClient } from "./farm-ranch-interaction-action-client.js";
 import { FarmRewardClient } from "./farm-reward-client.js";
 import { FarmHumanFarmSettingsActionClient } from "./farm-settings-action-client.js";
+import { FarmHumanSmeltingActionClient } from "./farm-smelting-action-client.js";
 import { HomeWeatherEngine } from "./home-weather-engine.js";
 import { LingyeDailyService } from "./lingye-daily-service.js";
 import { MailboxService } from "./mailbox-service.js";
@@ -72,7 +85,17 @@ const farmHumanReader = new FarmHumanClient({
   requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
   serviceToken: serverConfig.farmServiceToken,
 });
+const farmExpeditionActioner = new FarmHumanExpeditionActionClient({
+  apiBaseUrl: serverConfig.farmApiBaseUrl,
+  requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+  serviceToken: serverConfig.farmServiceToken,
+});
 const farmCatalogReader = new FarmHumanCatalogClient({
+  apiBaseUrl: serverConfig.farmApiBaseUrl,
+  requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+  serviceToken: serverConfig.farmServiceToken,
+});
+const farmBulletinReader = new FarmHumanBulletinClient({
   apiBaseUrl: serverConfig.farmApiBaseUrl,
   requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
   serviceToken: serverConfig.farmServiceToken,
@@ -83,6 +106,36 @@ const farmKitchenReader = new FarmHumanKitchenClient({
   serviceToken: serverConfig.farmServiceToken,
 });
 const farmKitchenPurchaser = new FarmHumanKitchenPurchaseClient({
+  apiBaseUrl: serverConfig.farmApiBaseUrl,
+  requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+  serviceToken: serverConfig.farmServiceToken,
+});
+const farmKitchenCooker = new FarmHumanKitchenCookClient({
+  apiBaseUrl: serverConfig.farmApiBaseUrl,
+  requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+  serviceToken: serverConfig.farmServiceToken,
+});
+const farmKitchenInventoryActioner = new FarmHumanKitchenInventoryActionClient({
+  apiBaseUrl: serverConfig.farmApiBaseUrl,
+  requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+  serviceToken: serverConfig.farmServiceToken,
+});
+const farmKitchenShopRefresher = new FarmHumanKitchenShopRefreshClient({
+  apiBaseUrl: serverConfig.farmApiBaseUrl,
+  requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+  serviceToken: serverConfig.farmServiceToken,
+});
+const farmOriginalPlantActioner = new FarmHumanOriginalPlantActionClient({
+  apiBaseUrl: serverConfig.farmApiBaseUrl,
+  requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+  serviceToken: serverConfig.farmServiceToken,
+});
+const farmCropCodexActioner = new FarmHumanCropCodexActionClient({
+  apiBaseUrl: serverConfig.farmApiBaseUrl,
+  requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+  serviceToken: serverConfig.farmServiceToken,
+});
+const farmSmeltingActioner = new FarmHumanSmeltingActionClient({
   apiBaseUrl: serverConfig.farmApiBaseUrl,
   requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
   serviceToken: serverConfig.farmServiceToken,
@@ -98,6 +151,26 @@ const farmRanchResidentActioner = new FarmHumanRanchResidentActionClient({
   serviceToken: serverConfig.farmServiceToken,
 });
 const farmRanchCollector = new FarmHumanRanchCollectionClient({
+  apiBaseUrl: serverConfig.farmApiBaseUrl,
+  requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+  serviceToken: serverConfig.farmServiceToken,
+});
+const farmRanchDecorationActioner = new FarmHumanRanchDecorationActionClient({
+  apiBaseUrl: serverConfig.farmApiBaseUrl,
+  requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+  serviceToken: serverConfig.farmServiceToken,
+});
+const farmRanchInteractionActioner = new FarmHumanRanchInteractionActionClient({
+  apiBaseUrl: serverConfig.farmApiBaseUrl,
+  requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+  serviceToken: serverConfig.farmServiceToken,
+});
+const farmNeighborhoodMessageActioner = new FarmHumanNeighborhoodMessageActionClient({
+  apiBaseUrl: serverConfig.farmApiBaseUrl,
+  requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+  serviceToken: serverConfig.farmServiceToken,
+});
+const farmMarketActioner = new FarmHumanMarketActionClient({
   apiBaseUrl: serverConfig.farmApiBaseUrl,
   requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
   serviceToken: serverConfig.farmServiceToken,
@@ -118,13 +191,25 @@ const registrationAuth = new RegistrationAuthService({
   farmDirectory,
   farmCreator,
   farmCatalogReader,
+  farmBulletinReader,
   farmHumanReader,
+  farmExpeditionActioner,
   farmKitchenReader,
   farmKitchenPurchaser,
+  farmKitchenCooker,
+  farmKitchenInventoryActioner,
+  farmKitchenShopRefresher,
+  farmOriginalPlantActioner,
+  farmCropCodexActioner,
+  farmSmeltingActioner,
   farmLingyeReader,
   farmRanchReader,
   farmRanchResidentActioner,
   farmRanchCollector,
+  farmRanchDecorationActioner,
+  farmRanchInteractionActioner,
+  farmNeighborhoodMessageActioner,
+  farmMarketActioner,
   farmSettingsActioner,
   groupMembership,
   groupId: serverConfig.qqGroupId,
@@ -155,6 +240,10 @@ const bellService = new BellService({
   heartbeatIntervalMs: serverConfig.bellHeartbeatIntervalMs,
   replayIntervalMs: serverConfig.bellReplayIntervalMs,
   onError: reportBellError,
+});
+const farmPurchaseRequestService = new FarmPurchaseRequestService({
+  database,
+  bellNotifier: bellService,
 });
 const mailboxService = new MailboxService({
   database,
@@ -208,6 +297,7 @@ const app = buildApp({
   groupId: serverConfig.qqGroupId,
   groupMembership,
   registrationAuth,
+  farmPurchaseRequestService,
   bellService,
   connectorService,
   weatherEngine,

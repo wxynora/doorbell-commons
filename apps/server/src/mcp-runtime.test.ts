@@ -290,7 +290,7 @@ test("the farm registry has 58 canonical operations, strict args, examples, and 
     "farm.leaderboard": ["leaderboard"],
     "farm.plant": ["plant"],
     "farm.water": ["water"],
-    "farm.use": ["use"],
+    "farm.ripen": ["ripen"],
     "farm.harvest": ["harvest"],
     "farm.run": ["run"],
     "farm.upgrade-land": ["upgrade-land"],
@@ -356,6 +356,33 @@ test("the farm registry has 58 canonical operations, strict args, examples, and 
   }
   const helpPlan = farmOperationByName.get("farm.help")?.adapt({});
   assert.deepEqual(helpPlan, { kind: "help" });
+
+  assert.equal(farmOperationByName.has("farm.use"), false);
+  const ripen = farmOperationByName.get("farm.ripen");
+  assert.ok(ripen);
+  assert.equal(ripen.argsSchema.safeParse({ plots: [1, 3, 5] }).success, true);
+  assert.equal(ripen.argsSchema.safeParse({ plots: [] }).success, false);
+  assert.equal(ripen.argsSchema.safeParse({ plots: [1, 1] }).success, false);
+  assert.equal(ripen.argsSchema.safeParse({ plots: ["1"] }).success, false);
+  assert.deepEqual(ripen.adapt({ plots: [1, 3, 5] }), {
+    kind: "farm",
+    action: "ripen",
+    params: { plots: [1, 3, 5] },
+  });
+
+  const run = farmOperationByName.get("farm.run");
+  assert.ok(run);
+  assert.equal(run.argsSchema.safeParse({ potion: "auto" }).success, false);
+
+  const glimmerCatch = farmOperationByName.get("farm.glimmer.catch");
+  assert.ok(glimmerCatch);
+  assert.equal(glimmerCatch.argsSchema.safeParse({ animal: 2, dish: "料理名称" }).success, true);
+  assert.equal(
+    glimmerCatch.argsSchema.safeParse({ animal: "动物名称", dish: "料理名称" }).success,
+    true,
+  );
+  assert.equal(glimmerCatch.argsSchema.safeParse({ animal: "2", dish: "料理名称" }).success, false);
+  assert.equal(glimmerCatch.argsSchema.safeParse({ animal: 5, dish: "料理名称" }).success, false);
 
   const sell = farmOperationByName.get("farm.kitchen.sell");
   assert.ok(sell);

@@ -8,6 +8,7 @@ import {
 } from "@doorbell/protocol";
 import { useEffect, useMemo, useRef } from "react";
 import type { BoundGlimmerRead, BoundTogetherRead } from "../auth/lingye-client";
+import { DOORBELL_FARM_PATH } from "../routes";
 import { candidateTwoHtml } from "./candidate-two-source";
 
 export type CandidateTwoScreen =
@@ -63,7 +64,7 @@ interface CandidateTwoGlimmerEncounterDefinition {
   name: string;
 }
 
-const candidateTwoInternalPaths = ["/api/farm/ui"] as const;
+const candidateTwoInternalPaths = [DOORBELL_FARM_PATH] as const;
 
 const candidateTwoGlimmerAnimalPositionParams: Record<
   CandidateTwoGlimmerAnimalPositionId,
@@ -275,7 +276,7 @@ const candidateTwoDemoGlimmerEncounterSeen = new Set(["glimmer_spring"]);
 type CandidateTwoInternalPath = (typeof candidateTwoInternalPaths)[number];
 
 export function shouldHandleCandidateNavigationInParent(path: CandidateTwoInternalPath): boolean {
-  return path === "/api/farm/ui";
+  return path === DOORBELL_FARM_PATH;
 }
 
 export interface CandidateTwoIdentityView {
@@ -5334,9 +5335,9 @@ const LINGYE_STYLES = `
         .candidate2-glimmer-tracks-demo {
             container-type: inline-size;
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+            grid-template-columns: repeat(4, minmax(0, 1fr));
             align-items: start;
-            gap: var(--glimmer-animal-row-gap) var(--glimmer-animal-column-gap);
+            gap: var(--glimmer-animal-row-gap) 3.424658cqw;
         }
 
         .candidate2-glimmer-tracks-demo figure,
@@ -5346,34 +5347,32 @@ const LINGYE_STYLES = `
             text-align: center;
         }
 
-        .candidate2-glimmer-page.is-animal-editor .candidate2-glimmer-tracks-demo figure {
+        .candidate2-glimmer-tracks-demo figure {
             position: relative;
             z-index: 3;
-            cursor: grab;
-            touch-action: none;
-            user-select: none;
             will-change: transform;
             transform: translate3d(var(--glimmer-group-x, 0cqw), var(--glimmer-group-y, 0cqw), 0);
         }
 
-        .candidate2-glimmer-page.is-animal-editor .candidate2-glimmer-tracks-demo {
-            grid-template-columns: repeat(4, minmax(0, 1fr));
-            column-gap: 3.424658cqw;
+        .candidate2-glimmer-page.is-animal-editor .candidate2-glimmer-tracks-demo figure {
+            cursor: grab;
+            touch-action: none;
+            user-select: none;
         }
 
-        .candidate2-glimmer-page.is-animal-editor .candidate2-glimmer-animal-visual {
+        .candidate2-glimmer-tracks-demo .candidate2-glimmer-animal-visual {
             width: min(100%, 21.917808cqw);
         }
 
-        .candidate2-glimmer-page.is-animal-editor .candidate2-glimmer-animal-visual.is-mystery {
+        .candidate2-glimmer-tracks-demo .candidate2-glimmer-animal-visual.is-mystery {
             font-size: 14.383562cqw;
         }
 
-        .candidate2-glimmer-page.is-animal-editor .candidate2-glimmer-tracks-demo figcaption {
+        .candidate2-glimmer-tracks-demo figcaption {
             margin-top: -0.684932cqw;
         }
 
-        .candidate2-glimmer-page.is-animal-editor .candidate2-glimmer-tracks-demo figcaption strong {
+        .candidate2-glimmer-tracks-demo figcaption strong {
             font-size: 3.424658cqw;
         }
 
@@ -5620,7 +5619,7 @@ const LINGYE_SCRIPT = `
     }
 
     function openLingyeRoute(path, label) {
-        if (window.__doorbellCandidateDemo && path !== '/api/farm/ui') {
+        if (window.__doorbellCandidateDemo && path !== '${DOORBELL_FARM_PATH}') {
             showLingyeNotice('演示模式：' + label + '未连接真实服务');
             return;
         }
@@ -5633,7 +5632,7 @@ const LINGYE_SCRIPT = `
             return;
         }
         if (placeId === 'farm-ranch') {
-            openLingyeRoute('/api/farm/ui', label);
+            openLingyeRoute('${DOORBELL_FARM_PATH}', label);
             return;
         }
         if (placeId === 'glimmer-meadow') {

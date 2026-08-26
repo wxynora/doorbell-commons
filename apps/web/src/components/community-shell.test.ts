@@ -40,13 +40,13 @@ test("farm, Glimmer Meadow, and Lingye Together use same-page Doorbell routes wi
   openDoorbellInternalPage(DOORBELL_INTERNAL_PATHS.lingyeGlimmer, navigator);
   openDoorbellInternalPage(DOORBELL_INTERNAL_PATHS.lingyeTogether, navigator);
 
-  assert.deepEqual(opened, ["/api/farm/ui", "/api/lingye-glimmer", "/api/lingye-together"]);
+  assert.deepEqual(opened, ["/lingye/farm", "/api/lingye-glimmer", "/api/lingye-together"]);
   assert.equal(
     opened.some((path) => path.includes("humanKey") || path.includes("farm_human_key")),
     false,
   );
   assert.equal(
-    opened.every((path) => path.startsWith("/api/")),
+    opened.every((path) => path.startsWith("/api/") || path === "/lingye/farm"),
     true,
   );
 });

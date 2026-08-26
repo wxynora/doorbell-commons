@@ -13,7 +13,7 @@ import {
 
 const DOORBELL_SERVICE = "doorbell-commons.service";
 const COMMUNITY_DATABASE_PATH = "/var/lib/doorbell-commons/doorbell.sqlite";
-const COMMUNITY_DATABASE_SCHEMA_VERSION = 6;
+const COMMUNITY_DATABASE_SCHEMA_VERSION = 7;
 
 function runSystemctl(arguments_) {
   return new Promise((resolvePromise, reject) => {

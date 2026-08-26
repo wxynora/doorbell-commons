@@ -39,8 +39,11 @@ function ranch(
   } as unknown as BoundRanchRead;
 }
 
-function kitchen(dailyShop: unknown): BoundKitchenRead {
-  return { data: { daily_shop: dailyShop } } as unknown as BoundKitchenRead;
+function kitchen(
+  dailyShop: unknown,
+  tools: unknown = { status: "unavailable", items: [], reason: "not_persisted" },
+): BoundKitchenRead {
+  return { data: { daily_shop: dailyShop, tools } } as unknown as BoundKitchenRead;
 }
 
 test("live shop uses authoritative names and prices for cart definitions", () => {
@@ -171,6 +174,74 @@ test("live ranch and kitchen shops omit unavailable or unknown identities", () =
     panel.getShopCartItemDefinition("cooking", "ingredient:mystery-ingredient", {
       kitchen: kitchenData,
     }),
+    null,
+  );
+});
+
+test("live cooking tools expose prices and only unowned tools enter the cart", () => {
+  const kitchenData = kitchen(
+    {
+      status: "available",
+      is_current_day: true,
+      refresh_at: "2026-08-25T00:00:00.000Z",
+      ingredients: [],
+      recipes: [],
+    },
+    {
+      status: "available",
+      items: [
+        {
+          status: "available",
+          tool_id: "steam",
+          name: "蒸笼",
+          price_silver: 1_200,
+          owned: false,
+          reason: null,
+        },
+        {
+          status: "available",
+          tool_id: "roast",
+          name: "烤炉",
+          price_silver: 800,
+          owned: true,
+          reason: null,
+        },
+        {
+          status: "available",
+          tool_id: "deep-fry",
+          name: "炸锅",
+          price_silver: 1_600,
+          owned: null,
+          reason: null,
+        },
+      ],
+      reason: null,
+    },
+  );
+
+  const unowned = panel.getShopCartItemDefinition("cooking", "tool:steam", {
+    kitchen: kitchenData,
+  });
+  assert.deepEqual(
+    unowned && {
+      name: unowned.name,
+      price: unowned.price,
+      maxQuantity: unowned.maxQuantity,
+      visual: unowned.visual,
+    },
+    {
+      name: "蒸笼",
+      price: 1_200,
+      maxQuantity: 1,
+      visual: { kind: "cooking", entityId: "steam", catalogKind: "tool" },
+    },
+  );
+  assert.equal(
+    panel.getShopCartItemDefinition("cooking", "tool:roast", { kitchen: kitchenData }),
+    null,
+  );
+  assert.equal(
+    panel.getShopCartItemDefinition("cooking", "tool:deep-fry", { kitchen: kitchenData }),
     null,
   );
 });

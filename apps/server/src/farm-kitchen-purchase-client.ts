@@ -12,9 +12,11 @@ export interface FarmHumanKitchenPurchaseInput {
   farmHumanKey: string;
   expectedShopRevision: string;
   idempotencyKey: string;
-  kind: FarmKitchenPurchaseKind;
-  itemId: string;
-  quantity: number;
+  items: Array<{
+    kind: FarmKitchenPurchaseKind;
+    itemId: string;
+    quantity: number;
+  }>;
 }
 
 export interface FarmHumanKitchenPurchaser {
@@ -97,6 +99,24 @@ interface FarmHumanKitchenPurchaseClientOptions {
   fetchImplementation?: typeof fetch;
 }
 
+function receiptItemsMatch(
+  requestItems: FarmHumanKitchenPurchaseInput["items"],
+  receiptItems: FarmHumanKitchenPurchaseSuccess["data"]["result"]["items"],
+): boolean {
+  return (
+    requestItems.length === receiptItems.length &&
+    requestItems.every((item, index) => {
+      const receiptItem = receiptItems[index];
+      return (
+        receiptItem !== undefined &&
+        receiptItem.kind === item.kind &&
+        receiptItem.item_id === item.itemId &&
+        receiptItem.quantity === item.quantity
+      );
+    })
+  );
+}
+
 export class FarmHumanKitchenPurchaseClient implements FarmHumanKitchenPurchaser {
   readonly #purchaseEndpoint: URL;
   readonly #serviceToken: string;
@@ -127,9 +147,11 @@ export class FarmHumanKitchenPurchaseClient implements FarmHumanKitchenPurchaser
       expected_farm_doorplate: input.farmDoorplate,
       idempotency_key: input.idempotencyKey,
       expected_shop_revision: input.expectedShopRevision,
-      kind: input.kind,
-      item_id: input.itemId,
-      quantity: input.quantity,
+      items: input.items.map((item) => ({
+        kind: item.kind,
+        item_id: item.itemId,
+        quantity: item.quantity,
+      })),
     });
 
     let response: Response;
@@ -166,9 +188,7 @@ export class FarmHumanKitchenPurchaseClient implements FarmHumanKitchenPurchaser
       if (
         !parsed.success ||
         parsed.data.data.result.receipt_id !== input.idempotencyKey ||
-        parsed.data.data.result.kind !== input.kind ||
-        parsed.data.data.result.item_id !== input.itemId ||
-        parsed.data.data.result.quantity !== input.quantity ||
+        !receiptItemsMatch(input.items, parsed.data.data.result.items) ||
         parsed.data.data.resource.farm.farm_doorplate !== input.farmDoorplate
       ) {
         throw new FarmHumanKitchenPurchaseContractUnavailableError();

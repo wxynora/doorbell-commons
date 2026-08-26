@@ -1,12 +1,25 @@
 import { z } from "zod";
 
+export * from "./farm-bulletin.js";
 export * from "./farm-catalog.js";
+export * from "./farm-crop-codex-action.js";
+export * from "./farm-expedition-action.js";
 export * from "./farm-kitchen.js";
+export * from "./farm-kitchen-cook.js";
+export * from "./farm-kitchen-inventory-action.js";
 export * from "./farm-kitchen-purchase.js";
+export * from "./farm-kitchen-shop-refresh.js";
+export * from "./farm-market-action.js";
+export * from "./farm-neighborhood-message-action.js";
+export * from "./farm-original-plant-action.js";
+export * from "./farm-purchase-request.js";
 export * from "./farm-ranch.js";
 export * from "./farm-ranch-action.js";
 export * from "./farm-ranch-collection.js";
+export * from "./farm-ranch-decoration-action.js";
+export * from "./farm-ranch-interaction-action.js";
 export * from "./farm-settings-action.js";
+export * from "./farm-smelting-action.js";
 
 export const serviceHealthSchema = z.object({
   service: z.literal("doorbell-commons"),

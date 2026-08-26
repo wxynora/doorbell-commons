@@ -1,5 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
-import type { BellBindingState, CommunityDatabase } from "./community-database.js";
+import type {
+  BellBindingState,
+  BellWakeCancellationResult,
+  CommunityDatabase,
+} from "./community-database.js";
 
 export const BELL_PROTOCOL_VERSION = 1 as const;
 
@@ -38,6 +42,8 @@ interface ActiveBellConnection {
   heartbeatTimer: NodeJS.Timeout;
   replayTimer: NodeJS.Timeout;
   closed: boolean;
+  sentWakeIds: Set<string>;
+  sentCancellationIds: Set<string>;
 }
 
 export interface BellAckInput {
@@ -149,6 +155,8 @@ export class BellService {
       heartbeatTimer,
       replayTimer,
       closed: false,
+      sentWakeIds: new Set<string>(),
+      sentCancellationIds: new Set<string>(),
     };
     this.#connections.set(binding.residentId, active);
     try {
@@ -204,12 +212,37 @@ export class BellService {
 
   refreshHome(homeId: string): void {
     const result = this.#database.cancelPendingBellMailboxWakeForHome(homeId, this.#now());
-    this.#emitCancellation(result.residentId, result.cancelledWakeId);
+    this.#emitCancellations(result);
+    if (result.residentId !== null) this.#emitPendingWakes(result.residentId);
   }
 
   refreshResident(residentId: string): void {
     const result = this.#database.cancelPendingBellMailboxWakeForResident(residentId, this.#now());
-    this.#emitCancellation(result.residentId, result.cancelledWakeId);
+    this.#emitCancellations(result);
+    this.#emitPendingWakes(residentId);
+  }
+
+  /** Notify an already-connected resident without making Bell delivery errors fail a producer. */
+  notifyResident(residentId: string): void {
+    try {
+      this.refreshResident(residentId);
+    } catch (error) {
+      this.#onError(error);
+    }
+  }
+
+  cancelWake(residentId: string, wakeId: string, now = this.#now()): void {
+    const result = this.#database.cancelBellWake(residentId, wakeId, now);
+    this.#emitCancellations(result);
+  }
+
+  /** Emit a cancellation after a business transaction already ended the wake. */
+  notifyWakeCancelled(residentId: string, wakeId: string): void {
+    this.#emitCancellations({
+      residentId,
+      cancelledWakeId: wakeId,
+      cancelledWakeIds: [wakeId],
+    });
   }
 
   getSettingsStatus(residentId: string): BellSettingsStatus {
@@ -252,15 +285,46 @@ export class BellService {
     return binding;
   }
 
-  #emitCancellation(residentId: string | null, cancelledWakeId: string | null): void {
-    if (residentId !== null) {
-      const active = this.#connections.get(residentId);
-      if (active && !active.closed && cancelledWakeId) {
+  #emitCancellations(result: BellWakeCancellationResult): void {
+    if (result.residentId === null || result.cancelledWakeIds.length === 0) return;
+    const active = this.#connections.get(result.residentId);
+    if (!active || active.closed) return;
+    for (const wakeId of result.cancelledWakeIds) {
+      if (active.sentCancellationIds.has(wakeId)) continue;
+      try {
         active.sink.send("cancel", {
           version: BELL_PROTOCOL_VERSION,
           connection_epoch: active.connectionEpoch,
-          wake_id: cancelledWakeId,
+          wake_id: wakeId,
         });
+        active.sentCancellationIds.add(wakeId);
+      } catch (error) {
+        this.#onError(error);
+        this.#closeConnection(active, true);
+        return;
+      }
+    }
+  }
+
+  #emitPendingWakes(residentId: string): void {
+    const active = this.#connections.get(residentId);
+    if (!active || active.closed) return;
+    const pendingWakes = this.#database.listPendingBellWakes(residentId);
+    for (const wake of pendingWakes) {
+      if (active.sentWakeIds.has(wake.wakeId)) continue;
+      try {
+        active.sink.send("wake", {
+          version: BELL_PROTOCOL_VERSION,
+          connection_epoch: active.connectionEpoch,
+          wake_id: wake.wakeId,
+          reason: wake.reason,
+          ...(wake.payload === null ? {} : { payload: wake.payload }),
+        });
+        active.sentWakeIds.add(wake.wakeId);
+      } catch (error) {
+        this.#onError(error);
+        this.#closeConnection(active, true);
+        return;
       }
     }
   }

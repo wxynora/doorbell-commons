@@ -5,7 +5,7 @@ const farmKitchenPurchaseDoorplateSchema = z
   .string()
   .regex(/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/);
 
-export const farmKitchenPurchaseKindSchema = z.enum(["ingredient", "recipe"]);
+export const farmKitchenPurchaseKindSchema = z.enum(["ingredient", "recipe", "tool"]);
 export const farmKitchenPurchaseIdempotencyKeySchema = z.uuid();
 
 const farmKitchenPurchaseLineFields = {
@@ -15,13 +15,31 @@ const farmKitchenPurchaseLineFields = {
 };
 
 function validatePurchaseLine(value: { kind: string; quantity: number }, context: z.RefinementCtx) {
-  if (value.kind === "recipe" && value.quantity !== 1) {
+  if ((value.kind === "recipe" || value.kind === "tool") && value.quantity !== 1) {
     context.addIssue({
       code: "custom",
       path: ["quantity"],
-      message: "A recipe purchase quantity must be exactly one",
+      message: "A recipe or tool purchase quantity must be exactly one",
     });
   }
+}
+
+function validateUniquePurchaseLines(
+  value: Array<{ kind: string; item_id: string }>,
+  context: z.RefinementCtx,
+) {
+  const seen = new Set<string>();
+  value.forEach((line, index) => {
+    const key = `${line.kind}\u0000${line.item_id}`;
+    if (seen.has(key)) {
+      context.addIssue({
+        code: "custom",
+        path: [index],
+        message: "A purchase cart cannot contain duplicate kind and item_id pairs",
+      });
+    }
+    seen.add(key);
+  });
 }
 
 export const farmKitchenPurchaseLineSchema = z
@@ -29,35 +47,50 @@ export const farmKitchenPurchaseLineSchema = z
   .strict()
   .superRefine(validatePurchaseLine);
 
+export const farmKitchenPurchaseItemsSchema = z
+  .array(farmKitchenPurchaseLineSchema)
+  .min(1)
+  .superRefine(validateUniquePurchaseLines);
+
 export const farmHumanKitchenPurchaseRequestSchema = z
   .object({
     farm_human_key: z.string().min(1),
     expected_farm_doorplate: farmKitchenPurchaseDoorplateSchema,
     idempotency_key: farmKitchenPurchaseIdempotencyKeySchema,
     expected_shop_revision: farmKitchenShopRevisionSchema,
-    ...farmKitchenPurchaseLineFields,
+    items: farmKitchenPurchaseItemsSchema,
   })
-  .strict()
-  .superRefine(validatePurchaseLine);
+  .strict();
 
 /** Browser body: identity and idempotency stay in the server/session layer. */
 export const boundFarmKitchenPurchaseRequestSchema = z
   .object({
     expected_shop_revision: farmKitchenShopRevisionSchema,
+    items: farmKitchenPurchaseItemsSchema,
+  })
+  .strict();
+
+const farmKitchenPurchaseReceiptItemSchema = z
+  .object({
     ...farmKitchenPurchaseLineFields,
+    total_price_silver: z.number().int().nonnegative(),
   })
   .strict()
   .superRefine(validatePurchaseLine);
 
+const farmKitchenPurchaseReceiptItemsSchema = z
+  .array(farmKitchenPurchaseReceiptItemSchema)
+  .min(1)
+  .superRefine(validateUniquePurchaseLines);
+
 export const farmKitchenPurchaseResultSchema = z
   .object({
     receipt_id: z.string().min(1),
-    ...farmKitchenPurchaseLineFields,
+    items: farmKitchenPurchaseReceiptItemsSchema,
     total_price_silver: z.number().int().nonnegative(),
     silver_balance: z.number().int().nonnegative(),
   })
-  .strict()
-  .superRefine(validatePurchaseLine);
+  .strict();
 
 export const farmHumanKitchenPurchaseSuccessSchema = z
   .object({
@@ -134,6 +167,7 @@ export const boundFarmKitchenPurchaseErrorSchema = z
 
 export type FarmKitchenPurchaseKind = z.infer<typeof farmKitchenPurchaseKindSchema>;
 export type FarmKitchenPurchaseLine = z.infer<typeof farmKitchenPurchaseLineSchema>;
+export type FarmKitchenPurchaseItems = z.infer<typeof farmKitchenPurchaseItemsSchema>;
 export type FarmHumanKitchenPurchaseRequest = z.infer<typeof farmHumanKitchenPurchaseRequestSchema>;
 export type BoundFarmKitchenPurchaseRequest = z.infer<typeof boundFarmKitchenPurchaseRequestSchema>;
 export type FarmKitchenPurchaseResult = z.infer<typeof farmKitchenPurchaseResultSchema>;

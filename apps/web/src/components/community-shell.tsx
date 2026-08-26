@@ -8,6 +8,7 @@ import type {
   NavigationItemViewModel,
   OwnerProfileViewModel,
 } from "../view-models";
+import { DOORBELL_FARM_PATH } from "../routes";
 import { CommunityNavigation } from "./community-navigation";
 import { LingyeMapPage } from "./lingye-map-page";
 import { MyHomePage } from "./my-home-page";
@@ -26,7 +27,7 @@ const navigationItems: readonly NavigationItemViewModel[] = [
 ];
 
 export const DOORBELL_INTERNAL_PATHS = {
-  farm: "/api/farm/ui",
+  farm: DOORBELL_FARM_PATH,
   lingyeGlimmer: "/api/lingye-glimmer",
   lingyeTogether: "/api/lingye-together",
 } as const;

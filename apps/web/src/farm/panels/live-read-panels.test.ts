@@ -10,39 +10,45 @@ function source(path: string) {
 
 test("non-preview tool panels consume structured live reads instead of Demo catalogs", () => {
   const toolPanel = source("./tool-panel.tsx");
+  const toolTypes = source("./tools/types.ts");
+  const backpackPanel = source("./tools/backpack-panel.tsx");
+  const remotePanels = source("./tools/remote-panels.tsx");
+  const recipeCatalog = source("./tools/cooking-recipe-catalog.tsx");
+  const smeltingPanel = source("./tools/smelting-panel.tsx");
+  const actionPanels = source("./farm-action-panels.tsx");
 
-  assert.match(toolPanel, /farmCatalog\?: BoundFarmCatalogRead \| null/);
-  assert.match(toolPanel, /kitchen\?: BoundKitchenRead \| null/);
-  assert.match(toolPanel, /ranch\?: BoundRanchRead \| null/);
-  assert.match(toolPanel, /if \(preview\)/);
-  assert.match(toolPanel, /farmCatalog\?\.data\.backpack/);
+  assert.match(toolTypes, /farmCatalog\?: BoundFarmCatalogRead \| null/);
+  assert.match(toolTypes, /kitchen\?: BoundKitchenRead \| null/);
+  assert.match(toolTypes, /ranch\?: BoundRanchRead \| null/);
+  assert.match(backpackPanel, /farmCatalog\?\.data\.backpack/);
   assert.match(
-    toolPanel,
+    backpackPanel,
     /item\.kind === "seed" \|\| \(item\.kind === "item" && item\.item_id === "speed_potion"\)/,
   );
-  assert.match(toolPanel, /item\.kind === "item" && item\.item_id !== "speed_potion"/);
-  assert.match(toolPanel, /farmCatalog\?\.data\.codex/);
-  assert.match(toolPanel, /farmCatalog\?\.data\.expedition/);
-  assert.match(toolPanel, /farmCatalog\?\.data\.smelting/);
-  assert.match(toolPanel, /kitchen\?\.data\.known_recipes/);
-  assert.match(toolPanel, /ranch\?\.data\.dispatch/);
+  assert.match(backpackPanel, /item\.kind === "item" && item\.item_id !== "speed_potion"/);
+  assert.match(actionPanels, /farmCatalog\?\.data\.codex/);
+  assert.match(remotePanels, /farmCatalog\?\.data\.expedition/);
+  assert.match(smeltingPanel, /farmCatalog\?\.data\.smelting/);
+  assert.match(recipeCatalog, /kitchen\?\.data\.known_recipes/);
+  assert.match(remotePanels, /ranch\?\.data\.dispatch/);
   assert.match(
     toolPanel,
     /<FarmShopPanelContent[\s\S]*farmCatalog=\{farmCatalog \?\? null\}[\s\S]*kitchen=\{kitchen \?\? null\}[\s\S]*ranch=\{ranch \?\? null\}/,
   );
-  assert.match(toolPanel, /身份不可用/);
-  assert.match(toolPanel, /if \(!preview\)[\s\S]*kitchen\?\.data\.known_recipes/);
+  assert.match(toolPanel, /<CookingRecipeCatalog[\s\S]*kitchen=\{kitchen \?\? null\}/);
 });
 
 test("live bulletin and neighborhood render only structured catalog sections", () => {
   const bulletinPanel = source("./bulletin-panel.tsx");
   const neighborhoodScene = source("../scenes/neighborhood/neighborhood-scene.tsx");
 
-  assert.match(bulletinPanel, /farmCatalog\?: BoundFarmCatalogRead \| null/);
-  assert.match(bulletinPanel, /bulletin\.messages/);
-  assert.match(bulletinPanel, /bulletin\.ranch_notices/);
-  assert.match(bulletinPanel, /bulletin\.tasks\.message/);
-  assert.match(bulletinPanel, /bulletin\.mature_broadcast\.message/);
+  assert.match(bulletinPanel, /bulletin\?: BoundBulletinRead \| null/);
+  assert.match(bulletinPanel, /available\.tasks\?\.map/);
+  assert.match(bulletinPanel, /available\.mature_plots\?\.map/);
+  assert.match(bulletinPanel, /available\.messages\?\.map/);
+  assert.match(bulletinPanel, /available\.ranch_notifications\?\.map/);
+  assert.match(bulletinPanel, /unavailable\.tasks/);
+  assert.match(bulletinPanel, /unavailable\.mature_plots/);
   assert.match(neighborhoodScene, /farmCatalog\?: BoundFarmCatalogRead \| null/);
   assert.match(neighborhoodScene, /liveNeighborhood\.rankings/);
   assert.match(neighborhoodScene, /liveNeighborhood\.messages/);

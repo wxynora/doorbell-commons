@@ -104,7 +104,7 @@ test("schema v0 upgrades missing identity columns in one versioned migration wit
   });
 });
 
-test("schema v1 preserves login security state while upgrading through v6", () => {
+test("schema v1 preserves login security state while upgrading through v7", () => {
   withTemporaryDatabase((databasePath) => {
     const versionOneDatabase = new Database(databasePath);
     versionOneDatabase.exec(`
@@ -139,7 +139,7 @@ test("schema v1 preserves login security state while upgrading through v6", () =
         migratedDatabase.pragma("user_version", { simple: true }),
         COMMUNITY_DATABASE_SCHEMA_VERSION,
       );
-      assert.equal(COMMUNITY_DATABASE_SCHEMA_VERSION, 6);
+      assert.equal(COMMUNITY_DATABASE_SCHEMA_VERSION, 7);
       assert.deepEqual(
         migratedDatabase
           .prepare("SELECT account_id, qq_number, password_credential FROM human_accounts")
@@ -443,6 +443,95 @@ test("schema v5 preserves an existing group-chat issue inside the seven-column e
       );
     } finally {
       migratedDatabase.close();
+    }
+  });
+});
+
+test("schema v6 migrates legacy Bell wakes and removes the resident-wide pending limit", () => {
+  withTemporaryDatabase((databasePath) => {
+    const legacy = new Database(databasePath);
+    legacy.exec(`
+      CREATE TABLE human_accounts (
+        account_id TEXT PRIMARY KEY,
+        qq_number TEXT NOT NULL UNIQUE,
+        password_credential TEXT,
+        created_at INTEGER NOT NULL,
+        membership_status TEXT NOT NULL,
+        membership_checked_at INTEGER NOT NULL,
+        membership_inactive_at INTEGER
+      );
+      CREATE TABLE residents (
+        resident_id TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL UNIQUE REFERENCES human_accounts(account_id) ON DELETE CASCADE,
+        resident_name TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE TABLE homes (
+        home_id TEXT PRIMARY KEY,
+        resident_id TEXT NOT NULL UNIQUE REFERENCES residents(resident_id) ON DELETE CASCADE,
+        home_name TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        mailbox_revision INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE TABLE bell_wakes (
+        wake_id TEXT PRIMARY KEY,
+        resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+        reason TEXT NOT NULL CHECK (reason = 'mailbox_unread'),
+        status TEXT NOT NULL CHECK (status IN ('pending', 'acked', 'blocked', 'cancelled')),
+        created_at INTEGER NOT NULL,
+        ended_at INTEGER,
+        block_reason TEXT,
+        error_code TEXT
+      );
+      CREATE UNIQUE INDEX bell_wakes_one_pending_per_resident
+        ON bell_wakes (resident_id)
+        WHERE status = 'pending';
+      INSERT INTO human_accounts VALUES ('account-1', '10001', NULL, 1, 'active', 1, NULL);
+      INSERT INTO residents VALUES ('resident-1', 'account-1', '小机', 1);
+      INSERT INTO homes VALUES ('home-1', 'resident-1', '小屋', 1, 0);
+      INSERT INTO bell_wakes VALUES (
+        'wake-legacy', 'resident-1', 'mailbox_unread', 'pending', 10, NULL, NULL, NULL
+      );
+    `);
+    legacy.pragma("user_version = 6");
+    legacy.close();
+
+    const migrated = new CommunityDatabase(databasePath);
+    migrated.close();
+
+    const database = new Database(databasePath, { readonly: true });
+    try {
+      assert.equal(database.pragma("user_version", { simple: true }), 7);
+      const wakeColumns = database.pragma("table_info(bell_wakes)") as Array<{ name: string }>;
+      assert.ok(wakeColumns.some((column) => column.name === "payload_json"));
+      const itemColumns = database.pragma("table_info(farm_purchase_request_items)") as Array<{
+        name: string;
+      }>;
+      assert.ok(itemColumns.some((column) => column.name === "settled_qty"));
+      assert.ok(itemColumns.some((column) => column.name === "receipt_id"));
+      assert.ok(itemColumns.some((column) => column.name === "reason_code"));
+      assert.deepEqual(
+        database.prepare("SELECT wake_id, reason, payload_json FROM bell_wakes").all(),
+        [{ wake_id: "wake-legacy", reason: "mailbox_unread", payload_json: null }],
+      );
+      assert.deepEqual(
+        database
+          .prepare(
+            "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'bell_wakes_one_pending_per_resident'",
+          )
+          .all(),
+        [],
+      );
+      assert.deepEqual(
+        database
+          .prepare(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('farm_purchase_requests', 'farm_purchase_request_items') ORDER BY name",
+          )
+          .all(),
+        [{ name: "farm_purchase_request_items" }, { name: "farm_purchase_requests" }],
+      );
+    } finally {
+      database.close();
     }
   });
 });
