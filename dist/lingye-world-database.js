@@ -17,18 +17,25 @@ const DEFAULT_DATA_DIR = process.env.AIFARM_DATA_DIR
 
 export const DEFAULT_LINGYE_WORLD_DATABASE_PATH = resolve(DEFAULT_DATA_DIR, "lingye-world.sqlite");
 
+let lingyeWorldTransactionSequence = 0;
+
 export function runLingyeWorldTransaction(database, operation) {
-    if (database.isTransaction)
-        return operation();
-    database.exec("BEGIN IMMEDIATE");
+    const nested = database.isTransaction;
+    const savepoint = `lingye_world_tx_${++lingyeWorldTransactionSequence}`;
+    database.exec(nested ? `SAVEPOINT ${savepoint}` : "BEGIN IMMEDIATE");
     try {
         const result = operation();
-        database.exec("COMMIT");
+        database.exec(nested ? `RELEASE SAVEPOINT ${savepoint}` : "COMMIT");
         return result;
     }
     catch (error) {
-        if (database.isTransaction)
+        if (nested) {
+            database.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+            database.exec(`RELEASE SAVEPOINT ${savepoint}`);
+        }
+        else if (database.isTransaction) {
             database.exec("ROLLBACK");
+        }
         throw error;
     }
 }
@@ -275,6 +282,13 @@ export function createLingyeWorldBackend(database, options) {
             expireJob: (jobId, demandStillExists) => atomic(() => jobs.expireJob(jobId, demandStillExists)),
             transferJob: (input) => atomic(() => jobs.transferJob(input)),
             addReporterLikePerformance: (input) => atomic(() => {
+                if (input.validLikes < 5) {
+                    return jobs.addReporterLikePerformance({
+                        jobId: input.jobId,
+                        validLikes: input.validLikes,
+                        sourceReference: input.sourceReference,
+                    });
+                }
                 const credited = economy.creditFromSystem({
                     residentId: input.residentId,
                     currency: "gold",
@@ -291,7 +305,38 @@ export function createLingyeWorldBackend(database, options) {
                 });
             }),
     };
-    const commands = Object.freeze({ ...economyCommands, ...careerCommands });
+    // Only commands whose services already verify an explicit resident actor belong here.
+    // Future HTTP/MCP adapters must still inject that actor from authenticated identity.
+    const residentCommands = Object.freeze({
+        confirmTrade: economyCommands.confirmTrade,
+        proposePlayerLoan: economyCommands.proposePlayerLoan,
+        confirmPlayerLoan: economyCommands.confirmPlayerLoan,
+        cancelPlayerLoan: economyCommands.cancelPlayerLoan,
+        repayPlayerLoan: economyCommands.repayPlayerLoan,
+    });
+    const trustedSystemCommands = Object.freeze({
+        importLegacyBalances: economyCommands.importLegacyBalances,
+        creditFromSystem: economyCommands.creditFromSystem,
+        chargeToSystem: economyCommands.chargeToSystem,
+        reserveSystemGold: economyCommands.reserveSystemGold,
+        settleSystemGoldReservation: economyCommands.settleSystemGoldReservation,
+        releaseSystemGoldReservation: economyCommands.releaseSystemGoldReservation,
+        setSilverAgentLock: economyCommands.setSilverAgentLock,
+        depositDemandGold: economyCommands.depositDemandGold,
+        withdrawDemandGold: economyCommands.withdrawDemandGold,
+        accrueDemandInterest: economyCommands.accrueDemandInterest,
+        openTermDeposit: economyCommands.openTermDeposit,
+        closeTermDeposit: economyCommands.closeTermDeposit,
+        exchangeGoldForSilver: economyCommands.exchangeGoldForSilver,
+        createTrade: economyCommands.createTrade,
+        settleTrade: economyCommands.settleTrade,
+        cancelTrade: economyCommands.cancelTrade,
+        refundTrade: economyCommands.refundTrade,
+        openSystemLoan: economyCommands.openSystemLoan,
+        repaySystemLoan: economyCommands.repaySystemLoan,
+        refreshDebtStatus: economyCommands.refreshDebtStatus,
+        ...careerCommands,
+    });
     const queries = Object.freeze({
         getAccount: (residentId) => economy.getAccount(residentId),
         getFinancialReceipt: (receiptId) => economy.getFinancialReceipt(receiptId),
@@ -299,7 +344,7 @@ export function createLingyeWorldBackend(database, options) {
         hasScheduledDuty: (residentId, career, dutyDate) => employment.hasScheduledDuty(residentId, career, dutyDate),
         getJob: (jobId) => jobs.getJob(jobId),
     });
-    const backend = { commands, queries };
+    const backend = { residentCommands, trustedSystemCommands, queries };
     if (options.exposeInternalsForTesting) {
         backend.testing = Object.freeze({
             economy,

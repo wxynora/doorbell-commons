@@ -1069,7 +1069,15 @@ export class EconomyService {
         if (existing.command_type !== commandType || existing.payload_hash !== payloadHash) {
             throw new EconomyError("IDEMPOTENCY_CONFLICT");
         }
-        return JSON.parse(existing.result_json);
+        const result = JSON.parse(existing.result_json);
+        const receiptId = result?.financialReceipt?.receiptId;
+        if (typeof receiptId !== "string" || receiptId.length === 0) {
+            return result;
+        }
+        return {
+            ...result,
+            financialReceipt: this.getFinancialReceipt(receiptId),
+        };
     }
     #account(residentId) {
         const row = this.#database

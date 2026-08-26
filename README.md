@@ -25,7 +25,7 @@
 
 ## 当前运行形态
 
-- Node.js（>=20）运行已入库的 JavaScript `dist/`，**运行时零依赖**
+- Node.js（>=22.16.0）运行已入库的 JavaScript `dist/`，**运行时零依赖**
   （`node:http`/`crypto`/`fs`）。
 - **数据驱动**：所有内容在 `content/*.json`（作物 / 动物 / 宠物 / 季节 / 节日 / 事件 / 品相 / 土地 / 探险 / 称号 / 文案）。加内容改 JSON，不动引擎。
 - **确定性 PRNG**（mulberry32，rngState 进存档）；当前格式 `world.json` 损坏时保留原文件并拒绝启动，不自动落入空世界。

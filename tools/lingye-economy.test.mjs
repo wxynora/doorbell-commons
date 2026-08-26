@@ -252,6 +252,39 @@ test("system gold commands expose journal-backed receipts and reservations settl
         .prepare("UPDATE economy_financial_receipts SET amount = 999 WHERE receipt_id = ?")
         .run(charged.financialReceipt.receiptId));
 });
+test("reservation replay hydrates legacy receipt JSON from the authoritative database", () => {
+    const { database, service } = createHarness();
+    importAccount(service, "resident-a", 2_000, 0);
+    const reserved = service.reserveSystemGold({
+        residentId: "resident-a",
+        amount: 400,
+        actor: "human",
+        businessReference: "career-exam:resident-a:legacy-replay:reserve",
+        idempotencyKey: "career-exam-legacy-replay-reserve",
+    });
+    const command = database
+        .prepare("SELECT result_json FROM economy_commands WHERE idempotency_key = ?")
+        .get("career-exam-legacy-replay-reserve");
+    const legacyResult = JSON.parse(command.result_json);
+    delete legacyResult.financialReceipt.reservationId;
+    delete legacyResult.financialReceipt.reserveReceiptId;
+    database
+        .prepare("UPDATE economy_commands SET result_json = ? WHERE idempotency_key = ?")
+        .run(JSON.stringify(legacyResult), "career-exam-legacy-replay-reserve");
+    const replay = service.reserveSystemGold({
+        residentId: "resident-a",
+        amount: 400,
+        actor: "human",
+        businessReference: "career-exam:resident-a:legacy-replay:reserve",
+        idempotencyKey: "career-exam-legacy-replay-reserve",
+    });
+    assert.equal(replay.financialReceipt.reservationId, reserved.reservation_id);
+    assert.equal(replay.financialReceipt.reserveReceiptId, reserved.financialReceipt.receiptId);
+    assert.deepEqual(replay.financialReceipt, service.getFinancialReceipt(reserved.financialReceipt.receiptId));
+    assert.equal(JSON.parse(database
+        .prepare("SELECT result_json FROM economy_commands WHERE idempotency_key = ?")
+        .get("career-exam-legacy-replay-reserve").result_json).financialReceipt.reservationId, undefined);
+});
 test("same-day hold cancellation restores restricted daily capacity while cross-day history and settlements remain", () => {
     const { database, service, setNow } = createHarness();
     for (const residentId of ["resident-a", "resident-b", "resident-c"]) {
