@@ -38,9 +38,17 @@ export function recordFinancialReceipt(database, receipt, expected, now) {
                receipt.amount,
                receipt.business_reference,
                journal.command_type,
-               journal.business_ref AS journal_business_reference
+               journal.business_ref AS journal_business_reference,
+               reservation.reservation_id,
+               reservation.reserve_journal_id
              FROM economy_financial_receipts AS receipt
              JOIN economy_journals AS journal ON journal.journal_id = receipt.receipt_id
+             LEFT JOIN economy_system_gold_reservations AS reservation
+               ON receipt.receipt_id IN (
+                 reservation.reserve_journal_id,
+                 reservation.settle_journal_id,
+                 reservation.release_journal_id
+               )
              WHERE receipt.receipt_id = ?`)
             .get(receipt.receiptId);
         entries = database
@@ -63,13 +71,21 @@ export function recordFinancialReceipt(database, receipt, expected, now) {
         currency: authority.currency,
         amount: authority.amount,
         businessReference: authority.business_reference,
+        ...(authority.reservation_id === null || authority.reservation_id === undefined
+            ? {}
+            : { reservationId: authority.reservation_id }),
+        ...(authority.reserve_journal_id === null || authority.reserve_journal_id === undefined
+            ? {}
+            : { reserveReceiptId: authority.reserve_journal_id }),
     };
     if (!sameFinancialReceipt(receipt, authoritativeReceipt) ||
         authoritativeReceipt.residentId !== expected.residentId ||
         authoritativeReceipt.kind !== expected.kind ||
         authoritativeReceipt.currency !== expected.currency ||
         authoritativeReceipt.amount !== expected.amount ||
-        authoritativeReceipt.businessReference !== expected.businessReference) {
+        authoritativeReceipt.businessReference !== expected.businessReference ||
+        (expected.reserveReceiptId !== undefined &&
+            authoritativeReceipt.reserveReceiptId !== expected.reserveReceiptId)) {
         throw new CareerDomainError("financial_receipt_mismatch", "The authoritative financial receipt does not match the career operation");
     }
     assertFinancialJournal(database, authority, entries);
@@ -108,7 +124,9 @@ function sameFinancialReceipt(left, right) {
         left.kind === right.kind &&
         left.currency === right.currency &&
         left.amount === right.amount &&
-        left.businessReference === right.businessReference;
+        left.businessReference === right.businessReference &&
+        (left.reservationId ?? null) === (right.reservationId ?? null) &&
+        (left.reserveReceiptId ?? null) === (right.reserveReceiptId ?? null);
 }
 function assertFinancialJournal(database, authority, entries) {
     const fail = () => {

@@ -468,8 +468,8 @@ function requireCurrentEvent(world, eventId) {
 export function registerNatureImpact(raw, { eventId, farmId, objectId, kind, now }) {
     const world = normalizeNatureWorld(raw);
     const event = requireCurrentEvent(world, String(eventId ?? "").trim());
-    if (event.phase === "forecast")
-        throw new NatureContractError("nature_event_not_active", "forecast events cannot create gameplay impacts");
+    if (event.phase !== "active")
+        throw new NatureContractError("nature_event_not_active", "only active disaster events can create gameplay impacts");
     const normalizedFarmId = String(farmId ?? "").trim();
     const normalizedObjectId = String(objectId ?? "").trim();
     const normalizedKind = String(kind ?? "").trim();

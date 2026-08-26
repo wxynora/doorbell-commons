@@ -145,7 +145,6 @@ export class CareerSchoolService {
     registerExam(input) {
         const now = this.#now();
         return runInTransaction(this.#database, () => {
-            this.#requireExamEligibility(input.residentId, input.career, input.level);
             const existing = this.#getExamAttempt(input.attemptId);
             if (existing) {
                 if (existing.resident_id !== input.residentId ||
@@ -154,12 +153,21 @@ export class CareerSchoolService {
                     existing.reservation_receipt_id !== input.reservationReceipt.receiptId) {
                     throw new CareerDomainError("exam_attempt_conflict", "The attempt id is already in use");
                 }
+                const reservationReceipt = this.#requireEconomyFinancialReceipt(existing.reservation_receipt_id);
+                recordFinancialReceipt(this.#database, input.reservationReceipt, {
+                    amount: reservationReceipt.amount,
+                    businessReference: reservationReceipt.business_reference,
+                    currency: reservationReceipt.currency,
+                    kind: reservationReceipt.kind,
+                    residentId: reservationReceipt.resident_id,
+                }, now);
                 return {
                     attemptId: existing.attempt_id,
-                    feeGold: this.#examFee(input.residentId, input.career, input.level),
+                    feeGold: reservationReceipt.amount,
                     scheduledAt: existing.scheduled_at,
                 };
             }
+            this.#requireExamEligibility(input.residentId, input.career, input.level);
             const openAttempt = this.#database
                 .prepare(`SELECT 1 FROM career_exam_attempts
            WHERE resident_id = ? AND career = ? AND qualification_level = ?
@@ -203,12 +211,14 @@ export class CareerSchoolService {
             if (now < attempt.scheduled_at || now >= attempt.scheduled_at + TWO_HOURS_MS) {
                 throw new CareerDomainError("exam_session_closed", "The assigned two-hour session is closed");
             }
+            const reservationReceipt = this.#requireEconomyFinancialReceipt(attempt.reservation_receipt_id);
             recordFinancialReceipt(this.#database, settlementReceipt, {
-                amount: this.#examFee(attempt.resident_id, attempt.career, attempt.qualification_level),
+                amount: reservationReceipt.amount,
                 businessReference: `career-exam:${attemptId}:settle`,
                 currency: "gold",
                 kind: "system_gold_settle",
                 residentId: attempt.resident_id,
+                reserveReceiptId: attempt.reservation_receipt_id,
             }, now);
             this.#database
                 .prepare(`UPDATE career_exam_attempts
@@ -230,12 +240,14 @@ export class CareerSchoolService {
             if (attempt.registration_status !== "registered") {
                 throw new CareerDomainError("exam_fee_not_releasable", "A started exam fee cannot be released");
             }
+            const reservationReceipt = this.#requireEconomyFinancialReceipt(attempt.reservation_receipt_id);
             recordFinancialReceipt(this.#database, releaseReceipt, {
-                amount: this.#examFee(attempt.resident_id, attempt.career, attempt.qualification_level),
+                amount: reservationReceipt.amount,
                 businessReference: `career-exam:${attemptId}:release`,
                 currency: "gold",
                 kind: "system_gold_release",
                 residentId: attempt.resident_id,
+                reserveReceiptId: attempt.reservation_receipt_id,
             }, now);
             this.#database
                 .prepare(`UPDATE career_exam_attempts
@@ -664,6 +676,16 @@ export class CareerSchoolService {
          LIMIT 1`)
             .get(residentId, career, level);
         return priorFailure ? EXAM_FEE_GOLD[level] / 2 : EXAM_FEE_GOLD[level];
+    }
+    #requireEconomyFinancialReceipt(receiptId) {
+        const receipt = this.#database
+            .prepare(`SELECT receipt_id, resident_id, kind, currency, amount, business_reference
+         FROM economy_financial_receipts WHERE receipt_id = ?`)
+            .get(receiptId);
+        if (!receipt) {
+            throw new CareerDomainError("financial_receipt_unverified", "The original economy receipt is unavailable");
+        }
+        return receipt;
     }
     #activateCertificate(attempt, now) {
         this.#database

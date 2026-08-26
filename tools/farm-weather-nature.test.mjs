@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -26,7 +26,15 @@ const {
   resolveNatureImpact,
 } = await import("../dist/nature.js");
 const { currentSeason } = await import("../dist/time.js");
-const { activateStoredNatureWorld, advanceStoredNatureWorld, getNatureWorld } = await import("../dist/store.js");
+const {
+  activateStoredNatureWorld,
+  advanceStoredNatureWorld,
+  createFarm,
+  getFarm,
+  getNatureWorld,
+  replaceFarmsAndNatureAtomic,
+} = await import("../dist/store.js");
+const { dumpUgc } = await import("../dist/ugc.js");
 
 const atDay = (day, hour = 12) => beijingDayStart(day) + hour * 3_600_000;
 const activationNow = Date.UTC(2026, 7, 31, 16, 0, 0);
@@ -197,6 +205,44 @@ test("flood lifecycle keeps stable event and impact identities through recovery 
   assert.equal(advanceNatureWorld(world, atDay(recoveryDay + 2)).currentEvent, null);
 });
 
+test("recovery disasters reject new impacts before and after settlement readiness without changing the world", () => {
+  const found = findForecast("flood", 14);
+  const event = found.world.currentEvent;
+  let recoveryDay = event.activeFromDay + 1;
+  let world = advanceNatureWorld(found.world, atDay(event.activeFromDay));
+  while (["heavy_rain", "thunderstorm"].includes(plannedWeatherForDay(world, recoveryDay).condition))
+    recoveryDay++;
+  world = advanceNatureWorld(world, atDay(recoveryDay));
+  assert.equal(world.currentEvent.phase, "recovery");
+
+  const beforeReady = structuredClone(world);
+  assert.throws(
+    () => registerNatureImpact(world, {
+      eventId: event.eventId,
+      farmId: "FARM01",
+      objectId: "plot:late-before-ready",
+      kind: "plot_flooded",
+      now: atDay(recoveryDay),
+    }),
+    (error) => error instanceof NatureContractError && error.code === "nature_event_not_active",
+  );
+  assert.deepEqual(world, beforeReady);
+
+  world = markNatureEventReadyForSettlement(world, { eventId: event.eventId, now: atDay(recoveryDay) });
+  const afterReady = structuredClone(world);
+  assert.throws(
+    () => registerNatureImpact(world, {
+      eventId: event.eventId,
+      farmId: "FARM01",
+      objectId: "plot:late-after-ready",
+      kind: "plot_flooded",
+      now: atDay(recoveryDay),
+    }),
+    (error) => error instanceof NatureContractError && error.code === "nature_event_not_active",
+  );
+  assert.deepEqual(world, afterReady);
+});
+
 test("pest and drought use the same persisted weather timeline rather than new random rolls", () => {
   for (const [type, offset] of [["pest", 0], ["drought", 28]]) {
     const found = findForecast(type, offset);
@@ -253,6 +299,58 @@ test("nature authority is persisted inside the existing atomic world document", 
   assert.equal(currentSeason(now).name, ecologicalSeasonAt(advanced, now).name);
   assert.equal(disk.format, "aifarm-world");
   assert.equal(disk.version, 1);
+});
+
+test("farm, UGC, and nature publish together after one world commit and remain unchanged when writing fails", () => {
+  const farm = createFarm("Atomic nature test");
+  const stagedFarm = structuredClone(farm);
+  stagedFarm.coins += 321;
+  const stagedNature = advanceNatureWorld(getNatureWorld(), atDay(activationDay + 7));
+  const stagedUgc = [{ id: "atomic-nature-ugc", name: "Atomic nature crop" }];
+
+  replaceFarmsAndNatureAtomic({
+    replacements: [{ id: farm.id, farm: stagedFarm }],
+    nextNatureWorld: stagedNature,
+    ugc: stagedUgc,
+  });
+
+  const committedFarm = structuredClone(getFarm(farm.id));
+  const committedNature = structuredClone(getNatureWorld());
+  const committedUgc = structuredClone(dumpUgc());
+  const committedDisk = JSON.parse(readFileSync(join(dataDirectory, "world.json"), "utf8"));
+  assert.equal(committedFarm.coins, stagedFarm.coins);
+  assert.deepEqual(committedNature, stagedNature);
+  assert.deepEqual(committedUgc, stagedUgc);
+  assert.deepEqual(
+    committedDisk.farms.find((entry) => entry.id === farm.id),
+    JSON.parse(JSON.stringify(committedFarm)),
+  );
+  assert.deepEqual(committedDisk.nature, committedNature);
+  assert.deepEqual(committedDisk.ugc, committedUgc);
+
+  const failedFarm = structuredClone(committedFarm);
+  failedFarm.coins += 999;
+  const failedNature = advanceNatureWorld(committedNature, atDay(activationDay + 8));
+  const failedUgc = [{ id: "must-not-publish", name: "Failed atomic crop" }];
+  const temporaryWorldPath = join(dataDirectory, "world.json.tmp");
+  mkdirSync(temporaryWorldPath);
+  try {
+    assert.throws(
+      () => replaceFarmsAndNatureAtomic({
+        replacements: [{ id: farm.id, farm: failedFarm }],
+        nextNatureWorld: failedNature,
+        ugc: failedUgc,
+      }),
+      (error) => error?.code === "EISDIR",
+    );
+  } finally {
+    rmSync(temporaryWorldPath, { recursive: true, force: true });
+  }
+
+  assert.deepEqual(getFarm(farm.id), committedFarm);
+  assert.deepEqual(getNatureWorld(), committedNature);
+  assert.deepEqual(dumpUgc(), committedUgc);
+  assert.deepEqual(JSON.parse(readFileSync(join(dataDirectory, "world.json"), "utf8")), committedDisk);
 });
 
 test("an existing version-1 world without nature data upgrades to an inactive authority safely", () => {

@@ -9,6 +9,7 @@ import { installCareerSchema } from "../dist/career/schema.js";
 import { CareerSchoolService } from "../dist/career/school-service.js";
 import { installEconomySchema } from "../dist/economy/economy-schema.js";
 import { EconomyService } from "../dist/economy/economy-service.js";
+import { runLingyeWorldTransaction } from "../dist/lingye-world-database.js";
 function createHarness(initialNow = beijingTimestamp("2026-08-26", 11)) {
     const database = new DatabaseSync(":memory:");
     database.exec("PRAGMA foreign_keys = ON");
@@ -119,12 +120,12 @@ function createHarness(initialNow = beijingTimestamp("2026-08-26", 11)) {
                 });
                 economy.confirmTrade({
                     tradeId: trade.trade_id,
-                    residentId: input.residentId,
+                    actorResidentId: input.residentId,
                     idempotencyKey: `${idempotencyKey}:confirm-payee`,
                 });
                 economy.confirmTrade({
                     tradeId: trade.trade_id,
-                    residentId: payerResidentId,
+                    actorResidentId: payerResidentId,
                     idempotencyKey: `${idempotencyKey}:confirm-payer`,
                 });
                 return economy.settleTrade({
@@ -441,11 +442,55 @@ test("written exams expire at the session boundary and active certificates block
     try {
         harness.school.selectCareer("exam-resident", "reporter");
         completeLevelOneCourses(harness, "exam-resident", "reporter");
+        const boundReservation = goldReceipt(harness, "exam-resident", "system_gold_reserve", 40_000, "career-exam:bound-attempt:reserve");
+        const boundAttempt = harness.school.registerExam({
+            attemptId: "bound-attempt",
+            career: "reporter",
+            level: 1,
+            reservationReceipt: boundReservation,
+            residentId: "exam-resident",
+        });
+        const wrongReservation = harness.economy.reserveSystemGold({
+            residentId: "exam-resident",
+            amount: 40_000,
+            actor: "human",
+            businessReference: "another-contract:reserve",
+            idempotencyKey: "another-contract:reserve",
+        });
+        const wrongSettlement = harness.economy.settleSystemGoldReservation({
+            reservationId: wrongReservation.reservation_id,
+            businessReference: "career-exam:bound-attempt:settle",
+            idempotencyKey: "another-contract:settle-as-exam",
+        });
+        harness.setNow(boundAttempt.scheduledAt);
+        assert.throws(() => harness.school.startExam(boundAttempt.attemptId, wrongSettlement.financialReceipt), assertCareerError("financial_receipt_mismatch"));
+        const wrongReleaseReservation = harness.economy.reserveSystemGold({
+            residentId: "exam-resident",
+            amount: 40_000,
+            actor: "human",
+            businessReference: "another-release-contract:reserve",
+            idempotencyKey: "another-release-contract:reserve",
+        });
+        const wrongRelease = harness.economy.releaseSystemGoldReservation({
+            reservationId: wrongReleaseReservation.reservation_id,
+            businessReference: "career-exam:bound-attempt:release",
+            idempotencyKey: "another-contract:release-as-exam",
+        });
+        assert.throws(() => harness.school.releaseUnstartedExam(boundAttempt.attemptId, wrongRelease.financialReceipt), assertCareerError("financial_receipt_mismatch"));
+        assert.equal(harness.database
+            .prepare("SELECT registration_status FROM career_exam_attempts WHERE attempt_id = 'bound-attempt'")
+            .get().registration_status, "registered");
+        assert.equal(harness.database
+            .prepare("SELECT state FROM economy_system_gold_reservations WHERE reserve_journal_id = ?")
+            .get(boundReservation.receiptId).state, "reserved");
+        harness.school.releaseUnstartedExam(boundAttempt.attemptId, goldReceipt(harness, "exam-resident", "system_gold_release", 40_000, "career-exam:bound-attempt:release"));
+        harness.setNow(beijingTimestamp("2026-08-26", 11));
+        const expiredReservation = goldReceipt(harness, "exam-resident", "system_gold_reserve", 40_000, "career-exam:expired-attempt:reserve");
         const expiredAttempt = harness.school.registerExam({
             attemptId: "expired-attempt",
             career: "reporter",
             level: 1,
-            reservationReceipt: goldReceipt(harness, "exam-resident", "system_gold_reserve", 40_000, "career-exam:expired-attempt:reserve"),
+            reservationReceipt: expiredReservation,
             residentId: "exam-resident",
         });
         harness.setNow(expiredAttempt.scheduledAt);
@@ -461,33 +506,56 @@ test("written exams expire at the session boundary and active certificates block
             registration_status: "failed",
             settlement_receipt_id: expiredSettlement.receiptId,
         });
+        assert.equal(harness.school.registerExam({
+            attemptId: "expired-attempt",
+            career: "reporter",
+            level: 1,
+            reservationReceipt: expiredReservation,
+            residentId: "exam-resident",
+        }).feeGold, 40_000);
+        const passedReservation = goldReceipt(harness, "exam-resident", "system_gold_reserve", 20_000, "career-exam:passed-attempt:reserve");
         const passedAttempt = harness.school.registerExam({
             attemptId: "passed-attempt",
             career: "reporter",
             level: 1,
-            reservationReceipt: goldReceipt(harness, "exam-resident", "system_gold_reserve", 20_000, "career-exam:passed-attempt:reserve"),
+            reservationReceipt: passedReservation,
             residentId: "exam-resident",
         });
         harness.setNow(passedAttempt.scheduledAt);
         harness.school.startExam(passedAttempt.attemptId, goldReceipt(harness, "exam-resident", "system_gold_settle", 20_000, "career-exam:passed-attempt:settle"));
         assert.equal(harness.school.submitWrittenExam(passedAttempt.attemptId, 20), "passed");
+        assert.equal(harness.school.registerExam({
+            attemptId: "passed-attempt",
+            career: "reporter",
+            level: 1,
+            reservationReceipt: passedReservation,
+            residentId: "exam-resident",
+        }).feeGold, 20_000);
         const attemptsBefore = harness.database
             .prepare("SELECT COUNT(*) AS count FROM career_exam_attempts WHERE resident_id = 'exam-resident'")
             .get().count;
-        const duplicateReservation = goldReceipt(harness, "exam-resident", "system_gold_reserve", 20_000, "career-exam:duplicate-attempt:reserve");
-        assert.throws(() => harness.school.registerExam({
-            attemptId: "duplicate-attempt",
-            career: "reporter",
-            level: 1,
-            reservationReceipt: duplicateReservation,
-            residentId: "exam-resident",
+        const balanceBeforeDuplicate = harness.economy.getAccount("exam-resident");
+        let duplicateReservation;
+        assert.throws(() => runLingyeWorldTransaction(harness.database, () => {
+            duplicateReservation = goldReceipt(harness, "exam-resident", "system_gold_reserve", 20_000, "career-exam:duplicate-attempt:reserve");
+            return harness.school.registerExam({
+                attemptId: "duplicate-attempt",
+                career: "reporter",
+                level: 1,
+                reservationReceipt: duplicateReservation,
+                residentId: "exam-resident",
+            });
         }), assertCareerError("certificate_already_active"));
+        assert.deepEqual(harness.economy.getAccount("exam-resident"), balanceBeforeDuplicate);
         assert.equal(harness.database
             .prepare("SELECT COUNT(*) AS count FROM career_exam_attempts WHERE resident_id = 'exam-resident'")
             .get().count, attemptsBefore);
         assert.equal(harness.database
             .prepare("SELECT COUNT(*) AS count FROM career_financial_receipts WHERE receipt_id = ?")
             .get(duplicateReservation.receiptId).count, 0);
+        assert.equal(harness.database
+            .prepare("SELECT COUNT(*) AS count FROM economy_commands WHERE idempotency_key = ?")
+            .get("career-test:system_gold_reserve:career-exam:duplicate-attempt:reserve").count, 0);
     }
     finally {
         harness.database.close();

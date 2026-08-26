@@ -121,6 +121,11 @@ function assertPlayerLoanBorrower(loan, actorResidentId) {
         throw new EconomyError("UNAUTHORIZED_PARTY");
     }
 }
+function assertTradeParty(trade, actorResidentId) {
+    if (actorResidentId !== trade.payer_resident_id && actorResidentId !== trade.payee_resident_id) {
+        throw new EconomyError("UNAUTHORIZED_PARTY");
+    }
+}
 function exchangeFee(silverAlreadyIssued, silverRequested) {
     let remaining = silverRequested;
     let cursor = silverAlreadyIssued;
@@ -300,6 +305,8 @@ export class EconomyService {
                 currency: "gold",
                 amount: input.amount,
                 businessReference: input.businessReference,
+                reservationId,
+                reserveReceiptId: journal.journalId,
             });
             return {
                 ...this.#systemGoldReservation(reservationId),
@@ -335,6 +342,8 @@ export class EconomyService {
                 currency: "gold",
                 amount: reservation.amount,
                 businessReference: input.businessReference,
+                reservationId: reservation.reservation_id,
+                reserveReceiptId: reservation.reserve_journal_id,
             });
             return {
                 ...this.#systemGoldReservation(input.reservationId),
@@ -371,6 +380,8 @@ export class EconomyService {
                 currency: "gold",
                 amount: reservation.amount,
                 businessReference: input.businessReference,
+                reservationId: reservation.reservation_id,
+                reserveReceiptId: reservation.reserve_journal_id,
             });
             return {
                 ...this.#systemGoldReservation(input.reservationId),
@@ -381,7 +392,15 @@ export class EconomyService {
     }
     getFinancialReceipt(receiptId) {
         const row = this.#database
-            .prepare("SELECT * FROM economy_financial_receipts WHERE receipt_id = ?")
+            .prepare(`SELECT receipt.*, reservation.reservation_id, reservation.reserve_journal_id
+         FROM economy_financial_receipts AS receipt
+         LEFT JOIN economy_system_gold_reservations AS reservation
+           ON receipt.receipt_id IN (
+             reservation.reserve_journal_id,
+             reservation.settle_journal_id,
+             reservation.release_journal_id
+           )
+         WHERE receipt.receipt_id = ?`)
             .get(receiptId);
         if (row === undefined)
             throw new EconomyError("FINANCIAL_RECEIPT_NOT_FOUND", { receiptId });
@@ -631,15 +650,12 @@ export class EconomyService {
         });
     }
     confirmTrade(input) {
+        assertTradeParty(this.#trade(input.tradeId), input.actorResidentId);
         return this.#command("trade.confirm", input.idempotencyKey, input.tradeId, input, (journal, now) => {
             const trade = this.#trade(input.tradeId);
             if (trade.state !== "pending")
                 return trade;
-            if (input.residentId !== trade.payer_resident_id &&
-                input.residentId !== trade.payee_resident_id) {
-                throw new EconomyError("UNAUTHORIZED_PARTY");
-            }
-            const column = input.residentId === trade.payer_resident_id
+            const column = input.actorResidentId === trade.payer_resident_id
                 ? "payer_confirmed_at"
                 : "payee_confirmed_at";
             this.#database
@@ -665,7 +681,7 @@ export class EconomyService {
             }
             else {
                 this.#contractEvent(journal, "trade", input.tradeId, "party_confirmed", {
-                    residentId: input.residentId,
+                    residentId: input.actorResidentId,
                 });
             }
             return this.#trade(input.tradeId);
@@ -1234,6 +1250,10 @@ export class EconomyService {
             currency: input.currency,
             amount: input.amount,
             businessReference: input.businessReference,
+            ...(input.reservationId === undefined ? {} : { reservationId: input.reservationId }),
+            ...(input.reserveReceiptId === undefined
+                ? {}
+                : { reserveReceiptId: input.reserveReceiptId }),
         });
         journal.financialReceipts.push(receipt);
         return receipt;
@@ -1246,6 +1266,12 @@ export class EconomyService {
             currency: row.currency,
             amount: row.amount,
             businessReference: row.business_reference,
+            ...(row.reservation_id === null || row.reservation_id === undefined
+                ? {}
+                : { reservationId: row.reservation_id }),
+            ...(row.reserve_journal_id === null || row.reserve_journal_id === undefined
+                ? {}
+                : { reserveReceiptId: row.reserve_journal_id }),
         };
     }
     #assertBalanced(entries) {

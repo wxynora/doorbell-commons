@@ -211,6 +211,8 @@ test("system gold commands expose journal-backed receipts and reservations settl
     assert.equal(reserved.state, "reserved");
     assert.equal(reserved.account.frozenGold, 400);
     assert.equal(reserved.financialReceipt.kind, "system_gold_reserve");
+    assert.equal(reserved.financialReceipt.reservationId, reserved.reservation_id);
+    assert.equal(reserved.financialReceipt.reserveReceiptId, reserved.financialReceipt.receiptId);
     const settled = service.settleSystemGoldReservation({
         reservationId: reserved.reservation_id,
         businessReference: "career-exam:resident-a:exam-1:settle",
@@ -225,6 +227,9 @@ test("system gold commands expose journal-backed receipts and reservations settl
     assert.equal(settled.state, "settled");
     assert.equal(settled.account.frozenGold, 0);
     assert.equal(settled.financialReceipt.kind, "system_gold_settle");
+    assert.equal(settled.financialReceipt.reservationId, reserved.reservation_id);
+    assert.equal(settled.financialReceipt.reserveReceiptId, reserved.financialReceipt.receiptId);
+    assert.deepEqual(service.getFinancialReceipt(settled.financialReceipt.receiptId), settled.financialReceipt);
     const releasable = service.reserveSystemGold({
         residentId: "resident-a",
         amount: 200,
@@ -240,6 +245,8 @@ test("system gold commands expose journal-backed receipts and reservations settl
     assert.equal(released.state, "released");
     assert.equal(released.account.frozenGold, 0);
     assert.equal(released.financialReceipt.kind, "system_gold_release");
+    assert.equal(released.financialReceipt.reservationId, releasable.reservation_id);
+    assert.equal(released.financialReceipt.reserveReceiptId, releasable.financialReceipt.receiptId);
     assert.equal(released.account.availableGold, 1_550);
     assert.throws(() => database
         .prepare("UPDATE economy_financial_receipts SET amount = 999 WHERE receipt_id = ?")
@@ -276,12 +283,12 @@ test("same-day hold cancellation restores restricted daily capacity while cross-
         });
         service.confirmTrade({
             tradeId: trade.trade_id,
-            residentId: "resident-b",
+            actorResidentId: "resident-b",
             idempotencyKey: `restricted-trade-payee:${payerResidentId}:${suffix}`,
         });
         service.confirmTrade({
             tradeId: trade.trade_id,
-            residentId: payerResidentId,
+            actorResidentId: payerResidentId,
             idempotencyKey: `restricted-trade-payer:${payerResidentId}:${suffix}`,
         });
         return trade;
@@ -465,7 +472,7 @@ test("gold-to-silver exchange applies cumulative monthly brackets and hard resid
     }));
 });
 test("real-player trades freeze, settle, cancel and refund without duplicate money", () => {
-    const { service } = createHarness();
+    const { database, service } = createHarness();
     importAccount(service, "resident-a", 0, 1_000);
     importAccount(service, "resident-b", 0, 20);
     service.setSilverAgentLock({
@@ -485,16 +492,21 @@ test("real-player trades freeze, settle, cancel and refund without duplicate mon
     });
     service.confirmTrade({
         tradeId: trade.trade_id,
-        residentId: "resident-b",
+        actorResidentId: "resident-b",
         idempotencyKey: "trade-payee",
     });
     const frozen = service.confirmTrade({
         tradeId: trade.trade_id,
-        residentId: "resident-a",
+        actorResidentId: "resident-a",
         idempotencyKey: "trade-payer",
     });
     assert.equal(frozen.state, "frozen");
     assert.equal(service.getAccount("resident-a").frozenSilver, 200);
+    expectEconomyError("UNAUTHORIZED_PARTY", () => service.confirmTrade({
+        actorResidentId: "resident-c",
+        tradeId: trade.trade_id,
+        idempotencyKey: "third-party-trade-frozen",
+    }));
     const settled = service.settleTrade({ tradeId: trade.trade_id, idempotencyKey: "trade-settle" });
     assert.equal(settled.state, "settled");
     assert.deepEqual(settled.financialReceipt, {
@@ -509,6 +521,11 @@ test("real-player trades freeze, settle, cancel and refund without duplicate mon
         tradeId: trade.trade_id,
         idempotencyKey: "trade-settle",
     }).financialReceipt, settled.financialReceipt);
+    expectEconomyError("UNAUTHORIZED_PARTY", () => service.confirmTrade({
+        actorResidentId: "resident-c",
+        tradeId: trade.trade_id,
+        idempotencyKey: "third-party-trade-settled",
+    }));
     assert.equal(service.getAccount("resident-b").availableSilver, 220);
     const refunded = service.refundTrade({
         tradeId: trade.trade_id,
@@ -528,12 +545,12 @@ test("real-player trades freeze, settle, cancel and refund without duplicate mon
     });
     service.confirmTrade({
         tradeId: cancelledTrade.trade_id,
-        residentId: "resident-a",
+        actorResidentId: "resident-a",
         idempotencyKey: "trade-cancel-payee",
     });
     service.confirmTrade({
         tradeId: cancelledTrade.trade_id,
-        residentId: "resident-b",
+        actorResidentId: "resident-b",
         idempotencyKey: "trade-cancel-payer",
     });
     const beforeCancel = service.getAccount("resident-b").availableSilver;
@@ -543,6 +560,19 @@ test("real-player trades freeze, settle, cancel and refund without duplicate mon
     });
     assert.equal(cancelled.state, "cancelled");
     assert.equal(service.getAccount("resident-b").availableSilver, beforeCancel + 10);
+    expectEconomyError("UNAUTHORIZED_PARTY", () => service.confirmTrade({
+        actorResidentId: "resident-c",
+        tradeId: cancelledTrade.trade_id,
+        idempotencyKey: "third-party-trade-cancelled",
+    }));
+    assert.equal(database
+        .prepare(`SELECT COUNT(*) AS count FROM economy_commands
+          WHERE idempotency_key IN (
+            'third-party-trade-frozen',
+            'third-party-trade-settled',
+            'third-party-trade-cancelled'
+          )`)
+        .get().count, 0);
 });
 test("system loans freeze interest at maturity, enforce grace restrictions and cannot farm credit instantly", () => {
     const { service, setNow } = createHarness();

@@ -342,7 +342,7 @@ export function replaceFarm(id, farm) {
         throw err;
     }
 }
-function worldSnapshot(farmValues = farms.values(), ugcValues = dumpUgc()) {
+function worldSnapshot(farmValues = farms.values(), ugcValues = dumpUgc(), natureValue = natureWorld) {
     return {
         format: "aifarm-world",
         version: 1,
@@ -354,7 +354,7 @@ function worldSnapshot(farmValues = farms.values(), ugcValues = dumpUgc()) {
         glimmer: glimmerWorld,
         publicExpedition: publicExpeditionWorld,
         qixiLantern2026: qixiLantern2026World,
-        nature: natureWorld,
+        nature: natureValue,
     };
 }
 function writeWorldAtomic(world) {
@@ -394,6 +394,38 @@ export function replaceFarmsAtomic(replacements, ugcValues = dumpUgc()) {
     for (const [id, farm] of staged)
         farms.set(id, farm);
     return [...staged.values()];
+}
+/**
+ * Commit farm replacements, the shared UGC catalog, and nature authority in
+ * the same world-file rename. Live state is published only after that rename.
+ */
+export function replaceFarmsAndNatureAtomic({ replacements, nextNatureWorld, ugc = dumpUgc() }) {
+    if (!Array.isArray(replacements) || replacements.length === 0)
+        throw new TypeError("farm replacements must be a non-empty array");
+    if (nextNatureWorld == null)
+        throw new TypeError("next nature world is required");
+    if (!Array.isArray(ugc))
+        throw new TypeError("UGC catalog must be an array");
+    const staged = new Map();
+    for (const entry of replacements) {
+        const id = String(entry?.id ?? entry?.farm?.id ?? "");
+        if (!id || staged.has(id))
+            throw new Error("farm replacements must contain each farm exactly once");
+        if (!farms.has(id))
+            throw new Error(`farm not found: ${id}`);
+        const farm = structuredClone(entry.farm);
+        farm.id = id;
+        staged.set(id, normalizeFarm(farm));
+    }
+    const nextUgc = structuredClone(ugc);
+    const stagedNature = normalizeNatureWorld(nextNatureWorld);
+    const nextFarms = [...farms.values()].map((farm) => staged.get(farm.id) ?? farm);
+    writeWorldAtomic(worldSnapshot(nextFarms, nextUgc, stagedNature));
+    loadUgc(nextUgc);
+    for (const [id, farm] of staged)
+        farms.set(id, farm);
+    natureWorld = stagedNature;
+    return { farms: [...staged.values()], nature: stagedNature };
 }
 /** 确保常驻 NPC 阿土在库里（首次启动 / 老存档没有时建一座）。返回是否新建。 */
 function ensureNpc() {
