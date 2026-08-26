@@ -1,14 +1,14 @@
+import type { LingyeActionResult } from "@doorbell/protocol";
 import type { CommunityDatabase } from "./community-database.js";
+import { renderFarmHelp, stripDetail } from "./doorbell-farm-op-registry.js";
 import {
   DOORBELL_INITIALIZE_INSTRUCTIONS,
   type DoorbellCallExample,
+  type DoorbellOperationDefinition,
   doorbellToolDefinition,
-  examplesForInvalidArgs,
-  type FarmOperationDefinition,
-  farmOperationByName,
-  renderFarmHelp,
-  stripDetail,
-} from "./doorbell-farm-op-registry.js";
+  examplesForDoorbellInvalidArgs,
+  findDoorbellOperation,
+} from "./doorbell-op-registry.js";
 import { hashMcpCredential } from "./mcp-access-service.js";
 import {
   FarmMcpActionBindingMismatchError,
@@ -18,6 +18,14 @@ import {
   FarmMcpActionMigrationRequiredError,
   FarmMcpActionUnavailableError,
 } from "./mcp-farm-action-client.js";
+import {
+  LingyeMcpActionBindingMismatchError,
+  LingyeMcpActionContractUnavailableError,
+  LingyeMcpActionCredentialInvalidError,
+  type LingyeMcpActionExecutor,
+  LingyeMcpActionMigrationRequiredError,
+  LingyeMcpActionUnavailableError,
+} from "./mcp-lingye-action-client.js";
 import { OneBotUnavailableError } from "./qq-group-membership.js";
 import {
   AuthenticationRequiredError,
@@ -179,6 +187,32 @@ function farmToolResult(
   };
 }
 
+function lingyeToolResult(op: string, result: LingyeActionResult): DoorbellCallToolResult {
+  if (!result.ok) {
+    return {
+      content: textContent(result.error.message),
+      structuredContent: {
+        ok: false,
+        op,
+        source: "lingye",
+        error: result.error,
+      },
+      isError: true,
+    };
+  }
+  return {
+    content: textContent(result.text),
+    structuredContent: {
+      ok: true,
+      op,
+      source: "lingye",
+      text: result.text,
+      lingye: result.data,
+    },
+    isError: false,
+  };
+}
+
 function helpToolResult(op: string, text: string): DoorbellCallToolResult {
   return {
     content: textContent(text),
@@ -187,7 +221,10 @@ function helpToolResult(op: string, text: string): DoorbellCallToolResult {
   };
 }
 
-function formatIssues(operation: FarmOperationDefinition, error: { issues: readonly unknown[] }) {
+function formatIssues(
+  operation: DoorbellOperationDefinition,
+  error: { issues: readonly unknown[] },
+) {
   return (
     error.issues as Array<{
       path?: Array<PropertyKey>;
@@ -238,6 +275,7 @@ export interface DoorbellMcpRuntimeOptions {
   database: CommunityDatabase;
   registrationAuth: RegistrationAuthService;
   farmActions: FarmMcpActionExecutor;
+  lingyeActions: LingyeMcpActionExecutor;
   mcpEndpoint: string;
   now?: () => number;
   onNotificationDeliveryError?: (error: unknown) => void;
@@ -247,6 +285,7 @@ export class DoorbellMcpRuntime {
   readonly #database: CommunityDatabase;
   readonly #registrationAuth: RegistrationAuthService;
   readonly #farmActions: FarmMcpActionExecutor;
+  readonly #lingyeActions: LingyeMcpActionExecutor;
   readonly #allowedOrigin: string;
   readonly #now: () => number;
   readonly #onNotificationDeliveryError: (error: unknown) => void;
@@ -256,6 +295,7 @@ export class DoorbellMcpRuntime {
     this.#database = options.database;
     this.#registrationAuth = options.registrationAuth;
     this.#farmActions = options.farmActions;
+    this.#lingyeActions = options.lingyeActions;
     this.#allowedOrigin = new URL(options.mcpEndpoint).origin;
     this.#now = options.now ?? Date.now;
     this.#onNotificationDeliveryError = options.onNotificationDeliveryError ?? (() => undefined);
@@ -499,24 +539,55 @@ export class DoorbellMcpRuntime {
         issues: [{ path: ["arguments"], code: "invalid_shape", message: "必须只包含 op 和 args" }],
       });
     }
-    const operation = farmOperationByName.get(op);
-    if (!operation) {
+    const registered = findDoorbellOperation(op);
+    if (!registered) {
       return doorbellToolError("UNKNOWN_OP", {
         op,
         message: `未开放的操作：${op}。请使用 doorbell 工具 Schema 中列出的完整 op。`,
       });
     }
-    const parsed = operation.argsSchema.safeParse(call.args);
+    const parsed = registered.operation.argsSchema.safeParse(call.args);
     if (!parsed.success) {
       return doorbellToolError("INVALID_ARGS", {
         op,
         message: `参数不符合 ${op} 的要求。请按 issues 修正 args，不要使用旧 action 参数或身份字段。`,
-        issues: formatIssues(operation, parsed.error),
-        examples: examplesForInvalidArgs(operation, call.args),
+        issues: formatIssues(registered.operation, parsed.error),
+        examples: examplesForDoorbellInvalidArgs(registered.operation, call.args),
       });
     }
 
+    if (registered.kind === "lingye") {
+      try {
+        const result = await this.#lingyeActions.execute({
+          residentId: context.residentId,
+          farmDoorplate: context.farmDoorplate,
+          farmHumanKey: context.farmHumanKey,
+          op: registered.operation.op,
+          args: parsed.data,
+        });
+        return lingyeToolResult(op, result);
+      } catch (error) {
+        if (
+          error instanceof LingyeMcpActionCredentialInvalidError ||
+          error instanceof LingyeMcpActionBindingMismatchError
+        ) {
+          return doorbellToolError("FARM_NOT_BOUND", { op });
+        }
+        if (error instanceof LingyeMcpActionMigrationRequiredError) {
+          return doorbellToolError("FARM_MIGRATION_REQUIRED", { op });
+        }
+        if (error instanceof LingyeMcpActionUnavailableError) {
+          return doorbellToolError("UPSTREAM_UNAVAILABLE", { op });
+        }
+        if (error instanceof LingyeMcpActionContractUnavailableError) {
+          return doorbellToolError("INTERNAL_ERROR", { op });
+        }
+        return doorbellToolError("INTERNAL_ERROR", { op });
+      }
+    }
+
     const shouldAppendStatus = this.#noteValidFarmCall(context.residentId);
+    const operation = registered.operation;
     const { detail, businessArgs } = stripDetail(parsed.data);
     const plan = operation.adapt(businessArgs);
     if (plan.kind === "help") {

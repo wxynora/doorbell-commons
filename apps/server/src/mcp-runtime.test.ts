@@ -7,12 +7,13 @@ import { buildApp } from "./app.js";
 import { CommunityDatabase } from "./community-database.js";
 import { COMMUNITY_QQ_GROUP_ID } from "./config.js";
 import {
-  doorbellToolDefinition,
+  doorbellToolDefinition as farmDoorbellToolDefinition,
   farmOperationByName,
   farmOperationNames,
   farmOperations,
   stripDetail,
 } from "./doorbell-farm-op-registry.js";
+import { doorbellOperationNames } from "./doorbell-op-registry.js";
 import type {
   BoundFarmOverview,
   FarmDirectoryEntry,
@@ -28,6 +29,12 @@ import {
   FarmMcpActionMigrationRequiredError,
   FarmMcpActionUnavailableError,
 } from "./mcp-farm-action-client.js";
+import {
+  LingyeMcpActionClient,
+  type LingyeMcpActionExecutor,
+  type LingyeMcpActionInput,
+  LingyeMcpActionUnavailableError,
+} from "./mcp-lingye-action-client.js";
 import { DoorbellMcpRuntime } from "./mcp-runtime.js";
 import { OneBotUnavailableError, type QqGroupMembershipReader } from "./qq-group-membership.js";
 import { RegistrationAuthService } from "./registration-auth.js";
@@ -100,11 +107,37 @@ class FakeFarmActions implements FarmMcpActionExecutor {
   }
 }
 
+class FakeLingyeActions implements LingyeMcpActionExecutor {
+  readonly calls: LingyeMcpActionInput[] = [];
+  nextFailure: Error | undefined;
+  nextResult:
+    | { ok: true; text: string; data: Record<string, unknown> }
+    | { ok: false; error: { code: "INSUFFICIENT_FUNDS"; message: string } }
+    | undefined;
+
+  async execute(input: LingyeMcpActionInput) {
+    this.calls.push(structuredClone(input));
+    if (this.nextFailure) {
+      const failure = this.nextFailure;
+      this.nextFailure = undefined;
+      throw failure;
+    }
+    if (this.nextResult) {
+      const result = this.nextResult;
+      this.nextResult = undefined;
+      return result;
+    }
+    return { ok: true as const, text: `${input.op} OK`, data: { options: [] } };
+  }
+}
+
 interface RuntimeHarness {
   app: ReturnType<typeof buildApp>;
   database: CommunityDatabase;
+  residentId: string;
   membership: FakeGroupMembership;
   farmActions: FakeFarmActions;
+  lingyeActions: FakeLingyeActions;
   notificationErrors: unknown[];
   mcpRuntime: DoorbellMcpRuntime;
   now: { value: number };
@@ -147,12 +180,14 @@ function openRuntimeHarness(databasePath: string): RuntimeHarness {
     NOW + 2,
   );
   const farmActions = new FakeFarmActions();
+  const lingyeActions = new FakeLingyeActions();
   const notificationErrors: unknown[] = [];
   const now = { value: NOW };
   const mcpRuntime = new DoorbellMcpRuntime({
     database,
     registrationAuth,
     farmActions,
+    lingyeActions,
     mcpEndpoint: "https://doorbell.example/mcp",
     now: () => now.value,
     onNotificationDeliveryError: (error) => notificationErrors.push(error),
@@ -168,8 +203,10 @@ function openRuntimeHarness(databasePath: string): RuntimeHarness {
   return {
     app,
     database,
+    residentId: created.community.resident.residentId,
     membership,
     farmActions,
+    lingyeActions,
     notificationErrors,
     mcpRuntime,
     now,
@@ -224,11 +261,11 @@ test("the farm registry has 58 canonical operations, strict args, examples, and 
   assert.equal(farmOperations.length, 58);
   assert.equal(farmOperationByName.size, 58);
   assert.equal(new Set(farmOperationNames).size, 58);
-  assert.equal(doorbellToolDefinition.name, "doorbell");
-  assert.deepEqual(doorbellToolDefinition.inputSchema.required, ["op", "args"]);
-  assert.equal(doorbellToolDefinition.inputSchema.additionalProperties, false);
-  assert.deepEqual(doorbellToolDefinition.inputSchema.properties.op.enum, farmOperationNames);
-  assert.deepEqual(doorbellToolDefinition.inputSchema.properties.args, { type: "object" });
+  assert.equal(farmDoorbellToolDefinition.name, "doorbell");
+  assert.deepEqual(farmDoorbellToolDefinition.inputSchema.required, ["op", "args"]);
+  assert.equal(farmDoorbellToolDefinition.inputSchema.additionalProperties, false);
+  assert.deepEqual(farmDoorbellToolDefinition.inputSchema.properties.op.enum, farmOperationNames);
+  assert.deepEqual(farmDoorbellToolDefinition.inputSchema.properties.args, { type: "object" });
 
   for (const removed of [
     "farm.buy-recipe",
@@ -524,6 +561,91 @@ test("farm action client aborts a stalled request as unavailable", async () => {
   assert.equal(observed.signal?.aborted, true);
 });
 
+test("Lingye action client sends only server-resolved identity and preserves business errors", async () => {
+  const requests: Array<{ url: string; authorization: string | null; body: unknown }> = [];
+  let responseStatus = 200;
+  let responseBody: unknown = {
+    ok: true,
+    text: "账户事实",
+    data: { options: [] },
+  };
+  const client = new LingyeMcpActionClient({
+    apiBaseUrl: "https://farm.example/farm/",
+    requestTimeoutMs: 1_000,
+    serviceToken: "private-service-token",
+    fetchImplementation: (async (input, init) => {
+      requests.push({
+        url: String(input),
+        authorization: new Headers(init?.headers).get("authorization"),
+        body: JSON.parse(String(init?.body)),
+      });
+      return new Response(JSON.stringify(responseBody), {
+        status: responseStatus,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch,
+  });
+
+  assert.deepEqual(
+    await client.execute({
+      residentId: "10000000-0000-4000-8000-000000000009",
+      farmDoorplate: FARM_DOORPLATE,
+      farmHumanKey: FARM_HUMAN_KEY,
+      op: "go.bank.view",
+      args: { section: "loans" },
+    }),
+    responseBody,
+  );
+  assert.deepEqual(requests, [
+    {
+      url: "https://farm.example/farm/internal/doorbell/lingye-actions/execute",
+      authorization: "Bearer private-service-token",
+      body: {
+        resident_id: "10000000-0000-4000-8000-000000000009",
+        farm_human_key: FARM_HUMAN_KEY,
+        expected_farm_doorplate: FARM_DOORPLATE,
+        op: "go.bank.view",
+        args: { section: "loans" },
+      },
+    },
+  ]);
+
+  responseStatus = 409;
+  responseBody = {
+    ok: false,
+    error: {
+      code: "INSUFFICIENT_FUNDS",
+      message: "可用余额不足，本次操作没有执行。",
+    },
+  };
+  assert.deepEqual(
+    await client.execute({
+      residentId: "10000000-0000-4000-8000-000000000009",
+      farmDoorplate: FARM_DOORPLATE,
+      farmHumanKey: FARM_HUMAN_KEY,
+      op: "go.bank.choose",
+      args: { option: "returned-option", amount: 500 },
+    }),
+    responseBody,
+  );
+
+  responseStatus = 503;
+  responseBody = {
+    ok: false,
+    error: { code: "lingye_unavailable", message: "unavailable" },
+  };
+  await assert.rejects(
+    client.execute({
+      residentId: "10000000-0000-4000-8000-000000000009",
+      farmDoorplate: FARM_DOORPLATE,
+      farmHumanKey: FARM_HUMAN_KEY,
+      op: "go.bank.view",
+      args: {},
+    }),
+    LingyeMcpActionUnavailableError,
+  );
+});
+
 test("MCP transport authenticates dbm credentials and exposes one thin doorbell tool", async () => {
   const directory = mkdtempSync(join(tmpdir(), "doorbell-mcp-runtime-transport-"));
   const harness = openRuntimeHarness(join(directory, "doorbell.sqlite"));
@@ -590,7 +712,8 @@ test("MCP transport authenticates dbm credentials and exposes one thin doorbell 
     const tools = listed.json().result.tools;
     assert.equal(tools.length, 1);
     assert.equal(tools[0].name, "doorbell");
-    assert.equal(tools[0].inputSchema.properties.op.enum.length, 58);
+    assert.deepEqual(tools[0].inputSchema.properties.op.enum, doorbellOperationNames);
+    assert.equal(tools[0].inputSchema.properties.op.enum.length, 66);
     assert.deepEqual(tools[0].inputSchema.properties.args, { type: "object" });
 
     const notification = await postMcp(harness, {
@@ -740,6 +863,48 @@ test("MCP calls validate strict args, self-correct, preserve status cadence, and
     assert.equal(rejectedResult.structuredContent.source, "farm");
     assert.equal(rejectedResult.structuredContent.error.code, "OP_REJECTED");
     assert.equal(rejectedResult.content[0].text, "没有成熟作物");
+
+    const farmCallsBeforeLingye = harness.farmActions.calls.length;
+    const bankView = await postMcp(harness, call("go.bank.view", { section: "loans" }));
+    const bankViewResult = bankView.json().result;
+    assert.equal(bankViewResult.isError, false);
+    assert.equal(bankViewResult.structuredContent.source, "lingye");
+    assert.deepEqual(bankViewResult.structuredContent.lingye, { options: [] });
+    assert.deepEqual(harness.lingyeActions.calls.at(-1), {
+      residentId: harness.residentId,
+      farmDoorplate: FARM_DOORPLATE,
+      farmHumanKey: FARM_HUMAN_KEY,
+      op: "go.bank.view",
+      args: { section: "loans" },
+    });
+    assert.equal(harness.farmActions.calls.length, farmCallsBeforeLingye);
+
+    const invalidSchool = await postMcp(
+      harness,
+      call("go.school.choose", { option: "returned-option", answers: ["only-one"] }),
+    );
+    assert.equal(invalidSchool.json().result.structuredContent.error.code, "INVALID_ARGS");
+    assert.deepEqual(invalidSchool.json().result.structuredContent.error.examples, [
+      { op: "go.school.choose", args: { option: "returned-option" } },
+    ]);
+
+    harness.lingyeActions.nextResult = {
+      ok: false,
+      error: {
+        code: "INSUFFICIENT_FUNDS",
+        message: "可用余额不足，本次操作没有执行。",
+      },
+    };
+    const insufficient = await postMcp(
+      harness,
+      call("go.hospital.commission", { option: "returned-option", amount: 500 }),
+    );
+    assert.equal(insufficient.json().result.isError, true);
+    assert.equal(insufficient.json().result.structuredContent.source, "lingye");
+    assert.equal(
+      insufficient.json().result.structuredContent.error.message,
+      "可用余额不足，本次操作没有执行。",
+    );
 
     harness.farmActions.nextFailure = new FarmMcpActionMigrationRequiredError();
     const migrationRequired = await postMcp(harness, call("farm.status", {}));

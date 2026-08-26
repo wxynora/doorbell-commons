@@ -37,6 +37,7 @@ import { MailboxService } from "./mailbox-service.js";
 import { McpAccessService } from "./mcp-access-service.js";
 import { FarmMcpActionClient } from "./mcp-farm-action-client.js";
 import { FarmMcpMigrationClient } from "./mcp-farm-migration-client.js";
+import { LingyeMcpActionClient } from "./mcp-lingye-action-client.js";
 import { DoorbellMcpRuntime } from "./mcp-runtime.js";
 import { OneBotGroupMembershipClient } from "./qq-group-membership.js";
 import { RegistrationAuthService } from "./registration-auth.js";
@@ -273,10 +274,16 @@ const farmMcpActions = new FarmMcpActionClient({
   requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
   serviceToken: serverConfig.farmServiceToken,
 });
+const lingyeMcpActions = new LingyeMcpActionClient({
+  apiBaseUrl: serverConfig.farmApiBaseUrl,
+  requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+  serviceToken: serverConfig.farmServiceToken,
+});
 const mcpRuntime = new DoorbellMcpRuntime({
   database,
   registrationAuth,
   farmActions: farmMcpActions,
+  lingyeActions: lingyeMcpActions,
   mcpEndpoint: serverConfig.mcpEndpoint,
   onNotificationDeliveryError: reportMcpNotificationError,
 });
