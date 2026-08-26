@@ -35,8 +35,9 @@ import {
     handleDoorbellMcpMigration,
     handleDoorbellWelcomeReward,
 } from "./lifecycle.js";
+import { handleDoorbellLingyeAction } from "./lingye.js";
 
-export function createDoorbellInternalHandler(executeFarmAction) {
+export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExecutor) {
     return async function handleDoorbellInternal(req, res, parts, method) {
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "catalog" && parts[4] === "read" && parts.length === 5) {
             await handleDoorbellHumanCatalogRead(req, res, method);
@@ -141,6 +142,10 @@ export function createDoorbellInternalHandler(executeFarmAction) {
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "farm-actions" && parts[3] === "execute" && parts.length === 4) {
             await handleDoorbellFarmExecution(req, res, method, executeFarmAction);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "lingye-actions" && parts[3] === "execute" && parts.length === 4) {
+            await handleDoorbellLingyeAction(req, res, method, lingyeActionExecutor);
             return true;
         }
         return false;
