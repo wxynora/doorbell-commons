@@ -2,6 +2,19 @@ import { randomUUID } from "node:crypto";
 import { AGRONOMIST_CONCURRENT_CAPACITY, CareerDomainError, institutionForCareer, JOB_PERFORMANCE_UNITS, PERFORMANCE_PAY_GOLD, } from "./contracts.js";
 import { beijingDate, recordFinancialReceipt, requireActiveCertificate, runInTransaction } from "./persistence.js";
 import { installCareerSchema } from "./schema.js";
+const AUTHORITY_ASSIGN_JOB = Symbol("career-authority-assign-job");
+export const INSTITUTION_ASSIGNED_CONCURRENT_CAPACITY = Object.freeze({
+    1: 1,
+    2: 2,
+    3: 4,
+    4: 6,
+});
+export function createCareerAuthorityJobBinder(jobService) {
+    if (!(jobService instanceof CareerJobService)) {
+        throw new TypeError("Career authority assignment requires a CareerJobService");
+    }
+    return (jobId, workerResidentId) => jobService[AUTHORITY_ASSIGN_JOB](jobId, workerResidentId);
+}
 export class CareerJobService {
     #database;
     #now;
@@ -62,7 +75,10 @@ export class CareerJobService {
     acceptJob(jobId, workerResidentId) {
         return this.#bindWorker(jobId, workerResidentId, "accepted");
     }
-    assignJob(jobId, workerResidentId) {
+    assignJob() {
+        throw new CareerDomainError("authoritative_assignment_required", "Assigned institution jobs must use the authoritative assignment service");
+    }
+    [AUTHORITY_ASSIGN_JOB](jobId, workerResidentId) {
         return this.#bindWorker(jobId, workerResidentId, "assigned");
     }
     recordDecision(input) {
@@ -362,6 +378,16 @@ export class CareerJobService {
                     .get(workerResidentId);
                 if (activeJobs.count >= AGRONOMIST_CONCURRENT_CAPACITY[workerLevel]) {
                     throw new CareerDomainError("career_job_capacity_reached", "The agronomist has reached the qualification-level commission capacity");
+                }
+            }
+            if (job.career === "veterinarian" || job.career === "constable") {
+                const activeJobs = this.#database
+                    .prepare(`SELECT COUNT(*) AS count FROM career_jobs
+             WHERE worker_resident_id = ? AND career = ?
+               AND status IN ('assigned', 'active')`)
+                    .get(workerResidentId, job.career);
+                if (activeJobs.count >= INSTITUTION_ASSIGNED_CONCURRENT_CAPACITY[workerLevel]) {
+                    throw new CareerDomainError("career_job_capacity_reached", "The institution worker has reached the qualification-level assignment capacity");
                 }
             }
             const institution = institutionForCareer(job.career);

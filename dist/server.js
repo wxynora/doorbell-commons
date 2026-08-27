@@ -30,6 +30,9 @@ import { handleLegacyHumanRoute } from "./server/legacy-human/router.js";
 import { MCP_HELP, SHARED_HELP, SOCIAL_HELP } from "./server/farm/help.js";
 import { allowsSocial, farmByNumber, farmLabel, reachable, resolveNumberedTarget, ripeBroadcastText, stolenTodayText, visitListResult, wanderResult } from "./server/farm/social.js";
 import { createLegacyAgentHandler } from "./server/legacy-agent/runtime.js";
+import { openLingyeWorldDatabase } from "./lingye-world-database.js";
+import { farmActionTouchesLockedCareerObject, startRegisteredP3Scheduler } from "./career/p3-commission-runtime.js";
+let activeLingyeWorldDatabase = null;
 function executeDoorbellFarmAction(farm, action, params, detail, now) {
     const body = { ...params };
     if (action === "wander") {
@@ -215,6 +218,8 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         return { status: isByAction ? 403 : 401, json: { ok: false, text: isByAction
                     ? "需要带上你农场的 id + token（by + token）证明这是你本人。"
                     : "这是私有操作，需要你农场的 token。串门看公开页用 visit（GET /c?a=visit&farm=对方id）。" } };
+    if (activeLingyeWorldDatabase && farmActionTouchesLockedCareerObject(activeLingyeWorldDatabase, f.id, action, b))
+        return { status: 400, json: { ok: false, text: "OP_REJECTED" } };
     if (action === "steal" && recordQixi2026StealAttempt(principal, now))
         save(); // 已鉴权的偷菜发起即重置静默计时；后续业务拒绝也不回滚
     if (action === "guestbook" && b.on === undefined) {
@@ -615,6 +620,9 @@ function maintenanceOut(req, res, parts, method) {
     return jsonOut(res, 503, { ok: false, text: MAINTENANCE_API_TEXT });
 }
 export function startServer(port, host = "127.0.0.1") {
+    const lingyeWorldDatabase = openLingyeWorldDatabase();
+    activeLingyeWorldDatabase = lingyeWorldDatabase;
+    const stopP3Scheduler = startRegisteredP3Scheduler(lingyeWorldDatabase);
     const server = createServer(async (req, res) => {
         const url = new URL(req.url ?? "/", `http://localhost:${port}`);
         const parts = url.pathname.split("/").filter(Boolean);
@@ -830,6 +838,12 @@ export function startServer(port, host = "127.0.0.1") {
         }
     });
     setInterval(() => { const t = Date.now(); sweepGuard(t); sweepNonces(t); legacyAgent.sweepFlashes(t); }, 60_000).unref(); // 周期清理限流表 + 过期 nonce/flash
+    server.once("close", () => {
+        stopP3Scheduler();
+        if (activeLingyeWorldDatabase === lingyeWorldDatabase)
+            activeLingyeWorldDatabase = null;
+        lingyeWorldDatabase.close();
+    });
     server.listen(port, host, () => console.log(`[server] 🌾 AI 农场已开门 http://${host}:${port}`));
     return server;
 }

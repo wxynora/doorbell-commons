@@ -8,17 +8,15 @@ import {
 } from "../../career/contracts.js";
 import { courseCatalog } from "../../career/course-catalog.js";
 import {
-    careerCourseAvailability,
-    careerExamAvailability,
-} from "../../career/curriculum.js";
-import {
     applyWorldCheck,
     applyWorldTreatment,
     boundFarmSources,
     commissionSourceFacts,
     completeNpcFallbackService,
     publishBoundSource,
+    publicCommissionSource,
     recoverBoundNpcSource,
+    recoverPendingNpcFallbackServices,
     syncAuthorityJobs,
     treatmentGold,
     workerOptions,
@@ -429,7 +427,8 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
     `).all(residentId));
     const courses = mapRows(database.prepare(`
       SELECT career, qualification_level, course_index, enrolled_at,
-             content_read_at, completed_at, best_correct_answers
+             content_read_at, content_delivery_id, content_delivered_at,
+             completed_at, best_correct_answers
       FROM career_courses WHERE resident_id = ?
       ORDER BY career, qualification_level, course_index
     `).all(residentId));
@@ -490,7 +489,9 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
         if (incomplete) {
             const reference = `${incomplete.career}:${incomplete.qualificationLevel}:${incomplete.courseIndex}`;
             if (incomplete.contentReadAt === null) {
-                options.push(option(schoolOption(optionRevision, "course-read", reference)));
+                if (incomplete.contentDeliveryId)
+                    options.push(option(schoolOption(optionRevision, "course-read",
+                        `${reference}:${incomplete.contentDeliveryId}`)));
             }
             else {
                 options.push(option(schoolOption(optionRevision, "course-practice", reference), ["answers"]));
@@ -499,7 +500,7 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
         }
         const nextCourseIndex = [1, 2, 3].find((courseIndex) => !levelCourses.some((course) => course.courseIndex === courseIndex));
         if (nextCourseIndex !== undefined) {
-            if (careerCourseAvailability(track.career, nextLevel, nextCourseIndex)) {
+            if (backend.trustedQueries.courseAvailable(track.career, nextLevel, nextCourseIndex)) {
                 options.push(option(schoolOption(optionRevision, "course-enroll", `${track.career}:${nextLevel}:${nextCourseIndex}`)));
             }
             continue;
@@ -508,7 +509,7 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
             exam.qualificationLevel === nextLevel &&
             ["registered", "active", "written_passed", "postponed"].includes(exam.registrationStatus));
         if (!activeExam) {
-            if (careerExamAvailability(track.career, nextLevel)) {
+            if (backend.trustedQueries.examAvailable(track.career, nextLevel)) {
                 options.push(option(schoolOption(optionRevision, "exam-register", `${track.career}:${nextLevel}`)));
             }
             continue;
@@ -551,7 +552,7 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
         courseCatalog: courseCatalog().map((course) => ({
             ...course,
             tuitionGold: COURSE_TUITION_GOLD[course.qualificationLevel],
-            contentAvailable: careerCourseAvailability(
+            contentAvailable: backend.trustedQueries.courseAvailable(
                 course.career,
                 course.qualificationLevel,
                 course.courseIndex,
@@ -564,8 +565,10 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
         options,
         contentSources: {
             courseCatalogAvailable: true,
-            courseContentAvailable: true,
-            examQuestionBankAvailable: true,
+            courseContentAvailable: courseCatalog().some((course) =>
+                backend.trustedQueries.courseAvailable(course.career, course.qualificationLevel, course.courseIndex)),
+            examQuestionBankAvailable: CAREER_IDS.some((career) =>
+                [1, 2, 3, 4].some((level) => backend.trustedQueries.examAvailable(career, level))),
         },
     };
 }
@@ -611,11 +614,14 @@ function schoolReference(facts, backend, residentId, reference) {
 
 function schoolView(database, backend, residentId, now, args) {
     const facts = readSchoolFacts(database, backend, residentId, now);
-    if (args.reference)
+    if (args.reference) {
+        const reference = schoolReference(facts, backend, residentId, args.reference);
+        const refreshed = readSchoolFacts(database, backend, residentId, now);
         return success("已读取职业学校记录。", {
-            reference: schoolReference(facts, backend, residentId, args.reference),
-            options: facts.options,
+            reference,
+            options: refreshed.options,
         });
+    }
     const section = args.section ?? null;
     return success("已读取职业学校当前事实。", section === null
         ? facts
@@ -640,7 +646,8 @@ function schoolChoose(database, backend, residentId, now, args) {
             throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个职业学校 option 当前不可用。");
         let result;
         const careerMatch = /^school:career-select:(\d+):(chef|agronomist|veterinarian|reporter|constable)$/u.exec(args.option);
-        const courseMatch = /^school:course-(enroll|read|practice):(\d+):(chef|agronomist|veterinarian|reporter|constable):([1-4]):([1-3])$/u.exec(args.option);
+        const courseMatch = /^school:course-(enroll|practice):(\d+):(chef|agronomist|veterinarian|reporter|constable):([1-4]):([1-3])$/u.exec(args.option);
+        const courseReadMatch = /^school:course-read:(\d+):(chef|agronomist|veterinarian|reporter|constable):([1-4]):([1-3]):([^:]+)$/u.exec(args.option);
         const examMatch = /^school:exam-(register|start|release|submit):(\d+):(.+)$/u.exec(args.option);
         const hireMatch = /^school:employment-hire:(\d+):(reporter|veterinarian|constable)$/u.exec(args.option);
         const availabilityMatch = /^school:employment-(leave|resume|end):(\d+):(.+)$/u.exec(args.option);
@@ -648,6 +655,21 @@ function schoolChoose(database, backend, residentId, now, args) {
             if (Object.hasOwn(args, "answers"))
                 throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个 option 不接收答案。");
             result = backend.trustedSystemCommands.selectCareer(residentId, careerMatch[2]);
+        }
+        else if (courseReadMatch) {
+            if (Object.hasOwn(args, "answers"))
+                throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "阅读确认不接收答案。");
+            const [, , career, levelText, courseIndexText, contentDeliveryId] = courseReadMatch;
+            const level = Number(levelText);
+            const courseIndex = Number(courseIndexText);
+            backend.trustedSystemCommands.markCourseContentRead({
+                residentId,
+                career,
+                level,
+                courseIndex,
+                contentDeliveryId,
+            });
+            result = { career, level, courseIndex, contentRead: true };
         }
         else if (courseMatch) {
             const [, action, , career, levelText, courseIndexText] = courseMatch;
@@ -665,17 +687,6 @@ function schoolChoose(database, backend, residentId, now, args) {
                     actor: "agent",
                     idempotencyKey: actionKey,
                 });
-            }
-            else if (action === "read") {
-                if (Object.hasOwn(args, "answers"))
-                    throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "阅读确认不接收答案。");
-                backend.trustedSystemCommands.markCourseContentRead({
-                    residentId,
-                    career,
-                    level,
-                    courseIndex,
-                });
-                result = { career, level, courseIndex, contentRead: true };
             }
             else {
                 if (!Object.hasOwn(args, "answers"))
@@ -820,12 +831,26 @@ function commissionOptions(database, backend, rows, residentId, sources) {
     }
     for (const row of rows) {
         const job = backend.trustedQueries.getJob(row.job_id);
-        if (job.status === "available" && job.ownerResidentId !== residentId) {
-            options.push(option(`commission:${job.assignmentMode === "assigned" ? "assign" : "accept"}:${job.jobId}`));
-        }
-        if (job.ownerResidentId === residentId && ["available", "accepted", "assigned"].includes(job.status))
+        const agronomyPayment = job.career === "agronomist"
+            ? database.prepare("SELECT trade_id, silver_amount FROM career_commission_payments WHERE job_id = ?")
+                .get(job.jobId)
+            : null;
+        if (job.status === "available" && job.ownerResidentId !== residentId &&
+            job.assignmentMode === "accepted" &&
+            (job.career !== "agronomist" || agronomyPayment))
+            options.push(option(`commission:accept:${job.jobId}`));
+        if (job.career === "agronomist" && job.status === "available" &&
+            job.ownerResidentId === residentId && job.parentJobId && !agronomyPayment)
+            options.push(option(`commission:republish:${job.jobId}`, ["amount"]));
+        if (job.ownerResidentId === residentId &&
+            ["farm_plot_condition", "animal_health_case"].includes(job.sourceType) &&
+            ["available", "accepted", "assigned"].includes(job.status))
             options.push(option(`commission:cancel:${job.jobId}`));
-        for (const value of workerOptions(job, residentId)) {
+        for (const value of workerOptions(
+            job,
+            residentId,
+            qualificationLevel(database, residentId, job.career),
+        )) {
             const requires = value.includes(":submit:") || value.includes(":resolve:") ? ["text"] : [];
             options.push(option(value, requires));
         }
@@ -845,7 +870,9 @@ function commissionView(database, backend, residentId, career, args, sources) {
             ...job,
             sourceFacts: commissionSourceFacts(database, backend.trustedQueries.getJob(selected[index].job_id)),
         })),
-        sources: sources.filter((source) => source.career === career),
+        sources: sources
+            .filter((source) => source.career === career)
+            .map(publicCommissionSource),
         options: commissionOptions(database, backend, selected, residentId, sources.filter((source) => source.career === career)),
     });
 }
@@ -867,9 +894,9 @@ function qualificationLevel(database, residentId, career) {
 function bindCommission(database, backend, residentId, job, actionKey) {
     if (job.ownerResidentId === residentId)
         throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "不能承接自己的委托。");
-    const result = job.assignmentMode === "assigned"
-        ? backend.trustedSystemCommands.assignJob(job.jobId, residentId)
-        : backend.forResident(residentId).acceptOwnJob(job.jobId);
+    if (job.assignmentMode !== "accepted")
+        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托 option 当前不可用。");
+    const result = backend.forResident(residentId).acceptOwnJob(job.jobId);
     if (job.career === "agronomist") {
         const payment = database.prepare("SELECT trade_id, silver_amount FROM career_commission_payments WHERE job_id = ?")
             .get(job.jobId);
@@ -892,68 +919,156 @@ function bindCommission(database, backend, residentId, job, actionKey) {
     return result;
 }
 
-function recordCommissionCheck(backend, residentId, job, check, args, now) {
-    const actionKey = idempotencyKey(residentId, `commission:${job.jobId}:check`, args);
-    const payloadHash = createHash("sha256").update(JSON.stringify(args)).digest("hex");
-    const world = applyWorldCheck(job, check, actionKey, payloadHash, now);
-    const result = backend.forResident(residentId).recordOwnJobDecision({
-        jobId: job.jobId,
-        idempotencyKey: actionKey,
-        kind: "check",
-        optionReference: args.option,
-        resultReference: world.sourceId,
-        consumesResources: false,
-        changesWorld: job.career === "agronomist" || job.career === "veterinarian",
-    });
-    return { result, world };
+function crossStoreOperation(database, actionKey) {
+    return database.prepare("SELECT * FROM lingye_cross_store_operations WHERE action_key = ?").get(actionKey);
 }
 
-function completeTreatment(database, backend, residentId, job, treatment, args, now) {
-    const actionKey = idempotencyKey(residentId, `commission:${job.jobId}:treat`, args);
-    const payloadHash = createHash("sha256").update(JSON.stringify(args)).digest("hex");
-    const level = qualificationLevel(database, residentId, job.career);
-    const goldAmount = treatmentGold(job, treatment);
-    backend.trustedSystemCommands.chargeToSystem({
-        residentId: job.ownerResidentId,
-        currency: "gold",
-        amount: goldAmount,
-        actor: "agent",
-        businessType: "career_service",
-        businessRef: `career-job:${job.jobId}:materials`,
-        idempotencyKey: `${actionKey}:charge`,
+function beginCommissionWorldOperation(database, backend, residentId, career, args, sources, actionKey, payloadHash, now) {
+    return runLingyeWorldTransaction(database, () => {
+        const existing = crossStoreOperation(database, actionKey);
+        if (existing)
+            return existing;
+        const match = /^commission:(check|treat):(.+):([^:]+)$/u.exec(args.option);
+        if (!match || args.amount !== undefined || args.text !== undefined ||
+            !["agronomist", "veterinarian"].includes(career)) {
+            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托 option 当前不可用。");
+        }
+        const rows = visibleCommissionRows(database, residentId, career);
+        const options = commissionOptions(database, backend, rows, residentId,
+            sources.filter((source) => source.career === career));
+        if (!options.some((entry) => entry.option === args.option))
+            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托 option 当前不可用。");
+        const [, kind, jobId, actionValue] = match;
+        const job = commissionJob(database, backend, jobId, career);
+        if (job.workerResidentId !== residentId)
+            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托不属于当前从业者。");
+        const level = qualificationLevel(database, residentId, career);
+        const goldAmount = kind === "treat" ? treatmentGold(job, actionValue) : 0;
+        const reservation = kind === "treat"
+            ? backend.trustedSystemCommands.reserveSystemGold({
+                residentId: job.ownerResidentId,
+                amount: goldAmount,
+                actor: "agent",
+                businessReference: `career-job:${job.jobId}:materials`,
+                idempotencyKey: `${actionKey}:reserve`,
+            })
+            : null;
+        database.prepare(`
+          INSERT INTO lingye_cross_store_operations (
+            action_key, operation_kind, resident_id, career, job_id,
+            action_value, option_reference, qualification_level, payload_hash,
+            reservation_id, gold_amount, status, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+        `).run(actionKey, kind === "check" ? "commission_check" : "commission_treatment",
+            residentId, career, jobId, actionValue, args.option, level, payloadHash,
+            reservation?.reservation_id ?? null, goldAmount, now, now);
+        return crossStoreOperation(database, actionKey);
     });
-    const world = applyWorldTreatment(job, treatment, level, actionKey, payloadHash, now);
-    backend.forResident(residentId).recordOwnJobDecision({
-        jobId: job.jobId,
-        idempotencyKey: actionKey,
-        kind: "treatment",
-        optionReference: args.option,
-        resultReference: actionKey,
-        consumesResources: true,
-        changesWorld: true,
+}
+
+function completeCommissionWorldOperation(database, backend, row, world) {
+    return runLingyeWorldTransaction(database, () => {
+        const current = crossStoreOperation(database, row.action_key);
+        if (current.status === "completed")
+            return JSON.parse(current.result_json);
+        if (current.status !== "world_applied")
+            throw new Error("commission_world_operation_not_applied");
+        const job = backend.trustedQueries.getJob(current.job_id);
+        if (current.operation_kind === "commission_treatment") {
+            backend.trustedSystemCommands.settleSystemGoldReservation({
+                reservationId: current.reservation_id,
+                businessReference: `career-job:${job.jobId}:materials:settle`,
+                idempotencyKey: `${current.action_key}:settle`,
+            });
+        }
+        const decision = backend.forResident(current.resident_id).recordOwnJobDecision({
+            jobId: job.jobId,
+            idempotencyKey: current.action_key,
+            kind: current.operation_kind === "commission_check" ? "check" : "treatment",
+            optionReference: current.option_reference,
+            resultReference: current.operation_kind === "commission_check" ? world.sourceId : current.action_key,
+            consumesResources: current.operation_kind === "commission_treatment",
+            changesWorld: true,
+        });
+        let result = decision;
+        if (current.operation_kind === "commission_treatment") {
+            if (world.resolved !== true) {
+                result = backend.trustedQueries.getJob(job.jobId);
+            }
+            else {
+                const completion = {
+                    jobId: job.jobId,
+                    workerResidentId: current.resident_id,
+                    validationPassed: true,
+                    worldResultReference: current.action_key,
+                };
+                if (job.career === "agronomist") {
+                    const payment = database.prepare("SELECT trade_id, silver_amount FROM career_commission_payments WHERE job_id = ?")
+                        .get(job.jobId);
+                    if (!payment?.trade_id)
+                        throw new LingyeBusinessError("CONFLICT", "农事委托没有已冻结的银币酬劳。");
+                    result = backend.trustedSystemCommands.completePaidJob({
+                        tradeId: payment.trade_id,
+                        tradeSettlementIdempotencyKey: `${current.action_key}:trade:settle`,
+                        expectedSilverPayment: payment.silver_amount,
+                        completion,
+                    });
+                }
+                else {
+                    result = backend.trustedSystemCommands.completeJob(completion);
+                }
+            }
+        }
+        const response = current.operation_kind === "commission_check"
+            ? success("检查已记录。", { result, world })
+            : success("处理已完成。", { result, world });
+        database.prepare(`
+          UPDATE lingye_cross_store_operations
+          SET status = 'completed', result_json = ?, updated_at = ?
+          WHERE action_key = ? AND status = 'world_applied'
+        `).run(JSON.stringify(response), Date.now(), current.action_key);
+        database.prepare(`
+          INSERT INTO lingye_commission_action_receipts (
+            action_key, resident_id, career, payload_hash, result_json, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?)
+        `).run(current.action_key, current.resident_id, current.career,
+            current.payload_hash, JSON.stringify(response), current.created_at);
+        return response;
     });
-    const completion = {
-        jobId: job.jobId,
-        workerResidentId: residentId,
-        validationPassed: true,
-        worldResultReference: actionKey,
-    };
-    if (job.career === "agronomist") {
-        const payment = database.prepare("SELECT trade_id, silver_amount FROM career_commission_payments WHERE job_id = ?")
-            .get(job.jobId);
-        if (!payment?.trade_id)
-            throw new LingyeBusinessError("CONFLICT", "农事委托没有已冻结的银币酬劳。");
-        return {
-            world,
-            result: backend.trustedSystemCommands.completePaidJob({
-                tradeId: payment.trade_id,
-                tradeSettlementIdempotencyKey: `${actionKey}:trade:settle`,
-                expectedSilverPayment: payment.silver_amount,
-                completion,
-            }),
-        };
+}
+
+function resumeCommissionWorldOperation(database, backend, row, afterWorldApplyForTesting) {
+    if (row.status === "completed")
+        return JSON.parse(row.result_json);
+    const job = backend.trustedQueries.getJob(row.job_id);
+    let world = row.world_result_json ? JSON.parse(row.world_result_json) : null;
+    if (!world) {
+        world = row.operation_kind === "commission_check"
+            ? applyWorldCheck(job, row.action_value, row.action_key, row.payload_hash, row.created_at)
+            : applyWorldTreatment(job, row.action_value, row.qualification_level,
+                row.action_key, row.payload_hash, row.created_at);
+        runLingyeWorldTransaction(database, () => {
+            database.prepare(`
+              UPDATE lingye_cross_store_operations
+              SET status = 'world_applied', world_result_json = ?, updated_at = ?
+              WHERE action_key = ? AND status = 'pending'
+            `).run(JSON.stringify(world), Date.now(), row.action_key);
+        });
     }
-    return { world, result: backend.trustedSystemCommands.completeJob(completion) };
+    if (afterWorldApplyForTesting)
+        afterWorldApplyForTesting(row.action_key);
+    return completeCommissionWorldOperation(database, backend,
+        crossStoreOperation(database, row.action_key), world);
+}
+
+function recoverCommissionWorldOperations(database, backend) {
+    const pending = database.prepare(`
+      SELECT * FROM lingye_cross_store_operations
+      WHERE status IN ('pending', 'world_applied')
+      ORDER BY created_at, action_key
+    `).all();
+    for (const row of pending)
+        resumeCommissionWorldOperation(database, backend, row);
 }
 
 function resolveSecurity(database, backend, residentId, job, resultKind, args, now) {
@@ -1057,6 +1172,16 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
             options: [],
         });
     }
+    const currentRows = visibleCommissionRows(database, residentId, career);
+    const currentOptions = commissionOptions(
+        database,
+        backend,
+        currentRows,
+        residentId,
+        sources.filter((source) => source.career === career),
+    );
+    if (!currentOptions.some((entry) => entry.option === args.option))
+        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托 option 当前不可用。");
     const publish = /^commission:publish:(.+)$/u.exec(args.option);
     if (publish) {
         const source = sources.find((entry) => entry.career === career && entry.sourceId === publish[1]);
@@ -1069,12 +1194,31 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
             options: commissionOptions(database, backend, visibleCommissionRows(database, residentId, career), residentId, sources),
         });
     }
-    const binding = /^commission:(accept|assign):(.+)$/u.exec(args.option);
+    const binding = /^commission:(accept):(.+)$/u.exec(args.option);
+    const republish = /^commission:republish:(.+)$/u.exec(args.option);
+    if (republish) {
+        if (!Number.isSafeInteger(args.amount) || args.amount <= 0 || args.text !== undefined)
+            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托 option 当前不可用。");
+        const job = commissionJob(database, backend, republish[1], career);
+        if (job.career !== "agronomist" || job.ownerResidentId !== residentId ||
+            !job.parentJobId || job.status !== "available")
+            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托 option 当前不可用。");
+        database.prepare(`
+          INSERT INTO career_commission_payments (job_id, trade_id, silver_amount, created_at)
+          VALUES (?, NULL, ?, ?)
+        `).run(job.jobId, args.amount, now);
+        return success("委托已登记。", {
+            result: backend.trustedQueries.getJob(job.jobId),
+            jobs: mapRows(visibleCommissionRows(database, residentId, career)),
+            options: commissionOptions(database, backend,
+                visibleCommissionRows(database, residentId, career), residentId, sources),
+        });
+    }
     if (binding) {
         if (args.amount !== undefined || args.text !== undefined)
             throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托 option 当前不接受附加参数。");
         const job = commissionJob(database, backend, binding[2], career);
-        if (job.assignmentMode !== (binding[1] === "assign" ? "assigned" : "accepted"))
+        if (job.assignmentMode !== "accepted")
             throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托 option 当前不可用。");
         const result = bindCommission(database, backend, residentId, job, idempotencyKey(residentId, "commission:bind", args));
         return success("委托已接取。", { result, jobs: mapRows(visibleCommissionRows(database, residentId, career)), options: [] });
@@ -1100,21 +1244,44 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
     if (kind === "check") {
         if (!value || args.amount !== undefined || args.text !== undefined)
             throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个检查 option 当前不可用。");
-        return success("检查已记录。", recordCommissionCheck(backend, residentId, job, value, args, now));
+        if (["agronomist", "veterinarian"].includes(career))
+            throw new Error("commission_world_operation_not_routed");
+        const actionKey = idempotencyKey(residentId, `commission:${job.jobId}:check`, args);
+        const world = { sourceId: job.sourceId, check: value };
+        const result = backend.forResident(residentId).recordOwnJobDecision({
+            jobId: job.jobId,
+            idempotencyKey: actionKey,
+            kind: "check",
+            optionReference: args.option,
+            resultReference: job.sourceId,
+            consumesResources: false,
+            changesWorld: false,
+        });
+        return success("检查已记录。", { result, world });
     }
     if (kind === "treat") {
         if (!value || args.amount !== undefined || args.text !== undefined || !["agronomist", "veterinarian"].includes(career))
             throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个处理 option 当前不可用。");
-        return success("处理已完成。", completeTreatment(database, backend, residentId, job, value, args, now));
+        throw new Error("commission_world_operation_not_routed");
     }
     if (kind === "transfer") {
         if (value !== undefined || args.amount !== undefined || args.text !== undefined)
             throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个转交 option 当前不可用。");
         const key = idempotencyKey(residentId, `commission:${jobId}:transfer`, args);
+        if (job.career === "agronomist") {
+            const payment = database.prepare("SELECT trade_id FROM career_commission_payments WHERE job_id = ?")
+                .get(jobId);
+            if (!payment?.trade_id)
+                throw new LingyeBusinessError("CONFLICT", "农事委托缺少已确认酬劳。");
+            backend.trustedSystemCommands.cancelTrade({
+                tradeId: payment.trade_id,
+                idempotencyKey: `${key}:trade:release`,
+            });
+        }
         return success("委托已转交。", backend.forResident(residentId).transferOwnJob({
             jobId,
             successorJobId: `${jobId}:transfer:${key.slice(-12)}`,
-            successorSourceId: `${job.sourceId}:transfer:${key.slice(-12)}`,
+            successorSourceId: job.sourceId,
         }));
     }
     if (kind === "submit" && career === "reporter") {
@@ -1128,6 +1295,45 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
         return success("治安事项已结案。", resolveSecurity(database, backend, residentId, job, value, args, now));
     }
     throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托 option 当前不可用。");
+}
+
+function commissionAction(database, backend, residentId, career, args, sources, now, afterWorldApplyForTesting) {
+    const actionKey = idempotencyKey(residentId, `go.${career}.commission`, args);
+    const payloadHash = createHash("sha256")
+        .update(JSON.stringify({ args, career, residentId }))
+        .digest("hex");
+    const existing = database.prepare(`
+      SELECT resident_id, career, payload_hash, result_json
+      FROM lingye_commission_action_receipts WHERE action_key = ?
+    `).get(actionKey);
+    if (existing) {
+        if (existing.resident_id !== residentId || existing.career !== career ||
+            existing.payload_hash !== payloadHash) {
+            throw new LingyeBusinessError("CONFLICT", "这个委托操作已经使用了不同参数。");
+        }
+        return JSON.parse(existing.result_json);
+    }
+    if (["agronomist", "veterinarian"].includes(career) &&
+        /^commission:(check|treat):/u.test(args.option)) {
+        const crossStore = crossStoreOperation(database, actionKey) ??
+            beginCommissionWorldOperation(database, backend, residentId, career,
+                args, sources, actionKey, payloadHash, now);
+        if (crossStore.resident_id !== residentId || crossStore.career !== career ||
+            crossStore.payload_hash !== payloadHash) {
+            throw new LingyeBusinessError("CONFLICT", "这个委托操作已经使用了不同参数。");
+        }
+        return resumeCommissionWorldOperation(database, backend, crossStore,
+            afterWorldApplyForTesting);
+    }
+    return runLingyeWorldTransaction(database, () => {
+        const response = commissionChoose(database, backend, residentId, career, args, sources, now);
+        database.prepare(`
+          INSERT INTO lingye_commission_action_receipts (
+            action_key, resident_id, career, payload_hash, result_json, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?)
+        `).run(actionKey, residentId, career, payloadHash, JSON.stringify(response), now);
+        return response;
+    });
 }
 
 function mapDomainError(error) {
@@ -1171,6 +1377,8 @@ export function createLingyeActionExecutor(options) {
     const { database, backend } = options;
     const economyRules = options.economyRules ?? DEFAULT_ECONOMY_RULES;
     const now = options.now ?? Date.now;
+    recoverPendingNpcFallbackServices(database, backend);
+    recoverCommissionWorldOperations(database, backend);
     return Object.freeze({
         execute(input) {
             validateArgs(input.op, input.args);
@@ -1195,7 +1403,8 @@ export function createLingyeActionExecutor(options) {
                     ? boundFarmSources(database, input.farm, input.residentId)
                     : [];
                 if (Object.hasOwn(input.args, "option"))
-                    return runLingyeWorldTransaction(database, () => commissionChoose(database, backend, input.residentId, career, input.args, sources));
+                    return commissionAction(database, backend, input.residentId, career, input.args,
+                        sources, now(), options.afterWorldApplyForTesting);
                 return commissionView(database, backend, input.residentId, career, input.args, sources);
             }
             catch (error) {

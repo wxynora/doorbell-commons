@@ -8,6 +8,7 @@ import { animalById } from "../../content.js";
 import { ranchRaidForAnimal } from "./raids.js";
 import { ensureRanch } from "./state.js";
 import { ranchAnimalCurrentProduceValue } from "./value.js";
+import { ranchHealthActionBlocked } from "../../career/p3-world.js";
 
 function ranchAnimalByRef(ranch, animalRef) {
     const ref = typeof animalRef === "string" ? animalRef.trim() : animalRef;
@@ -31,6 +32,8 @@ export function ranchFeedAnimal(farm, animalRef, now) {
     const animal = ranchAnimalByRef(ranch, animalRef);
     if (!animal)
         return { ok: false, error: "选的动物不存在。" };
+    if (ranchHealthActionBlocked(animal))
+        return { ok: false, error: "OP_REJECTED" };
     if (ranchRaidForAnimal(farm, animal.kindId))
         return { ok: false, error: "这只动物正在外面派遣，回来后再投喂。" };
     if ((animal.pending ?? 0) > 0 || (animal.pendingMeat ?? 0) > 0)

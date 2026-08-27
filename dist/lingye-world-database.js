@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { CareerEmploymentService } from "./career/employment-service.js";
+import { CareerAuthorityAssignmentService } from "./career/authority-assignment.js";
 import { CareerDomainError } from "./career/contracts.js";
 import { CareerJobService } from "./career/job-service.js";
 import { installCareerSchema } from "./career/schema.js";
@@ -81,6 +82,54 @@ export function installLingyeWorldSchema(database) {
       );
       CREATE INDEX IF NOT EXISTS lingye_school_action_receipts_resident
         ON lingye_school_action_receipts(resident_id, created_at, action_key);
+      CREATE TABLE IF NOT EXISTS lingye_commission_action_receipts (
+        action_key TEXT PRIMARY KEY,
+        resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE RESTRICT,
+        career TEXT NOT NULL CHECK (career IN ('agronomist', 'veterinarian', 'reporter', 'constable')),
+        payload_hash TEXT NOT NULL,
+        result_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS lingye_commission_action_receipts_resident
+        ON lingye_commission_action_receipts(resident_id, created_at, action_key);
+      CREATE TABLE IF NOT EXISTS lingye_cross_store_operations (
+        action_key TEXT PRIMARY KEY,
+        operation_kind TEXT NOT NULL CHECK (operation_kind IN ('commission_check', 'commission_treatment', 'npc_service')),
+        resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE RESTRICT,
+        career TEXT NOT NULL CHECK (career IN ('agronomist', 'veterinarian')),
+        job_id TEXT,
+        source_json TEXT,
+        action_value TEXT NOT NULL,
+        option_reference TEXT NOT NULL,
+        qualification_level INTEGER NOT NULL CHECK (qualification_level BETWEEN 1 AND 4),
+        payload_hash TEXT NOT NULL,
+        reservation_id TEXT,
+        gold_amount INTEGER NOT NULL CHECK (gold_amount >= 0),
+        world_result_json TEXT,
+        result_json TEXT,
+        status TEXT NOT NULL CHECK (status IN ('pending', 'world_applied', 'completed')),
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        CHECK (
+          (operation_kind = 'commission_check' AND job_id IS NOT NULL AND source_json IS NULL
+            AND reservation_id IS NULL AND gold_amount = 0)
+          OR
+          (operation_kind = 'commission_treatment' AND job_id IS NOT NULL AND source_json IS NULL
+            AND reservation_id IS NOT NULL AND gold_amount > 0)
+          OR
+          (operation_kind = 'npc_service' AND job_id IS NULL AND source_json IS NOT NULL
+            AND reservation_id IS NOT NULL AND gold_amount > 0)
+        ),
+        CHECK (
+          (status = 'pending' AND world_result_json IS NULL AND result_json IS NULL)
+          OR
+          (status = 'world_applied' AND world_result_json IS NOT NULL AND result_json IS NULL)
+          OR
+          (status = 'completed' AND world_result_json IS NOT NULL AND result_json IS NOT NULL)
+        )
+      );
+      CREATE INDEX IF NOT EXISTS lingye_cross_store_operations_pending
+        ON lingye_cross_store_operations(status, created_at, action_key);
     `);
     installEconomySchema(database);
     installCareerSchema(database);
@@ -137,6 +186,7 @@ export function createLingyeWorldBackend(database, options) {
         throw new Error("Lingye economy rules are required");
     const shared = {
         database,
+        ...(options.curriculum === undefined ? {} : { curriculum: options.curriculum }),
         ...(options.now === undefined ? {} : { now: options.now }),
         ...(options.generateId === undefined ? {} : { generateId: options.generateId }),
     };
@@ -148,6 +198,7 @@ export function createLingyeWorldBackend(database, options) {
     const school = new CareerSchoolService(shared);
     const employment = new CareerEmploymentService(shared);
     const jobs = new CareerJobService(shared);
+    const authorityAssignment = new CareerAuthorityAssignmentService({ ...shared, jobs });
     const atomic = (operation) => runLingyeWorldTransaction(database, operation);
     const economyCommands = {
             importLegacyBalances: (input) => atomic(() => economy.importLegacyBalances(input)),
@@ -275,7 +326,7 @@ export function createLingyeWorldBackend(database, options) {
             }),
             createJob: (input) => atomic(() => jobs.createJob(input)),
             acceptJob: (jobId, workerResidentId) => atomic(() => jobs.acceptJob(jobId, workerResidentId)),
-            assignJob: (jobId, workerResidentId) => atomic(() => jobs.assignJob(jobId, workerResidentId)),
+            assignAuthorityJob: (input) => atomic(() => authorityAssignment.assignJob(input)),
             recordDecision: (input) => atomic(() => jobs.recordDecision(input)),
             completeJob: (input) => atomic(() => {
                 if (Object.hasOwn(input, "paymentReceipt") || Object.hasOwn(input, "expectedSilverPayment"))
@@ -359,6 +410,8 @@ export function createLingyeWorldBackend(database, options) {
         getFinancialReceipt: (receiptId) => economy.getFinancialReceipt(receiptId),
         previewExchange: (residentId, goldPrincipal, at) => economy.previewExchange(residentId, goldPrincipal, at),
         getCourseContent: (input) => school.getCourseContent(input),
+        courseAvailable: (career, level, courseIndex) => school.courseAvailable(career, level, courseIndex),
+        examAvailable: (career, level) => school.examAvailable(career, level),
         getWrittenExamPaper: (attemptId) => school.getWrittenExamPaper(attemptId),
         hasScheduledDuty: (residentId, career, dutyDate) => employment.hasScheduledDuty(residentId, career, dutyDate),
         getJob: (jobId) => jobs.getJob(jobId),

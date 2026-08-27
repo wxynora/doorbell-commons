@@ -1,11 +1,19 @@
 import { createHash } from "node:crypto";
 import { allFarms, getFarm, getPublicExpeditionWorld, replaceFarm } from "../store.js";
+import { runLingyeWorldTransaction } from "../lingye-world-database.js";
+import { CareerDomainError } from "./contracts.js";
 import {
     AGRONOMY_CONDITIONS,
     ANIMAL_CONDITIONS,
     advanceP3Farm,
+    agronomyCheckCandidates,
     agronomyChecksFor,
+    agronomyObservationsFor,
+    agronomyTreatmentCandidates,
+    animalCheckCandidates,
     animalChecksFor,
+    animalObservationsFor,
+    animalTreatmentCandidates,
     checkAgronomyIssue,
     checkAnimalCase,
     currentP3Sources,
@@ -65,6 +73,37 @@ export function advanceRegisteredP3Farms(database, now = Date.now()) {
     return changedFarmIds;
 }
 
+function nextBeijingDayBoundary(now) {
+    const offset = 8 * 60 * 60 * 1000;
+    return (Math.floor((now + offset) / (24 * 60 * 60 * 1000)) + 1) *
+        24 * 60 * 60 * 1000 - offset;
+}
+
+export function startRegisteredP3Scheduler(database, options = {}) {
+    const now = options.now ?? Date.now;
+    const setTimer = options.setTimer ?? setTimeout;
+    let stopped = false;
+    let timer;
+    const schedule = () => {
+        if (stopped)
+            return;
+        const current = now();
+        timer = setTimer(() => {
+            if (stopped)
+                return;
+            advanceRegisteredP3Farms(database, now());
+            schedule();
+        }, Math.max(0, nextBeijingDayBoundary(current) - current));
+        timer?.unref?.();
+    };
+    schedule();
+    return () => {
+        stopped = true;
+        if (timer)
+            clearTimeout(timer);
+    };
+}
+
 function agronomySource(farm, ownerResidentId, source) {
     if (!source)
         return null;
@@ -86,6 +125,7 @@ function agronomySource(farm, ownerResidentId, source) {
             farmDoorplate: farm.id,
             plotId: source.plotId,
             condition: source.condition,
+            observations: agronomyObservationsFor(source.condition),
             status: source.status,
         },
     };
@@ -113,6 +153,7 @@ function animalSource(farm, ownerResidentId, source) {
             animalIndex: source.animalIndex,
             animalKindId: source.animalKindId,
             condition: source.condition,
+            observations: animalObservationsFor(source.condition),
             status: source.status,
         },
     };
@@ -208,20 +249,50 @@ export function syncAuthorityJobs(database, backend, now = Date.now()) {
             borrowerResidentId: loan.borrower_resident_id,
             status: loan.status,
         }), now);
-        backend.trustedSystemCommands.createJob({
-            jobId: commissionJobId(sourceId),
-            career: "constable",
-            sourceType: "bank_overdue_notice",
-            sourceId,
-            objectType: "system_loan",
-            objectId: loan.loan_id,
-            ownerResidentId: loan.borrower_resident_id,
-            requiredLevel: 1,
-            difficultyLevel: 1,
-            assignmentMode: "assigned",
-        });
+        try {
+            runLingyeWorldTransaction(database, () => {
+                const job = backend.trustedSystemCommands.createJob({
+                    jobId: commissionJobId(sourceId),
+                    career: "constable",
+                    sourceType: "bank_overdue_notice",
+                    sourceId,
+                    objectType: "system_loan",
+                    objectId: loan.loan_id,
+                    ownerResidentId: loan.borrower_resident_id,
+                    requiredLevel: 1,
+                    difficultyLevel: 1,
+                    assignmentMode: "assigned",
+                });
+                if (job.workerResidentId === null)
+                    backend.trustedSystemCommands.assignAuthorityJob({ jobId: job.jobId });
+            });
+        }
+        catch (error) {
+            if (!(error instanceof CareerDomainError) || error.code !== "authoritative_worker_unavailable")
+                throw error;
+        }
     }
     return now;
+}
+
+export function farmActionTouchesLockedCareerObject(database, farmId, action, params = {}) {
+    if (!["run", "water", "harvest", "ripen", "use", "steal"].includes(action))
+        return false;
+    const prefix = `${farmId}:plot:`;
+    const lockedPlotIds = new Set(database.prepare(`
+      SELECT object_id FROM career_job_object_locks WHERE object_type = 'farm_plot'
+    `).all()
+        .map((row) => row.object_id)
+        .filter((objectId) => objectId.startsWith(prefix))
+        .map((objectId) => Number(objectId.slice(prefix.length)))
+        .filter((plotId) => Number.isSafeInteger(plotId) && plotId > 0));
+    if (lockedPlotIds.size === 0)
+        return false;
+    if (params.plotId !== undefined)
+        return lockedPlotIds.has(Number(params.plotId));
+    if (action === "ripen" && Array.isArray(params.plots))
+        return params.plots.some((plotId) => lockedPlotIds.has(Number(plotId)));
+    return true;
 }
 
 export function publishBoundSource(database, backend, source, amount, now = Date.now()) {
@@ -237,7 +308,10 @@ export function publishBoundSource(database, backend, source, amount, now = Date
         else if (amount !== undefined) {
             throw new Error("commission_publish_conflict");
         }
-        return backend.trustedQueries.getJob(existing.job_id);
+        const job = backend.trustedQueries.getJob(existing.job_id);
+        if (job.assignmentMode === "assigned" && job.workerResidentId === null)
+            return backend.trustedSystemCommands.assignAuthorityJob({ jobId: job.jobId });
+        return job;
     }
     if (source.career === "agronomist" && (!Number.isSafeInteger(amount) || amount <= 0))
         throw new Error("agronomy_payment_required");
@@ -261,7 +335,9 @@ export function publishBoundSource(database, backend, source, amount, now = Date
           VALUES (?, NULL, ?, ?)
         `).run(job.jobId, amount, now);
     }
-    return job;
+    return job.assignmentMode === "assigned"
+        ? backend.trustedSystemCommands.assignAuthorityJob({ jobId: job.jobId })
+        : job;
 }
 
 function targetFarm(job) {
@@ -307,23 +383,29 @@ function sourceState(job) {
     throw new Error("commission_source_not_available");
 }
 
-export function workerOptions(job, residentId) {
+export function workerOptions(job, residentId, qualificationLevel = job.requiredLevel) {
     if (job.workerResidentId !== residentId || !["accepted", "assigned", "active"].includes(job.status))
         return [];
     if (job.career === "agronomist") {
         const state = sourceState(job).source;
-        const options = agronomyChecksFor(state.condition).map((check) => `commission:check:${job.jobId}:${check}`);
+        const options = agronomyCheckCandidates(qualificationLevel)
+            .filter((check) => !state.checks.includes(check))
+            .map((check) => `commission:check:${job.jobId}:${check}`);
         if (state.checks.length > 0 && state.status !== "resolved")
-            options.push(`commission:treat:${job.jobId}:${AGRONOMY_CONDITIONS[state.condition].material}`);
+            options.push(...agronomyTreatmentCandidates(qualificationLevel)
+                .map((treatment) => `commission:treat:${job.jobId}:${treatment}`));
         if (state.checks.length > 0)
             options.push(`commission:transfer:${job.jobId}`);
         return options;
     }
     if (job.career === "veterinarian") {
         const state = sourceState(job).source;
-        const options = animalChecksFor(state.condition).map((check) => `commission:check:${job.jobId}:${check}`);
-        if (state.checks.length > 0 && state.status === "open")
-            options.push(`commission:treat:${job.jobId}:${ANIMAL_CONDITIONS[state.condition].materials.join("+")}`);
+        const options = animalCheckCandidates(qualificationLevel)
+            .filter((check) => !state.checks.includes(check))
+            .map((check) => `commission:check:${job.jobId}:${check}`);
+        if (state.checks.length > 0 && ["open", "treating"].includes(state.status))
+            options.push(...animalTreatmentCandidates(qualificationLevel)
+                .map((treatment) => `commission:treat:${job.jobId}:${treatment}`));
         if (state.checks.length > 0)
             options.push(`commission:transfer:${job.jobId}`);
         return options;
@@ -352,7 +434,8 @@ export function commissionSourceFacts(database, job) {
       SELECT source_type, fact_json, recorded_at
       FROM career_commission_source_facts WHERE source_id = ?
     `).get(job.sourceId);
-    if (!recorded || recorded.source_type !== job.sourceType)
+    const authoritativeSourceType = job.sourceType.split(":transfer", 1)[0];
+    if (!recorded || recorded.source_type !== authoritativeSourceType)
         throw new Error("commission_source_not_available");
     const fact = JSON.parse(recorded.fact_json);
     if (job.sourceType === "bank_overdue_notice") {
@@ -388,13 +471,22 @@ export function commissionSourceFacts(database, job) {
         };
     }
     const state = sourceState(job);
+    const { condition: _recordedCondition, ...publicInitialFact } = fact;
+    const { condition: _currentCondition, ...publicCurrentState } = state.source;
     return {
         sourceId: job.sourceId,
         sourceType: job.sourceType,
         recordedAt: recorded.recorded_at,
-        initialFact: fact,
-        currentState: structuredClone(state.source),
+        initialFact: publicInitialFact,
+        currentState: structuredClone(publicCurrentState),
     };
+}
+
+export function publicCommissionSource(source) {
+    const publicSource = structuredClone(source);
+    if (publicSource?.fact && typeof publicSource.fact === "object")
+        delete publicSource.fact.condition;
+    return publicSource;
 }
 
 export function applyWorldCheck(job, check, actionKey, payloadHash, now = Date.now()) {
@@ -432,14 +524,16 @@ export function applyWorldTreatment(job, treatment, qualificationLevel, actionKe
 export function treatmentGold(job, treatment) {
     const state = sourceState(job);
     if (job.career === "agronomist") {
-        const contract = AGRONOMY_CONDITIONS[state.source.condition];
-        if (!contract || treatment !== contract.material)
+        const contract = Object.values(AGRONOMY_CONDITIONS)
+            .find((entry) => entry.material === treatment);
+        if (!contract)
             throw new Error("agronomy_treatment_not_available");
         return contract.materialGold;
     }
     if (job.career === "veterinarian") {
-        const contract = ANIMAL_CONDITIONS[state.source.condition];
-        if (!contract || treatment !== contract.materials.join("+"))
+        const contract = Object.values(ANIMAL_CONDITIONS)
+            .find((entry) => entry.materials.join("+") === treatment);
+        if (!contract)
             throw new Error("animal_treatment_not_available");
         return contract.materialGold + HOSPITAL_BASE_FEE_GOLD[job.difficultyLevel];
     }
@@ -564,42 +658,107 @@ export function completeNpcFallbackService(database, backend, source, actionKey,
         }
         return JSON.parse(existing.result_json);
     }
+    let operation = database.prepare(`
+      SELECT * FROM lingye_cross_store_operations WHERE action_key = ?
+    `).get(actionKey);
+    if (!operation) {
+        operation = runLingyeWorldTransaction(database, () => {
+            const contract = npcServiceContract(source);
+            const totalFeeGold = contract.baseFeeGold + contract.materialFeeGold;
+            const reserved = backend.trustedSystemCommands.reserveSystemGold({
+                residentId: source.ownerResidentId,
+                amount: totalFeeGold,
+                actor: "agent",
+                businessReference: `career-npc-service:${source.sourceId}`,
+                idempotencyKey: `${actionKey}:reserve`,
+            });
+            database.prepare(`
+              INSERT INTO lingye_cross_store_operations (
+                action_key, operation_kind, resident_id, career, job_id, source_json,
+                action_value, option_reference, qualification_level, payload_hash,
+                reservation_id, gold_amount, status, created_at, updated_at
+              ) VALUES (?, 'npc_service', ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+            `).run(actionKey, source.ownerResidentId, source.career, JSON.stringify(source),
+                contract.treatment, `commission:npc:${source.sourceId}`, source.difficultyLevel,
+                payloadHash, reserved.reservation_id, totalFeeGold, now, now);
+            return database.prepare("SELECT * FROM lingye_cross_store_operations WHERE action_key = ?")
+                .get(actionKey);
+        });
+    }
+    if (operation.operation_kind !== "npc_service" || operation.resident_id !== source.ownerResidentId ||
+        operation.career !== source.career || operation.payload_hash !== payloadHash) {
+        throw new Error("commission_npc_conflict");
+    }
+    return resumeNpcFallbackService(database, backend, operation);
+}
+
+function resumeNpcFallbackService(database, backend, operation) {
+    if (operation.status === "completed")
+        return JSON.parse(operation.result_json);
+    const source = JSON.parse(operation.source_json);
     const contract = npcServiceContract(source);
-    const totalFeeGold = contract.baseFeeGold + contract.materialFeeGold;
-    const charged = backend.trustedSystemCommands.chargeToSystem({
-        residentId: source.ownerResidentId,
-        currency: "gold",
-        amount: totalFeeGold,
-        actor: "agent",
-        businessType: "career_npc_service",
-        businessRef: `career-npc-service:${source.sourceId}`,
-        idempotencyKey: `${actionKey}:charge`,
+    let world = operation.world_result_json ? JSON.parse(operation.world_result_json) : null;
+    if (!world) {
+        world = npcWorldTreatment(source, contract.treatment, operation.action_key,
+            operation.payload_hash, operation.created_at);
+        runLingyeWorldTransaction(database, () => {
+            database.prepare(`
+              UPDATE lingye_cross_store_operations
+              SET status = 'world_applied', world_result_json = ?, updated_at = ?
+              WHERE action_key = ? AND status = 'pending'
+            `).run(JSON.stringify(world), Date.now(), operation.action_key);
+        });
+    }
+    return runLingyeWorldTransaction(database, () => {
+        const current = database.prepare("SELECT * FROM lingye_cross_store_operations WHERE action_key = ?")
+            .get(operation.action_key);
+        if (current.status === "completed")
+            return JSON.parse(current.result_json);
+        const settled = backend.trustedSystemCommands.settleSystemGoldReservation({
+            reservationId: current.reservation_id,
+            businessReference: `career-npc-service:${source.sourceId}:settle`,
+            idempotencyKey: `${current.action_key}:settle`,
+        });
+        const settlementId = `npc-service:${digest(source.sourceId).slice(0, 32)}`;
+        const result = {
+            settlementId,
+            sourceId: source.sourceId,
+            career: source.career,
+            status: "completed",
+            serviceActor: "system",
+            fee: {
+                baseGold: contract.baseFeeGold,
+                materialGold: contract.materialFeeGold,
+                totalGold: current.gold_amount,
+            },
+            world,
+            completedAt: current.created_at,
+        };
+        database.prepare(`
+          INSERT INTO career_npc_service_settlements (
+            settlement_id, source_id, source_type, career, owner_resident_id,
+            difficulty_level, base_fee_gold, material_fee_gold, total_fee_gold,
+            charge_receipt_id, idempotency_key, payload_hash, result_json, completed_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(settlementId, source.sourceId, source.sourceType, source.career,
+            source.ownerResidentId, source.difficultyLevel, contract.baseFeeGold,
+            contract.materialFeeGold, current.gold_amount, settled.financialReceipt.receiptId,
+            current.action_key, current.payload_hash, JSON.stringify(result), current.created_at);
+        database.prepare(`
+          UPDATE lingye_cross_store_operations
+          SET status = 'completed', result_json = ?, updated_at = ?
+          WHERE action_key = ? AND status = 'world_applied'
+        `).run(JSON.stringify(result), Date.now(), current.action_key);
+        return result;
     });
-    const world = npcWorldTreatment(source, contract.treatment, actionKey, payloadHash, now);
-    const settlementId = `npc-service:${digest(source.sourceId).slice(0, 32)}`;
-    const result = {
-        settlementId,
-        sourceId: source.sourceId,
-        career: source.career,
-        status: "completed",
-        serviceActor: "system",
-        fee: {
-            baseGold: contract.baseFeeGold,
-            materialGold: contract.materialFeeGold,
-            totalGold: totalFeeGold,
-        },
-        world,
-        completedAt: now,
-    };
-    database.prepare(`
-      INSERT INTO career_npc_service_settlements (
-        settlement_id, source_id, source_type, career, owner_resident_id,
-        difficulty_level, base_fee_gold, material_fee_gold, total_fee_gold,
-        charge_receipt_id, idempotency_key, payload_hash, result_json, completed_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(settlementId, source.sourceId, source.sourceType, source.career,
-        source.ownerResidentId, source.difficultyLevel, contract.baseFeeGold,
-        contract.materialFeeGold, totalFeeGold, charged.financialReceipt.receiptId,
-        actionKey, payloadHash, JSON.stringify(result), now);
-    return result;
+}
+
+export function recoverPendingNpcFallbackServices(database, backend) {
+    const pending = database.prepare(`
+      SELECT * FROM lingye_cross_store_operations
+      WHERE operation_kind = 'npc_service' AND status IN ('pending', 'world_applied')
+      ORDER BY created_at, action_key
+    `).all();
+    for (const operation of pending)
+        resumeNpcFallbackService(database, backend, operation);
 }

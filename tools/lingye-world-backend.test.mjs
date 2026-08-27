@@ -17,6 +17,29 @@ const ECONOMY_RULES = {
     restrictedDailyGoldLimit: null,
     restrictedDailySilverLimit: null,
 };
+const TEST_CURRICULUM = Object.freeze({
+    careerCourseAvailability: (career, level, courseIndex) => career === "reporter" && level === 1 && courseIndex === 1,
+    careerCourseContent: (career, level, courseIndex) => ({
+        career,
+        level,
+        courseIndex,
+        title: "Isolated reporter course",
+        contentMarkdown: "Isolated course content.",
+        bankVersion: "world-backend-test-v1",
+    }),
+    careerExamAvailability: () => false,
+    createCoursePracticePaper: (career, level, courseIndex, residentId) => ({
+        kind: "course_practice",
+        targetKey: `course:${residentId}:${career}:${level}:${courseIndex}`,
+        bankVersion: "world-backend-test-v1",
+        publicPaper: [],
+        answerKey: [],
+        review: [],
+    }),
+    createWrittenExamPaper: () => {
+        throw new Error("Formal exam bank is unavailable in this test");
+    },
+});
 
 test("farm runtime rejects Node versions below the node:sqlite transaction contract", () => {
     assert.doesNotThrow(() => assertSupportedNodeVersion("22.16.0"));
@@ -33,6 +56,7 @@ function createHarness() {
     let sequence = 0;
     const backend = createLingyeWorldBackend(database, {
         economyRules: ECONOMY_RULES,
+        curriculum: TEST_CURRICULUM,
         generateId: () => `world-${++sequence}`,
         now: () => NOW,
         exposeInternalsForTesting: true,

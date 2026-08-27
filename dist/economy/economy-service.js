@@ -557,6 +557,9 @@ export class EconomyService {
         });
     }
     closeTermDeposit(input) {
+        const ownedDeposit = this.#termDeposit(input.depositId);
+        if (ownedDeposit.resident_id !== input.actorResidentId)
+            throw new EconomyError("UNAUTHORIZED_PARTY");
         return this.#command("bank.term.close", input.idempotencyKey, input.depositId, input, (journal, now) => {
             const deposit = this.#termDeposit(input.depositId);
             if (deposit.state !== "active")
@@ -800,6 +803,9 @@ export class EconomyService {
         if (this.#rules.minimumSystemLoanCreditDays === null) {
             throw new EconomyError("CREDIT_RULE_NOT_CONFIGURED");
         }
+        const ownedLoan = this.#systemLoan(input.loanId);
+        if (ownedLoan.borrower_resident_id !== input.actorResidentId)
+            throw new EconomyError("UNAUTHORIZED_PARTY");
         return this.#command("bank.system_loan.repay", input.idempotencyKey, input.loanId, input, (journal, now) => {
             let loan = this.#systemLoan(input.loanId);
             if (loan.status === "repaid")

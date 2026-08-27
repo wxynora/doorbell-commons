@@ -1,0 +1,1077 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "kind": "course",
+      "career": "chef",
+      "level": 1,
+      "course_index": 1,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "GO_SCHOOL_RUNTIME_CLOSED"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "chef",
+      "level": 1,
+      "course_index": 2,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "GO_SCHOOL_RUNTIME_CLOSED"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "chef",
+      "level": 1,
+      "course_index": 3,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "GO_SCHOOL_RUNTIME_CLOSED"
+      ]
+    },
+    {
+      "kind": "exam",
+      "career": "chef",
+      "level": 1,
+      "text_approved": false,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "PRIVATE_EXAM_BANK_REQUIRED",
+        "GO_SCHOOL_RUNTIME_CLOSED"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "chef",
+      "level": 2,
+      "course_index": 1,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "GO_SCHOOL_RUNTIME_CLOSED"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "chef",
+      "level": 2,
+      "course_index": 2,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "GO_SCHOOL_RUNTIME_CLOSED"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "chef",
+      "level": 2,
+      "course_index": 3,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "GO_SCHOOL_RUNTIME_CLOSED"
+      ]
+    },
+    {
+      "kind": "exam",
+      "career": "chef",
+      "level": 2,
+      "text_approved": false,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "PRIVATE_EXAM_BANK_REQUIRED",
+        "GO_SCHOOL_RUNTIME_CLOSED"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "chef",
+      "level": 3,
+      "course_index": 1,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "GO_SCHOOL_RUNTIME_CLOSED"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "chef",
+      "level": 3,
+      "course_index": 2,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "GO_SCHOOL_RUNTIME_CLOSED"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "chef",
+      "level": 3,
+      "course_index": 3,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "GO_SCHOOL_RUNTIME_CLOSED"
+      ]
+    },
+    {
+      "kind": "exam",
+      "career": "chef",
+      "level": 3,
+      "text_approved": false,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "PRIVATE_EXAM_BANK_REQUIRED",
+        "GO_SCHOOL_RUNTIME_CLOSED"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "chef",
+      "level": 4,
+      "course_index": 1,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "GO_SCHOOL_RUNTIME_CLOSED"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "chef",
+      "level": 4,
+      "course_index": 2,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "GO_SCHOOL_RUNTIME_CLOSED"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "chef",
+      "level": 4,
+      "course_index": 3,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "GO_SCHOOL_RUNTIME_CLOSED"
+      ]
+    },
+    {
+      "kind": "exam",
+      "career": "chef",
+      "level": 4,
+      "text_approved": false,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "PRIVATE_EXAM_BANK_REQUIRED",
+        "GO_SCHOOL_RUNTIME_CLOSED"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "agronomist",
+      "level": 1,
+      "course_index": 1,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "AGRONOMY_PROGRESSIVE_FACTS",
+        "AGRONOMY_WRONG_MATERIAL_CONSUMPTION",
+        "P3_CROSS_STORE_RECOVERY"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "agronomist",
+      "level": 1,
+      "course_index": 2,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "AGRONOMY_PROGRESSIVE_FACTS",
+        "AGRONOMY_WRONG_MATERIAL_CONSUMPTION",
+        "P3_CROSS_STORE_RECOVERY"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "agronomist",
+      "level": 1,
+      "course_index": 3,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "AGRONOMY_PROGRESSIVE_FACTS",
+        "AGRONOMY_WRONG_MATERIAL_CONSUMPTION",
+        "P3_CROSS_STORE_RECOVERY"
+      ]
+    },
+    {
+      "kind": "exam",
+      "career": "agronomist",
+      "level": 1,
+      "text_approved": false,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "PRIVATE_EXAM_BANK_REQUIRED",
+        "AGRONOMY_PROGRESSIVE_FACTS",
+        "AGRONOMY_WRONG_MATERIAL_CONSUMPTION",
+        "P3_CROSS_STORE_RECOVERY"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "agronomist",
+      "level": 2,
+      "course_index": 1,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "AGRONOMY_PROGRESSIVE_FACTS",
+        "AGRONOMY_WRONG_MATERIAL_CONSUMPTION",
+        "P3_CROSS_STORE_RECOVERY"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "agronomist",
+      "level": 2,
+      "course_index": 2,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "AGRONOMY_PROGRESSIVE_FACTS",
+        "AGRONOMY_WRONG_MATERIAL_CONSUMPTION",
+        "P3_CROSS_STORE_RECOVERY"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "agronomist",
+      "level": 2,
+      "course_index": 3,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "AGRONOMY_PROGRESSIVE_FACTS",
+        "AGRONOMY_WRONG_MATERIAL_CONSUMPTION",
+        "P3_CROSS_STORE_RECOVERY"
+      ]
+    },
+    {
+      "kind": "exam",
+      "career": "agronomist",
+      "level": 2,
+      "text_approved": false,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "PRIVATE_EXAM_BANK_REQUIRED",
+        "AGRONOMY_PROGRESSIVE_FACTS",
+        "AGRONOMY_WRONG_MATERIAL_CONSUMPTION",
+        "P3_CROSS_STORE_RECOVERY"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "agronomist",
+      "level": 3,
+      "course_index": 1,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "AGRONOMY_PROGRESSIVE_FACTS",
+        "AGRONOMY_WRONG_MATERIAL_CONSUMPTION",
+        "P3_CROSS_STORE_RECOVERY"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "agronomist",
+      "level": 3,
+      "course_index": 2,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "AGRONOMY_PROGRESSIVE_FACTS",
+        "AGRONOMY_WRONG_MATERIAL_CONSUMPTION",
+        "P3_CROSS_STORE_RECOVERY"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "agronomist",
+      "level": 3,
+      "course_index": 3,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "AGRONOMY_PROGRESSIVE_FACTS",
+        "AGRONOMY_WRONG_MATERIAL_CONSUMPTION",
+        "P3_CROSS_STORE_RECOVERY"
+      ]
+    },
+    {
+      "kind": "exam",
+      "career": "agronomist",
+      "level": 3,
+      "text_approved": false,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "PRIVATE_EXAM_BANK_REQUIRED",
+        "AGRONOMY_PROGRESSIVE_FACTS",
+        "AGRONOMY_WRONG_MATERIAL_CONSUMPTION",
+        "P3_CROSS_STORE_RECOVERY"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "agronomist",
+      "level": 4,
+      "course_index": 1,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "AGRONOMY_PROGRESSIVE_FACTS",
+        "AGRONOMY_WRONG_MATERIAL_CONSUMPTION",
+        "P3_CROSS_STORE_RECOVERY"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "agronomist",
+      "level": 4,
+      "course_index": 2,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "AGRONOMY_PROGRESSIVE_FACTS",
+        "AGRONOMY_WRONG_MATERIAL_CONSUMPTION",
+        "P3_CROSS_STORE_RECOVERY"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "agronomist",
+      "level": 4,
+      "course_index": 3,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "AGRONOMY_PROGRESSIVE_FACTS",
+        "AGRONOMY_WRONG_MATERIAL_CONSUMPTION",
+        "P3_CROSS_STORE_RECOVERY"
+      ]
+    },
+    {
+      "kind": "exam",
+      "career": "agronomist",
+      "level": 4,
+      "text_approved": false,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "PRIVATE_EXAM_BANK_REQUIRED",
+        "AGRONOMY_PROGRESSIVE_FACTS",
+        "AGRONOMY_WRONG_MATERIAL_CONSUMPTION",
+        "P3_CROSS_STORE_RECOVERY"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "veterinarian",
+      "level": 1,
+      "course_index": 1,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "VET_PROGRESSIVE_FACTS",
+        "VET_RECOVERY_REDUCTION",
+        "VET_FEED_DISPATCH_GATE",
+        "P3_CROSS_STORE_RECOVERY"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "veterinarian",
+      "level": 1,
+      "course_index": 2,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "VET_PROGRESSIVE_FACTS",
+        "VET_RECOVERY_REDUCTION",
+        "VET_FEED_DISPATCH_GATE",
+        "P3_CROSS_STORE_RECOVERY"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "veterinarian",
+      "level": 1,
+      "course_index": 3,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "VET_PROGRESSIVE_FACTS",
+        "VET_RECOVERY_REDUCTION",
+        "VET_FEED_DISPATCH_GATE",
+        "P3_CROSS_STORE_RECOVERY"
+      ]
+    },
+    {
+      "kind": "exam",
+      "career": "veterinarian",
+      "level": 1,
+      "text_approved": false,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "PRIVATE_EXAM_BANK_REQUIRED",
+        "VET_PROGRESSIVE_FACTS",
+        "VET_RECOVERY_REDUCTION",
+        "VET_FEED_DISPATCH_GATE",
+        "P3_CROSS_STORE_RECOVERY"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "veterinarian",
+      "level": 2,
+      "course_index": 1,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "VET_PROGRESSIVE_FACTS",
+        "VET_RECOVERY_REDUCTION",
+        "VET_FEED_DISPATCH_GATE",
+        "P3_CROSS_STORE_RECOVERY"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "veterinarian",
+      "level": 2,
+      "course_index": 2,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "VET_PROGRESSIVE_FACTS",
+        "VET_RECOVERY_REDUCTION",
+        "VET_FEED_DISPATCH_GATE",
+        "P3_CROSS_STORE_RECOVERY"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "veterinarian",
+      "level": 2,
+      "course_index": 3,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "VET_PROGRESSIVE_FACTS",
+        "VET_RECOVERY_REDUCTION",
+        "VET_FEED_DISPATCH_GATE",
+        "P3_CROSS_STORE_RECOVERY"
+      ]
+    },
+    {
+      "kind": "exam",
+      "career": "veterinarian",
+      "level": 2,
+      "text_approved": false,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "PRIVATE_EXAM_BANK_REQUIRED",
+        "VET_PROGRESSIVE_FACTS",
+        "VET_RECOVERY_REDUCTION",
+        "VET_FEED_DISPATCH_GATE",
+        "P3_CROSS_STORE_RECOVERY"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "veterinarian",
+      "level": 3,
+      "course_index": 1,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "VET_PROGRESSIVE_FACTS",
+        "VET_RECOVERY_REDUCTION",
+        "VET_FEED_DISPATCH_GATE",
+        "P3_CROSS_STORE_RECOVERY"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "veterinarian",
+      "level": 3,
+      "course_index": 2,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "VET_PROGRESSIVE_FACTS",
+        "VET_RECOVERY_REDUCTION",
+        "VET_FEED_DISPATCH_GATE",
+        "P3_CROSS_STORE_RECOVERY"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "veterinarian",
+      "level": 3,
+      "course_index": 3,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "VET_PROGRESSIVE_FACTS",
+        "VET_RECOVERY_REDUCTION",
+        "VET_FEED_DISPATCH_GATE",
+        "P3_CROSS_STORE_RECOVERY"
+      ]
+    },
+    {
+      "kind": "exam",
+      "career": "veterinarian",
+      "level": 3,
+      "text_approved": false,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "PRIVATE_EXAM_BANK_REQUIRED",
+        "VET_PROGRESSIVE_FACTS",
+        "VET_RECOVERY_REDUCTION",
+        "VET_FEED_DISPATCH_GATE",
+        "P3_CROSS_STORE_RECOVERY"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "veterinarian",
+      "level": 4,
+      "course_index": 1,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "VET_PROGRESSIVE_FACTS",
+        "VET_RECOVERY_REDUCTION",
+        "VET_FEED_DISPATCH_GATE",
+        "P3_CROSS_STORE_RECOVERY"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "veterinarian",
+      "level": 4,
+      "course_index": 2,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "VET_PROGRESSIVE_FACTS",
+        "VET_RECOVERY_REDUCTION",
+        "VET_FEED_DISPATCH_GATE",
+        "P3_CROSS_STORE_RECOVERY"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "veterinarian",
+      "level": 4,
+      "course_index": 3,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "VET_PROGRESSIVE_FACTS",
+        "VET_RECOVERY_REDUCTION",
+        "VET_FEED_DISPATCH_GATE",
+        "P3_CROSS_STORE_RECOVERY"
+      ]
+    },
+    {
+      "kind": "exam",
+      "career": "veterinarian",
+      "level": 4,
+      "text_approved": false,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "PRIVATE_EXAM_BANK_REQUIRED",
+        "VET_PROGRESSIVE_FACTS",
+        "VET_RECOVERY_REDUCTION",
+        "VET_FEED_DISPATCH_GATE",
+        "P3_CROSS_STORE_RECOVERY"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "reporter",
+      "level": 1,
+      "course_index": 1,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "REPORTER_SOURCE_PRODUCERS",
+        "REPORTER_PUBLICATION_REVIEW"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "reporter",
+      "level": 1,
+      "course_index": 2,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "REPORTER_SOURCE_PRODUCERS",
+        "REPORTER_PUBLICATION_REVIEW"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "reporter",
+      "level": 1,
+      "course_index": 3,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "REPORTER_SOURCE_PRODUCERS",
+        "REPORTER_PUBLICATION_REVIEW"
+      ]
+    },
+    {
+      "kind": "exam",
+      "career": "reporter",
+      "level": 1,
+      "text_approved": false,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "PRIVATE_EXAM_BANK_REQUIRED",
+        "REPORTER_SOURCE_PRODUCERS",
+        "REPORTER_PUBLICATION_REVIEW"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "reporter",
+      "level": 2,
+      "course_index": 1,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "REPORTER_SOURCE_PRODUCERS",
+        "REPORTER_PUBLICATION_REVIEW"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "reporter",
+      "level": 2,
+      "course_index": 2,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "REPORTER_SOURCE_PRODUCERS",
+        "REPORTER_PUBLICATION_REVIEW"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "reporter",
+      "level": 2,
+      "course_index": 3,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "REPORTER_SOURCE_PRODUCERS",
+        "REPORTER_PUBLICATION_REVIEW"
+      ]
+    },
+    {
+      "kind": "exam",
+      "career": "reporter",
+      "level": 2,
+      "text_approved": false,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "PRIVATE_EXAM_BANK_REQUIRED",
+        "REPORTER_SOURCE_PRODUCERS",
+        "REPORTER_PUBLICATION_REVIEW"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "reporter",
+      "level": 3,
+      "course_index": 1,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "REPORTER_SOURCE_PRODUCERS",
+        "REPORTER_PUBLICATION_REVIEW"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "reporter",
+      "level": 3,
+      "course_index": 2,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "REPORTER_SOURCE_PRODUCERS",
+        "REPORTER_PUBLICATION_REVIEW"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "reporter",
+      "level": 3,
+      "course_index": 3,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "REPORTER_SOURCE_PRODUCERS",
+        "REPORTER_PUBLICATION_REVIEW"
+      ]
+    },
+    {
+      "kind": "exam",
+      "career": "reporter",
+      "level": 3,
+      "text_approved": false,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "PRIVATE_EXAM_BANK_REQUIRED",
+        "REPORTER_SOURCE_PRODUCERS",
+        "REPORTER_PUBLICATION_REVIEW"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "reporter",
+      "level": 4,
+      "course_index": 1,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "REPORTER_SOURCE_PRODUCERS",
+        "REPORTER_PUBLICATION_REVIEW"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "reporter",
+      "level": 4,
+      "course_index": 2,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "REPORTER_SOURCE_PRODUCERS",
+        "REPORTER_PUBLICATION_REVIEW"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "reporter",
+      "level": 4,
+      "course_index": 3,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "REPORTER_SOURCE_PRODUCERS",
+        "REPORTER_PUBLICATION_REVIEW"
+      ]
+    },
+    {
+      "kind": "exam",
+      "career": "reporter",
+      "level": 4,
+      "text_approved": false,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "PRIVATE_EXAM_BANK_REQUIRED",
+        "REPORTER_SOURCE_PRODUCERS",
+        "REPORTER_PUBLICATION_REVIEW"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "constable",
+      "level": 1,
+      "course_index": 1,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "CONSTABLE_ASSIGNMENT_AUTHORITY",
+        "CONSTABLE_INTERVIEW_SCHEDULER"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "constable",
+      "level": 1,
+      "course_index": 2,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "CONSTABLE_ASSIGNMENT_AUTHORITY",
+        "CONSTABLE_INTERVIEW_SCHEDULER"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "constable",
+      "level": 1,
+      "course_index": 3,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "CONSTABLE_ASSIGNMENT_AUTHORITY",
+        "CONSTABLE_INTERVIEW_SCHEDULER"
+      ]
+    },
+    {
+      "kind": "exam",
+      "career": "constable",
+      "level": 1,
+      "text_approved": false,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "PRIVATE_EXAM_BANK_REQUIRED",
+        "CONSTABLE_ASSIGNMENT_AUTHORITY",
+        "CONSTABLE_INTERVIEW_SCHEDULER"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "constable",
+      "level": 2,
+      "course_index": 1,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "CONSTABLE_ASSIGNMENT_AUTHORITY",
+        "CONSTABLE_INTERVIEW_SCHEDULER"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "constable",
+      "level": 2,
+      "course_index": 2,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "CONSTABLE_ASSIGNMENT_AUTHORITY",
+        "CONSTABLE_INTERVIEW_SCHEDULER"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "constable",
+      "level": 2,
+      "course_index": 3,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "CONSTABLE_ASSIGNMENT_AUTHORITY",
+        "CONSTABLE_INTERVIEW_SCHEDULER"
+      ]
+    },
+    {
+      "kind": "exam",
+      "career": "constable",
+      "level": 2,
+      "text_approved": false,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "PRIVATE_EXAM_BANK_REQUIRED",
+        "CONSTABLE_ASSIGNMENT_AUTHORITY",
+        "CONSTABLE_INTERVIEW_SCHEDULER"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "constable",
+      "level": 3,
+      "course_index": 1,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "CONSTABLE_ASSIGNMENT_AUTHORITY",
+        "CONSTABLE_INTERVIEW_SCHEDULER"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "constable",
+      "level": 3,
+      "course_index": 2,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "CONSTABLE_ASSIGNMENT_AUTHORITY",
+        "CONSTABLE_INTERVIEW_SCHEDULER"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "constable",
+      "level": 3,
+      "course_index": 3,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "CONSTABLE_ASSIGNMENT_AUTHORITY",
+        "CONSTABLE_INTERVIEW_SCHEDULER"
+      ]
+    },
+    {
+      "kind": "exam",
+      "career": "constable",
+      "level": 3,
+      "text_approved": false,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "PRIVATE_EXAM_BANK_REQUIRED",
+        "CONSTABLE_ASSIGNMENT_AUTHORITY",
+        "CONSTABLE_INTERVIEW_SCHEDULER"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "constable",
+      "level": 4,
+      "course_index": 1,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "CONSTABLE_ASSIGNMENT_AUTHORITY",
+        "CONSTABLE_INTERVIEW_SCHEDULER"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "constable",
+      "level": 4,
+      "course_index": 2,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "CONSTABLE_ASSIGNMENT_AUTHORITY",
+        "CONSTABLE_INTERVIEW_SCHEDULER"
+      ]
+    },
+    {
+      "kind": "course",
+      "career": "constable",
+      "level": 4,
+      "course_index": 3,
+      "text_approved": true,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "CONSTABLE_ASSIGNMENT_AUTHORITY",
+        "CONSTABLE_INTERVIEW_SCHEDULER"
+      ]
+    },
+    {
+      "kind": "exam",
+      "career": "constable",
+      "level": 4,
+      "text_approved": false,
+      "model_copy_approved": false,
+      "runtime_ready": false,
+      "blocked_by": [
+        "PRIVATE_EXAM_BANK_REQUIRED",
+        "CONSTABLE_ASSIGNMENT_AUTHORITY",
+        "CONSTABLE_INTERVIEW_SCHEDULER"
+      ]
+    }
+  ]
+}

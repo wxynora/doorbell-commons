@@ -22,3 +22,5 @@ jobs:
           node-version: ${{ matrix.node-version }}
           package-manager-cache: false
       - run: npm run test:lingye-core
+      - run: npm run test:doorbell-adapters
+      - run: npm run test:career-curriculum-generation

@@ -10,7 +10,9 @@
     "preserve": "npm run check:node",
     "serve": "node dist/index.js",
     "sync": "node farm-sync.mjs",
-    "test:lingye-core": "npm run check:node && node --test tools/lingye-economy.test.mjs tools/lingye-career.test.mjs tools/farm-weather-nature.test.mjs tools/lingye-world-backend.test.mjs tools/farm-request-and-store-safety.test.mjs"
+    "test:lingye-core": "npm run check:node && node --test tools/lingye-economy.test.mjs tools/lingye-career.test.mjs tools/farm-weather-nature.test.mjs tools/lingye-world-backend.test.mjs tools/farm-request-and-store-safety.test.mjs",
+    "test:doorbell-adapters": "npm run check:node && node --test tools/doorbell-lingye-actions.test.mjs tools/doorbell-human-structured.test.mjs tools/lingye-authority-assignment.test.mjs tools/lingye-p3-world.test.mjs tools/lingye-p3-commission.test.mjs tools/legacy-farm-simplified-calls.test.mjs",
+    "test:career-curriculum-generation": "npm run check:node && node --test tools/generate-career-curriculum.test.mjs tools/career-private-recipe-exam.test.mjs"
   },
   "engines": {
     "node": ">=22.16.0"

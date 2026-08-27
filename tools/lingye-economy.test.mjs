@@ -377,7 +377,7 @@ test("same-day hold cancellation restores restricted daily capacity while cross-
     expectEconomyError("SPEND_LIMIT_EXCEEDED", () => freezeTrade("resident-c", "after-settle"));
 });
 test("silver lock, demand deposits and negotiated term deposits preserve distinct authority rules", () => {
-    const { service, setNow } = createHarness();
+    const { database, service, setNow } = createHarness();
     importAccount(service, "resident-a", 3_000_000, 1_000);
     service.setSilverAgentLock({
         residentId: "resident-a",
@@ -453,7 +453,16 @@ test("silver lock, demand deposits and negotiated term deposits preserve distinc
         totalRatePpm: 2_500,
         idempotencyKey: "term-open",
     });
+    const termCommandsBefore = database.prepare("SELECT COUNT(*) AS count FROM economy_commands").get().count;
+    expectEconomyError("UNAUTHORIZED_PARTY", () => service.closeTermDeposit({
+        actorResidentId: "resident-b",
+        depositId: term.deposit_id,
+        idempotencyKey: "term-close-by-another-resident",
+    }));
+    assert.equal(database.prepare("SELECT state FROM economy_term_deposits WHERE deposit_id = ?").get(term.deposit_id).state, "active");
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM economy_commands").get().count, termCommandsBefore);
     const early = service.closeTermDeposit({
+        actorResidentId: "resident-a",
         depositId: term.deposit_id,
         idempotencyKey: "term-early",
     });
@@ -468,6 +477,7 @@ test("silver lock, demand deposits and negotiated term deposits preserve distinc
     });
     setNow(START + 18 * DAY);
     const matured = service.closeTermDeposit({
+        actorResidentId: "resident-a",
         depositId: matureTerm.deposit_id,
         idempotencyKey: "term-mature",
     });
@@ -608,7 +618,7 @@ test("real-player trades freeze, settle, cancel and refund without duplicate mon
         .get().count, 0);
 });
 test("system loans freeze interest at maturity, enforce grace restrictions and cannot farm credit instantly", () => {
-    const { service, setNow } = createHarness();
+    const { database, service, setNow } = createHarness();
     importAccount(service, "resident-a", 10_000, 0);
     const loan = service.openSystemLoan({
         borrowerResidentId: "resident-a",
@@ -629,7 +639,17 @@ test("system loans freeze interest at maturity, enforce grace restrictions and c
         goldPrincipal: 500,
         idempotencyKey: "restricted-exchange",
     }));
+    const repaymentCommandsBefore = database.prepare("SELECT COUNT(*) AS count FROM economy_commands").get().count;
+    expectEconomyError("UNAUTHORIZED_PARTY", () => service.repaySystemLoan({
+        actorResidentId: "resident-b",
+        loanId: loan.loan_id,
+        amount: 1,
+        idempotencyKey: "system-loan-repay-by-another-resident",
+    }));
+    assert.equal(database.prepare("SELECT principal_outstanding FROM economy_system_loans WHERE loan_id = ?").get(loan.loan_id).principal_outstanding, 100_000);
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM economy_commands").get().count, repaymentCommandsBefore);
     const repaid = service.repaySystemLoan({
+        actorResidentId: "resident-a",
         loanId: loan.loan_id,
         amount: 101_400,
         idempotencyKey: "system-loan-repay",
@@ -647,6 +667,7 @@ test("system loans freeze interest at maturity, enforce grace restrictions and c
     });
     setNow(START + 5 * DAY);
     service.repaySystemLoan({
+        actorResidentId: "resident-b",
         loanId: goodLoan.loan_id,
         amount: 100_500,
         idempotencyKey: "good-loan-repay",

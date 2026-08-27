@@ -1,4 +1,4 @@
-export const CAREER_SCHEMA_VERSION = 3;
+export const CAREER_SCHEMA_VERSION = 4;
 export function installCareerSchema(database) {
     database.exec(`
     CREATE TABLE IF NOT EXISTS career_tracks (
@@ -35,6 +35,10 @@ export function installCareerSchema(database) {
       course_index INTEGER NOT NULL CHECK (course_index BETWEEN 1 AND 3),
       tuition_receipt_id TEXT NOT NULL UNIQUE REFERENCES career_financial_receipts(receipt_id),
       enrolled_at INTEGER NOT NULL,
+      content_bank_version TEXT,
+      content_snapshot_json TEXT,
+      content_delivery_id TEXT,
+      content_delivered_at INTEGER,
       content_read_at INTEGER,
       completed_at INTEGER,
       best_correct_answers INTEGER NOT NULL DEFAULT 0 CHECK (best_correct_answers BETWEEN 0 AND 5),
@@ -357,4 +361,17 @@ export function installCareerSchema(database) {
       resolved_at INTEGER NOT NULL
     );
   `);
+    const courseColumns = new Set(database
+        .prepare("PRAGMA table_info(career_courses)")
+        .all()
+        .map((column) => column.name));
+    for (const [name, definition] of [
+        ["content_bank_version", "TEXT"],
+        ["content_snapshot_json", "TEXT"],
+        ["content_delivery_id", "TEXT"],
+        ["content_delivered_at", "INTEGER"],
+    ]) {
+        if (!courseColumns.has(name))
+            database.exec(`ALTER TABLE career_courses ADD COLUMN ${name} ${definition}`);
+    }
 }

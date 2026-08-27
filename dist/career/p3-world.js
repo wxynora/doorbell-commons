@@ -36,12 +36,80 @@ const ANIMAL_CHECKS = Object.freeze({
     compound_fever: Object.freeze(["temperature", "hydration", "breathing"]),
 });
 
+const AGRONOMY_OBSERVATIONS = Object.freeze({
+    drought: Object.freeze(["leaf_wilt", "soil_surface_dry"]),
+    waterlogging: Object.freeze(["soil_surface_saturated", "lower_leaf_yellowing"]),
+    local_pest: Object.freeze(["leaf_damage", "visible_pest_trace"]),
+    nutrient_imbalance: Object.freeze(["uneven_leaf_color", "uneven_growth"]),
+    root_damage: Object.freeze(["whole_plant_wilt", "root_zone_instability"]),
+});
+
+const ANIMAL_OBSERVATIONS = Object.freeze({
+    indigestion: Object.freeze(["reduced_appetite", "abdominal_discomfort"]),
+    minor_injury: Object.freeze(["reduced_activity", "localized_injury_trace"]),
+    wet_cold: Object.freeze(["damp_coat_or_feathers", "reduced_activity"]),
+    dehydration: Object.freeze(["reduced_water_intake", "reduced_activity"]),
+    respiratory_infection: Object.freeze(["abnormal_breathing", "reduced_activity"]),
+    compound_fever: Object.freeze(["elevated_temperature", "abnormal_breathing", "dehydration_sign"]),
+});
+
+const AGRONOMY_FINDINGS = Object.freeze({
+    drought: Object.freeze({ leaf: "leaf_water_stress", soil: "soil_moisture_low" }),
+    waterlogging: Object.freeze({ soil: "soil_water_excess", root: "root_oxygen_low" }),
+    local_pest: Object.freeze({ leaf: "leaf_feeding_damage", "pest-trace": "localized_pest_trace" }),
+    nutrient_imbalance: Object.freeze({ leaf: "leaf_nutrient_pattern", soil: "soil_nutrient_imbalance", "treatment-history": "prior_input_mismatch" }),
+    root_damage: Object.freeze({ root: "root_tissue_damage", soil: "soil_structure_unstable" }),
+});
+
+const ANIMAL_FINDINGS = Object.freeze({
+    indigestion: Object.freeze({ "feed-history": "recent_feed_irregularity", abdomen: "abdominal_discomfort_confirmed" }),
+    minor_injury: Object.freeze({ injury: "minor_external_injury", "activity-history": "recent_activity_reduction" }),
+    wet_cold: Object.freeze({ temperature: "temperature_slightly_low", bedding: "bedding_damp", breathing: "breathing_clear" }),
+    dehydration: Object.freeze({ "water-intake": "water_intake_low", temperature: "temperature_not_elevated" }),
+    respiratory_infection: Object.freeze({ temperature: "temperature_elevated", breathing: "respiratory_sign_confirmed" }),
+    compound_fever: Object.freeze({ temperature: "temperature_high", hydration: "dehydration_confirmed", breathing: "respiratory_sign_confirmed" }),
+});
+
+const ANIMAL_RECOVERY_REDUCTION = Object.freeze({ 1: 0, 2: 0.1, 3: 0.2, 4: 0.3 });
+
 export function agronomyChecksFor(condition) {
     return [...(AGRONOMY_CHECKS[condition] ?? [])];
 }
 
 export function animalChecksFor(condition) {
     return [...(ANIMAL_CHECKS[condition] ?? [])];
+}
+
+export function agronomyCheckCandidates(qualificationLevel) {
+    return [...new Set(Object.entries(AGRONOMY_CONDITIONS)
+        .filter(([, entry]) => entry.minimumLevel <= qualificationLevel)
+        .flatMap(([condition]) => AGRONOMY_CHECKS[condition] ?? []))];
+}
+
+export function animalCheckCandidates(qualificationLevel) {
+    return [...new Set(Object.entries(ANIMAL_CONDITIONS)
+        .filter(([, entry]) => entry.minimumLevel <= qualificationLevel)
+        .flatMap(([condition]) => ANIMAL_CHECKS[condition] ?? []))];
+}
+
+export function agronomyObservationsFor(condition) {
+    return [...(AGRONOMY_OBSERVATIONS[condition] ?? [])];
+}
+
+export function animalObservationsFor(condition) {
+    return [...(ANIMAL_OBSERVATIONS[condition] ?? [])];
+}
+
+export function agronomyTreatmentCandidates(qualificationLevel) {
+    return [...new Set(Object.values(AGRONOMY_CONDITIONS)
+        .filter((entry) => entry.minimumLevel <= qualificationLevel)
+        .map((entry) => entry.material))];
+}
+
+export function animalTreatmentCandidates(qualificationLevel) {
+    return [...new Set(Object.values(ANIMAL_CONDITIONS)
+        .filter((entry) => entry.minimumLevel <= qualificationLevel)
+        .map((entry) => entry.materials.join("+")))];
 }
 
 export function beijingDay(at) {
@@ -100,7 +168,7 @@ export function runP3WorldAction(farm, actionKey, payloadHash, operation, now = 
 function activeAgronomyIssue(farm) {
     for (const plot of farm.plots ?? []) {
         const issue = plot.crop?.lingyeAgronomy;
-        if (issue?.status === "open" || issue?.status === "stabilized")
+        if (["open", "stabilized", "treating"].includes(issue?.status))
             return { issue, plot };
     }
     return null;
@@ -245,6 +313,31 @@ export function ranchProductionPaused(animal) {
     return status === "open" || status === "treating" || status === "recovering";
 }
 
+export const ranchHealthActionBlocked = ranchProductionPaused;
+
+export function maybeApplyRanchRaidInjury(farm, animal, eventReference, now = Date.now()) {
+    if (!farm?.doorbellMcpMigration?.migrationId || !animal || animal.lingyeHealth ||
+        !stableChance(0.2, farm.id, eventReference, "ranch-raid-injury")) {
+        return false;
+    }
+    const animalIndex = farm.ranch?.animals?.indexOf(animal) ?? -1;
+    if (animalIndex < 0)
+        return false;
+    const sourceId = `p3:animal:${farm.id}:raid:${eventReference}`;
+    animal.lingyeHealth = {
+        sourceId,
+        condition: "minor_injury",
+        status: "open",
+        generatedDay: beijingDay(now),
+        generatedAt: now,
+        checks: [],
+        treatments: [],
+        recoveryUntilDay: null,
+    };
+    p3State(farm, beijingDay(now));
+    return true;
+}
+
 function requireIssue(farm, sourceId) {
     const entry = activeAgronomyIssue(farm);
     if (!entry || entry.issue.sourceId !== sourceId)
@@ -266,10 +359,15 @@ function addUnique(values, value) {
 
 export function checkAgronomyIssue(farm, sourceId, check) {
     const { issue } = requireIssue(farm, sourceId);
-    if (!AGRONOMY_CHECKS[issue.condition]?.includes(check))
+    if (![...new Set(Object.values(AGRONOMY_CHECKS).flat())].includes(check))
         throw new Error("agronomy_check_not_available");
     addUnique(issue.checks, check);
-    return { condition: issue.condition, check, sourceId };
+    issue.status = "treating";
+    return {
+        check,
+        finding: AGRONOMY_FINDINGS[issue.condition][check] ?? "no_relevant_abnormality",
+        sourceId,
+    };
 }
 
 export function treatAgronomyIssue(farm, sourceId, treatment, qualificationLevel, now = Date.now()) {
@@ -277,22 +375,37 @@ export function treatAgronomyIssue(farm, sourceId, treatment, qualificationLevel
     const contract = AGRONOMY_CONDITIONS[issue.condition];
     if (!contract || qualificationLevel < contract.minimumLevel)
         throw new Error("agronomy_qualification_insufficient");
-    if (treatment !== contract.material)
+    const candidate = Object.values(AGRONOMY_CONDITIONS).find((entry) =>
+        entry.material === treatment && entry.minimumLevel <= qualificationLevel);
+    if (!candidate)
         throw new Error("agronomy_treatment_not_available");
     if (issue.checks.length === 0)
         throw new Error("agronomy_check_required");
     addUnique(issue.treatments, treatment);
+    if (treatment !== contract.material) {
+        return {
+            sourceId,
+            status: issue.status,
+            resolved: false,
+            materialGold: candidate.materialGold,
+        };
+    }
     issue.status = "resolved";
     issue.resolvedAt = now;
-    return { sourceId, condition: issue.condition, status: issue.status, materialGold: contract.materialGold };
+    return { sourceId, status: issue.status, resolved: true, materialGold: contract.materialGold };
 }
 
 export function checkAnimalCase(farm, sourceId, check) {
     const { health } = requireCase(farm, sourceId);
-    if (!ANIMAL_CHECKS[health.condition]?.includes(check))
+    if (![...new Set(Object.values(ANIMAL_CHECKS).flat())].includes(check))
         throw new Error("animal_check_not_available");
     addUnique(health.checks, check);
-    return { condition: health.condition, check, sourceId };
+    health.status = "treating";
+    return {
+        check,
+        finding: ANIMAL_FINDINGS[health.condition][check] ?? "no_relevant_abnormality",
+        sourceId,
+    };
 }
 
 export function treatAnimalCase(farm, sourceId, materials, qualificationLevel, now = Date.now()) {
@@ -302,18 +415,31 @@ export function treatAnimalCase(farm, sourceId, materials, qualificationLevel, n
         throw new Error("animal_qualification_insufficient");
     if (health.checks.length === 0)
         throw new Error("animal_check_required");
-    if (!Array.isArray(materials) || materials.length !== contract.materials.length ||
-        materials.some((material, index) => material !== contract.materials[index])) {
+    const treatmentReference = Array.isArray(materials) ? materials.join("+") : "";
+    const candidate = Object.values(ANIMAL_CONDITIONS).find((entry) =>
+        entry.materials.join("+") === treatmentReference && entry.minimumLevel <= qualificationLevel);
+    if (!candidate) {
         throw new Error("animal_treatment_not_available");
     }
-    health.treatments = [...materials];
+    addUnique(health.treatments, treatmentReference);
+    if (treatmentReference !== contract.materials.join("+")) {
+        return {
+            sourceId,
+            status: health.status,
+            resolved: false,
+            materialGold: candidate.materialGold,
+        };
+    }
     health.status = "recovering";
     health.treatedAt = now;
-    health.recoveryUntilDay = beijingDay(now) + contract.recoveryDays;
+    const reduction = ANIMAL_RECOVERY_REDUCTION[qualificationLevel] ?? 0;
+    const recoveryDays = Math.max(1, Math.ceil(contract.recoveryDays * (1 - reduction)));
+    health.recoveryUntilDay = beijingDay(now) + recoveryDays;
     return {
         sourceId,
-        condition: health.condition,
         status: health.status,
+        resolved: true,
+        recoveryDays,
         recoveryUntilDay: health.recoveryUntilDay,
         materialGold: contract.materialGold,
     };

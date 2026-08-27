@@ -30,6 +30,44 @@ const ECONOMY_RULES = {
     restrictedDailyGoldLimit: 150_000,
     restrictedDailySilverLimit: 300,
 };
+const TEST_CURRICULUM_VERSION = "doorbell-lingye-test-bank-v1";
+function testPaper(kind, targetKey, count) {
+    const questions = Array.from({ length: count }, (_, index) => ({
+        id: `${targetKey}:question:${index + 1}`,
+        stem: `Test question ${index + 1}`,
+        options: { A: "A", B: "B", C: "C", D: "D" },
+        answer: ["A", "B", "C", "D"][index % 4],
+        explanation: `Test explanation ${index + 1}`,
+    }));
+    return {
+        kind,
+        targetKey,
+        bankVersion: TEST_CURRICULUM_VERSION,
+        publicPaper: questions.map(({ answer: _answer, explanation: _explanation, ...question }) => question),
+        answerKey: questions.map((question) => question.answer),
+        review: questions.map((question) => ({
+            id: question.id,
+            correctAnswer: question.answer,
+            explanation: question.explanation,
+        })),
+    };
+}
+const TEST_CURRICULUM = Object.freeze({
+    careerCourseAvailability: () => true,
+    careerCourseContent: (career, level, courseIndex) => ({
+        career,
+        level,
+        courseIndex,
+        title: `Test ${career} ${level}-${courseIndex}`,
+        contentMarkdown: `Test course content for ${career} ${level}-${courseIndex}.`,
+        bankVersion: TEST_CURRICULUM_VERSION,
+    }),
+    careerExamAvailability: () => true,
+    createCoursePracticePaper: (career, level, courseIndex, residentId) =>
+        testPaper("course_practice", `course:${residentId}:${career}:${level}:${courseIndex}`, 5),
+    createWrittenExamPaper: (career, level, attemptId) =>
+        testPaper("written_exam", `exam:${attemptId}`, 20),
+});
 
 function request(body) {
     const req = Readable.from([Buffer.from(JSON.stringify(body))]);
@@ -67,6 +105,7 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
     let actionNow = NOW;
     const backend = createLingyeWorldBackend(database, {
         economyRules: ECONOMY_RULES,
+        curriculum: TEST_CURRICULUM,
         generateId: () => `lingye-action-${++sequence}`,
         now: () => actionNow,
     });
@@ -267,7 +306,8 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
             "stem",
         ]);
         const readOption = courseView.data.options.find((entry) =>
-            entry.option.includes("school:course-read") && entry.option.endsWith(`:${reference}`));
+            entry.option.includes("school:course-read") && entry.option.includes(`:${reference}:`) &&
+            entry.option.endsWith(`:${courseView.data.reference.content.contentDeliveryId}`));
         assert.ok(readOption);
         const read = execute(executor, "go.school.choose", { option: readOption.option });
         assert.equal(read.ok, true);

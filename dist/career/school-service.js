@@ -10,6 +10,13 @@ import {
 } from "./curriculum.js";
 import { activeCertificateLevel, isBeijingHour, nextExamSessionAt, nextInterviewSessionAt, recordFinancialReceipt, requireCareerTrack, runInTransaction, } from "./persistence.js";
 import { installCareerSchema } from "./schema.js";
+const DEFAULT_CURRICULUM = Object.freeze({
+    careerCourseAvailability,
+    careerCourseContent,
+    careerExamAvailability,
+    createCoursePracticePaper,
+    createWrittenExamPaper,
+});
 const TWO_HOURS_MS = 2 * 60 * 60 * 1_000;
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1_000;
 const TWELVE_HOURS_MS = 12 * 60 * 60 * 1_000;
@@ -19,10 +26,12 @@ export class CareerSchoolService {
     #database;
     #now;
     #generateId;
+    #curriculum;
     constructor(options) {
         this.#database = options.database;
         this.#now = options.now ?? Date.now;
         this.#generateId = options.generateId ?? randomUUID;
+        this.#curriculum = options.curriculum ?? DEFAULT_CURRICULUM;
         installCareerSchema(this.#database);
     }
     selectCareer(residentId, career) {
@@ -61,12 +70,15 @@ export class CareerSchoolService {
             return { career, trackOrder: 2 };
         });
     }
+    courseAvailable(career, level, courseIndex) {
+        return this.#curriculum.careerCourseAvailability(career, level, courseIndex);
+    }
+    examAvailable(career, level) {
+        return this.#curriculum.careerExamAvailability(career, level);
+    }
     enrollCourse(input) {
         const now = this.#now();
         return runInTransaction(this.#database, () => {
-            if (!careerCourseAvailability(input.career, input.level, input.courseIndex)) {
-                throw new CareerDomainError("assessment_content_not_available", "This course is not available");
-            }
             requireCareerTrack(this.#database, input.residentId, input.career);
             this.#requireLevelPrerequisite(input.residentId, input.career, input.level);
             if (input.courseIndex > 1) {
@@ -80,15 +92,9 @@ export class CareerSchoolService {
                 }
             }
             const businessReference = this.#courseBusinessReference(input);
-            recordFinancialReceipt(this.#database, input.tuitionReceipt, {
-                amount: COURSE_TUITION_GOLD[input.level],
-                businessReference,
-                currency: "gold",
-                kind: "system_gold_charge",
-                residentId: input.residentId,
-            }, now);
             const existing = this.#database
-                .prepare(`SELECT tuition_receipt_id, content_read_at, completed_at
+                .prepare(`SELECT tuition_receipt_id, content_bank_version, content_snapshot_json,
+                         content_read_at, completed_at
            FROM career_courses
            WHERE resident_id = ? AND career = ? AND qualification_level = ? AND course_index = ?`)
                 .get(input.residentId, input.career, input.level, input.courseIndex);
@@ -96,21 +102,45 @@ export class CareerSchoolService {
                 if (existing.tuition_receipt_id !== input.tuitionReceipt.receiptId) {
                     throw new CareerDomainError("course_enrollment_conflict", "The course is already enrolled with another receipt");
                 }
-                const paper = this.#ensureCoursePaper(input, now);
+                recordFinancialReceipt(this.#database, input.tuitionReceipt, {
+                    amount: COURSE_TUITION_GOLD[input.level],
+                    businessReference,
+                    currency: "gold",
+                    kind: "system_gold_charge",
+                    residentId: input.residentId,
+                }, now);
+                const snapshot = this.#courseSnapshot(existing, input);
+                const paper = this.#requireCoursePaper(input, snapshot.bankVersion);
                 return {
                     completed: existing.completed_at !== null,
                     contentRead: existing.content_read_at !== null,
-                    paperId: paper.paperId,
-                    bankVersion: paper.bankVersion,
+                    paperId: paper.paper_id,
+                    bankVersion: snapshot.bankVersion,
                 };
             }
+            if (!this.#curriculum.careerCourseAvailability(input.career, input.level, input.courseIndex)) {
+                throw new CareerDomainError("assessment_content_not_available", "This course is not available");
+            }
+            const content = this.#curriculum.careerCourseContent(input.career, input.level, input.courseIndex);
+            const paperBlueprint = this.#curriculum.createCoursePracticePaper(input.career, input.level, input.courseIndex, input.residentId);
+            if (content.bankVersion !== paperBlueprint.bankVersion) {
+                throw new CareerDomainError("assessment_content_not_available", "The course content and practice bank do not match");
+            }
+            recordFinancialReceipt(this.#database, input.tuitionReceipt, {
+                amount: COURSE_TUITION_GOLD[input.level],
+                businessReference,
+                currency: "gold",
+                kind: "system_gold_charge",
+                residentId: input.residentId,
+            }, now);
             this.#database
                 .prepare(`INSERT INTO career_courses (
              resident_id, career, qualification_level, course_index,
-             tuition_receipt_id, enrolled_at
-           ) VALUES (?, ?, ?, ?, ?, ?)`)
-                .run(input.residentId, input.career, input.level, input.courseIndex, input.tuitionReceipt.receiptId, now);
-            const paper = this.#ensureCoursePaper(input, now);
+             tuition_receipt_id, enrolled_at, content_bank_version, content_snapshot_json
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+                .run(input.residentId, input.career, input.level, input.courseIndex,
+                input.tuitionReceipt.receiptId, now, content.bankVersion, JSON.stringify(content));
+            const paper = this.#ensureCoursePaper(input, now, content.bankVersion, paperBlueprint);
             return {
                 completed: false,
                 contentRead: false,
@@ -120,45 +150,56 @@ export class CareerSchoolService {
         });
     }
     getCourseContent(input) {
-        const enrolled = this.#database
-            .prepare(`SELECT 1 FROM career_courses
-         WHERE resident_id = ? AND career = ? AND qualification_level = ? AND course_index = ?`)
-            .get(input.residentId, input.career, input.level, input.courseIndex);
-        if (!enrolled)
-            throw new CareerDomainError("course_not_enrolled", "The course is not enrolled");
-        const content = careerCourseContent(input.career, input.level, input.courseIndex);
-        const paper = this.#requireCoursePaper(input);
-        return {
-            ...content,
-            paperId: paper.paper_id,
-            practiceQuestions: JSON.parse(paper.public_paper_json),
-        };
+        const now = this.#now();
+        return runInTransaction(this.#database, () => {
+            const course = this.#requireCourse(input);
+            const content = this.#courseSnapshot(course, input);
+            const paper = this.#requireCoursePaper(input, content.bankVersion);
+            const contentDeliveryId = course.content_delivery_id ?? this.#generateId();
+            const deliveredAt = course.content_delivered_at ?? now;
+            if (course.content_delivery_id === null || course.content_delivered_at === null) {
+                this.#database
+                    .prepare(`UPDATE career_courses
+             SET content_delivery_id = ?, content_delivered_at = ?
+             WHERE resident_id = ? AND career = ? AND qualification_level = ? AND course_index = ?`)
+                    .run(contentDeliveryId, deliveredAt, input.residentId, input.career, input.level, input.courseIndex);
+            }
+            return {
+                ...content,
+                contentDeliveryId,
+                deliveredAt,
+                paperId: paper.paper_id,
+                practiceQuestions: JSON.parse(paper.public_paper_json),
+            };
+        });
     }
     markCourseContentRead(input) {
-        const result = this.#database
-            .prepare(`UPDATE career_courses
+        return runInTransaction(this.#database, () => {
+            const course = this.#requireCourse(input);
+            const snapshot = this.#courseSnapshot(course, input);
+            this.#requireCoursePaper(input, snapshot.bankVersion);
+            if (typeof input.contentDeliveryId !== "string" ||
+                input.contentDeliveryId.length === 0 ||
+                course.content_delivery_id !== input.contentDeliveryId ||
+                course.content_delivered_at === null) {
+                throw new CareerDomainError("course_content_delivery_mismatch", "The course read confirmation does not match a delivered content snapshot");
+            }
+            this.#database
+                .prepare(`UPDATE career_courses
          SET content_read_at = COALESCE(content_read_at, ?)
          WHERE resident_id = ? AND career = ? AND qualification_level = ? AND course_index = ?`)
-            .run(this.#now(), input.residentId, input.career, input.level, input.courseIndex);
-        if (result.changes === 0) {
-            throw new CareerDomainError("course_not_enrolled", "The course is not enrolled");
-        }
+                .run(this.#now(), input.residentId, input.career, input.level, input.courseIndex);
+        });
     }
     submitCoursePractice(input) {
         const now = this.#now();
         return runInTransaction(this.#database, () => {
-            const course = this.#database
-                .prepare(`SELECT content_read_at, completed_at, best_correct_answers
-           FROM career_courses
-           WHERE resident_id = ? AND career = ? AND qualification_level = ? AND course_index = ?`)
-                .get(input.residentId, input.career, input.level, input.courseIndex);
-            if (!course) {
-                throw new CareerDomainError("course_not_enrolled", "The course is not enrolled");
-            }
+            const course = this.#requireCourse(input);
             if (course.content_read_at === null) {
                 throw new CareerDomainError("course_content_not_read", "The approved teaching units must be read before practice");
             }
-            const paper = this.#requireCoursePaper(input);
+            const snapshot = this.#courseSnapshot(course, input);
+            const paper = this.#requireCoursePaper(input, snapshot.bankVersion);
             if (paper.paper_id !== input.paperId)
                 throw new CareerDomainError("assessment_paper_mismatch", "The course paper does not match");
             const answerData = this.#paperAnswerData(paper);
@@ -181,11 +222,14 @@ export class CareerSchoolService {
                 bestCorrectAnswers: best,
                 correctAnswers: graded.correctAnswers,
                 passed,
-                review: answerData.review.map((entry, index) => ({
-                    ...entry,
-                    selectedAnswer: graded.answers[index],
-                    correct: graded.answers[index] === entry.correctAnswer,
-                })),
+                review: answerData.review.map((entry, index) => {
+                    const selectedAnswer = graded.answers[index];
+                    const correct = selectedAnswer === entry.correctAnswer;
+                    if (passed)
+                        return { ...entry, selectedAnswer, correct };
+                    const { correctAnswer: _correctAnswer, ...learningFeedback } = entry;
+                    return { ...learningFeedback, selectedAnswer, correct };
+                }),
             };
             this.#recordSubmission({
                 paper,
@@ -401,6 +445,7 @@ export class CareerSchoolService {
                     status: "written_passed",
                     now,
                 });
+                this.scheduleConstableInterview(input.attemptId, nextInterviewSessionAt(now));
                 return result;
             }
             this.#activateCertificate(attempt, now);
@@ -743,18 +788,54 @@ export class CareerSchoolService {
             return "certificate_activated";
         });
     }
-    #ensureCoursePaper(input, now) {
-        const blueprint = createCoursePracticePaper(
-            input.career,
-            input.level,
-            input.courseIndex,
-            input.residentId,
-        );
+    #requireCourse(input) {
+        const course = this.#database
+            .prepare(`SELECT * FROM career_courses
+         WHERE resident_id = ? AND career = ? AND qualification_level = ? AND course_index = ?`)
+            .get(input.residentId, input.career, input.level, input.courseIndex);
+        if (!course)
+            throw new CareerDomainError("course_not_enrolled", "The course is not enrolled");
+        return course;
+    }
+    #courseSnapshot(course, input) {
+        if (typeof course.content_bank_version !== "string" ||
+            course.content_bank_version.length === 0 ||
+            typeof course.content_snapshot_json !== "string" ||
+            course.content_snapshot_json.length === 0) {
+            throw new CareerDomainError("assessment_content_not_available", "The enrolled course has no frozen content snapshot");
+        }
+        let snapshot;
+        try {
+            snapshot = JSON.parse(course.content_snapshot_json);
+        }
+        catch {
+            throw new CareerDomainError("assessment_content_not_available", "The enrolled course content snapshot is invalid");
+        }
+        if (snapshot === null ||
+            typeof snapshot !== "object" ||
+            snapshot.career !== input.career ||
+            snapshot.level !== input.level ||
+            snapshot.courseIndex !== input.courseIndex ||
+            snapshot.bankVersion !== course.content_bank_version ||
+            typeof snapshot.title !== "string" ||
+            typeof snapshot.contentMarkdown !== "string") {
+            throw new CareerDomainError("assessment_content_not_available", "The enrolled course content snapshot is invalid");
+        }
+        return snapshot;
+    }
+    #ensureCoursePaper(input, now, bankVersion, blueprint) {
+        if (blueprint.bankVersion !== bankVersion) {
+            throw new CareerDomainError("assessment_content_not_available", "The course content and practice bank do not match");
+        }
         const existing = this.#database
             .prepare("SELECT * FROM career_assessment_papers WHERE target_key = ?")
             .get(blueprint.targetKey);
-        if (existing)
+        if (existing) {
+            if (existing.bank_version !== bankVersion) {
+                throw new CareerDomainError("assessment_paper_mismatch", "The course paper bank does not match the enrolled content");
+            }
             return { paperId: existing.paper_id, bankVersion: existing.bank_version };
+        }
         const paperId = this.#generateId();
         const publicPaperJson = JSON.stringify(blueprint.publicPaper);
         const answerKeyJson = JSON.stringify({
@@ -775,7 +856,7 @@ export class CareerSchoolService {
         return { paperId, bankVersion: blueprint.bankVersion };
     }
     #ensureExamPaper(attempt, now) {
-        const blueprint = createWrittenExamPaper(
+        const blueprint = this.#curriculum.createWrittenExamPaper(
             attempt.career,
             attempt.qualification_level,
             attempt.attempt_id,
@@ -805,13 +886,16 @@ export class CareerSchoolService {
             publicPaperJson, answerKeyJson, paperHash, now);
         return { paperId, bankVersion: blueprint.bankVersion };
     }
-    #requireCoursePaper(input) {
+    #requireCoursePaper(input, bankVersion) {
         const targetKey = `course:${input.residentId}:${input.career}:${input.level}:${input.courseIndex}`;
         const paper = this.#database
             .prepare("SELECT * FROM career_assessment_papers WHERE target_key = ? AND kind = 'course_practice'")
             .get(targetKey);
         if (!paper)
             throw new CareerDomainError("assessment_paper_not_found", "The course paper is unavailable");
+        if (paper.bank_version !== bankVersion) {
+            throw new CareerDomainError("assessment_paper_mismatch", "The course paper bank does not match the enrolled content");
+        }
         return paper;
     }
     #requireExamPaper(attemptId) {
@@ -900,7 +984,7 @@ export class CareerSchoolService {
         }
     }
     #requireExamEligibility(residentId, career, level) {
-        if (!careerExamAvailability(career, level)) {
+        if (!this.#curriculum.careerExamAvailability(career, level)) {
             throw new CareerDomainError("assessment_content_not_available", "This written exam is not available");
         }
         requireCareerTrack(this.#database, residentId, career);

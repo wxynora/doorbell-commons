@@ -100,6 +100,7 @@ import { advanceRanch } from "./domain/ranch/progression.js";
 import { aiDisplay, humanDisplay } from "./domain/ranch/display.js";
 import { pushLedger } from "./domain/ranch/ledger.js";
 import {
+    advanceP3Farm,
     agronomyGrowthEffect,
     agronomyHarvestPenalty,
     recordAgronomyHarvest,
@@ -202,6 +203,8 @@ export function ensureHumanKey(farm) {
 }
 // —— 惰性结算（纯时间生长，无缺水停滞）——
 export function advance(farm, now) {
+    if (farm.doorbellMcpMigration?.migrationId)
+        advanceP3Farm(farm, now);
     const elapsed = Math.floor((now - farm.lastTickAt) / TICK_MS);
     if (elapsed <= 0)
         return 0;
@@ -280,6 +283,8 @@ export function harvest(farm, plotId, now, seasonMod) {
         return { ok: false, error: `${plotId} 号地没有作物` };
     if (!plot.crop.ripe)
         return { ok: false, error: "作物还没成熟" };
+    if (plot.crop.lingyeAgronomy?.status === "treating")
+        return { ok: false, error: "OP_REJECTED" };
     const rng = new Rng(farm.rngState);
     const c = plot.crop;
     const buffs = petBuffs(farm); // 招财猫：稀有运气 + 掉落倍率（温和）

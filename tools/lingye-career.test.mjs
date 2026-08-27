@@ -9,7 +9,6 @@ import {
     careerCourseAvailability,
     careerCourseContent,
     careerExamAvailability,
-    createCoursePracticePaper,
 } from "../dist/career/curriculum.js";
 import { beijingTimestamp, recordFinancialReceipt } from "../dist/career/persistence.js";
 import { installCareerSchema } from "../dist/career/schema.js";
@@ -17,6 +16,50 @@ import { CareerSchoolService } from "../dist/career/school-service.js";
 import { installEconomySchema } from "../dist/economy/economy-schema.js";
 import { EconomyService } from "../dist/economy/economy-service.js";
 import { runLingyeWorldTransaction } from "../dist/lingye-world-database.js";
+const TEST_CURRICULUM_VERSION = "career-test-bank-v1";
+function testPaper(kind, targetKey, count) {
+    const questions = Array.from({ length: count }, (_, index) => ({
+        id: `${targetKey}:question:${index + 1}`,
+        stem: `Test question ${index + 1}`,
+        options: { A: "A", B: "B", C: "C", D: "D" },
+        answer: "A",
+        explanation: `Test explanation ${index + 1}`,
+    }));
+    return {
+        kind,
+        targetKey,
+        bankVersion: TEST_CURRICULUM_VERSION,
+        publicPaper: questions.map(({ answer: _answer, explanation: _explanation, ...question }) => question),
+        answerKey: questions.map((question) => question.answer),
+        review: questions.map((question) => ({
+            id: question.id,
+            correctAnswer: question.answer,
+            explanation: question.explanation,
+        })),
+    };
+}
+const TEST_CURRICULUM = Object.freeze({
+    careerCourseAvailability: (_career, level, courseIndex) => level >= 1 && level <= 4 && courseIndex >= 1 && courseIndex <= 3,
+    careerCourseContent: (career, level, courseIndex) => ({
+        career,
+        level,
+        courseIndex,
+        title: `Test ${career} ${level}-${courseIndex}`,
+        contentMarkdown: `Test course content for ${career} ${level}-${courseIndex}.`,
+        bankVersion: TEST_CURRICULUM_VERSION,
+    }),
+    careerExamAvailability: (_career, level) => level >= 1 && level <= 4,
+    createCoursePracticePaper: (career, level, courseIndex, residentId) => testPaper(
+        "course_practice",
+        `course:${residentId}:${career}:${level}:${courseIndex}`,
+        5,
+    ),
+    createWrittenExamPaper: (career, level, attemptId) => testPaper(
+        "written_exam",
+        `exam:${attemptId}`,
+        20,
+    ),
+});
 function createHarness(initialNow = beijingTimestamp("2026-08-26", 11)) {
     const database = new DatabaseSync(":memory:");
     database.exec("PRAGMA foreign_keys = ON");
@@ -53,7 +96,12 @@ function createHarness(initialNow = beijingTimestamp("2026-08-26", 11)) {
         });
     };
     const reservationKey = (residentId, businessReference) => `${residentId}:${businessReference.replace(/:(reserve|settle|release)$/, "")}`;
-    const school = new CareerSchoolService({ database, generateId, now: () => now });
+    const school = new CareerSchoolService({
+        database,
+        generateId,
+        now: () => now,
+        curriculum: TEST_CURRICULUM,
+    });
     const employment = new CareerEmploymentService({ database, generateId, now: () => now });
     const job = new CareerJobService({ database, generateId, now: () => now });
     return {
@@ -205,6 +253,14 @@ function submitExamScore(harness, attemptId, correctAnswers, idempotencyKey = `e
         idempotencyKey,
     });
 }
+function deliverAndReadCourse(harness, input) {
+    const content = harness.school.getCourseContent(input);
+    harness.school.markCourseContentRead({
+        ...input,
+        contentDeliveryId: content.contentDeliveryId,
+    });
+    return content;
+}
 function completeLevelOneCourses(harness, residentId, career) {
     for (const courseIndex of [1, 2, 3]) {
         harness.school.enrollCourse({
@@ -214,7 +270,7 @@ function completeLevelOneCourses(harness, residentId, career) {
             residentId,
             tuitionReceipt: goldReceipt(harness, residentId, "system_gold_charge", 20_000, `career-course:${residentId}:${career}:1:${courseIndex}`),
         });
-        harness.school.markCourseContentRead({ career, courseIndex, level: 1, residentId });
+        deliverAndReadCourse(harness, { career, courseIndex, level: 1, residentId });
         assert.equal(submitPracticeScore(harness, {
             career,
             courseIndex,
@@ -256,14 +312,70 @@ test("career schema is idempotent and leaves the owning database version untouch
         database.close();
     }
 });
-test("approved curriculum is versioned, answerless to readers, and blocks unresolved levels", () => {
+test("career schema adds frozen course delivery columns without inventing legacy content", () => {
+    const database = new DatabaseSync(":memory:");
+    try {
+        database.exec(`
+          CREATE TABLE residents (
+            resident_id TEXT PRIMARY KEY,
+            resident_name TEXT NOT NULL
+          );
+          CREATE TABLE career_courses (
+            resident_id TEXT NOT NULL,
+            career TEXT NOT NULL,
+            qualification_level INTEGER NOT NULL,
+            course_index INTEGER NOT NULL,
+            tuition_receipt_id TEXT NOT NULL UNIQUE,
+            enrolled_at INTEGER NOT NULL,
+            content_read_at INTEGER,
+            completed_at INTEGER,
+            best_correct_answers INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (resident_id, career, qualification_level, course_index)
+          );
+          INSERT INTO career_courses (
+            resident_id, career, qualification_level, course_index,
+            tuition_receipt_id, enrolled_at
+          ) VALUES ('legacy', 'reporter', 1, 1, 'legacy-receipt', 1);
+        `);
+        installEconomySchema(database);
+        installCareerSchema(database);
+        const columns = new Set(database
+            .prepare("PRAGMA table_info(career_courses)")
+            .all()
+            .map((column) => column.name));
+        for (const name of [
+            "content_bank_version",
+            "content_snapshot_json",
+            "content_delivery_id",
+            "content_delivered_at",
+        ]) {
+            assert.equal(columns.has(name), true);
+        }
+        assert.deepEqual({ ...database
+            .prepare(`SELECT content_bank_version, content_snapshot_json,
+                     content_delivery_id, content_delivered_at
+              FROM career_courses WHERE resident_id = 'legacy'`)
+            .get() }, {
+            content_bank_version: null,
+            content_snapshot_json: null,
+            content_delivery_id: null,
+            content_delivered_at: null,
+        });
+    }
+    finally {
+        database.close();
+    }
+});
+test("runtime curriculum stays fail closed until approved content and the injected test bank is answerless", () => {
     assert.equal(CAREER_CURRICULUM_VERSION, "career-curriculum-2026-08-27.1");
-    assert.equal(careerCourseAvailability("agronomist", 1, 1), true);
+    assert.equal(careerCourseAvailability("agronomist", 1, 1), false);
     assert.equal(careerCourseAvailability("chef", 4, 3), false);
     assert.equal(careerExamAvailability("constable", 4), false);
-    const content = careerCourseContent("agronomist", 1, 1);
-    assert.equal(content.title, "《叶子不会说谎，但会装病》");
-    const paper = createCoursePracticePaper("agronomist", 1, 1, "reader-resident");
+    assert.throws(
+        () => careerCourseContent("agronomist", 1, 1),
+        assertCareerError("assessment_content_not_available"),
+    );
+    const paper = TEST_CURRICULUM.createCoursePracticePaper("agronomist", 1, 1, "reader-resident");
     assert.equal(paper.publicPaper.length, 5);
     assert.deepEqual(Object.keys(paper.publicPaper[0]).sort(), ["id", "options", "stem"]);
     assert.equal(Object.hasOwn(paper.publicPaper[0], "answer"), false);
@@ -271,6 +383,123 @@ test("approved curriculum is versioned, answerless to readers, and blocks unreso
         () => careerCourseContent("chef", 4, 3),
         assertCareerError("assessment_content_not_available"),
     );
+});
+test("course enrollment freezes one content bank and read confirmation requires that delivery", () => {
+    const harness = createHarness();
+    try {
+        const input = {
+            career: "reporter",
+            courseIndex: 1,
+            level: 1,
+            residentId: "frozen-course-resident",
+        };
+        harness.school.selectCareer(input.residentId, input.career);
+        const enrollment = harness.school.enrollCourse({
+            ...input,
+            tuitionReceipt: goldReceipt(
+                harness,
+                input.residentId,
+                "system_gold_charge",
+                20_000,
+                "career-course:frozen-course-resident:reporter:1:1",
+            ),
+        });
+        const stored = harness.database
+            .prepare(`SELECT content_bank_version, content_snapshot_json, content_delivery_id,
+                       content_delivered_at, content_read_at
+                FROM career_courses
+                WHERE resident_id = ? AND career = ?
+                  AND qualification_level = ? AND course_index = ?`)
+            .get(input.residentId, input.career, input.level, input.courseIndex);
+        assert.equal(stored.content_bank_version, enrollment.bankVersion);
+        assert.deepEqual(
+            JSON.parse(stored.content_snapshot_json),
+            TEST_CURRICULUM.careerCourseContent("reporter", 1, 1),
+        );
+        assert.equal(stored.content_delivery_id, null);
+        assert.equal(stored.content_delivered_at, null);
+        assert.equal(stored.content_read_at, null);
+        assert.throws(
+            () => harness.school.markCourseContentRead(input),
+            assertCareerError("course_content_delivery_mismatch"),
+        );
+        const delivered = harness.school.getCourseContent(input);
+        assert.equal(delivered.bankVersion, enrollment.bankVersion);
+        assert.ok(delivered.contentDeliveryId);
+        assert.equal(harness.school.getCourseContent(input).contentDeliveryId, delivered.contentDeliveryId);
+        assert.throws(
+            () => harness.school.markCourseContentRead({
+                ...input,
+                contentDeliveryId: "another-delivery",
+            }),
+            assertCareerError("course_content_delivery_mismatch"),
+        );
+        harness.school.markCourseContentRead({
+            ...input,
+            contentDeliveryId: delivered.contentDeliveryId,
+        });
+        assert.notEqual(harness.database
+            .prepare(`SELECT content_read_at FROM career_courses
+                WHERE resident_id = ? AND career = ?
+                  AND qualification_level = ? AND course_index = ?`)
+            .get(input.residentId, input.career, input.level, input.courseIndex).content_read_at, null);
+
+        const mismatchedInput = {
+            career: "reporter",
+            courseIndex: 1,
+            level: 1,
+            residentId: "mismatched-paper-resident",
+        };
+        harness.school.selectCareer(mismatchedInput.residentId, mismatchedInput.career);
+        harness.school.enrollCourse({
+            ...mismatchedInput,
+            tuitionReceipt: goldReceipt(
+                harness,
+                mismatchedInput.residentId,
+                "system_gold_charge",
+                20_000,
+                "career-course:mismatched-paper-resident:reporter:1:1",
+            ),
+        });
+        harness.database
+            .prepare("UPDATE career_assessment_papers SET bank_version = 'newer-bank' WHERE target_key = ?")
+            .run("course:mismatched-paper-resident:reporter:1:1");
+        assert.throws(
+            () => harness.school.getCourseContent(mismatchedInput),
+            assertCareerError("assessment_paper_mismatch"),
+        );
+
+        const legacyInput = {
+            career: "reporter",
+            courseIndex: 1,
+            level: 1,
+            residentId: "legacy-course-resident",
+        };
+        harness.school.selectCareer(legacyInput.residentId, legacyInput.career);
+        harness.school.enrollCourse({
+            ...legacyInput,
+            tuitionReceipt: goldReceipt(
+                harness,
+                legacyInput.residentId,
+                "system_gold_charge",
+                20_000,
+                "career-course:legacy-course-resident:reporter:1:1",
+            ),
+        });
+        harness.database
+            .prepare(`UPDATE career_courses
+                SET content_bank_version = NULL, content_snapshot_json = NULL
+                WHERE resident_id = ? AND career = ?
+                  AND qualification_level = ? AND course_index = ?`)
+            .run(legacyInput.residentId, legacyInput.career, legacyInput.level, legacyInput.courseIndex);
+        assert.throws(
+            () => harness.school.getCourseContent(legacyInput),
+            assertCareerError("assessment_content_not_available"),
+        );
+    }
+    finally {
+        harness.database.close();
+    }
 });
 test("career financial receipts require an authoritative economy journal and balanced ledger", () => {
     const harness = createHarness();
@@ -361,7 +590,7 @@ test("school enforces ordered paid courses, read-and-practice completion, fixed 
             level: 1,
             residentId: "resident-1",
         }, 5), assertCareerError("course_content_not_read"));
-        harness.school.markCourseContentRead({
+        deliverAndReadCourse(harness, {
             career: "reporter",
             courseIndex: 1,
             level: 1,
@@ -413,7 +642,7 @@ test("school enforces ordered paid courses, read-and-practice completion, fixed 
                 residentId: "resident-1",
                 tuitionReceipt: goldReceipt(harness, "resident-1", "system_gold_charge", 20_000, `career-course:resident-1:reporter:1:${courseIndex}`),
             });
-            harness.school.markCourseContentRead({
+            deliverAndReadCourse(harness, {
                 career: "reporter",
                 courseIndex,
                 level: 1,
@@ -468,7 +697,7 @@ test("school enforces ordered paid courses, read-and-practice completion, fixed 
                 residentId: "resident-1",
                 tuitionReceipt: goldReceipt(harness, "resident-1", "system_gold_charge", 80_000, `career-course:resident-1:reporter:2:${courseIndex}`),
             });
-            harness.school.markCourseContentRead({
+            deliverAndReadCourse(harness, {
                 career: "reporter",
                 courseIndex,
                 level: 2,
@@ -1061,14 +1290,36 @@ test("constable interview uses human signup order and fails closed after the 24-
         });
         harness.setNow(attempt.scheduledAt);
         harness.school.startExam(attempt.attemptId, goldReceipt(harness, "candidate", "system_gold_settle", 40_000, "career-exam:constable-attempt:settle"));
-        assert.deepEqual(submitExamScore(harness, attempt.attemptId, 20), {
+        const writtenResult = submitExamScore(
+            harness,
+            attempt.attemptId,
+            20,
+            "constable-written-pass",
+        );
+        assert.deepEqual(writtenResult, {
             status: "written_passed",
             correctAnswers: 20,
             passed: true,
         });
+        assert.deepEqual(
+            submitExamScore(harness, attempt.attemptId, 20, "constable-written-pass"),
+            writtenResult,
+        );
         const scheduledAt = beijingTimestamp("2026-08-26", 20);
-        const interviewId = harness.school.scheduleConstableInterview(attempt.attemptId, scheduledAt);
-        harness.setNow(beijingTimestamp("2026-08-26", 8));
+        const automaticInterview = harness.database
+            .prepare(`SELECT interview_id, scheduled_at, status
+                FROM career_constable_interviews WHERE attempt_id = ?`)
+            .get(attempt.attemptId);
+        assert.deepEqual({ ...automaticInterview }, {
+            interview_id: automaticInterview.interview_id,
+            scheduled_at: scheduledAt,
+            status: "signup_open",
+        });
+        const interviewId = automaticInterview.interview_id;
+        assert.equal(harness.database
+            .prepare("SELECT COUNT(*) AS count FROM career_constable_interviews WHERE attempt_id = ?")
+            .get(attempt.attemptId).count, 1);
+        assert.equal(harness.school.scheduleConstableInterview(attempt.attemptId, scheduledAt), interviewId);
         for (const index of [1, 2, 3, 4]) {
             harness.school.signupConstableExaminer({
                 eligibilityReference: `eligibility-${index}`,
@@ -1134,9 +1385,17 @@ test("a postponed constable interview reopens signup at a new session", () => {
             correctAnswers: 20,
             passed: true,
         });
-        const firstSession = beijingTimestamp("2026-08-27", 20);
-        const interviewId = harness.school.scheduleConstableInterview(attempt.attemptId, firstSession);
-        harness.setNow(beijingTimestamp("2026-08-27", 8));
+        const firstSession = beijingTimestamp("2026-08-26", 20);
+        const automaticInterview = harness.database
+            .prepare(`SELECT interview_id, scheduled_at, status
+                FROM career_constable_interviews WHERE attempt_id = ?`)
+            .get(attempt.attemptId);
+        assert.deepEqual({ ...automaticInterview }, {
+            interview_id: automaticInterview.interview_id,
+            scheduled_at: firstSession,
+            status: "signup_open",
+        });
+        const interviewId = automaticInterview.interview_id;
         harness.school.signupConstableExaminer({
             eligibilityReference: "postponed-eligibility",
             examinerAccountId: "postponed-human",

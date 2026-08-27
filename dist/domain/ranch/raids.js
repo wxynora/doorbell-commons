@@ -11,6 +11,7 @@ import { pushSocialInbox } from "../shared/notifications.js";
 import { pushRanchNotice } from "./notices.js";
 import { ensureRanch } from "./state.js";
 import { ranchAnimalCurrentProduceValue } from "./value.js";
+import { maybeApplyRanchRaidInjury, ranchHealthActionBlocked } from "../../career/p3-world.js";
 
 const HOUR_MS = 60 * 60 * 1000;
 export const RANCH_RAID_DAILY_CAP = 1000;
@@ -53,6 +54,8 @@ export function dispatchRanchRaid(owner, target, animalIdx, durationHours, now) 
     const animal = ranch.animals[idx];
     if (!animal)
         return { ok: false, error: "选的动物不存在。" };
+    if (ranchHealthActionBlocked(animal))
+        return { ok: false, error: "OP_REJECTED" };
     if (ranchRaidForAnimal(owner, animal.kindId))
         return { ok: false, error: "这只动物已经在外面潜伏了。" };
     const hours = Number(durationHours);
@@ -113,6 +116,7 @@ export function catchRanchRaid(target, owners, raidId, now) {
         finishRanchRaidHistory(owner.ranch, raid, "caught", compensation);
         raids.splice(idx, 1);
         const animal = owner.ranch.animals.find((a) => a.kindId === raid.animalKindId);
+        maybeApplyRanchRaidInjury(owner, animal, raid.id, now);
         const animalName = animal?.name || animalById.get(raid.animalKindId)?.name || raid.animalKindId;
         const ownerLabel = `${owner.name}（${owner.aiName || "AI"}）`;
         const targetLabel = `${target.name}（${target.aiName || "AI"}）`;
@@ -176,6 +180,7 @@ export function settleRanchRaids(farms, now) {
                 const ownerLabel = `${owner.name}（${owner.aiName || "AI"}）`;
                 const targetLabel = `${target.name}（${target.aiName || "AI"}）`;
                 if (animal && animalKind && patrolGooseCatchesRaid(target, now)) {
+                    maybeApplyRanchRaidInjury(owner, animal, raid.id, now);
                     const currentProduceValue = ranchAnimalCurrentProduceValue(animal);
                     const rewardCoins = Math.round(currentProduceValue * 0.5);
                     const produce = animalKind.produce;
