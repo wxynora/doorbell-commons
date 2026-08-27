@@ -72,6 +72,15 @@ returns that fact, while changed likes, source, or key conflict instead of rewri
 evaluations use the same settlement table with their authoritative receipt. Old idempotency results hydrate
 a referenced receipt from the current authoritative database before replay. Reservation settlements retain
 their originating hold identity, and farm／UGC／nature changes can share one durable world-file rename.
+Farm commit `77f63f7`, pushed to `origin/farm`, loads the approved five-career curriculum from one generated,
+versioned runtime catalog. Course enrolment freezes the five-question practice paper, exam
+registration freezes the twenty-question written paper, and answer keys stay in the career database;
+`go.school.view／choose` only returns public questions and submits A-D choices for server-side grading.
+The same SQLite transaction records the paper version, idempotent submission, derived score, pass
+state, fee settlement and resulting certificate or constable written-pass state. Content that still
+depends on unconfirmed gameplay contracts is marked unavailable in the catalog and cannot be enrolled
+or examined. The commit is not deployed: the main readiness gate still withholds all `go.*` tools,
+and no real-player activation has occurred.
 These modules and their same-database transaction tests are not active in production: old-balance
 migration, real-player readiness, deployment, and production activation are not implemented by this
 entry.
