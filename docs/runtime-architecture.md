@@ -72,18 +72,34 @@ returns that fact, while changed likes, source, or key conflict instead of rewri
 evaluations use the same settlement table with their authoritative receipt. Old idempotency results hydrate
 a referenced receipt from the current authoritative database before replay. Reservation settlements retain
 their originating hold identity, and farm／UGC／nature changes can share one durable world-file rename.
-Farm commit `77f63f7`, pushed to `origin/farm`, loads the approved five-career curriculum from one generated,
-versioned runtime catalog. Course enrolment freezes the five-question practice paper, exam
-registration freezes the twenty-question written paper, and answer keys stay in the career database;
-`go.school.view／choose` only returns public questions and submits A-D choices for server-side grading.
-The same SQLite transaction records the paper version, idempotent submission, derived score, pass
-state, fee settlement and resulting certificate or constable written-pass state. Content that still
-depends on unconfirmed gameplay contracts is marked unavailable in the catalog and cannot be enrolled
-or examined. The commit is not deployed: the main readiness gate still withholds all `go.*` tools,
-and no real-player activation has occurred.
-These modules and their same-database transaction tests are not active in production: old-balance
-migration, real-player readiness, deployment, and production activation are not implemented by this
-entry.
+Farm commit `a34eb63`, pushed to `origin/farm`, replaces the earlier public formal-exam catalog with
+two explicit boundaries. Public `content/career-curriculum.json` contains course content, five-question teaching
+practice, and closed exam metadata only; formal question text, answer keys, explanations, and active
+exam versions must come from the deployment-side file configured by
+`AIFARM_CAREER_PRIVATE_EXAM_BANK_PATH`. Without that private bank, every formal exam fails closed.
+The public generator also requires the complete structured readiness manifest at
+`content/career-curriculum-readiness.json`; content review, model-visible copy approval, and runtime
+readiness are separate fields rather than inferred prose. Course enrolment now freezes the content
+snapshot, practice paper, and one bank version in `lingye-world.sqlite`, and content reading creates a
+stable delivery id that the later read confirmation must return. A constable written pass schedules the
+next Beijing 20:00 interview instead of leaving the attempt without a next state. The current repository
+does not contain a production private exam bank and the previously public formal questions are not valid
+exam material.
+
+P3 farm-world mutations and the SQLite economy／career authority cannot share one physical transaction.
+The farm candidate therefore persists `lingye_cross_store_operations` with a stable operation id,
+action key, request payload, reserved fee, world result, and `pending／world_applied／completed` state.
+Commission checks, treatments, and system-NPC fallback first persist and reserve in SQLite, apply one
+idempotent world action, then finalize payment, decision, job, and receipt in SQLite; startup resumes the
+same pending operation after a lost response or process failure. Public commission facts omit the hidden
+condition, checks reveal only newly observed facts, and the treatment choice set is qualification-bound
+rather than a single disclosed answer. Assigned hospital／public-security work uses the trusted authority
+assignment service, never a caller-selected worker. Registered farms run the same idempotent P3 day
+advance both at the Beijing day boundary and before ordinary authoritative farm advancement. Feed,
+dispatch, and ordinary `run／water／harvest／ripen／use／steal` paths consult the same health／object-lock
+state. These changes are pushed but not active in production: the main readiness gate still withholds
+all `go.*` tools, no real-player activation has occurred, and no production private exam bank,
+migration, deployment, or restart was performed.
 
 The farm snapshot is not currently source-reproducible: its root has the live-derived `dist/` and
 content but no matching `src/`, `tsconfig.json`, or lockfile, while `source-reference/` is older and

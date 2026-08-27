@@ -146,10 +146,11 @@ const nonHelpOperations: FarmOperationDefinition[] = [
   ),
   defineOperation({
     op: "farm.ripen",
-    description: "使用加速药水催熟指定地块；plots 里写几个地块编号，就催熟哪几个。",
-    argsHint: "{plots, detail?}",
-    branches: [{ plots: uniquePositiveIntegers }],
-    exampleArgs: [{ plots: [1] }, { plots: [1, 3, 5] }],
+    description:
+      "使用加速药水催熟；plots 精确指定地块，auto:true 按现有金币和商店当日限购自动补药并尽量催熟全部生长地块。",
+    argsHint: "{plots, detail?} 或 {auto:true, detail?}",
+    branches: [{ plots: uniquePositiveIntegers }, { auto: z.literal(true) }],
+    exampleArgs: [{ plots: [1] }, { plots: [1, 3, 5] }, { auto: true }],
     adapt: (args) => ({ kind: "farm", action: "ripen", params: args }),
   }),
   direct(

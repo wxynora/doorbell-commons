@@ -398,13 +398,23 @@ test("the farm registry has 58 canonical operations, strict args, examples, and 
   const ripen = farmOperationByName.get("farm.ripen");
   assert.ok(ripen);
   assert.equal(ripen.argsSchema.safeParse({ plots: [1, 3, 5] }).success, true);
+  assert.equal(ripen.argsSchema.safeParse({ auto: true }).success, true);
+  assert.equal(ripen.argsSchema.safeParse({ auto: true, detail: true }).success, true);
   assert.equal(ripen.argsSchema.safeParse({ plots: [] }).success, false);
   assert.equal(ripen.argsSchema.safeParse({ plots: [1, 1] }).success, false);
   assert.equal(ripen.argsSchema.safeParse({ plots: ["1"] }).success, false);
+  assert.equal(ripen.argsSchema.safeParse({ auto: false }).success, false);
+  assert.equal(ripen.argsSchema.safeParse({ auto: true, plots: [1] }).success, false);
+  assert.equal(ripen.argsSchema.safeParse({}).success, false);
   assert.deepEqual(ripen.adapt({ plots: [1, 3, 5] }), {
     kind: "farm",
     action: "ripen",
     params: { plots: [1, 3, 5] },
+  });
+  assert.deepEqual(ripen.adapt({ auto: true }), {
+    kind: "farm",
+    action: "ripen",
+    params: { auto: true },
   });
 
   const run = farmOperationByName.get("farm.run");

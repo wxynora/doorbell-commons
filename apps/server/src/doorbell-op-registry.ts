@@ -21,10 +21,24 @@ export type DoorbellRegisteredOperation =
   | { kind: "farm"; operation: FarmOperationDefinition }
   | { kind: "lingye"; operation: LingyeOperationDefinition };
 
-export const doorbellOperationNames = [...farmOperationNames, ...lingyeOperationNames] as const;
+// The canonical Lingye contracts are approved, but the current farm adapter does
+// not yet provide the complete school and commission workflows they advertise.
+// Keep them out of the model-visible registry until that authoritative backend is
+// complete; changing this gate must happen together with readiness tests.
+export const doorbellLingyeOperationsReady: boolean = false;
+const registeredLingyeOperationNames = doorbellLingyeOperationsReady ? lingyeOperationNames : [];
+export const doorbellOperationNames = [
+  ...farmOperationNames,
+  ...registeredLingyeOperationNames,
+] as readonly string[];
 
-if (doorbellOperationNames.length !== 66 || new Set(doorbellOperationNames).size !== 66) {
-  throw new Error("The Doorbell registry must contain 66 unique operations");
+const expectedOperationCount =
+  farmOperationNames.length + (doorbellLingyeOperationsReady ? lingyeOperationNames.length : 0);
+if (
+  doorbellOperationNames.length !== expectedOperationCount ||
+  new Set(doorbellOperationNames).size !== expectedOperationCount
+) {
+  throw new Error("The Doorbell registry must contain only unique ready operations");
 }
 
 export function findDoorbellOperation(op: string): DoorbellRegisteredOperation | undefined {
@@ -32,13 +46,20 @@ export function findDoorbellOperation(op: string): DoorbellRegisteredOperation |
   if (farm) {
     return { kind: "farm", operation: farm };
   }
+  if (!doorbellLingyeOperationsReady) {
+    return undefined;
+  }
   const lingye = lingyeOperationByName.get(op);
   return lingye ? { kind: "lingye", operation: lingye } : undefined;
 }
 
-export const DOORBELL_TOOL_DESCRIPTION = `${FARM_TOOL_DESCRIPTION}
+const LINGYE_TOOL_DESCRIPTION = `${FARM_TOOL_DESCRIPTION}
 
 铃野公共地点使用 go.<地点>.<动作>。银行和学校先调用 view 读取真实事实与当前 option；职业地点以空 args 调用 commission 查看真实委托。后续只能原样提交服务端返回的 option，不得自行编造流程名称、身份字段或内部结算命令。需要付费的 option 会在同一操作中自动检查并冻结费用；余额不足时业务不创建，也不会产生扣款事实。`;
+
+export const DOORBELL_TOOL_DESCRIPTION = doorbellLingyeOperationsReady
+  ? LINGYE_TOOL_DESCRIPTION
+  : FARM_TOOL_DESCRIPTION;
 
 export const doorbellToolDefinition = {
   name: "doorbell",
