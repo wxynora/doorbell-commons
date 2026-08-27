@@ -61,6 +61,7 @@ export class SharedMemeSynchronizer {
   readonly #now: () => number;
   readonly #replaceFile: (source: string, target: string) => void;
   #activeSync: Promise<boolean> | undefined;
+  #followUpSyncRequested = false;
 
   constructor(options: SharedMemeSynchronizerOptions) {
     if (!Number.isSafeInteger(options.httpRequestTimeoutMs) || options.httpRequestTimeoutMs <= 0) {
@@ -82,12 +83,22 @@ export class SharedMemeSynchronizer {
 
   syncLatest(): Promise<boolean> {
     if (this.#activeSync) {
+      this.#followUpSyncRequested = true;
       return this.#activeSync;
     }
-    this.#activeSync = this.#runSync().finally(() => {
+    this.#activeSync = this.#runRequestedSyncs().finally(() => {
       this.#activeSync = undefined;
     });
     return this.#activeSync;
+  }
+
+  async #runRequestedSyncs(): Promise<boolean> {
+    let changed = false;
+    do {
+      this.#followUpSyncRequested = false;
+      changed = (await this.#runSync()) || changed;
+    } while (this.#followUpSyncRequested);
+    return changed;
   }
 
   async #runSync(): Promise<boolean> {

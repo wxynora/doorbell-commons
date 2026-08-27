@@ -302,6 +302,12 @@ adds create immutable, monotonically numbered releases containing a compact SQLi
 SHA-256 checksum, byte size, schema version, entry count, and publication time. Snapshots exclude raw
 source text／JSON, source links, dedupe events, contributor identity, and audit internals.
 
+Each immutable release currently stores its complete snapshot as a BLOB in community SQLite, so
+release storage grows cumulatively with published versions. This is an explicit capacity observation,
+not a current cleanup task: at the 317-entry stage there is no retention, compaction, externalization,
+or garbage-collection mechanism. Any future change requires measured library/version growth and
+backup／deployment impact rather than a speculative large-library design.
+
 Human access uses the current HttpOnly Cookie and a fresh QQ membership check on every request:
 
 - `GET /api/shared-memes` returns the current release metadata and the full canonical entry list;
@@ -326,8 +332,10 @@ successful connection, and after a new version hint, it compares metadata and do
 snapshot under the required 300000-millisecond total HTTP deadline. Snapshot bytes are streamed under
 the authoritative metadata size ceiling instead of being buffered without a limit; timeout, an
 oversized or broken stream, or any later validation failure retains the old snapshot and releases the
-active sync so a later hint or reconnect can retry. The Connector writes a same-directory mode-0600
-temporary file and verifies HTTP type, exact byte size, SHA-256,
+active sync so a later hint or reconnect can retry. If another hint arrives while one sync is active,
+the single-flight records one pending follow-up and runs it after the current attempt; further hints
+coalesce per active attempt, so a version published during download is not silently lost. The
+Connector writes a same-directory mode-0600 temporary file and verifies HTTP type, exact byte size, SHA-256,
 schema version, SQLite integrity, foreign keys, approved table names, and entry count before atomic
 replacement. A duplicate or replayed version is idempotent; a stale version, bad checksum, invalid
 SQLite, or failed rename keeps both the previous file and applied version. Loopback

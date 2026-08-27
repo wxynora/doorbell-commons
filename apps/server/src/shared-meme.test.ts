@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -32,7 +32,6 @@ import { SharedMemeService } from "./shared-meme-service.js";
 const QQ_NUMBER = "3877162412";
 const SESSION_TOKEN = "shared-meme-human-session";
 const CONNECTOR_CREDENTIAL = `dbc_${"M".repeat(43)}`;
-const SOURCE_PATH = "/Users/doraemon/Desktop/sumitalk_meme_library_merged.sqlite";
 
 class FakeGroupMembership implements QqGroupMembershipReader {
   current = true;
@@ -109,7 +108,6 @@ function createHarness() {
       return `00000000-0000-4000-8000-${String(connectorEventNumber).padStart(12, "0")}`;
     },
   });
-  const sourceBefore = statSync(SOURCE_PATH);
   const sharedMemeService = new SharedMemeService({
     databasePath,
     now: () => now.value,
@@ -142,7 +140,6 @@ function createHarness() {
     membership,
     now,
     sharedMemeService,
-    sourceBefore,
     residentId: session.community.resident.residentId,
     async issueConnectorCredential() {
       return connectorService.issueCredential(SESSION_TOKEN);
@@ -156,13 +153,9 @@ function createHarness() {
   };
 }
 
-test("approved baseline imports losslessly and publishes an authenticated slim SQLite snapshot", async () => {
+test("approved embedded baseline publishes an authenticated slim SQLite snapshot", async () => {
   const harness = createHarness();
   try {
-    const sourceAfter = statSync(SOURCE_PATH);
-    assert.equal(sourceAfter.size, harness.sourceBefore.size);
-    assert.equal(sourceAfter.mtimeMs, harness.sourceBefore.mtimeMs);
-
     const listResponse = await harness.app.inject({
       method: "GET",
       url: "/api/shared-memes",

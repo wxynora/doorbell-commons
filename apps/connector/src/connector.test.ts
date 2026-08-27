@@ -1134,6 +1134,67 @@ test("shared meme sync keeps the last valid snapshot across corrupt, stale, and 
   }
 });
 
+test("a shared meme hint received during an active sync schedules one follow-up sync", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "doorbell-shared-meme-hint-latch-"));
+  const state = new ConnectorStateDatabase(join(directory, "connector.sqlite"));
+  const snapshotPath = join(directory, "shared-memes.sqlite");
+  const release1 = createSharedMemeRelease(directory, 1, "同步中的旧梗");
+  const release2 = createSharedMemeRelease(directory, 2, "同步后的新梗");
+  let remote = release1;
+  let versionRequests = 0;
+  let snapshotRequests = 0;
+  let markFirstSnapshotStarted: () => void = () => undefined;
+  let releaseFirstSnapshot: () => void = () => undefined;
+  const firstSnapshotStarted = new Promise<void>((resolve) => {
+    markFirstSnapshotStarted = resolve;
+  });
+  const firstSnapshotGate = new Promise<void>((resolve) => {
+    releaseFirstSnapshot = resolve;
+  });
+  const sync = new SharedMemeSynchronizer({
+    serverWebSocketUrl: "ws://127.0.0.1:3000/api/connector/ws",
+    credential: CREDENTIAL,
+    httpRequestTimeoutMs: 300_000,
+    state,
+    snapshotPath,
+    fetchImplementation: async (input) => {
+      const url = new URL(input instanceof Request ? input.url : input.toString());
+      if (url.pathname.endsWith("/version")) {
+        versionRequests += 1;
+        return Response.json(remote.metadata);
+      }
+      snapshotRequests += 1;
+      const requestedRelease = remote;
+      if (snapshotRequests === 1) {
+        markFirstSnapshotStarted();
+        await firstSnapshotGate;
+      }
+      return new Response(requestedRelease.snapshot, {
+        headers: { "content-type": "application/vnd.sqlite3" },
+      });
+    },
+  });
+
+  try {
+    const initialSync = sync.syncLatest();
+    await firstSnapshotStarted;
+    remote = release2;
+    const hintedSync = sync.syncLatest();
+    releaseFirstSnapshot();
+
+    assert.equal(await initialSync, true);
+    assert.equal(await hintedSync, true);
+    assert.equal(versionRequests, 2);
+    assert.equal(snapshotRequests, 2);
+    assert.equal(sync.getStatus().applied_version, 2);
+    assert.deepEqual(readFileSync(snapshotPath), release2.snapshot);
+  } finally {
+    releaseFirstSnapshot();
+    state.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("Connector rejects remote plaintext WebSocket URLs", () => {
   const directory = mkdtempSync(join(tmpdir(), "doorbell-connector-url-test-"));
   const state = new ConnectorStateDatabase(join(directory, "connector.sqlite"));
