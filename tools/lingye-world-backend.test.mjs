@@ -55,7 +55,9 @@ test("Lingye world keeps resident references, economy and careers in one isolate
         assert.equal(Object.hasOwn(harness.backend, "economy"), false);
         assert.equal(Object.hasOwn(harness.backend, "career"), false);
         assert.deepEqual(Object.keys(harness.backend.forResident("resident-a")).sort(), [
+            "acceptOwnJob",
             "cancelPlayerLoan",
+            "closeOwnTermDeposit",
             "confirmPlayerLoan",
             "confirmTrade",
             "getOwnAccount",
@@ -64,7 +66,10 @@ test("Lingye world keeps resident references, economy and careers in one isolate
             "hasOwnScheduledDuty",
             "previewOwnExchange",
             "proposePlayerLoan",
+            "recordOwnJobDecision",
+            "repayOwnSystemLoan",
             "repayPlayerLoan",
+            "transferOwnJob",
         ]);
         for (const command of [
             "importLegacyBalances",
@@ -76,6 +81,9 @@ test("Lingye world keeps resident references, economy and careers in one isolate
         ]) {
             assert.equal(Object.hasOwn(harness.backend.forResident("resident-a"), command), false);
             assert.equal(Object.hasOwn(harness.backend.trustedSystemCommands, command), true);
+        }
+        for (const command of ["closeTermDeposit", "repaySystemLoan"]) {
+            assert.equal(Object.hasOwn(harness.backend.trustedSystemCommands, command), false);
         }
         const publicBackend = createLingyeWorldBackend(harness.database, {
             economyRules: ECONOMY_RULES,

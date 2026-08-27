@@ -99,6 +99,11 @@ import { pushRanchNotice, takeRanchNotices } from "./domain/ranch/notices.js";
 import { advanceRanch } from "./domain/ranch/progression.js";
 import { aiDisplay, humanDisplay } from "./domain/ranch/display.js";
 import { pushLedger } from "./domain/ranch/ledger.js";
+import {
+    agronomyGrowthEffect,
+    agronomyHarvestPenalty,
+    recordAgronomyHarvest,
+} from "./career/p3-world.js";
 import { randomUUID } from "node:crypto";
 export { pushInbox, pushLog, pushSocialInbox, pushTrail, takeInbox } from "./domain/shared/notifications.js";
 export {
@@ -202,7 +207,16 @@ export function advance(farm, now) {
         return 0;
     for (const p of farm.plots) {
         if (p.crop && !p.crop.ripe) {
-            p.crop.progress = Math.min(p.crop.growTicks, p.crop.progress + elapsed);
+            const growthEffect = agronomyGrowthEffect(p.crop);
+            let growthTicks = elapsed;
+            if (growthEffect === "paused")
+                growthTicks = 0;
+            else if (growthEffect === "half") {
+                const accumulated = (p.crop.lingyeGrowthRemainder ?? 0) + elapsed;
+                growthTicks = Math.floor(accumulated / 2);
+                p.crop.lingyeGrowthRemainder = accumulated % 2;
+            }
+            p.crop.progress = Math.min(p.crop.growTicks, p.crop.progress + growthTicks);
             if (p.crop.progress >= p.crop.growTicks)
                 p.crop.ripe = true;
         }
@@ -282,6 +296,8 @@ export function harvest(farm, plotId, now, seasonMod) {
         else if (seasonMod.type === "quality_down")
             quality = qualityByTier(Math.max(1, quality.tier - (seasonMod.value ?? 1))) ?? quality;
     }
+    if (agronomyHarvestPenalty(c))
+        quality = qualityByTier(Math.max(1, quality.tier - 1)) ?? quality;
     // 奖励事件（季节事件触发时抑制，互斥）
     const ev = seasonMod ? null : rollBonusEvent(rng);
     let bonus = null;
@@ -332,6 +348,7 @@ export function harvest(farm, plotId, now, seasonMod) {
     const codexReward = isNew && crop.category !== "ugc" ? NEW_CODEX_REWARD[crop.rarity] ?? 0 : 0;
     if (codexReward)
         farm.coins += codexReward;
+    recordAgronomyHarvest(farm, plot, now);
     plot.crop = null;
     farm.harvested = (farm.harvested ?? 0) + 1; // 勤劳榜累计
     const qixiEvents = recordQixi2026Harvest(farm, crop, c.seedType, now);

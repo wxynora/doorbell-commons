@@ -71,6 +71,17 @@ export function installLingyeWorldSchema(database) {
         .get();
     if (version?.schema_version !== LINGYE_WORLD_SCHEMA_VERSION)
         throw new Error(`Unsupported Lingye world schema version: ${version?.schema_version ?? "missing"}`);
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS lingye_school_action_receipts (
+        action_key TEXT PRIMARY KEY,
+        resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE RESTRICT,
+        payload_hash TEXT NOT NULL,
+        result_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS lingye_school_action_receipts_resident
+        ON lingye_school_action_receipts(resident_id, created_at, action_key);
+    `);
     installEconomySchema(database);
     installCareerSchema(database);
 }
@@ -216,11 +227,12 @@ export function createLingyeWorldBackend(database, options) {
                     businessReference: `career-exam:${input.attemptId}:settle`,
                     idempotencyKey: input.idempotencyKey,
                 });
-                school.startExam(input.attemptId, settled.financialReceipt);
+                const paper = school.startExam(input.attemptId, settled.financialReceipt);
                 return {
                     attemptId: input.attemptId,
                     reservationId: input.reservationId,
                     settlementReceiptId: settled.financialReceipt.receiptId,
+                    ...paper,
                 };
             }),
             releaseUnstartedExam: (input) => atomic(() => {
@@ -236,7 +248,7 @@ export function createLingyeWorldBackend(database, options) {
                     releaseReceiptId: released.financialReceipt.receiptId,
                 };
             }),
-            submitWrittenExam: (attemptId, correctAnswers) => atomic(() => school.submitWrittenExam(attemptId, correctAnswers)),
+            submitWrittenExam: (input) => atomic(() => school.submitWrittenExam(input)),
             scheduleConstableInterview: (attemptId, scheduledAt) => atomic(() => school.scheduleConstableInterview(attemptId, scheduledAt)),
             signupConstableExaminer: (input) => atomic(() => school.signupConstableExaminer(input)),
             confirmConstableExaminerAttendance: (input) => atomic(() => school.confirmConstableExaminerAttendance(input)),
@@ -246,6 +258,7 @@ export function createLingyeWorldBackend(database, options) {
             voteConstablePublicNotice: (noticeId, residentId, choice) => atomic(() => school.voteConstablePublicNotice(noticeId, residentId, choice)),
             finalizeConstablePublicNotice: (noticeId, reviewPolicy) => atomic(() => school.finalizeConstablePublicNotice(noticeId, reviewPolicy)),
             hire: (input) => atomic(() => employment.hire(input)),
+            hireResident: (input) => atomic(() => employment.hireResident(input)),
             setAvailability: (employmentId, availability) => atomic(() => employment.setAvailability(employmentId, availability)),
             endEmployment: (employmentId) => atomic(() => employment.endEmployment(employmentId)),
             generateNextDutyDays: () => atomic(() => employment.generateNextDutyDays()),
@@ -312,11 +325,13 @@ export function createLingyeWorldBackend(database, options) {
     // Only commands whose services already verify an explicit resident actor belong here.
     // Future HTTP/MCP adapters must still inject that actor from authenticated identity.
     const residentCommands = Object.freeze({
+        closeTermDeposit: economyCommands.closeTermDeposit,
         confirmTrade: economyCommands.confirmTrade,
         proposePlayerLoan: economyCommands.proposePlayerLoan,
         confirmPlayerLoan: economyCommands.confirmPlayerLoan,
         cancelPlayerLoan: economyCommands.cancelPlayerLoan,
         repayPlayerLoan: economyCommands.repayPlayerLoan,
+        repaySystemLoan: economyCommands.repaySystemLoan,
     });
     const trustedSystemCommands = Object.freeze({
         importLegacyBalances: economyCommands.importLegacyBalances,
@@ -330,14 +345,12 @@ export function createLingyeWorldBackend(database, options) {
         withdrawDemandGold: economyCommands.withdrawDemandGold,
         accrueDemandInterest: economyCommands.accrueDemandInterest,
         openTermDeposit: economyCommands.openTermDeposit,
-        closeTermDeposit: economyCommands.closeTermDeposit,
         exchangeGoldForSilver: economyCommands.exchangeGoldForSilver,
         createTrade: economyCommands.createTrade,
         settleTrade: economyCommands.settleTrade,
         cancelTrade: economyCommands.cancelTrade,
         refundTrade: economyCommands.refundTrade,
         openSystemLoan: economyCommands.openSystemLoan,
-        repaySystemLoan: economyCommands.repaySystemLoan,
         refreshDebtStatus: economyCommands.refreshDebtStatus,
         ...careerCommands,
     });
@@ -345,6 +358,8 @@ export function createLingyeWorldBackend(database, options) {
         getAccount: (residentId) => economy.getAccount(residentId),
         getFinancialReceipt: (receiptId) => economy.getFinancialReceipt(receiptId),
         previewExchange: (residentId, goldPrincipal, at) => economy.previewExchange(residentId, goldPrincipal, at),
+        getCourseContent: (input) => school.getCourseContent(input),
+        getWrittenExamPaper: (attemptId) => school.getWrittenExamPaper(attemptId),
         hasScheduledDuty: (residentId, career, dutyDate) => employment.hasScheduledDuty(residentId, career, dutyDate),
         getJob: (jobId) => jobs.getJob(jobId),
     });
@@ -352,11 +367,16 @@ export function createLingyeWorldBackend(database, options) {
         if (typeof authenticatedResidentId !== "string" || authenticatedResidentId.length === 0)
             throw new Error("Authenticated resident id is required");
         return Object.freeze({
+            acceptOwnJob: (jobId) => careerCommands.acceptJob(jobId, authenticatedResidentId),
             confirmTrade: (input) => residentCommands.confirmTrade({ ...input, actorResidentId: authenticatedResidentId }),
+            closeOwnTermDeposit: (input) => residentCommands.closeTermDeposit({ ...input, actorResidentId: authenticatedResidentId }),
             proposePlayerLoan: (input) => residentCommands.proposePlayerLoan({ ...input, actorResidentId: authenticatedResidentId }),
             confirmPlayerLoan: (input) => residentCommands.confirmPlayerLoan({ ...input, actorResidentId: authenticatedResidentId }),
             cancelPlayerLoan: (input) => residentCommands.cancelPlayerLoan({ ...input, actorResidentId: authenticatedResidentId }),
             repayPlayerLoan: (input) => residentCommands.repayPlayerLoan({ ...input, actorResidentId: authenticatedResidentId }),
+            repayOwnSystemLoan: (input) => residentCommands.repaySystemLoan({ ...input, actorResidentId: authenticatedResidentId }),
+            recordOwnJobDecision: (input) => careerCommands.recordDecision({ ...input, workerResidentId: authenticatedResidentId }),
+            transferOwnJob: (input) => careerCommands.transferJob({ ...input, workerResidentId: authenticatedResidentId }),
             getOwnAccount: () => economy.getAccount(authenticatedResidentId),
             getOwnFinancialReceipt: (receiptId) => {
                 const receipt = economy.getFinancialReceipt(receiptId);

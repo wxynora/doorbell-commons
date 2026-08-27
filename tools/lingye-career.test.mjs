@@ -4,6 +4,13 @@ import { test } from "node:test";
 import { CareerDomainError, } from "../dist/career/contracts.js";
 import { CareerEmploymentService } from "../dist/career/employment-service.js";
 import { CareerJobService } from "../dist/career/job-service.js";
+import {
+    CAREER_CURRICULUM_VERSION,
+    careerCourseAvailability,
+    careerCourseContent,
+    careerExamAvailability,
+    createCoursePracticePaper,
+} from "../dist/career/curriculum.js";
 import { beijingTimestamp, recordFinancialReceipt } from "../dist/career/persistence.js";
 import { installCareerSchema } from "../dist/career/schema.js";
 import { CareerSchoolService } from "../dist/career/school-service.js";
@@ -166,6 +173,38 @@ function seedCertificate(harness, residentId, career, level) {
             .run(residentId, career, current, `seed-${residentId}-${career}-${current}`);
     }
 }
+let assessmentSubmissionSequence = 0;
+function answersForScore(answerKey, correctAnswers) {
+    return answerKey.map((answer, index) => index < correctAnswers
+        ? answer
+        : ({ A: "B", B: "C", C: "D", D: "A" })[answer]);
+}
+function submitPracticeScore(harness, input, correctAnswers, idempotencyKey = `practice-test-${++assessmentSubmissionSequence}`) {
+    const paper = harness.database
+        .prepare(`SELECT paper_id, answer_key_json FROM career_assessment_papers
+       WHERE target_key = ?`)
+        .get(`course:${input.residentId}:${input.career}:${input.level}:${input.courseIndex}`);
+    const answerData = JSON.parse(paper.answer_key_json);
+    return harness.school.submitCoursePractice({
+        ...input,
+        paperId: paper.paper_id,
+        answers: answersForScore(answerData.answers ?? answerData, correctAnswers),
+        idempotencyKey,
+    });
+}
+function submitExamScore(harness, attemptId, correctAnswers, idempotencyKey = `exam-test-${++assessmentSubmissionSequence}`) {
+    const paper = harness.database
+        .prepare(`SELECT paper_id, answer_key_json FROM career_assessment_papers
+       WHERE exam_attempt_id = ?`)
+        .get(attemptId);
+    const answerData = JSON.parse(paper.answer_key_json);
+    return harness.school.submitWrittenExam({
+        attemptId,
+        paperId: paper.paper_id,
+        answers: answersForScore(answerData.answers ?? answerData, correctAnswers),
+        idempotencyKey,
+    });
+}
 function completeLevelOneCourses(harness, residentId, career) {
     for (const courseIndex of [1, 2, 3]) {
         harness.school.enrollCourse({
@@ -176,13 +215,12 @@ function completeLevelOneCourses(harness, residentId, career) {
             tuitionReceipt: goldReceipt(harness, residentId, "system_gold_charge", 20_000, `career-course:${residentId}:${career}:1:${courseIndex}`),
         });
         harness.school.markCourseContentRead({ career, courseIndex, level: 1, residentId });
-        assert.equal(harness.school.submitCoursePractice({
+        assert.equal(submitPracticeScore(harness, {
             career,
-            correctAnswers: 4,
             courseIndex,
             level: 1,
             residentId,
-        }).passed, true);
+        }, 4).passed, true);
     }
 }
 test("career schema is idempotent and leaves the owning database version untouched", () => {
@@ -217,6 +255,22 @@ test("career schema is idempotent and leaves the owning database version untouch
     finally {
         database.close();
     }
+});
+test("approved curriculum is versioned, answerless to readers, and blocks unresolved levels", () => {
+    assert.equal(CAREER_CURRICULUM_VERSION, "career-curriculum-2026-08-27.1");
+    assert.equal(careerCourseAvailability("agronomist", 1, 1), true);
+    assert.equal(careerCourseAvailability("chef", 4, 3), false);
+    assert.equal(careerExamAvailability("constable", 4), false);
+    const content = careerCourseContent("agronomist", 1, 1);
+    assert.equal(content.title, "《叶子不会说谎，但会装病》");
+    const paper = createCoursePracticePaper("agronomist", 1, 1, "reader-resident");
+    assert.equal(paper.publicPaper.length, 5);
+    assert.deepEqual(Object.keys(paper.publicPaper[0]).sort(), ["id", "options", "stem"]);
+    assert.equal(Object.hasOwn(paper.publicPaper[0], "answer"), false);
+    assert.throws(
+        () => careerCourseContent("chef", 4, 3),
+        assertCareerError("assessment_content_not_available"),
+    );
 });
 test("career financial receipts require an authoritative economy journal and balanced ledger", () => {
     const harness = createHarness();
@@ -301,33 +355,56 @@ test("school enforces ordered paid courses, read-and-practice completion, fixed 
             residentId: "resident-1",
             tuitionReceipt: courseOneReceipt,
         });
-        assert.throws(() => harness.school.submitCoursePractice({
+        assert.throws(() => submitPracticeScore(harness, {
             career: "reporter",
-            correctAnswers: 5,
             courseIndex: 1,
             level: 1,
             residentId: "resident-1",
-        }), assertCareerError("course_content_not_read"));
+        }, 5), assertCareerError("course_content_not_read"));
         harness.school.markCourseContentRead({
             career: "reporter",
             courseIndex: 1,
             level: 1,
             residentId: "resident-1",
         });
-        assert.deepEqual(harness.school.submitCoursePractice({
+        const failedPractice = submitPracticeScore(harness, {
             career: "reporter",
-            correctAnswers: 3,
             courseIndex: 1,
             level: 1,
             residentId: "resident-1",
-        }), { bestCorrectAnswers: 3, passed: false });
-        assert.equal(harness.school.submitCoursePractice({
+        }, 3);
+        assert.deepEqual({
+            bestCorrectAnswers: failedPractice.bestCorrectAnswers,
+            correctAnswers: failedPractice.correctAnswers,
+            passed: failedPractice.passed,
+        }, { bestCorrectAnswers: 3, correctAnswers: 3, passed: false });
+        assert.equal(failedPractice.review.length, 5);
+        assert.equal(submitPracticeScore(harness, {
             career: "reporter",
-            correctAnswers: 4,
             courseIndex: 1,
             level: 1,
             residentId: "resident-1",
-        }).passed, true);
+        }, 4).passed, true);
+        const replayablePractice = {
+            career: "reporter",
+            courseIndex: 1,
+            level: 1,
+            residentId: "resident-1",
+        };
+        const firstReplayableResult = submitPracticeScore(
+            harness,
+            replayablePractice,
+            5,
+            "practice-exact-replay",
+        );
+        assert.deepEqual(
+            submitPracticeScore(harness, replayablePractice, 5, "practice-exact-replay"),
+            firstReplayableResult,
+        );
+        assert.throws(
+            () => submitPracticeScore(harness, replayablePractice, 4, "practice-exact-replay"),
+            assertCareerError("assessment_submission_conflict"),
+        );
         for (const courseIndex of [2, 3]) {
             harness.school.enrollCourse({
                 career: "reporter",
@@ -342,13 +419,12 @@ test("school enforces ordered paid courses, read-and-practice completion, fixed 
                 level: 1,
                 residentId: "resident-1",
             });
-            harness.school.submitCoursePractice({
+            submitPracticeScore(harness, {
                 career: "reporter",
-                correctAnswers: 5,
                 courseIndex,
                 level: 1,
                 residentId: "resident-1",
-            });
+            }, 5);
         }
         const first = harness.school.registerExam({
             attemptId: "attempt-1",
@@ -360,7 +436,11 @@ test("school enforces ordered paid courses, read-and-practice completion, fixed 
         assert.equal(first.scheduledAt, beijingTimestamp("2026-08-26", 12));
         harness.setNow(first.scheduledAt);
         harness.school.startExam(first.attemptId, goldReceipt(harness, "resident-1", "system_gold_settle", 40_000, "career-exam:attempt-1:settle"));
-        assert.equal(harness.school.submitWrittenExam(first.attemptId, 17), "failed");
+        assert.deepEqual(submitExamScore(harness, first.attemptId, 17), {
+            status: "failed",
+            correctAnswers: 17,
+            passed: false,
+        });
         const retake = harness.school.registerExam({
             attemptId: "attempt-2",
             career: "reporter",
@@ -371,7 +451,11 @@ test("school enforces ordered paid courses, read-and-practice completion, fixed 
         assert.equal(retake.feeGold, 20_000);
         harness.setNow(retake.scheduledAt);
         harness.school.startExam(retake.attemptId, goldReceipt(harness, "resident-1", "system_gold_settle", 20_000, "career-exam:attempt-2:settle"));
-        assert.equal(harness.school.submitWrittenExam(retake.attemptId, 18), "passed");
+        assert.deepEqual(submitExamScore(harness, retake.attemptId, 18), {
+            status: "passed",
+            correctAnswers: 18,
+            passed: true,
+        });
         assert.deepEqual({ ...harness.database
             .prepare(`SELECT qualification_level, status FROM career_certificates
            WHERE resident_id = 'resident-1' AND career = 'reporter'`)
@@ -390,13 +474,12 @@ test("school enforces ordered paid courses, read-and-practice completion, fixed 
                 level: 2,
                 residentId: "resident-1",
             });
-            harness.school.submitCoursePractice({
+            submitPracticeScore(harness, {
                 career: "reporter",
-                correctAnswers: 4,
                 courseIndex,
                 level: 2,
                 residentId: "resident-1",
-            });
+            }, 4);
         }
         assert.throws(() => harness.school.registerExam({
             attemptId: "attempt-level-2",
@@ -497,7 +580,11 @@ test("written exams expire at the session boundary and active certificates block
         const expiredSettlement = goldReceipt(harness, "exam-resident", "system_gold_settle", 40_000, "career-exam:expired-attempt:settle");
         harness.school.startExam(expiredAttempt.attemptId, expiredSettlement);
         harness.setNow(expiredAttempt.scheduledAt + 2 * 60 * 60 * 1_000);
-        assert.equal(harness.school.submitWrittenExam(expiredAttempt.attemptId, 20), "expired");
+        assert.deepEqual(submitExamScore(harness, expiredAttempt.attemptId, 20), {
+            status: "expired",
+            correctAnswers: null,
+            passed: false,
+        });
         assert.deepEqual({ ...harness.database
             .prepare(`SELECT registration_status, correct_answers, settlement_receipt_id
               FROM career_exam_attempts WHERE attempt_id = 'expired-attempt'`)
@@ -523,7 +610,29 @@ test("written exams expire at the session boundary and active certificates block
         });
         harness.setNow(passedAttempt.scheduledAt);
         harness.school.startExam(passedAttempt.attemptId, goldReceipt(harness, "exam-resident", "system_gold_settle", 20_000, "career-exam:passed-attempt:settle"));
-        assert.equal(harness.school.submitWrittenExam(passedAttempt.attemptId, 20), "passed");
+        const passedResult = submitExamScore(
+            harness,
+            passedAttempt.attemptId,
+            20,
+            "written-exam-exact-replay",
+        );
+        assert.deepEqual(passedResult, {
+            status: "passed",
+            correctAnswers: 20,
+            passed: true,
+        });
+        assert.deepEqual(
+            submitExamScore(harness, passedAttempt.attemptId, 20, "written-exam-exact-replay"),
+            passedResult,
+        );
+        assert.throws(
+            () => submitExamScore(harness, passedAttempt.attemptId, 19, "written-exam-exact-replay"),
+            assertCareerError("assessment_submission_conflict"),
+        );
+        assert.throws(
+            () => submitExamScore(harness, passedAttempt.attemptId, 20, "written-exam-second-submit"),
+            assertCareerError("exam_already_submitted"),
+        );
         assert.equal(harness.school.registerExam({
             attemptId: "passed-attempt",
             career: "reporter",
@@ -952,7 +1061,11 @@ test("constable interview uses human signup order and fails closed after the 24-
         });
         harness.setNow(attempt.scheduledAt);
         harness.school.startExam(attempt.attemptId, goldReceipt(harness, "candidate", "system_gold_settle", 40_000, "career-exam:constable-attempt:settle"));
-        assert.equal(harness.school.submitWrittenExam(attempt.attemptId, 20), "written_passed");
+        assert.deepEqual(submitExamScore(harness, attempt.attemptId, 20), {
+            status: "written_passed",
+            correctAnswers: 20,
+            passed: true,
+        });
         const scheduledAt = beijingTimestamp("2026-08-26", 20);
         const interviewId = harness.school.scheduleConstableInterview(attempt.attemptId, scheduledAt);
         harness.setNow(beijingTimestamp("2026-08-26", 8));
@@ -1016,7 +1129,11 @@ test("a postponed constable interview reopens signup at a new session", () => {
         });
         harness.setNow(attempt.scheduledAt);
         harness.school.startExam(attempt.attemptId, goldReceipt(harness, "postponed-candidate", "system_gold_settle", 40_000, "career-exam:postponed-attempt:settle"));
-        assert.equal(harness.school.submitWrittenExam(attempt.attemptId, 20), "written_passed");
+        assert.deepEqual(submitExamScore(harness, attempt.attemptId, 20), {
+            status: "written_passed",
+            correctAnswers: 20,
+            passed: true,
+        });
         const firstSession = beijingTimestamp("2026-08-27", 20);
         const interviewId = harness.school.scheduleConstableInterview(attempt.attemptId, firstSession);
         harness.setNow(beijingTimestamp("2026-08-27", 8));

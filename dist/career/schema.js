@@ -1,4 +1,4 @@
-export const CAREER_SCHEMA_VERSION = 2;
+export const CAREER_SCHEMA_VERSION = 3;
 export function installCareerSchema(database) {
     database.exec(`
     CREATE TABLE IF NOT EXISTS career_tracks (
@@ -74,6 +74,48 @@ export function installCareerSchema(database) {
     );
     CREATE INDEX IF NOT EXISTS career_exam_attempts_resident_index
       ON career_exam_attempts(resident_id, career, qualification_level, registered_at);
+
+    CREATE TABLE IF NOT EXISTS career_assessment_papers (
+      paper_id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL CHECK (kind IN ('course_practice', 'written_exam')),
+      target_key TEXT NOT NULL UNIQUE,
+      resident_id TEXT NOT NULL,
+      career TEXT NOT NULL CHECK (career IN ('chef', 'agronomist', 'veterinarian', 'reporter', 'constable')),
+      qualification_level INTEGER NOT NULL CHECK (qualification_level BETWEEN 1 AND 4),
+      course_index INTEGER CHECK (course_index BETWEEN 1 AND 3),
+      exam_attempt_id TEXT UNIQUE REFERENCES career_exam_attempts(attempt_id),
+      bank_version TEXT NOT NULL,
+      public_paper_json TEXT NOT NULL,
+      answer_key_json TEXT NOT NULL,
+      paper_hash TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (resident_id, career, qualification_level, course_index)
+        REFERENCES career_courses(resident_id, career, qualification_level, course_index),
+      CHECK (
+        (kind = 'course_practice' AND course_index IS NOT NULL AND exam_attempt_id IS NULL)
+        OR
+        (kind = 'written_exam' AND course_index IS NULL AND exam_attempt_id IS NOT NULL)
+      )
+    );
+
+    CREATE TABLE IF NOT EXISTS career_assessment_submissions (
+      submission_id TEXT PRIMARY KEY,
+      paper_id TEXT NOT NULL REFERENCES career_assessment_papers(paper_id),
+      kind TEXT NOT NULL CHECK (kind IN ('course_practice', 'written_exam')),
+      resident_id TEXT NOT NULL,
+      idempotency_key TEXT NOT NULL,
+      payload_hash TEXT NOT NULL,
+      answers_json TEXT NOT NULL,
+      correct_answers INTEGER NOT NULL CHECK (correct_answers BETWEEN 0 AND 20),
+      passed INTEGER NOT NULL CHECK (passed IN (0, 1)),
+      result_status TEXT NOT NULL,
+      result_json TEXT NOT NULL,
+      submitted_at INTEGER NOT NULL,
+      UNIQUE (resident_id, idempotency_key)
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS career_one_written_submission_per_paper
+      ON career_assessment_submissions(paper_id)
+      WHERE kind = 'written_exam';
 
     CREATE TABLE IF NOT EXISTS career_constable_interviews (
       interview_id TEXT PRIMARY KEY,
@@ -262,6 +304,57 @@ export function installCareerSchema(database) {
         OR
         (units BETWEEN 1 AND 3 AND performance_gold > 0 AND receipt_id IS NOT NULL)
       )
+    );
+
+    CREATE TABLE IF NOT EXISTS career_commission_payments (
+      job_id TEXT PRIMARY KEY REFERENCES career_jobs(job_id),
+      trade_id TEXT UNIQUE,
+      silver_amount INTEGER NOT NULL CHECK (silver_amount > 0),
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS career_commission_source_facts (
+      source_id TEXT PRIMARY KEY,
+      source_type TEXT NOT NULL,
+      fact_json TEXT NOT NULL,
+      recorded_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS career_npc_service_settlements (
+      settlement_id TEXT PRIMARY KEY,
+      source_id TEXT NOT NULL UNIQUE,
+      source_type TEXT NOT NULL,
+      career TEXT NOT NULL CHECK (career IN ('agronomist', 'veterinarian')),
+      owner_resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE RESTRICT,
+      difficulty_level INTEGER NOT NULL CHECK (difficulty_level BETWEEN 1 AND 4),
+      base_fee_gold INTEGER NOT NULL CHECK (base_fee_gold > 0),
+      material_fee_gold INTEGER NOT NULL CHECK (material_fee_gold > 0),
+      total_fee_gold INTEGER NOT NULL CHECK (total_fee_gold = base_fee_gold + material_fee_gold),
+      charge_receipt_id TEXT NOT NULL UNIQUE REFERENCES economy_financial_receipts(receipt_id) ON DELETE RESTRICT,
+      idempotency_key TEXT NOT NULL UNIQUE,
+      payload_hash TEXT NOT NULL,
+      result_json TEXT NOT NULL,
+      completed_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS career_reporter_submissions (
+      submission_id TEXT PRIMARY KEY,
+      job_id TEXT NOT NULL UNIQUE REFERENCES career_jobs(job_id),
+      resident_id TEXT NOT NULL,
+      source_reference TEXT NOT NULL,
+      article_text TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('pending_review', 'published', 'rejected')),
+      submitted_at INTEGER NOT NULL,
+      reviewed_at INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS career_security_resolutions (
+      resolution_id TEXT PRIMARY KEY,
+      job_id TEXT NOT NULL UNIQUE REFERENCES career_jobs(job_id),
+      resident_id TEXT NOT NULL,
+      result_kind TEXT NOT NULL CHECK (result_kind IN ('rules_explained', 'voluntary_mediation', 'bank_notice', 'review_upheld')),
+      note TEXT,
+      resolved_at INTEGER NOT NULL
     );
   `);
 }

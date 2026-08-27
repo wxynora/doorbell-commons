@@ -1,5 +1,13 @@
-import { randomUUID } from "node:crypto";
-import { CareerDomainError, COURSE_COUNT_PER_LEVEL, COURSE_PRACTICE_PASS_COUNT, COURSE_PRACTICE_QUESTION_COUNT, COURSE_TUITION_GOLD, EXAM_FEE_GOLD, EXAM_PASS_COUNT, EXAM_QUESTION_COUNT, } from "./contracts.js";
+import { createHash, randomUUID } from "node:crypto";
+import { CareerDomainError, COURSE_COUNT_PER_LEVEL, COURSE_PRACTICE_PASS_COUNT, COURSE_TUITION_GOLD, EXAM_FEE_GOLD, EXAM_PASS_COUNT, } from "./contracts.js";
+import {
+    careerCourseAvailability,
+    careerCourseContent,
+    careerExamAvailability,
+    createCoursePracticePaper,
+    createWrittenExamPaper,
+    gradeAssessment,
+} from "./curriculum.js";
 import { activeCertificateLevel, isBeijingHour, nextExamSessionAt, nextInterviewSessionAt, recordFinancialReceipt, requireCareerTrack, runInTransaction, } from "./persistence.js";
 import { installCareerSchema } from "./schema.js";
 const TWO_HOURS_MS = 2 * 60 * 60 * 1_000;
@@ -56,6 +64,9 @@ export class CareerSchoolService {
     enrollCourse(input) {
         const now = this.#now();
         return runInTransaction(this.#database, () => {
+            if (!careerCourseAvailability(input.career, input.level, input.courseIndex)) {
+                throw new CareerDomainError("assessment_content_not_available", "This course is not available");
+            }
             requireCareerTrack(this.#database, input.residentId, input.career);
             this.#requireLevelPrerequisite(input.residentId, input.career, input.level);
             if (input.courseIndex > 1) {
@@ -85,9 +96,12 @@ export class CareerSchoolService {
                 if (existing.tuition_receipt_id !== input.tuitionReceipt.receiptId) {
                     throw new CareerDomainError("course_enrollment_conflict", "The course is already enrolled with another receipt");
                 }
+                const paper = this.#ensureCoursePaper(input, now);
                 return {
                     completed: existing.completed_at !== null,
                     contentRead: existing.content_read_at !== null,
+                    paperId: paper.paperId,
+                    bankVersion: paper.bankVersion,
                 };
             }
             this.#database
@@ -96,8 +110,29 @@ export class CareerSchoolService {
              tuition_receipt_id, enrolled_at
            ) VALUES (?, ?, ?, ?, ?, ?)`)
                 .run(input.residentId, input.career, input.level, input.courseIndex, input.tuitionReceipt.receiptId, now);
-            return { completed: false, contentRead: false };
+            const paper = this.#ensureCoursePaper(input, now);
+            return {
+                completed: false,
+                contentRead: false,
+                paperId: paper.paperId,
+                bankVersion: paper.bankVersion,
+            };
         });
+    }
+    getCourseContent(input) {
+        const enrolled = this.#database
+            .prepare(`SELECT 1 FROM career_courses
+         WHERE resident_id = ? AND career = ? AND qualification_level = ? AND course_index = ?`)
+            .get(input.residentId, input.career, input.level, input.courseIndex);
+        if (!enrolled)
+            throw new CareerDomainError("course_not_enrolled", "The course is not enrolled");
+        const content = careerCourseContent(input.career, input.level, input.courseIndex);
+        const paper = this.#requireCoursePaper(input);
+        return {
+            ...content,
+            paperId: paper.paper_id,
+            practiceQuestions: JSON.parse(paper.public_paper_json),
+        };
     }
     markCourseContentRead(input) {
         const result = this.#database
@@ -110,11 +145,6 @@ export class CareerSchoolService {
         }
     }
     submitCoursePractice(input) {
-        if (!Number.isInteger(input.correctAnswers) ||
-            input.correctAnswers < 0 ||
-            input.correctAnswers > COURSE_PRACTICE_QUESTION_COUNT) {
-            throw new CareerDomainError("invalid_practice_score", "Practice must contain five answers");
-        }
         const now = this.#now();
         return runInTransaction(this.#database, () => {
             const course = this.#database
@@ -128,8 +158,16 @@ export class CareerSchoolService {
             if (course.content_read_at === null) {
                 throw new CareerDomainError("course_content_not_read", "The approved teaching units must be read before practice");
             }
-            const best = Math.max(course.best_correct_answers, input.correctAnswers);
-            const passed = course.completed_at !== null || input.correctAnswers >= COURSE_PRACTICE_PASS_COUNT;
+            const paper = this.#requireCoursePaper(input);
+            if (paper.paper_id !== input.paperId)
+                throw new CareerDomainError("assessment_paper_mismatch", "The course paper does not match");
+            const answerData = this.#paperAnswerData(paper);
+            const graded = gradeAssessment(answerData.answers, input.answers);
+            const replay = this.#submissionReplay(input.residentId, input.idempotencyKey, paper.paper_id, graded.answers);
+            if (replay !== null)
+                return replay;
+            const best = Math.max(course.best_correct_answers, graded.correctAnswers);
+            const passed = course.completed_at !== null || graded.correctAnswers >= COURSE_PRACTICE_PASS_COUNT;
             this.#database
                 .prepare(`UPDATE career_courses
            SET best_correct_answers = ?, completed_at = CASE
@@ -138,8 +176,27 @@ export class CareerSchoolService {
              ELSE NULL
            END
            WHERE resident_id = ? AND career = ? AND qualification_level = ? AND course_index = ?`)
-                .run(best, input.correctAnswers, COURSE_PRACTICE_PASS_COUNT, now, input.residentId, input.career, input.level, input.courseIndex);
-            return { bestCorrectAnswers: best, passed };
+                .run(best, graded.correctAnswers, COURSE_PRACTICE_PASS_COUNT, now, input.residentId, input.career, input.level, input.courseIndex);
+            const result = {
+                bestCorrectAnswers: best,
+                correctAnswers: graded.correctAnswers,
+                passed,
+                review: answerData.review.map((entry, index) => ({
+                    ...entry,
+                    selectedAnswer: graded.answers[index],
+                    correct: graded.answers[index] === entry.correctAnswer,
+                })),
+            };
+            this.#recordSubmission({
+                paper,
+                residentId: input.residentId,
+                idempotencyKey: input.idempotencyKey,
+                answers: graded.answers,
+                result,
+                status: passed ? "passed" : "failed",
+                now,
+            });
+            return result;
         });
     }
     registerExam(input) {
@@ -161,10 +218,13 @@ export class CareerSchoolService {
                     kind: reservationReceipt.kind,
                     residentId: reservationReceipt.resident_id,
                 }, now);
+                const paper = this.#ensureExamPaper(existing, now);
                 return {
                     attemptId: existing.attempt_id,
                     feeGold: reservationReceipt.amount,
                     scheduledAt: existing.scheduled_at,
+                    paperId: paper.paperId,
+                    bankVersion: paper.bankVersion,
                 };
             }
             this.#requireExamEligibility(input.residentId, input.career, input.level);
@@ -192,18 +252,25 @@ export class CareerSchoolService {
              registration_status, reservation_receipt_id, registered_at
            ) VALUES (?, ?, ?, ?, ?, 'registered', ?, ?)`)
                 .run(input.attemptId, input.residentId, input.career, input.level, scheduledAt, input.reservationReceipt.receiptId, now);
-            return { attemptId: input.attemptId, feeGold, scheduledAt };
+            const paper = this.#ensureExamPaper(this.#requireExamAttempt(input.attemptId), now);
+            return {
+                attemptId: input.attemptId,
+                feeGold,
+                scheduledAt,
+                paperId: paper.paperId,
+                bankVersion: paper.bankVersion,
+            };
         });
     }
     startExam(attemptId, settlementReceipt) {
         const now = this.#now();
-        runInTransaction(this.#database, () => {
+        return runInTransaction(this.#database, () => {
             const attempt = this.#requireExamAttempt(attemptId);
             if (attempt.registration_status === "active") {
                 if (attempt.settlement_receipt_id !== settlementReceipt.receiptId) {
                     throw new CareerDomainError("exam_start_conflict", "The exam already started");
                 }
-                return;
+                return this.#publicExamPaper(attemptId);
             }
             if (attempt.registration_status !== "registered") {
                 throw new CareerDomainError("exam_not_registered", "The exam is not awaiting its session");
@@ -225,6 +292,7 @@ export class CareerSchoolService {
            SET registration_status = 'active', settlement_receipt_id = ?, started_at = ?
            WHERE attempt_id = ?`)
                 .run(settlementReceipt.receiptId, now, attemptId);
+            return this.#publicExamPaper(attemptId);
         });
     }
     releaseUnstartedExam(attemptId, releaseReceipt) {
@@ -256,15 +324,28 @@ export class CareerSchoolService {
                 .run(releaseReceipt.receiptId, now, attemptId);
         });
     }
-    submitWrittenExam(attemptId, correctAnswers) {
-        if (!Number.isInteger(correctAnswers) ||
-            correctAnswers < 0 ||
-            correctAnswers > EXAM_QUESTION_COUNT) {
-            throw new CareerDomainError("invalid_exam_score", "The written exam must contain 20 answers");
-        }
+    getWrittenExamPaper(attemptId) {
+        const attempt = this.#requireExamAttempt(attemptId);
+        if (attempt.registration_status !== "active")
+            throw new CareerDomainError("exam_not_active", "The exam is not active");
+        return this.#publicExamPaper(attemptId);
+    }
+    submitWrittenExam(input) {
         const now = this.#now();
         return runInTransaction(this.#database, () => {
-            const attempt = this.#requireExamAttempt(attemptId);
+            const attempt = this.#requireExamAttempt(input.attemptId);
+            const paper = this.#requireExamPaper(input.attemptId);
+            if (paper.paper_id !== input.paperId)
+                throw new CareerDomainError("assessment_paper_mismatch", "The written exam paper does not match");
+            const graded = gradeAssessment(this.#paperAnswerData(paper).answers, input.answers);
+            const replay = this.#submissionReplay(attempt.resident_id, input.idempotencyKey, paper.paper_id, graded.answers);
+            if (replay !== null)
+                return replay;
+            const prior = this.#database
+                .prepare("SELECT 1 FROM career_assessment_submissions WHERE paper_id = ? AND kind = 'written_exam'")
+                .get(paper.paper_id);
+            if (prior)
+                throw new CareerDomainError("exam_already_submitted", "The written exam was already submitted");
             if (attempt.registration_status !== "active") {
                 throw new CareerDomainError("exam_not_active", "The exam is not active");
             }
@@ -273,32 +354,72 @@ export class CareerSchoolService {
                     .prepare(`UPDATE career_exam_attempts
              SET registration_status = 'failed', correct_answers = NULL, ended_at = ?
              WHERE attempt_id = ?`)
-                    .run(now, attemptId);
-                return "expired";
+                    .run(now, input.attemptId);
+                const result = { status: "expired", correctAnswers: null, passed: false };
+                this.#recordSubmission({
+                    paper,
+                    residentId: attempt.resident_id,
+                    idempotencyKey: input.idempotencyKey,
+                    answers: graded.answers,
+                    result,
+                    status: "expired",
+                    now,
+                });
+                return result;
             }
-            if (correctAnswers < EXAM_PASS_COUNT) {
+            if (graded.correctAnswers < EXAM_PASS_COUNT) {
                 this.#database
                     .prepare(`UPDATE career_exam_attempts
              SET registration_status = 'failed', correct_answers = ?, ended_at = ?
              WHERE attempt_id = ?`)
-                    .run(correctAnswers, now, attemptId);
-                return "failed";
+                    .run(graded.correctAnswers, now, input.attemptId);
+                const result = { status: "failed", correctAnswers: graded.correctAnswers, passed: false };
+                this.#recordSubmission({
+                    paper,
+                    residentId: attempt.resident_id,
+                    idempotencyKey: input.idempotencyKey,
+                    answers: graded.answers,
+                    result,
+                    status: "failed",
+                    now,
+                });
+                return result;
             }
             if (attempt.career === "constable") {
                 this.#database
                     .prepare(`UPDATE career_exam_attempts
              SET registration_status = 'written_passed', correct_answers = ?, ended_at = ?
              WHERE attempt_id = ?`)
-                    .run(correctAnswers, now, attemptId);
-                return "written_passed";
+                    .run(graded.correctAnswers, now, input.attemptId);
+                const result = { status: "written_passed", correctAnswers: graded.correctAnswers, passed: true };
+                this.#recordSubmission({
+                    paper,
+                    residentId: attempt.resident_id,
+                    idempotencyKey: input.idempotencyKey,
+                    answers: graded.answers,
+                    result,
+                    status: "written_passed",
+                    now,
+                });
+                return result;
             }
             this.#activateCertificate(attempt, now);
             this.#database
                 .prepare(`UPDATE career_exam_attempts
            SET registration_status = 'passed', correct_answers = ?, ended_at = ?
            WHERE attempt_id = ?`)
-                .run(correctAnswers, now, attemptId);
-            return "passed";
+                .run(graded.correctAnswers, now, input.attemptId);
+            const result = { status: "passed", correctAnswers: graded.correctAnswers, passed: true };
+            this.#recordSubmission({
+                paper,
+                residentId: attempt.resident_id,
+                idempotencyKey: input.idempotencyKey,
+                answers: graded.answers,
+                result,
+                status: "passed",
+                now,
+            });
+            return result;
         });
     }
     scheduleConstableInterview(attemptId, scheduledAt = nextInterviewSessionAt(this.#now())) {
@@ -622,6 +743,148 @@ export class CareerSchoolService {
             return "certificate_activated";
         });
     }
+    #ensureCoursePaper(input, now) {
+        const blueprint = createCoursePracticePaper(
+            input.career,
+            input.level,
+            input.courseIndex,
+            input.residentId,
+        );
+        const existing = this.#database
+            .prepare("SELECT * FROM career_assessment_papers WHERE target_key = ?")
+            .get(blueprint.targetKey);
+        if (existing)
+            return { paperId: existing.paper_id, bankVersion: existing.bank_version };
+        const paperId = this.#generateId();
+        const publicPaperJson = JSON.stringify(blueprint.publicPaper);
+        const answerKeyJson = JSON.stringify({
+            answers: blueprint.answerKey,
+            review: blueprint.review,
+        });
+        const paperHash = createHash("sha256")
+            .update(JSON.stringify([blueprint.bankVersion, publicPaperJson, answerKeyJson]))
+            .digest("hex");
+        this.#database
+            .prepare(`INSERT INTO career_assessment_papers (
+           paper_id, kind, target_key, resident_id, career, qualification_level,
+           course_index, bank_version, public_paper_json, answer_key_json,
+           paper_hash, created_at
+         ) VALUES (?, 'course_practice', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+            .run(paperId, blueprint.targetKey, input.residentId, input.career, input.level,
+            input.courseIndex, blueprint.bankVersion, publicPaperJson, answerKeyJson, paperHash, now);
+        return { paperId, bankVersion: blueprint.bankVersion };
+    }
+    #ensureExamPaper(attempt, now) {
+        const blueprint = createWrittenExamPaper(
+            attempt.career,
+            attempt.qualification_level,
+            attempt.attempt_id,
+        );
+        const existing = this.#database
+            .prepare("SELECT * FROM career_assessment_papers WHERE target_key = ?")
+            .get(blueprint.targetKey);
+        if (existing)
+            return { paperId: existing.paper_id, bankVersion: existing.bank_version };
+        const paperId = this.#generateId();
+        const publicPaperJson = JSON.stringify(blueprint.publicPaper);
+        const answerKeyJson = JSON.stringify({
+            answers: blueprint.answerKey,
+            review: blueprint.review,
+        });
+        const paperHash = createHash("sha256")
+            .update(JSON.stringify([blueprint.bankVersion, publicPaperJson, answerKeyJson]))
+            .digest("hex");
+        this.#database
+            .prepare(`INSERT INTO career_assessment_papers (
+           paper_id, kind, target_key, resident_id, career, qualification_level,
+           exam_attempt_id, bank_version, public_paper_json, answer_key_json,
+           paper_hash, created_at
+         ) VALUES (?, 'written_exam', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+            .run(paperId, blueprint.targetKey, attempt.resident_id, attempt.career,
+            attempt.qualification_level, attempt.attempt_id, blueprint.bankVersion,
+            publicPaperJson, answerKeyJson, paperHash, now);
+        return { paperId, bankVersion: blueprint.bankVersion };
+    }
+    #requireCoursePaper(input) {
+        const targetKey = `course:${input.residentId}:${input.career}:${input.level}:${input.courseIndex}`;
+        const paper = this.#database
+            .prepare("SELECT * FROM career_assessment_papers WHERE target_key = ? AND kind = 'course_practice'")
+            .get(targetKey);
+        if (!paper)
+            throw new CareerDomainError("assessment_paper_not_found", "The course paper is unavailable");
+        return paper;
+    }
+    #requireExamPaper(attemptId) {
+        const paper = this.#database
+            .prepare("SELECT * FROM career_assessment_papers WHERE exam_attempt_id = ? AND kind = 'written_exam'")
+            .get(attemptId);
+        if (!paper)
+            throw new CareerDomainError("assessment_paper_not_found", "The written exam paper is unavailable");
+        return paper;
+    }
+    #publicExamPaper(attemptId) {
+        const attempt = this.#requireExamAttempt(attemptId);
+        const paper = this.#requireExamPaper(attemptId);
+        return {
+            attemptId,
+            paperId: paper.paper_id,
+            bankVersion: paper.bank_version,
+            scheduledAt: attempt.scheduled_at,
+            deadlineAt: attempt.scheduled_at + TWO_HOURS_MS,
+            questions: JSON.parse(paper.public_paper_json),
+        };
+    }
+    #submissionPayloadHash(paperId, answers) {
+        return createHash("sha256").update(JSON.stringify([paperId, answers])).digest("hex");
+    }
+    #paperAnswerData(paper) {
+        const parsed = JSON.parse(paper.answer_key_json);
+        if (Array.isArray(parsed)) {
+            return {
+                answers: parsed,
+                review: parsed.map((answer, index) => ({
+                    id: JSON.parse(paper.public_paper_json)[index]?.id ?? String(index + 1),
+                    correctAnswer: answer,
+                    explanation: "",
+                })),
+            };
+        }
+        return parsed;
+    }
+    #submissionReplay(residentId, idempotencyKey, paperId, answers) {
+        if (typeof idempotencyKey !== "string" || idempotencyKey.length === 0) {
+            throw new CareerDomainError("invalid_idempotency_key", "An idempotency key is required");
+        }
+        const existing = this.#database
+            .prepare(`SELECT paper_id, payload_hash, result_json
+         FROM career_assessment_submissions
+         WHERE resident_id = ? AND idempotency_key = ?`)
+            .get(residentId, idempotencyKey);
+        if (!existing)
+            return null;
+        const payloadHash = this.#submissionPayloadHash(paperId, answers);
+        if (existing.paper_id !== paperId || existing.payload_hash !== payloadHash) {
+            throw new CareerDomainError("assessment_submission_conflict", "The submission key was reused with different answers");
+        }
+        return JSON.parse(existing.result_json);
+    }
+    #recordSubmission(input) {
+        const correctAnswers = gradeAssessment(
+            this.#paperAnswerData(input.paper).answers,
+            input.answers,
+        ).correctAnswers;
+        const resultJson = JSON.stringify(input.result);
+        this.#database
+            .prepare(`INSERT INTO career_assessment_submissions (
+           submission_id, paper_id, kind, resident_id, idempotency_key,
+           payload_hash, answers_json, correct_answers, passed,
+           result_status, result_json, submitted_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+            .run(this.#generateId(), input.paper.paper_id, input.paper.kind, input.residentId,
+            input.idempotencyKey, this.#submissionPayloadHash(input.paper.paper_id, input.answers),
+            JSON.stringify(input.answers), correctAnswers, Number(input.result.passed), input.status,
+            resultJson, input.now);
+    }
     #courseBusinessReference(input) {
         return `career-course:${input.residentId}:${input.career}:${input.level}:${input.courseIndex}`;
     }
@@ -637,6 +900,9 @@ export class CareerSchoolService {
         }
     }
     #requireExamEligibility(residentId, career, level) {
+        if (!careerExamAvailability(career, level)) {
+            throw new CareerDomainError("assessment_content_not_available", "This written exam is not available");
+        }
         requireCareerTrack(this.#database, residentId, career);
         const activeCertificate = this.#database
             .prepare(`SELECT 1 FROM career_certificates

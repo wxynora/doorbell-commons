@@ -1,5 +1,6 @@
 import { Rng } from "../../rng.js";
 import { animalById, cooking } from "../../content.js";
+import { ranchProductionPaused } from "../../career/p3-world.js";
 
 /** 只推进既有牧场的动物产出；elapsed 的计算和 lastTickAt 仍由外层负责。 */
 export function advanceRanch(farm, elapsed) {
@@ -7,7 +8,7 @@ export function advanceRanch(farm, elapsed) {
         return;
     for (const a of farm.ranch.animals) {
         const kind = animalById.get(a.kindId);
-        if (!kind)
+        if (!kind || ranchProductionPaused(a))
             continue;
         // 不累加：只在「没有未收产出」时推进生产，攒到 1 份就停，伴侣收了才产下一份（挂机不堆积）
         if (a.pending < 1) {

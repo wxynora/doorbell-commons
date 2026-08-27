@@ -1,4 +1,5 @@
 export * from "./contracts.js";
+export * from "./curriculum.js";
 export * from "./employment-service.js";
 export * from "./job-service.js";
 export * from "./persistence.js";

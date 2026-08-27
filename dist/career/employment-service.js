@@ -12,6 +12,12 @@ export class CareerEmploymentService {
         this.#generateId = options.generateId ?? randomUUID;
         installCareerSchema(this.#database);
     }
+    hireResident(input) {
+        return this.hire({
+            ...input,
+            employmentId: this.#generateId(),
+        });
+    }
     hire(input) {
         const now = this.#now();
         return runInTransaction(this.#database, () => {
