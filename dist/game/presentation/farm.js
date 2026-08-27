@@ -162,7 +162,7 @@ export function summarizePlanted(p) {
 export const humanDisplay = (f) => f.humanName || "伴侣";
 
 /** 催熟候选一行（药水有每日上限→催哪块是策略）：限定/稀有在前，标作物+剩余时间。
- *  POST/REST AI 看这行就能直接 ripen {plots:[N]} 指定催熟；手头没药水或没生长中作物则空串。 */
+ *  POST/REST AI 看这行可选 ripen {plots:[N]} 精确催熟或 ripen {auto:true} 自动补药；手头没药水或没生长中作物则空串。 */
 export function potionTargetLine(f, now) {
     if ((f.items.speed_potion ?? 0) <= 0)
         return "";
@@ -170,5 +170,5 @@ export function potionTargetLine(f, now) {
     if (!ts.length)
         return "";
     const seg = ts.slice(0, 6).map((t) => `${circledNum(t.plotId)}${t.label}（剩${t.remain}）`).join("｜");
-    return `🎯 指定催熟：${seg}　催哪块是策略(限定/稀有优先)→ ripen {"plots":[N]}`;
+    return `🎯 催熟候选：${seg}　精确催熟→ ripen {"plots":[N]}；自动补药并尽量全催→ ripen {"auto":true}`;
 }

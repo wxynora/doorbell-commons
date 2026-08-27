@@ -173,6 +173,12 @@ export function handleFieldAction(action, f, b, now) {
             return { ok: hs.length > 0, text: hs.length ? withFooter(f, now, (se ? seasonHeadline(se.hit) + "\n" : "") + `【收获 ${hs.length} 株】\n` + composeHarvests(hs, b.compact !== false, f.id) + "\n" + replantReminder(hs.length)) : "没有成熟的作物" };
         }
         case "ripen": {
+            if (b.auto === true && b.plots === undefined)
+                return { ok: true, text: withFooter(f, now, autoPotion(f, now).replace(/^【加速】/, "🧪 ")) };
+            if (b.auto !== undefined)
+                return { ok: false, text: "ripen 的 auto 只接受 true，且不能与 plots 同时使用" };
+            if (b.plots === undefined)
+                return { ok: false, text: "ripen 需要 plots 或 auto:true" };
             const r = usePotionPlots(f, b.plots);
             return {
                 ok: r.ok,

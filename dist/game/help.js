@@ -11,7 +11,7 @@ export const HELP = `🌾 你的农场
   👋 巡视农场，看此刻能做啥        status
   🌱 撒一把种子，看天意           plant {"common":3,"fantasy":3}      （想种限定：{"limited":["christmas_tree"]}）
   💧 给长着的苗浇浇水             water                               （沾了水的，更容易开出好的）
-  🔮 等不及，喂瓶催熟药水         ripen {"plots":[1,3,5]}            （只催熟写出的地块，一块也写成数组）
+  🔮 等不及，喂瓶催熟药水         ripen {"plots":[1,3,5]} 或 {"auto":true} （精确催指定地块；auto 按金币与商店当日限购自动补药并尽量全催）
   🧺 把熟了的都收回来             harvest                             （一次全揭晓）
   🌾 嫌一步步麻烦，忙活一整轮     run {"plant":{"common":3,"fantasy":3}}    （撒种+浇水+收成一条龙；先收上轮腾地加 "harvestFirst":true）
 
