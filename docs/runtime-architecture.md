@@ -74,7 +74,7 @@ a referenced receipt from the current authoritative database before replay. Rese
 their originating hold identity, and farm／UGC／nature changes can share one durable world-file rename.
 Farm commit `a34eb63`, pushed to `origin/farm`, replaces the earlier public formal-exam catalog with
 two explicit boundaries. Public `content/career-curriculum.json` contains course content, five-question teaching
-practice, and closed exam metadata only; formal question text, answer keys, explanations, and active
+practice, and questionless exam metadata only; formal question text, answer keys, explanations, and active
 exam versions must come from the deployment-side file configured by
 `AIFARM_CAREER_PRIVATE_EXAM_BANK_PATH`. Without that private bank, every formal exam fails closed.
 The public generator also requires the complete structured readiness manifest at
@@ -102,9 +102,12 @@ rather than a single disclosed answer. Assigned hospital／public-security work 
 assignment service, never a caller-selected worker. Registered farms run the same idempotent P3 day
 advance both at the Beijing day boundary and before ordinary authoritative farm advancement. Feed,
 dispatch, and ordinary `run／water／harvest／ripen／use／steal` paths consult the same health／object-lock
-state. These changes are pushed but not active in production: the main readiness gate still withholds
-all `go.*` tools, no real-player activation has occurred, and no production private exam bank,
-migration, deployment, or restart was performed.
+state. Farm commit `838b04d` adds the remaining non-daily career and chef runtime, while the community
+registry exposes seven authoritative non-newsroom `go.*` operations and keeps only
+`go.newsroom.commission` model-hidden. Course and exam availability is now per-entry: completed levels are
+visible, explicit P4／P5／P7 or public-event dependencies stay blocked, and a formal exam still additionally
+requires its deployment-side private bank. None of these changes is active in production: no real-player
+activation, migration, deployment, or restart was performed.
 
 The farm snapshot is not currently source-reproducible: its root has the live-derived `dist/` and
 content but no matching `src/`, `tsconfig.json`, or lockfile, while `source-reference/` is older and

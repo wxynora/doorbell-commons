@@ -6,6 +6,8 @@ import type { MailboxService } from "./mailbox-service.js";
 import type { LingyeMcpActionExecutor } from "./mcp-lingye-action-client.js";
 
 export const CAREER_EXAM_REMINDER_LEAD_MS = 5 * 60 * 1000;
+const BEIJING_UTC_OFFSET_MS = 8 * 60 * 60 * 1000;
+const CAREER_EXAM_BEIJING_WEEKDAYS = new Set([2, 4, 6]);
 export const CAREER_EXAM_REMINDER_TITLE = "职业资格考试提醒";
 export const CAREER_EXAM_REMINDER_BODY =
   "你报名的职业资格考试将在 5 分钟后开始。考试时间为北京时间 14:00–16:00。";
@@ -39,6 +41,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+function isCareerExamStart(scheduledAt: number): boolean {
+  const beijing = new Date(scheduledAt + BEIJING_UTC_OFFSET_MS);
+  return (
+    CAREER_EXAM_BEIJING_WEEKDAYS.has(beijing.getUTCDay()) &&
+    beijing.getUTCHours() === 14 &&
+    beijing.getUTCMinutes() === 0 &&
+    beijing.getUTCSeconds() === 0 &&
+    beijing.getUTCMilliseconds() === 0
+  );
+}
+
 function registeredExamFacts(result: LingyeActionResult): RegisteredExamFact[] | undefined {
   if (!result.ok) return undefined;
   const current = isRecord(result.data.current) ? result.data.current : result.data;
@@ -50,7 +63,8 @@ function registeredExamFacts(result: LingyeActionResult): RegisteredExamFact[] |
       typeof exam.attemptId !== "string" ||
       exam.attemptId.length === 0 ||
       typeof exam.scheduledAt !== "number" ||
-      !Number.isSafeInteger(exam.scheduledAt)
+      !Number.isSafeInteger(exam.scheduledAt) ||
+      !isCareerExamStart(exam.scheduledAt)
     ) {
       throw new Error("The registered exam reminder facts do not match the Lingye contract");
     }

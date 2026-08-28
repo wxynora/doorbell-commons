@@ -309,3 +309,26 @@ test("malformed registered exam facts fail closed before scheduling", async () =
     assert.equal(harness.database.listScheduledCareerExamReminders().length, 0);
   });
 });
+
+test("registered exam reminders accept only Tuesday Thursday Saturday at 14:00 Beijing", async () => {
+  await withHarness((harness) => {
+    for (const scheduledAt of [SCHEDULED_AT + 24 * 60 * 60 * 1000, SCHEDULED_AT - 60 * 1000]) {
+      assert.throws(
+        () =>
+          harness.service.reconcile({
+            residentId: harness.residentId,
+            homeId: harness.homeId,
+            result: successfulSchoolResult([
+              {
+                attemptId: `${ATTEMPT_ID}-${scheduledAt}`,
+                registrationStatus: "registered",
+                scheduledAt,
+              },
+            ]),
+          }),
+        /do not match the Lingye contract/u,
+      );
+    }
+    assert.equal(harness.database.listScheduledCareerExamReminders().length, 0);
+  });
+});

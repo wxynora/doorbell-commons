@@ -11,6 +11,7 @@ export interface LingyeOperationDefinition {
     | "go.hospital.commission"
     | "go.newsroom.commission"
     | "go.security.commission";
+  modelVisible: boolean;
   description: string;
   argsHint: string;
   argsSchema: z.ZodType<Record<string, unknown>>;
@@ -49,6 +50,7 @@ function defineOperation(
 ): LingyeOperationDefinition {
   return {
     op: definition.op,
+    modelVisible: definition.modelVisible,
     description: definition.description,
     argsHint: definition.argsHint,
     argsSchema: strictArgs(definition.branches),
@@ -68,6 +70,7 @@ const commissionBranches: readonly ArgsShape[] = [
 export const lingyeOperations = [
   defineOperation({
     op: "go.bank.view",
+    modelVisible: true,
     description:
       "查看自己的账户、存款、兑换、贷款和信用事实，以及当前可以办理的 option；只读，不扣款。",
     argsHint: '{} 或 {section:"account"|"deposits"|"exchange"|"loans"|"credit"} 或 {reference}',
@@ -80,6 +83,7 @@ export const lingyeOperations = [
   }),
   defineOperation({
     op: "go.bank.choose",
+    modelVisible: true,
     description:
       "提交 go.bank.view 当前返回的 option 办理银行业务。业务对象、币种和方向由 option 固定；金币兑换银币时 amount 始终表示投入金币。",
     argsHint:
@@ -106,6 +110,7 @@ export const lingyeOperations = [
   }),
   defineOperation({
     op: "go.school.view",
+    modelVisible: true,
     description:
       "查看自己的职业轨道、课程、考试、证书、任职状态和当前可以办理的 option；只读，不扣款。",
     argsHint:
@@ -121,6 +126,7 @@ export const lingyeOperations = [
   }),
   defineOperation({
     op: "go.school.choose",
+    modelVisible: true,
     description:
       "提交 go.school.view 当前返回的 option，选择职业、学习课程、参加考试、投票或办理任职。需要付费时由系统自动扣款或冻结，余额不足则业务不创建。",
     argsHint: "{option} 或 {option,answers}",
@@ -129,6 +135,7 @@ export const lingyeOperations = [
   }),
   defineOperation({
     op: "go.farm.commission",
+    modelVisible: true,
     description:
       "查看或推进发生在真实地块上的农艺委托。空 args 用于查看委托和合法选项；发起、接取、检查、处理、回复、转交和结束均提交服务端返回的 option。",
     argsHint: "{}、{reference}、{option}、{option,amount}、{option,text} 或 {option,amount,text}",
@@ -137,6 +144,7 @@ export const lingyeOperations = [
   }),
   defineOperation({
     op: "go.hospital.commission",
+    modelVisible: true,
     description:
       "查看或推进真实动物病例的诊疗委托。空 args 用于查看病例委托和合法选项；需要时可以选择真人医生或高价医院 NPC。",
     argsHint: "{}、{reference}、{option}、{option,amount}、{option,text} 或 {option,amount,text}",
@@ -145,6 +153,7 @@ export const lingyeOperations = [
   }),
   defineOperation({
     op: "go.newsroom.commission",
+    modelVisible: false,
     description:
       "查看或推进由真实公共素材形成的日报工作。空 args 用于查看素材、稿件和合法选项；不存在虚构顾客、稿件或点赞。",
     argsHint: "{}、{reference}、{option}、{option,amount}、{option,text} 或 {option,amount,text}",
@@ -153,6 +162,7 @@ export const lingyeOperations = [
   }),
   defineOperation({
     op: "go.security.commission",
+    modelVisible: true,
     description:
       "查看或推进由真实投诉、上诉或权威记录形成的治安事项。空 args 用于查看事项和合法选项；治安官不能自行创建案件或跳过程序。",
     argsHint: "{}、{reference}、{option}、{option,amount}、{option,text} 或 {option,amount,text}",
@@ -165,7 +175,23 @@ export const lingyeOperationNames = lingyeOperations.map((operation) => operatio
 export const lingyeOperationByName = new Map<string, LingyeOperationDefinition>(
   lingyeOperations.map((operation) => [operation.op, operation] as const),
 );
+export const modelVisibleLingyeOperations = lingyeOperations.filter(
+  (operation) => operation.modelVisible,
+);
+export const modelVisibleLingyeOperationNames = modelVisibleLingyeOperations.map(
+  (operation) => operation.op,
+);
+export const modelVisibleLingyeOperationByName = new Map<string, LingyeOperationDefinition>(
+  modelVisibleLingyeOperations.map((operation) => [operation.op, operation] as const),
+);
 
 if (lingyeOperations.length !== 8 || lingyeOperationByName.size !== lingyeOperations.length) {
   throw new Error("The initial Doorbell Lingye registry must contain 8 unique operations");
+}
+if (
+  modelVisibleLingyeOperations.length !== 7 ||
+  modelVisibleLingyeOperationByName.size !== modelVisibleLingyeOperations.length ||
+  modelVisibleLingyeOperationByName.has("go.newsroom.commission")
+) {
+  throw new Error("The Doorbell Lingye registry must expose seven non-newsroom operations");
 }

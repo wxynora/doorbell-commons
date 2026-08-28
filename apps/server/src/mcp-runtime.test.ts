@@ -135,9 +135,11 @@ interface RuntimeHarness {
   app: ReturnType<typeof buildApp>;
   database: CommunityDatabase;
   residentId: string;
+  homeId: string;
   membership: FakeGroupMembership;
   farmActions: FakeFarmActions;
   lingyeActions: FakeLingyeActions;
+  careerExamReconciliations: unknown[];
   notificationErrors: unknown[];
   mcpRuntime: DoorbellMcpRuntime;
   now: { value: number };
@@ -181,6 +183,7 @@ function openRuntimeHarness(databasePath: string): RuntimeHarness {
   );
   const farmActions = new FakeFarmActions();
   const lingyeActions = new FakeLingyeActions();
+  const careerExamReconciliations: unknown[] = [];
   const notificationErrors: unknown[] = [];
   const now = { value: NOW };
   const mcpRuntime = new DoorbellMcpRuntime({
@@ -188,6 +191,9 @@ function openRuntimeHarness(databasePath: string): RuntimeHarness {
     registrationAuth,
     farmActions,
     lingyeActions,
+    careerExamReminders: {
+      reconcile: (input) => careerExamReconciliations.push(structuredClone(input)),
+    },
     mcpEndpoint: "https://doorbell.example/mcp",
     now: () => now.value,
     onNotificationDeliveryError: (error) => notificationErrors.push(error),
@@ -204,9 +210,11 @@ function openRuntimeHarness(databasePath: string): RuntimeHarness {
     app,
     database,
     residentId: created.community.resident.residentId,
+    homeId: created.community.home.homeId,
     membership,
     farmActions,
     lingyeActions,
+    careerExamReconciliations,
     notificationErrors,
     mcpRuntime,
     now,
@@ -723,7 +731,19 @@ test("MCP transport authenticates dbm credentials and exposes one thin doorbell 
     assert.equal(tools.length, 1);
     assert.equal(tools[0].name, "doorbell");
     assert.deepEqual(tools[0].inputSchema.properties.op.enum, doorbellOperationNames);
-    assert.equal(tools[0].inputSchema.properties.op.enum.length, 66);
+    assert.equal(tools[0].inputSchema.properties.op.enum.length, 65);
+    assert.deepEqual(
+      tools[0].inputSchema.properties.op.enum.filter((op: string) => op.startsWith("go.")),
+      [
+        "go.bank.view",
+        "go.bank.choose",
+        "go.school.view",
+        "go.school.choose",
+        "go.farm.commission",
+        "go.hospital.commission",
+        "go.security.commission",
+      ],
+    );
     assert.deepEqual(tools[0].inputSchema.properties.args, { type: "object" });
 
     const notification = await postMcp(harness, {
@@ -887,7 +907,6 @@ test("MCP calls validate strict args, self-correct, preserve status cadence, and
       op: "go.bank.view",
       args: { section: "loans" },
     });
-    assert.equal(harness.farmActions.calls.length, farmCallsBeforeLingye);
 
     const invalidSchool = await postMcp(
       harness,
@@ -897,6 +916,19 @@ test("MCP calls validate strict args, self-correct, preserve status cadence, and
     assert.deepEqual(invalidSchool.json().result.structuredContent.error.examples, [
       { op: "go.school.choose", args: { option: "returned-option" } },
     ]);
+
+    const school = await postMcp(harness, call("go.school.choose", { option: "returned-option" }));
+    assert.equal(school.json().result.isError, false);
+    assert.equal(harness.careerExamReconciliations.length, 1);
+    assert.deepEqual(harness.careerExamReconciliations[0], {
+      residentId: harness.residentId,
+      homeId: harness.homeId,
+      result: {
+        ok: true,
+        text: "go.school.choose OK",
+        data: { options: [] },
+      },
+    });
 
     harness.lingyeActions.nextResult = {
       ok: false,
@@ -915,6 +947,10 @@ test("MCP calls validate strict args, self-correct, preserve status cadence, and
       insufficient.json().result.structuredContent.error.message,
       "可用余额不足，本次操作没有执行。",
     );
+
+    const newsroom = await postMcp(harness, call("go.newsroom.commission", {}));
+    assert.equal(newsroom.json().result.structuredContent.error.code, "UNKNOWN_OP");
+    assert.equal(harness.farmActions.calls.length, farmCallsBeforeLingye);
 
     harness.farmActions.nextFailure = new FarmMcpActionMigrationRequiredError();
     const migrationRequired = await postMcp(harness, call("farm.status", {}));
