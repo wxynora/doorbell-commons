@@ -1,4 +1,4 @@
-export const CAREER_SCHEMA_VERSION = 4;
+export const CAREER_SCHEMA_VERSION = 5;
 export function installCareerSchema(database) {
     database.exec(`
     CREATE TABLE IF NOT EXISTS career_tracks (
@@ -74,6 +74,7 @@ export function installCareerSchema(database) {
       registered_at INTEGER NOT NULL,
       started_at INTEGER,
       ended_at INTEGER,
+      missed_session_at INTEGER,
       FOREIGN KEY (resident_id, career) REFERENCES career_tracks(resident_id, career)
     );
     CREATE INDEX IF NOT EXISTS career_exam_attempts_resident_index
@@ -374,4 +375,10 @@ export function installCareerSchema(database) {
         if (!courseColumns.has(name))
             database.exec(`ALTER TABLE career_courses ADD COLUMN ${name} ${definition}`);
     }
+    const examColumns = new Set(database
+        .prepare("PRAGMA table_info(career_exam_attempts)")
+        .all()
+        .map((column) => column.name));
+    if (!examColumns.has("missed_session_at"))
+        database.exec("ALTER TABLE career_exam_attempts ADD COLUMN missed_session_at INTEGER");
 }

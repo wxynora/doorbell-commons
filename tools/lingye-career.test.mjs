@@ -10,13 +10,44 @@ import {
     careerCourseContent,
     careerExamAvailability,
 } from "../dist/career/curriculum.js";
-import { beijingTimestamp, recordFinancialReceipt } from "../dist/career/persistence.js";
+import {
+    beijingTimestamp,
+    isBeijingExamDay,
+    isBeijingExamSessionOpen,
+    nextExamSessionAt,
+    recordFinancialReceipt,
+} from "../dist/career/persistence.js";
 import { installCareerSchema } from "../dist/career/schema.js";
 import { CareerSchoolService } from "../dist/career/school-service.js";
 import { installEconomySchema } from "../dist/economy/economy-schema.js";
 import { EconomyService } from "../dist/economy/economy-service.js";
 import { runLingyeWorldTransaction } from "../dist/lingye-world-database.js";
 const TEST_CURRICULUM_VERSION = "career-test-bank-v1";
+
+test("exam calendar resolves only Tuesday, Thursday, and Saturday in Beijing time", () => {
+    assert.equal(nextExamSessionAt(beijingTimestamp("2026-08-31", 23)),
+        beijingTimestamp("2026-09-01", 14));
+    assert.equal(nextExamSessionAt(beijingTimestamp("2026-09-01", 13, 59)),
+        beijingTimestamp("2026-09-01", 14));
+    assert.equal(nextExamSessionAt(beijingTimestamp("2026-09-01", 14)),
+        beijingTimestamp("2026-09-01", 14));
+    assert.equal(nextExamSessionAt(beijingTimestamp("2026-09-01", 18)),
+        beijingTimestamp("2026-09-03", 14));
+    assert.equal(nextExamSessionAt(beijingTimestamp("2026-09-02", 12)),
+        beijingTimestamp("2026-09-03", 14));
+    assert.equal(nextExamSessionAt(beijingTimestamp("2026-09-04", 12)),
+        beijingTimestamp("2026-09-05", 14));
+    assert.equal(nextExamSessionAt(beijingTimestamp("2026-09-06", 12)),
+        beijingTimestamp("2026-09-08", 14));
+    assert.equal(isBeijingExamDay(beijingTimestamp("2026-09-01", 23, 59)), true);
+    assert.equal(isBeijingExamDay(beijingTimestamp("2026-09-02", 0)), false);
+    const tuesdaySession = beijingTimestamp("2026-09-01", 14);
+    assert.equal(isBeijingExamSessionOpen(tuesdaySession - 1, tuesdaySession), false);
+    assert.equal(isBeijingExamSessionOpen(tuesdaySession, tuesdaySession), true);
+    assert.equal(isBeijingExamSessionOpen(tuesdaySession + 2 * 60 * 60 * 1_000 - 1, tuesdaySession), true);
+    assert.equal(isBeijingExamSessionOpen(tuesdaySession + 2 * 60 * 60 * 1_000, tuesdaySession), false);
+});
+
 function testPaper(kind, targetKey, count) {
     const questions = Array.from({ length: count }, (_, index) => ({
         id: `${targetKey}:question:${index + 1}`,
@@ -312,7 +343,7 @@ test("career schema is idempotent and leaves the owning database version untouch
         database.close();
     }
 });
-test("career schema adds frozen course delivery columns without inventing legacy content", () => {
+test("career schema adds frozen course delivery and exam no-show columns without inventing legacy content", () => {
     const database = new DatabaseSync(":memory:");
     try {
         database.exec(`
@@ -331,6 +362,21 @@ test("career schema adds frozen course delivery columns without inventing legacy
             completed_at INTEGER,
             best_correct_answers INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (resident_id, career, qualification_level, course_index)
+          );
+          CREATE TABLE career_exam_attempts (
+            attempt_id TEXT PRIMARY KEY,
+            resident_id TEXT NOT NULL,
+            career TEXT NOT NULL,
+            qualification_level INTEGER NOT NULL,
+            scheduled_at INTEGER NOT NULL,
+            registration_status TEXT NOT NULL,
+            reservation_receipt_id TEXT NOT NULL UNIQUE,
+            settlement_receipt_id TEXT UNIQUE,
+            release_receipt_id TEXT UNIQUE,
+            correct_answers INTEGER,
+            registered_at INTEGER NOT NULL,
+            started_at INTEGER,
+            ended_at INTEGER
           );
           INSERT INTO career_courses (
             resident_id, career, qualification_level, course_index,
@@ -351,6 +397,11 @@ test("career schema adds frozen course delivery columns without inventing legacy
         ]) {
             assert.equal(columns.has(name), true);
         }
+        const examColumns = new Set(database
+            .prepare("PRAGMA table_info(career_exam_attempts)")
+            .all()
+            .map((column) => column.name));
+        assert.equal(examColumns.has("missed_session_at"), true);
         assert.deepEqual({ ...database
             .prepare(`SELECT content_bank_version, content_snapshot_json,
                      content_delivery_id, content_delivered_at
@@ -561,7 +612,7 @@ test("career financial receipts require an authoritative economy journal and bal
         harness.database.close();
     }
 });
-test("school enforces ordered paid courses, read-and-practice completion, fixed sessions, and retake fees", () => {
+test("school enforces ordered paid courses, read-and-practice completion, scheduled exam days, and retake fees", () => {
     const harness = createHarness();
     try {
         assert.deepEqual(harness.school.selectCareer("resident-1", "reporter"), {
@@ -662,7 +713,7 @@ test("school enforces ordered paid courses, read-and-practice completion, fixed 
             reservationReceipt: goldReceipt(harness, "resident-1", "system_gold_reserve", 40_000, "career-exam:attempt-1:reserve"),
             residentId: "resident-1",
         });
-        assert.equal(first.scheduledAt, beijingTimestamp("2026-08-26", 12));
+        assert.equal(first.scheduledAt, beijingTimestamp("2026-08-27", 14));
         harness.setNow(first.scheduledAt);
         harness.school.startExam(first.attemptId, goldReceipt(harness, "resident-1", "system_gold_settle", 40_000, "career-exam:attempt-1:settle"));
         assert.deepEqual(submitExamScore(harness, first.attemptId, 17), {
@@ -749,7 +800,7 @@ test("school enforces ordered paid courses, read-and-practice completion, fixed 
         harness.database.close();
     }
 });
-test("written exams expire at the session boundary and active certificates block duplicate registration", () => {
+test("written exams open only on Tuesday, Thursday, and Saturday and active certificates block duplicate registration", () => {
     const harness = createHarness(beijingTimestamp("2026-08-26", 11));
     try {
         harness.school.selectCareer("exam-resident", "reporter");
@@ -762,6 +813,11 @@ test("written exams expire at the session boundary and active certificates block
             reservationReceipt: boundReservation,
             residentId: "exam-resident",
         });
+        assert.equal(boundAttempt.scheduledAt, beijingTimestamp("2026-08-27", 14));
+        assert.throws(
+            () => harness.school.startExam(boundAttempt.attemptId, { receiptId: "not-consumed-off-day" }),
+            assertCareerError("exam_session_closed"),
+        );
         const wrongReservation = harness.economy.reserveSystemGold({
             residentId: "exam-resident",
             amount: 40_000,
@@ -815,10 +871,13 @@ test("written exams expire at the session boundary and active certificates block
             passed: false,
         });
         assert.deepEqual({ ...harness.database
-            .prepare(`SELECT registration_status, correct_answers, settlement_receipt_id
+            .prepare(`SELECT registration_status, correct_answers, settlement_receipt_id,
+                             ended_at, missed_session_at
               FROM career_exam_attempts WHERE attempt_id = 'expired-attempt'`)
             .get() }, {
             correct_answers: null,
+            ended_at: expiredAttempt.scheduledAt + 2 * 60 * 60 * 1_000,
+            missed_session_at: expiredAttempt.scheduledAt + 2 * 60 * 60 * 1_000,
             registration_status: "failed",
             settlement_receipt_id: expiredSettlement.receiptId,
         });
@@ -829,7 +888,7 @@ test("written exams expire at the session boundary and active certificates block
             reservationReceipt: expiredReservation,
             residentId: "exam-resident",
         }).feeGold, 40_000);
-        const passedReservation = goldReceipt(harness, "exam-resident", "system_gold_reserve", 20_000, "career-exam:passed-attempt:reserve");
+        const passedReservation = goldReceipt(harness, "exam-resident", "system_gold_reserve", 40_000, "career-exam:passed-attempt:reserve");
         const passedAttempt = harness.school.registerExam({
             attemptId: "passed-attempt",
             career: "reporter",
@@ -838,7 +897,8 @@ test("written exams expire at the session boundary and active certificates block
             residentId: "exam-resident",
         });
         harness.setNow(passedAttempt.scheduledAt);
-        harness.school.startExam(passedAttempt.attemptId, goldReceipt(harness, "exam-resident", "system_gold_settle", 20_000, "career-exam:passed-attempt:settle"));
+        assert.equal(passedAttempt.feeGold, 40_000);
+        harness.school.startExam(passedAttempt.attemptId, goldReceipt(harness, "exam-resident", "system_gold_settle", 40_000, "career-exam:passed-attempt:settle"));
         const passedResult = submitExamScore(
             harness,
             passedAttempt.attemptId,
@@ -868,7 +928,7 @@ test("written exams expire at the session boundary and active certificates block
             level: 1,
             reservationReceipt: passedReservation,
             residentId: "exam-resident",
-        }).feeGold, 20_000);
+        }).feeGold, 40_000);
         const attemptsBefore = harness.database
             .prepare("SELECT COUNT(*) AS count FROM career_exam_attempts WHERE resident_id = 'exam-resident'")
             .get().count;
@@ -1305,7 +1365,7 @@ test("constable interview uses human signup order and fails closed after the 24-
             submitExamScore(harness, attempt.attemptId, 20, "constable-written-pass"),
             writtenResult,
         );
-        const scheduledAt = beijingTimestamp("2026-08-26", 20);
+        const scheduledAt = beijingTimestamp("2026-08-27", 20);
         const automaticInterview = harness.database
             .prepare(`SELECT interview_id, scheduled_at, status
                 FROM career_constable_interviews WHERE attempt_id = ?`)
@@ -1320,6 +1380,7 @@ test("constable interview uses human signup order and fails closed after the 24-
             .prepare("SELECT COUNT(*) AS count FROM career_constable_interviews WHERE attempt_id = ?")
             .get(attempt.attemptId).count, 1);
         assert.equal(harness.school.scheduleConstableInterview(attempt.attemptId, scheduledAt), interviewId);
+        harness.setNow(beijingTimestamp("2026-08-27", 14));
         for (const index of [1, 2, 3, 4]) {
             harness.school.signupConstableExaminer({
                 eligibilityReference: `eligibility-${index}`,
@@ -1328,7 +1389,7 @@ test("constable interview uses human signup order and fails closed after the 24-
                 interviewId,
             });
         }
-        harness.setNow(beijingTimestamp("2026-08-26", 19, 30));
+        harness.setNow(beijingTimestamp("2026-08-27", 19, 30));
         for (const index of [1, 3, 4]) {
             harness.school.confirmConstableExaminerAttendance({
                 eligibilityReference: `attendance-eligibility-${index}`,
@@ -1385,7 +1446,7 @@ test("a postponed constable interview reopens signup at a new session", () => {
             correctAnswers: 20,
             passed: true,
         });
-        const firstSession = beijingTimestamp("2026-08-26", 20);
+        const firstSession = beijingTimestamp("2026-08-27", 20);
         const automaticInterview = harness.database
             .prepare(`SELECT interview_id, scheduled_at, status
                 FROM career_constable_interviews WHERE attempt_id = ?`)
@@ -1396,6 +1457,7 @@ test("a postponed constable interview reopens signup at a new session", () => {
             status: "signup_open",
         });
         const interviewId = automaticInterview.interview_id;
+        harness.setNow(beijingTimestamp("2026-08-27", 14));
         harness.school.signupConstableExaminer({
             eligibilityReference: "postponed-eligibility",
             examinerAccountId: "postponed-human",

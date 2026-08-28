@@ -8,7 +8,7 @@ import {
     createWrittenExamPaper,
     gradeAssessment,
 } from "./curriculum.js";
-import { activeCertificateLevel, isBeijingHour, nextExamSessionAt, nextInterviewSessionAt, recordFinancialReceipt, requireCareerTrack, runInTransaction, } from "./persistence.js";
+import { activeCertificateLevel, EXAM_SESSION_DURATION_MS, isBeijingExamSessionOpen, isBeijingHour, nextExamSessionAt, nextInterviewSessionAt, recordFinancialReceipt, requireCareerTrack, runInTransaction, } from "./persistence.js";
 import { installCareerSchema } from "./schema.js";
 const DEFAULT_CURRICULUM = Object.freeze({
     careerCourseAvailability,
@@ -17,7 +17,6 @@ const DEFAULT_CURRICULUM = Object.freeze({
     createCoursePracticePaper,
     createWrittenExamPaper,
 });
-const TWO_HOURS_MS = 2 * 60 * 60 * 1_000;
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1_000;
 const TWELVE_HOURS_MS = 12 * 60 * 60 * 1_000;
 const THIRTY_MINUTES_MS = 30 * 60 * 1_000;
@@ -310,6 +309,10 @@ export class CareerSchoolService {
         const now = this.#now();
         return runInTransaction(this.#database, () => {
             const attempt = this.#requireExamAttempt(attemptId);
+            if (["registered", "active"].includes(attempt.registration_status) &&
+                !isBeijingExamSessionOpen(now, attempt.scheduled_at)) {
+                throw new CareerDomainError("exam_session_closed", "The assigned exam session is closed");
+            }
             if (attempt.registration_status === "active") {
                 if (attempt.settlement_receipt_id !== settlementReceipt.receiptId) {
                     throw new CareerDomainError("exam_start_conflict", "The exam already started");
@@ -318,9 +321,6 @@ export class CareerSchoolService {
             }
             if (attempt.registration_status !== "registered") {
                 throw new CareerDomainError("exam_not_registered", "The exam is not awaiting its session");
-            }
-            if (now < attempt.scheduled_at || now >= attempt.scheduled_at + TWO_HOURS_MS) {
-                throw new CareerDomainError("exam_session_closed", "The assigned two-hour session is closed");
             }
             const reservationReceipt = this.#requireEconomyFinancialReceipt(attempt.reservation_receipt_id);
             recordFinancialReceipt(this.#database, settlementReceipt, {
@@ -352,6 +352,9 @@ export class CareerSchoolService {
             if (attempt.registration_status !== "registered") {
                 throw new CareerDomainError("exam_fee_not_releasable", "A started exam fee cannot be released");
             }
+            if (now >= attempt.scheduled_at + EXAM_SESSION_DURATION_MS) {
+                throw new CareerDomainError("exam_fee_not_releasable", "A missed exam fee cannot be released");
+            }
             const reservationReceipt = this.#requireEconomyFinancialReceipt(attempt.reservation_receipt_id);
             recordFinancialReceipt(this.#database, releaseReceipt, {
                 amount: reservationReceipt.amount,
@@ -368,10 +371,54 @@ export class CareerSchoolService {
                 .run(releaseReceipt.receiptId, now, attemptId);
         });
     }
+    expireMissedExam(attemptId, settlementReceipt = null) {
+        const now = this.#now();
+        return runInTransaction(this.#database, () => {
+            const attempt = this.#requireExamAttempt(attemptId);
+            const missedAt = attempt.scheduled_at + EXAM_SESSION_DURATION_MS;
+            if (now < missedAt)
+                return { attemptId, expired: false, missedAt: null };
+            if (attempt.missed_session_at !== null) {
+                return { attemptId, expired: true, missedAt: attempt.missed_session_at };
+            }
+            if (!["registered", "active"].includes(attempt.registration_status)) {
+                return { attemptId, expired: false, missedAt: null };
+            }
+            let settlementReceiptId = attempt.settlement_receipt_id;
+            if (attempt.registration_status === "registered") {
+                if (!settlementReceipt) {
+                    throw new CareerDomainError("exam_expiry_settlement_required", "A missed registration fee must be settled");
+                }
+                const reservationReceipt = this.#requireEconomyFinancialReceipt(attempt.reservation_receipt_id);
+                recordFinancialReceipt(this.#database, settlementReceipt, {
+                    amount: reservationReceipt.amount,
+                    businessReference: `career-exam:${attemptId}:expire`,
+                    currency: "gold",
+                    kind: "system_gold_settle",
+                    residentId: attempt.resident_id,
+                    reserveReceiptId: attempt.reservation_receipt_id,
+                }, now);
+                settlementReceiptId = settlementReceipt.receiptId;
+            }
+            this.#database
+                .prepare(`UPDATE career_exam_attempts
+           SET registration_status = 'failed',
+               settlement_receipt_id = COALESCE(settlement_receipt_id, ?),
+               correct_answers = NULL,
+               ended_at = ?,
+               missed_session_at = ?
+           WHERE attempt_id = ?`)
+                .run(settlementReceiptId, missedAt, missedAt, attemptId);
+            return { attemptId, expired: true, missedAt };
+        });
+    }
     getWrittenExamPaper(attemptId) {
+        const now = this.#now();
         const attempt = this.#requireExamAttempt(attemptId);
         if (attempt.registration_status !== "active")
             throw new CareerDomainError("exam_not_active", "The exam is not active");
+        if (!isBeijingExamSessionOpen(now, attempt.scheduled_at))
+            throw new CareerDomainError("exam_session_closed", "The assigned exam session is closed");
         return this.#publicExamPaper(attemptId);
     }
     submitWrittenExam(input) {
@@ -393,12 +440,14 @@ export class CareerSchoolService {
             if (attempt.registration_status !== "active") {
                 throw new CareerDomainError("exam_not_active", "The exam is not active");
             }
-            if (now >= attempt.scheduled_at + TWO_HOURS_MS) {
+            if (!isBeijingExamSessionOpen(now, attempt.scheduled_at)) {
+                const missedAt = attempt.scheduled_at + EXAM_SESSION_DURATION_MS;
                 this.#database
                     .prepare(`UPDATE career_exam_attempts
-             SET registration_status = 'failed', correct_answers = NULL, ended_at = ?
+             SET registration_status = 'failed', correct_answers = NULL,
+                 ended_at = ?, missed_session_at = ?
              WHERE attempt_id = ?`)
-                    .run(now, input.attemptId);
+                    .run(missedAt, missedAt, input.attemptId);
                 const result = { status: "expired", correctAnswers: null, passed: false };
                 this.#recordSubmission({
                     paper,
@@ -914,7 +963,7 @@ export class CareerSchoolService {
             paperId: paper.paper_id,
             bankVersion: paper.bank_version,
             scheduledAt: attempt.scheduled_at,
-            deadlineAt: attempt.scheduled_at + TWO_HOURS_MS,
+            deadlineAt: attempt.scheduled_at + EXAM_SESSION_DURATION_MS,
             questions: JSON.parse(paper.public_paper_json),
         };
     }
@@ -1022,7 +1071,7 @@ export class CareerSchoolService {
         const priorFailure = this.#database
             .prepare(`SELECT 1 FROM career_exam_attempts
          WHERE resident_id = ? AND career = ? AND qualification_level = ?
-           AND registration_status = 'failed'
+           AND registration_status = 'failed' AND missed_session_at IS NULL
          LIMIT 1`)
             .get(residentId, career, level);
         return priorFailure ? EXAM_FEE_GOLD[level] / 2 : EXAM_FEE_GOLD[level];

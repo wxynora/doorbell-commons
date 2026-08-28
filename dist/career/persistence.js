@@ -225,14 +225,27 @@ export function addBeijingDays(date, days) {
     const midnight = Date.parse(`${date}T00:00:00+08:00`);
     return beijingDate(midnight + days * DAY_MS);
 }
+const BEIJING_EXAM_WEEKDAYS = new Set([2, 4, 6]);
+export const EXAM_SESSION_START_HOUR = 14;
+export const EXAM_SESSION_DURATION_MS = 2 * 60 * 60 * 1_000;
+export function isBeijingExamDay(timestamp) {
+    return BEIJING_EXAM_WEEKDAYS.has(new Date(timestamp + BEIJING_OFFSET_MS).getUTCDay());
+}
+export function isBeijingExamSessionOpen(now, scheduledAt) {
+    return (isBeijingExamDay(scheduledAt) &&
+        isBeijingHour(scheduledAt, EXAM_SESSION_START_HOUR) &&
+        now >= scheduledAt &&
+        now < scheduledAt + EXAM_SESSION_DURATION_MS);
+}
 export function nextExamSessionAt(now) {
     const today = beijingDate(now);
-    for (const hour of [12, 20]) {
-        const candidate = beijingTimestamp(today, hour);
-        if (candidate > now)
+    for (let offset = 0; offset < 7; offset += 1) {
+        const date = addBeijingDays(today, offset);
+        const candidate = beijingTimestamp(date, EXAM_SESSION_START_HOUR);
+        if (isBeijingExamDay(candidate) && candidate >= now)
             return candidate;
     }
-    return beijingTimestamp(addBeijingDays(today, 1), 12);
+    throw new Error("exam_day_resolution_failed");
 }
 export function nextInterviewSessionAt(now) {
     const todayAt20 = beijingTimestamp(beijingDate(now), 20);

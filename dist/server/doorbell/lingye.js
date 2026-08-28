@@ -27,6 +27,7 @@ import {
     openLingyeWorldDatabase,
     runLingyeWorldTransaction,
 } from "../../lingye-world-database.js";
+import { isBeijingExamSessionOpen } from "../../career/persistence.js";
 import { MAX_BODY_BYTES } from "../../config.js";
 import { PublicSyncError } from "../../public-sync.js";
 import { jsonOut, readJsonBody } from "../http.js";
@@ -421,6 +422,7 @@ function schoolActionPayloadHash(residentId, args) {
 }
 
 function readSchoolFacts(database, backend, residentId, now, optionRevision = schoolRevision(database, residentId)) {
+    backend.trustedSystemCommands.expireDueExamAttempts(residentId);
     const tracks = mapRows(database.prepare(`
       SELECT career, track_order, selected_at FROM career_tracks
       WHERE resident_id = ? ORDER BY track_order
@@ -436,13 +438,16 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
       SELECT attempt.attempt_id, attempt.career, attempt.qualification_level,
              attempt.scheduled_at, attempt.registration_status, attempt.correct_answers,
              attempt.registered_at, attempt.started_at, attempt.ended_at,
+             attempt.missed_session_at,
              reservation.reservation_id
       FROM career_exam_attempts AS attempt
       LEFT JOIN economy_system_gold_reservations AS reservation
         ON reservation.reserve_journal_id = attempt.reservation_receipt_id
       WHERE attempt.resident_id = ?
       ORDER BY attempt.registered_at DESC, attempt.attempt_id
-    `).all(residentId));
+    `).all(residentId)).map((exam) => exam.missedSessionAt === null
+        ? exam
+        : { ...exam, registrationStatus: "expired" });
     const certificates = mapRows(database.prepare(`
       SELECT career, qualification_level, status, source_attempt_id,
              issued_at, effective_at
@@ -515,12 +520,13 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
             continue;
         }
         if (activeExam.registrationStatus === "registered") {
-            if (now >= activeExam.scheduledAt && now < activeExam.scheduledAt + 2 * 60 * 60 * 1_000) {
+            if (isBeijingExamSessionOpen(now, activeExam.scheduledAt)) {
                 options.push(option(schoolOption(optionRevision, "exam-start", activeExam.attemptId)));
             }
             options.push(option(schoolOption(optionRevision, "exam-release", activeExam.attemptId)));
         }
-        if (activeExam.registrationStatus === "active") {
+        if (activeExam.registrationStatus === "active" &&
+            isBeijingExamSessionOpen(now, activeExam.scheduledAt)) {
             options.push(option(schoolOption(optionRevision, "exam-submit", activeExam.attemptId), ["answers"]));
         }
     }
@@ -631,6 +637,7 @@ function schoolView(database, backend, residentId, now, args) {
 function schoolChoose(database, backend, residentId, now, args) {
     const actionKey = idempotencyKey(residentId, "go.school.choose", args);
     const payloadHash = schoolActionPayloadHash(residentId, args);
+    backend.trustedSystemCommands.expireDueExamAttempts(residentId);
     return runLingyeWorldTransaction(database, () => {
         const existing = database.prepare(`
           SELECT resident_id, payload_hash, result_json
@@ -720,7 +727,8 @@ function schoolChoose(database, backend, residentId, now, args) {
                 const level = Number(registration[2]);
                 const priorFailure = database.prepare(`SELECT 1 FROM career_exam_attempts
                   WHERE resident_id = ? AND career = ? AND qualification_level = ?
-                    AND registration_status = 'failed' LIMIT 1`).get(residentId, career, level);
+                    AND registration_status = 'failed' AND missed_session_at IS NULL
+                  LIMIT 1`).get(residentId, career, level);
                 result = backend.trustedSystemCommands.registerExam({
                     attemptId: `exam-${actionKey.slice(-32)}`,
                     residentId,

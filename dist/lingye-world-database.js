@@ -6,6 +6,7 @@ import { CareerEmploymentService } from "./career/employment-service.js";
 import { CareerAuthorityAssignmentService } from "./career/authority-assignment.js";
 import { CareerDomainError } from "./career/contracts.js";
 import { CareerJobService } from "./career/job-service.js";
+import { EXAM_SESSION_DURATION_MS } from "./career/persistence.js";
 import { installCareerSchema } from "./career/schema.js";
 import { CareerSchoolService } from "./career/school-service.js";
 import { installEconomySchema } from "./economy/economy-schema.js";
@@ -200,6 +201,33 @@ export function createLingyeWorldBackend(database, options) {
     const jobs = new CareerJobService(shared);
     const authorityAssignment = new CareerAuthorityAssignmentService({ ...shared, jobs });
     const atomic = (operation) => runLingyeWorldTransaction(database, operation);
+    const expireDueExamAttempts = (residentId) => {
+        const now = options.now?.() ?? Date.now();
+        const attempts = database
+            .prepare(`SELECT attempt.attempt_id, attempt.registration_status,
+                     reservation.reservation_id
+              FROM career_exam_attempts AS attempt
+              LEFT JOIN economy_system_gold_reservations AS reservation
+                ON reservation.reserve_journal_id = attempt.reservation_receipt_id
+              WHERE attempt.resident_id = ?
+                AND attempt.registration_status IN ('registered', 'active')
+                AND attempt.scheduled_at + ? <= ?
+              ORDER BY attempt.scheduled_at, attempt.attempt_id`)
+            .all(residentId, EXAM_SESSION_DURATION_MS, now);
+        return attempts.map((attempt) => {
+            if (attempt.registration_status === "active")
+                return school.expireMissedExam(attempt.attempt_id);
+            if (!attempt.reservation_id)
+                throw new CareerDomainError("exam_expiry_settlement_required", "A missed registration fee has no reservation");
+            const idempotencyKey = `career-exam:${attempt.attempt_id}:expire`;
+            const settled = economy.settleSystemGoldReservation({
+                reservationId: attempt.reservation_id,
+                businessReference: idempotencyKey,
+                idempotencyKey,
+            });
+            return school.expireMissedExam(attempt.attempt_id, settled.financialReceipt);
+        });
+    };
     const economyCommands = {
             importLegacyBalances: (input) => atomic(() => economy.importLegacyBalances(input)),
             creditFromSystem: (input) => atomic(() => economy.creditFromSystem(input)),
@@ -251,6 +279,7 @@ export function createLingyeWorldBackend(database, options) {
             markCourseContentRead: (input) => atomic(() => school.markCourseContentRead(input)),
             submitCoursePractice: (input) => atomic(() => school.submitCoursePractice(input)),
             registerExam: (input) => atomic(() => {
+                expireDueExamAttempts(input.residentId);
                 const businessReference = `career-exam:${input.attemptId}:reserve`;
                 const reserved = economy.reserveSystemGold({
                     residentId: input.residentId,
@@ -272,6 +301,7 @@ export function createLingyeWorldBackend(database, options) {
                     reservationReceiptId: reserved.financialReceipt.receiptId,
                 };
             }),
+            expireDueExamAttempts: (residentId) => atomic(() => expireDueExamAttempts(residentId)),
             startExam: (input) => atomic(() => {
                 const settled = economy.settleSystemGoldReservation({
                     reservationId: input.reservationId,
