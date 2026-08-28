@@ -87,6 +87,9 @@ import {
   boundGlimmerReadErrorSchema,
   boundGlimmerReadRequestSchema,
   boundGlimmerReadSuccessSchema,
+  boundQixiMemorialReadErrorSchema,
+  boundQixiMemorialReadRequestSchema,
+  boundQixiMemorialReadSuccessSchema,
   boundTogetherReadErrorSchema,
   boundTogetherReadRequestSchema,
   boundTogetherReadSuccessSchema,
@@ -289,6 +292,12 @@ import {
   FarmLingyeNotFoundError,
   FarmLingyeUnavailableError,
 } from "./farm-lingye-client.js";
+import {
+  FarmHumanQixiMemorialContractUnavailableError,
+  FarmHumanQixiMemorialCredentialInvalidError,
+  FarmHumanQixiMemorialNotFoundError,
+  FarmHumanQixiMemorialUnavailableError,
+} from "./qixi-memorial-client.js";
 import {
   FarmHumanMarketActionContractUnavailableError,
   FarmHumanMarketActionCredentialInvalidError,
@@ -1288,6 +1297,29 @@ function sendBoundTogetherReadError(
   reply.header("cache-control", "no-store");
   return reply.code(statusCode).send(
     boundTogetherReadErrorSchema.parse({
+      error: { code, message },
+    }),
+  );
+}
+
+function sendBoundQixiMemorialReadError(
+  reply: FastifyReply,
+  statusCode: 400 | 401 | 403 | 404 | 409 | 502 | 503,
+  code:
+    | "invalid_request"
+    | "authentication_required"
+    | "qq_not_group_member"
+    | "onebot_unavailable"
+    | "registration_profile_required"
+    | "farm_not_found"
+    | "farm_credential_invalid"
+    | "farm_unavailable"
+    | "upstream_contract_unavailable",
+  message: string,
+) {
+  reply.header("cache-control", "no-store");
+  return reply.code(statusCode).send(
+    boundQixiMemorialReadErrorSchema.parse({
       error: { code, message },
     }),
   );
@@ -6701,6 +6733,126 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
           503,
           "farm_unavailable",
           "The farm Glimmer service is unavailable",
+        );
+      }
+      throw error;
+    }
+  });
+
+  app.get("/api/lingye/memorial/qixi-2026", { exposeHeadRoute: false }, async (request, reply) => {
+    if (
+      !boundQixiMemorialReadRequestSchema.safeParse(request.query).success ||
+      requestHasBody(request)
+    ) {
+      return sendBoundQixiMemorialReadError(
+        reply,
+        400,
+        "invalid_request",
+        "The Qixi memorial read does not accept query parameters or a request body",
+      );
+    }
+
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendBoundQixiMemorialReadError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+
+    try {
+      const result = await options.registrationAuth.getCurrentQixiMemorial(token);
+      const parsed = boundQixiMemorialReadSuccessSchema.safeParse({
+        data: {
+          human_name: result.data.human_name,
+          ai_name: result.data.ai_name,
+          human: result.data.human,
+          ai: result.data.ai,
+        },
+      });
+      if (!parsed.success) {
+        request.log.error(
+          { error_name: "FarmHumanQixiMemorialContractUnavailableError" },
+          "Farm Qixi memorial read is unavailable",
+        );
+        return sendBoundQixiMemorialReadError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The farm Qixi memorial response could not be verified",
+        );
+      }
+      reply.header("cache-control", "no-store");
+      return parsed.data;
+    } catch (error) {
+      if (error instanceof AuthenticationRequiredError) {
+        return sendBoundQixiMemorialReadError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
+        return sendBoundQixiMemorialReadError(
+          reply,
+          403,
+          "qq_not_group_member",
+          "The session QQ number is no longer a current member of the community group",
+        );
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendBoundQixiMemorialReadError(
+          reply,
+          503,
+          "onebot_unavailable",
+          "QQ group membership could not be verified",
+        );
+      }
+      if (error instanceof RegistrationProfileRequiredError) {
+        return sendBoundQixiMemorialReadError(
+          reply,
+          409,
+          "registration_profile_required",
+          "A resident, home, and farm binding are required",
+        );
+      }
+      if (error instanceof FarmHumanQixiMemorialCredentialInvalidError) {
+        return sendBoundQixiMemorialReadError(
+          reply,
+          409,
+          "farm_credential_invalid",
+          "The bound farm human credential is no longer valid",
+        );
+      }
+      if (error instanceof FarmHumanQixiMemorialNotFoundError) {
+        return sendBoundQixiMemorialReadError(
+          reply,
+          404,
+          "farm_not_found",
+          "The bound farm no longer exists",
+        );
+      }
+      if (error instanceof FarmHumanQixiMemorialContractUnavailableError) {
+        request.log.error({ error_name: error.name }, "Farm Qixi memorial read is unavailable");
+        return sendBoundQixiMemorialReadError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The farm Qixi memorial response could not be verified",
+        );
+      }
+      if (error instanceof FarmHumanQixiMemorialUnavailableError) {
+        request.log.error({ error_name: error.name }, "Farm Qixi memorial read is unavailable");
+        return sendBoundQixiMemorialReadError(
+          reply,
+          503,
+          "farm_unavailable",
+          "The farm Qixi memorial service is unavailable",
         );
       }
       throw error;

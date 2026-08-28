@@ -41,6 +41,7 @@ import { FarmMcpMigrationClient } from "./mcp-farm-migration-client.js";
 import { LingyeMcpActionClient } from "./mcp-lingye-action-client.js";
 import { DoorbellMcpRuntime } from "./mcp-runtime.js";
 import { OneBotGroupMembershipClient } from "./qq-group-membership.js";
+import { FarmHumanQixiMemorialClient } from "./qixi-memorial-client.js";
 import { RegistrationAuthService } from "./registration-auth.js";
 import { SharedMemeService } from "./shared-meme-service.js";
 
@@ -187,6 +188,11 @@ const farmLingyeReader = new FarmLingyeClient({
   requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
   serviceToken: serverConfig.farmServiceToken,
 });
+const farmQixiMemorialReader = new FarmHumanQixiMemorialClient({
+  apiBaseUrl: serverConfig.farmApiBaseUrl,
+  requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+  serviceToken: serverConfig.farmServiceToken,
+});
 let disconnectRealtimeResident = (_residentId: string): void => undefined;
 const registrationAuth = new RegistrationAuthService({
   database,
@@ -205,6 +211,7 @@ const registrationAuth = new RegistrationAuthService({
   farmCropCodexActioner,
   farmSmeltingActioner,
   farmLingyeReader,
+  farmQixiMemorialReader,
   farmRanchReader,
   farmRanchResidentActioner,
   farmRanchCollector,

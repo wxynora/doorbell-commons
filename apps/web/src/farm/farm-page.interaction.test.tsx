@@ -498,7 +498,7 @@ function marketBarterAcceptSuccess(idempotencyKey: string) {
 
 const SMELTING_BEFORE = `farm-smelting-v1:${"a".repeat(64)}`;
 const SMELTING_AFTER = `farm-smelting-v1:${"b".repeat(64)}`;
-const SMELTING_MATERIAL_IDS = ["ordinary_stone", "dry_branch", "clay_lump"] as const;
+const SMELTING_MATERIAL_IDS = ["ordinary_stone", "ordinary_stone", "ordinary_stone"] as const;
 
 function smeltingCatalogResult() {
   const base = catalogResult("普通种子", "渡的小农场");
@@ -518,7 +518,7 @@ function smeltingCatalogResult() {
               identity_state: "known",
               name: "普通石头",
               rarity: "N",
-              quantity: 2,
+              quantity: 3,
             },
             {
               material_id: "dry_branch",
@@ -1337,7 +1337,7 @@ describe("FarmPage cross-farm market actions", () => {
 });
 
 describe("FarmPage original plant and ranch decoration actions", () => {
-  it("submits three selected material ids to the existing Human smelting action", async () => {
+  it("submits three copies of the same material to the existing Human smelting action", async () => {
     clients.catalog.mockResolvedValue(smeltingCatalogResult());
     await renderLiveFarm();
 
@@ -1345,8 +1345,11 @@ describe("FarmPage original plant and ranch decoration actions", () => {
     await waitFor(() => expect(clients.catalog).toHaveBeenCalledTimes(1));
     const smeltingPanel = await screen.findByRole("region", { name: "熔炼素材选择" });
     fireEvent.click(within(smeltingPanel).getByRole("button", { name: "选择普通石头" }));
-    fireEvent.click(within(smeltingPanel).getByRole("button", { name: "选择枯树枝" }));
-    fireEvent.click(within(smeltingPanel).getByRole("button", { name: "选择黏土块" }));
+    fireEvent.click(within(smeltingPanel).getByRole("button", { name: "选择普通石头，已选 1 份" }));
+    expect(
+      within(smeltingPanel).getByRole("button", { name: "减少一份普通石头" }).textContent,
+    ).toBe("2");
+    fireEvent.click(within(smeltingPanel).getByRole("button", { name: "选择普通石头，已选 2 份" }));
     fireEvent.click(within(smeltingPanel).getByRole("button", { name: "开始熔炼" }));
 
     await waitFor(() => expect(clients.smelting).toHaveBeenCalledTimes(1));
@@ -1631,6 +1634,29 @@ describe("FarmPage Bell shopping request", () => {
 });
 
 describe("FarmPage kitchen cart checkout", () => {
+  it("shows a repeatable shop item's selected count and lets the badge remove one", async () => {
+    await renderLiveFarm();
+    fireEvent.click(screen.getByRole("button", { name: "料理台" }));
+    await waitFor(() => expect(clients.kitchen).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "商店" }));
+    const shop = await screen.findByRole("region", { name: "料理台商店" });
+    fireEvent.click(within(shop).getByRole("button", { name: "调味" }));
+
+    const salt = within(shop).getByRole("button", { name: "将盐加入购物车" });
+    fireEvent.click(salt);
+    fireEvent.click(salt);
+
+    const selectedCount = within(shop).getByRole("button", {
+      name: "从购物车减少一份盐",
+    });
+    expect(selectedCount.textContent).toBe("2");
+    expect(within(shop).getByRole("button", { name: "查看购物车，2件" })).toBeTruthy();
+
+    fireEvent.click(selectedCount);
+    expect(within(shop).getByRole("button", { name: "从购物车减少一份盐" }).textContent).toBe("1");
+    expect(within(shop).getByRole("button", { name: "查看购物车，1件" })).toBeTruthy();
+  });
+
   it("refreshes the live ingredient shelf with the authority revision and replaces its counters", async () => {
     const refreshed = kitchenShopRefreshSuccess("00000000-0000-4000-8000-000000000000");
     clients.kitchen.mockResolvedValueOnce(KITCHEN_RESULT).mockResolvedValue({

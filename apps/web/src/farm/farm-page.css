@@ -163,9 +163,7 @@
 }
 
 .farm-field-plaque strong,
-.farm-field-plaque__copy > span,
-.farm-field-plaque__copy > small,
-.farm-field-plaque__copy > em {
+.farm-field-plaque__copy > span {
   display: block;
   max-width: 100%;
   overflow: hidden;
@@ -188,14 +186,6 @@
 
 .farm-field-plaque__copy > span {
   font-size: clamp(0.48rem, 2cqw, 0.62rem);
-  font-weight: 800;
-  line-height: 1;
-}
-
-.farm-field-plaque__copy > small,
-.farm-field-plaque__copy > em {
-  font-size: clamp(0.42rem, 1.7cqw, 0.54rem);
-  font-style: normal;
   font-weight: 800;
   line-height: 1;
 }
@@ -685,7 +675,15 @@
 }
 
 .farm-plot-detail {
+  top: 50%;
+  right: auto;
+  bottom: auto;
+  left: 50%;
+  z-index: 19;
+  box-sizing: border-box;
+  width: 82cqw;
   padding: 10px 42px 10px 13px;
+  transform: translate(-50%, -50%);
 }
 
 .farm-plot-detail p,
@@ -1117,6 +1115,8 @@
   z-index: 1;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
+  align-self: start;
+  height: 9.8cqw;
   padding-inline: 3.9%;
   overflow: hidden;
   margin: 0;

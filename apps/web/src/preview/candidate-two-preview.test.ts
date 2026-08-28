@@ -76,6 +76,14 @@ test("candidate bridge accepts only exact known child actions", () => {
     },
   );
   assert.deepEqual(
+    parseCandidateTwoAction({ type: "memorial-layout-save", encodedLayout: "eyJ0aXRsZSI6e319" }),
+    { type: "memorial-layout-save", encodedLayout: "eyJ0aXRsZSI6e319" },
+  );
+  assert.deepEqual(
+    parseCandidateTwoAction({ type: "memorial-backdrop-color-sample", xRatio: 0.25, yRatio: 0.75 }),
+    { type: "memorial-backdrop-color-sample", xRatio: 0.25, yRatio: 0.75 },
+  );
+  assert.deepEqual(
     parseCandidateTwoAction({
       type: "home-settings-save",
       field: "climateType",
@@ -189,6 +197,11 @@ test("candidate bridge accepts only exact known child actions", () => {
     }),
     null,
   );
+  assert.equal(parseCandidateTwoAction({ type: "memorial-layout-save", encodedLayout: 3 }), null);
+  assert.equal(
+    parseCandidateTwoAction({ type: "memorial-backdrop-color-sample", xRatio: 1.1, yRatio: 0.5 }),
+    null,
+  );
 });
 
 test("only the farm entry stays inside the React community frontend", () => {
@@ -201,6 +214,14 @@ test("only the farm entry stays inside the React community frontend", () => {
   assert.match(
     componentSource,
     /action\.type\s*===\s*"glimmer-animal-layout-change"[\s\S]*url\.searchParams\.set\(xParam[\s\S]*url\.searchParams\.set\(yParam[\s\S]*url\.searchParams\.set\("gaLayout",\s*"5"\)[\s\S]*window\.history\.replaceState/,
+  );
+  assert.match(
+    componentSource,
+    /action\.type\s*===\s*"memorial-layout-save"[\s\S]*demoRef\.current\?\.memorialLayoutEditor\.enabled[\s\S]*memorialLayoutEditor\.target\s*===\s*"entry"[\s\S]*"memorialEntryLayout"[\s\S]*"memorialLayout"[\s\S]*url\.searchParams\.set\(layoutParam,\s*action\.encodedLayout\)[\s\S]*window\.history\.replaceState/,
+  );
+  assert.match(
+    componentSource,
+    /action\.type\s*===\s*"memorial-backdrop-color-sample"[\s\S]*sampleCandidateTwoMemorialBackdropColor\(action\.xRatio,\s*action\.yRatio\)[\s\S]*doorbell-candidate2:memorial-color-sampled/,
   );
 });
 
@@ -429,7 +450,71 @@ test("runtime HTML keeps candidate two and replaces every confirmed fake datum",
   assert.doesNotMatch(settingsMarkup, /家园门牌|农场门牌|农场设置|当前居民身份/);
   assert.equal((html.match(/data-place-id=/g) ?? []).length, 10);
   assert.doesNotMatch(html, /data-place-id="moonlight-pond"/);
-  assert.match(html, /src="\/lingye\/lingye-together-game-icon-v4\.png"/);
+  assert.match(
+    html,
+    /src="\/lingye\/lingye-together-game-icon-v5\.png"[^>]*width="512" height="512"/,
+  );
+});
+
+test("six Lingye institutions open their own background-only scenes", () => {
+  const html = buildCandidateTwoRuntimeHtml();
+  const scenes = [
+    ["lingye-daily", "lingye-daily", "铃野日报社"],
+    ["lingye-public-security-office", "public-security-office", "铃野治安署"],
+    ["animal-hospital", "animal-hospital", "铃野动物医院"],
+    ["vocational-school", "vocational-school", "铃野职业学校"],
+    ["bank", "bank", "铃野银行"],
+    ["detention-center", "detention-center", "铃野看守所"],
+  ] as const;
+
+  assert.equal((html.match(/data-institution-place=/g) ?? []).length, scenes.length);
+  for (const [placeId, assetName, label] of scenes) {
+    assert.match(html, new RegExp(`data-institution-place="${placeId}"`));
+    assert.match(
+      html,
+      new RegExp(
+        `class="candidate2-institution-scene-viewport" aria-label="${label}场景，可左右滑动查看" tabindex="0"`,
+      ),
+    );
+    assert.match(
+      html,
+      new RegExp(
+        `src="/lingye/institutions/${assetName}\\.avif" width="1024" height="1536" alt="${label}场景背景"`,
+      ),
+    );
+    assert.match(
+      html,
+      new RegExp(`'${placeId}': 'screen-lingye-institution-${placeId.replaceAll("/", "-")}'`),
+    );
+  }
+
+  assert.match(
+    html,
+    /function openLingyePlace\(placeId, label\) \{[\s\S]*const institutionScreenId = lingyeInstitutionScreenIds\[placeId\];[\s\S]*showScreen\(institutionScreenId\);[\s\S]*return;/,
+  );
+  assert.match(
+    html,
+    /\.candidate2-institution-scene-viewport \{[\s\S]*width: 100%;[\s\S]*height: 100%;[\s\S]*overflow-x: auto;[\s\S]*overflow-y: hidden;[\s\S]*touch-action: pan-x;/,
+  );
+  assert.match(
+    html,
+    /\.candidate2-institution-scene-canvas \{[\s\S]*width: auto;[\s\S]*height: 100%;[\s\S]*aspect-ratio: 2 \/ 3;/,
+  );
+  assert.match(
+    html,
+    /\.candidate2-institution-scene-background \{[\s\S]*width: auto;[\s\S]*max-width: none;[\s\S]*height: 100%;/,
+  );
+  assert.match(
+    html,
+    /const institutionViewports = document\.querySelectorAll\('\.candidate2-institution-scene-viewport'\);[\s\S]*institutionViewports\.forEach\(\(viewport\) => \{[\s\S]*viewport\.addEventListener\('pointerdown'[\s\S]*viewport\.scrollLeft = dragStartScrollLeft - \(event\.clientX - dragStartX\);[\s\S]*viewport\.addEventListener\('wheel'/,
+  );
+  assert.doesNotMatch(html, /\.candidate2-institution-scene-canvas \{[^}]*max-width: 430px;/s);
+  assert.doesNotMatch(
+    html,
+    /\.candidate2-institution-scene-background \{[^}]*object-fit: contain;/s,
+  );
+  assert.doesNotMatch(html, /data-institution-place="commercial-street"/);
+  assert.doesNotMatch(html, /\/lingye\/institutions\/shop-management/);
 });
 
 test("lingye demo opens distinct Together and Glimmer Human UI previews", () => {
@@ -443,6 +528,14 @@ test("lingye demo opens distinct Together and Glimmer Human UI previews", () => 
     "127.0.0.1",
     "?demo=full&screen=glimmer&editor=glimmer-animals&gaLayout=5&gaDuckX=2&gaDuckY=3&gaTurkeyX=4&gaTurkeyY=5&gaMothX=6&gaMothY=7&gaMysteryX=8&gaMysteryY=9",
   );
+  const togetherHistoryDemo = resolveCandidateTwoDemoPreset(
+    "127.0.0.1",
+    "?demo=full&screen=together-history",
+  );
+  const memorialClosedDemo = resolveCandidateTwoDemoPreset(
+    "127.0.0.1",
+    "?demo=full&screen=memorial&memorialLayout=accepted-layout",
+  );
   const togetherMarkup = html.slice(
     html.indexOf('id="screen-lingye-together"'),
     html.indexOf('id="screen-lingye-glimmer"'),
@@ -453,15 +546,22 @@ test("lingye demo opens distinct Together and Glimmer Human UI previews", () => 
   );
 
   assert.match(html, /id="screen-lingye-together"/);
+  assert.match(html, /id="screen-lingye-together-history"/);
   assert.match(html, /id="screen-lingye-memorial"/);
   assert.match(html, /id="screen-lingye-glimmer"/);
+  assert.equal(memorialClosedDemo?.demo.initialScreen, "lingye-memorial");
+  assert.deepEqual(memorialClosedDemo?.demo.memorialLayoutEditor, {
+    enabled: false,
+    encodedLayout: "accepted-layout",
+    target: "index",
+  });
   assert.doesNotMatch(
     togetherMarkup,
     /<img[^>]+src="\/lingye\/together\/same-kitchen-opening\.jpg"/,
   );
   assert.match(
     html,
-    /const togetherCoverAssets = \{\s*'together\.same-kitchen-opening': '\/lingye\/together\/same-kitchen-opening\.jpg',[\s\S]*'together\.same-kitchen-old-recipe': '\/lingye\/together\/same-kitchen-old-recipe\.jpg',[\s\S]*'together\.same-kitchen-undelivered-letters': '\/lingye\/together\/same-kitchen-undelivered-letters\.jpg',[\s\S]*'together\.same-kitchen-service': '\/lingye\/together\/same-kitchen-service\.jpg',[\s\S]*'together\.same-kitchen-final-arrangement': '\/lingye\/together\/same-kitchen-final-arrangement\.jpg',[\s\S]*'together\.same-kitchen-ending-one-sign': '\/lingye\/together\/same-kitchen-ending-one-sign\.jpg',[\s\S]*'together\.same-kitchen-ending-next-door': '\/lingye\/together\/same-kitchen-ending-next-door\.jpg',[\s\S]*'together\.same-kitchen-ending-public-kitchen': '\/lingye\/together\/same-kitchen-ending-public-kitchen\.jpg',/,
+    /const togetherCoverAssets = \{[\s\S]*'together\.river-from-tomorrow-opening': '\/lingye\/together\/river-opening\.webp',[\s\S]*'together\.river-ending-second-home': '\/lingye\/together\/river-ending-second-home\.webp',[\s\S]*'together\.same-kitchen-opening': '\/lingye\/together\/same-kitchen-opening\.jpg',[\s\S]*'together\.same-kitchen-old-recipe': '\/lingye\/together\/same-kitchen-old-recipe\.jpg',[\s\S]*'together\.same-kitchen-undelivered-letters': '\/lingye\/together\/same-kitchen-undelivered-letters\.jpg',[\s\S]*'together\.same-kitchen-service': '\/lingye\/together\/same-kitchen-service\.jpg',[\s\S]*'together\.same-kitchen-final-arrangement': '\/lingye\/together\/same-kitchen-final-arrangement\.jpg',[\s\S]*'together\.same-kitchen-ending-one-sign': '\/lingye\/together\/same-kitchen-ending-one-sign\.jpg',[\s\S]*'together\.same-kitchen-ending-next-door': '\/lingye\/together\/same-kitchen-ending-next-door\.jpg',[\s\S]*'together\.same-kitchen-ending-public-kitchen': '\/lingye\/together\/same-kitchen-ending-public-kitchen\.jpg',/,
   );
   assert.doesNotMatch(
     html,
@@ -526,7 +626,162 @@ test("lingye demo opens distinct Together and Glimmer Human UI previews", () => 
   );
   assert.match(
     html,
-    /class="candidate2-memorial-demo"[^>]*hidden>[\s\S]*2026[\s\S]*七夕[\s\S]*灯河有信[\s\S]*愿今夜所有思念，都能顺水抵达归处。/,
+    /class="candidate2-memorial-demo"[^>]*onclick="openLingyeMemorialEntry\(\)"[^>]*hidden>[\s\S]*2026[\s\S]*七夕[\s\S]*灯河有信/,
+  );
+  assert.match(
+    html,
+    /class="candidate2-memorial-entry-view candidate2-memorial-entry-view--qixi"[^>]*hidden>[\s\S]*aria-label="返回纪念册目录"[^>]*onclick="closeLingyeMemorialEntry\(\)"[\s\S]*class="candidate2-memorial-entry-qixi-stickers"[^>]*src="\/lingye\/memorial\/qixi-stickers-v1\.png"[\s\S]*2026 · 七夕[\s\S]*class="candidate2-memorial-entry-title-art"[^>]*aria-label="灯河有信。灯河相逢 · 愿思念抵达归处"[\s\S]*src="\/lingye\/memorial\/qixi-title-lockup-v1\.png"[\s\S]*2026\.08\.19[\s\S]*2026\.08\.21[\s\S]*src="\/lingye\/memorial\/qixi-2026-lantern-night\.jpg"[\s\S]*class="candidate2-memorial-entry-note"[\s\S]*愿今夜所有思念，[\s\S]*src="\/lingye\/memorial\/qixi-2026-objects-return-bg-v3\.jpg"/,
+  );
+  assert.doesNotMatch(html, /<h2>活动回顾<\/h2>/);
+  assert.doesNotMatch(html, /candidate2-memorial-entry-story|旧铜铃|七夕纪念手帐|>活动回顾</);
+  assert.match(
+    html,
+    /\.candidate2-memorial-entry-view \{[\s\S]*memorial-entry-paper-v1\.png[\s\S]*100% 100% no-repeat[\s\S]*\.candidate2-memorial-entry-view--qixi \{[\s\S]*min-height: 650px;[\s\S]*\.candidate2-memorial-entry-view--qixi \.candidate2-memorial-entry-heading \{[\s\S]*\.candidate2-memorial-entry-title-art \{[\s\S]*\.candidate2-memorial-entry-qixi-stickers \{[\s\S]*\.candidate2-memorial-entry-view--qixi \.candidate2-memorial-entry-collage \{[\s\S]*\.candidate2-memorial-entry-view--qixi \.candidate2-memorial-entry-note \{[\s\S]*qixi-letter-note\.webp[\s\S]*\.candidate2-memorial-entry-view--qixi \.candidate2-memorial-entry-secondary-photo \{/,
+  );
+  assert.match(
+    html,
+    /class="candidate2-memorial-title-lockup"[^>]*aria-label="Album，纪念册，往期活动回顾"[\s\S]*memorial-title-lockup-v1\.png[\s\S]*class="candidate2-memorial-tabs"[\s\S]*全部[\s\S]*节日[\s\S]*class="candidate2-memorial-index-number"[\s\S]*01[\s\S]*2026[\s\S]*class="candidate2-memorial-index-copy"[\s\S]*七夕活动[\s\S]*灯河有信[\s\S]*2026\.08\.19—08\.21[\s\S]*class="candidate2-memorial-index-banner"[\s\S]*查看回忆/,
+  );
+  assert.match(
+    html,
+    /data-memorial-filter="all"[^>]*setLingyeMemorialFilter\('all'\)[^>]*>全部<\/button>[\s\S]*data-memorial-filter="festival"[^>]*setLingyeMemorialFilter\('festival'\)[^>]*>节日<\/button>[\s\S]*data-memorial-category="festival"/,
+  );
+  assert.match(
+    html,
+    /function setLingyeMemorialFilter\(filter\)[\s\S]*aria-pressed[\s\S]*card\.dataset\.memorialCategory/,
+  );
+  assert.doesNotMatch(
+    html,
+    /candidate2-memorial-summary|已收录活动|data-memorial-editor-id="summary-(?:total|date)"/,
+  );
+  assert.match(
+    html,
+    /\.candidate2-memorial-paper \{[\s\S]*memorial-album-backdrop-v1\.jpg[\s\S]*\.candidate2-memorial-ledger::before \{[\s\S]*--memorial-paper-fill[\s\S]*\.candidate2-memorial-tabs \{[\s\S]*top: -42px;[\s\S]*display: flex;[\s\S]*\.candidate2-memorial-tabs button \{[\s\S]*width: 49px;[\s\S]*min-height: 49px;[\s\S]*align-items: flex-start;[\s\S]*font-size: 10px;[\s\S]*font-weight: 700;[\s\S]*\.candidate2-memorial-demo \{[\s\S]*grid-template-columns: 45px minmax\(0, 1fr\) 118px;[\s\S]*\.candidate2-memorial-index-banner \{[\s\S]*aspect-ratio: 4 \/ 3;[\s\S]*\.candidate2-memorial-index-banner img \{[\s\S]*object-fit: cover;/,
+  );
+  assert.doesNotMatch(
+    html,
+    /candidate2-memorial-tabs button:not\([^)]*is-active[^)]*\)[\s\S]{0,120}opacity:/,
+  );
+  assert.match(
+    html,
+    /\.candidate2-memorial-title-lockup \{[\s\S]*left: calc\(50% - 28px\);[\s\S]*width: 128px;[\s\S]*transform: translateX\(-50%\);[\s\S]*\.candidate2-memorial-title-lockup img \{[\s\S]*drop-shadow[\s\S]*\.candidate2-memorial-index-number strong \{[\s\S]*font-size: 31px;[\s\S]*\.candidate2-memorial-index-copy strong \{[\s\S]*'Songti SC'[\s\S]*font-size: 18px;/,
+  );
+  assert.doesNotMatch(html, /candidate2-memorial-(?:header|event)-sticker|qixi-stickers-v2\.webp/);
+  assert.match(
+    html,
+    /\.candidate2-memorial-entry-heading \{[\s\S]*grid-template-columns: minmax\(0, 1fr\);[\s\S]*\.candidate2-memorial-entry-view--qixi \.candidate2-memorial-entry-heading time \{[\s\S]*display: flex;[\s\S]*\.candidate2-memorial-entry-view--qixi \.candidate2-memorial-entry-collage \{[\s\S]*grid-template-columns: repeat\(12, minmax\(0, 1fr\)\);[\s\S]*\.candidate2-memorial-entry-view--qixi \.candidate2-memorial-entry-hero-photo img \{[\s\S]*height: 166px;[\s\S]*\.candidate2-memorial-entry-view--qixi \.candidate2-memorial-entry-note \{[\s\S]*grid-column: 7 \/ -1;[\s\S]*\.candidate2-memorial-entry-view--qixi \.candidate2-memorial-entry-secondary-photo \{[\s\S]*grid-column: 1 \/ 8;[\s\S]*\.candidate2-memorial-entry-view--qixi \.candidate2-memorial-entry-secondary-photo img \{[\s\S]*height: 128px;/,
+  );
+  assert.match(
+    html,
+    /\.candidate2-memorial-paper \{[\s\S]*#39284f[\s\S]*\.candidate2-memorial-entry-view \{[\s\S]*#f7f5fa/,
+  );
+  assert.match(
+    html,
+    /data-memorial-editor-id="title-lockup"[\s\S]*data-memorial-editor-id="paper"[\s\S]*data-memorial-editor-id="tab-all"[\s\S]*data-memorial-editor-id="event-card"[\s\S]*class="candidate2-memorial-editor-selection"[\s\S]*class="candidate2-memorial-editor"/,
+  );
+  assert.doesNotMatch(html, /data-memorial-editor-id="(?:album|title|subtitle)"/);
+  assert.match(
+    html,
+    /memorialEditorTextInput\.addEventListener\('input',[\s\S]*memorialEditorSelected\.textContent = memorialEditorTextInput\.value/,
+  );
+  assert.match(
+    html,
+    /data-memorial-add-shape="square"[\s\S]*data-memorial-add-shape="circle"[\s\S]*data-memorial-add-shape="rounded"[\s\S]*data-memorial-add-shape="frame"[\s\S]*data-memorial-editor-command="eyedropper"[\s\S]*data-memorial-editor-command="backward"[\s\S]*data-memorial-editor-command="forward"/,
+  );
+  assert.match(
+    html,
+    /data-memorial-entry-editor-id="entry-stickers"[\s\S]*data-memorial-entry-editor-id="entry-event-label"[\s\S]*data-memorial-entry-editor-id="entry-title"[\s\S]*data-memorial-entry-editor-id="entry-date"[\s\S]*data-memorial-entry-editor-id="entry-hero"[\s\S]*data-memorial-entry-editor-id="entry-note"[\s\S]*data-memorial-entry-editor-id="entry-secondary"/,
+  );
+  assert.match(
+    html,
+    /data-memorial-add-asset="my-lantern"[\s\S]*data-memorial-add-asset="du-lantern"[\s\S]*data-memorial-add-asset="my-letter"[\s\S]*data-memorial-add-asset="du-letter"[\s\S]*data-memorial-add-asset="qiaoqiao"[\s\S]*data-memorial-add-asset="title"[\s\S]*data-memorial-add-asset="stickers"[\s\S]*data-memorial-add-asset="hero"[\s\S]*data-memorial-add-asset="secondary"[\s\S]*data-memorial-add-asset="note"[\s\S]*data-memorial-add-asset="event-label"[\s\S]*data-memorial-add-asset="date"[\s\S]*data-memorial-editor-command="duplicate"/,
+  );
+  assert.match(
+    html,
+    /data-memorial-editor-asset="my-lantern" data-memorial-editor-asset-template[\s\S]*data-memorial-editor-asset="du-lantern" data-memorial-editor-asset-template[\s\S]*data-memorial-editor-asset="my-letter" data-memorial-editor-asset-template[\s\S]*data-memorial-editor-asset="du-letter" data-memorial-editor-asset-template[\s\S]*data-memorial-editor-asset="qiaoqiao" data-memorial-editor-asset-template/,
+  );
+  assert.match(
+    html,
+    /data-memorial-editor-asset="my-letter"[\s\S]*candidate2-qixi-archive-letter-signature">辛玥<[\s\S]*data-memorial-editor-asset="du-letter"[\s\S]*candidate2-qixi-archive-letter-signature">渡</,
+  );
+  assert.match(
+    html,
+    /moqu-gufeng-ti\.css[\s\S]*font: 400 9px\/1\.72 'MoQuGuFengTi'[\s\S]*font: 400 8px\/1 'MoQuGuFengTi'/,
+  );
+  assert.match(html, /qixi-lantern-bases-v2-web\.webp[\s\S]*qixi-lantern-decorations-v3-web\.webp/);
+  assert.doesNotMatch(
+    html,
+    /\.candidate2-qixi-archive-lantern \{[^}]*filter:\s*drop-shadow/,
+  );
+  assert.match(
+    html,
+    /\.candidate2-qixi-archive-letter \{[\s\S]*width: 220px;[\s\S]*height: 136px;[\s\S]*qixi-letter-card-v1\.png[\s\S]*\.candidate2-qixi-archive-qiaoqiao \{[\s\S]*qixi-stickers-v2-web\.webp/,
+  );
+  assert.doesNotMatch(html, /\.candidate2-qixi-archive-letter::before/);
+  assert.doesNotMatch(
+    html,
+    /\.candidate2-qixi-archive-letter \{[^}]*filter:\s*drop-shadow/,
+  );
+  assert.doesNotMatch(html, /qixi-letter-display-v1-web\.webp/);
+  assert.match(
+    html,
+    /function createMemorialEntryAsset[\s\S]*saved-lantern'[\s\S]*'my-lantern'[\s\S]*saved-letter'[\s\S]*entry-asset-8'[\s\S]*'du-letter'[\s\S]*'my-letter'[\s\S]*data-memorial-editor-asset-template[\s\S]*delete asset\.dataset\.memorialEditorAssetTemplate/,
+  );
+  assert.match(
+    html,
+    /function beginMemorialEditorGesture[\s\S]*mode === 'move'[\s\S]*mode === 'scale'[\s\S]*state\.rotate[\s\S]*new window\.EyeDropper\(\)\.open\(\)[\s\S]*navigator\.clipboard\.writeText/,
+  );
+  assert.doesNotMatch(html, /memorialEditorOverflow|lastOverflow|lastState/);
+  assert.match(
+    html,
+    /class="candidate2-memorial-paper" data-memorial-editor-canvas[\s\S]*class="candidate2-memorial-editor-selection"/,
+  );
+  assert.match(
+    html,
+    /\.candidate2-memorial-page\.is-layout-editor \.candidate2-memorial-paper \{[\s\S]*overflow: hidden;[\s\S]*\.candidate2-memorial-editor-selection \{[\s\S]*position: absolute;/,
+  );
+  assert.match(
+    html,
+    /\.candidate2-memorial-page\.is-layout-editor \.candidate2-memorial-title-lockup \{[\s\S]*position: absolute;[\s\S]*pointer-events: auto;/,
+  );
+  assert.match(
+    html,
+    /'title-lockup': \{ color: null, rotate: 0, scale: 0\.97, x: -22\.9, y: -16\.4, z: 10[\s\S]*paper: \{ color: '#f8f1f5', rotate: 1\.5, scale: 1\.44, x: 49\.5, y: 27\.4[\s\S]*'tab-all': \{ color: '#dfc6e2', rotate: 0, scale: 0\.83, x: 100\.4, y: 22, z: -1, kind: null, text: '全部'[\s\S]*'tab-festival': \{ color: '#dfc6e2', rotate: 0, scale: 0\.81, x: 96\.4, y: 16\.9, z: -2, kind: null, text: '节日'[\s\S]*'event-card': \{ color: '#ffffff', rotate: 0\.6, scale: 0\.66, x: -46\.4, y: -58\.9[\s\S]*'shape-1': \{ color: '#e4d2dc', rotate: 0, scale: 8\.05, x: 97\.1, y: 63\.6, z: -4, kind: 'square'/,
+  );
+  assert.match(
+    html,
+    /\.candidate2-memorial-editor-shape\[data-memorial-editor-id='shape-1'\] \{[\s\S]*height: 68\.14px;/,
+  );
+  assert.match(
+    html,
+    /function setMemorialLayoutEditorEnabled\(enabled, encodedLayout, applyLayout, target\)[\s\S]*target === 'entry'[\s\S]*openLingyeMemorialEntry\(\)[\s\S]*if \(applyLayout && !memorialLayoutEditorRestored\)[\s\S]*restoreMemorialEditorLayout\(encodedLayout\)/,
+  );
+  assert.match(html, /\^shape-\\d\+\$\/\.test\(id\)/);
+  assert.match(html, /\^entry-asset-\\d\+\$\/\.test\(id\)/);
+  assert.match(
+    html,
+    /sendAction\(\{ type: 'memorial-layout-save', encodedLayout \}\)[\s\S]*function restoreMemorialEditorLayout\(encodedLayout\)[\s\S]*已从当前预览地址恢复布局/,
+  );
+  assert.match(
+    html,
+    /async function resolveMemorialBackdropSamplePoint[\s\S]*xRatio:[\s\S]*yRatio:[\s\S]*sendAction\(\{ type: 'memorial-backdrop-color-sample',[\s\S]*doorbell-candidate2:memorial-color-sampled[\s\S]*已吸取底图颜色/,
+  );
+  assert.match(
+    html,
+    /function shiftMemorialEditorLayer[\s\S]*lowerLayers[\s\S]*Math\.max\(\.\.\.lowerLayers\) - 1[\s\S]*higherLayers[\s\S]*Math\.min\(\.\.\.higherLayers\) \+ 1/,
+  );
+  assert.match(html, /\.candidate2-memorial-demo \{[\s\S]*width: 116%;/);
+  assert.match(
+    resolveCandidateTwoDemoPreset.toString(),
+    /memorialEditorParam[\s\S]*memorial-entry-layout[\s\S]*import\.meta\.env\?\.DEV[\s\S]*memorialLayoutEditorTarget\s*===\s*"entry"\s*\?\s*"memorialEntryLayout"\s*:\s*"memorialLayout"/,
+  );
+  assert.doesNotMatch(
+    html,
+    /\.candidate2-memorial-header h1::after|\.candidate2-memorial-header \{[^}]*border-bottom|\.candidate2-memorial-empty,[\s\S]*?\.candidate2-memorial-demo \{[^}]*border-bottom/,
+  );
+  assert.match(
+    html,
+    /function openLingyeMemorialEntry\(\)[\s\S]*index\.hidden = true[\s\S]*entry\.hidden = false[\s\S]*function closeLingyeMemorialEntry\(\)[\s\S]*index\.hidden = false[\s\S]*entry\.hidden = true/,
   );
   assert.doesNotMatch(
     html,
@@ -536,6 +791,7 @@ test("lingye demo opens distinct Together and Glimmer Human UI previews", () => 
     html,
     /setDemoVisibility\('\.candidate2-memorial-empty', '\.candidate2-memorial-demo', enabled\)/,
   );
+  assert.match(html, /memorialDemoChrome[\s\S]*memorialDemoChrome\.hidden = !enabled/);
   assert.doesNotMatch(html, /candidate2-lingye-memories[\s\S]*?<span>纪念册<\/span>/);
   assert.match(
     html,
@@ -543,7 +799,65 @@ test("lingye demo opens distinct Together and Glimmer Human UI previews", () => 
   );
   assert.match(
     togetherMarkup,
-    /class="candidate2-together-history-button" type="button" aria-label="往期故事" disabled>[\s\S]*<svg viewBox="0 0 32 32"/,
+    /class="candidate2-together-history-button" type="button" aria-label="往期故事" onclick="openTogetherHistory\(\)" disabled>[\s\S]*<svg viewBox="0 0 32 32"/,
+  );
+  assert.match(
+    togetherMarkup,
+    /<main class="candidate2-together-archive-directory" aria-label="铃野共行往期目录"><\/main>[\s\S]*class="candidate2-together-archive-reader"[\s\S]*aria-label="返回往期目录"[\s\S]*aria-label="故事翻页"/,
+  );
+  assert.match(
+    html,
+    /\.candidate2-together-archive-directory \{[\s\S]*width: min\(100%, 540px\);[\s\S]*\.candidate2-together-archive-reader \{[\s\S]*width: 100%;[\s\S]*padding: 0 6px 24px;[\s\S]*\.candidate2-together-archive-index-card \{[\s\S]*grid-template-columns: 92px minmax\(0, 1fr\) 18px;/,
+  );
+  assert.match(
+    html,
+    /\.candidate2-together-archive-page \{[^}]*border: 0;[^}]*background: transparent;[^}]*box-shadow: none;[\s\S]*\.candidate2-together-archive-photo \{[^}]*background: #fffdf6;[^}]*transform: rotate\(-0\.45deg\);[\s\S]*\.candidate2-together-archive-photo::before[\s\S]*\.candidate2-together-archive-photo::after/,
+  );
+  assert.match(
+    html,
+    /\.candidate2-together-archive-entry-title \{[^}]*font-size: clamp\(20px, 6\.3vw, 26px\);[\s\S]*\.candidate2-together-archive-entry-title::after[\s\S]*\.candidate2-together-archive-entry-text \{[^}]*line-height: 2;[^}]*text-align: justify;/,
+  );
+  assert.match(
+    html,
+    /function renderTogetherArchives\(archives\)[\s\S]*\['story', 'task', 'clue', 'ending'\]\.includes\(entry\.kind\)[\s\S]*directory\.replaceChildren\(\.\.\.togetherArchives\.map\(buildTogetherArchiveIndexCard\)\)[\s\S]*historyButton\.disabled = togetherArchives\.length === 0/,
+  );
+  assert.match(
+    html,
+    /function buildTogetherArchiveIndexCard\(archive, index\)[\s\S]*openTogetherArchive\(index\)[\s\S]*function renderTogetherArchivePage\(\)[\s\S]*entry\.artFile[\s\S]*function turnTogetherArchivePage\(offset\)[\s\S]*function openTogetherHistory\(\)[\s\S]*showScreen\('screen-lingye-together-history'\)/,
+  );
+  assert.match(
+    html,
+    /function openTogetherArchive\(index\)[\s\S]*historyHeader\.hidden = true[\s\S]*function closeTogetherArchive\(\)[\s\S]*historyHeader\.hidden = false/,
+  );
+  assert.match(html, /\.candidate2-together-history-header\[hidden\]\s*\{\s*display: none;/);
+  assert.doesNotMatch(
+    html,
+    /candidate2-together-book-spine|candidate2-together-photo-book|turnTogetherHistoryPage/,
+  );
+  assert.match(
+    html,
+    /archives: data\.archives\.map\(\(archive\) => \(\{[\s\S]*history: archive\.history\.map\(\(entry\) => \(\{[\s\S]*artFile: entry\.art_asset_key,[\s\S]*kind: entry\.kind,[\s\S]*text: entry\.text,[\s\S]*title: entry\.title/,
+  );
+  assert.deepEqual(
+    togetherHistoryDemo?.demo.content.together.archives[1]?.history
+      .filter((entry) => entry.kind === "task")
+      .map((entry) => entry.title),
+    [
+      "旧账里的第一盘烤鱼",
+      "复现第一版香草烤鱼",
+      "灰背的旧货车",
+      "泊泊的鱼肉饭团",
+      "迟迟的葱油饼",
+      "砂砂的蜂蜜茶",
+    ],
+  );
+  assert.doesNotMatch(
+    togetherMarkup,
+    /candidate2-together-archive-kind|candidate2-together-archive-entry-progress|已完成.*entry\.progress/,
+  );
+  assert.doesNotMatch(
+    togetherMarkup.slice(togetherMarkup.indexOf('id="screen-lingye-together-history"')),
+    /公共选择|票数|玩家选择|entry\.option|entry\.label/,
   );
   assert.match(html, /\.candidate2-together-section \{[\s\S]*border-bottom:/);
   assert.match(html, /class="candidate2-place-visually-hidden">流光原野<\/h1>/);
@@ -593,7 +907,15 @@ test("lingye demo opens distinct Together and Glimmer Human UI previews", () => 
   );
   assert.match(
     html,
-    /class="candidate2-memorial-back"[^>]*aria-label="返回铃野地图"[^>]*>[\s\S]*<span aria-hidden="true">‹<\/span>/,
+    /class="candidate2-memorial-back"[^>]*aria-label="返回铃野地图"[^>]*>[\s\S]*<span aria-hidden="true">←<\/span>/,
+  );
+  assert.match(
+    html,
+    /class="candidate2-memorial-entry-back"[^>]*aria-label="返回纪念册目录"[^>]*>[\s\S]*<span aria-hidden="true">←<\/span>/,
+  );
+  assert.match(
+    html,
+    /\.candidate2-memorial-back \{[\s\S]*top: 2px;[\s\S]*width: 40px;[\s\S]*\.candidate2-memorial-back::before \{[\s\S]*width: 18px;[\s\S]*rotate\(45deg\)[\s\S]*\.candidate2-memorial-back span \{[\s\S]*width: 11px;[\s\S]*\.candidate2-memorial-entry-back \{[\s\S]*top: 18px;[\s\S]*left: 20px;[\s\S]*width: 40px;[\s\S]*background: transparent;[\s\S]*\.candidate2-memorial-entry-back::before \{[\s\S]*width: 18px;[\s\S]*background: transparent;[\s\S]*rotate\(45deg\)[\s\S]*\.candidate2-memorial-entry-back span \{[\s\S]*width: 11px;/,
   );
   assert.doesNotMatch(html, /<span aria-hidden="true">‹<\/span>\s*返回铃野/);
   assert.match(
@@ -750,6 +1072,11 @@ test("lingye demo opens distinct Together and Glimmer Human UI previews", () => 
     },
   });
   assert.equal(editorDemo?.demo.initialScreen, "lingye-glimmer");
+  assert.equal(togetherHistoryDemo?.demo.initialScreen, "lingye-together-history");
+  assert.deepEqual(
+    togetherHistoryDemo?.demo.content.together.archives[0]?.history.map((entry) => entry.kind),
+    ["story", "task", "clue", "task", "clue", "task", "clue", "ending"],
+  );
   assert.doesNotMatch(html, /candidate2-glimmer-animal-editor|data-glimmer-layout/);
   assert.match(
     html,
@@ -846,7 +1173,7 @@ test("lingye demo opens distinct Together and Glimmer Human UI previews", () => 
   assert.match(html, /glimmerAchievementList\.replaceChildren\(\.\.\.achievements\.map/);
   assert.match(
     html,
-    /const glimmerPageOpen = screenId === 'screen-lingye-glimmer';[\s\S]*mainNav\.style\.display = glimmerPageOpen \? 'none' : 'flex';/,
+    /const lingyeFullscreenPageOpen =[\s\S]*screenId === 'screen-lingye-glimmer' \|\| screenId === 'screen-lingye-memorial';[\s\S]*mainNav\.style\.display = lingyeFullscreenPageOpen \? 'none' : 'flex';/,
   );
   assert.match(html, /\.candidate2-glimmer-page \{[\s\S]*padding-bottom: 0 !important;/);
   assert.doesNotMatch(html, /接入结构化状态后/);
@@ -862,6 +1189,7 @@ test("runtime routes are click-only, no-key, and community returns inside the if
   assert.doesNotMatch(html, /doorbell-candidate2:navigate/);
   assert.match(html, /window\.__doorbellCandidateDemo && path !== '\/lingye\/farm'/);
   assert.match(html, /演示模式：.*未连接真实服务/);
+  assert.match(html, /const institutionScreenId = lingyeInstitutionScreenIds\[placeId\]/);
   assert.match(html, /showLingyeNotice\(label \+ '暂未开放'\)/);
   assert.match(html, /function showLingyeNotice\(message\)\s*\{\s*showCandidateNotice\(message\);/);
   assert.match(html, /placeId === 'doorbell-community'[\s\S]+showScreen\('screen-lounge'\)/);
@@ -1045,8 +1373,8 @@ test("runtime contains populated-demo slots without changing production empty st
   assert.match(html, /home-doorbell-demo/);
   assert.match(html, /candidate2-demo-visitors/);
   assert.match(html, /candidate2-demo-relationship/);
-  assert.match(html, /candidate2-demo-relationship-summary/);
-  assert.match(html, /认识 ' \+ content\.relationships\.length \+ ' 位邻居/);
+  assert.doesNotMatch(html, /candidate2-demo-relationship-summary/);
+  assert.doesNotMatch(html, /认识 ' \+ content\.relationships\.length \+ ' 位邻居/);
   assert.match(html, /candidate2-demo-activity-list/);
   assert.match(html, /id="profile-design-button"[^>]*>Design</);
   assert.match(html, /id="profile-edit-button"[^>]*>Edit Profile</);
@@ -1337,17 +1665,25 @@ test("runtime contains populated-demo slots without changing production empty st
   );
   assert.match(
     html,
-    /\.candidate2-activity-section\s*\{[^}]*z-index: 5;[^}]*min-height: 196px;[^}]*margin: -140px 34px 0 4px;[^}]*padding: 20px 18px 16px 25px;[^}]*background: transparent;[^}]*box-shadow: none;[^}]*isolation: isolate;/s,
+    /\.candidate2-activity-section\s*\{[^}]*z-index: 5;[^}]*min-height: 196px;[^}]*margin: -140px 34px 0 4px;[^}]*padding: 27px 18px 16px 25px;[^}]*background: transparent;[^}]*box-shadow: none;[^}]*isolation: isolate;/s,
   );
   assert.doesNotMatch(html, /\.candidate2-activity-section\s*\{[^}]*transform:/s);
   assert.doesNotMatch(html, /\.candidate2-activity-section\s*\{[^}]*clip-path:/s);
   assert.match(
     html,
-    /\.candidate2-activity-section::before\s*\{[^}]*inset: 0;[^}]*z-index: -1;[^}]*background: #f1ddd6;[^}]*clip-path: polygon\([^;]*99% 3%, 97\.5% 16%, 100% 29%, 98% 43%, 99\.5% 57%, 97\.5% 72%, 99% 85%, 98% 96%[^;]*1% 98%, 0\.5% 88%, 2% 76%, 0% 63%, 1\.5% 50%, 0\.5% 38%, 2% 25%, 0% 14%\);[^}]*filter: drop-shadow\(2px 4px 5px rgba\(83, 63, 53, 0\.1\)\);[^}]*pointer-events: none;/s,
+    /\.candidate2-activity-section::before\s*\{[^}]*inset: 0;[^}]*z-index: -1;[^}]*background-color: #f8ece6;[^}]*background-image:[^}]*radial-gradient[^}]*background-size: 19px 19px, 23px 23px;[^}]*clip-path: polygon\([^;]*98% 1\.5%, 99% 14%, 98% 27%, 100% 40%[^;]*99% 98%, 87% 97%, 75% 99%[^;]*1\.5% 99%, 2% 86%, 0\.5% 74%[^;]*1\.5% 10%\);[^}]*filter: drop-shadow\(2px 4px 5px rgba\(83, 63, 53, 0\.1\)\);[^}]*pointer-events: none;/s,
   );
   assert.doesNotMatch(
     html,
     /\.candidate2-activity-section \.candidate2-profile-section-title\s*\{[^}]*transform:/s,
+  );
+  assert.match(
+    html,
+    /class="candidate2-activity-paperclip" src="\/candidate-two\/profile-activity-paperclip-v1\.svg"[^>]*aria-hidden="true"/,
+  );
+  assert.match(
+    html,
+    /\.candidate2-activity-paperclip\s*\{[^}]*top: -18px;[^}]*left: 18px;[^}]*height: 54px;[^}]*transform: rotate\(17deg\);/s,
   );
   assert.match(
     html,
@@ -1364,11 +1700,18 @@ test("runtime contains populated-demo slots without changing production empty st
   assert.match(html, /\.candidate2-demo-relation-core\s*\{[^}]*top: 50%;[^}]*left: 50%;/s);
   assert.match(
     html,
-    /\.candidate2-demo-relation-core::before\s*\{[^}]*width: 28px;[^}]*height: 28px;[^}]*border: 0;[^}]*box-shadow: none;/s,
+    /\.candidate2-demo-relation-core::before\s*\{[^}]*width: 28px;[^}]*height: 28px;[^}]*border: 0;[^}]*clip-path: polygon\(50% 0%, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0% 50%, 39% 39%\);[^}]*background: #E6A3AE;[^}]*box-shadow: none;/s,
   );
   assert.match(
     html,
-    /\.candidate2-demo-relation-node::before\s*\{[^}]*width: 17px;[^}]*height: 17px;[^}]*border: 0;[^}]*box-shadow: none;/s,
+    /\.candidate2-demo-relation-node::before\s*\{[^}]*width: 17px;[^}]*height: 17px;[^}]*border: 0;[^}]*clip-path: polygon\(50% 0%, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0% 50%, 39% 39%\);[^}]*box-shadow: none;/s,
+  );
+  assert.match(html, /\.candidate2-demo-relation-a::before \{ background: #82BCD5; \}/);
+  assert.match(html, /\.candidate2-demo-relation-b::before \{ background: #E3B477; \}/);
+  assert.match(html, /\.candidate2-demo-relation-c::before \{ background: #8CC1B1; \}/);
+  assert.doesNotMatch(
+    html,
+    /\.candidate2-demo-relation-(?:core|node)::before\s*\{[^}]*border-radius: 50%;/s,
   );
   assert.doesNotMatch(html, /\.candidate2-notebook-underlay::(?:before|after)/);
   assert.match(
@@ -1377,7 +1720,7 @@ test("runtime contains populated-demo slots without changing production empty st
   );
   assert.match(
     html,
-    /\.candidate2-relationship-edit\s*\{[^}]*top: 19px;[^}]*right: 42px;[^}]*background: #ead8c7;[^}]*transform: rotate\(2deg\) scale\(1\.08\);[^}]*transform-origin: center;/s,
+    /\.candidate2-relationship-edit\s*\{[^}]*right: -16px;[^}]*bottom: 164px;[^}]*background: #ead8c7;[^}]*transform: rotate\(2deg\) scale\(1\.08\);[^}]*transform-origin: center;/s,
   );
   assert.match(
     html,
@@ -1409,7 +1752,12 @@ test("runtime contains populated-demo slots without changing production empty st
   assert.match(html, /\.candidate2-demo-relation-node small \{ color: #a8958b; font-size: 8px;/);
   assert.match(
     html,
-    /\.candidate2-demo-activity\s*\{[^}]*grid-template-columns: minmax\(0, 1fr\) auto;[^}]*font-size: 11px;/s,
+    /\.candidate2-demo-activity\s*\{[^}]*grid-template-columns: 13px minmax\(0, 1fr\) auto;[^}]*font-size: 11px;/s,
+  );
+  assert.match(html, /\.candidate2-demo-activity::before\s*\{[^}]*content: '♡';/s);
+  assert.match(
+    html,
+    /\.candidate2-demo-activity::after\s*\{[^}]*left: 19px;[^}]*border-bottom: 1px dotted rgba\(112, 91, 81, 0\.34\);/s,
   );
   assert.match(html, /\.candidate2-demo-activity > span:nth-child\(2\)\s*\{[^}]*color: #60483f;/s);
   assert.match(html, /\.candidate2-demo-activity time\s*\{[^}]*color: #a8958b;/s);

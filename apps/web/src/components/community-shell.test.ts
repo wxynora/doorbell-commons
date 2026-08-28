@@ -6,6 +6,7 @@ import type { LingyePlaceId } from "../view-models";
 import {
   DOORBELL_INTERNAL_PATHS,
   getLingyePlaceInternalPath,
+  isLingyeDailyPlace,
   openDoorbellInternalPage,
 } from "./community-shell";
 
@@ -81,4 +82,10 @@ test("only farm and Glimmer Meadow are open map places", () => {
 
   assert.deepEqual(availablePlaces, ["glimmer-meadow", "farm-ranch"]);
   assert.equal(unavailablePlaces.length, 14);
+});
+
+test("Lingye Daily opens inside the community shell instead of redirecting or sending anything", () => {
+  assert.equal(isLingyeDailyPlace("lingye-daily"), true);
+  assert.equal(getLingyePlaceInternalPath("lingye-daily"), null);
+  assert.equal(isLingyeDailyPlace("farm-ranch"), false);
 });

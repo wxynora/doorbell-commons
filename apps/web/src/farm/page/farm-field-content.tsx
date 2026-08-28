@@ -761,10 +761,8 @@ export function FarmFieldContent({
       {activeScene === "field" ? (
         <>
           <FarmIdentityPlaque
-            equippedTitle={field.farm.equipped_title?.name ?? null}
             farmDoorplate={field.farm.farm_doorplate}
             farmName={field.farm.farm_name}
-            welcomeMessage={field.farm.welcome_message}
           />
           <FarmEnvironmentStatus
             landName={field.land.name}

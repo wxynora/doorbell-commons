@@ -1,4 +1,5 @@
 @import url("https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Playfair+Display:ital,wght@1,600;1,700&family=Quicksand:wght@400;500;600;700&family=ZCOOL+KuaiLe&display=swap");
+@import "./daily/lingye-daily-page.css";
 
 :root {
   color: #6d5d55;
@@ -346,6 +347,15 @@ h1,
 h2 {
   font-family: "Playfair Display", "Yuanti SC", "STYuanti-SC-Regular", "YouYuan", serif;
   font-style: italic;
+}
+
+.lingye-daily-page :is(h1, h2) {
+  font-style: normal;
+}
+
+.lingye-daily-page .daily-masthead-title,
+.lingye-daily-page .daily-unpublished h2 {
+  font-family: inherit;
 }
 
 .handwritten {

@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 84 220" role="img" aria-label="手绘回形针">
+  <defs>
+    <filter id="paperclip-rough" x="-20%" y="-10%" width="140%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.018" numOctaves="2" seed="7" result="noise" />
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="0.7" xChannelSelector="R" yChannelSelector="G" />
+    </filter>
+  </defs>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round" filter="url(#paperclip-rough)">
+    <path
+      d="M36 166V64c0-12 6-20 15-20s15 8 15 20v113c0 17-11 29-26 29s-26-12-26-29V42c0-19 14-32 31-32s31 13 31 32v156"
+      stroke="#6f5f4f"
+      stroke-opacity="0.18"
+      stroke-width="7"
+      transform="translate(1.2 1.5)"
+    />
+    <path
+      d="M36 166V64c0-12 6-20 15-20s15 8 15 20v113c0 17-11 29-26 29s-26-12-26-29V42c0-19 14-32 31-32s31 13 31 32v156"
+      stroke="#ad9878"
+      stroke-width="5"
+    />
+    <path
+      d="M36 166V64c0-12 6-20 15-20s15 8 15 20v113c0 17-11 29-26 29s-26-12-26-29V42c0-19 14-32 31-32s31 13 31 32v156"
+      stroke="#f7ecd4"
+      stroke-opacity="0.9"
+      stroke-width="1.5"
+      transform="translate(-0.7 -0.3)"
+    />
+  </g>
+</svg>

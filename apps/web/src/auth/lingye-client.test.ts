@@ -65,3 +65,52 @@ test("Lingye client keeps transport and malformed responses honest", async () =>
     "铃野数据返回了无法识别的数据，请稍后再试。",
   );
 });
+
+test("Together read accepts narrative-only authoritative archives", async () => {
+  const payload = {
+    subject: { farm_doorplate: "3ET3FE" },
+    data: {
+      story_id: "same_kitchen",
+      title: "同一间厨房",
+      round: 3,
+      phase: "closed",
+      status: "本轮已归档",
+      stage: { index: 5, total: 5, name: "厨房之后" },
+      art_asset_key: "together.same-kitchen-ending-next-door",
+      history: [],
+      archives: [
+        {
+          story_id: "same_kitchen",
+          title: "同一间厨房",
+          round: 2,
+          art_asset_key: "together.same-kitchen-ending-next-door",
+          history: [
+            {
+              kind: "story",
+              title: "两把一样的钥匙",
+              text: "桥下厨房重新开门。",
+              art_asset_key: "together.same-kitchen-opening",
+            },
+            {
+              kind: "ending",
+              title: "隔壁开门",
+              text: "两边都按自己的时间开门。",
+              art_asset_key: "together.same-kitchen-ending-next-door",
+            },
+          ],
+        },
+      ],
+      current_task: null,
+      current_choice: null,
+      cooldown: null,
+      ending: null,
+      clues: [],
+    },
+    server_time: "2026-08-26T14:00:00.000Z",
+  };
+
+  assert.deepEqual(await getBoundTogether({ fetcher: async () => jsonResponse(payload) }), {
+    ok: true,
+    data: payload,
+  });
+});

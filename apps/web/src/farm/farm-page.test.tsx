@@ -497,7 +497,10 @@ test("cooking catalogs keep complete authoritative categories in fixed scrolling
     recipeCatalogSource,
     /CookingCatalogPagination|pageIndex|pageCount|pageRecipes|食谱分页/,
   );
-  assert.match(source, /<CookingRecipeShop onChangeCartQuantity=\{onChangeCartQuantity\} \/>/);
+  assert.match(
+    source,
+    /<CookingRecipeShop cart=\{cart\} onChangeCartQuantity=\{onChangeCartQuantity\} \/>/,
+  );
   assert.match(source, /function hasSelectedCookingRecipeIngredients/);
   assert.match(
     source,
@@ -541,7 +544,7 @@ test("cooking catalogs keep complete authoritative categories in fixed scrolling
   );
   assert.match(
     ingredientCatalogSource,
-    /<button[\s\S]*aria-label=\{`将\$\{ingredient\.name\}加入购物车`\}[\s\S]*className="cooking-ingredient-catalog__portrait"[\s\S]*onClick=\{\(\) =>[\s\S]*onChangeCartQuantity\([\s\S]*getShopCartKey\("ingredient", ingredient\.id\)[\s\S]*ingredient\.maxQuantity/,
+    /const cartKey = getShopCartKey\("ingredient", ingredient\.id\);[\s\S]*aria-label=\{`将\$\{ingredient\.name\}加入购物车`\}[\s\S]*className="cooking-ingredient-catalog__portrait"[\s\S]*onClick=\{\(\) => onChangeCartQuantity\(cartKey, 1, ingredient\.maxQuantity\)\}/,
   );
   assert.doesNotMatch(ingredientCatalogSource, /ShopCartAddButton/);
   assert.doesNotMatch(styles, /\.cooking-ingredient-catalog__portrait \.shop-cart__add/);
@@ -688,13 +691,13 @@ test("field identity plaque and environment status keep authority-backed facts s
 
   assert.match(plaqueComponentSource, /farmDoorplate: string/);
   assert.match(plaqueComponentSource, /farmName: string/);
-  assert.match(plaqueComponentSource, /equippedTitle: string \| null/);
-  assert.match(plaqueComponentSource, /welcomeMessage: string \| null/);
+  assert.doesNotMatch(plaqueComponentSource, /equippedTitle|welcomeMessage/);
   assert.match(plaqueSource, /<strong>\{farmName\}<\/strong>/);
   assert.match(plaqueSource, /门牌[\s\S]*\{farmDoorplate\}/);
-  assert.match(plaqueSource, /equippedTitle \? <small>\{equippedTitle\}<\/small> : null/);
-  assert.match(plaqueSource, /welcomeMessage \? <em>\{welcomeMessage\}<\/em> : null/);
-  assert.doesNotMatch(plaqueSource, /主人|等级|天气|时节|土地|金币|银币/);
+  assert.doesNotMatch(
+    plaqueSource,
+    /equippedTitle|welcomeMessage|主人|等级|天气|时节|土地|金币|银币/,
+  );
   assert.match(environmentComponentSource, /aria-label="农场环境"/);
   assert.match(environmentComponentSource, /seasonName: string/);
   assert.match(environmentComponentSource, /landTier: number/);
@@ -704,7 +707,7 @@ test("field identity plaque and environment status keep authority-backed facts s
   assert.doesNotMatch(environmentComponentSource, /天气|weather/);
   assert.match(
     source,
-    /activeScene === "field"[\s\S]*<FarmIdentityPlaque[\s\S]*equippedTitle=\{field\.farm\.equipped_title\?\.name \?\? null\}[\s\S]*farmDoorplate=\{field\.farm\.farm_doorplate\}[\s\S]*farmName=\{field\.farm\.farm_name\}[\s\S]*welcomeMessage=\{field\.farm\.welcome_message\}[\s\S]*<FarmEnvironmentStatus[\s\S]*landName=\{field\.land\.name\}[\s\S]*landTier=\{field\.land\.tier\}[\s\S]*seasonName=\{field\.season\.name\}/,
+    /activeScene === "field"[\s\S]*<FarmIdentityPlaque[\s\S]*farmDoorplate=\{field\.farm\.farm_doorplate\}[\s\S]*farmName=\{field\.farm\.farm_name\}[\s\S]*<FarmEnvironmentStatus[\s\S]*landName=\{field\.land\.name\}[\s\S]*landTier=\{field\.land\.tier\}[\s\S]*seasonName=\{field\.season\.name\}/,
   );
   assert.equal(plaqueAsset?.url, "/farm/ui/field-plaque.png");
   assert.equal(plaqueAsset?.status, "production");
@@ -718,7 +721,7 @@ test("field identity plaque and environment status keep authority-backed facts s
   assert.doesNotMatch(styles, /\.farm-field-plaque\s*\{[^}]*padding:\s*\d+%/);
   assert.match(
     styles,
-    /\.farm-field-plaque strong,[\s\S]*\.farm-field-plaque__copy > em\s*\{[^}]*color:\s*#fff8dc[^}]*text-shadow:[^}]*#603719/,
+    /\.farm-field-plaque strong,[\s\S]*\.farm-field-plaque__copy > span\s*\{[^}]*color:\s*#fff8dc[^}]*text-shadow:[^}]*#603719/,
   );
   assert.doesNotMatch(styles, /\.farm-field-plaque__copy > span\s*\{[^}]*color:\s*#674123/);
   assert.doesNotMatch(styles, /\.farm-field-plaque\s*\{[^}]*repeating-linear-gradient/);
@@ -1096,6 +1099,10 @@ test("three scene bodies expose complete honest management scaffolds without loc
   assert.doesNotMatch(source, /className="farm-scene__status">工具预览/);
   assert.doesNotMatch(fieldOverlaySource, /fetch\(|收获成功/);
   assert.doesNotMatch(cookingOverlaySource, /fetch\(|料理完成|制作成功|扣除|获得料理/);
+  assert.match(
+    styles,
+    /\.farm-plot-detail\s*\{[^}]*top:\s*50%[^}]*right:\s*auto[^}]*bottom:\s*auto[^}]*left:\s*50%[^}]*z-index:\s*19[^}]*width:\s*82cqw[^}]*transform:\s*translate\(-50%, -50%\)/,
+  );
   assert.match(
     styles,
     /:where\(\.farm-game\) button\s*\{[^}]*min-height:\s*0[^}]*font-family:\s*inherit/,
@@ -1503,8 +1510,9 @@ test("three shop carts keep separate session drafts and expose only honest check
     /export function FarmFieldContent[\s\S]*useState<ShopCartState>\(\(\) => createEmptyShopCarts\(\)\)/,
   );
   assert.match(source, /setShopCarts\(\(current\) =>[\s\S]*\[sceneId\]: nextSceneCart/);
-  assert.match(source, /function ShopCartAddButton/);
-  assert.match(source, /aria-label=\{`将\$\{itemName\}加入购物车`\}/);
+  assert.match(source, /function ShopCartSelectionBadge/);
+  assert.match(source, /aria-label=\{`从购物车减少一份\$\{itemName\}`\}/);
+  assert.doesNotMatch(source, /ShopCartAddButton/);
   assert.match(source, /function ShopCartShortcut/);
   assert.match(source, /onChangeQuantity\(item\.cartKey, -1, item\.maxQuantity\)/);
   assert.match(source, /onChangeQuantity\(item\.cartKey, 1, item\.maxQuantity\)/);
@@ -1542,7 +1550,15 @@ test("three shop carts keep separate session drafts and expose only honest check
   );
   assert.match(styles, /\.shop-cart__shortcut strong\s*\{[\s\S]*position:\s*absolute/);
   assert.doesNotMatch(styles, /\.farm-shop > \.farm-panel-pagination/);
-  assert.match(styles, /\.shop-cart__add\s*\{[\s\S]*width:\s*44px[\s\S]*height:\s*44px/);
+  assert.match(
+    styles,
+    /\.shop-cart__selection-count\s*\{[\s\S]*color:\s*#fff[\s\S]*border-radius:\s*50%[\s\S]*background:\s*#78933f/,
+  );
+  assert.match(styles, /\.shop-cart__selection-count\s*\{[^}]*top:\s*0[^}]*right:\s*0/);
+  assert.doesNotMatch(
+    styles,
+    /(?:\.farm-shop__items|\.cooking-recipe-catalog__list--shop) \.shop-cart__selection-count/,
+  );
   assert.match(
     styles,
     /\.shop-cart\s*\{[\s\S]*grid-template-rows:\s*auto minmax\(0, 1fr\) auto[\s\S]*height:\s*100%[\s\S]*overflow:\s*hidden/,
@@ -1678,7 +1694,7 @@ test("ranch shop separates animals and pets, scrolls its fixed grid and opens de
   );
   assert.match(
     ranchShopSource,
-    /if \(animal\.demoOwned\)[\s\S]*setSelectedAnimalId\(animal\.id\)[\s\S]*onChangeCartQuantity\(getShopCartKey\("ranch", animal\.id\), 1, 1\)/,
+    /const cartKey = getShopCartKey\("ranch", animal\.id\)[\s\S]*if \(animal\.demoOwned\)[\s\S]*setSelectedAnimalId\(animal\.id\)[\s\S]*onChangeCartQuantity\(cartKey, 1, 1\)/,
   );
   assert.doesNotMatch(ranchShopSource, /<ShopCartAddButton/);
   assert.doesNotMatch(styles, /\.ranch-shop__grid \.shop-cart__add/);
@@ -1978,10 +1994,15 @@ test("smelting preview uses the authoritative 30-material atlas in a fixed four-
   assert.match(smeltingSource, /useState<string\[]>\(\[\]\)/);
   assert.match(
     smeltingSource,
-    /current\.length < 3 \? \[\.\.\.current, materialId\] : \[\.\.\.current\.slice\(1\), materialId\]/,
+    /const selectedCount = current\.filter\(\(selectedId\) => selectedId === materialId\)\.length;[\s\S]*current\.length >= 3[\s\S]*selectedCount >= availableQuantity[\s\S]*return \[\.\.\.current, materialId\]/,
   );
   assert.match(smeltingSource, /const \[actionState, setActionState\] = useState/);
   assert.match(smeltingSource, /aria-pressed=\{selected\}/);
+  assert.match(
+    smeltingSource,
+    /className="smelting-catalog__selected-count"[\s\S]*\{selectedCount\}/,
+  );
+  assert.match(smeltingSource, /onClick=\{\(\) => removeMaterial\(material\.id\)\}/);
   assert.match(smeltingSource, /SORTED_SMELTING_MATERIALS\.map\(\(material\) =>/);
   assert.match(
     smeltingSource,
@@ -2011,7 +2032,11 @@ test("smelting preview uses the authoritative 30-material atlas in a fixed four-
     styles,
     /\.smelting-catalog__grid\s*\{[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)[^}]*overflow-y:\s*auto/,
   );
-  assert.match(styles, /\.smelting-catalog__grid button\[aria-pressed="true"\]/);
+  assert.match(styles, /\.smelting-catalog__material\[aria-pressed="true"\]/);
+  assert.match(
+    styles,
+    /\.smelting-catalog__selected-count\s*\{[^}]*top:\s*0[^}]*right:\s*0[^}]*color:\s*#fff8dc[^}]*border-radius:\s*50%[^}]*background:\s*#78933f/,
+  );
   assert.match(
     styles,
     /\.smelting-catalog__sprite\s*\{[^}]*top:\s*15\.83%;[^}]*left:\s*13%;[^}]*width:\s*74%;[^}]*height:\s*auto;[^}]*background-repeat:\s*no-repeat/,
@@ -2152,6 +2177,10 @@ test("farm scene covers the viewport while controls stay on the viewport UI laye
     /\.farm-neighborhood\s*\{[\s\S]*grid-template-rows:\s*11\.7cqw minmax\(0, 1fr\)/,
   );
   assert.match(styles, /\.farm-neighborhood__tabs\s*\{[\s\S]*padding-inline:\s*3\.9%/);
+  assert.match(
+    styles,
+    /\.farm-neighborhood__tabs\s*\{[^}]*align-self:\s*start;[^}]*height:\s*9\.8cqw;/s,
+  );
   assert.match(
     styles,
     /\.farm-neighborhood__link\s*\{[\s\S]*display:\s*grid[\s\S]*min-height:\s*0[\s\S]*place-items:\s*center[\s\S]*line-height:\s*1/,

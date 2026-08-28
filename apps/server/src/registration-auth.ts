@@ -65,6 +65,10 @@ import {
 } from "./farm-kitchen-shop-refresh-client.js";
 import { FarmLingyeContractUnavailableError, type FarmLingyeReader } from "./farm-lingye-client.js";
 import {
+  FarmHumanQixiMemorialContractUnavailableError,
+  type FarmHumanQixiMemorialReader,
+} from "./qixi-memorial-client.js";
+import {
   FarmHumanMarketActionContractUnavailableError,
   type FarmHumanMarketActioner,
 } from "./farm-market-action-client.js";
@@ -224,6 +228,7 @@ interface RegistrationAuthServiceOptions {
   farmMarketActioner?: FarmHumanMarketActioner;
   farmSettingsActioner?: FarmHumanFarmSettingsActioner;
   farmLingyeReader?: FarmLingyeReader;
+  farmQixiMemorialReader?: FarmHumanQixiMemorialReader;
   farmCreator?: FarmCreator;
   groupId: string;
   farmHumanUiBaseUrl?: string;
@@ -267,6 +272,7 @@ export class RegistrationAuthService {
   readonly #farmMarketActioner: FarmHumanMarketActioner | undefined;
   readonly #farmSettingsActioner: FarmHumanFarmSettingsActioner | undefined;
   readonly #farmLingyeReader: FarmLingyeReader | undefined;
+  readonly #farmQixiMemorialReader: FarmHumanQixiMemorialReader | undefined;
   readonly #farmCreator: FarmCreator | undefined;
   readonly #groupId: string;
   readonly #farmHumanUiBaseUrl: string | undefined;
@@ -298,6 +304,7 @@ export class RegistrationAuthService {
     this.#farmMarketActioner = options.farmMarketActioner;
     this.#farmSettingsActioner = options.farmSettingsActioner;
     this.#farmLingyeReader = options.farmLingyeReader;
+    this.#farmQixiMemorialReader = options.farmQixiMemorialReader;
     this.#farmCreator = options.farmCreator;
     this.#groupId = options.groupId;
     this.#farmHumanUiBaseUrl = options.farmHumanUiBaseUrl;
@@ -1008,6 +1015,21 @@ export class RegistrationAuthService {
       throw new FarmLingyeContractUnavailableError();
     }
     return this.#farmLingyeReader.readTogether({
+      farmDoorplate: community.farmBinding.farmDoorplate,
+      farmHumanKey,
+    });
+  }
+
+  async getCurrentQixiMemorial(token: string) {
+    const community = await this.getCurrentSession(token);
+    const farmHumanKey = community.farmBinding.farmHumanKey;
+    if (farmHumanKey === null) {
+      throw new RegistrationProfileRequiredError();
+    }
+    if (!this.#farmQixiMemorialReader) {
+      throw new FarmHumanQixiMemorialContractUnavailableError();
+    }
+    return this.#farmQixiMemorialReader.readQixiMemorial({
       farmDoorplate: community.farmBinding.farmDoorplate,
       farmHumanKey,
     });

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { HumanIdentity } from "../auth/auth-client";
+import { LingyeDailyScreen } from "../daily/lingye-daily-screen";
 import type {
   CommunityArea,
   LingyePlaceId,
@@ -53,6 +54,10 @@ export function getLingyePlaceInternalPath(placeId: LingyePlaceId): DoorbellInte
     return DOORBELL_INTERNAL_PATHS.lingyeGlimmer;
   }
   return null;
+}
+
+export function isLingyeDailyPlace(placeId: LingyePlaceId): boolean {
+  return placeId === "lingye-daily";
 }
 
 const lingyePlaces: readonly LingyePlaceViewModel[] = [
@@ -202,11 +207,17 @@ function createProfileViewModel(identity: HumanIdentity): OwnerProfileViewModel 
 
 export function CommunityShell({ identity }: CommunityShellProps) {
   const [activeArea, setActiveArea] = useState<CommunityArea>("activity-room");
+  const [dailyOpen, setDailyOpen] = useState(false);
   const [lingyeNotice, setLingyeNotice] = useState<string | null>(null);
   const home = createHomeViewModel(identity);
   const profile = createProfileViewModel(identity);
 
   const openLingyePlace = (placeId: LingyePlaceId) => {
+    if (isLingyeDailyPlace(placeId)) {
+      setLingyeNotice(null);
+      setDailyOpen(true);
+      return;
+    }
     const internalPath = getLingyePlaceInternalPath(placeId);
     if (internalPath) {
       openDoorbellInternalPage(internalPath);
@@ -221,6 +232,7 @@ export function CommunityShell({ identity }: CommunityShellProps) {
     setActiveArea(area);
     if (area === "lingye") {
       setLingyeNotice(null);
+      setDailyOpen(false);
     }
   };
 
@@ -231,7 +243,10 @@ export function CommunityShell({ identity }: CommunityShellProps) {
       </a>
 
       {activeArea === "activity-room" ? <PublicLoungePage /> : null}
-      {activeArea === "lingye" ? (
+      {activeArea === "lingye" && dailyOpen ? (
+        <LingyeDailyScreen onBack={() => setDailyOpen(false)} />
+      ) : null}
+      {activeArea === "lingye" && !dailyOpen ? (
         <LingyeMapPage
           notice={lingyeNotice}
           onOpenPlace={openLingyePlace}

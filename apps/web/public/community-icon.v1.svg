@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-labelledby="title">
+  <title id="title">门铃社区</title>
+  <rect width="192" height="192" rx="44" fill="#eee7d5"/>
+  <path d="M42 88 96 42l54 46v58a10 10 0 0 1-10 10H52a10 10 0 0 1-10-10Z" fill="#d7c5a3" stroke="#3e4652" stroke-width="8" stroke-linejoin="round"/>
+  <path d="M77 156v-42h38v42M70 89h52" fill="none" stroke="#3e4652" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="96" cy="90" r="12" fill="#c97857" stroke="#3e4652" stroke-width="7"/>
+</svg>

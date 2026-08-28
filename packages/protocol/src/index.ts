@@ -461,6 +461,80 @@ export const farmHumanFieldReadErrorSchema = z
   })
   .strict();
 
+export const qixiLanternAppearanceSchema = z
+  .object({
+    shape: z.enum(["square-palace", "octagonal-palace", "lotus-palace"]),
+    color: z.enum(["moon-white", "peach-pink", "mist-blue", "apricot-gold"]),
+    pattern: z.enum([
+      "none",
+      "star-speckle",
+      "qiaoguo-pattern",
+      "river-glow",
+      "magpie-bridge",
+    ]),
+    ornament: z.enum([
+      "none",
+      "short-tassel",
+      "fine-copper-bell",
+      "magpie-ribbon",
+      "twin-jade-pendant",
+    ]),
+    seal: z.enum([
+      "none",
+      "cotton-knot",
+      "waterproof-seal",
+      "cloud-knot",
+      "twin-blossom-seal",
+    ]),
+  })
+  .strict();
+
+export const qixiMemorialSideSchema = z
+  .object({
+    letter: z.string(),
+    lantern: qixiLanternAppearanceSchema,
+  })
+  .strict();
+
+export const farmHumanQixiMemorialReadSuccessSchema = z
+  .object({
+    subject: z.object({ farm_doorplate: farmDoorplateSchema }).strict(),
+    data: z
+      .object({
+        event_id: z.literal("qixi-lantern-2026"),
+        human_name: storedDisplayNameSchema,
+        ai_name: storedDisplayNameSchema,
+        human: qixiMemorialSideSchema,
+        ai: qixiMemorialSideSchema,
+      })
+      .strict(),
+    server_time: z.iso.datetime(),
+  })
+  .strict();
+
+export const farmHumanQixiMemorialReadRequestSchema = z
+  .object({
+    farm_human_key: farmHumanKeySchema,
+    expected_farm_doorplate: farmDoorplateSchema,
+  })
+  .strict();
+
+export const farmHumanQixiMemorialReadErrorSchema = farmHumanFieldReadErrorSchema;
+export const boundQixiMemorialReadRequestSchema = z.object({}).strict();
+export const boundQixiMemorialReadSuccessSchema = z
+  .object({
+    data: z
+      .object({
+        human_name: storedDisplayNameSchema,
+        ai_name: storedDisplayNameSchema,
+        human: qixiMemorialSideSchema,
+        ai: qixiMemorialSideSchema,
+      })
+      .strict(),
+  })
+  .strict();
+export const boundQixiMemorialReadErrorSchema = boundFarmFieldErrorSchema;
+
 const lingyeIdSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/);
 const lingyeAssetKeySchema = z.string().regex(/^[a-z0-9][a-z0-9._-]{0,127}$/);
 const lingyeTextSchema = z
@@ -706,6 +780,53 @@ const farmTogetherHistorySchema = z.discriminatedUnion("kind", [
     .strict(),
 ]);
 
+const farmTogetherArchiveHistorySchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("story"),
+      title: lingyeShortTextSchema,
+      text: lingyeTextSchema,
+      art_asset_key: lingyeAssetKeySchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("task"),
+      title: lingyeShortTextSchema,
+      text: lingyeTextSchema,
+      progress: z.number().int().nonnegative(),
+      target: z.number().int().positive(),
+      art_asset_key: lingyeAssetKeySchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("clue"),
+      title: lingyeShortTextSchema,
+      text: lingyeTextSchema,
+      art_asset_key: lingyeAssetKeySchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("ending"),
+      title: lingyeShortTextSchema,
+      text: lingyeTextSchema,
+      art_asset_key: lingyeAssetKeySchema,
+    })
+    .strict(),
+]);
+
+const farmTogetherArchiveSchema = z
+  .object({
+    story_id: lingyeIdSchema,
+    title: lingyeShortTextSchema,
+    round: z.number().int().positive(),
+    art_asset_key: lingyeAssetKeySchema,
+    history: z.array(farmTogetherArchiveHistorySchema).max(128),
+  })
+  .strict();
+
 const farmTogetherTaskSchema = z
   .object({
     id: lingyeIdSchema,
@@ -792,6 +913,7 @@ export const farmTogetherDataSchema = z
       .strict(),
     art_asset_key: lingyeAssetKeySchema,
     history: z.array(farmTogetherHistorySchema).max(128),
+    archives: z.array(farmTogetherArchiveSchema).max(12),
     current_task: farmTogetherTaskSchema.nullable(),
     current_choice: farmTogetherChoiceSchema.nullable(),
     cooldown: farmTogetherCooldownSchema.nullable(),
@@ -2579,6 +2701,20 @@ export type FarmHumanFieldReadRequest = z.infer<typeof farmHumanFieldReadRequest
 export type FarmHumanFieldReadSuccess = z.infer<typeof farmHumanFieldReadSuccessSchema>;
 export type FarmHumanFieldReadErrorCode = z.infer<typeof farmHumanFieldReadErrorCodeSchema>;
 export type FarmHumanFieldReadError = z.infer<typeof farmHumanFieldReadErrorSchema>;
+export type QixiLanternAppearance = z.infer<typeof qixiLanternAppearanceSchema>;
+export type QixiMemorialSide = z.infer<typeof qixiMemorialSideSchema>;
+export type FarmHumanQixiMemorialReadRequest = z.infer<
+  typeof farmHumanQixiMemorialReadRequestSchema
+>;
+export type FarmHumanQixiMemorialReadSuccess = z.infer<
+  typeof farmHumanQixiMemorialReadSuccessSchema
+>;
+export type FarmHumanQixiMemorialReadError = z.infer<
+  typeof farmHumanQixiMemorialReadErrorSchema
+>;
+export type BoundQixiMemorialReadRequest = z.infer<typeof boundQixiMemorialReadRequestSchema>;
+export type BoundQixiMemorialReadSuccess = z.infer<typeof boundQixiMemorialReadSuccessSchema>;
+export type BoundQixiMemorialReadError = z.infer<typeof boundQixiMemorialReadErrorSchema>;
 export type BoundFarmFieldSuccess = z.infer<typeof boundFarmFieldSuccessSchema>;
 export type BoundFarmFieldError = z.infer<typeof boundFarmFieldErrorSchema>;
 export type FarmHumanFieldHarvestAssistRequest = z.infer<

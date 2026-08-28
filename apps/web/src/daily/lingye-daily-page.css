@@ -1,0 +1,410 @@
+:root {
+  --daily-bg: #f6f0df;
+  --daily-text: #3a4b5c;
+  --daily-red: #e66b60;
+  --daily-blue: #4faac8;
+  --daily-yellow: #f6cb45;
+  --daily-green: #679f67;
+  --daily-border: rgba(58, 75, 92, 0.2);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#lingye-daily-preview-root {
+  min-width: 320px;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow-x: hidden;
+  background: #e8e1d1;
+}
+
+.lingye-daily-page {
+  width: calc(100% - 32px);
+  max-width: 600px;
+  min-height: calc(100svh - 32px);
+  margin: 16px auto;
+  padding: 16px;
+  overflow-x: hidden;
+  color: var(--daily-text);
+  background: var(--daily-bg);
+  font-family: "Noto Serif SC", "Songti SC", "STSong", serif;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+}
+
+.daily-masthead {
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--daily-text);
+  text-align: center;
+}
+
+.daily-masthead-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--daily-text);
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.daily-masthead-title {
+  margin: 10px 0;
+  font-size: clamp(36px, 10vw, 42px);
+  font-weight: 900;
+  letter-spacing: -1px;
+  line-height: 1;
+}
+
+.daily-masthead-tagline {
+  padding-top: 4px;
+  border-top: 1px solid var(--daily-text);
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+
+.daily-newspaper-body {
+  display: grid;
+  grid-template-columns: 1fr 140px;
+  gap: 16px;
+  border-bottom: 1px solid var(--daily-border);
+}
+
+.daily-main-column,
+.daily-sidebar {
+  min-width: 0;
+}
+
+.daily-sidebar {
+  padding-left: 16px;
+  border-left: 0.5px solid var(--daily-border);
+}
+
+.daily-section {
+  position: relative;
+  margin-bottom: 24px;
+}
+
+.daily-section-tag {
+  display: inline-block;
+  margin: 0 0 8px;
+  padding: 2px 12px 2px 8px;
+  clip-path: polygon(0 0, 90% 0, 100% 50%, 90% 100%, 0 100%);
+  color: white;
+  background: var(--daily-blue);
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.daily-section-tag--red {
+  background: var(--daily-red);
+}
+
+.daily-section-tag--green {
+  background: var(--daily-green);
+}
+
+.daily-section-tag--yellow {
+  color: var(--daily-text);
+  background: var(--daily-yellow);
+}
+
+.daily-section-tag--ink {
+  background: var(--daily-text);
+}
+
+.daily-front-page-title {
+  margin: 0 0 8px;
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.daily-byline,
+.daily-source-label {
+  margin: 0 0 12px;
+  color: var(--daily-red);
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+.daily-body-copy,
+.daily-slice p,
+.daily-group-card p,
+.daily-farm-summary,
+.daily-submission-box p {
+  margin: 0 0 12px;
+  font-size: 14px;
+  text-align: justify;
+}
+
+.daily-hero-image {
+  width: 100%;
+  height: 200px;
+  margin: 0 0 12px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--daily-blue);
+}
+
+.daily-hero-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.daily-slice + .daily-slice {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--daily-red);
+}
+
+.daily-slice h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.daily-slice p {
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.daily-group-card {
+  position: relative;
+  margin-bottom: 16px;
+  padding: 12px;
+  border-radius: 4px;
+  background: var(--daily-yellow);
+}
+
+.daily-group-card::after {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--daily-bg);
+  content: "";
+  transform: translateX(-50%);
+}
+
+.daily-group-card p {
+  margin-top: 8px;
+  font-size: 11px;
+  text-align: left;
+}
+
+.daily-group-card ul {
+  margin: 8px 0 0;
+  padding-left: 16px;
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 10px;
+}
+
+.daily-data-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.daily-data-item {
+  min-width: 0;
+  padding: 8px 4px;
+  border: 0.5px solid var(--daily-border);
+  text-align: center;
+}
+
+.daily-data-value {
+  overflow-wrap: anywhere;
+  color: var(--daily-green);
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.daily-data-label {
+  overflow-wrap: anywhere;
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 8px;
+}
+
+.daily-farm-summary {
+  margin-top: 8px;
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 9px;
+  text-align: left;
+}
+
+.daily-quotes {
+  margin-top: 20px;
+}
+
+.daily-quote-box {
+  position: relative;
+  margin: 8px 0 20px;
+  padding: 16px;
+  border: 1.5px solid var(--daily-red);
+}
+
+.daily-quote-box::before {
+  position: absolute;
+  top: -20px;
+  left: 10px;
+  padding: 0 4px;
+  color: var(--daily-red);
+  background: var(--daily-bg);
+  content: "“";
+  font-size: 60px;
+  line-height: 1;
+}
+
+.daily-quote-text {
+  margin: 0;
+  font-size: 18px;
+  font-style: italic;
+  font-weight: 700;
+}
+
+.daily-quote-box cite {
+  display: block;
+  margin-top: 10px;
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 12px;
+  font-style: normal;
+  text-align: right;
+}
+
+.daily-submission-box {
+  position: relative;
+  margin-top: 8px;
+  padding: 16px;
+  border: 1px dashed var(--daily-text);
+  background: #fff;
+}
+
+.daily-submission-box + .daily-submission-box {
+  margin-top: 12px;
+}
+
+.daily-stamp {
+  display: flex;
+  float: right;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  margin-left: 10px;
+  border: 2px solid var(--daily-green);
+  border-radius: 50%;
+  color: var(--daily-green);
+  font-size: 8px;
+  font-weight: 700;
+  transform: rotate(-15deg);
+}
+
+.daily-footer-question {
+  margin-top: 40px;
+  padding: 20px 0 60px;
+  border-top: 3px double var(--daily-text);
+  text-align: center;
+}
+
+.daily-footer-question h2 {
+  margin: 0 0 10px;
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 12px;
+  letter-spacing: 2px;
+}
+
+.daily-footer-question > p:not(.daily-section-empty) {
+  margin: 0;
+  color: var(--daily-red);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.daily-section-empty {
+  margin: 4px 0 0;
+  color: color-mix(in srgb, var(--daily-text) 68%, transparent);
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 12px;
+}
+
+.daily-revision-note {
+  margin: 0;
+  padding: 12px 0;
+  border-top: 1px solid var(--daily-border);
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 11px;
+}
+
+.lingye-daily-page--empty {
+  display: flex;
+  min-height: calc(100svh - 32px);
+  flex-direction: column;
+}
+
+.daily-unpublished {
+  display: grid;
+  flex: 1;
+  align-content: center;
+  justify-items: center;
+  padding: 48px 16px 96px;
+  text-align: center;
+}
+
+.daily-unpublished h2 {
+  margin: 0 0 8px;
+  font-size: 24px;
+}
+
+.daily-unpublished p {
+  margin: 0;
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 13px;
+}
+
+@media (max-width: 480px) {
+  .lingye-daily-page {
+    width: 100%;
+    min-height: 100svh;
+    margin: 0;
+  }
+
+  .daily-masthead-meta {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .daily-newspaper-body {
+    grid-template-columns: 1fr;
+  }
+
+  .daily-sidebar {
+    padding-top: 16px;
+    padding-left: 0;
+    border-top: 1px solid var(--daily-border);
+    border-left: 0;
+  }
+
+  .daily-data-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}

@@ -58,15 +58,11 @@ export function RefreshIcon() {
 }
 
 export function FarmIdentityPlaque({
-  equippedTitle,
   farmDoorplate,
   farmName,
-  welcomeMessage,
 }: {
-  equippedTitle: string | null;
   farmDoorplate: string;
   farmName: string;
-  welcomeMessage: string | null;
 }) {
   return (
     <aside aria-label="农场资料" className="farm-field-plaque">
@@ -77,12 +73,10 @@ export function FarmIdentityPlaque({
         src={getFarmAssetUrl("field.identity-plaque")}
       />
       <span className="farm-field-plaque__copy">
-        {equippedTitle ? <small>{equippedTitle}</small> : null}
         <strong>{farmName}</strong>
         <span>
           门牌 <b>{farmDoorplate}</b>
         </span>
-        {welcomeMessage ? <em>{welcomeMessage}</em> : null}
       </span>
     </aside>
   );

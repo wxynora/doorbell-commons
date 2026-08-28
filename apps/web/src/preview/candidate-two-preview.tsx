@@ -7,7 +7,11 @@ import {
   sharedMemeAddRequestSchema,
 } from "@doorbell/protocol";
 import { useEffect, useMemo, useRef } from "react";
-import type { BoundGlimmerRead, BoundTogetherRead } from "../auth/lingye-client";
+import type {
+  BoundGlimmerRead,
+  BoundQixiMemorialRead,
+  BoundTogetherRead,
+} from "../auth/lingye-client";
 import { DOORBELL_FARM_PATH } from "../routes";
 import { candidateTwoHtml } from "./candidate-two-source";
 
@@ -28,6 +32,9 @@ export type CandidateTwoDemoScreen =
   | "lounge"
   | "lingye"
   | "glimmer"
+  | "memorial"
+  | "together"
+  | "together-history"
   | "home"
   | "profile"
   | "settings";
@@ -367,6 +374,7 @@ export type CandidateTwoViewState =
       sharedMemes: CandidateTwoSharedMemeListView;
       lingye: {
         glimmer: CandidateTwoLingyeReadState<BoundGlimmerRead>;
+        memorial: CandidateTwoLingyeReadState<BoundQixiMemorialRead>;
         together: CandidateTwoLingyeReadState<BoundTogetherRead>;
       };
     };
@@ -428,6 +436,19 @@ interface CandidateTwoDemoContent {
   };
   together: {
     artFile: string;
+    archives: readonly {
+      artFile: string;
+      history: readonly {
+        artFile: string;
+        kind: "clue" | "ending" | "story" | "task";
+        progress?: number;
+        target?: number;
+        text: string;
+        title: string;
+      }[];
+      round: number;
+      title: string;
+    }[];
     currentChoice: null | {
       counts: { A: number; B: number; C: number } | null;
       index: number | null;
@@ -464,9 +485,17 @@ export interface CandidateTwoDemoView {
     enabled: boolean;
     positions: CandidateTwoGlimmerAnimalPositions;
   };
+  memorialLayoutEditor: {
+    encodedLayout: string | null;
+    enabled: boolean;
+    target: "entry" | "index";
+  };
   initialScreen:
     | Extract<CandidateTwoScreen, "lounge" | "lingye" | "home" | "profile" | "settings">
     | "lingye-glimmer"
+    | "lingye-memorial"
+    | "lingye-together"
+    | "lingye-together-history"
     | null;
   registrationPrefill: {
     farmDoorplate: string;
@@ -674,6 +703,190 @@ const candidateTwoDemoContent: CandidateTwoDemoContent = {
   },
   together: {
     artFile: "together.same-kitchen-opening",
+    archives: [
+      {
+        artFile: "together.river-ending-second-home",
+        history: [
+          {
+            artFile: "together.river-from-tomorrow-opening",
+            kind: "story",
+            title: "逆流而来的船",
+            text: "昨夜的雨停后，铃野北边干涸多年的旧沟突然有了水，而且正往高处流。\n\n一条小船被水推到岸边。船里躺着围青色围巾的小水獭泊泊，怀里压着一封日期写着“明天”的湿信。",
+          },
+          {
+            artFile: "together.river-future-wharf",
+            kind: "task",
+            progress: 3,
+            target: 3,
+            title: "倒走的航线",
+            text: "三家农场依次拓下旧里程标、找回倒挂的方向牌，并从雾中渡口取回航线登记簿。",
+          },
+          {
+            artFile: "together.river-future-wharf",
+            kind: "clue",
+            title: "被改过三次的地址",
+            text: "登记簿上，泊泊家的地址被连续改过三次。每次河道改变，整座渡口都会向下游迁移。",
+          },
+          {
+            artFile: "together.river-cooperative-investigation",
+            kind: "task",
+            progress: 3,
+            target: 3,
+            title: "给迟迟的热汤",
+            text: "三家农场分别送来番茄鱼汤，迟迟终于打开结冰的邮袋，找回未来渡口的迁居记录。",
+          },
+          {
+            artFile: "together.river-cooperative-investigation",
+            kind: "clue",
+            title: "没有寄出的迁居信",
+            text: "十二封迁居通知已经写好出发日期与行李，唯独“新住址”全部空着。",
+          },
+          {
+            artFile: "together.river-fork",
+            kind: "task",
+            progress: 3,
+            target: 3,
+            title: "搬走最后一座渡口",
+            text: "洪峰吞没旧航线前，大家搬走渡口牌、重新点亮引航灯，并把最后一只靠岸铃挂到新船上。",
+          },
+          {
+            artFile: "together.river-fork",
+            kind: "clue",
+            title: "会移动的家",
+            text: "船、灯、铃与愿意同行的人共同组成新渡口。泊泊寻找的并不是原来的土地，而是一处仍愿意接住他们的地方。",
+          },
+          {
+            artFile: "together.river-ending-second-home",
+            kind: "ending",
+            title: "泊泊找到了第二个家",
+            text: "新渡口建成的清晨，泊泊把旧靠岸铃挂在门前。迟迟递给他一封新的迁居信，这一次，“新住址”没有空着。\n\n泊泊认真写下：“铃野公共渡口，靠岸铃旁边。”",
+          },
+        ],
+        round: 1,
+        title: "河从明天流来",
+      },
+      {
+        artFile: "together.same-kitchen-ending-next-door",
+        history: [
+          {
+            artFile: "together.same-kitchen-opening",
+            kind: "story",
+            title: "两把一样的钥匙",
+            text: "泊泊把清晨第一班船拴好时，桥下厨房已经传来争执声。\n\n南枝和冬青分别拿出鹤姨寄来的旧铜钥匙。墙上的菜单还写着“冬青的香草烤鱼”。\n\n鹤姨没有催谁留下。她说明自己的手七天不能碰重锅，又问明天厨房要不要开门。谁都不用替另一个人答应。",
+          },
+          {
+            artFile: "together.same-kitchen-old-recipe",
+            kind: "story",
+            title: "共同料理与旧账",
+            text: "砂砂从仓库里搬来一本被油烟熏黑的采购账。六年前的菜单只剩菜名，具体配料和署名已经被水泡开。\n\n南枝核对选料，冬青看火候，鹤姨负责试味。",
+          },
+          {
+            artFile: "together.same-kitchen-old-recipe",
+            kind: "task",
+            progress: 3,
+            target: 3,
+            title: "旧账里的第一盘烤鱼",
+            text: "三条旧账线索被依次核对，大家确认六年前是冬青用南枝买的鲜鱼，做给当天离港的南枝。",
+          },
+          {
+            artFile: "together.same-kitchen-old-recipe",
+            kind: "task",
+            progress: 3,
+            target: 3,
+            title: "复现第一版香草烤鱼",
+            text: "三家不同农场分别复现并送回一份香草烤鱼。南枝检查选料，冬青检查火候，鹤姨完成最终试味。",
+          },
+          {
+            artFile: "together.same-kitchen-old-recipe",
+            kind: "story",
+            title: "第一版是两个人做出来的",
+            text: "鹤姨把三份烤鱼依次尝过，最后翻过旧菜单。\n\n“鱼是南枝挑的，火是冬青守的。第一版是两个人做出来的。”",
+          },
+          {
+            artFile: "together.same-kitchen-undelivered-letters",
+            kind: "story",
+            title: "没有送达的信",
+            text: "迟迟从旧邮袋整理间带来两只粘在一起的信封。收件人分别是南枝和冬青，但最后一段投递记录已经脱落。",
+          },
+          {
+            artFile: "together.same-kitchen-undelivered-letters",
+            kind: "task",
+            progress: 3,
+            target: 3,
+            title: "灰背的旧货车",
+            text: "三家农场按公共记录种下普通作物，依次带回旧厨房收件章、船票章和“渡口已迁移”退件章。",
+          },
+          {
+            artFile: "together.same-kitchen-undelivered-letters",
+            kind: "clue",
+            title: "两封信为什么没有送到",
+            text: "第一封是南枝写给冬青的。它被送到了已经迁走的旧厨房。第二封是冬青写给南枝的。它追着改道后的行船厨房，去了错误码头。两封信都没有拆开。",
+          },
+          {
+            artFile: "together.same-kitchen-undelivered-letters",
+            kind: "story",
+            title: "投递路线已经恢复",
+            text: "迟迟根据三枚印章补全了两封信的投递记录。信为什么没有送到已经查清，现在只剩下怎么处理它们。",
+          },
+          {
+            artFile: "together.same-kitchen-undelivered-letters",
+            kind: "story",
+            title: "由两人当面交换",
+            text: "南枝和冬青当面交换了六年前的信。读完后，两个人这才知道，他们当年等的不是同一天。",
+          },
+          {
+            artFile: "together.same-kitchen-service",
+            kind: "story",
+            title: "明早照常营业",
+            text: "次日的靠岸板上同时挂出三班船。南枝负责说明客人的要求，冬青负责检查和最后装盘。",
+          },
+          {
+            artFile: "together.same-kitchen-service",
+            kind: "task",
+            progress: 1,
+            target: 1,
+            title: "泊泊的鱼肉饭团",
+            text: "泊泊清晨出船前带走一份鱼肉饭团，也带回下一班船的到站时刻。",
+          },
+          {
+            artFile: "together.same-kitchen-service",
+            kind: "task",
+            progress: 1,
+            target: 1,
+            title: "迟迟的葱油饼",
+            text: "迟迟带着适合途中携带的葱油饼出发，送回砂砂仍在核账的消息。",
+          },
+          {
+            artFile: "together.same-kitchen-service",
+            kind: "task",
+            progress: 1,
+            target: 1,
+            title: "砂砂的蜂蜜茶",
+            text: "第三家农场把蜂蜜茶保温送达，砂砂喝过热茶，完成了当天营业记录。",
+          },
+          {
+            artFile: "together.same-kitchen-service",
+            kind: "story",
+            title: "三班船都已照常离岸",
+            text: "三张订单都由两个人一起完成。南枝备料时，冬青把锅温调好；冬青装盘时，南枝核对送达时间。",
+          },
+          {
+            artFile: "together.same-kitchen-final-arrangement",
+            kind: "story",
+            title: "厨房之后怎么继续",
+            text: "第七天打烊后，鹤姨把两把钥匙和三份渡口经营方案放在桌上。\n\n“厨房这几天没有停，也没有谁被另一个人替掉。”",
+          },
+          {
+            artFile: "together.same-kitchen-ending-next-door",
+            kind: "ending",
+            title: "隔壁开门",
+            text: "原来的店面被分成两个窗口。左边是南枝的行船饭，右边是冬青的炉边菜。\n\n共用仓库的排班表贴在两扇门中间。正式营业的第一天，南枝给右边送了一尾鲜鱼，冬青回了一小罐新调的香料。\n\n两边都按自己的时间开门。",
+          },
+        ],
+        round: 2,
+        title: "同一间厨房",
+      },
+    ],
     currentChoice: {
       counts: null,
       index: 1,
@@ -737,6 +950,9 @@ const candidateTwoDemoScreens = new Set<CandidateTwoDemoScreen>([
   "lounge",
   "lingye",
   "glimmer",
+  "memorial",
+  "together",
+  "together-history",
   "home",
   "profile",
   "settings",
@@ -753,20 +969,32 @@ export function buildCandidateTwoDemoPreset(
       turkey_maple: { ...candidateTwoGlimmerAlignedAnimalPositions.turkey_maple },
     },
   },
+  memorialLayoutEditor: CandidateTwoDemoView["memorialLayoutEditor"] = {
+    enabled: false,
+    encodedLayout: null,
+    target: "index",
+  },
 ): CandidateTwoDemoPreset {
   const demo: CandidateTwoDemoView = {
     content: candidateTwoDemoContent,
     glimmerAnimalEditor,
+    memorialLayoutEditor,
     initialScreen:
-      screen === "glimmer"
-        ? "lingye-glimmer"
-        : screen === "lounge" ||
-            screen === "lingye" ||
-            screen === "home" ||
-            screen === "profile" ||
-            screen === "settings"
-          ? screen
-          : null,
+      memorialLayoutEditor.enabled || screen === "memorial"
+        ? "lingye-memorial"
+        : screen === "glimmer"
+          ? "lingye-glimmer"
+          : screen === "together"
+            ? "lingye-together"
+            : screen === "together-history"
+              ? "lingye-together-history"
+              : screen === "lounge" ||
+                  screen === "lingye" ||
+                  screen === "home" ||
+                  screen === "profile" ||
+                  screen === "settings"
+                ? screen
+                : null,
     registrationPrefill:
       screen === "registration"
         ? {
@@ -866,6 +1094,12 @@ export function resolveCandidateTwoDemoPreset(
     return Number.isFinite(value) ? value : fallback;
   };
   const editorEnabled = params.get("editor") === "glimmer-animals";
+  const memorialEditorParam = params.get("editor");
+  const memorialLayoutEditorTarget =
+    memorialEditorParam === "memorial-entry-layout" ? "entry" : "index";
+  const memorialLayoutEditorEnabled =
+    Boolean(import.meta.env?.DEV) &&
+    (memorialEditorParam === "memorial-layout" || memorialEditorParam === "memorial-entry-layout");
   const glimmerAnimalLayoutNeedsAlignment =
     editorEnabled &&
     params.get("gaLayout") !== "5" &&
@@ -885,15 +1119,25 @@ export function resolveCandidateTwoDemoPreset(
           y: editorNumber(yParam, alignedPosition.y),
         };
   };
-  return buildCandidateTwoDemoPreset(screen, {
-    enabled: editorEnabled,
-    positions: {
-      duck_peach: editorPosition("duck_peach", "gaDuckX", "gaDuckY"),
-      mystery: editorPosition("mystery", "gaMysteryX", "gaMysteryY"),
-      silk_moth_mist: editorPosition("silk_moth_mist", "gaMothX", "gaMothY"),
-      turkey_maple: editorPosition("turkey_maple", "gaTurkeyX", "gaTurkeyY"),
+  return buildCandidateTwoDemoPreset(
+    screen,
+    {
+      enabled: editorEnabled,
+      positions: {
+        duck_peach: editorPosition("duck_peach", "gaDuckX", "gaDuckY"),
+        mystery: editorPosition("mystery", "gaMysteryX", "gaMysteryY"),
+        silk_moth_mist: editorPosition("silk_moth_mist", "gaMothX", "gaMothY"),
+        turkey_maple: editorPosition("turkey_maple", "gaTurkeyX", "gaTurkeyY"),
+      },
     },
-  });
+    {
+      enabled: memorialLayoutEditorEnabled,
+      encodedLayout: params.get(
+        memorialLayoutEditorTarget === "entry" ? "memorialEntryLayout" : "memorialLayout",
+      ),
+      target: memorialLayoutEditorTarget,
+    },
+  );
 }
 
 export type CandidateTwoAction =
@@ -947,6 +1191,7 @@ export type CandidateTwoAction =
   | { type: "logout" }
   | { type: "view-ready" }
   | { type: "lingye-glimmer-open" }
+  | { type: "lingye-memorial-open" }
   | { type: "lingye-together-open" }
   | { type: "shared-memes-open" }
   | { type: "shared-meme-open"; memeId: number }
@@ -955,6 +1200,8 @@ export type CandidateTwoAction =
       type: "glimmer-animal-layout-change";
       positions: CandidateTwoGlimmerAnimalPositions;
     }
+  | { type: "memorial-backdrop-color-sample"; xRatio: number; yRatio: number }
+  | { type: "memorial-layout-save"; encodedLayout: string }
   | { type: "navigate"; path: CandidateTwoInternalPath };
 
 const candidateTwoActionKeys = {
@@ -976,11 +1223,14 @@ const candidateTwoActionKeys = {
   "community-connection-preference-save": ["type", "field", "value"],
   logout: ["type"],
   "lingye-glimmer-open": ["type"],
+  "lingye-memorial-open": ["type"],
   "lingye-together-open": ["type"],
   "shared-memes-open": ["type"],
   "shared-meme-open": ["type", "memeId"],
   "shared-meme-create": ["type", "input"],
   "glimmer-animal-layout-change": ["type", "positions"],
+  "memorial-backdrop-color-sample": ["type", "xRatio", "yRatio"],
+  "memorial-layout-save": ["type", "encodedLayout"],
   "view-ready": ["type"],
   navigate: ["type", "path"],
 } as const;
@@ -1163,12 +1413,32 @@ export function parseCandidateTwoAction(value: unknown): CandidateTwoAction | nu
     return positions ? { type, positions } : null;
   }
 
+  if (type === "memorial-layout-save") {
+    return typeof value.encodedLayout === "string"
+      ? { type, encodedLayout: value.encodedLayout }
+      : null;
+  }
+
+  if (type === "memorial-backdrop-color-sample") {
+    return typeof value.xRatio === "number" &&
+      Number.isFinite(value.xRatio) &&
+      value.xRatio >= 0 &&
+      value.xRatio <= 1 &&
+      typeof value.yRatio === "number" &&
+      Number.isFinite(value.yRatio) &&
+      value.yRatio >= 0 &&
+      value.yRatio <= 1
+      ? { type, xRatio: value.xRatio, yRatio: value.yRatio }
+      : null;
+  }
+
   return type === "permit-complete" ||
     type === "connector-credential-issue" ||
     type === "connector-credential-revoke" ||
     type === "logout" ||
     type === "shared-memes-open" ||
     type === "lingye-glimmer-open" ||
+    type === "lingye-memorial-open" ||
     type === "lingye-together-open" ||
     type === "view-ready"
     ? { type }
@@ -1207,6 +1477,19 @@ const lingyePlaces = [
   ["farm-ranch", "农场牧场", 47.83, 84.45, 22],
 ] as const;
 
+const lingyeInstitutionScenes = [
+  ["lingye-daily", "铃野日报社", "/lingye/institutions/lingye-daily.avif"],
+  [
+    "lingye-public-security-office",
+    "铃野治安署",
+    "/lingye/institutions/public-security-office.avif",
+  ],
+  ["animal-hospital", "铃野动物医院", "/lingye/institutions/animal-hospital.avif"],
+  ["vocational-school", "铃野职业学校", "/lingye/institutions/vocational-school.avif"],
+  ["bank", "铃野银行", "/lingye/institutions/bank.avif"],
+  ["detention-center", "铃野看守所", "/lingye/institutions/detention-center.avif"],
+] as const;
+
 const hiddenFishingPlaceIds = new Set<string>([
   "moonlight-pond",
   "crystal-cave",
@@ -1226,6 +1509,9 @@ interface CandidateTwoPreviewProps {
 
 const GOOGLE_FONTS =
   '<link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Noto+Serif+SC:wght@400;500;600&family=Playfair+Display:ital,wght@0,400;1,600&family=ZCOOL+KuaiLe&display=swap" rel="stylesheet" media="print" onload="this.media=\'all\'"><noscript><link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Noto+Serif+SC:wght@400;500;600&family=Playfair+Display:ital,wght@0,400;1,600&family=ZCOOL+KuaiLe&display=swap" rel="stylesheet"></noscript>';
+
+const MOQU_GUFENG_FONT =
+  '<link href="/lingye/memorial/qixi-archive/moqu-gufeng-ti.css" rel="stylesheet">';
 
 const LOGIN_RUNTIME_CONTENT = `        <form id="credentials-form" class="candidate2-auth-step">
             <div class="input-group">
@@ -1573,7 +1859,6 @@ const PROFILE_RUNTIME_CONTENT = `        <div class="candidate2-profile-scale-sh
                         <div class="candidate2-demo-relation-node candidate2-demo-relation-a"><strong></strong><small></small></div>
                         <div class="candidate2-demo-relation-node candidate2-demo-relation-b"><strong></strong><small></small></div>
                         <div class="candidate2-demo-relation-node candidate2-demo-relation-c"><strong></strong><small></small></div>
-                        <p class="candidate2-demo-relationship-summary"></p>
                     </div>
                     <form id="profile-relationship-editor" class="candidate2-relationship-editor" hidden>
                         <p class="candidate2-relationship-editor-title">编辑关系备注</p>
@@ -1587,6 +1872,7 @@ const PROFILE_RUNTIME_CONTENT = `        <div class="candidate2-profile-scale-sh
         </section>
 
         <section class="candidate2-profile-section candidate2-activity-section">
+            <img class="candidate2-activity-paperclip" src="/candidate-two/profile-activity-paperclip-v1.svg" alt="" aria-hidden="true">
             <p class="candidate2-profile-section-title handwritten">Recent Activity</p>
             <p class="candidate2-empty-copy candidate2-profile-empty">暂无可读取的活动数据</p>
             <div class="candidate2-demo-activity-list" hidden></div>
@@ -3039,7 +3325,7 @@ const RUNTIME_STYLES = `
             z-index: 5;
             min-height: 196px;
             margin: -140px 34px 0 4px;
-            padding: 20px 18px 16px 25px;
+            padding: 27px 18px 16px 25px;
             background: transparent;
             box-shadow: none;
             isolation: isolate;
@@ -3049,8 +3335,12 @@ const RUNTIME_STYLES = `
             position: absolute;
             inset: 0;
             z-index: -1;
-            background: #f1ddd6;
-            clip-path: polygon(0 5%, 8% 2%, 17% 5%, 27% 2%, 37% 6%, 48% 3%, 59% 7%, 71% 3%, 82% 5%, 94% 1%, 99% 3%, 97.5% 16%, 100% 29%, 98% 43%, 99.5% 57%, 97.5% 72%, 99% 85%, 98% 96%, 88% 97%, 77% 94%, 66% 98%, 54% 95%, 43% 98%, 31% 95%, 20% 99%, 9% 96%, 1% 98%, 0.5% 88%, 2% 76%, 0% 63%, 1.5% 50%, 0.5% 38%, 2% 25%, 0% 14%);
+            background-color: #f8ece6;
+            background-image:
+                radial-gradient(circle at 22% 18%, rgba(255, 252, 244, 0.32) 0 1px, transparent 1.5px),
+                radial-gradient(circle at 74% 63%, rgba(171, 130, 116, 0.08) 0 0.8px, transparent 1.3px);
+            background-size: 19px 19px, 23px 23px;
+            clip-path: polygon(1.5% 1.5%, 13% 2.5%, 24% 0.5%, 36% 2.2%, 48% 1%, 60% 3%, 73% 1.2%, 85% 2.8%, 98% 1.5%, 99% 14%, 98% 27%, 100% 40%, 98.5% 53%, 100% 67%, 98% 80%, 99% 98%, 87% 97%, 75% 99%, 63% 97%, 50% 99%, 38% 97%, 25% 98.5%, 13% 97%, 1.5% 99%, 2% 86%, 0.5% 74%, 2% 61%, 0.7% 48%, 2% 35%, 0.5% 22%, 1.5% 10%);
             content: '';
             filter: drop-shadow(2px 4px 5px rgba(83, 63, 53, 0.1));
             pointer-events: none;
@@ -3084,7 +3374,23 @@ const RUNTIME_STYLES = `
         }
 
         .candidate2-activity-section .candidate2-profile-section-title {
-            margin: 0 0 10px -8px;
+            margin: 0 auto 13px;
+            color: #6f5a50;
+            font-size: 18px;
+            text-align: center;
+        }
+
+        .candidate2-activity-paperclip {
+            position: absolute;
+            top: -18px;
+            left: 18px;
+            z-index: 4;
+            width: auto;
+            height: 54px;
+            object-fit: contain;
+            filter: drop-shadow(1px 2px 1px rgba(67, 70, 72, 0.16));
+            pointer-events: none;
+            transform: rotate(17deg);
         }
 
         .candidate2-notebook-stack {
@@ -3141,8 +3447,8 @@ const RUNTIME_STYLES = `
 
         .candidate2-relationship-edit {
             position: absolute;
-            top: 19px;
-            right: 42px;
+            right: -16px;
+            bottom: 164px;
             z-index: 5;
             min-width: 49px;
             min-height: 27px;
@@ -3296,8 +3602,8 @@ const RUNTIME_STYLES = `
             width: 28px;
             height: 28px;
             border: 0;
-            border-radius: 50%;
-            background: var(--soft-pink);
+            clip-path: polygon(50% 0%, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0% 50%, 39% 39%);
+            background: #E6A3AE;
             box-shadow: none;
             content: '';
         }
@@ -3320,7 +3626,7 @@ const RUNTIME_STYLES = `
             width: 17px;
             height: 17px;
             border: 0;
-            border-radius: 50%;
+            clip-path: polygon(50% 0%, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0% 50%, 39% 39%);
             box-shadow: none;
             content: '';
         }
@@ -3330,17 +3636,9 @@ const RUNTIME_STYLES = `
         .candidate2-demo-relation-a { top: 25%; left: 12%; }
         .candidate2-demo-relation-b { top: 27%; left: 67%; }
         .candidate2-demo-relation-c { top: 75%; left: 21%; }
-        .candidate2-demo-relation-a::before { background: var(--sky-blue); }
-        .candidate2-demo-relation-b::before { background: var(--warm-sand); }
-        .candidate2-demo-relation-c::before { background: #D5E6DF; }
-
-        .candidate2-demo-relationship-summary {
-            position: absolute;
-            right: 12px;
-            bottom: 9px;
-            color: #a8958b;
-            font-size: 9px;
-        }
+        .candidate2-demo-relation-a::before { background: #82BCD5; }
+        .candidate2-demo-relation-b::before { background: #E3B477; }
+        .candidate2-demo-relation-c::before { background: #8CC1B1; }
 
         .candidate2-demo-activity-list {
             position: relative;
@@ -3353,12 +3651,30 @@ const RUNTIME_STYLES = `
         .candidate2-demo-activity {
             position: relative;
             display: grid;
-            grid-template-columns: minmax(0, 1fr) auto;
-            gap: 8px;
+            grid-template-columns: 13px minmax(0, 1fr) auto;
+            gap: 7px;
             align-items: center;
             min-height: 36px;
-            padding: 5px 0;
+            padding: 5px 0 7px;
             font-size: 11px;
+        }
+
+        .candidate2-demo-activity::before {
+            content: '♡';
+            color: #705b51;
+            font-size: 10px;
+            line-height: 1;
+            text-align: center;
+        }
+
+        .candidate2-demo-activity::after {
+            position: absolute;
+            right: 0;
+            bottom: 3px;
+            left: 19px;
+            content: '';
+            border-bottom: 1px dotted rgba(112, 91, 81, 0.34);
+            pointer-events: none;
         }
 
         .candidate2-demo-activity > span:first-child {
@@ -4158,13 +4474,29 @@ const LINGYE_SCREEN = `
             </div>
         </section>
         <button class="candidate2-lingye-together" type="button" aria-label="进入铃野共行" onclick="openLingyeTogether()">
-            <img src="/lingye/lingye-together-game-icon-v4.png" alt="" draggable="false">
+            <img src="/lingye/lingye-together-game-icon-v5.png" alt="" width="512" height="512" draggable="false">
         </button>
         <button class="candidate2-lingye-memories" type="button" aria-label="打开纪念册" onclick="openLingyeMemorial()">
             <img src="/lingye/ui/memorial-album.png" alt="" width="256" height="256" draggable="false">
         </button>
     </div>
 `;
+
+const LINGYE_INSTITUTION_SCREENS = lingyeInstitutionScenes
+  .map(
+    ([id, label, backgroundUrl]) => `
+    <div id="screen-lingye-institution-${id}" class="screen screen--lingye-place candidate2-institution-scene" data-institution-place="${id}">
+        <section class="candidate2-institution-scene-viewport" aria-label="${label}场景，可左右滑动查看" tabindex="0">
+            <div class="candidate2-institution-scene-canvas">
+                <img class="candidate2-institution-scene-background" src="${backgroundUrl}" width="1024" height="1536" alt="${label}场景背景" draggable="false">
+            </div>
+        </section>
+        <button class="candidate2-place-back-link candidate2-institution-scene-back" type="button" aria-label="返回铃野地图" onclick="showScreen('screen-lingye')">
+            <span aria-hidden="true">‹</span>
+        </button>
+    </div>`,
+  )
+  .join("");
 
 const LINGYE_PLACE_SCREENS = `
     <div id="screen-lingye-together" class="screen screen--lingye-place candidate2-together-page">
@@ -4174,7 +4506,7 @@ const LINGYE_PLACE_SCREENS = `
                 <button class="candidate2-place-back-link" type="button" aria-label="返回铃野地图" onclick="showScreen('screen-lingye')">
                     <span aria-hidden="true">‹</span>
                 </button>
-                <button class="candidate2-together-history-button" type="button" aria-label="往期故事" disabled>
+                <button class="candidate2-together-history-button" type="button" aria-label="往期故事" onclick="openTogetherHistory()" disabled>
                     <svg viewBox="0 0 32 32" aria-hidden="true">
                         <path d="M7 7.5A3.5 3.5 0 0 1 10.5 4H25v21H10.5A3.5 3.5 0 0 0 7 28.5z"></path>
                         <path d="M7 7.5A3.5 3.5 0 0 1 10.5 11H25M12 16h8M12 20h6"></path>
@@ -4227,24 +4559,171 @@ const LINGYE_PLACE_SCREENS = `
         </div>
     </div>
 
-    <div id="screen-lingye-memorial" class="screen screen--lingye-place candidate2-memorial-page">
-        <div class="candidate2-memorial-paper">
-            <header class="candidate2-memorial-header">
-                <button class="candidate2-memorial-back" type="button" aria-label="返回铃野地图" onclick="showScreen('screen-lingye')">
-                    <span aria-hidden="true">‹</span>
-                </button>
-                <p>限时活动档案</p>
-                <h1>纪念册</h1>
+    <div id="screen-lingye-together-history" class="screen screen--lingye-place candidate2-together-history-page">
+        <header class="candidate2-together-history-header">
+            <button class="candidate2-together-history-back" type="button" aria-label="返回当前铃野共行" onclick="showScreen('screen-lingye-together')">
+                <span aria-hidden="true">‹</span>
+            </button>
+            <span>往期故事</span>
+        </header>
+        <main class="candidate2-together-archive-directory" aria-label="铃野共行往期目录"></main>
+        <p class="candidate2-together-archive-empty" hidden>还没有已完成的往期故事。</p>
+        <section class="candidate2-together-archive-reader" aria-label="往期故事回顾" hidden>
+            <header class="candidate2-together-archive-reader-header">
+                <button type="button" aria-label="返回往期目录" onclick="closeTogetherArchive()"><span aria-hidden="true">‹</span></button>
+                <div>
+                    <p class="candidate2-together-archive-reader-round"></p>
+                    <h1 class="candidate2-together-archive-reader-title"></h1>
+                </div>
             </header>
-            <main class="candidate2-memorial-list" aria-label="限时活动纪念">
-                <p class="candidate2-memorial-empty">还没有可查看的活动档案。</p>
-                <article class="candidate2-memorial-demo" aria-label="2026 年七夕活动灯河有信" hidden>
-                    <div class="candidate2-memorial-meta"><span>2026</span><i aria-hidden="true"></i><span>七夕</span></div>
-                    <h2>灯河有信</h2>
-                    <p>愿今夜所有思念，都能顺水抵达归处。</p>
-                </article>
-            </main>
+            <article class="candidate2-together-archive-page">
+                <figure class="candidate2-together-archive-photo"><img alt="" /></figure>
+                <h2 class="candidate2-together-archive-entry-title"></h2>
+                <p class="candidate2-together-archive-entry-text"></p>
+            </article>
+            <nav class="candidate2-together-archive-pagination" aria-label="故事翻页">
+                <button type="button" aria-label="上一页" onclick="turnTogetherArchivePage(-1)"><span aria-hidden="true">‹</span></button>
+                <span class="candidate2-together-archive-page-number"></span>
+                <button type="button" aria-label="下一页" onclick="turnTogetherArchivePage(1)"><span aria-hidden="true">›</span></button>
+            </nav>
+        </section>
+    </div>
+
+    <div id="screen-lingye-memorial" class="screen screen--lingye-place candidate2-memorial-page">
+        <div class="candidate2-memorial-paper" data-memorial-editor-canvas>
+            <section class="candidate2-memorial-index">
+                <header class="candidate2-memorial-header">
+                    <button class="candidate2-memorial-back" type="button" aria-label="返回铃野地图" onclick="showScreen('screen-lingye')">
+                        <span aria-hidden="true">←</span>
+                    </button>
+                    <div class="candidate2-memorial-title-lockup" role="img" aria-label="Album，纪念册，往期活动回顾" data-memorial-editor-id="title-lockup" data-memorial-editor-name="顶部标题组">
+                        <img src="/lingye/memorial/memorial-title-lockup-v1.png" alt="" />
+                    </div>
+                </header>
+                <div class="candidate2-memorial-ledger" data-memorial-editor-id="paper" data-memorial-editor-name="主体纸页" data-memorial-editor-fill>
+                    <div class="candidate2-memorial-demo-chrome" hidden>
+                        <div class="candidate2-memorial-tabs" role="group" aria-label="活动分类">
+                            <button class="is-active" type="button" aria-pressed="true" data-memorial-filter="all" onclick="setLingyeMemorialFilter('all')" data-memorial-editor-id="tab-all" data-memorial-editor-name="全部方签" data-memorial-editor-text data-memorial-editor-fill>全部</button>
+                            <button type="button" aria-pressed="false" data-memorial-filter="festival" onclick="setLingyeMemorialFilter('festival')" data-memorial-editor-id="tab-festival" data-memorial-editor-name="节日方签" data-memorial-editor-text data-memorial-editor-fill>节日</button>
+                        </div>
+                    </div>
+                    <main class="candidate2-memorial-list" aria-label="限时活动纪念">
+                        <p class="candidate2-memorial-empty">还没有可查看的活动档案。</p>
+                        <button class="candidate2-memorial-demo" type="button" aria-label="查看 2026 年七夕活动灯河有信" onclick="openLingyeMemorialEntry()" data-memorial-category="festival" data-memorial-editor-id="event-card" data-memorial-editor-name="活动票券" data-memorial-editor-fill hidden>
+                            <span class="candidate2-memorial-index-number" data-memorial-editor-id="event-number" data-memorial-editor-name="期号"><strong>01</strong><small>2026</small></span>
+                            <span class="candidate2-memorial-index-copy">
+                                <small>节日活动</small>
+                                <strong data-memorial-editor-id="event-title" data-memorial-editor-name="活动标题" data-memorial-editor-text>七夕活动</strong>
+                                <span data-memorial-editor-id="event-theme" data-memorial-editor-name="活动主题" data-memorial-editor-text>灯河有信</span>
+                                <time datetime="2026-08-19" data-memorial-editor-id="event-date" data-memorial-editor-name="活动日期" data-memorial-editor-text>2026.08.19—08.21</time>
+                            </span>
+                            <span class="candidate2-memorial-index-banner" data-memorial-editor-id="event-image" data-memorial-editor-name="活动图片">
+                                <img src="/lingye/memorial/qixi-2026-lantern-night.jpg" alt="" width="506" height="899" draggable="false">
+                                <span class="candidate2-memorial-index-action">查看回忆 <span aria-hidden="true">›</span></span>
+                            </span>
+                        </button>
+                    </main>
+                </div>
+            </section>
+            <article class="candidate2-memorial-entry-view candidate2-memorial-entry-view--qixi" aria-label="2026 年七夕活动灯河有信" hidden>
+                <span class="candidate2-memorial-binding" aria-hidden="true"></span>
+                <button class="candidate2-memorial-entry-back" type="button" aria-label="返回纪念册目录" onclick="closeLingyeMemorialEntry()">
+                    <span aria-hidden="true">←</span>
+                </button>
+                <img class="candidate2-memorial-entry-qixi-stickers" src="/lingye/memorial/qixi-stickers-v1.png" alt="" aria-hidden="true" draggable="false" data-memorial-entry-editor-id="entry-stickers" data-memorial-editor-name="七夕装饰贴纸" data-memorial-editor-asset="stickers" data-memorial-editor-removable>
+                <header class="candidate2-memorial-entry-heading">
+                    <div>
+                        <span data-memorial-entry-editor-id="entry-event-label" data-memorial-editor-name="年份与节日" data-memorial-editor-asset="event-label" data-memorial-editor-removable data-memorial-editor-text>2026 · 七夕</span>
+                        <div class="candidate2-memorial-entry-title-art" role="img" aria-label="灯河有信。灯河相逢 · 愿思念抵达归处" data-memorial-entry-editor-id="entry-title" data-memorial-editor-name="七夕标题字组" data-memorial-editor-asset="title" data-memorial-editor-removable>
+                            <img src="/lingye/memorial/qixi-title-lockup-v1.png" alt="" draggable="false">
+                        </div>
+                    </div>
+                    <time datetime="2026-08-19/2026-08-21" data-memorial-entry-editor-id="entry-date" data-memorial-editor-name="活动日期" data-memorial-editor-asset="date" data-memorial-editor-removable><span>2026.08.19</span><i aria-hidden="true"></i><span>2026.08.21</span></time>
+                </header>
+                <div class="candidate2-memorial-entry-collage">
+                    <figure class="candidate2-memorial-entry-hero-photo" data-memorial-entry-editor-id="entry-hero" data-memorial-editor-name="七夕主照片" data-memorial-editor-asset="hero" data-memorial-editor-removable>
+                        <span class="candidate2-memorial-entry-tape" aria-hidden="true"></span>
+                        <img src="/lingye/memorial/qixi-2026-lantern-night.jpg" alt="灯河有信活动夜河灯景" width="506" height="899" draggable="false">
+                    </figure>
+                    <aside class="candidate2-memorial-entry-note" data-memorial-entry-editor-id="entry-note" data-memorial-editor-name="七夕主题便笺" data-memorial-editor-asset="note" data-memorial-editor-removable>
+                        <p>愿今夜所有思念，<br>都能顺水抵达归处。</p>
+                    </aside>
+                    <figure class="candidate2-memorial-entry-secondary-photo" data-memorial-entry-editor-id="entry-secondary" data-memorial-editor-name="七夕副照片" data-memorial-editor-asset="secondary" data-memorial-editor-removable>
+                        <img src="/lingye/memorial/qixi-2026-objects-return-bg-v3.jpg" alt="七夕灯河归还旧物场景" width="506" height="900" draggable="false">
+                    </figure>
+                </div>
+                <div class="candidate2-memorial-entry-archive-templates" hidden>
+                    <div class="candidate2-qixi-archive-lantern" role="img" aria-label="我的七夕成品灯" data-qixi-memorial-side="human" data-memorial-editor-name="我的灯" data-memorial-editor-asset="my-lantern" data-memorial-editor-asset-template>
+                        <span class="candidate2-qixi-archive-lantern-art" aria-hidden="true">
+                            <span class="candidate2-qixi-archive-lantern-base" data-qixi-lantern-base style="left:-28px;top:-6px;width:180px;height:135px;--lamp-x:0%;--lamp-y:0%"></span>
+                            <span class="candidate2-qixi-archive-lantern-layer" data-qixi-lantern-pattern style="left:67px;top:47px;width:64px;height:64px;background-position:100% 33.333%"></span>
+                            <span class="candidate2-qixi-archive-lantern-layer candidate2-qixi-archive-lantern-ornament" data-qixi-lantern-ornament style="left:61px;top:119px;width:68px;height:68px;background-position:50% 100%"></span>
+                            <span class="candidate2-qixi-archive-lantern-layer" data-qixi-lantern-seal style="left:71px;top:15px;width:51px;height:51px;background-position:0% 66.667%"></span>
+                        </span>
+                    </div>
+                    <div class="candidate2-qixi-archive-lantern" role="img" aria-label="渡的七夕成品灯" data-qixi-memorial-side="ai" data-memorial-editor-name="渡的灯" data-memorial-editor-asset="du-lantern" data-memorial-editor-asset-template>
+                        <span class="candidate2-qixi-archive-lantern-art" aria-hidden="true">
+                            <span class="candidate2-qixi-archive-lantern-base" data-qixi-lantern-base style="left:42px;top:-5px;width:180px;height:135px;--lamp-x:100%;--lamp-y:0%"></span>
+                            <span class="candidate2-qixi-archive-lantern-layer" data-qixi-lantern-pattern style="left:66px;top:53px;width:64px;height:64px;background-position:0% 100%"></span>
+                            <span class="candidate2-qixi-archive-lantern-layer candidate2-qixi-archive-lantern-ornament" data-qixi-lantern-ornament style="left:59px;top:118px;width:68px;height:68px;background-position:50% 0%"></span>
+                            <span class="candidate2-qixi-archive-lantern-layer" data-qixi-lantern-seal style="left:71px;top:16px;width:51px;height:51px;background-position:50% 66.667%"></span>
+                        </span>
+                    </div>
+                    <article class="candidate2-qixi-archive-letter" aria-label="我的七夕信件" data-qixi-memorial-side="human" data-memorial-editor-name="我的信" data-memorial-editor-asset="my-letter" data-memorial-editor-asset-template>
+                        <p contenteditable="plaintext-only" spellcheck="false" data-qixi-archive-letter-text></p>
+                        <span class="candidate2-qixi-archive-letter-signature">辛玥</span>
+                    </article>
+                    <article class="candidate2-qixi-archive-letter" aria-label="渡的七夕信件" data-qixi-memorial-side="ai" data-memorial-editor-name="渡的信" data-memorial-editor-asset="du-letter" data-memorial-editor-asset-template>
+                        <p contenteditable="plaintext-only" spellcheck="false" data-qixi-archive-letter-text></p>
+                        <span class="candidate2-qixi-archive-letter-signature">渡</span>
+                    </article>
+                    <span class="candidate2-qixi-archive-qiaoqiao" role="img" aria-label="七夕角色翘翘" data-memorial-editor-name="翘翘" data-memorial-editor-asset="qiaoqiao" data-memorial-editor-asset-template></span>
+                </div>
+            </article>
+            <div class="candidate2-memorial-editor-selection" aria-hidden="true" hidden>
+                <button type="button" data-memorial-editor-handle="rotate" aria-label="旋转选中元素"></button>
+                <button type="button" data-memorial-editor-handle="scale" aria-label="缩放选中元素"></button>
+            </div>
         </div>
+        <aside class="candidate2-memorial-editor" aria-label="纪念册一次性排版编辑器" hidden>
+            <header>
+                <strong>纪念册自由编辑</strong>
+                <span><button type="button" data-memorial-editor-command="toggle">收起</button><span class="candidate2-memorial-editor-current">未选中</span></span>
+            </header>
+            <div class="candidate2-memorial-editor-assets" aria-label="七夕素材库" hidden>
+                <button type="button" data-memorial-add-asset="my-lantern">＋我的灯</button>
+                <button type="button" data-memorial-add-asset="du-lantern">＋渡的灯</button>
+                <button type="button" data-memorial-add-asset="my-letter">＋我的信</button>
+                <button type="button" data-memorial-add-asset="du-letter">＋渡的信</button>
+                <button type="button" data-memorial-add-asset="qiaoqiao">＋翘翘</button>
+                <button type="button" data-memorial-add-asset="title">＋标题字组</button>
+                <button type="button" data-memorial-add-asset="stickers">＋装饰贴纸</button>
+                <button type="button" data-memorial-add-asset="hero">＋主照片</button>
+                <button type="button" data-memorial-add-asset="secondary">＋副照片</button>
+                <button type="button" data-memorial-add-asset="note">＋主题便笺</button>
+                <button type="button" data-memorial-add-asset="event-label">＋年份节日</button>
+                <button type="button" data-memorial-add-asset="date">＋活动日期</button>
+            </div>
+            <label class="candidate2-memorial-editor-text-control">文字<input type="text" class="candidate2-memorial-editor-text-input" disabled></label>
+            <div class="candidate2-memorial-editor-row">
+                <label>填充<input type="color" class="candidate2-memorial-editor-color" value="#f7f2fa" disabled></label>
+                <button type="button" data-memorial-editor-command="eyedropper">吸色</button>
+                <button type="button" data-memorial-editor-command="backward">下移一层</button>
+                <button type="button" data-memorial-editor-command="forward">上移一层</button>
+            </div>
+            <div class="candidate2-memorial-editor-row candidate2-memorial-editor-shapes">
+                <button type="button" data-memorial-add-shape="square">＋方形</button>
+                <button type="button" data-memorial-add-shape="circle">＋圆形</button>
+                <button type="button" data-memorial-add-shape="rounded">＋圆角</button>
+                <button type="button" data-memorial-add-shape="frame">＋图片框</button>
+            </div>
+            <div class="candidate2-memorial-editor-row">
+                <button type="button" data-memorial-editor-command="duplicate">复制元素</button>
+                <button type="button" data-memorial-editor-command="delete">删除</button>
+                <button type="button" data-memorial-editor-command="copy">复制布局</button>
+            </div>
+            <p class="candidate2-memorial-editor-status">点选元素后直接拖动；上方圆点旋转，右下角缩放。</p>
+        </aside>
     </div>
 
     <div id="screen-lingye-glimmer" class="screen screen--lingye-place candidate2-glimmer-page">
@@ -4406,7 +4885,7 @@ const LINGYE_STYLES = `
             z-index: 30;
             top: 14px;
             right: 14px;
-            width: clamp(56px, 14vw, 68px);
+            width: clamp(46px, 12vw, 54px);
             aspect-ratio: 1;
             min-height: 44px;
             padding: 0;
@@ -4465,6 +4944,60 @@ const LINGYE_STYLES = `
             color: #51483f;
             overscroll-behavior-y: contain;
             scrollbar-width: thin;
+        }
+
+        .screen.candidate2-institution-scene {
+            padding: 0;
+            overflow: hidden;
+            background: #f6f0df;
+        }
+
+        .candidate2-institution-scene-viewport {
+            width: 100%;
+            height: 100%;
+            overflow-x: auto;
+            overflow-y: hidden;
+            overscroll-behavior-x: contain;
+            scrollbar-width: thin;
+            touch-action: pan-x;
+            cursor: grab;
+            background: #f6f0df;
+        }
+
+        .candidate2-institution-scene-viewport.is-dragging {
+            cursor: grabbing;
+            user-select: none;
+        }
+
+        .candidate2-institution-scene-viewport:focus-visible {
+            outline: 3px solid rgba(109, 93, 85, 0.55);
+            outline-offset: -3px;
+        }
+
+        .candidate2-institution-scene-canvas {
+            position: relative;
+            width: auto;
+            height: 100%;
+            aspect-ratio: 2 / 3;
+        }
+
+        .candidate2-institution-scene-background {
+            display: block;
+            width: auto;
+            max-width: none;
+            height: 100%;
+            pointer-events: none;
+            user-select: none;
+            -webkit-user-drag: none;
+        }
+
+        .candidate2-institution-scene .candidate2-institution-scene-back {
+            z-index: 3;
+            top: 14px;
+            left: 16px;
+            min-width: 44px;
+            min-height: 44px;
+            justify-content: center;
         }
 
         .screen--lingye-place h1,
@@ -4615,42 +5148,89 @@ const LINGYE_STYLES = `
         }
 
         .candidate2-memorial-page {
+            position: relative;
             padding: 0 !important;
-            color: #51483f;
-            background: #f3eedc;
+            color: #51485b;
+            background: #ebe9f1;
         }
 
         .candidate2-memorial-paper {
+            position: relative;
             min-height: 100%;
-            padding: 17px 22px 126px;
-            background:
-                radial-gradient(circle at 82% 8%, rgba(141, 157, 91, 0.12), transparent 25%),
-                linear-gradient(180deg, rgba(251, 248, 235, 0.98), rgba(242, 235, 213, 0.98));
+            padding: 16px 20px 126px;
+            background: #39284f url('/lingye/memorial/memorial-album-backdrop-v1.jpg') center top / cover no-repeat;
+        }
+
+        .candidate2-memorial-index {
+            position: relative;
+            isolation: isolate;
+        }
+
+        .candidate2-memorial-index[hidden],
+        .candidate2-memorial-entry-view[hidden] {
+            display: none;
         }
 
         .candidate2-memorial-header {
-            padding-bottom: 23px;
-            border-bottom: 1px solid rgba(118, 102, 73, 0.2);
+            position: relative;
+            min-height: 148px;
+            padding: 0 22px 14px;
+            text-align: center;
         }
 
         .candidate2-memorial-back {
-            display: inline-flex;
-            min-height: 44px;
+            position: absolute;
+            top: 2px;
+            left: 0;
+            z-index: 20;
+            display: inline-grid;
+            width: 40px;
+            min-height: 40px;
             padding: 0;
-            align-items: center;
-            gap: 5px;
+            place-items: center;
             border: 0;
-            color: #728742;
+            color: #fff;
             background: transparent;
             font: inherit;
-            font-size: 12px;
-            font-weight: 800;
             cursor: pointer;
         }
 
+        .candidate2-memorial-back::before {
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            border: 1px solid rgba(236, 222, 247, 0.54);
+            background: linear-gradient(135deg, rgba(132, 104, 158, 0.6), rgba(49, 29, 75, 0.7));
+            box-shadow:
+                0 0 0 2px rgba(130, 101, 157, 0.12),
+                0 3px 7px rgba(20, 10, 35, 0.28),
+                0 0 0 2px rgba(255, 255, 255, 0.08) inset;
+            content: '';
+            transform: rotate(45deg);
+        }
+
         .candidate2-memorial-back span {
-            font-size: 25px;
-            line-height: 0;
+            position: relative;
+            z-index: 1;
+            display: block;
+            width: 11px;
+            height: 1.25px;
+            border-radius: 999px;
+            background: currentColor;
+            font-size: 0;
+            transform: translateX(1px);
+        }
+
+        .candidate2-memorial-back span::before {
+            position: absolute;
+            top: 50%;
+            left: 0;
+            width: 5px;
+            height: 5px;
+            border-bottom: 1.25px solid currentColor;
+            border-left: 1.25px solid currentColor;
+            content: '';
+            transform: translateY(-50%) rotate(45deg);
         }
 
         .candidate2-memorial-back:focus-visible {
@@ -4658,33 +5238,115 @@ const LINGYE_STYLES = `
             outline-offset: 2px;
         }
 
-        .candidate2-memorial-header p {
-            margin: 20px 0 0;
-            color: #8c7e65;
-            font-size: 10px;
-            letter-spacing: 0.12em;
+        .candidate2-memorial-title-lockup {
+            position: absolute;
+            top: 2px;
+            left: calc(50% - 28px);
+            z-index: 10;
+            width: 128px;
+            pointer-events: none;
+            transform: translateX(-50%);
         }
 
-        .candidate2-memorial-header h1 {
-            margin: 4px 0 0;
-            color: #4f463a;
-            font-size: 27px;
+        .candidate2-memorial-title-lockup img {
+            display: block;
+            width: 100%;
+            height: auto;
+            filter: drop-shadow(0 3px 8px rgba(25, 12, 40, 0.42));
+        }
+
+        .candidate2-memorial-ledger {
+            position: relative;
+            z-index: 2;
+            isolation: isolate;
+            min-height: 390px;
+            margin: -9px 4px 0 9px;
+            padding: 45px 13px 48px 14px;
+            transform: rotate(-0.18deg);
+        }
+
+        .candidate2-memorial-ledger::before {
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+            border: 1px solid rgba(145, 122, 162, 0.24);
+            background:
+                linear-gradient(90deg, rgba(173, 148, 190, 0.08), transparent 10%, transparent 90%, rgba(173, 148, 190, 0.08)),
+                var(--memorial-paper-fill, rgba(248, 245, 250, 0.96));
+            box-shadow:
+                0 1px 0 rgba(255, 255, 255, 0.92) inset,
+                0 8px 18px rgba(26, 15, 43, 0.22);
+            content: '';
+            pointer-events: none;
+        }
+
+        .candidate2-memorial-demo-chrome[hidden] {
+            display: none;
+        }
+
+        .candidate2-memorial-tabs {
+            position: absolute;
+            top: -42px;
+            left: 16px;
+            z-index: 0;
+            display: flex;
+            margin: 0;
+            align-items: flex-start;
+            gap: 6px;
+        }
+
+        .candidate2-memorial-tabs button {
+            appearance: none;
+            display: inline-flex;
+            width: 49px;
+            min-height: 49px;
+            padding: 5px 8px 9px;
+            align-items: flex-start;
+            justify-content: center;
+            border: 0;
+            color: #6d557e;
+            background: rgba(115, 86, 137, 0.88);
+            box-shadow: 1px 4px 7px rgba(49, 31, 68, 0.2);
+            font-family: 'Songti SC', STSong, serif;
+            font-size: 10px;
+            font-weight: 700;
+            line-height: 1.1;
             letter-spacing: 0.08em;
+            white-space: nowrap;
+            cursor: pointer;
+        }
+
+        .candidate2-memorial-tabs button:last-child {
+            background: rgba(231, 224, 237, 0.94);
+        }
+
+        .candidate2-memorial-tabs button.is-active {
+            color: #553c68;
+            box-shadow:
+                0 0 0 1px rgba(91, 62, 110, 0.26) inset,
+                1px 4px 7px rgba(49, 31, 68, 0.2);
         }
 
         .candidate2-memorial-list {
-            padding-top: 10px;
+            position: relative;
+            z-index: 2;
+            display: grid;
+            gap: 13px;
+            padding: 3px 0 38px;
         }
 
         .candidate2-memorial-empty,
         .candidate2-memorial-demo {
             margin: 0;
-            padding: 24px 2px;
-            border-bottom: 1px solid rgba(118, 102, 73, 0.16);
+            padding: 19px 2px;
+            border: 0;
+            color: inherit;
+            background: transparent;
+            font: inherit;
         }
 
         .candidate2-memorial-empty {
-            color: #8a7d69;
+            color: #808881;
             font-size: 11px;
         }
 
@@ -4692,35 +5354,800 @@ const LINGYE_STYLES = `
             display: none;
         }
 
-        .candidate2-memorial-meta {
-            display: flex;
+        .candidate2-memorial-demo {
+            position: relative;
+            display: grid;
+            width: 116%;
+            min-height: 134px;
+            padding: 12px 12px;
+            grid-template-columns: 45px minmax(0, 1fr) 118px;
             align-items: center;
-            gap: 8px;
-            color: #7b8950;
-            font-size: 10px;
-            font-weight: 800;
-            letter-spacing: 0.08em;
+            gap: 11px;
+            overflow: visible;
+            border: 1px solid rgba(141, 119, 158, 0.17);
+            background: rgba(253, 252, 254, 0.9);
+            box-shadow:
+                0 1px 0 rgba(255, 255, 255, 0.95) inset,
+                2px 5px 10px rgba(81, 65, 102, 0.12);
+            clip-path: polygon(0.8% 3%, 99.2% 0, 100% 97%, 1.4% 100%, 0 72%);
+            text-align: left;
+            cursor: pointer;
+            transform: rotate(-0.2deg);
         }
 
-        .candidate2-memorial-meta i {
-            width: 18px;
-            height: 1px;
-            background: rgba(123, 137, 80, 0.46);
+        .candidate2-memorial-demo:focus-visible {
+            outline: 3px solid rgba(120, 137, 69, 0.44);
+            outline-offset: 4px;
         }
 
-        .candidate2-memorial-demo h2 {
-            margin: 10px 0 0;
-            color: #50463a;
-            font-size: 20px;
+        .candidate2-memorial-index-banner {
+            position: relative;
+            display: block;
+            width: 100%;
+            aspect-ratio: 4 / 3;
+            padding: 4px;
+            overflow: hidden;
+            background: #fdfdfd;
+            box-shadow: 1px 3px 7px rgba(81, 65, 104, 0.16);
+            transform: rotate(0.8deg);
+        }
+
+        .candidate2-memorial-index-banner img {
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: center 25%;
+        }
+
+        .candidate2-memorial-index-number {
+            position: relative;
+            display: grid;
+            align-self: stretch;
+            align-content: center;
+            justify-items: center;
+            color: #a18bb6;
+        }
+
+        .candidate2-memorial-index-number::after {
+            position: absolute;
+            top: 5px;
+            right: -6px;
+            bottom: 5px;
+            border-right: 1px dashed rgba(145, 119, 159, 0.24);
+            content: '';
+        }
+
+        .candidate2-memorial-index-number strong {
+            font-family: Baskerville, Georgia, serif;
+            font-size: 31px;
+            font-weight: 400;
+            line-height: 1;
+        }
+
+        .candidate2-memorial-index-number small {
+            margin-top: 4px;
+            font-family: Baskerville, Georgia, serif;
+            font-size: 9px;
             letter-spacing: 0.06em;
         }
 
-        .candidate2-memorial-demo > p {
-            margin: 10px 0 0;
-            color: #786b5d;
-            font-family: 'Noto Serif SC', 'Songti SC', serif;
-            font-size: 12px;
+        .candidate2-memorial-index-copy {
+            display: grid;
+            min-width: 0;
+            gap: 3px;
+            color: #685774;
+        }
+
+        .candidate2-memorial-index-copy > small {
+            color: #a58eae;
+            font-family: 'Songti SC', STSong, serif;
+            font-size: 8px;
+            letter-spacing: 0.12em;
+        }
+
+        .candidate2-memorial-index-copy strong {
+            font-family: 'Songti SC', STSong, 'Noto Serif SC', serif;
+            font-size: 18px;
+            font-weight: 600;
+            line-height: 1.2;
+            letter-spacing: 0.04em;
+            white-space: nowrap;
+        }
+
+        .candidate2-memorial-index-copy > span {
+            color: #8f8098;
+            font-family: 'Songti SC', STSong, serif;
+            font-size: 10px;
+            letter-spacing: 0.05em;
+        }
+
+        .candidate2-memorial-index-copy time {
+            margin-top: 6px;
+            color: #816f8d;
+            font-family: Baskerville, Georgia, serif;
+            font-size: 8px;
+            letter-spacing: 0.05em;
+        }
+
+        .candidate2-memorial-index-action {
+            position: absolute;
+            right: 4px;
+            bottom: 4px;
+            z-index: 3;
+            padding: 4px 6px 4px 8px;
+            color: #fffefe;
+            background: rgba(141, 112, 164, 0.88);
+            box-shadow: 1px 2px 4px rgba(67, 49, 86, 0.18);
+            font-size: 7px;
+            letter-spacing: 0.04em;
+        }
+
+        .candidate2-memorial-index-action > span {
+            margin-left: 2px;
+            font-size: 10px;
+        }
+
+        .candidate2-memorial-page.is-layout-editor [data-memorial-editor-id] {
+            position: relative;
+            cursor: move;
+            touch-action: none;
+            user-select: none;
+        }
+
+        .candidate2-memorial-page.is-entry-layout-editor [data-memorial-editor-id] {
+            pointer-events: auto !important;
+        }
+
+        .candidate2-memorial-page.is-entry-layout-editor [data-memorial-editor-id][hidden] {
+            display: none !important;
+        }
+
+        .candidate2-memorial-page.is-entry-layout-editor .candidate2-memorial-entry-heading,
+        .candidate2-memorial-page.is-entry-layout-editor .candidate2-memorial-entry-collage {
+            z-index: auto;
+        }
+
+        .candidate2-memorial-page.is-layout-editor .candidate2-memorial-title-lockup {
+            position: absolute;
+            pointer-events: auto;
+        }
+
+        .candidate2-memorial-page.is-layout-editor .candidate2-memorial-paper {
+            height: 100%;
+            min-height: 100%;
+            overflow: hidden;
+        }
+
+        .candidate2-memorial-page.is-layout-editor .candidate2-memorial-index {
+            min-height: 100%;
+        }
+
+        .candidate2-memorial-page.is-layout-editor.is-sampling-color .candidate2-memorial-paper {
+            cursor: crosshair;
+        }
+
+        .candidate2-memorial-page.is-layout-editor [data-memorial-editor-id].is-memorial-editor-selected {
+            outline: 1px dashed rgba(243, 220, 255, 0.95);
+            outline-offset: 3px;
+        }
+
+        .candidate2-memorial-editor-shape {
+            position: absolute !important;
+            top: 270px;
+            left: 144px;
+            z-index: 20;
+            width: 72px;
+            height: 72px;
+            background: #c9acd9;
+            box-shadow: 0 5px 12px rgba(39, 21, 54, 0.2);
+        }
+
+        .candidate2-memorial-editor-shape[data-memorial-editor-id='shape-1'] {
+            height: 68.14px;
+        }
+
+        .candidate2-memorial-editor-shape.is-circle {
+            border-radius: 50%;
+        }
+
+        .candidate2-memorial-editor-shape.is-rounded {
+            border-radius: 16px;
+        }
+
+        .candidate2-memorial-editor-shape.is-frame {
+            border: 8px solid #f8f4fa;
+            background: rgba(139, 106, 157, 0.25);
+        }
+
+        .candidate2-memorial-entry-added-asset {
+            position: absolute !important;
+            top: 220px;
+            left: 72px;
+            width: 188px !important;
+            margin: 0 !important;
+            grid-column: auto !important;
+            grid-row: auto !important;
+        }
+
+        .candidate2-memorial-entry-added-asset[data-memorial-editor-asset='stickers'] {
+            top: 76px;
+            left: 232px;
+            width: 88px !important;
+        }
+
+        .candidate2-memorial-entry-added-asset[data-memorial-editor-asset='hero'] {
+            width: 260px !important;
+        }
+
+        .candidate2-memorial-entry-added-asset[data-memorial-editor-asset='secondary'] {
+            top: 382px;
+            width: 165px !important;
+        }
+
+        .candidate2-memorial-entry-added-asset[data-memorial-editor-asset='note'] {
+            top: 398px;
+            left: 174px;
+            width: 140px !important;
+        }
+
+        .candidate2-memorial-entry-archive-templates {
+            display: none;
+        }
+
+        .candidate2-qixi-archive-lantern {
+            position: relative;
+            width: 150px;
+            height: 140px;
+            overflow: visible;
+        }
+
+        .candidate2-qixi-archive-lantern-art {
+            position: absolute;
+            top: 0;
+            left: 0;
+            display: block;
+            width: 196px;
+            height: 184px;
+            transform: scale(0.76);
+            transform-origin: left top;
+        }
+
+        .candidate2-qixi-archive-lantern-art::before {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            z-index: 0;
+            width: 1px;
+            height: 30px;
+            background: linear-gradient(180deg, #a97947, #e7c998);
+            box-shadow: 0 0 2px rgba(110, 79, 67, 0.22);
+            content: '';
+        }
+
+        .candidate2-qixi-archive-lantern-base,
+        .candidate2-qixi-archive-lantern-layer {
+            position: absolute;
+            display: block;
+            background-repeat: no-repeat;
+            pointer-events: none;
+        }
+
+        .candidate2-qixi-archive-lantern-base {
+            z-index: 1;
+            background-image: url('/lingye/memorial/qixi-archive/qixi-lantern-bases-v2-web.webp');
+            background-position: var(--lamp-x, 0%) var(--lamp-y, 0%);
+            background-size: 300% 400%;
+        }
+
+        .candidate2-qixi-archive-lantern-layer {
+            z-index: 2;
+            background-image: url('/lingye/memorial/qixi-archive/qixi-lantern-decorations-v3-web.webp');
+            background-size: 300% 400%;
+        }
+
+        .candidate2-qixi-archive-lantern-ornament {
+            z-index: 0;
+        }
+
+        .candidate2-qixi-archive-letter {
+            position: relative;
+            display: grid;
+            width: 220px;
+            height: 136px;
+            padding: 30px 38px 26px 46px;
+            align-content: center;
+            background: url('/lingye/memorial/qixi-archive/qixi-letter-card-v1.png') center / 100% 100% no-repeat;
+            color: #624d69;
+        }
+
+        .candidate2-qixi-archive-letter p {
+            position: relative;
+            z-index: 1;
+            margin: 0;
+            outline: none;
+            overflow-wrap: anywhere;
+            white-space: pre-wrap;
+            font: 400 9px/1.72 'MoQuGuFengTi', serif;
+            letter-spacing: 0.08em;
+            text-align: center;
+        }
+
+        .candidate2-qixi-archive-letter-signature {
+            position: absolute;
+            z-index: 1;
+            right: 60px;
+            bottom: 19px;
+            color: rgba(111, 80, 119, 0.84);
+            font: 400 8px/1 'MoQuGuFengTi', serif;
+            letter-spacing: 0.12em;
+        }
+
+        .candidate2-qixi-archive-qiaoqiao {
+            display: block;
+            width: 94px;
+            height: 94px;
+            background: url('/lingye/memorial/qixi-archive/qixi-stickers-v2-web.webp') 0 0 / 300% 300% no-repeat;
+            filter: drop-shadow(0 5px 6px rgba(74, 56, 87, 0.16));
+        }
+
+        .candidate2-memorial-entry-added-asset[data-memorial-editor-asset='saved-lantern'],
+        .candidate2-memorial-entry-added-asset[data-memorial-editor-asset='my-lantern'],
+        .candidate2-memorial-entry-added-asset[data-memorial-editor-asset='du-lantern'] {
+            top: 300px;
+            left: 40px;
+            width: 150px !important;
+        }
+
+        .candidate2-memorial-entry-added-asset[data-memorial-editor-asset='saved-letter'],
+        .candidate2-memorial-entry-added-asset[data-memorial-editor-asset='my-letter'],
+        .candidate2-memorial-entry-added-asset[data-memorial-editor-asset='du-letter'] {
+            top: 380px;
+            left: 94px;
+            width: 220px !important;
+        }
+
+        .candidate2-memorial-entry-added-asset[data-memorial-editor-asset='qiaoqiao'] {
+            top: 318px;
+            left: 230px;
+            width: 94px !important;
+        }
+
+        .candidate2-memorial-entry-added-asset[data-memorial-editor-asset='event-label'],
+        .candidate2-memorial-entry-added-asset[data-memorial-editor-asset='date'] {
+            top: 112px;
+            left: 48px;
+            width: max-content !important;
+            color: #8f799b;
+            font-family: Baskerville, Georgia, serif;
+            font-size: 9px;
+            letter-spacing: 0.06em;
+        }
+
+        .candidate2-memorial-entry-added-asset[data-memorial-editor-asset='date'] {
+            top: 177px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .candidate2-memorial-entry-added-asset[data-memorial-editor-asset='date'] i {
+            width: 18px;
+            height: 1px;
+            background: rgba(122, 93, 137, 0.28);
+        }
+
+        .candidate2-memorial-editor-selection {
+            position: absolute;
+            z-index: 9997;
+            border: 1px solid #f4d9ff;
+            box-shadow: 0 0 0 1px rgba(69, 43, 87, 0.7);
+            pointer-events: none;
+        }
+
+        .candidate2-memorial-editor-selection[hidden] {
+            display: none;
+        }
+
+        .candidate2-memorial-editor-selection button {
+            position: absolute;
+            display: block;
+            width: 18px;
+            min-height: 18px;
+            padding: 0;
+            border: 2px solid #fff8ff;
+            border-radius: 50%;
+            background: #7d578e;
+            box-shadow: 0 2px 6px rgba(31, 17, 43, 0.3);
+            pointer-events: auto;
+            touch-action: none;
+        }
+
+        .candidate2-memorial-editor-selection [data-memorial-editor-handle='rotate'] {
+            top: -29px;
+            left: calc(50% - 9px);
+            cursor: grab;
+        }
+
+        .candidate2-memorial-editor-selection [data-memorial-editor-handle='rotate']::after {
+            position: absolute;
+            top: 16px;
+            left: 7px;
+            width: 1px;
+            height: 11px;
+            background: #f4d9ff;
+            content: '';
+        }
+
+        .candidate2-memorial-editor-selection [data-memorial-editor-handle='scale'] {
+            right: -10px;
+            bottom: -10px;
+            cursor: nwse-resize;
+        }
+
+        .candidate2-memorial-editor {
+            position: fixed;
+            right: 7px;
+            bottom: 7px;
+            left: 7px;
+            z-index: 10000;
+            display: grid;
+            max-height: 184px;
+            padding: 8px 9px;
+            gap: 6px;
+            overflow: auto;
+            color: #fbf7fd;
+            background: rgba(42, 27, 58, 0.95);
+            box-shadow: 0 8px 24px rgba(21, 11, 30, 0.42);
+            font-size: 10px;
+        }
+
+        .candidate2-memorial-editor[hidden] {
+            display: none;
+        }
+
+        .candidate2-memorial-editor.is-entry-editor {
+            max-height: 242px;
+        }
+
+        .candidate2-memorial-editor-assets:not([hidden]) {
+            display: grid;
+            gap: 5px;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+
+        .candidate2-memorial-editor-assets button {
+            min-width: 0;
+            padding-inline: 3px;
+            white-space: nowrap;
+        }
+
+        .candidate2-memorial-editor.is-entry-editor .candidate2-memorial-editor-shapes {
+            display: none;
+        }
+
+        .candidate2-memorial-editor header,
+        .candidate2-memorial-editor-row {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .candidate2-memorial-editor header {
+            justify-content: space-between;
+        }
+
+        .candidate2-memorial-editor header > span {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+        }
+
+        .candidate2-memorial-editor header button {
+            min-height: 22px;
+            padding: 2px 6px;
+        }
+
+        .candidate2-memorial-editor.is-collapsed {
+            max-height: none;
+        }
+
+        .candidate2-memorial-editor.is-collapsed > :not(header) {
+            display: none !important;
+        }
+
+        .candidate2-memorial-editor-current {
+            color: #d8bedf;
+        }
+
+        .candidate2-memorial-editor label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .candidate2-memorial-editor-text-input {
+            min-width: 0;
+            flex: 1;
+            padding: 4px 6px;
+            border: 1px solid rgba(232, 211, 239, 0.28);
+            color: #3f2d49;
+            background: #f8f2fa;
+            font: inherit;
+        }
+
+        .candidate2-memorial-editor input[type='color'] {
+            width: 28px;
+            height: 23px;
+            padding: 1px;
+            border: 0;
+            background: transparent;
+        }
+
+        .candidate2-memorial-editor button {
+            min-height: 27px;
+            padding: 4px 7px;
+            border: 1px solid rgba(232, 211, 239, 0.24);
+            color: #f8f2fa;
+            background: rgba(126, 89, 143, 0.58);
+            font: inherit;
+            cursor: pointer;
+        }
+
+        .candidate2-memorial-editor button:disabled,
+        .candidate2-memorial-editor input:disabled {
+            cursor: not-allowed;
+            opacity: 0.42;
+        }
+
+        .candidate2-memorial-editor-status {
+            margin: 0;
+            color: #d8c6df;
+            line-height: 1.4;
+        }
+
+        .candidate2-memorial-entry-view {
+            position: relative;
+            min-height: 820px;
+            margin: -16px -20px -126px;
+            padding: 48px 24px 94px 34px;
+            overflow: hidden;
+            background: #f7f5fa url('/lingye/memorial/memorial-entry-paper-v1.png') center top / 100% 100% no-repeat;
+        }
+
+        .candidate2-memorial-entry-view--qixi {
+            min-height: 650px;
+        }
+
+        .candidate2-memorial-entry-view::after {
+            position: absolute;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            width: 9px;
+            background: linear-gradient(90deg, transparent, rgba(91, 69, 106, 0.09));
+            content: '';
+            pointer-events: none;
+        }
+
+        .candidate2-memorial-binding {
+            display: none;
+        }
+
+        .candidate2-memorial-entry-back {
+            position: absolute;
+            top: 18px;
+            left: 20px;
+            z-index: 5;
+            display: inline-grid;
+            width: 40px;
+            min-height: 40px;
+            padding: 0;
+            place-items: center;
+            border: 0;
+            color: #674d78;
+            background: transparent;
+            cursor: pointer;
+        }
+
+        .candidate2-memorial-entry-back::before {
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            border: 1px solid rgba(102, 77, 121, 0.38);
+            background: transparent;
+            box-shadow:
+                0 0 0 2px rgba(255, 255, 255, 0.16),
+                0 2px 5px rgba(41, 24, 58, 0.12);
+            content: '';
+            transform: rotate(45deg);
+        }
+
+        .candidate2-memorial-entry-back span {
+            position: relative;
+            z-index: 1;
+            display: block;
+            width: 11px;
+            height: 1.25px;
+            border-radius: 999px;
+            background: currentColor;
+            font-size: 0;
+            transform: translateX(1px);
+        }
+
+        .candidate2-memorial-entry-back span::before {
+            position: absolute;
+            top: 50%;
+            left: 0;
+            width: 5px;
+            height: 5px;
+            border-bottom: 1.25px solid currentColor;
+            border-left: 1.25px solid currentColor;
+            content: '';
+            transform: translateY(-50%) rotate(45deg);
+        }
+
+        .candidate2-memorial-entry-back:focus-visible {
+            outline: 3px solid rgba(120, 137, 69, 0.5);
+            outline-offset: 2px;
+        }
+
+        .candidate2-memorial-entry-heading {
+            position: relative;
+            z-index: 2;
+            display: grid;
+            margin: 12px 4px 0 8px;
+            grid-template-columns: minmax(0, 1fr);
+            align-items: start;
+            gap: 7px;
+            color: #72567f;
+        }
+
+        .candidate2-memorial-entry-view--qixi .candidate2-memorial-entry-heading {
+            padding-right: 66px;
+        }
+
+        .candidate2-memorial-entry-view--qixi .candidate2-memorial-entry-heading > div > span {
+            color: #9b83a7;
+            font-family: Baskerville, Georgia, serif;
+            font-size: 9px;
+            letter-spacing: 0.08em;
+        }
+
+        .candidate2-memorial-entry-title-art {
+            width: min(100%, 188px);
+            margin-top: 4px;
+        }
+
+        .candidate2-memorial-entry-title-art img {
+            display: block;
+            width: 100%;
+            height: auto;
+            filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.42));
+        }
+
+        .candidate2-memorial-entry-qixi-stickers {
+            position: absolute;
+            top: 26px;
+            right: -3px;
+            z-index: 3;
+            width: 88px;
+            height: auto;
+            pointer-events: none;
+            filter: drop-shadow(2px 5px 7px rgba(74, 51, 88, 0.12));
+        }
+
+        .candidate2-memorial-entry-view--qixi .candidate2-memorial-entry-heading time {
+            display: flex;
+            padding: 0;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 6px;
+            color: #8f799b;
+            font-family: Baskerville, Georgia, serif;
+            font-size: 9px;
+            letter-spacing: 0.03em;
+        }
+
+        .candidate2-memorial-entry-view--qixi .candidate2-memorial-entry-heading time i {
+            width: 18px;
+            height: 1px;
+            background: rgba(122, 93, 137, 0.28);
+        }
+
+        .candidate2-memorial-entry-collage {
+            position: relative;
+            display: grid;
+        }
+
+        .candidate2-memorial-entry-view--qixi .candidate2-memorial-entry-collage {
+            margin-top: 15px;
+            grid-template-columns: repeat(12, minmax(0, 1fr));
+            grid-template-rows: auto auto;
+            gap: 14px 0;
+        }
+
+        .candidate2-memorial-entry-hero-photo,
+        .candidate2-memorial-entry-secondary-photo {
+            position: relative;
+            width: 100%;
+            margin: 0;
+            background: #fdfcfe;
+            box-shadow: 3px 6px 13px rgba(67, 49, 82, 0.18);
+        }
+
+        .candidate2-memorial-entry-view--qixi .candidate2-memorial-entry-hero-photo {
+            grid-column: 1 / -1;
+            grid-row: 1;
+            width: calc(100% - 8px);
+            padding: 7px 7px 14px;
+            transform: rotate(-0.8deg);
+        }
+
+        .candidate2-memorial-entry-hero-photo img,
+        .candidate2-memorial-entry-secondary-photo img {
+            display: block;
+            width: 100%;
+            object-fit: cover;
+        }
+
+        .candidate2-memorial-entry-view--qixi .candidate2-memorial-entry-hero-photo img {
+            aspect-ratio: 1.42;
+            height: 166px;
+            object-position: center 23%;
+        }
+
+        .candidate2-memorial-entry-view--qixi .candidate2-memorial-entry-tape {
+            position: absolute;
+            top: -8px;
+            right: 28px;
+            z-index: 2;
+            width: 58px;
+            height: 17px;
+            background: rgba(192, 170, 208, 0.66);
+            clip-path: polygon(3% 8%, 100% 0, 96% 100%, 0 87%);
+            transform: rotate(4deg);
+        }
+
+        .candidate2-memorial-entry-view--qixi .candidate2-memorial-entry-note {
+            position: relative;
+            z-index: 4;
+            display: grid;
+            grid-column: 7 / -1;
+            grid-row: 2;
+            width: 100%;
+            aspect-ratio: 4 / 3;
+            margin: 24px 0 0 -10px;
+            padding: 14px 11px 12px;
+            place-items: center;
+            color: #715a7c;
+            background: url('/lingye/memorial/qixi-letter-note.webp') center / contain no-repeat;
+            filter: drop-shadow(2px 5px 7px rgba(70, 51, 82, 0.14));
+            transform: rotate(2.8deg);
+        }
+
+        .candidate2-memorial-entry-view--qixi .candidate2-memorial-entry-note p {
+            margin: 0;
+            font-family: 'Songti SC', STSong, serif;
+            font-size: 8px;
             line-height: 1.8;
+            text-align: center;
+        }
+
+        .candidate2-memorial-entry-view--qixi .candidate2-memorial-entry-secondary-photo {
+            z-index: 3;
+            grid-column: 1 / 8;
+            grid-row: 2;
+            margin: 0;
+            padding: 6px 6px 18px;
+            box-shadow: 3px 6px 12px rgba(67, 49, 82, 0.16);
+            transform: rotate(-3.2deg);
+        }
+
+        .candidate2-memorial-entry-view--qixi .candidate2-memorial-entry-secondary-photo img {
+            aspect-ratio: 1.28;
+            height: 128px;
+            object-position: center 21%;
         }
 
         .candidate2-together-paper {
@@ -4960,6 +6387,335 @@ const LINGYE_STYLES = `
             margin: 5px 0 0;
             font-size: 10px;
             line-height: 1.65;
+        }
+
+        .candidate2-together-history-page {
+            box-sizing: border-box;
+            min-height: 100%;
+            padding: 12px 12px 112px !important;
+            overflow-y: auto;
+            color: #4b463d;
+            background-color: #f8f6ed;
+            background-image:
+                radial-gradient(circle at 18% 12%, rgba(126, 143, 83, 0.07) 0 1px, transparent 1.5px),
+                radial-gradient(circle at 78% 28%, rgba(183, 157, 105, 0.06) 0 1px, transparent 1.5px),
+                linear-gradient(180deg, #fbfaf3 0%, #f5f2e7 100%);
+            background-size: 24px 24px, 31px 31px, 100% 100%;
+        }
+
+        .candidate2-together-history-header {
+            display: grid;
+            min-height: 38px;
+            grid-template-columns: 38px 1fr 38px;
+            align-items: center;
+            color: #586341;
+            font-family: 'Noto Serif SC', 'Songti SC', serif;
+            font-size: 13px;
+            font-weight: 900;
+            letter-spacing: 0.08em;
+            text-align: center;
+        }
+
+        .candidate2-together-history-header[hidden] {
+            display: none;
+        }
+
+        .candidate2-together-history-back {
+            display: grid;
+            width: 38px;
+            height: 38px;
+            padding: 0;
+            place-items: center;
+            border: 0;
+            color: inherit;
+            background: transparent;
+            font: inherit;
+            cursor: pointer;
+        }
+
+        .candidate2-together-history-back span {
+            font-size: 27px;
+            line-height: 1;
+        }
+
+        .candidate2-together-archive-directory {
+            width: min(100%, 540px);
+            margin: 10px auto 0;
+        }
+
+        .candidate2-together-archive-reader {
+            box-sizing: border-box;
+            width: 100%;
+            margin: 0;
+            padding: 0 6px 24px;
+        }
+
+        .candidate2-together-archive-directory {
+            display: grid;
+            gap: 10px;
+        }
+
+        .candidate2-together-archive-index-card {
+            display: grid;
+            width: 100%;
+            min-width: 0;
+            padding: 8px;
+            grid-template-columns: 92px minmax(0, 1fr) 18px;
+            gap: 11px;
+            align-items: center;
+            border: 1px solid #deddd3;
+            border-radius: 10px;
+            color: #48483f;
+            background: #fffef9;
+            box-shadow: 0 4px 12px rgba(66, 69, 54, 0.08);
+            font: inherit;
+            text-align: left;
+            cursor: pointer;
+        }
+
+        .candidate2-together-archive-index-photo {
+            display: block;
+            width: 92px;
+            aspect-ratio: 4 / 3;
+            object-fit: cover;
+            border: 4px solid #fff;
+            background: #f2f2ea;
+            box-shadow: 0 2px 7px rgba(66, 69, 54, 0.12);
+        }
+
+        .candidate2-together-archive-index-copy {
+            min-width: 0;
+        }
+
+        .candidate2-together-archive-index-round,
+        .candidate2-together-archive-reader-round {
+            margin: 0;
+            color: #81905e;
+            font-size: 9px;
+            font-weight: 900;
+            letter-spacing: 0.08em;
+        }
+
+        .candidate2-together-archive-index-title {
+            margin: 4px 0 0;
+            overflow: hidden;
+            color: #42463a;
+            font-family: 'Noto Serif SC', 'Songti SC', serif;
+            font-size: 15px;
+            line-height: 1.35;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .candidate2-together-archive-index-ending {
+            margin: 5px 0 0;
+            overflow: hidden;
+            color: #77766c;
+            font-size: 10px;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .candidate2-together-archive-index-chevron {
+            color: #91a064;
+            font-size: 22px;
+            text-align: center;
+        }
+
+        .candidate2-together-archive-reader[hidden],
+        .candidate2-together-archive-directory[hidden] {
+            display: none;
+        }
+
+        .candidate2-together-archive-reader-header {
+            display: grid;
+            min-height: 54px;
+            padding: 2px 2px 8px;
+            grid-template-columns: 34px minmax(0, 1fr);
+            gap: 9px;
+            align-items: start;
+        }
+
+        .candidate2-together-archive-reader-header button {
+            display: grid;
+            width: 34px;
+            height: 34px;
+            padding: 0;
+            place-items: center;
+            border: 0;
+            color: #647247;
+            background: transparent;
+            font: inherit;
+            font-size: 25px;
+            cursor: pointer;
+        }
+
+        .candidate2-together-archive-reader-title {
+            margin: 4px 0 0;
+            color: #42463a;
+            font-family: 'Noto Serif SC', 'Songti SC', serif;
+            font-size: clamp(18px, 5.8vw, 23px);
+            line-height: 1.35;
+            letter-spacing: 0.06em;
+        }
+
+        .candidate2-together-archive-page {
+            position: relative;
+            min-width: 0;
+            margin-top: 2px;
+            padding: 0 4px 22px;
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+            box-shadow: none;
+        }
+
+        .candidate2-together-archive-photo {
+            position: relative;
+            display: block;
+            box-sizing: border-box;
+            width: calc(100% - 10px);
+            aspect-ratio: 4 / 3;
+            margin: 9px auto 0;
+            padding: 7px;
+            overflow: visible;
+            border: 1px solid #ded8c9;
+            background: #fffdf6;
+            box-shadow: 0 5px 14px rgba(66, 69, 54, 0.14);
+            transform: rotate(-0.45deg);
+        }
+
+        .candidate2-together-archive-photo::before {
+            position: absolute;
+            top: -8px;
+            left: 12%;
+            z-index: 2;
+            width: 48px;
+            height: 16px;
+            content: '';
+            background: rgba(217, 226, 174, 0.86);
+            box-shadow: 0 1px 2px rgba(84, 88, 61, 0.13);
+            transform: rotate(-7deg);
+        }
+
+        .candidate2-together-archive-photo::after {
+            position: absolute;
+            right: -7px;
+            bottom: -10px;
+            z-index: 2;
+            display: grid;
+            width: 27px;
+            height: 27px;
+            content: '✦';
+            place-items: center;
+            color: #fff8d1;
+            border: 3px solid #fffdf5;
+            border-radius: 50%;
+            background: #8ca260;
+            box-shadow: 0 2px 5px rgba(67, 77, 47, 0.16);
+            font-size: 13px;
+            transform: rotate(8deg);
+        }
+
+        .candidate2-together-archive-photo[hidden] {
+            display: none;
+        }
+
+        .candidate2-together-archive-photo img {
+            display: block;
+            width: 100%;
+            height: 100%;
+            border-radius: 2px;
+            object-fit: cover;
+        }
+
+        .candidate2-together-archive-entry-title {
+            margin: 25px 8px 0;
+            color: #3f4938;
+            font-family: 'Noto Serif SC', 'Songti SC', serif;
+            font-size: clamp(20px, 6.3vw, 26px);
+            line-height: 1.45;
+            letter-spacing: 0.07em;
+        }
+
+        .candidate2-together-archive-entry-title::after {
+            display: block;
+            width: 58px;
+            height: 5px;
+            margin-top: 8px;
+            content: '';
+            border-radius: 999px;
+            background: linear-gradient(90deg, #91a564 0 62%, rgba(145, 165, 100, 0.18) 62% 100%);
+        }
+
+        .candidate2-together-archive-entry-text {
+            max-width: 34em;
+            margin: 14px auto 0;
+            color: #5c594f;
+            font-family: 'Noto Serif SC', 'Songti SC', serif;
+            font-size: clamp(12px, 3.7vw, 14px);
+            line-height: 2;
+            letter-spacing: 0.045em;
+            text-align: justify;
+            text-wrap: pretty;
+            white-space: pre-line;
+        }
+
+        .candidate2-together-archive-pagination {
+            display: grid;
+            width: min(170px, 60vw);
+            margin: 14px auto 0;
+            grid-template-columns: 34px 1fr 34px;
+            align-items: center;
+            color: #686b5e;
+            font-size: 10px;
+            font-weight: 800;
+            text-align: center;
+        }
+
+        .candidate2-together-archive-pagination button {
+            display: grid;
+            width: 34px;
+            height: 34px;
+            padding: 0;
+            place-items: center;
+            border: 1px solid #6f7f4b;
+            border-radius: 50%;
+            color: #fffef7;
+            background: #80944f;
+            box-shadow: 0 2px 0 #5d6e3c;
+            font: inherit;
+            font-size: 22px;
+            cursor: pointer;
+        }
+
+        .candidate2-together-archive-pagination button:disabled {
+            opacity: 0.3;
+            cursor: default;
+        }
+
+        .candidate2-together-archive-empty {
+            width: min(100%, 430px);
+            margin: 22px auto 0;
+            color: #74786a;
+            font-size: 11px;
+            text-align: center;
+        }
+
+        @media (max-width: 350px) {
+            .candidate2-together-history-page {
+                padding-right: 8px !important;
+                padding-left: 8px !important;
+            }
+
+            .candidate2-together-archive-index-card {
+                grid-template-columns: 82px minmax(0, 1fr) 16px;
+                gap: 9px;
+            }
+
+            .candidate2-together-archive-index-photo {
+                width: 82px;
+            }
         }
 
         .candidate2-glimmer-page {
@@ -5655,6 +7411,15 @@ const LINGYE_STYLES = `
 `;
 
 const LINGYE_SCRIPT = `
+    const lingyeInstitutionScreenIds = {
+        'lingye-daily': 'screen-lingye-institution-lingye-daily',
+        'lingye-public-security-office': 'screen-lingye-institution-lingye-public-security-office',
+        'animal-hospital': 'screen-lingye-institution-animal-hospital',
+        'vocational-school': 'screen-lingye-institution-vocational-school',
+        'bank': 'screen-lingye-institution-bank',
+        'detention-center': 'screen-lingye-institution-detention-center',
+    };
+
     function showLingyeNotice(message) {
         showCandidateNotice(message);
     }
@@ -5668,6 +7433,11 @@ const LINGYE_SCRIPT = `
     }
 
     function openLingyePlace(placeId, label) {
+        const institutionScreenId = lingyeInstitutionScreenIds[placeId];
+        if (institutionScreenId) {
+            showScreen(institutionScreenId);
+            return;
+        }
         if (placeId === 'doorbell-community') {
             showScreen('screen-lounge');
             return;
@@ -5697,11 +7467,630 @@ const LINGYE_SCRIPT = `
 
     function openLingyeMemorial() {
         if (window.__doorbellCandidateDemo) {
+            const index = document.querySelector('.candidate2-memorial-index');
+            const entry = document.querySelector('.candidate2-memorial-entry-view');
+            if (index) index.hidden = false;
+            if (entry) entry.hidden = true;
             showScreen('screen-lingye-memorial');
             return;
         }
-        showLingyeNotice('纪念册还没有可查看的活动档案');
+        sendAction({ type: 'lingye-memorial-open' });
     }
+
+    let lingyeMemorialFilter = 'all';
+    let qixiMemorialReady = false;
+
+    function setLingyeMemorialFilter(filter) {
+        if (filter !== 'all' && filter !== 'festival') return;
+        lingyeMemorialFilter = filter;
+        document.querySelectorAll('.candidate2-memorial-tabs [data-memorial-filter]').forEach((button) => {
+            const active = button.dataset.memorialFilter === filter;
+            button.classList.toggle('is-active', active);
+            button.setAttribute('aria-pressed', String(active));
+        });
+        document.querySelectorAll('.candidate2-memorial-list [data-memorial-category]').forEach((card) => {
+            card.hidden = (!window.__doorbellCandidateDemo && !qixiMemorialReady)
+                || (filter !== 'all' && card.dataset.memorialCategory !== filter);
+        });
+    }
+
+    function openLingyeMemorialEntry() {
+        if (!window.__doorbellCandidateDemo && !qixiMemorialReady) return;
+        const index = document.querySelector('.candidate2-memorial-index');
+        const entry = document.querySelector('.candidate2-memorial-entry-view');
+        const screen = document.getElementById('screen-lingye-memorial');
+        if (index) index.hidden = true;
+        if (entry) entry.hidden = false;
+        if (screen) screen.scrollTop = 0;
+    }
+
+    function closeLingyeMemorialEntry() {
+        const index = document.querySelector('.candidate2-memorial-index');
+        const entry = document.querySelector('.candidate2-memorial-entry-view');
+        const screen = document.getElementById('screen-lingye-memorial');
+        if (index) index.hidden = false;
+        if (entry) entry.hidden = true;
+        if (screen) screen.scrollTop = 0;
+    }
+
+    const memorialPage = document.querySelector('.candidate2-memorial-page');
+    const memorialPaper = document.querySelector('.candidate2-memorial-paper');
+    const memorialIndex = document.querySelector('.candidate2-memorial-index');
+    const memorialEntry = document.querySelector('.candidate2-memorial-entry-view');
+    const memorialEditor = document.querySelector('.candidate2-memorial-editor');
+    const memorialEditorTitle = memorialEditor.querySelector('header strong');
+    const memorialEditorAssets = memorialEditor.querySelector('.candidate2-memorial-editor-assets');
+    const memorialEditorSelection = document.querySelector('.candidate2-memorial-editor-selection');
+    const memorialEditorCurrent = document.querySelector('.candidate2-memorial-editor-current');
+    const memorialEditorTextInput = document.querySelector('.candidate2-memorial-editor-text-input');
+    const memorialEditorColorInput = document.querySelector('.candidate2-memorial-editor-color');
+    const memorialEditorStatus = document.querySelector('.candidate2-memorial-editor-status');
+    const memorialEditorEyeDropper = memorialEditor.querySelector('[data-memorial-editor-command="eyedropper"]');
+    const memorialEditorBackward = memorialEditor.querySelector('[data-memorial-editor-command="backward"]');
+    const memorialEditorForward = memorialEditor.querySelector('[data-memorial-editor-command="forward"]');
+    const memorialEditorDuplicate = memorialEditor.querySelector('[data-memorial-editor-command="duplicate"]');
+    const memorialEditorToggle = memorialEditor.querySelector('[data-memorial-editor-command="toggle"]');
+    const memorialEditorDelete = memorialEditor.querySelector('[data-memorial-editor-command="delete"]');
+    const memorialEditorCopy = memorialEditor.querySelector('[data-memorial-editor-command="copy"]');
+    const memorialEditorDefaultLayout = {
+        'title-lockup': { color: null, rotate: 0, scale: 0.97, x: -22.9, y: -16.4, z: 10, kind: null, text: null },
+        paper: { color: '#f8f1f5', rotate: 1.5, scale: 1.44, x: 49.5, y: 27.4, z: 3, kind: null, text: null },
+        'tab-all': { color: '#dfc6e2', rotate: 0, scale: 0.83, x: 100.4, y: 22, z: -1, kind: null, text: '全部' },
+        'tab-festival': { color: '#dfc6e2', rotate: 0, scale: 0.81, x: 96.4, y: 16.9, z: -2, kind: null, text: '节日' },
+        'event-card': { color: '#ffffff', rotate: 0.6, scale: 0.66, x: -46.4, y: -58.9, z: 10, kind: null, text: null },
+        'event-number': { color: null, rotate: 0, scale: 1, x: 0, y: 0, z: 10, kind: null, text: null },
+        'event-title': { color: null, rotate: 0, scale: 1, x: 0.1, y: 0, z: 10, kind: null, text: '七夕活动' },
+        'event-theme': { color: null, rotate: 0, scale: 1, x: 0, y: 0, z: 10, kind: null, text: '灯河有信' },
+        'event-date': { color: null, rotate: 0, scale: 1, x: 0, y: 0, z: 10, kind: null, text: '2026.08.19—08.21' },
+        'event-image': { color: null, rotate: 0, scale: 1, x: 0, y: 0, z: 10, kind: null, text: null },
+        'shape-1': { color: '#e4d2dc', rotate: 0, scale: 8.05, x: 97.1, y: 63.6, z: -4, kind: 'square', text: null },
+    };
+    const memorialEntryEditorDefaultLayout = {
+        'entry-event-label': { asset: 'event-label', color: null, deleted: false, rotate: 0, scale: 1, x: 0, y: 0, z: 12, kind: null, text: '2026 · 七夕' },
+        'entry-title': { asset: 'title', color: null, deleted: false, rotate: 0, scale: 1, x: 0, y: 0, z: 13, kind: null, text: null },
+        'entry-date': { asset: 'date', color: null, deleted: false, rotate: 0, scale: 1, x: 0, y: 0, z: 12, kind: null, text: null },
+        'entry-stickers': { asset: 'stickers', color: null, deleted: false, rotate: 0, scale: 1, x: 0, y: 0, z: 14, kind: null, text: null },
+        'entry-hero': { asset: 'hero', color: null, deleted: false, rotate: 0, scale: 1, x: 0, y: 0, z: 6, kind: null, text: null },
+        'entry-note': { asset: 'note', color: null, deleted: false, rotate: 0, scale: 1, x: 0, y: 0, z: 9, kind: null, text: null },
+        'entry-secondary': { asset: 'secondary', color: null, deleted: false, rotate: 0, scale: 1, x: 0, y: 0, z: 8, kind: null, text: null },
+    };
+    const memorialBackdropSource = '/lingye/memorial/memorial-album-backdrop-v1.jpg';
+    const memorialEditorStates = new Map();
+    let memorialLayoutEditorEnabled = false;
+    let memorialLayoutEditorTarget = 'index';
+    let memorialLayoutEditorRestored = false;
+    let memorialEditorSelected = null;
+    let memorialEditorGesture = null;
+    let memorialEditorShapeCount = 0;
+    let memorialEditorAssetCount = 0;
+    let memorialEditorSamplingColor = false;
+    let memorialEditorSamplingTarget = null;
+    let memorialBackdropImagePromise = null;
+
+    function memorialEditorCanvas() {
+        return memorialLayoutEditorTarget === 'entry' ? memorialEntry : memorialIndex;
+    }
+
+    function activeMemorialEditorDefaultLayout() {
+        return memorialLayoutEditorTarget === 'entry' ? memorialEntryEditorDefaultLayout : memorialEditorDefaultLayout;
+    }
+
+    function createMemorialEditorShape(kind, id) {
+        const shape = document.createElement('div');
+        shape.className = 'candidate2-memorial-editor-shape is-' + kind;
+        shape.dataset.memorialEditorId = id;
+        shape.dataset.memorialEditorName = kind + ' ' + id.replace('shape-', '');
+        shape.dataset.memorialEditorFill = '';
+        shape.dataset.memorialEditorShape = kind;
+        memorialIndex.append(shape);
+        return shape;
+    }
+
+    function createMemorialEntryAsset(kind, id) {
+        const legacyKind =
+            kind === 'saved-lantern'
+                ? 'my-lantern'
+                : kind === 'saved-letter'
+                  ? id === 'entry-asset-8'
+                      ? 'du-letter'
+                      : 'my-letter'
+                  : kind;
+        const source =
+            memorialEntry.querySelector(
+                '[data-memorial-editor-asset="' + legacyKind + '"][data-memorial-editor-asset-template]',
+            ) ??
+            memorialEntry.querySelector(
+                '[data-memorial-editor-asset="' + legacyKind + '"]:not([data-memorial-editor-added])',
+            );
+        if (!source) return null;
+        const asset = source.cloneNode(true);
+        asset.dataset.memorialEditorAsset = legacyKind;
+        asset.hidden = false;
+        asset.classList.remove('is-memorial-editor-selected');
+        asset.classList.add('candidate2-memorial-entry-added-asset');
+        asset.dataset.memorialEditorId = id;
+        delete asset.dataset.memorialEntryEditorId;
+        delete asset.dataset.memorialEditorAssetTemplate;
+        asset.dataset.memorialEditorAdded = '';
+        asset.dataset.memorialEditorRemovable = '';
+        asset.dataset.memorialEditorName = (source.dataset.memorialEditorName || legacyKind) + '副本';
+        if (kind === 'event-label') asset.dataset.memorialEditorText = '';
+        memorialEntry.append(asset);
+        return asset;
+    }
+
+    function serializeMemorialEditorLayout() {
+        const layout = {};
+        memorialEditorCanvas().querySelectorAll('[data-memorial-editor-id]').forEach((element) => {
+            const id = element.dataset.memorialEditorId;
+            const state = memorialEditorState(element);
+            layout[id] = {
+                ...state,
+                asset: element.dataset.memorialEditorAsset || null,
+                deleted: Boolean(state.deleted),
+                kind: element.dataset.memorialEditorShape || null,
+                text: element.dataset.memorialEditorText === undefined ? null : element.textContent.trim(),
+            };
+        });
+        return layout;
+    }
+
+    function saveMemorialEditorLayout() {
+        if (!memorialLayoutEditorEnabled) return;
+        try {
+            const bytes = new TextEncoder().encode(JSON.stringify(serializeMemorialEditorLayout()));
+            const encodedLayout = btoa(String.fromCharCode(...bytes));
+            sendAction({ type: 'memorial-layout-save', encodedLayout });
+            memorialEditorStatus.textContent = '已自动保存到当前预览地址。';
+        } catch {
+            memorialEditorStatus.textContent = '当前预览无法自动保存，请先复制布局。';
+        }
+    }
+
+    function restoreMemorialEditorLayout(encodedLayout) {
+        let savedLayout = null;
+        try {
+            if (encodedLayout) {
+                const bytes = Uint8Array.from(atob(encodedLayout), (character) => character.charCodeAt(0));
+                savedLayout = JSON.parse(new TextDecoder().decode(bytes));
+            }
+        } catch {}
+        const layout = { ...activeMemorialEditorDefaultLayout(), ...(savedLayout || {}) };
+        memorialEditorCanvas().querySelectorAll('[data-memorial-editor-added]').forEach((element) => element.remove());
+        if (memorialLayoutEditorTarget === 'index') {
+            memorialIndex.querySelectorAll('[data-memorial-editor-shape]').forEach((shape) => shape.remove());
+        }
+        memorialEditorStates.clear();
+        memorialEditorShapeCount = 0;
+        memorialEditorAssetCount = 0;
+        Object.entries(layout).forEach(([id, value]) => {
+            if (!value || typeof value !== 'object') return;
+            let element = memorialEditorCanvas().querySelector('[data-memorial-editor-id="' + id + '"]');
+            if (!element && value.kind && /^shape-\\d+$/.test(id)) {
+                element = createMemorialEditorShape(value.kind, id);
+                memorialEditorShapeCount = Math.max(memorialEditorShapeCount, Number.parseInt(id.slice(6), 10) || 0);
+            }
+            if (!element && value.asset && /^entry-asset-\\d+$/.test(id)) {
+                element = createMemorialEntryAsset(value.asset, id);
+                memorialEditorAssetCount = Math.max(memorialEditorAssetCount, Number.parseInt(id.slice(12), 10) || 0);
+            }
+            if (!element) return;
+            const state = {
+                color: typeof value.color === 'string' ? value.color : null,
+                deleted: Boolean(value.deleted),
+                rotate: Number.isFinite(value.rotate) ? value.rotate : 0,
+                scale: Number.isFinite(value.scale) ? value.scale : 1,
+                x: Number.isFinite(value.x) ? value.x : 0,
+                y: Number.isFinite(value.y) ? value.y : 0,
+                z: Number.isFinite(value.z) ? value.z : 10,
+            };
+            memorialEditorStates.set(id, state);
+            if (element.dataset.memorialEditorText !== undefined && typeof value.text === 'string') {
+                element.textContent = value.text;
+            }
+            applyMemorialEditorState(element);
+        });
+        memorialEditorStatus.textContent = savedLayout ? '已从当前预览地址恢复布局。' : '已载入当前定稿参数。';
+    }
+
+    function memorialEditorState(element) {
+        const id = element.dataset.memorialEditorId;
+        if (!memorialEditorStates.has(id)) {
+            const computed = getComputedStyle(element);
+            const parsedZ = Number.parseInt(computed.zIndex, 10);
+            memorialEditorStates.set(id, {
+                color: element.dataset.memorialEditorFill === undefined ? null : computed.backgroundColor,
+                deleted: false,
+                rotate: 0,
+                scale: 1,
+                x: 0,
+                y: 0,
+                z: Number.isFinite(parsedZ) ? parsedZ : 10,
+            });
+        }
+        return memorialEditorStates.get(id);
+    }
+
+    function applyMemorialEditorState(element) {
+        const state = memorialEditorState(element);
+        element.hidden = Boolean(state.deleted);
+        element.style.translate = state.x + 'px ' + state.y + 'px';
+        element.style.scale = String(state.scale);
+        element.style.rotate = state.rotate + 'deg';
+        element.style.zIndex = String(state.z);
+        if (state.color) {
+            if (element.dataset.memorialEditorId === 'paper') {
+                element.style.setProperty('--memorial-paper-fill', state.color);
+            } else {
+                element.style.backgroundColor = state.color;
+            }
+        }
+    }
+
+    function updateMemorialEditorSelection() {
+        if (!memorialEditorSelected || !memorialLayoutEditorEnabled) {
+            memorialEditorSelection.hidden = true;
+            return;
+        }
+        const rect = memorialEditorSelected.getBoundingClientRect();
+        const canvasRect = memorialPaper.getBoundingClientRect();
+        const left = Math.max(0, rect.left - canvasRect.left);
+        const top = Math.max(0, rect.top - canvasRect.top);
+        const right = Math.min(canvasRect.width, rect.right - canvasRect.left);
+        const bottom = Math.min(canvasRect.height, rect.bottom - canvasRect.top);
+        memorialEditorSelection.hidden = false;
+        memorialEditorSelection.style.left = left + 'px';
+        memorialEditorSelection.style.top = top + 'px';
+        memorialEditorSelection.style.width = Math.max(0, right - left) + 'px';
+        memorialEditorSelection.style.height = Math.max(0, bottom - top) + 'px';
+    }
+
+    function selectMemorialEditorElement(element) {
+        if (memorialEditorSelected) {
+            memorialEditorSelected.classList.remove('is-memorial-editor-selected');
+        }
+        memorialEditorSelected = element;
+        if (!element) {
+            memorialEditorCurrent.textContent = '未选中';
+            memorialEditorTextInput.value = '';
+            memorialEditorTextInput.disabled = true;
+            memorialEditorColorInput.disabled = true;
+            memorialEditorEyeDropper.disabled = true;
+            memorialEditorBackward.disabled = true;
+            memorialEditorForward.disabled = true;
+            memorialEditorDuplicate.disabled = true;
+            memorialEditorDelete.disabled = true;
+            updateMemorialEditorSelection();
+            return;
+        }
+        element.classList.add('is-memorial-editor-selected');
+        const state = memorialEditorState(element);
+        const canEditText = element.dataset.memorialEditorText !== undefined;
+        const canEditFill = element.dataset.memorialEditorFill !== undefined;
+        memorialEditorCurrent.textContent = element.dataset.memorialEditorName || element.dataset.memorialEditorId;
+        memorialEditorTextInput.disabled = !canEditText;
+        memorialEditorTextInput.value = canEditText ? element.textContent.trim() : '';
+        memorialEditorColorInput.disabled = !canEditFill;
+        memorialEditorEyeDropper.disabled = !canEditFill;
+        memorialEditorBackward.disabled = false;
+        memorialEditorForward.disabled = false;
+        memorialEditorDuplicate.disabled = memorialLayoutEditorTarget !== 'entry' || !element.dataset.memorialEditorAsset;
+        memorialEditorDelete.disabled =
+            element.dataset.memorialEditorShape === undefined &&
+            element.dataset.memorialEditorRemovable === undefined;
+        if (state.color && /^#[0-9a-f]{6}$/i.test(state.color)) {
+            memorialEditorColorInput.value = state.color;
+        }
+        updateMemorialEditorSelection();
+    }
+
+    function setMemorialLayoutEditorEnabled(enabled, encodedLayout, applyLayout, target) {
+        memorialLayoutEditorEnabled = enabled;
+        memorialLayoutEditorTarget = target === 'entry' ? 'entry' : 'index';
+        memorialEntry.querySelectorAll('[data-memorial-entry-editor-id]').forEach((element) => {
+            if (memorialLayoutEditorTarget === 'entry') {
+                element.dataset.memorialEditorId = element.dataset.memorialEntryEditorId;
+            } else {
+                delete element.dataset.memorialEditorId;
+            }
+        });
+        memorialPage.classList.toggle('is-layout-editor', enabled);
+        memorialPage.classList.toggle('is-entry-layout-editor', enabled && memorialLayoutEditorTarget === 'entry');
+        memorialEditor.classList.toggle('is-entry-editor', memorialLayoutEditorTarget === 'entry');
+        memorialEditorTitle.textContent = memorialLayoutEditorTarget === 'entry' ? '七夕内页自由编辑' : '纪念册自由编辑';
+        memorialEditorAssets.hidden = memorialLayoutEditorTarget !== 'entry';
+        memorialEditor.hidden = !enabled;
+        if (enabled && memorialLayoutEditorTarget === 'entry') {
+            openLingyeMemorialEntry();
+        } else if (enabled) {
+            closeLingyeMemorialEntry();
+        }
+        if (applyLayout && !memorialLayoutEditorRestored) {
+            restoreMemorialEditorLayout(encodedLayout);
+            memorialLayoutEditorRestored = true;
+        }
+        selectMemorialEditorElement(null);
+    }
+
+    function beginMemorialEditorGesture(event, mode, target) {
+        if (!memorialLayoutEditorEnabled || !target) return;
+        const state = memorialEditorState(target);
+        const rect = target.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        memorialEditorGesture = {
+            centerX,
+            centerY,
+            distance: Math.max(1, Math.hypot(event.clientX - centerX, event.clientY - centerY)),
+            mode,
+            originRotate: state.rotate,
+            originScale: state.scale,
+            originX: state.x,
+            originY: state.y,
+            pointerId: event.pointerId,
+            startAngle: Math.atan2(event.clientY - centerY, event.clientX - centerX),
+            startX: event.clientX,
+            startY: event.clientY,
+            target,
+        };
+        event.currentTarget.setPointerCapture(event.pointerId);
+        event.preventDefault();
+        event.stopPropagation();
+    }
+
+    function handleMemorialEditorPointerDown(event) {
+        if (!memorialLayoutEditorEnabled) return;
+        const target = event.target.closest('[data-memorial-editor-id]');
+        if (target && !memorialEditorCanvas().contains(target)) return;
+        if (!target) {
+            selectMemorialEditorElement(null);
+            return;
+        }
+        selectMemorialEditorElement(target);
+        beginMemorialEditorGesture(event, 'move', target);
+    }
+
+    function blockMemorialEditorClick(event) {
+        if (!memorialLayoutEditorEnabled) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+    }
+
+    memorialIndex.addEventListener('pointerdown', handleMemorialEditorPointerDown);
+    memorialEntry.addEventListener('pointerdown', handleMemorialEditorPointerDown);
+    memorialIndex.addEventListener('click', blockMemorialEditorClick, true);
+    memorialEntry.addEventListener('click', blockMemorialEditorClick, true);
+
+    memorialEditorSelection.querySelector('[data-memorial-editor-handle="scale"]').addEventListener('pointerdown', (event) => {
+        beginMemorialEditorGesture(event, 'scale', memorialEditorSelected);
+    });
+
+    memorialEditorSelection.querySelector('[data-memorial-editor-handle="rotate"]').addEventListener('pointerdown', (event) => {
+        beginMemorialEditorGesture(event, 'rotate', memorialEditorSelected);
+    });
+
+    window.addEventListener('pointermove', (event) => {
+        if (!memorialEditorGesture || memorialEditorGesture.pointerId !== event.pointerId) return;
+        const state = memorialEditorState(memorialEditorGesture.target);
+        if (memorialEditorGesture.mode === 'move') {
+            state.x = Math.round((memorialEditorGesture.originX + event.clientX - memorialEditorGesture.startX) * 10) / 10;
+            state.y = Math.round((memorialEditorGesture.originY + event.clientY - memorialEditorGesture.startY) * 10) / 10;
+        } else if (memorialEditorGesture.mode === 'scale') {
+            const nextDistance = Math.max(1, Math.hypot(event.clientX - memorialEditorGesture.centerX, event.clientY - memorialEditorGesture.centerY));
+            state.scale = Math.max(0.1, Math.round(memorialEditorGesture.originScale * nextDistance / memorialEditorGesture.distance * 100) / 100);
+        } else {
+            const nextAngle = Math.atan2(event.clientY - memorialEditorGesture.centerY, event.clientX - memorialEditorGesture.centerX);
+            state.rotate = Math.round((memorialEditorGesture.originRotate + (nextAngle - memorialEditorGesture.startAngle) * 180 / Math.PI) * 10) / 10;
+        }
+        applyMemorialEditorState(memorialEditorGesture.target);
+        updateMemorialEditorSelection();
+    });
+
+    window.addEventListener('pointerup', (event) => {
+        if (!memorialEditorGesture || memorialEditorGesture.pointerId !== event.pointerId) return;
+        memorialEditorGesture = null;
+        saveMemorialEditorLayout();
+    });
+
+    window.addEventListener('pointercancel', () => {
+        memorialEditorGesture = null;
+        saveMemorialEditorLayout();
+    });
+
+    memorialEditorTextInput.addEventListener('input', () => {
+        if (!memorialEditorSelected || memorialEditorSelected.dataset.memorialEditorText === undefined) return;
+        memorialEditorSelected.textContent = memorialEditorTextInput.value;
+        updateMemorialEditorSelection();
+        saveMemorialEditorLayout();
+    });
+
+    memorialEditorColorInput.addEventListener('input', () => {
+        if (!memorialEditorSelected || memorialEditorSelected.dataset.memorialEditorFill === undefined) return;
+        const state = memorialEditorState(memorialEditorSelected);
+        state.color = memorialEditorColorInput.value;
+        applyMemorialEditorState(memorialEditorSelected);
+        saveMemorialEditorLayout();
+    });
+
+    function loadMemorialBackdropImage() {
+        if (!memorialBackdropImagePromise) {
+            memorialBackdropImagePromise = new Promise((resolve, reject) => {
+                const image = new Image();
+                image.onload = () => resolve(image);
+                image.onerror = reject;
+                image.src = memorialBackdropSource;
+            });
+        }
+        return memorialBackdropImagePromise;
+    }
+
+    async function resolveMemorialBackdropSamplePoint(clientX, clientY) {
+        const image = await loadMemorialBackdropImage();
+        const rect = memorialPaper.getBoundingClientRect();
+        const scale = Math.max(rect.width / image.naturalWidth, rect.height / image.naturalHeight);
+        const renderedWidth = image.naturalWidth * scale;
+        const offsetX = (rect.width - renderedWidth) / 2;
+        const sourceX = Math.max(0, Math.min(image.naturalWidth - 1, (clientX - rect.left - offsetX) / scale));
+        const sourceY = Math.max(0, Math.min(image.naturalHeight - 1, (clientY - rect.top) / scale));
+        return {
+            xRatio: sourceX / Math.max(1, image.naturalWidth - 1),
+            yRatio: sourceY / Math.max(1, image.naturalHeight - 1),
+        };
+    }
+
+    function beginMemorialBackdropSampling() {
+        memorialEditorSamplingColor = true;
+        memorialEditorSamplingTarget = memorialEditorSelected;
+        memorialPage.classList.add('is-sampling-color');
+        memorialEditorStatus.textContent = '请点击底图取色。';
+    }
+
+    memorialPaper.addEventListener('pointerdown', async (event) => {
+        if (!memorialEditorSamplingColor || !memorialEditorSamplingTarget) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        try {
+            const point = await resolveMemorialBackdropSamplePoint(event.clientX, event.clientY);
+            sendAction({ type: 'memorial-backdrop-color-sample', ...point });
+            memorialEditorStatus.textContent = '正在读取底图颜色…';
+        } catch {
+            memorialEditorStatus.textContent = '这次没有取到颜色，请再点一次底图。';
+            memorialEditorSamplingColor = false;
+            memorialEditorSamplingTarget = null;
+            memorialPage.classList.remove('is-sampling-color');
+        }
+    }, true);
+
+    memorialEditorEyeDropper.addEventListener('click', async () => {
+        if (!memorialEditorSelected) return;
+        if ('EyeDropper' in window) {
+            try {
+                const result = await new window.EyeDropper().open();
+                memorialEditorColorInput.value = result.sRGBHex;
+                memorialEditorColorInput.dispatchEvent(new Event('input', { bubbles: true }));
+                return;
+            } catch {}
+        }
+        beginMemorialBackdropSampling();
+    });
+
+    function shiftMemorialEditorLayer(element, direction) {
+        const state = memorialEditorState(element);
+        const otherLayers = Array.from(memorialEditorCanvas().querySelectorAll('[data-memorial-editor-id]'))
+            .filter((candidate) => candidate !== element && !memorialEditorState(candidate).deleted)
+            .map((candidate) => memorialEditorState(candidate).z);
+        if (direction < 0) {
+            const lowerLayers = otherLayers.filter((layer) => layer < state.z);
+            state.z = lowerLayers.length ? Math.max(...lowerLayers) - 1 : state.z - 1;
+        } else {
+            const higherLayers = otherLayers.filter((layer) => layer > state.z);
+            state.z = higherLayers.length ? Math.min(...higherLayers) + 1 : state.z + 1;
+        }
+        applyMemorialEditorState(element);
+        saveMemorialEditorLayout();
+        memorialEditorStatus.textContent = '当前视觉层级 ' + state.z + '。';
+    }
+
+    memorialEditorBackward.addEventListener('click', () => {
+        if (!memorialEditorSelected) return;
+        shiftMemorialEditorLayer(memorialEditorSelected, -1);
+    });
+
+    memorialEditorForward.addEventListener('click', () => {
+        if (!memorialEditorSelected) return;
+        shiftMemorialEditorLayer(memorialEditorSelected, 1);
+    });
+
+    memorialEditorDelete.addEventListener('click', () => {
+        if (!memorialEditorSelected) return;
+        const canDelete =
+            memorialEditorSelected.dataset.memorialEditorShape !== undefined ||
+            memorialEditorSelected.dataset.memorialEditorRemovable !== undefined;
+        if (!canDelete) return;
+        if (memorialLayoutEditorTarget === 'entry') {
+            memorialEditorState(memorialEditorSelected).deleted = true;
+            applyMemorialEditorState(memorialEditorSelected);
+        } else {
+            memorialEditorStates.delete(memorialEditorSelected.dataset.memorialEditorId);
+            memorialEditorSelected.remove();
+        }
+        selectMemorialEditorElement(null);
+        saveMemorialEditorLayout();
+    });
+
+    memorialEditor.querySelectorAll('[data-memorial-add-shape]').forEach((button) => {
+        button.addEventListener('click', () => {
+            memorialEditorShapeCount += 1;
+            const kind = button.dataset.memorialAddShape;
+            const shape = createMemorialEditorShape(kind, 'shape-' + memorialEditorShapeCount);
+            applyMemorialEditorState(shape);
+            selectMemorialEditorElement(shape);
+            saveMemorialEditorLayout();
+        });
+    });
+
+    memorialEditor.querySelectorAll('[data-memorial-add-asset]').forEach((button) => {
+        button.addEventListener('click', () => {
+            if (memorialLayoutEditorTarget !== 'entry') return;
+            memorialEditorAssetCount += 1;
+            const id = 'entry-asset-' + memorialEditorAssetCount;
+            const asset = createMemorialEntryAsset(button.dataset.memorialAddAsset, id);
+            if (!asset) return;
+            memorialEditorStates.set(id, {
+                color: null,
+                deleted: false,
+                rotate: 0,
+                scale: 1,
+                x: memorialEditorAssetCount * 4,
+                y: memorialEditorAssetCount * 4,
+                z: 20 + memorialEditorAssetCount,
+            });
+            applyMemorialEditorState(asset);
+            selectMemorialEditorElement(asset);
+            saveMemorialEditorLayout();
+        });
+    });
+
+    memorialEditorDuplicate.addEventListener('click', () => {
+        if (memorialLayoutEditorTarget !== 'entry' || !memorialEditorSelected) return;
+        const kind = memorialEditorSelected.dataset.memorialEditorAsset;
+        if (!kind) return;
+        memorialEditorAssetCount += 1;
+        const id = 'entry-asset-' + memorialEditorAssetCount;
+        const asset = createMemorialEntryAsset(kind, id);
+        if (!asset) return;
+        const sourceState = memorialEditorState(memorialEditorSelected);
+        memorialEditorStates.set(id, {
+            color: sourceState.color,
+            deleted: false,
+            rotate: sourceState.rotate,
+            scale: sourceState.scale,
+            x: sourceState.x + 12,
+            y: sourceState.y + 12,
+            z: sourceState.z + 1,
+        });
+        if (asset.dataset.memorialEditorText !== undefined) {
+            asset.textContent = memorialEditorSelected.textContent;
+        }
+        applyMemorialEditorState(asset);
+        selectMemorialEditorElement(asset);
+        saveMemorialEditorLayout();
+    });
+
+    memorialEditorToggle.addEventListener('click', () => {
+        const collapsed = memorialEditor.classList.toggle('is-collapsed');
+        memorialEditorToggle.textContent = collapsed ? '展开' : '收起';
+    });
+
+    memorialEditorCopy.addEventListener('click', async () => {
+        const value = JSON.stringify(serializeMemorialEditorLayout());
+        try {
+            await navigator.clipboard.writeText(value);
+            memorialEditorStatus.textContent = '布局参数已复制。';
+        } catch {
+            memorialEditorStatus.textContent = value;
+        }
+    });
 
     const glimmerTrackAssets = {
         'duck_peach': '/lingye/glimmer/tracks/duck-peach.png',
@@ -5745,6 +8134,43 @@ const LINGYE_SCRIPT = `
         lingyeViewport.scrollLeft += event.deltaY;
         event.preventDefault();
     }, { passive: false });
+
+    const institutionViewports = document.querySelectorAll('.candidate2-institution-scene-viewport');
+    institutionViewports.forEach((viewport) => {
+        let dragging = false;
+        let dragStartX = 0;
+        let dragStartScrollLeft = 0;
+
+        viewport.addEventListener('pointerdown', (event) => {
+            dragging = true;
+            dragStartX = event.clientX;
+            dragStartScrollLeft = viewport.scrollLeft;
+            viewport.classList.add('is-dragging');
+            viewport.setPointerCapture(event.pointerId);
+        });
+
+        viewport.addEventListener('pointermove', (event) => {
+            if (!dragging) return;
+            viewport.scrollLeft = dragStartScrollLeft - (event.clientX - dragStartX);
+        });
+
+        function finishInstitutionDrag(event) {
+            if (!dragging) return;
+            dragging = false;
+            viewport.classList.remove('is-dragging');
+            if (viewport.hasPointerCapture(event.pointerId)) {
+                viewport.releasePointerCapture(event.pointerId);
+            }
+        }
+
+        viewport.addEventListener('pointerup', finishInstitutionDrag);
+        viewport.addEventListener('pointercancel', finishInstitutionDrag);
+        viewport.addEventListener('wheel', (event) => {
+            if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+            viewport.scrollLeft += event.deltaY;
+            event.preventDefault();
+        }, { passive: false });
+    });
 
 `;
 
@@ -6380,6 +8806,14 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     }
 
     const togetherCoverAssets = {
+        'together.river-from-tomorrow-opening': '/lingye/together/river-opening.webp',
+        'together.river-future-wharf': '/lingye/together/river-future-wharf.webp',
+        'together.river-cooperative-investigation': '/lingye/together/river-investigation.webp',
+        'together.river-fork': '/lingye/together/river-fork.webp',
+        'together.river-ending-second-home': '/lingye/together/river-ending-second-home.webp',
+        'together.river-ending-quiet-harvest': '/lingye/together/river-ending-quiet-harvest.webp',
+        'together.river-ending-ten-thousand-bottles': '/lingye/together/river-ending-ten-thousand-bottles.webp',
+        'together.river-ending-no-address': '/lingye/together/river-ending-no-address.webp',
         'together.same-kitchen-opening': '/lingye/together/same-kitchen-opening.jpg',
         'together.same-kitchen-old-recipe': '/lingye/together/same-kitchen-old-recipe.jpg',
         'together.same-kitchen-undelivered-letters': '/lingye/together/same-kitchen-undelivered-letters.jpg',
@@ -6393,6 +8827,136 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     function setTogetherText(selector, value) {
         const element = document.querySelector(selector);
         if (element) element.textContent = value == null ? '' : String(value);
+    }
+
+    let togetherArchives = [];
+    let togetherArchiveIndex = -1;
+    let togetherArchivePageIndex = 0;
+
+    function buildTogetherArchiveIndexCard(archive, index) {
+        const button = document.createElement('button');
+        button.className = 'candidate2-together-archive-index-card';
+        button.type = 'button';
+        button.addEventListener('click', () => openTogetherArchive(index));
+
+        const image = document.createElement('img');
+        image.className = 'candidate2-together-archive-index-photo';
+        image.src = togetherCoverAssets[archive.artFile] || '';
+        image.alt = '《' + archive.title + '》往期插图';
+        const copy = document.createElement('span');
+        copy.className = 'candidate2-together-archive-index-copy';
+        const round = document.createElement('span');
+        round.className = 'candidate2-together-archive-index-round';
+        round.textContent = '第 ' + archive.round + ' 期';
+        const title = document.createElement('strong');
+        title.className = 'candidate2-together-archive-index-title';
+        title.textContent = archive.title;
+        const ending = [...archive.history].reverse().find((entry) => entry.kind === 'ending');
+        const endingText = document.createElement('span');
+        endingText.className = 'candidate2-together-archive-index-ending';
+        endingText.textContent = ending ? ending.title : archive.history.at(-1)?.title || '';
+        copy.append(round, title, endingText);
+        const chevron = document.createElement('span');
+        chevron.className = 'candidate2-together-archive-index-chevron';
+        chevron.textContent = '›';
+        button.append(image, copy, chevron);
+        return button;
+    }
+
+    function renderTogetherArchivePage() {
+        const archive = togetherArchives[togetherArchiveIndex];
+        const entry = archive?.history[togetherArchivePageIndex];
+        if (!archive || !entry) return;
+        setTogetherText('.candidate2-together-archive-reader-round', '第 ' + archive.round + ' 期');
+        setTogetherText('.candidate2-together-archive-reader-title', archive.title);
+        setTogetherText('.candidate2-together-archive-entry-title', entry.title);
+        setTogetherText('.candidate2-together-archive-entry-text', entry.text);
+        setTogetherText(
+            '.candidate2-together-archive-page-number',
+            String(togetherArchivePageIndex + 1) + ' / ' + String(archive.history.length),
+        );
+
+        const figure = document.querySelector('.candidate2-together-archive-photo');
+        const image = figure?.querySelector('img');
+        const photoAsset = togetherCoverAssets[entry.artFile];
+        if (figure) figure.hidden = !photoAsset;
+        if (image) {
+            if (photoAsset) {
+                image.src = photoAsset;
+                image.alt = '《' + archive.title + '》' + entry.title;
+            } else {
+                image.removeAttribute('src');
+                image.alt = '';
+            }
+        }
+        const buttons = document.querySelectorAll('.candidate2-together-archive-pagination button');
+        if (buttons[0]) buttons[0].disabled = togetherArchivePageIndex === 0;
+        if (buttons[1]) buttons[1].disabled = togetherArchivePageIndex === archive.history.length - 1;
+    }
+
+    function renderTogetherArchives(archives) {
+        const directory = document.querySelector('.candidate2-together-archive-directory');
+        const empty = document.querySelector('.candidate2-together-archive-empty');
+        togetherArchives = (archives || [])
+            .map((archive) => ({
+                ...archive,
+                history: (archive.history || []).filter((entry) =>
+                    ['story', 'task', 'clue', 'ending'].includes(entry.kind),
+                ),
+            }))
+            .filter((archive) => archive.history.length > 0);
+        if (directory)
+            directory.replaceChildren(...togetherArchives.map(buildTogetherArchiveIndexCard));
+        if (empty) empty.hidden = togetherArchives.length > 0;
+        const historyButton = document.querySelector('.candidate2-together-history-button');
+        if (historyButton) historyButton.disabled = togetherArchives.length === 0;
+        closeTogetherArchive();
+    }
+
+    function openTogetherArchive(index) {
+        const archive = togetherArchives[index];
+        if (!archive) return;
+        togetherArchiveIndex = index;
+        togetherArchivePageIndex = 0;
+        const directory = document.querySelector('.candidate2-together-archive-directory');
+        const reader = document.querySelector('.candidate2-together-archive-reader');
+        const historyHeader = document.querySelector('.candidate2-together-history-header');
+        if (directory) directory.hidden = true;
+        if (reader) reader.hidden = false;
+        if (historyHeader) historyHeader.hidden = true;
+        renderTogetherArchivePage();
+    }
+
+    function closeTogetherArchive() {
+        togetherArchiveIndex = -1;
+        togetherArchivePageIndex = 0;
+        const directory = document.querySelector('.candidate2-together-archive-directory');
+        const reader = document.querySelector('.candidate2-together-archive-reader');
+        const historyHeader = document.querySelector('.candidate2-together-history-header');
+        if (directory) directory.hidden = togetherArchives.length === 0;
+        if (reader) reader.hidden = true;
+        if (historyHeader) historyHeader.hidden = false;
+    }
+
+    function turnTogetherArchivePage(offset) {
+        const archive = togetherArchives[togetherArchiveIndex];
+        if (!archive) return;
+        togetherArchivePageIndex = Math.max(
+            0,
+            Math.min(archive.history.length - 1, togetherArchivePageIndex + offset),
+        );
+        renderTogetherArchivePage();
+        const page = document.querySelector('.candidate2-together-history-page');
+        if (page) page.scrollTop = 0;
+    }
+
+    function openTogetherHistory() {
+        if (!togetherArchives.length) {
+            showLingyeNotice('还没有已完成的往期故事');
+            return;
+        }
+        closeTogetherArchive();
+        showScreen('screen-lingye-together-history');
     }
 
     function renderTogetherData(data) {
@@ -6418,6 +8982,7 @@ const CANDIDATE_RUNTIME_SCRIPT = `
             if (liveEmpty) liveEmpty.hidden = false;
             if (taskList) taskList.replaceChildren();
             if (choiceList) choiceList.replaceChildren();
+            renderTogetherArchives([]);
             setTogetherText('.candidate2-together-current-kicker', '');
             setTogetherText('.candidate2-together-current-title', '');
             setTogetherText('.candidate2-together-current-status', '');
@@ -6437,6 +9002,7 @@ const CANDIDATE_RUNTIME_SCRIPT = `
 
         if (liveEmpty) liveEmpty.hidden = true;
         if (currentContent) currentContent.hidden = false;
+        renderTogetherArchives(data.archives);
         setTogetherText('.candidate2-together-current-kicker', '第 ' + data.round + ' 期');
         setTogetherText('.candidate2-together-current-title', data.title);
         setTogetherText('.candidate2-together-current-status', data.status);
@@ -6722,6 +9288,16 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         setDemoVisibility('.profile-relationships-empty', '.candidate2-demo-relationship', enabled);
         setDemoVisibility('.candidate2-profile-empty', '.candidate2-demo-activity-list', enabled);
         setDemoVisibility('.candidate2-memorial-empty', '.candidate2-memorial-demo', enabled);
+        setLingyeMemorialFilter(lingyeMemorialFilter);
+        const memorialDemoChrome = document.querySelector('.candidate2-memorial-demo-chrome');
+        if (memorialDemoChrome) memorialDemoChrome.hidden = !enabled;
+        const memorialLayoutEditor = demo && demo.memorialLayoutEditor;
+        setMemorialLayoutEditorEnabled(
+            Boolean(memorialLayoutEditor && memorialLayoutEditor.enabled),
+            memorialLayoutEditor && memorialLayoutEditor.encodedLayout,
+            enabled,
+            memorialLayoutEditor && memorialLayoutEditor.target,
+        );
         const glimmerEditor = demo && demo.glimmerAnimalEditor;
         glimmerAnimalEditorEnabled = Boolean(glimmerEditor && glimmerEditor.enabled);
         glimmerPage.classList.toggle('is-animal-editor', glimmerAnimalEditorEnabled);
@@ -6760,9 +9336,6 @@ const CANDIDATE_RUNTIME_SCRIPT = `
             editorRow.querySelector('strong').textContent = relation ? relation.name : '—';
             editorRow.dataset.detail = relation ? relation.detail : '';
         });
-        document.querySelector('.candidate2-demo-relationship-summary').textContent =
-            '认识 ' + content.relationships.length + ' 位邻居';
-
         const settings = content.settings;
         currentConnectorStatus = 'online';
         document.querySelector('.settings-connection-summary').textContent = '两项连接正常';
@@ -6873,6 +9446,20 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         }
         return {
             artFile: data.art_asset_key,
+            archives: data.archives.map((archive) => ({
+                artFile: archive.art_asset_key,
+              history: archive.history.map((entry) => ({
+                artFile: entry.art_asset_key,
+                kind: entry.kind,
+                ...(entry.kind === "task"
+                  ? { progress: entry.progress, target: entry.target }
+                  : {}),
+                text: entry.text,
+                title: entry.title,
+              })),
+                round: archive.round,
+                title: archive.title,
+            })),
             currentChoice: data.current_choice ? {
                 counts: data.current_choice.counts,
                 index: data.current_choice.index,
@@ -6954,9 +9541,136 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         );
     }
 
+    const qixiLampShapePositions = {
+        'square-palace': '0%',
+        'octagonal-palace': '50%',
+        'lotus-palace': '100%',
+    };
+    const qixiLampColorPositions = {
+        'moon-white': '0%',
+        'peach-pink': '33.333%',
+        'mist-blue': '66.667%',
+        'apricot-gold': '100%',
+    };
+    const qixiLampDecorPositions = {
+        'short-tassel': ['0%', '0%'],
+        'fine-copper-bell': ['50%', '0%'],
+        'magpie-ribbon': ['100%', '0%'],
+        'star-speckle': ['0%', '33.333%'],
+        'qiaoguo-pattern': ['50%', '33.333%'],
+        'river-glow': ['100%', '33.333%'],
+        'cotton-knot': ['0%', '66.667%'],
+        'waterproof-seal': ['50%', '66.667%'],
+        'cloud-knot': ['100%', '66.667%'],
+        'magpie-bridge': ['0%', '100%'],
+        'twin-jade-pendant': ['50%', '100%'],
+        'twin-blossom-seal': ['100%', '100%'],
+    };
+    const qixiLampLayouts = {
+        'square-palace': { base: [-28, -6, 180, 135], pattern: [67, 47, 64, 64], ornament: [61, 119, 68, 68], seal: [71, 15, 51, 51] },
+        'octagonal-palace': { base: [6, -5, 180, 135], pattern: [61, 43, 64, 64], ornament: [57, 120, 68, 68], seal: [74, 20, 51, 51] },
+        'lotus-palace': { base: [42, -5, 180, 135], pattern: [66, 53, 64, 64], ornament: [59, 118, 68, 68], seal: [71, 16, 51, 51] },
+    };
+    const qixiMagpieLayouts = {
+        'square-palace': [64, 108, 68, 68],
+        'octagonal-palace': [59, 110, 68, 68],
+        'lotus-palace': [55, 112, 68, 68],
+    };
+
+    function setQixiLampBox(node, box) {
+        if (!node || !box) return;
+        node.style.left = box[0] + 'px';
+        node.style.right = 'auto';
+        node.style.top = box[1] + 'px';
+        node.style.width = box[2] + 'px';
+        node.style.height = box[3] + 'px';
+    }
+
+    function setQixiLampDecor(node, id, box) {
+        if (!node) return;
+        node.hidden = id === 'none';
+        if (node.hidden) return;
+        const position = qixiLampDecorPositions[id];
+        setQixiLampBox(node, box);
+        node.style.backgroundPosition = position[0] + ' ' + position[1];
+    }
+
+    function applyQixiLantern(element, name, appearance) {
+        const layout = qixiLampLayouts[appearance.shape] || qixiLampLayouts['square-palace'];
+        const base = element.querySelector('[data-qixi-lantern-base]');
+        const pattern = element.querySelector('[data-qixi-lantern-pattern]');
+        const ornament = element.querySelector('[data-qixi-lantern-ornament]');
+        const seal = element.querySelector('[data-qixi-lantern-seal]');
+        setQixiLampBox(base, layout.base);
+        base.style.setProperty('--lamp-x', qixiLampShapePositions[appearance.shape] || '0%');
+        base.style.setProperty('--lamp-y', qixiLampColorPositions[appearance.color] || '0%');
+        setQixiLampDecor(pattern, appearance.pattern, layout.pattern);
+        setQixiLampDecor(
+            ornament,
+            appearance.ornament,
+            appearance.ornament === 'magpie-ribbon'
+                ? (qixiMagpieLayouts[appearance.shape] || layout.ornament)
+                : layout.ornament,
+        );
+        setQixiLampDecor(seal, appearance.seal, layout.seal);
+        element.dataset.memorialEditorName = name + '的灯';
+        element.setAttribute('aria-label', name + '的七夕成品灯');
+    }
+
+    function applyQixiMemorialData(read) {
+        const data = read && read.data;
+        if (!data) return false;
+        const sides = {
+            human: { name: data.human_name, value: data.human, asset: 'my' },
+            ai: { name: data.ai_name, value: data.ai, asset: 'du' },
+        };
+        Object.entries(sides).forEach(([side, record]) => {
+            document.querySelectorAll(
+                '[data-qixi-memorial-side="' + side + '"][data-memorial-editor-asset="' + record.asset + '-lantern"]',
+            ).forEach((element) => applyQixiLantern(element, record.name, record.value.lantern));
+            document.querySelectorAll(
+                '[data-qixi-memorial-side="' + side + '"][data-memorial-editor-asset="' + record.asset + '-letter"]',
+            ).forEach((element) => {
+                const text = element.querySelector('[data-qixi-archive-letter-text]');
+                const signature = element.querySelector('.candidate2-qixi-archive-letter-signature');
+                if (text) text.textContent = record.value.letter;
+                if (signature) signature.textContent = record.name;
+                element.dataset.memorialEditorName = record.name + '的信';
+                element.setAttribute('aria-label', record.name + '的七夕信件');
+            });
+        });
+        return true;
+    }
+
+    function applyLiveQixiMemorialState(readState) {
+        const empty = document.querySelector('.candidate2-memorial-empty');
+        const chrome = document.querySelector('.candidate2-memorial-demo-chrome');
+        if (readState.stage === 'idle') {
+            qixiMemorialReady = false;
+            return;
+        }
+        showScreen('screen-lingye-memorial');
+        const index = document.querySelector('.candidate2-memorial-index');
+        const entry = document.querySelector('.candidate2-memorial-entry-view');
+        if (index) index.hidden = false;
+        if (entry) entry.hidden = true;
+        qixiMemorialReady = readState.stage === 'ready' && applyQixiMemorialData(readState.data);
+        if (chrome) chrome.hidden = !qixiMemorialReady;
+        if (empty) {
+            empty.hidden = qixiMemorialReady;
+            empty.textContent = readState.stage === 'loading'
+                ? '正在读取活动档案……'
+                : readState.stage === 'error'
+                    ? readState.message
+                    : '还没有可查看的活动档案。';
+        }
+        setLingyeMemorialFilter(lingyeMemorialFilter);
+    }
+
     function applyLiveLingyeState(lingye) {
         if (!lingye) return;
         applyLiveGlimmerState(lingye.glimmer);
+        applyLiveQixiMemorialState(lingye.memorial);
         applyLiveTogetherState(lingye.together);
     }
 
@@ -7293,6 +10007,30 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         if (event.source !== window.parent) return;
         const data = event.data;
         if (!data || typeof data !== 'object') return;
+        if (data.type === 'doorbell-candidate2:memorial-color-sampled') {
+            const keys = Object.keys(data).sort();
+            if (
+                keys.length !== 2 ||
+                keys[0] !== 'color' ||
+                keys[1] !== 'type' ||
+                (data.color !== null && (typeof data.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(data.color)))
+            ) return;
+            if (!memorialEditorSamplingColor || !memorialEditorSamplingTarget) return;
+            if (data.color) {
+                const state = memorialEditorState(memorialEditorSamplingTarget);
+                state.color = data.color;
+                memorialEditorColorInput.value = data.color;
+                applyMemorialEditorState(memorialEditorSamplingTarget);
+                saveMemorialEditorLayout();
+                memorialEditorStatus.textContent = '已吸取底图颜色 ' + data.color + '。';
+            } else {
+                memorialEditorStatus.textContent = '这次没有取到颜色，请再点一次底图。';
+            }
+            memorialEditorSamplingColor = false;
+            memorialEditorSamplingTarget = null;
+            memorialPage.classList.remove('is-sampling-color');
+            return;
+        }
         if (data.type === 'doorbell-candidate2:connector-credential') {
             const keys = Object.keys(data).sort();
             if (
@@ -7318,9 +10056,10 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         }
         originalShowScreen(screenId);
         if (currentStage === 'authenticated') {
-            const glimmerPageOpen = screenId === 'screen-lingye-glimmer';
-            mainNav.style.display = glimmerPageOpen ? 'none' : 'flex';
-            if (glimmerPageOpen) mainNav.setAttribute('aria-hidden', 'true');
+            const lingyeFullscreenPageOpen =
+                screenId === 'screen-lingye-glimmer' || screenId === 'screen-lingye-memorial';
+            mainNav.style.display = lingyeFullscreenPageOpen ? 'none' : 'flex';
+            if (lingyeFullscreenPageOpen) mainNav.setAttribute('aria-hidden', 'true');
             else mainNav.removeAttribute('aria-hidden');
         }
         if (screenId === 'screen-home') syncHomeScale();
@@ -7346,7 +10085,10 @@ function replaceBetween(source: string, start: string, end: string, replacement:
 
 export function buildCandidateTwoRuntimeHtml() {
   let html = candidateTwoHtml
-    .replace('<link href="./css2" rel="stylesheet" vid="5">', GOOGLE_FONTS)
+    .replace(
+      '<link href="./css2" rel="stylesheet" vid="5">',
+      `${GOOGLE_FONTS}${MOQU_GUFENG_FONT}`,
+    )
     .replace(
       "</style>",
       `${HOME_SIGN_STYLES}${RUNTIME_STYLES}${SHARED_MEME_STYLES}${RESIDENCY_PERMIT_STYLES}${LINGYE_STYLES}    </style>`,
@@ -7396,7 +10138,7 @@ export function buildCandidateTwoRuntimeHtml() {
   html = html
     .replace(
       '    <div id="screen-profile" class="screen"',
-      `${LINGYE_SCREEN}\n${LINGYE_PLACE_SCREENS}\n    <div id="screen-profile" class="screen"`,
+      `${LINGYE_SCREEN}\n${LINGYE_INSTITUTION_SCREENS}\n${LINGYE_PLACE_SCREENS}\n    <div id="screen-profile" class="screen"`,
     )
     .replace(
       '    <nav class="bottom-nav"',
@@ -7437,6 +10179,45 @@ export function buildCandidateTwoRuntimeHtml() {
     );
 
   return html;
+}
+
+const candidateTwoMemorialBackdropSource = "/lingye/memorial/memorial-album-backdrop-v1.jpg";
+let candidateTwoMemorialBackdropImagePromise: Promise<HTMLImageElement> | null = null;
+
+function loadCandidateTwoMemorialBackdropImage() {
+  if (!candidateTwoMemorialBackdropImagePromise) {
+    candidateTwoMemorialBackdropImagePromise = new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = reject;
+      image.src = candidateTwoMemorialBackdropSource;
+    });
+  }
+  return candidateTwoMemorialBackdropImagePromise;
+}
+
+async function sampleCandidateTwoMemorialBackdropColor(xRatio: number, yRatio: number) {
+  const image = await loadCandidateTwoMemorialBackdropImage();
+  const sourceX = Math.min(
+    image.naturalWidth - 1,
+    Math.max(0, Math.round(xRatio * image.naturalWidth)),
+  );
+  const sourceY = Math.min(
+    image.naturalHeight - 1,
+    Math.max(0, Math.round(yRatio * image.naturalHeight)),
+  );
+  const canvas = document.createElement("canvas");
+  canvas.width = 1;
+  canvas.height = 1;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) {
+    throw new Error("memorial_backdrop_canvas_unavailable");
+  }
+  context.drawImage(image, sourceX, sourceY, 1, 1, 0, 0, 1, 1);
+  const pixel = context.getImageData(0, 0, 1, 1).data;
+  return `#${[pixel[0] ?? 0, pixel[1] ?? 0, pixel[2] ?? 0]
+    .map((channel) => channel.toString(16).padStart(2, "0"))
+    .join("")}`;
 }
 
 export function CandidateTwoPreview({
@@ -7509,6 +10290,40 @@ export function CandidateTwoPreview({
           url.searchParams.delete(legacyParam);
         }
         window.history.replaceState(null, "", url);
+        return;
+      }
+
+      if (action.type === "memorial-layout-save") {
+        if (!demoRef.current?.memorialLayoutEditor.enabled) {
+          return;
+        }
+        const url = new URL(window.location.href);
+        const layoutParam =
+          demoRef.current.memorialLayoutEditor.target === "entry"
+            ? "memorialEntryLayout"
+            : "memorialLayout";
+        url.searchParams.set(layoutParam, action.encodedLayout);
+        window.history.replaceState(null, "", url);
+        return;
+      }
+
+      if (action.type === "memorial-backdrop-color-sample") {
+        if (!demoRef.current?.memorialLayoutEditor.enabled) {
+          return;
+        }
+        void sampleCandidateTwoMemorialBackdropColor(action.xRatio, action.yRatio)
+          .then((color) => {
+            iframeRef.current?.contentWindow?.postMessage(
+              { type: "doorbell-candidate2:memorial-color-sampled", color },
+              "*",
+            );
+          })
+          .catch(() => {
+            iframeRef.current?.contentWindow?.postMessage(
+              { type: "doorbell-candidate2:memorial-color-sampled", color: null },
+              "*",
+            );
+          });
         return;
       }
 

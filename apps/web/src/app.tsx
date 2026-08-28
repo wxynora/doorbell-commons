@@ -20,8 +20,10 @@ import {
 import { authIssueMessage } from "./auth/auth-errors";
 import {
   type BoundGlimmerRead,
+  type BoundQixiMemorialRead,
   type BoundTogetherRead,
   getBoundGlimmer,
+  getBoundQixiMemorial,
   getBoundTogether,
   type LingyeIssue,
   lingyeIssueMessage,
@@ -147,6 +149,7 @@ type AppState =
       sharedMemes: CandidateTwoSharedMemeListView;
       lingye: {
         glimmer: CandidateTwoLingyeReadState<BoundGlimmerRead>;
+        memorial: CandidateTwoLingyeReadState<BoundQixiMemorialRead>;
         together: CandidateTwoLingyeReadState<BoundTogetherRead>;
       };
     };
@@ -304,6 +307,7 @@ function authenticatedState(
     sharedMemes: { stage: "idle" },
     lingye: {
       glimmer: { stage: "idle" },
+      memorial: { stage: "idle" },
       together: { stage: "idle" },
     },
   };
@@ -343,15 +347,17 @@ function LiveApp() {
   const [showMcpAfterPermit, setShowMcpAfterPermit] = useState(false);
   const [connectorCredentialDelivery, setConnectorCredentialDelivery] =
     useState<CandidateTwoConnectorCredentialDelivery | null>(null);
-  const lingyeRequestIdsRef = useRef({ glimmer: 0, together: 0 });
+  const lingyeRequestIdsRef = useRef({ glimmer: 0, memorial: 0, together: 0 });
   const lingyeControllersRef = useRef<{
     glimmer: AbortController | null;
+    memorial: AbortController | null;
     together: AbortController | null;
-  }>({ glimmer: null, together: null });
+  }>({ glimmer: null, memorial: null, together: null });
 
   useEffect(
     () => () => {
       lingyeControllersRef.current.glimmer?.abort();
+      lingyeControllersRef.current.memorial?.abort();
       lingyeControllersRef.current.together?.abort();
     },
     [],
@@ -448,7 +454,7 @@ function LiveApp() {
   }, [settingsLoading]);
 
   const loadLingye = useCallback(
-    (kind: "glimmer" | "together") => {
+    (kind: "glimmer" | "memorial" | "together") => {
       if (appState.stage !== "authenticated") {
         return;
       }
@@ -487,6 +493,20 @@ function LiveApp() {
         });
         return;
       }
+      if (kind === "memorial") {
+        void loadLingyeAfterOpen<BoundQixiMemorialRead>(
+          () => undefined,
+          () => getBoundQixiMemorial({ signal: controller.signal }),
+        ).then((result) => {
+          if (!isCurrentRequest()) return;
+          setAppState((current) =>
+            current.stage === "authenticated"
+              ? { ...current, lingye: { ...current.lingye, memorial: result } }
+              : current,
+          );
+        });
+        return;
+      }
       void loadLingyeAfterOpen<BoundTogetherRead>(
         () => undefined,
         () => getBoundTogether({ signal: controller.signal }),
@@ -511,8 +531,18 @@ function LiveApp() {
         return;
       }
 
-      if (action.type === "lingye-glimmer-open" || action.type === "lingye-together-open") {
-        loadLingye(action.type === "lingye-glimmer-open" ? "glimmer" : "together");
+      if (
+        action.type === "lingye-glimmer-open" ||
+        action.type === "lingye-memorial-open" ||
+        action.type === "lingye-together-open"
+      ) {
+        loadLingye(
+          action.type === "lingye-glimmer-open"
+            ? "glimmer"
+            : action.type === "lingye-memorial-open"
+              ? "memorial"
+              : "together",
+        );
         return;
       }
 
@@ -796,8 +826,10 @@ function LiveApp() {
         }
 
         lingyeControllersRef.current.glimmer?.abort();
+        lingyeControllersRef.current.memorial?.abort();
         lingyeControllersRef.current.together?.abort();
         lingyeRequestIdsRef.current.glimmer += 1;
+        lingyeRequestIdsRef.current.memorial += 1;
         lingyeRequestIdsRef.current.together += 1;
         const authenticatedBeforeLogout = appState;
         setAppState({ ...appState, issue: null, pendingLogout: true });

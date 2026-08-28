@@ -1,8 +1,11 @@
 import {
   type BoundGlimmerReadSuccess,
+  type BoundQixiMemorialReadSuccess,
   type BoundTogetherReadSuccess,
   boundGlimmerReadErrorSchema,
   boundGlimmerReadSuccessSchema,
+  boundQixiMemorialReadErrorSchema,
+  boundQixiMemorialReadSuccessSchema,
   boundTogetherReadErrorSchema,
   boundTogetherReadSuccessSchema,
 } from "@doorbell/protocol";
@@ -16,6 +19,7 @@ export interface LingyeIssue {
 }
 
 export type BoundGlimmerRead = BoundGlimmerReadSuccess;
+export type BoundQixiMemorialRead = BoundQixiMemorialReadSuccess;
 export type BoundTogetherRead = BoundTogetherReadSuccess;
 
 interface LingyeReadOptions {
@@ -100,6 +104,17 @@ export function getBoundTogether(
     "/api/lingye/together",
     boundTogetherReadSuccessSchema,
     boundTogetherReadErrorSchema,
+    options,
+  );
+}
+
+export function getBoundQixiMemorial(
+  options: LingyeReadOptions = {},
+): Promise<ApiResult<BoundQixiMemorialRead, LingyeIssue>> {
+  return readLingye(
+    "/api/lingye/memorial/qixi-2026",
+    boundQixiMemorialReadSuccessSchema,
+    boundQixiMemorialReadErrorSchema,
     options,
   );
 }
