@@ -5,17 +5,17 @@ import { handleKitchenAction } from "./kitchen.js";
 import { handleProfileSocialAction } from "./profile-social.js";
 import { handleRanchAction } from "./ranch.js";
 
-export function dispatchImpl(f, b, now) {
+export function dispatchImpl(f, b, now, options = {}) {
     const action = b.action;
     switch (action) {
         case "status":
-            return handleFieldAction(action, f, b, now);
+            return handleFieldAction(action, f, b, now, options);
         case "shop":
         case "encyclopedia":
         case "bag":
             return handleCommerceAction(action, f, b, now);
         case "kitchen":
-            return handleKitchenAction(action, f, b, now);
+            return handleKitchenAction(action, f, b, now, options);
         case "wander":
         case "steal":
         case "visit":
@@ -23,11 +23,11 @@ export function dispatchImpl(f, b, now) {
         case "ranking":
             return handleProfileSocialAction(action, f, b, now);
         case "craft":
-            return handleFieldAction(action, f, b, now);
+            return handleFieldAction(action, f, b, now, options);
         case "buy-recipe":
             return handleCommerceAction(action, f, b, now);
         case "design":
-            return handleFieldAction(action, f, b, now);
+            return handleFieldAction(action, f, b, now, options);
         case "list":
         case "unlist":
         case "market":
@@ -57,7 +57,7 @@ export function dispatchImpl(f, b, now) {
         case "harvest":
         case "ripen":
         case "use":
-            return handleFieldAction(action, f, b, now);
+            return handleFieldAction(action, f, b, now, options);
         case "buy-item":
         case "buy-potion-set":
             return handleCommerceAction(action, f, b, now);

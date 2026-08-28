@@ -129,8 +129,8 @@ function fingerprint(body) {
     .digest("hex");
 }
 
-export function kitchenInventoryRevision(farm, now = Date.now()) {
-  return kitchenInventoryRevisionFromData(projectHumanKitchen(farm, now).data);
+export function kitchenInventoryRevision(farm, now = Date.now(), options = {}) {
+  return kitchenInventoryRevisionFromData(projectHumanKitchen(farm, now, options).data);
 }
 
 function invalidRequest() {
@@ -171,9 +171,9 @@ function rejected(message, currentRevision) {
   return errorResponse("action_rejected", message || "The kitchen inventory action was rejected", currentRevision);
 }
 
-function currentResource(farm, now) {
+function currentResource(farm, now, options) {
   try {
-    const projected = projectHumanKitchen(farm, now);
+    const projected = projectHumanKitchen(farm, now, options);
     return {
       data: projected.data,
       revision: kitchenInventoryRevisionFromData(projected.data),
@@ -266,7 +266,7 @@ function executeAuthority(working, body, now) {
  * committed together through one replaceFarm call; rejected/stale actions do
  * not touch the live farm or receipt ledger.
  */
-export function handleHumanKitchenInventoryAction(farm, body, now = Date.now()) {
+export function handleHumanKitchenInventoryAction(farm, body, now = Date.now(), options = {}) {
   if (!validateBody(body)) return invalidRequest();
   if (!farm) return unavailable("The bound farm was not found");
   if (farm.humanKey !== body.farm_human_key || farm.id !== body.expected_farm_doorplate) {
@@ -283,7 +283,7 @@ export function handleHumanKitchenInventoryAction(farm, body, now = Date.now()) 
       : errorResponse("idempotency_conflict", "This idempotency key was used for a different request");
   }
 
-  const current = currentResource(farm, now);
+  const current = currentResource(farm, now, options);
   if (!current) return unavailable("The kitchen inventory could not be read");
   if (current.revision !== body.expected_kitchen_inventory_revision) {
     return errorResponse("state_conflict", "The kitchen inventory has changed", current.revision);
@@ -306,7 +306,7 @@ export function handleHumanKitchenInventoryAction(farm, body, now = Date.now()) 
 
   const outcome = actionOutcome(body, authorityResult);
   if (!outcome) return unavailable("The kitchen inventory action returned an invalid result");
-  const resource = currentResource(working, now);
+  const resource = currentResource(working, now, options);
   if (!resource) return unavailable("The kitchen inventory resource could not be read");
   const response = {
     data: {

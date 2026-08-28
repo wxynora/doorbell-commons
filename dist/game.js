@@ -41,8 +41,8 @@ export { advance } from "./engine.js";
 export { statusFooter } from "./flavor.js";
 
 /** 单农场动作分发（HTTP 与 CLI 共用）。多人动作(偷菜/串门)由各端各自处理。 */
-export function dispatch(f, b, now) {
-    const result = dispatchImpl(f, b, now);
+export function dispatch(f, b, now, options = {}) {
+    const result = dispatchImpl(f, b, now, options);
     checkTitles(f); // 每次本人动作后重新结算称号解锁（纯派生、幂等）
     return result;
 }

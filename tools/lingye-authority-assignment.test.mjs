@@ -15,6 +15,7 @@ const INSTITUTION_BY_CAREER = {
 function createHarness() {
     const database = new DatabaseSync(":memory:");
     database.exec("PRAGMA foreign_keys = ON");
+    database.exec("CREATE TABLE residents (resident_id TEXT PRIMARY KEY)");
     let sequence = 0;
     const jobs = new CareerJobService({
         database,

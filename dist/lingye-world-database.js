@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,9 +10,47 @@ import { CareerJobService } from "./career/job-service.js";
 import { EXAM_SESSION_DURATION_MS } from "./career/persistence.js";
 import { installCareerSchema } from "./career/schema.js";
 import { CareerSchoolService } from "./career/school-service.js";
+import {
+    ChefCommerceService,
+    ensureChefCommerceSchema,
+    hasChefRecipeEntitlement,
+} from "./career/chef-commerce-service.js";
+import {
+    ensureChefRecipeSchema,
+    getChefRecipe,
+    getChefRecipeResearch,
+    listChefRecipes,
+    recoverChefRecipeResearch,
+    researchChefRecipe,
+} from "./career/chef-recipe-service.js";
+import { createChefFarmInventoryAdapter } from "./career/chef-farm-inventory-adapter.js";
+import {
+    ChefStoreService,
+    ensureChefStoreSchema,
+} from "./career/chef-store-service.js";
+import { createChefStoreFarmAdapter } from "./career/chef-store-farm-adapter.js";
 import { installEconomySchema } from "./economy/economy-schema.js";
 import { EconomyError } from "./economy/economy-errors.js";
 import { EconomyService } from "./economy/economy-service.js";
+import {
+    claimReporterMaterialPack,
+    createReporterCorrection,
+    createReporterMaterialPack,
+    getReporterArticle,
+    getReporterEvaluationQuote,
+    getReporterMaterialPack,
+    getReporterPublication,
+    getReporterSourceFact,
+    publishReporterArticle,
+    quoteReporterEvaluation,
+    recordReporterLike,
+    registerReporterSourceFact,
+    returnReporterMaterialPack,
+    reviewReporterArticle,
+    settleReporterEvaluation,
+    submitReporterArticle,
+    submitReporterSupplement,
+} from "./career/reporter-service.js";
 
 export const LINGYE_WORLD_SCHEMA_VERSION = 1;
 
@@ -134,6 +173,9 @@ export function installLingyeWorldSchema(database) {
     `);
     installEconomySchema(database);
     installCareerSchema(database);
+    ensureChefRecipeSchema(database);
+    ensureChefCommerceSchema(database);
+    ensureChefStoreSchema(database);
 }
 
 export function openLingyeWorldDatabase(databasePath = DEFAULT_LINGYE_WORLD_DATABASE_PATH) {
@@ -182,6 +224,104 @@ export function registerLingyeResidentReference(database, input) {
     });
 }
 
+const CHEF_CLIENT_IDENTITY_FIELDS = Object.freeze([
+    "ownerResidentId",
+    "owner_resident_id",
+    "buyerResidentId",
+    "buyer_resident_id",
+    "cookResidentId",
+    "cook_resident_id",
+    "residentId",
+    "resident_id",
+    "actor",
+    "actorResidentId",
+    "actor_resident_id",
+    "authorResidentId",
+    "author_resident_id",
+    "workerResidentId",
+    "worker_resident_id",
+]);
+
+function assertChefClientInput(input, extraFields = []) {
+    if (input === null || typeof input !== "object" || Array.isArray(input))
+        return;
+    const forbidden = [...CHEF_CLIENT_IDENTITY_FIELDS, ...extraFields]
+        .find((field) => Object.hasOwn(input, field));
+    if (forbidden)
+        throw new CareerDomainError(
+            "chef_identity_fields_forbidden",
+            "Chef commands derive resident identity from the authenticated backend session",
+        );
+}
+
+function registeredLingyeResident(database, residentId) {
+    return database
+        .prepare("SELECT 1 FROM residents WHERE resident_id = ?")
+        .get(residentId) !== undefined;
+}
+
+function activeChefQualificationLevel(database, residentId, now) {
+    const row = database.prepare(`
+      SELECT MAX(qualification_level) AS qualification_level
+      FROM career_certificates
+      WHERE resident_id = ? AND career = 'chef' AND status = 'active'
+        AND (effective_at IS NULL OR effective_at <= ?)
+    `).get(residentId, now);
+    return Number.isSafeInteger(row?.qualification_level) ? row.qualification_level : 0;
+}
+
+function chefStoreQualification(database, { ownerResidentId, grade, now }) {
+    const requiredLevel = grade === "special" ? 4 : 3;
+    return activeChefQualificationLevel(database, ownerResidentId, now) >= requiredLevel;
+}
+
+function chefRecipeAccess(database, residentId, recipeId) {
+    const recipe = getChefRecipe(database, recipeId);
+    if (!recipe)
+        return false;
+    return recipe.authorResidentId === residentId || hasChefRecipeEntitlement(database, residentId, recipe.recipeId);
+}
+
+function accessibleChefRecipes(database, residentId) {
+    if (!registeredLingyeResident(database, residentId))
+        throw new CareerDomainError("chef_resident_not_registered", "The authenticated resident is not registered in Lingye");
+    const rows = database.prepare(`
+      SELECT DISTINCT recipe.recipe_id
+      FROM career_chef_original_recipes AS recipe
+      LEFT JOIN chef_recipe_entitlements AS entitlement
+        ON entitlement.recipe_id = recipe.recipe_id
+       AND entitlement.resident_id = ?
+       AND entitlement.revoked_at IS NULL
+      WHERE recipe.resident_id = ? OR entitlement.resident_id IS NOT NULL
+      ORDER BY recipe.created_at, recipe.recipe_id
+    `).all(residentId, residentId);
+    return rows.map(({ recipe_id }) => getChefRecipe(database, recipe_id));
+}
+
+function stableChefStoreOpeningInput(input, residentId) {
+    const payload = { ...(input ?? {}) };
+    if (payload.leaseId === undefined &&
+        typeof payload.idempotencyKey === "string" &&
+        payload.idempotencyKey.length > 0 &&
+        payload.idempotencyKey.trim() === payload.idempotencyKey) {
+        const suffix = createHash("sha256")
+            .update(`${residentId}\u0000${payload.idempotencyKey}`, "utf8")
+            .digest("hex");
+        payload.leaseId = `chef-store-lease:${suffix}`;
+    }
+    return payload;
+}
+
+function chefAuthorityOption(options, authority, ...names) {
+    for (const name of names) {
+        if (typeof authority?.[name] === "function")
+            return authority[name];
+        if (typeof options?.[name] === "function")
+            return options[name];
+    }
+    return undefined;
+}
+
 export function createLingyeWorldBackend(database, options) {
     if (!options?.economyRules)
         throw new Error("Lingye economy rules are required");
@@ -201,6 +341,143 @@ export function createLingyeWorldBackend(database, options) {
     const jobs = new CareerJobService(shared);
     const authorityAssignment = new CareerAuthorityAssignmentService({ ...shared, jobs });
     const atomic = (operation) => runLingyeWorldTransaction(database, operation);
+    const chefAuthority = options.chefAuthority ?? options.chef ?? {};
+    const chefNow = options.now ?? Date.now;
+    const configuredOriginalRecipeResolver = chefAuthorityOption(
+        options,
+        chefAuthority,
+        "resolveOriginalRecipe",
+        "resolveChefOriginalRecipe",
+    );
+    const configuredCookingReceiptResolver = chefAuthorityOption(
+        options,
+        chefAuthority,
+        "resolveCookingReceipt",
+        "resolveChefCookingReceipt",
+    );
+    const configuredRecipeInventoryFactory = chefAuthorityOption(
+        options,
+        chefAuthority,
+        "createRecipeInventoryAdapter",
+        "createChefFarmInventoryAdapter",
+    );
+    const configuredResidentResolver = chefAuthorityOption(
+        options,
+        chefAuthority,
+        "isRealResident",
+        "resolveResident",
+    );
+    const configuredListingPreparer = chefAuthorityOption(
+        options,
+        chefAuthority,
+        "prepareOpeningListing",
+        "prepareChefStoreListing",
+    );
+    const configuredListingRollback = chefAuthorityOption(
+        options,
+        chefAuthority,
+        "rollbackOpeningListing",
+        "rollbackChefStoreListing",
+    );
+    const configuredOrderExecutor = chefAuthorityOption(
+        options,
+        chefAuthority,
+        "executeOrder",
+        "executeChefStoreOrder",
+    );
+    const configuredDebtRecorder = chefAuthorityOption(
+        options,
+        chefAuthority,
+        "recordDebt",
+        "recordChefStoreDebt",
+    );
+    const farmStoreOptions = chefAuthority.farmStoreOptions &&
+        typeof chefAuthority.farmStoreOptions === "object" &&
+        !Array.isArray(chefAuthority.farmStoreOptions)
+        ? chefAuthority.farmStoreOptions
+        : {};
+    const farmStoreAuthority = chefAuthority.useFarmStore === true || options.useChefFarmStore === true
+        ? createChefStoreFarmAdapter({ ...farmStoreOptions, database, economy, now: chefNow })
+        : null;
+    const listingPreparer = configuredListingPreparer ?? farmStoreAuthority?.prepareOpeningListing;
+    const listingRollback = configuredListingRollback ?? farmStoreAuthority?.rollbackOpeningListing;
+    const orderExecutor = configuredOrderExecutor ?? farmStoreAuthority?.executeOrder;
+    const resolveChefOriginalRecipe = (recipeId) => {
+        const recipe = configuredOriginalRecipeResolver
+            ? configuredOriginalRecipeResolver(recipeId)
+            : getChefRecipe(database, recipeId);
+        if (!recipe)
+            return null;
+        const authorResidentId = recipe.authorResidentId ?? recipe.authorId ?? recipe.residentId;
+        return typeof authorResidentId === "string" && registeredLingyeResident(database, authorResidentId)
+            ? recipe
+            : null;
+    };
+    const resolveChefCookingReceipt = configuredCookingReceiptResolver
+        ? (cookingReceiptId) => {
+            const receipt = configuredCookingReceiptResolver(cookingReceiptId);
+            if (!receipt || typeof receipt !== "object" || Array.isArray(receipt))
+                return receipt;
+            if (receipt.original === false || receipt.isOriginal === false || receipt.originalRecipe === false)
+                return null;
+            const rawRecipe = receipt.originalRecipe && typeof receipt.originalRecipe === "object"
+                ? receipt.originalRecipe
+                : receipt.recipe && typeof receipt.recipe === "object"
+                    ? receipt.recipe
+                    : receipt;
+            const recipeId = receipt.recipeId ?? rawRecipe.recipeId ?? rawRecipe.id;
+            if (typeof recipeId !== "string" || recipeId.length === 0)
+                return null;
+            const originalRecipe = resolveChefOriginalRecipe(recipeId);
+            if (!originalRecipe)
+                return null;
+            return {
+                ...receipt,
+                original: true,
+                originalRecipe,
+            };
+        }
+        : undefined;
+    const recipeInventoryForResident = (residentId) => {
+        if (configuredRecipeInventoryFactory) {
+            const inventory = configuredRecipeInventoryFactory({ database, residentId, now: chefNow });
+            if (!inventory || typeof inventory !== "object")
+                throw new CareerDomainError("chef_inventory_required", "The chef recipe inventory authority is unavailable");
+            return inventory;
+        }
+        return createChefFarmInventoryAdapter({ database, residentId, now: chefNow });
+    };
+    const chefCommerce = new ChefCommerceService(database, {
+        economy,
+        now: chefNow,
+        ...(options.generateId === undefined ? {} : { generateId: options.generateId }),
+        resolveOriginalRecipe: resolveChefOriginalRecipe,
+        resolveCookingReceipt: resolveChefCookingReceipt,
+    });
+    const chefStore = new ChefStoreService(database, {
+        economy,
+        now: chefNow,
+        ...(options.generateId === undefined ? {} : { generateId: options.generateId }),
+        ...(listingPreparer === undefined ? {} : { prepareOpeningListing: listingPreparer }),
+        ...(listingRollback === undefined ? {} : { rollbackOpeningListing: listingRollback }),
+        isRealResident: (residentId) => {
+            if (!registeredLingyeResident(database, residentId))
+                return false;
+            return configuredResidentResolver ? configuredResidentResolver(residentId) : true;
+        },
+        ...(orderExecutor === undefined ? {} : { executeOrder: orderExecutor }),
+        ...(configuredDebtRecorder === undefined ? {} : { recordDebt: configuredDebtRecorder }),
+        assertActiveChefQualification: (input) => chefStoreQualification(database, input),
+    });
+    if (farmStoreAuthority) {
+        farmStoreAuthority.recoverOrphanedListings();
+        farmStoreAuthority.recoverPendingOrders({
+            completeOrder: (input) => chefStore.placeOrder(input),
+        });
+        farmStoreAuthority.reconcileTerminatedLeases();
+    }
+    const reconcileChefStoreFarmListings = () =>
+        farmStoreAuthority?.reconcileTerminatedLeases();
     const expireDueExamAttempts = (residentId) => {
         const now = options.now?.() ?? Date.now();
         const attempts = database
@@ -403,6 +680,86 @@ export function createLingyeWorldBackend(database, options) {
                 });
             }),
     };
+    const reporterNow = () => options.now?.() ?? Date.now();
+    const reporterWithClock = (input) => ({ ...(input ?? {}), now: reporterNow() });
+    const reporterWithResident = (input, residentId) => ({
+        ...(input ?? {}),
+        residentId,
+        now: reporterNow(),
+    });
+    const assertReporterSettlementInput = (input) => {
+        const payload = input ?? {};
+        for (const field of [
+            "validLikes",
+            "amount",
+            "residentId",
+            "authorResidentId",
+            "authorId",
+            "financialReceipt",
+            "wageReceipt",
+        ]) {
+            if (Object.hasOwn(payload, field))
+                throw new CareerDomainError("reporter_authoritative_settlement_required", "Reporter evaluation is authoritative in the world backend");
+        }
+    };
+    const publishReporterArticleAndComplete = (input) => atomic(() => {
+        const publication = publishReporterArticle(database, reporterWithClock(input));
+        const job = jobs.getJob(publication.jobId);
+        if (job.status !== "completed") {
+            jobs.completeJob({
+                jobId: publication.jobId,
+                workerResidentId: publication.residentId,
+                validationPassed: true,
+                worldResultReference: `reporter-publication:${publication.publicationId}`,
+            });
+        }
+        else if (!database.prepare(`
+          SELECT 1 FROM career_work_records
+          WHERE job_id = ? AND resident_id = ? AND record_kind = 'completed'
+        `).get(publication.jobId, publication.residentId)) {
+            throw new CareerDomainError("reporter_work_record_missing", "The completed reporter work record is missing");
+        }
+        return publication;
+    });
+    const reporterCommands = {
+        registerReporterSourceFact: (input) => atomic(() => registerReporterSourceFact(database, reporterWithClock(input))),
+        createReporterMaterialPack: (input) => atomic(() => createReporterMaterialPack(database, reporterWithClock(input))),
+        reviewReporterArticle: (input) => atomic(() => reviewReporterArticle(database, {
+            ...reporterWithClock(input),
+            trustedReview: true,
+        })),
+        publishReporterArticle: publishReporterArticleAndComplete,
+        quoteReporterEvaluation: (input) => atomic(() => {
+            assertReporterSettlementInput(input);
+            return quoteReporterEvaluation(database, reporterWithClock(input));
+        }),
+        settleReporterEvaluation: (input) => atomic(() => {
+            assertReporterSettlementInput(input);
+            const now = reporterNow();
+            const quote = quoteReporterEvaluation(database, { ...(input ?? {}), now });
+            if (quote.performanceUnits === 0) {
+                return settleReporterEvaluation(database, {
+                    jobId: quote.jobId,
+                    publicationId: quote.publicationId,
+                    now,
+                });
+            }
+            const credited = economy.creditFromSystem({
+                residentId: quote.residentId,
+                currency: "gold",
+                amount: quote.performanceGold,
+                businessType: "career_wage",
+                businessRef: `career-job:${quote.jobId}:evaluation-performance`,
+                idempotencyKey: `reporter-evaluation:${quote.jobId}:credit`,
+            });
+            return settleReporterEvaluation(database, {
+                jobId: quote.jobId,
+                publicationId: quote.publicationId,
+                financialReceipt: credited.financialReceipt,
+                now,
+            });
+        }),
+    };
     // Only commands whose services already verify an explicit resident actor belong here.
     // Future HTTP/MCP adapters must still inject that actor from authenticated identity.
     const residentCommands = Object.freeze({
@@ -434,6 +791,15 @@ export function createLingyeWorldBackend(database, options) {
         openSystemLoan: economyCommands.openSystemLoan,
         refreshDebtStatus: economyCommands.refreshDebtStatus,
         ...careerCommands,
+        ...reporterCommands,
+        // Store expiry is the only chef mutation exposed to the trusted
+        // system surface. Resident-initiated opening, rent, orders, recipe
+        // purchases and production settlement stay behind forResident.
+        reconcileChefStoreLease: (leaseId) => {
+            const result = atomic(() => chefStore.reconcileLease(leaseId));
+            reconcileChefStoreFarmListings();
+            return result;
+        },
     });
     const trustedQueries = Object.freeze({
         getAccount: (residentId) => economy.getAccount(residentId),
@@ -445,11 +811,56 @@ export function createLingyeWorldBackend(database, options) {
         getWrittenExamPaper: (attemptId) => school.getWrittenExamPaper(attemptId),
         hasScheduledDuty: (residentId, career, dutyDate) => employment.hasScheduledDuty(residentId, career, dutyDate),
         getJob: (jobId) => jobs.getJob(jobId),
+        getReporterSourceFact: (sourceId) => getReporterSourceFact(database, sourceId),
+        getReporterMaterialPack: (packId) => getReporterMaterialPack(database, packId),
+        getReporterArticle: (articleId) => getReporterArticle(database, articleId),
+        getReporterPublication: (publicationId) => getReporterPublication(database, publicationId),
+        getReporterEvaluationQuote: (jobId) => getReporterEvaluationQuote(database, jobId),
+        getChefRecipe: (recipeId) => getChefRecipe(database, recipeId),
+        listChefRecipes: (residentId) => listChefRecipes(database, residentId),
+        listAccessibleChefRecipes: (residentId) => accessibleChefRecipes(database, residentId),
+        canUseChefRecipe: (residentId, recipeId) => chefRecipeAccess(database, residentId, recipeId),
+        getChefRecipeResearch: (selector) => getChefRecipeResearch(database, selector),
+        getChefStoreOrder: (orderId) => chefStore.getOrder(orderId),
     });
+    const chefResidentInput = (input, field, residentId, extraFields = []) => {
+        assertChefClientInput(input, extraFields);
+        if (!registeredLingyeResident(database, residentId))
+            throw new CareerDomainError("chef_resident_not_registered", "The authenticated resident is not registered in Lingye");
+        return { ...(input ?? {}), [field]: residentId };
+    };
+    const ownChefStoreLease = (leaseId, residentId) => {
+        const row = database.prepare(`
+          SELECT owner_resident_id FROM chef_store_leases WHERE lease_id = ?
+        `).get(leaseId);
+        if (!row)
+            throw new CareerDomainError("chef_store_lease_not_found", "The chef store lease was not found");
+        if (row.owner_resident_id !== residentId)
+            throw new CareerDomainError("chef_store_owner_mismatch", "The chef store lease belongs to another resident");
+        const lease = chefStore.getLease(leaseId);
+        reconcileChefStoreFarmListings();
+        return lease;
+    };
+    const ownChefStoreOrder = (orderId, residentId) => {
+        const order = chefStore.getOrder(orderId);
+        if (!order || (order.ownerResidentId !== residentId && order.buyerResidentId !== residentId))
+            throw new CareerDomainError("chef_store_order_not_found", "The chef store order was not found");
+        return order;
+    };
+    const ownChefRecipeResearch = (operationId, residentId) => {
+        if (typeof operationId !== "string" || operationId.length === 0 || operationId.trim() !== operationId)
+            throw new CareerDomainError("chef_recipe_operation_not_found", "The chef recipe research operation was not found");
+        const row = database.prepare(`
+          SELECT resident_id FROM career_chef_recipe_research_operations
+          WHERE operation_id = ?
+        `).get(operationId);
+        if (!row || row.resident_id !== residentId)
+            throw new CareerDomainError("chef_recipe_operation_not_found", "The chef recipe research operation was not found");
+    };
     const forResident = (authenticatedResidentId) => {
         if (typeof authenticatedResidentId !== "string" || authenticatedResidentId.length === 0)
             throw new Error("Authenticated resident id is required");
-        return Object.freeze({
+        const residentFacade = {
             acceptOwnJob: (jobId) => careerCommands.acceptJob(jobId, authenticatedResidentId),
             confirmTrade: (input) => residentCommands.confirmTrade({ ...input, actorResidentId: authenticatedResidentId }),
             closeOwnTermDeposit: (input) => residentCommands.closeTermDeposit({ ...input, actorResidentId: authenticatedResidentId }),
@@ -477,13 +888,137 @@ export function createLingyeWorldBackend(database, options) {
                 }
                 return job;
             },
+        };
+        Object.defineProperties(residentFacade, {
+            openChefStore: {
+                value: (input) => {
+                    const result = atomic(() => chefStore.openStore(
+                        stableChefStoreOpeningInput(
+                            chefResidentInput(input, "ownerResidentId", authenticatedResidentId),
+                            authenticatedResidentId,
+                        ),
+                    ));
+                    reconcileChefStoreFarmListings();
+                    return result;
+                },
+            },
+            payChefStoreRent: {
+                value: (input) => atomic(() => chefStore.payRent(
+                    chefResidentInput(input, "ownerResidentId", authenticatedResidentId),
+                )),
+            },
+            getOwnChefStoreLease: {
+                value: (leaseId) => ownChefStoreLease(leaseId, authenticatedResidentId),
+            },
+            placeChefStoreOrder: {
+                value: (input) => atomic(() => chefStore.placeOrder(
+                    chefResidentInput(input, "buyerResidentId", authenticatedResidentId),
+                )),
+            },
+            getOwnChefStoreOrder: {
+                value: (orderId) => ownChefStoreOrder(orderId, authenticatedResidentId),
+            },
+            listOwnChefRecipes: {
+                value: () => accessibleChefRecipes(database, authenticatedResidentId),
+            },
+            canUseOwnChefRecipe: {
+                value: (recipeId) => chefRecipeAccess(database, authenticatedResidentId, recipeId),
+            },
+            researchOwnChefRecipe: {
+                // Recipe research owns its own pending -> consumed -> final
+                // transactions because inventory lives in the farm store.
+                // Do not wrap the phase machine in the world transaction:
+                // a farm receipt must survive a later SQLite phase failure so
+                // recovery can replay it without consuming twice.
+                value: (input) => researchChefRecipe(
+                    database,
+                    chefResidentInput(input, "residentId", authenticatedResidentId),
+                    {
+                        now: chefNow,
+                        ...(typeof options.random === "function" ? { random: options.random } : {}),
+                        inventory: recipeInventoryForResident(authenticatedResidentId),
+                    },
+                ),
+            },
+            recoverOwnChefRecipeResearch: {
+                value: (operationId) => {
+                    ownChefRecipeResearch(operationId, authenticatedResidentId);
+                    return recoverChefRecipeResearch(database, operationId, {
+                        now: chefNow,
+                        ...(typeof options.random === "function" ? { random: options.random } : {}),
+                        inventory: recipeInventoryForResident(authenticatedResidentId),
+                    });
+                },
+            },
+            purchaseChefOriginalRecipe: {
+                value: (input) => atomic(() => chefCommerce.purchaseOriginalRecipe(
+                    chefResidentInput(input, "buyerResidentId", authenticatedResidentId),
+                )),
+            },
+            refundChefOriginalRecipePurchase: {
+                value: (input) => atomic(() => chefCommerce.refundOriginalRecipePurchase(
+                    chefResidentInput(input, "buyerResidentId", authenticatedResidentId),
+                )),
+            },
+            recordChefOriginalRecipeProduction: {
+                value: (input) => atomic(() => chefCommerce.recordOriginalRecipeProduction(
+                    chefResidentInput(input, "cookResidentId", authenticatedResidentId, [
+                        "recipeId",
+                        "recipe_id",
+                        "originalRecipe",
+                        "original_recipe",
+                        "recipe",
+                        "success",
+                        "successful",
+                        "status",
+                    ]),
+                )),
+            },
+            claimReporterMaterialPack: {
+                value: (input) => atomic(() => claimReporterMaterialPack(
+                    database,
+                    reporterWithResident(input, authenticatedResidentId),
+                )),
+            },
+            returnReporterMaterialPack: {
+                value: (input) => atomic(() => returnReporterMaterialPack(
+                    database,
+                    reporterWithResident(input, authenticatedResidentId),
+                )),
+            },
+            submitReporterArticle: {
+                value: (input) => atomic(() => submitReporterArticle(
+                    database,
+                    reporterWithResident(input, authenticatedResidentId),
+                )),
+            },
+            submitReporterSupplement: {
+                value: (input) => atomic(() => submitReporterSupplement(
+                    database,
+                    reporterWithResident(input, authenticatedResidentId),
+                )),
+            },
+            createReporterCorrection: {
+                value: (input) => atomic(() => createReporterCorrection(
+                    database,
+                    reporterWithResident(input, authenticatedResidentId),
+                )),
+            },
+            recordReporterLike: {
+                value: (input) => atomic(() => recordReporterLike(database, {
+                    ...reporterWithResident(input, authenticatedResidentId),
+                    actorKind: "resident",
+                })),
+            },
         });
+        return Object.freeze(residentFacade);
     };
     const backend = { forResident, trustedSystemCommands, trustedQueries };
     if (options.exposeInternalsForTesting) {
         backend.testing = Object.freeze({
             economy,
             career: Object.freeze({ school, employment, jobs }),
+            chef: Object.freeze({ commerce: chefCommerce, store: chefStore }),
         });
     }
     return Object.freeze(backend);

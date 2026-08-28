@@ -12,6 +12,20 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const generator = resolve(root, "tools/generate-career-curriculum.mjs");
 const careers = ["chef", "agronomist", "veterinarian", "reporter", "constable"];
 const levelNames = ["初级", "中级", "高级", "特级"];
+const committedOpenCourses = Object.freeze({
+    chef: new Set(["1:1", "1:2", "1:3", "2:1", "2:2", "2:3", "3:2", "3:3", "4:1", "4:2"]),
+    agronomist: new Set(["1:1", "1:2", "1:3", "2:3"]),
+    veterinarian: new Set(["1:1", "1:2", "1:3", "2:1", "2:2", "2:3", "3:3", "4:1"]),
+    reporter: new Set(),
+    constable: new Set(["1:1", "1:2", "1:3", "2:1", "2:2", "2:3", "3:1", "3:2", "3:3", "4:1"]),
+});
+const committedOpenExams = Object.freeze({
+    chef: new Set([1, 2]),
+    agronomist: new Set([1]),
+    veterinarian: new Set([1, 2]),
+    reporter: new Set(),
+    constable: new Set([1, 2, 3]),
+});
 
 function fixtureMarkdown(career) {
     const sections = [];
@@ -54,10 +68,10 @@ function fixtureReadiness() {
                 kind: "exam",
                 career,
                 level,
-                text_approved: false,
-                model_copy_approved: false,
-                runtime_ready: false,
-                blocked_by: ["PRIVATE_EXAM_BANK_REQUIRED"],
+                text_approved: career !== "reporter",
+                model_copy_approved: career !== "reporter",
+                runtime_ready: career !== "reporter",
+                blocked_by: career === "reporter" ? ["REPORTER_DAILY_REPORT_DEFERRED"] : [],
             });
         }
     }
@@ -96,8 +110,9 @@ test("career curriculum generation is reproducible without the main checkout and
         for (const exam of curriculum.careers[career].exams) {
             assert.deepEqual(Object.keys(exam).sort(),
                 ["approval", "available", "blockedReason", "career", "level"].sort());
-            assert.equal(exam.available, false);
-            assert.equal(exam.blockedReason, "RUNTIME_NOT_READY");
+            assert.equal(exam.available, career !== "reporter");
+            assert.equal(exam.blockedReason, career === "reporter" ? "RUNTIME_NOT_READY" : null);
+            assert.equal(Object.hasOwn(exam, "questions"), false);
         }
     }
 });
@@ -113,11 +128,44 @@ test("career curriculum generation rejects duplicate readiness facts", async (t)
     );
 });
 
+test("career curriculum generation rejects a ready exam before all three level courses are ready", async (t) => {
+    const fixture = await createFixture(t);
+    const readiness = fixtureReadiness();
+    const blocked = readiness.entries.find((entry) =>
+        entry.kind === "course" && entry.career === "chef" && entry.level === 1 && entry.course_index === 3);
+    blocked.model_copy_approved = false;
+    blocked.runtime_ready = false;
+    blocked.blocked_by = ["TEST_RUNTIME_BLOCKER"];
+    await writeFile(fixture.readinessPath, `${JSON.stringify(readiness, null, 2)}\n`, "utf8");
+    await assert.rejects(
+        execute(process.execPath, [generator, fixture.sourceDirectory, fixture.outputPath, fixture.readinessPath]),
+        /chef exam 1 cannot be ready before all level courses are ready/u,
+    );
+});
+
 test("committed public curriculum matches its manifests and rejects exam question fields", async (t) => {
     const publicPath = resolve(root, "content/career-curriculum.json");
     const readinessPath = resolve(root, "content/career-curriculum-readiness.json");
     const verified = await execute(process.execPath, [generator, "--verify-public", publicPath, readinessPath]);
     assert.equal(JSON.parse(verified.stdout).verified, true);
+
+    const committed = JSON.parse(await readFile(publicPath, "utf8"));
+    for (const career of careers) {
+        for (const course of committed.careers[career].courses) {
+            assert.equal(
+                course.available,
+                committedOpenCourses[career].has(`${course.level}:${course.courseIndex}`),
+                `${career} course ${course.level}:${course.courseIndex}`,
+            );
+        }
+        for (const exam of committed.careers[career].exams) {
+            assert.equal(
+                exam.available,
+                committedOpenExams[career].has(exam.level),
+                `${career} exam ${exam.level}`,
+            );
+        }
+    }
 
     const directory = await mkdtemp(join(tmpdir(), "aifarm-career-curriculum-leak-"));
     const leakedPath = join(directory, "career-curriculum.json");

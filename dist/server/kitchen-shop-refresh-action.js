@@ -80,9 +80,9 @@ function errorResponse(code, message, status = 409, currentRevision) {
   return { status, json: { error } };
 }
 
-function currentKitchenState(farm, now) {
+function currentKitchenState(farm, now, options) {
   try {
-    const projected = projectHumanKitchen(farm, now);
+    const projected = projectHumanKitchen(farm, now, options);
     return { projected, revision: projected.shop_revision };
   } catch {
     return null;
@@ -105,12 +105,12 @@ function unavailableShop(projected) {
 
 export const kitchenShopRefreshRevisionFromData = kitchenShopRevisionFromData;
 
-export function kitchenShopRefreshRevision(farm, now = Date.now()) {
-  return projectHumanKitchen(farm, now).shop_revision;
+export function kitchenShopRefreshRevision(farm, now = Date.now(), options = {}) {
+  return projectHumanKitchen(farm, now, options).shop_revision;
 }
 
 /** Execute one atomic Human refresh of the kitchen's rotating ingredients. */
-export function handleHumanKitchenShopRefresh(farm, body, now = Date.now()) {
+export function handleHumanKitchenShopRefresh(farm, body, now = Date.now(), options = {}) {
   if (!validateBody(body)) return invalidRequest();
 
   const receipts = isRecord(farm?.doorbellHumanKitchenShopRefreshReceipts)
@@ -127,7 +127,7 @@ export function handleHumanKitchenShopRefresh(farm, body, now = Date.now()) {
         );
   }
 
-  const current = currentKitchenState(farm, now);
+  const current = currentKitchenState(farm, now, options);
   if (!current) {
     return errorResponse("farm_unavailable", "The kitchen could not be read", 503);
   }
@@ -174,7 +174,7 @@ export function handleHumanKitchenShopRefresh(farm, body, now = Date.now()) {
       return errorResponse("farm_unavailable", "The kitchen refresh result was invalid", 503);
     }
 
-    const projected = projectHumanKitchen(working, now);
+    const projected = projectHumanKitchen(working, now, options);
     if (projected.data.daily_shop.status !== "available") {
       return errorResponse("farm_unavailable", "The refreshed kitchen shop is unavailable", 503);
     }

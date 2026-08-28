@@ -45,8 +45,13 @@ function kitchenRotatingIngredients() {
     return cookingIngredients.filter((item) => !item.staple).map((item) => item.id);
 }
 
-export function kitchenIngredientDailyBuyLimit(item) {
-    return Math.max(1, Math.floor(Number(item?.dailyBuyLimit) || cooking.dailyBuyLimit));
+function ingredientDailyBuyMultiplier(options) {
+    return options?.ingredientDailyBuyMultiplier === 2 ? 2 : 1;
+}
+
+export function kitchenIngredientDailyBuyLimit(item, options = {}) {
+    const base = Math.max(1, Math.floor(Number(item?.dailyBuyLimit) || cooking.dailyBuyLimit));
+    return base * ingredientDailyBuyMultiplier(options);
 }
 
 /** 每座牧场自己的每日食材/食谱货架；UTC+8 零点刷新。 */
@@ -134,7 +139,7 @@ export function refreshKitchenIngredients(farm, now = Date.now()) {
     };
 }
 
-export function kitchenBuy(farm, kind, id, qty, now) {
+export function kitchenBuy(farm, kind, id, qty, now, options = {}) {
     const kitchen = ensureKitchen(farm);
     const shop = refreshKitchenShop(farm, now);
     if (kind === "ingredient") {
@@ -144,7 +149,7 @@ export function kitchenBuy(farm, kind, id, qty, now) {
         const n = Math.max(1, Math.floor(Number(qty) || 1));
         const key = `ingredient:${item.id}`;
         const bought = shop.bought[key] ?? 0;
-        const dailyBuyLimit = kitchenIngredientDailyBuyLimit(item);
+        const dailyBuyLimit = kitchenIngredientDailyBuyLimit(item, options);
         if (bought + n > dailyBuyLimit)
             return { ok: false, error: `${item.name}每天最多买 ${dailyBuyLimit} 份，今天还可买 ${Math.max(0, dailyBuyLimit - bought)} 份。` };
         const cost = item.price * n;

@@ -218,7 +218,7 @@ export async function handleDoorbellHumanSmeltingAction(req, res, method) {
     }
 }
 
-export async function handleDoorbellHumanHarvestAssist(req, res, method) {
+export async function handleDoorbellHumanHarvestAssist(req, res, method, careerBenefitsForFarm) {
     if (!requireDoorbellHumanFieldService(req, res, method)) return;
     try {
         const body = await readJsonBody(req, MAX_BODY_BYTES);
@@ -239,7 +239,7 @@ export async function handleDoorbellHumanHarvestAssist(req, res, method) {
         const binding = validateFarmBinding(body);
         if (binding.error)
             return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
-        const out = handleHumanHarvestAssist(binding.farm, body);
+        const out = handleHumanHarvestAssist(binding.farm, body, Date.now(), careerBenefitsForFarm?.(binding.farm));
         return jsonOut(res, out.status, out.json);
     }
     catch (error) {

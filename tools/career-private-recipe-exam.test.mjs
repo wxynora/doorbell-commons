@@ -80,3 +80,60 @@ test("private written exams freeze one deterministic question from authoritative
         rmSync(directory, { recursive: true, force: true });
     }
 });
+
+test("only per-level ready exams become available with a private bank while blocked content stays closed", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "aifarm-private-ready-exams-"));
+    const bankPath = join(directory, "private-bank.json");
+    const questions = Array.from({ length: 20 }, (_, index) => ({
+        id: `ready-question-${index + 1}`,
+        stem: `Ready question ${index + 1}`,
+        options: { A: "A", B: "B", C: "C", D: "D" },
+        answer: ["A", "B", "C", "D"][index % 4],
+        explanation: "Private answer explanation",
+    }));
+    const openExams = Object.freeze({
+        chef: new Set([1, 2]),
+        agronomist: new Set([1]),
+        veterinarian: new Set([1, 2]),
+        constable: new Set([1, 2, 3]),
+    });
+    const openCareers = Object.keys(openExams);
+    writeFileSync(bankPath, JSON.stringify({
+        schemaVersion: 1,
+        version: "private-ready-v1",
+        exams: openCareers.flatMap((career) => [1, 2, 3, 4].map((level) => ({
+            career,
+            level,
+            questions,
+        }))),
+    }));
+    process.env.AIFARM_CAREER_PRIVATE_EXAM_BANK_PATH = bankPath;
+    try {
+        const curriculum = await import(`../dist/career/curriculum.js?ready-test=${Date.now()}`);
+        for (const career of openCareers) {
+            assert.equal(curriculum.careerCourseAvailability(career, 1, 1), true);
+            for (const level of [1, 2, 3, 4]) {
+                const available = openExams[career].has(level);
+                assert.equal(curriculum.careerExamAvailability(career, level), available);
+                if (available) {
+                    assert.equal(curriculum.createWrittenExamPaper(career, level,
+                        `attempt-${career}-${level}`).publicPaper.length, 20);
+                }
+            }
+        }
+        assert.equal(curriculum.careerCourseAvailability("chef", 3, 1), false);
+        assert.equal(curriculum.careerCourseAvailability("chef", 3, 2), true);
+        assert.equal(curriculum.careerCourseAvailability("agronomist", 2, 1), false);
+        assert.equal(curriculum.careerCourseAvailability("agronomist", 2, 3), true);
+        assert.equal(curriculum.careerCourseAvailability("veterinarian", 3, 1), false);
+        assert.equal(curriculum.careerCourseAvailability("veterinarian", 3, 3), true);
+        assert.equal(curriculum.careerCourseAvailability("constable", 4, 1), true);
+        assert.equal(curriculum.careerCourseAvailability("constable", 4, 2), false);
+        assert.equal(curriculum.careerCourseAvailability("reporter", 1, 1), false);
+        assert.equal(curriculum.careerExamAvailability("reporter", 1), false);
+    }
+    finally {
+        delete process.env.AIFARM_CAREER_PRIVATE_EXAM_BANK_PATH;
+        rmSync(directory, { recursive: true, force: true });
+    }
+});

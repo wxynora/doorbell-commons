@@ -17,6 +17,7 @@ import {
     publicCommissionSource,
     recoverBoundNpcSource,
     recoverPendingNpcFallbackServices,
+    reporterMaterialPackForJob,
     syncAuthorityJobs,
     treatmentGold,
     workerOptions,
@@ -421,6 +422,10 @@ function schoolActionPayloadHash(residentId, args) {
         .digest("hex");
 }
 
+function careerSchoolAvailable(backend, career) {
+    return backend.trustedQueries.courseAvailable(career, 1, 1);
+}
+
 function readSchoolFacts(database, backend, residentId, now, optionRevision = schoolRevision(database, residentId)) {
     backend.trustedSystemCommands.expireDueExamAttempts(residentId);
     const tracks = mapRows(database.prepare(`
@@ -469,7 +474,7 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
     `).all(residentId));
     const options = [];
     if (tracks.length === 0) {
-        for (const career of CAREER_IDS)
+        for (const career of CAREER_IDS.filter((candidate) => careerSchoolAvailable(backend, candidate)))
             options.push(option(schoolOption(optionRevision, "career-select", career)));
     }
     else if (tracks.length === 1) {
@@ -478,7 +483,8 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
             .filter((certificate) => certificate.career === primary.career && certificate.status === "active")
             .map((certificate) => certificate.qualificationLevel));
         if (primaryLevel >= 3) {
-            for (const career of CAREER_IDS.filter((candidate) => candidate !== primary.career))
+            for (const career of CAREER_IDS.filter((candidate) =>
+                candidate !== primary.career && careerSchoolAvailable(backend, candidate)))
                 options.push(option(schoolOption(optionRevision, "career-select", career)));
         }
     }
@@ -532,7 +538,8 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
     }
     const activeEmployment = employment.find((item) => item.status === "active");
     if (!activeEmployment) {
-        for (const career of ["reporter", "veterinarian", "constable"]) {
+        for (const career of ["reporter", "veterinarian", "constable"].filter((candidate) =>
+            careerSchoolAvailable(backend, candidate))) {
             const qualified = certificates.some((certificate) => certificate.career === career &&
                 certificate.qualificationLevel >= 1 && certificate.status === "active");
             if (!qualified)
@@ -905,6 +912,14 @@ function bindCommission(database, backend, residentId, job, actionKey) {
     if (job.assignmentMode !== "accepted")
         throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托 option 当前不可用。");
     const result = backend.forResident(residentId).acceptOwnJob(job.jobId);
+    if (job.career === "reporter") {
+        const materialPack = reporterMaterialPackForJob(database, result);
+        backend.forResident(residentId).claimReporterMaterialPack({
+            packId: materialPack.packId,
+            jobId: result.jobId,
+            idempotencyKey: `${actionKey}:reporter:claim`,
+        });
+    }
     if (job.career === "agronomist") {
         const payment = database.prepare("SELECT trade_id, silver_amount FROM career_commission_payments WHERE job_id = ?")
             .get(job.jobId);
@@ -953,7 +968,7 @@ function beginCommissionWorldOperation(database, backend, residentId, career, ar
         if (job.decisionCount >= 4)
             throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托已经达到四次决策上限。");
         const level = qualificationLevel(database, residentId, career);
-        const goldAmount = kind === "treat" ? treatmentGold(job, actionValue) : 0;
+        const goldAmount = kind === "treat" ? treatmentGold(job, actionValue, level) : 0;
         const reservation = kind === "treat"
             ? backend.trustedSystemCommands.reserveSystemGold({
                 residentId: job.ownerResidentId,
@@ -1128,28 +1143,35 @@ function resolveSecurity(database, backend, residentId, job, resultKind, args, n
 function submitReporter(database, backend, residentId, job, args, now) {
     if (job.decisionCount < 1)
         throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这份稿件尚未完成来源核对。");
-    const submissionId = idempotencyKey(residentId, `commission:${job.jobId}:submit`, args);
-    const existing = database.prepare("SELECT * FROM career_reporter_submissions WHERE job_id = ?").get(job.jobId);
-    if (existing && (existing.resident_id !== residentId || existing.article_text !== args.text))
-        throw new LingyeBusinessError("CONFLICT", "这份记者稿件已经以另一内容提交。");
-    if (!existing) {
-        database.prepare(`
-          INSERT INTO career_reporter_submissions (
-            submission_id, job_id, resident_id, source_reference,
-            article_text, status, submitted_at
-          ) VALUES (?, ?, ?, ?, ?, 'pending_review', ?)
-        `).run(submissionId, job.jobId, residentId, job.sourceId, args.text, now);
-    }
+    const submissionKey = idempotencyKey(residentId, `commission:${job.jobId}:submit`, args);
+    const sourceFacts = commissionSourceFacts(database, job);
+    const citations = sourceFacts.materialPack.sourceSnapshot.map((source, citationIndex) => ({
+        sourceId: source.sourceId,
+        factDigest: source.factDigest,
+        citationIndex,
+    }));
+    const article = backend.forResident(residentId).submitReporterArticle({
+        jobId: job.jobId,
+        articleId: `reporter-article:${job.jobId}:v1`,
+        idempotencyKey: submissionKey,
+        articleText: args.text,
+        citations,
+        numericClaims: [],
+    });
     backend.forResident(residentId).recordOwnJobDecision({
         jobId: job.jobId,
-        idempotencyKey: submissionId,
+        idempotencyKey: submissionKey,
         kind: "question",
         optionReference: args.option,
-        resultReference: submissionId,
+        resultReference: article.articleId,
         consumesResources: false,
         changesWorld: false,
     });
-    return { submissionId, status: "pending_review" };
+    return {
+        submissionId: article.articleId,
+        articleId: article.articleId,
+        status: article.status,
+    };
 }
 
 function commissionChoose(database, backend, residentId, career, args, sources, now = Date.now()) {

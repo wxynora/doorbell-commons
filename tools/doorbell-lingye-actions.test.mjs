@@ -53,7 +53,7 @@ function testPaper(kind, targetKey, count) {
     };
 }
 const TEST_CURRICULUM = Object.freeze({
-    careerCourseAvailability: () => true,
+    careerCourseAvailability: (career) => career !== "reporter",
     careerCourseContent: (career, level, courseIndex) => ({
         career,
         level,
@@ -62,7 +62,7 @@ const TEST_CURRICULUM = Object.freeze({
         contentMarkdown: `Test course content for ${career} ${level}-${courseIndex}.`,
         bankVersion: TEST_CURRICULUM_VERSION,
     }),
-    careerExamAvailability: () => true,
+    careerExamAvailability: (career) => career !== "reporter",
     createCoursePracticePaper: (career, level, courseIndex, residentId) =>
         testPaper("course_practice", `course:${residentId}:${career}:${level}:${courseIndex}`, 5),
     createWrittenExamPaper: (career, level, attemptId) =>
@@ -262,6 +262,9 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
         tuitionGold: 20_000,
         contentAvailable: true,
     });
+    assert.equal(schoolBefore.data.options.some((entry) =>
+        entry.option.includes("school:career-select") && entry.option.endsWith(":reporter")), false);
+    assert.equal(schoolBefore.data.courseCatalog.find((entry) => entry.career === "reporter").contentAvailable, false);
     const agronomistOption = schoolBefore.data.options.find((entry) => entry.option.includes("school:career-select") && entry.option.endsWith(":agronomist"));
     assert.ok(agronomistOption);
     const selectedCareer = execute(executor, "go.school.choose", { option: agronomistOption.option });
@@ -405,15 +408,15 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
 
     database.prepare(`
       INSERT INTO career_tracks (resident_id, career, track_order, selected_at)
-      VALUES (?, 'reporter', 2, ?)
+      VALUES (?, 'veterinarian', 2, ?)
     `).run(RESIDENT_ID, NOW);
     database.prepare(`
       INSERT INTO career_certificates (
         resident_id, career, qualification_level, status,
         source_attempt_id, issued_at, effective_at
-      ) VALUES (?, 'reporter', 1, 'active', ?, ?, ?)
-    `).run(RESIDENT_ID, "fixture-reporter-certificate", NOW, NOW);
-    const firstHireOption = execute(executor, "go.school.view", {}).data.options.find((entry) => entry.option.includes("school:employment-hire") && entry.option.endsWith(":reporter"));
+      ) VALUES (?, 'veterinarian', 1, 'active', ?, ?, ?)
+    `).run(RESIDENT_ID, "fixture-veterinarian-certificate", NOW, NOW);
+    const firstHireOption = execute(executor, "go.school.view", {}).data.options.find((entry) => entry.option.includes("school:employment-hire") && entry.option.endsWith(":veterinarian"));
     assert.ok(firstHireOption);
     const firstHire = execute(executor, "go.school.choose", { option: firstHireOption.option });
     assert.equal(firstHire.ok, true);
@@ -421,7 +424,7 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
     const endOption = execute(executor, "go.school.view", {}).data.options.find((entry) => entry.option.includes("school:employment-end") && entry.option.endsWith(`:${firstEmploymentId}`));
     assert.ok(endOption);
     assert.equal(execute(executor, "go.school.choose", { option: endOption.option }).ok, true);
-    const secondHireOption = execute(executor, "go.school.view", {}).data.options.find((entry) => entry.option.includes("school:employment-hire") && entry.option.endsWith(":reporter"));
+    const secondHireOption = execute(executor, "go.school.view", {}).data.options.find((entry) => entry.option.includes("school:employment-hire") && entry.option.endsWith(":veterinarian"));
     assert.ok(secondHireOption);
     assert.notEqual(secondHireOption.option, firstHireOption.option);
     const secondHire = execute(executor, "go.school.choose", { option: secondHireOption.option });

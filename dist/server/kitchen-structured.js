@@ -517,7 +517,7 @@ function projectTreasureItems(fishing) {
   return availableSection(items);
 }
 
-function projectShopIngredient(id, bought) {
+function projectShopIngredient(id, bought, options) {
   const definition = cookingIngredientById.get(id);
   if (!definition) {
     return {
@@ -547,7 +547,8 @@ function projectShopIngredient(id, bought) {
     ingredient_id: id,
     name: definition.name,
     price_silver: finiteInt(definition.price) ?? 0,
-    daily_buy_limit: Math.max(1, finiteInt(definition.dailyBuyLimit) ?? cooking.dailyBuyLimit),
+    daily_buy_limit: Math.max(1, finiteInt(definition.dailyBuyLimit) ?? cooking.dailyBuyLimit)
+      * (options?.ingredientDailyBuyMultiplier === 2 ? 2 : 1),
     bought_quantity: boughtQuantity,
     reason: null,
   };
@@ -570,7 +571,7 @@ function projectShopRecipe(id, knownIds) {
   };
 }
 
-function projectDailyShop(kitchen, now) {
+function projectDailyShop(kitchen, now, options) {
   const currentDay = currentDayIndex(now);
   const refreshAt = nextShanghaiMidnight(currentDay);
   let refreshState = projectIngredientShopRefresh(null, currentDay, false);
@@ -683,7 +684,7 @@ function projectDailyShop(kitchen, now) {
     current_day_index: currentDay,
     is_current_day: true,
     refresh_at: refreshAt,
-    ingredients: ids.map((id) => projectShopIngredient(id, bought)),
+    ingredients: ids.map((id) => projectShopIngredient(id, bought, options)),
     recipes,
     reason: null,
     ...refreshState,
@@ -695,7 +696,7 @@ function projectDailyShop(kitchen, now) {
  * or gameplay action is called here: a missing kitchen/shop/fishing field stays
  * explicitly unavailable until the authoritative runtime initializes it.
  */
-export function projectHumanKitchen(farm, now = Date.now()) {
+export function projectHumanKitchen(farm, now = Date.now(), options = {}) {
   const at = Number.isFinite(now) ? now : Date.now();
   const source = isRecord(farm) ? farm : {};
   const ranch = isRecord(source.ranch) ? source.ranch : null;
@@ -719,7 +720,7 @@ export function projectHumanKitchen(farm, now = Date.now()) {
       treasure_items: projectTreasureItems(fishing),
       dish_instances: projectRawArraySection(kitchen?.dishes, projectDishInstance),
       known_recipes: projectRawArraySection(knownRecipeIds, projectRecipe),
-      daily_shop: projectDailyShop(kitchen, at),
+      daily_shop: projectDailyShop(kitchen, at, options),
     };
 
   return {

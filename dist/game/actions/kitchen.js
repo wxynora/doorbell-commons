@@ -10,20 +10,20 @@ import { qixi2026CompletionText } from "../../qixi-2026.js";
 import { viewKitchen } from "../presentation/catalog.js";
 import { withFooter } from "../presentation/farm.js";
 
-export function handleKitchenAction(action, f, b, now) {
+export function handleKitchenAction(action, f, b, now, options = {}) {
     if (action !== "kitchen")
         return undefined;
     const op = String(b.op ?? "view");
     if (op === "view")
-        return { ok: true, text: viewKitchen(f, now, String(b.view ?? "overview")) };
+        return { ok: true, text: viewKitchen(f, now, String(b.view ?? "overview"), options) };
     if (op === "buy") {
-        const r = kitchenBuy(f, String(b.kind), String(b.id), b.qty, now);
+        const r = kitchenBuy(f, String(b.kind), String(b.id), b.qty, now, options);
         return { ok: r.ok, text: r.ok ? withFooter(f, now, `${r.kind === "recipe" ? "📜" : "🧺"} 买下${r.name}${r.qty ? `×${r.qty}` : ""}，-🪙${r.cost}。`) : r.error };
     }
     if (op === "cook") {
         const r = b.recipe != null
-            ? kitchenCookKnownRecipe(f, b.recipe, now)
-            : kitchenCook(f, b.items, now);
+            ? kitchenCookKnownRecipe(f, b.recipe, now, options)
+            : kitchenCook(f, b.items, now, options);
         if (!r.ok)
             return { ok: false, text: r.error };
         if (r.qixi) {

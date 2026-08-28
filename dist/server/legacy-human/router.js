@@ -109,6 +109,7 @@ export async function handleLegacyHumanRoute({
     ensureAgentKey,
     farmByNumber,
     farmLabel,
+    careerBenefitsForFarm,
 }) {
     const key = parts[1] ?? "";
     const f = key ? allFarms().find((x) => x.humanKey === key) : undefined;
@@ -143,7 +144,7 @@ export async function handleLegacyHumanRoute({
     if (section === "harvest" && method === "POST") {
         const canRollSeason = f.plots.some((p) => p.crop?.ripe) && humanHarvestLeft(f, now) > 0;
         const se = canRollSeason ? rollSeasonHarvest(f, now) : null;
-        const r = humanHarvestAll(f, now, se?.mod);
+        const r = humanHarvestAll(f, now, se?.mod, careerBenefitsForFarm?.(f));
         let flash;
         if (!r.ok) {
             flash = `⚠️ ${r.error}`;
@@ -245,11 +246,11 @@ export async function handleLegacyHumanRoute({
             let flash;
             let result;
             if (act === "buy-ingredient") {
-                const r = kitchenBuy(f, "ingredient", String(form.id), form.qty, now);
+                const r = kitchenBuy(f, "ingredient", String(form.id), form.qty, now, careerBenefitsForFarm?.(f));
                 flash = r.ok ? `🧺 买下${r.name}×${r.qty}（-🪙${r.cost}）` : r.error;
             }
             else if (act === "buy-recipe") {
-                const r = kitchenBuy(f, "recipe", String(form.id), 1, now);
+                const r = kitchenBuy(f, "recipe", String(form.id), 1, now, careerBenefitsForFarm?.(f));
                 flash = r.ok ? `📜 学会了「${r.name}·${r.rarity}」（-🪙${r.cost}）` : r.error;
             }
             else if (act === "cook") {
@@ -258,7 +259,7 @@ export async function handleLegacyHumanRoute({
                     items = JSON.parse(String(form.items ?? "[]"));
                 }
                 catch { /* 引擎给出数量提示 */ }
-                const r = kitchenCook(f, items, now);
+                const r = kitchenCook(f, items, now, careerBenefitsForFarm?.(f));
                 if (r.ok) {
                     flash = r.qixi
                         ? "黄油曲奇 ×1 已提交至七夕任务。"
@@ -321,7 +322,7 @@ export async function handleLegacyHumanRoute({
             return res.end();
         }
         res.writeHead(200, AGENT_HEADERS);
-        return res.end(renderHuman(uiCooking(f, now, key, url.searchParams.get("flash") ?? undefined, url.searchParams.get("result") ?? undefined)));
+        return res.end(renderHuman(uiCooking(f, now, key, url.searchParams.get("flash") ?? undefined, url.searchParams.get("result") ?? undefined, careerBenefitsForFarm?.(f))));
     }
     // 🐮 牧场：人类主要经营页。POST 收获/回传 → 做完 303 跳回（PRG，刷新不会重复提交）。
     if (section === "glimmer") {

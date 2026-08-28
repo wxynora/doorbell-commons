@@ -30,7 +30,9 @@ import { handleLegacyHumanRoute } from "./server/legacy-human/router.js";
 import { MCP_HELP, SHARED_HELP, SOCIAL_HELP } from "./server/farm/help.js";
 import { allowsSocial, farmByNumber, farmLabel, reachable, resolveNumberedTarget, ripeBroadcastText, stolenTodayText, visitListResult, wanderResult } from "./server/farm/social.js";
 import { createLegacyAgentHandler } from "./server/legacy-agent/runtime.js";
-import { openLingyeWorldDatabase } from "./lingye-world-database.js";
+import { createLingyeWorldBackend, openLingyeWorldDatabase } from "./lingye-world-database.js";
+import { resolveChefOriginalCookingReceipt } from "./domain/kitchen/original.js";
+import { farmCareerBenefits, farmDoorbellKitchenCareerBenefits } from "./career/farm-benefits.js";
 import { farmActionTouchesLockedCareerObject, startRegisteredP3Scheduler } from "./career/p3-commission-runtime.js";
 let activeLingyeWorldDatabase = null;
 function executeDoorbellFarmAction(farm, action, params, detail, now) {
@@ -92,7 +94,6 @@ function executeLegacyMcpAction(me, action, params, now) {
     const text = String(out.json.text ?? "");
     return { ok: out.json.ok !== false, text: out.json.farm ? `${text}\n\n${JSON.stringify({ farm: out.json.farm })}` : text };
 }
-const handleDoorbellInternal = createDoorbellInternalHandler(executeDoorbellFarmAction);
 function fresh(id) {
     const f = getFarm(id);
     if (!f)
@@ -171,6 +172,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
     const f = fresh(farmId);
     if (!f)
         return { status: 400, json: { ok: false, text: `找不到农场 ${farmId || "(没给 farm)"}` } };
+    const careerBenefits = farmCareerBenefits(activeLingyeWorldDatabase, f);
     const detail = options.detail === true || b?.detail === true || b?.detail === "1" || b?.detail === "true"
         || b?.verbose === true || b?.verbose === "1" || b?.verbose === "true";
     const vf = (ff) => detail ? { farm: farmView(ff, now) } : {};
@@ -345,7 +347,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
                 return { status: 400, json: { ok: false, text: allowed.text, ...vf(f) } };
             plot.crop.ripe = true;
             plot.crop.progress = plot.crop.growTicks;
-            const harvested = dispatch(f, { action: "harvest", plotId: plot.id }, now);
+            const harvested = dispatch(f, { action: "harvest", plotId: plot.id }, now, careerBenefits);
             if (!harvested.ok)
                 return { status: 400, json: { ok: false, text: harvested.text, ...vf(f) } };
             const r = recordPublicContribution(publicWorld, f, { kind: "harvest", plotId: plot.id }, now, publicFarms);
@@ -385,7 +387,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
     if (action === "encyclopedia")
         return { status: 200, json: { ok: true, text: viewEncyclopedia(f, encArg), ...vf(f) } };
     if (action === "kitchen" && (!b.op || b.op === "view"))
-        return { status: 200, json: { ok: true, text: viewKitchen(f, now, String(b.view ?? "overview")), ...vf(f) } };
+        return { status: 200, json: { ok: true, text: viewKitchen(f, now, String(b.view ?? "overview"), careerBenefits), ...vf(f) } };
     // 重置 token（凭当前 token 换新；旧 token 立即失效——URL 里的 key 万一泄露就用它撤销）
     if (action === "new-token") {
         f.token = randomUUID().replace(/-/g, "");
@@ -532,7 +534,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
     const qixiCropsBefore = isQixiLantern2026Active(now) && (action === "harvest" || action === "run")
         ? new Map(f.plots.map((plot) => [plot.id, plot.crop]))
         : null;
-    const r = dispatch(f, { ...b, action }, now);
+    const r = dispatch(f, { ...b, action }, now, careerBenefits);
     if (r.ok && cropsBefore
         && f.plots.some((plot) => plot.crop?.seedType === "common" && cropsBefore.get(plot.id) !== plot.crop)) {
         const encounter = recordPublicPlantEncounter(publicWorld, f, now, publicFarms);
@@ -622,6 +624,31 @@ function maintenanceOut(req, res, parts, method) {
 export function startServer(port, host = "127.0.0.1") {
     const lingyeWorldDatabase = openLingyeWorldDatabase();
     activeLingyeWorldDatabase = lingyeWorldDatabase;
+    const careerBenefitsForFarm = (farm) => farmCareerBenefits(lingyeWorldDatabase, farm);
+    const resolveOriginalCookingReceipt = (receiptId) => {
+        const matches = allFarms()
+            .map((farm) => resolveChefOriginalCookingReceipt(farm, receiptId))
+            .filter(Boolean);
+        return matches.length === 1 ? matches[0] : null;
+    };
+    const lingyeWorldBackend = createLingyeWorldBackend(lingyeWorldDatabase, {
+        economyRules: {
+            minimumSystemLoanCreditDays: null,
+            restrictedDailyGoldLimit: null,
+            restrictedDailySilverLimit: null,
+        },
+        chefAuthority: {
+            resolveCookingReceipt: resolveOriginalCookingReceipt,
+            useFarmStore: true,
+        },
+    });
+    const doorbellCareerBenefitsForFarm = (farm) =>
+        farmDoorbellKitchenCareerBenefits(lingyeWorldDatabase, lingyeWorldBackend, farm);
+    const handleDoorbellInternal = createDoorbellInternalHandler(
+        executeDoorbellFarmAction,
+        undefined,
+        doorbellCareerBenefitsForFarm,
+    );
     const stopP3Scheduler = startRegisteredP3Scheduler(lingyeWorldDatabase);
     const server = createServer(async (req, res) => {
         const url = new URL(req.url ?? "/", `http://localhost:${port}`);
@@ -665,6 +692,7 @@ export function startServer(port, host = "127.0.0.1") {
                 return await handleLegacyHumanRoute({
                     req, res, url, parts, sp, method, now,
                     ensureAgentKey, farmByNumber, farmLabel,
+                    careerBenefitsForFarm,
                 });
             // —— Agent 控制页（HTML，给只能点页面里现成链接的 AI）——
             if (legacyAgent.handleRoute({ req, res, url, parts, sp, method, now }))

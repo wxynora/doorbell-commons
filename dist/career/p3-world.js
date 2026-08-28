@@ -10,6 +10,113 @@ export const AGRONOMY_CONDITIONS = Object.freeze({
     root_damage: Object.freeze({ minimumLevel: 3, growth: "paused", material: "root-treatment", materialGold: 10_000 }),
 });
 
+/**
+ * Material saving is a batch property of the agronomist qualification.  The
+ * first level has no saving; levels 2/3/4 save 5%/10%/15% of eligible ordinary
+ * material demand.  These are rates, not rounded quantities.
+ */
+export const AGRONOMY_MATERIAL_SAVING_RATES = Object.freeze({
+    1: 0,
+    2: 0.05,
+    3: 0.10,
+    4: 0.15,
+});
+
+const AGRONOMY_SAVABLE_MATERIALS = new Set(
+    Object.values(AGRONOMY_CONDITIONS).map((condition) => condition.material),
+);
+
+export function agronomyMaterialSavingRate(qualificationLevel) {
+    return AGRONOMY_MATERIAL_SAVING_RATES[Number(qualificationLevel)] ?? 0;
+}
+
+function normalizeAgronomyMaterialRequirements(requirements) {
+    const entries = Array.isArray(requirements)
+        ? requirements
+        : requirements && typeof requirements === "object"
+            ? Object.entries(requirements).map(([id, quantity]) => ({ id, quantity }))
+            : null;
+    if (!entries)
+        throw new TypeError("agronomy_material_requirements_invalid");
+
+    const normalized = new Map();
+    for (const entry of entries) {
+        const id = typeof entry === "string"
+            ? entry
+            : entry && typeof entry === "object"
+                ? String(entry.id ?? entry.material ?? "")
+                : "";
+        const quantity = typeof entry === "string"
+            ? 1
+            : Number(entry?.quantity ?? entry?.qty ?? 0);
+        if (!id || !Number.isSafeInteger(quantity) || quantity < 0)
+            throw new TypeError("agronomy_material_requirements_invalid");
+        if (quantity === 0)
+            continue;
+        const current = normalized.get(id);
+        const savable = entry && typeof entry === "object" && entry.savable === false
+            ? false
+            : entry && typeof entry === "object" && entry.ordinary === false
+                ? false
+                : current?.savable ?? AGRONOMY_SAVABLE_MATERIALS.has(id);
+        const nextQuantity = (current?.required ?? 0) + quantity;
+        if (!Number.isSafeInteger(nextQuantity))
+            throw new TypeError("agronomy_material_requirements_invalid");
+        normalized.set(id, { required: nextQuantity, savable });
+    }
+    return normalized;
+}
+
+/**
+ * Calculate one atomic batch's material demand without touching inventory.
+ * Requirements may be a material->quantity map, material-id strings, or
+ * records like { id, quantity }.  Only the five ordinary P3 treatment
+ * materials are reducible by default; a record may explicitly mark a known
+ * material non-savable for a special/event contract.
+ */
+export function agronomyMaterialUsage(requirements, qualificationLevel) {
+    const normalized = normalizeAgronomyMaterialRequirements(requirements);
+    const required = {};
+    const consumed = {};
+    const saved = {};
+    let eligibleDemand = 0;
+    for (const [id, entry] of normalized) {
+        required[id] = entry.required;
+        consumed[id] = entry.required;
+        if (entry.savable)
+            eligibleDemand += entry.required;
+    }
+    const rate = agronomyMaterialSavingRate(qualificationLevel);
+    const requestedSaving = Math.floor(eligibleDemand * rate);
+    let remainingSaving = requestedSaving;
+    // Stable ID order makes mixed-material batches reproducible while the
+    // floor-at-one rule protects every distinct material requirement.
+    for (const id of Object.keys(required).sort()) {
+        const entry = normalized.get(id);
+        if (!entry.savable || remainingSaving <= 0)
+            continue;
+        const reducible = Math.max(0, entry.required - 1);
+        const amount = Math.min(reducible, remainingSaving);
+        if (amount <= 0)
+            continue;
+        consumed[id] -= amount;
+        saved[id] = amount;
+        remainingSaving -= amount;
+    }
+    const totalSaved = requestedSaving - remainingSaving;
+    return {
+        qualificationLevel: Number(qualificationLevel) || 0,
+        savingRate: rate,
+        required,
+        consumed,
+        saved,
+        totalRequired: Object.values(required).reduce((sum, quantity) => sum + quantity, 0),
+        eligibleDemand,
+        totalSaved,
+        totalConsumed: Object.values(consumed).reduce((sum, quantity) => sum + quantity, 0),
+    };
+}
+
 export const ANIMAL_CONDITIONS = Object.freeze({
     indigestion: Object.freeze({ minimumLevel: 1, recoveryDays: 1, materials: Object.freeze(["stomach-powder"]), materialGold: 3_000 }),
     minor_injury: Object.freeze({ minimumLevel: 1, recoveryDays: 1, materials: Object.freeze(["wound-cleanser", "bandage"]), materialGold: 6_000 }),
@@ -48,7 +155,7 @@ const ANIMAL_OBSERVATIONS = Object.freeze({
     indigestion: Object.freeze(["reduced_appetite", "abdominal_discomfort"]),
     minor_injury: Object.freeze(["reduced_activity", "localized_injury_trace"]),
     wet_cold: Object.freeze(["damp_coat_or_feathers", "reduced_activity"]),
-    dehydration: Object.freeze(["reduced_water_intake", "reduced_activity"]),
+    dehydration: Object.freeze(["increased_water_intake", "reduced_activity"]),
     respiratory_infection: Object.freeze(["abnormal_breathing", "reduced_activity"]),
     compound_fever: Object.freeze(["elevated_temperature", "abnormal_breathing", "dehydration_sign"]),
 });
@@ -65,7 +172,7 @@ const ANIMAL_FINDINGS = Object.freeze({
     indigestion: Object.freeze({ "feed-history": "recent_feed_irregularity", abdomen: "abdominal_discomfort_confirmed" }),
     minor_injury: Object.freeze({ injury: "minor_external_injury", "activity-history": "recent_activity_reduction" }),
     wet_cold: Object.freeze({ temperature: "temperature_slightly_low", bedding: "bedding_damp", breathing: "breathing_clear" }),
-    dehydration: Object.freeze({ "water-intake": "water_intake_low", temperature: "temperature_not_elevated" }),
+    dehydration: Object.freeze({ "water-intake": "water_intake_increased", temperature: "temperature_not_elevated" }),
     respiratory_infection: Object.freeze({ temperature: "temperature_elevated", breathing: "respiratory_sign_confirmed" }),
     compound_fever: Object.freeze({ temperature: "temperature_high", hydration: "dehydration_confirmed", breathing: "respiratory_sign_confirmed" }),
 });

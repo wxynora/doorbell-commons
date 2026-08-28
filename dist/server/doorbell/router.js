@@ -38,7 +38,7 @@ import {
 } from "./lifecycle.js";
 import { handleDoorbellLingyeAction } from "./lingye.js";
 
-export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExecutor) {
+export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExecutor, careerBenefitsForFarm) {
     return async function handleDoorbellInternal(req, res, parts, method) {
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "memorial" && parts[4] === "qixi-2026" && parts[5] === "read" && parts.length === 6) {
             await handleDoorbellHumanQixiMemorialRead(req, res, method);
@@ -53,23 +53,23 @@ export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExe
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "kitchen" && parts[4] === "read" && parts.length === 5) {
-            await handleDoorbellHumanKitchenRead(req, res, method);
+            await handleDoorbellHumanKitchenRead(req, res, method, careerBenefitsForFarm);
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "kitchen" && parts[4] === "purchase" && parts.length === 5) {
-            await handleDoorbellHumanKitchenPurchase(req, res, method);
+            await handleDoorbellHumanKitchenPurchase(req, res, method, careerBenefitsForFarm);
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "kitchen" && parts[4] === "cook" && parts.length === 5) {
-            await handleDoorbellHumanKitchenCook(req, res, method);
+            await handleDoorbellHumanKitchenCook(req, res, method, careerBenefitsForFarm);
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "kitchen" && parts[4] === "shop" && parts[5] === "refresh" && parts.length === 6) {
-            await handleDoorbellHumanKitchenShopRefresh(req, res, method);
+            await handleDoorbellHumanKitchenShopRefresh(req, res, method, careerBenefitsForFarm);
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "kitchen" && parts[4] === "inventory" && parts[5] === "action" && parts.length === 6) {
-            await handleDoorbellHumanKitchenInventoryAction(req, res, method);
+            await handleDoorbellHumanKitchenInventoryAction(req, res, method, careerBenefitsForFarm);
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "glimmer" && parts[4] === "read" && parts.length === 5) {
@@ -132,7 +132,7 @@ export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExe
             await handleDoorbellHumanNeighborhoodMessageAction(req, res, method);
             return true;
         }
-        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "field" && parts[4] === "harvest-assist" && parts.length === 5) { await handleDoorbellHumanHarvestAssist(req, res, method); return true; }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "field" && parts[4] === "harvest-assist" && parts.length === 5) { await handleDoorbellHumanHarvestAssist(req, res, method, careerBenefitsForFarm); return true; }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "welcome-reward" && parts.length === 3) {
             await handleDoorbellWelcomeReward(req, res, method);
             return true;

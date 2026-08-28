@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { checkTitles } from "../titles.js";
 import { dishSystemRecycleSilver, kitchenCook } from "../engine.js";
+import { resolveChefOriginalCookingReceipt } from "../domain/kitchen/original.js";
 import { replaceFarm } from "../store.js";
 import { kitchenInventoryRevisionFromData } from "./kitchen-inventory-revision.js";
 import {
@@ -132,9 +133,26 @@ function errorResponse(code, message, currentRevision) {
   return { status: 409, json: { error } };
 }
 
-function currentResource(farm, now) {
+/**
+ * The farm save is the first durable half of an original cook.  Commons
+ * discovery/commission settlement is retried from the same action receipt;
+ * it must never run before replaceFarm succeeds or turn a callback failure
+ * into a farm rollback.
+ */
+function reconcileOriginalCooking(farm, receipt, options) {
+  if (!receipt || typeof options?.onOriginalCookingReceipt !== "function") return true;
   try {
-    const projected = projectHumanKitchen(farm, now);
+    const result = options.onOriginalCookingReceipt(receipt);
+    if (result && typeof result.then === "function") return false;
+    return !(result && result.ok === false);
+  } catch {
+    return false;
+  }
+}
+
+function currentResource(farm, now, options) {
+  try {
+    const projected = projectHumanKitchen(farm, now, options);
     return {
       data: projected.data,
       revision: kitchenInventoryRevisionFromData(projected.data),
@@ -214,7 +232,7 @@ function authorityRecipeError(farm, result, requestedMethodId) {
  * the authoritative method_id, which is checked against the matched recipe and
  * its per-farm paid-tool ownership before the clone is saved.
  */
-export function handleHumanKitchenCookAction(farm, body, now = Date.now()) {
+export function handleHumanKitchenCookAction(farm, body, now = Date.now(), options = {}) {
   if (!validateBody(body)) return invalidRequest();
   if (!farm) return unavailable("The bound farm was not found");
   if (farm.humanKey !== body.farm_human_key || farm.id !== body.expected_farm_doorplate) {
@@ -226,12 +244,15 @@ export function handleHumanKitchenCookAction(farm, body, now = Date.now()) {
   const receipts = isRecord(farm[RECEIPTS_FIELD]) ? farm[RECEIPTS_FIELD] : {};
   const existing = receipts[key];
   if (existing !== undefined) {
-    return existing?.fingerprint === requestFingerprint && isRecord(existing.response)
-      ? { status: 200, json: existing.response }
-      : errorResponse("idempotency_conflict", "This idempotency key was used for a different request");
+    if (existing?.fingerprint !== requestFingerprint || !isRecord(existing.response))
+      return errorResponse("idempotency_conflict", "This idempotency key was used for a different request");
+    const originalReceipt = resolveChefOriginalCookingReceipt(farm, key);
+    if (originalReceipt && !reconcileOriginalCooking(farm, originalReceipt, options))
+      return unavailable("The original recipe settlement could not be reconciled");
+    return { status: 200, json: existing.response };
   }
 
-  const current = currentResource(farm, now);
+  const current = currentResource(farm, now, options);
   if (!current) return unavailable("The kitchen could not be read");
   if (current.revision !== body.expected_kitchen_inventory_revision) {
     return errorResponse("state_conflict", "The kitchen inventory has changed", current.revision);
@@ -248,7 +269,14 @@ export function handleHumanKitchenCookAction(farm, body, now = Date.now()) {
 
   let authorityResult;
   try {
-    authorityResult = kitchenCook(working, body.items, now);
+    authorityResult = kitchenCook(working, body.items, now, {
+      ...options,
+      cookingReceiptId: key,
+      cookingRequestFingerprint: requestFingerprint,
+      ...(body.method_id
+        ? { methodId: body.method_id, requireMethodId: true }
+        : {}),
+    });
   } catch {
     return unavailable("The kitchen cook could not be executed");
   }
@@ -268,7 +296,7 @@ export function handleHumanKitchenCookAction(farm, body, now = Date.now()) {
 
   const cookOutcome = outcome(body, authorityResult);
   if (!cookOutcome) return unavailable("The kitchen cook returned an invalid result");
-  const resource = currentResource(working, now);
+  const resource = currentResource(working, now, options);
   if (!resource) return unavailable("The kitchen resource could not be read");
   const response = {
     data: {
@@ -291,11 +319,13 @@ export function handleHumanKitchenCookAction(farm, body, now = Date.now()) {
   } catch {
     return unavailable("The kitchen cook could not be saved");
   }
+  if (authorityResult.cookingReceipt && !reconcileOriginalCooking(farm, authorityResult.cookingReceipt, options))
+    return unavailable("The original recipe settlement could not be reconciled");
   return { status: 200, json: response };
 }
 
 export const handleHumanKitchenCook = handleHumanKitchenCookAction;
-export const kitchenCookRevision = (farm, now = Date.now()) =>
-  currentResource(farm, now)?.revision ?? null;
+export const kitchenCookRevision = (farm, now = Date.now(), options = {}) =>
+  currentResource(farm, now, options)?.revision ?? null;
 export const kitchenCookActionRevision = kitchenCookRevision;
 export { kitchenInventoryRevisionFromData } from "./kitchen-inventory-revision.js";

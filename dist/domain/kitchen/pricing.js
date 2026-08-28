@@ -1,4 +1,5 @@
 import { cooking, cookingIngredientById, cookingRecipeById } from "../../content.js";
+export { chefProcessingFeeAfterDiscount, chefProcessingFeeDiscount } from "./chef.js";
 
 export const COOKING_PRICE_VERSION = 2;
 const COOKING_PRICE_V2_DEPLOYED_AT = 1785908900000; // 2026-08-05 13:48:20 Asia/Shanghai；新公式首次生产生效

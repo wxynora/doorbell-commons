@@ -275,9 +275,20 @@ function rollBonusEvent(rng) {
 // 季节收获事件:这批是否还能吃到效果(带计数上限的如知时雨/蜂媒最多 6 株)
 const seasonApplies = (mod) => !!mod && (!mod.capLeft || mod.capLeft.n > 0);
 const qualityByTier = (t) => qualities.find((q) => q.tier === t);
+function agronomistExtraHarvestEligible(crop, plantedCrop) {
+    if (crop?.category !== "common" || crop?.rarity === "SP")
+        return false;
+    // Keep explicit activity/task markers out of the ordinary pool when a
+    // future/event planting path carries them on the planted crop.  Existing
+    // limited/activity/task crop definitions are already non-common.
+    return ![crop, plantedCrop].some((entry) => entry?.activity === true ||
+        entry?.isActivity === true ||
+        entry?.task === true ||
+        entry?.isTask === true);
+}
 // —— 收获 ——
 // seasonMod：季节「收获型」事件的本批修正（rollSeasonHarvest 给的）；非空即触发了季节事件 → 抑制原有收获奖励事件（互斥）。
-export function harvest(farm, plotId, now, seasonMod) {
+export function harvest(farm, plotId, now, seasonMod, options = {}) {
     const plot = farm.plots.find((p) => p.id === plotId);
     if (!plot || !plot.crop)
         return { ok: false, error: `${plotId} 号地没有作物` };
@@ -327,6 +338,15 @@ export function harvest(farm, plotId, now, seasonMod) {
             value = Math.round(value * (seasonMod.value ?? 1)); // 知时雨/雪被：本批价值×2
         value = Math.round(value * glimmerBuffMultiplier("cropValue", now));
     }
+    // The agronomist benefit is an additional ordinary crop product.  The
+    // legacy farm has no crop inventory: ordinary harvests are settled into
+    // farm.coins here, so the extra product uses that same authoritative
+    // settlement (and never creates a second currency or a fake item row).
+    const chance = Number(options?.agronomistExtraHarvestChance);
+    const extraYield = agronomistExtraHarvestEligible(crop, c) && qixiSilver === null && chance > 0
+        && rng.next() < Math.min(1, chance) ? 1 : 0;
+    const extraValue = extraYield ? value : 0;
+    value += extraValue;
     if (apply && seasonMod.capLeft)
         seasonMod.capLeft.n -= 1; // 吃掉一株名额
     if (qixiSilver === null)
@@ -359,7 +379,21 @@ export function harvest(farm, plotId, now, seasonMod) {
     const qixiEvents = recordQixi2026Harvest(farm, crop, c.seedType, now);
     onTaskEvent(farm, "harvest", now, { rarity: crop.rarity, isNew, isUgc: crop.category === "ugc" }); // 随机任务：收获N株R/SR/收新图鉴
     pushLog(farm, `收获 ${crop.name}（${quality.name}），+${value}${qixiSilver === null ? "金" : "银"}${drop ? ` 掉素材[${drop.name}]` : ""}${potionDrop ? " 掉药水" : ""}`);
-    return { ok: true, crop, quality, value, currency: qixiSilver === null ? "gold" : "silver", isNew, codexReward, bonus, drop, potionDrop, qixi: qixiEvents.find((event) => event.completed) };
+    return {
+        ok: true,
+        crop,
+        quality,
+        value,
+        extraYield,
+        extraValue,
+        currency: qixiSilver === null ? "gold" : "silver",
+        isNew,
+        codexReward,
+        bonus,
+        drop,
+        potionDrop,
+        qixi: qixiEvents.find((event) => event.completed),
+    };
 }
 /** 人类当天还可替自己的 AI 执行几次一键收获；所有每日限制统一按 UTC+8 零点换日。 */
 export function humanHarvestLeft(farm, now) {
@@ -368,14 +402,14 @@ export function humanHarvestLeft(farm, now) {
     return Math.max(0, HUMAN_HARVEST_DAILY_CAP - used);
 }
 /** humanKey 页面一键收获：当批至少收到一株才计 1 次，没有成熟作物不消耗次数。 */
-export function humanHarvestAll(farm, now, seasonMod) {
+export function humanHarvestAll(farm, now, seasonMod, options = {}) {
     const day = currentDayIndex(now);
     const daily = farm.humanHarvestDaily?.day === day
         ? farm.humanHarvestDaily
         : { day, n: 0 };
     if ((daily.n ?? 0) >= HUMAN_HARVEST_DAILY_CAP)
         return { ok: false, error: `今天已经帮 TA 一键收过 ${HUMAN_HARVEST_DAILY_CAP} 次菜了，明天再来吧。` };
-    const results = harvestAll(farm, now, seasonMod);
+    const results = harvestAll(farm, now, seasonMod, options);
     if (!results.length)
         return { ok: false, error: "现在没有成熟的作物可收。" };
     farm.humanHarvestDaily = daily;
@@ -466,7 +500,7 @@ export function steal(victim, plotId, by, now, thief, options = {}) {
                 kitchen.pendingGuard = { victimId: victim.id, plotId, by, at: now };
             }
             pushLog(victim, `🐶 ${by} 想偷 ${plotId} 号地，被${dogName}一通狂吠吓跑了！`);
-            pushTrail(victim, { t: now, kind: "foiled", by: thief?.name ?? by, plotId }); // 足迹：谁来偷被狗吓退
+            pushTrail(victim, { t: now, kind: "foiled", by: thief?.name ?? by, actorFarmId: by, plotId }); // 足迹：谁来偷被狗吓退
             return { ok: false, guardBlocked: true, dogName, error: `刚摸到 ${plotId} 号地，${dogName}就冲出来狂吠，你只好空手溜走。` };
         }
     }
@@ -486,7 +520,7 @@ export function steal(victim, plotId, by, now, thief, options = {}) {
     if (victim.id !== NPC_ID)
         victim.stealShieldUntil = now + STEAL_SHIELD_MS; // 放偷冷却：这家 30 分钟内谁都偷不了（阿土是常驻练手靶，豁免）
     victim.gotStolen = (victim.gotStolen ?? 0) + 1; // 倒霉称号累计
-    pushTrail(victim, { t: now, kind: "stolen", by: thief?.name ?? by, plotId, crop: crop.name }); // 足迹：谁偷走了什么
+    pushTrail(victim, { t: now, kind: "stolen", by: thief?.name ?? by, actorFarmId: by, plotId, crop: crop.name }); // 足迹：谁偷走了什么
     onTaskEvent(victim, "got_stolen", now); // 随机任务：被偷一次菜
     pushLog(victim, `⚠️ ${by} 偷走了 ${plotId} 号地的 ${crop.name}！${refund > 0 ? `（返还种子费一半 +${refund}金）` : ""}`);
     let isNewForThief = false;
@@ -774,11 +808,11 @@ export function buyPetForPartner(farm, id, now) {
     return { ok: true, name: kind.name, cost: kind.buyCost };
 }
 /** 收所有成熟的地（seasonMod=季节收获事件的本批修正，传同一个对象让 capLeft 跨株累计消费）*/
-export function harvestAll(farm, now, seasonMod) {
+export function harvestAll(farm, now, seasonMod, options = {}) {
     const results = [];
     for (const p of farm.plots) {
         if (p.crop?.ripe) {
-            const r = harvest(farm, p.id, now, seasonMod);
+            const r = harvest(farm, p.id, now, seasonMod, options);
             if (r.ok)
                 results.push(r);
         }

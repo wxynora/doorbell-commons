@@ -3,6 +3,26 @@ import { AGRONOMIST_CONCURRENT_CAPACITY, CareerDomainError, institutionForCareer
 import { beijingDate, recordFinancialReceipt, requireActiveCertificate, runInTransaction } from "./persistence.js";
 import { installCareerSchema } from "./schema.js";
 const AUTHORITY_ASSIGN_JOB = Symbol("career-authority-assign-job");
+function compareText(left, right) {
+    return left < right ? -1 : left > right ? 1 : 0;
+}
+function assignmentExclusions(input) {
+    if (input === undefined)
+        return [];
+    if (!Array.isArray(input))
+        throw new CareerDomainError("invalid_assignment_exclusions", "Assignment exclusions must be resident ids");
+    const residents = input.map((residentId) => {
+        if (typeof residentId !== "string" || residentId.length === 0 || residentId.trim() !== residentId)
+            throw new CareerDomainError("invalid_assignment_exclusions", "Assignment exclusions must be resident ids");
+        return residentId;
+    });
+    if (new Set(residents).size !== residents.length)
+        throw new CareerDomainError("invalid_assignment_exclusions", "Assignment exclusions must not repeat a resident");
+    return residents.sort(compareText);
+}
+function sameStrings(left, right) {
+    return left.length === right.length && left.every((value, index) => value === right[index]);
+}
 export const INSTITUTION_ASSIGNED_CONCURRENT_CAPACITY = Object.freeze({
     1: 1,
     2: 2,
@@ -28,6 +48,7 @@ export class CareerJobService {
     createJob(input) {
         const now = this.#now();
         return runInTransaction(this.#database, () => {
+            const excludedResidentIds = assignmentExclusions(input.excludedResidentIds);
             const existing = this.#database
                 .prepare(`SELECT * FROM career_jobs WHERE job_id = ? OR (source_type = ? AND source_id = ?)`)
                 .get(input.jobId, input.sourceType, input.sourceId);
@@ -43,7 +64,8 @@ export class CareerJobService {
                     existing.difficulty_level !== input.difficultyLevel ||
                     existing.assignment_mode !== input.assignmentMode ||
                     (input.assignmentMode === "self" &&
-                        existing.worker_resident_id !== input.selfWorkerResidentId)) {
+                        existing.worker_resident_id !== input.selfWorkerResidentId) ||
+                    !sameStrings(excludedResidentIds, this.#assignmentExclusions(existing.job_id))) {
                     throw new CareerDomainError("job_idempotency_conflict", "The job id or real source already belongs to another job");
                 }
                 return mapJob(existing);
@@ -69,6 +91,11 @@ export class CareerJobService {
              status, worker_resident_id, created_at, updated_at
            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
                 .run(input.jobId, input.career, input.sourceType, input.sourceId, input.objectType, input.objectId, input.ownerResidentId ?? null, input.requiredLevel, input.difficultyLevel, input.assignmentMode, status, workerResidentId, now, now);
+            const insertExclusion = this.#database.prepare(`INSERT INTO career_job_assignment_exclusions (
+              job_id, resident_id, relation_kind, source_reference, recorded_at
+            ) VALUES (?, ?, 'source_party', ?, ?)`);
+            for (const residentId of excludedResidentIds)
+                insertExclusion.run(input.jobId, residentId, input.sourceId, now);
             return mapJob(this.#requireJob(input.jobId));
         });
     }
@@ -269,11 +296,23 @@ export class CareerJobService {
              status, created_at, updated_at
            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'available', ?, ?)`)
                 .run(input.successorJobId, job.job_id, job.career, successorSourceType, input.successorSourceId, job.object_type, job.object_id, job.owner_resident_id, job.required_level, job.difficulty_level, job.assignment_mode, now, now);
+            this.#database.prepare(`INSERT INTO career_job_assignment_exclusions (
+              job_id, resident_id, relation_kind, source_reference, recorded_at
+            )
+            SELECT ?, resident_id, relation_kind, source_reference, ?
+            FROM career_job_assignment_exclusions WHERE job_id = ?`)
+                .run(input.successorJobId, now, job.job_id);
             return {
                 successor: mapJob(this.#requireJob(input.successorJobId)),
                 transferred: mapJob(this.#requireJob(job.job_id)),
             };
         });
+    }
+    #assignmentExclusions(jobId) {
+        return this.#database.prepare(`SELECT resident_id FROM career_job_assignment_exclusions
+          WHERE job_id = ? ORDER BY resident_id COLLATE BINARY ASC`)
+            .all(jobId)
+            .map((row) => row.resident_id);
     }
     addReporterLikePerformance(input) {
         if (!Number.isInteger(input.validLikes) || input.validLikes < 0) {

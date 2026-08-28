@@ -1,0 +1,937 @@
+{
+  "version": "chef-original-v1",
+  "anchor_source": {
+    "recipe_catalog": "content/cooking.json",
+    "recipe_count": 90,
+    "rarity_scores": {
+      "N": 40,
+      "R": 60,
+      "SR": 80,
+      "SSR": 100
+    }
+  },
+  "structure_scores": {
+    "conflict_or_missing_essential": 0,
+    "barely": 40,
+    "missing_nonessential": 70,
+    "complete": 100
+  },
+  "ingredients": {
+    "salt": {
+      "culinary_base": 1,
+      "class": "seasoning",
+      "roles": [
+        "seasoning"
+      ]
+    },
+    "flour": {
+      "culinary_base": 1,
+      "class": "grain",
+      "roles": [
+        "structure",
+        "dessert_structure"
+      ]
+    },
+    "sugar": {
+      "culinary_base": 1,
+      "class": "sweetener",
+      "roles": [
+        "sweet"
+      ]
+    },
+    "rice": {
+      "culinary_base": 1,
+      "class": "grain",
+      "roles": [
+        "body",
+        "structure"
+      ]
+    },
+    "soy_sauce": {
+      "culinary_base": 1,
+      "class": "seasoning",
+      "roles": [
+        "seasoning",
+        "flavor"
+      ]
+    },
+    "ginger": {
+      "culinary_base": 1,
+      "class": "aromatic",
+      "roles": [
+        "flavor",
+        "seasoning"
+      ]
+    },
+    "scallion": {
+      "culinary_base": 1,
+      "class": "aromatic",
+      "roles": [
+        "auxiliary",
+        "flavor",
+        "seasoning"
+      ]
+    },
+    "onion": {
+      "culinary_base": 1,
+      "class": "aromatic",
+      "roles": [
+        "auxiliary",
+        "flavor"
+      ]
+    },
+    "potato": {
+      "culinary_base": 1,
+      "class": "vegetable",
+      "roles": [
+        "body",
+        "structure"
+      ]
+    },
+    "corn": {
+      "culinary_base": 1,
+      "class": "vegetable",
+      "roles": [
+        "body",
+        "structure"
+      ]
+    },
+    "carrot": {
+      "culinary_base": 1,
+      "class": "vegetable",
+      "roles": [
+        "auxiliary",
+        "flavor"
+      ]
+    },
+    "tomato": {
+      "culinary_base": 1,
+      "class": "vegetable",
+      "roles": [
+        "auxiliary",
+        "flavor"
+      ]
+    },
+    "basil": {
+      "culinary_base": 1,
+      "class": "herb",
+      "roles": [
+        "auxiliary",
+        "flavor"
+      ]
+    },
+    "pumpkin": {
+      "culinary_base": 1,
+      "class": "vegetable",
+      "roles": [
+        "body",
+        "structure",
+        "flavor"
+      ]
+    },
+    "strawberry": {
+      "culinary_base": 1,
+      "class": "fruit",
+      "roles": [
+        "sweet",
+        "flavor"
+      ]
+    },
+    "tea": {
+      "culinary_base": 1,
+      "class": "liquid_base",
+      "roles": [
+        "liquid",
+        "flavor"
+      ]
+    },
+    "watermelon": {
+      "culinary_base": 1,
+      "class": "fruit",
+      "roles": [
+        "liquid",
+        "flavor"
+      ]
+    },
+    "cocoa": {
+      "culinary_base": 1.05,
+      "class": "flavor",
+      "roles": [
+        "flavor"
+      ]
+    },
+    "vanilla": {
+      "culinary_base": 1.05,
+      "class": "flavor",
+      "roles": [
+        "flavor"
+      ]
+    },
+    "spice": {
+      "culinary_base": 1.05,
+      "class": "seasoning",
+      "roles": [
+        "seasoning",
+        "flavor"
+      ]
+    },
+    "butter": {
+      "culinary_base": 1.05,
+      "class": "fat",
+      "roles": [
+        "auxiliary",
+        "flavor"
+      ]
+    },
+    "yellow_wine": {
+      "culinary_base": 1.05,
+      "class": "liquid",
+      "roles": [
+        "liquid",
+        "flavor"
+      ]
+    },
+    "tofu": {
+      "culinary_base": 1,
+      "class": "plant_protein",
+      "roles": [
+        "body",
+        "structure"
+      ]
+    },
+    "rainbow_corn": {
+      "culinary_base": 1.1,
+      "class": "premium_vegetable",
+      "roles": [
+        "body",
+        "structure"
+      ]
+    },
+    "star_sugar": {
+      "culinary_base": 1.2,
+      "class": "sweetener",
+      "roles": [
+        "sweet",
+        "flavor"
+      ]
+    },
+    "chicken_egg": {
+      "culinary_base": 1,
+      "class": "egg",
+      "roles": [
+        "body",
+        "structure",
+        "dessert_structure"
+      ]
+    },
+    "duck_egg": {
+      "culinary_base": 1,
+      "class": "egg",
+      "roles": [
+        "body",
+        "structure",
+        "dessert_structure"
+      ]
+    },
+    "goose_egg": {
+      "culinary_base": 1.05,
+      "class": "egg",
+      "roles": [
+        "body",
+        "structure",
+        "dessert_structure"
+      ]
+    },
+    "quail_egg": {
+      "culinary_base": 1,
+      "class": "egg",
+      "roles": [
+        "body",
+        "structure",
+        "dessert_structure"
+      ]
+    },
+    "turkey_egg": {
+      "culinary_base": 1.1,
+      "class": "egg",
+      "roles": [
+        "body",
+        "structure",
+        "dessert_structure"
+      ]
+    },
+    "warm_egg": {
+      "culinary_base": 1.2,
+      "class": "egg",
+      "roles": [
+        "body",
+        "structure",
+        "dessert_structure"
+      ]
+    },
+    "chicken_meat": {
+      "culinary_base": 1,
+      "class": "protein_meat",
+      "roles": [
+        "body",
+        "structure"
+      ]
+    },
+    "duck_meat": {
+      "culinary_base": 1,
+      "class": "protein_meat",
+      "roles": [
+        "body",
+        "structure"
+      ]
+    },
+    "goose_meat": {
+      "culinary_base": 1.05,
+      "class": "protein_meat",
+      "roles": [
+        "body",
+        "structure"
+      ]
+    },
+    "lamb": {
+      "culinary_base": 1.05,
+      "class": "protein_meat",
+      "roles": [
+        "body",
+        "structure"
+      ]
+    },
+    "beef": {
+      "culinary_base": 1.05,
+      "class": "protein_meat",
+      "roles": [
+        "body",
+        "structure"
+      ]
+    },
+    "pork": {
+      "culinary_base": 1.05,
+      "class": "protein_meat",
+      "roles": [
+        "body",
+        "structure"
+      ]
+    },
+    "quail_meat": {
+      "culinary_base": 1,
+      "class": "protein_meat",
+      "roles": [
+        "body",
+        "structure"
+      ]
+    },
+    "goat_meat": {
+      "culinary_base": 1.1,
+      "class": "protein_meat",
+      "roles": [
+        "body",
+        "structure"
+      ]
+    },
+    "turkey_meat": {
+      "culinary_base": 1.1,
+      "class": "protein_meat",
+      "roles": [
+        "body",
+        "structure"
+      ]
+    },
+    "fish:any": {
+      "culinary_base": 1,
+      "class": "fish",
+      "roles": [
+        "body",
+        "structure"
+      ]
+    },
+    "fresh_milk": {
+      "culinary_base": 1.05,
+      "class": "dairy",
+      "roles": [
+        "liquid",
+        "structure",
+        "dessert_structure"
+      ]
+    },
+    "goat_milk": {
+      "culinary_base": 1.1,
+      "class": "dairy",
+      "roles": [
+        "liquid",
+        "structure",
+        "dessert_structure"
+      ]
+    },
+    "honey": {
+      "culinary_base": 1.1,
+      "class": "sweetener",
+      "roles": [
+        "sweet",
+        "flavor"
+      ]
+    },
+    "truffle": {
+      "culinary_base": 1.1,
+      "class": "premium_flavor",
+      "roles": [
+        "auxiliary",
+        "flavor"
+      ]
+    }
+  },
+  "methods": {
+    "stir-fry": {
+      "required_role_groups": [
+        {
+          "id": "body_or_structure",
+          "essential": true,
+          "roles": [
+            "body",
+            "structure"
+          ]
+        },
+        {
+          "id": "auxiliary_or_flavor",
+          "essential": false,
+          "roles": [
+            "auxiliary",
+            "flavor",
+            "seasoning"
+          ]
+        }
+      ]
+    },
+    "pan-fry": {
+      "required_role_groups": [
+        {
+          "id": "body_or_structure",
+          "essential": true,
+          "roles": [
+            "body",
+            "structure"
+          ]
+        },
+        {
+          "id": "auxiliary_or_flavor",
+          "essential": false,
+          "roles": [
+            "auxiliary",
+            "flavor",
+            "seasoning"
+          ]
+        }
+      ]
+    },
+    "stew": {
+      "required_role_groups": [
+        {
+          "id": "body_or_structure",
+          "essential": true,
+          "roles": [
+            "body",
+            "structure"
+          ]
+        },
+        {
+          "id": "auxiliary_or_flavor",
+          "essential": false,
+          "roles": [
+            "auxiliary",
+            "flavor",
+            "seasoning"
+          ]
+        }
+      ]
+    },
+    "steam": {
+      "required_role_groups": [
+        {
+          "id": "body_or_structure",
+          "essential": true,
+          "roles": [
+            "body",
+            "structure"
+          ]
+        },
+        {
+          "id": "auxiliary_or_flavor",
+          "essential": false,
+          "roles": [
+            "auxiliary",
+            "flavor",
+            "seasoning"
+          ]
+        }
+      ]
+    },
+    "roast": {
+      "required_role_groups": [
+        {
+          "id": "body_or_structure",
+          "essential": true,
+          "roles": [
+            "body",
+            "structure"
+          ]
+        },
+        {
+          "id": "auxiliary_or_flavor",
+          "essential": false,
+          "roles": [
+            "auxiliary",
+            "flavor",
+            "seasoning"
+          ]
+        }
+      ]
+    },
+    "deep-fry": {
+      "required_role_groups": [
+        {
+          "id": "body_or_structure",
+          "essential": true,
+          "roles": [
+            "body",
+            "structure"
+          ]
+        },
+        {
+          "id": "auxiliary_or_flavor",
+          "essential": false,
+          "roles": [
+            "auxiliary",
+            "flavor",
+            "seasoning"
+          ]
+        }
+      ]
+    },
+    "dessert": {
+      "required_role_groups": [
+        {
+          "id": "dessert_structure",
+          "essential": true,
+          "roles": [
+            "dessert_structure"
+          ]
+        },
+        {
+          "id": "sweet_or_flavor",
+          "essential": false,
+          "roles": [
+            "sweet",
+            "flavor"
+          ]
+        }
+      ]
+    },
+    "drink": {
+      "required_role_groups": [
+        {
+          "id": "liquid_base",
+          "essential": true,
+          "roles": [
+            "liquid"
+          ]
+        },
+        {
+          "id": "flavor",
+          "essential": false,
+          "roles": [
+            "flavor"
+          ]
+        }
+      ]
+    }
+  },
+  "pair_anchors": {
+    "basil|chicken_meat": 40,
+    "basil|fish:any": 60,
+    "basil|flour": 40,
+    "basil|goat_meat": 80,
+    "basil|quail_egg": 40,
+    "basil|spice": 80,
+    "basil|tomato": 80,
+    "beef|butter": 100,
+    "beef|potato": 80,
+    "beef|soy_sauce": 80,
+    "beef|spice": 100,
+    "beef|tomato": 80,
+    "beef|truffle": 100,
+    "butter|chicken_egg": 80,
+    "butter|corn": 40,
+    "butter|flour": 80,
+    "butter|fresh_milk": 80,
+    "butter|salt": 40,
+    "butter|spice": 100,
+    "butter|sugar": 80,
+    "butter|truffle": 100,
+    "carrot|chicken_egg": 40,
+    "carrot|salt": 40,
+    "chicken_egg|cocoa": 80,
+    "chicken_egg|corn": 40,
+    "chicken_egg|flour": 100,
+    "chicken_egg|fresh_milk": 80,
+    "chicken_egg|honey": 80,
+    "chicken_egg|potato": 40,
+    "chicken_egg|pumpkin": 80,
+    "chicken_egg|rainbow_corn": 80,
+    "chicken_egg|rice": 80,
+    "chicken_egg|salt": 60,
+    "chicken_egg|scallion": 60,
+    "chicken_egg|soy_sauce": 60,
+    "chicken_egg|spice": 80,
+    "chicken_egg|star_sugar": 100,
+    "chicken_egg|strawberry": 60,
+    "chicken_egg|sugar": 80,
+    "chicken_egg|tea": 40,
+    "chicken_egg|tofu": 60,
+    "chicken_egg|tomato": 40,
+    "chicken_egg|truffle": 80,
+    "chicken_egg|vanilla": 100,
+    "chicken_meat|flour": 40,
+    "chicken_meat|ginger": 80,
+    "chicken_meat|salt": 60,
+    "chicken_meat|scallion": 80,
+    "chicken_meat|soy_sauce": 80,
+    "cocoa|flour": 80,
+    "cocoa|fresh_milk": 80,
+    "cocoa|honey": 80,
+    "cocoa|sugar": 80,
+    "cocoa|tea": 80,
+    "corn|salt": 40,
+    "duck_egg|pumpkin": 40,
+    "duck_egg|rice": 40,
+    "duck_egg|salt": 40,
+    "duck_meat|ginger": 80,
+    "duck_meat|honey": 80,
+    "duck_meat|onion": 40,
+    "duck_meat|salt": 40,
+    "duck_meat|soy_sauce": 80,
+    "duck_meat|spice": 80,
+    "duck_meat|tea": 80,
+    "duck_meat|yellow_wine": 80,
+    "fish:any|honey": 80,
+    "fish:any|onion": 60,
+    "fish:any|rainbow_corn": 100,
+    "fish:any|rice": 40,
+    "fish:any|salt": 60,
+    "fish:any|spice": 100,
+    "fish:any|star_sugar": 100,
+    "fish:any|tomato": 60,
+    "flour|fresh_milk": 100,
+    "flour|goat_milk": 60,
+    "flour|goose_egg": 80,
+    "flour|honey": 80,
+    "flour|onion": 80,
+    "flour|potato": 40,
+    "flour|pumpkin": 60,
+    "flour|quail_egg": 40,
+    "flour|rainbow_corn": 80,
+    "flour|salt": 80,
+    "flour|scallion": 40,
+    "flour|star_sugar": 100,
+    "flour|strawberry": 100,
+    "flour|sugar": 100,
+    "flour|turkey_egg": 80,
+    "flour|vanilla": 100,
+    "flour|warm_egg": 100,
+    "fresh_milk|goose_egg": 80,
+    "fresh_milk|honey": 80,
+    "fresh_milk|pumpkin": 100,
+    "fresh_milk|salt": 60,
+    "fresh_milk|spice": 100,
+    "fresh_milk|star_sugar": 100,
+    "fresh_milk|strawberry": 100,
+    "fresh_milk|sugar": 100,
+    "fresh_milk|tea": 100,
+    "fresh_milk|turkey_egg": 100,
+    "fresh_milk|vanilla": 100,
+    "fresh_milk|warm_egg": 100,
+    "fresh_milk|watermelon": 60,
+    "ginger|goat_meat": 80,
+    "ginger|quail_meat": 80,
+    "ginger|rice": 80,
+    "ginger|salt": 60,
+    "ginger|scallion": 80,
+    "ginger|soy_sauce": 80,
+    "ginger|spice": 80,
+    "ginger|tofu": 80,
+    "ginger|truffle": 80,
+    "ginger|turkey_meat": 80,
+    "ginger|yellow_wine": 80,
+    "goat_meat|onion": 60,
+    "goat_meat|potato": 60,
+    "goat_meat|rice": 80,
+    "goat_meat|salt": 60,
+    "goat_meat|soy_sauce": 80,
+    "goat_meat|spice": 80,
+    "goat_meat|tomato": 80,
+    "goat_milk|honey": 60,
+    "goat_milk|strawberry": 80,
+    "goat_milk|sugar": 80,
+    "goat_milk|vanilla": 80,
+    "goose_egg|sugar": 40,
+    "goose_egg|vanilla": 80,
+    "goose_meat|honey": 100,
+    "goose_meat|onion": 60,
+    "goose_meat|rice": 60,
+    "goose_meat|soy_sauce": 80,
+    "goose_meat|spice": 100,
+    "goose_meat|star_sugar": 100,
+    "goose_meat|sugar": 80,
+    "honey|pumpkin": 80,
+    "honey|quail_meat": 80,
+    "honey|spice": 100,
+    "honey|star_sugar": 100,
+    "honey|strawberry": 60,
+    "honey|sugar": 60,
+    "honey|tea": 60,
+    "honey|turkey_meat": 100,
+    "lamb|onion": 80,
+    "lamb|pumpkin": 60,
+    "lamb|rainbow_corn": 80,
+    "lamb|salt": 60,
+    "lamb|scallion": 80,
+    "lamb|soy_sauce": 80,
+    "lamb|spice": 80,
+    "onion|potato": 80,
+    "onion|pumpkin": 60,
+    "onion|rice": 60,
+    "onion|salt": 80,
+    "onion|scallion": 80,
+    "onion|soy_sauce": 80,
+    "onion|spice": 80,
+    "onion|tomato": 60,
+    "onion|turkey_egg": 80,
+    "onion|turkey_meat": 80,
+    "pork|scallion": 100,
+    "pork|soy_sauce": 100,
+    "pork|spice": 80,
+    "pork|sugar": 100,
+    "pork|yellow_wine": 100,
+    "potato|salt": 60,
+    "potato|soy_sauce": 80,
+    "potato|spice": 80,
+    "potato|tomato": 80,
+    "potato|turkey_meat": 80,
+    "pumpkin|salt": 60,
+    "pumpkin|spice": 100,
+    "pumpkin|sugar": 60,
+    "pumpkin|turkey_egg": 100,
+    "quail_egg|salt": 40,
+    "quail_egg|soy_sauce": 60,
+    "quail_egg|spice": 60,
+    "quail_egg|sugar": 60,
+    "quail_egg|tea": 40,
+    "quail_meat|rice": 60,
+    "quail_meat|salt": 60,
+    "quail_meat|soy_sauce": 80,
+    "quail_meat|spice": 80,
+    "quail_meat|yellow_wine": 80,
+    "rainbow_corn|spice": 100,
+    "rainbow_corn|star_sugar": 100,
+    "rainbow_corn|sugar": 80,
+    "rice|salt": 60,
+    "rice|scallion": 60,
+    "rice|soy_sauce": 80,
+    "rice|spice": 80,
+    "rice|truffle": 80,
+    "salt|scallion": 60,
+    "salt|tea": 40,
+    "salt|tofu": 60,
+    "salt|tomato": 60,
+    "salt|turkey_egg": 80,
+    "scallion|soy_sauce": 100,
+    "scallion|sugar": 100,
+    "scallion|tofu": 60,
+    "scallion|yellow_wine": 100,
+    "soy_sauce|spice": 80,
+    "soy_sauce|sugar": 100,
+    "soy_sauce|tea": 80,
+    "soy_sauce|tofu": 80,
+    "soy_sauce|truffle": 80,
+    "soy_sauce|turkey_meat": 80,
+    "soy_sauce|yellow_wine": 100,
+    "spice|star_sugar": 100,
+    "spice|sugar": 80,
+    "spice|tea": 80,
+    "spice|tofu": 60,
+    "spice|tomato": 80,
+    "spice|truffle": 100,
+    "spice|turkey_egg": 100,
+    "spice|turkey_meat": 100,
+    "spice|warm_egg": 100,
+    "spice|yellow_wine": 80,
+    "star_sugar|strawberry": 100,
+    "star_sugar|tea": 100,
+    "star_sugar|turkey_meat": 100,
+    "star_sugar|vanilla": 100,
+    "star_sugar|warm_egg": 100,
+    "strawberry|sugar": 80,
+    "strawberry|tea": 60,
+    "strawberry|vanilla": 80,
+    "strawberry|warm_egg": 100,
+    "sugar|tea": 80,
+    "sugar|tofu": 60,
+    "sugar|vanilla": 100,
+    "sugar|warm_egg": 100,
+    "sugar|watermelon": 60,
+    "sugar|yellow_wine": 100,
+    "tea|vanilla": 80,
+    "tea|watermelon": 60,
+    "tofu|truffle": 80,
+    "truffle|warm_egg": 100,
+    "turkey_meat|yellow_wine": 80,
+    "vanilla|warm_egg": 100
+  },
+  "method_anchors": {
+    "basil|pan-fry": 40,
+    "basil|roast": 80,
+    "beef|pan-fry": 100,
+    "beef|stew": 80,
+    "butter|dessert": 60,
+    "butter|pan-fry": 100,
+    "butter|steam": 80,
+    "butter|stir-fry": 40,
+    "carrot|pan-fry": 40,
+    "chicken_egg|dessert": 100,
+    "chicken_egg|pan-fry": 80,
+    "chicken_egg|steam": 80,
+    "chicken_egg|stew": 60,
+    "chicken_egg|stir-fry": 60,
+    "chicken_meat|pan-fry": 40,
+    "chicken_meat|steam": 80,
+    "chicken_meat|stew": 60,
+    "cocoa|dessert": 80,
+    "cocoa|drink": 80,
+    "corn|steam": 40,
+    "corn|stir-fry": 40,
+    "duck_egg|steam": 40,
+    "duck_meat|roast": 80,
+    "duck_meat|stew": 80,
+    "fish:any|pan-fry": 40,
+    "fish:any|roast": 80,
+    "fish:any|steam": 40,
+    "fish:any|stew": 60,
+    "fish:any|stir-fry": 100,
+    "flour|dessert": 100,
+    "flour|pan-fry": 80,
+    "flour|steam": 80,
+    "fresh_milk|dessert": 100,
+    "fresh_milk|drink": 100,
+    "fresh_milk|steam": 100,
+    "fresh_milk|stew": 60,
+    "ginger|steam": 80,
+    "ginger|stew": 80,
+    "goat_meat|roast": 80,
+    "goat_meat|stew": 80,
+    "goat_milk|dessert": 80,
+    "goat_milk|drink": 60,
+    "goat_milk|steam": 60,
+    "goose_egg|dessert": 80,
+    "goose_egg|pan-fry": 40,
+    "goose_meat|roast": 100,
+    "goose_meat|stew": 80,
+    "honey|dessert": 80,
+    "honey|drink": 60,
+    "honey|roast": 100,
+    "lamb|roast": 80,
+    "lamb|stew": 60,
+    "lamb|stir-fry": 80,
+    "onion|pan-fry": 80,
+    "onion|roast": 80,
+    "onion|stew": 60,
+    "onion|stir-fry": 80,
+    "pork|stew": 100,
+    "potato|pan-fry": 40,
+    "potato|roast": 80,
+    "potato|stew": 80,
+    "pumpkin|dessert": 80,
+    "pumpkin|steam": 100,
+    "pumpkin|stew": 60,
+    "quail_egg|pan-fry": 40,
+    "quail_egg|stew": 60,
+    "quail_meat|roast": 80,
+    "quail_meat|steam": 60,
+    "quail_meat|stew": 80,
+    "rainbow_corn|dessert": 80,
+    "rainbow_corn|roast": 80,
+    "rainbow_corn|stir-fry": 100,
+    "rice|pan-fry": 80,
+    "rice|steam": 60,
+    "rice|stew": 80,
+    "rice|stir-fry": 60,
+    "salt|pan-fry": 80,
+    "salt|roast": 40,
+    "salt|steam": 60,
+    "salt|stew": 60,
+    "salt|stir-fry": 40,
+    "scallion|pan-fry": 40,
+    "scallion|steam": 80,
+    "scallion|stew": 100,
+    "scallion|stir-fry": 80,
+    "soy_sauce|roast": 80,
+    "soy_sauce|steam": 80,
+    "soy_sauce|stew": 100,
+    "soy_sauce|stir-fry": 80,
+    "spice|pan-fry": 100,
+    "spice|roast": 100,
+    "spice|steam": 100,
+    "spice|stew": 80,
+    "spice|stir-fry": 100,
+    "star_sugar|dessert": 100,
+    "star_sugar|drink": 100,
+    "star_sugar|roast": 100,
+    "star_sugar|stir-fry": 100,
+    "strawberry|dessert": 100,
+    "strawberry|drink": 60,
+    "sugar|dessert": 100,
+    "sugar|drink": 80,
+    "sugar|pan-fry": 40,
+    "sugar|steam": 80,
+    "sugar|stew": 100,
+    "tea|drink": 100,
+    "tea|roast": 80,
+    "tea|stew": 40,
+    "tofu|stew": 80,
+    "tofu|stir-fry": 40,
+    "tomato|roast": 80,
+    "tomato|stew": 80,
+    "tomato|stir-fry": 40,
+    "truffle|pan-fry": 100,
+    "truffle|roast": 100,
+    "truffle|stew": 80,
+    "turkey_egg|pan-fry": 80,
+    "turkey_egg|steam": 100,
+    "turkey_meat|roast": 100,
+    "turkey_meat|stew": 80,
+    "vanilla|dessert": 100,
+    "vanilla|drink": 80,
+    "warm_egg|dessert": 100,
+    "warm_egg|roast": 100,
+    "watermelon|drink": 60,
+    "yellow_wine|stew": 100
+  },
+  "hard_conflicts": {
+    "pairs": [
+      "cocoa|fish:any",
+      "fish:any|vanilla"
+    ],
+    "method_classes": {
+      "dessert": [
+        "protein_meat",
+        "fish"
+      ],
+      "drink": [
+        "protein_meat",
+        "fish"
+      ]
+    }
+  }
+}

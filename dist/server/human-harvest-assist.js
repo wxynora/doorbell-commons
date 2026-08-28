@@ -50,7 +50,7 @@ function harvestPlotIds(working, states) {
  * Run the old Human UI action chain on an isolated farm clone.  The original
  * farm is replaced exactly once, after the receipt has been added to the clone.
  */
-export function handleHumanHarvestAssist(farm, body, now = Date.now()) {
+export function handleHumanHarvestAssist(farm, body, now = Date.now(), options = {}) {
   const receipts = farm.doorbellHumanHarvestReceipts ?? {};
   const key = body.idempotency_key;
   const fp = fingerprint(body);
@@ -91,7 +91,7 @@ export function handleHumanHarvestAssist(farm, body, now = Date.now()) {
     const remainingBefore = humanHarvestLeft(working, now);
     const canRollSeason = states.some((state) => state.ripe) && remainingBefore > 0;
     const season = canRollSeason ? rollSeasonHarvest(working, now) : null;
-    const harvest = humanHarvestAll(working, now, season?.mod);
+    const harvest = humanHarvestAll(working, now, season?.mod, options);
     if (!harvest.ok) {
       return errorResponse(
         remainingBefore > 0 ? "no_ripe_plots" : "harvest_assist_exhausted",

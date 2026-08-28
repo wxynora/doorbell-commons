@@ -417,21 +417,24 @@ test("career schema adds frozen course delivery and exam no-show columns without
         database.close();
     }
 });
-test("runtime curriculum stays fail closed until approved content and the injected test bank is answerless", () => {
+test("runtime curriculum opens approved courses but keeps exams fail closed without the private bank", () => {
     assert.equal(CAREER_CURRICULUM_VERSION, "career-curriculum-2026-08-27.1");
-    assert.equal(careerCourseAvailability("agronomist", 1, 1), false);
+    assert.equal(careerCourseAvailability("agronomist", 1, 1), true);
+    assert.equal(careerCourseAvailability("chef", 4, 1), true);
     assert.equal(careerCourseAvailability("chef", 4, 3), false);
+    assert.equal(careerCourseAvailability("veterinarian", 3, 3), true);
+    assert.equal(careerCourseAvailability("veterinarian", 3, 1), false);
+    assert.equal(careerCourseAvailability("constable", 4, 1), true);
+    assert.equal(careerCourseAvailability("constable", 4, 2), false);
+    assert.equal(careerCourseAvailability("reporter", 1, 1), false);
     assert.equal(careerExamAvailability("constable", 4), false);
-    assert.throws(
-        () => careerCourseContent("agronomist", 1, 1),
-        assertCareerError("assessment_content_not_available"),
-    );
+    assert.equal(careerCourseContent("agronomist", 1, 1).career, "agronomist");
     const paper = TEST_CURRICULUM.createCoursePracticePaper("agronomist", 1, 1, "reader-resident");
     assert.equal(paper.publicPaper.length, 5);
     assert.deepEqual(Object.keys(paper.publicPaper[0]).sort(), ["id", "options", "stem"]);
     assert.equal(Object.hasOwn(paper.publicPaper[0], "answer"), false);
     assert.throws(
-        () => careerCourseContent("chef", 4, 3),
+        () => careerCourseContent("reporter", 1, 1),
         assertCareerError("assessment_content_not_available"),
     );
 });

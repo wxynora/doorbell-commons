@@ -10,7 +10,7 @@
       "reporter.md": "4843ec7de9c68c4f3119c49052f0f2e838616d0b0ddc774be472f396809bc0a6",
       "constable.md": "d6721137c27dc03bc9b6b4fb4dde8202a0f137795f3ddad0aafe82a036e2c57a"
     },
-    "readinessManifestSha256": "d2dfe68a9aed2c443b609c5d8702e9cad484635ef076cb0206fcbe3cd500eee2"
+    "readinessManifestSha256": "9f77caff8d2f71cece388467d9942f00a21bfa9dee49bf8f71c0d68dd7cbdaf8"
   },
   "careers": {
     "chef": {
@@ -20,14 +20,12 @@
           "level": 1,
           "courseIndex": 1,
           "title": "《食材也有身份证》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "GO_SCHOOL_RUNTIME_CLOSED"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学单元一：先分清下锅的东西\n\n料理台会接触四类对象：可烹饪食材、农牧产物、成品料理和不可烹饪产物。\n\n- 盐、面粉、番茄、茶叶等商店食材可以进入料理组合。\n- 鸡蛋、鲜奶、蜂蜜、牛肉等农牧产物只有在权威内容中标记为可烹饪时才能下锅。\n- 兔毛、羊毛、月光丝、浮云毛、梦之残片、羊驼毛不是料理食材，不能因为它们来自动物或活动就放进锅里。\n- 已经做好的料理是成品，不再作为另一道普通配方的食材。\n- 系统回收是出售既有成品，不是一次新的烹饪，也不会替玩家解锁食谱。\n\n### 教学单元二：食谱、食材和工具不是一回事\n\n食谱记录正确答案；食材是本次真实消耗；工具决定某种制作方式能不能执行。\n\n- 已解锁食谱会继续显示，即使所需进阶工具尚未购买。\n- 看得到食谱不等于此刻做得出来：材料不足或工具未解锁都会阻止制作。\n- 没解锁的食谱不能凭名称直接制作，但可以用正确食材、数量和制作方式探索出来。\n- 探索成功时，成品制作与食谱解锁属于同一次原子结果。\n\n### 教学单元三：别把两个价签当成一种钱\n\n普通食材的购买价、成品锁定的金币价值、系统回收银币和原创菜谱售价属于不同事实。看到一个数字时先看它的币种和用途，不能把金币和银币直接相加成“总利润”。\n\n### 真实游戏情境\n\n小满想做“玉米蛋羹”。她已解锁食谱，仓库里有鸡蛋、玉米和盐，但没有蒸笼。正确判断是：食谱仍然可见，三份材料仍在仓库里，本次制作不能开始；先永久解锁蒸笼后才能按食谱制作。不能把“看得到食谱”误报成“已经拥有工具”。",
           "practiceQuestions": [
@@ -103,14 +101,12 @@
           "level": 1,
           "courseIndex": 2,
           "title": "《锅盖为什么会生气》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "GO_SCHOOL_RUNTIME_CLOSED"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学单元一：八种方式、七套工具\n\n制作方式共有炒、煎、炖煮、蒸、烤、油炸、甜品、饮品。炒和煎共用炒锅；炖煮使用炖锅；蒸使用蒸笼；烤使用烤炉；油炸使用炸锅；甜品和饮品各用自己的工作台。\n\n默认可用的是炒锅、炖锅、甜品台和饮品台。烤炉、蒸笼、炸锅需要分别永久解锁，价格依次为 800、1,200、1,600 银币。\n\n### 教学单元二：一次探索的完整顺序\n\n1. 查看真实库存和已经拥有的工具。\n2. 选择 2～5 份可烹饪投入。\n3. 选择一种当前可执行的制作方式。\n4. 开火前核对材料、数量和方式。\n5. 系统原子执行：校验、扣除投入、判断配方、生成成品；命中未知正式食谱时同时解锁。\n\n在确认前取回材料不会产生料理。开火以后，成功与失败都以权威结果为准，不能因为结果不好就假装没有消耗。\n\n### 教学单元三：失败和微妙料理\n\n只有“标准化食材与数量 + 制作方式”不存在正式食谱时，才进入该方式对应的失败／微妙料理结果。微妙料理不是新食谱，不能登记原创，也不能把另一种方式的现成料理强行套过来。\n\n### 真实游戏情境\n\n阿团拥有鸡蛋、番茄、盐和炒锅，想探索“番茄炒蛋”。他放入三样材料各一份并选择“炒”，可以命中正式食谱。若他改选“炖煮”，系统不能因为材料相同就仍然给番茄炒蛋；当前组合若不存在炖煮食谱，就产生真实失败结果。",
           "practiceQuestions": [
@@ -186,14 +182,12 @@
           "level": 1,
           "courseIndex": 3,
           "title": "《三个鸡蛋换顺序也还是三个鸡蛋》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "GO_SCHOOL_RUNTIME_CLOSED"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学单元一：配方身份怎样生成\n\n配方身份由“标准化食材种类与数量 + 制作方式”共同决定。系统会把投入按稳定规则标准化，因此添加顺序不参与身份。重复食材代表真实数量，不能被吞掉。\n\n### 教学单元二：什么变化会进入另一份判定\n\n- 只换添加顺序：仍是同一配方。\n- 改变某种食材数量：是另一份配方判定。\n- 增加或减少一种食材：是另一份配方判定。\n- 保持食材和数量不变但更换方式：是另一份配方判定。\n- 只改料理名称：不能改变配方身份。\n\n### 教学单元三：正确试作与自动解锁\n\n未解锁食谱必须靠正确食材、正确数量和正确方式命中。成功后直接解锁；失败组合不能留下“半解锁”。幂等重放同一次成功只能得到同一个结果，不能重复消耗、重复出菜或重复解锁。\n\n### 真实游戏情境\n\n小路依次放入蜂蜜、茶叶并选择饮品，命中“蜂蜜茶”。第二天他把顺序改成茶叶、蜂蜜，仍然是同一配方，不会出现第二份新食谱。若改为甜品，则进入另一份配方判定，不能继续命中蜂蜜茶。",
           "practiceQuestions": [
@@ -269,14 +263,12 @@
           "level": 2,
           "courseIndex": 1,
           "title": "《香味不能写进账本》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "GO_SCHOOL_RUNTIME_CLOSED"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学单元一：账本只认发生过的事实\n\n料理闻起来多香、店主多辛苦，都不能自动变成收入。可记账的事实包括：真实购入食材、真实消耗、系统金币加工费、系统回收结果、真实玩家付款、退款以及原创分账。没有权威回执的口头描述不能改余额。\n\n### 教学单元二：成本与回收价分开看\n\n- 食材成本来自真实取得方式与账本记录，不用成品售价倒推。\n- 普通料理的系统金币加工费属于制作结算；中级料理师只在该加工费上获得 5% 减免，向下取整，不减少食材需求。\n- 系统回收使用成品已经锁定的金币价值与银币回收值，不等于玩家店铺成交价。\n- 微妙料理只能由系统回收 1 金，不能摆进玩家摊位。\n- 金币成本和银币收入必须分币种记账；没有当时真实兑换交易时，不能直接相减为一个“总利润”。\n\n### 教学单元三：利润要有真实成交\n\n店铺利润只能根据真实成交与真实成本计算。上架不是成交，报价也不是收入；订单取消或退款以后，已经退回的款项不能继续留在营业额中。若一单包含不同币种，应分别列出金币和银币净变化，而不是自创汇率。\n\n### 真实游戏情境\n\n阿酥制作一份料理，账本记录食材取得成本 40 金、原加工费 21 金。她是中级料理师，加工费减免为 `floor(21 × 5%) = 1` 金，所以实际加工费 20 金；配方食材仍然一份不少。后来料理以 120 银真实售出。她可以报告“本单金币成本 60 金、银币收入 120 银”，但在没有兑换交易时不能宣称“利润 60”。",
           "practiceQuestions": [
@@ -352,14 +344,12 @@
           "level": 2,
           "courseIndex": 2,
           "title": "《微妙料理善后办公室》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "GO_SCHOOL_RUNTIME_CLOSED"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学单元一：失败品不是正式食谱\n\n未命中正式配方，或原创候选存在硬冲突、结构为零、搭配质量低于门槛时，会得到微妙料理。它没有正式菜谱身份，不能命名登记为原创，也不能因为使用了稀有食材就升级。\n\n### 教学单元二：材料消耗不能倒带\n\n开火后产生微妙料理，投入已按本次结果真实消耗。玩家可以在确认前清空料理台；但确认执行后不能用“我不喜欢结果”撤销消耗。重复请求若是同一幂等操作，只能重放同一结果，不能再扣一次材料。\n\n### 教学单元三：允许与禁止的去向\n\n- 可以交给系统回收，固定获得 1 金，不得获得正常料理的银币回收。\n- 可以由制作者自己吃下，并承受随机 2 小时负面效果；该效果只影响 AI 使用农场工具，人类伴侣仍可操作。\n- 不能摆进玩家摊位，不能喂宠物，不能用来贿赂守卫犬，也不能冒充订单所需正常料理。\n\n### 真实游戏情境\n\n小桥用鸡蛋、番茄、盐各一份选择炖煮，得到微妙料理。她不能把它标价卖给另一位居民，也不能提交给要求“番茄炒蛋”的订单。她可以系统回收 1 金，或自己吃下并接受负面效果。材料不会因选择回收而退回。",
           "practiceQuestions": [
@@ -435,14 +425,12 @@
           "level": 2,
           "courseIndex": 3,
           "title": "《原创菜谱登记学》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "GO_SCHOOL_RUNTIME_CLOSED"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学单元一：先判内容身份，再谈名字\n\n原创菜谱的唯一内容身份是“标准化食材种类与数量 + 制作方式”。名字由研发成功的料理师确定，但名字不参与判重。已有正式或原创配方不能靠换名重复登记；同名也不自动代表配方相同。\n\n中级料理师最多同时登记 5 份有效原创菜谱。合法、未重复且品质至少为 N 的候选，研发成功率为 30%；失败会消耗投入，不生成假菜谱。微妙候选不进入 30% 抽取，直接失败。\n\n### 教学单元二：购买答案，不是购买做菜资格\n\n原创菜谱按 N／R／SR／SSR 固定售价 100／300／800／1,500 银。真实购买时，70% 给原作者，30% 由系统回收。购买把答案加入买方已解锁食谱，不授予独占制作权。\n\n未购买者若自己试作恰好命中既有原创配方，也会正常出菜并解锁；原作者署名不变，发现者不会成为第二原创者。这次没有购买，所以没有银币销售分成。\n\n### 教学单元三：制作分红是另一条账\n\n其他居民每次真实成功制作原创料理，原作者按品质获得 100／300／800／1,500 金系统制作分红。购买银币分成和制作金币分红相互独立：买了但没做，只发生购买分账；自己撞出且成功制作，只发生制作分红。\n\n所有购买、退款和制作分红都用居民、菜谱、购买或制作业务 ID 幂等结算。退款必须引用原购买并反向撤销原银币分账，不能再造一笔无来源退款。\n\n### 真实游戏情境\n\n小芽原创一份 SR 菜谱。小雨支付 800 银购买，账本结算给小芽 560 银，系统回收 240 银；购买本身不产生金币制作分红。小雨后来首次真实做成该菜，系统再向小芽发 800 金制作分红。若小河没购买却自己撞中配方，他会解锁菜谱并触发本次 800 金制作分红，但不会凭空产生 800 银购买款或 560 银销售分成。",
           "practiceQuestions": [
@@ -524,7 +512,7 @@
             "modelCopyApproved": false,
             "runtimeReady": false,
             "blockedBy": [
-              "GO_SCHOOL_RUNTIME_CLOSED"
+              "CHEF_SEASONAL_WEATHER_SUPPLY"
             ]
           },
           "contentMarkdown": "### 教学单元一：库存是事实，不是承诺\n\n商店有固定常备食材，也有每日轮换供应。季节、天气、农牧产出和活动状态会影响食材是否出现在本户当天货架。料理师购买同一种食材的个人每日上限是普通玩家对应上限的 2 倍，但价格不因职业改变；翻倍的是本户当天最多能买多少，不是全服共享库存，也不会让未上架食材凭空出现。\n\n### 教学单元二：先看当前供应，再接需要特定材料的单\n\n接单前要核对：本户当天货架、本人今日已购数量、仓库真实库存、所需工具、食谱解锁、订单时限以及材料是否属于活动或季节来源。今天没有上架不保证明天补货；系统也不能为了履约凭空生成一份轮换食材。\n\n### 教学单元三：供应变化不能改写配方\n\n缺少牛肉时不能把羊肉代入“松露牛排”；缺少星糖时不能把砂糖代入“星糖奶茶”。替换食材会进入另一份配方判定，不能冒充原订单。若无法按订单合同完成，应在允许阶段取消、退款或拒单，而不是交付错误料理。\n\n### 真实游戏情境\n\n小栗收到一份要求“星糖奶茶”的订单。她有鲜奶和茶叶，却没有星糖；本户当天货架也没有星糖。即使她的个人购买上限是普通玩家的两倍，也不能购买未上架的食材。她不能用砂糖代替星糖后冒充履约，只能依据订单当前阶段拒绝、取消或等待真实供应。",
@@ -601,14 +589,12 @@
           "level": 3,
           "courseIndex": 2,
           "title": "《开店不是把锅搬到门口》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "GO_SCHOOL_RUNTIME_CLOSED"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学单元一：开店资格与启动交易\n\n高级及以上料理师可以申请料理店；每个 `resident_id` 同时最多经营一家。首次开店需要 500,000 金押金和 100,000 金首期租金，共 600,000 金。租金每期 14 日。空铺选择、扣款以及至少一项真实库存／服务上架必须在同一事务完成；同铺竞争只认第一笔成功事务，失败者不扣款。\n\n### 教学单元二：库存、定价、订单、顾客\n\n店铺只能出售真实库存或已经确认能够履行的服务。顾客必须是真实玩家；NPC 不得制造假订单或营业额。上架价格是店主报价，付款后才形成真实成交。订单需要稳定业务 ID；同一订单重放不能重复扣顾客款、重复扣库存或重复向店主结算。\n\n### 教学单元三：租约到期与退店\n\n- 到期后有 3 个完整自然日宽限期。\n- 宽限期结束仍未付款，暂停新订单，但已有订单继续履行、取消或退款。\n- 逾期 7 日终止租约，押金先抵欠租，余款退回；不足部分形成系统金币债务。\n- 主动退租前必须完成或退款全部订单并结清租金，之后退还剩余押金。\n\n### 真实游戏情境\n\n两位料理师同时申请同一空铺。小禾的事务先完成：600,000 金支付成功并上架一份真实库存；小满随后提交。正确结果是小禾取得租约，小满的整个事务失败且不扣款。系统不能先扣小满的钱，再告诉她铺位没了。",
           "practiceQuestions": [
@@ -684,14 +670,12 @@
           "level": 3,
           "courseIndex": 3,
           "title": "《一锅多单与厨房事故》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "GO_SCHOOL_RUNTIME_CLOSED"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学单元一：批量不等于合并成一次模糊扣除\n\n多份料理可以按批次组织制作，但每份成品、每份材料、所属订单和业务 ID 都要可核对。批量校验应先确认全部材料和工具；如果合同要求全批原子完成，不能做到一半才发现缺料。若系统采用逐份结算，每份也必须有独立可重放结果，不能重复扣除。\n\n### 教学单元二：高级职业增益\n\n高级料理师每次普通料理制作有 15% 概率返还本次真实消耗的 1 份普通食材；限定、活动、SP 与任务物品不在返还池。高级料理师的系统金币加工费减免 10%，向下取整。返还不会减少配方投入，减免也不会改变食谱、品质或真实食材消耗。\n\n### 教学单元三：错误订单处理\n\n做错菜不能把错误成品硬塞给顾客。订单尚未发生不可逆处理时，可以依合同取消并退款；已经消耗材料或改变状态后，不能把工作伪装成“从未发生”。后续应保留事实，重新制作、履约或依合同退款。错误成品仍按它自己的真实身份进入库存，不能改名字充数。\n\n### 真实游戏情境\n\n订单要求两份“蜂蜜烤鱼”。店主第一份做对，第二份误做成“香草烤鱼”。系统必须保留两份实际成品与材料消耗，不能把第二份重命名后交付，也不能把整单简单标成“未开始”。正确选择是补做第二份蜂蜜烤鱼后履约，或按订单合同处理取消／退款；幂等重放不能重复扣第三份材料。",
           "practiceQuestions": [
@@ -767,14 +751,12 @@
           "level": 4,
           "courseIndex": 1,
           "title": "《铃野不接受第二道同名红烧肉》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "GO_SCHOOL_RUNTIME_CLOSED"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学单元一：课名是玩笑，判重不看菜名\n\n铃野真正拒绝的是第二份相同内容身份，不是第二个相同中文名。系统先把每种食材和数量标准化，再与制作方式一起形成配方键：\n\n```text\n配方键 = 标准化食材种类与数量 + 制作方式\n```\n\n添加顺序、菜名、作者昵称、品质和售价都不改变配方键。相同配方键已经存在时，后来的原创登记冲突；不同配方键即使同名，也不能只凭名字合并。\n\n### 教学单元二：归属跟随第一次有效登记\n\n第一次合法研发成功会保存唯一菜谱 ID、原作者 `resident_id`、作者命名、固定品质和算法版本。购买、碰巧发现、实际制作或后来改显示名都不会转移作者。特级料理师最多登记 20 份有效原创菜谱；合法候选研发成功率为 60%。\n\n### 教学单元三：并发与幂等\n\n两位料理师同时提交相同配方，只有第一笔成功登记可以成为作者；另一笔得到冲突，不能生成第二份菜谱。相同研发业务 ID 的重放返回原结果，不重复消耗或抽取；同一业务 ID 换材料、数量或方式则是冲突，不得沿用原结果执行新命令。\n\n### 真实游戏情境\n\n小葵提交“牛肉、松露、黄油、香料各一份；煎”，想命名“月下牛排”。该组合已是现有“松露黄油牛排”，所以无论新名字多不同都不能登记原创。若她提交同样材料改为炖煮，则进入另一份配方判定；它可能失败或成为新的原创候选，但绝不会继续命中煎制食谱。",
           "practiceQuestions": [
@@ -850,14 +832,12 @@
           "level": 4,
           "courseIndex": 2,
           "title": "《稀有食材不许拿来垫锅脚》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "GO_SCHOOL_RUNTIME_CLOSED"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学单元一：食材底子不是价格加分\n\n原创候选的食材底子 `B` 取每份投入的 `culinary_base` 几何平均。普通食材及当前其余食材为 1.00；可可、香草、香料、黄油、黄酒、鲜奶、鹅蛋、鹅肉、羊肉、牛肉、猪肉为 1.05；蜂蜜、松露、彩虹玉米、山羊奶、山羊肉、火鸡蛋、火鸡肉为 1.10；暖火蛋、星糖为 1.20。\n\n数量通过重复计入 `B`，但同种食材重复份数不会伪造新的“不同食材对”。实时售价、玩家身份和市场热度不参与品质。\n\n### 教学单元二：搭配质量与品质门槛\n\n原创候选必须投入 2～5 份且至少两种不同食材。搭配质量为：\n\n```text\nP = round(0.50 × pair_score + 0.30 × method_score + 0.20 × structure_score)\nS = B × P\n```\n\n硬冲突、`structure_score = 0` 或 `P < 45` 直接微妙。其余按 `S` 初判：小于 60 为 N，60～不足 75 为 R，75～不足 90 为 SR，90 以上为 SSR；再受 `P` 封顶：P 不足 60 最高 N，不足 75 最高 R，不足 90 最高 SR。SSR 还必须满足 `P ≥ 90` 且 `B ≥ 1.01`。全普通食材再合拍也不能达到 SSR。\n\n### 教学单元三：限定、活动、季节和 SP 边界\n\nP3 普通原创最高只到 SSR。SP 属于既有特殊／活动内容，不进入普通原创算法。原创只能使用本人真实持有、当前允许烹饪的食材和已拥有工具；活动、限定、SP、任务物品不会因特级资格自动变成普通研发材料，也不进入材料返还池。内容表版本变化只影响以后新研发，不追溯改写既有原创品质。\n\n### 真实游戏情境\n\n某合法新候选的 `B=1.05`，`pair_score=80`、`method_score=100`、`structure_score=100`。因此 `P=round(40+30+20)=90`，`S=94.5`；它同时满足 `P≥90` 和 `B≥1.01`，最终为 SSR。若这份候选全由 1.00 普通食材构成，即使 P=100、S=100，也因 `B<1.01` 不能进入 SSR，最高为 SR。",
           "practiceQuestions": [
@@ -935,11 +915,11 @@
           "title": "《全铃野都等着开饭》",
           "available": false,
           "approval": {
-            "textApproved": true,
+            "textApproved": false,
             "modelCopyApproved": false,
             "runtimeReady": false,
             "blockedBy": [
-              "GO_SCHOOL_RUNTIME_CLOSED"
+              "CHEF_PUBLIC_ACTIVITY_ORDERS"
             ]
           },
           "contentMarkdown": "> **待确认边界：** 课程目录已经确认公共活动订单、多人供货和大型料理任务的方向，但任务状态、贡献记录字段、并发接收、超额处理、退回／退款、奖励和最终结算合同尚未逐项确认。本门当前只整理不会随实现改变的业务原则，不能作为可上线课程或正式考试依据；以下任何题目都不得反向决定缺失的协议。\n\n### 教学单元一：公共订单必须先有公共事实\n\n大型料理任务只能由真实存在并已登记料理需求的公共活动产生。系统必须明确所需料理、数量、期限、可接受配方和完成条件；没有真实活动或没有登记需求时，不能制造一群假顾客或空订单给料理师刷记录。\n\n### 教学单元二：多人供货各自有账\n\n多人参与时，系统必须保留每位真实供货者和其实际交付数量，不能把全部成品改记给一个人，也不能把口头承诺算成已经交付。将来使用什么任务字段、如何引用成品、怎样处理重复请求和同时提交，必须由公共任务合同统一确认，课程不能先替后端命名。\n\n公共任务可以显示总进度，但不能把“有人承诺会做”计入已交付数量。个人贡献也不能因为全服任务完成而被改写成别人的署名。\n\n### 教学单元三：完成、超额和失败\n\n任务达到已登记完成条件后才能结算。晚到、超额、同时提交和响应丢失分别如何处理，当前合同尚未确认，不能从“多人供货”四个字推导出先到先得、自动退回或自动补偿。任何奖励、费用、退还或排名也只有在活动合同确认后才能执行，本课不替未来活动自造结果。\n\n### 真实游戏情境\n\n公共活动真实需要 30 份“黄油曲奇”，当前已确认接收 29 份。小岚与小桥同时各准备提交一份真实成品。现有方向能确定的是：不能把两人的承诺都提前计入进度，不能抹掉真实供货者，也不能凭空发放未登记奖励；但哪一份被接收、另一份如何处理以及响应丢失后的正式恢复方式，必须等公共任务合同确认。",
@@ -1016,32 +996,26 @@
         {
           "career": "chef",
           "level": 1,
-          "available": false,
+          "available": true,
           "approval": {
-            "textApproved": false,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "PRIVATE_EXAM_BANK_REQUIRED",
-              "GO_SCHOOL_RUNTIME_CLOSED"
-            ]
+            "textApproved": true,
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
-          "blockedReason": "RUNTIME_NOT_READY"
+          "blockedReason": null
         },
         {
           "career": "chef",
           "level": 2,
-          "available": false,
+          "available": true,
           "approval": {
-            "textApproved": false,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "PRIVATE_EXAM_BANK_REQUIRED",
-              "GO_SCHOOL_RUNTIME_CLOSED"
-            ]
+            "textApproved": true,
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
-          "blockedReason": "RUNTIME_NOT_READY"
+          "blockedReason": null
         },
         {
           "career": "chef",
@@ -1052,8 +1026,7 @@
             "modelCopyApproved": false,
             "runtimeReady": false,
             "blockedBy": [
-              "PRIVATE_EXAM_BANK_REQUIRED",
-              "GO_SCHOOL_RUNTIME_CLOSED"
+              "CHEF_SEASONAL_WEATHER_SUPPLY"
             ]
           },
           "blockedReason": "RUNTIME_NOT_READY"
@@ -1067,8 +1040,7 @@
             "modelCopyApproved": false,
             "runtimeReady": false,
             "blockedBy": [
-              "PRIVATE_EXAM_BANK_REQUIRED",
-              "GO_SCHOOL_RUNTIME_CLOSED"
+              "CHEF_PUBLIC_ACTIVITY_ORDERS"
             ]
           },
           "blockedReason": "RUNTIME_NOT_READY"
@@ -1082,16 +1054,12 @@
           "level": 1,
           "courseIndex": 1,
           "title": "《叶子不会说谎，但会装病》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "AGRONOMY_PROGRESSIVE_FACTS",
-              "AGRONOMY_WRONG_MATERIAL_CONSUMPTION",
-              "P3_CROSS_STORE_RECOVERY"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学目标\n\n看懂叶面事实，但不把单一表现直接当成诊断。初级农艺师要先把“缺水”“局部虫害”和“当前没有已登记异常”分开，再决定是否继续检查。\n\n### 教学单元\n\n1. **叶片失去挺度不是万能答案。** 土面发干并且叶片失去挺度，才支持继续按缺水检查；只看见叶片不精神，不能跳过土壤事实。\n2. **叶片缺口要找虫迹。** 叶片缺口、虫卵或虫迹支持局部虫害；只有一个缺口、没有权威异常记录时，不能自行发布委托或消耗诱虫板。\n3. **成熟不是病。** 成熟作物发生的正常外观变化，不自动成为普通枯萎。当前首发异常表没有一项名为“普通枯萎”的独立可处理状态；系统没有登记真实异常时，农艺师不得自创病名。\n4. **先确认状态，再谈材料。** 缺水对应叶与土检查；局部虫害对应叶与虫迹检查。至少完成一项合法检查后，职业处理才可以继续。\n\n### 真实地块情境\n\n一号地的小麦仍在生长，土面发干，叶片失去挺度，权威地块记录为“缺水”；二号地的草莓叶片有缺口和虫卵，权威记录为“局部虫害”；三号地的胡萝卜已经成熟，但没有异常记录。\n\n正确判断是：一号地继续按叶、土确认缺水；二号地继续按叶、虫迹确认局部虫害；三号地不能仅因成熟后的外观变化创建“枯萎”委托。",
           "practiceQuestions": [
@@ -1167,16 +1135,12 @@
           "level": 1,
           "courseIndex": 2,
           "title": "《泥巴捏一下有话说》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "AGRONOMY_PROGRESSIVE_FACTS",
-              "AGRONOMY_WRONG_MATERIAL_CONSUMPTION",
-              "P3_CROSS_STORE_RECOVERY"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学目标\n\n从土壤事实区分缺水、普通积水和需要更高资格处理的根部问题。初级可以完成本级检查和基础稳定，但不能越级宣称复杂状态已经恢复。\n\n### 教学单元\n\n1. **干和湿都可能让作物停长。** 缺水会让生长暂停；普通积水也会让生长暂停。两者处理方向相反，不能只看“没长”就浇水。\n2. **积水要看根区。** 土面有积水、根区缺氧支持普通积水。普通积水完整处理最低需要中级；初级可以识别、稳定并转交。\n3. **根部异常不是“更湿一点”。** 持续积水或错误处理后出现根部异常时，初级只能记录已经完成的土壤／根区检查并转交。该状态超出初级资格，系统不向初级展示高等级处理方法。\n4. **收获不会抹掉事实。** 在缺水或积水未处理时收获，品相固定降低一个档，最低不低于袖珍；同一地块异常最多造成一次降档，不按跨日重复叠加。\n\n### 真实地块情境\n\n一块生长中的马铃薯土面有积水，根区缺氧，权威状态为普通积水。初级农艺师可以查看土壤与根区，并在确认超出资格后转交；不能继续浇水，也不能猜测或调用未向本级开放的高等级处理。若主人在积水仍存在时收获，作物按已确认规则降一个品相档。",
           "practiceQuestions": [
@@ -1252,16 +1216,12 @@
           "level": 1,
           "courseIndex": 3,
           "title": "《先看地，再接单》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "AGRONOMY_PROGRESSIVE_FACTS",
-              "AGRONOMY_WRONG_MATERIAL_CONSUMPTION",
-              "P3_CROSS_STORE_RECOVERY"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学目标\n\n理解真实农艺委托从哪里来、何时可以接、费用如何冻结，以及什么时候应当拒绝或转交。委托文字不是权威地块状态。\n\n### 教学单元\n\n1. **真实对象先于订单。** 地块必须真实存在，作物仍存在，异常仍为可处理状态，才能发布对应委托。作物已在接单前收获时，需求失效，不能继续接单。\n2. **主人描述不是诊断。** 委托可以表达请求，但条件、地块和检查事实必须从权威状态读取。系统不能因为主人写“肯定是虫”就替地块生成虫害。\n3. **接单与劳务酬劳同时成立。** 真人农艺委托的银币酬劳必须是双方确认的正整数；公开委托由第一名合格接受者取得。接受和劳务酬劳冻结必须原子完成，余额不足时两者都不能创建。\n4. **材料与劳务分账。** 委托方自己提供物资时不收材料款；农艺师提供本人真实库存时，委托方在使用前按公开参考价确认并冻结材料款，实际消耗后才结算给提供者，未消耗部分解冻。\n5. **初级同时最多主办一个委托地块。** 已经绑定并开始检查的地块进入对象锁，不能同时被另一条路径收获、再次接单或重复处理。\n\n### 真实委托情境\n\n门牌 A 的一号地确有局部虫害，主人发布 30 银劳务酬劳。初级农艺师尚无其他主办工作，资格和余额检查通过后，接单与 30 银冻结同时成功。若主人只在信里写“二号地也有虫”，但二号地没有权威异常，系统不得顺便创建第二份工作。",
           "practiceQuestions": [
@@ -1343,9 +1303,8 @@
             "modelCopyApproved": false,
             "runtimeReady": false,
             "blockedBy": [
-              "AGRONOMY_PROGRESSIVE_FACTS",
-              "AGRONOMY_WRONG_MATERIAL_CONSUMPTION",
-              "P3_CROSS_STORE_RECOVERY"
+              "AGRONOMY_ADJACENT_PEST_SPREAD",
+              "P4_IMPACT_TO_P3_SOURCE"
             ]
           },
           "contentMarkdown": "### 教学目标\n\n区分 P3 单地块局部虫害与 P4 公共虫灾，并只依据已经登记的 source／impact 工作。公共虫灾没有“一级／二级／三级”严重度。\n\n> **接入阻塞，不是产品待确认：** 相邻传播与防虫网合同已经确认；当前 runtime 尚未实现传播选择、状态转移、防虫网 treatment，以及 P4 `impact → P3 source` adapter。本稿教授已确认规则，但这些入口补齐并验证前不得接入 runtime。\n\n### 教学单元\n\n1. **局部虫害是具体地块 source。** 叶片缺口、虫卵或虫迹可以支持一块地的 P3 局部虫害；一个 source 只能处理它绑定的地块，不能顺便覆盖相邻地。\n2. **传播必须由权威事实产生。** 未处理地块每日最多向一块相邻生长地传播一次；相邻不等于已经传播。尚未传播的单块局部虫害使用诱虫板，已经具有相邻传播事实的虫害使用防虫网。\n3. **公共虫灾是同一条全服时间线。** 春季或夏季连续三个自然日都是温暖天气，且其中至少两个自然日属于小雨、多云或雾时，公共虫灾条件成立。温暖天气固定指晴、多云、小雨、大雨、雷暴、雾或炎热，不包括干风、小雪、暴雪。\n4. **公共事件与地块 impact 是两层事实。** `eventId` 说明是哪场公共虫灾，`plot_pest` impact 说明哪一户的哪一个对象已经受到该事件影响；没有 impact 或传播 source，就不能从“隔壁有虫”推导本地受害。\n5. **阶段限制新增影响。** `forecast` 不能登记 impact；只有 `active` 可以；`recovery` 停止新增影响与传播，持续 48 小时。未清除地块在公共事件结算后保留为 P3 局部虫害，不能随归档凭空痊愈。\n\n### 真实地块与事件情境\n\n春季三天依次为多云、小雨、雾，满足虫灾触发条件。事件进入 active 后，门牌 A 的一号地草莓有一个明确 `plot_pest` impact 和对应 P3 局部虫害 source；相邻二号地豌豆没有 source 或 impact。农艺师只能先处理一号地，不能仅凭相邻关系把二号地写成受害对象；如果权威传播 resolver 后续把二号地登记为相邻传播 source，二号地才成为真实处理对象，并使用防虫网。若门牌 B 也有 impact，它仍是 B 自己的对象和委托。",
@@ -1428,9 +1387,7 @@
             "modelCopyApproved": false,
             "runtimeReady": false,
             "blockedBy": [
-              "AGRONOMY_PROGRESSIVE_FACTS",
-              "AGRONOMY_WRONG_MATERIAL_CONSUMPTION",
-              "P3_CROSS_STORE_RECOVERY"
+              "P4_IMPACT_TO_P3_SOURCE"
             ]
           },
           "contentMarkdown": "### 教学目标\n\n在缺水、普通积水、洪水积水和公共干旱之间选择正确方向。天气是权威事实，不是处理按钮；连续降雨也不能用“再浇一点试试”解决。\n\n### 教学单元\n\n1. **P3 缺水与普通积水。** 缺水时土面发干、叶片失去挺度、生长暂停；普通积水时土面有积水、根区缺氧、生长同样暂停。普通浇水可以解除普通缺水，排水材料清除普通积水。\n2. **P4 洪水触发。** 连续两个自然日都是大雨或雷暴时，洪水条件成立。洪水发生时所有占有作物的地块进入积水状态；成熟作物可以收获，但在积水中收获固定降低一个品相档。\n3. **P4 干旱触发。** 春、夏或秋连续四个自然日都是晴、炎热或干风时，干旱条件成立。每个生长中地块每天首次结算为缺水；当天正常浇水或合法访客帮浇都能解除当日缺水，次日灾害仍在时会重新形成。\n4. **保水覆盖物不是“高级浇水”。** 它让一块地在本场干旱余下时间不再重复进入缺水；单次普通浇水只解决当天。\n5. **恢复由天气事实推动。** 洪水在最后一个大雨／雷暴日结束后进入恢复；未人工排水地块一个完整自然日后自然退水。干旱遇到小雨、大雨或雷暴的当天立即进入恢复并停止新增缺水。\n6. **农场与牧场共用天气。** 同一时刻不能农场下雨、牧场晴天；任何页面刷新都不能重掷预报。\n\n### 真实天气情境\n\n夏季连续两天为大雨，门牌 A 的两块生长地和一块成熟地同时积水。中级农艺师可以对至多两个委托地块执行批量排水；成熟地若在积水中直接收获会降一个品相档。第三块不能因为并发上限而被静默忽略，可由主人自行排水、交给另一名合格农艺师，或等待符合条件的自然退水。",
@@ -1507,16 +1464,12 @@
           "level": 2,
           "courseIndex": 3,
           "title": "《药撒多了庄稼也会生气》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "AGRONOMY_PROGRESSIVE_FACTS",
-              "AGRONOMY_WRONG_MATERIAL_CONSUMPTION",
-              "P3_CROSS_STORE_RECOVERY"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学目标\n\n只使用当前异常对应的真实物资，理解错误处理、批量节省、材料款冻结和取消／转交后的资金去向。课程名称里的“药”不代表铃野存在一瓶万能农药。\n\n### 教学单元\n\n1. **中级当前可完整使用的物资。** 排水材料 2,000 金；诱虫板 3,000 金；保水覆盖物 5,000 金。每份对应一块地的一次完整处理。防虫网虽已列入产品内容表，但适用 resolver 未落权威 core，本稿不把它作为处理答案。\n2. **先有检查，再有处理。** 未完成任何合法检查时不能直接处理；错误物资会真实消耗，但异常不解除，不能把失败写成恢复。\n3. **批量节省只作用于真实需求。** 中级一次批量处理中，减免份数为 `floor(总需求 × 5%)`，实际消耗为原需求减去该份数，且每种物资至少使用一份。不能先夸大需求再制造“节省”。\n4. **不同物资分别计算最低一份。** 两块地分别需要一种不同物资时，每种都至少消耗一份，不能把两个最低值合并成一份万能材料。\n5. **劳务酬劳与材料款分账。** 接单时冻结正整数银币劳务酬劳；材料由农艺师提供时，在使用前按公开金币参考价确认并冻结，实际消耗后 100% 结算给提供者。\n6. **取消和转交不抹掉消耗。** 未发生不可逆处理或物资消耗前，合法取消会解冻劳务酬劳；已经消耗物资后不能伪装成从未发生的取消。真人转交时原劳务酬劳先解冻，委托方确认新从业者与新酬劳后重新冻结。\n\n### 真实材料情境\n\n中级农艺师接到两块普通积水地的批量委托，基础需求为两份排水材料。减免份数为 `floor(2 × 0.05) = 0`，因此实际仍使用两份。若第二块其实是局部虫害 source，就必须分别计算一份排水材料与一份诱虫板，不能只拿一件材料处理两种异常。",
           "practiceQuestions": [
@@ -1598,9 +1551,8 @@
             "modelCopyApproved": false,
             "runtimeReady": false,
             "blockedBy": [
-              "AGRONOMY_PROGRESSIVE_FACTS",
-              "AGRONOMY_WRONG_MATERIAL_CONSUMPTION",
-              "P3_CROSS_STORE_RECOVERY"
+              "AGRONOMY_ADJACENT_PEST_SPREAD",
+              "P4_IMPACT_TO_P3_SOURCE"
             ]
           },
           "contentMarkdown": "### 教学目标\n\n处理同一农场内多个独立异常 source、同一公共事件下的多农场影响，以及高级可独立处理的营养失衡和根部受损。课程不把相邻关系或共享事件误写成已经发生的传播事实。\n\n> **接入阻塞，不是产品待确认：** 已确认合同规定未处理地块每日最多向一块相邻生长地传播，尚未传播使用诱虫板，已有相邻传播事实使用防虫网。当前 runtime 尚未实现传播 resolver、防虫网 treatment 与 P4 `impact → P3 source` adapter；补齐前本课程不得接入 runtime。\n\n### 教学单元\n\n1. **先画清 source 与对象。** 每个局部虫害 source 或公共事件 impact 都绑定自己的农场、地块和对象；相邻地块如果没有 source／impact，就不能被写成已经受害。只有权威 resolver 留下相邻传播事实后，该地块才进入处理，并使用防虫网。\n2. **多农场共享事件，不共享对象。** 同一个事件 ID 可以在多个门牌形成各自 impact；处理 A 户不会自动清除 B 户状态，B 户也不是 A 户委托的附属对象。\n3. **营养失衡最低为高级。** 叶色异常，但土壤水分与虫迹不支持缺水、积水或虫害时，需要继续核对叶、土和近期处理记录；确认后使用土壤调理剂，系统价 6,000 金。生长速度在未解决时减半。\n4. **根部受损最低为高级。** 合法检查为根或土；当前 core 在至少一项合法检查已经记录后，允许高级使用护根剂。护根剂系统价 10,000 金。课程不追加当前 runtime 没有执行的排水顺序门槛。\n5. **处理结果绑定具体 source。** 高级面对多个真实地块时，仍逐 source 核验资格、检查、物资和结果；一个 source 的成功不能替另一个 source 结案。\n6. **高级同时最多主办四个委托地块，批量普通物资减免 10%。** 对象锁与每块地的真实状态仍要分别保存。\n\n### 真实多地块情境\n\n门牌 A 的一号地草莓有已登记的局部虫害 source；相邻二号地豌豆没有 source／impact，四号地已经收获为空。同一公共虫灾另为门牌 B 的番茄地登记了 `plot_pest` impact。高级农艺师只能按已存在的 A 一号地与 B 番茄地事实分别检查、授权、处理和结算；不能因二号地相邻就补写异常，也不能把 B 户挂在 A 户工作里一起收费。",
@@ -1683,9 +1635,7 @@
             "modelCopyApproved": false,
             "runtimeReady": false,
             "blockedBy": [
-              "AGRONOMY_PROGRESSIVE_FACTS",
-              "AGRONOMY_WRONG_MATERIAL_CONSUMPTION",
-              "P3_CROSS_STORE_RECOVERY"
+              "P4_IMPACT_TO_P3_SOURCE"
             ]
           },
           "contentMarkdown": "### 教学目标\n\n在多个真实对象之间按“是否仍存在、是否已锁定、异常当前影响、是否接近不可逆收获、资格和材料是否齐备”排序，而不是只按售价或个人喜好拍脑袋。\n\n### 教学单元\n\n1. **先排除不能处理的对象。** 已收获对象应失效；不属于当前委托或没有权威异常的地块不能占用处理名额。\n2. **先处理已经进入不可逆流程的工作。** 已消耗物资或已经改变状态的 active 工作不能退回“从未发生”；应继续完成或带完整事实转交。\n3. **不同异常有不同当前影响。** 未处理局部虫害会让收获品质降一档；缺水、积水和根部受损会暂停生长；营养失衡使生长减半。排序必须读取这些真实影响，不能把它们统称为“都不太好”。\n4. **成熟与稀有度是可说明的取舍事实，不是隐藏加权公式。** 成熟作物在异常中收获会降一档；继续等待是否值得由主人结合真实作物和风险选择。系统不得凭未确认价格算法自动决定“草莓永远先于萝卜”。\n5. **资格、并发和库存是硬边界。** 高级最多主办四个地块；材料不齐或问题属于特级时，正确优先动作可能是转交，而不是先占单再让对象等。\n6. **预警不是已发生损害。** P4 `forecast` 阶段用于准备；只有 `active` 阶段可以登记新的灾害影响。恢复期也不能再追加损害。\n\n### 真实优先级情境\n\n高级农艺师当前有四个地块：A 为已使用排水材料但尚未完成结案的 active 工作；B 为仍有未解决 source 的局部虫害，若此时收获会降一档；C 为成熟草莓的缺水，主人尚未决定收获还是处理；D 已经在接单前被收获。第一步不是比较草莓和萝卜的售价，而是先把 D 标记为需求失效，继续完成或合法转交 A，并把 B、C 的当前后果如实展示给主人。",
@@ -1768,9 +1718,7 @@
             "modelCopyApproved": false,
             "runtimeReady": false,
             "blockedBy": [
-              "AGRONOMY_PROGRESSIVE_FACTS",
-              "AGRONOMY_WRONG_MATERIAL_CONSUMPTION",
-              "P3_CROSS_STORE_RECOVERY"
+              "P4_IMPACT_TO_P3_SOURCE"
             ]
           },
           "contentMarkdown": "### 教学目标\n\n读取统一 14 日生态季节、每日天气与三日预报，机械判断灾害触发、预警、事件冲突和恢复；不得为了制造任务重掷天气或把本地季节事件当预报。\n\n### 教学单元\n\n1. **三层时间不能混。** 世界钟表使用北京时间；铃野四季每季 14 个现实日、四季一轮 56 日；每日天气在北京时间 00:00 切换并全服一致。\n2. **预报一经进入窗口就锁定。** 《铃野日报》读取今天及未来三天同一份权威计划；重启、重复查看、玩家行为和职业需要都不能改签。\n3. **季节权重只生成尚未锁定的未来天气。** 夏季降雨与炎热权重较高，冬季只有晴、多云、雾、干风、小雪和暴雪；权重不是后台“想下雨就下雨”的接口。\n4. **按完整窗口机械判断。** 洪水看连续两日大雨／雷暴；干旱看春夏秋连续四日晴／炎热／干风；虫灾看春夏连续三日温暖且至少两日小雨／多云／雾。\n5. **多条件冲突有固定顺序。** 同一时刻最多一场处于预警、发生或恢复；先选触发日更早者，同日同时成立时按 `洪水 → 干旱 → 虫灾`，不重掷。\n6. **预警至少提前 24 小时。** 预警可准备真实物资与人员，但不能提前登记作物损害或把预警当 active。\n7. **既有随机事件不参与改签。** “知时雨”“虫客来访”“透雨疯长”等仍按本地一次性奇遇结算，不能创建或清除权威灾害。\n\n### 真实天气情境\n\n春季权威预报为：今天多云，明天小雨，后天雾。三天均属于温暖天气，且三天都满足湿润条件，因此系统可以在首次确定完整窗口时建立虫灾预警；农艺师可以检查库存和委托容量，但在事件仍为 forecast 时不能向任何地块登记新虫害。即使某户同时触发一次“虫客来访”，也不能改变公共事件 ID 或开始时间。",
@@ -1853,9 +1801,7 @@
             "modelCopyApproved": false,
             "runtimeReady": false,
             "blockedBy": [
-              "AGRONOMY_PROGRESSIVE_FACTS",
-              "AGRONOMY_WRONG_MATERIAL_CONSUMPTION",
-              "P3_CROSS_STORE_RECOVERY"
+              "P4_IMPACT_TO_P3_SOURCE"
             ]
           },
           "contentMarkdown": "### 教学目标\n\n在公共洪水、干旱或虫灾中协调多户真实需求，保持事件、地块、委托、材料与付款各自可追溯。调度不是获得全服 GM 权限，也不是把所有农场合并成一个大订单。\n\n### 教学单元\n\n1. **事件统一，对象分户。** 公共事件保存一个稳定事件 ID；每个受影响农场和地块仍有自己的对象、主人、处理记录与委托合同。\n2. **阶段决定能做什么。** `forecast` 只能准备；`active` 才能登记新影响；`recovery` 停止新增影响并处理遗留状态；`settled` 只保留归档事实。\n3. **先按真实需求建立队列。** 无作物农场不生成虫灾假受害对象；没有主人发布或点名的真人农艺委托，也不能为了调度制造付费订单。\n4. **特级同时最多主办八个委托地块。** 达到上限后，新需求可以由其他合格农艺师承接、由主人自行处理、等待合法自然恢复，或在主人明确选择时使用高价 NPC；不能静默吞单。\n5. **特级普通物资批量减免 15%。** 只按同一次批量处理的真实需求计算，减免份数向下取整且每种至少使用一份。八块洪水积水地基础需八份排水材料时，减免 `floor(8 × 0.15)=1` 份，实际使用 `8-1=7` 份。\n6. **跨户不能共用付款。** 每个真人委托分别冻结其银币劳务酬劳；每户材料来源与材料款分别确认。A 户余额或库存不能替 B 户默默付款。\n7. **通知只叫醒真正有下一步的人。** 公共事件和无人负责的待接列表不群体唤醒；工作绑定具体从业者并需要继续动作，或委托方有待回复时，才进入统一信箱和铃提醒。\n8. **NPC 是高价保底，不是免费援军。** 特级问题 NPC 基础费 400,000 金，处理物资另计，全部由系统回收，不产生真人工作记录。\n\n### 真实多人调度情境\n\n洪水 active，A 户有八块占作物地积水并点名同一位特级农艺师；B 户有两块积水但尚未发布委托；C 户没有作物。特级可以在 A 的一个真实批量处理中按七份排水材料结算八块需求。B 仍需主人自行处理、发布独立委托或明确选择 NPC；C 不生成假受害地。A 的劳务和材料合同不能替 B、C 结算。",
@@ -1938,9 +1884,7 @@
             "modelCopyApproved": false,
             "runtimeReady": false,
             "blockedBy": [
-              "AGRONOMY_PROGRESSIVE_FACTS",
-              "AGRONOMY_WRONG_MATERIAL_CONSUMPTION",
-              "P3_CROSS_STORE_RECOVERY"
+              "P4_IMPACT_TO_P3_SOURCE"
             ]
           },
           "contentMarkdown": "### 教学目标\n\n对限定、SSR 和 SP 作物使用与普通作物相同的权威异常和恢复合同，不因稀有度发明专属药、免疫、复制、赔偿或优先权；同时正确区分职业额外收成的排除范围。\n\n### 教学单元\n\n1. **稀有度不改异常类型。** 月相玫瑰（SSR）与小麦遇到同一种积水，检查和排水合同相同；圆满之花（SP）遇到局部虫害，也不能使用不存在的“SP 专用药”。\n2. **灾害不删除稀有作物。** 首发灾害不删除土地、作物、设施或永久等级。未处理异常中收获仍按同一规则固定降低一个品相档，最低不低于袖珍。\n3. **同一地块最多一次降档。** 既有局部异常与公共事件同时命中同一作物时，不能把同一异常后果跨日或跨来源重复叠成多档。\n4. **稀有度不是系统自动优先权。** 主人可以结合稀有度、成熟时间和真实损失风险决定服务顺序；系统不能占用别户资源或绕过已冻结合同来“抢救最贵的”。\n5. **SP 等排除项不触发额外收成。** 特级额外收成概率为 15%，但限定、活动、SP 与任务作物明确排除。仅看“SSR”不足以机械断言是否符合，还要核对它是否同时属于其他排除类型以及是否属于自己的普通作物。\n6. **没有首发救助与保险。** 稀有作物受灾不会自动触发金币／银币补偿、保险赔付或系统贷款；真实物资和服务仍按原合同结算。\n\n### 真实稀有作物情境\n\nA 户月相玫瑰（SSR）与小麦同时处于洪水积水，B 户圆满之花（SP）有局部虫害。三者都读取真实地块状态和对应材料，不存在 SSR／SP 专用恢复物。主人可以把稀有度纳入自己的服务排序，但 A 的合同不能占用 B 的材料。圆满之花属于 SP，特级农艺师之后收获它也不触发职业额外一份产物。",
@@ -2023,9 +1967,7 @@
             "modelCopyApproved": false,
             "runtimeReady": false,
             "blockedBy": [
-              "AGRONOMY_PROGRESSIVE_FACTS",
-              "AGRONOMY_WRONG_MATERIAL_CONSUMPTION",
-              "P3_CROSS_STORE_RECOVERY"
+              "P4_IMPACT_TO_P3_SOURCE"
             ]
           },
           "contentMarkdown": "### 教学目标\n\n完成公共事件的恢复验收：停止新增影响、逐项解决遗留地块状态、区分自然恢复与职业处理、确认其他玩法后继事实，并在全部条件满足后才允许事件结算。\n\n### 教学单元\n\n1. **recovery 不是“全好了”。** 进入恢复期只表示停止新增灾害影响；系统此时拒绝登记新的 impact，但已有地块、鱼池和动物后继事实仍需处理。\n2. **虫灾恢复。** 连续两个自然日不属于小雨、多云或雾后进入恢复，停止新增影响；恢复期持续 48 小时。未清除地块在公共事件结算后继续作为 P3 局部虫害。\n3. **洪水恢复。** 最后一个大雨／雷暴日结束后进入恢复；未人工排水地块一个完整自然日后自然退水。事件还要等待积水清除、洪水鱼处理窗口与灾后疾病判定完成。\n4. **洪水后的动物疾病不归农艺师结案。** 恢复期至多一只生产动物接受湿冷症判定：仍有未排水地块时 20%，全部人工排水时 5%。一旦形成病例，它进入动物医院闭环，不能随洪水归档自动清除。\n5. **干旱恢复。** 小雨、大雨或雷暴当天立即进入恢复，停止新增缺水并解除尚未结算的当日生长暂停；已发生的收获降档不回滚。\n6. **根部与局部虫害可以跨事件保留。** 自然退水不等于根部受损恢复；公共虫灾归档也不等于局部虫害恢复。它们继续使用 P3 状态和对应职业委托。\n7. **结算需要完整栅栏。** 当前事件处于 recovery、已明确准备结算、所有登记 impact 都有权威解决事实，并达到该灾害最低恢复时点后，才能进入 settled。未解决影响会继续阻挡结算。\n8. **settled 后冷却七个完整自然日。** 冷却期间新的天气仍真实发生，但不能马上开启下一场公共灾害。\n\n### 真实灾后验收情境\n\n洪水已进入 recovery。A 户所有地块人工排水完成，B 户一块地等待自然退水，C 户动物命中湿冷症，D 户一块持续积水后的根部异常仍未处理。特级农艺师不能把事件直接结算：要等待 B 的自然退水事实，确认洪水鱼与疾病判定完成，并把 D 的根部状态留在 P3 后继工作；C 的湿冷症由动物医院处理，不由农艺师伪造治愈。",
@@ -2102,19 +2044,14 @@
         {
           "career": "agronomist",
           "level": 1,
-          "available": false,
+          "available": true,
           "approval": {
-            "textApproved": false,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "PRIVATE_EXAM_BANK_REQUIRED",
-              "AGRONOMY_PROGRESSIVE_FACTS",
-              "AGRONOMY_WRONG_MATERIAL_CONSUMPTION",
-              "P3_CROSS_STORE_RECOVERY"
-            ]
+            "textApproved": true,
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
-          "blockedReason": "RUNTIME_NOT_READY"
+          "blockedReason": null
         },
         {
           "career": "agronomist",
@@ -2125,10 +2062,8 @@
             "modelCopyApproved": false,
             "runtimeReady": false,
             "blockedBy": [
-              "PRIVATE_EXAM_BANK_REQUIRED",
-              "AGRONOMY_PROGRESSIVE_FACTS",
-              "AGRONOMY_WRONG_MATERIAL_CONSUMPTION",
-              "P3_CROSS_STORE_RECOVERY"
+              "AGRONOMY_ADJACENT_PEST_SPREAD",
+              "P4_IMPACT_TO_P3_SOURCE"
             ]
           },
           "blockedReason": "RUNTIME_NOT_READY"
@@ -2142,10 +2077,8 @@
             "modelCopyApproved": false,
             "runtimeReady": false,
             "blockedBy": [
-              "PRIVATE_EXAM_BANK_REQUIRED",
-              "AGRONOMY_PROGRESSIVE_FACTS",
-              "AGRONOMY_WRONG_MATERIAL_CONSUMPTION",
-              "P3_CROSS_STORE_RECOVERY"
+              "AGRONOMY_ADJACENT_PEST_SPREAD",
+              "P4_IMPACT_TO_P3_SOURCE"
             ]
           },
           "blockedReason": "RUNTIME_NOT_READY"
@@ -2159,10 +2092,7 @@
             "modelCopyApproved": false,
             "runtimeReady": false,
             "blockedBy": [
-              "PRIVATE_EXAM_BANK_REQUIRED",
-              "AGRONOMY_PROGRESSIVE_FACTS",
-              "AGRONOMY_WRONG_MATERIAL_CONSUMPTION",
-              "P3_CROSS_STORE_RECOVERY"
+              "P4_IMPACT_TO_P3_SOURCE"
             ]
           },
           "blockedReason": "RUNTIME_NOT_READY"
@@ -2176,17 +2106,12 @@
           "level": 1,
           "courseIndex": 1,
           "title": "《鼻头不是体温计》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "VET_PROGRESSIVE_FACTS",
-              "VET_RECOVERY_REDUCTION",
-              "VET_FEED_DISPATCH_GATE",
-              "P3_CROSS_STORE_RECOVERY"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学目标\n\n学会把“看见的表现”与“已经确认的病例”分开；只使用病例允许的检查取得新事实，不凭鼻头、表情、品种或单一动作下结论。\n\n### 教学单元\n\n1. **表现不是诊断。** 食欲下降同时可能出现在食滞以外的状态中；活动减少也不能自动等于轻微外伤。首轮只记录系统给出的可观察表现。\n2. **初级两类病例的检查。** 食滞需要检查近期饲料和腹部状态；轻微外伤需要检查伤处和活动记录。没有一项外观表现可以替代这些权威检查。\n3. **有效检查与无效猜测。** 只有当前病例允许的检查会推进事实。动物是鸡、兔子还是猪，不会替代检查。\n4. **检查后再处理。** 至少完成一项有效检查后，治疗入口才合法；错误物资会产生真实消耗，但不会伪造痊愈。\n\n### 真实情境\n\n一只兔子食欲下降、精神一般，没有明显外伤。它今天看起来安静，但“兔子安静”不是病名。正确起点是检查近期饲料或腹部状态；若权威病例确认为食滞，才使用理胃粉。直接拿包扎材料、补液盐或呼吸药剂试一遍都不是检查。",
           "practiceQuestions": [
@@ -2262,17 +2187,12 @@
           "level": 1,
           "courseIndex": 2,
           "title": "《尾巴摇不代表没事》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "VET_PROGRESSIVE_FACTS",
-              "VET_RECOVERY_REDUCTION",
-              "VET_FEED_DISPATCH_GATE",
-              "P3_CROSS_STORE_RECOVERY"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学目标\n\n区分正常生产、已经形成的待收产物与疾病状态；理解动物在确诊前、治疗中和恢复期的真实限制。\n\n### 教学单元\n\n1. **行为不覆盖权威健康状态。** 动物仍会动、仍有待收产物，都不能抹掉已经登记的病例。\n2. **暂停的是新进度。** 病例开放、治疗中、恢复中都会暂停新的生产计时、投喂增益与外出派遣。\n3. **旧产物不被没收。** 生病前已经形成的待收产物仍可正常收取；收取不等于病例结案。\n4. **首发没有永久伤害。** 疾病不会让动物死亡、消失或永久降级；但未治疗、已治疗和已恢复是三个不同权威状态，不能用工作通知或既有产物替代状态推进。\n\n### 真实情境\n\n一只奶牛已经有 1 份待收鲜奶，随后进入食滞病例。主人仍可收取这份鲜奶；但在病例确诊、治疗和恢复期内，不会继续推进下一份鲜奶的生产，也不能给它安排外出。收掉鲜奶不是治疗动作。",
           "practiceQuestions": [
@@ -2348,17 +2268,12 @@
           "level": 1,
           "courseIndex": 3,
           "title": "《先隔离，再摸摸》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "VET_PROGRESSIVE_FACTS",
-              "VET_RECOVERY_REDUCTION",
-              "VET_FEED_DISPATCH_GATE",
-              "P3_CROSS_STORE_RECOVERY"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学目标\n\n掌握挂号、分诊、资格判断、初级治疗与转交。课程名保留，但现行系统没有“隔离”操作；答题与工作不得把标题当成不存在的按钮。\n\n### 教学单元\n\n1. **病例来自真实动物。** 只有权威动物健康状态形成后，才能挂号；系统不能伪造患者给医生刷工作记录。\n2. **基础病例判定有冷却。** 农场拥有生产动物、当前没有未治疗病例，并且距离上一次自然恢复或治疗完成已满 7 个完整自然日时，才参加当天稳定的 2% 基础病例判定；每次最多影响一只动物。\n3. **外出受伤另走事件判定。** 外出动物被抓住或被巡逻鹅赶回时，另有一次稳定的 20% 轻微外伤判定；它不等于每天 2% 的基础病例判定，也不能由医生手工创建。\n4. **初级可完整处理的范围。** 食滞使用理胃粉；轻微外伤先清洗再使用包扎材料。两者基础恢复期均为 1 个自然日。\n5. **资格不足时先检查再转交。** 世界可以把中级以上病例展示给初级医生。初级可做本级允许的检查，但不能看到或执行高等级治疗细节；确认超出资格后转交是合格判断。\n6. **真人与 NPC 保底。** 主人可选合格真人医生；无人可用、不愿等待或资格不够时，可明确选择更贵的 NPC。NPC 不给真人产生收入或工作记录。\n7. **费用边界。** 初级真人基础费 5,000 金，物资另计；NPC 初级基础费 15,000 金，物资仍按真实消耗另计。\n\n### 真实情境\n\n一只鹌鹑刚被赶回，活动减少并有局部擦伤。初级医生检查伤处与活动记录后，可使用伤口清洗剂和包扎材料，随后进入 1 个自然日恢复期。若同一医生接到的是体表潮湿、发抖的湿冷症，则应完成本级允许的检查并转交中级以上真人或由主人选择 NPC，不能凭“我已经检查过”越级治疗。",
           "practiceQuestions": [
@@ -2434,17 +2349,12 @@
           "level": 2,
           "courseIndex": 1,
           "title": "《鹅不会配合问诊》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "VET_PROGRESSIVE_FACTS",
-              "VET_RECOVERY_REDUCTION",
-              "VET_FEED_DISPATCH_GATE",
-              "P3_CROSS_STORE_RECOVERY"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学目标\n\n在动物行为不可靠、物种不同的情况下，仍只使用权威检查判断湿冷症与脱水；不把叫声、外形、产物或“看起来配合”当作诊断结果。\n\n### 教学单元\n\n1. **物种是对象身份，不是病名。** 鸭子、鹅、绵羊、山羊、奶牛、蜜蜂等都可能进入同一病例合同；物种不会自动替换检查项。\n2. **湿冷症检查。** 体表潮湿、发抖、精神低落后，应检查体温、垫料或呼吸；确认后使用干燥垫料和温敷包。\n3. **脱水检查。** 饮水增加、精神低落、体表偏热后，应检查饮水或体温；确认后使用补液盐。\n4. **相似点不能抹去差异。** 湿冷症与脱水都可精神低落，也都允许检查体温；体表潮湿／发抖与饮水增加／体表偏热，以及垫料／呼吸和饮水检查，将两类路径分开。\n5. **对象身份不能改变病例字段。** 病例给出哪组表现，就只能沿那组权威检查推进；动物种类、产物和解锁条件都不增加额外检查结果。\n\n### 真实情境\n\n大雨后，一只鸭子体表潮湿、发抖、精神低落；同一批挂号中，一只山羊饮水增加、精神低落、体表偏热。两者都“精神低落”，但前者应从体温、垫料或呼吸检查湿冷症，后者应从饮水或体温检查脱水，不能因为鸭子平时亲水就跳过湿冷检查。",
           "practiceQuestions": [
@@ -2520,17 +2430,12 @@
           "level": 2,
           "courseIndex": 2,
           "title": "《药量不是越满越诚恳》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "VET_PROGRESSIVE_FACTS",
-              "VET_RECOVERY_REDUCTION",
-              "VET_FEED_DISPATCH_GATE",
-              "P3_CROSS_STORE_RECOVERY"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学目标\n\n识别六类病例的精确物资合同，理解“多放、少放、换一种、调顺序”都不能冒充正确治疗；现行接口没有自由药量字段，不得自行创造剂量。\n\n### 教学单元\n\n1. **本级治疗组合是封闭合同。** 食滞使用理胃粉，轻微外伤使用伤口清洗剂＋包扎材料，湿冷症使用干燥垫料＋温敷包，脱水使用补液盐。\n2. **多放不是更好。** 对脱水提交“补液盐＋退热剂”不会因为更贵而合法；对湿冷症少交温敷包也不完整。\n3. **物资顺序不是随意排列。** 轻微外伤按伤口清洗剂＋包扎材料，湿冷症按干燥垫料＋温敷包；权威命令只接受对应组合。\n4. **费用只来自真实消耗。** 未使用物资不收费；错误处理会保留真实消耗，但不能把病例改成恢复。\n5. **资格仍先于物资。** 中级医生遇到最低资格更高的病例，只会获得本级允许的检查与转交选项，不会获得高等级治疗细节。\n\n### 真实情境\n\n一只奶牛确认为脱水。中级医生手头同时有补液盐和退热剂，但正确提交只有补液盐；额外加入退热剂不会提高诚意，只会使组合不匹配。另一只绵羊确认为湿冷症，则必须提交干燥垫料和温敷包，少一项也不能进入恢复期。",
           "practiceQuestions": [
@@ -2606,17 +2511,12 @@
           "level": 2,
           "courseIndex": 3,
           "title": "《好了也不能立刻去偷金币》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "VET_PROGRESSIVE_FACTS",
-              "VET_RECOVERY_REDUCTION",
-              "VET_FEED_DISPATCH_GATE",
-              "P3_CROSS_STORE_RECOVERY"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学目标\n\n理解治疗成功、恢复期开始与真正恢复健康是三个不同状态；正确处理生产、投喂、外出、待收产物和复诊记录。\n\n### 教学单元\n\n1. **治疗成功不等于当场健康。** 成功治疗将病例推进到 `recovering`，不会直接删除健康状态。\n2. **本级恢复计算。** 食滞／轻微外伤基础恢复 1 日，湿冷症／脱水基础恢复 2 日。中级医生成功治疗后缩短 10%，向上取整且至少 1 日，因此现有 1 日病例仍为 1 日、2 日病例仍为 `ceil(1.8) = 2` 日；不能把“缩短 10%”误写成直接少 1 日。\n3. **恢复期限制。** 新生产计时、投喂增益和外出派遣继续暂停；既有待收产物可收。\n4. **日界线恢复。** 到达权威 `recoveryUntilDay` 后，状态才恢复健康并重新开始生产计时；刷新页面或重复提交治疗不会提前结束。\n5. **幂等与复诊。** 同一权威动作重放不应重复收费、重复用药或重新延长恢复；病例记录保留治疗与恢复事实。\n\n### 真实情境\n\n一只奶牛脱水，经中级医生检查后使用补液盐，当天进入恢复期。基础恢复为 2 个自然日，中级缩短 10% 后向上取整仍是 2 日。它生病前已有鲜奶仍可收取，但这两天不能派出、不能获得新的投喂增益，也不会继续推进下一份鲜奶。第二天尚未到恢复终点时，再点一次治疗不能把它提前改成健康。",
           "practiceQuestions": [
@@ -2694,14 +2594,11 @@
           "title": "《一只咳嗽，整棚都要看》",
           "available": false,
           "approval": {
-            "textApproved": true,
+            "textApproved": false,
             "modelCopyApproved": false,
             "runtimeReady": false,
             "blockedBy": [
-              "VET_PROGRESSIVE_FACTS",
-              "VET_RECOVERY_REDUCTION",
-              "VET_FEED_DISPATCH_GATE",
-              "P3_CROSS_STORE_RECOVERY"
+              "P5_GROUP_HEALTH_CONTRACT"
             ]
           },
           "contentMarkdown": "> **待确认边界：** P3 当前没有群体传染、接触追踪或公共卫生风险分级。本课当前只能教授“不得从单病例虚构传播”以及已存在的环境／病例事实；真正的群体病例、接触记录和公共风险课程内容必须等 P5 合同确认后再补，不能把本候选当成已经具备完整传染课程。\n\n### 教学目标\n\n处理呼吸道感染，并正确理解“群体风险”边界：查看同一农场已有的权威病例与环境事实，但不把一只动物咳嗽虚构成全棚传染，不给没有病例的动物集体用药。\n\n### 教学单元\n\n1. **呼吸道感染路径。** 首次表现为咳喘、鼻部异常、活动明显减少；权威检查为体温和呼吸；确认后使用呼吸药剂，基础恢复 3 日。高级医生缩短 20% 后为 `ceil(2.4) = 3` 日。\n2. **单只病例不等于群体传播。** P3 首发每座农场当前至多一个未治疗病例，没有传染状态。课程要求“整棚都要看”时，只能查看已存在的病例、牧场环境与权威历史，不能创建其他动物的病例。\n3. **药不能当预防按钮。** 其他动物没有登记病例时，不得用呼吸药剂批量处理，也不能把“同棚”当作资格豁免。\n4. **复合症状要识别转诊边界。** 单纯咳喘、鼻部异常、活动明显减少支持高级呼吸道感染；高热再伴脱水或呼吸异常则可能进入特级复合高热路径，高级只能检查、稳定并转交。\n5. **群体事实来自记录。** 动物索引、种类、病例状态、天气与灾害事件都是权威事实；医生的担心不是新病例的来源。\n\n### 真实情境\n\n一只火鸡咳喘、鼻部异常、活动明显减少，检查体温和呼吸后确认为呼吸道感染。旁边的鸡与鸭子没有病例记录。高级医生应只给这只火鸡使用呼吸药剂；基础恢复 3 日按高级缩短 20% 后向上取整仍为 3 日。医生可以查看牧场和其他已有病例事实，但不能给整棚动物发药，也不能声称“已经传染”。",
@@ -2784,10 +2681,7 @@
             "modelCopyApproved": false,
             "runtimeReady": false,
             "blockedBy": [
-              "VET_PROGRESSIVE_FACTS",
-              "VET_RECOVERY_REDUCTION",
-              "VET_FEED_DISPATCH_GATE",
-              "P3_CROSS_STORE_RECOVERY"
+              "P4_ANIMAL_IMPACT_TO_P3_SOURCE"
             ]
           },
           "contentMarkdown": "### 教学目标\n\n把统一天气、洪水／干旱事件、牧场环境和病例因果链放在同一时间线上判断；理解天气提高病例机会，但不会替代病例检查。\n\n### 教学单元\n\n1. **农场与牧场共用天气。** 同一天不能出现农场大雨、牧场晴天。天气计划按北京时间日界线稳定，不因刷新、切页或看病重掷。\n2. **洪水到湿冷症。** 洪水转入恢复期时，每户至多判定一只生产动物：仍有未排水地块时概率 20%，全部人工排水时为 5%。命中后进入普通湿冷症病例。\n3. **干旱到脱水。** 干旱连续满两个完整自然日后，每户至多判定一只生产动物，概率 10%。命中后进入普通脱水病例。\n4. **触发不等于诊断。** “刚经历洪水”不能代替体温、垫料、呼吸检查；“干旱两日”也不能代替饮水、体温检查。\n5. **灾害归档不治病。** 湿冷症或脱水一旦形成，就进入医院的检查、治疗、恢复和结算；洪水／干旱结束不会自动清除。\n\n### 真实情境\n\n洪水最后一个大雨日结束，一户仍有未排水地块。系统按稳定事件事实命中一只云绵羊形成湿冷症。医生看到的是该动物体表潮湿、发抖、精神低落；洪水记录解释病例来源，但治疗仍必须检查体温、垫料或呼吸，再使用干燥垫料与温敷包。洪水结算不能替它完成治疗。",
@@ -2864,17 +2758,12 @@
           "level": 3,
           "courseIndex": 3,
           "title": "《治不了要会转诊》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "VET_PROGRESSIVE_FACTS",
-              "VET_RECOVERY_REDUCTION",
-              "VET_FEED_DISPATCH_GATE",
-              "P3_CROSS_STORE_RECOVERY"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学目标\n\n在病例真实存在但超过资格、当前并发上限或物资条件不满足时，做出合规检查、转交和结算判断；不因“已经接单”而越权。\n\n### 教学单元\n\n1. **四级资格边界。** 初级处理食滞／轻微外伤；中级增加湿冷症／脱水；高级增加呼吸道感染；特级增加复合高热。\n2. **检查不等于治疗权限。** 低等级可完成当前实际开放的检查并确认越级，但不能执行高等级物资组合。\n3. **主办并发。** 初级／中级／高级／特级同时最多主办 1／2／4／6 个病例；达到上限不能继续占单。\n4. **转交仍有记录边界。** 正确完成本级必要检查后确认超出资格并依法转交，可形成合格工作记录；不取得后续治疗环节绩效。\n5. **费用按真正服务结算。** 高级真人基础费 40,000 金；高级 NPC 基础费 120,000 金。转交不能让前后两名医生对同一治疗重复收取完整治疗费用。\n\n### 真实情境\n\n一名高级医生已经主办 4 个病例，又出现一只梦貘猫高热并伴脱水。医生不能因为病例稀有就开第五个主办位，也不能用补液盐把特级复合高热拆成中级脱水结案。合法路径是读取病例事实，在未占用新主办位的规则边界下由医院转交可用特级真人，或由主人选择特级 NPC。",
           "practiceQuestions": [
@@ -2950,17 +2839,12 @@
           "level": 4,
           "courseIndex": 1,
           "title": "《稀有动物也没有七条命》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "VET_PROGRESSIVE_FACTS",
-              "VET_RECOVERY_REDUCTION",
-              "VET_FEED_DISPATCH_GATE",
-              "P3_CROSS_STORE_RECOVERY"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学目标\n\n处理复合高热，并在月光蚕、余烬母鸡、云绵羊、梦貘猫等奇幻动物病例中坚持同一权威检查与治疗合同；不因稀有、活动或高等级身份擅自增加隐藏生理规则。\n\n### 教学单元\n\n1. **复合高热识别。** 首次表现固定为高热并伴随脱水或呼吸异常；检查体温、补水状态和呼吸，不能只抓住其中一个伴随症状降格诊断。\n2. **组合治疗。** 复合高热必须使用退热剂＋补液盐＋呼吸药剂，物资费 22,000 金，基础恢复 4 日；特级医生缩短 30% 后为 `ceil(2.8) = 3` 日。\n3. **奇幻动物不改病例合同。** 云绵羊的浮云毛、余烬母鸡的暖火蛋和梦貘猫的梦之残片都只是既有产物；健康检查、资格、费用和恢复状态与普通动物采用同一规则。\n4. **旧产物与新进度分开。** 高热形成前已有的待收产物可以收；确诊、治疗和恢复期都暂停新的生产、投喂增益与外出。\n5. **不得用价值替代医疗事实。** 动物购买成本、图鉴条件、产物价格和稀有类别都不参与治疗组合计算，也不允许医生为“稀有动物”加收未登记物资。\n\n### 真实情境\n\n一只梦貘猫高热、补水状态异常并有呼吸异常。特级医生完成体温、补水状态与呼吸检查后，必须使用退热剂、补液盐和呼吸药剂。病例基础恢复 4 日，按特级缩短 30% 并向上取整后，实际进入 3 日恢复。它已有的梦之残片仍可收取，但不能因动物稀有而省略补液盐，也不能额外加入温敷包。",
           "practiceQuestions": [
@@ -3038,14 +2922,11 @@
           "title": "《医院挤满以后先救谁》",
           "available": false,
           "approval": {
-            "textApproved": true,
+            "textApproved": false,
             "modelCopyApproved": false,
             "runtimeReady": false,
             "blockedBy": [
-              "VET_PROGRESSIVE_FACTS",
-              "VET_RECOVERY_REDUCTION",
-              "VET_FEED_DISPATCH_GATE",
-              "P3_CROSS_STORE_RECOVERY"
+              "VET_TRIAGE_RESOLVER"
             ]
           },
           "contentMarkdown": "> **待确认边界：** 正式分诊仍缺严重度字段、等待时间权重、公共卫生风险定义与稳定 tie-breaker。以下内容只锁定现有资格、容量与不得私定排序的边界；在这些字段和 resolver 获批前，本门不得接入 runtime 或正式考试。\n\n### 教学目标\n\n在多户真实病例同时等待时，先守住资格、主办容量和真实病例边界；当前尚未确认分诊优先级 resolver，因此不得把病例等级、生成时间或灾害来源私自写成正式排序算法。\n\n### 教学单元\n\n1. **先排除不能合法主办的病例。** 特级可以处理六类病例，但仍受同时主办 6 个病例上限；其他等级不能为了排队方便越级。\n2. **病例等级不是已确认的队列算法。** 最低资格只决定谁有权治疗；当前合同没有确认“等级越高必定越先处理”。\n3. **生成时间是事实，不是自动规则。** 病例保留权威生成时间，但“先到先处理”尚未被批准为唯一排序合同。\n4. **公共风险不得凭空制造。** 当前 P3 无传染；洪水或干旱可以解释同批病例来源，但不会自动形成公共传播风险。\n5. **待确认边界。** 严重度、等待时间和未来公共风险如何组合、同分如何裁决，必须另行确认后才能进入 runtime 或正式考试；当前只考资格、容量、真实来源和不得私定顺序。\n\n### 真实情境\n\n医院同时有脱水、呼吸道感染与复合高热病例。特级医生有权处理三者，但当前合同没有批准三者的正式队列顺序；医生不能把自己的偏好写回权威排序。若特级医生已占满 6 个主办位，则无论等待病例为何种，都不能继续占第 7 个，应由医院寻找其他可用特级真人或由主人选择 NPC。",
@@ -3128,10 +3009,7 @@
             "modelCopyApproved": false,
             "runtimeReady": false,
             "blockedBy": [
-              "VET_PROGRESSIVE_FACTS",
-              "VET_RECOVERY_REDUCTION",
-              "VET_FEED_DISPATCH_GATE",
-              "P3_CROSS_STORE_RECOVERY"
+              "P4_ANIMAL_IMPACT_TO_P3_SOURCE"
             ]
           },
           "contentMarkdown": "### 教学目标\n\n完成从有效检查、真实治疗、恢复观察、失败追踪到工作与灾害事实收束的完整链路；区分“治疗已执行”“动物已健康”“职业已结算”“公共事件已结算”。\n\n### 教学单元\n\n1. **治疗结果可核对。** 治疗必须绑定原病例、正确资格、至少一项有效检查、精确物资与幂等动作。错误组合不能进入恢复。\n2. **失败不抹账。** 错误处理的真实物资消耗仍保留，病例继续存在；不能靠重新挂号删除失败历史。\n3. **恢复是独立阶段。** 成功治疗记录 `recoveryUntilDay`，到期才恢复健康；工作完成通知不能提前恢复动物。\n4. **病例、工作、资金分别有权威回执。** 医院收费、医生绩效、病例状态和通知必须对应同一真实工作；重放不重复收费、用药或发工资。\n5. **公共灾害还需影响收束。** 自然事件只有在恢复期、影响均有权威解决事实且达到结算时间后才能归档；病例治疗引用可以解决相应动物影响，但事件归档不能反过来治病。\n\n### 真实情境\n\n干旱让一只山羊形成脱水，并登记为自然事件动物影响。医生检查饮水后用补液盐，病例进入 2 日恢复期，同时留下真实治疗引用。此时诊疗工作可以按规则结算，灾害影响可引用该治疗事实完成解决；但山羊仍要等恢复期结束才重新生产。重复提交同一治疗不得再扣 2,000 金，也不得生成第二份绩效。",
@@ -3208,38 +3086,26 @@
         {
           "career": "veterinarian",
           "level": 1,
-          "available": false,
+          "available": true,
           "approval": {
-            "textApproved": false,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "PRIVATE_EXAM_BANK_REQUIRED",
-              "VET_PROGRESSIVE_FACTS",
-              "VET_RECOVERY_REDUCTION",
-              "VET_FEED_DISPATCH_GATE",
-              "P3_CROSS_STORE_RECOVERY"
-            ]
+            "textApproved": true,
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
-          "blockedReason": "RUNTIME_NOT_READY"
+          "blockedReason": null
         },
         {
           "career": "veterinarian",
           "level": 2,
-          "available": false,
+          "available": true,
           "approval": {
-            "textApproved": false,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "PRIVATE_EXAM_BANK_REQUIRED",
-              "VET_PROGRESSIVE_FACTS",
-              "VET_RECOVERY_REDUCTION",
-              "VET_FEED_DISPATCH_GATE",
-              "P3_CROSS_STORE_RECOVERY"
-            ]
+            "textApproved": true,
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
-          "blockedReason": "RUNTIME_NOT_READY"
+          "blockedReason": null
         },
         {
           "career": "veterinarian",
@@ -3250,11 +3116,8 @@
             "modelCopyApproved": false,
             "runtimeReady": false,
             "blockedBy": [
-              "PRIVATE_EXAM_BANK_REQUIRED",
-              "VET_PROGRESSIVE_FACTS",
-              "VET_RECOVERY_REDUCTION",
-              "VET_FEED_DISPATCH_GATE",
-              "P3_CROSS_STORE_RECOVERY"
+              "P4_ANIMAL_IMPACT_TO_P3_SOURCE",
+              "P5_GROUP_HEALTH_CONTRACT"
             ]
           },
           "blockedReason": "RUNTIME_NOT_READY"
@@ -3268,11 +3131,8 @@
             "modelCopyApproved": false,
             "runtimeReady": false,
             "blockedBy": [
-              "PRIVATE_EXAM_BANK_REQUIRED",
-              "VET_PROGRESSIVE_FACTS",
-              "VET_RECOVERY_REDUCTION",
-              "VET_FEED_DISPATCH_GATE",
-              "P3_CROSS_STORE_RECOVERY"
+              "P4_ANIMAL_IMPACT_TO_P3_SOURCE",
+              "VET_TRIAGE_RESOLVER"
             ]
           },
           "blockedReason": "RUNTIME_NOT_READY"
@@ -4364,15 +4224,12 @@
           "level": 1,
           "courseIndex": 1,
           "title": "《鹅叫三声不能当证词》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "CONSTABLE_ASSIGNMENT_AUTHORITY",
-              "CONSTABLE_INTERVIEW_SCHEDULER"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学目标\n\n区分传闻、当事人陈述、系统记录与治安官推断；只把记录真正支持的内容写成事实，不替任何一方补动机、损失或身份。\n\n### 教学单元\n\n1. **陈述是“谁说了什么”。** 当事人说法必须记录来源，但陈述本身不能覆盖相反的系统记录。\n2. **系统记录只证明自己包含的字段。** 农场足迹可以证明事件时间、类型、地块和记录中的作物；没有记录的动机、额外损失与私下对话不能顺手补上。\n3. **`stolen` 与 `foiled` 不同。** `stolen` 记录真实拿走作物；`foiled` 记录尝试被看家狗阻止，不能把二者合并成同一种损失。\n4. **推断必须标成推断。** 同一昵称、相近时间或相似说法可以提示继续核对，但不能自动升级为居民身份事实。\n5. **冲突不靠音量解决。** 双方都生气时仍然按记录、权限和程序推进，不把更激烈的陈述当成更可靠的证据。\n\n### 真实情境\n\n门牌 A 的足迹记录显示：19:10，记录名“小灰”在 3 号地拿走一份胡萝卜。主人陈述“小灰故意把我整片农场毁了”，另一位居民说“小灰当时只拿了一份”。初级治安官可以确认记录支持一次真实偷菜、对应时间、地块与作物；“故意毁掉整片农场”仍只是主人陈述，不能写入成立事实。",
           "practiceQuestions": [
@@ -4448,15 +4305,12 @@
           "level": 1,
           "courseIndex": 2,
           "title": "《脚印有脚，但没有姓名》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "CONSTABLE_ASSIGNMENT_AUTHORITY",
-              "CONSTABLE_INTERVIEW_SCHEDULER"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学目标\n\n理解事件痕迹、显示名称、门牌和稳定居民身份的区别；避免从位置、时间或结果直接推断行为人身份与责任范围。\n\n### 教学单元\n\n1. **证据对象要精确。** 一条足迹绑定具体农场事件，不自动证明同一时间发生的其他争议。\n2. **门牌用于定位，不是万能身份证。** 事项中的门牌必须来自权威绑定，公开标识不能替代授权或居民身份校验。\n3. **结果不反推动机。** 作物被拿走可以是真实玩法结果，但不能从结果推断恶意、报复或更大的计划。\n4. **多条记录不可随意拼人。** 要先核对稳定引用、时间与对象，再判断是否属于同一事项。\n5. **缺失字段就是缺失。** 记录没有赔偿、私聊或额外物品字段时，治安官不能用“通常会有”补齐。\n\n### 真实情境\n\n门牌 B 在 20:02 有一条 `foiled` 足迹，显示名为“团子”；20:04 门牌 C 也出现显示名“团子”的 `stolen` 足迹。两条记录可以分别证明两个事件，但仅靠显示名不能确认是同一居民，也不能把 B 的失败尝试与 C 的实际损失合并成一个已经确认的连续行为。",
           "practiceQuestions": [
@@ -4532,15 +4386,12 @@
           "level": 1,
           "courseIndex": 3,
           "title": "《先登记，再吹哨》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "CONSTABLE_ASSIGNMENT_AUTHORITY",
-              "CONSTABLE_INTERVIEW_SCHEDULER"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学目标\n\n掌握投诉受理、事项引用、幂等、防重复绩效、指派、回避和当前权限范围；在采取任何处理前先建立可核对的程序事实。\n\n### 教学单元\n\n1. **有效事项来自真实来源。** 真实当事人必须引用真实农场记录、交易记录、贷款记录或原投诉记录；没有底层事实时不生成治安任务。\n2. **事项编号稳定。** 同一当事人、同一事实和同一请求重放返回原事项，不产生第二次工资或工作记录。\n3. **治安署负责指派。** 事项按资格、排班、并发和回避分配，治安官不能挑选熟人或自己创建案件。\n4. **初级容量为一。** 已主办一个未结束事项时不能占第二个；可以等待治安署另派合格人员。\n5. **权限随事项收窄。** 当前可以核对、说明、自愿调解与记录；不能因为事项已经登记就扩大到私人正文或强制处分。\n\n### 真实情境\n\n门牌 D 主人针对同一条 `stolen` 记录连续提交两次“请核对并说明”的投诉。系统应返回同一事项。被指派的初级治安官发现投诉人正是自家居民，必须回避，由治安署重新指派；这不是拒绝受理，也不能把原事项复制一份再派给别人。",
           "practiceQuestions": [
@@ -4616,15 +4467,12 @@
           "level": 2,
           "courseIndex": 1,
           "title": "《偷菜不等于需要抓起来》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "CONSTABLE_ASSIGNMENT_AUTHORITY",
-              "CONSTABLE_INTERVIEW_SCHEDULER"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学目标\n\n区分现有玩法、事实争议与尚未确认的违法；能从农场足迹、抓获、赔偿和时间记录中说明发生了什么，并把赔偿留在自愿交易合同内完成。\n\n### 教学单元\n\n1. **玩法事实不是罪名。** `stolen` 或 `foiled` 是现有农场互动记录，P3 可以核对、说明和调解，不能直接改写为违法。\n2. **损失按记录说。** 成功偷取、被狗阻止、已有返还或赔偿必须分开核对；没有发生的损失不因不满而增加。\n3. **补偿只能自愿。** 双方愿意补偿时使用 P2 真实交易，支付方、收款方、币种与金额都由原交易合同确认；治安官不能直接改余额。\n4. **调解不覆盖原玩法。** 自愿达成补偿只新增一份真实交易事实，不会把原事件改成“从未发生”或新增罪名。\n5. **重复记录仍须稳定引用。** 相同时间段出现多条足迹时逐条核对，不按当事人的总数口述替代底层记录。\n\n### 真实情境\n\n门牌 E 的足迹显示：18:20 一次 `foiled`，18:34 一次 `stolen`，后一条记录含 5 号地和番茄。主人要求“把两次都按成功偷取罚双倍”。中级治安官应说明只有后一条支持实际拿走番茄；双方若自愿约定补偿，可以创建一笔真实交易，但不能把前一条失败尝试改写为第二份损失，也不能直接扣对方余额。",
           "practiceQuestions": [
@@ -4700,15 +4548,12 @@
           "level": 2,
           "courseIndex": 2,
           "title": "《两边都生气时先别选边》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "CONSTABLE_ASSIGNMENT_AUTHORITY",
-              "CONSTABLE_INTERVIEW_SCHEDULER"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学目标\n\n在双方主张冲突时按相同标准核对事实、权限与交易状态；形成可以重放、复核且不改变原合同的调解记录。\n\n### 教学单元\n\n1. **先列共同事实。** 主体、对象、时间、交易 ID、当前状态与既有回执先从权威记录读取。\n2. **分开记录请求。** 一方要求取消、另一方要求结算，是两个请求，不是两个事实。\n3. **交易状态优先于意见。** `pending`、`frozen`、`settled`、`cancelled` 与退款事实由原交易状态机决定。\n4. **原合同决定操作。** 满足取消或退款条件时调用原交易流程；治安官不能创造特殊退款条件或强制转账。\n5. **结果要能复核。** 处理记录引用原交易与各方陈述，说明采取或未采取动作的合同依据，不用“我觉得公平”代替理由。\n\n### 真实情境\n\n居民 F 说自己已付款，居民 G 说从未收到。交易记录显示双方已经确认、资金曾冻结，但交易仍未进入 `settled`。中级治安官应把“F 认为已付款”和“G 认为未收到”分别记录，同时说明权威状态是冻结而非结算；接下来只能按原交易合同继续结算、取消或退款流程，不能把冻结冒充到账，也不能再从 F 余额扣一笔“补付”。",
           "practiceQuestions": [
@@ -4784,15 +4629,12 @@
           "level": 2,
           "courseIndex": 3,
           "title": "《上诉不是再吵一遍》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "CONSTABLE_ASSIGNMENT_AUTHORITY",
-              "CONSTABLE_INTERVIEW_SCHEDULER"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学目标\n\n掌握上诉的对象、新客观证据、复核回避、原记录保留与幂等；理解“不同意结果”不等于原事实已经变化。\n\n### 教学单元\n\n1. **上诉必须引用原事项。** 没有原事项引用就无法知道复核对象，不应另造一份平行处理。\n2. **新证据必须客观关联。** 新交易回执、新足迹或原先缺失的权威时间记录可以进入复核；重复同一句主张不是新证据。\n3. **复核者必须独立。** 参与原处理、有自家关系或当前借贷／交易／投诉关系的治安官必须回避。\n4. **维持也是合法结果。** 没有足以改变事实的新证据时，可以维持原结果，并解释已复核的范围。\n5. **复核不能静默改历史。** 新结果引用原处理与新证据，保留版本关系；同一上诉重放返回原复核事项。\n\n### 真实情境\n\n原交易争议认定记录只支持“资金已冻结、尚未结算”。当事人上诉并提交一张与该交易 ID 匹配、在原处理后形成的结算回执。复核应交给未参与原处理且无利益冲突的治安官，核对新回执后形成关联原事项的新结果；原处理记录仍保留。若当事人只是再次发送“我就是不服”，则可以维持原结果，不把重复情绪当成新证据。",
           "practiceQuestions": [
@@ -4868,15 +4710,12 @@
           "level": 3,
           "courseIndex": 1,
           "title": "《一件事里出现五个门牌》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "CONSTABLE_ASSIGNMENT_AUTHORITY",
-              "CONSTABLE_INTERVIEW_SCHEDULER"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学目标\n\n在多玩家、多记录和关联事项中保持稳定主体、对象、时间、来源与请求；既能发现真实关联，也不因同名、相邻时间或共同当事人错误合并。\n\n### 教学单元\n\n1. **先建事项图，不先下结论。** 每条农场事件、交易、投诉和复核记录保留自己的稳定 ID，再记录真实共享的居民与对象。\n2. **一人多事项不等于一件事。** 同一居民可以同时出现在农场投诉和交易争议中；只有请求与底层事实真正关联时才共同分析。\n3. **一件事可以有多方陈述。** 每位当事人的角色、陈述与权限分别保存，不能把某一方的概括当成所有人的共同说法。\n4. **冲突范围逐项标记。** 哪条时间、哪笔交易、哪个地块存在争议要明确；未冲突的记录不因整体争吵而失效。\n5. **容量与难度不能靠拆单绕过。** 事项难度由真实来源、记录数量、关联玩家和所需程序预先登记；不能拆成多个低级任务刷绩效或规避转交。\n\n### 真实情境\n\n门牌 H 的主人投诉门牌 J 的一次偷菜；J 提交一笔与 H 的补偿交易，门牌 K 又说自己替 J 支付过另一笔银币，门牌 L 提交相同显示名的另一条足迹，门牌 M 只在聊天里声称“我看见了”。高级治安官应分别核对农场事件 ID、H-J 补偿交易、K 所称交易以及 L 的独立足迹；M 的陈述保留为陈述。没有稳定引用证明时，不能把五个门牌压成一笔共同赔偿，也不能把相同显示名当成同一身份。",
           "practiceQuestions": [
@@ -4952,15 +4791,12 @@
           "level": 3,
           "courseIndex": 2,
           "title": "《欠钱不自动等于犯法》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "CONSTABLE_ASSIGNMENT_AUTHORITY",
-              "CONSTABLE_INTERVIEW_SCHEDULER"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学目标\n\n准确读取系统贷款与玩家公证借款的合同、到期、利息冻结、宽限、限制和还款事实；完成程序通知而不把信用状态变成罪名。\n\n### 教学单元\n\n1. **先找原贷款合同。** 系统贷款使用金币，玩家公证借款使用银币；借款人、出借人、期限、本金、利率和业务引用必须来自权威记录。\n2. **到期日冻结利息。** 到期日结束时冻结最终应计利息，此后原合同利息不再增长；逾期不会自动增加罚息。\n3. **宽限期与限制不同。** 到期未清立即记逾期，并有三个完整自然日宽限；宽限结束仍未清才进入高消费限制。\n4. **限制由银行执行。** 治安官负责通知、记录回应和指引原还款入口，不手工添加、解除或扩大限制。\n5. **结清回到银行状态机。** 全部逾期本金与冻结利息结清后银行立即解除限制；这仍是信用处理，不产生违法或看守所记录。\n\n### 真实情境\n\n居民 N 的系统金币贷款在到期日结束时仍有本金和利息未清，银行已冻结最终利息并进入逾期；当前处于第二个完整宽限日。高级治安官可以送达贷款 ID、到期日、冻结利息与当前宽限状态，记录 N 表示明日还款，并指引原还款入口。治安官不能再加一天利息、提前开启高消费限制，也不能把 N 写成犯罪。",
           "practiceQuestions": [
@@ -5036,15 +4872,12 @@
           "level": 3,
           "courseIndex": 3,
           "title": "《看得到不代表有权看》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "CONSTABLE_ASSIGNMENT_AUTHORITY",
-              "CONSTABLE_INTERVIEW_SCHEDULER"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学目标\n\n在农场、交易、贷款、投诉和私人来访相关争议中按事项最小范围读取事实；区分公开记录、合同参与者可见记录、事项授权事实与永久不可读的私人正文。\n\n### 教学单元\n\n1. **读取权限绑定事项。** 治安官只读取本事项处理所需、且合同明确允许的记录，不因持证取得全局浏览权。\n2. **私人正文保持私有。** 私人消息和私人拜访正文不进入治安读取范围；当事人陈述可以记录，但不能借投诉反向搜正文。\n3. **交易只看相关合同。** 注册交易争议读取原交易的确认、冻结、结算、取消和退款，不展开当事人的全部余额与无关交易。\n4. **公开事实也要相关。** 门牌和公开足迹可以在对应事项中使用，但不能用一条公开记录建立居民的完整活动画像。\n5. **授权不能转借。** 一方愿意提供自己的陈述或记录，不代表另一方的私有数据也同时获准读取。\n\n### 真实情境\n\n居民 P 投诉与居民 Q 的补偿交易，并说“去翻 Q 昨晚串门时的全部聊天就能证明”。高级治安官可以读取该补偿交易的确认、冻结与结算状态，以及投诉已授权的相关公开事实；不能读取私人拜访正文，也不能因为 P 同意就把 Q 的全部交易或余额明细纳入事项。",
           "practiceQuestions": [
@@ -5120,15 +4953,12 @@
           "level": 4,
           "courseIndex": 1,
           "title": "《铃野很吵，但程序要慢一点》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "CONSTABLE_ASSIGNMENT_AUTHORITY",
-              "CONSTABLE_INTERVIEW_SCHEDULER"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学目标\n\n在同一公共争议同时包含农场互动、补偿交易、贷款逾期、投诉上诉和多名利益相关者时，先隔离事实链与权限，再按稳定顺序推进，不让一条链的情绪或结果污染另一条链。\n\n### 教学单元\n\n1. **先冻结材料范围，不冻结资产。** 接收时保存各稳定引用和提交时间，防止材料继续漂移；治安官没有权力因为争议存在就冻结额外资产。\n2. **按合同分轨。** 农场事件、交易、贷款与上诉各回到自己的权威状态机，再通过明确引用说明它们如何关联。\n3. **先解决回避再指派。** 多主体事项中逐一检查自家、当前借贷／交易、原处理关系；任何一项冲突都不能被“案子太急”覆盖。\n4. **可逆说明先于不可逆结果。** 先确认事实和当前权限，再记录自愿调解、原合同动作或复核；不能先执行资产变化再补理由。\n5. **结案必须逐链收束。** 每条子事实说明已处理、待原系统动作、已转交或待独立复核；一个交易结算成功不能冒充整个公共争议已完成。\n\n### 真实情境\n\n居民 R 投诉 S 在其农场偷菜；S 说已经通过交易 T 补偿，T 的记录却仍为 `frozen`。R 同时是 S 一笔银币借款的出借人，该借款已进入第二个宽限日；原农场投诉又曾由当前特级治安官处理过。正确做法不是把所有钱统一扣掉，而是保留农场事件、补偿交易、贷款合同和原处理四条引用，先因“本人曾处理原事项”回避投诉复核；交易链说明尚未结算，贷款链只送达逾期宽限事实，各链分别交由有权系统或独立治安官继续。",
           "practiceQuestions": [
@@ -5206,12 +5036,11 @@
           "title": "《处罚之前还有一扇门》",
           "available": false,
           "approval": {
-            "textApproved": true,
+            "textApproved": false,
             "modelCopyApproved": false,
             "runtimeReady": false,
             "blockedBy": [
-              "CONSTABLE_ASSIGNMENT_AUTHORITY",
-              "CONSTABLE_INTERVIEW_SCHEDULER"
+              "P7_ENFORCEMENT_CONTRACT"
             ]
           },
           "contentMarkdown": "> **未完成／不可批准：** P7 的违法认定、处罚前复核、处罚生效条件与强制执行程序尚未确认。本节只保存已经存在的投诉复核、资格面试与 24 小时公示边界，不能据此宣称课程已完成，也不得把考试公示机制照搬成未来处罚合同。\n\n### 教学目标\n\n区分原事项复核、治安官资格公示与未来 P7 处罚复核；掌握已确认的面试评分、公示投票和证书生效边界，不把“申请复核”或待生效状态误写成失败或已执行。\n\n### 教学单元\n\n1. **笔试、面试、公示三段独立。** 20 题至少 18 对只取得面试资格；三名人类考官评分通过后仍要进入 24 小时公示。\n2. **考官来自报名与到场确认。** 08:00 开放 12 小时报名，按有效报名顺序取前三名暂定考官；19:30 重新确认并按原顺序替补，20:00 不足三人则顺延。\n3. **评分有双门槛。** 四维平均总分至少 16／20，且每一维平均至少 3；不能用某一项高分抵消权限克制不足。\n4. **公示投票不是重新面试。** 公示开始锁定合格投票居民，除考生外每人匿名一票，只选无异议或申请复核，不公开实时票数。\n5. **待确认处必须停住。** 复核精确门槛、人员、结果和时限未确认；达到门槛只进入复核，证书保持待生效，不等于失败。\n\n### 真实情境\n\n考生通过笔试，三名最终考官给出的四维平均总分为 17，但“权限克制”平均为 2.7，因此面试不通过，不能进入公示。另一名考生四维均达标后进入 24 小时公示；公示中出现若干“申请复核”票，系统不能在门槛合同尚未确认时自行判定复核或失败，也不能提前开放执业权限。",
@@ -5290,12 +5119,11 @@
           "title": "《看守所不是生气就能送》",
           "available": false,
           "approval": {
-            "textApproved": true,
+            "textApproved": false,
             "modelCopyApproved": false,
             "runtimeReady": false,
             "blockedBy": [
-              "CONSTABLE_ASSIGNMENT_AUTHORITY",
-              "CONSTABLE_INTERVIEW_SCHEDULER"
+              "P7_ENFORCEMENT_CONTRACT"
             ]
           },
           "contentMarkdown": "> **未完成／不可批准：** P7 的违法清单、证据标准、裁定与复核、关押期限、义务劳动类型和数量、完成标准、释放条件、关押期权限与公开范围全部未确认。本门在这些合同获批前不是完整执法课程，也不得进入 runtime；以下内容只保存当前 P3 权限终点与未来所缺合同，不能拿来凑齐特级课程。\n\n### 教学目标\n\n在当事人要求罚款、扣押、关押或义务劳动时，把农场、交易、银行和投诉复核分别送回当前合法终点；识别未来执行所缺少的合同，而不是用情绪、债务或现有玩法记录代替违法裁定。\n\n### 教学单元\n\n1. **农场投诉终点。** 核对玩法事实、说明规则、记录自愿调解；没有 P7 违法合同时不再向强制执行延伸。\n2. **交易争议终点。** 依原交易完成结算、取消或退款；治安署不能扣押另一方无关资产。\n3. **逾期事项终点。** 送达通知、记录回应并指引还款；高消费限制由银行执行，结清后由银行解除。\n4. **复核终点。** 当前投诉上诉只形成独立复核结果；它不是尚未确认的处罚裁定或收押命令。\n5. **未来执行必须有完整链。** 只有另行确认违法、证据、裁定、复核、生效、关押和释放合同后才可能新增看守所流程，当前不得预留假按钮冒充能力。\n\n### 真实情境\n\n居民 U 同时提交三项请求：因一次正常偷菜要求关押对方；因已结算交易争议要求扣押对方全部余额；因一笔处于宽限期的贷款要求安排义务劳动。特级治安官必须分别把三项送到当前合法终点：农场事实说明与自愿调解、原交易合同的退款条件核对、贷款通知与银行还款入口。三者都没有产生已确认的违法裁定、收押或劳动合同。",
@@ -5372,50 +5200,38 @@
         {
           "career": "constable",
           "level": 1,
-          "available": false,
+          "available": true,
           "approval": {
-            "textApproved": false,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "PRIVATE_EXAM_BANK_REQUIRED",
-              "CONSTABLE_ASSIGNMENT_AUTHORITY",
-              "CONSTABLE_INTERVIEW_SCHEDULER"
-            ]
+            "textApproved": true,
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
-          "blockedReason": "RUNTIME_NOT_READY"
+          "blockedReason": null
         },
         {
           "career": "constable",
           "level": 2,
-          "available": false,
+          "available": true,
           "approval": {
-            "textApproved": false,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "PRIVATE_EXAM_BANK_REQUIRED",
-              "CONSTABLE_ASSIGNMENT_AUTHORITY",
-              "CONSTABLE_INTERVIEW_SCHEDULER"
-            ]
+            "textApproved": true,
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
-          "blockedReason": "RUNTIME_NOT_READY"
+          "blockedReason": null
         },
         {
           "career": "constable",
           "level": 3,
-          "available": false,
+          "available": true,
           "approval": {
-            "textApproved": false,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "PRIVATE_EXAM_BANK_REQUIRED",
-              "CONSTABLE_ASSIGNMENT_AUTHORITY",
-              "CONSTABLE_INTERVIEW_SCHEDULER"
-            ]
+            "textApproved": true,
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
-          "blockedReason": "RUNTIME_NOT_READY"
+          "blockedReason": null
         },
         {
           "career": "constable",
@@ -5426,9 +5242,7 @@
             "modelCopyApproved": false,
             "runtimeReady": false,
             "blockedBy": [
-              "PRIVATE_EXAM_BANK_REQUIRED",
-              "CONSTABLE_ASSIGNMENT_AUTHORITY",
-              "CONSTABLE_INTERVIEW_SCHEDULER"
+              "P7_ENFORCEMENT_CONTRACT"
             ]
           },
           "blockedReason": "RUNTIME_NOT_READY"

@@ -3,11 +3,16 @@ import { allFarms, getFarm, getPublicExpeditionWorld, replaceFarm } from "../sto
 import { runLingyeWorldTransaction } from "../lingye-world-database.js";
 import { CareerDomainError } from "./contracts.js";
 import {
+    getReporterMaterialPack,
+    getReporterSourceFact,
+} from "./reporter-service.js";
+import {
     AGRONOMY_CONDITIONS,
     ANIMAL_CONDITIONS,
     advanceP3Farm,
     agronomyCheckCandidates,
     agronomyChecksFor,
+    agronomyMaterialUsage,
     agronomyObservationsFor,
     agronomyTreatmentCandidates,
     animalCheckCandidates,
@@ -42,6 +47,98 @@ function digest(value) {
 
 export function commissionJobId(sourceId) {
     return `doorbell-job:${digest(sourceId).slice(0, 32)}`;
+}
+
+function canonicalPublicValue(value) {
+    if (value === null)
+        return "null";
+    if (typeof value === "string" || typeof value === "boolean")
+        return JSON.stringify(value);
+    if (typeof value === "number") {
+        if (!Number.isFinite(value))
+            throw new Error("public_expedition_history_not_json");
+        return JSON.stringify(value);
+    }
+    if (Array.isArray(value))
+        return `[${value.map((item) => canonicalPublicValue(item)).join(",")}]`;
+    if (value && typeof value === "object") {
+        return `{${Object.keys(value).sort().map((key) =>
+            `${JSON.stringify(key)}:${canonicalPublicValue(value[key])}`).join(",")}}`;
+    }
+    throw new Error("public_expedition_history_not_json");
+}
+
+export function reporterAllowedNumbers(value) {
+    const numbers = new Set();
+    const visit = (current) => {
+        if (typeof current === "number") {
+            if (Number.isFinite(current))
+                numbers.add(current);
+            return;
+        }
+        if (Array.isArray(current)) {
+            for (const item of current)
+                visit(item);
+            return;
+        }
+        if (current && typeof current === "object") {
+            for (const child of Object.values(current))
+                visit(child);
+        }
+    };
+    visit(value);
+    return [...numbers].sort((left, right) => left - right);
+}
+
+function historyTimestampCandidates(publicWorld, entry) {
+    const candidates = [
+        publicWorld?.startedAt,
+        entry?.at,
+        entry?.occurredAt,
+        entry?.startedAt,
+        entry?.completedAt,
+        entry?.endedAt,
+        ...(Array.isArray(entry?.voters) ? entry.voters.map((voter) => voter?.at) : []),
+        ...(Array.isArray(entry?.contributions) ? entry.contributions.map((item) => item?.at) : []),
+    ];
+    return candidates.filter((value) => Number.isSafeInteger(value) && value >= 0);
+}
+
+export function reporterPublicHistoryOccurredAt(publicWorld, entry, now = Date.now()) {
+    const validNow = Number.isSafeInteger(now) && now >= 0 ? now : Date.now();
+    const past = historyTimestampCandidates(publicWorld, entry).filter((value) => value <= validNow);
+    const stableWorldStart = Number.isSafeInteger(publicWorld?.startedAt) && publicWorld.startedAt >= 0
+        ? publicWorld.startedAt
+        : null;
+    return past.length > 0 ? Math.max(...past) : stableWorldStart;
+}
+
+export function reporterIssueReference(occurredAt) {
+    if (!Number.isSafeInteger(occurredAt) || occurredAt < 0)
+        throw new Error("public_expedition_history_time_invalid");
+    const beijing = new Date(occurredAt + 8 * 60 * 60 * 1000);
+    if (beijing.getUTCHours() >= 5)
+        beijing.setUTCDate(beijing.getUTCDate() + 1);
+    const year = beijing.getUTCFullYear();
+    const month = String(beijing.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(beijing.getUTCDate()).padStart(2, "0");
+    return `lingye-daily:${year}-${month}-${day}`;
+}
+
+export function reporterPublicHistoryIdentity(publicWorld, entry, occurredAt) {
+    const storyId = String(publicWorld?.storyId ?? "").trim();
+    const round = Number(publicWorld?.round);
+    if (!storyId || !Number.isSafeInteger(round) || round < 1)
+        throw new Error("public_expedition_history_identity_invalid");
+    const contentDigest = digest(canonicalPublicValue({ storyId, round, entry }));
+    const prefix = `p3:reporter:public-expedition:${storyId}:${round}`;
+    return Object.freeze({
+        contentDigest,
+        sourceId: `${prefix}:source:${contentDigest}`,
+        issueReference: reporterIssueReference(occurredAt),
+        packId: `reporter-pack:public-expedition:${storyId}:${round}:${contentDigest}`,
+        objectId: `public-expedition:${storyId}:${round}:event:${contentDigest}`,
+    });
 }
 
 function saveAdvancedFarm(farm, now) {
@@ -185,12 +282,16 @@ function animalSource(farm, ownerResidentId, source) {
     };
 }
 
-function securityTrailSources(farm, ownerResidentId) {
+function securityTrailSources(database, farm, ownerResidentId) {
     return (farm.trail ?? [])
         .filter((entry) => (entry?.kind === "stolen" || entry?.kind === "foiled") &&
             typeof entry.eventId === "string" && entry.eventId.length > 0)
         .map((entry) => {
             const sourceId = `p3:security:trail:${entry.eventId}`;
+            const actorFarm = typeof entry.actorFarmId === "string" && entry.actorFarmId.length > 0
+                ? getFarm(entry.actorFarmId)
+                : null;
+            const actorResidentId = actorFarm ? registeredResidentForFarm(database, actorFarm) : null;
             return {
                 sourceId,
                 career: "constable",
@@ -201,6 +302,7 @@ function securityTrailSources(farm, ownerResidentId) {
                 requiredLevel: 1,
                 difficultyLevel: 1,
                 assignmentMode: "assigned",
+                excludedResidentIds: actorResidentId === null ? [] : [actorResidentId],
                 status: "open",
                 fact: {
                     farmDoorplate: farm.id,
@@ -219,7 +321,7 @@ export function boundFarmSources(database, farm, ownerResidentId, now = Date.now
     const candidates = [
         agronomySource(currentFarm, ownerResidentId, sources.agronomy),
         animalSource(currentFarm, ownerResidentId, sources.animal),
-        ...securityTrailSources(currentFarm, ownerResidentId),
+        ...securityTrailSources(database, currentFarm, ownerResidentId),
     ].filter(Boolean);
     for (const source of candidates) {
         database.prepare(`
@@ -233,31 +335,56 @@ export function boundFarmSources(database, farm, ownerResidentId, now = Date.now
 
 export function syncAuthorityJobs(database, backend, now = Date.now()) {
     const publicWorld = getPublicExpeditionWorld();
-    for (const [index, entry] of (publicWorld?.history ?? []).entries()) {
+    for (const entry of (publicWorld?.history ?? [])) {
         if (!entry || typeof entry !== "object")
             continue;
-        const sourceId = `p3:reporter:public-expedition:${publicWorld.storyId}:${publicWorld.round}:${index}`;
-        database.prepare(`
-          INSERT OR IGNORE INTO career_commission_source_facts (
-            source_id, source_type, fact_json, recorded_at
-          ) VALUES (?, 'public_event_fact', ?, ?)
-        `).run(sourceId, JSON.stringify({
-            storyId: publicWorld.storyId,
-            round: publicWorld.round,
-            historyIndex: index,
-            publicFact: entry,
-        }), now);
-        backend.trustedSystemCommands.createJob({
-            jobId: commissionJobId(sourceId),
-            career: "reporter",
-            sourceType: "public_event_fact",
-            sourceId,
-            objectType: "public_event",
-            objectId: `${publicWorld.storyId}:${publicWorld.round}:${index}`,
-            ownerResidentId: null,
-            requiredLevel: 1,
-            difficultyLevel: 1,
-            assignmentMode: "accepted",
+        const occurredAt = reporterPublicHistoryOccurredAt(publicWorld, entry, now);
+        if (!Number.isSafeInteger(occurredAt) || occurredAt > now)
+            continue;
+        const identity = reporterPublicHistoryIdentity(publicWorld, entry, occurredAt);
+        const sourceId = identity.sourceId;
+        const publicSubject = typeof entry.title === "string" && entry.title.trim()
+            ? entry.title.trim()
+            : typeof entry.kind === "string" && entry.kind.trim()
+                ? entry.kind.trim()
+                : "public_event";
+        runLingyeWorldTransaction(database, () => {
+            const fact = {
+                storyId: publicWorld.storyId,
+                round: publicWorld.round,
+                publicHistory: structuredClone(entry),
+            };
+            backend.trustedSystemCommands.registerReporterSourceFact({
+                sourceId,
+                sourceType: "public_event_fact",
+                // This names the public-world authority, not a fabricated resident producer.
+                producerReference: `public-expedition-history:${publicWorld.storyId}:${publicWorld.round}`,
+                occurredAt,
+                recordedAt: occurredAt,
+                publicSubject,
+                fact,
+                allowedNumbers: reporterAllowedNumbers(fact),
+                privacyScope: "public",
+            });
+            backend.trustedSystemCommands.createReporterMaterialPack({
+                packId: identity.packId,
+                issueReference: identity.issueReference,
+                requiredLevel: 1,
+                difficultyLevel: 1,
+                sourceIds: [sourceId],
+            });
+            backend.trustedSystemCommands.createJob({
+                jobId: commissionJobId(sourceId),
+                career: "reporter",
+                sourceType: "public_event_fact",
+                sourceId,
+                objectType: "public_event",
+                objectId: identity.objectId,
+                ownerResidentId: null,
+                requiredLevel: 1,
+                difficultyLevel: 1,
+                assignmentMode: "accepted",
+            });
         });
     }
     const overdueLoans = database.prepare(`
@@ -288,6 +415,7 @@ export function syncAuthorityJobs(database, backend, now = Date.now()) {
                     requiredLevel: 1,
                     difficultyLevel: 1,
                     assignmentMode: "assigned",
+                    excludedResidentIds: [loan.borrower_resident_id],
                 });
                 if (job.workerResidentId === null)
                     backend.trustedSystemCommands.assignAuthorityJob({ jobId: job.jobId });
@@ -340,6 +468,16 @@ export function publishBoundSource(database, backend, source, amount, now = Date
     const existing = database.prepare("SELECT * FROM career_jobs WHERE source_type = ? AND source_id = ?")
         .get(source.sourceType, source.sourceId);
     if (existing) {
+        const expectedExclusions = [...(source.excludedResidentIds ?? [])]
+            .sort((left, right) => left < right ? -1 : left > right ? 1 : 0);
+        const storedExclusions = database.prepare(`SELECT resident_id
+          FROM career_job_assignment_exclusions WHERE job_id = ?
+          ORDER BY resident_id COLLATE BINARY ASC`)
+            .all(existing.job_id)
+            .map((row) => row.resident_id);
+        if (expectedExclusions.length !== storedExclusions.length ||
+            expectedExclusions.some((residentId, index) => residentId !== storedExclusions[index]))
+            throw new Error("commission_publish_conflict");
         if (source.career === "agronomist") {
             const payment = database.prepare("SELECT silver_amount FROM career_commission_payments WHERE job_id = ?")
                 .get(existing.job_id);
@@ -369,6 +507,7 @@ export function publishBoundSource(database, backend, source, amount, now = Date
         requiredLevel: source.requiredLevel,
         difficultyLevel: source.difficultyLevel,
         assignmentMode: source.assignmentMode,
+        excludedResidentIds: source.excludedResidentIds ?? [],
     });
     if (source.career === "agronomist") {
         database.prepare(`
@@ -475,12 +614,66 @@ export function workerOptions(job, residentId, qualificationLevel = job.required
     return [];
 }
 
+function reporterPackRowForJob(database, job) {
+    const bound = database.prepare(`
+      SELECT * FROM career_reporter_material_packs WHERE job_id = ?
+    `).get(job.jobId);
+    if (bound)
+        return bound;
+    const candidates = database.prepare(`
+      SELECT * FROM career_reporter_material_packs
+      ORDER BY created_at, pack_id
+    `).all().filter((row) => {
+        let sourceIds;
+        try {
+            sourceIds = JSON.parse(row.source_ids_json);
+        }
+        catch {
+            return false;
+        }
+        return Array.isArray(sourceIds) && sourceIds.includes(job.sourceId);
+    });
+    if (candidates.length !== 1)
+        throw new Error("commission_source_not_available");
+    const candidate = candidates[0];
+    if (!["available", "returned"].includes(candidate.status) || candidate.job_id !== null)
+        throw new Error("commission_source_not_available");
+    return candidate;
+}
+
+export function reporterMaterialPackForJob(database, job) {
+    if (!job || job.career !== "reporter")
+        throw new Error("commission_source_not_available");
+    const row = reporterPackRowForJob(database, job);
+    return getReporterMaterialPack(database, row.pack_id);
+}
+
+function reporterCommissionSourceFacts(database, job) {
+    const materialPack = reporterMaterialPackForJob(database, job);
+    const sourceFacts = materialPack.sourceIds.map((sourceId) => getReporterSourceFact(database, sourceId));
+    const selected = sourceFacts.find((source) => source.sourceId === job.sourceId);
+    if (!selected)
+        throw new Error("commission_source_not_available");
+    const publicFact = selected.fact?.publicHistory ?? selected.fact;
+    return {
+        sourceId: job.sourceId,
+        sourceType: job.sourceType,
+        recordedAt: selected.recordedAt,
+        materialPack,
+        sourceFacts,
+        initialFact: selected.fact,
+        publicFact: structuredClone(publicFact),
+    };
+}
+
 export function commissionSourceFacts(database, job) {
+    const authoritativeSourceType = job.sourceType.split(":transfer", 1)[0];
+    if (job.career === "reporter")
+        return reporterCommissionSourceFacts(database, job);
     const recorded = database.prepare(`
       SELECT source_type, fact_json, recorded_at
       FROM career_commission_source_facts WHERE source_id = ?
     `).get(job.sourceId);
-    const authoritativeSourceType = job.sourceType.split(":transfer", 1)[0];
     if (!recorded || recorded.source_type !== authoritativeSourceType)
         throw new Error("commission_source_not_available");
     const fact = JSON.parse(recorded.fact_json);
@@ -516,8 +709,28 @@ export function commissionSourceFacts(database, job) {
             ...fact,
         };
     }
-    const state = sourceState(job);
     const { condition: _recordedCondition, ...publicInitialFact } = fact;
+    let state;
+    try {
+        state = sourceState(job);
+    }
+    catch (error) {
+        // A completed animal case may already have left recovery.  The
+        // durable source fact remains the history authority; do not turn a
+        // valid terminal job into a broken read merely because its live
+        // object has naturally disappeared.
+        if (job.career !== "veterinarian" ||
+            error?.message !== "commission_source_not_available" ||
+            !["completed", "cancelled", "transferred", "expired"].includes(job.status))
+            throw error;
+        return {
+            sourceId: job.sourceId,
+            sourceType: job.sourceType,
+            recordedAt: recorded.recorded_at,
+            initialFact: publicInitialFact,
+            currentState: { status: job.status },
+        };
+    }
     const { condition: _currentCondition, ...publicCurrentState } = state.source;
     return {
         sourceId: job.sourceId,
@@ -567,14 +780,46 @@ export function applyWorldTreatment(job, treatment, qualificationLevel, actionKe
     return result;
 }
 
-export function treatmentGold(job, treatment) {
+const AGRONOMY_MATERIAL_GOLD = new Map(Object.values(AGRONOMY_CONDITIONS)
+    .map((condition) => [condition.material, condition.materialGold]));
+
+/**
+ * Resolve the real material units and their existing gold reference price for
+ * an agronomy treatment batch.  The plan is pure; the caller's existing
+ * reservation/settlement path remains responsible for charging it atomically.
+ */
+export function agronomyTreatmentMaterialUsage(requirements, qualificationLevel) {
+    const usage = agronomyMaterialUsage(requirements, qualificationLevel);
+    let requiredGold = 0;
+    let consumedGold = 0;
+    for (const [materialId, quantity] of Object.entries(usage.required)) {
+        const unitGold = AGRONOMY_MATERIAL_GOLD.get(materialId);
+        if (!Number.isSafeInteger(unitGold) || unitGold <= 0)
+            throw new Error("agronomy_treatment_material_not_available");
+        requiredGold += unitGold * quantity;
+    }
+    for (const [materialId, quantity] of Object.entries(usage.consumed)) {
+        const unitGold = AGRONOMY_MATERIAL_GOLD.get(materialId);
+        if (!Number.isSafeInteger(unitGold) || unitGold <= 0)
+            throw new Error("agronomy_treatment_material_not_available");
+        consumedGold += unitGold * quantity;
+    }
+    return {
+        ...usage,
+        requiredGold,
+        consumedGold,
+        savedGold: requiredGold - consumedGold,
+    };
+}
+
+export function treatmentGold(job, treatment, qualificationLevel = job.difficultyLevel, requirements = { [treatment]: 1 }) {
     const state = sourceState(job);
     if (job.career === "agronomist") {
         const contract = Object.values(AGRONOMY_CONDITIONS)
             .find((entry) => entry.material === treatment);
         if (!contract)
             throw new Error("agronomy_treatment_not_available");
-        return contract.materialGold;
+        return agronomyTreatmentMaterialUsage(requirements, qualificationLevel).consumedGold;
     }
     if (job.career === "veterinarian") {
         const contract = Object.values(ANIMAL_CONDITIONS)

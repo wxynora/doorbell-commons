@@ -59,6 +59,13 @@ function validateReadinessManifest(readiness) {
             entry.blocked_by.some((value) => typeof value !== "string" || !value)) {
             throw new Error(`career curriculum readiness entry ${index} is invalid`);
         }
+        if (entry.runtime_ready &&
+            (!entry.text_approved || !entry.model_copy_approved || entry.blocked_by.length > 0)) {
+            throw new Error(`career curriculum readiness entry ${index} cannot be ready while approval or blockers remain`);
+        }
+        if (!entry.runtime_ready && entry.blocked_by.length === 0) {
+            throw new Error(`career curriculum readiness entry ${index} must name its blockers`);
+        }
         const key = readinessKey(entry);
         if (seen.has(key)) throw new Error(`career curriculum readiness duplicates ${key}`);
         seen.add(key);
@@ -242,14 +249,19 @@ function parseCareer(career, markdown, readiness) {
     if (courses.length !== 12) throw new Error(`${career} expected 12 courses, got ${courses.length}`);
     for (const examLevel of LEVELS) {
         const gate = readinessEntry(readiness, "exam", career, examLevel);
+        const coursesReady = courses
+            .filter((course) => course.level === examLevel)
+            .every((course) => course.available);
+        const available = runtimeAvailable(gate);
+        if (available && !coursesReady) {
+            throw new Error(`${career} exam ${examLevel} cannot be ready before all level courses are ready`);
+        }
         exams.push({
             career,
             level: examLevel,
-            available: false,
+            available,
             approval: approvalFromReadiness(gate),
-            blockedReason: runtimeAvailable(gate)
-                ? "PRIVATE_EXAM_BANK_REQUIRED"
-                : "RUNTIME_NOT_READY",
+            blockedReason: available ? null : "RUNTIME_NOT_READY",
         });
     }
     return { courses, exams };
@@ -328,11 +340,16 @@ function verifyPublicCurriculum(curriculum, readiness, readinessText) {
             const label = `${career} public exam ${level}`;
             assertExactKeys(exam, ["career", "level", "available", "approval", "blockedReason"], label);
             const gate = readinessEntry(readiness, "exam", career, level);
-            const expectedBlockedReason = runtimeAvailable(gate)
-                ? "PRIVATE_EXAM_BANK_REQUIRED"
-                : "RUNTIME_NOT_READY";
-            if (exam.career !== career || exam.available !== false || exam.blockedReason !== expectedBlockedReason)
-                throw new Error(`${label} must remain a closed questionless stub`);
+            const expectedAvailable = runtimeAvailable(gate);
+            const coursesReady = entry.courses
+                .filter((course) => course.level === level)
+                .every((course) => course.available);
+            if (expectedAvailable && !coursesReady)
+                throw new Error(`${career} exam ${level} cannot be ready before all level courses are ready`);
+            const expectedBlockedReason = expectedAvailable ? null : "RUNTIME_NOT_READY";
+            if (exam.career !== career || exam.available !== expectedAvailable ||
+                exam.blockedReason !== expectedBlockedReason)
+                throw new Error(`${label} readiness does not match its questionless metadata`);
             assertApproval(exam.approval, gate, label);
             exams += 1;
         }

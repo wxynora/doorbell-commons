@@ -14,7 +14,7 @@ import {
     validateFarmBinding,
 } from "./contract.js";
 
-export async function handleDoorbellHumanKitchenRead(req, res, method) {
+export async function handleDoorbellHumanKitchenRead(req, res, method, careerBenefitsForFarm) {
     if (!requireDoorbellHumanFieldService(req, res, method))
         return;
     try {
@@ -32,7 +32,7 @@ export async function handleDoorbellHumanKitchenRead(req, res, method) {
         const binding = validateFarmBinding(body);
         if (binding.error)
             return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
-        return jsonOut(res, 200, projectHumanKitchen(binding.farm, Date.now()));
+        return jsonOut(res, 200, projectHumanKitchen(binding.farm, Date.now(), careerBenefitsForFarm?.(binding.farm)));
     }
     catch (error) {
         if (error instanceof PublicSyncError)
@@ -42,7 +42,7 @@ export async function handleDoorbellHumanKitchenRead(req, res, method) {
     }
 }
 
-export async function handleDoorbellHumanKitchenPurchase(req, res, method) {
+export async function handleDoorbellHumanKitchenPurchase(req, res, method, careerBenefitsForFarm) {
     if (!requireDoorbellHumanFieldService(req, res, method))
         return;
     try {
@@ -52,7 +52,7 @@ export async function handleDoorbellHumanKitchenPurchase(req, res, method) {
         const binding = validateFarmBinding(body);
         if (binding.error)
             return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
-        const out = handleHumanKitchenPurchase(binding.farm, body);
+        const out = handleHumanKitchenPurchase(binding.farm, body, Date.now(), careerBenefitsForFarm?.(binding.farm));
         return jsonOut(res, out.status, out.json);
     }
     catch (error) {
@@ -64,7 +64,7 @@ export async function handleDoorbellHumanKitchenPurchase(req, res, method) {
     }
 }
 
-export async function handleDoorbellHumanKitchenCook(req, res, method) {
+export async function handleDoorbellHumanKitchenCook(req, res, method, careerBenefitsForFarm) {
     if (!requireDoorbellHumanFieldService(req, res, method))
         return;
     try {
@@ -74,7 +74,7 @@ export async function handleDoorbellHumanKitchenCook(req, res, method) {
         const binding = validateFarmBinding(body);
         if (binding.error)
             return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
-        const out = handleHumanKitchenCookAction(binding.farm, body);
+        const out = handleHumanKitchenCookAction(binding.farm, body, Date.now(), careerBenefitsForFarm?.(binding.farm));
         return jsonOut(res, out.status, out.json);
     }
     catch (error) {
@@ -86,7 +86,7 @@ export async function handleDoorbellHumanKitchenCook(req, res, method) {
     }
 }
 
-export async function handleDoorbellHumanKitchenShopRefresh(req, res, method) {
+export async function handleDoorbellHumanKitchenShopRefresh(req, res, method, careerBenefitsForFarm) {
     if (!requireDoorbellHumanFieldService(req, res, method))
         return;
     try {
@@ -96,7 +96,7 @@ export async function handleDoorbellHumanKitchenShopRefresh(req, res, method) {
         const binding = validateFarmBinding(body);
         if (binding.error)
             return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
-        const out = handleHumanKitchenShopRefresh(binding.farm, body);
+        const out = handleHumanKitchenShopRefresh(binding.farm, body, Date.now(), careerBenefitsForFarm?.(binding.farm));
         return jsonOut(res, out.status, out.json);
     }
     catch (error) {
@@ -108,7 +108,7 @@ export async function handleDoorbellHumanKitchenShopRefresh(req, res, method) {
     }
 }
 
-export async function handleDoorbellHumanKitchenInventoryAction(req, res, method) {
+export async function handleDoorbellHumanKitchenInventoryAction(req, res, method, careerBenefitsForFarm) {
     if (!requireDoorbellHumanFieldService(req, res, method))
         return;
     try {
@@ -118,7 +118,7 @@ export async function handleDoorbellHumanKitchenInventoryAction(req, res, method
         const binding = validateFarmBinding(body);
         if (binding.error)
             return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
-        const out = handleHumanKitchenInventoryAction(binding.farm, body);
+        const out = handleHumanKitchenInventoryAction(binding.farm, body, Date.now(), careerBenefitsForFarm?.(binding.farm));
         return jsonOut(res, out.status, out.json);
     }
     catch (error) {

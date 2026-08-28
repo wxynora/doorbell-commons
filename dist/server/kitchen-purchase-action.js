@@ -38,8 +38,8 @@ function canonicalize(value) {
 
 export const kitchenPurchaseRevisionFromData = kitchenShopRevisionFromData;
 
-export function kitchenPurchaseRevision(farm, now = Date.now()) {
-  return projectHumanKitchen(farm, now).shop_revision;
+export function kitchenPurchaseRevision(farm, now = Date.now(), options = {}) {
+  return projectHumanKitchen(farm, now, options).shop_revision;
 }
 
 function fingerprint(body) {
@@ -164,9 +164,9 @@ function errorResponse(code, message) {
   return { status: 409, json: { error: { code, message } } };
 }
 
-function currentKitchenState(farm, now) {
+function currentKitchenState(farm, now, options) {
   try {
-    const projected = projectHumanKitchen(farm, now);
+    const projected = projectHumanKitchen(farm, now, options);
     return {
       projected,
       revision: projected.shop_revision,
@@ -183,7 +183,7 @@ function currentKitchenState(farm, now) {
  * This adapter supplies binding, optimistic concurrency, receipt idempotency
  * and one atomic replaceFarm save for the whole cart.
  */
-export function handleHumanKitchenPurchase(farm, body, now = Date.now()) {
+export function handleHumanKitchenPurchase(farm, body, now = Date.now(), options = {}) {
   if (!validateBody(body)) return invalidRequest();
 
   const receipts = isRecord(farm?.doorbellHumanKitchenPurchaseReceipts)
@@ -200,7 +200,7 @@ export function handleHumanKitchenPurchase(farm, body, now = Date.now()) {
         );
   }
 
-  const current = currentKitchenState(farm, now);
+  const current = currentKitchenState(farm, now, options);
   if (!current) {
     return {
       status: 503,
@@ -232,7 +232,7 @@ export function handleHumanKitchenPurchase(farm, body, now = Date.now()) {
     for (const item of body.items) {
       const purchase = item.kind === "tool"
         ? buyKitchenTool(working, item.item_id)
-        : kitchenBuy(working, item.kind, item.item_id, item.quantity, now);
+        : kitchenBuy(working, item.kind, item.item_id, item.quantity, now, options);
       if (!purchase.ok) return errorResponse("purchase_rejected", purchase.error);
 
       const quantity = purchase.qty ?? item.quantity;
@@ -263,7 +263,7 @@ export function handleHumanKitchenPurchase(farm, body, now = Date.now()) {
       });
     }
 
-    const projected = projectHumanKitchen(working, now);
+    const projected = projectHumanKitchen(working, now, options);
     if (projected.data.daily_shop.status !== "available") {
       return errorResponse("shop_unavailable", "The kitchen shop became unavailable");
     }

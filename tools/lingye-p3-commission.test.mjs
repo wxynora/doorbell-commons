@@ -8,6 +8,7 @@ const dataDirectory = mkdtempSync(join(tmpdir(), "aifarm-lingye-p3-commission-")
 process.env.AIFARM_DATA_DIR = dataDirectory;
 
 const { makeFarm } = await import("../dist/game.js");
+const { steal } = await import("../dist/engine.js");
 const {
     createLingyeWorldBackend,
     openLingyeWorldDatabase,
@@ -17,8 +18,10 @@ const { createLingyeActionExecutor } = await import("../dist/server/doorbell/lin
 const { beijingDay } = await import("../dist/career/p3-world.js");
 const {
     AGRONOMY_NPC_BASE_FEE_GOLD,
+    boundFarmSources,
     farmActionTouchesLockedCareerObject,
     HOSPITAL_BASE_FEE_GOLD,
+    publishBoundSource,
     startRegisteredP3Scheduler,
     syncAuthorityJobs,
 } = await import("../dist/career/p3-commission-runtime.js");
@@ -634,6 +637,76 @@ test("authority job sync waits for a qualified worker without breaking unrelated
     syncAuthorityJobs(database, backend, NOW);
     const job = database.prepare("SELECT worker_resident_id FROM career_jobs WHERE source_type = 'bank_overdue_notice'").get();
     assert.equal(job.worker_resident_id, constable);
+    assert.deepEqual(database.prepare(`SELECT resident_id, relation_kind, source_reference
+      FROM career_job_assignment_exclusions WHERE job_id = (
+        SELECT job_id FROM career_jobs WHERE source_type = 'bank_overdue_notice'
+      )`).all().map((row) => ({ ...row })), [{
+        resident_id: borrower,
+        relation_kind: "source_party",
+        source_reference: "p3:security:system-loan:overdue-loan",
+    }]);
+    database.close();
+});
+
+test("complaint authority assignment persists and excludes the stable source actor", () => {
+    const database = openLingyeWorldDatabase(":memory:");
+    const owner = "019ffc08-49cd-7020-84af-3d04fb1ed03d";
+    const actor = "019ffc08-49cd-7020-94af-3d04fb1ed03d";
+    const independent = "019ffc08-49cd-7020-a4af-3d04fb1ed03d";
+    const ownerBinding = `binding:${owner}`;
+    const actorBinding = `binding:${actor}`;
+    let sequence = 0;
+    const backend = createLingyeWorldBackend(database, {
+        economyRules: RULES,
+        generateId: () => `p3-conflict-exclusion-${++sequence}`,
+        now: () => NOW,
+    });
+    registerResident(database, backend, owner, ownerBinding);
+    registerResident(database, backend, actor, actorBinding);
+    registerResident(database, backend, independent, `binding:${independent}`);
+    certify(database, actor, "constable");
+    certify(database, independent, "constable");
+    scheduleDuty(database, actor, "constable", "public_security", 1);
+    scheduleDuty(database, independent, "constable", "public_security", 2);
+
+    const victimFarm = makeFarm("complaint victim", 717);
+    victimFarm.id = "P3CONFLICTVICTIM";
+    victimFarm.doorbellMcpMigration = { migrationId: ownerBinding };
+    victimFarm.plots[0].crop = {
+        seedType: "common",
+        growTicks: 1,
+        progress: 1,
+        ripe: true,
+        waterCount: 0,
+    };
+    const actorFarm = makeFarm("complaint actor", 718);
+    actorFarm.id = "P3CONFLICTACTOR";
+    actorFarm.doorbellMcpMigration = { migrationId: actorBinding };
+    const stolen = steal(victimFarm, victimFarm.plots[0].id, actorFarm.id, NOW, actorFarm, {
+        resumeGuard: true,
+    });
+    assert.equal(stolen.ok, true);
+    assert.equal(victimFarm.trail[0].actorFarmId, actorFarm.id);
+    insertFarm(victimFarm);
+    insertFarm(actorFarm);
+
+    const source = boundFarmSources(database, victimFarm, owner, NOW)
+        .find((entry) => entry.sourceType === "farm_interaction_complaint");
+    assert.deepEqual(source.excludedResidentIds, [actor]);
+    const assigned = publishBoundSource(database, backend, source, undefined, NOW);
+    assert.equal(assigned.workerResidentId, independent);
+    assert.deepEqual(database.prepare(`SELECT resident_id, relation_kind, source_reference
+      FROM career_job_assignment_exclusions WHERE job_id = ?`).all(assigned.jobId)
+        .map((row) => ({ ...row })), [{
+        resident_id: actor,
+        relation_kind: "source_party",
+        source_reference: source.sourceId,
+    }]);
+    assert.equal(publishBoundSource(database, backend, source, undefined, NOW).workerResidentId, independent);
+    assert.throws(() => publishBoundSource(database, backend, {
+        ...source,
+        excludedResidentIds: [],
+    }, undefined, NOW), /commission_publish_conflict/);
     database.close();
 });
 

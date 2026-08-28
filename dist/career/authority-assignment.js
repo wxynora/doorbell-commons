@@ -54,6 +54,9 @@ export class CareerAuthorityAssignmentService {
                   WHERE source_id = ? AND worker_resident_id IS NOT NULL`)
                 .all(job.sourceId)
                 .map((row) => row.worker_resident_id));
+            for (const row of this.#database.prepare(`SELECT resident_id
+              FROM career_job_assignment_exclusions WHERE job_id = ?`).all(job.jobId))
+                excludedResidents.add(row.resident_id);
             if (job.ownerResidentId !== null)
                 excludedResidents.add(job.ownerResidentId);
             const candidate = candidates.find((entry) =>

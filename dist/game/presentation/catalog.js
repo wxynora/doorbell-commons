@@ -96,8 +96,8 @@ const kitchenGroups = (items, keyOf) => {
     return groups;
 };
 
-export function viewKitchen(f, now, section = "overview") {
-    const view = kitchenView(f, now);
+export function viewKitchen(f, now, section = "overview", options = {}) {
+    const view = kitchenView(f, now, options);
     const products = view.products.length
         ? kitchenGroups(view.products, (item) => item.source === "fish" ? `fish:${item.fishId}` : `product:${item.itemId}`).map((group) => {
             const item = group.items[0];

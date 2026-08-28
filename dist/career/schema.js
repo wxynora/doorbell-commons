@@ -1,4 +1,4 @@
-export const CAREER_SCHEMA_VERSION = 5;
+export const CAREER_SCHEMA_VERSION = 6;
 export function installCareerSchema(database) {
     database.exec(`
     CREATE TABLE IF NOT EXISTS career_tracks (
@@ -246,6 +246,17 @@ export function installCareerSchema(database) {
     CREATE INDEX IF NOT EXISTS career_jobs_worker_index
       ON career_jobs(worker_resident_id, status, updated_at);
 
+    CREATE TABLE IF NOT EXISTS career_job_assignment_exclusions (
+      job_id TEXT NOT NULL REFERENCES career_jobs(job_id),
+      resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE RESTRICT,
+      relation_kind TEXT NOT NULL CHECK (relation_kind = 'source_party'),
+      source_reference TEXT NOT NULL,
+      recorded_at INTEGER NOT NULL,
+      PRIMARY KEY (job_id, resident_id)
+    );
+    CREATE INDEX IF NOT EXISTS career_job_assignment_exclusions_resident
+      ON career_job_assignment_exclusions(resident_id, job_id);
+
     CREATE TABLE IF NOT EXISTS career_job_object_locks (
       object_type TEXT NOT NULL,
       object_id TEXT NOT NULL,
@@ -353,6 +364,131 @@ export function installCareerSchema(database) {
       reviewed_at INTEGER
     );
 
+    CREATE TABLE IF NOT EXISTS career_reporter_source_facts (
+      source_id TEXT PRIMARY KEY,
+      source_type TEXT NOT NULL,
+      producer_reference TEXT NOT NULL,
+      occurred_at INTEGER NOT NULL,
+      public_subject TEXT NOT NULL,
+      fact_json TEXT NOT NULL,
+      allowed_numbers_json TEXT NOT NULL,
+      privacy_scope TEXT NOT NULL CHECK (privacy_scope = 'public'),
+      revision_reference TEXT,
+      fact_digest TEXT NOT NULL,
+      recorded_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS career_reporter_material_packs (
+      pack_id TEXT PRIMARY KEY,
+      issue_reference TEXT,
+      required_level INTEGER NOT NULL CHECK (required_level BETWEEN 1 AND 4),
+      difficulty_level INTEGER NOT NULL CHECK (difficulty_level BETWEEN 1 AND 4),
+      source_ids_json TEXT NOT NULL,
+      source_snapshot_json TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('available', 'claimed', 'returned', 'consumed')),
+      job_id TEXT UNIQUE REFERENCES career_jobs(job_id),
+      claimed_by_resident_id TEXT REFERENCES residents(resident_id),
+      claim_idempotency_key TEXT UNIQUE,
+      return_idempotency_key TEXT UNIQUE,
+      created_at INTEGER NOT NULL,
+      claimed_at INTEGER,
+      returned_at INTEGER,
+      consumed_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS career_reporter_material_packs_status_index
+      ON career_reporter_material_packs(status, created_at, pack_id);
+
+    CREATE TABLE IF NOT EXISTS career_reporter_articles (
+      article_id TEXT PRIMARY KEY,
+      job_id TEXT NOT NULL REFERENCES career_jobs(job_id),
+      resident_id TEXT NOT NULL REFERENCES residents(resident_id),
+      pack_id TEXT NOT NULL REFERENCES career_reporter_material_packs(pack_id),
+      version INTEGER NOT NULL CHECK (version >= 1),
+      revision_kind TEXT NOT NULL CHECK (revision_kind IN ('initial', 'supplement', 'correction')),
+      parent_article_id TEXT REFERENCES career_reporter_articles(article_id),
+      article_text TEXT NOT NULL,
+      numeric_claims_json TEXT NOT NULL,
+      payload_hash TEXT NOT NULL,
+      idempotency_key TEXT NOT NULL UNIQUE,
+      status TEXT NOT NULL CHECK (status IN ('pending_review', 'needs_supplement', 'rejected', 'approved', 'published')),
+      review_decision TEXT,
+      review_reason_code TEXT,
+      reviewer_reference TEXT,
+      submitted_at INTEGER NOT NULL,
+      reviewed_at INTEGER,
+      published_at INTEGER,
+      UNIQUE (job_id, version)
+    );
+    CREATE INDEX IF NOT EXISTS career_reporter_articles_job_index
+      ON career_reporter_articles(job_id, version);
+
+    CREATE TABLE IF NOT EXISTS career_reporter_article_citations (
+      article_id TEXT NOT NULL REFERENCES career_reporter_articles(article_id),
+      source_id TEXT NOT NULL REFERENCES career_reporter_source_facts(source_id),
+      citation_index INTEGER NOT NULL CHECK (citation_index >= 0),
+      fact_digest TEXT NOT NULL,
+      PRIMARY KEY (article_id, source_id),
+      UNIQUE (article_id, citation_index)
+    );
+
+    CREATE TABLE IF NOT EXISTS career_reporter_publications (
+      publication_id TEXT PRIMARY KEY,
+      article_id TEXT NOT NULL UNIQUE REFERENCES career_reporter_articles(article_id),
+      job_id TEXT NOT NULL REFERENCES career_jobs(job_id),
+      resident_id TEXT NOT NULL REFERENCES residents(resident_id),
+      article_version INTEGER NOT NULL CHECK (article_version >= 1),
+      published_at INTEGER NOT NULL,
+      evaluation_opens_at INTEGER NOT NULL,
+      evaluation_closes_at INTEGER NOT NULL CHECK (evaluation_closes_at > evaluation_opens_at),
+      status TEXT NOT NULL CHECK (status IN ('open', 'closed', 'superseded')),
+      valid_likes INTEGER NOT NULL DEFAULT 0 CHECK (valid_likes >= 0),
+      performance_units INTEGER NOT NULL DEFAULT 0 CHECK (performance_units BETWEEN 0 AND 3),
+      performance_gold INTEGER NOT NULL DEFAULT 0 CHECK (performance_gold >= 0),
+      settlement_receipt_id TEXT UNIQUE REFERENCES career_financial_receipts(receipt_id),
+      settled_at INTEGER,
+      UNIQUE (job_id, article_version)
+    );
+    CREATE INDEX IF NOT EXISTS career_reporter_publications_job_index
+      ON career_reporter_publications(job_id, article_version);
+
+    CREATE TABLE IF NOT EXISTS career_reporter_publication_likes (
+      job_id TEXT NOT NULL REFERENCES career_jobs(job_id),
+      publication_id TEXT NOT NULL REFERENCES career_reporter_publications(publication_id),
+      resident_id TEXT NOT NULL REFERENCES residents(resident_id),
+      actor_kind TEXT NOT NULL CHECK (actor_kind = 'resident'),
+      liked_at INTEGER NOT NULL,
+      PRIMARY KEY (job_id, resident_id),
+      UNIQUE (publication_id, resident_id)
+    );
+    CREATE INDEX IF NOT EXISTS career_reporter_publication_likes_publication_index
+      ON career_reporter_publication_likes(publication_id, liked_at);
+
+    CREATE TABLE IF NOT EXISTS career_reporter_evaluation_quotes (
+      quote_id TEXT PRIMARY KEY,
+      publication_id TEXT NOT NULL REFERENCES career_reporter_publications(publication_id),
+      job_id TEXT NOT NULL UNIQUE REFERENCES career_jobs(job_id),
+      resident_id TEXT NOT NULL REFERENCES residents(resident_id),
+      source_reference TEXT NOT NULL UNIQUE,
+      idempotency_key TEXT NOT NULL UNIQUE,
+      valid_likes INTEGER NOT NULL CHECK (valid_likes >= 0),
+      performance_units INTEGER NOT NULL CHECK (performance_units BETWEEN 0 AND 3),
+      performance_gold INTEGER NOT NULL CHECK (performance_gold >= 0),
+      qualification_level INTEGER NOT NULL CHECK (qualification_level BETWEEN 1 AND 4),
+      evaluation_closes_at INTEGER NOT NULL,
+      quote_json TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('quoted', 'settled')),
+      receipt_id TEXT UNIQUE REFERENCES career_financial_receipts(receipt_id),
+      quoted_at INTEGER NOT NULL,
+      settled_at INTEGER,
+      CHECK (
+        (status = 'quoted' AND receipt_id IS NULL AND settled_at IS NULL)
+        OR
+        (status = 'settled' AND receipt_id IS NULL AND performance_units = 0 AND performance_gold = 0 AND settled_at IS NOT NULL)
+        OR
+        (status = 'settled' AND receipt_id IS NOT NULL AND performance_units BETWEEN 1 AND 3 AND performance_gold > 0 AND settled_at IS NOT NULL)
+      )
+    );
+
     CREATE TABLE IF NOT EXISTS career_security_resolutions (
       resolution_id TEXT PRIMARY KEY,
       job_id TEXT NOT NULL UNIQUE REFERENCES career_jobs(job_id),
@@ -381,4 +517,14 @@ export function installCareerSchema(database) {
         .map((column) => column.name));
     if (!examColumns.has("missed_session_at"))
         database.exec("ALTER TABLE career_exam_attempts ADD COLUMN missed_session_at INTEGER");
+    const reporterMaterialPackColumns = new Set(database
+        .prepare("PRAGMA table_info(career_reporter_material_packs)")
+        .all()
+        .map((column) => column.name));
+    if (!reporterMaterialPackColumns.has("issue_reference"))
+        database.exec("ALTER TABLE career_reporter_material_packs ADD COLUMN issue_reference TEXT");
+    database.exec(`
+      CREATE INDEX IF NOT EXISTS career_reporter_material_packs_issue_index
+        ON career_reporter_material_packs(issue_reference, pack_id);
+    `);
 }

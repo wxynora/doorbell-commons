@@ -60,13 +60,13 @@ function autoPotion(f, now) {
     return `【加速】auto ${buyMsg}催熟 ${u.count} 块${short}（剩 ${u.left} 瓶）`;
 }
 
-function doRun(f, b, now) {
+function doRun(f, b, now, options = {}) {
     const parts = [];
     // 顺序：（可选 harvestFirst 先收上轮腾地）→ 种 → 浇 → 催 → 收。
     // 收获默认放在最后，这样催熟后能当场揭晓本轮——抽卡的爽点不被推迟到下一次 run。
     if (b.harvestFirst) {
         const se = f.plots.some((p) => p.crop?.ripe) ? rollSeasonHarvest(f, now) : null;
-        const hs = harvestAll(f, now, se?.mod);
+        const hs = harvestAll(f, now, se?.mod, options);
         if (hs.length)
             parts.push((se ? seasonHeadline(se.hit) + "\n" : "") + `【先收上轮 ${hs.length} 株】\n` + composeHarvests(hs, b.compact !== false, f.id));
     }
@@ -103,7 +103,7 @@ function doRun(f, b, now) {
     // 收在最后：催熟后立刻揭晓本轮（也会顺手收掉真实时间里已成熟的）。harvestAfter 是旧名，等价。
     if (b.harvest || b.harvestAfter) {
         const se = f.plots.some((p) => p.crop?.ripe) ? rollSeasonHarvest(f, now) : null;
-        const hs = harvestAll(f, now, se?.mod);
+        const hs = harvestAll(f, now, se?.mod, options);
         if (hs.length)
             parts.push((se ? seasonHeadline(se.hit) + "\n" : "") + `【收获 ${hs.length} 株】\n` + composeHarvests(hs, b.compact !== false, f.id));
         else if (b.harvest !== "if-any" && b.harvestAfter !== "if-any") {
@@ -126,7 +126,7 @@ export function plantHint(f, cropId, cropName) {
         : `🌱 你的田当前没有空地，收获后可种下「${cropName}」（种它：${json}）。`;
 }
 
-export function handleFieldAction(action, f, b, now) {
+export function handleFieldAction(action, f, b, now, options = {}) {
     switch (action) {
         case "status": {
             const se = rollSeasonStatus(f, now); // 进农场季节事件（10% + 冷却；命中即结算到农场）
@@ -139,7 +139,7 @@ export function handleFieldAction(action, f, b, now) {
             const ptl = potionTargetLine(f, now); // 催熟候选（限定/稀有优先），让 POST AI 也能策略性指定催熟
             return { ok: true, text: withFooter(f, now, seLine + box + describeFarm(f, now) + (qixi ? "\n" + qixi : "") + (roam ? "\n" + roam : "") + (ptl ? "\n" + ptl : "") + "\n" + fishingStatusLine(f, now) + "\n" + glimmerStatusLine(f, now) + (glimmerBuffActive(now) ? "\n" + GLIMMER_BUFF_TEXT : "") + "\n" + shopBrief(f, now)) };
         }
-        case "run": return doRun(f, b, now);
+        case "run": return doRun(f, b, now, options);
         case "plant": {
             if (b.plotId != null) {
                 const r = plant(f, Number(b.plotId), b.seedType, b.limitedId, now);
@@ -163,13 +163,13 @@ export function handleFieldAction(action, f, b, now) {
             if (b.plotId != null) {
                 const plot = f.plots.find((p) => p.id === Number(b.plotId));
                 const se = plot?.crop?.ripe ? rollSeasonHarvest(f, now) : null; // 收获型季节事件（仅在确实有熟可收时掷）
-                const r = harvest(f, Number(b.plotId), now, se?.mod);
+                const r = harvest(f, Number(b.plotId), now, se?.mod, options);
                 if (!r.ok)
                     return { ok: false, text: r.error };
                 return { ok: true, text: withFooter(f, now, (se ? seasonHeadline(se.hit) + "\n" : "") + fmtHarvest(r, f.id) + "\n" + replantReminder(1)) };
             }
             const se = f.plots.some((p) => p.crop?.ripe) ? rollSeasonHarvest(f, now) : null;
-            const hs = harvestAll(f, now, se?.mod);
+            const hs = harvestAll(f, now, se?.mod, options);
             return { ok: hs.length > 0, text: hs.length ? withFooter(f, now, (se ? seasonHeadline(se.hit) + "\n" : "") + `【收获 ${hs.length} 株】\n` + composeHarvests(hs, b.compact !== false, f.id) + "\n" + replantReminder(hs.length)) : "没有成熟的作物" };
         }
         case "ripen": {

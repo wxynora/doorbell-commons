@@ -53,10 +53,14 @@ function cookingItemSprite(itemId, name) {
 // ——————————————————————————————————————————————————————————————
 // 🍳 料理台：三层像素场景 + 点料入锅；食材/料理实例都使用收取或出锅时锁定的价值。
 // ——————————————————————————————————————————————————————————————
-export function uiCooking(f, now, key, flash, resultRaw) {
+export function uiCooking(f, now, key, flash, resultRaw, options = {}) {
     advance(f, now);
     const base = `${BASE}/ui/${key}/cooking`;
-    const view = kitchenView(f, now);
+    const view = kitchenView(f, now, options);
+    const stapleDailyBuyLimit = view.ingredients.find((item) => item.id === "salt")?.dailyBuyLimit
+        ?? cooking.dailyBuyLimit;
+    const rotatingDailyBuyLimit = view.ingredients.find((item) => !item.staple)?.dailyBuyLimit
+        ?? cooking.dailyBuyLimit;
     const ranchCoins = f.ranch?.coins ?? 0;
     const silverIcon = `<span class="silver-coin" role="img" aria-label="银币"></span>`;
     const flashHtml = flash ? `<div class="flash">${esc(flash)}</div>` : "";
@@ -205,7 +209,7 @@ export function uiCooking(f, now, key, flash, resultRaw) {
       <form method="post" action="${base}/buy-recipe" data-cooking-async style="margin:0"><input type="hidden" name="id" value="${esc(recipe.id)}"><button class="btn ghost" type="submit"${can ? "" : " disabled"}>${recipe.known ? "已解锁" : "买食谱"}</button></form></div>`;
     }).join("") : `<p class="small muted">今天没有未知食谱可卖；正确试做仍能直接解锁。</p>`;
     const shopCard = `<div class="card" id="cookingShop"><h3>🛒 今日料理铺　<span class="muted small" style="font-weight:400">UTC+8 零点换货</span></h3>
-      <div class="tags" style="margin:0 0 8px"><span class="tag">${silverIcon} 银币 <b>${num(f.silver)}</b></span><span class="tag">盐／面粉／砂糖 <b>10</b> · 其他食材 <b>${cooking.dailyBuyLimit}</b></span><span class="tag">每日未知食谱 <b>2</b></span></div>
+      <div class="tags" style="margin:0 0 8px"><span class="tag">${silverIcon} 银币 <b>${num(f.silver)}</b></span><span class="tag">盐／面粉／砂糖 <b>${stapleDailyBuyLimit}</b> · 其他食材 <b>${rotatingDailyBuyLimit}</b></span><span class="tag">每日未知食谱 <b>2</b></span></div>
       <details open><summary><b>食材铺 · 基础常驻 + 每日 6 种</b></summary><div class="cook-stock-list">${ingredientShop}</div></details>
       <details style="margin-top:10px"><summary><b>食谱铺</b></summary>${recipeShop}</details></div>`;
     const productRows = pantryGroups.length ? pantryGroups.map((group) => {
