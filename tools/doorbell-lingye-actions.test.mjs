@@ -352,6 +352,13 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
     assert.ok(registerExamOption);
     const firstRegistration = execute(executor, "go.school.choose", { option: registerExamOption.option });
     assert.equal(firstRegistration.ok, true);
+    database.prepare("UPDATE career_exam_attempts SET registration_status = 'postponed' WHERE attempt_id = ?")
+        .run(firstRegistration.data.result.attemptId);
+    const terminalInterviewView = execute(executor, "go.school.view", {});
+    assert.ok(terminalInterviewView.data.options.some((entry) =>
+        entry.option.includes("school:exam-register") && entry.option.endsWith(":agronomist:1")));
+    database.prepare("UPDATE career_exam_attempts SET registration_status = 'registered' WHERE attempt_id = ?")
+        .run(firstRegistration.data.result.attemptId);
     const staleReleaseOption = firstRegistration.data.current.options.find((entry) =>
         entry.option.includes("school:exam-release"));
     assert.ok(staleReleaseOption);

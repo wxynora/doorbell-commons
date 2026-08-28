@@ -614,7 +614,7 @@ export function createLingyeWorldBackend(database, options) {
             finalizeConstableExaminerPanel: (interviewId) => atomic(() => school.finalizeConstableExaminerPanel(interviewId)),
             submitConstableInterviewScore: (input) => atomic(() => school.submitConstableInterviewScore(input)),
             advanceConstableInterviews: (now) => atomic(() => school.advanceConstableInterviews(now)),
-            openConstablePublicNotice: (interviewId, eligibleVoterResidentIds) => atomic(() => school.openConstablePublicNotice(interviewId, eligibleVoterResidentIds)),
+            openConstablePublicNotice: (interviewId, eligibleVoterResidentIds, candidateResidentName) => atomic(() => school.openConstablePublicNotice(interviewId, eligibleVoterResidentIds, candidateResidentName)),
             voteConstablePublicNotice: (noticeId, residentId, choice) => atomic(() => school.voteConstablePublicNotice(noticeId, residentId, choice)),
             finalizeConstablePublicNotice: (noticeId, reviewPolicy) => atomic(() => school.finalizeConstablePublicNotice(noticeId, reviewPolicy)),
             hire: (input) => atomic(() => employment.hire(input)),

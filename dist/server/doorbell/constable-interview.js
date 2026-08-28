@@ -18,7 +18,7 @@ const ACTION_KEYS = {
 };
 const READ_KEYS = [...BASE_KEYS];
 const READ_WITH_INTERVIEW_KEYS = [...BASE_KEYS, "interview_id"];
-const OPEN_KEYS = ["interview_id", "eligible_voter_resident_ids"];
+const OPEN_KEYS = ["interview_id", "eligible_voter_resident_ids", "candidate_resident_name"];
 
 function serviceEligibilityReference(action, farm, residentId, interviewId, now) {
     return `doorbell-service:${action}:${farm.id}:${residentId}:${interviewId}:${now}`;
@@ -281,19 +281,21 @@ export async function handleDoorbellConstablePublicNoticeOpen(req, res, method, 
     if (body === null)
         return;
     if (!hasExactKeys(body, OPEN_KEYS) ||
-        !nonEmpty(body.interview_id) || !Array.isArray(body.eligible_voter_resident_ids) ||
+        !nonEmpty(body.interview_id) || !nonEmpty(body.candidate_resident_name) ||
+        !Array.isArray(body.eligible_voter_resident_ids) ||
         body.eligible_voter_resident_ids.some((residentId) => !nonEmpty(residentId)) ||
         new Set(body.eligible_voter_resident_ids).size !== body.eligible_voter_resident_ids.length) {
         internalServiceError(res, 400, "invalid_request", "The public notice request is invalid");
         return;
     }
     try {
-        const noticeId = backend.trustedSystemCommands.openConstablePublicNotice(
+        const result = backend.trustedSystemCommands.openConstablePublicNotice(
             body.interview_id,
             body.eligible_voter_resident_ids,
+            body.candidate_resident_name,
         );
         return jsonOut(res, 200, {
-            data: { notice_id: noticeId },
+            data: { status: result.status, notice_id: result.noticeId },
             server_time: new Date(now).toISOString(),
         });
     }

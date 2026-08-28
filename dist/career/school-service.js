@@ -904,15 +904,18 @@ export class CareerSchoolService {
             return { status: "scoring", replay: false };
         });
     }
-    openConstablePublicNotice(interviewId, eligibleVoterResidentIds) {
+    openConstablePublicNotice(interviewId, eligibleVoterResidentIds, candidateResidentName) {
+        if (typeof candidateResidentName !== "string" || candidateResidentName.trim().length === 0) {
+            throw new CareerDomainError("invalid_public_notice_candidate", "The public notice candidate name is invalid");
+        }
         const now = this.#now();
-        const noticeId = runInTransaction(this.#database, () => {
+        return runInTransaction(this.#database, () => {
             const interview = this.#requireInterview(interviewId);
             if (interview.status === "public_notice") {
                 const existing = this.#database
                     .prepare("SELECT notice_id FROM career_constable_public_notices WHERE interview_id = ?")
                     .get(interviewId);
-                return existing.notice_id;
+                return { status: "public_notice", noticeId: existing.notice_id };
             }
             if (interview.status !== "scoring") {
                 throw new CareerDomainError("interview_scores_incomplete", "The interview is not scored");
@@ -941,7 +944,7 @@ export class CareerSchoolService {
                     .prepare(`UPDATE career_exam_attempts
              SET registration_status = 'failed', ended_at = ? WHERE attempt_id = ?`)
                     .run(now, interview.attempt_id);
-                return null;
+                return { status: "failed", noticeId: null };
             }
             this.#requireInterviewMaterial(interview);
             const voters = [
@@ -950,10 +953,11 @@ export class CareerSchoolService {
             const noticeId = this.#generateId();
             this.#database
                 .prepare(`INSERT INTO career_constable_public_notices (
-             notice_id, interview_id, candidate_resident_id, opened_at, closes_at,
-             status, eligible_voter_count
-           ) VALUES (?, ?, ?, ?, ?, 'open', ?)`)
-                .run(noticeId, interviewId, interview.candidate_resident_id, now, now + PUBLIC_NOTICE_MS, voters.length);
+             notice_id, interview_id, candidate_resident_id, candidate_resident_name,
+             opened_at, closes_at, status, eligible_voter_count
+           ) VALUES (?, ?, ?, ?, ?, ?, 'open', ?)`)
+                .run(noticeId, interviewId, interview.candidate_resident_id, candidateResidentName,
+                now, now + PUBLIC_NOTICE_MS, voters.length);
             const insertVoter = this.#database.prepare(`INSERT INTO career_constable_notice_voters (notice_id, resident_id) VALUES (?, ?)`);
             for (const voter of voters)
                 insertVoter.run(noticeId, voter);
@@ -966,12 +970,8 @@ export class CareerSchoolService {
             this.#database
                 .prepare("UPDATE career_constable_interviews SET status = 'public_notice' WHERE interview_id = ?")
                 .run(interviewId);
-            return noticeId;
+            return { status: "public_notice", noticeId };
         });
-        if (noticeId === null) {
-            throw new CareerDomainError("constable_interview_failed", "The interview did not pass");
-        }
-        return noticeId;
     }
     voteConstablePublicNotice(noticeId, residentId, choice) {
         const now = this.#now();

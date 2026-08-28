@@ -248,8 +248,9 @@ export function nextExamSessionAt(now) {
     throw new Error("exam_day_resolution_failed");
 }
 export function nextInterviewSessionAt(now) {
+    const todayAt8 = beijingTimestamp(beijingDate(now), 8);
     const todayAt20 = beijingTimestamp(beijingDate(now), 20);
-    return todayAt20 > now ? todayAt20 : todayAt20 + DAY_MS;
+    return now < todayAt8 ? todayAt20 : todayAt20 + DAY_MS;
 }
 export function isBeijingHour(timestamp, hour, minute = 0) {
     const shifted = new Date(timestamp + BEIJING_OFFSET_MS);

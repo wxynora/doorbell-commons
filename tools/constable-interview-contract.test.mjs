@@ -328,6 +328,17 @@ test("human constable interview routes derive the actor contract and expose mate
         });
         assert.equal(score.status, 200);
         assert.equal(score.body.data.interviews[0].self.score_submitted, true);
+        const changedScore = await callRoute(fixture.handler, actionParts, {
+            ...base,
+            action: "score",
+            interview_id: fixture.interviewId,
+            facts: 3,
+            restraint: 4,
+            procedure: 4,
+            explanation: 4,
+        });
+        assert.equal(changedScore.status, 409);
+        assert.equal(changedScore.body.error.code, "interview_score_conflict");
         const unselectedScore = await callRoute(fixture.handler, actionParts, {
             ...base,
             account_id: "examiner-account-4",
@@ -385,10 +396,12 @@ test("go.school exposes anonymous notice options and injects the authenticated r
             ["internal", "doorbell", "constable", "interview", "public-notice", "open"],
             {
                 interview_id: fixture.interviewId,
+                candidate_resident_name: "治安官候选居民",
                 eligible_voter_resident_ids: [CANDIDATE, VOTER],
             },
         );
         assert.equal(open.status, 200);
+        assert.equal(open.body.data.status, "public_notice");
         const noticeId = open.body.data.notice_id;
         assertIso(open.body.server_time);
 
@@ -405,6 +418,11 @@ test("go.school exposes anonymous notice options and injects the authenticated r
         });
         const notice = view.data.publicNotices.find((item) => item.noticeId === noticeId);
         assert.ok(notice);
+        assert.deepEqual(notice.candidate, { residentName: "治安官候选居民" });
+        assert.equal(notice.career, "constable");
+        assert.equal(notice.qualificationLevel, 1);
+        assert.equal(notice.outcome, "interview_passed_pending_public_notice");
+        assert.equal(notice.myChoice, null);
         assert.deepEqual(notice.options, ["no_objection", "review_request"]);
         assertIso(notice.openedAt);
         assertIso(notice.closesAt);

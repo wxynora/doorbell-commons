@@ -473,8 +473,11 @@ function constableInterviewFacts(database, residentId, optionRevision) {
     });
     const publicNotices = mapRows(database.prepare(`
       SELECT notice.notice_id, notice.interview_id, notice.status,
-             notice.opened_at, notice.closes_at, voter.choice
+             notice.candidate_resident_name, notice.opened_at, notice.closes_at,
+             attempt.qualification_level, voter.choice
       FROM career_constable_public_notices AS notice
+      JOIN career_constable_interviews AS interview ON interview.interview_id = notice.interview_id
+      JOIN career_exam_attempts AS attempt ON attempt.attempt_id = interview.attempt_id
       JOIN career_constable_notice_voters AS voter ON voter.notice_id = notice.notice_id
       WHERE voter.resident_id = ?
       ORDER BY notice.opened_at DESC, notice.notice_id
@@ -482,16 +485,20 @@ function constableInterviewFacts(database, residentId, optionRevision) {
         noticeId: notice.noticeId,
         interviewId: notice.interviewId,
         status: notice.status,
+        candidate: { residentName: notice.candidateResidentName },
+        career: "constable",
+        qualificationLevel: notice.qualificationLevel,
+        outcome: "interview_passed_pending_public_notice",
         openedAt: isoTime(notice.openedAt),
         closesAt: isoTime(notice.closesAt),
-        choice: notice.choice,
+        myChoice: notice.choice,
         options: notice.status === "open" && notice.choice === null
             ? ["no_objection", "review_request"]
             : [],
     }));
     const options = [];
     for (const notice of publicNotices) {
-        if (notice.status !== "open" || notice.choice !== null)
+        if (notice.status !== "open" || notice.myChoice !== null)
             continue;
         options.push(option(schoolOption(optionRevision, "constable-public-notice-vote", `${notice.noticeId}:no_objection`)));
         options.push(option(schoolOption(optionRevision, "constable-public-notice-vote", `${notice.noticeId}:review_request`)));
@@ -593,7 +600,7 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
         }
         const activeExam = exams.find((exam) => exam.career === track.career &&
             exam.qualificationLevel === nextLevel &&
-            ["registered", "active", "written_passed", "postponed"].includes(exam.registrationStatus));
+            ["registered", "active", "written_passed"].includes(exam.registrationStatus));
         if (!activeExam) {
             if (backend.trustedQueries.examAvailable(track.career, nextLevel)) {
                 options.push(option(schoolOption(optionRevision, "exam-register", `${track.career}:${nextLevel}`)));

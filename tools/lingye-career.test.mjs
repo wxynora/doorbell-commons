@@ -15,6 +15,7 @@ import {
     isBeijingExamDay,
     isBeijingExamSessionOpen,
     nextExamSessionAt,
+    nextInterviewSessionAt,
     recordFinancialReceipt,
 } from "../dist/career/persistence.js";
 import { installCareerSchema } from "../dist/career/schema.js";
@@ -59,6 +60,15 @@ test("exam calendar resolves only Tuesday, Thursday, and Saturday in Beijing tim
     assert.equal(isBeijingExamSessionOpen(tuesdaySession, tuesdaySession), true);
     assert.equal(isBeijingExamSessionOpen(tuesdaySession + 2 * 60 * 60 * 1_000 - 1, tuesdaySession), true);
     assert.equal(isBeijingExamSessionOpen(tuesdaySession + 2 * 60 * 60 * 1_000, tuesdaySession), false);
+});
+
+test("constable interviews only use a 20:00 session with a complete 08:00 signup window", () => {
+    assert.equal(nextInterviewSessionAt(beijingTimestamp("2026-09-01", 7, 59)),
+        beijingTimestamp("2026-09-01", 20));
+    assert.equal(nextInterviewSessionAt(beijingTimestamp("2026-09-01", 8)),
+        beijingTimestamp("2026-09-02", 20));
+    assert.equal(nextInterviewSessionAt(beijingTimestamp("2026-09-01", 15)),
+        beijingTimestamp("2026-09-02", 20));
 });
 
 function testPaper(kind, targetKey, count) {
@@ -1295,7 +1305,7 @@ test("self jobs belong to their owner and cannot create an unclaimable transfer 
         harness.database.close();
     }
 });
-test("a failed constable interview persists its terminal state before reporting failure", () => {
+test("a failed constable interview returns a normal terminal result after persisting it", () => {
     const harness = createHarness();
     try {
         const reservation = harness.receipt({
@@ -1335,7 +1345,11 @@ test("a failed constable interview persists its terminal state before reporting 
         ('failed-interview', 'human-2', 2, 4, 4, 4, 1),
         ('failed-interview', 'human-3', 2, 4, 4, 4, 1);
     `);
-        assert.throws(() => harness.school.openConstablePublicNotice("failed-interview", ["resident-1"]), assertCareerError("constable_interview_failed"));
+        assert.deepEqual(harness.school.openConstablePublicNotice(
+            "failed-interview",
+            ["resident-1"],
+            "未通过候选居民",
+        ), { status: "failed", noticeId: null });
         assert.deepEqual({ ...harness.database
             .prepare(`SELECT status, finalized_at FROM career_constable_interviews
            WHERE interview_id = 'failed-interview'`)
@@ -1382,7 +1396,7 @@ test("constable interview uses human signup order and fails closed after the 24-
             submitExamScore(harness, attempt.attemptId, 20, "constable-written-pass"),
             writtenResult,
         );
-        const scheduledAt = beijingTimestamp("2026-08-27", 20);
+        const scheduledAt = beijingTimestamp("2026-08-28", 20);
         const automaticInterview = harness.database
             .prepare(`SELECT interview_id, scheduled_at, status
                 FROM career_constable_interviews WHERE attempt_id = ?`)
@@ -1397,7 +1411,7 @@ test("constable interview uses human signup order and fails closed after the 24-
             .prepare("SELECT COUNT(*) AS count FROM career_constable_interviews WHERE attempt_id = ?")
             .get(attempt.attemptId).count, 1);
         assert.equal(harness.school.scheduleConstableInterview(attempt.attemptId, scheduledAt), interviewId);
-        harness.setNow(beijingTimestamp("2026-08-27", 14));
+        harness.setNow(beijingTimestamp("2026-08-28", 14));
         for (const index of [1, 2, 3, 4]) {
             harness.ensureAccount(`resident-${index}`);
             harness.school.signupConstableExaminer({
@@ -1407,7 +1421,7 @@ test("constable interview uses human signup order and fails closed after the 24-
                 interviewId,
             });
         }
-        harness.setNow(beijingTimestamp("2026-08-27", 19, 30));
+        harness.setNow(beijingTimestamp("2026-08-28", 19, 30));
         for (const index of [1, 3, 4]) {
             harness.school.confirmConstableExaminerAttendance({
                 eligibilityReference: `attendance-eligibility-${index}`,
@@ -1427,12 +1441,14 @@ test("constable interview uses human signup order and fails closed after the 24-
                 restraint: 4,
             });
         }
-        const noticeId = harness.school.openConstablePublicNotice(interviewId, [
+        const opening = harness.school.openConstablePublicNotice(interviewId, [
             "candidate",
             "resident-1",
             "resident-2",
             "resident-3",
-        ]);
+        ], "候选居民");
+        assert.equal(opening.status, "public_notice");
+        const noticeId = opening.noticeId;
         assert.deepEqual(harness.school.submitConstableInterviewScore({
             explanation: 4,
             examinerAccountId: "human-1",
@@ -1482,7 +1498,7 @@ test("a postponed constable interview reopens signup at a new session", () => {
             correctAnswers: 20,
             passed: true,
         });
-        const firstSession = beijingTimestamp("2026-08-27", 20);
+        const firstSession = beijingTimestamp("2026-08-28", 20);
         const automaticInterview = harness.database
             .prepare(`SELECT interview_id, scheduled_at, status
                 FROM career_constable_interviews WHERE attempt_id = ?`)
@@ -1493,7 +1509,7 @@ test("a postponed constable interview reopens signup at a new session", () => {
             status: "signup_open",
         });
         const interviewId = automaticInterview.interview_id;
-        harness.setNow(beijingTimestamp("2026-08-27", 14));
+        harness.setNow(beijingTimestamp("2026-08-28", 14));
         harness.ensureAccount("postponed-resident");
         harness.school.signupConstableExaminer({
             eligibilityReference: "postponed-eligibility",
@@ -1502,7 +1518,7 @@ test("a postponed constable interview reopens signup at a new session", () => {
             interviewId,
         });
         harness.setNow(firstSession);
-        const secondSession = beijingTimestamp("2026-08-28", 20);
+        const secondSession = beijingTimestamp("2026-08-29", 20);
         assert.deepEqual(harness.school.finalizeConstableExaminerPanel(interviewId), {
             status: "postponed",
             nextScheduledAt: secondSession,
@@ -1581,9 +1597,10 @@ test("a closed constable notice with zero review requests activates without a po
             .run(now - 1, material.bankVersion, JSON.stringify(material.paper),
             JSON.stringify(material.factMaterial), JSON.stringify(material.scoringStandard), now - 1);
         harness.database.prepare(`INSERT INTO career_constable_public_notices (
-          notice_id, interview_id, candidate_resident_id, opened_at, closes_at,
-          status, eligible_voter_count
-        ) VALUES ('zero-review-notice', 'zero-review-interview', 'zero-review-candidate', ?, ?, 'open', 0)`)
+          notice_id, interview_id, candidate_resident_id, candidate_resident_name,
+          opened_at, closes_at, status, eligible_voter_count
+        ) VALUES ('zero-review-notice', 'zero-review-interview', 'zero-review-candidate',
+                  '零异议候选居民', ?, ?, 'open', 0)`)
             .run(now - 24 * 60 * 60 * 1_000 - 1, now - 1);
         harness.database.prepare(`INSERT INTO career_certificates (
           resident_id, career, qualification_level, status, source_attempt_id, issued_at
@@ -1743,7 +1760,11 @@ test("constable scoring fails closed when no private interview bank is configure
                 .run(accountId, now);
         }
         harness.database.prepare("UPDATE career_constable_interviews SET status = 'scoring' WHERE interview_id = 'unconfigured-interview'").run();
-        assert.throws(() => unconfigured.openConstablePublicNotice("unconfigured-interview", ["unconfigured-voter"]), assertCareerError("interview_material_not_configured"));
+        assert.throws(() => unconfigured.openConstablePublicNotice(
+            "unconfigured-interview",
+            ["unconfigured-voter"],
+            "未配置材料候选居民",
+        ), assertCareerError("interview_material_not_configured"));
     }
     finally {
         harness.database.close();

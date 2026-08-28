@@ -171,6 +171,7 @@ export function installCareerSchema(database) {
       notice_id TEXT PRIMARY KEY,
       interview_id TEXT NOT NULL UNIQUE REFERENCES career_constable_interviews(interview_id),
       candidate_resident_id TEXT NOT NULL,
+      candidate_resident_name TEXT NOT NULL,
       opened_at INTEGER NOT NULL,
       closes_at INTEGER NOT NULL,
       status TEXT NOT NULL CHECK (status IN (
@@ -538,6 +539,12 @@ export function installCareerSchema(database) {
         if (!interviewColumns.has(name))
             database.exec(`ALTER TABLE career_constable_interviews ADD COLUMN ${name} ${definition}`);
     }
+    const constableNoticeColumns = new Set(database
+        .prepare("PRAGMA table_info(career_constable_public_notices)")
+        .all()
+        .map((column) => column.name));
+    if (!constableNoticeColumns.has("candidate_resident_name"))
+        database.exec("ALTER TABLE career_constable_public_notices ADD COLUMN candidate_resident_name TEXT");
     const reporterMaterialPackColumns = new Set(database
         .prepare("PRAGMA table_info(career_reporter_material_packs)")
         .all()
