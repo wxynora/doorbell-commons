@@ -112,13 +112,6 @@ export interface HomeWeatherStateUpdate {
   nextTransitionAt: number | null;
 }
 
-export interface ConnectorBindingState {
-  configured: boolean;
-  credentialId: string | null;
-  lastConnectedAt: number | null;
-  lastOnlineAt: number | null;
-}
-
 export interface McpAccessBindingRecord {
   residentId: string;
   migrationId: string;
@@ -135,26 +128,6 @@ export interface McpAccessBindingRecord {
 export interface McpCredentialReplacementResult {
   binding: McpAccessBindingRecord;
   replacedPrevious: boolean;
-}
-
-export interface AuthenticatedConnectorBinding {
-  residentId: string;
-  credentialId: string;
-}
-
-export interface ConnectorEventRecord {
-  generation: string;
-  residentId: string;
-  eventId: string;
-  cursor: number;
-  eventType: string;
-  createdAt: number;
-  payload: Record<string, unknown>;
-}
-
-export interface ConnectorEventAckResult {
-  status: "acked" | "duplicate" | "gap" | "mismatch";
-  lastAckedCursor: number;
 }
 
 export interface AuthenticatedBellBinding {
@@ -509,15 +482,6 @@ interface HumanSettingsRow {
   allow_activity_room_warmup: number | null;
 }
 
-interface ConnectorBindingRow {
-  resident_id: string;
-  credential_id: string;
-  credential_token_hash: string | null;
-  credential_revoked_at: number | null;
-  last_connected_at: number | null;
-  last_online_at: number | null;
-}
-
 interface McpAccessBindingRow {
   resident_id: string;
   migration_id: string;
@@ -529,22 +493,6 @@ interface McpAccessBindingRow {
   credential_token_hash: string | null;
   credential_issued_at: number | null;
   credential_revoked_at: number | null;
-}
-
-interface ConnectorDeliveryStateRow {
-  generation: string;
-  last_event_cursor: number;
-  last_acked_cursor: number;
-}
-
-interface ConnectorEventRow {
-  generation: string;
-  resident_id: string;
-  event_id: string;
-  cursor: number;
-  event_type: string;
-  created_at: number;
-  payload_json: string;
 }
 
 interface BellBindingRow {
@@ -769,22 +717,6 @@ function mapHomeWeatherState(row: HumanSettingsRow): HomeWeatherStateRecord | un
     stateStartedAt: row.state_started_at,
     nextTransitionAt: row.next_transition_at,
     updatedAt: row.weather_updated_at,
-  };
-}
-
-function mapConnectorEvent(row: ConnectorEventRow): ConnectorEventRecord {
-  const payload = JSON.parse(row.payload_json) as unknown;
-  if (payload === null || Array.isArray(payload) || typeof payload !== "object") {
-    throw new Error("Stored Connector event payload is invalid");
-  }
-  return {
-    generation: row.generation,
-    residentId: row.resident_id,
-    eventId: row.event_id,
-    cursor: row.cursor,
-    eventType: row.event_type,
-    createdAt: row.created_at,
-    payload: payload as Record<string, unknown>,
   };
 }
 
@@ -2842,295 +2774,6 @@ export class CommunityDatabase {
     return row ? { residentId: row.resident_id, credentialId: row.credential_id } : undefined;
   }
 
-  replaceConnectorCredential(
-    residentId: string,
-    credentialId: string,
-    credentialTokenHash: string,
-    now: number,
-  ): boolean {
-    const transaction = this.#database.transaction(() => {
-      const existing = this.#database
-        .prepare(
-          `SELECT resident_id,
-                  credential_id,
-                  credential_token_hash,
-                  credential_revoked_at,
-                  last_connected_at,
-                  last_online_at
-           FROM connector_bindings
-           WHERE resident_id = ?`,
-        )
-        .get(residentId) as ConnectorBindingRow | undefined;
-      this.#database
-        .prepare(
-          `INSERT INTO connector_bindings (
-             resident_id,
-             credential_id,
-             credential_token_hash,
-             credential_issued_at,
-             credential_revoked_at,
-             last_connected_at,
-             last_online_at
-           ) VALUES (?, ?, ?, ?, NULL, NULL, NULL)
-           ON CONFLICT(resident_id) DO UPDATE SET
-             credential_id = excluded.credential_id,
-             credential_token_hash = excluded.credential_token_hash,
-             credential_issued_at = excluded.credential_issued_at,
-             credential_revoked_at = NULL`,
-        )
-        .run(residentId, credentialId, credentialTokenHash, now);
-      return existing?.credential_token_hash !== null && existing?.credential_revoked_at === null;
-    });
-    return transaction.immediate();
-  }
-
-  revokeConnectorCredential(residentId: string, now: number): boolean {
-    const result = this.#database
-      .prepare(
-        `UPDATE connector_bindings
-         SET credential_token_hash = NULL,
-             credential_revoked_at = ?
-         WHERE resident_id = ?
-           AND credential_token_hash IS NOT NULL
-           AND credential_revoked_at IS NULL`,
-      )
-      .run(now, residentId);
-    return result.changes === 1;
-  }
-
-  authenticateConnectorCredentialHash(
-    credentialTokenHash: string,
-  ): AuthenticatedConnectorBinding | undefined {
-    const row = this.#database
-      .prepare(
-        `SELECT resident_id,
-                credential_id,
-                credential_token_hash,
-                credential_revoked_at,
-                last_connected_at,
-                last_online_at
-         FROM connector_bindings
-         WHERE credential_token_hash = ?
-           AND credential_revoked_at IS NULL`,
-      )
-      .get(credentialTokenHash) as ConnectorBindingRow | undefined;
-    return row ? { residentId: row.resident_id, credentialId: row.credential_id } : undefined;
-  }
-
-  getConnectorBindingState(residentId: string): ConnectorBindingState {
-    const row = this.#database
-      .prepare(
-        `SELECT resident_id,
-                credential_id,
-                credential_token_hash,
-                credential_revoked_at,
-                last_connected_at,
-                last_online_at
-         FROM connector_bindings
-         WHERE resident_id = ?`,
-      )
-      .get(residentId) as ConnectorBindingRow | undefined;
-    return {
-      configured:
-        row !== undefined &&
-        row.credential_token_hash !== null &&
-        row.credential_revoked_at === null,
-      credentialId: row?.credential_id ?? null,
-      lastConnectedAt: row?.last_connected_at ?? null,
-      lastOnlineAt: row?.last_online_at ?? null,
-    };
-  }
-
-  listConfiguredConnectorResidentIds(): string[] {
-    const rows = this.#database
-      .prepare(
-        `SELECT resident_id
-         FROM connector_bindings
-         WHERE credential_token_hash IS NOT NULL
-           AND credential_revoked_at IS NULL
-         ORDER BY resident_id ASC`,
-      )
-      .all() as Array<{ resident_id: string }>;
-    return rows.map((row) => row.resident_id);
-  }
-
-  markConnectorConnected(residentId: string, credentialId: string, now: number): boolean {
-    const result = this.#database
-      .prepare(
-        `UPDATE connector_bindings
-         SET last_connected_at = ?,
-             last_online_at = ?
-         WHERE resident_id = ?
-           AND credential_id = ?
-           AND credential_token_hash IS NOT NULL
-           AND credential_revoked_at IS NULL`,
-      )
-      .run(now, now, residentId, credentialId);
-    return result.changes === 1;
-  }
-
-  markConnectorAlive(residentId: string, credentialId: string, now: number): boolean {
-    const result = this.#database
-      .prepare(
-        `UPDATE connector_bindings
-         SET last_online_at = ?
-         WHERE resident_id = ?
-           AND credential_id = ?
-           AND credential_token_hash IS NOT NULL
-           AND credential_revoked_at IS NULL`,
-      )
-      .run(now, residentId, credentialId);
-    return result.changes === 1;
-  }
-
-  appendConnectorEvent(
-    generation: string,
-    residentId: string,
-    eventId: string,
-    eventType: string,
-    payload: Record<string, unknown>,
-    now: number,
-  ): ConnectorEventRecord {
-    const payloadJson = JSON.stringify(payload);
-    const transaction = this.#database.transaction(() => {
-      this.#database
-        .prepare(
-          `INSERT INTO connector_delivery_state (
-             generation,
-             resident_id,
-             last_event_cursor,
-             last_acked_cursor
-           ) VALUES (?, ?, 0, 0)
-           ON CONFLICT(generation, resident_id) DO NOTHING`,
-        )
-        .run(generation, residentId);
-      const state = this.#database
-        .prepare(
-          `SELECT generation, last_event_cursor, last_acked_cursor
-           FROM connector_delivery_state
-           WHERE generation = ? AND resident_id = ?`,
-        )
-        .get(generation, residentId) as ConnectorDeliveryStateRow;
-      const cursor = state.last_event_cursor + 1;
-      this.#database
-        .prepare(
-          `INSERT INTO connector_events (
-             generation,
-             resident_id,
-             cursor,
-             event_id,
-             event_type,
-             created_at,
-             payload_json
-           ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(generation, residentId, cursor, eventId, eventType, now, payloadJson);
-      this.#database
-        .prepare(
-          `UPDATE connector_delivery_state
-           SET last_event_cursor = ?
-           WHERE generation = ? AND resident_id = ?`,
-        )
-        .run(cursor, generation, residentId);
-      return {
-        generation,
-        residentId,
-        eventId,
-        cursor,
-        eventType,
-        createdAt: now,
-        payload,
-      };
-    });
-    return transaction.immediate();
-  }
-
-  listConnectorEventsAfter(
-    generation: string,
-    residentId: string,
-    afterCursor: number,
-  ): ConnectorEventRecord[] {
-    const rows = this.#database
-      .prepare(
-        `SELECT generation, resident_id, event_id, cursor, event_type, created_at, payload_json
-         FROM connector_events
-         WHERE generation = ? AND resident_id = ? AND cursor > ?
-         ORDER BY cursor ASC`,
-      )
-      .all(generation, residentId, afterCursor) as ConnectorEventRow[];
-    return rows.map(mapConnectorEvent);
-  }
-
-  getConnectorLastAckedCursor(generation: string, residentId: string): number {
-    const row = this.#database
-      .prepare(
-        `SELECT generation, last_event_cursor, last_acked_cursor
-         FROM connector_delivery_state
-         WHERE generation = ? AND resident_id = ?`,
-      )
-      .get(generation, residentId) as ConnectorDeliveryStateRow | undefined;
-    return row?.last_acked_cursor ?? 0;
-  }
-
-  getConnectorLastEventCursor(generation: string, residentId: string): number {
-    const row = this.#database
-      .prepare(
-        `SELECT generation, last_event_cursor, last_acked_cursor
-         FROM connector_delivery_state
-         WHERE generation = ? AND resident_id = ?`,
-      )
-      .get(generation, residentId) as ConnectorDeliveryStateRow | undefined;
-    return row?.last_event_cursor ?? 0;
-  }
-
-  acknowledgeConnectorEvent(
-    generation: string,
-    residentId: string,
-    cursor: number,
-    eventId: string,
-  ): ConnectorEventAckResult {
-    const transaction = this.#database.transaction(() => {
-      const state = this.#database
-        .prepare(
-          `SELECT generation, last_event_cursor, last_acked_cursor
-           FROM connector_delivery_state
-           WHERE generation = ? AND resident_id = ?`,
-        )
-        .get(generation, residentId) as ConnectorDeliveryStateRow | undefined;
-      const lastAckedCursor = state?.last_acked_cursor ?? 0;
-      const event = this.#database
-        .prepare(
-          `SELECT generation, resident_id, event_id, cursor, event_type, created_at, payload_json
-           FROM connector_events
-           WHERE generation = ? AND resident_id = ? AND cursor = ?`,
-        )
-        .get(generation, residentId, cursor) as ConnectorEventRow | undefined;
-
-      if (cursor <= lastAckedCursor) {
-        return {
-          status: event?.event_id === eventId ? ("duplicate" as const) : ("mismatch" as const),
-          lastAckedCursor,
-        };
-      }
-      if (cursor !== lastAckedCursor + 1) {
-        return { status: "gap" as const, lastAckedCursor };
-      }
-      if (!event || event.event_id !== eventId) {
-        return { status: "mismatch" as const, lastAckedCursor };
-      }
-
-      this.#database
-        .prepare(
-          `UPDATE connector_delivery_state
-           SET last_acked_cursor = ?
-           WHERE generation = ? AND resident_id = ? AND last_acked_cursor = ?`,
-        )
-        .run(cursor, generation, residentId, lastAckedCursor);
-      return { status: "acked" as const, lastAckedCursor: cursor };
-    });
-    return transaction.immediate();
-  }
-
   replaceFirstActiveBellCredential(
     credentialId: string,
     credentialTokenHash: string,
@@ -4542,18 +4185,6 @@ export class CommunityDatabase {
       this.#database
         .prepare(
           `UPDATE mcp_access_bindings
-           SET credential_token_hash = NULL,
-               credential_revoked_at = ?
-           WHERE resident_id IN (
-             SELECT resident_id FROM residents WHERE account_id = ?
-           )
-             AND credential_token_hash IS NOT NULL
-             AND credential_revoked_at IS NULL`,
-        )
-        .run(now, accountId);
-      this.#database
-        .prepare(
-          `UPDATE connector_bindings
            SET credential_token_hash = NULL,
                credential_revoked_at = ?
            WHERE resident_id IN (

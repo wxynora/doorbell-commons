@@ -410,6 +410,7 @@ const FARM_TOGETHER_RESULT = {
     stage: { index: 1, total: 6, name: "逆流而来的船" },
     art_asset_key: "together.river-from-tomorrow-opening",
     history: [{ kind: "story", title: "逆流而来的船", text: "旧沟里出现了逆流。" }],
+    archives: [],
     current_task: null,
     current_choice: null,
     cooldown: null,
@@ -2689,12 +2690,6 @@ test("GET session preserves state on outage and confirmed departure revokes ever
     assert.equal(afterOutage.statusCode, 200);
 
     harness.membership.members.clear();
-    harness.database.replaceConnectorCredential(
-      currentBody.resident.resident_id,
-      "connector-credential-before-departure",
-      "a".repeat(64),
-      harness.now.value,
-    );
     harness.database.replaceFirstActiveBellCredential(
       "bell-credential-before-departure",
       "b".repeat(64),
@@ -2726,10 +2721,6 @@ test("GET session preserves state on outage and confirmed departure revokes ever
       0,
     );
     assert.deepEqual(harness.revokedResidentIds, [currentBody.resident.resident_id]);
-    assert.equal(
-      harness.database.getConnectorBindingState(currentBody.resident.resident_id).configured,
-      false,
-    );
     assert.equal(
       harness.database.getBellBindingState(currentBody.resident.resident_id).configured,
       false,

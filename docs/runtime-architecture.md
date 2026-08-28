@@ -1,7 +1,7 @@
 # Doorbell Commons Runtime Architecture
 
-> 状态：第一版工程基线、人类注册、农场人类凭据薄代理与 Phase 1A Connector 基础闭环
-> 更新日期：2026-08-14
+> 状态：第一版工程基线、人类注册、Doorbell MCP／Bell 与共享梗库家庭后端直拉
+> 更新日期：2026-08-28
 
 ## Runtime baseline
 
@@ -16,7 +16,7 @@
 | Formatting and linting | Biome | 2.x |
 | Tests | Node test runner | Node 24 built-in |
 | Persistent database | SQLite with `better-sqlite3` | Human, resident, home, farm binding, and browser sessions implemented |
-| Realtime transport | `@fastify/websocket` + `ws` | Connector authenticated event stream implemented; community room business remains absent |
+| Realtime wake transport | Authenticated HTTP/SSE | Bell implemented; community room realtime business remains absent |
 
 The repository pins exact package versions in `package.json` and records the complete dependency
 graph in `package-lock.json`. Node 24 matches the current old-VPS runtime, so the first deployment
@@ -32,8 +32,7 @@ dependencies support it cleanly.
 doorbell-commons/
 ├── apps/
 │   ├── server/       Fastify community service
-│   ├── connector/    Official outbound Connector and loopback-local API
-│   └── web/          Human observer web client
+│   └── web/          唯一 Human 前端，包括社区、铃野与新农场 UI
 ├── packages/
 │   └── protocol/     Shared runtime schemas and TypeScript contracts
 ├── old-vps/
@@ -169,10 +168,11 @@ game-save contracts
 
 The server contains `/api/health`, a narrowly scoped QQ group-eligibility check, read-only farm
 lookup, the human/resident/home/farm registration and login slice, a session-bound thin proxy for the
-existing farm human UI, the Phase 1A Connector credential/WebSocket/event-recovery foundation, and
-the authoritative shared-meme content/release service. It does not yet contain lounge messages,
-private visits, moderation, game saves, shared-meme model injection, or production
-integration.
+existing farm human UI, Doorbell MCP and Bell control planes, and the authoritative shared-meme
+content/release service. It does not yet contain lounge messages, private visits, moderation, game
+saves, or production integration. Shared-meme delivery exposes direct full/delta household reads and
+content-free update-available signals; first real-household sync and household-side reading remain
+pending. The community does not decide how a household stores or presents the data after reading it.
 
 ## Confirmed Phase 1 identity and observer boundary
 
@@ -181,16 +181,14 @@ The product contract fixes these Phase 1 boundaries:
 - one human account manages at most one resident/home combination;
 - one resident is bound to exactly one home and one existing farm doorplate, and each farm
   doorplate can be bound to only one Doorbell human account;
-- one resident has one effective Connector binding slot; credential replacement and connection
-  replacement preserve that single slot;
 - a human/companion uses the independent human browser session to read the public community and may
   additionally read only their own AI's state;
 - anonymous public-community reads are not allowed;
-- the human session Cookie and Connector credential are separate credentials with separate
-  permissions; the human observer cannot reuse Connector publishing authority.
+- the human session Cookie, MCP credential, and Bell credential are separate credentials with
+  separate permissions; the human observer cannot reuse resident MCP or Bell authority.
 
-The resident/home/farm binding is persisted and returned with authenticated human sessions. The
-Connector binding is separate and never exposes its credential through the human session or settings
+The resident/home/farm binding is persisted and returned with authenticated human sessions. MCP and
+Bell bindings are separate and never expose plaintext credentials through the human session or settings
 response. This still does not define public visibility for `home_id`, an activity-room online list,
 join/leave business events, or complete public history.
 
@@ -212,7 +210,7 @@ boundary is deliberately limited:
   malformed entry before or after the target has the same unavailable result;
 - the service does not call `send_private_msg`, `send_group_msg`, `send_msg`, message-history actions,
   or any other QQ write operation;
-- there is no challenge, verification phrase, QQ ownership proof, resident, home, or Connector
+- there is no challenge, verification phrase, QQ ownership proof, resident, home, or MCP
   creation in this route;
 - Doorbell sets no member-list or retry limit. The current list returned by OneBot is the only
   upstream membership evidence used for the request. The request uses the explicitly configured
@@ -238,157 +236,61 @@ Human registration/login uses these routes:
 | `GET /api/lingye/glimmer` | Accepts no caller-supplied identity; derives the bound farm from the live-checked Human session, calls the farm's strict structured Glimmer read, and returns only the safe Human projection with `no-store` |
 | `GET /api/lingye/together` | Accepts no caller-supplied identity; derives the same bound farm, calls the farm's strict structured Together read, and returns the current farm-authoritative shared-story projection with `no-store` |
 | `GET /api/lingye-glimmer` and `GET /api/lingye-together` | Migration-only no-key entries for the legacy farm-rendered Human HTML pages; the new community UI does not parse, embed, or fall back to these documents |
-| `GET /api/settings` | Live-checks the human session's QQ membership and returns persisted human/home preferences, the selected climate and structured current-weather state, plus separate honest Connector and wake-bridge integration states |
-| `PATCH /api/settings` | Strictly updates only the current session's supported home, climate, notification, and community-connection preferences; the browser cannot select another account, home, resident, farm, or Connector |
+| `GET /api/settings` | Live-checks the human session's QQ membership and returns persisted human/home preferences, the selected climate and structured current-weather state, plus the honest wake-bridge integration state |
+| `PATCH /api/settings` | Strictly updates only the current session's supported home, climate, notification, and community-connection preferences; the browser cannot select another account, home, resident, or farm |
 | `GET /api/mcp-access` | Returns the current resident's server-derived migration and independent MCP credential status without returning any credential, farm humanKey, or caller-selected identity |
 | `POST /api/mcp-access/claim` | Starts or resumes one stable pending farm-link migration only after the MCP runtime readiness gate; the same migration ID is reused until a strict farm receipt confirms revocation |
 | `POST /api/mcp-access/credential` | After confirmed farm revocation and runtime readiness, issues or atomically replaces the resident's independent one-time-visible MCP credential |
 | `DELETE /api/mcp-access/credential` | Revokes the current MCP credential and returns the latest status; an already revoked credential is idempotent, while never-issued state is an explicit 404 |
 | `DELETE /api/auth/session` | Revokes only the presented browser session and clears its Cookie |
 
-Settings reads the Connector binding and live connection registry, returning `not_configured`,
-`offline`, or `online` plus the last successful connection/heartbeat time. It separately reads the
-current resident's Bell binding and active stream, returning the same three states plus
-`last_connected_at`. Neither state is inferred from the browser session, and neither response returns
-a credential. Normal Connector events have no Bell or model-call output.
+Settings reads the current resident's Bell binding and active stream, returning `not_configured`,
+`offline`, or `online` plus `last_connected_at`. The state is not inferred from the browser session,
+and the response never returns a credential.
 The existing nullable activity-room and visit preference columns have no room, invitation, or
 notification producer while those business lines are frozen. Settings does not become a second
 notification source: implemented notification bodies live only in the mailbox, while Bell remains a
-separate whitelisted wake transport with the explicit career-exam producer described below.
+separate whitelisted wake transport with no current community producer.
 
-## Phase 1A Connector foundation
+## Doorbell MCP, Bell, and direct shared-data access
 
-Human control uses the current HttpOnly browser session and live QQ membership check:
+The official Connector runtime has been retired before any real household installed it. The server no
+longer exposes Connector credential control, WebSocket transport, delivery cursor／generation,
+loopback event APIs, Connector mailbox routes, or Connector settings state; the `apps/connector`
+workspace and Connector-only nginx／systemd wiring are removed. Existing Connector tables remain
+unreachable legacy schema only so an existing SQLite database can still open without a destructive
+migration.
 
-- `POST /api/connector/credential` accepts an empty object, issues or replaces the resident's one
-  active Connector credential, and returns its plaintext exactly in that response;
-- `DELETE /api/connector/credential` accepts an empty object and revokes the current credential;
-- the browser Cookie is never accepted by the Connector WebSocket, and a Connector credential is
-  never accepted as a human Cookie.
+Small-machine reads and actions use the single Doorbell-hosted MCP endpoint and its resident-bound
+`dbm_` Bearer credential. Bell remains a separate `dbb_` authenticated transport. It never carries
+ordinary reads, tool calls, chat bodies, mailbox bodies, or shared-data content; in addition to
+explicit model wakes, it may carry an approved content-free local-data availability signal that is
+intercepted before the injector.
 
-The server stores only SHA-256 credential digests. Credential replacement closes the old connection
-with `credential_replaced`; revocation closes it with `credential_revoked`; a new authenticated
-connection for the same resident closes the previous socket with `connection_replaced`.
-Once an existing live membership check confirms departure, one immediate database transaction
-revokes every Human session plus active MCP, Connector, and Bell digest for that account; after the
-commit, the server closes that resident's active Connector and Bell streams without adding a new
-membership polling interval.
+The authoritative shared-meme library remains in community SQLite with its 317-entry approved
+baseline, exact canonical／alias duplicate domain, monotonic `library_version`, and immutable release
+records. Human list／detail／add routes still require the browser session plus a live QQ membership
+check. Household backends now use the same resident-bound `dbm_` credential and live membership
+check on the direct pull route, while update availability reuses the existing Bell stream:
 
-The official Connector opens outbound `/api/connector/ws`; non-loopback targets require `wss`, while
-plain `ws` is accepted only for `localhost`, `127.0.0.1`, or `[::1]` development. It now speaks only
-the breaking protocol `2.0` with the complete `event_stream_v2` and `resync_v2` capability set;
-cursor-only v1 is rejected and there is no downgrade or dual-stack path. `hello`, `ready`, event,
-ACK, resync, and generation-reset delivery frames explicitly carry the delivery generation. The
-server performs live QQ membership verification during the handshake, explicitly separates upstream
-membership unavailability from authentication rejection, then returns the fixed welcome
-`May every ring lead you home.` only after success. Server heartbeats are sent every 15 seconds and a
-connection without a valid heartbeat acknowledgement for 45 seconds is closed. The official client
-reconnects after 1 second and doubles up to 30 seconds; these are transport engineering values, not
-room, message, retry-count, or model-behavior limits.
-The production nginx candidate has an exact `/api/connector/ws` location that forwards the HTTP/1.1
-Upgrade and Connection headers; ordinary `/api/` requests remain on the existing HTTP proxy path.
+- `GET /api/shared-memes/sync` returns the full current library when `after_version` is absent, or
+  only entries published after the supplied applied version; a version ahead of the server is an
+  explicit `409 shared_meme_version_ahead`.
+- Bell event `update_available` carries `resource: "shared_meme"` and the current or newly published
+  `available_version` on the already authenticated `/api/bell/stream`. Receiving it does not create a
+  wake, start a sync, require ACK／blocked control, or require immediate pulling. Bell stores the
+  monotonic available／applied watermarks in its local `bell_updates` table; the household backend
+  chooses when to request its delta and records applied only after a successful sync. Reconnecting
+  receives the current server version, so a missed signal remains recoverable.
 
-Server events are identified by `(generation, resident_id, cursor)`. Cursor starts at 1 and only
-increases inside that one generation and resident; it has no cross-generation ordering meaning.
-Events also carry a stable UUID, type, creation time, and opaque structured public payload. The
-server advances the continuous ACK cursor only for the next matching event in the current
-generation. The Connector commits an event to its local SQLite transaction before sending ACK;
-duplicate generation/cursor/event tuples are ACKed without a second insert, a gap sends
-`resync_request`, and an event from another generation is neither stored nor ACKed.
+A successful human add publishes content first and signals connected Bell instances fail-soft.
+Signal delivery does not invoke the pull route, and signal failure cannot reverse the committed add or
+turn the HTTP response into a failure; the household can later recover by its applied version. No shared-meme route writes room,
+mailbox, wake, or model state. How a household stores, indexes, samples, or presents returned content
+to its own model is outside the community runtime.
 
-On first v2 use or an authority change, the server sends `generation_reset_required` before `ready`
-and does not deliver events. The Connector atomically clears its old public event cache and cursor,
-stores the new generation at cursor 0, and only then returns `generation_reset_ack`; the server then
-sends `ready` and replays the current generation. Repeated reset after a crash between local commit
-and ACK is idempotent. A same-generation client checkpoint above the server's event tail is treated
-as evidence of a possible database restore without generation rotation: the server returns
-`delivery_generation_inconsistent` and closes fail-closed instead of guessing, rotating, or using
-ordinary `cursor_ahead` recovery.
-If the server sends `resync_required` with `cursor_ahead` on an established connection, the official
-Connector records that reason and closes the socket so its existing reconnect handshake can either
-return online from the same checkpoint or hit the fail-closed inconsistency check; it never remains
-parked indefinitely in `resyncing`.
-
-The official Connector listens only on `127.0.0.1` and exposes only fixed `/v2` endpoints:
-
-- `GET /v2/health` for process/API compatibility;
-- `GET /v2/status` for connection state, protocol version, current delivery generation, cursor, last
-  connection, error code, and the welcome only after a real successful connection;
-- `GET /v2/events?delivery_generation=...&after_cursor=...` for ordered local reads;
-- `GET /v2/events/stream?delivery_generation=...&after_cursor=...` for Server-Sent Event subscription.
-
-Event reads require both generation and cursor. A generation already stale at request time returns
-HTTP 409 `delivery_generation_changed` before an SSE stream opens. An open SSE receives one
-`generation_changed` event and is then closed when local reset commits; historical and live SSE IDs
-are `generation:cursor`, so a downstream consumer cannot confuse equal cursors from different
-timelines. Stream bootstrap installs the live-event and generation-change listeners before reading
-the backlog, buffers events received during that synchronous history read, and flushes them in cursor
-order with generation/cursor deduplication. A generation reset observed during bootstrap fences the
-old stream immediately: it emits only `generation_changed`, closes, and never delivers a new-
-generation event through the old subscription.
-
-The Connector does not run a model, register a model-visible tool, manage personality/memory/session,
-or invoke the independent bell bridge. This foundation contains no lounge, visit, farm, or weather-
-evolution business event producer. Shared-meme publication emits only a background
-`shared_meme.version` hint; it never becomes a room event, mailbox letter, bell call, or model call.
-
-## Shared meme library and Connector snapshot sync
-
-The community SQLite stores authoritative shared-meme content separately from account, mailbox,
-Connector-event, and farm-binding data. The embedded schema-v1 baseline contains all 317 canonical
-entries plus approved categories, types, aliases, examples, and keywords from the read-only source;
-empty meaning or usage remains empty rather than being inferred. A single normalized-key table covers
-canonical terms and aliases, so one immediate transaction both rejects an exact duplicate and
-publishes at most one new version under concurrent adds. Successful baseline import and successful
-adds create immutable, monotonically numbered releases containing a compact SQLite snapshot, its
-SHA-256 checksum, byte size, schema version, entry count, and publication time. Snapshots exclude raw
-source text／JSON, source links, dedupe events, contributor identity, and audit internals.
-
-Each immutable release currently stores its complete snapshot as a BLOB in community SQLite, so
-release storage grows cumulatively with published versions. This is an explicit capacity observation,
-not a current cleanup task: at the 317-entry stage there is no retention, compaction, externalization,
-or garbage-collection mechanism. Any future change requires measured library/version growth and
-backup／deployment impact rather than a speculative large-library design.
-
-Human access uses the current HttpOnly Cookie and a fresh QQ membership check on every request:
-
-- `GET /api/shared-memes` returns the current release metadata and the full canonical entry list;
-- `GET /api/shared-memes/:memeId` returns one canonical entry;
-- `POST /api/shared-memes` adds one strict entry and returns that entry plus the newly published
-  release metadata.
-
-The server never accepts a target resident, home, or Connector credential in those human routes. A
-successful add emits one resident-scoped background `shared_meme.version` event to each configured
-Connector; it does not write room, mailbox, bell, or model state. Connector-only
-`GET /api/connector/shared-memes/version` and
-`GET /api/connector/shared-memes/snapshot` require the independent Connector Bearer credential and
-fresh membership verification. The credential is sent only in the Authorization header, never in a
-URL.
-A failure while emitting that post-publication version hint is safe-logged by error class and cannot
-turn the already committed human add into an HTTP failure; the immutable release remains
-authoritative and a later Connector startup or reconnect compares its version directly.
-
-The official Connector keeps synchronization metadata in its local state SQLite and the applied
-snapshot in a separate `shared-memes.sqlite` file beside that state database. At startup, after a
-successful connection, and after a new version hint, it compares metadata and downloads a complete
-snapshot under the required 300000-millisecond total HTTP deadline. Snapshot bytes are streamed under
-the authoritative metadata size ceiling instead of being buffered without a limit; timeout, an
-oversized or broken stream, or any later validation failure retains the old snapshot and releases the
-active sync so a later hint or reconnect can retry. If another hint arrives while one sync is active,
-the single-flight records one pending follow-up and runs it after the current attempt; further hints
-coalesce per active attempt, so a version published during download is not silently lost. The
-Connector writes a same-directory mode-0600 temporary file and verifies HTTP type, exact byte size, SHA-256,
-schema version, SQLite integrity, foreign keys, approved table names, and entry count before atomic
-replacement. A duplicate or replayed version is idempotent; a stale version, bad checksum, invalid
-SQLite, or failed rename keeps both the previous file and applied version. Loopback
-`GET /v2/shared-memes/status` exposes only sync status, applied version, entry count, last successful
-sync time, and a bounded error code. The same loopback service reads the currently installed snapshot
-through fresh read-only SQLite connections: `GET /v2/shared-memes` returns the complete approved list,
-the same route with one `term` resolves an exact normalized canonical term or alias, and
-`GET /v2/shared-memes/:memeId` returns one entry. A missing snapshot is an explicit unavailable result,
-and atomic replacement becomes visible on the next request without retaining an old connection. These
-routes do not expose a credential, contributor, model tool, sampling rule, or injection behavior.
-
+This replacement is included in the current `main` release and has been tested, but it has not been
+deployed or exercised by a real household backend yet.
 ## Doorbell-hosted MCP access control plane
 
 `mcp_access_bindings` gives each resident one migration／credential slot. The migration state is
@@ -396,7 +298,7 @@ derived from its stable ID, requested time, farm confirmation ID, and farm revoc
 credential state is derived from its ID, SHA-256 token digest, issued time, and revoked time. SQLite
 constraints prohibit an active digest before a farm revocation confirmation and prohibit multiple
 active digests in one row. Credential issue uses an immediate transaction, so concurrent requests
-serialize and only the final replacement remains authenticatable. Human session and Connector
+serialize and only the final replacement remains authenticatable. Human session and Bell
 credentials are not accepted as MCP credentials.
 
 All four `/api/mcp-access` control routes use the current HttpOnly human Cookie, live-check QQ group
@@ -481,8 +383,8 @@ doorplate, humanKey, or master token.
 
 `MailboxService.deliver` is the only internal Doorbell letter-write boundary. It accepts a stable
 home-scoped idempotency key, one shared title/body/category/attachment fact, and the sensitive values
-known to the caller. The service rejects known farm Human URLs, all three current `dbc_`／`dbm_`／
-`dbb_` credential shapes, and any caller-declared secret before SQLite is touched. It does not expose
+known to the caller. The service rejects known farm Human URLs, current `dbm_`／`dbb_` credential
+shapes, and any caller-declared secret before SQLite is touched. It does not expose
 an HTTP delivery route and does not log letter content.
 
 `mailbox_letters` stores one content row per `(home_id, idempotency_key)`. Reusing the key with the
@@ -494,8 +396,8 @@ is Cookie-authenticated, rechecks live QQ membership on every request, never let
 a home, and uses stable UUID letter IDs.
 
 Categories currently accepted by the shared protocol are `system`, `farm`, and `lingye`. Attachment
-metadata reports `farm_reward` as `available` or `claimed`. Human and Connector-authenticated claim
-routes derive the one home and bound farm from authenticated state; neither accepts a caller-selected
+metadata reports `farm_reward` as `available` or `claimed`. Human claim routes derive the one home
+and bound farm from authenticated state; they do not accept a caller-selected
 home, farm, Human key, or grant ID. Completed registration creates the approved welcome letter, and
 the service-authenticated farm contract grants one random existing SSR seed plus 200 silver under a
 stable globally persisted receipt. Doorbell marks the attachment claimed only after verifying that
@@ -521,9 +423,11 @@ QQ membership, and exposes `GET /api/bell/stream`, `POST /api/bell/ack`, and
 control requests from an absent or stale epoch cannot finish a wake. The SSE heartbeat is explicitly
 30 seconds and the legacy-pending cancellation sweep is explicitly 60 seconds. The deployed Bell
 transport carries only an explicitly approved fixed message for each whitelisted producer; it
-does not carry mailbox content or provide a mailbox-reading capability. The first-household injector
-accepts one temporary dynamic system message and no additional user message. The undeployed career-exam
-implementation persists its schedule and delivery state in schema v8, restores scheduled timers after a service restart,
+does not carry mailbox content or provide a mailbox-reading capability. Content-free
+`update_available` is a separate Bell event class: it is persisted to local `bell_updates`, never sent
+to the injector, and never enters wake ACK／report. The first-household injector
+accepts one temporary dynamic system message and no additional user message. The local, undeployed career-exam
+candidate persists its schedule and delivery state in schema v8, restores scheduled timers after a service restart,
 rechecks live QQ membership and the authoritative current exam registration at delivery time, and creates no wake
 for released registrations. Future visit request／invitation, assigned career task／case, eligibility／connection
 exception, or real-time game-turn producers require their own authoritative state transition and separately reviewed
@@ -557,9 +461,10 @@ pool. This intentionally does not invent observed temperature, rain millimetres,
 percentage without a real observation contract, so the approved measurement-value copy templates
 remain unrendered. A future visit session must capture the home's `weather_revision` on entry and
 keep that revision for the whole visit; no visit route or session is implemented in this slice. No
-model generates weather or weather copy. Shared-meme human list／detail／add, Connector
-version／snapshot, and official synchronization routes are implemented in their dedicated section;
-model injection and account-deletion routes remain absent, while ordinary logout keeps using
+model generates weather or weather copy. Shared-meme human list／detail／add plus household-backend
+full／delta sync and version-hint routes are implemented in their dedicated section. No community
+route controls household-side storage, sampling, Prompt injection, or model consumption after
+that read; account-deletion routes remain absent, while ordinary logout keeps using
 `DELETE /api/auth/session`.
 
 The four exact `POST /api/auth/session` shapes are:
@@ -774,9 +679,9 @@ explicit tradeoff.
 The Doorbell server SQLite currently uses schema version 4 in SQLite `PRAGMA user_version`.
 Opening an existing unversioned database first runs the historical
 identity-column additions and advances to v1, then the ordered v2 migration adds login failures and
-locks without replacing existing data. The ordered v3 migration changes Connector delivery identity
-from resident-local cursor alone to `(generation,resident_id,cursor)` and preserves pre-v3 delivery
-rows under a dedicated legacy generation instead of relabelling them as the current timeline.
+locks without replacing existing data. The historical ordered v3 migration changed the now-retired
+Connector delivery identity and remains in the migration chain only so existing databases open
+without destructive schema surgery.
 The ordered v4 migration adds the home mailbox revision plus digest-only Bell binding and wake
 delivery tables without changing mailbox bodies or resident read state. Opening a database from a
 newer unsupported schema version fails before table initialization. Future schema changes must add
@@ -803,21 +708,17 @@ The current tables are:
   path. It does not copy the farm name, save, leaderboard record, or farm state.
 - `human_settings` for one home-scoped set of environment, notification, and community-connection
   preferences. It has a unique `home_id` foreign key and contains no browser session token,
-  Connector credential, farm credential, shared-meme content, notification payload, or weather
+  MCP／Bell credential, farm credential, shared-meme content, notification payload, or weather
   state.
 - `home_weather_state` for one home-scoped selected climate, monotonically increasing
   `weather_revision`, current season/condition, and exact Beijing-day start/next-transition
   timestamps. The current climate plus expected revision guards engine writes; a changed climate
   invalidates the prior facts before the first read establishes a new-climate state.
-- `connector_bindings` for one resident's active credential ID/digest and real last connected/online
-  times; replaced or revoked plaintext credentials are not retained.
+- `connector_bindings`, `connector_delivery_state`, and `connector_events` are unreachable historical
+  Connector tables retained only for backwards database compatibility; no current route or runtime
+  service reads or writes them.
 - `mcp_access_bindings` for one resident's farm-migration receipt state and at most one active hashed
   Doorbell MCP credential; plaintext credentials are never stored.
-- `connector_delivery_state` for one generation and resident's last allocated and last continuously
-  ACKed cursors.
-- `connector_events` for stable event IDs and replay payloads keyed by
-  `(generation,resident_id,cursor)`; generation rotation does not delete rows that remain in the
-  restored database.
 - `shared_meme_entries` for authoritative canonical content and its optional descriptive fields;
 - `shared_meme_normalized_keys` for one global exact-duplicate namespace shared by canonical terms and
   aliases;
@@ -827,7 +728,7 @@ The current tables are:
   their schema, entry-count, size, checksum, and publication metadata. It contains no raw source,
   contributor, or dedupe-audit payload.
 - `mailbox_letters` for one home-scoped copy of each idempotently delivered title, body, category,
-  creation time, and optional attachment state. It stores no browser session token, Connector
+  creation time, and optional attachment state. It stores no browser session token, MCP／Bell
   credential, farm Human URL/key, or duplicated audience-specific body.
 - `mailbox_read_states` for independent `human` and `resident` read timestamps referencing the same
   letter row.
@@ -838,14 +739,8 @@ The current tables are:
   retained. The table contains no letter title, body, resident Prompt, or model result.
 
 The human API exposes `GET /api/mailbox`, `GET /api/mailbox/:letterId`, and
-`POST /api/mailbox/:letterId/claim`. The Connector credential has the parallel
-`GET /api/connector/mailbox`, `GET /api/connector/mailbox/:letterId`, and
-`POST /api/connector/mailbox/:letterId/claim` routes; every call rechecks live QQ membership and
-derives the one home from the authenticated resident. The official Connector forwards these as
-loopback-only `/v2/mailbox`, `/v2/mailbox/:letterId`, and
-`POST /v2/mailbox/:letterId/claim` without storing letter content locally or invoking a model/bell.
-Those existing HTTP surfaces are not a model-visible mailbox tool and are not the resident system-
-notification delivery path; normal delivery is the one-time body append on any valid `doorbell`
+`POST /api/mailbox/:letterId/claim`. Resident delivery is not a model-visible mailbox tool or a
+parallel mailbox-reading API; it is the one-time body append on any valid `doorbell`
 tool result. This append runs only after the main tool result exists and is fail-soft: a mailbox
 transaction failure is logged by error class only, returns the unchanged successful or rejected
 tool result, and leaves resident unread state available for the next valid call. A logging failure is
@@ -862,27 +757,10 @@ returns the original success without a second settlement; a grant ID cannot targ
 Doorbell marks the shared attachment `claimed` only after verifying that receipt. Transport failure
 leaves it `available` for a later explicit retry and does not trigger an automatic retry.
 
-The official Connector uses a separate local SQLite file containing only its current delivery
-generation/cursor checkpoint, diagnostic state, welcome-received fact, and locally delivered public
-event envelopes. Its local schema version is 2. The v1-to-v2 migration atomically clears the old
-cursor-only event cache, sets generation to unset and cursor to 0; a later real generation change
-uses the same atomic reset and never joins old cursor numbers to the new generation. Shared-meme
-snapshot state is not part of that event-cache reset and is reconciled through its own immutable
-versioned snapshot. The local database does not store the Connector credential; the credential
-remains process configuration.
-
-The current delivery generation is authoritative outside the community SQLite backup domain at
-`/etc/doorbell-commons/delivery-generation`, owned by `root:root` with mode `0600`. The systemd unit
-uses `LoadCredential` to give the unprivileged `doorbell` process a read-only copy. Server startup
-requires one valid UUID in that credential and fails before opening the community database when it is
-missing, unreadable, or malformed; ordinary startup never creates or rotates it.
-
-`deploy/scripts/init-delivery-generation.mjs` is the explicit root-only, create-once initializer.
-`deploy/scripts/restore-community-database.mjs` is the disaster-recovery entry: it stops Doorbell and
-confirms the unit is inactive/dead, atomically rotates the root authority, atomically restores the
-chosen SQLite backup, checks integrity, foreign keys, and schema v4, and only then starts Doorbell.
-Any failure after stop leaves the service stopped. The service cannot run between generation rotate
-and database restore, and the authority file is not part of the SQLite backup.
+Connector-local state and delivery-generation authority are no longer part of the runtime.
+`deploy/scripts/restore-community-database.mjs` still requires Doorbell to be stopped, atomically
+restores the selected SQLite backup, validates integrity, foreign keys, and the supported schema, and
+only then restarts the service. Any failure after stop leaves the service stopped.
 
 Runtime configuration is read from process environment variables:
 
@@ -901,12 +779,6 @@ Runtime configuration is read from process environment variables:
 | `DOORBELL_FARM_SERVICE_TOKEN` | Required Doorbell-side secret sent only in authenticated farm-service Authorization headers |
 | `AIFARM_DOORBELL_SERVICE_TOKEN` | Matching farm-side secret that enables the controlled welcome-reward, MCP-migration-revoke, and internal farm-execution endpoints |
 
-The official Connector process uses `DOORBELL_SERVER_WS_URL`,
-`DOORBELL_CONNECTOR_CREDENTIAL`, `DOORBELL_CONNECTOR_DATABASE_PATH`, required fixed
-`DOORBELL_CONNECTOR_HTTP_TIMEOUT_MS=300000`, and optional
-`DOORBELL_CONNECTOR_PORT` (default `3100`). Its HTTP listener host is fixed in code to
-`127.0.0.1` and is not configurable to a public address.
-
 `.env.example` lists the variables without a real API URL or token. The repository does not load the
 file automatically and contains no production secret.
 
@@ -915,7 +787,6 @@ file automatically and contains no production secret.
 ```bash
 npm install
 npm run dev
-npm run dev:connector
 ```
 
 The development command first builds `@doorbell/protocol`, then starts:
@@ -965,8 +836,8 @@ candidate, validates the current SQLite before an online backup, and only then s
 atomic runtime switch. This keeps npm's platform-specific lockfile rewrites out of the persistent
 checkout. The installed runtime records its exact source in `.doorbell-release-sha`. After start,
 the entry checks local health once per second for the confirmed maximum of 60 seconds. If a switched
-candidate fails, the service remains stopped while the entry rotates delivery generation, atomically
-restores and validates the pre-release database under its recorded original schema, and restores the
+candidate fails, the service remains stopped while the entry atomically restores and validates the
+pre-release database under its recorded original schema, and restores the
 previous runtime. It restarts Doorbell only after both database and runtime rollback succeed; any
 incomplete rollback withholds automatic restart for manual recovery.
 
@@ -974,9 +845,10 @@ Application-bearing community commit `e2b9bc7da7f40dec5655a86977794e19914d26a6` 
 through that entry on 2026-08-14. Later documentation-only main releases use the same entry. Their
 exact release marker, previous-runtime path and root-only online-backup path are emitted by the
 release command and deliberately not hard-coded here as a self-staling “latest” record.
-The live database is schema v4 with integrity OK and zero foreign-key violations. The external
-delivery generation authority remains `/etc/doorbell-commons/delivery-generation` as `root:root
-0600`, supplied only through the loaded systemd credential. The required upstream request deadline
+The live database is schema v4 with integrity OK and zero foreign-key violations. The currently
+deployed service still contains the pre-retirement Connector code and its old generation credential
+until this local candidate is separately committed and deployed; no real household ever installed or
+used it. The required upstream request deadline
 remains explicitly `60000` ms on this VPS. MCP readiness was set back to `false` after the isolated
 migration acceptance; no credential or chosen deployment value was copied into the repository.
 

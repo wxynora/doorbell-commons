@@ -5,11 +5,6 @@ import { chmod, chown, copyFile, mkdir, open, rename, rm, stat } from "node:fs/p
 import { basename, dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
-import {
-  DELIVERY_GENERATION_AUTHORITY_PATH,
-  requireRootExecution,
-  writeDeliveryGeneration,
-} from "./delivery-generation-authority.mjs";
 
 const DOORBELL_SERVICE = "doorbell-commons.service";
 const COMMUNITY_DATABASE_PATH = "/var/lib/doorbell-commons/doorbell.sqlite";
@@ -116,11 +111,8 @@ async function requireStoppedService(runServiceCommand, serviceName) {
 
 export async function restoreStoppedCommunityDatabase({
   backupPath,
-  authorityPath = DELIVERY_GENERATION_AUTHORITY_PATH,
-  authorityOwner = { uid: 0, gid: 0 },
   databasePath = COMMUNITY_DATABASE_PATH,
   expectedSchemaVersion = COMMUNITY_DATABASE_SCHEMA_VERSION,
-  generateGeneration = randomUUID,
   runServiceCommand = runSystemctl,
   serviceName = DOORBELL_SERVICE,
 } = {}) {
@@ -139,32 +131,20 @@ export async function restoreStoppedCommunityDatabase({
   }
 
   await requireStoppedService(runServiceCommand, serviceName);
-  await writeDeliveryGeneration({
-    authorityPath,
-    generation: generateGeneration(),
-    owner: authorityOwner,
-    replace: true,
-  });
   await atomicRestoreDatabase(backupPath, databasePath);
   validateRestoredCommunityDatabase(databasePath, expectedSchemaVersion);
 }
 
 export async function restoreCommunityDatabase({
   backupPath,
-  authorityPath = DELIVERY_GENERATION_AUTHORITY_PATH,
-  authorityOwner = { uid: 0, gid: 0 },
   databasePath = COMMUNITY_DATABASE_PATH,
-  generateGeneration = randomUUID,
   runServiceCommand = runSystemctl,
   serviceName = DOORBELL_SERVICE,
 } = {}) {
   await runServiceCommand(["stop", serviceName]);
   await restoreStoppedCommunityDatabase({
     backupPath,
-    authorityPath,
-    authorityOwner,
     databasePath,
-    generateGeneration,
     runServiceCommand,
     serviceName,
   });
@@ -172,7 +152,7 @@ export async function restoreCommunityDatabase({
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  requireRootExecution();
+  if (process.geteuid?.() !== 0) throw new Error("restore must run as root");
   if (process.argv[2] === "--stopped") {
     const backupPath = process.argv[3];
     const expectedSchemaText = process.argv[4];
@@ -190,7 +170,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       expectedSchemaVersion: Number(expectedSchemaText),
     });
     process.stdout.write(
-      "Doorbell community database restored while stopped under a new delivery generation.\n",
+      "Doorbell community database restored while the service remained stopped.\n",
     );
   } else {
     const backupPath = process.argv[2];
@@ -198,6 +178,6 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       throw new Error("usage: restore-community-database.mjs <backup.sqlite>");
     }
     await restoreCommunityDatabase({ backupPath });
-    process.stdout.write("Doorbell community database restored under a new delivery generation.\n");
+    process.stdout.write("Doorbell community database restored.\n");
   }
 }

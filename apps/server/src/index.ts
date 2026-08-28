@@ -1,12 +1,8 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { connectorDeliveryGenerationSchema } from "@doorbell/protocol";
 import { buildApp } from "./app.js";
 import { BellService } from "./bell-service.js";
 import { CareerExamReminderService } from "./career-exam-reminder-service.js";
 import { CommunityDatabase } from "./community-database.js";
 import { readDoorbellServerConfig } from "./config.js";
-import { ConnectorService } from "./connector-service.js";
 import { ConstableInterviewSignupMailService } from "./constable-interview-signup-mail-service.js";
 import { FarmHumanBulletinClient } from "./farm-bulletin-client.js";
 import { FarmHumanCatalogClient } from "./farm-catalog-client.js";
@@ -45,30 +41,9 @@ import { DoorbellMcpRuntime } from "./mcp-runtime.js";
 import { FarmHumanQixiMemorialClient } from "./qixi-memorial-client.js";
 import { OneBotGroupMembershipClient } from "./qq-group-membership.js";
 import { RegistrationAuthService } from "./registration-auth.js";
+import { SharedMemeBackendService } from "./shared-meme-backend-service.js";
 import { SharedMemeService } from "./shared-meme-service.js";
 
-function readDeliveryGenerationCredential(environment: NodeJS.ProcessEnv = process.env): string {
-  const credentialsDirectory = environment.CREDENTIALS_DIRECTORY?.trim();
-  if (!credentialsDirectory) {
-    throw new Error("The systemd delivery generation credential is required");
-  }
-  let rawCredential: string;
-  try {
-    rawCredential = readFileSync(join(credentialsDirectory, "delivery-generation"), "utf8");
-  } catch (error) {
-    throw new Error("The systemd delivery generation credential is required and must be readable", {
-      cause: error,
-    });
-  }
-  const candidate = rawCredential.endsWith("\n") ? rawCredential.slice(0, -1) : rawCredential;
-  const parsed = connectorDeliveryGenerationSchema.safeParse(candidate);
-  if (!parsed.success) {
-    throw new Error("The systemd delivery generation credential must contain one UUID");
-  }
-  return parsed.data;
-}
-
-const deliveryGeneration = readDeliveryGenerationCredential();
 const serverConfig = readDoorbellServerConfig();
 const database = new CommunityDatabase(serverConfig.databasePath);
 const groupMembership = new OneBotGroupMembershipClient({
@@ -248,11 +223,7 @@ const reportMcpNotificationError = (error: unknown): void => {
     `[doorbell-mcp-notification] ${error instanceof Error ? error.name : "UnknownError"}\n`,
   );
 };
-const reportRealtimeDisconnectError = (error: unknown): void => {
-  process.stderr.write(
-    `[doorbell-realtime-disconnect] ${error instanceof Error ? error.name : "UnknownError"}\n`,
-  );
-};
+const sharedMemeService = new SharedMemeService({ databasePath: serverConfig.databasePath });
 const reportConstableInterviewMailError = (error: unknown): void => {
   process.stderr.write(
     `[doorbell-constable-interview-mail] ${error instanceof Error ? error.name : "UnknownError"}\n`,
@@ -263,6 +234,7 @@ const bellService = new BellService({
   registrationAuth,
   heartbeatIntervalMs: serverConfig.bellHeartbeatIntervalMs,
   replayIntervalMs: serverConfig.bellReplayIntervalMs,
+  getSharedMemeLibraryVersion: () => sharedMemeService.getMetadata().library_version,
   onError: reportBellError,
 });
 const farmPurchaseRequestService = new FarmPurchaseRequestService({
@@ -272,6 +244,10 @@ const farmPurchaseRequestService = new FarmPurchaseRequestService({
 const mailboxService = new MailboxService({
   database,
   farmRewardGranter,
+});
+const sharedMemeBackendService = new SharedMemeBackendService({
+  database,
+  registrationAuth,
 });
 const constableInterviewSignupMailService = serverConfig.constableInterviewSignupMailCopy
   ? new ConstableInterviewSignupMailService({
@@ -284,18 +260,7 @@ const constableInterviewSignupMailService = serverConfig.constableInterviewSignu
     })
   : null;
 constableInterviewSignupMailService?.start();
-const connectorService = new ConnectorService({
-  database,
-  deliveryGeneration,
-  registrationAuth,
-  mailboxService,
-});
 disconnectRealtimeResident = (residentId): void => {
-  try {
-    connectorService.disconnectResident(residentId, 4003, "membership_revoked");
-  } catch (error) {
-    reportRealtimeDisconnectError(error);
-  }
   bellService.disconnectResident(residentId);
 };
 const farmMcpMigration = new FarmMcpMigrationClient({
@@ -342,14 +307,13 @@ const lingyeDailyService = new LingyeDailyService({
   database,
   publishToken: serverConfig.lingyeDailyPublishToken,
 });
-const sharedMemeService = new SharedMemeService({ databasePath: serverConfig.databasePath });
 const app = buildApp({
   groupId: serverConfig.qqGroupId,
   groupMembership,
   registrationAuth,
   farmPurchaseRequestService,
   bellService,
-  connectorService,
+  sharedMemeBackendService,
   weatherEngine,
   lingyeDailyService,
   mailboxService,

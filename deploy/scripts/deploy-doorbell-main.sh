@@ -177,8 +177,6 @@ cp -a \
 cp -a "${build_directory}/apps/web/dist" "${candidate_directory}/apps/web/"
 cp -a \
   "${SOURCE_DIRECTORY}/deploy/scripts/backup-community-database.mjs" \
-  "${SOURCE_DIRECTORY}/deploy/scripts/delivery-generation-authority.mjs" \
-  "${SOURCE_DIRECTORY}/deploy/scripts/init-delivery-generation.mjs" \
   "${SOURCE_DIRECTORY}/deploy/scripts/restore-community-database.mjs" \
   "${candidate_directory}/deploy/scripts/"
 printf '%s\n' "${TARGET_SHA}" >"${candidate_directory}/.doorbell-release-sha"

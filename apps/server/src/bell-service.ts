@@ -14,7 +14,10 @@ export interface BellRegistrationAuth {
 }
 
 export interface BellStreamSink {
-  send(event: "connected" | "wake" | "cancel", data: Record<string, unknown>): void;
+  send(
+    event: "connected" | "wake" | "cancel" | "update_available",
+    data: Record<string, unknown>,
+  ): void;
   heartbeat(): void;
   close(): void;
 }
@@ -29,6 +32,7 @@ export interface BellServiceOptions {
   registrationAuth: BellRegistrationAuth;
   heartbeatIntervalMs: number;
   replayIntervalMs: number;
+  getSharedMemeLibraryVersion?: () => number;
   now?: () => number;
   generateConnectionEpoch?: () => string;
   onError?: (error: unknown) => void;
@@ -101,6 +105,7 @@ export class BellService {
   readonly #now: () => number;
   readonly #generateConnectionEpoch: () => string;
   readonly #onError: (error: unknown) => void;
+  readonly #getSharedMemeLibraryVersion: (() => number) | undefined;
   readonly #connections = new Map<string, ActiveBellConnection>();
 
   constructor(options: BellServiceOptions) {
@@ -111,6 +116,7 @@ export class BellService {
     this.#now = options.now ?? Date.now;
     this.#generateConnectionEpoch = options.generateConnectionEpoch ?? randomUUID;
     this.#onError = options.onError ?? (() => undefined);
+    this.#getSharedMemeLibraryVersion = options.getSharedMemeLibraryVersion;
   }
 
   async connect(credential: string, sink: BellStreamSink): Promise<BellConnection> {
@@ -164,6 +170,7 @@ export class BellService {
         version: BELL_PROTOCOL_VERSION,
         connection_epoch: connectionEpoch,
       });
+      this.#emitSharedMemeUpdateAvailable(active);
       this.refreshResident(binding.residentId);
     } catch (error) {
       this.#closeConnection(active, true);
@@ -234,6 +241,13 @@ export class BellService {
       this.refreshResident(residentId);
     } catch (error) {
       this.#onError(error);
+    }
+  }
+
+  /** Signal local data availability without creating, injecting, or acknowledging a model wake. */
+  signalSharedMemeUpdateAvailable(availableVersion: number): void {
+    for (const active of [...this.#connections.values()]) {
+      this.#emitSharedMemeUpdateAvailable(active, availableVersion);
     }
   }
 
@@ -332,6 +346,31 @@ export class BellService {
         this.#closeConnection(active, true);
         return;
       }
+    }
+  }
+
+  #emitSharedMemeUpdateAvailable(active: ActiveBellConnection, availableVersion?: number): void {
+    if (active.closed) return;
+    let currentVersion = availableVersion;
+    if (currentVersion === undefined) {
+      try {
+        currentVersion = this.#getSharedMemeLibraryVersion?.();
+      } catch (error) {
+        this.#onError(error);
+        return;
+      }
+    }
+    if (currentVersion === undefined) return;
+    try {
+      active.sink.send("update_available", {
+        version: BELL_PROTOCOL_VERSION,
+        connection_epoch: active.connectionEpoch,
+        resource: "shared_meme",
+        available_version: currentVersion,
+      });
+    } catch (error) {
+      this.#onError(error);
+      this.#closeConnection(active, true);
     }
   }
 

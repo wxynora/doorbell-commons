@@ -16,14 +16,12 @@ import {
   type BoundFarmRanchResidentActionErrorCode,
   type BoundFarmSettingsActionErrorCode,
   type BoundFarmSmeltingActionErrorCode,
-  type FarmHumanConstableInterviewSuccess,
   boundConstableInterviewActionRequestSchema,
   boundConstableInterviewErrorCodeSchema,
   boundConstableInterviewErrorSchema,
   boundConstableInterviewReadRequestSchema,
   boundConstableInterviewScoreRequestSchema,
   boundConstableInterviewSuccessSchema,
-  farmHumanConstableInterviewSuccessSchema,
   boundFarmBulletinReadErrorSchema,
   boundFarmBulletinReadRequestSchema,
   boundFarmBulletinReadSuccessSchema,
@@ -102,15 +100,12 @@ import {
   boundTogetherReadErrorSchema,
   boundTogetherReadRequestSchema,
   boundTogetherReadSuccessSchema,
-  connectorControlErrorSchema,
-  connectorCredentialIssueSuccessSchema,
-  connectorCredentialMutationRequestSchema,
-  connectorCredentialRevokeSuccessSchema,
-  connectorCredentialSchema,
   createdFarmHumanSessionSuccessSchema,
   currentHumanSessionSuccessSchema,
+  type FarmHumanConstableInterviewSuccess,
   farmCropCodexActionIdempotencyKeySchema,
   farmExpeditionActionIdempotencyKeySchema,
+  farmHumanConstableInterviewSuccessSchema,
   farmHumanFieldHarvestAssistIdempotencyKeySchema,
   farmHumanRanchCollectionIdempotencyKeySchema,
   farmHumanUiErrorSchema,
@@ -157,20 +152,21 @@ import {
   mcpAccessReadRequestSchema,
   mcpAccessStatusResponseSchema,
   mcpCredentialIssueResponseSchema,
+  mcpCredentialSchema,
   qqGroupEligibilityErrorSchema,
   qqGroupEligibilityRequestSchema,
   qqGroupEligibilitySuccessSchema,
   serviceHealthSchema,
   sharedMemeAddRequestSchema,
   sharedMemeAddSuccessSchema,
+  sharedMemeBackendPullQuerySchema,
+  sharedMemeBackendPullSuccessSchema,
   sharedMemeDetailSuccessSchema,
   sharedMemeErrorSchema,
   sharedMemeIdSchema,
-  sharedMemeLibraryMetadataSchema,
   sharedMemeListSuccessSchema,
   sharedMemeReadRequestSchema,
 } from "@doorbell/protocol";
-import websocket from "@fastify/websocket";
 import Fastify, {
   type FastifyError,
   type FastifyInstance,
@@ -192,10 +188,6 @@ import {
   type LingyeDailyIssueRecord,
   type MailboxLetterRecord,
 } from "./community-database.js";
-import {
-  ConnectorCredentialAuthenticationError,
-  type ConnectorService,
-} from "./connector-service.js";
 import {
   FarmHumanBulletinContractUnavailableError,
   FarmHumanBulletinCredentialInvalidError,
@@ -308,12 +300,6 @@ import {
   FarmLingyeNotFoundError,
   FarmLingyeUnavailableError,
 } from "./farm-lingye-client.js";
-import {
-  FarmHumanQixiMemorialContractUnavailableError,
-  FarmHumanQixiMemorialCredentialInvalidError,
-  FarmHumanQixiMemorialNotFoundError,
-  FarmHumanQixiMemorialUnavailableError,
-} from "./qixi-memorial-client.js";
 import {
   FarmHumanMarketActionContractUnavailableError,
   FarmHumanMarketActionCredentialInvalidError,
@@ -439,6 +425,12 @@ import {
   FarmMcpMigrationUnavailableError,
 } from "./mcp-farm-migration-client.js";
 import type { DoorbellMcpRuntime } from "./mcp-runtime.js";
+import {
+  FarmHumanQixiMemorialContractUnavailableError,
+  FarmHumanQixiMemorialCredentialInvalidError,
+  FarmHumanQixiMemorialNotFoundError,
+  FarmHumanQixiMemorialUnavailableError,
+} from "./qixi-memorial-client.js";
 import { OneBotUnavailableError, type QqGroupMembershipReader } from "./qq-group-membership.js";
 import {
   AuthenticationRequiredError,
@@ -461,10 +453,15 @@ import {
   serializeHumanSessionCookie,
 } from "./session-cookie.js";
 import {
+  SharedMemeBackendAuthenticationError,
+  type SharedMemeBackendService,
+} from "./shared-meme-backend-service.js";
+import {
   SharedMemeDuplicateError,
   SharedMemeInvalidInputError,
   SharedMemeNotFoundError,
   type SharedMemeService,
+  SharedMemeVersionAheadError,
 } from "./shared-meme-service.js";
 
 export interface BuildAppOptions {
@@ -473,12 +470,12 @@ export interface BuildAppOptions {
   registrationAuth: RegistrationAuthService;
   farmPurchaseRequestService?: FarmPurchaseRequestService;
   bellService?: BellService;
-  connectorService?: ConnectorService;
   weatherEngine?: HomeWeatherEngine;
   lingyeDailyService?: LingyeDailyService;
   mailboxService?: MailboxService;
   mcpAccessService?: McpAccessService;
   mcpRuntime?: DoorbellMcpRuntime;
+  sharedMemeBackendService?: SharedMemeBackendService;
   sharedMemeService?: SharedMemeService;
   secureCookies: boolean;
   logger?: boolean;
@@ -520,19 +517,9 @@ function communityResponse(community: {
   };
 }
 
-function humanSettingsResponse(
-  settings: HumanSettingsRecord,
-  connectorService?: ConnectorService,
-  bellService?: BellService,
-) {
+function humanSettingsResponse(settings: HumanSettingsRecord, bellService?: BellService) {
   return humanSettingsSuccessSchema.parse({
     connection_status: {
-      connector: {
-        ...(connectorService?.getSettingsStatus(settings.residentId) ?? {
-          status: "not_configured",
-          last_online_at: null,
-        }),
-      },
       wake_bridge: {
         ...(bellService?.getSettingsStatus(settings.residentId) ?? {
           status: "not_configured",
@@ -690,11 +677,11 @@ function lingyeDailyIssueResponse(issue: LingyeDailyIssueRecord) {
   };
 }
 
-function readConnectorCredential(authorization: string | undefined): string | undefined {
+function readMcpBackendCredential(authorization: string | undefined): string | undefined {
   if (!authorization?.startsWith("Bearer ")) {
     return undefined;
   }
-  const parsed = connectorCredentialSchema.safeParse(authorization.slice("Bearer ".length));
+  const parsed = mcpCredentialSchema.safeParse(authorization.slice("Bearer ".length));
   return parsed.success ? parsed.data : undefined;
 }
 
@@ -756,6 +743,7 @@ function sendSharedMemeError(
     | "onebot_unavailable"
     | "registration_profile_required"
     | "shared_meme_not_found"
+    | "shared_meme_version_ahead"
     | "duplicate_shared_meme_term"
     | "duplicate_shared_meme_alias"
     | "shared_meme_unavailable",
@@ -1524,25 +1512,6 @@ function sendHumanSettingsError(
   );
 }
 
-function sendConnectorControlError(
-  reply: FastifyReply,
-  statusCode: 400 | 401 | 403 | 404 | 409 | 503,
-  code:
-    | "invalid_request"
-    | "authentication_required"
-    | "qq_not_group_member"
-    | "onebot_unavailable"
-    | "registration_profile_required"
-    | "connector_not_configured",
-  message: string,
-) {
-  return reply.code(statusCode).send(
-    connectorControlErrorSchema.parse({
-      error: { code, message },
-    }),
-  );
-}
-
 function sendMcpAccessError(
   reply: FastifyReply,
   statusCode: 400 | 401 | 403 | 404 | 405 | 409 | 500 | 502 | 503,
@@ -1694,7 +1663,6 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
             },
           },
   });
-  app.register(websocket);
   app.addContentTypeParser(
     "application/x-www-form-urlencoded",
     { parseAs: "string" },
@@ -2540,6 +2508,47 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     throw error;
   };
 
+  const sendBackendSharedMemeFailure = (
+    request: FastifyRequest,
+    reply: FastifyReply,
+    error: unknown,
+  ) => {
+    if (error instanceof SharedMemeBackendAuthenticationError) {
+      return sendSharedMemeError(
+        reply,
+        401,
+        "authentication_required",
+        "An active Doorbell MCP credential is required",
+      );
+    }
+    if (error instanceof QqNotGroupMemberError) {
+      return sendSharedMemeError(
+        reply,
+        403,
+        "qq_not_group_member",
+        "The resident is no longer qualified for the community",
+      );
+    }
+    if (error instanceof OneBotUnavailableError) {
+      reportOneBotUnavailable(request, error);
+      return sendSharedMemeError(
+        reply,
+        503,
+        "onebot_unavailable",
+        "QQ group membership could not be verified",
+      );
+    }
+    if (error instanceof SharedMemeVersionAheadError) {
+      return sendSharedMemeError(
+        reply,
+        409,
+        "shared_meme_version_ahead",
+        "The applied library version is newer than the current shared meme library",
+      );
+    }
+    throw error;
+  };
+
   if (sharedMemeService) {
     app.get("/api/shared-memes", async (request, reply) => {
       if (!sharedMemeReadRequestSchema.safeParse(request.query).success) {
@@ -2571,6 +2580,39 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         return sendHumanSharedMemeFailure(request, reply, error);
       }
     });
+
+    if (options.sharedMemeBackendService) {
+      const sharedMemeBackendService = options.sharedMemeBackendService;
+      app.get("/api/shared-memes/sync", async (request, reply) => {
+        const query = sharedMemeBackendPullQuerySchema.safeParse(request.query);
+        if (!query.success) {
+          return sendSharedMemeError(
+            reply,
+            400,
+            "invalid_request",
+            "after_version must be one positive library version when provided",
+          );
+        }
+        const credential = readMcpBackendCredential(request.headers.authorization);
+        if (!credential) {
+          return sendSharedMemeError(
+            reply,
+            401,
+            "authentication_required",
+            "An active Doorbell MCP credential is required",
+          );
+        }
+        try {
+          await sharedMemeBackendService.authorize(credential);
+          reply.header("cache-control", "no-store");
+          return sharedMemeBackendPullSuccessSchema.parse(
+            sharedMemeService.pull(query.data.after_version),
+          );
+        } catch (error) {
+          return sendBackendSharedMemeFailure(request, reply, error);
+        }
+      });
+    }
 
     app.get("/api/shared-memes/:memeId", async (request, reply) => {
       const memeId = sharedMemeIdSchema.safeParse((request.params as { memeId?: unknown }).memeId);
@@ -2634,14 +2676,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       try {
         const community = await options.registrationAuth.getCurrentSession(token);
         const created = sharedMemeService.add(input.data, community.account.accountId);
-        try {
-          options.connectorService?.emitSharedMemeVersionHint(created.metadata.library_version);
-        } catch (error) {
-          request.log.error(
-            { error_name: error instanceof Error ? error.name : "UnknownError" },
-            "Shared meme version hint failed after publication",
-          );
-        }
+        options.bellService?.signalSharedMemeUpdateAvailable(created.metadata.library_version);
         reply.header("cache-control", "no-store");
         return sharedMemeAddSuccessSchema.parse({
           created: true,
@@ -2729,48 +2764,6 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     }
     if (error instanceof RegistrationProfileRequiredError) {
       return sendLingyeDailyError(
-        reply,
-        409,
-        "registration_profile_required",
-        "A complete resident, home, and farm registration is required",
-      );
-    }
-    throw error;
-  };
-
-  const sendConnectorControlFailure = (
-    request: FastifyRequest,
-    reply: FastifyReply,
-    error: unknown,
-  ) => {
-    if (error instanceof AuthenticationRequiredError) {
-      return sendConnectorControlError(
-        reply,
-        401,
-        "authentication_required",
-        "An active human session is required",
-      );
-    }
-    if (error instanceof QqNotGroupMemberError) {
-      reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
-      return sendConnectorControlError(
-        reply,
-        403,
-        "qq_not_group_member",
-        "The session QQ number is no longer a current member of the community group",
-      );
-    }
-    if (error instanceof OneBotUnavailableError) {
-      reportOneBotUnavailable(request, error);
-      return sendConnectorControlError(
-        reply,
-        503,
-        "onebot_unavailable",
-        "QQ group membership could not be verified",
-      );
-    }
-    if (error instanceof RegistrationProfileRequiredError) {
-      return sendConnectorControlError(
         reply,
         409,
         "registration_profile_required",
@@ -3033,405 +3026,6 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     });
   }
 
-  const connectorService = options.connectorService;
-  if (connectorService) {
-    const sendConnectorMailboxFailure = (
-      request: FastifyRequest,
-      reply: FastifyReply,
-      error: unknown,
-    ) => {
-      if (
-        error instanceof ConnectorCredentialAuthenticationError ||
-        error instanceof AuthenticationRequiredError
-      ) {
-        return sendMailboxError(
-          reply,
-          401,
-          "authentication_required",
-          "An active Connector credential is required",
-        );
-      }
-      if (error instanceof QqNotGroupMemberError) {
-        return sendMailboxError(
-          reply,
-          403,
-          "qq_not_group_member",
-          "The Connector resident is no longer qualified for the community",
-        );
-      }
-      if (error instanceof OneBotUnavailableError) {
-        reportOneBotUnavailable(request, error);
-        return sendMailboxError(
-          reply,
-          503,
-          "onebot_unavailable",
-          "QQ group membership could not be verified",
-        );
-      }
-      if (error instanceof RegistrationProfileRequiredError) {
-        return sendMailboxError(
-          reply,
-          409,
-          "registration_profile_required",
-          "A complete resident and home registration is required",
-        );
-      }
-      if (error instanceof MailboxLetterNotFoundError) {
-        return sendMailboxError(
-          reply,
-          404,
-          "letter_not_found",
-          "The requested mailbox letter does not exist in this resident's home",
-        );
-      }
-      if (error instanceof MailboxAttachmentNotClaimableError) {
-        return sendMailboxError(
-          reply,
-          409,
-          "attachment_not_claimable",
-          "The mailbox letter has no claimable attachment",
-        );
-      }
-      if (error instanceof FarmRewardCredentialInvalidError) {
-        return sendMailboxError(
-          reply,
-          409,
-          "farm_credential_invalid",
-          "The bound farm credential is no longer valid",
-        );
-      }
-      if (error instanceof FarmRewardUnavailableError) {
-        return sendMailboxError(
-          reply,
-          503,
-          "farm_unavailable",
-          "The farm reward service is unavailable",
-        );
-      }
-      if (error instanceof FarmRewardContractUnavailableError) {
-        return sendMailboxError(
-          reply,
-          502,
-          "upstream_contract_unavailable",
-          "The farm reward receipt could not be verified",
-        );
-      }
-      throw error;
-    };
-
-    const sendConnectorSharedMemeFailure = (
-      request: FastifyRequest,
-      reply: FastifyReply,
-      error: unknown,
-    ) => {
-      if (
-        error instanceof ConnectorCredentialAuthenticationError ||
-        error instanceof AuthenticationRequiredError
-      ) {
-        return sendSharedMemeError(
-          reply,
-          401,
-          "authentication_required",
-          "An active Connector credential is required",
-        );
-      }
-      if (error instanceof QqNotGroupMemberError) {
-        return sendSharedMemeError(
-          reply,
-          403,
-          "qq_not_group_member",
-          "The Connector resident is no longer qualified for the community",
-        );
-      }
-      if (error instanceof OneBotUnavailableError) {
-        reportOneBotUnavailable(request, error);
-        return sendSharedMemeError(
-          reply,
-          503,
-          "onebot_unavailable",
-          "QQ group membership could not be verified",
-        );
-      }
-      if (error instanceof RegistrationProfileRequiredError) {
-        return sendSharedMemeError(
-          reply,
-          409,
-          "registration_profile_required",
-          "A complete resident and home registration is required",
-        );
-      }
-      throw error;
-    };
-
-    if (sharedMemeService) {
-      app.get("/api/connector/shared-memes/version", async (request, reply) => {
-        if (!sharedMemeReadRequestSchema.safeParse(request.query).success) {
-          return sendSharedMemeError(
-            reply,
-            400,
-            "invalid_request",
-            "The shared meme version request does not accept query parameters",
-          );
-        }
-        const credential = readConnectorCredential(request.headers.authorization);
-        if (!credential) {
-          return sendSharedMemeError(
-            reply,
-            401,
-            "authentication_required",
-            "An active Connector credential is required",
-          );
-        }
-        try {
-          await connectorService.authorizeCredential(credential);
-          reply.header("cache-control", "no-store");
-          return sharedMemeLibraryMetadataSchema.parse(sharedMemeService.getMetadata());
-        } catch (error) {
-          return sendConnectorSharedMemeFailure(request, reply, error);
-        }
-      });
-
-      app.get("/api/connector/shared-memes/snapshot", async (request, reply) => {
-        if (!sharedMemeReadRequestSchema.safeParse(request.query).success) {
-          return sendSharedMemeError(
-            reply,
-            400,
-            "invalid_request",
-            "The shared meme snapshot request does not accept query parameters",
-          );
-        }
-        const credential = readConnectorCredential(request.headers.authorization);
-        if (!credential) {
-          return sendSharedMemeError(
-            reply,
-            401,
-            "authentication_required",
-            "An active Connector credential is required",
-          );
-        }
-        try {
-          await connectorService.authorizeCredential(credential);
-          const release = sharedMemeService.getSnapshot();
-          reply.header("cache-control", "no-store");
-          reply.header("content-type", "application/vnd.sqlite3");
-          reply.header("content-length", String(release.metadata.size_bytes));
-          reply.header("x-doorbell-library-version", String(release.metadata.library_version));
-          reply.header(
-            "x-doorbell-snapshot-schema-version",
-            String(release.metadata.snapshot_schema_version),
-          );
-          reply.header("x-doorbell-checksum-sha256", release.metadata.checksum_sha256);
-          return reply.send(release.snapshot);
-        } catch (error) {
-          return sendConnectorSharedMemeFailure(request, reply, error);
-        }
-      });
-    }
-
-    app.post("/api/connector/credential", async (request, reply) => {
-      if (
-        !humanSettingsReadRequestSchema.safeParse(request.query).success ||
-        !connectorCredentialMutationRequestSchema.safeParse(request.body).success
-      ) {
-        return sendConnectorControlError(
-          reply,
-          400,
-          "invalid_request",
-          "The Connector credential request accepts only an empty object body",
-        );
-      }
-      const token = readHumanSessionToken(request.headers.cookie);
-      if (!token) {
-        return sendConnectorControlError(
-          reply,
-          401,
-          "authentication_required",
-          "An active human session is required",
-        );
-      }
-      try {
-        const issued = await connectorService.issueCredential(token);
-        return connectorCredentialIssueSuccessSchema.parse({
-          configured: true,
-          credential_id: issued.credentialId,
-          connector_credential: issued.credential,
-          issued_at: new Date(issued.issuedAt).toISOString(),
-          replaced_previous: issued.replacedPrevious,
-        });
-      } catch (error) {
-        return sendConnectorControlFailure(request, reply, error);
-      }
-    });
-
-    app.delete("/api/connector/credential", async (request, reply) => {
-      if (
-        !humanSettingsReadRequestSchema.safeParse(request.query).success ||
-        !connectorCredentialMutationRequestSchema.safeParse(request.body).success
-      ) {
-        return sendConnectorControlError(
-          reply,
-          400,
-          "invalid_request",
-          "The Connector credential revocation accepts only an empty object body",
-        );
-      }
-      const token = readHumanSessionToken(request.headers.cookie);
-      if (!token) {
-        return sendConnectorControlError(
-          reply,
-          401,
-          "authentication_required",
-          "An active human session is required",
-        );
-      }
-      try {
-        if (!(await connectorService.revokeCredential(token))) {
-          return sendConnectorControlError(
-            reply,
-            404,
-            "connector_not_configured",
-            "No active Connector credential is configured",
-          );
-        }
-        return connectorCredentialRevokeSuccessSchema.parse({ revoked: true });
-      } catch (error) {
-        return sendConnectorControlFailure(request, reply, error);
-      }
-    });
-
-    app.get("/api/connector/mailbox", async (request, reply) => {
-      const parsedRequest = mailboxListRequestSchema.safeParse(request.query);
-      if (!parsedRequest.success) {
-        return sendMailboxError(
-          reply,
-          400,
-          "invalid_request",
-          "Connector mailbox list accepts one positive page number and one supported category",
-        );
-      }
-      const credential = readConnectorCredential(request.headers.authorization);
-      if (!credential) {
-        return sendMailboxError(
-          reply,
-          401,
-          "authentication_required",
-          "An active Connector credential is required",
-        );
-      }
-      try {
-        const page = await connectorService.listMailbox(
-          credential,
-          parsedRequest.data.page,
-          parsedRequest.data.category,
-        );
-        return mailboxListSuccessSchema.parse({
-          letters: page.letters.map(mailboxLetterSummaryResponse),
-          pagination: {
-            page: parsedRequest.data.page,
-            page_size: MAILBOX_PAGE_SIZE,
-            total_items: page.totalItems,
-            total_pages: Math.ceil(page.totalItems / MAILBOX_PAGE_SIZE),
-          },
-        });
-      } catch (error) {
-        return sendConnectorMailboxFailure(request, reply, error);
-      }
-    });
-
-    app.get("/api/connector/mailbox/:letterId", async (request, reply) => {
-      if (!humanSettingsReadRequestSchema.safeParse(request.query).success) {
-        return sendMailboxError(
-          reply,
-          400,
-          "invalid_request",
-          "Connector mailbox detail does not accept query parameters",
-        );
-      }
-      const parsedRequest = mailboxDetailRequestSchema.safeParse({
-        letter_id: (request.params as { letterId?: unknown }).letterId,
-      });
-      if (!parsedRequest.success) {
-        return sendMailboxError(
-          reply,
-          400,
-          "invalid_request",
-          "letter_id must be a valid mailbox letter identifier",
-        );
-      }
-      const credential = readConnectorCredential(request.headers.authorization);
-      if (!credential) {
-        return sendMailboxError(
-          reply,
-          401,
-          "authentication_required",
-          "An active Connector credential is required",
-        );
-      }
-      try {
-        const letter = await connectorService.readMailbox(credential, parsedRequest.data.letter_id);
-        return mailboxDetailSuccessSchema.parse({
-          letter: {
-            ...mailboxLetterSummaryResponse(letter),
-            body: letter.body,
-          },
-        });
-      } catch (error) {
-        return sendConnectorMailboxFailure(request, reply, error);
-      }
-    });
-
-    app.post("/api/connector/mailbox/:letterId/claim", async (request, reply) => {
-      const parsedRequest = mailboxDetailRequestSchema.safeParse({
-        letter_id: (request.params as { letterId?: unknown }).letterId,
-      });
-      if (
-        !humanSettingsReadRequestSchema.safeParse(request.query).success ||
-        !mailboxClaimBodySchema.safeParse(request.body ?? {}).success ||
-        !parsedRequest.success
-      ) {
-        return sendMailboxError(
-          reply,
-          400,
-          "invalid_request",
-          "Connector mailbox claim accepts only a valid letter_id and an empty body",
-        );
-      }
-      const credential = readConnectorCredential(request.headers.authorization);
-      if (!credential) {
-        return sendMailboxError(
-          reply,
-          401,
-          "authentication_required",
-          "An active Connector credential is required",
-        );
-      }
-      try {
-        const letter = await connectorService.claimMailboxReward(
-          credential,
-          parsedRequest.data.letter_id,
-        );
-        return mailboxDetailSuccessSchema.parse({
-          letter: {
-            ...mailboxLetterSummaryResponse(letter),
-            body: letter.body,
-          },
-        });
-      } catch (error) {
-        return sendConnectorMailboxFailure(request, reply, error);
-      }
-    });
-
-    app.register(async (realtimeApp) => {
-      realtimeApp.get("/api/connector/ws", { websocket: true }, (socket) => {
-        connectorService.acceptSocket(socket);
-      });
-    });
-
-    app.addHook("onClose", () => {
-      connectorService.close();
-    });
-  }
-
   const lingyeDailyService = options.lingyeDailyService;
   if (lingyeDailyService) {
     app.post("/api/internal/lingye-daily/issues", async (request, reply) => {
@@ -3541,7 +3135,6 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       const settings = await options.registrationAuth.getCurrentHumanSettings(token);
       return humanSettingsResponse(
         options.weatherEngine?.ensureCurrent(settings) ?? settings,
-        options.connectorService,
         options.bellService,
       );
     } catch (error) {
@@ -3592,7 +3185,6 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       }
       return humanSettingsResponse(
         options.weatherEngine?.ensureCurrent(settings) ?? settings,
-        options.connectorService,
         options.bellService,
       );
     } catch (error) {

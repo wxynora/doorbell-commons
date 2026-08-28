@@ -188,7 +188,6 @@ test("settings expose honest integration state and persist supported fields acro
     assert.equal(initial.statusCode, 200);
     assert.deepEqual(humanSettingsSuccessSchema.parse(initial.json()), {
       connection_status: {
-        connector: { status: "not_configured", last_online_at: null },
         wake_bridge: { status: "not_configured", last_connected_at: null },
       },
       home: {
@@ -273,7 +272,7 @@ test("settings expose honest integration state and persist supported fields acro
       { home: { climate_type: "mild" } },
       { home: { home_name: " \n\t " } },
       { community_connection_preferences: { default_connection_duration_minutes: 0 } },
-      { connector_credential: "must-not-be-accepted" },
+      { retired_bridge_credential: "must-not-be-accepted" },
     ];
     for (const payload of invalidBodies) {
       const invalid = await harness.app.inject({

@@ -1418,6 +1418,7 @@ export const sharedMemeErrorCodeSchema = z.enum([
   "onebot_unavailable",
   "registration_profile_required",
   "shared_meme_not_found",
+  "shared_meme_version_ahead",
   "duplicate_shared_meme_term",
   "duplicate_shared_meme_alias",
   "shared_meme_unavailable",
@@ -1708,60 +1709,49 @@ export type LingyeDailyEditionPublish = z.infer<typeof lingyeDailyEditionPublish
 export type LingyeDailyPublishSuccess = z.infer<typeof lingyeDailyPublishSuccessSchema>;
 export type LingyeDailyIssue = z.infer<typeof lingyeDailyIssueSchema>;
 
-export const sharedMemeVersionHintEventType = "shared_meme.version" as const;
+export const bellUpdateAvailableEventType = "update_available" as const;
 
-export const sharedMemeVersionHintPayloadSchema = z
+export const bellUpdateResourceSchema = z.enum(["shared_meme"]);
+
+export const bellUpdateAvailablePayloadSchema = z
   .object({
-    library_version: z.number().int().positive(),
+    version: z.literal(1),
+    connection_epoch: z.string().min(1),
+    resource: bellUpdateResourceSchema,
+    available_version: z.number().int().positive(),
   })
   .strict();
 
-export const connectorLocalSharedMemeSyncSchema = z
+export const sharedMemeBackendPullQuerySchema = z
   .object({
-    sync_status: z.enum(["not_synced", "syncing", "synced", "error"]),
-    applied_version: z.number().int().positive().nullable(),
-    entry_count: z.number().int().nonnegative(),
-    last_synced_at: z.iso.datetime().nullable(),
-    last_error_code: z.string().nullable(),
+    after_version: z.coerce.number().int().positive().optional(),
   })
   .strict();
 
-export const connectorLocalSharedMemeQuerySchema = z
+export const sharedMemeBackendPullSuccessSchema = z
   .object({
-    term: z.string().trim().min(1).optional(),
-  })
-  .strict();
-
-export const connectorLocalSharedMemeDetailRequestSchema = z
-  .object({
-    meme_id: sharedMemeIdSchema,
-  })
-  .strict();
-
-export const connectorLocalSharedMemeListSuccessSchema = z
-  .object({
+    mode: z.enum(["full", "delta"]),
+    after_version: z.number().int().positive().nullable(),
     library_version: z.number().int().positive(),
     memes: z.array(sharedMemeEntrySchema),
   })
-  .strict();
-
-export const connectorLocalSharedMemeDetailSuccessSchema = z
-  .object({
-    library_version: z.number().int().positive(),
-    meme: sharedMemeEntrySchema,
-  })
-  .strict();
-
-export const connectorLocalSharedMemeErrorSchema = z
-  .object({
-    error: z
-      .object({
-        code: z.enum(["invalid_request", "shared_meme_not_found", "shared_meme_unavailable"]),
-        message: z.string(),
-      })
-      .strict(),
-  })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if (value.mode === "full" && value.after_version !== null) {
+      context.addIssue({
+        code: "custom",
+        path: ["after_version"],
+        message: "a full shared meme response cannot have after_version",
+      });
+    }
+    if (value.mode === "delta" && value.after_version === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["after_version"],
+        message: "a delta shared meme response requires after_version",
+      });
+    }
+  });
 
 export const humanSettingsChatModeSchema = z.enum(["natural", "proactive", "listening"]);
 
@@ -1992,37 +1982,6 @@ export const humanSettingsPatchRequestSchema = z
   .refine((value) => Object.keys(value).length > 0, {
     message: "at least one supported settings group is required",
   });
-
-export const connectorProtocolVersionSchema = z.literal("2.0");
-export const connectorCapabilitySchema = z.enum(["event_stream_v2", "resync_v2"]);
-export const connectorRequiredCapabilities = ["event_stream_v2", "resync_v2"] as const;
-export const connectorCapabilitiesSchema = z
-  .array(connectorCapabilitySchema)
-  .length(connectorRequiredCapabilities.length)
-  .refine(
-    (capabilities) =>
-      connectorRequiredCapabilities.every((capability) => capabilities.includes(capability)),
-    { message: "all Connector v2 capabilities are required" },
-  );
-export const connectorCredentialSchema = z.string().regex(/^dbc_[A-Za-z0-9_-]{43}$/);
-export const connectorWelcomeMessage = "May every ring lead you home." as const;
-export const connectorDeliveryGenerationSchema = z.uuid();
-
-export const connectorBootstrapCheckpointSchema = z
-  .object({
-    delivery_generation: connectorDeliveryGenerationSchema,
-    through_cursor: z.number().int().nonnegative(),
-  })
-  .strict();
-
-export const connectorSettingsStatusSchema = z
-  .object({
-    status: z.enum(["not_configured", "offline", "online"]),
-    last_online_at: z.iso.datetime().nullable(),
-  })
-  .strict();
-
-export const connectorCredentialMutationRequestSchema = z.object({}).strict();
 
 export const mcpCredentialSchema = z.string().regex(/^dbm_[A-Za-z0-9_-]{43}$/);
 
@@ -2279,300 +2238,10 @@ export const farmMcpActionErrorSchema = z
   })
   .strict();
 
-export const connectorCredentialIssueSuccessSchema = z
-  .object({
-    configured: z.literal(true),
-    credential_id: z.uuid(),
-    connector_credential: connectorCredentialSchema,
-    issued_at: z.iso.datetime(),
-    replaced_previous: z.boolean(),
-  })
-  .strict();
-
-export const connectorCredentialRevokeSuccessSchema = z
-  .object({
-    revoked: z.literal(true),
-  })
-  .strict();
-
-export const connectorControlErrorCodeSchema = z.enum([
-  "invalid_request",
-  "authentication_required",
-  "qq_not_group_member",
-  "onebot_unavailable",
-  "registration_profile_required",
-  "connector_not_configured",
-]);
-
-export const connectorControlErrorSchema = z
-  .object({
-    error: z
-      .object({
-        code: connectorControlErrorCodeSchema,
-        message: z.string(),
-      })
-      .strict(),
-  })
-  .strict();
-
-export const connectorEventEnvelopeSchema = z
-  .object({
-    generation: connectorDeliveryGenerationSchema,
-    event_id: z.uuid(),
-    cursor: z.number().int().positive(),
-    event_type: z.string().min(1),
-    created_at: z.iso.datetime(),
-    payload: z.record(z.string(), z.unknown()),
-  })
-  .strict();
-
-export const connectorHelloFrameSchema = z
-  .object({
-    type: z.literal("hello"),
-    protocol_version: connectorProtocolVersionSchema,
-    capabilities: connectorCapabilitiesSchema,
-    credential: connectorCredentialSchema,
-    generation: connectorDeliveryGenerationSchema.nullable(),
-    last_persisted_cursor: z.number().int().nonnegative(),
-  })
-  .strict()
-  .superRefine((value, context) => {
-    if (value.generation === null && value.last_persisted_cursor !== 0) {
-      context.addIssue({
-        code: "custom",
-        path: ["last_persisted_cursor"],
-        message: "an unset generation must start at cursor 0",
-      });
-    }
-  });
-
-export const connectorAckFrameSchema = z
-  .object({
-    type: z.literal("ack"),
-    generation: connectorDeliveryGenerationSchema,
-    event_id: z.uuid(),
-    cursor: z.number().int().positive(),
-  })
-  .strict();
-
-export const connectorResyncRequestFrameSchema = z
-  .object({
-    type: z.literal("resync_request"),
-    generation: connectorDeliveryGenerationSchema,
-    after_cursor: z.number().int().nonnegative(),
-    reason: z.literal("cursor_gap"),
-  })
-  .strict();
-
-export const connectorHeartbeatAckFrameSchema = z
-  .object({
-    type: z.literal("heartbeat_ack"),
-    heartbeat_id: z.uuid(),
-  })
-  .strict();
-
-export const connectorGenerationResetAckFrameSchema = z
-  .object({
-    type: z.literal("generation_reset_ack"),
-    generation: connectorDeliveryGenerationSchema,
-  })
-  .strict();
-
-export const connectorClientFrameSchema = z.discriminatedUnion("type", [
-  connectorHelloFrameSchema,
-  connectorAckFrameSchema,
-  connectorResyncRequestFrameSchema,
-  connectorHeartbeatAckFrameSchema,
-  connectorGenerationResetAckFrameSchema,
-]);
-
-export const connectorReadyFrameSchema = z
-  .object({
-    type: z.literal("ready"),
-    protocol_version: connectorProtocolVersionSchema,
-    capabilities: connectorCapabilitiesSchema,
-    connection_id: z.uuid(),
-    resident_id: z.string().min(1),
-    generation: connectorDeliveryGenerationSchema,
-    resume_after_cursor: z.number().int().nonnegative(),
-    welcome: z.literal(connectorWelcomeMessage),
-  })
-  .strict();
-
-export const connectorEventFrameSchema = z
-  .object({
-    type: z.literal("event"),
-    event: connectorEventEnvelopeSchema,
-  })
-  .strict();
-
-export const connectorHeartbeatFrameSchema = z
-  .object({
-    type: z.literal("heartbeat"),
-    heartbeat_id: z.uuid(),
-    sent_at: z.iso.datetime(),
-  })
-  .strict();
-
-export const connectorResyncRequiredFrameSchema = z
-  .object({
-    type: z.literal("resync_required"),
-    generation: connectorDeliveryGenerationSchema,
-    after_cursor: z.number().int().nonnegative(),
-    reason: z.enum(["ack_gap", "cursor_ahead", "event_mismatch"]),
-  })
-  .strict();
-
-export const connectorGenerationResetRequiredFrameSchema = z
-  .object({
-    type: z.literal("generation_reset_required"),
-    generation: connectorDeliveryGenerationSchema,
-    reason: z.enum(["initial_sync", "generation_changed"]),
-  })
-  .strict();
-
-export const connectorServerErrorFrameSchema = z
-  .object({
-    type: z.literal("error"),
-    code: z.enum([
-      "invalid_frame",
-      "unsupported_protocol_version",
-      "missing_required_capability",
-      "authentication_rejected",
-      "membership_verification_unavailable",
-      "delivery_generation_inconsistent",
-    ]),
-  })
-  .strict();
-
-export const connectorServerFrameSchema = z.discriminatedUnion("type", [
-  connectorReadyFrameSchema,
-  connectorEventFrameSchema,
-  connectorHeartbeatFrameSchema,
-  connectorResyncRequiredFrameSchema,
-  connectorGenerationResetRequiredFrameSchema,
-  connectorServerErrorFrameSchema,
-]);
-
-export const connectorLocalConnectionStateSchema = z.enum([
-  "stopped",
-  "connecting",
-  "offline",
-  "online",
-  "resyncing",
-]);
-
-export const connectorLocalHealthSchema = z
-  .object({
-    service: z.literal("doorbell-connector"),
-    api_version: z.literal("v2"),
-    status: z.literal("ok"),
-  })
-  .strict();
-
-export const connectorLocalStatusSchema = z
-  .object({
-    connection_state: connectorLocalConnectionStateSchema,
-    protocol_version: connectorProtocolVersionSchema,
-    delivery_generation: connectorDeliveryGenerationSchema.nullable(),
-    last_persisted_cursor: z.number().int().nonnegative(),
-    last_connected_at: z.iso.datetime().nullable(),
-    last_error_code: z.string().nullable(),
-    welcome_message: z.literal(connectorWelcomeMessage).nullable(),
-  })
-  .strict()
-  .superRefine((value, context) => {
-    if (value.delivery_generation === null && value.last_persisted_cursor !== 0) {
-      context.addIssue({
-        code: "custom",
-        path: ["last_persisted_cursor"],
-        message: "an unset delivery_generation must start at cursor 0",
-      });
-    }
-  });
-
-export const connectorLocalEventsQuerySchema = z
-  .object({
-    delivery_generation: connectorDeliveryGenerationSchema,
-    after_cursor: z.coerce.number().int().nonnegative(),
-  })
-  .strict();
-
-export const connectorLocalEventsSuccessSchema = z
-  .object({
-    delivery_generation: connectorDeliveryGenerationSchema,
-    events: z.array(connectorEventEnvelopeSchema),
-  })
-  .strict()
-  .superRefine((value, context) => {
-    value.events.forEach((event, index) => {
-      if (event.generation !== value.delivery_generation) {
-        context.addIssue({
-          code: "custom",
-          path: ["events", index, "generation"],
-          message: "event generation must match delivery_generation",
-        });
-      }
-    });
-  });
-
-export const connectorLocalEventsErrorCodeSchema = z.enum([
-  "invalid_request",
-  "delivery_generation_changed",
-]);
-
-export const connectorLocalEventsErrorSchema = z.union([
-  z
-    .object({
-      error: z
-        .object({
-          code: z.literal("invalid_request"),
-          message: z.string(),
-        })
-        .strict(),
-    })
-    .strict(),
-  z
-    .object({
-      error: z
-        .object({
-          code: z.literal("delivery_generation_changed"),
-          message: z.string(),
-          requested_generation: connectorDeliveryGenerationSchema,
-          current_generation: connectorDeliveryGenerationSchema.nullable(),
-        })
-        .strict(),
-    })
-    .strict(),
-]);
-
-export const connectorLocalGenerationChangedEventSchema = z
-  .object({
-    delivery_generation: connectorDeliveryGenerationSchema,
-  })
-  .strict();
-
-export const connectorLocalMailboxErrorCodeSchema = z.union([
-  mailboxErrorCodeSchema,
-  z.literal("connector_unavailable"),
-]);
-
-export const connectorLocalMailboxErrorSchema = z
-  .object({
-    error: z
-      .object({
-        code: connectorLocalMailboxErrorCodeSchema,
-        message: z.string(),
-      })
-      .strict(),
-  })
-  .strict();
-
 export const humanSettingsSuccessSchema = z
   .object({
     connection_status: z
       .object({
-        connector: connectorSettingsStatusSchema,
         wake_bridge: z
           .object({
             status: z.enum(["not_configured", "offline", "online"]),
@@ -2775,24 +2444,11 @@ export type SharedMemeDetailSuccess = z.infer<typeof sharedMemeDetailSuccessSche
 export type SharedMemeAddRequest = z.infer<typeof sharedMemeAddRequestSchema>;
 export type SharedMemeAddSuccess = z.infer<typeof sharedMemeAddSuccessSchema>;
 export type SharedMemeError = z.infer<typeof sharedMemeErrorSchema>;
-export type ConnectorLocalSharedMemeSync = z.infer<typeof connectorLocalSharedMemeSyncSchema>;
-export type ConnectorLocalSharedMemeListSuccess = z.infer<
-  typeof connectorLocalSharedMemeListSuccessSchema
->;
-export type ConnectorLocalSharedMemeDetailSuccess = z.infer<
-  typeof connectorLocalSharedMemeDetailSuccessSchema
->;
-export type ConnectorLocalSharedMemeError = z.infer<typeof connectorLocalSharedMemeErrorSchema>;
-export type ConnectorLocalMailboxError = z.infer<typeof connectorLocalMailboxErrorSchema>;
+export type SharedMemeBackendPullSuccess = z.infer<typeof sharedMemeBackendPullSuccessSchema>;
 export type HumanSettingsChatMode = z.infer<typeof humanSettingsChatModeSchema>;
 export type HumanSettingsPatchRequest = z.infer<typeof humanSettingsPatchRequestSchema>;
 export type HumanSettingsSuccess = z.infer<typeof humanSettingsSuccessSchema>;
 export type HumanSettingsError = z.infer<typeof humanSettingsErrorSchema>;
-export type ConnectorSettingsStatus = z.infer<typeof connectorSettingsStatusSchema>;
-export type ConnectorCredentialIssueSuccess = z.infer<typeof connectorCredentialIssueSuccessSchema>;
-export type ConnectorControlError = z.infer<typeof connectorControlErrorSchema>;
-export type ConnectorDeliveryGeneration = z.infer<typeof connectorDeliveryGenerationSchema>;
-export type ConnectorBootstrapCheckpoint = z.infer<typeof connectorBootstrapCheckpointSchema>;
 export type McpAccessMigrationStatus = z.infer<typeof mcpAccessMigrationStatusSchema>;
 export type McpAccessCredentialStatus = z.infer<typeof mcpAccessCredentialStatusSchema>;
 export type McpAccessStatusResponse = z.infer<typeof mcpAccessStatusResponseSchema>;
@@ -2806,15 +2462,5 @@ export type FarmMcpActionRequest = z.infer<typeof farmMcpActionRequestSchema>;
 export type FarmMcpActionResult = z.infer<typeof farmMcpActionResultSchema>;
 export type FarmMcpActionErrorCode = z.infer<typeof farmMcpActionErrorCodeSchema>;
 export type FarmMcpActionError = z.infer<typeof farmMcpActionErrorSchema>;
-export type ConnectorEventEnvelope = z.infer<typeof connectorEventEnvelopeSchema>;
-export type ConnectorHelloFrame = z.infer<typeof connectorHelloFrameSchema>;
-export type ConnectorClientFrame = z.infer<typeof connectorClientFrameSchema>;
-export type ConnectorServerFrame = z.infer<typeof connectorServerFrameSchema>;
-export type ConnectorLocalConnectionState = z.infer<typeof connectorLocalConnectionStateSchema>;
-export type ConnectorLocalStatus = z.infer<typeof connectorLocalStatusSchema>;
-export type ConnectorLocalEventsError = z.infer<typeof connectorLocalEventsErrorSchema>;
-export type ConnectorLocalGenerationChangedEvent = z.infer<
-  typeof connectorLocalGenerationChangedEventSchema
->;
 export type HumanAuthenticationError = z.infer<typeof humanAuthenticationErrorSchema>;
 export type FarmHumanUiError = z.infer<typeof farmHumanUiErrorSchema>;

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type {
   SharedMemeAddRequest,
+  SharedMemeBackendPullSuccess,
   SharedMemeEntry,
   SharedMemeLibraryMetadata,
 } from "@doorbell/protocol";
@@ -82,6 +83,13 @@ export class SharedMemeInvalidInputError extends Error {
   }
 }
 
+export class SharedMemeVersionAheadError extends Error {
+  constructor() {
+    super("The requested shared meme version is newer than the current library");
+    this.name = "SharedMemeVersionAheadError";
+  }
+}
+
 export function normalizeSharedMemeText(value: string): string {
   return value
     .normalize("NFKC")
@@ -155,6 +163,29 @@ export class SharedMemeService {
 
   list(): { metadata: SharedMemeLibraryMetadata; memes: SharedMemeEntry[] } {
     return { metadata: this.getMetadata(), memes: this.#readEntries() };
+  }
+
+  pull(afterVersion?: number): SharedMemeBackendPullSuccess {
+    const latest = this.#latestRelease();
+    const memes = this.#readEntries();
+    if (afterVersion === undefined) {
+      return {
+        mode: "full",
+        after_version: null,
+        library_version: latest.library_version,
+        memes,
+      };
+    }
+    if (afterVersion > latest.library_version) {
+      throw new SharedMemeVersionAheadError();
+    }
+    const base = this.#release(afterVersion);
+    return {
+      mode: "delta",
+      after_version: afterVersion,
+      library_version: latest.library_version,
+      memes: memes.slice(base.entry_count),
+    };
   }
 
   get(memeId: number): { libraryVersion: number; meme: SharedMemeEntry } {
@@ -502,6 +533,27 @@ export class SharedMemeService {
       .get() as SharedMemeReleaseRow | undefined;
     if (!release) {
       throw new Error("The shared meme library has no published release");
+    }
+    return release;
+  }
+
+  #release(libraryVersion: number): SharedMemeReleaseRow {
+    const release = this.#database
+      .prepare(
+        `SELECT
+           library_version,
+           snapshot_schema_version,
+           entry_count,
+           published_at,
+           checksum_sha256,
+           size_bytes,
+           snapshot_blob
+         FROM shared_meme_releases
+         WHERE library_version = ?`,
+      )
+      .get(libraryVersion) as SharedMemeReleaseRow | undefined;
+    if (!release) {
+      throw new Error("The requested shared meme release does not exist");
     }
     return release;
   }

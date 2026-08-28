@@ -167,7 +167,7 @@ test("schema v1 preserves login security state while upgrading through v8", () =
   });
 });
 
-test("schema v2 archives cursor-only Connector events without consuming the current generation", () => {
+test("schema v2 preserves cursor-only Connector rows only as unreachable legacy history", () => {
   withTemporaryDatabase((databasePath) => {
     const versionTwoDatabase = new Database(databasePath);
     versionTwoDatabase.exec(`
@@ -269,20 +269,6 @@ test("schema v2 archives cursor-only Connector events without consuming the curr
         migratedDatabase.close();
       }
 
-      const currentEvent = communityDatabase.appendConnectorEvent(
-        currentGeneration,
-        "resident-1",
-        "00000000-0000-4000-8000-000000000003",
-        "foundation.fact",
-        { value: 3 },
-        3,
-      );
-      assert.equal(currentEvent.generation, currentGeneration);
-      assert.equal(currentEvent.cursor, 1);
-      assert.equal(
-        communityDatabase.listConnectorEventsAfter(currentGeneration, "resident-1", 0).length,
-        1,
-      );
     } finally {
       communityDatabase.close();
     }
