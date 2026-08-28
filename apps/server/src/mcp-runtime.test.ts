@@ -265,6 +265,37 @@ function postMcp(
   });
 }
 
+test("MCP school view exposes the authoritative interview and public notice sections", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "doorbell-mcp-school-sections-"));
+  const harness = openRuntimeHarness(join(directory, "doorbell.sqlite"));
+  try {
+    const initialized = await postMcpRuntime(
+      harness,
+      rpc("initialize", {
+        protocolVersion: "2025-06-18",
+        capabilities: {},
+        clientInfo: { name: "school-section-test", version: "1" },
+      }),
+      null,
+    );
+    assert.equal(initialized.statusCode, 200);
+    for (const section of ["interviews", "publicNotices"] as const) {
+      const result = await postMcpRuntime(
+        harness,
+        call("go.school.view", { section }),
+        "2025-06-18",
+      );
+      assert.equal(result.statusCode, 200);
+      const body = result.body as { result?: { isError?: boolean } };
+      assert.equal(body.result?.isError, false);
+      assert.deepEqual(harness.lingyeActions.calls.at(-1)?.args, { section });
+    }
+  } finally {
+    await harness.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("the farm registry has 58 canonical operations, strict args, examples, and one thin tool", () => {
   assert.equal(farmOperations.length, 58);
   assert.equal(farmOperationByName.size, 58);
@@ -908,17 +939,32 @@ test("MCP calls validate strict args, self-correct, preserve status cadence, and
       args: { section: "loans" },
     });
 
+    const lingyeCallsBeforeInvalidSchool = harness.lingyeActions.calls.length;
     const invalidSchool = await postMcp(
       harness,
-      call("go.school.choose", { option: "returned-option", answers: ["only-one"] }),
+      call("go.school.choose", {
+        option: "returned-option",
+        answers: [" a ", "b", "C", "d", "E"],
+      }),
     );
     assert.equal(invalidSchool.json().result.structuredContent.error.code, "INVALID_ARGS");
     assert.deepEqual(invalidSchool.json().result.structuredContent.error.examples, [
       { op: "go.school.choose", args: { option: "returned-option" } },
     ]);
+    assert.equal(harness.lingyeActions.calls.length, lingyeCallsBeforeInvalidSchool);
 
-    const school = await postMcp(harness, call("go.school.choose", { option: "returned-option" }));
+    const school = await postMcp(
+      harness,
+      call("go.school.choose", {
+        option: "returned-option",
+        answers: [" a ", "b", " C", "d ", "A"],
+      }),
+    );
     assert.equal(school.json().result.isError, false);
+    assert.deepEqual(harness.lingyeActions.calls.at(-1)?.args, {
+      option: "returned-option",
+      answers: ["A", "B", "C", "D", "A"],
+    });
     assert.equal(harness.careerExamReconciliations.length, 1);
     assert.deepEqual(harness.careerExamReconciliations[0], {
       residentId: harness.residentId,

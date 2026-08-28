@@ -18,6 +18,21 @@ export interface DoorbellServerConfig extends QqGroupEligibilityConfig {
   mcpEndpoint: string;
   mcpRuntimeReady: boolean;
   upstreamRequestTimeoutMs: number;
+  constableInterviewSignupMailCopy: { title: string; body: string } | null;
+}
+
+export function readConstableInterviewSignupMailCopy(
+  environment: NodeJS.ProcessEnv = process.env,
+): { title: string; body: string } | null {
+  const title = environment.DOORBELL_CONSTABLE_INTERVIEW_SIGNUP_MAIL_TITLE;
+  const body = environment.DOORBELL_CONSTABLE_INTERVIEW_SIGNUP_MAIL_BODY;
+  if (title === undefined && body === undefined) return null;
+  if (!title || title.trim().length === 0 || !body || body.trim().length === 0) {
+    throw new Error(
+      "DOORBELL_CONSTABLE_INTERVIEW_SIGNUP_MAIL_TITLE and DOORBELL_CONSTABLE_INTERVIEW_SIGNUP_MAIL_BODY must be configured together",
+    );
+  }
+  return { title, body };
 }
 
 function readFixedPositiveInteger(
@@ -178,5 +193,6 @@ export function readDoorbellServerConfig(
     mcpEndpoint: readMcpEndpoint(environment),
     mcpRuntimeReady: readMcpRuntimeReady(environment),
     upstreamRequestTimeoutMs: readUpstreamRequestTimeoutMs(environment),
+    constableInterviewSignupMailCopy: readConstableInterviewSignupMailCopy(environment),
   };
 }

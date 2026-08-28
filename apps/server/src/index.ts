@@ -7,8 +7,10 @@ import { CareerExamReminderService } from "./career-exam-reminder-service.js";
 import { CommunityDatabase } from "./community-database.js";
 import { readDoorbellServerConfig } from "./config.js";
 import { ConnectorService } from "./connector-service.js";
+import { ConstableInterviewSignupMailService } from "./constable-interview-signup-mail-service.js";
 import { FarmHumanBulletinClient } from "./farm-bulletin-client.js";
 import { FarmHumanCatalogClient } from "./farm-catalog-client.js";
+import { FarmConstableInterviewClient } from "./farm-constable-interview-client.js";
 import { FarmCreationClient } from "./farm-creation-client.js";
 import { FarmHumanCropCodexActionClient } from "./farm-crop-codex-action-client.js";
 import { FarmDirectoryClient } from "./farm-directory-client.js";
@@ -40,8 +42,8 @@ import { FarmMcpActionClient } from "./mcp-farm-action-client.js";
 import { FarmMcpMigrationClient } from "./mcp-farm-migration-client.js";
 import { LingyeMcpActionClient } from "./mcp-lingye-action-client.js";
 import { DoorbellMcpRuntime } from "./mcp-runtime.js";
-import { OneBotGroupMembershipClient } from "./qq-group-membership.js";
 import { FarmHumanQixiMemorialClient } from "./qixi-memorial-client.js";
+import { OneBotGroupMembershipClient } from "./qq-group-membership.js";
 import { RegistrationAuthService } from "./registration-auth.js";
 import { SharedMemeService } from "./shared-meme-service.js";
 
@@ -99,6 +101,11 @@ const farmCatalogReader = new FarmHumanCatalogClient({
   serviceToken: serverConfig.farmServiceToken,
 });
 const farmBulletinReader = new FarmHumanBulletinClient({
+  apiBaseUrl: serverConfig.farmApiBaseUrl,
+  requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+  serviceToken: serverConfig.farmServiceToken,
+});
+const farmConstableInterviewClient = new FarmConstableInterviewClient({
   apiBaseUrl: serverConfig.farmApiBaseUrl,
   requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
   serviceToken: serverConfig.farmServiceToken,
@@ -212,6 +219,9 @@ const registrationAuth = new RegistrationAuthService({
   farmSmeltingActioner,
   farmLingyeReader,
   farmQixiMemorialReader,
+  farmConstableInterviewReader: farmConstableInterviewClient,
+  farmConstableInterviewActioner: farmConstableInterviewClient,
+  farmConstableInterviewPublicNoticeOpener: farmConstableInterviewClient,
   farmRanchReader,
   farmRanchResidentActioner,
   farmRanchCollector,
@@ -243,6 +253,11 @@ const reportRealtimeDisconnectError = (error: unknown): void => {
     `[doorbell-realtime-disconnect] ${error instanceof Error ? error.name : "UnknownError"}\n`,
   );
 };
+const reportConstableInterviewMailError = (error: unknown): void => {
+  process.stderr.write(
+    `[doorbell-constable-interview-mail] ${error instanceof Error ? error.name : "UnknownError"}\n`,
+  );
+};
 const bellService = new BellService({
   database,
   registrationAuth,
@@ -258,6 +273,17 @@ const mailboxService = new MailboxService({
   database,
   farmRewardGranter,
 });
+const constableInterviewSignupMailService = serverConfig.constableInterviewSignupMailCopy
+  ? new ConstableInterviewSignupMailService({
+      database,
+      registrationAuth,
+      farmInterviews: farmConstableInterviewClient,
+      mailboxService,
+      copy: serverConfig.constableInterviewSignupMailCopy,
+      onError: reportConstableInterviewMailError,
+    })
+  : null;
+constableInterviewSignupMailService?.start();
 const connectorService = new ConnectorService({
   database,
   deliveryGeneration,
@@ -334,6 +360,7 @@ const app = buildApp({
 });
 app.addHook("onClose", () => {
   careerExamReminderService.close();
+  constableInterviewSignupMailService?.close();
   sharedMemeService.close();
   database.close();
 });

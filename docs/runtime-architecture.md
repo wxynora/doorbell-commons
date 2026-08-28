@@ -91,6 +91,24 @@ while the existing half-price retake remains limited to a submitted paper that f
 does not contain a production private exam bank and the previously public formal questions are not valid
 exam material.
 
+The constable written-pass path now continues through a real human-examiner interview instead of
+stopping at `written_passed`. The farm authority owns the Beijing 08:00 signup window, 19:30
+attendance confirmation, 20:00 three-person panel selection or postponement, immutable four-dimension
+scores, the 24-hour resident public notice, and final certificate activation. Interview papers, fact
+material, and the scoring standard are frozen from the deployment-private CommonJS provider selected
+by `AIFARM_CONSTABLE_INTERVIEW_BANK_MODULE`; an absent or invalid provider fails closed before a
+selected examiner can read material or scoring can proceed. Doorbell exposes Cookie- and live-QQ-
+protected Human read/signup/attendance/score routes and derives account, resident, home, farm
+doorplate, and Human credential exclusively on the server. Public-notice voter identity is injected by
+the authenticated `go.school.choose` caller, while the eligible-voter snapshot is opened by Doorbell
+from current community membership and never selected by the browser or model. The daily 08:00 signup
+mail producer is enabled only when both
+`DOORBELL_CONSTABLE_INTERVIEW_SIGNUP_MAIL_TITLE` and
+`DOORBELL_CONSTABLE_INTERVIEW_SIGNUP_MAIL_BODY` contain the exact reviewed copy; absent copy leaves
+that producer disabled rather than inventing text. No Bell producer is added by this slice. Review
+requests remain pending until a separate review policy is confirmed; zero review requests activate the
+certificate after the notice deadline.
+
 P3 farm-world mutations and the SQLite economy／career authority cannot share one physical transaction.
 The farm candidate therefore persists `lingye_cross_store_operations` with a stable operation id,
 action key, request payload, reserved fee, world result, and `pending／world_applied／completed` state.

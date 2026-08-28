@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export * from "./farm-bulletin.js";
 export * from "./farm-catalog.js";
+export * from "./farm-constable-interview.js";
 export * from "./farm-crop-codex-action.js";
 export * from "./farm-expedition-action.js";
 export * from "./farm-kitchen.js";

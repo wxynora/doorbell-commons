@@ -23,8 +23,13 @@ type ArgsShape = Record<string, z.ZodType>;
 const nonEmptyString = z.string().trim().min(1);
 const positiveInteger = z.number().int().positive();
 const termDays = z.union([z.literal(14), z.literal(30), z.literal(60)]);
+const schoolAnswer = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[A-D]$/u, "答案必须是 A、B、C 或 D");
 const schoolAnswers = z
-  .array(nonEmptyString)
+  .array(schoolAnswer)
   .refine((answers) => answers.length === 5 || answers.length === 20, {
     message: "答案数量必须是课程练习的 5 题或正式笔试的 20 题",
   });
@@ -114,11 +119,19 @@ export const lingyeOperations = [
     description:
       "查看自己的职业轨道、课程、考试、证书、任职状态和当前可以办理的 option；只读，不扣款。",
     argsHint:
-      '{} 或 {section:"careers"|"courses"|"exams"|"certificates"|"employment"} 或 {reference}',
+      '{} 或 {section:"careers"|"courses"|"exams"|"certificates"|"employment"|"interviews"|"publicNotices"} 或 {reference}',
     branches: [
       {},
       {
-        section: z.enum(["careers", "courses", "exams", "certificates", "employment"]),
+        section: z.enum([
+          "careers",
+          "courses",
+          "exams",
+          "certificates",
+          "employment",
+          "interviews",
+          "publicNotices",
+        ]),
       },
       { reference: nonEmptyString },
     ],

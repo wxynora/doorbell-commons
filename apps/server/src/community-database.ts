@@ -2636,6 +2636,31 @@ export class CommunityDatabase {
     return row ? mapAccount(row) : undefined;
   }
 
+  listActiveHumanCommunities(): HumanCommunityRecord[] {
+    const rows = this.#database
+      .prepare(
+        `SELECT a.account_id,
+                a.qq_number,
+                a.created_at,
+                a.membership_status,
+                r.resident_id,
+                r.resident_name,
+                h.home_id,
+                h.home_name,
+                f.farm_doorplate,
+                f.farm_human_key
+         FROM human_accounts AS a
+         JOIN residents AS r ON r.account_id = a.account_id
+         JOIN homes AS h ON h.resident_id = r.resident_id
+         JOIN farm_bindings AS f ON f.home_id = h.home_id
+         WHERE a.membership_status = 'active'
+           AND f.farm_human_key IS NOT NULL
+         ORDER BY r.resident_id ASC`,
+      )
+      .all() as HumanCommunityRow[];
+    return rows.map(mapCommunity);
+  }
+
   findHomeIdByResidentId(residentId: string): string | undefined {
     const row = this.#database
       .prepare("SELECT home_id FROM homes WHERE resident_id = ?")

@@ -1,4 +1,5 @@
 import {
+  type BoundConstableInterviewErrorCode,
   type BoundFarmCropCodexActionErrorCode,
   type BoundFarmExpeditionActionErrorCode,
   type BoundFarmHarvestAssistErrorCode,
@@ -15,6 +16,14 @@ import {
   type BoundFarmRanchResidentActionErrorCode,
   type BoundFarmSettingsActionErrorCode,
   type BoundFarmSmeltingActionErrorCode,
+  type FarmHumanConstableInterviewSuccess,
+  boundConstableInterviewActionRequestSchema,
+  boundConstableInterviewErrorCodeSchema,
+  boundConstableInterviewErrorSchema,
+  boundConstableInterviewReadRequestSchema,
+  boundConstableInterviewScoreRequestSchema,
+  boundConstableInterviewSuccessSchema,
+  farmHumanConstableInterviewSuccessSchema,
   boundFarmBulletinReadErrorSchema,
   boundFarmBulletinReadRequestSchema,
   boundFarmBulletinReadSuccessSchema,
@@ -199,6 +208,13 @@ import {
   FarmHumanCatalogNotFoundError,
   FarmHumanCatalogUnavailableError,
 } from "./farm-catalog-client.js";
+import {
+  FarmConstableInterviewContractUnavailableError,
+  FarmConstableInterviewCredentialInvalidError,
+  FarmConstableInterviewNotFoundError,
+  FarmConstableInterviewRejectedError,
+  FarmConstableInterviewUnavailableError,
+} from "./farm-constable-interview-client.js";
 import {
   FarmCreationConflictError,
   FarmCreationContractUnavailableError,
@@ -839,6 +855,134 @@ function sendBoundFarmFieldError(
       error: { code, message },
     }),
   );
+}
+
+function sendBoundConstableInterviewError(
+  reply: FastifyReply,
+  statusCode: 400 | 401 | 403 | 404 | 409 | 502 | 503,
+  code: BoundConstableInterviewErrorCode,
+  message: string,
+) {
+  reply.header("cache-control", "no-store");
+  return reply.code(statusCode).send(
+    boundConstableInterviewErrorSchema.parse({
+      error: { code, message },
+    }),
+  );
+}
+
+function sendBoundConstableInterviewFailure(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  error: unknown,
+  secureCookies: boolean,
+) {
+  if (error instanceof AuthenticationRequiredError) {
+    return sendBoundConstableInterviewError(
+      reply,
+      401,
+      "authentication_required",
+      "An active human session is required",
+    );
+  }
+  if (error instanceof QqNotGroupMemberError) {
+    reply.header("set-cookie", serializeClearedHumanSessionCookie(secureCookies));
+    return sendBoundConstableInterviewError(
+      reply,
+      403,
+      "qq_not_group_member",
+      "The session QQ number is no longer a current member of the community group",
+    );
+  }
+  if (error instanceof OneBotUnavailableError) {
+    reportOneBotUnavailable(request, error);
+    return sendBoundConstableInterviewError(
+      reply,
+      503,
+      "onebot_unavailable",
+      "QQ group membership could not be verified",
+    );
+  }
+  if (error instanceof RegistrationProfileRequiredError) {
+    return sendBoundConstableInterviewError(
+      reply,
+      409,
+      "registration_profile_required",
+      "A resident, home, and farm binding are required",
+    );
+  }
+  if (error instanceof FarmConstableInterviewCredentialInvalidError) {
+    return sendBoundConstableInterviewError(
+      reply,
+      409,
+      "farm_credential_invalid",
+      "The bound farm human credential is no longer valid",
+    );
+  }
+  if (error instanceof FarmConstableInterviewNotFoundError) {
+    return sendBoundConstableInterviewError(
+      reply,
+      404,
+      "farm_not_found",
+      "The bound farm no longer exists",
+    );
+  }
+  if (error instanceof FarmConstableInterviewRejectedError) {
+    const parsedCode = boundConstableInterviewErrorCodeSchema.safeParse(error.code);
+    if (!parsedCode.success) {
+      request.log.warn(
+        { error_code: error.code },
+        "Farm constable interview returned a code outside the bound Human API",
+      );
+      return sendBoundConstableInterviewError(
+        reply,
+        502,
+        "upstream_contract_unavailable",
+        "The farm constable interview response could not be verified",
+      );
+    }
+    const statusCode =
+      error.code === "interview_not_found"
+        ? 404
+        : error.code === "interview_material_not_configured"
+          ? 503
+          : error.code === "invalid_interview_score"
+            ? 400
+            : 409;
+    return sendBoundConstableInterviewError(reply, statusCode, parsedCode.data, error.message);
+  }
+  if (error instanceof FarmConstableInterviewContractUnavailableError) {
+    request.log.warn({ error_name: error.name }, "Farm constable interview contract unavailable");
+    return sendBoundConstableInterviewError(
+      reply,
+      502,
+      "upstream_contract_unavailable",
+      "The farm constable interview response could not be verified",
+    );
+  }
+  if (error instanceof FarmConstableInterviewUnavailableError) {
+    request.log.warn({ error_name: error.name }, "Farm constable interview unavailable");
+    return sendBoundConstableInterviewError(
+      reply,
+      503,
+      "farm_unavailable",
+      "The farm constable interview is unavailable",
+    );
+  }
+  throw error;
+}
+
+function boundConstableInterviewResponse(result: FarmHumanConstableInterviewSuccess) {
+  const parsedResult = farmHumanConstableInterviewSuccessSchema.safeParse(result);
+  if (!parsedResult.success) {
+    throw new FarmConstableInterviewContractUnavailableError();
+  }
+  return boundConstableInterviewSuccessSchema.parse({
+    interviews: parsedResult.data.data.interviews.map(
+      ({ attempt_id: _attemptId, candidate_resident_id: _candidateResidentId, ...interview }) =>
+        interview,
+    ),
+  });
 }
 
 function sendBoundFarmPurchaseRequestError(
@@ -3453,6 +3597,133 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       );
     } catch (error) {
       return sendHumanSettingsFailure(request, reply, error);
+    }
+  });
+
+  app.get("/api/farm/constable-interview", async (request, reply) => {
+    const parsedQuery = boundConstableInterviewReadRequestSchema.safeParse(request.query);
+    if (!parsedQuery.success || requestHasBody(request)) {
+      return sendBoundConstableInterviewError(
+        reply,
+        400,
+        "invalid_request",
+        "The constable interview read request is invalid",
+      );
+    }
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendBoundConstableInterviewError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+    try {
+      const result = await options.registrationAuth.getCurrentConstableInterview(
+        token,
+        parsedQuery.data.interview_id,
+      );
+      reply.header("cache-control", "no-store");
+      return boundConstableInterviewResponse(result);
+    } catch (error) {
+      return sendBoundConstableInterviewFailure(request, reply, error, options.secureCookies);
+    }
+  });
+
+  app.post("/api/farm/constable-interview/signup", async (request, reply) => {
+    const parsedBody = boundConstableInterviewActionRequestSchema.safeParse(request.body);
+    if (!parsedBody.success) {
+      return sendBoundConstableInterviewError(
+        reply,
+        400,
+        "invalid_request",
+        "The constable interview signup request is invalid",
+      );
+    }
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendBoundConstableInterviewError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+    try {
+      const result = await options.registrationAuth.signupCurrentConstableInterview(
+        token,
+        parsedBody.data.interview_id,
+      );
+      reply.header("cache-control", "no-store");
+      return boundConstableInterviewResponse(result);
+    } catch (error) {
+      return sendBoundConstableInterviewFailure(request, reply, error, options.secureCookies);
+    }
+  });
+
+  app.post("/api/farm/constable-interview/attendance", async (request, reply) => {
+    const parsedBody = boundConstableInterviewActionRequestSchema.safeParse(request.body);
+    if (!parsedBody.success) {
+      return sendBoundConstableInterviewError(
+        reply,
+        400,
+        "invalid_request",
+        "The constable interview attendance request is invalid",
+      );
+    }
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendBoundConstableInterviewError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+    try {
+      const result = await options.registrationAuth.confirmCurrentConstableInterviewAttendance(
+        token,
+        parsedBody.data.interview_id,
+      );
+      reply.header("cache-control", "no-store");
+      return boundConstableInterviewResponse(result);
+    } catch (error) {
+      return sendBoundConstableInterviewFailure(request, reply, error, options.secureCookies);
+    }
+  });
+
+  app.post("/api/farm/constable-interview/score", async (request, reply) => {
+    const parsedBody = boundConstableInterviewScoreRequestSchema.safeParse(request.body);
+    if (!parsedBody.success) {
+      return sendBoundConstableInterviewError(
+        reply,
+        400,
+        "invalid_request",
+        "The constable interview score request is invalid",
+      );
+    }
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendBoundConstableInterviewError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+    try {
+      const result = await options.registrationAuth.scoreCurrentConstableInterview(token, {
+        interviewId: parsedBody.data.interview_id,
+        facts: parsedBody.data.facts,
+        restraint: parsedBody.data.restraint,
+        procedure: parsedBody.data.procedure,
+        explanation: parsedBody.data.explanation,
+      });
+      reply.header("cache-control", "no-store");
+      return boundConstableInterviewResponse(result);
+    } catch (error) {
+      return sendBoundConstableInterviewFailure(request, reply, error, options.secureCookies);
     }
   });
 

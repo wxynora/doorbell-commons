@@ -20,6 +20,12 @@ import {
   FarmHumanCatalogContractUnavailableError,
   type FarmHumanCatalogReader,
 } from "./farm-catalog-client.js";
+import {
+  type FarmConstableInterviewActioner,
+  FarmConstableInterviewContractUnavailableError,
+  type FarmConstableInterviewPublicNoticeOpener,
+  type FarmConstableInterviewReader,
+} from "./farm-constable-interview-client.js";
 import type { FarmCreator } from "./farm-creation-client.js";
 import {
   FarmHumanCropCodexActionContractUnavailableError,
@@ -229,6 +235,9 @@ interface RegistrationAuthServiceOptions {
   farmSettingsActioner?: FarmHumanFarmSettingsActioner;
   farmLingyeReader?: FarmLingyeReader;
   farmQixiMemorialReader?: FarmHumanQixiMemorialReader;
+  farmConstableInterviewReader?: FarmConstableInterviewReader;
+  farmConstableInterviewActioner?: FarmConstableInterviewActioner;
+  farmConstableInterviewPublicNoticeOpener?: FarmConstableInterviewPublicNoticeOpener;
   farmCreator?: FarmCreator;
   groupId: string;
   farmHumanUiBaseUrl?: string;
@@ -273,6 +282,11 @@ export class RegistrationAuthService {
   readonly #farmSettingsActioner: FarmHumanFarmSettingsActioner | undefined;
   readonly #farmLingyeReader: FarmLingyeReader | undefined;
   readonly #farmQixiMemorialReader: FarmHumanQixiMemorialReader | undefined;
+  readonly #farmConstableInterviewReader: FarmConstableInterviewReader | undefined;
+  readonly #farmConstableInterviewActioner: FarmConstableInterviewActioner | undefined;
+  readonly #farmConstableInterviewPublicNoticeOpener:
+    | FarmConstableInterviewPublicNoticeOpener
+    | undefined;
   readonly #farmCreator: FarmCreator | undefined;
   readonly #groupId: string;
   readonly #farmHumanUiBaseUrl: string | undefined;
@@ -305,6 +319,10 @@ export class RegistrationAuthService {
     this.#farmSettingsActioner = options.farmSettingsActioner;
     this.#farmLingyeReader = options.farmLingyeReader;
     this.#farmQixiMemorialReader = options.farmQixiMemorialReader;
+    this.#farmConstableInterviewReader = options.farmConstableInterviewReader;
+    this.#farmConstableInterviewActioner = options.farmConstableInterviewActioner;
+    this.#farmConstableInterviewPublicNoticeOpener =
+      options.farmConstableInterviewPublicNoticeOpener;
     this.#farmCreator = options.farmCreator;
     this.#groupId = options.groupId;
     this.#farmHumanUiBaseUrl = options.farmHumanUiBaseUrl;
@@ -1033,6 +1051,141 @@ export class RegistrationAuthService {
       farmDoorplate: community.farmBinding.farmDoorplate,
       farmHumanKey,
     });
+  }
+
+  async getCurrentConstableInterview(token: string, interviewId?: string) {
+    const community = await this.getCurrentSession(token);
+    const farmHumanKey = community.farmBinding.farmHumanKey;
+    if (farmHumanKey === null) {
+      throw new RegistrationProfileRequiredError();
+    }
+    if (!this.#farmConstableInterviewReader) {
+      throw new FarmConstableInterviewContractUnavailableError();
+    }
+    return this.#farmConstableInterviewReader.readConstableInterview({
+      farmDoorplate: community.farmBinding.farmDoorplate,
+      farmHumanKey,
+      accountId: community.account.accountId,
+      residentId: community.resident.residentId,
+      ...(interviewId === undefined ? {} : { interviewId }),
+    });
+  }
+
+  async signupCurrentConstableInterview(token: string, interviewId: string) {
+    const community = await this.getCurrentSession(token);
+    const farmHumanKey = community.farmBinding.farmHumanKey;
+    if (farmHumanKey === null) {
+      throw new RegistrationProfileRequiredError();
+    }
+    if (!this.#farmConstableInterviewActioner) {
+      throw new FarmConstableInterviewContractUnavailableError();
+    }
+    return this.#farmConstableInterviewActioner.executeConstableInterviewAction({
+      action: "signup",
+      farmDoorplate: community.farmBinding.farmDoorplate,
+      farmHumanKey,
+      accountId: community.account.accountId,
+      residentId: community.resident.residentId,
+      interviewId,
+    });
+  }
+
+  async confirmCurrentConstableInterviewAttendance(token: string, interviewId: string) {
+    const community = await this.getCurrentSession(token);
+    const farmHumanKey = community.farmBinding.farmHumanKey;
+    if (farmHumanKey === null) {
+      throw new RegistrationProfileRequiredError();
+    }
+    if (!this.#farmConstableInterviewActioner) {
+      throw new FarmConstableInterviewContractUnavailableError();
+    }
+    return this.#farmConstableInterviewActioner.executeConstableInterviewAction({
+      action: "confirm_attendance",
+      farmDoorplate: community.farmBinding.farmDoorplate,
+      farmHumanKey,
+      accountId: community.account.accountId,
+      residentId: community.resident.residentId,
+      interviewId,
+    });
+  }
+
+  async scoreCurrentConstableInterview(
+    token: string,
+    input: {
+      interviewId: string;
+      facts: number;
+      restraint: number;
+      procedure: number;
+      explanation: number;
+    },
+  ) {
+    const community = await this.getCurrentSession(token);
+    const farmHumanKey = community.farmBinding.farmHumanKey;
+    if (farmHumanKey === null) {
+      throw new RegistrationProfileRequiredError();
+    }
+    const actioner = this.#farmConstableInterviewActioner;
+    const reader = this.#farmConstableInterviewReader;
+    const opener = this.#farmConstableInterviewPublicNoticeOpener;
+    if (!actioner || !reader || !opener) {
+      throw new FarmConstableInterviewContractUnavailableError();
+    }
+    const identity = {
+      farmDoorplate: community.farmBinding.farmDoorplate,
+      farmHumanKey,
+      accountId: community.account.accountId,
+      residentId: community.resident.residentId,
+    };
+    const scored = await actioner.executeConstableInterviewAction({
+      action: "score",
+      ...identity,
+      interviewId: input.interviewId,
+      facts: input.facts,
+      restraint: input.restraint,
+      procedure: input.procedure,
+      explanation: input.explanation,
+    });
+    const interview = scored.data.interviews.find(
+      (candidate) => candidate.interview_id === input.interviewId,
+    );
+    if (!interview) {
+      throw new FarmConstableInterviewContractUnavailableError();
+    }
+    if (interview.status !== "scoring" || interview.score_count !== 3) {
+      return scored;
+    }
+
+    const eligibleVoterResidentIds = await this.#listCurrentEligibleResidentIds(
+      interview.candidate_resident_id,
+    );
+    await opener.openConstablePublicNotice({
+      interviewId: interview.interview_id,
+      eligibleVoterResidentIds,
+    });
+    return reader.readConstableInterview({
+      ...identity,
+      interviewId: interview.interview_id,
+    });
+  }
+
+  async #listCurrentEligibleResidentIds(excludedResidentId: string): Promise<string[]> {
+    const eligible: string[] = [];
+    for (const community of this.#database.listActiveHumanCommunities()) {
+      if (community.resident.residentId === excludedResidentId) continue;
+      try {
+        await this.confirmCurrentResidentMembership(community.resident.residentId);
+      } catch (error) {
+        if (
+          error instanceof QqNotGroupMemberError ||
+          error instanceof AuthenticationRequiredError
+        ) {
+          continue;
+        }
+        throw error;
+      }
+      eligible.push(community.resident.residentId);
+    }
+    return eligible;
   }
 
   async harvestCurrentFarmField(
