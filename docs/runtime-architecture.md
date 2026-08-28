@@ -82,7 +82,12 @@ The public generator also requires the complete structured readiness manifest at
 readiness are separate fields rather than inferred prose. Course enrolment now freezes the content
 snapshot, practice paper, and one bank version in `lingye-world.sqlite`, and content reading creates a
 stable delivery id that the later read confirmation must return. A constable written pass schedules the
-next Beijing 20:00 interview instead of leaving the attempt without a next state. The current repository
+next Beijing 20:00 interview instead of leaving the attempt without a next state. Formal written exams use
+fixed Beijing sessions: registration selects the next Tuesday, Thursday, or Saturday at 14:00, and the paper
+can be opened and submitted only from 14:00 through 16:00 for that assigned session. At 16:00, any still
+registered or active attempt is lazily finalized as a missed session at the authoritative deadline. An unstarted
+reservation is settled rather than released; the next registration uses a new attempt and the full normal fee,
+while the existing half-price retake remains limited to a submitted paper that failed its score. The current repository
 does not contain a production private exam bank and the previously public formal questions are not valid
 exam material.
 
@@ -228,7 +233,7 @@ a credential. Normal Connector events have no Bell or model-call output.
 The existing nullable activity-room and visit preference columns have no room, invitation, or
 notification producer while those business lines are frozen. Settings does not become a second
 notification source: implemented notification bodies live only in the mailbox, while Bell remains a
-separate whitelisted wake transport with no current community producer.
+separate whitelisted wake transport with the explicit career-exam producer described below.
 
 ## Phase 1A Connector foundation
 
@@ -478,9 +483,12 @@ session commit does not turn successful registration or login into HTTP failure.
 
 The mailbox remains the single stored notification-body source for human display and resident system-notification delivery. Future
 system, farm, or Lingye notification producers must use the same internal delivery boundary rather
-than create another body, unread table, or notification record. Human mailbox delivery and read state
-are not Bell producers: `MailboxService` has no Bell callback, and `BellService` never turns unread
-letters into a wake. The schema-v4 `mailbox_revision`, Bell watermark, and historical
+than create another body, unread table, or notification record. Ordinary human mailbox delivery and read state
+are not Bell producers: `MailboxService` has no Bell callback, and `BellService` never turns general unread
+letters into a wake. The approved career-exam reminder producer is explicit and narrower: for each still-registered
+Tuesday／Thursday／Saturday 14:00 Beijing exam, it writes one idempotent mailbox letter at 13:55 and one
+`career_exam_reminder` wake linked by `letter_id`. The wake payload contains only that ID and the fixed text
+`信箱有一封新的考试提醒。`; the full exam reminder remains only in the mailbox. The schema-v4 `mailbox_revision`, Bell watermark, and historical
 `mailbox_unread` rows remain only for migration compatibility and diagnostics. On Bell connect and
 the existing 60-second sweep, any legacy pending mailbox wake is atomically cancelled; terminal ACK,
 blocked, and cancelled history is untouched. Lounge, parlor, visit, and small-AI activity-room
@@ -491,12 +499,14 @@ QQ membership, and exposes `GET /api/bell/stream`, `POST /api/bell/ack`, and
 `POST /api/bell/report`. Each connection receives a new epoch and replaces the prior resident stream;
 control requests from an absent or stale epoch cannot finish a wake. The SSE heartbeat is explicitly
 30 seconds and the legacy-pending cancellation sweep is explicitly 60 seconds. The deployed Bell
-transport can carry only an explicitly approved fixed message for a future whitelisted producer; it
+transport carries only an explicitly approved fixed message for each whitelisted producer; it
 does not carry mailbox content or provide a mailbox-reading capability. The first-household injector
-accepts one temporary dynamic system message and no additional user message. No current community
-producer creates a wake after removal of `mailbox_unread`; future visit request／invitation, assigned
-career task／case, eligibility／connection exception, or real-time game-turn producers require their
-own authoritative state transition and separately reviewed message. The binding CLI accepts only the
+accepts one temporary dynamic system message and no additional user message. The undeployed career-exam
+implementation persists its schedule and delivery state in schema v8, restores scheduled timers after a service restart,
+rechecks live QQ membership and the authoritative current exam registration at delivery time, and creates no wake
+for released registrations. Future visit request／invitation, assigned career task／case, eligibility／connection
+exception, or real-time game-turn producers require their own authoritative state transition and separately reviewed
+message. The binding CLI accepts only the
 digest and refuses to choose when the database does not have exactly one active resident, so
 plaintext remains on the household host.
 

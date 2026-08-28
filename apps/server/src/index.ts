@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { connectorDeliveryGenerationSchema } from "@doorbell/protocol";
 import { buildApp } from "./app.js";
 import { BellService } from "./bell-service.js";
+import { CareerExamReminderService } from "./career-exam-reminder-service.js";
 import { CommunityDatabase } from "./community-database.js";
 import { readDoorbellServerConfig } from "./config.js";
 import { ConnectorService } from "./connector-service.js";
@@ -279,11 +280,20 @@ const lingyeMcpActions = new LingyeMcpActionClient({
   requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
   serviceToken: serverConfig.farmServiceToken,
 });
+const careerExamReminderService = new CareerExamReminderService({
+  database,
+  mailboxService,
+  bellService,
+  registrationAuth,
+  lingyeActions: lingyeMcpActions,
+  onError: reportBellError,
+});
 const mcpRuntime = new DoorbellMcpRuntime({
   database,
   registrationAuth,
   farmActions: farmMcpActions,
   lingyeActions: lingyeMcpActions,
+  careerExamReminders: careerExamReminderService,
   mcpEndpoint: serverConfig.mcpEndpoint,
   onNotificationDeliveryError: reportMcpNotificationError,
 });
@@ -316,6 +326,7 @@ const app = buildApp({
   secureCookies: process.env.NODE_ENV === "production",
 });
 app.addHook("onClose", () => {
+  careerExamReminderService.close();
   sharedMemeService.close();
   database.close();
 });

@@ -23,7 +23,7 @@ export const HUMAN_LOGIN_FAILURE_WINDOW_MS = 15 * 60 * 1000;
 export const HUMAN_LOGIN_FAILURE_THRESHOLD = 10;
 export const HUMAN_LOGIN_LOCK_DURATION_MS = 30 * 60 * 1000;
 export const FARM_PURCHASE_REQUEST_TTL_MS = 24 * 60 * 60 * 1000;
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 7;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 8;
 const LEGACY_CONNECTOR_DELIVERY_GENERATION = "00000000-0000-0000-0000-000000000000";
 
 export interface RegistrationCodeRecord {
@@ -175,7 +175,40 @@ export type FarmPurchaseShop = (typeof FARM_PURCHASE_SHOPS)[number];
 export const FARM_PURCHASE_REQUEST_STATUSES = ["requested", "expired", "failed"] as const;
 export type FarmPurchaseRequestStatus = (typeof FARM_PURCHASE_REQUEST_STATUSES)[number];
 
-export type BellWakeReason = "mailbox_unread" | "farm_purchase_request";
+export type BellWakeReason = "mailbox_unread" | "farm_purchase_request" | "career_exam_reminder";
+
+export type CareerExamReminderStatus = "scheduled" | "delivered" | "cancelled";
+
+export interface CareerExamReminderRecord {
+  attemptId: string;
+  residentId: string;
+  homeId: string;
+  scheduledAt: number;
+  remindAt: number;
+  status: CareerExamReminderStatus;
+  letterId: string | null;
+  wakeId: string | null;
+  createdAt: number;
+  deliveredAt: number | null;
+  cancelledAt: number | null;
+}
+
+export interface CareerExamReminderScheduleInput {
+  attemptId: string;
+  residentId: string;
+  homeId: string;
+  scheduledAt: number;
+  remindAt: number;
+  createdAt: number;
+}
+
+export interface CareerExamReminderDeliveryInput {
+  attemptId: string;
+  letterId: string;
+  wakeId: string;
+  deliveredAt: number;
+  payload: Record<string, unknown>;
+}
 
 export interface FarmPurchaseItemInput {
   itemId: string;
@@ -236,6 +269,7 @@ export interface BellWakeRecord {
   blockReason: string | null;
   errorCode: string | null;
   purchaseRequestId: string | null;
+  letterId: string | null;
   payload: Record<string, unknown> | null;
 }
 
@@ -532,7 +566,22 @@ interface BellWakeRow {
   block_reason: string | null;
   error_code: string | null;
   purchase_request_id: string | null;
+  letter_id: string | null;
   payload_json: string | null;
+}
+
+interface CareerExamReminderRow {
+  attempt_id: string;
+  resident_id: string;
+  home_id: string;
+  scheduled_at: number;
+  remind_at: number;
+  status: CareerExamReminderStatus;
+  letter_id: string | null;
+  wake_id: string | null;
+  created_at: number;
+  delivered_at: number | null;
+  cancelled_at: number | null;
 }
 
 interface FarmPurchaseRequestRow {
@@ -758,7 +807,24 @@ function mapBellWake(row: BellWakeRow): BellWakeRecord {
     blockReason: row.block_reason,
     errorCode: row.error_code,
     purchaseRequestId: row.purchase_request_id,
+    letterId: row.letter_id,
     payload,
+  };
+}
+
+function mapCareerExamReminder(row: CareerExamReminderRow): CareerExamReminderRecord {
+  return {
+    attemptId: row.attempt_id,
+    residentId: row.resident_id,
+    homeId: row.home_id,
+    scheduledAt: row.scheduled_at,
+    remindAt: row.remind_at,
+    status: row.status,
+    letterId: row.letter_id,
+    wakeId: row.wake_id,
+    createdAt: row.created_at,
+    deliveredAt: row.delivered_at,
+    cancelledAt: row.cancelled_at,
   };
 }
 
@@ -1187,13 +1253,16 @@ export class CommunityDatabase {
       CREATE TABLE IF NOT EXISTS bell_wakes (
         wake_id TEXT PRIMARY KEY,
         resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
-        reason TEXT NOT NULL CHECK (reason IN ('mailbox_unread', 'farm_purchase_request')),
+        reason TEXT NOT NULL CHECK (
+          reason IN ('mailbox_unread', 'farm_purchase_request', 'career_exam_reminder')
+        ),
         status TEXT NOT NULL CHECK (status IN ('pending', 'acked', 'blocked', 'cancelled')),
         created_at INTEGER NOT NULL,
         ended_at INTEGER,
         block_reason TEXT,
         error_code TEXT,
         purchase_request_id TEXT,
+        letter_id TEXT REFERENCES mailbox_letters(letter_id) ON DELETE RESTRICT,
         payload_json TEXT,
         CHECK (
           (status = 'pending' AND ended_at IS NULL AND block_reason IS NULL AND error_code IS NULL)
@@ -1202,12 +1271,54 @@ export class CommunityDatabase {
           OR (status = 'cancelled' AND ended_at IS NOT NULL AND block_reason IS NULL AND error_code IS NULL)
         ),
         CHECK (
-          (reason = 'mailbox_unread' AND purchase_request_id IS NULL AND payload_json IS NULL)
+          (reason = 'mailbox_unread'
+            AND purchase_request_id IS NULL
+            AND letter_id IS NULL
+            AND payload_json IS NULL)
           OR (reason = 'farm_purchase_request'
             AND purchase_request_id IS NOT NULL
+            AND letter_id IS NULL
+            AND payload_json IS NOT NULL)
+          OR (reason = 'career_exam_reminder'
+            AND purchase_request_id IS NULL
+            AND letter_id IS NOT NULL
             AND payload_json IS NOT NULL)
         )
       );
+
+      CREATE TABLE IF NOT EXISTS career_exam_reminders (
+        attempt_id TEXT PRIMARY KEY,
+        resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+        home_id TEXT NOT NULL REFERENCES homes(home_id) ON DELETE CASCADE,
+        scheduled_at INTEGER NOT NULL,
+        remind_at INTEGER NOT NULL CHECK (remind_at = scheduled_at - 300000),
+        status TEXT NOT NULL CHECK (status IN ('scheduled', 'delivered', 'cancelled')),
+        letter_id TEXT UNIQUE REFERENCES mailbox_letters(letter_id) ON DELETE RESTRICT,
+        wake_id TEXT UNIQUE REFERENCES bell_wakes(wake_id) ON DELETE RESTRICT,
+        created_at INTEGER NOT NULL,
+        delivered_at INTEGER,
+        cancelled_at INTEGER,
+        CHECK (
+          (status = 'scheduled'
+            AND letter_id IS NULL
+            AND wake_id IS NULL
+            AND delivered_at IS NULL
+            AND cancelled_at IS NULL)
+          OR (status = 'delivered'
+            AND letter_id IS NOT NULL
+            AND wake_id IS NOT NULL
+            AND delivered_at IS NOT NULL
+            AND cancelled_at IS NULL)
+          OR (status = 'cancelled'
+            AND letter_id IS NULL
+            AND wake_id IS NULL
+            AND delivered_at IS NULL
+            AND cancelled_at IS NOT NULL)
+        )
+      );
+
+      CREATE INDEX IF NOT EXISTS career_exam_reminders_due
+        ON career_exam_reminders (status, remind_at, attempt_id);
 
       CREATE TABLE IF NOT EXISTS farm_purchase_requests (
         request_id TEXT PRIMARY KEY,
@@ -1656,6 +1767,146 @@ export class CommunityDatabase {
         this.#database.pragma("user_version = 7");
       })();
       migratedSchemaVersion = 7;
+    }
+    if (migratedSchemaVersion < 8) {
+      const wakeColumns = this.#database.pragma("table_info(bell_wakes)") as Array<{
+        name: string;
+      }>;
+      const hasLetterId = wakeColumns.some((column) => column.name === "letter_id");
+      this.#database.pragma("foreign_keys = OFF");
+      try {
+        this.#database.transaction(() => {
+          if (!hasLetterId) {
+            this.#database.exec(`
+              DROP INDEX IF EXISTS bell_wakes_one_purchase_request;
+
+              CREATE TABLE bell_wakes_v8 (
+                wake_id TEXT PRIMARY KEY,
+                resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+                reason TEXT NOT NULL CHECK (
+                  reason IN ('mailbox_unread', 'farm_purchase_request', 'career_exam_reminder')
+                ),
+                status TEXT NOT NULL CHECK (status IN ('pending', 'acked', 'blocked', 'cancelled')),
+                created_at INTEGER NOT NULL,
+                ended_at INTEGER,
+                block_reason TEXT,
+                error_code TEXT,
+                purchase_request_id TEXT,
+                letter_id TEXT REFERENCES mailbox_letters(letter_id) ON DELETE RESTRICT,
+                payload_json TEXT,
+                CHECK (
+                  (status = 'pending'
+                    AND ended_at IS NULL
+                    AND block_reason IS NULL
+                    AND error_code IS NULL)
+                  OR (status = 'acked'
+                    AND ended_at IS NOT NULL
+                    AND block_reason IS NULL
+                    AND error_code IS NULL)
+                  OR (status = 'blocked'
+                    AND ended_at IS NOT NULL
+                    AND block_reason IS NOT NULL
+                    AND error_code IS NOT NULL)
+                  OR (status = 'cancelled'
+                    AND ended_at IS NOT NULL
+                    AND block_reason IS NULL
+                    AND error_code IS NULL)
+                ),
+                CHECK (
+                  (reason = 'mailbox_unread'
+                    AND purchase_request_id IS NULL
+                    AND letter_id IS NULL
+                    AND payload_json IS NULL)
+                  OR (reason = 'farm_purchase_request'
+                    AND purchase_request_id IS NOT NULL
+                    AND letter_id IS NULL
+                    AND payload_json IS NOT NULL)
+                  OR (reason = 'career_exam_reminder'
+                    AND purchase_request_id IS NULL
+                    AND letter_id IS NOT NULL
+                    AND payload_json IS NOT NULL)
+                )
+              );
+
+              INSERT INTO bell_wakes_v8 (
+                wake_id,
+                resident_id,
+                reason,
+                status,
+                created_at,
+                ended_at,
+                block_reason,
+                error_code,
+                purchase_request_id,
+                letter_id,
+                payload_json
+              )
+              SELECT wake_id,
+                     resident_id,
+                     reason,
+                     status,
+                     created_at,
+                     ended_at,
+                     block_reason,
+                     error_code,
+                     purchase_request_id,
+                     NULL,
+                     payload_json
+              FROM bell_wakes;
+
+              DROP TABLE bell_wakes;
+              ALTER TABLE bell_wakes_v8 RENAME TO bell_wakes;
+            `);
+          }
+          this.#database.exec(`
+            CREATE UNIQUE INDEX IF NOT EXISTS bell_wakes_one_purchase_request
+              ON bell_wakes (purchase_request_id)
+              WHERE purchase_request_id IS NOT NULL;
+
+            CREATE TABLE IF NOT EXISTS career_exam_reminders (
+              attempt_id TEXT PRIMARY KEY,
+              resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+              home_id TEXT NOT NULL REFERENCES homes(home_id) ON DELETE CASCADE,
+              scheduled_at INTEGER NOT NULL,
+              remind_at INTEGER NOT NULL CHECK (remind_at = scheduled_at - 300000),
+              status TEXT NOT NULL CHECK (status IN ('scheduled', 'delivered', 'cancelled')),
+              letter_id TEXT UNIQUE REFERENCES mailbox_letters(letter_id) ON DELETE RESTRICT,
+              wake_id TEXT UNIQUE REFERENCES bell_wakes(wake_id) ON DELETE RESTRICT,
+              created_at INTEGER NOT NULL,
+              delivered_at INTEGER,
+              cancelled_at INTEGER,
+              CHECK (
+                (status = 'scheduled'
+                  AND letter_id IS NULL
+                  AND wake_id IS NULL
+                  AND delivered_at IS NULL
+                  AND cancelled_at IS NULL)
+                OR (status = 'delivered'
+                  AND letter_id IS NOT NULL
+                  AND wake_id IS NOT NULL
+                  AND delivered_at IS NOT NULL
+                  AND cancelled_at IS NULL)
+                OR (status = 'cancelled'
+                  AND letter_id IS NULL
+                  AND wake_id IS NULL
+                  AND delivered_at IS NULL
+                  AND cancelled_at IS NOT NULL)
+              )
+            );
+
+            CREATE INDEX IF NOT EXISTS career_exam_reminders_due
+              ON career_exam_reminders (status, remind_at, attempt_id);
+          `);
+          this.#database.pragma("user_version = 8");
+        })();
+      } finally {
+        this.#database.pragma("foreign_keys = ON");
+      }
+      const foreignKeyErrors = this.#database.pragma("foreign_key_check") as unknown[];
+      if (foreignKeyErrors.length > 0) {
+        throw new Error("Community database schema v8 migration violated foreign keys");
+      }
+      migratedSchemaVersion = 8;
     }
     this.#database.transaction(() => {
       const itemColumns = this.#database.pragma(
@@ -3007,6 +3258,259 @@ export class CommunityDatabase {
     return transaction.immediate();
   }
 
+  scheduleCareerExamReminder(input: CareerExamReminderScheduleInput): CareerExamReminderRecord {
+    const transaction = this.#database.transaction(() => {
+      const home = this.#database
+        .prepare("SELECT resident_id FROM homes WHERE home_id = ?")
+        .get(input.homeId) as { resident_id: string } | undefined;
+      if (!home || home.resident_id !== input.residentId) {
+        throw new Error("The exam reminder home does not belong to the resident");
+      }
+      const existing = this.#database
+        .prepare(
+          `SELECT attempt_id,
+                  resident_id,
+                  home_id,
+                  scheduled_at,
+                  remind_at,
+                  status,
+                  letter_id,
+                  wake_id,
+                  created_at,
+                  delivered_at,
+                  cancelled_at
+           FROM career_exam_reminders
+           WHERE attempt_id = ?`,
+        )
+        .get(input.attemptId) as CareerExamReminderRow | undefined;
+      if (existing) {
+        if (
+          existing.resident_id !== input.residentId ||
+          existing.home_id !== input.homeId ||
+          existing.scheduled_at !== input.scheduledAt ||
+          existing.remind_at !== input.remindAt
+        ) {
+          throw new Error("The exam reminder attempt is already bound to different facts");
+        }
+        return mapCareerExamReminder(existing);
+      }
+      this.#database
+        .prepare(
+          `INSERT INTO career_exam_reminders (
+             attempt_id,
+             resident_id,
+             home_id,
+             scheduled_at,
+             remind_at,
+             status,
+             created_at
+           ) VALUES (?, ?, ?, ?, ?, 'scheduled', ?)`,
+        )
+        .run(
+          input.attemptId,
+          input.residentId,
+          input.homeId,
+          input.scheduledAt,
+          input.remindAt,
+          input.createdAt,
+        );
+      return mapCareerExamReminder(
+        this.#database
+          .prepare(
+            `SELECT attempt_id,
+                    resident_id,
+                    home_id,
+                    scheduled_at,
+                    remind_at,
+                    status,
+                    letter_id,
+                    wake_id,
+                    created_at,
+                    delivered_at,
+                    cancelled_at
+             FROM career_exam_reminders
+             WHERE attempt_id = ?`,
+          )
+          .get(input.attemptId) as CareerExamReminderRow,
+      );
+    });
+    return transaction.immediate();
+  }
+
+  listScheduledCareerExamReminders(residentId?: string): CareerExamReminderRecord[] {
+    const rows = this.#database
+      .prepare(
+        `SELECT attempt_id,
+                resident_id,
+                home_id,
+                scheduled_at,
+                remind_at,
+                status,
+                letter_id,
+                wake_id,
+                created_at,
+                delivered_at,
+                cancelled_at
+         FROM career_exam_reminders
+         WHERE status = 'scheduled'
+           AND (? IS NULL OR resident_id = ?)
+         ORDER BY remind_at ASC, attempt_id ASC`,
+      )
+      .all(residentId ?? null, residentId ?? null) as CareerExamReminderRow[];
+    return rows.map(mapCareerExamReminder);
+  }
+
+  getCareerExamReminder(attemptId: string): CareerExamReminderRecord | undefined {
+    const row = this.#database
+      .prepare(
+        `SELECT attempt_id,
+                resident_id,
+                home_id,
+                scheduled_at,
+                remind_at,
+                status,
+                letter_id,
+                wake_id,
+                created_at,
+                delivered_at,
+                cancelled_at
+         FROM career_exam_reminders
+         WHERE attempt_id = ?`,
+      )
+      .get(attemptId) as CareerExamReminderRow | undefined;
+    return row ? mapCareerExamReminder(row) : undefined;
+  }
+
+  cancelScheduledCareerExamRemindersExcept(
+    residentId: string,
+    activeAttemptIds: readonly string[],
+    now: number,
+  ): CareerExamReminderRecord[] {
+    const transaction = this.#database.transaction(() => {
+      const current = this.listScheduledCareerExamReminders(residentId);
+      const active = new Set(activeAttemptIds);
+      const cancelled = current.filter((reminder) => !active.has(reminder.attemptId));
+      const update = this.#database.prepare(
+        `UPDATE career_exam_reminders
+         SET status = 'cancelled', cancelled_at = ?
+         WHERE attempt_id = ? AND resident_id = ? AND status = 'scheduled'`,
+      );
+      for (const reminder of cancelled) {
+        update.run(now, reminder.attemptId, residentId);
+      }
+      return cancelled.map((reminder) => ({
+        ...reminder,
+        status: "cancelled" as const,
+        cancelledAt: now,
+      }));
+    });
+    return transaction.immediate();
+  }
+
+  cancelScheduledCareerExamReminder(
+    attemptId: string,
+    now: number,
+  ): CareerExamReminderRecord | undefined {
+    const transaction = this.#database.transaction(() => {
+      const current = this.getCareerExamReminder(attemptId);
+      if (current?.status !== "scheduled") return current;
+      this.#database
+        .prepare(
+          `UPDATE career_exam_reminders
+           SET status = 'cancelled', cancelled_at = ?
+           WHERE attempt_id = ? AND status = 'scheduled'`,
+        )
+        .run(now, attemptId);
+      return { ...current, status: "cancelled" as const, cancelledAt: now };
+    });
+    return transaction.immediate();
+  }
+
+  deliverCareerExamReminder(
+    input: CareerExamReminderDeliveryInput,
+  ): CareerExamReminderRecord | undefined {
+    const transaction = this.#database.transaction(() => {
+      const current = this.#database
+        .prepare(
+          `SELECT attempt_id,
+                  resident_id,
+                  home_id,
+                  scheduled_at,
+                  remind_at,
+                  status,
+                  letter_id,
+                  wake_id,
+                  created_at,
+                  delivered_at,
+                  cancelled_at
+           FROM career_exam_reminders
+           WHERE attempt_id = ?`,
+        )
+        .get(input.attemptId) as CareerExamReminderRow | undefined;
+      if (!current || current.status === "cancelled") return undefined;
+      if (current.status === "delivered") return mapCareerExamReminder(current);
+      const letter = this.#database
+        .prepare("SELECT home_id FROM mailbox_letters WHERE letter_id = ?")
+        .get(input.letterId) as { home_id: string } | undefined;
+      if (!letter || letter.home_id !== current.home_id) {
+        throw new Error("The exam reminder letter does not belong to the scheduled home");
+      }
+      this.#database
+        .prepare(
+          `INSERT INTO bell_wakes (
+             wake_id,
+             resident_id,
+             reason,
+             status,
+             created_at,
+             ended_at,
+             block_reason,
+             error_code,
+             purchase_request_id,
+             letter_id,
+             payload_json
+           ) VALUES (?, ?, 'career_exam_reminder', 'pending', ?, NULL, NULL, NULL, NULL, ?, ?)`,
+        )
+        .run(
+          input.wakeId,
+          current.resident_id,
+          input.deliveredAt,
+          input.letterId,
+          JSON.stringify(input.payload),
+        );
+      this.#database
+        .prepare(
+          `UPDATE career_exam_reminders
+           SET status = 'delivered',
+               letter_id = ?,
+               wake_id = ?,
+               delivered_at = ?
+           WHERE attempt_id = ? AND status = 'scheduled'`,
+        )
+        .run(input.letterId, input.wakeId, input.deliveredAt, input.attemptId);
+      return mapCareerExamReminder(
+        this.#database
+          .prepare(
+            `SELECT attempt_id,
+                    resident_id,
+                    home_id,
+                    scheduled_at,
+                    remind_at,
+                    status,
+                    letter_id,
+                    wake_id,
+                    created_at,
+                    delivered_at,
+                    cancelled_at
+             FROM career_exam_reminders
+             WHERE attempt_id = ?`,
+          )
+          .get(input.attemptId) as CareerExamReminderRow,
+      );
+    });
+    return transaction.immediate();
+  }
+
   listPendingBellWakes(residentId: string): BellWakeRecord[] {
     const rows = this.#database
       .prepare(
@@ -3019,6 +3523,7 @@ export class CommunityDatabase {
                 block_reason,
                 error_code,
                 purchase_request_id,
+                letter_id,
                 payload_json
          FROM bell_wakes
          WHERE resident_id = ? AND status = 'pending'
@@ -3040,6 +3545,7 @@ export class CommunityDatabase {
                 block_reason,
                 error_code,
                 purchase_request_id,
+                letter_id,
                 payload_json
          FROM bell_wakes
          WHERE resident_id = ? AND wake_id = ?`,
@@ -3065,6 +3571,7 @@ export class CommunityDatabase {
                   block_reason,
                   error_code,
                   purchase_request_id,
+                  letter_id,
                   payload_json
            FROM bell_wakes
            WHERE resident_id = ? AND wake_id = ?`,
@@ -3104,6 +3611,7 @@ export class CommunityDatabase {
                   block_reason,
                   error_code,
                   purchase_request_id,
+                  letter_id,
                   payload_json
            FROM bell_wakes
            WHERE resident_id = ? AND wake_id = ?`,

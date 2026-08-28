@@ -1,4 +1,5 @@
 import type { LingyeActionResult } from "@doorbell/protocol";
+import type { CareerExamReminderService } from "./career-exam-reminder-service.js";
 import type { CommunityDatabase } from "./community-database.js";
 import { renderFarmHelp, stripDetail } from "./doorbell-farm-op-registry.js";
 import {
@@ -276,6 +277,7 @@ export interface DoorbellMcpRuntimeOptions {
   registrationAuth: RegistrationAuthService;
   farmActions: FarmMcpActionExecutor;
   lingyeActions: LingyeMcpActionExecutor;
+  careerExamReminders?: Pick<CareerExamReminderService, "reconcile">;
   mcpEndpoint: string;
   now?: () => number;
   onNotificationDeliveryError?: (error: unknown) => void;
@@ -286,6 +288,7 @@ export class DoorbellMcpRuntime {
   readonly #registrationAuth: RegistrationAuthService;
   readonly #farmActions: FarmMcpActionExecutor;
   readonly #lingyeActions: LingyeMcpActionExecutor;
+  readonly #careerExamReminders: Pick<CareerExamReminderService, "reconcile"> | undefined;
   readonly #allowedOrigin: string;
   readonly #now: () => number;
   readonly #onNotificationDeliveryError: (error: unknown) => void;
@@ -296,6 +299,7 @@ export class DoorbellMcpRuntime {
     this.#registrationAuth = options.registrationAuth;
     this.#farmActions = options.farmActions;
     this.#lingyeActions = options.lingyeActions;
+    this.#careerExamReminders = options.careerExamReminders;
     this.#allowedOrigin = new URL(options.mcpEndpoint).origin;
     this.#now = options.now ?? Date.now;
     this.#onNotificationDeliveryError = options.onNotificationDeliveryError ?? (() => undefined);
@@ -565,6 +569,16 @@ export class DoorbellMcpRuntime {
           op: registered.operation.op,
           args: parsed.data,
         });
+        if (
+          registered.operation.op === "go.school.view" ||
+          registered.operation.op === "go.school.choose"
+        ) {
+          this.#careerExamReminders?.reconcile({
+            residentId: context.residentId,
+            homeId: context.homeId,
+            result,
+          });
+        }
         return lingyeToolResult(op, result);
       } catch (error) {
         if (
