@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { MAX_LOG, TRAIL_MAX } from "../../config.js";
 
 export function pushLog(farm, msg) {
@@ -8,7 +9,7 @@ export function pushLog(farm, msg) {
 
 /** 记一条足迹（别人对本农场的社交动作：帮浇水 / 偷菜得手 / 被狗吓退）；最新在前，超上限截尾。 */
 export function pushTrail(farm, ev) {
-    (farm.trail ??= []).unshift(ev);
+    (farm.trail ??= []).unshift({ ...ev, eventId: ev.eventId ?? randomUUID() });
     if (farm.trail.length > TRAIL_MAX)
         farm.trail.length = TRAIL_MAX;
 }

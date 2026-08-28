@@ -353,8 +353,11 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
         entry.option.includes("school:exam-release"));
     assert.ok(staleReleaseOption);
     actionNow = firstRegistration.data.result.scheduledAt + 2 * 60 * 60 * 1_000;
-    const staleRelease = execute(executor, "go.school.choose", { option: staleReleaseOption.option });
-    assert.equal(staleRelease.error.code, "OPTION_NOT_AVAILABLE");
+    const missedView = execute(executor, "go.school.view", {});
+    assert.equal(missedView.data.exams.find((exam) =>
+        exam.attemptId === firstRegistration.data.result.attemptId).registrationStatus, "expired");
+    assert.equal(missedView.data.options.some((entry) =>
+        entry.option === staleReleaseOption.option), false);
     assert.deepEqual({ ...database.prepare(`SELECT registration_status, settlement_receipt_id,
              release_receipt_id, ended_at, missed_session_at
         FROM career_exam_attempts WHERE attempt_id = ?`)
@@ -369,9 +372,6 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
     });
     assert.equal(database.prepare(`SELECT state FROM economy_system_gold_reservations
       WHERE reservation_id = ?`).get(firstRegistration.data.result.reservationId).state, "settled");
-    const missedView = execute(executor, "go.school.view", {});
-    assert.equal(missedView.data.exams.find((exam) =>
-        exam.attemptId === firstRegistration.data.result.attemptId).registrationStatus, "expired");
     const reRegisterOption = missedView.data.options.find((entry) =>
         entry.option.includes("school:exam-register") && entry.option.endsWith(":agronomist:1"));
     assert.ok(reRegisterOption);

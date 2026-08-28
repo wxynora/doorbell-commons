@@ -47,11 +47,37 @@ export function commissionJobId(sourceId) {
 function saveAdvancedFarm(farm, now) {
     const staged = structuredClone(farm);
     const advanced = advanceP3Farm(staged, now);
-    if (advanced.changed) {
+    const legacyTrailChanged = ensureTrailEventIds(staged);
+    if (advanced.changed || legacyTrailChanged) {
         replaceFarm(farm.id, staged);
         return getFarm(farm.id);
     }
     return farm;
+}
+
+function ensureTrailEventIds(farm) {
+    const trail = farm.trail ?? [];
+    const occurrences = new Map();
+    let changed = false;
+    for (const entry of [...trail].reverse()) {
+        if (!entry || typeof entry !== "object" ||
+            (typeof entry.eventId === "string" && entry.eventId.length > 0)) {
+            continue;
+        }
+        const fingerprint = JSON.stringify([
+            farm.id,
+            entry.t ?? null,
+            entry.kind ?? null,
+            entry.by ?? null,
+            entry.plotId ?? null,
+            entry.crop ?? null,
+        ]);
+        const occurrence = (occurrences.get(fingerprint) ?? 0) + 1;
+        occurrences.set(fingerprint, occurrence);
+        entry.eventId = `legacy-${digest(`${fingerprint}:${occurrence}`).slice(0, 32)}`;
+        changed = true;
+    }
+    return changed;
 }
 
 function registeredResidentForFarm(database, farm) {
@@ -161,16 +187,16 @@ function animalSource(farm, ownerResidentId, source) {
 
 function securityTrailSources(farm, ownerResidentId) {
     return (farm.trail ?? [])
-        .map((entry, index) => ({ entry, index }))
-        .filter(({ entry }) => entry?.kind === "stolen" || entry?.kind === "foiled")
-        .map(({ entry, index }) => {
-            const sourceId = `p3:security:trail:${farm.id}:${entry.t}:${entry.kind}:${index}`;
+        .filter((entry) => (entry?.kind === "stolen" || entry?.kind === "foiled") &&
+            typeof entry.eventId === "string" && entry.eventId.length > 0)
+        .map((entry) => {
+            const sourceId = `p3:security:trail:${entry.eventId}`;
             return {
                 sourceId,
                 career: "constable",
                 sourceType: "farm_interaction_complaint",
                 objectType: "farm_trail_event",
-                objectId: `${farm.id}:trail:${index}`,
+                objectId: `${farm.id}:trail:${entry.eventId}`,
                 ownerResidentId,
                 requiredLevel: 1,
                 difficultyLevel: 1,
@@ -266,6 +292,21 @@ export function syncAuthorityJobs(database, backend, now = Date.now()) {
                 if (job.workerResidentId === null)
                     backend.trustedSystemCommands.assignAuthorityJob({ jobId: job.jobId });
             });
+        }
+        catch (error) {
+            if (!(error instanceof CareerDomainError) || error.code !== "authoritative_worker_unavailable")
+                throw error;
+        }
+    }
+    const awaitingAssignment = database.prepare(`
+      SELECT job_id FROM career_jobs
+      WHERE assignment_mode = 'assigned' AND status = 'available'
+        AND worker_resident_id IS NULL
+      ORDER BY created_at, job_id
+    `).all();
+    for (const row of awaitingAssignment) {
+        try {
+            backend.trustedSystemCommands.assignAuthorityJob({ jobId: row.job_id });
         }
         catch (error) {
             if (!(error instanceof CareerDomainError) || error.code !== "authoritative_worker_unavailable")
@@ -386,8 +427,11 @@ function sourceState(job) {
 export function workerOptions(job, residentId, qualificationLevel = job.requiredLevel) {
     if (job.workerResidentId !== residentId || !["accepted", "assigned", "active"].includes(job.status))
         return [];
+    const decisionCapacityReached = job.decisionCount >= 4;
     if (job.career === "agronomist") {
         const state = sourceState(job).source;
+        if (decisionCapacityReached)
+            return state.checks.length > 0 ? [`commission:transfer:${job.jobId}`] : [];
         const options = agronomyCheckCandidates(qualificationLevel)
             .filter((check) => !state.checks.includes(check))
             .map((check) => `commission:check:${job.jobId}:${check}`);
@@ -400,6 +444,8 @@ export function workerOptions(job, residentId, qualificationLevel = job.required
     }
     if (job.career === "veterinarian") {
         const state = sourceState(job).source;
+        if (decisionCapacityReached)
+            return state.checks.length > 0 ? [`commission:transfer:${job.jobId}`] : [];
         const options = animalCheckCandidates(qualificationLevel)
             .filter((check) => !state.checks.includes(check))
             .map((check) => `commission:check:${job.jobId}:${check}`);

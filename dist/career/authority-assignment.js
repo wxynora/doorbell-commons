@@ -47,9 +47,18 @@ export class CareerAuthorityAssignmentService {
                    AND duty.duty_date = ? AND duty.status = 'scheduled'
                  GROUP BY duty.resident_id
                  HAVING MAX(certificate.qualification_level) >= ?
-                 ORDER BY active_job_count ASC, duty.resident_id COLLATE BINARY ASC`)
+                ORDER BY active_job_count ASC, duty.resident_id COLLATE BINARY ASC`)
                 .all(job.career, institution, beijingDate(this.#now()), job.requiredLevel);
-            const candidate = candidates.find((entry) => entry.active_job_count < INSTITUTION_ASSIGNED_CONCURRENT_CAPACITY[entry.qualification_level]);
+            const excludedResidents = new Set(this.#database
+                .prepare(`SELECT worker_resident_id FROM career_jobs
+                  WHERE source_id = ? AND worker_resident_id IS NOT NULL`)
+                .all(job.sourceId)
+                .map((row) => row.worker_resident_id));
+            if (job.ownerResidentId !== null)
+                excludedResidents.add(job.ownerResidentId);
+            const candidate = candidates.find((entry) =>
+                !excludedResidents.has(entry.resident_id) &&
+                entry.active_job_count < INSTITUTION_ASSIGNED_CONCURRENT_CAPACITY[entry.qualification_level]);
             if (!candidate) {
                 throw new CareerDomainError("authoritative_worker_unavailable", "No qualified on-duty institution worker has assignment capacity");
             }

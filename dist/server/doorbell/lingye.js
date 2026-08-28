@@ -950,6 +950,8 @@ function beginCommissionWorldOperation(database, backend, residentId, career, ar
         const job = commissionJob(database, backend, jobId, career);
         if (job.workerResidentId !== residentId)
             throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托不属于当前从业者。");
+        if (job.decisionCount >= 4)
+            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托已经达到四次决策上限。");
         const level = qualificationLevel(database, residentId, career);
         const goldAmount = kind === "treat" ? treatmentGold(job, actionValue) : 0;
         const reservation = kind === "treat"
@@ -957,7 +959,7 @@ function beginCommissionWorldOperation(database, backend, residentId, career, ar
                 residentId: job.ownerResidentId,
                 amount: goldAmount,
                 actor: "agent",
-                businessReference: `career-job:${job.jobId}:materials`,
+                businessReference: `career-job:${job.jobId}:materials:${actionKey}`,
                 idempotencyKey: `${actionKey}:reserve`,
             })
             : null;
@@ -985,7 +987,7 @@ function completeCommissionWorldOperation(database, backend, row, world) {
         if (current.operation_kind === "commission_treatment") {
             backend.trustedSystemCommands.settleSystemGoldReservation({
                 reservationId: current.reservation_id,
-                businessReference: `career-job:${job.jobId}:materials:settle`,
+                businessReference: `career-job:${job.jobId}:materials:${current.action_key}:settle`,
                 idempotencyKey: `${current.action_key}:settle`,
             });
         }
@@ -1075,8 +1077,14 @@ function recoverCommissionWorldOperations(database, backend) {
       WHERE status IN ('pending', 'world_applied')
       ORDER BY created_at, action_key
     `).all();
-    for (const row of pending)
-        resumeCommissionWorldOperation(database, backend, row);
+    for (const row of pending) {
+        try {
+            resumeCommissionWorldOperation(database, backend, row);
+        }
+        catch {
+            console.error("[doorbell-lingye] one pending cross-store operation could not be recovered");
+        }
+    }
 }
 
 function resolveSecurity(database, backend, residentId, job, resultKind, args, now) {
@@ -1286,11 +1294,24 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
                 idempotencyKey: `${key}:trade:release`,
             });
         }
-        return success("委托已转交。", backend.forResident(residentId).transferOwnJob({
+        const transferred = backend.forResident(residentId).transferOwnJob({
             jobId,
             successorJobId: `${jobId}:transfer:${key.slice(-12)}`,
             successorSourceId: job.sourceId,
-        }));
+        });
+        if (job.career === "veterinarian") {
+            try {
+                transferred.successor = backend.trustedSystemCommands.assignAuthorityJob({
+                    jobId: transferred.successor.jobId,
+                });
+            }
+            catch (error) {
+                if (!(error instanceof CareerDomainError) ||
+                    error.code !== "authoritative_worker_unavailable")
+                    throw error;
+            }
+        }
+        return success("委托已转交。", transferred);
     }
     if (kind === "submit" && career === "reporter") {
         if (value !== undefined || args.amount !== undefined || typeof args.text !== "string")

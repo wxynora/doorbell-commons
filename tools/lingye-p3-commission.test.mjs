@@ -22,7 +22,7 @@ const {
     startRegisteredP3Scheduler,
     syncAuthorityJobs,
 } = await import("../dist/career/p3-commission-runtime.js");
-const { getFarm, insertFarm } = await import("../dist/store.js");
+const { getFarm, insertFarm, replaceFarm } = await import("../dist/store.js");
 
 const NOW = Date.parse("2026-09-01T08:00:00+08:00");
 const OWNER = "019ffc01-49cd-7020-84af-3d04fb1ed03d";
@@ -220,15 +220,50 @@ test("P3 commissions bind real sources to payment, world results, review state, 
     assert.equal(execute(executor, VETERINARIAN, "go.hospital.commission", {
         option: `commission:check:${animalJobId}:feed-history`,
     }).ok, true);
+    const wrongTreatmentArgs = {
+        option: `commission:treat:${animalJobId}:wound-cleanser+bandage`,
+    };
+    const wrongTreatment = execute(executor, VETERINARIAN, "go.hospital.commission", wrongTreatmentArgs);
+    assert.equal(wrongTreatment.ok, true);
+    assert.equal(wrongTreatment.data.result.status, "active");
+    assert.equal(getFarm(FARM_ID).ranch.animals[0].lingyeHealth.status, "treating");
+    assert.equal(backend.forResident(OWNER).getOwnAccount().availableGold, 84_000);
+    assert.deepEqual(
+        execute(executor, VETERINARIAN, "go.hospital.commission", wrongTreatmentArgs),
+        wrongTreatment,
+    );
+    assert.equal(backend.forResident(OWNER).getOwnAccount().availableGold, 84_000);
     const treatedAnimal = execute(executor, VETERINARIAN, "go.hospital.commission", {
         option: `commission:treat:${animalJobId}:stomach-powder`,
     });
     assert.equal(treatedAnimal.ok, true);
     assert.equal(treatedAnimal.data.result.status, "completed");
     assert.equal(getFarm(FARM_ID).ranch.animals[0].lingyeHealth.status, "recovering");
-    assert.equal(backend.forResident(OWNER).getOwnAccount().availableGold, 87_000);
+    assert.equal(backend.forResident(OWNER).getOwnAccount().availableGold, 76_000);
+    assert.equal(database.prepare(`SELECT COUNT(*) AS count
+      FROM economy_system_gold_reservations
+      WHERE resident_id = ? AND business_reference LIKE ?`)
+        .get(OWNER, `career-job:${animalJobId}:materials:%`).count, 2);
 
     const securitySource = execute(executor, OWNER, "go.security.commission", {}, getFarm(FARM_ID)).data.sources[0];
+    const farmWithNewTrail = structuredClone(getFarm(FARM_ID));
+    farmWithNewTrail.trail.unshift({
+        t: NOW,
+        kind: "foiled",
+        by: "new-visitor",
+        plotId: 2,
+        crop: "new-test",
+    });
+    replaceFarm(FARM_ID, farmWithNewTrail);
+    const refreshedSecuritySources = execute(
+        executor,
+        OWNER,
+        "go.security.commission",
+        {},
+        getFarm(FARM_ID),
+    ).data.sources;
+    assert.equal(refreshedSecuritySources.some((source) => source.sourceId === securitySource.sourceId), true);
+    assert.equal(new Set(refreshedSecuritySources.map((source) => source.sourceId)).size, 2);
     const securityPublished = execute(executor, OWNER, "go.security.commission", {
         option: `commission:publish:${securitySource.sourceId}`,
     }, getFarm(FARM_ID));
@@ -358,6 +393,184 @@ test("agronomy transfer releases the old payment and requires an owner-approved 
     database.close();
 });
 
+test("veterinarian transfer immediately reassigns the successor to another authoritative worker", () => {
+    const database = openLingyeWorldDatabase(":memory:");
+    let sequence = 0;
+    const backend = createLingyeWorldBackend(database, {
+        economyRules: RULES,
+        generateId: () => `p3-vet-transfer-${++sequence}`,
+        now: () => NOW,
+    });
+    const executor = createLingyeActionExecutor({ database, backend, economyRules: RULES });
+    const owner = "019ffc08-49cd-7020-a4af-3d04fb1ed03d";
+    const firstWorker = "019ffc08-49cd-7020-84af-3d04fb1ed03d";
+    const secondWorker = "019ffc08-49cd-7020-94af-3d04fb1ed03d";
+    const migration = "019ffc08-49cd-7020-b4af-3d04fb1ed03d";
+    const farmId = "P3VET234";
+    registerResident(database, backend, owner, migration, 100_000);
+    registerResident(database, backend, firstWorker, `binding:${firstWorker}`);
+    registerResident(database, backend, secondWorker, `binding:${secondWorker}`);
+    certify(database, firstWorker, "veterinarian");
+    certify(database, secondWorker, "veterinarian");
+    scheduleDuty(database, firstWorker, "veterinarian", "animal_hospital", 1);
+    scheduleDuty(database, secondWorker, "veterinarian", "animal_hospital", 2);
+    const farm = makeFarm("P3 veterinarian transfer", 718);
+    farm.id = farmId;
+    farm.doorbellMcpMigration = { migrationId: migration };
+    farm.ranch = {
+        animals: [{
+            kindId: "chicken",
+            ticksSinceProduce: 0,
+            pending: 0,
+            lingyeHealth: {
+                sourceId: `p3:animal:${farmId}:fixture:0`,
+                condition: "indigestion",
+                status: "open",
+                generatedDay: beijingDay(NOW),
+                generatedAt: NOW,
+                checks: [],
+                treatments: [],
+                recoveryUntilDay: null,
+            },
+        }],
+        coins: 0,
+        raids: [],
+        raidDebts: [],
+        pets: [],
+    };
+    farm.lingyeP3 = {
+        version: 1,
+        lastAdvancedDay: beijingDay(NOW),
+        lastAnimalRecoveryDay: null,
+        history: [],
+        actionReceipts: {},
+    };
+    insertFarm(farm);
+    const run = (residentId, args, targetFarm) => executor.execute({
+        residentId,
+        bindingReference: residentId === owner ? migration : `binding:${residentId}`,
+        farm: targetFarm,
+        op: "go.hospital.commission",
+        args,
+    });
+    const source = run(owner, {}, getFarm(farmId)).data.sources[0];
+    const published = run(owner, { option: `commission:publish:${source.sourceId}` }, getFarm(farmId));
+    const jobId = published.data.result.jobId;
+    assert.equal(backend.trustedQueries.getJob(jobId).workerResidentId, firstWorker);
+    assert.equal(run(firstWorker, {
+        option: `commission:check:${jobId}:feed-history`,
+    }).ok, true);
+    const transferred = run(firstWorker, {
+        option: `commission:transfer:${jobId}`,
+    });
+    assert.equal(transferred.ok, true, JSON.stringify(transferred));
+    assert.equal(transferred.data.successor.workerResidentId, secondWorker);
+    assert.equal(backend.trustedQueries.getJob(transferred.data.successor.jobId).workerResidentId, secondWorker);
+    database.close();
+});
+
+test("four commission decisions close further world actions and one bad recovery row cannot block startup", () => {
+    const database = openLingyeWorldDatabase(":memory:");
+    let sequence = 0;
+    const backend = createLingyeWorldBackend(database, {
+        economyRules: RULES,
+        generateId: () => `p3-decision-cap-${++sequence}`,
+        now: () => NOW,
+    });
+    const executor = createLingyeActionExecutor({ database, backend, economyRules: RULES });
+    const owner = "019ffc09-49cd-7020-84af-3d04fb1ed03d";
+    const worker = "019ffc09-49cd-7020-94af-3d04fb1ed03d";
+    const migration = "019ffc09-49cd-7020-a4af-3d04fb1ed03d";
+    const farmId = "P3CAP234";
+    registerResident(database, backend, owner, migration, 100_000, 100);
+    registerResident(database, backend, worker, `binding:${worker}`);
+    certify(database, worker, "agronomist", 4);
+    const farm = makeFarm("P3 decision capacity", 719);
+    farm.id = farmId;
+    farm.doorbellMcpMigration = { migrationId: migration };
+    farm.plots[0].crop = {
+        seedType: "common",
+        progress: 1,
+        growTicks: 10,
+        waterCount: 1,
+        ripe: false,
+        lingyeAgronomy: {
+            sourceId: `p3:agronomy:${farmId}:fixture:1`,
+            condition: "nutrient_imbalance",
+            status: "open",
+            generatedDay: beijingDay(NOW),
+            generatedAt: NOW,
+            checks: [],
+            treatments: [],
+            qualityPenalty: true,
+        },
+    };
+    farm.lingyeP3 = {
+        version: 1,
+        lastAdvancedDay: beijingDay(NOW),
+        lastAnimalRecoveryDay: null,
+        history: [],
+        actionReceipts: {},
+    };
+    insertFarm(farm);
+    const run = (residentId, args, targetFarm) => executor.execute({
+        residentId,
+        bindingReference: residentId === owner ? migration : `binding:${residentId}`,
+        farm: targetFarm,
+        op: "go.farm.commission",
+        args,
+    });
+    const source = run(owner, {}, getFarm(farmId)).data.sources[0];
+    const published = run(owner, {
+        option: `commission:publish:${source.sourceId}`,
+        amount: 25,
+    }, getFarm(farmId));
+    const jobId = published.data.result.jobId;
+    assert.equal(run(worker, { option: `commission:accept:${jobId}` }).ok, true);
+    for (const check of ["leaf", "soil", "root", "pest-trace"]) {
+        assert.equal(run(worker, {
+            option: `commission:check:${jobId}:${check}`,
+        }).ok, true);
+    }
+    const cappedView = run(worker, {});
+    assert.deepEqual(cappedView.data.options.map((entry) => entry.option), [
+        `commission:transfer:${jobId}`,
+    ]);
+    const worldBefore = JSON.stringify(getFarm(farmId));
+    const operationsBefore = database.prepare(`SELECT COUNT(*) AS count
+      FROM lingye_cross_store_operations WHERE job_id = ?`).get(jobId).count;
+    const fifth = run(worker, {
+        option: `commission:check:${jobId}:treatment-history`,
+    });
+    assert.equal(fifth.error.code, "OPTION_NOT_AVAILABLE");
+    assert.equal(JSON.stringify(getFarm(farmId)), worldBefore);
+    assert.equal(database.prepare(`SELECT COUNT(*) AS count
+      FROM lingye_cross_store_operations WHERE job_id = ?`).get(jobId).count, operationsBefore);
+
+    const badRow = database.prepare(`SELECT action_key FROM lingye_cross_store_operations
+      WHERE job_id = ? ORDER BY created_at, action_key LIMIT 1`).get(jobId);
+    database.prepare(`UPDATE lingye_cross_store_operations
+      SET status = 'world_applied', result_json = NULL WHERE action_key = ?`)
+        .run(badRow.action_key);
+    const recoveryMessages = [];
+    const originalConsoleError = console.error;
+    console.error = (...parts) => recoveryMessages.push(parts.join(" "));
+    try {
+        assert.doesNotThrow(() => createLingyeActionExecutor({
+            database,
+            backend,
+            economyRules: RULES,
+        }));
+    }
+    finally {
+        console.error = originalConsoleError;
+    }
+    assert.deepEqual(recoveryMessages, [
+        "[doorbell-lingye] one pending cross-store operation could not be recovered",
+    ]);
+    database.close();
+});
+
 test("registered P3 farms also advance from the Beijing day-boundary scheduler", () => {
     const database = openLingyeWorldDatabase(":memory:");
     const owner = "019ffc06-49cd-7020-84af-3d04fb1ed03d";
@@ -409,13 +622,15 @@ test("authority job sync waits for a qualified worker without breaking unrelated
         status, created_at
       ) VALUES ('overdue-loan', ?, 1000, 1000, 1000, 14, 1, 14, 14, 'overdue', ?)
     `).run(borrower, NOW);
+    certify(database, borrower, "constable");
+    scheduleDuty(database, borrower, "constable", "public_security", 1);
 
     assert.doesNotThrow(() => syncAuthorityJobs(database, backend, NOW));
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM career_jobs WHERE source_type = 'bank_overdue_notice'").get().count, 0);
 
     registerResident(database, backend, constable, `binding:${constable}`);
     certify(database, constable, "constable");
-    scheduleDuty(database, constable, "constable", "public_security", 1);
+    scheduleDuty(database, constable, "constable", "public_security", 2);
     syncAuthorityJobs(database, backend, NOW);
     const job = database.prepare("SELECT worker_resident_id FROM career_jobs WHERE source_type = 'bank_overdue_notice'").get();
     assert.equal(job.worker_resident_id, constable);
