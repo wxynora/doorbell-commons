@@ -23,6 +23,19 @@ import { installEconomySchema } from "../dist/economy/economy-schema.js";
 import { EconomyService } from "../dist/economy/economy-service.js";
 import { runLingyeWorldTransaction } from "../dist/lingye-world-database.js";
 const TEST_CURRICULUM_VERSION = "career-test-bank-v1";
+const TEST_CONSTABLE_INTERVIEW_BANK = Object.freeze({
+    getConstableInterviewPaper: ({ interviewId, candidateResidentId, scheduledAt }) => ({
+        bankVersion: "constable-interview-test-bank-v1",
+        paper: { interviewId, candidateResidentId, scheduledAt, questionIds: ["test-question-1"] },
+        factMaterial: { sourceIds: ["test-fact-1"] },
+        scoringStandard: {
+            version: "constable-interview-rubric-v1",
+            dimensions: ["facts", "restraint", "procedure", "explanation"],
+            minimumDimensionAverage: 3,
+            minimumTotalAverage: 16,
+        },
+    }),
+});
 
 test("exam calendar resolves only Tuesday, Thursday, and Saturday in Beijing time", () => {
     assert.equal(nextExamSessionAt(beijingTimestamp("2026-08-31", 23)),
@@ -132,6 +145,7 @@ function createHarness(initialNow = beijingTimestamp("2026-08-26", 11)) {
         generateId,
         now: () => now,
         curriculum: TEST_CURRICULUM,
+        constableInterviewBank: TEST_CONSTABLE_INTERVIEW_BANK,
     });
     const employment = new CareerEmploymentService({ database, generateId, now: () => now });
     const job = new CareerJobService({ database, generateId, now: () => now });
@@ -1385,6 +1399,7 @@ test("constable interview uses human signup order and fails closed after the 24-
         assert.equal(harness.school.scheduleConstableInterview(attempt.attemptId, scheduledAt), interviewId);
         harness.setNow(beijingTimestamp("2026-08-27", 14));
         for (const index of [1, 2, 3, 4]) {
+            harness.ensureAccount(`resident-${index}`);
             harness.school.signupConstableExaminer({
                 eligibilityReference: `eligibility-${index}`,
                 examinerAccountId: `human-${index}`,
@@ -1418,6 +1433,24 @@ test("constable interview uses human signup order and fails closed after the 24-
             "resident-2",
             "resident-3",
         ]);
+        assert.deepEqual(harness.school.submitConstableInterviewScore({
+            explanation: 4,
+            examinerAccountId: "human-1",
+            facts: 4,
+            interviewId,
+            procedure: 4,
+            restraint: 4,
+            examinerResidentId: "resident-1",
+        }), { replay: true, status: "public_notice" });
+        assert.throws(() => harness.school.submitConstableInterviewScore({
+            explanation: 3,
+            examinerAccountId: "human-1",
+            facts: 4,
+            interviewId,
+            procedure: 4,
+            restraint: 4,
+            examinerResidentId: "resident-1",
+        }), assertCareerError("interview_score_conflict"));
         harness.school.voteConstablePublicNotice(noticeId, "resident-1", "review_request");
         harness.setNow(scheduledAt + 24 * 60 * 60 * 1_000);
         assert.equal(harness.school.finalizeConstablePublicNotice(noticeId), "pending_review_configuration");
@@ -1461,6 +1494,7 @@ test("a postponed constable interview reopens signup at a new session", () => {
         });
         const interviewId = automaticInterview.interview_id;
         harness.setNow(beijingTimestamp("2026-08-27", 14));
+        harness.ensureAccount("postponed-resident");
         harness.school.signupConstableExaminer({
             eligibilityReference: "postponed-eligibility",
             examinerAccountId: "postponed-human",
@@ -1468,8 +1502,14 @@ test("a postponed constable interview reopens signup at a new session", () => {
             interviewId,
         });
         harness.setNow(firstSession);
-        assert.equal(harness.school.finalizeConstableExaminerPanel(interviewId), "postponed");
         const secondSession = beijingTimestamp("2026-08-28", 20);
+        assert.deepEqual(harness.school.finalizeConstableExaminerPanel(interviewId), {
+            status: "postponed",
+            nextScheduledAt: secondSession,
+        });
+        assert.deepEqual({ ...harness.database
+            .prepare("SELECT scheduled_at, status, postponed_count FROM career_constable_interviews WHERE interview_id = ?")
+            .get(interviewId) }, { scheduled_at: secondSession, status: "signup_open", postponed_count: 1 });
         assert.equal(harness.school.scheduleConstableInterview(attempt.attemptId, secondSession), interviewId);
         assert.deepEqual({ ...harness.database
             .prepare("SELECT scheduled_at, status FROM career_constable_interviews WHERE interview_id = ?")
@@ -1480,6 +1520,230 @@ test("a postponed constable interview reopens signup at a new session", () => {
         assert.equal(harness.database
             .prepare("SELECT COUNT(*) AS count FROM career_constable_examiner_signups WHERE interview_id = ?")
             .get(interviewId).count, 0);
+        harness.database
+            .prepare("UPDATE career_exam_attempts SET ended_at = ? WHERE attempt_id = ?")
+            .run(secondSession - 30 * 24 * 60 * 60 * 1_000 - 1, attempt.attemptId);
+        harness.setNow(secondSession);
+        assert.deepEqual(harness.school.finalizeConstableExaminerPanel(interviewId), {
+            status: "postponed",
+            nextScheduledAt: null,
+        });
+        assert.deepEqual({ ...harness.database
+            .prepare("SELECT status FROM career_constable_interviews WHERE interview_id = ?")
+            .get(interviewId) }, { status: "postponed" });
+        assert.equal(harness.database
+            .prepare("SELECT registration_status FROM career_exam_attempts WHERE attempt_id = ?")
+            .get(attempt.attemptId).registration_status, "postponed");
+    }
+    finally {
+        harness.database.close();
+    }
+});
+
+test("a closed constable notice with zero review requests activates without a policy", () => {
+    const now = beijingTimestamp("2026-08-29", 12);
+    const harness = createHarness(now);
+    try {
+        harness.ensureAccount("zero-review-candidate");
+        harness.database
+            .prepare("INSERT INTO career_tracks (resident_id, career, track_order, selected_at) VALUES (?, 'constable', 1, ?)")
+            .run("zero-review-candidate", now);
+        const reservation = harness.receipt({
+            amount: 40_000,
+            businessReference: "career-exam:zero-review-attempt:reserve",
+            currency: "gold",
+            kind: "system_gold_reserve",
+            residentId: "zero-review-candidate",
+        });
+        recordFinancialReceipt(harness.database, reservation, {
+            amount: 40_000,
+            businessReference: "career-exam:zero-review-attempt:reserve",
+            currency: "gold",
+            kind: "system_gold_reserve",
+            residentId: "zero-review-candidate",
+        }, now);
+        harness.database.prepare(`INSERT INTO career_exam_attempts (
+          attempt_id, resident_id, career, qualification_level, scheduled_at,
+          registration_status, reservation_receipt_id, registered_at, ended_at
+        ) VALUES ('zero-review-attempt', 'zero-review-candidate', 'constable', 1, ?, 'written_passed', ?, ?, ?)`)
+            .run(now - 1, reservation.receiptId, now - 1, now - 1);
+        const material = TEST_CONSTABLE_INTERVIEW_BANK.getConstableInterviewPaper({
+            candidateResidentId: "zero-review-candidate",
+            interviewId: "zero-review-interview",
+            scheduledAt: now - 1,
+        });
+        harness.database.prepare(`INSERT INTO career_constable_interviews (
+          interview_id, attempt_id, candidate_resident_id, scheduled_at,
+          interview_bank_version, interview_paper_snapshot_json,
+          interview_fact_material_snapshot_json, interview_scoring_standard_snapshot_json,
+          status, created_at
+        ) VALUES ('zero-review-interview', 'zero-review-attempt', 'zero-review-candidate', ?, ?, ?, ?, ?, 'public_notice', ?)`)
+            .run(now - 1, material.bankVersion, JSON.stringify(material.paper),
+            JSON.stringify(material.factMaterial), JSON.stringify(material.scoringStandard), now - 1);
+        harness.database.prepare(`INSERT INTO career_constable_public_notices (
+          notice_id, interview_id, candidate_resident_id, opened_at, closes_at,
+          status, eligible_voter_count
+        ) VALUES ('zero-review-notice', 'zero-review-interview', 'zero-review-candidate', ?, ?, 'open', 0)`)
+            .run(now - 24 * 60 * 60 * 1_000 - 1, now - 1);
+        harness.database.prepare(`INSERT INTO career_certificates (
+          resident_id, career, qualification_level, status, source_attempt_id, issued_at
+        ) VALUES ('zero-review-candidate', 'constable', 1, 'pending_public_notice', 'zero-review-attempt', ?)`)
+            .run(now - 1);
+        assert.equal(harness.school.finalizeConstablePublicNotice("zero-review-notice"), "certificate_activated");
+        assert.deepEqual({ ...harness.database.prepare(`
+          SELECT status, effective_at FROM career_certificates
+          WHERE source_attempt_id = 'zero-review-attempt'
+        `).get() }, { status: "active", effective_at: now });
+    }
+    finally {
+        harness.database.close();
+    }
+});
+
+test("constable examiner eligibility is checked against current loans and complaints", () => {
+    const now = beijingTimestamp("2026-08-29", 14);
+    const harness = createHarness(now);
+    try {
+        harness.ensureAccount("eligibility-candidate");
+        harness.ensureAccount("eligibility-examiner");
+        harness.database.exec(`
+          INSERT INTO career_tracks (resident_id, career, track_order, selected_at)
+          VALUES ('eligibility-candidate', 'constable', 1, 1);
+        `);
+        const reservation = harness.receipt({
+            amount: 40_000,
+            businessReference: "career-exam:eligibility-attempt:reserve",
+            currency: "gold",
+            kind: "system_gold_reserve",
+            residentId: "eligibility-candidate",
+        });
+        recordFinancialReceipt(harness.database, reservation, {
+            amount: 40_000,
+            businessReference: "career-exam:eligibility-attempt:reserve",
+            currency: "gold",
+            kind: "system_gold_reserve",
+            residentId: "eligibility-candidate",
+        }, now);
+        const interviewSession = beijingTimestamp("2026-08-30", 20);
+        harness.database.prepare(`INSERT INTO career_exam_attempts (
+          attempt_id, resident_id, career, qualification_level, scheduled_at,
+          registration_status, reservation_receipt_id, registered_at, ended_at
+        ) VALUES ('eligibility-attempt', 'eligibility-candidate', 'constable', 1, ?, 'written_passed', ?, ?, ?)`)
+            .run(interviewSession, reservation.receiptId, now - 1, now - 1);
+        harness.database.prepare(`INSERT INTO career_constable_interviews (
+          interview_id, attempt_id, candidate_resident_id, scheduled_at, status, created_at
+        ) VALUES ('eligibility-interview', 'eligibility-attempt', 'eligibility-candidate', ?, 'signup_open', ?)`)
+            .run(interviewSession, now);
+        harness.database.prepare(`INSERT INTO economy_player_loans (
+          loan_id, lender_resident_id, borrower_resident_id, principal_original,
+          principal_outstanding, total_rate_ppm, term_days, status, created_at
+        ) VALUES ('eligibility-loan', 'eligibility-candidate', 'eligibility-examiner', 1, 1, 0, 1, 'active', ?)`)
+            .run(now);
+        harness.setNow(beijingTimestamp("2026-08-30", 14));
+        assert.throws(() => harness.school.signupConstableExaminer({
+            eligibilityReference: "forged-reference",
+            examinerAccountId: "eligibility-account",
+            examinerResidentId: "eligibility-examiner",
+            interviewId: "eligibility-interview",
+        }), assertCareerError("examiner_not_eligible"));
+        harness.database.prepare("DELETE FROM economy_player_loans WHERE loan_id = 'eligibility-loan'").run();
+        harness.database.exec(`
+          INSERT INTO career_jobs (
+            job_id, career, source_type, source_id, object_type, object_id,
+            owner_resident_id, required_level, difficulty_level, assignment_mode,
+            status, created_at, updated_at
+          ) VALUES (
+            'eligibility-complaint-job', 'constable', 'resident_complaint', 'complaint-1',
+            'complaint', 'complaint-1', 'eligibility-candidate', 1, 1, 'assigned', 'active', 1, 1
+          );
+          INSERT INTO career_job_assignment_exclusions (
+            job_id, resident_id, relation_kind, source_reference, recorded_at
+          ) VALUES ('eligibility-complaint-job', 'eligibility-examiner', 'source_party', 'complaint-1', 1);
+        `);
+        assert.throws(() => harness.school.signupConstableExaminer({
+            eligibilityReference: "another-forged-reference",
+            examinerAccountId: "eligibility-account-2",
+            examinerResidentId: "eligibility-examiner",
+            interviewId: "eligibility-interview",
+        }), assertCareerError("examiner_not_eligible"));
+    }
+    finally {
+        harness.database.close();
+    }
+});
+
+test("constable scoring fails closed when no private interview bank is configured", () => {
+    const now = beijingTimestamp("2026-08-29", 12);
+    const harness = createHarness(now);
+    try {
+        harness.ensureAccount("unconfigured-candidate");
+        harness.ensureAccount("unconfigured-examiner");
+        harness.database.exec(`
+          INSERT INTO career_tracks (resident_id, career, track_order, selected_at)
+          VALUES ('unconfigured-candidate', 'constable', 1, 1);
+        `);
+        const reservation = harness.receipt({
+            amount: 40_000,
+            businessReference: "career-exam:unconfigured-attempt:reserve",
+            currency: "gold",
+            kind: "system_gold_reserve",
+            residentId: "unconfigured-candidate",
+        });
+        recordFinancialReceipt(harness.database, reservation, {
+            amount: 40_000,
+            businessReference: "career-exam:unconfigured-attempt:reserve",
+            currency: "gold",
+            kind: "system_gold_reserve",
+            residentId: "unconfigured-candidate",
+        }, now);
+        harness.database.prepare(`INSERT INTO career_exam_attempts (
+          attempt_id, resident_id, career, qualification_level, scheduled_at,
+          registration_status, reservation_receipt_id, registered_at, ended_at
+        ) VALUES ('unconfigured-attempt', 'unconfigured-candidate', 'constable', 1, ?, 'written_passed', ?, ?, ?)`)
+            .run(now, reservation.receiptId, now, now);
+        harness.database.prepare(`INSERT INTO career_constable_interviews (
+          interview_id, attempt_id, candidate_resident_id, scheduled_at, status, created_at
+        ) VALUES ('unconfigured-interview', 'unconfigured-attempt', 'unconfigured-candidate', ?, 'panel_ready', ?)`)
+            .run(now, now);
+        harness.database.prepare(`INSERT INTO career_constable_examiner_signups (
+          interview_id, examiner_account_id, examiner_resident_id, eligibility_reference,
+          signup_order, signed_up_at, attendance_confirmed_at,
+          attendance_eligibility_reference, selected
+        ) VALUES ('unconfigured-interview', 'unconfigured-account', 'unconfigured-examiner', 'service-assertion', 1, ?, ?, 'service-assertion', 1)`)
+            .run(now, now);
+        const unconfigured = new CareerSchoolService({
+            database: harness.database,
+            generateId: () => "unconfigured-generated",
+            now: () => now,
+            curriculum: TEST_CURRICULUM,
+        });
+        assert.throws(() => unconfigured.submitConstableInterviewScore({
+            explanation: 4,
+            examinerAccountId: "unconfigured-account",
+            examinerResidentId: "unconfigured-examiner",
+            facts: 4,
+            interviewId: "unconfigured-interview",
+            procedure: 4,
+            restraint: 4,
+        }), assertCareerError("interview_material_not_configured"));
+        for (const [index, accountId] of ["unconfigured-account", "unconfigured-account-2", "unconfigured-account-3"].entries()) {
+            if (index > 0) {
+                harness.database.prepare(`INSERT INTO career_constable_examiner_signups (
+                  interview_id, examiner_account_id, examiner_resident_id, eligibility_reference,
+                  signup_order, signed_up_at, attendance_confirmed_at,
+                  attendance_eligibility_reference, selected
+                ) VALUES ('unconfigured-interview', ?, ?, 'service-assertion', ?, ?, ?, 'service-assertion', 1)`)
+                    .run(accountId, `unconfigured-examiner-${index + 1}`, index + 1, now, now);
+                harness.ensureAccount(`unconfigured-examiner-${index + 1}`);
+            }
+            harness.database.prepare(`INSERT INTO career_constable_scores (
+              interview_id, examiner_account_id, facts_score, restraint_score,
+              procedure_score, explanation_score, scored_at
+            ) VALUES ('unconfigured-interview', ?, 4, 4, 4, 4, ?)`)
+                .run(accountId, now);
+        }
+        harness.database.prepare("UPDATE career_constable_interviews SET status = 'scoring' WHERE interview_id = 'unconfigured-interview'").run();
+        assert.throws(() => unconfigured.openConstablePublicNotice("unconfigured-interview", ["unconfigured-voter"]), assertCareerError("interview_material_not_configured"));
     }
     finally {
         harness.database.close();

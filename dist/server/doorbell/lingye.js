@@ -60,7 +60,7 @@ const COMMISSION_CAREERS = Object.freeze({
 });
 
 const BANK_SECTIONS = new Set(["account", "deposits", "exchange", "loans", "credit"]);
-const SCHOOL_SECTIONS = new Set(["careers", "courses", "exams", "certificates", "employment"]);
+const SCHOOL_SECTIONS = new Set(["careers", "courses", "exams", "certificates", "employment", "interviews", "publicNotices"]);
 const TERM_DAYS = new Set([14, 30, 60]);
 const INSUFFICIENT_FUNDS_MESSAGE = "可用余额不足，本次操作没有执行。";
 const DEFAULT_ECONOMY_RULES = Object.freeze({
@@ -187,6 +187,10 @@ function mapRows(rows) {
         key.replace(/_([a-z])/g, (_match, letter) => letter.toUpperCase()),
         value,
     ])));
+}
+
+function isoTime(value) {
+    return value === null || value === undefined ? null : new Date(value).toISOString();
 }
 
 function option(option, requires = []) {
@@ -426,7 +430,77 @@ function careerSchoolAvailable(backend, career) {
     return backend.trustedQueries.courseAvailable(career, 1, 1);
 }
 
+function constableInterviewFacts(database, residentId, optionRevision) {
+    const interviews = mapRows(database.prepare(`
+      SELECT interview_id, candidate_resident_id, scheduled_at, status,
+             last_postponed_at, postponed_count
+      FROM career_constable_interviews
+      WHERE candidate_resident_id = ?
+         OR EXISTS (
+           SELECT 1 FROM career_constable_examiner_signups AS signup
+           WHERE signup.interview_id = career_constable_interviews.interview_id
+             AND signup.examiner_resident_id = ?
+         )
+      ORDER BY scheduled_at DESC, interview_id
+    `).all(residentId, residentId)).map((interview) => {
+        const signup = mapRows(database.prepare(`
+          SELECT signup_order, attendance_confirmed_at, selected
+          FROM career_constable_examiner_signups
+          WHERE interview_id = ? AND examiner_resident_id = ?
+        `).all(interview.interviewId, residentId))[0] ?? null;
+        const notice = mapRows(database.prepare(`
+          SELECT notice_id, status, opened_at, closes_at
+          FROM career_constable_public_notices WHERE interview_id = ?
+        `).all(interview.interviewId))[0] ?? null;
+        return {
+            interviewId: interview.interviewId,
+            scheduledAt: isoTime(interview.scheduledAt),
+            status: interview.status,
+            role: interview.candidateResidentId === residentId ? "candidate" : "examiner",
+            signup: signup ? {
+                ...signup,
+                attendanceConfirmedAt: isoTime(signup.attendanceConfirmedAt),
+            } : null,
+            notice: notice ? {
+                ...notice,
+                openedAt: isoTime(notice.openedAt),
+                closesAt: isoTime(notice.closesAt),
+            } : null,
+            postponed: interview.lastPostponedAt !== null,
+            lastPostponedAt: isoTime(interview.lastPostponedAt),
+            postponedCount: interview.postponedCount,
+        };
+    });
+    const publicNotices = mapRows(database.prepare(`
+      SELECT notice.notice_id, notice.interview_id, notice.status,
+             notice.opened_at, notice.closes_at, voter.choice
+      FROM career_constable_public_notices AS notice
+      JOIN career_constable_notice_voters AS voter ON voter.notice_id = notice.notice_id
+      WHERE voter.resident_id = ?
+      ORDER BY notice.opened_at DESC, notice.notice_id
+    `).all(residentId)).map((notice) => ({
+        noticeId: notice.noticeId,
+        interviewId: notice.interviewId,
+        status: notice.status,
+        openedAt: isoTime(notice.openedAt),
+        closesAt: isoTime(notice.closesAt),
+        choice: notice.choice,
+        options: notice.status === "open" && notice.choice === null
+            ? ["no_objection", "review_request"]
+            : [],
+    }));
+    const options = [];
+    for (const notice of publicNotices) {
+        if (notice.status !== "open" || notice.choice !== null)
+            continue;
+        options.push(option(schoolOption(optionRevision, "constable-public-notice-vote", `${notice.noticeId}:no_objection`)));
+        options.push(option(schoolOption(optionRevision, "constable-public-notice-vote", `${notice.noticeId}:review_request`)));
+    }
+    return { interviews, publicNotices, options };
+}
+
 function readSchoolFacts(database, backend, residentId, now, optionRevision = schoolRevision(database, residentId)) {
+    backend.trustedSystemCommands.advanceConstableInterviews(now);
     backend.trustedSystemCommands.expireDueExamAttempts(residentId);
     const tracks = mapRows(database.prepare(`
       SELECT career, track_order, selected_at FROM career_tracks
@@ -472,7 +546,8 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
       FROM career_duty_days WHERE resident_id = ?
       ORDER BY duty_date DESC, duty_id
     `).all(residentId));
-    const options = [];
+    const constable = constableInterviewFacts(database, residentId, optionRevision);
+    const options = [...constable.options];
     if (tracks.length === 0) {
         for (const career of CAREER_IDS.filter((candidate) => careerSchoolAvailable(backend, candidate)))
             options.push(option(schoolOption(optionRevision, "career-select", career)));
@@ -575,6 +650,8 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
         exams,
         certificates,
         employment: { records: employment, duties },
+        interviews: constable.interviews,
+        publicNotices: constable.publicNotices,
         options,
         contentSources: {
             courseCatalogAvailable: true,
@@ -593,12 +670,16 @@ function schoolReference(facts, backend, residentId, reference) {
         ...facts.certificates.map((value) => ({ type: "certificate", value })),
         ...facts.employment.records.map((value) => ({ type: "employment", value })),
         ...facts.employment.duties.map((value) => ({ type: "duty_day", value })),
+        ...facts.interviews.map((value) => ({ type: "interview", value })),
+        ...facts.publicNotices.map((value) => ({ type: "public_notice", value })),
     ];
     const item = candidates.find(({ value }) => [
         value.attemptId,
         value.employmentId,
         value.dutyId,
         value.sourceAttemptId,
+        value.interviewId,
+        value.noticeId,
         value.career && value.qualificationLevel
             ? `${value.career}:${value.qualificationLevel}:${value.courseIndex ?? "certificate"}`
             : null,
@@ -665,7 +746,15 @@ function schoolChoose(database, backend, residentId, now, args) {
         const examMatch = /^school:exam-(register|start|release|submit):(\d+):(.+)$/u.exec(args.option);
         const hireMatch = /^school:employment-hire:(\d+):(reporter|veterinarian|constable)$/u.exec(args.option);
         const availabilityMatch = /^school:employment-(leave|resume|end):(\d+):(.+)$/u.exec(args.option);
-        if (careerMatch) {
+        const publicNoticeVoteMatch = /^school:constable-public-notice-vote:(\d+):(.+):(no_objection|review_request)$/u.exec(args.option);
+        if (publicNoticeVoteMatch) {
+            if (Object.hasOwn(args, "answers"))
+                throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个职业学校 option 当前不可用。");
+            result = backend.trustedSystemCommands.voteConstablePublicNotice(
+                publicNoticeVoteMatch[2], residentId, publicNoticeVoteMatch[3],
+            );
+        }
+        else if (careerMatch) {
             if (Object.hasOwn(args, "answers"))
                 throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个 option 不接收答案。");
             result = backend.trustedSystemCommands.selectCareer(residentId, careerMatch[2]);

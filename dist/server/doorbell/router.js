@@ -37,9 +37,39 @@ import {
     handleDoorbellWelcomeReward,
 } from "./lifecycle.js";
 import { handleDoorbellLingyeAction } from "./lingye.js";
+import {
+    handleDoorbellConstablePublicNoticeOpen,
+    handleDoorbellHumanConstableInterviewAction,
+    handleDoorbellHumanConstableInterviewRead,
+} from "./constable-interview.js";
+import { humanFieldError, internalServiceError } from "./contract.js";
 
-export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExecutor, careerBenefitsForFarm) {
+export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExecutor, careerBenefitsForFarm, constableInterviewRuntime) {
     return async function handleDoorbellInternal(req, res, parts, method) {
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "constable" && parts[4] === "interview" && parts[5] === "read" && parts.length === 6) {
+            if (!constableInterviewRuntime?.database || !constableInterviewRuntime?.backend) {
+                humanFieldError(res, 503, "farm_unavailable", "The constable interview service is unavailable");
+                return true;
+            }
+            await handleDoorbellHumanConstableInterviewRead(req, res, method, constableInterviewRuntime.database, constableInterviewRuntime.backend, constableInterviewRuntime.now?.() ?? Date.now());
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "constable" && parts[4] === "interview" && parts[5] === "action" && parts.length === 6) {
+            if (!constableInterviewRuntime?.database || !constableInterviewRuntime?.backend) {
+                humanFieldError(res, 503, "farm_unavailable", "The constable interview service is unavailable");
+                return true;
+            }
+            await handleDoorbellHumanConstableInterviewAction(req, res, method, constableInterviewRuntime.database, constableInterviewRuntime.backend, constableInterviewRuntime.now?.() ?? Date.now());
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "constable" && parts[3] === "interview" && parts[4] === "public-notice" && parts[5] === "open" && parts.length === 6) {
+            if (!constableInterviewRuntime?.database || !constableInterviewRuntime?.backend) {
+                internalServiceError(res, 503, "service_unavailable", "The constable interview service is unavailable");
+                return true;
+            }
+            await handleDoorbellConstablePublicNoticeOpen(req, res, method, constableInterviewRuntime.database, constableInterviewRuntime.backend, constableInterviewRuntime.now?.() ?? Date.now());
+            return true;
+        }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "memorial" && parts[4] === "qixi-2026" && parts[5] === "read" && parts.length === 6) {
             await handleDoorbellHumanQixiMemorialRead(req, res, method);
             return true;

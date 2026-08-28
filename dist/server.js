@@ -34,6 +34,8 @@ import { createLingyeWorldBackend, openLingyeWorldDatabase } from "./lingye-worl
 import { resolveChefOriginalCookingReceipt } from "./domain/kitchen/original.js";
 import { farmCareerBenefits, farmDoorbellKitchenCareerBenefits } from "./career/farm-benefits.js";
 import { farmActionTouchesLockedCareerObject, startRegisteredP3Scheduler } from "./career/p3-commission-runtime.js";
+import { startConstableInterviewScheduler } from "./career/constable-interview-scheduler.js";
+import { loadConstableInterviewBank } from "./career/constable-interview-bank.js";
 let activeLingyeWorldDatabase = null;
 function executeDoorbellFarmAction(farm, action, params, detail, now) {
     const body = { ...params };
@@ -641,6 +643,7 @@ export function startServer(port, host = "127.0.0.1") {
             resolveCookingReceipt: resolveOriginalCookingReceipt,
             useFarmStore: true,
         },
+        constableInterviewBank: loadConstableInterviewBank(),
     });
     const doorbellCareerBenefitsForFarm = (farm) =>
         farmDoorbellKitchenCareerBenefits(lingyeWorldDatabase, lingyeWorldBackend, farm);
@@ -648,8 +651,10 @@ export function startServer(port, host = "127.0.0.1") {
         executeDoorbellFarmAction,
         undefined,
         doorbellCareerBenefitsForFarm,
+        { database: lingyeWorldDatabase, backend: lingyeWorldBackend },
     );
     const stopP3Scheduler = startRegisteredP3Scheduler(lingyeWorldDatabase);
+    const stopConstableInterviewScheduler = startConstableInterviewScheduler(lingyeWorldDatabase, lingyeWorldBackend);
     const server = createServer(async (req, res) => {
         const url = new URL(req.url ?? "/", `http://localhost:${port}`);
         const parts = url.pathname.split("/").filter(Boolean);
@@ -868,6 +873,7 @@ export function startServer(port, host = "127.0.0.1") {
     setInterval(() => { const t = Date.now(); sweepGuard(t); sweepNonces(t); legacyAgent.sweepFlashes(t); }, 60_000).unref(); // 周期清理限流表 + 过期 nonce/flash
     server.once("close", () => {
         stopP3Scheduler();
+        stopConstableInterviewScheduler();
         if (activeLingyeWorldDatabase === lingyeWorldDatabase)
             activeLingyeWorldDatabase = null;
         lingyeWorldDatabase.close();

@@ -42,6 +42,8 @@ node farm-cli.mjs
 
 可用环境变量：`PUBLIC_BASE_URL`（对外根地址，缺省 `http://localhost:8080`）、`REGISTRATION_OPEN`、`REGISTRATION_CAP` 等，以当前 `dist/config.js` 为准。
 
+治安官真人面试的题面、事实材料和评分标准不进入本仓库。需要启用面试评分时，部署侧必须设置 `AIFARM_CONSTABLE_INTERVIEW_BANK_MODULE`，指向一个私有 CommonJS provider；该模块需导出 `getConstableInterviewPaper(input)`。运行时会把 provider 返回的版本、题面、事实材料和四维评分标准冻结到对应面试。未配置时仍可建立与顺延面试，但被选中的考官无法读取材料或提交评分；路径无效或 provider 合同不完整时服务拒绝启动，不会回退到公开题库或虚构内容。
+
 ## 常用脚本
 
 ```bash

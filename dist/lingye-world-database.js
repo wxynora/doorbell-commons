@@ -328,6 +328,7 @@ export function createLingyeWorldBackend(database, options) {
     const shared = {
         database,
         ...(options.curriculum === undefined ? {} : { curriculum: options.curriculum }),
+        ...(options.constableInterviewBank === undefined ? {} : { constableInterviewBank: options.constableInterviewBank }),
         ...(options.now === undefined ? {} : { now: options.now }),
         ...(options.generateId === undefined ? {} : { generateId: options.generateId }),
     };
@@ -612,6 +613,7 @@ export function createLingyeWorldBackend(database, options) {
             confirmConstableExaminerAttendance: (input) => atomic(() => school.confirmConstableExaminerAttendance(input)),
             finalizeConstableExaminerPanel: (interviewId) => atomic(() => school.finalizeConstableExaminerPanel(interviewId)),
             submitConstableInterviewScore: (input) => atomic(() => school.submitConstableInterviewScore(input)),
+            advanceConstableInterviews: (now) => atomic(() => school.advanceConstableInterviews(now)),
             openConstablePublicNotice: (interviewId, eligibleVoterResidentIds) => atomic(() => school.openConstablePublicNotice(interviewId, eligibleVoterResidentIds)),
             voteConstablePublicNotice: (noticeId, residentId, choice) => atomic(() => school.voteConstablePublicNotice(noticeId, residentId, choice)),
             finalizeConstablePublicNotice: (noticeId, reviewPolicy) => atomic(() => school.finalizeConstablePublicNotice(noticeId, reviewPolicy)),
@@ -809,6 +811,8 @@ export function createLingyeWorldBackend(database, options) {
         courseAvailable: (career, level, courseIndex) => school.courseAvailable(career, level, courseIndex),
         examAvailable: (career, level) => school.examAvailable(career, level),
         getWrittenExamPaper: (attemptId) => school.getWrittenExamPaper(attemptId),
+        getConstableInterviewMaterial: (interviewId) => school.getConstableInterviewMaterial(interviewId),
+        constableExaminerEligible: (interviewId, residentId) => school.constableExaminerEligible(interviewId, residentId),
         hasScheduledDuty: (residentId, career, dutyDate) => employment.hasScheduledDuty(residentId, career, dutyDate),
         getJob: (jobId) => jobs.getJob(jobId),
         getReporterSourceFact: (sourceId) => getReporterSourceFact(database, sourceId),

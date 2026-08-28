@@ -127,6 +127,12 @@ export function installCareerSchema(database) {
       attempt_id TEXT NOT NULL UNIQUE REFERENCES career_exam_attempts(attempt_id),
       candidate_resident_id TEXT NOT NULL,
       scheduled_at INTEGER NOT NULL,
+      interview_bank_version TEXT,
+      interview_paper_snapshot_json TEXT,
+      interview_fact_material_snapshot_json TEXT,
+      interview_scoring_standard_snapshot_json TEXT,
+      last_postponed_at INTEGER,
+      postponed_count INTEGER NOT NULL DEFAULT 0 CHECK (postponed_count >= 0),
       status TEXT NOT NULL CHECK (status IN (
         'signup_open', 'panel_ready', 'postponed', 'scoring', 'failed', 'public_notice',
         'pending_review_configuration', 'review_required', 'certificate_activated'
@@ -517,6 +523,21 @@ export function installCareerSchema(database) {
         .map((column) => column.name));
     if (!examColumns.has("missed_session_at"))
         database.exec("ALTER TABLE career_exam_attempts ADD COLUMN missed_session_at INTEGER");
+    const interviewColumns = new Set(database
+        .prepare("PRAGMA table_info(career_constable_interviews)")
+        .all()
+        .map((column) => column.name));
+    for (const [name, definition] of [
+        ["interview_bank_version", "TEXT"],
+        ["interview_paper_snapshot_json", "TEXT"],
+        ["interview_fact_material_snapshot_json", "TEXT"],
+        ["interview_scoring_standard_snapshot_json", "TEXT"],
+        ["last_postponed_at", "INTEGER"],
+        ["postponed_count", "INTEGER NOT NULL DEFAULT 0"],
+    ]) {
+        if (!interviewColumns.has(name))
+            database.exec(`ALTER TABLE career_constable_interviews ADD COLUMN ${name} ${definition}`);
+    }
     const reporterMaterialPackColumns = new Set(database
         .prepare("PRAGMA table_info(career_reporter_material_packs)")
         .all()
