@@ -9,6 +9,7 @@ import { handleHumanCropCodexAction } from "../crop-codex-action.js";
 import { handleHumanSmeltingAction } from "../smelting-action.js";
 import { handleHumanFarmSettingsAction } from "../farm-settings-action.js";
 import { handleHumanOriginalPlantAction } from "../original-plant-action.js";
+import { projectQixiMemorial } from "../qixi-memorial-structured.js";
 import {
     FARM_DOORPLATE_RE,
     humanFieldError,
@@ -98,6 +99,34 @@ export async function handleDoorbellHumanBulletinRead(req, res, method) {
             return humanFieldError(res, 400, "invalid_request", "The request body must be valid JSON");
         console.error("[doorbell-human-bulletin] read failed");
         return humanFieldError(res, 503, "farm_unavailable", "The farm bulletin could not be read");
+    }
+}
+
+export async function handleDoorbellHumanQixiMemorialRead(req, res, method) {
+    if (!requireDoorbellHumanFieldService(req, res, method))
+        return;
+    try {
+        const body = await readJsonBody(req, MAX_BODY_BYTES);
+        const keys = isPlainObject(body) ? Object.keys(body) : [];
+        if (!isPlainObject(body)
+            || keys.length !== 2
+            || !keys.includes("farm_human_key")
+            || !keys.includes("expected_farm_doorplate")
+            || typeof body.farm_human_key !== "string"
+            || !body.farm_human_key
+            || typeof body.expected_farm_doorplate !== "string"
+            || !FARM_DOORPLATE_RE.test(body.expected_farm_doorplate))
+            return humanFieldError(res, 400, "invalid_request", "Submit only farm_human_key and expected_farm_doorplate");
+        const binding = validateFarmBinding(body);
+        if (binding.error)
+            return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
+        return jsonOut(res, 200, projectQixiMemorial(binding.farm, Date.now()));
+    }
+    catch (error) {
+        if (error instanceof PublicSyncError)
+            return humanFieldError(res, 400, "invalid_request", "The request body must be valid JSON");
+        console.error("[doorbell-human-qixi-memorial] read failed");
+        return humanFieldError(res, 503, "farm_unavailable", "The Qixi memorial could not be read");
     }
 }
 

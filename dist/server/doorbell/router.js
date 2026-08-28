@@ -6,6 +6,7 @@ import {
     handleDoorbellHumanFieldRead,
     handleDoorbellHumanHarvestAssist,
     handleDoorbellHumanOriginalPlantAction,
+    handleDoorbellHumanQixiMemorialRead,
     handleDoorbellHumanSmeltingAction,
 } from "./human-farm.js";
 import {
@@ -39,6 +40,10 @@ import { handleDoorbellLingyeAction } from "./lingye.js";
 
 export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExecutor) {
     return async function handleDoorbellInternal(req, res, parts, method) {
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "memorial" && parts[4] === "qixi-2026" && parts[5] === "read" && parts.length === 6) {
+            await handleDoorbellHumanQixiMemorialRead(req, res, method);
+            return true;
+        }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "catalog" && parts[4] === "read" && parts.length === 5) {
             await handleDoorbellHumanCatalogRead(req, res, method);
             return true;

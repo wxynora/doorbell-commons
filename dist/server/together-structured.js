@@ -6,6 +6,14 @@ import {
 } from "../public-expedition.js";
 
 const ART_ASSET_KEYS = new Map([
+  ["river-from-tomorrow-opening-v3.webp", "together.river-from-tomorrow-opening"],
+  ["future-wharf-v3.webp", "together.river-future-wharf"],
+  ["cooperative-investigation-v3.webp", "together.river-cooperative-investigation"],
+  ["river-fork-v3.webp", "together.river-fork"],
+  ["ending-second-home-v3.webp", "together.river-ending-second-home"],
+  ["ending-quiet-harvest-v3.webp", "together.river-ending-quiet-harvest"],
+  ["ending-ten-thousand-bottles-v3.webp", "together.river-ending-ten-thousand-bottles"],
+  ["ending-river-no-address-v3.webp", "together.river-ending-no-address"],
   ["same-kitchen-opening-v3.jpg", "together.same-kitchen-opening"],
   ["same-kitchen-old-recipe-v1.jpg", "together.same-kitchen-old-recipe"],
   ["same-kitchen-undelivered-letters-v1.jpg", "together.same-kitchen-undelivered-letters"],
@@ -60,6 +68,115 @@ function projectHistory(history) {
     }
     return [];
   });
+}
+
+const ARCHIVE_HISTORY_KINDS = new Set(["story", "task", "clue", "ending"]);
+
+const SAME_KITCHEN_ENTRY_ART = new Map([
+  [publicExpeditionContent.opening.title, publicExpeditionContent.art.opening],
+  [publicExpeditionContent.stages.recipe.title, publicExpeditionContent.art.recipe],
+  [publicExpeditionContent.stages.recipe.question.name, publicExpeditionContent.art.recipe],
+  [publicExpeditionContent.stages.recipe.dish.name, publicExpeditionContent.art.recipe],
+  [publicExpeditionContent.stages.recipe.result.title, publicExpeditionContent.art.recipe],
+  [publicExpeditionContent.stages.letters.title, publicExpeditionContent.art.letters],
+  [publicExpeditionContent.stages.letters.task.name, publicExpeditionContent.art.letters],
+  [publicExpeditionContent.stages.letters.task.clueTitle, publicExpeditionContent.art.letters],
+  [publicExpeditionContent.stages.letters.result.title, publicExpeditionContent.art.letters],
+  ...Object.values(publicExpeditionContent.stages.letters.choice.results)
+    .map((result) => [result.title, publicExpeditionContent.art.letters]),
+  [publicExpeditionContent.stages.service.title, publicExpeditionContent.art.service],
+  ...publicExpeditionContent.stages.service.orders
+    .map((order) => [order.name, publicExpeditionContent.art.service]),
+  ["三班船都已照常离岸", publicExpeditionContent.art.service],
+  [publicExpeditionContent.choices["4"].title, publicExpeditionContent.art.final],
+]);
+
+function artAssetKey(artName) {
+  return ART_ASSET_KEYS.get(String(artName ?? "")) ?? "together.unknown";
+}
+
+function archiveEntryArtAssetKey(archive, entry, lastChoiceStep) {
+  const storyId = String(archive.storyId ?? "");
+  if (storyId === String(publicExpeditionContent.id)) {
+    if (entry?.kind === "ending")
+      return artAssetKey(publicExpeditionContent.art?.[archive.endingId]);
+    return artAssetKey(SAME_KITCHEN_ENTRY_ART.get(String(entry?.title ?? "")));
+  }
+  if (storyId === "river_from_tomorrow") {
+    if (entry?.kind === "ending") {
+      const endingArt = {
+        second_home: "ending-second-home-v3.webp",
+        quiet_harvest: "ending-quiet-harvest-v3.webp",
+        ten_thousand_bottles: "ending-ten-thousand-bottles-v3.webp",
+        no_address: "ending-river-no-address-v3.webp",
+      };
+      return artAssetKey(endingArt[String(archive.endingId ?? "")]);
+    }
+    if (lastChoiceStep >= 5) return artAssetKey("river-fork-v3.webp");
+    if (lastChoiceStep >= 4) return artAssetKey("cooperative-investigation-v3.webp");
+    if (lastChoiceStep >= 2) return artAssetKey("future-wharf-v3.webp");
+    return artAssetKey("river-from-tomorrow-opening-v3.webp");
+  }
+  return "together.unknown";
+}
+
+function projectArchiveHistory(archive) {
+  let lastChoiceStep = 0;
+  const projected = [];
+  for (const entry of Array.isArray(archive.history) ? archive.history : []) {
+    if (entry?.kind === "choice") {
+      if (Number.isSafeInteger(entry.step) && entry.step > 0)
+        lastChoiceStep = entry.step;
+      continue;
+    }
+    if (!ARCHIVE_HISTORY_KINDS.has(entry?.kind)) continue;
+    for (const item of projectHistory([entry])) {
+      projected.push({
+        ...item,
+        art_asset_key: archiveEntryArtAssetKey(archive, entry, lastChoiceStep),
+      });
+    }
+  }
+  return projected.slice(-128);
+}
+
+function archiveArtAssetKey(archive) {
+  if (String(archive.storyId ?? "") !== String(publicExpeditionContent.id))
+    return archiveEntryArtAssetKey(archive, { kind: "ending" }, 6);
+  const endingId = String(archive.endingId ?? "");
+  const stage = String(archive.stage ?? "");
+  const artName = endingId && Object.prototype.hasOwnProperty.call(publicExpeditionContent.art ?? {}, endingId)
+    ? publicExpeditionContent.art[endingId]
+    : stage === "opening" || STAGE_ORDER.includes(stage)
+      ? publicExpeditionContent.art[stage]
+      : null;
+  return artAssetKey(artName);
+}
+
+function projectArchive(archive) {
+  if (!archive || typeof archive !== "object" || Array.isArray(archive))
+    return null;
+  const storyId = String(archive.storyId ?? "");
+  const round = Number(archive.round);
+  if (!storyId || !Number.isSafeInteger(round) || round < 1)
+    return null;
+  const rawTitle = archive.storyTitle === null || archive.storyTitle === undefined || archive.storyTitle === ""
+    ? storyId
+    : archive.storyTitle;
+  return {
+    story_id: safeText(storyId),
+    title: safeText(rawTitle),
+    round,
+    art_asset_key: archiveArtAssetKey(archive),
+    history: projectArchiveHistory(archive),
+  };
+}
+
+function projectArchives(archives) {
+  return (Array.isArray(archives) ? archives : [])
+    .map(projectArchive)
+    .filter(Boolean)
+    .slice(-12);
 }
 
 function projectTask(task) {
@@ -146,6 +263,7 @@ function projectHumanTogether(world, farm, now = Date.now()) {
     stage: projectStage(world),
     art_asset_key: ART_ASSET_KEYS.get(String(shared.artFile ?? "")) ?? "together.unknown",
     history: projectHistory((shared.history ?? []).slice(-128)),
+    archives: projectArchives(shared.archives),
     current_task: projectTask(shared.currentTask),
     current_choice: projectChoice(shared.currentChoice),
     cooldown: projectCooldown(shared.cooldown),
