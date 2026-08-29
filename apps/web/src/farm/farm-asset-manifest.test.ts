@@ -2,9 +2,14 @@
 
 import assert from "node:assert/strict";
 import { statSync } from "node:fs";
+import { parse } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { inspectFarmAssetCoverage } from "./farm-asset-coverage";
+import {
+  assertFarmAssetBuildOutput,
+  getFarmAssetSourceFiles,
+  inspectFarmAssetCoverage,
+} from "./farm-asset-coverage";
 import {
   FARM_ASSET_MANIFEST,
   type FarmAssetManifestEntry,
@@ -43,6 +48,22 @@ test("every manifest declaration has an explicit, readable source asset", () => 
     assert.ok(statSync(sourcePath).size > 0, `${assetKey} source is empty: ${sourcePath}`);
     assert.equal(getFarmAsset(assetKey as keyof typeof FARM_ASSET_MANIFEST).assetKey, assetKey);
   }
+});
+
+test("public farm assets keep stable URLs without requiring hashed bundle entries", () => {
+  const publicRoot = fileURLToPath(new URL("../../public/", import.meta.url));
+  const sourceFiles = getFarmAssetSourceFiles();
+  const publicSourceFiles = sourceFiles.filter((sourceFile) => sourceFile.startsWith(publicRoot));
+  const bundledSourceFiles = sourceFiles.filter((sourceFile) => !sourceFile.startsWith(publicRoot));
+  const bundle = Object.fromEntries(
+    bundledSourceFiles.map((sourceFile) => {
+      const { name, ext } = parse(sourceFile);
+      return [`assets/${name}-testhash${ext}`, {}];
+    }),
+  );
+
+  assert.equal(publicSourceFiles.length, 12);
+  assert.doesNotThrow(() => assertFarmAssetBuildOutput(bundle));
 });
 
 test("manifest output keeps stable asset identities separate from atlas frame coordinates", () => {

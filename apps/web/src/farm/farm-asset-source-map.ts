@@ -120,6 +120,46 @@ export const FARM_ASSET_SOURCE_URLS = {
   ).href,
   "/farm/ui/neighborhood-shell.png": new URL("./assets/ui/neighborhood-shell.png", import.meta.url)
     .href,
+  "/farm/scenes/field-spring.png": new URL(
+    "../../public/farm/scenes/field-spring.png",
+    import.meta.url,
+  ).href,
+  "/farm/scenes/field-summer.png": new URL(
+    "../../public/farm/scenes/field-summer.png",
+    import.meta.url,
+  ).href,
+  "/farm/scenes/field-autumn.png": new URL(
+    "../../public/farm/scenes/field-autumn.png",
+    import.meta.url,
+  ).href,
+  "/farm/scenes/field-winter.png": new URL(
+    "../../public/farm/scenes/field-winter.png",
+    import.meta.url,
+  ).href,
+  "/farm/scenes/field-rain.png": new URL("../../public/farm/scenes/field-rain.png", import.meta.url)
+    .href,
+  "/farm/scenes/field-snow.png": new URL("../../public/farm/scenes/field-snow.png", import.meta.url)
+    .href,
+  "/farm/scenes/ranch-spring.png": new URL(
+    "../../public/farm/scenes/ranch-spring.png",
+    import.meta.url,
+  ).href,
+  "/farm/scenes/ranch-summer.png": new URL(
+    "../../public/farm/scenes/ranch-summer.png",
+    import.meta.url,
+  ).href,
+  "/farm/scenes/ranch-autumn.png": new URL(
+    "../../public/farm/scenes/ranch-autumn.png",
+    import.meta.url,
+  ).href,
+  "/farm/scenes/ranch-winter.png": new URL(
+    "../../public/farm/scenes/ranch-winter.png",
+    import.meta.url,
+  ).href,
+  "/farm/scenes/ranch-rain.png": new URL("../../public/farm/scenes/ranch-rain.png", import.meta.url)
+    .href,
+  "/farm/scenes/ranch-snow.png": new URL("../../public/farm/scenes/ranch-snow.png", import.meta.url)
+    .href,
 } as const;
 
 export type FarmAssetSourcePath = keyof typeof FARM_ASSET_SOURCE_URLS;

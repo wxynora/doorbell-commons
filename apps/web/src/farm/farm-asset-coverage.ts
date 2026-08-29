@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 import { FARM_ASSET_MANIFEST } from "./farm-asset-manifest";
 import { FARM_ASSET_SOURCE_URLS, type FarmAssetSourcePath } from "./farm-asset-source-map";
 
+const FARM_PUBLIC_ASSET_SOURCE_ROOT = fileURLToPath(new URL("../../public/", import.meta.url));
+
 export interface FarmAssetCoverageReport {
   declarations: number;
   sourceFiles: number;
@@ -49,13 +51,15 @@ function escapeRegExp(value: string): string {
 
 export function assertFarmAssetBuildOutput(bundle: Readonly<Record<string, unknown>>): number {
   const emittedImages = Object.keys(bundle).filter((fileName) => /\.(?:png|webp)$/.test(fileName));
-  const missing = getFarmAssetSourceFiles().filter((sourceFile) => {
-    const fileName = basename(sourceFile);
-    const extension = fileName.slice(fileName.lastIndexOf("."));
-    const stem = fileName.slice(0, -extension.length);
-    const pattern = new RegExp(`(?:^|/)${escapeRegExp(stem)}-[^/]+${escapeRegExp(extension)}$`);
-    return !emittedImages.some((emittedImage) => pattern.test(emittedImage));
-  });
+  const missing = getFarmAssetSourceFiles()
+    .filter((sourceFile) => !sourceFile.startsWith(FARM_PUBLIC_ASSET_SOURCE_ROOT))
+    .filter((sourceFile) => {
+      const fileName = basename(sourceFile);
+      const extension = fileName.slice(fileName.lastIndexOf("."));
+      const stem = fileName.slice(0, -extension.length);
+      const pattern = new RegExp(`(?:^|/)${escapeRegExp(stem)}-[^/]+${escapeRegExp(extension)}$`);
+      return !emittedImages.some((emittedImage) => pattern.test(emittedImage));
+    });
 
   if (missing.length > 0) {
     throw new Error(
