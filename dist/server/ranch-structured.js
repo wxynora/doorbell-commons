@@ -29,7 +29,11 @@ import {
   ranchUpgradeAnimal,
   ranchWearAccessory,
 } from "../engine.js";
-import { glimmerAnimalVariantMultiplier, glimmerBuffMultiplier } from "../glimmer.js";
+import {
+  glimmerAnimalVariantMultiplier,
+  glimmerBuffMultiplier,
+  glimmerVariantSpriteInfo,
+} from "../glimmer.js";
 import { ranchSkinShop, ranchSkinVariantsFor } from "../domain/ranch/skins.js";
 
 const FARM_DOORPLATE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/;
@@ -426,6 +430,27 @@ function variantTypeForResident(type) {
   return type === "patrol_goose" ? "goose" : type;
 }
 
+function projectVariantOption(id, kindId, variantType) {
+  const glimmerVariant = glimmerVariantById.get(id);
+  const sprite = glimmerVariant
+    ? glimmerVariantSpriteInfo({ variantId: id }, kindId, variantType)
+    : null;
+  const hasAtlasSprite =
+    glimmerVariant &&
+    Number.isSafeInteger(sprite?.set) &&
+    sprite.set >= 1 &&
+    sprite.set <= 3 &&
+    Number.isSafeInteger(sprite?.index) &&
+    sprite.index >= 0;
+  return {
+    variant_id: id,
+    name: id === "base" ? "原始外观" : safeText(ranchVariantById.get(id)?.name) ?? id,
+    atlas: hasAtlasSprite ? "glimmer.variants" : null,
+    set: hasAtlasSprite ? sprite.set : null,
+    sprite_index: hasAtlasSprite ? sprite.index : null,
+  };
+}
+
 function projectResidentVariants(farm, type, raw, kindId) {
   const unlocked = new Set(
     Array.isArray(farm?.glimmer?.unlocked)
@@ -453,10 +478,9 @@ function projectResidentVariants(farm, type, raw, kindId) {
   return {
     current_variant_id: currentVariantId,
     available_variant_ids: availableVariantIds,
-    available_variants: availableVariantIds.map((id) => ({
-      variant_id: id,
-      name: id === "base" ? "原始外观" : safeText(ranchVariantById.get(id)?.name) ?? id,
-    })),
+    available_variants: availableVariantIds.map((id) =>
+      projectVariantOption(id, kindId, variantType),
+    ),
   };
 }
 

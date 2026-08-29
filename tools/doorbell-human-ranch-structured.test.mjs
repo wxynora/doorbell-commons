@@ -94,6 +94,22 @@ test("Human ranch projection is pure, strict-shaped, and does not leak private f
   assert.deepEqual(chicken.variants, {
     current_variant_id: "chicken_strawberry",
     available_variant_ids: ["base", "chicken_strawberry"],
+    available_variants: [
+      {
+        variant_id: "base",
+        name: "原始外观",
+        atlas: null,
+        set: null,
+        sprite_index: null,
+      },
+      {
+        variant_id: "chicken_strawberry",
+        name: "草莓冠鸡",
+        atlas: "glimmer.variants",
+        set: 1,
+        sprite_index: 0,
+      },
+    ],
   });
   assert.deepEqual(chicken.allowed_actions.feed, {
     enabled: false,
@@ -154,6 +170,15 @@ test("the original appearance is always available and is the only option until a
   assert.deepEqual(chicken.variants, {
     current_variant_id: "base",
     available_variant_ids: ["base"],
+    available_variants: [
+      {
+        variant_id: "base",
+        name: "原始外观",
+        atlas: null,
+        set: null,
+        sprite_index: null,
+      },
+    ],
   });
   assert.deepEqual(chicken.allowed_actions.set_variant, {
     enabled: false,

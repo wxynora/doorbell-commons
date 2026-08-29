@@ -129,8 +129,20 @@ test("strict ranch read projects the shop and named owned variants without mutat
     assert.equal(read.data.shop.skins.items.length, 4);
     assert.equal(read.data.shop.skins.items.find((item) => item.skin_id === "hachiware")?.owned, true);
     assert.deepEqual(read.data.residents.pets[0].variants.available_variants, [
-        { variant_id: "base", name: "原始外观" },
-        { variant_id: "hachiware", name: "小八" },
+        {
+            variant_id: "base",
+            name: "原始外观",
+            atlas: null,
+            set: null,
+            sprite_index: null,
+        },
+        {
+            variant_id: "hachiware",
+            name: "小八",
+            atlas: null,
+            set: null,
+            sprite_index: null,
+        },
     ]);
 });
 
