@@ -148,6 +148,14 @@ const FarmToolPanel = lazy(async () => {
   return { default: module.FarmToolPanel };
 });
 
+export function compensationBulletinIdentity(bulletin: BoundBulletinRead | null): string | null {
+  if (!bulletin) return null;
+  const notice = bulletin.data.available.ranch_notifications?.find(
+    (entry) => entry.section === "compensation",
+  );
+  return notice ? `${bulletin.revision}:${notice.at ?? ""}:${notice.text}` : null;
+}
+
 export function FarmFieldContent({
   data,
   harvestAction = { stage: "idle" },
@@ -274,6 +282,8 @@ export function FarmFieldContent({
     key: number;
     revision: string;
   } | null>(null);
+  const compensationBulletinRequestedRef = useRef(false);
+  const openedCompensationBulletinRef = useRef<string | null>(null);
   useEffect(() => {
     const settings = farmCatalog?.data.settings;
     if (
@@ -424,6 +434,20 @@ export function FarmFieldContent({
     },
     [],
   );
+
+  useEffect(() => {
+    if (preview || compensationBulletinRequestedRef.current) return;
+    compensationBulletinRequestedRef.current = true;
+    onRequireResource?.("bulletin");
+  }, [onRequireResource, preview]);
+
+  useEffect(() => {
+    const bulletin = resources.bulletin.stage === "ready" ? resources.bulletin.data : null;
+    const identity = compensationBulletinIdentity(bulletin);
+    if (!identity || openedCompensationBulletinRef.current === identity) return;
+    openedCompensationBulletinRef.current = identity;
+    updateSceneUiState(activeScene, { bulletinOpen: true, selectedTool: null });
+  }, [activeScene, resources.bulletin, updateSceneUiState]);
 
   const changeShopCartQuantity = useCallback(
     (sceneId: ShopCartSceneId, cartKey: string, delta: number, maxQuantity?: number) => {
