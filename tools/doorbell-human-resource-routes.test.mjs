@@ -454,6 +454,22 @@ test("Doorbell Human catalog, bulletin, kitchen, and ranch reads are registered 
   assert.equal(getFarm(FARM_DOORPLATE).ranch.kitchen.products.length, 0);
   assert.equal(getFarm(FARM_DOORPLATE).ranch.kitchen.ingredients.salt, undefined);
 
+  const recipeFarm = getFarm(FARM_DOORPLATE);
+  recipeFarm.ranch.kitchen.products = [
+    { id: "route-known-egg", itemId: "chicken_egg", value: 30, createdAt: NOW },
+  ];
+  recipeFarm.ranch.kitchen.ingredients = { salt: 1 };
+  recipeFarm.ranch.kitchen.knownRecipes = ["fried_egg"];
+  const knownRecipeCook = await readResource(baseUrl, "/internal/doorbell/human/kitchen/cook", {
+    ...payload,
+    idempotency_key: "c19ffb01-49cd-7020-84af-3d04fb1ed03d",
+    expected_kitchen_inventory_revision: kitchenCookRevision(recipeFarm, NOW),
+    recipe_id: "fried_egg",
+  });
+  assert.equal(knownRecipeCook.response.status, 200);
+  assert.equal(knownRecipeCook.body.data.result.outcome.recipe_id, "fried_egg");
+  assert.deepEqual(knownRecipeCook.body.data.result.outcome.item_refs, ["route-known-egg", "salt"]);
+
   const ranchRead = await readResource(baseUrl, PATHS[2], payload);
   const ranchCollection = await readResource(
     baseUrl,

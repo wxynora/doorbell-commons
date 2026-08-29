@@ -5,6 +5,7 @@ import {
     handleDoorbellHumanFarmSettingsAction,
     handleDoorbellHumanFieldRead,
     handleDoorbellHumanHarvestAssist,
+    handleDoorbellHumanLandUpgrade,
     handleDoorbellHumanOriginalPlantAction,
     handleDoorbellHumanQixiMemorialRead,
     handleDoorbellHumanSmeltingAction,
@@ -163,6 +164,7 @@ export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExe
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "field" && parts[4] === "harvest-assist" && parts.length === 5) { await handleDoorbellHumanHarvestAssist(req, res, method, careerBenefitsForFarm); return true; }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "field" && parts[4] === "upgrade" && parts.length === 5) { await handleDoorbellHumanLandUpgrade(req, res, method); return true; }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "welcome-reward" && parts.length === 3) {
             await handleDoorbellWelcomeReward(req, res, method);
             return true;

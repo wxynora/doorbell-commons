@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { checkTitles } from "../titles.js";
-import { dishSystemRecycleSilver, kitchenCook } from "../engine.js";
+import { dishSystemRecycleSilver, kitchenCook, kitchenCookKnownRecipe } from "../engine.js";
 import { resolveChefOriginalCookingReceipt } from "../domain/kitchen/original.js";
 import { replaceFarm } from "../store.js";
 import { kitchenInventoryRevisionFromData } from "./kitchen-inventory-revision.js";
@@ -24,6 +24,13 @@ const LEGACY_REQUEST_KEYS = [
   "idempotency_key",
   "expected_kitchen_inventory_revision",
   "items",
+];
+const RECIPE_REQUEST_KEYS = [
+  "farm_human_key",
+  "expected_farm_doorplate",
+  "idempotency_key",
+  "expected_kitchen_inventory_revision",
+  "recipe_id",
 ];
 const REQUEST_KEYS = [
   "farm_human_key",
@@ -59,8 +66,10 @@ function validRef(value) {
 }
 
 function validateBody(body) {
+  const hasRecipe = exactKeys(body, RECIPE_REQUEST_KEYS);
   const hasMethod = exactKeys(body, REQUEST_KEYS);
-  if (!hasMethod && !exactKeys(body, LEGACY_REQUEST_KEYS)) return false;
+  const hasItems = hasMethod || exactKeys(body, LEGACY_REQUEST_KEYS);
+  if (!hasRecipe && !hasItems) return false;
   if (
     typeof body.farm_human_key !== "string" ||
     body.farm_human_key.trim().length === 0 ||
@@ -69,13 +78,12 @@ function validateBody(body) {
     typeof body.idempotency_key !== "string" ||
     !UUID_RE.test(body.idempotency_key) ||
     typeof body.expected_kitchen_inventory_revision !== "string" ||
-    !INVENTORY_REVISION_RE.test(body.expected_kitchen_inventory_revision) ||
-    !Array.isArray(body.items) ||
-    body.items.length < 2 ||
-    body.items.length > 5
+    !INVENTORY_REVISION_RE.test(body.expected_kitchen_inventory_revision)
   ) {
     return false;
   }
+  if (hasRecipe) return validRef(body.recipe_id);
+  if (!Array.isArray(body.items) || body.items.length < 2 || body.items.length > 5) return false;
   if (hasMethod && (typeof body.method_id !== "string" || !kitchenMethodDefinition(body.method_id))) {
     return false;
   }
@@ -90,8 +98,9 @@ function fingerprint(body) {
           farm_human_key: body.farm_human_key,
           expected_farm_doorplate: body.expected_farm_doorplate,
           expected_kitchen_inventory_revision: body.expected_kitchen_inventory_revision,
+          recipe_id: body.recipe_id ?? null,
           method_id: body.method_id ?? null,
-          items: body.items,
+          items: body.items ?? null,
         }),
       ),
       "utf8",
@@ -105,7 +114,7 @@ function invalidRequest() {
     json: {
       error: {
         code: "invalid_request",
-        message: "Submit 2 to 5 ingredient references and a valid kitchen method",
+        message: "Submit either one known recipe id or 2 to 5 ingredient references",
       },
     },
   };
@@ -165,6 +174,7 @@ function currentResource(farm, now, options) {
 
 function outcome(body, result) {
   const dish = result?.dish;
+  const itemRefs = body.items ?? result?.itemRefs;
   if (
     !isRecord(dish) ||
     typeof dish.id !== "string" ||
@@ -173,13 +183,17 @@ function outcome(body, result) {
     typeof dish.name !== "string" ||
     typeof dish.rarity !== "string" ||
     !Number.isSafeInteger(dish.value) ||
-    dish.value < 0
+    dish.value < 0 ||
+    !Array.isArray(itemRefs) ||
+    itemRefs.length < 2 ||
+    itemRefs.length > 5 ||
+    !itemRefs.every(validRef)
   ) {
     return null;
   }
   return {
     kind: "cook",
-    item_refs: [...body.items],
+    item_refs: [...itemRefs],
     dish_instance_id: dish.id,
     recipe_id: dish.recipeId,
     name: dish.name,
@@ -269,14 +283,17 @@ export function handleHumanKitchenCookAction(farm, body, now = Date.now(), optio
 
   let authorityResult;
   try {
-    authorityResult = kitchenCook(working, body.items, now, {
+    const cookOptions = {
       ...options,
       cookingReceiptId: key,
       cookingRequestFingerprint: requestFingerprint,
       ...(body.method_id
         ? { methodId: body.method_id, requireMethodId: true }
         : {}),
-    });
+    };
+    authorityResult = body.recipe_id
+      ? kitchenCookKnownRecipe(working, body.recipe_id, now, cookOptions)
+      : kitchenCook(working, body.items, now, cookOptions);
   } catch {
     return unavailable("The kitchen cook could not be executed");
   }

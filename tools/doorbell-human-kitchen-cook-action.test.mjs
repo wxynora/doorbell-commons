@@ -92,6 +92,62 @@ test("Human cook reuses kitchenCook for deduction, discovery, dish value, and pr
   assert.match(result.json.kitchen_inventory_revision, /^kitchen-inventory-v1:[0-9a-f]{64}$/);
 });
 
+test("Human known-recipe cook selects inventory and the bound method inside the existing authority", () => {
+  const farm = addFarm("ACD456");
+  farm.ranch.kitchen.knownRecipes = ["fried_egg"];
+  const key = "159ffb01-49cd-7020-84af-3d04fb1ed03d";
+  const result = handleHumanKitchenCookAction(
+    farm,
+    {
+      farm_human_key: farm.humanKey,
+      expected_farm_doorplate: farm.id,
+      idempotency_key: key,
+      expected_kitchen_inventory_revision: kitchenCookRevision(farm, NOW),
+      recipe_id: "fried_egg",
+    },
+    NOW,
+  );
+  assert.equal(result.status, 200);
+  assert.equal(result.json.data.result.outcome.recipe_id, "fried_egg");
+  assert.deepEqual(result.json.data.result.outcome.item_refs, ["egg-a", "salt"]);
+  assert.equal(getFarm(farm.id).ranch.kitchen.products.length, 0);
+  assert.equal(getFarm(farm.id).ranch.kitchen.ingredients.salt, undefined);
+});
+
+test("Human cook requires recipe_id or items, never both", () => {
+  const farm = addFarm("ADE567");
+  farm.ranch.kitchen.knownRecipes = ["fried_egg"];
+  const request = {
+    ...body(farm, "169ffb01-49cd-7020-84af-3d04fb1ed03d"),
+    recipe_id: "fried_egg",
+  };
+  const before = structuredClone(farm);
+  const result = handleHumanKitchenCookAction(farm, request, NOW);
+  assert.equal(result.status, 400);
+  assert.equal(result.json.error.code, "invalid_request");
+  assert.deepEqual(getFarm(farm.id), before);
+});
+
+test("Human known-recipe cook rejects a locked recipe without mutation", () => {
+  const farm = addFarm("AEF678");
+  const before = structuredClone(farm);
+  const result = handleHumanKitchenCookAction(
+    farm,
+    {
+      farm_human_key: farm.humanKey,
+      expected_farm_doorplate: farm.id,
+      idempotency_key: "179ffb01-49cd-7020-84af-3d04fb1ed03d",
+      expected_kitchen_inventory_revision: kitchenCookRevision(farm, NOW),
+      recipe_id: "fried_egg",
+    },
+    NOW,
+  );
+  assert.equal(result.status, 409);
+  assert.equal(result.json.error.code, "cook_rejected");
+  assert.match(result.json.error.message, /还没有解锁/);
+  assert.deepEqual(getFarm(farm.id), before);
+});
+
 test("engine rejection is atomic and does not create a receipt", () => {
   const farm = addFarm("BCDFGH");
   const before = structuredClone(farm);

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { HUMAN_HARVEST_DAILY_CAP } from "../config.js";
 import { getCrop, landTierByLevel } from "../content.js";
-import { advance, humanHarvestLeft, plotRemainMs } from "../engine.js";
+import { advance, humanHarvestLeft, nextUpgradeReq, plotRemainMs, upgradeLand } from "../engine.js";
 import { natureSnapshot } from "../nature.js";
 import { getNatureWorld } from "../store.js";
 import { currentDayIndex, currentSeason } from "../time.js";
@@ -88,7 +88,7 @@ function stripReceipts(value) {
         return value;
     const result = {};
     for (const [key, nested] of Object.entries(value)) {
-        if (key === "doorbellHumanHarvestReceipts")
+        if (key === "doorbellHumanHarvestReceipts" || key === "doorbellHumanLandUpgradeReceipts")
             continue;
         result[key] = stripReceipts(nested);
     }
@@ -139,6 +139,10 @@ export function projectHumanField(farm, now = Date.now()) {
     const land = landTierByLevel(projectedFarm.landTier);
     if (land.tier !== projectedFarm.landTier)
         throw new Error("Farm land tier is unavailable");
+    const pendingLandUpgrade = nextUpgradeReq(projectedFarm);
+    const landUpgradePreview = pendingLandUpgrade
+        ? upgradeLand(structuredClone(projectedFarm), now)
+        : null;
     const welcome = typeof projectedFarm.welcome === "string" && projectedFarm.welcome.trim()
         ? projectedFarm.welcome.trim()
         : null;
@@ -154,7 +158,23 @@ export function projectHumanField(farm, now = Date.now()) {
         weather: currentNature.weather
             ? { condition: currentNature.weather.condition }
             : null,
-        land: { tier: projectedFarm.landTier, name: land.name },
+        land: {
+            tier: projectedFarm.landTier,
+            name: land.name,
+            is_max_tier: pendingLandUpgrade === null,
+            next_upgrade: pendingLandUpgrade
+                ? {
+                    tier: pendingLandUpgrade.next.tier,
+                    name: pendingLandUpgrade.next.name,
+                    plots: pendingLandUpgrade.next.plots,
+                    cost_farm_coins: pendingLandUpgrade.req.coins,
+                    can_upgrade: landUpgradePreview?.ok === true,
+                    status_message: landUpgradePreview?.ok === true
+                        ? null
+                        : landUpgradePreview?.error ?? "土地升级条件暂时不可用",
+                }
+                : null,
+        },
         plots,
         harvest_assist: {
             daily_limit: HUMAN_HARVEST_DAILY_CAP,

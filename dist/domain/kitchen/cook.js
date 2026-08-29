@@ -183,6 +183,7 @@ export function kitchenCook(farm, refs, now, options = {}) {
         ok: true,
         dish,
         recipe,
+        itemRefs: picked.selected.map((item) => item.instanceId ?? item.id),
         discovered,
         odd: !recipe,
         ingredients: picked.selected.map((item) => item.name),

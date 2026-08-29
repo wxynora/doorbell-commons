@@ -3,6 +3,7 @@ import { PublicSyncError } from "../../public-sync.js";
 import { jsonOut, readJsonBody } from "../http.js";
 import { projectHumanField } from "../human-structured.js";
 import { handleHumanHarvestAssist } from "../human-harvest-assist.js";
+import { handleHumanLandUpgrade } from "../human-land-upgrade.js";
 import { projectHumanFarmCatalog } from "../farm-catalog-structured.js";
 import { projectHumanBulletin } from "../bulletin-structured.js";
 import { handleHumanCropCodexAction } from "../crop-codex-action.js";
@@ -248,5 +249,38 @@ export async function handleDoorbellHumanHarvestAssist(req, res, method, careerB
             return humanFieldError(res, tooLarge ? 413 : 400, tooLarge ? "body_too_large" : "invalid_request", tooLarge ? "The request body is too large" : "The request body must be valid JSON");
         }
         return humanFieldError(res, 503, "farm_unavailable", "The harvest could not be completed");
+    }
+}
+
+export async function handleDoorbellHumanLandUpgrade(req, res, method) {
+    if (!requireDoorbellHumanFieldService(req, res, method)) return;
+    try {
+        const body = await readJsonBody(req, MAX_BODY_BYTES);
+        const keys = isPlainObject(body) ? Object.keys(body) : [];
+        const allowedKeys = ["farm_human_key", "expected_farm_doorplate", "idempotency_key", "expected_revision", "payload"];
+        if (!isPlainObject(body)
+            || keys.length !== allowedKeys.length
+            || !keys.every((key) => allowedKeys.includes(key))
+            || typeof body.farm_human_key !== "string"
+            || !body.farm_human_key.trim()
+            || typeof body.idempotency_key !== "string"
+            || !body.idempotency_key.trim()
+            || typeof body.expected_revision !== "string"
+            || !body.expected_revision.trim()
+            || !isPlainObject(body.payload)
+            || Object.keys(body.payload).length)
+            return humanFieldError(res, 400, "invalid_request", "Submit exactly the five land-upgrade fields");
+        const binding = validateFarmBinding(body);
+        if (binding.error)
+            return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
+        const out = handleHumanLandUpgrade(binding.farm, body, Date.now());
+        return jsonOut(res, out.status, out.json);
+    }
+    catch (error) {
+        if (error instanceof PublicSyncError) {
+            const tooLarge = error.status === 413;
+            return humanFieldError(res, tooLarge ? 413 : 400, tooLarge ? "body_too_large" : "invalid_request", tooLarge ? "The request body is too large" : "The request body must be valid JSON");
+        }
+        return humanFieldError(res, 503, "farm_unavailable", "The land upgrade could not be completed");
     }
 }
