@@ -9513,7 +9513,9 @@ const CANDIDATE_RUNTIME_SCRIPT = `
             qixiMemorialReady = false;
             return;
         }
-        showScreen('screen-lingye-memorial');
+        if (readState.stage === 'loading') {
+            showScreen('screen-lingye-memorial');
+        }
         const index = document.querySelector('.candidate2-memorial-index');
         const entry = document.querySelector('.candidate2-memorial-entry-view');
         if (index) index.hidden = false;

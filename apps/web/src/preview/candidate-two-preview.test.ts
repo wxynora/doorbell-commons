@@ -1171,6 +1171,10 @@ test("runtime routes are click-only, no-key, and community returns inside the if
 
 test("Live Lingye entries use parent-owned structured reads and keep template data out", () => {
   const html = buildCandidateTwoRuntimeHtml();
+  const memorialStateHandler = html.slice(
+    html.indexOf("function applyLiveQixiMemorialState"),
+    html.indexOf("function applyLiveLingyeState"),
+  );
 
   assert.match(html, /sendAction\(\{ type: 'lingye-glimmer-open' \}\)/);
   assert.match(html, /sendAction\(\{ type: 'lingye-together-open' \}\)/);
@@ -1183,6 +1187,14 @@ test("Live Lingye entries use parent-owned structured reads and keep template da
   assert.doesNotMatch(html, /<img[^>]+src="\/lingye\/together\/same-kitchen-opening\.jpg"/);
   assert.match(html, /applyLiveLingyeState\(state\.lingye\)/);
   assert.match(html, /doorbell-candidate2:state/);
+  assert.match(
+    memorialStateHandler,
+    /if \(readState\.stage === 'loading'\) \{\s*showScreen\('screen-lingye-memorial'\);\s*\}/,
+  );
+  assert.doesNotMatch(
+    memorialStateHandler,
+    /if \(readState\.stage === 'idle'\)[\s\S]*?return;\s*\}\s*showScreen\('screen-lingye-memorial'\)/,
+  );
 });
 
 test("the sandboxed candidate iframe explicitly permits its user-triggered copy buttons", () => {
