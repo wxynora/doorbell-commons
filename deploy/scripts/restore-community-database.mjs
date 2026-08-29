@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const DOORBELL_SERVICE = "doorbell-commons.service";
 const COMMUNITY_DATABASE_PATH = "/var/lib/doorbell-commons/doorbell.sqlite";
-const COMMUNITY_DATABASE_SCHEMA_VERSION = 12;
+const COMMUNITY_DATABASE_SCHEMA_VERSION = 13;
 
 function runSystemctl(arguments_) {
   return new Promise((resolvePromise, reject) => {

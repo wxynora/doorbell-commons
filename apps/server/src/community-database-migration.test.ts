@@ -325,7 +325,7 @@ test("schema v1 preserves login security state while upgrading through the curre
         migratedDatabase.pragma("user_version", { simple: true }),
         COMMUNITY_DATABASE_SCHEMA_VERSION,
       );
-      assert.equal(COMMUNITY_DATABASE_SCHEMA_VERSION, 12);
+      assert.equal(COMMUNITY_DATABASE_SCHEMA_VERSION, 13);
       assert.deepEqual(
         migratedDatabase
           .prepare("SELECT account_id, qq_number, password_credential FROM human_accounts")
@@ -799,6 +799,15 @@ test("schema v7 preserves purchase wakes while adding career exam reminder refer
         payload_hash TEXT NOT NULL,
         UNIQUE (resident_id, idempotency_key)
       );
+      CREATE TABLE farm_purchase_request_items (
+        request_id TEXT NOT NULL REFERENCES farm_purchase_requests(request_id) ON DELETE CASCADE,
+        item_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        qty INTEGER NOT NULL CHECK (qty > 0),
+        display_name TEXT NOT NULL,
+        status TEXT NOT NULL,
+        PRIMARY KEY (request_id, kind, item_id)
+      );
       INSERT INTO human_accounts VALUES ('account-1', '10001', NULL, 1, 'active', 1, NULL);
       INSERT INTO residents VALUES ('resident-1', 'account-1', '小机', 1);
       INSERT INTO homes VALUES ('home-1', 'resident-1', '小屋', 1, 0);
@@ -810,6 +819,9 @@ test("schema v7 preserves purchase wakes while adding career exam reminder refer
         'request-1', 'wake-purchase', 'resident-1', 'home-1', 'attempt-1',
         'field', 'revision-1', '人类', 'requested', 10, 86400010, 'payload-hash'
       );
+      INSERT INTO farm_purchase_request_items VALUES (
+        'request-1', 'seed-1', 'seed', 2, '种子', 'pending'
+      );
     `);
     legacy.pragma("user_version = 7");
     legacy.close();
@@ -817,7 +829,7 @@ test("schema v7 preserves purchase wakes while adding career exam reminder refer
     const migrated = new CommunityDatabase(databasePath);
     migrated.close();
 
-    const database = new Database(databasePath, { readonly: true });
+    const database = new Database(databasePath);
     try {
       assert.equal(
         database.pragma("user_version", { simple: true }),
@@ -839,6 +851,49 @@ test("schema v7 preserves purchase wakes while adding career exam reminder refer
           },
         ],
       );
+      assert.deepEqual(
+        (
+          database.pragma("foreign_key_list(farm_purchase_requests)") as Array<{
+            table: string;
+            from: string;
+            to: string;
+          }>
+        )
+          .filter((foreignKey) => foreignKey.from === "wake_id")
+          .map((foreignKey) => ({
+            target_table: foreignKey.table,
+            source_column: foreignKey.from,
+            target_column: foreignKey.to,
+          })),
+        [{ target_table: "bell_wakes", source_column: "wake_id", target_column: "wake_id" }],
+      );
+      assert.deepEqual(
+        database
+          .prepare(
+            "SELECT request_id, item_id, kind, qty, display_name, status FROM farm_purchase_request_items",
+          )
+          .all(),
+        [
+          {
+            request_id: "request-1",
+            item_id: "seed-1",
+            kind: "seed",
+            qty: 2,
+            display_name: "种子",
+            status: "pending",
+          },
+        ],
+      );
+      database.exec(`
+        INSERT INTO bell_wakes VALUES (
+          'wake-new', 'resident-1', 'farm_purchase_request', 'pending',
+          20, NULL, NULL, NULL, 'request-new', NULL, '{"text":"new"}'
+        );
+        INSERT INTO farm_purchase_requests VALUES (
+          'request-new', 'wake-new', 'resident-1', 'home-1', 'attempt-new',
+          'ranch', 'revision-new', '人类', 'requested', 20, 86400020, 'payload-new'
+        );
+      `);
       assert.deepEqual(database.pragma("foreign_key_check"), []);
     } finally {
       database.close();

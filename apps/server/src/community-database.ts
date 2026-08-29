@@ -23,7 +23,7 @@ export const HUMAN_LOGIN_FAILURE_WINDOW_MS = 15 * 60 * 1000;
 export const HUMAN_LOGIN_FAILURE_THRESHOLD = 10;
 export const HUMAN_LOGIN_LOCK_DURATION_MS = 30 * 60 * 1000;
 export const FARM_PURCHASE_REQUEST_TTL_MS = 24 * 60 * 60 * 1000;
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 12;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 13;
 const LEGACY_CONNECTOR_DELIVERY_GENERATION = "00000000-0000-0000-0000-000000000000";
 
 export interface RegistrationCodeRecord {
@@ -2408,6 +2408,91 @@ export class CommunityDatabase {
         this.#database.pragma("user_version = 12");
       })();
       migratedSchemaVersion = 12;
+    }
+    if (migratedSchemaVersion < 13) {
+      const purchaseRequestForeignKeys = this.#database.pragma(
+        "foreign_key_list(farm_purchase_requests)",
+      ) as Array<{ from: string; table: string; to: string }>;
+      const wakeForeignKey = purchaseRequestForeignKeys.find(
+        (foreignKey) => foreignKey.from === "wake_id" && foreignKey.to === "wake_id",
+      );
+      this.#database.pragma("foreign_keys = OFF");
+      try {
+        this.#database.transaction(() => {
+          if (wakeForeignKey?.table !== "bell_wakes") {
+            this.#database.exec(`
+              DROP INDEX IF EXISTS farm_purchase_requests_resident_created;
+              DROP TABLE IF EXISTS farm_purchase_requests_v13;
+              CREATE TABLE farm_purchase_requests_v13 (
+                request_id TEXT PRIMARY KEY,
+                wake_id TEXT NOT NULL UNIQUE REFERENCES bell_wakes(wake_id) ON DELETE RESTRICT,
+                resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+                home_id TEXT NOT NULL REFERENCES homes(home_id) ON DELETE CASCADE,
+                idempotency_key TEXT NOT NULL,
+                shop TEXT NOT NULL CHECK (shop IN ('field', 'ranch')),
+                shop_revision TEXT NOT NULL,
+                human_name TEXT NOT NULL,
+                status TEXT NOT NULL CHECK (
+                  status IN (
+                    'requested',
+                    'processing',
+                    'completed',
+                    'partially_completed',
+                    'declined',
+                    'expired',
+                    'failed'
+                  )
+                ),
+                created_at INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL CHECK (expires_at = created_at + 86400000),
+                payload_hash TEXT NOT NULL,
+                UNIQUE (resident_id, idempotency_key)
+              );
+
+              INSERT INTO farm_purchase_requests_v13 (
+                request_id,
+                wake_id,
+                resident_id,
+                home_id,
+                idempotency_key,
+                shop,
+                shop_revision,
+                human_name,
+                status,
+                created_at,
+                expires_at,
+                payload_hash
+              )
+              SELECT request_id,
+                     wake_id,
+                     resident_id,
+                     home_id,
+                     idempotency_key,
+                     shop,
+                     shop_revision,
+                     human_name,
+                     status,
+                     created_at,
+                     expires_at,
+                     payload_hash
+              FROM farm_purchase_requests;
+
+              DROP TABLE farm_purchase_requests;
+              ALTER TABLE farm_purchase_requests_v13 RENAME TO farm_purchase_requests;
+              CREATE INDEX farm_purchase_requests_resident_created
+                ON farm_purchase_requests (resident_id, created_at DESC, request_id DESC);
+            `);
+          }
+          this.#database.pragma("user_version = 13");
+        })();
+      } finally {
+        this.#database.pragma("foreign_keys = ON");
+      }
+      const foreignKeyErrors = this.#database.pragma("foreign_key_check") as unknown[];
+      if (foreignKeyErrors.length > 0) {
+        throw new Error("Community database schema v13 migration violated foreign keys");
+      }
+      migratedSchemaVersion = 13;
     }
     this.#database.transaction(() => {
       const itemColumns = this.#database.pragma(
