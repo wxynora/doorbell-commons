@@ -1,0 +1,553 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="description" content="铃野日报报纸展开动画本地样张。" />
+    <meta name="theme-color" content="#e8e1d1" />
+    <title>铃野日报 · 报纸展开动效样张</title>
+    <link rel="stylesheet" href="./src/daily/lingye-daily-page.css" />
+    <style>
+      :root {
+        --paper-width: 600px;
+        --paper-height: 780px;
+        --paper-half-height: 390px;
+        --motion-duration: 1180ms;
+        --motion-ease: cubic-bezier(0.16, 1, 0.3, 1);
+      }
+
+      html,
+      body {
+        min-height: 100%;
+      }
+
+      body {
+        display: grid;
+        min-width: 320px;
+        min-height: 100svh;
+        margin: 0;
+        overflow-x: hidden;
+        color: var(--daily-text);
+        background:
+          radial-gradient(circle at 50% 18%, rgba(246, 240, 223, 0.72), transparent 42%),
+          #e8e1d1;
+        font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+      }
+
+      button {
+        font: inherit;
+      }
+
+      .unfold-demo {
+        display: grid;
+        min-height: 100svh;
+        grid-template-rows: auto 1fr;
+        justify-items: center;
+        padding: max(18px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+      }
+
+      .demo-toolbar {
+        display: flex;
+        width: min(600px, 100%);
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 14px;
+      }
+
+      .demo-label {
+        margin: 0;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+      }
+
+      .replay-button {
+        appearance: none;
+        padding: 7px 12px;
+        border: 1px solid var(--daily-text);
+        border-radius: 0;
+        color: var(--daily-text);
+        background: transparent;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 700;
+        transition:
+          color 120ms cubic-bezier(0.25, 1, 0.5, 1),
+          background-color 120ms cubic-bezier(0.25, 1, 0.5, 1),
+          transform 120ms cubic-bezier(0.25, 1, 0.5, 1);
+      }
+
+      .replay-button:hover {
+        color: var(--daily-bg);
+        background: var(--daily-text);
+      }
+
+      .replay-button:active {
+        transform: translateY(1px);
+      }
+
+      .replay-button:focus-visible {
+        outline: 3px solid var(--daily-yellow);
+        outline-offset: 3px;
+      }
+
+      .stage-viewport {
+        position: relative;
+        align-self: start;
+      }
+
+      .newspaper-stage {
+        position: relative;
+        width: var(--paper-width);
+        height: var(--paper-height);
+        perspective: 1800px;
+        transform-origin: top left;
+      }
+
+      .stage-shadow {
+        position: absolute;
+        right: 38px;
+        bottom: 6px;
+        left: 38px;
+        height: 30px;
+        border-radius: 50%;
+        background: rgba(58, 75, 92, 0.24);
+        filter: blur(16px);
+        opacity: 0.34;
+        transform: scaleX(0.72) translateY(-188px);
+        transform-origin: center;
+      }
+
+      .newspaper {
+        position: absolute;
+        inset: 0;
+        transform: translateY(195px) scale(0.95) rotateZ(-0.8deg);
+        transform-origin: center top;
+        transform-style: preserve-3d;
+      }
+
+      .paper-half {
+        position: absolute;
+        left: 0;
+        width: var(--paper-width);
+        height: var(--paper-half-height);
+        transform-style: preserve-3d;
+      }
+
+      .paper-half--top {
+        top: 0;
+        z-index: 1;
+        filter: drop-shadow(0 12px 18px rgba(58, 75, 92, 0.12));
+      }
+
+      .paper-half--bottom {
+        top: var(--paper-half-height);
+        z-index: 2;
+        transform: rotateX(-179deg);
+        transform-origin: center top;
+      }
+
+      .paper-face {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        backface-visibility: hidden;
+        background: var(--daily-bg);
+      }
+
+      .paper-face--back {
+        display: grid;
+        align-content: center;
+        justify-items: center;
+        border-top: 1px solid rgba(58, 75, 92, 0.22);
+        transform: rotateX(180deg);
+      }
+
+      .paper-back-title {
+        margin: 0;
+        font-family: "Noto Serif SC", "Songti SC", "STSong", serif;
+        font-size: 42px;
+        font-weight: 900;
+        letter-spacing: -1px;
+      }
+
+      .paper-back-note {
+        margin: 14px 0 0;
+        padding: 3px 10px;
+        color: var(--daily-bg);
+        background: var(--daily-red);
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+      }
+
+      .paper-artboard {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: var(--paper-width);
+        height: var(--paper-height);
+        padding: 16px;
+        overflow: hidden;
+        color: var(--daily-text);
+        background:
+          linear-gradient(rgba(58, 75, 92, 0.018), rgba(58, 75, 92, 0.018)),
+          var(--daily-bg);
+        font-family: "Noto Serif SC", "Songti SC", "STSong", serif;
+        line-height: 1.4;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .paper-half--bottom .paper-artboard {
+        transform: translateY(calc(-1 * var(--paper-half-height)));
+      }
+
+      .preview-ribbon {
+        position: absolute;
+        top: 64px;
+        right: -31px;
+        z-index: 2;
+        width: 150px;
+        padding: 4px 0;
+        color: var(--daily-bg);
+        background: var(--daily-red);
+        font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-align: center;
+        transform: rotate(38deg);
+      }
+
+      .preview-lead {
+        margin-bottom: 18px;
+      }
+
+      .preview-lead h3 {
+        max-width: 330px;
+        margin: 0 0 8px;
+        font-size: 29px;
+        line-height: 1.05;
+      }
+
+      .preview-lead p {
+        max-width: 360px;
+        margin: 0;
+        font-size: 13px;
+        text-align: justify;
+      }
+
+      .preview-body {
+        min-height: 424px;
+      }
+
+      .preview-block {
+        margin-bottom: 18px;
+      }
+
+      .preview-block h3 {
+        margin: 0 0 7px;
+        font-size: 15px;
+      }
+
+      .preview-block p,
+      .preview-sidebar-copy {
+        margin: 0;
+        font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+        font-size: 10px;
+        line-height: 1.55;
+      }
+
+      .preview-rule-set {
+        display: grid;
+        gap: 6px;
+        margin-top: 10px;
+      }
+
+      .preview-rule {
+        height: 4px;
+        background: color-mix(in srgb, var(--daily-text) 19%, transparent);
+      }
+
+      .preview-rule:nth-child(2) {
+        width: 91%;
+      }
+
+      .preview-rule:nth-child(3) {
+        width: 74%;
+      }
+
+      .preview-weather {
+        margin: 0 0 18px;
+        padding: 12px 10px;
+        border: 1px solid var(--daily-blue);
+        text-align: center;
+      }
+
+      .preview-weather-symbol {
+        display: block;
+        margin-bottom: 3px;
+        color: var(--daily-blue);
+        font-size: 28px;
+        line-height: 1;
+      }
+
+      .preview-weather strong {
+        display: block;
+        margin-bottom: 3px;
+        font-size: 12px;
+      }
+
+      .preview-weather span:last-child {
+        font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+        font-size: 9px;
+      }
+
+      .preview-data-note {
+        padding: 11px;
+        background: var(--daily-yellow);
+        font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+        font-size: 9px;
+        line-height: 1.55;
+      }
+
+      .preview-footer {
+        margin-top: 25px;
+        padding-top: 15px;
+        border-top: 3px double var(--daily-text);
+        font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-align: center;
+      }
+
+      .fold-crease {
+        position: absolute;
+        top: calc(var(--paper-half-height) - 2px);
+        right: 0;
+        left: 0;
+        z-index: 4;
+        height: 5px;
+        pointer-events: none;
+        background: linear-gradient(
+          to bottom,
+          rgba(58, 75, 92, 0.12),
+          rgba(246, 240, 223, 0.84) 42%,
+          rgba(58, 75, 92, 0.09)
+        );
+        opacity: 0;
+      }
+
+      .unfold-demo.is-opening .newspaper {
+        animation: paper-settle var(--motion-duration) var(--motion-ease) 120ms forwards;
+      }
+
+      .unfold-demo.is-opening .paper-half--bottom {
+        animation: unfold-bottom var(--motion-duration) var(--motion-ease) 120ms forwards;
+      }
+
+      .unfold-demo.is-opening .stage-shadow {
+        animation: shadow-open var(--motion-duration) var(--motion-ease) 120ms forwards;
+      }
+
+      .unfold-demo.is-opening .fold-crease {
+        animation: crease-arrive 720ms cubic-bezier(0.25, 1, 0.5, 1) 620ms forwards;
+      }
+
+      @keyframes paper-settle {
+        0% {
+          transform: translateY(195px) scale(0.95) rotateZ(-0.8deg);
+        }
+        58% {
+          transform: translateY(8px) scale(0.995) rotateZ(-0.08deg);
+        }
+        100% {
+          transform: translateY(0) scale(1) rotateZ(0);
+        }
+      }
+
+      @keyframes unfold-bottom {
+        0% {
+          transform: rotateX(-179deg);
+        }
+        100% {
+          transform: rotateX(0deg);
+        }
+      }
+
+      @keyframes shadow-open {
+        0% {
+          opacity: 0.34;
+          transform: scaleX(0.72) translateY(-188px);
+        }
+        100% {
+          opacity: 0.48;
+          transform: scaleX(1) translateY(0);
+        }
+      }
+
+      @keyframes crease-arrive {
+        0% {
+          opacity: 0;
+          transform: scaleX(0.25);
+        }
+        100% {
+          opacity: 1;
+          transform: scaleX(1);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .unfold-demo.is-opening .newspaper,
+        .unfold-demo.is-opening .paper-half--bottom,
+        .unfold-demo.is-opening .stage-shadow,
+        .unfold-demo.is-opening .fold-crease {
+          animation-duration: 0.01ms;
+          animation-delay: 0ms;
+        }
+
+        .replay-button {
+          transition-duration: 0.01ms;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="unfold-demo" id="unfold-demo">
+      <div class="demo-toolbar">
+        <p class="demo-label">报纸展开动效样张</p>
+        <button class="replay-button" id="replay-button" type="button">重播展开</button>
+      </div>
+
+      <div class="stage-viewport" id="stage-viewport">
+        <div class="newspaper-stage" id="newspaper-stage">
+          <div aria-hidden="true" class="stage-shadow"></div>
+          <div class="newspaper">
+            <div class="paper-half paper-half--top">
+              <div class="paper-face paper-face--front" data-paper-copy="top"></div>
+            </div>
+            <div class="paper-half paper-half--bottom">
+              <div class="paper-face paper-face--front" data-paper-copy="bottom"></div>
+              <div class="paper-face paper-face--back">
+                <p class="paper-back-title">铃野日报</p>
+                <p class="paper-back-note">动效预览 · 非正式日报</p>
+              </div>
+            </div>
+            <div aria-hidden="true" class="fold-crease"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <template id="paper-template">
+      <article class="paper-artboard">
+        <div class="preview-ribbon">非正式日报</div>
+        <header class="daily-masthead">
+          <div class="daily-masthead-meta">
+            <span>动效预览</span>
+            <span>展开样张</span>
+            <span>不连接数据</span>
+          </div>
+          <h1 class="daily-masthead-title">铃野日报</h1>
+          <div class="daily-masthead-tagline">铃野日报社</div>
+        </header>
+
+        <section class="preview-lead" aria-label="动效说明">
+          <span class="daily-section-tag daily-section-tag--red">今日头版</span>
+          <h3>报纸展开动效</h3>
+          <p>先看到横向对折的日报，再顺着中间折痕向下展开。这里只展示动作，不代替任何正式日报内容。</p>
+        </section>
+
+        <div class="daily-newspaper-body preview-body">
+          <main class="daily-main-column">
+            <section class="preview-block">
+              <span class="daily-section-tag daily-section-tag--green">人类行为切片</span>
+              <h3>正式出版后显示真实内容</h3>
+              <p>群聊事件、原话与图片仍按日报事实规则生成；这份样张不读取任何群聊。</p>
+              <div aria-hidden="true" class="preview-rule-set">
+                <span class="preview-rule"></span>
+                <span class="preview-rule"></span>
+                <span class="preview-rule"></span>
+              </div>
+            </section>
+
+            <section class="preview-block">
+              <span class="daily-section-tag daily-section-tag--red">今日人类语录</span>
+              <h3>样张不放虚构语录</h3>
+              <p>正式日报只保留当期真实、可追溯的短引用。</p>
+              <div aria-hidden="true" class="preview-rule-set">
+                <span class="preview-rule"></span>
+                <span class="preview-rule"></span>
+                <span class="preview-rule"></span>
+              </div>
+            </section>
+          </main>
+
+          <aside class="daily-sidebar" aria-label="样张侧栏">
+            <section class="preview-block">
+              <span class="daily-section-tag">今日群聊</span>
+              <div class="daily-group-card">
+                <p>动效样张不读取群聊，正式内容出版后再显示。</p>
+              </div>
+            </section>
+
+            <section class="preview-block">
+              <span class="daily-section-tag daily-section-tag--blue">天气预报</span>
+              <div class="preview-weather">
+                <span aria-hidden="true" class="preview-weather-symbol">☁</span>
+                <strong>等待自然系统</strong>
+                <span>不使用假天气占位</span>
+              </div>
+            </section>
+
+            <section class="preview-block">
+              <span class="daily-section-tag daily-section-tag--yellow">农场观测站</span>
+              <p class="preview-data-note">此样张不加载农场排名、状态或变化。</p>
+            </section>
+          </aside>
+        </div>
+
+        <footer class="preview-footer">动效样张到这里 · 正式日报仍由真实素材生成</footer>
+      </article>
+    </template>
+
+    <script>
+      const demo = document.getElementById("unfold-demo");
+      const replayButton = document.getElementById("replay-button");
+      const stage = document.getElementById("newspaper-stage");
+      const stageViewport = document.getElementById("stage-viewport");
+      const paperTemplate = document.getElementById("paper-template");
+
+      for (const target of document.querySelectorAll("[data-paper-copy]")) {
+        target.append(paperTemplate.content.cloneNode(true));
+      }
+
+      function resizeStage() {
+        const toolbarAllowance = 92;
+        const availableWidth = Math.max(288, window.innerWidth - 32);
+        const availableHeight = Math.max(468, window.innerHeight - toolbarAllowance);
+        const scale = Math.min(1, availableWidth / 600, availableHeight / 780);
+
+        stage.style.transform = `scale(${scale})`;
+        stageViewport.style.width = `${600 * scale}px`;
+        stageViewport.style.height = `${780 * scale}px`;
+      }
+
+      function playAnimation() {
+        demo.classList.remove("is-opening");
+        void demo.offsetWidth;
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => demo.classList.add("is-opening"));
+        });
+      }
+
+      replayButton.addEventListener("click", playAnimation);
+      window.addEventListener("resize", resizeStage, { passive: true });
+
+      resizeStage();
+      window.setTimeout(playAnimation, 180);
+    </script>
+  </body>
+</html>
