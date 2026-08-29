@@ -1214,6 +1214,15 @@ test("Glimmer keeps its mystery slot and stays free of the authenticated main na
   );
 });
 
+test("Together and its history stay free of the authenticated main navigation", () => {
+  const html = buildCandidateTwoRuntimeHtml();
+
+  assert.match(
+    html,
+    /const lingyeFullscreenScreenIds = new Set\(\[[\s\S]*'screen-lingye-together',[\s\S]*'screen-lingye-together-history',/,
+  );
+});
+
 test("the sandboxed candidate iframe explicitly permits its user-triggered copy buttons", () => {
   const componentSource = CandidateTwoPreview.toString();
 

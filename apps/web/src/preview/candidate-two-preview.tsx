@@ -8220,6 +8220,8 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     const lingyeFullscreenScreenIds = new Set([
         'screen-lingye-glimmer',
         'screen-lingye-memorial',
+        'screen-lingye-together',
+        'screen-lingye-together-history',
     ]);
     let settingsWasSaving = '';
     let permitTimer = 0;
