@@ -1353,7 +1353,9 @@ export function RanchDispatchPanelContent({
                 </option>
               ))
             ) : (
-              <option value="">暂无真实邻居农场</option>
+              <option value="">
+                {farmCatalog ? "暂无可派遣的邻居农场" : "正在读取可派遣农场"}
+              </option>
             )}
           </select>
         </label>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { BoundFarmCatalogRead } from "../../../auth/farm-catalog-client";
 import {
   type FarmSettingsActionInput,
@@ -49,8 +49,16 @@ export function FarmSettingsPanelContent({
   onSave?: FarmSettingsActionExecutor | undefined;
 }) {
   const [actionState, setActionState] = useState<FarmSettingsActionState>({ stage: "idle" });
+  const welcomeMessageRef = useRef<HTMLTextAreaElement>(null);
   const busy = actionState.stage === "submitting";
   const liveEditable = editable && Boolean(onSave && catalogRevision);
+
+  useLayoutEffect(() => {
+    const textarea = welcomeMessageRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  }, [draft.welcomeMessage]);
 
   const submitSetting = async (
     field: FarmSettingsActionInput["field"],
@@ -208,6 +216,7 @@ export function FarmSettingsPanelContent({
             maxLength={60}
             name="welcome-message"
             onChange={(event) => onChange({ ...draft, welcomeMessage: event.currentTarget.value })}
+            ref={welcomeMessageRef}
             rows={2}
             value={draft.welcomeMessage}
           />

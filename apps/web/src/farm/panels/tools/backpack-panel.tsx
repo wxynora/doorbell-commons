@@ -197,6 +197,19 @@ export function FarmBackpackPanel({
       if (wardrobe.status === "unavailable") {
         return <FarmUnavailablePanel iconKey="panel.tool.backpack" label="配饰库存暂不可用" />;
       }
+      const wornAccessories = [
+        ...ranch.data.residents.animals,
+        ...ranch.data.residents.pets,
+        ...(ranch.data.residents.patrol_goose ? [ranch.data.residents.patrol_goose] : []),
+      ].flatMap((resident) =>
+        resident.accessories.status === "available"
+          ? resident.accessories.items.map((item) => ({
+              item,
+              wearer:
+                resident.identity.custom_name ?? resident.identity.name ?? "身份不可用",
+            }))
+          : [],
+      );
       return (
         <section aria-label="牧场配饰库存" className="farm-feature">
           <nav aria-label="背包分类" className="farm-feature__tabs">
@@ -212,15 +225,24 @@ export function FarmBackpackPanel({
             ))}
           </nav>
           <ul className="farm-crop-codex__list">
-            {wardrobe.items.length > 0 ? (
-              wardrobe.items.map((item) => (
-                <li key={`${item.accessory_id ?? "unavailable"}-${item.name ?? "item"}`}>
+            {wardrobe.items.length > 0 || wornAccessories.length > 0 ? (
+              <>
+                {wardrobe.items.map((item, index) => (
+                  <li key={`stored-${item.accessory_id ?? "unavailable"}-${index}`}>
+                    <span>{item.status === "known" && item.name ? item.name : "身份不可用"}</span>
+                    <small>仓库中</small>
+                  </li>
+                ))}
+                {wornAccessories.map(({ item, wearer }, index) => (
+                <li key={`worn-${item.accessory_id ?? "unavailable"}-${wearer}-${index}`}>
                   <span>{item.status === "known" && item.name ? item.name : "身份不可用"}</span>
+                  <small>穿戴中 · {wearer}</small>
                 </li>
-              ))
+                ))}
+              </>
             ) : (
               <li>
-                <span>当前没有真实配饰</span>
+                <span>还没有配饰</span>
               </li>
             )}
           </ul>

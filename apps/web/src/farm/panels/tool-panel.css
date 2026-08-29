@@ -607,6 +607,7 @@
 .farm-settings__item textarea {
   min-height: 15cqw;
   line-height: 1.4;
+  overflow-y: hidden;
   resize: none;
 }
 

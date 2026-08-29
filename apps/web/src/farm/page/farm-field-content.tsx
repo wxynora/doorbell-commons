@@ -1087,6 +1087,9 @@ export function FarmFieldContent({
             setCookingIngredientPickerOpen(false);
           }
           if (!preview) {
+            if (activeScene === "ranch" && tool.id === "dispatch") {
+              onRequireResource?.("farmCatalog");
+            }
             const resource = getToolReadResource(activeScene, tool.id);
             if (resource) onRequireResource?.(resource);
           }
