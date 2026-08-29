@@ -224,6 +224,15 @@ than accepting an arbitrary non-empty exam set. None of these candidates is acti
 private exam bank is not installed, MCP readiness is closed, and no real-player migration, deployment,
 or restart was performed.
 
+Chef-store options now bind the exact business round without adding another order service. A public
+listing projects a SHA-256 revision over its authoritative receipt id, remaining quantity, price and
+updated time; `commission:chef-store-buy` carries that revision. A successful partial purchase changes
+the remaining quantity and therefore the next option／action key, while an exact old-option retry is
+accepted only when its original `chef_store_action_receipts` row exists. Rent options similarly carry
+the current `nextRentDueAt`; paying advances the due time and produces a new option for the next period.
+This preserves exact replay while allowing two real one-unit purchases and two consecutive rent periods
+to settle independently. Prices, rent duration, inventory authority and store service are unchanged.
+
 The farm snapshot is not currently source-reproducible: its root has the live-derived `dist/` and
 content but no matching `src/`, `tsconfig.json`, or lockfile, while `source-reference/` is older and
 not production-equivalent. Its README and package scripts therefore expose only the checked-in
@@ -645,6 +654,16 @@ greater than one produces repeated one-at-a-time calls because the current publi
 original notification. The final approved line states that the calls do not execute automatically.
 The browser cannot submit an op, and the Bell `wake` envelope, transport auth, ACK／blocked／cancel,
 replay and household injector remain unchanged. This release is not deployed.
+
+Bell no longer carries `maxWakeIdChars` or `maxMessageChars` protocol configuration. Doorbell keeps
+the full `career-job:${notification_id}` identity, full commission reply body, and full approved
+purchase action message. Bell validates only that `wake_id` is non-empty without surrounding
+whitespace and that `message` contains non-whitespace content; the existing explicit SSE
+`maxEventBytes` boundary and reason／epoch／timestamp checks remain. Doorbell and Bell share
+`doorbell-unbounded-wakes-v1.json`: Main direct tests generate the 138-character career ID,
+614-character reply and 540-character purchase message exactly, while Bell feeds the same events
+directly into `decodeBellEvent()` without rewriting them. This change is pushed separately from any
+deployment or production environment update.
 
 `BellService` authenticates an independent `dbb_` Bearer credential by SHA-256 digest, rechecks live
 QQ membership, and exposes `GET /api/bell/stream`, `POST /api/bell/ack`, and

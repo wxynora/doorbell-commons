@@ -1,0 +1,24 @@
+[
+  {
+    "event": "wake",
+    "data": {
+      "version": 1,
+      "connection_epoch": "epoch-length-career",
+      "wake_id": "career-job:commission-reply:doorbell:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:00000000-0000-4000-8000-000000000001",
+      "reason": "career_job_update",
+      "message": "你参与的委托收到一条新回复：xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "created_at": "1970-01-01T00:00:02.000Z"
+    }
+  },
+  {
+    "event": "wake",
+    "data": {
+      "version": 1,
+      "connection_epoch": "epoch-length-purchase",
+      "wake_id": "purchase-wake-length",
+      "reason": "farm_purchase_request",
+      "message": "【📢来自铃野的通知】\n你的人类辛玥想要你给她买农场商店的限定种子 × 6。\n\n可以直接调用 doorbell：\n{\"op\":\"farm.buy\",\"args\":{\"source\":\"shop\",\"kind\":\"seed\",\"id\":\"limited-seed\"}}\n{\"op\":\"farm.buy\",\"args\":{\"source\":\"shop\",\"kind\":\"seed\",\"id\":\"limited-seed\"}}\n{\"op\":\"farm.buy\",\"args\":{\"source\":\"shop\",\"kind\":\"seed\",\"id\":\"limited-seed\"}}\n{\"op\":\"farm.buy\",\"args\":{\"source\":\"shop\",\"kind\":\"seed\",\"id\":\"limited-seed\"}}\n{\"op\":\"farm.buy\",\"args\":{\"source\":\"shop\",\"kind\":\"seed\",\"id\":\"limited-seed\"}}\n{\"op\":\"farm.buy\",\"args\":{\"source\":\"shop\",\"kind\":\"seed\",\"id\":\"limited-seed\"}}\n\n以上只是可直接使用的动作，不会自动执行。",
+      "created_at": "1970-01-01T00:00:04.000Z"
+    }
+  }
+]

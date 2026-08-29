@@ -11,6 +11,12 @@ import { LingyeNotificationDeliveryService, MailboxService } from "./mailbox-ser
 
 const TOKEN = "dbb_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 const TOKEN_HASH = "643e8661aa252b51405263db0c778704de8ef7455bcbb1bc0db365486a8870e6";
+const UNBOUNDED_WAKE_FIXTURES = JSON.parse(
+  readFileSync(
+    new URL("../test-fixtures/doorbell-unbounded-wakes-v1.json", import.meta.url),
+    "utf8",
+  ),
+) as Array<{ event: string; data: Record<string, unknown> }>;
 
 function registeredDatabase(path = ":memory:"): {
   database: CommunityDatabase;
@@ -248,6 +254,92 @@ test("career job updates use their isolated Bell wake and acknowledge normally",
     "cancelled",
   );
 
+  connection.close();
+  service.close();
+  database.close();
+});
+
+test("Main emits the shared long career wake fixture without changing its ID or reply body", async () => {
+  const fixture = UNBOUNDED_WAKE_FIXTURES[0];
+  assert.ok(fixture);
+  const wakeId = String(fixture.data.wake_id);
+  const message = String(fixture.data.message);
+  assert.ok(wakeId.length > 128);
+  assert.ok(message.length > 512);
+  const notificationId = wakeId.slice("career-job:".length);
+  const replyPrefix = "你参与的委托收到一条新回复：";
+  assert.ok(message.startsWith(replyPrefix));
+  const { database, homeId, residentId } = registeredDatabase();
+  const mailbox = new MailboxService({
+    database,
+    generateLetterId: () => "career-long-letter",
+    now: () => 2_000,
+  });
+  const notifications = new LingyeNotificationDeliveryService({
+    database,
+    mailbox,
+    bell: { notifyResident: () => undefined },
+  });
+  notifications.deliver(
+    {
+      notification_id: notificationId,
+      kind: "commission_reply",
+      recipient_resident_id: residentId,
+      message_text: message.slice(replyPrefix.length),
+    },
+    "another-resident",
+  );
+  assert.equal(mailbox.listForAudience(homeId, "human", 1).letters[0]?.body, message);
+
+  const service = new BellService({
+    database,
+    generateConnectionEpoch: () => String(fixture.data.connection_epoch),
+    heartbeatIntervalMs: 30_000,
+    now: () => 3_000,
+    registrationAuth: { confirmCurrentResidentMembership: async () => undefined },
+    replayIntervalMs: 60_000,
+  });
+  const collected = collectingSink();
+  const connection = await service.connect(TOKEN, collected.sink);
+  assert.deepEqual(collected.events.at(-1), fixture);
+  connection.close();
+  service.close();
+  database.close();
+});
+
+test("Main emits the shared long purchase wake fixture without compacting its actions", async () => {
+  const fixture = UNBOUNDED_WAKE_FIXTURES[1];
+  assert.ok(fixture);
+  assert.ok(String(fixture.data.message).length > 512);
+  const { database, residentId, homeId } = registeredDatabase();
+  const purchaseService = new FarmPurchaseRequestService({
+    database,
+    now: () => 4_000,
+    generateRequestId: () => "purchase-request-length",
+    generateWakeId: () => String(fixture.data.wake_id),
+  });
+  const purchase = purchaseService.create({
+    residentId,
+    homeId,
+    humanName: "辛玥",
+    shop: "field",
+    shopRevision: "field-length",
+    idempotencyKey: "00000000-0000-4000-8000-000000000099",
+    items: [{ kind: "seed", itemId: "limited-seed", qty: 6, displayName: "限定种子" }],
+  });
+  assert.equal(purchase.notificationText, fixture.data.message);
+
+  const service = new BellService({
+    database,
+    generateConnectionEpoch: () => String(fixture.data.connection_epoch),
+    heartbeatIntervalMs: 30_000,
+    now: () => 5_000,
+    registrationAuth: { confirmCurrentResidentMembership: async () => undefined },
+    replayIntervalMs: 60_000,
+  });
+  const collected = collectingSink();
+  const connection = await service.connect(TOKEN, collected.sink);
+  assert.deepEqual(collected.events.at(-1), fixture);
   connection.close();
   service.close();
   database.close();
