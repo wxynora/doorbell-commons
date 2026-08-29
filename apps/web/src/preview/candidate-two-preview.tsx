@@ -1590,7 +1590,7 @@ interface CandidateTwoPreviewProps {
   state: CandidateTwoViewState;
 }
 
-const DOORBELL_FONTS = '<link href="/fonts/doorbell-fonts.v1.css" rel="stylesheet">';
+const DOORBELL_FONTS = '<link href="/fonts/doorbell-fonts.v2.css" rel="stylesheet">';
 
 const MOQU_GUFENG_FONT =
   '<link href="/lingye/memorial/qixi-archive/moqu-gufeng-ti.css" rel="stylesheet">';

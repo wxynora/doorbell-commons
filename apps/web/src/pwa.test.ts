@@ -44,7 +44,7 @@ test("community request classification keeps API authority outside Cache Storage
     "hashed-static-cache-first",
   );
   assert.equal(
-    classifyCommunityRequest("/fonts/doorbell-fonts.v1.css"),
+    classifyCommunityRequest("/fonts/doorbell-fonts.v2.css"),
     "hashed-static-cache-first",
   );
   assert.equal(
@@ -53,6 +53,10 @@ test("community request classification keeps API authority outside Cache Storage
   );
   assert.equal(
     classifyCommunityRequest("/fonts/gaegu-latin-700.v1.woff2"),
+    "hashed-static-cache-first",
+  );
+  assert.equal(
+    classifyCommunityRequest("/fonts/noto-serif-sc-ui-400.v2.woff2"),
     "hashed-static-cache-first",
   );
   assert.equal(
@@ -106,13 +110,14 @@ test("manifest is a Chinese standalone community entry with the existing surface
     },
   ]);
   assert.deepEqual(readPngDimensions("community-icon.v2-180.png"), [180, 180]);
+  assert.deepEqual(readPngDimensions("apple-touch-icon.png"), [180, 180]);
   assert.deepEqual(readPngDimensions("community-icon.v2-192.png"), [192, 192]);
   assert.deepEqual(readPngDimensions("community-icon.v2-512.png"), [512, 512]);
   assert.deepEqual(readPngDimensions("community-icon.v2-512-maskable.png"), [512, 512]);
   assert.match(indexSource, /<link rel="manifest" href="\/manifest\.webmanifest\?v=2" \/>/);
   assert.match(
     indexSource,
-    /<link rel="apple-touch-icon" href="\/community-icon\.v2-180\.png" \/>/,
+    /<link rel="apple-touch-icon" sizes="180x180" href="\/community-icon\.v2-180\.png" \/>/,
   );
 });
 

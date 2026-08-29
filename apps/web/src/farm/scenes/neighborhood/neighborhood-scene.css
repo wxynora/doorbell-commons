@@ -194,9 +194,9 @@
 }
 
 .farm-neighborhood__message-boards {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
-  align-content: start;
   gap: 2cqw;
   padding-right: 0.6cqw;
   overflow-x: hidden;
@@ -207,6 +207,7 @@
 }
 
 .farm-neighborhood__message-board-card {
+  flex: 0 0 auto;
   overflow: hidden;
   border: 0.18cqw solid rgba(133, 101, 58, 0.24);
   border-radius: 1.5cqw;

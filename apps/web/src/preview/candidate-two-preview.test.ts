@@ -295,7 +295,7 @@ test("runtime HTML keeps candidate two and replaces every confirmed fake datum",
   assert.doesNotMatch(html, /getElementById\('logout-button'\)/);
   assert.doesNotMatch(html, /candidate2-resident-stamp|>RESIDENT</);
   assert.doesNotMatch(html, /<p class="handwritten profile-qq-number">/);
-  assert.match(html, /href="\/fonts\/doorbell-fonts\.v1\.css" rel="stylesheet"/);
+  assert.match(html, /href="\/fonts\/doorbell-fonts\.v2\.css" rel="stylesheet"/);
   assert.doesNotMatch(html, /fonts\.googleapis\.com|family=Noto\+Sans\+SC|family=Nunito/);
   assert.match(html, /--ui-regular-font: 'Noto Serif SC', 'Songti SC', 'STSong', 'SimSun', serif;/);
   assert.match(html, /\.handwritten,[\s\S]*?'Gaegu', 'ZCOOL KuaiLe'/);

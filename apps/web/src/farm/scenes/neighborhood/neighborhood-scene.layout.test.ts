@@ -19,8 +19,9 @@ test("each farm card keeps its own ten-entry message region fixed and scrollable
   );
   assert.match(
     styles,
-    /\.farm-neighborhood__message-boards\s*\{[^}]*overflow-y:\s*auto[^}]*scrollbar-width:\s*thin/s,
+    /\.farm-neighborhood__message-boards\s*\{[^}]*display:\s*flex[^}]*flex-direction:\s*column[^}]*overflow-y:\s*auto[^}]*scrollbar-width:\s*thin/s,
   );
+  assert.match(styles, /\.farm-neighborhood__message-board-card\s*\{[^}]*flex:\s*0 0 auto/s);
   assert.match(
     styles,
     /\.farm-neighborhood__message-board-card ul\s*\{[^}]*height:\s*clamp\(168px, 24vh, 220px\)[^}]*overflow-y:\s*auto[^}]*scrollbar-width:\s*thin/s,

@@ -13,12 +13,15 @@ test("live registration renders as a standalone page without the community or MC
   const authScreenSource = readSource("./auth-screen.tsx");
   const registrationEntrySource = readSource("./registration-entry.tsx");
   const styles = readSource("../styles.css");
-  const fontCss = readSource("../../public/fonts/doorbell-fonts.v1.css");
+  const fontCss = readSource("../../public/fonts/doorbell-fonts.v2.css");
   const gaeguRegular = readFileSync(
     new URL("../../public/fonts/gaegu-latin-400.v1.woff2", import.meta.url),
   );
   const gaeguBold = readFileSync(
     new URL("../../public/fonts/gaegu-latin-700.v1.woff2", import.meta.url),
+  );
+  const notoSerifUi = readFileSync(
+    new URL("../../public/fonts/noto-serif-sc-ui-400.v2.woff2", import.meta.url),
   );
 
   assert.match(authScreenSource, /className="registration-page"/);
@@ -43,7 +46,7 @@ test("live registration renders as a standalone page without the community or MC
   );
   assert.doesNotMatch(registrationEntrySource, /handwritten registration-login-action/);
   assert.doesNotMatch(registrationEntrySource, /入住社区|className="primary-action"/);
-  assert.match(styles, /@import url\("\/fonts\/doorbell-fonts\.v1\.css"\);/);
+  assert.match(styles, /@import url\("\/fonts\/doorbell-fonts\.v2\.css"\);/);
   assert.doesNotMatch(styles, /fonts\.googleapis\.com/);
   assert.match(
     fontCss,
@@ -56,10 +59,14 @@ test("live registration renders as a standalone page without the community or MC
   assert.match(fontCss, /font-family: "Playfair Display";/);
   assert.match(fontCss, /font-family: "Quicksand";/);
   assert.match(fontCss, /font-family: "Noto Serif SC";/);
+  assert.match(fontCss, /url\("\/fonts\/noto-serif-sc-ui-400\.v2\.woff2"\)/);
+  assert.doesNotMatch(fontCss, /noto-serif-sc-latin-variable/);
   assert.match(fontCss, /font-family: "ZCOOL KuaiLe";/);
   assert.doesNotMatch(fontCss, /fonts\.(?:googleapis|gstatic)\.com/);
   assert.equal(gaeguRegular.subarray(0, 4).toString("ascii"), "wOF2");
   assert.equal(gaeguBold.subarray(0, 4).toString("ascii"), "wOF2");
+  assert.equal(notoSerifUi.subarray(0, 4).toString("ascii"), "wOF2");
+  assert.ok(notoSerifUi.length > 300_000);
   assert.match(styles, /\.registration-page__header\s*\{[^}]*border-bottom: 0;/s);
 });
 

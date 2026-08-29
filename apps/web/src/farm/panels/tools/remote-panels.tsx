@@ -101,10 +101,12 @@ export function FarmExpeditionPanel({
 }
 
 export function RanchDispatchPanel({
+  farmCatalog,
   onRanchInteractionAction,
   ranch,
   preview,
 }: {
+  farmCatalog?: BoundFarmCatalogRead | null;
   onRanchInteractionAction?: RanchInteractionActionExecutor | undefined;
   ranch?: BoundRanchRead | null;
   preview: boolean;
@@ -126,6 +128,7 @@ export function RanchDispatchPanel({
     <Suspense fallback={null}>
       <RanchDispatchPanelContent
         dispatch={dispatch}
+        farmCatalog={farmCatalog ?? null}
         onRanchInteractionAction={onRanchInteractionAction}
         ranch={ranch}
       />

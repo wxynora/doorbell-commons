@@ -1144,6 +1144,39 @@ export function FarmExpeditionPanelContent({
 
 type RanchDispatchAvailable = NonNullable<BoundRanchRead["data"]["dispatch"]>;
 
+type RanchDispatchTarget = {
+  farmDoorplate: string;
+  farmName: string;
+};
+
+function getRanchDispatchTargets(
+  farmCatalog: BoundFarmCatalogRead | null | undefined,
+): RanchDispatchTarget[] {
+  const neighborhood = farmCatalog?.data.neighborhood;
+  if (!farmCatalog || !neighborhood || neighborhood.status === "unavailable") return [];
+
+  const ownFarmDoorplate = farmCatalog.data.farm.farm_doorplate;
+  const targets: RanchDispatchTarget[] = [];
+  const seenDoorplates = new Set<string>();
+  const addTarget = (farmDoorplate: string, farmName: string) => {
+    if (farmDoorplate === ownFarmDoorplate || seenDoorplates.has(farmDoorplate)) return;
+    seenDoorplates.add(farmDoorplate);
+    targets.push({ farmDoorplate, farmName });
+  };
+
+  if (neighborhood.message_boards !== undefined) {
+    for (const board of neighborhood.message_boards) {
+      if (!board.is_own) addTarget(board.farm_doorplate, board.farm_name);
+    }
+    return targets;
+  }
+
+  for (const rows of Object.values(neighborhood.rankings)) {
+    for (const row of rows) addTarget(row.farm_doorplate, row.farm_name);
+  }
+  return targets;
+}
+
 type RanchInteractionActionFields =
   | Omit<
       Extract<RanchInteractionActionInput, { action: "dispatch" }>,
@@ -1164,10 +1197,12 @@ type RanchInteractionActionFields =
 
 export function RanchDispatchPanelContent({
   dispatch,
+  farmCatalog,
   onRanchInteractionAction,
   ranch,
 }: {
   dispatch: RanchDispatchAvailable;
+  farmCatalog: BoundFarmCatalogRead | null;
   onRanchInteractionAction?: RanchInteractionActionExecutor | undefined;
   ranch: BoundRanchRead;
 }) {
@@ -1178,7 +1213,7 @@ export function RanchDispatchPanelContent({
     | { stage: "success"; message: string }
     | { stage: "error"; attempt: Attempt | null; issue: RanchInteractionActionIssue };
   const [action, setAction] = useState<ActionState>({ stage: "idle" });
-  const [targetFarmDoorplate, setTargetFarmDoorplate] = useState("");
+  const [selectedTargetFarmDoorplate, setSelectedTargetFarmDoorplate] = useState("");
   const [durationHours, setDurationHours] = useState("1");
   const [amount, setAmount] = useState("1");
   const residents = [
@@ -1196,10 +1231,14 @@ export function RanchDispatchPanelContent({
   const busy = action.stage === "submitting";
   const parsedDuration = Number(durationHours);
   const parsedAmount = Number(amount);
-  const validDoorplate = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/.test(targetFarmDoorplate);
   const validDuration = Number.isSafeInteger(parsedDuration) && parsedDuration > 0;
   const validAmount = Number.isSafeInteger(parsedAmount) && parsedAmount > 0;
   const selectedResident = residents.find((resident) => resident.identity.kind_id === animalKindId);
+  const dispatchTargets = getRanchDispatchTargets(farmCatalog);
+  const selectedTarget =
+    dispatchTargets.find((target) => target.farmDoorplate === selectedTargetFarmDoorplate) ??
+    dispatchTargets[0] ??
+    null;
   const shouldRetry = (issue: RanchInteractionActionIssue) =>
     issue.code === "network_unavailable" ||
     issue.code === "farm_unavailable" ||
@@ -1301,15 +1340,22 @@ export function RanchDispatchPanelContent({
           </select>
         </label>
         <label>
-          <span>目标农场门牌</span>
-          <input
-            disabled={busy || !onRanchInteractionAction}
-            maxLength={6}
-            onChange={(event) => setTargetFarmDoorplate(event.currentTarget.value.toUpperCase())}
-            placeholder="六位门牌"
-            type="text"
-            value={targetFarmDoorplate}
-          />
+          <span>目标农场</span>
+          <select
+            disabled={busy || !onRanchInteractionAction || dispatchTargets.length === 0}
+            onChange={(event) => setSelectedTargetFarmDoorplate(event.currentTarget.value)}
+            value={selectedTarget?.farmDoorplate ?? ""}
+          >
+            {dispatchTargets.length > 0 ? (
+              dispatchTargets.map((target) => (
+                <option key={target.farmDoorplate} value={target.farmDoorplate}>
+                  {target.farmName}（门牌 {target.farmDoorplate}）
+                </option>
+              ))
+            ) : (
+              <option value="">暂无真实邻居农场</option>
+            )}
+          </select>
         </label>
         <label>
           <span>时长（小时）</span>
@@ -1325,21 +1371,22 @@ export function RanchDispatchPanelContent({
           disabled={
             busy ||
             !onRanchInteractionAction ||
-            !validDoorplate ||
+            !selectedTarget ||
             !validDuration ||
             !selectedResident
           }
-          onClick={() =>
+          onClick={() => {
+            if (!selectedTarget || !selectedResident?.identity.kind_id) return;
             currentAction(
               {
                 action: "dispatch",
-                targetFarmDoorplate,
-                animalKindId: selectedResident?.identity.kind_id as string,
+                targetFarmDoorplate: selectedTarget.farmDoorplate,
+                animalKindId: selectedResident.identity.kind_id,
                 durationHours: parsedDuration,
               },
               "派遣",
-            )
-          }
+            );
+          }}
           type="button"
         >
           派遣

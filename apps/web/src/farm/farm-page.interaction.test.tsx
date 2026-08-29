@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BoundFarmCatalogRead } from "../auth/farm-catalog-client";
+import type { BoundRanchRead } from "../auth/ranch-client";
 
 const clients = vi.hoisted(() => ({
   catalog: vi.fn(),
@@ -108,6 +109,8 @@ import { FarmPage } from "./farm-page";
 import {
   type ExpeditionActionExecutor,
   FarmExpeditionPanelContent,
+  RanchDispatchPanelContent,
+  type RanchInteractionActionExecutor,
 } from "./panels/farm-action-panels";
 
 const FIELD_BEFORE = {
@@ -1270,6 +1273,174 @@ describe("Farm expedition Human UI", () => {
     fireEvent.click(screen.getByRole("button", { name: "旅程簿" }));
     expect(screen.getByText("幻菇林")).toBeTruthy();
     expect(screen.getByText("从孢子雨里带回了一盏菌灯。")).toBeTruthy();
+  });
+});
+
+function dispatchCatalog(
+  messageBoards:
+    | Array<{
+        farm_doorplate: string;
+        farm_name: string;
+        is_own: boolean;
+        status: "open" | "closed";
+        messages: [];
+      }>
+    | undefined,
+): BoundFarmCatalogRead {
+  const base = catalogResult("普通种子", "渡的小农场").data;
+  return {
+    ...base,
+    data: {
+      ...base.data,
+      neighborhood: {
+        status: "available",
+        rankings: {
+          harvest: [
+            {
+              farm_doorplate: "3ET3FE",
+              farm_name: "渡的小农场",
+              value: 9,
+              equipped_title: null,
+            },
+            {
+              farm_doorplate: "352HQ6",
+              farm_name: "排行榜里的夏安农场",
+              value: 8,
+              equipped_title: null,
+            },
+          ],
+          wealth: [
+            {
+              farm_doorplate: "352HQ6",
+              farm_name: "重复的夏安农场",
+              value: 7,
+              equipped_title: null,
+            },
+            {
+              farm_doorplate: "CD9KVW",
+              farm_name: "排行榜里的悬崖边",
+              value: 6,
+              equipped_title: null,
+            },
+          ],
+        },
+        messages: [],
+        ...(messageBoards === undefined ? {} : { message_boards: messageBoards }),
+        original_crops: [],
+      },
+    },
+  } as unknown as BoundFarmCatalogRead;
+}
+
+function dispatchRanch(): BoundRanchRead {
+  return {
+    ...RANCH_RESULT.data,
+    data: {
+      ...RANCH_RESULT.data.data,
+      residents: {
+        status: "available",
+        animals: [
+          {
+            status: "known",
+            identity: { status: "known", kind_id: "cow", name: "奶牛", custom_name: "花花" },
+            level: 1,
+            pinned: false,
+            accessories: { status: "available", items: [] },
+            produce: null,
+            dispatch: { state: "home", raid_id: null },
+          },
+        ],
+        pets: [],
+        patrol_goose: null,
+      },
+    },
+  } as unknown as BoundRanchRead;
+}
+
+describe("Ranch dispatch target selection", () => {
+  it("offers every real non-own message board and submits the selected original doorplate", async () => {
+    const farmCatalog = dispatchCatalog([
+      {
+        farm_doorplate: "3ET3FE",
+        farm_name: "渡的小农场",
+        is_own: true,
+        status: "open",
+        messages: [],
+      },
+      {
+        farm_doorplate: "352HQ6",
+        farm_name: "夏安农场",
+        is_own: false,
+        status: "open",
+        messages: [],
+      },
+      {
+        farm_doorplate: "CD9KVW",
+        farm_name: "悬崖边",
+        is_own: false,
+        status: "closed",
+        messages: [],
+      },
+    ]);
+    const ranch = dispatchRanch();
+    if (ranch.data.dispatch.status !== "available") throw new Error("dispatch fixture");
+    const onAction = vi.fn(async (_input: Parameters<RanchInteractionActionExecutor>[0]) => ({
+      ok: false as const,
+      issue: {
+        code: "network_unavailable" as const,
+        currentRevision: null,
+        serverMessage: null,
+      },
+    }));
+
+    render(
+      <RanchDispatchPanelContent
+        dispatch={ranch.data.dispatch}
+        farmCatalog={farmCatalog}
+        onRanchInteractionAction={onAction}
+        ranch={ranch}
+      />,
+    );
+
+    expect(screen.queryByRole("textbox", { name: "目标农场门牌" })).toBeNull();
+    const target = screen.getByRole("combobox", { name: "目标农场" });
+    expect(within(target).getByRole("option", { name: "夏安农场（门牌 352HQ6）" })).toBeTruthy();
+    expect(within(target).getByRole("option", { name: "悬崖边（门牌 CD9KVW）" })).toBeTruthy();
+    expect(within(target).queryByRole("option", { name: /排行榜里的/ })).toBeNull();
+
+    fireEvent.change(target, { target: { value: "CD9KVW" } });
+    fireEvent.click(screen.getByRole("button", { name: "派遣" }));
+
+    await waitFor(() => expect(onAction).toHaveBeenCalledTimes(1));
+    expect(onAction.mock.calls[0]?.[0]).toMatchObject({
+      action: "dispatch",
+      animalKindId: "cow",
+      durationHours: 1,
+      expectedRevision: ranch.revision,
+      targetFarmDoorplate: "CD9KVW",
+    });
+  });
+
+  it("deduplicates ranking farms only when an older catalog omits message boards", () => {
+    const ranch = dispatchRanch();
+    if (ranch.data.dispatch.status !== "available") throw new Error("dispatch fixture");
+
+    render(
+      <RanchDispatchPanelContent
+        dispatch={ranch.data.dispatch}
+        farmCatalog={dispatchCatalog(undefined)}
+        onRanchInteractionAction={vi.fn()}
+        ranch={ranch}
+      />,
+    );
+
+    const options = within(screen.getByRole("combobox", { name: "目标农场" })).getAllByRole(
+      "option",
+    );
+    expect(options.map((option) => option.textContent)).toEqual([
+      "排行榜里的夏安农场（门牌 352HQ6）",
+      "排行榜里的悬崖边（门牌 CD9KVW）",
+    ]);
   });
 });
 

@@ -166,6 +166,7 @@ export function FarmToolPanel({
         />
       ) : activeScene === "ranch" && tool.id === "dispatch" ? (
         <RanchDispatchPanel
+          farmCatalog={farmCatalog ?? null}
           onRanchInteractionAction={onRanchInteractionAction}
           preview={preview}
           ranch={ranch ?? null}

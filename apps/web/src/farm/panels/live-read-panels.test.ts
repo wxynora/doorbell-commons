@@ -32,10 +32,18 @@ test("non-preview tool panels consume structured live reads instead of Demo cata
   assert.match(recipeCatalog, /kitchen\?\.data\.known_recipes/);
   assert.match(remotePanels, /ranch\?\.data\.dispatch/);
   assert.match(
+    remotePanels,
+    /<RanchDispatchPanelContent[\s\S]*farmCatalog=\{farmCatalog \?\? null\}[\s\S]*ranch=\{ranch\}/,
+  );
+  assert.match(
     toolPanel,
     /<FarmShopPanelContent[\s\S]*farmCatalog=\{farmCatalog \?\? null\}[\s\S]*kitchen=\{kitchen \?\? null\}[\s\S]*ranch=\{ranch \?\? null\}/,
   );
   assert.match(toolPanel, /<CookingRecipeCatalog[\s\S]*kitchen=\{kitchen \?\? null\}/);
+  assert.match(
+    toolPanel,
+    /<RanchDispatchPanel[\s\S]*farmCatalog=\{farmCatalog \?\? null\}[\s\S]*ranch=\{ranch \?\? null\}/,
+  );
 });
 
 test("live bulletin and neighborhood render only structured catalog sections", () => {
