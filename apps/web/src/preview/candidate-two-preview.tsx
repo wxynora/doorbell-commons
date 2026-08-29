@@ -8990,22 +8990,22 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     }
 
     const togetherCoverAssets = {
-        'together.river-from-tomorrow-opening': '/lingye/together/river-opening.webp',
-        'together.river-future-wharf': '/lingye/together/river-future-wharf.webp',
-        'together.river-cooperative-investigation': '/lingye/together/river-investigation.webp',
-        'together.river-fork': '/lingye/together/river-fork.webp',
-        'together.river-ending-second-home': '/lingye/together/river-ending-second-home.webp',
-        'together.river-ending-quiet-harvest': '/lingye/together/river-ending-quiet-harvest.webp',
-        'together.river-ending-ten-thousand-bottles': '/lingye/together/river-ending-ten-thousand-bottles.webp',
-        'together.river-ending-no-address': '/lingye/together/river-ending-no-address.webp',
-        'together.same-kitchen-opening': '/lingye/together/same-kitchen-opening.jpg',
-        'together.same-kitchen-old-recipe': '/lingye/together/same-kitchen-old-recipe.jpg',
-        'together.same-kitchen-undelivered-letters': '/lingye/together/same-kitchen-undelivered-letters.jpg',
-        'together.same-kitchen-service': '/lingye/together/same-kitchen-service.jpg',
-        'together.same-kitchen-final-arrangement': '/lingye/together/same-kitchen-final-arrangement.jpg',
-        'together.same-kitchen-ending-one-sign': '/lingye/together/same-kitchen-ending-one-sign.jpg',
-        'together.same-kitchen-ending-next-door': '/lingye/together/same-kitchen-ending-next-door.jpg',
-        'together.same-kitchen-ending-public-kitchen': '/lingye/together/same-kitchen-ending-public-kitchen.jpg',
+        'together.river-from-tomorrow-opening': '/lingye/together/river-opening-v1.webp',
+        'together.river-future-wharf': '/lingye/together/river-future-wharf-v1.webp',
+        'together.river-cooperative-investigation': '/lingye/together/river-investigation-v1.webp',
+        'together.river-fork': '/lingye/together/river-fork-v1.webp',
+        'together.river-ending-second-home': '/lingye/together/river-ending-second-home-v1.webp',
+        'together.river-ending-quiet-harvest': '/lingye/together/river-ending-quiet-harvest-v1.webp',
+        'together.river-ending-ten-thousand-bottles': '/lingye/together/river-ending-ten-thousand-bottles-v1.webp',
+        'together.river-ending-no-address': '/lingye/together/river-ending-no-address-v1.webp',
+        'together.same-kitchen-opening': '/lingye/together/same-kitchen-opening-v1.jpg',
+        'together.same-kitchen-old-recipe': '/lingye/together/same-kitchen-old-recipe-v1.jpg',
+        'together.same-kitchen-undelivered-letters': '/lingye/together/same-kitchen-undelivered-letters-v1.jpg',
+        'together.same-kitchen-service': '/lingye/together/same-kitchen-service-v1.jpg',
+        'together.same-kitchen-final-arrangement': '/lingye/together/same-kitchen-final-arrangement-v1.jpg',
+        'together.same-kitchen-ending-one-sign': '/lingye/together/same-kitchen-ending-one-sign-v1.jpg',
+        'together.same-kitchen-ending-next-door': '/lingye/together/same-kitchen-ending-next-door-v1.jpg',
+        'together.same-kitchen-ending-public-kitchen': '/lingye/together/same-kitchen-ending-public-kitchen-v1.jpg',
     };
 
     function setTogetherText(selector, value) {
@@ -9016,6 +9016,7 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     let togetherArchives = [];
     let togetherArchiveIndex = -1;
     let togetherArchivePageIndex = 0;
+    let lastLiveTogetherData = null;
 
     function buildTogetherArchiveIndexCard(archive, index) {
         const button = document.createElement('button');
@@ -9799,22 +9800,29 @@ const CANDIDATE_RUNTIME_SCRIPT = `
 
     function applyLiveTogetherState(readState) {
         if (readState.stage === 'idle') {
+            lastLiveTogetherData = null;
             renderTogetherData(null);
             setTogetherText('.candidate2-together-live-empty', '进入后读取当前铃野共行状态。');
             return;
         }
         if (readState.stage === 'loading') {
             showScreen('screen-lingye-together');
-            renderTogetherData(null);
-            setTogetherText('.candidate2-together-live-empty', '正在读取当前铃野共行状态。');
+            if (lastLiveTogetherData) {
+                renderTogetherData(lastLiveTogetherData);
+            } else {
+                renderTogetherData(null);
+                setTogetherText('.candidate2-together-live-empty', '正在读取当前铃野共行状态。');
+            }
             return;
         }
         if (readState.stage === 'ready') {
             const data = normalizeLiveTogether(readState.data);
+            lastLiveTogetherData = data;
             renderTogetherData(data);
             if (!data) setTogetherText('.candidate2-together-live-empty', '当前没有铃野共行状态。');
             return;
         }
+        lastLiveTogetherData = null;
         renderTogetherData(null);
         setTogetherText(
             '.candidate2-together-live-empty',

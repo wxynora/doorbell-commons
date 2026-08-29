@@ -32,6 +32,25 @@ export interface RanchSkinDefinition {
   bonusText: string;
 }
 
+export interface RanchVariantVisualOption {
+  atlas: "glimmer.variants" | null;
+  set: 1 | 2 | 3 | null;
+  sprite_index: number | null;
+  variant_id: string;
+}
+
+export interface RanchVariantSelection {
+  available_variants: readonly RanchVariantVisualOption[];
+  current_variant_id: string | null;
+}
+
+export interface RanchResidentSpriteVisual {
+  kind: "base" | "skin" | "variant";
+  placementStyle: CSSProperties;
+  spriteStyle: CSSProperties;
+  staticSprite: boolean;
+}
+
 export const RANCH_LIMITED_SKINS: readonly RanchSkinDefinition[] = [
   {
     id: "pompompurin",
@@ -362,4 +381,73 @@ export function getRanchSkinSpriteStyle(skinId: string): CSSProperties {
 
 export function getRanchSkinPlacementStyle(): CSSProperties {
   return { height: "100%", left: "50%", top: "50%", width: "100%" };
+}
+
+const GLIMMER_VARIANT_SHEET_URLS = {
+  1: "/lingye/glimmer/variants/variant-1.webp",
+  2: "/lingye/glimmer/variants/variant-2.webp",
+  3: "/lingye/glimmer/variants/variant-3.webp",
+} as const;
+
+export function getRanchVariantSpriteStyle(
+  variant: RanchVariantVisualOption,
+): CSSProperties {
+  if (
+    variant.atlas !== "glimmer.variants" ||
+    variant.set === null ||
+    variant.sprite_index === null
+  ) {
+    return {};
+  }
+  const sheet = GLIMMER_VARIANT_SHEET_URLS[variant.set];
+  const column = variant.sprite_index % 5;
+  const row = Math.floor(variant.sprite_index / 5);
+  return {
+    backgroundImage: `url("${sheet}")`,
+    backgroundPosition: `${column * 25}% ${(row * 100) / 3}%`,
+    backgroundSize: "500% 400%",
+  };
+}
+
+export function getRanchResidentSpriteVisual(
+  animal: RanchShopAnimal,
+  variants?: RanchVariantSelection | null,
+): RanchResidentSpriteVisual {
+  const base = {
+    kind: "base" as const,
+    placementStyle: getRanchAnimalPlacementStyle(animal),
+    spriteStyle: getRanchAnimalSpriteStyle(animal),
+    staticSprite: false,
+  };
+  const currentVariantId = variants?.current_variant_id;
+  if (!currentVariantId || currentVariantId === "base") {
+    return base;
+  }
+
+  if (getRanchSkinAsset(currentVariantId)) {
+    return {
+      kind: "skin",
+      placementStyle: getRanchSkinPlacementStyle(),
+      spriteStyle: getRanchSkinSpriteStyle(currentVariantId),
+      staticSprite: true,
+    };
+  }
+
+  const variant = variants.available_variants.find(
+    (candidate) => candidate.variant_id === currentVariantId,
+  );
+  if (
+    !variant ||
+    variant.atlas !== "glimmer.variants" ||
+    variant.set === null ||
+    variant.sprite_index === null
+  ) {
+    return base;
+  }
+  return {
+    kind: "variant",
+    placementStyle: getRanchAnimalPlacementStyle(animal),
+    spriteStyle: getRanchVariantSpriteStyle(variant),
+    staticSprite: false,
+  };
 }

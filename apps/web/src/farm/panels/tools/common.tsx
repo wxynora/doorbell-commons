@@ -21,7 +21,7 @@ export const FARM_FEATURE_PANELS: Readonly<
     },
     adventure: {
       emptyLabel: "暂无旅程",
-      tabs: ["当前旅程", "故事", "秘境图鉴", "记录"],
+      tabs: ["当前旅程", "行囊", "本趟故事", "秘境图鉴", "旅程簿"],
     },
   },
   ranch: {

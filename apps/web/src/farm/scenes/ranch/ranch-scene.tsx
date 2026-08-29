@@ -1,17 +1,12 @@
 import { type CSSProperties, useEffect, useRef } from "react";
 import "./ranch-scene.css";
+import {
+  createRanchSceneMountEntropy,
+  getRanchSceneInitialPosition,
+  type RanchSceneAnimalLayout,
+} from "./ranch-scene-position";
 
-export interface RanchSceneAnimalLayout {
-  x: number;
-  y: number;
-  size: number;
-  roam: {
-    minX: number;
-    maxX: number;
-    minY: number;
-    maxY: number;
-  };
-}
+export type { RanchSceneAnimalLayout } from "./ranch-scene-position";
 
 export interface RanchSceneAnimalDefinition {
   id: string;
@@ -20,20 +15,29 @@ export interface RanchSceneAnimalDefinition {
   placementStyle: CSSProperties;
   spriteStyle: CSSProperties;
   staticSprite?: boolean | undefined;
+  randomizeInitialPosition?: boolean | undefined;
 }
 
 function RanchSceneAnimal({
   active,
   animal,
+  mountEntropy,
   onSelectAnimal,
 }: {
   active: boolean;
   animal: RanchSceneAnimalDefinition;
+  mountEntropy: number;
   onSelectAnimal: (animalId: string) => void;
 }) {
   const roamerRef = useRef<HTMLSpanElement>(null);
   const portraitRef = useRef<HTMLSpanElement>(null);
   const { layout } = animal;
+  const initialPositionRef = useRef(
+    animal.randomizeInitialPosition
+      ? getRanchSceneInitialPosition(animal.id, layout, mountEntropy)
+      : { x: layout.x, y: layout.y },
+  );
+  const initialPosition = initialPositionRef.current;
 
   useEffect(() => {
     const roamer = roamerRef.current;
@@ -49,8 +53,8 @@ function RanchSceneAnimal({
       return;
     }
 
-    let currentX = layout.x;
-    let currentY = layout.y;
+    let currentX = initialPosition.x;
+    let currentY = initialPosition.y;
     let moveAnimation: Animation | null = null;
     let moveTimer: number | null = null;
     let stopped = false;
@@ -72,10 +76,10 @@ function RanchSceneAnimal({
       }
 
       const sceneBounds = scene.getBoundingClientRect();
-      const currentOffsetX = ((currentX - layout.x) / 100) * sceneBounds.width;
-      const currentOffsetY = ((currentY - layout.y) / 100) * sceneBounds.height;
-      const targetOffsetX = ((targetX - layout.x) / 100) * sceneBounds.width;
-      const targetOffsetY = ((targetY - layout.y) / 100) * sceneBounds.height;
+      const currentOffsetX = ((currentX - initialPosition.x) / 100) * sceneBounds.width;
+      const currentOffsetY = ((currentY - initialPosition.y) / 100) * sceneBounds.height;
+      const targetOffsetX = ((targetX - initialPosition.x) / 100) * sceneBounds.width;
+      const targetOffsetY = ((targetY - initialPosition.y) / 100) * sceneBounds.height;
       const distance = Math.hypot(targetOffsetX - currentOffsetX, targetOffsetY - currentOffsetY);
       const targetTransform = `translate3d(${targetOffsetX}px, ${targetOffsetY}px, 0)`;
 
@@ -110,7 +114,15 @@ function RanchSceneAnimal({
       }
       moveAnimation?.cancel();
     };
-  }, [active, layout]);
+  }, [
+    active,
+    initialPosition.x,
+    initialPosition.y,
+    layout.roam.maxX,
+    layout.roam.maxY,
+    layout.roam.minX,
+    layout.roam.minY,
+  ]);
 
   return (
     <button
@@ -119,10 +131,10 @@ function RanchSceneAnimal({
       data-animal-id={animal.id}
       onClick={() => onSelectAnimal(animal.id)}
       style={{
-        left: `${layout.x}%`,
-        top: `${layout.y}%`,
+        left: `${initialPosition.x}%`,
+        top: `${initialPosition.y}%`,
         width: `${layout.size}%`,
-        zIndex: Math.round(layout.y),
+        zIndex: Math.round(initialPosition.y),
       }}
       type="button"
     >
@@ -157,6 +169,10 @@ export function RanchScene({
   backgroundUrl: string;
   onSelectAnimal: (animalId: string) => void;
 }) {
+  const mountEntropyRef = useRef<number | null>(null);
+  const mountEntropy = mountEntropyRef.current ?? createRanchSceneMountEntropy();
+  mountEntropyRef.current = mountEntropy;
+
   return (
     <section
       aria-labelledby="farm-ranch-title"
@@ -172,6 +188,7 @@ export function RanchScene({
           active={active}
           animal={animal}
           key={animal.id}
+          mountEntropy={mountEntropy}
           onSelectAnimal={onSelectAnimal}
         />
       ))}

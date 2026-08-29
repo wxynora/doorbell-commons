@@ -5,6 +5,7 @@ import {
   upgradeBoundFarmLand,
 } from "../../auth/auth-client";
 import {
+  acknowledgeBoundBulletin,
   type BoundBulletinRead,
   bulletinIssueMessage,
   getBoundBulletin,
@@ -85,6 +86,7 @@ export function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
     {},
   );
   const requestedResourcesRef = useRef<Set<keyof FarmReadResources>>(new Set());
+  const bulletinAckKeysRef = useRef<Map<string, string>>(new Map());
 
   const requireResource = useCallback(
     (resource: keyof FarmReadResources, force = false) => {
@@ -203,6 +205,42 @@ export function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
     await refreshField();
     refreshRequestedResources();
   }, [refreshField, refreshRequestedResources]);
+
+  const acknowledgeDisplayedBulletin = useCallback(
+    async (bulletin: BoundBulletinRead) => {
+      const expectedFarmDoorplate = fieldDoorplateRef.current;
+      if (!expectedFarmDoorplate) return;
+      const idempotencyKey =
+        bulletinAckKeysRef.current.get(bulletin.revision) ?? crypto.randomUUID();
+      bulletinAckKeysRef.current.set(bulletin.revision, idempotencyKey);
+      const result = await acknowledgeBoundBulletin({
+        expectedFarmDoorplate,
+        expectedRevision: bulletin.revision,
+        idempotencyKey,
+      });
+      if (result.ok) {
+        bulletinAckKeysRef.current.delete(bulletin.revision);
+        setResources((current) => ({
+          ...current,
+          bulletin: {
+            stage: "ready",
+            data: {
+              subject: result.data.subject,
+              data: result.data.data.resource,
+              revision: result.data.revision,
+              server_time: result.data.server_time,
+            },
+          },
+        }));
+        return;
+      }
+      if (result.issue.code === "state_conflict") {
+        bulletinAckKeysRef.current.delete(bulletin.revision);
+        requireResource("bulletin", true);
+      }
+    },
+    [requireResource],
+  );
 
   const submitRanchResidentAction = useCallback(
     async (input: RanchResidentActionInput): Promise<RanchResidentActionResult> => {
@@ -639,6 +677,7 @@ export function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
           <FarmFieldContent
             data={state.data}
             harvestAction={harvestAction}
+            onAcknowledgeBulletin={previewData ? undefined : acknowledgeDisplayedBulletin}
             landUpgradeAction={landUpgradeAction}
             onCloseHarvestAction={() => setHarvestAction({ stage: "idle" })}
             onCloseLandUpgradeAction={() => setLandUpgradeAction({ stage: "idle" })}

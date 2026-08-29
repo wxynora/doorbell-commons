@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { BoundFarmField } from "../../auth/auth-client";
+import type { BoundBulletinRead } from "../../auth/bulletin-client";
 import {
   type CreateFarmPurchaseRequestInput,
   farmPurchaseRequestIssueMessage,
@@ -152,6 +153,7 @@ const FarmToolPanel = lazy(async () => {
 export function FarmFieldContent({
   data,
   harvestAction = { stage: "idle" },
+  onAcknowledgeBulletin,
   landUpgradeAction = { stage: "idle" },
   onCloseHarvestAction,
   onCloseLandUpgradeAction,
@@ -185,6 +187,7 @@ export function FarmFieldContent({
 }: {
   data: BoundFarmField;
   harvestAction?: FarmHarvestActionState;
+  onAcknowledgeBulletin?: ((bulletin: BoundBulletinRead) => void) | undefined;
   landUpgradeAction?: FarmLandUpgradeActionState;
   onCloseHarvestAction?: () => void;
   onCloseLandUpgradeAction?: () => void;
@@ -321,6 +324,16 @@ export function FarmFieldContent({
       ? getToolReadResource(activeScene, activeSceneUiState.selectedTool.id)
       : getSceneReadResource(activeScene);
   const activeResourceState = activeResourceKey ? resources[activeResourceKey] : null;
+  const acknowledgeDisplayedBulletinIfNeeded = () => {
+    const displayedBulletin = resources.bulletin.stage === "ready" ? resources.bulletin.data : null;
+    if (
+      !preview &&
+      displayedBulletin &&
+      Object.values(displayedBulletin.data.available).some((entries) => (entries?.length ?? 0) > 0)
+    ) {
+      onAcknowledgeBulletin?.(displayedBulletin);
+    }
+  };
   const ranchSceneAnimals: readonly RanchSceneAnimalDefinition[] = preview
     ? RANCH_SHOP_ANIMALS.filter((animal) => animal.demoOwned).flatMap((animal) => {
         const layout = RANCH_SCENE_DEMO_LAYOUTS[animal.id];
@@ -347,6 +360,7 @@ export function FarmFieldContent({
           placementStyle: skinId
             ? getRanchSkinPlacementStyle()
             : getRanchAnimalPlacementStyle(resident.spriteAnimal),
+          randomizeInitialPosition: true,
           spriteStyle: skinId
             ? getRanchSkinSpriteStyle(skinId)
             : getRanchAnimalSpriteStyle(resident.spriteAnimal),
@@ -713,6 +727,9 @@ export function FarmFieldContent({
   );
 
   const changeScene = (sceneId: FarmSceneId) => {
+    if (sceneId !== activeScene && activeSceneUiState.bulletinOpen) {
+      acknowledgeDisplayedBulletinIfNeeded();
+    }
     if (!preview) {
       if (sceneId === "ranch") {
         onRequireResource?.("ranch");
@@ -950,7 +967,10 @@ export function FarmFieldContent({
               {sceneState.bulletinOpen ? (
                 <DingdongBulletin
                   bulletin={resources.bulletin.stage === "ready" ? resources.bulletin.data : null}
-                  onClose={() => updateSceneUiState(scene.id, { bulletinOpen: false })}
+                  onClose={() => {
+                    acknowledgeDisplayedBulletinIfNeeded();
+                    updateSceneUiState(scene.id, { bulletinOpen: false });
+                  }}
                   preview={preview}
                   sceneId={scene.id}
                 />
@@ -1069,6 +1089,9 @@ export function FarmFieldContent({
           if (!preview) {
             const resource = getToolReadResource(activeScene, tool.id);
             if (resource) onRequireResource?.(resource);
+          }
+          if (activeSceneUiState.bulletinOpen) {
+            acknowledgeDisplayedBulletinIfNeeded();
           }
           updateSceneUiState(activeScene, { bulletinOpen: false, selectedTool: tool });
         }}

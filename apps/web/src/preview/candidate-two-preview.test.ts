@@ -1294,6 +1294,17 @@ test("Together and its history stay free of the authenticated main navigation", 
   );
 });
 
+test("Together keeps its last verified cover while refreshing and uses versioned art", () => {
+  const html = buildCandidateTwoRuntimeHtml();
+
+  assert.match(html, /same-kitchen-opening-v1\.jpg/);
+  assert.match(html, /river-opening-v1\.webp/);
+  assert.match(
+    html,
+    /let lastLiveTogetherData = null;[\s\S]*readState\.stage === 'loading'[\s\S]*if \(lastLiveTogetherData\) \{\s*renderTogetherData\(lastLiveTogetherData\);[\s\S]*lastLiveTogetherData = data;\s*renderTogetherData\(data\);/,
+  );
+});
+
 test("the sandboxed candidate iframe explicitly permits its user-triggered copy buttons", () => {
   const componentSource = CandidateTwoPreview.toString();
 

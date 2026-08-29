@@ -105,6 +105,10 @@ vi.mock("../auth/smelting-action-client", () => ({
 }));
 
 import { FarmPage } from "./farm-page";
+import {
+  type ExpeditionActionExecutor,
+  FarmExpeditionPanelContent,
+} from "./panels/farm-action-panels";
 
 const FIELD_BEFORE = {
   data: {
@@ -1157,6 +1161,116 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+});
+
+describe("Farm expedition Human UI", () => {
+  it("switches independent journey sections and submits the hidden stable choice key", async () => {
+    const base = catalogResult("普通种子", "渡的小农场").data;
+    const farmCatalog = {
+      ...base,
+      data: {
+        ...base.data,
+        expedition: {
+          status: "available",
+          daily_limit: 3,
+          used_today: 1,
+          remaining_today: 2,
+          active: true,
+          map_id: "starlight_map_internal",
+          map_name: "星砂剧场",
+          step: 4,
+          hp: 3,
+          pending: {
+            kind: "choice",
+            event_id: "mirror_path_internal",
+            identity_state: "known",
+            title: "镜子后面的岔路",
+            options: [
+              { key: "route_star", label: "沿着落下的星光往前走" },
+              { key: "route_stream", label: "回到有水声的旧走廊" },
+            ],
+            foe: null,
+            difficulty: null,
+          },
+          bag: [
+            {
+              kind: "decor",
+              quantity: 1,
+              item_id: "moon_chime_internal",
+              identity_state: "known",
+              name: "月亮风铃",
+            },
+          ],
+          seen_event_ids: ["mirror_path_internal", "lost_ticket_internal"],
+          log: [
+            {
+              event_id: "mirror_path_internal",
+              title: "镜子后面的岔路",
+              text: "风从两条走廊同时吹了过来。",
+              at: "2026-08-30T07:00:00.000Z",
+            },
+          ],
+          journeys: [
+            {
+              map_id: "mushroom_map_internal",
+              map_name: "幻菇林",
+              at: "2026-08-29T07:00:00.000Z",
+              summary: "从孢子雨里带回了一盏菌灯。",
+              log: [],
+            },
+          ],
+        },
+      },
+    } as unknown as BoundFarmCatalogRead;
+    const onExpeditionAction = vi.fn<ExpeditionActionExecutor>(async () => ({
+      ok: false as const,
+      issue: {
+        code: "action_rejected" as const,
+        currentRevision: null,
+        serverMessage: "暂时不能选择",
+      },
+    }));
+
+    render(
+      <FarmExpeditionPanelContent
+        expedition={
+          farmCatalog.data.expedition as Extract<
+            BoundFarmCatalogRead["data"]["expedition"],
+            { status: "available" }
+          >
+        }
+        farmCatalog={farmCatalog}
+        onExpeditionAction={onExpeditionAction}
+      />,
+    );
+
+    expect(screen.getByText("星砂剧场")).toBeTruthy();
+    expect(screen.getByText("第 4 格")).toBeTruthy();
+    expect(screen.queryByText("route_star")).toBeNull();
+    expect(screen.queryByText("mirror_path_internal")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "沿着落下的星光往前走" }));
+    await waitFor(() => expect(onExpeditionAction).toHaveBeenCalledTimes(1));
+    expect(onExpeditionAction.mock.calls[0]?.[0]).toMatchObject({
+      action: "choose",
+      payload: { option: "route_star" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "行囊" }));
+    expect(screen.getByText("月亮风铃")).toBeTruthy();
+    expect(screen.queryByText("moon_chime_internal")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "本趟故事" }));
+    expect(screen.getByText("风从两条走廊同时吹了过来。")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "秘境图鉴" }));
+    expect(screen.getByText("已发现 2 个秘境片段")).toBeTruthy();
+    expect(screen.queryByText("lost_ticket_internal")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "旅程簿" }));
+    expect(screen.getByText("幻菇林")).toBeTruthy();
+    expect(screen.getByText("从孢子雨里带回了一盏菌灯。")).toBeTruthy();
+  });
 });
 
 describe("FarmPage authority resource lifecycle", () => {

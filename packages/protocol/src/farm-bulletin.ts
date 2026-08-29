@@ -5,6 +5,7 @@ const FARM_DOORPLATE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/;
 export const farmBulletinDoorplateSchema = z.string().regex(FARM_DOORPLATE_RE);
 export const farmBulletinHumanKeySchema = z.string().min(1);
 export const farmBulletinRevisionSchema = z.string().regex(/^farm-bulletin-v1:[0-9a-f]{64}$/);
+export const farmBulletinAckIdempotencyKeySchema = z.uuid();
 
 export const farmBulletinUnavailableReasonSchema = z.enum([
   "not_initialized",
@@ -146,6 +147,93 @@ export const boundFarmBulletinReadErrorSchema = z
   .strict();
 export const boundFarmBulletinReadRequestSchema = z.object({}).strict();
 
+export const farmHumanBulletinAckRequestSchema = z
+  .object({
+    farm_human_key: farmBulletinHumanKeySchema,
+    expected_farm_doorplate: farmBulletinDoorplateSchema,
+    expected_bulletin_revision: farmBulletinRevisionSchema,
+    idempotency_key: farmBulletinAckIdempotencyKeySchema,
+  })
+  .strict();
+
+export const boundFarmBulletinAckRequestSchema = z
+  .object({ expected_revision: farmBulletinRevisionSchema })
+  .strict();
+
+export const farmHumanBulletinAckResultSchema = z
+  .object({
+    receipt_id: farmBulletinAckIdempotencyKeySchema,
+    acknowledged_count: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const farmHumanBulletinAckSuccessSchema = z
+  .object({
+    subject: z.object({ farm_doorplate: farmBulletinDoorplateSchema }).strict(),
+    data: z
+      .object({
+        result: farmHumanBulletinAckResultSchema,
+        resource: farmBulletinDataSchema,
+      })
+      .strict(),
+    revision: farmBulletinRevisionSchema,
+    server_time: z.iso.datetime(),
+  })
+  .strict();
+
+export const boundFarmBulletinAckSuccessSchema = farmHumanBulletinAckSuccessSchema;
+
+export const farmHumanBulletinAckErrorCodeSchema = z.enum([
+  "invalid_request",
+  "authentication_required",
+  "farm_credential_not_found",
+  "farm_doorplate_mismatch",
+  "farm_credential_invalid",
+  "farm_not_found",
+  "farm_unavailable",
+  "upstream_contract_unavailable",
+  "state_conflict",
+  "idempotency_conflict",
+]);
+
+export const farmHumanBulletinAckErrorSchema = z
+  .object({
+    error: z
+      .object({
+        code: farmHumanBulletinAckErrorCodeSchema,
+        message: z.string(),
+        current_revision: farmBulletinRevisionSchema.optional(),
+      })
+      .strict(),
+  })
+  .strict();
+
+export const boundFarmBulletinAckErrorCodeSchema = z.enum([
+  "invalid_request",
+  "authentication_required",
+  "qq_not_group_member",
+  "onebot_unavailable",
+  "registration_profile_required",
+  "farm_not_found",
+  "farm_credential_invalid",
+  "farm_unavailable",
+  "upstream_contract_unavailable",
+  "state_conflict",
+  "idempotency_conflict",
+]);
+
+export const boundFarmBulletinAckErrorSchema = z
+  .object({
+    error: z
+      .object({
+        code: boundFarmBulletinAckErrorCodeSchema,
+        message: z.string(),
+        current_revision: farmBulletinRevisionSchema.optional(),
+      })
+      .strict(),
+  })
+  .strict();
+
 export type FarmBulletinData = z.infer<typeof farmBulletinDataSchema>;
 export type FarmHumanBulletinReadRequest = z.infer<typeof farmHumanBulletinReadRequestSchema>;
 export type FarmHumanBulletinReadSuccess = z.infer<typeof farmHumanBulletinReadSuccessSchema>;
@@ -154,3 +242,9 @@ export type FarmHumanBulletinReadError = z.infer<typeof farmHumanBulletinReadErr
 export type BoundFarmBulletinReadSuccess = z.infer<typeof boundFarmBulletinReadSuccessSchema>;
 export type BoundFarmBulletinReadErrorCode = z.infer<typeof boundFarmBulletinReadErrorCodeSchema>;
 export type BoundFarmBulletinReadError = z.infer<typeof boundFarmBulletinReadErrorSchema>;
+export type FarmHumanBulletinAckRequest = z.infer<typeof farmHumanBulletinAckRequestSchema>;
+export type BoundFarmBulletinAckRequest = z.infer<typeof boundFarmBulletinAckRequestSchema>;
+export type FarmHumanBulletinAckSuccess = z.infer<typeof farmHumanBulletinAckSuccessSchema>;
+export type BoundFarmBulletinAckSuccess = z.infer<typeof boundFarmBulletinAckSuccessSchema>;
+export type FarmHumanBulletinAckError = z.infer<typeof farmHumanBulletinAckErrorSchema>;
+export type BoundFarmBulletinAckError = z.infer<typeof boundFarmBulletinAckErrorSchema>;

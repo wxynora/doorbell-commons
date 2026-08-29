@@ -6,11 +6,10 @@ import {
 } from "../../auth/ranch-action-client";
 import type { BoundRanchRead } from "../../auth/ranch-client";
 import {
-  getRanchAnimalSpriteStyle,
-  getRanchSkinSpriteStyle,
-  RANCH_LIMITED_SKINS,
+  getRanchResidentSpriteVisual,
   RANCH_SHOP_ANIMALS,
   type RanchShopAnimal,
+  type RanchVariantSelection,
 } from "../panels/ranch-animal-data";
 import type {
   RanchResidentActionAttempt,
@@ -24,16 +23,17 @@ export type { RanchResidentActionExecutor } from "./model";
 
 export function RanchShopAnimalSprite({
   animal,
-  skinId,
+  variants,
 }: {
   animal: RanchShopAnimal;
-  skinId?: string | undefined;
+  variants?: RanchVariantSelection | null | undefined;
 }) {
+  const visual = getRanchResidentSpriteVisual(animal, variants);
   return (
     <span
       aria-hidden="true"
-      className={`ranch-shop__animal-sprite${skinId ? " ranch-shop__animal-sprite--skin" : ""}`}
-      style={skinId ? getRanchSkinSpriteStyle(skinId) : getRanchAnimalSpriteStyle(animal)}
+      className={`ranch-shop__animal-sprite ranch-shop__animal-sprite--${visual.kind}`}
+      style={visual.spriteStyle}
     />
   );
 }
@@ -204,11 +204,6 @@ export function RanchResidentDetail({
   const variantId = variantIds.includes(selectedVariantId)
     ? selectedVariantId
     : (residentData?.variants?.current_variant_id ?? variantIds[0] ?? "");
-  const currentSkinId = RANCH_LIMITED_SKINS.some(
-    (skin) => skin.id === residentData?.variants?.current_variant_id,
-  )
-    ? (residentData?.variants?.current_variant_id ?? undefined)
-    : undefined;
 
   const submitAction = useCallback(
     async (
@@ -313,7 +308,7 @@ export function RanchResidentDetail({
         </button>
         <header className="ranch-resident-detail__head">
           <span className="ranch-resident-detail__portrait">
-            <RanchShopAnimalSprite animal={animal} skinId={currentSkinId} />
+            <RanchShopAnimalSprite animal={animal} variants={residentData?.variants} />
           </span>
           <span className="ranch-resident-detail__identity">
             <small>{liveResident?.category ?? animal.category}</small>

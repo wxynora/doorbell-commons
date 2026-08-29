@@ -372,6 +372,285 @@
   gap: 0.7cqw;
 }
 
+.farm-expedition {
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 1.1cqw;
+  overflow: hidden;
+}
+
+.farm-expedition__header {
+  display: grid;
+  gap: 0.8cqw;
+}
+
+.farm-expedition__tabs {
+  display: flex;
+  min-width: 0;
+  gap: 0.7cqw;
+  padding: 0 0 0.5cqw;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.farm-expedition__tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.farm-expedition__tabs button {
+  flex: 0 0 auto;
+  min-height: 7.2cqw;
+  padding: 0.7cqw 1.7cqw;
+  color: #7c684b;
+  font: inherit;
+  font-size: clamp(0.5rem, 2cqw, 0.62rem);
+  font-weight: 900;
+  border: 1px solid rgba(145, 112, 62, 0.3);
+  border-radius: 999px;
+  background: rgba(255, 249, 226, 0.72);
+  cursor: pointer;
+}
+
+.farm-expedition__tabs button[aria-pressed="true"] {
+  color: #fff7d9;
+  border-color: #5e7134;
+  background: #7b913f;
+}
+
+.farm-expedition__content {
+  min-height: 0;
+  padding: 0 0.5cqw 0.7cqw 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.farm-expedition__journey,
+.farm-expedition__story-list,
+.farm-expedition__history-list {
+  display: grid;
+  gap: 1cqw;
+}
+
+.farm-expedition__summary {
+  display: grid;
+  gap: 0.9cqw;
+  padding: 1.45cqw 1.6cqw;
+  color: #72583b;
+  border-radius: 1.4cqw;
+  background: rgba(255, 253, 241, 0.68);
+}
+
+.farm-expedition__summary > strong {
+  font-size: clamp(0.7rem, 2.8cqw, 0.84rem);
+}
+
+.farm-expedition__summary dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1cqw;
+  margin: 0;
+}
+
+.farm-expedition__summary dl div {
+  display: grid;
+  gap: 0.2cqw;
+  padding: 0.8cqw 1cqw;
+  border-radius: 1cqw;
+  background: rgba(236, 226, 191, 0.46);
+}
+
+.farm-expedition__summary dt,
+.farm-expedition__summary dd,
+.farm-expedition__summary p {
+  margin: 0;
+}
+
+.farm-expedition__summary dt {
+  color: #9a8464;
+  font-size: clamp(0.46rem, 1.85cqw, 0.56rem);
+  font-weight: 800;
+}
+
+.farm-expedition__summary dd,
+.farm-expedition__summary p {
+  color: #765b3e;
+  font-size: clamp(0.52rem, 2.1cqw, 0.64rem);
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.farm-expedition__choices {
+  display: grid;
+  flex: 1 1 100%;
+  gap: 0.7cqw;
+}
+
+.farm-expedition__choices button {
+  width: 100%;
+  min-height: 8.2cqw;
+  justify-content: flex-start;
+  padding-inline: 1.5cqw;
+  text-align: left;
+  border-radius: 1.2cqw;
+}
+
+.farm-expedition__actions .farm-expedition__secondary-action {
+  color: #755f43;
+  border-color: rgba(127, 101, 65, 0.32);
+  background: rgba(248, 240, 211, 0.86);
+  box-shadow: none;
+}
+
+.farm-expedition__blessing {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.25fr) auto;
+  gap: 0.7cqw;
+  margin: 0.5cqw 0 0;
+  padding: 1.2cqw;
+  border: 1px solid rgba(145, 112, 62, 0.24);
+  border-radius: 1.3cqw;
+  background: rgba(255, 253, 241, 0.56);
+}
+
+.farm-expedition__blessing legend {
+  padding: 0 0.6cqw;
+  color: #72583b;
+  font-size: clamp(0.5rem, 2cqw, 0.6rem);
+  font-weight: 900;
+}
+
+.farm-expedition__blessing select,
+.farm-expedition__blessing input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 7cqw;
+  padding: 0.7cqw 1cqw;
+  color: #60452e;
+  font: inherit;
+  font-size: clamp(0.46rem, 1.85cqw, 0.56rem);
+  font-weight: 800;
+  border: 1px solid rgba(145, 112, 62, 0.34);
+  border-radius: 1cqw;
+  background: rgba(255, 249, 226, 0.8);
+}
+
+.farm-expedition__blessing button {
+  min-height: 7cqw;
+  padding: 0.6cqw 1.4cqw;
+  color: #fff7d9;
+  font: inherit;
+  font-size: clamp(0.48rem, 1.95cqw, 0.58rem);
+  font-weight: 900;
+  border: 0;
+  border-radius: 999px;
+  background: #7b913f;
+}
+
+.farm-expedition__list,
+.farm-expedition__story-list,
+.farm-expedition__history-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.farm-expedition__list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8cqw;
+}
+
+.farm-expedition__list li {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8cqw;
+  padding: 1.1cqw 1.3cqw;
+  color: #70563a;
+  border-radius: 1.2cqw;
+  background: rgba(255, 253, 241, 0.68);
+}
+
+.farm-expedition__list strong {
+  overflow: hidden;
+  font-size: clamp(0.54rem, 2.2cqw, 0.66rem);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.farm-expedition__list span {
+  flex: 0 0 auto;
+  color: #967f60;
+  font-size: clamp(0.48rem, 1.9cqw, 0.56rem);
+  font-weight: 800;
+}
+
+.farm-expedition__story-list li,
+.farm-expedition__history-list li {
+  display: grid;
+  gap: 0.55cqw;
+  padding: 1.25cqw 1.45cqw;
+  color: #72583b;
+  border-radius: 1.3cqw;
+  background: rgba(255, 253, 241, 0.68);
+}
+
+.farm-expedition__story-list li > div,
+.farm-expedition__history-list li > div {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1cqw;
+}
+
+.farm-expedition__story-list strong,
+.farm-expedition__history-list strong {
+  font-size: clamp(0.58rem, 2.35cqw, 0.7rem);
+}
+
+.farm-expedition__story-list time,
+.farm-expedition__history-list time {
+  flex: 0 0 auto;
+  color: #9b8668;
+  font-size: clamp(0.44rem, 1.75cqw, 0.52rem);
+  font-weight: 800;
+}
+
+.farm-expedition__story-list p,
+.farm-expedition__history-list p,
+.farm-expedition__codex p,
+.farm-expedition__empty {
+  margin: 0;
+  color: #80694b;
+  font-size: clamp(0.5rem, 2cqw, 0.62rem);
+  font-weight: 700;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.farm-expedition__codex,
+.farm-expedition__empty {
+  padding: 2.2cqw 2.4cqw;
+  text-align: center;
+  border-radius: 1.4cqw;
+  background: rgba(255, 253, 241, 0.62);
+}
+
+.farm-expedition__codex {
+  display: grid;
+  gap: 0.7cqw;
+  color: #715739;
+}
+
+@container farm-canvas (max-width: 430px) {
+  .farm-expedition__blessing {
+    grid-template-columns: 1fr;
+  }
+}
+
 .farm-ranch-dispatch__form {
   display: grid;
   align-content: start;

@@ -7,6 +7,7 @@ import {
 
 const FARM_DOORPLATE = "ABC234";
 const FARM_HUMAN_KEY = "private-bulletin-human-key";
+const IDEMPOTENCY_KEY = "219ffb01-49cd-7020-84af-3d04fb1ed03d";
 
 const BULLETIN_RESULT = {
   subject: { farm_doorplate: FARM_DOORPLATE },
@@ -30,6 +31,19 @@ const BULLETIN_RESULT = {
   },
   revision: `farm-bulletin-v1:${"a".repeat(64)}`,
   server_time: "2026-08-25T04:00:00.000Z",
+};
+
+const BULLETIN_ACK_RESULT = {
+  subject: BULLETIN_RESULT.subject,
+  data: {
+    result: { receipt_id: IDEMPOTENCY_KEY, acknowledged_count: 2 },
+    resource: {
+      available: { tasks: [], mature_plots: [], messages: [], ranch_notifications: [] },
+      unavailable: {},
+    },
+  },
+  revision: BULLETIN_RESULT.revision,
+  server_time: BULLETIN_RESULT.server_time,
 };
 
 function createClient(fetchImplementation: typeof fetch): FarmHumanBulletinClient {
@@ -79,6 +93,33 @@ test("farm bulletin client posts the fixed internal read contract", async () => 
       },
     ],
   );
+});
+
+test("farm bulletin client posts a revision-bound idempotent acknowledgement", async () => {
+  const calls: Array<{ body: string; url: string }> = [];
+  const client = createClient(async (input, init) => {
+    calls.push({ body: String(init?.body), url: String(input) });
+    return Response.json(BULLETIN_ACK_RESULT);
+  });
+
+  const result = await client.acknowledgeBulletin({
+    farmDoorplate: FARM_DOORPLATE,
+    farmHumanKey: FARM_HUMAN_KEY,
+    expectedRevision: BULLETIN_RESULT.revision,
+    idempotencyKey: IDEMPOTENCY_KEY,
+  });
+  assert.deepEqual(result, BULLETIN_ACK_RESULT);
+  assert.deepEqual(calls, [
+    {
+      body: JSON.stringify({
+        farm_human_key: FARM_HUMAN_KEY,
+        expected_farm_doorplate: FARM_DOORPLATE,
+        expected_bulletin_revision: BULLETIN_RESULT.revision,
+        idempotency_key: IDEMPOTENCY_KEY,
+      }),
+      url: "https://farm.example/farm/internal/doorbell/human/bulletin/ack",
+    },
+  ]);
 });
 
 test("farm bulletin client rejects a response bound to another doorplate", async () => {

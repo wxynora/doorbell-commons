@@ -36,6 +36,14 @@ test("community request classification keeps API authority outside Cache Storage
   );
   assert.equal(classifyCommunityRequest("/manifest.webmanifest?v=2"), "hashed-static-cache-first");
   assert.equal(
+    classifyCommunityRequest("/lingye/together/same-kitchen-opening-v1.jpg"),
+    "hashed-static-cache-first",
+  );
+  assert.equal(
+    classifyCommunityRequest("/lingye/together/river-opening-v1.webp"),
+    "hashed-static-cache-first",
+  );
+  assert.equal(
     classifyCommunityRequest("/fonts/doorbell-fonts.v1.css"),
     "hashed-static-cache-first",
   );

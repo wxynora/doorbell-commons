@@ -112,6 +112,9 @@ export const farmRanchResidentVariantsSchema = z
           .object({
             variant_id: ranchIdSchema,
             name: ranchTextSchema,
+            atlas: z.literal("glimmer.variants").nullable(),
+            set: z.union([z.literal(1), z.literal(2), z.literal(3)]).nullable(),
+            sprite_index: z.number().int().nonnegative().max(255).nullable(),
           })
           .strict(),
       )

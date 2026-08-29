@@ -4,11 +4,11 @@ import {
   type BoundFarmCropCodexActionErrorCode,
   type BoundFarmExpeditionActionErrorCode,
   type BoundFarmHarvestAssistErrorCode,
-  type BoundFarmLandUpgradeErrorCode,
   type BoundFarmKitchenCookErrorCode,
   type BoundFarmKitchenInventoryActionErrorCode,
   type BoundFarmKitchenPurchaseErrorCode,
   type BoundFarmKitchenShopRefreshErrorCode,
+  type BoundFarmLandUpgradeErrorCode,
   type BoundFarmMarketActionErrorCode,
   type BoundFarmNeighborhoodMessageActionErrorCode,
   type BoundFarmOriginalPlantActionErrorCode,
@@ -24,6 +24,9 @@ import {
   boundConstableInterviewReadRequestSchema,
   boundConstableInterviewScoreRequestSchema,
   boundConstableInterviewSuccessSchema,
+  boundFarmBulletinAckErrorSchema,
+  boundFarmBulletinAckRequestSchema,
+  boundFarmBulletinAckSuccessSchema,
   boundFarmBulletinReadErrorSchema,
   boundFarmBulletinReadRequestSchema,
   boundFarmBulletinReadSuccessSchema,
@@ -42,9 +45,6 @@ import {
   boundFarmHarvestAssistErrorSchema,
   boundFarmHarvestAssistRequestSchema,
   boundFarmHarvestAssistSuccessSchema,
-  boundFarmLandUpgradeErrorSchema,
-  boundFarmLandUpgradeRequestSchema,
-  boundFarmLandUpgradeSuccessSchema,
   boundFarmKitchenCookErrorSchema,
   boundFarmKitchenCookRequestSchema,
   boundFarmKitchenCookSuccessSchema,
@@ -60,6 +60,9 @@ import {
   boundFarmKitchenShopRefreshErrorSchema,
   boundFarmKitchenShopRefreshRequestSchema,
   boundFarmKitchenShopRefreshSuccessSchema,
+  boundFarmLandUpgradeErrorSchema,
+  boundFarmLandUpgradeRequestSchema,
+  boundFarmLandUpgradeSuccessSchema,
   boundFarmMarketActionErrorSchema,
   boundFarmMarketActionRequestSchema,
   boundFarmMarketActionSuccessSchema,
@@ -113,6 +116,7 @@ import {
   createdFarmHumanSessionSuccessSchema,
   currentHumanSessionSuccessSchema,
   type FarmHumanConstableInterviewSuccess,
+  farmBulletinAckIdempotencyKeySchema,
   farmCropCodexActionIdempotencyKeySchema,
   farmExpeditionActionIdempotencyKeySchema,
   farmHumanConstableInterviewSuccessSchema,
@@ -205,7 +209,9 @@ import {
 import {
   FarmHumanBulletinContractUnavailableError,
   FarmHumanBulletinCredentialInvalidError,
+  FarmHumanBulletinIdempotencyConflictError,
   FarmHumanBulletinNotFoundError,
+  FarmHumanBulletinStateConflictError,
   FarmHumanBulletinUnavailableError,
 } from "./farm-bulletin-client.js";
 import {
@@ -1129,6 +1135,25 @@ function sendBoundFarmBulletinReadError(
   return reply.code(statusCode).send(
     boundFarmBulletinReadErrorSchema.parse({
       error: { code, message },
+    }),
+  );
+}
+
+function sendBoundFarmBulletinAckError(
+  reply: FastifyReply,
+  statusCode: BoundFarmStructuredStatusCode,
+  code: BoundFarmStructuredErrorCode | "state_conflict" | "idempotency_conflict",
+  message: string,
+  currentRevision?: string,
+) {
+  reply.header("cache-control", "no-store");
+  return reply.code(statusCode).send(
+    boundFarmBulletinAckErrorSchema.parse({
+      error: {
+        code,
+        message,
+        ...(currentRevision ? { current_revision: currentRevision } : {}),
+      },
     }),
   );
 }
@@ -4374,6 +4399,135 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
           503,
           "farm_unavailable",
           "The farm bulletin is unavailable",
+        );
+      }
+      throw error;
+    }
+  });
+
+  app.post("/api/farm/bulletin/ack", async (request, reply) => {
+    const parsedBody = boundFarmBulletinAckRequestSchema.safeParse(request.body);
+    const idempotencyKey = request.headers["idempotency-key"];
+    if (
+      !parsedBody.success ||
+      typeof idempotencyKey !== "string" ||
+      !farmBulletinAckIdempotencyKeySchema.safeParse(idempotencyKey).success
+    ) {
+      return sendBoundFarmBulletinAckError(
+        reply,
+        400,
+        "invalid_request",
+        "Bulletin acknowledgement requires a revision and UUID Idempotency-Key",
+      );
+    }
+
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendBoundFarmBulletinAckError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+
+    try {
+      const result = await options.registrationAuth.acknowledgeCurrentFarmBulletin(token, {
+        expectedRevision: parsedBody.data.expected_revision,
+        idempotencyKey,
+      });
+      reply.header("cache-control", "no-store");
+      return boundFarmBulletinAckSuccessSchema.parse(result);
+    } catch (error) {
+      if (error instanceof AuthenticationRequiredError) {
+        return sendBoundFarmBulletinAckError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
+        return sendBoundFarmBulletinAckError(
+          reply,
+          403,
+          "qq_not_group_member",
+          "The session QQ number is no longer a current member of the community group",
+        );
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendBoundFarmBulletinAckError(
+          reply,
+          503,
+          "onebot_unavailable",
+          "QQ group membership could not be verified",
+        );
+      }
+      if (error instanceof RegistrationProfileRequiredError) {
+        return sendBoundFarmBulletinAckError(
+          reply,
+          409,
+          "registration_profile_required",
+          "A resident, home, and farm binding are required",
+        );
+      }
+      if (error instanceof FarmHumanBulletinStateConflictError) {
+        return sendBoundFarmBulletinAckError(
+          reply,
+          409,
+          "state_conflict",
+          "The farm bulletin has changed",
+          error.currentRevision,
+        );
+      }
+      if (error instanceof FarmHumanBulletinIdempotencyConflictError) {
+        return sendBoundFarmBulletinAckError(
+          reply,
+          409,
+          "idempotency_conflict",
+          "This Idempotency-Key was used for another bulletin acknowledgement",
+        );
+      }
+      if (error instanceof FarmHumanBulletinCredentialInvalidError) {
+        return sendBoundFarmBulletinAckError(
+          reply,
+          409,
+          "farm_credential_invalid",
+          "The bound farm human credential is no longer valid",
+        );
+      }
+      if (error instanceof FarmHumanBulletinNotFoundError) {
+        return sendBoundFarmBulletinAckError(
+          reply,
+          404,
+          "farm_not_found",
+          "The bound farm no longer exists",
+        );
+      }
+      if (error instanceof FarmHumanBulletinContractUnavailableError) {
+        request.log.error(
+          { error_name: error.name },
+          "Farm bulletin acknowledgement is unavailable",
+        );
+        return sendBoundFarmBulletinAckError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The farm bulletin acknowledgement could not be verified",
+        );
+      }
+      if (error instanceof FarmHumanBulletinUnavailableError) {
+        request.log.error(
+          { error_name: error.name },
+          "Farm bulletin acknowledgement is unavailable",
+        );
+        return sendBoundFarmBulletinAckError(
+          reply,
+          503,
+          "farm_unavailable",
+          "The farm bulletin acknowledgement is unavailable",
         );
       }
       throw error;

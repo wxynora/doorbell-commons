@@ -676,6 +676,26 @@ export class RegistrationAuthService {
     });
   }
 
+  async acknowledgeCurrentFarmBulletin(
+    token: string,
+    input: { expectedRevision: string; idempotencyKey: string },
+  ) {
+    const community = await this.getCurrentSession(token);
+    const farmHumanKey = community.farmBinding.farmHumanKey;
+    if (farmHumanKey === null) {
+      throw new RegistrationProfileRequiredError();
+    }
+    if (!this.#farmBulletinReader) {
+      throw new FarmHumanBulletinContractUnavailableError();
+    }
+    return this.#farmBulletinReader.acknowledgeBulletin({
+      farmDoorplate: community.farmBinding.farmDoorplate,
+      farmHumanKey,
+      expectedRevision: input.expectedRevision,
+      idempotencyKey: input.idempotencyKey,
+    });
+  }
+
   async getCurrentFarmKitchen(token: string) {
     const community = await this.getCurrentSession(token);
     const farmHumanKey = community.farmBinding.farmHumanKey;

@@ -580,6 +580,34 @@ test("cooking catalogs keep complete authoritative categories in fixed scrolling
   );
 });
 
+test("expedition Human UI keeps the old journey sections while stable action ids stay hidden", () => {
+  const source = readFileSync(new URL("./panels/farm-action-panels.tsx", import.meta.url), "utf8");
+  const styles = readFileSync(new URL("./panels/farm-action-panels.css", import.meta.url), "utf8");
+  const expeditionSource =
+    source.match(/const FARM_EXPEDITION_TABS[\s\S]*?(?=type RanchDispatchAvailable)/)?.[0] ?? "";
+
+  assert.match(
+    expeditionSource,
+    /"当前旅程"[\s\S]*"行囊"[\s\S]*"本趟故事"[\s\S]*"秘境图鉴"[\s\S]*"旅程簿"/,
+  );
+  assert.match(
+    expeditionSource,
+    /expedition\.map_name[\s\S]*expedition\.step[\s\S]*expedition\.hp/,
+  );
+  assert.match(expeditionSource, /summarizeExpeditionBag\(expedition\.bag\)/);
+  assert.match(expeditionSource, /bagRows\.map/);
+  assert.match(expeditionSource, /expedition\.log\.map/);
+  assert.match(expeditionSource, /expedition\.journeys\.map/);
+  assert.match(expeditionSource, /expedition\.seen_event_ids\.length/);
+  assert.match(
+    expeditionSource,
+    /currentAction\("choose", \{ option: option\.key \}, option\.label\)/,
+  );
+  assert.match(expeditionSource, />\s*\{option\.label\}\s*<\/button>/);
+  assert.doesNotMatch(expeditionSource, />\s*\{option\.key\}\s*<\/button>/);
+  assert.match(styles, /\.farm-expedition__content\s*\{[^}]*overflow-y:\s*auto/s);
+});
+
 test("farm page does not invent economy values or successful operations", () => {
   const source = readFarmSources();
   assert.doesNotMatch(source, /购买成功|收获成功|料理完成|动物数量/);
@@ -1757,7 +1785,10 @@ test("all field, ranch and cooking tools use confirmed sections while settings s
   assert.doesNotMatch(featurePanelsSource, /tabs: \["种子", "素材", "药水", "其他"\]/);
   assert.doesNotMatch(featurePanelsSource, /"crop-codex":/);
   assert.match(source, /market:[\s\S]*emptyLabel: "集市数据尚未接入"/);
-  assert.match(source, /adventure:[\s\S]*tabs: \["当前旅程", "故事", "秘境图鉴", "记录"\]/);
+  assert.match(
+    source,
+    /adventure:[\s\S]*tabs: \["当前旅程", "行囊", "本趟故事", "秘境图鉴", "旅程簿"\]/,
+  );
   assert.doesNotMatch(featurePanelsSource, /smelting:/);
   assert.match(
     source,
