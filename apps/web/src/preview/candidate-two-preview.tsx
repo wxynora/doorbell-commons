@@ -4708,15 +4708,16 @@ const LINGYE_PLACE_SCREENS = `
     <div id="screen-lingye-memorial" class="screen screen--lingye-place candidate2-memorial-page">
         <div class="candidate2-memorial-paper" data-memorial-editor-canvas>
             <section class="candidate2-memorial-index">
-                <header class="candidate2-memorial-header">
-                    <button class="candidate2-memorial-back" type="button" aria-label="返回铃野地图" onclick="showScreen('screen-lingye')">
-                        <span aria-hidden="true">←</span>
-                    </button>
+                <button class="candidate2-memorial-back" type="button" aria-label="返回铃野地图" onclick="showScreen('screen-lingye')">
+                    <span aria-hidden="true">←</span>
+                </button>
+                <div class="candidate2-memorial-index-stage" data-memorial-layout-stage="index">
+                    <header class="candidate2-memorial-header">
                     <div class="candidate2-memorial-title-lockup" role="img" aria-label="Album，纪念册，往期活动回顾" data-memorial-editor-id="title-lockup" data-memorial-editor-name="顶部标题组">
                         <img src="/lingye/memorial/memorial-title-lockup-v1.png" alt="" />
                     </div>
-                </header>
-                <div class="candidate2-memorial-ledger" data-memorial-editor-id="paper" data-memorial-editor-name="主体纸页" data-memorial-editor-fill>
+                    </header>
+                    <div class="candidate2-memorial-ledger" data-memorial-editor-id="paper" data-memorial-editor-name="主体纸页" data-memorial-editor-fill>
                     <div class="candidate2-memorial-demo-chrome" hidden>
                         <div class="candidate2-memorial-tabs" role="group" aria-label="活动分类">
                             <button class="is-active" type="button" aria-pressed="true" data-memorial-filter="all" onclick="setLingyeMemorialFilter('all')" data-memorial-editor-id="tab-all" data-memorial-editor-name="全部方签" data-memorial-editor-text data-memorial-editor-fill>全部</button>
@@ -4739,6 +4740,7 @@ const LINGYE_PLACE_SCREENS = `
                             </span>
                         </button>
                     </main>
+                    </div>
                 </div>
             </section>
             <article class="candidate2-memorial-entry-view candidate2-memorial-entry-view--qixi" aria-label="2026 年七夕活动灯河有信" hidden>
@@ -4746,6 +4748,7 @@ const LINGYE_PLACE_SCREENS = `
                 <button class="candidate2-memorial-entry-back" type="button" aria-label="返回纪念册目录" onclick="closeLingyeMemorialEntry()">
                     <span aria-hidden="true">←</span>
                 </button>
+                <div class="candidate2-memorial-entry-stage" data-memorial-layout-stage="entry">
                 <img class="candidate2-memorial-entry-qixi-stickers" src="/lingye/memorial/qixi-stickers-v1.png" alt="" aria-hidden="true" draggable="false" data-memorial-entry-editor-id="entry-stickers" data-memorial-editor-name="七夕装饰贴纸" data-memorial-editor-asset="stickers" data-memorial-editor-removable>
                 <header class="candidate2-memorial-entry-heading">
                     <div>
@@ -4794,6 +4797,7 @@ const LINGYE_PLACE_SCREENS = `
                         <span class="candidate2-qixi-archive-letter-signature">渡</span>
                     </article>
                     <span class="candidate2-qixi-archive-qiaoqiao" role="img" aria-label="七夕角色翘翘" data-memorial-editor-name="翘翘" data-memorial-editor-asset="qiaoqiao" data-memorial-editor-asset-template></span>
+                </div>
                 </div>
             </article>
             <div class="candidate2-memorial-editor-selection" aria-hidden="true" hidden>
@@ -5280,6 +5284,14 @@ const LINGYE_STYLES = `
         .candidate2-memorial-index {
             position: relative;
             isolation: isolate;
+            overflow: hidden;
+        }
+
+        .candidate2-memorial-index-stage,
+        .candidate2-memorial-entry-stage {
+            position: relative;
+            width: 100%;
+            transform-origin: left top;
         }
 
         .candidate2-memorial-index[hidden],
@@ -6032,7 +6044,7 @@ const LINGYE_STYLES = `
         }
 
         .candidate2-memorial-entry-view--qixi {
-            min-height: 650px;
+            min-height: 0;
         }
 
         .candidate2-memorial-entry-view::after {
@@ -7618,6 +7630,7 @@ const LINGYE_SCRIPT = `
         if (index) index.hidden = true;
         if (entry) entry.hidden = false;
         if (screen) screen.scrollTop = 0;
+        scheduleMemorialLayoutFit('entry');
     }
 
     function closeLingyeMemorialEntry() {
@@ -7627,12 +7640,15 @@ const LINGYE_SCRIPT = `
         if (index) index.hidden = false;
         if (entry) entry.hidden = true;
         if (screen) screen.scrollTop = 0;
+        scheduleMemorialLayoutFit('index');
     }
 
     const memorialPage = document.querySelector('.candidate2-memorial-page');
     const memorialPaper = document.querySelector('.candidate2-memorial-paper');
     const memorialIndex = document.querySelector('.candidate2-memorial-index');
+    const memorialIndexStage = document.querySelector('.candidate2-memorial-index-stage');
     const memorialEntry = document.querySelector('.candidate2-memorial-entry-view');
+    const memorialEntryStage = document.querySelector('.candidate2-memorial-entry-stage');
     const memorialEditor = document.querySelector('.candidate2-memorial-editor');
     const memorialEditorTitle = memorialEditor.querySelector('header strong');
     const memorialEditorAssets = memorialEditor.querySelector('.candidate2-memorial-editor-assets');
@@ -7662,13 +7678,33 @@ const LINGYE_SCRIPT = `
         'shape-1': { color: '#e4d2dc', rotate: 0, scale: 8.05, x: 97.1, y: 63.6, z: -4, kind: 'square', text: null },
     };
     const memorialEntryEditorDefaultLayout = {
-        'entry-event-label': { asset: 'event-label', color: null, deleted: false, rotate: 0, scale: 1, x: 0, y: 0, z: 12, kind: null, text: '2026 · 七夕' },
-        'entry-title': { asset: 'title', color: null, deleted: false, rotate: 0, scale: 1, x: 0, y: 0, z: 13, kind: null, text: null },
-        'entry-date': { asset: 'date', color: null, deleted: false, rotate: 0, scale: 1, x: 0, y: 0, z: 12, kind: null, text: null },
-        'entry-stickers': { asset: 'stickers', color: null, deleted: false, rotate: 0, scale: 1, x: 0, y: 0, z: 14, kind: null, text: null },
-        'entry-hero': { asset: 'hero', color: null, deleted: false, rotate: 0, scale: 1, x: 0, y: 0, z: 6, kind: null, text: null },
-        'entry-note': { asset: 'note', color: null, deleted: false, rotate: 0, scale: 1, x: 0, y: 0, z: 9, kind: null, text: null },
-        'entry-secondary': { asset: 'secondary', color: null, deleted: false, rotate: 0, scale: 1, x: 0, y: 0, z: 8, kind: null, text: null },
+        'entry-stickers': { color: null, deleted: false, rotate: -13.4, scale: 1, x: 251.3, y: -25.5, z: 14, asset: 'stickers', kind: null, text: null },
+        'entry-event-label': { color: null, deleted: true, rotate: 0, scale: 1, x: 0.6, y: -45.1, z: 12, asset: 'event-label', kind: null, text: '2026 · 七夕' },
+        'entry-title': { color: null, deleted: false, rotate: 0, scale: 0.88, x: 11.6, y: -221.5, z: 13, asset: 'title', kind: null, text: null },
+        'entry-date': { color: null, deleted: false, rotate: 0, scale: 1, x: -3.3, y: -211.5, z: 12, asset: 'date', kind: null, text: null },
+        'entry-hero': { color: null, deleted: false, rotate: -1.8, scale: 0.84, x: 11.5, y: -239.8, z: 6, asset: 'hero', kind: null, text: null },
+        'entry-note': { color: null, deleted: true, rotate: 0, scale: 1, x: 0.1, y: 0, z: 9, asset: 'note', kind: null, text: null },
+        'entry-secondary': { color: null, deleted: true, rotate: 0, scale: 1, x: -6.4, y: -10.5, z: 8, asset: 'secondary', kind: null, text: null },
+        'entry-asset-1': { color: null, deleted: true, rotate: 0, scale: 1, x: 4, y: 4, z: 21, asset: 'note', kind: null, text: null },
+        'entry-asset-2': { color: null, deleted: true, rotate: 0, scale: 1, x: 8, y: 8, z: 22, asset: 'note', kind: null, text: null },
+        'entry-asset-3': { color: null, deleted: true, rotate: 0, scale: 1, x: 12, y: 12, z: 23, asset: 'secondary', kind: null, text: null },
+        'entry-asset-4': { color: null, deleted: true, rotate: 0, scale: 1, x: 16, y: 16, z: 24, asset: 'stickers', kind: null, text: null },
+        'entry-asset-5': { color: null, deleted: true, rotate: 0, scale: 1, x: 20, y: 20, z: 25, asset: 'hero', kind: null, text: null },
+        'entry-asset-6': { color: null, deleted: true, rotate: 0, scale: 1, x: -10.6, y: -71.8, z: 26, asset: 'my-letter', kind: null, text: null },
+        'entry-asset-7': { color: null, deleted: true, rotate: 0, scale: 0.7, x: 143.2, y: -15, z: 32, asset: 'my-lantern', kind: null, text: null },
+        'entry-asset-8': { color: null, deleted: true, rotate: -3.9, scale: 1, x: -66.9, y: 37, z: 28, asset: 'du-letter', kind: null, text: null },
+        'entry-asset-9': { color: null, deleted: true, rotate: 0, scale: 1, x: 36, y: 36, z: 29, asset: 'my-lantern', kind: null, text: null },
+        'entry-asset-10': { color: null, deleted: true, rotate: 0, scale: 1, x: 80.2, y: 28.8, z: 30, asset: 'du-lantern', kind: null, text: null },
+        'entry-asset-11': { color: null, deleted: true, rotate: 0, scale: 1, x: -44.3, y: 148.1, z: 31, asset: 'du-lantern', kind: null, text: null },
+        'entry-asset-12': { color: null, deleted: false, rotate: 2.4, scale: 1.05, x: -39.7, y: -116.5, z: 32, asset: 'my-letter', kind: null, text: null },
+        'entry-asset-13': { color: null, deleted: false, rotate: -4.5, scale: 0.77, x: -51.7, y: -26.4, z: 33, asset: 'my-lantern', kind: null, text: null },
+        'entry-asset-14': { color: null, deleted: true, rotate: 0, scale: 1, x: 56, y: 56, z: 34, asset: 'du-lantern', kind: null, text: null },
+        'entry-asset-15': { color: null, deleted: true, rotate: 0, scale: 1, x: -104, y: 38.1, z: 35, asset: 'qiaoqiao', kind: null, text: null },
+        'entry-asset-16': { color: null, deleted: false, rotate: -1.5, scale: 1.06, x: -74, y: 21.4, z: 36, asset: 'du-letter', kind: null, text: null },
+        'entry-asset-17': { color: null, deleted: false, rotate: 1.7, scale: 0.69, x: 117.1, y: 128.3, z: 37, asset: 'du-lantern', kind: null, text: null },
+        'entry-asset-18': { color: null, deleted: true, rotate: 0, scale: 1, x: -182.1, y: 155.7, z: 38, asset: 'stickers', kind: null, text: null },
+        'entry-asset-19': { color: null, deleted: false, rotate: 0, scale: 0.85, x: -245.2, y: -133.3, z: 39, asset: 'qiaoqiao', kind: null, text: null },
+        'entry-asset-20': { color: null, deleted: false, rotate: 4.9, scale: 0.53, x: 74.8, y: -253.8, z: 40, asset: 'secondary', kind: null, text: null },
     };
     const memorialBackdropSource = '/lingye/memorial/memorial-album-backdrop-v1.jpg';
     const memorialEditorStates = new Map();
@@ -7684,11 +7720,22 @@ const LINGYE_SCRIPT = `
     let memorialBackdropImagePromise = null;
 
     function memorialEditorCanvas() {
-        return memorialLayoutEditorTarget === 'entry' ? memorialEntry : memorialIndex;
+        return memorialLayoutEditorTarget === 'entry' ? memorialEntryStage : memorialIndexStage;
     }
 
     function activeMemorialEditorDefaultLayout() {
         return memorialLayoutEditorTarget === 'entry' ? memorialEntryEditorDefaultLayout : memorialEditorDefaultLayout;
+    }
+
+    function setMemorialEditorTarget(target) {
+        memorialLayoutEditorTarget = target === 'entry' ? 'entry' : 'index';
+        memorialEntryStage.querySelectorAll('[data-memorial-entry-editor-id]').forEach((element) => {
+            if (memorialLayoutEditorTarget === 'entry') {
+                element.dataset.memorialEditorId = element.dataset.memorialEntryEditorId;
+            } else {
+                delete element.dataset.memorialEditorId;
+            }
+        });
     }
 
     function createMemorialEditorShape(kind, id) {
@@ -7698,7 +7745,7 @@ const LINGYE_SCRIPT = `
         shape.dataset.memorialEditorName = kind + ' ' + id.replace('shape-', '');
         shape.dataset.memorialEditorFill = '';
         shape.dataset.memorialEditorShape = kind;
-        memorialIndex.append(shape);
+        memorialIndexStage.append(shape);
         return shape;
     }
 
@@ -7731,7 +7778,7 @@ const LINGYE_SCRIPT = `
         asset.dataset.memorialEditorRemovable = '';
         asset.dataset.memorialEditorName = (source.dataset.memorialEditorName || legacyKind) + '副本';
         if (kind === 'event-label') asset.dataset.memorialEditorText = '';
-        memorialEntry.append(asset);
+        memorialEntryStage.append(asset);
         return asset;
     }
 
@@ -7763,7 +7810,9 @@ const LINGYE_SCRIPT = `
         }
     }
 
-    function restoreMemorialEditorLayout(encodedLayout) {
+    function restoreMemorialEditorLayout(encodedLayout, target) {
+        const previousTarget = memorialLayoutEditorTarget;
+        setMemorialEditorTarget(target || previousTarget);
         let savedLayout = null;
         try {
             if (encodedLayout) {
@@ -7807,6 +7856,7 @@ const LINGYE_SCRIPT = `
             applyMemorialEditorState(element);
         });
         memorialEditorStatus.textContent = savedLayout ? '已从当前预览地址恢复布局。' : '已载入当前定稿参数。';
+        setMemorialEditorTarget(previousTarget);
     }
 
     function memorialEditorState(element) {
@@ -7841,6 +7891,40 @@ const LINGYE_SCRIPT = `
                 element.style.backgroundColor = state.color;
             }
         }
+    }
+
+    function memorialLayoutStage(target) {
+        return target === 'entry' ? memorialEntryStage : memorialIndexStage;
+    }
+
+    const memorialLayoutFrames = {
+        index: { width: 297, height: 552 },
+        entry: { width: 279, height: 508 },
+    };
+
+    function fitMemorialLayoutStage(target) {
+        const stage = memorialLayoutStage(target);
+        if (!stage || stage.closest('[hidden]')) return;
+        const frame = memorialLayoutFrames[target === 'entry' ? 'entry' : 'index'];
+        const parentStyle = getComputedStyle(stage.parentElement);
+        const availableWidth =
+            stage.parentElement.clientWidth
+            - Number.parseFloat(parentStyle.paddingLeft || '0')
+            - Number.parseFloat(parentStyle.paddingRight || '0');
+        const scale = availableWidth / frame.width;
+        stage.style.width = frame.width + 'px';
+        stage.style.height = frame.height + 'px';
+        stage.style.overflow = 'visible';
+        stage.style.marginBottom = Math.ceil(frame.height * scale - frame.height) + 'px';
+        stage.style.transform = 'scale(' + scale + ')';
+        stage.dataset.memorialFitScale = String(scale);
+    }
+
+    function scheduleMemorialLayoutFit(target) {
+        const stage = memorialLayoutStage(target);
+        if (!stage) return;
+        const fit = () => requestAnimationFrame(() => fitMemorialLayoutStage(target));
+        fit();
     }
 
     function updateMemorialEditorSelection() {
@@ -7902,14 +7986,7 @@ const LINGYE_SCRIPT = `
 
     function setMemorialLayoutEditorEnabled(enabled, encodedLayout, applyLayout, target) {
         memorialLayoutEditorEnabled = enabled;
-        memorialLayoutEditorTarget = target === 'entry' ? 'entry' : 'index';
-        memorialEntry.querySelectorAll('[data-memorial-entry-editor-id]').forEach((element) => {
-            if (memorialLayoutEditorTarget === 'entry') {
-                element.dataset.memorialEditorId = element.dataset.memorialEntryEditorId;
-            } else {
-                delete element.dataset.memorialEditorId;
-            }
-        });
+        setMemorialEditorTarget(target);
         memorialPage.classList.toggle('is-layout-editor', enabled);
         memorialPage.classList.toggle('is-entry-layout-editor', enabled && memorialLayoutEditorTarget === 'entry');
         memorialEditor.classList.toggle('is-entry-editor', memorialLayoutEditorTarget === 'entry');
@@ -7922,9 +7999,10 @@ const LINGYE_SCRIPT = `
             closeLingyeMemorialEntry();
         }
         if (applyLayout && !memorialLayoutEditorRestored) {
-            restoreMemorialEditorLayout(encodedLayout);
+            restoreMemorialEditorLayout(encodedLayout, memorialLayoutEditorTarget);
             memorialLayoutEditorRestored = true;
         }
+        scheduleMemorialLayoutFit(memorialLayoutEditorTarget);
         selectMemorialEditorElement(null);
     }
 
@@ -7935,6 +8013,7 @@ const LINGYE_SCRIPT = `
         const centerX = rect.left + rect.width / 2;
         const centerY = rect.top + rect.height / 2;
         memorialEditorGesture = {
+            canvasScale: Number(memorialLayoutStage(memorialLayoutEditorTarget).dataset.memorialFitScale) || 1,
             centerX,
             centerY,
             distance: Math.max(1, Math.hypot(event.clientX - centerX, event.clientY - centerY)),
@@ -7989,8 +8068,8 @@ const LINGYE_SCRIPT = `
         if (!memorialEditorGesture || memorialEditorGesture.pointerId !== event.pointerId) return;
         const state = memorialEditorState(memorialEditorGesture.target);
         if (memorialEditorGesture.mode === 'move') {
-            state.x = Math.round((memorialEditorGesture.originX + event.clientX - memorialEditorGesture.startX) * 10) / 10;
-            state.y = Math.round((memorialEditorGesture.originY + event.clientY - memorialEditorGesture.startY) * 10) / 10;
+            state.x = Math.round((memorialEditorGesture.originX + (event.clientX - memorialEditorGesture.startX) / memorialEditorGesture.canvasScale) * 10) / 10;
+            state.y = Math.round((memorialEditorGesture.originY + (event.clientY - memorialEditorGesture.startY) / memorialEditorGesture.canvasScale) * 10) / 10;
         } else if (memorialEditorGesture.mode === 'scale') {
             const nextDistance = Math.max(1, Math.hypot(event.clientX - memorialEditorGesture.centerX, event.clientY - memorialEditorGesture.centerY));
             state.scale = Math.max(0.1, Math.round(memorialEditorGesture.originScale * nextDistance / memorialEditorGesture.distance * 100) / 100);
@@ -10250,7 +10329,18 @@ const CANDIDATE_RUNTIME_SCRIPT = `
             syncAuthenticatedMainNavigation(screenId);
         }
         if (screenId === 'screen-home') syncHomeScale();
+        if (screenId === 'screen-lingye-memorial') {
+            scheduleMemorialLayoutFit(memorialEntry.hidden ? 'index' : 'entry');
+        }
     };
+
+    restoreMemorialEditorLayout(null, 'index');
+    restoreMemorialEditorLayout(null, 'entry');
+    memorialEditorStates.clear();
+    scheduleMemorialLayoutFit('index');
+    window.addEventListener('resize', () => {
+        scheduleMemorialLayoutFit(memorialEntry.hidden ? 'index' : 'entry');
+    });
 
     showScreen('screen-login');
     syncProfileScale();
