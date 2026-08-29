@@ -12,7 +12,12 @@ import {
   COOKING_RECIPE_PRICES,
   type CookingCatalogRecipe,
 } from "../../farm-cooking-catalog";
-import { RANCH_SHOP_ANIMALS, type RanchShopAnimal } from "../ranch-animal-data";
+import {
+  RANCH_LIMITED_SKINS,
+  RANCH_SHOP_ANIMALS,
+  type RanchShopAnimal,
+  type RanchSkinDefinition,
+} from "../ranch-animal-data";
 
 export type FarmFieldShopSectionId = "seeds-and-potions" | "today";
 export type CookingShopSectionId = "ingredients" | "recipes" | "tools";
@@ -53,7 +58,7 @@ export interface CookingCartCheckoutLine {
 }
 
 export interface FarmCartCheckoutLine {
-  kind: "seed" | "potion" | "potion_set" | "recipe" | "animal" | "pet";
+  kind: "seed" | "potion" | "potion_set" | "recipe" | "animal" | "pet" | "item";
   itemId: string;
   quantity: number;
 }
@@ -83,7 +88,12 @@ export type ShopCartVisual =
       catalogKind: "seed" | "potion" | "potion_set" | "recipe";
       iconKey?: FarmAssetKey | undefined;
     }
-  | { kind: "ranch"; animalId: string; catalogKind: "animal" | "pet" }
+  | {
+      kind: "ranch";
+      animalId: string;
+      catalogKind: "animal" | "pet" | "item";
+      skinId?: string | undefined;
+    }
   | {
       kind: "cooking";
       entityId: string;
@@ -136,6 +146,7 @@ export type LiveRanchShopItem = {
   owned: boolean | null;
   availableQuantity: number | null;
   animal: RanchShopAnimal;
+  skin?: RanchSkinDefinition | undefined;
 };
 
 export type LiveCookingIngredient = {
@@ -334,7 +345,7 @@ export function getLiveRanchShopItems(
     ["animals", resource.data.shop.animals],
     ["pets", resource.data.shop.pets],
   ];
-  return sections.flatMap(([section, shop]) => {
+  const residents = sections.flatMap(([section, shop]) => {
     if (shop.status !== "available") {
       return [];
     }
@@ -363,6 +374,38 @@ export function getLiveRanchShopItems(
         : [];
     });
   });
+  if (resource.data.shop.skins.status !== "available") {
+    return residents;
+  }
+  const skins = resource.data.shop.skins.items.flatMap((item) => {
+    if (
+      item.status !== "known" ||
+      item.skin_id === null ||
+      item.name === null ||
+      item.target_type === null ||
+      item.target_kind_id === null ||
+      item.price === null
+    ) {
+      return [];
+    }
+    const skin = RANCH_LIMITED_SKINS.find((candidate) => candidate.id === item.skin_id);
+    const animal = RANCH_SHOP_ANIMALS.find((candidate) => candidate.id === item.target_kind_id);
+    return skin && animal
+      ? [
+          {
+            id: item.skin_id,
+            name: item.name,
+            section: item.target_type === "animal" ? ("animals" as const) : ("pets" as const),
+            price: item.price,
+            owned: item.owned,
+            availableQuantity: item.available_quantity,
+            animal,
+            skin,
+          },
+        ]
+      : [];
+  });
+  return [...residents, ...skins];
 }
 
 export function getLiveCookingIngredients(
@@ -529,8 +572,13 @@ export function getShopCartItemDefinition(
       maxQuantity: 1,
       visual: {
         kind: "ranch",
-        animalId: animal.id,
-        catalogKind: (liveAnimal?.section ?? animal.shopSection) === "animals" ? "animal" : "pet",
+        animalId: liveAnimal?.skin?.id ?? animal.id,
+        catalogKind: liveAnimal?.skin
+          ? "item"
+          : (liveAnimal?.section ?? animal.shopSection) === "animals"
+            ? "animal"
+            : "pet",
+        skinId: liveAnimal?.skin?.id,
       },
     };
   }

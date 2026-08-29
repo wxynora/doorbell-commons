@@ -19,6 +19,7 @@ export interface RanchSceneAnimalDefinition {
   name: string;
   placementStyle: CSSProperties;
   spriteStyle: CSSProperties;
+  staticSprite?: boolean | undefined;
 }
 
 function RanchSceneAnimal({
@@ -128,7 +129,10 @@ function RanchSceneAnimal({
       <span className="farm-ranch-resident__roamer" data-roamer ref={roamerRef}>
         <span className="farm-ranch-resident__portrait" ref={portraitRef}>
           <span className="farm-ranch-resident__portrait-sprite" style={animal.placementStyle}>
-            <span className="farm-ranch-resident__step">
+            <span
+              className="farm-ranch-resident__step"
+              style={animal.staticSprite ? { animation: "none" } : undefined}
+            >
               <span
                 aria-hidden="true"
                 className="ranch-shop__animal-sprite"

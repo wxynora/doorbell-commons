@@ -10,6 +10,7 @@ export const farmPurchaseRequestKindSchema = z.enum([
   "recipe",
   "animal",
   "pet",
+  "item",
 ]);
 export const farmPurchaseRequestStatusSchema = z.enum(["requested", "expired", "failed"]);
 export const farmPurchaseRequestIdempotencyKeySchema = z.uuid();
@@ -68,7 +69,7 @@ export const boundFarmPurchaseRequestCreateSchema = z
     const allowedKinds =
       request.shop === "field"
         ? new Set(["seed", "potion", "potion_set", "recipe"])
-        : new Set(["animal", "pet"]);
+        : new Set(["animal", "pet", "item"]);
     request.items.forEach((item, index) => {
       if (!allowedKinds.has(item.kind)) {
         context.addIssue({

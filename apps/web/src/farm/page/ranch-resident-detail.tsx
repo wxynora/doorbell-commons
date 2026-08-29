@@ -7,6 +7,8 @@ import {
 import type { BoundRanchRead } from "../../auth/ranch-client";
 import {
   getRanchAnimalSpriteStyle,
+  getRanchSkinSpriteStyle,
+  RANCH_LIMITED_SKINS,
   RANCH_SHOP_ANIMALS,
   type RanchShopAnimal,
 } from "../panels/ranch-animal-data";
@@ -20,12 +22,18 @@ import type {
 
 export type { RanchResidentActionExecutor } from "./model";
 
-export function RanchShopAnimalSprite({ animal }: { animal: RanchShopAnimal }) {
+export function RanchShopAnimalSprite({
+  animal,
+  skinId,
+}: {
+  animal: RanchShopAnimal;
+  skinId?: string | undefined;
+}) {
   return (
     <span
       aria-hidden="true"
-      className="ranch-shop__animal-sprite"
-      style={getRanchAnimalSpriteStyle(animal)}
+      className={`ranch-shop__animal-sprite${skinId ? " ranch-shop__animal-sprite--skin" : ""}`}
+      style={skinId ? getRanchSkinSpriteStyle(skinId) : getRanchAnimalSpriteStyle(animal)}
     />
   );
 }
@@ -192,9 +200,15 @@ export function RanchResidentDetail({
     ? selectedTakeoffAccessoryId
     : (wornAccessories[0]?.id ?? "");
   const variantIds = residentData?.variants?.available_variant_ids ?? [];
+  const variantOptions = residentData?.variants?.available_variants ?? [];
   const variantId = variantIds.includes(selectedVariantId)
     ? selectedVariantId
     : (residentData?.variants?.current_variant_id ?? variantIds[0] ?? "");
+  const currentSkinId = RANCH_LIMITED_SKINS.some(
+    (skin) => skin.id === residentData?.variants?.current_variant_id,
+  )
+    ? (residentData?.variants?.current_variant_id ?? undefined)
+    : undefined;
 
   const submitAction = useCallback(
     async (
@@ -299,7 +313,7 @@ export function RanchResidentDetail({
         </button>
         <header className="ranch-resident-detail__head">
           <span className="ranch-resident-detail__portrait">
-            <RanchShopAnimalSprite animal={animal} />
+            <RanchShopAnimalSprite animal={animal} skinId={currentSkinId} />
           </span>
           <span className="ranch-resident-detail__identity">
             <small>{liveResident?.category ?? animal.category}</small>
@@ -508,12 +522,12 @@ export function RanchResidentDetail({
                   value={variantId}
                 >
                   {variantIds.map((itemId) => {
-                    const variantIndex = variantIds
-                      .filter((candidateId) => candidateId !== "base")
-                      .indexOf(itemId);
+                    const variantName = variantOptions.find(
+                      (candidate) => candidate.variant_id === itemId,
+                    )?.name;
                     return (
                       <option key={itemId} value={itemId}>
-                        {itemId === "base" ? "原始外观" : `异色外观 ${variantIndex + 1}`}
+                        {variantName ?? (itemId === "base" ? "原始外观" : itemId)}
                         {itemId === residentData?.variants?.current_variant_id ? "（当前）" : ""}
                       </option>
                     );

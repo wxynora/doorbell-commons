@@ -12,6 +12,22 @@ export const FARM_ASSET_SOURCE_URLS = {
   "/farm/animals/goat-codex.png": new URL("./assets/animals/goat-codex.png", import.meta.url).href,
   "/farm/animals/alpaca-codex.png": new URL("./assets/animals/alpaca-codex.png", import.meta.url)
     .href,
+  "/farm/animals/limited-skins/pompompurin.png": new URL(
+    "./assets/animals/limited-skins/pompompurin.png",
+    import.meta.url,
+  ).href,
+  "/farm/animals/limited-skins/hachiware.png": new URL(
+    "./assets/animals/limited-skins/hachiware.png",
+    import.meta.url,
+  ).href,
+  "/farm/animals/limited-skins/usagi.png": new URL(
+    "./assets/animals/limited-skins/usagi.png",
+    import.meta.url,
+  ).href,
+  "/farm/animals/limited-skins/mysweetpiano.png": new URL(
+    "./assets/animals/limited-skins/mysweetpiano.png",
+    import.meta.url,
+  ).href,
   "/farm/ui-icons/field.png": new URL("./assets/ui-icons/field.png", import.meta.url).href,
   "/farm/ui-icons/ranch.png": new URL("./assets/ui-icons/ranch.png", import.meta.url).href,
   "/farm/ui-icons/neighborhood.png": new URL("./assets/ui-icons/neighborhood.png", import.meta.url)

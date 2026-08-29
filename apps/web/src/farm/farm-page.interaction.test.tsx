@@ -610,6 +610,7 @@ const RANCH_RESULT = {
       shop: {
         animals: { status: "available", shop_day: null, items: [] },
         pets: { status: "available", shop_day: null, items: [] },
+        skins: { status: "available", shop_day: null, items: [] },
         accessories: { status: "unavailable", shop_day: null, items: [] },
         decorations: { status: "unavailable", shop_day: null, items: [] },
       },

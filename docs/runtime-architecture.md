@@ -403,7 +403,7 @@ Human registration/login uses these routes:
 | `GET /api/mailbox/:letterId` | Live-checks the same human authority, returns one letter from the current home only, and atomically marks only the human audience as read |
 | `GET /api/farm/field` | Accepts no caller-supplied identity; derives the bound farm key and expected doorplate from the live-checked Human session, calls the farm's strict structured field read, and returns real identity, field balance, season, land, plots, projected maturity, harvest-assist quota, action-safe opaque field revision, and server time with `no-store` |
 | `POST /api/farm/field/harvest-assists` | Accepts only an empty body plus UUID `Idempotency-Key` and quoted `If-Match`; derives farm identity from the same live-checked Human session, calls the farm's structured one-click harvest action, and returns the authoritative receipt, complete replacement field, new revision, and server time with `no-store` |
-| `GET /api/farm/ranch` | Accepts no query or body identity; derives the bound farm from the live-checked Human session and returns the farm's pure structured projection of real ranch balance, residents, collectable produce, wardrobe, decorations, dispatch state, and persisted shop snapshot with `no-store` |
+| `GET /api/farm/ranch` | Accepts no query or body identity; derives the bound farm from the live-checked Human session and returns the farm's pure structured projection of real ranch balance, residents, collectable produce, wardrobe, decorations, dispatch state, persisted shop snapshot, current／available named appearances, and any currently on-sale limited-skin items with `no-store` |
 | `GET /api/farm/kitchen` | Uses the same session-derived binding and returns a pure structured projection of real kitchen balances, owned tools, stacked ingredients, product／fish／treasure／dish instances, known recipes, and the persisted daily shelf with explicit stale state and `no-store` |
 | `GET /api/farm/catalog` | Uses the same session-derived binding and returns only the currently persisted safe farm catalog sections: shop, backpack, crop codex, expedition, smelting, settings, bulletin, neighborhood, and market; missing or damaged identities remain explicit unavailable values and are never guessed |
 | `GET /api/farm/overview` | Reads no caller-supplied farm identity; live-checks the Doorbell human session and QQ membership, resolves the server-side `farm_binding`, and returns the bound farm's currently public name and plot facts for the internal Lingye farm subpage |
@@ -721,6 +721,17 @@ chain on a clone, persists the idempotency receipt and changed farm in one repla
 the complete replacement field. React never calculates settlement locally. This source
 implementation is recorded in the 2026-08-24 main／farm Git commits; it has not been deployed or
 production-verified.
+
+The first ranch limited-skin batch extends these existing boundaries without adding a new MCP
+operation. Farm content defines the four dated shop items and their 100,000-farm-gold price; the
+existing canonical `farm.buy` shop-item branch settles them through the ordinary `buy-item` adapter.
+Purchased IDs persist in `farm.ranch.skins`, separate from `farm.glimmer.unlocked`, while the
+resident's existing `variantId` remains the single equipped appearance. The pure ranch projector
+exposes only active sale items, owned state, and named available variants. Doorbell validates a Human
+ranch cart against that projection, stores the same ordinary `item` purchase request, and emits the
+unchanged Bell notification; it does not purchase, deduct, or poll for a result. The React client
+uses four content-hashed static sprite assets for shop, resident detail, and ranch scene display.
+Farm applies the confirmed production or pet-buff increase only while the matching skin is equipped.
 
 The same field projection now returns a strict season ID plus nullable farm weather condition from
 the farm-owned `nature` snapshot. When P4 is inactive, weather remains `null` and the existing

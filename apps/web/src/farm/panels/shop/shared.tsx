@@ -7,6 +7,7 @@ import {
 } from "../../farm-asset-manifest";
 import {
   getRanchAnimalSpriteStyle,
+  getRanchSkinSpriteStyle,
   RANCH_SHOP_ANIMALS,
   type RanchShopAnimal,
 } from "../ranch-animal-data";
@@ -74,6 +75,16 @@ export function RanchShopAnimalSprite({ animal }: { animal: RanchShopAnimal }) {
   );
 }
 
+export function RanchShopSkinSprite({ skinId }: { skinId: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="ranch-shop__animal-sprite ranch-shop__animal-sprite--skin"
+      style={getRanchSkinSpriteStyle(skinId)}
+    />
+  );
+}
+
 export function ShopCartSelectionBadge({
   itemName,
   onRemove,
@@ -135,6 +146,9 @@ function ShopCartItemVisual({ item }: { item: ShopCartItemDefinition }) {
 
   if (item.visual.kind === "ranch") {
     const visual = item.visual;
+    if (visual.skinId) {
+      return <RanchShopSkinSprite skinId={visual.skinId} />;
+    }
     const animal = RANCH_SHOP_ANIMALS.find((candidate) => candidate.id === visual.animalId);
     return animal ? <RanchShopAnimalSprite animal={animal} /> : null;
   }

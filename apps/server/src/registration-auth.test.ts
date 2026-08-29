@@ -776,6 +776,7 @@ const FARM_RANCH_RESULT = {
     shop: {
       animals: unavailableRanchShopSection(),
       pets: unavailableRanchShopSection(),
+      skins: unavailableRanchShopSection(),
       accessories: unavailableRanchShopSection(),
       decorations: unavailableRanchShopSection(),
     },
@@ -2006,7 +2007,7 @@ test("qualified first registration creates and binds one authoritative farm with
       url: "/api/auth/session",
       payload: CREATE_FARM_REGISTRATION_PAYLOAD,
     });
-    assert.equal(response.statusCode, 200);
+    assert.equal(response.statusCode, 200, response.body);
     assert.equal(response.headers["cache-control"], "no-store");
     const body = createdFarmHumanSessionSuccessSchema.parse(response.json());
     assert.equal(body.account_created, true);
@@ -3725,6 +3726,86 @@ test("bound farm purchase request persists one authoritative cart and returns no
       "idempotency_conflict",
     );
     assert.equal(harness.farmCatalogReader.calls.length, catalogCallsAfterCreate);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("bound ranch purchase request accepts a limited skin as an ordinary item", async () => {
+  const harness = createHarness();
+  try {
+    harness.farmCatalogReader.success = {
+      ...FARM_CATALOG_RESULT,
+      data: {
+        ...FARM_CATALOG_RESULT.data,
+        settings: {
+          status: "available",
+          farm_name: FARM_NAME,
+          ai_name: FARM_AI_NAME,
+          human_name: "辛玥",
+          welcome_message: null,
+          equipped_title: null,
+          unlocked_titles: [],
+          social: { visit: null, steal: null, water: null, message: null },
+        },
+      },
+    };
+    harness.farmRanchReader.success = {
+      ...FARM_RANCH_RESULT,
+      data: {
+        ...FARM_RANCH_RESULT.data,
+        shop: {
+          ...FARM_RANCH_RESULT.data.shop,
+          skins: {
+            status: "available",
+            shop_day: null,
+            items: [
+              {
+                status: "known",
+                skin_id: "pompompurin",
+                name: "布丁狗",
+                target_type: "pet",
+                target_kind_id: "dog",
+                price: 100_000,
+                owned: false,
+                available_quantity: 1,
+                starts_at: "2026-08-29T16:00:00.000Z",
+                ends_at: "2026-09-29T16:00:00.000Z",
+              },
+            ],
+          },
+        },
+      },
+      revision: "ranch-v1:skins",
+    };
+    harness.membership.members.add(QQ_NUMBER);
+    const code = harness.database.getCurrentRegistrationCode(harness.now.value);
+    const session = await harness.app.inject({
+      method: "POST",
+      url: "/api/auth/session",
+      payload: { ...FULL_REGISTRATION_PAYLOAD, registration_code: code.code },
+    });
+    const response = await harness.app.inject({
+      method: "POST",
+      url: "/api/farm/purchase-requests",
+      headers: {
+        cookie: cookieFrom(session),
+        "idempotency-key": "819ffb01-49cd-7020-84af-3d04fb1ed03d",
+      },
+      payload: {
+        shop: "ranch",
+        shop_revision: "ranch-v1:skins",
+        items: [{ kind: "item", item_id: "pompompurin", qty: 1 }],
+      },
+    });
+    assert.equal(response.statusCode, 200, response.body);
+    const created = boundFarmPurchaseRequestCreateSuccessSchema.parse(response.json());
+    assert.deepEqual(created.data.items, [{ kind: "item", item_id: "pompompurin", qty: 1 }]);
+    const wake = harness.database.listPendingBellWakes("b60a5f78-9e87-4bc4-a06f-50df4e23d42d")[0];
+    assert.equal(
+      wake?.payload?.text,
+      "【📢来自铃野的通知】\n你的人类辛玥想要你给她买牧场商店的布丁狗 × 1。",
+    );
   } finally {
     await harness.close();
   }

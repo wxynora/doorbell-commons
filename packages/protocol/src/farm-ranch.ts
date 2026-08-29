@@ -106,6 +106,16 @@ export const farmRanchResidentVariantsSchema = z
   .object({
     current_variant_id: ranchIdSchema.nullable(),
     available_variant_ids: z.array(ranchIdSchema).max(16),
+    available_variants: z
+      .array(
+        z
+          .object({
+            variant_id: ranchIdSchema,
+            name: ranchTextSchema,
+          })
+          .strict(),
+      )
+      .max(16),
   })
   .strict();
 
@@ -162,6 +172,21 @@ export const farmRanchShopAnimalSchema = z
 
 export const farmRanchShopPetSchema = farmRanchShopAnimalSchema;
 
+export const farmRanchShopSkinSchema = z
+  .object({
+    status: ranchItemStatusSchema,
+    skin_id: ranchIdSchema.nullable(),
+    name: ranchTextSchema.nullable(),
+    target_type: z.enum(["animal", "pet"]).nullable(),
+    target_kind_id: ranchIdSchema.nullable(),
+    price: nullableCountSchema,
+    owned: z.boolean().nullable(),
+    available_quantity: nullableCountSchema,
+    starts_at: z.iso.datetime().nullable(),
+    ends_at: z.iso.datetime().nullable(),
+  })
+  .strict();
+
 export const farmRanchShopAccessorySchema = z
   .object({
     status: ranchItemStatusSchema,
@@ -200,6 +225,13 @@ export const farmRanchShopPetsSchema = z
   .object({
     ...farmRanchShopSectionBase,
     items: z.array(farmRanchShopPetSchema).max(128),
+  })
+  .strict();
+
+export const farmRanchShopSkinsSchema = z
+  .object({
+    ...farmRanchShopSectionBase,
+    items: z.array(farmRanchShopSkinSchema).max(32),
   })
   .strict();
 
@@ -308,6 +340,7 @@ export const farmRanchDataSchema = z
       .object({
         animals: farmRanchShopAnimalsSchema,
         pets: farmRanchShopPetsSchema,
+        skins: farmRanchShopSkinsSchema,
         accessories: farmRanchShopAccessoriesSchema,
         decorations: farmRanchShopDecorationsSchema,
       })

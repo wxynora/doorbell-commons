@@ -24,7 +24,7 @@ export interface CreateFarmPurchaseRequestInput {
   shop: "field" | "ranch";
   shopRevision: string;
   items: Array<{
-    kind: "seed" | "potion" | "potion_set" | "recipe" | "animal" | "pet";
+    kind: "seed" | "potion" | "potion_set" | "recipe" | "animal" | "pet" | "item";
     itemId: string;
     quantity: number;
   }>;

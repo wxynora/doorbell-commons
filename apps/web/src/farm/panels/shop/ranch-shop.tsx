@@ -1,7 +1,11 @@
 import { useState } from "react";
 import type { BoundRanchRead } from "../../../auth/ranch-client";
 import { getFarmAssetUrl } from "../../farm-asset-manifest";
-import { getRanchAnimalPlacementStyle, RANCH_SHOP_ANIMALS } from "../ranch-animal-data";
+import {
+  getRanchAnimalPlacementStyle,
+  getRanchSkinPlacementStyle,
+  RANCH_SHOP_ANIMALS,
+} from "../ranch-animal-data";
 import {
   type FarmCartCheckoutFeedback,
   type FarmCartCheckoutLine,
@@ -11,6 +15,7 @@ import {
 } from "./model";
 import {
   RanchShopAnimalSprite,
+  RanchShopSkinSprite,
   ShopCartPanelContent,
   ShopCartSelectionBadge,
   ShopCartShortcut,
@@ -112,9 +117,17 @@ function RanchLiveShopPanelContent({
                 <span className="ranch-shop__portrait">
                   <span
                     className="ranch-shop__portrait-sprite"
-                    style={getRanchAnimalPlacementStyle(item.animal)}
+                    style={
+                      item.skin
+                        ? getRanchSkinPlacementStyle()
+                        : getRanchAnimalPlacementStyle(item.animal)
+                    }
                   >
-                    <RanchShopAnimalSprite animal={item.animal} />
+                    {item.skin ? (
+                      <RanchShopSkinSprite skinId={item.skin.id} />
+                    ) : (
+                      <RanchShopAnimalSprite animal={item.animal} />
+                    )}
                   </span>
                   <strong>{item.name}</strong>
                 </span>

@@ -33,9 +33,10 @@ function farmCatalog(shop: unknown): BoundFarmCatalogRead {
 function ranch(
   animals: unknown,
   pets: unknown = { status: "available", items: [] },
+  skins: unknown = { status: "available", items: [] },
 ): BoundRanchRead {
   return {
-    data: { shop: { animals, pets } },
+    data: { shop: { animals, pets, skins } },
   } as unknown as BoundRanchRead;
 }
 
@@ -175,6 +176,47 @@ test("live ranch and kitchen shops omit unavailable or unknown identities", () =
       kitchen: kitchenData,
     }),
     null,
+  );
+});
+
+test("live ranch shop exposes limited skins as ordinary item purchases", () => {
+  const ranchData = ranch(
+    { status: "available", items: [] },
+    { status: "available", items: [] },
+    {
+      status: "available",
+      items: [
+        {
+          status: "known",
+          skin_id: "pompompurin",
+          name: "布丁狗",
+          target_type: "pet",
+          target_kind_id: "dog",
+          price: 100_000,
+          owned: false,
+          available_quantity: 1,
+        },
+      ],
+    },
+  );
+  const item = panel.getLiveRanchShopItems(ranchData)[0];
+  assert.equal(item?.skin?.id, "pompompurin");
+  assert.equal(item?.section, "pets");
+  assert.deepEqual(
+    panel.getShopCartItemDefinition("ranch", "ranch:pompompurin", { ranch: ranchData }),
+    {
+      cartKey: "ranch:pompompurin",
+      name: "布丁狗",
+      price: 100_000,
+      currency: "gold",
+      maxQuantity: 1,
+      visual: {
+        kind: "ranch",
+        animalId: "pompompurin",
+        catalogKind: "item",
+        skinId: "pompompurin",
+      },
+    },
   );
 });
 

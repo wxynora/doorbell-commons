@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { getRanchAnimalAsset } from "../farm-asset-manifest";
+import { getRanchAnimalAsset, getRanchSkinAsset } from "../farm-asset-manifest";
 import type { RanchSceneAnimalLayout } from "../scenes/ranch/ranch-scene";
 
 export interface RanchShopAnimal {
@@ -23,6 +23,45 @@ export interface RanchAnimalLayout {
   y: number;
   size: number;
 }
+
+export interface RanchSkinDefinition {
+  id: string;
+  name: string;
+  targetType: "animal" | "pet";
+  targetKindId: "dog" | "cat" | "rabbit" | "cloud_sheep";
+  bonusText: string;
+}
+
+export const RANCH_LIMITED_SKINS: readonly RanchSkinDefinition[] = [
+  {
+    id: "pompompurin",
+    name: "布丁狗",
+    targetType: "pet",
+    targetKindId: "dog",
+    bonusText: "小狗防偷概率 35% → 40%",
+  },
+  {
+    id: "hachiware",
+    name: "小八",
+    targetType: "pet",
+    targetKindId: "cat",
+    bonusText: "小猫幸运 12% → 17%，掉落加成 25% → 30%",
+  },
+  {
+    id: "usagi",
+    name: "乌萨奇",
+    targetType: "animal",
+    targetKindId: "rabbit",
+    bonusText: "兔子当前单位产值 +30%",
+  },
+  {
+    id: "mysweetpiano",
+    name: "甜心皮亚诺",
+    targetType: "animal",
+    targetKindId: "cloud_sheep",
+    bonusText: "云绵羊当前单位产值 +30%",
+  },
+];
 
 export const RANCH_SHOP_ANIMALS: readonly RanchShopAnimal[] = [
   {
@@ -308,4 +347,19 @@ export function getRanchAnimalPlacementStyle(animal: RanchShopAnimal): CSSProper
     top: `${(layout.y / RANCH_ANIMAL_CANVAS_SIZE) * 100}%`,
     width: `${(layout.size / RANCH_ANIMAL_CANVAS_SIZE) * 100}%`,
   };
+}
+
+export function getRanchSkinSpriteStyle(skinId: string): CSSProperties {
+  const asset = getRanchSkinAsset(skinId);
+  return asset
+    ? {
+        backgroundImage: `url("${asset.url}")`,
+        backgroundPosition: "center",
+        backgroundSize: "100% 100%",
+      }
+    : {};
+}
+
+export function getRanchSkinPlacementStyle(): CSSProperties {
+  return { height: "100%", left: "50%", top: "50%", width: "100%" };
 }

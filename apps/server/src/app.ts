@@ -4110,8 +4110,14 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
               ? ranch.data.shop.animals
               : requested.kind === "pet"
                 ? ranch.data.shop.pets
-                : null;
-          const item = section?.items.find((candidate) => candidate.kind_id === requested.item_id);
+                : requested.kind === "item"
+                  ? ranch.data.shop.skins
+                  : null;
+          const item = section?.items.find((candidate) =>
+            "skin_id" in candidate
+              ? candidate.skin_id === requested.item_id
+              : candidate.kind_id === requested.item_id,
+          );
           if (
             section?.status !== "available" ||
             !item ||

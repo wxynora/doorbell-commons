@@ -80,6 +80,23 @@ function standaloneAnimal(entityId: string, url: string): Omit<FarmAssetManifest
   });
 }
 
+function standaloneRanchSkin(
+  entityId: string,
+  url: string,
+): Omit<FarmAssetManifestEntry, "assetKey"> {
+  return asset({
+    domain: "ranch",
+    entityKind: "skin",
+    entityId,
+    visualState: "front",
+    url,
+    pixelWidth: 256,
+    pixelHeight: 256,
+    status: "production",
+    usage: "wired",
+  });
+}
+
 export const FARM_ASSET_MANIFEST = {
   "shell.scene.field": asset({
     domain: "shell",
@@ -699,6 +716,19 @@ export const FARM_ASSET_MANIFEST = {
   "ranch.animal.dream_cat": atlasAnimal("dream_cat", 0, 3),
   "ranch.animal.cat": atlasAnimal("cat", 1, 3),
   "ranch.animal.dog": atlasAnimal("dog", 2, 3),
+  "ranch.skin.pompompurin": standaloneRanchSkin(
+    "pompompurin",
+    "/farm/animals/limited-skins/pompompurin.png",
+  ),
+  "ranch.skin.hachiware": standaloneRanchSkin(
+    "hachiware",
+    "/farm/animals/limited-skins/hachiware.png",
+  ),
+  "ranch.skin.usagi": standaloneRanchSkin("usagi", "/farm/animals/limited-skins/usagi.png"),
+  "ranch.skin.mysweetpiano": standaloneRanchSkin(
+    "mysweetpiano",
+    "/farm/animals/limited-skins/mysweetpiano.png",
+  ),
 } as const satisfies Record<string, Omit<FarmAssetManifestEntry, "assetKey">>;
 
 export type FarmAssetKey = keyof typeof FARM_ASSET_MANIFEST;
@@ -722,6 +752,13 @@ export const RANCH_ANIMAL_ASSET_KEYS = {
   dream_cat: "ranch.animal.dream_cat",
   cat: "ranch.animal.cat",
   dog: "ranch.animal.dog",
+} as const satisfies Record<string, FarmAssetKey>;
+
+export const RANCH_SKIN_ASSET_KEYS = {
+  pompompurin: "ranch.skin.pompompurin",
+  hachiware: "ranch.skin.hachiware",
+  usagi: "ranch.skin.usagi",
+  mysweetpiano: "ranch.skin.mysweetpiano",
 } as const satisfies Record<string, FarmAssetKey>;
 
 export function getFarmAsset(assetKey: FarmAssetKey): FarmAssetManifestEntry {
@@ -791,6 +828,11 @@ export function getFarmEnvironmentAssetUrl(
 
 export function getRanchAnimalAsset(entityId: string): FarmAssetManifestEntry | undefined {
   const assetKey = RANCH_ANIMAL_ASSET_KEYS[entityId as keyof typeof RANCH_ANIMAL_ASSET_KEYS];
+  return assetKey ? getFarmAsset(assetKey) : undefined;
+}
+
+export function getRanchSkinAsset(entityId: string): FarmAssetManifestEntry | undefined {
+  const assetKey = RANCH_SKIN_ASSET_KEYS[entityId as keyof typeof RANCH_SKIN_ASSET_KEYS];
   return assetKey ? getFarmAsset(assetKey) : undefined;
 }
 
