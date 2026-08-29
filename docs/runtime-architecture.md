@@ -647,13 +647,15 @@ producers remain frozen.
 Farm purchase requests keep the existing `farm_purchase_request` wake and its original
 human／shop／item summary, then append the approved `可以直接调用 doorbell：` block only when the
 server can derive a current canonical call from the persisted trusted item snapshot. Every call is
-parsed by the live Farm registry before it enters `payload.text`: potions, potion sets, recipes and
-persisted seeds use existing `farm.buy`; animals and pets use `farm.buy-companion`. A seed quantity
+parsed by the live Farm registry before it enters `payload.text`: potions, potion sets, recipes,
+persisted seeds and trusted ranch limited-skin items use existing `farm.buy`; animals and pets use
+`farm.buy-companion`. A seed quantity
 greater than one produces repeated one-at-a-time calls because the current public seed branch has no
-`qty`. Items without an approved public operation, currently including limited skins, keep only the
-original notification. The final approved line states that the calls do not execute automatically.
+`qty`. Items without an approved public operation keep only the original notification. The final
+approved line states that the calls do not execute automatically.
 The browser cannot submit an op, and the Bell `wake` envelope, transport auth, ACK／blocked／cancel,
-replay and household injector remain unchanged. This release is not deployed.
+replay and household injector remain unchanged. The limited-skin hint is deployed with the current
+Main release.
 
 Bell no longer carries `maxWakeIdChars` or `maxMessageChars` protocol configuration. Doorbell keeps
 the full `career-job:${notification_id}` identity, full commission reply body, and full approved
@@ -1129,16 +1131,12 @@ pre-release database under its recorded original schema, and restores the
 previous runtime. It restarts Doorbell only after both database and runtime rollback succeed; any
 incomplete rollback withholds automatic restart for manual recovery.
 
-Application-bearing community commit `e2b9bc7da7f40dec5655a86977794e19914d26a6` was deployed
-through that entry on 2026-08-14. Later documentation-only main releases use the same entry. Their
-exact release marker, previous-runtime path and root-only online-backup path are emitted by the
-release command and deliberately not hard-coded here as a self-staling “latest” record.
-The live database is schema v4 with integrity OK and zero foreign-key violations. The currently
-deployed service still contains the pre-retirement Connector code and its old generation credential
-until this local candidate is separately committed and deployed; no real household ever installed or
-used it. The required upstream request deadline
-remains explicitly `60000` ms on this VPS. MCP readiness was set back to `false` after the isolated
-migration acceptance; no credential or chosen deployment value was copied into the repository.
+Current production Main is `16e1de61524276d8f69c0a6dfdde9955c7743b2a`; the source checkout and
+runtime release marker match that exact SHA. The live database is schema v12 with integrity OK and
+zero foreign-key violations. `doorbell-commons.service` is active/running with `NRestarts=0`, one
+`127.0.0.1:3000` listener, direct/public health 200 and no warning-or-higher startup line. The
+required upstream request deadline remains explicitly `60000` ms on this VPS. MCP readiness is
+enabled; deployment did not claim, migrate or issue a credential for any player.
 
 The current `doorbell-commons.service` is active/running with `NRestarts=0`, one
 `127.0.0.1:3000` listener, and no warning-or-higher startup log. The already loaded nginx
@@ -1149,7 +1147,7 @@ Connector credential, real-family Connector, shared-meme write, or real-player m
 for the Doorbell release acceptance.
 
 The first-household Bell runs separately on the gateway host from public GitHub checkout `/opt/bell`
-at Bell commit `9f5164f8643e232f83bd87215bd0b8f4ff77fe10`. `doorbell-bell.service` is enabled and
+at Bell commit `a22f8319117a89afba06de168f9788ec660f31f1`. `doorbell-bell.service` is enabled and
 active/running with `NRestarts=0`; its mode-0600 environment file is
 `/etc/doorbell-bell.env`, and its private state directory is `/var/lib/doorbell-bell`. The household
 injector was published in its private household runtime and maps
@@ -1157,6 +1155,10 @@ injector was published in its private household runtime and maps
 cleanup check passed before activation. The first existing unread wake was accepted and ACKed; after
 the final enable, the authoritative wake count and gateway job count remained unchanged, so that
 enable did not produce another model request.
+The deployed Bell no longer has `BELL_MAX_WAKE_ID_CHARS` or `BELL_MAX_MESSAGE_CHARS`; complete
+nonblank wake IDs and messages pass unchanged while the existing `BELL_MAX_EVENT_BYTES` transport
+boundary remains configured. Its checkout is clean, the environment file remains mode 0600, and
+the service is active/running with `NRestarts=0`. This release sent no test wake.
 
 The new-version welfare week remains a local Farm candidate and is disabled unless release operations
 set `AIFARM_WELFARE_WEEK_START_DATE=YYYY-MM-DD`. That date is interpreted as an Asia/Shanghai natural
@@ -1233,7 +1235,9 @@ existing non-stacking 20% total bonus, while the complete configured set of thre
 Historical complete sets qualify automatically; no save field, capture rule, schedule, pet effect,
 patrol-goose effect, Human route, Doorbell registry or migration state changed. Production 8091 was
 quiet-drained, maintenance-gated, clean-fast-forwarded and restarted only for `aifarm.service`; it is
-active at the exact farm commit with one listener, zero restarts and direct／public 200 health.
+active at cumulative Farm commit `243f8394d47ea8b2c44445f4a3f6ce3a2aaf5326` with one listener,
+zero restarts and direct／public 200 health. The latest release gives each chef-store listing and rent
+period a distinct authority revision so later purchases and rent periods do not replay an older result.
 The production
 service credential now lives only in root-owned
 environment files and is loaded by both services without entering the repository. Doorbell's shared
