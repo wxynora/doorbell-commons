@@ -3096,6 +3096,25 @@ const RUNTIME_STYLES = `
             opacity: 0.7;
         }
 
+        #screen-profile,
+        #screen-settings {
+            --candidate2-copy-font: var(--ui-regular-font);
+            --candidate2-handwritten-font: 'Gaegu', 'ZCOOL KuaiLe', 'Yuanti SC', 'STYuanti-SC-Regular', '圆体-简', 'YouYuan', cursive;
+            font-family: var(--candidate2-copy-font);
+        }
+
+        #screen-profile :is(button, input, select, textarea, option),
+        #screen-settings :is(button, input, select, textarea, option) {
+            font-family: var(--candidate2-copy-font);
+        }
+
+        #screen-profile .handwritten,
+        #screen-profile button.handwritten,
+        #screen-settings .handwritten,
+        #screen-settings button.handwritten {
+            font-family: var(--candidate2-handwritten-font);
+        }
+
         #screen-profile {
             padding: 22px 18px 116px;
             background: #f8f1e9;
@@ -3252,7 +3271,7 @@ const RUNTIME_STYLES = `
         .candidate2-profile-note-title {
             margin: 0 0 14px;
             color: #60483f;
-            font-family: 'Gaegu', cursive;
+            font-family: var(--candidate2-handwritten-font);
             font-size: 18px;
             font-weight: 700;
             letter-spacing: 0.06em;
@@ -3823,7 +3842,7 @@ const RUNTIME_STYLES = `
 
         .candidate2-settings-section-heading span {
             color: #c5a99a;
-            font-family: 'Gaegu', cursive;
+            font-family: var(--candidate2-handwritten-font);
             font-size: 12px;
         }
 
@@ -4028,7 +4047,7 @@ const RUNTIME_STYLES = `
 
         .candidate2-settings-text-action,
         .candidate2-settings-logout {
-            font-family: 'Gaegu', 'ZCOOL KuaiLe', 'Yuanti SC', 'STYuanti-SC-Regular', '圆体-简', 'YouYuan', cursive;
+            font-family: var(--candidate2-handwritten-font);
         }
 
         .candidate2-settings-text-action {

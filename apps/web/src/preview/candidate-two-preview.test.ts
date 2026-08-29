@@ -430,6 +430,41 @@ test("runtime HTML keeps candidate two and replaces every confirmed fake datum",
   );
 });
 
+test("profile and settings preserve the self-hosted typography roles on native controls", () => {
+  const html = buildCandidateTwoRuntimeHtml();
+  const typographyStart = html.indexOf("#screen-profile,");
+  const typographyEnd = html.indexOf(".candidate2-shared-memes-page {");
+  const typographyCss = html.slice(typographyStart, typographyEnd);
+
+  assert.ok(typographyStart >= 0);
+  assert.ok(typographyEnd > typographyStart);
+  assert.match(
+    typographyCss,
+    /#screen-profile,\s*#screen-settings\s*\{[^}]*--candidate2-copy-font: var\(--ui-regular-font\);[^}]*--candidate2-handwritten-font: 'Gaegu', 'ZCOOL KuaiLe', 'Yuanti SC', 'STYuanti-SC-Regular', '圆体-简', 'YouYuan', cursive;[^}]*font-family: var\(--candidate2-copy-font\);/s,
+  );
+  assert.match(
+    typographyCss,
+    /#screen-profile :is\(button, input, select, textarea, option\),\s*#screen-settings :is\(button, input, select, textarea, option\)\s*\{[^}]*font-family: var\(--candidate2-copy-font\);/s,
+  );
+  assert.match(
+    typographyCss,
+    /#screen-profile \.handwritten,\s*#screen-profile button\.handwritten,\s*#screen-settings \.handwritten,\s*#screen-settings button\.handwritten\s*\{[^}]*font-family: var\(--candidate2-handwritten-font\);/s,
+  );
+  assert.match(
+    typographyCss,
+    /\.candidate2-profile-note-title\s*\{[^}]*font-family: var\(--candidate2-handwritten-font\);/s,
+  );
+  assert.match(
+    typographyCss,
+    /\.candidate2-settings-section-heading span\s*\{[^}]*font-family: var\(--candidate2-handwritten-font\);/s,
+  );
+  assert.match(
+    typographyCss,
+    /\.candidate2-settings-text-action,\s*\.candidate2-settings-logout\s*\{[^}]*font-family: var\(--candidate2-handwritten-font\);/s,
+  );
+  assert.doesNotMatch(typographyCss, /font-family:\s*(?:Arial|Roboto|system-ui|sans-serif)/);
+});
+
 test("six Lingye institutions open their own background-only scenes", () => {
   const html = buildCandidateTwoRuntimeHtml();
   const scenes = [
@@ -1287,7 +1322,7 @@ test("settings View and Log out keep the confirmed handwritten font", () => {
 
   assert.match(
     html,
-    /\.candidate2-settings-text-action,\s*\.candidate2-settings-logout \{\s*font-family: 'Gaegu', 'ZCOOL KuaiLe', 'Yuanti SC', 'STYuanti-SC-Regular', '圆体-简', 'YouYuan', cursive;/,
+    /\.candidate2-settings-text-action,\s*\.candidate2-settings-logout \{\s*font-family: var\(--candidate2-handwritten-font\);/,
   );
 });
 
@@ -1575,7 +1610,7 @@ test("runtime contains populated-demo slots without changing production empty st
   );
   assert.match(
     html,
-    /\.candidate2-profile-note-title\s*\{[^}]*font-family: 'Gaegu', cursive;[^}]*font-size: 18px;[^}]*text-align: center;/s,
+    /\.candidate2-profile-note-title\s*\{[^}]*font-family: var\(--candidate2-handwritten-font\);[^}]*font-size: 18px;[^}]*text-align: center;/s,
   );
   assert.match(
     html,
