@@ -18,16 +18,16 @@ export const COURSE_PRACTICE_PASS_COUNT = 4;
 export const EXAM_QUESTION_COUNT = 20;
 export const EXAM_PASS_COUNT = 18;
 export const COURSE_TUITION_GOLD = {
-    1: 20_000,
-    2: 80_000,
-    3: 180_000,
-    4: 360_000,
+    1: 30_000,
+    2: 120_000,
+    3: 270_000,
+    4: 540_000,
 };
 export const EXAM_FEE_GOLD = {
-    1: 40_000,
-    2: 160_000,
-    3: 360_000,
-    4: 720_000,
+    1: 60_000,
+    2: 240_000,
+    3: 540_000,
+    4: 1_080_000,
 };
 export const BASE_WAGE_GOLD = {
     1: 2_000,

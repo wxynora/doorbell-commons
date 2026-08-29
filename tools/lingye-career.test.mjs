@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
-import { CareerDomainError, } from "../dist/career/contracts.js";
+import {
+    CareerDomainError,
+    COURSE_TUITION_GOLD,
+    EXAM_FEE_GOLD,
+} from "../dist/career/contracts.js";
 import { CareerEmploymentService } from "../dist/career/employment-service.js";
 import { CareerJobService } from "../dist/career/job-service.js";
 import {
@@ -24,6 +28,27 @@ import { installEconomySchema } from "../dist/economy/economy-schema.js";
 import { EconomyService } from "../dist/economy/economy-service.js";
 import { runLingyeWorldTransaction } from "../dist/lingye-world-database.js";
 const TEST_CURRICULUM_VERSION = "career-test-bank-v1";
+
+test("career school uses the approved 1.5x tuition and exam fees", () => {
+    assert.deepEqual(COURSE_TUITION_GOLD, {
+        1: 30_000,
+        2: 120_000,
+        3: 270_000,
+        4: 540_000,
+    });
+    assert.deepEqual(EXAM_FEE_GOLD, {
+        1: 60_000,
+        2: 240_000,
+        3: 540_000,
+        4: 1_080_000,
+    });
+    assert.deepEqual(Object.values(EXAM_FEE_GOLD).map((fee) => fee / 2), [
+        30_000,
+        120_000,
+        270_000,
+        540_000,
+    ]);
+});
 const TEST_CONSTABLE_INTERVIEW_BANK = Object.freeze({
     getConstableInterviewPaper: ({ interviewId, candidateResidentId, scheduledAt }) => ({
         bankVersion: "constable-interview-test-bank-v1",
@@ -323,7 +348,7 @@ function completeLevelOneCourses(harness, residentId, career) {
             courseIndex,
             level: 1,
             residentId,
-            tuitionReceipt: goldReceipt(harness, residentId, "system_gold_charge", 20_000, `career-course:${residentId}:${career}:1:${courseIndex}`),
+            tuitionReceipt: goldReceipt(harness, residentId, "system_gold_charge", COURSE_TUITION_GOLD[1], `career-course:${residentId}:${career}:1:${courseIndex}`),
         });
         deliverAndReadCourse(harness, { career, courseIndex, level: 1, residentId });
         assert.equal(submitPracticeScore(harness, {
@@ -478,7 +503,7 @@ test("course enrollment freezes one content bank and read confirmation requires 
                 harness,
                 input.residentId,
                 "system_gold_charge",
-                20_000,
+                COURSE_TUITION_GOLD[1],
                 "career-course:frozen-course-resident:reporter:1:1",
             ),
         });
@@ -535,7 +560,7 @@ test("course enrollment freezes one content bank and read confirmation requires 
                 harness,
                 mismatchedInput.residentId,
                 "system_gold_charge",
-                20_000,
+                COURSE_TUITION_GOLD[1],
                 "career-course:mismatched-paper-resident:reporter:1:1",
             ),
         });
@@ -560,7 +585,7 @@ test("course enrollment freezes one content bank and read confirmation requires 
                 harness,
                 legacyInput.residentId,
                 "system_gold_charge",
-                20_000,
+                COURSE_TUITION_GOLD[1],
                 "career-course:legacy-course-resident:reporter:1:1",
             ),
         });
@@ -652,9 +677,9 @@ test("school enforces ordered paid courses, read-and-practice completion, schedu
             courseIndex: 2,
             level: 1,
             residentId: "resident-1",
-            tuitionReceipt: goldReceipt(harness, "resident-1", "system_gold_charge", 20_000, "career-course:resident-1:reporter:1:2"),
+            tuitionReceipt: goldReceipt(harness, "resident-1", "system_gold_charge", COURSE_TUITION_GOLD[1], "career-course:resident-1:reporter:1:2"),
         }), assertCareerError("previous_course_required"));
-        const courseOneReceipt = goldReceipt(harness, "resident-1", "system_gold_charge", 20_000, "career-course:resident-1:reporter:1:1");
+        const courseOneReceipt = goldReceipt(harness, "resident-1", "system_gold_charge", COURSE_TUITION_GOLD[1], "career-course:resident-1:reporter:1:1");
         harness.school.enrollCourse({
             career: "reporter",
             courseIndex: 1,
@@ -718,7 +743,7 @@ test("school enforces ordered paid courses, read-and-practice completion, schedu
                 courseIndex,
                 level: 1,
                 residentId: "resident-1",
-                tuitionReceipt: goldReceipt(harness, "resident-1", "system_gold_charge", 20_000, `career-course:resident-1:reporter:1:${courseIndex}`),
+                tuitionReceipt: goldReceipt(harness, "resident-1", "system_gold_charge", COURSE_TUITION_GOLD[1], `career-course:resident-1:reporter:1:${courseIndex}`),
             });
             deliverAndReadCourse(harness, {
                 career: "reporter",
@@ -737,12 +762,12 @@ test("school enforces ordered paid courses, read-and-practice completion, schedu
             attemptId: "attempt-1",
             career: "reporter",
             level: 1,
-            reservationReceipt: goldReceipt(harness, "resident-1", "system_gold_reserve", 40_000, "career-exam:attempt-1:reserve"),
+            reservationReceipt: goldReceipt(harness, "resident-1", "system_gold_reserve", EXAM_FEE_GOLD[1], "career-exam:attempt-1:reserve"),
             residentId: "resident-1",
         });
         assert.equal(first.scheduledAt, beijingTimestamp("2026-08-27", 14));
         harness.setNow(first.scheduledAt);
-        harness.school.startExam(first.attemptId, goldReceipt(harness, "resident-1", "system_gold_settle", 40_000, "career-exam:attempt-1:settle"));
+        harness.school.startExam(first.attemptId, goldReceipt(harness, "resident-1", "system_gold_settle", EXAM_FEE_GOLD[1], "career-exam:attempt-1:settle"));
         assert.deepEqual(submitExamScore(harness, first.attemptId, 17), {
             status: "failed",
             correctAnswers: 17,
@@ -752,12 +777,12 @@ test("school enforces ordered paid courses, read-and-practice completion, schedu
             attemptId: "attempt-2",
             career: "reporter",
             level: 1,
-            reservationReceipt: goldReceipt(harness, "resident-1", "system_gold_reserve", 20_000, "career-exam:attempt-2:reserve"),
+            reservationReceipt: goldReceipt(harness, "resident-1", "system_gold_reserve", EXAM_FEE_GOLD[1] / 2, "career-exam:attempt-2:reserve"),
             residentId: "resident-1",
         });
-        assert.equal(retake.feeGold, 20_000);
+        assert.equal(retake.feeGold, EXAM_FEE_GOLD[1] / 2);
         harness.setNow(retake.scheduledAt);
-        harness.school.startExam(retake.attemptId, goldReceipt(harness, "resident-1", "system_gold_settle", 20_000, "career-exam:attempt-2:settle"));
+        harness.school.startExam(retake.attemptId, goldReceipt(harness, "resident-1", "system_gold_settle", EXAM_FEE_GOLD[1] / 2, "career-exam:attempt-2:settle"));
         assert.deepEqual(submitExamScore(harness, retake.attemptId, 18), {
             status: "passed",
             correctAnswers: 18,
@@ -773,7 +798,7 @@ test("school enforces ordered paid courses, read-and-practice completion, schedu
                 courseIndex,
                 level: 2,
                 residentId: "resident-1",
-                tuitionReceipt: goldReceipt(harness, "resident-1", "system_gold_charge", 80_000, `career-course:resident-1:reporter:2:${courseIndex}`),
+                tuitionReceipt: goldReceipt(harness, "resident-1", "system_gold_charge", COURSE_TUITION_GOLD[2], `career-course:resident-1:reporter:2:${courseIndex}`),
             });
             deliverAndReadCourse(harness, {
                 career: "reporter",
@@ -792,7 +817,7 @@ test("school enforces ordered paid courses, read-and-practice completion, schedu
             attemptId: "attempt-level-2",
             career: "reporter",
             level: 2,
-            reservationReceipt: goldReceipt(harness, "resident-1", "system_gold_reserve", 160_000, "career-exam:attempt-level-2:reserve"),
+            reservationReceipt: goldReceipt(harness, "resident-1", "system_gold_reserve", EXAM_FEE_GOLD[2], "career-exam:attempt-level-2:reserve"),
             residentId: "resident-1",
         }), assertCareerError("work_record_requirement_not_met"));
         const insertWorkRecord = harness.database.prepare(`INSERT INTO career_work_records (
@@ -806,9 +831,9 @@ test("school enforces ordered paid courses, read-and-practice completion, schedu
             attemptId: "attempt-level-2",
             career: "reporter",
             level: 2,
-            reservationReceipt: goldReceipt(harness, "resident-1", "system_gold_reserve", 160_000, "career-exam:attempt-level-2:reserve"),
+            reservationReceipt: goldReceipt(harness, "resident-1", "system_gold_reserve", EXAM_FEE_GOLD[2], "career-exam:attempt-level-2:reserve"),
             residentId: "resident-1",
-        }).feeGold, 160_000);
+        }).feeGold, EXAM_FEE_GOLD[2]);
         for (const level of [2, 3]) {
             harness.database
                 .prepare(`INSERT INTO career_certificates (
@@ -832,7 +857,7 @@ test("written exams open only on Tuesday, Thursday, and Saturday and active cert
     try {
         harness.school.selectCareer("exam-resident", "reporter");
         completeLevelOneCourses(harness, "exam-resident", "reporter");
-        const boundReservation = goldReceipt(harness, "exam-resident", "system_gold_reserve", 40_000, "career-exam:bound-attempt:reserve");
+        const boundReservation = goldReceipt(harness, "exam-resident", "system_gold_reserve", EXAM_FEE_GOLD[1], "career-exam:bound-attempt:reserve");
         const boundAttempt = harness.school.registerExam({
             attemptId: "bound-attempt",
             career: "reporter",
@@ -847,7 +872,7 @@ test("written exams open only on Tuesday, Thursday, and Saturday and active cert
         );
         const wrongReservation = harness.economy.reserveSystemGold({
             residentId: "exam-resident",
-            amount: 40_000,
+            amount: EXAM_FEE_GOLD[1],
             actor: "human",
             businessReference: "another-contract:reserve",
             idempotencyKey: "another-contract:reserve",
@@ -861,7 +886,7 @@ test("written exams open only on Tuesday, Thursday, and Saturday and active cert
         assert.throws(() => harness.school.startExam(boundAttempt.attemptId, wrongSettlement.financialReceipt), assertCareerError("financial_receipt_mismatch"));
         const wrongReleaseReservation = harness.economy.reserveSystemGold({
             residentId: "exam-resident",
-            amount: 40_000,
+            amount: EXAM_FEE_GOLD[1],
             actor: "human",
             businessReference: "another-release-contract:reserve",
             idempotencyKey: "another-release-contract:reserve",
@@ -878,9 +903,9 @@ test("written exams open only on Tuesday, Thursday, and Saturday and active cert
         assert.equal(harness.database
             .prepare("SELECT state FROM economy_system_gold_reservations WHERE reserve_journal_id = ?")
             .get(boundReservation.receiptId).state, "reserved");
-        harness.school.releaseUnstartedExam(boundAttempt.attemptId, goldReceipt(harness, "exam-resident", "system_gold_release", 40_000, "career-exam:bound-attempt:release"));
+        harness.school.releaseUnstartedExam(boundAttempt.attemptId, goldReceipt(harness, "exam-resident", "system_gold_release", EXAM_FEE_GOLD[1], "career-exam:bound-attempt:release"));
         harness.setNow(beijingTimestamp("2026-08-26", 11));
-        const expiredReservation = goldReceipt(harness, "exam-resident", "system_gold_reserve", 40_000, "career-exam:expired-attempt:reserve");
+        const expiredReservation = goldReceipt(harness, "exam-resident", "system_gold_reserve", EXAM_FEE_GOLD[1], "career-exam:expired-attempt:reserve");
         const expiredAttempt = harness.school.registerExam({
             attemptId: "expired-attempt",
             career: "reporter",
@@ -889,7 +914,7 @@ test("written exams open only on Tuesday, Thursday, and Saturday and active cert
             residentId: "exam-resident",
         });
         harness.setNow(expiredAttempt.scheduledAt);
-        const expiredSettlement = goldReceipt(harness, "exam-resident", "system_gold_settle", 40_000, "career-exam:expired-attempt:settle");
+        const expiredSettlement = goldReceipt(harness, "exam-resident", "system_gold_settle", EXAM_FEE_GOLD[1], "career-exam:expired-attempt:settle");
         harness.school.startExam(expiredAttempt.attemptId, expiredSettlement);
         harness.setNow(expiredAttempt.scheduledAt + 2 * 60 * 60 * 1_000);
         assert.deepEqual(submitExamScore(harness, expiredAttempt.attemptId, 20), {
@@ -914,8 +939,8 @@ test("written exams open only on Tuesday, Thursday, and Saturday and active cert
             level: 1,
             reservationReceipt: expiredReservation,
             residentId: "exam-resident",
-        }).feeGold, 40_000);
-        const passedReservation = goldReceipt(harness, "exam-resident", "system_gold_reserve", 40_000, "career-exam:passed-attempt:reserve");
+        }).feeGold, EXAM_FEE_GOLD[1]);
+        const passedReservation = goldReceipt(harness, "exam-resident", "system_gold_reserve", EXAM_FEE_GOLD[1], "career-exam:passed-attempt:reserve");
         const passedAttempt = harness.school.registerExam({
             attemptId: "passed-attempt",
             career: "reporter",
@@ -924,8 +949,8 @@ test("written exams open only on Tuesday, Thursday, and Saturday and active cert
             residentId: "exam-resident",
         });
         harness.setNow(passedAttempt.scheduledAt);
-        assert.equal(passedAttempt.feeGold, 40_000);
-        harness.school.startExam(passedAttempt.attemptId, goldReceipt(harness, "exam-resident", "system_gold_settle", 40_000, "career-exam:passed-attempt:settle"));
+        assert.equal(passedAttempt.feeGold, EXAM_FEE_GOLD[1]);
+        harness.school.startExam(passedAttempt.attemptId, goldReceipt(harness, "exam-resident", "system_gold_settle", EXAM_FEE_GOLD[1], "career-exam:passed-attempt:settle"));
         const passedResult = submitExamScore(
             harness,
             passedAttempt.attemptId,
@@ -955,14 +980,14 @@ test("written exams open only on Tuesday, Thursday, and Saturday and active cert
             level: 1,
             reservationReceipt: passedReservation,
             residentId: "exam-resident",
-        }).feeGold, 40_000);
+        }).feeGold, EXAM_FEE_GOLD[1]);
         const attemptsBefore = harness.database
             .prepare("SELECT COUNT(*) AS count FROM career_exam_attempts WHERE resident_id = 'exam-resident'")
             .get().count;
         const balanceBeforeDuplicate = harness.economy.getAccount("exam-resident");
         let duplicateReservation;
         assert.throws(() => runLingyeWorldTransaction(harness.database, () => {
-            duplicateReservation = goldReceipt(harness, "exam-resident", "system_gold_reserve", 20_000, "career-exam:duplicate-attempt:reserve");
+            duplicateReservation = goldReceipt(harness, "exam-resident", "system_gold_reserve", EXAM_FEE_GOLD[1], "career-exam:duplicate-attempt:reserve");
             return harness.school.registerExam({
                 attemptId: "duplicate-attempt",
                 career: "reporter",
@@ -1309,7 +1334,7 @@ test("a failed constable interview returns a normal terminal result after persis
     const harness = createHarness();
     try {
         const reservation = harness.receipt({
-            amount: 40_000,
+            amount: EXAM_FEE_GOLD[1],
             businessReference: "career-exam:failed-attempt:reserve",
             currency: "gold",
             kind: "system_gold_reserve",
@@ -1320,7 +1345,7 @@ test("a failed constable interview returns a normal terminal result after persis
       VALUES ('failed-candidate', 'constable', 1, 1);
     `);
         recordFinancialReceipt(harness.database, reservation, {
-            amount: 40_000,
+            amount: EXAM_FEE_GOLD[1],
             businessReference: "career-exam:failed-attempt:reserve",
             currency: "gold",
             kind: "system_gold_reserve",
@@ -1376,11 +1401,11 @@ test("constable interview uses human signup order and fails closed after the 24-
             attemptId: "constable-attempt",
             career: "constable",
             level: 1,
-            reservationReceipt: goldReceipt(harness, "candidate", "system_gold_reserve", 40_000, "career-exam:constable-attempt:reserve"),
+            reservationReceipt: goldReceipt(harness, "candidate", "system_gold_reserve", EXAM_FEE_GOLD[1], "career-exam:constable-attempt:reserve"),
             residentId: "candidate",
         });
         harness.setNow(attempt.scheduledAt);
-        harness.school.startExam(attempt.attemptId, goldReceipt(harness, "candidate", "system_gold_settle", 40_000, "career-exam:constable-attempt:settle"));
+        harness.school.startExam(attempt.attemptId, goldReceipt(harness, "candidate", "system_gold_settle", EXAM_FEE_GOLD[1], "career-exam:constable-attempt:settle"));
         const writtenResult = submitExamScore(
             harness,
             attempt.attemptId,
@@ -1488,11 +1513,11 @@ test("a postponed constable interview reopens signup at a new session", () => {
             attemptId: "postponed-attempt",
             career: "constable",
             level: 1,
-            reservationReceipt: goldReceipt(harness, "postponed-candidate", "system_gold_reserve", 40_000, "career-exam:postponed-attempt:reserve"),
+            reservationReceipt: goldReceipt(harness, "postponed-candidate", "system_gold_reserve", EXAM_FEE_GOLD[1], "career-exam:postponed-attempt:reserve"),
             residentId: "postponed-candidate",
         });
         harness.setNow(attempt.scheduledAt);
-        harness.school.startExam(attempt.attemptId, goldReceipt(harness, "postponed-candidate", "system_gold_settle", 40_000, "career-exam:postponed-attempt:settle"));
+        harness.school.startExam(attempt.attemptId, goldReceipt(harness, "postponed-candidate", "system_gold_settle", EXAM_FEE_GOLD[1], "career-exam:postponed-attempt:settle"));
         assert.deepEqual(submitExamScore(harness, attempt.attemptId, 20), {
             status: "written_passed",
             correctAnswers: 20,
@@ -1565,14 +1590,14 @@ test("a closed constable notice with zero review requests activates without a po
             .prepare("INSERT INTO career_tracks (resident_id, career, track_order, selected_at) VALUES (?, 'constable', 1, ?)")
             .run("zero-review-candidate", now);
         const reservation = harness.receipt({
-            amount: 40_000,
+            amount: EXAM_FEE_GOLD[1],
             businessReference: "career-exam:zero-review-attempt:reserve",
             currency: "gold",
             kind: "system_gold_reserve",
             residentId: "zero-review-candidate",
         });
         recordFinancialReceipt(harness.database, reservation, {
-            amount: 40_000,
+            amount: EXAM_FEE_GOLD[1],
             businessReference: "career-exam:zero-review-attempt:reserve",
             currency: "gold",
             kind: "system_gold_reserve",
@@ -1628,14 +1653,14 @@ test("constable examiner eligibility is checked against current loans and compla
           VALUES ('eligibility-candidate', 'constable', 1, 1);
         `);
         const reservation = harness.receipt({
-            amount: 40_000,
+            amount: EXAM_FEE_GOLD[1],
             businessReference: "career-exam:eligibility-attempt:reserve",
             currency: "gold",
             kind: "system_gold_reserve",
             residentId: "eligibility-candidate",
         });
         recordFinancialReceipt(harness.database, reservation, {
-            amount: 40_000,
+            amount: EXAM_FEE_GOLD[1],
             businessReference: "career-exam:eligibility-attempt:reserve",
             currency: "gold",
             kind: "system_gold_reserve",
@@ -1700,14 +1725,14 @@ test("constable scoring fails closed when no private interview bank is configure
           VALUES ('unconfigured-candidate', 'constable', 1, 1);
         `);
         const reservation = harness.receipt({
-            amount: 40_000,
+            amount: EXAM_FEE_GOLD[1],
             businessReference: "career-exam:unconfigured-attempt:reserve",
             currency: "gold",
             kind: "system_gold_reserve",
             residentId: "unconfigured-candidate",
         });
         recordFinancialReceipt(harness.database, reservation, {
-            amount: 40_000,
+            amount: EXAM_FEE_GOLD[1],
             businessReference: "career-exam:unconfigured-attempt:reserve",
             currency: "gold",
             kind: "system_gold_reserve",

@@ -259,7 +259,7 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
         courseIndex: 1,
         title: "《食材也有身份证》",
         teachingScope: "区分食材、产物、料理和自动回收物",
-        tuitionGold: 20_000,
+        tuitionGold: 30_000,
         contentAvailable: true,
     });
     assert.equal(schoolBefore.data.options.some((entry) =>
@@ -387,7 +387,7 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
     assert.ok(reRegisterOption);
     const registeredExam = execute(executor, "go.school.choose", { option: reRegisterOption.option });
     assert.equal(registeredExam.ok, true);
-    assert.equal(registeredExam.data.result.feeGold, 40_000);
+    assert.equal(registeredExam.data.result.feeGold, 60_000);
     actionNow = registeredExam.data.result.scheduledAt;
     const examSessionView = execute(executor, "go.school.view", {});
     const startExamOption = examSessionView.data.options.find((entry) => entry.option.includes("school:exam-start"));
