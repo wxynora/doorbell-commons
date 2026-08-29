@@ -59,6 +59,7 @@ export function FarmToolPanel({
   onExpeditionAction,
   onFarmSettingsAction,
   onKitchenInventoryAction,
+  onKitchenRecipeCook,
   onMarketAction,
   onOriginalPlantAction,
   onRanchDecorationAction,
@@ -137,6 +138,7 @@ export function FarmToolPanel({
       ) : activeScene === "cooking" && tool.id === "recipes" ? (
         <CookingRecipeCatalog
           kitchen={kitchen ?? null}
+          onQuickMake={onKitchenRecipeCook}
           preview={preview}
           selectedIngredientIds={selectedCookingIngredientIds}
         />

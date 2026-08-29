@@ -130,6 +130,31 @@ test("farm kitchen cook client posts raw refs with server-only identity binding"
   );
 });
 
+test("farm kitchen cook client forwards one known recipe id without material refs", async () => {
+  const calls: string[] = [];
+  const client = createClient(async (_input, init) => {
+    calls.push(String(init?.body));
+    return Response.json(COOK_RESULT);
+  });
+  assert.deepEqual(
+    await client.cookKitchen({
+      farmDoorplate: FARM_DOORPLATE,
+      farmHumanKey: FARM_HUMAN_KEY,
+      expectedKitchenInventoryRevision: INVENTORY_REVISION,
+      idempotencyKey: IDEMPOTENCY_KEY,
+      recipeId: "fried_egg",
+    }),
+    COOK_RESULT,
+  );
+  assert.deepEqual(JSON.parse(calls[0] ?? ""), {
+    farm_human_key: FARM_HUMAN_KEY,
+    expected_farm_doorplate: FARM_DOORPLATE,
+    idempotency_key: IDEMPOTENCY_KEY,
+    expected_kitchen_inventory_revision: INVENTORY_REVISION,
+    recipe_id: "fried_egg",
+  });
+});
+
 test("farm kitchen cook client rejects a wrong receipt or subject doorplate", async () => {
   await assert.rejects(
     createClient(async () =>

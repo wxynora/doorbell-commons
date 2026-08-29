@@ -1,8 +1,10 @@
 import type {
   BoundFarmField,
   BoundFarmHarvestAssist,
+  BoundFarmLandUpgrade,
   FarmFieldIssue,
   FarmHarvestAssistIssue,
+  FarmLandUpgradeIssue,
 } from "../../auth/auth-client";
 import type { BoundBulletinRead } from "../../auth/bulletin-client";
 import type { BoundFarmCatalogRead } from "../../auth/farm-catalog-client";
@@ -77,6 +79,21 @@ export type FarmHarvestActionState =
       issue: FarmHarvestAssistIssue;
     }
   | { stage: "success"; result: BoundFarmHarvestAssist["data"]["result"] };
+
+export interface FarmLandUpgradeAttempt {
+  expectedRevision: string;
+  idempotencyKey: string;
+}
+
+export type FarmLandUpgradeActionState =
+  | { stage: "idle" }
+  | { stage: "submitting"; attempt: FarmLandUpgradeAttempt }
+  | {
+      stage: "error";
+      attempt: FarmLandUpgradeAttempt | null;
+      issue: FarmLandUpgradeIssue;
+    }
+  | { stage: "success"; result: BoundFarmLandUpgrade["data"]["result"] };
 
 export type RanchResidentActionResult = Awaited<ReturnType<typeof executeBoundRanchResidentAction>>;
 export type RanchResidentActionOutcome = Extract<
@@ -281,6 +298,15 @@ export const FARM_READ_RESOURCE_LABELS: Readonly<Record<keyof FarmReadResources,
 };
 
 export function shouldRetryFarmHarvest(issue: FarmHarvestAssistIssue): boolean {
+  return (
+    issue.code === "network_unavailable" ||
+    issue.code === "farm_unavailable" ||
+    issue.code === "upstream_contract_unavailable" ||
+    issue.code === "unexpected_response"
+  );
+}
+
+export function shouldRetryFarmLandUpgrade(issue: FarmLandUpgradeIssue): boolean {
   return (
     issue.code === "network_unavailable" ||
     issue.code === "farm_unavailable" ||

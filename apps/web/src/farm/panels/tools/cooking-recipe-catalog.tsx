@@ -79,9 +79,11 @@ interface CookingRecipeDisplay {
 
 function CookingRecipeRow({
   canQuickMake = false,
+  onQuickMake,
   recipe,
 }: {
   canQuickMake?: boolean;
+  onQuickMake?: ((recipeId: string) => void) | undefined;
   recipe: CookingRecipeDisplay;
 }) {
   return (
@@ -97,9 +99,10 @@ function CookingRecipeRow({
       {canQuickMake ? (
         <span className="cooking-recipe-catalog__actions">
           <button
-            aria-label={`${recipe.name}一键制作暂未接入`}
+            aria-label={`${recipe.name}一键制作`}
             className="cooking-recipe-catalog__quick-make"
-            disabled
+            disabled={!onQuickMake}
+            onClick={() => onQuickMake?.(recipe.id)}
             type="button"
           >
             一键制作
@@ -112,10 +115,12 @@ function CookingRecipeRow({
 
 export function CookingRecipeCatalog({
   kitchen,
+  onQuickMake,
   preview,
   selectedIngredientIds,
 }: {
   kitchen?: BoundKitchenRead | null;
+  onQuickMake?: ((recipeId: string) => void) | undefined;
   preview: boolean;
   selectedIngredientIds: readonly string[];
 }) {
@@ -157,7 +162,9 @@ export function CookingRecipeCatalog({
           {categoryRecipes.length > 0 ? (
             categoryRecipes.map((recipe) => (
               <CookingRecipeRow
+                canQuickMake={recipe.status === "available"}
                 key={recipe.recipe_id}
+                onQuickMake={onQuickMake}
                 recipe={{
                   id: recipe.recipe_id,
                   name: recipe.status === "available" && recipe.name ? recipe.name : "身份不可用",

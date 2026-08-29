@@ -18,17 +18,19 @@ export interface KitchenCookIssue {
   serverMessage: string | null;
 }
 
-export interface KitchenCookInput {
+interface KitchenCookInputBase {
   expectedFarmDoorplate: string;
   idempotencyKey: string;
-  items: string[];
   expectedKitchenInventoryRevision: string;
 }
 
-interface KitchenCookOptions extends KitchenCookInput {
+export type KitchenCookInput = KitchenCookInputBase &
+  ({ items: string[]; recipeId?: never } | { items?: never; recipeId: string });
+
+type KitchenCookOptions = KitchenCookInput & {
   fetcher?: FrontendFetcher;
   signal?: AbortSignal;
-}
+};
 
 function clientIssue(code: ClientIssueCode): KitchenCookIssue {
   return { code, currentKitchenInventoryRevision: null, serverMessage: null };
@@ -67,7 +69,9 @@ function resultMatchesInput(result: BoundKitchenCook, input: KitchenCookInput): 
     result.data.resource.farm.farm_doorplate === input.expectedFarmDoorplate &&
     receipt.receipt_id === input.idempotencyKey &&
     receipt.outcome.kind === "cook" &&
-    itemRefsMatch(input.items, receipt.outcome.item_refs) &&
+    ("recipeId" in input
+      ? receipt.outcome.recipe_id === input.recipeId
+      : itemRefsMatch(input.items, receipt.outcome.item_refs)) &&
     result.kitchen_inventory_revision !== input.expectedKitchenInventoryRevision
   );
 }
@@ -77,7 +81,7 @@ export async function executeBoundKitchenCook(
 ): Promise<ApiResult<BoundKitchenCook, KitchenCookIssue>> {
   const body = boundFarmKitchenCookRequestSchema.parse({
     expected_kitchen_inventory_revision: options.expectedKitchenInventoryRevision,
-    items: options.items,
+    ...("recipeId" in options ? { recipe_id: options.recipeId } : { items: options.items }),
   });
   const idempotencyKey = farmKitchenCookIdempotencyKeySchema.parse(options.idempotencyKey);
   const fetcher = options.fetcher ?? fetch;

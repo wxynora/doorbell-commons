@@ -1,7 +1,11 @@
 import type { BoundFarmField, BoundFarmHarvestAssist } from "../../auth/auth-client";
 import { ranchCollectionIssueMessage } from "../../auth/ranch-collection-client";
-import { farmHarvestAssistIssueMessage } from "../farm-overview";
-import type { FarmHarvestActionState, RanchCollectionState } from "./model";
+import { farmHarvestAssistIssueMessage, farmLandUpgradeIssueMessage } from "../farm-overview";
+import type {
+  FarmHarvestActionState,
+  FarmLandUpgradeActionState,
+  RanchCollectionState,
+} from "./model";
 
 export function FieldSceneOverlay({
   harvestAssist,
@@ -30,6 +34,88 @@ export function FieldSceneOverlay({
       <button disabled={!enabled} onClick={onHarvestAssist} type="button">
         {submitting ? "正在帮收…" : "一键帮 TA 收"}
       </button>
+    </aside>
+  );
+}
+
+export function FarmLandUpgradeControl({
+  land,
+  onUpgrade,
+  submitting,
+}: {
+  land: BoundFarmField["data"]["land"];
+  onUpgrade?: (() => void) | undefined;
+  submitting: boolean;
+}) {
+  if (land.is_max_tier === undefined || land.next_upgrade === undefined) {
+    return null;
+  }
+  if (land.is_max_tier || land.next_upgrade === null) {
+    return (
+      <aside aria-label="土地升级" className="farm-land-upgrade-control is-maximum">
+        <strong>土地已满级</strong>
+      </aside>
+    );
+  }
+  const upgrade = land.next_upgrade;
+  const enabled = upgrade.can_upgrade && Boolean(onUpgrade) && !submitting;
+  return (
+    <aside aria-label="土地升级" className="farm-land-upgrade-control">
+      <span>
+        <strong>下一阶 · {upgrade.name}</strong>
+        <small>
+          {upgrade.plots} 块地 · {upgrade.cost_farm_coins.toLocaleString("zh-CN")} 金币
+        </small>
+        {upgrade.status_message ? <small>{upgrade.status_message}</small> : null}
+      </span>
+      <button disabled={!enabled} onClick={onUpgrade} type="button">
+        {submitting ? "升级中…" : "升级土地"}
+      </button>
+    </aside>
+  );
+}
+
+export function FarmLandUpgradeReceipt({
+  action,
+  onClose,
+  onReload,
+  onRetry,
+}: {
+  action: Exclude<FarmLandUpgradeActionState, { stage: "idle" | "submitting" }>;
+  onClose: () => void;
+  onReload: () => void;
+  onRetry: () => void;
+}) {
+  if (action.stage === "success") {
+    return (
+      <section aria-label="土地升级结果" className="farm-land-upgrade-receipt" role="status">
+        <button aria-label="关闭土地升级结果" onClick={onClose} type="button">
+          ×
+        </button>
+        <strong>土地升级完成</strong>
+        <p>{action.result.message}</p>
+        <small>
+          {action.result.previous_land.name} → {action.result.upgraded_land.name} · 地块 {action.result.previous_land.plots} → {action.result.upgraded_land.plots} · 金币 -{action.result.farm_coins_spent.toLocaleString("zh-CN")}
+        </small>
+      </section>
+    );
+  }
+  return (
+    <aside className="farm-land-upgrade-receipt" role="alert">
+      <button aria-label="关闭土地升级提示" onClick={onClose} type="button">
+        ×
+      </button>
+      <strong>土地还没有升级</strong>
+      <p>{farmLandUpgradeIssueMessage(action.issue)}</p>
+      {action.attempt ? (
+        <button className="farm-land-upgrade-receipt__action" onClick={onRetry} type="button">
+          重试同一次升级
+        </button>
+      ) : (
+        <button className="farm-land-upgrade-receipt__action" onClick={onReload} type="button">
+          重新读取农场
+        </button>
+      )}
     </aside>
   );
 }

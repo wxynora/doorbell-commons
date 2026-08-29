@@ -9,6 +9,7 @@ import {
   FarmHumanFieldStateConflictError,
   FarmHumanFieldUnavailableError,
   FarmHumanHarvestAssistExhaustedError,
+  FarmHumanLandUpgradeRejectedError,
   FarmHumanNoRipePlotsError,
 } from "./farm-human-client.js";
 
@@ -25,7 +26,19 @@ const FIELD_RESULT = {
     balance: { farm_coins: 1280 },
     season: { id: "summer", name: "夏" },
     weather: { condition: "light_rain" },
-    land: { tier: 3, name: "沃野" },
+    land: {
+      tier: 3,
+      name: "沃野",
+      is_max_tier: false,
+      next_upgrade: {
+        tier: 4,
+        name: "灵田",
+        plots: 16,
+        cost_farm_coins: 90_000,
+        can_upgrade: false,
+        status_message: "升级到「灵田」还差：金币 1280/90000",
+      },
+    },
     plots: [
       {
         plot_id: 1,
@@ -121,6 +134,47 @@ const HARVEST_RESULT = {
   },
   revision: "field:new-version",
   server_time: "2026-08-23T10:01:00.000Z",
+};
+
+const LAND_UPGRADE_RESULT = {
+  data: {
+    result: {
+      receipt_id: IDEMPOTENCY_KEY,
+      previous_land: { tier: 3, name: "沃野", plots: 12 },
+      upgraded_land: { tier: 4, name: "灵田", plots: 16 },
+      farm_coins_spent: 90_000,
+      message: "土地升级为灵田（地块增至 16）",
+    },
+    resource: {
+      ...FIELD_RESULT.data,
+      balance: { farm_coins: 10_000 },
+      plots: Array.from({ length: 16 }, (_, index) => ({
+        plot_id: index + 1,
+        state: "empty" as const,
+        seed_type: null,
+        watered: 0,
+        progress: null,
+        matures_at: null,
+        identity_state: "empty" as const,
+        crop_identity: null,
+      })),
+      land: {
+        tier: 4,
+        name: "灵田",
+        is_max_tier: false,
+        next_upgrade: {
+          tier: 5,
+          name: "丰壤",
+          plots: 20,
+          cost_farm_coins: 160_000,
+          can_upgrade: false,
+          status_message: "升级到「丰壤」还差：金币 10000/160000",
+        },
+      },
+    },
+  },
+  revision: "field:land-upgraded-version",
+  server_time: "2026-08-23T10:02:00.000Z",
 };
 
 test("farm Human client calls the fixed field endpoint with server-only binding credentials", async () => {
@@ -390,5 +444,91 @@ test("farm Human client validates the harvest idempotency key before sending", a
       expectedRevision: FIELD_RESULT.revision,
       idempotencyKey: "not-a-uuid",
     }),
+  );
+});
+
+test("farm Human client posts the strict land upgrade contract and verifies its receipt", async () => {
+  const calls: Array<{ body: string; headers: Headers; method: string | undefined; url: string }> =
+    [];
+  const client = new FarmHumanClient({
+    apiBaseUrl: "https://farm.example/farm/",
+    requestTimeoutMs: 1_000,
+    serviceToken: "service-secret",
+    fetchImplementation: async (input, init) => {
+      calls.push({
+        body: String(init?.body),
+        headers: new Headers(init?.headers),
+        method: init?.method,
+        url: String(input),
+      });
+      return Response.json(LAND_UPGRADE_RESULT);
+    },
+  });
+  const request = {
+    ...INPUT,
+    expectedRevision: FIELD_RESULT.revision,
+    idempotencyKey: IDEMPOTENCY_KEY,
+  };
+
+  assert.deepEqual(await client.landUpgrade(request), LAND_UPGRADE_RESULT);
+  assert.deepEqual(calls, [
+    {
+      body: JSON.stringify({
+        farm_human_key: FARM_HUMAN_KEY,
+        expected_farm_doorplate: FARM_DOORPLATE,
+        idempotency_key: IDEMPOTENCY_KEY,
+        expected_revision: FIELD_RESULT.revision,
+        payload: {},
+      }),
+      headers: calls[0]?.headers,
+      method: "POST",
+      url: "https://farm.example/farm/internal/doorbell/human/field/upgrade",
+    },
+  ]);
+  assert.equal(calls[0]?.headers.get("authorization"), "Bearer service-secret");
+});
+
+test("farm Human client maps land upgrade rejection and rejects unverified receipts", async () => {
+  const request = {
+    ...INPUT,
+    expectedRevision: FIELD_RESULT.revision,
+    idempotencyKey: IDEMPOTENCY_KEY,
+  };
+  const createClient = (payload: unknown, status = 409) =>
+    new FarmHumanClient({
+      apiBaseUrl: "https://farm.example/",
+      requestTimeoutMs: 1_000,
+      serviceToken: "service-secret",
+      fetchImplementation: async () => Response.json(payload, { status }),
+    });
+
+  await assert.rejects(
+    createClient({
+      error: {
+        code: "land_upgrade_rejected",
+        message: "升级到「灵田」还差：金币 1280/90000",
+        current_revision: FIELD_RESULT.revision,
+      },
+    }).landUpgrade(request),
+    (error: unknown) => {
+      assert.ok(error instanceof FarmHumanLandUpgradeRejectedError);
+      assert.match(error.message, /金币 1280\/90000/);
+      assert.equal(error.currentRevision, FIELD_RESULT.revision);
+      return true;
+    },
+  );
+  await assert.rejects(
+    createClient({
+      ...LAND_UPGRADE_RESULT,
+      data: {
+        ...LAND_UPGRADE_RESULT.data,
+        result: { ...LAND_UPGRADE_RESULT.data.result, receipt_id: crypto.randomUUID() },
+      },
+    }, 200).landUpgrade(request),
+    FarmHumanFieldContractUnavailableError,
+  );
+  await assert.rejects(
+    createClient({ error: { code: "state_conflict", message: "changed" } }).landUpgrade(request),
+    FarmHumanFieldStateConflictError,
   );
 });

@@ -17,6 +17,7 @@ import {
   lookupFarm,
   revokeMcpCredential,
   switchHumanProfile,
+  upgradeBoundFarmLand,
   updateHumanSettings,
 } from "./auth-client";
 import { AUTH_ISSUE_MESSAGES } from "./auth-errors";
@@ -94,7 +95,19 @@ const FARM_FIELD = {
     balance: { farm_coins: 0 },
     season: { id: "summer", name: "夏" },
     weather: { condition: "light_rain" },
-    land: { tier: 2, name: "沃土" },
+    land: {
+      tier: 2,
+      name: "沃土",
+      is_max_tier: false,
+      next_upgrade: {
+        tier: 3,
+        name: "灵田",
+        plots: 12,
+        cost_farm_coins: 20_000,
+        can_upgrade: false,
+        status_message: "升级到「灵田」还差：金币 0/20000",
+      },
+    },
     plots: [
       {
         plot_id: 1,
@@ -171,6 +184,47 @@ const FARM_HARVEST_ASSIST = {
   },
   revision: "field-v1:after-harvest",
   server_time: "2026-08-23T08:01:00.000Z",
+};
+
+const FARM_LAND_UPGRADE = {
+  data: {
+    result: {
+      receipt_id: "11111111-2222-4333-8444-555555555555",
+      previous_land: { tier: 2, name: "沃土", plots: 9 },
+      upgraded_land: { tier: 3, name: "灵田", plots: 12 },
+      farm_coins_spent: 20_000,
+      message: "土地升级为灵田（地块增至 12）",
+    },
+    resource: {
+      ...FARM_FIELD.data,
+      balance: { farm_coins: 5_000 },
+      plots: Array.from({ length: 12 }, (_, index) => ({
+        plot_id: index + 1,
+        state: "empty" as const,
+        seed_type: null,
+        watered: 0,
+        progress: null,
+        matures_at: null,
+        identity_state: "empty" as const,
+        crop_identity: null,
+      })),
+      land: {
+        tier: 3,
+        name: "灵田",
+        is_max_tier: false,
+        next_upgrade: {
+          tier: 4,
+          name: "丰壤",
+          plots: 16,
+          cost_farm_coins: 90_000,
+          can_upgrade: false,
+          status_message: "升级到「丰壤」还差：金币 5000/90000",
+        },
+      },
+    },
+  },
+  revision: "field-v1:after-land-upgrade",
+  server_time: "2026-08-23T08:02:00.000Z",
 };
 
 function jsonResponse(payload: unknown, status = 200): Response {
@@ -385,6 +439,88 @@ test("harvest assist reports an unknown network outcome without changing the ide
     },
   });
   assert.equal(observedInputs[0]?.idempotencyKey, observedInputs[1]?.idempotencyKey);
+});
+
+test("land upgrade sends no gameplay inputs and accepts only the authoritative receipt", async () => {
+  let observedUrl = "";
+  let observedInit: RequestInit | undefined;
+  const input = {
+    expectedRevision: FARM_FIELD.revision,
+    idempotencyKey: "11111111-2222-4333-8444-555555555555",
+  };
+  const result = await upgradeBoundFarmLand(input, {
+    fetcher: async (url, init) => {
+      observedUrl = url;
+      observedInit = init;
+      return jsonResponse(FARM_LAND_UPGRADE);
+    },
+  });
+
+  assert.equal(observedUrl, "/api/farm/field/upgrade");
+  assert.deepEqual(observedInit, {
+    body: JSON.stringify({}),
+    credentials: "same-origin",
+    headers: {
+      "content-type": "application/json",
+      "idempotency-key": input.idempotencyKey,
+      "if-match": `"${input.expectedRevision}"`,
+    },
+    method: "POST",
+  });
+  assert.deepEqual(result, { ok: true, data: FARM_LAND_UPGRADE });
+  assert.equal(JSON.stringify(observedInit).includes("tier"), false);
+  assert.equal(JSON.stringify(observedInit).includes("cost"), false);
+  assert.equal(JSON.stringify(observedInit).includes("farm_human_key"), false);
+});
+
+test("land upgrade preserves Farm rejection copy and conflict revision", async () => {
+  const input = {
+    expectedRevision: FARM_FIELD.revision,
+    idempotencyKey: "11111111-2222-4333-8444-555555555555",
+  };
+  const rejected = await upgradeBoundFarmLand(input, {
+    fetcher: async () =>
+      jsonResponse(
+        {
+          error: {
+            code: "land_upgrade_rejected",
+            message: "升级到「灵田」还差：金币 0/20000",
+            current_revision: FARM_FIELD.revision,
+          },
+        },
+        409,
+      ),
+  });
+  const conflict = await upgradeBoundFarmLand(input, {
+    fetcher: async () =>
+      jsonResponse(
+        {
+          error: {
+            code: "state_conflict",
+            message: "field changed",
+            current_revision: "field-v1:newer",
+          },
+        },
+        409,
+      ),
+  });
+
+  assert.deepEqual(rejected, {
+    ok: false,
+    issue: {
+      code: "land_upgrade_rejected",
+      currentRevision: FARM_FIELD.revision,
+      serverMessage: "升级到「灵田」还差：金币 0/20000",
+    },
+  });
+  assert.deepEqual(conflict, {
+    ok: false,
+    issue: {
+      code: "state_conflict",
+      currentRevision: "field-v1:newer",
+      serverMessage: "field changed",
+    },
+  });
 });
 
 test("returning login sends exactly QQ and password", async () => {

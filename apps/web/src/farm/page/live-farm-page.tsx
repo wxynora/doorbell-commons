@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getBoundFarmField, harvestBoundFarmField } from "../../auth/auth-client";
+import {
+  getBoundFarmField,
+  harvestBoundFarmField,
+  upgradeBoundFarmLand,
+} from "../../auth/auth-client";
 import {
   type BoundBulletinRead,
   bulletinIssueMessage,
@@ -45,6 +49,8 @@ import {
   createInitialFarmReadResources,
   type FarmHarvestActionState,
   type FarmHarvestAttempt,
+  type FarmLandUpgradeActionState,
+  type FarmLandUpgradeAttempt,
   type FarmPageProps,
   type FarmPageState,
   type FarmPurchaseRequestExecutor,
@@ -56,6 +62,7 @@ import {
   type RanchDecorationActionExecutor,
   type RanchResidentActionResult,
   shouldRetryFarmHarvest,
+  shouldRetryFarmLandUpgrade,
 } from "./model";
 
 export function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
@@ -67,6 +74,9 @@ export function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
   );
   const [settingsInitializationKey, setSettingsInitializationKey] = useState(0);
   const [harvestAction, setHarvestAction] = useState<FarmHarvestActionState>({ stage: "idle" });
+  const [landUpgradeAction, setLandUpgradeAction] = useState<FarmLandUpgradeActionState>({
+    stage: "idle",
+  });
   const fieldDoorplateRef = useRef(previewData?.data.farm.farm_doorplate ?? null);
   const requestControllerRef = useRef<AbortController | null>(null);
   const fieldRequestGenerationRef = useRef(0);
@@ -486,6 +496,7 @@ export function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
 
   const reload = useCallback(() => {
     setHarvestAction({ stage: "idle" });
+    setLandUpgradeAction({ stage: "idle" });
     if (previewData) {
       setState({ stage: "ready", data: previewData });
       return;
@@ -523,6 +534,41 @@ export function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
       setHarvestAction({
         stage: "error",
         attempt: shouldRetryFarmHarvest(result.issue) ? attempt : null,
+        issue: result.issue,
+      });
+    },
+    [previewData, refreshRequestedResources, state],
+  );
+
+  const submitLandUpgrade = useCallback(
+    async (retryAttempt?: FarmLandUpgradeAttempt) => {
+      if (previewData || state.stage !== "ready") {
+        return;
+      }
+      const attempt =
+        retryAttempt ??
+        ({
+          expectedRevision: state.data.revision,
+          idempotencyKey: crypto.randomUUID(),
+        } satisfies FarmLandUpgradeAttempt);
+      setLandUpgradeAction({ stage: "submitting", attempt });
+      const result = await upgradeBoundFarmLand(attempt);
+      if (result.ok) {
+        setState({
+          stage: "ready",
+          data: {
+            data: result.data.data.resource,
+            revision: result.data.revision,
+            server_time: result.data.server_time,
+          },
+        });
+        setLandUpgradeAction({ stage: "success", result: result.data.data.result });
+        refreshRequestedResources();
+        return;
+      }
+      setLandUpgradeAction({
+        stage: "error",
+        attempt: shouldRetryFarmLandUpgrade(result.issue) ? attempt : null,
         issue: result.issue,
       });
     },
@@ -593,11 +639,14 @@ export function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
           <FarmFieldContent
             data={state.data}
             harvestAction={harvestAction}
+            landUpgradeAction={landUpgradeAction}
             onCloseHarvestAction={() => setHarvestAction({ stage: "idle" })}
+            onCloseLandUpgradeAction={() => setLandUpgradeAction({ stage: "idle" })}
             onCropCodexAction={previewData ? undefined : submitCropCodexAction}
             onExpeditionAction={previewData ? undefined : submitExpeditionAction}
             onFarmPurchaseRequest={previewData ? undefined : submitFarmPurchaseRequestAction}
             onHarvestAssist={previewData ? undefined : () => void submitHarvestAssist()}
+            onLandUpgrade={previewData ? undefined : () => void submitLandUpgrade()}
             onFarmSettingsAction={previewData ? undefined : submitFarmSettingsAction}
             onKitchenInventoryAction={previewData ? undefined : submitKitchenInventoryAction}
             onKitchenCook={previewData ? undefined : submitKitchenCookAction}
@@ -612,11 +661,17 @@ export function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
             onRanchResidentAction={previewData ? undefined : submitRanchResidentAction}
             onSmeltingAction={previewData ? undefined : submitSmeltingAction}
             onReloadAfterHarvestError={reload}
+            onReloadAfterLandUpgradeError={reload}
             onReloadRanch={previewData ? undefined : () => requireResource("ranch", true)}
             onRequireResource={requireResource}
             onRetryHarvestAssist={() => {
               if (harvestAction.stage === "error" && harvestAction.attempt) {
                 void submitHarvestAssist(harvestAction.attempt);
+              }
+            }}
+            onRetryLandUpgrade={() => {
+              if (landUpgradeAction.stage === "error" && landUpgradeAction.attempt) {
+                void submitLandUpgrade(landUpgradeAction.attempt);
               }
             }}
             preview={Boolean(previewData)}

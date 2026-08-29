@@ -17,11 +17,13 @@ const clients = vi.hoisted(() => ({
   refreshKitchenShop: vi.fn(),
   settings: vi.fn(),
   smelting: vi.fn(),
+  upgrade: vi.fn(),
 }));
 
 vi.mock("../auth/auth-client", () => ({
   getBoundFarmField: clients.field,
   harvestBoundFarmField: clients.harvest,
+  upgradeBoundFarmLand: clients.upgrade,
 }));
 
 vi.mock("../auth/farm-catalog-client", () => ({
@@ -115,7 +117,19 @@ const FIELD_BEFORE = {
     balance: { farm_coins: 10 },
     season: { id: "summer", name: "夏" },
     weather: { condition: "light_rain" },
-    land: { tier: 1, name: "初土" },
+    land: {
+      tier: 1,
+      name: "初土",
+      is_max_tier: false,
+      next_upgrade: {
+        tier: 2,
+        name: "熟地",
+        plots: 9,
+        cost_farm_coins: 3_500,
+        can_upgrade: false,
+        status_message: "升级到「熟地」还差：金币 10/3500、普通图鉴 0/6 种",
+      },
+    },
     plots: [
       {
         plot_id: 1,
@@ -163,6 +177,67 @@ const FIELD_AFTER_CROSS_MUTATION = {
   },
   revision: "field-v1:after-cross-mutation",
   server_time: "2026-08-24T04:00:30.000Z",
+} as const;
+
+const FIELD_UPGRADE_AVAILABLE = {
+  ...FIELD_BEFORE,
+  data: {
+    ...FIELD_BEFORE.data,
+    balance: { farm_coins: 4_000 },
+    land: {
+      ...FIELD_BEFORE.data.land,
+      next_upgrade: {
+        ...FIELD_BEFORE.data.land.next_upgrade,
+        can_upgrade: true,
+        status_message: null,
+      },
+    },
+  },
+  revision: "field-v1:land-upgrade-ready",
+} as const;
+
+const LAND_UPGRADE_SUCCESS = {
+  ok: true,
+  data: {
+    data: {
+      result: {
+        receipt_id: "11111111-2222-4333-8444-555555555556",
+        previous_land: { tier: 1, name: "初土", plots: 6 },
+        upgraded_land: { tier: 2, name: "熟地", plots: 9 },
+        farm_coins_spent: 3_500,
+        message: "土地升级为熟地（地块增至 9）",
+      },
+      resource: {
+        ...FIELD_UPGRADE_AVAILABLE.data,
+        balance: { farm_coins: 500 },
+        land: {
+          tier: 2,
+          name: "熟地",
+          is_max_tier: false,
+          next_upgrade: {
+            tier: 3,
+            name: "沃土",
+            plots: 12,
+            cost_farm_coins: 20_000,
+            can_upgrade: false,
+            status_message: "升级到「沃土」还差：金币 500/20000",
+          },
+        },
+        plots: Array.from({ length: 9 }, (_, index) => ({
+          plot_id: index + 1,
+          seed_type: null,
+          state: "empty" as const,
+          watered: 0,
+          progress: null,
+          matures_at: null,
+          identity_state: "empty" as const,
+          crop_identity: null,
+        })),
+      },
+    },
+    revision: "field-v1:land-upgraded",
+    server_time: "2026-08-24T04:02:00.000Z",
+  },
 } as const;
 
 const HARVEST_SUCCESS = {
@@ -1076,6 +1151,7 @@ beforeEach(() => {
     .mockImplementation(async (input: { idempotencyKey: string }) =>
       smeltingActionSuccess(input.idempotencyKey),
     );
+  clients.upgrade.mockReset().mockResolvedValue(LAND_UPGRADE_SUCCESS);
   window.history.replaceState({}, "", "/");
 });
 
@@ -1167,6 +1243,37 @@ describe("FarmPage authority resource lifecycle", () => {
 
     await waitFor(() => expect(clients.harvest).toHaveBeenCalledTimes(2));
     expect(clients.harvest.mock.calls[1]?.[0]).toEqual(clients.harvest.mock.calls[0]?.[0]);
+  });
+
+  it("submits the current field revision and replaces the page with the land upgrade receipt", async () => {
+    clients.field.mockResolvedValue({ ok: true, data: FIELD_UPGRADE_AVAILABLE });
+    await renderLiveFarm();
+
+    const upgradeButton = screen.getByRole("button", { name: "升级土地" });
+    expect((upgradeButton as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByText("下一阶 · 熟地")).toBeTruthy();
+    expect(screen.getByText("9 块地 · 3,500 金币")).toBeTruthy();
+    fireEvent.click(upgradeButton);
+
+    await waitFor(() => expect(clients.upgrade).toHaveBeenCalledTimes(1));
+    expect(clients.upgrade.mock.calls[0]?.[0]).toMatchObject({
+      expectedRevision: FIELD_UPGRADE_AVAILABLE.revision,
+    });
+    const receipt = await screen.findByRole("status", { name: "土地升级结果" });
+    expect(within(receipt).getByText("土地升级完成")).toBeTruthy();
+    expect(within(receipt).getByText(/初土 → 熟地 · 地块 6 → 9 · 金币 -3,500/)).toBeTruthy();
+    expect(screen.getByText("土地 2 · 熟地")).toBeTruthy();
+    expect(screen.getByText("下一阶 · 沃土")).toBeTruthy();
+  });
+
+  it("shows Farm's blocking upgrade fact and does not submit a disabled action", async () => {
+    await renderLiveFarm();
+
+    const upgradeButton = screen.getByRole("button", { name: "升级土地" });
+    expect((upgradeButton as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/金币 10\/3500、普通图鉴 0\/6 种/)).toBeTruthy();
+    fireEvent.click(upgradeButton);
+    expect(clients.upgrade).not.toHaveBeenCalled();
   });
 
   it("does not let an aborted older catalog request overwrite a newer refresh", async () => {
@@ -1635,6 +1742,84 @@ describe("FarmPage Bell shopping request", () => {
 });
 
 describe("FarmPage kitchen cart checkout", () => {
+  it("makes one unlocked recipe through the existing authority without selecting materials", async () => {
+    clients.kitchen.mockResolvedValue({
+      ...KITCHEN_RESULT,
+      data: {
+        ...KITCHEN_RESULT.data,
+        data: {
+          ...KITCHEN_RESULT.data.data,
+          known_recipes: {
+            status: "available",
+            items: [
+              {
+                status: "available",
+                recipe_id: "fried_egg",
+                name: "香煎蛋",
+                rarity: "N",
+                category: "主食小吃",
+                ingredients: [
+                  {
+                    status: "available",
+                    ingredient_id: "chicken_egg",
+                    name: "鸡蛋",
+                    quantity: 1,
+                    reason: null,
+                  },
+                  {
+                    status: "available",
+                    ingredient_id: "salt",
+                    name: "盐",
+                    quantity: 1,
+                    reason: null,
+                  },
+                ],
+                method: { status: "available", id: "pan-fry", name: "煎", reason: null },
+                tool: { status: "available", id: "wok", name: "炒锅", reason: null },
+                reason: null,
+              },
+            ],
+            reason: null,
+          },
+        },
+      },
+    });
+    clients.cook.mockImplementationOnce(async (input: { idempotencyKey: string }) => ({
+      ...kitchenCookSuccess(input.idempotencyKey, ["egg-instance", "salt"]),
+      data: {
+        ...kitchenCookSuccess(input.idempotencyKey, ["egg-instance", "salt"]).data,
+        data: {
+          ...kitchenCookSuccess(input.idempotencyKey, ["egg-instance", "salt"]).data.data,
+          result: {
+            ...kitchenCookSuccess(input.idempotencyKey, ["egg-instance", "salt"]).data.data.result,
+            outcome: {
+              ...kitchenCookSuccess(input.idempotencyKey, ["egg-instance", "salt"]).data.data.result
+                .outcome,
+              recipe_id: "fried_egg",
+              name: "香煎蛋",
+              odd: false,
+            },
+          },
+        },
+      },
+    }));
+
+    await renderLiveFarm();
+    fireEvent.click(screen.getByRole("button", { name: "料理台" }));
+    await waitFor(() => expect(clients.kitchen).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "食谱" }));
+    fireEvent.click(await screen.findByRole("button", { name: "香煎蛋一键制作" }));
+
+    await waitFor(() => expect(clients.cook).toHaveBeenCalledTimes(1));
+    expect(clients.cook.mock.calls[0]?.[0]).toMatchObject({
+      expectedFarmDoorplate: "3ET3FE",
+      expectedKitchenInventoryRevision: KITCHEN_RESULT.data.kitchen_inventory_revision,
+      recipeId: "fried_egg",
+    });
+    expect(clients.cook.mock.calls[0]?.[0]).not.toHaveProperty("items");
+    expect(await screen.findByText("香煎蛋")).toBeTruthy();
+  });
+
   it("shows a repeatable shop item's selected count and lets the badge remove one", async () => {
     await renderLiveFarm();
     fireEvent.click(screen.getByRole("button", { name: "料理台" }));

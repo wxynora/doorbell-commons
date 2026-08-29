@@ -231,6 +231,78 @@
   background: rgba(113, 81, 43, 0.4);
 }
 
+.farm-land-upgrade-control {
+  position: absolute;
+  top: calc(var(--farm-control-size) * 3.72);
+  left: 50%;
+  z-index: 18;
+  display: grid;
+  box-sizing: border-box;
+  grid-template-columns: minmax(0, 1fr) auto;
+  width: min(72cqw, 300px);
+  min-height: calc(var(--farm-control-size) * 0.82);
+  align-items: center;
+  gap: calc(var(--farm-control-size) / 5);
+  padding: calc(var(--farm-control-size) / 8) calc(var(--farm-control-size) / 6);
+  color: #60401f;
+  border: calc(var(--farm-control-size) / 36) solid rgba(116, 83, 42, 0.58);
+  border-radius: calc(var(--farm-control-size) / 4);
+  background: rgba(255, 248, 218, 0.94);
+  box-shadow:
+    inset 0 calc(var(--farm-control-size) / 36) rgba(255, 255, 244, 0.88),
+    0 calc(var(--farm-control-size) / 20) 0 rgba(94, 65, 30, 0.46);
+  transform: translateX(-50%);
+}
+
+.farm-land-upgrade-control > span,
+.farm-land-upgrade-control > span strong,
+.farm-land-upgrade-control > span small {
+  display: block;
+  min-width: 0;
+}
+
+.farm-land-upgrade-control > span strong,
+.farm-land-upgrade-control.is-maximum strong {
+  font-size: calc(var(--farm-control-size) / 4.6);
+  line-height: 1.1;
+}
+
+.farm-land-upgrade-control > span small {
+  margin-top: calc(var(--farm-control-size) / 20);
+  overflow: hidden;
+  color: #806747;
+  font-size: calc(var(--farm-control-size) / 6.6);
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.farm-land-upgrade-control > button {
+  min-width: calc(var(--farm-control-size) * 1.55);
+  min-height: calc(var(--farm-control-size) * 0.62);
+  padding: 0 calc(var(--farm-control-size) / 4);
+  color: #fff8dc;
+  font-size: calc(var(--farm-control-size) / 4.8);
+  font-weight: 900;
+  border: calc(var(--farm-control-size) / 30) solid #5f7f32;
+  border-radius: calc(var(--farm-control-size) / 2);
+  background: linear-gradient(#8caa4e, #688d38);
+}
+
+.farm-land-upgrade-control > button:disabled {
+  color: #f3ead0;
+  border-color: #8b8067;
+  background: #aaa087;
+}
+
+.farm-land-upgrade-control.is-maximum {
+  display: flex;
+  width: auto;
+  min-height: calc(var(--farm-control-size) / 2);
+  justify-content: center;
+  padding-inline: calc(var(--farm-control-size) / 3);
+}
+
 .farm-ranch-resident {
   position: absolute;
   display: block;
@@ -859,7 +931,8 @@
 }
 
 .farm-harvest-receipt,
-.farm-harvest-notice {
+.farm-harvest-notice,
+.farm-land-upgrade-receipt {
   position: absolute;
   bottom: 28.5cqw;
   left: 50%;
@@ -881,6 +954,64 @@
     inset 0 0.35cqw rgba(255, 255, 239, 0.72),
     0 1.2cqw 2.8cqw rgba(75, 49, 24, 0.28);
   transform: translateX(-50%);
+}
+
+.farm-land-upgrade-receipt {
+  display: grid;
+  min-height: 24cqw;
+  align-content: center;
+  justify-items: center;
+  gap: 1.2cqw;
+  padding: 3.2cqw 8cqw 2.8cqw 3.2cqw;
+  text-align: center;
+}
+
+.farm-land-upgrade-receipt > button:first-child {
+  position: absolute;
+  top: 1.4cqw;
+  right: 1.4cqw;
+  width: 6.4cqw;
+  height: 6.4cqw;
+  padding: 0;
+  color: #7a5a38;
+  font-size: clamp(0.8rem, 3.3cqw, 1rem);
+  font-weight: 900;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(239, 218, 174, 0.86);
+}
+
+.farm-land-upgrade-receipt strong,
+.farm-land-upgrade-receipt p,
+.farm-land-upgrade-receipt small {
+  margin: 0;
+}
+
+.farm-land-upgrade-receipt strong {
+  font-size: clamp(0.7rem, 2.9cqw, 0.88rem);
+}
+
+.farm-land-upgrade-receipt p {
+  font-size: clamp(0.58rem, 2.35cqw, 0.72rem);
+  font-weight: 800;
+  white-space: pre-line;
+}
+
+.farm-land-upgrade-receipt small {
+  color: #806747;
+  font-size: clamp(0.5rem, 2cqw, 0.62rem);
+}
+
+.farm-land-upgrade-receipt .farm-land-upgrade-receipt__action {
+  min-width: 26cqw;
+  min-height: 8cqw;
+  padding: 0.6cqw 2.2cqw;
+  color: #fff8dc;
+  font-size: clamp(0.54rem, 2.2cqw, 0.66rem);
+  font-weight: 900;
+  border: 0.25cqw solid #5f7f32;
+  border-radius: 999px;
+  background: linear-gradient(#8caa4e, #688d38);
 }
 
 .farm-harvest-receipt {

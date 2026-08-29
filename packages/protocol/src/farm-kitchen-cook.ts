@@ -9,27 +9,54 @@ const farmKitchenCookHumanKeySchema = z
     message: "farm_human_key must not contain only whitespace",
   });
 const farmKitchenCookRawItemRefSchema = z.string().regex(/^\S(?:.{0,127})$/u);
+export const farmKitchenCookRecipeIdSchema = farmKitchenCookRawItemRefSchema;
 
 export const farmKitchenCookIdempotencyKeySchema = z.uuid();
 export const farmKitchenCookRevisionSchema = farmKitchenInventoryRevisionSchema;
 export const farmKitchenCookItemsSchema = z.array(farmKitchenCookRawItemRefSchema).min(2).max(5);
 
-const farmKitchenCookActionFields = {
+const farmKitchenCookActionBaseFields = {
   expected_kitchen_inventory_revision: farmKitchenCookRevisionSchema,
-  items: farmKitchenCookItemsSchema,
 };
 
-export const farmHumanKitchenCookRequestSchema = z
-  .object({
-    farm_human_key: farmKitchenCookHumanKeySchema,
-    expected_farm_doorplate: farmKitchenCookDoorplateSchema,
-    idempotency_key: farmKitchenCookIdempotencyKeySchema,
-    ...farmKitchenCookActionFields,
-  })
-  .strict();
+const farmHumanKitchenCookIdentityFields = {
+  farm_human_key: farmKitchenCookHumanKeySchema,
+  expected_farm_doorplate: farmKitchenCookDoorplateSchema,
+  idempotency_key: farmKitchenCookIdempotencyKeySchema,
+};
+
+export const farmHumanKitchenCookRequestSchema = z.union([
+  z
+    .object({
+      ...farmHumanKitchenCookIdentityFields,
+      ...farmKitchenCookActionBaseFields,
+      items: farmKitchenCookItemsSchema,
+    })
+    .strict(),
+  z
+    .object({
+      ...farmHumanKitchenCookIdentityFields,
+      ...farmKitchenCookActionBaseFields,
+      recipe_id: farmKitchenCookRecipeIdSchema,
+    })
+    .strict(),
+]);
 
 /** Browser body: the Doorbell session supplies farm identity and idempotency. */
-export const boundFarmKitchenCookRequestSchema = z.object(farmKitchenCookActionFields).strict();
+export const boundFarmKitchenCookRequestSchema = z.union([
+  z
+    .object({
+      ...farmKitchenCookActionBaseFields,
+      items: farmKitchenCookItemsSchema,
+    })
+    .strict(),
+  z
+    .object({
+      ...farmKitchenCookActionBaseFields,
+      recipe_id: farmKitchenCookRecipeIdSchema,
+    })
+    .strict(),
+]);
 
 export const farmKitchenCookRaritySchema = z.enum(["N", "R", "SR", "SSR", "SP"]);
 

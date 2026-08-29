@@ -333,6 +333,26 @@ export const farmWeatherConditionSchema = z.enum([
   "blizzard",
 ]);
 
+export const farmFieldLandUpgradeSchema = z
+  .object({
+    tier: z.number().int().positive(),
+    name: z.string().min(1),
+    plots: z.number().int().positive(),
+    cost_farm_coins: z.number().int().nonnegative(),
+    can_upgrade: z.boolean(),
+    status_message: z.string().min(1).nullable(),
+  })
+  .strict()
+  .superRefine((upgrade, context) => {
+    if (upgrade.can_upgrade !== (upgrade.status_message === null)) {
+      context.addIssue({
+        code: "custom",
+        path: ["status_message"],
+        message: "an available upgrade must not include a blocking status message",
+      });
+    }
+  });
+
 export const farmFieldDataSchema = z
   .object({
     farm: z
@@ -370,8 +390,41 @@ export const farmFieldDataSchema = z
       .object({
         tier: z.number().int().positive(),
         name: z.string().min(1),
+        // Optional only for the one rolling-deploy window in which the prior
+        // Farm projection is still live. The browser exposes no upgrade action
+        // until Farm supplies both authoritative fields.
+        is_max_tier: z.boolean().optional(),
+        next_upgrade: farmFieldLandUpgradeSchema.nullable().optional(),
       })
-      .strict(),
+      .strict()
+      .superRefine((land, context) => {
+        const hasMaximum = land.is_max_tier !== undefined;
+        const hasNext = land.next_upgrade !== undefined;
+        if (hasMaximum !== hasNext) {
+          context.addIssue({
+            code: "custom",
+            message: "land upgrade facts must be supplied together",
+          });
+          return;
+        }
+        if (!hasMaximum || !hasNext) {
+          return;
+        }
+        if (land.is_max_tier !== (land.next_upgrade === null)) {
+          context.addIssue({
+            code: "custom",
+            path: ["is_max_tier"],
+            message: "maximum land must not expose a next upgrade",
+          });
+        }
+        if (land.next_upgrade && land.next_upgrade.tier !== land.tier + 1) {
+          context.addIssue({
+            code: "custom",
+            path: ["next_upgrade", "tier"],
+            message: "the next land upgrade must advance exactly one tier",
+          });
+        }
+      }),
     plots: z.array(farmFieldPlotSchema),
     harvest_assist: z
       .object({
@@ -1136,6 +1189,132 @@ export const boundFarmHarvestAssistErrorSchema = z
     error: z
       .object({
         code: boundFarmHarvestAssistErrorCodeSchema,
+        message: z.string(),
+        current_revision: z.string().min(1).optional(),
+      })
+      .strict(),
+  })
+  .strict();
+
+export const farmHumanFieldLandUpgradeIdempotencyKeySchema = z.uuid();
+
+export const farmHumanFieldLandUpgradeRequestSchema = z
+  .object({
+    farm_human_key: farmHumanKeySchema,
+    expected_farm_doorplate: farmDoorplateSchema,
+    idempotency_key: farmHumanFieldLandUpgradeIdempotencyKeySchema,
+    expected_revision: z.string().min(1),
+    payload: z.object({}).strict(),
+  })
+  .strict();
+
+export const boundFarmLandUpgradeRequestSchema = z.object({}).strict();
+
+const farmLandSnapshotSchema = z
+  .object({
+    tier: z.number().int().positive(),
+    name: z.string().min(1),
+    plots: z.number().int().positive(),
+  })
+  .strict();
+
+export const farmHumanFieldLandUpgradeResultSchema = z
+  .object({
+    receipt_id: z.string().min(1),
+    previous_land: farmLandSnapshotSchema,
+    upgraded_land: farmLandSnapshotSchema,
+    farm_coins_spent: z.number().int().nonnegative(),
+    message: z.string().min(1),
+  })
+  .strict()
+  .superRefine((result, context) => {
+    if (
+      result.upgraded_land.tier !== result.previous_land.tier + 1 ||
+      result.upgraded_land.plots <= result.previous_land.plots
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["upgraded_land"],
+        message: "a land upgrade must advance one tier and add plots",
+      });
+    }
+  });
+
+export const farmHumanFieldLandUpgradeSuccessSchema = z
+  .object({
+    data: z
+      .object({
+        result: farmHumanFieldLandUpgradeResultSchema,
+        resource: farmFieldDataSchema,
+      })
+      .strict(),
+    revision: z.string().min(1),
+    server_time: z.iso.datetime(),
+  })
+  .strict()
+  .superRefine((success, context) => {
+    const { result, resource } = success.data;
+    if (
+      resource.land.tier !== result.upgraded_land.tier ||
+      resource.land.name !== result.upgraded_land.name ||
+      resource.plots.length !== result.upgraded_land.plots
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["data", "resource", "land"],
+        message: "the replacement field must match the upgraded land receipt",
+      });
+    }
+  });
+
+export const boundFarmLandUpgradeSuccessSchema = farmHumanFieldLandUpgradeSuccessSchema;
+
+export const farmHumanFieldLandUpgradeErrorCodeSchema = z.enum([
+  "land_upgrade_rejected",
+  "state_conflict",
+  "idempotency_conflict",
+  "invalid_request",
+  "authentication_required",
+  "farm_credential_not_found",
+  "farm_doorplate_mismatch",
+  "farm_credential_invalid",
+  "farm_not_found",
+  "farm_unavailable",
+  "upstream_contract_unavailable",
+]);
+
+export const farmHumanFieldLandUpgradeErrorSchema = z
+  .object({
+    error: z
+      .object({
+        code: farmHumanFieldLandUpgradeErrorCodeSchema,
+        message: z.string(),
+        current_revision: z.string().min(1).optional(),
+      })
+      .strict(),
+  })
+  .strict();
+
+export const boundFarmLandUpgradeErrorCodeSchema = z.enum([
+  "land_upgrade_rejected",
+  "state_conflict",
+  "idempotency_conflict",
+  "invalid_request",
+  "authentication_required",
+  "qq_not_group_member",
+  "onebot_unavailable",
+  "registration_profile_required",
+  "farm_not_found",
+  "farm_credential_invalid",
+  "farm_unavailable",
+  "upstream_contract_unavailable",
+]);
+
+export const boundFarmLandUpgradeErrorSchema = z
+  .object({
+    error: z
+      .object({
+        code: boundFarmLandUpgradeErrorCodeSchema,
         message: z.string(),
         current_revision: z.string().min(1).optional(),
       })
@@ -2597,6 +2776,27 @@ export type BoundFarmHarvestAssistResult = z.infer<typeof boundFarmHarvestAssist
 export type BoundFarmHarvestAssistResource = z.infer<typeof boundFarmHarvestAssistResourceSchema>;
 export type BoundFarmHarvestAssistErrorCode = z.infer<typeof boundFarmHarvestAssistErrorCodeSchema>;
 export type BoundFarmHarvestAssistError = z.infer<typeof boundFarmHarvestAssistErrorSchema>;
+export type FarmHumanFieldLandUpgradeRequest = z.infer<
+  typeof farmHumanFieldLandUpgradeRequestSchema
+>;
+export type FarmHumanFieldLandUpgradeSuccess = z.infer<
+  typeof farmHumanFieldLandUpgradeSuccessSchema
+>;
+export type FarmHumanFieldLandUpgradeResult = z.infer<
+  typeof farmHumanFieldLandUpgradeResultSchema
+>;
+export type FarmHumanFieldLandUpgradeErrorCode = z.infer<
+  typeof farmHumanFieldLandUpgradeErrorCodeSchema
+>;
+export type FarmHumanFieldLandUpgradeError = z.infer<
+  typeof farmHumanFieldLandUpgradeErrorSchema
+>;
+export type BoundFarmLandUpgradeRequest = z.infer<typeof boundFarmLandUpgradeRequestSchema>;
+export type BoundFarmLandUpgradeSuccess = z.infer<typeof boundFarmLandUpgradeSuccessSchema>;
+export type BoundFarmLandUpgradeErrorCode = z.infer<
+  typeof boundFarmLandUpgradeErrorCodeSchema
+>;
+export type BoundFarmLandUpgradeError = z.infer<typeof boundFarmLandUpgradeErrorSchema>;
 export type HumanSessionSuccess = z.infer<typeof humanSessionSuccessSchema>;
 export type CreatedFarmHumanSessionSuccess = z.infer<typeof createdFarmHumanSessionSuccessSchema>;
 export type CurrentHumanSessionSuccess = z.infer<typeof currentHumanSessionSuccessSchema>;

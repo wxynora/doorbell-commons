@@ -4,6 +4,8 @@ import {
   boundFarmFieldSuccessSchema,
   boundFarmHarvestAssistErrorSchema,
   boundFarmHarvestAssistSuccessSchema,
+  boundFarmLandUpgradeErrorSchema,
+  boundFarmLandUpgradeSuccessSchema,
   type CurrentHumanSessionSuccess,
   createdFarmHumanSessionSuccessSchema,
   currentHumanSessionSuccessSchema,
@@ -83,6 +85,17 @@ export interface FarmHarvestAssistIssue {
   serverMessage: string | null;
 }
 
+export type BoundFarmLandUpgrade = ReturnType<typeof boundFarmLandUpgradeSuccessSchema.parse>;
+export type FarmLandUpgradeIssueCode =
+  | ReturnType<typeof boundFarmLandUpgradeErrorSchema.parse>["error"]["code"]
+  | ClientIssueCode;
+
+export interface FarmLandUpgradeIssue {
+  code: FarmLandUpgradeIssueCode;
+  currentRevision: string | null;
+  serverMessage: string | null;
+}
+
 export type ApiResult<T, Issue = AuthIssue> = { ok: true; data: T } | { ok: false; issue: Issue };
 export type IdentityResult =
   | { ok: true; identity: HumanIdentity; accountCreated: boolean | null }
@@ -158,6 +171,18 @@ function parseFarmFieldIssue(payload: unknown): FarmFieldIssue {
 
 function parseFarmHarvestAssistIssue(payload: unknown): FarmHarvestAssistIssue {
   const parsed = boundFarmHarvestAssistErrorSchema.safeParse(payload);
+  if (!parsed.success) {
+    return { ...clientIssue("unexpected_response"), currentRevision: null };
+  }
+  return {
+    code: parsed.data.error.code,
+    currentRevision: parsed.data.error.current_revision ?? null,
+    serverMessage: parsed.data.error.message,
+  };
+}
+
+function parseFarmLandUpgradeIssue(payload: unknown): FarmLandUpgradeIssue {
+  const parsed = boundFarmLandUpgradeErrorSchema.safeParse(payload);
   if (!parsed.success) {
     return { ...clientIssue("unexpected_response"), currentRevision: null };
   }
@@ -416,6 +441,44 @@ export async function harvestBoundFarmField(
   }
 
   const parsed = boundFarmHarvestAssistSuccessSchema.safeParse(payload);
+  return parsed.success
+    ? { ok: true, data: parsed.data }
+    : {
+        ok: false,
+        issue: { ...clientIssue("unexpected_response"), currentRevision: null },
+      };
+}
+
+export async function upgradeBoundFarmLand(
+  input: { expectedRevision: string; idempotencyKey: string },
+  options: { signal?: AbortSignal; fetcher?: FrontendFetcher } = {},
+): Promise<ApiResult<BoundFarmLandUpgrade, FarmLandUpgradeIssue>> {
+  const fetcher = options.fetcher ?? fetch;
+  let response: Response;
+  try {
+    response = await fetcher("/api/farm/field/upgrade", {
+      body: JSON.stringify({}),
+      credentials: "same-origin",
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": input.idempotencyKey,
+        "if-match": `"${input.expectedRevision}"`,
+      },
+      method: "POST",
+      ...(options.signal ? { signal: options.signal } : {}),
+    });
+  } catch {
+    return {
+      ok: false,
+      issue: { ...clientIssue("network_unavailable"), currentRevision: null },
+    };
+  }
+
+  const payload = await readPayload(response);
+  if (!response.ok) {
+    return { ok: false, issue: parseFarmLandUpgradeIssue(payload) };
+  }
+  const parsed = boundFarmLandUpgradeSuccessSchema.safeParse(payload);
   return parsed.success
     ? { ok: true, data: parsed.data }
     : {

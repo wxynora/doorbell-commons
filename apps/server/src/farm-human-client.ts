@@ -2,10 +2,16 @@ import {
   type FarmHumanFieldHarvestAssistError,
   type FarmHumanFieldHarvestAssistRequest,
   type FarmHumanFieldHarvestAssistSuccess,
+  type FarmHumanFieldLandUpgradeError,
+  type FarmHumanFieldLandUpgradeRequest,
+  type FarmHumanFieldLandUpgradeSuccess,
   type FarmHumanFieldReadSuccess,
   farmHumanFieldHarvestAssistErrorSchema,
   farmHumanFieldHarvestAssistRequestSchema,
   farmHumanFieldHarvestAssistSuccessSchema,
+  farmHumanFieldLandUpgradeErrorSchema,
+  farmHumanFieldLandUpgradeRequestSchema,
+  farmHumanFieldLandUpgradeSuccessSchema,
   farmHumanFieldReadErrorSchema,
   farmHumanFieldReadRequestSchema,
   farmHumanFieldReadSuccessSchema,
@@ -21,9 +27,19 @@ export interface FarmHumanFieldReader {
   harvestAssist?(
     input: FarmHumanFieldHarvestAssistInput,
   ): Promise<FarmHumanFieldHarvestAssistSuccess>;
+  landUpgrade?(
+    input: FarmHumanFieldLandUpgradeInput,
+  ): Promise<FarmHumanFieldLandUpgradeSuccess>;
 }
 
 export interface FarmHumanFieldHarvestAssistInput {
+  farmDoorplate: string;
+  farmHumanKey: string;
+  expectedRevision: string;
+  idempotencyKey: string;
+}
+
+export interface FarmHumanFieldLandUpgradeInput {
   farmDoorplate: string;
   farmHumanKey: string;
   expectedRevision: string;
@@ -95,6 +111,16 @@ export class FarmHumanFieldIdempotencyConflictError extends Error {
   }
 }
 
+export class FarmHumanLandUpgradeRejectedError extends Error {
+  readonly currentRevision: string | undefined;
+
+  constructor(message: string, currentRevision?: string) {
+    super(message);
+    this.name = "FarmHumanLandUpgradeRejectedError";
+    this.currentRevision = currentRevision;
+  }
+}
+
 export {
   FarmHumanHarvestAssistExhaustedError as FarmHumanFieldHarvestAssistExhaustedError,
   FarmHumanNoRipePlotsError as FarmHumanFieldNoRipePlotsError,
@@ -111,6 +137,7 @@ interface FarmHumanClientOptions {
 export class FarmHumanClient implements FarmHumanFieldReader {
   readonly #fieldReadEndpoint: URL;
   readonly #harvestAssistEndpoint: URL;
+  readonly #landUpgradeEndpoint: URL;
   readonly #serviceToken: string;
   readonly #fetch: typeof fetch;
   readonly #requestTimeoutMs: number;
@@ -128,6 +155,7 @@ export class FarmHumanClient implements FarmHumanFieldReader {
       "internal/doorbell/human/field/harvest-assist",
       apiBaseUrl,
     );
+    this.#landUpgradeEndpoint = new URL("internal/doorbell/human/field/upgrade", apiBaseUrl);
     this.#serviceToken = options.serviceToken;
     this.#fetch = options.fetchImplementation ?? fetch;
     this.#requestTimeoutMs = options.requestTimeoutMs;
@@ -254,6 +282,64 @@ export class FarmHumanClient implements FarmHumanFieldReader {
     this.#throwHarvestAssistError(parsedError.data, response.status);
   }
 
+  async landUpgrade(
+    input: FarmHumanFieldLandUpgradeInput,
+  ): Promise<FarmHumanFieldLandUpgradeSuccess> {
+    const body: FarmHumanFieldLandUpgradeRequest = farmHumanFieldLandUpgradeRequestSchema.parse({
+      farm_human_key: input.farmHumanKey,
+      expected_farm_doorplate: input.farmDoorplate,
+      idempotency_key: input.idempotencyKey,
+      expected_revision: input.expectedRevision,
+      payload: {},
+    });
+
+    let response: Response;
+    try {
+      response = await this.#fetch(this.#landUpgradeEndpoint, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${this.#serviceToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(this.#requestTimeoutMs),
+      });
+    } catch {
+      throw new FarmHumanFieldUnavailableError();
+    }
+
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch {
+      if (response.status >= 500) {
+        throw new FarmHumanFieldUnavailableError();
+      }
+      throw new FarmHumanFieldContractUnavailableError();
+    }
+
+    if (response.ok) {
+      const parsed = farmHumanFieldLandUpgradeSuccessSchema.safeParse(payload);
+      if (
+        !parsed.success ||
+        parsed.data.data.result.receipt_id !== input.idempotencyKey ||
+        parsed.data.data.resource.farm.farm_doorplate !== input.farmDoorplate
+      ) {
+        throw new FarmHumanFieldContractUnavailableError();
+      }
+      return parsed.data;
+    }
+
+    const parsedError = farmHumanFieldLandUpgradeErrorSchema.safeParse(payload);
+    if (!parsedError.success) {
+      if (response.status >= 500) {
+        throw new FarmHumanFieldUnavailableError();
+      }
+      throw new FarmHumanFieldContractUnavailableError();
+    }
+    this.#throwLandUpgradeError(parsedError.data, response.status);
+  }
+
   #throwHarvestAssistError(parsedError: FarmHumanFieldHarvestAssistError, status: number): never {
     const { code, current_revision: currentRevision } = parsedError.error;
     switch (code) {
@@ -261,6 +347,33 @@ export class FarmHumanClient implements FarmHumanFieldReader {
         throw new FarmHumanHarvestAssistExhaustedError(currentRevision);
       case "no_ripe_plots":
         throw new FarmHumanNoRipePlotsError(currentRevision);
+      case "state_conflict":
+        throw new FarmHumanFieldStateConflictError(currentRevision);
+      case "idempotency_conflict":
+        throw new FarmHumanFieldIdempotencyConflictError();
+      case "farm_credential_not_found":
+      case "farm_doorplate_mismatch":
+      case "farm_credential_invalid":
+        throw new FarmHumanFieldCredentialInvalidError();
+      case "farm_not_found":
+        throw new FarmHumanFieldNotFoundError();
+      case "farm_unavailable":
+        throw new FarmHumanFieldUnavailableError();
+      case "upstream_contract_unavailable":
+        throw new FarmHumanFieldContractUnavailableError();
+      case "invalid_request":
+      case "authentication_required":
+        throw status >= 500
+          ? new FarmHumanFieldUnavailableError()
+          : new FarmHumanFieldContractUnavailableError();
+    }
+  }
+
+  #throwLandUpgradeError(parsedError: FarmHumanFieldLandUpgradeError, status: number): never {
+    const { code, current_revision: currentRevision, message } = parsedError.error;
+    switch (code) {
+      case "land_upgrade_rejected":
+        throw new FarmHumanLandUpgradeRejectedError(message, currentRevision);
       case "state_conflict":
         throw new FarmHumanFieldStateConflictError(currentRevision);
       case "idempotency_conflict":

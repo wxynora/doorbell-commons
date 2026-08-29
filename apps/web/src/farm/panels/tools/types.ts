@@ -109,6 +109,7 @@ export interface FarmToolPanelProps {
   onFarmSettingsAction?: FarmSettingsActionExecutor | undefined;
   onExpeditionAction?: ExpeditionActionExecutor | undefined;
   onKitchenInventoryAction?: KitchenInventoryActionExecutor | undefined;
+  onKitchenRecipeCook?: ((recipeId: string) => void) | undefined;
   onMarketAction?: MarketActionExecutor | undefined;
   onOriginalPlantAction?: OriginalPlantActionExecutor | undefined;
   onRanchDecorationAction?: RanchDecorationActionExecutor | undefined;

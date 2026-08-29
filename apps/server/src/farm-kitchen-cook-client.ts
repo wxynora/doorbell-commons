@@ -6,13 +6,15 @@ import {
   farmHumanKitchenCookSuccessSchema,
 } from "@doorbell/protocol";
 
-export interface FarmHumanKitchenCookInput {
+interface FarmHumanKitchenCookInputBase {
   farmDoorplate: string;
   farmHumanKey: string;
-  items: string[];
   expectedKitchenInventoryRevision: string;
   idempotencyKey: string;
 }
+
+export type FarmHumanKitchenCookInput = FarmHumanKitchenCookInputBase &
+  ({ items: string[]; recipeId?: never } | { items?: never; recipeId: string });
 
 export interface FarmHumanKitchenCooker {
   cookKitchen(input: FarmHumanKitchenCookInput): Promise<FarmHumanKitchenCookSuccess>;
@@ -93,7 +95,9 @@ function resultMatchesInput(
     result.data.resource.farm.farm_doorplate === input.farmDoorplate &&
     receipt.receipt_id === input.idempotencyKey &&
     receipt.outcome.kind === "cook" &&
-    itemRefsMatch(input.items, receipt.outcome.item_refs) &&
+    ("recipeId" in input
+      ? receipt.outcome.recipe_id === input.recipeId
+      : itemRefsMatch(input.items, receipt.outcome.item_refs)) &&
     result.kitchen_inventory_revision !== input.expectedKitchenInventoryRevision
   );
 }
@@ -124,7 +128,7 @@ export class FarmHumanKitchenCookClient implements FarmHumanKitchenCooker {
       expected_farm_doorplate: input.farmDoorplate,
       idempotency_key: input.idempotencyKey,
       expected_kitchen_inventory_revision: input.expectedKitchenInventoryRevision,
-      items: input.items,
+      ...("recipeId" in input ? { recipe_id: input.recipeId } : { items: input.items }),
     });
 
     let response: Response;

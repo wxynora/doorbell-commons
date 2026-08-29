@@ -1345,6 +1345,26 @@ export class RegistrationAuthService {
     });
   }
 
+  async upgradeCurrentFarmLand(
+    token: string,
+    input: { expectedRevision: string; idempotencyKey: string },
+  ) {
+    const community = await this.getCurrentSession(token);
+    const farmHumanKey = community.farmBinding.farmHumanKey;
+    if (farmHumanKey === null) {
+      throw new RegistrationProfileRequiredError();
+    }
+    const farmHumanReader = this.#farmHumanReader;
+    if (!farmHumanReader?.landUpgrade) {
+      throw new FarmHumanFieldContractUnavailableError();
+    }
+    return farmHumanReader.landUpgrade({
+      farmDoorplate: community.farmBinding.farmDoorplate,
+      farmHumanKey,
+      ...input,
+    });
+  }
+
   async getCurrentFarmHumanPage(
     token: string,
     pagePath: string,

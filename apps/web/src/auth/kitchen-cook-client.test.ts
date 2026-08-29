@@ -106,6 +106,26 @@ test("kitchen cook browser client sends only raw refs, revision, and UUID header
   assert.equal(String(requests[0]?.init?.body).includes("idempotency_key"), false);
 });
 
+test("kitchen cook browser client sends one known recipe id without material refs", async () => {
+  const requests: Array<{ url: string; init: RequestInit | undefined }> = [];
+  const fetcher: FrontendFetcher = async (url, init) => {
+    requests.push({ url, init });
+    return jsonResponse(COOK_RESULT);
+  };
+  const result = await executeBoundKitchenCook({
+    expectedFarmDoorplate: FARM_DOORPLATE,
+    expectedKitchenInventoryRevision: INVENTORY_REVISION,
+    fetcher,
+    idempotencyKey: IDEMPOTENCY_KEY,
+    recipeId: "fried_egg",
+  });
+  assert.deepEqual(result, { ok: true, data: COOK_RESULT });
+  assert.deepEqual(JSON.parse(String(requests[0]?.init?.body)), {
+    expected_kitchen_inventory_revision: INVENTORY_REVISION,
+    recipe_id: "fried_egg",
+  });
+});
+
 test("kitchen cook browser client rejects a wrong receipt or subject doorplate", async () => {
   const wrongReceipt = await executeBoundKitchenCook({
     fetcher: async () =>

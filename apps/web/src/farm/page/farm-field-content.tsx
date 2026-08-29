@@ -46,6 +46,8 @@ import type { RanchSceneAnimalDefinition } from "../scenes/ranch/ranch-scene";
 import {
   FarmHarvestNotice,
   FarmHarvestReceipt,
+  FarmLandUpgradeControl,
+  FarmLandUpgradeReceipt,
   FieldSceneOverlay,
   RanchCollectionControl,
   RanchCollectionNotice,
@@ -77,6 +79,7 @@ import {
   EMPTY_SHOP_CART,
   FARM_READ_RESOURCE_LABELS,
   type FarmHarvestActionState,
+  type FarmLandUpgradeActionState,
   type FarmPurchaseRequestActionState,
   type FarmPurchaseRequestExecutor,
   type FarmPurchaseRequestResult,
@@ -149,11 +152,14 @@ const FarmToolPanel = lazy(async () => {
 export function FarmFieldContent({
   data,
   harvestAction = { stage: "idle" },
+  landUpgradeAction = { stage: "idle" },
   onCloseHarvestAction,
+  onCloseLandUpgradeAction,
   onCropCodexAction,
   onExpeditionAction,
   onFarmPurchaseRequest,
   onHarvestAssist,
+  onLandUpgrade,
   onFarmSettingsAction,
   onKitchenInventoryAction,
   onKitchenCook,
@@ -168,20 +174,25 @@ export function FarmFieldContent({
   onRanchResidentAction,
   onSmeltingAction,
   onReloadAfterHarvestError,
+  onReloadAfterLandUpgradeError,
   onReloadRanch,
   onRequireResource,
   onRetryHarvestAssist,
+  onRetryLandUpgrade,
   preview = false,
   resources = createInitialFarmReadResources(),
   settingsInitializationKey = 0,
 }: {
   data: BoundFarmField;
   harvestAction?: FarmHarvestActionState;
+  landUpgradeAction?: FarmLandUpgradeActionState;
   onCloseHarvestAction?: () => void;
+  onCloseLandUpgradeAction?: () => void;
   onCropCodexAction?: CropCodexActionExecutor | undefined;
   onExpeditionAction?: ExpeditionActionExecutor | undefined;
   onFarmPurchaseRequest?: FarmPurchaseRequestExecutor | undefined;
   onHarvestAssist?: (() => void) | undefined;
+  onLandUpgrade?: (() => void) | undefined;
   onFarmSettingsAction?: FarmSettingsActionExecutor | undefined;
   onKitchenInventoryAction?: KitchenInventoryActionExecutor | undefined;
   onKitchenCook?: KitchenCookExecutor | undefined;
@@ -196,9 +207,11 @@ export function FarmFieldContent({
   onRanchResidentAction?: RanchResidentActionExecutor | undefined;
   onSmeltingAction?: SmeltingActionExecutor | undefined;
   onReloadAfterHarvestError?: () => void;
+  onReloadAfterLandUpgradeError?: () => void;
   onReloadRanch?: (() => void) | undefined;
   onRequireResource?: (resource: keyof FarmReadResources) => void;
   onRetryHarvestAssist?: () => void;
+  onRetryLandUpgrade?: () => void;
   preview?: boolean;
   resources?: FarmReadResources;
   settingsInitializationKey?: number;
@@ -630,7 +643,7 @@ export function FarmFieldContent({
           idempotencyKey: crypto.randomUUID(),
           items: selectedCookingIngredientIds.map(toRawKitchenCookItemRef),
         } satisfies KitchenCookInput);
-      if (attempt.items.length < 2 || attempt.items.length > 5) return;
+      if ("items" in attempt && (attempt.items.length < 2 || attempt.items.length > 5)) return;
 
       setKitchenCookAction({ stage: "submitting", attempt });
       let result: Awaited<ReturnType<KitchenCookExecutor>>;
@@ -782,6 +795,13 @@ export function FarmFieldContent({
             landTier={field.land.tier}
             seasonName={field.season.name}
           />
+          {!activeSceneUiState.selectedTool && !activeSceneUiState.bulletinOpen ? (
+            <FarmLandUpgradeControl
+              land={field.land}
+              onUpgrade={onLandUpgrade}
+              submitting={landUpgradeAction.stage === "submitting"}
+            />
+          ) : null}
         </>
       ) : null}
       {activeScene !== "neighborhood" ? (
@@ -839,6 +859,18 @@ export function FarmFieldContent({
       ) : null}
       {activeScene === "field" && harvestAction.stage === "success" && onCloseHarvestAction ? (
         <FarmHarvestReceipt onClose={onCloseHarvestAction} result={harvestAction.result} />
+      ) : null}
+      {activeScene === "field" &&
+      (landUpgradeAction.stage === "success" || landUpgradeAction.stage === "error") &&
+      onCloseLandUpgradeAction &&
+      onReloadAfterLandUpgradeError &&
+      onRetryLandUpgrade ? (
+        <FarmLandUpgradeReceipt
+          action={landUpgradeAction}
+          onClose={onCloseLandUpgradeAction}
+          onReload={onReloadAfterLandUpgradeError}
+          onRetry={onRetryLandUpgrade}
+        />
       ) : null}
       {activeScene === "field" &&
       harvestAction.stage === "error" &&
@@ -961,6 +993,20 @@ export function FarmFieldContent({
                   onExpeditionAction={onExpeditionAction}
                   onFarmSettingsAction={onFarmSettingsAction}
                   onKitchenInventoryAction={onKitchenInventoryAction}
+                  onKitchenRecipeCook={
+                    onKitchenCook
+                      ? (recipeId) => {
+                          updateSceneUiState("cooking", { selectedTool: null });
+                          void submitKitchenCook({
+                            expectedFarmDoorplate: field.farm.farm_doorplate,
+                            expectedKitchenInventoryRevision:
+                              kitchen?.kitchen_inventory_revision ?? "",
+                            idempotencyKey: crypto.randomUUID(),
+                            recipeId,
+                          });
+                        }
+                      : undefined
+                  }
                   onMarketAction={onMarketAction}
                   onOriginalPlantAction={onOriginalPlantAction}
                   onRanchDecorationAction={onRanchDecorationAction}

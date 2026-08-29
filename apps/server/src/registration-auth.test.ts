@@ -13,6 +13,8 @@ import {
   boundFarmFieldSuccessSchema,
   boundFarmHarvestAssistErrorSchema,
   boundFarmHarvestAssistSuccessSchema,
+  boundFarmLandUpgradeErrorSchema,
+  boundFarmLandUpgradeSuccessSchema,
   boundFarmKitchenCookErrorSchema,
   boundFarmKitchenCookSuccessSchema,
   boundFarmKitchenInventoryActionSuccessSchema,
@@ -53,6 +55,7 @@ import {
   type FarmHumanExpeditionActionSuccess,
   type FarmHumanFarmSettingsActionSuccess,
   type FarmHumanFieldHarvestAssistSuccess,
+  type FarmHumanFieldLandUpgradeSuccess,
   type FarmHumanFieldReadSuccess,
   type FarmHumanGlimmerReadSuccess,
   type FarmHumanKitchenCookSuccess,
@@ -111,6 +114,7 @@ import {
   FarmHumanFieldContractUnavailableError,
   FarmHumanFieldCredentialInvalidError,
   type FarmHumanFieldHarvestAssistInput,
+  type FarmHumanFieldLandUpgradeInput,
   FarmHumanFieldIdempotencyConflictError,
   FarmHumanFieldNotFoundError,
   type FarmHumanFieldReader,
@@ -118,6 +122,7 @@ import {
   FarmHumanFieldStateConflictError,
   FarmHumanFieldUnavailableError,
   FarmHumanHarvestAssistExhaustedError,
+  FarmHumanLandUpgradeRejectedError,
   FarmHumanNoRipePlotsError,
 } from "./farm-human-client.js";
 import {
@@ -369,6 +374,47 @@ const FARM_HARVEST_ASSIST_RESULT = {
   revision: "field:new-version",
   server_time: "2026-08-23T10:01:00.000Z",
 } satisfies FarmHumanFieldHarvestAssistSuccess;
+
+const FARM_LAND_UPGRADE_RESULT = {
+  data: {
+    result: {
+      receipt_id: "019ffb01-49cd-7020-84af-3d04fb1ed03d",
+      previous_land: { tier: 3, name: "沃野", plots: 12 },
+      upgraded_land: { tier: 4, name: "灵田", plots: 16 },
+      farm_coins_spent: 90_000,
+      message: "土地升级为灵田（地块增至 16）",
+    },
+    resource: {
+      ...FARM_FIELD_RESULT.data,
+      balance: { farm_coins: 10_000 },
+      plots: Array.from({ length: 16 }, (_, index) => ({
+        plot_id: index + 1,
+        state: "empty" as const,
+        seed_type: null,
+        watered: 0,
+        progress: null,
+        matures_at: null,
+        identity_state: "empty" as const,
+        crop_identity: null,
+      })),
+      land: {
+        tier: 4,
+        name: "灵田",
+        is_max_tier: false,
+        next_upgrade: {
+          tier: 5,
+          name: "丰壤",
+          plots: 20,
+          cost_farm_coins: 160_000,
+          can_upgrade: false,
+          status_message: "升级到「丰壤」还差：金币 10000/160000",
+        },
+      },
+    },
+  },
+  revision: "field:land-upgraded-version",
+  server_time: "2026-08-23T10:02:00.000Z",
+} satisfies FarmHumanFieldLandUpgradeSuccess;
 
 const FARM_GLIMMER_RESULT = {
   subject: { farm_doorplate: FARM_DOORPLATE },
@@ -987,11 +1033,21 @@ class FakeFarmDirectory implements FarmDirectoryReader {
 class FakeFarmHumanReader implements FarmHumanFieldReader {
   readonly fieldCalls: FarmHumanFieldReadInput[] = [];
   readonly harvestCalls: FarmHumanFieldHarvestAssistInput[] = [];
+  readonly landUpgradeCalls: FarmHumanFieldLandUpgradeInput[] = [];
   fieldResult: "found" | "credential" | "missing" | "unavailable" | "contract" = "found";
   harvestResult:
     | "found"
     | "exhausted"
     | "no_ripe"
+    | "state_conflict"
+    | "idempotency_conflict"
+    | "credential"
+    | "missing"
+    | "unavailable"
+    | "contract" = "found";
+  landUpgradeResult:
+    | "found"
+    | "rejected"
     | "state_conflict"
     | "idempotency_conflict"
     | "credential"
@@ -1039,6 +1095,33 @@ class FakeFarmHumanReader implements FarmHumanFieldReader {
         throw new FarmHumanFieldContractUnavailableError();
       default:
         return FARM_HARVEST_ASSIST_RESULT;
+    }
+  }
+
+  async landUpgrade(
+    input: FarmHumanFieldLandUpgradeInput,
+  ): Promise<FarmHumanFieldLandUpgradeSuccess> {
+    this.landUpgradeCalls.push(input);
+    switch (this.landUpgradeResult) {
+      case "rejected":
+        throw new FarmHumanLandUpgradeRejectedError(
+          "升级到「灵田」还差：金币 1280/90000",
+          "field:current",
+        );
+      case "state_conflict":
+        throw new FarmHumanFieldStateConflictError("field:current");
+      case "idempotency_conflict":
+        throw new FarmHumanFieldIdempotencyConflictError();
+      case "credential":
+        throw new FarmHumanFieldCredentialInvalidError();
+      case "missing":
+        throw new FarmHumanFieldNotFoundError();
+      case "unavailable":
+        throw new FarmHumanFieldUnavailableError();
+      case "contract":
+        throw new FarmHumanFieldContractUnavailableError();
+      default:
+        return FARM_LAND_UPGRADE_RESULT;
     }
   }
 }
@@ -3020,6 +3103,84 @@ test("bound farm harvest assist maps business, binding, and availability failure
   }
 });
 
+test("bound farm land upgrade derives the binding and returns the authoritative replacement field", async () => {
+  const harness = createHarness();
+  try {
+    harness.membership.members.add(QQ_NUMBER);
+    const code = harness.database.getCurrentRegistrationCode(harness.now.value);
+    const created = await harness.app.inject({
+      method: "POST",
+      url: "/api/auth/session",
+      payload: { ...FULL_REGISTRATION_PAYLOAD, registration_code: code.code },
+    });
+    const cookie = cookieFrom(created);
+    const idempotencyKey = "019ffb01-49cd-7020-84af-3d04fb1ed03d";
+
+    const response = await harness.app.inject({
+      method: "POST",
+      url: "/api/farm/field/upgrade",
+      headers: {
+        cookie,
+        "idempotency-key": idempotencyKey,
+        "if-match": '"field:opaque-version"',
+      },
+      payload: {},
+    });
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.headers["cache-control"], "no-store");
+    assert.deepEqual(
+      boundFarmLandUpgradeSuccessSchema.parse(response.json()),
+      FARM_LAND_UPGRADE_RESULT,
+    );
+    assert.doesNotMatch(response.body, new RegExp(FARM_HUMAN_KEY));
+    assert.deepEqual(harness.farmHumanReader.landUpgradeCalls, [
+      {
+        farmDoorplate: FARM_DOORPLATE,
+        farmHumanKey: FARM_HUMAN_KEY,
+        expectedRevision: "field:opaque-version",
+        idempotencyKey,
+      },
+    ]);
+
+    const extraBody = await harness.app.inject({
+      method: "POST",
+      url: "/api/farm/field/upgrade",
+      headers: {
+        cookie,
+        "idempotency-key": "019ffb01-49cd-7020-84af-3d04fb1ed03e",
+        "if-match": "field:opaque-version",
+      },
+      payload: { tier: 4, cost: 90_000 },
+    });
+    assert.equal(extraBody.statusCode, 400);
+    assert.equal(
+      boundFarmLandUpgradeErrorSchema.parse(extraBody.json()).error.code,
+      "invalid_request",
+    );
+    assert.equal(harness.farmHumanReader.landUpgradeCalls.length, 1);
+
+    harness.farmHumanReader.landUpgradeResult = "rejected";
+    const rejected = await harness.app.inject({
+      method: "POST",
+      url: "/api/farm/field/upgrade",
+      headers: {
+        cookie,
+        "idempotency-key": "019ffb01-49cd-7020-84af-3d04fb1ed03f",
+        "if-match": "field:opaque-version",
+      },
+      payload: {},
+    });
+    assert.equal(rejected.statusCode, 409);
+    const error = boundFarmLandUpgradeErrorSchema.parse(rejected.json()).error;
+    assert.equal(error.code, "land_upgrade_rejected");
+    assert.equal(error.message, "升级到「灵田」还差：金币 1280/90000");
+    assert.equal(error.current_revision, "field:current");
+  } finally {
+    await harness.close();
+  }
+});
+
 test("bound farm overview uses the authenticated session binding and returns only public farm facts", async () => {
   const harness = createHarness();
   try {
@@ -4032,6 +4193,25 @@ test("bound kitchen cook derives farm identity and keeps idempotency in the head
       },
     ]);
 
+    const knownRecipeKey = "159ffb01-49cd-7020-84af-3d04fb1ed03d";
+    const knownRecipe = await harness.app.inject({
+      method: "POST",
+      url: "/api/farm/kitchen/cooks",
+      headers: { cookie, "idempotency-key": knownRecipeKey },
+      payload: {
+        expected_kitchen_inventory_revision: FARM_KITCHEN_RESULT.kitchen_inventory_revision,
+        recipe_id: "fried_egg",
+      },
+    });
+    assert.equal(knownRecipe.statusCode, 200);
+    assert.deepEqual(harness.farmKitchenCooker.calls[1], {
+      farmDoorplate: FARM_DOORPLATE,
+      farmHumanKey: FARM_HUMAN_KEY,
+      expectedKitchenInventoryRevision: FARM_KITCHEN_RESULT.kitchen_inventory_revision,
+      idempotencyKey: knownRecipeKey,
+      recipeId: "fried_egg",
+    });
+
     const invalidRequests = [
       {
         url: "/api/farm/kitchen/cooks?farm_human_key=override",
@@ -4061,7 +4241,7 @@ test("bound kitchen cook derives farm identity and keeps idempotency in the head
         "invalid_request",
       );
     }
-    assert.equal(harness.farmKitchenCooker.calls.length, 1);
+    assert.equal(harness.farmKitchenCooker.calls.length, 2);
   } finally {
     await harness.close();
   }

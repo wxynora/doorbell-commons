@@ -4,6 +4,7 @@ import {
   type BoundFarmCropCodexActionErrorCode,
   type BoundFarmExpeditionActionErrorCode,
   type BoundFarmHarvestAssistErrorCode,
+  type BoundFarmLandUpgradeErrorCode,
   type BoundFarmKitchenCookErrorCode,
   type BoundFarmKitchenInventoryActionErrorCode,
   type BoundFarmKitchenPurchaseErrorCode,
@@ -41,6 +42,9 @@ import {
   boundFarmHarvestAssistErrorSchema,
   boundFarmHarvestAssistRequestSchema,
   boundFarmHarvestAssistSuccessSchema,
+  boundFarmLandUpgradeErrorSchema,
+  boundFarmLandUpgradeRequestSchema,
+  boundFarmLandUpgradeSuccessSchema,
   boundFarmKitchenCookErrorSchema,
   boundFarmKitchenCookRequestSchema,
   boundFarmKitchenCookSuccessSchema,
@@ -113,6 +117,7 @@ import {
   farmExpeditionActionIdempotencyKeySchema,
   farmHumanConstableInterviewSuccessSchema,
   farmHumanFieldHarvestAssistIdempotencyKeySchema,
+  farmHumanFieldLandUpgradeIdempotencyKeySchema,
   farmHumanRanchCollectionIdempotencyKeySchema,
   farmHumanUiErrorSchema,
   farmKitchenCookIdempotencyKeySchema,
@@ -255,6 +260,7 @@ import {
   FarmHumanFieldStateConflictError,
   FarmHumanFieldUnavailableError,
   FarmHumanHarvestAssistExhaustedError,
+  FarmHumanLandUpgradeRejectedError,
   FarmHumanNoRipePlotsError,
 } from "./farm-human-client.js";
 import { InvalidFarmHumanUrlError } from "./farm-human-url.js";
@@ -1527,6 +1533,25 @@ function sendHarvestAssistError(
   reply.header("cache-control", "no-store");
   return reply.code(statusCode).send(
     boundFarmHarvestAssistErrorSchema.parse({
+      error: {
+        code,
+        message,
+        ...(currentRevision === undefined ? {} : { current_revision: currentRevision }),
+      },
+    }),
+  );
+}
+
+function sendLandUpgradeError(
+  reply: FastifyReply,
+  statusCode: 400 | 401 | 403 | 404 | 409 | 502 | 503,
+  code: BoundFarmLandUpgradeErrorCode,
+  message: string,
+  currentRevision?: string,
+) {
+  reply.header("cache-control", "no-store");
+  return reply.code(statusCode).send(
+    boundFarmLandUpgradeErrorSchema.parse({
       error: {
         code,
         message,
@@ -4667,7 +4692,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       const result = await options.registrationAuth.cookCurrentFarmKitchen(token, {
         expectedKitchenInventoryRevision: body.expected_kitchen_inventory_revision,
         idempotencyKey,
-        items: body.items,
+        ...("recipe_id" in body ? { recipeId: body.recipe_id } : { items: body.items }),
       });
       const parsedResult = boundFarmKitchenCookSuccessSchema.safeParse(result);
       if (!parsedResult.success) {
@@ -7461,6 +7486,159 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       if (error instanceof FarmHumanFieldUnavailableError) {
         reportFarmHumanFieldUnavailable(request, error);
         return sendHarvestAssistError(
+          reply,
+          503,
+          "farm_unavailable",
+          "The farm field is unavailable",
+        );
+      }
+      throw error;
+    }
+  });
+
+  app.post("/api/farm/field/upgrade", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    if (
+      !boundFarmLandUpgradeRequestSchema.safeParse(request.query).success ||
+      !boundFarmLandUpgradeRequestSchema.safeParse(request.body).success
+    ) {
+      return sendLandUpgradeError(
+        reply,
+        400,
+        "invalid_request",
+        "The land upgrade does not accept query parameters or body fields",
+      );
+    }
+
+    const idempotencyKey = request.headers["idempotency-key"];
+    const expectedRevision = parseIfMatchRevision(request.headers["if-match"]);
+    if (
+      typeof idempotencyKey !== "string" ||
+      !farmHumanFieldLandUpgradeIdempotencyKeySchema.safeParse(idempotencyKey).success ||
+      expectedRevision === undefined
+    ) {
+      return sendLandUpgradeError(
+        reply,
+        400,
+        "invalid_request",
+        "Land upgrade requires a UUID Idempotency-Key and a valid If-Match revision",
+      );
+    }
+
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendLandUpgradeError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+
+    try {
+      const result = await options.registrationAuth.upgradeCurrentFarmLand(token, {
+        expectedRevision,
+        idempotencyKey,
+      });
+      const parsedResult = boundFarmLandUpgradeSuccessSchema.safeParse(result);
+      if (!parsedResult.success) {
+        return sendLandUpgradeError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The land upgrade response could not be verified",
+        );
+      }
+      return reply.send(parsedResult.data);
+    } catch (error) {
+      if (error instanceof AuthenticationRequiredError) {
+        return sendLandUpgradeError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
+        return sendLandUpgradeError(
+          reply,
+          403,
+          "qq_not_group_member",
+          "The session QQ number is no longer a current member of the community group",
+        );
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendLandUpgradeError(
+          reply,
+          503,
+          "onebot_unavailable",
+          "QQ group membership could not be verified",
+        );
+      }
+      if (error instanceof RegistrationProfileRequiredError) {
+        return sendLandUpgradeError(
+          reply,
+          409,
+          "registration_profile_required",
+          "A resident, home, and farm binding are required",
+        );
+      }
+      if (error instanceof FarmHumanLandUpgradeRejectedError) {
+        return sendLandUpgradeError(
+          reply,
+          409,
+          "land_upgrade_rejected",
+          error.message,
+          error.currentRevision,
+        );
+      }
+      if (error instanceof FarmHumanFieldStateConflictError) {
+        return sendLandUpgradeError(
+          reply,
+          409,
+          "state_conflict",
+          "The farm field has changed",
+          error.currentRevision,
+        );
+      }
+      if (error instanceof FarmHumanFieldIdempotencyConflictError) {
+        return sendLandUpgradeError(
+          reply,
+          409,
+          "idempotency_conflict",
+          "This idempotency key was used for a different request",
+        );
+      }
+      if (error instanceof FarmHumanFieldCredentialInvalidError) {
+        return sendLandUpgradeError(
+          reply,
+          409,
+          "farm_credential_invalid",
+          "The bound farm human credential is no longer valid",
+        );
+      }
+      if (error instanceof FarmHumanFieldNotFoundError) {
+        return sendLandUpgradeError(
+          reply,
+          404,
+          "farm_not_found",
+          "The bound farm no longer exists",
+        );
+      }
+      if (error instanceof FarmHumanFieldContractUnavailableError) {
+        reportFarmHumanFieldUnavailable(request, error);
+        return sendLandUpgradeError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The land upgrade response could not be verified",
+        );
+      }
+      if (error instanceof FarmHumanFieldUnavailableError) {
+        reportFarmHumanFieldUnavailable(request, error);
+        return sendLandUpgradeError(
           reply,
           503,
           "farm_unavailable",
