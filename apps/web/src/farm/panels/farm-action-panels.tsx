@@ -80,6 +80,37 @@ export function FarmMarketPanelContent({
   );
   const barterListings = market.barter_listings;
   const farmDoorplate = farmCatalog.data.farm.farm_doorplate;
+  const farmNameByDoorplate = new Map<string, string>([
+    [farmDoorplate, farmCatalog.data.farm.farm_name],
+  ]);
+  if (farmCatalog.data.neighborhood.status === "available") {
+    for (const board of farmCatalog.data.neighborhood.message_boards ?? []) {
+      farmNameByDoorplate.set(board.farm_doorplate, board.farm_name);
+    }
+    for (const rows of Object.values(farmCatalog.data.neighborhood.rankings)) {
+      for (const row of rows) farmNameByDoorplate.set(row.farm_doorplate, row.farm_name);
+    }
+  }
+  const sellerGroups = new Map<
+    string,
+    { barterListings: typeof barterListings; listings: typeof listings }
+  >();
+  for (const listing of listings) {
+    const group = sellerGroups.get(listing.seller_farm_doorplate) ?? {
+      barterListings: [],
+      listings: [],
+    };
+    group.listings.push(listing);
+    sellerGroups.set(listing.seller_farm_doorplate, group);
+  }
+  for (const listing of barterListings) {
+    const group = sellerGroups.get(listing.seller_farm_doorplate) ?? {
+      barterListings: [],
+      listings: [],
+    };
+    group.barterListings.push(listing);
+    sellerGroups.set(listing.seller_farm_doorplate, group);
+  }
   const inventory =
     farmCatalog.data.backpack.status === "available"
       ? farmCatalog.data.backpack.items
@@ -315,11 +346,27 @@ export function FarmMarketPanelContent({
           </details>
         </form>
       ) : null}
-      <ul aria-label="真实集市商品" className="farm-crop-codex__list">
-        {listings.length + barterListings.length > 0 ? (
-          <>
-            {listings.map((listing, index) => {
-              const ownListing = farmDoorplate === listing.seller_farm_doorplate;
+      <div aria-label="真实集市商品" className="farm-market__seller-list">
+        {sellerGroups.size > 0 ? (
+          [...sellerGroups.entries()].map(([sellerDoorplate, group]) => {
+            const ownListing = farmDoorplate === sellerDoorplate;
+            return (
+              <section
+                aria-label={`${farmNameByDoorplate.get(sellerDoorplate) ?? sellerDoorplate}的摊位`}
+                className="farm-market__seller-card"
+                data-own={ownListing}
+                key={sellerDoorplate}
+              >
+                <header>
+                  <strong>
+                    {ownListing
+                      ? `${farmNameByDoorplate.get(sellerDoorplate) ?? "我的农场"} · 我的摊位`
+                      : (farmNameByDoorplate.get(sellerDoorplate) ?? `农场 ${sellerDoorplate}`)}
+                  </strong>
+                  <span>门牌 {sellerDoorplate}</span>
+                </header>
+                <ul>
+                  {group.listings.map((listing, index) => {
               const itemId = listing.item_id;
               const canBuy =
                 !ownListing && itemId !== null && listing.quantity > 0 && onMarketAction;
@@ -379,9 +426,8 @@ export function FarmMarketPanelContent({
                   </span>
                 </li>
               );
-            })}
-            {barterListings.map((listing) => {
-              const ownListing = farmDoorplate === listing.seller_farm_doorplate;
+                  })}
+                  {group.barterListings.map((listing) => {
               return (
                 <li key={`barter:${listing.seller_farm_doorplate}:${listing.listing_id}`}>
                   <span>
@@ -422,14 +468,15 @@ export function FarmMarketPanelContent({
                   </span>
                 </li>
               );
-            })}
-          </>
+                  })}
+                </ul>
+              </section>
+            );
+          })
         ) : (
-          <li>
-            <span>当前没有真实摊位</span>
-          </li>
+          <p className="farm-market__empty">当前没有真实摊位</p>
         )}
-      </ul>
+      </div>
     </section>
   );
 }

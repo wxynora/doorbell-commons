@@ -1226,7 +1226,7 @@ test("live harvest assist submits one idempotent action and replaces the field f
 
   assert.match(
     styles,
-    /\.farm-harvest-receipt,[\s\S]*\.farm-harvest-notice\s*\{[^}]*bottom:\s*28\.5cqw[^}]*width:\s*70cqw/,
+    /\.farm-harvest-receipt,[\s\S]*\.farm-harvest-notice\s*\{[^}]*top:\s*50%[^}]*bottom:\s*auto[^}]*width:\s*70cqw[^}]*transform:\s*translate\(-50%, -50%\)/,
   );
   assert.match(
     styles,

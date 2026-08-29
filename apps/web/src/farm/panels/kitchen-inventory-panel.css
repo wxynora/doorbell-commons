@@ -82,9 +82,26 @@
 }
 
 .kitchen-inventory-panel__row--dish {
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: 12cqw minmax(0, 1fr);
   align-items: start;
   gap: 0.8cqw;
+}
+
+.kitchen-inventory-panel__dish-visual {
+  display: grid;
+  width: 12cqw;
+  aspect-ratio: 1;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 1.4cqw;
+  background: rgba(255, 253, 241, 0.68);
+}
+
+.kitchen-inventory-panel__dish-visual .cooking-catalog__sprite {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  background-repeat: no-repeat;
 }
 
 .kitchen-inventory-panel__copy {
@@ -118,6 +135,7 @@
 }
 
 .kitchen-inventory-panel__actions--dish {
+  grid-column: 1 / -1;
   flex-wrap: wrap;
 }
 

@@ -435,6 +435,87 @@
   opacity: 0.58;
 }
 
+.farm-market__seller-list {
+  display: grid;
+  min-height: 0;
+  align-content: start;
+  gap: 1.4cqw;
+  padding-right: 0.5cqw;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.farm-market__seller-card {
+  overflow: hidden;
+  border: 1px solid rgba(132, 101, 59, 0.22);
+  border-radius: 1.5cqw;
+  background: rgba(255, 253, 241, 0.58);
+}
+
+.farm-market__seller-card > header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1cqw;
+  align-items: baseline;
+  padding: 1.2cqw 1.5cqw;
+  color: #5e4329;
+  background: rgba(210, 225, 196, 0.78);
+}
+
+.farm-market__seller-card:nth-child(3n + 2) > header {
+  background: rgba(240, 216, 197, 0.78);
+}
+
+.farm-market__seller-card:nth-child(3n + 3) > header {
+  background: rgba(205, 225, 229, 0.78);
+}
+
+.farm-market__seller-card[data-own="true"] > header {
+  background: rgba(226, 214, 165, 0.82);
+}
+
+.farm-market__seller-card > header strong {
+  overflow: hidden;
+  font-size: clamp(0.68rem, 2.7cqw, 0.82rem);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.farm-market__seller-card > header span {
+  color: #8f7756;
+  font-size: clamp(0.46rem, 1.8cqw, 0.56rem);
+  white-space: nowrap;
+}
+
+.farm-market__seller-card ul {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.farm-market__seller-card li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1cqw;
+  align-items: center;
+  padding: 1.2cqw 1.5cqw;
+  border-bottom: 1px solid rgba(132, 101, 59, 0.14);
+}
+
+.farm-market__seller-card li:last-child {
+  border-bottom: 0;
+}
+
+.farm-market__empty {
+  margin: 0;
+  padding: 2.4cqw;
+  color: #8f7756;
+  text-align: center;
+}
+
 .farm-market__boundary {
   margin: 0.4cqw 0;
   color: #957e5e;

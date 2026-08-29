@@ -1080,6 +1080,13 @@
   white-space: nowrap;
 }
 
+.cooking-recipe-catalog__missing {
+  color: #93604a;
+  font-size: clamp(0.5rem, 2cqw, 0.62rem);
+  font-weight: 800;
+  line-height: 1.3;
+}
+
 .smelting-catalog__grid button:focus-visible,
 .farm-tool-panel__close:focus-visible,
 .farm-feature__tabs button:focus-visible,

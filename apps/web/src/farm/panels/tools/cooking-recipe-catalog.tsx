@@ -75,6 +75,50 @@ interface CookingRecipeDisplay {
   name: string;
   rarity: string | null;
   ingredientText: string;
+  missingText: string | null;
+}
+
+type LiveCookingRecipe = BoundKitchenRead["data"]["known_recipes"]["items"][number];
+
+function getLiveRecipeMissingItems(kitchen: BoundKitchenRead, recipe: LiveCookingRecipe): string[] {
+  const availableCounts = new Map<string, number>();
+  if (kitchen.data.stacked_ingredients.status === "available") {
+    for (const item of kitchen.data.stacked_ingredients.items) {
+      if (item.status !== "available") continue;
+      availableCounts.set(item.ingredient_id, item.quantity ?? 0);
+    }
+  }
+  if (kitchen.data.product_instances.status === "available") {
+    for (const item of kitchen.data.product_instances.items) {
+      if (item.status !== "available") continue;
+      availableCounts.set(item.product_id, (availableCounts.get(item.product_id) ?? 0) + 1);
+    }
+  }
+  const fishCount =
+    kitchen.data.fish_instances.status === "available"
+      ? kitchen.data.fish_instances.items.filter((item) => item.status === "available").length
+      : 0;
+  availableCounts.set("fish:any", fishCount);
+
+  const missing: string[] = [];
+  for (const ingredient of recipe.ingredients) {
+    const required = ingredient.quantity ?? 1;
+    const available = availableCounts.get(ingredient.ingredient_id) ?? 0;
+    if (available < required) {
+      missing.push(`${ingredient.name ?? "食材"}×${required - available}`);
+    }
+    availableCounts.set(ingredient.ingredient_id, Math.max(0, available - required));
+  }
+  if (recipe.tool.id) {
+    const tool =
+      kitchen.data.tools.status === "available"
+        ? kitchen.data.tools.items.find((item) => item.tool_id === recipe.tool.id)
+        : null;
+    if (!tool || tool.status !== "available" || tool.owned !== true) {
+      missing.push(recipe.tool.name ?? "料理工具");
+    }
+  }
+  return missing;
 }
 
 function CookingRecipeRow({
@@ -96,7 +140,9 @@ function CookingRecipeRow({
         </span>
         <span className="cooking-recipe-catalog__ingredients">{recipe.ingredientText}</span>
       </span>
-      {canQuickMake ? (
+      {recipe.missingText ? (
+        <span className="cooking-recipe-catalog__missing">缺少：{recipe.missingText}</span>
+      ) : canQuickMake ? (
         <span className="cooking-recipe-catalog__actions">
           <button
             aria-label={`${recipe.name}一键制作`}
@@ -160,25 +206,29 @@ export function CookingRecipeCatalog({
         </nav>
         <ul className="cooking-recipe-catalog__list">
           {categoryRecipes.length > 0 ? (
-            categoryRecipes.map((recipe) => (
-              <CookingRecipeRow
-                canQuickMake={recipe.status === "available"}
-                key={recipe.recipe_id}
-                onQuickMake={onQuickMake}
-                recipe={{
-                  id: recipe.recipe_id,
-                  name: recipe.status === "available" && recipe.name ? recipe.name : "身份不可用",
-                  rarity: recipe.rarity,
-                  ingredientText: recipe.ingredients
-                    .map((ingredient) =>
-                      ingredient.status === "available" && ingredient.name
-                        ? `${ingredient.name}${ingredient.quantity ? `×${ingredient.quantity}` : ""}`
-                        : "身份不可用",
-                    )
-                    .join("、"),
-                }}
-              />
-            ))
+            categoryRecipes.map((recipe) => {
+              const missing = kitchen ? getLiveRecipeMissingItems(kitchen, recipe) : [];
+              return (
+                <CookingRecipeRow
+                  canQuickMake={recipe.status === "available" && missing.length === 0}
+                  key={recipe.recipe_id}
+                  onQuickMake={onQuickMake}
+                  recipe={{
+                    id: recipe.recipe_id,
+                    name: recipe.status === "available" && recipe.name ? recipe.name : "身份不可用",
+                    rarity: recipe.rarity,
+                    ingredientText: `配方：${recipe.ingredients
+                      .map((ingredient) =>
+                        ingredient.status === "available" && ingredient.name
+                          ? `${ingredient.name}${ingredient.quantity ? `×${ingredient.quantity}` : ""}`
+                          : "身份不可用",
+                      )
+                      .join("、")}`,
+                    missingText: missing.length > 0 ? missing.join("、") : null,
+                  }}
+                />
+              );
+            })
           ) : (
             <li>
               <span className="cooking-recipe-catalog__ingredients">当前分类没有真实食谱</span>
@@ -214,7 +264,8 @@ export function CookingRecipeCatalog({
               id: recipe.id,
               name: recipe.name,
               rarity: recipe.rarity,
-              ingredientText: cookingRecipeIngredientText(recipe.ingredients),
+              ingredientText: `配方：${cookingRecipeIngredientText(recipe.ingredients)}`,
+              missingText: null,
             }}
           />
         ))}

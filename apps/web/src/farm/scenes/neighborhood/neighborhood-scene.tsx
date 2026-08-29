@@ -423,7 +423,9 @@ export function NeighborhoodScene({
           id="farm-neighborhood-panel"
           role="tabpanel"
         >
-          <div className="farm-neighborhood__body">
+          <div
+            className={`farm-neighborhood__body${activeSection.id === "message-board" ? " is-message-board" : ""}`}
+          >
             <header className="farm-neighborhood__section-head">
               <h3>{activeSection.label}</h3>
             </header>

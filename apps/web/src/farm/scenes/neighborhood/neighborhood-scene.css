@@ -8,6 +8,12 @@
   scrollbar-color: rgba(126, 104, 62, 0.48) transparent;
 }
 
+.farm-neighborhood__body.is-message-board {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
 .farm-neighborhood__ranking-groups {
   display: grid;
   align-content: start;
@@ -179,15 +185,25 @@
 
 .farm-neighborhood__message-area {
   display: grid;
-  align-content: start;
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: 2.4cqw;
+  height: 100%;
   min-height: 0;
-  padding-bottom: 2.8cqw;
+  padding-bottom: 1.2cqw;
+  overflow: hidden;
 }
 
 .farm-neighborhood__message-boards {
   display: grid;
+  min-height: 0;
+  align-content: start;
   gap: 2cqw;
+  padding-right: 0.6cqw;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: rgba(126, 104, 62, 0.48) transparent;
+  scrollbar-width: thin;
 }
 
 .farm-neighborhood__message-board-card {
@@ -208,6 +224,19 @@
   align-items: baseline;
   padding: 1.45cqw 1.7cqw 1.15cqw;
   border-bottom: 0.15cqw solid rgba(126, 104, 62, 0.14);
+  background: rgba(210, 225, 196, 0.76);
+}
+
+.farm-neighborhood__message-board-card:nth-child(3n + 2) > header {
+  background: rgba(240, 216, 197, 0.78);
+}
+
+.farm-neighborhood__message-board-card:nth-child(3n + 3) > header {
+  background: rgba(205, 225, 229, 0.78);
+}
+
+.farm-neighborhood__message-board-card[data-own="true"] > header {
+  background: rgba(226, 214, 165, 0.82);
 }
 
 .farm-neighborhood__message-board-card h4 {
@@ -215,7 +244,9 @@
   margin: 0;
   overflow: hidden;
   color: #5e4329;
-  font-size: clamp(0.68rem, 2.7cqw, 0.82rem);
+  font-family: "ZCOOL KuaiLe", "Noto Sans SC", sans-serif;
+  font-size: clamp(0.78rem, 3.1cqw, 0.94rem);
+  font-weight: 900;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;

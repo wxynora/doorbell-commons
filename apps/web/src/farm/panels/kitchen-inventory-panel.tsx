@@ -7,6 +7,7 @@ import {
   kitchenInventoryActionIssueMessage,
 } from "../../auth/kitchen-inventory-action-client";
 import type { KitchenInventoryActionExecutor } from "./tool-panel";
+import { CookingCatalogSprite } from "./shop/shared";
 import "./kitchen-inventory-panel.css";
 
 type KitchenData = BoundKitchenRead["data"];
@@ -203,9 +204,17 @@ function KitchenDishSection({
   if (section.items.length === 0) {
     return <InventoryEmpty label="当前没有真实料理" />;
   }
+  const dishGroups: Array<{ items: typeof section.items; recipeId: string }> = [];
+  for (const item of section.items) {
+    const existing = dishGroups.find((group) => group.recipeId === item.recipe_id);
+    if (existing) existing.items.push(item);
+    else dishGroups.push({ items: [item], recipeId: item.recipe_id });
+  }
   return (
     <ul aria-label="真实料理库存" className="kitchen-inventory-panel__list">
-      {section.items.map((item) => {
+      {dishGroups.map(({ items, recipeId }) => {
+        const item = items[0];
+        if (!item) return null;
         const actionable = actionsEnabled && canOperate(item.status, item.dish_instance_id);
         const name = itemName(item.name, "身份不可用");
         const rawPrice = stallPrices[item.dish_instance_id] ?? "";
@@ -214,11 +223,14 @@ function KitchenDishSection({
         return (
           <li
             className="kitchen-inventory-panel__row kitchen-inventory-panel__row--dish"
-            key={`dish:${item.dish_instance_id}`}
+            key={`dish:${recipeId}`}
           >
+            <span className="kitchen-inventory-panel__dish-visual">
+              <CookingCatalogSprite entityId={recipeId} kind="recipe" name={name} />
+            </span>
             <div className="kitchen-inventory-panel__copy">
               <span className="kitchen-inventory-panel__name">{name}</span>
-              <small className="kitchen-inventory-panel__meta">单份料理</small>
+              <small className="kitchen-inventory-panel__meta">数量 {items.length}</small>
             </div>
             {actionable ? (
               <div className="kitchen-inventory-panel__actions kitchen-inventory-panel__actions--dish">
@@ -232,12 +244,12 @@ function KitchenDishSection({
                         dishInstanceId: item.dish_instance_id,
                         target: "self",
                       },
-                      `${name}给自己`,
+                      `${name}自己食用`,
                     )
                   }
                   type="button"
                 >
-                  {busy ? "处理中" : "给自己"}
+                  {busy ? "处理中" : "自己食用"}
                 </button>
                 <button
                   className="farm-inventory-action"
