@@ -1,5 +1,6 @@
 // 农场仓库：唯一 id、内存索引、JSON 存档（含 rngState）、健壮读档。
 import { createHash, randomInt } from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,6 +16,7 @@ import { setNatureWorldProvider } from "./time.js";
 import { crops } from "./content.js";
 import { normalizeQixi2026Farm, settleQixi2026SeedPriceRefund } from "./qixi-2026.js";
 import { normalizeQixiLantern2026Farm, normalizeQixiLantern2026World } from "./qixi-lantern-2026.js";
+import { normalizeWelfareWeekFarm } from "./welfare-week.js";
 const DATA_DIR = process.env.AIFARM_DATA_DIR
     ? resolve(process.env.AIFARM_DATA_DIR)
     : resolve(dirname(fileURLToPath(import.meta.url)), "../data");
@@ -30,6 +32,8 @@ let glimmerWorld = normalizeGlimmerWorld({});
 let publicExpeditionWorld = normalizePublicExpeditionWorld({});
 let qixiLantern2026World = normalizeQixiLantern2026World({});
 let natureWorld = normalizeNatureWorld(null);
+let worldCommitCoordinator = null;
+const worldCommitContext = new AsyncLocalStorage();
 setNatureWorldProvider(() => natureWorld);
 const DOORBELL_WELCOME_SILVER = 200;
 const SSR_CROPS = crops.filter((crop) => crop?.rarity === "SSR");
@@ -96,6 +100,7 @@ export function normalizeFarm(f) {
     normalizeGlimmerFarm(f);
     normalizeQixi2026Farm(f);
     normalizeQixiLantern2026Farm(f);
+    normalizeWelfareWeekFarm(f);
     return f;
 }
 export function createFarm(name, opts) {
@@ -365,6 +370,40 @@ function writeWorldAtomic(world) {
     writeFileSync(tmp, data, "utf8");
     renameSync(tmp, WORLD_FILE);
 }
+function commitWorld(world) {
+    const write = () => writeWorldAtomic(world);
+    return worldCommitCoordinator
+        ? worldCommitCoordinator(world, worldCommitContext.getStore() ?? null, write)
+        : write();
+}
+export function setWorldCommitCoordinator(coordinator) {
+    if (coordinator !== null && typeof coordinator !== "function")
+        throw new TypeError("world commit coordinator must be a function or null");
+    worldCommitCoordinator = coordinator;
+}
+export function withWorldCommitContext(context, operation) {
+    if (!context || typeof context !== "object" || typeof operation !== "function")
+        throw new TypeError("world commit context and operation are required");
+    return worldCommitContext.run(Object.freeze({ ...context }), operation);
+}
+export function snapshotWorldForRollback() {
+    return structuredClone(worldSnapshot());
+}
+export function restoreWorldSnapshotInMemory(snapshot) {
+    if (snapshot?.format !== "aifarm-world" || snapshot?.version !== 1 || !Array.isArray(snapshot?.farms))
+        throw new TypeError("valid farm world snapshot is required");
+    appliedMaintenanceGrantIds = [...snapshot.maintenanceGrantIds];
+    doorbellWelcomeRewardGrants = structuredClone(snapshot.doorbellWelcomeRewardGrants);
+    doorbellFarmCreations = structuredClone(snapshot.doorbellFarmCreations);
+    glimmerWorld = normalizeGlimmerWorld(snapshot.glimmer);
+    publicExpeditionWorld = normalizePublicExpeditionWorld(snapshot.publicExpedition);
+    qixiLantern2026World = normalizeQixiLantern2026World(snapshot.qixiLantern2026);
+    natureWorld = normalizeNatureWorld(snapshot.nature);
+    loadUgc(structuredClone(snapshot.ugc));
+    farms.clear();
+    for (const farm of snapshot.farms)
+        farms.set(farm.id, normalizeFarm(structuredClone(farm)));
+}
 /**
  * Replace several existing farms and the shared UGC catalog in one durable
  * world-file commit. The replacements must already be isolated working
@@ -387,7 +426,7 @@ export function replaceFarmsAtomic(replacements, ugcValues = dumpUgc()) {
     }
     const nextUgc = structuredClone(ugcValues);
     const nextFarms = [...farms.values()].map((farm) => staged.get(farm.id) ?? farm);
-    writeWorldAtomic(worldSnapshot(nextFarms, nextUgc));
+    commitWorld(worldSnapshot(nextFarms, nextUgc));
     // Map.set and loadUgc do not perform I/O; the world file is already
     // committed, so publish both sides together after rename succeeds.
     loadUgc(nextUgc);
@@ -420,7 +459,7 @@ export function replaceFarmsAndNatureAtomic({ replacements, nextNatureWorld, ugc
     const nextUgc = structuredClone(ugc);
     const stagedNature = normalizeNatureWorld(nextNatureWorld);
     const nextFarms = [...farms.values()].map((farm) => staged.get(farm.id) ?? farm);
-    writeWorldAtomic(worldSnapshot(nextFarms, nextUgc, stagedNature));
+    commitWorld(worldSnapshot(nextFarms, nextUgc, stagedNature));
     loadUgc(nextUgc);
     for (const [id, farm] of staged)
         farms.set(id, farm);
@@ -435,7 +474,7 @@ function ensureNpc() {
     return true;
 }
 export function save() {
-    writeWorldAtomic(worldSnapshot());
+    commitWorld(worldSnapshot());
 }
 export function load() {
     if (existsSync(WORLD_FILE)) {

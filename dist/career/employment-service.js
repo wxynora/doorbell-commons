@@ -150,6 +150,15 @@ export class CareerEmploymentService {
            WHERE resident_id = ? AND career = ? AND duty_date = ? AND status = 'scheduled'`)
             .get(residentId, career, dutyDate));
     }
+    dueDutyWages() {
+        const today = beijingDate(this.#now());
+        return this.#database
+            .prepare(`SELECT * FROM career_duty_days
+             WHERE status = 'scheduled' AND duty_date < ?
+             ORDER BY duty_date, duty_id`)
+            .all(today)
+            .map((duty) => this.#dutyWage(duty));
+    }
     settleDutyDay(dutyId, wageReceipt) {
         const now = this.#now();
         return runInTransaction(this.#database, () => {
@@ -161,16 +170,8 @@ export class CareerEmploymentService {
             if (duty.status === "invalidated") {
                 throw new CareerDomainError("duty_day_invalidated", "The duty day is not payable");
             }
-            const work = this.#database
-                .prepare(`SELECT COALESCE(SUM(w.performance_units), 0) AS units
-           FROM career_work_records w
-           JOIN career_jobs j ON j.job_id = w.job_id
-           WHERE w.resident_id = ? AND w.career = ? AND w.record_kind = 'completed'
-             AND j.ended_at >= ? AND j.ended_at < ?`)
-                .get(duty.resident_id, duty.career, beijingTimestamp(duty.duty_date, 0), windowEnd);
-            const performanceUnits = work.units;
-            const performanceGold = performanceUnits * PERFORMANCE_PAY_GOLD[duty.qualification_level];
-            const totalGold = duty.base_wage_gold + performanceGold;
+            const quote = this.#dutyWage(duty);
+            const { performanceUnits, performanceGold, totalGold } = quote;
             if (duty.status === "settled") {
                 if (duty.wage_receipt_id !== wageReceipt.receiptId) {
                     throw new CareerDomainError("duty_wage_conflict", "The duty wage was already settled");
@@ -202,6 +203,27 @@ export class CareerEmploymentService {
                 totalGold,
             };
         });
+    }
+    #dutyWage(duty) {
+        const windowStart = beijingTimestamp(duty.duty_date, 0);
+        const windowEnd = beijingTimestamp(addBeijingDays(duty.duty_date, 1), 0);
+        const work = this.#database
+            .prepare(`SELECT COALESCE(SUM(w.performance_units), 0) AS units
+         FROM career_work_records w
+         JOIN career_jobs j ON j.job_id = w.job_id
+         WHERE w.resident_id = ? AND w.career = ? AND w.record_kind = 'completed'
+           AND j.ended_at >= ? AND j.ended_at < ?`)
+            .get(duty.resident_id, duty.career, windowStart, windowEnd);
+        const performanceUnits = work.units;
+        const performanceGold = performanceUnits * PERFORMANCE_PAY_GOLD[duty.qualification_level];
+        return {
+            dutyId: duty.duty_id,
+            residentId: duty.resident_id,
+            baseGold: duty.base_wage_gold,
+            performanceUnits,
+            performanceGold,
+            totalGold: duty.base_wage_gold + performanceGold,
+        };
     }
     #invalidateDutyDays(employmentId, fromDate, now) {
         this.#database

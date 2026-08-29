@@ -3,6 +3,7 @@ import { crops, getCrop } from "../../content.js";
 import { onTaskEvent } from "../../tasks.js";
 import { currentDayIndex } from "../../time.js";
 import { canPlantQixi2026Crop } from "../../qixi-2026.js";
+import { recordWelfareWeekProgress } from "../../welfare-week.js";
 import { pushLog, pushTrail } from "../shared/notifications.js";
 
 /** 把"限定/自创种子"的引用解析成作物 id：接受 id 或中文名（背包/熔炼都给中文名，玩家自然照着填）。
@@ -53,6 +54,7 @@ export function plant(farm, plotId, seedType, limitedId, now) {
         plot.crop = { seedType: "limited", limitedId, growTicks: crop.growTicks, progress: 0, ripe: false, waterCount: 0 };
         if (crop.category === "ugc")
             onTaskEvent(farm, "plant_ugc", now); // 随机任务：种下一株自创作物
+        recordWelfareWeekProgress(farm, "plant", 1, now);
         pushLog(farm, `种下限定 ${crop.name}`);
         return { ok: true, seedType: "limited", limitedId }; // 回传解析后的 id，供 plantBatch 记录专属文案
     }
@@ -61,6 +63,7 @@ export function plant(farm, plotId, seedType, limitedId, now) {
         return { ok: false, error: `金币不足，${seedType === "common" ? "普通" : "奇幻"}种子要 ${price}` };
     farm.coins -= price;
     plot.crop = { seedType, growTicks: GROW_TICKS[seedType], progress: 0, ripe: false, waterCount: 0 };
+    recordWelfareWeekProgress(farm, "plant", 1, now);
     pushLog(farm, `种下一颗${seedType === "common" ? "普通" : "奇幻"}种子`);
     return { ok: true, seedType };
 }
@@ -68,13 +71,15 @@ export function plant(farm, plotId, seedType, limitedId, now) {
 // —— 主人浇水（提升稀有概率，封顶；只用于自家地）——
 const WATER_CAP_COUNT = Math.round(WATER_LUCK_CAP / WATER_LUCK_PER);
 
-export function water(farm, plotId, by, isOwner) {
+export function water(farm, plotId, by, isOwner, now = Date.now()) {
     const plot = farm.plots.find((p) => p.id === plotId);
     if (!plot || !plot.crop)
         return { ok: false, error: `${plotId} 号地没有作物` };
     const capped = plot.crop.waterCount >= WATER_CAP_COUNT;
     if (!capped)
         plot.crop.waterCount += 1;
+    if (isOwner)
+        recordWelfareWeekProgress(farm, "water", 1, now);
     pushLog(farm, `${by}给 ${plotId} 号地浇了水`);
     return { ok: true, by, isOwner, capped };
 }

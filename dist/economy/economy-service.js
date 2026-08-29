@@ -226,6 +226,44 @@ export class EconomyService {
             return this.getAccount(input.residentId);
         });
     }
+    applyFarmBalanceChanges(input) {
+        if (!Array.isArray(input.changes) || input.changes.length === 0 ||
+            !["agent", "human", "system"].includes(input.actor)) {
+            throw new EconomyError("AMOUNT_INVALID");
+        }
+        const residentIds = new Set();
+        const changes = input.changes.map((change) => {
+            const residentId = String(change?.residentId ?? "").trim();
+            if (!residentId || residentIds.has(residentId))
+                throw new EconomyError("ACCOUNT_MIGRATION_CONFLICT", { residentId });
+            residentIds.add(residentId);
+            assertNonNegativeInteger(change.gold);
+            assertNonNegativeInteger(change.silver);
+            return { residentId, gold: change.gold, silver: change.silver };
+        });
+        const payload = { actor: input.actor, changes };
+        return this.#command("farm.balance.apply", input.idempotencyKey, input.businessReference, payload, (journal, now) => {
+            const totals = { gold: 0, silver: 0 };
+            for (const change of changes) {
+                const before = this.#account(change.residentId);
+                for (const currency of ["gold", "silver"]) {
+                    const target = currency === "gold" ? change.gold : change.silver;
+                    const current = currency === "gold" ? before.available_gold : before.available_silver;
+                    const delta = target - current;
+                    if (delta < 0 && input.actor !== "system")
+                        this.#assertSpendAllowed(change.residentId, currency, -delta, input.actor, null, now);
+                    this.#changeAvailable(journal, change.residentId, currency, delta, now);
+                    if (delta < 0 && input.actor !== "system")
+                        this.#recordRestrictedSpend(change.residentId, currency, -delta, null, now);
+                    totals[currency] += delta;
+                }
+            }
+            this.#systemEntry(journal, "legacy_farm_bridge", "gold", -totals.gold);
+            this.#systemEntry(journal, "legacy_farm_bridge", "silver", -totals.silver);
+            this.#contractEvent(journal, "farm_balance_operation", input.businessReference, "applied", payload);
+            return changes.map((change) => this.getAccount(change.residentId));
+        });
+    }
     creditFromSystem(input) {
         this.#assertReceiptNotProvided(input);
         assertPositiveInteger(input.amount);

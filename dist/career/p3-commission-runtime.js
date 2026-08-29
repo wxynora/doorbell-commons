@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { allFarms, getFarm, getPublicExpeditionWorld, replaceFarm } from "../store.js";
+import { allFarms, getFarm, getNatureWorld, getPublicExpeditionWorld, replaceFarm, replaceFarmsAndNatureAtomic } from "../store.js";
+import { reconcileNatureTreatment } from "../nature-runtime.js";
 import { runLingyeWorldTransaction } from "../lingye-world-database.js";
 import { CareerDomainError } from "./contracts.js";
 import {
@@ -15,6 +16,7 @@ import {
     agronomyMaterialUsage,
     agronomyObservationsFor,
     agronomyTreatmentCandidates,
+    agronomyTreatmentContract,
     animalCheckCandidates,
     animalChecksFor,
     animalObservationsFor,
@@ -233,6 +235,8 @@ function agronomySource(farm, ownerResidentId, source) {
     const contract = AGRONOMY_CONDITIONS[source.condition];
     if (!contract)
         return null;
+    const treatment = agronomyTreatmentContract(source.requiredTreatment);
+    const requiredLevel = Math.max(contract.minimumLevel, treatment?.minimumLevel ?? contract.minimumLevel);
     return {
         sourceId: source.sourceId,
         career: "agronomist",
@@ -240,8 +244,8 @@ function agronomySource(farm, ownerResidentId, source) {
         objectType: "farm_plot",
         objectId: `${farm.id}:plot:${source.plotId}`,
         ownerResidentId,
-        requiredLevel: contract.minimumLevel,
-        difficultyLevel: contract.minimumLevel,
+        requiredLevel,
+        difficultyLevel: requiredLevel,
         assignmentMode: "accepted",
         status: source.status,
         fact: {
@@ -776,12 +780,22 @@ export function applyWorldTreatment(job, treatment, qualificationLevel, actionKe
             return treatAnimalCase(staged, job.sourceId, treatment.split("+"), qualificationLevel, now);
         throw new Error("commission_treatment_not_available");
     }, now);
-    replaceFarm(staged.id, staged);
+    const currentNature = getNatureWorld();
+    const nextNature = reconcileNatureTreatment(structuredClone(currentNature), staged, job.sourceId, result, now);
+    if (JSON.stringify(nextNature) !== JSON.stringify(currentNature)) {
+        replaceFarmsAndNatureAtomic({
+            replacements: [{ id: staged.id, farm: staged }],
+            nextNatureWorld: nextNature,
+        });
+    }
+    else {
+        replaceFarm(staged.id, staged);
+    }
     return result;
 }
 
-const AGRONOMY_MATERIAL_GOLD = new Map(Object.values(AGRONOMY_CONDITIONS)
-    .map((condition) => [condition.material, condition.materialGold]));
+const AGRONOMY_MATERIAL_GOLD = new Map(agronomyTreatmentCandidates(4)
+    .map((material) => [material, agronomyTreatmentContract(material)?.materialGold]));
 
 /**
  * Resolve the real material units and their existing gold reference price for
@@ -815,8 +829,7 @@ export function agronomyTreatmentMaterialUsage(requirements, qualificationLevel)
 export function treatmentGold(job, treatment, qualificationLevel = job.difficultyLevel, requirements = { [treatment]: 1 }) {
     const state = sourceState(job);
     if (job.career === "agronomist") {
-        const contract = Object.values(AGRONOMY_CONDITIONS)
-            .find((entry) => entry.material === treatment);
+        const contract = agronomyTreatmentContract(treatment);
         if (!contract)
             throw new Error("agronomy_treatment_not_available");
         return agronomyTreatmentMaterialUsage(requirements, qualificationLevel).consumedGold;
@@ -835,12 +848,21 @@ function npcServiceContract(source) {
     if (source.career === "agronomist") {
         const contract = AGRONOMY_CONDITIONS[source.fact.condition];
         const baseFeeGold = AGRONOMY_NPC_BASE_FEE_GOLD[source.difficultyLevel];
-        if (!contract || !baseFeeGold || contract.minimumLevel !== source.difficultyLevel)
+        if (!contract || !baseFeeGold || contract.minimumLevel > source.difficultyLevel)
+            throw new Error("commission_npc_contract_unavailable");
+        const liveTreatment = sourceState({
+            career: source.career,
+            sourceId: source.sourceId,
+            objectType: source.objectType,
+            objectId: source.objectId,
+        }).source.requiredTreatment ?? contract.material;
+        const treatmentContract = agronomyTreatmentContract(liveTreatment);
+        if (!treatmentContract || treatmentContract.minimumLevel > source.difficultyLevel)
             throw new Error("commission_npc_contract_unavailable");
         return {
             baseFeeGold,
-            materialFeeGold: contract.materialGold,
-            treatment: contract.material,
+            materialFeeGold: treatmentContract.materialGold,
+            treatment: liveTreatment,
         };
     }
     if (source.career === "veterinarian") {
@@ -886,7 +908,17 @@ function npcWorldTreatment(source, treatment, actionKey, payloadHash, now) {
         }
         throw new Error("commission_npc_not_available");
     }, now);
-    replaceFarm(staged.id, staged);
+    const currentNature = getNatureWorld();
+    const nextNature = reconcileNatureTreatment(structuredClone(currentNature), staged, source.sourceId, result, now);
+    if (JSON.stringify(nextNature) !== JSON.stringify(currentNature)) {
+        replaceFarmsAndNatureAtomic({
+            replacements: [{ id: staged.id, farm: staged }],
+            nextNatureWorld: nextNature,
+        });
+    }
+    else {
+        replaceFarm(staged.id, staged);
+    }
     return result;
 }
 

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { currentSeason, currentWeather } from "../time.js";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
@@ -9,6 +10,23 @@ export const AGRONOMY_CONDITIONS = Object.freeze({
     nutrient_imbalance: Object.freeze({ minimumLevel: 3, growth: "half", material: "soil-conditioner", materialGold: 6_000 }),
     root_damage: Object.freeze({ minimumLevel: 3, growth: "paused", material: "root-treatment", materialGold: 10_000 }),
 });
+export const AGRONOMY_ADDITIONAL_TREATMENTS = Object.freeze({
+    "pest-net": Object.freeze({ minimumLevel: 2, material: "pest-net", materialGold: 5_000 }),
+});
+
+export const P4_SEASONAL_BASELINES = Object.freeze({
+    spring: Object.freeze({ agronomyChance: 0.12, animalChance: 0.03 }),
+    summer: Object.freeze({ agronomyChance: 0.08, animalChance: 0.02 }),
+    autumn: Object.freeze({ agronomyChance: 0.06, animalChance: 0.015 }),
+    winter: Object.freeze({ agronomyChance: 0.08, animalChance: 0.02 }),
+});
+const SEASON_ID_BY_NAME = Object.freeze({ "春": "spring", "夏": "summer", "秋": "autumn", "冬": "winter" });
+
+function p4SeasonalBaseline(now) {
+    if (!currentWeather(now))
+        return null;
+    return P4_SEASONAL_BASELINES[SEASON_ID_BY_NAME[currentSeason(now).name]] ?? null;
+}
 
 /**
  * Material saving is a batch property of the agronomist qualification.  The
@@ -23,7 +41,8 @@ export const AGRONOMY_MATERIAL_SAVING_RATES = Object.freeze({
 });
 
 const AGRONOMY_SAVABLE_MATERIALS = new Set(
-    Object.values(AGRONOMY_CONDITIONS).map((condition) => condition.material),
+    [...Object.values(AGRONOMY_CONDITIONS), ...Object.values(AGRONOMY_ADDITIONAL_TREATMENTS)]
+        .map((condition) => condition.material),
 );
 
 export function agronomyMaterialSavingRate(qualificationLevel) {
@@ -208,9 +227,14 @@ export function animalObservationsFor(condition) {
 }
 
 export function agronomyTreatmentCandidates(qualificationLevel) {
-    return [...new Set(Object.values(AGRONOMY_CONDITIONS)
+    return [...new Set([...Object.values(AGRONOMY_CONDITIONS), ...Object.values(AGRONOMY_ADDITIONAL_TREATMENTS)]
         .filter((entry) => entry.minimumLevel <= qualificationLevel)
         .map((entry) => entry.material))];
+}
+
+export function agronomyTreatmentContract(material) {
+    return [...Object.values(AGRONOMY_CONDITIONS), ...Object.values(AGRONOMY_ADDITIONAL_TREATMENTS)]
+        .find((entry) => entry.material === material) ?? null;
 }
 
 export function animalTreatmentCandidates(qualificationLevel) {
@@ -272,10 +296,25 @@ export function runP3WorldAction(farm, actionKey, payloadHash, operation, now = 
     return result;
 }
 
-function activeAgronomyIssue(farm) {
+function cropAgronomyIssues(crop) {
+    return [crop?.lingyeAgronomy, ...(Array.isArray(crop?.lingyeNatureAgronomy) ? crop.lingyeNatureAgronomy : [])]
+        .filter(Boolean);
+}
+
+function activeAgronomyIssue(farm, predicate = () => true) {
     for (const plot of farm.plots ?? []) {
-        const issue = plot.crop?.lingyeAgronomy;
-        if (["open", "stabilized", "treating"].includes(issue?.status))
+        for (const issue of cropAgronomyIssues(plot.crop)) {
+            if (["open", "stabilized", "treating"].includes(issue?.status) && predicate(issue))
+                return { issue, plot };
+        }
+    }
+    return null;
+}
+
+function findAgronomyIssue(farm, sourceId) {
+    for (const plot of farm.plots ?? []) {
+        const issue = cropAgronomyIssues(plot.crop).find((entry) => entry.sourceId === sourceId);
+        if (issue)
             return { issue, plot };
     }
     return null;
@@ -301,6 +340,8 @@ function advanceRecoveries(farm, state, day, now) {
             sourceId: health.sourceId,
             animalIndex: index,
             condition: health.condition,
+            natureEventId: health.natureEventId ?? null,
+            natureImpactId: health.natureImpactId ?? null,
             recordedAt: now,
         });
         delete animal.lingyeHealth;
@@ -321,7 +362,9 @@ function eligibleAgronomyConditions(plot) {
 }
 
 function generateAgronomyIssue(farm, day, now) {
-    if (activeAgronomyIssue(farm) || !stableChance(0.08, farm.id, day, "agronomy"))
+    const seasonal = p4SeasonalBaseline(now);
+    if (activeAgronomyIssue(farm, (issue) => !issue.natureEventId) ||
+        !stableChance(seasonal?.agronomyChance ?? 0.08, farm.id, day, "agronomy"))
         return null;
     const plots = (farm.plots ?? []).filter((plot) => plot.crop && !plot.crop.ripe);
     if (plots.length === 0)
@@ -343,9 +386,10 @@ function generateAgronomyIssue(farm, day, now) {
 }
 
 function generateAnimalCase(farm, state, day, now) {
+    const seasonal = p4SeasonalBaseline(now);
     if (activeAnimalCase(farm) ||
         (state.lastAnimalRecoveryDay !== null && day - state.lastAnimalRecoveryDay < 7) ||
-        !stableChance(0.02, farm.id, day, "animal-health")) {
+        !stableChance(seasonal?.animalChance ?? 0.02, farm.id, day, "animal-health")) {
         return null;
     }
     const animals = farm.ranch?.animals ?? [];
@@ -388,31 +432,38 @@ export function advanceP3Farm(farm, now = Date.now()) {
 }
 
 export function agronomyGrowthEffect(crop) {
-    const issue = crop?.lingyeAgronomy;
-    if (!issue || issue.status === "resolved")
-        return "normal";
-    return AGRONOMY_CONDITIONS[issue.condition]?.growth ?? "normal";
+    const effects = cropAgronomyIssues(crop)
+        .filter((issue) => issue.status !== "resolved")
+        .map((issue) => AGRONOMY_CONDITIONS[issue.condition]?.growth ?? "normal");
+    return effects.includes("paused") ? "paused" : effects.includes("half") ? "half" : "normal";
 }
 
 export function agronomyHarvestPenalty(crop) {
-    const issue = crop?.lingyeAgronomy;
-    return Boolean(issue && issue.status !== "resolved" && issue.qualityPenalty);
+    return cropAgronomyIssues(crop).some((issue) => issue.status !== "resolved" && issue.qualityPenalty);
+}
+
+export function agronomyTreatmentLocked(crop) {
+    return cropAgronomyIssues(crop).some((issue) => issue.status === "treating");
 }
 
 export function recordAgronomyHarvest(farm, plot, now = Date.now()) {
-    const issue = plot?.crop?.lingyeAgronomy;
-    if (!issue)
+    const issues = cropAgronomyIssues(plot?.crop);
+    if (issues.length === 0)
         return;
     const state = p3State(farm, beijingDay(now));
-    state.history.push({
-        type: "agronomy_harvested",
-        sourceId: issue.sourceId,
-        plotId: plot.id,
-        condition: issue.condition,
-        statusAtHarvest: issue.status,
-        qualityPenalty: issue.status !== "resolved" && Boolean(issue.qualityPenalty),
-        recordedAt: now,
-    });
+    for (const issue of issues) {
+        state.history.push({
+            type: "agronomy_harvested",
+            sourceId: issue.sourceId,
+            plotId: plot.id,
+            condition: issue.condition,
+            statusAtHarvest: issue.status,
+            qualityPenalty: issue.status !== "resolved" && Boolean(issue.qualityPenalty),
+            natureEventId: issue.natureEventId ?? null,
+            natureImpactId: issue.natureImpactId ?? null,
+            recordedAt: now,
+        });
+    }
 }
 
 export function ranchProductionPaused(animal) {
@@ -446,8 +497,8 @@ export function maybeApplyRanchRaidInjury(farm, animal, eventReference, now = Da
 }
 
 function requireIssue(farm, sourceId) {
-    const entry = activeAgronomyIssue(farm);
-    if (!entry || entry.issue.sourceId !== sourceId)
+    const entry = findAgronomyIssue(farm, sourceId);
+    if (!entry || !["open", "stabilized", "treating"].includes(entry.issue.status))
         throw new Error("agronomy_source_not_available");
     return entry;
 }
@@ -482,14 +533,16 @@ export function treatAgronomyIssue(farm, sourceId, treatment, qualificationLevel
     const contract = AGRONOMY_CONDITIONS[issue.condition];
     if (!contract || qualificationLevel < contract.minimumLevel)
         throw new Error("agronomy_qualification_insufficient");
-    const candidate = Object.values(AGRONOMY_CONDITIONS).find((entry) =>
-        entry.material === treatment && entry.minimumLevel <= qualificationLevel);
+    const candidate = agronomyTreatmentContract(treatment);
+    if (candidate && candidate.minimumLevel > qualificationLevel)
+        throw new Error("agronomy_treatment_not_available");
     if (!candidate)
         throw new Error("agronomy_treatment_not_available");
     if (issue.checks.length === 0)
         throw new Error("agronomy_check_required");
     addUnique(issue.treatments, treatment);
-    if (treatment !== contract.material) {
+    const requiredTreatment = issue.requiredTreatment ?? contract.material;
+    if (treatment !== requiredTreatment) {
         return {
             sourceId,
             status: issue.status,
@@ -499,7 +552,9 @@ export function treatAgronomyIssue(farm, sourceId, treatment, qualificationLevel
     }
     issue.status = "resolved";
     issue.resolvedAt = now;
-    return { sourceId, status: issue.status, resolved: true, materialGold: contract.materialGold };
+    if (issue.condition === "drought" && treatment === "water-retaining-cover")
+        issue.protectedForEvent = true;
+    return { sourceId, status: issue.status, resolved: true, materialGold: candidate.materialGold };
 }
 
 export function checkAnimalCase(farm, sourceId, check) {
@@ -563,6 +618,9 @@ export function currentP3Sources(farm) {
             status: agronomy.issue.status,
             checks: [...agronomy.issue.checks],
             treatments: [...agronomy.issue.treatments],
+            requiredTreatment: agronomy.issue.requiredTreatment ?? AGRONOMY_CONDITIONS[agronomy.issue.condition]?.material,
+            natureEventId: agronomy.issue.natureEventId ?? null,
+            natureImpactId: agronomy.issue.natureImpactId ?? null,
         } : null,
         animal: animal ? {
             sourceId: animal.health.sourceId,
@@ -573,6 +631,68 @@ export function currentP3Sources(farm) {
             checks: [...animal.health.checks],
             treatments: [...animal.health.treatments],
             recoveryUntilDay: animal.health.recoveryUntilDay,
+            natureEventId: animal.health.natureEventId ?? null,
+            natureImpactId: animal.health.natureImpactId ?? null,
         } : null,
     };
+}
+
+export function addNatureAgronomyIssue(farm, input) {
+    const plot = farm.plots?.find((entry) => entry.id === Number(input.plotId));
+    if (!plot?.crop)
+        return null;
+    plot.crop.lingyeNatureAgronomy ??= [];
+    const existing = plot.crop.lingyeNatureAgronomy.find((issue) => issue.sourceId === String(input.sourceId));
+    if (existing)
+        return existing;
+    const contract = AGRONOMY_CONDITIONS[input.condition];
+    if (!contract)
+        throw new Error("agronomy_condition_not_available");
+    const issue = {
+        sourceId: String(input.sourceId),
+        condition: input.condition,
+        status: "open",
+        generatedDay: Number(input.generatedDay),
+        generatedAt: Number(input.now),
+        checks: [],
+        treatments: [],
+        qualityPenalty: true,
+        natureEventId: String(input.eventId),
+        natureImpactId: String(input.impactId),
+        requiredTreatment: input.requiredTreatment ?? contract.material,
+        spreadFromSourceId: input.spreadFromSourceId ?? null,
+        lastSpreadDay: input.lastSpreadDay ?? null,
+        protectedForEvent: false,
+    };
+    plot.crop.lingyeNatureAgronomy.push(issue);
+    p3State(farm, Number(input.generatedDay));
+    return issue;
+}
+
+export function addNatureAnimalCase(farm, input) {
+    if (activeAnimalCase(farm))
+        return null;
+    const animal = farm.ranch?.animals?.[Number(input.animalIndex)];
+    const contract = ANIMAL_CONDITIONS[input.condition];
+    if (!animal || !contract)
+        return null;
+    animal.lingyeHealth = {
+        sourceId: String(input.sourceId),
+        condition: input.condition,
+        status: "open",
+        generatedDay: Number(input.generatedDay),
+        generatedAt: Number(input.now),
+        checks: [],
+        treatments: [],
+        recoveryUntilDay: null,
+        natureEventId: String(input.eventId),
+        natureImpactId: String(input.impactId),
+    };
+    p3State(farm, Number(input.generatedDay));
+    return animal.lingyeHealth;
+}
+
+export function agronomyIssuesForFarm(farm) {
+    return (farm.plots ?? []).flatMap((plot) => cropAgronomyIssues(plot.crop)
+        .map((issue) => ({ plot, issue })));
 }

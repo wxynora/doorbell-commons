@@ -38,5 +38,37 @@
     "maxRarity": "SP",
     "upgradeCost": "160000 金币",
     "achieveText": ""
+  },
+  {
+    "tier": 6,
+    "name": "广畴",
+    "plots": 24,
+    "maxRarity": "SP",
+    "upgradeCost": "200000 金币",
+    "achieveText": "田埂向外铺开，新的四块地已经翻松。"
+  },
+  {
+    "tier": 7,
+    "name": "阡陌",
+    "plots": 28,
+    "maxRarity": "SP",
+    "upgradeCost": "300000 金币",
+    "achieveText": "阡陌相连，农场又容得下四季的新收成。"
+  },
+  {
+    "tier": 8,
+    "name": "沃野",
+    "plots": 32,
+    "maxRarity": "SP",
+    "upgradeCost": "400000 金币",
+    "achieveText": "沃野渐成，三十二块地在风里舒展开来。"
+  },
+  {
+    "tier": 9,
+    "name": "丰原",
+    "plots": 36,
+    "maxRarity": "SP",
+    "upgradeCost": "500000 金币",
+    "achieveText": "三十六块地全部开垦，铃野的满田风光终于落成。"
   }
 ]

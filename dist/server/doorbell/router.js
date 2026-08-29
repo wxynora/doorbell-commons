@@ -36,7 +36,7 @@ import {
     handleDoorbellMcpMigration,
     handleDoorbellWelcomeReward,
 } from "./lifecycle.js";
-import { handleDoorbellLingyeAction } from "./lingye.js";
+import { handleDoorbellLingyeAction, handleDoorbellLingyeReadiness } from "./lingye.js";
 import {
     handleDoorbellConstablePublicNoticeOpen,
     handleDoorbellHumanConstableInterviewAction,
@@ -172,7 +172,7 @@ export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExe
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "mcp-migrations" && parts[3] === "revoke-farm-access" && parts.length === 4) {
-            await handleDoorbellMcpMigration(req, res, method);
+            await handleDoorbellMcpMigration(req, res, method, constableInterviewRuntime);
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "farm-actions" && parts[3] === "execute" && parts.length === 4) {
@@ -181,6 +181,10 @@ export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExe
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "lingye-actions" && parts[3] === "execute" && parts.length === 4) {
             await handleDoorbellLingyeAction(req, res, method, lingyeActionExecutor);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "lingye-actions" && parts[3] === "readiness" && parts.length === 4) {
+            handleDoorbellLingyeReadiness(req, res, method, constableInterviewRuntime);
             return true;
         }
         return false;

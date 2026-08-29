@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import { advance, steal, visitorWater, tryWaterReward, buyPotionSet, ensureHumanKey, pushSocialInbox, pushLog, craft, cookingDebuffReason, cookingDebuffStatusText, bribeGuardDog } from "./engine.js";
 import { dispatch, farmView, viewShop, viewEncyclopedia, shopBrief, viewMarket, buyFromMarket, visitView, tendNpc, buyNpcSeed, hasDamagedPublicName, viewKitchen } from "./game.js";
 import { harvestText, stealThiefText, statusFooter, waterText } from "./flavor.js";
-import { createFarm, getFarm, allFarms, playerFarms, save, getGlimmerWorld, getPublicExpeditionWorld, getQixiLantern2026World } from "./store.js";
+import { createFarm, getFarm, allFarms, playerFarms, save, getGlimmerWorld, getPublicExpeditionWorld, getQixiLantern2026World, restoreWorldSnapshotInMemory, setWorldCommitCoordinator, snapshotWorldForRollback, withWorldCommitContext } from "./store.js";
 import { MAX_FARMS, MESSAGE_TEXT_MAX, MESSAGES_MAX, NPC_ID, GROW_TICKS, BASE, REGISTRATION_OPEN, REGISTRATION_CLOSED_TEXT, REGISTRATION_CAP, REGISTRATION_FULL_TEXT, SHOW_MIGRATION_NOTICE, MIGRATION_NOTICE_TEXT, MIGRATION_NOTICE_HTML } from "./config.js";
 import { allowRequest, allowCreate, sweepGuard } from "./guard.js";
 import { sweepNonces, htmlReadme, htmlGuide } from "./agent.js";
@@ -30,14 +30,16 @@ import { handleLegacyHumanRoute } from "./server/legacy-human/router.js";
 import { MCP_HELP, SHARED_HELP, SOCIAL_HELP } from "./server/farm/help.js";
 import { allowsSocial, farmByNumber, farmLabel, reachable, resolveNumberedTarget, ripeBroadcastText, stolenTodayText, visitListResult, wanderResult } from "./server/farm/social.js";
 import { createLegacyAgentHandler } from "./server/legacy-agent/runtime.js";
-import { createLingyeWorldBackend, openLingyeWorldDatabase } from "./lingye-world-database.js";
+import { createLingyeFarmBalanceCoordinator, createLingyeWorldBackend, openLingyeWorldDatabase, runLingyeWorldTransaction } from "./lingye-world-database.js";
+import { createLingyeActionExecutor } from "./server/doorbell/lingye.js";
 import { resolveChefOriginalCookingReceipt } from "./domain/kitchen/original.js";
 import { farmCareerBenefits, farmDoorbellKitchenCareerBenefits } from "./career/farm-benefits.js";
 import { farmActionTouchesLockedCareerObject, startRegisteredP3Scheduler } from "./career/p3-commission-runtime.js";
 import { startConstableInterviewScheduler } from "./career/constable-interview-scheduler.js";
 import { loadConstableInterviewBank } from "./career/constable-interview-bank.js";
+import { applyDroughtWatering, collectFloodFishForFarm, commitNatureFarmReconciliation, commitNatureRemovedPlot, startNatureRuntimeScheduler } from "./nature-runtime.js";
 let activeLingyeWorldDatabase = null;
-function executeDoorbellFarmAction(farm, action, params, detail, now) {
+function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
     const body = { ...params };
     if (action === "wander") {
         const result = wanderResult({ ...body, by: farm.id }, now, true);
@@ -66,6 +68,17 @@ function executeDoorbellFarmAction(farm, action, params, detail, now) {
         ? { ...body, by: farm.id, token: farm.token, targetRef: String(resolved.number) }
         : { ...body, token: farm.token };
     return runFarm(target, action, injected, social ? farm.id : body.id, now, { detail });
+}
+function executeDoorbellFarmAction(farm, action, params, detail, now) {
+    const rollback = snapshotWorldForRollback();
+    try {
+        return withWorldCommitContext({ balanceAuthority: "farm", actor: "agent" }, () =>
+            executeDoorbellFarmActionCore(farm, action, params, detail, now));
+    }
+    catch (error) {
+        restoreWorldSnapshotInMemory(rollback);
+        throw error;
+    }
 }
 function executeLegacyMcpAction(me, action, params, now) {
     const b = { ...params };
@@ -333,6 +346,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
             const watered = visitorWater(f, principal.id, target.plot.id, principal.name, now);
             if (!watered.ok)
                 return { status: 400, json: { ok: false, text: watered.error, ...vf(principal) } };
+            applyDroughtWatering(f, [target.plot.id], now);
             const got = tryWaterReward(f, principal, now);
             const qixi = recordQixi2026Progress(principal, "water", 1, now);
             pushSocialInbox(f, `💧 「${principal.name}」为铃野共行照料了你的 ${target.plot.id} 号试验田`, now);
@@ -353,6 +367,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
             if (!harvested.ok)
                 return { status: 400, json: { ok: false, text: harvested.text, ...vf(f) } };
             const r = recordPublicContribution(publicWorld, f, { kind: "harvest", plotId: plot.id }, now, publicFarms);
+            commitNatureFarmReconciliation(f, now);
             save();
             return { status: r.ok ? 200 : 400, json: { ok: r.ok, text: r.ok ? `${harvested.text}\n${r.text}` : r.text, ...vf(f) } };
         }
@@ -427,8 +442,10 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         const r = steal(f, Number(b.plotId), byId, now, thief);
         checkTitles(thief);
         checkTitles(f); // 大盗 / 倒霉称号
-        if (r.ok)
+        if (r.ok) {
             pushSocialInbox(f, `🥷 「${thief.name}」偷了你的菜`, now);
+            commitNatureRemovedPlot(f, Number(b.plotId), "visitor", `steal:${thief.id}:${f.id}:${Number(b.plotId)}`, now);
+        }
         save();
         if (!r.ok) {
             const bribe = r.guardBlocked
@@ -442,11 +459,13 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
     }
     if (isGuardBribe) {
         const thief = getFarm(byId);
+        const pendingPlotId = thief?.ranch?.kitchen?.pendingGuard?.plotId;
         const r = bribeGuardDog(thief, f, String(b.dishId), now);
         if (!r.ok) {
             save();
             return { status: 400, json: { ok: false, text: `${r.error}${r.dishKept ? "（料理没有消耗，本次尝试结束。）" : ""}`, ...vf(thief) } };
         }
+        commitNatureRemovedPlot(f, pendingPlotId, "visitor", `steal:${thief.id}:${f.id}:${pendingPlotId}`, now);
         pushSocialInbox(f, `🥷 「${thief.name}」用料理哄住看家狗后偷了你的菜`, now);
         save();
         const got = stealThiefText(r.crop) + `（${r.quality.name}·+${r.value}金）`;
@@ -465,6 +484,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         const r = visitorWater(f, byId, b.plotId != null ? Number(b.plotId) : undefined, visitor.name, now);
         if (!r.ok)
             return { status: 400, json: { ok: false, text: r.error } };
+        applyDroughtWatering(f, [r.plotId], now);
         visitor.watered = (visitor.watered ?? 0) + 1; // 热心榜累计：成功帮浇一次 +1
         onTaskEvent(visitor, "help_water", now); // 随机任务：帮邻居浇水（浇水者）
         const qixi = recordQixi2026Progress(visitor, "water", 1, now);
@@ -537,6 +557,19 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         ? new Map(f.plots.map((plot) => [plot.id, plot.crop]))
         : null;
     const r = dispatch(f, { ...b, action }, now, careerBenefits);
+    if (r?.ok && action === "water") {
+        const plotIds = b.plotId != null ? [Number(b.plotId)] : f.plots.map((plot) => plot.id);
+        applyDroughtWatering(f, plotIds, now);
+    }
+    if (r?.ok && action === "run" && b.water)
+        applyDroughtWatering(f, f.plots.map((plot) => plot.id), now);
+    if (r?.ok && (action === "harvest" || action === "run"))
+        commitNatureFarmReconciliation(f, now);
+    if (r?.ok && action === "run") {
+        const floodFish = collectFloodFishForFarm(f, now);
+        if (floodFish.collected > 0)
+            r.text = `${r.text}\n${floodFish.text}`;
+    }
     if (r.ok && cropsBefore
         && f.plots.some((plot) => plot.crop?.seedType === "common" && cropsBefore.get(plot.id) !== plot.crop)) {
         const encounter = recordPublicPlantEncounter(publicWorld, f, now, publicFarms);
@@ -626,6 +659,11 @@ function maintenanceOut(req, res, parts, method) {
 export function startServer(port, host = "127.0.0.1") {
     const lingyeWorldDatabase = openLingyeWorldDatabase();
     activeLingyeWorldDatabase = lingyeWorldDatabase;
+    const lingyeEconomyRules = Object.freeze({
+        minimumSystemLoanCreditDays: 7,
+        restrictedDailyGoldLimit: 200000,
+        restrictedDailySilverLimit: 400,
+    });
     const careerBenefitsForFarm = (farm) => farmCareerBenefits(lingyeWorldDatabase, farm);
     const resolveOriginalCookingReceipt = (receiptId) => {
         const matches = allFarms()
@@ -634,26 +672,90 @@ export function startServer(port, host = "127.0.0.1") {
         return matches.length === 1 ? matches[0] : null;
     };
     const lingyeWorldBackend = createLingyeWorldBackend(lingyeWorldDatabase, {
-        economyRules: {
-            minimumSystemLoanCreditDays: null,
-            restrictedDailyGoldLimit: null,
-            restrictedDailySilverLimit: null,
-        },
+        economyRules: lingyeEconomyRules,
         chefAuthority: {
             resolveCookingReceipt: resolveOriginalCookingReceipt,
             useFarmStore: true,
         },
         constableInterviewBank: loadConstableInterviewBank(),
     });
+    const balanceCoordinator = createLingyeFarmBalanceCoordinator(lingyeWorldDatabase, lingyeWorldBackend);
+    setWorldCommitCoordinator(balanceCoordinator);
+    try {
+        save();
+    }
+    catch (error) {
+        setWorldCommitCoordinator(null);
+        lingyeWorldDatabase.close();
+        activeLingyeWorldDatabase = null;
+        throw error;
+    }
+    const rawLingyeActionExecutor = createLingyeActionExecutor({
+        database: lingyeWorldDatabase,
+        backend: lingyeWorldBackend,
+        economyRules: lingyeEconomyRules,
+    });
+    const syncLedgerProjection = () => {
+        const needsProjection = playerFarms().some((farm) => {
+            const residentId = farm.doorbellMcpMigration?.residentId;
+            if (!residentId)
+                return false;
+            const account = lingyeWorldBackend.trustedQueries.getAccount(residentId);
+            return farm.coins !== account.availableGold || farm.silver !== account.availableSilver;
+        });
+        if (needsProjection)
+            save();
+    };
+    const lingyeActionExecutor = Object.freeze({
+        execute(input) {
+            const operation = () => withWorldCommitContext({ balanceAuthority: "ledger", actor: "human" }, () => {
+                const result = rawLingyeActionExecutor.execute(input);
+                syncLedgerProjection();
+                return result;
+            });
+            return input.op.startsWith("go.bank.") || input.op.startsWith("go.school.")
+                ? runLingyeWorldTransaction(lingyeWorldDatabase, operation)
+                : operation();
+        },
+    });
+    const runEmploymentCycle = () => runLingyeWorldTransaction(lingyeWorldDatabase, () =>
+        withWorldCommitContext({ balanceAuthority: "ledger", actor: "system" }, () => {
+            const result = lingyeWorldBackend.trustedSystemCommands.advanceEmploymentDays();
+            syncLedgerProjection();
+            return result;
+        }));
+    runEmploymentCycle();
+    let employmentTimer;
+    let employmentStopped = false;
+    const scheduleEmploymentCycle = () => {
+        if (employmentStopped)
+            return;
+        const current = Date.now();
+        const offset = 8 * 60 * 60 * 1000;
+        const nextBoundary = (Math.floor((current + offset) / (24 * 60 * 60 * 1000)) + 1) *
+            24 * 60 * 60 * 1000 - offset;
+        employmentTimer = setTimeout(() => {
+            try {
+                runEmploymentCycle();
+            }
+            catch {
+                console.error("[lingye-employment] daily duty settlement failed");
+            }
+            scheduleEmploymentCycle();
+        }, Math.max(0, nextBoundary - current));
+        employmentTimer.unref();
+    };
+    scheduleEmploymentCycle();
     const doorbellCareerBenefitsForFarm = (farm) =>
         farmDoorbellKitchenCareerBenefits(lingyeWorldDatabase, lingyeWorldBackend, farm);
     const handleDoorbellInternal = createDoorbellInternalHandler(
         executeDoorbellFarmAction,
-        undefined,
+        lingyeActionExecutor,
         doorbellCareerBenefitsForFarm,
-        { database: lingyeWorldDatabase, backend: lingyeWorldBackend },
+        { database: lingyeWorldDatabase, backend: lingyeWorldBackend, economyRules: lingyeEconomyRules },
     );
     const stopP3Scheduler = startRegisteredP3Scheduler(lingyeWorldDatabase);
+    const stopNatureScheduler = startNatureRuntimeScheduler();
     const stopConstableInterviewScheduler = startConstableInterviewScheduler(lingyeWorldDatabase, lingyeWorldBackend);
     const server = createServer(async (req, res) => {
         const url = new URL(req.url ?? "/", `http://localhost:${port}`);
@@ -873,7 +975,12 @@ export function startServer(port, host = "127.0.0.1") {
     setInterval(() => { const t = Date.now(); sweepGuard(t); sweepNonces(t); legacyAgent.sweepFlashes(t); }, 60_000).unref(); // 周期清理限流表 + 过期 nonce/flash
     server.once("close", () => {
         stopP3Scheduler();
+        stopNatureScheduler();
         stopConstableInterviewScheduler();
+        employmentStopped = true;
+        if (employmentTimer)
+            clearTimeout(employmentTimer);
+        setWorldCommitCoordinator(null);
         if (activeLingyeWorldDatabase === lingyeWorldDatabase)
             activeLingyeWorldDatabase = null;
         lingyeWorldDatabase.close();

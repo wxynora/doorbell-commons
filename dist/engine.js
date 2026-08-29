@@ -1,12 +1,13 @@
 // 核心引擎：惰性生长 + 抽卡收获 + 浇水运气 + 偷菜 + 商店 + 土地升级。
 import { Rng } from "./rng.js";
 import { rollCrop, rollQuality, cropValue } from "./gacha.js";
-import { currentSeason, currentDayIndex } from "./time.js";
+import { currentSeason, currentDayIndex, currentWeather } from "./time.js";
 import { TICK_MS, SEED_PRICE, NEW_CODEX_REWARD, HARVEST_EVENT_CHANCE, MATERIAL_DROP_CHANCE, MATERIAL_DROP_WEIGHT, POTION_DROP_CHANCE, STEAL_COOLDOWN_MS, STEAL_DAILY_CAP, STEAL_SHIELD_MS, HUMAN_HARVEST_DAILY_CAP, NPC_ID, } from "./config.js";
 import { crops, getCrop, animals, animalById, pets, petById, qualities, materials, materialById, specialEvents, cookingIngredients, cookingRecipes, cookingIngredientById, cookingRecipeById, } from "./content.js";
 import { onTaskEvent } from "./tasks.js";
 import { glimmerBuffMultiplier } from "./glimmer.js";
 import { qixi2026HarvestSilver, qixi2026TransferAllowed, recordQixi2026Harvest } from "./qixi-2026.js";
+import { recordWelfareWeekProgress } from "./welfare-week.js";
 import { pushInbox, pushLog, pushSocialInbox, pushTrail, takeInbox } from "./domain/shared/notifications.js";
 import {
     affordablePotions,
@@ -103,6 +104,7 @@ import {
     advanceP3Farm,
     agronomyGrowthEffect,
     agronomyHarvestPenalty,
+    agronomyTreatmentLocked,
     recordAgronomyHarvest,
 } from "./career/p3-world.js";
 import { randomUUID } from "node:crypto";
@@ -275,6 +277,7 @@ function rollBonusEvent(rng) {
 // 季节收获事件:这批是否还能吃到效果(带计数上限的如知时雨/蜂媒最多 6 株)
 const seasonApplies = (mod) => !!mod && (!mod.capLeft || mod.capLeft.n > 0);
 const qualityByTier = (t) => qualities.find((q) => q.tier === t);
+export const P4_WINTER_BASE_YIELD_MULTIPLIER = 0.80;
 function agronomistExtraHarvestEligible(crop, plantedCrop) {
     if (crop?.category !== "common" || crop?.rarity === "SP")
         return false;
@@ -294,7 +297,7 @@ export function harvest(farm, plotId, now, seasonMod, options = {}) {
         return { ok: false, error: `${plotId} 号地没有作物` };
     if (!plot.crop.ripe)
         return { ok: false, error: "作物还没成熟" };
-    if (plot.crop.lingyeAgronomy?.status === "treating")
+    if (agronomyTreatmentLocked(plot.crop))
         return { ok: false, error: "OP_REJECTED" };
     const rng = new Rng(farm.rngState);
     const c = plot.crop;
@@ -332,6 +335,10 @@ export function harvest(farm, plotId, now, seasonMod, options = {}) {
         bonus = null; // 七夕作物只按审定的基础银币与品相倍率结算，不展示未生效的金币价值倍率事件
     let value = qixiSilver ?? cropValue(crop, quality);
     if (qixiSilver === null) {
+        // 旧农场每块地只结算一份作物，因此“基础产量”落在该份基础金币价值上；
+        // 不影响活动银币、图鉴奖励、随机事件或其他独立结算。
+        if (currentWeather(now) && currentSeason(now).name === "冬")
+            value = Math.max(1, Math.round(value * P4_WINTER_BASE_YIELD_MULTIPLIER));
         if (ev?.effectType === "倍率")
             value = Math.round(value * (Number(ev.param) || 1));
         if (apply && seasonMod.type === "value_mult")
@@ -378,6 +385,7 @@ export function harvest(farm, plotId, now, seasonMod, options = {}) {
     farm.harvested = (farm.harvested ?? 0) + 1; // 勤劳榜累计
     const qixiEvents = recordQixi2026Harvest(farm, crop, c.seedType, now);
     onTaskEvent(farm, "harvest", now, { rarity: crop.rarity, isNew, isUgc: crop.category === "ugc" }); // 随机任务：收获N株R/SR/收新图鉴
+    recordWelfareWeekProgress(farm, "harvest", 1, now);
     pushLog(farm, `收获 ${crop.name}（${quality.name}），+${value}${qixiSilver === null ? "金" : "银"}${drop ? ` 掉素材[${drop.name}]` : ""}${potionDrop ? " 掉药水" : ""}`);
     return {
         ok: true,

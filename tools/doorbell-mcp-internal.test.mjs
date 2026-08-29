@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { DatabaseSync } from "node:sqlite";
 
 const dataDirectory = mkdtempSync(join(tmpdir(), "aifarm-doorbell-mcp-internal-"));
 process.env.AIFARM_DATA_DIR = dataDirectory;
@@ -21,6 +22,7 @@ const HUMAN_B = "human-key-b";
 const LEGACY_AGENT_KEY = "legacyA1";
 const MIGRATION_ID = "019ffb01-49cd-7020-84af-3d04fb1ed03d";
 const OTHER_MIGRATION_ID = "019ffb01-49cd-7020-94af-3d04fb1ed03d";
+const RESIDENT_ID = "10000000-0000-4000-8000-000000000001";
 
 function addFarm(id, humanKey, agentKey) {
   const farm = makeFarm(`Farm ${id}`);
@@ -67,11 +69,24 @@ test("Doorbell migration revokes legacy agent access durably and internal execut
   const baseUrl = `http://127.0.0.1:${address.port}`;
   const migrationPath = "/internal/doorbell/mcp-migrations/revoke-farm-access";
   const executionPath = "/internal/doorbell/farm-actions/execute";
+  const readinessPath = "/internal/doorbell/lingye-actions/readiness";
   const migrationBody = {
     migration_id: MIGRATION_ID,
+    resident_id: RESIDENT_ID,
     farm_human_key: HUMAN_A,
     expected_farm_doorplate: FARM_A,
   };
+
+  const readiness = await fetch(`${baseUrl}${readinessPath}`, {
+    headers: { authorization: "Bearer farm-doorbell-mcp-test-service-token" },
+  });
+  assert.equal(readiness.status, 200);
+  const readinessBody = await readiness.json();
+  assert.equal(readinessBody.schema_version, 1);
+  assert.equal(readinessBody.operations.length, 8);
+  assert.equal(readinessBody.ready, false);
+  assert.equal(readinessBody.missing.includes("private_exam_bank"), true);
+  assert.equal(readinessBody.missing.includes("nature_runtime"), true);
 
   const legacyBefore = await fetch(`${baseUrl}/a/${LEGACY_AGENT_KEY}/status`);
   assert.equal(legacyBefore.status, 200);
@@ -104,6 +119,20 @@ test("Doorbell migration revokes legacy agent access durably and internal execut
   assert.equal(mismatchedDoorplate.response.status, 409);
   assert.equal(JSON.parse(mismatchedDoorplate.text).error.code, "farm_doorplate_mismatch");
 
+  const circular = {};
+  circular.self = circular;
+  farmA.migrationSaveFailure = circular;
+  const failedSave = await requestJson(baseUrl, migrationPath, migrationBody);
+  assert.equal(failedSave.response.status, 503);
+  assert.equal(JSON.parse(failedSave.text).error.code, "migration_unavailable");
+  assert.equal(getFarm(FARM_A).agentKey, LEGACY_AGENT_KEY);
+  assert.equal(getFarm(FARM_A).doorbellMcpMigration, undefined);
+  const failedLedger = new DatabaseSync(join(dataDirectory, "lingye-world.sqlite"), { readOnly: true });
+  assert.equal(failedLedger.prepare("SELECT COUNT(*) AS count FROM residents").get().count, 0);
+  assert.equal(failedLedger.prepare("SELECT COUNT(*) AS count FROM economy_accounts").get().count, 0);
+  failedLedger.close();
+  delete farmA.migrationSaveFailure;
+
   const first = await requestJson(baseUrl, migrationPath, migrationBody);
   assert.equal(first.response.status, 200);
   const receipt = JSON.parse(first.text);
@@ -123,6 +152,14 @@ test("Doorbell migration revokes legacy agent access durably and internal execut
   assert.equal(getFarm(FARM_A).token, originalToken);
   assert.equal(getFarm(FARM_A).humanKey, originalHumanKey);
   assert.equal(getFarm(FARM_A).coins, originalCoins);
+  const ledger = new DatabaseSync(join(dataDirectory, "lingye-world.sqlite"), { readOnly: true });
+  t.after(() => ledger.close());
+  assert.deepEqual({ ...ledger.prepare(`
+    SELECT available_gold, available_silver FROM economy_accounts WHERE resident_id = ?
+  `).get(RESIDENT_ID) }, {
+    available_gold: originalCoins,
+    available_silver: 0,
+  });
   const syncRegistration = claimSyncedFarm(FARM_A, originalToken);
 
   const repeated = await requestJson(baseUrl, migrationPath, migrationBody);
@@ -177,6 +214,19 @@ test("Doorbell migration revokes legacy agent access durably and internal execut
   assert.equal(blockedLegacyAction.response.status, 400);
   assert.equal(JSON.parse(blockedLegacyAction.text).error.code, "unsupported_action");
   assert.equal(getFarm(FARM_A).token, originalToken);
+
+  const planted = await requestJson(baseUrl, executionPath, {
+    farm_human_key: HUMAN_A,
+    expected_farm_doorplate: FARM_A,
+    action: "plant",
+    params: { common: 1 },
+  });
+  assert.equal(planted.response.status, 200, planted.text);
+  assert.equal(JSON.parse(planted.text).ok, true);
+  assert.equal(getFarm(FARM_A).coins, originalCoins - 8);
+  assert.equal(ledger.prepare(`
+    SELECT available_gold FROM economy_accounts WHERE resident_id = ?
+  `).get(RESIDENT_ID).available_gold, originalCoins - 8);
 
   const renamed = await requestJson(baseUrl, executionPath, {
     farm_human_key: HUMAN_A,
@@ -259,12 +309,20 @@ test("Doorbell migration revokes legacy agent access durably and internal execut
   });
   assert.equal(syncResult.idempotent, false);
   assert.equal(getFarm(FARM_A).agentKey, undefined);
-  assert.deepEqual(getFarm(FARM_A).doorbellMcpMigration, {
+  assert.deepEqual({
+    ...getFarm(FARM_A).doorbellMcpMigration,
+    balanceProjection: undefined,
+  }, {
     migrationId: MIGRATION_ID,
+    residentId: RESIDENT_ID,
+    legacyGold: originalCoins,
+    legacySilver: 0,
     confirmationId: receipt.confirmation_id,
     revokedAt: receipt.revoked_at,
     legacyMcpRevoked: true,
+    balanceProjection: undefined,
   });
+  assert.equal(getFarm(FARM_A).doorbellMcpMigration.balanceProjection.authority, "farm");
 
   const persisted = JSON.parse(readFileSync(join(dataDirectory, "world.json"), "utf8"));
   const persistedFarm = persisted.farms.find((farm) => farm.id === FARM_A);
@@ -272,12 +330,20 @@ test("Doorbell migration revokes legacy agent access durably and internal execut
   assert.equal(persistedFarm.agentKey, undefined);
   assert.equal(persistedFarm.humanKey, originalHumanKey);
   assert.equal(persistedFarm.token, originalToken);
-  assert.deepEqual(persistedFarm.doorbellMcpMigration, {
+  assert.deepEqual({
+    ...persistedFarm.doorbellMcpMigration,
+    balanceProjection: undefined,
+  }, {
     migrationId: MIGRATION_ID,
+    residentId: RESIDENT_ID,
+    legacyGold: originalCoins,
+    legacySilver: 0,
     confirmationId: receipt.confirmation_id,
     revokedAt: receipt.revoked_at,
     legacyMcpRevoked: true,
+    balanceProjection: undefined,
   });
+  assert.equal(persistedFarm.doorbellMcpMigration.balanceProjection.authority, "farm");
   assert.equal(JSON.stringify(persisted).includes("farm-doorbell-mcp-test-service-token"), false);
 
   getFarm(FARM_A).agentKey = "memory-only-resurrection";

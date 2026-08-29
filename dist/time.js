@@ -1,7 +1,7 @@
 // 时间：P4 启用前兼容旧加速季节；启用后统一读取世界存档中的 14 日生态季。
 import { TICK_MS, TZ, SEASON_LENGTH_TICKS } from "./config.js";
 import { seasons, festivals } from "./content.js";
-import { ecologicalSeasonAt } from "./nature.js";
+import { ecologicalSeasonAt, natureSnapshot } from "./nature.js";
 let natureWorldProvider = () => null;
 export function setNatureWorldProvider(provider) {
     if (typeof provider !== "function")
@@ -16,6 +16,10 @@ export function currentSeason(now, natureWorld = natureWorldProvider()) {
     const totalTicks = Math.floor(now / TICK_MS);
     const idx = Math.floor(totalTicks / SEASON_LENGTH_TICKS) % seasons.length;
     return seasons[idx];
+}
+/** 同一权威世界时间线上的当日天气；P4 未启用时返回 null。 */
+export function currentWeather(now, natureWorld = natureWorldProvider()) {
+    return natureSnapshot(natureWorld, now).weather;
 }
 /** 取当前时区的 月/日/时 */
 function nowParts(now) {

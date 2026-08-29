@@ -19,6 +19,7 @@ import {
     REGISTRATION_OPEN,
 } from "../../config.js";
 import { PublicSyncError } from "../../public-sync.js";
+import { registerLingyeResidentReference, runLingyeWorldTransaction } from "../../lingye-world-database.js";
 import { jsonOut, readJsonBody } from "../http.js";
 import {
     DOORBELL_SERVICE_TOKEN,
@@ -118,53 +119,78 @@ export async function handleDoorbellFarmCreation(req, res, method) {
     }
 }
 
-export async function handleDoorbellMcpMigration(req, res, method) {
+export async function handleDoorbellMcpMigration(req, res, method, runtime) {
     if (!requireDoorbellService(req, res, method))
         return;
+    if (!runtime?.database || !runtime?.backend)
+        return internalServiceError(res, 503, "migration_unavailable", "The farm migration service is unavailable");
     try {
         const body = await readJsonBody(req, MAX_BODY_BYTES);
         const keys = isPlainObject(body) ? Object.keys(body) : [];
-        if (keys.length !== 3 || !keys.includes("migration_id") || !keys.includes("farm_human_key") || !keys.includes("expected_farm_doorplate") || !UUID_RE.test(String(body.migration_id ?? "")))
-            return internalServiceError(res, 400, "invalid_request", "Submit only a valid migration_id, farm_human_key, and expected_farm_doorplate");
+        if (keys.length !== 4 || !keys.includes("migration_id") || !keys.includes("resident_id") || !keys.includes("farm_human_key") || !keys.includes("expected_farm_doorplate") || !UUID_RE.test(String(body.migration_id ?? "")) || !UUID_RE.test(String(body.resident_id ?? "")))
+            return internalServiceError(res, 400, "invalid_request", "Submit only a valid migration_id, resident_id, farm_human_key, and expected_farm_doorplate");
         const binding = validateFarmBinding(body);
         if (binding.error)
             return internalServiceError(res, binding.error.status, binding.error.code, binding.error.message);
         const farm = binding.farm;
         const migrationId = String(body.migration_id);
+        const residentId = String(body.resident_id);
         const existing = farm.doorbellMcpMigration;
         if (existing) {
-            if (existing.migrationId !== migrationId)
+            if (existing.migrationId !== migrationId || existing.residentId !== residentId)
                 return internalServiceError(res, 409, "migration_conflict", "This farm was migrated by a different operation");
-            if (farm.agentKey !== undefined) {
-                const previousAgentKey = farm.agentKey;
-                farm.agentKey = undefined;
-                try {
-                    save();
+        }
+        const receipt = runLingyeWorldTransaction(runtime.database, () => {
+            const legacyGold = existing?.legacyGold ?? farm.coins;
+            const legacySilver = existing?.legacySilver ?? farm.silver;
+            registerLingyeResidentReference(runtime.database, {
+                residentId,
+                bindingReference: migrationId,
+                registeredAt: runtime.now?.() ?? Date.now(),
+            });
+            runtime.backend.trustedSystemCommands.importLegacyBalances({
+                residentId,
+                gold: legacyGold,
+                silver: legacySilver,
+                migrationId,
+                idempotencyKey: `farm-migration:${migrationId}:legacy-balances`,
+            });
+            if (existing) {
+                if (farm.agentKey !== undefined) {
+                    const previousAgentKey = farm.agentKey;
+                    farm.agentKey = undefined;
+                    try {
+                        save();
+                    }
+                    catch (error) {
+                        farm.agentKey = previousAgentKey;
+                        throw error;
+                    }
                 }
-                catch (error) {
-                    farm.agentKey = previousAgentKey;
-                    throw error;
-                }
+                return migrationReceipt(farm);
             }
-            return jsonOut(res, 200, migrationReceipt(farm));
-        }
-        const previousAgentKey = farm.agentKey;
-        farm.agentKey = undefined;
-        farm.doorbellMcpMigration = {
-            migrationId,
-            confirmationId: randomUUID(),
-            revokedAt: new Date().toISOString(),
-            legacyMcpRevoked: true,
-        };
-        try {
-            save();
-        }
-        catch (error) {
-            farm.agentKey = previousAgentKey;
-            delete farm.doorbellMcpMigration;
-            throw error;
-        }
-        return jsonOut(res, 200, migrationReceipt(farm));
+            const previousAgentKey = farm.agentKey;
+            farm.agentKey = undefined;
+            farm.doorbellMcpMigration = {
+                migrationId,
+                residentId,
+                legacyGold,
+                legacySilver,
+                confirmationId: randomUUID(),
+                revokedAt: new Date(runtime.now?.() ?? Date.now()).toISOString(),
+                legacyMcpRevoked: true,
+            };
+            try {
+                save();
+            }
+            catch (error) {
+                farm.agentKey = previousAgentKey;
+                delete farm.doorbellMcpMigration;
+                throw error;
+            }
+            return migrationReceipt(farm);
+        });
+        return jsonOut(res, 200, receipt);
     }
     catch (error) {
         if (error instanceof PublicSyncError)

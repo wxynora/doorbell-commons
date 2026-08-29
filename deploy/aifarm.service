@@ -12,6 +12,7 @@ Environment=PORT=8091
 Environment=HOST=127.0.0.1
 Environment=PUBLIC_BASE_URL=https://doorbellcommons.com/farm
 Environment=AIFARM_DATA_DIR=/var/lib/aifarm
+EnvironmentFile=-/etc/doorbell-commons/aifarm.env
 ExecStart=/usr/bin/node /opt/aifarm/dist/index.js
 Restart=on-failure
 RestartSec=3

@@ -23,6 +23,7 @@ import { rollSeasonHarvest, rollSeasonStatus, seasonHeadline } from "../../seaso
 import { fishingStatusLine } from "../../fishing.js";
 import { GLIMMER_BUFF_TEXT, glimmerBuffActive, glimmerStatusLine } from "../../glimmer.js";
 import { qixi2026CompletionText, qixi2026TaskText, settleQixi2026QuietTask } from "../../qixi-2026.js";
+import { welfareWeekText } from "../../welfare-week.js";
 import { POTION_DAILY_CAP } from "../../config.js";
 import {
     composeHarvests,
@@ -82,7 +83,7 @@ function doRun(f, b, now, options = {}) {
         }
     }
     if (b.water) {
-        const w = waterAll(f, "主人", true);
+        const w = waterAll(f, "主人", true, now);
         if (w.ok)
             parts.push(`【浇水】${w.count} 块`);
         else if (b.water !== "if-any")
@@ -133,11 +134,12 @@ export function handleFieldAction(action, f, b, now, options = {}) {
             const seLine = se ? seasonHeadline(se) + "\n————————————\n" : "";
             const quiet = settleQixi2026QuietTask(f, now);
             const qixi = [qixi2026CompletionText(quiet), qixi2026TaskText(f, now)].filter(Boolean).join("\n");
+            const welfare = welfareWeekText(f, now);
             const inbox = takeInbox(f);
             const box = inbox.length ? "📬 新消息：\n" + inbox.join("\n") + "\n————————————\n" : "";
             const roam = ranchRoamLine(f);
             const ptl = potionTargetLine(f, now); // 催熟候选（限定/稀有优先），让 POST AI 也能策略性指定催熟
-            return { ok: true, text: withFooter(f, now, seLine + box + describeFarm(f, now) + (qixi ? "\n" + qixi : "") + (roam ? "\n" + roam : "") + (ptl ? "\n" + ptl : "") + "\n" + fishingStatusLine(f, now) + "\n" + glimmerStatusLine(f, now) + (glimmerBuffActive(now) ? "\n" + GLIMMER_BUFF_TEXT : "") + "\n" + shopBrief(f, now)) };
+            return { ok: true, text: withFooter(f, now, seLine + box + describeFarm(f, now) + (welfare ? "\n" + welfare : "") + (qixi ? "\n" + qixi : "") + (roam ? "\n" + roam : "") + (ptl ? "\n" + ptl : "") + "\n" + fishingStatusLine(f, now) + "\n" + glimmerStatusLine(f, now) + (glimmerBuffActive(now) ? "\n" + GLIMMER_BUFF_TEXT : "") + "\n" + shopBrief(f, now)) };
         }
         case "run": return doRun(f, b, now, options);
         case "plant": {
@@ -153,10 +155,10 @@ export function handleFieldAction(action, f, b, now, options = {}) {
         case "water": {
             const isOwner = !b.by;
             if (b.plotId != null) {
-                const r = water(f, Number(b.plotId), b.by ?? "主人", isOwner);
+                const r = water(f, Number(b.plotId), b.by ?? "主人", isOwner, now);
                 return { ok: r.ok, text: r.ok ? withFooter(f, now, waterText(r.isOwner, r.by) + (r.capped ? "（运气已封顶）" : "")) : r.error };
             }
-            const r = waterAll(f, b.by ?? "主人", isOwner);
+            const r = waterAll(f, b.by ?? "主人", isOwner, now);
             return { ok: r.ok, text: r.ok ? withFooter(f, now, `${waterText(isOwner, b.by ?? "主人")}（浇了 ${r.count} 块地）`) : "没有可浇水的作物" };
         }
         case "harvest": {

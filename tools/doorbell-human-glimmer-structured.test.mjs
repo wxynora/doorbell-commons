@@ -15,8 +15,10 @@ let clock = NOW;
 Date.now = () => clock;
 
 const { makeFarm } = await import("../dist/game.js");
+const { glimmer } = await import("../dist/content.js");
 const { getGlimmerWorld, insertFarm } = await import("../dist/store.js");
 const { startServer } = await import("../dist/server.js");
+const { currentDayIndex } = await import("../dist/time.js");
 
 const TOKEN = "farm-doorbell-human-glimmer-test-token";
 const PATH = "/internal/doorbell/human/glimmer/read";
@@ -48,7 +50,7 @@ test("Doorbell Human Glimmer read returns a pure strict projection", async (t) =
   farm.humanKey = HUMAN_KEY;
   farm.glimmer = {
     ticketDay: 0,
-    daily: { day: 0, explores: 1, captures: 0, lastCatchAt: 0 },
+    daily: { day: currentDayIndex(NOW), explores: 1, captures: 0, lastCatchAt: NOW - 5 * 60 * 1000 },
     unlocked: ["duck_peach"],
     encounterSeen: ["glimmer_spring"],
     favoriteSeen: [],
@@ -77,6 +79,12 @@ test("Doorbell Human Glimmer read returns a pure strict projection", async (t) =
   const baseUrl = `http://127.0.0.1:${address.port}`;
   const body = { farm_human_key: HUMAN_KEY, expected_farm_doorplate: FARM_ID };
 
+  assert.equal(glimmer.captureCooldownMs, 20 * 60 * 1000);
+  assert.equal(glimmer.ordinaryChance, 0.12);
+  assert.equal(glimmer.ordinaryFavoriteChance, 0.35);
+  assert.equal(glimmer.fantasyChance, 0.05);
+  assert.equal(glimmer.fantasyFavoriteChance, 0.2);
+
   const unauthorized = await request(baseUrl, body, { authorization: false });
   assert.equal(unauthorized.response.status, 401);
   assertStrictError(unauthorized.body, "authentication_required");
@@ -91,6 +99,7 @@ test("Doorbell Human Glimmer read returns a pure strict projection", async (t) =
   assert.deepEqual(first.body.subject, { farm_doorplate: FARM_ID });
   assert.deepEqual(Object.keys(first.body.data).sort(), [
     "achievements",
+    "capture_cooldown",
     "cooperation",
     "encounters",
     "events",
@@ -101,6 +110,9 @@ test("Doorbell Human Glimmer read returns a pure strict projection", async (t) =
     "tracks",
     "variants",
   ]);
+  assert.deepEqual(first.body.data.capture_cooldown, {
+    ready_at: "2026-08-23T13:15:00.000Z",
+  });
   assert.equal(first.body.data.tracks.length, 3);
   assert.equal(first.body.data.variants.length, 57);
   assert.equal(first.body.data.encounters.length, 20);
@@ -123,7 +135,12 @@ test("Doorbell Human Glimmer read returns a pure strict projection", async (t) =
   assert.deepEqual(farm, farmBefore);
   assert.deepEqual(getGlimmerWorld(), worldBefore);
 
-  clock = Date.parse("2026-08-23T11:00:00.000Z");
+  clock = Date.parse("2026-08-23T13:16:00.000Z");
+  const expired = await request(baseUrl, body);
+  assert.equal(expired.response.status, 200);
+  assert.equal(expired.body.data.capture_cooldown, null);
+
+  clock = Date.parse("2026-08-23T14:01:00.000Z");
   const closed = await request(baseUrl, body);
   assert.equal(closed.response.status, 200);
   assert.equal(closed.body.data.open, false);

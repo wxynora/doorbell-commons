@@ -25,6 +25,7 @@ export function isLimitedAvailable(crop, farm, now) {
         switch (rule.kind) {
             case "codexCount": return officialCodexCount(farm) >= (rule.n ?? 0);
             case "codexPct": return collectionPct(farm) * 100 >= (rule.n ?? 0);
+            case "landTier": return (farm.landTier ?? 1) >= (rule.n ?? 1);
             case "landMax": return nextUpgradeReq(farm) === null;
             case "nightShop": // 仅 UTC+8 凌晨 0:00–3:59，且当天 roll 命中（整段窗口稳定）
                 return currentHour(now) < 4 && dayHash(farm.id, currentDayIndex(now)) < (rule.chance ?? 0.2);

@@ -329,7 +329,7 @@ function candidateAt(world, endDay, type) {
         return null;
     if (type === "flood" && !facts.every((fact) => FLOOD_WEATHER.has(fact.condition)))
         return null;
-    if (type === "drought" && !facts.every((fact) => DROUGHT_WEATHER.has(fact.condition)))
+    if (type === "drought" && !facts.every((fact) => ["春", "夏", "秋"].includes(fact.season) && DROUGHT_WEATHER.has(fact.condition)))
         return null;
     if (type === "pest") {
         if (!facts.every((fact) => ["春", "夏"].includes(fact.season) && PEST_WARM_WEATHER.has(fact.condition)))

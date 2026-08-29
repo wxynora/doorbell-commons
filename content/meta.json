@@ -3,12 +3,12 @@
   "generatedFrom": "",
   "counts": {
     "families": 18,
-    "crops": 120,
+    "crops": 193,
     "animals": 12,
     "seasons": 4,
     "festivals": 12,
     "events": 16,
-    "land-tiers": 5,
+    "land-tiers": 9,
     "qualities": 5
   }
 }

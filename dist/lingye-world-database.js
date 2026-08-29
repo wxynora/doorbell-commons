@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -221,6 +221,99 @@ export function registerLingyeResidentReference(database, input) {
             .prepare("INSERT INTO residents (resident_id, binding_reference, registered_at) VALUES (?, ?, ?)")
             .run(residentId, bindingReference, input.registeredAt);
         return { residentId, bindingReference, registeredAt: input.registeredAt };
+    });
+}
+
+export function createLingyeFarmBalanceCoordinator(database, backend, options = {}) {
+    const generateOperationId = options.generateOperationId ?? randomUUID;
+    return (world, context, writeWorld) => runLingyeWorldTransaction(database, () => {
+        const migrated = world.farms.filter((farm) => farm?.doorbellMcpMigration?.migrationId);
+        const byResident = new Set();
+        for (const farm of migrated) {
+            const migration = farm.doorbellMcpMigration;
+            const residentId = String(migration.residentId ?? "").trim();
+            const bindingReference = String(migration.migrationId ?? "").trim();
+            if (!residentId || byResident.has(residentId))
+                throw new Error("Migrated farm resident binding is unavailable or duplicated");
+            byResident.add(residentId);
+            const registeredAt = Number.isFinite(Date.parse(migration.revokedAt))
+                ? Date.parse(migration.revokedAt)
+                : Date.now();
+            registerLingyeResidentReference(database, { residentId, bindingReference, registeredAt });
+            const account = database.prepare("SELECT resident_id FROM economy_accounts WHERE resident_id = ?").get(residentId);
+            if (account === undefined) {
+                backend.trustedSystemCommands.importLegacyBalances({
+                    residentId,
+                    gold: migration.legacyGold,
+                    silver: migration.legacySilver,
+                    migrationId: bindingReference,
+                    idempotencyKey: `farm-migration:${bindingReference}:legacy-balances`,
+                });
+            }
+        }
+        const ledgerAuthority = context?.balanceAuthority === "ledger";
+        const changes = [];
+        const farmChanges = [];
+        for (const farm of migrated) {
+            const migration = farm.doorbellMcpMigration;
+            const residentId = migration.residentId;
+            const account = backend.trustedQueries.getAccount(residentId);
+            if (ledgerAuthority) {
+                farm.coins = account.availableGold;
+                farm.silver = account.availableSilver;
+                migration.balanceProjection = {
+                    authority: "ledger",
+                    operationId: String(context?.operationId ?? generateOperationId()),
+                    gold: account.availableGold,
+                    silver: account.availableSilver,
+                };
+                continue;
+            }
+            const projection = migration.balanceProjection;
+            const rolledBackLedgerProjection = projection?.authority === "ledger" &&
+                (projection.gold !== account.availableGold || projection.silver !== account.availableSilver);
+            if (rolledBackLedgerProjection) {
+                farm.coins = account.availableGold;
+                farm.silver = account.availableSilver;
+                migration.balanceProjection = {
+                    authority: "ledger",
+                    operationId: String(projection.operationId),
+                    gold: account.availableGold,
+                    silver: account.availableSilver,
+                };
+                continue;
+            }
+            if (farm.coins !== account.availableGold || farm.silver !== account.availableSilver) {
+                changes.push({ residentId, gold: farm.coins, silver: farm.silver });
+                farmChanges.push(farm);
+            }
+            else if (!projection) {
+                migration.balanceProjection = {
+                    authority: "farm",
+                    operationId: String(migration.migrationId),
+                    gold: farm.coins,
+                    silver: farm.silver,
+                };
+            }
+        }
+        if (changes.length > 0) {
+            const operationId = generateOperationId();
+            backend.trustedSystemCommands.applyFarmBalanceChanges({
+                actor: context?.actor ?? "human",
+                changes,
+                businessReference: `farm-balance:${operationId}`,
+                idempotencyKey: `farm-balance:${operationId}`,
+            });
+            for (const farm of farmChanges) {
+                farm.doorbellMcpMigration.balanceProjection = {
+                    authority: "farm",
+                    operationId: String(operationId),
+                    gold: farm.coins,
+                    silver: farm.silver,
+                };
+            }
+        }
+        return writeWorld();
     });
 }
 
@@ -622,6 +715,24 @@ export function createLingyeWorldBackend(database, options) {
             setAvailability: (employmentId, availability) => atomic(() => employment.setAvailability(employmentId, availability)),
             endEmployment: (employmentId) => atomic(() => employment.endEmployment(employmentId)),
             generateNextDutyDays: () => atomic(() => employment.generateNextDutyDays()),
+            advanceEmploymentDays: () => atomic(() => {
+                const generated = employment.generateNextDutyDays();
+                const settled = employment.dueDutyWages().map((quote) => {
+                    const credited = economy.creditFromSystem({
+                        residentId: quote.residentId,
+                        currency: "gold",
+                        amount: quote.totalGold,
+                        businessType: "career_wage",
+                        businessRef: `career-duty:${quote.dutyId}:wage`,
+                        idempotencyKey: `career-duty:${quote.dutyId}:wage`,
+                    });
+                    return {
+                        dutyId: quote.dutyId,
+                        ...employment.settleDutyDay(quote.dutyId, credited.financialReceipt),
+                    };
+                });
+                return { generated, settled };
+            }),
             settleDutyDay: (input) => atomic(() => {
                 const credited = economy.creditFromSystem({
                     residentId: input.residentId,
@@ -775,6 +886,7 @@ export function createLingyeWorldBackend(database, options) {
     });
     const trustedSystemCommands = Object.freeze({
         importLegacyBalances: economyCommands.importLegacyBalances,
+        applyFarmBalanceChanges: (input) => atomic(() => economy.applyFarmBalanceChanges(input)),
         creditFromSystem: economyCommands.creditFromSystem,
         chargeToSystem: economyCommands.chargeToSystem,
         reserveSystemGold: economyCommands.reserveSystemGold,

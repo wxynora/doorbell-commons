@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { COURSE_TUITION_GOLD, EXAM_FEE_GOLD } from "../dist/career/contracts.js";
 import {
     createLingyeWorldBackend,
     openLingyeWorldDatabase,
@@ -157,19 +158,19 @@ test("Lingye world keeps resident references, economy and careers in one isolate
             career: "reporter",
             level: 1,
             courseIndex: 1,
-            amount: 20_000,
+            amount: COURSE_TUITION_GOLD[1],
             actor: "human",
             idempotencyKey: "career-tuition-1",
         });
 
-        assert.equal(harness.services.economy.getAccount("resident-a").availableGold, 180_000);
+        assert.equal(harness.services.economy.getAccount("resident-a").availableGold, 170_000);
         assert.deepEqual({ ...harness.database
             .prepare(`SELECT c.career, a.available_gold, r.binding_reference
               FROM career_tracks c
               JOIN economy_accounts a ON a.resident_id = c.resident_id
               JOIN residents r ON r.resident_id = c.resident_id`)
             .get() }, {
-            available_gold: 180_000,
+            available_gold: 170_000,
             binding_reference: "migration-a",
             career: "reporter",
         });
@@ -179,11 +180,11 @@ test("Lingye world keeps resident references, economy and careers in one isolate
             career: "reporter",
             level: 1,
             courseIndex: 2,
-            amount: 80_000,
+            amount: COURSE_TUITION_GOLD[1],
             actor: "human",
             idempotencyKey: "career-tuition-rollback",
         }));
-        assert.equal(harness.services.economy.getAccount("resident-a").availableGold, 180_000);
+        assert.equal(harness.services.economy.getAccount("resident-a").availableGold, 170_000);
         assert.equal(harness.database
             .prepare("SELECT COUNT(*) AS count FROM economy_commands WHERE idempotency_key = 'career-tuition-rollback'")
             .get().count, 0);
@@ -192,11 +193,11 @@ test("Lingye world keeps resident references, economy and careers in one isolate
             residentId: "resident-a",
             career: "reporter",
             level: 1,
-            amount: 40_000,
+            amount: EXAM_FEE_GOLD[1],
             actor: "human",
             idempotencyKey: "atomic-exam-rollback",
         }));
-        assert.equal(harness.services.economy.getAccount("resident-a").availableGold, 180_000);
+        assert.equal(harness.services.economy.getAccount("resident-a").availableGold, 170_000);
         assert.equal(harness.services.economy.getAccount("resident-a").frozenGold, 0);
         assert.equal(harness.database
             .prepare("SELECT COUNT(*) AS count FROM economy_commands WHERE idempotency_key = 'atomic-exam-rollback'")
@@ -207,7 +208,7 @@ test("Lingye world keeps resident references, economy and careers in one isolate
         try {
             assert.equal(reopened
                 .prepare("SELECT available_gold FROM economy_accounts WHERE resident_id = 'resident-a'")
-                .get().available_gold, 180_000);
+                .get().available_gold, 170_000);
             assert.equal(reopened
                 .prepare("SELECT COUNT(*) AS count FROM career_courses WHERE resident_id = 'resident-a'")
                 .get().count, 1);
@@ -255,7 +256,7 @@ test("failed world command rolls back its economy writes inside a committed oute
                 career: "reporter",
                 level: 1,
                 courseIndex: 2,
-                amount: 80_000,
+                amount: COURSE_TUITION_GOLD[1],
                 actor: "human",
                 idempotencyKey: "career-tuition-nested-rollback",
             });

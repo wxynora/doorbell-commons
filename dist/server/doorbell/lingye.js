@@ -5,7 +5,11 @@ import {
     CAREER_INSTITUTION,
     COURSE_TUITION_GOLD,
     EXAM_FEE_GOLD,
+    EXAM_PASS_COUNT,
+    EXAM_QUESTION_COUNT,
+    QUALIFICATION_LEVELS,
 } from "../../career/contracts.js";
+import { careerExamAvailability, curriculumCatalogAvailability } from "../../career/curriculum.js";
 import { courseCatalog } from "../../career/course-catalog.js";
 import {
     applyWorldCheck,
@@ -31,13 +35,16 @@ import {
 import { isBeijingExamSessionOpen } from "../../career/persistence.js";
 import { MAX_BODY_BYTES } from "../../config.js";
 import { PublicSyncError } from "../../public-sync.js";
+import { natureRuntimeReadiness } from "../../nature-runtime.js";
 import { jsonOut, readJsonBody } from "../http.js";
 import {
     UUID_RE,
+    DOORBELL_SERVICE_TOKEN,
     internalServiceError,
     isPlainObject,
     legacyAgentAccessRevoked,
     requireDoorbellService,
+    serviceTokenMatches,
     validateFarmBinding,
 } from "./contract.js";
 
@@ -51,6 +58,7 @@ const LINGYE_OPERATIONS = new Set([
     "go.newsroom.commission",
     "go.security.commission",
 ]);
+const LINGYE_READINESS_SCHEMA_VERSION = 1;
 
 const COMMISSION_CAREERS = Object.freeze({
     "go.farm.commission": "agronomist",
@@ -1562,6 +1570,87 @@ export function createLingyeActionExecutor(options) {
             }
         },
     });
+}
+
+export function lingyeRuntimeReadiness(economyRules) {
+    const catalog = curriculumCatalogAvailability();
+    const publicReadyLevels = [];
+    const privateReadyLevels = [];
+    for (const career of CAREER_IDS) {
+        for (const level of QUALIFICATION_LEVELS) {
+            const entry = catalog[career];
+            const coursesReady = [1, 2, 3].every((courseIndex) =>
+                entry?.courses.some((course) => course.level === level && course.courseIndex === courseIndex && course.available));
+            const publicExamReady = entry?.exams.some((exam) => exam.level === level && exam.available) === true;
+            if (coursesReady && publicExamReady)
+                publicReadyLevels.push({ career, level });
+            if (careerExamAvailability(career, level)) {
+                privateReadyLevels.push({
+                    career,
+                    level,
+                    question_count: EXAM_QUESTION_COUNT,
+                    pass_count: EXAM_PASS_COUNT,
+                });
+            }
+        }
+    }
+    const missing = [];
+    if (publicReadyLevels.length === 0)
+        missing.push("public_career_content");
+    const publicKeys = new Set(publicReadyLevels.map((entry) => `${entry.career}:${entry.level}`));
+    const privateKeys = new Set(privateReadyLevels.map((entry) => `${entry.career}:${entry.level}`));
+    if (publicKeys.size !== privateKeys.size ||
+        [...publicKeys].some((key) => !privateKeys.has(key)))
+        missing.push("private_exam_bank");
+    const ruleEntries = [
+        ["minimum_system_loan_credit_days", economyRules?.minimumSystemLoanCreditDays],
+        ["restricted_daily_gold_limit", economyRules?.restrictedDailyGoldLimit],
+        ["restricted_daily_silver_limit", economyRules?.restrictedDailySilverLimit],
+    ];
+    for (const [name, value] of ruleEntries) {
+        if (!Number.isSafeInteger(value) || value <= 0)
+            missing.push(name);
+    }
+    const rawNature = natureRuntimeReadiness();
+    const natureRuntime = {
+        adapter_version: rawNature.adapterVersion,
+        configured: rawNature.configured,
+        ready: rawNature.ready,
+        status: rawNature.status,
+        ...(rawNature.activationDate === undefined ? {} : { activation_date: rawNature.activationDate }),
+        ...(rawNature.activationDay === undefined ? {} : { activation_day: rawNature.activationDay }),
+        ...(rawNature.persistedStatus === undefined ? {} : { persisted_status: rawNature.persistedStatus }),
+        ...(rawNature.errorCode === undefined ? {} : { error_code: rawNature.errorCode }),
+    };
+    if (!natureRuntime.ready)
+        missing.push("nature_runtime");
+    return {
+        ok: true,
+        schema_version: LINGYE_READINESS_SCHEMA_VERSION,
+        ready: missing.length === 0,
+        operations: [...LINGYE_OPERATIONS],
+        exams: {
+            public_ready_levels: publicReadyLevels,
+            private_ready_levels: privateReadyLevels,
+        },
+        economy_rules: {
+            minimum_system_loan_credit_days: economyRules?.minimumSystemLoanCreditDays ?? null,
+            restricted_daily_gold_limit: economyRules?.restrictedDailyGoldLimit ?? null,
+            restricted_daily_silver_limit: economyRules?.restrictedDailySilverLimit ?? null,
+        },
+        nature_runtime: natureRuntime,
+        missing,
+    };
+}
+
+export function handleDoorbellLingyeReadiness(req, res, method, runtime) {
+    if (!DOORBELL_SERVICE_TOKEN)
+        return internalServiceError(res, 503, "service_not_configured", "Doorbell farm service is not configured");
+    if (!serviceTokenMatches(req.headers.authorization))
+        return internalServiceError(res, 401, "authentication_required", "A valid Doorbell service credential is required");
+    if (method !== "GET")
+        return internalServiceError(res, 405, "method_not_allowed", "Use GET for this service endpoint");
+    return jsonOut(res, 200, lingyeRuntimeReadiness(runtime?.economyRules));
 }
 
 let defaultExecutor;

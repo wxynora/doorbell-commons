@@ -9,6 +9,7 @@ export function metricValue(f, field) {
     switch (field) {
         case "harvested": return f.harvested ?? 0;
         case "coins": return f.coins ?? 0;
+        case "landTier": return f.landTier ?? 1;
         case "stolen": return f.stolen ?? 0;
         case "watered": return f.watered ?? 0;
         case "codexCount": return Object.keys(f.codex ?? {}).filter((id) => cropById.has(id)).length; // 官方图鉴种数（UGC 不计）

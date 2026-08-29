@@ -4,6 +4,7 @@
 import { TASK_DAILY_CAP, TASK_COOLDOWN_MS, TASK_OFFER_TTL_MS, NPC_ID } from "./config.js";
 import { currentDayIndex } from "./time.js";
 import { bumpDaily } from "./daily.js";
+import { recordWelfareWeekProgress } from "./welfare-week.js";
 // 社交类任务：只有「访问」开着（没闭门谢客）才会刷到
 const social = (f) => f.social?.visit !== false;
 // 有自创种子在背包（自创作物 id 以 "ugc_" 开头，见 engine.designCrop），才刷「种自创」
@@ -133,6 +134,7 @@ export function onTaskEvent(f, event, now, data = {}, count = 1) {
         t.completedAt = now;
         f.tasksDone = (f.tasksDone ?? 0) + 1; // 任务称号累计
         bumpDaily(f, now, "tasks"); // 卷王榜（今日完成任务数）
+        recordWelfareWeekProgress(f, "daily_task", 1, now);
     }
     return true;
 }

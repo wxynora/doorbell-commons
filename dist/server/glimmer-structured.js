@@ -106,18 +106,30 @@ function projectEncounters(encounters, seen) {
   }));
 }
 
+function projectCaptureCooldown(farm, now) {
+  const lastCatchAt = Number(farm?.glimmer?.daily?.lastCatchAt);
+  const cooldownMs = Number(glimmer.captureCooldownMs);
+  if (!Number.isFinite(lastCatchAt) || lastCatchAt <= 0 || !Number.isFinite(cooldownMs) || cooldownMs <= 0) {
+    return null;
+  }
+  const readyAt = lastCatchAt + cooldownMs;
+  return readyAt > now ? { ready_at: new Date(readyAt).toISOString() } : null;
+}
+
 /**
  * Project the existing Glimmer Human view on isolated farm/world clones.
  * glimmerHumanData owns daily and cross-day normalization; this adapter only
  * selects the fields that the structured Human UI is allowed to receive.
  */
 export function projectHumanGlimmer(farm, world, now = Date.now()) {
-  const view = glimmerHumanData(structuredClone(farm), structuredClone(world), now);
+  const projectedFarm = structuredClone(farm);
+  const view = glimmerHumanData(projectedFarm, structuredClone(world), now);
   const open = view.open === true;
   const data = {
     open,
     status: safeText(view.status),
     season: safeText(view.season),
+    capture_cooldown: projectCaptureCooldown(projectedFarm, now),
     tracks: view.tracks.map((variant) => projectTrack(variant)),
     cooperation: projectCooperation(view.coop),
     events: projectEvents(view.logs),

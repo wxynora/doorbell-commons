@@ -8,6 +8,7 @@ import {
 import { currentDayIndex, currentSeason } from "./time.js";
 import { Rng } from "./rng.js";
 import { RANCH_LEVEL_INCOME_STEP } from "./config.js";
+import { recordWelfareWeekProgress, takeWelfareWeekNotice } from "./welfare-week.js";
 
 const MAX_HISTORY = 30;
 const MAX_PUBLIC_LOGS = 10;
@@ -574,14 +575,19 @@ function ticket(farm, now) {
     if (!glimmerBuffActive(now))
         return { ok: false, text: `流光原野现在没有开放，不能提前购买通票。下次开放时间：${localParts(now).hour < glimmer.openHour ? "今日 20:00" : "明日 20:00"}。` };
     const state = resetDaily(farm, now);
-    if (hasTicket(state, now))
-        return { ok: true, text: withStatus(farm, now, "🎫 今天的通票已经买过了，不会重复扣款。") };
+    if (hasTicket(state, now)) {
+        recordWelfareWeekProgress(farm, "glimmer_ticket", 1, now);
+        const notice = takeWelfareWeekNotice(farm);
+        return { ok: true, text: withStatus(farm, now, `🎫 今天的通票已经买过了，不会重复扣款。${notice ? `\n${notice}` : ""}`) };
+    }
     if (farm.coins < glimmer.ticketCost)
         return { ok: false, text: `金币不足，通票要 500 金（你有 ${farm.coins} 金）。` };
     farm.coins -= glimmer.ticketCost;
     state.ticketDay = currentDayIndex(now);
     history(farm, { at: now, kind: "ticket", text: "今日通票" });
-    return { ok: true, text: withStatus(farm, now, "🎫 买下「流光原野」今日通票，-500 金。今天开放期间可以反复进入。") };
+    recordWelfareWeekProgress(farm, "glimmer_ticket", 1, now);
+    const notice = takeWelfareWeekNotice(farm);
+    return { ok: true, text: withStatus(farm, now, `🎫 买下「流光原野」今日通票，-500 金。今天开放期间可以反复进入。${notice ? `\n${notice}` : ""}`) };
 }
 
 function glimmerDishInventoryLine(farm) {

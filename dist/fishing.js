@@ -4,7 +4,7 @@ import {
     fishing, fishingSpots, fishingFish, fishingBaits, fishingEvents, fishingItems,
     fishingSpotById, fishingFishById, fishingBaitById, fishingEventById, fishingItemById,
 } from "./content.js";
-import { currentSeason, currentDayIndex } from "./time.js";
+import { currentSeason, currentDayIndex, currentWeather } from "./time.js";
 import { randomUUID } from "node:crypto";
 import { glimmerBuffMultiplier } from "./glimmer.js";
 import { qixi2026FishText, submitQixi2026Fish } from "./qixi-2026.js";
@@ -12,6 +12,27 @@ import { qixi2026FishText, submitQixi2026Fish } from "./qixi-2026.js";
 const RARITY_RANK = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4, mythic: 5 };
 const ECOLOGY_NOTICE = "🌿 为了让鱼群休息、繁衍，也给水域留一点恢复时间，每座农场每天最多钓 20 竿。无论钓到鱼、宝箱还是旧靴子，只要鱼线抛进水里都算一竿；北京时间 0 点刷新。";
 const DAILY_LIMIT_REACHED = "🌿 今天已经钓满 20 竿啦。鱼群需要休息，水面也该安静一会儿；先整理鱼篓、卖鱼或做料理吧，北京时间 0 点后再来。";
+// 模型可见协议文案：发布前仍需按仓库规则逐字审阅。
+export const FISHING_BAD_WEATHER_TEXT = "当前天气不适合钓鱼；这次没有消耗鱼饵、次数或钓位。";
+export const FLOOD_FISH_COLLECTED_TEXT = (names) => `洪水冲来的${names.join("、")}已经放进鱼篓。`;
+const FISHING_BLOCKED_WEATHER = new Set(["heavy_rain", "thunderstorm", "blizzard"]);
+const WEATHER_TAG_WEIGHT_MULTIPLIERS = Object.freeze({
+    cloudy: Object.freeze({ nocturnal: 1.20 }),
+    light_rain: Object.freeze({ freshwater: 1.25, brackish: 1.25, migratory: 1.25, fire: 0.80 }),
+    fog: Object.freeze({ nocturnal: 1.25, glowing: 1.25 }),
+    hot: Object.freeze({ fire: 1.35, freshwater: 0.75 }),
+    dry_wind: Object.freeze({ wind: 1.30, freshwater: 0.80 }),
+    light_snow: Object.freeze({ deepsea: 1.25, crystal: 1.25, fire: 0.80 }),
+});
+export function fishingWeatherTagMultiplier(condition, tags) {
+    const multipliers = WEATHER_TAG_WEIGHT_MULTIPLIERS[condition];
+    if (!multipliers)
+        return 1;
+    let result = 1;
+    for (const tag of new Set(tags ?? []))
+        result *= multipliers[tag] ?? 1;
+    return result;
+}
 
 class FishingRng {
     constructor(state, calls = 0) {
@@ -149,6 +170,8 @@ function fishWeight(fishDef, spot, season, bait, now) {
         weight *= bait.effects?.tag_weight_mult?.[tag] ?? 1;
     }
     weight *= bait.effects?.rarity_weight_mult?.[fishDef.rarity] ?? 1;
+    // 同一标签在同一天气中只应用一次；与季节、地点、鱼饵继续相乘。
+    weight *= fishingWeatherTagMultiplier(currentWeather(now)?.condition, fishDef.tags);
     if ((RARITY_RANK[fishDef.rarity] ?? 0) >= RARITY_RANK.rare)
         weight *= glimmerBuffMultiplier("fishingRareWeight", now);
     return weight;
@@ -187,6 +210,21 @@ function recordCatch(farm, state, fishDef, size) {
     if (bonus)
         farm.silver += bonus;
     return { instance, first, bonus };
+}
+
+/** 洪水临时池进入既有鱼篓；不走抛竿、鱼饵、次数或钓位。 */
+export function grantFloodFish(farm, fishId, size) {
+    const state = ensureFishing(farm);
+    const fishDef = fishingFishById.get(String(fishId ?? ""));
+    if (!fishDef || !["common", "uncommon"].includes(fishDef.rarity) ||
+        !(fishDef.tags ?? []).some((tag) => tag === "freshwater" || tag === "brackish")) {
+        throw new Error("flood_fish_contract_invalid");
+    }
+    const normalizedSize = Number(size);
+    if (!Number.isSafeInteger(normalizedSize) || normalizedSize < fishDef.size_min || normalizedSize > fishDef.size_max)
+        throw new Error("flood_fish_size_invalid");
+    const caught = recordCatch(farm, state, fishDef, normalizedSize);
+    return { ...caught, fishId: fishDef.id, name: fishDef.name };
 }
 
 function addReward(farm, state, rng, reward) {
@@ -648,6 +686,10 @@ export function runFishing(farm, params, now, farms) {
         return finish(sellFishing(farm, state, params.sell));
     if (params.open !== undefined)
         return finish(openChest(farm, state, params.open));
+    const shouldCast = params.times !== undefined || (params.bait !== undefined && params.buy === undefined)
+        || (params.buy === undefined && params.location === undefined);
+    if (shouldCast && FISHING_BLOCKED_WEATHER.has(currentWeather(now)?.condition))
+        return finish({ ok: false, text: FISHING_BAD_WEATHER_TEXT });
     const out = [];
     if (params.buy !== undefined) {
         const bought = buyBait(farm, state, params.bait, Number(params.buy));
@@ -661,8 +703,6 @@ export function runFishing(farm, params, now, farms) {
             return finish(moved);
         out.push(moved.text);
     }
-    const shouldCast = params.times !== undefined || (params.bait !== undefined && params.buy === undefined)
-        || (params.buy === undefined && params.location === undefined);
     if (shouldCast) {
         const cast = castMany(farm, state, farms, params, now);
         if (!cast.ok)

@@ -5,6 +5,7 @@ import { currentSeason } from "../../time.js";
 import { taskView } from "../../tasks.js";
 import { allUgc } from "../../ugc.js";
 import { qixi2026CompletionText } from "../../qixi-2026.js";
+import { takeWelfareWeekNotice } from "../../welfare-week.js";
 
 export function farmView(f, now) {
     return {
@@ -69,9 +70,10 @@ export function randomTip(f) {
 }
 
 export const withFooter = (f, now, t) => {
+    const welfare = takeWelfareWeekNotice(f);
     const notices = takeUnlockNotices(f);
     const tip = randomTip(f);
-    return `${t}${notices ? "\n" + notices : ""}\n${statusFooter(f, now)}${tip ? "\n" + tip : ""}`;
+    return `${t}${welfare ? "\n" + welfare : ""}${notices ? "\n" + notices : ""}\n${statusFooter(f, now)}${tip ? "\n" + tip : ""}`;
 };
 
 export function fmtHarvest(r, harvesterId) {
