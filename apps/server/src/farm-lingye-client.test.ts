@@ -88,7 +88,13 @@ const TOGETHER_RESULT = {
     },
     cooldown: null,
     ending: null,
-    clues: [],
+    clues: [
+      {
+        id: "same_kitchen:1:letter_encounter",
+        title: "两封信为什么没有送到",
+        text: "两封信分别去了错误的旧址和码头。",
+      },
+    ],
   },
   server_time: "2026-08-24T13:00:00.000Z",
 };
@@ -147,6 +153,26 @@ test("farm Lingye client posts fixed Glimmer and Together contracts with server-
         url: "https://farm.example/farm/internal/doorbell/human/together/read",
       },
     ],
+  );
+});
+
+test("farm Lingye client rejects an invalid round-scoped Together clue id", async () => {
+  const invalid = {
+    ...TOGETHER_RESULT,
+    data: {
+      ...TOGETHER_RESULT.data,
+      clues: [
+        {
+          ...TOGETHER_RESULT.data.clues[0],
+          id: "same_kitchen:0:letter_encounter",
+        },
+      ],
+    },
+  };
+
+  await assert.rejects(
+    createClient(async () => Response.json(invalid)).readTogether(INPUT),
+    FarmLingyeContractUnavailableError,
   );
 });
 

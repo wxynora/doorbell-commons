@@ -879,9 +879,17 @@ const farmTogetherEndingSchema = z
   })
   .strict();
 
+const farmTogetherClueIdSchema = z.union([
+  lingyeIdSchema,
+  z
+    .string()
+    .max(128)
+    .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*:[1-9][0-9]*:[A-Za-z0-9][A-Za-z0-9._-]*$/),
+]);
+
 const farmTogetherClueSchema = z
   .object({
-    id: lingyeIdSchema,
+    id: farmTogetherClueIdSchema,
     title: lingyeShortTextSchema,
     text: lingyeTextSchema,
   })

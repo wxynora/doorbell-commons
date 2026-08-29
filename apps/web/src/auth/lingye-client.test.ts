@@ -104,7 +104,13 @@ test("Together read accepts narrative-only authoritative archives", async () => 
       current_choice: null,
       cooldown: null,
       ending: null,
-      clues: [],
+      clues: [
+        {
+          id: "same_kitchen:1:letter_encounter",
+          title: "两封信为什么没有送到",
+          text: "两封信分别去了错误的旧址和码头。",
+        },
+      ],
     },
     server_time: "2026-08-26T14:00:00.000Z",
   };
