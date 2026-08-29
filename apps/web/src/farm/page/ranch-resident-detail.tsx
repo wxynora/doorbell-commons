@@ -128,7 +128,7 @@ function ranchResidentOutcomeMessage(outcome: RanchResidentActionOutcome): strin
     return `名字已改为 ${outcome.name}`;
   }
   if (outcome.kind === "toggle_pin") {
-    return outcome.pinned ? "已置顶" : "已取消置顶";
+    return outcome.pinned ? "已加入农场氛围" : "已移出农场氛围";
   }
   if (outcome.kind === "wear_accessory") {
     return `${outcome.wearer_name}已佩戴${outcome.accessory_name}`;
@@ -243,6 +243,28 @@ export function RanchResidentDetail({
         return;
       }
 
+      if (
+        !result.ok &&
+        result.issue.code === "state_conflict" &&
+        result.issue.currentRevision &&
+        result.issue.currentRevision !== attempt.input.expectedRevision
+      ) {
+        const refreshedAttempt = {
+          ...attempt,
+          input: { ...attempt.input, expectedRevision: result.issue.currentRevision },
+        };
+        try {
+          result = await onAction(refreshedAttempt.input);
+        } catch {
+          setActionState({
+            stage: "error",
+            attempt: null,
+            issue: { code: "unexpected_response", currentRevision: null, serverMessage: null },
+          });
+          return;
+        }
+      }
+
       if (result.ok) {
         setActionState({ stage: "success", outcome: result.data.data.result.outcome });
         return;
@@ -331,6 +353,9 @@ export function RanchResidentDetail({
                 {residentData.produce.item.pending_count !== null
                   ? ` ×${residentData.produce.item.pending_count}`
                   : ""}
+                {residentData.produce.item.unit_value !== null
+                  ? ` · 单份价值 ${residentData.produce.item.unit_value.toLocaleString("zh-CN")} 牧场金币`
+                  : ""}
               </dd>
             </div>
           ) : null}
@@ -341,6 +366,9 @@ export function RanchResidentDetail({
                 {residentData.produce.meat.name}
                 {residentData.produce.meat.pending_count !== null
                   ? ` ×${residentData.produce.meat.pending_count}`
+                  : ""}
+                {residentData.produce.meat.unit_value !== null
+                  ? ` · 单份价值 ${residentData.produce.meat.unit_value.toLocaleString("zh-CN")} 牧场金币`
                   : ""}
               </dd>
             </div>
@@ -403,8 +431,14 @@ export function RanchResidentDetail({
               {liveResident?.residentType === "animal"
                 ? renderActionButton("upgrade", "升级")
                 : null}
-              {renderActionButton("toggle_pin", residentData?.pinned ? "取消置顶" : "置顶")}
+              {renderActionButton(
+                "toggle_pin",
+                residentData?.pinned ? "移出氛围" : "加入氛围",
+              )}
             </div>
+            <p className="ranch-resident-detail__action-status">
+              氛围选择只影响小机看到的农场描述，不改变动物排序。
+            </p>
 
             <form
               className="ranch-resident-detail__action-row"
