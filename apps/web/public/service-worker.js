@@ -2,7 +2,7 @@ const CACHE_PREFIX = "doorbell-community-pwa-";
 const APP_SHELL_CACHE = `${CACHE_PREFIX}shell-v1`;
 const STATIC_CACHE = `${CACHE_PREFIX}static-v1`;
 const VITE_HASHED_ASSET_RE = /\/[^/]+-[a-z0-9_-]{8,}\.(?:js|css)$/i;
-const PUBLIC_ASSET_RE = /\.(?:avif|gif|jpe?g|png|svg|webmanifest|webp|woff2?)$/i;
+const PUBLIC_ASSET_RE = /\.(?:avif|css|gif|jpe?g|png|svg|ttf|webmanifest|webp|woff2?)$/i;
 const PUBLIC_VERSION_MARKER_RE = /(?:^|[._-])(?:v\d+|[a-f0-9]{8,})(?:[._-]|$)/i;
 
 function isApiRequest(url) {

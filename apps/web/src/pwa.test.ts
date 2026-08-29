@@ -27,6 +27,22 @@ test("community request classification keeps API authority outside Cache Storage
   assert.equal(classifyCommunityRequest("/community-icon.v1.svg"), "hashed-static-cache-first");
   assert.equal(classifyCommunityRequest("/manifest.webmanifest?v=1"), "hashed-static-cache-first");
   assert.equal(
+    classifyCommunityRequest("/fonts/doorbell-fonts.v1.css"),
+    "hashed-static-cache-first",
+  );
+  assert.equal(
+    classifyCommunityRequest("/fonts/gaegu-latin-400.v1.woff2"),
+    "hashed-static-cache-first",
+  );
+  assert.equal(
+    classifyCommunityRequest("/fonts/gaegu-latin-700.v1.woff2"),
+    "hashed-static-cache-first",
+  );
+  assert.equal(
+    classifyCommunityRequest("/fonts/zcool-kuaile-regular.v1.ttf"),
+    "hashed-static-cache-first",
+  );
+  assert.equal(
     classifyCommunityRequest("/assets/index-AbCd1234.js", "same-origin", "POST"),
     "network-only",
   );

@@ -1527,8 +1527,7 @@ interface CandidateTwoPreviewProps {
   state: CandidateTwoViewState;
 }
 
-const GOOGLE_FONTS =
-  '<link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Noto+Serif+SC:wght@400;500;600&family=Playfair+Display:ital,wght@0,400;1,600&family=ZCOOL+KuaiLe&display=swap" rel="stylesheet" media="print" onload="this.media=\'all\'"><noscript><link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Noto+Serif+SC:wght@400;500;600&family=Playfair+Display:ital,wght@0,400;1,600&family=ZCOOL+KuaiLe&display=swap" rel="stylesheet"></noscript>';
+const DOORBELL_FONTS = '<link href="/fonts/doorbell-fonts.v1.css" rel="stylesheet">';
 
 const MOQU_GUFENG_FONT =
   '<link href="/lingye/memorial/qixi-archive/moqu-gufeng-ti.css" rel="stylesheet">';
@@ -9927,7 +9926,10 @@ function replaceBetween(source: string, start: string, end: string, replacement:
 
 export function buildCandidateTwoRuntimeHtml() {
   let html = candidateTwoHtml
-    .replace('<link href="./css2" rel="stylesheet" vid="5">', `${GOOGLE_FONTS}${MOQU_GUFENG_FONT}`)
+    .replace(
+      '<link href="./css2" rel="stylesheet" vid="5">',
+      `${DOORBELL_FONTS}${MOQU_GUFENG_FONT}`,
+    )
     .replace(
       "</style>",
       `${HOME_SIGN_STYLES}${RUNTIME_STYLES}${SHARED_MEME_STYLES}${RESIDENCY_PERMIT_STYLES}${LINGYE_STYLES}    </style>`,
