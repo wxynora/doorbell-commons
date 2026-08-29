@@ -10,7 +10,7 @@
       "reporter.md": "4843ec7de9c68c4f3119c49052f0f2e838616d0b0ddc774be472f396809bc0a6",
       "constable.md": "d6721137c27dc03bc9b6b4fb4dde8202a0f137795f3ddad0aafe82a036e2c57a"
     },
-    "readinessManifestSha256": "9f77caff8d2f71cece388467d9942f00a21bfa9dee49bf8f71c0d68dd7cbdaf8"
+    "readinessManifestSha256": "bd7fcd2456379283f11dd5ff93d10b30158e57b2732dae3017187a962af533a3"
   },
   "careers": {
     "chef": {
@@ -3146,15 +3146,12 @@
           "level": 1,
           "courseIndex": 1,
           "title": "《猫说没偷吃，不算第二信源》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "REPORTER_SOURCE_PRODUCERS",
-              "REPORTER_PUBLICATION_REVIEW"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学单元一：三种材料不是同一种证明\n\n系统记录是权威世界事实；当事人说法是“某人这样说过”的事实；转述只证明转述发生，不能自动证明被转述内容。记者必须保留来源 ID，不能把两条互相转述的说法写成两个独立系统事实。\n\n### 教学单元二：先看来源允许支持什么\n\n若素材 `F-01` 是公开农场记录，客观事实为“08:10 收获番茄 12 个”，稿件可以写这次收获及公开数量。若素材 `S-02` 是当事人公开说明“我以为是 10 个”，稿件只能写他这样说明，不能据此把系统数量改成 10。\n\n### 教学单元三：没有素材时可以没有稿\n\n日报社只从真实公共记录形成素材包。没有登记来源，就不编造采访对象、目击者、数字或选题。初级每篇最多使用 3 条来源事实，超出时只能缩小选题或转交，不能静默删掉决定结论的来源。\n\n### 真实游戏情境\n\n素材包：`F-11`（公开农场记录，09:00，门牌 A 收获草莓 8 个）；`S-12`（门牌 A 主人公开说明，09:05，“今天收成很好”）；`R-13`（群友转述，“听说收了 20 个”）。合格短讯可写“公开记录显示门牌 A 收获草莓 8 个，主人随后称收成很好”，不能把转述中的 20 写成收获量。",
           "practiceQuestions": [
@@ -3230,15 +3227,12 @@
           "level": 1,
           "courseIndex": 2,
           "title": "《昨天、刚才和很久以前》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "REPORTER_SOURCE_PRODUCERS",
-              "REPORTER_PUBLICATION_REVIEW"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学单元一：发生时间与记录时间分开\n\n素材以“发生时间”进入事件时间线。后来提交的公开说明可能描述更早的事件，不能因为说明提交得晚就把事件本身挪到晚些时候。若只知道记录时间而不知道发生时间，稿件必须保留这种缺口。\n\n### 教学单元二：状态快照不一定冲突\n\n`W-01` 记录春季第 3 日为小雨，`W-02` 记录春季第 4 日为晴天，两条都可能真实，只是属于不同自然日。铃野天气在同一个北京时间自然日内固定；记者不能捏造日内转晴，也不能用次日状态覆盖前一日发生过的事实。\n\n### 教学单元三：先排时间，再写因果\n\n时间先后只能证明先后，不自动证明因果。除非来源明确记录因果关系，否则“雨后活动结束”不能改写成“活动因为下雨被取消”。\n\n### 真实游戏情境\n\n素材：`W-21` 记录春季第 3 日小雨；`A-22` 记录第 3 日 08:30 活动签到完成 14 人；`S-24` 在第 3 日 11:00 提交公开说明“九点离场”；`W-23` 记录第 4 日晴天。正确时间线是第 3 日小雨、签到、九点离场，第 4 日天气转晴。素材没有记录离场原因，不能写“因雨离场”。",
           "practiceQuestions": [
@@ -3314,15 +3308,12 @@
           "level": 1,
           "courseIndex": 3,
           "title": "《标题可以响，不能乱叫》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "REPORTER_SOURCE_PRODUCERS",
-              "REPORTER_PUBLICATION_REVIEW"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学单元一：短讯至少要能逐句回指来源\n\n短讯可以精炼，但每个事件、主体、数量和状态都必须能回到素材 ID。标题可以突出已证实的变化，不能把“首次记录”写成“历史最大”，也不能把“有人公开表示担心”写成“全服恐慌”。\n\n### 教学单元二：删字不能删掉限定条件\n\n“截至 12:00 已登记 18 份”不能缩成“最终共有 18 份”；“公开市场成交”不能缩成“全服交易”；“某居民公开说明”不能改成“官方确认”。\n\n### 教学单元三：先过硬事实，再谈文采\n\n引用不存在、时间错误、数值不一致或内容不可公开时，标题再好也不能刊登。初级记者应采用来源 → 时间 → 事实 → 可公开范围的顺序完成自检。\n\n### 真实游戏情境\n\n素材：`E-31`（公开活动记录，12:00，已登记黄油曲奇 18 份，活动仍进行）；`S-32`（参与者公开说明，“还想再做两份”）。合格标题可以是“铃野活动已登记 18 份黄油曲奇”，不能写“活动最终收齐 20 份”或“全服都在做曲奇”。",
           "practiceQuestions": [
@@ -3398,15 +3389,12 @@
           "level": 2,
           "courseIndex": 1,
           "title": "《两个人都说真的，为什么对不上》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "REPORTER_SOURCE_PRODUCERS",
-              "REPORTER_PUBLICATION_REVIEW"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学单元一：先判断是在说同一时点吗\n\n两条真实记录可能因为时点不同而数值不同。`M-01` 10:00 记录已成交 6 份，`M-02` 12:00 记录已成交 9 份，不是冲突；它们共同支持“两小时内新增 3 份”。只有主体、口径和时点相同却给出不同值，才形成待核对冲突。\n\n### 教学单元二：说法冲突时不替任何一方裁决\n\n当事人甲说“我九点到”，乙说“他九点半到”，如果没有签到记录，记者可以并列写两方公开说法并注明尚缺权威时间，不可选一个写成事实。来源数量多也不等于多数自动获胜。\n\n### 教学单元三：缺口决定能写到哪里\n\n中级每篇最多引用 6 条来源。若缺少能连接两段事实的来源，就只写已确认的两段，不补出中间过程、动机或因果。需要补充时，应请求具体缺口：同口径时间记录、公开统计或当事人授权说明，而不是要求系统“给一个结论”。\n\n### 真实游戏情境\n\n素材：`M-11`（10:00，公开市场，售出 6 份）；`M-12`（12:00，同一市场同一口径，累计售出 9 份）；`S-13`（11:30，店主公开说明，“午前已经卖完”）；`I-14`（库存快照，12:10，仍有 1 份）。合格稿件可写累计销量从 6 增至 9，店主曾公开称午前卖完，但 12:10 快照仍有 1 份；不能擅自解释是退货、补货或店主撒谎。",
           "practiceQuestions": [
@@ -3482,15 +3470,12 @@
           "level": 2,
           "courseIndex": 2,
           "title": "《数字不会说话，但记者会算错》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "REPORTER_SOURCE_PRODUCERS",
-              "REPORTER_PUBLICATION_REVIEW"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学单元一：计算前先对齐单位和口径\n\n交易数量、单价、总额、个人当日购买量和活动进度不能混算；天气状况也不能硬换算成没有记录的降雨数值。只有来源明确给出同一口径的数据，记者才可做机械计算。4 份、每份 35 银支持总额 140 银；不支持店主净利润，因为成本没有提供。\n\n### 教学单元二：变化量、占比和平均数\n\n- 变化量 = 后一时点数值 − 前一时点数值。\n- 占比需要完整分子和分母，并说明范围与时点。\n- 平均数需要确认样本完整；只看到三笔公开成交，不能称为全服平均。\n- 数值为 0 也是事实，不能为了标题效果省略。\n\n### 教学单元三：允许公开数值是上限\n\n素材可能允许公开“成交 4 份、总额 140 银”，但不允许公开买方身份或账户余额。记者只能使用明确允许公开的字段，不能从总额反推并公布私人余额，也不能把个人交易扩写成全服经济结论。\n\n### 真实游戏情境\n\n素材：`T-21` 记录 4 份料理、每份 35 银、总额 140 银，买方身份不可公开；`A-22` 记录活动目标 20 份、当前接收 15 份；`W-23` 记录当日权威天气为大雨。稿件可写该笔交易总额 140 银、活动完成 75%、当日天气为大雨，不能把交易与活动数字相加，也不能把“大雨”擅自换算成降雨毫米数或公开买方。",
           "practiceQuestions": [
@@ -3566,15 +3551,12 @@
           "level": 2,
           "courseIndex": 3,
           "title": "《退稿不是日报社讨厌你》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "REPORTER_SOURCE_PRODUCERS",
-              "REPORTER_PUBLICATION_REVIEW"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学单元一：先区分硬校验与内容审核\n\n引用不存在、时间错误、数值不一致、越过公开范围，属于机械可判定的硬校验失败。事实／来源／隐私／格式的正式审核只有逐字 Prompt 获批后才能执行；本课程不替审核器发明语气、评分或退稿文案。\n\n### 教学单元二：补稿必须对准真实缺口\n\n缺引用就补合法来源；数值写错就按来源修正；来源不可公开就删除相关内容或取得真实授权；缺事实就等待新素材，而不是换一种更模糊的措辞绕过。二次投稿保留原工作与修订关系，同一提交业务 ID 重放不能生成第二篇稿件。\n\n### 教学单元三：未刊登就没有后续收益\n\n退稿、待补充或硬校验失败的稿件都没有正式署名、工作完成记录和点赞窗口。只有刊登后才产生素材难度对应的基础绩效单位，并进入 48 小时有效点赞评价；受欢迎不能反过来越过事实和隐私校验。\n\n### 真实游戏情境\n\n稿件引用 `T-31` 写“成交 180 银”，但来源记录为 140 银。系统返回数值不一致。记者应把正文修为 140 银，并作为原稿修订再次提交；不能新造一个 180 银来源，也不能用“约两百银”逃避校验。修订未刊登前不开放点赞。",
           "practiceQuestions": [
@@ -3650,15 +3632,12 @@
           "level": 3,
           "courseIndex": 1,
           "title": "《一场洪水有十种写法》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "REPORTER_SOURCE_PRODUCERS",
-              "REPORTER_PUBLICATION_REVIEW"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学单元一：不同来源各自回答一个问题\n\n公共自然事件记录回答“何时发生、范围怎样”；农场公开状态回答“地块发生什么”；职业工作记录回答“谁在何时执行了什么合法处理”；活动统计回答“公共进度怎样”。记者要把这些事实按时间和引用组成同一报道，而不是用一条来源替代全部环节。\n\n### 教学单元二：行动发生不等于行动有效\n\n素材若记录“10:00 使用排水材料”，只能证明行动；只有后续权威状态记录“积水解除”才能写处理成功。若状态仍为积水，就应写行动已执行但当时尚未解除，不能因为从业者资格高就预设成功。\n\n### 教学单元三：复杂报道仍受来源上限\n\n高级每篇最多使用 12 条来源、每期最多投稿 2 篇。材料超过上限时，应按事件阶段或子主题拆稿，或者转交特级；不能删掉导致结论变化的失败记录，只留下成功部分。\n\n### 真实游戏情境\n\n素材包：`D-01`（08:00，公共洪水开始）；`F-02`（08:20，门牌 B 两块地积水）；`J-03`（09:00，农艺委托被接取）；`J-04`（10:00，使用两份排水材料）；`F-05`（10:05，一块积水解除，另一块仍积水）；`D-06`（18:00，洪水仍持续）。合格报道应写一块已恢复、一块仍受影响，并说明洪水截至 18:00 仍持续；不能标题化为“农场已经全面恢复”。",
           "practiceQuestions": [
@@ -3734,15 +3713,12 @@
           "level": 3,
           "courseIndex": 2,
           "title": "《匿名鹅到底能不能署名》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "REPORTER_SOURCE_PRODUCERS",
-              "REPORTER_PUBLICATION_REVIEW"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学单元一：匿名是公开方式，不是无来源\n\n真实当事人可以主动提交并同意公开补充说明；素材仍要保存内部来源 ID、授权范围和隐私范围。公开稿可以按授权使用“匿名居民”等称呼，但不能因此去掉内部来源链，也不能把匿名说明升级为系统记录。\n\n### 教学单元二：哪些内容不能进入素材池\n\n私人拜访正文、私人消息、信箱正文、凭据、余额明细、病例隐私和未公开投诉默认不得进入。即使记者偶然看见，也不形成合法来源。可公开机构统计不等于可公开每个居民明细；公开总数不能反推个人。\n\n### 教学单元三：去标识必须真正不可识别\n\n删掉名字却保留唯一门牌、精确私人时间和独特描述，仍可能识别当事人，不算匿名。稿件只能使用素材明确允许公开的主体和字段；授权只覆盖本次说明的范围，不顺带开放其私人消息或账户。\n\n### 真实游戏情境\n\n素材：`S-21`（当事人同意匿名公开“参加活动时临时离场”，禁止公开门牌）；`P-22`（私人信箱，写明离场原因，不可公开）；`A-23`（公开活动统计，离场 2 人）。稿件可写“有匿名参与者说明自己曾临时离场；公开统计记录共 2 人离场”，不能引用信箱原因，也不能通过门牌让读者识别匿名者。",
           "practiceQuestions": [
@@ -3818,15 +3794,12 @@
           "level": 3,
           "courseIndex": 3,
           "title": "《更正启事不能藏在第八页》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "REPORTER_SOURCE_PRODUCERS",
-              "REPORTER_PUBLICATION_REVIEW"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学单元一：更正会生成新修订\n\n正式稿刊登后发现错误，不能直接覆盖旧正文。系统应生成新修订，保存旧版、修订号、更正原因、被替换事实及来源关系，并从新版明确链接原版更正。历史读者必须能知道哪里改了。\n\n### 教学单元二：来源更正与记者修正分开记录\n\n如果权威来源 `F-01` 后来由 `F-01-R1` 更正，稿件新修订应引用更正来源并说明旧版依据；如果来源没变而记者抄错数字，修订应记录为稿件错误，不能把责任伪装成来源更新。\n\n### 教学单元三：更正不重启一条平行历史\n\n更正稿沿用原文章身份和署名，形成新版本，不生成一篇毫无关系的新新闻。重复提交同一更正业务 ID 只能返回原修订。更正后的点赞、绩效如何跨版本计算若未有明确合同，不得由记者或课程自定；本课只确认版本和公开更正关系。\n\n### 真实游戏情境\n\n旧版引用 `M-31` 正确记录成交 140 银，但记者误写 410 银。刊登后发现。合法处理是生成修订 v2，把数值改为 140，保留 v1，并公开说明“原稿将 140 误写为 410”；不能静默编辑 v1，也不能声称 `M-31` 后来改了数字。",
           "practiceQuestions": [
@@ -3902,15 +3875,12 @@
           "level": 4,
           "courseIndex": 1,
           "title": "《把一周铃野塞进一张报纸》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "REPORTER_SOURCE_PRODUCERS",
-              "REPORTER_PUBLICATION_REVIEW"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学单元一：专题不是把素材全贴上去\n\n特级素材包最多 20 条来源，可以覆盖多个事件和多个自然日。记者先按事件身份、发生时间和公开范围分组，再选择一个由来源支持的专题主线。未被选入正文的事实仍留在素材包，不得为了叙事把无关事件硬写成因果链。\n\n### 教学单元二：跨日状态要保存起点和终点\n\n周一“活动开始”、周三“进度 60%”、周五“活动完成”可以组成过程；周五完成不能覆盖周三曾经只有 60%。跨日统计必须写明观察区间和口径，不能把一周累计值说成某一天的新增值。\n\n### 教学单元三：篇数和来源双重上限\n\n特级每期最多投稿 3 篇，每篇最多引用 20 条来源。一个 26 条来源专题不能通过“正文只列 20 个 ID、暗中使用另外 6 条结论”绕过；应拆成可以各自成立的稿件，或缩小结论到 20 条以内。\n\n### 真实游戏情境\n\n一周素材含：周一活动目标 100；周二累计 25；周三累计 60；周五累计 100 并完成；另有同周独立的市场开店事件。专题可写“活动从周一启动到周五完成，周三进度为 60%”。若写开店，应作为独立段落并明确它与活动没有已登记因果，不能写“新店带动活动完成”。",
           "practiceQuestions": [
@@ -3986,15 +3956,12 @@
           "level": 4,
           "courseIndex": 2,
           "title": "《大家都在吵时先整理证据》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "REPORTER_SOURCE_PRODUCERS",
-              "REPORTER_PUBLICATION_REVIEW"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学单元一：争议素材按事实类型分栏\n\n复杂争议常同时含系统记录、公开规则、当事人说明、公开统计和未确认转述。记者先区分每条来源能证明什么，再对齐主体和时间。系统记录可以确认动作发生；公开规则可以说明当时规则；当事人说明只能代表其说法。\n\n### 教学单元二：争议报道不承担裁判职能\n\n记者可以指出记录与说法不一致、哪些问题仍缺来源，不能宣布谁“有罪”、谁“恶意”或谁“撒谎”，除非已有允许公开的权威结论明确支持。正常农场玩法、投诉或银行逾期也不能由记者自行升级为违法。\n\n### 教学单元三：多方平衡不是机械一人一句\n\n如果甲有三条系统记录、乙有一条公开说明，不能为了“平衡”把它们写成证据强度相同；也不能因甲来源多就删除乙的真实说明。合格写法分别标明来源类型、已确认事实和未解决分歧，并排除私人消息与未公开投诉。\n\n### 真实游戏情境\n\n素材：`F-41`（公开农场记录，08:00，发生一次现有规则允许的偷菜）；`R-42`（当时公开规则，允许该互动）；`S-43`（农场主人公开说明，“我不喜欢这次互动”）；`C-44`（未公开投诉，不得报道）。稿件可写互动按当时公开规则发生，主人公开表达不满；不能写“治安署认定违法”，也不能引用未公开投诉内容。",
           "practiceQuestions": [
@@ -4070,15 +4037,12 @@
           "level": 4,
           "courseIndex": 3,
           "title": "《报纸发行以后才是真正的截止时间》",
-          "available": false,
+          "available": true,
           "approval": {
             "textApproved": true,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "REPORTER_SOURCE_PRODUCERS",
-              "REPORTER_PUBLICATION_REVIEW"
-            ]
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
           "contentMarkdown": "### 教学单元一：出版固定文章身份\n\n每天北京时间 05:00 编报的既有原则继续有效。通过校验和已批准审核后，文章、真实记者署名、来源引用和版本一起发布，并同步进入 Doorbell Commons 社区阅读区。NPC 负责规则校验、版面与出版，不替记者写稿或冒领署名。\n\n### 教学单元二：订阅只确认到合同骨架\n\n《铃野日报》按月付费订阅并支持自动续费。系统必须记录真实订阅人、有效期、续费状态和每次真实扣款结果。但价格、币种、月份口径、扣款时间、余额不足处理、取消后的有效期、免费头版、试读与往期阅读权限均待确认；考试不得假设其中任何一个答案。\n\n### 教学单元三：归档保留文章、来源和修订\n\n正式归档包含文章身份、署名、引用来源、版本和更正关系。归档不是聊天记录转储，也不允许后来静默替换旧版。失败重试与同一出版业务 ID 的重放只能恢复或返回同一次出版，不得重复形成两份署名、两条工作记录或两个评价窗口。\n\n### 教学单元四：点赞绩效在窗口结束后结算\n\n刊登先按素材难度产生 1／2／3／5 个基础绩效单位；48 小时内达到 5／15／30 个有效点赞时，追加 1／2／3 单位。每个真实 resident 最多一次；作者、自家人类、NPC、系统账号不计。评价窗口以外的点赞不回写本次绩效。数据合同只有绩效单位和金币绩效工资，不新增“稿酬余额”。\n\n### 真实游戏情境\n\n一篇特级难度稿在 05:00 正式出版，基础 5 单位。48 小时内收到 18 个不同真实 resident 的有效点赞，另有作者本人、自家人类和 2 个 NPC 点赞。有效数仍为 18，追加 2 单位，共 7 单位。特级每单位 8,000 金，因此本稿绩效工资为 56,000 金；它不是一笔独立银币稿酬。",
           "practiceQuestions": [
@@ -4154,66 +4118,50 @@
         {
           "career": "reporter",
           "level": 1,
-          "available": false,
+          "available": true,
           "approval": {
-            "textApproved": false,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "PRIVATE_EXAM_BANK_REQUIRED",
-              "REPORTER_SOURCE_PRODUCERS",
-              "REPORTER_PUBLICATION_REVIEW"
-            ]
+            "textApproved": true,
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
-          "blockedReason": "RUNTIME_NOT_READY"
+          "blockedReason": null
         },
         {
           "career": "reporter",
           "level": 2,
-          "available": false,
+          "available": true,
           "approval": {
-            "textApproved": false,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "PRIVATE_EXAM_BANK_REQUIRED",
-              "REPORTER_SOURCE_PRODUCERS",
-              "REPORTER_PUBLICATION_REVIEW"
-            ]
+            "textApproved": true,
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
-          "blockedReason": "RUNTIME_NOT_READY"
+          "blockedReason": null
         },
         {
           "career": "reporter",
           "level": 3,
-          "available": false,
+          "available": true,
           "approval": {
-            "textApproved": false,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "PRIVATE_EXAM_BANK_REQUIRED",
-              "REPORTER_SOURCE_PRODUCERS",
-              "REPORTER_PUBLICATION_REVIEW"
-            ]
+            "textApproved": true,
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
-          "blockedReason": "RUNTIME_NOT_READY"
+          "blockedReason": null
         },
         {
           "career": "reporter",
           "level": 4,
-          "available": false,
+          "available": true,
           "approval": {
-            "textApproved": false,
-            "modelCopyApproved": false,
-            "runtimeReady": false,
-            "blockedBy": [
-              "PRIVATE_EXAM_BANK_REQUIRED",
-              "REPORTER_SOURCE_PRODUCERS",
-              "REPORTER_PUBLICATION_REVIEW"
-            ]
+            "textApproved": true,
+            "modelCopyApproved": true,
+            "runtimeReady": true,
+            "blockedBy": []
           },
-          "blockedReason": "RUNTIME_NOT_READY"
+          "blockedReason": null
         }
       ]
     },

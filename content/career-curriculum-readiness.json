@@ -523,12 +523,9 @@
       "level": 1,
       "course_index": 1,
       "text_approved": true,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "REPORTER_SOURCE_PRODUCERS",
-        "REPORTER_PUBLICATION_REVIEW"
-      ]
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "course",
@@ -536,12 +533,9 @@
       "level": 1,
       "course_index": 2,
       "text_approved": true,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "REPORTER_SOURCE_PRODUCERS",
-        "REPORTER_PUBLICATION_REVIEW"
-      ]
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "course",
@@ -549,25 +543,18 @@
       "level": 1,
       "course_index": 3,
       "text_approved": true,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "REPORTER_SOURCE_PRODUCERS",
-        "REPORTER_PUBLICATION_REVIEW"
-      ]
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "exam",
       "career": "reporter",
       "level": 1,
-      "text_approved": false,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "PRIVATE_EXAM_BANK_REQUIRED",
-        "REPORTER_SOURCE_PRODUCERS",
-        "REPORTER_PUBLICATION_REVIEW"
-      ]
+      "text_approved": true,
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "course",
@@ -575,12 +562,9 @@
       "level": 2,
       "course_index": 1,
       "text_approved": true,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "REPORTER_SOURCE_PRODUCERS",
-        "REPORTER_PUBLICATION_REVIEW"
-      ]
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "course",
@@ -588,12 +572,9 @@
       "level": 2,
       "course_index": 2,
       "text_approved": true,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "REPORTER_SOURCE_PRODUCERS",
-        "REPORTER_PUBLICATION_REVIEW"
-      ]
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "course",
@@ -601,25 +582,18 @@
       "level": 2,
       "course_index": 3,
       "text_approved": true,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "REPORTER_SOURCE_PRODUCERS",
-        "REPORTER_PUBLICATION_REVIEW"
-      ]
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "exam",
       "career": "reporter",
       "level": 2,
-      "text_approved": false,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "PRIVATE_EXAM_BANK_REQUIRED",
-        "REPORTER_SOURCE_PRODUCERS",
-        "REPORTER_PUBLICATION_REVIEW"
-      ]
+      "text_approved": true,
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "course",
@@ -627,12 +601,9 @@
       "level": 3,
       "course_index": 1,
       "text_approved": true,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "REPORTER_SOURCE_PRODUCERS",
-        "REPORTER_PUBLICATION_REVIEW"
-      ]
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "course",
@@ -640,12 +611,9 @@
       "level": 3,
       "course_index": 2,
       "text_approved": true,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "REPORTER_SOURCE_PRODUCERS",
-        "REPORTER_PUBLICATION_REVIEW"
-      ]
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "course",
@@ -653,25 +621,18 @@
       "level": 3,
       "course_index": 3,
       "text_approved": true,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "REPORTER_SOURCE_PRODUCERS",
-        "REPORTER_PUBLICATION_REVIEW"
-      ]
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "exam",
       "career": "reporter",
       "level": 3,
-      "text_approved": false,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "PRIVATE_EXAM_BANK_REQUIRED",
-        "REPORTER_SOURCE_PRODUCERS",
-        "REPORTER_PUBLICATION_REVIEW"
-      ]
+      "text_approved": true,
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "course",
@@ -679,12 +640,9 @@
       "level": 4,
       "course_index": 1,
       "text_approved": true,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "REPORTER_SOURCE_PRODUCERS",
-        "REPORTER_PUBLICATION_REVIEW"
-      ]
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "course",
@@ -692,12 +650,9 @@
       "level": 4,
       "course_index": 2,
       "text_approved": true,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "REPORTER_SOURCE_PRODUCERS",
-        "REPORTER_PUBLICATION_REVIEW"
-      ]
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "course",
@@ -705,25 +660,18 @@
       "level": 4,
       "course_index": 3,
       "text_approved": true,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "REPORTER_SOURCE_PRODUCERS",
-        "REPORTER_PUBLICATION_REVIEW"
-      ]
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "exam",
       "career": "reporter",
       "level": 4,
-      "text_approved": false,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "PRIVATE_EXAM_BANK_REQUIRED",
-        "REPORTER_SOURCE_PRODUCERS",
-        "REPORTER_PUBLICATION_REVIEW"
-      ]
+      "text_approved": true,
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "course",

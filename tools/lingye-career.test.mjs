@@ -475,17 +475,14 @@ test("runtime curriculum opens approved courses but keeps exams fail closed with
     assert.equal(careerCourseAvailability("veterinarian", 3, 1), false);
     assert.equal(careerCourseAvailability("constable", 4, 1), true);
     assert.equal(careerCourseAvailability("constable", 4, 2), false);
-    assert.equal(careerCourseAvailability("reporter", 1, 1), false);
+    assert.equal(careerCourseAvailability("reporter", 1, 1), true);
     assert.equal(careerExamAvailability("constable", 4), false);
     assert.equal(careerCourseContent("agronomist", 1, 1).career, "agronomist");
     const paper = TEST_CURRICULUM.createCoursePracticePaper("agronomist", 1, 1, "reader-resident");
     assert.equal(paper.publicPaper.length, 5);
     assert.deepEqual(Object.keys(paper.publicPaper[0]).sort(), ["id", "options", "stem"]);
     assert.equal(Object.hasOwn(paper.publicPaper[0], "answer"), false);
-    assert.throws(
-        () => careerCourseContent("reporter", 1, 1),
-        assertCareerError("assessment_content_not_available"),
-    );
+    assert.equal(careerCourseContent("reporter", 1, 1).career, "reporter");
 });
 test("course enrollment freezes one content bank and read confirmation requires that delivery", () => {
     const harness = createHarness();

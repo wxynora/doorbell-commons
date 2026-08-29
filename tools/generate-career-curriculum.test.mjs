@@ -16,14 +16,14 @@ const committedOpenCourses = Object.freeze({
     chef: new Set(["1:1", "1:2", "1:3", "2:1", "2:2", "2:3", "3:2", "3:3", "4:1", "4:2"]),
     agronomist: new Set(["1:1", "1:2", "1:3", "2:3"]),
     veterinarian: new Set(["1:1", "1:2", "1:3", "2:1", "2:2", "2:3", "3:3", "4:1"]),
-    reporter: new Set(),
+    reporter: new Set(["1:1", "1:2", "1:3", "2:1", "2:2", "2:3", "3:1", "3:2", "3:3", "4:1", "4:2", "4:3"]),
     constable: new Set(["1:1", "1:2", "1:3", "2:1", "2:2", "2:3", "3:1", "3:2", "3:3", "4:1"]),
 });
 const committedOpenExams = Object.freeze({
     chef: new Set([1, 2]),
     agronomist: new Set([1]),
     veterinarian: new Set([1, 2]),
-    reporter: new Set(),
+    reporter: new Set([1, 2, 3, 4]),
     constable: new Set([1, 2, 3]),
 });
 
@@ -68,10 +68,10 @@ function fixtureReadiness() {
                 kind: "exam",
                 career,
                 level,
-                text_approved: career !== "reporter",
-                model_copy_approved: career !== "reporter",
-                runtime_ready: career !== "reporter",
-                blocked_by: career === "reporter" ? ["REPORTER_DAILY_REPORT_DEFERRED"] : [],
+                text_approved: true,
+                model_copy_approved: true,
+                runtime_ready: true,
+                blocked_by: [],
             });
         }
     }
@@ -110,8 +110,8 @@ test("career curriculum generation is reproducible without the main checkout and
         for (const exam of curriculum.careers[career].exams) {
             assert.deepEqual(Object.keys(exam).sort(),
                 ["approval", "available", "blockedReason", "career", "level"].sort());
-            assert.equal(exam.available, career !== "reporter");
-            assert.equal(exam.blockedReason, career === "reporter" ? "RUNTIME_NOT_READY" : null);
+            assert.equal(exam.available, true);
+            assert.equal(exam.blockedReason, null);
             assert.equal(Object.hasOwn(exam, "questions"), false);
         }
     }

@@ -58,7 +58,7 @@ function answerSelections(answerKey) {
     return answerKey.map((answer) => Array.isArray(answer) ? answer : [answer]);
 }
 const TEST_CURRICULUM = Object.freeze({
-    careerCourseAvailability: (career) => career !== "reporter",
+    careerCourseAvailability: () => true,
     careerCourseContent: (career, level, courseIndex) => ({
         career,
         level,
@@ -67,7 +67,7 @@ const TEST_CURRICULUM = Object.freeze({
         contentMarkdown: `Test course content for ${career} ${level}-${courseIndex}.`,
         bankVersion: TEST_CURRICULUM_VERSION,
     }),
-    careerExamAvailability: (career) => career !== "reporter",
+    careerExamAvailability: () => true,
     createCoursePracticePaper: (career, level, courseIndex, residentId) =>
         testPaper("course_practice", `course:${residentId}:${career}:${level}:${courseIndex}`, 5),
     createWrittenExamPaper: (career, level, attemptId) =>
@@ -458,8 +458,8 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
         contentAvailable: true,
     });
     assert.equal(schoolBefore.data.options.some((entry) =>
-        entry.option.includes("school:career-select") && entry.option.endsWith(":reporter")), false);
-    assert.equal(schoolBefore.data.courseCatalog.find((entry) => entry.career === "reporter").contentAvailable, false);
+        entry.option.includes("school:career-select") && entry.option.endsWith(":reporter")), true);
+    assert.equal(schoolBefore.data.courseCatalog.find((entry) => entry.career === "reporter").contentAvailable, true);
     const agronomistOption = schoolBefore.data.options.find((entry) => entry.option.includes("school:career-select") && entry.option.endsWith(":agronomist"));
     assert.ok(agronomistOption);
     const selectedCareer = execute(executor, "go.school.choose", { option: agronomistOption.option });

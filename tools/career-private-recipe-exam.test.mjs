@@ -95,6 +95,7 @@ test("only per-level ready exams become available with a private bank while bloc
         chef: new Set([1, 2]),
         agronomist: new Set([1]),
         veterinarian: new Set([1, 2]),
+        reporter: new Set([1, 2, 3, 4]),
         constable: new Set([1, 2, 3]),
     });
     const openCareers = Object.keys(openExams);
@@ -129,8 +130,8 @@ test("only per-level ready exams become available with a private bank while bloc
         assert.equal(curriculum.careerCourseAvailability("veterinarian", 3, 3), true);
         assert.equal(curriculum.careerCourseAvailability("constable", 4, 1), true);
         assert.equal(curriculum.careerCourseAvailability("constable", 4, 2), false);
-        assert.equal(curriculum.careerCourseAvailability("reporter", 1, 1), false);
-        assert.equal(curriculum.careerExamAvailability("reporter", 1), false);
+        assert.equal(curriculum.careerCourseAvailability("reporter", 1, 1), true);
+        assert.equal(curriculum.careerExamAvailability("reporter", 1), true);
     }
     finally {
         delete process.env.AIFARM_CAREER_PRIVATE_EXAM_BANK_PATH;
