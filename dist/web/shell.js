@@ -1,4 +1,4 @@
-import { animals, glimmerVariantById } from "../content.js";
+import { animals, ranchSkinById, ranchVariantById } from "../content.js";
 import { BASE } from "../config.js";
 import { isQixiLantern2026Active } from "../qixi-lantern-2026.js";
 
@@ -12,10 +12,13 @@ const alpacaSpriteIndex = animals.findIndex((kind) => kind.id === "alpaca");
 export function ranchSprite(index, name, extraClass = "", variantId) {
     const col = index % 5;
     const row = Math.floor(index / 5);
-    const variant = glimmerVariantById.get(variantId);
-    const classes = [extraClass, index === alpacaSpriteIndex && !variant ? "ranch-sprite-alpaca" : "", variant ? "ranch-sprite-variant" : ""].filter(Boolean).join(" ");
+    const variant = ranchVariantById.get(variantId);
+    const skin = ranchSkinById.get(variantId);
+    const classes = [extraClass, index === alpacaSpriteIndex && !variant ? "ranch-sprite-alpaca" : "", variant ? "ranch-sprite-variant" : "", skin ? "ranch-sprite-skin" : ""].filter(Boolean).join(" ");
     const variantAssetVersion = variant?.set === 3 ? "20260810a" : "20260809b";
-    const sheet = variant ? `--ranch-sheet:url('${BASE}/assets/glimmer/variant-${variant.set}.webp?v=${variantAssetVersion}');` : "";
+    const sheet = skin
+        ? `--ranch-sheet:url('${BASE}/assets/${skin.asset}?v=20260829a');`
+        : variant ? `--ranch-sheet:url('${BASE}/assets/glimmer/variant-${variant.set}.webp?v=${variantAssetVersion}');` : "";
     return `<span class="ranch-sprite${classes ? ` ${classes}` : ""}" role="img" aria-label="${esc(name)}像素画" style="${sheet}--sx:${col * 25}%;--sy:${row * 100 / 3}%"></span>`;
 }
 /** UTC+8 时钟 HH:MM（作物预计成熟时间用）。 */
@@ -202,6 +205,7 @@ nav a.on,nav a:hover{color:var(--leaf-deep);background:#e6f3d8}
 .ranch-sprite{display:block;width:100%;aspect-ratio:1;border-radius:10px;background-image:var(--ranch-sheet,url("${BASE}/assets/animal-codex-atlas.png?v=20260806b"));
   background-repeat:no-repeat;background-size:500% 400%;background-position:var(--sx) var(--sy)}
 .ranch-sprite-alpaca{background-image:url("${BASE}/assets/alpaca-codex.png?v=20260806c");background-size:100% 100%;background-position:center}
+.ranch-sprite-skin{background-size:100% 100%;background-position:center}
 .ranch-codex-item.locked .ranch-sprite{filter:grayscale(.85);opacity:.58}
 .ranch-codex-name{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:8px;font-family:var(--serif);font-weight:700}
 .ranch-codex-state{flex:0 0 auto;border-radius:999px;padding:0 6px;font:600 10px/1.8 system-ui;color:var(--ink-soft);background:#edf2e8}

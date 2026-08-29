@@ -1,4 +1,4 @@
-import { buyItem, buyPotionSet, buyRecipe, potionDailyLeft } from "../../engine.js";
+import { buyItem, buyPotionSet, buyRanchSkinItem, buyRecipe, potionDailyLeft } from "../../engine.js";
 import { POTION_DAILY_CAP, REPORT_THRESHOLD } from "../../config.js";
 import { buyAllQixi2026Seeds, buyQixi2026Seed } from "../../qixi-2026.js";
 import { listForSale, reportUgc, unlistItem, viewHot, viewMarket } from "../market.js";
@@ -59,7 +59,8 @@ export function handleCommerceAction(action, f, b, now) {
             return { ok: r.ok, text: r.ok ? (r.banned ? `🚫 举报已记录，「${r.name}」累计 ${r.count} 次举报，已下架（隐藏+禁止交易）。` : `🚩 举报已记录（「${r.name}」${r.count}/${REPORT_THRESHOLD}）。`) : r.error };
         }
         case "buy-item": {
-            const r = buyItem(f, String(b.item), Number(b.qty ?? 1), now);
+            const skin = buyRanchSkinItem(f, String(b.item), now);
+            const r = skin.handled ? skin : buyItem(f, String(b.item), Number(b.qty ?? 1), now);
             if (!r.ok)
                 return { ok: false, text: r.error };
             const cap = String(b.item) === "speed_potion" ? `（官方店今日已购 ${POTION_DAILY_CAP - potionDailyLeft(f, now)}/${POTION_DAILY_CAP}）` : "";

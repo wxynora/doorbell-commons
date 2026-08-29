@@ -12,6 +12,8 @@ import {
   glimmerVariants,
   pets,
   petById,
+  ranchSkinById,
+  ranchVariantById,
 } from "../content.js";
 import {
   RANCH_PATROL_GOOSE_ID,
@@ -28,6 +30,7 @@ import {
   ranchWearAccessory,
 } from "../engine.js";
 import { glimmerAnimalVariantMultiplier, glimmerBuffMultiplier } from "../glimmer.js";
+import { ranchSkinShop, ranchSkinVariantsFor } from "../domain/ranch/skins.js";
 
 const FARM_DOORPLATE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/;
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -435,14 +438,25 @@ function projectResidentVariants(farm, type, raw, kindId) {
     .filter((variant) => unlocked.has(variant.id))
     .map((variant) => variant.id)
     .filter((id) => safeId(id) !== null);
-  const availableVariantIds = ["base", ...unlockedVariantIds.filter((id) => id !== "base")];
+  const skinVariantIds = ranchSkinVariantsFor(farm, variantType, kindId)
+    .map((skin) => skin.id)
+    .filter((id) => safeId(id) !== null);
+  const availableVariantIds = [
+    "base",
+    ...unlockedVariantIds.filter((id) => id !== "base"),
+    ...skinVariantIds.filter((id) => id !== "base" && !unlockedVariantIds.includes(id)),
+  ];
   const currentVariantId =
-    typeof raw?.variantId === "string" && unlockedVariantIds.includes(raw.variantId)
+    typeof raw?.variantId === "string" && availableVariantIds.includes(raw.variantId)
       ? raw.variantId
       : "base";
   return {
     current_variant_id: currentVariantId,
     available_variant_ids: availableVariantIds,
+    available_variants: availableVariantIds.map((id) => ({
+      variant_id: id,
+      name: id === "base" ? "原始外观" : safeText(ranchVariantById.get(id)?.name) ?? id,
+    })),
   };
 }
 
@@ -482,7 +496,7 @@ function projectResident(type, raw, now, raids, pinned, farm, index) {
     : null;
   const variants = known
     ? projectResidentVariants(farm, type, raw, kindId)
-    : { current_variant_id: null, available_variant_ids: [] };
+    : { current_variant_id: null, available_variant_ids: [], available_variants: [] };
   return {
     status: identity.status,
     identity: {
@@ -592,11 +606,33 @@ function projectDailyShopItem(itemId, owned, decoration = false) {
   };
 }
 
-function projectShop(farm, ranch, residentArrays) {
+function projectSkinItem(skin, owned) {
+  const known = !!skin
+    && safeId(skin.id) !== null
+    && safeText(skin.name) !== null
+    && safeId(skin.targetKindId) !== null
+    && ["animal", "pet"].includes(skin.targetType)
+    && safeMoney(skin.price) !== null;
+  return {
+    status: known ? "known" : "unavailable",
+    skin_id: known ? skin.id : null,
+    name: known ? safeText(skin.name) : null,
+    target_type: known ? skin.targetType : null,
+    target_kind_id: known ? skin.targetKindId : null,
+    price: known ? skin.price : null,
+    owned: known ? owned : null,
+    available_quantity: known && typeof owned === "boolean" ? owned ? 0 : 1 : null,
+    starts_at: known ? safeTimestamp(Date.parse(skin.startsAt)) : null,
+    ends_at: known ? safeTimestamp(Date.parse(skin.endsAt)) : null,
+  };
+}
+
+function projectShop(farm, ranch, residentArrays, now) {
   if (!ranch || !isRecord(farm.codex)) {
     return {
       animals: { status: "unavailable", shop_day: null, items: [] },
       pets: { status: "unavailable", shop_day: null, items: [] },
+      skins: { status: "unavailable", shop_day: null, items: [] },
       accessories: { status: "unavailable", shop_day: null, items: [] },
       decorations: { status: "unavailable", shop_day: null, items: [] },
     };
@@ -611,6 +647,8 @@ function projectShop(farm, ranch, residentArrays) {
   const petIds = arraysAvailable ? new Set(petOwned.filter(isRecord).map((item) => item.kindId)) : null;
   const animalItems = unlockedAnimals.map((kind) => projectShopItem(kind, animalIds?.has(kind.id) ?? null));
   const petItems = unlockedPets.map((kind) => projectShopItem(kind, petIds?.has(kind.id) ?? null));
+  const ownedSkins = Array.isArray(ranch.skins) ? new Set(ranch.skins.filter((id) => ranchSkinById.has(id))) : null;
+  const skinItems = ranchSkinShop(farm, now).map((skin) => projectSkinItem(skin, ownedSkins?.has(skin.id) ?? null));
 
   const shop = ranch.shop;
   const dailyAvailable = isRecord(shop) && Number.isSafeInteger(shop.day) && shop.day >= 0 && Array.isArray(shop.acc) && Array.isArray(shop.decor);
@@ -623,6 +661,7 @@ function projectShop(farm, ranch, residentArrays) {
   return {
     animals: { status: arraysAvailable ? "available" : "unavailable", shop_day: null, items: animalItems },
     pets: { status: arraysAvailable ? "available" : "unavailable", shop_day: null, items: petItems },
+    skins: { status: ownedSkins ? "available" : "unavailable", shop_day: null, items: skinItems },
     accessories: {
       status: dailyAvailable ? "available" : "unavailable",
       shop_day: dailyAvailable ? shop.day : null,
@@ -758,7 +797,7 @@ export function projectHumanRanch(farm, now = Date.now()) {
       stored: stored.items,
     },
     dispatch,
-    shop: projectShop(farm, ranch, residentArrays),
+    shop: projectShop(farm, ranch, residentArrays, now),
   };
   return {
     data,

@@ -1,4 +1,4 @@
-import { nextLockedAnimal, nextLockedPet, potionDailyLeft, refreshShop, shopAnimals, shopOffer, shopPets } from "../../engine.js";
+import { nextLockedAnimal, nextLockedPet, potionDailyLeft, ranchSkinShop, refreshShop, shopAnimals, shopOffer, shopPets } from "../../engine.js";
 import { statusFooter } from "../../flavor.js";
 import { animalById, cropById, getCrop, petById } from "../../content.js";
 import { ITEMS, POTION_CAP_LINE, POTION_DAILY_CAP, RANCH_PATROL_GOOSE_BUY_COST, RANCH_PATROL_GOOSE_NAME } from "../../config.js";
@@ -58,11 +58,11 @@ export function viewShop(f, now) {
         })(),
         "上架卖：list {\"kind\":\"material|seed\",\"id\":\"...\",\"qty\":1}（统一参考价，不能自定价）　撤摊：unlist {\"kind\":\"...\",\"id\":\"...\"}",
     ].join("\n");
-    return `${layer1}\n────────────────────\n${ranchShopSection(f)}\n────────────────────\n${layer2}\n${statusFooter(f, now)}`;
+    return `${layer1}\n────────────────────\n${ranchShopSection(f, now)}\n────────────────────\n${layer2}\n${statusFooter(f, now)}`;
 }
 
 /** 商店里的「牧场动物」区：图鉴解锁后自动上架，买下送给伴侣（每种限 1 只，伴侣养+升级）。 */
-export function ranchShopSection(f) {
+export function ranchShopSection(f, now = Date.now()) {
     const owned = new Set((f.ranch?.animals ?? []).map((a) => a.kindId));
     const avail = shopAnimals(f).filter((a) => !owned.has(a.id));
     const officialCount = Object.keys(f.codex).filter((id) => cropById.has(id)).length;
@@ -96,6 +96,12 @@ export function ranchShopSection(f) {
         lines.push(`──── 🪿 独立牧场守卫（无图鉴门槛）────\n· ${RANCH_PATROL_GOOSE_NAME}（${RANCH_PATROL_GOOSE_BUY_COST}金）25% 自动赶走未被人类先抓住的偷金币动物，每天最多成功 3 次　→ buy-patrol-goose`);
     else
         lines.push(`──── 🪿 ${RANCH_PATROL_GOOSE_NAME}：它会常驻牧场巡逻。────`);
+    const skinOffers = ranchSkinShop(f, now).filter((skin) => !skin.owned);
+    if (skinOffers.length) {
+        lines.push("──── 🎨 限定皮肤（08月30日—09月29日）────");
+        for (const skin of skinOffers)
+            lines.push(`· ${skin.name}（${skin.price}金）`);
+    }
     return lines.join("\n");
 }
 

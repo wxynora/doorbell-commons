@@ -85,6 +85,52 @@
       "price": 20
     }
   ],
+  "skins": [
+    {
+      "id": "pompompurin",
+      "name": "布丁狗",
+      "targetType": "pet",
+      "targetKindId": "dog",
+      "price": 100000,
+      "startsAt": "2026-08-29T16:00:00.000Z",
+      "endsAt": "2026-09-29T16:00:00.000Z",
+      "asset": "ranch/limited-skins/pompompurin.png",
+      "bonus": { "foilAdd": 0.05 }
+    },
+    {
+      "id": "hachiware",
+      "name": "小八",
+      "targetType": "pet",
+      "targetKindId": "cat",
+      "price": 100000,
+      "startsAt": "2026-08-29T16:00:00.000Z",
+      "endsAt": "2026-09-29T16:00:00.000Z",
+      "asset": "ranch/limited-skins/hachiware.png",
+      "bonus": { "luckAdd": 0.05, "dropMultAdd": 0.05 }
+    },
+    {
+      "id": "usagi",
+      "name": "乌萨奇",
+      "targetType": "animal",
+      "targetKindId": "rabbit",
+      "price": 100000,
+      "startsAt": "2026-08-29T16:00:00.000Z",
+      "endsAt": "2026-09-29T16:00:00.000Z",
+      "asset": "ranch/limited-skins/usagi.png",
+      "bonus": { "produceValueMultiplier": 1.3 }
+    },
+    {
+      "id": "mysweetpiano",
+      "name": "甜心皮亚诺",
+      "targetType": "animal",
+      "targetKindId": "cloud_sheep",
+      "price": 100000,
+      "startsAt": "2026-08-29T16:00:00.000Z",
+      "endsAt": "2026-09-29T16:00:00.000Z",
+      "asset": "ranch/limited-skins/mysweetpiano.png",
+      "bonus": { "produceValueMultiplier": 1.3 }
+    }
+  ],
   "decorations": [
     {
       "id": "flowerbed",

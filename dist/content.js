@@ -35,8 +35,11 @@ export const qixi2026 = load("qixi-2026");
 export const qixiLantern2026 = load("qixi-lantern-2026");
 const ranchItems = load("ranch-items");
 export const accessories = ranchItems.accessories;
+export const ranchSkins = ranchItems.skins;
 export const decorations = ranchItems.decorations;
 export const accessoryById = new Map(accessories.map((a) => [a.id, a]));
+export const ranchSkinById = new Map(ranchSkins.map((skin) => [skin.id, skin]));
+export const ranchSkinByName = new Map(ranchSkins.map((skin) => [skin.name, skin]));
 export const decorationById = new Map(decorations.map((d) => [d.id, d]));
 export const flavor = load("flavor");
 // 🗺️ 探险内容：秘境 / 际遇事件 / 专属装饰（独立于熔炼与可买装饰）
@@ -63,6 +66,10 @@ export const fishingBaitById = new Map(fishingBaits.map((item) => [item.id, item
 export const fishingEventById = new Map(fishingEvents.map((item) => [item.id, item]));
 export const fishingItemById = new Map(fishingItems.map((item) => [item.id, item]));
 export const glimmerVariantById = new Map(glimmerVariants.map((item) => [item.id, item]));
+export const ranchVariantById = new Map([
+    ...glimmerVariants.map((item) => [item.id, item]),
+    ...ranchSkins.map((item) => [item.id, item]),
+]);
 export const glimmerEncounterById = new Map(glimmerEncounters.map((item) => [item.id, item]));
 export const cropsByCategory = (cat) => crops.filter((c) => c.category === cat);
 export const totalCropCount = crops.length;

@@ -23,6 +23,7 @@ export {
     ranchTakeOffAccessory,
 } from "./residents.js";
 export { petRoamLine, ranchRoamLine, animalRoamLine, decorLines } from "./appearance.js";
+export { buyRanchSkinItem, ranchSkinSaleActive, ranchSkinShop, ranchSkinVariantsFor, resolveRanchSkin } from "./skins.js";
 export {
     refreshRanchShop,
     ranchBuyAccessory,

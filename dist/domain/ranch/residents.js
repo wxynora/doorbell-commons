@@ -4,7 +4,7 @@ import {
     RANCH_PATROL_GOOSE_ID,
     RANCH_PATROL_GOOSE_NAME,
 } from "../../config.js";
-import { accessoryById, animalById, petById } from "../../content.js";
+import { accessoryById, animalById, petById, ranchSkinById } from "../../content.js";
 import { pushLog } from "../shared/notifications.js";
 import { pushLedger } from "./ledger.js";
 import { ensureRanch } from "./state.js";
@@ -18,10 +18,11 @@ export function petBuffs(farm, now = Date.now()) {
         const k = petById.get(p.kindId);
         if (!k)
             continue;
-        luck += k.params.luck ?? 0;
+        const skinBonus = ranchSkinById.get(p.variantId)?.bonus ?? {};
+        luck += (k.params.luck ?? 0) + (Number(skinBonus.luckAdd) || 0);
         if (k.params.dropMult)
-            dropMult *= k.params.dropMult;
-        foil = Math.max(foil, k.params.foil ?? 0);
+            dropMult *= k.params.dropMult + (Number(skinBonus.dropMultAdd) || 0);
+        foil = Math.max(foil, (k.params.foil ?? 0) + (Number(skinBonus.foilAdd) || 0));
         const dishBuff = p.dishBuff;
         if (dishBuff?.endsAt > now) {
             if (k.buff === "luck") {

@@ -3,6 +3,7 @@ export function ensureRanch(farm) {
     ranch.coins ??= 0;
     ranch.animals ??= [];
     ranch.pets ??= [];
+    ranch.skins ??= [];
     ranch.raids ??= [];
     ranch.raidDebts ??= [];
     return ranch;

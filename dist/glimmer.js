@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
     glimmer, glimmerVariants, glimmerEncounters, glimmerCoopEvents, glimmerVariantById,
+    ranchSkinById, ranchVariantById,
     animals, animalById, pets, petById, cropById, cooking, cookingProducts,
     cookingProductById, cookingIngredients, cookingIngredientById, cookingRecipes,
     cookingRecipeById, fishingFishById, fishingBaitById, titles,
@@ -9,6 +10,7 @@ import { currentDayIndex, currentSeason } from "./time.js";
 import { Rng } from "./rng.js";
 import { RANCH_LEVEL_INCOME_STEP } from "./config.js";
 import { recordWelfareWeekProgress, takeWelfareWeekNotice } from "./welfare-week.js";
+import { ranchSkinVariantsFor } from "./domain/ranch/skins.js";
 
 const MAX_HISTORY = 30;
 const MAX_PUBLIC_LOGS = 10;
@@ -59,7 +61,8 @@ export function normalizeGlimmerFarm(farm) {
         animal.glimmerVariants = Array.isArray(animal.glimmerVariants)
             ? [...new Set(animal.glimmerVariants.filter((id) => unlocked.has(id)))]
             : glimmerVariants.filter((v) => v.type === "animal" && v.kindId === animal.kindId && unlocked.has(v.id)).map((v) => v.id);
-        if (animal.variantId && !animal.glimmerVariants.includes(animal.variantId))
+        const skinIds = ranchSkinVariantsFor(farm, "animal", animal.kindId).map((skin) => skin.id);
+        if (animal.variantId && !animal.glimmerVariants.includes(animal.variantId) && !skinIds.includes(animal.variantId))
             delete animal.variantId;
         animal.glimmerBoost = animal.glimmerVariants.length > 0;
     }
@@ -67,7 +70,8 @@ export function normalizeGlimmerFarm(farm) {
         pet.glimmerVariants = Array.isArray(pet.glimmerVariants)
             ? [...new Set(pet.glimmerVariants.filter((id) => unlocked.has(id)))]
             : glimmerVariants.filter((v) => v.type === "pet" && v.kindId === pet.kindId && unlocked.has(v.id)).map((v) => v.id);
-        if (pet.variantId && !pet.glimmerVariants.includes(pet.variantId))
+        const skinIds = ranchSkinVariantsFor(farm, "pet", pet.kindId).map((skin) => skin.id);
+        if (pet.variantId && !pet.glimmerVariants.includes(pet.variantId) && !skinIds.includes(pet.variantId))
             delete pet.variantId;
     }
     if (farm.ranch?.patrolGoose) {
@@ -179,6 +183,9 @@ function variantIsFantasy(variant) {
 }
 
 export function glimmerAnimalVariantMultiplier(animal) {
+    const skin = ranchSkinById.get(animal?.variantId);
+    if (Number.isFinite(Number(skin?.bonus?.produceValueMultiplier)))
+        return Number(skin.bonus.produceValueMultiplier);
     const unlocked = new Set(Array.isArray(animal?.glimmerVariants) ? animal.glimmerVariants : []);
     const variants = glimmerVariants.filter((item) => item.type === "animal" && item.kindId === animal?.kindId);
     if (variants.length === 3 && variants.every((item) => unlocked.has(item.id)))
@@ -704,14 +711,17 @@ export function runGlimmer(farm, worldValue, params, now = Date.now()) {
 }
 
 export function glimmerVariantSpriteInfo(entity, kindId, type = "animal") {
-    const variant = glimmerVariantById.get(entity?.variantId);
+    const variant = ranchVariantById.get(entity?.variantId);
     const index = type === "animal" ? ANIMAL_INDEX.get(kindId) : type === "pet" ? PET_INDEX.get(kindId) : GOOSE_INDEX;
     return { index, set: variant?.set ?? 0, variant };
 }
 
 export function glimmerVariantsFor(farm, kindId, type) {
     const state = normalizeGlimmerFarm(farm);
-    return glimmerVariants.filter((item) => item.kindId === kindId && item.type === type && state.unlocked.includes(item.id));
+    return [
+        ...glimmerVariants.filter((item) => item.kindId === kindId && item.type === type && state.unlocked.includes(item.id)),
+        ...ranchSkinVariantsFor(farm, type, kindId),
+    ];
 }
 
 export function setGlimmerVariant(farm, type, kindId, variantId) {
@@ -732,7 +742,10 @@ export function setGlimmerVariant(farm, type, kindId, variantId) {
     const variant = variants.find((item) => item.id === variantId);
     if (!variant)
         return { ok: false, error: "这个异色外观还没有解锁。" };
-    addVariantToResident(resident, variant);
+    if (ranchSkinById.has(variant.id))
+        resident.variantId = variant.id;
+    else
+        addVariantToResident(resident, variant);
     return { ok: true, name: variant.name };
 }
 

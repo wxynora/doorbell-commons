@@ -13,7 +13,7 @@ import { glimmerAchievementRewardText, normalizeGlimmerFarm, normalizeGlimmerWor
 import { normalizePublicExpeditionWorld } from "./public-expedition.js";
 import { activateNatureWorld, advanceNatureWorld, normalizeNatureWorld } from "./nature.js";
 import { setNatureWorldProvider } from "./time.js";
-import { crops } from "./content.js";
+import { crops, ranchSkinById } from "./content.js";
 import { normalizeQixi2026Farm, settleQixi2026SeedPriceRefund } from "./qixi-2026.js";
 import { normalizeQixiLantern2026Farm, normalizeQixiLantern2026World } from "./qixi-lantern-2026.js";
 import { normalizeWelfareWeekFarm } from "./welfare-week.js";
@@ -78,6 +78,9 @@ export function normalizeFarm(f) {
         f.ranch.raids ??= [];
         f.ranch.raidDebts ??= [];
         f.ranch.pets ??= [];
+        f.ranch.skins = Array.isArray(f.ranch.skins)
+            ? [...new Set(f.ranch.skins.map(String).filter((id) => ranchSkinById.has(id)))]
+            : [];
         f.ranch.kitchen ??= {};
         f.ranch.kitchen.products ??= [];
         f.ranch.kitchen.ingredients ??= {};
