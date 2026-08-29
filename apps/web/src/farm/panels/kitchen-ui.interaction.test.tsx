@@ -1,6 +1,10 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { BoundKitchenRead } from "../../auth/kitchen-client";
+import type {
+  BoundKitchenInventoryAction,
+  KitchenInventoryActionInput,
+} from "../../auth/kitchen-inventory-action-client";
 import { KitchenInventoryPanelContent } from "./kitchen-inventory-panel";
 import { CookingRecipeCatalog } from "./tools/cooking-recipe-catalog";
 
@@ -69,6 +73,21 @@ function kitchen(): BoundKitchenRead {
             recycle_silver: 1,
             created_at: null,
           },
+          {
+            status: "available",
+            recipe_id: "odd_dish",
+            dish_instance_id: "dish-4",
+            name: "微妙的料理",
+            rarity: "N",
+            category: null,
+            ingredients: [],
+            method: { status: "available", id: null, name: null, reason: null },
+            tool: { status: "available", id: null, name: null, reason: null },
+            reason: null,
+            value_gold: 1,
+            recycle_silver: 0,
+            created_at: null,
+          },
         ],
       },
       known_recipes: {
@@ -113,11 +132,13 @@ function kitchen(): BoundKitchenRead {
 afterEach(cleanup);
 
 describe("kitchen inventory presentation", () => {
-  it("groups identical dish instances, keeps one sprite and names self use honestly", () => {
+  it("groups dishes and only exposes authority-valid actions for normal and odd dishes", () => {
+    const submitted: KitchenInventoryActionInput[] = [];
     render(
       <KitchenInventoryPanelContent
         kitchen={kitchen()}
-        onKitchenInventoryAction={async () => {
+        onKitchenInventoryAction={async (input) => {
+          submitted.push(input);
           throw new Error("not submitted in this presentation test");
         }}
       />,
@@ -125,11 +146,72 @@ describe("kitchen inventory presentation", () => {
     fireEvent.click(screen.getByRole("button", { name: "料理" }));
 
     const list = screen.getByRole("list", { name: "真实料理库存" });
-    expect(within(list).getAllByRole("listitem")).toHaveLength(2);
+    expect(within(list).getAllByRole("listitem")).toHaveLength(3);
     expect(within(list).getByText("数量 2")).toBeTruthy();
     expect(within(list).getAllByRole("img", { name: "香煎蛋料理小图" })).toHaveLength(1);
-    expect(within(list).getAllByRole("button", { name: "自己食用" })).toHaveLength(2);
-    expect(within(list).queryByText("给自己")).toBeNull();
+
+    const normalDish = within(list).getByText("香煎蛋").closest("li");
+    const oddDish = within(list).getByText("微妙的料理").closest("li");
+    expect(normalDish).not.toBeNull();
+    expect(oddDish).not.toBeNull();
+    expect(
+      within(normalDish as HTMLElement).queryByRole("button", { name: "让小机吃" }),
+    ).toBeNull();
+    expect(within(normalDish as HTMLElement).getByRole("button", { name: "给猫" })).toBeTruthy();
+    expect(within(normalDish as HTMLElement).getByRole("button", { name: "给狗" })).toBeTruthy();
+    expect(within(normalDish as HTMLElement).getByRole("button", { name: "回收" })).toBeTruthy();
+    expect(within(normalDish as HTMLElement).getByRole("button", { name: "摆摊" })).toBeTruthy();
+
+    expect(within(oddDish as HTMLElement).getByRole("button", { name: "让小机吃" })).toBeTruthy();
+    expect(within(oddDish as HTMLElement).getByRole("button", { name: "回收" })).toBeTruthy();
+    expect(within(oddDish as HTMLElement).queryByRole("button", { name: "给猫" })).toBeNull();
+    expect(within(oddDish as HTMLElement).queryByRole("button", { name: "给狗" })).toBeNull();
+    expect(within(oddDish as HTMLElement).queryByLabelText("微妙的料理摆摊价格")).toBeNull();
+    expect(within(oddDish as HTMLElement).queryByRole("button", { name: "摆摊" })).toBeNull();
+
+    fireEvent.click(within(oddDish as HTMLElement).getByRole("button", { name: "让小机吃" }));
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0]).toMatchObject({
+      action: "use",
+      dishInstanceId: "dish-4",
+      target: "self",
+    });
+  });
+
+  it("reports a successful odd-dish self target as feeding the little AI", async () => {
+    render(
+      <KitchenInventoryPanelContent
+        kitchen={kitchen()}
+        onKitchenInventoryAction={async (input) => ({
+          ok: true,
+          data: {
+            data: {
+              resource: kitchen().data,
+              result: {
+                action: "use",
+                outcome: {
+                  kind: "use",
+                  dish_instance_id: "dish-4",
+                  dish_name: "微妙的料理",
+                  target: "self",
+                  debuff_name: "手脚发软",
+                  ends_at: 1_787_000_000_000,
+                },
+                receipt_id: input.idempotencyKey,
+              },
+            },
+            kitchen_inventory_revision: `kitchen-inventory-v1:${"b".repeat(64)}`,
+            server_time: "2026-08-30T00:00:00.000Z",
+          } as BoundKitchenInventoryAction,
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "料理" }));
+    const oddDish = screen.getByText("微妙的料理").closest("li");
+    expect(oddDish).not.toBeNull();
+    fireEvent.click(within(oddDish as HTMLElement).getByRole("button", { name: "让小机吃" }));
+
+    await waitFor(() => expect(screen.getByText("已让小机吃下微妙的料理")).toBeTruthy());
   });
 });
 

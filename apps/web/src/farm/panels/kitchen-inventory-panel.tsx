@@ -6,8 +6,8 @@ import {
   type KitchenInventoryActionIssue,
   kitchenInventoryActionIssueMessage,
 } from "../../auth/kitchen-inventory-action-client";
-import type { KitchenInventoryActionExecutor } from "./tool-panel";
 import { CookingCatalogSprite } from "./shop/shared";
+import type { KitchenInventoryActionExecutor } from "./tool-panel";
 import "./kitchen-inventory-panel.css";
 
 type KitchenData = BoundKitchenRead["data"];
@@ -72,7 +72,7 @@ function kitchenInventoryOutcomeMessage(
   switch (outcome.kind) {
     case "use":
       return outcome.target === "self"
-        ? `已食用${outcome.dish_name}`
+        ? `已让小机吃下${outcome.dish_name}`
         : `已给${outcome.target === "cat" ? "小猫" : "小狗"}吃${outcome.dish_name}`;
     case "recycle":
       return outcome.item_kind === "product"
@@ -216,6 +216,7 @@ function KitchenDishSection({
         const item = items[0];
         if (!item) return null;
         const actionable = actionsEnabled && canOperate(item.status, item.dish_instance_id);
+        const isOddDish = recipeId === "odd_dish";
         const name = itemName(item.name, "身份不可用");
         const rawPrice = stallPrices[item.dish_instance_id] ?? "";
         const price = Number(rawPrice);
@@ -234,57 +235,62 @@ function KitchenDishSection({
             </div>
             {actionable ? (
               <div className="kitchen-inventory-panel__actions kitchen-inventory-panel__actions--dish">
-                <button
-                  className="farm-inventory-action"
-                  disabled={busy}
-                  onClick={() =>
-                    onSubmit(
-                      {
-                        action: "use",
-                        dishInstanceId: item.dish_instance_id,
-                        target: "self",
-                      },
-                      `${name}自己食用`,
-                    )
-                  }
-                  type="button"
-                >
-                  {busy ? "处理中" : "自己食用"}
-                </button>
-                <button
-                  className="farm-inventory-action"
-                  disabled={busy}
-                  onClick={() =>
-                    onSubmit(
-                      {
-                        action: "use",
-                        dishInstanceId: item.dish_instance_id,
-                        target: "cat",
-                      },
-                      `${name}给猫`,
-                    )
-                  }
-                  type="button"
-                >
-                  {busy ? "处理中" : "给猫"}
-                </button>
-                <button
-                  className="farm-inventory-action"
-                  disabled={busy}
-                  onClick={() =>
-                    onSubmit(
-                      {
-                        action: "use",
-                        dishInstanceId: item.dish_instance_id,
-                        target: "dog",
-                      },
-                      `${name}给狗`,
-                    )
-                  }
-                  type="button"
-                >
-                  {busy ? "处理中" : "给狗"}
-                </button>
+                {isOddDish ? (
+                  <button
+                    className="farm-inventory-action"
+                    disabled={busy}
+                    onClick={() =>
+                      onSubmit(
+                        {
+                          action: "use",
+                          dishInstanceId: item.dish_instance_id,
+                          target: "self",
+                        },
+                        `${name}让小机吃`,
+                      )
+                    }
+                    type="button"
+                  >
+                    {busy ? "处理中" : "让小机吃"}
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      className="farm-inventory-action"
+                      disabled={busy}
+                      onClick={() =>
+                        onSubmit(
+                          {
+                            action: "use",
+                            dishInstanceId: item.dish_instance_id,
+                            target: "cat",
+                          },
+                          `${name}给猫`,
+                        )
+                      }
+                      type="button"
+                    >
+                      {busy ? "处理中" : "给猫"}
+                    </button>
+                    <button
+                      className="farm-inventory-action"
+                      disabled={busy}
+                      onClick={() =>
+                        onSubmit(
+                          {
+                            action: "use",
+                            dishInstanceId: item.dish_instance_id,
+                            target: "dog",
+                          },
+                          `${name}给狗`,
+                        )
+                      }
+                      type="button"
+                    >
+                      {busy ? "处理中" : "给狗"}
+                    </button>
+                  </>
+                )}
                 <button
                   className="farm-inventory-action"
                   disabled={busy}
@@ -303,40 +309,44 @@ function KitchenDishSection({
                 >
                   {busy ? "处理中" : "回收"}
                 </button>
-                <label className="kitchen-inventory-panel__price">
-                  <span>摊位价</span>
-                  <input
-                    aria-label={`${name}摆摊价格`}
-                    disabled={busy}
-                    inputMode="numeric"
-                    min="1"
-                    onChange={(event) =>
-                      onChangeStallPrice(item.dish_instance_id, event.currentTarget.value)
-                    }
-                    placeholder="输入价格"
-                    step="1"
-                    type="number"
-                    value={rawPrice}
-                  />
-                </label>
-                <button
-                  className="farm-inventory-action"
-                  disabled={busy || !validPrice}
-                  onClick={() =>
-                    onSubmit(
-                      {
-                        action: "stall",
-                        itemInstanceIds: [item.dish_instance_id],
-                        price,
-                        quantity: 1,
-                      },
-                      `${name}摆摊`,
-                    )
-                  }
-                  type="button"
-                >
-                  {busy ? "处理中" : "摆摊"}
-                </button>
+                {isOddDish ? null : (
+                  <>
+                    <label className="kitchen-inventory-panel__price">
+                      <span>摊位价</span>
+                      <input
+                        aria-label={`${name}摆摊价格`}
+                        disabled={busy}
+                        inputMode="numeric"
+                        min="1"
+                        onChange={(event) =>
+                          onChangeStallPrice(item.dish_instance_id, event.currentTarget.value)
+                        }
+                        placeholder="输入价格"
+                        step="1"
+                        type="number"
+                        value={rawPrice}
+                      />
+                    </label>
+                    <button
+                      className="farm-inventory-action"
+                      disabled={busy || !validPrice}
+                      onClick={() =>
+                        onSubmit(
+                          {
+                            action: "stall",
+                            itemInstanceIds: [item.dish_instance_id],
+                            price,
+                            quantity: 1,
+                          },
+                          `${name}摆摊`,
+                        )
+                      }
+                      type="button"
+                    >
+                      {busy ? "处理中" : "摆摊"}
+                    </button>
+                  </>
+                )}
               </div>
             ) : null}
           </li>
