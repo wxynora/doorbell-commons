@@ -152,12 +152,21 @@ test("purchase hints cover current canonical calls and repeat one-at-a-time seed
   );
 });
 
-test("skin requests keep the original notification and publish no unapproved action", () => {
+test("skin requests publish the existing canonical farm.buy shop-item action", () => {
   const skin = { kind: "item", itemId: "skin-pompompurin", qty: 1, displayName: "布丁狗" };
-  assert.deepEqual(buildFarmPurchaseDoorbellCalls("ranch", [skin]), []);
+  assert.deepEqual(buildFarmPurchaseDoorbellCalls("ranch", [skin]), [
+    {
+      op: "farm.buy",
+      args: { source: "shop", kind: "item", id: "skin-pompompurin", qty: 1 },
+    },
+  ]);
   assert.equal(
     buildFarmPurchaseNotificationText("辛玥", "ranch", [skin]),
-    "【📢来自铃野的通知】\n你的人类辛玥想要你给她买牧场商店的布丁狗 × 1。",
+    [
+      "【📢来自铃野的通知】\n你的人类辛玥想要你给她买牧场商店的布丁狗 × 1。",
+      '可以直接调用 doorbell：\n{"op":"farm.buy","args":{"source":"shop","kind":"item","id":"skin-pompompurin","qty":1}}',
+      "以上只是可直接使用的动作，不会自动执行。",
+    ].join("\n\n"),
   );
   assert.equal(
     buildFarmPurchaseNotificationText("辛玥", "ranch", [
@@ -166,7 +175,10 @@ test("skin requests keep the original notification and publish no unapproved act
     ]),
     [
       "【📢来自铃野的通知】\n你的人类辛玥想要你给她买牧场商店的鸭子 × 1、布丁狗 × 1。",
-      '可以直接调用 doorbell：\n{"op":"farm.buy-companion","args":{"kind":"animal","id":"duck"}}',
+      [
+        '可以直接调用 doorbell：\n{"op":"farm.buy-companion","args":{"kind":"animal","id":"duck"}}',
+        '{"op":"farm.buy","args":{"source":"shop","kind":"item","id":"skin-pompompurin","qty":1}}',
+      ].join("\n"),
       "以上只是可直接使用的动作，不会自动执行。",
     ].join("\n\n"),
   );

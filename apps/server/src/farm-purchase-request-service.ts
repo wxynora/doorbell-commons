@@ -183,6 +183,14 @@ export function buildFarmPurchaseDoorbellCalls(
         continue;
       }
       if (item.kind === "item") {
+        calls.push(
+          validatedDoorbellCall("farm.buy", {
+            source: "shop",
+            kind: "item",
+            id: item.itemId,
+            qty: 1,
+          }),
+        );
         continue;
       }
     }
