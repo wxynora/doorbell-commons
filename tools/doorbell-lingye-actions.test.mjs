@@ -364,6 +364,7 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
     const storeBuyOption = buyerStoreView.data.options.find((entry) =>
         entry.option.includes("commission:chef-store-buy"));
     assert.ok(storeBuyOption);
+    assert.match(storeBuyOption.option, /:[0-9a-f]{64}$/u);
     const storeOrder = execute(executor, "go.farm.commission", {
         option: storeBuyOption.option,
         amount: 1,
@@ -371,6 +372,54 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
     assert.equal(storeOrder.ok, true);
     assert.equal(getFarm(FARM_ID).ranch.kitchen.ingredients.spice, 1);
     assert.equal(backend.forResident(RESIDENT_ID).getOwnAccount().demandGold, 1_000);
+    const firstOrderAccount = backend.forResident(RESIDENT_ID).getOwnAccount();
+    assert.deepEqual(execute(executor, "go.farm.commission", {
+        option: storeBuyOption.option,
+        amount: 1,
+    }).data.result, storeOrder.data.result);
+    assert.equal(getFarm(FARM_ID).ranch.kitchen.ingredients.spice, 1);
+    assert.deepEqual(backend.forResident(RESIDENT_ID).getOwnAccount(), firstOrderAccount);
+    const secondStoreBuyOption = execute(executor, "go.farm.commission", {}).data.options.find((entry) =>
+        entry.option.includes("commission:chef-store-buy"));
+    assert.ok(secondStoreBuyOption);
+    assert.notEqual(secondStoreBuyOption.option, storeBuyOption.option);
+    const beforeSecondOrder = backend.forResident(RESIDENT_ID).getOwnAccount().availableSilver;
+    const secondStoreOrder = execute(executor, "go.farm.commission", {
+        option: secondStoreBuyOption.option,
+        amount: 1,
+    });
+    assert.equal(secondStoreOrder.ok, true);
+    assert.notEqual(secondStoreOrder.data.result.orderId, storeOrder.data.result.orderId);
+    assert.equal(getFarm(FARM_ID).ranch.kitchen.ingredients.spice, 2);
+    assert.equal(backend.forResident(RESIDENT_ID).getOwnAccount().availableSilver, beforeSecondOrder - 10);
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM chef_store_orders").get().count, 2);
+
+    actionNow = openedStore.data.result.nextRentDueAt;
+    const firstRentOption = execute(executor, "go.farm.commission", {}, otherIdentity).data.options.find((entry) =>
+        entry.option.includes("commission:chef-store-rent"));
+    assert.ok(firstRentOption);
+    assert.match(firstRentOption.option, /:\d+$/u);
+    const beforeFirstRent = backend.forResident(OTHER_RESIDENT_ID).getOwnAccount().availableGold;
+    const firstRent = execute(executor, "go.farm.commission", { option: firstRentOption.option }, otherIdentity);
+    assert.equal(firstRent.ok, true);
+    assert.equal(backend.forResident(OTHER_RESIDENT_ID).getOwnAccount().availableGold, beforeFirstRent - 100_000);
+    const afterFirstRent = backend.forResident(OTHER_RESIDENT_ID).getOwnAccount();
+    assert.deepEqual(
+        execute(executor, "go.farm.commission", { option: firstRentOption.option }, otherIdentity).data.result,
+        firstRent.data.result,
+    );
+    assert.deepEqual(backend.forResident(OTHER_RESIDENT_ID).getOwnAccount(), afterFirstRent);
+    actionNow = firstRent.data.result.nextRentDueAt;
+    const secondRentOption = execute(executor, "go.farm.commission", {}, otherIdentity).data.options.find((entry) =>
+        entry.option.includes("commission:chef-store-rent"));
+    assert.ok(secondRentOption);
+    assert.notEqual(secondRentOption.option, firstRentOption.option);
+    const beforeSecondRent = backend.forResident(OTHER_RESIDENT_ID).getOwnAccount().availableGold;
+    const secondRent = execute(executor, "go.farm.commission", { option: secondRentOption.option }, otherIdentity);
+    assert.equal(secondRent.ok, true);
+    assert.equal(backend.forResident(OTHER_RESIDENT_ID).getOwnAccount().availableGold, beforeSecondRent - 100_000);
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM chef_store_rent_payments").get().count, 2);
+    actionNow = NOW;
 
     const beforeFailedCommands = database.prepare("SELECT COUNT(*) AS count FROM economy_commands").get().count;
     const latestBank = execute(executor, "go.bank.view", {});

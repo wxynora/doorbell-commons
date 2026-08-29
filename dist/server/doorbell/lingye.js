@@ -1142,6 +1142,12 @@ function chefStoreListings(database, residentId) {
             listings.push({
                 leaseId: receipt.leaseId,
                 productId: receipt.marketId,
+                listingRevision: createHash("sha256").update(JSON.stringify([
+                    receipt.receiptId,
+                    receipt.quantity,
+                    receipt.price,
+                    receipt.updatedAt,
+                ])).digest("hex"),
                 kind: receipt.marketKind,
                 quantity: receipt.quantity,
                 priceSilver: receipt.price,
@@ -1187,12 +1193,12 @@ function chefCommissionFacts(database, backend, residentId, farm, now) {
     }
     for (const lease of leases) {
         if (["active", "suspended"].includes(lease.state) && now >= lease.nextRentDueAt)
-            options.push(option(`commission:chef-store-rent:${encodeURIComponent(lease.leaseId)}`));
+            options.push(option(`commission:chef-store-rent:${encodeURIComponent(lease.leaseId)}:${lease.nextRentDueAt}`));
     }
     for (const listing of listings) {
         if (listing.seller.kind !== "self") {
             options.push(option(
-                `commission:chef-store-buy:${encodeURIComponent(listing.leaseId)}:${encodeURIComponent(listing.productId)}`,
+                `commission:chef-store-buy:${encodeURIComponent(listing.leaseId)}:${encodeURIComponent(listing.productId)}:${listing.listingRevision}`,
                 ["amount"],
             ));
         }
@@ -1248,15 +1254,18 @@ function safeChefActionResult(database, result, residentId) {
 
 function farmChefCommissionAction(database, backend, residentId, args, farm, now) {
     const current = chefCommissionFacts(database, backend, residentId, farm, now);
-    if (!current.options.some((entry) => entry.option === args.option))
+    const key = idempotencyKey(residentId, "go.farm.commission", args);
+    const replayExists = database.prepare(`
+      SELECT 1 FROM chef_store_action_receipts WHERE action_key = ?
+    `).get(key) !== undefined;
+    if (!current.options.some((entry) => entry.option === args.option) && !replayExists)
         return null;
     const resident = backend.forResident(residentId);
-    const key = idempotencyKey(residentId, "go.farm.commission", args);
     let result;
     const recipeBuy = /^commission:chef-recipe-buy:(.+)$/u.exec(args.option);
     const storeOpen = /^commission:chef-store-open:(.+)$/u.exec(args.option);
-    const storeRent = /^commission:chef-store-rent:(.+)$/u.exec(args.option);
-    const storeBuy = /^commission:chef-store-buy:([^:]+):(.+)$/u.exec(args.option);
+    const storeRent = /^commission:chef-store-rent:([^:]+):(\d+)$/u.exec(args.option);
+    const storeBuy = /^commission:chef-store-buy:([^:]+):([^:]+):([0-9a-f]{64})$/u.exec(args.option);
     if (recipeBuy) {
         if (args.amount !== undefined || args.text !== undefined)
             throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个原创菜谱购买 option 当前不可用。");

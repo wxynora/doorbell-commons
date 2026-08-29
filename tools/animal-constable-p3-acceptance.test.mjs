@@ -265,7 +265,10 @@ test("security P3 exposes stable real trail sources and only non-punitive result
     assert.equal(published.ok, true, JSON.stringify(published));
     const jobId = published.data.result.jobId;
     const forged = run(constable, { option: `commission:resolve:${jobId}:penalty`, text: "unsupported" });
-    assert.deepEqual(forged.error, { code: "OPTION_NOT_AVAILABLE", message: "OPTION_NOT_AVAILABLE" });
+    assert.deepEqual(forged.error, {
+        code: "OPTION_NOT_AVAILABLE",
+        message: "当前选项已失效或不适用于这项业务；请重新查看当前事实与 option。",
+    });
     assert.equal(run(constable, { option: `commission:check:${jobId}:facts` }).ok, true);
     const resolved = run(constable, {
         option: `commission:resolve:${jobId}:rules_explained`,
@@ -318,7 +321,10 @@ test("a bank overdue matter has no party-cancel option and remains a real loan f
     assert.equal(job.workerResidentId, constable);
     assert.equal(view.data.options.some((entry) => entry.option === `commission:cancel:${job.jobId}`), false);
     const forgedCancel = run(borrower, { option: `commission:cancel:${job.jobId}` });
-    assert.deepEqual(forgedCancel.error, { code: "OPTION_NOT_AVAILABLE", message: "OPTION_NOT_AVAILABLE" });
+    assert.deepEqual(forgedCancel.error, {
+        code: "OPTION_NOT_AVAILABLE",
+        message: "当前选项已失效或不适用于这项业务；请重新查看当前事实与 option。",
+    });
     assert.equal(database.prepare("SELECT status FROM economy_system_loans WHERE loan_id = 'p3-bank-loan'").get().status, "overdue");
     assert.equal(backend.trustedQueries.getJob(job.jobId).status, "assigned");
     database.close();

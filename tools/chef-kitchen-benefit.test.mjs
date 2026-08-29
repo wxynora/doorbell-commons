@@ -39,12 +39,19 @@ assert.ok(SALT);
 
 after(() => rmSync(dataDirectory, { recursive: true, force: true }));
 
-function makeKitchenFarm(id, migrationId = MIGRATION_ID) {
+function makeKitchenFarm(id, migrationId = MIGRATION_ID, residentId = RESIDENT_ID) {
   const farm = makeFarm("料理师增益测试农场", 123456);
   farm.id = id;
   farm.humanKey = `human-${id}`;
   farm.silver = 100_000;
-  if (migrationId) farm.doorbellMcpMigration = { migrationId };
+  if (migrationId) {
+    farm.doorbellMcpMigration = {
+      migrationId,
+      residentId,
+      legacyGold: farm.coins,
+      legacySilver: farm.silver,
+    };
+  }
   ensureRanch(farm);
   const kitchen = ensureKitchen(farm);
   kitchen.products = [];
@@ -60,22 +67,27 @@ function makeKitchenFarm(id, migrationId = MIGRATION_ID) {
   return farm;
 }
 
-function activateChefCertificate(database, status = "active") {
+function activateChefCertificate(
+  database,
+  status = "active",
+  residentId = RESIDENT_ID,
+  migrationId = MIGRATION_ID,
+) {
   registerLingyeResidentReference(database, {
-    residentId: RESIDENT_ID,
-    bindingReference: MIGRATION_ID,
+    residentId,
+    bindingReference: migrationId,
     registeredAt: NOW - 1_000,
   });
   database.prepare(`
     INSERT INTO career_tracks (resident_id, career, track_order, selected_at)
     VALUES (?, 'chef', 1, ?)
-  `).run(RESIDENT_ID, NOW - 900);
+  `).run(residentId, NOW - 900);
   database.prepare(`
     INSERT INTO career_certificates (
       resident_id, career, qualification_level, status,
       source_attempt_id, issued_at, effective_at
     ) VALUES (?, 'chef', 1, ?, 'attempt-chef-benefit', ?, ?)
-  `).run(RESIDENT_ID, status, NOW - 800, status === "active" ? NOW - 700 : null);
+  `).run(residentId, status, NOW - 800, status === "active" ? NOW - 700 : null);
 }
 
 test("only an active chef certificate on the migrated resident grants the kitchen benefit", () => {
@@ -173,11 +185,13 @@ test("the Doorbell Human kitchen route derives the chef limit from the server-si
   t.after(() => {
     Date.now = originalDateNow;
   });
+  const routeResidentId = "019ffb01-49cd-7020-94af-3d04fb1ed03d";
+  const routeMigrationId = "migration-chef-benefit-route";
   const database = openLingyeWorldDatabase();
-  activateChefCertificate(database);
+  activateChefCertificate(database, "active", routeResidentId, routeMigrationId);
   database.close();
 
-  const farm = makeKitchenFarm("HJK345");
+  const farm = makeKitchenFarm("HJK345", routeMigrationId, routeResidentId);
   insertFarm(farm);
   const server = startServer(0);
   await once(server, "listening");
@@ -202,7 +216,7 @@ test("the Doorbell Human kitchen route derives the chef limit from the server-si
   assert.equal(body.data.daily_shop.ingredients
     .find((item) => item.ingredient_id === SALT.id).daily_buy_limit,
   kitchenIngredientDailyBuyLimit(SALT) * 2);
-  assert.equal(JSON.stringify(body).includes(MIGRATION_ID), false);
+  assert.equal(JSON.stringify(body).includes(routeMigrationId), false);
 
   const quantity = kitchenIngredientDailyBuyLimit(SALT) + 1;
   const farmAction = await fetch(`http://127.0.0.1:${address.port}/farms/${farm.id}/kitchen`, {
