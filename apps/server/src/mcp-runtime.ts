@@ -201,8 +201,9 @@ function lingyeToolResult(op: string, result: LingyeActionResult): DoorbellCallT
       isError: true,
     };
   }
+  const modelText = `${result.text}\n\n${JSON.stringify(result.data, null, 2)}`;
   return {
-    content: textContent(result.text),
+    content: textContent(modelText),
     structuredContent: {
       ok: true,
       op,

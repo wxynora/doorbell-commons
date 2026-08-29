@@ -1125,6 +1125,28 @@ test("MCP calls validate strict args, self-correct, preserve status cadence, and
       args: { section: "loans" },
     });
 
+    harness.lingyeActions.nextResult = {
+      ok: true,
+      text: "已读取职业学校当前事实。",
+      data: {
+        section: "courses",
+        value: [{ career: "chef", qualificationLevel: 1, courseIndex: 1 }],
+        options: [{ option: "school:course-read:1:chef:1:1:course-v1" }],
+      },
+    };
+    const schoolView = await postMcp(harness, call("go.school.view", { section: "courses" }));
+    const schoolViewResult = schoolView.json().result;
+    assert.equal(schoolViewResult.isError, false);
+    assert.match(schoolViewResult.content[0].text, /已读取职业学校当前事实。/u);
+    assert.match(schoolViewResult.content[0].text, /"section": "courses"/u);
+    assert.match(schoolViewResult.content[0].text, /"career": "chef"/u);
+    assert.match(schoolViewResult.content[0].text, /school:course-read:1:chef:1:1:course-v1/u);
+    assert.deepEqual(schoolViewResult.structuredContent.lingye, {
+      section: "courses",
+      value: [{ career: "chef", qualificationLevel: 1, courseIndex: 1 }],
+      options: [{ option: "school:course-read:1:chef:1:1:course-v1" }],
+    });
+
     const lingyeCallsBeforeInvalidSchool = harness.lingyeActions.calls.length;
     const invalidSchool = await postMcp(
       harness,
@@ -1151,8 +1173,8 @@ test("MCP calls validate strict args, self-correct, preserve status cadence, and
       option: "returned-option",
       answers: [["A"], ["B", "D"], ["C"], ["D"], ["A"]],
     });
-    assert.equal(harness.careerExamReconciliations.length, 1);
-    assert.deepEqual(harness.careerExamReconciliations[0], {
+    assert.equal(harness.careerExamReconciliations.length, 2);
+    assert.deepEqual(harness.careerExamReconciliations[1], {
       residentId: harness.residentId,
       homeId: harness.homeId,
       result: {
@@ -1406,7 +1428,10 @@ test("career notification delivery failure cannot overturn a completed Lingye ac
     );
     assert.equal(completed.statusCode, 200);
     assert.equal(completed.json().result.isError, false);
-    assert.equal(completed.json().result.content[0].text, "委托回复已记录。");
+    assert.equal(
+      completed.json().result.content[0].text,
+      '委托回复已记录。\n\n{\n  "message": {\n    "body": "继续处理。"\n  }\n}',
+    );
     assert.equal(harness.lingyeActions.calls.length, 1);
     assert.deepEqual(harness.notificationErrors, [failure]);
   } finally {
