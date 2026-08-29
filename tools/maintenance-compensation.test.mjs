@@ -11,6 +11,8 @@ const { makeFarm } = await import("../dist/game.js");
 const { NPC_ID } = await import("../dist/config.js");
 const grants = JSON.parse(readFileSync(new URL("../content/maintenance-grants.json", import.meta.url)));
 const compensationId = "compensation-20260830-bug-recovery";
+const popupId = "compensation-20260830-bug-recovery-popup";
+const popupText = "近期问题补偿：已发放 100,000 金币和 1,000 银币。";
 const {
   allFarms,
   applyMaintenanceSilverGrant,
@@ -129,4 +131,36 @@ test("one compensation campaign credits every player farm and the migrated ledge
     database.close();
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test("compensation popup is a Human-only notice campaign with no second currency grant", () => {
+  const ordinary = farm("ABC234", 102_000, 1_020);
+  const npc = farm(NPC_ID, 9_000, 90);
+  const previousIds = grants.map((entry) => entry.id).filter((id) => id !== popupId);
+  restoreWorldSnapshotInMemory({
+    format: "aifarm-world",
+    version: 1,
+    maintenanceGrantIds: previousIds,
+    doorbellWelcomeRewardGrants: [],
+    doorbellFarmCreations: [],
+    farms: [ordinary, npc],
+    ugc: [],
+  });
+  const inboxCount = ordinary.inbox?.length ?? 0;
+
+  const applied = applyMaintenanceSilverGrant(undefined, 1_788_041_000_000);
+  const values = Object.fromEntries(allFarms().map((entry) => [entry.id, entry]));
+  assert.deepEqual(applied.campaigns, [
+    { id: popupId, gold: 0, silver: 0, amount: 0, count: 1 },
+  ]);
+  assert.deepEqual(
+    { gold: values.ABC234.coins, silver: values.ABC234.silver },
+    { gold: 102_000, silver: 1_020 },
+  );
+  assert.equal(values.ABC234.inbox?.length ?? 0, inboxCount);
+  assert.deepEqual(values.ABC234.ranch.notices, [
+    { at: 1_788_041_000_000, text: popupText, section: "compensation" },
+  ]);
+  assert.equal(values[NPC_ID].ranch?.notices?.length ?? 0, 0);
+  assert.deepEqual(applyMaintenanceSilverGrant(), { applied: false, campaigns: [] });
 });

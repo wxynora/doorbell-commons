@@ -38,5 +38,11 @@
     "id": "compensation-20260830-bug-recovery",
     "gold": 100000,
     "silver": 1000
+  },
+  {
+    "id": "compensation-20260830-bug-recovery-popup",
+    "notice": "近期问题补偿：已发放 100,000 金币和 1,000 银币。",
+    "section": "compensation",
+    "sendInbox": false
   }
 ]

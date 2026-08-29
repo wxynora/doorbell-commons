@@ -198,14 +198,17 @@ export function applyMaintenanceSilverGrant(farmValues = farms.values(), now = D
         const gold = Math.max(0, Math.floor(Number(raw?.gold) || 0));
         const silver = Math.max(0, Math.floor(Number(raw?.silver) || 0));
         const notice = String(raw?.notice ?? "").trim();
-        if (!id || (gold <= 0 && silver <= 0) || appliedMaintenanceGrantIds.includes(id))
+        const section = String(raw?.section ?? "").trim();
+        const sendInbox = raw?.sendInbox !== false;
+        if (!id || (gold <= 0 && silver <= 0 && !notice) || appliedMaintenanceGrantIds.includes(id))
             continue;
         for (const farm of players) {
             farm.coins = Math.max(0, Math.floor(Number(farm.coins) || 0)) + gold;
             farm.silver = Math.max(0, Math.floor(Number(farm.silver) || 0)) + silver;
             if (notice) {
-                pushInbox(farm, notice, now);
-                pushRanchNotice(farm, notice, now);
+                if (sendInbox)
+                    pushInbox(farm, notice, now);
+                pushRanchNotice(farm, notice, now, section || undefined);
             }
         }
         appliedMaintenanceGrantIds.push(id);
