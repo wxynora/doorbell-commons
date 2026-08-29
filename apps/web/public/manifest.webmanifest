@@ -8,10 +8,22 @@
   "background_color": "#eee7d5",
   "icons": [
     {
-      "src": "/community-icon.v1.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "/community-icon.v2-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
       "purpose": "any"
+    },
+    {
+      "src": "/community-icon.v2-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/community-icon.v2-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }

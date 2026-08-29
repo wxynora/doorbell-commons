@@ -1,5 +1,5 @@
 export const COMMUNITY_SERVICE_WORKER_URL = "/service-worker.js";
-export const COMMUNITY_MANIFEST_URL = "/manifest.webmanifest?v=1";
+export const COMMUNITY_MANIFEST_URL = "/manifest.webmanifest?v=2";
 
 const COMMUNITY_ORIGIN = "https://doorbell.invalid";
 const VITE_HASHED_ASSET_RE = /\/[^/]+-[a-z0-9_-]{8,}\.(?:js|css)$/i;

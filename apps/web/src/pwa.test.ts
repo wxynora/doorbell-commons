@@ -11,21 +11,30 @@ const serviceWorkerSource = readFileSync(
 );
 const indexSource = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const mainSource = readFileSync(new URL("./main.tsx", import.meta.url), "utf8");
-const iconSource = readFileSync(
-  new URL("../public/community-icon.v1.svg", import.meta.url),
-  "utf8",
-);
 const manifest = JSON.parse(
   readFileSync(new URL("../public/manifest.webmanifest", import.meta.url), "utf8"),
 ) as Record<string, unknown>;
+
+function readPngDimensions(filename: string): [number, number] {
+  const source = readFileSync(new URL(`../public/${filename}`, import.meta.url));
+  assert.equal(source.toString("ascii", 1, 4), "PNG");
+  return [source.readUInt32BE(16), source.readUInt32BE(20)];
+}
 
 test("community request classification keeps API authority outside Cache Storage", () => {
   assert.equal(classifyCommunityRequest("/api/farm/field", "navigate"), "api-network-only");
   assert.equal(classifyCommunityRequest("/api/farm/field?refresh=1"), "api-network-only");
   assert.equal(classifyCommunityRequest("/lingye/farm", "navigate"), "navigation-network-first");
   assert.equal(classifyCommunityRequest("/assets/index-AbCd1234.js"), "hashed-static-cache-first");
-  assert.equal(classifyCommunityRequest("/community-icon.v1.svg"), "hashed-static-cache-first");
-  assert.equal(classifyCommunityRequest("/manifest.webmanifest?v=1"), "hashed-static-cache-first");
+  assert.equal(
+    classifyCommunityRequest("/community-icon.v2-192.png"),
+    "hashed-static-cache-first",
+  );
+  assert.equal(
+    classifyCommunityRequest("/community-icon.v2-512-maskable.png"),
+    "hashed-static-cache-first",
+  );
+  assert.equal(classifyCommunityRequest("/manifest.webmanifest?v=2"), "hashed-static-cache-first");
   assert.equal(
     classifyCommunityRequest("/fonts/doorbell-fonts.v1.css"),
     "hashed-static-cache-first",
@@ -70,15 +79,33 @@ test("manifest is a Chinese standalone community entry with the existing surface
   assert.equal(manifest.background_color, "#eee7d5");
   assert.deepEqual(manifest.icons, [
     {
-      src: "/community-icon.v1.svg",
-      sizes: "any",
-      type: "image/svg+xml",
+      src: "/community-icon.v2-192.png",
+      sizes: "192x192",
+      type: "image/png",
       purpose: "any",
     },
+    {
+      src: "/community-icon.v2-512.png",
+      sizes: "512x512",
+      type: "image/png",
+      purpose: "any",
+    },
+    {
+      src: "/community-icon.v2-512-maskable.png",
+      sizes: "512x512",
+      type: "image/png",
+      purpose: "maskable",
+    },
   ]);
-  assert.match(iconSource.trim(), /^<svg[\s\S]*门铃社区[\s\S]*<\/svg>$/);
-  assert.doesNotMatch(iconSource, /farm/i);
-  assert.match(indexSource, /<link rel="manifest" href="\/manifest\.webmanifest\?v=1" \/>/);
+  assert.deepEqual(readPngDimensions("community-icon.v2-180.png"), [180, 180]);
+  assert.deepEqual(readPngDimensions("community-icon.v2-192.png"), [192, 192]);
+  assert.deepEqual(readPngDimensions("community-icon.v2-512.png"), [512, 512]);
+  assert.deepEqual(readPngDimensions("community-icon.v2-512-maskable.png"), [512, 512]);
+  assert.match(indexSource, /<link rel="manifest" href="\/manifest\.webmanifest\?v=2" \/>/);
+  assert.match(
+    indexSource,
+    /<link rel="apple-touch-icon" href="\/community-icon\.v2-180\.png" \/>/,
+  );
 });
 
 test("service worker has bounded strategies without precaching or background writes", () => {
@@ -98,6 +125,7 @@ test("service worker has bounded strategies without precaching or background wri
   assert.doesNotMatch(serviceWorkerSource, /queue|replay/i);
   assert.match(serviceWorkerSource, /addEventListener\("push"/);
   assert.match(serviceWorkerSource, /registration\.showNotification/);
+  assert.match(serviceWorkerSource, /icon: "\/community-icon\.v2-192\.png"/);
   assert.match(serviceWorkerSource, /addEventListener\("notificationclick"/);
   assert.match(
     serviceWorkerSource,

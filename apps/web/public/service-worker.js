@@ -114,7 +114,7 @@ self.addEventListener("push", (event) => {
     self.registration.showNotification(payload.title, {
       body: payload.body,
       data: { url: payload.url },
-      icon: "/community-icon.v1.svg",
+      icon: "/community-icon.v2-192.png",
       tag: payload.tag,
     }),
   );
