@@ -33,5 +33,10 @@
     "id": "maintenance-20260819-ranch-feed-selector",
     "silver": 100,
     "notice": "🎁 农场投喂修复补偿：已发放 🪙100 银币。"
+  },
+  {
+    "id": "compensation-20260830-bug-recovery",
+    "gold": 100000,
+    "silver": 1000
   }
 ]

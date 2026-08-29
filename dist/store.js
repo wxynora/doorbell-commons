@@ -189,23 +189,27 @@ export function advanceStoredNatureWorld(now) {
         return natureWorld;
     return commitNatureWorld(next);
 }
-/** 启动时依次应用尚未发放的维护福利；以后只追加 content/maintenance-grants.json，不改发放逻辑。 */
+/** 启动时依次应用尚未发放的维护福利；campaign id 保证全局幂等。 */
 export function applyMaintenanceSilverGrant(farmValues = farms.values(), now = Date.now()) {
     const players = [...farmValues].filter((farm) => farm && farm.id !== NPC_ID);
     const campaigns = [];
     for (const raw of MAINTENANCE_GRANTS) {
         const id = String(raw?.id ?? "").trim();
-        const amount = Math.max(0, Math.floor(Number(raw?.silver) || 0));
+        const gold = Math.max(0, Math.floor(Number(raw?.gold) || 0));
+        const silver = Math.max(0, Math.floor(Number(raw?.silver) || 0));
         const notice = String(raw?.notice ?? "").trim();
-        if (!id || amount <= 0 || !notice || appliedMaintenanceGrantIds.includes(id))
+        if (!id || (gold <= 0 && silver <= 0) || appliedMaintenanceGrantIds.includes(id))
             continue;
         for (const farm of players) {
-            farm.silver = Math.max(0, Math.floor(Number(farm.silver) || 0)) + amount;
-            pushInbox(farm, notice, now);
-            pushRanchNotice(farm, notice, now);
+            farm.coins = Math.max(0, Math.floor(Number(farm.coins) || 0)) + gold;
+            farm.silver = Math.max(0, Math.floor(Number(farm.silver) || 0)) + silver;
+            if (notice) {
+                pushInbox(farm, notice, now);
+                pushRanchNotice(farm, notice, now);
+            }
         }
         appliedMaintenanceGrantIds.push(id);
-        campaigns.push({ id, amount, count: players.length });
+        campaigns.push({ id, gold, silver, amount: silver, count: players.length });
     }
     return { applied: campaigns.length > 0, campaigns };
 }
@@ -507,7 +511,7 @@ export function load() {
             const npcCreated = ensureNpc();
             const grant = applyMaintenanceSilverGrant();
             for (const campaign of grant.campaigns)
-                console.log(`[store] 维护福利 ${campaign.id} 已发放 ${campaign.count} 个玩家农场，每家 ${campaign.amount} 银`);
+                console.log(`[store] 维护福利 ${campaign.id} 已发放 ${campaign.count} 个玩家农场，每家 ${campaign.gold} 金、${campaign.silver} 银`);
             const qixiRefund = applyQixi2026SeedPriceRefund();
             if (qixiRefund.applied)
                 console.log(`[store] 七夕种子降价退款已发放 ${qixiRefund.count} 个玩家农场、${qixiRefund.seeds} 颗种子，共 ${qixiRefund.coins} 金`);
@@ -565,7 +569,7 @@ export function load() {
     ensureNpc();
     const grant = applyMaintenanceSilverGrant();
     for (const campaign of grant.campaigns)
-        console.log(`[store] 维护福利 ${campaign.id} 已发放 ${campaign.count} 个玩家农场，每家 ${campaign.amount} 银`);
+        console.log(`[store] 维护福利 ${campaign.id} 已发放 ${campaign.count} 个玩家农场，每家 ${campaign.gold} 金、${campaign.silver} 银`);
     const qixiRefund = applyQixi2026SeedPriceRefund();
     if (qixiRefund.applied)
         console.log(`[store] 七夕种子降价退款已发放 ${qixiRefund.count} 个玩家农场、${qixiRefund.seeds} 颗种子，共 ${qixiRefund.coins} 金`);
