@@ -1777,7 +1777,7 @@ test("current code and current group member create an account and opaque browser
     assert.match(setCookie, /; Path=\/api(?:;|$)/);
     assert.doesNotMatch(setCookie, /; Path=\/(?:;|$)/);
     assert.match(setCookie, /; Secure/);
-    assert.doesNotMatch(setCookie, /Max-Age/i);
+    assert.match(setCookie, /; Max-Age=2592000(?:;|$)/);
     assert.doesNotMatch(setCookie, /Expires=/i);
 
     assert.equal(

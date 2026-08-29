@@ -1,11 +1,12 @@
 export const HUMAN_SESSION_COOKIE_NAME = "doorbell_session";
+export const HUMAN_SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 
 function secureAttribute(secure: boolean): string {
   return secure ? "; Secure" : "";
 }
 
 export function serializeHumanSessionCookie(token: string, secure: boolean): string {
-  return `${HUMAN_SESSION_COOKIE_NAME}=${token}; HttpOnly; SameSite=Lax; Path=/api${secureAttribute(secure)}`;
+  return `${HUMAN_SESSION_COOKIE_NAME}=${token}; HttpOnly; SameSite=Lax; Path=/api; Max-Age=${HUMAN_SESSION_MAX_AGE_SECONDS}${secureAttribute(secure)}`;
 }
 
 export function serializeClearedHumanSessionCookie(secure: boolean): string {
