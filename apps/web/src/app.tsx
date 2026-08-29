@@ -27,6 +27,12 @@ import {
   lingyeIssueMessage,
 } from "./auth/lingye-client";
 import {
+  claimMailboxAttachment,
+  getMailboxLetter,
+  listMailbox,
+  mailboxIssueMessage,
+} from "./auth/mailbox-client";
+import {
   addSharedMeme,
   getSharedMeme,
   listSharedMemes,
@@ -44,6 +50,7 @@ import {
   type CandidateTwoHomeSettingsView,
   type CandidateTwoIdentityView,
   type CandidateTwoLingyeReadState,
+  type CandidateTwoMailboxView,
   CandidateTwoPreview,
   type CandidateTwoSharedMemeDetailView,
   type CandidateTwoSharedMemeListView,
@@ -143,6 +150,7 @@ type AppState =
         memorial: CandidateTwoLingyeReadState<BoundQixiMemorialRead>;
         together: CandidateTwoLingyeReadState<BoundTogetherRead>;
       };
+      mailbox: CandidateTwoMailboxView;
     };
 
 function identityView(identity: HumanIdentity): CandidateTwoIdentityView {
@@ -324,6 +332,12 @@ function authenticatedState(
       memorial: { stage: "idle" },
       together: { stage: "idle" },
     },
+    mailbox: {
+      claimMessage: null,
+      claimPending: false,
+      detail: { stage: "idle" },
+      list: { stage: "loading", category: null, page: 1 },
+    },
   };
 }
 
@@ -345,6 +359,7 @@ function authenticatedViewState(
     sharedMemeDetail: appState.sharedMemeDetail,
     sharedMemes: appState.sharedMemes,
     lingye: appState.lingye,
+    mailbox: appState.mailbox,
   };
 }
 
@@ -424,6 +439,15 @@ function LiveApp() {
 
   const settingsLoading =
     appState.stage === "authenticated" ? appState.homeSettings.stage === "loading" : false;
+  const mailboxListLoading =
+    appState.stage === "authenticated" && appState.mailbox.list.stage === "loading"
+      ? appState.mailbox.list
+      : null;
+  const mailboxListCategory = mailboxListLoading?.category ?? null;
+  const mailboxListPage = mailboxListLoading?.page ?? 0;
+  const mailboxListRequestKey = mailboxListLoading
+    ? `${mailboxListCategory ?? "all"}:${mailboxListPage}`
+    : null;
 
   useEffect(() => {
     if (!settingsLoading) {
@@ -450,6 +474,46 @@ function LiveApp() {
 
     return () => controller.abort();
   }, [settingsLoading]);
+
+  useEffect(() => {
+    if (!mailboxListRequestKey) {
+      return;
+    }
+
+    const category = mailboxListCategory;
+    const page = mailboxListPage;
+    const controller = new AbortController();
+    void listMailbox({
+      ...(category ? { category } : {}),
+      page,
+      signal: controller.signal,
+    }).then((result) => {
+      if (controller.signal.aborted) {
+        return;
+      }
+      setAppState((current) => {
+        if (
+          current.stage !== "authenticated" ||
+          current.mailbox.list.stage !== "loading" ||
+          current.mailbox.list.category !== category ||
+          current.mailbox.list.page !== page
+        ) {
+          return current;
+        }
+        return {
+          ...current,
+          mailbox: {
+            ...current.mailbox,
+            list: result.ok
+              ? { stage: "ready", category, data: result.data }
+              : { stage: "error", category, message: mailboxIssueMessage(result.issue), page },
+          },
+        };
+      });
+    });
+
+    return () => controller.abort();
+  }, [mailboxListCategory, mailboxListPage, mailboxListRequestKey]);
 
   const loadLingye = useCallback(
     (kind: "glimmer" | "memorial" | "together") => {
@@ -541,6 +605,150 @@ function LiveApp() {
               ? "memorial"
               : "together",
         );
+        return;
+      }
+
+      if (action.type === "home-mailbox-list") {
+        if (appState.stage !== "authenticated") {
+          return;
+        }
+        setAppState((current) =>
+          current.stage === "authenticated"
+            ? {
+                ...current,
+                mailbox: {
+                  claimMessage: null,
+                  claimPending: false,
+                  detail: { stage: "idle" },
+                  list: {
+                    stage: "loading",
+                    category: action.category,
+                    page: action.page,
+                  },
+                },
+              }
+            : current,
+        );
+        return;
+      }
+
+      if (action.type === "home-mailbox-detail-open") {
+        if (appState.stage !== "authenticated") {
+          return;
+        }
+        setAppState((current) =>
+          current.stage === "authenticated"
+            ? {
+                ...current,
+                mailbox: {
+                  ...current.mailbox,
+                  claimMessage: null,
+                  detail: { stage: "loading", letterId: action.letterId },
+                },
+              }
+            : current,
+        );
+        const result = await getMailboxLetter(action.letterId);
+        setAppState((current) => {
+          if (
+            current.stage !== "authenticated" ||
+            current.mailbox.detail.stage !== "loading" ||
+            current.mailbox.detail.letterId !== action.letterId
+          ) {
+            return current;
+          }
+          const list = current.mailbox.list;
+          const nextList =
+            result.ok && list.stage === "ready"
+              ? {
+                  ...list,
+                  data: {
+                    ...list.data,
+                    letters: list.data.letters.map((letter) =>
+                      letter.letter_id === action.letterId
+                        ? { ...letter, attachment: result.data.letter.attachment, is_new: false }
+                        : letter,
+                    ),
+                  },
+                }
+              : list;
+          return {
+            ...current,
+            mailbox: {
+              ...current.mailbox,
+              detail: result.ok
+                ? { stage: "ready", data: result.data }
+                : {
+                    stage: "error",
+                    letterId: action.letterId,
+                    message: mailboxIssueMessage(result.issue),
+                  },
+              list: nextList,
+            },
+          };
+        });
+        return;
+      }
+
+      if (action.type === "home-mailbox-claim") {
+        if (
+          appState.stage !== "authenticated" ||
+          appState.mailbox.claimPending ||
+          appState.mailbox.detail.stage !== "ready" ||
+          appState.mailbox.detail.data.letter.letter_id !== action.letterId ||
+          appState.mailbox.detail.data.letter.attachment?.status !== "available"
+        ) {
+          return;
+        }
+        setAppState((current) =>
+          current.stage === "authenticated" &&
+          current.mailbox.detail.stage === "ready" &&
+          current.mailbox.detail.data.letter.letter_id === action.letterId
+            ? {
+                ...current,
+                mailbox: {
+                  ...current.mailbox,
+                  claimMessage: null,
+                  claimPending: true,
+                },
+              }
+            : current,
+        );
+        const result = await claimMailboxAttachment(action.letterId);
+        setAppState((current) => {
+          if (
+            current.stage !== "authenticated" ||
+            current.mailbox.detail.stage !== "ready" ||
+            current.mailbox.detail.data.letter.letter_id !== action.letterId
+          ) {
+            return current;
+          }
+          const list = current.mailbox.list;
+          const nextList =
+            result.ok && list.stage === "ready"
+              ? {
+                  ...list,
+                  data: {
+                    ...list.data,
+                    letters: list.data.letters.map((letter) =>
+                      letter.letter_id === action.letterId
+                        ? { ...letter, attachment: result.data.letter.attachment }
+                        : letter,
+                    ),
+                  },
+                }
+              : list;
+          return {
+            ...current,
+            mailbox: {
+              ...current.mailbox,
+              claimMessage: result.ok ? "附件已领取。" : mailboxIssueMessage(result.issue),
+              claimPending: false,
+              detail: result.ok ? { stage: "ready", data: result.data } : current.mailbox.detail,
+              list: nextList,
+            },
+          };
+        });
         return;
       }
 

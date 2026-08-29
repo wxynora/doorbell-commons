@@ -1,5 +1,10 @@
 import {
   type HumanSettingsChatMode,
+  type MailboxCategory,
+  type MailboxDetailSuccess,
+  type MailboxListSuccess,
+  mailboxCategorySchema,
+  mailboxDetailRequestSchema,
   type SharedMemeAddRequest,
   type SharedMemeDetailSuccess,
   type SharedMemeListSuccess,
@@ -351,6 +356,24 @@ export type CandidateTwoLingyeReadState<T> =
   | { stage: "empty" }
   | { stage: "error"; message: string };
 
+export type CandidateTwoMailboxListView =
+  | { stage: "loading"; category: MailboxCategory | null; page: number }
+  | { stage: "error"; category: MailboxCategory | null; message: string; page: number }
+  | { stage: "ready"; category: MailboxCategory | null; data: MailboxListSuccess };
+
+export type CandidateTwoMailboxDetailView =
+  | { stage: "idle" }
+  | { stage: "loading"; letterId: string }
+  | { stage: "error"; letterId: string; message: string }
+  | { stage: "ready"; data: MailboxDetailSuccess };
+
+export interface CandidateTwoMailboxView {
+  claimMessage: string | null;
+  claimPending: boolean;
+  detail: CandidateTwoMailboxDetailView;
+  list: CandidateTwoMailboxListView;
+}
+
 export type CandidateTwoViewState =
   | { stage: "checking-session" }
   | { stage: "anonymous"; issueMessage: string | null; pending: boolean }
@@ -368,6 +391,7 @@ export type CandidateTwoViewState =
       homeSettingsPending: boolean;
       identity: CandidateTwoIdentityView;
       issueMessage: string | null;
+      mailbox: CandidateTwoMailboxView;
       pendingLogout: boolean;
       sharedMemeCreateMessage: string | null;
       sharedMemeCreatePending: boolean;
@@ -1053,6 +1077,19 @@ export function buildCandidateTwoDemoPreset(
       homeSettingsPending: false,
       identity: candidateTwoDemoIdentity,
       issueMessage: null,
+      mailbox: {
+        claimMessage: null,
+        claimPending: false,
+        detail: { stage: "idle" },
+        list: {
+          stage: "ready",
+          category: null,
+          data: {
+            letters: [],
+            pagination: { page: 1, page_size: 8, total_items: 0, total_pages: 0 },
+          },
+        },
+      },
       pendingLogout: false,
       sharedMemeCreateMessage: null,
       sharedMemeCreatePending: false,
@@ -1202,6 +1239,9 @@ export type CandidateTwoAction =
   | { type: "lingye-glimmer-open" }
   | { type: "lingye-memorial-open" }
   | { type: "lingye-together-open" }
+  | { type: "home-mailbox-list"; category: MailboxCategory | null; page: number }
+  | { type: "home-mailbox-detail-open"; letterId: string }
+  | { type: "home-mailbox-claim"; letterId: string }
   | { type: "shared-memes-open" }
   | { type: "shared-meme-open"; memeId: number }
   | { type: "shared-meme-create"; input: SharedMemeAddRequest }
@@ -1236,6 +1276,9 @@ const candidateTwoActionKeys = {
   "lingye-glimmer-open": ["type"],
   "lingye-memorial-open": ["type"],
   "lingye-together-open": ["type"],
+  "home-mailbox-list": ["type", "category", "page"],
+  "home-mailbox-detail-open": ["type", "letterId"],
+  "home-mailbox-claim": ["type", "letterId"],
   "shared-memes-open": ["type"],
   "shared-meme-open": ["type", "memeId"],
   "shared-meme-create": ["type", "input"],
@@ -1438,6 +1481,26 @@ export function parseCandidateTwoAction(value: unknown): CandidateTwoAction | nu
       value.memeId > 0
       ? { type, memeId: value.memeId }
       : null;
+  }
+
+  if (type === "home-mailbox-list") {
+    const category =
+      value.category === null ? null : mailboxCategorySchema.safeParse(value.category);
+    return typeof value.page === "number" &&
+      Number.isSafeInteger(value.page) &&
+      value.page > 0 &&
+      (category === null || category.success)
+      ? {
+          type,
+          category: category === null ? null : category.data,
+          page: value.page,
+        }
+      : null;
+  }
+
+  if (type === "home-mailbox-detail-open" || type === "home-mailbox-claim") {
+    const parsed = mailboxDetailRequestSchema.safeParse({ letter_id: value.letterId });
+    return parsed.success ? { type, letterId: parsed.data.letter_id } : null;
   }
 
   if (type === "shared-meme-create") {
@@ -1658,7 +1721,7 @@ const HOME_RUNTIME_CONTENT = `        <button class="home-parlor-entry" type="bu
             </header>
             <div class="home-doorstep-row home-doorbell-status">
                 <div class="home-doorstep-label"><strong>门铃</strong><small>DOORBELLS</small></div>
-                <p class="candidate2-empty-copy home-doorbell-empty">暂无可读取的门铃请求</p>
+                <p class="candidate2-empty-copy home-doorbell-empty">门铃请求功能尚未开放</p>
                 <div class="candidate2-demo-block home-doorbell-demo" hidden>
                     <p class="candidate2-demo-count home-doorbell-count">0</p>
                     <ul class="candidate2-demo-request-list"></ul>
@@ -1666,7 +1729,7 @@ const HOME_RUNTIME_CONTENT = `        <button class="home-parlor-entry" type="bu
             </div>
             <div class="home-doorstep-row home-visitor-status">
                 <div class="home-doorstep-label"><strong>访客</strong><small>VISITORS</small></div>
-                <p class="candidate2-empty-copy home-visitors-empty">暂无可读取的访客数据</p>
+                <p class="candidate2-empty-copy home-visitors-empty">串门开放后，这里会显示真实访客</p>
                 <div class="candidate2-demo-visitors" hidden></div>
             </div>
         </section>
@@ -1683,10 +1746,10 @@ const HOME_RUNTIME_CONTENT = `        <button class="home-parlor-entry" type="bu
                 </header>
                 <div class="home-mailbox-list-view">
                     <nav class="home-mailbox-categories" aria-label="信箱分类">
-                        <button class="is-active" type="button" data-mailbox-category="all" onclick="setHomeMailboxCategory('all')">全部</button>
-                        <button type="button" data-mailbox-category="visit" onclick="setHomeMailboxCategory('visit')">串门</button>
-                        <button type="button" data-mailbox-category="activity" onclick="setHomeMailboxCategory('activity')">活动</button>
-                        <button type="button" data-mailbox-category="notice" onclick="setHomeMailboxCategory('notice')">通知</button>
+                        <button class="is-active" type="button" data-mailbox-category="" onclick="setHomeMailboxCategory(null)">全部</button>
+                        <button type="button" data-mailbox-category="system" onclick="setHomeMailboxCategory('system')">系统</button>
+                        <button type="button" data-mailbox-category="farm" onclick="setHomeMailboxCategory('farm')">农场</button>
+                        <button type="button" data-mailbox-category="lingye" onclick="setHomeMailboxCategory('lingye')">铃野</button>
                     </nav>
                     <p class="candidate2-empty-copy home-mailbox-empty">信箱里暂时没有新消息。</p>
                     <ol class="home-mailbox-demo-list" hidden></ol>
@@ -1706,10 +1769,10 @@ const HOME_RUNTIME_CONTENT = `        <button class="home-parlor-entry" type="bu
                     <div class="home-mailbox-detail-footer">
                         <span class="home-mailbox-detail-status"></span>
                         <span class="home-mailbox-detail-actions" hidden>
-                            <button type="button" onclick="showHomeMailboxDetailFeedback('接受')">接受</button>
-                            <button type="button" onclick="showHomeMailboxDetailFeedback('拒绝')">拒绝</button>
+                            <button type="button" onclick="claimHomeMailboxAttachment()">领取附件</button>
                         </span>
                     </div>
+                    <p class="home-mailbox-detail-feedback" role="status" aria-live="polite"></p>
                 </article>
             </section>
         </div>
@@ -1717,16 +1780,24 @@ const HOME_RUNTIME_CONTENT = `        <button class="home-parlor-entry" type="bu
         </div>`;
 
 const HOME_SCRIPT = `
-    let homeMailboxCategory = 'all';
+    let homeMailboxCategory = null;
     let homeMailboxMessages = [];
     let homeMailboxPage = 1;
     let homeMailboxUnreadCount = 0;
-    const homeMailboxPageSize = 8;
+    let homeMailboxUnreadCountExact = false;
+    let homeMailboxTotalPages = 0;
+    let homeMailboxSelectedLetterId = '';
 
     function syncHomeMailboxUnreadBadge() {
         const mailboxBadge = document.querySelector('.home-mailbox-badge');
-        mailboxBadge.textContent = String(homeMailboxUnreadCount);
+        mailboxBadge.textContent = homeMailboxUnreadCountExact ? String(homeMailboxUnreadCount) : '•';
         mailboxBadge.hidden = homeMailboxUnreadCount < 1;
+        mailboxBadge.setAttribute(
+            'aria-label',
+            homeMailboxUnreadCountExact
+                ? homeMailboxUnreadCount + ' 封新信件'
+                : '当前页有新信件',
+        );
     }
 
     function openHomeParlor() {
@@ -1737,6 +1808,9 @@ const HOME_SCRIPT = `
         document.querySelector('.home-mailbox-dialog').hidden = false;
         document.querySelector('#main-nav').style.display = 'none';
         showHomeMailboxList();
+        if (!window.__doorbellCandidateDemo) {
+            sendAction({ type: 'home-mailbox-list', category: homeMailboxCategory, page: homeMailboxPage });
+        }
         document.querySelector('.home-mailbox-close').focus();
     }
 
@@ -1750,13 +1824,17 @@ const HOME_SCRIPT = `
         const mailboxEmpty = document.querySelector('.home-mailbox-empty');
         const mailboxList = document.querySelector('.home-mailbox-demo-list');
         const mailboxFooter = document.querySelector('.home-mailbox-footer');
-        const filteredMessages = homeMailboxCategory === 'all'
-            ? homeMailboxMessages
-            : homeMailboxMessages.filter((message) => message.category === homeMailboxCategory);
-        const totalPages = Math.max(1, Math.ceil(filteredMessages.length / homeMailboxPageSize));
+        const filteredMessages = window.__doorbellCandidateDemo && homeMailboxCategory
+            ? homeMailboxMessages.filter((message) => message.demoCategory === homeMailboxCategory)
+            : homeMailboxMessages;
+        const totalPages = window.__doorbellCandidateDemo
+            ? Math.max(1, Math.ceil(filteredMessages.length / 8))
+            : Math.max(1, homeMailboxTotalPages);
         homeMailboxPage = Math.min(homeMailboxPage, totalPages);
-        const pageStart = (homeMailboxPage - 1) * homeMailboxPageSize;
-        const pageMessages = filteredMessages.slice(pageStart, pageStart + homeMailboxPageSize);
+        const pageStart = window.__doorbellCandidateDemo ? (homeMailboxPage - 1) * 8 : 0;
+        const pageMessages = window.__doorbellCandidateDemo
+            ? filteredMessages.slice(pageStart, pageStart + 8)
+            : filteredMessages;
 
         mailboxEmpty.hidden = filteredMessages.length > 0;
         mailboxList.hidden = filteredMessages.length === 0;
@@ -1764,8 +1842,15 @@ const HOME_SCRIPT = `
         mailboxList.replaceChildren(...pageMessages.map((message) => {
             const item = document.createElement('li');
             item.className = 'home-mailbox-message';
-            const tones = { sky: 'var(--sky-blue)', sand: '#ead0ad', pink: '#dca9a8' };
-            item.style.setProperty('--mail-tone', tones[message.tone] || '#d5b3ad');
+            const tones = {
+                farm: '#d4dfbf',
+                lingye: 'var(--sky-blue)',
+                system: '#ead0ad',
+                sky: 'var(--sky-blue)',
+                sand: '#ead0ad',
+                pink: '#dca9a8',
+            };
+            item.style.setProperty('--mail-tone', tones[message.category] || tones[message.tone] || '#d5b3ad');
             const title = document.createElement('button');
             title.type = 'button';
             title.textContent = message.title;
@@ -1784,19 +1869,23 @@ const HOME_SCRIPT = `
         document.querySelector('[data-mailbox-page="previous"]').disabled = homeMailboxPage === 1;
         document.querySelector('[data-mailbox-page="next"]').disabled = homeMailboxPage === totalPages;
         document.querySelectorAll('[data-mailbox-category]').forEach((button) => {
-            button.classList.toggle('is-active', button.dataset.mailboxCategory === homeMailboxCategory);
+            button.classList.toggle('is-active', button.dataset.mailboxCategory === (homeMailboxCategory || ''));
         });
     }
 
     function setHomeMailboxCategory(category) {
         homeMailboxCategory = category;
         homeMailboxPage = 1;
-        renderHomeMailbox();
+        if (window.__doorbellCandidateDemo) renderHomeMailbox();
+        else sendAction({ type: 'home-mailbox-list', category, page: 1 });
     }
 
     function changeHomeMailboxPage(offset) {
-        homeMailboxPage += offset;
-        renderHomeMailbox();
+        const nextPage = Math.max(1, Math.min(Math.max(1, homeMailboxTotalPages), homeMailboxPage + offset));
+        if (nextPage === homeMailboxPage) return;
+        homeMailboxPage = nextPage;
+        if (window.__doorbellCandidateDemo) renderHomeMailbox();
+        else sendAction({ type: 'home-mailbox-list', category: homeMailboxCategory, page: homeMailboxPage });
     }
 
     function showHomeMailboxList() {
@@ -1806,7 +1895,8 @@ const HOME_SCRIPT = `
     }
 
     function openHomeMailboxDetail(message) {
-        if (message.unread) {
+        homeMailboxSelectedLetterId = message.letterId || '';
+        if (window.__doorbellCandidateDemo && message.unread) {
             message.unread = false;
             homeMailboxUnreadCount = Math.max(0, homeMailboxUnreadCount - 1);
             syncHomeMailboxUnreadBadge();
@@ -1816,17 +1906,26 @@ const HOME_SCRIPT = `
         document.querySelector('.home-mailbox-sheet').classList.add('is-detail');
         const detail = document.querySelector('.home-mailbox-detail');
         detail.hidden = false;
-        detail.querySelector('.home-mailbox-detail-kind').textContent = message.kind;
-        detail.querySelector('.home-mailbox-detail-heading time').textContent = message.time;
+        detail.querySelector('.home-mailbox-detail-kind').textContent = message.kind || '';
+        detail.querySelector('.home-mailbox-detail-heading time').textContent = message.time || '';
         detail.querySelector('.home-mailbox-detail-title').textContent = message.title;
-        detail.querySelector('.home-mailbox-detail-body').textContent = message.detail;
-        detail.querySelector('.home-mailbox-detail-status').textContent = message.status;
-        detail.querySelector('.home-mailbox-detail-actions').hidden = !message.actionable;
+        detail.querySelector('.home-mailbox-detail-body').textContent = window.__doorbellCandidateDemo
+            ? message.detail
+            : '正在读取信件……';
+        detail.querySelector('.home-mailbox-detail-status').textContent = window.__doorbellCandidateDemo
+            ? message.status
+            : '';
+        detail.querySelector('.home-mailbox-detail-actions').hidden = true;
+        setStatus(detail.querySelector('.home-mailbox-detail-feedback'), '');
         detail.querySelector('.home-mailbox-detail-back').focus();
+        if (!window.__doorbellCandidateDemo && message.letterId) {
+            sendAction({ type: 'home-mailbox-detail-open', letterId: message.letterId });
+        }
     }
 
-    function showHomeMailboxDetailFeedback(action) {
-        showCandidateNotice(action + '为演示操作，不会保存');
+    function claimHomeMailboxAttachment() {
+        if (!homeMailboxSelectedLetterId || window.__doorbellCandidateDemo) return;
+        sendAction({ type: 'home-mailbox-claim', letterId: homeMailboxSelectedLetterId });
     }
 `;
 
@@ -2761,6 +2860,19 @@ const HOME_SIGN_STYLES = `
         .home-mailbox-detail-actions button:first-child {
             border-color: #d6b6ae;
             background: #f5e5df;
+        }
+
+        .home-mailbox-detail-actions button:disabled {
+            cursor: wait;
+            opacity: 0.55;
+        }
+
+        .home-mailbox-detail-feedback {
+            min-height: 14px;
+            margin: 7px 0 0;
+            color: #a17d72;
+            font-size: 9px;
+            line-height: 1.5;
         }
 
 `;
@@ -9261,6 +9373,101 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         }));
     }
 
+    function formatHomeMailboxTime(value) {
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return '';
+        return date.toLocaleString('zh-CN', {
+            month: 'numeric',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+        });
+    }
+
+    function homeMailboxCategoryLabel(category) {
+        return { farm: '农场', lingye: '铃野', system: '系统' }[category] || '';
+    }
+
+    function applyHomeMailboxState(mailbox) {
+        if (!mailbox) return;
+        const list = mailbox.list;
+        homeMailboxCategory = list.category;
+        homeMailboxPage = list.stage === 'ready' ? list.data.pagination.page : list.page;
+        document.querySelectorAll('[data-mailbox-category]').forEach((button) => {
+            button.classList.toggle('is-active', button.dataset.mailboxCategory === (homeMailboxCategory || ''));
+            button.disabled = list.stage === 'loading';
+        });
+
+        const mailboxEmpty = document.querySelector('.home-mailbox-empty');
+        const mailboxList = document.querySelector('.home-mailbox-demo-list');
+        const mailboxFooter = document.querySelector('.home-mailbox-footer');
+        if (list.stage === 'loading' || list.stage === 'error') {
+            mailboxEmpty.hidden = false;
+            mailboxEmpty.textContent = list.stage === 'loading' ? '正在读取信箱……' : list.message;
+            mailboxList.hidden = true;
+            mailboxFooter.hidden = true;
+        } else {
+            homeMailboxTotalPages = list.data.pagination.total_pages;
+            homeMailboxMessages = list.data.letters.map((letter) => ({
+                attachment: letter.attachment,
+                category: letter.category,
+                kind: homeMailboxCategoryLabel(letter.category),
+                letterId: letter.letter_id,
+                time: formatHomeMailboxTime(letter.created_at),
+                title: letter.title,
+                unread: letter.is_new,
+            }));
+            if (list.category === null && list.data.pagination.page === 1) {
+                homeMailboxUnreadCount = list.data.letters.filter((letter) => letter.is_new).length;
+                homeMailboxUnreadCountExact = list.data.pagination.total_pages <= 1;
+                syncHomeMailboxUnreadBadge();
+            }
+            mailboxEmpty.textContent = '信箱里暂时没有信件。';
+            renderHomeMailbox();
+        }
+
+        const detail = mailbox.detail;
+        const detailView = document.querySelector('.home-mailbox-detail');
+        const detailFeedback = detailView.querySelector('.home-mailbox-detail-feedback');
+        if (detail.stage === 'loading' || detail.stage === 'error') {
+            homeMailboxSelectedLetterId = detail.letterId;
+            detailView.querySelector('.home-mailbox-detail-body').textContent =
+                detail.stage === 'loading' ? '正在读取信件……' : detail.message;
+            detailView.querySelector('.home-mailbox-detail-actions').hidden = true;
+            setStatus(detailFeedback, '');
+        } else if (detail.stage === 'ready') {
+            const letter = detail.data.letter;
+            homeMailboxSelectedLetterId = letter.letter_id;
+            detailView.querySelector('.home-mailbox-detail-kind').textContent = homeMailboxCategoryLabel(letter.category);
+            detailView.querySelector('.home-mailbox-detail-heading time').textContent = formatHomeMailboxTime(letter.created_at);
+            detailView.querySelector('.home-mailbox-detail-title').textContent = letter.title;
+            detailView.querySelector('.home-mailbox-detail-body').textContent = letter.body;
+            const claimable = letter.attachment && letter.attachment.status === 'available';
+            detailView.querySelector('.home-mailbox-detail-status').textContent = letter.attachment
+                ? letter.attachment.status === 'claimed' ? '附件已领取' : '有一份附件待领取'
+                : '已读';
+            detailView.querySelector('.home-mailbox-detail-actions').hidden = !claimable;
+            detailView.querySelector('.home-mailbox-detail-actions button').disabled = mailbox.claimPending;
+            setStatus(
+                detailFeedback,
+                mailbox.claimPending ? '正在领取附件……' : mailbox.claimMessage,
+            );
+            const wasUnread = homeMailboxMessages.some(
+                (message) => message.letterId === letter.letter_id && message.unread,
+            );
+            homeMailboxMessages = homeMailboxMessages.map((message) =>
+                message.letterId === letter.letter_id
+                    ? { ...message, attachment: letter.attachment, unread: false }
+                    : message,
+            );
+            if (wasUnread && homeMailboxUnreadCountExact) {
+                homeMailboxUnreadCount = Math.max(0, homeMailboxUnreadCount - 1);
+                syncHomeMailboxUnreadBadge();
+            }
+            renderHomeMailbox();
+        }
+    }
+
     function applyDemoContent(demo) {
         const content = demo && demo.content;
         const enabled = Boolean(content);
@@ -9268,13 +9475,18 @@ const CANDIDATE_RUNTIME_SCRIPT = `
             ? content.mailboxUnreadCount
             : 0;
         homeMailboxUnreadCount = mailboxUnreadCount;
+        homeMailboxUnreadCountExact = true;
         syncHomeMailboxUnreadBadge();
         const mailboxMessages = content && Array.isArray(content.mailboxMessages)
             ? content.mailboxMessages
             : [];
-        homeMailboxMessages = mailboxMessages.map((message) => ({ ...message }));
-        homeMailboxCategory = 'all';
+        homeMailboxMessages = mailboxMessages.map((message) => ({
+            ...message,
+            demoCategory: message.category === 'activity' ? 'lingye' : 'system',
+        }));
+        homeMailboxCategory = null;
         homeMailboxPage = 1;
+        homeMailboxTotalPages = Math.max(1, Math.ceil(homeMailboxMessages.length / 8));
         renderHomeMailbox();
         setDemoVisibility('.home-doorbell-empty', '.home-doorbell-demo', enabled);
         setDemoVisibility('.home-visitors-empty', '.candidate2-demo-visitors', enabled);
@@ -9813,6 +10025,7 @@ const CANDIDATE_RUNTIME_SCRIPT = `
                 state.homeSettingsPending,
                 state.homeSettingsIssueMessage,
             );
+            applyHomeMailboxState(state.mailbox);
             applySharedMemeState(
                 state.sharedMemes,
                 state.sharedMemeDetail,
@@ -9820,7 +10033,7 @@ const CANDIDATE_RUNTIME_SCRIPT = `
                 state.sharedMemeCreateMessage,
             );
         }
-        setStatus(document.querySelector('.candidate2-profile-empty'), state.issueMessage || '暂无可读取的活动数据');
+        setStatus(document.querySelector('.candidate2-profile-empty'), state.issueMessage || '最近活动尚未接入真实数据');
         if (previousStage !== 'authenticated') {
             const initialScreen = demo && demo.initialScreen ? demo.initialScreen : 'lounge';
             showScreen('screen-' + initialScreen);
