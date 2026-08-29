@@ -50,7 +50,7 @@ test("every manifest declaration has an explicit, readable source asset", () => 
   }
 });
 
-test("public farm assets keep stable URLs without requiring hashed bundle entries", () => {
+test("manifest farm assets are emitted with content-hashed bundle entries", () => {
   const publicRoot = fileURLToPath(new URL("../../public/", import.meta.url));
   const sourceFiles = getFarmAssetSourceFiles();
   const publicSourceFiles = sourceFiles.filter((sourceFile) => sourceFile.startsWith(publicRoot));
@@ -62,7 +62,7 @@ test("public farm assets keep stable URLs without requiring hashed bundle entrie
     }),
   );
 
-  assert.equal(publicSourceFiles.length, 12);
+  assert.equal(publicSourceFiles.length, 0);
   assert.doesNotThrow(() => assertFarmAssetBuildOutput(bundle));
 });
 

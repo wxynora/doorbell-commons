@@ -1,3 +1,6 @@
 .farm-scene--field {
-  background-image: var(--farm-scene-background, url("/farm/scenes/field-background.png"));
+  background-image: var(
+    --farm-scene-background,
+    url("../../assets/scenes/field-background.png")
+  );
 }

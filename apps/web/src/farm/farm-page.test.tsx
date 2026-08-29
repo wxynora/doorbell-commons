@@ -605,9 +605,13 @@ test("farm scenes use the approved backgrounds and replaceable cooking tool laye
     "utf8",
   );
 
-  assert.match(fieldStyles, /field-background\.png/);
-  assert.match(ranchStyles, /ranch-background\.png/);
-  assert.match(cookingStyles, /cooking-background\.png/);
+  assert.match(fieldStyles, /url\("\.\.\/\.\.\/assets\/scenes\/field-background\.png"\)/);
+  assert.match(ranchStyles, /url\("\.\.\/\.\.\/assets\/scenes\/ranch-background\.png"\)/);
+  assert.match(
+    cookingStyles,
+    /url\("\.\.\/\.\.\/assets\/scenes\/cooking-background\.png"\)/,
+  );
+  assert.doesNotMatch(`${styles}\n${fieldStyles}\n${ranchStyles}\n${cookingStyles}`, /\/farm\/scenes\//);
   assert.doesNotMatch(styles, /ranch-background|cooking-background|neighborhood-background/);
   assert.doesNotMatch(styles, /\.farm-scene--field\s*\{[^}]*field-background/);
   assert.match(source, /stir-fry[^\n]+kitchen\.method\.wok/);
@@ -764,7 +768,7 @@ test("field and ranch scenes use the same authority-backed season and weather se
 
   for (const scene of ["field", "ranch"] as const) {
     for (const state of ["spring", "summer", "autumn", "winter", "rain", "snow"] as const) {
-      const assetPath = new URL(`../../public/farm/scenes/${scene}-${state}.png`, import.meta.url);
+      const assetPath = new URL(`./assets/scenes/${scene}-${state}.png`, import.meta.url);
       const size = statSync(assetPath).size;
       assert.ok(size > 0);
       assert.ok(size < 1_100_000);
@@ -1296,12 +1300,15 @@ test("neighborhood uses the approved scene and switches one honest section at a 
   );
   const styles = readFarmStyles();
   const background = new URL(
-    "../../public/farm/scenes/neighborhood-background.png",
+    "./scenes/neighborhood/assets/neighborhood-background.png",
     import.meta.url,
   );
 
   assert.ok(statSync(background).size > 0);
-  assert.match(neighborhoodStyles, /farm-scene--neighborhood[\s\S]*neighborhood-background\.png/);
+  assert.match(
+    neighborhoodStyles,
+    /farm-scene--neighborhood[\s\S]*url\("\.\/assets\/neighborhood-background\.png"\)/,
+  );
   assert.match(source, /id: "ranking", label: "排行榜"/);
   assert.match(source, /id: "message-board", label: "留言板"/);
   assert.match(source, /id: "original-crops", label: "原创作物"/);

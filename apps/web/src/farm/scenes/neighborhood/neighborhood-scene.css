@@ -1,5 +1,5 @@
 .farm-scene--neighborhood {
-  background-image: url("/farm/scenes/neighborhood-background.png");
+  background-image: url("./assets/neighborhood-background.png");
 }
 
 .farm-neighborhood__body {

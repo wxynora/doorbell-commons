@@ -1,3 +1,6 @@
 .farm-scene--ranch {
-  background-image: var(--farm-scene-background, url("/farm/scenes/ranch-background.png"));
+  background-image: var(
+    --farm-scene-background,
+    url("../../assets/scenes/ranch-background.png")
+  );
 }
