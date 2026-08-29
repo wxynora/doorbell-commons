@@ -32,6 +32,8 @@ export type ClientIssueCode = "network_unavailable" | "unexpected_response";
 export type AuthIssueCode =
   | HumanAuthenticationError["error"]["code"]
   | ClientIssueCode
+  | "browser_notifications_permission_denied"
+  | "browser_notifications_unavailable"
   | "invalid_password"
   | "password_confirmation_mismatch";
 

@@ -10,6 +10,7 @@ export interface QqGroupEligibilityConfig {
 export interface DoorbellServerConfig extends QqGroupEligibilityConfig {
   bellHeartbeatIntervalMs: number;
   bellReplayIntervalMs: number;
+  browserPush: BrowserPushConfig | null;
   databasePath: string;
   farmApiBaseUrl: string;
   farmHumanUiBaseUrl: string;
@@ -33,6 +34,13 @@ export function readConstableInterviewSignupMailCopy(
     );
   }
   return { title, body };
+}
+
+export interface BrowserPushConfig {
+  publicKey: string;
+  privateKey: string;
+  subject: string;
+  ttlSeconds: number;
 }
 
 function readFixedPositiveInteger(
@@ -170,6 +178,36 @@ export function readLingyeDailyPublishToken(environment: NodeJS.ProcessEnv = pro
   return readRequiredEnvironmentValue(environment, "DOORBELL_LINGYE_DAILY_PUBLISH_TOKEN");
 }
 
+export function readBrowserPushConfig(
+  environment: NodeJS.ProcessEnv = process.env,
+): BrowserPushConfig | null {
+  const names = [
+    "DOORBELL_WEB_PUSH_VAPID_PUBLIC_KEY",
+    "DOORBELL_WEB_PUSH_VAPID_PRIVATE_KEY",
+    "DOORBELL_WEB_PUSH_VAPID_SUBJECT",
+    "DOORBELL_WEB_PUSH_TTL_SECONDS",
+  ] as const;
+  const present = names.filter((name) => Boolean(environment[name]?.trim()));
+  if (present.length === 0) return null;
+  if (present.length !== names.length) {
+    throw new Error("Doorbell Web Push configuration must provide all VAPID and TTL values");
+  }
+  const publicKey = readRequiredEnvironmentValue(environment, "DOORBELL_WEB_PUSH_VAPID_PUBLIC_KEY");
+  const privateKey = readRequiredEnvironmentValue(
+    environment,
+    "DOORBELL_WEB_PUSH_VAPID_PRIVATE_KEY",
+  );
+  const subject = readRequiredEnvironmentValue(environment, "DOORBELL_WEB_PUSH_VAPID_SUBJECT");
+  const ttlValue = readRequiredEnvironmentValue(environment, "DOORBELL_WEB_PUSH_TTL_SECONDS");
+  if (!/^[1-9][0-9]*$/u.test(ttlValue) || !Number.isSafeInteger(Number(ttlValue))) {
+    throw new Error("DOORBELL_WEB_PUSH_TTL_SECONDS must be a positive safe integer");
+  }
+  if (!subject.startsWith("mailto:") && !subject.startsWith("https://")) {
+    throw new Error("DOORBELL_WEB_PUSH_VAPID_SUBJECT must use mailto or https");
+  }
+  return { publicKey, privateKey, subject, ttlSeconds: Number(ttlValue) };
+}
+
 export function readDoorbellServerConfig(
   environment: NodeJS.ProcessEnv = process.env,
 ): DoorbellServerConfig {
@@ -185,6 +223,7 @@ export function readDoorbellServerConfig(
       "DOORBELL_BELL_REPLAY_INTERVAL_MS",
       60_000,
     ),
+    browserPush: readBrowserPushConfig(environment),
     databasePath: readDatabasePath(environment),
     farmApiBaseUrl: readFarmApiBaseUrl(environment),
     farmHumanUiBaseUrl: readFarmHumanUiBaseUrl(environment),

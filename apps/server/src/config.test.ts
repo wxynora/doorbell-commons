@@ -1,12 +1,58 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  readBrowserPushConfig,
   readFarmApiBaseUrl,
   readFarmHumanUiBaseUrl,
   readLingyeDailyPublishToken,
   readQqGroupEligibilityConfig,
   readUpstreamRequestTimeoutMs,
 } from "./config.js";
+
+test("browser push stays disabled unless the complete explicit configuration is present", () => {
+  assert.equal(readBrowserPushConfig({}), null);
+  assert.throws(
+    () =>
+      readBrowserPushConfig({
+        DOORBELL_WEB_PUSH_VAPID_PUBLIC_KEY: "public-key",
+      }),
+    /must provide all VAPID and TTL values/,
+  );
+  assert.deepEqual(
+    readBrowserPushConfig({
+      DOORBELL_WEB_PUSH_VAPID_PUBLIC_KEY: "public-key",
+      DOORBELL_WEB_PUSH_VAPID_PRIVATE_KEY: "private-key",
+      DOORBELL_WEB_PUSH_VAPID_SUBJECT: "mailto:operator@example.com",
+      DOORBELL_WEB_PUSH_TTL_SECONDS: "300",
+    }),
+    {
+      publicKey: "public-key",
+      privateKey: "private-key",
+      subject: "mailto:operator@example.com",
+      ttlSeconds: 300,
+    },
+  );
+  assert.throws(
+    () =>
+      readBrowserPushConfig({
+        DOORBELL_WEB_PUSH_VAPID_PUBLIC_KEY: "public-key",
+        DOORBELL_WEB_PUSH_VAPID_PRIVATE_KEY: "private-key",
+        DOORBELL_WEB_PUSH_VAPID_SUBJECT: "operator@example.com",
+        DOORBELL_WEB_PUSH_TTL_SECONDS: "300",
+      }),
+    /must use mailto or https/,
+  );
+  assert.throws(
+    () =>
+      readBrowserPushConfig({
+        DOORBELL_WEB_PUSH_VAPID_PUBLIC_KEY: "public-key",
+        DOORBELL_WEB_PUSH_VAPID_PRIVATE_KEY: "private-key",
+        DOORBELL_WEB_PUSH_VAPID_SUBJECT: "https://doorbellcommons.com",
+        DOORBELL_WEB_PUSH_TTL_SECONDS: "0",
+      }),
+    /must be a positive safe integer/,
+  );
+});
 
 test("QQ group eligibility uses only the required private deployment value", () => {
   const config = readQqGroupEligibilityConfig({

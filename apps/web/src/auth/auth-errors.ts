@@ -8,6 +8,8 @@ export const AUTH_ISSUE_MESSAGES: Readonly<Partial<Record<AuthIssueCode, string>
   qq_not_group_member: "这个 QQ 号不是当前社区群成员，暂时不能进入社区。",
   onebot_unavailable: "QQ 群成员核验服务当前不可用，身份尚未完成核验。",
   authentication_required: "当前没有有效的登录会话。",
+  browser_notifications_permission_denied: "浏览器没有允许通知权限，暂时不能开启通知。",
+  browser_notifications_unavailable: "当前设备或服务尚未配置浏览器通知。",
   farm_not_found: "没有查到这个农场门牌。",
   farm_unavailable: "农场服务当前不可用，农场查询尚未完成。",
   farm_confirmation_mismatch: "农场名称已经变化或与刚才确认的结果不一致，请重新查询。",

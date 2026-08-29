@@ -39,6 +39,7 @@ async function withHarness(
     homeId: string;
     now: { value: number };
     notifications: string[];
+    pushes: unknown[];
     service: CareerExamReminderService;
     membershipChecks: string[];
     membershipFailure: { value: Error | undefined };
@@ -51,6 +52,7 @@ async function withHarness(
   const databasePath = join(directory, "doorbell.sqlite");
   const now = { value: NOW };
   const notifications: string[] = [];
+  const pushes: unknown[] = [];
   const membershipChecks: string[] = [];
   const membershipFailure: { value: Error | undefined } = { value: undefined };
   const farmReads: unknown[] = [];
@@ -80,6 +82,11 @@ async function withHarness(
       database,
       mailboxService: mailbox,
       bellService: { notifyResident: (residentId) => notifications.push(residentId) },
+      browserPushService: {
+        sendActivityReminder: async (input) => {
+          pushes.push(structuredClone(input));
+        },
+      },
       registrationAuth: {
         confirmCurrentResidentMembership: async (residentId) => {
           membershipChecks.push(residentId);
@@ -105,6 +112,7 @@ async function withHarness(
       homeId: created.community.home.homeId,
       now,
       notifications,
+      pushes,
       membershipChecks,
       membershipFailure,
       farmReads,
@@ -185,6 +193,16 @@ test("a registered exam persists one restart-safe 13:55 mailbox and Bell reminde
       text: CAREER_EXAM_BELL_TEXT,
     });
     assert.deepEqual(harness.notifications, [harness.residentId]);
+    assert.deepEqual(harness.pushes, [
+      {
+        residentId: harness.residentId,
+        title: CAREER_EXAM_REMINDER_TITLE,
+        body: CAREER_EXAM_REMINDER_BODY,
+        url: "/",
+        tag: `career-exam:${ATTEMPT_ID}`,
+        createdAt: SCHEDULED_AT - CAREER_EXAM_REMINDER_LEAD_MS,
+      },
+    ]);
     assert.deepEqual(harness.membershipChecks, [harness.residentId]);
     assert.deepEqual(harness.farmReads, [
       {

@@ -80,6 +80,9 @@ test("service worker has bounded strategies without precaching or background wri
   assert.doesNotMatch(serviceWorkerSource, /cache\.addAll/);
   assert.doesNotMatch(serviceWorkerSource, /background.?sync|addEventListener\("sync"/i);
   assert.doesNotMatch(serviceWorkerSource, /queue|replay/i);
+  assert.match(serviceWorkerSource, /addEventListener\("push"/);
+  assert.match(serviceWorkerSource, /registration\.showNotification/);
+  assert.match(serviceWorkerSource, /addEventListener\("notificationclick"/);
   assert.match(
     serviceWorkerSource,
     /if \(isApiRequest\(url\)\) \{[\s\S]*?event\.respondWith\(fetch\(request\)\);[\s\S]*?return;/,

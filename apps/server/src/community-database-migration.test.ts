@@ -139,7 +139,7 @@ test("schema v1 preserves login security state while upgrading through v8", () =
         migratedDatabase.pragma("user_version", { simple: true }),
         COMMUNITY_DATABASE_SCHEMA_VERSION,
       );
-      assert.equal(COMMUNITY_DATABASE_SCHEMA_VERSION, 8);
+      assert.equal(COMMUNITY_DATABASE_SCHEMA_VERSION, 9);
       assert.deepEqual(
         migratedDatabase
           .prepare("SELECT account_id, qq_number, password_credential FROM human_accounts")
@@ -268,7 +268,6 @@ test("schema v2 preserves cursor-only Connector rows only as unreachable legacy 
       } finally {
         migratedDatabase.close();
       }
-
     } finally {
       communityDatabase.close();
     }
@@ -487,10 +486,18 @@ test("schema v6 migrates legacy Bell wakes through the career reminder schema", 
 
     const database = new Database(databasePath, { readonly: true });
     try {
-      assert.equal(database.pragma("user_version", { simple: true }), 8);
+      assert.equal(database.pragma("user_version", { simple: true }), 9);
       const wakeColumns = database.pragma("table_info(bell_wakes)") as Array<{ name: string }>;
       assert.ok(wakeColumns.some((column) => column.name === "payload_json"));
       assert.ok(wakeColumns.some((column) => column.name === "letter_id"));
+      const settingsColumns = database.pragma("table_info(human_settings)") as Array<{
+        name: string;
+      }>;
+      assert.ok(
+        settingsColumns.some((column) => column.name === "shared_meme_update_signals_enabled"),
+      );
+      assert.ok(settingsColumns.some((column) => column.name === "browser_notifications_enabled"));
+      assert.ok(settingsColumns.some((column) => column.name === "activity_reminders_enabled"));
       const itemColumns = database.pragma("table_info(farm_purchase_request_items)") as Array<{
         name: string;
       }>;
@@ -616,7 +623,7 @@ test("schema v7 preserves purchase wakes while adding career exam reminder refer
 
     const database = new Database(databasePath, { readonly: true });
     try {
-      assert.equal(database.pragma("user_version", { simple: true }), 8);
+      assert.equal(database.pragma("user_version", { simple: true }), 9);
       assert.deepEqual(
         database
           .prepare(

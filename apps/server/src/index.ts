@@ -1,5 +1,6 @@
 import { buildApp } from "./app.js";
 import { BellService } from "./bell-service.js";
+import { BrowserPushService } from "./browser-push-service.js";
 import { CareerExamReminderService } from "./career-exam-reminder-service.js";
 import { CommunityDatabase } from "./community-database.js";
 import { readDoorbellServerConfig } from "./config.js";
@@ -229,6 +230,11 @@ const reportConstableInterviewMailError = (error: unknown): void => {
     `[doorbell-constable-interview-mail] ${error instanceof Error ? error.name : "UnknownError"}\n`,
   );
 };
+const reportBrowserPushError = (error: unknown): void => {
+  process.stderr.write(
+    `[doorbell-browser-push] ${error instanceof Error ? error.name : "UnknownError"}\n`,
+  );
+};
 const bellService = new BellService({
   database,
   registrationAuth,
@@ -237,6 +243,15 @@ const bellService = new BellService({
   getSharedMemeLibraryVersion: () => sharedMemeService.getMetadata().library_version,
   onError: reportBellError,
 });
+const browserPushService = serverConfig.browserPush
+  ? new BrowserPushService({
+      config: serverConfig.browserPush,
+      database,
+      registrationAuth,
+      requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+      onError: reportBrowserPushError,
+    })
+  : undefined;
 const farmPurchaseRequestService = new FarmPurchaseRequestService({
   database,
   bellNotifier: bellService,
@@ -282,6 +297,7 @@ const careerExamReminderService = new CareerExamReminderService({
   database,
   mailboxService,
   bellService,
+  ...(browserPushService ? { browserPushService } : {}),
   registrationAuth,
   lingyeActions: lingyeMcpActions,
   onError: reportBellError,
@@ -313,6 +329,7 @@ const app = buildApp({
   registrationAuth,
   farmPurchaseRequestService,
   bellService,
+  ...(browserPushService ? { browserPushService } : {}),
   sharedMemeBackendService,
   weatherEngine,
   lingyeDailyService,

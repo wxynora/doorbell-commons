@@ -1970,6 +1970,80 @@ const humanCommunityConnectionPreferencesPatchSchema = z
     message: "community_connection_preferences must include at least one supported setting",
   });
 
+const humanSharedDataPreferencesPatchSchema = z
+  .object({
+    shared_meme_update_signals_enabled: z.boolean().optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "shared_data_preferences must include at least one supported setting",
+  });
+
+const humanBrowserNotificationPreferencesPatchSchema = z
+  .object({
+    browser_notifications_enabled: z.boolean().optional(),
+    activity_reminders_enabled: z.boolean().optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "browser_notification_preferences must include at least one supported setting",
+  });
+
+const browserPushEndpointSchema = z.url().refine((value) => new URL(value).protocol === "https:", {
+  message: "browser push endpoint must use https",
+});
+
+export const browserPushSubscriptionRequestSchema = z
+  .object({
+    endpoint: browserPushEndpointSchema,
+    expiration_time: z.number().int().nonnegative().nullable(),
+    keys: z
+      .object({
+        p256dh: z.string().regex(/^[A-Za-z0-9_-]+$/u),
+        auth: z.string().regex(/^[A-Za-z0-9_-]+$/u),
+      })
+      .strict(),
+  })
+  .strict();
+
+export const browserPushSubscriptionDeleteRequestSchema = z
+  .object({ endpoint: browserPushEndpointSchema })
+  .strict();
+
+export const browserPushSubscriptionSuccessSchema = z.object({ subscribed: z.boolean() }).strict();
+
+export const browserPushErrorCodeSchema = z.enum([
+  "invalid_request",
+  "authentication_required",
+  "qq_not_group_member",
+  "onebot_unavailable",
+  "registration_profile_required",
+  "browser_notifications_unavailable",
+]);
+
+export const browserPushErrorSchema = z
+  .object({
+    error: z
+      .object({
+        code: browserPushErrorCodeSchema,
+        message: z.string(),
+      })
+      .strict(),
+  })
+  .strict();
+
+export const browserPushPayloadSchema = z
+  .object({
+    version: z.literal(1),
+    kind: z.literal("activity_reminder"),
+    title: z.string().min(1),
+    body: z.string().min(1),
+    url: z.string().startsWith("/"),
+    tag: z.string().min(1),
+    created_at: z.iso.datetime(),
+  })
+  .strict();
+
 export const humanSettingsReadRequestSchema = z.object({}).strict();
 
 export const humanSettingsPatchRequestSchema = z
@@ -1977,6 +2051,8 @@ export const humanSettingsPatchRequestSchema = z
     home: humanSettingsHomePatchSchema.optional(),
     notification_preferences: humanNotificationPreferencesPatchSchema.optional(),
     community_connection_preferences: humanCommunityConnectionPreferencesPatchSchema.optional(),
+    shared_data_preferences: humanSharedDataPreferencesPatchSchema.optional(),
+    browser_notification_preferences: humanBrowserNotificationPreferencesPatchSchema.optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, {
@@ -2283,6 +2359,19 @@ export const humanSettingsSuccessSchema = z
         allow_activity_room_warmup: z.boolean().nullable(),
       })
       .strict(),
+    shared_data_preferences: z
+      .object({
+        shared_meme_update_signals_enabled: z.boolean(),
+      })
+      .strict(),
+    browser_notification_preferences: z
+      .object({
+        application_server_key: z.string().nullable(),
+        browser_notifications_available: z.boolean(),
+        browser_notifications_enabled: z.boolean(),
+        activity_reminders_enabled: z.boolean(),
+      })
+      .strict(),
   })
   .strict();
 
@@ -2449,6 +2538,10 @@ export type HumanSettingsChatMode = z.infer<typeof humanSettingsChatModeSchema>;
 export type HumanSettingsPatchRequest = z.infer<typeof humanSettingsPatchRequestSchema>;
 export type HumanSettingsSuccess = z.infer<typeof humanSettingsSuccessSchema>;
 export type HumanSettingsError = z.infer<typeof humanSettingsErrorSchema>;
+export type BrowserPushSubscriptionRequest = z.infer<typeof browserPushSubscriptionRequestSchema>;
+export type BrowserPushSubscriptionSuccess = z.infer<typeof browserPushSubscriptionSuccessSchema>;
+export type BrowserPushError = z.infer<typeof browserPushErrorSchema>;
+export type BrowserPushPayload = z.infer<typeof browserPushPayloadSchema>;
 export type McpAccessMigrationStatus = z.infer<typeof mcpAccessMigrationStatusSchema>;
 export type McpAccessCredentialStatus = z.infer<typeof mcpAccessCredentialStatusSchema>;
 export type McpAccessStatusResponse = z.infer<typeof mcpAccessStatusResponseSchema>;

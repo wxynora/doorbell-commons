@@ -100,6 +100,10 @@ import {
   boundTogetherReadErrorSchema,
   boundTogetherReadRequestSchema,
   boundTogetherReadSuccessSchema,
+  browserPushErrorSchema,
+  browserPushSubscriptionDeleteRequestSchema,
+  browserPushSubscriptionRequestSchema,
+  browserPushSubscriptionSuccessSchema,
   createdFarmHumanSessionSuccessSchema,
   currentHumanSessionSuccessSchema,
   type FarmHumanConstableInterviewSuccess,
@@ -180,6 +184,7 @@ import {
   type BellStreamSink,
   BellWakeControlError,
 } from "./bell-service.js";
+import type { BrowserPushService } from "./browser-push-service.js";
 import {
   FarmPurchaseRequestIdempotencyConflictError,
   type HumanSettingsPatch,
@@ -470,6 +475,7 @@ export interface BuildAppOptions {
   registrationAuth: RegistrationAuthService;
   farmPurchaseRequestService?: FarmPurchaseRequestService;
   bellService?: BellService;
+  browserPushService?: BrowserPushService;
   weatherEngine?: HomeWeatherEngine;
   lingyeDailyService?: LingyeDailyService;
   mailboxService?: MailboxService;
@@ -517,7 +523,11 @@ function communityResponse(community: {
   };
 }
 
-function humanSettingsResponse(settings: HumanSettingsRecord, bellService?: BellService) {
+function humanSettingsResponse(
+  settings: HumanSettingsRecord,
+  bellService?: BellService,
+  browserPushService?: BrowserPushService,
+) {
   return humanSettingsSuccessSchema.parse({
     connection_status: {
       wake_bridge: {
@@ -554,6 +564,15 @@ function humanSettingsResponse(settings: HumanSettingsRecord, bellService?: Bell
       activity_invitations_enabled: settings.activityInvitationsEnabled,
       important_system_notifications_enabled: settings.importantSystemNotificationsEnabled,
     },
+    shared_data_preferences: {
+      shared_meme_update_signals_enabled: settings.sharedMemeUpdateSignalsEnabled,
+    },
+    browser_notification_preferences: {
+      application_server_key: browserPushService?.applicationServerKey ?? null,
+      browser_notifications_available: browserPushService !== undefined,
+      browser_notifications_enabled: settings.browserNotificationsEnabled,
+      activity_reminders_enabled: settings.activityRemindersEnabled,
+    },
     community_connection_preferences: {
       default_connection_duration_minutes: settings.defaultConnectionDurationMinutes,
       initial_recent_activity_count: settings.initialRecentActivityCount,
@@ -588,6 +607,18 @@ function humanSettingsPatch(request: HumanSettingsPatchRequest): HumanSettingsPa
   if (request.notification_preferences?.important_system_notifications_enabled !== undefined) {
     patch.importantSystemNotificationsEnabled =
       request.notification_preferences.important_system_notifications_enabled;
+  }
+  if (request.shared_data_preferences?.shared_meme_update_signals_enabled !== undefined) {
+    patch.sharedMemeUpdateSignalsEnabled =
+      request.shared_data_preferences.shared_meme_update_signals_enabled;
+  }
+  if (request.browser_notification_preferences?.browser_notifications_enabled !== undefined) {
+    patch.browserNotificationsEnabled =
+      request.browser_notification_preferences.browser_notifications_enabled;
+  }
+  if (request.browser_notification_preferences?.activity_reminders_enabled !== undefined) {
+    patch.activityRemindersEnabled =
+      request.browser_notification_preferences.activity_reminders_enabled;
   }
   if (request.community_connection_preferences?.default_connection_duration_minutes !== undefined) {
     patch.defaultConnectionDurationMinutes =
@@ -1510,6 +1541,21 @@ function sendHumanSettingsError(
       error: { code, message },
     }),
   );
+}
+
+function sendBrowserPushError(
+  reply: FastifyReply,
+  statusCode: 400 | 401 | 403 | 409 | 503,
+  code:
+    | "invalid_request"
+    | "authentication_required"
+    | "qq_not_group_member"
+    | "onebot_unavailable"
+    | "registration_profile_required"
+    | "browser_notifications_unavailable",
+  message: string,
+) {
+  return reply.code(statusCode).send(browserPushErrorSchema.parse({ error: { code, message } }));
 }
 
 function sendMcpAccessError(
@@ -3136,6 +3182,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       return humanSettingsResponse(
         options.weatherEngine?.ensureCurrent(settings) ?? settings,
         options.bellService,
+        options.browserPushService,
       );
     } catch (error) {
       return sendHumanSettingsFailure(request, reply, error);
@@ -3186,7 +3233,96 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       return humanSettingsResponse(
         options.weatherEngine?.ensureCurrent(settings) ?? settings,
         options.bellService,
+        options.browserPushService,
       );
+    } catch (error) {
+      return sendHumanSettingsFailure(request, reply, error);
+    }
+  });
+
+  app.post("/api/browser-notifications/subscription", async (request, reply) => {
+    if (!humanSettingsReadRequestSchema.safeParse(request.query).success) {
+      return sendBrowserPushError(
+        reply,
+        400,
+        "invalid_request",
+        "The browser notification subscription does not accept query parameters",
+      );
+    }
+    const parsed = browserPushSubscriptionRequestSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return sendBrowserPushError(
+        reply,
+        400,
+        "invalid_request",
+        "The browser notification subscription does not match the supported contract",
+      );
+    }
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendBrowserPushError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+    if (!options.browserPushService) {
+      return sendBrowserPushError(
+        reply,
+        503,
+        "browser_notifications_unavailable",
+        "Browser notifications are not configured",
+      );
+    }
+    try {
+      const community = await options.registrationAuth.getCurrentSession(token);
+      options.browserPushService.subscribe({
+        residentId: community.resident.residentId,
+        homeId: community.home.homeId,
+        endpoint: parsed.data.endpoint,
+        p256dh: parsed.data.keys.p256dh,
+        auth: parsed.data.keys.auth,
+      });
+      reply.header("cache-control", "no-store");
+      return browserPushSubscriptionSuccessSchema.parse({ subscribed: true });
+    } catch (error) {
+      return sendHumanSettingsFailure(request, reply, error);
+    }
+  });
+
+  app.delete("/api/browser-notifications/subscription", async (request, reply) => {
+    if (!humanSettingsReadRequestSchema.safeParse(request.query).success) {
+      return sendBrowserPushError(
+        reply,
+        400,
+        "invalid_request",
+        "The browser notification subscription removal does not accept query parameters",
+      );
+    }
+    const parsed = browserPushSubscriptionDeleteRequestSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return sendBrowserPushError(
+        reply,
+        400,
+        "invalid_request",
+        "The browser notification subscription removal does not match the supported contract",
+      );
+    }
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendBrowserPushError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+    try {
+      const community = await options.registrationAuth.getCurrentSession(token);
+      options.browserPushService?.unsubscribe(community.resident.residentId, parsed.data.endpoint);
+      reply.header("cache-control", "no-store");
+      return browserPushSubscriptionSuccessSchema.parse({ subscribed: false });
     } catch (error) {
       return sendHumanSettingsFailure(request, reply, error);
     }

@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type {
   BellBindingState,
   BellWakeCancellationResult,
+  BellWakeRecord,
   CommunityDatabase,
 } from "./community-database.js";
 
@@ -95,6 +96,14 @@ function parseCredential(credential: string): string {
     throw new BellCredentialAuthenticationError();
   }
   return credential;
+}
+
+function wakeMessage(wake: Pick<BellWakeRecord, "payload">): string {
+  const message = wake.payload?.text;
+  if (typeof message !== "string" || message.trim().length === 0) {
+    throw new Error("The stored Bell wake does not contain an approved message");
+  }
+  return message;
 }
 
 export class BellService {
@@ -338,7 +347,8 @@ export class BellService {
           connection_epoch: active.connectionEpoch,
           wake_id: wake.wakeId,
           reason: wake.reason,
-          ...(wake.payload === null ? {} : { payload: wake.payload }),
+          message: wakeMessage(wake),
+          created_at: new Date(wake.createdAt).toISOString(),
         });
         active.sentWakeIds.add(wake.wakeId);
       } catch (error) {
@@ -351,6 +361,18 @@ export class BellService {
 
   #emitSharedMemeUpdateAvailable(active: ActiveBellConnection, availableVersion?: number): void {
     if (active.closed) return;
+    try {
+      const homeId = this.#database.findHomeIdByResidentId(active.residentId);
+      if (
+        homeId === undefined ||
+        !this.#database.getHumanSettings(homeId).sharedMemeUpdateSignalsEnabled
+      ) {
+        return;
+      }
+    } catch (error) {
+      this.#onError(error);
+      return;
+    }
     let currentVersion = availableVersion;
     if (currentVersion === undefined) {
       try {

@@ -31,6 +31,7 @@ import {
   listSharedMemes,
   sharedMemeIssueMessage,
 } from "./auth/shared-meme-client";
+import { disableBrowserNotifications, enableBrowserNotifications } from "./browser-notifications";
 import { AuthScreen, SessionCheckingScreen } from "./components/auth-screen";
 import { McpAccessPage } from "./components/mcp-access-panel";
 import { ResidencePermitTransition } from "./components/residence-permit-transition";
@@ -158,7 +159,13 @@ function homeSettingsView(homeSettings: HomeSettingsState): CandidateTwoHomeSett
     return homeSettings;
   }
 
-  const { community_connection_preferences, home, notification_preferences } = homeSettings.data;
+  const {
+    browser_notification_preferences,
+    community_connection_preferences,
+    home,
+    notification_preferences,
+    shared_data_preferences,
+  } = homeSettings.data;
   let weatherSummary = "尚未设置气候";
   if (home.climate_type) {
     weatherSummary = home.weather_state?.condition
@@ -168,7 +175,12 @@ function homeSettingsView(homeSettings: HomeSettingsState): CandidateTwoHomeSett
   return {
     stage: "ready",
     activityInvitationsEnabled: notification_preferences.activity_invitations_enabled ?? true,
+    activityRemindersEnabled: browser_notification_preferences.activity_reminders_enabled,
     allowActivityRoomWarmup: community_connection_preferences.allow_activity_room_warmup ?? true,
+    browserNotificationsAvailable: browser_notification_preferences.browser_notifications_available,
+    browserNotificationsEnabled: browser_notification_preferences.browser_notifications_enabled,
+    browserNotificationApplicationServerKey:
+      browser_notification_preferences.application_server_key,
     chatMode: community_connection_preferences.chat_mode ?? "natural",
     climateType: home.climate_type,
     defaultConnectionDurationMinutes:
@@ -179,6 +191,7 @@ function homeSettingsView(homeSettings: HomeSettingsState): CandidateTwoHomeSett
       notification_preferences.important_system_notifications_enabled ?? true,
     initialRecentActivityCount: community_connection_preferences.initial_recent_activity_count,
     pauseAllWakeups: notification_preferences.pause_all_wakeups ?? false,
+    sharedMemeUpdateSignalsEnabled: shared_data_preferences.shared_meme_update_signals_enabled,
     visitRequestsAndInvitationsEnabled:
       notification_preferences.visit_requests_and_invitations_enabled ?? true,
     wakeBridgeStatus: homeSettings.data.connection_status.wake_bridge.status,
@@ -206,6 +219,26 @@ export function preferencePatchForCandidateAction(
     return {
       notification_preferences: { important_system_notifications_enabled: action.value },
     };
+  }
+
+  if (action.type === "shared-data-preference-save") {
+    return {
+      shared_data_preferences: { shared_meme_update_signals_enabled: action.value },
+    };
+  }
+
+  if (action.type === "browser-notification-preference-save") {
+    return action.field === "browserNotificationsEnabled"
+      ? {
+          browser_notification_preferences: {
+            browser_notifications_enabled: action.value,
+          },
+        }
+      : {
+          browser_notification_preferences: {
+            activity_reminders_enabled: action.value,
+          },
+        };
   }
 
   if (action.type !== "community-connection-preference-save") {
@@ -650,7 +683,69 @@ function LiveApp() {
       }
 
       if (
+        action.type === "browser-notification-preference-save" &&
+        action.field === "browserNotificationsEnabled"
+      ) {
+        if (
+          appState.stage !== "authenticated" ||
+          appState.homeSettingsPending ||
+          appState.homeSettings.stage !== "ready"
+        ) {
+          return;
+        }
+        setAppState({
+          ...appState,
+          homeSettingsIssue: null,
+          homeSettingsPending: true,
+        });
+        if (action.value) {
+          const enabled = await enableBrowserNotifications({
+            applicationServerKey:
+              appState.homeSettings.data.browser_notification_preferences.application_server_key,
+          });
+          if (!enabled.ok) {
+            setAppState((current) =>
+              current.stage === "authenticated"
+                ? {
+                    ...current,
+                    homeSettingsIssue: enabled.issue,
+                    homeSettingsPending: false,
+                  }
+                : current,
+            );
+            return;
+          }
+        }
+        const result = await updateHumanSettings({
+          browser_notification_preferences: {
+            browser_notifications_enabled: action.value,
+          },
+        });
+        if (result.ok && !action.value) {
+          await disableBrowserNotifications();
+        }
+        setAppState((current) => {
+          if (current.stage !== "authenticated") return current;
+          return result.ok
+            ? {
+                ...current,
+                homeSettings: { stage: "ready", data: result.data },
+                homeSettingsIssue: null,
+                homeSettingsPending: false,
+              }
+            : {
+                ...current,
+                homeSettingsIssue: result.issue,
+                homeSettingsPending: false,
+              };
+        });
+        return;
+      }
+
+      if (
         action.type === "notification-preference-save" ||
+        action.type === "shared-data-preference-save" ||
+        action.type === "browser-notification-preference-save" ||
         action.type === "community-connection-preference-save"
       ) {
         if (

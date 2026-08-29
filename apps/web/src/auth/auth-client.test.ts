@@ -59,6 +59,15 @@ const SETTINGS = {
     chat_mode: null,
     allow_activity_room_warmup: null,
   },
+  shared_data_preferences: {
+    shared_meme_update_signals_enabled: true,
+  },
+  browser_notification_preferences: {
+    application_server_key: null,
+    browser_notifications_available: false,
+    browser_notifications_enabled: false,
+    activity_reminders_enabled: false,
+  },
 };
 
 const FARM_FIELD = {

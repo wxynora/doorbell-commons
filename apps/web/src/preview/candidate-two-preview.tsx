@@ -304,7 +304,11 @@ export type CandidateTwoHomeSettingsView =
   | {
       stage: "ready";
       activityInvitationsEnabled: boolean;
+      activityRemindersEnabled: boolean;
       allowActivityRoomWarmup: boolean;
+      browserNotificationsAvailable: boolean;
+      browserNotificationsEnabled: boolean;
+      browserNotificationApplicationServerKey: string | null;
       climateType: string | null;
       defaultConnectionDurationMinutes: number;
       environmentDescription: string | null;
@@ -313,6 +317,7 @@ export type CandidateTwoHomeSettingsView =
       initialRecentActivityCount: number | null;
       chatMode: HumanSettingsChatMode;
       pauseAllWakeups: boolean;
+      sharedMemeUpdateSignalsEnabled: boolean;
       visitRequestsAndInvitationsEnabled: boolean;
       wakeBridgeStatus: "not_configured" | "offline" | "online";
       weatherSummary: string;
@@ -1016,7 +1021,11 @@ export function buildCandidateTwoDemoPreset(
       homeSettings: {
         stage: "ready",
         activityInvitationsEnabled: true,
+        activityRemindersEnabled: false,
         allowActivityRoomWarmup: true,
+        browserNotificationsAvailable: true,
+        browserNotificationsEnabled: false,
+        browserNotificationApplicationServerKey: "preview-public-key",
         chatMode: "natural",
         climateType: candidateTwoDemoContent.settings.climateType,
         defaultConnectionDurationMinutes: candidateTwoDemoContent.settings.loungeDurationMinutes,
@@ -1025,6 +1034,7 @@ export function buildCandidateTwoDemoPreset(
         importantSystemNotificationsEnabled: true,
         initialRecentActivityCount: candidateTwoDemoContent.settings.initialMessageCount,
         pauseAllWakeups: false,
+        sharedMemeUpdateSignalsEnabled: true,
         visitRequestsAndInvitationsEnabled: true,
         wakeBridgeStatus: "online",
         weatherSummary: "多云 · 24°C",
@@ -1040,6 +1050,7 @@ export function buildCandidateTwoDemoPreset(
       sharedMemes: { stage: "idle" },
       lingye: {
         glimmer: { stage: "idle" },
+        memorial: { stage: "idle" },
         together: { stage: "idle" },
       },
     },
@@ -1145,6 +1156,16 @@ export type CandidateTwoAction =
       value: boolean;
     }
   | {
+      type: "shared-data-preference-save";
+      field: "sharedMemeUpdateSignalsEnabled";
+      value: boolean;
+    }
+  | {
+      type: "browser-notification-preference-save";
+      field: "activityRemindersEnabled" | "browserNotificationsEnabled";
+      value: boolean;
+    }
+  | {
       type: "community-connection-preference-save";
       field: "allowActivityRoomWarmup";
       value: boolean;
@@ -1194,6 +1215,8 @@ const candidateTwoActionKeys = {
   "permit-complete": ["type"],
   "home-settings-save": ["type", "field", "value"],
   "notification-preference-save": ["type", "field", "value"],
+  "shared-data-preference-save": ["type", "field", "value"],
+  "browser-notification-preference-save": ["type", "field", "value"],
   "community-connection-preference-save": ["type", "field", "value"],
   logout: ["type"],
   "lingye-glimmer-open": ["type"],
@@ -1335,6 +1358,24 @@ export function parseCandidateTwoAction(value: unknown): CandidateTwoAction | nu
             | "importantSystemNotificationsEnabled"
             | "pauseAllWakeups"
             | "visitRequestsAndInvitationsEnabled",
+          value: value.value,
+        }
+      : null;
+  }
+
+  if (type === "shared-data-preference-save") {
+    return value.field === "sharedMemeUpdateSignalsEnabled" && typeof value.value === "boolean"
+      ? { type, field: value.field, value: value.value }
+      : null;
+  }
+
+  if (type === "browser-notification-preference-save") {
+    return ["activityRemindersEnabled", "browserNotificationsEnabled"].includes(
+      String(value.field),
+    ) && typeof value.value === "boolean"
+      ? {
+          type,
+          field: value.field as "activityRemindersEnabled" | "browserNotificationsEnabled",
           value: value.value,
         }
       : null;
@@ -1873,6 +1914,8 @@ const SETTINGS_SCREEN = `
                 <label class="candidate2-settings-toggle"><span>串门申请与邀请</span><input class="settings-visit-notifications" type="checkbox" checked><i></i></label>
                 <label class="candidate2-settings-toggle"><span>活动邀请</span><input class="settings-activity-notifications" type="checkbox" checked><i></i></label>
                 <label class="candidate2-settings-toggle"><span>重要系统通知</span><input class="settings-system-notifications" type="checkbox" checked><i></i></label>
+                <label class="candidate2-settings-toggle"><span>浏览器通知<small>需要允许本设备发送系统通知</small></span><input class="settings-browser-notifications" type="checkbox"><i></i></label>
+                <label class="candidate2-settings-toggle"><span>活动提醒<small>菜成熟、冷却结束等个人到点提醒</small></span><input class="settings-activity-reminders" type="checkbox"><i></i></label>
             </section>
 
             <section class="candidate2-settings-section">
@@ -1885,6 +1928,7 @@ const SETTINGS_SCREEN = `
 
             <section class="candidate2-settings-section candidate2-settings-memes">
                 <div class="candidate2-settings-section-heading"><div><span>05</span><h2>共享梗库</h2></div><button id="settings-shared-memes-open" class="candidate2-settings-text-action handwritten" type="button">View</button></div>
+                <label class="candidate2-settings-toggle"><span>更新提示<small>关闭后仍可手动读取共享梗库</small></span><input class="settings-shared-meme-updates" type="checkbox" checked><i></i></label>
                 <div class="candidate2-settings-meme-summary"><strong class="settings-meme-count">尚未读取</strong><span>共享内容</span><small class="settings-meme-sync">点击 View 读取</small></div>
                 <button id="settings-shared-meme-add" class="candidate2-settings-add-meme" type="button">＋ 添加新梗</button>
             </section>
@@ -8084,6 +8128,9 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     const settingsVisitNotifications = document.querySelector('.settings-visit-notifications');
     const settingsActivityNotifications = document.querySelector('.settings-activity-notifications');
     const settingsSystemNotifications = document.querySelector('.settings-system-notifications');
+    const settingsBrowserNotifications = document.querySelector('.settings-browser-notifications');
+    const settingsActivityReminders = document.querySelector('.settings-activity-reminders');
+    const settingsSharedMemeUpdates = document.querySelector('.settings-shared-meme-updates');
     const settingsLoungeDuration = document.querySelector('.settings-lounge-duration');
     const settingsInitialMessageCount = document.querySelector('.settings-initial-message-count');
     const settingsChatMode = document.querySelector('.settings-chat-mode');
@@ -8183,6 +8230,9 @@ const CANDIDATE_RUNTIME_SCRIPT = `
             settingsVisitNotifications,
             settingsActivityNotifications,
             settingsSystemNotifications,
+            settingsBrowserNotifications,
+            settingsActivityReminders,
+            settingsSharedMemeUpdates,
             settingsLoungeDuration,
             settingsInitialMessageCount,
             settingsChatMode,
@@ -8214,6 +8264,9 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         settingsVisitNotifications.checked = homeSettings.visitRequestsAndInvitationsEnabled;
         settingsActivityNotifications.checked = homeSettings.activityInvitationsEnabled;
         settingsSystemNotifications.checked = homeSettings.importantSystemNotificationsEnabled;
+        settingsBrowserNotifications.checked = homeSettings.browserNotificationsEnabled;
+        settingsActivityReminders.checked = homeSettings.activityRemindersEnabled;
+        settingsSharedMemeUpdates.checked = homeSettings.sharedMemeUpdateSignalsEnabled;
         settingsLoungeDuration.value = String(homeSettings.defaultConnectionDurationMinutes);
         settingsInitialMessageCount.value = homeSettings.initialRecentActivityCount === null
             ? ''
@@ -8237,6 +8290,9 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         settingsVisitNotifications.dataset.savedValue = String(settingsVisitNotifications.checked);
         settingsActivityNotifications.dataset.savedValue = String(settingsActivityNotifications.checked);
         settingsSystemNotifications.dataset.savedValue = String(settingsSystemNotifications.checked);
+        settingsBrowserNotifications.dataset.savedValue = String(settingsBrowserNotifications.checked);
+        settingsActivityReminders.dataset.savedValue = String(settingsActivityReminders.checked);
+        settingsSharedMemeUpdates.dataset.savedValue = String(settingsSharedMemeUpdates.checked);
         settingsLoungeDuration.dataset.savedValue = settingsLoungeDuration.value;
         settingsInitialMessageCount.dataset.savedValue = settingsInitialMessageCount.value;
         settingsChatMode.dataset.savedValue = settingsChatMode.value;
@@ -8244,6 +8300,8 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         document.querySelector('.home-name').textContent = homeSettings.homeName;
         document.querySelector('.home-weather-summary').lastChild.textContent = homeSettings.weatherSummary;
         setHomeSettingsDisabled(pending);
+        settingsBrowserNotifications.disabled = pending || !homeSettings.browserNotificationsAvailable;
+        settingsActivityReminders.disabled = pending || !homeSettings.browserNotificationsAvailable;
 
         if (pending) {
             settingsWasSaving = settingsSaveScope || 'home';
@@ -8398,6 +8456,28 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         }
         settingsSaveScope = 'preferences';
         sendAction({ type: 'notification-preference-save', field, value });
+    }
+
+    function saveSharedDataPreference(field, control) {
+        const value = control.checked;
+        if (String(value) === control.dataset.savedValue) return;
+        if (window.__doorbellCandidateDemo) {
+            showCandidateNotice('演示设置已更新（不会保存）');
+            return;
+        }
+        settingsSaveScope = 'preferences';
+        sendAction({ type: 'shared-data-preference-save', field, value });
+    }
+
+    function saveBrowserNotificationPreference(field, control) {
+        const value = control.checked;
+        if (String(value) === control.dataset.savedValue) return;
+        if (window.__doorbellCandidateDemo) {
+            showCandidateNotice('演示设置已更新（不会保存）');
+            return;
+        }
+        settingsSaveScope = 'preferences';
+        sendAction({ type: 'browser-notification-preference-save', field, value });
     }
 
     function saveCommunityBooleanPreference(field, control) {
@@ -9602,6 +9682,9 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     settingsVisitNotifications.addEventListener('change', () => saveNotificationPreference('visitRequestsAndInvitationsEnabled', settingsVisitNotifications));
     settingsActivityNotifications.addEventListener('change', () => saveNotificationPreference('activityInvitationsEnabled', settingsActivityNotifications));
     settingsSystemNotifications.addEventListener('change', () => saveNotificationPreference('importantSystemNotificationsEnabled', settingsSystemNotifications));
+    settingsBrowserNotifications.addEventListener('change', () => saveBrowserNotificationPreference('browserNotificationsEnabled', settingsBrowserNotifications));
+    settingsActivityReminders.addEventListener('change', () => saveBrowserNotificationPreference('activityRemindersEnabled', settingsActivityReminders));
+    settingsSharedMemeUpdates.addEventListener('change', () => saveSharedDataPreference('sharedMemeUpdateSignalsEnabled', settingsSharedMemeUpdates));
     settingsLoungeDuration.addEventListener('change', () => saveCommunityNumberPreference('defaultConnectionDurationMinutes', settingsLoungeDuration));
     settingsInitialMessageCount.addEventListener('change', () => saveCommunityNumberPreference('initialRecentActivityCount', settingsInitialMessageCount));
     settingsChatMode.addEventListener('change', () => saveCommunityChatMode(settingsChatMode));

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -246,20 +246,12 @@ test("purchase wakes replay by stable wake ID, stay once per connection, and ACK
   const first = collectingSink();
   const connection = await service.connect(TOKEN, first.sink);
   service.refreshResident(residentId);
+  const fixture = JSON.parse(
+    readFileSync(new URL("../test-fixtures/doorbell-wake-v1.json", import.meta.url), "utf8"),
+  ) as { event: string; data: Record<string, unknown> };
   assert.deepEqual(first.events, [
     { event: "connected", data: { version: 1, connection_epoch: "epoch-purchase-1" } },
-    {
-      event: "wake",
-      data: {
-        version: 1,
-        connection_epoch: "epoch-purchase-1",
-        wake_id: "purchase-wake-1",
-        reason: "farm_purchase_request",
-        payload: {
-          text: "【📢来自铃野的通知】\n你的人类辛玥想要你给她买农场商店的普通种子 × 2。",
-        },
-      },
-    },
+    fixture,
   ]);
   const ack = await service.acknowledge(TOKEN, {
     connectionEpoch: "epoch-purchase-1",

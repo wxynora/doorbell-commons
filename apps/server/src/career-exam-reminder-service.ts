@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { LingyeActionResult } from "@doorbell/protocol";
 import type { BellService } from "./bell-service.js";
+import type { BrowserPushService } from "./browser-push-service.js";
 import type { CareerExamReminderRecord, CommunityDatabase } from "./community-database.js";
 import type { MailboxService } from "./mailbox-service.js";
 import type { LingyeMcpActionExecutor } from "./mcp-lingye-action-client.js";
@@ -22,6 +23,7 @@ export interface CareerExamReminderServiceOptions {
   database: CommunityDatabase;
   mailboxService: MailboxService;
   bellService: Pick<BellService, "notifyResident">;
+  browserPushService?: Pick<BrowserPushService, "sendActivityReminder">;
   registrationAuth: {
     confirmCurrentResidentMembership(residentId: string): Promise<unknown>;
   };
@@ -77,6 +79,7 @@ export class CareerExamReminderService {
   readonly #database: CommunityDatabase;
   readonly #mailboxService: MailboxService;
   readonly #bellService: Pick<BellService, "notifyResident">;
+  readonly #browserPushService: Pick<BrowserPushService, "sendActivityReminder"> | undefined;
   readonly #registrationAuth: CareerExamReminderServiceOptions["registrationAuth"];
   readonly #lingyeActions: LingyeMcpActionExecutor;
   readonly #now: () => number;
@@ -89,6 +92,7 @@ export class CareerExamReminderService {
     this.#database = options.database;
     this.#mailboxService = options.mailboxService;
     this.#bellService = options.bellService;
+    this.#browserPushService = options.browserPushService;
     this.#registrationAuth = options.registrationAuth;
     this.#lingyeActions = options.lingyeActions;
     this.#now = options.now ?? Date.now;
@@ -217,6 +221,20 @@ export class CareerExamReminderService {
     });
     if (delivered?.status === "delivered") {
       this.#bellService.notifyResident(reminder.residentId);
+      if (this.#browserPushService) {
+        try {
+          await this.#browserPushService.sendActivityReminder({
+            residentId: reminder.residentId,
+            title: CAREER_EXAM_REMINDER_TITLE,
+            body: CAREER_EXAM_REMINDER_BODY,
+            url: "/",
+            tag: `career-exam:${reminder.attemptId}`,
+            createdAt: deliveredAt,
+          });
+        } catch (error) {
+          this.#onError(error);
+        }
+      }
     }
   }
 

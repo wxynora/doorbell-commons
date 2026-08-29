@@ -11,6 +11,7 @@ import {
 } from "@doorbell/protocol";
 import { buildApp } from "./app.js";
 import type { BellService, BellSettingsStatus } from "./bell-service.js";
+import { BrowserPushService } from "./browser-push-service.js";
 import { CommunityDatabase } from "./community-database.js";
 import { COMMUNITY_QQ_GROUP_ID } from "./config.js";
 import type {
@@ -75,7 +76,12 @@ class UnusedFarmDirectory implements FarmDirectoryReader {
   }
 }
 
-function openHarness(databasePath: string, sessionTokens: string[], bellService?: BellService) {
+function openHarness(
+  databasePath: string,
+  sessionTokens: string[],
+  bellService?: BellService,
+  browserPushConfigured = false,
+) {
   const database = new CommunityDatabase(databasePath, {
     generateSessionToken: () => sessionTokens.shift() ?? "unexpected-settings-session-token",
   });
@@ -88,11 +94,26 @@ function openHarness(databasePath: string, sessionTokens: string[], bellService?
     groupId: COMMUNITY_QQ_GROUP_ID,
     now: () => NOW,
   });
+  const browserPushService = browserPushConfigured
+    ? new BrowserPushService({
+        config: {
+          publicKey: "AQID",
+          privateKey: "private-test-key",
+          subject: "https://example.test",
+          ttlSeconds: 60,
+        },
+        database,
+        registrationAuth,
+        requestTimeoutMs: 5_000,
+        sender: { send: async () => undefined },
+      })
+    : undefined;
   const app = buildApp({
     groupId: COMMUNITY_QQ_GROUP_ID,
     groupMembership: membership,
     registrationAuth,
     ...(bellService ? { bellService } : {}),
+    ...(browserPushService ? { browserPushService } : {}),
     secureCookies: false,
     logger: false,
   });
@@ -208,6 +229,15 @@ test("settings expose honest integration state and persist supported fields acro
         chat_mode: null,
         allow_activity_room_warmup: null,
       },
+      shared_data_preferences: {
+        shared_meme_update_signals_enabled: true,
+      },
+      browser_notification_preferences: {
+        application_server_key: null,
+        browser_notifications_available: false,
+        browser_notifications_enabled: false,
+        activity_reminders_enabled: false,
+      },
     });
     assert.doesNotMatch(initial.body, new RegExp(FARM_HUMAN_KEY));
 
@@ -228,6 +258,13 @@ test("settings expose honest integration state and persist supported fields acro
         initial_recent_activity_count: 0,
         chat_mode: "listening",
         allow_activity_room_warmup: false,
+      },
+      shared_data_preferences: {
+        shared_meme_update_signals_enabled: false,
+      },
+      browser_notification_preferences: {
+        browser_notifications_enabled: true,
+        activity_reminders_enabled: true,
       },
     };
     const updated = await harness.app.inject({
@@ -255,6 +292,12 @@ test("settings expose honest integration state and persist supported fields acro
       updatedBody.community_connection_preferences,
       updatePayload.community_connection_preferences,
     );
+    assert.deepEqual(updatedBody.shared_data_preferences, updatePayload.shared_data_preferences);
+    assert.deepEqual(updatedBody.browser_notification_preferences, {
+      application_server_key: null,
+      browser_notifications_available: false,
+      ...updatePayload.browser_notification_preferences,
+    });
     assert.doesNotMatch(updated.body, new RegExp(FARM_HUMAN_KEY));
 
     const currentSession = await harness.app.inject({
@@ -400,6 +443,71 @@ test("settings expose honest integration state and persist supported fields acro
       },
     );
     assert.equal(harness.farmDirectory.calls, 0);
+  } finally {
+    await harness.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("browser notification setup exposes a real public key and persists an authenticated subscription", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "doorbell-browser-settings-test-"));
+  const harness = openHarness(
+    join(directory, "doorbell.sqlite"),
+    ["browser-settings-token"],
+    undefined,
+    true,
+  );
+  try {
+    const created = createRegisteredSession(
+      harness.database,
+      "10001",
+      "小一",
+      "纸灯小屋",
+      "ABC234",
+    );
+    harness.membership.members.add("10001");
+    const sessionCookie = cookie(created.token);
+    const settings = await harness.app.inject({
+      method: "GET",
+      url: "/api/settings",
+      headers: { cookie: sessionCookie },
+    });
+    assert.deepEqual(settings.json().browser_notification_preferences, {
+      application_server_key: "AQID",
+      browser_notifications_available: true,
+      browser_notifications_enabled: false,
+      activity_reminders_enabled: false,
+    });
+
+    const subscribed = await harness.app.inject({
+      method: "POST",
+      url: "/api/browser-notifications/subscription",
+      headers: { cookie: sessionCookie },
+      payload: {
+        endpoint: "https://push.example.test/subscription",
+        expiration_time: null,
+        keys: { auth: "auth", p256dh: "p256dh" },
+      },
+    });
+    assert.equal(subscribed.statusCode, 200);
+    assert.deepEqual(subscribed.json(), { subscribed: true });
+    assert.equal(
+      harness.database.listBrowserPushSubscriptions(created.community.resident.residentId).length,
+      1,
+    );
+
+    const removed = await harness.app.inject({
+      method: "DELETE",
+      url: "/api/browser-notifications/subscription",
+      headers: { cookie: sessionCookie },
+      payload: { endpoint: "https://push.example.test/subscription" },
+    });
+    assert.equal(removed.statusCode, 200);
+    assert.deepEqual(removed.json(), { subscribed: false });
+    assert.equal(
+      harness.database.listBrowserPushSubscriptions(created.community.resident.residentId).length,
+      0,
+    );
   } finally {
     await harness.close();
     rmSync(directory, { recursive: true, force: true });

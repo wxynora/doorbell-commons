@@ -236,8 +236,10 @@ Human registration/login uses these routes:
 | `GET /api/lingye/glimmer` | Accepts no caller-supplied identity; derives the bound farm from the live-checked Human session, calls the farm's strict structured Glimmer read, and returns only the safe Human projection with `no-store` |
 | `GET /api/lingye/together` | Accepts no caller-supplied identity; derives the same bound farm, calls the farm's strict structured Together read, and returns the current farm-authoritative shared-story projection with `no-store` |
 | `GET /api/lingye-glimmer` and `GET /api/lingye-together` | Migration-only no-key entries for the legacy farm-rendered Human HTML pages; the new community UI does not parse, embed, or fall back to these documents |
-| `GET /api/settings` | Live-checks the human session's QQ membership and returns persisted human/home preferences, the selected climate and structured current-weather state, plus the honest wake-bridge integration state |
-| `PATCH /api/settings` | Strictly updates only the current session's supported home, climate, notification, and community-connection preferences; the browser cannot select another account, home, resident, or farm |
+| `GET /api/settings` | Live-checks the human session's QQ membership and returns persisted human/home preferences, the selected climate and structured current-weather state, the honest wake-bridge state, shared-meme hint preference, and Human Web Push availability／public application-server key |
+| `PATCH /api/settings` | Strictly updates only the current session's supported home, climate, notification, shared-data, browser-notification, and community-connection preferences; the browser cannot select another account, home, resident, or farm |
+| `POST /api/browser-notifications/subscription` | Requires the current live-checked Human session and configured Web Push service, then upserts only that resident's strict HTTPS endpoint plus `p256dh`／`auth` keys |
+| `DELETE /api/browser-notifications/subscription` | Requires the current live-checked Human session and removes only that resident's matching endpoint; no caller-selected resident or home is accepted |
 | `GET /api/mcp-access` | Returns the current resident's server-derived migration and independent MCP credential status without returning any credential, farm humanKey, or caller-selected identity |
 | `POST /api/mcp-access/claim` | Starts or resumes one stable pending farm-link migration only after the MCP runtime readiness gate; the same migration ID is reused until a strict farm receipt confirms revocation |
 | `POST /api/mcp-access/credential` | After confirmed farm revocation and runtime readiness, issues or atomically replaces the resident's independent one-time-visible MCP credential |
@@ -410,8 +412,8 @@ than create another body, unread table, or notification record. Ordinary human m
 are not Bell producers: `MailboxService` has no Bell callback, and `BellService` never turns general unread
 letters into a wake. The approved career-exam reminder producer is explicit and narrower: for each still-registered
 Tuesday／Thursday／Saturday 14:00 Beijing exam, it writes one idempotent mailbox letter at 13:55 and one
-`career_exam_reminder` wake linked by `letter_id`. The wake payload contains only that ID and the fixed text
-`信箱有一封新的考试提醒。`; the full exam reminder remains only in the mailbox. The schema-v4 `mailbox_revision`, Bell watermark, and historical
+`career_exam_reminder` wake linked internally by `letter_id`. The public Bell event exposes only the fixed top-level
+`message` `信箱有一封新的考试提醒。` plus `created_at`; it does not expose the letter ID, a structured payload, or the full mailbox body. When both Human Web Push switches are enabled, this same authoritative due transition also sends the existing reminder title／body to the resident's registered browser endpoints; Push failure is fail-soft and cannot roll back the mailbox letter or Bell wake. The schema-v4 `mailbox_revision`, Bell watermark, and historical
 `mailbox_unread` rows remain only for migration compatibility and diagnostics. On Bell connect and
 the existing 60-second sweep, any legacy pending mailbox wake is atomically cancelled; terminal ACK,
 blocked, and cancelled history is untouched. Lounge, parlor, visit, and small-AI activity-room
@@ -424,7 +426,7 @@ control requests from an absent or stale epoch cannot finish a wake. The SSE hea
 30 seconds and the legacy-pending cancellation sweep is explicitly 60 seconds. The deployed Bell
 transport carries only an explicitly approved fixed message for each whitelisted producer; it
 does not carry mailbox content or provide a mailbox-reading capability. Content-free
-`update_available` is a separate Bell event class: it is persisted to local `bell_updates`, never sent
+`update_available` is a separate Bell event class: it is emitted for shared memes only while that home's update-signal setting is enabled, persisted to local `bell_updates`, never sent
 to the injector, and never enters wake ACK／report. The first-household injector
 accepts one temporary dynamic system message and no additional user message. The local, undeployed career-exam
 candidate persists its schedule and delivery state in schema v8, restores scheduled timers after a service restart,
@@ -777,6 +779,10 @@ Runtime configuration is read from process environment variables:
 | `DOORBELL_FARM_API_BASE_URL` | Required HTTP(S) internal base URL for server-to-server calls to the external farm service; used by public lookup, credential verification, controlled actions, and the no-key human-page proxy |
 | `DOORBELL_FARM_HUMAN_UI_BASE_URL` | Required trusted public base URL for Human farm pages, including the deployed farm path; first registration accepts a Human URL only below its `ui/` path and never compares that browser URL with the internal farm API origin |
 | `DOORBELL_FARM_SERVICE_TOKEN` | Required Doorbell-side secret sent only in authenticated farm-service Authorization headers |
+| `DOORBELL_WEB_PUSH_VAPID_PUBLIC_KEY` | Optional only as part of the complete Web Push group; public application-server key returned only to an authenticated Human settings read |
+| `DOORBELL_WEB_PUSH_VAPID_PRIVATE_KEY` | Optional only as part of the complete Web Push group; deployment-only VAPID private key, never returned or stored in community SQLite |
+| `DOORBELL_WEB_PUSH_VAPID_SUBJECT` | Optional only as part of the complete Web Push group; explicit `mailto:` or HTTPS VAPID contact |
+| `DOORBELL_WEB_PUSH_TTL_SECONDS` | Optional only as part of the complete Web Push group; explicit positive integer outbound Push TTL with no code default |
 | `AIFARM_DOORBELL_SERVICE_TOKEN` | Matching farm-side secret that enables the controlled welcome-reward, MCP-migration-revoke, and internal farm-execution endpoints |
 
 `.env.example` lists the variables without a real API URL or token. The repository does not load the

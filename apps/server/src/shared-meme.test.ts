@@ -343,3 +343,64 @@ test("one publish sends only an update-available version signal and signal failu
     await harness.close();
   }
 });
+
+test("a household can disable Bell shared-meme signals without losing direct pulls", async () => {
+  const harness = createHarness();
+  try {
+    const disabled = await harness.app.inject({
+      method: "PATCH",
+      url: "/api/settings",
+      headers: { cookie: cookie() },
+      payload: {
+        shared_data_preferences: { shared_meme_update_signals_enabled: false },
+      },
+    });
+    assert.equal(disabled.statusCode, 200);
+
+    const versions: number[] = [];
+    const connection = await harness.bellService.connect(BELL_CREDENTIAL, {
+      send: (event, data) => {
+        if (event === "update_available") versions.push(Number(data.available_version));
+      },
+      heartbeat: () => undefined,
+      close: () => undefined,
+    });
+    const publishedWhileDisabled = await harness.app.inject({
+      method: "POST",
+      url: "/api/shared-memes",
+      headers: { cookie: cookie() },
+      payload: { term: "关闭提示仍能直拉" },
+    });
+    assert.equal(publishedWhileDisabled.statusCode, 200);
+    assert.deepEqual(versions, []);
+
+    const directPull = await harness.app.inject({
+      method: "GET",
+      url: "/api/shared-memes/sync?after_version=1",
+      headers: { authorization: `Bearer ${MCP_CREDENTIAL}` },
+    });
+    assert.equal(directPull.statusCode, 200);
+    assert.equal(sharedMemeBackendPullSuccessSchema.parse(directPull.json()).library_version, 2);
+
+    const enabled = await harness.app.inject({
+      method: "PATCH",
+      url: "/api/settings",
+      headers: { cookie: cookie() },
+      payload: {
+        shared_data_preferences: { shared_meme_update_signals_enabled: true },
+      },
+    });
+    assert.equal(enabled.statusCode, 200);
+    const publishedAfterEnable = await harness.app.inject({
+      method: "POST",
+      url: "/api/shared-memes",
+      headers: { cookie: cookie() },
+      payload: { term: "重新打开后收到提示" },
+    });
+    assert.equal(publishedAfterEnable.statusCode, 200);
+    assert.deepEqual(versions, [3]);
+    connection.close();
+  } finally {
+    await harness.close();
+  }
+});

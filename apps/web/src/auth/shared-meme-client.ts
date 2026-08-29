@@ -111,6 +111,7 @@ export function sharedMemeIssueMessage(issue: SharedMemeIssue): string {
     qq_not_group_member: "当前 QQ 已不具备社区访问资格。",
     registration_profile_required: "请先完成居民、家园和农场绑定。",
     shared_meme_not_found: "这条共享梗不存在或已经不可用。",
+    shared_meme_version_ahead: "本地梗库版本比社区当前版本更新，请重新拉取完整梗库。",
     shared_meme_unavailable: "共享梗库暂时不可用，请稍后再试。",
     unexpected_response: "共享梗库返回了无法识别的数据，请稍后再试。",
   };

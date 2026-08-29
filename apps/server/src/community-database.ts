@@ -23,7 +23,7 @@ export const HUMAN_LOGIN_FAILURE_WINDOW_MS = 15 * 60 * 1000;
 export const HUMAN_LOGIN_FAILURE_THRESHOLD = 10;
 export const HUMAN_LOGIN_LOCK_DURATION_MS = 30 * 60 * 1000;
 export const FARM_PURCHASE_REQUEST_TTL_MS = 24 * 60 * 60 * 1000;
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 8;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 9;
 const LEGACY_CONNECTOR_DELIVERY_GENERATION = "00000000-0000-0000-0000-000000000000";
 
 export interface RegistrationCodeRecord {
@@ -59,6 +59,16 @@ export interface HumanCommunityRecord {
   resident: ResidentRecord;
   home: HomeRecord;
   farmBinding: FarmBindingRecord;
+}
+
+export interface BrowserPushSubscriptionRecord {
+  residentId: string;
+  homeId: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface HumanRegistrationInput {
@@ -320,6 +330,9 @@ export interface HumanSettingsRecord {
   visitRequestsAndInvitationsEnabled: boolean | null;
   activityInvitationsEnabled: boolean | null;
   importantSystemNotificationsEnabled: boolean | null;
+  sharedMemeUpdateSignalsEnabled: boolean;
+  browserNotificationsEnabled: boolean;
+  activityRemindersEnabled: boolean;
   defaultConnectionDurationMinutes: number;
   initialRecentActivityCount: number | null;
   chatMode: HumanSettingsChatMode | null;
@@ -334,6 +347,9 @@ export interface HumanSettingsPatch {
   visitRequestsAndInvitationsEnabled?: boolean | null;
   activityInvitationsEnabled?: boolean | null;
   importantSystemNotificationsEnabled?: boolean | null;
+  sharedMemeUpdateSignalsEnabled?: boolean;
+  browserNotificationsEnabled?: boolean;
+  activityRemindersEnabled?: boolean;
   defaultConnectionDurationMinutes?: number | null;
   initialRecentActivityCount?: number | null;
   chatMode?: HumanSettingsChatMode | null;
@@ -476,10 +492,23 @@ interface HumanSettingsRow {
   visit_requests_and_invitations_enabled: number | null;
   activity_invitations_enabled: number | null;
   important_system_notifications_enabled: number | null;
+  shared_meme_update_signals_enabled: number | null;
+  browser_notifications_enabled: number | null;
+  activity_reminders_enabled: number | null;
   default_connection_duration_minutes: number | null;
   initial_recent_activity_count: number | null;
   chat_mode: HumanSettingsChatMode | null;
   allow_activity_room_warmup: number | null;
+}
+
+interface BrowserPushSubscriptionRow {
+  resident_id: string;
+  home_id: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  created_at: number;
+  updated_at: number;
 }
 
 interface McpAccessBindingRow {
@@ -693,6 +722,10 @@ function mapHumanSettings(row: HumanSettingsRow): HumanSettingsRecord {
     importantSystemNotificationsEnabled: mapNullableBoolean(
       row.important_system_notifications_enabled,
     ),
+    sharedMemeUpdateSignalsEnabled:
+      mapNullableBoolean(row.shared_meme_update_signals_enabled) ?? true,
+    browserNotificationsEnabled: mapNullableBoolean(row.browser_notifications_enabled) ?? false,
+    activityRemindersEnabled: mapNullableBoolean(row.activity_reminders_enabled) ?? false,
     defaultConnectionDurationMinutes:
       row.default_connection_duration_minutes ?? DEFAULT_CONNECTION_DURATION_MINUTES,
     initialRecentActivityCount: row.initial_recent_activity_count,
@@ -1020,6 +1053,12 @@ export class CommunityDatabase {
         activity_invitations_enabled INTEGER CHECK (activity_invitations_enabled IN (0, 1)),
         important_system_notifications_enabled INTEGER
           CHECK (important_system_notifications_enabled IN (0, 1)),
+        shared_meme_update_signals_enabled INTEGER NOT NULL DEFAULT 1
+          CHECK (shared_meme_update_signals_enabled IN (0, 1)),
+        browser_notifications_enabled INTEGER NOT NULL DEFAULT 0
+          CHECK (browser_notifications_enabled IN (0, 1)),
+        activity_reminders_enabled INTEGER NOT NULL DEFAULT 0
+          CHECK (activity_reminders_enabled IN (0, 1)),
         default_connection_duration_minutes INTEGER
           CHECK (default_connection_duration_minutes > 0),
         initial_recent_activity_count INTEGER CHECK (initial_recent_activity_count >= 0),
@@ -1027,6 +1066,19 @@ export class CommunityDatabase {
         allow_activity_room_warmup INTEGER CHECK (allow_activity_room_warmup IN (0, 1)),
         updated_at INTEGER NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS browser_push_subscriptions (
+        endpoint TEXT PRIMARY KEY,
+        resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+        home_id TEXT NOT NULL REFERENCES homes(home_id) ON DELETE CASCADE,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS browser_push_subscriptions_resident
+        ON browser_push_subscriptions (resident_id, updated_at DESC, endpoint);
 
       CREATE TABLE IF NOT EXISTS lingye_daily_issues (
         issue_date TEXT PRIMARY KEY,
@@ -1840,6 +1892,46 @@ export class CommunityDatabase {
       }
       migratedSchemaVersion = 8;
     }
+    if (migratedSchemaVersion < 9) {
+      this.#database.transaction(() => {
+        const settingsColumns = this.#database.pragma("table_info(human_settings)") as Array<{
+          name: string;
+        }>;
+        if (
+          !settingsColumns.some((column) => column.name === "shared_meme_update_signals_enabled")
+        ) {
+          this.#database.exec(
+            "ALTER TABLE human_settings ADD COLUMN shared_meme_update_signals_enabled INTEGER NOT NULL DEFAULT 1 CHECK (shared_meme_update_signals_enabled IN (0, 1))",
+          );
+        }
+        if (!settingsColumns.some((column) => column.name === "browser_notifications_enabled")) {
+          this.#database.exec(
+            "ALTER TABLE human_settings ADD COLUMN browser_notifications_enabled INTEGER NOT NULL DEFAULT 0 CHECK (browser_notifications_enabled IN (0, 1))",
+          );
+        }
+        if (!settingsColumns.some((column) => column.name === "activity_reminders_enabled")) {
+          this.#database.exec(
+            "ALTER TABLE human_settings ADD COLUMN activity_reminders_enabled INTEGER NOT NULL DEFAULT 0 CHECK (activity_reminders_enabled IN (0, 1))",
+          );
+        }
+        this.#database.exec(`
+          CREATE TABLE IF NOT EXISTS browser_push_subscriptions (
+            endpoint TEXT PRIMARY KEY,
+            resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+            home_id TEXT NOT NULL REFERENCES homes(home_id) ON DELETE CASCADE,
+            p256dh TEXT NOT NULL,
+            auth TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+          );
+
+          CREATE INDEX IF NOT EXISTS browser_push_subscriptions_resident
+            ON browser_push_subscriptions (resident_id, updated_at DESC, endpoint);
+        `);
+        this.#database.pragma("user_version = 9");
+      })();
+      migratedSchemaVersion = 9;
+    }
     this.#database.transaction(() => {
       const itemColumns = this.#database.pragma(
         "table_info(farm_purchase_request_items)",
@@ -1861,6 +1953,109 @@ export class CommunityDatabase {
     this.#database.exec(
       "CREATE UNIQUE INDEX IF NOT EXISTS bell_wakes_one_purchase_request ON bell_wakes (purchase_request_id) WHERE purchase_request_id IS NOT NULL",
     );
+  }
+
+  upsertBrowserPushSubscription(input: {
+    residentId: string;
+    homeId: string;
+    endpoint: string;
+    p256dh: string;
+    auth: string;
+    now: number;
+  }): BrowserPushSubscriptionRecord {
+    const transaction = this.#database.transaction(() => {
+      const owner = this.#database
+        .prepare(
+          `SELECT r.resident_id, h.home_id
+           FROM residents AS r
+           JOIN homes AS h ON h.resident_id = r.resident_id
+           WHERE r.resident_id = ? AND h.home_id = ?`,
+        )
+        .get(input.residentId, input.homeId) as
+        | { resident_id: string; home_id: string }
+        | undefined;
+      if (!owner) throw new Error("The browser push subscription owner does not exist");
+      const existing = this.#database
+        .prepare(
+          "SELECT resident_id, home_id, created_at FROM browser_push_subscriptions WHERE endpoint = ?",
+        )
+        .get(input.endpoint) as
+        | { resident_id: string; home_id: string; created_at: number }
+        | undefined;
+      if (
+        existing &&
+        (existing.resident_id !== input.residentId || existing.home_id !== input.homeId)
+      ) {
+        throw new Error("The browser push endpoint already belongs to another resident");
+      }
+      this.#database
+        .prepare(
+          `INSERT INTO browser_push_subscriptions (
+             endpoint, resident_id, home_id, p256dh, auth, created_at, updated_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(endpoint) DO UPDATE SET
+             resident_id = excluded.resident_id,
+             home_id = excluded.home_id,
+             p256dh = excluded.p256dh,
+             auth = excluded.auth,
+             updated_at = excluded.updated_at`,
+        )
+        .run(
+          input.endpoint,
+          input.residentId,
+          input.homeId,
+          input.p256dh,
+          input.auth,
+          existing?.created_at ?? input.now,
+          input.now,
+        );
+      return this.#database
+        .prepare(
+          `SELECT resident_id, home_id, endpoint, p256dh, auth, created_at, updated_at
+           FROM browser_push_subscriptions
+           WHERE endpoint = ?`,
+        )
+        .get(input.endpoint) as BrowserPushSubscriptionRow;
+    });
+    const row = transaction.immediate();
+    return {
+      residentId: row.resident_id,
+      homeId: row.home_id,
+      endpoint: row.endpoint,
+      p256dh: row.p256dh,
+      auth: row.auth,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  deleteBrowserPushSubscription(residentId: string, endpoint: string): boolean {
+    return (
+      this.#database
+        .prepare("DELETE FROM browser_push_subscriptions WHERE resident_id = ? AND endpoint = ?")
+        .run(residentId, endpoint).changes === 1
+    );
+  }
+
+  listBrowserPushSubscriptions(residentId: string): BrowserPushSubscriptionRecord[] {
+    return (
+      this.#database
+        .prepare(
+          `SELECT resident_id, home_id, endpoint, p256dh, auth, created_at, updated_at
+           FROM browser_push_subscriptions
+           WHERE resident_id = ?
+           ORDER BY updated_at DESC, endpoint ASC`,
+        )
+        .all(residentId) as BrowserPushSubscriptionRow[]
+    ).map((row) => ({
+      residentId: row.resident_id,
+      homeId: row.home_id,
+      endpoint: row.endpoint,
+      p256dh: row.p256dh,
+      auth: row.auth,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
   }
 
   publishLingyeDailyIssue(
@@ -3922,6 +4117,9 @@ export class CommunityDatabase {
         "visitRequestsAndInvitationsEnabled",
         "activityInvitationsEnabled",
         "importantSystemNotificationsEnabled",
+        "sharedMemeUpdateSignalsEnabled",
+        "browserNotificationsEnabled",
+        "activityRemindersEnabled",
         "defaultConnectionDurationMinutes",
         "initialRecentActivityCount",
         "chatMode",
@@ -3949,6 +4147,18 @@ export class CommunityDatabase {
         )
           ? storeNullableBoolean(patch.importantSystemNotificationsEnabled ?? null)
           : current.important_system_notifications_enabled;
+        const sharedMemeUpdateSignalsEnabled = Object.hasOwn(
+          patch,
+          "sharedMemeUpdateSignalsEnabled",
+        )
+          ? storeNullableBoolean(patch.sharedMemeUpdateSignalsEnabled ?? false)
+          : (current.shared_meme_update_signals_enabled ?? 1);
+        const browserNotificationsEnabled = Object.hasOwn(patch, "browserNotificationsEnabled")
+          ? storeNullableBoolean(patch.browserNotificationsEnabled ?? false)
+          : (current.browser_notifications_enabled ?? 0);
+        const activityRemindersEnabled = Object.hasOwn(patch, "activityRemindersEnabled")
+          ? storeNullableBoolean(patch.activityRemindersEnabled ?? false)
+          : (current.activity_reminders_enabled ?? 0);
         const defaultConnectionDurationMinutes = Object.hasOwn(
           patch,
           "defaultConnectionDurationMinutes",
@@ -3974,18 +4184,24 @@ export class CommunityDatabase {
                visit_requests_and_invitations_enabled,
                activity_invitations_enabled,
                important_system_notifications_enabled,
+               shared_meme_update_signals_enabled,
+               browser_notifications_enabled,
+               activity_reminders_enabled,
                default_connection_duration_minutes,
                initial_recent_activity_count,
                chat_mode,
                allow_activity_room_warmup,
                updated_at
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(home_id) DO UPDATE SET
                environment_description = excluded.environment_description,
                pause_all_wakeups = excluded.pause_all_wakeups,
                visit_requests_and_invitations_enabled = excluded.visit_requests_and_invitations_enabled,
                activity_invitations_enabled = excluded.activity_invitations_enabled,
                important_system_notifications_enabled = excluded.important_system_notifications_enabled,
+               shared_meme_update_signals_enabled = excluded.shared_meme_update_signals_enabled,
+               browser_notifications_enabled = excluded.browser_notifications_enabled,
+               activity_reminders_enabled = excluded.activity_reminders_enabled,
                default_connection_duration_minutes = excluded.default_connection_duration_minutes,
                initial_recent_activity_count = excluded.initial_recent_activity_count,
                chat_mode = excluded.chat_mode,
@@ -3999,6 +4215,9 @@ export class CommunityDatabase {
             visitRequestsAndInvitationsEnabled,
             activityInvitationsEnabled,
             importantSystemNotificationsEnabled,
+            sharedMemeUpdateSignalsEnabled,
+            browserNotificationsEnabled,
+            activityRemindersEnabled,
             defaultConnectionDurationMinutes,
             initialRecentActivityCount,
             chatMode,
@@ -4104,6 +4323,9 @@ export class CommunityDatabase {
                 s.visit_requests_and_invitations_enabled,
                 s.activity_invitations_enabled,
                 s.important_system_notifications_enabled,
+                s.shared_meme_update_signals_enabled,
+                s.browser_notifications_enabled,
+                s.activity_reminders_enabled,
                 s.default_connection_duration_minutes,
                 s.initial_recent_activity_count,
                 s.chat_mode,

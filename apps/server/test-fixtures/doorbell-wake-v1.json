@@ -1,0 +1,11 @@
+{
+  "event": "wake",
+  "data": {
+    "version": 1,
+    "connection_epoch": "epoch-purchase-1",
+    "wake_id": "purchase-wake-1",
+    "reason": "farm_purchase_request",
+    "message": "【📢来自铃野的通知】\n你的人类辛玥想要你给她买农场商店的普通种子 × 2。",
+    "created_at": "1970-01-01T00:00:04.000Z"
+  }
+}
