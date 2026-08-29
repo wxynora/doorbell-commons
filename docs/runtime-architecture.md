@@ -55,8 +55,8 @@ separate from the Doorbell server and community database. Root Git ignore rules 
 `old-vps/farm/dist/**`, so a newly added production runtime module cannot disappear behind the
 workspace-wide `dist/` ignore; ordinary application and package build directories remain ignored.
 
-Main commit `7dd467b2b5bbe1802b85465a7d7f019291279161`, pushed to `origin/main`, has one ordered community schema v10 rather
-than parallel migrations: existing accounts keep their resident／home／farm data while every resident
+Main commit `7dd467b2b5bbe1802b85465a7d7f019291279161` and follow-up `460d40cdfe09fedcf90ca1776c8de6c1887e7ba1`, pushed to `origin/main`, use one ordered community schema v11 rather
+than parallel migrations: v10 keeps existing account／resident／home／farm data while every resident
 receives an opaque profile id, every Human session receives one active profile, and an account can add
 multiple isolated profiles. Human settings switches the complete active profile only for that session;
 resident-bound MCP and Bell credentials do not move. The same v10 migration adds persistent activity
@@ -64,6 +64,9 @@ reminders keyed by resident, home, farm, reminder kind, and authority source. On
 Human Web Push switches enabled and at least one subscription are reconciled every five minutes against
 the farm field and Glimmer structured reads; failure leaves the reminder pending, a settings disable
 cancels it, service restart restores it, and delivery creates neither Bell wakes nor mailbox letters.
+Version 11 changes only browser subscription ownership: one Push endpoint may belong to multiple
+profiles of the same Human account through `(endpoint, resident_id, home_id)`, while another account
+is still rejected and deleting one profile's relation leaves the others intact.
 This release also includes the verified constable-interview Main edge closure. It is not deployed or
 production-active.
 
