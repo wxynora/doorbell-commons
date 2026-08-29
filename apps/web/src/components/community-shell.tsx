@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { HumanIdentity } from "../auth/auth-client";
 import { LingyeDailyScreen } from "../daily/lingye-daily-screen";
+import { DOORBELL_FARM_PATH } from "../routes";
 import type {
   CommunityArea,
   LingyePlaceId,
@@ -9,7 +10,6 @@ import type {
   NavigationItemViewModel,
   OwnerProfileViewModel,
 } from "../view-models";
-import { DOORBELL_FARM_PATH } from "../routes";
 import { CommunityNavigation } from "./community-navigation";
 import { LingyeMapPage } from "./lingye-map-page";
 import { MyHomePage } from "./my-home-page";
@@ -198,7 +198,6 @@ function createProfileViewModel(identity: HumanIdentity): OwnerProfileViewModel 
     publicIntro: null,
     publicLocation: null,
     currentActivity: null,
-    connectorStatus: null,
     familyName: identity.home.home_name,
     farmDoorplate: identity.farmBinding.farm_doorplate,
     socialConnections: [],

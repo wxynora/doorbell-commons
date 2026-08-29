@@ -41,12 +41,6 @@ export function OwnerProfilePage({ profile }: OwnerProfilePageProps) {
               <ProfileValue value={profile.currentActivity} />
             </dd>
           </div>
-          <div>
-            <dt>Connector</dt>
-            <dd>
-              <ProfileValue value={profile.connectorStatus} />
-            </dd>
-          </div>
         </dl>
       </section>
 

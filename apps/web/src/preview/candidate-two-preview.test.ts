@@ -4,7 +4,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildCandidateTwoRuntimeHtml,
-  buildConnectorSetupInstructions,
   CandidateTwoPreview,
   parseCandidateTwoAction,
   resolveCandidateTwoDemoPreset,
@@ -53,12 +52,8 @@ test("candidate bridge accepts only exact known child actions", () => {
   assert.deepEqual(parseCandidateTwoAction({ type: "lingye-together-open" }), {
     type: "lingye-together-open",
   });
-  assert.deepEqual(parseCandidateTwoAction({ type: "connector-credential-issue" }), {
-    type: "connector-credential-issue",
-  });
-  assert.deepEqual(parseCandidateTwoAction({ type: "connector-credential-revoke" }), {
-    type: "connector-credential-revoke",
-  });
+  assert.equal(parseCandidateTwoAction({ type: "connector-credential-issue" }), null);
+  assert.equal(parseCandidateTwoAction({ type: "connector-credential-revoke" }), null);
   const glimmerAnimalPositions = {
     duck_peach: { x: 48, y: -4 },
     mystery: { x: 0, y: 0 },
@@ -377,31 +372,11 @@ test("runtime HTML keeps candidate two and replaces every confirmed fake datum",
     /class="settings-wake-dot"><\/i><span>唤醒桥「铃」<\/span><strong class="settings-wake-state">正在读取<\/strong><small>与普通消息连接分开<\/small>/,
   );
   assert.doesNotMatch(html, /class="settings-wake-dot"><\/i><span>铃<\/span>/);
-  assert.match(html, /id="connector-issue-button"[^>]*disabled>生成 Connector 凭据</);
-  assert.match(html, /id="connector-revoke-button"[^>]*hidden disabled>停用 Connector</);
-  assert.doesNotMatch(
-    html,
-    /id="connector-(?:issue|revoke|confirm|cancel|copy(?:-setup)?)-button"[^>]*handwritten/,
-  );
+  assert.doesNotMatch(html, /Connector|connector-/);
   assert.match(
     html,
     /id="settings-shared-memes-open" class="candidate2-settings-text-action handwritten"[^>]*>View/,
   );
-  assert.match(
-    html,
-    /\.candidate2-connector-actions \.candidate2-settings-text-action,[\s\S]*\.candidate2-connector-credential \.candidate2-settings-text-action \{[\s\S]*font-family: var\(--ui-regular-font\);[\s\S]*font-size: 9px;[\s\S]*font-weight: 500;[\s\S]*text-decoration: none;/,
-  );
-  assert.match(html, /重新生成连接码/);
-  assert.match(html, /生成后，连接码只显示这一次，请及时保存。/);
-  assert.match(html, /重新生成后，旧连接码会立即失效。/);
-  assert.match(html, /停用后，当前 Connector 会断开，原连接码不能再用。/);
-  assert.match(html, /确认重新生成/);
-  assert.match(html, /确认停用/);
-  assert.match(html, /会连同凭据复制完整配置说明/);
-  assert.match(html, /它不是登录密码或 MCP 连接码/);
-  assert.match(html, /DOORBELL_CONNECTOR_CREDENTIAL/);
-  assert.match(html, />复制给自己的机</);
-  assert.doesNotMatch(html, /id="connector-copy-button"|>只复制凭据<|>复制完整配置说明</);
   assert.match(html, />家园与天气</);
   assert.match(html, />通知与唤醒</);
   assert.match(html, />社区连接偏好</);
@@ -709,19 +684,13 @@ test("lingye demo opens distinct Together and Glimmer Human UI previews", () => 
     /moqu-gufeng-ti\.css[\s\S]*font: 400 9px\/1\.72 'MoQuGuFengTi'[\s\S]*font: 400 8px\/1 'MoQuGuFengTi'/,
   );
   assert.match(html, /qixi-lantern-bases-v2-web\.webp[\s\S]*qixi-lantern-decorations-v3-web\.webp/);
-  assert.doesNotMatch(
-    html,
-    /\.candidate2-qixi-archive-lantern \{[^}]*filter:\s*drop-shadow/,
-  );
+  assert.doesNotMatch(html, /\.candidate2-qixi-archive-lantern \{[^}]*filter:\s*drop-shadow/);
   assert.match(
     html,
     /\.candidate2-qixi-archive-letter \{[\s\S]*width: 220px;[\s\S]*height: 136px;[\s\S]*qixi-letter-card-v1\.png[\s\S]*\.candidate2-qixi-archive-qiaoqiao \{[\s\S]*qixi-stickers-v2-web\.webp/,
   );
   assert.doesNotMatch(html, /\.candidate2-qixi-archive-letter::before/);
-  assert.doesNotMatch(
-    html,
-    /\.candidate2-qixi-archive-letter \{[^}]*filter:\s*drop-shadow/,
-  );
+  assert.doesNotMatch(html, /\.candidate2-qixi-archive-letter \{[^}]*filter:\s*drop-shadow/);
   assert.doesNotMatch(html, /qixi-letter-display-v1-web\.webp/);
   assert.match(
     html,
@@ -1196,9 +1165,7 @@ test("runtime routes are click-only, no-key, and community returns inside the if
   assert.doesNotMatch(html, /\bfetch\s*\(/);
   assert.doesNotMatch(html, /localStorage|sessionStorage/);
   assert.match(html, /event\.source !== window\.parent/);
-  assert.match(html, /doorbell-candidate2:connector-credential/);
-  assert.match(html, /clearOneTimeConnectorCredential\(\)/);
-  assert.match(html, /screenId !== 'screen-settings'/);
+  assert.doesNotMatch(html, /Connector|connector-/);
   assert.doesNotMatch(html, /\b(?:alert|confirm)\s*\(/);
   assert.match(html, /sendAction\(\{ type: 'view-ready' \}\)/);
 });
@@ -1296,35 +1263,14 @@ test("notification and community preferences restore, edit, save, and report sta
   assert.match(html, /偏好设置已保存/);
 });
 
-test("Connector settings map all real states and null or real last-online timestamps", () => {
+test("settings project the real Bell status without a retired Connector control", () => {
   const html = buildCandidateTwoRuntimeHtml();
 
   assert.match(html, /not_configured: '尚未配置'/);
   assert.match(html, /offline: '已离线'/);
   assert.match(html, /online: '连接正常'/);
-  assert.match(html, /if \(lastOnlineAt === null\) return '暂无连接记录'/);
-  assert.match(html, /date\.toLocaleString\('zh-CN'/);
-  assert.match(html, /state\.connectorSettings/);
-  assert.match(html, /state\.connectorControlIssueMessage/);
-});
-
-test("copy-for-own-agent instructions use the official required env and workspace start", () => {
-  const credential = `dbc_${"B".repeat(43)}`;
-  const instructions = buildConnectorSetupInstructions(credential);
-
-  assert.match(
-    instructions,
-    /DOORBELL_SERVER_WS_URL="wss:\/\/<替换为实际 Doorbell 域名>\/api\/connector\/ws"/,
-  );
-  assert.match(instructions, new RegExp(`DOORBELL_CONNECTOR_CREDENTIAL="${credential}"`));
-  assert.match(
-    instructions,
-    /DOORBELL_CONNECTOR_DATABASE_PATH="\/替换为本机绝对路径\/doorbell-connector\.sqlite"/,
-  );
-  assert.match(instructions, /DOORBELL_CONNECTOR_HTTP_TIMEOUT_MS="300000"/);
-  assert.match(instructions, /npm run build -w @doorbell\/connector/);
-  assert.match(instructions, /npm run start -w @doorbell\/connector/);
-  assert.match(instructions, /不会自动注册 AI/);
+  assert.match(html, /homeSettings\.wakeBridgeStatus/);
+  assert.doesNotMatch(html, /Connector|connector-/);
 });
 
 test("full demo data is explicit, local-only, and exposes every preview state", () => {

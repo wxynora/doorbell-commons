@@ -8,13 +8,10 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import {
   type AuthIssue,
   type BoundFarmField,
-  type ConnectorControlIssue,
   deleteHumanSession,
   getCurrentHumanSession,
   getHumanSettings,
   type HumanIdentity,
-  issueConnectorCredential,
-  revokeConnectorCredential,
   updateHumanSettings,
 } from "./auth/auth-client";
 import { authIssueMessage } from "./auth/auth-errors";
@@ -37,12 +34,9 @@ import {
 import { AuthScreen, SessionCheckingScreen } from "./components/auth-screen";
 import { McpAccessPage } from "./components/mcp-access-panel";
 import { ResidencePermitTransition } from "./components/residence-permit-transition";
-import { DOORBELL_FARM_PATH, isDoorbellFarmPath } from "./routes";
 import {
   buildCandidateTwoDemoPreset,
   type CandidateTwoAction,
-  type CandidateTwoConnectorCredentialDelivery,
-  type CandidateTwoConnectorSettingsView,
   type CandidateTwoDemoPreset,
   type CandidateTwoHomeSettingsView,
   type CandidateTwoIdentityView,
@@ -53,6 +47,7 @@ import {
   type CandidateTwoViewState,
   resolveCandidateTwoDemoPreset,
 } from "./preview/candidate-two-preview";
+import { DOORBELL_FARM_PATH, isDoorbellFarmPath } from "./routes";
 
 const FarmPage = lazy(async () => {
   const module = await import("./farm/farm-page");
@@ -118,11 +113,6 @@ const candidateTwoFarmPreview: BoundFarmField = {
   server_time: "2026-08-23T08:00:00.000Z",
 };
 
-type ConnectorSettingsState =
-  | { stage: "loading" }
-  | { stage: "error"; issue: AuthIssue }
-  | Extract<CandidateTwoConnectorSettingsView, { stage: "ready" }>;
-
 type HomeSettingsState =
   | { stage: "loading" }
   | { stage: "error"; issue: AuthIssue }
@@ -134,9 +124,6 @@ type AppState =
   | { stage: "issuing-permit"; identity: HumanIdentity }
   | {
       stage: "authenticated";
-      connectorControlIssue: ConnectorControlIssue | null;
-      connectorControlPending: boolean;
-      connectorSettings: ConnectorSettingsState;
       homeSettings: HomeSettingsState;
       homeSettingsIssue: AuthIssue | null;
       homeSettingsPending: boolean;
@@ -161,25 +148,6 @@ function identityView(identity: HumanIdentity): CandidateTwoIdentityView {
     qqNumber: identity.account.qq_number,
     residentName: identity.resident.resident_name,
   };
-}
-
-function connectorControlIssueMessage(issue: ConnectorControlIssue) {
-  if (issue.code === "connector_not_configured") {
-    return "当前尚未配置 Connector 凭据。";
-  }
-  return authIssueMessage(issue as AuthIssue);
-}
-
-function connectorSettingsView(
-  connectorSettings: ConnectorSettingsState,
-): CandidateTwoConnectorSettingsView {
-  if (connectorSettings.stage === "error") {
-    return {
-      stage: "error",
-      message: authIssueMessage(connectorSettings.issue),
-    };
-  }
-  return connectorSettings;
 }
 
 function homeSettingsView(homeSettings: HomeSettingsState): CandidateTwoHomeSettingsView {
@@ -213,6 +181,7 @@ function homeSettingsView(homeSettings: HomeSettingsState): CandidateTwoHomeSett
     pauseAllWakeups: notification_preferences.pause_all_wakeups ?? false,
     visitRequestsAndInvitationsEnabled:
       notification_preferences.visit_requests_and_invitations_enabled ?? true,
+    wakeBridgeStatus: homeSettings.data.connection_status.wake_bridge.status,
     weatherSummary,
   };
 }
@@ -292,9 +261,6 @@ function authenticatedState(
 ): Extract<AppState, { stage: "authenticated" }> {
   return {
     stage: "authenticated",
-    connectorControlIssue: null,
-    connectorControlPending: false,
-    connectorSettings: { stage: "loading" },
     homeSettings: { stage: "loading" },
     homeSettingsIssue: null,
     homeSettingsPending: false,
@@ -318,11 +284,6 @@ function authenticatedViewState(
 ): CandidateTwoViewState {
   return {
     stage: "authenticated",
-    connectorControlIssueMessage: appState.connectorControlIssue
-      ? connectorControlIssueMessage(appState.connectorControlIssue)
-      : null,
-    connectorControlPending: appState.connectorControlPending,
-    connectorSettings: connectorSettingsView(appState.connectorSettings),
     homeSettings: homeSettingsView(appState.homeSettings),
     homeSettingsIssueMessage: appState.homeSettingsIssue
       ? authIssueMessage(appState.homeSettingsIssue)
@@ -345,8 +306,6 @@ function LiveApp() {
     isDoorbellFarmPath(window.location.pathname) ? "farm" : "community",
   );
   const [showMcpAfterPermit, setShowMcpAfterPermit] = useState(false);
-  const [connectorCredentialDelivery, setConnectorCredentialDelivery] =
-    useState<CandidateTwoConnectorCredentialDelivery | null>(null);
   const lingyeRequestIdsRef = useRef({ glimmer: 0, memorial: 0, together: 0 });
   const lingyeControllersRef = useRef<{
     glimmer: AbortController | null;
@@ -416,9 +375,7 @@ function LiveApp() {
   }, []);
 
   const settingsLoading =
-    appState.stage === "authenticated"
-      ? appState.connectorSettings.stage === "loading" || appState.homeSettings.stage === "loading"
-      : false;
+    appState.stage === "authenticated" ? appState.homeSettings.stage === "loading" : false;
 
   useEffect(() => {
     if (!settingsLoading) {
@@ -431,18 +388,11 @@ function LiveApp() {
         return;
       }
       setAppState((current) => {
-        if (
-          current.stage !== "authenticated" ||
-          (current.connectorSettings.stage !== "loading" &&
-            current.homeSettings.stage !== "loading")
-        ) {
+        if (current.stage !== "authenticated" || current.homeSettings.stage !== "loading") {
           return current;
         }
         return {
           ...current,
-          connectorSettings: result.ok
-            ? { stage: "ready", status: result.data.connection_status.connector }
-            : { stage: "error", issue: result.issue },
           homeSettings: result.ok
             ? { stage: "ready", data: result.data }
             : { stage: "error", issue: result.issue },
@@ -741,85 +691,6 @@ function LiveApp() {
         return;
       }
 
-      if (action.type === "connector-credential-issue") {
-        if (appState.stage !== "authenticated" || appState.connectorControlPending) {
-          return;
-        }
-
-        setAppState({
-          ...appState,
-          connectorControlIssue: null,
-          connectorControlPending: true,
-        });
-        const result = await issueConnectorCredential();
-        if (result.ok) {
-          setConnectorCredentialDelivery({
-            connectorCredential: result.data.connector_credential,
-            deliveryId: result.data.credential_id,
-          });
-          setAppState((current) =>
-            current.stage === "authenticated"
-              ? {
-                  ...current,
-                  connectorControlIssue: null,
-                  connectorControlPending: false,
-                  connectorSettings: { stage: "loading" },
-                }
-              : current,
-          );
-          return;
-        }
-
-        setAppState((current) =>
-          current.stage === "authenticated"
-            ? {
-                ...current,
-                connectorControlIssue: result.issue,
-                connectorControlPending: false,
-              }
-            : current,
-        );
-        return;
-      }
-
-      if (action.type === "connector-credential-revoke") {
-        if (appState.stage !== "authenticated" || appState.connectorControlPending) {
-          return;
-        }
-
-        setAppState({
-          ...appState,
-          connectorControlIssue: null,
-          connectorControlPending: true,
-        });
-        const result = await revokeConnectorCredential();
-        if (result.ok) {
-          setConnectorCredentialDelivery(null);
-          setAppState((current) =>
-            current.stage === "authenticated"
-              ? {
-                  ...current,
-                  connectorControlIssue: null,
-                  connectorControlPending: false,
-                  connectorSettings: { stage: "loading" },
-                }
-              : current,
-          );
-          return;
-        }
-
-        setAppState((current) =>
-          current.stage === "authenticated"
-            ? {
-                ...current,
-                connectorControlIssue: result.issue,
-                connectorControlPending: false,
-              }
-            : current,
-        );
-        return;
-      }
-
       if (action.type === "logout") {
         if (appState.stage !== "authenticated") {
           return;
@@ -835,7 +706,6 @@ function LiveApp() {
         setAppState({ ...appState, issue: null, pendingLogout: true });
         const result = await deleteHumanSession();
         if (result.ok || result.issue.code === "authentication_required") {
-          setConnectorCredentialDelivery(null);
           setShowMcpAfterPermit(false);
           if (isDoorbellFarmPath(window.location.pathname)) {
             window.history.replaceState({}, "", "/");
@@ -858,12 +728,6 @@ function LiveApp() {
     },
     [appState, loadLingye, openFarmPage],
   );
-
-  const handleConnectorCredentialDelivered = useCallback((deliveryId: string) => {
-    setConnectorCredentialDelivery((current) =>
-      current?.deliveryId === deliveryId ? null : current,
-    );
-  }, []);
 
   if (appState.stage === "checking-session") {
     return <SessionCheckingScreen />;
@@ -898,9 +762,7 @@ function LiveApp() {
   return (
     <div className="live-app">
       <CandidateTwoPreview
-        connectorCredentialDelivery={connectorCredentialDelivery}
         onAction={handleCandidateAction}
-        onConnectorCredentialDelivered={handleConnectorCredentialDelivered}
         state={authenticatedViewState(appState)}
       />
       {appState.stage === "authenticated" && activeInternalPage === "farm" ? (

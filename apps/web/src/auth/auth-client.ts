@@ -3,12 +3,7 @@ import {
   boundFarmFieldSuccessSchema,
   boundFarmHarvestAssistErrorSchema,
   boundFarmHarvestAssistSuccessSchema,
-  type ConnectorControlError,
-  type ConnectorCredentialIssueSuccess,
   type CurrentHumanSessionSuccess,
-  connectorControlErrorSchema,
-  connectorCredentialIssueSuccessSchema,
-  connectorCredentialRevokeSuccessSchema,
   currentHumanSessionSuccessSchema,
   type FarmLookupRequest,
   type FarmLookupSuccess,
@@ -42,13 +37,6 @@ export type AuthIssueCode =
 
 export interface AuthIssue {
   code: AuthIssueCode;
-  serverMessage: string | null;
-}
-
-export type ConnectorControlIssueCode = ConnectorControlError["error"]["code"] | ClientIssueCode;
-
-export interface ConnectorControlIssue {
-  code: ConnectorControlIssueCode;
   serverMessage: string | null;
 }
 
@@ -92,10 +80,6 @@ export type IdentityResult =
   | { ok: true; identity: HumanIdentity; accountCreated: boolean | null }
   | { ok: false; issue: AuthIssue };
 export type FrontendFetcher = (input: string, init?: RequestInit) => Promise<Response>;
-
-type ConnectorCredentialRevokeSuccess = ReturnType<
-  typeof connectorCredentialRevokeSuccessSchema.parse
->;
 
 function identityFromResponse(
   response: CurrentHumanSessionSuccess | HumanSessionSuccess,
@@ -161,17 +145,6 @@ function parseFarmHarvestAssistIssue(payload: unknown): FarmHarvestAssistIssue {
   return {
     code: parsed.data.error.code,
     currentRevision: parsed.data.error.current_revision ?? null,
-    serverMessage: parsed.data.error.message,
-  };
-}
-
-function parseConnectorControlIssue(payload: unknown): ConnectorControlIssue {
-  const parsed = connectorControlErrorSchema.safeParse(payload);
-  if (!parsed.success) {
-    return clientIssue("unexpected_response");
-  }
-  return {
-    code: parsed.data.error.code,
     serverMessage: parsed.data.error.message,
   };
 }
@@ -421,58 +394,6 @@ export async function updateHumanSettings(
   }
 
   const parsed = humanSettingsSuccessSchema.safeParse(payload);
-  return parsed.success
-    ? { ok: true, data: parsed.data }
-    : { ok: false, issue: clientIssue("unexpected_response") };
-}
-
-export async function issueConnectorCredential(
-  fetcher: FrontendFetcher = fetch,
-): Promise<ApiResult<ConnectorCredentialIssueSuccess, ConnectorControlIssue>> {
-  let response: Response;
-  try {
-    response = await fetcher("/api/connector/credential", {
-      body: JSON.stringify({}),
-      credentials: "same-origin",
-      headers: { "content-type": "application/json" },
-      method: "POST",
-    });
-  } catch {
-    return { ok: false, issue: clientIssue("network_unavailable") };
-  }
-
-  const payload = await readPayload(response);
-  if (!response.ok) {
-    return { ok: false, issue: parseConnectorControlIssue(payload) };
-  }
-
-  const parsed = connectorCredentialIssueSuccessSchema.safeParse(payload);
-  return parsed.success
-    ? { ok: true, data: parsed.data }
-    : { ok: false, issue: clientIssue("unexpected_response") };
-}
-
-export async function revokeConnectorCredential(
-  fetcher: FrontendFetcher = fetch,
-): Promise<ApiResult<ConnectorCredentialRevokeSuccess, ConnectorControlIssue>> {
-  let response: Response;
-  try {
-    response = await fetcher("/api/connector/credential", {
-      body: JSON.stringify({}),
-      credentials: "same-origin",
-      headers: { "content-type": "application/json" },
-      method: "DELETE",
-    });
-  } catch {
-    return { ok: false, issue: clientIssue("network_unavailable") };
-  }
-
-  const payload = await readPayload(response);
-  if (!response.ok) {
-    return { ok: false, issue: parseConnectorControlIssue(payload) };
-  }
-
-  const parsed = connectorCredentialRevokeSuccessSchema.safeParse(payload);
   return parsed.success
     ? { ok: true, data: parsed.data }
     : { ok: false, issue: clientIssue("unexpected_response") };

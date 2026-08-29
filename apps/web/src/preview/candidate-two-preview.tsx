@@ -1,5 +1,4 @@
 import {
-  type ConnectorSettingsStatus,
   type HumanSettingsChatMode,
   type SharedMemeAddRequest,
   type SharedMemeDetailSuccess,
@@ -299,11 +298,6 @@ export type CandidateTwoFarmLookupView =
   | { stage: "error"; message: string }
   | { stage: "found"; doorplate: string; farmName: string };
 
-export type CandidateTwoConnectorSettingsView =
-  | { stage: "loading" }
-  | { stage: "error"; message: string }
-  | { stage: "ready"; status: ConnectorSettingsStatus };
-
 export type CandidateTwoHomeSettingsView =
   | { stage: "loading" }
   | { stage: "error"; message: string }
@@ -320,13 +314,9 @@ export type CandidateTwoHomeSettingsView =
       chatMode: HumanSettingsChatMode;
       pauseAllWakeups: boolean;
       visitRequestsAndInvitationsEnabled: boolean;
+      wakeBridgeStatus: "not_configured" | "offline" | "online";
       weatherSummary: string;
     };
-
-export interface CandidateTwoConnectorCredentialDelivery {
-  connectorCredential: string;
-  deliveryId: string;
-}
 
 export type CandidateTwoSharedMemeListView =
   | { stage: "idle" }
@@ -359,9 +349,6 @@ export type CandidateTwoViewState =
   | { stage: "issuing-permit"; identity: CandidateTwoIdentityView }
   | {
       stage: "authenticated";
-      connectorControlIssueMessage: string | null;
-      connectorControlPending: boolean;
-      connectorSettings: CandidateTwoConnectorSettingsView;
       homeSettings: CandidateTwoHomeSettingsView;
       homeSettingsIssueMessage: string | null;
       homeSettingsPending: boolean;
@@ -426,8 +413,6 @@ interface CandidateTwoDemoContent {
   relationships: readonly { detail: string; name: string }[];
   settings: {
     climateType: string;
-    connectorLastSeen: string;
-    connectorState: string;
     initialMessageCount: number;
     loungeDurationMinutes: number;
     sharedMemeCount: number;
@@ -693,8 +678,6 @@ const candidateTwoDemoContent: CandidateTwoDemoContent = {
   ],
   settings: {
     climateType: "temperate_monsoon",
-    connectorLastSeen: "刚刚",
-    connectorState: "连接正常",
     initialMessageCount: 20,
     loungeDurationMinutes: 5,
     sharedMemeCount: 12,
@@ -1030,12 +1013,6 @@ export function buildCandidateTwoDemoPreset(
     demo,
     state: {
       stage: "authenticated",
-      connectorControlIssueMessage: null,
-      connectorControlPending: false,
-      connectorSettings: {
-        stage: "ready",
-        status: { last_online_at: "2026-08-12T04:18:00.000Z", status: "online" },
-      },
       homeSettings: {
         stage: "ready",
         activityInvitationsEnabled: true,
@@ -1049,6 +1026,7 @@ export function buildCandidateTwoDemoPreset(
         initialRecentActivityCount: candidateTwoDemoContent.settings.initialMessageCount,
         pauseAllWakeups: false,
         visitRequestsAndInvitationsEnabled: true,
+        wakeBridgeStatus: "online",
         weatherSummary: "多云 · 24°C",
       },
       homeSettingsIssueMessage: null,
@@ -1152,8 +1130,6 @@ export type CandidateTwoAction =
       residentName: string;
     }
   | { type: "permit-complete" }
-  | { type: "connector-credential-issue" }
-  | { type: "connector-credential-revoke" }
   | {
       type: "home-settings-save";
       field: "climateType" | "environmentDescription" | "homeName";
@@ -1216,8 +1192,6 @@ const candidateTwoActionKeys = {
     "residentName",
   ],
   "permit-complete": ["type"],
-  "connector-credential-issue": ["type"],
-  "connector-credential-revoke": ["type"],
   "home-settings-save": ["type", "field", "value"],
   "notification-preference-save": ["type", "field", "value"],
   "community-connection-preference-save": ["type", "field", "value"],
@@ -1433,8 +1407,6 @@ export function parseCandidateTwoAction(value: unknown): CandidateTwoAction | nu
   }
 
   return type === "permit-complete" ||
-    type === "connector-credential-issue" ||
-    type === "connector-credential-revoke" ||
     type === "logout" ||
     type === "shared-memes-open" ||
     type === "lingye-glimmer-open" ||
@@ -1443,19 +1415,6 @@ export function parseCandidateTwoAction(value: unknown): CandidateTwoAction | nu
     type === "view-ready"
     ? { type }
     : null;
-}
-
-export function buildConnectorSetupInstructions(connectorCredential: string) {
-  return [
-    "请在 Doorbell Commons workspace 根目录运行官方 Connector。以下命令只启动 Connector，不会自动注册 AI。",
-    "请先把 Doorbell WebSocket 地址和数据库绝对路径占位符替换为自己的实际部署值。",
-    'export DOORBELL_SERVER_WS_URL="wss://<替换为实际 Doorbell 域名>/api/connector/ws"',
-    `export DOORBELL_CONNECTOR_CREDENTIAL="${connectorCredential}"`,
-    'export DOORBELL_CONNECTOR_DATABASE_PATH="/替换为本机绝对路径/doorbell-connector.sqlite"',
-    'export DOORBELL_CONNECTOR_HTTP_TIMEOUT_MS="300000"',
-    "npm run build -w @doorbell/connector",
-    "npm run start -w @doorbell/connector",
-  ].join("\n");
 }
 
 const lingyePlaces = [
@@ -1500,9 +1459,7 @@ const hiddenFishingPlaceIds = new Set<string>([
 ]);
 
 interface CandidateTwoPreviewProps {
-  connectorCredentialDelivery?: CandidateTwoConnectorCredentialDelivery | null;
   demo?: CandidateTwoDemoView | null;
-  onConnectorCredentialDelivered?: (deliveryId: string) => void;
   onAction: (action: CandidateTwoAction) => void;
   state: CandidateTwoViewState;
 }
@@ -1899,27 +1856,7 @@ const SETTINGS_SCREEN = `
                     <p class="settings-connection-summary">正在读取</p>
                 </div>
                 <div class="candidate2-settings-status-grid">
-                    <div><i class="settings-connector-dot"></i><span>Connector</span><strong class="settings-connector-state">正在读取</strong><small class="settings-connector-seen">暂无连接记录</small></div>
                     <div><i class="settings-wake-dot"></i><span>唤醒桥「铃」</span><strong class="settings-wake-state">正在读取</strong><small>与普通消息连接分开</small></div>
-                </div>
-                <div class="candidate2-connector-actions">
-                    <button id="connector-issue-button" class="candidate2-settings-text-action" type="button" disabled>生成 Connector 凭据</button>
-                    <button id="connector-revoke-button" class="candidate2-settings-text-action" type="button" hidden disabled>停用 Connector</button>
-                </div>
-                <div id="connector-confirmation" class="candidate2-connector-confirmation" hidden>
-                    <p class="candidate2-connector-confirmation-copy"></p>
-                    <div>
-                        <button id="connector-confirm-button" class="candidate2-settings-text-action" type="button">确认</button>
-                        <button id="connector-cancel-button" class="candidate2-settings-text-action" type="button">取消</button>
-                    </div>
-                </div>
-                <div id="connector-credential-result" class="candidate2-connector-credential" hidden>
-                    <p>新凭据只显示这一次，请立即保存。</p>
-                    <code class="candidate2-connector-credential-value"></code>
-                    <div>
-                        <button id="connector-copy-setup-button" class="candidate2-settings-text-action" type="button">复制给自己的机</button>
-                    </div>
-                    <p>会连同凭据复制完整配置说明。运行官方 Connector 时，将凭据配置为 <code>DOORBELL_CONNECTOR_CREDENTIAL</code>；它不是登录密码或 MCP 连接码。</p>
                 </div>
             </section>
 
@@ -3857,57 +3794,6 @@ const RUNTIME_STYLES = `
         .candidate2-settings-status-grid strong { font-size: 10px; font-weight: 500; }
         .candidate2-settings-status-grid small { color: #a8958b; font-size: 7px; }
 
-        .candidate2-connector-actions,
-        .candidate2-connector-confirmation > div,
-        .candidate2-connector-credential > div {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px 12px;
-            align-items: center;
-        }
-
-        .candidate2-connector-actions {
-            margin-top: 9px;
-        }
-
-        .candidate2-connector-confirmation,
-        .candidate2-connector-credential {
-            margin-top: 9px;
-            padding-top: 9px;
-            border-top: 0.5px solid #eee5dc;
-        }
-
-        .candidate2-connector-confirmation[hidden],
-        .candidate2-connector-credential[hidden] {
-            display: none;
-        }
-
-        .candidate2-connector-confirmation p,
-        .candidate2-connector-credential p {
-            margin: 0 0 7px;
-            color: #806b62;
-            font-size: 8px;
-            line-height: 1.45;
-        }
-
-        .candidate2-connector-credential code {
-            display: block;
-            margin-bottom: 7px;
-            color: #60483f;
-            font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
-            font-size: 7px;
-            line-height: 1.45;
-            overflow-wrap: anywhere;
-            user-select: all;
-        }
-
-        .candidate2-connector-actions button:disabled,
-        .candidate2-connector-confirmation button:disabled,
-        .candidate2-connector-credential button:disabled {
-            opacity: 0.52;
-            cursor: default;
-        }
-
         .candidate2-settings-row,
         .candidate2-settings-toggle {
             display: flex;
@@ -4068,17 +3954,6 @@ const RUNTIME_STYLES = `
             font-size: 13px;
             text-decoration: underline;
             text-underline-offset: 3px;
-        }
-
-        .candidate2-connector-actions .candidate2-settings-text-action,
-        .candidate2-connector-confirmation .candidate2-settings-text-action,
-        .candidate2-connector-credential .candidate2-settings-text-action {
-            font-family: var(--ui-regular-font);
-            font-size: 9px;
-            font-style: normal;
-            font-weight: 500;
-            line-height: 1.5;
-            text-decoration: none;
         }
 
         .candidate2-settings-add-meme {
@@ -8189,15 +8064,6 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     const profileSubmitButton = profileForm.querySelector('button[type="submit"]');
     const mainNav = document.getElementById('main-nav');
     const settingsFeedback = document.querySelector('.candidate2-settings-feedback');
-    const connectorIssueButton = document.getElementById('connector-issue-button');
-    const connectorRevokeButton = document.getElementById('connector-revoke-button');
-    const connectorConfirmation = document.getElementById('connector-confirmation');
-    const connectorConfirmationCopy = connectorConfirmation.querySelector('.candidate2-connector-confirmation-copy');
-    const connectorConfirmButton = document.getElementById('connector-confirm-button');
-    const connectorCancelButton = document.getElementById('connector-cancel-button');
-    const connectorCredentialResult = document.getElementById('connector-credential-result');
-    const connectorCredentialValue = connectorCredentialResult.querySelector('.candidate2-connector-credential-value');
-    const connectorCopySetupButton = document.getElementById('connector-copy-setup-button');
     const sharedMemesOpenButton = document.getElementById('settings-shared-memes-open');
     const sharedMemeAddFromSettingsButton = document.getElementById('settings-shared-meme-add');
     const sharedMemesBackButton = document.getElementById('shared-memes-back');
@@ -8228,9 +8094,6 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     let currentFarmName = '';
     let currentFarmDoorplate = '';
     let currentStage = 'checking-session';
-    let currentConnectorStatus = 'not_configured';
-    let connectorConfirmationAction = '';
-    let oneTimeConnectorSetupInstructions = '';
     let visibleSharedMemes = [];
     let settingsSaveScope = '';
     let settingsWasSaving = '';
@@ -8311,80 +8174,6 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         });
     }
 
-    function clearConnectorConfirmation() {
-        connectorConfirmationAction = '';
-        connectorConfirmation.hidden = true;
-        connectorConfirmationCopy.textContent = '';
-    }
-
-    function clearOneTimeConnectorCredential() {
-        oneTimeConnectorSetupInstructions = '';
-        connectorCredentialValue.textContent = '';
-        connectorCredentialResult.hidden = true;
-    }
-
-    function setConnectorControlsDisabled(disabled) {
-        connectorIssueButton.disabled = disabled;
-        connectorRevokeButton.disabled = disabled;
-        connectorConfirmButton.disabled = disabled;
-    }
-
-    function formatConnectorLastOnline(lastOnlineAt) {
-        if (lastOnlineAt === null) return '暂无连接记录';
-        const date = new Date(lastOnlineAt);
-        if (Number.isNaN(date.getTime())) return '暂无连接记录';
-        return '最近连接 ' + date.toLocaleString('zh-CN', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false,
-        });
-    }
-
-    function applyConnectorSettings(connectorSettings, pending, issueMessage) {
-        const summary = document.querySelector('.settings-connection-summary');
-        const state = document.querySelector('.settings-connector-state');
-        const seen = document.querySelector('.settings-connector-seen');
-        const dot = document.querySelector('.settings-connector-dot');
-
-        if (connectorSettings.stage === 'loading') {
-            summary.textContent = '正在读取';
-            state.textContent = '正在读取';
-            seen.textContent = '暂无连接记录';
-            setConnectorControlsDisabled(true);
-            setStatus(settingsFeedback, pending ? '正在处理 Connector 凭据……' : '正在读取连接状态……');
-            return;
-        }
-
-        if (connectorSettings.stage === 'error') {
-            summary.textContent = '读取失败';
-            state.textContent = '读取失败';
-            seen.textContent = '暂无连接记录';
-            setConnectorControlsDisabled(true);
-            setStatus(settingsFeedback, connectorSettings.message);
-            return;
-        }
-
-        currentConnectorStatus = connectorSettings.status.status;
-        const labels = {
-            not_configured: '尚未配置',
-            offline: '已离线',
-            online: '连接正常',
-        };
-        const label = labels[currentConnectorStatus];
-        summary.textContent = label;
-        state.textContent = label;
-        seen.textContent = formatConnectorLastOnline(connectorSettings.status.last_online_at);
-        dot.style.background = currentConnectorStatus === 'online' ? '#9dbcae' : '#c9b9ae';
-        connectorIssueButton.textContent =
-            currentConnectorStatus === 'not_configured' ? '生成 Connector 凭据' : '重新生成连接码';
-        connectorRevokeButton.hidden = currentConnectorStatus === 'not_configured';
-        setConnectorControlsDisabled(pending);
-        setStatus(settingsFeedback, pending ? '正在处理 Connector 凭据……' : issueMessage);
-    }
-
     function setHomeSettingsDisabled(disabled) {
         [
             settingsHomeName,
@@ -8405,10 +8194,14 @@ const CANDIDATE_RUNTIME_SCRIPT = `
 
     function applyHomeSettings(homeSettings, pending, issueMessage) {
         if (homeSettings.stage === 'loading') {
+            document.querySelector('.settings-connection-summary').textContent = '正在读取';
+            document.querySelector('.settings-wake-state').textContent = '正在读取';
             setHomeSettingsDisabled(true);
             return;
         }
         if (homeSettings.stage === 'error') {
+            document.querySelector('.settings-connection-summary').textContent = '读取失败';
+            document.querySelector('.settings-wake-state').textContent = '读取失败';
             setHomeSettingsDisabled(true);
             setStatus(settingsFeedback, homeSettings.message);
             return;
@@ -8427,6 +8220,16 @@ const CANDIDATE_RUNTIME_SCRIPT = `
             : String(homeSettings.initialRecentActivityCount);
         settingsChatMode.value = homeSettings.chatMode;
         settingsActivityRoomWarmup.checked = homeSettings.allowActivityRoomWarmup;
+        const wakeLabels = {
+            not_configured: '尚未配置',
+            offline: '已离线',
+            online: '连接正常',
+        };
+        const wakeLabel = wakeLabels[homeSettings.wakeBridgeStatus];
+        document.querySelector('.settings-connection-summary').textContent = wakeLabel;
+        document.querySelector('.settings-wake-state').textContent = wakeLabel;
+        document.querySelector('.settings-wake-dot').style.background =
+            homeSettings.wakeBridgeStatus === 'online' ? '#9dbcae' : '#c9b9ae';
         settingsHomeName.dataset.savedValue = settingsHomeName.value;
         settingsEnvironment.dataset.savedValue = settingsEnvironment.value;
         settingsClimate.dataset.savedValue = settingsClimate.value;
@@ -8635,61 +8438,6 @@ const CANDIDATE_RUNTIME_SCRIPT = `
             field: 'chatMode',
             value: control.value,
         });
-    }
-
-    function showConnectorConfirmation(action) {
-        connectorConfirmationAction = action;
-        if (action === 'issue' && currentConnectorStatus === 'not_configured') {
-            connectorConfirmationCopy.textContent = '生成后，连接码只显示这一次，请及时保存。';
-            connectorConfirmButton.textContent = '确认生成';
-        } else if (action === 'issue') {
-            connectorConfirmationCopy.textContent = '重新生成后，旧连接码会立即失效。';
-            connectorConfirmButton.textContent = '确认重新生成';
-        } else {
-            connectorConfirmationCopy.textContent = '停用后，当前 Connector 会断开，原连接码不能再用。';
-            connectorConfirmButton.textContent = '确认停用';
-        }
-        connectorConfirmation.hidden = false;
-    }
-
-    function requestConnectorCredential(action) {
-        clearConnectorConfirmation();
-        clearOneTimeConnectorCredential();
-        if (window.__doorbellCandidateDemo) {
-            setStatus(settingsFeedback, '演示模式不会生成、换发或撤销真实凭据');
-            return;
-        }
-        sendAction({ type: action === 'issue' ? 'connector-credential-issue' : 'connector-credential-revoke' });
-    }
-
-    async function copyConnectorText(value, successMessage) {
-        if (!value) return;
-        try {
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                await navigator.clipboard.writeText(value);
-            } else {
-                const copyField = document.createElement('textarea');
-                copyField.value = value;
-                copyField.setAttribute('readonly', '');
-                copyField.style.position = 'fixed';
-                copyField.style.opacity = '0';
-                document.body.append(copyField);
-                copyField.select();
-                const copied = document.execCommand('copy');
-                copyField.remove();
-                if (!copied) throw new Error('copy failed');
-            }
-            setStatus(settingsFeedback, successMessage);
-        } catch {
-            setStatus(settingsFeedback, '复制失败，请手动选择并复制');
-        }
-    }
-
-    function showOneTimeConnectorCredential(connectorCredential, setupInstructions) {
-        oneTimeConnectorSetupInstructions = setupInstructions;
-        connectorCredentialValue.textContent = connectorCredential;
-        connectorCredentialResult.hidden = false;
-        setStatus(settingsFeedback, '新凭据只显示这一次，离开设置页后会清除。');
     }
 
     function resetFarmConfirmation() {
@@ -9337,12 +9085,8 @@ const CANDIDATE_RUNTIME_SCRIPT = `
             editorRow.dataset.detail = relation ? relation.detail : '';
         });
         const settings = content.settings;
-        currentConnectorStatus = 'online';
-        document.querySelector('.settings-connection-summary').textContent = '两项连接正常';
-        document.querySelector('.settings-connector-state').textContent = settings.connectorState;
-        document.querySelector('.settings-connector-seen').textContent = '最近连接 ' + settings.connectorLastSeen;
+        document.querySelector('.settings-connection-summary').textContent = settings.wakeBridgeState;
         document.querySelector('.settings-wake-state').textContent = settings.wakeBridgeState;
-        document.querySelector('.settings-connector-dot').style.background = '#9dbcae';
         document.querySelector('.settings-wake-dot').style.background = '#9dbcae';
         document.querySelector('.settings-environment').value = content.environmentDescription;
         document.querySelector('.settings-climate').value = settings.climateType;
@@ -9350,9 +9094,6 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         document.querySelector('.settings-initial-message-count').value = String(settings.initialMessageCount);
         document.querySelector('.settings-meme-count').textContent = String(settings.sharedMemeCount);
         document.querySelector('.settings-meme-sync').textContent = '最近同步 ' + settings.sharedMemeLastSync;
-        connectorIssueButton.textContent = '重新生成连接码';
-        connectorRevokeButton.hidden = false;
-        setConnectorControlsDisabled(false);
         const activityList = document.querySelector('.candidate2-demo-activity-list');
         const visibleActivities = content.activities.slice(0, 20);
         activityList.replaceChildren(...visibleActivities.map((activity, index) => {
@@ -9814,11 +9555,6 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         mainNav.style.display = 'flex';
         document.getElementById('settings-logout-button').disabled = state.pendingLogout;
         if (!demo) {
-            applyConnectorSettings(
-                state.connectorSettings,
-                state.connectorControlPending,
-                state.connectorControlIssueMessage,
-            );
             applyHomeSettings(
                 state.homeSettings,
                 state.homeSettingsPending,
@@ -9830,7 +9566,6 @@ const CANDIDATE_RUNTIME_SCRIPT = `
                 state.sharedMemeCreatePending,
                 state.sharedMemeCreateMessage,
             );
-            document.querySelector('.settings-wake-state').textContent = '未集成';
         }
         setStatus(document.querySelector('.candidate2-profile-empty'), state.issueMessage || '暂无可读取的活动数据');
         if (previousStage !== 'authenticated') {
@@ -9935,23 +9670,6 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     document.getElementById('settings-logout-button').addEventListener('click', () => {
         sendAction({ type: 'logout' });
     });
-    connectorIssueButton.addEventListener('click', () => {
-        if (currentConnectorStatus === 'not_configured') {
-            requestConnectorCredential('issue');
-            return;
-        }
-        showConnectorConfirmation('issue');
-    });
-    connectorRevokeButton.addEventListener('click', () => {
-        showConnectorConfirmation('revoke');
-    });
-    connectorConfirmButton.addEventListener('click', () => {
-        if (connectorConfirmationAction) requestConnectorCredential(connectorConfirmationAction);
-    });
-    connectorCancelButton.addEventListener('click', clearConnectorConfirmation);
-    connectorCopySetupButton.addEventListener('click', () => {
-        void copyConnectorText(oneTimeConnectorSetupInstructions, 'Connector 启动说明已复制');
-    });
     sharedMemesOpenButton.addEventListener('click', () => openSharedMemePage(false));
     sharedMemeAddFromSettingsButton.addEventListener('click', () => openSharedMemePage(true));
     sharedMemesBackButton.addEventListener('click', () => showScreen('screen-settings'));
@@ -10031,29 +9749,12 @@ const CANDIDATE_RUNTIME_SCRIPT = `
             memorialPage.classList.remove('is-sampling-color');
             return;
         }
-        if (data.type === 'doorbell-candidate2:connector-credential') {
-            const keys = Object.keys(data).sort();
-            if (
-                keys.length !== 3 ||
-                keys[0] !== 'connectorCredential' ||
-                keys[1] !== 'setupInstructions' ||
-                keys[2] !== 'type' ||
-                typeof data.connectorCredential !== 'string' ||
-                typeof data.setupInstructions !== 'string'
-            ) return;
-            showOneTimeConnectorCredential(data.connectorCredential, data.setupInstructions);
-            return;
-        }
         if (data.type !== 'doorbell-candidate2:state') return;
         applyRuntimeState(data.state, data.demo);
     });
 
     const originalShowScreen = window.showScreen;
     window.showScreen = (screenId) => {
-        if (screenId !== 'screen-settings') {
-            clearConnectorConfirmation();
-            clearOneTimeConnectorCredential();
-        }
         originalShowScreen(screenId);
         if (currentStage === 'authenticated') {
             const lingyeFullscreenPageOpen =
@@ -10085,10 +9786,7 @@ function replaceBetween(source: string, start: string, end: string, replacement:
 
 export function buildCandidateTwoRuntimeHtml() {
   let html = candidateTwoHtml
-    .replace(
-      '<link href="./css2" rel="stylesheet" vid="5">',
-      `${GOOGLE_FONTS}${MOQU_GUFENG_FONT}`,
-    )
+    .replace('<link href="./css2" rel="stylesheet" vid="5">', `${GOOGLE_FONTS}${MOQU_GUFENG_FONT}`)
     .replace(
       "</style>",
       `${HOME_SIGN_STYLES}${RUNTIME_STYLES}${SHARED_MEME_STYLES}${RESIDENCY_PERMIT_STYLES}${LINGYE_STYLES}    </style>`,
@@ -10220,14 +9918,7 @@ async function sampleCandidateTwoMemorialBackdropColor(xRatio: number, yRatio: n
     .join("")}`;
 }
 
-export function CandidateTwoPreview({
-  connectorCredentialDelivery = null,
-  demo = null,
-  onAction,
-  onConnectorCredentialDelivered,
-  state,
-}: CandidateTwoPreviewProps) {
-  const deliveredConnectorCredentialIdsRef = useRef(new Set<string>());
+export function CandidateTwoPreview({ demo = null, onAction, state }: CandidateTwoPreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const demoRef = useRef(demo);
   const onActionRef = useRef(onAction);
@@ -10340,28 +10031,6 @@ export function CandidateTwoPreview({
       "*",
     );
   }, [demo, state]);
-
-  useEffect(() => {
-    if (
-      !connectorCredentialDelivery ||
-      deliveredConnectorCredentialIdsRef.current.has(connectorCredentialDelivery.deliveryId)
-    ) {
-      return;
-    }
-
-    deliveredConnectorCredentialIdsRef.current.add(connectorCredentialDelivery.deliveryId);
-    iframeRef.current?.contentWindow?.postMessage(
-      {
-        type: "doorbell-candidate2:connector-credential",
-        connectorCredential: connectorCredentialDelivery.connectorCredential,
-        setupInstructions: buildConnectorSetupInstructions(
-          connectorCredentialDelivery.connectorCredential,
-        ),
-      },
-      "*",
-    );
-    onConnectorCredentialDelivered?.(connectorCredentialDelivery.deliveryId);
-  }, [connectorCredentialDelivery, onConnectorCredentialDelivered]);
 
   return (
     <main className="candidate-two-preview">

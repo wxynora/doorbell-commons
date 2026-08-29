@@ -12,10 +12,8 @@ import {
   getHumanSettings,
   getMcpAccessStatus,
   harvestBoundFarmField,
-  issueConnectorCredential,
   issueMcpCredential,
   lookupFarm,
-  revokeConnectorCredential,
   revokeMcpCredential,
   updateHumanSettings,
 } from "./auth-client";
@@ -41,7 +39,6 @@ const IDENTITY = {
 
 const SETTINGS = {
   connection_status: {
-    connector: { status: "online" as const, last_online_at: "2026-08-12T02:03:04.000Z" },
     wake_bridge: { status: "online" as const, last_connected_at: "2026-08-12T02:03:04.000Z" },
   },
   home: {
@@ -516,7 +513,7 @@ test("every first-registration backend error has explicit frontend copy", () => 
   }
 });
 
-test("settings restoration uses the authenticated GET contract and parses Connector status", async () => {
+test("settings restoration uses the authenticated GET contract and parses Bell status", async () => {
   let observedUrl = "";
   let observedInit: RequestInit | undefined;
   const result = await getHumanSettings({
@@ -532,24 +529,24 @@ test("settings restoration uses the authenticated GET contract and parses Connec
   assert.deepEqual(result, { ok: true, data: SETTINGS });
 });
 
-test("settings restoration preserves all three Connector states and nullable last-online time", async () => {
+test("settings restoration preserves all three Bell states and nullable connection time", async () => {
   const cases = [
-    { status: "not_configured" as const, last_online_at: null },
-    { status: "offline" as const, last_online_at: "2026-08-11T01:02:03.000Z" },
-    { status: "online" as const, last_online_at: "2026-08-12T02:03:04.000Z" },
+    { status: "not_configured" as const, last_connected_at: null },
+    { status: "offline" as const, last_connected_at: "2026-08-11T01:02:03.000Z" },
+    { status: "online" as const, last_connected_at: "2026-08-12T02:03:04.000Z" },
   ];
 
-  for (const connector of cases) {
+  for (const wakeBridge of cases) {
     const result = await getHumanSettings({
       fetcher: async () =>
         jsonResponse({
           ...SETTINGS,
-          connection_status: { ...SETTINGS.connection_status, connector },
+          connection_status: { wake_bridge: wakeBridge },
         }),
     });
     assert.equal(result.ok, true);
     if (result.ok) {
-      assert.deepEqual(result.data.connection_status.connector, connector);
+      assert.deepEqual(result.data.connection_status.wake_bridge, wakeBridge);
     }
   }
 });
@@ -608,71 +605,6 @@ test("settings update sends exact notification and community preference patches"
     { notification_preferences: { pause_all_wakeups: true } },
     { community_connection_preferences: { initial_recent_activity_count: 12 } },
   ]);
-});
-
-test("Connector credential issue and revoke send only an empty object body", async () => {
-  const calls: { init: RequestInit | undefined; url: string }[] = [];
-  const credential = `dbc_${"A".repeat(43)}`;
-  const issueResult = await issueConnectorCredential(async (url, init) => {
-    calls.push({ url, init });
-    return jsonResponse({
-      configured: true,
-      connector_credential: credential,
-      credential_id: "44444444-4444-4444-8444-444444444444",
-      issued_at: "2026-08-12T02:03:04.000Z",
-      replaced_previous: true,
-    });
-  });
-  const revokeResult = await revokeConnectorCredential(async (url, init) => {
-    calls.push({ url, init });
-    return jsonResponse({ revoked: true });
-  });
-
-  assert.equal(issueResult.ok, true);
-  assert.deepEqual(revokeResult, { ok: true, data: { revoked: true } });
-  assert.deepEqual(
-    calls.map(({ init, url }) => ({
-      body: init?.body,
-      credentials: init?.credentials,
-      method: init?.method,
-      url,
-    })),
-    [
-      {
-        body: "{}",
-        credentials: "same-origin",
-        method: "POST",
-        url: "/api/connector/credential",
-      },
-      {
-        body: "{}",
-        credentials: "same-origin",
-        method: "DELETE",
-        url: "/api/connector/credential",
-      },
-    ],
-  );
-});
-
-test("Connector control errors remain distinct and malformed success never becomes success", async () => {
-  const notConfigured = await revokeConnectorCredential(async () =>
-    jsonResponse(
-      { error: { code: "connector_not_configured", message: "no active credential" } },
-      404,
-    ),
-  );
-  const malformed = await issueConnectorCredential(async () =>
-    jsonResponse({ configured: true, connector_credential: "not-a-real-credential" }),
-  );
-
-  assert.deepEqual(notConfigured, {
-    ok: false,
-    issue: { code: "connector_not_configured", serverMessage: "no active credential" },
-  });
-  assert.deepEqual(malformed, {
-    ok: false,
-    issue: { code: "unexpected_response", serverMessage: null },
-  });
 });
 
 test("MCP access status, claim, issue, and revoke use only the fixed same-origin routes", async () => {

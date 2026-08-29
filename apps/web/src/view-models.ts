@@ -68,7 +68,6 @@ export interface OwnerProfileViewModel {
   publicIntro: string | null;
   publicLocation: string | null;
   currentActivity: string | null;
-  connectorStatus: string | null;
   familyName: string;
   farmDoorplate: string;
   socialConnections: readonly SocialConnectionViewModel[];
