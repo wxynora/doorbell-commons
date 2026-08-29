@@ -834,9 +834,11 @@ another household's data, and it does not mutate or save on read. A missing body
 literal `无`; a missing lamp projects the existing default appearance (`square-palace`,
 `moon-white`, and `none` for pattern, ornament, and seal). Candidate Two requests this resource only
 when the Human opens the memorial, replaces the four existing layout slots without changing their
-saved transform/layer values, and neither prefetches nor persists the private bodies. This chain is
-local in the separate main and farm worktrees; it has not been tested, committed, deployed, or
-production-verified.
+saved transform/layer values, and neither prefetches nor persists the private bodies. The two letter
+slots keep their fixed paper and signature geometry; bodies that exceed the paper content box scroll
+inside that box rather than resizing the layout. Deleted legacy note slots are not instantiated or
+shown by the ordinary view. The read chain and the visual layout remain separate: opening the page
+substitutes only the four household values into the already-fixed memorial composition.
 
 `GET /api/farm/overview` remains a smaller migration-era public-fact read and is no longer the React
 field data source. The remaining legacy Human HTML compatibility flow uses the no-key Doorbell routes

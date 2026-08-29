@@ -199,11 +199,11 @@ test("candidate bridge accepts only exact known child actions", () => {
   );
 });
 
-test("memorial editor and live share the final fixed logical canvases", () => {
+test("memorial editor and live share the final logical canvases and layouts", () => {
   const html = buildCandidateTwoRuntimeHtml();
   assert.match(
     html,
-    /const memorialLayoutFrames = \{[\s\S]*index: \{ width: 297, height: 552 \}[\s\S]*entry: \{ width: 279, height: 508 \}[\s\S]*const scale = availableWidth \/ frame\.width[\s\S]*stage\.style\.transform = 'scale\('/,
+    /const memorialIndexLayoutFrame = \{ width: 297 \}[\s\S]*const memorialEntryLayoutFrame = \{ width: 279, height: 508 \}[\s\S]*availableWidth \/ memorialEntryLayoutFrame\.width[\s\S]*availableWidth \/ memorialIndexLayoutFrame\.width[\s\S]*stage\.style\.transform = 'scale\('/,
   );
   assert.match(
     html,
@@ -215,7 +215,7 @@ test("memorial editor and live share the final fixed logical canvases", () => {
   );
   assert.match(
     html,
-    /'entry-asset-12': \{ color: null, deleted: false, rotate: 2\.4, scale: 1\.05, x: -39\.7, y: -116\.5[\s\S]*'entry-asset-13': \{ color: null, deleted: false, rotate: -4\.5, scale: 0\.77, x: -51\.7, y: -26\.4[\s\S]*'entry-asset-16': \{ color: null, deleted: false, rotate: -1\.5, scale: 1\.06, x: -74, y: 21\.4[\s\S]*'entry-asset-17': \{ color: null, deleted: false, rotate: 1\.7, scale: 0\.69, x: 117\.1, y: 128\.3[\s\S]*'entry-asset-19': \{ color: null, deleted: false[\s\S]*asset: 'qiaoqiao'[\s\S]*'entry-asset-20': \{ color: null, deleted: false, rotate: 4\.9, scale: 0\.53, x: 74\.8, y: -253\.8/,
+    /'entry-asset-12': \{ color: null, deleted: false, rotate: 2\.4, scale: 1\.08, x: -32\.2, y: -105\.6[\s\S]*'entry-asset-13': \{ color: null, deleted: false, rotate: -4\.5, scale: 0\.77, x: -44\.9, y: -7[\s\S]*'entry-asset-16': \{ color: null, deleted: false, rotate: -1\.5, scale: 1\.11, x: -67\.2, y: 40\.6[\s\S]*'entry-asset-17': \{ color: null, deleted: false, rotate: 1\.7, scale: 0\.69, x: 130\.2, y: 146\.8[\s\S]*'entry-asset-19': \{ color: null, deleted: false[\s\S]*asset: 'qiaoqiao'[\s\S]*'entry-asset-20': \{ color: null, deleted: false, rotate: 4\.9, scale: 0\.53, x: 82\.1, y: -252/,
   );
 });
 
@@ -748,6 +748,15 @@ test("lingye demo opens distinct Together and Glimmer Human UI previews", () => 
   assert.doesNotMatch(html, /qixi-letter-display-v1-web\.webp/);
   assert.match(
     html,
+    /\.candidate2-qixi-archive-letter p \{[\s\S]*overflow-y: auto;[\s\S]*overscroll-behavior-y: contain;[\s\S]*touch-action: pan-y;/,
+  );
+  assert.match(
+    html,
+    /\.candidate2-memorial-entry-view \[data-memorial-entry-editor-id\]\[hidden\],[\s\S]*\.candidate2-memorial-entry-view \[data-memorial-editor-added\]\[hidden\][\s\S]*display: none !important;/,
+  );
+  assert.doesNotMatch(html, /'entry-asset-(?:1|2|3|4|5|6|7|8|9|10|11|14|15|18)':/);
+  assert.match(
+    html,
     /function createMemorialEntryAsset[\s\S]*saved-lantern'[\s\S]*'my-lantern'[\s\S]*saved-letter'[\s\S]*entry-asset-8'[\s\S]*'du-letter'[\s\S]*'my-letter'[\s\S]*data-memorial-editor-asset-template[\s\S]*delete asset\.dataset\.memorialEditorAssetTemplate/,
   );
   assert.match(
@@ -769,11 +778,15 @@ test("lingye demo opens distinct Together and Glimmer Human UI previews", () => 
   );
   assert.match(
     html,
-    /'title-lockup': \{ color: null, rotate: 0, scale: 0\.97, x: -22\.9, y: -16\.4, z: 10[\s\S]*paper: \{ color: '#f8f1f5', rotate: 1\.5, scale: 1\.44, x: 49\.5, y: 27\.4[\s\S]*'tab-all': \{ color: '#dfc6e2', rotate: 0, scale: 0\.83, x: 100\.4, y: 22, z: -1, kind: null, text: '全部'[\s\S]*'tab-festival': \{ color: '#dfc6e2', rotate: 0, scale: 0\.81, x: 96\.4, y: 16\.9, z: -2, kind: null, text: '节日'[\s\S]*'event-card': \{ color: '#ffffff', rotate: 0\.6, scale: 0\.66, x: -46\.4, y: -58\.9[\s\S]*'shape-1': \{ color: '#e4d2dc', rotate: 0, scale: 8\.05, x: 97\.1, y: 63\.6, z: -4, kind: 'square'/,
+    /'title-lockup': \{ color: null, rotate: 0, scale: 0\.97, x: -22\.9, y: -16\.4, z: 10[\s\S]*paper: \{ color: '#f8f1f5', rotate: 1\.5, scale: 2\.08, x: 148\.7, y: 158\.5[\s\S]*'tab-all': \{ color: '#dfc6e2', rotate: 0, scale: 0\.55, x: 81\.6, y: 18\.3, z: -1, kind: null, text: '全部'[\s\S]*'tab-festival': \{ color: '#dfc6e2', rotate: 0, scale: 0\.52, x: -2\.7, y: 17\.7, z: -2, kind: null, text: '节日'[\s\S]*'event-card': \{ color: '#ffffff', rotate: 0\.6, scale: 0\.45, x: -89\.5, y: -76\.8[\s\S]*'shape-1': \{ color: '#e4d2dc', rotate: 0, scale: 8\.05, x: 100\.1, y: 64\.6, z: -4, kind: 'square'/,
   );
   assert.match(
     html,
     /\.candidate2-memorial-editor-shape\[data-memorial-editor-id='shape-1'\] \{[\s\S]*height: 68\.14px;/,
+  );
+  assert.match(
+    html,
+    /\.candidate2-memorial-editor-shape\[data-memorial-editor-id='shape-1'\]::after \{[\s\S]*height: 10000px;/,
   );
   assert.match(
     html,
@@ -791,7 +804,7 @@ test("lingye demo opens distinct Together and Glimmer Human UI previews", () => 
   );
   assert.match(
     html,
-    /const memorialLayoutFrames = \{[\s\S]*index: \{ width: 297, height: 552 \}[\s\S]*entry: \{ width: 279, height: 508 \}[\s\S]*const scale = availableWidth \/ frame\.width[\s\S]*stage\.style\.transform = 'scale\('/,
+    /const memorialIndexLayoutFrame = \{ width: 297 \}[\s\S]*const memorialEntryLayoutFrame = \{ width: 279, height: 508 \}[\s\S]*availableWidth \/ memorialEntryLayoutFrame\.width[\s\S]*availableWidth \/ memorialIndexLayoutFrame\.width[\s\S]*stage\.style\.transform = 'scale\('/,
   );
   assert.match(
     html,
@@ -799,7 +812,7 @@ test("lingye demo opens distinct Together and Glimmer Human UI previews", () => 
   );
   assert.match(
     html,
-    /'entry-title': \{ color: null, deleted: false, rotate: 0, scale: 0\.88, x: 11\.6, y: -221\.5[\s\S]*'entry-asset-12': \{ color: null, deleted: false, rotate: 2\.4, scale: 1\.05, x: -39\.7, y: -116\.5[\s\S]*'entry-asset-16': \{ color: null, deleted: false, rotate: -1\.5, scale: 1\.06, x: -74, y: 21\.4[\s\S]*'entry-asset-20': \{ color: null, deleted: false, rotate: 4\.9, scale: 0\.53, x: 74\.8, y: -253\.8/,
+    /'entry-title': \{ color: null, deleted: false, rotate: 0, scale: 0\.88, x: 11\.6, y: -221\.5[\s\S]*'entry-asset-12': \{ color: null, deleted: false, rotate: 2\.4, scale: 1\.08, x: -32\.2, y: -105\.6[\s\S]*'entry-asset-16': \{ color: null, deleted: false, rotate: -1\.5, scale: 1\.11, x: -67\.2, y: 40\.6[\s\S]*'entry-asset-20': \{ color: null, deleted: false, rotate: 4\.9, scale: 0\.53, x: 82\.1, y: -252/,
   );
   assert.match(
     html,

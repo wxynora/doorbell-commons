@@ -5278,13 +5278,14 @@ const LINGYE_STYLES = `
             position: relative;
             min-height: 100%;
             padding: 16px 20px 126px;
+            overflow: hidden;
             background: #39284f url('/lingye/memorial/memorial-album-backdrop-v1.jpg') center top / cover no-repeat;
         }
 
         .candidate2-memorial-index {
             position: relative;
             isolation: isolate;
-            overflow: hidden;
+            overflow: visible;
         }
 
         .candidate2-memorial-index-stage,
@@ -5631,6 +5632,15 @@ const LINGYE_STYLES = `
             display: none !important;
         }
 
+        .candidate2-memorial-entry-view [data-memorial-entry-editor-id][hidden],
+        .candidate2-memorial-entry-view [data-memorial-editor-added][hidden] {
+            display: none !important;
+        }
+
+        .candidate2-memorial-entry-view [data-memorial-entry-editor-id] {
+            position: relative;
+        }
+
         .candidate2-memorial-page.is-entry-layout-editor .candidate2-memorial-entry-heading,
         .candidate2-memorial-page.is-entry-layout-editor .candidate2-memorial-entry-collage {
             z-index: auto;
@@ -5649,6 +5659,7 @@ const LINGYE_STYLES = `
 
         .candidate2-memorial-page.is-layout-editor .candidate2-memorial-index {
             min-height: 100%;
+            overflow: visible;
         }
 
         .candidate2-memorial-page.is-layout-editor.is-sampling-color .candidate2-memorial-paper {
@@ -5673,6 +5684,16 @@ const LINGYE_STYLES = `
 
         .candidate2-memorial-editor-shape[data-memorial-editor-id='shape-1'] {
             height: 68.14px;
+        }
+
+        .candidate2-memorial-editor-shape[data-memorial-editor-id='shape-1']::after {
+            position: absolute;
+            top: 50%;
+            left: 0;
+            width: 100%;
+            height: 10000px;
+            background: inherit;
+            content: '';
         }
 
         .candidate2-memorial-editor-shape.is-circle {
@@ -5784,17 +5805,27 @@ const LINGYE_STYLES = `
             width: 220px;
             height: 136px;
             padding: 30px 38px 26px 46px;
-            align-content: center;
+            align-content: stretch;
             background: url('/lingye/memorial/qixi-archive/qixi-letter-card-v1.png') center / 100% 100% no-repeat;
             color: #624d69;
+        }
+
+        .candidate2-memorial-page.is-entry-layout-editor .candidate2-qixi-archive-letter {
+            touch-action: pan-y;
         }
 
         .candidate2-qixi-archive-letter p {
             position: relative;
             z-index: 1;
+            min-height: 0;
             margin: 0;
             outline: none;
+            overflow-x: hidden;
+            overflow-y: auto;
             overflow-wrap: anywhere;
+            overscroll-behavior-y: contain;
+            scrollbar-width: thin;
+            touch-action: pan-y;
             white-space: pre-wrap;
             font: 400 9px/1.72 'MoQuGuFengTi', serif;
             letter-spacing: 0.08em;
@@ -7666,45 +7697,31 @@ const LINGYE_SCRIPT = `
     const memorialEditorCopy = memorialEditor.querySelector('[data-memorial-editor-command="copy"]');
     const memorialEditorDefaultLayout = {
         'title-lockup': { color: null, rotate: 0, scale: 0.97, x: -22.9, y: -16.4, z: 10, kind: null, text: null },
-        paper: { color: '#f8f1f5', rotate: 1.5, scale: 1.44, x: 49.5, y: 27.4, z: 3, kind: null, text: null },
-        'tab-all': { color: '#dfc6e2', rotate: 0, scale: 0.83, x: 100.4, y: 22, z: -1, kind: null, text: '全部' },
-        'tab-festival': { color: '#dfc6e2', rotate: 0, scale: 0.81, x: 96.4, y: 16.9, z: -2, kind: null, text: '节日' },
-        'event-card': { color: '#ffffff', rotate: 0.6, scale: 0.66, x: -46.4, y: -58.9, z: 10, kind: null, text: null },
-        'event-number': { color: null, rotate: 0, scale: 1, x: 0, y: 0, z: 10, kind: null, text: null },
+        paper: { color: '#f8f1f5', rotate: 1.5, scale: 2.08, x: 148.7, y: 158.5, z: 3, kind: null, text: null },
+        'tab-all': { color: '#dfc6e2', rotate: 0, scale: 0.55, x: 81.6, y: 18.3, z: -1, kind: null, text: '全部' },
+        'tab-festival': { color: '#dfc6e2', rotate: 0, scale: 0.52, x: -2.7, y: 17.7, z: -2, kind: null, text: '节日' },
+        'event-card': { color: '#ffffff', rotate: 0.6, scale: 0.45, x: -89.5, y: -76.8, z: 10, kind: null, text: null },
+        'event-number': { color: null, rotate: 0, scale: 1, x: -0.5, y: -3.2, z: 10, kind: null, text: null },
         'event-title': { color: null, rotate: 0, scale: 1, x: 0.1, y: 0, z: 10, kind: null, text: '七夕活动' },
         'event-theme': { color: null, rotate: 0, scale: 1, x: 0, y: 0, z: 10, kind: null, text: '灯河有信' },
         'event-date': { color: null, rotate: 0, scale: 1, x: 0, y: 0, z: 10, kind: null, text: '2026.08.19—08.21' },
-        'event-image': { color: null, rotate: 0, scale: 1, x: 0, y: 0, z: 10, kind: null, text: null },
-        'shape-1': { color: '#e4d2dc', rotate: 0, scale: 8.05, x: 97.1, y: 63.6, z: -4, kind: 'square', text: null },
+        'event-image': { color: null, rotate: 0, scale: 1, x: 7.6, y: 0.6, z: 10, kind: null, text: null },
+        'shape-1': { color: '#e4d2dc', rotate: 0, scale: 8.05, x: 100.1, y: 64.6, z: -4, kind: 'square', text: null },
     };
     const memorialEntryEditorDefaultLayout = {
-        'entry-stickers': { color: null, deleted: false, rotate: -13.4, scale: 1, x: 251.3, y: -25.5, z: 14, asset: 'stickers', kind: null, text: null },
+        'entry-stickers': { color: null, deleted: false, rotate: -13.4, scale: 1, x: 206.1, y: -39.7, z: 14, asset: 'stickers', kind: null, text: null },
         'entry-event-label': { color: null, deleted: true, rotate: 0, scale: 1, x: 0.6, y: -45.1, z: 12, asset: 'event-label', kind: null, text: '2026 · 七夕' },
         'entry-title': { color: null, deleted: false, rotate: 0, scale: 0.88, x: 11.6, y: -221.5, z: 13, asset: 'title', kind: null, text: null },
-        'entry-date': { color: null, deleted: false, rotate: 0, scale: 1, x: -3.3, y: -211.5, z: 12, asset: 'date', kind: null, text: null },
+        'entry-date': { color: null, deleted: false, rotate: 0, scale: 1, x: -3.6, y: -216.5, z: 12, asset: 'date', kind: null, text: null },
         'entry-hero': { color: null, deleted: false, rotate: -1.8, scale: 0.84, x: 11.5, y: -239.8, z: 6, asset: 'hero', kind: null, text: null },
         'entry-note': { color: null, deleted: true, rotate: 0, scale: 1, x: 0.1, y: 0, z: 9, asset: 'note', kind: null, text: null },
         'entry-secondary': { color: null, deleted: true, rotate: 0, scale: 1, x: -6.4, y: -10.5, z: 8, asset: 'secondary', kind: null, text: null },
-        'entry-asset-1': { color: null, deleted: true, rotate: 0, scale: 1, x: 4, y: 4, z: 21, asset: 'note', kind: null, text: null },
-        'entry-asset-2': { color: null, deleted: true, rotate: 0, scale: 1, x: 8, y: 8, z: 22, asset: 'note', kind: null, text: null },
-        'entry-asset-3': { color: null, deleted: true, rotate: 0, scale: 1, x: 12, y: 12, z: 23, asset: 'secondary', kind: null, text: null },
-        'entry-asset-4': { color: null, deleted: true, rotate: 0, scale: 1, x: 16, y: 16, z: 24, asset: 'stickers', kind: null, text: null },
-        'entry-asset-5': { color: null, deleted: true, rotate: 0, scale: 1, x: 20, y: 20, z: 25, asset: 'hero', kind: null, text: null },
-        'entry-asset-6': { color: null, deleted: true, rotate: 0, scale: 1, x: -10.6, y: -71.8, z: 26, asset: 'my-letter', kind: null, text: null },
-        'entry-asset-7': { color: null, deleted: true, rotate: 0, scale: 0.7, x: 143.2, y: -15, z: 32, asset: 'my-lantern', kind: null, text: null },
-        'entry-asset-8': { color: null, deleted: true, rotate: -3.9, scale: 1, x: -66.9, y: 37, z: 28, asset: 'du-letter', kind: null, text: null },
-        'entry-asset-9': { color: null, deleted: true, rotate: 0, scale: 1, x: 36, y: 36, z: 29, asset: 'my-lantern', kind: null, text: null },
-        'entry-asset-10': { color: null, deleted: true, rotate: 0, scale: 1, x: 80.2, y: 28.8, z: 30, asset: 'du-lantern', kind: null, text: null },
-        'entry-asset-11': { color: null, deleted: true, rotate: 0, scale: 1, x: -44.3, y: 148.1, z: 31, asset: 'du-lantern', kind: null, text: null },
-        'entry-asset-12': { color: null, deleted: false, rotate: 2.4, scale: 1.05, x: -39.7, y: -116.5, z: 32, asset: 'my-letter', kind: null, text: null },
-        'entry-asset-13': { color: null, deleted: false, rotate: -4.5, scale: 0.77, x: -51.7, y: -26.4, z: 33, asset: 'my-lantern', kind: null, text: null },
-        'entry-asset-14': { color: null, deleted: true, rotate: 0, scale: 1, x: 56, y: 56, z: 34, asset: 'du-lantern', kind: null, text: null },
-        'entry-asset-15': { color: null, deleted: true, rotate: 0, scale: 1, x: -104, y: 38.1, z: 35, asset: 'qiaoqiao', kind: null, text: null },
-        'entry-asset-16': { color: null, deleted: false, rotate: -1.5, scale: 1.06, x: -74, y: 21.4, z: 36, asset: 'du-letter', kind: null, text: null },
-        'entry-asset-17': { color: null, deleted: false, rotate: 1.7, scale: 0.69, x: 117.1, y: 128.3, z: 37, asset: 'du-lantern', kind: null, text: null },
-        'entry-asset-18': { color: null, deleted: true, rotate: 0, scale: 1, x: -182.1, y: 155.7, z: 38, asset: 'stickers', kind: null, text: null },
+        'entry-asset-12': { color: null, deleted: false, rotate: 2.4, scale: 1.08, x: -32.2, y: -105.6, z: 32, asset: 'my-letter', kind: null, text: null },
+        'entry-asset-13': { color: null, deleted: false, rotate: -4.5, scale: 0.77, x: -44.9, y: -7, z: 33, asset: 'my-lantern', kind: null, text: null },
+        'entry-asset-16': { color: null, deleted: false, rotate: -1.5, scale: 1.11, x: -67.2, y: 40.6, z: 36, asset: 'du-letter', kind: null, text: null },
+        'entry-asset-17': { color: null, deleted: false, rotate: 1.7, scale: 0.69, x: 130.2, y: 146.8, z: 37, asset: 'du-lantern', kind: null, text: null },
         'entry-asset-19': { color: null, deleted: false, rotate: 0, scale: 0.85, x: -245.2, y: -133.3, z: 39, asset: 'qiaoqiao', kind: null, text: null },
-        'entry-asset-20': { color: null, deleted: false, rotate: 4.9, scale: 0.53, x: 74.8, y: -253.8, z: 40, asset: 'secondary', kind: null, text: null },
+        'entry-asset-20': { color: null, deleted: false, rotate: 4.9, scale: 0.53, x: 82.1, y: -252, z: 40, asset: 'secondary', kind: null, text: null },
     };
     const memorialBackdropSource = '/lingye/memorial/memorial-album-backdrop-v1.jpg';
     const memorialEditorStates = new Map();
@@ -7897,25 +7914,56 @@ const LINGYE_SCRIPT = `
         return target === 'entry' ? memorialEntryStage : memorialIndexStage;
     }
 
-    const memorialLayoutFrames = {
-        index: { width: 297, height: 552 },
-        entry: { width: 279, height: 508 },
-    };
+    const memorialIndexLayoutFrame = { width: 297 };
+    const memorialEntryLayoutFrame = { width: 279, height: 508 };
 
     function fitMemorialLayoutStage(target) {
         const stage = memorialLayoutStage(target);
         if (!stage || stage.closest('[hidden]')) return;
-        const frame = memorialLayoutFrames[target === 'entry' ? 'entry' : 'index'];
+        if (target === 'entry') {
+            memorialPaper.style.width = '';
+            memorialPaper.style.height = '';
+            memorialPaper.style.marginBottom = '';
+            memorialPaper.style.overflow = 'visible';
+            memorialPaper.style.transform = '';
+            const parentStyle = getComputedStyle(stage.parentElement);
+            const availableWidth =
+                stage.parentElement.clientWidth
+                - Number.parseFloat(parentStyle.paddingLeft || '0')
+                - Number.parseFloat(parentStyle.paddingRight || '0');
+            const scale = availableWidth / memorialEntryLayoutFrame.width;
+            stage.style.width = memorialEntryLayoutFrame.width + 'px';
+            stage.style.height = memorialEntryLayoutFrame.height + 'px';
+            stage.style.overflow = 'visible';
+            stage.style.marginBottom =
+                Math.ceil(memorialEntryLayoutFrame.height * scale - memorialEntryLayoutFrame.height) + 'px';
+            stage.style.transform = 'scale(' + scale + ')';
+            stage.dataset.memorialFitScale = String(scale);
+            return;
+        }
+        memorialPaper.style.width = '';
+        memorialPaper.style.height = '100%';
+        memorialPaper.style.marginBottom = '';
+        memorialPaper.style.overflow = 'hidden';
+        memorialPaper.style.transform = '';
         const parentStyle = getComputedStyle(stage.parentElement);
         const availableWidth =
             stage.parentElement.clientWidth
             - Number.parseFloat(parentStyle.paddingLeft || '0')
             - Number.parseFloat(parentStyle.paddingRight || '0');
-        const scale = availableWidth / frame.width;
-        stage.style.width = frame.width + 'px';
-        stage.style.height = frame.height + 'px';
+        const scale = availableWidth / memorialIndexLayoutFrame.width;
+        stage.style.width = memorialIndexLayoutFrame.width + 'px';
+        stage.style.height = 'auto';
+        stage.style.transform = 'none';
+        const stageRect = stage.getBoundingClientRect();
+        let logicalHeight = stage.scrollHeight;
+        stage.querySelectorAll('[data-memorial-editor-id]').forEach((element) => {
+            if (element.hidden) return;
+            logicalHeight = Math.max(logicalHeight, element.getBoundingClientRect().bottom - stageRect.top);
+        });
+        stage.style.height = Math.ceil(logicalHeight) + 'px';
         stage.style.overflow = 'visible';
-        stage.style.marginBottom = Math.ceil(frame.height * scale - frame.height) + 'px';
+        stage.style.marginBottom = Math.ceil(logicalHeight * scale - logicalHeight) + 'px';
         stage.style.transform = 'scale(' + scale + ')';
         stage.dataset.memorialFitScale = String(scale);
     }
@@ -8035,6 +8083,11 @@ const LINGYE_SCRIPT = `
 
     function handleMemorialEditorPointerDown(event) {
         if (!memorialLayoutEditorEnabled) return;
+        const letterText = event.target.closest('[data-qixi-archive-letter-text]');
+        if (letterText) {
+            selectMemorialEditorElement(letterText.closest('[data-memorial-editor-id]'));
+            return;
+        }
         const target = event.target.closest('[data-memorial-editor-id]');
         if (target && !memorialEditorCanvas().contains(target)) return;
         if (!target) {
