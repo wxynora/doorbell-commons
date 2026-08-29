@@ -19,9 +19,7 @@ import { getFarmAssetUrl, getFarmEnvironmentAssetUrl } from "../farm-asset-manif
 import {
   getRanchAnimalPlacementStyle,
   getRanchAnimalSpriteStyle,
-  getRanchSkinPlacementStyle,
-  getRanchSkinSpriteStyle,
-  RANCH_LIMITED_SKINS,
+  getRanchResidentSpriteVisual,
   RANCH_SCENE_DEMO_LAYOUTS,
   RANCH_SHOP_ANIMALS,
 } from "../panels/ranch-animal-data";
@@ -350,21 +348,18 @@ export function FarmFieldContent({
           : [];
       })
     : liveRanchResidents.map((resident, index) => {
-        const skinId = RANCH_LIMITED_SKINS.find(
-          (skin) => skin.id === resident.resident.variants?.current_variant_id,
-        )?.id;
+        const visual = getRanchResidentSpriteVisual(
+          resident.spriteAnimal,
+          resident.resident.variants,
+        );
         return {
           id: resident.id,
           layout: getLiveRanchSceneLayout(index, liveRanchResidents.length),
           name: resident.resident.identity.custom_name ?? resident.resident.identity.name ?? "",
-          placementStyle: skinId
-            ? getRanchSkinPlacementStyle()
-            : getRanchAnimalPlacementStyle(resident.spriteAnimal),
+          placementStyle: visual.placementStyle,
           randomizeInitialPosition: true,
-          spriteStyle: skinId
-            ? getRanchSkinSpriteStyle(skinId)
-            : getRanchAnimalSpriteStyle(resident.spriteAnimal),
-          staticSprite: skinId !== undefined,
+          spriteStyle: visual.spriteStyle,
+          staticSprite: visual.staticSprite,
         };
       });
   const visibleCookingMethods = getVisibleCookingMethods(preview, kitchen);
