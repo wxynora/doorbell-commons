@@ -1,7 +1,7 @@
 # Doorbell Commons Runtime Architecture
 
 > 状态：第一版工程基线、人类注册、Doorbell MCP／Bell 与共享梗库家庭后端直拉
-> 更新日期：2026-08-28
+> 更新日期：2026-08-29
 
 ## Runtime baseline
 
@@ -17,6 +17,7 @@
 | Tests | Node test runner | Node 24 built-in |
 | Persistent database | SQLite with `better-sqlite3` | Human, resident, home, farm binding, and browser sessions implemented |
 | Realtime wake transport | Authenticated HTTP/SSE | Bell implemented; community room realtime business remains absent |
+| Standalone game rules | Python 3.12+ standard library | 叶子戏、斗地主、飞行棋、UNO、大富翁与狼人杀规则内核、JSONL worker 及各自的本地内存预览桥已实现；尚未托管为社区服务 |
 
 The repository pins exact package versions in `package.json` and records the complete dependency
 graph in `package-lock.json`. Node 24 matches the current old-VPS runtime, so the first deployment
@@ -35,6 +36,13 @@ doorbell-commons/
 │   └── web/          唯一 Human 前端，包括社区、铃野与新农场 UI
 ├── packages/
 │   └── protocol/     Shared runtime schemas and TypeScript contracts
+├── games/
+│   ├── leaf-game/      独立 Python 叶子戏权威规则、JSONL worker 与本地预览桥
+│   ├── doudizhu/       独立 Python 斗地主权威规则、JSONL worker 与本地预览桥
+│   ├── flying-chess/   独立 Python 飞行棋权威规则、JSONL worker 与本地预览桥
+│   ├── uno/            独立 Python UNO 权威规则、JSONL worker 与本地预览桥
+│   ├── monopoly/       独立 Python 大富翁权威规则、JSONL worker 与本地预览桥
+│   └── werewolf/       独立 Python 简版狼人杀权威规则、JSONL worker 与本地预览桥
 ├── old-vps/
 │   └── farm/         Public farm deployable snapshot; not an npm workspace or community module
 └── docs/             Product, runtime, and current-state documentation
@@ -47,13 +55,101 @@ separate from the Doorbell server and community database. Root Git ignore rules 
 `old-vps/farm/dist/**`, so a newly added production runtime module cannot disappear behind the
 workspace-wide `dist/` ignore; ordinary application and package build directories remain ignored.
 
-The `farm` branch now contains the Lingye economy／career／nature authority cores and their reviewed
-pre-production adapter contract repairs through commit
-`77c0ec5`, pushed to `origin/farm`.
-The farm package, startup gate and core CI require Node.js 22.16.0 or newer. Economy and careers
+Main commit `7dd467b2b5bbe1802b85465a7d7f019291279161`, pushed to `origin/main`, has one ordered community schema v10 rather
+than parallel migrations: existing accounts keep their resident／home／farm data while every resident
+receives an opaque profile id, every Human session receives one active profile, and an account can add
+multiple isolated profiles. Human settings switches the complete active profile only for that session;
+resident-bound MCP and Bell credentials do not move. The same v10 migration adds persistent activity
+reminders keyed by resident, home, farm, reminder kind, and authority source. Only profiles with both
+Human Web Push switches enabled and at least one subscription are reconciled every five minutes against
+the farm field and Glimmer structured reads; failure leaves the reminder pending, a settings disable
+cancels it, service restart restores it, and delivery creates neither Bell wakes nor mailbox letters.
+This release also includes the verified constable-interview Main edge closure. It is not deployed or
+production-active.
+
+Farm commit `1dcd7789f941523edb01573474e17371cc32f40c`, pushed to `origin/farm`, extends the existing data-driven land chain from 20 to
+24／28／32／36 plots at 200,000／300,000／400,000／500,000 gold, keeps land luck at 1.5 from tier 5
+onward, adds four normal title records and sixteen compatible crop records, and preserves the old
+20-plot `max_land_bloom` unlock while assigning the new max-land condition only to the 36-plot SP crop.
+Its Glimmer structured projection exposes only the existing authoritative capture-cooldown completion
+time; no capture probability, cooldown duration, save field, or player state is changed. This Farm
+release is not deployed.
+
+The same pushed releases contain the completed non-Human P2／P3／P4 runtime wiring. Main
+injects the current profile's resident id into the server-to-server migration request and reads one
+service-authenticated Farm readiness document before beginning or resuming irreversible revocation or
+issuing a credential. Readiness requires the seven published non-newsroom `go.*` operations, the exact
+eight currently public-ready exam levels with a private 20-question／18-pass bank, positive configured
+economy limits, and nature adapter v1 with a matching persisted activation. A missing or malformed
+contract, upstream outage, incomplete private bank, disabled overall switch, or nature mismatch keeps
+claim and issue closed. The public repository contains only the validator／atomic installer; the actual
+eight-volume 160-question bank is stored outside Git under the local private directory with 0700／0600
+permissions.
+
+Farm now injects `go.*` into the same database and backend opened by `startServer()`. Migration first
+binds the service-provided resident to the stable migration id and idempotently imports the farm's saved
+gold／silver snapshot, then seals the legacy Agent link. SQLite is the sole post-migration economy
+authority; world balances are compatibility projections coordinated with the same commit boundary.
+Farm, cooking, shops, cross-farm market／social settlement, silver locks, credit restrictions, bank,
+school and automatic duty wages converge through balanced journals rather than a second wallet.
+The locked runtime rules are seven elapsed days for a repaid system loan credit point, and restricted
+daily discretionary totals of 200,000 gold／400 silver in addition to the existing per-operation caps.
+
+Nature adapter v1 requires an explicit Beijing activation date plus a private seed, advances on the
+Beijing day boundary and catches up missed days. It projects one weather authority to farm and ranch,
+applies weather to the existing fishing pool, and maps pest／flood／drought impacts into the existing P3
+plot and animal-case authority. Resolutions flow back into the nature event; flood fish enter the
+existing fishing inventory only through `farm.run`. Existing seasonal random events remain separate.
+The two additional model-visible results have been reviewed exactly: `当前天气不适合钓鱼；这次没有消耗鱼饵、次数或钓位。`
+and `洪水冲来的{鱼名列表}已经放进鱼篓。` Human institution business pages remain absent by product
+decision; the current background pages are not runtime entry points.
+
+The `farm` branch now contains the Lingye economy／career／nature authority cores, completed runtime
+adapters and release checks through commit `1dcd7789f941523edb01573474e17371cc32f40c`, pushed to
+`origin/farm`.
+The farm package, startup gate and core CI require Node.js 22.16.0 or newer. Farm CI runs both the
+Lingye authority core suite and the Doorbell Lingye／Human structured adapter suite; root main CI runs
+the repository `npm run check` matrix on main pushes and pull requests. Economy and careers
 share a separate `node:sqlite` database container whose default runtime
 file is `${AIFARM_DATA_DIR}/lingye-world.sqlite`; its resident table is only a stable `resident_id`
 reference and does not copy QQ identity, Human sessions, home profiles, or community credentials.
+Authority-assigned career jobs persist source-party exclusions in
+`career_job_assignment_exclusions`; assignment combines those rows with the job owner and prior
+workers from the same source before choosing an on-duty resident. Loan sources record the borrower,
+and new farm complaint trails preserve the acting farm id so the farm authority can resolve an
+already registered resident without exposing that identity in the public fact. The current product
+still has one resident per home, so the farm database does not copy `home_id` or invent a parallel
+household graph; any future multi-resident-home relationship would need an explicit Commons authority
+snapshot before it could affect assignment.
+Active farm-side career benefits are resolved through the same stable Doorbell migration binding:
+`farm.doorbellMcpMigration.migrationId` identifies the registered resident reference, and only that
+resident's active certificate can enable a benefit. The chef projection doubles each ingredient's
+existing daily kitchen purchase limit and supplies the approved material-refund and processing-fee
+rules to the original kitchen authority. The 90 existing recipes carry one authoritative cooking
+method; tool availability, exact-ingredient discovery, original-recipe access and cooking receipts are
+resolved server-side. Doorbell internal Human cooking can settle an original author's production
+commission after the farm receipt is durably saved, while the legacy AI／MCP path receives no original
+recipe catalog or entitlement. Public doorplates and server-only Human keys are not treated as career
+credentials and are not returned by this projection.
+
+Chef research, commerce and store authority live in the same Lingye SQLite／farm boundary rather than a
+parallel browser model. Research consumes real farm products, fish and ingredients through a durable
+farm receipt before finalizing the immutable recipe／quality row. Recipe purchases settle the approved
+70／30 silver split and real successful cooking settles the author's rarity-based gold commission once.
+The store adapter reserves an existing `farm.market` ingredient or dish listing, transfers inventory
+between the seller and buyer farms through one atomic world-file replacement, and settles silver plus
+the market fee in the SQLite economy. Farm-side listing and order receipts persist
+`pending／inventory_applied／completed`; startup restores orphaned opening listings, resumes incomplete
+orders into both stores, and restores unsold listings for terminated leases without duplicating
+inventory or payment.
+
+Agronomist qualification now reaches the ordinary farm settlement as well as paid commissions: normal
+crop harvest uses the approved 3／6／10／15 percent extra-product rule, while commission material batches
+apply the approved level-based saving without reducing a required material below one. Reporter work
+uses persisted public-history source facts, material packs, immutable source citations, article review,
+publication, corrections, real-resident likes and one 48-hour terminal evaluation. Zero rewards remain
+an auditable terminal fact without a fake economy journal; positive rewards use the same final
+settlement identity and authoritative financial receipt.
 Weather and public-disaster authority remains in the existing atomic `world.json` under its `nature`
 field so farm and ranch read one world fact. The formal world backend exposes
 `forResident(authenticatedResidentId)`, `trustedSystemCommands`, and `trustedQueries` as separate
@@ -90,37 +186,26 @@ while the existing half-price retake remains limited to a submitted paper that f
 does not contain a production private exam bank and the previously public formal questions are not valid
 exam material.
 
-The constable written-pass path now continues through a real human-examiner interview instead of
-stopping at `written_passed`. The farm authority owns the Beijing 08:00 signup window, 19:30
-attendance confirmation, 20:00 three-person panel selection or postponement, immutable four-dimension
-scores, the 24-hour resident public notice, and final certificate activation. Interview papers, fact
-material, and the scoring standard are frozen from the deployment-private CommonJS provider selected
-by `AIFARM_CONSTABLE_INTERVIEW_BANK_MODULE`; an absent or invalid provider fails closed before a
-selected examiner can read material or scoring can proceed. Doorbell exposes Cookie- and live-QQ-
-protected Human read/signup/attendance/score routes and derives account, resident, home, farm
-doorplate, and Human credential exclusively on the server. Public-notice voter identity is injected by
-the authenticated `go.school.choose` caller, while the eligible-voter snapshot is opened by Doorbell
-from current community membership and never selected by the browser or model. The daily 08:00 signup
-mail producer is enabled only when both
-`DOORBELL_CONSTABLE_INTERVIEW_SIGNUP_MAIL_TITLE` and
-`DOORBELL_CONSTABLE_INTERVIEW_SIGNUP_MAIL_BODY` contain the exact reviewed copy; absent copy leaves
-that producer disabled rather than inventing text. No Bell producer is added by this slice. Review
-requests remain pending until a separate review policy is confirmed; zero review requests activate the
-certificate after the notice deadline.
-
 P3 farm-world mutations and the SQLite economy／career authority cannot share one physical transaction.
 The farm candidate therefore persists `lingye_cross_store_operations` with a stable operation id,
 action key, request payload, reserved fee, world result, and `pending／world_applied／completed` state.
 Commission checks, treatments, and system-NPC fallback first persist and reserve in SQLite, apply one
 idempotent world action, then finalize payment, decision, job, and receipt in SQLite; startup resumes the
-same pending operation after a lost response or process failure. Public commission facts omit the hidden
+same pending operation after a lost response or process failure, while one unrecoverable legacy row is isolated
+instead of preventing all executors from starting. Each treatment attempt has its own reservation reference,
+so a wrong material can consume its real fee and a later correct attempt can still settle exactly once. The
+four-decision limit is projected into current options and rechecked before any new reservation or world write.
+Public commission facts omit the hidden
 condition, checks reveal only newly observed facts, and the treatment choice set is qualification-bound
 rather than a single disclosed answer. Assigned hospital／public-security work uses the trusted authority
-assignment service, never a caller-selected worker. Registered farms run the same idempotent P3 day
+assignment service, never a caller-selected worker; the owner and prior handler are excluded, veterinarian
+transfer immediately attempts authoritative reassignment, and unfilled successors remain in the same retry scan.
+New trail facts carry a persisted event id, while legacy trail entries receive a stable one-time derived id before
+they become security sources, so inserting a newer trail cannot rename an older case. Registered farms run the same idempotent P3 day
 advance both at the Beijing day boundary and before ordinary authoritative farm advancement. Feed,
 dispatch, and ordinary `run／water／harvest／ripen／use／steal` paths consult the same health／object-lock
-state. Farm commit `838b04d` adds the remaining non-daily career and chef runtime, while the community
-registry exposes seven authoritative non-newsroom `go.*` operations and keeps only
+state. Farm commit `838b04d` contains the non-daily five-career and chef runtime described above. The
+community registry exposes seven authoritative non-newsroom `go.*` operations and keeps only
 `go.newsroom.commission` model-hidden. Course and exam availability is now per-entry: completed levels are
 visible, explicit P4／P5／P7 or public-event dependencies stay blocked, and a formal exam still additionally
 requires its deployment-side private bank. None of these changes is active in production: no real-player
@@ -168,11 +253,101 @@ game-save contracts
 
 The server contains `/api/health`, a narrowly scoped QQ group-eligibility check, read-only farm
 lookup, the human/resident/home/farm registration and login slice, a session-bound thin proxy for the
-existing farm human UI, Doorbell MCP and Bell control planes, and the authoritative shared-meme
+existing farm human UI, the Doorbell MCP and Bell control planes, and the authoritative shared-meme
 content/release service. It does not yet contain lounge messages, private visits, moderation, game
-saves, or production integration. Shared-meme delivery exposes direct full/delta household reads and
-content-free update-available signals; first real-household sync and household-side reading remain
-pending. The community does not decide how a household stores or presents the data after reading it.
+saves, or production integration. Shared-meme delivery now exposes direct full/delta household-backend
+reads plus content-free update-available signals; first real-household sync and household-side reading are still
+pending. The community does not decide
+how a household later samples, injects, or otherwise presents the data it has already read to a model.
+
+All six standalone game states now carry `controller_type: human | resident` on each trusted
+participant and preserve it in player projections. This metadata does not change game rules or
+player counts and the engines accept all-human, all-resident and mixed rosters. It is an internal
+Game Adapter input: a future room host must derive it from the authenticated human or resident
+entry path. Browser clients do not submit it. The six local preview bridges use fixed mixed
+identity fixtures and ignore a browser-supplied `players` field; this is only a regression harness,
+not the still-unimplemented lounge identity or realtime-room contract.
+
+`games/leaf-game` is a standalone, JSON-serializable Python rules engine rather than an
+`apps/server` module. It owns four-player dealing of all 52 cards, covered plays, follow／challenge／concede,
+drinking, knockout, final-play confirmation, winner settlement, idempotent `command_id` plus base
+revision checks, per-player hidden-hand projection, and public replay projection. A long-running
+JSONL worker is the future Game Adapter boundary; the separate `127.0.0.1` in-memory HTTP bridge
+exists only for the isolated React preview. Neither path currently writes SQLite, joins lounge
+rooms, broadcasts realtime events, wakes a resident, or defines the future game-save transport.
+The React preview is independently built from `apps/web/leaf-game-preview.html` and is not part of
+the community navigation or main Web build. It opens directly into the server-provided mixed
+fixture and exposes no human／resident seat selector.
+
+`games/doudizhu` is a second standalone Python Game Adapter candidate, adapted from
+`29-Cu/bisca` under CC BY 4.0 with attribution recorded beside the code. It owns deterministic
+three-player dealing and bidding, legal-combination enumeration and comparison, landlord／farmer
+settlement, bombs, spring／anti-spring, idempotent revisioned commands, per-player hidden-hand
+projection and public replay projection. Its JSONL worker and `127.0.0.1:8767` in-memory HTTP
+bridge share the same state machine. The independently built `apps/web/doudizhu-preview.html`
+uses one uniformly scaled `844×390` landscape canvas and a server-provided one-human／two-resident
+fixture with local preview-only resident actions;
+it is not community navigation, authentication, realtime routing, persistent game storage or a
+silver-coin ledger. The preview's unauthenticated ability to request another seat's legal view is
+strictly a local testing aid and is not a production player-view contract.
+
+`games/flying-chess` is a third standalone Python Game Adapter candidate. Rules version
+`doorbell.flying-chess.traditional.v3` owns seeded starter selection, deterministic dice, two-to-four-player movement, ordered
+landing／crossing capture checkpoints, same-color jumps, the long flight, home-lane reflection,
+winner settlement, retained last-roll feedback, idempotent revisioned commands, per-player projection and public replay. Its
+JSONL worker rejects malformed envelopes without terminating and its `127.0.0.1:8768` in-memory
+HTTP bridge rejects duplicate game IDs instead of replacing an active game. The independently built
+`apps/web/flying-chess-preview.html` uses one uniformly scaled `844×390` safe-area-aware landscape
+canvas with no fixed side rails or play-title: the board is the dominant visual, player markers anchor
+to their board corners, the die follows the current seat, and events remain one line. Human interaction
+is direct die／highlighted-plane input; a server-provided one-human／three-resident fixture supplies
+immediate preview-only resident legal actions.
+It is not community navigation, authentication,
+realtime routing, persistent game storage or a silver-coin ledger. A finished game has no in-game
+next-round action; the preview creates a new seeded game instead.
+
+`games/uno` is a fourth standalone Python Game Adapter candidate, adapted from `29-Cu/bisca`
+under CC BY 4.0. Rules version `doorbell.bisca.uno.v2` owns the 108-card deck, legal matching,
+action cards, draw decisions, reshuffle, scoring, UNO calls and the authoritative missed-call catch
+window. Its JSONL worker and `127.0.0.1:8769` in-memory bridge remain isolated from the community.
+
+`games/monopoly` is a fifth standalone Python Game Adapter candidate, adapted from the upstream
+40-cell Chinese Monopoly-style game under CC BY 4.0. Rules version
+`doorbell.bisca.monopoly.v1` owns deterministic dice and decks, buying, rent, even building and
+half-price house sales, railway／utility rent, jail, tax, card effects, automatic house liquidation,
+debt, bankruptcy and final winner settlement. Revisioned commands, public projections and replay
+exclude RNG, deck order and command history. The independently built
+`apps/web/monopoly-preview.html` uses one uniformly scaled `844×390` landscape canvas and a
+server-fixed one-human／three-resident fixture on local ports `8770` and `5191`. Its internal game
+cash is not community silver. The preview is not community navigation, authentication, room
+hosting, realtime routing, persistent game storage, resident decision transport or a silver ledger.
+
+`games/werewolf` is a sixth standalone Python Game Adapter candidate. Rules version
+`doorbell.werewolf.simple.v1` supports six to twelve players with a scaled role deck: two wolves at
+six and seven players, three at eight through ten, four at eleven and twelve; seer and witch are
+always present, hunter joins at seven, and remaining seats are villagers. The authoritative state
+machine owns deterministic role assignment, wolf voting, seer checks, one antidote and one poison,
+hunter shot／pass, public speech, day voting, parity／wolf-elimination settlement, revisioned commands,
+private player projections and a redacted public replay. The independently built
+`apps/web/werewolf-preview.html` uses one mobile-portrait bright chibi interface instead of the
+landscape canvas shared by the table games. Six and seven players use three columns; eight through
+twelve use four. Numbered avatar seats occupy the upper area, while the private role, phase copy,
+speech and current action continue directly below. Legal targets add a gold dashed ring to the seat
+itself instead of rendering a duplicate card grid or handoff modal. Wide viewports center the same
+portrait interface rather than introducing a second landscape game layout. Its
+`127.0.0.1:8771` preview bridge allows
+only the player count to vary while identities remain a trusted server fixture. The one browser seat
+is a local harness, not a one-human formal contract; the engine accepts all-human, all-resident and
+mixed rosters. The preview is not community navigation, authentication, room hosting, realtime
+routing, persistent game storage, resident decision transport or a silver ledger.
+
+The shared checkout also contains a locally complete, not-yet-released Lingye Daily final-issue
+boundary. An independently authenticated internal route accepts only the approved structured final
+edition, SQLite schema v6 stores one issue number per date with idempotent same-revision replay and
+strict next-revision updates, and an active Human session with live QQ membership can read the latest
+published issue. This boundary does not collect QQ messages, query the farm, call a model, or send a
+QQ message. Production activation still requires a separate publish credential and an authorized
+main release.
 
 ## Confirmed Phase 1 identity and observer boundary
 
@@ -223,6 +398,7 @@ Human registration/login uses these routes:
 | `POST /api/registration/farm-lookup` | Accepts only `farm_doorplate`, calls the external farm's existing read-only visit contract, and returns the exact current `farm_name` without writing Doorbell identity state |
 | `POST /api/auth/session` | Accepts exact returning-login, first-registration start, existing-farm binding, or new-farm creation fields. Returning password failures are counted per QQ; ten failures within fifteen minutes lock that account for thirty minutes while preserving the generic invalid-credentials response. Both registration completions recheck QQ membership and atomically create the Doorbell identity/session. Existing-farm binding validates a trusted-origin `farm_human_url`; new-farm creation uses a stable creation ID and the configured service-auth farm endpoint, then returns the trusted Human URL only in that one `no-store` success response. |
 | `GET /api/auth/session` | Reads the browser session, live-checks current QQ membership, and returns the account plus its resident, home, and farm binding |
+| `PATCH /api/auth/session` | Accepts exactly `resident_name` and `home_name`, live-checks the current browser session and QQ membership, then atomically updates only that session's bound resident and home names; the browser cannot submit account, resident, home, farm, or doorplate identifiers |
 | `GET /api/mailbox` | Live-checks the human session and QQ membership, then lists the current home’s letters newest-first with optional `system`／`farm`／`lingye` filtering and a fixed 8 letters per page; list rows omit the body |
 | `GET /api/mailbox/:letterId` | Live-checks the same human authority, returns one letter from the current home only, and atomically marks only the human audience as read |
 | `GET /api/farm/field` | Accepts no caller-supplied identity; derives the bound farm key and expected doorplate from the live-checked Human session, calls the farm's strict structured field read, and returns real identity, field balance, season, land, plots, projected maturity, harvest-assist quota, action-safe opaque field revision, and server time with `no-store` |
@@ -236,10 +412,10 @@ Human registration/login uses these routes:
 | `GET /api/lingye/glimmer` | Accepts no caller-supplied identity; derives the bound farm from the live-checked Human session, calls the farm's strict structured Glimmer read, and returns only the safe Human projection with `no-store` |
 | `GET /api/lingye/together` | Accepts no caller-supplied identity; derives the same bound farm, calls the farm's strict structured Together read, and returns the current farm-authoritative shared-story projection with `no-store` |
 | `GET /api/lingye-glimmer` and `GET /api/lingye-together` | Migration-only no-key entries for the legacy farm-rendered Human HTML pages; the new community UI does not parse, embed, or fall back to these documents |
-| `GET /api/settings` | Live-checks the human session's QQ membership and returns persisted human/home preferences, the selected climate and structured current-weather state, the honest wake-bridge state, shared-meme hint preference, and Human Web Push availability／public application-server key |
-| `PATCH /api/settings` | Strictly updates only the current session's supported home, climate, notification, shared-data, browser-notification, and community-connection preferences; the browser cannot select another account, home, resident, or farm |
-| `POST /api/browser-notifications/subscription` | Requires the current live-checked Human session and configured Web Push service, then upserts only that resident's strict HTTPS endpoint plus `p256dh`／`auth` keys |
-| `DELETE /api/browser-notifications/subscription` | Requires the current live-checked Human session and removes only that resident's matching endpoint; no caller-selected resident or home is accepted |
+| `GET /api/settings` | Live-checks the human session's QQ membership and returns persisted human/home preferences, the selected climate and structured current-weather state, plus the honest wake-bridge integration state |
+| `PATCH /api/settings` | Strictly updates only the current session's supported home, climate, notification, and community-connection preferences; the browser cannot select another account, home, resident, or farm |
+| `POST /api/browser-notifications/subscription` | Live-checks the Human session and QQ membership, requires the configured Web Push service, and upserts only the current resident's strict HTTPS Push endpoint plus `p256dh`／`auth` keys |
+| `DELETE /api/browser-notifications/subscription` | Live-checks the same authority and deletes only the current resident's matching endpoint; it cannot remove another resident's subscription |
 | `GET /api/mcp-access` | Returns the current resident's server-derived migration and independent MCP credential status without returning any credential, farm humanKey, or caller-selected identity |
 | `POST /api/mcp-access/claim` | Starts or resumes one stable pending farm-link migration only after the MCP runtime readiness gate; the same migration ID is reused until a strict farm receipt confirms revocation |
 | `POST /api/mcp-access/credential` | After confirmed farm revocation and runtime readiness, issues or atomically replaces the resident's independent one-time-visible MCP credential |
@@ -248,11 +424,24 @@ Human registration/login uses these routes:
 
 Settings reads the current resident's Bell binding and active stream, returning `not_configured`,
 `offline`, or `online` plus `last_connected_at`. The state is not inferred from the browser session,
-and the response never returns a credential.
+and the response never returns a credential. The same home-scoped settings row now also stores the
+shared-meme Bell-signal preference plus browser-notification and activity-reminder switches. Browser
+notification availability and the public application-server key are reported only when the complete
+deployment-side Web Push configuration is present; private VAPID material is never returned.
 The existing nullable activity-room and visit preference columns have no room, invitation, or
 notification producer while those business lines are frozen. Settings does not become a second
 notification source: implemented notification bodies live only in the mailbox, while Bell remains a
-separate whitelisted wake transport with no current community producer.
+separate whitelisted wake transport whose producers must be explicit business transitions.
+
+`BrowserPushService` is a separate Human-facing delivery sidecar. It is constructed only when all
+four explicit VAPID／TTL variables are present, uses the shared outbound request timeout, rechecks live
+QQ membership for every reminder, and filters on both the browser-notification total switch and the
+activity-reminder category switch. A `404`／`410` Push response deletes the expired subscription;
+other delivery failures are logged fail-soft and cannot reverse the authoritative activity or mailbox
+result. The Service Worker accepts only the strict versioned activity payload, displays the system
+notification, and focuses or navigates the same origin on click. The existing career-exam due reminder
+is the first producer. Crop `matures_at` currently lacks a durable cross-action scheduler, and Glimmer
+does not yet expose an authoritative ready timestamp, so neither is fabricated from a browser timer.
 
 ## Doorbell MCP, Bell, and direct shared-data access
 
@@ -283,7 +472,11 @@ check on the direct pull route, while update availability reuses the existing Be
   wake, start a sync, require ACK／blocked control, or require immediate pulling. Bell stores the
   monotonic available／applied watermarks in its local `bell_updates` table; the household backend
   chooses when to request its delta and records applied only after a successful sync. Reconnecting
-  receives the current server version, so a missed signal remains recoverable.
+  receives the current server version, so a missed signal remains recoverable. Doorbell checks the
+  home setting before connect-time or publish-time delivery; disabling the setting suppresses only
+  this Bell signal and leaves direct `dbm_` pulls unchanged. Ordinary signals keep `MAX` semantics;
+  only after `shared_meme_version_ahead` and a successful authoritative full sync may the household
+  call Bell's constrained reset to set available／applied exactly to the server's current version.
 
 A successful human add publishes content first and signals connected Bell instances fail-soft.
 Signal delivery does not invoke the pull route, and signal failure cannot reverse the committed add or
@@ -291,8 +484,8 @@ turn the HTTP response into a failure; the household can later recover by its ap
 mailbox, wake, or model state. How a household stores, indexes, samples, or presents returned content
 to its own model is outside the community runtime.
 
-This replacement is included in the current `main` release and has been tested, but it has not been
-deployed or exercised by a real household backend yet.
+This replacement is locally implemented and tested but has not been committed, deployed, or exercised
+by a real household backend yet.
 ## Doorbell-hosted MCP access control plane
 
 `mcp_access_bindings` gives each resident one migration／credential slot. The migration state is
@@ -356,6 +549,16 @@ co-locates the approved concise description, full strict Zod args Schema, correc
 unique legacy `runFarm` mapping. `farm.help` renders a compact index or one operation's detail from
 that registry; invalid args return both structured issues and the operation's correct examples.
 `detail` is accepted on every farm operation except help and is removed before the legacy mapping.
+The eight approved Lingye `go.*` contract definitions remain separate from this public registry. The
+farm-side internal candidate has the public 60-course catalogue, frozen content delivery, progressive
+P3 field／animal facts, authority-selected hospital／security assignments, persistent cross-store
+recovery, day-boundary advancement, health gates, paid agronomy transfer recovery, and the confirmed
+system-NPC fallback for agronomy and hospital cases. Public formal-exam answers have been removed and
+formal exams require a deployment-side private versioned bank; no such production bank is configured.
+Reporter publication／review, every remaining real source and end-state, and the approved model-visible
+copy are not all closed, so the runtime still advertises and dispatches only the 58 ready `farm.*`
+operations. The internal Lingye boundary is not reachable through `tools/list` or `tools/call` until the
+same readiness gate is deliberately changed with full closure tests.
 Legal tool results use one `content + structuredContent + isError` envelope, while farm business
 refusal remains distinct from Doorbell validation and upstream errors. The existing per-resident
 first-call／10-minute status attachment cadence is preserved in process memory and `farm.status`
@@ -412,8 +615,8 @@ than create another body, unread table, or notification record. Ordinary human m
 are not Bell producers: `MailboxService` has no Bell callback, and `BellService` never turns general unread
 letters into a wake. The approved career-exam reminder producer is explicit and narrower: for each still-registered
 Tuesday／Thursday／Saturday 14:00 Beijing exam, it writes one idempotent mailbox letter at 13:55 and one
-`career_exam_reminder` wake linked internally by `letter_id`. The public Bell event exposes only the fixed top-level
-`message` `信箱有一封新的考试提醒。` plus `created_at`; it does not expose the letter ID, a structured payload, or the full mailbox body. When both Human Web Push switches are enabled, this same authoritative due transition also sends the existing reminder title／body to the resident's registered browser endpoints; Push failure is fail-soft and cannot roll back the mailbox letter or Bell wake. The schema-v4 `mailbox_revision`, Bell watermark, and historical
+`career_exam_reminder` wake linked internally by `letter_id`. The public Bell event contains only the fixed top-level
+`message` `信箱有一封新的考试提醒。` plus `created_at`; it does not expose the letter ID or a structured payload, and the full exam reminder remains only in the mailbox. The schema-v4 `mailbox_revision`, Bell watermark, and historical
 `mailbox_unread` rows remain only for migration compatibility and diagnostics. On Bell connect and
 the existing 60-second sweep, any legacy pending mailbox wake is atomically cancelled; terminal ACK,
 blocked, and cancelled history is untouched. Lounge, parlor, visit, and small-AI activity-room
@@ -426,7 +629,7 @@ control requests from an absent or stale epoch cannot finish a wake. The SSE hea
 30 seconds and the legacy-pending cancellation sweep is explicitly 60 seconds. The deployed Bell
 transport carries only an explicitly approved fixed message for each whitelisted producer; it
 does not carry mailbox content or provide a mailbox-reading capability. Content-free
-`update_available` is a separate Bell event class: it is emitted for shared memes only while that home's update-signal setting is enabled, persisted to local `bell_updates`, never sent
+`update_available` is a separate Bell event class: it is persisted to local `bell_updates`, never sent
 to the injector, and never enters wake ACK／report. The first-household injector
 accepts one temporary dynamic system message and no additional user message. The local, undeployed career-exam
 candidate persists its schedule and delivery state in schema v8, restores scheduled timers after a service restart,
@@ -526,6 +729,11 @@ the same condition from the same field response: rain／thunder conditions selec
 scenes and snow／blizzard conditions select their matching snow scenes. The browser never reads the
 separate community-home weather and never rolls weather per page. This wiring and its scene assets are
 local only; it does not install the missing scheduler, activate P4, or change gameplay settlement.
+For rolling deployment, `FarmHumanClient` accepts only the prior strict season-only farm response or
+the current strict season-ID-plus-weather response, maps the four authoritative Chinese season names
+to their stable IDs, and normalizes missing weather to `null` before applying the unchanged browser
+contract. Unknown legacy season names remain an upstream contract error; field read and harvest use
+the same normalization boundary.
 
 Ranch, kitchen, and the remaining farm catalog now use three additional fixed read-only chains:
 `GET /api/farm/{ranch,kitchen,catalog}` calls the service-authenticated farm routes
@@ -558,6 +766,21 @@ private farm identifiers, raw participants, votes, full rewards, or archive inte
 loads each page only after the Human clicks its entry, makes no prefetch or polling request, and never
 uses Demo data or legacy HTML as a Live fallback. This structured Lingye chain is recorded in the
 2026-08-24 main／farm Git commits; it has not been deployed or production-verified.
+
+The Qixi memorial has its own bounded private read chain. `GET
+/api/lingye/memorial/qixi-2026` first validates the Doorbell Human session, live QQ membership, and
+the account's one farm binding, then calls the farm service's
+`POST /internal/doorbell/human/memorial/qixi-2026/read` with the server-held Human key and expected
+doorplate. `dist/server/qixi-memorial-structured.js` projects a cloned farm's existing
+`qixiLantern2026.lamps.human/ai` into only the two registered names, two letter bodies, and two
+five-part appearances; it does not return the Human key, raw farm, delivery/reward/task state, or
+another household's data, and it does not mutate or save on read. A missing body projects as the
+literal `无`; a missing lamp projects the existing default appearance (`square-palace`,
+`moon-white`, and `none` for pattern, ornament, and seal). Candidate Two requests this resource only
+when the Human opens the memorial, replaces the four existing layout slots without changing their
+saved transform/layer values, and neither prefetches nor persists the private bodies. This chain is
+local in the separate main and farm worktrees; it has not been tested, committed, deployed, or
+production-verified.
 
 `GET /api/farm/overview` remains a smaller migration-era public-fact read and is no longer the React
 field data source. The remaining legacy Human HTML compatibility flow uses the no-key Doorbell routes
@@ -678,14 +901,16 @@ application error logs. File copying or host/database permission
 compromise can therefore expose the key; the file and host permission boundary is the current
 explicit tradeoff.
 
-The Doorbell server SQLite currently uses schema version 4 in SQLite `PRAGMA user_version`.
+The Doorbell server SQLite currently uses schema version 9 in SQLite `PRAGMA user_version`.
 Opening an existing unversioned database first runs the historical
 identity-column additions and advances to v1, then the ordered v2 migration adds login failures and
 locks without replacing existing data. The historical ordered v3 migration changed the now-retired
 Connector delivery identity and remains in the migration chain only so existing databases open
 without destructive schema surgery.
 The ordered v4 migration adds the home mailbox revision plus digest-only Bell binding and wake
-delivery tables without changing mailbox bodies or resident read state. Opening a database from a
+delivery tables without changing mailbox bodies or resident read state. Later ordered migrations
+retain their documented feature state; schema v9 adds the three home-scoped notification／shared-data
+preferences and resident-owned browser Push subscriptions without storing VAPID private material. Opening a database from a
 newer unsupported schema version fails before table initialization. Future schema changes must add
 an ordered migration and advance this version instead of relying only on `CREATE TABLE IF NOT EXISTS`.
 
@@ -708,10 +933,13 @@ The current tables are:
   each home. The column remains technically nullable for the schema-v1 SQLite migration, but runtime
   registration always writes both values and treats `NULL` as an incomplete record without a repair
   path. It does not copy the farm name, save, leaderboard record, or farm state.
-- `human_settings` for one home-scoped set of environment, notification, and community-connection
-  preferences. It has a unique `home_id` foreign key and contains no browser session token,
+- `human_settings` for one home-scoped set of environment, notification, community-connection,
+  shared-data-signal, browser-notification, and activity-reminder preferences. It has a unique `home_id` foreign key and contains no browser session token,
   MCP／Bell credential, farm credential, shared-meme content, notification payload, or weather
   state.
+- `browser_push_subscriptions` for resident-owned HTTPS Push endpoints plus the browser-issued
+  `p256dh`／`auth` values and timestamps. Endpoints cannot be reassigned across residents; deleting a
+  resident cascades the subscription, while VAPID private material stays deployment-only.
 - `home_weather_state` for one home-scoped selected climate, monotonically increasing
   `weather_revision`, current season/condition, and exact Beijing-day start/next-transition
   timestamps. The current climate plus expected revision guards engine writes; a changed climate
@@ -775,14 +1003,14 @@ Runtime configuration is read from process environment variables:
 | `DOORBELL_UPSTREAM_REQUEST_TIMEOUT_MS` | Required positive integer request deadline in milliseconds for OneBot membership reads and every Doorbell-to-farm HTTP client: directory／Human UI, first-farm creation, welcome reward, MCP migration, and MCP action execution; there is no code default, so a deployment must choose the value explicitly |
 | `DOORBELL_BELL_HEARTBEAT_INTERVAL_MS` | Required and fixed to `30000` for the authenticated Bell SSE heartbeat |
 | `DOORBELL_BELL_REPLAY_INTERVAL_MS` | Required and fixed to `60000` for re-emitting an unresolved pending wake with the same stable `wake_id` |
+| `DOORBELL_WEB_PUSH_VAPID_PUBLIC_KEY` | Optional only as part of the complete Web Push group; public application-server key returned to an authenticated browser |
+| `DOORBELL_WEB_PUSH_VAPID_PRIVATE_KEY` | Optional only as part of the complete Web Push group; deployment-only VAPID private key, never returned or stored in community SQLite |
+| `DOORBELL_WEB_PUSH_VAPID_SUBJECT` | Optional only as part of the complete Web Push group; explicit `mailto:` or HTTPS VAPID contact |
+| `DOORBELL_WEB_PUSH_TTL_SECONDS` | Optional only as part of the complete Web Push group; explicit positive integer TTL for outbound browser Push messages, with no code default |
 | `DOORBELL_PUBLIC_BASE_URL` | Required trusted public origin; HTTPS outside loopback development, with no credentials, path, query, or fragment; the server derives the fixed `/mcp` endpoint from it |
 | `DOORBELL_FARM_API_BASE_URL` | Required HTTP(S) internal base URL for server-to-server calls to the external farm service; used by public lookup, credential verification, controlled actions, and the no-key human-page proxy |
 | `DOORBELL_FARM_HUMAN_UI_BASE_URL` | Required trusted public base URL for Human farm pages, including the deployed farm path; first registration accepts a Human URL only below its `ui/` path and never compares that browser URL with the internal farm API origin |
 | `DOORBELL_FARM_SERVICE_TOKEN` | Required Doorbell-side secret sent only in authenticated farm-service Authorization headers |
-| `DOORBELL_WEB_PUSH_VAPID_PUBLIC_KEY` | Optional only as part of the complete Web Push group; public application-server key returned only to an authenticated Human settings read |
-| `DOORBELL_WEB_PUSH_VAPID_PRIVATE_KEY` | Optional only as part of the complete Web Push group; deployment-only VAPID private key, never returned or stored in community SQLite |
-| `DOORBELL_WEB_PUSH_VAPID_SUBJECT` | Optional only as part of the complete Web Push group; explicit `mailto:` or HTTPS VAPID contact |
-| `DOORBELL_WEB_PUSH_TTL_SECONDS` | Optional only as part of the complete Web Push group; explicit positive integer outbound Push TTL with no code default |
 | `AIFARM_DOORBELL_SERVICE_TOKEN` | Matching farm-side secret that enables the controlled welcome-reward, MCP-migration-revoke, and internal farm-execution endpoints |
 
 `.env.example` lists the variables without a real API URL or token. The repository does not load the
@@ -876,13 +1104,92 @@ cleanup check passed before activation. The first existing unread wake was accep
 the final enable, the authoritative wake count and gateway job count remained unchanged, so that
 enable did not produce another model request.
 
+The new-version welfare week remains a local Farm candidate and is disabled unless release operations
+set `AIFARM_WELFARE_WEEK_START_DATE=YYYY-MM-DD`. That date is interpreted as an Asia/Shanghai natural
+day boundary and opens exactly seven days. Per-farm `welfareWeekV1` progress and reward facts live in
+the existing atomic farm save; successful plant／owner-water／harvest actions, ordinary task completion,
+and current-day Glimmer ticket purchase are the only producers. Daily rewards mutate the existing
+gold／silver balances and seed inventory in the same farm save. Day-seven SP／SSR selections are stable
+per farm, persisted with the grant, and never rerolled on retry or restart. The module does not reuse
+Qixi state, create another currency, send Bell／mailbox events, or run when the start date is absent.
+It has not been committed, deployed, activated, or tested against production data.
+
 The existing public farm at `/farm/` and port 8091 remains an independent external production
-service. Its clean `farm` branch was fast-forwarded from `e89730a` to
-`35a95d17944b4796175e0b88a11494ec41de4fe1`, publishing the farm-side Doorbell service boundaries
-and request／store safety changes. The production service credential now lives only in root-owned
+service. Its clean `farm` branch currently runs
+`db72a27169f71e389441985ffd99b36ed38da73e`. The current release includes the 2026-08-19 one-day
+`灯河有信` module, its mobile legacy Human page, compressed scene／lantern assets and persistent
+family-private lamp records without adding another MCP tool or changing the generic `farm` Schema.
+The first phase derives one shared clue from each of fishing, harvesting and ranch feeding, so three
+different farms may fill the three global clue slots; all later questions, returns, materials and
+`0/3→3/3` progress are resolved per farm. The final release／catch phase opens at 20:00
+Asia/Shanghai and remains available throughout the approved one-day extension. If a farm's private
+second phase is still unfinished when that time arrives, its Human page keeps the original task
+entries and personal progress in the night scene alongside release／catch until that farm reaches
+`3/3`; completed farms enter only the final task view and do not repeat phase two. The no-parameter AI
+`qixi` status renders the same confirmed compatibility and
+Qixi-quiz scenes, question text and complete A／B／C options as the Human flow before showing the
+existing submission shapes; it does not expose the human side's answers. Its lamp-decoration section
+lists only currently available shapes, colors, patterns, ornaments and seals as
+`中文名称（submission id）`; unavailable material-gated options remain hidden, while the executable
+JSON examples continue to use the same ids. When the AI catches its human companion's private lamp
+or later reads that delivered lamp again, the runtime derives the registered human name and Chinese
+appearance description from the existing farm／lamp records, prints unselected optional layers as
+`无`, and keeps the private note in the same result; it adds no duplicated author or appearance
+storage and does not alter NPC passing lamps.
+On the Human side, the caught private lamp's overlay, stored-letter view and catch result now derive
+the registered `aiName` with the established `小机` fallback instead of hard-coding the author. The
+lamp-note editor keeps the confirmed `76／38／209／85` writing rectangle fixed and centers short or
+multiline text inside that rectangle; it no longer moves or resizes the input box to imitate vertical
+centering. These presentation fixes do not change saved lamp text, appearance, delivery, catch or
+reward state. Ordinary `status` also
+shows the approved event opening throughout the activity window, now extended through
+2026-08-21 00:00 Asia/Shanghai, and adds the approved
+choose-decoration／write-note／release reminder from 20:00; these are derived from the active window,
+not persisted as read-once notices and not delivered through Bell. Both ordinary-status announcements
+stop once this farm's AI has released its own lamp; a Human-only release does not suppress the AI-facing
+entry, and active `qixi` status remains available under its existing contract. The Human activity page now shows
+one dedicated first-release reward popup whenever the authoritative reward exists but its independent
+seen timestamp does not; closing it records only that timestamp, so old already-rewarded farms can see
+the receipt once without repeating the 1314-gold／520-silver／title／achievement settlement. An unlocked Qixi seed whose daily
+quota is exhausted is omitted from the shelf until the next Asia/Shanghai midnight while the seed
+event remains active. After all three shared objects are discovered, a farm that already consumed a
+real expedition charge that Qixi day idempotently receives the copper-bell route clue without spending
+another charge; previous-day activity and read-only status do not count. After the three shared
+discovery slots fill, each farm now enters that private second phase without repeating discovery
+locally; active-event cooking shelves always expose purchasable tea, and `ranch-feed` resolves index,
+stable id, official species name or farm nickname without changing its settlement. The same release
+restores the approved purple-and-gold Qixi confirmation plaque and applies the globally idempotent
+`maintenance-20260819-ranch-feed-selector` campaign to the 11 player farms present at deployment,
+granting 100 silver each while excluding NPC A-Tu and later-created farms. The preceding Human-selling release keeps the farm-side Doorbell service boundaries
+and request／store safety behavior intact while adding legacy Human controls for selling selected fish,
+separately selling existing sellable fishing treasures, and system-recycling held cookable ranch
+products. These controls reuse the current authoritative inventories and prices; they add no AI tool,
+save field, parallel inventory or new market category. Its single-file follow-up appended the approved
+globally idempotent `maintenance-20260817-human-selling` campaign; startup granted 150 silver to the
+11 player farms present at release, excluded NPC 阿土, and will not backfill later farms. The
+2026-08-22 farm release `c3657a686340ace3869b42fe2a515621c6f09f05` keeps the legacy single `farm`
+tool but publishes explicit atomic `ripen {"plots":[...]}` targeting and numbered current-day Glimmer
+tracks whose catch argument also accepts the animal name. The old `use` and `run.potion` execution
+paths remain hidden compatibility only. This release changed no save field, price, probability,
+animal schedule, Human UI, credential, migration state or player data. The matching future Doorbell
+registry change remains local and undeployed while MCP readiness stays closed. The production
+farm release `144a682910b4f0f824f8d27c7e60cba93cd49eb6` derives each production animal's Glimmer
+variant multiplier from its persisted same-species variant IDs: one or two variants retain the
+existing non-stacking 20% total bonus, while the complete configured set of three raises it to 25%.
+Historical complete sets qualify automatically; no save field, capture rule, schedule, pet effect,
+patrol-goose effect, Human route, Doorbell registry or migration state changed. Production 8091 was
+quiet-drained, maintenance-gated, clean-fast-forwarded and restarted only for `aifarm.service`; it is
+active at the exact farm commit with one listener, zero restarts and direct／public 200 health.
+The production
+service credential now lives only in root-owned
 environment files and is loaded by both services without entering the repository. Doorbell's shared
 farm API target is 8091 and its Human UI base is `/farm/`; `aifarm-doorbell-test.service` remains
 disabled and inactive with no listener, while its data remains under `/var/lib/aifarm-doorbell-test`.
 Doorbell does not import the farm runtime or database, copy farm saves, or let browser requests choose
 farm credentials. MCP readiness remains `false`; opening the first real-player migration is still a
 separate explicitly authorized production action.
+
+During the migration period that service may still serve its existing legacy Human pages to
+unmigrated users. This does not change the confirmed target: all new Human frontend code lives in
+Doorbell Commons, and after the authorized cutover the `farm` deployment remains only the Lingye／farm
+backend game engine and its authoritative service boundaries.
