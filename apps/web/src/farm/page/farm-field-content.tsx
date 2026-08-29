@@ -351,6 +351,7 @@ export function FarmFieldContent({
         const visual = getRanchResidentSpriteVisual(
           resident.spriteAnimal,
           resident.resident.variants,
+          resident.resident.identity.kind_id ?? resident.spriteAnimal.id,
         );
         return {
           id: resident.id,

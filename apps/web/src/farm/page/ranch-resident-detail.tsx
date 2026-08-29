@@ -23,12 +23,14 @@ export type { RanchResidentActionExecutor } from "./model";
 
 export function RanchShopAnimalSprite({
   animal,
+  residentKindId,
   variants,
 }: {
   animal: RanchShopAnimal;
+  residentKindId?: string | undefined;
   variants?: RanchVariantSelection | null | undefined;
 }) {
-  const visual = getRanchResidentSpriteVisual(animal, variants);
+  const visual = getRanchResidentSpriteVisual(animal, variants, residentKindId);
   return (
     <span
       aria-hidden="true"
@@ -330,7 +332,11 @@ export function RanchResidentDetail({
         </button>
         <header className="ranch-resident-detail__head">
           <span className="ranch-resident-detail__portrait">
-            <RanchShopAnimalSprite animal={animal} variants={residentData?.variants} />
+            <RanchShopAnimalSprite
+              animal={animal}
+              residentKindId={residentData?.identity.kind_id ?? animal.id}
+              variants={residentData?.variants}
+            />
           </span>
           <span className="ranch-resident-detail__identity">
             <small>{liveResident?.category ?? animal.category}</small>
@@ -431,10 +437,7 @@ export function RanchResidentDetail({
               {liveResident?.residentType === "animal"
                 ? renderActionButton("upgrade", "升级")
                 : null}
-              {renderActionButton(
-                "toggle_pin",
-                residentData?.pinned ? "移出氛围" : "加入氛围",
-              )}
+              {renderActionButton("toggle_pin", residentData?.pinned ? "移出氛围" : "加入氛围")}
             </div>
             <p className="ranch-resident-detail__action-status">
               氛围选择只影响小机看到的农场描述，不改变动物排序。

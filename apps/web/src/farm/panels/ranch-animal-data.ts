@@ -40,8 +40,15 @@ export interface RanchVariantVisualOption {
 }
 
 export interface RanchVariantSelection {
+  available_variant_ids: readonly string[];
   available_variants: readonly RanchVariantVisualOption[];
   current_variant_id: string | null;
+}
+
+export interface RanchOrdinaryVariantTarget {
+  kindId: string;
+  set: 1 | 2 | 3;
+  spriteIndex: number;
 }
 
 export interface RanchResidentSpriteVisual {
@@ -301,6 +308,38 @@ export const RANCH_SHOP_ANIMALS: readonly RanchShopAnimal[] = [
   },
 ];
 
+const RANCH_ORDINARY_VARIANT_IDS = {
+  chicken: ["chicken_strawberry", "chicken_cream", "chicken_cloud"],
+  duck: ["duck_mint", "duck_peach", "duck_starry"],
+  quail: ["quail_chestnut", "quail_milkcandy", "quail_blueberry"],
+  rabbit: ["rabbit_lop", "rabbit_strawberry", "rabbit_moon"],
+  goose: ["goose_lake", "goose_peach", "goose_brownsugar"],
+  sheep: ["sheep_strawberry", "sheep_mint", "sheep_cloud"],
+  goat: ["goat_latte", "goat_apple", "goat_sesame"],
+  cow: ["cow_strawberry", "cow_blueberry", "cow_caramel"],
+  bee: ["bee_cherry", "bee_mint", "bee_moon"],
+  turkey: ["turkey_maple", "turkey_blueberry", "turkey_snow"],
+  pig: ["pig_peach", "pig_latte", "pig_blackbean"],
+  alpaca: ["alpaca_strawberry", "alpaca_matcha", "alpaca_cocoa"],
+  silk_moth: ["silk_moth_mist", "silk_moth_peach", "silk_moth_aurora"],
+  ember_hen: ["ember_hen_blue", "ember_hen_cherry", "ember_hen_white"],
+  cloud_sheep: ["cloud_sheep_sunset", "cloud_sheep_storm", "cloud_sheep_aurora"],
+  dream_cat: ["dream_cat_strawberry", "dream_cat_mint", "dream_cat_starry"],
+  cat: ["cat_tuxedo", "cat_british_blue", "cat_calico"],
+  dog: ["dog_corgi", "dog_golden", "dog_samoyed"],
+  patrol_goose: ["patrol_goose_sheriff", "patrol_goose_raincoat", "patrol_goose_detective"],
+} as const;
+
+export const RANCH_ORDINARY_VARIANT_TARGETS: ReadonlyMap<string, RanchOrdinaryVariantTarget> =
+  new Map(
+    Object.entries(RANCH_ORDINARY_VARIANT_IDS).flatMap(([kindId, variantIds], spriteIndex) =>
+      variantIds.map((variantId, setIndex) => [
+        variantId,
+        { kindId, set: (setIndex + 1) as 1 | 2 | 3, spriteIndex },
+      ]),
+    ),
+  );
+
 export const RANCH_ANIMAL_CANVAS_SIZE = 192;
 export const DEFAULT_RANCH_ANIMAL_LAYOUT: RanchAnimalLayout = {
   x: 96,
@@ -384,14 +423,12 @@ export function getRanchSkinPlacementStyle(): CSSProperties {
 }
 
 const GLIMMER_VARIANT_SHEET_URLS = {
-  1: "/lingye/glimmer/variants/variant-1.webp",
-  2: "/lingye/glimmer/variants/variant-2.webp",
-  3: "/lingye/glimmer/variants/variant-3.webp",
+  1: "/lingye/glimmer/variants/variant-1.webp?v=20260809b",
+  2: "/lingye/glimmer/variants/variant-2.webp?v=20260809b",
+  3: "/lingye/glimmer/variants/variant-3.webp?v=20260810a",
 } as const;
 
-export function getRanchVariantSpriteStyle(
-  variant: RanchVariantVisualOption,
-): CSSProperties {
+export function getRanchVariantSpriteStyle(variant: RanchVariantVisualOption): CSSProperties {
   if (
     variant.atlas !== "glimmer.variants" ||
     variant.set === null ||
@@ -412,6 +449,7 @@ export function getRanchVariantSpriteStyle(
 export function getRanchResidentSpriteVisual(
   animal: RanchShopAnimal,
   variants?: RanchVariantSelection | null,
+  residentKindId = animal.id,
 ): RanchResidentSpriteVisual {
   const base = {
     kind: "base" as const,
@@ -424,23 +462,40 @@ export function getRanchResidentSpriteVisual(
     return base;
   }
 
-  if (getRanchSkinAsset(currentVariantId)) {
+  if (!variants.available_variant_ids.includes(currentVariantId)) {
+    return base;
+  }
+  const variant = variants.available_variants.find(
+    (candidate) => candidate.variant_id === currentVariantId,
+  );
+  if (!variant) {
+    return base;
+  }
+
+  const skin = RANCH_LIMITED_SKINS.find((candidate) => candidate.id === currentVariantId);
+  if (
+    skin &&
+    skin.targetKindId === residentKindId &&
+    variant.atlas === null &&
+    variant.set === null &&
+    variant.sprite_index === null &&
+    getRanchSkinAsset(currentVariantId)
+  ) {
     return {
       kind: "skin",
       placementStyle: getRanchSkinPlacementStyle(),
       spriteStyle: getRanchSkinSpriteStyle(currentVariantId),
-      staticSprite: true,
+      staticSprite: false,
     };
   }
 
-  const variant = variants.available_variants.find(
-    (candidate) => candidate.variant_id === currentVariantId,
-  );
+  const expectedTarget = RANCH_ORDINARY_VARIANT_TARGETS.get(currentVariantId);
   if (
-    !variant ||
+    !expectedTarget ||
+    expectedTarget.kindId !== residentKindId ||
     variant.atlas !== "glimmer.variants" ||
-    variant.set === null ||
-    variant.sprite_index === null
+    variant.set !== expectedTarget.set ||
+    variant.sprite_index !== expectedTarget.spriteIndex
   ) {
     return base;
   }

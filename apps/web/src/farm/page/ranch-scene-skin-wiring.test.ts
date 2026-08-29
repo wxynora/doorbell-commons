@@ -9,7 +9,7 @@ const source = readFileSync(new URL("./farm-field-content.tsx", import.meta.url)
 test("moving ranch residents reuse the authoritative current-variant visual resolver", () => {
   assert.match(
     source,
-    /getRanchResidentSpriteVisual\(\s*resident\.spriteAnimal,\s*resident\.resident\.variants,\s*\)/,
+    /getRanchResidentSpriteVisual\(\s*resident\.spriteAnimal,\s*resident\.resident\.variants,\s*resident\.resident\.identity\.kind_id \?\? resident\.spriteAnimal\.id,\s*\)/,
   );
   assert.match(source, /placementStyle: visual\.placementStyle/);
   assert.match(source, /spriteStyle: visual\.spriteStyle/);
