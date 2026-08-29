@@ -313,7 +313,7 @@
   background-color: #f8edcf;
   background-image:
     linear-gradient(180deg, rgba(255, 255, 241, 0.22), rgba(215, 181, 115, 0.07)),
-    url("/farm/ui/panel-parchment.png");
+    url("./assets/ui/panel-parchment.png");
   background-position: center;
   background-size:
     100% 100%,
@@ -375,7 +375,7 @@
   width: 100%;
   max-width: 18cqw;
   aspect-ratio: 1;
-  background-image: url("/farm/animals/animal-codex-atlas.png");
+  background-image: url("./assets/animals/animal-codex-atlas.png");
   background-repeat: no-repeat;
   background-size: 500% 400%;
   image-rendering: pixelated;
@@ -628,7 +628,7 @@
   overflow: visible;
   color: #fff5d4;
   border: 0;
-  background: url("/farm/ui/plot-tile.png") center / 112% 112% no-repeat;
+  background: url("./assets/ui/plot-tile.png") center / 112% 112% no-repeat;
   cursor: pointer;
 }
 
@@ -872,7 +872,7 @@
   background-color: #fff9e7;
   background-image:
     linear-gradient(145deg, rgba(255, 255, 246, 0.52), rgba(235, 210, 161, 0.12)),
-    url("/farm/ui/panel-parchment.png");
+    url("./assets/ui/panel-parchment.png");
   background-position: center;
   background-size:
     100% 100%,
@@ -1032,7 +1032,7 @@
   background-color: rgba(255, 250, 231, 0.88);
   background-image:
     linear-gradient(90deg, rgba(255, 255, 246, 0.35), rgba(229, 205, 156, 0.08)),
-    url("/farm/ui/panel-parchment.png");
+    url("./assets/ui/panel-parchment.png");
   background-position: center;
   background-size:
     100% 100%,
@@ -1384,7 +1384,7 @@
   background-color: #f8edcf;
   background-image:
     linear-gradient(180deg, rgba(255, 255, 242, 0.18), rgba(219, 188, 128, 0.08)),
-    url("/farm/ui/panel-parchment.png");
+    url("./assets/ui/panel-parchment.png");
   background-position: center;
   background-size:
     100% 100%,
@@ -1592,7 +1592,7 @@
   background-color: #f8edcf;
   background-image:
     linear-gradient(180deg, rgba(255, 255, 242, 0.22), rgba(219, 188, 128, 0.06)),
-    url("/farm/ui/panel-parchment.png");
+    url("./assets/ui/panel-parchment.png");
   background-position: center;
   background-size:
     100% 100%,
@@ -1775,7 +1775,7 @@
   overflow: hidden;
   border: 0;
   border-radius: 2.8cqw 2.8cqw 0 0;
-  background: url("/farm/ui/scene-tabs-frame-v2.png") center / 100% 100% no-repeat;
+  background: url("./assets/ui/scene-tabs-frame-v2.png") center / 100% 100% no-repeat;
 }
 
 .farm-scene-tabs button {
@@ -1964,7 +1964,7 @@
   position: absolute;
   inset: 0;
   content: "";
-  background: url("/farm/ui/tool-cell-textured.png") center / 100% 100% no-repeat;
+  background: url("./assets/ui/tool-cell-textured.png") center / 100% 100% no-repeat;
   opacity: 1;
   pointer-events: none;
 }
@@ -2258,7 +2258,7 @@
   inset: 0;
   z-index: -1;
   content: "";
-  background: url("/farm/ui/tool-cell-textured.png") center / 100% 100% no-repeat;
+  background: url("./assets/ui/tool-cell-textured.png") center / 100% 100% no-repeat;
   opacity: 0.42;
   pointer-events: none;
 }
@@ -2285,7 +2285,7 @@
   inset: 0;
   z-index: -1;
   content: "";
-  background: url("/farm/ui/tool-cell-textured.png") center / 100% 100% no-repeat;
+  background: url("./assets/ui/tool-cell-textured.png") center / 100% 100% no-repeat;
   opacity: 0.42;
 }
 

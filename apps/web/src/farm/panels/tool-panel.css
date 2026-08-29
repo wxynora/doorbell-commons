@@ -13,7 +13,7 @@
   background-color: #f8edcf;
   background-image:
     linear-gradient(180deg, rgba(255, 253, 239, 0.1), rgba(218, 187, 127, 0.06)),
-    url("/farm/ui/panel-parchment.png");
+    url("../assets/ui/panel-parchment.png");
   background-position: center;
   background-size:
     100% 100%,
