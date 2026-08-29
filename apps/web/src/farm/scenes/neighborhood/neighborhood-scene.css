@@ -223,20 +223,23 @@
   gap: 1.2cqw;
   align-items: baseline;
   padding: 1.45cqw 1.7cqw 1.15cqw;
-  border-bottom: 0.15cqw solid rgba(126, 104, 62, 0.14);
-  background: rgba(210, 225, 196, 0.76);
+  border-bottom: 0.55cqw solid #91a764;
+  background: #dce9ca;
 }
 
 .farm-neighborhood__message-board-card:nth-child(3n + 2) > header {
-  background: rgba(240, 216, 197, 0.78);
+  border-bottom-color: #c99173;
+  background: #f1d8c5;
 }
 
 .farm-neighborhood__message-board-card:nth-child(3n + 3) > header {
-  background: rgba(205, 225, 229, 0.78);
+  border-bottom-color: #79a8b2;
+  background: #d3e6eb;
 }
 
 .farm-neighborhood__message-board-card[data-own="true"] > header {
-  background: rgba(226, 214, 165, 0.82);
+  border-bottom-color: #b99a48;
+  background: #efe0a8;
 }
 
 .farm-neighborhood__message-board-card h4 {
@@ -245,7 +248,7 @@
   overflow: hidden;
   color: #5e4329;
   font-family: "ZCOOL KuaiLe", "Noto Sans SC", sans-serif;
-  font-size: clamp(0.78rem, 3.1cqw, 0.94rem);
+  font-size: clamp(0.95rem, 3.8cqw, 1.15rem);
   font-weight: 900;
   line-height: 1.2;
   text-overflow: ellipsis;

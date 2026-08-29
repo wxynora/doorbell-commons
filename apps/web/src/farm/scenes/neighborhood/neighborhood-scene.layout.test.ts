@@ -27,4 +27,9 @@ test("each farm card keeps its own ten-entry message region fixed and scrollable
   );
   assert.match(styles, /message-board-card:nth-child\(3n \+ 2\) > header/);
   assert.match(styles, /message-board-card:nth-child\(3n \+ 3\) > header/);
+  assert.match(
+    styles,
+    /message-board-card > header\s*\{[^}]*border-bottom:\s*0\.55cqw solid #91a764[^}]*background:\s*#dce9ca/s,
+  );
+  assert.match(styles, /message-board-card\[data-own="true"\] > header\s*\{[^}]*background:\s*#efe0a8/s);
 });
