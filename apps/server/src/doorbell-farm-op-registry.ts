@@ -39,6 +39,18 @@ const uniquePositiveIntegers = z
 const animalName = nonEmptyString.refine((value) => !/^\d+$/.test(value), "动物名称不能是数字代号");
 const integer = z.number().int();
 const nonEmptyStrings = z.array(nonEmptyString);
+const kitchenItems = z.array(nonEmptyString).min(2).max(5);
+const kitchenResearchItems = z.array(nonEmptyString).min(2).max(5);
+const kitchenMethod = z.enum([
+  "stir-fry",
+  "pan-fry",
+  "stew",
+  "steam",
+  "roast",
+  "deep-fry",
+  "dessert",
+  "drink",
+]);
 
 function createArgsSchema(
   branches: readonly ArgsShape[],
@@ -444,24 +456,43 @@ const nonHelpOperations: FarmOperationDefinition[] = [
   }),
   defineOperation({
     op: "farm.kitchen.buy",
-    description: "购买料理台商店中的食材或食谱。",
-    argsHint: "{kind, id, qty?, detail?}",
+    description:
+      "购买料理台商店中的食材、正式食谱或料理工具。原创菜谱通过 go.farm.commission 当前返回的 option 购买。",
+    argsHint: '{kind:"ingredient"|"recipe"|"tool", id, qty?, detail?}',
     branches: [
       {
-        kind: z.enum(["ingredient", "recipe"]),
+        kind: z.literal("ingredient"),
         id: nonEmptyString,
         qty: positiveInteger.optional(),
       },
+      { kind: z.enum(["recipe", "tool"]), id: nonEmptyString, qty: z.literal(1).optional() },
     ],
-    exampleArgs: [{ kind: "ingredient", id: "ingredient-id", qty: 1 }],
+    exampleArgs: [
+      { kind: "ingredient", id: "ingredient-id", qty: 1 },
+      { kind: "recipe", id: "recipe-id" },
+      { kind: "tool", id: "steam" },
+    ],
     adapt: (args) => ({ kind: "farm", action: "kitchen", params: { op: "buy", ...args } }),
   }),
   defineOperation({
     op: "farm.kitchen.cook",
-    description: "制作料理：使用 recipe 按已解锁食谱制作，或使用 items 试做一组食材；二选一。",
-    argsHint: "{recipe, detail?} 或 {items, detail?}",
-    branches: [{ recipe: nonEmptyString }, { items: nonEmptyStrings }],
-    exampleArgs: [{ recipe: "recipe-id" }, { items: ["ingredient-a", "ingredient-b"] }],
+    description:
+      "制作料理：recipe 直接使用已解锁食谱绑定的制作方式；items + method 按指定方式试做；持有料理师资格时可以再填写 name 研发并登记原创菜谱。",
+    argsHint: "{recipe, detail?} 或 {items, method, detail?} 或 {items, method, name, detail?}",
+    branches: [
+      { recipe: nonEmptyString },
+      { items: kitchenItems, method: kitchenMethod },
+      { items: kitchenResearchItems, method: kitchenMethod, name: nonEmptyString },
+    ],
+    exampleArgs: [
+      { recipe: "recipe-id" },
+      { items: ["ingredient-a", "ingredient-b"], method: "stir-fry" },
+      {
+        items: ["ingredient-a", "ingredient-b"],
+        method: "stir-fry",
+        name: "原创料理名",
+      },
+    ],
     adapt: (args) => ({ kind: "farm", action: "kitchen", params: { op: "cook", ...args } }),
   }),
   defineOperation({

@@ -23,7 +23,7 @@ export const HUMAN_LOGIN_FAILURE_WINDOW_MS = 15 * 60 * 1000;
 export const HUMAN_LOGIN_FAILURE_THRESHOLD = 10;
 export const HUMAN_LOGIN_LOCK_DURATION_MS = 30 * 60 * 1000;
 export const FARM_PURCHASE_REQUEST_TTL_MS = 24 * 60 * 60 * 1000;
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 11;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 12;
 const LEGACY_CONNECTOR_DELIVERY_GENERATION = "00000000-0000-0000-0000-000000000000";
 
 export interface RegistrationCodeRecord {
@@ -158,6 +158,14 @@ export interface BellBindingState {
   lastConnectedAt: number | null;
 }
 
+export interface CareerJobWakeInput {
+  wakeId: string;
+  residentId: string;
+  letterId: string;
+  message: string;
+  createdAt: number;
+}
+
 export type BellWakeStatus = "pending" | "acked" | "blocked" | "cancelled";
 
 export const FARM_PURCHASE_SHOPS = ["field", "ranch"] as const;
@@ -166,7 +174,11 @@ export type FarmPurchaseShop = (typeof FARM_PURCHASE_SHOPS)[number];
 export const FARM_PURCHASE_REQUEST_STATUSES = ["requested", "expired", "failed"] as const;
 export type FarmPurchaseRequestStatus = (typeof FARM_PURCHASE_REQUEST_STATUSES)[number];
 
-export type BellWakeReason = "mailbox_unread" | "farm_purchase_request" | "career_exam_reminder";
+export type BellWakeReason =
+  | "mailbox_unread"
+  | "farm_purchase_request"
+  | "career_exam_reminder"
+  | "career_job_update";
 
 export type CareerExamReminderStatus = "scheduled" | "delivered" | "cancelled";
 
@@ -1357,6 +1369,26 @@ export class CommunityDatabase {
         )
       );
 
+      CREATE TABLE IF NOT EXISTS career_job_wakes (
+        wake_id TEXT PRIMARY KEY,
+        resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+        letter_id TEXT NOT NULL UNIQUE REFERENCES mailbox_letters(letter_id) ON DELETE RESTRICT,
+        status TEXT NOT NULL CHECK (status IN ('pending', 'acked', 'blocked', 'cancelled')),
+        created_at INTEGER NOT NULL,
+        ended_at INTEGER,
+        block_reason TEXT,
+        error_code TEXT,
+        payload_json TEXT NOT NULL,
+        CHECK (
+          (status = 'pending' AND ended_at IS NULL AND block_reason IS NULL AND error_code IS NULL)
+          OR (status = 'acked' AND ended_at IS NOT NULL AND block_reason IS NULL AND error_code IS NULL)
+          OR (status = 'blocked' AND ended_at IS NOT NULL AND block_reason IS NOT NULL AND error_code IS NOT NULL)
+          OR (status = 'cancelled' AND ended_at IS NOT NULL AND block_reason IS NULL AND error_code IS NULL)
+        )
+      );
+      CREATE INDEX IF NOT EXISTS career_job_wakes_resident_status
+        ON career_job_wakes (resident_id, status, created_at, wake_id);
+
       CREATE TABLE IF NOT EXISTS career_exam_reminders (
         attempt_id TEXT PRIMARY KEY,
         resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
@@ -2349,6 +2381,33 @@ export class CommunityDatabase {
         throw new Error("Community database schema v11 migration violated foreign keys");
       }
       migratedSchemaVersion = 11;
+    }
+    if (migratedSchemaVersion < 12) {
+      this.#database.transaction(() => {
+        this.#database.exec(`
+          CREATE TABLE IF NOT EXISTS career_job_wakes (
+            wake_id TEXT PRIMARY KEY,
+            resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+            letter_id TEXT NOT NULL UNIQUE REFERENCES mailbox_letters(letter_id) ON DELETE RESTRICT,
+            status TEXT NOT NULL CHECK (status IN ('pending', 'acked', 'blocked', 'cancelled')),
+            created_at INTEGER NOT NULL,
+            ended_at INTEGER,
+            block_reason TEXT,
+            error_code TEXT,
+            payload_json TEXT NOT NULL,
+            CHECK (
+              (status = 'pending' AND ended_at IS NULL AND block_reason IS NULL AND error_code IS NULL)
+              OR (status = 'acked' AND ended_at IS NOT NULL AND block_reason IS NULL AND error_code IS NULL)
+              OR (status = 'blocked' AND ended_at IS NOT NULL AND block_reason IS NOT NULL AND error_code IS NOT NULL)
+              OR (status = 'cancelled' AND ended_at IS NOT NULL AND block_reason IS NULL AND error_code IS NULL)
+            )
+          );
+          CREATE INDEX IF NOT EXISTS career_job_wakes_resident_status
+            ON career_job_wakes (resident_id, status, created_at, wake_id);
+        `);
+        this.#database.pragma("user_version = 12");
+      })();
+      migratedSchemaVersion = 12;
     }
     this.#database.transaction(() => {
       const itemColumns = this.#database.pragma(
@@ -3671,6 +3730,41 @@ export class CommunityDatabase {
     return transaction.immediate();
   }
 
+  cancelPendingCareerJobWakesForResidentReadMail(
+    residentId: string,
+    now: number,
+  ): BellWakeCancellationResult {
+    const transaction = this.#database.transaction(() => {
+      const pending = this.#database
+        .prepare(
+          `SELECT wake.wake_id
+           FROM career_job_wakes AS wake
+           JOIN mailbox_read_states AS read_state
+             ON read_state.letter_id = wake.letter_id
+            AND read_state.audience = 'resident'
+           WHERE wake.resident_id = ? AND wake.status = 'pending'
+           ORDER BY wake.created_at, wake.wake_id`,
+        )
+        .all(residentId) as Array<{ wake_id: string }>;
+      if (pending.length === 0) {
+        return { residentId, cancelledWakeId: null, cancelledWakeIds: [] };
+      }
+      const wakeIds = pending.map((wake) => wake.wake_id);
+      this.#database
+        .prepare(
+          `UPDATE career_job_wakes
+           SET status = 'cancelled', ended_at = ?
+           WHERE resident_id = ? AND status = 'pending'
+             AND letter_id IN (
+               SELECT letter_id FROM mailbox_read_states WHERE audience = 'resident'
+             )`,
+        )
+        .run(now, residentId);
+      return { residentId, cancelledWakeId: wakeIds[0] ?? null, cancelledWakeIds: wakeIds };
+    });
+    return transaction.immediate();
+  }
+
   scheduleActivityReminder(input: ActivityReminderScheduleInput): ActivityReminderRecord {
     if (
       input.farmDoorplate.length === 0 ||
@@ -4167,11 +4261,103 @@ export class CommunityDatabase {
          ORDER BY created_at ASC, wake_id ASC`,
       )
       .all(residentId) as BellWakeRow[];
-    return rows.map(mapBellWake);
+    const careerRows = this.#database
+      .prepare(
+        `SELECT wake_id,
+                resident_id,
+                'career_job_update' AS reason,
+                status,
+                created_at,
+                ended_at,
+                block_reason,
+                error_code,
+                NULL AS purchase_request_id,
+                letter_id,
+                payload_json
+         FROM career_job_wakes
+         WHERE resident_id = ? AND status = 'pending'`,
+      )
+      .all(residentId) as BellWakeRow[];
+    return [...rows, ...careerRows]
+      .map(mapBellWake)
+      .sort(
+        (left, right) =>
+          left.createdAt - right.createdAt || left.wakeId.localeCompare(right.wakeId),
+      );
+  }
+
+  createCareerJobWake(input: CareerJobWakeInput): BellWakeRecord {
+    const transaction = this.#database.transaction(() => {
+      if (
+        input.wakeId.length === 0 ||
+        input.message.trim().length === 0 ||
+        !Number.isSafeInteger(input.createdAt) ||
+        input.createdAt < 0
+      ) {
+        throw new Error("The career job wake facts are invalid");
+      }
+      const letter = this.#database
+        .prepare(
+          `SELECT h.resident_id
+           FROM mailbox_letters AS letter
+           JOIN homes AS h ON h.home_id = letter.home_id
+           WHERE letter.letter_id = ?`,
+        )
+        .get(input.letterId) as { resident_id: string } | undefined;
+      if (!letter || letter.resident_id !== input.residentId) {
+        throw new Error("The career job wake letter does not belong to the resident");
+      }
+      const payloadJson = JSON.stringify({ text: input.message });
+      const bellWakeCollision = this.#database
+        .prepare("SELECT 1 FROM bell_wakes WHERE wake_id = ?")
+        .get(input.wakeId);
+      if (bellWakeCollision) {
+        throw new Error("The career job wake id is already used by another Bell wake");
+      }
+      const existing = this.#database
+        .prepare(
+          `SELECT wake_id, resident_id, letter_id, created_at, payload_json
+           FROM career_job_wakes
+           WHERE wake_id = ? OR letter_id = ?`,
+        )
+        .get(input.wakeId, input.letterId) as
+        | {
+            wake_id: string;
+            resident_id: string;
+            letter_id: string;
+            created_at: number;
+            payload_json: string;
+          }
+        | undefined;
+      if (existing) {
+        if (
+          existing.wake_id !== input.wakeId ||
+          existing.resident_id !== input.residentId ||
+          existing.letter_id !== input.letterId ||
+          existing.created_at !== input.createdAt ||
+          existing.payload_json !== payloadJson
+        ) {
+          throw new Error("The career job wake conflicts with an existing wake");
+        }
+      } else {
+        this.#database
+          .prepare(
+            `INSERT INTO career_job_wakes (
+               wake_id, resident_id, letter_id, status, created_at,
+               ended_at, block_reason, error_code, payload_json
+             ) VALUES (?, ?, ?, 'pending', ?, NULL, NULL, NULL, ?)`,
+          )
+          .run(input.wakeId, input.residentId, input.letterId, input.createdAt, payloadJson);
+      }
+      return this.getBellWake(input.residentId, input.wakeId);
+    });
+    const wake = transaction.immediate();
+    if (!wake) throw new Error("The career job wake could not be read after creation");
+    return wake;
   }
 
   getBellWake(residentId: string, wakeId: string): BellWakeRecord | undefined {
-    const row = this.#database
+    let row = this.#database
       .prepare(
         `SELECT wake_id,
                 resident_id,
@@ -4188,6 +4374,23 @@ export class CommunityDatabase {
          WHERE resident_id = ? AND wake_id = ?`,
       )
       .get(residentId, wakeId) as BellWakeRow | undefined;
+    row ??= this.#database
+      .prepare(
+        `SELECT wake_id,
+                resident_id,
+                'career_job_update' AS reason,
+                status,
+                created_at,
+                ended_at,
+                block_reason,
+                error_code,
+                NULL AS purchase_request_id,
+                letter_id,
+                payload_json
+         FROM career_job_wakes
+         WHERE resident_id = ? AND wake_id = ?`,
+      )
+      .get(residentId, wakeId) as BellWakeRow | undefined;
     return row ? mapBellWake(row) : undefined;
   }
 
@@ -4197,7 +4400,7 @@ export class CommunityDatabase {
     now: number,
   ): "acked" | "duplicate" | "conflict" | "missing" {
     const transaction = this.#database.transaction(() => {
-      const row = this.#database
+      let row = this.#database
         .prepare(
           `SELECT wake_id,
                   resident_id,
@@ -4214,16 +4417,43 @@ export class CommunityDatabase {
            WHERE resident_id = ? AND wake_id = ?`,
         )
         .get(residentId, wakeId) as BellWakeRow | undefined;
+      const careerWake = row === undefined;
+      row ??= this.#database
+        .prepare(
+          `SELECT wake_id,
+                  resident_id,
+                  'career_job_update' AS reason,
+                  status,
+                  created_at,
+                  ended_at,
+                  block_reason,
+                  error_code,
+                  NULL AS purchase_request_id,
+                  letter_id,
+                  payload_json
+           FROM career_job_wakes
+           WHERE resident_id = ? AND wake_id = ?`,
+        )
+        .get(residentId, wakeId) as BellWakeRow | undefined;
       if (!row) return "missing" as const;
       if (row.status === "acked") return "duplicate" as const;
       if (row.status !== "pending") return "conflict" as const;
       this.#database
         .prepare(
-          `UPDATE bell_wakes
+          `UPDATE ${careerWake ? "career_job_wakes" : "bell_wakes"}
            SET status = 'acked', ended_at = ?
            WHERE resident_id = ? AND wake_id = ? AND status = 'pending'`,
         )
         .run(now, residentId, wakeId);
+      if (careerWake && row.letter_id !== null) {
+        this.#database
+          .prepare(
+            `INSERT INTO mailbox_read_states (letter_id, audience, read_at)
+             VALUES (?, 'resident', ?)
+             ON CONFLICT(letter_id, audience) DO NOTHING`,
+          )
+          .run(row.letter_id, now);
+      }
       return "acked" as const;
     });
     return transaction.immediate();
@@ -4237,7 +4467,7 @@ export class CommunityDatabase {
     errorCode: string,
   ): "blocked" | "duplicate" | "conflict" | "missing" {
     const transaction = this.#database.transaction(() => {
-      const row = this.#database
+      let row = this.#database
         .prepare(
           `SELECT wake_id,
                   resident_id,
@@ -4254,6 +4484,24 @@ export class CommunityDatabase {
            WHERE resident_id = ? AND wake_id = ?`,
         )
         .get(residentId, wakeId) as BellWakeRow | undefined;
+      const careerWake = row === undefined;
+      row ??= this.#database
+        .prepare(
+          `SELECT wake_id,
+                  resident_id,
+                  'career_job_update' AS reason,
+                  status,
+                  created_at,
+                  ended_at,
+                  block_reason,
+                  error_code,
+                  NULL AS purchase_request_id,
+                  letter_id,
+                  payload_json
+           FROM career_job_wakes
+           WHERE resident_id = ? AND wake_id = ?`,
+        )
+        .get(residentId, wakeId) as BellWakeRow | undefined;
       if (!row) return "missing" as const;
       if (row.status === "blocked") {
         return row.block_reason === blockReason && row.error_code === errorCode
@@ -4263,7 +4511,7 @@ export class CommunityDatabase {
       if (row.status !== "pending") return "conflict" as const;
       this.#database
         .prepare(
-          `UPDATE bell_wakes
+          `UPDATE ${careerWake ? "career_job_wakes" : "bell_wakes"}
            SET status = 'blocked', ended_at = ?, block_reason = ?, error_code = ?
            WHERE resident_id = ? AND wake_id = ? AND status = 'pending'`,
         )
@@ -4286,10 +4534,18 @@ export class CommunityDatabase {
 
   cancelBellWake(residentId: string, wakeId: string, now: number): BellWakeCancellationResult {
     const transaction = this.#database.transaction(() => {
-      const row = this.#database
+      let row = this.#database
         .prepare(
           `SELECT wake_id
            FROM bell_wakes
+           WHERE resident_id = ? AND wake_id = ? AND status = 'pending'`,
+        )
+        .get(residentId, wakeId) as { wake_id: string } | undefined;
+      const careerWake = row === undefined;
+      row ??= this.#database
+        .prepare(
+          `SELECT wake_id
+           FROM career_job_wakes
            WHERE resident_id = ? AND wake_id = ? AND status = 'pending'`,
         )
         .get(residentId, wakeId) as { wake_id: string } | undefined;
@@ -4298,7 +4554,7 @@ export class CommunityDatabase {
       }
       this.#database
         .prepare(
-          `UPDATE bell_wakes
+          `UPDATE ${careerWake ? "career_job_wakes" : "bell_wakes"}
            SET status = 'cancelled', ended_at = ?
            WHERE resident_id = ? AND wake_id = ? AND status = 'pending'`,
         )

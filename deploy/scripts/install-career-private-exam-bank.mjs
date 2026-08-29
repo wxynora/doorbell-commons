@@ -41,7 +41,16 @@ function validateStaticQuestion(question, label) {
   exactKeys(question.options, ["A", "B", "C", "D"], `${label}.options`);
   for (const answer of ANSWERS)
     nonEmptyString(question.options[answer], `${label}.options.${answer}`);
-  if (!ANSWERS.has(question.answer)) fail(`${label}.answer is invalid`);
+  if (
+    !Array.isArray(question.answer) ||
+    question.answer.length < 1 ||
+    question.answer.length > ANSWERS.size ||
+    question.answer.some((answer) => !ANSWERS.has(answer)) ||
+    new Set(question.answer).size !== question.answer.length
+  ) {
+    fail(`${label}.answer is invalid`);
+  }
+  question.answer.sort();
 }
 
 function validateRecipeQuestion(question, label) {

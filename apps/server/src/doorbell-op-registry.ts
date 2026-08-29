@@ -11,6 +11,7 @@ import {
   type LingyeOperationDefinition,
   modelVisibleLingyeOperationByName,
   modelVisibleLingyeOperationNames,
+  modelVisibleLingyeOperations,
 } from "./doorbell-lingye-op-registry.js";
 
 export type { DoorbellCallExample };
@@ -43,11 +44,20 @@ export function findDoorbellOperation(op: string): DoorbellRegisteredOperation |
   return lingye ? { kind: "lingye", operation: lingye } : undefined;
 }
 
+const LINGYE_OPERATION_INDEX = modelVisibleLingyeOperations
+  .map((operation) => `${operation.op} args ${operation.argsHint} — ${operation.description}`)
+  .join("\n");
+
 const LINGYE_TOOL_DESCRIPTION = `${FARM_TOOL_DESCRIPTION}
 
 铃野公共地点使用 go.<地点>.<动作>。银行和学校先调用 view 读取真实事实与当前 option；职业地点以空 args 调用 commission 查看真实委托。后续只能原样提交服务端返回的 option，不得自行编造流程名称、身份字段或内部结算命令。需要付费的 option 会在同一操作中自动检查并冻结费用；余额不足时业务不创建，也不会产生扣款事实。`;
 
-export const DOORBELL_TOOL_DESCRIPTION = LINGYE_TOOL_DESCRIPTION;
+const LINGYE_TOOL_DESCRIPTION_WITH_INDEX = `${LINGYE_TOOL_DESCRIPTION}
+
+当前铃野操作：
+${LINGYE_OPERATION_INDEX}`;
+
+export const DOORBELL_TOOL_DESCRIPTION = LINGYE_TOOL_DESCRIPTION_WITH_INDEX;
 
 export const doorbellToolDefinition = {
   name: "doorbell",

@@ -7,7 +7,7 @@ import Database from "better-sqlite3";
 import { BellService, type BellStreamSink } from "./bell-service.js";
 import { CommunityDatabase, FARM_PURCHASE_REQUEST_TTL_MS } from "./community-database.js";
 import { FarmPurchaseRequestService } from "./farm-purchase-request-service.js";
-import { MailboxService } from "./mailbox-service.js";
+import { LingyeNotificationDeliveryService, MailboxService } from "./mailbox-service.js";
 
 const TOKEN = "dbb_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 const TOKEN_HASH = "643e8661aa252b51405263db0c778704de8ef7455bcbb1bc0db365486a8870e6";
@@ -104,6 +104,149 @@ test("human mailbox delivery and opening never produce a Bell wake", async () =>
   service.refreshHome(homeId);
   assert.equal(collected.events.filter((event) => event.event === "wake").length, 0);
   assert.doesNotMatch(JSON.stringify(collected.events), /later private title|later body/u);
+
+  connection.close();
+  service.close();
+  database.close();
+});
+
+test("career job updates use their isolated Bell wake and acknowledge normally", async () => {
+  const { database, homeId, residentId } = registeredDatabase();
+  let nextCareerLetter = 0;
+  const mailbox = new MailboxService({
+    database,
+    generateLetterId: () => `career-job-letter-${++nextCareerLetter}`,
+    now: () => 2_000,
+  });
+  const notifiedResidents: string[] = [];
+  const notifications = new LingyeNotificationDeliveryService({
+    database,
+    mailbox,
+    bell: { notifyResident: (candidate) => notifiedResidents.push(candidate) },
+  });
+  notifications.deliver(
+    {
+      notification_id: "completed-test",
+      kind: "commission_completed",
+      recipient_resident_id: residentId,
+    },
+    "another-resident",
+  );
+  assert.deepEqual(notifiedResidents, [residentId]);
+  assert.deepEqual(mailbox.listForAudience(homeId, "human", 1).letters[0], {
+    letterId: "career-job-letter-1",
+    homeId,
+    category: "system",
+    title: "委托已完成",
+    body: "你参与的委托已经完成，可以用 doorbell 查看权威结果。",
+    createdAt: 2_000,
+    isNew: true,
+    attachment: null,
+  });
+  notifications.deliver(
+    {
+      notification_id: "reply-self-test",
+      kind: "commission_reply",
+      recipient_resident_id: residentId,
+      message_text: "我先检查一下。",
+    },
+    residentId,
+  );
+  assert.deepEqual(notifiedResidents, [residentId]);
+  assert.deepEqual(
+    mailbox
+      .listForAudience(homeId, "human", 1)
+      .letters.find((letter) => letter.letterId === "career-job-letter-2"),
+    {
+      letterId: "career-job-letter-2",
+      homeId,
+      category: "system",
+      title: "委托有新回复",
+      body: "你参与的委托收到一条新回复：我先检查一下。",
+      createdAt: 2_000,
+      isNew: true,
+      attachment: null,
+    },
+  );
+
+  const service = new BellService({
+    database,
+    generateConnectionEpoch: () => "epoch-career-job",
+    heartbeatIntervalMs: 30_000,
+    now: () => 3_000,
+    registrationAuth: { confirmCurrentResidentMembership: async () => undefined },
+    replayIntervalMs: 60_000,
+  });
+  const collected = collectingSink();
+  const connection = await service.connect(TOKEN, collected.sink);
+  assert.deepEqual(collected.events.at(-1), {
+    event: "wake",
+    data: {
+      version: 1,
+      connection_epoch: "epoch-career-job",
+      wake_id: "career-job:completed-test",
+      reason: "career_job_update",
+      message: "你参与的委托已经完成，可以用 doorbell 查看权威结果。",
+      created_at: new Date(2_000).toISOString(),
+    },
+  });
+  assert.deepEqual(
+    await service.acknowledge(TOKEN, {
+      connectionEpoch: "epoch-career-job",
+      wakeId: "career-job:completed-test",
+    }),
+    { version: 1, wake_id: "career-job:completed-test", status: "acked" },
+  );
+  assert.equal(
+    mailbox
+      .listForAudience(homeId, "resident", 1)
+      .letters.find((letter) => letter.letterId === "career-job-letter-1")?.isNew,
+    false,
+  );
+  assert.equal(
+    mailbox
+      .listForAudience(homeId, "human", 1)
+      .letters.find((letter) => letter.letterId === "career-job-letter-1")?.isNew,
+    true,
+  );
+  assert.equal(database.listPendingBellWakes(residentId).length, 0);
+
+  const onlineNotifications = new LingyeNotificationDeliveryService({
+    database,
+    mailbox,
+    bell: service,
+  });
+  onlineNotifications.deliver(
+    {
+      notification_id: "reply-cancel-test",
+      kind: "commission_reply",
+      recipient_resident_id: residentId,
+      message_text: "请继续处理。",
+    },
+    "another-resident",
+  );
+  assert.equal(
+    collected.events.some(
+      (event) =>
+        event.event === "wake" &&
+        (event.data as { wake_id?: string }).wake_id === "career-job:reply-cancel-test",
+    ),
+    true,
+  );
+  mailbox.openForAudience(homeId, "resident", "career-job-letter-3");
+  service.refreshResident(residentId);
+  assert.equal(
+    collected.events.some(
+      (event) =>
+        event.event === "cancel" &&
+        (event.data as { wake_id?: string }).wake_id === "career-job:reply-cancel-test",
+    ),
+    true,
+  );
+  assert.equal(
+    database.getBellWake(residentId, "career-job:reply-cancel-test")?.status,
+    "cancelled",
+  );
 
   connection.close();
   service.close();

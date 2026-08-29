@@ -281,6 +281,11 @@ export interface DoorbellMcpRuntimeOptions {
   mcpEndpoint: string;
   now?: () => number;
   onNotificationDeliveryError?: (error: unknown) => void;
+  onLingyeNotification?: (
+    notification: NonNullable<Extract<LingyeActionResult, { ok: true }>["notifications"]>[number],
+    sourceResidentId: string,
+  ) => void;
+  onResidentNotificationsRead?: (residentId: string) => void;
 }
 
 export class DoorbellMcpRuntime {
@@ -292,6 +297,15 @@ export class DoorbellMcpRuntime {
   readonly #allowedOrigin: string;
   readonly #now: () => number;
   readonly #onNotificationDeliveryError: (error: unknown) => void;
+  readonly #onLingyeNotification:
+    | ((
+        notification: NonNullable<
+          Extract<LingyeActionResult, { ok: true }>["notifications"]
+        >[number],
+        sourceResidentId: string,
+      ) => void)
+    | undefined;
+  readonly #onResidentNotificationsRead: ((residentId: string) => void) | undefined;
   readonly #lastFarmCallAt = new Map<string, number>();
 
   constructor(options: DoorbellMcpRuntimeOptions) {
@@ -303,6 +317,8 @@ export class DoorbellMcpRuntime {
     this.#allowedOrigin = new URL(options.mcpEndpoint).origin;
     this.#now = options.now ?? Date.now;
     this.#onNotificationDeliveryError = options.onNotificationDeliveryError ?? (() => undefined);
+    this.#onLingyeNotification = options.onLingyeNotification;
+    this.#onResidentNotificationsRead = options.onResidentNotificationsRead;
   }
 
   async handlePost(input: DoorbellMcpPostInput): Promise<DoorbellMcpHttpResult> {
@@ -569,6 +585,19 @@ export class DoorbellMcpRuntime {
           op: registered.operation.op,
           args: parsed.data,
         });
+        if (result.ok && result.notifications && this.#onLingyeNotification) {
+          for (const notification of result.notifications) {
+            try {
+              this.#onLingyeNotification(notification, context.residentId);
+            } catch (error) {
+              try {
+                this.#onNotificationDeliveryError(error);
+              } catch {
+                // The already completed Lingye action must remain the returned result.
+              }
+            }
+          }
+        }
         if (
           registered.operation.op === "go.school.view" ||
           registered.operation.op === "go.school.choose"
@@ -655,6 +684,15 @@ export class DoorbellMcpRuntime {
     );
     if (notifications.length === 0) {
       return result;
+    }
+    try {
+      this.#onResidentNotificationsRead?.(context.residentId);
+    } catch (error) {
+      try {
+        this.#onNotificationDeliveryError(error);
+      } catch {
+        // Bell cancellation is a side effect and cannot overturn the tool result.
+      }
     }
     const suffix = notifications.join("\n\n");
     const currentText = result.content[0]?.text ?? "";

@@ -64,6 +64,12 @@ reminders keyed by resident, home, farm, reminder kind, and authority source. On
 Human Web Push switches enabled and at least one subscription are reconciled every five minutes against
 the farm field and Glimmer structured reads; failure leaves the reminder pending, a settings disable
 cancels it, service restart restores it, and delivery creates neither Bell wakes nor mailbox letters.
+The current Main release candidate advances that same ordered schema to v12 by adding only an
+isolated `career_job_wakes` table. Commission reply／completion letters remain in the existing mailbox;
+the separate table carries their Bell delivery／ACK／block／cancel state without rewriting purchase or
+exam wakes. Reading the letter through MCP cancels its still-pending career wake so the same notice is
+not injected twice; a successful career-wake ACK marks only the resident mailbox audience as read, while
+the Human audience remains unread.
 Version 11 changes only browser subscription ownership: one Push endpoint may belong to multiple
 profiles of the same Human account through `(endpoint, resident_id, home_id)`, while another account
 is still rejected and deleting one profile's relation leaves the others intact.
@@ -207,12 +213,16 @@ New trail facts carry a persisted event id, while legacy trail entries receive a
 they become security sources, so inserting a newer trail cannot rename an older case. Registered farms run the same idempotent P3 day
 advance both at the Beijing day boundary and before ordinary authoritative farm advancement. Feed,
 dispatch, and ordinary `run／water／harvest／ripen／use／steal` paths consult the same health／object-lock
-state. Farm commit `838b04d` contains the non-daily five-career and chef runtime described above. The
-community registry exposes seven authoritative non-newsroom `go.*` operations and keeps only
-`go.newsroom.commission` model-hidden. Course and exam availability is now per-entry: completed levels are
-visible, explicit P4／P5／P7 or public-event dependencies stay blocked, and a formal exam still additionally
-requires its deployment-side private bank. None of these changes is active in production: no real-player
-activation, migration, deployment, or restart was performed.
+state. Farm commit `838b04d` contains the earlier non-daily five-career and chef runtime described above.
+Farm commit `a897c50` and the current Main release candidate keep one public tool and the same 65-operation enum: 58
+`farm.*` plus seven authoritative non-newsroom `go.*`; only `go.newsroom.commission` remains model-hidden.
+The existing surfaces now also carry real player-loan options, method-bound cooking and paid tools,
+original-recipe／chef-store options, bound-job replies, owner-confirmed NPC fallback after transfer, and
+whole-paper multi-select answers. Readiness requires the seven public operations, the explicit eight
+approved public/private exam levels, economy and nature rules, and nine named capability flags rather
+than accepting an arbitrary non-empty exam set. None of these candidates is active in production: the
+private exam bank is not installed, MCP readiness is closed, and no real-player migration, deployment,
+or restart was performed.
 
 The farm snapshot is not currently source-reproducible: its root has the live-derived `dist/` and
 content but no matching `src/`, `tsconfig.json`, or lockfile, while `source-reference/` is older and

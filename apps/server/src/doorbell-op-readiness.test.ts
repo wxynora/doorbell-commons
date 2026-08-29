@@ -34,4 +34,6 @@ test("model-visible registry exposes ready Lingye operations while keeping newsr
   for (const op of expected) assert.equal(findDoorbellOperation(op)?.kind, "lingye", op);
   assert.equal(findDoorbellOperation("go.newsroom.commission"), undefined);
   assert.match(DOORBELL_TOOL_DESCRIPTION, /铃野公共地点使用 go\./u);
+  assert.match(DOORBELL_TOOL_DESCRIPTION, /go\.bank\.choose args/u);
+  assert.match(DOORBELL_TOOL_DESCRIPTION, /go\.farm\.commission args/u);
 });

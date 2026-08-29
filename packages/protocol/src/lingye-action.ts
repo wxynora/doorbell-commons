@@ -33,6 +33,12 @@ export const lingyeActionBusinessErrorCodeSchema = z.enum([
 
 export const LINGYE_ACTION_ERROR_MESSAGES = Object.freeze({
   INSUFFICIENT_FUNDS: "可用余额不足，本次操作没有执行。",
+  OPTION_NOT_AVAILABLE: "当前选项已失效或不适用于这项业务；请重新查看当前事实与 option。",
+  REFERENCE_NOT_FOUND: "没有找到这条记录，或当前居民无权读取。",
+  QUALIFICATION_REQUIRED: "当前职业资格不足，本次操作没有执行。",
+  CONFLICT: "当前状态已经变化，本次操作没有执行；请重新查看。",
+  LINGYE_NOT_READY: "铃野相关能力尚未就绪，本次操作没有执行。",
+  OP_REJECTED: "本次操作被铃野规则拒绝，没有产生业务结果。",
 });
 
 export const lingyeActionSuccessSchema = z
@@ -40,6 +46,29 @@ export const lingyeActionSuccessSchema = z
     ok: z.literal(true),
     text: z.string(),
     data: z.record(z.string(), z.unknown()),
+    notifications: z
+      .array(
+        z
+          .object({
+            notification_id: z.string().trim().min(1),
+            kind: z.enum(["commission_reply", "commission_completed"]),
+            recipient_resident_id: z.uuid(),
+            message_text: z.string().trim().min(1).optional(),
+          })
+          .strict()
+          .superRefine((notification, context) => {
+            if (
+              (notification.kind === "commission_reply") !==
+              (notification.message_text !== undefined)
+            ) {
+              context.addIssue({
+                code: "custom",
+                message: "Only commission replies carry message_text",
+              });
+            }
+          }),
+      )
+      .optional(),
   })
   .strict();
 
@@ -90,6 +119,31 @@ export const lingyeExamLevelSchema = z
   })
   .strict();
 
+export const REQUIRED_LINGYE_EXAM_LEVELS = Object.freeze([
+  { career: "chef", level: 1 },
+  { career: "chef", level: 2 },
+  { career: "agronomist", level: 1 },
+  { career: "veterinarian", level: 1 },
+  { career: "veterinarian", level: 2 },
+  { career: "constable", level: 1 },
+  { career: "constable", level: 2 },
+  { career: "constable", level: 3 },
+] as const);
+
+export const lingyeRuntimeCapabilitiesSchema = z
+  .object({
+    player_loans: z.literal(true),
+    multi_select_assessments: z.literal(true),
+    kitchen_methods: z.literal(true),
+    kitchen_tools: z.literal(true),
+    chef_original_recipes: z.literal(true),
+    chef_store: z.literal(true),
+    commission_messages: z.literal(true),
+    commission_npc_transfer: z.literal(true),
+    commission_notifications: z.literal(true),
+  })
+  .strict();
+
 export const lingyeRuntimeReadinessSchema = z
   .object({
     ok: z.literal(true),
@@ -114,6 +168,7 @@ export const lingyeRuntimeReadinessSchema = z
         restricted_daily_silver_limit: z.number().int().positive(),
       })
       .strict(),
+    capabilities: lingyeRuntimeCapabilitiesSchema,
     nature_runtime: z
       .object({
         adapter_version: z.literal(1),
@@ -139,4 +194,5 @@ export type LingyeActionBusinessErrorCode = z.infer<typeof lingyeActionBusinessE
 export type LingyeActionResult = z.infer<typeof lingyeActionResultSchema>;
 export type LingyeActionServiceError = z.infer<typeof lingyeActionServiceErrorSchema>;
 export type LingyeExamLevel = z.infer<typeof lingyeExamLevelSchema>;
+export type LingyeRuntimeCapabilities = z.infer<typeof lingyeRuntimeCapabilitiesSchema>;
 export type LingyeRuntimeReadiness = z.infer<typeof lingyeRuntimeReadinessSchema>;

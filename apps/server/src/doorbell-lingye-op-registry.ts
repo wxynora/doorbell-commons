@@ -28,8 +28,14 @@ const schoolAnswer = z
   .trim()
   .toUpperCase()
   .regex(/^[A-D]$/u, "答案必须是 A、B、C 或 D");
-const schoolAnswers = z
+const schoolSelection = z
   .array(schoolAnswer)
+  .min(1)
+  .max(4)
+  .refine((answers) => new Set(answers).size === answers.length, "同一题不能重复选择同一答案")
+  .transform((answers) => answers.toSorted());
+const schoolAnswers = z
+  .array(schoolSelection)
   .refine((answers) => answers.length === 5 || answers.length === 20, {
     message: "答案数量必须是课程练习的 5 题或正式笔试的 20 题",
   });
@@ -90,7 +96,7 @@ export const lingyeOperations = [
     op: "go.bank.choose",
     modelVisible: true,
     description:
-      "提交 go.bank.view 当前返回的 option 办理银行业务。业务对象、币种和方向由 option 固定；金币兑换银币时 amount 始终表示投入金币。",
+      "提交 go.bank.view 当前返回的 option 办理银行业务。金币兑换银币时 amount 表示投入金币；玩家借款时 amount 表示银币，to 只填写对方公开门牌。",
     argsHint:
       "{option}、{option,amount}、{option,amount,termDays}、{option,amount,termDays,totalRatePpm} 或 {option,to,amount,termDays,totalRatePpm}",
     branches: [
@@ -141,8 +147,8 @@ export const lingyeOperations = [
     op: "go.school.choose",
     modelVisible: true,
     description:
-      "提交 go.school.view 当前返回的 option，选择职业、学习课程、参加考试、投票或办理任职。需要付费时由系统自动扣款或冻结，余额不足则业务不创建。",
-    argsHint: "{option} 或 {option,answers}",
+      '提交 go.school.view 当前返回的 option。课程练习和正式笔试必须一次提交整卷 answers；每题用数组表示所选答案，例如 ["A"] 或 ["A","C"]。需要付费时系统自动扣款或冻结，余额不足则业务不创建。',
+    argsHint: '{option} 或 {option,answers:[...["A"]|["A","C"]]}',
     branches: [{ option: nonEmptyString }, { option: nonEmptyString, answers: schoolAnswers }],
     exampleArgs: [{ option: "returned-option" }],
   }),
@@ -150,7 +156,7 @@ export const lingyeOperations = [
     op: "go.farm.commission",
     modelVisible: true,
     description:
-      "查看或推进发生在真实地块上的农艺委托。空 args 用于查看委托和合法选项；发起、接取、检查、处理、回复、转交和结束均提交服务端返回的 option。",
+      "查看或推进公共农场中的真实农艺委托、料理师原创菜谱交易、料理店经营和已绑定工作的沟通。空 args 查看当前事实与合法 option；后续只提交服务端返回的 option。",
     argsHint: "{}、{reference}、{option}、{option,amount}、{option,text} 或 {option,amount,text}",
     branches: commissionBranches,
     exampleArgs: [{}],
@@ -159,7 +165,7 @@ export const lingyeOperations = [
     op: "go.hospital.commission",
     modelVisible: true,
     description:
-      "查看或推进真实动物病例的诊疗委托。空 args 用于查看病例委托和合法选项；需要时可以选择真人医生或高价医院 NPC。",
+      "查看或推进真实动物病例的诊疗委托。空 args 用于查看病例委托和合法选项；需要时可以选择真人医生或高价医院 NPC。从业者转交后，动物主人可以选择服务端返回的高价医院 NPC option 完成保底处理。",
     argsHint: "{}、{reference}、{option}、{option,amount}、{option,text} 或 {option,amount,text}",
     branches: commissionBranches,
     exampleArgs: [{ reference: "commission-id" }],

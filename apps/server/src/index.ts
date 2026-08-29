@@ -34,7 +34,7 @@ import { FarmHumanFarmSettingsActionClient } from "./farm-settings-action-client
 import { FarmHumanSmeltingActionClient } from "./farm-smelting-action-client.js";
 import { HomeWeatherEngine } from "./home-weather-engine.js";
 import { LingyeDailyService } from "./lingye-daily-service.js";
-import { MailboxService } from "./mailbox-service.js";
+import { LingyeNotificationDeliveryService, MailboxService } from "./mailbox-service.js";
 import { McpAccessService } from "./mcp-access-service.js";
 import { FarmMcpActionClient } from "./mcp-farm-action-client.js";
 import { FarmMcpMigrationClient } from "./mcp-farm-migration-client.js";
@@ -271,6 +271,11 @@ const mailboxService = new MailboxService({
   database,
   farmRewardGranter,
 });
+const lingyeNotificationDeliveryService = new LingyeNotificationDeliveryService({
+  database,
+  mailbox: mailboxService,
+  bell: bellService,
+});
 const sharedMemeBackendService = new SharedMemeBackendService({
   database,
   registrationAuth,
@@ -321,6 +326,9 @@ const mcpRuntime = new DoorbellMcpRuntime({
   careerExamReminders: careerExamReminderService,
   mcpEndpoint: serverConfig.mcpEndpoint,
   onNotificationDeliveryError: reportMcpNotificationError,
+  onLingyeNotification: (notification, sourceResidentId) =>
+    lingyeNotificationDeliveryService.deliver(notification, sourceResidentId),
+  onResidentNotificationsRead: (residentId) => bellService.notifyResident(residentId),
 });
 const mcpAccessService = new McpAccessService({
   database,

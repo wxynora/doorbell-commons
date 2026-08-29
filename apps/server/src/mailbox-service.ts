@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { MailboxCategory } from "@doorbell/protocol";
+import type { LingyeActionResult, MailboxCategory } from "@doorbell/protocol";
 import type {
   CommunityDatabase,
   MailboxAttachmentRecord,
@@ -27,6 +27,20 @@ export interface MailboxServiceOptions {
   farmRewardGranter?: FarmWelcomeRewardGranter;
   now?: () => number;
   generateLetterId?: () => string;
+}
+
+type LingyeNotification = NonNullable<
+  Extract<LingyeActionResult, { ok: true }>["notifications"]
+>[number];
+
+export interface LingyeNotificationBellNotifier {
+  notifyResident(residentId: string): void;
+}
+
+export interface LingyeNotificationDeliveryServiceOptions {
+  database: CommunityDatabase;
+  mailbox: MailboxService;
+  bell: LingyeNotificationBellNotifier;
 }
 
 export class MailboxLetterNotFoundError extends Error {
@@ -164,5 +178,55 @@ export class MailboxService {
       this.#database.markMailboxAttachmentClaimed(homeId, letterId);
     }
     return this.openForAudience(homeId, audience, letterId);
+  }
+}
+
+const COMMISSION_REPLY_TITLE = "委托有新回复";
+const COMMISSION_COMPLETED_TITLE = "委托已完成";
+const COMMISSION_COMPLETED_BODY = "你参与的委托已经完成，可以用 doorbell 查看权威结果。";
+
+export class LingyeNotificationDeliveryService {
+  readonly #database: CommunityDatabase;
+  readonly #mailbox: MailboxService;
+  readonly #bell: LingyeNotificationBellNotifier;
+
+  constructor(options: LingyeNotificationDeliveryServiceOptions) {
+    this.#database = options.database;
+    this.#mailbox = options.mailbox;
+    this.#bell = options.bell;
+  }
+
+  deliver(notification: LingyeNotification, sourceResidentId: string): void {
+    if (notification.kind === "commission_reply" && !notification.message_text) {
+      throw new Error("The commission reply notification has no message text");
+    }
+    const homeId = this.#database.findHomeIdByResidentId(notification.recipient_resident_id);
+    if (!homeId) throw new Error("The Lingye notification recipient has no community home");
+    const title =
+      notification.kind === "commission_reply"
+        ? COMMISSION_REPLY_TITLE
+        : COMMISSION_COMPLETED_TITLE;
+    const body =
+      notification.kind === "commission_reply"
+        ? `你参与的委托收到一条新回复：${notification.message_text}`
+        : COMMISSION_COMPLETED_BODY;
+    const idempotencyKey = `lingye-notification:${notification.notification_id}`;
+    const letter = this.#mailbox.deliver({
+      homeId,
+      idempotencyKey,
+      category: "system",
+      title,
+      body,
+      sensitiveValues: [],
+    });
+    if (notification.recipient_resident_id === sourceResidentId) return;
+    this.#database.createCareerJobWake({
+      wakeId: `career-job:${notification.notification_id}`,
+      residentId: notification.recipient_resident_id,
+      letterId: letter.letterId,
+      message: body,
+      createdAt: letter.createdAt,
+    });
+    this.#bell.notifyResident(notification.recipient_resident_id);
   }
 }

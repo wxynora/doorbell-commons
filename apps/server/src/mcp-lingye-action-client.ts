@@ -5,6 +5,7 @@ import {
   lingyeActionResultSchema,
   lingyeActionServiceErrorSchema,
   lingyeRuntimeReadinessSchema,
+  REQUIRED_LINGYE_EXAM_LEVELS,
 } from "@doorbell/protocol";
 
 export interface LingyeMcpActionInput {
@@ -136,12 +137,13 @@ export class LingyeMcpActionClient
       `${entry.career}:${String(entry.level)}`;
     const publicLevels = new Set(parsed.data.exams.public_ready_levels.map(levelKey));
     const privateLevels = new Set(parsed.data.exams.private_ready_levels.map(levelKey));
+    const requiredLevels = new Set(REQUIRED_LINGYE_EXAM_LEVELS.map(levelKey));
     if (
-      publicLevels.size === 0 ||
       publicLevels.size !== parsed.data.exams.public_ready_levels.length ||
       privateLevels.size !== parsed.data.exams.private_ready_levels.length ||
       publicLevels.size !== privateLevels.size ||
-      [...publicLevels].some((key) => !privateLevels.has(key))
+      [...publicLevels].some((key) => !privateLevels.has(key)) ||
+      [...requiredLevels].some((key) => !publicLevels.has(key))
     ) {
       return false;
     }

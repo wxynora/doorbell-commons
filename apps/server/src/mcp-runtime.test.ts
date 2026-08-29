@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import type { LingyeActionResult } from "@doorbell/protocol";
 import { buildApp } from "./app.js";
 import { CommunityDatabase } from "./community-database.js";
 import { COMMUNITY_QQ_GROUP_ID } from "./config.js";
@@ -110,10 +111,7 @@ class FakeFarmActions implements FarmMcpActionExecutor {
 class FakeLingyeActions implements LingyeMcpActionExecutor {
   readonly calls: LingyeMcpActionInput[] = [];
   nextFailure: Error | undefined;
-  nextResult:
-    | { ok: true; text: string; data: Record<string, unknown> }
-    | { ok: false; error: { code: "INSUFFICIENT_FUNDS"; message: string } }
-    | undefined;
+  nextResult: LingyeActionResult | undefined;
 
   async execute(input: LingyeMcpActionInput) {
     this.calls.push(structuredClone(input));
@@ -139,6 +137,7 @@ interface RuntimeHarness {
   membership: FakeGroupMembership;
   farmActions: FakeFarmActions;
   lingyeActions: FakeLingyeActions;
+  lingyeNotifications: unknown[];
   careerExamReconciliations: unknown[];
   notificationErrors: unknown[];
   mcpRuntime: DoorbellMcpRuntime;
@@ -146,7 +145,10 @@ interface RuntimeHarness {
   close(): Promise<void>;
 }
 
-function openRuntimeHarness(databasePath: string): RuntimeHarness {
+function openRuntimeHarness(
+  databasePath: string,
+  options: { lingyeNotificationFailure?: Error } = {},
+): RuntimeHarness {
   const database = new CommunityDatabase(databasePath);
   const membership = new FakeGroupMembership();
   membership.members.add(RESIDENT_QQ);
@@ -184,6 +186,7 @@ function openRuntimeHarness(databasePath: string): RuntimeHarness {
   const farmActions = new FakeFarmActions();
   const lingyeActions = new FakeLingyeActions();
   const careerExamReconciliations: unknown[] = [];
+  const lingyeNotifications: unknown[] = [];
   const notificationErrors: unknown[] = [];
   const now = { value: NOW };
   const mcpRuntime = new DoorbellMcpRuntime({
@@ -197,6 +200,13 @@ function openRuntimeHarness(databasePath: string): RuntimeHarness {
     mcpEndpoint: "https://doorbell.example/mcp",
     now: () => now.value,
     onNotificationDeliveryError: (error) => notificationErrors.push(error),
+    onLingyeNotification: (notification, sourceResidentId) => {
+      lingyeNotifications.push({
+        notification: structuredClone(notification),
+        sourceResidentId,
+      });
+      if (options.lingyeNotificationFailure) throw options.lingyeNotificationFailure;
+    },
   });
   const app = buildApp({
     groupId: COMMUNITY_QQ_GROUP_ID,
@@ -214,6 +224,7 @@ function openRuntimeHarness(databasePath: string): RuntimeHarness {
     membership,
     farmActions,
     lingyeActions,
+    lingyeNotifications,
     careerExamReconciliations,
     notificationErrors,
     mcpRuntime,
@@ -714,17 +725,40 @@ test("Lingye readiness requires all public operations, matched private exam leve
     exams: {
       public_ready_levels: [
         { career: "chef", level: 1 },
+        { career: "chef", level: 2 },
+        { career: "agronomist", level: 1 },
+        { career: "veterinarian", level: 1 },
+        { career: "veterinarian", level: 2 },
         { career: "constable", level: 1 },
+        { career: "constable", level: 2 },
+        { career: "constable", level: 3 },
       ],
       private_ready_levels: [
         { career: "chef", level: 1, question_count: 20, pass_count: 18 },
+        { career: "chef", level: 2, question_count: 20, pass_count: 18 },
+        { career: "agronomist", level: 1, question_count: 20, pass_count: 18 },
+        { career: "veterinarian", level: 1, question_count: 20, pass_count: 18 },
+        { career: "veterinarian", level: 2, question_count: 20, pass_count: 18 },
         { career: "constable", level: 1, question_count: 20, pass_count: 18 },
+        { career: "constable", level: 2, question_count: 20, pass_count: 18 },
+        { career: "constable", level: 3, question_count: 20, pass_count: 18 },
       ],
     },
     economy_rules: {
       minimum_system_loan_credit_days: 7,
       restricted_daily_gold_limit: 200_000,
       restricted_daily_silver_limit: 400,
+    },
+    capabilities: {
+      player_loans: true,
+      multi_select_assessments: true,
+      kitchen_methods: true,
+      kitchen_tools: true,
+      chef_original_recipes: true,
+      chef_store: true,
+      commission_messages: true,
+      commission_npc_transfer: true,
+      commission_notifications: true,
     },
     nature_runtime: {
       adapter_version: 1,
@@ -1018,6 +1052,49 @@ test("MCP calls validate strict args, self-correct, preserve status cadence, and
     const oldField = await postMcp(harness, call("farm.visit", { action: "visit" }));
     assert.equal(oldField.json().result.structuredContent.error.code, "INVALID_ARGS");
 
+    const farmCallsBeforeMethodlessCook = harness.farmActions.calls.length;
+    const methodlessCook = await postMcp(
+      harness,
+      call("farm.kitchen.cook", { items: ["egg", "tomato"] }),
+    );
+    assert.equal(methodlessCook.json().result.structuredContent.error.code, "INVALID_ARGS");
+    assert.equal(harness.farmActions.calls.length, farmCallsBeforeMethodlessCook);
+
+    const toolPurchase = await postMcp(
+      harness,
+      call("farm.kitchen.buy", { kind: "tool", id: "steam" }),
+    );
+    assert.equal(toolPurchase.json().result.isError, false);
+    assert.deepEqual(harness.farmActions.calls.at(-1), {
+      farmDoorplate: FARM_DOORPLATE,
+      farmHumanKey: FARM_HUMAN_KEY,
+      action: "kitchen",
+      params: { op: "buy", kind: "tool", id: "steam" },
+      detail: false,
+    });
+
+    const originalResearch = await postMcp(
+      harness,
+      call("farm.kitchen.cook", {
+        items: ["egg", "tomato"],
+        method: "stir-fry",
+        name: "门铃番茄蛋",
+      }),
+    );
+    assert.equal(originalResearch.json().result.isError, false);
+    assert.deepEqual(harness.farmActions.calls.at(-1), {
+      farmDoorplate: FARM_DOORPLATE,
+      farmHumanKey: FARM_HUMAN_KEY,
+      action: "kitchen",
+      params: {
+        op: "cook",
+        items: ["egg", "tomato"],
+        method: "stir-fry",
+        name: "门铃番茄蛋",
+      },
+      detail: false,
+    });
+
     const help = await postMcp(harness, call("farm.help", { operation: "farm.kitchen.sell" }));
     assert.match(help.json().result.content[0].text, /destination/);
     assert.match(help.json().result.content[0].text, /farm\.kitchen\.sell/);
@@ -1053,7 +1130,7 @@ test("MCP calls validate strict args, self-correct, preserve status cadence, and
       harness,
       call("go.school.choose", {
         option: "returned-option",
-        answers: [" a ", "b", "C", "d", "E"],
+        answers: [[" a "], ["b"], ["C"], ["d"], ["E"]],
       }),
     );
     assert.equal(invalidSchool.json().result.structuredContent.error.code, "INVALID_ARGS");
@@ -1066,13 +1143,13 @@ test("MCP calls validate strict args, self-correct, preserve status cadence, and
       harness,
       call("go.school.choose", {
         option: "returned-option",
-        answers: [" a ", "b", " C", "d ", "A"],
+        answers: [[" a "], ["b", " d "], [" C"], ["d "], ["A"]],
       }),
     );
     assert.equal(school.json().result.isError, false);
     assert.deepEqual(harness.lingyeActions.calls.at(-1)?.args, {
       option: "returned-option",
-      answers: ["A", "B", "C", "D", "A"],
+      answers: [["A"], ["B", "D"], ["C"], ["D"], ["A"]],
     });
     assert.equal(harness.careerExamReconciliations.length, 1);
     assert.deepEqual(harness.careerExamReconciliations[0], {
@@ -1084,6 +1161,37 @@ test("MCP calls validate strict args, self-correct, preserve status cadence, and
         data: { options: [] },
       },
     });
+
+    harness.lingyeActions.nextResult = {
+      ok: true,
+      text: "委托回复已记录。",
+      data: { message: { body: "我先检查一下。" } },
+      notifications: [
+        {
+          notification_id: "commission-reply:test",
+          kind: "commission_reply",
+          recipient_resident_id: harness.residentId,
+          message_text: "我先检查一下。",
+        },
+      ],
+    };
+    const commissionReply = await postMcp(
+      harness,
+      call("go.farm.commission", { option: "returned-option", text: "我先检查一下。" }),
+    );
+    assert.equal(commissionReply.json().result.isError, false);
+    assert.deepEqual(harness.lingyeNotifications, [
+      {
+        notification: {
+          notification_id: "commission-reply:test",
+          kind: "commission_reply",
+          recipient_resident_id: harness.residentId,
+          message_text: "我先检查一下。",
+        },
+        sourceResidentId: harness.residentId,
+      },
+    ]);
+    assert.equal("notifications" in commissionReply.json().result.structuredContent, false);
 
     harness.lingyeActions.nextResult = {
       ok: false,
@@ -1266,6 +1374,41 @@ test("notification delivery failure cannot overturn a completed farm action", as
       harness.database.listMailboxLetters(homeId, "resident", 1, 8).letters[0]?.isNew,
       false,
     );
+  } finally {
+    await harness.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("career notification delivery failure cannot overturn a completed Lingye action", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "doorbell-lingye-notification-fail-soft-"));
+  const failure = new Error("simulated Lingye notification failure");
+  const harness = openRuntimeHarness(join(directory, "doorbell.sqlite"), {
+    lingyeNotificationFailure: failure,
+  });
+  try {
+    harness.lingyeActions.nextResult = {
+      ok: true,
+      text: "委托回复已记录。",
+      data: { message: { body: "继续处理。" } },
+      notifications: [
+        {
+          notification_id: "commission-reply:fail-soft",
+          kind: "commission_reply",
+          recipient_resident_id: harness.residentId,
+          message_text: "继续处理。",
+        },
+      ],
+    };
+    const completed = await postMcp(
+      harness,
+      call("go.farm.commission", { option: "returned-option", text: "继续处理。" }),
+    );
+    assert.equal(completed.statusCode, 200);
+    assert.equal(completed.json().result.isError, false);
+    assert.equal(completed.json().result.content[0].text, "委托回复已记录。");
+    assert.equal(harness.lingyeActions.calls.length, 1);
+    assert.deepEqual(harness.notificationErrors, [failure]);
   } finally {
     await harness.close();
     rmSync(directory, { recursive: true, force: true });

@@ -48,7 +48,10 @@ test("schema v9 adds a profile-keyed persistent activity reminder ledger", () =>
 
     const database = new Database(databasePath, { readonly: true });
     try {
-      assert.equal(database.pragma("user_version", { simple: true }), 11);
+      assert.equal(
+        database.pragma("user_version", { simple: true }),
+        COMMUNITY_DATABASE_SCHEMA_VERSION,
+      );
       const columns = database.pragma("table_info(activity_reminders)") as Array<{
         name: string;
         pk: number;
@@ -122,7 +125,10 @@ test("schema v11 preserves subscriptions and makes the endpoint key profile-scop
 
     const database = new Database(databasePath, { readonly: true });
     try {
-      assert.equal(database.pragma("user_version", { simple: true }), 11);
+      assert.equal(
+        database.pragma("user_version", { simple: true }),
+        COMMUNITY_DATABASE_SCHEMA_VERSION,
+      );
       const columns = database.pragma("table_info(browser_push_subscriptions)") as Array<{
         name: string;
         pk: number;
@@ -149,6 +155,40 @@ test("schema v11 preserves subscriptions and makes the endpoint key profile-scop
             updated_at: 2,
           },
         ],
+      );
+      assert.deepEqual(database.pragma("foreign_key_check"), []);
+    } finally {
+      database.close();
+    }
+  });
+});
+
+test("schema v12 adds isolated career job wakes without rewriting existing Bell wakes", () => {
+  withTemporaryDatabase((databasePath) => {
+    const current = new CommunityDatabase(databasePath);
+    current.close();
+
+    const versionEleven = new Database(databasePath);
+    versionEleven.exec("DROP TABLE career_job_wakes");
+    versionEleven.pragma("user_version = 11");
+    versionEleven.close();
+
+    const migrated = new CommunityDatabase(databasePath);
+    migrated.close();
+
+    const database = new Database(databasePath, { readonly: true });
+    try {
+      assert.equal(
+        database.pragma("user_version", { simple: true }),
+        COMMUNITY_DATABASE_SCHEMA_VERSION,
+      );
+      assert.deepEqual(
+        database
+          .prepare(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'career_job_wakes'",
+          )
+          .get(),
+        { name: "career_job_wakes" },
       );
       assert.deepEqual(database.pragma("foreign_key_check"), []);
     } finally {
@@ -285,7 +325,7 @@ test("schema v1 preserves login security state while upgrading through the curre
         migratedDatabase.pragma("user_version", { simple: true }),
         COMMUNITY_DATABASE_SCHEMA_VERSION,
       );
-      assert.equal(COMMUNITY_DATABASE_SCHEMA_VERSION, 11);
+      assert.equal(COMMUNITY_DATABASE_SCHEMA_VERSION, 12);
       assert.deepEqual(
         migratedDatabase
           .prepare("SELECT account_id, qq_number, password_credential FROM human_accounts")
@@ -632,7 +672,10 @@ test("schema v6 migrates legacy Bell wakes through the career reminder schema", 
 
     const database = new Database(databasePath, { readonly: true });
     try {
-      assert.equal(database.pragma("user_version", { simple: true }), 11);
+      assert.equal(
+        database.pragma("user_version", { simple: true }),
+        COMMUNITY_DATABASE_SCHEMA_VERSION,
+      );
       const wakeColumns = database.pragma("table_info(bell_wakes)") as Array<{ name: string }>;
       assert.ok(wakeColumns.some((column) => column.name === "payload_json"));
       assert.ok(wakeColumns.some((column) => column.name === "letter_id"));
@@ -776,7 +819,10 @@ test("schema v7 preserves purchase wakes while adding career exam reminder refer
 
     const database = new Database(databasePath, { readonly: true });
     try {
-      assert.equal(database.pragma("user_version", { simple: true }), 11);
+      assert.equal(
+        database.pragma("user_version", { simple: true }),
+        COMMUNITY_DATABASE_SCHEMA_VERSION,
+      );
       assert.deepEqual(
         database
           .prepare(

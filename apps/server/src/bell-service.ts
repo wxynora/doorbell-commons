@@ -241,6 +241,11 @@ export class BellService {
     this.#emitCancellations(expiredPurchases);
     const mailbox = this.#database.cancelPendingBellMailboxWakeForResident(residentId, now);
     this.#emitCancellations(mailbox);
+    const careerJobs = this.#database.cancelPendingCareerJobWakesForResidentReadMail(
+      residentId,
+      now,
+    );
+    this.#emitCancellations(careerJobs);
     this.#emitPendingWakes(residentId);
   }
 
