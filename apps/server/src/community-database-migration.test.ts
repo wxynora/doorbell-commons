@@ -48,7 +48,7 @@ test("schema v9 adds a profile-keyed persistent activity reminder ledger", () =>
 
     const database = new Database(databasePath, { readonly: true });
     try {
-      assert.equal(database.pragma("user_version", { simple: true }), 10);
+      assert.equal(database.pragma("user_version", { simple: true }), 11);
       const columns = database.pragma("table_info(activity_reminders)") as Array<{
         name: string;
         pk: number;
@@ -68,6 +68,89 @@ test("schema v9 adds a profile-keyed persistent activity reminder ledger", () =>
             foreignKey.from === "farm_doorplate" && foreignKey.table === "farm_bindings",
         ),
       );
+    } finally {
+      database.close();
+    }
+  });
+});
+
+test("schema v11 preserves subscriptions and makes the endpoint key profile-scoped", () => {
+  withTemporaryDatabase((databasePath) => {
+    const current = new CommunityDatabase(databasePath);
+    const created = current.createHumanSession("10001", 1, {
+      residentName: "小机",
+      homeName: "小屋",
+      farmDoorplate: "FARM-1",
+      farmHumanKey: "private-human-key",
+    });
+    current.upsertBrowserPushSubscription({
+      residentId: created.community.resident.residentId,
+      homeId: created.community.home.homeId,
+      endpoint: "https://push.example.test/existing",
+      p256dh: "p256dh",
+      auth: "auth",
+      now: 2,
+    });
+    current.close();
+
+    const versionTen = new Database(databasePath);
+    versionTen.pragma("foreign_keys = OFF");
+    versionTen.exec(`
+      DROP INDEX browser_push_subscriptions_resident;
+      CREATE TABLE browser_push_subscriptions_v10 (
+        endpoint TEXT PRIMARY KEY,
+        resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+        home_id TEXT NOT NULL REFERENCES homes(home_id) ON DELETE CASCADE,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      INSERT INTO browser_push_subscriptions_v10
+      SELECT endpoint, resident_id, home_id, p256dh, auth, created_at, updated_at
+      FROM browser_push_subscriptions;
+      DROP TABLE browser_push_subscriptions;
+      ALTER TABLE browser_push_subscriptions_v10 RENAME TO browser_push_subscriptions;
+      CREATE INDEX browser_push_subscriptions_resident
+        ON browser_push_subscriptions (resident_id, updated_at DESC, endpoint);
+    `);
+    versionTen.pragma("user_version = 10");
+    versionTen.close();
+
+    const migrated = new CommunityDatabase(databasePath);
+    migrated.close();
+
+    const database = new Database(databasePath, { readonly: true });
+    try {
+      assert.equal(database.pragma("user_version", { simple: true }), 11);
+      const columns = database.pragma("table_info(browser_push_subscriptions)") as Array<{
+        name: string;
+        pk: number;
+      }>;
+      assert.deepEqual(
+        columns.filter((column) => column.pk > 0).map((column) => column.name),
+        ["endpoint", "resident_id", "home_id"],
+      );
+      assert.deepEqual(
+        database
+          .prepare(
+            `SELECT endpoint, resident_id, home_id, p256dh, auth, created_at, updated_at
+             FROM browser_push_subscriptions`,
+          )
+          .all(),
+        [
+          {
+            endpoint: "https://push.example.test/existing",
+            resident_id: created.community.resident.residentId,
+            home_id: created.community.home.homeId,
+            p256dh: "p256dh",
+            auth: "auth",
+            created_at: 2,
+            updated_at: 2,
+          },
+        ],
+      );
+      assert.deepEqual(database.pragma("foreign_key_check"), []);
     } finally {
       database.close();
     }
@@ -202,7 +285,7 @@ test("schema v1 preserves login security state while upgrading through the curre
         migratedDatabase.pragma("user_version", { simple: true }),
         COMMUNITY_DATABASE_SCHEMA_VERSION,
       );
-      assert.equal(COMMUNITY_DATABASE_SCHEMA_VERSION, 10);
+      assert.equal(COMMUNITY_DATABASE_SCHEMA_VERSION, 11);
       assert.deepEqual(
         migratedDatabase
           .prepare("SELECT account_id, qq_number, password_credential FROM human_accounts")
@@ -549,7 +632,7 @@ test("schema v6 migrates legacy Bell wakes through the career reminder schema", 
 
     const database = new Database(databasePath, { readonly: true });
     try {
-      assert.equal(database.pragma("user_version", { simple: true }), 10);
+      assert.equal(database.pragma("user_version", { simple: true }), 11);
       const wakeColumns = database.pragma("table_info(bell_wakes)") as Array<{ name: string }>;
       assert.ok(wakeColumns.some((column) => column.name === "payload_json"));
       assert.ok(wakeColumns.some((column) => column.name === "letter_id"));
@@ -693,7 +776,7 @@ test("schema v7 preserves purchase wakes while adding career exam reminder refer
 
     const database = new Database(databasePath, { readonly: true });
     try {
-      assert.equal(database.pragma("user_version", { simple: true }), 10);
+      assert.equal(database.pragma("user_version", { simple: true }), 11);
       assert.deepEqual(
         database
           .prepare(

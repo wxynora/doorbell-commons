@@ -193,3 +193,108 @@ test("browser activity pushes stay inside the exact resident and home profile", 
     rmSync(directory, { force: true, recursive: true });
   }
 });
+
+test("one browser endpoint can subscribe two profiles from the same Human account", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "doorbell-browser-shared-endpoint-"));
+  const database = new CommunityDatabase(join(directory, "doorbell.sqlite"));
+  try {
+    const firstSession = database.createHumanSession("10001", 1, {
+      residentName: "一号机",
+      homeName: "第一座家",
+      farmDoorplate: "FARM-1",
+      farmHumanKey: "first-human-key",
+    });
+    const first = firstSession.community;
+    const second = database.createHumanProfileForSession(firstSession.token, 2, {
+      residentName: "二号机",
+      homeName: "第二座家",
+      farmDoorplate: "FARM-2",
+      farmHumanKey: "second-human-key",
+    }).community;
+    const endpoint = "https://push.example.test/shared-browser";
+    for (const community of [first, second]) {
+      database.updateHumanSettings(community.home.homeId, 3, {
+        browserNotificationsEnabled: true,
+        activityRemindersEnabled: true,
+      });
+      database.upsertBrowserPushSubscription({
+        residentId: community.resident.residentId,
+        homeId: community.home.homeId,
+        endpoint,
+        p256dh: "shared-p256dh",
+        auth: "shared-auth",
+        now: 3,
+      });
+    }
+    assert.equal(database.listBrowserPushSubscriptions(first.resident.residentId).length, 1);
+    assert.equal(database.listBrowserPushSubscriptions(second.resident.residentId).length, 1);
+
+    const deliveries: string[] = [];
+    const service = new BrowserPushService({
+      config: {
+        publicKey: "public-key",
+        privateKey: "private-key",
+        subject: "https://example.test",
+        ttlSeconds: 60,
+      },
+      database,
+      registrationAuth: { confirmCurrentResidentMembership: async () => undefined },
+      requestTimeoutMs: 5_000,
+      sender: {
+        send: async (subscription) => {
+          deliveries.push(`${subscription.residentId}:${subscription.homeId}`);
+        },
+      },
+    });
+
+    for (const community of [first, second]) {
+      assert.equal(
+        await service.sendActivityReminder({
+          residentId: community.resident.residentId,
+          homeId: community.home.homeId,
+          title: "提醒",
+          body: "正文",
+          url: "/",
+          tag: community.home.homeId,
+          createdAt: 4,
+        }),
+        true,
+      );
+    }
+    assert.deepEqual(deliveries, [
+      `${first.resident.residentId}:${first.home.homeId}`,
+      `${second.resident.residentId}:${second.home.homeId}`,
+    ]);
+
+    service.unsubscribe(second.resident.residentId, endpoint);
+    deliveries.length = 0;
+    assert.equal(
+      await service.sendActivityReminder({
+        residentId: first.resident.residentId,
+        homeId: first.home.homeId,
+        title: "提醒",
+        body: "正文",
+        url: "/",
+        tag: "first-remains",
+        createdAt: 5,
+      }),
+      true,
+    );
+    assert.equal(
+      await service.sendActivityReminder({
+        residentId: second.resident.residentId,
+        homeId: second.home.homeId,
+        title: "提醒",
+        body: "正文",
+        url: "/",
+        tag: "second-removed",
+        createdAt: 5,
+      }),
+      false,
+    );
+    assert.deepEqual(deliveries, [`${first.resident.residentId}:${first.home.homeId}`]);
+  } finally {
+    database.close();
+    rmSync(directory, { force: true, recursive: true });
+  }
+});

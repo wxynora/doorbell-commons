@@ -23,7 +23,7 @@ export const HUMAN_LOGIN_FAILURE_WINDOW_MS = 15 * 60 * 1000;
 export const HUMAN_LOGIN_FAILURE_THRESHOLD = 10;
 export const HUMAN_LOGIN_LOCK_DURATION_MS = 30 * 60 * 1000;
 export const FARM_PURCHASE_REQUEST_TTL_MS = 24 * 60 * 60 * 1000;
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 10;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 11;
 const LEGACY_CONNECTOR_DELIVERY_GENERATION = "00000000-0000-0000-0000-000000000000";
 
 export interface RegistrationCodeRecord {
@@ -1154,13 +1154,14 @@ export class CommunityDatabase {
       );
 
       CREATE TABLE IF NOT EXISTS browser_push_subscriptions (
-        endpoint TEXT PRIMARY KEY,
+        endpoint TEXT NOT NULL,
         resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
         home_id TEXT NOT NULL REFERENCES homes(home_id) ON DELETE CASCADE,
         p256dh TEXT NOT NULL,
         auth TEXT NOT NULL,
         created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (endpoint, resident_id, home_id)
       );
 
       CREATE INDEX IF NOT EXISTS browser_push_subscriptions_resident
@@ -2310,6 +2311,45 @@ export class CommunityDatabase {
       }
       migratedSchemaVersion = 10;
     }
+    if (migratedSchemaVersion < 11) {
+      this.#database.pragma("foreign_keys = OFF");
+      try {
+        this.#database.transaction(() => {
+          this.#database.exec(`
+            DROP TABLE IF EXISTS browser_push_subscriptions_v11;
+            CREATE TABLE browser_push_subscriptions_v11 (
+              endpoint TEXT NOT NULL,
+              resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+              home_id TEXT NOT NULL REFERENCES homes(home_id) ON DELETE CASCADE,
+              p256dh TEXT NOT NULL,
+              auth TEXT NOT NULL,
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL,
+              PRIMARY KEY (endpoint, resident_id, home_id)
+            );
+
+            INSERT INTO browser_push_subscriptions_v11 (
+              endpoint, resident_id, home_id, p256dh, auth, created_at, updated_at
+            )
+            SELECT endpoint, resident_id, home_id, p256dh, auth, created_at, updated_at
+            FROM browser_push_subscriptions;
+
+            DROP TABLE browser_push_subscriptions;
+            ALTER TABLE browser_push_subscriptions_v11 RENAME TO browser_push_subscriptions;
+            CREATE INDEX browser_push_subscriptions_resident
+              ON browser_push_subscriptions (resident_id, updated_at DESC, endpoint);
+          `);
+          this.#database.pragma("user_version = 11");
+        })();
+      } finally {
+        this.#database.pragma("foreign_keys = ON");
+      }
+      const foreignKeyErrors = this.#database.pragma("foreign_key_check") as unknown[];
+      if (foreignKeyErrors.length > 0) {
+        throw new Error("Community database schema v11 migration violated foreign keys");
+      }
+      migratedSchemaVersion = 11;
+    }
     this.#database.transaction(() => {
       const itemColumns = this.#database.pragma(
         "table_info(farm_purchase_request_items)",
@@ -2344,36 +2384,39 @@ export class CommunityDatabase {
     const transaction = this.#database.transaction(() => {
       const owner = this.#database
         .prepare(
-          `SELECT r.resident_id, h.home_id
+          `SELECT r.resident_id, r.account_id, h.home_id
            FROM residents AS r
            JOIN homes AS h ON h.resident_id = r.resident_id
            WHERE r.resident_id = ? AND h.home_id = ?`,
         )
         .get(input.residentId, input.homeId) as
-        | { resident_id: string; home_id: string }
+        | { resident_id: string; account_id: string; home_id: string }
         | undefined;
       if (!owner) throw new Error("The browser push subscription owner does not exist");
+      const endpointAccounts = this.#database
+        .prepare(
+          `SELECT DISTINCT r.account_id
+           FROM browser_push_subscriptions AS subscription
+           JOIN residents AS r ON r.resident_id = subscription.resident_id
+           WHERE subscription.endpoint = ?`,
+        )
+        .all(input.endpoint) as Array<{ account_id: string }>;
+      if (endpointAccounts.some((row) => row.account_id !== owner.account_id)) {
+        throw new Error("The browser push endpoint already belongs to another account");
+      }
       const existing = this.#database
         .prepare(
-          "SELECT resident_id, home_id, created_at FROM browser_push_subscriptions WHERE endpoint = ?",
+          `SELECT created_at
+           FROM browser_push_subscriptions
+           WHERE endpoint = ? AND resident_id = ? AND home_id = ?`,
         )
-        .get(input.endpoint) as
-        | { resident_id: string; home_id: string; created_at: number }
-        | undefined;
-      if (
-        existing &&
-        (existing.resident_id !== input.residentId || existing.home_id !== input.homeId)
-      ) {
-        throw new Error("The browser push endpoint already belongs to another resident");
-      }
+        .get(input.endpoint, input.residentId, input.homeId) as { created_at: number } | undefined;
       this.#database
         .prepare(
           `INSERT INTO browser_push_subscriptions (
              endpoint, resident_id, home_id, p256dh, auth, created_at, updated_at
            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT(endpoint) DO UPDATE SET
-             resident_id = excluded.resident_id,
-             home_id = excluded.home_id,
+           ON CONFLICT(endpoint, resident_id, home_id) DO UPDATE SET
              p256dh = excluded.p256dh,
              auth = excluded.auth,
              updated_at = excluded.updated_at`,
@@ -2391,9 +2434,9 @@ export class CommunityDatabase {
         .prepare(
           `SELECT resident_id, home_id, endpoint, p256dh, auth, created_at, updated_at
            FROM browser_push_subscriptions
-           WHERE endpoint = ?`,
+           WHERE endpoint = ? AND resident_id = ? AND home_id = ?`,
         )
-        .get(input.endpoint) as BrowserPushSubscriptionRow;
+        .get(input.endpoint, input.residentId, input.homeId) as BrowserPushSubscriptionRow;
     });
     const row = transaction.immediate();
     return {
