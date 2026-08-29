@@ -17,13 +17,42 @@ export function handleKitchenAction(action, f, b, now, options = {}) {
     if (op === "view")
         return { ok: true, text: viewKitchen(f, now, String(b.view ?? "overview"), options) };
     if (op === "buy") {
-        const r = kitchenBuy(f, String(b.kind), String(b.id), b.qty, now, options);
+        const kind = String(b.kind);
+        const id = String(b.id);
+        let r;
+        if (kind === "tool" && typeof options.purchaseKitchenTool === "function") {
+            r = options.purchaseKitchenTool(id);
+        }
+        else {
+            r = kitchenBuy(f, kind, id, b.qty, now, options);
+        }
         return { ok: r.ok, text: r.ok ? withFooter(f, now, `${r.kind === "recipe" ? "📜" : "🧺"} 买下${r.name}${r.qty ? `×${r.qty}` : ""}，-🪙${r.cost}。`) : r.error };
     }
     if (op === "cook") {
+        if (b.name != null) {
+            if (typeof options.researchOriginalRecipe !== "function")
+                return { ok: false, text: "只有已绑定并持有料理师资格的居民可以研发原创菜谱。" };
+            try {
+                const researched = options.researchOriginalRecipe({
+                    items: b.items,
+                    methodId: String(b.method ?? ""),
+                    recipeName: String(b.name),
+                });
+                const recipe = researched.recipe ?? null;
+                return {
+                    ok: true,
+                    text: withFooter(f, now, recipe
+                        ? `📜 原创菜谱「${recipe.name}·${recipe.rarity}」已经登记。`
+                        : `🥴 这次原创研发结果是${researched.status}。`),
+                };
+            }
+            catch (error) {
+                return { ok: false, text: error?.code ?? "原创菜谱研发失败。" };
+            }
+        }
         const r = b.recipe != null
             ? kitchenCookKnownRecipe(f, b.recipe, now, options)
-            : kitchenCook(f, b.items, now, options);
+            : kitchenCook(f, b.items, now, { ...options, methodId: b.method });
         if (!r.ok)
             return { ok: false, text: r.error };
         if (r.qixi) {

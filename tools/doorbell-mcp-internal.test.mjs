@@ -11,6 +11,7 @@ process.env.AIFARM_DATA_DIR = dataDirectory;
 process.env.AIFARM_DOORBELL_SERVICE_TOKEN = "farm-doorbell-mcp-test-service-token";
 
 const { makeFarm } = await import("../dist/game.js");
+const { ensureKitchen } = await import("../dist/engine.js");
 const { claimSyncedFarm, syncFarm } = await import("../dist/public-sync.js");
 const { getFarm, insertFarm, load } = await import("../dist/store.js");
 const { startServer } = await import("../dist/server.js");
@@ -51,6 +52,9 @@ function requestJson(baseUrl, path, body, authorization = true) {
 
 test("Doorbell migration revokes legacy agent access durably and internal execution reuses runFarm", async (t) => {
   const farmA = addFarm(FARM_A, HUMAN_A, LEGACY_AGENT_KEY);
+  farmA.silver = 2_000;
+  ensureKitchen(farmA).ingredients.salt = 1;
+  ensureKitchen(farmA).ingredients.spice = 1;
   const farmB = addFarm(FARM_B, HUMAN_B, "legacyB1");
   const originalToken = farmA.token;
   const originalHumanKey = farmA.humanKey;
@@ -158,7 +162,7 @@ test("Doorbell migration revokes legacy agent access durably and internal execut
     SELECT available_gold, available_silver FROM economy_accounts WHERE resident_id = ?
   `).get(RESIDENT_ID) }, {
     available_gold: originalCoins,
-    available_silver: 0,
+    available_silver: 2_000,
   });
   const syncRegistration = claimSyncedFarm(FARM_A, originalToken);
 
@@ -214,6 +218,31 @@ test("Doorbell migration revokes legacy agent access durably and internal execut
   assert.equal(blockedLegacyAction.response.status, 400);
   assert.equal(JSON.parse(blockedLegacyAction.text).error.code, "unsupported_action");
   assert.equal(getFarm(FARM_A).token, originalToken);
+
+  const boughtTool = await requestJson(baseUrl, executionPath, {
+    farm_human_key: HUMAN_A,
+    expected_farm_doorplate: FARM_A,
+    action: "kitchen",
+    params: { op: "buy", kind: "tool", id: "steam" },
+  });
+  assert.equal(boughtTool.response.status, 200, boughtTool.text);
+  assert.equal(JSON.parse(boughtTool.text).ok, true);
+  assert.equal(getFarm(FARM_A).silver, 800);
+  assert.equal(getFarm(FARM_A).ranch.kitchen.ownedTools.includes("steam"), true);
+  assert.equal(ledger.prepare(`
+    SELECT available_silver FROM economy_accounts WHERE resident_id = ?
+  `).get(RESIDENT_ID).available_silver, 800);
+
+  const methodCook = await requestJson(baseUrl, executionPath, {
+    farm_human_key: HUMAN_A,
+    expected_farm_doorplate: FARM_A,
+    action: "kitchen",
+    params: { op: "cook", items: ["salt", "spice"], method: "steam" },
+  });
+  assert.equal(methodCook.response.status, 200, methodCook.text);
+  assert.equal(JSON.parse(methodCook.text).ok, true);
+  assert.equal(getFarm(FARM_A).ranch.kitchen.ingredients.salt, undefined);
+  assert.equal(getFarm(FARM_A).ranch.kitchen.ingredients.spice, undefined);
 
   const planted = await requestJson(baseUrl, executionPath, {
     farm_human_key: HUMAN_A,
@@ -316,7 +345,7 @@ test("Doorbell migration revokes legacy agent access durably and internal execut
     migrationId: MIGRATION_ID,
     residentId: RESIDENT_ID,
     legacyGold: originalCoins,
-    legacySilver: 0,
+    legacySilver: 2_000,
     confirmationId: receipt.confirmation_id,
     revokedAt: receipt.revoked_at,
     legacyMcpRevoked: true,
@@ -337,7 +366,7 @@ test("Doorbell migration revokes legacy agent access durably and internal execut
     migrationId: MIGRATION_ID,
     residentId: RESIDENT_ID,
     legacyGold: originalCoins,
-    legacySilver: 0,
+    legacySilver: 2_000,
     confirmationId: receipt.confirmation_id,
     revokedAt: receipt.revoked_at,
     legacyMcpRevoked: true,

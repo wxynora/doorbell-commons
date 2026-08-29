@@ -27,6 +27,8 @@ import {
     workerOptions,
 } from "../../career/p3-commission-runtime.js";
 import { EconomyError } from "../../economy/economy-errors.js";
+import { CHEF_ORIGINAL_RECIPE_SILVER_PRICE } from "../../career/chef-commerce-service.js";
+import { CHEF_STORE_LISTINGS_FIELD } from "../../career/chef-store-farm-adapter.js";
 import {
     createLingyeWorldBackend,
     openLingyeWorldDatabase,
@@ -36,6 +38,7 @@ import { isBeijingExamSessionOpen } from "../../career/persistence.js";
 import { MAX_BODY_BYTES } from "../../config.js";
 import { PublicSyncError } from "../../public-sync.js";
 import { natureRuntimeReadiness } from "../../nature-runtime.js";
+import { allFarms, getFarm } from "../../store.js";
 import { jsonOut, readJsonBody } from "../http.js";
 import {
     UUID_RE,
@@ -59,6 +62,27 @@ const LINGYE_OPERATIONS = new Set([
     "go.security.commission",
 ]);
 const LINGYE_READINESS_SCHEMA_VERSION = 1;
+const REQUIRED_EXAM_LEVELS = new Set([
+    "chef:1",
+    "chef:2",
+    "agronomist:1",
+    "veterinarian:1",
+    "veterinarian:2",
+    "constable:1",
+    "constable:2",
+    "constable:3",
+]);
+const LINGYE_CAPABILITIES = Object.freeze({
+    player_loans: true,
+    multi_select_assessments: true,
+    kitchen_methods: true,
+    kitchen_tools: true,
+    chef_original_recipes: true,
+    chef_store: true,
+    commission_messages: true,
+    commission_npc_transfer: true,
+    commission_notifications: true,
+});
 
 const COMMISSION_CAREERS = Object.freeze({
     "go.farm.commission": "agronomist",
@@ -71,6 +95,15 @@ const BANK_SECTIONS = new Set(["account", "deposits", "exchange", "loans", "cred
 const SCHOOL_SECTIONS = new Set(["careers", "courses", "exams", "certificates", "employment", "interviews", "publicNotices"]);
 const TERM_DAYS = new Set([14, 30, 60]);
 const INSUFFICIENT_FUNDS_MESSAGE = "可用余额不足，本次操作没有执行。";
+const LINGYE_ERROR_MESSAGES = Object.freeze({
+    INSUFFICIENT_FUNDS: INSUFFICIENT_FUNDS_MESSAGE,
+    OPTION_NOT_AVAILABLE: "当前选项已失效或不适用于这项业务；请重新查看当前事实与 option。",
+    REFERENCE_NOT_FOUND: "没有找到这条记录，或当前居民无权读取。",
+    QUALIFICATION_REQUIRED: "当前职业资格不足，本次操作没有执行。",
+    CONFLICT: "当前状态已经变化，本次操作没有执行；请重新查看。",
+    LINGYE_NOT_READY: "铃野相关能力尚未就绪，本次操作没有执行。",
+    OP_REJECTED: "本次操作被铃野规则拒绝，没有产生业务结果。",
+});
 const DEFAULT_ECONOMY_RULES = Object.freeze({
     minimumSystemLoanCreditDays: null,
     restrictedDailyGoldLimit: null,
@@ -92,14 +125,29 @@ class LingyeBusinessError extends Error {
     }
 }
 
-// Rich model-visible result copy is reviewed separately. Until then, the endpoint
-// exposes only the approved structured facts, stable codes and the one locked error.
-const success = (_text, data) => ({ ok: true, text: "OK", data });
+const success = (text, data, notifications = []) => ({
+    ok: true,
+    text,
+    data,
+    ...(notifications.length === 0 ? {} : { notifications }),
+});
+
+function commissionNotifications(kind, job, notificationKey, messageText) {
+    const recipients = kind === "commission_reply"
+        ? [job.recipientResidentId]
+        : [job.ownerResidentId, job.workerResidentId].filter(Boolean);
+    return [...new Set(recipients)].map((recipientResidentId) => ({
+        notification_id: `${notificationKey}:${recipientResidentId}`,
+        kind,
+        recipient_resident_id: recipientResidentId,
+        ...(kind === "commission_reply" ? { message_text: messageText } : {}),
+    }));
+}
 const failure = (code, _message) => ({
     ok: false,
     error: {
         code,
-        message: code === "INSUFFICIENT_FUNDS" ? INSUFFICIENT_FUNDS_MESSAGE : code,
+        message: LINGYE_ERROR_MESSAGES[code] ?? LINGYE_ERROR_MESSAGES.OP_REJECTED,
     },
 });
 
@@ -166,8 +214,10 @@ function validateArgs(op, args) {
         assertNonEmptyString(args.option, "option");
         if (Object.hasOwn(args, "answers")) {
             if (!Array.isArray(args.answers) || ![5, 20].includes(args.answers.length) ||
-                args.answers.some((answer) => typeof answer !== "string" || !["A", "B", "C", "D"].includes(answer.trim().toUpperCase()))) {
-                throw new LingyeActionInputError("answers must contain five or twenty A-D choices");
+                args.answers.some((selection) => !Array.isArray(selection) || selection.length < 1 || selection.length > 4 ||
+                    selection.some((answer) => typeof answer !== "string" || !["A", "B", "C", "D"].includes(answer.trim().toUpperCase())) ||
+                    new Set(selection.map((answer) => answer.trim().toUpperCase())).size !== selection.length)) {
+                throw new LingyeActionInputError("answers must contain five or twenty non-empty sets of unique A-D choices");
             }
         }
         return;
@@ -236,6 +286,47 @@ function parseBankOption(value) {
     return { action: match[1], revision: Number(match[2]), reference: match[3] ?? null };
 }
 
+function publicFarmForResident(database, residentId) {
+    const binding = database.prepare("SELECT binding_reference FROM residents WHERE resident_id = ?").get(residentId);
+    if (!binding?.binding_reference)
+        return null;
+    const matches = allFarms().filter((farm) => farm?.doorbellMcpMigration?.migrationId === binding.binding_reference);
+    if (matches.length !== 1)
+        return null;
+    return { doorplate: matches[0].id, name: matches[0].name };
+}
+
+function residentForPublicFarm(database, value) {
+    const doorplate = String(value ?? "").trim().toUpperCase();
+    const farm = getFarm(doorplate);
+    const bindingReference = farm?.doorbellMcpMigration?.migrationId;
+    if (!farm || !bindingReference)
+        throw new LingyeBusinessError("REFERENCE_NOT_FOUND", "没有找到已迁入铃野的目标居民。");
+    const rows = database.prepare("SELECT resident_id FROM residents WHERE binding_reference = ?").all(bindingReference);
+    if (rows.length !== 1)
+        throw new LingyeBusinessError("REFERENCE_NOT_FOUND", "没有找到已迁入铃野的目标居民。");
+    return rows[0].resident_id;
+}
+
+function publicPlayerLoan(database, loan, residentId) {
+    const lenderResidentId = loan.lenderResidentId ?? loan.lender_resident_id;
+    const borrowerResidentId = loan.borrowerResidentId ?? loan.borrower_resident_id;
+    const isLender = lenderResidentId === residentId;
+    const counterpartyResidentId = isLender ? borrowerResidentId : lenderResidentId;
+    const {
+        lenderResidentId: _lenderResidentId,
+        borrowerResidentId: _borrowerResidentId,
+        lender_resident_id: _lenderResidentIdSnake,
+        borrower_resident_id: _borrowerResidentIdSnake,
+        ...facts
+    } = loan;
+    return {
+        ...mapRows([facts])[0],
+        role: isLender ? "lender" : "borrower",
+        counterparty: publicFarmForResident(database, counterpartyResidentId),
+    };
+}
+
 function idempotencyKey(residentId, op, args) {
     const digest = createHash("sha256").update(JSON.stringify([residentId, op, args])).digest("hex");
     return `doorbell:${digest}`;
@@ -261,14 +352,16 @@ function readBankFacts(database, backend, rules, residentId) {
       WHERE borrower_resident_id = ?
       ORDER BY created_at DESC, loan_id
     `).all(residentId));
-    const playerLoans = mapRows(database.prepare(`
+    const playerLoanRows = mapRows(database.prepare(`
       SELECT loan_id, lender_resident_id, borrower_resident_id, principal_original,
              principal_outstanding, accrued_interest, total_rate_ppm, term_days,
-             status, created_at, repaid_at
+             status, lender_confirmed_at, borrower_confirmed_at,
+             originated_day, due_day, created_at, repaid_at
       FROM economy_player_loans
       WHERE lender_resident_id = ? OR borrower_resident_id = ?
       ORDER BY created_at DESC, loan_id
     `).all(residentId, residentId));
+    const playerLoans = playerLoanRows.map((loan) => publicPlayerLoan(database, loan, residentId));
     const month = new Date(Date.now() + 8 * 60 * 60 * 1_000).toISOString().slice(0, 7);
     const residentIssued = database.prepare(`
       SELECT COALESCE(silver_issued, 0) AS silver_issued
@@ -297,6 +390,24 @@ function readBankFacts(database, backend, rules, residentId) {
         options.push(option(bankOption(database, residentId, "system-loan-repay", openSystemLoan.loanId), ["amount"]));
     if (account.availableSilver > account.silverAgentLock)
         options.push(option(bankOption(database, residentId, "silver-lock-increase"), ["amount"]));
+    if (!account.highSpendRestricted && account.availableSilver > account.silverAgentLock)
+        options.push(option(bankOption(database, residentId, "player-loan-offer"), ["to", "amount", "termDays", "totalRatePpm"]));
+    if (!account.highSpendRestricted)
+        options.push(option(bankOption(database, residentId, "player-loan-request"), ["to", "amount", "termDays", "totalRatePpm"]));
+    for (const loan of playerLoanRows) {
+        if (loan.status === "proposed") {
+            const needsConfirmation = loan.lenderResidentId === residentId
+                ? loan.lenderConfirmedAt === null
+                : loan.borrowerConfirmedAt === null;
+            if (needsConfirmation)
+                options.push(option(bankOption(database, residentId, "player-loan-confirm", loan.loanId)));
+            options.push(option(bankOption(database, residentId, "player-loan-cancel", loan.loanId)));
+        }
+        if (loan.borrowerResidentId === residentId &&
+            ["active", "overdue", "restricted"].includes(loan.status) && account.availableSilver > 0) {
+            options.push(option(bankOption(database, residentId, "player-loan-repay", loan.loanId), ["amount"]));
+        }
+    }
     return {
         account,
         deposits: { demandGold: account.demandGold, termDeposits },
@@ -347,7 +458,9 @@ function requireCurrentBankOption(database, backend, rules, residentId, optionVa
 
 function bankChoose(database, backend, rules, residentId, args) {
     const parsed = parseBankOption(args.option);
-    if (!parsed || args.to !== undefined)
+    if (!parsed)
+        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个银行 option 当前不可用。");
+    if (args.to !== undefined && !["player-loan-offer", "player-loan-request"].includes(parsed.action))
         throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个银行 option 当前不可用。");
     const key = idempotencyKey(residentId, "go.bank.choose", args);
     requireCurrentBankOption(database, backend, rules, residentId, args.option, key);
@@ -409,11 +522,48 @@ function bankChoose(database, backend, rules, residentId, args) {
             assertPositiveInteger(args.amount, "amount");
             result = command.setSilverAgentLock({ residentId, amount: args.amount, actor: "agent", idempotencyKey: key });
             break;
+        case "player-loan-offer":
+        case "player-loan-request": {
+            assertNonEmptyString(args.to, "to");
+            assertPositiveInteger(args.amount, "amount");
+            if (!TERM_DAYS.has(args.termDays) || !Number.isSafeInteger(args.totalRatePpm))
+                throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个玩家借款 option 缺少当前要求的合同参数。");
+            const counterpartyResidentId = residentForPublicFarm(database, args.to);
+            if (counterpartyResidentId === residentId)
+                throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "不能和自己建立玩家借款。");
+            result = resident.proposePlayerLoan({
+                lenderResidentId: parsed.action === "player-loan-offer" ? residentId : counterpartyResidentId,
+                borrowerResidentId: parsed.action === "player-loan-request" ? residentId : counterpartyResidentId,
+                principal: args.amount,
+                termDays: args.termDays,
+                totalRatePpm: args.totalRatePpm,
+                idempotencyKey: key,
+            });
+            break;
+        }
+        case "player-loan-confirm":
+            if (!parsed.reference || Object.keys(args).length !== 1)
+                throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个玩家借款确认 option 当前不可用。");
+            result = resident.confirmPlayerLoan({ loanId: parsed.reference, idempotencyKey: key });
+            break;
+        case "player-loan-cancel":
+            if (!parsed.reference || Object.keys(args).length !== 1)
+                throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个玩家借款取消 option 当前不可用。");
+            result = resident.cancelPlayerLoan({ loanId: parsed.reference, idempotencyKey: key });
+            break;
+        case "player-loan-repay":
+            if (!parsed.reference || args.to !== undefined)
+                throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个玩家借款还款 option 当前不可用。");
+            assertPositiveInteger(args.amount, "amount");
+            result = resident.repayPlayerLoan({ loanId: parsed.reference, amount: args.amount, idempotencyKey: key });
+            break;
         default:
             throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个银行 option 当前不可用。");
     }
     return success("银行业务已办理。", {
-        result,
+        result: parsed.action.startsWith("player-loan-")
+            ? publicPlayerLoan(database, result, residentId)
+            : result,
         current: readBankFacts(database, backend, rules, residentId),
     });
 }
@@ -738,6 +888,13 @@ function schoolView(database, backend, residentId, now, args) {
 }
 
 function schoolChoose(database, backend, residentId, now, args) {
+    if (Array.isArray(args.answers)) {
+        args = {
+            ...args,
+            answers: args.answers.map((selection) =>
+                selection.map((answer) => answer.trim().toUpperCase()).toSorted()),
+        };
+    }
     const actionKey = idempotencyKey(residentId, "go.school.choose", args);
     const payloadHash = schoolActionPayloadHash(residentId, args);
     backend.trustedSystemCommands.expireDueExamAttempts(residentId);
@@ -937,6 +1094,215 @@ function visibleCommissionRows(database, residentId, career) {
     `).all(career, residentId, residentId);
 }
 
+function commissionMessages(database, jobId, residentId) {
+    return mapRows(database.prepare(`
+      SELECT message_id, sender_resident_id, recipient_resident_id, body, created_at
+      FROM career_job_messages
+      WHERE job_id = ?
+      ORDER BY created_at, message_id
+    `).all(jobId)).map(({ senderResidentId, recipientResidentId, ...message }) => ({
+        ...message,
+        sender: senderResidentId === residentId ? "self" : "counterparty",
+        recipient: recipientResidentId === residentId ? "self" : "counterparty",
+    }));
+}
+
+function publicChefRecipe(database, recipe, residentId, accessible) {
+    const authorResidentId = recipe.authorResidentId ?? recipe.residentId;
+    const { authorResidentId: _authorResidentId, residentId: _residentId, ...facts } = recipe;
+    return {
+        ...facts,
+        author: authorResidentId === residentId ? { kind: "self" } : {
+            kind: "resident",
+            farm: publicFarmForResident(database, authorResidentId),
+        },
+        accessible,
+        priceSilver: CHEF_ORIGINAL_RECIPE_SILVER_PRICE[recipe.rarity] ?? null,
+    };
+}
+
+function publicChefLease(row) {
+    const { ownerResidentId: _ownerResidentId, ...lease } = row;
+    return lease;
+}
+
+function chefStoreListings(database, residentId) {
+    const activeLeases = new Map(mapRows(database.prepare(`
+      SELECT * FROM chef_store_leases WHERE state = 'active'
+    `).all()).map((lease) => [lease.leaseId, lease]));
+    const listings = [];
+    for (const farm of allFarms()) {
+        const receipts = farm?.[CHEF_STORE_LISTINGS_FIELD];
+        if (!receipts || typeof receipts !== "object" || Array.isArray(receipts))
+            continue;
+        for (const receipt of Object.values(receipts)) {
+            const lease = activeLeases.get(receipt?.leaseId);
+            if (!lease || receipt?.state !== "reserved" || !Number.isSafeInteger(receipt.quantity) || receipt.quantity <= 0)
+                continue;
+            listings.push({
+                leaseId: receipt.leaseId,
+                productId: receipt.marketId,
+                kind: receipt.marketKind,
+                quantity: receipt.quantity,
+                priceSilver: receipt.price,
+                seller: lease.ownerResidentId === residentId ? { kind: "self" } : {
+                    kind: "resident",
+                    farm: publicFarmForResident(database, lease.ownerResidentId),
+                },
+            });
+        }
+    }
+    return listings;
+}
+
+function chefCommissionFacts(database, backend, residentId, farm, now) {
+    const resident = backend.forResident(residentId);
+    const accessible = new Set(resident.listOwnChefRecipes().map((recipe) => recipe.recipeId));
+    const recipeIds = database.prepare(`
+      SELECT recipe_id FROM career_chef_original_recipes ORDER BY created_at, recipe_id
+    `).all();
+    const recipes = recipeIds.map(({ recipe_id }) => backend.trustedQueries.getChefRecipe(recipe_id))
+        .filter(Boolean)
+        .map((recipe) => publicChefRecipe(database, recipe, residentId,
+            accessible.has(recipe.recipeId) || recipe.authorResidentId === residentId));
+    const leases = mapRows(database.prepare(`
+      SELECT * FROM chef_store_leases
+      WHERE owner_resident_id = ? ORDER BY created_at DESC, lease_id
+    `).all(residentId)).map(publicChefLease);
+    const listings = chefStoreListings(database, residentId);
+    const level = qualificationLevel(database, residentId, "chef");
+    const options = [];
+    for (const recipe of recipes) {
+        if (!recipe.accessible && recipe.author.kind !== "self")
+            options.push(option(`commission:chef-recipe-buy:${encodeURIComponent(recipe.recipeId)}`));
+    }
+    const liveLease = leases.find((lease) => ["active", "suspended"].includes(lease.state));
+    if (level >= 3 && !liveLease) {
+        for (const listing of Array.isArray(farm?.market) ? farm.market : []) {
+            if (["dish", "ingredient"].includes(listing?.kind) && typeof listing?.id === "string") {
+                const reference = `market:${listing.kind}:${listing.id}`;
+                options.push(option(`commission:chef-store-open:${encodeURIComponent(reference)}`));
+            }
+        }
+    }
+    for (const lease of leases) {
+        if (["active", "suspended"].includes(lease.state) && now >= lease.nextRentDueAt)
+            options.push(option(`commission:chef-store-rent:${encodeURIComponent(lease.leaseId)}`));
+    }
+    for (const listing of listings) {
+        if (listing.seller.kind !== "self") {
+            options.push(option(
+                `commission:chef-store-buy:${encodeURIComponent(listing.leaseId)}:${encodeURIComponent(listing.productId)}`,
+                ["amount"],
+            ));
+        }
+    }
+    return { qualificationLevel: level, recipes, leases, listings, options };
+}
+
+function chefCommissionReference(facts, reference) {
+    return facts.recipes.find((recipe) => recipe.recipeId === reference) ??
+        facts.leases.find((lease) => lease.leaseId === reference) ??
+        facts.listings.find((listing) => listing.leaseId === reference || listing.productId === reference) ??
+        null;
+}
+
+function farmCommissionView(database, backend, residentId, args, sources, farm, now) {
+    const chef = chefCommissionFacts(database, backend, residentId, farm, now);
+    if (args.reference !== undefined) {
+        const chefReference = chefCommissionReference(chef, args.reference);
+        if (chefReference)
+            return success("已读取公共农场职业记录。", {
+                reference: chefReference,
+                chef,
+                options: chef.options,
+            });
+    }
+    const agronomy = commissionView(database, backend, residentId, "agronomist", args,
+        sources.filter((source) => source.career === "agronomist"));
+    return success("已读取公共农场职业事实。", {
+        ...agronomy.data,
+        chef,
+        options: [...agronomy.data.options, ...chef.options],
+    });
+}
+
+function safeChefActionResult(database, result, residentId) {
+    if (!result || typeof result !== "object" || Array.isArray(result))
+        return result;
+    const {
+        ownerResidentId,
+        buyerResidentId,
+        authorResidentId,
+        residentId: resultResidentId,
+        ...facts
+    } = result;
+    return {
+        ...facts,
+        ...(ownerResidentId ? { owner: ownerResidentId === residentId ? { kind: "self" } : { kind: "resident", farm: publicFarmForResident(database, ownerResidentId) } } : {}),
+        ...(buyerResidentId ? { buyer: buyerResidentId === residentId ? { kind: "self" } : { kind: "resident", farm: publicFarmForResident(database, buyerResidentId) } } : {}),
+        ...(authorResidentId ? { author: authorResidentId === residentId ? { kind: "self" } : { kind: "resident", farm: publicFarmForResident(database, authorResidentId) } } : {}),
+        ...(resultResidentId && !authorResidentId ? { resident: resultResidentId === residentId ? { kind: "self" } : { kind: "resident", farm: publicFarmForResident(database, resultResidentId) } } : {}),
+    };
+}
+
+function farmChefCommissionAction(database, backend, residentId, args, farm, now) {
+    const current = chefCommissionFacts(database, backend, residentId, farm, now);
+    if (!current.options.some((entry) => entry.option === args.option))
+        return null;
+    const resident = backend.forResident(residentId);
+    const key = idempotencyKey(residentId, "go.farm.commission", args);
+    let result;
+    const recipeBuy = /^commission:chef-recipe-buy:(.+)$/u.exec(args.option);
+    const storeOpen = /^commission:chef-store-open:(.+)$/u.exec(args.option);
+    const storeRent = /^commission:chef-store-rent:(.+)$/u.exec(args.option);
+    const storeBuy = /^commission:chef-store-buy:([^:]+):(.+)$/u.exec(args.option);
+    if (recipeBuy) {
+        if (args.amount !== undefined || args.text !== undefined)
+            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个原创菜谱购买 option 当前不可用。");
+        const recipeId = decodeURIComponent(recipeBuy[1]);
+        result = resident.purchaseChefOriginalRecipe({
+            recipeId,
+            purchaseId: key,
+            idempotencyKey: key,
+        });
+    }
+    else if (storeOpen) {
+        if (args.amount !== undefined || args.text !== undefined)
+            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个料理店开店 option 当前不可用。");
+        result = resident.openChefStore({
+            grade: current.qualificationLevel >= 4 ? "special" : "high",
+            listingReference: decodeURIComponent(storeOpen[1]),
+            idempotencyKey: key,
+        });
+    }
+    else if (storeRent) {
+        if (args.amount !== undefined || args.text !== undefined)
+            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个料理店续租 option 当前不可用。");
+        result = resident.payChefStoreRent({
+            leaseId: decodeURIComponent(storeRent[1]),
+            idempotencyKey: key,
+        });
+    }
+    else if (storeBuy) {
+        if (!Number.isSafeInteger(args.amount) || args.amount <= 0 || args.text !== undefined)
+            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个料理店购买 option 当前不可用。");
+        result = resident.placeChefStoreOrder({
+            leaseId: decodeURIComponent(storeBuy[1]),
+            productId: decodeURIComponent(storeBuy[2]),
+            quantity: args.amount,
+            idempotencyKey: key,
+        });
+    }
+    else {
+        return null;
+    }
+    return success("公共农场职业业务已办理。", {
+        result: safeChefActionResult(database, result, residentId),
+        chef: chefCommissionFacts(database, backend, residentId, farm, now),
+    });
+}
+
 function commissionOptions(database, backend, rows, residentId, sources) {
     const options = [];
     for (const source of sources) {
@@ -961,10 +1327,19 @@ function commissionOptions(database, backend, rows, residentId, sources) {
         if (job.career === "agronomist" && job.status === "available" &&
             job.ownerResidentId === residentId && job.parentJobId && !agronomyPayment)
             options.push(option(`commission:republish:${job.jobId}`, ["amount"]));
+        if (["agronomist", "veterinarian"].includes(job.career) &&
+            job.status === "available" && job.ownerResidentId === residentId && job.parentJobId) {
+            options.push(option(`commission:npc-transfer:${job.jobId}`));
+        }
         if (job.ownerResidentId === residentId &&
             ["farm_plot_condition", "animal_health_case"].includes(job.sourceType) &&
             ["available", "accepted", "assigned"].includes(job.status))
             options.push(option(`commission:cancel:${job.jobId}`));
+        if (job.workerResidentId &&
+            [job.ownerResidentId, job.workerResidentId].includes(residentId) &&
+            ["accepted", "assigned", "active"].includes(job.status)) {
+            options.push(option(`commission:reply:${job.jobId}`, ["text"]));
+        }
         for (const value of workerOptions(
             job,
             residentId,
@@ -988,6 +1363,7 @@ function commissionView(database, backend, residentId, career, args, sources) {
         jobs: mapRows(selected).map((job, index) => ({
             ...job,
             sourceFacts: commissionSourceFacts(database, backend.trustedQueries.getJob(selected[index].job_id)),
+            messages: commissionMessages(database, selected[index].job_id, residentId),
         })),
         sources: sources
             .filter((source) => source.career === career)
@@ -1148,9 +1524,17 @@ function completeCommissionWorldOperation(database, backend, row, world) {
                 }
             }
         }
+        const finalJob = backend.trustedQueries.getJob(job.jobId);
         const response = current.operation_kind === "commission_check"
             ? success("检查已记录。", { result, world })
-            : success("处理已完成。", { result, world });
+            : success(
+                "处理已完成。",
+                { result, world },
+                finalJob.status === "completed"
+                    ? commissionNotifications("commission_completed", finalJob,
+                        `commission-completed:${current.action_key}`)
+                    : [],
+            );
         database.prepare(`
           UPDATE lingye_cross_store_operations
           SET status = 'completed', result_json = ?, updated_at = ?
@@ -1312,7 +1696,11 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
             result,
             jobs: mapRows(visibleCommissionRows(database, residentId, career)),
             options: [],
-        });
+        }, commissionNotifications(
+            "commission_completed",
+            { ownerResidentId: source.ownerResidentId, workerResidentId: null },
+            `commission-completed:${actionKey}`,
+        ));
     }
     const currentRows = visibleCommissionRows(database, residentId, career);
     const currentOptions = commissionOptions(
@@ -1324,6 +1712,40 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
     );
     if (!currentOptions.some((entry) => entry.option === args.option))
         throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托 option 当前不可用。");
+    const npcTransfer = /^commission:npc-transfer:(.+)$/u.exec(args.option);
+    if (npcTransfer) {
+        if (args.amount !== undefined || args.text !== undefined)
+            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个 NPC 转交 option 当前不可用。");
+        const job = commissionJob(database, backend, npcTransfer[1], career);
+        if (job.ownerResidentId !== residentId || job.status !== "available" || !job.parentJobId ||
+            !["agronomist", "veterinarian"].includes(job.career)) {
+            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个 NPC 转交 option 当前不可用。");
+        }
+        const actionKey = idempotencyKey(residentId, "commission:npc-transfer", args);
+        const source = sources.find((entry) => entry.career === career && entry.sourceId === job.sourceId) ??
+            recoverBoundNpcSource(database, residentId, career, job.sourceId, actionKey);
+        if (!source)
+            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个 NPC 转交 option 当前不可用。");
+        const payloadHash = createHash("sha256").update(JSON.stringify({
+            sourceId: source.sourceId,
+            sourceType: source.sourceType,
+            career: source.career,
+            ownerResidentId: source.ownerResidentId,
+            successorJobId: job.jobId,
+        })).digest("hex");
+        const result = completeNpcFallbackService(database, backend, source, actionKey, payloadHash, now);
+        backend.trustedSystemCommands.cancelJob(job.jobId);
+        return success("NPC 已完成转交后的保底处理。", {
+            result,
+            jobs: mapRows(visibleCommissionRows(database, residentId, career)),
+            options: commissionOptions(database, backend,
+                visibleCommissionRows(database, residentId, career), residentId, sources),
+        }, commissionNotifications(
+            "commission_completed",
+            { ownerResidentId: source.ownerResidentId, workerResidentId: null },
+            `commission-completed:${actionKey}`,
+        ));
+    }
     const publish = /^commission:publish:(.+)$/u.exec(args.option);
     if (publish) {
         const source = sources.find((entry) => entry.career === career && entry.sourceId === publish[1]);
@@ -1366,7 +1788,7 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
         return success("委托已接取。", { result, jobs: mapRows(visibleCommissionRows(database, residentId, career)), options: [] });
     }
     const actionWithValue = /^commission:(check|treat|resolve):(.+):([^:]+)$/u.exec(args.option);
-    const actionWithoutValue = /^commission:(transfer|cancel|submit):(.+)$/u.exec(args.option);
+    const actionWithoutValue = /^commission:(transfer|cancel|submit|reply):(.+)$/u.exec(args.option);
     if (!actionWithValue && !actionWithoutValue)
         throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托 option 当前不可用。");
     const kind = (actionWithValue ?? actionWithoutValue)[1];
@@ -1380,6 +1802,40 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
         if (payment?.trade_id)
             backend.trustedSystemCommands.cancelTrade({ tradeId: payment.trade_id, idempotencyKey: idempotencyKey(residentId, "commission:cancel:trade", args) });
         return success("委托已取消。", { result: backend.trustedSystemCommands.cancelJob(jobId) });
+    }
+    if (kind === "reply") {
+        if (args.amount !== undefined || typeof args.text !== "string")
+            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这条委托回复当前不可发送。");
+        const recipientResidentId = job.ownerResidentId === residentId
+            ? job.workerResidentId
+            : job.workerResidentId === residentId
+                ? job.ownerResidentId
+                : null;
+        if (!recipientResidentId || !["accepted", "assigned", "active"].includes(job.status))
+            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这条委托回复当前不可发送。");
+        const messageId = idempotencyKey(residentId, `commission:${jobId}:reply`, args);
+        const existing = database.prepare("SELECT * FROM career_job_messages WHERE message_id = ?").get(messageId);
+        if (existing && (existing.job_id !== jobId || existing.sender_resident_id !== residentId ||
+            existing.recipient_resident_id !== recipientResidentId || existing.body !== args.text)) {
+            throw new LingyeBusinessError("CONFLICT", "这条委托回复已经使用了不同内容。");
+        }
+        if (!existing) {
+            database.prepare(`
+              INSERT INTO career_job_messages (
+                message_id, job_id, sender_resident_id, recipient_resident_id, body, created_at
+              ) VALUES (?, ?, ?, ?, ?, ?)
+            `).run(messageId, jobId, residentId, recipientResidentId, args.text, now);
+        }
+        const messages = commissionMessages(database, jobId, residentId);
+        return success("委托回复已记录。", {
+            message: messages.find((message) => message.messageId === messageId),
+            messages,
+        }, commissionNotifications(
+            "commission_reply",
+            { recipientResidentId },
+            `commission-reply:${messageId}`,
+            args.text,
+        ));
     }
     if (job.workerResidentId !== residentId)
         throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托不属于当前从业者。");
@@ -1447,7 +1903,13 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
     if (kind === "resolve" && career === "constable") {
         if (!value || args.amount !== undefined || typeof args.text !== "string")
             throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个处理结果当前不可用。");
-        return success("治安事项已结案。", resolveSecurity(database, backend, residentId, job, value, args, now));
+        const result = resolveSecurity(database, backend, residentId, job, value, args, now);
+        return success(
+            "治安事项已结案。",
+            result,
+            commissionNotifications("commission_completed", backend.trustedQueries.getJob(job.jobId),
+                `commission-completed:${idempotencyKey(residentId, `commission:${job.jobId}:resolve`, args)}`),
+        );
     }
     throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托 option 当前不可用。");
 }
@@ -1557,6 +2019,23 @@ export function createLingyeActionExecutor(options) {
                 const sources = input.farm
                     ? boundFarmSources(database, input.farm, input.residentId)
                     : [];
+                if (input.op === "go.farm.commission") {
+                    if (Object.hasOwn(input.args, "option")) {
+                        const chefResult = farmChefCommissionAction(
+                            database,
+                            backend,
+                            input.residentId,
+                            input.args,
+                            input.farm,
+                            now(),
+                        );
+                        if (chefResult)
+                            return chefResult;
+                        return commissionAction(database, backend, input.residentId, "agronomist", input.args,
+                            sources, now(), options.afterWorldApplyForTesting);
+                    }
+                    return farmCommissionView(database, backend, input.residentId, input.args, sources, input.farm, now());
+                }
                 if (Object.hasOwn(input.args, "option"))
                     return commissionAction(database, backend, input.residentId, career, input.args,
                         sources, now(), options.afterWorldApplyForTesting);
@@ -1602,6 +2081,8 @@ export function lingyeRuntimeReadiness(economyRules) {
     if (publicKeys.size !== privateKeys.size ||
         [...publicKeys].some((key) => !privateKeys.has(key)))
         missing.push("private_exam_bank");
+    if ([...REQUIRED_EXAM_LEVELS].some((key) => !publicKeys.has(key) || !privateKeys.has(key)))
+        missing.push("required_exam_levels");
     const ruleEntries = [
         ["minimum_system_loan_credit_days", economyRules?.minimumSystemLoanCreditDays],
         ["restricted_daily_gold_limit", economyRules?.restrictedDailyGoldLimit],
@@ -1638,6 +2119,7 @@ export function lingyeRuntimeReadiness(economyRules) {
             restricted_daily_gold_limit: economyRules?.restrictedDailyGoldLimit ?? null,
             restricted_daily_silver_limit: economyRules?.restrictedDailySilverLimit ?? null,
         },
+        capabilities: LINGYE_CAPABILITIES,
         nature_runtime: natureRuntime,
         missing,
     };

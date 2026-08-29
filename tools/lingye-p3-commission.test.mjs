@@ -537,6 +537,7 @@ test("four commission decisions close further world actions and one bad recovery
     }
     const cappedView = run(worker, {});
     assert.deepEqual(cappedView.data.options.map((entry) => entry.option), [
+        `commission:reply:${jobId}`,
         `commission:transfer:${jobId}`,
     ]);
     const worldBefore = JSON.stringify(getFarm(farmId));

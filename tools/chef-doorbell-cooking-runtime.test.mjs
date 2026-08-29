@@ -150,3 +150,63 @@ test("an unbound farm never receives server-only original recipe authority", () 
     database.close();
   }
 });
+
+test("Doorbell kitchen benefits buy one paid tool and run one method-bound original research", () => {
+  const database = openLingyeWorldDatabase(":memory:");
+  try {
+    const residentId = "chef-doorbell-researcher";
+    const bindingReference = "chef-doorbell-research-binding";
+    register(database, residentId, bindingReference);
+    database.prepare(`
+      INSERT INTO career_tracks (resident_id, career, track_order, selected_at)
+      VALUES (?, 'chef', 1, ?)
+    `).run(residentId, NOW);
+    database.prepare(`
+      INSERT INTO career_certificates (
+        resident_id, career, qualification_level, status,
+        source_attempt_id, issued_at, effective_at
+      ) VALUES (?, 'chef', 1, 'active', ?, ?, ?)
+    `).run(residentId, "chef-doorbell-research-certificate", NOW, NOW);
+
+    const farm = makeFarm("门铃研发农场", 246810, { humanKey: "chef-doorbell-research-human" });
+    farm.id = "EFGH23";
+    farm.silver = 2_000;
+    farm.doorbellMcpMigration = { migrationId: bindingReference };
+    const kitchen = ensureKitchen(farm);
+    kitchen.products = [{ id: "chef-doorbell-research-beef", itemId: "beef", value: 50, createdAt: NOW }];
+    kitchen.ingredients = { spice: 1 };
+    insertFarm(farm);
+
+    const backend = createLingyeWorldBackend(database, {
+      economyRules: RULES,
+      now: () => NOW,
+      random: () => 0,
+    });
+    importBalance(backend, residentId);
+    const current = getFarm(farm.id);
+    const benefits = farmDoorbellKitchenCareerBenefits(database, backend, current);
+    assert.deepEqual(benefits.purchaseKitchenTool("deep-fry"), {
+      ok: true,
+      kind: "tool",
+      name: "炸锅",
+      qty: 1,
+      cost: 1_600,
+    });
+    assert.equal(current.silver, 400);
+    assert.equal(current.ranch.kitchen.ownedTools.includes("deep-fry"), true);
+
+    const researched = benefits.researchOriginalRecipe({
+      items: ["beef", "spice"],
+      methodId: "deep-fry",
+      recipeName: "门铃香料炸牛肉",
+    });
+    assert.equal(researched.status, "succeeded");
+    assert.equal(researched.recipe.name, "门铃香料炸牛肉");
+    assert.equal(researched.recipe.methodId, "deep-fry");
+    assert.equal(getFarm(farm.id).ranch.kitchen.products.length, 0);
+    assert.equal(getFarm(farm.id).ranch.kitchen.ingredients.spice, 1);
+  }
+  finally {
+    database.close();
+  }
+});

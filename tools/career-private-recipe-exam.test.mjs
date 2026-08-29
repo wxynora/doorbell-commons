@@ -35,7 +35,7 @@ test("private written exams freeze one deterministic question from authoritative
         id: `static-${index + 1}`,
         stem: `Static ${index + 1}`,
         options: { A: "A", B: "B", C: "C", D: "D" },
-        answer: "A",
+        answer: index === 0 ? ["A", "C"] : ["A"],
         explanation: "Static explanation",
     }));
     writeFileSync(bankPath, JSON.stringify({
@@ -71,7 +71,7 @@ test("private written exams freeze one deterministic question from authoritative
         assert.deepEqual(Object.keys(dynamic.options), ["A", "B", "C", "D"]);
         assert.equal(Object.hasOwn(dynamic, "answer"), false);
         assert.equal(Object.hasOwn(dynamic, "explanation"), false);
-        assert.ok(["A+B", "A+C", "B+D", "C+E"].includes(dynamic.options[first.answerKey.at(-1)]));
+        assert.ok(["A+B", "A+C", "B+D", "C+E"].includes(dynamic.options[first.answerKey.at(-1)[0]]));
     }
     finally {
         delete process.env.AIFARM_CAREER_CURRICULUM_PATH;
@@ -88,7 +88,7 @@ test("only per-level ready exams become available with a private bank while bloc
         id: `ready-question-${index + 1}`,
         stem: `Ready question ${index + 1}`,
         options: { A: "A", B: "B", C: "C", D: "D" },
-        answer: ["A", "B", "C", "D"][index % 4],
+        answer: [["A"], ["B"], ["C"], ["D"]][index % 4],
         explanation: "Private answer explanation",
     }));
     const openExams = Object.freeze({

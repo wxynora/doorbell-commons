@@ -17,13 +17,14 @@ const {
 } = await import("../dist/lingye-world-database.js");
 const { createLingyeActionExecutor } = await import("../dist/server/doorbell/lingye.js");
 const { createDoorbellInternalHandler } = await import("../dist/server/doorbell/router.js");
-const { insertFarm } = await import("../dist/store.js");
+const { getFarm, insertFarm } = await import("../dist/store.js");
 
 const NOW = Date.parse("2026-09-01T08:00:00+08:00");
 const RESIDENT_ID = "019ffb01-49cd-7020-84af-3d04fb1ed03d";
 const OTHER_RESIDENT_ID = "019ffb01-49cd-7020-94af-3d04fb1ed03d";
 const MIGRATION_ID = "019ffb01-49cd-7020-a4af-3d04fb1ed03d";
 const FARM_ID = "ABC234";
+const OTHER_FARM_ID = "DEF567";
 const HUMAN_KEY = "doorbell-lingye-human-key";
 const ECONOMY_RULES = {
     minimumSystemLoanCreditDays: 5,
@@ -36,7 +37,7 @@ function testPaper(kind, targetKey, count) {
         id: `${targetKey}:question:${index + 1}`,
         stem: `Test question ${index + 1}`,
         options: { A: "A", B: "B", C: "C", D: "D" },
-        answer: ["A", "B", "C", "D"][index % 4],
+        answer: index === 0 ? ["A", "C"] : ["A", "B", "C", "D"][index % 4],
         explanation: `Test explanation ${index + 1}`,
     }));
     return {
@@ -51,6 +52,10 @@ function testPaper(kind, targetKey, count) {
             explanation: question.explanation,
         })),
     };
+}
+
+function answerSelections(answerKey) {
+    return answerKey.map((answer) => Array.isArray(answer) ? answer : [answer]);
 }
 const TEST_CURRICULUM = Object.freeze({
     careerCourseAvailability: (career) => career !== "reporter",
@@ -91,9 +96,11 @@ function responseCapture() {
 }
 
 function execute(executor, op, args, identity = {}) {
+    const residentId = identity.residentId ?? RESIDENT_ID;
     return executor.execute({
-        residentId: identity.residentId ?? RESIDENT_ID,
+        residentId,
         bindingReference: identity.bindingReference ?? MIGRATION_ID,
+        farm: identity.farm ?? getFarm(residentId === OTHER_RESIDENT_ID ? OTHER_FARM_ID : FARM_ID),
         op,
         args,
     });
@@ -106,6 +113,7 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
     const backend = createLingyeWorldBackend(database, {
         economyRules: ECONOMY_RULES,
         curriculum: TEST_CURRICULUM,
+        chefAuthority: { useFarmStore: true },
         generateId: () => `lingye-action-${++sequence}`,
         now: () => actionNow,
     });
@@ -139,7 +147,7 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
     });
     backend.trustedSystemCommands.importLegacyBalances({
         residentId: OTHER_RESIDENT_ID,
-        gold: 100_000,
+        gold: 1_000_000,
         silver: 100,
         migrationId: "economy:other-doorbell-migration",
         idempotencyKey: "economy:other-doorbell-migration",
@@ -147,8 +155,8 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
 
     assert.throws(() => execute(executor, "go.school.choose", {
         option: "school:invalid-answer-contract",
-        answers: ["A", "B", "C", "D", "E"],
-    }), /answers must contain five or twenty A-D choices/u);
+        answers: [["A"], ["B"], ["C"], ["D"], ["E"]],
+    }), /answers must contain five or twenty non-empty sets of unique A-D choices/u);
 
     const farm = makeFarm("Doorbell Lingye Test");
     farm.id = FARM_ID;
@@ -185,6 +193,68 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
         actionReceipts: {},
     };
     insertFarm(farm);
+    const otherFarm = makeFarm("Doorbell Lingye Other");
+    otherFarm.id = OTHER_FARM_ID;
+    otherFarm.humanKey = "doorbell-lingye-other-human-key";
+    otherFarm.agentKey = undefined;
+    otherFarm.doorbellMcpMigration = {
+        migrationId: "other-doorbell-migration",
+        confirmationId: "019ffb01-49cd-7020-c4af-3d04fb1ed03d",
+        revokedAt: new Date(NOW).toISOString(),
+        legacyMcpRevoked: true,
+    };
+    otherFarm.plots[0].crop = {
+        seedType: "common",
+        progress: 1,
+        growTicks: 10,
+        waterCount: 0,
+        ripe: false,
+        lingyeAgronomy: {
+            sourceId: "other-plot-condition-1",
+            condition: "drought",
+            status: "open",
+            generatedDay: 1,
+            generatedAt: NOW,
+            checks: [],
+            treatments: [],
+            qualityPenalty: true,
+        },
+    };
+    otherFarm.lingyeP3 = {
+        version: 1,
+        lastAdvancedDay: 99_999,
+        lastAnimalRecoveryDay: null,
+        history: [],
+        actionReceipts: {},
+    };
+    otherFarm.market = [{ kind: "ingredient", id: "spice", qty: 2, price: 10 }];
+    insertFarm(otherFarm);
+    database.prepare(`
+      INSERT INTO career_tracks (resident_id, career, track_order, selected_at)
+      VALUES (?, 'chef', 1, ?)
+    `).run(OTHER_RESIDENT_ID, NOW);
+    database.prepare(`
+      INSERT INTO career_certificates (
+        resident_id, career, qualification_level, status,
+        source_attempt_id, issued_at, effective_at
+      ) VALUES (?, 'chef', 3, 'active', ?, ?, ?)
+    `).run(OTHER_RESIDENT_ID, "doorbell-chef-store-certificate", NOW, NOW);
+    database.prepare(`
+      INSERT INTO career_chef_original_recipes (
+        recipe_id, identity_key, resident_id, recipe_name, ingredients_json,
+        method_id, recipe_version, quality_version, base_score, pair_score,
+        method_score, structure_score, quality_score, total_score, rarity, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+        "doorbell-chef-recipe",
+        "egg:1|tomato:1|stir-fry",
+        OTHER_RESIDENT_ID,
+        "门铃番茄蛋",
+        JSON.stringify([{ id: "egg", quantity: 1 }, { id: "tomato", quantity: 1 }]),
+        "stir-fry",
+        "chef-quality-v1",
+        1, 70, 80, 80, 74, 74, "N", NOW,
+    );
 
     const router = createDoorbellInternalHandler(() => {
         throw new Error("farm executor must not be called");
@@ -215,7 +285,7 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
         ok: false,
         error: {
             code: "OPTION_NOT_AVAILABLE",
-            message: "OPTION_NOT_AVAILABLE",
+            message: "当前选项已失效或不适用于这项业务；请重新查看当前事实与 option。",
         },
     });
     const depositArgs = { option: depositOption.option, amount: 1_000 };
@@ -224,6 +294,82 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
     assert.equal(firstDeposit.ok, true);
     assert.deepEqual(replayedDeposit, firstDeposit);
     assert.equal(backend.forResident(RESIDENT_ID).getOwnAccount().availableGold, 1_999_000);
+
+    const loanBank = execute(executor, "go.bank.view", {});
+    const loanOfferOption = loanBank.data.options.find((entry) => entry.option.includes("player-loan-offer"));
+    assert.deepEqual(loanOfferOption.requires, ["to", "amount", "termDays", "totalRatePpm"]);
+    const proposedLoan = execute(executor, "go.bank.choose", {
+        option: loanOfferOption.option,
+        to: OTHER_FARM_ID,
+        amount: 50,
+        termDays: 14,
+        totalRatePpm: 10_000,
+    });
+    assert.equal(proposedLoan.ok, true);
+    assert.equal(proposedLoan.data.result.role, "lender");
+    assert.deepEqual(proposedLoan.data.result.counterparty, {
+        doorplate: OTHER_FARM_ID,
+        name: otherFarm.name,
+    });
+    assert.equal("lenderResidentId" in proposedLoan.data.result, false);
+    assert.equal("borrowerResidentId" in proposedLoan.data.result, false);
+    const lenderConfirm = proposedLoan.data.current.options.find((entry) =>
+        entry.option.includes("player-loan-confirm"));
+    assert.ok(lenderConfirm);
+    assert.equal(execute(executor, "go.bank.choose", { option: lenderConfirm.option }).ok, true);
+    const otherIdentity = {
+        residentId: OTHER_RESIDENT_ID,
+        bindingReference: "other-doorbell-migration",
+    };
+    const borrowerView = execute(executor, "go.bank.view", { section: "loans" }, otherIdentity);
+    const borrowerConfirm = borrowerView.data.options.find((entry) =>
+        entry.option.includes("player-loan-confirm"));
+    assert.ok(borrowerConfirm);
+    const activatedLoan = execute(executor, "go.bank.choose", { option: borrowerConfirm.option }, otherIdentity);
+    assert.equal(activatedLoan.data.result.status, "active");
+    assert.equal(backend.forResident(RESIDENT_ID).getOwnAccount().availableSilver, 550);
+    assert.equal(backend.forResident(OTHER_RESIDENT_ID).getOwnAccount().availableSilver, 150);
+    const borrowerRepay = activatedLoan.data.current.options.find((entry) =>
+        entry.option.includes("player-loan-repay"));
+    assert.ok(borrowerRepay);
+    const repaidLoan = execute(executor, "go.bank.choose", {
+        option: borrowerRepay.option,
+        amount: 50,
+    }, otherIdentity);
+    assert.equal(repaidLoan.data.result.status, "repaid");
+    assert.equal(backend.forResident(RESIDENT_ID).getOwnAccount().availableSilver, 600);
+    assert.equal(backend.forResident(OTHER_RESIDENT_ID).getOwnAccount().availableSilver, 100);
+
+    const farmCareerView = execute(executor, "go.farm.commission", {});
+    assert.equal(farmCareerView.ok, true);
+    assert.equal(farmCareerView.data.chef.recipes[0].author.kind, "resident");
+    const recipeBuyOption = farmCareerView.data.options.find((entry) =>
+        entry.option.includes("commission:chef-recipe-buy"));
+    assert.ok(recipeBuyOption);
+    const boughtRecipe = execute(executor, "go.farm.commission", { option: recipeBuyOption.option });
+    assert.equal(boughtRecipe.ok, true);
+    assert.equal(boughtRecipe.data.result.recipeId, "doorbell-chef-recipe");
+    assert.equal(boughtRecipe.data.result.author.kind, "resident");
+    assert.equal("authorResidentId" in boughtRecipe.data.result, false);
+
+    const chefOwnerView = execute(executor, "go.farm.commission", {}, otherIdentity);
+    const storeOpenOption = chefOwnerView.data.options.find((entry) =>
+        entry.option.includes("commission:chef-store-open"));
+    assert.ok(storeOpenOption);
+    const openedStore = execute(executor, "go.farm.commission", { option: storeOpenOption.option }, otherIdentity);
+    assert.equal(openedStore.ok, true);
+    assert.equal(openedStore.data.result.state, "active");
+    assert.equal("ownerResidentId" in openedStore.data.result, false);
+    const buyerStoreView = execute(executor, "go.farm.commission", {});
+    const storeBuyOption = buyerStoreView.data.options.find((entry) =>
+        entry.option.includes("commission:chef-store-buy"));
+    assert.ok(storeBuyOption);
+    const storeOrder = execute(executor, "go.farm.commission", {
+        option: storeBuyOption.option,
+        amount: 1,
+    });
+    assert.equal(storeOrder.ok, true);
+    assert.equal(getFarm(FARM_ID).ranch.kitchen.ingredients.spice, 1);
     assert.equal(backend.forResident(RESIDENT_ID).getOwnAccount().demandGold, 1_000);
 
     const beforeFailedCommands = database.prepare("SELECT COUNT(*) AS count FROM economy_commands").get().count;
@@ -320,15 +466,15 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
         if (courseIndex === 1) {
             const failedPractice = execute(executor, "go.school.choose", {
                 option: practiceOption.option,
-                answers: ["A", "A", "A", "A", "A"],
+                answers: [["A"], ["A"], ["A"], ["A"], ["A"]],
             });
             assert.deepEqual({
                 bestCorrectAnswers: failedPractice.data.result.bestCorrectAnswers,
                 correctAnswers: failedPractice.data.result.correctAnswers,
                 passed: failedPractice.data.result.passed,
             }, {
-                bestCorrectAnswers: 2,
-                correctAnswers: 2,
+                bestCorrectAnswers: 1,
+                correctAnswers: 1,
                 passed: false,
             });
             assert.equal(failedPractice.data.result.review.length, 5);
@@ -340,7 +486,7 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
             .get(`course:${RESIDENT_ID}:agronomist:1:${courseIndex}`).answer_key_json);
         const passedPractice = execute(executor, "go.school.choose", {
             option: practiceOption.option,
-            answers: answerData.answers ?? answerData,
+            answers: answerSelections(answerData.answers ?? answerData),
         });
         assert.equal(passedPractice.data.result.correctAnswers, 5);
         assert.equal(passedPractice.data.result.passed, true);
@@ -402,7 +548,7 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
         .get(registeredExam.data.result.attemptId).answer_key_json);
     const passedExam = execute(executor, "go.school.choose", {
         option: submitExamOption.option,
-        answers: examAnswerData.answers ?? examAnswerData,
+        answers: answerSelections(examAnswerData.answers ?? examAnswerData),
     });
     assert.deepEqual(passedExam.data.result, {
         status: "passed",
@@ -462,20 +608,41 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
       VALUES ('real-farm-job-1', NULL, 10, ?)
     `).run(NOW);
     database.prepare(`
-      INSERT INTO career_commission_source_facts (source_id, source_type, fact_json, recorded_at)
+      INSERT OR IGNORE INTO career_commission_source_facts (source_id, source_type, fact_json, recorded_at)
       VALUES ('real-plot-condition-1', 'farm_plot_condition', ?, ?)
     `).run(JSON.stringify({ farmDoorplate: FARM_ID, plotId: 1, condition: "drought", status: "open" }), NOW);
     const farmCommissions = execute(executor, "go.farm.commission", {});
     assert.equal(farmCommissions.ok, true);
     assert.equal(farmCommissions.data.jobs.length, 1);
     assert.equal(farmCommissions.data.jobs[0].sourceId, "real-plot-condition-1");
-    assert.deepEqual(farmCommissions.data.options, [{ option: "commission:accept:real-farm-job-1" }]);
+    assert.equal(farmCommissions.data.options.some((entry) =>
+        entry.option === "commission:accept:real-farm-job-1"), true);
     const accepted = execute(executor, "go.farm.commission", {
         option: "commission:accept:real-farm-job-1",
     });
     assert.equal(accepted.ok, true);
     assert.equal(accepted.data.result.status, "accepted");
     assert.equal(accepted.data.result.workerResidentId, RESIDENT_ID);
+    const workerReplyOption = execute(executor, "go.farm.commission", {}).data.options.find((entry) =>
+        entry.option === "commission:reply:real-farm-job-1");
+    assert.deepEqual(workerReplyOption.requires, ["text"]);
+    const workerReply = execute(executor, "go.farm.commission", {
+        option: workerReplyOption.option,
+        text: "我先检查一下地块。",
+    });
+    assert.equal(workerReply.data.message.sender, "self");
+    assert.equal(workerReply.data.message.recipient, "counterparty");
+    assert.deepEqual(workerReply.notifications, [
+        {
+            notification_id: `commission-reply:${workerReply.data.message.messageId}:${OTHER_RESIDENT_ID}`,
+            kind: "commission_reply",
+            recipient_resident_id: OTHER_RESIDENT_ID,
+            message_text: "我先检查一下地块。",
+        },
+    ]);
+    const ownerReplyView = execute(executor, "go.farm.commission", { reference: "real-farm-job-1" }, otherIdentity);
+    assert.equal(ownerReplyView.data.jobs[0].messages[0].sender, "counterparty");
+    assert.equal(ownerReplyView.data.jobs[0].messages[0].body, "我先检查一下地块。");
     const residentFacade = backend.forResident(RESIDENT_ID);
     assert.deepEqual(residentFacade.recordOwnJobDecision({
         changesWorld: false,
@@ -490,11 +657,46 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
     const transferred = residentFacade.transferOwnJob({
         jobId: "real-farm-job-1",
         successorJobId: "resident-facade-successor",
-        successorSourceId: "resident-facade-successor-source",
+        successorSourceId: "real-plot-condition-1",
         workerResidentId: OTHER_RESIDENT_ID,
     });
     assert.equal(transferred.transferred.workerResidentId, RESIDENT_ID);
     assert.equal(transferred.transferred.status, "transferred");
+
+    const otherPublishView = execute(executor, "go.farm.commission", {}, otherIdentity);
+    assert.equal(otherPublishView.ok, true, JSON.stringify(otherPublishView));
+    const otherPublishOption = otherPublishView.data.options.find((entry) =>
+        entry.option === "commission:publish:other-plot-condition-1");
+    assert.ok(otherPublishOption);
+    const otherPublished = execute(executor, "go.farm.commission", {
+        option: otherPublishOption.option,
+        amount: 10,
+    }, otherIdentity);
+    const otherJobId = otherPublished.data.result.jobId;
+    const acceptOtherOption = execute(executor, "go.farm.commission", {}).data.options.find((entry) =>
+        entry.option === `commission:accept:${otherJobId}`);
+    assert.ok(acceptOtherOption);
+    assert.equal(execute(executor, "go.farm.commission", { option: acceptOtherOption.option }).ok, true);
+    const otherCheckOption = execute(executor, "go.farm.commission", {}).data.options.find((entry) =>
+        entry.option.startsWith(`commission:check:${otherJobId}:`));
+    assert.ok(otherCheckOption);
+    assert.equal(execute(executor, "go.farm.commission", { option: otherCheckOption.option }).ok, true);
+    const transferOtherOption = execute(executor, "go.farm.commission", {}).data.options.find((entry) =>
+        entry.option === `commission:transfer:${otherJobId}`);
+    assert.ok(transferOtherOption);
+    const otherTransferred = execute(executor, "go.farm.commission", { option: transferOtherOption.option });
+    const successorJobId = otherTransferred.data.successor.jobId;
+    const npcTransferView = execute(executor, "go.farm.commission", {}, otherIdentity);
+    const npcTransferOption = npcTransferView.data.options.find((entry) =>
+        entry.option === `commission:npc-transfer:${successorJobId}`);
+    assert.ok(npcTransferOption);
+    const npcCompleted = execute(executor, "go.farm.commission", {
+        option: npcTransferOption.option,
+    }, otherIdentity);
+    assert.equal(npcCompleted.ok, true, JSON.stringify(npcCompleted));
+    assert.equal(npcCompleted.data.result.serviceActor, "system");
+    assert.equal(npcCompleted.notifications[0].kind, "commission_completed");
+    assert.equal(npcCompleted.notifications[0].recipient_resident_id, OTHER_RESIDENT_ID);
     backend.trustedSystemCommands.createJob({
         jobId: "resident-facade-job",
         career: "agronomist",

@@ -1,4 +1,4 @@
-export const CAREER_SCHEMA_VERSION = 6;
+export const CAREER_SCHEMA_VERSION = 7;
 export function installCareerSchema(database) {
     database.exec(`
     CREATE TABLE IF NOT EXISTS career_tracks (
@@ -504,6 +504,18 @@ export function installCareerSchema(database) {
       note TEXT,
       resolved_at INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS career_job_messages (
+      message_id TEXT PRIMARY KEY,
+      job_id TEXT NOT NULL REFERENCES career_jobs(job_id),
+      sender_resident_id TEXT NOT NULL REFERENCES residents(resident_id),
+      recipient_resident_id TEXT NOT NULL REFERENCES residents(resident_id),
+      body TEXT NOT NULL CHECK (length(body) > 0),
+      created_at INTEGER NOT NULL,
+      CHECK (sender_resident_id != recipient_resident_id)
+    );
+    CREATE INDEX IF NOT EXISTS career_job_messages_job_index
+      ON career_job_messages(job_id, created_at, message_id);
   `);
     const courseColumns = new Set(database
         .prepare("PRAGMA table_info(career_courses)")

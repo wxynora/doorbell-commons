@@ -39,7 +39,13 @@ import { startConstableInterviewScheduler } from "./career/constable-interview-s
 import { loadConstableInterviewBank } from "./career/constable-interview-bank.js";
 import { applyDroughtWatering, collectFloodFishForFarm, commitNatureFarmReconciliation, commitNatureRemovedPlot, startNatureRuntimeScheduler } from "./nature-runtime.js";
 let activeLingyeWorldDatabase = null;
+let activeLingyeWorldBackend = null;
 function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
+    const careerBenefits = farmDoorbellKitchenCareerBenefits(
+        activeLingyeWorldDatabase,
+        activeLingyeWorldBackend,
+        farm,
+    );
     const body = { ...params };
     if (action === "wander") {
         const result = wanderResult({ ...body, by: farm.id }, now, true);
@@ -54,7 +60,7 @@ function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
         if (resolved?.error)
             return { status: 400, json: { ok: false, text: resolved.error } };
         const { to: _to, ...ownParams } = body;
-        return runFarm(farm.id, action, { ...ownParams, id: resolved.farm.id, token: farm.token }, undefined, now, { detail });
+        return runFarm(farm.id, action, { ...ownParams, id: resolved.farm.id, token: farm.token }, undefined, now, { detail, careerBenefits });
     }
     const social = action === "kitchen"
         ? body.op === "use" && body.target === "guard-dog" && body.to !== undefined && String(body.to) !== ""
@@ -67,7 +73,7 @@ function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
     const injected = social
         ? { ...body, by: farm.id, token: farm.token, targetRef: String(resolved.number) }
         : { ...body, token: farm.token };
-    return runFarm(target, action, injected, social ? farm.id : body.id, now, { detail });
+    return runFarm(target, action, injected, social ? farm.id : body.id, now, { detail, careerBenefits });
 }
 function executeDoorbellFarmAction(farm, action, params, detail, now) {
     const rollback = snapshotWorldForRollback();
@@ -187,7 +193,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
     const f = fresh(farmId);
     if (!f)
         return { status: 400, json: { ok: false, text: `找不到农场 ${farmId || "(没给 farm)"}` } };
-    const careerBenefits = farmCareerBenefits(activeLingyeWorldDatabase, f);
+    const careerBenefits = options.careerBenefits ?? farmCareerBenefits(activeLingyeWorldDatabase, f);
     const detail = options.detail === true || b?.detail === true || b?.detail === "1" || b?.detail === "true"
         || b?.verbose === true || b?.verbose === "1" || b?.verbose === "true";
     const vf = (ff) => detail ? { farm: farmView(ff, now) } : {};
@@ -679,6 +685,7 @@ export function startServer(port, host = "127.0.0.1") {
         },
         constableInterviewBank: loadConstableInterviewBank(),
     });
+    activeLingyeWorldBackend = lingyeWorldBackend;
     const balanceCoordinator = createLingyeFarmBalanceCoordinator(lingyeWorldDatabase, lingyeWorldBackend);
     setWorldCommitCoordinator(balanceCoordinator);
     try {
@@ -688,6 +695,7 @@ export function startServer(port, host = "127.0.0.1") {
         setWorldCommitCoordinator(null);
         lingyeWorldDatabase.close();
         activeLingyeWorldDatabase = null;
+        activeLingyeWorldBackend = null;
         throw error;
     }
     const rawLingyeActionExecutor = createLingyeActionExecutor({
@@ -983,6 +991,8 @@ export function startServer(port, host = "127.0.0.1") {
         setWorldCommitCoordinator(null);
         if (activeLingyeWorldDatabase === lingyeWorldDatabase)
             activeLingyeWorldDatabase = null;
+        if (activeLingyeWorldBackend === lingyeWorldBackend)
+            activeLingyeWorldBackend = null;
         lingyeWorldDatabase.close();
     });
     server.listen(port, host, () => console.log(`[server] 🌾 AI 农场已开门 http://${host}:${port}`));

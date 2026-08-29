@@ -30,7 +30,7 @@ writeFileSync(bankPath, JSON.stringify({
       id: `${career}-${level}-${index + 1}`,
       stem: "test",
       options: { A: "A", B: "B", C: "C", D: "D" },
-      answer: "A",
+      answer: ["A"],
       explanation: "test",
     })),
   })),
@@ -57,6 +57,17 @@ test("Lingye readiness requires the approved public levels, matching private exa
     assert.equal(ready.exams.private_ready_levels.length, 8);
     assert.equal(ready.exams.private_ready_levels.every((entry) =>
       entry.question_count === 20 && entry.pass_count === 18), true);
+    assert.deepEqual(ready.capabilities, {
+      player_loans: true,
+      multi_select_assessments: true,
+      kitchen_methods: true,
+      kitchen_tools: true,
+      chef_original_recipes: true,
+      chef_store: true,
+      commission_messages: true,
+      commission_npc_transfer: true,
+      commission_notifications: true,
+    });
     assert.deepEqual(ready.nature_runtime, {
       adapter_version: 1,
       configured: true,
@@ -70,7 +81,7 @@ test("Lingye readiness requires the approved public levels, matching private exa
     delete process.env.AIFARM_CAREER_PRIVATE_EXAM_BANK_PATH;
     const missingBank = lingyeRuntimeReadiness(RULES);
     assert.equal(missingBank.ready, false);
-    assert.deepEqual(missingBank.missing, ["private_exam_bank"]);
+    assert.deepEqual(missingBank.missing, ["private_exam_bank", "required_exam_levels"]);
     process.env.AIFARM_CAREER_PRIVATE_EXAM_BANK_PATH = bankPath;
 
     const missingRule = lingyeRuntimeReadiness({ ...RULES, restrictedDailySilverLimit: null });

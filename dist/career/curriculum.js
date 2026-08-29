@@ -15,6 +15,17 @@ const curriculum = JSON.parse(readFileSync(CONTENT_PATH, "utf8"));
 const cooking = JSON.parse(readFileSync(COOKING_PATH, "utf8"));
 const ANSWER_VALUES = new Set(["A", "B", "C", "D"]);
 
+function normalizeAnswerSelection(value) {
+    const raw = Array.isArray(value) ? value : [value];
+    const normalized = raw.map((answer) => String(answer).trim().toUpperCase());
+    if (normalized.length < 1 || normalized.length > ANSWER_VALUES.size ||
+        normalized.some((answer) => !ANSWER_VALUES.has(answer)) ||
+        new Set(normalized).size !== normalized.length) {
+        throw new CareerDomainError("invalid_assessment_answers", "Every answer must contain one or more unique A-D choices");
+    }
+    return normalized.toSorted();
+}
+
 function findCourse(career, level, courseIndex) {
     return curriculum.careers[career]?.courses.find((course) =>
         course.level === level && course.courseIndex === courseIndex) ?? null;
@@ -36,7 +47,18 @@ function findExam(career, level) {
         return null;
     const bank = privateExamBank();
     const matches = bank?.exams.filter((exam) => exam.career === career && exam.level === level) ?? [];
-    if (matches.length !== 1 || !Array.isArray(matches[0].questions) || matches[0].questions.length !== 20)
+    if (matches.length !== 1 || !Array.isArray(matches[0].questions) || matches[0].questions.length !== 20 ||
+        matches[0].questions.some((question) => {
+            if (question?.type === "existing_recipe_ingredients")
+                return false;
+            try {
+                normalizeAnswerSelection(question?.answer);
+                return false;
+            }
+            catch {
+                return true;
+            }
+        }))
         throw new CareerDomainError("assessment_content_not_available", "The private written exam bank is unavailable");
     return { ...metadata, ...matches[0], bankVersion: bank.version };
 }
@@ -123,15 +145,16 @@ function expandExamQuestion(question, attemptId) {
 }
 
 function paperFromQuestions(kind, targetKey, questions, bankVersion = curriculum.version) {
+    const normalizedAnswers = questions.map((question) => normalizeAnswerSelection(question.answer));
     return {
         kind,
         targetKey,
         bankVersion,
         publicPaper: questions.map(publicQuestion),
-        answerKey: questions.map((question) => question.answer),
-        review: questions.map((question) => ({
+        answerKey: normalizedAnswers,
+        review: questions.map((question, index) => ({
             id: question.id,
-            correctAnswer: question.answer,
+            correctAnswer: normalizedAnswers[index],
             explanation: question.explanation,
         })),
     };
@@ -187,14 +210,14 @@ export function gradeAssessment(answerKey, answers) {
     if (!Array.isArray(answers) || answers.length !== answerKey.length) {
         throw new CareerDomainError("invalid_assessment_answers", "The submitted answer count is invalid");
     }
-    const normalized = answers.map((answer) => String(answer).trim().toUpperCase());
-    if (normalized.some((answer) => !ANSWER_VALUES.has(answer))) {
-        throw new CareerDomainError("invalid_assessment_answers", "Every answer must be A, B, C or D");
-    }
+    const normalizedKey = answerKey.map(normalizeAnswerSelection);
+    const normalized = answers.map(normalizeAnswerSelection);
     return {
         answers: normalized,
         correctAnswers: normalized.reduce(
-            (total, answer, index) => total + Number(answer === answerKey[index]),
+            (total, answer, index) => total + Number(
+                JSON.stringify(answer) === JSON.stringify(normalizedKey[index]),
+            ),
             0,
         ),
     };
