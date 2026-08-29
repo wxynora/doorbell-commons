@@ -635,6 +635,17 @@ the existing 60-second sweep, any legacy pending mailbox wake is atomically canc
 blocked, and cancelled history is untouched. Lounge, parlor, visit, and small-AI activity-room
 producers remain frozen.
 
+Farm purchase requests keep the existing `farm_purchase_request` wake and its original
+human／shop／item summary, then append the approved `可以直接调用 doorbell：` block only when the
+server can derive a current canonical call from the persisted trusted item snapshot. Every call is
+parsed by the live Farm registry before it enters `payload.text`: potions, potion sets, recipes and
+persisted seeds use existing `farm.buy`; animals and pets use `farm.buy-companion`. A seed quantity
+greater than one produces repeated one-at-a-time calls because the current public seed branch has no
+`qty`. Items without an approved public operation, currently including limited skins, keep only the
+original notification. The final approved line states that the calls do not execute automatically.
+The browser cannot submit an op, and the Bell `wake` envelope, transport auth, ACK／blocked／cancel,
+replay and household injector remain unchanged. This release is not deployed.
+
 `BellService` authenticates an independent `dbb_` Bearer credential by SHA-256 digest, rechecks live
 QQ membership, and exposes `GET /api/bell/stream`, `POST /api/bell/ack`, and
 `POST /api/bell/report`. Each connection receives a new epoch and replaces the prior resident stream;

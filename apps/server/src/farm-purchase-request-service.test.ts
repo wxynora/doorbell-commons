@@ -6,6 +6,7 @@ import {
   FarmPurchaseRequestIdempotencyConflictError,
 } from "./community-database.js";
 import {
+  buildFarmPurchaseDoorbellCalls,
   buildFarmPurchaseNotificationText,
   FarmPurchaseRequestService,
 } from "./farm-purchase-request-service.js";
@@ -61,8 +62,8 @@ test("a farm purchase request persists one wake, stable item snapshots, and the 
       shopRevision: "shop-v1",
       idempotencyKey: IDEMPOTENCY_KEY,
       items: [
-        { kind: "seed", itemId: "speed_potion", qty: 1, displayName: "加速药水" },
-        { kind: "seed", itemId: "ordinary_seed", qty: 2, displayName: "普通种子" },
+        { kind: "seed", itemId: "moon_seed", qty: 1, displayName: "月光种子" },
+        { kind: "potion", itemId: "speed_potion", qty: 2, displayName: "加速药水" },
       ],
     });
     assert.equal(result.created, true);
@@ -77,20 +78,26 @@ test("a farm purchase request persists one wake, stable item snapshots, and the 
         displayName: item.displayName,
       })),
       [
-        { itemId: "ordinary_seed", kind: "seed", qty: 2, displayName: "普通种子" },
-        { itemId: "speed_potion", kind: "seed", qty: 1, displayName: "加速药水" },
+        { itemId: "speed_potion", kind: "potion", qty: 2, displayName: "加速药水" },
+        { itemId: "moon_seed", kind: "seed", qty: 1, displayName: "月光种子" },
       ],
     );
     assert.equal(
       result.notificationText,
       buildFarmPurchaseNotificationText("辛玥", "field", [
-        { kind: "seed", itemId: "ordinary_seed", qty: 2, displayName: "普通种子" },
-        { kind: "seed", itemId: "speed_potion", qty: 1, displayName: "加速药水" },
+        { kind: "potion", itemId: "speed_potion", qty: 2, displayName: "加速药水" },
+        { kind: "seed", itemId: "moon_seed", qty: 1, displayName: "月光种子" },
       ]),
     );
     assert.equal(
       result.notificationText,
-      "【📢来自铃野的通知】\n你的人类辛玥想要你给她买农场商店的普通种子 × 2、加速药水 × 1。",
+      [
+        "【📢来自铃野的通知】\n你的人类辛玥想要你给她买农场商店的加速药水 × 2、月光种子 × 1。",
+        "可以直接调用 doorbell：\n" +
+          '{"op":"farm.buy","args":{"source":"shop","kind":"item","id":"speed_potion","qty":2}}\n' +
+          '{"op":"farm.buy","args":{"source":"shop","kind":"seed","id":"moon_seed"}}',
+        "以上只是可直接使用的动作，不会自动执行。",
+      ].join("\n\n"),
     );
     assert.deepEqual(notifications, ["resident-1"]);
     assert.deepEqual(
@@ -112,6 +119,57 @@ test("a farm purchase request persists one wake, stable item snapshots, and the 
   } finally {
     database.close();
   }
+});
+
+test("purchase hints cover current canonical calls and repeat one-at-a-time seed purchases", () => {
+  assert.deepEqual(
+    buildFarmPurchaseDoorbellCalls("field", [
+      { kind: "potion", itemId: "speed_potion", qty: 3 },
+      { kind: "potion_set", itemId: "potion_set", qty: 1 },
+      { kind: "recipe", itemId: "recipe-current", qty: 1 },
+      { kind: "seed", itemId: "limited-seed", qty: 2 },
+    ]),
+    [
+      {
+        op: "farm.buy",
+        args: { source: "shop", kind: "item", id: "speed_potion", qty: 3 },
+      },
+      { op: "farm.buy", args: { source: "farm-shop", kind: "potion-set" } },
+      { op: "farm.buy", args: { source: "shop", kind: "recipe" } },
+      { op: "farm.buy", args: { source: "shop", kind: "seed", id: "limited-seed" } },
+      { op: "farm.buy", args: { source: "shop", kind: "seed", id: "limited-seed" } },
+    ],
+  );
+  assert.deepEqual(
+    buildFarmPurchaseDoorbellCalls("ranch", [
+      { kind: "animal", itemId: "duck", qty: 1 },
+      { kind: "pet", itemId: "dog", qty: 1 },
+    ]),
+    [
+      { op: "farm.buy-companion", args: { kind: "animal", id: "duck" } },
+      { op: "farm.buy-companion", args: { kind: "pet", id: "dog" } },
+    ],
+  );
+});
+
+test("skin requests keep the original notification and publish no unapproved action", () => {
+  const skin = { kind: "item", itemId: "skin-pompompurin", qty: 1, displayName: "布丁狗" };
+  assert.deepEqual(buildFarmPurchaseDoorbellCalls("ranch", [skin]), []);
+  assert.equal(
+    buildFarmPurchaseNotificationText("辛玥", "ranch", [skin]),
+    "【📢来自铃野的通知】\n你的人类辛玥想要你给她买牧场商店的布丁狗 × 1。",
+  );
+  assert.equal(
+    buildFarmPurchaseNotificationText("辛玥", "ranch", [
+      { kind: "animal", itemId: "duck", qty: 1, displayName: "鸭子" },
+      skin,
+    ]),
+    [
+      "【📢来自铃野的通知】\n你的人类辛玥想要你给她买牧场商店的鸭子 × 1、布丁狗 × 1。",
+      '可以直接调用 doorbell：\n{"op":"farm.buy-companion","args":{"kind":"animal","id":"duck"}}',
+      "以上只是可直接使用的动作，不会自动执行。",
+    ].join("\n\n"),
+  );
 });
 
 test("same resident and UUID replays one canonical request, while changed content conflicts", () => {

@@ -6,6 +6,7 @@ import type {
   FarmPurchaseShop,
 } from "./community-database.js";
 import { FarmPurchaseRequestIdempotencyConflictError } from "./community-database.js";
+import { farmOperationByName } from "./doorbell-farm-op-registry.js";
 
 export const FARM_PURCHASE_BELL_REASON = "farm_purchase_request" as const;
 
@@ -51,6 +52,11 @@ export interface FarmPurchaseRequestCreateResult {
   request: FarmPurchaseRequestRecord;
   created: boolean;
   notificationText: string;
+}
+
+export interface FarmPurchaseDoorbellCall {
+  op: string;
+  args: Record<string, unknown>;
 }
 
 export interface FarmPurchaseRequestReplayInput {
@@ -114,13 +120,95 @@ export function farmPurchaseItemStatusKey(
   return `${item.kind}\u0000${item.itemId}`;
 }
 
+function validatedDoorbellCall(
+  op: string,
+  args: Record<string, unknown>,
+): FarmPurchaseDoorbellCall {
+  const operation = farmOperationByName.get(op);
+  const parsed = operation?.argsSchema.safeParse(args);
+  if (!operation || !parsed?.success || operation.adapt(parsed.data).kind !== "farm") {
+    throw new FarmPurchaseRequestInputError(
+      "The purchase request does not map to a current Doorbell operation",
+    );
+  }
+  return { op, args: parsed.data };
+}
+
+export function buildFarmPurchaseDoorbellCalls(
+  shop: FarmPurchaseShop,
+  items: readonly Pick<FarmPurchaseRequestItemInput, "itemId" | "kind" | "qty">[],
+): FarmPurchaseDoorbellCall[] {
+  const calls: FarmPurchaseDoorbellCall[] = [];
+  for (const item of items) {
+    if (shop === "field") {
+      if (item.kind === "potion") {
+        calls.push(
+          validatedDoorbellCall("farm.buy", {
+            source: "shop",
+            kind: "item",
+            id: item.itemId,
+            qty: item.qty,
+          }),
+        );
+        continue;
+      }
+      if (item.kind === "potion_set") {
+        calls.push(validatedDoorbellCall("farm.buy", { source: "farm-shop", kind: "potion-set" }));
+        continue;
+      }
+      if (item.kind === "recipe") {
+        calls.push(validatedDoorbellCall("farm.buy", { source: "shop", kind: "recipe" }));
+        continue;
+      }
+      if (item.kind === "seed") {
+        for (let index = 0; index < item.qty; index += 1) {
+          calls.push(
+            validatedDoorbellCall("farm.buy", {
+              source: "shop",
+              kind: "seed",
+              id: item.itemId,
+            }),
+          );
+        }
+        continue;
+      }
+    } else {
+      if (item.kind === "animal" || item.kind === "pet") {
+        calls.push(
+          validatedDoorbellCall("farm.buy-companion", {
+            kind: item.kind,
+            id: item.itemId,
+          }),
+        );
+        continue;
+      }
+      if (item.kind === "item") {
+        continue;
+      }
+    }
+    throw new FarmPurchaseRequestInputError(
+      "The purchase request does not map to a current Doorbell operation",
+    );
+  }
+  return calls;
+}
+
 export function buildFarmPurchaseNotificationText(
   humanName: string,
   shop: FarmPurchaseShop,
   items: readonly FarmPurchaseRequestItemInput[],
 ): string {
   const itemsText = items.map((item) => `${item.displayName} × ${item.qty}`).join("、");
-  return `【📢来自铃野的通知】\n你的人类${humanName}想要你给她买${SHOP_LABELS[shop]}的${itemsText}。`;
+  const calls = buildFarmPurchaseDoorbellCalls(shop, items);
+  const notification = `【📢来自铃野的通知】\n你的人类${humanName}想要你给她买${SHOP_LABELS[shop]}的${itemsText}。`;
+  if (calls.length === 0) {
+    return notification;
+  }
+  return [
+    notification,
+    `可以直接调用 doorbell：\n${calls.map((call) => JSON.stringify(call)).join("\n")}`,
+    "以上只是可直接使用的动作，不会自动执行。",
+  ].join("\n\n");
 }
 
 function canonicalPayloadHash(

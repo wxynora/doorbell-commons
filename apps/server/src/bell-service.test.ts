@@ -368,14 +368,14 @@ test("purchase wakes replay by stable wake ID, stay once per connection, and ACK
     generateRequestId: () => `request-${++nextRequestId}`,
     generateWakeId: () => `purchase-wake-${++nextWakeId}`,
   });
-  purchaseService.create({
+  const purchase = purchaseService.create({
     residentId,
     homeId,
     humanName: "辛玥",
     shop: "field",
     shopRevision: "field-v1",
     idempotencyKey: "00000000-0000-4000-8000-000000000010",
-    items: [{ kind: "seed", itemId: "ordinary_seed", qty: 2, displayName: "普通种子" }],
+    items: [{ kind: "seed", itemId: "limited_seed", qty: 1, displayName: "限定种子" }],
   });
 
   const service = new BellService({
@@ -392,9 +392,13 @@ test("purchase wakes replay by stable wake ID, stay once per connection, and ACK
   const fixture = JSON.parse(
     readFileSync(new URL("../test-fixtures/doorbell-wake-v1.json", import.meta.url), "utf8"),
   ) as { event: string; data: Record<string, unknown> };
+  const expectedWake = {
+    ...fixture,
+    data: { ...fixture.data, message: purchase.notificationText },
+  };
   assert.deepEqual(first.events, [
     { event: "connected", data: { version: 1, connection_epoch: "epoch-purchase-1" } },
-    fixture,
+    expectedWake,
   ]);
   const ack = await service.acknowledge(TOKEN, {
     connectionEpoch: "epoch-purchase-1",
