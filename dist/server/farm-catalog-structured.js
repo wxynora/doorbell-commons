@@ -526,6 +526,24 @@ function projectMessage(message) {
   };
 }
 
+function projectMessageBoard(boardFarm, own = false) {
+  const closed = boardFarm.guestbook === false;
+  const messages = closed
+    ? []
+    : (Array.isArray(boardFarm.messages) ? boardFarm.messages : [])
+      .map(projectMessage)
+      .filter(Boolean)
+      .slice(-10)
+      .reverse();
+  return {
+    farm_doorplate: String(boardFarm.id),
+    farm_name: safeText(boardFarm.name),
+    is_own: own,
+    status: closed ? "closed" : "open",
+    messages,
+  };
+}
+
 function projectBulletin(farm) {
   const messages = (Array.isArray(farm.messages) ? farm.messages : [])
     .map(projectMessage)
@@ -579,7 +597,19 @@ function projectNeighborhood(farm, now) {
     .filter(Boolean)
     .slice(-10)
     .reverse();
-  return { status: "available", rankings, messages, original_crops: originalCrops };
+  const messageBoards = [
+    projectMessageBoard(farm, true),
+    ...farms
+      .filter((item) => item.id !== farm.id && item.social?.visit !== false)
+      .map((item) => projectMessageBoard(item)),
+  ];
+  return {
+    status: "available",
+    rankings,
+    messages,
+    message_boards: messageBoards,
+    original_crops: originalCrops,
+  };
 }
 
 const MARKET_KINDS = new Set(["seed", "material", "ingredient", "dish"]);

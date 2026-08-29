@@ -9,6 +9,7 @@ import { marketActionRevision } from "../dist/server/market-revision.js";
 import { neighborhoodMessageActionRevision } from "../dist/server/neighborhood-revision.js";
 import { originalPlantActionRevision } from "../dist/server/original-plant-action.js";
 import { allUgc } from "../dist/ugc.js";
+import { insertFarm } from "../dist/store.js";
 
 const NOW = Date.parse("2026-08-24T04:00:00.000Z");
 const FARM_DOORPLATE = "3ET3FE";
@@ -143,6 +144,51 @@ test("structured catalog reads every scoped section without mutating farm state"
   const serialized = JSON.stringify(result);
   assert.equal(serialized.includes("do-not-return-this-key"), false);
   assert.equal(serialized.includes("do-not-return-this-token"), false);
+});
+
+test("structured neighborhood keeps one honest card per reachable farm", () => {
+  const neighbor = {
+    ...fixtureFarm(),
+    id: "4NEW22",
+    name: "邻居农场",
+    humanKey: "neighbor-private-key",
+    token: "neighbor-private-token",
+    messages: [
+      { id: "neighbor-message", by: FARM_DOORPLATE, name: "渡", text: "来串门了", at: NOW },
+    ],
+    social: { visit: true, steal: false, water: true, message: true },
+  };
+  const closed = {
+    ...fixtureFarm(),
+    id: "5SHUT2",
+    name: "关门农场",
+    humanKey: "closed-private-key",
+    token: "closed-private-token",
+    guestbook: false,
+    messages: [
+      { id: "private-message", by: FARM_DOORPLATE, name: "渡", text: "不可泄露", at: NOW },
+    ],
+    social: { visit: true, steal: false, water: true, message: true },
+  };
+  insertFarm(neighbor);
+  insertFarm(closed);
+
+  const boards = projectHumanFarmCatalog(fixtureFarm(), NOW).data.neighborhood.message_boards;
+  assert.deepEqual(
+    boards.map((board) => [board.farm_doorplate, board.farm_name, board.is_own, board.status]),
+    [
+      [FARM_DOORPLATE, "渡的小农场", true, "open"],
+      ["4NEW22", "邻居农场", false, "open"],
+      ["5SHUT2", "关门农场", false, "closed"],
+    ],
+  );
+  assert.equal(boards[0].messages[0].text, "来看看吧");
+  assert.equal(boards[1].messages[0].text, "来串门了");
+  assert.deepEqual(boards[2].messages, []);
+  const serialized = JSON.stringify(boards);
+  assert.equal(serialized.includes("不可泄露"), false);
+  assert.equal(serialized.includes("private-key"), false);
+  assert.equal(serialized.includes("private-token"), false);
 });
 
 test("unknown persisted ids remain explicit unavailable identities", () => {
