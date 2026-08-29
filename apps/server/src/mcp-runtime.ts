@@ -127,6 +127,10 @@ function textContent(text: string) {
   return [{ type: "text" as const, text }];
 }
 
+function appendModelJson(text: string, value: Record<string, unknown>): string {
+  return `${text}\n\n${JSON.stringify(value, null, 2)}`;
+}
+
 function doorbellToolError(
   code: DoorbellToolErrorCode,
   options: {
@@ -140,8 +144,15 @@ function doorbellToolError(
   if (!message) {
     throw new Error(`Missing Doorbell error message for ${code}`);
   }
+  const modelError = {
+    error: {
+      code,
+      ...(options.issues ? { issues: options.issues } : {}),
+      ...(options.examples ? { examples: options.examples } : {}),
+    },
+  };
   return {
-    content: textContent(message),
+    content: textContent(appendModelJson(message, modelError)),
     structuredContent: {
       ok: false,
       ...(options.op ? { op: options.op } : {}),
@@ -165,7 +176,7 @@ function farmToolResult(
 ): DoorbellCallToolResult {
   if (!ok) {
     return {
-      content: textContent(text),
+      content: textContent(appendModelJson(text, { error: { code: "OP_REJECTED" } })),
       structuredContent: {
         ok: false,
         op,
@@ -176,7 +187,7 @@ function farmToolResult(
     };
   }
   return {
-    content: textContent(text),
+    content: textContent(farm ? appendModelJson(text, { farm }) : text),
     structuredContent: {
       ok: true,
       op,
@@ -191,7 +202,9 @@ function farmToolResult(
 function lingyeToolResult(op: string, result: LingyeActionResult): DoorbellCallToolResult {
   if (!result.ok) {
     return {
-      content: textContent(result.error.message),
+      content: textContent(
+        appendModelJson(result.error.message, { error: { code: result.error.code } }),
+      ),
       structuredContent: {
         ok: false,
         op,
@@ -201,7 +214,7 @@ function lingyeToolResult(op: string, result: LingyeActionResult): DoorbellCallT
       isError: true,
     };
   }
-  const modelText = `${result.text}\n\n${JSON.stringify(result.data, null, 2)}`;
+  const modelText = appendModelJson(result.text, result.data);
   return {
     content: textContent(modelText),
     structuredContent: {

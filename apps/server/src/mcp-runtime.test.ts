@@ -1007,7 +1007,9 @@ test("MCP calls validate strict args, self-correct, preserve status cadence, and
     const first = await postMcp(harness, call("farm.visit", { to: "6", detail: true }));
     const firstResult = first.json().result;
     assert.equal(firstResult.isError, false);
-    assert.equal(firstResult.content[0].text, "visit OK\n\nFARM STATUS");
+    assert.match(firstResult.content[0].text, /^visit OK\n\nFARM STATUS/u);
+    assert.match(firstResult.content[0].text, /"farm"/u);
+    assert.match(firstResult.content[0].text, /"id": "ABC234"/u);
     assert.equal(firstResult.structuredContent.source, "farm");
     assert.deepEqual(firstResult.structuredContent.farm, { id: FARM_DOORPLATE });
     assert.deepEqual(harness.farmActions.calls, [
@@ -1037,10 +1039,15 @@ test("MCP calls validate strict args, self-correct, preserve status cadence, and
     assert.deepEqual(invalidResult.structuredContent.error.examples, [
       { op: "farm.visit", args: { to: "6" } },
     ]);
+    assert.match(invalidResult.content[0].text, /"code": "INVALID_ARGS"/u);
+    assert.match(invalidResult.content[0].text, /"issues"/u);
+    assert.match(invalidResult.content[0].text, /"examples"/u);
+    assert.match(invalidResult.content[0].text, /"to": "6"/u);
     assert.equal(harness.farmActions.calls.at(-1)?.action, "message");
 
     const unknown = await postMcp(harness, call("status", {}));
     assert.equal(unknown.json().result.structuredContent.error.code, "UNKNOWN_OP");
+    assert.match(unknown.json().result.content[0].text, /"code": "UNKNOWN_OP"/u);
 
     const unknownTool = await postMcp(
       harness,
@@ -1109,7 +1116,8 @@ test("MCP calls validate strict args, self-correct, preserve status cadence, and
     assert.equal(rejectedResult.isError, true);
     assert.equal(rejectedResult.structuredContent.source, "farm");
     assert.equal(rejectedResult.structuredContent.error.code, "OP_REJECTED");
-    assert.equal(rejectedResult.content[0].text, "没有成熟作物");
+    assert.match(rejectedResult.content[0].text, /^没有成熟作物/u);
+    assert.match(rejectedResult.content[0].text, /"code": "OP_REJECTED"/u);
 
     const farmCallsBeforeLingye = harness.farmActions.calls.length;
     const bankView = await postMcp(harness, call("go.bank.view", { section: "loans" }));
@@ -1228,6 +1236,7 @@ test("MCP calls validate strict args, self-correct, preserve status cadence, and
     );
     assert.equal(insufficient.json().result.isError, true);
     assert.equal(insufficient.json().result.structuredContent.source, "lingye");
+    assert.match(insufficient.json().result.content[0].text, /"code": "INSUFFICIENT_FUNDS"/u);
     assert.equal(
       insufficient.json().result.structuredContent.error.message,
       "可用余额不足，本次操作没有执行。",
@@ -1331,7 +1340,9 @@ test("any valid doorbell call delivers resident system notifications once withou
     harness.farmActions.nextResult = { ok: false, text: "没有成熟作物" };
     const rejected = await postMcp(harness, call("farm.harvest", {}));
     const rejectedResult = rejected.json().result;
-    assert.equal(rejectedResult.content[0].text, "没有成熟作物\n\n失败结果里的系统通知。");
+    assert.match(rejectedResult.content[0].text, /^没有成熟作物/u);
+    assert.match(rejectedResult.content[0].text, /"code": "OP_REJECTED"/u);
+    assert.match(rejectedResult.content[0].text, /失败结果里的系统通知。$/u);
     assert.equal(rejectedResult.structuredContent.error.message, rejectedResult.content[0].text);
   } finally {
     await harness.close();
