@@ -1226,6 +1226,8 @@ test("shared meme settings open a real standalone list, detail, and strict add f
   assert.match(html, /id="screen-shared-memes" class="screen"/);
   assert.match(html, /id="settings-shared-memes-open"[^>]*>View<\/button>/);
   assert.match(html, /id="settings-shared-meme-add"[^>]*>＋ 添加新梗<\/button>/);
+  assert.match(html, /class="candidate2-shared-meme-list-view"/);
+  assert.match(html, /id="shared-meme-detail-close"[^>]*>← 返回梗库<\/button>/);
   const settingsMemeSection = html.slice(
     html.indexOf('class="candidate2-settings-section candidate2-settings-memes"'),
     html.indexOf('class="candidate2-settings-section candidate2-settings-account"'),
@@ -1238,11 +1240,46 @@ test("shared meme settings open a real standalone list, detail, and strict add f
   assert.match(html, /sendAction\(\{ type: 'shared-memes-open' \}\)/);
   assert.match(html, /type: 'shared-meme-open', memeId: meme\.meme_id/);
   assert.match(html, /type: 'shared-meme-create'/);
+  assert.match(
+    html,
+    /meme\.term,[\s\S]*meme\.meaning,[\s\S]*meme\.usage,[\s\S]*\.\.\.meme\.examples/,
+  );
+  assert.match(
+    html,
+    /preview\.textContent =[\s\S]*meme\.meaning \|\| meme\.usage \|\| meme\.examples\[0\] \|\| '暂无含义与用法记录'/,
+  );
+  assert.match(html, /copy\.append\(term, preview, meta\);[\s\S]*button\.append\(copy, arrow\);/);
+  assert.match(
+    html,
+    /function showSharedMemeDetail\(\) \{[\s\S]*sharedMemeListScrollTop = sharedMemesScreen\.scrollTop;[\s\S]*sharedMemeListView\.hidden = true;[\s\S]*sharedMemeDetail\.hidden = false;[\s\S]*sharedMemesScreen\.scrollTop = 0;/,
+  );
+  assert.match(
+    html,
+    /function showSharedMemeList\(restorePosition\) \{[\s\S]*sharedMemeDetail\.hidden = true;[\s\S]*sharedMemeListView\.hidden = false;[\s\S]*sharedMemesScreen\.scrollTop = sharedMemeListScrollTop;/,
+  );
+  assert.match(
+    html,
+    /sharedMemeDetailCloseButton\.addEventListener\('click',[\s\S]*showSharedMemeList\(true\);/,
+  );
+  assert.match(html, /shared-meme-detail-meaning'\)\.textContent =[\s\S]*meme\.meaning/);
+  assert.match(html, /shared-meme-detail-usage'\)\.textContent =[\s\S]*meme\.usage/);
+  assert.match(html, /meme\.meaning \|\| '暂无含义记录'/);
+  assert.match(html, /meme\.usage \|\| '暂无用法记录'/);
+  assert.doesNotMatch(html, /sharedMemeDetail\.scrollIntoView/);
   assert.match(html, /name="term" type="text" required/);
   assert.match(html, /name="aliases" rows="2"/);
   assert.match(html, /name="examples" rows="2"/);
   assert.match(html, /name="keywords" rows="2"/);
   assert.doesNotMatch(html, /screen-shared-memes[\s\S]*?placeholder=/);
+});
+
+test("settings View and Log out keep the confirmed handwritten font", () => {
+  const html = buildCandidateTwoRuntimeHtml();
+
+  assert.match(
+    html,
+    /\.candidate2-settings-text-action,\s*\.candidate2-settings-logout \{\s*font-family: 'Gaegu', 'ZCOOL KuaiLe', 'Yuanti SC', 'STYuanti-SC-Regular', '圆体-简', 'YouYuan', cursive;/,
+  );
 });
 
 test("notification and community preferences restore, edit, save, and report status", () => {

@@ -1971,42 +1971,47 @@ const SETTINGS_SCREEN = `
 const SHARED_MEMES_SCREEN = `
     <div id="screen-shared-memes" class="screen">
         <main class="candidate2-shared-memes-page">
-            <button id="shared-memes-back" class="candidate2-shared-memes-back handwritten" type="button">← Settings</button>
-            <header class="candidate2-shared-memes-heading">
-                <p class="candidate2-settings-kicker handwritten">Shared notebook</p>
-                <h1>共享梗库</h1>
-                <p class="shared-memes-summary">点击读取共享梗库</p>
-            </header>
+            <div class="candidate2-shared-meme-list-view">
+                <button id="shared-memes-back" class="candidate2-shared-memes-back handwritten" type="button">← Settings</button>
+                <header class="candidate2-shared-memes-heading">
+                    <p class="candidate2-settings-kicker handwritten">Shared notebook</p>
+                    <h1>共享梗库</h1>
+                    <p class="shared-memes-summary">点击读取共享梗库</p>
+                </header>
 
-            <div class="candidate2-shared-memes-tools">
-                <label><span>SEARCH / 搜索</span><input id="shared-memes-search" type="search" autocomplete="off"></label>
-                <button id="shared-meme-add-open" type="button">＋ 添加新梗</button>
+                <div class="candidate2-shared-memes-tools">
+                    <label><span>SEARCH / 搜索</span><input id="shared-memes-search" type="search" autocomplete="off"></label>
+                    <button id="shared-meme-add-open" type="button">＋ 添加新梗</button>
+                </div>
+
+                <form id="shared-meme-add-form" class="candidate2-shared-meme-form" hidden>
+                    <div class="candidate2-shared-meme-form-heading"><h2>添加新梗</h2><button id="shared-meme-add-close" type="button">取消</button></div>
+                    <label><span>TERM / 梗名</span><input name="term" type="text" required></label>
+                    <label><span>CATEGORY / 分类</span><input name="category" type="text"></label>
+                    <label><span>TYPE / 类型</span><input name="meme_type" type="text"></label>
+                    <label><span>MEANING / 含义</span><textarea name="meaning" rows="2"></textarea></label>
+                    <label><span>USAGE / 用法</span><textarea name="usage" rows="2"></textarea></label>
+                    <label><span>ALIASES / 别名（每行一个）</span><textarea name="aliases" rows="2"></textarea></label>
+                    <label><span>EXAMPLES / 例句（每行一个）</span><textarea name="examples" rows="2"></textarea></label>
+                    <label><span>KEYWORDS / 关键词（每行一个）</span><textarea name="keywords" rows="2"></textarea></label>
+                    <label><span>ORIGIN / 来源</span><input name="origin" type="text"></label>
+                    <label><span>NOTES / 备注</span><textarea name="notes" rows="2"></textarea></label>
+                    <button class="candidate2-shared-meme-submit" type="submit">加入共享梗库</button>
+                    <p class="shared-meme-form-status" role="status" aria-live="polite"></p>
+                </form>
+
+                <p class="shared-memes-status" role="status" aria-live="polite"></p>
+                <div class="candidate2-shared-meme-list"></div>
             </div>
 
-            <form id="shared-meme-add-form" class="candidate2-shared-meme-form" hidden>
-                <div class="candidate2-shared-meme-form-heading"><h2>添加新梗</h2><button id="shared-meme-add-close" type="button">取消</button></div>
-                <label><span>TERM / 梗名</span><input name="term" type="text" required></label>
-                <label><span>CATEGORY / 分类</span><input name="category" type="text"></label>
-                <label><span>TYPE / 类型</span><input name="meme_type" type="text"></label>
-                <label><span>MEANING / 含义</span><textarea name="meaning" rows="2"></textarea></label>
-                <label><span>USAGE / 用法</span><textarea name="usage" rows="2"></textarea></label>
-                <label><span>ALIASES / 别名（每行一个）</span><textarea name="aliases" rows="2"></textarea></label>
-                <label><span>EXAMPLES / 例句（每行一个）</span><textarea name="examples" rows="2"></textarea></label>
-                <label><span>KEYWORDS / 关键词（每行一个）</span><textarea name="keywords" rows="2"></textarea></label>
-                <label><span>ORIGIN / 来源</span><input name="origin" type="text"></label>
-                <label><span>NOTES / 备注</span><textarea name="notes" rows="2"></textarea></label>
-                <button class="candidate2-shared-meme-submit" type="submit">加入共享梗库</button>
-                <p class="shared-meme-form-status" role="status" aria-live="polite"></p>
-            </form>
-
-            <p class="shared-memes-status" role="status" aria-live="polite"></p>
-            <div class="candidate2-shared-meme-list"></div>
-
             <section class="candidate2-shared-meme-detail" hidden>
-                <button id="shared-meme-detail-close" type="button">收起详情</button>
-                <h2 class="shared-meme-detail-term"></h2>
-                <p class="shared-meme-detail-meta"></p>
-                <dl>
+                <button id="shared-meme-detail-close" class="handwritten" type="button">← 返回梗库</button>
+                <header>
+                    <p class="candidate2-settings-kicker handwritten">Meme detail</p>
+                    <h2 class="shared-meme-detail-term"></h2>
+                    <p class="shared-meme-detail-meta"></p>
+                </header>
+                <dl class="shared-meme-detail-fields">
                     <div><dt>含义</dt><dd class="shared-meme-detail-meaning"></dd></div>
                     <div><dt>用法</dt><dd class="shared-meme-detail-usage"></dd></div>
                     <div><dt>别名</dt><dd class="shared-meme-detail-aliases"></dd></div>
@@ -4021,6 +4026,11 @@ const RUNTIME_STYLES = `
             cursor: pointer;
         }
 
+        .candidate2-settings-text-action,
+        .candidate2-settings-logout {
+            font-family: 'Gaegu', 'ZCOOL KuaiLe', 'Yuanti SC', 'STYuanti-SC-Regular', '圆体-简', 'YouYuan', cursive;
+        }
+
         .candidate2-settings-text-action {
             font-size: 13px;
             text-decoration: underline;
@@ -4170,6 +4180,7 @@ const SHARED_MEME_STYLES = `
             border-bottom: 1px solid #e5d9ce;
         }
 
+        .candidate2-shared-meme-list-view[hidden],
         .candidate2-shared-meme-form[hidden],
         .candidate2-shared-meme-detail[hidden] {
             display: none;
@@ -4208,10 +4219,10 @@ const SHARED_MEME_STYLES = `
             display: grid;
             width: 100%;
             grid-template-columns: minmax(0, 1fr) auto;
-            align-items: baseline;
-            gap: 10px;
-            min-height: 48px;
-            padding: 11px 1px;
+            align-items: center;
+            gap: 12px;
+            min-height: 72px;
+            padding: 13px 1px 12px;
             border: 0;
             border-bottom: 0.5px solid #eadfd4;
             color: #60483f;
@@ -4220,10 +4231,26 @@ const SHARED_MEME_STYLES = `
             cursor: pointer;
         }
 
+        .candidate2-shared-meme-row-copy {
+            display: grid;
+            gap: 4px;
+            min-width: 0;
+        }
+
         .candidate2-shared-meme-row strong {
             overflow-wrap: anywhere;
             font-size: 13px;
-            font-weight: 500;
+            font-weight: 600;
+        }
+
+        .candidate2-shared-meme-row-preview {
+            display: -webkit-box;
+            overflow: hidden;
+            color: #806b62;
+            font-size: 10px;
+            line-height: 1.55;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
         }
 
         .candidate2-shared-meme-row small {
@@ -4231,14 +4258,22 @@ const SHARED_MEME_STYLES = `
             font-size: 8px;
         }
 
+        .candidate2-shared-meme-row-arrow {
+            color: #b9a79c;
+            font-size: 18px;
+        }
+
         .candidate2-shared-meme-detail {
-            margin-top: 18px;
-            padding: 16px 0 4px;
-            border-top: 2px solid #d8cbbf;
+            min-height: calc(100vh - 114px);
         }
 
         .candidate2-shared-meme-detail > button {
-            float: right;
+            margin-bottom: 18px;
+        }
+
+        .candidate2-shared-meme-detail header {
+            padding-bottom: 16px;
+            border-bottom: 1px solid #e5d9ce;
         }
 
         .candidate2-shared-meme-detail h2 {
@@ -4246,14 +4281,18 @@ const SHARED_MEME_STYLES = `
             font-size: 22px;
         }
 
-        .candidate2-shared-meme-detail > p {
-            margin: 0 0 14px;
+        .candidate2-shared-meme-detail header > p:last-child {
+            margin: 0;
             color: #a8958b;
             font-size: 9px;
         }
 
         .candidate2-shared-meme-detail dl {
             margin: 0;
+        }
+
+        .candidate2-shared-meme-detail dl[hidden] {
+            display: none;
         }
 
         .candidate2-shared-meme-detail dl > div {
@@ -8148,8 +8187,11 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     const sharedMemeSubmitButton = sharedMemeAddForm.querySelector('button[type="submit"]');
     const sharedMemeFormStatus = document.querySelector('.shared-meme-form-status');
     const sharedMemesStatus = document.querySelector('.shared-memes-status');
+    const sharedMemesScreen = document.getElementById('screen-shared-memes');
+    const sharedMemeListView = document.querySelector('.candidate2-shared-meme-list-view');
     const sharedMemesList = document.querySelector('.candidate2-shared-meme-list');
     const sharedMemeDetail = document.querySelector('.candidate2-shared-meme-detail');
+    const sharedMemeDetailFields = document.querySelector('.shared-meme-detail-fields');
     const sharedMemeDetailCloseButton = document.getElementById('shared-meme-detail-close');
     const settingsHomeName = document.querySelector('.settings-home-name');
     const settingsEnvironment = document.querySelector('.settings-environment');
@@ -8172,6 +8214,8 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     let currentFarmDoorplate = '';
     let currentStage = 'checking-session';
     let visibleSharedMemes = [];
+    let sharedMemeListScrollTop = 0;
+    let sharedMemeSelectedId = '';
     let settingsSaveScope = '';
     const lingyeFullscreenScreenIds = new Set([
         'screen-lingye-glimmer',
@@ -8372,7 +8416,14 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         const query = sharedMemesSearch.value.trim().toLowerCase();
         const matching = query
             ? visibleSharedMemes.filter((meme) =>
-                [meme.term, meme.meaning, meme.usage, ...meme.aliases, ...meme.keywords]
+                [
+                    meme.term,
+                    meme.meaning,
+                    meme.usage,
+                    ...meme.aliases,
+                    ...meme.examples,
+                    ...meme.keywords,
+                ]
                     .filter(Boolean)
                     .some((value) => String(value).toLowerCase().includes(query)))
             : visibleSharedMemes;
@@ -8381,12 +8432,28 @@ const CANDIDATE_RUNTIME_SCRIPT = `
             button.className = 'candidate2-shared-meme-row';
             button.type = 'button';
             button.dataset.memeId = String(meme.meme_id);
+            const copy = document.createElement('span');
+            copy.className = 'candidate2-shared-meme-row-copy';
             const term = document.createElement('strong');
             term.textContent = meme.term;
+            const preview = document.createElement('span');
+            preview.className = 'candidate2-shared-meme-row-preview';
+            preview.textContent =
+                meme.meaning || meme.usage || meme.examples[0] || '暂无含义与用法记录';
             const meta = document.createElement('small');
             meta.textContent = [meme.category, meme.type].filter(Boolean).join(' · ') || '未分类';
-            button.append(term, meta);
+            const arrow = document.createElement('span');
+            arrow.className = 'candidate2-shared-meme-row-arrow';
+            arrow.setAttribute('aria-hidden', 'true');
+            arrow.textContent = '›';
+            copy.append(term, preview, meta);
+            button.append(copy, arrow);
             button.addEventListener('click', () => {
+                sharedMemeSelectedId = String(meme.meme_id);
+                showSharedMemeDetail();
+                document.querySelector('.shared-meme-detail-term').textContent = '正在读取……';
+                document.querySelector('.shared-meme-detail-meta').textContent = '';
+                sharedMemeDetailFields.hidden = true;
                 sendAction({ type: 'shared-meme-open', memeId: meme.meme_id });
             });
             return button;
@@ -8394,34 +8461,63 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         setStatus(sharedMemesStatus, matching.length === 0 ? '没有找到匹配的共享梗。' : '');
     }
 
+    function showSharedMemeDetail() {
+        if (!sharedMemeListView.hidden) sharedMemeListScrollTop = sharedMemesScreen.scrollTop;
+        sharedMemeListView.hidden = true;
+        sharedMemeDetail.hidden = false;
+        sharedMemesScreen.scrollTop = 0;
+    }
+
+    function showSharedMemeList(restorePosition) {
+        sharedMemeDetail.hidden = true;
+        sharedMemeListView.hidden = false;
+        if (!restorePosition) return;
+        requestAnimationFrame(() => {
+            sharedMemesScreen.scrollTop = sharedMemeListScrollTop;
+            const selectedRow = sharedMemesList.querySelector(
+                '[data-meme-id="' + sharedMemeSelectedId + '"]',
+            );
+            if (selectedRow) selectedRow.focus({ preventScroll: true });
+        });
+    }
+
     function applySharedMemeDetail(detail) {
         if (detail.stage === 'idle') {
-            sharedMemeDetail.hidden = true;
+            showSharedMemeList(false);
             return;
         }
-        sharedMemeDetail.hidden = false;
+        showSharedMemeDetail();
         if (detail.stage === 'loading') {
             document.querySelector('.shared-meme-detail-term').textContent = '正在读取……';
             document.querySelector('.shared-meme-detail-meta').textContent = '';
+            sharedMemeDetailFields.hidden = true;
             return;
         }
         if (detail.stage === 'error') {
             document.querySelector('.shared-meme-detail-term').textContent = '读取失败';
             document.querySelector('.shared-meme-detail-meta').textContent = detail.message;
+            sharedMemeDetailFields.hidden = true;
             return;
         }
         const meme = detail.data.meme;
         document.querySelector('.shared-meme-detail-term').textContent = meme.term;
         document.querySelector('.shared-meme-detail-meta').textContent =
             [meme.category, meme.type].filter(Boolean).join(' · ') || '未分类';
-        document.querySelector('.shared-meme-detail-meaning').textContent = meme.meaning || '—';
-        document.querySelector('.shared-meme-detail-usage').textContent = meme.usage || '—';
-        document.querySelector('.shared-meme-detail-aliases').textContent = meme.aliases.join('、') || '—';
-        document.querySelector('.shared-meme-detail-examples').textContent = meme.examples.join('\\n') || '—';
-        document.querySelector('.shared-meme-detail-keywords').textContent = meme.keywords.join('、') || '—';
-        document.querySelector('.shared-meme-detail-origin').textContent = meme.origin || '—';
-        document.querySelector('.shared-meme-detail-notes').textContent = meme.notes || '—';
-        sharedMemeDetail.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        document.querySelector('.shared-meme-detail-meaning').textContent =
+            meme.meaning || '暂无含义记录';
+        document.querySelector('.shared-meme-detail-usage').textContent =
+            meme.usage || '暂无用法记录';
+        document.querySelector('.shared-meme-detail-aliases').textContent =
+            meme.aliases.join('、') || '暂无别名记录';
+        document.querySelector('.shared-meme-detail-examples').textContent =
+            meme.examples.join('\\n') || '暂无例句记录';
+        document.querySelector('.shared-meme-detail-keywords').textContent =
+            meme.keywords.join('、') || '暂无关键词记录';
+        document.querySelector('.shared-meme-detail-origin').textContent =
+            meme.origin || '暂无来源记录';
+        document.querySelector('.shared-meme-detail-notes').textContent =
+            meme.notes || '暂无备注记录';
+        sharedMemeDetailFields.hidden = false;
     }
 
     function applySharedMemeState(list, detail, createPending, createMessage) {
@@ -8463,6 +8559,7 @@ const CANDIDATE_RUNTIME_SCRIPT = `
 
     function openSharedMemePage(showForm) {
         showScreen('screen-shared-memes');
+        showSharedMemeList(false);
         sharedMemeAddForm.hidden = !showForm;
         if (window.__doorbellCandidateDemo) {
             showCandidateNotice('演示模式不会读取或新增真实共享梗');
@@ -9835,7 +9932,7 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     });
     sharedMemesSearch.addEventListener('input', renderSharedMemeList);
     sharedMemeDetailCloseButton.addEventListener('click', () => {
-        sharedMemeDetail.hidden = true;
+        showSharedMemeList(true);
     });
     sharedMemeAddForm.addEventListener('submit', (event) => {
         event.preventDefault();
