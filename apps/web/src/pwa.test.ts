@@ -117,6 +117,9 @@ test("manifest is a Chinese standalone community entry with the existing surface
 });
 
 test("service worker has bounded strategies without precaching or background writes", () => {
+  assert.match(serviceWorkerSource, /shell-v2/);
+  assert.match(serviceWorkerSource, /static-v2/);
+  assert.doesNotMatch(serviceWorkerSource, /shell-v1|static-v1/);
   assert.match(serviceWorkerSource, /request\.mode === "navigate"/);
   assert.match(serviceWorkerSource, /event\.respondWith\(fetch\(request\)\)/);
   assert.match(serviceWorkerSource, /cacheFirstStatic/);
