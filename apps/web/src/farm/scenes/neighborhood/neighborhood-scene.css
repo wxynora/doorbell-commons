@@ -260,8 +260,15 @@
 
 .farm-neighborhood__message-board-card ul {
   display: grid;
+  height: clamp(168px, 24vh, 220px);
   margin: 0;
   padding: 0;
+  align-content: start;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: rgba(126, 104, 62, 0.48) transparent;
+  scrollbar-width: thin;
   list-style: none;
 }
 

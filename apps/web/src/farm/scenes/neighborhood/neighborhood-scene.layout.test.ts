@@ -7,7 +7,7 @@ import test from "node:test";
 const source = readFileSync(new URL("./neighborhood-scene.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("./neighborhood-scene.css", import.meta.url), "utf8");
 
-test("message boards keep ten-entry cards in their own fixed scrolling region", () => {
+test("each farm card keeps its own ten-entry message region fixed and scrollable", () => {
   assert.match(source, /activeSection\.id === "message-board" \? " is-message-board"/);
   assert.match(
     styles,
@@ -20,6 +20,10 @@ test("message boards keep ten-entry cards in their own fixed scrolling region", 
   assert.match(
     styles,
     /\.farm-neighborhood__message-boards\s*\{[^}]*overflow-y:\s*auto[^}]*scrollbar-width:\s*thin/s,
+  );
+  assert.match(
+    styles,
+    /\.farm-neighborhood__message-board-card ul\s*\{[^}]*height:\s*clamp\(168px, 24vh, 220px\)[^}]*overflow-y:\s*auto[^}]*scrollbar-width:\s*thin/s,
   );
   assert.match(styles, /message-board-card:nth-child\(3n \+ 2\) > header/);
   assert.match(styles, /message-board-card:nth-child\(3n \+ 3\) > header/);
