@@ -1,4 +1,5 @@
 import {
+  additionalHumanProfileRequestSchema,
   type BoundConstableInterviewErrorCode,
   type BoundFarmCropCodexActionErrorCode,
   type BoundFarmExpeditionActionErrorCode,
@@ -132,6 +133,7 @@ import {
   type HumanSettingsPatchRequest,
   humanAuthenticationErrorSchema,
   humanLogoutSuccessSchema,
+  humanProfileSwitchRequestSchema,
   humanSessionRequestSchema,
   humanSessionSuccessSchema,
   humanSettingsErrorSchema,
@@ -177,6 +179,7 @@ import Fastify, {
   type FastifyReply,
   type FastifyRequest,
 } from "fastify";
+import type { ActivityReminderService } from "./activity-reminder-service.js";
 import {
   BellConnectionEpochMismatchError,
   BellCredentialAuthenticationError,
@@ -187,8 +190,8 @@ import {
 import type { BrowserPushService } from "./browser-push-service.js";
 import {
   FarmPurchaseRequestIdempotencyConflictError,
+  HumanProfileNotAvailableError,
   type HumanSettingsPatch,
-  type HumanSettingsRecord,
   LingyeDailyIdempotencyConflictError,
   type LingyeDailyIssueRecord,
   type MailboxLetterRecord,
@@ -444,6 +447,7 @@ import {
   FarmCreationStateConflictError,
   FarmHumanKeyMismatchError,
   HumanAccountAlreadyRegisteredError,
+  type HumanSettingsContext,
   InvalidHumanCredentialsError,
   InvalidRegistrationCodeError,
   QqNotGroupMemberError,
@@ -476,6 +480,7 @@ export interface BuildAppOptions {
   farmPurchaseRequestService?: FarmPurchaseRequestService;
   bellService?: BellService;
   browserPushService?: BrowserPushService;
+  activityReminderService?: Pick<ActivityReminderService, "cancelResident" | "refreshEligibility">;
   weatherEngine?: HomeWeatherEngine;
   lingyeDailyService?: LingyeDailyService;
   mailboxService?: MailboxService;
@@ -523,12 +528,34 @@ function communityResponse(community: {
   };
 }
 
+function profileSelectionResponse(context: {
+  activeProfileId: string;
+  profiles: Array<{
+    profileId: string;
+    residentName: string;
+    homeName: string;
+    farmDoorplate: string;
+  }>;
+}) {
+  return {
+    active_profile_id: context.activeProfileId,
+    profiles: context.profiles.map((profile) => ({
+      profile_id: profile.profileId,
+      resident_name: profile.residentName,
+      home_name: profile.homeName,
+      farm_doorplate: profile.farmDoorplate,
+    })),
+  };
+}
+
 function humanSettingsResponse(
-  settings: HumanSettingsRecord,
+  context: HumanSettingsContext,
   bellService?: BellService,
   browserPushService?: BrowserPushService,
 ) {
+  const { settings } = context;
   return humanSettingsSuccessSchema.parse({
+    ...profileSelectionResponse(context),
     connection_status: {
       wake_bridge: {
         ...(bellService?.getSettingsStatus(settings.residentId) ?? {
@@ -822,7 +849,8 @@ function sendAuthenticationError(
     | "registration_profile_mismatch"
     | "farm_already_bound"
     | "farm_creation_conflict"
-    | "farm_creation_unavailable",
+    | "farm_creation_unavailable"
+    | "profile_not_available",
   message: string,
 ) {
   return reply.code(statusCode).send(
@@ -1533,7 +1561,8 @@ function sendHumanSettingsError(
     | "authentication_required"
     | "qq_not_group_member"
     | "onebot_unavailable"
-    | "registration_profile_required",
+    | "registration_profile_required"
+    | "profile_not_available",
   message: string,
 ) {
   return reply.code(statusCode).send(
@@ -2033,6 +2062,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
           authenticated: true,
           account_created: session.accountCreated,
           ...communityResponse(session.community),
+          ...profileSelectionResponse(session),
           created_farm: {
             farm_doorplate: session.createdFarm.farmDoorplate,
             farm_name: session.createdFarm.farmName,
@@ -2045,6 +2075,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         authenticated: true,
         account_created: session.accountCreated,
         ...communityResponse(session.community),
+        ...profileSelectionResponse(session),
       });
     } catch (error) {
       if (error instanceof InvalidHumanCredentialsError) {
@@ -2207,7 +2238,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
           reply,
           409,
           "farm_already_bound",
-          "The submitted farm doorplate is already bound to another account",
+          "The submitted farm doorplate is already bound to another profile",
         );
       }
       throw error;
@@ -2226,10 +2257,11 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     }
 
     try {
-      const community = await options.registrationAuth.getCurrentSession(token);
+      const context = await options.registrationAuth.getCurrentProfileContext(token);
       return currentHumanSessionSuccessSchema.parse({
         authenticated: true,
-        ...communityResponse(community),
+        ...communityResponse(context.community),
+        ...profileSelectionResponse(context),
       });
     } catch (error) {
       if (error instanceof AuthenticationRequiredError) {
@@ -2264,6 +2296,209 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
           409,
           "registration_profile_required",
           "Resident, home, and farm fields are required to complete first registration",
+        );
+      }
+      throw error;
+    }
+  });
+
+  app.post("/api/profiles", async (request, reply) => {
+    const parsedRequest = additionalHumanProfileRequestSchema.safeParse(request.body);
+    if (!parsedRequest.success) {
+      return sendAuthenticationError(
+        reply,
+        400,
+        "invalid_request",
+        "Submit one exact existing-farm or new-farm profile",
+      );
+    }
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendAuthenticationError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+    try {
+      const input = parsedRequest.data;
+      const result = await options.registrationAuth.createAdditionalProfile(
+        token,
+        "farm_human_url" in input
+          ? {
+              mode: "bind_existing",
+              residentName: input.resident_name,
+              homeName: input.home_name,
+              farmDoorplate: input.farm_doorplate,
+              farmHumanUrl: input.farm_human_url,
+              confirmedFarmName: input.confirmed_farm_name,
+            }
+          : {
+              mode: "create_farm",
+              residentName: input.resident_name,
+              homeName: input.home_name,
+              farmName: input.farm_name,
+              aiName: input.ai_name,
+            },
+      );
+      try {
+        options.mailboxService?.ensureWelcomeLetter(
+          result.community.home.homeId,
+          result.community.farmBinding.farmHumanKey ?? "",
+        );
+      } catch (error) {
+        request.log.error(
+          { error_name: error instanceof Error ? error.name : "UnknownError" },
+          "Welcome-letter delivery failed after the additional profile was created",
+        );
+      }
+      if (result.createdFarm) {
+        reply.header("cache-control", "no-store");
+        return createdFarmHumanSessionSuccessSchema.parse({
+          authenticated: true,
+          account_created: false,
+          ...communityResponse(result.community),
+          ...profileSelectionResponse(result),
+          created_farm: {
+            farm_doorplate: result.createdFarm.farmDoorplate,
+            farm_name: result.createdFarm.farmName,
+            ai_name: result.createdFarm.aiName,
+            farm_human_url: result.createdFarm.farmHumanUrl,
+          },
+        });
+      }
+      return humanSessionSuccessSchema.parse({
+        authenticated: true,
+        account_created: false,
+        ...communityResponse(result.community),
+        ...profileSelectionResponse(result),
+      });
+    } catch (error) {
+      if (error instanceof AuthenticationRequiredError) {
+        return sendAuthenticationError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
+        return sendAuthenticationError(
+          reply,
+          403,
+          "qq_not_group_member",
+          "The session QQ number is no longer a current member of the community group",
+        );
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendAuthenticationError(
+          reply,
+          503,
+          "onebot_unavailable",
+          "QQ group membership could not be verified",
+        );
+      }
+      if (error instanceof HumanProfileNotAvailableError) {
+        return sendAuthenticationError(
+          reply,
+          409,
+          "profile_not_available",
+          "The current session cannot add a profile to this account",
+        );
+      }
+      if (error instanceof FarmNotFoundError) {
+        return sendAuthenticationError(
+          reply,
+          404,
+          "farm_not_found",
+          "The submitted farm doorplate does not exist",
+        );
+      }
+      if (error instanceof FarmDirectoryUnavailableError) {
+        reportFarmUnavailable(request, error);
+        return sendAuthenticationError(
+          reply,
+          503,
+          "farm_unavailable",
+          "The farm directory could not be queried",
+        );
+      }
+      if (error instanceof FarmHumanCredentialInvalidError) {
+        return sendAuthenticationError(
+          reply,
+          403,
+          "invalid_farm_human_key",
+          "The submitted farm human credential is invalid",
+        );
+      }
+      if (error instanceof InvalidFarmHumanUrlError) {
+        return sendAuthenticationError(
+          reply,
+          400,
+          "invalid_farm_human_url",
+          "farm_human_url must use the configured farm origin and /farm/ui/<humanKey> path",
+        );
+      }
+      if (error instanceof FarmHumanKeyMismatchError) {
+        return sendAuthenticationError(
+          reply,
+          409,
+          "farm_human_key_mismatch",
+          "The submitted farm human credential belongs to a different farm doorplate",
+        );
+      }
+      if (error instanceof FarmConfirmationMismatchError) {
+        return sendAuthenticationError(
+          reply,
+          409,
+          "farm_confirmation_mismatch",
+          "The farm name changed or does not match the confirmed farm",
+        );
+      }
+      if (error instanceof FarmAlreadyBoundError) {
+        return sendAuthenticationError(
+          reply,
+          409,
+          "farm_already_bound",
+          "The submitted farm doorplate is already bound to another profile",
+        );
+      }
+      if (
+        error instanceof FarmCreationConflictError ||
+        error instanceof FarmCreationStateConflictError
+      ) {
+        return sendAuthenticationError(
+          reply,
+          409,
+          "farm_creation_conflict",
+          "This farm creation request conflicts with an existing attempt",
+        );
+      }
+      if (error instanceof FarmCreationRejectedError) {
+        return sendAuthenticationError(
+          reply,
+          400,
+          "invalid_request",
+          "The farm creation details were rejected",
+        );
+      }
+      if (error instanceof FarmCreationContractUnavailableError) {
+        return sendAuthenticationError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The farm creation response could not be verified",
+        );
+      }
+      if (error instanceof FarmCreationUnavailableError) {
+        return sendAuthenticationError(
+          reply,
+          503,
+          "farm_creation_unavailable",
+          "The farm could not be created at this time",
         );
       }
       throw error;
@@ -2774,6 +3009,14 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         "A complete resident, home, and farm registration is required",
       );
     }
+    if (error instanceof HumanProfileNotAvailableError) {
+      return sendHumanSettingsError(
+        reply,
+        409,
+        "profile_not_available",
+        "The selected profile is not available to this account",
+      );
+    }
     throw error;
   };
 
@@ -3158,6 +3401,48 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     });
   }
 
+  app.post("/api/settings/active-profile", async (request, reply) => {
+    if (!humanSettingsReadRequestSchema.safeParse(request.query).success) {
+      return sendHumanSettingsError(
+        reply,
+        400,
+        "invalid_request",
+        "The profile switch does not accept query parameters",
+      );
+    }
+    const parsedRequest = humanProfileSwitchRequestSchema.safeParse(request.body);
+    if (!parsedRequest.success) {
+      return sendHumanSettingsError(
+        reply,
+        400,
+        "invalid_request",
+        "The profile switch requires one profile_id from the current account list",
+      );
+    }
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendHumanSettingsError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+    try {
+      const context = await options.registrationAuth.switchCurrentProfile(
+        token,
+        parsedRequest.data.profile_id,
+      );
+      return currentHumanSessionSuccessSchema.parse({
+        authenticated: true,
+        ...communityResponse(context.community),
+        ...profileSelectionResponse(context),
+      });
+    } catch (error) {
+      return sendHumanSettingsFailure(request, reply, error);
+    }
+  });
+
   app.get("/api/settings", async (request, reply) => {
     if (!humanSettingsReadRequestSchema.safeParse(request.query).success) {
       return sendHumanSettingsError(
@@ -3178,9 +3463,12 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     }
 
     try {
-      const settings = await options.registrationAuth.getCurrentHumanSettings(token);
+      const context = await options.registrationAuth.getCurrentHumanSettings(token);
       return humanSettingsResponse(
-        options.weatherEngine?.ensureCurrent(settings) ?? settings,
+        {
+          ...context,
+          settings: options.weatherEngine?.ensureCurrent(context.settings) ?? context.settings,
+        },
         options.bellService,
         options.browserPushService,
       );
@@ -3218,20 +3506,38 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     }
 
     try {
-      const settings = await options.registrationAuth.updateCurrentHumanSettings(
+      const context = await options.registrationAuth.updateCurrentHumanSettings(
         token,
         humanSettingsPatch(parsedRequest.data),
       );
       try {
-        options.bellService?.refreshHome(settings.homeId);
+        options.bellService?.refreshHome(context.settings.homeId);
       } catch (error) {
         request.log.error(
           { error_name: error instanceof Error ? error.name : "UnknownError" },
           "Legacy Bell mailbox wake cancellation failed after settings were saved",
         );
       }
+      try {
+        if (
+          !context.settings.browserNotificationsEnabled ||
+          !context.settings.activityRemindersEnabled
+        ) {
+          options.activityReminderService?.cancelResident(context.settings.residentId);
+        } else {
+          options.activityReminderService?.refreshEligibility(context.settings.residentId);
+        }
+      } catch (error) {
+        request.log.error(
+          { error_name: error instanceof Error ? error.name : "UnknownError" },
+          "Activity reminder eligibility refresh failed after settings were saved",
+        );
+      }
       return humanSettingsResponse(
-        options.weatherEngine?.ensureCurrent(settings) ?? settings,
+        {
+          ...context,
+          settings: options.weatherEngine?.ensureCurrent(context.settings) ?? context.settings,
+        },
         options.bellService,
         options.browserPushService,
       );
@@ -3284,6 +3590,14 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         p256dh: parsed.data.keys.p256dh,
         auth: parsed.data.keys.auth,
       });
+      try {
+        options.activityReminderService?.refreshEligibility(community.resident.residentId);
+      } catch (error) {
+        request.log.error(
+          { error_name: error instanceof Error ? error.name : "UnknownError" },
+          "Activity reminder eligibility refresh failed after browser subscription",
+        );
+      }
       reply.header("cache-control", "no-store");
       return browserPushSubscriptionSuccessSchema.parse({ subscribed: true });
     } catch (error) {
@@ -3321,6 +3635,14 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     try {
       const community = await options.registrationAuth.getCurrentSession(token);
       options.browserPushService?.unsubscribe(community.resident.residentId, parsed.data.endpoint);
+      try {
+        options.activityReminderService?.refreshEligibility(community.resident.residentId);
+      } catch (error) {
+        request.log.error(
+          { error_name: error instanceof Error ? error.name : "UnknownError" },
+          "Activity reminder eligibility refresh failed after browser unsubscription",
+        );
+      }
       reply.header("cache-control", "no-store");
       return browserPushSubscriptionSuccessSchema.parse({ subscribed: false });
     } catch (error) {

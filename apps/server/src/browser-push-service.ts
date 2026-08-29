@@ -1,6 +1,10 @@
 import type { BrowserPushPayload } from "@doorbell/protocol";
 import webpush from "web-push";
-import type { BrowserPushSubscriptionRecord, CommunityDatabase } from "./community-database.js";
+import type {
+  BrowserPushSubscriptionRecord,
+  CommunityDatabase,
+  HumanSettingsRecord,
+} from "./community-database.js";
 import type { BrowserPushConfig } from "./config.js";
 
 export interface BrowserPushSender {
@@ -20,6 +24,7 @@ export interface BrowserPushServiceOptions {
 
 export interface ActivityReminderPush {
   residentId: string;
+  homeId: string;
   title: string;
   body: string;
   url: string;
@@ -89,16 +94,23 @@ export class BrowserPushService {
     this.#database.deleteBrowserPushSubscription(residentId, endpoint);
   }
 
-  async sendActivityReminder(input: ActivityReminderPush): Promise<void> {
-    const settings = this.#database.findHomeIdByResidentId(input.residentId);
-    if (!settings) return;
-    const preferences = this.#database.getHumanSettings(settings);
-    if (!preferences.browserNotificationsEnabled || !preferences.activityRemindersEnabled) return;
+  async sendActivityReminder(input: ActivityReminderPush): Promise<boolean> {
+    let preferences: HumanSettingsRecord;
+    try {
+      preferences = this.#database.getHumanSettings(input.homeId);
+    } catch (error) {
+      this.#onError(error);
+      return false;
+    }
+    if (preferences.residentId !== input.residentId) return false;
+    if (!preferences.browserNotificationsEnabled || !preferences.activityRemindersEnabled) {
+      return false;
+    }
     try {
       await this.#registrationAuth.confirmCurrentResidentMembership(input.residentId);
     } catch (error) {
       this.#onError(error);
-      return;
+      return false;
     }
     const payload: BrowserPushPayload = {
       version: 1,
@@ -109,9 +121,13 @@ export class BrowserPushService {
       tag: input.tag,
       created_at: new Date(input.createdAt).toISOString(),
     };
-    for (const subscription of this.#database.listBrowserPushSubscriptions(input.residentId)) {
+    let delivered = false;
+    for (const subscription of this.#database
+      .listBrowserPushSubscriptions(input.residentId)
+      .filter((candidate) => candidate.homeId === input.homeId)) {
       try {
         await this.#sender.send(subscription, payload);
+        delivered = true;
       } catch (error) {
         const statusCode = statusCodeOf(error);
         if (statusCode === 404 || statusCode === 410) {
@@ -121,5 +137,6 @@ export class BrowserPushService {
         }
       }
     }
+    return delivered;
   }
 }

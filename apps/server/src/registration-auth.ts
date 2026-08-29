@@ -2,6 +2,7 @@ import type {
   CommunityDatabase,
   CreatedHumanSession,
   HumanCommunityRecord,
+  HumanProfileSummaryRecord,
   HumanRegistrationInput,
   HumanSettingsPatch,
   HumanSettingsRecord,
@@ -10,6 +11,7 @@ import {
   FarmCreationStateConflictError,
   HumanAccountAlreadyRegisteredError,
   HumanLoginLockedError,
+  HumanProfileNotAvailableError,
   RegistrationProfileRequiredError,
 } from "./community-database.js";
 import {
@@ -71,10 +73,6 @@ import {
 } from "./farm-kitchen-shop-refresh-client.js";
 import { FarmLingyeContractUnavailableError, type FarmLingyeReader } from "./farm-lingye-client.js";
 import {
-  FarmHumanQixiMemorialContractUnavailableError,
-  type FarmHumanQixiMemorialReader,
-} from "./qixi-memorial-client.js";
-import {
   FarmHumanMarketActionContractUnavailableError,
   type FarmHumanMarketActioner,
 } from "./farm-market-action-client.js";
@@ -115,6 +113,10 @@ import {
   type FarmHumanSmeltingActioner,
 } from "./farm-smelting-action-client.js";
 import { createHumanPasswordCredential, verifyHumanPassword } from "./password-auth.js";
+import {
+  FarmHumanQixiMemorialContractUnavailableError,
+  type FarmHumanQixiMemorialReader,
+} from "./qixi-memorial-client.js";
 import type { QqGroupMembershipReader } from "./qq-group-membership.js";
 
 export {
@@ -188,6 +190,20 @@ export interface NewFarmRegistrationFields extends FirstRegistrationBaseFields {
 
 export type FirstRegistrationFields = ExistingFarmRegistrationFields | NewFarmRegistrationFields;
 
+export type AdditionalProfileFields =
+  | Omit<ExistingFarmRegistrationFields, "password">
+  | Omit<NewFarmRegistrationFields, "password">;
+
+export interface HumanProfileContext {
+  activeProfileId: string;
+  community: HumanCommunityRecord;
+  profiles: HumanProfileSummaryRecord[];
+}
+
+export interface HumanSettingsContext extends HumanProfileContext {
+  settings: HumanSettingsRecord;
+}
+
 type WithoutFarmIdentity<T> = T extends {
   farmDoorplate: string;
   farmHumanKey: string;
@@ -253,6 +269,10 @@ export interface CreatedFarmDelivery {
 }
 
 export type RegistrationSessionResult = CreatedHumanSession & {
+  createdFarm?: CreatedFarmDelivery;
+};
+
+export type AdditionalProfileResult = HumanProfileContext & {
   createdFarm?: CreatedFarmDelivery;
 };
 
@@ -443,6 +463,78 @@ export class RegistrationAuthService {
     }
   }
 
+  async createAdditionalProfile(
+    token: string,
+    input: AdditionalProfileFields,
+  ): Promise<AdditionalProfileResult> {
+    const current = await this.getCurrentSession(token);
+    const now = this.#now();
+    let verifiedRegistration: HumanRegistrationInput;
+    let createdFarm: CreatedFarmDelivery | undefined;
+    if (input.mode === "bind_existing") {
+      if (!this.#farmHumanUiBaseUrl) {
+        throw new Error("Farm Human URL parsing requires the configured farm Human UI base URL");
+      }
+      const farmHumanKey = extractFarmHumanKey(input.farmHumanUrl, this.#farmHumanUiBaseUrl);
+      const farm = await this.#farmDirectory.lookupFarmByHumanKey(farmHumanKey);
+      if (farm.farmDoorplate !== input.farmDoorplate) {
+        throw new FarmHumanKeyMismatchError();
+      }
+      if (farm.farmName !== input.confirmedFarmName) {
+        throw new FarmConfirmationMismatchError();
+      }
+      const aiName = farm.aiName ?? farm.farmName;
+      verifiedRegistration = {
+        residentName: `${input.residentName} & ${aiName}`,
+        homeName: input.homeName,
+        farmDoorplate: input.farmDoorplate,
+        farmHumanKey,
+      };
+    } else {
+      if (!this.#farmCreator || !this.#farmHumanUiBaseUrl) {
+        throw new Error("Farm creation requires the configured farm service and Human UI base URL");
+      }
+      const request = this.#database.getOrCreateFarmCreationRequest(current.account.qqNumber, now, {
+        farmName: input.farmName,
+        aiName: input.aiName,
+        humanName: input.residentName,
+      });
+      const receipt = await this.#farmCreator.createFarm({
+        creationId: request.creationId,
+        farmName: request.farmName,
+        aiName: request.aiName,
+        humanName: request.humanName,
+      });
+      const farmCreatedAt = Date.parse(receipt.created_at);
+      if (!Number.isFinite(farmCreatedAt)) {
+        throw new FarmCreationStateConflictError();
+      }
+      this.#database.recordFarmCreationReceipt(current.account.qqNumber, request.creationId, {
+        farmDoorplate: receipt.farm_doorplate,
+        farmName: receipt.farm_name,
+        aiName: receipt.ai_name,
+        humanName: receipt.human_name,
+        farmHumanKey: receipt.farm_human_key,
+        farmCreatedAt,
+      });
+      verifiedRegistration = {
+        residentName: `${input.residentName} & ${receipt.ai_name}`,
+        homeName: input.homeName,
+        farmDoorplate: receipt.farm_doorplate,
+        farmHumanKey: receipt.farm_human_key,
+        farmCreationId: request.creationId,
+      };
+      createdFarm = {
+        farmDoorplate: receipt.farm_doorplate,
+        farmName: receipt.farm_name,
+        aiName: receipt.ai_name,
+        farmHumanUrl: buildFarmHumanUrl(receipt.farm_human_key, this.#farmHumanUiBaseUrl),
+      };
+    }
+    const profile = this.#database.createHumanProfileForSession(token, now, verifiedRegistration);
+    return createdFarm ? { ...profile, createdFarm } : profile;
+  }
+
   async getCurrentSession(token: string): Promise<HumanCommunityRecord> {
     const session = this.#database.findActiveHumanSession(token);
     if (!session) {
@@ -463,9 +555,34 @@ export class RegistrationAuthService {
     return session.community;
   }
 
-  async getCurrentHumanSettings(token: string): Promise<HumanSettingsRecord> {
+  async getCurrentProfileContext(token: string): Promise<HumanProfileContext> {
     const community = await this.getCurrentSession(token);
-    return this.#database.getHumanSettings(community.home.homeId);
+    return {
+      activeProfileId: community.profileId,
+      community,
+      profiles: this.#database.listHumanProfilesByAccountId(community.account.accountId),
+    };
+  }
+
+  async switchCurrentProfile(token: string, profileId: string): Promise<HumanProfileContext> {
+    const current = await this.getCurrentSession(token);
+    const community = this.#database.switchActiveHumanSessionProfile(token, profileId);
+    if (community.account.accountId !== current.account.accountId) {
+      throw new HumanProfileNotAvailableError();
+    }
+    return {
+      activeProfileId: community.profileId,
+      community,
+      profiles: this.#database.listHumanProfilesByAccountId(community.account.accountId),
+    };
+  }
+
+  async getCurrentHumanSettings(token: string): Promise<HumanSettingsContext> {
+    const context = await this.getCurrentProfileContext(token);
+    return {
+      ...context,
+      settings: this.#database.getHumanSettings(context.community.home.homeId),
+    };
   }
 
   async confirmCurrentResidentMembership(residentId: string): Promise<void> {
@@ -495,9 +612,18 @@ export class RegistrationAuthService {
   async updateCurrentHumanSettings(
     token: string,
     patch: HumanSettingsPatch,
-  ): Promise<HumanSettingsRecord> {
-    const community = await this.getCurrentSession(token);
-    return this.#database.updateHumanSettings(community.home.homeId, this.#now(), patch);
+  ): Promise<HumanSettingsContext> {
+    const context = await this.getCurrentProfileContext(token);
+    const settings = this.#database.updateHumanSettings(
+      context.community.home.homeId,
+      this.#now(),
+      patch,
+    );
+    return {
+      ...context,
+      profiles: this.#database.listHumanProfilesByAccountId(context.community.account.accountId),
+      settings,
+    };
   }
 
   async getCurrentFarmOverview(token: string): Promise<BoundFarmOverview> {
@@ -1155,12 +1281,13 @@ export class RegistrationAuthService {
       return scored;
     }
 
-    const eligibleVoterResidentIds = await this.#listCurrentEligibleResidentIds(
+    const publicNoticeAudience = await this.#resolveConstablePublicNoticeAudience(
       interview.candidate_resident_id,
     );
     await opener.openConstablePublicNotice({
       interviewId: interview.interview_id,
-      eligibleVoterResidentIds,
+      candidateResidentName: publicNoticeAudience.candidateResidentName,
+      eligibleVoterResidentIds: publicNoticeAudience.eligibleVoterResidentIds,
     });
     return reader.readConstableInterview({
       ...identity,
@@ -1168,10 +1295,17 @@ export class RegistrationAuthService {
     });
   }
 
-  async #listCurrentEligibleResidentIds(excludedResidentId: string): Promise<string[]> {
+  async #resolveConstablePublicNoticeAudience(excludedResidentId: string): Promise<{
+    candidateResidentName: string;
+    eligibleVoterResidentIds: string[];
+  }> {
     const eligible: string[] = [];
+    let candidateResidentName: string | undefined;
     for (const community of this.#database.listActiveHumanCommunities()) {
-      if (community.resident.residentId === excludedResidentId) continue;
+      if (community.resident.residentId === excludedResidentId) {
+        candidateResidentName = community.resident.residentName;
+        continue;
+      }
       try {
         await this.confirmCurrentResidentMembership(community.resident.residentId);
       } catch (error) {
@@ -1185,7 +1319,10 @@ export class RegistrationAuthService {
       }
       eligible.push(community.resident.residentId);
     }
-    return eligible;
+    if (candidateResidentName === undefined) {
+      throw new FarmConstableInterviewContractUnavailableError();
+    }
+    return { candidateResidentName, eligibleVoterResidentIds: eligible };
   }
 
   async harvestCurrentFarmField(

@@ -466,13 +466,7 @@ export const qixiLanternAppearanceSchema = z
   .object({
     shape: z.enum(["square-palace", "octagonal-palace", "lotus-palace"]),
     color: z.enum(["moon-white", "peach-pink", "mist-blue", "apricot-gold"]),
-    pattern: z.enum([
-      "none",
-      "star-speckle",
-      "qiaoguo-pattern",
-      "river-glow",
-      "magpie-bridge",
-    ]),
+    pattern: z.enum(["none", "star-speckle", "qiaoguo-pattern", "river-glow", "magpie-bridge"]),
     ornament: z.enum([
       "none",
       "short-tassel",
@@ -480,13 +474,7 @@ export const qixiLanternAppearanceSchema = z
       "magpie-ribbon",
       "twin-jade-pendant",
     ]),
-    seal: z.enum([
-      "none",
-      "cotton-knot",
-      "waterproof-seal",
-      "cloud-knot",
-      "twin-blossom-seal",
-    ]),
+    seal: z.enum(["none", "cotton-knot", "waterproof-seal", "cloud-knot", "twin-blossom-seal"]),
   })
   .strict();
 
@@ -651,6 +639,7 @@ export const farmGlimmerDataSchema = z
     open: z.boolean(),
     status: lingyeTextSchema,
     season: lingyeShortTextSchema,
+    capture_cooldown: z.object({ ready_at: z.iso.datetime() }).strict().nullable(),
     tracks: z.array(farmGlimmerTrackSchema).max(16),
     cooperation: farmGlimmerCooperationSchema.nullable(),
     events: z.array(farmGlimmerPublicEventSchema).max(10),
@@ -1179,6 +1168,30 @@ const firstHumanSessionFarmCreationRequestSchema = firstHumanSessionStartRequest
   ai_name: storedDisplayNameSchema,
 });
 
+const additionalExistingFarmProfileRequestSchema = z
+  .object({
+    resident_name: storedDisplayNameSchema,
+    home_name: storedDisplayNameSchema,
+    farm_doorplate: farmDoorplateSchema,
+    farm_human_url: farmHumanUrlSchema,
+    confirmed_farm_name: z.string(),
+  })
+  .strict();
+
+const additionalCreatedFarmProfileRequestSchema = z
+  .object({
+    resident_name: storedDisplayNameSchema,
+    home_name: storedDisplayNameSchema,
+    farm_name: storedDisplayNameSchema,
+    ai_name: storedDisplayNameSchema,
+  })
+  .strict();
+
+export const additionalHumanProfileRequestSchema = z.union([
+  additionalExistingFarmProfileRequestSchema,
+  additionalCreatedFarmProfileRequestSchema,
+]);
+
 export const humanSessionRequestSchema = z.union([
   firstHumanSessionRequestSchema,
   firstHumanSessionFarmCreationRequestSchema,
@@ -1215,7 +1228,23 @@ export const farmBindingSchema = z
   })
   .strict();
 
-export const humanSessionSuccessSchema = z
+export const humanProfileSummarySchema = z
+  .object({
+    profile_id: z.string().uuid(),
+    resident_name: z.string(),
+    home_name: z.string(),
+    farm_doorplate: farmDoorplateSchema,
+  })
+  .strict();
+
+const humanProfileSelectionSchema = {
+  active_profile_id: z.string().uuid(),
+  profiles: z.array(humanProfileSummarySchema).min(1),
+};
+
+export const humanProfileSwitchRequestSchema = z.object({ profile_id: z.string().uuid() }).strict();
+
+const humanSessionSuccessBaseSchema = z
   .object({
     authenticated: z.literal(true),
     account_created: z.boolean(),
@@ -1223,19 +1252,33 @@ export const humanSessionSuccessSchema = z
     resident: residentSchema,
     home: homeSchema,
     farm_binding: farmBindingSchema,
+    ...humanProfileSelectionSchema,
   })
   .strict();
 
-export const createdFarmHumanSessionSuccessSchema = humanSessionSuccessSchema.extend({
-  created_farm: z
-    .object({
-      farm_doorplate: farmDoorplateSchema,
-      farm_name: z.string(),
-      ai_name: z.string(),
-      farm_human_url: farmHumanUrlSchema,
-    })
-    .strict(),
-});
+export const humanSessionSuccessSchema = humanSessionSuccessBaseSchema.refine(
+  (value) => value.profiles.some((profile) => profile.profile_id === value.active_profile_id),
+  { message: "active_profile_id must reference one returned profile", path: ["active_profile_id"] },
+);
+
+export const createdFarmHumanSessionSuccessSchema = humanSessionSuccessBaseSchema
+  .extend({
+    created_farm: z
+      .object({
+        farm_doorplate: farmDoorplateSchema,
+        farm_name: z.string(),
+        ai_name: z.string(),
+        farm_human_url: farmHumanUrlSchema,
+      })
+      .strict(),
+  })
+  .refine(
+    (value) => value.profiles.some((profile) => profile.profile_id === value.active_profile_id),
+    {
+      message: "active_profile_id must reference one returned profile",
+      path: ["active_profile_id"],
+    },
+  );
 
 export const currentHumanSessionSuccessSchema = z
   .object({
@@ -1244,8 +1287,16 @@ export const currentHumanSessionSuccessSchema = z
     resident: residentSchema,
     home: homeSchema,
     farm_binding: farmBindingSchema,
+    ...humanProfileSelectionSchema,
   })
-  .strict();
+  .strict()
+  .refine(
+    (value) => value.profiles.some((profile) => profile.profile_id === value.active_profile_id),
+    {
+      message: "active_profile_id must reference one returned profile",
+      path: ["active_profile_id"],
+    },
+  );
 
 export const humanLogoutSuccessSchema = z
   .object({
@@ -2235,6 +2286,7 @@ export const mcpAccessErrorSchema = z
 export const farmMcpMigrationRequestSchema = z
   .object({
     migration_id: z.uuid(),
+    resident_id: z.uuid(),
     farm_human_key: farmHumanKeySchema,
     expected_farm_doorplate: farmDoorplateSchema,
   })
@@ -2316,6 +2368,7 @@ export const farmMcpActionErrorSchema = z
 
 export const humanSettingsSuccessSchema = z
   .object({
+    ...humanProfileSelectionSchema,
     connection_status: z
       .object({
         wake_bridge: z
@@ -2373,7 +2426,14 @@ export const humanSettingsSuccessSchema = z
       })
       .strict(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (value) => value.profiles.some((profile) => profile.profile_id === value.active_profile_id),
+    {
+      message: "active_profile_id must reference one returned profile",
+      path: ["active_profile_id"],
+    },
+  );
 
 export const humanSettingsErrorCodeSchema = z.enum([
   "invalid_request",
@@ -2381,6 +2441,7 @@ export const humanSettingsErrorCodeSchema = z.enum([
   "qq_not_group_member",
   "onebot_unavailable",
   "registration_profile_required",
+  "profile_not_available",
 ]);
 
 export const humanSettingsErrorSchema = z
@@ -2414,6 +2475,7 @@ export const humanAuthenticationErrorCodeSchema = z.enum([
   "farm_already_bound",
   "farm_creation_conflict",
   "farm_creation_unavailable",
+  "profile_not_available",
 ]);
 
 export const humanAuthenticationErrorSchema = z
@@ -2450,6 +2512,9 @@ export const farmHumanUiErrorSchema = z
   .strict();
 
 export type HumanSessionRequest = z.infer<typeof humanSessionRequestSchema>;
+export type AdditionalHumanProfileRequest = z.infer<typeof additionalHumanProfileRequestSchema>;
+export type HumanProfileSummary = z.infer<typeof humanProfileSummarySchema>;
+export type HumanProfileSwitchRequest = z.infer<typeof humanProfileSwitchRequestSchema>;
 export type FarmLookupRequest = z.infer<typeof farmLookupRequestSchema>;
 export type FarmLookupSuccess = z.infer<typeof farmLookupSuccessSchema>;
 export type FarmLookupError = z.infer<typeof farmLookupErrorSchema>;
@@ -2468,9 +2533,7 @@ export type FarmHumanQixiMemorialReadRequest = z.infer<
 export type FarmHumanQixiMemorialReadSuccess = z.infer<
   typeof farmHumanQixiMemorialReadSuccessSchema
 >;
-export type FarmHumanQixiMemorialReadError = z.infer<
-  typeof farmHumanQixiMemorialReadErrorSchema
->;
+export type FarmHumanQixiMemorialReadError = z.infer<typeof farmHumanQixiMemorialReadErrorSchema>;
 export type BoundQixiMemorialReadRequest = z.infer<typeof boundQixiMemorialReadRequestSchema>;
 export type BoundQixiMemorialReadSuccess = z.infer<typeof boundQixiMemorialReadSuccessSchema>;
 export type BoundQixiMemorialReadError = z.infer<typeof boundQixiMemorialReadErrorSchema>;

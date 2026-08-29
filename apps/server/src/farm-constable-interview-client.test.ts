@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   FarmConstableInterviewClient,
   FarmConstableInterviewContractUnavailableError,
+  FarmConstableInterviewRejectedError,
 } from "./farm-constable-interview-client.js";
 
 const FARM_DOORPLATE = "ABC234";
@@ -153,24 +154,79 @@ test("constable interview client opens public notice with only the server-resolv
   const client = createClient(async (input, init) => {
     calls.push({ body: String(init?.body), url: String(input) });
     return Response.json({
-      data: { notice_id: "notice-1" },
+      data: { status: "public_notice", notice_id: "notice-1" },
       server_time: SCHEDULED_AT_ISO,
     });
   });
 
   await client.openConstablePublicNotice({
     interviewId: INTERVIEW_ID,
+    candidateResidentName: "候选居民",
     eligibleVoterResidentIds: ["resident-a", "resident-b"],
   });
   assert.deepEqual(calls, [
     {
       body: JSON.stringify({
         interview_id: INTERVIEW_ID,
+        candidate_resident_name: "候选居民",
         eligible_voter_resident_ids: ["resident-a", "resident-b"],
       }),
       url: "https://farm.example/farm/internal/doorbell/constable/interview/public-notice/open",
     },
   ]);
+});
+
+test("constable interview client accepts a persisted failed interview as a normal result", async () => {
+  const client = createClient(async () =>
+    Response.json({
+      data: { status: "failed", notice_id: null },
+      server_time: SCHEDULED_AT_ISO,
+    }),
+  );
+
+  assert.deepEqual(
+    await client.openConstablePublicNotice({
+      interviewId: INTERVIEW_ID,
+      candidateResidentName: "候选居民",
+      eligibleVoterResidentIds: ["resident-a"],
+    }),
+    {
+      data: { status: "failed", notice_id: null },
+      server_time: SCHEDULED_AT_ISO,
+    },
+  );
+});
+
+test("constable interview client preserves an immutable score conflict", async () => {
+  const client = createClient(async () =>
+    Response.json(
+      {
+        error: {
+          code: "interview_score_conflict",
+          message: "The examiner score is immutable",
+        },
+      },
+      { status: 409 },
+    ),
+  );
+
+  await assert.rejects(
+    client.executeConstableInterviewAction({
+      action: "score",
+      farmDoorplate: FARM_DOORPLATE,
+      farmHumanKey: FARM_HUMAN_KEY,
+      accountId: ACCOUNT_ID,
+      residentId: RESIDENT_ID,
+      interviewId: INTERVIEW_ID,
+      facts: 4,
+      restraint: 4,
+      procedure: 4,
+      explanation: 4,
+    }),
+    (error: unknown) =>
+      error instanceof FarmConstableInterviewRejectedError &&
+      error.code === "interview_score_conflict",
+  );
 });
 
 test("constable interview client rejects a selected examiner response without frozen material", async () => {

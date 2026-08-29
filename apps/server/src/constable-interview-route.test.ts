@@ -12,6 +12,7 @@ import type {
   FarmConstableInterviewPublicNoticeOpener,
   FarmConstableInterviewReader,
 } from "./farm-constable-interview-client.js";
+import { FarmConstableInterviewRejectedError } from "./farm-constable-interview-client.js";
 import type { FarmDirectoryEntry, FarmDirectoryReader } from "./farm-directory-client.js";
 import { OneBotUnavailableError } from "./qq-group-membership.js";
 import { RegistrationAuthService } from "./registration-auth.js";
@@ -22,7 +23,9 @@ const SCHEDULED_AT = 1_788_000_000_000;
 const SCHEDULED_AT_ISO = new Date(SCHEDULED_AT).toISOString();
 const FARM_DOORPLATES = ["ABC234", "DEF567", "GHJ789", "KLM234"];
 
-const INTERVIEW_TEMPLATE = {
+type FarmInterview = FarmHumanConstableInterviewSuccess["data"]["interviews"][number];
+
+const INTERVIEW_TEMPLATE: FarmInterview = {
   interview_id: "interview-1",
   attempt_id: "attempt-1",
   candidate_resident_id: "resident-candidate",
@@ -55,7 +58,7 @@ const INTERVIEW_TEMPLATE = {
 };
 
 function responseFor(
-  interview: typeof INTERVIEW_TEMPLATE = INTERVIEW_TEMPLATE,
+  interview: FarmInterview = INTERVIEW_TEMPLATE,
 ): FarmHumanConstableInterviewSuccess {
   return {
     subject: {
@@ -98,7 +101,7 @@ interface TestHarness {
   };
   reader: FarmConstableInterviewReader & { calls: unknown[]; next: unknown };
   actioner: FarmConstableInterviewActioner & { calls: unknown[]; next: unknown };
-  opener: FarmConstableInterviewPublicNoticeOpener & { calls: unknown[] };
+  opener: FarmConstableInterviewPublicNoticeOpener & { calls: unknown[]; next: unknown };
   sessions: Array<{ token: string; qqNumber: string; accountId: string; residentId: string }>;
   close(): Promise<void>;
 }
@@ -156,11 +159,16 @@ function createHarness(userCount = 1): TestHarness {
   } as FarmConstableInterviewActioner & { calls: unknown[]; next: unknown };
   const opener = {
     calls: [] as unknown[],
+    next: {
+      data: { status: "public_notice" as const, notice_id: "notice-1" },
+      server_time: SCHEDULED_AT_ISO,
+    },
     async openConstablePublicNotice(input: unknown) {
       this.calls.push(input);
-      return { data: { notice_id: "notice-1" }, server_time: SCHEDULED_AT_ISO };
+      if (this.next instanceof Error) throw this.next;
+      return this.next;
     },
-  } as FarmConstableInterviewPublicNoticeOpener & { calls: unknown[] };
+  } as FarmConstableInterviewPublicNoticeOpener & { calls: unknown[]; next: unknown };
   const registrationAuth = new RegistrationAuthService({
     database,
     groupMembership: group,
@@ -385,9 +393,68 @@ test("third score freezes every currently valid resident except the candidate", 
   assert.deepEqual(harness.opener.calls, [
     {
       interviewId: "interview-1",
+      candidateResidentName: "居民 4",
       eligibleVoterResidentIds: ["resident-1", "resident-2"],
     },
   ]);
+});
+
+test("a third score that fails the interview returns the persisted terminal result", async (context) => {
+  const harness = createHarness(4);
+  context.after(() => harness.close());
+  harness.actioner.next = responseFor({
+    ...INTERVIEW_TEMPLATE,
+    candidate_resident_id: "resident-4",
+    status: "scoring",
+    score_count: 3,
+  });
+  harness.opener.next = {
+    data: { status: "failed", notice_id: null },
+    server_time: SCHEDULED_AT_ISO,
+  };
+  harness.reader.next = responseFor({
+    ...INTERVIEW_TEMPLATE,
+    candidate_resident_id: "resident-4",
+    status: "failed",
+    score_count: 3,
+    self: { ...INTERVIEW_TEMPLATE.self, selected: false },
+    interview_material: null,
+  });
+
+  const response = await harness.app.inject({
+    method: "POST",
+    url: "/api/farm/constable-interview/score",
+    headers: { cookie: cookie(firstSession(harness).token) },
+    payload: { interview_id: "interview-1", facts: 1, restraint: 1, procedure: 1, explanation: 1 },
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(
+    boundConstableInterviewSuccessSchema.parse(response.json()).interviews[0]?.status,
+    "failed",
+  );
+});
+
+test("a changed immutable examiner score is a 409 conflict", async (context) => {
+  const harness = createHarness();
+  context.after(() => harness.close());
+  harness.actioner.next = new FarmConstableInterviewRejectedError(
+    "interview_score_conflict",
+    "The examiner score is immutable",
+  );
+
+  const response = await harness.app.inject({
+    method: "POST",
+    url: "/api/farm/constable-interview/score",
+    headers: { cookie: cookie(firstSession(harness).token) },
+    payload: { interview_id: "interview-1", facts: 4, restraint: 4, procedure: 4, explanation: 4 },
+  });
+
+  assert.equal(response.statusCode, 409);
+  assert.equal(
+    boundConstableInterviewErrorSchema.parse(response.json()).error.code,
+    "interview_score_conflict",
+  );
 });
 
 test("constable interview Farm contract mismatch is a 502", async (context) => {

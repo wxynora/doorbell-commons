@@ -1,3 +1,4 @@
+import { ActivityReminderService } from "./activity-reminder-service.js";
 import { buildApp } from "./app.js";
 import { BellService } from "./bell-service.js";
 import { BrowserPushService } from "./browser-push-service.js";
@@ -252,6 +253,16 @@ const browserPushService = serverConfig.browserPush
       onError: reportBrowserPushError,
     })
   : undefined;
+const activityReminderService = browserPushService
+  ? new ActivityReminderService({
+      database,
+      browserPushService,
+      registrationAuth,
+      farmFieldReader: farmHumanReader,
+      farmLingyeReader,
+      onError: reportBrowserPushError,
+    })
+  : undefined;
 const farmPurchaseRequestService = new FarmPurchaseRequestService({
   database,
   bellNotifier: bellService,
@@ -316,7 +327,8 @@ const mcpAccessService = new McpAccessService({
   registrationAuth,
   farmMigration: farmMcpMigration,
   mcpEndpoint: serverConfig.mcpEndpoint,
-  isRuntimeReady: () => serverConfig.mcpRuntimeReady,
+  isRuntimeReady: async () =>
+    serverConfig.mcpRuntimeReady && (await lingyeMcpActions.isRuntimeReady()),
 });
 const weatherEngine = new HomeWeatherEngine({ database });
 const lingyeDailyService = new LingyeDailyService({
@@ -330,6 +342,7 @@ const app = buildApp({
   farmPurchaseRequestService,
   bellService,
   ...(browserPushService ? { browserPushService } : {}),
+  ...(activityReminderService ? { activityReminderService } : {}),
   sharedMemeBackendService,
   weatherEngine,
   lingyeDailyService,
@@ -340,6 +353,7 @@ const app = buildApp({
   secureCookies: process.env.NODE_ENV === "production",
 });
 app.addHook("onClose", () => {
+  activityReminderService?.close();
   careerExamReminderService.close();
   constableInterviewSignupMailService?.close();
   sharedMemeService.close();

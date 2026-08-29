@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   claimMcpAccess,
+  createHumanProfile,
   createHumanSession,
   deleteHumanSession,
   type FrontendFetcher,
@@ -15,11 +16,13 @@ import {
   issueMcpCredential,
   lookupFarm,
   revokeMcpCredential,
+  switchHumanProfile,
   updateHumanSettings,
 } from "./auth-client";
 import { AUTH_ISSUE_MESSAGES } from "./auth-errors";
 
 const IDENTITY = {
+  active_profile_id: "44444444-4444-4444-8444-444444444444",
   account: {
     account_id: "11111111-1111-4111-8111-111111111111",
     qq_number: "123456789",
@@ -35,9 +38,19 @@ const IDENTITY = {
     home_name: "渡的小屋",
   },
   farm_binding: { farm_doorplate: "3ET3FE" },
+  profiles: [
+    {
+      profile_id: "44444444-4444-4444-8444-444444444444",
+      resident_name: "小渡",
+      home_name: "渡的小屋",
+      farm_doorplate: "3ET3FE",
+    },
+  ],
 };
 
 const SETTINGS = {
+  active_profile_id: IDENTITY.active_profile_id,
+  profiles: IDENTITY.profiles,
   connection_status: {
     wake_bridge: { status: "online" as const, last_connected_at: "2026-08-12T02:03:04.000Z" },
   },
@@ -183,10 +196,12 @@ test("current session uses the GET contract and returns only server identity", a
   assert.deepEqual(result, {
     ok: true,
     identity: {
+      activeProfileId: IDENTITY.active_profile_id,
       account: IDENTITY.account,
       resident: IDENTITY.resident,
       home: IDENTITY.home,
       farmBinding: IDENTITY.farm_binding,
+      profiles: IDENTITY.profiles,
     },
     accountCreated: null,
   });
@@ -421,6 +436,50 @@ test("profile completion sends the confirmed farm name with all required fields"
   assert.equal(result.ok, true);
 });
 
+test("additional profile creation and switching send only server-issued profile identity", async () => {
+  const requests: Array<{ body: unknown; url: string }> = [];
+  const added = await createHumanProfile(
+    {
+      resident_name: "辛玥",
+      home_name: "第二座家",
+      farm_doorplate: "ABC234",
+      farm_human_url: "https://farm.example/farm/ui/private-key",
+      confirmed_farm_name: "第二座农场",
+    },
+    async (url, init) => {
+      requests.push({ body: JSON.parse(String(init?.body)), url });
+      return jsonResponse({ authenticated: true, account_created: false, ...IDENTITY });
+    },
+  );
+  const switched = await switchHumanProfile(
+    { profile_id: IDENTITY.active_profile_id },
+    async (url, init) => {
+      requests.push({ body: JSON.parse(String(init?.body)), url });
+      return jsonResponse({ authenticated: true, ...IDENTITY });
+    },
+  );
+  assert.equal(added.ok, true);
+  assert.equal(switched.ok, true);
+  assert.deepEqual(requests, [
+    {
+      url: "/api/profiles",
+      body: {
+        resident_name: "辛玥",
+        home_name: "第二座家",
+        farm_doorplate: "ABC234",
+        farm_human_url: "https://farm.example/farm/ui/private-key",
+        confirmed_farm_name: "第二座农场",
+      },
+    },
+    {
+      url: "/api/settings/active-profile",
+      body: { profile_id: IDENTITY.active_profile_id },
+    },
+  ]);
+  assert.equal(JSON.stringify(requests).includes("resident_id"), false);
+  assert.equal(JSON.stringify(requests).includes("home_id"), false);
+});
+
 test("logout deletes only the current same-origin browser session", async () => {
   let observedUrl = "";
   let observedInit: RequestInit | undefined;
@@ -515,6 +574,7 @@ test("every first-registration backend error has explicit frontend copy", () => 
     "registration_profile_required",
     "registration_profile_mismatch",
     "farm_already_bound",
+    "profile_not_available",
   ] as const;
 
   for (const code of backendCodes) {

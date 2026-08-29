@@ -12,6 +12,7 @@ import {
   getCurrentHumanSession,
   getHumanSettings,
   type HumanIdentity,
+  switchHumanProfile,
   updateHumanSettings,
 } from "./auth/auth-client";
 import { authIssueMessage } from "./auth/auth-errors";
@@ -32,7 +33,8 @@ import {
   sharedMemeIssueMessage,
 } from "./auth/shared-meme-client";
 import { disableBrowserNotifications, enableBrowserNotifications } from "./browser-notifications";
-import { AuthScreen, SessionCheckingScreen } from "./components/auth-screen";
+import { AdditionalProfileForm } from "./components/additional-profile-form";
+import { AuthScreen, RegistrationHeader, SessionCheckingScreen } from "./components/auth-screen";
 import { McpAccessPage } from "./components/mcp-access-panel";
 import { ResidencePermitTransition } from "./components/residence-permit-transition";
 import {
@@ -123,6 +125,7 @@ type AppState =
   | { stage: "checking-session" }
   | { stage: "anonymous"; issue: AuthIssue | null; pending: boolean }
   | { stage: "issuing-permit"; identity: HumanIdentity }
+  | { stage: "adding-profile"; identity: HumanIdentity }
   | {
       stage: "authenticated";
       homeSettings: HomeSettingsState;
@@ -151,7 +154,7 @@ function identityView(identity: HumanIdentity): CandidateTwoIdentityView {
   };
 }
 
-function homeSettingsView(homeSettings: HomeSettingsState): CandidateTwoHomeSettingsView {
+export function homeSettingsView(homeSettings: HomeSettingsState): CandidateTwoHomeSettingsView {
   if (homeSettings.stage === "error") {
     return { stage: "error", message: authIssueMessage(homeSettings.issue) };
   }
@@ -191,6 +194,18 @@ function homeSettingsView(homeSettings: HomeSettingsState): CandidateTwoHomeSett
       notification_preferences.important_system_notifications_enabled ?? true,
     initialRecentActivityCount: community_connection_preferences.initial_recent_activity_count,
     pauseAllWakeups: notification_preferences.pause_all_wakeups ?? false,
+    profileSwitcher:
+      homeSettings.data.profiles.length > 1
+        ? {
+            activeProfileId: homeSettings.data.active_profile_id,
+            profiles: homeSettings.data.profiles.map((profile) => ({
+              profileId: profile.profile_id,
+              residentName: profile.resident_name,
+              homeName: profile.home_name,
+              farmDoorplate: profile.farm_doorplate,
+            })),
+          }
+        : null,
     sharedMemeUpdateSignalsEnabled: shared_data_preferences.shared_meme_update_signals_enabled,
     visitRequestsAndInvitationsEnabled:
       notification_preferences.visit_requests_and_invitations_enabled ?? true,
@@ -529,6 +544,55 @@ function LiveApp() {
         return;
       }
 
+      if (action.type === "profile-add") {
+        if (appState.stage === "authenticated") {
+          setAppState({ stage: "adding-profile", identity: appState.identity });
+        }
+        return;
+      }
+
+      if (action.type === "profile-switch") {
+        if (
+          appState.stage !== "authenticated" ||
+          appState.homeSettingsPending ||
+          appState.homeSettings.stage !== "ready" ||
+          !appState.homeSettings.data.profiles.some(
+            (profile) => profile.profile_id === action.profileId,
+          )
+        ) {
+          return;
+        }
+        lingyeControllersRef.current.glimmer?.abort();
+        lingyeControllersRef.current.memorial?.abort();
+        lingyeControllersRef.current.together?.abort();
+        lingyeRequestIdsRef.current.glimmer += 1;
+        lingyeRequestIdsRef.current.memorial += 1;
+        lingyeRequestIdsRef.current.together += 1;
+        setAppState({ ...appState, homeSettingsIssue: null, homeSettingsPending: true });
+        const switched = await switchHumanProfile({ profile_id: action.profileId });
+        if (!switched.ok) {
+          setAppState((current) =>
+            current.stage === "authenticated"
+              ? {
+                  ...current,
+                  homeSettingsIssue: switched.issue,
+                  homeSettingsPending: false,
+                }
+              : current,
+          );
+          return;
+        }
+        const settings = await getHumanSettings();
+        const next = authenticatedState(switched.identity);
+        setAppState({
+          ...next,
+          homeSettings: settings.ok
+            ? { stage: "ready", data: settings.data }
+            : { stage: "error", issue: settings.issue },
+        });
+        return;
+      }
+
       if (
         action.type === "credentials-submit" ||
         action.type === "farm-lookup" ||
@@ -847,6 +911,25 @@ function LiveApp() {
         identity={appState.identity}
         onComplete={() => setAppState(authenticatedState(appState.identity))}
       />
+    );
+  }
+
+  if (appState.stage === "adding-profile") {
+    return (
+      <div className="registration-page">
+        <main className="registration-page__main" id="main-content">
+          <RegistrationHeader />
+          <section className="registration-page__sheet" aria-label="添加小机档案">
+            <AdditionalProfileForm
+              onCancel={() => setAppState(authenticatedState(appState.identity))}
+              onCreated={(identity) => {
+                setShowMcpAfterPermit(false);
+                setAppState({ stage: "issuing-permit", identity });
+              }}
+            />
+          </section>
+        </main>
+      </div>
     );
   }
 

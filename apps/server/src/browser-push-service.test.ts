@@ -51,14 +51,18 @@ test("browser activity pushes require both switches and remove an expired subscr
       now: 2,
     });
 
-    await service.sendActivityReminder({
-      residentId,
-      title: "提醒",
-      body: "正文",
-      url: "/",
-      tag: "activity-1",
-      createdAt: 3,
-    });
+    assert.equal(
+      await service.sendActivityReminder({
+        residentId,
+        homeId,
+        title: "提醒",
+        body: "正文",
+        url: "/",
+        tag: "activity-1",
+        createdAt: 3,
+      }),
+      false,
+    );
     assert.deepEqual(sends, []);
     assert.deepEqual(memberships, []);
 
@@ -66,14 +70,18 @@ test("browser activity pushes require both switches and remove an expired subscr
       browserNotificationsEnabled: true,
       activityRemindersEnabled: true,
     });
-    await service.sendActivityReminder({
-      residentId,
-      title: "提醒",
-      body: "正文",
-      url: "/",
-      tag: "activity-1",
-      createdAt: 5,
-    });
+    assert.equal(
+      await service.sendActivityReminder({
+        residentId,
+        homeId,
+        title: "提醒",
+        body: "正文",
+        url: "/",
+        tag: "activity-1",
+        createdAt: 5,
+      }),
+      true,
+    );
     assert.equal(sends.length, 1);
     assert.deepEqual(memberships, [residentId]);
     assert.deepEqual(sends[0], {
@@ -87,15 +95,99 @@ test("browser activity pushes require both switches and remove an expired subscr
     });
 
     expired = true;
-    await service.sendActivityReminder({
-      residentId,
-      title: "提醒",
-      body: "正文",
-      url: "/",
-      tag: "activity-2",
-      createdAt: 6,
-    });
+    assert.equal(
+      await service.sendActivityReminder({
+        residentId,
+        homeId,
+        title: "提醒",
+        body: "正文",
+        url: "/",
+        tag: "activity-2",
+        createdAt: 6,
+      }),
+      false,
+    );
     assert.equal(database.listBrowserPushSubscriptions(residentId).length, 0);
+  } finally {
+    database.close();
+    rmSync(directory, { force: true, recursive: true });
+  }
+});
+
+test("browser activity pushes stay inside the exact resident and home profile", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "doorbell-browser-profile-push-"));
+  const database = new CommunityDatabase(join(directory, "doorbell.sqlite"));
+  try {
+    const first = database.createHumanSession("10001", 1, {
+      residentName: "小一",
+      homeName: "第一座家",
+      farmDoorplate: "FARM-1",
+      farmHumanKey: "first-human-key",
+    }).community;
+    const second = database.createHumanSession("10002", 1, {
+      residentName: "小二",
+      homeName: "第二座家",
+      farmDoorplate: "FARM-2",
+      farmHumanKey: "second-human-key",
+    }).community;
+    for (const community of [first, second]) {
+      database.updateHumanSettings(community.home.homeId, 2, {
+        browserNotificationsEnabled: true,
+        activityRemindersEnabled: true,
+      });
+      database.upsertBrowserPushSubscription({
+        residentId: community.resident.residentId,
+        homeId: community.home.homeId,
+        endpoint: `https://push.example.test/${community.home.homeId}`,
+        p256dh: "p256dh",
+        auth: "auth",
+        now: 2,
+      });
+    }
+    const endpoints: string[] = [];
+    const service = new BrowserPushService({
+      config: {
+        publicKey: "public-key",
+        privateKey: "private-key",
+        subject: "https://example.test",
+        ttlSeconds: 60,
+      },
+      database,
+      registrationAuth: { confirmCurrentResidentMembership: async () => undefined },
+      requestTimeoutMs: 5_000,
+      sender: {
+        send: async (subscription) => {
+          endpoints.push(subscription.endpoint);
+        },
+      },
+    });
+
+    assert.equal(
+      await service.sendActivityReminder({
+        residentId: first.resident.residentId,
+        homeId: first.home.homeId,
+        title: "提醒",
+        body: "正文",
+        url: "/",
+        tag: "first-profile",
+        createdAt: 3,
+      }),
+      true,
+    );
+    assert.deepEqual(endpoints, [`https://push.example.test/${first.home.homeId}`]);
+    assert.equal(
+      await service.sendActivityReminder({
+        residentId: first.resident.residentId,
+        homeId: second.home.homeId,
+        title: "提醒",
+        body: "正文",
+        url: "/",
+        tag: "mismatched-profile",
+        createdAt: 4,
+      }),
+      false,
+    );
+    assert.equal(endpoints.length, 1);
   } finally {
     database.close();
     rmSync(directory, { force: true, recursive: true });

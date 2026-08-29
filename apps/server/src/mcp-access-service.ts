@@ -49,7 +49,7 @@ interface McpAccessServiceOptions {
   registrationAuth: RegistrationAuthService;
   farmMigration: FarmMcpMigrationRevoker;
   mcpEndpoint: string;
-  isRuntimeReady: () => boolean;
+  isRuntimeReady: () => boolean | Promise<boolean>;
   now?: () => number;
   generateMigrationId?: () => string;
   generateCredentialId?: () => string;
@@ -69,7 +69,7 @@ export class McpAccessService {
   readonly #registrationAuth: RegistrationAuthService;
   readonly #farmMigration: FarmMcpMigrationRevoker;
   readonly #mcpEndpoint: string;
-  readonly #isRuntimeReady: () => boolean;
+  readonly #isRuntimeReady: () => boolean | Promise<boolean>;
   readonly #now: () => number;
   readonly #generateMigrationId: () => string;
   readonly #generateCredentialId: () => string;
@@ -95,10 +95,11 @@ export class McpAccessService {
   async claim(token: string): Promise<McpAccessStatusResponse> {
     const community = await this.#registrationAuth.getCurrentSession(token);
     let binding = this.#database.getMcpAccessBinding(community.resident.residentId);
+    if (binding) this.#assertBindingTargetsCommunity(binding, community);
+    if ((!binding || binding.farmRevokedAt === null) && !(await this.#runtimeReady())) {
+      throw new McpRuntimeUnavailableError();
+    }
     if (!binding) {
-      if (!this.#isRuntimeReady()) {
-        throw new McpRuntimeUnavailableError();
-      }
       try {
         binding = this.#database.beginMcpFarmMigration(
           community.resident.residentId,
@@ -114,7 +115,6 @@ export class McpAccessService {
       }
     }
 
-    this.#assertBindingTargetsCommunity(binding, community);
     if (binding.farmRevokedAt !== null) {
       return this.#statusForCommunity(community);
     }
@@ -124,6 +124,7 @@ export class McpAccessService {
     }
     const receipt = await this.#farmMigration.revokeLegacyMcpAccess({
       migrationId: binding.migrationId,
+      residentId: community.resident.residentId,
       farmDoorplate: binding.farmDoorplate,
       farmHumanKey,
     });
@@ -154,7 +155,7 @@ export class McpAccessService {
       throw new McpMigrationNotConfirmedError();
     }
     this.#assertBindingTargetsCommunity(binding, community);
-    if (!this.#isRuntimeReady()) {
+    if (!(await this.#runtimeReady())) {
       throw new McpRuntimeUnavailableError();
     }
 
@@ -187,6 +188,14 @@ export class McpAccessService {
       throw new McpCredentialNotConfiguredError();
     }
     return this.#statusForCommunity(community);
+  }
+
+  async #runtimeReady(): Promise<boolean> {
+    try {
+      return (await this.#isRuntimeReady()) === true;
+    } catch {
+      return false;
+    }
   }
 
   #statusForCommunity(community: HumanCommunityRecord): McpAccessStatusResponse {

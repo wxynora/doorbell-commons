@@ -1,9 +1,11 @@
 import {
+  type AdditionalHumanProfileRequest,
   boundFarmFieldErrorSchema,
   boundFarmFieldSuccessSchema,
   boundFarmHarvestAssistErrorSchema,
   boundFarmHarvestAssistSuccessSchema,
   type CurrentHumanSessionSuccess,
+  createdFarmHumanSessionSuccessSchema,
   currentHumanSessionSuccessSchema,
   type FarmLookupRequest,
   type FarmLookupSuccess,
@@ -11,12 +13,14 @@ import {
   farmLookupSuccessSchema,
   type HumanAuthenticationError,
   type HumanLogoutSuccess,
+  type HumanProfileSwitchRequest,
   type HumanSessionRequest,
   type HumanSessionSuccess,
   type HumanSettingsPatchRequest,
   type HumanSettingsSuccess,
   humanAuthenticationErrorSchema,
   humanLogoutSuccessSchema,
+  humanProfileSwitchRequestSchema,
   humanSessionSuccessSchema,
   humanSettingsErrorSchema,
   humanSettingsSuccessSchema,
@@ -50,10 +54,12 @@ export interface McpAccessIssue {
 }
 
 export interface HumanIdentity {
+  activeProfileId: CurrentHumanSessionSuccess["active_profile_id"];
   account: CurrentHumanSessionSuccess["account"];
   resident: CurrentHumanSessionSuccess["resident"];
   home: CurrentHumanSessionSuccess["home"];
   farmBinding: CurrentHumanSessionSuccess["farm_binding"];
+  profiles: CurrentHumanSessionSuccess["profiles"];
 }
 
 export type BoundFarmField = ReturnType<typeof boundFarmFieldSuccessSchema.parse>;
@@ -81,16 +87,27 @@ export type ApiResult<T, Issue = AuthIssue> = { ok: true; data: T } | { ok: fals
 export type IdentityResult =
   | { ok: true; identity: HumanIdentity; accountCreated: boolean | null }
   | { ok: false; issue: AuthIssue };
+export type ProfileCreationResult =
+  | {
+      ok: true;
+      identity: HumanIdentity;
+      createdFarm:
+        | ReturnType<typeof createdFarmHumanSessionSuccessSchema.parse>["created_farm"]
+        | null;
+    }
+  | { ok: false; issue: AuthIssue };
 export type FrontendFetcher = (input: string, init?: RequestInit) => Promise<Response>;
 
 function identityFromResponse(
   response: CurrentHumanSessionSuccess | HumanSessionSuccess,
 ): HumanIdentity {
   return {
+    activeProfileId: response.active_profile_id,
     account: response.account,
     resident: response.resident,
     home: response.home,
     farmBinding: response.farm_binding,
+    profiles: response.profiles,
   };
 }
 
@@ -220,6 +237,65 @@ export async function createHumanSession(
         identity: identityFromResponse(parsed.data),
         accountCreated: parsed.data.account_created,
       }
+    : { ok: false, issue: clientIssue("unexpected_response") };
+}
+
+export async function createHumanProfile(
+  input: AdditionalHumanProfileRequest,
+  fetcher: FrontendFetcher = fetch,
+): Promise<ProfileCreationResult> {
+  let response: Response;
+  try {
+    response = await fetcher("/api/profiles", {
+      body: JSON.stringify(input),
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+  } catch {
+    return { ok: false, issue: clientIssue("network_unavailable") };
+  }
+  const payload = await readPayload(response);
+  if (!response.ok) {
+    return { ok: false, issue: parseAuthIssue(payload) };
+  }
+  const created = createdFarmHumanSessionSuccessSchema.safeParse(payload);
+  if (created.success) {
+    return {
+      ok: true,
+      identity: identityFromResponse(created.data),
+      createdFarm: created.data.created_farm,
+    };
+  }
+  const bound = humanSessionSuccessSchema.safeParse(payload);
+  return bound.success
+    ? { ok: true, identity: identityFromResponse(bound.data), createdFarm: null }
+    : { ok: false, issue: clientIssue("unexpected_response") };
+}
+
+export async function switchHumanProfile(
+  input: HumanProfileSwitchRequest,
+  fetcher: FrontendFetcher = fetch,
+): Promise<IdentityResult> {
+  const body = humanProfileSwitchRequestSchema.parse(input);
+  let response: Response;
+  try {
+    response = await fetcher("/api/settings/active-profile", {
+      body: JSON.stringify(body),
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+  } catch {
+    return { ok: false, issue: clientIssue("network_unavailable") };
+  }
+  const payload = await readPayload(response);
+  if (!response.ok) {
+    return { ok: false, issue: parseSettingsIssue(payload) };
+  }
+  const parsed = currentHumanSessionSuccessSchema.safeParse(payload);
+  return parsed.success
+    ? { ok: true, identity: identityFromResponse(parsed.data), accountCreated: null }
     : { ok: false, issue: clientIssue("unexpected_response") };
 }
 

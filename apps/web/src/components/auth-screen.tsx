@@ -18,7 +18,7 @@ function DoorbellMark() {
   );
 }
 
-function RegistrationHeader() {
+export function RegistrationHeader() {
   return (
     <header className="registration-page__header">
       <DoorbellMark />

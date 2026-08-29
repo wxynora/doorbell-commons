@@ -18,6 +18,7 @@ const GLIMMER_RESULT = {
     open: true,
     status: "流光原野开放中",
     season: "夏",
+    capture_cooldown: null,
     tracks: [
       {
         revealed: true,
@@ -73,6 +74,7 @@ const TOGETHER_RESULT = {
     stage: { index: 1, total: 6, name: "逆流而来的船" },
     art_asset_key: "together.river-from-tomorrow-opening",
     history: [{ kind: "story", title: "逆流而来的船", text: "旧沟里出现了逆流。" }],
+    archives: [],
     current_task: null,
     current_choice: {
       index: 1,
@@ -188,6 +190,39 @@ test("farm Lingye client rejects malformed or unsafe structured payloads", async
   );
   await assert.rejects(
     readInvalid({ ...TOGETHER_RESULT, unexpected: true }),
+    FarmLingyeContractUnavailableError,
+  );
+});
+
+test("farm Lingye client requires the authoritative Glimmer capture cooldown fact", async () => {
+  const coolingDown = {
+    ...GLIMMER_RESULT,
+    data: {
+      ...GLIMMER_RESULT.data,
+      capture_cooldown: { ready_at: "2026-08-24T13:10:00.000Z" },
+    },
+  };
+  assert.deepEqual(
+    await createClient(async () => Response.json(coolingDown)).readGlimmer(INPUT),
+    coolingDown,
+  );
+
+  await assert.rejects(
+    createClient(async () =>
+      Response.json({
+        ...GLIMMER_RESULT,
+        data: { ...GLIMMER_RESULT.data, capture_cooldown: undefined },
+      }),
+    ).readGlimmer(INPUT),
+    FarmLingyeContractUnavailableError,
+  );
+  await assert.rejects(
+    createClient(async () =>
+      Response.json({
+        ...GLIMMER_RESULT,
+        data: { ...GLIMMER_RESULT.data, capture_cooldown: { ready_at: "soon" } },
+      }),
+    ).readGlimmer(INPUT),
     FarmLingyeContractUnavailableError,
   );
 });

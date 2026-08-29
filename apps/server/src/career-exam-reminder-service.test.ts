@@ -85,6 +85,7 @@ async function withHarness(
       browserPushService: {
         sendActivityReminder: async (input) => {
           pushes.push(structuredClone(input));
+          return true;
         },
       },
       registrationAuth: {
@@ -196,6 +197,7 @@ test("a registered exam persists one restart-safe 13:55 mailbox and Bell reminde
     assert.deepEqual(harness.pushes, [
       {
         residentId: harness.residentId,
+        homeId: harness.homeId,
         title: CAREER_EXAM_REMINDER_TITLE,
         body: CAREER_EXAM_REMINDER_BODY,
         url: "/",

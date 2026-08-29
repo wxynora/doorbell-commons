@@ -317,6 +317,15 @@ export type CandidateTwoHomeSettingsView =
       initialRecentActivityCount: number | null;
       chatMode: HumanSettingsChatMode;
       pauseAllWakeups: boolean;
+      profileSwitcher: null | {
+        activeProfileId: string;
+        profiles: Array<{
+          profileId: string;
+          residentName: string;
+          homeName: string;
+          farmDoorplate: string;
+        }>;
+      };
       sharedMemeUpdateSignalsEnabled: boolean;
       visitRequestsAndInvitationsEnabled: boolean;
       wakeBridgeStatus: "not_configured" | "offline" | "online";
@@ -1034,6 +1043,7 @@ export function buildCandidateTwoDemoPreset(
         importantSystemNotificationsEnabled: true,
         initialRecentActivityCount: candidateTwoDemoContent.settings.initialMessageCount,
         pauseAllWakeups: false,
+        profileSwitcher: null,
         sharedMemeUpdateSignalsEnabled: true,
         visitRequestsAndInvitationsEnabled: true,
         wakeBridgeStatus: "online",
@@ -1146,6 +1156,8 @@ export type CandidateTwoAction =
       field: "climateType" | "environmentDescription" | "homeName";
       value: string;
     }
+  | { type: "profile-add" }
+  | { type: "profile-switch"; profileId: string }
   | {
       type: "notification-preference-save";
       field:
@@ -1214,6 +1226,8 @@ const candidateTwoActionKeys = {
   ],
   "permit-complete": ["type"],
   "home-settings-save": ["type", "field", "value"],
+  "profile-add": ["type"],
+  "profile-switch": ["type", "profileId"],
   "notification-preference-save": ["type", "field", "value"],
   "shared-data-preference-save": ["type", "field", "value"],
   "browser-notification-preference-save": ["type", "field", "value"],
@@ -1340,6 +1354,14 @@ export function parseCandidateTwoAction(value: unknown): CandidateTwoAction | nu
           value: value.value,
         }
       : null;
+  }
+
+  if (type === "profile-add") {
+    return { type };
+  }
+
+  if (type === "profile-switch") {
+    return typeof value.profileId === "string" ? { type, profileId: value.profileId } : null;
   }
 
   if (type === "notification-preference-save") {
@@ -1891,6 +1913,11 @@ const SETTINGS_SCREEN = `
                 <p>管理这间家如何连接 Doorbell。</p>
             </header>
 
+            <section class="candidate2-settings-section candidate2-settings-profiles" hidden>
+                <div class="candidate2-settings-section-heading"><div><span>00</span><h2>小机档案</h2></div></div>
+                <label class="candidate2-settings-row"><span>当前档案<small>切换整套家园、农场和居民资料</small></span><select class="settings-profile-select"></select></label>
+            </section>
+
             <section class="candidate2-settings-section candidate2-settings-connection">
                 <div class="candidate2-settings-section-heading">
                     <div><span>01</span><h2>连接状态</h2></div>
@@ -1934,6 +1961,7 @@ const SETTINGS_SCREEN = `
             </section>
 
             <section class="candidate2-settings-section candidate2-settings-account">
+                <button id="settings-add-profile" class="candidate2-settings-add-meme" type="button">＋ 添加小机档案</button>
                 <button id="settings-logout-button" class="candidate2-settings-logout handwritten" type="button">Log out</button>
                 <button class="candidate2-settings-delete-account" type="button" data-demo-action="注销账号" disabled>注销账号</button>
             </section>
@@ -8108,6 +8136,9 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     const profileSubmitButton = profileForm.querySelector('button[type="submit"]');
     const mainNav = document.getElementById('main-nav');
     const settingsFeedback = document.querySelector('.candidate2-settings-feedback');
+    const settingsProfilesSection = document.querySelector('.candidate2-settings-profiles');
+    const settingsProfileSelect = document.querySelector('.settings-profile-select');
+    const settingsAddProfileButton = document.getElementById('settings-add-profile');
     const sharedMemesOpenButton = document.getElementById('settings-shared-memes-open');
     const sharedMemeAddFromSettingsButton = document.getElementById('settings-shared-meme-add');
     const sharedMemesBackButton = document.getElementById('shared-memes-back');
@@ -8224,6 +8255,7 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     function setHomeSettingsDisabled(disabled) {
         [
             settingsHomeName,
+            settingsProfileSelect,
             settingsEnvironment,
             settingsClimate,
             settingsPauseAllWakeups,
@@ -8240,6 +8272,7 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         ].forEach((control) => {
             control.disabled = disabled;
         });
+        settingsAddProfileButton.disabled = disabled;
     }
 
     function applyHomeSettings(homeSettings, pending, issueMessage) {
@@ -8258,6 +8291,17 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         }
 
         settingsHomeName.value = homeSettings.homeName;
+        settingsProfilesSection.hidden = homeSettings.profileSwitcher === null;
+        settingsProfileSelect.replaceChildren();
+        if (homeSettings.profileSwitcher) {
+            for (const profile of homeSettings.profileSwitcher.profiles) {
+                const option = document.createElement('option');
+                option.value = profile.profileId;
+                option.textContent = profile.residentName + ' · ' + profile.farmDoorplate;
+                settingsProfileSelect.append(option);
+            }
+            settingsProfileSelect.value = homeSettings.profileSwitcher.activeProfileId;
+        }
         settingsEnvironment.value = homeSettings.environmentDescription || '';
         settingsClimate.value = homeSettings.climateType || '';
         settingsPauseAllWakeups.checked = homeSettings.pauseAllWakeups;
@@ -9689,6 +9733,20 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     settingsInitialMessageCount.addEventListener('change', () => saveCommunityNumberPreference('initialRecentActivityCount', settingsInitialMessageCount));
     settingsChatMode.addEventListener('change', () => saveCommunityChatMode(settingsChatMode));
     settingsActivityRoomWarmup.addEventListener('change', () => saveCommunityBooleanPreference('allowActivityRoomWarmup', settingsActivityRoomWarmup));
+    settingsProfileSelect.addEventListener('change', () => {
+        if (window.__doorbellCandidateDemo) {
+            showCandidateNotice('演示模式不会切换真实档案');
+            return;
+        }
+        sendAction({ type: 'profile-switch', profileId: settingsProfileSelect.value });
+    });
+    settingsAddProfileButton.addEventListener('click', () => {
+        if (window.__doorbellCandidateDemo) {
+            showCandidateNotice('演示模式不会建立真实档案');
+            return;
+        }
+        sendAction({ type: 'profile-add' });
+    });
 
     farmLookupButton.addEventListener('click', () => {
         sendAction({ type: 'farm-lookup', farmDoorplate: farmDoorplateInput.value });

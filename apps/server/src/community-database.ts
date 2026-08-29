@@ -23,7 +23,7 @@ export const HUMAN_LOGIN_FAILURE_WINDOW_MS = 15 * 60 * 1000;
 export const HUMAN_LOGIN_FAILURE_THRESHOLD = 10;
 export const HUMAN_LOGIN_LOCK_DURATION_MS = 30 * 60 * 1000;
 export const FARM_PURCHASE_REQUEST_TTL_MS = 24 * 60 * 60 * 1000;
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 9;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 10;
 const LEGACY_CONNECTOR_DELIVERY_GENERATION = "00000000-0000-0000-0000-000000000000";
 
 export interface RegistrationCodeRecord {
@@ -55,10 +55,18 @@ export interface FarmBindingRecord {
 }
 
 export interface HumanCommunityRecord {
+  profileId: string;
   account: HumanAccountRecord;
   resident: ResidentRecord;
   home: HomeRecord;
   farmBinding: FarmBindingRecord;
+}
+
+export interface HumanProfileSummaryRecord {
+  profileId: string;
+  residentName: string;
+  homeName: string;
+  farmDoorplate: string;
 }
 
 export interface BrowserPushSubscriptionRecord {
@@ -161,6 +169,36 @@ export type FarmPurchaseRequestStatus = (typeof FARM_PURCHASE_REQUEST_STATUSES)[
 export type BellWakeReason = "mailbox_unread" | "farm_purchase_request" | "career_exam_reminder";
 
 export type CareerExamReminderStatus = "scheduled" | "delivered" | "cancelled";
+
+export const ACTIVITY_REMINDER_KINDS = ["crop_matured", "glimmer_capture_ready"] as const;
+export type ActivityReminderKind = (typeof ACTIVITY_REMINDER_KINDS)[number];
+export type ActivityReminderStatus = "scheduled" | "delivered" | "cancelled";
+
+export interface ActivityReminderRecord {
+  residentId: string;
+  homeId: string;
+  farmDoorplate: string;
+  kind: ActivityReminderKind;
+  sourceKey: string;
+  readyAt: number;
+  status: ActivityReminderStatus;
+  createdAt: number;
+  deliveredAt: number | null;
+  cancelledAt: number | null;
+}
+
+export interface ActivityReminderProfileKey {
+  residentId: string;
+  homeId: string;
+  farmDoorplate: string;
+}
+
+export interface ActivityReminderScheduleInput extends ActivityReminderProfileKey {
+  kind: ActivityReminderKind;
+  sourceKey: string;
+  readyAt: number;
+  createdAt: number;
+}
 
 export interface CareerExamReminderRecord {
   attemptId: string;
@@ -357,8 +395,10 @@ export interface HumanSettingsPatch {
 }
 
 export interface CreatedHumanSession {
+  activeProfileId: string;
   community: HumanCommunityRecord;
   accountCreated: boolean;
+  profiles: HumanProfileSummaryRecord[];
   token: string;
 }
 
@@ -395,9 +435,16 @@ export class HumanLoginLockedError extends Error {
   }
 }
 
+export class HumanProfileNotAvailableError extends Error {
+  constructor() {
+    super("The selected profile is not available to this human account");
+    this.name = "HumanProfileNotAvailableError";
+  }
+}
+
 export class FarmAlreadyBoundError extends Error {
   constructor() {
-    super("The farm doorplate is already bound to another human account");
+    super("The farm doorplate is already bound to another profile");
     this.name = "FarmAlreadyBoundError";
   }
 }
@@ -468,6 +515,7 @@ interface FarmCreationRequestRow {
 }
 
 interface HumanCommunityRow extends HumanAccountRow {
+  profile_id: string;
   resident_id: string;
   resident_name: string;
   home_id: string;
@@ -561,6 +609,19 @@ interface CareerExamReminderRow {
   cancelled_at: number | null;
 }
 
+interface ActivityReminderRow {
+  resident_id: string;
+  home_id: string;
+  farm_doorplate: string;
+  kind: ActivityReminderKind;
+  source_key: string;
+  ready_at: number;
+  status: ActivityReminderStatus;
+  created_at: number;
+  delivered_at: number | null;
+  cancelled_at: number | null;
+}
+
 interface FarmPurchaseRequestRow {
   request_id: string;
   wake_id: string;
@@ -618,6 +679,7 @@ export interface CommunityDatabaseOptions {
   generateSessionToken?: () => string;
   generateAccountId?: () => string;
   generateResidentId?: () => string;
+  generateProfileId?: () => string;
   generateHomeId?: () => string;
   generateFarmCreationId?: () => string;
 }
@@ -678,6 +740,7 @@ function mapAccount(row: HumanAccountRow): HumanAccountRecord {
 
 function mapCommunity(row: HumanCommunityRow): HumanCommunityRecord {
   return {
+    profileId: row.profile_id,
     account: mapAccount(row),
     resident: {
       residentId: row.resident_id,
@@ -787,6 +850,21 @@ function mapCareerExamReminder(row: CareerExamReminderRow): CareerExamReminderRe
     status: row.status,
     letterId: row.letter_id,
     wakeId: row.wake_id,
+    createdAt: row.created_at,
+    deliveredAt: row.delivered_at,
+    cancelledAt: row.cancelled_at,
+  };
+}
+
+function mapActivityReminder(row: ActivityReminderRow): ActivityReminderRecord {
+  return {
+    residentId: row.resident_id,
+    homeId: row.home_id,
+    farmDoorplate: row.farm_doorplate,
+    kind: row.kind,
+    sourceKey: row.source_key,
+    readyAt: row.ready_at,
+    status: row.status,
     createdAt: row.created_at,
     deliveredAt: row.delivered_at,
     cancelledAt: row.cancelled_at,
@@ -926,6 +1004,7 @@ export class CommunityDatabase {
   readonly #generateSessionToken: () => string;
   readonly #generateAccountId: () => string;
   readonly #generateResidentId: () => string;
+  readonly #generateProfileId: () => string;
   readonly #generateHomeId: () => string;
   readonly #generateFarmCreationId: () => string;
 
@@ -941,6 +1020,7 @@ export class CommunityDatabase {
     this.#generateSessionToken = options.generateSessionToken ?? generateSessionToken;
     this.#generateAccountId = options.generateAccountId ?? randomUUID;
     this.#generateResidentId = options.generateResidentId ?? randomUUID;
+    this.#generateProfileId = options.generateProfileId ?? randomUUID;
     this.#generateHomeId = options.generateHomeId ?? randomUUID;
     this.#generateFarmCreationId = options.generateFarmCreationId ?? randomUUID;
     this.#database.pragma("foreign_keys = ON");
@@ -968,7 +1048,7 @@ export class CommunityDatabase {
 
       CREATE TABLE IF NOT EXISTS farm_creation_requests (
         creation_id TEXT PRIMARY KEY,
-        qq_number TEXT NOT NULL UNIQUE,
+        qq_number TEXT NOT NULL,
         requested_farm_name TEXT NOT NULL,
         requested_ai_name TEXT NOT NULL,
         requested_human_name TEXT NOT NULL,
@@ -1005,6 +1085,10 @@ export class CommunityDatabase {
         )
       );
 
+      CREATE UNIQUE INDEX IF NOT EXISTS farm_creation_requests_one_pending_per_qq
+        ON farm_creation_requests (qq_number)
+        WHERE completed_at IS NULL;
+
       CREATE TABLE IF NOT EXISTS human_accounts (
         account_id TEXT PRIMARY KEY,
         qq_number TEXT NOT NULL UNIQUE,
@@ -1024,9 +1108,11 @@ export class CommunityDatabase {
 
       CREATE TABLE IF NOT EXISTS residents (
         resident_id TEXT PRIMARY KEY,
-        account_id TEXT NOT NULL UNIQUE REFERENCES human_accounts(account_id) ON DELETE CASCADE,
+        profile_id TEXT NOT NULL UNIQUE,
+        account_id TEXT NOT NULL REFERENCES human_accounts(account_id) ON DELETE CASCADE,
         resident_name TEXT NOT NULL,
-        created_at INTEGER NOT NULL
+        created_at INTEGER NOT NULL,
+        UNIQUE (account_id, profile_id)
       );
 
       CREATE TABLE IF NOT EXISTS homes (
@@ -1303,6 +1389,30 @@ export class CommunityDatabase {
 
       CREATE INDEX IF NOT EXISTS career_exam_reminders_due
         ON career_exam_reminders (status, remind_at, attempt_id);
+
+      CREATE TABLE IF NOT EXISTS activity_reminders (
+        resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+        home_id TEXT NOT NULL REFERENCES homes(home_id) ON DELETE CASCADE,
+        farm_doorplate TEXT NOT NULL REFERENCES farm_bindings(farm_doorplate) ON DELETE CASCADE,
+        kind TEXT NOT NULL CHECK (kind IN ('crop_matured', 'glimmer_capture_ready')),
+        source_key TEXT NOT NULL,
+        ready_at INTEGER NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('scheduled', 'delivered', 'cancelled')),
+        created_at INTEGER NOT NULL,
+        delivered_at INTEGER,
+        cancelled_at INTEGER,
+        PRIMARY KEY (resident_id, home_id, farm_doorplate, kind, source_key),
+        CHECK (
+          (status = 'scheduled' AND delivered_at IS NULL AND cancelled_at IS NULL)
+          OR (status = 'delivered' AND delivered_at IS NOT NULL AND cancelled_at IS NULL)
+          OR (status = 'cancelled' AND delivered_at IS NULL AND cancelled_at IS NOT NULL)
+        )
+      );
+
+      CREATE INDEX IF NOT EXISTS activity_reminders_due
+        ON activity_reminders (
+          status, ready_at, resident_id, home_id, farm_doorplate, kind, source_key
+        );
 
       CREATE TABLE IF NOT EXISTS farm_purchase_requests (
         request_id TEXT PRIMARY KEY,
@@ -1932,6 +2042,274 @@ export class CommunityDatabase {
       })();
       migratedSchemaVersion = 9;
     }
+    if (migratedSchemaVersion < 10) {
+      const residentColumns = this.#database.pragma("table_info(residents)") as Array<{
+        name: string;
+      }>;
+      const sessionColumns = this.#database.pragma("table_info(human_sessions)") as Array<{
+        name: string;
+      }>;
+      const hasProfileId = residentColumns.some((column) => column.name === "profile_id");
+      const hasActiveProfileId = sessionColumns.some(
+        (column) => column.name === "active_profile_id",
+      );
+      if (!hasProfileId || !hasActiveProfileId) {
+        const legacyResidents = this.#database
+          .prepare(
+            `SELECT resident_id, account_id, resident_name, created_at
+             FROM residents
+             ORDER BY created_at ASC, resident_id ASC`,
+          )
+          .all() as Array<{
+          resident_id: string;
+          account_id: string;
+          resident_name: string;
+          created_at: number;
+        }>;
+        const legacySessions = this.#database
+          .prepare(
+            `SELECT token_hash, account_id, created_at, revoked_at
+             FROM human_sessions
+             ORDER BY created_at ASC, token_hash ASC`,
+          )
+          .all() as Array<{
+          token_hash: string;
+          account_id: string;
+          created_at: number;
+          revoked_at: number | null;
+        }>;
+        const legacyFarmCreationRequests = this.#database
+          .prepare(
+            `SELECT creation_id,
+                    qq_number,
+                    requested_farm_name,
+                    requested_ai_name,
+                    requested_human_name,
+                    requested_at,
+                    farm_doorplate,
+                    farm_name,
+                    ai_name,
+                    human_name,
+                    farm_human_key,
+                    farm_created_at,
+                    completed_at
+             FROM farm_creation_requests
+             ORDER BY requested_at ASC, creation_id ASC`,
+          )
+          .all() as FarmCreationRequestRow[];
+        const profileByAccount = new Map<string, string>();
+        this.#database.pragma("foreign_keys = OFF");
+        try {
+          this.#database.transaction(() => {
+            this.#database.exec(`
+              CREATE TABLE residents_v10 (
+                resident_id TEXT PRIMARY KEY,
+                profile_id TEXT NOT NULL UNIQUE,
+                account_id TEXT NOT NULL REFERENCES human_accounts(account_id) ON DELETE CASCADE,
+                resident_name TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                UNIQUE (account_id, profile_id)
+              );
+
+              CREATE TABLE human_sessions_v10 (
+                token_hash TEXT PRIMARY KEY,
+                account_id TEXT NOT NULL REFERENCES human_accounts(account_id) ON DELETE CASCADE,
+                active_profile_id TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                revoked_at INTEGER,
+                FOREIGN KEY (account_id, active_profile_id)
+                  REFERENCES residents(account_id, profile_id) ON DELETE CASCADE
+              );
+
+              CREATE TABLE farm_creation_requests_v10 (
+                creation_id TEXT PRIMARY KEY,
+                qq_number TEXT NOT NULL,
+                requested_farm_name TEXT NOT NULL,
+                requested_ai_name TEXT NOT NULL,
+                requested_human_name TEXT NOT NULL,
+                requested_at INTEGER NOT NULL,
+                farm_doorplate TEXT UNIQUE,
+                farm_name TEXT,
+                ai_name TEXT,
+                human_name TEXT,
+                farm_human_key TEXT,
+                farm_created_at INTEGER,
+                completed_at INTEGER,
+                CHECK (
+                  (farm_doorplate IS NULL
+                    AND farm_name IS NULL
+                    AND ai_name IS NULL
+                    AND human_name IS NULL
+                    AND farm_human_key IS NULL
+                    AND farm_created_at IS NULL
+                    AND completed_at IS NULL)
+                  OR (farm_doorplate IS NOT NULL
+                    AND farm_name IS NOT NULL
+                    AND ai_name IS NOT NULL
+                    AND human_name IS NOT NULL
+                    AND farm_human_key IS NOT NULL
+                    AND farm_created_at IS NOT NULL
+                    AND completed_at IS NULL)
+                  OR (farm_doorplate IS NOT NULL
+                    AND farm_name IS NOT NULL
+                    AND ai_name IS NOT NULL
+                    AND human_name IS NOT NULL
+                    AND farm_human_key IS NULL
+                    AND farm_created_at IS NOT NULL
+                    AND completed_at IS NOT NULL)
+                )
+              );
+            `);
+            const insertResident = this.#database.prepare(
+              `INSERT INTO residents_v10 (
+                 resident_id, profile_id, account_id, resident_name, created_at
+               ) VALUES (?, ?, ?, ?, ?)`,
+            );
+            for (const resident of legacyResidents) {
+              const profileId = this.#generateProfileId();
+              profileByAccount.set(resident.account_id, profileId);
+              insertResident.run(
+                resident.resident_id,
+                profileId,
+                resident.account_id,
+                resident.resident_name,
+                resident.created_at,
+              );
+            }
+            const insertSession = this.#database.prepare(
+              `INSERT INTO human_sessions_v10 (
+                 token_hash, account_id, active_profile_id, created_at, revoked_at
+               ) VALUES (?, ?, ?, ?, ?)`,
+            );
+            for (const session of legacySessions) {
+              const activeProfileId = profileByAccount.get(session.account_id);
+              if (!activeProfileId) {
+                throw new Error(
+                  "Human session has no resident profile during schema v10 migration",
+                );
+              }
+              insertSession.run(
+                session.token_hash,
+                session.account_id,
+                activeProfileId,
+                session.created_at,
+                session.revoked_at,
+              );
+            }
+            const insertCreation = this.#database.prepare(
+              `INSERT INTO farm_creation_requests_v10 (
+                 creation_id,
+                 qq_number,
+                 requested_farm_name,
+                 requested_ai_name,
+                 requested_human_name,
+                 requested_at,
+                 farm_doorplate,
+                 farm_name,
+                 ai_name,
+                 human_name,
+                 farm_human_key,
+                 farm_created_at,
+                 completed_at
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            );
+            for (const request of legacyFarmCreationRequests) {
+              insertCreation.run(
+                request.creation_id,
+                request.qq_number,
+                request.requested_farm_name,
+                request.requested_ai_name,
+                request.requested_human_name,
+                request.requested_at,
+                request.farm_doorplate,
+                request.farm_name,
+                request.ai_name,
+                request.human_name,
+                request.farm_human_key,
+                request.farm_created_at,
+                request.completed_at,
+              );
+            }
+            this.#database.exec(`
+              DROP TABLE human_sessions;
+              DROP TABLE residents;
+              DROP TABLE farm_creation_requests;
+              ALTER TABLE residents_v10 RENAME TO residents;
+              ALTER TABLE human_sessions_v10 RENAME TO human_sessions;
+              ALTER TABLE farm_creation_requests_v10 RENAME TO farm_creation_requests;
+              CREATE UNIQUE INDEX farm_creation_requests_one_pending_per_qq
+                ON farm_creation_requests (qq_number)
+                WHERE completed_at IS NULL;
+
+              CREATE TABLE IF NOT EXISTS activity_reminders (
+                resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+                home_id TEXT NOT NULL REFERENCES homes(home_id) ON DELETE CASCADE,
+                farm_doorplate TEXT NOT NULL REFERENCES farm_bindings(farm_doorplate) ON DELETE CASCADE,
+                kind TEXT NOT NULL CHECK (kind IN ('crop_matured', 'glimmer_capture_ready')),
+                source_key TEXT NOT NULL,
+                ready_at INTEGER NOT NULL,
+                status TEXT NOT NULL CHECK (status IN ('scheduled', 'delivered', 'cancelled')),
+                created_at INTEGER NOT NULL,
+                delivered_at INTEGER,
+                cancelled_at INTEGER,
+                PRIMARY KEY (resident_id, home_id, farm_doorplate, kind, source_key),
+                CHECK (
+                  (status = 'scheduled' AND delivered_at IS NULL AND cancelled_at IS NULL)
+                  OR (status = 'delivered' AND delivered_at IS NOT NULL AND cancelled_at IS NULL)
+                  OR (status = 'cancelled' AND delivered_at IS NULL AND cancelled_at IS NOT NULL)
+                )
+              );
+
+              CREATE INDEX IF NOT EXISTS activity_reminders_due
+                ON activity_reminders (
+                  status, ready_at, resident_id, home_id, farm_doorplate, kind, source_key
+                );
+            `);
+            this.#database.pragma("user_version = 10");
+          })();
+        } finally {
+          this.#database.pragma("foreign_keys = ON");
+        }
+        const foreignKeyErrors = this.#database.pragma("foreign_key_check") as unknown[];
+        if (foreignKeyErrors.length > 0) {
+          throw new Error("Community database schema v10 migration violated foreign keys");
+        }
+      } else {
+        this.#database.transaction(() => {
+          this.#database.exec(`
+            CREATE UNIQUE INDEX IF NOT EXISTS farm_creation_requests_one_pending_per_qq
+              ON farm_creation_requests (qq_number)
+              WHERE completed_at IS NULL;
+
+            CREATE TABLE IF NOT EXISTS activity_reminders (
+              resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+              home_id TEXT NOT NULL REFERENCES homes(home_id) ON DELETE CASCADE,
+              farm_doorplate TEXT NOT NULL REFERENCES farm_bindings(farm_doorplate) ON DELETE CASCADE,
+              kind TEXT NOT NULL CHECK (kind IN ('crop_matured', 'glimmer_capture_ready')),
+              source_key TEXT NOT NULL,
+              ready_at INTEGER NOT NULL,
+              status TEXT NOT NULL CHECK (status IN ('scheduled', 'delivered', 'cancelled')),
+              created_at INTEGER NOT NULL,
+              delivered_at INTEGER,
+              cancelled_at INTEGER,
+              PRIMARY KEY (resident_id, home_id, farm_doorplate, kind, source_key),
+              CHECK (
+                (status = 'scheduled' AND delivered_at IS NULL AND cancelled_at IS NULL)
+                OR (status = 'delivered' AND delivered_at IS NOT NULL AND cancelled_at IS NULL)
+                OR (status = 'cancelled' AND delivered_at IS NULL AND cancelled_at IS NOT NULL)
+              )
+            );
+
+            CREATE INDEX IF NOT EXISTS activity_reminders_due
+              ON activity_reminders (
+                status, ready_at, resident_id, home_id, farm_doorplate, kind, source_key
+              );
+          `);
+          this.#database.pragma("user_version = 10");
+        })();
+      }
+      migratedSchemaVersion = 10;
+    }
     this.#database.transaction(() => {
       const itemColumns = this.#database.pragma(
         "table_info(farm_purchase_request_items)",
@@ -2298,7 +2676,9 @@ export class CommunityDatabase {
                   farm_created_at,
                   completed_at
            FROM farm_creation_requests
-           WHERE qq_number = ?`,
+           WHERE qq_number = ? AND completed_at IS NULL
+           ORDER BY requested_at ASC, creation_id ASC
+           LIMIT 1`,
         )
         .get(qqNumber) as FarmCreationRequestRow | undefined;
       if (existing) {
@@ -2432,41 +2812,18 @@ export class CommunityDatabase {
         throw new RegistrationProfileRequiredError();
       }
 
-      let community = account ? this.#findCommunityByAccountId(account.account_id) : undefined;
-
-      if (community) {
+      const existingCommunities = account
+        ? this.#listCommunitiesByAccountId(account.account_id)
+        : [];
+      if (existingCommunities.length > 0) {
         throw new HumanAccountAlreadyRegisteredError();
       }
 
-      if (account && !community && !registration) {
+      if (account && !registration) {
         throw new RegistrationProfileRequiredError();
       }
 
-      if (!community && registration?.farmCreationId) {
-        const creation = this.#database
-          .prepare(
-            `SELECT farm_doorplate, farm_human_key, completed_at
-             FROM farm_creation_requests
-             WHERE qq_number = ? AND creation_id = ?`,
-          )
-          .get(qqNumber, registration.farmCreationId) as
-          | {
-              farm_doorplate: string | null;
-              farm_human_key: string | null;
-              completed_at: number | null;
-            }
-          | undefined;
-        if (
-          !creation ||
-          creation.completed_at !== null ||
-          creation.farm_doorplate !== registration.farmDoorplate ||
-          creation.farm_human_key !== registration.farmHumanKey
-        ) {
-          throw new FarmCreationStateConflictError();
-        }
-      }
-
-      if (!community && registration) {
+      if (registration) {
         const existingFarmBinding = this.#database
           .prepare("SELECT home_id FROM farm_bindings WHERE farm_doorplate = ?")
           .get(registration.farmDoorplate);
@@ -2514,62 +2871,33 @@ export class CommunityDatabase {
         account.membership_status = "active";
       }
 
-      if (!community && registration) {
-        const residentId = this.#generateResidentId();
-        const homeId = this.#generateHomeId();
-        this.#database
-          .prepare(
-            `INSERT INTO residents (resident_id, account_id, resident_name, created_at)
-             VALUES (?, ?, ?, ?)`,
-          )
-          .run(residentId, account.account_id, registration.residentName, now);
-        this.#database
-          .prepare(
-            `INSERT INTO homes (home_id, resident_id, home_name, created_at)
-             VALUES (?, ?, ?, ?)`,
-          )
-          .run(homeId, residentId, registration.homeName, now);
-        this.#database
-          .prepare(
-            `INSERT INTO farm_bindings (farm_doorplate, home_id, farm_human_key, bound_at)
-             VALUES (?, ?, ?, ?)`,
-          )
-          .run(registration.farmDoorplate, homeId, registration.farmHumanKey, now);
-        if (registration.farmCreationId) {
-          const completed = this.#database
-            .prepare(
-              `UPDATE farm_creation_requests
-               SET farm_human_key = NULL,
-                   completed_at = ?
-               WHERE qq_number = ?
-                 AND creation_id = ?
-                 AND completed_at IS NULL
-                 AND farm_human_key = ?`,
-            )
-            .run(now, qqNumber, registration.farmCreationId, registration.farmHumanKey);
-          if (completed.changes !== 1) {
-            throw new FarmCreationStateConflictError();
-          }
-        }
-        community = this.#findCommunityByAccountId(account.account_id);
-      }
-
-      if (!community) {
+      if (!registration) {
         throw new RegistrationProfileRequiredError();
       }
-
+      const community = this.#createProfileForAccount(
+        account.account_id,
+        qqNumber,
+        now,
+        registration,
+      );
       if (community.farmBinding.farmHumanKey === null) {
         throw new RegistrationProfileRequiredError();
       }
 
       const token = this.#generateSessionToken();
       this.#database
-        .prepare("INSERT INTO human_sessions (token_hash, account_id, created_at) VALUES (?, ?, ?)")
-        .run(hashSessionToken(token), account.account_id, now);
+        .prepare(
+          `INSERT INTO human_sessions (
+             token_hash, account_id, active_profile_id, created_at
+           ) VALUES (?, ?, ?, ?)`,
+        )
+        .run(hashSessionToken(token), account.account_id, community.profileId, now);
 
       return {
+        activeProfileId: community.profileId,
         community,
         accountCreated,
+        profiles: this.listHumanProfilesByAccountId(account.account_id),
         token,
       };
     });
@@ -2678,7 +3006,7 @@ export class CommunityDatabase {
       if (loginLock && loginLock.locked_until > now) {
         throw new HumanLoginLockedError();
       }
-      const community = this.#findCommunityByAccountId(account.account_id);
+      const community = this.#listCommunitiesByAccountId(account.account_id)[0];
       if (!community || community.farmBinding.farmHumanKey === null) {
         throw new RegistrationProfileRequiredError();
       }
@@ -2694,10 +3022,20 @@ export class CommunityDatabase {
       community.account.membershipStatus = "active";
       const token = this.#generateSessionToken();
       this.#database
-        .prepare("INSERT INTO human_sessions (token_hash, account_id, created_at) VALUES (?, ?, ?)")
-        .run(hashSessionToken(token), account.account_id, now);
+        .prepare(
+          `INSERT INTO human_sessions (
+             token_hash, account_id, active_profile_id, created_at
+           ) VALUES (?, ?, ?, ?)`,
+        )
+        .run(hashSessionToken(token), account.account_id, community.profileId, now);
       this.#clearHumanLoginSecurity(account.account_id);
-      return { community, accountCreated: false, token };
+      return {
+        activeProfileId: community.profileId,
+        community,
+        accountCreated: false,
+        profiles: this.listHumanProfilesByAccountId(account.account_id),
+        token,
+      };
     });
     return transaction.immediate();
   }
@@ -2734,20 +3072,120 @@ export class CommunityDatabase {
   findActiveHumanSession(token: string): ActiveHumanSessionRecord | undefined {
     const row = this.#database
       .prepare(
-        `SELECT a.account_id, a.qq_number, a.created_at, a.membership_status
+        `SELECT a.account_id,
+                a.qq_number,
+                a.created_at,
+                a.membership_status,
+                s.active_profile_id
          FROM human_sessions AS s
          JOIN human_accounts AS a ON a.account_id = s.account_id
          WHERE s.token_hash = ?
            AND s.revoked_at IS NULL
            AND a.membership_status = 'active'`,
       )
-      .get(hashSessionToken(token)) as HumanAccountRow | undefined;
+      .get(hashSessionToken(token)) as
+      | (HumanAccountRow & { active_profile_id: string })
+      | undefined;
     if (!row) {
       return undefined;
     }
     const account = mapAccount(row);
-    const community = this.#findCommunityByAccountId(row.account_id);
+    const community = this.#findCommunityByProfileId(row.account_id, row.active_profile_id);
     return community ? { account, community } : { account };
+  }
+
+  listHumanProfilesByAccountId(accountId: string): HumanProfileSummaryRecord[] {
+    return this.#listCommunitiesByAccountId(accountId).map((community) => ({
+      profileId: community.profileId,
+      residentName: community.resident.residentName,
+      homeName: community.home.homeName,
+      farmDoorplate: community.farmBinding.farmDoorplate,
+    }));
+  }
+
+  switchActiveHumanSessionProfile(token: string, profileId: string): HumanCommunityRecord {
+    const transaction = this.#database.transaction(() => {
+      const session = this.#database
+        .prepare(
+          `SELECT account_id
+           FROM human_sessions
+           WHERE token_hash = ? AND revoked_at IS NULL`,
+        )
+        .get(hashSessionToken(token)) as { account_id: string } | undefined;
+      if (!session) {
+        throw new HumanProfileNotAvailableError();
+      }
+      const community = this.#findCommunityByProfileId(session.account_id, profileId);
+      if (!community || community.farmBinding.farmHumanKey === null) {
+        throw new HumanProfileNotAvailableError();
+      }
+      const updated = this.#database
+        .prepare(
+          `UPDATE human_sessions
+           SET active_profile_id = ?
+           WHERE token_hash = ? AND account_id = ? AND revoked_at IS NULL`,
+        )
+        .run(profileId, hashSessionToken(token), session.account_id);
+      if (updated.changes !== 1) {
+        throw new HumanProfileNotAvailableError();
+      }
+      return community;
+    });
+    return transaction.immediate();
+  }
+
+  createHumanProfileForSession(
+    token: string,
+    now: number,
+    registration: HumanRegistrationInput,
+  ): {
+    activeProfileId: string;
+    community: HumanCommunityRecord;
+    profiles: HumanProfileSummaryRecord[];
+  } {
+    const transaction = this.#database.transaction(() => {
+      const session = this.#database
+        .prepare(
+          `SELECT s.account_id, a.qq_number
+           FROM human_sessions AS s
+           JOIN human_accounts AS a ON a.account_id = s.account_id
+           WHERE s.token_hash = ?
+             AND s.revoked_at IS NULL
+             AND a.membership_status = 'active'`,
+        )
+        .get(hashSessionToken(token)) as { account_id: string; qq_number: string } | undefined;
+      if (!session) {
+        throw new HumanProfileNotAvailableError();
+      }
+      const existingFarmBinding = this.#database
+        .prepare("SELECT home_id FROM farm_bindings WHERE farm_doorplate = ?")
+        .get(registration.farmDoorplate);
+      if (existingFarmBinding) {
+        throw new FarmAlreadyBoundError();
+      }
+      const community = this.#createProfileForAccount(
+        session.account_id,
+        session.qq_number,
+        now,
+        registration,
+      );
+      const switched = this.#database
+        .prepare(
+          `UPDATE human_sessions
+           SET active_profile_id = ?
+           WHERE token_hash = ? AND account_id = ? AND revoked_at IS NULL`,
+        )
+        .run(community.profileId, hashSessionToken(token), session.account_id);
+      if (switched.changes !== 1) {
+        throw new HumanProfileNotAvailableError();
+      }
+      return {
+        activeProfileId: community.profileId,
+        community,
+        profiles: this.listHumanProfilesByAccountId(session.account_id),
+      };
+    });
+    return transaction.immediate();
   }
 
   findActiveHumanAccountByResidentId(residentId: string): HumanAccountRecord | undefined {
@@ -2770,6 +3208,7 @@ export class CommunityDatabase {
                 a.qq_number,
                 a.created_at,
                 a.membership_status,
+                r.profile_id,
                 r.resident_id,
                 r.resident_name,
                 h.home_id,
@@ -3031,6 +3470,64 @@ export class CommunityDatabase {
     return transaction.immediate();
   }
 
+  replaceBellCredentialForProfile(
+    profileId: string,
+    credentialId: string,
+    credentialTokenHash: string,
+    now: number,
+  ): { residentId: string; replacedPrevious: boolean } {
+    if (!/^[0-9a-f]{64}$/u.test(credentialTokenHash)) {
+      throw new Error("Bell credential hash must be one lowercase SHA-256 digest");
+    }
+    const transaction = this.#database.transaction(() => {
+      const resident = this.#database
+        .prepare(
+          `SELECT r.resident_id
+           FROM residents AS r
+           JOIN human_accounts AS a ON a.account_id = r.account_id
+           JOIN homes AS h ON h.resident_id = r.resident_id
+           WHERE r.profile_id = ? AND a.membership_status = 'active'`,
+        )
+        .get(profileId) as { resident_id: string } | undefined;
+      if (!resident) {
+        throw new HumanProfileNotAvailableError();
+      }
+      const existing = this.#database
+        .prepare(
+          `SELECT credential_token_hash, credential_revoked_at
+           FROM bell_bindings
+           WHERE resident_id = ?`,
+        )
+        .get(resident.resident_id) as
+        | { credential_token_hash: string | null; credential_revoked_at: number | null }
+        | undefined;
+      this.#database
+        .prepare(
+          `INSERT INTO bell_bindings (
+             resident_id,
+             credential_id,
+             credential_token_hash,
+             credential_issued_at,
+             credential_revoked_at,
+             last_connected_at
+           ) VALUES (?, ?, ?, ?, NULL, NULL)
+           ON CONFLICT(resident_id) DO UPDATE SET
+             credential_id = excluded.credential_id,
+             credential_token_hash = excluded.credential_token_hash,
+             credential_issued_at = excluded.credential_issued_at,
+             credential_revoked_at = NULL,
+             last_connected_at = NULL`,
+        )
+        .run(resident.resident_id, credentialId, credentialTokenHash, now);
+      return {
+        residentId: resident.resident_id,
+        replacedPrevious:
+          existing?.credential_token_hash !== null && existing?.credential_revoked_at === null,
+      };
+    });
+    return transaction.immediate();
+  }
+
   authenticateBellCredentialHash(
     credentialTokenHash: string,
   ): AuthenticatedBellBinding | undefined {
@@ -3117,6 +3614,230 @@ export class CommunityDatabase {
         return { residentId, cancelledWakeId: wakeIds[0] ?? null, cancelledWakeIds: wakeIds };
       }
       return { residentId, cancelledWakeId: null, cancelledWakeIds: [] };
+    });
+    return transaction.immediate();
+  }
+
+  scheduleActivityReminder(input: ActivityReminderScheduleInput): ActivityReminderRecord {
+    if (
+      input.farmDoorplate.length === 0 ||
+      input.sourceKey.length === 0 ||
+      !Number.isSafeInteger(input.readyAt) ||
+      input.readyAt <= 0 ||
+      !Number.isSafeInteger(input.createdAt) ||
+      input.createdAt < 0
+    ) {
+      throw new Error("The activity reminder facts are invalid");
+    }
+    const transaction = this.#database.transaction(() => {
+      const profile = this.#database
+        .prepare(
+          `SELECT h.resident_id, f.farm_doorplate
+           FROM homes AS h
+           JOIN farm_bindings AS f ON f.home_id = h.home_id
+           WHERE h.home_id = ? AND f.farm_doorplate = ?`,
+        )
+        .get(input.homeId, input.farmDoorplate) as
+        | { resident_id: string; farm_doorplate: string }
+        | undefined;
+      if (!profile || profile.resident_id !== input.residentId) {
+        throw new Error("The activity reminder profile does not match the bound farm");
+      }
+      const existing = this.#database
+        .prepare(
+          `SELECT resident_id, home_id, farm_doorplate, kind, source_key, ready_at, status,
+                  created_at, delivered_at, cancelled_at
+           FROM activity_reminders
+           WHERE resident_id = ? AND home_id = ? AND farm_doorplate = ?
+             AND kind = ? AND source_key = ?`,
+        )
+        .get(input.residentId, input.homeId, input.farmDoorplate, input.kind, input.sourceKey) as
+        | ActivityReminderRow
+        | undefined;
+      if (existing) {
+        if (existing.ready_at !== input.readyAt) {
+          throw new Error("The activity reminder source is already bound to different facts");
+        }
+        if (existing.status === "cancelled") {
+          this.#database
+            .prepare(
+              `UPDATE activity_reminders
+               SET status = 'scheduled', created_at = ?, cancelled_at = NULL
+               WHERE resident_id = ? AND home_id = ? AND farm_doorplate = ?
+                 AND kind = ? AND source_key = ? AND status = 'cancelled'`,
+            )
+            .run(
+              input.createdAt,
+              input.residentId,
+              input.homeId,
+              input.farmDoorplate,
+              input.kind,
+              input.sourceKey,
+            );
+          return {
+            ...mapActivityReminder(existing),
+            status: "scheduled" as const,
+            createdAt: input.createdAt,
+            cancelledAt: null,
+          };
+        }
+        return mapActivityReminder(existing);
+      }
+      this.#database
+        .prepare(
+          `INSERT INTO activity_reminders (
+             resident_id, home_id, farm_doorplate, kind, source_key, ready_at, status, created_at
+           ) VALUES (?, ?, ?, ?, ?, ?, 'scheduled', ?)`,
+        )
+        .run(
+          input.residentId,
+          input.homeId,
+          input.farmDoorplate,
+          input.kind,
+          input.sourceKey,
+          input.readyAt,
+          input.createdAt,
+        );
+      return mapActivityReminder(
+        this.#database
+          .prepare(
+            `SELECT resident_id, home_id, farm_doorplate, kind, source_key, ready_at, status,
+                    created_at, delivered_at, cancelled_at
+             FROM activity_reminders
+             WHERE resident_id = ? AND home_id = ? AND farm_doorplate = ?
+               AND kind = ? AND source_key = ?`,
+          )
+          .get(
+            input.residentId,
+            input.homeId,
+            input.farmDoorplate,
+            input.kind,
+            input.sourceKey,
+          ) as ActivityReminderRow,
+      );
+    });
+    return transaction.immediate();
+  }
+
+  listScheduledActivityReminders(profile?: ActivityReminderProfileKey): ActivityReminderRecord[] {
+    const rows = profile
+      ? (this.#database
+          .prepare(
+            `SELECT resident_id, home_id, farm_doorplate, kind, source_key, ready_at, status,
+                    created_at, delivered_at, cancelled_at
+             FROM activity_reminders
+             WHERE status = 'scheduled'
+               AND resident_id = ? AND home_id = ? AND farm_doorplate = ?
+             ORDER BY ready_at ASC, kind ASC, source_key ASC`,
+          )
+          .all(profile.residentId, profile.homeId, profile.farmDoorplate) as ActivityReminderRow[])
+      : (this.#database
+          .prepare(
+            `SELECT resident_id, home_id, farm_doorplate, kind, source_key, ready_at, status,
+                    created_at, delivered_at, cancelled_at
+             FROM activity_reminders
+             WHERE status = 'scheduled'
+             ORDER BY ready_at ASC, resident_id ASC, home_id ASC, farm_doorplate ASC,
+                      kind ASC, source_key ASC`,
+          )
+          .all() as ActivityReminderRow[]);
+    return rows.map(mapActivityReminder);
+  }
+
+  cancelScheduledActivityRemindersExcept(
+    profile: ActivityReminderProfileKey,
+    kind: ActivityReminderKind,
+    activeSourceKeys: readonly string[],
+    now: number,
+  ): ActivityReminderRecord[] {
+    const active = new Set(activeSourceKeys);
+    const transaction = this.#database.transaction(() => {
+      const cancelled = this.listScheduledActivityReminders(profile).filter(
+        (reminder) => reminder.kind === kind && !active.has(reminder.sourceKey),
+      );
+      const update = this.#database.prepare(
+        `UPDATE activity_reminders
+         SET status = 'cancelled', cancelled_at = ?
+         WHERE resident_id = ? AND home_id = ? AND farm_doorplate = ?
+           AND kind = ? AND source_key = ? AND status = 'scheduled'`,
+      );
+      for (const reminder of cancelled) {
+        update.run(
+          now,
+          profile.residentId,
+          profile.homeId,
+          profile.farmDoorplate,
+          kind,
+          reminder.sourceKey,
+        );
+      }
+      return cancelled.map((reminder) => ({
+        ...reminder,
+        status: "cancelled" as const,
+        cancelledAt: now,
+      }));
+    });
+    return transaction.immediate();
+  }
+
+  cancelAllScheduledActivityReminders(
+    profile: ActivityReminderProfileKey,
+    now: number,
+  ): ActivityReminderRecord[] {
+    const transaction = this.#database.transaction(() => {
+      const cancelled = this.listScheduledActivityReminders(profile);
+      this.#database
+        .prepare(
+          `UPDATE activity_reminders
+           SET status = 'cancelled', cancelled_at = ?
+           WHERE resident_id = ? AND home_id = ? AND farm_doorplate = ?
+             AND status = 'scheduled'`,
+        )
+        .run(now, profile.residentId, profile.homeId, profile.farmDoorplate);
+      return cancelled.map((reminder) => ({
+        ...reminder,
+        status: "cancelled" as const,
+        cancelledAt: now,
+      }));
+    });
+    return transaction.immediate();
+  }
+
+  deliverActivityReminder(
+    profile: ActivityReminderProfileKey,
+    kind: ActivityReminderKind,
+    sourceKey: string,
+    deliveredAt: number,
+  ): ActivityReminderRecord | undefined {
+    const transaction = this.#database.transaction(() => {
+      const update = this.#database
+        .prepare(
+          `UPDATE activity_reminders
+           SET status = 'delivered', delivered_at = ?
+           WHERE resident_id = ? AND home_id = ? AND farm_doorplate = ?
+             AND kind = ? AND source_key = ? AND status = 'scheduled'`,
+        )
+        .run(
+          deliveredAt,
+          profile.residentId,
+          profile.homeId,
+          profile.farmDoorplate,
+          kind,
+          sourceKey,
+        );
+      if (update.changes !== 1) return undefined;
+      const row = this.#database
+        .prepare(
+          `SELECT resident_id, home_id, farm_doorplate, kind, source_key, ready_at, status,
+                  created_at, delivered_at, cancelled_at
+           FROM activity_reminders
+           WHERE resident_id = ? AND home_id = ? AND farm_doorplate = ?
+             AND kind = ? AND source_key = ?`,
+        )
+        .get(profile.residentId, profile.homeId, profile.farmDoorplate, kind, sourceKey) as
+        | ActivityReminderRow
+        | undefined;
+      return row ? mapActivityReminder(row) : undefined;
     });
     return transaction.immediate();
   }
@@ -4339,13 +5060,88 @@ export class CommunityDatabase {
       .get(homeId) as HumanSettingsRow | undefined;
   }
 
-  #findCommunityByAccountId(accountId: string): HumanCommunityRecord | undefined {
-    const row = this.#database
+  #createProfileForAccount(
+    accountId: string,
+    qqNumber: string,
+    now: number,
+    registration: HumanRegistrationInput,
+  ): HumanCommunityRecord {
+    if (registration.farmCreationId) {
+      const creation = this.#database
+        .prepare(
+          `SELECT farm_doorplate, farm_human_key, completed_at
+           FROM farm_creation_requests
+           WHERE qq_number = ? AND creation_id = ?`,
+        )
+        .get(qqNumber, registration.farmCreationId) as
+        | {
+            farm_doorplate: string | null;
+            farm_human_key: string | null;
+            completed_at: number | null;
+          }
+        | undefined;
+      if (
+        !creation ||
+        creation.completed_at !== null ||
+        creation.farm_doorplate !== registration.farmDoorplate ||
+        creation.farm_human_key !== registration.farmHumanKey
+      ) {
+        throw new FarmCreationStateConflictError();
+      }
+    }
+    const profileId = this.#generateProfileId();
+    const residentId = this.#generateResidentId();
+    const homeId = this.#generateHomeId();
+    this.#database
+      .prepare(
+        `INSERT INTO residents (
+           resident_id, profile_id, account_id, resident_name, created_at
+         ) VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(residentId, profileId, accountId, registration.residentName, now);
+    this.#database
+      .prepare(
+        `INSERT INTO homes (home_id, resident_id, home_name, created_at)
+         VALUES (?, ?, ?, ?)`,
+      )
+      .run(homeId, residentId, registration.homeName, now);
+    this.#database
+      .prepare(
+        `INSERT INTO farm_bindings (farm_doorplate, home_id, farm_human_key, bound_at)
+         VALUES (?, ?, ?, ?)`,
+      )
+      .run(registration.farmDoorplate, homeId, registration.farmHumanKey, now);
+    if (registration.farmCreationId) {
+      const completed = this.#database
+        .prepare(
+          `UPDATE farm_creation_requests
+           SET farm_human_key = NULL,
+               completed_at = ?
+           WHERE qq_number = ?
+             AND creation_id = ?
+             AND completed_at IS NULL
+             AND farm_human_key = ?`,
+        )
+        .run(now, qqNumber, registration.farmCreationId, registration.farmHumanKey);
+      if (completed.changes !== 1) {
+        throw new FarmCreationStateConflictError();
+      }
+    }
+    const community = this.#findCommunityByProfileId(accountId, profileId);
+    if (!community) {
+      throw new RegistrationProfileRequiredError();
+    }
+    return community;
+  }
+
+  #listCommunitiesByAccountId(accountId: string): HumanCommunityRecord[] {
+    const rows = this.#database
       .prepare(
         `SELECT a.account_id,
                 a.qq_number,
                 a.created_at,
                 a.membership_status,
+                r.profile_id,
                 r.resident_id,
                 r.resident_name,
                 h.home_id,
@@ -4356,9 +5152,37 @@ export class CommunityDatabase {
          JOIN residents AS r ON r.account_id = a.account_id
          JOIN homes AS h ON h.resident_id = r.resident_id
          JOIN farm_bindings AS f ON f.home_id = h.home_id
-         WHERE a.account_id = ?`,
+         WHERE a.account_id = ?
+         ORDER BY r.created_at ASC, r.resident_id ASC`,
       )
-      .get(accountId) as HumanCommunityRow | undefined;
+      .all(accountId) as HumanCommunityRow[];
+    return rows.map(mapCommunity);
+  }
+
+  #findCommunityByProfileId(
+    accountId: string,
+    profileId: string,
+  ): HumanCommunityRecord | undefined {
+    const row = this.#database
+      .prepare(
+        `SELECT a.account_id,
+                a.qq_number,
+                a.created_at,
+                a.membership_status,
+                r.profile_id,
+                r.resident_id,
+                r.resident_name,
+                h.home_id,
+                h.home_name,
+                f.farm_doorplate,
+                f.farm_human_key
+         FROM human_accounts AS a
+         JOIN residents AS r ON r.account_id = a.account_id
+         JOIN homes AS h ON h.resident_id = r.resident_id
+         JOIN farm_bindings AS f ON f.home_id = h.home_id
+         WHERE a.account_id = ? AND r.profile_id = ?`,
+      )
+      .get(accountId, profileId) as HumanCommunityRow | undefined;
     return row ? mapCommunity(row) : undefined;
   }
 

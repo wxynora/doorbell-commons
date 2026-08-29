@@ -695,6 +695,115 @@ test("Lingye action client sends only server-resolved identity and preserves bus
   );
 });
 
+test("Lingye readiness requires all public operations, matched private exam levels, and configured rules", async () => {
+  let status = 200;
+  let body: unknown = {
+    ok: true,
+    schema_version: 1,
+    ready: true,
+    operations: [
+      "go.bank.view",
+      "go.bank.choose",
+      "go.school.view",
+      "go.school.choose",
+      "go.farm.commission",
+      "go.hospital.commission",
+      "go.newsroom.commission",
+      "go.security.commission",
+    ],
+    exams: {
+      public_ready_levels: [
+        { career: "chef", level: 1 },
+        { career: "constable", level: 1 },
+      ],
+      private_ready_levels: [
+        { career: "chef", level: 1, question_count: 20, pass_count: 18 },
+        { career: "constable", level: 1, question_count: 20, pass_count: 18 },
+      ],
+    },
+    economy_rules: {
+      minimum_system_loan_credit_days: 7,
+      restricted_daily_gold_limit: 200_000,
+      restricted_daily_silver_limit: 400,
+    },
+    nature_runtime: {
+      adapter_version: 1,
+      configured: true,
+      ready: true,
+      status: "ready",
+      activation_date: "2026-09-01",
+      activation_day: 20_332,
+      persisted_status: "inactive",
+    },
+    missing: [],
+  };
+  const requests: Array<{ url: string; method: string | undefined; body: unknown }> = [];
+  const client = new LingyeMcpActionClient({
+    apiBaseUrl: "https://farm.example/farm/",
+    requestTimeoutMs: 1_000,
+    serviceToken: "private-service-token",
+    fetchImplementation: (async (input, init) => {
+      requests.push({ url: String(input), method: init?.method, body: init?.body });
+      return new Response(JSON.stringify(body), {
+        status,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch,
+  });
+
+  assert.equal(await client.isRuntimeReady(), true);
+  assert.deepEqual(requests, [
+    {
+      url: "https://farm.example/farm/internal/doorbell/lingye-actions/readiness",
+      method: "GET",
+      body: undefined,
+    },
+  ]);
+
+  body = {
+    ...(body as Record<string, unknown>),
+    operations: ["go.bank.view", "go.bank.choose"],
+  };
+  assert.equal(await client.isRuntimeReady(), false);
+
+  body = {
+    ...(body as Record<string, unknown>),
+    operations: [
+      "go.bank.view",
+      "go.bank.choose",
+      "go.school.view",
+      "go.school.choose",
+      "go.farm.commission",
+      "go.hospital.commission",
+      "go.security.commission",
+    ],
+    exams: {
+      public_ready_levels: [{ career: "chef", level: 1 }],
+      private_ready_levels: [],
+    },
+  };
+  assert.equal(await client.isRuntimeReady(), false);
+
+  body = {
+    ...(body as Record<string, unknown>),
+    exams: {
+      public_ready_levels: [{ career: "chef", level: 1 }],
+      private_ready_levels: [{ career: "chef", level: 1, question_count: 20, pass_count: 18 }],
+    },
+    nature_runtime: {
+      adapter_version: 1,
+      configured: false,
+      ready: false,
+      status: "not_configured",
+      persisted_status: "inactive",
+    },
+  };
+  assert.equal(await client.isRuntimeReady(), false);
+
+  status = 503;
+  assert.equal(await client.isRuntimeReady(), false);
+});
+
 test("MCP transport authenticates dbm credentials and exposes one thin doorbell tool", async () => {
   const directory = mkdtempSync(join(tmpdir(), "doorbell-mcp-runtime-transport-"));
   const harness = openRuntimeHarness(join(directory, "doorbell.sqlite"));

@@ -45,6 +45,7 @@ export type FarmHumanConstableInterviewActionInput =
 
 export interface FarmConstableInterviewPublicNoticeInput {
   interviewId: string;
+  candidateResidentName: string;
   eligibleVoterResidentIds: readonly string[];
 }
 
@@ -220,6 +221,7 @@ export class FarmConstableInterviewClient
   ): Promise<FarmConstableInterviewPublicNoticeSuccess> {
     const requestBody = farmConstableInterviewPublicNoticeRequestSchema.parse({
       interview_id: input.interviewId,
+      candidate_resident_name: input.candidateResidentName,
       eligible_voter_resident_ids: [...input.eligibleVoterResidentIds],
     });
     let response: Response;
@@ -247,7 +249,7 @@ export class FarmConstableInterviewClient
     }
     if (response.ok) {
       const parsed = farmConstableInterviewPublicNoticeSuccessSchema.safeParse(payload);
-      if (!parsed.success || parsed.data.data.notice_id.length === 0) {
+      if (!parsed.success) {
         throw new FarmConstableInterviewContractUnavailableError();
       }
       return parsed.data;

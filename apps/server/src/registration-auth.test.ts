@@ -376,6 +376,7 @@ const FARM_GLIMMER_RESULT = {
     open: true,
     status: "流光原野开放中",
     season: "夏",
+    capture_cooldown: null,
     tracks: [
       {
         revealed: true,

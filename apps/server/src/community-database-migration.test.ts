@@ -33,6 +33,47 @@ test("a fresh community database records the current schema version", () => {
   });
 });
 
+test("schema v9 adds a profile-keyed persistent activity reminder ledger", () => {
+  withTemporaryDatabase((databasePath) => {
+    const versionNine = new CommunityDatabase(databasePath);
+    versionNine.close();
+
+    const downgraded = new Database(databasePath);
+    downgraded.exec("DROP TABLE activity_reminders");
+    downgraded.pragma("user_version = 9");
+    downgraded.close();
+
+    const migrated = new CommunityDatabase(databasePath);
+    migrated.close();
+
+    const database = new Database(databasePath, { readonly: true });
+    try {
+      assert.equal(database.pragma("user_version", { simple: true }), 10);
+      const columns = database.pragma("table_info(activity_reminders)") as Array<{
+        name: string;
+        pk: number;
+      }>;
+      assert.deepEqual(
+        columns.filter((column) => column.pk > 0).map((column) => column.name),
+        ["resident_id", "home_id", "farm_doorplate", "kind", "source_key"],
+      );
+      assert.ok(columns.some((column) => column.name === "ready_at"));
+      const foreignKeys = database.pragma("foreign_key_list(activity_reminders)") as Array<{
+        from: string;
+        table: string;
+      }>;
+      assert.ok(
+        foreignKeys.some(
+          (foreignKey) =>
+            foreignKey.from === "farm_doorplate" && foreignKey.table === "farm_bindings",
+        ),
+      );
+    } finally {
+      database.close();
+    }
+  });
+});
+
 test("schema v0 upgrades missing identity columns in one versioned migration without data loss", () => {
   withTemporaryDatabase((databasePath) => {
     const legacyDatabase = new Database(databasePath);
@@ -51,6 +92,12 @@ test("schema v0 upgrades missing identity columns in one versioned migration wit
         resident_name TEXT NOT NULL,
         created_at INTEGER NOT NULL
       );
+      CREATE TABLE human_sessions (
+        token_hash TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL REFERENCES human_accounts(account_id),
+        created_at INTEGER NOT NULL,
+        revoked_at INTEGER
+      );
       CREATE TABLE homes (
         home_id TEXT PRIMARY KEY,
         resident_id TEXT NOT NULL UNIQUE REFERENCES residents(resident_id),
@@ -64,6 +111,7 @@ test("schema v0 upgrades missing identity columns in one versioned migration wit
       );
       INSERT INTO human_accounts VALUES ('account-1', '10001', 1, 'active', 1, NULL);
       INSERT INTO residents VALUES ('resident-1', 'account-1', '小机', 1);
+      INSERT INTO human_sessions VALUES ('session-hash', 'account-1', 1, NULL);
       INSERT INTO homes VALUES ('home-1', 'resident-1', '小屋', 1);
       INSERT INTO farm_bindings VALUES ('FARM-1', 'home-1', 1);
     `);
@@ -94,6 +142,21 @@ test("schema v0 upgrades missing identity columns in one versioned migration wit
           .get(),
         { farm_doorplate: "FARM-1", farm_human_key: null, home_id: "home-1" },
       );
+      const migratedSession = migratedDatabase
+        .prepare(
+          `SELECT s.account_id, s.active_profile_id, r.resident_id
+           FROM human_sessions AS s
+           JOIN residents AS r
+             ON r.account_id = s.account_id AND r.profile_id = s.active_profile_id`,
+        )
+        .get() as {
+        account_id: string;
+        active_profile_id: string;
+        resident_id: string;
+      };
+      assert.equal(migratedSession.account_id, "account-1");
+      assert.equal(migratedSession.resident_id, "resident-1");
+      assert.match(migratedSession.active_profile_id, /^[0-9a-f-]{36}$/u);
       assert.equal(
         migratedDatabase.pragma("user_version", { simple: true }),
         COMMUNITY_DATABASE_SCHEMA_VERSION,
@@ -104,7 +167,7 @@ test("schema v0 upgrades missing identity columns in one versioned migration wit
   });
 });
 
-test("schema v1 preserves login security state while upgrading through v8", () => {
+test("schema v1 preserves login security state while upgrading through the current schema", () => {
   withTemporaryDatabase((databasePath) => {
     const versionOneDatabase = new Database(databasePath);
     versionOneDatabase.exec(`
@@ -139,7 +202,7 @@ test("schema v1 preserves login security state while upgrading through v8", () =
         migratedDatabase.pragma("user_version", { simple: true }),
         COMMUNITY_DATABASE_SCHEMA_VERSION,
       );
-      assert.equal(COMMUNITY_DATABASE_SCHEMA_VERSION, 9);
+      assert.equal(COMMUNITY_DATABASE_SCHEMA_VERSION, 10);
       assert.deepEqual(
         migratedDatabase
           .prepare("SELECT account_id, qq_number, password_credential FROM human_accounts")
@@ -486,7 +549,7 @@ test("schema v6 migrates legacy Bell wakes through the career reminder schema", 
 
     const database = new Database(databasePath, { readonly: true });
     try {
-      assert.equal(database.pragma("user_version", { simple: true }), 9);
+      assert.equal(database.pragma("user_version", { simple: true }), 10);
       const wakeColumns = database.pragma("table_info(bell_wakes)") as Array<{ name: string }>;
       assert.ok(wakeColumns.some((column) => column.name === "payload_json"));
       assert.ok(wakeColumns.some((column) => column.name === "letter_id"));
@@ -498,6 +561,13 @@ test("schema v6 migrates legacy Bell wakes through the career reminder schema", 
       );
       assert.ok(settingsColumns.some((column) => column.name === "browser_notifications_enabled"));
       assert.ok(settingsColumns.some((column) => column.name === "activity_reminders_enabled"));
+      const activityReminderColumns = database.pragma("table_info(activity_reminders)") as Array<{
+        name: string;
+        pk: number;
+      }>;
+      assert.ok(activityReminderColumns.some((column) => column.name === "source_key"));
+      assert.ok(activityReminderColumns.some((column) => column.name === "ready_at"));
+      assert.ok(activityReminderColumns.some((column) => column.name === "farm_doorplate"));
       const itemColumns = database.pragma("table_info(farm_purchase_request_items)") as Array<{
         name: string;
       }>;
@@ -623,7 +693,7 @@ test("schema v7 preserves purchase wakes while adding career exam reminder refer
 
     const database = new Database(databasePath, { readonly: true });
     try {
-      assert.equal(database.pragma("user_version", { simple: true }), 9);
+      assert.equal(database.pragma("user_version", { simple: true }), 10);
       assert.deepEqual(
         database
           .prepare(

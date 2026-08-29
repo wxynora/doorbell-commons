@@ -142,6 +142,7 @@ export const farmHumanConstableInterviewActionRequestSchema = z.discriminatedUni
 export const farmConstableInterviewPublicNoticeRequestSchema = z
   .object({
     interview_id: interviewIdSchema,
+    candidate_resident_name: z.string().refine((value) => value.trim().length > 0),
     eligible_voter_resident_ids: z.array(residentIdSchema),
   })
   .strict();
@@ -170,7 +171,10 @@ export const farmHumanConstableInterviewSuccessSchema = z
 
 export const farmConstableInterviewPublicNoticeSuccessSchema = z
   .object({
-    data: z.object({ notice_id: z.string().min(1) }).strict(),
+    data: z.discriminatedUnion("status", [
+      z.object({ status: z.literal("public_notice"), notice_id: z.string().min(1) }).strict(),
+      z.object({ status: z.literal("failed"), notice_id: z.null() }).strict(),
+    ]),
     server_time: dateTimeSchema,
   })
   .strict();
@@ -197,7 +201,7 @@ export const farmConstableInterviewErrorCodeSchema = z.enum([
   "examiner_not_signed_up",
   "interview_not_ready",
   "interview_scores_incomplete",
-  "constable_interview_failed",
+  "interview_score_conflict",
   "invalid_interview_score",
   "interview_not_scoring",
   "examiner_not_selected",
@@ -311,7 +315,7 @@ export const boundConstableInterviewErrorCodeSchema = z.enum([
   "examiner_not_signed_up",
   "interview_not_ready",
   "interview_scores_incomplete",
-  "constable_interview_failed",
+  "interview_score_conflict",
   "invalid_interview_score",
   "interview_not_scoring",
   "examiner_not_selected",

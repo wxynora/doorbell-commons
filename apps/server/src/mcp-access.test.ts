@@ -38,6 +38,7 @@ const NOW = Date.UTC(2026, 7, 13, 5, 0, 0);
 const FARM_REVOKED_AT = "2026-08-13T05:01:00.000Z";
 const HUMAN_SESSION_TOKEN = "human-session-token-for-mcp-access-tests";
 const MIGRATION_ID = "10000000-0000-4000-8000-000000000001";
+const RESIDENT_ID = "10000000-0000-4000-8000-000000000002";
 const CONFIRMATION_ID = "20000000-0000-4000-8000-000000000001";
 const CREDENTIAL_IDS = [
   "30000000-0000-4000-8000-000000000001",
@@ -100,7 +101,7 @@ interface McpAccessHarness {
   database: CommunityDatabase;
   membership: FakeGroupMembership;
   migration: FakeFarmMigration;
-  runtime: { ready: boolean };
+  runtime: { ready: boolean; failure: Error | undefined };
   close(): Promise<void>;
 }
 
@@ -122,13 +123,19 @@ function openHarness(
     now: () => NOW,
   });
   const migration = new FakeFarmMigration();
-  const runtime = { ready: options.runtimeReady ?? true };
+  const runtime: { ready: boolean; failure: Error | undefined } = {
+    ready: options.runtimeReady ?? true,
+    failure: undefined,
+  };
   const mcpAccessService = new McpAccessService({
     database,
     registrationAuth,
     farmMigration: migration,
     mcpEndpoint: "https://doorbell.example/mcp",
-    isRuntimeReady: () => runtime.ready,
+    isRuntimeReady: async () => {
+      if (runtime.failure) throw runtime.failure;
+      return runtime.ready;
+    },
     now: () => NOW,
     generateMigrationId: () => MIGRATION_ID,
     generateCredentialId: () => credentialIds.shift() ?? "30000000-0000-4000-8000-000000000099",
@@ -349,6 +356,7 @@ test("claim persists one migration id, resumes the same farm operation, and neve
     assert.deepEqual(harness.migration.calls[0], harness.migration.calls[1]);
     assert.deepEqual(harness.migration.calls[1], {
       migrationId: MIGRATION_ID,
+      residentId: created.community.resident.residentId,
       farmDoorplate: "ABC234",
       farmHumanKey: "private-farm-human-key",
     });
@@ -388,6 +396,25 @@ test("runtime readiness gates irreversible claim and credential issue", async ()
     );
 
     harness.runtime.ready = true;
+    harness.migration.failure = new FarmMcpMigrationUnavailableError();
+    assert.equal((await claim(harness)).statusCode, 503);
+    assert.equal(harness.migration.calls.length, 1);
+    assert.equal(
+      harness.database.getMcpAccessBinding(created.community.resident.residentId)?.farmRevokedAt,
+      null,
+    );
+
+    harness.runtime.ready = false;
+    harness.migration.failure = undefined;
+    assert.equal((await claim(harness)).statusCode, 503);
+    assert.equal(harness.migration.calls.length, 1);
+
+    harness.runtime.ready = true;
+    harness.runtime.failure = new Error("readiness probe failed");
+    assert.equal((await claim(harness)).statusCode, 503);
+    assert.equal(harness.migration.calls.length, 1);
+
+    harness.runtime.failure = undefined;
     assert.equal((await claim(harness)).statusCode, 200);
     harness.runtime.ready = false;
     const blockedIssue = await issue(harness);
@@ -573,6 +600,7 @@ test("farm migration client sends server-derived identity and rejects non-author
   });
   const receipt = await client.revokeLegacyMcpAccess({
     migrationId: MIGRATION_ID,
+    residentId: RESIDENT_ID,
     farmDoorplate: "ABC234",
     farmHumanKey: "private-farm-human-key",
   });
@@ -583,6 +611,7 @@ test("farm migration client sends server-derived identity and rejects non-author
       authorization: "Bearer private-service-token",
       body: {
         migration_id: MIGRATION_ID,
+        resident_id: RESIDENT_ID,
         farm_human_key: "private-farm-human-key",
         expected_farm_doorplate: "ABC234",
       },
@@ -593,6 +622,7 @@ test("farm migration client sends server-derived identity and rejects non-author
   await assert.rejects(
     client.revokeLegacyMcpAccess({
       migrationId: MIGRATION_ID,
+      residentId: RESIDENT_ID,
       farmDoorplate: "ABC234",
       farmHumanKey: "private-farm-human-key",
     }),
@@ -604,6 +634,7 @@ test("farm migration client sends server-derived identity and rejects non-author
   await assert.rejects(
     client.revokeLegacyMcpAccess({
       migrationId: MIGRATION_ID,
+      residentId: RESIDENT_ID,
       farmDoorplate: "ABC234",
       farmHumanKey: "private-farm-human-key",
     }),
@@ -634,6 +665,7 @@ test("farm migration aborts a stalled request as unavailable", async () => {
   await assert.rejects(
     client.revokeLegacyMcpAccess({
       migrationId: MIGRATION_ID,
+      residentId: RESIDENT_ID,
       farmDoorplate: "ABC234",
       farmHumanKey: "private-farm-human-key",
     }),

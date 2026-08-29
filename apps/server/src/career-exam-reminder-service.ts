@@ -225,6 +225,7 @@ export class CareerExamReminderService {
         try {
           await this.#browserPushService.sendActivityReminder({
             residentId: reminder.residentId,
+            homeId: reminder.homeId,
             title: CAREER_EXAM_REMINDER_TITLE,
             body: CAREER_EXAM_REMINDER_BODY,
             url: "/",

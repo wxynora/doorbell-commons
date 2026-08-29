@@ -9,6 +9,7 @@ import {
   humanSettingsErrorSchema,
   humanSettingsSuccessSchema,
 } from "@doorbell/protocol";
+import type { ActivityReminderService } from "./activity-reminder-service.js";
 import { buildApp } from "./app.js";
 import type { BellService, BellSettingsStatus } from "./bell-service.js";
 import { BrowserPushService } from "./browser-push-service.js";
@@ -81,6 +82,7 @@ function openHarness(
   sessionTokens: string[],
   bellService?: BellService,
   browserPushConfigured = false,
+  activityReminderService?: Pick<ActivityReminderService, "cancelResident" | "refreshEligibility">,
 ) {
   const database = new CommunityDatabase(databasePath, {
     generateSessionToken: () => sessionTokens.shift() ?? "unexpected-settings-session-token",
@@ -114,6 +116,7 @@ function openHarness(
     registrationAuth,
     ...(bellService ? { bellService } : {}),
     ...(browserPushService ? { browserPushService } : {}),
+    ...(activityReminderService ? { activityReminderService } : {}),
     secureCookies: false,
     logger: false,
   });
@@ -208,6 +211,15 @@ test("settings expose honest integration state and persist supported fields acro
     });
     assert.equal(initial.statusCode, 200);
     assert.deepEqual(humanSettingsSuccessSchema.parse(initial.json()), {
+      active_profile_id: created.activeProfileId,
+      profiles: [
+        {
+          profile_id: created.activeProfileId,
+          resident_name: "小一",
+          home_name: "纸灯小屋",
+          farm_doorplate: "ABC234",
+        },
+      ],
       connection_status: {
         wake_bridge: { status: "not_configured", last_connected_at: null },
       },
@@ -507,6 +519,84 @@ test("browser notification setup exposes a real public key and persists an authe
     assert.equal(
       harness.database.listBrowserPushSubscriptions(created.community.resident.residentId).length,
       0,
+    );
+  } finally {
+    await harness.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("activity reminder side effects stay fail-soft after settings and subscription commits", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "doorbell-activity-settings-fail-soft-"));
+  const calls: string[] = [];
+  const activityReminderService = {
+    cancelResident() {
+      calls.push("cancel");
+      throw new Error("reminder database unavailable");
+    },
+    refreshEligibility() {
+      calls.push("refresh");
+      throw new Error("reminder database unavailable");
+    },
+  };
+  const harness = openHarness(
+    join(directory, "doorbell.sqlite"),
+    ["activity-settings-token"],
+    undefined,
+    true,
+    activityReminderService,
+  );
+  try {
+    const created = createRegisteredSession(
+      harness.database,
+      "10001",
+      "小一",
+      "纸灯小屋",
+      "ABC234",
+    );
+    harness.membership.members.add("10001");
+    const sessionCookie = cookie(created.token);
+
+    const disabled = await harness.app.inject({
+      method: "PATCH",
+      url: "/api/settings",
+      headers: { cookie: sessionCookie },
+      payload: { home: { environment_description: "门前有一盏灯。" } },
+    });
+    assert.equal(disabled.statusCode, 200);
+
+    const enabled = await harness.app.inject({
+      method: "PATCH",
+      url: "/api/settings",
+      headers: { cookie: sessionCookie },
+      payload: {
+        browser_notification_preferences: {
+          browser_notifications_enabled: true,
+          activity_reminders_enabled: true,
+        },
+      },
+    });
+    assert.equal(enabled.statusCode, 200);
+
+    const subscribed = await harness.app.inject({
+      method: "POST",
+      url: "/api/browser-notifications/subscription",
+      headers: { cookie: sessionCookie },
+      payload: {
+        endpoint: "https://push.example.test/fail-soft",
+        expiration_time: null,
+        keys: { auth: "auth", p256dh: "p256dh" },
+      },
+    });
+    assert.equal(subscribed.statusCode, 200);
+    assert.deepEqual(calls, ["cancel", "refresh", "refresh"]);
+    assert.equal(
+      harness.database.getHumanSettings(created.community.home.homeId).activityRemindersEnabled,
+      true,
+    );
+    assert.equal(
+      harness.database.listBrowserPushSubscriptions(created.community.resident.residentId).length,
+      1,
     );
   } finally {
     await harness.close();

@@ -4,6 +4,7 @@ import {
   lingyeActionRequestSchema,
   lingyeActionResultSchema,
   lingyeActionServiceErrorSchema,
+  lingyeRuntimeReadinessSchema,
 } from "@doorbell/protocol";
 
 export interface LingyeMcpActionInput {
@@ -17,6 +18,20 @@ export interface LingyeMcpActionInput {
 export interface LingyeMcpActionExecutor {
   execute(input: LingyeMcpActionInput): Promise<LingyeActionResult>;
 }
+
+export interface LingyeMcpRuntimeReadinessReader {
+  isRuntimeReady(): Promise<boolean>;
+}
+
+const REQUIRED_MODEL_VISIBLE_OPERATIONS = [
+  "go.bank.view",
+  "go.bank.choose",
+  "go.school.view",
+  "go.school.choose",
+  "go.farm.commission",
+  "go.hospital.commission",
+  "go.security.commission",
+] as const satisfies readonly LingyeDoorbellOperation[];
 
 export class LingyeMcpActionCredentialInvalidError extends Error {
   constructor() {
@@ -60,8 +75,11 @@ interface LingyeMcpActionClientOptions {
   fetchImplementation?: typeof fetch;
 }
 
-export class LingyeMcpActionClient implements LingyeMcpActionExecutor {
+export class LingyeMcpActionClient
+  implements LingyeMcpActionExecutor, LingyeMcpRuntimeReadinessReader
+{
   readonly #endpoint: URL;
+  readonly #readinessEndpoint: URL;
   readonly #serviceToken: string;
   readonly #fetch: typeof fetch;
   readonly #requestTimeoutMs: number;
@@ -75,9 +93,67 @@ export class LingyeMcpActionClient implements LingyeMcpActionExecutor {
       apiBaseUrl.pathname += "/";
     }
     this.#endpoint = new URL("internal/doorbell/lingye-actions/execute", apiBaseUrl);
+    this.#readinessEndpoint = new URL("internal/doorbell/lingye-actions/readiness", apiBaseUrl);
     this.#serviceToken = options.serviceToken;
     this.#fetch = options.fetchImplementation ?? fetch;
     this.#requestTimeoutMs = options.requestTimeoutMs;
+  }
+
+  async isRuntimeReady(): Promise<boolean> {
+    let response: Response;
+    try {
+      response = await this.#fetch(this.#readinessEndpoint, {
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${this.#serviceToken}`,
+          accept: "application/json",
+        },
+        signal: AbortSignal.timeout(this.#requestTimeoutMs),
+      });
+    } catch {
+      return false;
+    }
+    if (!response.ok) return false;
+
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch {
+      return false;
+    }
+    const parsed = lingyeRuntimeReadinessSchema.safeParse(body);
+    if (!parsed.success || !parsed.data.ready || parsed.data.missing.length !== 0) return false;
+
+    const operations = new Set(parsed.data.operations);
+    if (
+      operations.size !== parsed.data.operations.length ||
+      REQUIRED_MODEL_VISIBLE_OPERATIONS.some((operation) => !operations.has(operation))
+    ) {
+      return false;
+    }
+
+    const levelKey = (entry: { career: string; level: number }): string =>
+      `${entry.career}:${String(entry.level)}`;
+    const publicLevels = new Set(parsed.data.exams.public_ready_levels.map(levelKey));
+    const privateLevels = new Set(parsed.data.exams.private_ready_levels.map(levelKey));
+    if (
+      publicLevels.size === 0 ||
+      publicLevels.size !== parsed.data.exams.public_ready_levels.length ||
+      privateLevels.size !== parsed.data.exams.private_ready_levels.length ||
+      publicLevels.size !== privateLevels.size ||
+      [...publicLevels].some((key) => !privateLevels.has(key))
+    ) {
+      return false;
+    }
+    const nature = parsed.data.nature_runtime;
+    return (
+      nature.configured &&
+      nature.ready &&
+      nature.status === "ready" &&
+      nature.activation_date !== undefined &&
+      nature.activation_day !== undefined &&
+      nature.error_code === undefined
+    );
   }
 
   async execute(input: LingyeMcpActionInput): Promise<LingyeActionResult> {

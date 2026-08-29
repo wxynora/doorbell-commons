@@ -6,6 +6,7 @@ import {
 
 export interface FarmMcpMigrationInput {
   migrationId: string;
+  residentId: string;
   farmDoorplate: string;
   farmHumanKey: string;
 }
@@ -83,6 +84,7 @@ export class FarmMcpMigrationClient implements FarmMcpMigrationRevoker {
   async revokeLegacyMcpAccess(input: FarmMcpMigrationInput): Promise<FarmMcpMigrationReceipt> {
     const requestBody = farmMcpMigrationRequestSchema.parse({
       migration_id: input.migrationId,
+      resident_id: input.residentId,
       farm_human_key: input.farmHumanKey,
       expected_farm_doorplate: input.farmDoorplate,
     });
