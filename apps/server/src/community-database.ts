@@ -2450,12 +2450,22 @@ export class CommunityDatabase {
     };
   }
 
-  deleteBrowserPushSubscription(residentId: string, endpoint: string): boolean {
-    return (
-      this.#database
-        .prepare("DELETE FROM browser_push_subscriptions WHERE resident_id = ? AND endpoint = ?")
-        .run(residentId, endpoint).changes === 1
-    );
+  deleteBrowserPushSubscription(
+    residentId: string,
+    endpoint: string,
+  ): { deleted: boolean; endpointStillUsed: boolean } {
+    const transaction = this.#database.transaction(() => {
+      const deleted =
+        this.#database
+          .prepare("DELETE FROM browser_push_subscriptions WHERE resident_id = ? AND endpoint = ?")
+          .run(residentId, endpoint).changes === 1;
+      const endpointStillUsed =
+        this.#database
+          .prepare("SELECT 1 FROM browser_push_subscriptions WHERE endpoint = ? LIMIT 1")
+          .get(endpoint) !== undefined;
+      return { deleted, endpointStillUsed };
+    });
+    return transaction.immediate();
   }
 
   listBrowserPushSubscriptions(residentId: string): BrowserPushSubscriptionRecord[] {

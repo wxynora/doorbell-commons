@@ -1,4 +1,8 @@
-import { browserPushErrorSchema, browserPushSubscriptionSuccessSchema } from "@doorbell/protocol";
+import {
+  browserPushErrorSchema,
+  browserPushSubscriptionDeleteSuccessSchema,
+  browserPushSubscriptionSuccessSchema,
+} from "@doorbell/protocol";
 import type { AuthIssue, FrontendFetcher } from "./auth/auth-client";
 
 export interface BrowserNotificationRuntime {
@@ -109,13 +113,17 @@ export async function disableBrowserNotifications(
     const registration = await runtime.serviceWorker.ready;
     const subscription = await registration.pushManager.getSubscription();
     if (!subscription) return;
-    await (options.fetcher ?? fetch)("/api/browser-notifications/subscription", {
+    const response = await (options.fetcher ?? fetch)("/api/browser-notifications/subscription", {
       body: JSON.stringify({ endpoint: subscription.endpoint }),
       credentials: "same-origin",
       headers: { "content-type": "application/json" },
       method: "DELETE",
     });
-    await subscription.unsubscribe();
+    const payload = await readPayload(response);
+    const result = browserPushSubscriptionDeleteSuccessSchema.safeParse(payload);
+    if (response.ok && result.success && result.data.unsubscribe_endpoint) {
+      await subscription.unsubscribe();
+    }
   } catch {
     // The saved server-side off switch remains authoritative even if local cleanup fails.
   }

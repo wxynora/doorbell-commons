@@ -2063,6 +2063,13 @@ export const browserPushSubscriptionDeleteRequestSchema = z
 
 export const browserPushSubscriptionSuccessSchema = z.object({ subscribed: z.boolean() }).strict();
 
+export const browserPushSubscriptionDeleteSuccessSchema = z
+  .object({
+    subscribed: z.literal(false),
+    unsubscribe_endpoint: z.boolean(),
+  })
+  .strict();
+
 export const browserPushErrorCodeSchema = z.enum([
   "invalid_request",
   "authentication_required",
@@ -2603,6 +2610,9 @@ export type HumanSettingsSuccess = z.infer<typeof humanSettingsSuccessSchema>;
 export type HumanSettingsError = z.infer<typeof humanSettingsErrorSchema>;
 export type BrowserPushSubscriptionRequest = z.infer<typeof browserPushSubscriptionRequestSchema>;
 export type BrowserPushSubscriptionSuccess = z.infer<typeof browserPushSubscriptionSuccessSchema>;
+export type BrowserPushSubscriptionDeleteSuccess = z.infer<
+  typeof browserPushSubscriptionDeleteSuccessSchema
+>;
 export type BrowserPushError = z.infer<typeof browserPushErrorSchema>;
 export type BrowserPushPayload = z.infer<typeof browserPushPayloadSchema>;
 export type McpAccessMigrationStatus = z.infer<typeof mcpAccessMigrationStatusSchema>;

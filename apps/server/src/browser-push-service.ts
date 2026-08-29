@@ -90,8 +90,8 @@ export class BrowserPushService {
     });
   }
 
-  unsubscribe(residentId: string, endpoint: string): void {
-    this.#database.deleteBrowserPushSubscription(residentId, endpoint);
+  unsubscribe(residentId: string, endpoint: string): boolean {
+    return !this.#database.deleteBrowserPushSubscription(residentId, endpoint).endpointStillUsed;
   }
 
   async sendActivityReminder(input: ActivityReminderPush): Promise<boolean> {

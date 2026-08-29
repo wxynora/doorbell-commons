@@ -515,11 +515,81 @@ test("browser notification setup exposes a real public key and persists an authe
       payload: { endpoint: "https://push.example.test/subscription" },
     });
     assert.equal(removed.statusCode, 200);
-    assert.deepEqual(removed.json(), { subscribed: false });
+    assert.deepEqual(removed.json(), {
+      subscribed: false,
+      unsubscribe_endpoint: true,
+    });
     assert.equal(
       harness.database.listBrowserPushSubscriptions(created.community.resident.residentId).length,
       0,
     );
+  } finally {
+    await harness.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("subscription removal asks the browser to unsubscribe only after the last Profile", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "doorbell-browser-shared-profile-endpoint-"));
+  const harness = openHarness(
+    join(directory, "doorbell.sqlite"),
+    ["shared-profile-session"],
+    undefined,
+    true,
+  );
+  try {
+    const first = createRegisteredSession(harness.database, "10001", "小一", "第一座家", "ABC234");
+    harness.membership.members.add("10001");
+    const sessionCookie = cookie(first.token);
+    const endpoint = "https://push.example.test/shared-profile-endpoint";
+    const subscribe = () =>
+      harness.app.inject({
+        method: "POST",
+        url: "/api/browser-notifications/subscription",
+        headers: { cookie: sessionCookie },
+        payload: {
+          endpoint,
+          expiration_time: null,
+          keys: { auth: "auth", p256dh: "p256dh" },
+        },
+      });
+    assert.equal((await subscribe()).statusCode, 200);
+
+    const second = harness.database.createHumanProfileForSession(first.token, NOW + 1, {
+      residentName: "小二",
+      homeName: "第二座家",
+      farmDoorplate: "DEF567",
+      farmHumanKey: `${FARM_HUMAN_KEY}-second`,
+    });
+    assert.equal((await subscribe()).statusCode, 200);
+
+    const remove = () =>
+      harness.app.inject({
+        method: "DELETE",
+        url: "/api/browser-notifications/subscription",
+        headers: { cookie: sessionCookie },
+        payload: { endpoint },
+      });
+    const removedSecond = await remove();
+    assert.deepEqual(removedSecond.json(), {
+      subscribed: false,
+      unsubscribe_endpoint: false,
+    });
+    assert.equal(
+      harness.database.listBrowserPushSubscriptions(first.community.resident.residentId).length,
+      1,
+    );
+    assert.equal(
+      harness.database.listBrowserPushSubscriptions(second.community.resident.residentId).length,
+      0,
+    );
+
+    harness.database.switchActiveHumanSessionProfile(first.token, first.activeProfileId);
+    const removedFirst = await remove();
+    assert.deepEqual(removedFirst.json(), {
+      subscribed: false,
+      unsubscribe_endpoint: true,
+    });
   } finally {
     await harness.close();
     rmSync(directory, { recursive: true, force: true });

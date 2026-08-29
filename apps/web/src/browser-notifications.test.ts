@@ -91,7 +91,9 @@ test("disabling browser notifications removes the persisted subscription before 
     runtime: runtime({ permission: "granted", existing: active }),
     fetcher: async (input, init) => {
       requests.push({ input, init });
-      return new Response(JSON.stringify({ subscribed: false }), { status: 200 });
+      return new Response(JSON.stringify({ subscribed: false, unsubscribe_endpoint: true }), {
+        status: 200,
+      });
     },
   });
   assert.equal(requests[0]?.init?.method, "DELETE");
@@ -99,4 +101,36 @@ test("disabling browser notifications removes the persisted subscription before 
     endpoint: active.endpoint,
   });
   assert.equal(unsubscribed, true);
+});
+
+test("shared browser subscription is unsubscribed only after the final Profile closes", async () => {
+  let unsubscribeCalls = 0;
+  const shared = {
+    ...subscription(),
+    unsubscribe: async () => {
+      unsubscribeCalls += 1;
+      return true;
+    },
+  } as PushSubscription;
+  const responses = [false, true];
+  const fetcher = async () =>
+    new Response(
+      JSON.stringify({
+        subscribed: false,
+        unsubscribe_endpoint: responses.shift(),
+      }),
+      { headers: { "content-type": "application/json" }, status: 200 },
+    );
+
+  await disableBrowserNotifications({
+    runtime: runtime({ permission: "granted", existing: shared }),
+    fetcher,
+  });
+  assert.equal(unsubscribeCalls, 0);
+
+  await disableBrowserNotifications({
+    runtime: runtime({ permission: "granted", existing: shared }),
+    fetcher,
+  });
+  assert.equal(unsubscribeCalls, 1);
 });

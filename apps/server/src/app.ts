@@ -103,6 +103,7 @@ import {
   boundTogetherReadSuccessSchema,
   browserPushErrorSchema,
   browserPushSubscriptionDeleteRequestSchema,
+  browserPushSubscriptionDeleteSuccessSchema,
   browserPushSubscriptionRequestSchema,
   browserPushSubscriptionSuccessSchema,
   createdFarmHumanSessionSuccessSchema,
@@ -3634,7 +3635,11 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     }
     try {
       const community = await options.registrationAuth.getCurrentSession(token);
-      options.browserPushService?.unsubscribe(community.resident.residentId, parsed.data.endpoint);
+      const unsubscribeEndpoint =
+        options.browserPushService?.unsubscribe(
+          community.resident.residentId,
+          parsed.data.endpoint,
+        ) ?? true;
       try {
         options.activityReminderService?.refreshEligibility(community.resident.residentId);
       } catch (error) {
@@ -3644,7 +3649,10 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         );
       }
       reply.header("cache-control", "no-store");
-      return browserPushSubscriptionSuccessSchema.parse({ subscribed: false });
+      return browserPushSubscriptionDeleteSuccessSchema.parse({
+        subscribed: false,
+        unsubscribe_endpoint: unsubscribeEndpoint,
+      });
     } catch (error) {
       return sendHumanSettingsFailure(request, reply, error);
     }
