@@ -401,11 +401,22 @@ export const farmCatalogNeighborhoodOriginalCropSchema = z
   })
   .strict();
 
+export const farmCatalogNeighborhoodMessageBoardSchema = z
+  .object({
+    farm_doorplate: farmCatalogDoorplateSchema,
+    farm_name: z.string().min(1),
+    is_own: z.boolean(),
+    status: z.enum(["open", "closed"]),
+    messages: z.array(farmCatalogBulletinMessageSchema).max(10),
+  })
+  .strict();
+
 export const farmCatalogNeighborhoodAvailableSchema = z
   .object({
     status: z.literal("available"),
     rankings: z.record(z.string(), z.array(farmCatalogNeighborhoodRankingRowSchema)),
     messages: z.array(farmCatalogBulletinMessageSchema),
+    message_boards: z.array(farmCatalogNeighborhoodMessageBoardSchema).max(256).optional(),
     original_crops: z.array(farmCatalogNeighborhoodOriginalCropSchema),
   })
   .strict();

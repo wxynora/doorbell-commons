@@ -8,6 +8,143 @@
   scrollbar-color: rgba(126, 104, 62, 0.48) transparent;
 }
 
+.farm-neighborhood__ranking-groups {
+  display: grid;
+  align-content: start;
+  gap: 3cqw;
+  padding: 0.3cqw 0 3.2cqw;
+}
+
+.farm-neighborhood__ranking-group {
+  display: grid;
+  gap: 1.7cqw;
+}
+
+.farm-neighborhood__ranking-group > h4 {
+  position: sticky;
+  top: -0.1cqw;
+  z-index: 2;
+  margin: 0;
+  padding: 1.15cqw 1.7cqw;
+  color: #6a4a2e;
+  font-family: "ZCOOL KuaiLe", "Noto Sans SC", sans-serif;
+  font-size: clamp(0.68rem, 2.65cqw, 0.82rem);
+  line-height: 1.2;
+  border-radius: 1.3cqw;
+  background: rgba(248, 237, 198, 0.94);
+  box-shadow: 0 0.4cqw 0 rgba(135, 99, 55, 0.14);
+}
+
+.farm-neighborhood__ranking-board {
+  overflow: hidden;
+  border: 0.18cqw solid rgba(133, 101, 58, 0.22);
+  border-radius: 1.5cqw;
+  background: rgba(255, 252, 232, 0.58);
+}
+
+.farm-neighborhood__ranking-board h5 {
+  margin: 0;
+  padding: 1.35cqw 1.7cqw 1.1cqw;
+  color: #5f4329;
+  font-family: "ZCOOL KuaiLe", "Noto Sans SC", sans-serif;
+  font-size: clamp(0.69rem, 2.8cqw, 0.85rem);
+  line-height: 1.15;
+  border-bottom: 0.18cqw solid rgba(133, 101, 58, 0.16);
+}
+
+.farm-neighborhood__ranking-board ol {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.farm-neighborhood__ranking-board li {
+  display: grid;
+  grid-template-columns: 5.5cqw minmax(0, 1fr) auto;
+  gap: 1.25cqw;
+  align-items: center;
+  min-height: 8.5cqw;
+  padding: 1.05cqw 1.6cqw;
+  border-bottom: 0.15cqw solid rgba(126, 104, 62, 0.13);
+}
+
+.farm-neighborhood__ranking-board li:last-child {
+  border-bottom: 0;
+}
+
+.farm-neighborhood__ranking-position {
+  display: grid;
+  width: 4.6cqw;
+  height: 4.6cqw;
+  place-items: center;
+  color: #765538;
+  font-size: clamp(0.58rem, 2.1cqw, 0.69rem);
+  font-weight: 900;
+  line-height: 1;
+  border-radius: 50%;
+  background: rgba(226, 207, 153, 0.56);
+}
+
+.farm-neighborhood__ranking-board li:nth-child(1) .farm-neighborhood__ranking-position {
+  color: #6f4a22;
+  background: #efd889;
+}
+
+.farm-neighborhood__ranking-board li:nth-child(2) .farm-neighborhood__ranking-position {
+  background: #ded7c4;
+}
+
+.farm-neighborhood__ranking-board li:nth-child(3) .farm-neighborhood__ranking-position {
+  background: #e6c7a7;
+}
+
+.farm-neighborhood__ranking-identity {
+  display: grid;
+  min-width: 0;
+  gap: 0.15cqw;
+}
+
+.farm-neighborhood__ranking-identity strong {
+  overflow: hidden;
+  color: #5e4329;
+  font-size: clamp(0.64rem, 2.45cqw, 0.78rem);
+  line-height: 1.22;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.farm-neighborhood__ranking-identity small,
+.farm-neighborhood__ranking-title {
+  overflow: hidden;
+  color: #987b57;
+  font-size: clamp(0.52rem, 1.85cqw, 0.63rem);
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.farm-neighborhood__ranking-identity .farm-neighborhood__ranking-title {
+  color: #a97435;
+  font-weight: 800;
+}
+
+.farm-neighborhood__ranking-value {
+  color: #765537;
+  font-size: clamp(0.61rem, 2.25cqw, 0.72rem);
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.farm-neighborhood__ranking-empty {
+  margin: 0;
+  padding: 1.7cqw;
+  color: #937b5d;
+  font-size: clamp(0.6rem, 2.2cqw, 0.72rem);
+  text-align: center;
+}
+
 .farm-neighborhood__live-list {
   display: grid;
   align-content: start;
@@ -41,16 +178,140 @@
 }
 
 .farm-neighborhood__message-area {
+  display: grid;
+  align-content: start;
+  gap: 2.4cqw;
   min-height: 0;
   padding-bottom: 2.8cqw;
+}
+
+.farm-neighborhood__message-boards {
+  display: grid;
+  gap: 2cqw;
+}
+
+.farm-neighborhood__message-board-card {
+  overflow: hidden;
+  border: 0.18cqw solid rgba(133, 101, 58, 0.24);
+  border-radius: 1.5cqw;
+  background: rgba(255, 252, 232, 0.62);
+}
+
+.farm-neighborhood__message-board-card[data-own="true"] {
+  background: rgba(246, 238, 203, 0.78);
+}
+
+.farm-neighborhood__message-board-card > header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1.2cqw;
+  align-items: baseline;
+  padding: 1.45cqw 1.7cqw 1.15cqw;
+  border-bottom: 0.15cqw solid rgba(126, 104, 62, 0.14);
+}
+
+.farm-neighborhood__message-board-card h4 {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: #5e4329;
+  font-size: clamp(0.68rem, 2.7cqw, 0.82rem);
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.farm-neighborhood__message-board-card > header > span {
+  color: #9a7e59;
+  font-size: clamp(0.5rem, 1.9cqw, 0.61rem);
+  white-space: nowrap;
+}
+
+.farm-neighborhood__message-board-card ul {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.farm-neighborhood__message-board-card li {
+  padding: 1.35cqw 1.7cqw 1.5cqw;
+  border-bottom: 0.15cqw solid rgba(126, 104, 62, 0.12);
+}
+
+.farm-neighborhood__message-board-card li:last-child {
+  border-bottom: 0;
+}
+
+.farm-neighborhood__message-board-card li > div {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 1cqw;
+}
+
+.farm-neighborhood__message-board-card li strong {
+  color: #64492f;
+  font-size: clamp(0.61rem, 2.35cqw, 0.75rem);
+}
+
+.farm-neighborhood__message-board-card li small,
+.farm-neighborhood__message-board-card li time {
+  color: #9a8264;
+  font-size: clamp(0.48rem, 1.75cqw, 0.57rem);
+}
+
+.farm-neighborhood__message-board-card li time {
+  margin-left: auto;
+}
+
+.farm-neighborhood__message-board-card li p {
+  margin: 0.75cqw 0 0;
+  color: #70583d;
+  font-size: clamp(0.62rem, 2.35cqw, 0.75rem);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.farm-neighborhood__message-board-empty {
+  margin: 0;
+  padding: 2.2cqw 1.7cqw;
+  color: #927b5e;
+  font-size: clamp(0.6rem, 2.2cqw, 0.72rem);
+  text-align: center;
+}
+
+.farm-neighborhood__message-compose-disclosure {
+  border-top: 0.18cqw solid rgba(126, 104, 62, 0.18);
+  padding-top: 1.6cqw;
+}
+
+.farm-neighborhood__message-compose-disclosure > summary {
+  display: inline-flex;
+  min-height: 6.4cqw;
+  align-items: center;
+  padding: 0 2.2cqw;
+  color: #fff8df;
+  font-size: clamp(0.61rem, 2.3cqw, 0.74rem);
+  font-weight: 800;
+  border-radius: 1.1cqw;
+  background: linear-gradient(180deg, #839c4b, #6e873a);
+  cursor: pointer;
+  list-style: none;
+}
+
+.farm-neighborhood__message-compose-disclosure > summary::-webkit-details-marker {
+  display: none;
 }
 
 .farm-neighborhood__message-compose {
   display: grid;
   gap: 1.35cqw;
-  margin: 0 0 1.8cqw;
-  padding: 0 0 2.2cqw;
-  border-bottom: 0.18cqw solid rgba(126, 104, 62, 0.2);
+  margin: 1.6cqw 0 0;
+  padding: 1.6cqw;
+  border: 0.18cqw solid rgba(126, 104, 62, 0.2);
+  border-radius: 1.4cqw;
+  background: rgba(255, 252, 232, 0.54);
 }
 
 .farm-neighborhood__message-compose-row {

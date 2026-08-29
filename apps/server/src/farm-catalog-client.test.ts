@@ -21,7 +21,21 @@ const CATALOG_RESULT = {
     expedition: { status: "unavailable", reason: "no_authoritative_data", message: "暂不可用" },
     smelting: { status: "unavailable", reason: "no_authoritative_data", message: "暂不可用" },
     bulletin: { status: "unavailable", reason: "no_authoritative_data", message: "暂不可用" },
-    neighborhood: { status: "unavailable", reason: "no_authoritative_data", message: "暂不可用" },
+    neighborhood: {
+      status: "available",
+      rankings: {},
+      messages: [],
+      message_boards: [
+        {
+          farm_doorplate: FARM_DOORPLATE,
+          farm_name: "渡的小农场",
+          is_own: true,
+          status: "open",
+          messages: [],
+        },
+      ],
+      original_crops: [],
+    },
     market: { status: "unavailable", reason: "no_authoritative_data", message: "暂不可用" },
   },
   revision: `farm-catalog-v1:${"a".repeat(64)}`,

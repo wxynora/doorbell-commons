@@ -24,6 +24,80 @@ type NeighborhoodMessageState =
   | { stage: "success"; result: BoundNeighborhoodMessageAction }
   | { stage: "error"; issue: NeighborhoodMessageActionIssue };
 
+interface NeighborhoodRankingDefinition {
+  id: string;
+  label: string;
+  unit: string;
+  valuePrefix?: string;
+}
+
+interface NeighborhoodRankingDisplayRow {
+  key: string;
+  name: string;
+  detail: string | null;
+  title: string | null;
+  value: number;
+}
+
+const TOTAL_RANKINGS: readonly NeighborhoodRankingDefinition[] = [
+  { id: "wealth", label: "财富榜", unit: "金" },
+  { id: "collection", label: "收集榜", unit: "种" },
+  { id: "diligence", label: "勤劳榜", unit: "株" },
+  { id: "kindness", label: "热心榜", unit: "次" },
+  { id: "thief", label: "大盗榜", unit: "次" },
+  { id: "land", label: "土地榜", unit: "阶" },
+];
+
+const TODAY_RANKINGS: readonly NeighborhoodRankingDefinition[] = [
+  { id: "todayTasks", label: "卷王榜", unit: "个" },
+  { id: "todayLogins", label: "网瘾榜", unit: "次" },
+  { id: "todayMessages", label: "热情榜", unit: "次" },
+  { id: "todayEvents", label: "奇遇榜", unit: "次" },
+  { id: "todayRaidIncome", label: "摸金榜", unit: "金" },
+  { id: "todayRaidLoss", label: "漏财榜", unit: "金", valuePrefix: "-" },
+];
+
+function NeighborhoodRankingBoard({
+  definition,
+  emptyLabel = "还没有上榜的",
+  rows,
+}: {
+  definition: NeighborhoodRankingDefinition;
+  emptyLabel?: string;
+  rows: readonly NeighborhoodRankingDisplayRow[];
+}) {
+  const headingId = `farm-neighborhood-ranking-${definition.id}`;
+  return (
+    <section aria-labelledby={headingId} className="farm-neighborhood__ranking-board">
+      <h5 id={headingId}>{definition.label}</h5>
+      {rows.length > 0 ? (
+        <ol>
+          {rows.map((row, index) => (
+            <li key={row.key}>
+              <span aria-hidden="true" className="farm-neighborhood__ranking-position">
+                {index + 1}
+              </span>
+              <span className="farm-neighborhood__ranking-identity">
+                {row.title ? (
+                  <small className="farm-neighborhood__ranking-title">✧{row.title}✧</small>
+                ) : null}
+                <strong>{row.name}</strong>
+                {row.detail ? <small>{row.detail}</small> : null}
+              </span>
+              <span className="farm-neighborhood__ranking-value">
+                {definition.valuePrefix}
+                {row.value} {definition.unit}
+              </span>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="farm-neighborhood__ranking-empty">{emptyLabel}</p>
+      )}
+    </section>
+  );
+}
+
 function messageActionKey(): string {
   return globalThis.crypto.randomUUID();
 }
@@ -58,9 +132,31 @@ export function NeighborhoodScene({
   const liveNeighborhood = farmCatalog?.data.neighborhood;
   const neighborhoodRevision = farmCatalog?.neighborhood_revision ?? null;
   const ownFarmDoorplate = farmCatalog?.data.farm.farm_doorplate ?? null;
+  const messageBoards =
+    liveNeighborhood?.status === "available"
+      ? (liveNeighborhood.message_boards ??
+        (ownFarmDoorplate
+          ? [
+              {
+                farm_doorplate: ownFarmDoorplate,
+                farm_name: farmCatalog?.data.farm.farm_name ?? ownFarmDoorplate,
+                is_own: true,
+                status: "open" as const,
+                messages: liveNeighborhood.messages,
+              },
+            ]
+          : []))
+      : [];
   const publicFarmTargets = (() => {
     if (liveNeighborhood?.status !== "available") {
       return [];
+    }
+    if (liveNeighborhood.message_boards) {
+      return liveNeighborhood.message_boards.flatMap((board) =>
+        !board.is_own && board.status === "open"
+          ? [{ doorplate: board.farm_doorplate, farmName: board.farm_name }]
+          : [],
+      );
     }
     const targets = new Map<string, { doorplate: string; farmName: string }>();
     for (const rows of Object.values(liveNeighborhood.rankings)) {
@@ -86,21 +182,65 @@ export function NeighborhoodScene({
       return null;
     }
     if (activeSection.id === "ranking") {
-      const rankingRows =
-        liveNeighborhood.rankings.total ??
-        liveNeighborhood.rankings.today ??
-        Object.values(liveNeighborhood.rankings)[0] ??
-        [];
-      return rankingRows.length > 0 ? (
-        <ul className="farm-neighborhood__live-list" aria-label="真实排行榜">
-          {rankingRows.map((row) => (
-            <li key={row.farm_doorplate}>
-              <strong>{row.farm_name}</strong>
-              <span>{row.value}</span>
-            </li>
-          ))}
-        </ul>
-      ) : null;
+      const rankingRows = (definition: NeighborhoodRankingDefinition) =>
+        (liveNeighborhood.rankings[definition.id] ?? []).map((row) => ({
+          key: row.farm_doorplate,
+          name: row.farm_name,
+          detail: row.farm_doorplate,
+          title: row.equipped_title,
+          value: row.value,
+        }));
+      const hotRows = liveNeighborhood.original_crops
+        .filter(
+          (crop) =>
+            crop.identity_state === "known" &&
+            Boolean(crop.name) &&
+            (crop.buyers ?? 0) > 0 &&
+            crop.banned !== true,
+        )
+        .sort((left, right) => (right.buyers ?? 0) - (left.buyers ?? 0))
+        .slice(0, 5)
+        .map((crop) => ({
+          key: crop.crop_id,
+          name: crop.name ?? crop.crop_id,
+          detail: `设计者 ${crop.designer_name ?? "?"}`,
+          title: null,
+          value: crop.buyers ?? 0,
+        }));
+      const hotDefinition = {
+        id: "hot",
+        label: "原创热门榜",
+        unit: "人买过",
+      } satisfies NeighborhoodRankingDefinition;
+      return (
+        <div aria-label="真实排行榜" className="farm-neighborhood__ranking-groups">
+          <section className="farm-neighborhood__ranking-group">
+            <h4>总榜（累计）</h4>
+            {TOTAL_RANKINGS.map((definition) => (
+              <NeighborhoodRankingBoard
+                definition={definition}
+                key={definition.id}
+                rows={rankingRows(definition)}
+              />
+            ))}
+            <NeighborhoodRankingBoard
+              definition={hotDefinition}
+              emptyLabel="还没有热卖的原创"
+              rows={hotRows}
+            />
+          </section>
+          <section className="farm-neighborhood__ranking-group">
+            <h4>今日榜（每天 0 点归零，新人同台）</h4>
+            {TODAY_RANKINGS.map((definition) => (
+              <NeighborhoodRankingBoard
+                definition={definition}
+                key={definition.id}
+                rows={rankingRows(definition)}
+              />
+            ))}
+          </section>
+        </div>
+      );
     }
     if (activeSection.id === "message-board") {
       const submitMessage = async () => {
@@ -135,79 +275,107 @@ export function NeighborhoodScene({
 
       return (
         <div className="farm-neighborhood__message-area">
-          {onMessageAction ? (
-            <form
-              className="farm-neighborhood__message-compose"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void submitMessage();
-              }}
-            >
-              <div className="farm-neighborhood__message-compose-row">
-                <label htmlFor="farm-neighborhood-message-target">留言给</label>
-                <select
-                  aria-label="选择留言目标农场"
-                  disabled={!hasMessageTarget || messageState.stage === "submitting"}
-                  id="farm-neighborhood-message-target"
-                  onChange={(event) => setMessageTarget(event.target.value)}
-                  value={messageTarget}
-                >
-                  <option value="">
-                    {publicFarmTargets.length > 0 ? "选择公开农场" : "暂无可留言的公开农场"}
-                  </option>
-                  {publicFarmTargets.map((target) => (
-                    <option key={target.doorplate} value={target.doorplate}>
-                      {target.farmName} · {target.doorplate}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="farm-neighborhood__message-compose-row">
-                <label htmlFor="farm-neighborhood-message-body">留言</label>
-                <textarea
-                  aria-label="留言内容"
-                  disabled={!hasMessageTarget || messageState.stage === "submitting"}
-                  id="farm-neighborhood-message-body"
-                  maxLength={100}
-                  onChange={(event) => setMessageDraft(event.target.value)}
-                  placeholder="写一句给邻居的话"
-                  rows={2}
-                  value={messageDraft}
-                />
-              </div>
-              <button
-                className="farm-neighborhood__message-submit"
-                disabled={
-                  !hasMessageTarget || !messageDraft.trim() || messageState.stage === "submitting"
-                }
-                type="submit"
+          <div aria-label="真实留言板" className="farm-neighborhood__message-boards">
+            {messageBoards.map((board) => (
+              <article
+                aria-label={board.is_own ? "我的留言板" : `${board.farm_name}的留言板`}
+                className="farm-neighborhood__message-board-card"
+                data-own={board.is_own}
+                key={board.farm_doorplate}
               >
-                {messageState.stage === "submitting" ? "发送中…" : "发送留言"}
-              </button>
-              {messageState.stage === "success" ? (
-                <p className="farm-neighborhood__message-feedback" role="status">
-                  已向 {messageState.result.data.result.target_farm_doorplate} 发送留言。
-                </p>
-              ) : null}
-              {messageState.stage === "error" ? (
-                <p className="farm-neighborhood__message-feedback is-error" role="alert">
-                  {neighborhoodMessageActionIssueMessage(messageState.issue)}
-                </p>
-              ) : null}
-            </form>
+                <header>
+                  <h4>{board.is_own ? "我的留言板" : board.farm_name}</h4>
+                  <span>门牌 {board.farm_doorplate}</span>
+                </header>
+                {board.status === "closed" ? (
+                  <p className="farm-neighborhood__message-board-empty">留言板已关闭</p>
+                ) : board.messages.length > 0 ? (
+                  <ul>
+                    {board.messages.map((message, index) => (
+                      <li key={message.id ?? `${board.farm_doorplate}-${index}`}>
+                        <div>
+                          <strong>{message.author_name ?? "访客"}</strong>
+                          {message.author_farm_doorplate ? (
+                            <small>门牌 {message.author_farm_doorplate}</small>
+                          ) : null}
+                          {message.at ? <time dateTime={message.at}>{message.at}</time> : null}
+                        </div>
+                        <p>{message.text}</p>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="farm-neighborhood__message-board-empty">还没有访客留言</p>
+                )}
+              </article>
+            ))}
+          </div>
+          {onMessageAction ? (
+            <details className="farm-neighborhood__message-compose-disclosure">
+              <summary>写留言</summary>
+              <form
+                className="farm-neighborhood__message-compose"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void submitMessage();
+                }}
+              >
+                <div className="farm-neighborhood__message-compose-row">
+                  <label htmlFor="farm-neighborhood-message-target">留言给</label>
+                  <select
+                    aria-label="选择留言目标农场"
+                    disabled={!hasMessageTarget || messageState.stage === "submitting"}
+                    id="farm-neighborhood-message-target"
+                    onChange={(event) => setMessageTarget(event.target.value)}
+                    value={messageTarget}
+                  >
+                    <option value="">
+                      {publicFarmTargets.length > 0 ? "选择公开农场" : "暂无可留言的公开农场"}
+                    </option>
+                    {publicFarmTargets.map((target) => (
+                      <option key={target.doorplate} value={target.doorplate}>
+                        {target.farmName} · {target.doorplate}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="farm-neighborhood__message-compose-row">
+                  <label htmlFor="farm-neighborhood-message-body">留言</label>
+                  <textarea
+                    aria-label="留言内容"
+                    disabled={!hasMessageTarget || messageState.stage === "submitting"}
+                    id="farm-neighborhood-message-body"
+                    maxLength={100}
+                    onChange={(event) => setMessageDraft(event.target.value)}
+                    placeholder="写一句给邻居的话"
+                    rows={2}
+                    value={messageDraft}
+                  />
+                </div>
+                <button
+                  className="farm-neighborhood__message-submit"
+                  disabled={
+                    !hasMessageTarget ||
+                    !messageDraft.trim() ||
+                    messageState.stage === "submitting"
+                  }
+                  type="submit"
+                >
+                  {messageState.stage === "submitting" ? "发送中…" : "发送留言"}
+                </button>
+                {messageState.stage === "success" ? (
+                  <p className="farm-neighborhood__message-feedback" role="status">
+                    已向 {messageState.result.data.result.target_farm_doorplate} 发送留言。
+                  </p>
+                ) : null}
+                {messageState.stage === "error" ? (
+                  <p className="farm-neighborhood__message-feedback is-error" role="alert">
+                    {neighborhoodMessageActionIssueMessage(messageState.issue)}
+                  </p>
+                ) : null}
+              </form>
+            </details>
           ) : null}
-          {liveNeighborhood.messages.length > 0 ? (
-            <ul className="farm-neighborhood__live-list" aria-label="真实留言板">
-              {liveNeighborhood.messages.map((message, index) => (
-                <li key={`message-${message.id ?? index}`}>
-                  <strong>{message.author_name ?? "留言"}</strong>
-                  <span>{message.text}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="farm-neighborhood__inline-empty">暂无可显示的留言。</p>
-          )}
         </div>
       );
     }
