@@ -234,9 +234,19 @@
 }
 
 .cooking-shop {
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   gap: 1.6cqw;
   overflow: hidden;
+}
+
+.cooking-shop > .cooking-ingredient-catalog,
+.cooking-shop > .cooking-recipe-catalog,
+.cooking-shop > .cooking-tool-shop {
+  grid-row: 3;
+}
+
+.cooking-shop > .farm-shop__unavailable {
+  grid-row: 2 / 4;
 }
 
 .cooking-tool-shop {

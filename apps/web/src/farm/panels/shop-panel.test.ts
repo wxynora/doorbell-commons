@@ -1,6 +1,7 @@
 /// <reference types="node" />
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test, { after, before } from "node:test";
 import { createServer, type ViteDevServer } from "vite";
 import type { BoundFarmCatalogRead } from "../../auth/farm-catalog-client";
@@ -46,6 +47,16 @@ function kitchen(
 ): BoundKitchenRead {
   return { data: { daily_shop: dailyShop, tools } } as unknown as BoundKitchenRead;
 }
+
+test("cooking shop keeps refresh copy and products in consecutive grid rows", () => {
+  const styles = readFileSync(new URL("./shop-panel.css", import.meta.url), "utf8");
+
+  assert.match(styles, /\.cooking-shop\s*\{[^}]*grid-template-rows:\s*auto auto minmax\(0, 1fr\)/s);
+  assert.match(
+    styles,
+    /\.cooking-shop > \.cooking-ingredient-catalog,[\s\S]*\.cooking-shop > \.cooking-tool-shop\s*\{[^}]*grid-row:\s*3/,
+  );
+});
 
 test("live shop uses authoritative names and prices for cart definitions", () => {
   const catalog = farmCatalog({
