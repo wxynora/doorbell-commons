@@ -8173,6 +8173,10 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     let currentStage = 'checking-session';
     let visibleSharedMemes = [];
     let settingsSaveScope = '';
+    const lingyeFullscreenScreenIds = new Set([
+        'screen-lingye-glimmer',
+        'screen-lingye-memorial',
+    ]);
     let settingsWasSaving = '';
     let permitTimer = 0;
     const homeScaleShell = document.querySelector('.candidate2-home-scale-shell');
@@ -9242,6 +9246,17 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     function normalizeLiveGlimmer(read) {
         const data = read && read.data;
         if (!data) return null;
+        const tracks = data.tracks.map((track) => track.revealed && track.variant ? {
+            revealed: true,
+            id: track.variant.id,
+            name: track.variant.name,
+            atlas: track.variant.atlas,
+            set: track.variant.set,
+            spriteIndex: track.variant.sprite_index,
+        } : { revealed: false, layoutId: 'mystery' });
+        if (tracks.length === 3 && !tracks.some((track) => track.revealed === false)) {
+            tracks.push({ revealed: false, layoutId: 'mystery' });
+        }
         return {
             openingHours: data.open ? '开放中' : '未开放',
             status: data.status,
@@ -9252,14 +9267,7 @@ const CANDIDATE_RUNTIME_SCRIPT = `
                 current: data.cooperation.progress.current,
                 total: data.cooperation.progress.target,
             } : null,
-            tracks: data.tracks.map((track) => track.revealed && track.variant ? {
-                revealed: true,
-                id: track.variant.id,
-                name: track.variant.name,
-                atlas: track.variant.atlas,
-                set: track.variant.set,
-                spriteIndex: track.variant.sprite_index,
-            } : { revealed: false, layoutId: 'mystery' }),
+            tracks,
             events: data.events.map((eventItem) => ({
                 at: eventItem.at,
                 title: eventItem.text,
@@ -9677,7 +9685,9 @@ const CANDIDATE_RUNTIME_SCRIPT = `
             return;
         }
 
-        mainNav.style.display = 'flex';
+        syncAuthenticatedMainNavigation(
+            document.querySelector('.screen.active')?.id || '',
+        );
         document.getElementById('settings-logout-button').disabled = state.pendingLogout;
         if (!demo) {
             applyHomeSettings(
@@ -9895,15 +9905,18 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         applyRuntimeState(data.state, data.demo);
     });
 
+    function syncAuthenticatedMainNavigation(screenId) {
+        const lingyeFullscreenPageOpen = lingyeFullscreenScreenIds.has(screenId);
+        mainNav.style.display = lingyeFullscreenPageOpen ? 'none' : 'flex';
+        if (lingyeFullscreenPageOpen) mainNav.setAttribute('aria-hidden', 'true');
+        else mainNav.removeAttribute('aria-hidden');
+    }
+
     const originalShowScreen = window.showScreen;
     window.showScreen = (screenId) => {
         originalShowScreen(screenId);
         if (currentStage === 'authenticated') {
-            const lingyeFullscreenPageOpen =
-                screenId === 'screen-lingye-glimmer' || screenId === 'screen-lingye-memorial';
-            mainNav.style.display = lingyeFullscreenPageOpen ? 'none' : 'flex';
-            if (lingyeFullscreenPageOpen) mainNav.setAttribute('aria-hidden', 'true');
-            else mainNav.removeAttribute('aria-hidden');
+            syncAuthenticatedMainNavigation(screenId);
         }
         if (screenId === 'screen-home') syncHomeScale();
     };

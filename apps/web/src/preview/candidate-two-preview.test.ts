@@ -1197,6 +1197,23 @@ test("Live Lingye entries use parent-owned structured reads and keep template da
   );
 });
 
+test("Glimmer keeps its mystery slot and stays free of the authenticated main navigation", () => {
+  const html = buildCandidateTwoRuntimeHtml();
+
+  assert.match(
+    html,
+    /const tracks = data\.tracks\.map\([\s\S]*tracks\.length === 3 && !tracks\.some\(\(track\) => track\.revealed === false\)[\s\S]*tracks\.push\(\{ revealed: false, layoutId: 'mystery' \}\);[\s\S]*tracks,/,
+  );
+  assert.match(
+    html,
+    /const lingyeFullscreenScreenIds = new Set\(\[[\s\S]*'screen-lingye-glimmer',[\s\S]*function syncAuthenticatedMainNavigation\(screenId\) \{[\s\S]*mainNav\.style\.display = lingyeFullscreenPageOpen \? 'none' : 'flex';/,
+  );
+  assert.match(
+    html,
+    /applyLiveLingyeState\(state\.lingye\);[\s\S]*syncAuthenticatedMainNavigation\(\s*document\.querySelector\('\.screen\.active'\)\?\.id \|\| '',\s*\);/,
+  );
+});
+
 test("the sandboxed candidate iframe explicitly permits its user-triggered copy buttons", () => {
   const componentSource = CandidateTwoPreview.toString();
 
