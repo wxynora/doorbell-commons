@@ -6,7 +6,10 @@ const NOW = Date.parse("2026-08-25T04:00:00.000Z");
 const { TICK_MS } = await import("../dist/config.js");
 const { makeFarm } = await import("../dist/game.js");
 const { projectHumanField } = await import("../dist/server/human-structured.js");
-const { projectHumanBulletin } = await import("../dist/server/bulletin-structured.js");
+const {
+  projectHumanBulletin,
+  projectHumanBulletinSource,
+} = await import("../dist/server/bulletin-structured.js");
 
 function fixtureFarm() {
   const farm = makeFarm("叮咚测试农场");
@@ -107,6 +110,52 @@ test("Human bulletin is a pure read with real ordered entries and filtered field
   assert.equal(encoded.includes("must-not-leak-human-key"), false);
   assert.equal(encoded.includes("must-not-leak-token"), false);
   assert.equal(encoded.includes("must-not-leak"), false);
+  assert.equal(encoded.includes("farm-bulletin-reminder-v1"), false);
+});
+
+test("acknowledged stable reminder keys are filtered without mutating their source facts", () => {
+  const farm = fixtureFarm();
+  const source = projectHumanBulletinSource(farm, NOW);
+  const acknowledged = Object.values(source.data.available)
+    .flat()
+    .map((entry) => entry.reminder_key);
+  for (const reminderKey of acknowledged) {
+    assert.match(reminderKey, /^farm-bulletin-reminder-v1:[0-9a-f]{64}$/);
+  }
+  farm.doorbellHumanBulletinReadState = {
+    acknowledged_reminder_keys: acknowledged,
+    receipts: {},
+  };
+  const sourcesBefore = structuredClone({
+    task: farm.task,
+    plots: farm.plots,
+    messages: farm.messages,
+    ranchNotices: farm.ranch.notices,
+  });
+
+  const consumed = projectHumanBulletin(farm, NOW);
+  assert.deepEqual(consumed.data.available, {
+    tasks: [],
+    mature_plots: [],
+    messages: [],
+    ranch_notifications: [],
+  });
+  assert.deepEqual(
+    { task: farm.task, plots: farm.plots, messages: farm.messages, ranchNotices: farm.ranch.notices },
+    sourcesBefore,
+  );
+
+  farm.messages.push({ id: "newer", by: "DEF567", name: "新访客", text: "又来一条", at: NOW });
+  farm.task.progress = 1;
+  farm.ranch.notices.push({ at: NOW, text: "通知发生变化", section: "ranch" });
+  farm.harvested = 1;
+  const changed = projectHumanBulletin(farm, NOW);
+  assert.deepEqual(changed.data.available.messages.map((entry) => entry.id), ["newer"]);
+  assert.deepEqual(changed.data.available.tasks.map((entry) => entry.progress), [1]);
+  assert.deepEqual(changed.data.available.ranch_notifications.map((entry) => entry.text), [
+    "通知发生变化",
+  ]);
+  assert.deepEqual(changed.data.available.mature_plots.map((entry) => entry.plot_id), [1, 2]);
 });
 
 test("uninitialized bulletin sources stay in the unavailable partition", () => {

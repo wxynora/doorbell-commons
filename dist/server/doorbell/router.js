@@ -1,4 +1,5 @@
 import {
+    handleDoorbellHumanBulletinAck,
     handleDoorbellHumanBulletinRead,
     handleDoorbellHumanCatalogRead,
     handleDoorbellHumanCropCodexAction,
@@ -81,6 +82,10 @@ export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExe
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "bulletin" && parts[4] === "read" && parts.length === 5) {
             await handleDoorbellHumanBulletinRead(req, res, method);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "bulletin" && parts[4] === "ack" && parts.length === 5) {
+            await handleDoorbellHumanBulletinAck(req, res, method);
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "kitchen" && parts[4] === "read" && parts.length === 5) {

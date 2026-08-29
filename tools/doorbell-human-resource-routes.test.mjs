@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -33,6 +33,8 @@ const { neighborhoodMessageActionRevision } = await import(
 
 const FARM_DOORPLATE = "ABC234";
 const FARM_HUMAN_KEY = "private-resource-human-key";
+const BULLETIN_FARM_DOORPLATE = "MNP234";
+const BULLETIN_FARM_HUMAN_KEY = "private-bulletin-resource-human-key";
 const ORIGINAL_PLANT_DOORPLATE = "BCDFGH";
 const ORIGINAL_PLANT_HUMAN_KEY = "private-original-plant-resource-human-key";
 const POOR_ORIGINAL_PLANT_DOORPLATE = "CDEFGH";
@@ -48,6 +50,7 @@ const PATHS = [
   "/internal/doorbell/human/ranch/read",
 ];
 const BULLETIN_PATH = "/internal/doorbell/human/bulletin/read";
+const BULLETIN_ACK_PATH = "/internal/doorbell/human/bulletin/ack";
 
 async function readResource(baseUrl, path, payload) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -116,6 +119,27 @@ test("Doorbell Human catalog, bulletin, kitchen, and ranch reads are registered 
   };
   insertFarm(farm);
 
+  const bulletinFarm = makeFarm("播报已读测试农场");
+  bulletinFarm.id = BULLETIN_FARM_DOORPLATE;
+  bulletinFarm.humanKey = BULLETIN_FARM_HUMAN_KEY;
+  bulletinFarm.task = {
+    seq: 1,
+    kind: "craft",
+    target: 1,
+    progress: 0,
+    reward: 60,
+    currency: "coin",
+    accepted: true,
+    offeredAt: NOW - 60_000,
+  };
+  bulletinFarm.messages = [
+    { id: "route-message", by: NEIGHBOR_DOORPLATE, name: "邻居", text: "来串门啦", at: NOW - 20_000 },
+  ];
+  bulletinFarm.ranch = {
+    notices: [{ at: NOW - 30_000, text: "牧场里有新动静", section: "ranch" }],
+  };
+  insertFarm(bulletinFarm);
+
   const neighbor = makeFarm("邻里留言目标农场");
   neighbor.id = NEIGHBOR_DOORPLATE;
   neighbor.humanKey = "private-neighbor-human-key";
@@ -177,6 +201,10 @@ test("Doorbell Human catalog, bulletin, kitchen, and ranch reads are registered 
     farm_human_key: FARM_HUMAN_KEY,
     expected_farm_doorplate: FARM_DOORPLATE,
   };
+  const bulletinPayload = {
+    farm_human_key: BULLETIN_FARM_HUMAN_KEY,
+    expected_farm_doorplate: BULLETIN_FARM_DOORPLATE,
+  };
 
   for (const path of PATHS) {
     const result = await readResource(baseUrl, path, payload);
@@ -193,11 +221,71 @@ test("Doorbell Human catalog, bulletin, kitchen, and ranch reads are registered 
     }
   }
 
-  const bulletinRead = await readResource(baseUrl, BULLETIN_PATH, payload);
+  const bulletinRead = await readResource(baseUrl, BULLETIN_PATH, bulletinPayload);
   assert.equal(bulletinRead.response.status, 200);
-  assert.equal(bulletinRead.body.subject.farm_doorplate, FARM_DOORPLATE);
+  assert.equal(bulletinRead.body.subject.farm_doorplate, BULLETIN_FARM_DOORPLATE);
   assert.match(bulletinRead.body.revision, /^farm-bulletin-v1:[0-9a-f]{64}$/);
-  assert.equal(JSON.stringify(bulletinRead.body).includes(FARM_HUMAN_KEY), false);
+  assert.equal(JSON.stringify(bulletinRead.body).includes(BULLETIN_FARM_HUMAN_KEY), false);
+  const bulletinSourcesBeforeAck = structuredClone({
+    task: getFarm(BULLETIN_FARM_DOORPLATE).task,
+    plots: getFarm(BULLETIN_FARM_DOORPLATE).plots,
+    messages: getFarm(BULLETIN_FARM_DOORPLATE).messages,
+    ranchNotices: getFarm(BULLETIN_FARM_DOORPLATE).ranch.notices,
+  });
+  const bulletinAckPayload = {
+    ...bulletinPayload,
+    expected_bulletin_revision: bulletinRead.body.revision,
+    idempotency_key: "219ffb01-49cd-7020-84af-3d04fb1ed03d",
+  };
+  const bulletinAck = await readResource(baseUrl, BULLETIN_ACK_PATH, bulletinAckPayload);
+  assert.equal(bulletinAck.response.status, 200);
+  assert.equal(bulletinAck.body.data.result.receipt_id, bulletinAckPayload.idempotency_key);
+  assert.ok(bulletinAck.body.data.result.acknowledged_count >= 3);
+  assert.deepEqual(bulletinAck.body.data.resource.available, {
+    tasks: [],
+    mature_plots: [],
+    messages: [],
+    ranch_notifications: [],
+  });
+  assert.deepEqual(
+    {
+      task: getFarm(BULLETIN_FARM_DOORPLATE).task,
+      plots: getFarm(BULLETIN_FARM_DOORPLATE).plots,
+      messages: getFarm(BULLETIN_FARM_DOORPLATE).messages,
+      ranchNotices: getFarm(BULLETIN_FARM_DOORPLATE).ranch.notices,
+    },
+    bulletinSourcesBeforeAck,
+  );
+  const replayedBulletinAck = await readResource(baseUrl, BULLETIN_ACK_PATH, bulletinAckPayload);
+  assert.equal(replayedBulletinAck.response.status, 200);
+  assert.deepEqual(replayedBulletinAck.body, bulletinAck.body);
+
+  const persistedWorld = JSON.parse(readFileSync(join(dataDirectory, "world.json"), "utf8"));
+  const persistedBulletinFarm = persistedWorld.farms.find(
+    (entry) => entry.id === BULLETIN_FARM_DOORPLATE,
+  );
+  assert.deepEqual(
+    persistedBulletinFarm.doorbellHumanBulletinReadState.acknowledged_reminder_keys,
+    getFarm(BULLETIN_FARM_DOORPLATE).doorbellHumanBulletinReadState
+      .acknowledged_reminder_keys,
+  );
+  const bulletinAfterAck = await readResource(baseUrl, BULLETIN_PATH, bulletinPayload);
+  assert.deepEqual(bulletinAfterAck.body.data.available.tasks, []);
+  assert.deepEqual(bulletinAfterAck.body.data.available.mature_plots, []);
+  assert.deepEqual(bulletinAfterAck.body.data.available.messages, []);
+  assert.deepEqual(bulletinAfterAck.body.data.available.ranch_notifications, []);
+  getFarm(BULLETIN_FARM_DOORPLATE).messages.push({
+    id: "route-message-new",
+    by: NEIGHBOR_DOORPLATE,
+    name: "邻居",
+    text: "这是新留言",
+    at: NOW,
+  });
+  const bulletinWithNewMessage = await readResource(baseUrl, BULLETIN_PATH, bulletinPayload);
+  assert.deepEqual(
+    bulletinWithNewMessage.body.data.available.messages.map((message) => message.id),
+    ["route-message-new"],
+  );
 
   const sellerBeforeCatalogRead = structuredClone(getFarm(MARKET_SELLER_DOORPLATE));
   const catalogRead = await readResource(baseUrl, PATHS[0], payload);

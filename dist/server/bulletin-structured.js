@@ -43,6 +43,25 @@ function opaqueRevision(value) {
     .digest("hex")}`;
 }
 
+function reminderKey(section, value) {
+  return `farm-bulletin-reminder-v1:${createHash("sha256")
+    .update(JSON.stringify(canonicalize({ section, value })), "utf8")
+    .digest("hex")}`;
+}
+
+function acknowledgedReminderKeys(farm) {
+  const values = farm?.doorbellHumanBulletinReadState?.acknowledged_reminder_keys;
+  return new Set(
+    Array.isArray(values)
+      ? values.filter(
+          (value) =>
+            typeof value === "string" &&
+            /^farm-bulletin-reminder-v1:[0-9a-f]{64}$/.test(value),
+        )
+      : [],
+  );
+}
+
 function unavailable(reason, message) {
   return { reason, message };
 }
@@ -101,10 +120,16 @@ function projectTask(farm, now) {
     };
   }
 
-  return {
+  const entry = {
     available: true,
     entries: [{ kind, description, progress, target, reward, currency }],
   };
+  entry.entries[0].reminder_key = reminderKey("task", {
+    entry: entry.entries[0],
+    sequence: nonNegativeInt(raw.seq),
+    offered_at: nullableIso(raw.offeredAt),
+  });
+  return entry;
 }
 
 function projectMaturePlots(farm, now) {
@@ -140,6 +165,15 @@ function projectMaturePlots(farm, now) {
         watered: nonNegativeInt(plot.watered, 0),
       }))
       .sort((left, right) => left.plot_id - right.plot_id);
+    for (const entry of entries) {
+      const rawPlot = farm.plots.find((plot) => plot?.id === entry.plot_id);
+      entry.reminder_key = reminderKey("mature_plot", {
+        entry,
+        crop: rawPlot?.crop ?? null,
+        harvest_generation: nonNegativeInt(farm.harvested, 0),
+        stolen_generation: nonNegativeInt(farm.gotStolen, 0),
+      });
+    }
     return { available: true, entries };
   } catch {
     return {
@@ -152,13 +186,14 @@ function projectMaturePlots(farm, now) {
 function projectMessage(message) {
   if (!isRecord(message) || typeof message.text !== "string" || !message.text.trim()) return null;
   const author = typeof message.by === "string" && FARM_DOORPLATE_RE.test(message.by) ? message.by : null;
-  return {
+  const entry = {
     id: typeof message.id === "string" && message.id ? message.id : null,
     author_farm_doorplate: author,
     author_name: nullableText(message.name),
     text: message.text,
     at: nullableIso(message.at),
   };
+  return { ...entry, reminder_key: reminderKey("message", entry) };
 }
 
 function projectMessages(farm) {
@@ -175,11 +210,12 @@ function projectMessages(farm) {
 
 function projectRanchNotice(notice) {
   if (!isRecord(notice) || typeof notice.text !== "string" || !notice.text.trim()) return null;
-  return {
+  const entry = {
     text: notice.text,
     at: nullableIso(notice.at),
     section: nullableText(notice.section),
   };
+  return { ...entry, reminder_key: reminderKey("ranch_notification", entry) };
 }
 
 function projectRanchNotifications(farm) {
@@ -207,7 +243,7 @@ function addSection(available, unavailableSections, key, result) {
  * All sections are read-only; time-based maturity is delegated to the pure
  * Human field projection without mutating the persisted farm.
  */
-export function projectHumanBulletin(farm, now = Date.now()) {
+export function projectHumanBulletinSource(farm, now = Date.now()) {
   if (!isRecord(farm)) throw new TypeError("Farm bulletin requires a farm");
   const timestamp = Number.isFinite(now) ? now : Date.now();
   const subject = { farm_doorplate: String(farm.id ?? "") };
@@ -225,6 +261,21 @@ export function projectHumanBulletin(farm, now = Date.now()) {
     data,
     revision: opaqueRevision({ subject, data }),
     server_time: new Date(timestamp).toISOString(),
+  };
+}
+
+export function projectHumanBulletin(farm, now = Date.now()) {
+  const source = projectHumanBulletinSource(farm, now);
+  const acknowledged = acknowledgedReminderKeys(farm);
+  const available = {};
+  for (const [section, entries] of Object.entries(source.data.available)) {
+    available[section] = entries
+      .filter((entry) => !acknowledged.has(entry.reminder_key))
+      .map(({ reminder_key: _reminderKey, ...entry }) => entry);
+  }
+  return {
+    ...source,
+    data: { available, unavailable: source.data.unavailable },
   };
 }
 
