@@ -157,6 +157,13 @@ export function compensationBulletinIdentity(bulletin: BoundBulletinRead | null)
   return notice ? `${bulletin.revision}:${notice.at ?? ""}:${notice.text}` : null;
 }
 
+export function bulletinHasUnreadEntries(bulletin: BoundBulletinRead | null): boolean {
+  return Boolean(
+    bulletin &&
+      Object.values(bulletin.data.available).some((entries) => (entries?.length ?? 0) > 0),
+  );
+}
+
 export function FarmFieldContent({
   data,
   harvestAction = { stage: "idle" },
@@ -333,12 +340,18 @@ export function FarmFieldContent({
       ? getToolReadResource(activeScene, activeSceneUiState.selectedTool.id)
       : getSceneReadResource(activeScene);
   const activeResourceState = activeResourceKey ? resources[activeResourceKey] : null;
-  const acknowledgeDisplayedBulletinIfNeeded = () => {
-    const displayedBulletin = resources.bulletin.stage === "ready" ? resources.bulletin.data : null;
+  const displayedBulletin = resources.bulletin.stage === "ready" ? resources.bulletin.data : null;
+  const bulletinUnread = bulletinHasUnreadEntries(displayedBulletin);
+  const acknowledgeDisplayedBulletinIfNeeded = ({
+    allowCompensation = false,
+  }: {
+    allowCompensation?: boolean;
+  } = {}) => {
     if (
       !preview &&
       displayedBulletin &&
-      Object.values(displayedBulletin.data.available).some((entries) => (entries?.length ?? 0) > 0)
+      bulletinUnread &&
+      (allowCompensation || compensationBulletinIdentity(displayedBulletin) === null)
     ) {
       onAcknowledgeBulletin?.(displayedBulletin);
     }
@@ -1001,7 +1014,7 @@ export function FarmFieldContent({
                 <DingdongBulletin
                   bulletin={resources.bulletin.stage === "ready" ? resources.bulletin.data : null}
                   onClose={() => {
-                    acknowledgeDisplayedBulletinIfNeeded();
+                    acknowledgeDisplayedBulletinIfNeeded({ allowCompensation: true });
                     updateSceneUiState(scene.id, { bulletinOpen: false });
                   }}
                   preview={preview}
@@ -1106,6 +1119,7 @@ export function FarmFieldContent({
 
       <FarmToolBar
         activeScene={activeScene}
+        bulletinUnread={bulletinUnread}
         onOpenBulletin={() => {
           if (activeScene === "cooking") {
             setCookingIngredientPickerOpen(false);

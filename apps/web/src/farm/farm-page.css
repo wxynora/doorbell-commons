@@ -2082,6 +2082,20 @@
   white-space: nowrap;
 }
 
+.farm-tool-menu__unread {
+  position: absolute;
+  top: 0.8cqw;
+  right: 0.6cqw;
+  z-index: 3;
+  width: 2.8cqw;
+  height: 2.8cqw;
+  border: 0.42cqw solid #fff1d0;
+  border-radius: 50%;
+  background: #d84738;
+  box-shadow: 0 0.45cqw 0.8cqw rgba(86, 35, 24, 0.34);
+  pointer-events: none;
+}
+
 .farm-tools {
   display: grid;
   max-height: 75cqh;

@@ -154,10 +154,12 @@ export function SceneBalance({
 
 export function FarmToolBar({
   activeScene,
+  bulletinUnread,
   onOpenBulletin,
   onSelect,
 }: {
   activeScene: FarmSceneId;
+  bulletinUnread: boolean;
   onOpenBulletin: () => void;
   onSelect: (tool: FarmToolOption) => void;
 }) {
@@ -167,7 +169,7 @@ export function FarmToolBar({
   return (
     <aside className="farm-tool-menu">
       <button
-        aria-label="打开叮咚播报"
+        aria-label={bulletinUnread ? "打开叮咚播报，有新播报" : "打开叮咚播报"}
         className="farm-tool-menu__toggle"
         onClick={onOpenBulletin}
         type="button"
@@ -179,6 +181,7 @@ export function FarmToolBar({
           style={getFarmToolIconStyle(bulletinLayout)}
         />
         <span style={getFarmToolTextStyle(bulletinLayout)}>叮咚播报</span>
+        {bulletinUnread ? <i aria-hidden="true" className="farm-tool-menu__unread" /> : null}
       </button>
 
       {tools.length > 0 ? (
