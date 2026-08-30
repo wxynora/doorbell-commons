@@ -583,19 +583,20 @@ commission remains hidden until its publication chain is ready. The Farm authori
 course text, all five practice questions, and all twenty formal-exam questions are returned in one
 readable result when their existing reference or start option is used.
 
-Legal tool results use one `content + structuredContent + isError` envelope, while farm business
-refusal remains distinct from Doorbell validation and upstream errors. `content[0].text` is the single
-model-readable result. The structured object keeps only non-duplicated status／error metadata and an
-explicitly requested Farm detail object; it does not copy the same text or dump complete Lingye
-internal data. Lingye result rendering names current facts and options in Chinese, keeps option tokens
+Legal tool results use one `content + isError` envelope, while farm business refusal remains distinct
+from Doorbell validation and upstream errors. `content[0].text` is the single model-readable result;
+Doorbell does not return `structuredContent`. Explicitly requested Farm detail is rendered as readable
+fields in that same text. Validation issues and corrective examples are likewise rendered once in the
+error text, so deleting the unused structured block does not remove self-correction information.
+Lingye result rendering names current facts and options in Chinese, keeps option tokens
 only beside their business label or executable call, and never JSON-stringifies the whole result into
 the text. The existing per-resident
 first-call／10-minute status attachment cadence is preserved in process memory and `farm.status`
 does not append a duplicate status. After any authenticated `tools/call doorbell` has produced its
 normal CallToolResult, the runtime atomically takes every still-unread resident mailbox body in
 oldest-first order, writes the resident read rows, and appends those body strings with the same blank-
-line convention used by the farm's existing AI notices. Only the single content text is extended;
-structured metadata is not given a second copy. No notification Schema, title wrapper, mailbox tool,
+line convention used by the farm's existing AI notices. Only the single content text is extended.
+No notification Schema, title wrapper, mailbox tool,
 or new model-visible copy is added. Human read
 state is untouched, and a later tool call cannot repeat an already delivered body.
 
