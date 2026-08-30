@@ -10,6 +10,10 @@ import type {
 } from "@doorbell/protocol";
 import Database from "better-sqlite3";
 import { type SharedMemeBaseline, sharedMemeBaselineV1 } from "./shared-meme-baseline-import.js";
+import {
+  type SharedMemeContentRevision,
+  sharedMemeContentRevisions,
+} from "./shared-meme-usage-revision-v2.js";
 
 const SNAPSHOT_SCHEMA_VERSION = 1 as const;
 
@@ -53,6 +57,7 @@ export interface SharedMemeAddResult {
 export interface SharedMemeServiceOptions {
   databasePath: string;
   baseline?: SharedMemeBaseline;
+  contentRevisions?: readonly SharedMemeContentRevision[];
   now?: () => number;
   temporaryRoot?: string;
 }
@@ -125,10 +130,13 @@ function metadataFromRelease(row: SharedMemeReleaseRow): SharedMemeLibraryMetada
 
 export class SharedMemeService {
   readonly #database: Database.Database;
+  readonly #contentRevisions: readonly SharedMemeContentRevision[];
   readonly #now: () => number;
   readonly #temporaryRoot: string;
 
   constructor(options: SharedMemeServiceOptions) {
+    this.#contentRevisions = options.contentRevisions ?? sharedMemeContentRevisions;
+    this.#validateContentRevisions();
     if (options.databasePath !== ":memory:") {
       mkdirSync(dirname(options.databasePath), { recursive: true, mode: 0o700 });
     }
@@ -141,8 +149,14 @@ export class SharedMemeService {
     this.#database.pragma("busy_timeout = 5000");
     this.#now = options.now ?? Date.now;
     this.#temporaryRoot = options.temporaryRoot ?? tmpdir();
-    this.#initializeSchema();
-    this.#importBaseline(options.baseline ?? sharedMemeBaselineV1);
+    try {
+      this.#initializeSchema();
+      this.#importBaseline(options.baseline ?? sharedMemeBaselineV1);
+      this.#applyContentRevisions();
+    } catch (error) {
+      this.#database.close();
+      throw error;
+    }
   }
 
   close(): void {
@@ -180,6 +194,18 @@ export class SharedMemeService {
       throw new SharedMemeVersionAheadError();
     }
     const base = this.#release(afterVersion);
+    const requiresFullPull = this.#contentRevisions.some(
+      (revision) =>
+        revision.libraryVersion > afterVersion && revision.libraryVersion <= latest.library_version,
+    );
+    if (requiresFullPull) {
+      return {
+        mode: "full",
+        after_version: null,
+        library_version: latest.library_version,
+        memes,
+      };
+    }
     return {
       mode: "delta",
       after_version: afterVersion,
@@ -464,6 +490,123 @@ export class SharedMemeService {
       this.#publishSnapshot(1, baselinePublishedAt);
     });
     transaction.immediate();
+  }
+
+  #validateContentRevisions(): void {
+    const versions = new Set<number>();
+    let previousVersion = 0;
+    for (const revision of this.#contentRevisions) {
+      if (
+        !Number.isInteger(revision.baseLibraryVersion) ||
+        !Number.isInteger(revision.libraryVersion) ||
+        revision.baseLibraryVersion < 1 ||
+        revision.libraryVersion !== revision.baseLibraryVersion + 1 ||
+        revision.libraryVersion <= previousVersion ||
+        versions.has(revision.libraryVersion)
+      ) {
+        throw new Error("Shared meme content revision versions are invalid");
+      }
+      if (
+        !Number.isInteger(revision.expectedLibraryEntryCount) ||
+        revision.expectedLibraryEntryCount < 1 ||
+        !Number.isInteger(revision.expectedRevisionEntryCount) ||
+        revision.expectedRevisionEntryCount < 1 ||
+        revision.entries.length !== revision.expectedRevisionEntryCount
+      ) {
+        throw new Error(
+          `Shared meme content revision ${revision.libraryVersion} has invalid entry counts`,
+        );
+      }
+      const memeIds = new Set<number>();
+      for (const entry of revision.entries) {
+        if (
+          !Number.isInteger(entry.memeId) ||
+          entry.memeId < 1 ||
+          memeIds.has(entry.memeId) ||
+          entry.term === "" ||
+          entry.usage === "" ||
+          entry.usage === entry.expectedUsage
+        ) {
+          throw new Error(
+            `Shared meme content revision ${revision.libraryVersion} has an invalid entry`,
+          );
+        }
+        memeIds.add(entry.memeId);
+      }
+      versions.add(revision.libraryVersion);
+      previousVersion = revision.libraryVersion;
+    }
+  }
+
+  #applyContentRevisions(): void {
+    for (const revision of this.#contentRevisions) {
+      const currentVersion = this.#latestRelease().library_version;
+      if (currentVersion >= revision.libraryVersion) {
+        this.#assertContentRevisionApplied(revision);
+        continue;
+      }
+      if (currentVersion !== revision.baseLibraryVersion) {
+        throw new Error(
+          `Shared meme content revision ${revision.libraryVersion} cannot follow library version ${currentVersion}`,
+        );
+      }
+      const transaction = this.#database.transaction(() => {
+        const entryCount = (
+          this.#database.prepare("SELECT COUNT(*) AS count FROM shared_meme_entries").get() as {
+            count: number;
+          }
+        ).count;
+        if (entryCount !== revision.expectedLibraryEntryCount) {
+          throw new Error(
+            `Shared meme content revision ${revision.libraryVersion} expected ${revision.expectedLibraryEntryCount} library entries`,
+          );
+        }
+        this.#assertContentRevisionSource(revision);
+        const update = this.#database.prepare(
+          `UPDATE shared_meme_entries
+           SET usage = ?
+           WHERE meme_id = ? AND term = ? AND usage = ?`,
+        );
+        for (const entry of revision.entries) {
+          const result = update.run(entry.usage, entry.memeId, entry.term, entry.expectedUsage);
+          if (result.changes !== 1) {
+            throw new Error(
+              `Shared meme content revision ${revision.libraryVersion} could not update meme ${entry.memeId}`,
+            );
+          }
+        }
+        this.#publishSnapshot(revision.libraryVersion, new Date(this.#now()).toISOString());
+      });
+      transaction.immediate();
+    }
+  }
+
+  #assertContentRevisionSource(revision: SharedMemeContentRevision): void {
+    const read = this.#database.prepare(
+      "SELECT term, usage FROM shared_meme_entries WHERE meme_id = ?",
+    );
+    for (const entry of revision.entries) {
+      const current = read.get(entry.memeId) as { term: string; usage: string } | undefined;
+      if (!current || current.term !== entry.term || current.usage !== entry.expectedUsage) {
+        throw new Error(
+          `Shared meme content revision ${revision.libraryVersion} source mismatch for meme ${entry.memeId}`,
+        );
+      }
+    }
+  }
+
+  #assertContentRevisionApplied(revision: SharedMemeContentRevision): void {
+    const read = this.#database.prepare(
+      "SELECT term, usage FROM shared_meme_entries WHERE meme_id = ?",
+    );
+    for (const entry of revision.entries) {
+      const current = read.get(entry.memeId) as { term: string; usage: string } | undefined;
+      if (!current || current.term !== entry.term || current.usage !== entry.usage) {
+        throw new Error(
+          `Shared meme content revision ${revision.libraryVersion} is not applied for meme ${entry.memeId}`,
+        );
+      }
+    }
   }
 
   #assertNormalizedKeyAvailable(normalizedKey: string, requestedKind: "term" | "alias"): void {
