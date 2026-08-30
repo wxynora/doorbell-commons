@@ -1,4 +1,4 @@
-// approved-pwa-release:2026-08-30.1
+// approved-pwa-release:2026-08-30.2
 const CACHE_PREFIX = "doorbell-community-pwa-";
 const APP_SHELL_CACHE = `${CACHE_PREFIX}shell-v4`;
 const STATIC_CACHE = `${CACHE_PREFIX}static-v5`;
@@ -54,9 +54,8 @@ async function cacheFirstStatic(request) {
   return response;
 }
 
-async function clearOldCaches() {
+async function clearOldCaches(cacheNames) {
   const currentCaches = new Set([APP_SHELL_CACHE, STATIC_CACHE]);
-  const cacheNames = await caches.keys();
   await Promise.all(
     cacheNames
       .filter((name) => name.startsWith(CACHE_PREFIX) && !currentCaches.has(name))
@@ -64,12 +63,34 @@ async function clearOldCaches() {
   );
 }
 
+async function activateApprovedRelease() {
+  const cacheNames = await caches.keys();
+  const upgradingExistingPwa = cacheNames.some((name) => name.startsWith(CACHE_PREFIX));
+  await clearOldCaches(cacheNames);
+
+  if (upgradingExistingPwa) {
+    const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    await Promise.all(
+      windows.map(async (client) => {
+        if (typeof client.navigate !== "function") return;
+        try {
+          await client.navigate(client.url);
+        } catch {
+          // A single stale window cannot prevent the approved Worker from activating.
+        }
+      }),
+    );
+  }
+
+  await self.clients.claim();
+}
+
 self.addEventListener("install", (event) => {
   event.waitUntil(self.skipWaiting());
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(Promise.all([clearOldCaches(), self.clients.claim()]));
+  event.waitUntil(activateApprovedRelease());
 });
 
 self.addEventListener("fetch", (event) => {

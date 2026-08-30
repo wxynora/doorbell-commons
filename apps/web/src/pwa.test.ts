@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { runInNewContext } from "node:vm";
 import {
   classifyCommunityRequest,
   registerCommunityServiceWorker,
@@ -18,6 +19,66 @@ const mainSource = readFileSync(new URL("./main.tsx", import.meta.url), "utf8");
 const manifest = JSON.parse(
   readFileSync(new URL("../public/manifest.webmanifest", import.meta.url), "utf8"),
 ) as Record<string, unknown>;
+
+async function activateWorkerWithCaches(
+  cacheNames: string[],
+  options: { navigateFails?: boolean } = {},
+): Promise<string[]> {
+  const listeners = new Map<
+    string,
+    (event: { waitUntil(value: Promise<unknown>): void }) => void
+  >();
+  const calls: string[] = [];
+  runInNewContext(serviceWorkerSource, {
+    URL,
+    caches: {
+      async delete(name: string) {
+        calls.push(`delete:${name}`);
+        return true;
+      },
+      async keys() {
+        return [...cacheNames];
+      },
+    },
+    fetch: async () => {
+      throw new Error("fetch is not used by activation tests");
+    },
+    self: {
+      addEventListener(
+        type: string,
+        listener: (event: { waitUntil(value: Promise<unknown>): void }) => void,
+      ) {
+        listeners.set(type, listener);
+      },
+      clients: {
+        async claim() {
+          calls.push("claim");
+        },
+        async matchAll(input: unknown) {
+          calls.push(`match:${JSON.stringify(input)}`);
+          return [
+            {
+              url: "https://doorbellcommons.com/lingye/farm",
+              async navigate() {
+                calls.push("navigate");
+                if (options.navigateFails) throw new Error("stale client");
+              },
+            },
+          ];
+        },
+      },
+      registration: { showNotification: async () => undefined },
+      skipWaiting: async () => undefined,
+    },
+  });
+  const activate = listeners.get("activate");
+  assert.ok(activate);
+  let activation: Promise<unknown> | undefined;
+  activate({ waitUntil: (value) => (activation = value) });
+  assert.ok(activation);
+  await activation;
+  return calls;
+}
 
 function readPngDimensions(filename: string): [number, number] {
   const source = readFileSync(new URL(`../public/${filename}`, import.meta.url));
@@ -251,7 +312,7 @@ test("manifest is a Chinese standalone community entry with the existing surface
 });
 
 test("service worker restores the 04:17 bounded cache strategies", () => {
-  assert.match(serviceWorkerSource, /^\/\/ approved-pwa-release:2026-08-30\.1$/mu);
+  assert.match(serviceWorkerSource, /^\/\/ approved-pwa-release:2026-08-30\.2$/mu);
   assert.equal((serviceWorkerSource.match(/approved-pwa-release:/gu) ?? []).length, 1);
   assert.match(serviceWorkerSource, /shell-v4/);
   assert.match(serviceWorkerSource, /static-v5/);
@@ -283,5 +344,20 @@ test("service worker restores the 04:17 bounded cache strategies", () => {
   assert.match(
     serviceWorkerSource,
     /if \(isApiRequest\(url\)\) \{[\s\S]*?event\.respondWith\(fetch\(request\)\);[\s\S]*?return;/,
+  );
+});
+
+test("approved activation navigates only existing PWA clients and still claims after failure", async () => {
+  assert.deepEqual(await activateWorkerWithCaches([]), ["claim"]);
+  assert.deepEqual(await activateWorkerWithCaches(["doorbell-community-pwa-shell-v4"]), [
+    'match:{"type":"window","includeUncontrolled":true}',
+    "navigate",
+    "claim",
+  ]);
+  assert.deepEqual(
+    await activateWorkerWithCaches(["doorbell-community-pwa-static-v5"], {
+      navigateFails: true,
+    }),
+    ['match:{"type":"window","includeUncontrolled":true}', "navigate", "claim"],
   );
 });
