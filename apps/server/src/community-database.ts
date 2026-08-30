@@ -23,7 +23,7 @@ export const HUMAN_LOGIN_FAILURE_WINDOW_MS = 15 * 60 * 1000;
 export const HUMAN_LOGIN_FAILURE_THRESHOLD = 10;
 export const HUMAN_LOGIN_LOCK_DURATION_MS = 30 * 60 * 1000;
 export const FARM_PURCHASE_REQUEST_TTL_MS = 24 * 60 * 60 * 1000;
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 13;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 14;
 const LEGACY_CONNECTOR_DELIVERY_GENERATION = "00000000-0000-0000-0000-000000000000";
 
 export interface RegistrationCodeRecord {
@@ -2493,6 +2493,94 @@ export class CommunityDatabase {
         throw new Error("Community database schema v13 migration violated foreign keys");
       }
       migratedSchemaVersion = 13;
+    }
+    if (migratedSchemaVersion < 14) {
+      const reminderForeignKeys = this.#database.pragma(
+        "foreign_key_list(career_exam_reminders)",
+      ) as Array<{ from: string; table: string; to: string }>;
+      const wakeForeignKey = reminderForeignKeys.find(
+        (foreignKey) => foreignKey.from === "wake_id" && foreignKey.to === "wake_id",
+      );
+      this.#database.pragma("foreign_keys = OFF");
+      try {
+        this.#database.transaction(() => {
+          if (wakeForeignKey?.table !== "bell_wakes") {
+            this.#database.exec(`
+              DROP INDEX IF EXISTS career_exam_reminders_due;
+              DROP TABLE IF EXISTS career_exam_reminders_v14;
+              CREATE TABLE career_exam_reminders_v14 (
+                attempt_id TEXT PRIMARY KEY,
+                resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+                home_id TEXT NOT NULL REFERENCES homes(home_id) ON DELETE CASCADE,
+                scheduled_at INTEGER NOT NULL,
+                remind_at INTEGER NOT NULL CHECK (remind_at = scheduled_at - 300000),
+                status TEXT NOT NULL CHECK (status IN ('scheduled', 'delivered', 'cancelled')),
+                letter_id TEXT UNIQUE REFERENCES mailbox_letters(letter_id) ON DELETE RESTRICT,
+                wake_id TEXT UNIQUE REFERENCES bell_wakes(wake_id) ON DELETE RESTRICT,
+                created_at INTEGER NOT NULL,
+                delivered_at INTEGER,
+                cancelled_at INTEGER,
+                CHECK (
+                  (status = 'scheduled'
+                    AND letter_id IS NULL
+                    AND wake_id IS NULL
+                    AND delivered_at IS NULL
+                    AND cancelled_at IS NULL)
+                  OR (status = 'delivered'
+                    AND letter_id IS NOT NULL
+                    AND wake_id IS NOT NULL
+                    AND delivered_at IS NOT NULL
+                    AND cancelled_at IS NULL)
+                  OR (status = 'cancelled'
+                    AND letter_id IS NULL
+                    AND wake_id IS NULL
+                    AND delivered_at IS NULL
+                    AND cancelled_at IS NOT NULL)
+                )
+              );
+
+              INSERT INTO career_exam_reminders_v14 (
+                attempt_id,
+                resident_id,
+                home_id,
+                scheduled_at,
+                remind_at,
+                status,
+                letter_id,
+                wake_id,
+                created_at,
+                delivered_at,
+                cancelled_at
+              )
+              SELECT attempt_id,
+                     resident_id,
+                     home_id,
+                     scheduled_at,
+                     remind_at,
+                     status,
+                     letter_id,
+                     wake_id,
+                     created_at,
+                     delivered_at,
+                     cancelled_at
+              FROM career_exam_reminders;
+
+              DROP TABLE career_exam_reminders;
+              ALTER TABLE career_exam_reminders_v14 RENAME TO career_exam_reminders;
+              CREATE INDEX career_exam_reminders_due
+                ON career_exam_reminders (status, remind_at, attempt_id);
+            `);
+          }
+          this.#database.pragma("user_version = 14");
+        })();
+      } finally {
+        this.#database.pragma("foreign_keys = ON");
+      }
+      const foreignKeyErrors = this.#database.pragma("foreign_key_check") as unknown[];
+      if (foreignKeyErrors.length > 0) {
+        throw new Error("Community database schema v14 migration violated foreign keys");
+      }
+      migratedSchemaVersion = 14;
     }
     this.#database.transaction(() => {
       const itemColumns = this.#database.pragma(

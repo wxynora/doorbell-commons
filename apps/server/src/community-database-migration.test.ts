@@ -197,6 +197,90 @@ test("schema v12 adds isolated career job wakes without rewriting existing Bell 
   });
 });
 
+test("schema v14 repairs the exam-reminder wake foreign key and preserves scheduled reminders", () => {
+  withTemporaryDatabase((databasePath) => {
+    const current = new CommunityDatabase(databasePath);
+    const created = current.createHumanSession("10001", 1, {
+      residentName: "小机",
+      homeName: "小屋",
+      farmDoorplate: "FARM-1",
+      farmHumanKey: "private-human-key",
+    });
+    current.close();
+
+    const versionThirteen = new Database(databasePath);
+    versionThirteen.pragma("foreign_keys = OFF");
+    versionThirteen.exec(`
+      DROP INDEX career_exam_reminders_due;
+      DROP TABLE career_exam_reminders;
+      CREATE TABLE career_exam_reminders (
+        attempt_id TEXT PRIMARY KEY,
+        resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+        home_id TEXT NOT NULL REFERENCES homes(home_id) ON DELETE CASCADE,
+        scheduled_at INTEGER NOT NULL,
+        remind_at INTEGER NOT NULL CHECK (remind_at = scheduled_at - 300000),
+        status TEXT NOT NULL CHECK (status IN ('scheduled', 'delivered', 'cancelled')),
+        letter_id TEXT UNIQUE REFERENCES mailbox_letters(letter_id) ON DELETE RESTRICT,
+        wake_id TEXT UNIQUE REFERENCES bell_wakes_v6(wake_id) ON DELETE RESTRICT,
+        created_at INTEGER NOT NULL,
+        delivered_at INTEGER,
+        cancelled_at INTEGER
+      );
+      INSERT INTO career_exam_reminders VALUES (
+        'attempt-existing',
+        '${created.community.resident.residentId}',
+        '${created.community.home.homeId}',
+        1788242400000,
+        1788242100000,
+        'scheduled',
+        NULL,
+        NULL,
+        10,
+        NULL,
+        NULL
+      );
+      CREATE INDEX career_exam_reminders_due
+        ON career_exam_reminders (status, remind_at, attempt_id);
+    `);
+    versionThirteen.pragma("user_version = 13");
+    versionThirteen.close();
+
+    const migrated = new CommunityDatabase(databasePath);
+    try {
+      assert.equal(readUserVersion(databasePath), COMMUNITY_DATABASE_SCHEMA_VERSION);
+      const inspection = new Database(databasePath, { readonly: true });
+      const reminderForeignKeys = inspection.pragma(
+        "foreign_key_list(career_exam_reminders)",
+      ) as Array<{ from: string; table: string; to: string }>;
+      inspection.close();
+      assert.deepEqual(
+        reminderForeignKeys
+          .filter((foreignKey) => foreignKey.from === "wake_id")
+          .map((foreignKey) => ({
+            targetTable: foreignKey.table,
+            sourceColumn: foreignKey.from,
+            targetColumn: foreignKey.to,
+          })),
+        [{ targetTable: "bell_wakes", sourceColumn: "wake_id", targetColumn: "wake_id" }],
+      );
+      assert.equal(migrated.getCareerExamReminder("attempt-existing")?.status, "scheduled");
+      assert.equal(
+        migrated.scheduleCareerExamReminder({
+          attemptId: "attempt-new",
+          residentId: created.community.resident.residentId,
+          homeId: created.community.home.homeId,
+          scheduledAt: 1788242400000,
+          remindAt: 1788242100000,
+          createdAt: 11,
+        }).status,
+        "scheduled",
+      );
+    } finally {
+      migrated.close();
+    }
+  });
+});
+
 test("schema v0 upgrades missing identity columns in one versioned migration without data loss", () => {
   withTemporaryDatabase((databasePath) => {
     const legacyDatabase = new Database(databasePath);
@@ -325,7 +409,7 @@ test("schema v1 preserves login security state while upgrading through the curre
         migratedDatabase.pragma("user_version", { simple: true }),
         COMMUNITY_DATABASE_SCHEMA_VERSION,
       );
-      assert.equal(COMMUNITY_DATABASE_SCHEMA_VERSION, 13);
+      assert.equal(COMMUNITY_DATABASE_SCHEMA_VERSION, 14);
       assert.deepEqual(
         migratedDatabase
           .prepare("SELECT account_id, qq_number, password_credential FROM human_accounts")

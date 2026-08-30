@@ -399,6 +399,139 @@ test("course catalog renders only the career rows supplied by the courses sectio
   assert.doesNotMatch(text, /料理师|农艺师|记者|治安官/u);
 });
 
+test("question choices keep safe game literals, humanize known statuses, and hide internal tokens", () => {
+  const text = renderLingyeToolText(
+    "go.school.view",
+    { reference: "agronomist:1:3" },
+    success("已读取职业学校记录。", {
+      reference: {
+        type: "course",
+        content: {
+          title: "练习选项可见性",
+          contentMarkdown: "安全的游戏数值和状态必须完整显示。",
+          practiceQuestions: [
+            {
+              stem: "哪组数值可见？",
+              options: { A: "80", B: "20%", C: "SSR", D: "P=44" },
+            },
+            {
+              stem: "候选 structure_score 为零时如何处理？",
+              options: {
+                A: "`F-11`",
+                B: "09:00",
+                C: "completed",
+                D: "pending_review_configuration，证书继续待生效",
+              },
+            },
+            {
+              stem: "哪组内部值必须隐藏？",
+              options: {
+                A: "resident_id",
+                B: PRIVATE_UUID,
+                C: PRIVATE_HEX,
+                D: "unknownEnglishToken",
+              },
+            },
+          ],
+        },
+      },
+      options: [],
+    }),
+  );
+
+  for (const visible of [
+    "80",
+    "20%",
+    "SSR",
+    "P=44",
+    "`F-11`",
+    "09:00",
+    "已完成",
+    "结构分",
+    "等待复核配置，证书继续待生效",
+  ]) {
+    assert.match(text, new RegExp(visible.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"));
+  }
+  assert.doesNotMatch(text, /resident_id|unknownEnglishToken/u);
+  assertNoPrivateLeak(text);
+});
+
+test("exam registration result says success, frozen fee, and the complete Beijing session", () => {
+  const scheduledAt = Date.parse("2026-09-01T14:00:00+08:00");
+  const text = renderLingyeToolText(
+    "go.school.choose",
+    { option: "opt_IIIIIIIIIIII" },
+    success("职业学校业务已办理。", {
+      result: {
+        attemptId: PRIVATE_UUID,
+        paperId: PRIVATE_UUID,
+        reservationId: PRIVATE_UUID,
+        feeGold: 60_000,
+        scheduledAt,
+      },
+      current: {
+        careers: [{ career: "agronomist" }],
+        courses: [],
+        exams: [
+          {
+            attemptId: PRIVATE_UUID,
+            career: "agronomist",
+            qualificationLevel: 1,
+            registrationStatus: "registered",
+            scheduledAt,
+          },
+        ],
+        certificates: [],
+        employment: { records: [], duties: [] },
+        options: [],
+      },
+    }),
+  );
+
+  assert.match(text, /资格考试报名成功：已冻结报名费 60,000 金币/u);
+  assert.match(text, /2026\/09\/01 14:00/u);
+  assert.match(text, /2026\/09\/01 16:00/u);
+  assertNoPrivateLeak(text);
+});
+
+test("formal written paper renders all twenty questions and all eighty choices", () => {
+  const text = renderLingyeToolText(
+    "go.school.choose",
+    { option: "opt_JJJJJJJJJJJJ" },
+    success("资格考试已经开始。", {
+      result: {
+        questions: Array.from({ length: 20 }, (_, index) => ({
+          id: `private-${index + 1}`,
+          stem: `资格考试第 ${index + 1} 题`,
+          options:
+            index === 0
+              ? { A: "80", B: "20%", C: "SSR", D: "P=44" }
+              : { A: "选项甲", B: "选项乙", C: "选项丙", D: "选项丁" },
+        })),
+      },
+      current: {
+        careers: [{ career: "chef" }],
+        courses: [],
+        exams: [{ career: "chef", qualificationLevel: 1, registrationStatus: "active" }],
+        certificates: [],
+        employment: { records: [], duties: [] },
+        options: [
+          {
+            option: "opt_KKKKKKKKKKKK",
+            label: "提交整份资格考试答案",
+            requires: ["answers"],
+          },
+        ],
+      },
+    }),
+  );
+
+  assert.equal(text.match(/^\d+\. /gmu)?.length, 20);
+  assert.equal(text.match(/^ {3}[ABCD]\. /gmu)?.length, 80);
+  assert.match(text, /20\. 资格考试第 20 题/u);
+  assertNoPrivateLeak(text);
+});
+
 test("unknown player-world enums never fall back to snake case", () => {
   const text = renderLingyeToolText(
     "go.hospital.commission",

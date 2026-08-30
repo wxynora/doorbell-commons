@@ -629,11 +629,19 @@ export class DoorbellMcpRuntime {
           registered.operation.op === "go.school.view" ||
           registered.operation.op === "go.school.choose"
         ) {
-          this.#careerExamReminders?.reconcile({
-            residentId: context.residentId,
-            homeId: context.homeId,
-            result,
-          });
+          try {
+            this.#careerExamReminders?.reconcile({
+              residentId: context.residentId,
+              homeId: context.homeId,
+              result,
+            });
+          } catch (error) {
+            try {
+              this.#onNotificationDeliveryError(error);
+            } catch {
+              // Exam-reminder scheduling cannot overturn the authoritative school result.
+            }
+          }
         }
         return lingyeToolResult(op, parsed.data, result);
       } catch (error) {

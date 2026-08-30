@@ -6,6 +6,9 @@ import { dirname, resolve } from "node:path";
 
 const CAREERS = new Set(["chef", "agronomist", "veterinarian", "reporter", "constable"]);
 const ANSWERS = new Set(["A", "B", "C", "D"]);
+const SAFE_PUBLIC_OPTION_PATTERN =
+  /^(?:\d+(?:\.\d+)?%?|N|R|SR|SSR|SP|[BPS]=\d+(?:\.\d+)?|`[A-Z]-\d{2}`|\d{2}:\d{2})$/u;
+const INTERNAL_TOKEN_PATTERN = /\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/u;
 
 function fail(message) {
   throw new Error(`Private career exam bank rejected: ${message}`);
@@ -29,6 +32,24 @@ function nonEmptyString(value, label) {
   if (typeof value !== "string" || value.trim().length === 0) fail(`${label} is invalid`);
 }
 
+function modelVisibleStem(value, label) {
+  nonEmptyString(value, label);
+  if (!/\p{Script=Han}/u.test(value) || INTERNAL_TOKEN_PATTERN.test(value)) {
+    fail(`${label} is not model-visible player text`);
+  }
+}
+
+function modelVisibleOption(value, label) {
+  nonEmptyString(value, label);
+  const text = value.trim();
+  if (
+    INTERNAL_TOKEN_PATTERN.test(text) ||
+    (!/\p{Script=Han}/u.test(text) && !SAFE_PUBLIC_OPTION_PATTERN.test(text))
+  ) {
+    fail(`${label} is not model-visible player text`);
+  }
+}
+
 function examKey(career, level) {
   return `${career}:${String(level)}`;
 }
@@ -36,11 +57,15 @@ function examKey(career, level) {
 function validateStaticQuestion(question, label) {
   exactKeys(question, ["id", "stem", "options", "answer", "explanation"], label);
   nonEmptyString(question.id, `${label}.id`);
-  nonEmptyString(question.stem, `${label}.stem`);
+  modelVisibleStem(question.stem, `${label}.stem`);
   nonEmptyString(question.explanation, `${label}.explanation`);
   exactKeys(question.options, ["A", "B", "C", "D"], `${label}.options`);
-  for (const answer of ANSWERS)
-    nonEmptyString(question.options[answer], `${label}.options.${answer}`);
+  const optionValues = [];
+  for (const answer of ANSWERS) {
+    modelVisibleOption(question.options[answer], `${label}.options.${answer}`);
+    optionValues.push(question.options[answer].trim().normalize("NFKC"));
+  }
+  if (new Set(optionValues).size !== ANSWERS.size) fail(`${label}.options duplicates`);
   if (
     !Array.isArray(question.answer) ||
     question.answer.length < 1 ||
@@ -61,8 +86,11 @@ function validateRecipeQuestion(question, label) {
   );
   if (question.type !== "existing_recipe_ingredients") fail(`${label}.type is invalid`);
   nonEmptyString(question.id, `${label}.id`);
-  nonEmptyString(question.stemTemplate, `${label}.stemTemplate`);
-  nonEmptyString(question.explanationTemplate, `${label}.explanationTemplate`);
+  modelVisibleStem(question.stemTemplate.replaceAll("{recipe}", "料理"), `${label}.stemTemplate`);
+  modelVisibleStem(
+    question.explanationTemplate.replaceAll("{recipe}", "料理").replaceAll("{ingredients}", "食材"),
+    `${label}.explanationTemplate`,
+  );
   nonEmptyString(question.optionSeparator, `${label}.optionSeparator`);
   if (
     !question.stemTemplate.includes("{recipe}") ||
@@ -147,7 +175,9 @@ export function validatePrivateExamBank(bank, curriculum) {
 
   const required = publicReadyLevels(curriculum);
   const missing = [...required].filter((key) => !bankLevels.has(key));
+  const unexpected = [...bankLevels].filter((key) => !required.has(key));
   if (missing.length > 0) fail(`ready exams are missing: ${missing.join(",")}`);
+  if (unexpected.length > 0) fail(`private exams are not publicly ready: ${unexpected.join(",")}`);
   return { bankVersion: bank.version, examCount: bank.exams.length, readyExamCount: required.size };
 }
 

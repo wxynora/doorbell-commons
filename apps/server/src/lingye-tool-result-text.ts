@@ -168,6 +168,55 @@ function safeChineseText(value: unknown): string | undefined {
   return text;
 }
 
+const SAFE_QUESTION_LITERAL =
+  /^(?:\d+(?:\.\d+)?%?|N|R|SR|SSR|SP|[BPS]=\d+(?:\.\d+)?|`[A-Z]-\d{2}`|\d{2}:\d{2})$/u;
+const QUESTION_TEXT_REPLACEMENTS = [
+  ["`resident_id`", "居民"],
+  ["pending_review_configuration", "等待复核配置"],
+  ["pending_public_notice", "等待公示"],
+  ["voluntary_mediation", "自愿调解"],
+  ["property_confiscated", "已没收财产"],
+  ["rules_explained", "规则说明"],
+  ["detention_started", "开始关押"],
+  ["forced_transfer", "强制转账"],
+  ["fine_collected", "已收取罚款"],
+  ["labor_assigned", "已安排劳动"],
+  ["forced_refund", "强制退款"],
+  ["review_upheld", "复核维持"],
+  ["jail_release", "解除关押"],
+  ["asset_seized", "已扣押资产"],
+  ["bank_notice", "银行通知"],
+  ["nutrient_imbalance", "营养失衡"],
+  ["root_damage", "根部受损"],
+  ["structure_score", "结构分"],
+  ["culinary_base", "食材底子系数"],
+  ["plot_pest", "地块虫害"],
+  ["local_pest", "局部虫害"],
+  ["humanKey", "人类访问密钥"],
+  ["revoked", "已撤销"],
+] as const;
+
+function humanizeQuestionText(value: string): string {
+  return QUESTION_TEXT_REPLACEMENTS.reduce(
+    (text, [internal, playerText]) => text.replaceAll(internal, playerText),
+    value,
+  );
+}
+
+function safeQuestionStemText(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  return safeChineseText(humanizeQuestionText(value.trim()));
+}
+
+function safeQuestionChoiceText(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const raw = value.trim();
+  const text = STATUS_NAMES[raw] ?? humanizeQuestionText(raw);
+  const chinese = safeChineseText(text);
+  if (chinese) return chinese;
+  return SAFE_QUESTION_LITERAL.test(text) ? text : undefined;
+}
+
 function resultMessage(value: unknown, fallback: string): string {
   return safeChineseText(value) ?? fallback;
 }
@@ -291,13 +340,13 @@ function renderQuestions(value: unknown): string[] {
   const lines: string[] = [];
   for (const [index, question] of value.entries()) {
     if (!isRecord(question)) continue;
-    const stem = safeChineseText(question.stem);
+    const stem = safeQuestionStemText(question.stem);
     if (!stem) continue;
     lines.push(`${index + 1}. ${stem}`);
     const choices = isRecord(question.options) ? question.options : undefined;
     if (!choices) continue;
     for (const key of ["A", "B", "C", "D"]) {
-      const answer = safeChineseText(choices[key]);
+      const answer = safeQuestionChoiceText(choices[key]);
       if (answer) lines.push(`   ${key}. ${answer}`);
     }
   }
@@ -473,6 +522,34 @@ function renderExamSchedule(value: unknown): string[] {
   ];
 }
 
+function renderSchoolActionResult(value: unknown): string[] {
+  if (!isRecord(value)) return [];
+  const scheduledAt = finiteNumber(value.scheduledAt);
+  const feeGold = finiteNumber(value.feeGold);
+  if (scheduledAt !== undefined && feeGold !== undefined) {
+    return [
+      `资格考试报名成功：已冻结报名费 ${numberText(feeGold)} 金币。`,
+      `本场考试：${dateText(scheduledAt)} 至 ${dateText(scheduledAt + 2 * 60 * 60 * 1_000)}（北京时间）。`,
+    ];
+  }
+  if (value.contentRead === true && finiteNumber(value.courseIndex) !== undefined) {
+    return ["课程阅读已确认：现在可以一次提交完整 5 题。"];
+  }
+  const correctAnswers = finiteNumber(value.correctAnswers);
+  if (correctAnswers !== undefined && typeof value.passed === "boolean") {
+    return [
+      `课程练习：答对 ${numberText(correctAnswers)}/5；${value.passed ? "已通过" : "尚未通过，可以重新作答"}。`,
+    ];
+  }
+  if (value.contentRead === false && value.completed === false) {
+    return ["课程报名成功：学费已结算，正文和完整 5 题已经交付。"];
+  }
+  if (finiteNumber(value.trackOrder) !== undefined) {
+    return [`职业选择成功：已进入${careerText(value.career)}职业轨道。`];
+  }
+  return [];
+}
+
 function renderCertificates(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   const certificates = records(value);
@@ -615,6 +692,7 @@ function schoolText(op: string, result: LingyeSuccess): string {
   const data = result.data;
   const lines = ["🏫 铃野职业学校", resultMessage(result.text, "已读取铃野职业学校当前事实。")];
   if (op === "go.school.view") lines.push(...renderExamSchedule(data.examSchedule));
+  if (op === "go.school.choose") lines.push(...renderSchoolActionResult(data.result));
   const reference = isRecord(data.reference) ? data.reference : undefined;
   if (reference) lines.push(...renderCourseContent(reference), ...renderSchoolReference(reference));
   lines.push(...renderCurrentCourses(data.currentCourses));

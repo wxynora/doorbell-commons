@@ -165,7 +165,7 @@ interface RuntimeHarness {
 
 function openRuntimeHarness(
   databasePath: string,
-  options: { lingyeNotificationFailure?: Error } = {},
+  options: { lingyeNotificationFailure?: Error; careerExamReminderFailure?: Error } = {},
 ): RuntimeHarness {
   const database = new CommunityDatabase(databasePath);
   const membership = new FakeGroupMembership();
@@ -213,7 +213,10 @@ function openRuntimeHarness(
     farmActions,
     lingyeActions,
     careerExamReminders: {
-      reconcile: (input) => careerExamReconciliations.push(structuredClone(input)),
+      reconcile: (input) => {
+        careerExamReconciliations.push(structuredClone(input));
+        if (options.careerExamReminderFailure) throw options.careerExamReminderFailure;
+      },
     },
     mcpEndpoint: "https://doorbell.example/mcp",
     now: () => now.value,
@@ -1652,6 +1655,61 @@ test("career notification delivery failure cannot overturn a completed Lingye ac
     assert.match(completed.json().result.content[0].text, /委托回复已记录/u);
     assert.equal(completed.json().result.content[0].text.includes('\\"'), false);
     assert.equal(harness.lingyeActions.calls.length, 1);
+    assert.deepEqual(harness.notificationErrors, [failure]);
+  } finally {
+    await harness.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("exam reminder scheduling failure cannot disguise a successful registration as failed", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "doorbell-exam-reminder-fail-soft-"));
+  const failure = new Error("simulated exam reminder scheduling failure");
+  const harness = openRuntimeHarness(join(directory, "doorbell.sqlite"), {
+    careerExamReminderFailure: failure,
+  });
+  const scheduledAt = Date.parse("2026-09-01T14:00:00+08:00");
+  try {
+    harness.lingyeActions.nextResult = {
+      ok: true,
+      text: "职业学校业务已办理。",
+      data: {
+        result: {
+          attemptId: "exam-attempt",
+          paperId: "exam-paper",
+          reservationId: "exam-reservation",
+          feeGold: 60_000,
+          scheduledAt,
+        },
+        current: {
+          careers: [{ career: "agronomist" }],
+          courses: [],
+          exams: [
+            {
+              attemptId: "exam-attempt",
+              career: "agronomist",
+              qualificationLevel: 1,
+              registrationStatus: "registered",
+              scheduledAt,
+            },
+          ],
+          certificates: [],
+          employment: { records: [], duties: [] },
+          options: [],
+        },
+      },
+    };
+
+    const completed = await postMcp(
+      harness,
+      call("go.school.choose", { option: "returned-option" }),
+    );
+    assert.equal(completed.statusCode, 200);
+    assert.equal(completed.json().result.isError, false);
+    assert.match(completed.json().result.content[0].text, /资格考试报名成功/u);
+    assert.match(completed.json().result.content[0].text, /60,000 金币/u);
+    assert.equal(harness.lingyeActions.calls.length, 1);
+    assert.equal(harness.careerExamReconciliations.length, 1);
     assert.deepEqual(harness.notificationErrors, [failure]);
   } finally {
     await harness.close();
