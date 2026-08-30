@@ -1,5 +1,24 @@
 export interface QqGroupMembershipReader {
-  isCurrentMember(groupId: string, qqNumber: string): Promise<boolean>;
+  isCurrentMember(
+    groupId: string,
+    qqNumber: string,
+    options?: QqGroupMembershipCheckOptions,
+  ): Promise<boolean>;
+}
+
+export interface QqGroupMembershipCheckOptions {
+  allowPersistedSnapshot?: boolean;
+}
+
+export interface QqGroupMemberSnapshotStore {
+  replaceQqGroupMemberSnapshot(
+    groupId: string,
+    memberIds: readonly string[],
+    capturedAt: number,
+  ): void;
+  getQqGroupMemberSnapshot(
+    groupId: string,
+  ): { groupId: string; memberIds: string[]; capturedAt: number } | undefined;
 }
 
 export class OneBotUnavailableError extends Error {
@@ -13,7 +32,9 @@ interface OneBotGroupMembershipClientOptions {
   apiBaseUrl: string;
   apiToken: string;
   fetchImplementation?: typeof fetch;
+  now?: () => number;
   requestTimeoutMs: number;
+  snapshotStore: QqGroupMemberSnapshotStore;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -29,7 +50,9 @@ export class OneBotGroupMembershipClient implements QqGroupMembershipReader {
   readonly #apiBaseUrl: string;
   readonly #apiToken: string;
   readonly #fetch: typeof fetch;
+  readonly #now: () => number;
   readonly #requestTimeoutMs: number;
+  readonly #snapshotStore: QqGroupMemberSnapshotStore;
 
   constructor(options: OneBotGroupMembershipClientOptions) {
     if (!Number.isSafeInteger(options.requestTimeoutMs) || options.requestTimeoutMs <= 0) {
@@ -38,10 +61,44 @@ export class OneBotGroupMembershipClient implements QqGroupMembershipReader {
     this.#apiBaseUrl = options.apiBaseUrl;
     this.#apiToken = options.apiToken;
     this.#fetch = options.fetchImplementation ?? fetch;
+    this.#now = options.now ?? Date.now;
     this.#requestTimeoutMs = options.requestTimeoutMs;
+    this.#snapshotStore = options.snapshotStore;
   }
 
-  async isCurrentMember(groupId: string, qqNumber: string): Promise<boolean> {
+  async isCurrentMember(
+    groupId: string,
+    qqNumber: string,
+    options: QqGroupMembershipCheckOptions = {},
+  ): Promise<boolean> {
+    let memberIds: string[];
+    try {
+      memberIds = await this.#readCurrentMemberIds(groupId);
+    } catch (error) {
+      if (options.allowPersistedSnapshot === false) throw error;
+      let snapshot: ReturnType<QqGroupMemberSnapshotStore["getQqGroupMemberSnapshot"]>;
+      try {
+        snapshot = this.#snapshotStore.getQqGroupMemberSnapshot(groupId);
+      } catch (snapshotError) {
+        throw new OneBotUnavailableError("Persisted QQ group member snapshot could not be read", {
+          cause: snapshotError,
+        });
+      }
+      if (snapshot) return snapshot.memberIds.includes(qqNumber);
+      throw error;
+    }
+
+    try {
+      this.#snapshotStore.replaceQqGroupMemberSnapshot(groupId, memberIds, this.#now());
+    } catch (error) {
+      throw new OneBotUnavailableError("Current QQ group member snapshot could not be persisted", {
+        cause: error,
+      });
+    }
+    return memberIds.includes(qqNumber);
+  }
+
+  async #readCurrentMemberIds(groupId: string): Promise<string[]> {
     let response: Response;
 
     try {
@@ -92,9 +149,11 @@ export class OneBotGroupMembershipClient implements QqGroupMembershipReader {
     });
 
     if (memberIds.length === 0) {
-      throw new OneBotUnavailableError("OneBot returned an empty member list for the community group");
+      throw new OneBotUnavailableError(
+        "OneBot returned an empty member list for the community group",
+      );
     }
 
-    return memberIds.includes(qqNumber);
+    return memberIds;
   }
 }

@@ -368,7 +368,11 @@ export class RegistrationAuthService {
     if (!this.#database.isCurrentRegistrationCode(input.registrationCode, now)) {
       throw new InvalidRegistrationCodeError();
     }
-    if (!(await this.#groupMembership.isCurrentMember(this.#groupId, input.qqNumber))) {
+    if (
+      !(await this.#groupMembership.isCurrentMember(this.#groupId, input.qqNumber, {
+        allowPersistedSnapshot: false,
+      }))
+    ) {
       this.#revokeMembershipByQq(input.qqNumber, now);
       throw new QqNotGroupMemberError();
     }

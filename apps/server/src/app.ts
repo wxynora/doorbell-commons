@@ -2188,6 +2188,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       isCurrentMember = await options.groupMembership.isCurrentMember(
         options.groupId,
         parsedRequest.data.qq_number,
+        { allowPersistedSnapshot: false },
       );
     } catch (error) {
       if (!(error instanceof OneBotUnavailableError)) {

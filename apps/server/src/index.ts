@@ -53,6 +53,7 @@ const groupMembership = new OneBotGroupMembershipClient({
   apiBaseUrl: serverConfig.oneBotApiBaseUrl,
   apiToken: serverConfig.oneBotApiToken,
   requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+  snapshotStore: database,
 });
 const farmDirectory = new FarmDirectoryClient({
   apiBaseUrl: serverConfig.farmApiBaseUrl,

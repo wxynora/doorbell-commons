@@ -152,6 +152,7 @@ function buildEligibilityApp(fakeOneBot: FakeOneBot, requestTimeoutMs = 1_000) {
     apiBaseUrl: fakeOneBot.baseUrl,
     apiToken: "local-test-token",
     requestTimeoutMs,
+    snapshotStore: database,
   });
   const eligibilityApp = buildApp({
     groupId: COMMUNITY_QQ_GROUP_ID,

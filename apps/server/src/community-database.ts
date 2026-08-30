@@ -23,13 +23,19 @@ export const HUMAN_LOGIN_FAILURE_WINDOW_MS = 15 * 60 * 1000;
 export const HUMAN_LOGIN_FAILURE_THRESHOLD = 10;
 export const HUMAN_LOGIN_LOCK_DURATION_MS = 30 * 60 * 1000;
 export const FARM_PURCHASE_REQUEST_TTL_MS = 24 * 60 * 60 * 1000;
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 14;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 15;
 const LEGACY_CONNECTOR_DELIVERY_GENERATION = "00000000-0000-0000-0000-000000000000";
 
 export interface RegistrationCodeRecord {
   code: string;
   generatedAt: number;
   expiresAt: number;
+}
+
+export interface QqGroupMemberSnapshotRecord {
+  groupId: string;
+  memberIds: string[];
+  capturedAt: number;
 }
 
 export interface HumanAccountRecord {
@@ -1113,6 +1119,13 @@ export class CommunityDatabase {
         membership_status TEXT NOT NULL CHECK (membership_status IN ('active', 'inactive')),
         membership_checked_at INTEGER NOT NULL,
         membership_inactive_at INTEGER
+      );
+
+      CREATE TABLE IF NOT EXISTS qq_group_member_snapshots (
+        group_id TEXT NOT NULL,
+        qq_number TEXT NOT NULL,
+        captured_at INTEGER NOT NULL,
+        PRIMARY KEY (group_id, qq_number)
       );
 
       CREATE TABLE IF NOT EXISTS human_sessions (
@@ -2585,6 +2598,20 @@ export class CommunityDatabase {
         throw new Error("Community database schema v14 migration violated foreign keys");
       }
       migratedSchemaVersion = 14;
+    }
+    if (migratedSchemaVersion < 15) {
+      this.#database.transaction(() => {
+        this.#database.exec(`
+          CREATE TABLE IF NOT EXISTS qq_group_member_snapshots (
+            group_id TEXT NOT NULL,
+            qq_number TEXT NOT NULL,
+            captured_at INTEGER NOT NULL,
+            PRIMARY KEY (group_id, qq_number)
+          );
+        `);
+        this.#database.pragma("user_version = 15");
+      })();
+      migratedSchemaVersion = 15;
     }
     this.#database.transaction(() => {
       const itemColumns = this.#database.pragma(
@@ -5752,6 +5779,55 @@ export class CommunityDatabase {
       )
       .run(now, hashSessionToken(token));
     return result.changes === 1;
+  }
+
+  replaceQqGroupMemberSnapshot(
+    groupId: string,
+    memberIds: readonly string[],
+    capturedAt: number,
+  ): void {
+    const normalizedGroupId = groupId.trim();
+    const normalizedMemberIds = [...new Set(memberIds.map((memberId) => memberId.trim()))].sort();
+    if (normalizedGroupId.length === 0) {
+      throw new TypeError("QQ group snapshot groupId must not be empty");
+    }
+    if (normalizedMemberIds.length === 0 || normalizedMemberIds.some((memberId) => !memberId)) {
+      throw new TypeError("QQ group snapshot must contain only non-empty member IDs");
+    }
+    if (!Number.isSafeInteger(capturedAt) || capturedAt < 0) {
+      throw new TypeError("QQ group snapshot capturedAt must be a non-negative safe integer");
+    }
+
+    const replace = this.#database.transaction(() => {
+      this.#database
+        .prepare("DELETE FROM qq_group_member_snapshots WHERE group_id = ?")
+        .run(normalizedGroupId);
+      const insert = this.#database.prepare(
+        `INSERT INTO qq_group_member_snapshots (group_id, qq_number, captured_at)
+         VALUES (?, ?, ?)`,
+      );
+      for (const memberId of normalizedMemberIds) {
+        insert.run(normalizedGroupId, memberId, capturedAt);
+      }
+    });
+    replace.immediate();
+  }
+
+  getQqGroupMemberSnapshot(groupId: string): QqGroupMemberSnapshotRecord | undefined {
+    const rows = this.#database
+      .prepare(
+        `SELECT qq_number, captured_at
+         FROM qq_group_member_snapshots
+         WHERE group_id = ?
+         ORDER BY qq_number ASC`,
+      )
+      .all(groupId) as Array<{ qq_number: string; captured_at: number }>;
+    if (rows.length === 0) return undefined;
+    return {
+      groupId,
+      memberIds: rows.map((row) => row.qq_number),
+      capturedAt: rows[0]?.captured_at ?? 0,
+    };
   }
 
   confirmHumanAccountMembership(accountId: string, now: number): void {

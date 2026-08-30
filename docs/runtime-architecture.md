@@ -426,13 +426,20 @@ boundary is deliberately limited:
   `onebot_unavailable`, never non-membership;
 - the complete returned member list is structurally validated before membership is decided, so a
   malformed entry before or after the target has the same unavailable result;
+- a structurally valid but empty successful member list is also unavailable and cannot replace the
+  last successful member snapshot;
 - the service does not call `send_private_msg`, `send_group_msg`, `send_msg`, message-history actions,
   or any other QQ write operation;
 - there is no challenge, verification phrase, QQ ownership proof, resident, home, or MCP
   creation in this route;
-- Doorbell sets no member-list or retry limit. The current list returned by OneBot is the only
-  upstream membership evidence used for the request. The request uses the explicitly configured
-  upstream deadline and maps an abort to `onebot_unavailable`.
+- Doorbell sets no member-list or retry limit. Each complete, non-empty, structurally valid list
+  atomically replaces one SQLite-backed snapshot for the configured group. Existing accounts and
+  resident-bound MCP／Bell checks use that last successful snapshot when OneBot is unavailable,
+  including across Doorbell restarts. Empty or malformed results never replace it; the next valid
+  list replaces the whole set and can therefore confirm a real departure. The public eligibility
+  route and first-registration completion disable snapshot fallback and still require a live valid
+  list. The request uses the explicitly configured upstream deadline and maps an abort without a
+  permitted snapshot fallback to `onebot_unavailable`.
 
 Human registration/login uses these routes:
 

@@ -252,7 +252,11 @@ import {
 } from "./farm-settings-action-client.js";
 import { MailboxService } from "./mailbox-service.js";
 import { createHumanPasswordCredential, verifyHumanPassword } from "./password-auth.js";
-import { OneBotUnavailableError, type QqGroupMembershipReader } from "./qq-group-membership.js";
+import {
+  OneBotUnavailableError,
+  type QqGroupMembershipCheckOptions,
+  type QqGroupMembershipReader,
+} from "./qq-group-membership.js";
 import { InvalidRegistrationCodeError, RegistrationAuthService } from "./registration-auth.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -939,10 +943,16 @@ const FARM_RANCH_COLLECTION_RESULT = {
 class FakeGroupMembership implements QqGroupMembershipReader {
   readonly members = new Set<string>();
   readonly calls: Array<{ groupId: string; qqNumber: string }> = [];
+  readonly options: QqGroupMembershipCheckOptions[] = [];
   unavailable = false;
 
-  async isCurrentMember(groupId: string, qqNumber: string): Promise<boolean> {
+  async isCurrentMember(
+    groupId: string,
+    qqNumber: string,
+    options: QqGroupMembershipCheckOptions = {},
+  ): Promise<boolean> {
     this.calls.push({ groupId, qqNumber });
+    this.options.push(options);
     if (this.unavailable) {
       throw new OneBotUnavailableError("fake OneBot unavailable");
     }
@@ -1811,6 +1821,7 @@ test("current code and current group member create an account and opaque browser
     assert.deepEqual(harness.membership.calls, [
       { groupId: COMMUNITY_QQ_GROUP_ID, qqNumber: QQ_NUMBER },
     ]);
+    assert.deepEqual(harness.membership.options, [{ allowPersistedSnapshot: false }]);
 
     const setCookie = first.headers["set-cookie"];
     assert.ok(typeof setCookie === "string");

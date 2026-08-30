@@ -409,7 +409,7 @@ test("schema v1 preserves login security state while upgrading through the curre
         migratedDatabase.pragma("user_version", { simple: true }),
         COMMUNITY_DATABASE_SCHEMA_VERSION,
       );
-      assert.equal(COMMUNITY_DATABASE_SCHEMA_VERSION, 14);
+      assert.equal(COMMUNITY_DATABASE_SCHEMA_VERSION, 15);
       assert.deepEqual(
         migratedDatabase
           .prepare("SELECT account_id, qq_number, password_credential FROM human_accounts")
