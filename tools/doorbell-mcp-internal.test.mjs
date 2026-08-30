@@ -272,6 +272,30 @@ test("Doorbell migration revokes legacy agent access durably and internal execut
   assert.equal(renamed.text.includes(originalToken), false);
   assert.equal(renamed.text.includes(HUMAN_A), false);
 
+  const visitList = await requestJson(baseUrl, executionPath, {
+    farm_human_key: HUMAN_A,
+    expected_farm_doorplate: FARM_A,
+    action: "visit",
+    params: {},
+  });
+  assert.equal(visitList.response.status, 200);
+  const visitListBody = JSON.parse(visitList.text);
+  assert.deepEqual(Object.keys(visitListBody).sort(), ["ok", "text"]);
+  assert.equal(visitListBody.ok, true);
+  assert.match(visitListBody.text, /可以串门的农场/);
+
+  const detailedVisitList = await requestJson(baseUrl, executionPath, {
+    farm_human_key: HUMAN_A,
+    expected_farm_doorplate: FARM_A,
+    action: "visit",
+    params: {},
+    detail: true,
+  });
+  assert.equal(detailedVisitList.response.status, 200);
+  const detailedVisitListBody = JSON.parse(detailedVisitList.text);
+  assert.deepEqual(Object.keys(detailedVisitListBody).sort(), ["farm", "ok", "text"]);
+  assert.equal("farms" in detailedVisitListBody, false);
+
   const messaged = await requestJson(baseUrl, executionPath, {
     farm_human_key: HUMAN_A,
     expected_farm_doorplate: FARM_A,

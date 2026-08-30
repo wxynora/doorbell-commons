@@ -222,7 +222,12 @@ export async function handleDoorbellFarmExecution(req, res, method, executeFarmA
         if (!legacyAgentAccessRevoked(binding.farm))
             return internalServiceError(res, 409, "farm_migration_required", "Legacy farm access must be revoked before Doorbell execution is enabled");
         const out = executeFarmAction(binding.farm, body.action, body.params, body.detail === true, Date.now());
-        return jsonOut(res, out.status, out.json);
+        const publicResult = {
+            ok: out.json?.ok === true,
+            text: typeof out.json?.text === "string" ? out.json.text : "农场没有返回可读取的结果。",
+            ...(body.detail === true && isPlainObject(out.json?.farm) ? { farm: out.json.farm } : {}),
+        };
+        return jsonOut(res, out.status, publicResult);
     }
     catch (error) {
         if (error instanceof PublicSyncError)
