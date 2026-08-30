@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useState } from "react";
 import type { BoundFarmCatalogRead } from "../../../auth/farm-catalog-client";
 import {
   type FarmSettingsActionInput,
@@ -31,13 +31,6 @@ function shouldRetryFarmSettingsAction(issue: FarmSettingsActionIssue): boolean 
   );
 }
 
-function fitWelcomeMessageHeight(textarea: HTMLTextAreaElement): void {
-  if (textarea.clientWidth <= 0) return;
-  textarea.style.height = "auto";
-  const borderBoxHeight = Math.max(0, textarea.offsetHeight - textarea.clientHeight);
-  textarea.style.height = `${textarea.scrollHeight + borderBoxHeight}px`;
-}
-
 export function FarmSettingsPanelContent({
   availableTitles = [],
   baseline,
@@ -56,44 +49,8 @@ export function FarmSettingsPanelContent({
   onSave?: FarmSettingsActionExecutor | undefined;
 }) {
   const [actionState, setActionState] = useState<FarmSettingsActionState>({ stage: "idle" });
-  const welcomeMessageRef = useRef<HTMLTextAreaElement>(null);
   const busy = actionState.stage === "submitting";
   const liveEditable = editable && Boolean(onSave && catalogRevision);
-
-  useLayoutEffect(() => {
-    const textarea = welcomeMessageRef.current;
-    if (!textarea || textarea.value !== draft.welcomeMessage) return;
-    fitWelcomeMessageHeight(textarea);
-  }, [draft.welcomeMessage]);
-
-  useEffect(() => {
-    const resize = () => {
-      const textarea = welcomeMessageRef.current;
-      if (textarea) fitWelcomeMessageHeight(textarea);
-    };
-    const textarea = welcomeMessageRef.current;
-    let observedWidth = textarea?.clientWidth ?? 0;
-    const observer =
-      textarea && typeof ResizeObserver !== "undefined"
-        ? new ResizeObserver(([entry]) => {
-            const width = entry?.contentRect.width ?? 0;
-            if (width <= 0 || width === observedWidth) return;
-            observedWidth = width;
-            fitWelcomeMessageHeight(textarea);
-          })
-        : null;
-    if (textarea && observer) observer.observe(textarea);
-    window.addEventListener("resize", resize);
-    let active = true;
-    void document.fonts?.ready.then(() => {
-      if (active) resize();
-    });
-    return () => {
-      active = false;
-      observer?.disconnect();
-      window.removeEventListener("resize", resize);
-    };
-  }, []);
 
   const submitSetting = async (
     field: FarmSettingsActionInput["field"],
@@ -245,19 +202,22 @@ export function FarmSettingsPanelContent({
       <div className="farm-settings__item farm-settings__item--welcome">
         <label htmlFor="welcome-message">欢迎语</label>
         <div className="farm-settings__control">
-          <textarea
-            disabled={!editable || busy}
-            id="welcome-message"
-            maxLength={60}
-            name="welcome-message"
-            onChange={(event) => {
-              fitWelcomeMessageHeight(event.currentTarget);
-              onChange({ ...draft, welcomeMessage: event.currentTarget.value });
-            }}
-            ref={welcomeMessageRef}
-            rows={2}
-            value={draft.welcomeMessage}
-          />
+          <div
+            className="farm-settings__welcome-field"
+            data-replicated-value={draft.welcomeMessage}
+          >
+            <textarea
+              disabled={!editable || busy}
+              id="welcome-message"
+              maxLength={60}
+              name="welcome-message"
+              onChange={(event) =>
+                onChange({ ...draft, welcomeMessage: event.currentTarget.value })
+              }
+              rows={2}
+              value={draft.welcomeMessage}
+            />
+          </div>
           {onSave ? (
             <button
               className="farm-settings__save"

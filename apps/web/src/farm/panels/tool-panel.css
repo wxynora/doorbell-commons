@@ -611,6 +611,33 @@
   resize: none;
 }
 
+.farm-settings__welcome-field {
+  display: grid;
+  min-width: 0;
+}
+
+.farm-settings__welcome-field::after {
+  content: attr(data-replicated-value) " ";
+  grid-area: 1 / 1;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 15cqw;
+  padding: 1.1cqw 1.8cqw;
+  font: inherit;
+  font-weight: 800;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.farm-settings__welcome-field > textarea {
+  grid-area: 1 / 1;
+  height: 100%;
+}
+
 .farm-settings__save,
 .farm-settings__status button {
   min-width: 10cqw;

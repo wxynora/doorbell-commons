@@ -25,8 +25,19 @@ test("ranch backpack combines stored and currently worn authoritative accessorie
   assert.doesNotMatch(backpack, /当前没有真实配饰/);
 });
 
-test("welcome message grows to its scroll height and keeps following settings below it", () => {
-  assert.match(settings, /useLayoutEffect\(\(\) => \{[\s\S]*?style\.height = "auto"[\s\S]*?scrollHeight/);
-  assert.match(settings, /ref=\{welcomeMessageRef\}/);
-  assert.match(styles, /\.farm-settings__item textarea\s*\{[^}]*overflow-y:\s*hidden/s);
+test("welcome message uses an intrinsic grid mirror so following settings stay in flow", () => {
+  assert.match(
+    settings,
+    /className="farm-settings__welcome-field"[\s\S]*?data-replicated-value=\{draft\.welcomeMessage\}[\s\S]*?<textarea/,
+  );
+  assert.doesNotMatch(settings, /scrollHeight|ResizeObserver|useLayoutEffect|welcomeMessageRef/);
+  assert.match(styles, /\.farm-settings__welcome-field\s*\{[^}]*display:\s*grid/s);
+  assert.match(
+    styles,
+    /\.farm-settings__welcome-field::after\s*\{[^}]*content:\s*attr\(data-replicated-value\) " "[^}]*grid-area:\s*1 \/ 1[^}]*white-space:\s*pre-wrap/s,
+  );
+  assert.match(
+    styles,
+    /\.farm-settings__welcome-field > textarea\s*\{[^}]*grid-area:\s*1 \/ 1[^}]*height:\s*100%/s,
+  );
 });
