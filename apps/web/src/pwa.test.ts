@@ -30,18 +30,9 @@ test("community request classification keeps API authority outside Cache Storage
   assert.equal(classifyCommunityRequest("/api/farm/field?refresh=1"), "api-network-only");
   assert.equal(classifyCommunityRequest("/lingye/farm", "navigate"), "navigation-network-first");
   assert.equal(classifyCommunityRequest("/assets/index-AbCd1234.js"), "hashed-static-cache-first");
-  assert.equal(
-    classifyCommunityRequest("/assets/field-background-CSRs5hGr.png"),
-    "hashed-static-cache-first",
-  );
-  assert.equal(
-    classifyCommunityRequest("/assets/ranch-rain-DzCaMAu7.webp"),
-    "hashed-static-cache-first",
-  );
-  assert.equal(
-    classifyCommunityRequest("/assets/zcool-kuaile-regular-XyZp1234.woff2"),
-    "hashed-static-cache-first",
-  );
+  assert.equal(classifyCommunityRequest("/assets/field-background-CSRs5hGr.png"), "network-only");
+  assert.equal(classifyCommunityRequest("/assets/ranch-rain-DzCaMAu7.webp"), "network-only");
+  assert.equal(classifyCommunityRequest("/assets/zcool-kuaile-regular-XyZp1234.woff2"), "network-only");
   assert.equal(classifyCommunityRequest("/community-icon.v2-192.png"), "hashed-static-cache-first");
   assert.equal(
     classifyCommunityRequest("/community-icon.v2-512-maskable.png"),
@@ -256,30 +247,19 @@ test("manifest is a Chinese standalone community entry with the existing surface
   );
 });
 
-test("service worker has bounded strategies without precaching or background writes", () => {
-  assert.match(serviceWorkerSource, /shell-v3/);
-  assert.match(serviceWorkerSource, /static-v4/);
-  assert.doesNotMatch(serviceWorkerSource, /shell-v1|shell-v2|static-v1|static-v2|static-v3/);
+test("service worker restores the 04:17 bounded cache strategies", () => {
+  assert.match(serviceWorkerSource, /shell-v4/);
+  assert.match(serviceWorkerSource, /static-v5/);
+  assert.doesNotMatch(
+    serviceWorkerSource,
+    /shell-v1|shell-v2|shell-v3|static-v1|static-v2|static-v3|static-v4/,
+  );
   assert.match(serviceWorkerSource, /request\.mode === "navigate"/);
   assert.match(serviceWorkerSource, /event\.respondWith\(fetch\(request\)\)/);
   assert.match(serviceWorkerSource, /cacheFirstStatic/);
-  assert.match(serviceWorkerSource, /hasExpectedHashedAssetContentType/);
-  assert.match(
-    serviceWorkerSource,
-    /endsWith\("\.js"\)[\s\S]*?contentType\.includes\("javascript"\)/,
-  );
-  assert.match(
-    serviceWorkerSource,
-    /endsWith\("\.css"\)[\s\S]*?contentType\.includes\("text\/css"\)/,
-  );
-  assert.match(serviceWorkerSource, /contentType\.startsWith\("image\/"\)/);
-  assert.match(serviceWorkerSource, /contentType\.startsWith\("font\/"\)/);
-  assert.match(
-    serviceWorkerSource,
-    /response\.ok && hasExpectedHashedAssetContentType\(url, response\)/,
-  );
   assert.match(serviceWorkerSource, /APP_SHELL_CACHE/);
   assert.match(serviceWorkerSource, /cache\.match\("\/"\)/);
+  assert.doesNotMatch(serviceWorkerSource, /hasExpectedHashedAssetContentType/);
   assert.match(serviceWorkerSource, /name\.startsWith\(CACHE_PREFIX\)/);
   const installBlock = serviceWorkerSource.slice(
     serviceWorkerSource.indexOf('addEventListener("install"'),

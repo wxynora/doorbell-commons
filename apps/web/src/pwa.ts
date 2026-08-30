@@ -2,8 +2,7 @@ export const COMMUNITY_SERVICE_WORKER_URL = "/service-worker.js";
 export const COMMUNITY_MANIFEST_URL = "/manifest.webmanifest?v=2";
 
 const COMMUNITY_ORIGIN = "https://doorbell.invalid";
-const VITE_HASHED_ASSET_RE =
-  /\/[^/]+-[a-z0-9_-]{8,}\.(?:avif|css|gif|jpe?g|js|png|svg|ttf|webp|woff2?)$/i;
+const VITE_HASHED_ASSET_RE = /\/[^/]+-[a-z0-9_-]{8,}\.(?:js|css)$/i;
 const PUBLIC_ASSET_RE = /\.(?:avif|css|gif|jpe?g|png|svg|ttf|webmanifest|webp|woff2?)$/i;
 const PUBLIC_VERSION_MARKER_RE = /(?:^|[._-])(?:v\d+|[a-f0-9]{8,})(?:[._-]|$)/i;
 
