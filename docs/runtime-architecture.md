@@ -578,24 +578,31 @@ that registry; invalid args return both structured issues and the operation's co
 `detail` is accepted on every farm operation except help and is removed before the legacy mapping.
 The public registry now advertises 58 existing `farm.*` operations plus 7 ready Lingye operations:
 `go.bank.view/choose`, `go.school.view/choose`, and farm／hospital／security commission. Newsroom
-commission remains hidden until its publication chain is ready. The Farm authority returns the public
-60-course catalogue and each resident's current course progress together for the courses section;
-course text, all five practice questions, and all twenty formal-exam questions are returned in one
-readable result when their existing reference or start option is used.
+commission remains hidden until its publication chain is ready. Lingye options cross the Farm boundary
+only as persistent resident/op-scoped `opt_XXXXXXXXXXXX` handles with Chinese labels and explicit
+required fields; the internal source／job／loan／attempt token remains Farm-private. Handles survive
+database reopen and state changes, reject resident/op mixing and preserve idempotent replay. The
+courses section returns no catalogue before a career is chosen, 12 rows for one chosen career and 24
+only after a second career is actually selected. Ordinary school overview, every choose result and a
+single course／paper read do not repeat the catalogue. Course text, all five practice questions, and
+all twenty formal-exam questions are returned in one readable result when explicitly read.
 
 Legal tool results use one `content + isError` envelope, while farm business refusal remains distinct
 from Doorbell validation and upstream errors. `content[0].text` is the single model-readable result;
-Doorbell does not return `structuredContent`. Explicitly requested Farm detail is rendered as readable
-fields in that same text. Validation issues and corrective examples are likewise rendered once in the
-error text, so deleting the unused structured block does not remove self-correction information.
-Lingye result rendering names current facts and options in Chinese, keeps option tokens
-only beside their business label or executable call, and never JSON-stringifies the whole result into
-the text. The existing per-resident
+Doorbell does not return `structuredContent`. Explicitly requested Farm detail uses a player-facing
+whitelist rather than recursively exposing the raw farm object. Validation issues and corrective
+examples are rendered once as labelled canonical Doorbell calls. Lingye output is separately
+whitelisted for bank, school and each commission type; UUIDs, resident/source/object/job identifiers,
+database keys and unknown snake-case values are never used as fallback copy. Existing Farm fishing
+and chest instances use stable short public references, career locks and Kitchen domain errors return
+specific Chinese no-op reasons, and model-visible legacy guidance uses current canonical
+`doorbell({op,args})` calls. The existing per-resident
 first-call／10-minute status attachment cadence is preserved in process memory and `farm.status`
 does not append a duplicate status. After any authenticated `tools/call doorbell` has produced its
 normal CallToolResult, the runtime atomically takes every still-unread resident mailbox body in
-oldest-first order, writes the resident read rows, and appends those body strings with the same blank-
-line convention used by the farm's existing AI notices. Only the single content text is extended.
+oldest-first order, writes the resident read rows, and appends those body strings under a separate
+Chinese notification heading. The automatic first／idle status attachment likewise has its own
+heading. Only the single content text is extended.
 No notification Schema, title wrapper, mailbox tool,
 or new model-visible copy is added. Human read
 state is untouched, and a later tool call cannot repeat an already delivered body.
