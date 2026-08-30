@@ -1202,6 +1202,7 @@ export type CandidateTwoAction =
     }
   | { type: "profile-add" }
   | { type: "profile-switch"; profileId: string }
+  | { type: "mcp-access-open" }
   | {
       type: "notification-preference-save";
       field:
@@ -1275,6 +1276,7 @@ const candidateTwoActionKeys = {
   "home-settings-save": ["type", "field", "value"],
   "profile-add": ["type"],
   "profile-switch": ["type", "profileId"],
+  "mcp-access-open": ["type"],
   "notification-preference-save": ["type", "field", "value"],
   "shared-data-preference-save": ["type", "field", "value"],
   "browser-notification-preference-save": ["type", "field", "value"],
@@ -1412,6 +1414,10 @@ export function parseCandidateTwoAction(value: unknown): CandidateTwoAction | nu
 
   if (type === "profile-switch") {
     return typeof value.profileId === "string" ? { type, profileId: value.profileId } : null;
+  }
+
+  if (type === "mcp-access-open") {
+    return { type };
   }
 
   if (type === "notification-preference-save") {
@@ -2031,6 +2037,7 @@ const SETTINGS_SCREEN = `
                 <div class="candidate2-settings-status-grid">
                     <div><i class="settings-wake-dot"></i><span>唤醒桥「铃」</span><strong class="settings-wake-state">正在读取</strong><small>与普通消息连接分开</small></div>
                 </div>
+                <button id="settings-mcp-access-open" class="candidate2-settings-add-meme" type="button">管理 MCP 连接</button>
             </section>
 
             <section class="candidate2-settings-section">
@@ -8447,6 +8454,7 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     const settingsProfilesSection = document.querySelector('.candidate2-settings-profiles');
     const settingsProfileSelect = document.querySelector('.settings-profile-select');
     const settingsAddProfileButton = document.getElementById('settings-add-profile');
+    const settingsMcpAccessOpenButton = document.getElementById('settings-mcp-access-open');
     const sharedMemesOpenButton = document.getElementById('settings-shared-memes-open');
     const sharedMemeAddFromSettingsButton = document.getElementById('settings-shared-meme-add');
     const sharedMemesBackButton = document.getElementById('shared-memes-back');
@@ -10256,6 +10264,13 @@ const CANDIDATE_RUNTIME_SCRIPT = `
             return;
         }
         sendAction({ type: 'profile-add' });
+    });
+    settingsMcpAccessOpenButton.addEventListener('click', () => {
+        if (window.__doorbellCandidateDemo) {
+            showCandidateNotice('演示模式不会读取真实 MCP 连接');
+            return;
+        }
+        sendAction({ type: 'mcp-access-open' });
     });
 
     farmLookupButton.addEventListener('click', () => {

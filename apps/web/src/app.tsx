@@ -811,6 +811,13 @@ function LiveApp() {
         return;
       }
 
+      if (action.type === "mcp-access-open") {
+        if (appState.stage === "authenticated") {
+          setShowMcpAfterPermit(true);
+        }
+        return;
+      }
+
       if (action.type === "profile-switch") {
         if (
           appState.stage !== "authenticated" ||
@@ -822,6 +829,7 @@ function LiveApp() {
         ) {
           return;
         }
+        setShowMcpAfterPermit(false);
         lingyeControllersRef.current.glimmer?.abort();
         lingyeControllersRef.current.memorial?.abort();
         lingyeControllersRef.current.together?.abort();
@@ -1193,7 +1201,7 @@ function LiveApp() {
             <AdditionalProfileForm
               onCancel={() => setAppState(authenticatedState(appState.identity))}
               onCreated={(identity) => {
-                setShowMcpAfterPermit(false);
+                setShowMcpAfterPermit(true);
                 setAppState({ stage: "issuing-permit", identity });
               }}
             />
