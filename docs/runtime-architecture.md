@@ -576,25 +576,27 @@ co-locates the approved concise description, full strict Zod args Schema, correc
 unique legacy `runFarm` mapping. `farm.help` renders a compact index or one operation's detail from
 that registry; invalid args return both structured issues and the operation's correct examples.
 `detail` is accepted on every farm operation except help and is removed before the legacy mapping.
-The eight approved Lingye `go.*` contract definitions remain separate from this public registry. The
-farm-side internal candidate has the public 60-course catalogue, frozen content delivery, progressive
-P3 field／animal facts, authority-selected hospital／security assignments, persistent cross-store
-recovery, day-boundary advancement, health gates, paid agronomy transfer recovery, and the confirmed
-system-NPC fallback for agronomy and hospital cases. Public formal-exam answers have been removed and
-formal exams require a deployment-side private versioned bank; no such production bank is configured.
-Reporter publication／review, every remaining real source and end-state, and the approved model-visible
-copy are not all closed, so the runtime still advertises and dispatches only the 58 ready `farm.*`
-operations. The internal Lingye boundary is not reachable through `tools/list` or `tools/call` until the
-same readiness gate is deliberately changed with full closure tests.
+The public registry now advertises 58 existing `farm.*` operations plus 7 ready Lingye operations:
+`go.bank.view/choose`, `go.school.view/choose`, and farm／hospital／security commission. Newsroom
+commission remains hidden until its publication chain is ready. The Farm authority returns the public
+60-course catalogue and each resident's current course progress together for the courses section;
+course text, all five practice questions, and all twenty formal-exam questions are returned in one
+readable result when their existing reference or start option is used.
+
 Legal tool results use one `content + structuredContent + isError` envelope, while farm business
-refusal remains distinct from Doorbell validation and upstream errors. The existing per-resident
+refusal remains distinct from Doorbell validation and upstream errors. `content[0].text` is the single
+model-readable result. The structured object keeps only non-duplicated status／error metadata and an
+explicitly requested Farm detail object; it does not copy the same text or dump complete Lingye
+internal data. Lingye result rendering names current facts and options in Chinese, keeps option tokens
+only beside their business label or executable call, and never JSON-stringifies the whole result into
+the text. The existing per-resident
 first-call／10-minute status attachment cadence is preserved in process memory and `farm.status`
 does not append a duplicate status. After any authenticated `tools/call doorbell` has produced its
 normal CallToolResult, the runtime atomically takes every still-unread resident mailbox body in
 oldest-first order, writes the resident read rows, and appends those body strings with the same blank-
-line convention used by the farm's existing AI notices. The result keeps the one existing envelope:
-`content` and the existing structured success text or error message receive the same combined text;
-no notification Schema, title wrapper, mailbox tool, or new model-visible copy is added. Human read
+line convention used by the farm's existing AI notices. Only the single content text is extended;
+structured metadata is not given a second copy. No notification Schema, title wrapper, mailbox tool,
+or new model-visible copy is added. Human read
 state is untouched, and a later tool call cannot repeat an already delivered body.
 
 This implementation is deployed to the existing VPS. The isolated 8092 test farm completed one
@@ -607,8 +609,10 @@ Farm commit `35a95d17944b4796175e0b88a11494ec41de4fe1` has also published the fa
 welcome-reward, migration, and controlled-action boundaries to the 8091 production runtime. A new
 root-only service credential is loaded identically by 8091 and Doorbell; the community farm API base
 is `http://127.0.0.1:8091/` and the Human UI base is the public `/farm/` path. An authenticated empty
-internal request reaches validation as `400 invalid_request`, while MCP readiness remains closed.
-No player operation or real migration was used for the cutover. The boundaries do not change farm settlement, saves, human `/ui`,
+internal request reaches validation as `400 invalid_request`.
+The production readiness gate is now open for registered households, and current `dbm_` calls use the
+same authenticated 8091 boundary. No player operation was invoked while publishing the result-format
+repair. The boundaries do not change farm settlement, saves, human `/ui`,
 doorplate, humanKey, or master token.
 
 ## Unified mailbox foundation
