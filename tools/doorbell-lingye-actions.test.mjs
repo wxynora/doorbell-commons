@@ -562,6 +562,12 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
 
     const schoolBefore = execute(executor, "go.school.view", {});
     assert.equal(schoolBefore.ok, true);
+    assert.deepEqual(schoolBefore.data.examSchedule, {
+        timeZone: "Asia/Shanghai",
+        weekdays: [2, 4, 6],
+        startHour: 14,
+        durationMinutes: 120,
+    });
     assert.deepEqual(schoolBefore.data.courses, []);
     assert.deepEqual(schoolBefore.data.exams, []);
     assert.deepEqual(schoolBefore.data.contentSources, {
@@ -574,6 +580,7 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
         entry.label === "选择职业：记者"), true);
     const courseSection = execute(executor, "go.school.view", { section: "courses" });
     assert.equal(courseSection.ok, true);
+    assert.deepEqual(courseSection.data.examSchedule, schoolBefore.data.examSchedule);
     assert.deepEqual(courseSection.data.value.progress, []);
     assert.deepEqual(courseSection.data.value.catalog, []);
     const agronomistOption = optionWithLabel(schoolBefore.data.options, "选择职业：农艺师");
@@ -648,6 +655,7 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
         const reference = `agronomist:1:${courseIndex}`;
         const courseView = execute(executor, "go.school.view", { reference });
         assert.equal(courseView.ok, true);
+        assert.deepEqual(courseView.data.examSchedule, schoolBefore.data.examSchedule);
         assert.equal(Object.hasOwn(courseView.data, "courseCatalog"), false);
         assert.equal(courseView.data.reference.content.practiceQuestions.length, 5);
         assert.deepEqual(Object.keys(courseView.data.reference.content.practiceQuestions[0]).sort(), [

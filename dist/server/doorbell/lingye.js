@@ -35,7 +35,12 @@ import {
     openLingyeWorldDatabase,
     runLingyeWorldTransaction,
 } from "../../lingye-world-database.js";
-import { isBeijingExamSessionOpen } from "../../career/persistence.js";
+import {
+    BEIJING_EXAM_WEEKDAYS,
+    EXAM_SESSION_DURATION_MS,
+    EXAM_SESSION_START_HOUR,
+    isBeijingExamSessionOpen,
+} from "../../career/persistence.js";
 import { MAX_BODY_BYTES } from "../../config.js";
 import { PublicSyncError } from "../../public-sync.js";
 import { natureRuntimeReadiness } from "../../nature-runtime.js";
@@ -965,6 +970,12 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
         courses,
         exams,
         certificates,
+        examSchedule: {
+            timeZone: "Asia/Shanghai",
+            weekdays: [...BEIJING_EXAM_WEEKDAYS],
+            startHour: EXAM_SESSION_START_HOUR,
+            durationMinutes: EXAM_SESSION_DURATION_MS / (60 * 1_000),
+        },
         employment: { records: employment, duties },
         interviews: constable.interviews,
         publicNotices: constable.publicNotices,
@@ -1052,6 +1063,7 @@ function schoolView(database, backend, residentId, now, args) {
         return success("已读取职业学校记录。", {
             reference,
             options: refreshed.options,
+            examSchedule: refreshed.examSchedule,
         });
     }
     const section = args.section ?? null;
@@ -1071,7 +1083,14 @@ function schoolView(database, backend, residentId, now, args) {
             : facts[section];
     return success("已读取职业学校当前事实。", section === null
         ? { ...facts, currentCourses }
-        : { section, value, options: facts.options, contentSources: facts.contentSources, currentCourses });
+        : {
+            section,
+            value,
+            options: facts.options,
+            contentSources: facts.contentSources,
+            currentCourses,
+            examSchedule: facts.examSchedule,
+        });
 }
 
 function schoolChoose(database, backend, residentId, now, args) {

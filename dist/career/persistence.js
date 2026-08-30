@@ -225,11 +225,12 @@ export function addBeijingDays(date, days) {
     const midnight = Date.parse(`${date}T00:00:00+08:00`);
     return beijingDate(midnight + days * DAY_MS);
 }
-const BEIJING_EXAM_WEEKDAYS = new Set([2, 4, 6]);
+export const BEIJING_EXAM_WEEKDAYS = Object.freeze([2, 4, 6]);
+const BEIJING_EXAM_WEEKDAY_SET = new Set(BEIJING_EXAM_WEEKDAYS);
 export const EXAM_SESSION_START_HOUR = 14;
 export const EXAM_SESSION_DURATION_MS = 2 * 60 * 60 * 1_000;
 export function isBeijingExamDay(timestamp) {
-    return BEIJING_EXAM_WEEKDAYS.has(new Date(timestamp + BEIJING_OFFSET_MS).getUTCDay());
+    return BEIJING_EXAM_WEEKDAY_SET.has(new Date(timestamp + BEIJING_OFFSET_MS).getUTCDay());
 }
 export function isBeijingExamSessionOpen(now, scheduledAt) {
     return (isBeijingExamDay(scheduledAt) &&
