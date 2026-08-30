@@ -186,7 +186,11 @@ The public generator also requires the complete structured readiness manifest at
 readiness are separate fields rather than inferred prose. Course enrolment now freezes the content
 snapshot, practice paper, and one bank version in `lingye-world.sqlite`, and content reading creates a
 stable delivery id that the later read confirmation must return. A constable written pass schedules the
-next Beijing 20:00 interview instead of leaving the attempt without a next state. Formal written exams use
+next Beijing 20:00 interview instead of leaving the attempt without a next state. A paid but incomplete
+course is resumable from the ordinary school read boundary: Farm replays its frozen content and complete
+five-question practice paper, creates a missing delivery id when recovering an older paid enrollment, and
+returns the current read-confirmation or practice option without another economy command.
+Formal written exams use
 fixed Beijing sessions: registration selects the next Tuesday, Thursday, or Saturday at 14:00, and the paper
 can be opened and submitted only from 14:00 through 16:00 for that assigned session. At 16:00, any still
 registered or active attempt is lazily finalized as a missed session at the authoritative deadline. An unstarted
