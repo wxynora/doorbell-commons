@@ -749,16 +749,30 @@ export const doorbellToolDefinition = {
 const FARM_HELP_HEADER =
   "Doorbell 当前开放的农场操作如下。每次只选择一个完整 op，并只填写该 op 列出的 args。身份由连接绑定；跨农场操作只有在说明要求时才填写公开门牌 to。";
 
+function renderHelpValue(value: unknown): string {
+  if (typeof value === "string") return `“${value.replaceAll("“", "").replaceAll("”", "")}”`;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return `[${value.map(renderHelpValue).join("，")}]`;
+  if (value && typeof value === "object") {
+    return `{ ${Object.entries(value)
+      .map(([key, entry]) => `${key}: ${renderHelpValue(entry)}`)
+      .join("，")} }`;
+  }
+  return "无";
+}
+
+function renderHelpExample(example: DoorbellCallExample): string {
+  return `规范调用：doorbell({ op: “${example.op}”，args: ${renderHelpValue(example.args)} })`;
+}
+
 export function renderFarmHelp(operationName?: string): string {
   if (operationName) {
     const operation = farmOperationByName.get(operationName);
     if (!operation) {
       throw new Error(`Unknown farm help operation: ${operationName}`);
     }
-    const examples = operation.examples
-      .map((example) => `doorbell(${JSON.stringify(example)})`)
-      .join("\n");
-    return `${FARM_HELP_HEADER}\n\n${operation.op}\n${operation.description}\nargs ${operation.argsHint}\n${examples}`;
+    const examples = operation.examples.map(renderHelpExample).join("\n");
+    return `${FARM_HELP_HEADER}\n\n${operation.op}\n${operation.description}\n参数要求：${operation.argsHint}\n${examples}`;
   }
   const lines = farmOperations.map(
     (operation) => `${operation.op.slice("farm.".length)} — ${operation.description}`,

@@ -49,6 +49,23 @@ const MCP_CREDENTIAL = `dbm_${"A".repeat(43)}`;
 const MIGRATION_ID = "10000000-0000-4000-8000-000000000001";
 const CONFIRMATION_ID = "20000000-0000-4000-8000-000000000001";
 const CREDENTIAL_ID = "30000000-0000-4000-8000-000000000001";
+const MODEL_PRIVATE_FIELD =
+  /residentId|sourceId|objectId|ownerId|jobId|loanId|depositId|attemptId|reservationId|employmentId|dutyId|interviewId|noticeId|paperId|contentDeliveryId|journalId|tradeId|actionKey|idempotency|notification_id/iu;
+const MODEL_UUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/iu;
+const MODEL_LONG_HEX = /\b[0-9a-f]{64}\b/iu;
+const MODEL_SNAKE_CASE = /\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/u;
+
+function assertModelTextHasNoPrivateLeak(text: string, label: string): void {
+  assert.doesNotMatch(text, MODEL_PRIVATE_FIELD, label);
+  assert.doesNotMatch(text, MODEL_UUID, label);
+  assert.doesNotMatch(text, MODEL_LONG_HEX, label);
+  assert.doesNotMatch(text, /\\"|\{\s*"/u, label);
+  assert.doesNotMatch(
+    text.replaceAll(/opt_[A-Za-z0-9_-]{12}/gu, "短办理编号"),
+    MODEL_SNAKE_CASE,
+    label,
+  );
+}
 
 class FakeGroupMembership implements QqGroupMembershipReader {
   readonly members = new Set<string>();
@@ -126,7 +143,7 @@ class FakeLingyeActions implements LingyeMcpActionExecutor {
       this.nextResult = undefined;
       return result;
     }
-    return { ok: true as const, text: `${input.op} OK`, data: { options: [] } };
+    return { ok: true as const, text: "铃野业务已办理。", data: { options: [] } };
   }
 }
 
@@ -1010,7 +1027,7 @@ test("MCP calls validate strict args, self-correct, preserve status cadence, and
     assert.equal(firstResult.isError, false);
     assert.equal(
       firstResult.content[0].text,
-      `visit OK\n\nFARM STATUS\n\n农场详情：\nid：${FARM_DOORPLATE}`,
+      `visit OK\n\n【农场近况】\nFARM STATUS\n\n【农场公开详情】\n公开农场：门牌 ${FARM_DOORPLATE}。`,
     );
     assert.equal("structuredContent" in firstResult, false);
     assert.deepEqual(harness.farmActions.calls, [
@@ -1040,7 +1057,7 @@ test("MCP calls validate strict args, self-correct, preserve status cadence, and
     assert.match(invalidResult.content[0].text, /需要修正：/u);
     assert.match(
       invalidResult.content[0].text,
-      /doorbell\(\{"op":"farm\.visit","args":\{"to":"6"\}\}\)/u,
+      /规范调用示例.*\n- doorbell\(\{ op: “farm\.visit”，args: \{ to: “6” \} \}\)/u,
     );
     assert.equal(invalidResult.content[0].text.includes('\\"'), false);
     assert.equal("structuredContent" in invalidResult, false);
@@ -1068,7 +1085,7 @@ test("MCP calls validate strict args, self-correct, preserve status cadence, and
       call("farm.kitchen.cook", { items: ["egg", "tomato"] }),
     );
     assert.equal(methodlessCook.json().result.isError, true);
-    assert.match(methodlessCook.json().result.content[0].text, /可参考：/u);
+    assert.match(methodlessCook.json().result.content[0].text, /规范调用示例/u);
     assert.equal(harness.farmActions.calls.length, farmCallsBeforeMethodlessCook);
 
     const toolPurchase = await postMcp(
@@ -1112,7 +1129,7 @@ test("MCP calls validate strict args, self-correct, preserve status cadence, and
 
     harness.now.value += 10 * 60 * 1000;
     const afterIdle = await postMcp(harness, call("farm.water", {}));
-    assert.equal(afterIdle.json().result.content[0].text, "water OK\n\nFARM STATUS");
+    assert.equal(afterIdle.json().result.content[0].text, "water OK\n\n【农场近况】\nFARM STATUS");
 
     harness.farmActions.nextResult = { ok: false, text: "没有成熟作物" };
     const rejected = await postMcp(harness, call("farm.harvest", {}));
@@ -1140,8 +1157,20 @@ test("MCP calls validate strict args, self-correct, preserve status cadence, and
       text: "已读取职业学校当前事实。",
       data: {
         section: "courses",
-        value: [{ career: "chef", qualificationLevel: 1, courseIndex: 1 }],
-        options: [{ option: "school:course-read:1:chef:1:1:course-v1" }],
+        value: {
+          catalog: [
+            {
+              career: "chef",
+              qualificationLevel: 1,
+              courseIndex: 1,
+              title: "料理基础",
+              tuitionGold: 30_000,
+              contentAvailable: true,
+            },
+          ],
+          progress: [{ career: "chef", qualificationLevel: 1, courseIndex: 1 }],
+        },
+        options: [{ option: "opt_ABCDabcd1234", label: "确认已阅读料理基础", requires: [] }],
       },
     };
     const schoolView = await postMcp(harness, call("go.school.view", { section: "courses" }));
@@ -1150,7 +1179,7 @@ test("MCP calls validate strict args, self-correct, preserve status cadence, and
     assert.match(schoolViewResult.content[0].text, /^🏫 铃野职业学校/u);
     assert.match(schoolViewResult.content[0].text, /课程进度/u);
     assert.match(schoolViewResult.content[0].text, /料理师/u);
-    assert.match(schoolViewResult.content[0].text, /school:course-read:1:chef:1:1:course-v1/u);
+    assert.match(schoolViewResult.content[0].text, /办理编号：opt_ABCDabcd1234/u);
     assert.equal(schoolViewResult.content[0].text.includes('\\"'), false);
     assert.equal("structuredContent" in schoolViewResult, false);
 
@@ -1163,7 +1192,7 @@ test("MCP calls validate strict args, self-correct, preserve status cadence, and
       }),
     );
     assert.equal(invalidSchool.json().result.isError, true);
-    assert.match(invalidSchool.json().result.content[0].text, /可参考：/u);
+    assert.match(invalidSchool.json().result.content[0].text, /规范调用示例/u);
     assert.match(invalidSchool.json().result.content[0].text, /go\.school\.choose/u);
     assert.equal("structuredContent" in invalidSchool.json().result, false);
     assert.equal(harness.lingyeActions.calls.length, lingyeCallsBeforeInvalidSchool);
@@ -1186,7 +1215,7 @@ test("MCP calls validate strict args, self-correct, preserve status cadence, and
       homeId: harness.homeId,
       result: {
         ok: true,
-        text: "go.school.choose OK",
+        text: "铃野业务已办理。",
         data: { options: [] },
       },
     });
@@ -1280,13 +1309,173 @@ test("all 65 model-visible operations return one readable text without structure
         ? farmOperationByName.get(op)?.examples[0]?.args
         : modelVisibleLingyeOperationByName.get(op)?.examples[0]?.args;
       assert.ok(args, op);
+      if (op.startsWith("farm.") && op !== "farm.help") {
+        harness.farmActions.nextResult = { ok: true, text: "农场业务已办理。" };
+      }
       const response = await postMcp(harness, call(op, args));
       const result = response.json().result;
       assert.equal(result.isError, false, op);
       assert.equal(result.content.length, 1, op);
       assert.equal(typeof result.content[0].text, "string", op);
       assert.ok(result.content[0].text.length > 0, op);
-      assert.equal(result.content[0].text.includes('\\"'), false, op);
+      assert.match(result.content[0].text, /\p{Script=Han}/u, op);
+      assertModelTextHasNoPrivateLeak(result.content[0].text, op);
+      assert.equal("structuredContent" in result, false, op);
+    }
+  } finally {
+    await harness.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("all seven public Lingye operations keep private records out of direct MCP text", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "doorbell-mcp-lingye-human-text-"));
+  const harness = openRuntimeHarness(join(directory, "doorbell.sqlite"));
+  const privateUuid = "019ffc05-49cd-7020-84af-3d04fb1ed03d";
+  const privateHex = "a".repeat(64);
+  try {
+    const fixtures: Record<string, Record<string, unknown>> = {
+      "go.bank.view": {
+        account: {
+          availableGold: 12_000,
+          demandGold: 500,
+          termGold: 0,
+          availableSilver: 90,
+          agentSpendableSilver: 80,
+          silverAgentLock: 10,
+        },
+        deposits: { demandGold: 500, termDeposits: [] },
+        exchange: {
+          goldPerSilver: 500,
+          residentRemainingThisMonth: 900,
+          globalRemainingThisMonth: 8_000,
+        },
+        loans: { playerLoans: [], systemLoans: [] },
+        credit: { creditPoints: 3, highSpendRestricted: false },
+        residentId: privateUuid,
+        options: [{ option: "opt_AAAAAAAAAAAA", label: "存入金币活期", requires: ["amount"] }],
+      },
+      "go.bank.choose": {
+        result: { journalId: privateUuid, actionKey: privateHex },
+        current: {
+          account: {
+            availableGold: 11_500,
+            demandGold: 1_000,
+            termGold: 0,
+            availableSilver: 90,
+            agentSpendableSilver: 80,
+            silverAgentLock: 10,
+          },
+          credit: { creditPoints: 3, highSpendRestricted: false },
+          options: [],
+        },
+      },
+      "go.school.view": {
+        section: "courses",
+        value: {
+          catalog: [
+            {
+              career: "veterinarian",
+              qualificationLevel: 1,
+              courseIndex: 1,
+              title: "动物病例识别",
+              tuitionGold: 30_000,
+              contentAvailable: true,
+            },
+          ],
+          progress: [],
+        },
+        contentSources: { internal_source: privateUuid },
+        options: [{ option: "opt_BBBBBBBBBBBB", label: "报名动物病例识别", requires: [] }],
+      },
+      "go.school.choose": {
+        result: {
+          attemptId: privateUuid,
+          questions: Array.from({ length: 20 }, (_, index) => ({
+            id: `private-${index + 1}`,
+            stem: `资格考试第 ${index + 1} 题`,
+            options: { A: "甲项", B: "乙项", C: "丙项", D: "丁项" },
+          })),
+        },
+        current: {
+          careers: [{ career: "veterinarian" }],
+          courses: [],
+          exams: [],
+          certificates: [],
+          employment: { records: [], duties: [] },
+          courseCatalog: [{ career: "chef", title: "不应重复出现的料理目录" }],
+          options: [
+            { option: "opt_CCCCCCCCCCCC", label: "提交整份资格考试答案", requires: ["answers"] },
+          ],
+        },
+      },
+      "go.farm.commission": {
+        jobs: [
+          {
+            jobId: privateUuid,
+            ownerResidentId: privateUuid,
+            difficultyLevel: 1,
+            status: "available",
+            sourceFacts: {
+              sourceId: privateUuid,
+              initialFact: {
+                farmDoorplate: "A1024",
+                plotId: 3,
+                observations: ["leaf_wilt", "soil_surface_dry"],
+              },
+            },
+          },
+        ],
+        chef: { qualificationLevel: 1, recipes: [], leases: [], listings: [], options: [] },
+        options: [{ option: "opt_DDDDDDDDDDDD", label: "接取三号地农艺委托", requires: [] }],
+      },
+      "go.hospital.commission": {
+        sources: [
+          {
+            sourceId: privateUuid,
+            objectId: privateUuid,
+            difficultyLevel: 1,
+            status: "open",
+            fact: {
+              farmDoorplate: "B2048",
+              animalKindId: "cloud_sheep",
+              observations: ["reduced_activity", "localized_injury_trace"],
+            },
+          },
+        ],
+        options: [{ option: "opt_EEEEEEEEEEEE", label: "挂号这只云绵羊", requires: [] }],
+      },
+      "go.security.commission": {
+        sources: [
+          {
+            sourceId: privateUuid,
+            excludedResidentIds: [privateUuid],
+            difficultyLevel: 1,
+            status: "open",
+            fact: {
+              farmDoorplate: "C4096",
+              event: { eventId: privateUuid, kind: "stolen", plotId: 2 },
+            },
+          },
+        ],
+        options: [{ option: "opt_FFFFFFFFFFFF", label: "提交这起偷菜记录", requires: [] }],
+      },
+    };
+
+    for (const op of modelVisibleLingyeOperationByName.keys()) {
+      const args = modelVisibleLingyeOperationByName.get(op)?.examples[0]?.args;
+      assert.ok(args, op);
+      harness.lingyeActions.nextResult = {
+        ok: true,
+        text: op.endsWith("choose") ? "业务已办理。" : "已读取当前公开事实。",
+        data: fixtures[op] ?? {},
+      };
+      const response = await postMcp(harness, call(op, args));
+      const result = response.json().result;
+      assert.equal(result.isError, false, op);
+      assert.equal(result.content.length, 1, op);
+      assert.match(result.content[0].text, /\p{Script=Han}/u, op);
+      assertModelTextHasNoPrivateLeak(result.content[0].text, op);
       assert.equal("structuredContent" in result, false, op);
     }
   } finally {
@@ -1328,6 +1517,7 @@ test("any valid doorbell call delivers resident system notifications once withou
 
     const delivered = await postMcp(harness, call("farm.help", {}));
     const deliveredResult = delivered.json().result;
+    assert.match(deliveredResult.content[0].text, /【新收到的居民通知】/u);
     assert.match(deliveredResult.content[0].text, /第一条系统通知。\n\n第二条系统通知。$/u);
     assert.equal("structuredContent" in deliveredResult, false);
     assert.doesNotMatch(deliveredResult.content[0].text, /只给人类信箱展示的标题/u);
@@ -1458,8 +1648,8 @@ test("career notification delivery failure cannot overturn a completed Lingye ac
     );
     assert.equal(completed.statusCode, 200);
     assert.equal(completed.json().result.isError, false);
-    assert.match(completed.json().result.content[0].text, /^📋 铃野委托/u);
-    assert.match(completed.json().result.content[0].text, /委托消息：\n {2}body：继续处理。/u);
+    assert.match(completed.json().result.content[0].text, /^🌾 铃野农场职业/u);
+    assert.match(completed.json().result.content[0].text, /委托回复已记录/u);
     assert.equal(completed.json().result.content[0].text.includes('\\"'), false);
     assert.equal(harness.lingyeActions.calls.length, 1);
     assert.deepEqual(harness.notificationErrors, [failure]);

@@ -124,6 +124,22 @@ function textContent(text: string) {
   return [{ type: "text" as const, text }];
 }
 
+function renderCanonicalValue(value: unknown): string {
+  if (typeof value === "string") return `“${value.replaceAll("“", "").replaceAll("”", "")}”`;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return `[${value.map(renderCanonicalValue).join("，")}]`;
+  if (isPlainObject(value)) {
+    return `{ ${Object.entries(value)
+      .map(([key, entry]) => `${key}: ${renderCanonicalValue(entry)}`)
+      .join("，")} }`;
+  }
+  return "无";
+}
+
+function renderCanonicalCall(example: DoorbellCallExample): string {
+  return `doorbell({ op: “${example.op}”，args: ${renderCanonicalValue(example.args)} })`;
+}
+
 function renderToolErrorText(
   message: string,
   issues?: readonly DoorbellIssue[],
@@ -133,31 +149,41 @@ function renderToolErrorText(
   if (issues?.length) {
     lines.push("需要修正：");
     for (const issue of issues) {
-      const path = issue.path.length > 0 ? issue.path.join(".") : "args";
+      const path =
+        issue.path.length > 0
+          ? issue.path.map((part) => (part === "args" ? "参数" : String(part))).join(".")
+          : "参数";
       lines.push(`- ${path}：${issue.message}`);
     }
   }
   if (examples?.length) {
-    lines.push("可参考：");
-    for (const example of examples) lines.push(`doorbell(${JSON.stringify(example)})`);
+    lines.push("规范调用示例（请按工具 Schema 提交，不要把这段说明当作业务正文）：");
+    for (const example of examples) lines.push(`- ${renderCanonicalCall(example)}`);
   }
   return lines.join("\n");
 }
 
-function renderFarmDetail(value: unknown, indent = ""): string[] {
-  if (Array.isArray(value)) {
-    return value.flatMap((entry) => [`${indent}-`, ...renderFarmDetail(entry, `${indent}  `)]);
-  }
-  if (!isPlainObject(value)) return [`${indent}${String(value ?? "无")}`];
+function renderFarmDetail(value: unknown): string[] {
+  if (!isPlainObject(value)) return ["农场公开详情暂无法读取。"];
   const lines: string[] = [];
-  for (const [key, entry] of Object.entries(value)) {
-    if (Array.isArray(entry) || isPlainObject(entry)) {
-      lines.push(`${indent}${key}：`, ...renderFarmDetail(entry, `${indent}  `));
-    } else {
-      lines.push(`${indent}${key}：${String(entry ?? "无")}`);
-    }
+  const doorplate = typeof value.id === "string" ? value.id.trim() : "";
+  const name =
+    typeof value.name === "string" && /\p{Script=Han}/u.test(value.name) ? value.name.trim() : "";
+  if (doorplate)
+    lines.push(`公开农场：${name ? `${name}（门牌 ${doorplate}）` : `门牌 ${doorplate}`}。`);
+  const balances = [
+    typeof value.coins === "number" ? `金币 ${value.coins.toLocaleString("zh-CN")}` : undefined,
+    typeof value.silver === "number" ? `银币 ${value.silver.toLocaleString("zh-CN")}` : undefined,
+  ].filter((entry): entry is string => entry !== undefined);
+  if (balances.length > 0) lines.push(`余额：${balances.join("，")}。`);
+  if (typeof value.landTier === "number") lines.push(`土地等级：${value.landTier}。`);
+  if (Array.isArray(value.plots)) lines.push(`地块：共 ${value.plots.length} 块。`);
+  if (isPlainObject(value.ranch)) {
+    const animalCount = Array.isArray(value.ranch.animals) ? value.ranch.animals.length : 0;
+    const petCount = Array.isArray(value.ranch.pets) ? value.ranch.pets.length : 0;
+    lines.push(`牧场：生产动物 ${animalCount} 只，宠物 ${petCount} 只。`);
   }
-  return lines;
+  return lines.length > 0 ? lines : ["农场公开详情暂无法读取。"];
 }
 
 function doorbellToolError(
@@ -190,7 +216,9 @@ function farmToolResult(
       isError: true,
     };
   }
-  const resultText = farm ? `${text}\n\n农场详情：\n${renderFarmDetail(farm).join("\n")}` : text;
+  const resultText = farm
+    ? `${text}\n\n【农场公开详情】\n${renderFarmDetail(farm).join("\n")}`
+    : text;
   return {
     content: textContent(resultText),
     isError: false,
@@ -240,7 +268,7 @@ function formatIssues(
       ),
     ],
     code: issue.code ?? "invalid_value",
-    message: issue.message ?? `参数不符合 ${operation.op} 的要求`,
+    message: `这个值不符合 ${operation.op} 的参数要求`,
   }));
 }
 
@@ -539,8 +567,7 @@ export class DoorbellMcpRuntime {
     const call = params.arguments;
     if (!isPlainObject(call)) {
       return doorbellToolError("INVALID_ARGS", {
-        message:
-          "参数不符合 doorbell 的要求。请按 issues 修正 args，不要使用旧 action 参数或身份字段。",
+        message: "参数不符合 doorbell 的要求。请按下面说明修正，不要使用旧式操作参数或身份字段。",
         issues: [{ path: ["arguments"], code: "invalid_type", message: "必须是对象" }],
       });
     }
@@ -555,7 +582,7 @@ export class DoorbellMcpRuntime {
     ) {
       return doorbellToolError("INVALID_ARGS", {
         ...(op ? { op } : {}),
-        message: `参数不符合 ${op ?? "doorbell"} 的要求。请按 issues 修正 args，不要使用旧 action 参数或身份字段。`,
+        message: `参数不符合 ${op ?? "doorbell"} 的要求。请按下面说明修正，不要使用旧式操作参数或身份字段。`,
         issues: [{ path: ["arguments"], code: "invalid_shape", message: "必须只包含 op 和 args" }],
       });
     }
@@ -570,7 +597,7 @@ export class DoorbellMcpRuntime {
     if (!parsed.success) {
       return doorbellToolError("INVALID_ARGS", {
         op,
-        message: `参数不符合 ${op} 的要求。请按 issues 修正 args，不要使用旧 action 参数或身份字段。`,
+        message: `参数不符合 ${op} 的要求。请按下面说明修正，不要使用旧式操作参数或身份字段。`,
         issues: formatIssues(registered.operation, parsed.error),
         examples: examplesForDoorbellInvalidArgs(registered.operation, call.args),
       });
@@ -694,7 +721,7 @@ export class DoorbellMcpRuntime {
         // Bell cancellation is a side effect and cannot overturn the tool result.
       }
     }
-    const suffix = notifications.join("\n\n");
+    const suffix = `【新收到的居民通知】\n${notifications.join("\n\n")}`;
     const currentText = result.content[0]?.text ?? "";
     const combinedText = currentText ? `${currentText}\n\n${suffix}` : suffix;
     return {
@@ -718,7 +745,7 @@ export class DoorbellMcpRuntime {
         action: "status",
         params: {},
       });
-      return status.ok ? `${text}\n\n${status.text}` : text;
+      return status.ok ? `${text}\n\n【农场近况】\n${status.text}` : text;
     } catch {
       return text;
     }

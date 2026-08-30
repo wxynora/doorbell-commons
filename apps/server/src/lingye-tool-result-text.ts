@@ -4,8 +4,16 @@ type LingyeSuccess = Extract<LingyeActionResult, { ok: true }>;
 
 interface LingyeOption {
   option: string;
-  requires: string[];
+  label?: string;
+  requires?: string[];
 }
+
+const OPTION_HANDLE = /^opt_[A-Za-z0-9_-]{12}$/u;
+const UUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/iu;
+const LONG_HEX = /\b[0-9a-f]{64}\b/iu;
+const SNAKE_CASE = /\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/u;
+const INTERNAL_NAME =
+  /\b(?:residentId|sourceId|objectId|ownerId|jobId|loanId|depositId|attemptId|reservationId|employmentId|dutyId|interviewId|noticeId|paperId|contentDeliveryId|journalId|tradeId|actionKey|idempotency|notification_id)\b/iu;
 
 const CAREER_NAMES: Record<string, string> = {
   chef: "料理师",
@@ -15,186 +23,234 @@ const CAREER_NAMES: Record<string, string> = {
   constable: "治安官",
 };
 
-const FIELD_NAMES: Record<string, string> = {
-  amount: "金额（正整数）",
-  termDays: "期限（天；银行合同只接受 14／30／60）",
-  totalRatePpm: "合同总利率（ppm）",
+const REQUIRED_FIELD_NAMES: Record<string, string> = {
+  amount: "金额",
+  termDays: "期限",
+  totalRatePpm: "合同总利率",
   to: "对方公开农场门牌",
-  text: "正文",
-  answers: "全部答案（课程练习 5 题／正式考试 20 题，一次提交）",
-  status: "状态",
-  state: "状态",
-  career: "职业",
-  qualificationLevel: "资格等级",
-  courseIndex: "课程序号",
-  title: "名称",
-  principal: "本金",
-  principalOriginal: "原始本金",
-  principalOutstanding: "未还本金",
-  accruedInterest: "已计利息",
-  dueDay: "到期日",
-  maturityDay: "到期日",
-  creditPoints: "信用点",
-  highSpendRestricted: "高消费限制",
-  correctAnswers: "答对题数",
-  bestCorrectAnswers: "最佳答对题数",
-  dutyDate: "排班日期",
-  baseWageGold: "基本工资（金币）",
-  performanceGold: "绩效工资（金币）",
-  recipeName: "菜谱名称",
-  rarity: "品质",
-  priceSilver: "价格（银币）",
-  quantity: "数量",
-  messageText: "消息",
+  text: "说明正文",
+  answers: "全部答案",
 };
 
-const BANK_ACTION_NAMES: Record<string, string> = {
-  "demand-deposit": "存入金币活期",
-  "demand-withdraw": "取出金币活期",
-  "exchange-gold-silver": "用金币兑换银币",
-  "term-open": "开立金币定期存款",
-  "term-close": "提前支取／结清金币定期存款",
-  "system-loan-open": "申请系统金币贷款",
-  "system-loan-repay": "偿还系统金币贷款",
-  "silver-lock-increase": "增加小机银币锁定额",
-  "player-loan-offer": "向其他居民提供银币借款",
-  "player-loan-request": "向其他居民申请银币借款",
-  "player-loan-confirm": "确认玩家借款合同",
-  "player-loan-cancel": "取消玩家借款提案",
-  "player-loan-repay": "偿还玩家银币借款",
+const STATUS_NAMES: Record<string, string> = {
+  open: "待处理",
+  available: "可接取",
+  accepted: "已接取",
+  assigned: "已分派",
+  active: "处理中",
+  completed: "已完成",
+  cancelled: "已取消",
+  transferred: "已转交",
+  expired: "已过期",
+  proposed: "等待双方确认",
+  overdue: "已逾期",
+  restricted: "受限中",
+  repaid: "已还清",
+  pending_review: "等待审核",
+  returned: "已退回",
+  rejected: "未通过",
+  scheduled: "已安排",
+  pending: "等待中",
+  approved: "已通过",
+  closed: "已结束",
+  registered: "已报名",
+  postponed: "已延期",
+  written_passed: "笔试通过",
+  passed: "已通过",
+  failed: "未通过",
+  ended: "已结束",
+  leave: "请假中",
+  suspended: "暂停中",
+  treating: "处理中",
+  recovering: "恢复中",
+  resolved: "已解决",
 };
 
-const SCHOOL_ACTION_NAMES: Record<string, string> = {
-  "career-select": "选择职业轨道",
-  "course-enroll": "报名课程",
-  "course-read": "确认已阅读课程",
-  "course-practice": "提交课程练习",
-  "exam-register": "报名资格考试",
-  "exam-start": "开始资格考试",
-  "exam-release": "取消尚未开始的考试报名",
-  "exam-submit": "一次提交整份资格考试答案",
-  "employment-hire": "申请正式受聘",
-  "employment-leave": "请假",
-  "employment-resume": "恢复在岗",
-  "employment-end": "结束任职",
-  "constable-public-notice-vote": "提交治安官公示意见",
+const INSTITUTION_NAMES: Record<string, string> = {
+  lingye_daily: "铃野日报社",
+  animal_hospital: "铃野动物医院",
+  public_security_office: "铃野治安所",
+  vocational_school: "铃野职业学校",
+  bank: "铃野银行",
 };
 
-const COMMISSION_ACTION_NAMES: Array<[string, string]> = [
-  ["chef-recipe-buy", "购买原创菜谱"],
-  ["chef-store-open", "开设料理店"],
-  ["chef-store-rent", "支付料理店租金"],
-  ["chef-store-buy", "购买料理店商品"],
-  ["npc-transfer", "把委托转交给机构 NPC"],
-  ["publish", "发布真实委托"],
-  ["republish", "重新发布委托"],
-  ["accept", "接取委托"],
-  ["cancel", "取消委托"],
-  ["reply", "回复委托消息"],
-  ["check", "执行检查"],
-  ["treat", "执行处理／治疗"],
-  ["transfer", "转交委托"],
-  ["submit", "提交工作结果"],
-  ["resolve", "提交治安处理结果"],
-  ["npc", "委托机构 NPC 处理"],
-];
+// Names are copied from the Farm ranch catalogue. Unknown IDs are never echoed.
+const ANIMAL_NAMES: Record<string, string> = {
+  chicken: "鸡",
+  duck: "鸭子",
+  rabbit: "兔子",
+  goose: "鹅",
+  sheep: "绵羊",
+  cow: "奶牛",
+  bee: "蜜蜂",
+  pig: "猪",
+  silk_moth: "月光蚕",
+  ember_hen: "余烬母鸡",
+  cloud_sheep: "云绵羊",
+  dream_cat: "梦貘猫",
+};
+
+const OBSERVATION_NAMES: Record<string, string> = {
+  leaf_wilt: "叶片失去挺度",
+  soil_surface_dry: "土面发干",
+  soil_surface_saturated: "土面有积水",
+  lower_leaf_yellowing: "下部叶片发黄",
+  leaf_damage: "叶片有缺口",
+  visible_pest_trace: "可见虫迹",
+  uneven_leaf_color: "叶色不均",
+  uneven_growth: "生长不均",
+  whole_plant_wilt: "全株萎蔫",
+  root_zone_instability: "根区不稳",
+  reduced_appetite: "食欲减少",
+  abdominal_discomfort: "腹部不适",
+  reduced_activity: "活动减少",
+  localized_injury_trace: "局部外伤痕迹",
+  damp_coat_or_feathers: "皮毛或羽毛潮湿",
+  increased_water_intake: "饮水增加",
+  abnormal_breathing: "呼吸异常",
+  elevated_temperature: "体温升高",
+  dehydration_sign: "脱水表现",
+};
+
+const SECURITY_EVENT_NAMES: Record<string, string> = {
+  stolen: "农作物被偷",
+  foiled: "偷菜行为被拦下",
+};
+
+const RECIPE_RARITY_NAMES: Record<string, string> = {
+  N: "普通",
+  R: "稀有",
+  SR: "珍贵",
+  SSR: "珍稀",
+  SP: "特别",
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function scalar(value: unknown): string {
-  if (value === null || value === undefined) return "无";
-  if (typeof value === "boolean") return value ? "是" : "否";
-  if (typeof value === "string" || typeof value === "number") return String(value);
-  return "";
+function records(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
 }
 
-function publicValue(value: unknown): string {
-  const raw = scalar(value);
-  return CAREER_NAMES[raw] ?? raw;
+function finiteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
-function recordLines(value: unknown, indent = ""): string[] {
-  if (!isRecord(value)) return [];
-  const lines: string[] = [];
-  for (const [key, entry] of Object.entries(value)) {
-    if (key === "options" || key === "contentSources") continue;
-    const label = FIELD_NAMES[key] ?? key;
-    if (Array.isArray(entry)) {
-      if (entry.length === 0) {
-        lines.push(`${indent}${label}：无`);
-        continue;
-      }
-      lines.push(`${indent}${label}：`);
-      for (const item of entry) {
-        if (isRecord(item)) {
-          lines.push(`${indent}-`);
-          lines.push(...recordLines(item, `${indent}  `));
-        } else {
-          lines.push(`${indent}- ${publicValue(item)}`);
-        }
-      }
-      continue;
-    }
-    if (isRecord(entry)) {
-      lines.push(`${indent}${label}：`);
-      lines.push(...recordLines(entry, `${indent}  `));
-      continue;
-    }
-    lines.push(`${indent}${label}：${publicValue(entry)}`);
+function integer(value: unknown): number | undefined {
+  return Number.isSafeInteger(value) ? (value as number) : undefined;
+}
+
+function numberText(value: unknown): string {
+  const number = finiteNumber(value);
+  return number === undefined ? "暂无法读取" : number.toLocaleString("zh-CN");
+}
+
+function percentageFromPpm(value: unknown): string {
+  const ppm = finiteNumber(value);
+  return ppm === undefined ? "暂无法读取" : `${String(ppm / 10_000)}%`;
+}
+
+function safeChineseText(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const text = value.trim();
+  if (
+    text.length === 0 ||
+    !/\p{Script=Han}/u.test(text) ||
+    UUID.test(text) ||
+    LONG_HEX.test(text) ||
+    INTERNAL_NAME.test(text) ||
+    SNAKE_CASE.test(text) ||
+    text.includes('\\"')
+  ) {
+    return undefined;
   }
-  return lines;
+  return text;
 }
 
-function collectOptions(value: unknown): LingyeOption[] {
-  const result: LingyeOption[] = [];
+function resultMessage(value: unknown, fallback: string): string {
+  return safeChineseText(value) ?? fallback;
+}
+
+function statusText(value: unknown): string {
+  return typeof value === "string" ? (STATUS_NAMES[value] ?? "暂无法读取具体描述") : "暂无法读取";
+}
+
+function careerText(value: unknown): string {
+  return typeof value === "string" ? (CAREER_NAMES[value] ?? "暂无法读取具体描述") : "暂无法读取";
+}
+
+function dateText(value: unknown): string {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return new Intl.DateTimeFormat("zh-CN", {
+      timeZone: "Asia/Shanghai",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(value));
+  }
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}(?:T|$)/u.test(value)) {
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) return dateText(parsed);
+  }
+  return "暂无法读取";
+}
+
+function publicFarmText(value: unknown): string | undefined {
+  if (!isRecord(value)) return undefined;
+  const doorplate = typeof value.doorplate === "string" ? value.doorplate.trim() : "";
+  if (
+    !doorplate ||
+    UUID.test(doorplate) ||
+    LONG_HEX.test(doorplate) ||
+    SNAKE_CASE.test(doorplate)
+  ) {
+    return undefined;
+  }
+  const name = safeChineseText(value.name);
+  return name ? `${name}（门牌 ${doorplate}）` : `门牌 ${doorplate}`;
+}
+
+function farmDoorplateText(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const doorplate = value.trim();
+  if (
+    !doorplate ||
+    UUID.test(doorplate) ||
+    LONG_HEX.test(doorplate) ||
+    SNAKE_CASE.test(doorplate)
+  ) {
+    return undefined;
+  }
+  return `门牌 ${doorplate}`;
+}
+
+function collectOptions(data: Record<string, unknown>): LingyeOption[] {
+  const candidates: unknown[] = [data.options];
+  const current = isRecord(data.current) ? data.current : undefined;
+  const chef = isRecord(data.chef) ? data.chef : undefined;
+  const currentChef = current && isRecord(current.chef) ? current.chef : undefined;
+  candidates.push(current?.options, chef?.options, currentChef?.options);
+
+  const options: LingyeOption[] = [];
   const seen = new Set<string>();
-  const visit = (candidate: unknown): void => {
-    if (Array.isArray(candidate)) {
-      for (const entry of candidate) visit(entry);
-      return;
+  for (const candidate of candidates) {
+    if (!Array.isArray(candidate)) continue;
+    for (const raw of candidate) {
+      if (!isRecord(raw) || typeof raw.option !== "string" || seen.has(raw.option)) continue;
+      seen.add(raw.option);
+      options.push({
+        option: raw.option,
+        ...(typeof raw.label === "string" ? { label: raw.label } : {}),
+        ...(Array.isArray(raw.requires)
+          ? { requires: raw.requires.filter((field): field is string => typeof field === "string") }
+          : {}),
+      });
     }
-    if (!isRecord(candidate)) return;
-    for (const [key, entry] of Object.entries(candidate)) {
-      if (key === "options" && Array.isArray(entry)) {
-        for (const raw of entry) {
-          if (!isRecord(raw) || typeof raw.option !== "string" || seen.has(raw.option)) continue;
-          const requires = Array.isArray(raw.requires)
-            ? raw.requires.filter((field): field is string => typeof field === "string")
-            : [];
-          seen.add(raw.option);
-          result.push({ option: raw.option, requires });
-        }
-      } else {
-        visit(entry);
-      }
-    }
-  };
-  visit(value);
-  return result;
-}
-
-function optionLabel(option: string): string {
-  const bank = /^bank:([a-z-]+):/u.exec(option);
-  const bankAction = bank?.[1];
-  if (bankAction) return BANK_ACTION_NAMES[bankAction] ?? bankAction;
-  const school = /^school:([a-z-]+):/u.exec(option);
-  const schoolAction = school?.[1];
-  if (schoolAction) {
-    const career = /:(chef|agronomist|veterinarian|reporter|constable)(?::|$)/u.exec(option)?.[1];
-    const suffix = career ? `：${CAREER_NAMES[career]}` : "";
-    return `${SCHOOL_ACTION_NAMES[schoolAction] ?? schoolAction}${suffix}`;
   }
-  if (option.startsWith("commission:")) {
-    const action = option.slice("commission:".length);
-    return (
-      COMMISSION_ACTION_NAMES.find(
-        ([prefix]) => action.startsWith(`${prefix}:`) || action === prefix,
-      )?.[1] ?? "推进委托"
-    );
-  }
-  return "办理当前业务";
+  return options;
 }
 
 function chooseOperation(op: string): string {
@@ -203,240 +259,523 @@ function chooseOperation(op: string): string {
   return op;
 }
 
-function renderOptions(op: string, data: unknown): string[] {
+function renderOptions(op: string, data: Record<string, unknown>): string[] {
   const options = collectOptions(data);
-  if (options.length === 0) return ["当前没有可以直接办理的下一步。"];
-  const chooseOp = chooseOperation(op);
-  const lines = ["可以继续办理："];
+  if (options.length === 0) return ["下一步：当前没有可办理事项。"];
+
+  const lines = ["下一步可以办理："];
+  let hiddenLegacyOption = false;
   for (const entry of options) {
-    lines.push(`- ${optionLabel(entry.option)}`);
-    if (entry.requires.length === 0) {
+    const label = safeChineseText(entry.label) ?? "办理当前业务";
+    if (!OPTION_HANDLE.test(entry.option)) {
+      hiddenLegacyOption = true;
+      continue;
+    }
+    lines.push(`- ${label}`);
+    lines.push(`  办理编号：${entry.option}`);
+    const required = (entry.requires ?? [])
+      .map((field) => REQUIRED_FIELD_NAMES[field])
+      .filter(Boolean);
+    if (required.length > 0) lines.push(`  还需提供：${required.join("、")}`);
+    lines.push(
+      `  调用 ${chooseOperation(op)}，原样提交这个办理编号${required.length > 0 ? "和上述信息" : ""}。`,
+    );
+  }
+  if (hiddenLegacyOption)
+    lines.push("- 有旧式办理编号未展示，请重新读取当前业务取得新的短办理编号。");
+  return lines;
+}
+
+function renderQuestions(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const lines: string[] = [];
+  for (const [index, question] of value.entries()) {
+    if (!isRecord(question)) continue;
+    const stem = safeChineseText(question.stem);
+    if (!stem) continue;
+    lines.push(`${index + 1}. ${stem}`);
+    const choices = isRecord(question.options) ? question.options : undefined;
+    if (!choices) continue;
+    for (const key of ["A", "B", "C", "D"]) {
+      const answer = safeChineseText(choices[key]);
+      if (answer) lines.push(`   ${key}. ${answer}`);
+    }
+  }
+  return lines;
+}
+
+function bankPart(data: Record<string, unknown>, key: string): unknown {
+  const current = isRecord(data.current) ? data.current : undefined;
+  if (current && current[key] !== undefined) return current[key];
+  if (data.section === key) return data.value;
+  return data[key];
+}
+
+function renderBankAccount(value: unknown): string[] {
+  if (!isRecord(value)) return [];
+  return [
+    `余额：可用金币 ${numberText(value.availableGold)}，金币活期 ${numberText(value.demandGold)}，金币定期 ${numberText(value.termGold)}；可用银币 ${numberText(value.availableSilver)}，小机可自主使用 ${numberText(value.agentSpendableSilver)}，已锁定 ${numberText(value.silverAgentLock)}。`,
+  ];
+}
+
+function renderTermDeposit(value: Record<string, unknown>, index: number): string {
+  return `- 定期存款 ${index + 1}：本金 ${numberText(value.principal)} 金币，期限 ${numberText(value.termDays)} 天，合同总利率 ${percentageFromPpm(value.totalRatePpm)}，到期日为第 ${numberText(value.maturityDay)} 天，当前${statusText(value.state)}。`;
+}
+
+function renderBankDeposits(value: unknown): string[] {
+  if (!isRecord(value)) return [];
+  const termDeposits = records(value.termDeposits);
+  const lines = [`存款：金币活期 ${numberText(value.demandGold)}。`];
+  lines.push(
+    termDeposits.length === 0 ? "定期存款：无。" : "定期存款：",
+    ...termDeposits.map(renderTermDeposit),
+  );
+  return lines;
+}
+
+function renderBankExchange(value: unknown): string[] {
+  if (!isRecord(value)) return [];
+  return [
+    `兑换：${numberText(value.goldPerSilver)} 金币可兑换 1 银币；本月个人还可兑换 ${numberText(value.residentRemainingThisMonth)} 银币，全服还可兑换 ${numberText(value.globalRemainingThisMonth)} 银币。`,
+  ];
+}
+
+function renderSystemLoan(value: Record<string, unknown>, index: number): string {
+  return `- 系统贷款 ${index + 1}：原始本金 ${numberText(value.principalOriginal)} 金币，未还本金 ${numberText(value.principalOutstanding)}，已计利息 ${numberText(value.accruedInterest)}，期限 ${numberText(value.termDays)} 天，到期日为第 ${numberText(value.dueDay)} 天，当前${statusText(value.status)}。`;
+}
+
+function renderPlayerLoan(value: Record<string, unknown>, index: number): string {
+  const role = value.role === "lender" ? "出借" : value.role === "borrower" ? "借入" : "往来";
+  const counterparty = publicFarmText(value.counterparty) ?? "对方公开农场暂无法读取";
+  return `- 玩家贷款 ${index + 1}：${role}给${counterparty}，原始本金 ${numberText(value.principalOriginal)} 银币，未还本金 ${numberText(value.principalOutstanding)}，已计利息 ${numberText(value.accruedInterest)}，合同总利率 ${percentageFromPpm(value.totalRatePpm)}，期限 ${numberText(value.termDays)} 天，当前${statusText(value.status)}。`;
+}
+
+function renderBankLoans(value: unknown): string[] {
+  if (!isRecord(value)) return [];
+  const systemLoans = records(value.systemLoans);
+  const playerLoans = records(value.playerLoans);
+  return [
+    "贷款：",
+    ...(systemLoans.length === 0 ? ["- 系统贷款：无。"] : systemLoans.map(renderSystemLoan)),
+    ...(playerLoans.length === 0 ? ["- 玩家贷款：无。"] : playerLoans.map(renderPlayerLoan)),
+  ];
+}
+
+function renderBankCredit(value: unknown): string[] {
+  if (!isRecord(value)) return [];
+  return [
+    `信用：${numberText(value.creditPoints)} 点；高消费限制：${value.highSpendRestricted === true ? "有" : value.highSpendRestricted === false ? "无" : "暂无法读取"}。`,
+  ];
+}
+
+function renderBankReference(value: unknown): string[] {
+  if (!isRecord(value) || !isRecord(value.value)) return [];
+  if (value.type === "term_deposit")
+    return ["查询到的定期存款：", renderTermDeposit(value.value, 0)];
+  if (value.type === "system_loan") return ["查询到的系统贷款：", renderSystemLoan(value.value, 0)];
+  if (value.type === "player_loan") return ["查询到的玩家贷款：", renderPlayerLoan(value.value, 0)];
+  return ["查询到一条银行记录，具体描述暂无法读取。"];
+}
+
+function bankText(op: string, result: LingyeSuccess): string {
+  const data = result.data;
+  const lines = ["🏦 铃野银行", resultMessage(result.text, "已读取铃野银行当前事实。")];
+  lines.push(...renderBankAccount(bankPart(data, "account")));
+  if (op === "go.bank.view") {
+    lines.push(...renderBankDeposits(bankPart(data, "deposits")));
+    lines.push(...renderBankExchange(bankPart(data, "exchange")));
+    lines.push(...renderBankLoans(bankPart(data, "loans")));
+  }
+  lines.push(...renderBankCredit(bankPart(data, "credit")));
+  lines.push(...renderBankReference(data.reference));
+  return [...lines, ...renderOptions("go.bank.choose", data)].join("\n");
+}
+
+function renderCareerTracks(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const tracks = records(value);
+  if (tracks.length === 0) return ["职业轨道：尚未选择。"];
+  return [`职业轨道：${tracks.map((track) => careerText(track.career)).join("、")}。`];
+}
+
+function courseProgressText(course: Record<string, unknown>): string {
+  const state =
+    course.completedAt !== null && course.completedAt !== undefined
+      ? "已完成"
+      : course.contentReadAt !== null && course.contentReadAt !== undefined
+        ? "已阅读，等待练习"
+        : course.enrolledAt !== null && course.enrolledAt !== undefined
+          ? "已报名，等待阅读"
+          : "已登记";
+  return `${careerText(course.career)} ${numberText(course.qualificationLevel)} 级第 ${numberText(course.courseIndex)} 门：${state}${finiteNumber(course.bestCorrectAnswers) === undefined ? "" : `，最好答对 ${numberText(course.bestCorrectAnswers)} 题`}。`;
+}
+
+function renderCourseProgress(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const courses = records(value);
+  return courses.length === 0
+    ? ["课程进度：尚未报名课程。"]
+    : ["课程进度：", ...courses.map((course) => `- ${courseProgressText(course)}`)];
+}
+
+function renderCourseCatalog(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const courses = records(value);
+  if (courses.length === 0) return ["课程目录：当前职业暂时没有可报名课程。"];
+  return [
+    "课程目录：",
+    ...courses.map((course) => {
+      const title = safeChineseText(course.title) ?? "课程名称暂无法读取";
+      const availability =
+        course.contentAvailable === true
+          ? "课程内容已就绪"
+          : course.contentAvailable === false
+            ? "课程内容暂不可用"
+            : "课程状态暂无法读取";
+      return `- ${careerText(course.career)} ${numberText(course.qualificationLevel)} 级第 ${numberText(course.courseIndex)} 门《${title.replace(/^《|》$/gu, "")}》；学费 ${numberText(course.tuitionGold)} 金币；${availability}。`;
+    }),
+  ];
+}
+
+function renderExams(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const exams = records(value);
+  if (exams.length === 0) return ["考试：暂无记录。"];
+  return [
+    "考试：",
+    ...exams.map((exam) => {
+      const score = finiteNumber(exam.correctAnswers);
+      const scheduled =
+        exam.scheduledAt === null || exam.scheduledAt === undefined
+          ? ""
+          : `，安排在 ${dateText(exam.scheduledAt)}`;
+      return `- ${careerText(exam.career)} ${numberText(exam.qualificationLevel)} 级资格考试：${statusText(exam.registrationStatus)}${score === undefined ? "" : `，答对 ${numberText(score)} 题`}${scheduled}。`;
+    }),
+  ];
+}
+
+function renderCertificates(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const certificates = records(value);
+  if (certificates.length === 0) return ["资格证：暂无。"];
+  return [
+    "资格证：",
+    ...certificates.map(
+      (certificate) =>
+        `- ${careerText(certificate.career)} ${numberText(certificate.qualificationLevel)} 级：${statusText(certificate.status)}。`,
+    ),
+  ];
+}
+
+function renderEmployment(value: unknown): string[] {
+  if (!isRecord(value)) return [];
+  const employment = records(value.records);
+  const duties = records(value.duties);
+  const lines = ["任职："];
+  if (employment.length === 0) lines.push("- 暂无任职记录。");
+  for (const item of employment) {
+    const institution =
+      typeof item.institution === "string"
+        ? (INSTITUTION_NAMES[item.institution] ?? "铃野机构")
+        : "铃野机构";
+    const availability =
+      item.availability === "available" ? "可到岗" : statusText(item.availability);
+    lines.push(
+      `- ${careerText(item.career)}，任职于${institution}，当前${statusText(item.status)}，${availability}。`,
+    );
+  }
+  if (duties.length > 0) {
+    lines.push("排班与工资：");
+    for (const duty of duties) {
       lines.push(
-        `  可直接调用：doorbell(${JSON.stringify({ op: chooseOp, args: { option: entry.option } })})`,
-      );
-    } else {
-      lines.push(`  option：${entry.option}`);
-      lines.push(
-        `  还需填写：${entry.requires.map((field) => FIELD_NAMES[field] ?? field).join("、")}`,
+        `- ${careerText(duty.career)}，排班日 ${typeof duty.dutyDate === "string" ? duty.dutyDate : "暂无法读取"}，基本工资 ${numberText(duty.baseWageGold)} 金币，绩效工资 ${numberText(duty.performanceGold)} 金币，当前${statusText(duty.status)}。`,
       );
     }
   }
   return lines;
 }
 
-function renderQuestions(value: unknown): string[] {
+function renderInterviews(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
-  return value.flatMap((question, index) => {
-    if (!isRecord(question) || typeof question.stem !== "string") return [];
-    const lines = [`${index + 1}. ${question.stem}`];
-    if (isRecord(question.options)) {
-      for (const key of ["A", "B", "C", "D"]) {
-        if (typeof question.options[key] === "string")
-          lines.push(`   ${key}. ${question.options[key]}`);
-      }
-    }
-    return lines;
-  });
+  const interviews = records(value);
+  if (interviews.length === 0) return ["治安官面试：暂无记录。"];
+  return [
+    "治安官面试：",
+    ...interviews.map((interview) => {
+      const role =
+        interview.role === "candidate"
+          ? "候选人"
+          : interview.role === "examiner"
+            ? "面试官"
+            : "参与者";
+      return `- 身份：${role}；时间：${dateText(interview.scheduledAt)}；状态：${statusText(interview.status)}。`;
+    }),
+  ];
 }
 
-function findNestedRecord(value: unknown, key: string): Record<string, unknown> | undefined {
-  if (!isRecord(value)) return undefined;
-  if (isRecord(value[key])) return value[key] as Record<string, unknown>;
-  for (const entry of Object.values(value)) {
-    const found = findNestedRecord(entry, key);
-    if (found) return found;
+function renderPublicNotices(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const notices = records(value);
+  if (notices.length === 0) return ["治安官任职公示：暂无记录。"];
+  return [
+    "治安官任职公示：",
+    ...notices.map((notice) => {
+      const candidate = isRecord(notice.candidate)
+        ? (safeChineseText(notice.candidate.residentName) ?? "候选人姓名暂无法读取")
+        : "候选人姓名暂无法读取";
+      const choice =
+        notice.myChoice === "no_objection"
+          ? "无异议"
+          : notice.myChoice === "review_request"
+            ? "申请复核"
+            : notice.myChoice === null || notice.myChoice === undefined
+              ? "尚未提交意见"
+              : "意见暂无法读取";
+      return `- ${candidate}，治安官 ${numberText(notice.qualificationLevel)} 级，公示${statusText(notice.status)}，截止时间 ${dateText(notice.closesAt)}，我的意见：${choice}。`;
+    }),
+  ];
+}
+
+function renderCourseContent(reference: Record<string, unknown>): string[] {
+  const content = isRecord(reference.content) ? reference.content : undefined;
+  if (!content) return [];
+  const lines: string[] = [];
+  const title = safeChineseText(content.title);
+  if (title) lines.push(`课程：${title}`);
+  if (typeof content.contentMarkdown === "string")
+    lines.push("课程正文：", content.contentMarkdown);
+  const practice = renderQuestions(content.practiceQuestions);
+  if (practice.length > 0) lines.push("课程练习（一次查看全部 5 题）：", ...practice);
+  return lines;
+}
+
+function renderSchoolReference(reference: Record<string, unknown>): string[] {
+  if (!isRecord(reference.value)) return [];
+  if (reference.type === "exam") return renderExams([reference.value]);
+  if (reference.type === "certificate") return renderCertificates([reference.value]);
+  if (reference.type === "employment")
+    return renderEmployment({ records: [reference.value], duties: [] });
+  if (reference.type === "duty_day")
+    return renderEmployment({ records: [], duties: [reference.value] });
+  if (reference.type === "interview") return renderInterviews([reference.value]);
+  if (reference.type === "public_notice") return renderPublicNotices([reference.value]);
+  return [];
+}
+
+function renderExamPaper(data: Record<string, unknown>): string[] {
+  const reference = isRecord(data.reference) ? data.reference : undefined;
+  const paper = reference && isRecord(reference.paper) ? reference.paper : undefined;
+  const result = isRecord(data.result) ? data.result : undefined;
+  const questions =
+    paper?.publicPaper ?? paper?.questions ?? result?.publicPaper ?? result?.questions;
+  const rendered = renderQuestions(questions);
+  if (rendered.length === 0) return [];
+  const count = Array.isArray(questions)
+    ? questions.filter((question) => isRecord(question) && safeChineseText(question.stem)).length
+    : 0;
+  return [`试卷（一次查看全部 ${count} 题）：`, ...rendered];
+}
+
+function schoolText(result: LingyeSuccess): string {
+  const data = result.data;
+  const lines = ["🏫 铃野职业学校", resultMessage(result.text, "已读取铃野职业学校当前事实。")];
+  const reference = isRecord(data.reference) ? data.reference : undefined;
+  if (reference) lines.push(...renderCourseContent(reference), ...renderSchoolReference(reference));
+  lines.push(...renderExamPaper(data));
+
+  if (data.section === "courses" && isRecord(data.value)) {
+    lines.push(...renderCourseCatalog(data.value.catalog));
+    lines.push(...renderCourseProgress(data.value.progress));
+  } else {
+    const facts = isRecord(data.current) ? data.current : data;
+    if (data.section === "careers") lines.push(...renderCareerTracks(data.value));
+    else if (data.section === "exams") lines.push(...renderExams(data.value));
+    else if (data.section === "certificates") lines.push(...renderCertificates(data.value));
+    else if (data.section === "employment") lines.push(...renderEmployment(data.value));
+    else if (data.section === "interviews") lines.push(...renderInterviews(data.value));
+    else if (data.section === "publicNotices") lines.push(...renderPublicNotices(data.value));
+    else if (data.section === undefined) {
+      lines.push(...renderCareerTracks(facts.careers));
+      lines.push(...renderCourseProgress(facts.courses));
+      lines.push(...renderExams(facts.exams));
+      lines.push(...renderCertificates(facts.certificates));
+      lines.push(...renderEmployment(facts.employment));
+    }
+  }
+
+  return [...lines, ...renderOptions("go.school.choose", data)].join("\n");
+}
+
+function commissionTitle(op: string): string {
+  if (op === "go.hospital.commission") return "🏥 铃野动物医院";
+  if (op === "go.security.commission") return "🛡️ 铃野治安所";
+  return "🌾 铃野农场职业";
+}
+
+function commissionKind(op: string): string {
+  if (op === "go.hospital.commission") return "病例";
+  if (op === "go.security.commission") return "治安事项";
+  return "地块委托";
+}
+
+function publicCommissionFacts(item: Record<string, unknown>): Record<string, unknown>[] {
+  const sourceFacts = isRecord(item.sourceFacts) ? item.sourceFacts : undefined;
+  return [
+    isRecord(item.fact) ? item.fact : undefined,
+    sourceFacts && isRecord(sourceFacts.initialFact) ? sourceFacts.initialFact : undefined,
+    sourceFacts && isRecord(sourceFacts.currentState) ? sourceFacts.currentState : undefined,
+    sourceFacts?.loan && isRecord(sourceFacts.loan) ? sourceFacts.loan : undefined,
+    item,
+  ].filter((value): value is Record<string, unknown> => value !== undefined);
+}
+
+function firstPublicField(facts: Record<string, unknown>[], key: string): unknown {
+  for (const fact of facts) {
+    if (fact[key] !== undefined && fact[key] !== null) return fact[key];
   }
   return undefined;
 }
 
-function bankText(args: Record<string, unknown>, result: LingyeSuccess): string {
-  const data = result.data;
-  const lines = ["🏦 铃野银行", result.text];
-  if (typeof args.option === "string") lines.push(`本次业务：${optionLabel(args.option)}`);
-  const facts = isRecord(data.current) ? data.current : data;
-  const section = typeof data.section === "string" ? data.section : null;
-  const account = isRecord(facts.account)
-    ? facts.account
-    : section === "account" && isRecord(data.value)
-      ? data.value
-      : undefined;
-  if (account) {
-    lines.push(
-      `账户：可用金币 ${scalar(account.availableGold)}，金币活期 ${scalar(account.demandGold)}，金币定期 ${scalar(account.termGold)}；可用银币 ${scalar(account.availableSilver)}，小机可自主使用 ${scalar(account.agentSpendableSilver)}，已锁定 ${scalar(account.silverAgentLock)}。`,
-      `信用：${scalar(account.creditPoints)} 点；高消费限制：${account.highSpendRestricted ? "有" : "无"}。`,
-    );
-  }
-  const exchange = isRecord(facts.exchange)
-    ? facts.exchange
-    : section === "exchange" && isRecord(data.value)
-      ? data.value
-      : undefined;
-  if (exchange) {
-    lines.push(
-      `兑换：${scalar(exchange.goldPerSilver)} 金币兑换 1 银币；本月个人还可发行 ${scalar(exchange.residentRemainingThisMonth)} 银币，全服还可发行 ${scalar(exchange.globalRemainingThisMonth)} 银币。`,
-    );
-  }
-  const deposits = isRecord(facts.deposits)
-    ? facts.deposits
-    : section === "deposits" && isRecord(data.value)
-      ? data.value
-      : undefined;
-  if (deposits) lines.push("存款记录：", ...recordLines(deposits, "  "));
-  const loans = isRecord(facts.loans)
-    ? facts.loans
-    : section === "loans" && isRecord(data.value)
-      ? data.value
-      : undefined;
-  if (loans) lines.push("贷款记录：", ...recordLines(loans, "  "));
-  const credit = isRecord(facts.credit)
-    ? facts.credit
-    : section === "credit" && isRecord(data.value)
-      ? data.value
-      : undefined;
-  if (credit && !account) lines.push("信用状态：", ...recordLines(credit, "  "));
-  if (isRecord(data.reference)) lines.push("查询到的记录：", ...recordLines(data.reference, "  "));
-  return [...lines, ...renderOptions("go.bank.choose", data)].join("\n");
+function observationText(value: unknown): string {
+  if (!Array.isArray(value) || value.length === 0) return "暂无法读取具体描述";
+  const translated = value.map((entry) =>
+    typeof entry === "string" ? OBSERVATION_NAMES[entry] : undefined,
+  );
+  return translated.every((entry): entry is string => entry !== undefined)
+    ? translated.join("、")
+    : "暂无法读取具体描述";
 }
 
-function schoolText(args: Record<string, unknown>, result: LingyeSuccess): string {
-  const data = result.data;
-  const lines = ["🏫 铃野职业学校", result.text];
-  if (typeof args.option === "string") lines.push(`本次业务：${optionLabel(args.option)}`);
-  const reference = isRecord(data.reference) ? data.reference : undefined;
-  const content = reference && isRecord(reference.content) ? reference.content : undefined;
-  if (content) {
-    if (typeof content.title === "string") lines.push(`课程：${content.title}`);
-    if (typeof content.contentMarkdown === "string")
-      lines.push("课程正文：", content.contentMarkdown);
-    const practiceQuestions = renderQuestions(content.practiceQuestions);
-    if (practiceQuestions.length > 0)
-      lines.push("课程练习（一次查看全部 5 题）：", ...practiceQuestions);
-  }
-  const paper =
-    reference && isRecord(reference.paper) ? reference.paper : findNestedRecord(data, "paper");
-  const questionSource =
-    paper?.publicPaper ?? paper?.questions ?? findNestedRecord(data, "result")?.questions;
-  const questions = renderQuestions(questionSource);
-  const questionCount = Array.isArray(questionSource)
-    ? questionSource.filter((question) => isRecord(question) && typeof question.stem === "string")
-        .length
-    : 0;
-  if (questions.length > 0) lines.push(`试卷（一次查看全部 ${questionCount} 题）：`, ...questions);
+function commissionItemLines(op: string, item: Record<string, unknown>, index: number): string[] {
+  const facts = publicCommissionFacts(item);
+  const kind = commissionKind(op);
+  const lines = [`- ${kind} ${index + 1}`];
+  const farm =
+    publicFarmText(firstPublicField(facts, "farm")) ??
+    farmDoorplateText(firstPublicField(facts, "farmDoorplate"));
+  if (farm) lines.push(`  委托方公开农场：${farm}`);
 
-  const facts = isRecord(data.current) ? data.current : data;
-  const tracks = Array.isArray(facts.careers)
-    ? facts.careers
-    : data.section === "careers" && Array.isArray(data.value)
-      ? data.value
-      : undefined;
-  if (tracks) {
-    lines.push(
-      tracks.length === 0
-        ? "职业轨道：尚未选择。"
-        : `职业轨道：${tracks.map((track) => (isRecord(track) ? (CAREER_NAMES[String(track.career)] ?? String(track.career)) : String(track))).join("、")}。`,
-    );
+  if (op === "go.farm.commission") {
+    const plotId = integer(firstPublicField(facts, "plotId"));
+    lines.push(`  地块：${plotId === undefined ? "暂无法读取具体描述" : `第 ${plotId} 号地`}`);
+  } else if (op === "go.hospital.commission") {
+    const animalKind = firstPublicField(facts, "animalKindId");
+    const animal = typeof animalKind === "string" ? ANIMAL_NAMES[animalKind] : undefined;
+    lines.push(`  动物：${animal ?? "暂无法读取具体描述"}`);
+  } else {
+    const event = facts.map((fact) => fact.event).find(isRecord);
+    const eventKind =
+      event && typeof event.kind === "string" ? SECURITY_EVENT_NAMES[event.kind] : undefined;
+    const isOverdueLoan = facts.some((fact) => fact.principalOutstanding !== undefined);
+    lines.push(`  事项：${eventKind ?? (isOverdueLoan ? "逾期贷款" : "暂无法读取具体描述")}`);
+    if (event) {
+      const plotId = integer(event.plotId);
+      if (plotId !== undefined) lines.push(`  相关地块：第 ${plotId} 号地`);
+    }
   }
-  const courseSection = data.section === "courses" && isRecord(data.value) ? data.value : undefined;
-  const courseCatalog = Array.isArray(facts.courseCatalog)
-    ? facts.courseCatalog
-    : courseSection && Array.isArray(courseSection.catalog)
-      ? courseSection.catalog
-      : undefined;
-  if (courseCatalog) {
-    lines.push("课程目录：");
-    for (const rawCourse of courseCatalog) {
-      if (!isRecord(rawCourse)) continue;
-      const career = CAREER_NAMES[String(rawCourse.career)] ?? String(rawCourse.career);
+
+  if (op !== "go.security.commission") {
+    lines.push(`  可观察症状：${observationText(firstPublicField(facts, "observations"))}`);
+  }
+  const difficulty =
+    integer(firstPublicField(facts, "difficultyLevel")) ??
+    integer(firstPublicField(facts, "requiredLevel"));
+  lines.push(`  难度：${difficulty === undefined ? "暂无法读取" : `${difficulty} 级`}`);
+  lines.push(`  状态：${statusText(firstPublicField(facts, "status"))}`);
+  return lines;
+}
+
+function commissionRecords(data: Record<string, unknown>): Record<string, unknown>[] {
+  const current = isRecord(data.current) ? data.current : undefined;
+  const values = [
+    ...records(data.jobs),
+    ...records(data.sources),
+    ...records(current?.jobs),
+    ...records(current?.sources),
+  ];
+  if (values.length === 0 && isRecord(data.reference)) values.push(data.reference);
+  if (values.length === 0 && isRecord(data.result)) values.push(data.result);
+
+  const seen = new Set<string>();
+  return values.filter((item, index) => {
+    const sourceFacts = isRecord(item.sourceFacts) ? item.sourceFacts : undefined;
+    const privateKey =
+      (typeof item.sourceId === "string" && `source:${item.sourceId}`) ||
+      (sourceFacts &&
+        typeof sourceFacts.sourceId === "string" &&
+        `source:${sourceFacts.sourceId}`) ||
+      (typeof item.jobId === "string" && `job:${item.jobId}`) ||
+      `public-row:${index}`;
+    if (seen.has(privateKey)) return false;
+    seen.add(privateKey);
+    return true;
+  });
+}
+
+function renderChefFacts(value: unknown): string[] {
+  if (!isRecord(value)) return [];
+  const lines = [`料理师资格：${numberText(value.qualificationLevel)} 级。`];
+  const recipes = records(value.recipes);
+  if (recipes.length > 0) {
+    lines.push("原创菜谱：");
+    for (const recipe of recipes) {
+      const name =
+        safeChineseText(recipe.name) ?? safeChineseText(recipe.title) ?? "名称暂无法读取";
+      const rarity =
+        typeof recipe.rarity === "string"
+          ? (RECIPE_RARITY_NAMES[recipe.rarity] ?? "品质暂无法读取")
+          : "品质暂无法读取";
+      const author = isRecord(recipe.author) ? publicFarmText(recipe.author.farm) : undefined;
       lines.push(
-        `- ${career} ${scalar(rawCourse.qualificationLevel)} 级第 ${scalar(rawCourse.courseIndex)} 门 ${scalar(rawCourse.title)}；学费 ${scalar(rawCourse.tuitionGold)} 金币；课程内容${rawCourse.contentAvailable ? "已就绪" : "暂不可用"}。`,
+        `- 《${name.replace(/^《|》$/gu, "")}》，${rarity}，价格 ${numberText(recipe.priceSilver)} 银币${author ? `，作者来自${author}` : ""}。`,
       );
     }
   }
-  const courseProgress = Array.isArray(facts.courses)
-    ? facts.courses
-    : courseSection && Array.isArray(courseSection.progress)
-      ? courseSection.progress
-      : data.section === "courses" && Array.isArray(data.value)
-        ? data.value
-        : undefined;
-  if (courseProgress) {
-    lines.push(
-      courseProgress.length === 0 ? "课程进度：尚未报名课程。" : "课程进度：",
-      ...recordLines({ courses: courseProgress }, "  "),
-    );
-    for (const course of courseProgress) {
-      if (
-        isRecord(course) &&
-        typeof course.career === "string" &&
-        Number.isSafeInteger(course.qualificationLevel) &&
-        Number.isSafeInteger(course.courseIndex)
-      ) {
-        const reference = `${course.career}:${course.qualificationLevel}:${course.courseIndex}`;
-        lines.push(
-          `读取这门课程全文：doorbell(${JSON.stringify({ op: "go.school.view", args: { reference } })})`,
-        );
-      }
+  const leases = records(value.leases);
+  if (leases.length > 0) {
+    lines.push("料理店：");
+    for (const lease of leases) {
+      lines.push(
+        `- 店铺当前${statusText(lease.state)}；下次租金到期时间 ${dateText(lease.nextRentDueAt)}。`,
+      );
     }
   }
-  const exams = Array.isArray(facts.exams)
-    ? facts.exams
-    : data.section === "exams" && Array.isArray(data.value)
-      ? data.value
-      : undefined;
-  if (exams)
-    lines.push(
-      exams.length === 0 ? "考试记录：无。" : "考试记录：",
-      ...recordLines({ exams }, "  "),
-    );
-  const certificates = Array.isArray(facts.certificates)
-    ? facts.certificates
-    : data.section === "certificates" && Array.isArray(data.value)
-      ? data.value
-      : undefined;
-  if (certificates)
-    lines.push(
-      certificates.length === 0 ? "资格证：无。" : "资格证：",
-      ...recordLines({ certificates }, "  "),
-    );
-  const employment = isRecord(facts.employment)
-    ? facts.employment
-    : data.section === "employment" && isRecord(data.value)
-      ? data.value
-      : undefined;
-  if (employment) lines.push("任职与排班：", ...recordLines(employment, "  "));
-  if (reference && !content && !paper)
-    lines.push("查询到的记录：", ...recordLines(reference, "  "));
-  return [...lines, ...renderOptions("go.school.choose", data)].join("\n");
+  const listings = records(value.listings);
+  if (listings.length > 0) {
+    lines.push("料理店商品：");
+    for (const listing of listings) {
+      const seller = isRecord(listing.seller) ? publicFarmText(listing.seller.farm) : undefined;
+      lines.push(
+        `- ${numberText(listing.quantity)} 份，单价 ${numberText(listing.priceSilver)} 银币${seller ? `，来自${seller}` : ""}。`,
+      );
+    }
+  }
+  return lines;
 }
 
-function commissionText(op: string, args: Record<string, unknown>, result: LingyeSuccess): string {
+function commissionText(op: string, result: LingyeSuccess): string {
   const data = result.data;
-  const lines = ["📋 铃野委托", result.text];
-  if (typeof args.option === "string") lines.push(`本次业务：${optionLabel(args.option)}`);
-  if (isRecord(data.result)) lines.push("办理结果：", ...recordLines(data.result, "  "));
-  if (isRecord(data.message)) lines.push("委托消息：", ...recordLines(data.message, "  "));
-  if (isRecord(data.world)) lines.push("处理后的世界事实：", ...recordLines(data.world, "  "));
-  if (Array.isArray(data.jobs))
-    lines.push(
-      data.jobs.length === 0 ? "当前委托：无。" : "当前委托：",
-      ...recordLines({ jobs: data.jobs }, "  "),
-    );
-  if (Array.isArray(data.sources))
-    lines.push(
-      data.sources.length === 0 ? "可以发起的真实事项：无。" : "可以发起的真实事项：",
-      ...recordLines({ sources: data.sources }, "  "),
-    );
-  if (isRecord(data.chef)) lines.push("料理师业务：", ...recordLines(data.chef, "  "));
-  if (isRecord(data.reference)) lines.push("查询到的委托：", ...recordLines(data.reference, "  "));
+  const lines = [commissionTitle(op), resultMessage(result.text, "已读取当前公开职业业务。")];
+  const items = commissionRecords(data);
+  if (items.length === 0) lines.push(`${commissionKind(op)}：当前没有公开记录。`);
+  else {
+    lines.push(`${commissionKind(op)}：`);
+    for (const [index, item] of items.entries())
+      lines.push(...commissionItemLines(op, item, index));
+  }
+  if (op === "go.farm.commission") {
+    const current = isRecord(data.current) ? data.current : undefined;
+    lines.push(...renderChefFacts(data.chef ?? current?.chef));
+  }
   return [...lines, ...renderOptions(op, data)].join("\n");
 }
 
 export function renderLingyeToolText(
   op: string,
-  args: Record<string, unknown>,
+  _args: Record<string, unknown>,
   result: LingyeSuccess,
 ): string {
-  if (op.startsWith("go.bank.")) return bankText(args, result);
-  if (op.startsWith("go.school.")) return schoolText(args, result);
-  return commissionText(op, args, result);
+  if (op.startsWith("go.bank.")) return bankText(op, result);
+  if (op.startsWith("go.school.")) return schoolText(result);
+  return commissionText(op, result);
 }
