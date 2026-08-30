@@ -91,6 +91,10 @@ export class OneBotGroupMembershipClient implements QqGroupMembershipReader {
       return String(member.user_id);
     });
 
+    if (memberIds.length === 0) {
+      throw new OneBotUnavailableError("OneBot returned an empty member list for the community group");
+    }
+
     return memberIds.includes(qqNumber);
   }
 }
