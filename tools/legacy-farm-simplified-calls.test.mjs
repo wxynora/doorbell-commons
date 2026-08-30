@@ -59,7 +59,7 @@ test("legacy farm publishes precise and automatic ripen while hidden use and run
     const coinsBefore = autoFarm.coins;
     const auto = dispatch(autoFarm, { action: "ripen", auto: true }, NOW);
     assert.equal(auto.ok, true);
-    assert.match(auto.text, /auto 买 2 瓶/);
+    assert.match(auto.text, /自动加速.*买 2 瓶/);
     assert.equal(autoFarm.plots.find((plot) => plot.id === 1).crop.ripe, true);
     assert.equal(autoFarm.plots.find((plot) => plot.id === 3).crop.ripe, true);
     assert.ok(autoFarm.coins < coinsBefore);
@@ -83,8 +83,8 @@ test("legacy farm publishes precise and automatic ripen while hidden use and run
     assert.equal(oldRun.ok, true);
     assert.equal(runFarm.plots[0].crop.ripe, true);
 
-    assert.match(HELP, /ripen \{"plots":\[1,3,5\]\}/);
-    assert.match(HELP, /\{"auto":true\}/);
+    assert.match(HELP, /doorbell\(\{"op":"farm\.ripen","args":\{"plots":\[1,3,5\]\}\}\)/);
+    assert.match(HELP, /doorbell\(\{"op":"farm\.ripen","args":\{"auto":true\}\}\)/);
     assert.doesNotMatch(HELP, /use \{"item":"speed_potion"/);
     assert.doesNotMatch(HELP, /"potion":"auto"/);
     assert.match(FARM_TOOL.description, /\{action:"ripen",plots:\[1,3\]\}/);
@@ -95,7 +95,7 @@ test("legacy farm publishes precise and automatic ripen while hidden use and run
 
     const statusFarm = farmWithGrowingPlots([1], 1);
     const status = dispatch(statusFarm, { action: "status" }, NOW);
-    assert.match(status.text, /ripen \{"auto":true\}/);
+    assert.match(status.text, /doorbell\(\{"op":"farm\.ripen","args":\{"auto":true\}\}\)/);
 });
 
 test("glimmer displays today's numeric codes and accepts either the code or animal name", () => {

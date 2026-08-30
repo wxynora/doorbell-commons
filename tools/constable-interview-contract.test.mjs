@@ -426,8 +426,14 @@ test("go.school exposes anonymous notice options and injects the authenticated r
         assert.deepEqual(notice.options, ["no_objection", "review_request"]);
         assertIso(notice.openedAt);
         assertIso(notice.closesAt);
-        const voteOption = view.data.options.find((item) => item.option.endsWith(`${noticeId}:no_objection`));
+        const voteHandle = fixture.database.prepare(`
+          SELECT handle FROM lingye_option_handles
+          WHERE resident_id = ? AND operation = 'go.school.choose' AND internal_option LIKE ?
+        `).get(VOTER, `school:constable-public-notice-vote:%:${noticeId}:no_objection`)?.handle;
+        const voteOption = view.data.options.find((item) => item.option === voteHandle);
         assert.ok(voteOption);
+        assert.equal(voteOption.label, "提交治安官公示意见");
+        assert.deepEqual(voteOption.requires, []);
         assert.throws(() => executor.execute({
             residentId: VOTER,
             bindingReference: `binding-${VOTER}`,

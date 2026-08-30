@@ -106,6 +106,129 @@ function execute(executor, op, args, identity = {}) {
     });
 }
 
+const OPTION_HANDLE_RE = /^opt_[A-Za-z0-9_-]{12}$/u;
+
+function optionWithLabel(options, label) {
+    return options.find((entry) => entry.label === label);
+}
+
+function assertPublicOptions(value) {
+    if (Array.isArray(value)) {
+        for (const entry of value)
+            assertPublicOptions(entry);
+        return;
+    }
+    if (!value || typeof value !== "object")
+        return;
+    if (Object.hasOwn(value, "option")) {
+        assert.deepEqual(Object.keys(value).sort(), ["label", "option", "requires"]);
+        assert.match(value.option, OPTION_HANDLE_RE);
+        assert.match(value.label, /[\u3400-\u9fff]/u);
+        assert.ok(Array.isArray(value.requires));
+    }
+    for (const [key, entry] of Object.entries(value)) {
+        if (["optionReference", "option_reference"].includes(key) && typeof entry === "string" &&
+            /^(bank|school|commission):/u.test(entry)) {
+            assert.fail("public result leaked an internal option reference");
+        }
+        assertPublicOptions(entry);
+    }
+}
+
+test("Lingye option handles persist across database reopen and stay resident/op scoped", (t) => {
+    const directory = mkdtempSync(join(tmpdir(), "aifarm-lingye-option-handles-"));
+    const databasePath = join(directory, "lingye-world.sqlite");
+    const residentId = "019ffb01-49cd-7020-b5af-3d04fb1ed03d";
+    const otherResidentId = "019ffb01-49cd-7020-c5af-3d04fb1ed03d";
+    const bindingReference = "option-handle-resident";
+    const otherBindingReference = "option-handle-other-resident";
+    let database = openLingyeWorldDatabase(databasePath);
+    t.after(() => {
+        database?.close();
+        rmSync(directory, { recursive: true, force: true });
+    });
+    let backend = createLingyeWorldBackend(database, {
+        economyRules: ECONOMY_RULES,
+        curriculum: TEST_CURRICULUM,
+        now: () => NOW,
+    });
+    registerLingyeResidentReference(database, {
+        residentId,
+        bindingReference,
+        registeredAt: NOW,
+    });
+    registerLingyeResidentReference(database, {
+        residentId: otherResidentId,
+        bindingReference: otherBindingReference,
+        registeredAt: NOW,
+    });
+    for (const [targetResidentId, migrationId] of [
+        [residentId, bindingReference],
+        [otherResidentId, otherBindingReference],
+    ]) {
+        backend.trustedSystemCommands.importLegacyBalances({
+            residentId: targetResidentId,
+            gold: 100_000,
+            silver: 0,
+            migrationId,
+            idempotencyKey: `economy:${migrationId}`,
+        });
+    }
+    let executor = createLingyeActionExecutor({
+        database,
+        backend,
+        economyRules: ECONOMY_RULES,
+        now: () => NOW,
+    });
+    const run = (targetExecutor, targetResidentId, targetBindingReference, op, args) =>
+        targetExecutor.execute({
+            residentId: targetResidentId,
+            bindingReference: targetBindingReference,
+            farm: null,
+            op,
+            args,
+        });
+    const bankView = run(executor, residentId, bindingReference, "go.bank.view", {});
+    const deposit = optionWithLabel(bankView.data.options, "存入金币活期");
+    assert.ok(deposit);
+    assert.match(deposit.option, OPTION_HANDLE_RE);
+    assert.deepEqual(deposit.requires, ["amount"]);
+    assert.equal(optionWithLabel(
+        run(executor, residentId, bindingReference, "go.bank.view", {}).data.options,
+        "存入金币活期",
+    ).option, deposit.option);
+    assert.equal(run(executor, otherResidentId, otherBindingReference, "go.bank.choose", {
+        option: deposit.option,
+        amount: 1,
+    }).error.code, "OPTION_NOT_AVAILABLE");
+    assert.equal(run(executor, residentId, bindingReference, "go.school.choose", {
+        option: deposit.option,
+    }).error.code, "OPTION_NOT_AVAILABLE");
+    assert.equal(run(executor, residentId, bindingReference, "go.bank.choose", {
+        option: "bank:demand-deposit:0",
+        amount: 1,
+    }).error.code, "OPTION_NOT_AVAILABLE");
+
+    database.close();
+    database = openLingyeWorldDatabase(databasePath);
+    backend = createLingyeWorldBackend(database, {
+        economyRules: ECONOMY_RULES,
+        curriculum: TEST_CURRICULUM,
+        now: () => NOW,
+    });
+    executor = createLingyeActionExecutor({
+        database,
+        backend,
+        economyRules: ECONOMY_RULES,
+        now: () => NOW,
+    });
+    const args = { option: deposit.option, amount: 1_000 };
+    const applied = run(executor, residentId, bindingReference, "go.bank.choose", args);
+    assert.equal(applied.ok, true);
+    assert.deepEqual(run(executor, residentId, bindingReference, "go.bank.choose", args), applied);
+    assert.equal(backend.forResident(residentId).getOwnAccount().availableGold, 99_000);
+});
+
 test("Doorbell Lingye exposes only ready authoritative bank, school and commission state", async (t) => {
     const database = openLingyeWorldDatabase(":memory:");
     let sequence = 0;
@@ -275,12 +398,11 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
     assert.equal(routedBank.data.account.availableSilver, 600);
 
     const bankView = execute(executor, "go.bank.view", {});
-    const depositOption = bankView.data.options.find((entry) => entry.option.includes("demand-deposit"));
+    assertPublicOptions(bankView);
+    const depositOption = optionWithLabel(bankView.data.options, "存入金币活期");
     assert.ok(depositOption);
-    const bankRevision = /^bank:[a-z-]+:(\d+)/u.exec(depositOption.option)?.[1];
-    assert.ok(bankRevision);
     assert.deepEqual(execute(executor, "go.bank.choose", {
-        option: `bank:term-close:${bankRevision}:another-resident-deposit`,
+        option: "bank:term-close:0:another-resident-deposit",
     }), {
         ok: false,
         error: {
@@ -296,7 +418,7 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
     assert.equal(backend.forResident(RESIDENT_ID).getOwnAccount().availableGold, 1_999_000);
 
     const loanBank = execute(executor, "go.bank.view", {});
-    const loanOfferOption = loanBank.data.options.find((entry) => entry.option.includes("player-loan-offer"));
+    const loanOfferOption = optionWithLabel(loanBank.data.options, "向其他居民提供银币借款");
     assert.deepEqual(loanOfferOption.requires, ["to", "amount", "termDays", "totalRatePpm"]);
     const proposedLoan = execute(executor, "go.bank.choose", {
         option: loanOfferOption.option,
@@ -313,8 +435,7 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
     });
     assert.equal("lenderResidentId" in proposedLoan.data.result, false);
     assert.equal("borrowerResidentId" in proposedLoan.data.result, false);
-    const lenderConfirm = proposedLoan.data.current.options.find((entry) =>
-        entry.option.includes("player-loan-confirm"));
+    const lenderConfirm = optionWithLabel(proposedLoan.data.current.options, "确认玩家借款合同");
     assert.ok(lenderConfirm);
     assert.equal(execute(executor, "go.bank.choose", { option: lenderConfirm.option }).ok, true);
     const otherIdentity = {
@@ -322,15 +443,13 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
         bindingReference: "other-doorbell-migration",
     };
     const borrowerView = execute(executor, "go.bank.view", { section: "loans" }, otherIdentity);
-    const borrowerConfirm = borrowerView.data.options.find((entry) =>
-        entry.option.includes("player-loan-confirm"));
+    const borrowerConfirm = optionWithLabel(borrowerView.data.options, "确认玩家借款合同");
     assert.ok(borrowerConfirm);
     const activatedLoan = execute(executor, "go.bank.choose", { option: borrowerConfirm.option }, otherIdentity);
     assert.equal(activatedLoan.data.result.status, "active");
     assert.equal(backend.forResident(RESIDENT_ID).getOwnAccount().availableSilver, 550);
     assert.equal(backend.forResident(OTHER_RESIDENT_ID).getOwnAccount().availableSilver, 150);
-    const borrowerRepay = activatedLoan.data.current.options.find((entry) =>
-        entry.option.includes("player-loan-repay"));
+    const borrowerRepay = optionWithLabel(activatedLoan.data.current.options, "偿还玩家银币借款");
     assert.ok(borrowerRepay);
     const repaidLoan = execute(executor, "go.bank.choose", {
         option: borrowerRepay.option,
@@ -343,8 +462,7 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
     const farmCareerView = execute(executor, "go.farm.commission", {});
     assert.equal(farmCareerView.ok, true);
     assert.equal(farmCareerView.data.chef.recipes[0].author.kind, "resident");
-    const recipeBuyOption = farmCareerView.data.options.find((entry) =>
-        entry.option.includes("commission:chef-recipe-buy"));
+    const recipeBuyOption = optionWithLabel(farmCareerView.data.options, "购买原创菜谱");
     assert.ok(recipeBuyOption);
     const boughtRecipe = execute(executor, "go.farm.commission", { option: recipeBuyOption.option });
     assert.equal(boughtRecipe.ok, true);
@@ -353,18 +471,16 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
     assert.equal("authorResidentId" in boughtRecipe.data.result, false);
 
     const chefOwnerView = execute(executor, "go.farm.commission", {}, otherIdentity);
-    const storeOpenOption = chefOwnerView.data.options.find((entry) =>
-        entry.option.includes("commission:chef-store-open"));
+    const storeOpenOption = optionWithLabel(chefOwnerView.data.options, "开设料理店");
     assert.ok(storeOpenOption);
     const openedStore = execute(executor, "go.farm.commission", { option: storeOpenOption.option }, otherIdentity);
     assert.equal(openedStore.ok, true);
     assert.equal(openedStore.data.result.state, "active");
     assert.equal("ownerResidentId" in openedStore.data.result, false);
     const buyerStoreView = execute(executor, "go.farm.commission", {});
-    const storeBuyOption = buyerStoreView.data.options.find((entry) =>
-        entry.option.includes("commission:chef-store-buy"));
+    const storeBuyOption = optionWithLabel(buyerStoreView.data.options, "购买料理店商品");
     assert.ok(storeBuyOption);
-    assert.match(storeBuyOption.option, /:[0-9a-f]{64}$/u);
+    assert.match(storeBuyOption.option, OPTION_HANDLE_RE);
     const storeOrder = execute(executor, "go.farm.commission", {
         option: storeBuyOption.option,
         amount: 1,
@@ -379,8 +495,10 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
     }).data.result, storeOrder.data.result);
     assert.equal(getFarm(FARM_ID).ranch.kitchen.ingredients.spice, 1);
     assert.deepEqual(backend.forResident(RESIDENT_ID).getOwnAccount(), firstOrderAccount);
-    const secondStoreBuyOption = execute(executor, "go.farm.commission", {}).data.options.find((entry) =>
-        entry.option.includes("commission:chef-store-buy"));
+    const secondStoreBuyOption = optionWithLabel(
+        execute(executor, "go.farm.commission", {}).data.options,
+        "购买料理店商品",
+    );
     assert.ok(secondStoreBuyOption);
     assert.notEqual(secondStoreBuyOption.option, storeBuyOption.option);
     const beforeSecondOrder = backend.forResident(RESIDENT_ID).getOwnAccount().availableSilver;
@@ -395,10 +513,12 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM chef_store_orders").get().count, 2);
 
     actionNow = openedStore.data.result.nextRentDueAt;
-    const firstRentOption = execute(executor, "go.farm.commission", {}, otherIdentity).data.options.find((entry) =>
-        entry.option.includes("commission:chef-store-rent"));
+    const firstRentOption = optionWithLabel(
+        execute(executor, "go.farm.commission", {}, otherIdentity).data.options,
+        "支付料理店租金",
+    );
     assert.ok(firstRentOption);
-    assert.match(firstRentOption.option, /:\d+$/u);
+    assert.match(firstRentOption.option, OPTION_HANDLE_RE);
     const beforeFirstRent = backend.forResident(OTHER_RESIDENT_ID).getOwnAccount().availableGold;
     const firstRent = execute(executor, "go.farm.commission", { option: firstRentOption.option }, otherIdentity);
     assert.equal(firstRent.ok, true);
@@ -410,8 +530,10 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
     );
     assert.deepEqual(backend.forResident(OTHER_RESIDENT_ID).getOwnAccount(), afterFirstRent);
     actionNow = firstRent.data.result.nextRentDueAt;
-    const secondRentOption = execute(executor, "go.farm.commission", {}, otherIdentity).data.options.find((entry) =>
-        entry.option.includes("commission:chef-store-rent"));
+    const secondRentOption = optionWithLabel(
+        execute(executor, "go.farm.commission", {}, otherIdentity).data.options,
+        "支付料理店租金",
+    );
     assert.ok(secondRentOption);
     assert.notEqual(secondRentOption.option, firstRentOption.option);
     const beforeSecondRent = backend.forResident(OTHER_RESIDENT_ID).getOwnAccount().availableGold;
@@ -423,7 +545,7 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
 
     const beforeFailedCommands = database.prepare("SELECT COUNT(*) AS count FROM economy_commands").get().count;
     const latestBank = execute(executor, "go.bank.view", {});
-    const latestDepositOption = latestBank.data.options.find((entry) => entry.option.includes("demand-deposit"));
+    const latestDepositOption = optionWithLabel(latestBank.data.options, "存入金币活期");
     const insufficient = execute(executor, "go.bank.choose", {
         option: latestDepositOption.option,
         amount: 9_999_999,
@@ -447,31 +569,31 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
         courseContentAvailable: true,
         examQuestionBankAvailable: true,
     });
-    assert.equal(schoolBefore.data.courseCatalog.length, 60);
-    assert.deepEqual(schoolBefore.data.courseCatalog[0], {
-        career: "chef",
-        qualificationLevel: 1,
-        courseIndex: 1,
-        title: "《食材也有身份证》",
-        teachingScope: "区分食材、产物、料理和自动回收物",
-        tuitionGold: 30_000,
-        contentAvailable: true,
-    });
+    assert.equal(Object.hasOwn(schoolBefore.data, "courseCatalog"), false);
     assert.equal(schoolBefore.data.options.some((entry) =>
-        entry.option.includes("school:career-select") && entry.option.endsWith(":reporter")), true);
-    assert.equal(schoolBefore.data.courseCatalog.find((entry) => entry.career === "reporter").contentAvailable, true);
+        entry.label === "选择职业：记者"), true);
     const courseSection = execute(executor, "go.school.view", { section: "courses" });
     assert.equal(courseSection.ok, true);
     assert.deepEqual(courseSection.data.value.progress, []);
-    assert.equal(courseSection.data.value.catalog.length, 60);
-    assert.equal(courseSection.data.value.catalog.some((entry) =>
-        entry.career === "reporter" && entry.contentAvailable === true), true);
-    const agronomistOption = schoolBefore.data.options.find((entry) => entry.option.includes("school:career-select") && entry.option.endsWith(":agronomist"));
+    assert.deepEqual(courseSection.data.value.catalog, []);
+    const agronomistOption = optionWithLabel(schoolBefore.data.options, "选择职业：农艺师");
     assert.ok(agronomistOption);
     const selectedCareer = execute(executor, "go.school.choose", { option: agronomistOption.option });
     assert.equal(selectedCareer.ok, true);
     assert.deepEqual(selectedCareer.data.result, { career: "agronomist", trackOrder: 1 });
-    assert.ok(selectedCareer.data.current.options.some((entry) => entry.option.includes("school:course-enroll")));
+    assert.equal(Object.hasOwn(selectedCareer.data.current, "courseCatalog"), false);
+    assert.ok(selectedCareer.data.current.options.some((entry) => entry.label === "报名课程：农艺师"));
+    const selectedCourseSection = execute(executor, "go.school.view", { section: "courses" });
+    assert.equal(selectedCourseSection.data.value.catalog.length, 12);
+    assert.equal(selectedCourseSection.data.value.catalog.every((entry) => entry.career === "agronomist"), true);
+    const otherSchool = execute(executor, "go.school.view", {}, otherIdentity);
+    const otherSecondCareer = optionWithLabel(otherSchool.data.options, "选择职业：记者");
+    assert.ok(otherSecondCareer);
+    assert.equal(execute(executor, "go.school.choose", { option: otherSecondCareer.option }, otherIdentity).ok, true);
+    const twoCareerCourseSection = execute(executor, "go.school.view", { section: "courses" }, otherIdentity);
+    assert.equal(twoCareerCourseSection.data.value.catalog.length, 24);
+    assert.deepEqual(new Set(twoCareerCourseSection.data.value.catalog.map((entry) => entry.career)),
+        new Set(["chef", "reporter"]));
     const restartedExecutor = createLingyeActionExecutor({
         database,
         backend,
@@ -482,7 +604,7 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
     assert.equal(database
         .prepare("SELECT COUNT(*) AS count FROM lingye_school_action_receipts WHERE resident_id = ?")
         .get(RESIDENT_ID).count, 1);
-    const staleChefOption = schoolBefore.data.options.find((entry) => entry.option.includes("school:career-select") && entry.option.endsWith(":chef"));
+    const staleChefOption = optionWithLabel(schoolBefore.data.options, "选择职业：料理师");
     assert.ok(staleChefOption);
     assert.equal(execute(executor, "go.school.choose", { option: staleChefOption.option }).error.code, "OPTION_NOT_AVAILABLE");
     assert.equal(database
@@ -494,29 +616,25 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
 
     for (const courseIndex of [1, 2, 3]) {
         const beforeEnroll = execute(executor, "go.school.view", {});
-        const enrollOption = beforeEnroll.data.options.find((entry) =>
-            entry.option.includes("school:course-enroll") &&
-            entry.option.endsWith(`:agronomist:1:${courseIndex}`));
+        const enrollOption = optionWithLabel(beforeEnroll.data.options, "报名课程：农艺师");
         assert.ok(enrollOption);
         const enrolled = execute(executor, "go.school.choose", { option: enrollOption.option });
         assert.equal(enrolled.ok, true);
         const reference = `agronomist:1:${courseIndex}`;
         const courseView = execute(executor, "go.school.view", { reference });
         assert.equal(courseView.ok, true);
+        assert.equal(Object.hasOwn(courseView.data, "courseCatalog"), false);
         assert.equal(courseView.data.reference.content.practiceQuestions.length, 5);
         assert.deepEqual(Object.keys(courseView.data.reference.content.practiceQuestions[0]).sort(), [
             "id",
             "options",
             "stem",
         ]);
-        const readOption = courseView.data.options.find((entry) =>
-            entry.option.includes("school:course-read") && entry.option.includes(`:${reference}:`) &&
-            entry.option.endsWith(`:${courseView.data.reference.content.contentDeliveryId}`));
+        const readOption = optionWithLabel(courseView.data.options, "确认已阅读课程：农艺师");
         assert.ok(readOption);
         const read = execute(executor, "go.school.choose", { option: readOption.option });
         assert.equal(read.ok, true);
-        let practiceOption = read.data.current.options.find((entry) =>
-            entry.option.includes("school:course-practice") && entry.option.endsWith(`:${reference}`));
+        let practiceOption = optionWithLabel(read.data.current.options, "提交课程练习：农艺师");
         assert.deepEqual(practiceOption.requires, ["answers"]);
         if (courseIndex === 1) {
             const failedPractice = execute(executor, "go.school.choose", {
@@ -533,8 +651,7 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
                 passed: false,
             });
             assert.equal(failedPractice.data.result.review.length, 5);
-            practiceOption = failedPractice.data.current.options.find((entry) =>
-                entry.option.includes("school:course-practice") && entry.option.endsWith(`:${reference}`));
+            practiceOption = optionWithLabel(failedPractice.data.current.options, "提交课程练习：农艺师");
         }
         const answerData = JSON.parse(database.prepare(`SELECT answer_key_json
           FROM career_assessment_papers WHERE target_key = ?`)
@@ -548,8 +665,7 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
     }
 
     const examRegistrationView = execute(executor, "go.school.view", {});
-    const registerExamOption = examRegistrationView.data.options.find((entry) =>
-        entry.option.includes("school:exam-register") && entry.option.endsWith(":agronomist:1"));
+    const registerExamOption = optionWithLabel(examRegistrationView.data.options, "报名资格考试：农艺师");
     assert.ok(registerExamOption);
     const firstRegistration = execute(executor, "go.school.choose", { option: registerExamOption.option });
     assert.equal(firstRegistration.ok, true);
@@ -557,11 +673,10 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
         .run(firstRegistration.data.result.attemptId);
     const terminalInterviewView = execute(executor, "go.school.view", {});
     assert.ok(terminalInterviewView.data.options.some((entry) =>
-        entry.option.includes("school:exam-register") && entry.option.endsWith(":agronomist:1")));
+        entry.label === "报名资格考试：农艺师"));
     database.prepare("UPDATE career_exam_attempts SET registration_status = 'registered' WHERE attempt_id = ?")
         .run(firstRegistration.data.result.attemptId);
-    const staleReleaseOption = firstRegistration.data.current.options.find((entry) =>
-        entry.option.includes("school:exam-release"));
+    const staleReleaseOption = optionWithLabel(firstRegistration.data.current.options, "取消尚未开始的考试报名");
     assert.ok(staleReleaseOption);
     actionNow = firstRegistration.data.result.scheduledAt + 2 * 60 * 60 * 1_000;
     const missedView = execute(executor, "go.school.view", {});
@@ -583,20 +698,19 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
     });
     assert.equal(database.prepare(`SELECT state FROM economy_system_gold_reservations
       WHERE reservation_id = ?`).get(firstRegistration.data.result.reservationId).state, "settled");
-    const reRegisterOption = missedView.data.options.find((entry) =>
-        entry.option.includes("school:exam-register") && entry.option.endsWith(":agronomist:1"));
+    const reRegisterOption = optionWithLabel(missedView.data.options, "报名资格考试：农艺师");
     assert.ok(reRegisterOption);
     const registeredExam = execute(executor, "go.school.choose", { option: reRegisterOption.option });
     assert.equal(registeredExam.ok, true);
     assert.equal(registeredExam.data.result.feeGold, 60_000);
     actionNow = registeredExam.data.result.scheduledAt;
     const examSessionView = execute(executor, "go.school.view", {});
-    const startExamOption = examSessionView.data.options.find((entry) => entry.option.includes("school:exam-start"));
+    const startExamOption = optionWithLabel(examSessionView.data.options, "开始资格考试");
     assert.ok(startExamOption);
     const startedExam = execute(executor, "go.school.choose", { option: startExamOption.option });
     assert.equal(startedExam.data.result.questions.length, 20);
     assert.deepEqual(Object.keys(startedExam.data.result.questions[0]).sort(), ["id", "options", "stem"]);
-    const submitExamOption = startedExam.data.current.options.find((entry) => entry.option.includes("school:exam-submit"));
+    const submitExamOption = optionWithLabel(startedExam.data.current.options, "提交整份资格考试答案");
     assert.deepEqual(submitExamOption.requires, ["answers"]);
     const examAnswerData = JSON.parse(database.prepare(`SELECT answer_key_json
       FROM career_assessment_papers WHERE exam_attempt_id = ?`)
@@ -624,15 +738,15 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
         source_attempt_id, issued_at, effective_at
       ) VALUES (?, 'veterinarian', 1, 'active', ?, ?, ?)
     `).run(RESIDENT_ID, "fixture-veterinarian-certificate", NOW, NOW);
-    const firstHireOption = execute(executor, "go.school.view", {}).data.options.find((entry) => entry.option.includes("school:employment-hire") && entry.option.endsWith(":veterinarian"));
+    const firstHireOption = optionWithLabel(execute(executor, "go.school.view", {}).data.options, "申请正式受聘：动物医生");
     assert.ok(firstHireOption);
     const firstHire = execute(executor, "go.school.choose", { option: firstHireOption.option });
     assert.equal(firstHire.ok, true);
     const firstEmploymentId = firstHire.data.result.employmentId;
-    const endOption = execute(executor, "go.school.view", {}).data.options.find((entry) => entry.option.includes("school:employment-end") && entry.option.endsWith(`:${firstEmploymentId}`));
+    const endOption = optionWithLabel(execute(executor, "go.school.view", {}).data.options, "结束任职");
     assert.ok(endOption);
     assert.equal(execute(executor, "go.school.choose", { option: endOption.option }).ok, true);
-    const secondHireOption = execute(executor, "go.school.view", {}).data.options.find((entry) => entry.option.includes("school:employment-hire") && entry.option.endsWith(":veterinarian"));
+    const secondHireOption = optionWithLabel(execute(executor, "go.school.view", {}).data.options, "申请正式受聘：动物医生");
     assert.ok(secondHireOption);
     assert.notEqual(secondHireOption.option, firstHireOption.option);
     const secondHire = execute(executor, "go.school.choose", { option: secondHireOption.option });
@@ -671,15 +785,18 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
     assert.equal(farmCommissions.data.jobs.length, 1);
     assert.equal(farmCommissions.data.jobs[0].sourceId, "real-plot-condition-1");
     assert.equal(farmCommissions.data.options.some((entry) =>
-        entry.option === "commission:accept:real-farm-job-1"), true);
+        entry.label === "接取委托"), true);
+    const acceptFarmJob = optionWithLabel(farmCommissions.data.options, "接取委托");
     const accepted = execute(executor, "go.farm.commission", {
-        option: "commission:accept:real-farm-job-1",
+        option: acceptFarmJob.option,
     });
     assert.equal(accepted.ok, true);
     assert.equal(accepted.data.result.status, "accepted");
     assert.equal(accepted.data.result.workerResidentId, RESIDENT_ID);
-    const workerReplyOption = execute(executor, "go.farm.commission", {}).data.options.find((entry) =>
-        entry.option === "commission:reply:real-farm-job-1");
+    const workerReplyOption = optionWithLabel(
+        execute(executor, "go.farm.commission", {}).data.options,
+        "回复委托消息",
+    );
     assert.deepEqual(workerReplyOption.requires, ["text"]);
     const workerReply = execute(executor, "go.farm.commission", {
         option: workerReplyOption.option,
@@ -720,30 +837,34 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
 
     const otherPublishView = execute(executor, "go.farm.commission", {}, otherIdentity);
     assert.equal(otherPublishView.ok, true, JSON.stringify(otherPublishView));
-    const otherPublishOption = otherPublishView.data.options.find((entry) =>
-        entry.option === "commission:publish:other-plot-condition-1");
+    const otherPublishOption = optionWithLabel(otherPublishView.data.options, "发布真实委托");
     assert.ok(otherPublishOption);
     const otherPublished = execute(executor, "go.farm.commission", {
         option: otherPublishOption.option,
         amount: 10,
     }, otherIdentity);
     const otherJobId = otherPublished.data.result.jobId;
-    const acceptOtherOption = execute(executor, "go.farm.commission", {}).data.options.find((entry) =>
-        entry.option === `commission:accept:${otherJobId}`);
+    const acceptOtherOption = optionWithLabel(
+        execute(executor, "go.farm.commission", {}).data.options,
+        "接取委托",
+    );
     assert.ok(acceptOtherOption);
     assert.equal(execute(executor, "go.farm.commission", { option: acceptOtherOption.option }).ok, true);
-    const otherCheckOption = execute(executor, "go.farm.commission", {}).data.options.find((entry) =>
-        entry.option.startsWith(`commission:check:${otherJobId}:`));
+    const otherCheckOption = optionWithLabel(
+        execute(executor, "go.farm.commission", {}).data.options,
+        "执行检查",
+    );
     assert.ok(otherCheckOption);
     assert.equal(execute(executor, "go.farm.commission", { option: otherCheckOption.option }).ok, true);
-    const transferOtherOption = execute(executor, "go.farm.commission", {}).data.options.find((entry) =>
-        entry.option === `commission:transfer:${otherJobId}`);
+    const transferOtherOption = optionWithLabel(
+        execute(executor, "go.farm.commission", {}).data.options,
+        "转交委托",
+    );
     assert.ok(transferOtherOption);
     const otherTransferred = execute(executor, "go.farm.commission", { option: transferOtherOption.option });
     const successorJobId = otherTransferred.data.successor.jobId;
     const npcTransferView = execute(executor, "go.farm.commission", {}, otherIdentity);
-    const npcTransferOption = npcTransferView.data.options.find((entry) =>
-        entry.option === `commission:npc-transfer:${successorJobId}`);
+    const npcTransferOption = optionWithLabel(npcTransferView.data.options, "把委托转交给机构 NPC");
     assert.ok(npcTransferOption);
     const npcCompleted = execute(executor, "go.farm.commission", {
         option: npcTransferOption.option,

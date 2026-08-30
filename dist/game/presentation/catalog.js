@@ -42,7 +42,7 @@ export function viewEncyclopedia(f, id) {
     const ugc = ids.map((i) => getCrop(i)).filter((c) => c?.category === "ugc").map((c) => `${c.name}`);
     if (ugc.length)
         lines.push(grp("🎨自创", ugc));
-    lines.push("（看作物/素材详情：encyclopedia 带 {\"id\":\"...\"}）");
+    lines.push("（查看作物或素材详情：doorbell({\"op\":\"farm.encyclopedia\",\"args\":{\"id\":\"作物或素材名\"}})）");
     return lines.join("\n");
 }
 
@@ -69,9 +69,10 @@ export function viewBag(f) {
         `🪨 素材库：${mats.length ? mats.join("、") : "（空，收获有概率掉素材）"}`,
         `🌱 限定种子：${seeds.length ? seeds.join("、") : "（空，熔炼可得）"}`,
         `📜 已学配方（${recipeLines.length}）：${recipeLines.length ? "\n" + recipeLines.join("\n") : "（无，商店第一层有概率刷出配方可买）"}`,
-        `⚗️ 熔炼台：craft 投 ${recipes[0]?.materials.length ?? 3} 个素材 → 出一颗限定种子（任意 ${recipes[0]?.materials.length ?? 3} 个随机素材即可熔出一颗随机限定种子，不必凑配方）。`,
+        `⚗️ 熔炼台：投入 ${recipes[0]?.materials.length ?? 3} 个素材 → 出一颗限定种子（任意 ${recipes[0]?.materials.length ?? 3} 个随机素材即可熔出一颗随机限定种子，不必凑配方）。`,
         `   规律：投入素材越稀有，越容易熔出高稀有作物（普通料多出 SR；带 SSR 料常出 SSR、偶尔 SP）；命中隐藏配方则稳出特定作物。`,
-        `   例（填 bag 里的中文名或 id 都行）：craft {"materials":["普通石头","萤石","龙的指甲"]}　种限定：plant {"limited":["星语花"]}`,
+        `   熔炼示例（填素材库里的中文名或 id）：doorbell({"op":"farm.craft","args":{"materials":["普通石头","萤石","龙的指甲"]}})`,
+        `   播种限定示例：doorbell({"op":"farm.plant","args":{"limited":["星语花"]}})`,
     ].join("\n");
 }
 
@@ -131,11 +132,11 @@ export function viewKitchen(f, now, section = "overview", options = {}) {
                 return rows.length ? `【${category}】${rows.map(recipeLine).join("、")}` : "";
             }).filter(Boolean).join("\n  ");
     if (section === "recipes")
-        return `📖 全部已解锁食谱（${view.knownRecipes.length}）：\n  ${known}\n\n制作：\n· {"action":"kitchen","op":"cook","recipe":"食谱名"}`;
+        return `📖 全部已解锁食谱（${view.knownRecipes.length}）：\n  ${known}\n\n制作：\n· doorbell({"op":"farm.kitchen.cook","args":{"recipe":"食谱名"}})`;
     const cookable = view.knownRecipes.filter((recipe) => recipe.canCook);
     const cookableText = cookable.length
         ? cookable.map((recipe) => `${recipe.name}·${recipe.rarity}`).join("、")
         : "（当前没有材料齐全的食谱）";
     const debuff = view.debuff ? `\n🥴 当前效果：${view.debuff.name}` : "";
-    return `🍳 料理台 · 🪙${f.silver} · 牧场金币 ${f.ranch?.coins ?? 0}${debuff}\n\n🥚 动物产物／渔获：\n  ${products}\n\n🧂 已有商店食材：\n  ${ownedIngredients}\n\n🧺 今日食材铺：\n  ${ingredients}\n\n📜 今日食谱铺：\n  ${offers}\n\n🍲 料理柜：\n  ${dishes}\n\n📖 现在可做：\n  ${cookableText}\n\n全部已解锁食谱：\n· {"action":"kitchen","view":"recipes"}\n\n常用操作：\n· 购买 {"action":"kitchen","op":"buy","kind":"ingredient","id":"食材id","qty":1}\n· 制作 {"action":"kitchen","op":"cook","recipe":"食谱名"}\n· 使用 {"action":"kitchen","op":"use","dishId":"料理名","target":"cat|dog|self"}\n· 出售 {"action":"kitchen","op":"sell","itemId":"名称","qty":数量,"to":"system|market","price":银币单价}`;
+    return `🍳 料理台 · 🪙${f.silver} · 牧场金币 ${f.ranch?.coins ?? 0}${debuff}\n\n🥚 动物产物／渔获：\n  ${products}\n\n🧂 已有商店食材：\n  ${ownedIngredients}\n\n🧺 今日食材铺：\n  ${ingredients}\n\n📜 今日食谱铺：\n  ${offers}\n\n🍲 料理柜：\n  ${dishes}\n\n📖 现在可做：\n  ${cookableText}\n\n全部已解锁食谱：\n· doorbell({"op":"farm.kitchen.view","args":{"section":"recipes"}})\n\n常用操作：\n· 购买：doorbell({"op":"farm.kitchen.buy","args":{"kind":"ingredient","id":"食材id","qty":1}})\n· 制作：doorbell({"op":"farm.kitchen.cook","args":{"recipe":"食谱名"}})\n· 使用：doorbell({"op":"farm.kitchen.use","args":{"dishId":"料理名","target":"self"}})\n· 回收：doorbell({"op":"farm.kitchen.sell","args":{"destination":"system","itemId":"名称","qty":1}})\n· 摆摊：doorbell({"op":"farm.kitchen.sell","args":{"destination":"market","itemId":"名称","qty":1,"price":25}})`;
 }

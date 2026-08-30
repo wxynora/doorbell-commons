@@ -536,7 +536,7 @@ function compatibilityPromptText() {
         qixiLantern2026.compatibility.intro,
         qixiLantern2026.compatibility.setup,
         ...questions,
-        '小机提交：{"action":"qixi","answers":["A","B","C"]}',
+        "当前 Doorbell 连接未开放这项操作，不能在这里提交。",
     ].join("\n");
 }
 
@@ -545,7 +545,7 @@ function quizPromptText() {
         qixiLantern2026.quiz.intro,
         qixiLantern2026.quiz.question,
         optionLines(qixiLantern2026.quiz.options),
-        '小机提交：{"action":"qixi","quizAnswer":"A|B|C"}',
+        "当前 Doorbell 连接未开放这项操作，不能在这里提交。",
     ].join("\n");
 }
 
@@ -578,7 +578,7 @@ function objectProgressLines(view) {
         }
         const missing = object.clues.filter((clue) => !clue.found).map((clue) => clue.id);
         if (!missing.length) {
-            lines.push(`📦 ${object.name}：线索已经齐了，归还：{"action":"qixi","return":{"item":"${object.id}","owner":"${object.ownerName}"}}`);
+            lines.push(`📦 ${object.name}：线索已经齐了。当前 Doorbell 连接未开放这项操作，不能在这里提交。`);
             continue;
         }
         const hints = [];
@@ -587,7 +587,7 @@ function objectProgressLines(view) {
         if (missing.includes("thread"))
             hints.push(compatibilityPromptText());
         if (missing.includes("tea"))
-            hints.push('做好蜂蜜茶后交给鹤姨：{"action":"kitchen","op":"use","dishId":"蜂蜜茶","target":"鹤姨"}');
+            hints.push('做好蜂蜜茶后交给鹤姨。下一步：doorbell({"op":"farm.kitchen.use","args":{"dishId":"蜂蜜茶","target":"鹤姨"}})');
         if (missing.includes("quiz"))
             hints.push(quizPromptText());
         lines.push(`🔎 ${object.name}：${hints.join("；")}。`);
@@ -621,9 +621,9 @@ export function qixiLantern2026StatusText(farm, worldValue, now = Date.now()) {
         lines.push(`纹样：${lampOptionText(choices.patterns)}`);
         lines.push(`挂件：${lampOptionText(choices.ornaments)}`);
         lines.push(`封签：${lampOptionText(choices.seals)}`);
-        lines.push('保存装扮：{"action":"qixi","decorate":{"shape":"square-palace","color":"moon-white","pattern":"none","ornament":"none","seal":"none"}}');
+        lines.push("保存装扮：当前 Doorbell 连接未开放这项操作，不能在这里提交。");
         if (view.finalStageOpen)
-            lines.push('放灯：{"action":"qixi","lamp":{"shape":"square-palace","color":"moon-white","pattern":"none","ornament":"none","seal":"none","text":"只写给对方的话"}}');
+            lines.push("放灯：当前 Doorbell 连接未开放这项操作，不能在这里提交。");
         else if (view.allReturned)
             lines.push("三件旧物已经全部归还；可以继续换装，今晚 20:00 开放放灯和捞灯。");
         else
@@ -635,7 +635,7 @@ export function qixiLantern2026StatusText(farm, worldValue, now = Date.now()) {
         if (received?.deliveredAt)
             lines.push(humanLampText(farm, received, false));
         else if (received)
-            lines.push('🌊 对方的灯已经出发。捞灯：{"action":"qixi","catch":true}');
+            lines.push("🌊 对方的灯已经出发。捞灯：当前 Doorbell 连接未开放这项操作，不能在这里提交。");
         else
             lines.push("🌊 对方还没有放灯；这不影响你先完成自己的灯。以后再来查看即可。");
     }

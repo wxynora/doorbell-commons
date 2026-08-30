@@ -37,6 +37,15 @@ const RULES = {
     restrictedDailySilverLimit: 1_000,
 };
 
+function publicOption(database, residentId, operation, internalOption) {
+    const row = database.prepare(`
+      SELECT handle FROM lingye_option_handles
+      WHERE resident_id = ? AND operation = ? AND internal_option = ?
+    `).get(residentId, operation, internalOption);
+    assert.ok(row, `missing public handle for ${operation}`);
+    return row.handle;
+}
+
 function animalFarm(condition, status = "open", id = `P3ANIMAL${condition}`) {
     const farm = makeFarm("P3 animal acceptance", 801);
     farm.id = id;
@@ -205,11 +214,21 @@ test("completed animal history remains readable after recovery without exposing 
     assert.equal(initial.ok, true, JSON.stringify(initial));
     const source = initial.data.sources[0];
     assert.equal(Object.hasOwn(source.fact, "condition"), false);
-    const published = run(owner, { option: `commission:publish:${source.sourceId}` });
+    const published = run(owner, {
+        option: publicOption(database, owner, "go.hospital.commission", `commission:publish:${source.sourceId}`),
+    });
     assert.equal(published.ok, true, JSON.stringify(published));
     const jobId = published.data.result.jobId;
-    assert.equal(run(veterinarian, { option: `commission:check:${jobId}:feed-history` }).ok, true);
-    const treated = run(veterinarian, { option: `commission:treat:${jobId}:stomach-powder` });
+    run(veterinarian);
+    assert.equal(run(veterinarian, {
+        option: publicOption(database, veterinarian, "go.hospital.commission",
+            `commission:check:${jobId}:feed-history`),
+    }).ok, true);
+    run(veterinarian);
+    const treated = run(veterinarian, {
+        option: publicOption(database, veterinarian, "go.hospital.commission",
+            `commission:treat:${jobId}:stomach-powder`),
+    });
     assert.equal(treated.ok, true, JSON.stringify(treated));
     const recoveryAt = (treated.data.world.recoveryUntilDay - beijingDay(NOW)) * DAY_MS + NOW;
     const recovered = getFarm(farmId);
@@ -261,7 +280,9 @@ test("security P3 exposes stable real trail sources and only non-punitive result
     assert.equal(typeof getFarm(farmId).trail[0].eventId, "string");
     assert.equal(Object.hasOwn(source.fact.event, "eventId"), true);
 
-    const published = run(owner, { option: `commission:publish:${source.sourceId}` });
+    const published = run(owner, {
+        option: publicOption(database, owner, "go.security.commission", `commission:publish:${source.sourceId}`),
+    });
     assert.equal(published.ok, true, JSON.stringify(published));
     const jobId = published.data.result.jobId;
     const forged = run(constable, { option: `commission:resolve:${jobId}:penalty`, text: "unsupported" });
@@ -269,9 +290,14 @@ test("security P3 exposes stable real trail sources and only non-punitive result
         code: "OPTION_NOT_AVAILABLE",
         message: "当前选项已失效或不适用于这项业务；请重新查看当前事实与 option。",
     });
-    assert.equal(run(constable, { option: `commission:check:${jobId}:facts` }).ok, true);
+    run(constable);
+    assert.equal(run(constable, {
+        option: publicOption(database, constable, "go.security.commission", `commission:check:${jobId}:facts`),
+    }).ok, true);
+    run(constable);
     const resolved = run(constable, {
-        option: `commission:resolve:${jobId}:rules_explained`,
+        option: publicOption(database, constable, "go.security.commission",
+            `commission:resolve:${jobId}:rules_explained`),
         text: "recorded facts",
     });
     assert.equal(resolved.ok, true, JSON.stringify(resolved));

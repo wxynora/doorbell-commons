@@ -67,6 +67,15 @@ function registerReporter(database, backend) {
     `).run("reporter-runtime-duty", "reporter-runtime-employment", REPORTER, NOW);
 }
 
+function publicOption(database, internalOption) {
+    const row = database.prepare(`
+      SELECT handle FROM lingye_option_handles
+      WHERE resident_id = ? AND operation = 'go.newsroom.commission' AND internal_option = ?
+    `).get(REPORTER, internalOption);
+    assert.ok(row);
+    return row.handle;
+}
+
 test("public history registration and reporter publication close the authoritative work record", () => {
     const database = openLingyeWorldDatabase(":memory:");
     let sequence = 0;
@@ -112,9 +121,18 @@ test("public history registration and reporter publication close the authoritati
         assert.equal(database.prepare("SELECT COUNT(*) AS count FROM career_reporter_material_packs").get().count, 1);
         assert.equal(database.prepare("SELECT COUNT(*) AS count FROM career_jobs").get().count, 1);
 
-        assert.equal(execute({ option: `commission:accept:${reporterJob.jobId}` }).ok, true);
-        assert.equal(execute({ option: `commission:check:${reporterJob.jobId}:sources` }).ok, true);
-        const submitted = execute({ option: `commission:submit:${reporterJob.jobId}`, text: "真实公共事实稿" });
+        assert.equal(execute({
+            option: publicOption(database, `commission:accept:${reporterJob.jobId}`),
+        }).ok, true);
+        execute({});
+        assert.equal(execute({
+            option: publicOption(database, `commission:check:${reporterJob.jobId}:sources`),
+        }).ok, true);
+        execute({});
+        const submitted = execute({
+            option: publicOption(database, `commission:submit:${reporterJob.jobId}`),
+            text: "真实公共事实稿",
+        });
         assert.equal(submitted.ok, true);
         const articleId = submitted.data.articleId;
         const reviewed = backend.trustedSystemCommands.reviewReporterArticle({

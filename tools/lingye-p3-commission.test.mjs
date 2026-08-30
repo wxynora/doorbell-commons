@@ -46,6 +46,16 @@ function execute(executor, residentId, op, args, farm) {
     return executor.execute({ residentId, bindingReference, farm, op, args });
 }
 
+function publicOption(database, residentId, operation, internalOption) {
+    const row = database.prepare(`
+      SELECT handle FROM lingye_option_handles
+      WHERE resident_id = ? AND operation = ? AND internal_option = ?
+    `).get(residentId, operation, internalOption);
+    assert.ok(row, `missing public handle for ${operation}`);
+    assert.match(row.handle, /^opt_[A-Za-z0-9_-]{12}$/u);
+    return row.handle;
+}
+
 function registerResident(database, backend, residentId, bindingReference, gold = 0, silver = 0) {
     registerLingyeResidentReference(database, { residentId, bindingReference, registeredAt: NOW });
     backend.trustedSystemCommands.importLegacyBalances({
@@ -163,19 +173,22 @@ test("P3 commissions bind real sources to payment, world results, review state, 
     const agronomySource = execute(executor, OWNER, "go.farm.commission", {}, getFarm(FARM_ID)).data.sources[0];
     assert.equal(Object.hasOwn(agronomySource.fact, "condition"), false);
     const publishedAgronomy = execute(executor, OWNER, "go.farm.commission", {
-        option: `commission:publish:${agronomySource.sourceId}`,
+        option: publicOption(database, OWNER, "go.farm.commission", `commission:publish:${agronomySource.sourceId}`),
         amount: 25,
     }, getFarm(FARM_ID));
     assert.equal(publishedAgronomy.ok, true);
     const agronomyJobId = publishedAgronomy.data.result.jobId;
+    execute(executor, AGRONOMIST, "go.farm.commission", {});
     assert.equal(execute(executor, AGRONOMIST, "go.farm.commission", {
-        option: `commission:accept:${agronomyJobId}`,
+        option: publicOption(database, AGRONOMIST, "go.farm.commission", `commission:accept:${agronomyJobId}`),
     }).ok, true);
     assert.equal(backend.forResident(OWNER).getOwnAccount().availableSilver, 75);
+    execute(executor, AGRONOMIST, "go.farm.commission", {});
     const checkedAgronomy = execute(executor, AGRONOMIST, "go.farm.commission", {
-        option: `commission:check:${agronomyJobId}:soil`,
+        option: publicOption(database, AGRONOMIST, "go.farm.commission", `commission:check:${agronomyJobId}:soil`),
     });
     assert.equal(checkedAgronomy.ok, true, JSON.stringify(checkedAgronomy));
+    execute(executor, AGRONOMIST, "go.farm.commission", {});
     const lockedPlotId = agronomySource.fact.plotId;
     const unlockedPlotId = farm.plots.find((plot) => plot.id !== lockedPlotId).id;
     assert.equal(farmActionTouchesLockedCareerObject(database, FARM_ID, "harvest", { plotId: lockedPlotId }), true);
@@ -183,7 +196,8 @@ test("P3 commissions bind real sources to payment, world results, review state, 
     assert.equal(farmActionTouchesLockedCareerObject(database, FARM_ID, "water", { plotId: unlockedPlotId }), false);
     assert.equal(farmActionTouchesLockedCareerObject(database, FARM_ID, "run", {}), true);
     const agronomyTreatment = {
-        option: `commission:treat:${agronomyJobId}:water-retaining-cover`,
+        option: publicOption(database, AGRONOMIST, "go.farm.commission",
+            `commission:treat:${agronomyJobId}:water-retaining-cover`),
     };
     let injectedFailure = true;
     const faultExecutor = createLingyeActionExecutor({
@@ -213,18 +227,22 @@ test("P3 commissions bind real sources to payment, world results, review state, 
     const animalSource = execute(executor, OWNER, "go.hospital.commission", {}, getFarm(FARM_ID)).data.sources[0];
     assert.equal(Object.hasOwn(animalSource.fact, "condition"), false);
     const publishedAnimal = execute(executor, OWNER, "go.hospital.commission", {
-        option: `commission:publish:${animalSource.sourceId}`,
+        option: publicOption(database, OWNER, "go.hospital.commission", `commission:publish:${animalSource.sourceId}`),
     }, getFarm(FARM_ID));
     const animalJobId = publishedAnimal.data.result.jobId;
     assert.equal(execute(executor, VETERINARIAN, "go.hospital.commission", {
         option: `commission:assign:${animalJobId}`,
     }).error.code, "OPTION_NOT_AVAILABLE");
     assert.equal(backend.trustedQueries.getJob(animalJobId).workerResidentId, VETERINARIAN);
+    execute(executor, VETERINARIAN, "go.hospital.commission", {});
     assert.equal(execute(executor, VETERINARIAN, "go.hospital.commission", {
-        option: `commission:check:${animalJobId}:feed-history`,
+        option: publicOption(database, VETERINARIAN, "go.hospital.commission",
+            `commission:check:${animalJobId}:feed-history`),
     }).ok, true);
+    execute(executor, VETERINARIAN, "go.hospital.commission", {});
     const wrongTreatmentArgs = {
-        option: `commission:treat:${animalJobId}:wound-cleanser+bandage`,
+        option: publicOption(database, VETERINARIAN, "go.hospital.commission",
+            `commission:treat:${animalJobId}:wound-cleanser+bandage`),
     };
     const wrongTreatment = execute(executor, VETERINARIAN, "go.hospital.commission", wrongTreatmentArgs);
     assert.equal(wrongTreatment.ok, true);
@@ -236,8 +254,10 @@ test("P3 commissions bind real sources to payment, world results, review state, 
         wrongTreatment,
     );
     assert.equal(backend.forResident(OWNER).getOwnAccount().availableGold, 84_000);
+    execute(executor, VETERINARIAN, "go.hospital.commission", {});
     const treatedAnimal = execute(executor, VETERINARIAN, "go.hospital.commission", {
-        option: `commission:treat:${animalJobId}:stomach-powder`,
+        option: publicOption(database, VETERINARIAN, "go.hospital.commission",
+            `commission:treat:${animalJobId}:stomach-powder`),
     });
     assert.equal(treatedAnimal.ok, true);
     assert.equal(treatedAnimal.data.result.status, "completed");
@@ -268,18 +288,21 @@ test("P3 commissions bind real sources to payment, world results, review state, 
     assert.equal(refreshedSecuritySources.some((source) => source.sourceId === securitySource.sourceId), true);
     assert.equal(new Set(refreshedSecuritySources.map((source) => source.sourceId)).size, 2);
     const securityPublished = execute(executor, OWNER, "go.security.commission", {
-        option: `commission:publish:${securitySource.sourceId}`,
+        option: publicOption(database, OWNER, "go.security.commission", `commission:publish:${securitySource.sourceId}`),
     }, getFarm(FARM_ID));
     const securityJobId = securityPublished.data.result.jobId;
     assert.equal(execute(executor, CONSTABLE, "go.security.commission", {
         option: `commission:assign:${securityJobId}`,
     }).error.code, "OPTION_NOT_AVAILABLE");
     assert.equal(backend.trustedQueries.getJob(securityJobId).workerResidentId, CONSTABLE);
+    execute(executor, CONSTABLE, "go.security.commission", {});
     assert.equal(execute(executor, CONSTABLE, "go.security.commission", {
-        option: `commission:check:${securityJobId}:facts`,
+        option: publicOption(database, CONSTABLE, "go.security.commission", `commission:check:${securityJobId}:facts`),
     }).ok, true);
+    execute(executor, CONSTABLE, "go.security.commission", {});
     const resolvedSecurity = execute(executor, CONSTABLE, "go.security.commission", {
-        option: `commission:resolve:${securityJobId}:rules_explained`,
+        option: publicOption(database, CONSTABLE, "go.security.commission",
+            `commission:resolve:${securityJobId}:rules_explained`),
         text: "recorded result",
     });
     assert.equal(resolvedSecurity.ok, true);
@@ -294,13 +317,16 @@ test("P3 commissions bind real sources to payment, world results, review state, 
     assert.equal(reporterJob.sourceFacts.sourceType, "public_event_fact");
     assert.equal(typeof reporterJob.sourceFacts.publicFact.title, "string");
     assert.equal(execute(executor, REPORTER, "go.newsroom.commission", {
-        option: `commission:accept:${reporterJob.jobId}`,
+        option: publicOption(database, REPORTER, "go.newsroom.commission", `commission:accept:${reporterJob.jobId}`),
     }).ok, true);
+    execute(executor, REPORTER, "go.newsroom.commission", {});
     assert.equal(execute(executor, REPORTER, "go.newsroom.commission", {
-        option: `commission:check:${reporterJob.jobId}:sources`,
+        option: publicOption(database, REPORTER, "go.newsroom.commission",
+            `commission:check:${reporterJob.jobId}:sources`),
     }).ok, true);
+    execute(executor, REPORTER, "go.newsroom.commission", {});
     const submitted = execute(executor, REPORTER, "go.newsroom.commission", {
-        option: `commission:submit:${reporterJob.jobId}`,
+        option: publicOption(database, REPORTER, "go.newsroom.commission", `commission:submit:${reporterJob.jobId}`),
         text: "candidate article",
     });
     assert.equal(submitted.ok, true);
@@ -367,29 +393,35 @@ test("agronomy transfer releases the old payment and requires an owner-approved 
     insertFarm(farm);
     const source = run(owner, {}, getFarm(farmId)).data.sources[0];
     const published = run(owner, {
-        option: `commission:publish:${source.sourceId}`,
+        option: publicOption(database, owner, "go.farm.commission", `commission:publish:${source.sourceId}`),
         amount: 25,
     }, getFarm(farmId));
     const originalJobId = published.data.result.jobId;
-    assert.equal(run(firstWorker, { option: `commission:accept:${originalJobId}` }).ok, true);
+    run(firstWorker, {});
+    assert.equal(run(firstWorker, {
+        option: publicOption(database, firstWorker, "go.farm.commission", `commission:accept:${originalJobId}`),
+    }).ok, true);
     assert.equal(backend.forResident(owner).getOwnAccount().availableSilver, 75);
-    assert.equal(run(firstWorker, { option: `commission:check:${originalJobId}:soil` }).ok, true);
-    const transferred = run(firstWorker, { option: `commission:transfer:${originalJobId}` });
+    run(firstWorker, {});
+    assert.equal(run(firstWorker, {
+        option: publicOption(database, firstWorker, "go.farm.commission", `commission:check:${originalJobId}:soil`),
+    }).ok, true);
+    run(firstWorker, {});
+    const transferred = run(firstWorker, {
+        option: publicOption(database, firstWorker, "go.farm.commission", `commission:transfer:${originalJobId}`),
+    });
     assert.equal(transferred.ok, true, JSON.stringify(transferred));
     const successor = transferred.data.successor;
     assert.equal(backend.forResident(owner).getOwnAccount().availableSilver, 100);
     assert.equal(successor.sourceId, source.sourceId);
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM career_commission_payments WHERE job_id = ?")
         .get(successor.jobId).count, 0);
-    assert.equal(run(secondWorker, {}).data.options.some((entry) =>
-        entry.option === `commission:accept:${successor.jobId}`), false);
+    assert.equal(run(secondWorker, {}).data.options.some((entry) => entry.label === "接取委托"), false);
     const ownerView = run(owner, {}, getFarm(farmId));
-    const republish = ownerView.data.options.find((entry) =>
-        entry.option === `commission:republish:${successor.jobId}`);
+    const republish = ownerView.data.options.find((entry) => entry.label === "重新发布委托");
     assert.deepEqual(republish.requires, ["amount"]);
     assert.equal(run(owner, { option: republish.option, amount: 30 }, getFarm(farmId)).ok, true);
-    const accept = run(secondWorker, {}).data.options.find((entry) =>
-        entry.option === `commission:accept:${successor.jobId}`);
+    const accept = run(secondWorker, {}).data.options.find((entry) => entry.label === "接取委托");
     assert.ok(accept);
     assert.equal(run(secondWorker, { option: accept.option }).ok, true);
     assert.equal(backend.forResident(owner).getOwnAccount().availableSilver, 70);
@@ -457,14 +489,19 @@ test("veterinarian transfer immediately reassigns the successor to another autho
         args,
     });
     const source = run(owner, {}, getFarm(farmId)).data.sources[0];
-    const published = run(owner, { option: `commission:publish:${source.sourceId}` }, getFarm(farmId));
+    const published = run(owner, {
+        option: publicOption(database, owner, "go.hospital.commission", `commission:publish:${source.sourceId}`),
+    }, getFarm(farmId));
     const jobId = published.data.result.jobId;
     assert.equal(backend.trustedQueries.getJob(jobId).workerResidentId, firstWorker);
+    run(firstWorker, {});
     assert.equal(run(firstWorker, {
-        option: `commission:check:${jobId}:feed-history`,
+        option: publicOption(database, firstWorker, "go.hospital.commission",
+            `commission:check:${jobId}:feed-history`),
     }).ok, true);
+    run(firstWorker, {});
     const transferred = run(firstWorker, {
-        option: `commission:transfer:${jobId}`,
+        option: publicOption(database, firstWorker, "go.hospital.commission", `commission:transfer:${jobId}`),
     });
     assert.equal(transferred.ok, true, JSON.stringify(transferred));
     assert.equal(transferred.data.successor.workerResidentId, secondWorker);
@@ -525,26 +562,28 @@ test("four commission decisions close further world actions and one bad recovery
     });
     const source = run(owner, {}, getFarm(farmId)).data.sources[0];
     const published = run(owner, {
-        option: `commission:publish:${source.sourceId}`,
+        option: publicOption(database, owner, "go.farm.commission", `commission:publish:${source.sourceId}`),
         amount: 25,
     }, getFarm(farmId));
     const jobId = published.data.result.jobId;
-    assert.equal(run(worker, { option: `commission:accept:${jobId}` }).ok, true);
+    run(worker, {});
+    assert.equal(run(worker, {
+        option: publicOption(database, worker, "go.farm.commission", `commission:accept:${jobId}`),
+    }).ok, true);
+    run(worker, {});
     for (const check of ["leaf", "soil", "root", "pest-trace"]) {
         assert.equal(run(worker, {
-            option: `commission:check:${jobId}:${check}`,
+            option: publicOption(database, worker, "go.farm.commission", `commission:check:${jobId}:${check}`),
         }).ok, true);
     }
     const cappedView = run(worker, {});
-    assert.deepEqual(cappedView.data.options.map((entry) => entry.option), [
-        `commission:reply:${jobId}`,
-        `commission:transfer:${jobId}`,
-    ]);
+    assert.deepEqual(cappedView.data.options.map((entry) => entry.label), ["回复委托消息", "转交委托"]);
     const worldBefore = JSON.stringify(getFarm(farmId));
     const operationsBefore = database.prepare(`SELECT COUNT(*) AS count
       FROM lingye_cross_store_operations WHERE job_id = ?`).get(jobId).count;
     const fifth = run(worker, {
-        option: `commission:check:${jobId}:treatment-history`,
+        option: publicOption(database, worker, "go.farm.commission",
+            `commission:check:${jobId}:treatment-history`),
     });
     assert.equal(fifth.error.code, "OPTION_NOT_AVAILABLE");
     assert.equal(JSON.stringify(getFarm(farmId)), worldBefore);
@@ -807,7 +846,9 @@ test("system NPC fallback settles real agronomy and hospital sources without pla
     const agronomy = executeOwner("go.farm.commission", {}, getFarm(farmId));
     assert.equal(agronomy.ok, true, JSON.stringify(agronomy));
     const agronomySource = agronomy.data.sources[0];
-    const agronomyOption = { option: `commission:npc:${agronomySource.sourceId}` };
+    const agronomyOption = {
+        option: publicOption(database, owner, "go.farm.commission", `commission:npc:${agronomySource.sourceId}`),
+    };
     assert.equal(agronomy.data.options.some((entry) => entry.option === agronomyOption.option), true);
     assert.equal(executeStranger("go.farm.commission", agronomyOption, getFarm(farmId)).error.code, "OPTION_NOT_AVAILABLE");
     const treatedAgronomy = executeOwner("go.farm.commission", agronomyOption, getFarm(farmId));
@@ -823,7 +864,9 @@ test("system NPC fallback settles real agronomy and hospital sources without pla
 
     const hospital = executeOwner("go.hospital.commission", {}, getFarm(farmId));
     const animalSource = hospital.data.sources[0];
-    const animalOption = { option: `commission:npc:${animalSource.sourceId}` };
+    const animalOption = {
+        option: publicOption(database, owner, "go.hospital.commission", `commission:npc:${animalSource.sourceId}`),
+    };
     const treatedAnimal = executeOwner("go.hospital.commission", animalOption, getFarm(farmId));
     assert.equal(treatedAnimal.ok, true, JSON.stringify(treatedAnimal));
     assert.deepEqual(treatedAnimal.data.result.fee, {
@@ -895,7 +938,7 @@ test("failed NPC fallback leaves money, source state, and settlement unchanged",
     assert.equal(view.ok, true, JSON.stringify(view));
     const source = view.data.sources[0];
     const failed = executeOwner("go.farm.commission", {
-        option: `commission:npc:${source.sourceId}`,
+        option: publicOption(database, owner, "go.farm.commission", `commission:npc:${source.sourceId}`),
     }, getFarm(farmId));
     assert.deepEqual(failed, {
         ok: false,
@@ -957,7 +1000,9 @@ test("NPC fallback recovers the same world action when SQLite settlement commit 
     };
     insertFarm(farm);
     const source = executeOwner("go.farm.commission", {}, getFarm(farmId)).data.sources[0];
-    const args = { option: `commission:npc:${source.sourceId}` };
+    const args = {
+        option: publicOption(database, owner, "go.farm.commission", `commission:npc:${source.sourceId}`),
+    };
     database.exec(`
       CREATE TRIGGER fail_npc_settlement
       BEFORE INSERT ON career_npc_service_settlements

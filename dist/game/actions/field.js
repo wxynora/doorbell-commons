@@ -58,7 +58,7 @@ function autoPotion(f, now) {
     const stillGrowing = growing - u.count;
     const buyMsg = bought > 0 ? `买 ${bought} 瓶(-${spent}金)，` : "";
     const short = stillGrowing > 0 ? `；还有 ${stillGrowing} 块没催（官方店每天限 ${POTION_DAILY_CAP} 瓶，可买药水套装/帮别人浇水/等收获掉落）` : "";
-    return `【加速】auto ${buyMsg}催熟 ${u.count} 块${short}（剩 ${u.left} 瓶）`;
+    return `【自动加速】${buyMsg}催熟 ${u.count} 块${short}（剩 ${u.left} 瓶）`;
 }
 
 function doRun(f, b, now, options = {}) {
@@ -110,18 +110,18 @@ function doRun(f, b, now, options = {}) {
         else if (b.harvest !== "if-any" && b.harvestAfter !== "if-any") {
             const growing = f.plots.filter((p) => p.crop && !p.crop.ripe).length;
             parts.push(growing > 0
-                ? `【收获】本轮还没有可收的——${growing} 块在生长中（刚种下，或药水不足没催熟）。帮别人浇水攒药水/等真实时间长熟后，下次 run 即可收获揭晓。`
+                ? `【收获】本轮还没有可收的——${growing} 块在生长中（刚种下，或药水不足没催熟）。帮别人浇水攒药水或等真实时间长熟后，再执行一条龙经营即可收获揭晓：doorbell({"op":"farm.run","args":{}})`
                 : "【收获】没有成熟的作物（先种下种子，再浇水催熟）。");
         }
     }
-    return { ok: true, text: withFooter(f, now, parts.join("\n") || "（这轮 run 没指定动作）") };
+    return { ok: true, text: withFooter(f, now, parts.join("\n") || "（这轮一条龙经营没有指定动作）") };
 }
 
 /** 熔炼/原创成功后的「种下」引导：有空地→鼓励直接种（Agent 页会自动出「🌷 种下「X」」按钮）；
  *  没空地→明确告知收获后再种。原始 JSON 降级成括号里的「接口」提示，别让它看着像后台指令。 */
 export function plantHint(f, cropId, cropName) {
     const empty = f.plots.filter((p) => !p.crop).length;
-    const json = `plant {"limited":["${cropId}"]}`;
+    const json = `doorbell({"op":"farm.plant","args":{"limited":["${cropId}"]}})`;
     return empty > 0
         ? `🌷 现在有 ${empty} 块空地，随时可以种下「${cropName}」（种它：${json}）。`
         : `🌱 你的田当前没有空地，收获后可种下「${cropName}」（种它：${json}）。`;
@@ -178,9 +178,9 @@ export function handleFieldAction(action, f, b, now, options = {}) {
             if (b.auto === true && b.plots === undefined)
                 return { ok: true, text: withFooter(f, now, autoPotion(f, now).replace(/^【加速】/, "🧪 ")) };
             if (b.auto !== undefined)
-                return { ok: false, text: "ripen 的 auto 只接受 true，且不能与 plots 同时使用" };
+                return { ok: false, text: "催熟的 auto 只接受 true，且不能与 plots 同时使用。示例：doorbell({\"op\":\"farm.ripen\",\"args\":{\"auto\":true}})" };
             if (b.plots === undefined)
-                return { ok: false, text: "ripen 需要 plots 或 auto:true" };
+                return { ok: false, text: "催熟需要 plots 或 auto:true。示例：doorbell({\"op\":\"farm.ripen\",\"args\":{\"plots\":[1]}})" };
             const r = usePotionPlots(f, b.plots);
             return {
                 ok: r.ok,
@@ -213,7 +213,7 @@ export function handleFieldAction(action, f, b, now, options = {}) {
                     r.crop.lore ? `🌾 收获文案：${r.crop.lore}` : "",
                     `设计费 -${r.fee}金，到手 ${r.seeds} 颗种子。`,
                     plantHint(f, r.crop.id, r.crop.name),
-                    `🧺 也能摆摊卖给别的玩家（上架：list {"kind":"seed","id":"${r.crop.id}","qty":1}）。`,
+                    `🧺 也能摆摊卖给别的玩家（上架：doorbell({"op":"farm.list","args":{"kind":"seed","id":"${r.crop.id}","qty":1}})）。`,
                 ].filter(Boolean)
                 : [];
             return {

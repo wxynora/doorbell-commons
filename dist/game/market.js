@@ -96,7 +96,7 @@ export function viewMarket(f, own, viewer, targetRef = f.id) {
     });
     if (!items.length)
         return own
-            ? `🧺 你的摊位空着。用 list 上架素材/种子（别人串门可买）。`
+            ? `🧺 你的摊位空着。上架素材示例：doorbell({"op":"farm.list","args":{"kind":"material","id":"素材id","qty":1}})（别人串门可买）。`
             : `🧺 「${f.name}」的摊位空着。`;
     const head = own ? "🧺 你的摊位（银币结算）：" : `🧺 「${f.name}」的摊位（银币结算）：`;
     const lines = items.map((m) => {
@@ -104,16 +104,16 @@ export function viewMarket(f, own, viewer, targetRef = f.id) {
         const name = m.kind === "dish" ? m.dish?.name ?? "料理" : itemName(m.kind, m.id);
         const base = `· ${label}「${name}」×${m.qty} @ 🪙${m.price}银`;
         return own
-            ? `${base}　→ unlist {"kind":"${m.kind}","id":"${m.id}"}`
-            : `${base}　→ buy {"to":"${targetRef}","kind":"${m.kind}","id":"${m.id}","qty":1}`;
+            ? `${base}　→ 下架：doorbell({"op":"farm.unlist","args":{"kind":"${m.kind}","id":"${m.id}"}})`
+            : `${base}　→ 购买：doorbell({"op":"farm.buy","args":{"source":"market","to":"${targetRef}","kind":"${m.kind}","id":"${m.id}","qty":1}})`;
     });
-    const foot = own ? "\n（别人串门「HTTP」可买你的货；npc 看常驻邻居阿土的铺子、buy 买他刷出的限定种子）" : "";
+    const foot = own ? "\n（别人串门时可以买你的货；随机逛逛可以找到常驻邻居阿土和其他玩家。）" : "";
     return head + "\n" + lines.join("\n") + foot;
 }
 /** 跨农场购买（server 传入 seller + buyer）。市场用银币结算。 */
 export function buyFromMarket(seller, buyer, kind, id, qty, now = Date.now()) {
     if (seller.id === buyer.id)
-        return { ok: false, error: "不能买自己摊位上的东西——要拿回直接 unlist 下架（自买会刷销量，已禁止）。" };
+        return { ok: false, error: `不能买自己摊位上的东西——要拿回请执行下架：doorbell({"op":"farm.unlist","args":{"kind":"${kind}","id":"${id}"}})（自买会刷销量，已禁止）。` };
     id = resolveMarketId(kind, id); // 允许用中文名购买
     const e = seller.market.find((m) => m.kind === kind && m.id === id);
     if (!e)
@@ -189,6 +189,6 @@ export function viewHot() {
     const buyerCount = (c) => c.buyers?.length ?? 0;
     const ugc = allUgc().filter((c) => !c.banned).sort((a, b) => buyerCount(b) - buyerCount(a)).slice(0, 10);
     if (!ugc.length)
-        return "🔥 还没有自创作物——用 design 创造第一个，让它上榜！";
+        return "🔥 还没有自创作物——可以设计第一个：doorbell({\"op\":\"farm.design\",\"args\":{\"name\":\"作物名\",\"desc\":\"作物介绍\"}})";
     return "🔥 自创作物热门榜（按多少人买过）：\n" + ugc.map((c, i) => `${i + 1}. 「${c.name}」·${c.rarity}（设计者 ${c.designer ?? "?"}）${buyerCount(c)} 人买过　${c.desc}`).join("\n");
 }

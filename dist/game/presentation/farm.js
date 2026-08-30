@@ -103,7 +103,7 @@ function fmtCodexReveal(r, harvesterId) {
 /** 本轮收获若掉了素材，结尾给一句汇总（教学语只此一次，不再每株重复）。 */
 function materialSummary(rs) {
     const n = rs.filter((r) => r.drop).length;
-    return n ? `⚗️ 本轮 +${n} 份素材，bag 看库存与熔炼组合。` : "";
+    return n ? `⚗️ 本轮 +${n} 份素材。查看库存与熔炼组合：doorbell({"op":"farm.bag","args":{}})` : "";
 }
 
 /** 批量收获文字：compact 时用「收下」汇总本轮全部作物；新图鉴由独立演出播报。 */
@@ -163,8 +163,7 @@ export function summarizePlanted(p) {
 
 export const humanDisplay = (f) => f.humanName || "伴侣";
 
-/** 催熟候选一行（药水有每日上限→催哪块是策略）：限定/稀有在前，标作物+剩余时间。
- *  POST/REST AI 看这行可选 ripen {plots:[N]} 精确催熟或 ripen {auto:true} 自动补药；手头没药水或没生长中作物则空串。 */
+/** 催熟候选一行（药水有每日上限→催哪块是策略）：限定/稀有在前，标作物+剩余时间。 */
 export function potionTargetLine(f, now) {
     if ((f.items.speed_potion ?? 0) <= 0)
         return "";
@@ -172,5 +171,5 @@ export function potionTargetLine(f, now) {
     if (!ts.length)
         return "";
     const seg = ts.slice(0, 6).map((t) => `${circledNum(t.plotId)}${t.label}（剩${t.remain}）`).join("｜");
-    return `🎯 催熟候选：${seg}　精确催熟→ ripen {"plots":[N]}；自动补药并尽量全催→ ripen {"auto":true}`;
+    return `🎯 催熟候选：${seg}\n精确催熟：doorbell({"op":"farm.ripen","args":{"plots":[1]}})；自动补药并尽量全催：doorbell({"op":"farm.ripen","args":{"auto":true}})`;
 }

@@ -256,6 +256,172 @@ function option(option, requires = []) {
     return requires.length === 0 ? { option } : { option, requires };
 }
 
+const PUBLIC_OPTION_HANDLE_RE = /^opt_[A-Za-z0-9_-]{12}$/u;
+const CAREER_LABELS = Object.freeze({
+    chef: "料理师",
+    agronomist: "农艺师",
+    veterinarian: "动物医生",
+    reporter: "记者",
+    constable: "治安官",
+});
+const BANK_OPTION_LABELS = Object.freeze({
+    "demand-deposit": "存入金币活期",
+    "demand-withdraw": "取出金币活期",
+    "exchange-gold-silver": "用金币兑换银币",
+    "term-open": "开立金币定期存款",
+    "term-close": "结清金币定期存款",
+    "system-loan-open": "申请系统金币贷款",
+    "system-loan-repay": "偿还系统金币贷款",
+    "silver-lock-increase": "增加小机银币锁定额",
+    "player-loan-offer": "向其他居民提供银币借款",
+    "player-loan-request": "向其他居民申请银币借款",
+    "player-loan-confirm": "确认玩家借款合同",
+    "player-loan-cancel": "取消玩家借款提案",
+    "player-loan-repay": "偿还玩家银币借款",
+});
+const SCHOOL_OPTION_LABELS = Object.freeze({
+    "career-select": "选择职业",
+    "course-enroll": "报名课程",
+    "course-read": "确认已阅读课程",
+    "course-practice": "提交课程练习",
+    "exam-register": "报名资格考试",
+    "exam-start": "开始资格考试",
+    "exam-release": "取消尚未开始的考试报名",
+    "exam-submit": "提交整份资格考试答案",
+    "employment-hire": "申请正式受聘",
+    "employment-leave": "请假",
+    "employment-resume": "恢复在岗",
+    "employment-end": "结束任职",
+    "constable-public-notice-vote": "提交治安官公示意见",
+});
+const COMMISSION_OPTION_LABELS = Object.freeze([
+    ["chef-recipe-buy", "购买原创菜谱"],
+    ["chef-store-open", "开设料理店"],
+    ["chef-store-rent", "支付料理店租金"],
+    ["chef-store-buy", "购买料理店商品"],
+    ["npc-transfer", "把委托转交给机构 NPC"],
+    ["publish", "发布真实委托"],
+    ["republish", "重新发布委托"],
+    ["accept", "接取委托"],
+    ["cancel", "取消委托"],
+    ["reply", "回复委托消息"],
+    ["check", "执行检查"],
+    ["treat", "执行处理／治疗"],
+    ["transfer", "转交委托"],
+    ["submit", "提交工作结果"],
+    ["resolve", "提交治安处理结果"],
+    ["npc", "委托机构 NPC 处理"],
+]);
+
+function optionOperation(op) {
+    if (op.startsWith("go.bank."))
+        return "go.bank.choose";
+    if (op.startsWith("go.school."))
+        return "go.school.choose";
+    return op;
+}
+
+function internalOptionLabel(internalOption) {
+    const bank = /^bank:([a-z-]+):/u.exec(internalOption)?.[1];
+    if (bank)
+        return BANK_OPTION_LABELS[bank] ?? "办理银行业务";
+    const school = /^school:([a-z-]+):/u.exec(internalOption)?.[1];
+    if (school) {
+        const career = /:(chef|agronomist|veterinarian|reporter|constable)(?::|$)/u.exec(internalOption)?.[1];
+        return `${SCHOOL_OPTION_LABELS[school] ?? "办理职业学校业务"}${career ? `：${CAREER_LABELS[career]}` : ""}`;
+    }
+    if (internalOption.startsWith("commission:")) {
+        const action = internalOption.slice("commission:".length);
+        return COMMISSION_OPTION_LABELS.find(([prefix]) => action === prefix || action.startsWith(`${prefix}:`))?.[1]
+            ?? "推进委托";
+    }
+    return "办理当前业务";
+}
+
+function optionHandle(database, residentId, operation, internalOption, now) {
+    const existing = database.prepare(`
+      SELECT handle FROM lingye_option_handles
+      WHERE resident_id = ? AND operation = ? AND internal_option = ?
+    `).get(residentId, operation, internalOption);
+    if (existing)
+        return existing.handle;
+    const digest = createHash("sha256")
+        .update(JSON.stringify([residentId, operation, internalOption]), "utf8")
+        .digest("base64url")
+        .slice(0, 12);
+    const handle = `opt_${digest}`;
+    const collision = database.prepare(`
+      SELECT resident_id, operation, internal_option FROM lingye_option_handles WHERE handle = ?
+    `).get(handle);
+    if (collision && (collision.resident_id !== residentId || collision.operation !== operation ||
+        collision.internal_option !== internalOption)) {
+        throw new Error("Lingye option handle collision");
+    }
+    database.prepare(`
+      INSERT OR IGNORE INTO lingye_option_handles (
+        handle, resident_id, operation, internal_option, issued_at
+      ) VALUES (?, ?, ?, ?, ?)
+    `).run(handle, residentId, operation, internalOption, now);
+    return handle;
+}
+
+function exposeOptionHandles(database, residentId, op, value, now) {
+    const operation = optionOperation(op);
+    const expose = (candidate) => {
+        if (Array.isArray(candidate))
+            return candidate.map(expose);
+        if (!isPlainObject(candidate))
+            return candidate;
+        if (typeof candidate.option === "string") {
+            return {
+                option: optionHandle(database, residentId, operation, candidate.option, now),
+                label: internalOptionLabel(candidate.option),
+                requires: Array.isArray(candidate.requires) ? [...candidate.requires] : [],
+            };
+        }
+        return Object.fromEntries(Object.entries(candidate).map(([key, entry]) => {
+            if (["optionReference", "option_reference"].includes(key) && typeof entry === "string" &&
+                /^(bank|school|commission):/u.test(entry)) {
+                return [key, optionHandle(database, residentId, operation, entry, now)];
+            }
+            return [key, expose(entry)];
+        }));
+    };
+    return expose(value);
+}
+
+function selectedCourseCatalog(backend, careers) {
+    return courseCatalog(careers).map((course) => ({
+        ...course,
+        tuitionGold: COURSE_TUITION_GOLD[course.qualificationLevel],
+        contentAvailable: backend.trustedQueries.courseAvailable(
+            course.career,
+            course.qualificationLevel,
+            course.courseIndex,
+        ),
+    }));
+}
+
+function resolveOptionHandle(database, residentId, op, args) {
+    if (!Object.hasOwn(args, "option"))
+        return args;
+    if (typeof args.option !== "string" || !PUBLIC_OPTION_HANDLE_RE.test(args.option))
+        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "当前 option 无效，请重新查看可办理事项。");
+    const row = database.prepare(`
+      SELECT internal_option FROM lingye_option_handles
+      WHERE handle = ? AND resident_id = ? AND operation = ?
+    `).get(args.option, residentId, optionOperation(op));
+    if (!row)
+        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "当前 option 无效，请重新查看可办理事项。");
+    return { ...args, option: row.internal_option };
+}
+
+function publicLingyeResult(database, residentId, op, result, now) {
+    if (!result.ok)
+        return result;
+    return { ...result, data: exposeOptionHandles(database, residentId, op, result.data, now) };
+}
+
 function bankRevision(database, residentId) {
     const row = database.prepare(`
       SELECT COALESCE(MAX(journal_rowid), 0) AS revision
@@ -803,15 +969,6 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
     }
     return {
         careers: tracks,
-        courseCatalog: courseCatalog().map((course) => ({
-            ...course,
-            tuitionGold: COURSE_TUITION_GOLD[course.qualificationLevel],
-            contentAvailable: backend.trustedQueries.courseAvailable(
-                course.career,
-                course.qualificationLevel,
-                course.courseIndex,
-            ),
-        })),
         courses,
         exams,
         certificates,
@@ -884,7 +1041,10 @@ function schoolView(database, backend, residentId, now, args) {
     }
     const section = args.section ?? null;
     const value = section === "courses"
-        ? { catalog: facts.courseCatalog, progress: facts.courses }
+        ? {
+            catalog: selectedCourseCatalog(backend, facts.careers.map((track) => track.career)),
+            progress: facts.courses,
+        }
         : section === null
             ? facts
             : facts[section];
@@ -2027,40 +2187,52 @@ export function createLingyeActionExecutor(options) {
                 return failure("LINGYE_NOT_READY", "铃野居民身份或经济账户尚未完成迁移。");
             try {
                 backend.forResident(input.residentId).getOwnAccount();
+                const actionNow = now();
+                const args = resolveOptionHandle(database, input.residentId, input.op, input.args);
+                let result;
                 if (input.op === "go.bank.view")
-                    return bankView(database, backend, economyRules, input.residentId, input.args);
-                if (input.op === "go.bank.choose")
-                    return bankChoose(database, backend, economyRules, input.residentId, input.args);
-                if (input.op === "go.school.view")
-                    return schoolView(database, backend, input.residentId, now(), input.args);
-                if (input.op === "go.school.choose")
-                    return schoolChoose(database, backend, input.residentId, now(), input.args);
+                    result = bankView(database, backend, economyRules, input.residentId, args);
+                else if (input.op === "go.bank.choose")
+                    result = bankChoose(database, backend, economyRules, input.residentId, args);
+                else if (input.op === "go.school.view")
+                    result = schoolView(database, backend, input.residentId, actionNow, args);
+                else if (input.op === "go.school.choose")
+                    result = schoolChoose(database, backend, input.residentId, actionNow, args);
+                if (result !== undefined)
+                    return publicLingyeResult(database, input.residentId, input.op, result, actionNow);
                 const career = COMMISSION_CAREERS[input.op];
                 syncAuthorityJobs(database, backend);
                 const sources = input.farm
                     ? boundFarmSources(database, input.farm, input.residentId)
                     : [];
                 if (input.op === "go.farm.commission") {
-                    if (Object.hasOwn(input.args, "option")) {
+                    if (Object.hasOwn(args, "option")) {
                         const chefResult = farmChefCommissionAction(
                             database,
                             backend,
                             input.residentId,
-                            input.args,
+                            args,
                             input.farm,
-                            now(),
+                            actionNow,
                         );
                         if (chefResult)
-                            return chefResult;
-                        return commissionAction(database, backend, input.residentId, "agronomist", input.args,
-                            sources, now(), options.afterWorldApplyForTesting);
+                            result = chefResult;
+                        else
+                            result = commissionAction(database, backend, input.residentId, "agronomist", args,
+                                sources, actionNow, options.afterWorldApplyForTesting);
                     }
-                    return farmCommissionView(database, backend, input.residentId, input.args, sources, input.farm, now());
+                    else {
+                        result = farmCommissionView(database, backend, input.residentId, args, sources, input.farm, actionNow);
+                    }
                 }
-                if (Object.hasOwn(input.args, "option"))
-                    return commissionAction(database, backend, input.residentId, career, input.args,
-                        sources, now(), options.afterWorldApplyForTesting);
-                return commissionView(database, backend, input.residentId, career, input.args, sources);
+                else if (Object.hasOwn(args, "option")) {
+                    result = commissionAction(database, backend, input.residentId, career, args,
+                        sources, actionNow, options.afterWorldApplyForTesting);
+                }
+                else {
+                    result = commissionView(database, backend, input.residentId, career, args, sources);
+                }
+                return publicLingyeResult(database, input.residentId, input.op, result, actionNow);
             }
             catch (error) {
                 const mapped = mapDomainError(error);

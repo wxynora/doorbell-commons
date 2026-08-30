@@ -255,7 +255,7 @@ function requireOpenTicket(farm, now) {
         return { ok: false, text: `流光原野现在没有开放。下次开放时间：${localParts(now).hour < glimmer.openHour ? "今日 20:00" : "明日 20:00"}。` };
     const state = resetDaily(farm, now);
     if (!hasTicket(state, now))
-        return { ok: false, text: "还没有今天的流光原野通票。先购买当天通票：glimmer {\"op\":\"ticket\"}" };
+        return { ok: false, text: "还没有今天的流光原野通票。先购买当天通票：doorbell({\"op\":\"farm.glimmer.ticket\",\"args\":{}})" };
     return { ok: true, state };
 }
 
@@ -324,7 +324,7 @@ function grantReward(farm, reward, rng, now) {
 function encounterPrompt(event) {
     if (event.type !== "choice")
         return event.text;
-    return `${event.text}\nA. ${event.options.A.label}\nB. ${event.options.B.label}\n继续：glimmer {\"op\":\"choose\",\"option\":\"A\"}`;
+    return `${event.text}\nA. ${event.options.A.label}\nB. ${event.options.B.label}\n继续选择：doorbell({"op":"farm.glimmer.choose","args":{"option":"A"}})`;
 }
 
 function explore(farm, world, now) {
@@ -332,7 +332,7 @@ function explore(farm, world, now) {
     if (!gate.ok)
         return gate;
     if (gate.state.pending)
-        return { ok: false, text: "先处理当前奇遇选择：glimmer {\"op\":\"choose\",\"option\":\"A\"}" };
+        return { ok: false, text: "先处理当前奇遇选择：doorbell({\"op\":\"farm.glimmer.choose\",\"args\":{\"option\":\"A\"}})" };
     if (gate.state.daily.explores >= glimmer.dailyExploreLimit)
         return { ok: false, text: "今天的 3 次奇遇已经走完，北京时间 0 点刷新。" };
     const rng = new Rng(farm.rngState ?? 1);
@@ -368,7 +368,7 @@ function choose(farm, now, option) {
     const key = String(option ?? "").toUpperCase();
     const selected = event.options[key];
     if (!selected)
-        return { ok: false, text: "option 只接受 A 或 B。" };
+        return { ok: false, text: "流光原野选择只接受 A 或 B。示例：doorbell({\"op\":\"farm.glimmer.choose\",\"args\":{\"option\":\"A\"}})" };
     gate.state.pending = null;
     const rng = new Rng(farm.rngState ?? 1);
     const suffix = grantReward(farm, selected.reward, rng, now);
@@ -699,7 +699,7 @@ function runGlimmerAction(farm, worldValue, params, now) {
         return { ...catchVariant(farm, world, now, params?.animal, params?.dish), changed: true };
     if (op === "assist")
         return { ...assist(farm, world, now, params?.item), changed: true };
-    return { ok: false, text: "glimmer op 只接受 view、ticket、explore、choose、catch、assist。", changed: false };
+    return { ok: false, text: "流光原野只提供查看、购票、探索、选择、诱捕和协作。查看正式操作说明：doorbell({\"op\":\"farm.help\",\"args\":{\"operation\":\"farm.glimmer.status\"}})", changed: false };
 }
 
 export function runGlimmer(farm, worldValue, params, now = Date.now()) {

@@ -778,8 +778,8 @@ function directCallGuide(world, farm) {
         return "";
     if (world.phase === "choice" || world.phase === "vote" || currentPublicTask(world)?.kind === "question") {
         const options = choiceOptions(world);
-        const calls = Object.keys(options ?? {}).map((option) => `${option} → ${JSON.stringify({ action: "together", option })}`);
-        return calls.length ? `【可直接调用】\n${calls.join("\n")}` : "";
+        const calls = Object.keys(options ?? {}).map((option) => `${option} → doorbell({"op":"farm.together.choose","args":{"option":"${option}"}})`);
+        return calls.length ? `【下一步】\n${calls.join("\n")}` : "";
     }
     const task = currentPublicTask(world);
     if (!task)
@@ -792,7 +792,7 @@ function directCallGuide(world, farm) {
     if (task.kind === "dish") {
         if (!findPublicDish(farm, task.dish, task.dish))
             return `料理柜里没有任务需要的「${task.dish}」，这次没有消耗料理。`;
-        return `【可直接调用】\n${JSON.stringify({ action: "kitchen", op: "use", dishId: task.dish, target: task.npc })}`;
+        return `【下一步】\ndoorbell({"op":"farm.kitchen.use","args":{"dishId":"${task.dish}","target":"${task.npc}"}})`;
     }
     return "";
 }
@@ -892,7 +892,7 @@ function takeNotices(world, farm, side, now) {
     if (!phaseList.includes(phase)) {
         phaseList.push(phase);
         if (!opened && notices.length === 0)
-            notices.push(`🧭 铃野共行进展：${publicExpeditionStatusLine(world, now, false)}。用 {"action":"together"} 查看当前剧情。`);
+            notices.push(`🧭 铃野共行进展：${publicExpeditionStatusLine(world, now, false)}。下一步：doorbell({"op":"farm.together.view","args":{}})`);
     }
     return notices;
 }

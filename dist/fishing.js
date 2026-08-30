@@ -5,7 +5,7 @@ import {
     fishingSpotById, fishingFishById, fishingBaitById, fishingEventById, fishingItemById,
 } from "./content.js";
 import { currentSeason, currentDayIndex, currentWeather } from "./time.js";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { glimmerBuffMultiplier } from "./glimmer.js";
 import { qixi2026FishText, submitQixi2026Fish } from "./qixi-2026.js";
 
@@ -65,6 +65,84 @@ function cleanCount(value) {
     return Math.max(0, Math.floor(Number(value) || 0));
 }
 
+const FISH_PUBLIC_REF_PREFIX = "鱼-";
+const CHEST_PUBLIC_REF_PREFIX = "箱-";
+const PUBLIC_REF_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+
+function publicRefPrefix(kind) {
+    return kind === "fish" ? FISH_PUBLIC_REF_PREFIX : CHEST_PUBLIC_REF_PREFIX;
+}
+
+function hasPublicRefShape(value, kind) {
+    return typeof value === "string"
+        && value.startsWith(publicRefPrefix(kind))
+        && value.length === publicRefPrefix(kind).length + 6;
+}
+
+function newFishingPublicRef(state, kind, reserved = new Set()) {
+    const prefix = publicRefPrefix(kind);
+    for (let tries = 0; tries < 50; tries++) {
+        const bytes = randomBytes(6);
+        let suffix = "";
+        for (const byte of bytes)
+            suffix += PUBLIC_REF_ALPHABET[byte % PUBLIC_REF_ALPHABET.length];
+        const ref = prefix + suffix;
+        if (!reserved.has(ref) && !Object.hasOwn(state.publicRefHistory, ref))
+            return ref;
+    }
+    const fallback = prefix + randomUUID().replaceAll("-", "").slice(0, 6).toUpperCase();
+    if (!reserved.has(fallback) && !Object.hasOwn(state.publicRefHistory, fallback))
+        return fallback;
+    return newFishingPublicRef(state, kind, reserved);
+}
+
+function ensurePublicRefs(state) {
+    state.publicRefHistory = state.publicRefHistory && typeof state.publicRefHistory === "object" && !Array.isArray(state.publicRefHistory)
+        ? state.publicRefHistory : {};
+    const reserved = new Set();
+    const ensureRows = (rows, kind) => {
+        for (const row of rows) {
+            const current = hasPublicRefShape(row?.publicRef, kind) && !reserved.has(row.publicRef)
+                ? row.publicRef : newFishingPublicRef(state, kind, reserved);
+            row.publicRef = current;
+            reserved.add(current);
+            state.publicRefHistory[current] = { kind, status: "active" };
+        }
+    };
+    ensureRows(state.catchInventory, "fish");
+    ensureRows(state.pendingChests, "chest");
+}
+
+function retirePublicRef(state, item, status = "expired") {
+    if (!item?.publicRef)
+        return;
+    state.publicRefHistory[item.publicRef] = {
+        kind: item.publicRef.startsWith(CHEST_PUBLIC_REF_PREFIX) ? "chest" : "fish",
+        status,
+    };
+}
+
+function findFishingReference(state, value, expectedKind) {
+    const q = String(value ?? "").trim();
+    const ownRows = expectedKind === "fish" ? state.catchInventory : state.pendingChests;
+    const otherRows = expectedKind === "fish" ? state.pendingChests : state.catchInventory;
+    const active = ownRows.find((item) => item.publicRef === q || item.id === q);
+    if (active)
+        return { status: "active", item: active };
+    if (otherRows.some((item) => item.publicRef === q || item.id === q))
+        return { status: "wrong-kind" };
+    const history = state.publicRefHistory[q];
+    if (history?.kind && history.kind !== expectedKind)
+        return { status: "wrong-kind" };
+    if (history?.kind === expectedKind) {
+        if (history.status === "opened")
+            return { status: "opened" };
+        history.status = "expired";
+        return { status: "expired" };
+    }
+    return { status: "unknown" };
+}
+
 /** 老存档第一次接触钓鱼时补默认值；不建立第二份存档。 */
 export function ensureFishing(farm) {
     const state = (farm.fishing && typeof farm.fishing === "object") ? farm.fishing : (farm.fishing = {});
@@ -80,6 +158,7 @@ export function ensureFishing(farm) {
     state.catchInventory = Array.isArray(state.catchInventory) ? state.catchInventory : [];
     state.items = (state.items && typeof state.items === "object") ? state.items : {};
     state.pendingChests = Array.isArray(state.pendingChests) ? state.pendingChests : [];
+    ensurePublicRefs(state);
     state.seenLetters = (state.seenLetters && typeof state.seenLetters === "object") ? state.seenLetters : {};
     state.codex = (state.codex && typeof state.codex === "object") ? state.codex : {};
     state.stats = (state.stats && typeof state.stats === "object") ? state.stats : {};
@@ -196,12 +275,14 @@ function recordCatch(farm, state, fishDef, size) {
     state.stats.totalCaught++;
     const instance = {
         id: `fish_${randomUUID()}`,
+        publicRef: newFishingPublicRef(state, "fish"),
         fishId: fishDef.id,
         size,
         rawValue,
         sellSilver,
     };
     state.catchInventory.push(instance);
+    state.publicRefHistory[instance.publicRef] = { kind: "fish", status: "active" };
     const first = !state.codex[fishDef.id];
     const entry = (state.codex[fishDef.id] ??= { count: 0, maxSize: 0 });
     entry.count++;
@@ -261,9 +342,14 @@ function resolveFishingEvent(farm, state, rng) {
     }
     if (event.type === "chest") {
         state.stats.totalChests++;
-        const chest = { id: `chest_${randomUUID()}`, eventId: event.id };
+        const chest = {
+            id: `chest_${randomUUID()}`,
+            publicRef: newFishingPublicRef(state, "chest"),
+            eventId: event.id,
+        };
         state.pendingChests.push(chest);
-        return { kind: "event", text: `📦 钓到【${event.name}】〔${chest.id}〕，先放进鱼篓；用 open 打开。` };
+        state.publicRefHistory[chest.publicRef] = { kind: "chest", status: "active" };
+        return { kind: "event", text: `📦 钓到【${event.name}】〔${chest.publicRef}〕，先放进鱼篓。下一步：doorbell({"op":"farm.fish.open","args":{"id":"${chest.publicRef}"}})` };
     }
     const rewards = addReward(farm, state, rng, event.rewards ?? {});
     return { kind: "event", text: `🌊 ${event.name}${rewards.length ? `：${rewards.join("、")}` : "。"}` };
@@ -337,17 +423,20 @@ function castStep(farm, state, rng, bait, now) {
     if (state.fever > 0) {
         state.fever--;
         const duplicate = recordCatch(farm, state, fishDef, caught.instance.size);
-        feverText = `\n🔥 热潮翻倍：又得到一条${fishDef.name}〔${duplicate.instance.id}〕。`;
+        feverText = `\n🔥 热潮翻倍：又得到一条${fishDef.name}〔${duplicate.instance.publicRef}〕。`;
     }
     const lucky = rollLuckyEvent(farm, state, rng, pool, bait, { ...caught, now });
     const newCatchIds = state.catchInventory.filter((item) => !beforeCatchIds.has(item.id)).map((item) => item.id);
+    const publicRefById = new Map(state.catchInventory.map((item) => [item.id, item.publicRef]));
     const qixi = submitQixi2026Fish(farm, state, newCatchIds, now);
     const rarity = fishing.rarities[fishDef.rarity].label;
     const first = caught.first ? `\n🆕 首次收录，额外 +${caught.bonus} 银。` : "";
     const luck = lucky && !(qixi?.submittedIds?.includes(caught.instance.id) && lucky.id === "golden_touch") ? `\n${lucky.text}` : "";
-    let text = `🐟 ${fishDef.name} · ${rarity} · ${caught.instance.size}${fishDef.size_unit} · 可卖 ${caught.instance.sellSilver} 银〔${caught.instance.id}〕${first}${feverText}${luck}`;
+    let text = `🐟 ${fishDef.name} · ${rarity} · ${caught.instance.size}${fishDef.size_unit} · 可卖 ${caught.instance.sellSilver} 银〔${caught.instance.publicRef}〕${first}${feverText}${luck}`;
     for (const id of qixi?.submittedIds ?? []) {
-        text = text.replace(new RegExp(` · 可卖 \\d+ 银〔${id}〕`), "").replaceAll(`〔${id}〕`, "");
+        const publicRef = publicRefById.get(id);
+        if (publicRef)
+            text = text.replace(new RegExp(` · 可卖 \\d+ 银〔${publicRef}〕`), "").replaceAll(`〔${publicRef}〕`, "");
     }
     return {
         consumed: true, kind: "fish", fishName: fishDef.name, rarity: fishDef.rarity,
@@ -469,7 +558,7 @@ function buyBait(farm, state, requested, qty) {
 function chooseSpot(state, requested) {
     const spot = byIdOrName(fishingSpots, requested);
     if (!spot)
-        return { ok: false, text: `没有这个钓点：${requested}。用 view:"spots" 看清单。` };
+        return { ok: false, text: `没有这个钓点：${requested}。下一步：doorbell({"op":"farm.fish.view","args":{"section":"spots"}})` };
     const changed = state.locationId !== spot.id;
     state.locationId = spot.id;
     if (changed)
@@ -485,6 +574,8 @@ function sellFishing(farm, state, target) {
         const itemRows = sellableItems();
         const itemGain = itemRows.reduce((sum, [id, qty]) => sum + fishingItemById.get(id).sellSilver * cleanCount(qty), 0);
         const fishCount = state.catchInventory.length;
+        for (const item of state.catchInventory)
+            retirePublicRef(state, item);
         state.catchInventory = [];
         for (const [id] of itemRows)
             state.items[id] = 0;
@@ -494,18 +585,26 @@ function sellFishing(farm, state, target) {
         farm.silver += gain;
         return { ok: true, text: `♻️ 卖出 ${fishCount} 条鱼${itemRows.length ? `和 ${itemRows.length} 类财宝` : ""}，+${gain} 银；图鉴记录保留。` };
     }
-    const instance = state.catchInventory.find((item) => item.id === q);
-    if (instance) {
+    const referenced = findFishingReference(state, q, "fish");
+    if (referenced.status === "active") {
+        const instance = referenced.item;
         state.catchInventory = state.catchInventory.filter((item) => item !== instance);
+        retirePublicRef(state, instance);
         farm.silver += instance.sellSilver;
-        return { ok: true, text: `♻️ 卖出${fishingFishById.get(instance.fishId)?.name ?? instance.fishId}〔${instance.id}〕，+${instance.sellSilver} 银。` };
+        return { ok: true, text: `♻️ 卖出${fishingFishById.get(instance.fishId)?.name ?? instance.fishId}〔${instance.publicRef}〕，+${instance.sellSilver} 银。` };
     }
+    if (referenced.status === "wrong-kind")
+        return { ok: false, text: "这是宝箱引用，不能当作鱼获出售。" };
+    if (referenced.status === "expired")
+        return { ok: false, text: "这条鱼已经不在鱼篓里，引用已失效。" };
     const fishDef = byIdOrName(fishingFish, q);
     if (fishDef) {
         const rows = state.catchInventory.filter((item) => item.fishId === fishDef.id);
         if (!rows.length)
             return { ok: false, text: `鱼篓里没有${fishDef.name}。` };
         const gain = rows.reduce((sum, item) => sum + item.sellSilver, 0);
+        for (const item of rows)
+            retirePublicRef(state, item);
         state.catchInventory = state.catchInventory.filter((item) => item.fishId !== fishDef.id);
         farm.silver += gain;
         return { ok: true, text: `♻️ 卖出${fishDef.name}×${rows.length}，+${gain} 银。` };
@@ -520,13 +619,22 @@ function sellFishing(farm, state, target) {
         farm.silver += gain;
         return { ok: true, text: `♻️ 卖出${itemDef.name}×${qty}，+${gain} 银。` };
     }
+    if (/^(?:fish|chest)_[0-9a-f-]+$/i.test(q) || /^[0-9a-f]{64}$/i.test(q))
+        return { ok: false, text: "鱼篓里没有这项内容，这个旧引用已经失效。" };
     return { ok: false, text: `鱼篓里找不到「${q}」。` };
 }
 
 function openChest(farm, state, chestId) {
-    const chest = state.pendingChests.find((item) => item.id === String(chestId ?? ""));
-    if (!chest)
-        return { ok: false, text: `鱼篓里没有这个宝箱：${chestId}。` };
+    const referenced = findFishingReference(state, chestId, "chest");
+    if (referenced.status === "wrong-kind")
+        return { ok: false, text: "这是鱼获引用，不能拿来开宝箱。" };
+    if (referenced.status === "opened")
+        return { ok: false, text: "这个宝箱已经打开过，不能重复开箱。" };
+    if (referenced.status === "expired")
+        return { ok: false, text: "这个宝箱已经不在鱼篓里，引用已失效。" };
+    if (referenced.status !== "active")
+        return { ok: false, text: "鱼篓里没有这个宝箱引用。请先查看当前鱼篓。" };
+    const chest = referenced.item;
     const event = fishingEventById.get(chest.eventId);
     const lock = event?.lock ?? {};
     let paid = "";
@@ -548,17 +656,18 @@ function openChest(farm, state, chestId) {
     state.rngState = rng.state;
     state.rngCalls = rng.calls;
     state.pendingChests = state.pendingChests.filter((item) => item !== chest);
+    retirePublicRef(state, chest, "opened");
     return { ok: true, text: `📦 ${paid ? paid + "，" : ""}打开【${event.name}】：${rewards.join("、") || "里面空空如也"}。` };
 }
 
 function basketView(state) {
     const fishRows = state.catchInventory.map((item) => {
         const fishDef = fishingFishById.get(item.fishId);
-        return `${fishDef?.name ?? item.fishId}〔${item.id}〕·${item.size}${fishDef?.size_unit ?? "cm"}·可卖 ${item.sellSilver} 银`;
+        return `${fishDef?.name ?? item.fishId}〔${item.publicRef}〕·${item.size}${fishDef?.size_unit ?? "cm"}·可卖 ${item.sellSilver} 银`;
     });
     const itemRows = Object.entries(state.items).filter(([, qty]) => cleanCount(qty) > 0)
         .map(([id, qty]) => `${fishingItemById.get(id)?.name ?? id}〔${id}〕×${qty}`);
-    const chestRows = state.pendingChests.map((chest) => `${fishingEventById.get(chest.eventId)?.name ?? chest.eventId}〔${chest.id}〕`);
+    const chestRows = state.pendingChests.map((chest) => `${fishingEventById.get(chest.eventId)?.name ?? chest.eventId}〔${chest.publicRef}〕`);
     return `🧺 鱼篓\n鱼：${fishRows.length ? `\n  ${fishRows.join("\n  ")}` : "（空）"}\n财宝：${itemRows.length ? itemRows.join("、") : "（空）"}\n宝箱：${chestRows.length ? chestRows.join("、") : "（空）"}`;
 }
 
@@ -603,6 +712,10 @@ export function removeFishingCatchIds(farm, ids) {
     if (!ids?.size)
         return;
     const state = ensureFishing(farm);
+    for (const item of state.catchInventory) {
+        if (ids.has(item.id))
+            retirePublicRef(state, item);
+    }
     state.catchInventory = state.catchInventory.filter((item) => !ids.has(item.id));
 }
 
@@ -659,6 +772,8 @@ export function sellFishingCatchIds(farm, itemIds, qty) {
     const silver = selected.reduce((sum, item) => sum + cleanCount(item.sellSilver), 0);
     const firstName = fishingFishById.get(selected[0].fishId)?.name ?? selected[0].fishId;
     const name = selected.every((item) => item.fishId === selected[0].fishId) ? firstName : "鱼获";
+    for (const item of selected)
+        retirePublicRef(state, item);
     state.catchInventory = state.catchInventory.filter((item) => !soldIds.has(item.id));
     farm.silver += silver;
     return { ok: true, name, qty: n, silver, items: selected };

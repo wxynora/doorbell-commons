@@ -4,6 +4,7 @@ import { currentDayIndex } from "./time.js";
 import { EXP_DAILY_CAP, EXP_EVENTS_PER_CHARGE, EXP_MAX_CHARGES_PER_ENTRY, EXP_START_HP, EXP_DC, EXP_BLESSING_MAX } from "./config.js";
 const ev = (id) => expEventById.get(id);
 const human = (f) => f.humanName || "伴侣";
+const farmCall = (op, args = {}) => `doorbell(${JSON.stringify({ op, args })})`;
 // —— 行囊 / 掉落 ——
 function dropLabel(d) {
     if (d.t === "coins")
@@ -107,7 +108,7 @@ function advance(f, now) {
         exp.pending = { type: "combat", eventId: e.id };
         exp.status = "awaiting-roll";
         const target = EXP_DC[e.difficulty ?? "mid"];
-        return `〔${e.title}〕${e.story}\n⚔️ 遭遇【${e.foe}】！掷两颗六面骰，**和 ≥${target}** 才能赢。等 ${human(f)} 帮你摇一把（等不及可自掷：roll）。`;
+        return `〔${e.title}〕${e.story}\n⚔️ 遭遇【${e.foe}】！掷两颗六面骰，**和 ≥${target}** 才能赢。等 ${human(f)} 帮你摇一把（等不及可自主掷骰：${farmCall("farm.roll")}）。`;
     }
     // 纯剧情 / 掉落：揭示这一个，消费它，然后停下等"继续前进"
     exp.step += 1;
@@ -120,19 +121,19 @@ function advance(f, now) {
     if (!exp.queue.length)
         return `${body}\n\n${settle(f, now, "走到了头")}`;
     exp.status = "exploring";
-    return `${body}\n（还剩 ${exp.queue.length} 段 · explore 继续前进）`;
+    return `${body}\n（还剩 ${exp.queue.length} 段 · 继续前进：${farmCall("farm.explore")}）`;
 }
 function optionsText(e) {
     const opts = (e.options ?? []).map((o) => `  ${o.key}. ${o.label}`).join("\n");
-    return `你可以：\n${opts}\n（choose {"option":"${e.options?.[0]?.key ?? "A"}"}）`;
+    return `你可以：\n${opts}\n（选择：${farmCall("farm.choose", { option: e.options?.[0]?.key ?? "A" })}）`;
 }
 // —— 选项结算 ——
 export function expChoose(f, optKey, now) {
     const exp = f.expedition;
     if (!exp)
-        return { ok: false, text: "你现在没在探险（explore 出门）。" };
+        return { ok: false, text: `你现在没在探险（出门探险：${farmCall("farm.explore")}）。` };
     if (exp.pending?.type !== "choice")
-        return { ok: false, text: exp.pending?.type === "combat" ? `⚔️ 在等${human(f)}摇骰，摇了才能继续（或 roll 自掷）。` : "现在没有要选的（explore 继续往前走）。" };
+        return { ok: false, text: exp.pending?.type === "combat" ? `⚔️ 在等${human(f)}摇骰，摇了才能继续（或自主掷骰：${farmCall("farm.roll")}）。` : `现在没有要选的（继续前进：${farmCall("farm.explore")}）。` };
     const e = ev(exp.pending.eventId);
     const opt = (e.options ?? []).find((o) => o.key.toLowerCase() === String(optKey).toLowerCase());
     if (!opt)
@@ -154,7 +155,7 @@ export function expChoose(f, optKey, now) {
                 lose: { text: `` },
             } };
         exp.status = "awaiting-roll";
-        return { ok: true, text: `${head}\n⚔️ 遭遇【${fight.foe}】！掷两颗六面骰，**和 ≥${dc}** 才能赢。等 ${human(f)} 帮你摇一把（等不及可自掷：roll）。\n${expHud(f)}`.trimEnd() };
+        return { ok: true, text: `${head}\n⚔️ 遭遇【${fight.foe}】！掷两颗六面骰，**和 ≥${dc}** 才能赢。等 ${human(f)} 帮你摇一把（等不及可自主掷骰：${farmCall("farm.roll")}）。\n${expHud(f)}`.trimEnd() };
     }
     const jump = opt.outcomes.find((o) => o.t === "jump");
     if (jump && ev(jump.to))
@@ -163,7 +164,7 @@ export function expChoose(f, optKey, now) {
     if (!exp.queue.length)
         return { ok: true, text: `${head}\n\n${settle(f, now, "走到了头")}`.trimEnd() };
     exp.status = "exploring";
-    return { ok: true, text: `${head}\n（还剩 ${exp.queue.length} 段 · explore 继续前进）\n${expHud(f)}`.trimEnd() };
+    return { ok: true, text: `${head}\n（还剩 ${exp.queue.length} 段 · 继续前进：${farmCall("farm.explore")}）\n${expHud(f)}`.trimEnd() };
 }
 function applyOutcomes(f, exp, outcomes) {
     const lines = [];
@@ -206,14 +207,14 @@ export function expRoll(f, byHuman, now) {
     if (!exp)
         return { ok: false, text: "你现在没在探险。" };
     if (exp.pending?.type !== "combat")
-        return { ok: false, text: "现在没有战斗要摇骰（explore 继续）。" };
+        return { ok: false, text: `现在没有战斗要摇骰（继续前进：${farmCall("farm.explore")}）。` };
     // 战斗定义来自两处：内容事件（正常战斗）或选项后果就地带的内联战斗（inline）。
     const inline = !!exp.pending.inline;
     const contentEv = inline ? undefined : ev(exp.pending.eventId);
     const c = exp.pending.inline
         ?? (contentEv ? { foe: contentEv.foe, difficulty: contentEv.difficulty, record: contentEv.record, win: contentEv.win, lose: contentEv.lose } : undefined);
     if (!c)
-        return { ok: false, text: "现在没有战斗要摇骰（explore 继续）。" };
+        return { ok: false, text: `现在没有战斗要摇骰（继续前进：${farmCall("farm.explore")}）。` };
     const rng = new Rng(f.rngState);
     const d1 = rng.int(6) + 1, d2 = rng.int(6) + 1;
     f.rngState = rng.state;
@@ -286,7 +287,7 @@ export function expRoll(f, byHuman, now) {
     }
     else {
         exp.status = "exploring";
-        tail = "\n（explore 继续往里走，或 retreat 落袋为安）";
+        tail = `\n（继续往里走：${farmCall("farm.explore")}；或落袋为安：${farmCall("farm.retreat")}）`;
     }
     return { ok: true, text: `${lines.join("\n")}${tail}\n${f.expedition ? expHud(f) : ""}`.trimEnd() };
 }
@@ -348,7 +349,7 @@ function settle(f, now, how) {
 // —— 进入：花「次数」进一个随机秘境，触发 3×次数 段际遇（未解锁优先），播到第一个决策点 ——
 export function expEnter(f, now, charges = 1) {
     if (f.expedition)
-        return { ok: false, text: `你正在「${expMapById.get(f.expedition.mapId)?.name ?? "秘境"}」里——先把这一程走完，或 retreat 撤回。\n${expHud(f)}` };
+        return { ok: false, text: `你正在「${expMapById.get(f.expedition.mapId)?.name ?? "秘境"}」里——先把这一程走完，或撤回：${farmCall("farm.retreat")}\n${expHud(f)}` };
     const today = currentDayIndex(now);
     const used = f.expDaily && f.expDaily.day === today ? f.expDaily.n : 0;
     const remaining = EXP_DAILY_CAP - used;
@@ -393,7 +394,7 @@ export function expExplore(f, now, charges = 1) {
     if (exp.pending?.type === "choice")
         return { ok: false, text: `先选一个——${optionsText(ev(exp.pending.eventId))}` };
     if (exp.pending?.type === "combat")
-        return { ok: false, text: `⚔️ 在等${human(f)}摇骰，摇了才能继续（或 roll 自掷）。\n${expHud(f)}` };
+        return { ok: false, text: `⚔️ 在等${human(f)}摇骰，摇了才能继续（或自主掷骰：${farmCall("farm.roll")}）。\n${expHud(f)}` };
     const body = advance(f, now);
     return { ok: true, text: `${body}\n${f.expedition ? expHud(f) : ""}`.trimEnd() };
 }
@@ -402,7 +403,7 @@ export function expRetreat(f, now) {
     if (!f.expedition)
         return { ok: false, text: "你现在没在探险。" };
     if (f.expedition.pending?.type === "combat")
-        return { ok: false, text: `⚔️ 正面对【${ev(f.expedition.pending.eventId)?.foe}】，要么摇骰过去、要么先 roll，撤不了。` };
+        return { ok: false, text: `⚔️ 正面对【${ev(f.expedition.pending.eventId)?.foe}】，必须先掷骰过去：${farmCall("farm.roll")}，现在撤不了。` };
     return { ok: true, text: settle(f, now, "见好就收") };
 }
 // —— 当前进度 / resume ——
@@ -413,17 +414,17 @@ export function expView(f, now) {
         const used = f.expDaily && f.expDaily.day === today ? f.expDaily.n : 0;
         const left = EXP_DAILY_CAP - used;
         const avail = left > 0
-            ? `今日还剩 ${left}/${EXP_DAILY_CAP} 次数（1 次数=进一个随机秘境触发 3 段；一口气最多花 ${EXP_MAX_CHARGES_PER_ENTRY} 次数=9 段、深挖一个秘境）。现在可 explore 出门。`
+            ? `今日还剩 ${left}/${EXP_DAILY_CAP} 次数（1 次数=进一个随机秘境触发 3 段；一口气最多花 ${EXP_MAX_CHARGES_PER_ENTRY} 次数=9 段、深挖一个秘境）。现在可以出门探险。`
             : `今日 ${EXP_DAILY_CAP} 次数已用完，明天再来。`;
-        return { ok: true, text: `🗺️ 你现在没在探险。\n${avail}\n花费多个体力可以走到秘境更深处：explore {"charges":3}\n（explore 进随机秘境；战斗要 ${human(f)} 帮你摇骰子配合。重复进同一秘境会优先给没见过的际遇。）` };
+        return { ok: true, text: `🗺️ 你现在没在探险。\n${avail}\n花费多个体力走到秘境更深处：${farmCall("farm.explore", { charges: 3 })}\n（出门会进入随机秘境；战斗要 ${human(f)} 帮你摇骰子配合。重复进同一秘境会优先给没见过的际遇。）` };
     }
     const map = expMapById.get(exp.mapId);
     const last = exp.log.length ? `\n最近：〔${exp.log[exp.log.length - 1].title}〕` : "";
-    let next = "explore 继续";
+    let next = `继续前进：${farmCall("farm.explore")}`;
     if (exp.pending?.type === "choice")
         next = optionsText(ev(exp.pending.eventId));
     else if (exp.pending?.type === "combat")
-        next = `⚔️ 等 ${human(f)} 摇骰（或 roll 自掷）`;
+        next = `⚔️ 等 ${human(f)} 摇骰（或自主掷骰：${farmCall("farm.roll")}）`;
     return { ok: true, text: `🗺️ 探险进行中：【${map?.name}】${last}\n${expHud(f)}\n下一步：${next}` };
 }
 // —— 出门前祈福：伴侣前端设置（active 时设给这趟，否则预存到下趟）——

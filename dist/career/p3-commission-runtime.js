@@ -468,6 +468,20 @@ export function farmActionTouchesLockedCareerObject(database, farmId, action, pa
     return true;
 }
 
+const LOCKED_CAREER_OBJECT_TEXT = Object.freeze({
+    run: "有地块正在由职业委托处理，本轮一条龙操作没有执行。",
+    water: "目标地块正在由职业委托处理，本次浇水没有执行。",
+    harvest: "目标地块正在由职业委托处理，本次收获没有执行。",
+    ripen: "目标地块正在由职业委托处理，本次催熟没有执行。",
+    steal: "目标地块正在由职业委托处理，本次偷菜没有执行。",
+    use: "目标地块正在由职业委托处理，本次使用加速道具没有执行。",
+});
+
+export function lockedCareerObjectText(action) {
+    return LOCKED_CAREER_OBJECT_TEXT[action]
+        ?? "目标对象正在由职业委托处理，本次操作没有执行。";
+}
+
 export function publishBoundSource(database, backend, source, amount, now = Date.now()) {
     const existing = database.prepare("SELECT * FROM career_jobs WHERE source_type = ? AND source_id = ?")
         .get(source.sourceType, source.sourceId);

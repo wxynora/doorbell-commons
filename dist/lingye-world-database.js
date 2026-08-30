@@ -132,6 +132,16 @@ export function installLingyeWorldSchema(database) {
       );
       CREATE INDEX IF NOT EXISTS lingye_commission_action_receipts_resident
         ON lingye_commission_action_receipts(resident_id, created_at, action_key);
+      CREATE TABLE IF NOT EXISTS lingye_option_handles (
+        handle TEXT PRIMARY KEY,
+        resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE RESTRICT,
+        operation TEXT NOT NULL,
+        internal_option TEXT NOT NULL,
+        issued_at INTEGER NOT NULL,
+        UNIQUE (resident_id, operation, internal_option)
+      );
+      CREATE INDEX IF NOT EXISTS lingye_option_handles_resident_operation
+        ON lingye_option_handles(resident_id, operation, issued_at, handle);
       CREATE TABLE IF NOT EXISTS lingye_cross_store_operations (
         action_key TEXT PRIMARY KEY,
         operation_kind TEXT NOT NULL CHECK (operation_kind IN ('commission_check', 'commission_treatment', 'npc_service')),

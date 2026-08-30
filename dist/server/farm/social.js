@@ -22,11 +22,11 @@ export function resolveNumberedTarget(raw, me) {
     const text = String(raw ?? "").trim();
     const direct = getFarm(text);
     if (!direct && !/^(0|[1-9]\d*)$/.test(text))
-        return { error: "to 必须填写农场编号。先用 visit 查看当前列表。" };
+        return { error: "to 必须填写农场编号。先查看当前列表：doorbell({\"op\":\"farm.visit\",\"args\":{}})" };
     const number = direct ? farmNumber(direct.id) : Number(text);
     const farm = direct ?? (number === undefined ? undefined : farmByNumber(number));
     if (!farm || number === undefined || farm.id === me.id || !reachable(farm)) {
-        return { error: `找不到编号为 ${number} 的可访问农场。先用 visit 查看当前列表。` };
+        return { error: `找不到编号为 ${number} 的可访问农场。先查看当前列表：doorbell({"op":"farm.visit","args":{}})` };
     }
     return { farm, number };
 }
@@ -35,8 +35,8 @@ export function visitListResult(me) {
         return { ok: false, text: `你设了「谢绝来访」（闭门状态），不能出门串门——想出门先让 ${me.humanName || "伴侣"} 帮你打开『访问』开关。`, farms: [] };
     const entries = numberedPlayerFarms().filter((entry) => entry.farm.id !== me.id && reachable(entry.farm));
     if (!entries.length)
-        return { ok: true, text: "🏘️ 暂时没有可以串门的玩家农场，可以用 wander 去杂货郎阿土那里逛逛。", farms: [] };
-    const text = `🏘️ 可以串门的农场：\n${entries.map((entry) => `${entry.number}. 「${farmLabel(entry.farm)}」`).join("\n")}\n\n想去谁家，就用 visit {"to":"农场编号"}。\n例如：visit {"to":"${entries[0].number}"}`;
+        return { ok: true, text: "🏘️ 暂时没有可以串门的玩家农场，可以随机逛到杂货郎阿土那里：doorbell({\"op\":\"farm.wander\",\"args\":{}})", farms: [] };
+    const text = `🏘️ 可以串门的农场：\n${entries.map((entry) => `${entry.number}. 「${farmLabel(entry.farm)}」`).join("\n")}\n\n进入农场示例：doorbell({"op":"farm.visit","args":{"to":"${entries[0].number}"}})`;
     return { ok: true, text, farms: entries.map((entry) => ({ number: entry.number, name: entry.farm.name, aiName: entry.farm.aiName || "AI" })) };
 }
 /** 打开自家农场时看到的全服实时成熟广播；固定编号与串门列表共用。 */
@@ -103,8 +103,8 @@ export function wanderResult(b, now, numbered = false) {
             if (npc.shop.potionSet)
                 bits.push("店里有药水套装");
             const text = numbered
-                ? `🚶 这会儿没有别的农场可逛，溜达到了常驻邻居「${npc.name}」· 编号 0：\n· ${bits.join("；")}\n串门看详情：visit {"to":"0"}`
-                : `🚶 这会儿没有别的农场可逛，溜达到了常驻邻居「${npc.name}」· ${npc.id}：\n· ${bits.join("；")}\n串门看详情：GET /c?a=visit&farm=${npc.id}　偷：a=steal&plotId=N&by=${meId || "你的id"}&token=..　帮浇水：a=water&by=${meId || "你的id"}&token=..`;
+                ? `🚶 这会儿没有别的农场可逛，溜达到了常驻邻居「${npc.name}」· 编号 0：\n· ${bits.join("；")}\n查看详情：doorbell({"op":"farm.visit","args":{"to":"0"}})`
+                : `🚶 这会儿没有别的农场可逛，溜达到了常驻邻居「${npc.name}」· ${npc.id}：\n· ${bits.join("；")}\n查看详情：doorbell({"op":"farm.visit","args":{"to":"${npc.id}"}})`;
             const farms = numbered
                 ? [{ number: 0, name: npc.name, ripe, growing, sells: hasSeed ? 1 : 0, special: hasSeed ? 1 : 0, hasSet: !!npc.shop.potionSet }]
                 : [{ id: npc.id, name: npc.name, ripe, growing, sells: hasSeed ? 1 : 0, special: hasSeed ? 1 : 0, hasSet: !!npc.shop.potionSet }];
@@ -132,8 +132,8 @@ export function wanderResult(b, now, numbered = false) {
             return `· ${p.name} · ${ref}：${bits.join("；")}`;
         }).join("\n")
         + (numbered
-            ? `\n想去谁家，就用 visit {"to":"农场编号"}。`
-            : `\n串门看详情：GET /c?a=visit&farm=<id>　偷：a=steal&plotId=N&by=${meId || "你的id"}&token=..　帮浇水：a=water&by=${meId || "你的id"}&token=..`);
+            ? `\n进入农场：doorbell({"op":"farm.visit","args":{"to":"农场编号"}})`
+            : `\n进入农场：doorbell({"op":"farm.visit","args":{"to":"农场门牌"}})`);
     const farms = numbered
         ? pick.map((p) => ({ number: farmNumber(p.id), name: p.name, ripe: p.ripe, growing: p.growing, sells: p.sells, special: p.special, hasSet: p.hasSet }))
         : pick;

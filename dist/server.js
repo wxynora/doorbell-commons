@@ -34,7 +34,7 @@ import { createLingyeFarmBalanceCoordinator, createLingyeWorldBackend, openLingy
 import { createLingyeActionExecutor } from "./server/doorbell/lingye.js";
 import { resolveChefOriginalCookingReceipt } from "./domain/kitchen/original.js";
 import { farmCareerBenefits, farmDoorbellKitchenCareerBenefits } from "./career/farm-benefits.js";
-import { farmActionTouchesLockedCareerObject, startRegisteredP3Scheduler } from "./career/p3-commission-runtime.js";
+import { farmActionTouchesLockedCareerObject, lockedCareerObjectText, startRegisteredP3Scheduler } from "./career/p3-commission-runtime.js";
 import { startConstableInterviewScheduler } from "./career/constable-interview-scheduler.js";
 import { loadConstableInterviewBank } from "./career/constable-interview-bank.js";
 import { applyDroughtWatering, collectFloodFishForFarm, commitNatureFarmReconciliation, commitNatureRemovedPlot, startNatureRuntimeScheduler } from "./nature-runtime.js";
@@ -242,7 +242,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
                     ? "需要带上你农场的 id + token（by + token）证明这是你本人。"
                     : "这是私有操作，需要你农场的 token。串门看公开页用 visit（GET /c?a=visit&farm=对方id）。" } };
     if (activeLingyeWorldDatabase && farmActionTouchesLockedCareerObject(activeLingyeWorldDatabase, f.id, action, b))
-        return { status: 400, json: { ok: false, text: "OP_REJECTED" } };
+        return { status: 400, json: { ok: false, text: lockedCareerObjectText(action) } };
     if (action === "steal" && recordQixi2026StealAttempt(principal, now))
         save(); // 已鉴权的偷菜发起即重置静默计时；后续业务拒绝也不回滚
     if (action === "guestbook" && b.on === undefined) {
@@ -455,7 +455,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         save();
         if (!r.ok) {
             const bribe = r.guardBlocked
-                ? `\n🍲 可以用一份正常料理贿赂${r.dogName}，继续这同一次偷菜：{"action":"kitchen","op":"use","dishId":"料理名","target":"guard-dog","to":"${b.targetRef ?? "农场编号"}"}。不会再计次数或冷却。`
+                ? `\n🍲 可以用一份正常料理贿赂${r.dogName}，继续这同一次偷菜。下一步：doorbell({"op":"farm.kitchen.bribe","args":{"dishId":"料理名","to":"${b.targetRef ?? "农场编号"}"}})。不会再计次数或冷却。`
                 : "";
             return { status: 400, json: { ok: false, text: r.error + bribe, ...vf(thief) } };
         }
@@ -617,10 +617,11 @@ function runFarm(farmId, action, body = {}, encArg, now, options = {}) {
     if (notices.length)
         extras.push(notices.join("\n\n"));
     if (!action || action === "status")
-        extras.push(`🧭 铃野共行：${publicExpeditionStatusLine(world, now, false)}。用 {"action":"together"} 查看当前剧情。`);
+        extras.push(`🧭 铃野共行：${publicExpeditionStatusLine(world, now, false)}。下一步：doorbell({"op":"farm.together.view","args":{}})`);
     const qixiAiLampReleased = Boolean(viewer.qixiLantern2026?.lamps?.ai?.releasedAt);
     if (isQixiLantern2026Active(now) && !qixiAiLampReleased && (!action || action === "status")) {
-        extras.push(qixiLantern2026.openingAnnouncement);
+        const opening = qixiLantern2026.openingAnnouncement.split("\n").filter((line) => !line.startsWith("用 ")).join("\n");
+        extras.push(`${opening}\n当前 Doorbell 连接未开放这项操作，不能在这里提交。`);
         if (now >= Date.parse(qixiLantern2026.finalStageAt))
             extras.push(qixiLantern2026.finalStageAnnouncement);
     }

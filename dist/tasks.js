@@ -159,7 +159,7 @@ export function taskLine(f, now) {
     }
     if (t.accepted)
         return `🎯 任务：${describe(t)} ${t.progress}/${t.target} → ${rewardText(t)}`;
-    return `🎯 新任务可接：${describe(t)} → ${rewardText(t)}（accept-task 接取后才计数 · 今日 ${taken}/${TASK_DAILY_CAP}）`;
+    return `🎯 新任务可接：${describe(t)} → ${rewardText(t)}（下一步：doorbell({"op":"farm.accept-task","args":{}}) · 今日 ${taken}/${TASK_DAILY_CAP}）`;
 }
 /** 当前是否有「可接取」的 offer（给 Agent 页决定要不要出「接取」按钮）。 */
 export function hasOpenOffer(f, now) {
