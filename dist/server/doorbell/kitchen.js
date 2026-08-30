@@ -6,6 +6,7 @@ import { handleHumanKitchenPurchase } from "../kitchen-purchase-action.js";
 import { handleHumanKitchenCookAction } from "../kitchen-cook-action.js";
 import { handleHumanKitchenInventoryAction } from "../kitchen-inventory-action.js";
 import { handleHumanKitchenShopRefresh } from "../kitchen-shop-refresh-action.js";
+import { handleHumanKitchenShopOpen } from "../kitchen-shop-open-action.js";
 import {
     FARM_DOORPLATE_RE,
     humanFieldError,
@@ -39,6 +40,28 @@ export async function handleDoorbellHumanKitchenRead(req, res, method, careerBen
             return humanFieldError(res, 400, "invalid_request", "The request body must be valid JSON");
         console.error("[doorbell-human-kitchen] read failed");
         return humanFieldError(res, 503, "farm_unavailable", "The farm kitchen could not be read");
+    }
+}
+
+export async function handleDoorbellHumanKitchenShopOpen(req, res, method, careerBenefitsForFarm) {
+    if (!requireDoorbellHumanFieldService(req, res, method))
+        return;
+    try {
+        const body = await readJsonBody(req, MAX_BODY_BYTES);
+        if (!isPlainObject(body))
+            return humanFieldError(res, 400, "invalid_request", "The request body must be an object");
+        const binding = validateFarmBinding(body);
+        if (binding.error)
+            return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
+        const out = handleHumanKitchenShopOpen(binding.farm, body, Date.now(), careerBenefitsForFarm?.(binding.farm));
+        return jsonOut(res, out.status, out.json);
+    }
+    catch (error) {
+        if (error instanceof PublicSyncError) {
+            const tooLarge = error.status === 413;
+            return humanFieldError(res, tooLarge ? 413 : 400, tooLarge ? "body_too_large" : "invalid_request", tooLarge ? "The request body is too large" : "The request body must be valid JSON");
+        }
+        return humanFieldError(res, 503, "farm_unavailable", "The kitchen shop could not be opened");
     }
 }
 

@@ -17,6 +17,7 @@ import {
     handleDoorbellHumanKitchenInventoryAction,
     handleDoorbellHumanKitchenPurchase,
     handleDoorbellHumanKitchenRead,
+    handleDoorbellHumanKitchenShopOpen,
     handleDoorbellHumanKitchenShopRefresh,
 } from "./kitchen.js";
 import {
@@ -95,6 +96,10 @@ export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExe
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "kitchen" && parts[4] === "read" && parts.length === 5) {
             await handleDoorbellHumanKitchenRead(req, res, method, careerBenefitsForFarm);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "kitchen" && parts[4] === "shop" && parts[5] === "open" && parts.length === 6) {
+            await handleDoorbellHumanKitchenShopOpen(req, res, method, careerBenefitsForFarm);
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "kitchen" && parts[4] === "purchase" && parts.length === 5) {
