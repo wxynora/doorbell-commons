@@ -618,8 +618,33 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
         const beforeEnroll = execute(executor, "go.school.view", {});
         const enrollOption = optionWithLabel(beforeEnroll.data.options, "报名课程：农艺师");
         assert.ok(enrollOption);
+        const goldBeforeEnroll = backend.forResident(RESIDENT_ID).getOwnAccount().availableGold;
         const enrolled = execute(executor, "go.school.choose", { option: enrollOption.option });
         assert.equal(enrolled.ok, true);
+        assert.equal(enrolled.data.currentCourses.length, 1);
+        assert.equal(enrolled.data.currentCourses[0].stage, "awaiting_read_confirmation");
+        assert.equal(enrolled.data.currentCourses[0].content.practiceQuestions.length, 5);
+        assert.equal(backend.forResident(RESIDENT_ID).getOwnAccount().availableGold,
+            goldBeforeEnroll - 30_000);
+        assert.deepEqual(execute(restartedExecutor, "go.school.choose", { option: enrollOption.option }), enrolled);
+        assert.equal(backend.forResident(RESIDENT_ID).getOwnAccount().availableGold,
+            goldBeforeEnroll - 30_000);
+        if (courseIndex === 1) {
+            database.prepare(`UPDATE career_courses
+              SET content_delivery_id = NULL, content_delivered_at = NULL
+              WHERE resident_id = ? AND career = 'agronomist'
+                AND qualification_level = 1 AND course_index = 1`).run(RESIDENT_ID);
+            const commandsBeforeResume = database.prepare("SELECT COUNT(*) AS count FROM economy_commands").get().count;
+            const resumedPaidCourse = execute(restartedExecutor, "go.school.view", {});
+            assert.equal(resumedPaidCourse.data.currentCourses[0].stage, "awaiting_read_confirmation");
+            assert.deepEqual(resumedPaidCourse.data.currentCourses[0].content.practiceQuestions,
+                enrolled.data.currentCourses[0].content.practiceQuestions);
+            assert.ok(optionWithLabel(resumedPaidCourse.data.options, "确认已阅读课程：农艺师"));
+            assert.equal(database.prepare("SELECT COUNT(*) AS count FROM economy_commands").get().count,
+                commandsBeforeResume);
+            assert.equal(backend.forResident(RESIDENT_ID).getOwnAccount().availableGold,
+                goldBeforeEnroll - 30_000);
+        }
         const reference = `agronomist:1:${courseIndex}`;
         const courseView = execute(executor, "go.school.view", { reference });
         assert.equal(courseView.ok, true);
@@ -634,6 +659,11 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
         assert.ok(readOption);
         const read = execute(executor, "go.school.choose", { option: readOption.option });
         assert.equal(read.ok, true);
+        assert.equal(read.data.currentCourses[0].stage, "awaiting_practice");
+        assert.equal(read.data.currentCourses[0].content.practiceQuestions.length, 5);
+        const resumedAfterRead = execute(restartedExecutor, "go.school.view", {});
+        assert.equal(resumedAfterRead.data.currentCourses[0].stage, "awaiting_practice");
+        assert.equal(resumedAfterRead.data.currentCourses[0].content.practiceQuestions.length, 5);
         let practiceOption = optionWithLabel(read.data.current.options, "提交课程练习：农艺师");
         assert.deepEqual(practiceOption.requires, ["answers"]);
         if (courseIndex === 1) {
@@ -651,6 +681,8 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
                 passed: false,
             });
             assert.equal(failedPractice.data.result.review.length, 5);
+            assert.equal(failedPractice.data.currentCourses[0].stage, "awaiting_practice");
+            assert.equal(failedPractice.data.currentCourses[0].content.practiceQuestions.length, 5);
             practiceOption = optionWithLabel(failedPractice.data.current.options, "提交课程练习：农艺师");
         }
         const answerData = JSON.parse(database.prepare(`SELECT answer_key_json

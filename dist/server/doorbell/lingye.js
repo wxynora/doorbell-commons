@@ -979,6 +979,28 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
     };
 }
 
+function resumableSchoolCourses(database, backend, residentId, now, facts, optionRevision = schoolRevision(database, residentId)) {
+    const incomplete = facts.courses.filter((course) => course.completedAt === null);
+    if (incomplete.length === 0)
+        return { current: facts, currentCourses: [] };
+    const currentCourses = incomplete.map((course) => ({
+        career: course.career,
+        qualificationLevel: course.qualificationLevel,
+        courseIndex: course.courseIndex,
+        stage: course.contentReadAt === null ? "awaiting_read_confirmation" : "awaiting_practice",
+        content: backend.trustedQueries.getCourseContent({
+            residentId,
+            career: course.career,
+            level: course.qualificationLevel,
+            courseIndex: course.courseIndex,
+        }),
+    }));
+    return {
+        current: readSchoolFacts(database, backend, residentId, now, optionRevision),
+        currentCourses,
+    };
+}
+
 function schoolReference(facts, backend, residentId, reference) {
     const candidates = [
         ...facts.courses.map((value) => ({ type: "course", value })),
@@ -1023,7 +1045,7 @@ function schoolReference(facts, backend, residentId, reference) {
 }
 
 function schoolView(database, backend, residentId, now, args) {
-    const facts = readSchoolFacts(database, backend, residentId, now);
+    let facts = readSchoolFacts(database, backend, residentId, now);
     if (args.reference) {
         const reference = schoolReference(facts, backend, residentId, args.reference);
         const refreshed = readSchoolFacts(database, backend, residentId, now);
@@ -1033,6 +1055,12 @@ function schoolView(database, backend, residentId, now, args) {
         });
     }
     const section = args.section ?? null;
+    let currentCourses = [];
+    if (section === null || section === "courses") {
+        const resumable = resumableSchoolCourses(database, backend, residentId, now, facts);
+        facts = resumable.current;
+        currentCourses = resumable.currentCourses;
+    }
     const value = section === "courses"
         ? {
             catalog: selectedCourseCatalog(backend, facts.careers.map((track) => track.career)),
@@ -1042,8 +1070,8 @@ function schoolView(database, backend, residentId, now, args) {
             ? facts
             : facts[section];
     return success("已读取职业学校当前事实。", section === null
-        ? facts
-        : { section, value, options: facts.options, contentSources: facts.contentSources });
+        ? { ...facts, currentCourses }
+        : { section, value, options: facts.options, contentSources: facts.contentSources, currentCourses });
 }
 
 function schoolChoose(database, backend, residentId, now, args) {
@@ -1228,9 +1256,15 @@ function schoolChoose(database, backend, residentId, now, args) {
         else {
             throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个职业学校 option 当前不可用。");
         }
+        const nextRevision = schoolRevision(database, residentId) + 1;
+        const nextFacts = readSchoolFacts(database, backend, residentId, now, nextRevision);
+        const resumable = courseReadMatch || courseMatch
+            ? resumableSchoolCourses(database, backend, residentId, now, nextFacts, nextRevision)
+            : { current: nextFacts, currentCourses: [] };
         const response = success("职业学校业务已办理。", {
             result,
-            current: readSchoolFacts(database, backend, residentId, now, schoolRevision(database, residentId) + 1),
+            current: resumable.current,
+            currentCourses: resumable.currentCourses,
         });
         database.prepare(`
           INSERT INTO lingye_school_action_receipts (
