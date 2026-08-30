@@ -12,6 +12,7 @@ test("settings opens a resident-bound Bell self-service panel", () => {
   const appSource = readSource("../app.tsx");
   const previewSource = readSource("../preview/candidate-two-preview.tsx");
   const panelSource = readSource("./bell-access-panel.tsx");
+  const stylesSource = readSource("../styles.css");
 
   assert.match(previewSource, /id="settings-bell-access"[\s\S]*?>配置铃</);
   assert.match(previewSource, /sendAction\(\{ type: 'bell-access-open' \}\)/);
@@ -21,6 +22,13 @@ test("settings opens a resident-bound Bell self-service panel", () => {
   assert.match(panelSource, /新凭据只显示这一次/);
   assert.match(panelSource, /重新领取会立即停用当前铃连接/);
   assert.match(panelSource, /撤销后，当前家庭后端会立即断开铃/);
+  assert.match(panelSource, /className="bell-access__page" aria-labelledby="bell-access-title"/);
+  assert.match(panelSource, /className="bell-access__back"[\s\S]*?设置/);
+  assert.match(panelSource, /className="bell-access__section"/);
+  assert.doesNotMatch(panelSource, /role="dialog"|aria-modal="true"|bell-access__sheet/);
+  assert.match(stylesSource, /\.bell-access\s*\{[\s\S]*?background: #f8f1e9/);
+  assert.match(stylesSource, /\.bell-access__page\s*\{[\s\S]*?min-height: 100dvh/);
+  assert.doesNotMatch(stylesSource, /\.bell-access__sheet|backdrop-filter: blur\(4px\)/);
   assert.doesNotMatch(panelSource, /residentId|homeId|dbm_/);
 });
 

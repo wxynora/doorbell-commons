@@ -88,23 +88,23 @@ export function BellAccessPanel({ onClose }: BellAccessPanelProps) {
   };
 
   return (
-    <div
-      className="bell-access"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="bell-access-title"
-    >
-      <section className="bell-access__sheet">
-        <button className="bell-access__close" type="button" onClick={onClose} aria-label="关闭">
-          ×
+    <div className="bell-access">
+      <main className="bell-access__page" aria-labelledby="bell-access-title">
+        <button className="bell-access__back" type="button" onClick={onClose}>
+          <span aria-hidden="true">←</span>
+          设置
         </button>
-        <p className="bell-access__kicker">Doorbell Commons</p>
-        <h1 id="bell-access-title">配置铃</h1>
-        <p className="bell-access__intro">
-          为当前小机档案领取一条独立的铃连接。把下面的地址和凭据填进自己的家庭后端即可，不需要联系管理员。
-        </p>
+        <header className="bell-access__heading">
+          <p className="bell-access__kicker">Doorbell Commons</p>
+          <h1 id="bell-access-title">配置铃</h1>
+          <p className="bell-access__intro">
+            为当前小机档案领取一条独立的铃连接。把下面的地址和凭据填进自己的家庭后端即可，不需要联系管理员。
+          </p>
+        </header>
 
-        {!status && !issue ? <p className="bell-access__notice">正在读取当前配置……</p> : null}
+        {!status && !issue ? (
+          <p className="bell-access__notice bell-access__notice--loading">正在读取当前配置……</p>
+        ) : null}
         {issue ? (
           <p className="bell-access__notice bell-access__notice--error">
             {ISSUE_MESSAGES[issue.code]}
@@ -112,9 +112,12 @@ export function BellAccessPanel({ onClose }: BellAccessPanelProps) {
         ) : null}
 
         {status ? (
-          <div className="bell-access__content">
-            <div className="bell-access__status">
-              <span>当前状态</span>
+          <section className="bell-access__section" aria-labelledby="bell-access-connection-title">
+            <div className="bell-access__section-heading">
+              <div>
+                <span>01</span>
+                <h2 id="bell-access-connection-title">铃连接</h2>
+              </div>
               <strong>
                 {status.credential_status === "active"
                   ? "已领取"
@@ -123,59 +126,61 @@ export function BellAccessPanel({ onClose }: BellAccessPanelProps) {
                     : "尚未领取"}
               </strong>
             </div>
-            <label>
-              <span>铃连接地址</span>
-              <div className="bell-access__copy-row">
-                <input readOnly value={status.bell_endpoint} />
-                <button type="button" onClick={() => void copy(status.bell_endpoint)}>
-                  复制
-                </button>
-              </div>
-            </label>
-
-            {credential ? (
-              <div className="bell-access__credential">
-                <strong>新凭据只显示这一次</strong>
-                <p>请现在复制并保存。关闭后服务端无法再次查看明文。</p>
+            <div className="bell-access__content">
+              <label className="bell-access__field">
+                <span>铃连接地址</span>
                 <div className="bell-access__copy-row">
-                  <input readOnly value={credential.bell_credential} />
-                  <button type="button" onClick={() => void copy(credential.bell_credential)}>
+                  <input readOnly value={status.bell_endpoint} />
+                  <button type="button" onClick={() => void copy(status.bell_endpoint)}>
                     复制
                   </button>
                 </div>
-              </div>
-            ) : status.credential_status === "active" ? (
-              <p className="bell-access__notice">
-                当前凭据仍有效，但明文不会再次显示；如果已经丢失，请重新领取。
-              </p>
-            ) : null}
+              </label>
 
-            <div className="bell-access__actions">
-              <button
-                type="button"
-                disabled={pending !== null}
-                onClick={() => void issueCredential()}
-              >
-                {pending === "issue"
-                  ? "正在领取……"
-                  : status.credential_status === "active"
-                    ? "重新领取"
-                    : "领取铃凭据"}
-              </button>
-              {status.credential_status === "active" ? (
+              {credential ? (
+                <div className="bell-access__credential">
+                  <strong>新凭据只显示这一次</strong>
+                  <p>请现在复制并保存。关闭后服务端无法再次查看明文。</p>
+                  <div className="bell-access__copy-row">
+                    <input readOnly value={credential.bell_credential} />
+                    <button type="button" onClick={() => void copy(credential.bell_credential)}>
+                      复制
+                    </button>
+                  </div>
+                </div>
+              ) : status.credential_status === "active" ? (
+                <p className="bell-access__notice">
+                  当前凭据仍有效，但明文不会再次显示；如果已经丢失，请重新领取。
+                </p>
+              ) : null}
+
+              <div className="bell-access__actions">
                 <button
-                  className="bell-access__secondary"
                   type="button"
                   disabled={pending !== null}
-                  onClick={() => void revokeCredential()}
+                  onClick={() => void issueCredential()}
                 >
-                  {pending === "revoke" ? "正在撤销……" : "撤销当前连接"}
+                  {pending === "issue"
+                    ? "正在领取……"
+                    : status.credential_status === "active"
+                      ? "重新领取"
+                      : "领取铃凭据"}
                 </button>
-              ) : null}
+                {status.credential_status === "active" ? (
+                  <button
+                    className="bell-access__secondary"
+                    type="button"
+                    disabled={pending !== null}
+                    onClick={() => void revokeCredential()}
+                  >
+                    {pending === "revoke" ? "正在撤销……" : "撤销当前连接"}
+                  </button>
+                ) : null}
+              </div>
             </div>
-          </div>
+          </section>
         ) : null}
-      </section>
+      </main>
     </div>
   );
 }

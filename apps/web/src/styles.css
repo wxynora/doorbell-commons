@@ -2540,94 +2540,172 @@ h2 {
   position: fixed;
   z-index: 1200;
   inset: 0;
-  display: grid;
-  place-items: center;
-  padding: 20px;
-  background: rgb(40 32 37 / 48%);
-  backdrop-filter: blur(4px);
+  overflow: hidden auto;
+  color: #60483f;
+  background: #f8f1e9;
+  overscroll-behavior: contain;
 }
 
-.bell-access__sheet {
+.bell-access__page {
   position: relative;
-  width: min(100%, 440px);
-  max-height: min(760px, calc(100dvh - 40px));
-  overflow-y: auto;
-  padding: 34px 28px 28px;
-  color: #594651;
-  border: 1px solid #d9bda8;
-  border-radius: 28px;
-  background: #fffaf0;
-  box-shadow: 0 18px 60px rgb(55 37 47 / 28%);
+  width: min(100%, 560px);
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: 26px 26px 48px;
+  border-right: 0.5px solid #e1d5c9;
+  border-left: 0.5px solid #e1d5c9;
+  background: #fffdf9;
+  box-shadow: 2px 3px 4px rgb(83 63 53 / 8%);
 }
 
-.bell-access__close {
+.bell-access__page::before {
   position: absolute;
-  top: 14px;
-  right: 16px;
-  width: 40px;
-  height: 40px;
-  color: #765765;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 13px;
+  background:
+    radial-gradient(circle at 14px 0, #f8f1e9 0 7px, transparent 7.35px) 0 0 / 28px 13px repeat-x;
+  content: "";
+  pointer-events: none;
+}
+
+.bell-access__back {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px -8px;
+  padding: 4px 8px;
   border: 0;
+  color: #80685e;
   background: transparent;
-  font: 32px / 1 serif;
+  font:
+    600 14px / 1.2 "Noto Serif SC",
+    "Songti SC",
+    "STSong",
+    serif;
   cursor: pointer;
+}
+
+.bell-access__back span {
+  color: #a98e81;
+  font-size: 22px;
+  font-weight: 400;
+}
+
+.bell-access__back:focus-visible,
+.bell-access button:focus-visible {
+  outline: 1px solid #cba89d;
+  outline-offset: 3px;
+}
+
+.bell-access__heading {
+  padding: 4px 0 24px;
+  border-bottom: 1px solid #eadfd4;
 }
 
 .bell-access__kicker {
   margin: 0 0 4px;
-  color: #a56f7c;
-  font-size: 13px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  color: #9e776c;
+  font-family: "Gaegu", "ZCOOL KuaiLe", "Yuanti SC", "YouYuan", cursive;
+  font-size: 16px;
+  line-height: 1;
 }
 
 .bell-access h1 {
   margin: 0;
-  font-family: "Noto Serif SC", "Songti SC", serif;
-  font-size: 30px;
+  color: #60483f;
+  font-family: "Noto Serif SC", "Songti SC", "STSong", serif;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.25;
 }
 
 .bell-access__intro {
-  margin: 12px 0 22px;
-  color: #75636c;
-  line-height: 1.7;
+  max-width: 440px;
+  margin: 8px 0 0;
+  color: #a08c82;
+  font-size: 13px;
+  line-height: 1.75;
 }
 
-.bell-access__content,
-.bell-access__credential {
-  display: grid;
-  gap: 16px;
+.bell-access__section {
+  padding: 22px 0;
+  border-bottom: 1px solid #eadfd4;
 }
 
-.bell-access__status {
+.bell-access__section-heading {
   display: flex;
+  align-items: baseline;
   justify-content: space-between;
-  padding: 14px 16px;
-  border-radius: 16px;
-  background: #f4eadf;
+  gap: 14px;
+  margin-bottom: 4px;
 }
 
-.bell-access label > span,
+.bell-access__section-heading > div {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+}
+
+.bell-access__section-heading span {
+  color: #c5a99a;
+  font-family: "Gaegu", "ZCOOL KuaiLe", "Yuanti SC", "YouYuan", cursive;
+  font-size: 14px;
+}
+
+.bell-access__section-heading h2 {
+  margin: 0;
+  color: #60483f;
+  font-family: "Noto Serif SC", "Songti SC", "STSong", serif;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.bell-access__section-heading > strong {
+  color: #80685e;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.bell-access__content {
+  display: grid;
+  gap: 0;
+}
+
+.bell-access__field {
+  display: grid;
+  gap: 8px;
+  padding: 18px 0;
+  border-bottom: 0.5px solid #eee5dc;
+}
+
+.bell-access__field > span,
 .bell-access__credential > strong {
   display: block;
-  margin-bottom: 7px;
-  color: #725663;
-  font-weight: 700;
+  color: #6b5148;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .bell-access__copy-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
+  gap: 12px;
+  align-items: end;
 }
 
 .bell-access__copy-row input {
+  width: 100%;
   min-width: 0;
-  padding: 11px 12px;
-  color: #594651;
-  border: 1px solid #dbc8b8;
-  border-radius: 12px;
-  background: #fff;
+  padding: 9px 2px 8px;
+  border: 0;
+  border-bottom: 1px solid #d8cbbf;
+  border-radius: 0;
+  outline: 0;
+  color: #60483f;
+  background: transparent;
   font:
     13px / 1.4 ui-monospace,
     SFMono-Regular,
@@ -2635,14 +2713,20 @@ h2 {
     monospace;
 }
 
-.bell-access button:not(.bell-access__close) {
-  padding: 11px 16px;
-  color: #fff8e8;
-  border: 1px solid #8e6476;
-  border-radius: 13px;
-  background: #8e6476;
-  font: inherit;
-  font-weight: 700;
+.bell-access__copy-row button {
+  min-width: 52px;
+  min-height: 36px;
+  padding: 6px 8px;
+  border: 0;
+  color: #8a6d62;
+  background: transparent;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-decoration: underline;
+  text-decoration-color: rgb(138 109 98 / 28%);
+  text-underline-offset: 4px;
   cursor: pointer;
 }
 
@@ -2652,44 +2736,79 @@ h2 {
 }
 
 .bell-access__credential {
-  padding: 16px;
-  border: 1px solid #d6b08a;
-  border-radius: 16px;
-  background: #fff3da;
+  display: grid;
+  gap: 7px;
+  margin: 16px 0 0;
+  padding: 15px 16px 16px;
+  border: 0.5px solid #e3d3c3;
+  background: #f8f0e7;
 }
 
 .bell-access__credential p,
 .bell-access__notice {
   margin: 0;
-  color: #75636c;
-  line-height: 1.6;
+  color: #8d786e;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.bell-access__notice {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 0.5px solid #eadfd4;
+  background: #faf5ef;
+}
+
+.bell-access__notice--loading {
+  margin-top: 22px;
 }
 
 .bell-access__notice--error {
-  color: #a14646;
+  border-color: #e5c7c2;
+  color: #9a504a;
+  background: #fbefec;
 }
 
 .bell-access__actions {
   display: grid;
   gap: 10px;
-  margin-top: 4px;
+  margin-top: 20px;
+}
+
+.bell-access__actions button {
+  min-height: 44px;
+  padding: 9px 14px;
+  border: 1px solid #80665c;
+  border-radius: 2px;
+  color: #fffaf4;
+  background: #80665c;
+  font:
+    600 14px / 1.3 "Noto Serif SC",
+    "Songti SC",
+    "STSong",
+    serif;
+  cursor: pointer;
 }
 
 .bell-access .bell-access__secondary {
-  color: #795966;
+  color: #80665c;
   background: transparent;
 }
 
-@media (max-width: 520px) {
+@media (min-width: 560px) {
   .bell-access {
-    place-items: end center;
-    padding: 0;
+    padding: 24px 0;
   }
 
-  .bell-access__sheet {
-    width: 100%;
-    max-height: 92dvh;
-    padding: 32px 20px 24px;
-    border-radius: 26px 26px 0 0;
+  .bell-access__page {
+    min-height: calc(100dvh - 48px);
+    padding: 30px 34px 56px;
+  }
+}
+
+@media (max-width: 370px) {
+  .bell-access__page {
+    padding-right: 20px;
+    padding-left: 20px;
   }
 }
