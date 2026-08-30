@@ -104,6 +104,12 @@ test("all seven public Lingye operations render only player-facing Chinese facts
       op: "go.school.view",
       args: {},
       data: {
+        examSchedule: {
+          timeZone: "Asia/Shanghai",
+          weekdays: [2, 4, 6],
+          startHour: 14,
+          durationMinutes: 120,
+        },
         careers: [{ career: "veterinarian", trackOrder: 1, residentId: PRIVATE_UUID }],
         courses: [
           {
@@ -123,7 +129,14 @@ test("all seven public Lingye operations render only player-facing Chinese facts
         ],
         options: [{ option: "opt_BBBBBBBBBBBB", label: "确认已阅读动物诊疗基础课", requires: [] }],
       },
-      matches: [/职业轨道：动物医生/u, /课程进度/u, /考试：暂无记录/u, /资格证：暂无/u],
+      matches: [
+        /考试时间：每周二、周四、周六，北京时间 14:00–16:00/u,
+        /完成当前等级三门课程后，可以报名下一场考试/u,
+        /职业轨道：动物医生/u,
+        /课程进度/u,
+        /考试：暂无记录/u,
+        /资格证：暂无/u,
+      ],
       excludes: [/课程目录/u, /料理课/u, /记者课/u],
     },
     {
@@ -266,6 +279,12 @@ test("course view keeps the complete body and all five practice questions", () =
     "go.school.view",
     { reference: "chef:2:3" },
     success("已读取职业学校记录。", {
+      examSchedule: {
+        timeZone: "Asia/Shanghai",
+        weekdays: [2, 4, 6],
+        startHour: 14,
+        durationMinutes: 120,
+      },
       reference: {
         type: "course",
         content: {
@@ -284,6 +303,7 @@ test("course view keeps the complete body and all five practice questions", () =
   );
 
   assert.match(text, new RegExp(body.replaceAll("\n", "\\n"), "u"));
+  assert.match(text, /考试时间：每周二、周四、周六，北京时间 14:00–16:00/u);
   assert.match(text, /课程练习（一次查看全部 5 题）/u);
   assert.match(text, /5\. 课程练习第 5 题/u);
   assertNoPrivateLeak(text);
@@ -349,6 +369,12 @@ test("course catalog renders only the career rows supplied by the courses sectio
     "go.school.view",
     { section: "courses" },
     success("已读取职业学校当前事实。", {
+      examSchedule: {
+        timeZone: "Asia/Shanghai",
+        weekdays: [2, 4, 6],
+        startHour: 14,
+        durationMinutes: 120,
+      },
       section: "courses",
       value: {
         catalog: [
@@ -368,6 +394,7 @@ test("course catalog renders only the career rows supplied by the courses sectio
   );
 
   assert.match(text, /课程目录：/u);
+  assert.match(text, /考试时间：每周二、周四、周六，北京时间 14:00–16:00/u);
   assert.match(text, /动物医生 1 级第 1 门《动物病例识别》/u);
   assert.doesNotMatch(text, /料理师|农艺师|记者|治安官/u);
 });

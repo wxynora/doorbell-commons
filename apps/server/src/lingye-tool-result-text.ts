@@ -454,6 +454,25 @@ function renderExams(value: unknown): string[] {
   ];
 }
 
+function renderExamSchedule(value: unknown): string[] {
+  if (!isRecord(value)) return [];
+  const weekdays = Array.isArray(value.weekdays) ? value.weekdays : [];
+  if (
+    value.timeZone !== "Asia/Shanghai" ||
+    weekdays.length !== 3 ||
+    weekdays[0] !== 2 ||
+    weekdays[1] !== 4 ||
+    weekdays[2] !== 6 ||
+    value.startHour !== 14 ||
+    value.durationMinutes !== 120
+  ) {
+    return [];
+  }
+  return [
+    "考试时间：每周二、周四、周六，北京时间 14:00–16:00。完成当前等级三门课程后，可以报名下一场考试。",
+  ];
+}
+
 function renderCertificates(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   const certificates = records(value);
@@ -592,9 +611,10 @@ function renderExamPaper(data: Record<string, unknown>): string[] {
   return [`试卷（一次查看全部 ${count} 题）：`, ...rendered];
 }
 
-function schoolText(result: LingyeSuccess): string {
+function schoolText(op: string, result: LingyeSuccess): string {
   const data = result.data;
   const lines = ["🏫 铃野职业学校", resultMessage(result.text, "已读取铃野职业学校当前事实。")];
+  if (op === "go.school.view") lines.push(...renderExamSchedule(data.examSchedule));
   const reference = isRecord(data.reference) ? data.reference : undefined;
   if (reference) lines.push(...renderCourseContent(reference), ...renderSchoolReference(reference));
   lines.push(...renderCurrentCourses(data.currentCourses));
@@ -793,6 +813,6 @@ export function renderLingyeToolText(
   result: LingyeSuccess,
 ): string {
   if (op.startsWith("go.bank.")) return bankText(op, result);
-  if (op.startsWith("go.school.")) return schoolText(result);
+  if (op.startsWith("go.school.")) return schoolText(op, result);
   return commissionText(op, result);
 }
