@@ -23,7 +23,8 @@ export const HUMAN_LOGIN_FAILURE_WINDOW_MS = 15 * 60 * 1000;
 export const HUMAN_LOGIN_FAILURE_THRESHOLD = 10;
 export const HUMAN_LOGIN_LOCK_DURATION_MS = 30 * 60 * 1000;
 export const FARM_PURCHASE_REQUEST_TTL_MS = 24 * 60 * 60 * 1000;
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 15;
+export const FARM_HARVEST_REQUEST_TTL_MS = 24 * 60 * 60 * 1000;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 16;
 const LEGACY_CONNECTOR_DELIVERY_GENERATION = "00000000-0000-0000-0000-000000000000";
 
 export interface RegistrationCodeRecord {
@@ -186,6 +187,7 @@ export type FarmPurchaseRequestStatus = (typeof FARM_PURCHASE_REQUEST_STATUSES)[
 export type BellWakeReason =
   | "mailbox_unread"
   | "farm_purchase_request"
+  | "farm_harvest_request"
   | "career_exam_reminder"
   | "career_job_update";
 
@@ -298,6 +300,47 @@ export interface FarmPurchaseRequestCreationResult {
 
 export interface FarmPurchaseRequestExpiryResult {
   request: FarmPurchaseRequestRecord;
+  cancelledWakeIds: string[];
+}
+
+export type FarmHarvestRequestStatus = "requested" | "expired" | "failed";
+
+export interface FarmHarvestRequestInput {
+  requestId: string;
+  wakeId: string;
+  residentId: string;
+  homeId: string;
+  idempotencyKey: string;
+  fieldRevision: string;
+  maturePlotCount: number;
+  humanName: string;
+  payloadHash: string;
+  notificationText: string;
+  createdAt: number;
+}
+
+export interface FarmHarvestRequestRecord {
+  requestId: string;
+  wakeId: string;
+  residentId: string;
+  homeId: string;
+  idempotencyKey: string;
+  fieldRevision: string;
+  maturePlotCount: number;
+  humanName: string;
+  status: FarmHarvestRequestStatus;
+  createdAt: number;
+  expiresAt: number;
+  payloadHash: string;
+}
+
+export interface FarmHarvestRequestCreationResult {
+  request: FarmHarvestRequestRecord;
+  created: boolean;
+}
+
+export interface FarmHarvestRequestExpiryResult {
+  request: FarmHarvestRequestRecord;
   cancelledWakeIds: string[];
 }
 
@@ -505,6 +548,13 @@ export class FarmPurchaseRequestIdempotencyConflictError extends Error {
   }
 }
 
+export class FarmHarvestRequestIdempotencyConflictError extends Error {
+  constructor() {
+    super("The farm harvest request idempotency key was already used for different content");
+    this.name = "FarmHarvestRequestIdempotencyConflictError";
+  }
+}
+
 interface RegistrationCodeRow {
   code: string;
   generated_at: number;
@@ -665,6 +715,21 @@ interface FarmPurchaseItemRow {
   kind: string;
   qty: number;
   display_name: string;
+}
+
+interface FarmHarvestRequestRow {
+  request_id: string;
+  wake_id: string;
+  resident_id: string;
+  home_id: string;
+  idempotency_key: string;
+  field_revision: string;
+  mature_plot_count: number;
+  human_name: string;
+  status: FarmHarvestRequestStatus;
+  created_at: number;
+  expires_at: number;
+  payload_hash: string;
 }
 
 interface MailboxLetterRow {
@@ -915,6 +980,23 @@ function mapFarmPurchaseRequest(
       qty: item.qty,
       displayName: item.display_name,
     })),
+  };
+}
+
+function mapFarmHarvestRequest(row: FarmHarvestRequestRow): FarmHarvestRequestRecord {
+  return {
+    requestId: row.request_id,
+    wakeId: row.wake_id,
+    residentId: row.resident_id,
+    homeId: row.home_id,
+    idempotencyKey: row.idempotency_key,
+    fieldRevision: row.field_revision,
+    maturePlotCount: row.mature_plot_count,
+    humanName: row.human_name,
+    status: row.status,
+    createdAt: row.created_at,
+    expiresAt: row.expires_at,
+    payloadHash: row.payload_hash,
   };
 }
 
@@ -1510,6 +1592,36 @@ export class CommunityDatabase {
 
       CREATE INDEX IF NOT EXISTS farm_purchase_request_items_request
         ON farm_purchase_request_items (request_id, kind, item_id);
+
+      CREATE TABLE IF NOT EXISTS farm_harvest_requests (
+        request_id TEXT PRIMARY KEY,
+        wake_id TEXT NOT NULL UNIQUE,
+        resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+        home_id TEXT NOT NULL REFERENCES homes(home_id) ON DELETE CASCADE,
+        idempotency_key TEXT NOT NULL,
+        field_revision TEXT NOT NULL,
+        mature_plot_count INTEGER NOT NULL CHECK (mature_plot_count > 0),
+        human_name TEXT NOT NULL,
+        request_status TEXT NOT NULL CHECK (request_status IN ('requested', 'expired', 'failed')),
+        wake_status TEXT NOT NULL CHECK (wake_status IN ('pending', 'acked', 'blocked', 'cancelled')),
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL CHECK (expires_at = created_at + 86400000),
+        ended_at INTEGER,
+        block_reason TEXT,
+        error_code TEXT,
+        payload_hash TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        UNIQUE (resident_id, idempotency_key),
+        CHECK (
+          (wake_status = 'pending' AND ended_at IS NULL AND block_reason IS NULL AND error_code IS NULL)
+          OR (wake_status = 'acked' AND ended_at IS NOT NULL AND block_reason IS NULL AND error_code IS NULL)
+          OR (wake_status = 'blocked' AND ended_at IS NOT NULL AND block_reason IS NOT NULL AND error_code IS NOT NULL)
+          OR (wake_status = 'cancelled' AND ended_at IS NOT NULL AND block_reason IS NULL AND error_code IS NULL)
+        )
+      );
+
+      CREATE INDEX IF NOT EXISTS farm_harvest_requests_resident_created
+        ON farm_harvest_requests (resident_id, created_at DESC, request_id DESC);
     `);
     let migratedSchemaVersion = databaseSchemaVersion;
     if (migratedSchemaVersion < 1) {
@@ -2612,6 +2724,59 @@ export class CommunityDatabase {
         this.#database.pragma("user_version = 15");
       })();
       migratedSchemaVersion = 15;
+    }
+    if (migratedSchemaVersion < 16) {
+      this.#database.transaction(() => {
+        this.#database.exec(`
+          CREATE TABLE IF NOT EXISTS farm_harvest_requests (
+            request_id TEXT PRIMARY KEY,
+            wake_id TEXT NOT NULL UNIQUE,
+            resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+            home_id TEXT NOT NULL REFERENCES homes(home_id) ON DELETE CASCADE,
+            idempotency_key TEXT NOT NULL,
+            field_revision TEXT NOT NULL,
+            mature_plot_count INTEGER NOT NULL CHECK (mature_plot_count > 0),
+            human_name TEXT NOT NULL,
+            request_status TEXT NOT NULL CHECK (
+              request_status IN ('requested', 'expired', 'failed')
+            ),
+            wake_status TEXT NOT NULL CHECK (
+              wake_status IN ('pending', 'acked', 'blocked', 'cancelled')
+            ),
+            created_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL CHECK (expires_at = created_at + 86400000),
+            ended_at INTEGER,
+            block_reason TEXT,
+            error_code TEXT,
+            payload_hash TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            UNIQUE (resident_id, idempotency_key),
+            CHECK (
+              (wake_status = 'pending'
+                AND ended_at IS NULL
+                AND block_reason IS NULL
+                AND error_code IS NULL)
+              OR (wake_status = 'acked'
+                AND ended_at IS NOT NULL
+                AND block_reason IS NULL
+                AND error_code IS NULL)
+              OR (wake_status = 'blocked'
+                AND ended_at IS NOT NULL
+                AND block_reason IS NOT NULL
+                AND error_code IS NOT NULL)
+              OR (wake_status = 'cancelled'
+                AND ended_at IS NOT NULL
+                AND block_reason IS NULL
+                AND error_code IS NULL)
+            )
+          );
+
+          CREATE INDEX IF NOT EXISTS farm_harvest_requests_resident_created
+            ON farm_harvest_requests (resident_id, created_at DESC, request_id DESC);
+        `);
+        this.#database.pragma("user_version = 16");
+      })();
+      migratedSchemaVersion = 16;
     }
     this.#database.transaction(() => {
       const itemColumns = this.#database.pragma(
@@ -4561,7 +4726,24 @@ export class CommunityDatabase {
          WHERE resident_id = ? AND status = 'pending'`,
       )
       .all(residentId) as BellWakeRow[];
-    return [...rows, ...careerRows]
+    const harvestRows = this.#database
+      .prepare(
+        `SELECT wake_id,
+                resident_id,
+                'farm_harvest_request' AS reason,
+                wake_status AS status,
+                created_at,
+                ended_at,
+                block_reason,
+                error_code,
+                NULL AS purchase_request_id,
+                NULL AS letter_id,
+                payload_json
+         FROM farm_harvest_requests
+         WHERE resident_id = ? AND wake_status = 'pending'`,
+      )
+      .all(residentId) as BellWakeRow[];
+    return [...rows, ...harvestRows, ...careerRows]
       .map(mapBellWake)
       .sort(
         (left, right) =>
@@ -4661,6 +4843,23 @@ export class CommunityDatabase {
       .prepare(
         `SELECT wake_id,
                 resident_id,
+                'farm_harvest_request' AS reason,
+                wake_status AS status,
+                created_at,
+                ended_at,
+                block_reason,
+                error_code,
+                NULL AS purchase_request_id,
+                NULL AS letter_id,
+                payload_json
+         FROM farm_harvest_requests
+         WHERE resident_id = ? AND wake_id = ?`,
+      )
+      .get(residentId, wakeId) as BellWakeRow | undefined;
+    row ??= this.#database
+      .prepare(
+        `SELECT wake_id,
+                resident_id,
                 'career_job_update' AS reason,
                 status,
                 created_at,
@@ -4700,7 +4899,28 @@ export class CommunityDatabase {
            WHERE resident_id = ? AND wake_id = ?`,
         )
         .get(residentId, wakeId) as BellWakeRow | undefined;
-      const careerWake = row === undefined;
+      let wakeSource: "bell" | "harvest" | "career" = "bell";
+      if (!row) {
+        wakeSource = "harvest";
+        row = this.#database
+          .prepare(
+            `SELECT wake_id,
+                    resident_id,
+                    'farm_harvest_request' AS reason,
+                    wake_status AS status,
+                    created_at,
+                    ended_at,
+                    block_reason,
+                    error_code,
+                    NULL AS purchase_request_id,
+                    NULL AS letter_id,
+                    payload_json
+             FROM farm_harvest_requests
+             WHERE resident_id = ? AND wake_id = ?`,
+          )
+          .get(residentId, wakeId) as BellWakeRow | undefined;
+      }
+      if (!row) wakeSource = "career";
       row ??= this.#database
         .prepare(
           `SELECT wake_id,
@@ -4721,14 +4941,21 @@ export class CommunityDatabase {
       if (!row) return "missing" as const;
       if (row.status === "acked") return "duplicate" as const;
       if (row.status !== "pending") return "conflict" as const;
+      const wakeTable =
+        wakeSource === "career"
+          ? "career_job_wakes"
+          : wakeSource === "harvest"
+            ? "farm_harvest_requests"
+            : "bell_wakes";
+      const wakeStatusColumn = wakeSource === "harvest" ? "wake_status" : "status";
       this.#database
         .prepare(
-          `UPDATE ${careerWake ? "career_job_wakes" : "bell_wakes"}
-           SET status = 'acked', ended_at = ?
-           WHERE resident_id = ? AND wake_id = ? AND status = 'pending'`,
+          `UPDATE ${wakeTable}
+           SET ${wakeStatusColumn} = 'acked', ended_at = ?
+           WHERE resident_id = ? AND wake_id = ? AND ${wakeStatusColumn} = 'pending'`,
         )
         .run(now, residentId, wakeId);
-      if (careerWake && row.letter_id !== null) {
+      if (wakeSource === "career" && row.letter_id !== null) {
         this.#database
           .prepare(
             `INSERT INTO mailbox_read_states (letter_id, audience, read_at)
@@ -4767,7 +4994,28 @@ export class CommunityDatabase {
            WHERE resident_id = ? AND wake_id = ?`,
         )
         .get(residentId, wakeId) as BellWakeRow | undefined;
-      const careerWake = row === undefined;
+      let wakeSource: "bell" | "harvest" | "career" = "bell";
+      if (!row) {
+        wakeSource = "harvest";
+        row = this.#database
+          .prepare(
+            `SELECT wake_id,
+                    resident_id,
+                    'farm_harvest_request' AS reason,
+                    wake_status AS status,
+                    created_at,
+                    ended_at,
+                    block_reason,
+                    error_code,
+                    NULL AS purchase_request_id,
+                    NULL AS letter_id,
+                    payload_json
+             FROM farm_harvest_requests
+             WHERE resident_id = ? AND wake_id = ?`,
+          )
+          .get(residentId, wakeId) as BellWakeRow | undefined;
+      }
+      if (!row) wakeSource = "career";
       row ??= this.#database
         .prepare(
           `SELECT wake_id,
@@ -4792,13 +5040,27 @@ export class CommunityDatabase {
           : ("conflict" as const);
       }
       if (row.status !== "pending") return "conflict" as const;
-      this.#database
-        .prepare(
-          `UPDATE ${careerWake ? "career_job_wakes" : "bell_wakes"}
-           SET status = 'blocked', ended_at = ?, block_reason = ?, error_code = ?
-           WHERE resident_id = ? AND wake_id = ? AND status = 'pending'`,
-        )
-        .run(now, blockReason, errorCode, residentId, wakeId);
+      if (wakeSource === "harvest") {
+        this.#database
+          .prepare(
+            `UPDATE farm_harvest_requests
+             SET request_status = 'failed',
+                 wake_status = 'blocked',
+                 ended_at = ?,
+                 block_reason = ?,
+                 error_code = ?
+             WHERE resident_id = ? AND wake_id = ? AND wake_status = 'pending'`,
+          )
+          .run(now, blockReason, errorCode, residentId, wakeId);
+      } else {
+        this.#database
+          .prepare(
+            `UPDATE ${wakeSource === "career" ? "career_job_wakes" : "bell_wakes"}
+             SET status = 'blocked', ended_at = ?, block_reason = ?, error_code = ?
+             WHERE resident_id = ? AND wake_id = ? AND status = 'pending'`,
+          )
+          .run(now, blockReason, errorCode, residentId, wakeId);
+      }
       if (row.reason === "farm_purchase_request" && row.purchase_request_id !== null) {
         this.#database
           .prepare(
@@ -4824,7 +5086,18 @@ export class CommunityDatabase {
            WHERE resident_id = ? AND wake_id = ? AND status = 'pending'`,
         )
         .get(residentId, wakeId) as { wake_id: string } | undefined;
-      const careerWake = row === undefined;
+      let wakeSource: "bell" | "harvest" | "career" = "bell";
+      if (!row) {
+        wakeSource = "harvest";
+        row = this.#database
+          .prepare(
+            `SELECT wake_id
+             FROM farm_harvest_requests
+             WHERE resident_id = ? AND wake_id = ? AND wake_status = 'pending'`,
+          )
+          .get(residentId, wakeId) as { wake_id: string } | undefined;
+      }
+      if (!row) wakeSource = "career";
       row ??= this.#database
         .prepare(
           `SELECT wake_id
@@ -4835,11 +5108,18 @@ export class CommunityDatabase {
       if (!row) {
         return { residentId, cancelledWakeId: null, cancelledWakeIds: [] };
       }
+      const wakeTable =
+        wakeSource === "career"
+          ? "career_job_wakes"
+          : wakeSource === "harvest"
+            ? "farm_harvest_requests"
+            : "bell_wakes";
+      const wakeStatusColumn = wakeSource === "harvest" ? "wake_status" : "status";
       this.#database
         .prepare(
-          `UPDATE ${careerWake ? "career_job_wakes" : "bell_wakes"}
-           SET status = 'cancelled', ended_at = ?
-           WHERE resident_id = ? AND wake_id = ? AND status = 'pending'`,
+          `UPDATE ${wakeTable}
+           SET ${wakeStatusColumn} = 'cancelled', ended_at = ?
+           WHERE resident_id = ? AND wake_id = ? AND ${wakeStatusColumn} = 'pending'`,
         )
         .run(now, residentId, wakeId);
       return { residentId, cancelledWakeId: wakeId, cancelledWakeIds: [wakeId] };
@@ -5102,6 +5382,155 @@ export class CommunityDatabase {
       const request = this.#readFarmPurchaseRequest(requestId, residentId);
       if (!request) throw new Error("The farm purchase request disappeared during expiry");
       return { request, cancelledWakeIds };
+    });
+    return transaction.immediate();
+  }
+
+  createFarmHarvestRequest(input: FarmHarvestRequestInput): FarmHarvestRequestCreationResult {
+    const transaction = this.#database.transaction(() => {
+      const home = this.#database
+        .prepare("SELECT resident_id FROM homes WHERE home_id = ?")
+        .get(input.homeId) as { resident_id: string } | undefined;
+      if (!home || home.resident_id !== input.residentId) {
+        throw new Error("The harvest request home does not belong to the resident");
+      }
+      const existing = this.#readFarmHarvestRequestByIdempotencyKey(
+        input.residentId,
+        input.idempotencyKey,
+      );
+      if (existing) {
+        if (
+          existing.payloadHash !== input.payloadHash ||
+          existing.fieldRevision !== input.fieldRevision ||
+          existing.maturePlotCount !== input.maturePlotCount ||
+          existing.humanName !== input.humanName
+        ) {
+          throw new FarmHarvestRequestIdempotencyConflictError();
+        }
+        return { request: existing, created: false };
+      }
+      if (
+        this.#database.prepare("SELECT 1 FROM bell_wakes WHERE wake_id = ?").get(input.wakeId) ||
+        this.#database.prepare("SELECT 1 FROM career_job_wakes WHERE wake_id = ?").get(input.wakeId)
+      ) {
+        throw new Error("The harvest request wake id is already used by another Bell wake");
+      }
+      const expiresAt = input.createdAt + FARM_HARVEST_REQUEST_TTL_MS;
+      this.#database
+        .prepare(
+          `INSERT INTO farm_harvest_requests (
+             request_id, wake_id, resident_id, home_id, idempotency_key,
+             field_revision, mature_plot_count, human_name, request_status,
+             wake_status, created_at, expires_at, ended_at, block_reason,
+             error_code, payload_hash, payload_json
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'requested', 'pending', ?, ?, NULL, NULL, NULL, ?, ?)`,
+        )
+        .run(
+          input.requestId,
+          input.wakeId,
+          input.residentId,
+          input.homeId,
+          input.idempotencyKey,
+          input.fieldRevision,
+          input.maturePlotCount,
+          input.humanName,
+          input.createdAt,
+          expiresAt,
+          input.payloadHash,
+          JSON.stringify({ text: input.notificationText }),
+        );
+      const created = this.#readFarmHarvestRequest(input.requestId, input.residentId);
+      if (!created) throw new Error("The farm harvest request could not be read after creation");
+      return { request: created, created: true };
+    });
+    return transaction.immediate();
+  }
+
+  getFarmHarvestRequest(
+    residentId: string,
+    requestId: string,
+    now?: number,
+  ): FarmHarvestRequestRecord | undefined {
+    if (now !== undefined) this.expireFarmHarvestRequest(residentId, requestId, now);
+    return this.#readFarmHarvestRequest(requestId, residentId);
+  }
+
+  getFarmHarvestRequestByIdempotencyKey(
+    residentId: string,
+    idempotencyKey: string,
+  ): FarmHarvestRequestRecord | undefined {
+    return this.#readFarmHarvestRequestByIdempotencyKey(residentId, idempotencyKey);
+  }
+
+  expirePendingFarmHarvestRequestsForResident(
+    residentId: string,
+    now: number,
+  ): BellWakeCancellationResult {
+    const transaction = this.#database.transaction(() => {
+      const pending = this.#database
+        .prepare(
+          `SELECT wake_id
+           FROM farm_harvest_requests
+           WHERE resident_id = ?
+             AND request_status = 'requested'
+             AND wake_status = 'pending'
+             AND expires_at <= ?
+           ORDER BY wake_id ASC`,
+        )
+        .all(residentId, now) as Array<{ wake_id: string }>;
+      this.#database
+        .prepare(
+          `UPDATE farm_harvest_requests
+           SET request_status = 'expired',
+               wake_status = CASE WHEN wake_status = 'pending' THEN 'cancelled' ELSE wake_status END,
+               ended_at = CASE WHEN wake_status = 'pending' THEN ? ELSE ended_at END
+           WHERE resident_id = ?
+             AND request_status = 'requested'
+             AND expires_at <= ?`,
+        )
+        .run(now, residentId, now);
+      const cancelledWakeIds = pending.map((wake) => wake.wake_id);
+      return {
+        residentId,
+        cancelledWakeId: cancelledWakeIds[0] ?? null,
+        cancelledWakeIds,
+      };
+    });
+    return transaction.immediate();
+  }
+
+  expireFarmHarvestRequest(
+    residentId: string,
+    requestId: string,
+    now: number,
+  ): FarmHarvestRequestExpiryResult | undefined {
+    const transaction = this.#database.transaction(() => {
+      const current = this.#readFarmHarvestRequest(requestId, residentId);
+      if (!current) return undefined;
+      const shouldExpire = current.expiresAt <= now && current.status === "requested";
+      const pendingWake = shouldExpire
+        ? (this.#database
+            .prepare(
+              `SELECT wake_id
+               FROM farm_harvest_requests
+               WHERE request_id = ? AND resident_id = ? AND wake_status = 'pending'`,
+            )
+            .get(requestId, residentId) as { wake_id: string } | undefined)
+        : undefined;
+      if (shouldExpire) {
+        this.#database
+          .prepare(
+            `UPDATE farm_harvest_requests
+             SET request_status = 'expired',
+                 wake_status = CASE WHEN wake_status = 'pending' THEN 'cancelled' ELSE wake_status END,
+                 ended_at = CASE WHEN wake_status = 'pending' THEN ? ELSE ended_at END
+             WHERE request_id = ? AND resident_id = ? AND request_status = 'requested'`,
+          )
+          .run(now, requestId, residentId);
+      }
+      const request = this.#readFarmHarvestRequest(requestId, residentId);
+      if (!request) throw new Error("The farm harvest request disappeared during expiry");
+      return { request, cancelledWakeIds: pendingWake ? [pendingWake.wake_id] : [] };
     });
     return transaction.immediate();
   }
@@ -5596,6 +6025,38 @@ export class CommunityDatabase {
     return row
       ? mapFarmPurchaseRequest(row, this.#readFarmPurchaseRequestItems(requestId))
       : undefined;
+  }
+
+  #readFarmHarvestRequest(
+    requestId: string,
+    residentId: string,
+  ): FarmHarvestRequestRecord | undefined {
+    const row = this.#database
+      .prepare(
+        `SELECT request_id, wake_id, resident_id, home_id, idempotency_key,
+                field_revision, mature_plot_count, human_name,
+                request_status AS status, created_at, expires_at, payload_hash
+         FROM farm_harvest_requests
+         WHERE request_id = ? AND resident_id = ?`,
+      )
+      .get(requestId, residentId) as FarmHarvestRequestRow | undefined;
+    return row ? mapFarmHarvestRequest(row) : undefined;
+  }
+
+  #readFarmHarvestRequestByIdempotencyKey(
+    residentId: string,
+    idempotencyKey: string,
+  ): FarmHarvestRequestRecord | undefined {
+    const row = this.#database
+      .prepare(
+        `SELECT request_id, wake_id, resident_id, home_id, idempotency_key,
+                field_revision, mature_plot_count, human_name,
+                request_status AS status, created_at, expires_at, payload_hash
+         FROM farm_harvest_requests
+         WHERE resident_id = ? AND idempotency_key = ?`,
+      )
+      .get(residentId, idempotencyKey) as FarmHarvestRequestRow | undefined;
+    return row ? mapFarmHarvestRequest(row) : undefined;
   }
 
   #cancelPendingWakeIdsForRequest(requestId: string, now: number): string[] {

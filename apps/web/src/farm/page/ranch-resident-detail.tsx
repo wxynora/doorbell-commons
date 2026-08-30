@@ -7,6 +7,7 @@ import {
 import type { BoundRanchRead } from "../../auth/ranch-client";
 import {
   getRanchResidentSpriteVisual,
+  RANCH_PATROL_GOOSE_VISUAL,
   RANCH_SHOP_ANIMALS,
   type RanchShopAnimal,
   type RanchVariantSelection,
@@ -86,8 +87,10 @@ export function getLiveRanchResidents(
   return candidates.flatMap(({ category, resident, residentType }) => {
     const kindId = resident.identity.kind_id;
     const name = resident.identity.custom_name ?? resident.identity.name;
-    const spriteId = kindId === "patrol_goose" ? "goose" : kindId;
-    const spriteAnimal = RANCH_SHOP_ANIMALS.find((animal) => animal.id === spriteId);
+    const spriteAnimal =
+      kindId === "patrol_goose"
+        ? RANCH_PATROL_GOOSE_VISUAL
+        : RANCH_SHOP_ANIMALS.find((animal) => animal.id === kindId);
     return resident.status === "known" &&
       resident.identity.status === "known" &&
       kindId !== null &&

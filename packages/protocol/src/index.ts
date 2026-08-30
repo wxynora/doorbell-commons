@@ -5,6 +5,7 @@ export * from "./farm-catalog.js";
 export * from "./farm-constable-interview.js";
 export * from "./farm-crop-codex-action.js";
 export * from "./farm-expedition-action.js";
+export * from "./farm-harvest-request.js";
 export * from "./farm-kitchen.js";
 export * from "./farm-kitchen-cook.js";
 export * from "./farm-kitchen-inventory-action.js";

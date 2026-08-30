@@ -2,9 +2,12 @@ import type { CSSProperties } from "react";
 import { getRanchAnimalAsset, getRanchSkinAsset } from "../farm-asset-manifest";
 import type { RanchSceneAnimalLayout } from "../scenes/ranch/ranch-scene";
 
-export interface RanchShopAnimal {
+export interface RanchAnimalVisual {
   id: string;
   name: string;
+}
+
+export interface RanchShopAnimal extends RanchAnimalVisual {
   shopSection: "animals" | "pets";
   category: string;
   description: string;
@@ -308,6 +311,18 @@ export const RANCH_SHOP_ANIMALS: readonly RanchShopAnimal[] = [
   },
 ];
 
+export const RANCH_PATROL_GOOSE_VISUAL: RanchShopAnimal = {
+  id: "patrol_goose",
+  name: "巡逻鹅",
+  shopSection: "animals",
+  category: "常驻守卫",
+  description: "独立常驻牧场的巡逻守卫。",
+  effectLabel: "自动巡逻",
+  effectText: "有概率赶走来偷金币的动物。",
+  buyCost: 9_999,
+  unlockCondition: "无需图鉴解锁",
+};
+
 const RANCH_ORDINARY_VARIANT_IDS = {
   chicken: ["chicken_strawberry", "chicken_cream", "chicken_cloud"],
   duck: ["duck_mint", "duck_peach", "duck_starry"],
@@ -365,6 +380,7 @@ export const RANCH_ANIMAL_LAYOUTS: Readonly<Record<string, RanchAnimalLayout>> =
   dream_cat: { x: 114.30859375, y: 99.79296875, size: 192 },
   cat: { x: 86.59375, y: 108.96875, size: 192 },
   dog: { x: 95.109375, y: 110.65234375, size: 192 },
+  patrol_goose: { x: 96, y: 96, size: 192 },
 };
 
 export const RANCH_SCENE_DEMO_LAYOUTS: Readonly<Record<string, RanchSceneAnimalLayout>> = {
@@ -372,7 +388,7 @@ export const RANCH_SCENE_DEMO_LAYOUTS: Readonly<Record<string, RanchSceneAnimalL
   cat: { x: 63, y: 59, size: 18, roam: { minX: 35, maxX: 78, minY: 39, maxY: 77 } },
 };
 
-export function getRanchAnimalSpriteStyle(animal: RanchShopAnimal): CSSProperties {
+export function getRanchAnimalSpriteStyle(animal: RanchAnimalVisual): CSSProperties {
   const asset = getRanchAnimalAsset(animal.id);
 
   if (!asset) {
@@ -396,7 +412,7 @@ export function getRanchAnimalSpriteStyle(animal: RanchShopAnimal): CSSPropertie
   };
 }
 
-export function getRanchAnimalPlacementStyle(animal: RanchShopAnimal): CSSProperties {
+export function getRanchAnimalPlacementStyle(animal: RanchAnimalVisual): CSSProperties {
   const layout = RANCH_ANIMAL_LAYOUTS[animal.id] ?? DEFAULT_RANCH_ANIMAL_LAYOUT;
 
   return {
@@ -447,7 +463,7 @@ export function getRanchVariantSpriteStyle(variant: RanchVariantVisualOption): C
 }
 
 export function getRanchResidentSpriteVisual(
-  animal: RanchShopAnimal,
+  animal: RanchAnimalVisual,
   variants?: RanchVariantSelection | null,
   residentKindId = animal.id,
 ): RanchResidentSpriteVisual {

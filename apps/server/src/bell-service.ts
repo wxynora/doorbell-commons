@@ -239,6 +239,11 @@ export class BellService {
       now,
     );
     this.#emitCancellations(expiredPurchases);
+    const expiredHarvests = this.#database.expirePendingFarmHarvestRequestsForResident(
+      residentId,
+      now,
+    );
+    this.#emitCancellations(expiredHarvests);
     const mailbox = this.#database.cancelPendingBellMailboxWakeForResident(residentId, now);
     this.#emitCancellations(mailbox);
     const careerJobs = this.#database.cancelPendingCareerJobWakesForResidentReadMail(

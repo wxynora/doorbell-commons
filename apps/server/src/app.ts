@@ -52,6 +52,9 @@ import {
   boundFarmHarvestAssistErrorSchema,
   boundFarmHarvestAssistRequestSchema,
   boundFarmHarvestAssistSuccessSchema,
+  boundFarmHarvestRequestCreateSchema,
+  boundFarmHarvestRequestCreateSuccessSchema,
+  boundFarmHarvestRequestErrorSchema,
   boundFarmKitchenCookErrorSchema,
   boundFarmKitchenCookRequestSchema,
   boundFarmKitchenCookSuccessSchema,
@@ -134,6 +137,7 @@ import {
   farmBulletinAckIdempotencyKeySchema,
   farmCropCodexActionIdempotencyKeySchema,
   farmExpeditionActionIdempotencyKeySchema,
+  farmHarvestRequestIdempotencyKeySchema,
   farmHumanConstableInterviewSuccessSchema,
   farmHumanFieldHarvestAssistIdempotencyKeySchema,
   farmHumanFieldLandUpgradeIdempotencyKeySchema,
@@ -223,6 +227,7 @@ import {
 } from "./bell-service.js";
 import type { BrowserPushService } from "./browser-push-service.js";
 import {
+  FarmHarvestRequestIdempotencyConflictError,
   FarmPurchaseRequestIdempotencyConflictError,
   HumanProfileNotAvailableError,
   type HumanSettingsPatch,
@@ -285,6 +290,11 @@ import {
   FarmHumanExpeditionActionStateConflictError,
   FarmHumanExpeditionActionUnavailableError,
 } from "./farm-expedition-action-client.js";
+import {
+  type FarmHarvestRequestCreateResult,
+  FarmHarvestRequestInputError,
+  type FarmHarvestRequestService,
+} from "./farm-harvest-request-service.js";
 import {
   FarmHumanFieldContractUnavailableError,
   FarmHumanFieldCredentialInvalidError,
@@ -522,6 +532,7 @@ export interface BuildAppOptions {
   groupId: string;
   groupMembership: QqGroupMembershipReader;
   registrationAuth: RegistrationAuthService;
+  farmHarvestRequestService?: FarmHarvestRequestService;
   farmPurchaseRequestService?: FarmPurchaseRequestService;
   bellAccessService?: BellAccessService;
   bellService?: BellService;
@@ -1164,6 +1175,53 @@ function sendBoundFarmPurchaseRequestSuccess(
         item_id: item.itemId,
         qty: item.qty,
       })),
+      status: result.request.status,
+      expires_at: new Date(result.request.expiresAt).toISOString(),
+    },
+    server_time: new Date().toISOString(),
+  });
+}
+
+function sendBoundFarmHarvestRequestError(
+  reply: FastifyReply,
+  statusCode: 400 | 401 | 403 | 404 | 409 | 502 | 503,
+  code:
+    | "field_changed"
+    | "no_ripe_plots"
+    | "idempotency_conflict"
+    | "invalid_request"
+    | "authentication_required"
+    | "qq_not_group_member"
+    | "onebot_unavailable"
+    | "registration_profile_required"
+    | "farm_not_found"
+    | "farm_credential_invalid"
+    | "farm_unavailable"
+    | "upstream_contract_unavailable",
+  message: string,
+  currentFieldRevision?: string,
+) {
+  reply.header("cache-control", "no-store");
+  return reply.code(statusCode).send(
+    boundFarmHarvestRequestErrorSchema.parse({
+      error: {
+        code,
+        message,
+        ...(currentFieldRevision ? { current_field_revision: currentFieldRevision } : {}),
+      },
+    }),
+  );
+}
+
+function sendBoundFarmHarvestRequestSuccess(
+  reply: FastifyReply,
+  result: FarmHarvestRequestCreateResult,
+) {
+  reply.header("cache-control", "no-store");
+  return boundFarmHarvestRequestCreateSuccessSchema.parse({
+    data: {
+      field_revision: result.request.fieldRevision,
+      mature_plot_count: result.request.maturePlotCount,
       status: result.request.status,
       expires_at: new Date(result.request.expiresAt).toISOString(),
     },
@@ -4567,6 +4625,184 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
           503,
           "farm_unavailable",
           "The farm shop is unavailable",
+        );
+      }
+      throw error;
+    }
+  });
+
+  app.post("/api/farm/harvest-requests", async (request, reply) => {
+    const parsedBody = boundFarmHarvestRequestCreateSchema.safeParse(request.body);
+    const idempotencyHeader = request.headers["idempotency-key"];
+    const parsedIdempotencyKey = farmHarvestRequestIdempotencyKeySchema.safeParse(
+      typeof idempotencyHeader === "string" ? idempotencyHeader : undefined,
+    );
+    if (!parsedBody.success || !parsedIdempotencyKey.success) {
+      return sendBoundFarmHarvestRequestError(
+        reply,
+        400,
+        "invalid_request",
+        "A valid field revision and Idempotency-Key are required",
+      );
+    }
+    if (!options.farmHarvestRequestService) {
+      return sendBoundFarmHarvestRequestError(
+        reply,
+        503,
+        "farm_unavailable",
+        "Farm harvest requests are unavailable",
+      );
+    }
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendBoundFarmHarvestRequestError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+
+    try {
+      const community = await options.registrationAuth.getCurrentSession(token);
+      const replay = options.farmHarvestRequestService.replay({
+        residentId: community.resident.residentId,
+        fieldRevision: parsedBody.data.field_revision,
+        idempotencyKey: parsedIdempotencyKey.data,
+      });
+      if (replay) return sendBoundFarmHarvestRequestSuccess(reply, replay);
+
+      const field = await options.registrationAuth.getCurrentFarmField(token);
+      if (field.revision !== parsedBody.data.field_revision) {
+        return sendBoundFarmHarvestRequestError(
+          reply,
+          409,
+          "field_changed",
+          "The farm field has changed",
+          field.revision,
+        );
+      }
+      const maturePlotCount = field.data.harvest_assist.mature_plot_count;
+      if (maturePlotCount <= 0) {
+        return sendBoundFarmHarvestRequestError(
+          reply,
+          409,
+          "no_ripe_plots",
+          "The farm has no ripe plots to harvest",
+        );
+      }
+      const catalog = await options.registrationAuth.getCurrentFarmCatalog(token);
+      const humanName =
+        catalog.data.settings.status === "available"
+          ? catalog.data.settings.human_name?.trim()
+          : undefined;
+      if (!humanName) {
+        return sendBoundFarmHarvestRequestError(
+          reply,
+          409,
+          "invalid_request",
+          "Set the farm human name before creating a harvest request",
+        );
+      }
+      return sendBoundFarmHarvestRequestSuccess(
+        reply,
+        options.farmHarvestRequestService.create({
+          residentId: community.resident.residentId,
+          homeId: community.home.homeId,
+          humanName,
+          fieldRevision: field.revision,
+          maturePlotCount,
+          idempotencyKey: parsedIdempotencyKey.data,
+        }),
+      );
+    } catch (error) {
+      if (error instanceof AuthenticationRequiredError) {
+        return sendBoundFarmHarvestRequestError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
+        return sendBoundFarmHarvestRequestError(
+          reply,
+          403,
+          "qq_not_group_member",
+          "The session QQ number is no longer a current member of the community group",
+        );
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendBoundFarmHarvestRequestError(
+          reply,
+          503,
+          "onebot_unavailable",
+          "QQ group membership could not be verified",
+        );
+      }
+      if (error instanceof RegistrationProfileRequiredError) {
+        return sendBoundFarmHarvestRequestError(
+          reply,
+          409,
+          "registration_profile_required",
+          "A resident, home, and farm binding are required",
+        );
+      }
+      if (error instanceof FarmHarvestRequestIdempotencyConflictError) {
+        return sendBoundFarmHarvestRequestError(
+          reply,
+          409,
+          "idempotency_conflict",
+          "This Idempotency-Key was used for another harvest request",
+        );
+      }
+      if (error instanceof FarmHarvestRequestInputError) {
+        return sendBoundFarmHarvestRequestError(reply, 400, "invalid_request", error.message);
+      }
+      if (
+        error instanceof FarmHumanFieldCredentialInvalidError ||
+        error instanceof FarmHumanCatalogCredentialInvalidError
+      ) {
+        return sendBoundFarmHarvestRequestError(
+          reply,
+          409,
+          "farm_credential_invalid",
+          "The bound farm human credential is no longer valid",
+        );
+      }
+      if (
+        error instanceof FarmHumanFieldNotFoundError ||
+        error instanceof FarmHumanCatalogNotFoundError
+      ) {
+        return sendBoundFarmHarvestRequestError(
+          reply,
+          404,
+          "farm_not_found",
+          "The bound farm no longer exists",
+        );
+      }
+      if (
+        error instanceof FarmHumanFieldContractUnavailableError ||
+        error instanceof FarmHumanCatalogContractUnavailableError
+      ) {
+        return sendBoundFarmHarvestRequestError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The farm response could not be verified",
+        );
+      }
+      if (
+        error instanceof FarmHumanFieldUnavailableError ||
+        error instanceof FarmHumanCatalogUnavailableError
+      ) {
+        return sendBoundFarmHarvestRequestError(
+          reply,
+          503,
+          "farm_unavailable",
+          "The farm is unavailable",
         );
       }
       throw error;

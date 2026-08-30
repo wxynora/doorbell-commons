@@ -1,22 +1,41 @@
 import type { BoundFarmField, BoundFarmHarvestAssist } from "../../auth/auth-client";
+import { farmHarvestRequestIssueMessage } from "../../auth/farm-harvest-request-client";
 import { ranchCollectionIssueMessage } from "../../auth/ranch-collection-client";
 import { farmHarvestAssistIssueMessage, farmLandUpgradeIssueMessage } from "../farm-overview";
 import type {
   FarmHarvestActionState,
+  FarmHarvestRequestActionState,
   FarmLandUpgradeActionState,
   RanchCollectionState,
 } from "./model";
 
 export function FieldSceneOverlay({
   harvestAssist,
+  harvestRequestAction,
   onHarvestAssist,
+  onHarvestRequest,
+  onRetryHarvestRequest,
   submitting,
 }: {
   harvestAssist: BoundFarmField["data"]["harvest_assist"];
+  harvestRequestAction: FarmHarvestRequestActionState;
   onHarvestAssist?: (() => void) | undefined;
+  onHarvestRequest?: (() => void) | undefined;
+  onRetryHarvestRequest?: (() => void) | undefined;
   submitting: boolean;
 }) {
   const enabled = harvestAssist.can_assist && Boolean(onHarvestAssist) && !submitting;
+  const requestSubmitting = harvestRequestAction.stage === "submitting";
+  const requestSent = harvestRequestAction.stage === "success";
+  const requestEnabled =
+    harvestAssist.mature_plot_count > 0 &&
+    Boolean(onHarvestRequest) &&
+    !requestSubmitting &&
+    !requestSent;
+  const retryRequest =
+    harvestRequestAction.stage === "error" && harvestRequestAction.attempt
+      ? onRetryHarvestRequest
+      : undefined;
   return (
     <aside aria-label="农场帮收" className="farm-scene-action-dock farm-scene-action-dock--field">
       <dl>
@@ -31,9 +50,25 @@ export function FieldSceneOverlay({
           </dd>
         </div>
       </dl>
-      <button disabled={!enabled} onClick={onHarvestAssist} type="button">
-        {submitting ? "正在帮收…" : "一键帮 TA 收"}
-      </button>
+      <div className="farm-scene-action-dock__field-actions">
+        <button disabled={!enabled} onClick={onHarvestAssist} type="button">
+          {submitting ? "正在帮收…" : "一键帮 TA 收"}
+        </button>
+        <button disabled={!requestEnabled} onClick={retryRequest ?? onHarvestRequest} type="button">
+          {requestSubmitting
+            ? "正在通知…"
+            : requestSent
+              ? "已通知 TA"
+              : harvestRequestAction.stage === "error"
+                ? "重试通知"
+                : "喊 TA 来收菜"}
+        </button>
+      </div>
+      {harvestRequestAction.stage === "error" ? (
+        <p className="farm-harvest-request-error" role="alert">
+          {farmHarvestRequestIssueMessage(harvestRequestAction.issue)}
+        </p>
+      ) : null}
     </aside>
   );
 }
@@ -95,7 +130,9 @@ export function FarmLandUpgradeReceipt({
         <strong>土地升级完成</strong>
         <p>{action.result.message}</p>
         <small>
-          {action.result.previous_land.name} → {action.result.upgraded_land.name} · 地块 {action.result.previous_land.plots} → {action.result.upgraded_land.plots} · 金币 -{action.result.farm_coins_spent.toLocaleString("zh-CN")}
+          {action.result.previous_land.name} → {action.result.upgraded_land.name} · 地块{" "}
+          {action.result.previous_land.plots} → {action.result.upgraded_land.plots} · 金币 -
+          {action.result.farm_coins_spent.toLocaleString("zh-CN")}
         </small>
       </section>
     );

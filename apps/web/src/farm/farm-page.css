@@ -929,11 +929,27 @@
   width: auto;
 }
 
-.farm-scene-action-dock--field > button {
+.farm-scene-action-dock__field-actions {
+  display: grid;
+  width: 24cqw;
+  gap: 0.65cqw;
+}
+
+.farm-scene-action-dock--field .farm-scene-action-dock__field-actions > button {
   min-width: 22cqw;
   min-height: clamp(28px, 8cqw, 34px);
   padding: 0.2cqw 1cqw;
   border-width: 0.25cqw;
+}
+
+.farm-harvest-request-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 0.45cqw 0.4cqw 0.2cqw;
+  color: #9a4f42;
+  font-size: clamp(0.48rem, 1.9cqw, 0.58rem);
+  font-weight: 800;
+  text-align: center;
 }
 
 .farm-harvest-receipt,

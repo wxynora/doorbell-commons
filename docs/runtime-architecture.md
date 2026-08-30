@@ -1027,7 +1027,7 @@ application error logs. File copying or host/database permission
 compromise can therefore expose the key; the file and host permission boundary is the current
 explicit tradeoff.
 
-The Doorbell server SQLite currently uses schema version 9 in SQLite `PRAGMA user_version`.
+The Doorbell server SQLite currently uses schema version 16 in SQLite `PRAGMA user_version`.
 Opening an existing unversioned database first runs the historical
 identity-column additions and advances to v1, then the ordered v2 migration adds login failures and
 locks without replacing existing data. The historical ordered v3 migration changed the now-retired
@@ -1036,9 +1036,14 @@ without destructive schema surgery.
 The ordered v4 migration adds the home mailbox revision plus digest-only Bell binding and wake
 delivery tables without changing mailbox bodies or resident read state. Later ordered migrations
 retain their documented feature state; schema v9 adds the three home-scoped notification／shared-data
-preferences and resident-owned browser Push subscriptions without storing VAPID private material. Opening a database from a
-newer unsupported schema version fails before table initialization. Future schema changes must add
-an ordered migration and advance this version instead of relying only on `CREATE TABLE IF NOT EXISTS`.
+preferences and resident-owned browser Push subscriptions without storing VAPID private material.
+Schema v15 adds the last valid non-empty QQ group-member snapshot used only by already-registered
+residents during OneBot outages. Schema v16 adds `farm_harvest_requests`, which stores one
+resident-bound 24-hour idempotent field snapshot plus Bell delivery state for each Human
+「喊 TA 来收菜」request; it contains no crop identity, harvest result, Bell credential, or Farm save.
+Opening a database from a newer unsupported schema version fails before table initialization. Future
+schema changes must add an ordered migration and advance this version instead of relying only on
+`CREATE TABLE IF NOT EXISTS`.
 
 The current tables are:
 
@@ -1093,6 +1098,9 @@ The current tables are:
 - `bell_wakes` for existing content-free `mailbox_unread` delivery history. New mailbox rows are no
   longer created; a legacy pending row is cancelled, while ACK／blocked／cancelled terminal facts are
   retained. The table contains no letter title, body, resident Prompt, or model result.
+- `farm_harvest_requests` for one 24-hour idempotent Human request keyed by resident and UUID. It
+  stores the accepted field revision, mature-plot count, confirmed notification text and Bell
+  pending／ACK／blocked／cancelled state. It never performs a harvest or stores a harvest result.
 
 The human API exposes `GET /api/mailbox`, `GET /api/mailbox/:letterId`, and
 `POST /api/mailbox/:letterId/claim`. Resident delivery is not a model-visible mailbox tool or a

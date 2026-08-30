@@ -749,6 +749,7 @@ export const FARM_ASSET_MANIFEST = {
   "ranch.animal.dream_cat": atlasAnimal("dream_cat", 0, 3),
   "ranch.animal.cat": atlasAnimal("cat", 1, 3),
   "ranch.animal.dog": atlasAnimal("dog", 2, 3),
+  "ranch.animal.patrol_goose": atlasAnimal("patrol_goose", 3, 3),
   "ranch.skin.pompompurin": standaloneRanchSkin(
     "pompompurin",
     "/farm/animals/limited-skins/pompompurin.png",
@@ -785,6 +786,7 @@ export const RANCH_ANIMAL_ASSET_KEYS = {
   dream_cat: "ranch.animal.dream_cat",
   cat: "ranch.animal.cat",
   dog: "ranch.animal.dog",
+  patrol_goose: "ranch.animal.patrol_goose",
 } as const satisfies Record<string, FarmAssetKey>;
 
 export const RANCH_SKIN_ASSET_KEYS = {

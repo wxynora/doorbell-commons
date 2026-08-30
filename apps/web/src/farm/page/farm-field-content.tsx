@@ -81,6 +81,7 @@ import {
   EMPTY_SHOP_CART,
   FARM_READ_RESOURCE_LABELS,
   type FarmHarvestActionState,
+  type FarmHarvestRequestActionState,
   type FarmLandUpgradeActionState,
   type FarmPurchaseRequestActionState,
   type FarmPurchaseRequestExecutor,
@@ -170,6 +171,7 @@ export function bulletinHasUnreadEntries(bulletin: BoundBulletinRead | null): bo
 export function FarmFieldContent({
   data,
   harvestAction = { stage: "idle" },
+  harvestRequestAction = { stage: "idle" },
   onAcknowledgeBulletin,
   landUpgradeAction = { stage: "idle" },
   onCloseHarvestAction,
@@ -180,6 +182,7 @@ export function FarmFieldContent({
   farmShopOpenFeedback = { stage: "idle" },
   cookingShopOpenFeedback = { stage: "idle" },
   onHarvestAssist,
+  onHarvestRequest,
   onLandUpgrade,
   onOpenFarmShop,
   onOpenKitchenShop,
@@ -201,6 +204,7 @@ export function FarmFieldContent({
   onReloadRanch,
   onRequireResource,
   onRetryHarvestAssist,
+  onRetryHarvestRequest,
   onRetryFarmShopOpen,
   onRetryCookingShopOpen,
   onRetryLandUpgrade,
@@ -210,6 +214,7 @@ export function FarmFieldContent({
 }: {
   data: BoundFarmField;
   harvestAction?: FarmHarvestActionState;
+  harvestRequestAction?: FarmHarvestRequestActionState;
   onAcknowledgeBulletin?:
     | ((bulletin: BoundBulletinRead, acknowledge: BulletinAcknowledgementScope) => void)
     | undefined;
@@ -222,6 +227,7 @@ export function FarmFieldContent({
   farmShopOpenFeedback?: FarmShopOpenFeedback | undefined;
   cookingShopOpenFeedback?: CookingShopOpenFeedback | undefined;
   onHarvestAssist?: (() => void) | undefined;
+  onHarvestRequest?: (() => void) | undefined;
   onLandUpgrade?: (() => void) | undefined;
   onOpenFarmShop?: (() => void) | undefined;
   onOpenKitchenShop?: (() => void) | undefined;
@@ -243,6 +249,7 @@ export function FarmFieldContent({
   onReloadRanch?: (() => void) | undefined;
   onRequireResource?: (resource: keyof FarmReadResources) => void;
   onRetryHarvestAssist?: () => void;
+  onRetryHarvestRequest?: () => void;
   onRetryFarmShopOpen?: (() => void) | undefined;
   onRetryCookingShopOpen?: (() => void) | undefined;
   onRetryLandUpgrade?: () => void;
@@ -919,7 +926,10 @@ export function FarmFieldContent({
       activeScene === "field" ? (
         <FieldSceneOverlay
           harvestAssist={field.harvest_assist}
+          harvestRequestAction={harvestRequestAction}
           onHarvestAssist={onHarvestAssist}
+          onHarvestRequest={onHarvestRequest}
+          onRetryHarvestRequest={onRetryHarvestRequest}
           submitting={harvestAction.stage === "submitting"}
         />
       ) : null}

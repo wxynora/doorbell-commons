@@ -14,6 +14,7 @@ import { FarmCreationClient } from "./farm-creation-client.js";
 import { FarmHumanCropCodexActionClient } from "./farm-crop-codex-action-client.js";
 import { FarmDirectoryClient } from "./farm-directory-client.js";
 import { FarmHumanExpeditionActionClient } from "./farm-expedition-action-client.js";
+import { FarmHarvestRequestService } from "./farm-harvest-request-service.js";
 import { FarmHumanClient } from "./farm-human-client.js";
 import { FarmHumanKitchenClient } from "./farm-kitchen-client.js";
 import { FarmHumanKitchenCookClient } from "./farm-kitchen-cook-client.js";
@@ -277,6 +278,10 @@ const farmPurchaseRequestService = new FarmPurchaseRequestService({
   database,
   bellNotifier: bellService,
 });
+const farmHarvestRequestService = new FarmHarvestRequestService({
+  database,
+  bellNotifier: bellService,
+});
 const mailboxService = new MailboxService({
   database,
   farmRewardGranter,
@@ -357,6 +362,7 @@ const app = buildApp({
   groupId: serverConfig.qqGroupId,
   groupMembership,
   registrationAuth,
+  farmHarvestRequestService,
   farmPurchaseRequestService,
   bellAccessService,
   bellService,
