@@ -10,6 +10,7 @@ import {
   examplesForDoorbellInvalidArgs,
   findDoorbellOperation,
 } from "./doorbell-op-registry.js";
+import { renderLingyeToolText } from "./lingye-tool-result-text.js";
 import { hashMcpCredential } from "./mcp-access-service.js";
 import {
   FarmMcpActionBindingMismatchError,
@@ -92,10 +93,7 @@ interface DoorbellIssue {
 
 interface DoorbellCallToolResult {
   content: Array<{ type: "text"; text: string }>;
-  structuredContent: Record<string, unknown> & {
-    text?: string;
-    error?: Record<string, unknown> & { message: string };
-  };
+  structuredContent: Record<string, unknown>;
   isError: boolean;
 }
 
@@ -127,10 +125,6 @@ function textContent(text: string) {
   return [{ type: "text" as const, text }];
 }
 
-function appendModelJson(text: string, value: Record<string, unknown>): string {
-  return `${text}\n\n${JSON.stringify(value, null, 2)}`;
-}
-
 function doorbellToolError(
   code: DoorbellToolErrorCode,
   options: {
@@ -144,22 +138,14 @@ function doorbellToolError(
   if (!message) {
     throw new Error(`Missing Doorbell error message for ${code}`);
   }
-  const modelError = {
-    error: {
-      code,
-      ...(options.issues ? { issues: options.issues } : {}),
-      ...(options.examples ? { examples: options.examples } : {}),
-    },
-  };
   return {
-    content: textContent(appendModelJson(message, modelError)),
+    content: textContent(message),
     structuredContent: {
       ok: false,
       ...(options.op ? { op: options.op } : {}),
       source: "doorbell",
       error: {
         code,
-        message,
         ...(options.issues ? { issues: options.issues } : {}),
         ...(options.examples ? { examples: options.examples } : {}),
       },
@@ -176,53 +162,52 @@ function farmToolResult(
 ): DoorbellCallToolResult {
   if (!ok) {
     return {
-      content: textContent(appendModelJson(text, { error: { code: "OP_REJECTED" } })),
+      content: textContent(text),
       structuredContent: {
         ok: false,
         op,
         source: "farm",
-        error: { code: "OP_REJECTED", message: text },
+        error: { code: "OP_REJECTED" },
       },
       isError: true,
     };
   }
   return {
-    content: textContent(farm ? appendModelJson(text, { farm }) : text),
+    content: textContent(text),
     structuredContent: {
       ok: true,
       op,
       source: "farm",
-      text,
       ...(farm ? { farm } : {}),
     },
     isError: false,
   };
 }
 
-function lingyeToolResult(op: string, result: LingyeActionResult): DoorbellCallToolResult {
+function lingyeToolResult(
+  op: string,
+  args: Record<string, unknown>,
+  result: LingyeActionResult,
+): DoorbellCallToolResult {
   if (!result.ok) {
     return {
-      content: textContent(
-        appendModelJson(result.error.message, { error: { code: result.error.code } }),
-      ),
+      content: textContent(result.error.message),
       structuredContent: {
         ok: false,
         op,
         source: "lingye",
-        error: result.error,
+        error: { code: result.error.code },
       },
       isError: true,
     };
   }
-  const modelText = appendModelJson(result.text, result.data);
+  const modelText = renderLingyeToolText(op, args, result);
   return {
     content: textContent(modelText),
     structuredContent: {
       ok: true,
       op,
       source: "lingye",
-      text: result.text,
-      lingye: result.data,
     },
     isError: false,
   };
@@ -231,7 +216,7 @@ function lingyeToolResult(op: string, result: LingyeActionResult): DoorbellCallT
 function helpToolResult(op: string, text: string): DoorbellCallToolResult {
   return {
     content: textContent(text),
-    structuredContent: { ok: true, op, source: "doorbell", text },
+    structuredContent: { ok: true, op, source: "doorbell" },
     isError: false,
   };
 }
@@ -622,7 +607,7 @@ export class DoorbellMcpRuntime {
             result,
           });
         }
-        return lingyeToolResult(op, result);
+        return lingyeToolResult(op, parsed.data, result);
       } catch (error) {
         if (
           error instanceof LingyeMcpActionCredentialInvalidError ||
@@ -711,19 +696,9 @@ export class DoorbellMcpRuntime {
     const suffix = notifications.join("\n\n");
     const currentText = result.content[0]?.text ?? "";
     const combinedText = currentText ? `${currentText}\n\n${suffix}` : suffix;
-    const structuredContent = { ...result.structuredContent };
-    if (typeof structuredContent.text === "string") {
-      structuredContent.text = combinedText;
-    } else if (structuredContent.error) {
-      structuredContent.error = {
-        ...structuredContent.error,
-        message: combinedText,
-      };
-    }
     return {
       ...result,
       content: [{ type: "text", text: combinedText }],
-      structuredContent,
     };
   }
 

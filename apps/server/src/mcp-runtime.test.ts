@@ -14,6 +14,7 @@ import {
   farmOperations,
   stripDetail,
 } from "./doorbell-farm-op-registry.js";
+import { modelVisibleLingyeOperationByName } from "./doorbell-lingye-op-registry.js";
 import { doorbellOperationNames } from "./doorbell-op-registry.js";
 import type {
   BoundFarmOverview,
@@ -1007,9 +1008,8 @@ test("MCP calls validate strict args, self-correct, preserve status cadence, and
     const first = await postMcp(harness, call("farm.visit", { to: "6", detail: true }));
     const firstResult = first.json().result;
     assert.equal(firstResult.isError, false);
-    assert.match(firstResult.content[0].text, /^visit OK\n\nFARM STATUS/u);
-    assert.match(firstResult.content[0].text, /"farm"/u);
-    assert.match(firstResult.content[0].text, /"id": "ABC234"/u);
+    assert.equal(firstResult.content[0].text, "visit OK\n\nFARM STATUS");
+    assert.equal("text" in firstResult.structuredContent, false);
     assert.equal(firstResult.structuredContent.source, "farm");
     assert.deepEqual(firstResult.structuredContent.farm, { id: FARM_DOORPLATE });
     assert.deepEqual(harness.farmActions.calls, [
@@ -1039,15 +1039,13 @@ test("MCP calls validate strict args, self-correct, preserve status cadence, and
     assert.deepEqual(invalidResult.structuredContent.error.examples, [
       { op: "farm.visit", args: { to: "6" } },
     ]);
-    assert.match(invalidResult.content[0].text, /"code": "INVALID_ARGS"/u);
-    assert.match(invalidResult.content[0].text, /"issues"/u);
-    assert.match(invalidResult.content[0].text, /"examples"/u);
-    assert.match(invalidResult.content[0].text, /"to": "6"/u);
+    assert.match(invalidResult.content[0].text, /参数不符合 farm\.visit/u);
+    assert.equal(invalidResult.content[0].text.includes('\\"'), false);
     assert.equal(harness.farmActions.calls.at(-1)?.action, "message");
 
     const unknown = await postMcp(harness, call("status", {}));
     assert.equal(unknown.json().result.structuredContent.error.code, "UNKNOWN_OP");
-    assert.match(unknown.json().result.content[0].text, /"code": "UNKNOWN_OP"/u);
+    assert.match(unknown.json().result.content[0].text, /未开放的操作：status/u);
 
     const unknownTool = await postMcp(
       harness,
@@ -1116,15 +1114,17 @@ test("MCP calls validate strict args, self-correct, preserve status cadence, and
     assert.equal(rejectedResult.isError, true);
     assert.equal(rejectedResult.structuredContent.source, "farm");
     assert.equal(rejectedResult.structuredContent.error.code, "OP_REJECTED");
-    assert.match(rejectedResult.content[0].text, /^没有成熟作物/u);
-    assert.match(rejectedResult.content[0].text, /"code": "OP_REJECTED"/u);
+    assert.equal(rejectedResult.content[0].text, "没有成熟作物");
+    assert.equal("message" in rejectedResult.structuredContent.error, false);
 
     const farmCallsBeforeLingye = harness.farmActions.calls.length;
     const bankView = await postMcp(harness, call("go.bank.view", { section: "loans" }));
     const bankViewResult = bankView.json().result;
     assert.equal(bankViewResult.isError, false);
     assert.equal(bankViewResult.structuredContent.source, "lingye");
-    assert.deepEqual(bankViewResult.structuredContent.lingye, { options: [] });
+    assert.match(bankViewResult.content[0].text, /^🏦 铃野银行/u);
+    assert.equal("lingye" in bankViewResult.structuredContent, false);
+    assert.equal("text" in bankViewResult.structuredContent, false);
     assert.deepEqual(harness.lingyeActions.calls.at(-1), {
       residentId: harness.residentId,
       farmDoorplate: FARM_DOORPLATE,
@@ -1145,14 +1145,15 @@ test("MCP calls validate strict args, self-correct, preserve status cadence, and
     const schoolView = await postMcp(harness, call("go.school.view", { section: "courses" }));
     const schoolViewResult = schoolView.json().result;
     assert.equal(schoolViewResult.isError, false);
-    assert.match(schoolViewResult.content[0].text, /已读取职业学校当前事实。/u);
-    assert.match(schoolViewResult.content[0].text, /"section": "courses"/u);
-    assert.match(schoolViewResult.content[0].text, /"career": "chef"/u);
+    assert.match(schoolViewResult.content[0].text, /^🏫 铃野职业学校/u);
+    assert.match(schoolViewResult.content[0].text, /课程进度/u);
+    assert.match(schoolViewResult.content[0].text, /料理师/u);
     assert.match(schoolViewResult.content[0].text, /school:course-read:1:chef:1:1:course-v1/u);
-    assert.deepEqual(schoolViewResult.structuredContent.lingye, {
-      section: "courses",
-      value: [{ career: "chef", qualificationLevel: 1, courseIndex: 1 }],
-      options: [{ option: "school:course-read:1:chef:1:1:course-v1" }],
+    assert.equal(schoolViewResult.content[0].text.includes('\\"'), false);
+    assert.deepEqual(schoolViewResult.structuredContent, {
+      ok: true,
+      op: "go.school.view",
+      source: "lingye",
     });
 
     const lingyeCallsBeforeInvalidSchool = harness.lingyeActions.calls.length;
@@ -1236,11 +1237,10 @@ test("MCP calls validate strict args, self-correct, preserve status cadence, and
     );
     assert.equal(insufficient.json().result.isError, true);
     assert.equal(insufficient.json().result.structuredContent.source, "lingye");
-    assert.match(insufficient.json().result.content[0].text, /"code": "INSUFFICIENT_FUNDS"/u);
-    assert.equal(
-      insufficient.json().result.structuredContent.error.message,
-      "可用余额不足，本次操作没有执行。",
-    );
+    assert.equal(insufficient.json().result.content[0].text, "可用余额不足，本次操作没有执行。");
+    assert.deepEqual(insufficient.json().result.structuredContent.error, {
+      code: "INSUFFICIENT_FUNDS",
+    });
 
     const newsroom = await postMcp(harness, call("go.newsroom.commission", {}));
     assert.equal(newsroom.json().result.structuredContent.error.code, "UNKNOWN_OP");
@@ -1269,6 +1269,31 @@ test("MCP calls validate strict args, self-correct, preserve status cadence, and
     const invalidAfterRevocation = await postMcp(harness, call("farm.status", {}));
     assert.equal(invalidAfterRevocation.statusCode, 401);
     assert.equal(invalidAfterRevocation.json().error.code, "AUTH_INVALID");
+  } finally {
+    await harness.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("all 65 model-visible operations return one readable text without duplicated structured text", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "doorbell-mcp-result-presentation-"));
+  const harness = openRuntimeHarness(join(directory, "doorbell.sqlite"));
+  try {
+    for (const op of doorbellOperationNames) {
+      const args = op.startsWith("farm.")
+        ? farmOperationByName.get(op)?.examples[0]?.args
+        : modelVisibleLingyeOperationByName.get(op)?.examples[0]?.args;
+      assert.ok(args, op);
+      const response = await postMcp(harness, call(op, args));
+      const result = response.json().result;
+      assert.equal(result.isError, false, op);
+      assert.equal(result.content.length, 1, op);
+      assert.equal(typeof result.content[0].text, "string", op);
+      assert.ok(result.content[0].text.length > 0, op);
+      assert.equal(result.content[0].text.includes('\\"'), false, op);
+      assert.equal("text" in result.structuredContent, false, op);
+      assert.equal("lingye" in result.structuredContent, false, op);
+    }
   } finally {
     await harness.close();
     rmSync(directory, { recursive: true, force: true });
@@ -1309,7 +1334,7 @@ test("any valid doorbell call delivers resident system notifications once withou
     const delivered = await postMcp(harness, call("farm.help", {}));
     const deliveredResult = delivered.json().result;
     assert.match(deliveredResult.content[0].text, /第一条系统通知。\n\n第二条系统通知。$/u);
-    assert.equal(deliveredResult.structuredContent.text, deliveredResult.content[0].text);
+    assert.equal("text" in deliveredResult.structuredContent, false);
     assert.doesNotMatch(deliveredResult.content[0].text, /只给人类信箱展示的标题/u);
     assert.deepEqual(
       harness.database
@@ -1341,9 +1366,8 @@ test("any valid doorbell call delivers resident system notifications once withou
     const rejected = await postMcp(harness, call("farm.harvest", {}));
     const rejectedResult = rejected.json().result;
     assert.match(rejectedResult.content[0].text, /^没有成熟作物/u);
-    assert.match(rejectedResult.content[0].text, /"code": "OP_REJECTED"/u);
     assert.match(rejectedResult.content[0].text, /失败结果里的系统通知。$/u);
-    assert.equal(rejectedResult.structuredContent.error.message, rejectedResult.content[0].text);
+    assert.deepEqual(rejectedResult.structuredContent.error, { code: "OP_REJECTED" });
   } finally {
     await harness.close();
     rmSync(directory, { recursive: true, force: true });
@@ -1439,10 +1463,9 @@ test("career notification delivery failure cannot overturn a completed Lingye ac
     );
     assert.equal(completed.statusCode, 200);
     assert.equal(completed.json().result.isError, false);
-    assert.equal(
-      completed.json().result.content[0].text,
-      '委托回复已记录。\n\n{\n  "message": {\n    "body": "继续处理。"\n  }\n}',
-    );
+    assert.match(completed.json().result.content[0].text, /^📋 铃野委托/u);
+    assert.match(completed.json().result.content[0].text, /委托消息：\n {2}body：继续处理。/u);
+    assert.equal(completed.json().result.content[0].text.includes('\\"'), false);
     assert.equal(harness.lingyeActions.calls.length, 1);
     assert.deepEqual(harness.notificationErrors, [failure]);
   } finally {
