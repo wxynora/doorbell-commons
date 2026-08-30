@@ -199,6 +199,7 @@ function projectDispatchForResident(kindId, raids, now) {
       raid_id: null,
       animal_kind_id: null,
       animal_name: null,
+      target_farm_doorplate: null,
       started_at: null,
       ends_at: null,
       remaining_ms: null,
@@ -212,6 +213,9 @@ function projectDispatchForResident(kindId, raids, now) {
     raid_id: raidId,
     animal_kind_id: kind.id,
     animal_name: safeText(kind.name),
+    target_farm_doorplate: FARM_DOORPLATE_RE.test(String(raw.targetFarmId ?? ""))
+      ? raw.targetFarmId
+      : null,
     started_at: safeTimestamp(startedAt),
     ends_at: safeTimestamp(endsAt),
     remaining_ms: remainingMs,
@@ -553,6 +557,7 @@ function projectDispatch(raids, now) {
           raid_id: null,
           animal_kind_id: null,
           animal_name: null,
+          target_farm_doorplate: null,
           started_at: null,
           ends_at: null,
           remaining_ms: null,
@@ -571,6 +576,7 @@ function projectDispatch(raids, now) {
           raid_id: null,
           animal_kind_id: null,
           animal_name: null,
+          target_farm_doorplate: null,
           started_at: null,
           ends_at: null,
           remaining_ms: null,
@@ -583,6 +589,9 @@ function projectDispatch(raids, now) {
         raid_id: raidId,
         animal_kind_id: kind.id,
         animal_name: safeText(kind.name),
+        target_farm_doorplate: FARM_DOORPLATE_RE.test(String(raid.targetFarmId ?? ""))
+          ? raid.targetFarmId
+          : null,
         started_at: safeTimestamp(startedAt),
         ends_at: safeTimestamp(endsAt),
         remaining_ms: Math.max(0, endsAt - now),

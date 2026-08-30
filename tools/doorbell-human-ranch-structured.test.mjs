@@ -52,7 +52,7 @@ function ranchFarm() {
       {
         id: "0f0f0f0f-0000-4000-8000-000000000001",
         animalKindId: "chicken",
-        targetFarmId: "OTHER-PRIVATE-FARM",
+        targetFarmId: "DQVQ8R",
         startedAt: NOW - 30 * 60 * 1000,
         endsAt: NOW + 30 * 60 * 1000,
         reservedCoins: 100,
@@ -76,7 +76,7 @@ function ranchFarm() {
   return farm;
 }
 
-test("Human ranch projection is pure, strict-shaped, and does not leak private farm identity", () => {
+test("Human ranch projection is pure, strict-shaped, and exposes only public target doorplates", () => {
   const farm = ranchFarm();
   const before = structuredClone(farm);
   const result = projectHumanRanch(farm, NOW);
@@ -128,7 +128,7 @@ test("Human ranch projection is pure, strict-shaped, and does not leak private f
   assert.equal(chicken.allowed_actions.set_variant.enabled, true);
   assert.equal(Object.hasOwn(chicken, "slot"), false);
   assert.equal(result.data.dispatch.active.length, 2);
-  assert.equal(result.data.dispatch.active[0].target_farm_doorplate, undefined);
+  assert.equal(result.data.dispatch.active[0].target_farm_doorplate, "DQVQ8R");
   assert.equal(result.data.shop.accessories.shop_day, 2060);
   assert.match(result.revision, /^ranch-v1:[0-9a-f]{64}$/);
   assert.equal(result.server_time, new Date(NOW).toISOString());
