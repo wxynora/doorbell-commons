@@ -13,6 +13,8 @@ const grants = JSON.parse(readFileSync(new URL("../content/maintenance-grants.js
 const compensationId = "compensation-20260830-bug-recovery";
 const popupId = "compensation-20260830-bug-recovery-popup-v2";
 const popupText = "近期问题补偿：已发放 100,000 金币和 1,000 银币。";
+const membershipOutageId = "compensation-20260830-membership-outage";
+const membershipOutageText = "🎁 社区成员资格异常补偿：已发放 100,000 金币。";
 const {
   allFarms,
   applyMaintenanceSilverGrant,
@@ -169,6 +171,47 @@ test("compensation popup is a Human-only notice campaign with no second currency
     { at: 1_788_040_500_000, text: "保留的牧场消息", section: "ranch" },
     { at: 1_788_041_000_000, text: popupText, section: "compensation" },
   ]);
+  assert.equal(values[NPC_ID].ranch?.notices?.length ?? 0, 0);
+  assert.deepEqual(applyMaintenanceSilverGrant(), { applied: false, campaigns: [] });
+});
+
+test("membership outage compensation grants each current player 100,000 gold exactly once", () => {
+  const ordinary = farm("ABC234", 2_000, 20);
+  const npc = farm(NPC_ID, 9_000, 90);
+  const previousIds = grants.map((entry) => entry.id).filter((id) => id !== membershipOutageId);
+  restoreWorldSnapshotInMemory({
+    format: "aifarm-world",
+    version: 1,
+    maintenanceGrantIds: previousIds,
+    doorbellWelcomeRewardGrants: [],
+    doorbellFarmCreations: [],
+    farms: [ordinary, npc],
+    ugc: [],
+  });
+
+  const applied = applyMaintenanceSilverGrant(undefined, 1_788_042_000_000);
+  const values = Object.fromEntries(allFarms().map((entry) => [entry.id, entry]));
+  assert.deepEqual(applied.campaigns, [
+    { id: membershipOutageId, gold: 100_000, silver: 0, amount: 0, count: 1 },
+  ]);
+  assert.deepEqual(
+    { gold: values.ABC234.coins, silver: values.ABC234.silver },
+    { gold: 102_000, silver: 20 },
+  );
+  assert.deepEqual(values.ABC234.inbox?.at(-1), {
+    at: 1_788_042_000_000,
+    text: membershipOutageText,
+  });
+  assert.deepEqual(values.ABC234.ranch.notices?.at(-1), {
+    at: 1_788_042_000_000,
+    text: membershipOutageText,
+    section: "compensation",
+  });
+  assert.deepEqual(
+    { gold: values[NPC_ID].coins, silver: values[NPC_ID].silver },
+    { gold: 9_000, silver: 90 },
+  );
+  assert.equal(values[NPC_ID].inbox?.length ?? 0, 0);
   assert.equal(values[NPC_ID].ranch?.notices?.length ?? 0, 0);
   assert.deepEqual(applyMaintenanceSilverGrant(), { applied: false, campaigns: [] });
 });

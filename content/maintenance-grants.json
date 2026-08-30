@@ -51,5 +51,11 @@
     "section": "compensation",
     "replaceSection": "compensation",
     "sendInbox": false
+  },
+  {
+    "id": "compensation-20260830-membership-outage",
+    "gold": 100000,
+    "notice": "🎁 社区成员资格异常补偿：已发放 100,000 金币。",
+    "section": "compensation"
   }
 ]
