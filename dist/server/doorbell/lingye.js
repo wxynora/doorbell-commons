@@ -64,14 +64,7 @@ const LINGYE_OPERATIONS = new Set([
 ]);
 const LINGYE_READINESS_SCHEMA_VERSION = 1;
 const REQUIRED_EXAM_LEVELS = new Set([
-    "chef:1",
-    "chef:2",
-    "agronomist:1",
-    "veterinarian:1",
-    "veterinarian:2",
-    "constable:1",
-    "constable:2",
-    "constable:3",
+    ...CAREER_IDS.flatMap((career) => QUALIFICATION_LEVELS.map((level) => `${career}:${level}`)),
 ]);
 const LINGYE_CAPABILITIES = Object.freeze({
     player_loans: true,

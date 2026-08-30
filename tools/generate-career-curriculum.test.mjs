@@ -12,20 +12,12 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const generator = resolve(root, "tools/generate-career-curriculum.mjs");
 const careers = ["chef", "agronomist", "veterinarian", "reporter", "constable"];
 const levelNames = ["初级", "中级", "高级", "特级"];
-const committedOpenCourses = Object.freeze({
-    chef: new Set(["1:1", "1:2", "1:3", "2:1", "2:2", "2:3", "3:2", "3:3", "4:1", "4:2"]),
-    agronomist: new Set(["1:1", "1:2", "1:3", "2:3"]),
-    veterinarian: new Set(["1:1", "1:2", "1:3", "2:1", "2:2", "2:3", "3:3", "4:1"]),
-    reporter: new Set(["1:1", "1:2", "1:3", "2:1", "2:2", "2:3", "3:1", "3:2", "3:3", "4:1", "4:2", "4:3"]),
-    constable: new Set(["1:1", "1:2", "1:3", "2:1", "2:2", "2:3", "3:1", "3:2", "3:3", "4:1"]),
-});
-const committedOpenExams = Object.freeze({
-    chef: new Set([1, 2]),
-    agronomist: new Set([1]),
-    veterinarian: new Set([1, 2]),
-    reporter: new Set([1, 2, 3, 4]),
-    constable: new Set([1, 2, 3]),
-});
+const committedOpenCourses = Object.freeze(Object.fromEntries(careers.map((career) => [career,
+    new Set([1, 2, 3, 4].flatMap((level) => [1, 2, 3].map((courseIndex) => `${level}:${courseIndex}`))),
+])));
+const committedOpenExams = Object.freeze(Object.fromEntries(careers.map((career) => [career,
+    new Set([1, 2, 3, 4]),
+])));
 
 function fixtureMarkdown(career) {
     const sections = [];

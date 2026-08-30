@@ -85,11 +85,9 @@
       "level": 3,
       "course_index": 1,
       "text_approved": true,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "CHEF_SEASONAL_WEATHER_SUPPLY"
-      ]
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "course",
@@ -115,12 +113,10 @@
       "kind": "exam",
       "career": "chef",
       "level": 3,
-      "text_approved": false,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "CHEF_SEASONAL_WEATHER_SUPPLY"
-      ]
+      "text_approved": true,
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "course",
@@ -147,23 +143,19 @@
       "career": "chef",
       "level": 4,
       "course_index": 3,
-      "text_approved": false,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "CHEF_PUBLIC_ACTIVITY_ORDERS"
-      ]
+      "text_approved": true,
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "exam",
       "career": "chef",
       "level": 4,
-      "text_approved": false,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "CHEF_PUBLIC_ACTIVITY_ORDERS"
-      ]
+      "text_approved": true,
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "course",
@@ -210,12 +202,9 @@
       "level": 2,
       "course_index": 1,
       "text_approved": true,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "AGRONOMY_ADJACENT_PEST_SPREAD",
-        "P4_IMPACT_TO_P3_SOURCE"
-      ]
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "course",
@@ -223,11 +212,9 @@
       "level": 2,
       "course_index": 2,
       "text_approved": true,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "P4_IMPACT_TO_P3_SOURCE"
-      ]
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "course",
@@ -243,13 +230,10 @@
       "kind": "exam",
       "career": "agronomist",
       "level": 2,
-      "text_approved": false,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "AGRONOMY_ADJACENT_PEST_SPREAD",
-        "P4_IMPACT_TO_P3_SOURCE"
-      ]
+      "text_approved": true,
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "course",
@@ -257,12 +241,9 @@
       "level": 3,
       "course_index": 1,
       "text_approved": true,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "AGRONOMY_ADJACENT_PEST_SPREAD",
-        "P4_IMPACT_TO_P3_SOURCE"
-      ]
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "course",
@@ -270,11 +251,9 @@
       "level": 3,
       "course_index": 2,
       "text_approved": true,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "P4_IMPACT_TO_P3_SOURCE"
-      ]
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "course",
@@ -282,23 +261,18 @@
       "level": 3,
       "course_index": 3,
       "text_approved": true,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "P4_IMPACT_TO_P3_SOURCE"
-      ]
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "exam",
       "career": "agronomist",
       "level": 3,
-      "text_approved": false,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "AGRONOMY_ADJACENT_PEST_SPREAD",
-        "P4_IMPACT_TO_P3_SOURCE"
-      ]
+      "text_approved": true,
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "course",
@@ -306,11 +280,9 @@
       "level": 4,
       "course_index": 1,
       "text_approved": true,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "P4_IMPACT_TO_P3_SOURCE"
-      ]
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "course",
@@ -318,11 +290,9 @@
       "level": 4,
       "course_index": 2,
       "text_approved": true,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "P4_IMPACT_TO_P3_SOURCE"
-      ]
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "course",
@@ -330,22 +300,18 @@
       "level": 4,
       "course_index": 3,
       "text_approved": true,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "P4_IMPACT_TO_P3_SOURCE"
-      ]
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "exam",
       "career": "agronomist",
       "level": 4,
-      "text_approved": false,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "P4_IMPACT_TO_P3_SOURCE"
-      ]
+      "text_approved": true,
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "course",
@@ -430,12 +396,10 @@
       "career": "veterinarian",
       "level": 3,
       "course_index": 1,
-      "text_approved": false,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "P5_GROUP_HEALTH_CONTRACT"
-      ]
+      "text_approved": true,
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "course",
@@ -443,11 +407,9 @@
       "level": 3,
       "course_index": 2,
       "text_approved": true,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "P4_ANIMAL_IMPACT_TO_P3_SOURCE"
-      ]
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "course",
@@ -463,13 +425,10 @@
       "kind": "exam",
       "career": "veterinarian",
       "level": 3,
-      "text_approved": false,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "P4_ANIMAL_IMPACT_TO_P3_SOURCE",
-        "P5_GROUP_HEALTH_CONTRACT"
-      ]
+      "text_approved": true,
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "course",
@@ -486,12 +445,10 @@
       "career": "veterinarian",
       "level": 4,
       "course_index": 2,
-      "text_approved": false,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "VET_TRIAGE_RESOLVER"
-      ]
+      "text_approved": true,
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "course",
@@ -499,23 +456,18 @@
       "level": 4,
       "course_index": 3,
       "text_approved": true,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "P4_ANIMAL_IMPACT_TO_P3_SOURCE"
-      ]
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "exam",
       "career": "veterinarian",
       "level": 4,
-      "text_approved": false,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "P4_ANIMAL_IMPACT_TO_P3_SOURCE",
-        "VET_TRIAGE_RESOLVER"
-      ]
+      "text_approved": true,
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "course",
@@ -805,35 +757,29 @@
       "career": "constable",
       "level": 4,
       "course_index": 2,
-      "text_approved": false,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "P7_ENFORCEMENT_CONTRACT"
-      ]
+      "text_approved": true,
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "course",
       "career": "constable",
       "level": 4,
       "course_index": 3,
-      "text_approved": false,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "P7_ENFORCEMENT_CONTRACT"
-      ]
+      "text_approved": true,
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     },
     {
       "kind": "exam",
       "career": "constable",
       "level": 4,
-      "text_approved": false,
-      "model_copy_approved": false,
-      "runtime_ready": false,
-      "blocked_by": [
-        "P7_ENFORCEMENT_CONTRACT"
-      ]
+      "text_approved": true,
+      "model_copy_approved": true,
+      "runtime_ready": true,
+      "blocked_by": []
     }
   ]
 }

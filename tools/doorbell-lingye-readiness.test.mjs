@@ -53,8 +53,8 @@ test("Lingye readiness requires the approved public levels, matching private exa
     assert.equal(ready.ready, true);
     assert.deepEqual(ready.missing, []);
     assert.equal(ready.operations.length, 8);
-    assert.equal(ready.exams.public_ready_levels.length, 8);
-    assert.equal(ready.exams.private_ready_levels.length, 8);
+    assert.equal(ready.exams.public_ready_levels.length, 20);
+    assert.equal(ready.exams.private_ready_levels.length, 20);
     assert.equal(ready.exams.private_ready_levels.every((entry) =>
       entry.question_count === 20 && entry.pass_count === 18), true);
     assert.deepEqual(ready.capabilities, {
