@@ -8,6 +8,7 @@ import {
   type FarmCartCheckoutFeedback,
   type FarmCartCheckoutLine,
   type FarmFieldShopSectionId,
+  type FarmShopOpenFeedback,
   type FarmShopPanelProps,
   getLiveFarmShopItems,
   getShopCartKey,
@@ -24,6 +25,7 @@ export type {
   FarmCartCheckoutFeedback,
   FarmCartCheckoutLine,
   FarmShopLiveResources,
+  FarmShopOpenFeedback,
   FarmShopPanelProps,
   ShopCartItemDefinition,
   ShopCartQuantities,
@@ -44,16 +46,20 @@ function FarmLiveShopPanelContent({
   cart,
   farmCheckoutFeedback,
   farmCatalog,
+  farmShopOpenFeedback,
   onChangeCartQuantity,
   onCheckoutFarmCart,
   onRetryFarmCheckout,
+  onRetryFarmShopOpen,
 }: {
   cart: ShopCartQuantities;
   farmCheckoutFeedback?: FarmCartCheckoutFeedback | undefined;
   farmCatalog?: BoundFarmCatalogRead | null | undefined;
+  farmShopOpenFeedback?: FarmShopOpenFeedback | undefined;
   onChangeCartQuantity: (cartKey: string, delta: number, maxQuantity?: number) => void;
   onCheckoutFarmCart?: ((items: FarmCartCheckoutLine[]) => void) | undefined;
   onRetryFarmCheckout?: (() => void) | undefined;
+  onRetryFarmShopOpen?: (() => void) | undefined;
 }) {
   const [sectionId, setSectionId] = useState<FarmFieldShopSectionId>("seeds-and-potions");
   const [cartOpen, setCartOpen] = useState(false);
@@ -80,8 +86,21 @@ function FarmLiveShopPanelContent({
     return (
       <div className="farm-shop__unavailable">
         <img alt="" aria-hidden="true" src={getFarmAssetUrl("panel.tool.shop")} />
-        <strong>商店数据尚未接入</strong>
-        <span>当前页面不会显示示例商品。</span>
+        {farmShopOpenFeedback?.stage === "error" ? (
+          <>
+            <strong>{farmShopOpenFeedback.message}</strong>
+            <button onClick={onRetryFarmShopOpen} type="button">
+              重试
+            </button>
+          </>
+        ) : farmShopOpenFeedback?.stage === "submitting" ? (
+          <strong>正在读取本轮货架…</strong>
+        ) : (
+          <>
+            <strong>商店数据尚未接入</strong>
+            <span>当前页面不会显示示例商品。</span>
+          </>
+        )}
       </div>
     );
   }
@@ -100,6 +119,18 @@ function FarmLiveShopPanelContent({
           </button>
         ))}
       </nav>
+      {farmShopOpenFeedback?.stage === "submitting" ? (
+        <div className="farm-shop__refresh-state" role="status">
+          正在刷新本轮货架…
+        </div>
+      ) : farmShopOpenFeedback?.stage === "error" ? (
+        <div className="farm-shop__refresh-state farm-shop__refresh-state--error" role="alert">
+          <span>{farmShopOpenFeedback.message}</span>
+          <button onClick={onRetryFarmShopOpen} type="button">
+            重试
+          </button>
+        </div>
+      ) : null}
       <ul className="farm-shop__items">
         {items.map((item) => {
           const disabled = item.note === "已拥有" || item.availableQuantity === 0;
@@ -144,6 +175,15 @@ function FarmLiveShopPanelContent({
           );
         })}
       </ul>
+      {sectionId === "today" &&
+      items.length === 0 &&
+      farmShopOpenFeedback?.stage !== "submitting" &&
+      farmShopOpenFeedback?.stage !== "error" ? (
+        <div className="farm-shop__empty" role="status">
+          <strong>本轮暂无随机商品</strong>
+          <span>常备种子和加速药水在“种子与药水”。</span>
+        </div>
+      ) : null}
       <ShopCartShortcut cart={cart} onOpen={() => setCartOpen(true)} />
     </section>
   );
@@ -156,11 +196,13 @@ export function FarmShopPanelContent({
   cookingShopRefreshFeedback,
   farmCheckoutFeedback,
   farmCatalog,
+  farmShopOpenFeedback,
   kitchen,
   onChangeCartQuantity,
   onCheckoutCookingCart,
   onCheckoutFarmCart,
   onRetryFarmCheckout,
+  onRetryFarmShopOpen,
   onRetryCookingCheckout,
   onRefreshCookingShop,
   preview,
@@ -213,9 +255,11 @@ export function FarmShopPanelContent({
         cart={cart}
         farmCheckoutFeedback={farmCheckoutFeedback}
         farmCatalog={farmCatalog}
+        farmShopOpenFeedback={farmShopOpenFeedback}
         onChangeCartQuantity={onChangeCartQuantity}
         onCheckoutFarmCart={onCheckoutFarmCart}
         onRetryFarmCheckout={onRetryFarmCheckout}
+        onRetryFarmShopOpen={onRetryFarmShopOpen}
       />
     );
   }

@@ -12,7 +12,14 @@ import {
 } from "../../auth/bulletin-client";
 import { executeBoundCropCodexAction } from "../../auth/crop-codex-action-client";
 import { executeBoundExpeditionAction } from "../../auth/expedition-action-client";
-import { farmCatalogIssueMessage, getBoundFarmCatalog } from "../../auth/farm-catalog-client";
+import {
+  type BoundFarmCatalogRead,
+  farmCatalogIssueMessage,
+  farmShopOpenIssueMessage,
+  getBoundFarmCatalog,
+  openBoundFarmShop,
+  replaceFarmCatalogShop,
+} from "../../auth/farm-catalog-client";
 import { createBoundFarmPurchaseRequest } from "../../auth/farm-purchase-request-client";
 import { executeBoundFarmSettingsAction } from "../../auth/farm-settings-action-client";
 import { getBoundKitchen, kitchenIssueMessage } from "../../auth/kitchen-client";
@@ -33,6 +40,7 @@ import { executeBoundRanchDecorationAction } from "../../auth/ranch-decoration-a
 import { executeBoundRanchInteractionAction } from "../../auth/ranch-interaction-action-client";
 import { executeBoundSmeltingAction } from "../../auth/smelting-action-client";
 import { farmFieldIssueMessage } from "../farm-overview";
+import type { FarmShopOpenFeedback } from "../panels/shop-panel";
 import type {
   CropCodexActionExecutor,
   ExpeditionActionExecutor,
@@ -78,6 +86,9 @@ export function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
   const [landUpgradeAction, setLandUpgradeAction] = useState<FarmLandUpgradeActionState>({
     stage: "idle",
   });
+  const [farmShopOpenFeedback, setFarmShopOpenFeedback] = useState<FarmShopOpenFeedback>({
+    stage: "idle",
+  });
   const fieldDoorplateRef = useRef(previewData?.data.farm.farm_doorplate ?? null);
   const requestControllerRef = useRef<AbortController | null>(null);
   const fieldRequestGenerationRef = useRef(0);
@@ -87,6 +98,12 @@ export function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
   );
   const requestedResourcesRef = useRef<Set<keyof FarmReadResources>>(new Set());
   const bulletinAckKeysRef = useRef<Map<string, string>>(new Map());
+  const farmCatalogRef = useRef<BoundFarmCatalogRead | null>(null);
+  const farmShopOpenAttemptRef = useRef<{
+    expectedShopRevision: string | null;
+    idempotencyKey: string;
+  } | null>(null);
+  const farmShopOpenInFlightRef = useRef(false);
 
   const requireResource = useCallback(
     (resource: keyof FarmReadResources, force = false) => {
@@ -152,6 +169,7 @@ export function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
       void getBoundFarmCatalog({ signal: controller.signal }).then((result) => {
         if (controller.signal.aborted) return;
         if (!result.ok) requestedResourcesRef.current.delete(resource);
+        if (result.ok) farmCatalogRef.current = result.data;
         setResources((current) => ({
           ...current,
           farmCatalog: result.ok
@@ -205,6 +223,75 @@ export function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
     await refreshField();
     refreshRequestedResources();
   }, [refreshField, refreshRequestedResources]);
+
+  const openCurrentFarmShop = useCallback(
+    async (retry = false) => {
+      if (previewData || farmShopOpenInFlightRef.current) return;
+      farmShopOpenInFlightRef.current = true;
+      setFarmShopOpenFeedback({ stage: "submitting" });
+      try {
+        let catalog = farmCatalogRef.current;
+        if (!catalog) {
+          const read = await getBoundFarmCatalog();
+          if (!read.ok) {
+            setFarmShopOpenFeedback({
+              stage: "error",
+              message: farmCatalogIssueMessage(read.issue),
+            });
+            return;
+          }
+          catalog = read.data;
+          farmCatalogRef.current = catalog;
+          requestedResourcesRef.current.add("farmCatalog");
+          setResources((current) => ({
+            ...current,
+            farmCatalog: { stage: "ready", data: read.data },
+          }));
+        }
+
+        const expectedShopRevision =
+          catalog.data.shop.status === "available" ? catalog.data.shop.revision : null;
+        const priorAttempt = retry ? farmShopOpenAttemptRef.current : null;
+        const attempt =
+          priorAttempt?.expectedShopRevision === expectedShopRevision
+            ? priorAttempt
+            : { expectedShopRevision, idempotencyKey: crypto.randomUUID() };
+        farmShopOpenAttemptRef.current = attempt;
+        const result = await openBoundFarmShop(attempt);
+        if (!result.ok) {
+          if (result.issue.code === "state_conflict") {
+            farmShopOpenAttemptRef.current = null;
+            const reread = await getBoundFarmCatalog();
+            if (reread.ok) {
+              catalog = reread.data;
+              farmCatalogRef.current = reread.data;
+              setResources((current) => ({
+                ...current,
+                farmCatalog: { stage: "ready", data: reread.data },
+              }));
+            }
+          }
+          setFarmShopOpenFeedback({
+            stage: "error",
+            message: farmShopOpenIssueMessage(result.issue),
+          });
+          return;
+        }
+
+        farmShopOpenAttemptRef.current = null;
+        const updatedCatalog = replaceFarmCatalogShop(catalog, result.data);
+        farmCatalogRef.current = updatedCatalog;
+        setResources((current) => ({
+          ...current,
+          farmCatalog: { stage: "ready", data: updatedCatalog },
+        }));
+        setFarmShopOpenFeedback({ stage: "success" });
+      } finally {
+        farmShopOpenInFlightRef.current = false;
+      }
+    },
+    [previewData],
+  );
 
   const acknowledgeDisplayedBulletin = useCallback(
     async (bulletin: BoundBulletinRead) => {
@@ -535,6 +622,9 @@ export function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
   const reload = useCallback(() => {
     setHarvestAction({ stage: "idle" });
     setLandUpgradeAction({ stage: "idle" });
+    setFarmShopOpenFeedback({ stage: "idle" });
+    farmCatalogRef.current = null;
+    farmShopOpenAttemptRef.current = null;
     if (previewData) {
       setState({ stage: "ready", data: previewData });
       return;
@@ -676,6 +766,7 @@ export function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
         {state.stage === "ready" ? (
           <FarmFieldContent
             data={state.data}
+            farmShopOpenFeedback={farmShopOpenFeedback}
             harvestAction={harvestAction}
             onAcknowledgeBulletin={previewData ? undefined : acknowledgeDisplayedBulletin}
             landUpgradeAction={landUpgradeAction}
@@ -686,6 +777,7 @@ export function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
             onFarmPurchaseRequest={previewData ? undefined : submitFarmPurchaseRequestAction}
             onHarvestAssist={previewData ? undefined : () => void submitHarvestAssist()}
             onLandUpgrade={previewData ? undefined : () => void submitLandUpgrade()}
+            onOpenFarmShop={previewData ? undefined : () => void openCurrentFarmShop()}
             onFarmSettingsAction={previewData ? undefined : submitFarmSettingsAction}
             onKitchenInventoryAction={previewData ? undefined : submitKitchenInventoryAction}
             onKitchenCook={previewData ? undefined : submitKitchenCookAction}
@@ -708,6 +800,7 @@ export function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
                 void submitHarvestAssist(harvestAction.attempt);
               }
             }}
+            onRetryFarmShopOpen={previewData ? undefined : () => void openCurrentFarmShop(true)}
             onRetryLandUpgrade={() => {
               if (landUpgradeAction.stage === "error" && landUpgradeAction.attempt) {
                 void submitLandUpgrade(landUpgradeAction.attempt);

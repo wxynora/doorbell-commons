@@ -183,6 +183,7 @@ const registrationAuth = new RegistrationAuthService({
   farmDirectory,
   farmCreator,
   farmCatalogReader,
+  farmShopOpener: farmCatalogReader,
   farmBulletinReader,
   farmHumanReader,
   farmExpeditionActioner,

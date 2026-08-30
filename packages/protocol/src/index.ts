@@ -20,6 +20,7 @@ export * from "./farm-ranch-collection.js";
 export * from "./farm-ranch-decoration-action.js";
 export * from "./farm-ranch-interaction-action.js";
 export * from "./farm-settings-action.js";
+export * from "./farm-shop-open.js";
 export * from "./farm-smelting-action.js";
 export * from "./lingye-action.js";
 

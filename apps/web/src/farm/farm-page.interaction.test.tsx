@@ -12,6 +12,7 @@ const clients = vi.hoisted(() => ({
   kitchen: vi.fn(),
   market: vi.fn(),
   originalPlant: vi.fn(),
+  openFarmShop: vi.fn(),
   purchase: vi.fn(),
   ranch: vi.fn(),
   ranchDecoration: vi.fn(),
@@ -29,7 +30,18 @@ vi.mock("../auth/auth-client", () => ({
 
 vi.mock("../auth/farm-catalog-client", () => ({
   farmCatalogIssueMessage: () => "农场目录暂时不可用",
+  farmShopOpenIssueMessage: (issue: { serverMessage: string | null }) =>
+    issue.serverMessage ?? "农场商店暂时无法刷新",
   getBoundFarmCatalog: clients.catalog,
+  openBoundFarmShop: clients.openFarmShop,
+  replaceFarmCatalogShop: (
+    catalog: { data: Record<string, unknown> },
+    opened: { data: { resource: unknown }; server_time: string },
+  ) => ({
+    ...catalog,
+    data: { ...catalog.data, shop: opened.data.resource },
+    server_time: opened.server_time,
+  }),
 }));
 
 vi.mock("../auth/farm-purchase-request-client", () => ({
@@ -1136,6 +1148,24 @@ beforeEach(() => {
     .mockImplementation(async (input: { idempotencyKey: string }) =>
       originalPlantSuccess(input.idempotencyKey),
     );
+  clients.openFarmShop
+    .mockReset()
+    .mockImplementation(
+      async (input: { expectedShopRevision: string | null; idempotencyKey: string }) => {
+        const current = fieldShopCatalogResult().data.data.shop;
+        return {
+          ok: true,
+          data: {
+            data: {
+              result: { receipt_id: input.idempotencyKey, refreshed: false },
+              resource: current,
+            },
+            shop_revision: current.revision,
+            server_time: "2026-08-30T04:00:00.000Z",
+          },
+        };
+      },
+    );
   clients.purchase
     .mockReset()
     .mockImplementation(async (input: { idempotencyKey: string }) =>
@@ -1984,6 +2014,94 @@ describe("FarmPage authority settings actions", () => {
       field: "social.visit",
       value: true,
     });
+  });
+});
+
+describe("FarmPage current field shop opening", () => {
+  it("opens the existing authority and replaces only the returned catalog shop", async () => {
+    const initial = fieldShopCatalogResult();
+    clients.catalog.mockResolvedValue(initial);
+    clients.openFarmShop.mockImplementation(
+      async (input: { idempotencyKey: string; expectedShopRevision: string | null }) => ({
+        ok: true,
+        data: {
+          data: {
+            result: { receipt_id: input.idempotencyKey, refreshed: true },
+            resource: {
+              ...initial.data.data.shop,
+              revision: "field-shop-v1:opened",
+              items: [
+                ...initial.data.data.shop.items,
+                {
+                  kind: "recipe",
+                  item_id: "tomato",
+                  identity_state: "known",
+                  name: "番茄配方",
+                  rarity: "N",
+                  price: 500,
+                  currency: "gold",
+                  quantity: 1,
+                  available_quantity: 1,
+                  daily_limit: 1,
+                  purchased_today: 0,
+                  condition: null,
+                  source: "persisted",
+                },
+              ],
+            },
+          },
+          shop_revision: "field-shop-v1:opened",
+          server_time: "2026-08-30T04:00:00.000Z",
+        },
+      }),
+    );
+    await renderLiveFarm();
+
+    fireEvent.click(screen.getByRole("button", { name: "商店" }));
+    await waitFor(() => expect(clients.openFarmShop).toHaveBeenCalledTimes(1));
+    expect(clients.openFarmShop.mock.calls[0]?.[0]).toMatchObject({
+      expectedShopRevision: FIELD_SHOP_REVISION,
+    });
+    const shop = await screen.findByRole("region", { name: "农场商店" });
+    fireEvent.click(within(shop).getByRole("button", { name: "今日商店" }));
+    expect(await within(shop).findByText("番茄配方")).toBeTruthy();
+  });
+
+  it("retries a failed open with the same idempotency key", async () => {
+    const initial = fieldShopCatalogResult();
+    clients.catalog.mockResolvedValue(initial);
+    clients.openFarmShop
+      .mockResolvedValueOnce({
+        ok: false,
+        issue: {
+          code: "network_unavailable",
+          currentShopRevision: null,
+          serverMessage: "现在连不上农场商店",
+        },
+      })
+      .mockImplementationOnce(
+        async (input: { idempotencyKey: string; expectedShopRevision: string | null }) => ({
+          ok: true,
+          data: {
+            data: {
+              result: { receipt_id: input.idempotencyKey, refreshed: false },
+              resource: initial.data.data.shop,
+            },
+            shop_revision: initial.data.data.shop.revision,
+            server_time: "2026-08-30T04:00:00.000Z",
+          },
+        }),
+      );
+    await renderLiveFarm();
+
+    fireEvent.click(screen.getByRole("button", { name: "商店" }));
+    expect(await screen.findByText("现在连不上农场商店")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+
+    await waitFor(() => expect(clients.openFarmShop).toHaveBeenCalledTimes(2));
+    expect(clients.openFarmShop.mock.calls[1]?.[0]).toEqual(
+      clients.openFarmShop.mock.calls[0]?.[0],
+    );
   });
 });
 

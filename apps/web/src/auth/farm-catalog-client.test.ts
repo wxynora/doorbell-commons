@@ -2,9 +2,15 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { boundFarmCatalogReadErrorSchema } from "@doorbell/protocol";
+import { type BoundFarmShopOpenSuccess, boundFarmCatalogReadErrorSchema } from "@doorbell/protocol";
 import type { FrontendFetcher } from "./auth-client";
-import { farmCatalogIssueMessage, getBoundFarmCatalog } from "./farm-catalog-client";
+import {
+  farmCatalogIssueMessage,
+  farmShopOpenIssueMessage,
+  getBoundFarmCatalog,
+  openBoundFarmShop,
+  replaceFarmCatalogShop,
+} from "./farm-catalog-client";
 
 const CATALOG_RESULT = {
   data: {
@@ -26,6 +32,22 @@ const CATALOG_RESULT = {
   market_revision: `farm-market-v1:${"d".repeat(64)}`,
   neighborhood_revision: `farm-neighborhood-v1:${"e".repeat(64)}`,
   server_time: "2026-08-24T04:00:00.000Z",
+};
+const SHOP_OPEN_KEY = "019ffc01-49cd-7020-84af-3d04fb1ed03d";
+const SHOP_OPEN_RESULT: BoundFarmShopOpenSuccess = {
+  data: {
+    result: { receipt_id: SHOP_OPEN_KEY, refreshed: true },
+    resource: {
+      status: "available",
+      initialized: true,
+      revision: `farm-catalog-v1:${"b".repeat(64)}`,
+      refreshed_at: "2026-08-30T04:00:00.000Z",
+      next_refresh_at: "2026-08-30T08:00:00.000Z",
+      items: [],
+    },
+  },
+  shop_revision: `farm-catalog-v1:${"b".repeat(64)}`,
+  server_time: "2026-08-30T04:00:00.000Z",
 };
 
 function jsonResponse(payload: unknown, status = 200): Response {
@@ -114,5 +136,88 @@ test("farm catalog browser errors use the community-facing error contract", asyn
       code: "qq_not_group_member",
       serverMessage: "当前账号已不在指定群中",
     },
+  });
+});
+
+test("farm shop open uses the same-origin idempotent POST and verifies the returned shop", async () => {
+  const requests: Array<{ url: string; init: RequestInit | undefined }> = [];
+  const result = await openBoundFarmShop({
+    expectedShopRevision: `farm-catalog-v1:${"a".repeat(64)}`,
+    idempotencyKey: SHOP_OPEN_KEY,
+    fetcher: async (url, init) => {
+      requests.push({ url, init });
+      return jsonResponse(SHOP_OPEN_RESULT);
+    },
+  });
+
+  assert.equal(requests[0]?.url, "/api/farm/shop/openings");
+  assert.equal(requests[0]?.init?.method, "POST");
+  assert.equal(new Headers(requests[0]?.init?.headers).get("idempotency-key"), SHOP_OPEN_KEY);
+  assert.deepEqual(JSON.parse(String(requests[0]?.init?.body)), {
+    expected_shop_revision: `farm-catalog-v1:${"a".repeat(64)}`,
+  });
+  assert.deepEqual(result, { ok: true, data: SHOP_OPEN_RESULT });
+  const replaced = replaceFarmCatalogShop(
+    CATALOG_RESULT as Parameters<typeof replaceFarmCatalogShop>[0],
+    SHOP_OPEN_RESULT,
+  );
+  assert.deepEqual(replaced.data.shop, SHOP_OPEN_RESULT.data.resource);
+  assert.equal(replaced.server_time, SHOP_OPEN_RESULT.server_time);
+  assert.deepEqual(replaced.data.neighborhood, CATALOG_RESULT.data.neighborhood);
+});
+
+test("farm shop open exposes retryable network and strict server failures", async () => {
+  const offline = await openBoundFarmShop({
+    expectedShopRevision: null,
+    idempotencyKey: SHOP_OPEN_KEY,
+    fetcher: async () => {
+      throw new Error("offline");
+    },
+  });
+  assert.deepEqual(offline, {
+    ok: false,
+    issue: { code: "network_unavailable", currentShopRevision: null, serverMessage: null },
+  });
+
+  const conflict = await openBoundFarmShop({
+    expectedShopRevision: null,
+    idempotencyKey: SHOP_OPEN_KEY,
+    fetcher: async () =>
+      jsonResponse(
+        {
+          error: {
+            code: "state_conflict",
+            message: "货架已经变化",
+            current_shop_revision: `farm-catalog-v1:${"c".repeat(64)}`,
+          },
+        },
+        409,
+      ),
+  });
+  assert.deepEqual(conflict, {
+    ok: false,
+    issue: {
+      code: "state_conflict",
+      currentShopRevision: `farm-catalog-v1:${"c".repeat(64)}`,
+      serverMessage: "货架已经变化",
+    },
+  });
+  assert.equal(
+    farmShopOpenIssueMessage({
+      code: "network_unavailable",
+      currentShopRevision: null,
+      serverMessage: null,
+    }),
+    "现在连不上农场商店，请稍后重试。",
+  );
+
+  const malformed = await openBoundFarmShop({
+    expectedShopRevision: null,
+    idempotencyKey: SHOP_OPEN_KEY,
+    fetcher: async () => jsonResponse({ ...SHOP_OPEN_RESULT, shop_revision: "wrong" }),
+  });
+  assert.deepEqual(malformed, {
+    ok: false,
+    issue: { code: "unexpected_response", currentShopRevision: null, serverMessage: null },
   });
 });

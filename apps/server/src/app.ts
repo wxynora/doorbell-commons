@@ -96,6 +96,9 @@ import {
   boundFarmSettingsActionErrorSchema,
   boundFarmSettingsActionRequestSchema,
   boundFarmSettingsActionSuccessSchema,
+  boundFarmShopOpenErrorSchema,
+  boundFarmShopOpenRequestSchema,
+  boundFarmShopOpenSuccessSchema,
   boundFarmSmeltingActionErrorSchema,
   boundFarmSmeltingActionRequestSchema,
   boundFarmSmeltingActionSuccessSchema,
@@ -141,6 +144,7 @@ import {
   farmRanchInteractionActionIdempotencyKeySchema,
   farmRanchResidentActionIdempotencyKeySchema,
   farmSettingsActionIdempotencyKeySchema,
+  farmShopOpenIdempotencyKeySchema,
   farmSmeltingActionIdempotencyKeySchema,
   type HumanSettingsPatchRequest,
   humanAuthenticationErrorSchema,
@@ -221,6 +225,9 @@ import {
   FarmHumanCatalogCredentialInvalidError,
   FarmHumanCatalogNotFoundError,
   FarmHumanCatalogUnavailableError,
+  FarmHumanShopOpenIdempotencyConflictError,
+  FarmHumanShopOpenShopUnavailableError,
+  FarmHumanShopOpenStateConflictError,
 } from "./farm-catalog-client.js";
 import {
   FarmConstableInterviewContractUnavailableError,
@@ -1123,6 +1130,27 @@ function sendBoundFarmCatalogReadError(
   return reply.code(statusCode).send(
     boundFarmCatalogReadErrorSchema.parse({
       error: { code, message },
+    }),
+  );
+}
+
+function sendBoundFarmShopOpenError(
+  reply: FastifyReply,
+  statusCode: BoundFarmStructuredStatusCode,
+  code: ReturnType<typeof boundFarmShopOpenErrorSchema.parse>["error"]["code"],
+  message: string,
+  currentShopRevision?: string | null,
+) {
+  reply.header("cache-control", "no-store");
+  return reply.code(statusCode).send(
+    boundFarmShopOpenErrorSchema.parse({
+      error: {
+        code,
+        message,
+        ...(currentShopRevision === undefined
+          ? {}
+          : { current_shop_revision: currentShopRevision }),
+      },
     }),
   );
 }
@@ -4078,6 +4106,155 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
           503,
           "farm_unavailable",
           "The farm catalog is unavailable",
+        );
+      }
+      throw error;
+    }
+  });
+
+  app.post("/api/farm/shop/openings", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    const parsedBody = boundFarmShopOpenRequestSchema.safeParse(request.body);
+    if (
+      !boundFarmCatalogReadRequestSchema.safeParse(request.query).success ||
+      !parsedBody.success
+    ) {
+      return sendBoundFarmShopOpenError(
+        reply,
+        400,
+        "invalid_request",
+        "Open the current farm shop without query parameters",
+      );
+    }
+    const idempotencyKey = request.headers["idempotency-key"];
+    if (
+      typeof idempotencyKey !== "string" ||
+      !farmShopOpenIdempotencyKeySchema.safeParse(idempotencyKey).success
+    ) {
+      return sendBoundFarmShopOpenError(
+        reply,
+        400,
+        "invalid_request",
+        "Farm shop open requires a UUID Idempotency-Key",
+      );
+    }
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendBoundFarmShopOpenError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+
+    try {
+      const result = await options.registrationAuth.openCurrentFarmShop(token, {
+        expectedShopRevision: parsedBody.data.expected_shop_revision,
+        idempotencyKey,
+      });
+      const parsedResult = boundFarmShopOpenSuccessSchema.safeParse(result);
+      if (!parsedResult.success) {
+        return sendBoundFarmShopOpenError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The farm shop open response could not be verified",
+        );
+      }
+      return reply.send(parsedResult.data);
+    } catch (error) {
+      if (error instanceof AuthenticationRequiredError) {
+        return sendBoundFarmShopOpenError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
+        return sendBoundFarmShopOpenError(
+          reply,
+          403,
+          "qq_not_group_member",
+          "The session QQ number is no longer a current member of the community group",
+        );
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendBoundFarmShopOpenError(
+          reply,
+          503,
+          "onebot_unavailable",
+          "QQ group membership could not be verified",
+        );
+      }
+      if (error instanceof RegistrationProfileRequiredError) {
+        return sendBoundFarmShopOpenError(
+          reply,
+          409,
+          "registration_profile_required",
+          "A resident, home, and farm binding are required",
+        );
+      }
+      if (error instanceof FarmHumanShopOpenStateConflictError) {
+        return sendBoundFarmShopOpenError(
+          reply,
+          409,
+          "state_conflict",
+          "The farm shop has changed",
+          error.currentShopRevision,
+        );
+      }
+      if (error instanceof FarmHumanShopOpenShopUnavailableError) {
+        return sendBoundFarmShopOpenError(
+          reply,
+          409,
+          "shop_unavailable",
+          "The current farm shop is unavailable",
+        );
+      }
+      if (error instanceof FarmHumanShopOpenIdempotencyConflictError) {
+        return sendBoundFarmShopOpenError(
+          reply,
+          409,
+          "idempotency_conflict",
+          "This idempotency key was used for a different request",
+        );
+      }
+      if (error instanceof FarmHumanCatalogCredentialInvalidError) {
+        return sendBoundFarmShopOpenError(
+          reply,
+          409,
+          "farm_credential_invalid",
+          "The bound farm human credential is no longer valid",
+        );
+      }
+      if (error instanceof FarmHumanCatalogNotFoundError) {
+        return sendBoundFarmShopOpenError(
+          reply,
+          404,
+          "farm_not_found",
+          "The bound farm no longer exists",
+        );
+      }
+      if (error instanceof FarmHumanCatalogContractUnavailableError) {
+        request.log.error({ error_name: error.name }, "Farm shop open is unavailable");
+        return sendBoundFarmShopOpenError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The farm shop open response could not be verified",
+        );
+      }
+      if (error instanceof FarmHumanCatalogUnavailableError) {
+        request.log.error({ error_name: error.name }, "Farm shop open is unavailable");
+        return sendBoundFarmShopOpenError(
+          reply,
+          503,
+          "farm_unavailable",
+          "The farm shop is unavailable",
         );
       }
       throw error;

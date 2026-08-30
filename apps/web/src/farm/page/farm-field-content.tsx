@@ -29,6 +29,7 @@ import type {
   CookingShopRefreshFeedback,
   FarmCartCheckoutFeedback,
   FarmCartCheckoutLine,
+  FarmShopOpenFeedback,
 } from "../panels/shop-panel";
 import type {
   CropCodexActionExecutor,
@@ -174,8 +175,10 @@ export function FarmFieldContent({
   onCropCodexAction,
   onExpeditionAction,
   onFarmPurchaseRequest,
+  farmShopOpenFeedback = { stage: "idle" },
   onHarvestAssist,
   onLandUpgrade,
+  onOpenFarmShop,
   onFarmSettingsAction,
   onKitchenInventoryAction,
   onKitchenCook,
@@ -194,6 +197,7 @@ export function FarmFieldContent({
   onReloadRanch,
   onRequireResource,
   onRetryHarvestAssist,
+  onRetryFarmShopOpen,
   onRetryLandUpgrade,
   preview = false,
   resources = createInitialFarmReadResources(),
@@ -208,8 +212,10 @@ export function FarmFieldContent({
   onCropCodexAction?: CropCodexActionExecutor | undefined;
   onExpeditionAction?: ExpeditionActionExecutor | undefined;
   onFarmPurchaseRequest?: FarmPurchaseRequestExecutor | undefined;
+  farmShopOpenFeedback?: FarmShopOpenFeedback | undefined;
   onHarvestAssist?: (() => void) | undefined;
   onLandUpgrade?: (() => void) | undefined;
+  onOpenFarmShop?: (() => void) | undefined;
   onFarmSettingsAction?: FarmSettingsActionExecutor | undefined;
   onKitchenInventoryAction?: KitchenInventoryActionExecutor | undefined;
   onKitchenCook?: KitchenCookExecutor | undefined;
@@ -228,6 +234,7 @@ export function FarmFieldContent({
   onReloadRanch?: (() => void) | undefined;
   onRequireResource?: (resource: keyof FarmReadResources) => void;
   onRetryHarvestAssist?: () => void;
+  onRetryFarmShopOpen?: (() => void) | undefined;
   onRetryLandUpgrade?: () => void;
   preview?: boolean;
   resources?: FarmReadResources;
@@ -1031,6 +1038,7 @@ export function FarmFieldContent({
                     purchaseSceneId ? getFarmCheckoutFeedback(purchaseSceneId) : undefined
                   }
                   farmCatalog={farmCatalog}
+                  farmShopOpenFeedback={farmShopOpenFeedback}
                   kitchen={kitchen}
                   key={`${scene.id}-${sceneState.selectedTool.id}`}
                   onClose={() => updateSceneUiState(scene.id, { selectedTool: null })}
@@ -1094,6 +1102,7 @@ export function FarmFieldContent({
                         }
                       : undefined
                   }
+                  onRetryFarmShopOpen={onRetryFarmShopOpen}
                   onRefreshCookingShop={() => {
                     if (
                       kitchenShopRefreshAction.stage === "error" &&
@@ -1137,8 +1146,12 @@ export function FarmFieldContent({
             if (activeScene === "ranch" && tool.id === "dispatch") {
               onRequireResource?.("farmCatalog");
             }
-            const resource = getToolReadResource(activeScene, tool.id);
-            if (resource) onRequireResource?.(resource);
+            if (activeScene === "field" && tool.id === "shop" && onOpenFarmShop) {
+              onOpenFarmShop();
+            } else {
+              const resource = getToolReadResource(activeScene, tool.id);
+              if (resource) onRequireResource?.(resource);
+            }
           }
           if (activeSceneUiState.bulletinOpen) {
             acknowledgeDisplayedBulletinIfNeeded();

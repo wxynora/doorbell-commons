@@ -6,6 +6,9 @@ import {
   FarmHumanCatalogCredentialInvalidError,
   FarmHumanCatalogNotFoundError,
   FarmHumanCatalogUnavailableError,
+  FarmHumanShopOpenIdempotencyConflictError,
+  FarmHumanShopOpenShopUnavailableError,
+  FarmHumanShopOpenStateConflictError,
 } from "./farm-catalog-client.js";
 
 const FARM_DOORPLATE = "3ET3FE";
@@ -49,6 +52,22 @@ const CATALOG_RESULT = {
 };
 
 const INPUT = { farmDoorplate: FARM_DOORPLATE, farmHumanKey: FARM_HUMAN_KEY };
+const SHOP_OPEN_KEY = "019ffc01-49cd-7020-84af-3d04fb1ed03d";
+const SHOP_OPEN_RESULT = {
+  data: {
+    result: { receipt_id: SHOP_OPEN_KEY, refreshed: true },
+    resource: {
+      status: "available",
+      initialized: true,
+      revision: `farm-catalog-v1:${"b".repeat(64)}`,
+      refreshed_at: "2026-08-30T04:00:00.000Z",
+      next_refresh_at: "2026-08-30T08:00:00.000Z",
+      items: [],
+    },
+  },
+  shop_revision: `farm-catalog-v1:${"b".repeat(64)}`,
+  server_time: "2026-08-30T04:00:00.000Z",
+};
 
 function serviceError(code: string, status = 409): Response {
   return Response.json({ error: { code, message: "upstream error" } }, { status });
@@ -168,5 +187,93 @@ test("farm catalog client maps credential, missing farm, contract, and availabil
       throw new Error("offline");
     }).readCatalog(INPUT),
     FarmHumanCatalogUnavailableError,
+  );
+});
+
+test("farm shop open posts the strict idempotent request and verifies its shop revision", async () => {
+  const calls: Array<{ body: string; headers: Headers; method: string | undefined; url: string }> =
+    [];
+  const client = new FarmHumanCatalogClient({
+    apiBaseUrl: "https://farm.example/farm/",
+    requestTimeoutMs: 1_000,
+    serviceToken: "service-secret",
+    fetchImplementation: async (input, init) => {
+      calls.push({
+        body: String(init?.body),
+        headers: new Headers(init?.headers),
+        method: init?.method,
+        url: String(input),
+      });
+      return Response.json(SHOP_OPEN_RESULT);
+    },
+  });
+
+  assert.deepEqual(
+    await client.openShop({
+      ...INPUT,
+      expectedShopRevision: `farm-catalog-v1:${"a".repeat(64)}`,
+      idempotencyKey: SHOP_OPEN_KEY,
+    }),
+    SHOP_OPEN_RESULT,
+  );
+  assert.equal(
+    calls[0]?.url,
+    "https://farm.example/farm/internal/doorbell/human/catalog/shop/open",
+  );
+  assert.equal(calls[0]?.method, "POST");
+  assert.equal(calls[0]?.headers.get("authorization"), "Bearer service-secret");
+  assert.deepEqual(JSON.parse(calls[0]?.body ?? "{}"), {
+    farm_human_key: FARM_HUMAN_KEY,
+    expected_farm_doorplate: FARM_DOORPLATE,
+    idempotency_key: SHOP_OPEN_KEY,
+    expected_shop_revision: `farm-catalog-v1:${"a".repeat(64)}`,
+  });
+});
+
+test("farm shop open keeps state, availability, and idempotency failures distinct", async () => {
+  const openWith = async (code: string, currentShopRevision?: string | null) =>
+    await new FarmHumanCatalogClient({
+      apiBaseUrl: "https://farm.example/",
+      requestTimeoutMs: 1_000,
+      serviceToken: "service-secret",
+      fetchImplementation: async () =>
+        Response.json(
+          {
+            error: {
+              code,
+              message: "shop error",
+              ...(currentShopRevision === undefined
+                ? {}
+                : { current_shop_revision: currentShopRevision }),
+            },
+          },
+          { status: 409 },
+        ),
+    }).openShop({
+      ...INPUT,
+      expectedShopRevision: null,
+      idempotencyKey: SHOP_OPEN_KEY,
+    });
+
+  await assert.rejects(
+    openWith("state_conflict", `farm-catalog-v1:${"c".repeat(64)}`),
+    FarmHumanShopOpenStateConflictError,
+  );
+  await assert.rejects(openWith("shop_unavailable"), FarmHumanShopOpenShopUnavailableError);
+  await assert.rejects(openWith("idempotency_conflict"), FarmHumanShopOpenIdempotencyConflictError);
+
+  const malformed = new FarmHumanCatalogClient({
+    apiBaseUrl: "https://farm.example/",
+    requestTimeoutMs: 1_000,
+    serviceToken: "service-secret",
+    fetchImplementation: async () => Response.json({ ...SHOP_OPEN_RESULT, shop_revision: "wrong" }),
+  });
+  await assert.rejects(
+    malformed.openShop({
+      ...INPUT,
+      expectedShopRevision: null,
+      idempotencyKey: SHOP_OPEN_KEY,
+    }),
+    FarmHumanCatalogContractUnavailableError,
   );
 });

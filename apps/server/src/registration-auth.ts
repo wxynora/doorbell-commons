@@ -21,6 +21,7 @@ import {
 import {
   FarmHumanCatalogContractUnavailableError,
   type FarmHumanCatalogReader,
+  type FarmHumanShopOpener,
 } from "./farm-catalog-client.js";
 import {
   type FarmConstableInterviewActioner,
@@ -231,6 +232,7 @@ interface RegistrationAuthServiceOptions {
   farmDirectory: FarmDirectoryReader;
   farmHumanReader?: FarmHumanFieldReader;
   farmCatalogReader?: FarmHumanCatalogReader;
+  farmShopOpener?: FarmHumanShopOpener;
   farmBulletinReader?: FarmHumanBulletinReader;
   farmKitchenReader?: FarmHumanKitchenReader;
   farmKitchenPurchaser?: FarmHumanKitchenPurchaser;
@@ -282,6 +284,7 @@ export class RegistrationAuthService {
   readonly #farmDirectory: FarmDirectoryReader;
   readonly #farmHumanReader: FarmHumanFieldReader | undefined;
   readonly #farmCatalogReader: FarmHumanCatalogReader | undefined;
+  readonly #farmShopOpener: FarmHumanShopOpener | undefined;
   readonly #farmBulletinReader: FarmHumanBulletinReader | undefined;
   readonly #farmKitchenReader: FarmHumanKitchenReader | undefined;
   readonly #farmKitchenPurchaser: FarmHumanKitchenPurchaser | undefined;
@@ -319,6 +322,7 @@ export class RegistrationAuthService {
     this.#farmDirectory = options.farmDirectory;
     this.#farmHumanReader = options.farmHumanReader;
     this.#farmCatalogReader = options.farmCatalogReader;
+    this.#farmShopOpener = options.farmShopOpener;
     this.#farmBulletinReader = options.farmBulletinReader;
     this.#farmKitchenReader = options.farmKitchenReader;
     this.#farmKitchenPurchaser = options.farmKitchenPurchaser;
@@ -786,6 +790,25 @@ export class RegistrationAuthService {
       throw new FarmHumanKitchenShopRefreshContractUnavailableError();
     }
     return this.#farmKitchenShopRefresher.refreshKitchenShop({
+      farmDoorplate: community.farmBinding.farmDoorplate,
+      farmHumanKey,
+      ...input,
+    });
+  }
+
+  async openCurrentFarmShop(
+    token: string,
+    input: { expectedShopRevision: string | null; idempotencyKey: string },
+  ) {
+    const community = await this.getCurrentSession(token);
+    const farmHumanKey = community.farmBinding.farmHumanKey;
+    if (farmHumanKey === null) {
+      throw new RegistrationProfileRequiredError();
+    }
+    if (!this.#farmShopOpener) {
+      throw new FarmHumanCatalogContractUnavailableError();
+    }
+    return this.#farmShopOpener.openShop({
       farmDoorplate: community.farmBinding.farmDoorplate,
       farmHumanKey,
       ...input,

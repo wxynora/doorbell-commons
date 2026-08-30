@@ -13,8 +13,6 @@ import {
   boundFarmFieldSuccessSchema,
   boundFarmHarvestAssistErrorSchema,
   boundFarmHarvestAssistSuccessSchema,
-  boundFarmLandUpgradeErrorSchema,
-  boundFarmLandUpgradeSuccessSchema,
   boundFarmKitchenCookErrorSchema,
   boundFarmKitchenCookSuccessSchema,
   boundFarmKitchenInventoryActionSuccessSchema,
@@ -24,6 +22,8 @@ import {
   boundFarmKitchenReadSuccessSchema,
   boundFarmKitchenShopRefreshErrorSchema,
   boundFarmKitchenShopRefreshSuccessSchema,
+  boundFarmLandUpgradeErrorSchema,
+  boundFarmLandUpgradeSuccessSchema,
   boundFarmMarketActionErrorSchema,
   boundFarmMarketActionSuccessSchema,
   boundFarmNeighborhoodMessageActionSuccessSchema,
@@ -44,6 +44,8 @@ import {
   boundFarmRanchSuccessSchema,
   boundFarmSettingsActionErrorSchema,
   boundFarmSettingsActionSuccessSchema,
+  boundFarmShopOpenErrorSchema,
+  boundFarmShopOpenSuccessSchema,
   boundGlimmerReadErrorSchema,
   boundGlimmerReadSuccessSchema,
   boundTogetherReadErrorSchema,
@@ -71,6 +73,7 @@ import {
   type FarmHumanRanchInteractionActionSuccess,
   type FarmHumanRanchReadSuccess,
   type FarmHumanRanchResidentActionSuccess,
+  type FarmHumanShopOpenSuccess,
   type FarmHumanTogetherReadSuccess,
   farmHumanUiErrorSchema,
   humanAuthenticationErrorSchema,
@@ -88,6 +91,11 @@ import {
   type FarmHumanCatalogReader,
   type FarmHumanCatalogReadInput,
   FarmHumanCatalogUnavailableError,
+  type FarmHumanShopOpener,
+  FarmHumanShopOpenIdempotencyConflictError,
+  type FarmHumanShopOpenInput,
+  FarmHumanShopOpenShopUnavailableError,
+  FarmHumanShopOpenStateConflictError,
 } from "./farm-catalog-client.js";
 import {
   type FarmCreationInput,
@@ -114,8 +122,8 @@ import {
   FarmHumanFieldContractUnavailableError,
   FarmHumanFieldCredentialInvalidError,
   type FarmHumanFieldHarvestAssistInput,
-  type FarmHumanFieldLandUpgradeInput,
   FarmHumanFieldIdempotencyConflictError,
+  type FarmHumanFieldLandUpgradeInput,
   FarmHumanFieldNotFoundError,
   type FarmHumanFieldReader,
   type FarmHumanFieldReadInput,
@@ -524,6 +532,23 @@ const FARM_CATALOG_RESULT = {
   neighborhood_revision: `farm-neighborhood-v1:${"e".repeat(64)}`,
   server_time: "2026-08-24T13:00:00.000Z",
 } satisfies FarmHumanCatalogReadSuccess;
+
+const FARM_SHOP_OPEN_KEY = "019ffc01-49cd-7020-84af-3d04fb1ed03d";
+const FARM_SHOP_OPEN_RESULT = {
+  data: {
+    result: { receipt_id: FARM_SHOP_OPEN_KEY, refreshed: true },
+    resource: {
+      status: "available",
+      initialized: true,
+      revision: `farm-catalog-v1:${"9".repeat(64)}`,
+      refreshed_at: "2026-08-30T04:00:00.000Z",
+      next_refresh_at: "2026-08-30T08:00:00.000Z",
+      items: [],
+    },
+  },
+  shop_revision: `farm-catalog-v1:${"9".repeat(64)}`,
+  server_time: "2026-08-30T04:00:00.000Z",
+} satisfies FarmHumanShopOpenSuccess;
 
 const FARM_CROP_CODEX_ACTION_KEY = "839ffb01-49cd-7020-84af-3d04fb1ed03d";
 const FARM_CROP_CODEX_ACTION_RESULT = {
@@ -1165,9 +1190,12 @@ class FakeFarmLingyeReader implements FarmLingyeReader {
   }
 }
 
-class FakeFarmCatalogReader implements FarmHumanCatalogReader {
+class FakeFarmCatalogReader implements FarmHumanCatalogReader, FarmHumanShopOpener {
   readonly calls: FarmHumanCatalogReadInput[] = [];
+  readonly shopOpenCalls: FarmHumanShopOpenInput[] = [];
   result: "found" | "credential" | "missing" | "unavailable" | "contract" = "found";
+  shopOpenResult: "found" | "state_conflict" | "shop_unavailable" | "idempotency_conflict" =
+    "found";
   success: FarmHumanCatalogReadSuccess = FARM_CATALOG_RESULT;
 
   async readCatalog(input: FarmHumanCatalogReadInput): Promise<FarmHumanCatalogReadSuccess> {
@@ -1183,6 +1211,20 @@ class FakeFarmCatalogReader implements FarmHumanCatalogReader {
         throw new FarmHumanCatalogContractUnavailableError();
       default:
         return this.success;
+    }
+  }
+
+  async openShop(input: FarmHumanShopOpenInput): Promise<FarmHumanShopOpenSuccess> {
+    this.shopOpenCalls.push(input);
+    switch (this.shopOpenResult) {
+      case "state_conflict":
+        throw new FarmHumanShopOpenStateConflictError(`farm-catalog-v1:${"8".repeat(64)}`);
+      case "shop_unavailable":
+        throw new FarmHumanShopOpenShopUnavailableError();
+      case "idempotency_conflict":
+        throw new FarmHumanShopOpenIdempotencyConflictError();
+      default:
+        return FARM_SHOP_OPEN_RESULT;
     }
   }
 }
@@ -1648,6 +1690,7 @@ function createHarness(secureCookies = false): AuthHarness {
     farmCreator,
     farmHumanReader,
     farmCatalogReader,
+    farmShopOpener: farmCatalogReader,
     farmCropCodexActioner,
     farmExpeditionActioner,
     farmNeighborhoodMessageActioner,
@@ -3708,6 +3751,68 @@ test("structured farm catalog, kitchen, and ranch routes keep the binding and fa
       assert.equal(restored.statusCode, 200);
       cookie = cookieFrom(restored);
     }
+  } finally {
+    await harness.close();
+  }
+});
+
+test("bound farm shop open derives identity, preserves idempotency, and maps retry errors", async () => {
+  const harness = createHarness();
+  try {
+    harness.membership.members.add(QQ_NUMBER);
+    const code = harness.database.getCurrentRegistrationCode(harness.now.value);
+    const created = await harness.app.inject({
+      method: "POST",
+      url: "/api/auth/session",
+      payload: { ...FULL_REGISTRATION_PAYLOAD, registration_code: code.code },
+    });
+    const cookie = cookieFrom(created);
+
+    const opened = await harness.app.inject({
+      method: "POST",
+      url: "/api/farm/shop/openings",
+      headers: { cookie, "idempotency-key": FARM_SHOP_OPEN_KEY },
+      payload: { expected_shop_revision: null },
+    });
+    assert.equal(opened.statusCode, 200);
+    assert.equal(opened.headers["cache-control"], "no-store");
+    assert.deepEqual(boundFarmShopOpenSuccessSchema.parse(opened.json()), FARM_SHOP_OPEN_RESULT);
+    assert.deepEqual(harness.farmCatalogReader.shopOpenCalls, [
+      {
+        farmDoorplate: FARM_DOORPLATE,
+        farmHumanKey: FARM_HUMAN_KEY,
+        expectedShopRevision: null,
+        idempotencyKey: FARM_SHOP_OPEN_KEY,
+      },
+    ]);
+
+    const callsBeforeInvalid = harness.farmCatalogReader.shopOpenCalls.length;
+    const invalid = await harness.app.inject({
+      method: "POST",
+      url: "/api/farm/shop/openings?farm_doorplate=ABC234",
+      headers: { cookie, "idempotency-key": FARM_SHOP_OPEN_KEY },
+      payload: { expected_shop_revision: null },
+    });
+    assert.equal(invalid.statusCode, 400);
+    assert.equal(boundFarmShopOpenErrorSchema.parse(invalid.json()).error.code, "invalid_request");
+    assert.equal(harness.farmCatalogReader.shopOpenCalls.length, callsBeforeInvalid);
+
+    harness.farmCatalogReader.shopOpenResult = "state_conflict";
+    const conflict = await harness.app.inject({
+      method: "POST",
+      url: "/api/farm/shop/openings",
+      headers: {
+        cookie,
+        "idempotency-key": "119ffc01-49cd-7020-84af-3d04fb1ed03d",
+      },
+      payload: { expected_shop_revision: FARM_SHOP_OPEN_RESULT.shop_revision },
+    });
+    assert.equal(conflict.statusCode, 409);
+    assert.deepEqual(boundFarmShopOpenErrorSchema.parse(conflict.json()).error, {
+      code: "state_conflict",
+      message: "The farm shop has changed",
+      current_shop_revision: `farm-catalog-v1:${"8".repeat(64)}`,
+    });
   } finally {
     await harness.close();
   }

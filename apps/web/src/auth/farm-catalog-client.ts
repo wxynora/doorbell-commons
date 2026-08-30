@@ -1,6 +1,11 @@
 import {
+  type BoundFarmShopOpenSuccess,
   boundFarmCatalogReadErrorSchema,
   boundFarmCatalogReadSuccessSchema,
+  boundFarmShopOpenErrorSchema,
+  boundFarmShopOpenRequestSchema,
+  boundFarmShopOpenSuccessSchema,
+  farmShopOpenIdempotencyKeySchema,
 } from "@doorbell/protocol";
 import type { ApiResult, ClientIssueCode, FrontendFetcher } from "./auth-client";
 
@@ -11,6 +16,17 @@ export type FarmCatalogIssueCode =
 
 export interface FarmCatalogIssue {
   code: FarmCatalogIssueCode;
+  serverMessage: string | null;
+}
+
+export type BoundFarmShopOpen = BoundFarmShopOpenSuccess;
+export type FarmShopOpenIssueCode =
+  | ReturnType<typeof boundFarmShopOpenErrorSchema.parse>["error"]["code"]
+  | ClientIssueCode;
+
+export interface FarmShopOpenIssue {
+  code: FarmShopOpenIssueCode;
+  currentShopRevision: string | null;
   serverMessage: string | null;
 }
 
@@ -66,6 +82,84 @@ export async function getBoundFarmCatalog(
 
 export const getFarmCatalog = getBoundFarmCatalog;
 export const getCatalog = getBoundFarmCatalog;
+
+export async function openBoundFarmShop(options: {
+  expectedShopRevision: string | null;
+  fetcher?: FrontendFetcher;
+  idempotencyKey: string;
+  signal?: AbortSignal;
+}): Promise<ApiResult<BoundFarmShopOpen, FarmShopOpenIssue>> {
+  const body = boundFarmShopOpenRequestSchema.parse({
+    expected_shop_revision: options.expectedShopRevision,
+  });
+  const idempotencyKey = farmShopOpenIdempotencyKeySchema.parse(options.idempotencyKey);
+  const fetcher = options.fetcher ?? fetch;
+  let response: Response;
+  try {
+    response = await fetcher("/api/farm/shop/openings", {
+      credentials: "same-origin",
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": idempotencyKey,
+      },
+      body: JSON.stringify(body),
+      ...(options.signal ? { signal: options.signal } : {}),
+    });
+  } catch {
+    return {
+      ok: false,
+      issue: { code: "network_unavailable", currentShopRevision: null, serverMessage: null },
+    };
+  }
+
+  const payload = await readPayload(response);
+  if (!response.ok) {
+    const parsed = boundFarmShopOpenErrorSchema.safeParse(payload);
+    return parsed.success
+      ? {
+          ok: false,
+          issue: {
+            code: parsed.data.error.code,
+            currentShopRevision: parsed.data.error.current_shop_revision ?? null,
+            serverMessage: parsed.data.error.message,
+          },
+        }
+      : {
+          ok: false,
+          issue: { code: "unexpected_response", currentShopRevision: null, serverMessage: null },
+        };
+  }
+
+  const parsed = boundFarmShopOpenSuccessSchema.safeParse(payload);
+  return parsed.success &&
+    parsed.data.data.result.receipt_id === idempotencyKey &&
+    parsed.data.shop_revision === parsed.data.data.resource.revision
+    ? { ok: true, data: parsed.data }
+    : {
+        ok: false,
+        issue: { code: "unexpected_response", currentShopRevision: null, serverMessage: null },
+      };
+}
+
+export function farmShopOpenIssueMessage(issue: FarmShopOpenIssue): string {
+  if (issue.code === "network_unavailable") return "现在连不上农场商店，请稍后重试。";
+  if (issue.code === "unexpected_response") {
+    return "农场商店刷新结果无法识别，请稍后重试。";
+  }
+  return issue.serverMessage || "农场商店暂时无法刷新，请稍后重试。";
+}
+
+export function replaceFarmCatalogShop(
+  catalog: BoundFarmCatalogRead,
+  opened: BoundFarmShopOpen,
+): BoundFarmCatalogRead {
+  return {
+    ...catalog,
+    data: { ...catalog.data, shop: opened.data.resource },
+    server_time: opened.server_time,
+  };
+}
 
 export function farmCatalogIssueMessage(issue: FarmCatalogIssue): string {
   if (issue.code === "network_unavailable") {
