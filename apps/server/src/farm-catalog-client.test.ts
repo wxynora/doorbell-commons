@@ -29,6 +29,7 @@ const CATALOG_RESULT = {
         {
           farm_doorplate: FARM_DOORPLATE,
           farm_name: "渡的小农场",
+          ai_name: "笨笨",
           is_own: true,
           status: "open",
           messages: [],

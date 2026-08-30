@@ -405,6 +405,7 @@ export const farmCatalogNeighborhoodMessageBoardSchema = z
   .object({
     farm_doorplate: farmCatalogDoorplateSchema,
     farm_name: z.string().min(1),
+    ai_name: z.string().min(1).nullable().optional(),
     is_own: z.boolean(),
     status: z.enum(["open", "closed"]),
     messages: z.array(farmCatalogBulletinMessageSchema).max(10),

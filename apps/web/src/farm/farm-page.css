@@ -18,6 +18,12 @@
   font-family: inherit;
 }
 
+:where(.farm-game) select,
+:where(.farm-game) select option {
+  font-size: clamp(0.44rem, 1.55cqw, 0.52rem);
+  line-height: 1.15;
+}
+
 .farm-game__shell {
   --farm-control-size: min(13cqw, 6.15cqh);
 

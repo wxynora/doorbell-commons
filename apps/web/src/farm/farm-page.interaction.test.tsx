@@ -1281,6 +1281,7 @@ function dispatchCatalog(
     | Array<{
         farm_doorplate: string;
         farm_name: string;
+        ai_name?: string | null;
         is_own: boolean;
         status: "open" | "closed";
         messages: [];
@@ -1370,6 +1371,7 @@ describe("Ranch dispatch target selection", () => {
       {
         farm_doorplate: "352HQ6",
         farm_name: "夏安农场",
+        ai_name: "夏知",
         is_own: false,
         status: "open",
         messages: [],
@@ -1377,6 +1379,7 @@ describe("Ranch dispatch target selection", () => {
       {
         farm_doorplate: "CD9KVW",
         farm_name: "悬崖边",
+        ai_name: "Cliffside",
         is_own: false,
         status: "closed",
         messages: [],
@@ -1404,8 +1407,8 @@ describe("Ranch dispatch target selection", () => {
 
     expect(screen.queryByRole("textbox", { name: "目标农场门牌" })).toBeNull();
     const target = screen.getByRole("combobox", { name: "目标农场" });
-    expect(within(target).getByRole("option", { name: "夏安农场（门牌 352HQ6）" })).toBeTruthy();
-    expect(within(target).getByRole("option", { name: "悬崖边（门牌 CD9KVW）" })).toBeTruthy();
+    expect(within(target).getByRole("option", { name: "夏安农场（夏知）" })).toBeTruthy();
+    expect(within(target).getByRole("option", { name: "悬崖边（Cliffside）" })).toBeTruthy();
     expect(within(target).queryByRole("option", { name: /排行榜里的/ })).toBeNull();
 
     fireEvent.change(target, { target: { value: "CD9KVW" } });
@@ -1438,8 +1441,8 @@ describe("Ranch dispatch target selection", () => {
       "option",
     );
     expect(options.map((option) => option.textContent)).toEqual([
-      "排行榜里的夏安农场（门牌 352HQ6）",
-      "排行榜里的悬崖边（门牌 CD9KVW）",
+      "排行榜里的夏安农场",
+      "排行榜里的悬崖边",
     ]);
   });
 });

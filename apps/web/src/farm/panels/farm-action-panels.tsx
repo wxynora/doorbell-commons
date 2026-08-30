@@ -1145,6 +1145,7 @@ export function FarmExpeditionPanelContent({
 type RanchDispatchAvailable = NonNullable<BoundRanchRead["data"]["dispatch"]>;
 
 type RanchDispatchTarget = {
+  aiName: string | null;
   farmDoorplate: string;
   farmName: string;
 };
@@ -1158,21 +1159,23 @@ function getRanchDispatchTargets(
   const ownFarmDoorplate = farmCatalog.data.farm.farm_doorplate;
   const targets: RanchDispatchTarget[] = [];
   const seenDoorplates = new Set<string>();
-  const addTarget = (farmDoorplate: string, farmName: string) => {
+  const addTarget = (farmDoorplate: string, farmName: string, aiName: string | null) => {
     if (farmDoorplate === ownFarmDoorplate || seenDoorplates.has(farmDoorplate)) return;
     seenDoorplates.add(farmDoorplate);
-    targets.push({ farmDoorplate, farmName });
+    targets.push({ aiName, farmDoorplate, farmName });
   };
 
   if (neighborhood.message_boards !== undefined) {
     for (const board of neighborhood.message_boards) {
-      if (!board.is_own) addTarget(board.farm_doorplate, board.farm_name);
+      if (!board.is_own) {
+        addTarget(board.farm_doorplate, board.farm_name, board.ai_name ?? null);
+      }
     }
     return targets;
   }
 
   for (const rows of Object.values(neighborhood.rankings)) {
-    for (const row of rows) addTarget(row.farm_doorplate, row.farm_name);
+    for (const row of rows) addTarget(row.farm_doorplate, row.farm_name, null);
   }
   return targets;
 }
@@ -1349,7 +1352,7 @@ export function RanchDispatchPanelContent({
             {dispatchTargets.length > 0 ? (
               dispatchTargets.map((target) => (
                 <option key={target.farmDoorplate} value={target.farmDoorplate}>
-                  {target.farmName}（门牌 {target.farmDoorplate}）
+                  {target.aiName ? `${target.farmName}（${target.aiName}）` : target.farmName}
                 </option>
               ))
             ) : (
