@@ -281,7 +281,9 @@ export function RanchResidentDetail({
   );
 
   const actionCostLabel = (
-    action: NonNullable<typeof allowedActions>[keyof NonNullable<typeof allowedActions>],
+    action: NonNullable<
+      NonNullable<typeof allowedActions>[keyof NonNullable<typeof allowedActions>]
+    >,
   ) => {
     if (action.cost.currency === null || action.cost.amount === null) {
       return null;
@@ -391,6 +393,12 @@ export function RanchResidentDetail({
                       ? "等待结算"
                       : "暂不可用"}
               </dd>
+            </div>
+          ) : null}
+          {view.kind === "live" && residentData?.health ? (
+            <div>
+              <dt>健康</dt>
+              <dd>{residentData.health.label}</dd>
             </div>
           ) : null}
           {view.kind === "live" && residentData?.accessories.status === "available" ? (

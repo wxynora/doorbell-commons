@@ -1,6 +1,29 @@
 .farm-scene--ranch {
-  background-image: var(
-    --farm-scene-background,
-    url("../../assets/scenes/ranch-background.png")
-  );
+  background-image: var(--farm-scene-background, url("../../assets/scenes/ranch-background.png"));
+}
+
+.farm-ranch-resident__roamer {
+  position: relative;
+}
+
+.farm-ranch-resident__health-bubble {
+  position: absolute;
+  top: -8%;
+  right: -6%;
+  z-index: 3;
+  display: grid;
+  width: 27%;
+  min-width: 12px;
+  max-width: 22px;
+  aspect-ratio: 1;
+  place-items: center;
+  color: #fff8e8;
+  font-size: clamp(0.48rem, 2.1cqw, 0.7rem);
+  font-weight: 900;
+  line-height: 1;
+  border: 0.3cqw solid rgba(255, 248, 232, 0.94);
+  border-radius: 50%;
+  background: #c96f66;
+  box-shadow: 0 0.45cqw 0 rgba(101, 61, 51, 0.28);
+  pointer-events: none;
 }

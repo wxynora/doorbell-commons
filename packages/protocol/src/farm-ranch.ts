@@ -99,6 +99,7 @@ export const farmRanchResidentAllowedActionsSchema = z
     wear_accessory: farmRanchResidentAllowedActionSchema,
     takeoff_accessory: farmRanchResidentAllowedActionSchema,
     set_variant: farmRanchResidentAllowedActionSchema,
+    dispatch: farmRanchResidentAllowedActionSchema.optional(),
   })
   .strict();
 
@@ -136,6 +137,13 @@ export const farmRanchResidentSchema = z
       .strict(),
     variants: farmRanchResidentVariantsSchema.optional(),
     allowed_actions: farmRanchResidentAllowedActionsSchema.optional(),
+    health: z
+      .object({
+        status: z.enum(["healthy", "open", "treating", "recovering", "unavailable"]),
+        label: ranchTextSchema,
+      })
+      .strict()
+      .optional(),
     produce: farmRanchProduceSchema.nullable(),
     dispatch: z
       .object({

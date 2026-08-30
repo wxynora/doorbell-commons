@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ApiResult } from "../../auth/auth-client";
 import {
   type BoundCropCodexAction,
@@ -1359,17 +1359,39 @@ export function RanchDispatchPanelContent({
     (resident) =>
       resident.status === "known" &&
       resident.identity.status === "known" &&
-      resident.identity.kind_id !== null &&
-      resident.dispatch?.state === "home",
+      resident.identity.kind_id !== null,
   );
-  const [animalKindId, setAnimalKindId] = useState(residents[0]?.identity.kind_id ?? "");
+  const dispatchAvailability = (resident: (typeof residents)[number]) => {
+    const projected = resident.allowed_actions?.dispatch;
+    if (projected) return projected;
+    if (resident.dispatch?.state === "active") {
+      return { enabled: false, reason: "这只动物已经在外面潜伏了" };
+    }
+    if (resident.dispatch?.state === "pending_settlement") {
+      return { enabled: false, reason: "这只动物正在等待派遣结算" };
+    }
+    if (resident.dispatch?.state !== "home") {
+      return { enabled: false, reason: "派遣状态不可用" };
+    }
+    return { enabled: true, reason: null };
+  };
+  const firstEnabledResident = residents.find((resident) => dispatchAvailability(resident).enabled);
+  const [animalKindId, setAnimalKindId] = useState(firstEnabledResident?.identity.kind_id ?? "");
   const expectedRevision = ranch.revision;
   const busy = action.stage === "submitting";
   const parsedDuration = Number(durationHours);
   const parsedAmount = Number(amount);
   const validDuration = Number.isSafeInteger(parsedDuration) && parsedDuration > 0;
   const validAmount = Number.isSafeInteger(parsedAmount) && parsedAmount > 0;
-  const selectedResident = residents.find((resident) => resident.identity.kind_id === animalKindId);
+  const selectedResident = residents.find(
+    (resident) =>
+      resident.identity.kind_id === animalKindId && dispatchAvailability(resident).enabled,
+  );
+  useEffect(() => {
+    if (!selectedResident) {
+      setAnimalKindId(firstEnabledResident?.identity.kind_id ?? "");
+    }
+  }, [firstEnabledResident?.identity.kind_id, selectedResident]);
   const dispatchTargets = getRanchDispatchTargets(farmCatalog);
   const selectedTarget =
     dispatchTargets.find((target) => target.farmDoorplate === selectedTargetFarmDoorplate) ??
@@ -1478,14 +1500,21 @@ export function RanchDispatchPanelContent({
         <label>
           <span>动物</span>
           <select
-            disabled={busy || !onRanchInteractionAction || residents.length === 0}
+            disabled={busy || !onRanchInteractionAction || !firstEnabledResident}
             onChange={(event) => setAnimalKindId(event.currentTarget.value)}
             value={selectedResident?.identity.kind_id ?? ""}
           >
             {residents.length > 0 ? (
               residents.map((resident) => (
-                <option key={resident.identity.kind_id} value={resident.identity.kind_id as string}>
+                <option
+                  disabled={!dispatchAvailability(resident).enabled}
+                  key={resident.identity.kind_id}
+                  value={resident.identity.kind_id as string}
+                >
                   {resident.identity.custom_name ?? resident.identity.name ?? "身份不可用"}
+                  {dispatchAvailability(resident).enabled
+                    ? ""
+                    : `（${dispatchAvailability(resident).reason ?? "当前不可派遣"}）`}
                 </option>
               ))
             ) : (

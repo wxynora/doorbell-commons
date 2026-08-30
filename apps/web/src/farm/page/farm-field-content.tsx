@@ -392,6 +392,8 @@ export function FarmFieldContent({
           resident.resident.identity.kind_id ?? resident.spriteAnimal.id,
         );
         return {
+          healthLabel: resident.resident.health?.label,
+          healthStatus: resident.resident.health?.status,
           id: resident.id,
           layout: getLiveRanchSceneLayout(index, liveRanchResidents.length),
           name: resident.resident.identity.custom_name ?? resident.resident.identity.name ?? "",

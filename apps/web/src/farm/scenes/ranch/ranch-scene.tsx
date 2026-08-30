@@ -9,6 +9,8 @@ import {
 export type { RanchSceneAnimalLayout } from "./ranch-scene-position";
 
 export interface RanchSceneAnimalDefinition {
+  healthLabel?: string | undefined;
+  healthStatus?: "healthy" | "open" | "treating" | "recovering" | "unavailable" | undefined;
   id: string;
   layout: RanchSceneAnimalLayout;
   name: string;
@@ -153,6 +155,18 @@ function RanchSceneAnimal({
             </span>
           </span>
         </span>
+        {animal.healthStatus === "open" ||
+        animal.healthStatus === "treating" ||
+        animal.healthStatus === "recovering" ? (
+          <span
+            aria-label={animal.healthLabel ?? "健康状态异常"}
+            className="farm-ranch-resident__health-bubble"
+            role="img"
+            title={animal.healthLabel}
+          >
+            +
+          </span>
+        ) : null}
       </span>
     </button>
   );
