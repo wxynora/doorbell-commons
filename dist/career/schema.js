@@ -1,4 +1,4 @@
-export const CAREER_SCHEMA_VERSION = 7;
+export const CAREER_SCHEMA_VERSION = 8;
 export function installCareerSchema(database) {
     database.exec(`
     CREATE TABLE IF NOT EXISTS career_tracks (
@@ -195,6 +195,7 @@ export function installCareerSchema(database) {
       career TEXT NOT NULL CHECK (career IN ('reporter', 'veterinarian', 'constable')),
       institution TEXT NOT NULL CHECK (institution IN ('lingye_daily', 'animal_hospital', 'public_security')),
       seat_number INTEGER NOT NULL CHECK (seat_number BETWEEN 1 AND 2),
+      employment_class TEXT NOT NULL DEFAULT 'staff' CHECK (employment_class IN ('staff', 'external')),
       status TEXT NOT NULL CHECK (status IN ('active', 'ended')),
       availability TEXT NOT NULL CHECK (availability IN ('available', 'leave', 'suspended')),
       hired_at INTEGER NOT NULL,
@@ -203,7 +204,8 @@ export function installCareerSchema(database) {
     CREATE UNIQUE INDEX IF NOT EXISTS career_one_active_employment_per_resident
       ON career_employments(resident_id) WHERE status = 'active';
     CREATE UNIQUE INDEX IF NOT EXISTS career_one_active_institution_seat
-      ON career_employments(institution, seat_number) WHERE status = 'active';
+      ON career_employments(institution, seat_number)
+      WHERE status = 'active' AND employment_class = 'staff';
 
     CREATE TABLE IF NOT EXISTS career_duty_days (
       duty_id TEXT PRIMARY KEY,
@@ -214,6 +216,7 @@ export function installCareerSchema(database) {
       duty_date TEXT NOT NULL,
       qualification_level INTEGER NOT NULL CHECK (qualification_level BETWEEN 1 AND 4),
       base_wage_gold INTEGER NOT NULL CHECK (base_wage_gold >= 0),
+      performance_rate_bps INTEGER NOT NULL DEFAULT 10000 CHECK (performance_rate_bps IN (5000, 10000)),
       status TEXT NOT NULL CHECK (status IN ('scheduled', 'invalidated', 'settled')),
       generated_at INTEGER NOT NULL,
       invalidated_at INTEGER,
@@ -296,6 +299,7 @@ export function installCareerSchema(database) {
       difficulty_level INTEGER NOT NULL CHECK (difficulty_level BETWEEN 1 AND 4),
       record_kind TEXT NOT NULL CHECK (record_kind IN ('completed', 'qualified_transfer')),
       performance_units INTEGER NOT NULL CHECK (performance_units >= 0),
+      performance_rate_bps INTEGER NOT NULL DEFAULT 10000 CHECK (performance_rate_bps IN (5000, 10000)),
       recorded_at INTEGER NOT NULL,
       UNIQUE (job_id, resident_id, record_kind)
     );
@@ -405,6 +409,17 @@ export function installCareerSchema(database) {
     CREATE INDEX IF NOT EXISTS career_reporter_material_packs_status_index
       ON career_reporter_material_packs(status, created_at, pack_id);
 
+    CREATE TABLE IF NOT EXISTS career_reporter_sections (
+      section_id TEXT PRIMARY KEY,
+      resident_id TEXT NOT NULL REFERENCES residents(resident_id),
+      name TEXT NOT NULL,
+      normalized_name TEXT NOT NULL UNIQUE,
+      status TEXT NOT NULL CHECK (status = 'active'),
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS career_reporter_sections_owner_index
+      ON career_reporter_sections(resident_id, created_at, section_id);
+
     CREATE TABLE IF NOT EXISTS career_reporter_articles (
       article_id TEXT PRIMARY KEY,
       job_id TEXT NOT NULL REFERENCES career_jobs(job_id),
@@ -413,6 +428,7 @@ export function installCareerSchema(database) {
       version INTEGER NOT NULL CHECK (version >= 1),
       revision_kind TEXT NOT NULL CHECK (revision_kind IN ('initial', 'supplement', 'correction')),
       parent_article_id TEXT REFERENCES career_reporter_articles(article_id),
+      section_id TEXT REFERENCES career_reporter_sections(section_id),
       article_text TEXT NOT NULL,
       numeric_claims_json TEXT NOT NULL,
       payload_hash TEXT NOT NULL,
@@ -469,6 +485,18 @@ export function installCareerSchema(database) {
     );
     CREATE INDEX IF NOT EXISTS career_reporter_publication_likes_publication_index
       ON career_reporter_publication_likes(publication_id, liked_at);
+
+    CREATE TABLE IF NOT EXISTS career_reporter_human_likes (
+      job_id TEXT NOT NULL REFERENCES career_jobs(job_id),
+      publication_id TEXT NOT NULL REFERENCES career_reporter_publications(publication_id),
+      human_actor_key TEXT NOT NULL,
+      via_resident_id TEXT NOT NULL REFERENCES residents(resident_id),
+      liked_at INTEGER NOT NULL,
+      PRIMARY KEY (job_id, human_actor_key),
+      UNIQUE (publication_id, human_actor_key)
+    );
+    CREATE INDEX IF NOT EXISTS career_reporter_human_likes_publication_index
+      ON career_reporter_human_likes(publication_id, liked_at);
 
     CREATE TABLE IF NOT EXISTS career_reporter_evaluation_quotes (
       quote_id TEXT PRIMARY KEY,
@@ -536,6 +564,28 @@ export function installCareerSchema(database) {
         .map((column) => column.name));
     if (!examColumns.has("missed_session_at"))
         database.exec("ALTER TABLE career_exam_attempts ADD COLUMN missed_session_at INTEGER");
+    const employmentColumns = new Set(database
+        .prepare("PRAGMA table_info(career_employments)")
+        .all()
+        .map((column) => column.name));
+    if (!employmentColumns.has("employment_class"))
+        database.exec("ALTER TABLE career_employments ADD COLUMN employment_class TEXT NOT NULL DEFAULT 'staff' CHECK (employment_class IN ('staff', 'external'))");
+    database.exec("DROP INDEX IF EXISTS career_one_active_institution_seat");
+    database.exec(`CREATE UNIQUE INDEX career_one_active_institution_seat
+      ON career_employments(institution, seat_number)
+      WHERE status = 'active' AND employment_class = 'staff'`);
+    const dutyColumns = new Set(database
+        .prepare("PRAGMA table_info(career_duty_days)")
+        .all()
+        .map((column) => column.name));
+    if (!dutyColumns.has("performance_rate_bps"))
+        database.exec("ALTER TABLE career_duty_days ADD COLUMN performance_rate_bps INTEGER NOT NULL DEFAULT 10000 CHECK (performance_rate_bps IN (5000, 10000))");
+    const workRecordColumns = new Set(database
+        .prepare("PRAGMA table_info(career_work_records)")
+        .all()
+        .map((column) => column.name));
+    if (!workRecordColumns.has("performance_rate_bps"))
+        database.exec("ALTER TABLE career_work_records ADD COLUMN performance_rate_bps INTEGER NOT NULL DEFAULT 10000 CHECK (performance_rate_bps IN (5000, 10000))");
     const interviewColumns = new Set(database
         .prepare("PRAGMA table_info(career_constable_interviews)")
         .all()
@@ -563,6 +613,12 @@ export function installCareerSchema(database) {
         .map((column) => column.name));
     if (!reporterMaterialPackColumns.has("issue_reference"))
         database.exec("ALTER TABLE career_reporter_material_packs ADD COLUMN issue_reference TEXT");
+    const reporterArticleColumns = new Set(database
+        .prepare("PRAGMA table_info(career_reporter_articles)")
+        .all()
+        .map((column) => column.name));
+    if (!reporterArticleColumns.has("section_id"))
+        database.exec("ALTER TABLE career_reporter_articles ADD COLUMN section_id TEXT");
     database.exec(`
       CREATE INDEX IF NOT EXISTS career_reporter_material_packs_issue_index
         ON career_reporter_material_packs(issue_reference, pack_id);

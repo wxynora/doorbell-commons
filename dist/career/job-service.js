@@ -197,12 +197,19 @@ export class CareerJobService {
             const performanceUnits = institutionForCareer(job.career) && !selfVeterinarianTreatment
                 ? JOB_PERFORMANCE_UNITS[job.difficulty_level]
                 : 0;
+            const duty = institutionForCareer(job.career)
+                ? this.#database.prepare(`SELECT performance_rate_bps FROM career_duty_days
+                    WHERE resident_id = ? AND career = ? AND duty_date = ?
+                    ORDER BY generated_at DESC LIMIT 1`)
+                    .get(input.workerResidentId, job.career, beijingDate(now))
+                : null;
+            const performanceRateBps = duty?.performance_rate_bps ?? 10_000;
             this.#database
                 .prepare(`INSERT INTO career_work_records (
              work_record_id, job_id, resident_id, career, qualification_level,
-             difficulty_level, record_kind, performance_units, recorded_at
-           ) VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?)`)
-                .run(this.#generateId(), job.job_id, input.workerResidentId, job.career, level, job.difficulty_level, performanceUnits, now);
+             difficulty_level, record_kind, performance_units, performance_rate_bps, recorded_at
+           ) VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?)`)
+                .run(this.#generateId(), job.job_id, input.workerResidentId, job.career, level, job.difficulty_level, performanceUnits, performanceRateBps, now);
             return mapJob(this.#requireJob(job.job_id));
         });
     }
@@ -332,7 +339,7 @@ export class CareerJobService {
             if (job.career !== "reporter" || job.status !== "completed" || !job.worker_resident_id) {
                 throw new CareerDomainError("reporter_performance_unavailable", "Only a published completed reporter job can receive evaluation performance");
             }
-            const units = input.validLikes >= 30 ? 3 : input.validLikes >= 15 ? 2 : input.validLikes >= 5 ? 1 : 0;
+            const units = input.validLikes >= 20 ? 3 : input.validLikes >= 15 ? 2 : input.validLikes >= 5 ? 1 : 0;
             const settlements = this.#database
                 .prepare(`SELECT * FROM career_reporter_evaluation_settlements
            WHERE job_id = ? OR source_reference = ? OR idempotency_key = ?
@@ -357,13 +364,14 @@ export class CareerJobService {
                 throw new CareerDomainError("performance_wage_receipt_unexpected", "A zero reporter evaluation cannot have a wage receipt");
             }
             const workRecord = this.#database
-                .prepare(`SELECT qualification_level FROM career_work_records
+                .prepare(`SELECT qualification_level, performance_rate_bps FROM career_work_records
            WHERE job_id = ? AND resident_id = ? AND record_kind = 'completed'`)
                 .get(job.job_id, job.worker_resident_id);
             if (!workRecord) {
                 throw new CareerDomainError("reporter_work_record_missing", "The completed reporter work record is missing");
             }
-            const performanceGold = units * PERFORMANCE_PAY_GOLD[workRecord.qualification_level];
+            const performanceGold = units * PERFORMANCE_PAY_GOLD[workRecord.qualification_level] *
+                workRecord.performance_rate_bps / 10_000;
             if (units === 0) {
                 this.#database
                     .prepare(`INSERT INTO career_reporter_evaluation_settlements (

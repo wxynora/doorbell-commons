@@ -34,6 +34,8 @@ import { EconomyError } from "./economy/economy-errors.js";
 import { EconomyService } from "./economy/economy-service.js";
 import {
     claimReporterMaterialPack,
+    createReporterSection,
+    dueReporterEvaluationJobIds,
     createReporterCorrection,
     createReporterMaterialPack,
     getReporterArticle,
@@ -41,9 +43,13 @@ import {
     getReporterMaterialPack,
     getReporterPublication,
     getReporterSourceFact,
+    listReporterSections,
+    listReporterPublicationsForHuman,
+    listReporterPublicationsForResident,
     publishReporterArticle,
     quoteReporterEvaluation,
     recordReporterLike,
+    recordReporterHumanLike,
     registerReporterSourceFact,
     returnReporterMaterialPack,
     reviewReporterArticle,
@@ -825,25 +831,29 @@ export function createLingyeWorldBackend(database, options) {
                 throw new CareerDomainError("reporter_authoritative_settlement_required", "Reporter evaluation is authoritative in the world backend");
         }
     };
-    const publishReporterArticleAndComplete = (input) => atomic(() => {
-        const publication = publishReporterArticle(database, reporterWithClock(input));
-        const job = jobs.getJob(publication.jobId);
-        if (job.status !== "completed") {
-            jobs.completeJob({
-                jobId: publication.jobId,
-                workerResidentId: publication.residentId,
-                validationPassed: true,
-                worldResultReference: `reporter-publication:${publication.publicationId}`,
-            });
-        }
-        else if (!database.prepare(`
+    const publishReporterArticleAndComplete = (input) => {
+        const publication = atomic(() => {
+            const published = publishReporterArticle(database, reporterWithClock(input));
+            const job = jobs.getJob(published.jobId);
+            if (job.status !== "completed") {
+                jobs.completeJob({
+                    jobId: published.jobId,
+                    workerResidentId: published.residentId,
+                    validationPassed: true,
+                    worldResultReference: `reporter-publication:${published.publicationId}`,
+                });
+            }
+            else if (!database.prepare(`
           SELECT 1 FROM career_work_records
           WHERE job_id = ? AND resident_id = ? AND record_kind = 'completed'
-        `).get(publication.jobId, publication.residentId)) {
-            throw new CareerDomainError("reporter_work_record_missing", "The completed reporter work record is missing");
-        }
+            `).get(published.jobId, published.residentId)) {
+                throw new CareerDomainError("reporter_work_record_missing", "The completed reporter work record is missing");
+            }
+            return published;
+        });
+        options.onReporterPublication?.(publication);
         return publication;
-    });
+    };
     const reporterCommands = {
         registerReporterSourceFact: (input) => atomic(() => registerReporterSourceFact(database, reporterWithClock(input))),
         createReporterMaterialPack: (input) => atomic(() => createReporterMaterialPack(database, reporterWithClock(input))),
@@ -882,6 +892,11 @@ export function createLingyeWorldBackend(database, options) {
                 now,
             });
         }),
+        settleDueReporterEvaluations: () =>
+            dueReporterEvaluationJobIds(database, reporterNow()).map((jobId) =>
+                reporterCommands.settleReporterEvaluation({ jobId })),
+        recordReporterHumanLike: (input) => atomic(() =>
+            recordReporterHumanLike(database, reporterWithClock(input))),
     };
     // Only commands whose services already verify an explicit resident actor belong here.
     // Future HTTP/MCP adapters must still inject that actor from authenticated identity.
@@ -941,7 +956,18 @@ export function createLingyeWorldBackend(database, options) {
         getReporterMaterialPack: (packId) => getReporterMaterialPack(database, packId),
         getReporterArticle: (articleId) => getReporterArticle(database, articleId),
         getReporterPublication: (publicationId) => getReporterPublication(database, publicationId),
+        listReporterSections: () => listReporterSections(database),
         getReporterEvaluationQuote: (jobId) => getReporterEvaluationQuote(database, jobId),
+        nextReporterEvaluationDueAt: () => database.prepare(`SELECT MIN(publication.evaluation_closes_at) AS due_at
+          FROM career_reporter_publications publication
+          WHERE NOT EXISTS (
+            SELECT 1 FROM career_reporter_evaluation_settlements settlement
+            WHERE settlement.job_id = publication.job_id
+          )`).get().due_at ?? null,
+        listReporterPublicationsForHuman: (input) =>
+            listReporterPublicationsForHuman(database, reporterWithClock(input)),
+        listReporterPublicationsForResident: (input) =>
+            listReporterPublicationsForResident(database, reporterWithClock(input)),
         getChefRecipe: (recipeId) => getChefRecipe(database, recipeId),
         listChefRecipes: (residentId) => listChefRecipes(database, residentId),
         listAccessibleChefRecipes: (residentId) => accessibleChefRecipes(database, residentId),
@@ -1126,6 +1152,12 @@ export function createLingyeWorldBackend(database, options) {
             },
             createReporterCorrection: {
                 value: (input) => atomic(() => createReporterCorrection(
+                    database,
+                    reporterWithResident(input, authenticatedResidentId),
+                )),
+            },
+            createReporterSection: {
+                value: (input) => atomic(() => createReporterSection(
                     database,
                     reporterWithResident(input, authenticatedResidentId),
                 )),

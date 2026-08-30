@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { BASE_WAGE_GOLD, CAREER_INSTITUTION, CareerDomainError, INSTITUTION_SEAT_LIMIT, PERFORMANCE_PAY_GOLD, } from "./contracts.js";
+import { BASE_WAGE_GOLD, CAREER_INSTITUTION, CareerDomainError, EMPLOYMENT_PERFORMANCE_RATE_BPS, INSTITUTION_SEAT_LIMIT, PERFORMANCE_PAY_GOLD, } from "./contracts.js";
 import { activeCertificateLevel, addBeijingDays, beijingDate, beijingTimestamp, recordFinancialReceipt, requireActiveCertificate, runInTransaction, } from "./persistence.js";
 import { installCareerSchema } from "./schema.js";
 export class CareerEmploymentService {
@@ -35,8 +35,11 @@ export class CareerEmploymentService {
                     throw new CareerDomainError("employment_id_conflict", "The employment id is already in use");
                 }
                 return {
+                    employmentClass: existingById.employment_class,
                     employmentId: existingById.employment_id,
-                    seatNumber: existingById.seat_number,
+                    seatNumber: existingById.employment_class === "staff"
+                        ? existingById.seat_number
+                        : null,
                 };
             }
             const existingEmployment = this.#database
@@ -47,7 +50,7 @@ export class CareerEmploymentService {
             }
             const seats = new Set(this.#database
                 .prepare(`SELECT seat_number FROM career_employments
-               WHERE institution = ? AND status = 'active'`)
+               WHERE institution = ? AND status = 'active' AND employment_class = 'staff'`)
                 .all(input.institution).map((row) => row.seat_number));
             let seatNumber = null;
             for (let candidate = 1; candidate <= INSTITUTION_SEAT_LIMIT; candidate += 1) {
@@ -56,16 +59,19 @@ export class CareerEmploymentService {
                     break;
                 }
             }
-            if (seatNumber === null) {
-                throw new CareerDomainError("institution_full", "The institution has no open seat");
-            }
+            const employmentClass = seatNumber === null ? "external" : "staff";
+            const storedSeatNumber = seatNumber ?? 1;
             this.#database
                 .prepare(`INSERT INTO career_employments (
              employment_id, resident_id, career, institution, seat_number,
-             status, availability, hired_at
-           ) VALUES (?, ?, ?, ?, ?, 'active', 'available', ?)`)
-                .run(input.employmentId, input.residentId, input.career, input.institution, seatNumber, now);
-            return { employmentId: input.employmentId, seatNumber };
+             employment_class, status, availability, hired_at
+           ) VALUES (?, ?, ?, ?, ?, ?, 'active', 'available', ?)`)
+                .run(input.employmentId, input.residentId, input.career, input.institution, storedSeatNumber, employmentClass, now);
+            return {
+                employmentClass,
+                employmentId: input.employmentId,
+                seatNumber: employmentClass === "staff" ? storedSeatNumber : null,
+            };
         });
     }
     setAvailability(employmentId, availability) {
@@ -81,6 +87,9 @@ export class CareerEmploymentService {
             if (availability !== "available") {
                 this.#invalidateDutyDays(employmentId, beijingDate(now), now);
             }
+            else {
+                this.#fillStaffVacancies(employment.institution, now);
+            }
         });
     }
     endEmployment(employmentId) {
@@ -93,6 +102,8 @@ export class CareerEmploymentService {
                 .prepare(`UPDATE career_employments SET status = 'ended', ended_at = ? WHERE employment_id = ?`)
                 .run(now, employmentId);
             this.#invalidateDutyDays(employmentId, beijingDate(now), now);
+            if (employment.employment_class === "staff")
+                this.#fillStaffVacancies(employment.institution, now);
         });
     }
     generateNextDutyDays() {
@@ -118,9 +129,10 @@ export class CareerEmploymentService {
                         this.#database
                             .prepare(`UPDATE career_duty_days
                  SET status = 'scheduled', qualification_level = ?, base_wage_gold = ?,
+                     performance_rate_bps = ?,
                      generated_at = ?, invalidated_at = NULL
                  WHERE duty_id = ?`)
-                            .run(level, BASE_WAGE_GOLD[level], now, existing.duty_id);
+                            .run(level, BASE_WAGE_GOLD[level], EMPLOYMENT_PERFORMANCE_RATE_BPS[employment.employment_class], now, existing.duty_id);
                     }
                     result.push({
                         dutyDate,
@@ -136,9 +148,9 @@ export class CareerEmploymentService {
                 this.#database
                     .prepare(`INSERT INTO career_duty_days (
                duty_id, employment_id, resident_id, career, institution, duty_date,
-               qualification_level, base_wage_gold, status, generated_at
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?)`)
-                    .run(dutyId, employment.employment_id, employment.resident_id, employment.career, employment.institution, dutyDate, level, BASE_WAGE_GOLD[level], now);
+               qualification_level, base_wage_gold, performance_rate_bps, status, generated_at
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?)`)
+                    .run(dutyId, employment.employment_id, employment.resident_id, employment.career, employment.institution, dutyDate, level, BASE_WAGE_GOLD[level], EMPLOYMENT_PERFORMANCE_RATE_BPS[employment.employment_class], now);
                 result.push({ dutyDate, dutyId, residentId: employment.resident_id });
             }
             return result;
@@ -208,14 +220,16 @@ export class CareerEmploymentService {
         const windowStart = beijingTimestamp(duty.duty_date, 0);
         const windowEnd = beijingTimestamp(addBeijingDays(duty.duty_date, 1), 0);
         const work = this.#database
-            .prepare(`SELECT COALESCE(SUM(w.performance_units), 0) AS units
+            .prepare(`SELECT COALESCE(SUM(w.performance_units), 0) AS units,
+             COALESCE(SUM(w.performance_units * w.performance_rate_bps), 0) AS weighted_units_bps
          FROM career_work_records w
          JOIN career_jobs j ON j.job_id = w.job_id
          WHERE w.resident_id = ? AND w.career = ? AND w.record_kind = 'completed'
            AND j.ended_at >= ? AND j.ended_at < ?`)
             .get(duty.resident_id, duty.career, windowStart, windowEnd);
         const performanceUnits = work.units;
-        const performanceGold = performanceUnits * PERFORMANCE_PAY_GOLD[duty.qualification_level];
+        const performanceGold = work.weighted_units_bps *
+            PERFORMANCE_PAY_GOLD[duty.qualification_level] / 10_000;
         return {
             dutyId: duty.duty_id,
             residentId: duty.resident_id,
@@ -231,6 +245,43 @@ export class CareerEmploymentService {
          SET status = 'invalidated', invalidated_at = ?
          WHERE employment_id = ? AND duty_date >= ? AND status = 'scheduled'`)
             .run(now, employmentId, fromDate);
+    }
+    #fillStaffVacancies(institution, now) {
+        const occupied = new Set(this.#database
+            .prepare(`SELECT seat_number FROM career_employments
+              WHERE institution = ? AND status = 'active' AND employment_class = 'staff'`)
+            .all(institution)
+            .map((row) => row.seat_number));
+        const vacancies = [];
+        for (let seat = 1; seat <= INSTITUTION_SEAT_LIMIT; seat += 1) {
+            if (!occupied.has(seat))
+                vacancies.push(seat);
+        }
+        if (vacancies.length === 0)
+            return [];
+        const candidates = this.#database
+            .prepare(`SELECT employment_id FROM career_employments
+              WHERE institution = ? AND status = 'active'
+                AND availability = 'available' AND employment_class = 'external'
+              ORDER BY hired_at, employment_id`)
+            .all(institution)
+            .slice(0, vacancies.length);
+        const promoted = [];
+        for (const [index, candidate] of candidates.entries()) {
+            const seatNumber = vacancies[index];
+            this.#database
+                .prepare(`UPDATE career_employments
+                  SET employment_class = 'staff', seat_number = ?
+                  WHERE employment_id = ?`)
+                .run(seatNumber, candidate.employment_id);
+            this.#database
+                .prepare(`UPDATE career_duty_days
+                  SET performance_rate_bps = 10000
+                  WHERE employment_id = ? AND status = 'scheduled' AND duty_date >= ?`)
+                .run(candidate.employment_id, beijingDate(now));
+            promoted.push({ employmentId: candidate.employment_id, seatNumber });
+        }
+        return promoted;
     }
     #requireEmployment(employmentId) {
         const employment = this.#database

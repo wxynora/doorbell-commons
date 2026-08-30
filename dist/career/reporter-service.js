@@ -348,6 +348,61 @@ function activeReporterQualification(database, residentId, now) {
     return level(row.qualification_level, "qualification_level");
 }
 
+function normalizedSectionName(value) {
+    const name = identifier(value, "section_name");
+    return { name, normalizedName: name.normalize("NFKC").toLocaleLowerCase("zh-CN") };
+}
+
+function mapSection(row) {
+    return {
+        sectionId: row.section_id,
+        residentId: row.resident_id,
+        name: row.name,
+        status: row.status,
+        createdAt: row.created_at,
+    };
+}
+
+export function listReporterSections(database) {
+    installBase(database);
+    return database.prepare(`SELECT * FROM career_reporter_sections
+      WHERE status = 'active' ORDER BY created_at, section_id`).all().map(mapSection);
+}
+
+export function createReporterSection(database, input) {
+    installBase(database);
+    const now = nowOf(input);
+    const residentId = identifier(input?.residentId, "resident_id");
+    const sectionId = identifier(input?.sectionId, "section_id");
+    const { name, normalizedName } = normalizedSectionName(input?.name);
+    return runInTransaction(database, () => {
+        requireResident(database, residentId);
+        if (activeReporterQualification(database, residentId, now) < 3)
+            fail("reporter_section_level_required");
+        const existingById = database.prepare(
+            "SELECT * FROM career_reporter_sections WHERE section_id = ?",
+        ).get(sectionId);
+        if (existingById) {
+            if (existingById.resident_id !== residentId ||
+                existingById.normalized_name !== normalizedName)
+                fail("reporter_section_id_conflict");
+            return mapSection(existingById);
+        }
+        const existingByName = database.prepare(
+            "SELECT * FROM career_reporter_sections WHERE normalized_name = ?",
+        ).get(normalizedName);
+        if (existingByName)
+            fail("reporter_section_name_conflict");
+        database.prepare(`INSERT INTO career_reporter_sections (
+          section_id, resident_id, name, normalized_name, status, created_at
+        ) VALUES (?, ?, ?, ?, 'active', ?)`)
+            .run(sectionId, residentId, name, normalizedName, now);
+        return mapSection(database.prepare(
+            "SELECT * FROM career_reporter_sections WHERE section_id = ?",
+        ).get(sectionId));
+    });
+}
+
 function assertIssueArticleCapacity(database, residentId, issueReference, qualificationLevel) {
     const limit = REPORTER_MAX_ARTICLES_PER_ISSUE[qualificationLevel];
     if (!limit)
@@ -595,6 +650,7 @@ function mapArticle(database, row) {
         version: row.version,
         revisionKind: row.revision_kind,
         parentArticleId: row.parent_article_id,
+        sectionId: row.section_id,
         articleText: row.article_text,
         numericClaims: parseJson(row.numeric_claims_json),
         citations: articleCitations(database, row.article_id),
@@ -627,8 +683,8 @@ function nextArticleVersion(database, jobId) {
     return row.version + 1;
 }
 
-function articlePayloadHash({ articleId, jobId, residentId, packId, version, revisionKind, parentArticleId, articleText, citations, numericClaims }) {
-    return digest(canonicalJson({
+function articlePayloadHash({ articleId, jobId, residentId, packId, version, revisionKind, parentArticleId, sectionId, articleText, citations, numericClaims }) {
+    const payload = {
         articleId,
         jobId,
         residentId,
@@ -639,7 +695,10 @@ function articlePayloadHash({ articleId, jobId, residentId, packId, version, rev
         articleText,
         citations,
         numericClaims,
-    }));
+    };
+    if (sectionId !== null)
+        payload.sectionId = sectionId;
+    return digest(canonicalJson(payload));
 }
 
 function replayArticleByIdempotency(database, input, revisionKind, parentArticleId = null) {
@@ -651,6 +710,9 @@ function replayArticleByIdempotency(database, input, revisionKind, parentArticle
         return null;
     const articleId = identifier(input?.articleId ?? `reporter-article:${input.jobId}:v${existing.version}`, "article_id");
     const articleText = identifier(input?.articleText, "article_text");
+    const sectionId = input?.sectionId === undefined || input.sectionId === null
+        ? null
+        : identifier(input.sectionId, "section_id");
     const citations = normalizeCitations(input?.citations);
     const numericClaims = normalizeNumericClaims(input?.numericClaims);
     const payloadHash = articlePayloadHash({
@@ -661,6 +723,7 @@ function replayArticleByIdempotency(database, input, revisionKind, parentArticle
         version: existing.version,
         revisionKind,
         parentArticleId,
+        sectionId,
         articleText,
         citations,
         numericClaims,
@@ -681,6 +744,16 @@ function insertArticle(database, input) {
     if (job.decision_count < 1)
         fail("reporter_source_check_required");
     const articleText = identifier(input.articleText, "article_text");
+    const sectionId = input.sectionId === undefined || input.sectionId === null
+        ? null
+        : identifier(input.sectionId, "section_id");
+    if (sectionId) {
+        const section = database.prepare(
+            "SELECT 1 FROM career_reporter_sections WHERE section_id = ? AND status = 'active'",
+        ).get(sectionId);
+        if (!section)
+            fail("reporter_section_not_found");
+    }
     const citations = normalizeCitations(input.citations);
     const numericClaims = normalizeNumericClaims(input.numericClaims);
     validateArticlePayload(database, pack, citations, numericClaims, now);
@@ -700,6 +773,7 @@ function insertArticle(database, input) {
         version: input.version,
         revisionKind: input.revisionKind,
         parentArticleId: input.parentArticleId,
+        sectionId,
         articleText,
         citations,
         numericClaims,
@@ -728,11 +802,11 @@ function insertArticle(database, input) {
     database.prepare(`
       INSERT INTO career_reporter_articles (
         article_id, job_id, resident_id, pack_id, version, revision_kind,
-        parent_article_id, article_text, numeric_claims_json, payload_hash,
+        parent_article_id, section_id, article_text, numeric_claims_json, payload_hash,
         idempotency_key, status, submitted_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_review', ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_review', ?)
     `).run(articleId, input.jobId, input.residentId, pack.pack_id, input.version,
-        input.revisionKind, input.parentArticleId, articleText,
+        input.revisionKind, input.parentArticleId, sectionId, articleText,
         canonicalJson(numericClaims), payloadHash, idempotencyKey, now);
     const insertCitation = database.prepare(`
       INSERT INTO career_reporter_article_citations (
@@ -940,6 +1014,160 @@ function latestPublication(database, jobId) {
     `).get(jobId);
 }
 
+function publicationLikeRef(publicationId) {
+    return `daily_like_${digest(publicationId).slice(0, 24)}`;
+}
+
+function publicationByLikeRef(database, likeRef) {
+    const normalized = identifier(likeRef, "like_ref");
+    const rows = database.prepare(
+        "SELECT * FROM career_reporter_publications ORDER BY publication_id",
+    ).all();
+    const matches = rows.filter((row) => publicationLikeRef(row.publication_id) === normalized);
+    if (matches.length !== 1)
+        fail("reporter_publication_not_found");
+    return matches[0];
+}
+
+function validLikeCount(database, jobId) {
+    const resident = database.prepare(`SELECT COUNT(*) AS count
+      FROM career_reporter_publication_likes WHERE job_id = ?`).get(jobId).count;
+    const human = database.prepare(`SELECT COUNT(*) AS count
+      FROM career_reporter_human_likes WHERE job_id = ?`).get(jobId).count;
+    return resident + human;
+}
+
+export function listReporterPublicationsForHuman(database, input) {
+    installBase(database);
+    const now = nowOf(input);
+    const humanActorKey = identifier(input?.humanActorKey, "human_actor_key");
+    const relatedResidentIds = new Set(asArray(input?.relatedResidentIds, "related_resident_ids")
+        .map((value) => identifier(value, "related_resident_id")));
+    const publications = database.prepare(`SELECT publication.*, article.article_text,
+        article.section_id, section.name AS section_name
+      FROM career_reporter_publications publication
+      JOIN career_reporter_articles article ON article.article_id = publication.article_id
+      LEFT JOIN career_reporter_sections section ON section.section_id = article.section_id
+      WHERE publication.publication_id = (
+        SELECT latest.publication_id FROM career_reporter_publications latest
+        WHERE latest.job_id = publication.job_id
+        ORDER BY latest.article_version DESC LIMIT 1
+      )
+      ORDER BY publication.published_at DESC, publication.publication_id`).all();
+    return publications.map((publication) => {
+        const hasLiked = Boolean(database.prepare(`SELECT 1 FROM career_reporter_human_likes
+          WHERE job_id = ? AND human_actor_key = ?`).get(publication.job_id, humanActorKey));
+        const ownHousehold = relatedResidentIds.has(publication.resident_id);
+        const open = publication.status === "open" &&
+            now >= publication.evaluation_opens_at && now < publication.evaluation_closes_at;
+        return {
+            likeRef: publicationLikeRef(publication.publication_id),
+            authorResidentId: publication.resident_id,
+            articleText: publication.article_text,
+            sectionName: publication.section_name,
+            publishedAt: publication.published_at,
+            evaluationClosesAt: publication.evaluation_closes_at,
+            validLikes: validLikeCount(database, publication.job_id),
+            hasLiked,
+            canLike: open && !hasLiked && !ownHousehold,
+            ownHousehold,
+            status: open ? "open" : "closed",
+        };
+    });
+}
+
+export function listReporterPublicationsForResident(database, input) {
+    installBase(database);
+    const now = nowOf(input);
+    const residentId = identifier(input?.residentId, "resident_id");
+    return database.prepare(`SELECT publication.*, article.article_text,
+        section.name AS section_name
+      FROM career_reporter_publications publication
+      JOIN career_reporter_articles article ON article.article_id = publication.article_id
+      LEFT JOIN career_reporter_sections section ON section.section_id = article.section_id
+      WHERE publication.publication_id = (
+        SELECT latest.publication_id FROM career_reporter_publications latest
+        WHERE latest.job_id = publication.job_id
+        ORDER BY latest.article_version DESC LIMIT 1
+      )
+      ORDER BY publication.published_at DESC, publication.publication_id`).all().map((publication) => {
+        const hasLiked = Boolean(database.prepare(`SELECT 1
+          FROM career_reporter_publication_likes
+          WHERE job_id = ? AND resident_id = ?`).get(publication.job_id, residentId));
+        const ownArticle = publication.resident_id === residentId;
+        const open = publication.status === "open" &&
+            now >= publication.evaluation_opens_at && now < publication.evaluation_closes_at;
+        return {
+            publicationId: publication.publication_id,
+            authorResidentId: publication.resident_id,
+            articleText: publication.article_text,
+            sectionName: publication.section_name,
+            publishedAt: publication.published_at,
+            evaluationClosesAt: publication.evaluation_closes_at,
+            validLikes: validLikeCount(database, publication.job_id),
+            hasLiked,
+            canLike: open && !hasLiked && !ownArticle,
+            ownArticle,
+            status: open ? "open" : "closed",
+        };
+    });
+}
+
+export function recordReporterHumanLike(database, input) {
+    installBase(database);
+    const now = nowOf(input);
+    const humanActorKey = identifier(input?.humanActorKey, "human_actor_key");
+    const viaResidentId = identifier(input?.viaResidentId, "via_resident_id");
+    const relatedResidentIds = new Set(asArray(input?.relatedResidentIds, "related_resident_ids")
+        .map((value) => identifier(value, "related_resident_id")));
+    if (!relatedResidentIds.has(viaResidentId))
+        fail("reporter_human_actor_mismatch");
+    return runInTransaction(database, () => {
+        requireResident(database, viaResidentId);
+        const publication = publicationByLikeRef(database, input?.likeRef);
+        if (relatedResidentIds.has(publication.resident_id))
+            fail("reporter_author_like_forbidden");
+        const existing = database.prepare(`SELECT publication_id
+          FROM career_reporter_human_likes
+          WHERE job_id = ? AND human_actor_key = ?`)
+            .get(publication.job_id, humanActorKey);
+        if (existing) {
+            return {
+                accepted: false,
+                duplicate: true,
+                likeRef: publicationLikeRef(existing.publication_id),
+                validLikes: validLikeCount(database, publication.job_id),
+            };
+        }
+        if (publication.status !== "open" || now < publication.evaluation_opens_at ||
+            now >= publication.evaluation_closes_at)
+            fail("reporter_evaluation_window_closed");
+        database.prepare(`INSERT INTO career_reporter_human_likes (
+          job_id, publication_id, human_actor_key, via_resident_id, liked_at
+        ) VALUES (?, ?, ?, ?, ?)`)
+            .run(publication.job_id, publication.publication_id, humanActorKey,
+                viaResidentId, now);
+        return {
+            accepted: true,
+            duplicate: false,
+            likeRef: publicationLikeRef(publication.publication_id),
+            validLikes: validLikeCount(database, publication.job_id),
+        };
+    });
+}
+
+export function dueReporterEvaluationJobIds(database, now = Date.now()) {
+    installBase(database);
+    return database.prepare(`SELECT DISTINCT publication.job_id
+      FROM career_reporter_publications publication
+      WHERE publication.evaluation_closes_at <= ?
+        AND NOT EXISTS (
+          SELECT 1 FROM career_reporter_evaluation_settlements settlement
+          WHERE settlement.job_id = publication.job_id
+        )
+      ORDER BY publication.job_id`).all(now).map((row) => row.job_id);
+}
+
 export function publishReporterArticle(database, input) {
     installBase(database);
     const now = nowOf(input);
@@ -1039,7 +1267,7 @@ export function recordReporterLike(database, input) {
 }
 
 function performanceUnitsForLikes(validLikes) {
-    if (validLikes >= 30)
+    if (validLikes >= 20)
         return 3;
     if (validLikes >= 15)
         return 2;
@@ -1081,17 +1309,15 @@ export function quoteReporterEvaluation(database, input) {
         if (job.status !== "completed")
             fail("reporter_job_not_completed");
         const work = database.prepare(`
-          SELECT qualification_level FROM career_work_records
+          SELECT qualification_level, performance_rate_bps FROM career_work_records
           WHERE job_id = ? AND resident_id = ? AND record_kind = 'completed'
         `).get(jobId, job.worker_resident_id);
         if (!work)
             fail("reporter_work_record_missing");
-        const validLikes = database.prepare(`
-          SELECT COUNT(*) AS count FROM career_reporter_publication_likes
-          WHERE job_id = ? AND actor_kind = 'resident'
-        `).get(jobId).count;
+        const validLikes = validLikeCount(database, jobId);
         const performanceUnits = performanceUnitsForLikes(validLikes);
-        const performanceGold = performanceUnits * PERFORMANCE_PAY_GOLD[work.qualification_level];
+        const performanceGold = performanceUnits * PERFORMANCE_PAY_GOLD[work.qualification_level] *
+            work.performance_rate_bps / 10_000;
         const sourceReference = `reporter:evaluation:${jobId}`;
         const idempotencyKey = sourceReference;
         const quote = {

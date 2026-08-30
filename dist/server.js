@@ -665,6 +665,7 @@ function maintenanceOut(req, res, parts, method) {
 }
 export function startServer(port, host = "127.0.0.1") {
     const lingyeWorldDatabase = openLingyeWorldDatabase();
+    let rescheduleReporterEvaluation = () => {};
     activeLingyeWorldDatabase = lingyeWorldDatabase;
     const lingyeEconomyRules = Object.freeze({
         minimumSystemLoanCreditDays: 7,
@@ -685,6 +686,7 @@ export function startServer(port, host = "127.0.0.1") {
             useFarmStore: true,
         },
         constableInterviewBank: loadConstableInterviewBank(),
+        onReporterPublication: () => rescheduleReporterEvaluation(),
     });
     activeLingyeWorldBackend = lingyeWorldBackend;
     const balanceCoordinator = createLingyeFarmBalanceCoordinator(lingyeWorldDatabase, lingyeWorldBackend);
@@ -720,6 +722,7 @@ export function startServer(port, host = "127.0.0.1") {
             const operation = () => withWorldCommitContext({ balanceAuthority: "ledger", actor: "human" }, () => {
                 const result = rawLingyeActionExecutor.execute(input);
                 syncLedgerProjection();
+                rescheduleReporterEvaluation();
                 return result;
             });
             return input.op.startsWith("go.bank.") || input.op.startsWith("go.school.")
@@ -755,6 +758,37 @@ export function startServer(port, host = "127.0.0.1") {
         employmentTimer.unref();
     };
     scheduleEmploymentCycle();
+    let reporterEvaluationTimer;
+    let reporterEvaluationStopped = false;
+    const runReporterEvaluationCycle = () =>
+        withWorldCommitContext({ balanceAuthority: "ledger", actor: "system" }, () => {
+            const settled = lingyeWorldBackend.trustedSystemCommands.settleDueReporterEvaluations();
+            syncLedgerProjection();
+            return settled;
+        });
+    const scheduleReporterEvaluationCycle = () => {
+        if (reporterEvaluationStopped)
+            return;
+        if (reporterEvaluationTimer)
+            clearTimeout(reporterEvaluationTimer);
+        reporterEvaluationTimer = undefined;
+        const dueAt = lingyeWorldBackend.trustedQueries.nextReporterEvaluationDueAt();
+        if (dueAt === null)
+            return;
+        reporterEvaluationTimer = setTimeout(() => {
+            try {
+                runReporterEvaluationCycle();
+            }
+            catch {
+                console.error("[lingye-reporter] evaluation settlement failed");
+            }
+            scheduleReporterEvaluationCycle();
+        }, Math.max(0, dueAt - Date.now()));
+        reporterEvaluationTimer.unref();
+    };
+    rescheduleReporterEvaluation = scheduleReporterEvaluationCycle;
+    runReporterEvaluationCycle();
+    scheduleReporterEvaluationCycle();
     const doorbellCareerBenefitsForFarm = (farm) =>
         farmDoorbellKitchenCareerBenefits(lingyeWorldDatabase, lingyeWorldBackend, farm);
     const handleDoorbellInternal = createDoorbellInternalHandler(
@@ -989,6 +1023,9 @@ export function startServer(port, host = "127.0.0.1") {
         employmentStopped = true;
         if (employmentTimer)
             clearTimeout(employmentTimer);
+        reporterEvaluationStopped = true;
+        if (reporterEvaluationTimer)
+            clearTimeout(reporterEvaluationTimer);
         setWorldCommitCoordinator(null);
         if (activeLingyeWorldDatabase === lingyeWorldDatabase)
             activeLingyeWorldDatabase = null;

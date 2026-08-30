@@ -35,6 +35,17 @@ export const BASE_WAGE_GOLD = {
     3: 8_000,
     4: 12_000,
 };
+export const CAREER_TITLES = Object.freeze({
+    chef: Object.freeze({ 1: "见习料理师", 2: "料理师", 3: "主厨", 4: "总厨" }),
+    agronomist: Object.freeze({ 1: "农艺助理", 2: "农艺师", 3: "高级农艺师", 4: "首席农艺师" }),
+    veterinarian: Object.freeze({ 1: "见习兽医", 2: "执业兽医", 3: "主治兽医", 4: "首席兽医" }),
+    reporter: Object.freeze({ 1: "见习记者", 2: "记者", 3: "副主编", 4: "主编" }),
+    constable: Object.freeze({ 1: "见习治安员", 2: "治安官", 3: "高级治安官", 4: "治安署长" }),
+});
+export const EMPLOYMENT_PERFORMANCE_RATE_BPS = Object.freeze({
+    staff: 10_000,
+    external: 5_000,
+});
 export const PERFORMANCE_PAY_GOLD = {
     1: 1_000,
     2: 2_500,

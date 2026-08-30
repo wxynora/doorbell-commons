@@ -46,10 +46,30 @@ import {
     handleDoorbellHumanConstableInterviewAction,
     handleDoorbellHumanConstableInterviewRead,
 } from "./constable-interview.js";
+import {
+    handleDoorbellHumanReporterLike,
+    handleDoorbellHumanReporterRead,
+} from "./reporter.js";
 import { humanFieldError, internalServiceError } from "./contract.js";
 
 export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExecutor, careerBenefitsForFarm, constableInterviewRuntime) {
     return async function handleDoorbellInternal(req, res, parts, method) {
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "reporter" && parts[4] === "read" && parts.length === 5) {
+            if (!constableInterviewRuntime?.database || !constableInterviewRuntime?.backend) {
+                humanFieldError(res, 503, "farm_unavailable", "The reporter service is unavailable");
+                return true;
+            }
+            await handleDoorbellHumanReporterRead(req, res, method, constableInterviewRuntime);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "reporter" && parts[4] === "like" && parts.length === 5) {
+            if (!constableInterviewRuntime?.database || !constableInterviewRuntime?.backend) {
+                humanFieldError(res, 503, "farm_unavailable", "The reporter service is unavailable");
+                return true;
+            }
+            await handleDoorbellHumanReporterLike(req, res, method, constableInterviewRuntime);
+            return true;
+        }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "constable" && parts[4] === "interview" && parts[5] === "read" && parts.length === 6) {
             if (!constableInterviewRuntime?.database || !constableInterviewRuntime?.backend) {
                 humanFieldError(res, 503, "farm_unavailable", "The constable interview service is unavailable");

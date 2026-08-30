@@ -3,6 +3,7 @@ import {
     CareerDomainError,
     CAREER_IDS,
     CAREER_INSTITUTION,
+    CAREER_TITLES,
     COURSE_TUITION_GOLD,
     EXAM_FEE_GOLD,
     EXAM_PASS_COUNT,
@@ -307,6 +308,9 @@ const COMMISSION_OPTION_LABELS = Object.freeze([
     ["treat", "执行处理／治疗"],
     ["transfer", "转交委托"],
     ["submit", "提交工作结果"],
+    ["section-create", "开设新的日报板块"],
+    ["submit-section", "向指定日报板块提交稿件"],
+    ["like", "为已出版稿件点赞"],
     ["resolve", "提交治安处理结果"],
     ["npc", "委托机构 NPC 处理"],
 ]);
@@ -329,6 +333,9 @@ function internalOptionLabel(internalOption) {
         return `${SCHOOL_OPTION_LABELS[school] ?? "办理职业学校业务"}${career ? `：${CAREER_LABELS[career]}` : ""}`;
     }
     if (internalOption.startsWith("commission:")) {
+        const sectionSubmit = /^commission:submit-section:[^:]+:[^:]+:(.+)$/u.exec(internalOption);
+        if (sectionSubmit)
+            return `向日报板块「${decodeURIComponent(sectionSubmit[1])}」提交稿件`;
         const action = internalOption.slice("commission:".length);
         return COMMISSION_OPTION_LABELS.find(([prefix]) => action === prefix || action.startsWith(`${prefix}:`))?.[1]
             ?? "推进委托";
@@ -862,20 +869,48 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
              issued_at, effective_at
       FROM career_certificates WHERE resident_id = ?
       ORDER BY career, qualification_level
-    `).all(residentId));
+    `).all(residentId)).map((certificate) => ({
+        ...certificate,
+        title: CAREER_TITLES[certificate.career]?.[certificate.qualificationLevel] ?? null,
+    }));
     const employment = mapRows(database.prepare(`
-      SELECT employment_id, career, institution, seat_number, status,
+      SELECT employment_id, career, institution, seat_number, employment_class, status,
              availability, hired_at, ended_at
       FROM career_employments WHERE resident_id = ?
       ORDER BY hired_at DESC, employment_id
-    `).all(residentId));
+    `).all(residentId)).map((record) => {
+        const activeLevel = Math.max(0, ...certificates
+            .filter((certificate) => certificate.career === record.career &&
+                certificate.status === "active")
+            .map((certificate) => certificate.qualificationLevel));
+        return {
+            ...record,
+            seatNumber: record.employmentClass === "staff" ? record.seatNumber : null,
+            title: CAREER_TITLES[record.career]?.[activeLevel] ?? null,
+        };
+    });
     const duties = mapRows(database.prepare(`
       SELECT duty_id, employment_id, career, institution, duty_date,
              qualification_level, base_wage_gold, status, performance_units,
-             performance_gold, generated_at, settled_at
+             performance_gold, performance_rate_bps, generated_at, settled_at
       FROM career_duty_days WHERE resident_id = ?
       ORDER BY duty_date DESC, duty_id
     `).all(residentId));
+    const institutionStaffing = ["reporter", "veterinarian", "constable"].map((career) => {
+        const institution = CAREER_INSTITUTION[career];
+        const counts = database.prepare(`SELECT
+            SUM(CASE WHEN employment_class = 'staff' THEN 1 ELSE 0 END) AS staff_count,
+            SUM(CASE WHEN employment_class = 'external' THEN 1 ELSE 0 END) AS external_count
+          FROM career_employments
+          WHERE institution = ? AND status = 'active'`).get(institution);
+        return {
+            career,
+            institution,
+            staffCapacity: 2,
+            staffCount: counts.staff_count ?? 0,
+            externalCount: counts.external_count ?? 0,
+        };
+    });
     const constable = constableInterviewFacts(database, residentId, optionRevision);
     const options = [...constable.options];
     if (tracks.length === 0) {
@@ -949,13 +984,7 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
                 certificate.qualificationLevel >= 1 && certificate.status === "active");
             if (!qualified)
                 continue;
-            const institution = CAREER_INSTITUTION[career];
-            const occupied = database.prepare(`
-              SELECT COUNT(*) AS count FROM career_employments
-              WHERE institution = ? AND status = 'active'
-            `).get(institution).count;
-            if (occupied < 2)
-                options.push(option(schoolOption(optionRevision, "employment-hire", career)));
+            options.push(option(schoolOption(optionRevision, "employment-hire", career)));
         }
     }
     else {
@@ -976,7 +1005,7 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
             startHour: EXAM_SESSION_START_HOUR,
             durationMinutes: EXAM_SESSION_DURATION_MS / (60 * 1_000),
         },
-        employment: { records: employment, duties },
+        employment: { institutions: institutionStaffing, records: employment, duties },
         interviews: constable.interviews,
         publicNotices: constable.publicNotices,
         options,
@@ -1252,11 +1281,16 @@ function schoolChoose(database, backend, residentId, now, args) {
             if (Object.hasOwn(args, "answers"))
                 throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "任职操作不接收答案。");
             const career = hireMatch[2];
-            result = backend.trustedSystemCommands.hireResident({
+            result = {
+                ...backend.trustedSystemCommands.hireResident({
                 residentId,
                 career,
                 institution: CAREER_INSTITUTION[career],
-            });
+                }),
+                career,
+                institution: CAREER_INSTITUTION[career],
+                title: CAREER_TITLES[career]?.[qualificationLevel(database, residentId, career)] ?? null,
+            };
         }
         else if (availabilityMatch) {
             if (Object.hasOwn(args, "answers"))
@@ -1561,13 +1595,20 @@ function commissionOptions(database, backend, rows, residentId, sources) {
             ["accepted", "assigned", "active"].includes(job.status)) {
             options.push(option(`commission:reply:${job.jobId}`, ["text"]));
         }
-        for (const value of workerOptions(
+        const currentWorkerOptions = workerOptions(
             job,
             residentId,
             qualificationLevel(database, residentId, job.career),
-        )) {
+        );
+        for (const value of currentWorkerOptions) {
             const requires = value.includes(":submit:") || value.includes(":resolve:") ? ["text"] : [];
             options.push(option(value, requires));
+        }
+        if (job.career === "reporter" &&
+            currentWorkerOptions.some((value) => value.includes(":submit:"))) {
+            for (const section of backend.trustedQueries.listReporterSections()) {
+                options.push(option(`commission:submit-section:${encodeURIComponent(job.jobId)}:${encodeURIComponent(section.sectionId)}:${encodeURIComponent(section.name)}`, ["text"]));
+            }
         }
     }
     return options;
@@ -1580,6 +1621,16 @@ function commissionView(database, backend, residentId, career, args, sources) {
         : rows.filter((row) => row.job_id === args.reference);
     if (args.reference !== undefined && selected.length === 0)
         throw new LingyeBusinessError("REFERENCE_NOT_FOUND", "没有找到这条真实委托。");
+    const options = commissionOptions(database, backend, selected, residentId,
+        sources.filter((source) => source.career === career));
+    if (career === "reporter" && qualificationLevel(database, residentId, career) >= 3)
+        options.unshift(option("commission:section-create", ["text"]));
+    const reporterPublications = career === "reporter"
+        ? backend.trustedQueries.listReporterPublicationsForResident({ residentId })
+        : [];
+    for (const publication of reporterPublications.filter((entry) => entry.canLike)) {
+        options.push(option(`commission:like:${encodeURIComponent(publication.publicationId)}`));
+    }
     return success("已读取当前真实委托。", {
         jobs: mapRows(selected).map((job, index) => ({
             ...job,
@@ -1589,7 +1640,21 @@ function commissionView(database, backend, residentId, career, args, sources) {
         sources: sources
             .filter((source) => source.career === career)
             .map(publicCommissionSource),
-        options: commissionOptions(database, backend, selected, residentId, sources.filter((source) => source.career === career)),
+        ...(career === "reporter"
+            ? {
+                sections: backend.trustedQueries.listReporterSections(),
+                publications: reporterPublications.map((publication) => {
+                    const { publicationId, authorResidentId, ...facts } = publication;
+                    return {
+                        ...facts,
+                        author: authorResidentId === residentId
+                            ? { kind: "self" }
+                            : { kind: "resident", farm: publicFarmForResident(database, authorResidentId) },
+                    };
+                }),
+            }
+            : {}),
+        options,
     });
 }
 
@@ -1855,7 +1920,7 @@ function resolveSecurity(database, backend, residentId, job, resultKind, args, n
     });
 }
 
-function submitReporter(database, backend, residentId, job, args, now) {
+function submitReporter(database, backend, residentId, job, args, now, sectionId = null) {
     if (job.decisionCount < 1)
         throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这份稿件尚未完成来源核对。");
     const submissionKey = idempotencyKey(residentId, `commission:${job.jobId}:submit`, args);
@@ -1870,6 +1935,7 @@ function submitReporter(database, backend, residentId, job, args, now) {
         articleId: `reporter-article:${job.jobId}:v1`,
         idempotencyKey: submissionKey,
         articleText: args.text,
+        sectionId,
         citations,
         numericClaims: [],
     });
@@ -1937,8 +2003,48 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
         residentId,
         sources.filter((source) => source.career === career),
     );
+    if (career === "reporter" && qualificationLevel(database, residentId, career) >= 3)
+        currentOptions.unshift(option("commission:section-create", ["text"]));
+    if (career === "reporter") {
+        for (const publication of backend.trustedQueries
+            .listReporterPublicationsForResident({ residentId })
+            .filter((entry) => entry.canLike)) {
+            currentOptions.push(option(`commission:like:${encodeURIComponent(publication.publicationId)}`));
+        }
+    }
     if (!currentOptions.some((entry) => entry.option === args.option))
         throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托 option 当前不可用。");
+    if (args.option === "commission:section-create") {
+        if (args.amount !== undefined || typeof args.text !== "string")
+            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "创建日报板块需要填写板块名称。");
+        const actionKey = idempotencyKey(residentId, "commission:section-create", args);
+        const section = backend.forResident(residentId).createReporterSection({
+            sectionId: `reporter-section:${actionKey.slice(-32)}`,
+            name: args.text,
+        });
+        return success(`已开设日报板块「${section.name}」。现在可以向该板块投稿，具体稿件仍须经过日报社审核。`, {
+            section,
+            sections: backend.trustedQueries.listReporterSections(),
+            options: commissionOptions(database, backend,
+                visibleCommissionRows(database, residentId, career), residentId, sources),
+        });
+    }
+    const reporterLike = /^commission:like:(.+)$/u.exec(args.option);
+    if (reporterLike) {
+        if (career !== "reporter" || args.amount !== undefined || args.text !== undefined)
+            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个点赞 option 当前不可用。");
+        const result = backend.forResident(residentId).recordReporterLike({
+            publicationId: decodeURIComponent(reporterLike[1]),
+        });
+        return success("已为这篇日报稿件点赞。", {
+            accepted: result.accepted,
+            duplicate: result.duplicate,
+            validLikes: backend.trustedQueries
+                .listReporterPublicationsForResident({ residentId })
+                .find((publication) => publication.publicationId ===
+                    decodeURIComponent(reporterLike[1]))?.validLikes ?? null,
+        });
+    }
     const npcTransfer = /^commission:npc-transfer:(.+)$/u.exec(args.option);
     if (npcTransfer) {
         if (args.amount !== undefined || args.text !== undefined)
@@ -2013,6 +2119,23 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
             throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托 option 当前不可用。");
         const result = bindCommission(database, backend, residentId, job, idempotencyKey(residentId, "commission:bind", args));
         return success("委托已接取。", { result, jobs: mapRows(visibleCommissionRows(database, residentId, career)), options: [] });
+    }
+    const sectionSubmit = /^commission:submit-section:([^:]+):([^:]+):(.+)$/u.exec(args.option);
+    if (sectionSubmit) {
+        if (career !== "reporter" || args.amount !== undefined || typeof args.text !== "string")
+            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这份稿件当前不可提交。");
+        const job = commissionJob(database, backend, decodeURIComponent(sectionSubmit[1]), career);
+        if (job.workerResidentId !== residentId)
+            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托不属于当前从业者。");
+        return success("稿件已进入审核前状态。", submitReporter(
+            database,
+            backend,
+            residentId,
+            job,
+            args,
+            now,
+            decodeURIComponent(sectionSubmit[2]),
+        ));
     }
     const actionWithValue = /^commission:(check|treat|resolve):(.+):([^:]+)$/u.exec(args.option);
     const actionWithoutValue = /^commission:(transfer|cancel|submit|reply):(.+)$/u.exec(args.option);
