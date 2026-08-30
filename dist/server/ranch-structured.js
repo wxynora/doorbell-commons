@@ -231,6 +231,7 @@ const RESIDENT_ACTION_NAMES = [
   "wear_accessory",
   "takeoff_accessory",
   "set_variant",
+  "dispatch",
 ];
 
 function actionCost(currency = null, amount = null) {
@@ -495,7 +496,71 @@ function projectSetVariantAction(variants, known) {
     : allowedAction(false, actionCost(), "没有可切换的异色外观");
 }
 
-function projectResidentAllowedActions(farm, type, raw, kind, index, now, pinned, variants, known) {
+export function ranchDispatchHealthReason(raw) {
+  switch (raw?.lingyeHealth?.status) {
+    case "open":
+      return "这只动物有待处理的健康问题，暂时不能派遣";
+    case "treating":
+      return "这只动物正在治疗中，暂时不能派遣";
+    case "recovering":
+      return "这只动物正在恢复中，暂时不能派遣";
+    default:
+      return null;
+  }
+}
+
+function projectResidentHealth(type, raw, known) {
+  if (!known || !isRecord(raw)) return { status: "unavailable", label: "健康状态不可用" };
+  if (type !== "animal") return { status: "healthy", label: "健康" };
+  switch (raw.lingyeHealth?.status) {
+    case "open":
+      return { status: "open", label: "需要治疗" };
+    case "treating":
+      return { status: "treating", label: "治疗中" };
+    case "recovering":
+      return { status: "recovering", label: "恢复中" };
+    case undefined:
+    case "resolved":
+      return { status: "healthy", label: "健康" };
+    default:
+      return { status: "unavailable", label: "健康状态不可用" };
+  }
+}
+
+function projectDispatchAction(type, raw, dispatch, known) {
+  if (type !== "animal") {
+    return allowedAction(false, actionCost(), "派遣仅适用于生产动物");
+  }
+  if (!known || !isRecord(raw)) {
+    return allowedAction(false, actionCost(), "居民资料不可用");
+  }
+  if (dispatch?.state === "active") {
+    return allowedAction(false, actionCost(), "这只动物已经在外面潜伏了");
+  }
+  if (dispatch?.state === "pending_settlement") {
+    return allowedAction(false, actionCost(), "这只动物正在等待派遣结算");
+  }
+  if (dispatch?.state === "unavailable") {
+    return allowedAction(false, actionCost(), "派遣状态不可用");
+  }
+  const healthReason = ranchDispatchHealthReason(raw);
+  return healthReason
+    ? allowedAction(false, actionCost(), healthReason)
+    : allowedAction(true, actionCost());
+}
+
+function projectResidentAllowedActions(
+  farm,
+  type,
+  raw,
+  kind,
+  index,
+  now,
+  pinned,
+  variants,
+  dispatch,
+  known,
+) {
   if (!known) return unavailableActions("居民资料不可用");
   return {
     feed: projectFeedAction(farm, type, raw, kind, index, now, known),
@@ -505,6 +570,7 @@ function projectResidentAllowedActions(farm, type, raw, kind, index, now, pinned
     wear_accessory: projectWearAccessoryAction(farm, type, raw, index, known),
     takeoff_accessory: projectTakeoffAccessoryAction(farm, type, raw, index, known),
     set_variant: projectSetVariantAction(variants, known),
+    dispatch: projectDispatchAction(type, raw, dispatch, known),
   };
 }
 
@@ -535,7 +601,19 @@ function projectResident(type, raw, now, raids, pinned, farm, index) {
     pinned: pinnedState,
     accessories,
     variants,
-    allowed_actions: projectResidentAllowedActions(farm, type, raw, kind, index, now, pinned, variants, known),
+    health: projectResidentHealth(type, raw, known),
+    allowed_actions: projectResidentAllowedActions(
+      farm,
+      type,
+      raw,
+      kind,
+      index,
+      now,
+      pinned,
+      variants,
+      dispatch,
+      known,
+    ),
     produce,
     dispatch: dispatch
       ? { state: dispatch.state, raid_id: dispatch.raid_id }

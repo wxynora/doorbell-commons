@@ -6,7 +6,7 @@ import {
   ranchRemit,
 } from "../engine.js";
 import { playerFarms, save } from "../store.js";
-import { projectHumanRanch } from "./ranch-structured.js";
+import { projectHumanRanch, ranchDispatchHealthReason } from "./ranch-structured.js";
 
 const FARM_DOORPLATE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/;
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -356,7 +356,15 @@ export function handleHumanRanchInteractionAction(farm, body, now = Date.now()) 
     return unavailable("The ranch interaction could not be executed");
   }
   if (!authorityResult?.ok) {
-    return errorResponse("action_rejected", authorityResult?.error || "The ranch interaction was rejected", current.revision);
+    const authorityMessage =
+      body.action === "dispatch" && authorityResult?.error === "OP_REJECTED"
+        ? ranchDispatchHealthReason(
+            workingOwner.ranch?.animals?.find(
+              (animal) => animal?.kindId === body.animal_kind_id,
+            ),
+          ) ?? "这只动物当前健康状态不允许派遣"
+        : authorityResult?.error || "The ranch interaction was rejected";
+    return errorResponse("action_rejected", authorityMessage, current.revision);
   }
 
   const outcome = actionResult(body, authorityResult, target);
