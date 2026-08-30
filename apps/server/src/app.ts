@@ -1,5 +1,12 @@
 import {
   additionalHumanProfileRequestSchema,
+  type BellAccessErrorCode,
+  bellAccessErrorMessages,
+  bellAccessErrorSchema,
+  bellAccessMutationBodySchema,
+  bellAccessReadRequestSchema,
+  bellAccessStatusResponseSchema,
+  bellCredentialIssueResponseSchema,
   type BoundConstableInterviewErrorCode,
   type BoundFarmCropCodexActionErrorCode,
   type BoundFarmExpeditionActionErrorCode,
@@ -200,6 +207,11 @@ import Fastify, {
   type FastifyRequest,
 } from "fastify";
 import type { ActivityReminderService } from "./activity-reminder-service.js";
+import {
+  BellAccessInternalContractError,
+  type BellAccessService,
+  BellCredentialNotConfiguredError,
+} from "./bell-access-service.js";
 import {
   BellConnectionEpochMismatchError,
   BellCredentialAuthenticationError,
@@ -507,6 +519,7 @@ export interface BuildAppOptions {
   groupMembership: QqGroupMembershipReader;
   registrationAuth: RegistrationAuthService;
   farmPurchaseRequestService?: FarmPurchaseRequestService;
+  bellAccessService?: BellAccessService;
   bellService?: BellService;
   browserPushService?: BrowserPushService;
   activityReminderService?: Pick<ActivityReminderService, "cancelResident" | "refreshEligibility">;
@@ -795,6 +808,19 @@ function bellControlText(value: unknown): value is string {
 function sendBellError(reply: FastifyReply, statusCode: 400 | 401 | 403 | 409 | 503, code: string) {
   reply.header("cache-control", "no-store");
   return reply.code(statusCode).send({ error: { code } });
+}
+
+function sendBellAccessError(
+  reply: FastifyReply,
+  statusCode: 400 | 401 | 403 | 404 | 405 | 409 | 500 | 503,
+  code: BellAccessErrorCode,
+) {
+  reply.header("cache-control", "no-store");
+  return reply.code(statusCode).send(
+    bellAccessErrorSchema.parse({
+      error: { code, message: bellAccessErrorMessages[code] },
+    }),
+  );
 }
 
 function sendMailboxError(
@@ -1860,6 +1886,142 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       status: "ok",
     }),
   );
+
+  const bellAccessService = options.bellAccessService;
+  if (bellAccessService) {
+    const sendBellAccessFailure = (
+      request: FastifyRequest,
+      reply: FastifyReply,
+      error: unknown,
+    ) => {
+      if (error instanceof AuthenticationRequiredError) {
+        return sendBellAccessError(reply, 401, "authentication_required");
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        return sendBellAccessError(reply, 403, "qq_not_group_member");
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendBellAccessError(reply, 503, "membership_verification_unavailable");
+      }
+      if (error instanceof RegistrationProfileRequiredError) {
+        return sendBellAccessError(reply, 409, "registration_profile_required");
+      }
+      if (error instanceof BellCredentialNotConfiguredError) {
+        return sendBellAccessError(reply, 404, "bell_credential_not_configured");
+      }
+      if (error instanceof BellAccessInternalContractError) {
+        return sendBellAccessError(reply, 500, "internal_contract_error");
+      }
+      request.log.error(
+        { error_name: error instanceof Error ? error.name : "UnknownError" },
+        "Bell access control request failed",
+      );
+      return sendBellAccessError(reply, 500, "internal_contract_error");
+    };
+
+    const bellAccessRouteErrorHandler = (
+      error: FastifyError,
+      request: FastifyRequest,
+      reply: FastifyReply,
+    ): void => {
+      if (error.statusCode === 400) {
+        void sendBellAccessError(reply, 400, "invalid_request");
+        return;
+      }
+      request.log.error({ error_name: error.name }, "Bell access route parsing failed");
+      void sendBellAccessError(reply, 500, "internal_contract_error");
+    };
+
+    app.get(
+      "/api/bell-access",
+      { exposeHeadRoute: false, errorHandler: bellAccessRouteErrorHandler },
+      async (request, reply) => {
+        if (!bellAccessReadRequestSchema.safeParse(request.query).success) {
+          return sendBellAccessError(reply, 400, "invalid_request");
+        }
+        const token = readHumanSessionToken(request.headers.cookie);
+        if (!token) return sendBellAccessError(reply, 401, "authentication_required");
+        try {
+          return reply
+            .code(200)
+            .send(bellAccessStatusResponseSchema.parse(await bellAccessService.getStatus(token)));
+        } catch (error) {
+          return sendBellAccessFailure(request, reply, error);
+        }
+      },
+    );
+
+    app.post(
+      "/api/bell-access/credential",
+      { errorHandler: bellAccessRouteErrorHandler },
+      async (request, reply) => {
+        if (
+          !bellAccessReadRequestSchema.safeParse(request.query).success ||
+          !bellAccessMutationBodySchema.safeParse(request.body).success
+        ) {
+          return sendBellAccessError(reply, 400, "invalid_request");
+        }
+        const token = readHumanSessionToken(request.headers.cookie);
+        if (!token) return sendBellAccessError(reply, 401, "authentication_required");
+        try {
+          return reply
+            .code(200)
+            .send(
+              bellCredentialIssueResponseSchema.parse(
+                await bellAccessService.issueCredential(token),
+              ),
+            );
+        } catch (error) {
+          return sendBellAccessFailure(request, reply, error);
+        }
+      },
+    );
+
+    app.delete(
+      "/api/bell-access/credential",
+      { errorHandler: bellAccessRouteErrorHandler },
+      async (request, reply) => {
+        if (
+          !bellAccessReadRequestSchema.safeParse(request.query).success ||
+          !bellAccessMutationBodySchema.safeParse(request.body).success
+        ) {
+          return sendBellAccessError(reply, 400, "invalid_request");
+        }
+        const token = readHumanSessionToken(request.headers.cookie);
+        if (!token) return sendBellAccessError(reply, 401, "authentication_required");
+        try {
+          return reply
+            .code(200)
+            .send(
+              bellAccessStatusResponseSchema.parse(await bellAccessService.revokeCredential(token)),
+            );
+        } catch (error) {
+          return sendBellAccessFailure(request, reply, error);
+        }
+      },
+    );
+
+    app.route({
+      method: ["DELETE", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"],
+      url: "/api/bell-access",
+      errorHandler: bellAccessRouteErrorHandler,
+      handler: async (_request, reply) => {
+        reply.header("allow", "GET");
+        return sendBellAccessError(reply, 405, "method_not_allowed");
+      },
+    });
+    app.route({
+      method: ["GET", "HEAD", "OPTIONS", "PATCH", "PUT"],
+      url: "/api/bell-access/credential",
+      exposeHeadRoute: false,
+      errorHandler: bellAccessRouteErrorHandler,
+      handler: async (_request, reply) => {
+        reply.header("allow", "POST, DELETE");
+        return sendBellAccessError(reply, 405, "method_not_allowed");
+      },
+    });
+  }
 
   const bellService = options.bellService;
   if (bellService) {

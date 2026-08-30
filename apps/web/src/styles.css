@@ -2535,3 +2535,161 @@ h2 {
     padding-left: 18px;
   }
 }
+
+.bell-access {
+  position: fixed;
+  z-index: 1200;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(40 32 37 / 48%);
+  backdrop-filter: blur(4px);
+}
+
+.bell-access__sheet {
+  position: relative;
+  width: min(100%, 440px);
+  max-height: min(760px, calc(100dvh - 40px));
+  overflow-y: auto;
+  padding: 34px 28px 28px;
+  color: #594651;
+  border: 1px solid #d9bda8;
+  border-radius: 28px;
+  background: #fffaf0;
+  box-shadow: 0 18px 60px rgb(55 37 47 / 28%);
+}
+
+.bell-access__close {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  width: 40px;
+  height: 40px;
+  color: #765765;
+  border: 0;
+  background: transparent;
+  font: 32px / 1 serif;
+  cursor: pointer;
+}
+
+.bell-access__kicker {
+  margin: 0 0 4px;
+  color: #a56f7c;
+  font-size: 13px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.bell-access h1 {
+  margin: 0;
+  font-family: "Noto Serif SC", "Songti SC", serif;
+  font-size: 30px;
+}
+
+.bell-access__intro {
+  margin: 12px 0 22px;
+  color: #75636c;
+  line-height: 1.7;
+}
+
+.bell-access__content,
+.bell-access__credential {
+  display: grid;
+  gap: 16px;
+}
+
+.bell-access__status {
+  display: flex;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: #f4eadf;
+}
+
+.bell-access label > span,
+.bell-access__credential > strong {
+  display: block;
+  margin-bottom: 7px;
+  color: #725663;
+  font-weight: 700;
+}
+
+.bell-access__copy-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.bell-access__copy-row input {
+  min-width: 0;
+  padding: 11px 12px;
+  color: #594651;
+  border: 1px solid #dbc8b8;
+  border-radius: 12px;
+  background: #fff;
+  font:
+    13px / 1.4 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+}
+
+.bell-access button:not(.bell-access__close) {
+  padding: 11px 16px;
+  color: #fff8e8;
+  border: 1px solid #8e6476;
+  border-radius: 13px;
+  background: #8e6476;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.bell-access button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.bell-access__credential {
+  padding: 16px;
+  border: 1px solid #d6b08a;
+  border-radius: 16px;
+  background: #fff3da;
+}
+
+.bell-access__credential p,
+.bell-access__notice {
+  margin: 0;
+  color: #75636c;
+  line-height: 1.6;
+}
+
+.bell-access__notice--error {
+  color: #a14646;
+}
+
+.bell-access__actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.bell-access .bell-access__secondary {
+  color: #795966;
+  background: transparent;
+}
+
+@media (max-width: 520px) {
+  .bell-access {
+    place-items: end center;
+    padding: 0;
+  }
+
+  .bell-access__sheet {
+    width: 100%;
+    max-height: 92dvh;
+    padding: 32px 20px 24px;
+    border-radius: 26px 26px 0 0;
+  }
+}

@@ -1,5 +1,11 @@
 import {
   type AdditionalHumanProfileRequest,
+  type BellAccessError,
+  type BellAccessStatusResponse,
+  type BellCredentialIssueResponse,
+  bellAccessErrorSchema,
+  bellAccessStatusResponseSchema,
+  bellCredentialIssueResponseSchema,
   boundFarmFieldErrorSchema,
   boundFarmFieldSuccessSchema,
   boundFarmHarvestAssistErrorSchema,
@@ -52,6 +58,13 @@ export type McpAccessIssueCode = McpAccessError["error"]["code"] | ClientIssueCo
 
 export interface McpAccessIssue {
   code: McpAccessIssueCode;
+  serverMessage: string | null;
+}
+
+export type BellAccessIssueCode = BellAccessError["error"]["code"] | ClientIssueCode;
+
+export interface BellAccessIssue {
+  code: BellAccessIssueCode;
   serverMessage: string | null;
 }
 
@@ -202,6 +215,12 @@ function parseMcpAccessIssue(payload: unknown): McpAccessIssue {
     code: parsed.data.error.code,
     serverMessage: parsed.data.error.message,
   };
+}
+
+function parseBellAccessIssue(payload: unknown): BellAccessIssue {
+  const parsed = bellAccessErrorSchema.safeParse(payload);
+  if (!parsed.success) return clientIssue("unexpected_response");
+  return { code: parsed.data.error.code, serverMessage: parsed.data.error.message };
 }
 
 export async function getCurrentHumanSession(
@@ -617,6 +636,67 @@ export async function revokeMcpCredential(
   return requestMcpAccess(
     "/api/mcp-access/credential",
     mcpAccessStatusResponseSchema,
+    {
+      body: JSON.stringify({}),
+      headers: { "content-type": "application/json" },
+      method: "DELETE",
+    },
+    fetcher,
+  );
+}
+
+async function requestBellAccess<T>(
+  url: string,
+  schema: { safeParse(value: unknown): { success: true; data: T } | { success: false } },
+  init: RequestInit,
+  fetcher: FrontendFetcher,
+): Promise<ApiResult<T, BellAccessIssue>> {
+  let response: Response;
+  try {
+    response = await fetcher(url, { credentials: "same-origin", ...init });
+  } catch {
+    return { ok: false, issue: clientIssue("network_unavailable") };
+  }
+  const payload = await readPayload(response);
+  if (!response.ok) return { ok: false, issue: parseBellAccessIssue(payload) };
+  const parsed = schema.safeParse(payload);
+  return parsed.success
+    ? { ok: true, data: parsed.data }
+    : { ok: false, issue: clientIssue("unexpected_response") };
+}
+
+export async function getBellAccessStatus(
+  options: { signal?: AbortSignal; fetcher?: FrontendFetcher } = {},
+): Promise<ApiResult<BellAccessStatusResponse, BellAccessIssue>> {
+  return requestBellAccess(
+    "/api/bell-access",
+    bellAccessStatusResponseSchema,
+    { method: "GET", ...(options.signal ? { signal: options.signal } : {}) },
+    options.fetcher ?? fetch,
+  );
+}
+
+export async function issueBellCredential(
+  fetcher: FrontendFetcher = fetch,
+): Promise<ApiResult<BellCredentialIssueResponse, BellAccessIssue>> {
+  return requestBellAccess(
+    "/api/bell-access/credential",
+    bellCredentialIssueResponseSchema,
+    {
+      body: JSON.stringify({}),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    },
+    fetcher,
+  );
+}
+
+export async function revokeBellCredential(
+  fetcher: FrontendFetcher = fetch,
+): Promise<ApiResult<BellAccessStatusResponse, BellAccessIssue>> {
+  return requestBellAccess(
+    "/api/bell-access/credential",
+    bellAccessStatusResponseSchema,
     {
       body: JSON.stringify({}),
       headers: { "content-type": "application/json" },

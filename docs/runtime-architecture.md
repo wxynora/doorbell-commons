@@ -719,9 +719,15 @@ candidate persists its schedule and delivery state in schema v8, restores schedu
 rechecks live QQ membership and the authoritative current exam registration at delivery time, and creates no wake
 for released registrations. Future visit request／invitation, assigned career task／case, eligibility／connection
 exception, or real-time game-turn producers require their own authoritative state transition and separately reviewed
-message. The binding CLI accepts only the
-digest and refuses to choose when the database does not have exactly one active resident, so
-plaintext remains on the household host.
+message. Human self-service Bell control is exposed separately as `GET /api/bell-access` plus
+`POST／DELETE /api/bell-access/credential`. Each route derives the current resident only from the
+Human Cookie session and rechecks live QQ membership. Issuance returns one `dbb_` plaintext once,
+stores only its SHA-256 digest, and atomically replaces the resident's previous active digest;
+replacement and revocation both disconnect that resident's current SSE immediately without changing
+`dbm_`, pending wakes, ACK／blocked／cancel state or the Bell transport contract. The legacy
+`bell:bind-first-household` CLI remains only for the original one-household operational path and is
+not the normal configuration flow. GitHub `README.md` documents the fixed stream／ACK／report URLs and
+Bearer configuration without requiring administrator issuance.
 
 Settings can update `home_name` and `environment_description` without trimming, truncation, or a new
 length cap. `climate_type` is either `null` before selection or one of the 13 approved real-world

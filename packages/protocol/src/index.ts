@@ -2315,6 +2315,107 @@ export const humanSettingsPatchRequestSchema = z
   });
 
 export const mcpCredentialSchema = z.string().regex(/^dbm_[A-Za-z0-9_-]{43}$/);
+export const bellCredentialSchema = z.string().regex(/^dbb_[A-Za-z0-9_-]{43}$/);
+
+export const bellEndpointSchema = z.url().refine((value) => {
+  const url = new URL(value);
+  const loopbackHttp =
+    url.protocol === "http:" &&
+    (url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]");
+  return (
+    (url.protocol === "https:" || loopbackHttp) &&
+    url.username === "" &&
+    url.password === "" &&
+    url.pathname === "/api/bell/stream" &&
+    url.search === "" &&
+    url.hash === ""
+  );
+}, "must be the trusted Doorbell public origin followed by /api/bell/stream");
+
+export const bellAccessCredentialStatusSchema = z.enum(["not_issued", "active", "revoked"]);
+export const bellAccessReadRequestSchema = z.object({}).strict();
+export const bellAccessMutationBodySchema = z.object({}).strict().optional();
+
+export const bellAccessStatusResponseSchema = z
+  .object({
+    bell_endpoint: bellEndpointSchema,
+    authorization_scheme: z.literal("Bearer"),
+    credential_status: bellAccessCredentialStatusSchema,
+    credential_id: z.uuid().nullable(),
+    credential_issued_at: z.iso.datetime().nullable(),
+    credential_revoked_at: z.iso.datetime().nullable(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const fields = [value.credential_id, value.credential_issued_at, value.credential_revoked_at];
+    const reject = (message: string) => context.addIssue({ code: "custom", message });
+    if (value.credential_status === "not_issued") {
+      if (fields.some((field) => field !== null)) {
+        reject("not_issued must not include credential fields");
+      }
+      return;
+    }
+    if (value.credential_id === null || value.credential_issued_at === null) {
+      reject("an issued credential must include its id and issued time");
+    }
+    if (value.credential_status === "active" && value.credential_revoked_at !== null) {
+      reject("an active credential must not include credential_revoked_at");
+    }
+    if (value.credential_status === "revoked" && value.credential_revoked_at === null) {
+      reject("a revoked credential must include credential_revoked_at");
+    }
+  });
+
+export const bellCredentialIssueResponseSchema = z
+  .object({
+    bell_endpoint: bellEndpointSchema,
+    authorization_scheme: z.literal("Bearer"),
+    bell_credential: bellCredentialSchema,
+    credential_id: z.uuid(),
+    credential_issued_at: z.iso.datetime(),
+    replaced_previous: z.boolean(),
+  })
+  .strict();
+
+export const bellAccessErrorCodeSchema = z.enum([
+  "invalid_request",
+  "authentication_required",
+  "qq_not_group_member",
+  "membership_verification_unavailable",
+  "registration_profile_required",
+  "bell_credential_not_configured",
+  "method_not_allowed",
+  "internal_contract_error",
+]);
+
+export type BellAccessErrorCode = z.infer<typeof bellAccessErrorCodeSchema>;
+
+export const bellAccessErrorMessages = {
+  invalid_request: "The request body or query parameters are invalid",
+  authentication_required: "An active human session is required",
+  qq_not_group_member: "The session QQ number is no longer a current member of the community group",
+  membership_verification_unavailable: "QQ group membership could not be verified",
+  registration_profile_required: "A complete resident, home, and farm registration is required",
+  bell_credential_not_configured: "No active Bell credential is configured",
+  method_not_allowed: "This method is not allowed for the Bell access route",
+  internal_contract_error: "The Bell access contract could not be completed safely",
+} as const satisfies Record<BellAccessErrorCode, string>;
+
+export const bellAccessErrorSchema = z
+  .object({
+    error: z
+      .object({ code: bellAccessErrorCodeSchema, message: z.string() })
+      .strict()
+      .superRefine((value, context) => {
+        if (value.message !== bellAccessErrorMessages[value.code]) {
+          context.addIssue({
+            code: "custom",
+            message: "message must match the approved error code",
+          });
+        }
+      }),
+  })
+  .strict();
 
 export const mcpEndpointSchema = z.url().refine((value) => {
   const url = new URL(value);
@@ -2792,20 +2893,14 @@ export type FarmHumanFieldLandUpgradeRequest = z.infer<
 export type FarmHumanFieldLandUpgradeSuccess = z.infer<
   typeof farmHumanFieldLandUpgradeSuccessSchema
 >;
-export type FarmHumanFieldLandUpgradeResult = z.infer<
-  typeof farmHumanFieldLandUpgradeResultSchema
->;
+export type FarmHumanFieldLandUpgradeResult = z.infer<typeof farmHumanFieldLandUpgradeResultSchema>;
 export type FarmHumanFieldLandUpgradeErrorCode = z.infer<
   typeof farmHumanFieldLandUpgradeErrorCodeSchema
 >;
-export type FarmHumanFieldLandUpgradeError = z.infer<
-  typeof farmHumanFieldLandUpgradeErrorSchema
->;
+export type FarmHumanFieldLandUpgradeError = z.infer<typeof farmHumanFieldLandUpgradeErrorSchema>;
 export type BoundFarmLandUpgradeRequest = z.infer<typeof boundFarmLandUpgradeRequestSchema>;
 export type BoundFarmLandUpgradeSuccess = z.infer<typeof boundFarmLandUpgradeSuccessSchema>;
-export type BoundFarmLandUpgradeErrorCode = z.infer<
-  typeof boundFarmLandUpgradeErrorCodeSchema
->;
+export type BoundFarmLandUpgradeErrorCode = z.infer<typeof boundFarmLandUpgradeErrorCodeSchema>;
 export type BoundFarmLandUpgradeError = z.infer<typeof boundFarmLandUpgradeErrorSchema>;
 export type HumanSessionSuccess = z.infer<typeof humanSessionSuccessSchema>;
 export type CreatedFarmHumanSessionSuccess = z.infer<typeof createdFarmHumanSessionSuccessSchema>;
@@ -2836,6 +2931,10 @@ export type BrowserPushSubscriptionDeleteSuccess = z.infer<
 >;
 export type BrowserPushError = z.infer<typeof browserPushErrorSchema>;
 export type BrowserPushPayload = z.infer<typeof browserPushPayloadSchema>;
+export type BellAccessCredentialStatus = z.infer<typeof bellAccessCredentialStatusSchema>;
+export type BellAccessStatusResponse = z.infer<typeof bellAccessStatusResponseSchema>;
+export type BellCredentialIssueResponse = z.infer<typeof bellCredentialIssueResponseSchema>;
+export type BellAccessError = z.infer<typeof bellAccessErrorSchema>;
 export type McpAccessMigrationStatus = z.infer<typeof mcpAccessMigrationStatusSchema>;
 export type McpAccessCredentialStatus = z.infer<typeof mcpAccessCredentialStatusSchema>;
 export type McpAccessStatusResponse = z.infer<typeof mcpAccessStatusResponseSchema>;

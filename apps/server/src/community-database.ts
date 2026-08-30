@@ -155,6 +155,9 @@ export interface AuthenticatedBellBinding {
 
 export interface BellBindingState {
   configured: boolean;
+  credentialId: string | null;
+  credentialIssuedAt: number | null;
+  credentialRevokedAt: number | null;
   lastConnectedAt: number | null;
 }
 
@@ -588,6 +591,7 @@ interface BellBindingRow {
   resident_id: string;
   credential_id: string;
   credential_token_hash: string | null;
+  credential_issued_at: number;
   credential_revoked_at: number | null;
   last_connected_at: number | null;
   last_wake_mailbox_revision: number | null;
@@ -3813,6 +3817,74 @@ export class CommunityDatabase {
     return transaction.immediate();
   }
 
+  replaceBellCredential(
+    residentId: string,
+    credentialId: string,
+    credentialTokenHash: string,
+    now: number,
+  ): { replacedPrevious: boolean } {
+    if (!/^[0-9a-f]{64}$/u.test(credentialTokenHash)) {
+      throw new Error("Bell credential hash must be one lowercase SHA-256 digest");
+    }
+    const transaction = this.#database.transaction(() => {
+      const resident = this.#database
+        .prepare("SELECT resident_id FROM residents WHERE resident_id = ?")
+        .get(residentId) as { resident_id: string } | undefined;
+      if (!resident) throw new Error("Bell credential resident does not exist");
+      const existing = this.#database
+        .prepare(
+          `SELECT credential_token_hash, credential_revoked_at
+           FROM bell_bindings
+           WHERE resident_id = ?`,
+        )
+        .get(residentId) as
+        | { credential_token_hash: string | null; credential_revoked_at: number | null }
+        | undefined;
+      this.#database
+        .prepare(
+          `INSERT INTO bell_bindings (
+             resident_id,
+             credential_id,
+             credential_token_hash,
+             credential_issued_at,
+             credential_revoked_at,
+             last_connected_at
+           ) VALUES (?, ?, ?, ?, NULL, NULL)
+           ON CONFLICT(resident_id) DO UPDATE SET
+             credential_id = excluded.credential_id,
+             credential_token_hash = excluded.credential_token_hash,
+             credential_issued_at = excluded.credential_issued_at,
+             credential_revoked_at = NULL,
+             last_connected_at = NULL`,
+        )
+        .run(residentId, credentialId, credentialTokenHash, now);
+      return {
+        replacedPrevious:
+          existing?.credential_token_hash !== null && existing?.credential_revoked_at === null,
+      };
+    });
+    return transaction.immediate();
+  }
+
+  revokeBellCredential(residentId: string, now: number): BellBindingState | undefined {
+    const transaction = this.#database.transaction(() => {
+      const current = this.getBellBindingState(residentId);
+      if (!current.configured) return undefined;
+      this.#database
+        .prepare(
+          `UPDATE bell_bindings
+           SET credential_token_hash = NULL,
+               credential_revoked_at = ?
+           WHERE resident_id = ?
+             AND credential_token_hash IS NOT NULL
+             AND credential_revoked_at IS NULL`,
+        )
+        .run(now, residentId);
+      return this.getBellBindingState(residentId);
+    });
+    return transaction.immediate();
+  }
+
   authenticateBellCredentialHash(
     credentialTokenHash: string,
   ): AuthenticatedBellBinding | undefined {
@@ -3821,6 +3893,7 @@ export class CommunityDatabase {
         `SELECT resident_id,
                 credential_id,
                 credential_token_hash,
+                credential_issued_at,
                 credential_revoked_at,
                 last_connected_at,
                 last_wake_mailbox_revision
@@ -3838,6 +3911,7 @@ export class CommunityDatabase {
         `SELECT resident_id,
                 credential_id,
                 credential_token_hash,
+                credential_issued_at,
                 credential_revoked_at,
                 last_connected_at,
                 last_wake_mailbox_revision
@@ -3847,6 +3921,9 @@ export class CommunityDatabase {
       .get(residentId) as BellBindingRow | undefined;
     return {
       configured: row?.credential_token_hash !== null && row?.credential_revoked_at === null,
+      credentialId: row?.credential_id ?? null,
+      credentialIssuedAt: row?.credential_issued_at ?? null,
+      credentialRevokedAt: row?.credential_revoked_at ?? null,
       lastConnectedAt: row?.last_connected_at ?? null,
     };
   }

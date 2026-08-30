@@ -46,6 +46,7 @@ import {
 } from "./browser-notifications";
 import { AdditionalProfileForm } from "./components/additional-profile-form";
 import { AuthScreen, RegistrationHeader, SessionCheckingScreen } from "./components/auth-screen";
+import { BellAccessPanel } from "./components/bell-access-panel";
 import { McpAccessPage } from "./components/mcp-access-panel";
 import { ResidencePermitTransition } from "./components/residence-permit-transition";
 import { FarmLazyBoundary, FarmLazyFailure, FarmLazyLoading } from "./farm/page/farm-lazy-boundary";
@@ -381,6 +382,7 @@ function LiveApp() {
     isDoorbellFarmPath(window.location.pathname) ? "farm" : "community",
   );
   const [showMcpAfterPermit, setShowMcpAfterPermit] = useState(false);
+  const [showBellAccess, setShowBellAccess] = useState(false);
   const lingyeRequestIdsRef = useRef({ glimmer: 0, memorial: 0, together: 0 });
   const lingyeControllersRef = useRef<{
     glimmer: AbortController | null;
@@ -818,6 +820,11 @@ function LiveApp() {
         return;
       }
 
+      if (action.type === "bell-access-open") {
+        if (appState.stage === "authenticated") setShowBellAccess(true);
+        return;
+      }
+
       if (action.type === "profile-switch") {
         if (
           appState.stage !== "authenticated" ||
@@ -830,6 +837,7 @@ function LiveApp() {
           return;
         }
         setShowMcpAfterPermit(false);
+        setShowBellAccess(false);
         lingyeControllersRef.current.glimmer?.abort();
         lingyeControllersRef.current.memorial?.abort();
         lingyeControllersRef.current.together?.abort();
@@ -1221,6 +1229,9 @@ function LiveApp() {
         onAction={handleCandidateAction}
         state={authenticatedViewState(appState)}
       />
+      {appState.stage === "authenticated" && showBellAccess ? (
+        <BellAccessPanel onClose={() => setShowBellAccess(false)} />
+      ) : null}
       {appState.stage === "authenticated" && activeInternalPage === "farm" ? (
         <FarmLazyBoundary
           fallback={

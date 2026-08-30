@@ -1,5 +1,6 @@
 import { ActivityReminderService } from "./activity-reminder-service.js";
 import { buildApp } from "./app.js";
+import { BellAccessService } from "./bell-access-service.js";
 import { BellService } from "./bell-service.js";
 import { BrowserPushService } from "./browser-push-service.js";
 import { CareerExamReminderService } from "./career-exam-reminder-service.js";
@@ -246,6 +247,12 @@ const bellService = new BellService({
   getSharedMemeLibraryVersion: () => sharedMemeService.getMetadata().library_version,
   onError: reportBellError,
 });
+const bellAccessService = new BellAccessService({
+  database,
+  registrationAuth,
+  bellService,
+  bellEndpoint: new URL("/api/bell/stream", serverConfig.mcpEndpoint).toString(),
+});
 const browserPushService = serverConfig.browserPush
   ? new BrowserPushService({
       config: serverConfig.browserPush,
@@ -350,6 +357,7 @@ const app = buildApp({
   groupMembership,
   registrationAuth,
   farmPurchaseRequestService,
+  bellAccessService,
   bellService,
   ...(browserPushService ? { browserPushService } : {}),
   ...(activityReminderService ? { activityReminderService } : {}),

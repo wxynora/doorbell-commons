@@ -8,14 +8,17 @@ import {
   createHumanSession,
   deleteHumanSession,
   type FrontendFetcher,
+  getBellAccessStatus,
   getBoundFarmField,
   getCurrentHumanSession,
   getHumanSettings,
   getMcpAccessStatus,
   harvestBoundFarmField,
   issueMcpCredential,
+  issueBellCredential,
   lookupFarm,
   revokeMcpCredential,
+  revokeBellCredential,
   switchHumanProfile,
   upgradeBoundFarmLand,
   updateHumanSettings,
@@ -939,4 +942,76 @@ test("MCP access keeps approved backend errors distinct and rejects malformed su
     ok: false,
     issue: { code: "unexpected_response", serverMessage: null },
   });
+});
+
+test("Bell access client uses the self-service status, issue and revoke routes", async () => {
+  const endpoint = "https://doorbellcommons.com/api/bell/stream";
+  const credential = `dbb_${"A".repeat(43)}`;
+  const credentialId = "11111111-1111-4111-8111-111111111111";
+  const issuedAt = "2026-08-30T00:00:00.000Z";
+  const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
+  const responses = [
+    {
+      bell_endpoint: endpoint,
+      authorization_scheme: "Bearer",
+      credential_status: "not_issued",
+      credential_id: null,
+      credential_issued_at: null,
+      credential_revoked_at: null,
+    },
+    {
+      bell_endpoint: endpoint,
+      authorization_scheme: "Bearer",
+      bell_credential: credential,
+      credential_id: credentialId,
+      credential_issued_at: issuedAt,
+      replaced_previous: false,
+    },
+    {
+      bell_endpoint: endpoint,
+      authorization_scheme: "Bearer",
+      credential_status: "revoked",
+      credential_id: credentialId,
+      credential_issued_at: issuedAt,
+      credential_revoked_at: "2026-08-30T00:01:00.000Z",
+    },
+  ];
+  const fetcher: FrontendFetcher = async (url, init) => {
+    calls.push({ url, init });
+    return jsonResponse(responses.shift());
+  };
+
+  assert.equal((await getBellAccessStatus({ fetcher })).ok, true);
+  const issued = await issueBellCredential(fetcher);
+  assert.equal(issued.ok, true);
+  if (issued.ok) assert.equal(issued.data.bell_credential, credential);
+  assert.equal((await revokeBellCredential(fetcher)).ok, true);
+  assert.deepEqual(
+    calls.map(({ init, url }) => ({
+      body: init?.body,
+      credentials: init?.credentials,
+      method: init?.method,
+      url,
+    })),
+    [
+      {
+        body: undefined,
+        credentials: "same-origin",
+        method: "GET",
+        url: "/api/bell-access",
+      },
+      {
+        body: "{}",
+        credentials: "same-origin",
+        method: "POST",
+        url: "/api/bell-access/credential",
+      },
+      {
+        body: "{}",
+        credentials: "same-origin",
+        method: "DELETE",
+        url: "/api/bell-access/credential",
+      },
+    ],
+  );
 });

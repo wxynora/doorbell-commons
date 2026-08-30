@@ -1203,6 +1203,7 @@ export type CandidateTwoAction =
   | { type: "profile-add" }
   | { type: "profile-switch"; profileId: string }
   | { type: "mcp-access-open" }
+  | { type: "bell-access-open" }
   | {
       type: "notification-preference-save";
       field:
@@ -1277,6 +1278,7 @@ const candidateTwoActionKeys = {
   "profile-add": ["type"],
   "profile-switch": ["type", "profileId"],
   "mcp-access-open": ["type"],
+  "bell-access-open": ["type"],
   "notification-preference-save": ["type", "field", "value"],
   "shared-data-preference-save": ["type", "field", "value"],
   "browser-notification-preference-save": ["type", "field", "value"],
@@ -1417,6 +1419,10 @@ export function parseCandidateTwoAction(value: unknown): CandidateTwoAction | nu
   }
 
   if (type === "mcp-access-open") {
+    return { type };
+  }
+
+  if (type === "bell-access-open") {
     return { type };
   }
 
@@ -2038,6 +2044,7 @@ const SETTINGS_SCREEN = `
                     <div><i class="settings-wake-dot"></i><span>唤醒桥「铃」</span><strong class="settings-wake-state">正在读取</strong><small>与普通消息连接分开</small></div>
                 </div>
                 <button id="settings-mcp-access-open" class="candidate2-settings-add-meme" type="button">管理 MCP 连接</button>
+                <button id="settings-bell-access" class="candidate2-settings-add-meme" type="button">配置铃</button>
             </section>
 
             <section class="candidate2-settings-section">
@@ -8455,6 +8462,7 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     const settingsProfileSelect = document.querySelector('.settings-profile-select');
     const settingsAddProfileButton = document.getElementById('settings-add-profile');
     const settingsMcpAccessOpenButton = document.getElementById('settings-mcp-access-open');
+    const settingsBellAccessButton = document.getElementById('settings-bell-access');
     const sharedMemesOpenButton = document.getElementById('settings-shared-memes-open');
     const sharedMemeAddFromSettingsButton = document.getElementById('settings-shared-meme-add');
     const sharedMemesBackButton = document.getElementById('shared-memes-back');
@@ -10271,6 +10279,13 @@ const CANDIDATE_RUNTIME_SCRIPT = `
             return;
         }
         sendAction({ type: 'mcp-access-open' });
+    });
+    settingsBellAccessButton.addEventListener('click', () => {
+        if (window.__doorbellCandidateDemo) {
+            showCandidateNotice('演示模式不会读取真实铃连接');
+            return;
+        }
+        sendAction({ type: 'bell-access-open' });
     });
 
     farmLookupButton.addEventListener('click', () => {
