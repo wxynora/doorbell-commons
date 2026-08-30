@@ -66,6 +66,11 @@ function FarmLiveShopPanelContent({
   const items = getLiveFarmShopItems(farmCatalog).filter((item) =>
     sectionId === "today" ? item.source === "persisted" : item.source === "permanent",
   );
+  const showEmptyTodayShelf =
+    sectionId === "today" &&
+    items.length === 0 &&
+    farmShopOpenFeedback?.stage !== "submitting" &&
+    farmShopOpenFeedback?.stage !== "error";
 
   if (cartOpen) {
     return (
@@ -131,7 +136,7 @@ function FarmLiveShopPanelContent({
           </button>
         </div>
       ) : null}
-      <ul className="farm-shop__items">
+      <ul className="farm-shop__items" hidden={showEmptyTodayShelf}>
         {items.map((item) => {
           const disabled = item.note === "已拥有" || item.availableQuantity === 0;
           const cartKey = getShopCartKey("farm", item.id);
@@ -175,10 +180,7 @@ function FarmLiveShopPanelContent({
           );
         })}
       </ul>
-      {sectionId === "today" &&
-      items.length === 0 &&
-      farmShopOpenFeedback?.stage !== "submitting" &&
-      farmShopOpenFeedback?.stage !== "error" ? (
+      {showEmptyTodayShelf ? (
         <div className="farm-shop__empty" role="status">
           <strong>本轮暂无随机商品</strong>
           <span>常备种子和加速药水在“种子与药水”。</span>

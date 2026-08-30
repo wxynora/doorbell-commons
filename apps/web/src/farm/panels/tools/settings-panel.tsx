@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { BoundFarmCatalogRead } from "../../../auth/farm-catalog-client";
 import {
   type FarmSettingsActionInput,
@@ -31,6 +31,12 @@ function shouldRetryFarmSettingsAction(issue: FarmSettingsActionIssue): boolean 
   );
 }
 
+function fitWelcomeMessageHeight(textarea: HTMLTextAreaElement): void {
+  textarea.style.height = "auto";
+  const borderBoxHeight = Math.max(0, textarea.offsetHeight - textarea.clientHeight);
+  textarea.style.height = `${textarea.scrollHeight + borderBoxHeight}px`;
+}
+
 export function FarmSettingsPanelContent({
   availableTitles = [],
   baseline,
@@ -55,10 +61,18 @@ export function FarmSettingsPanelContent({
 
   useLayoutEffect(() => {
     const textarea = welcomeMessageRef.current;
-    if (!textarea) return;
-    textarea.style.height = "auto";
-    textarea.style.height = `${textarea.scrollHeight}px`;
+    if (!textarea || textarea.value !== draft.welcomeMessage) return;
+    fitWelcomeMessageHeight(textarea);
   }, [draft.welcomeMessage]);
+
+  useEffect(() => {
+    const resize = () => {
+      const textarea = welcomeMessageRef.current;
+      if (textarea) fitWelcomeMessageHeight(textarea);
+    };
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
+  }, []);
 
   const submitSetting = async (
     field: FarmSettingsActionInput["field"],
@@ -215,7 +229,10 @@ export function FarmSettingsPanelContent({
             id="welcome-message"
             maxLength={60}
             name="welcome-message"
-            onChange={(event) => onChange({ ...draft, welcomeMessage: event.currentTarget.value })}
+            onChange={(event) => {
+              fitWelcomeMessageHeight(event.currentTarget);
+              onChange({ ...draft, welcomeMessage: event.currentTarget.value });
+            }}
             ref={welcomeMessageRef}
             rows={2}
             value={draft.welcomeMessage}

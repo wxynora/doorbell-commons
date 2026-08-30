@@ -658,6 +658,8 @@
 
 .farm-shop__categories {
   display: grid;
+  width: 100%;
+  grid-column: 1 / -1;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.7cqw;
   padding-bottom: 0.4cqw;
@@ -731,6 +733,7 @@
   font-size: clamp(0.72rem, 3.1cqw, 0.88rem);
   font-weight: 800;
   line-height: 1.15;
+  white-space: nowrap;
   border: 1px solid rgba(145, 112, 62, 0.38);
   border-radius: 1.5cqw;
   background: rgba(255, 249, 226, 0.72);
@@ -746,6 +749,8 @@
 
 .farm-shop__items {
   display: grid;
+  width: 100%;
+  grid-column: 1 / -1;
   grid-auto-rows: 15.5cqw;
   gap: 1cqw;
   height: 100%;
@@ -763,6 +768,10 @@
   background: transparent;
   box-shadow: none;
   grid-row: 3;
+}
+
+.farm-shop__items[hidden] {
+  display: none;
 }
 
 .farm-shop__refresh-state {
@@ -797,9 +806,13 @@
 .farm-shop__empty {
   z-index: 1;
   display: grid;
+  width: 100%;
+  height: 100%;
+  min-height: 36cqw;
+  box-sizing: border-box;
+  grid-column: 1 / -1;
   grid-row: 3;
-  min-height: 28cqw;
-  align-self: start;
+  align-self: stretch;
   align-content: center;
   justify-items: center;
   gap: 1cqw;

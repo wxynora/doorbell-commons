@@ -60,14 +60,14 @@ function hasExpectedHashedAssetContentType(url, response) {
   return false;
 }
 
-async function cacheFirstStatic(request, url) {
+async function cacheFirstStatic(request, url, event) {
   const cache = await caches.open(STATIC_CACHE);
   const cached = await cache.match(request);
   if (cached) return cached;
 
   const response = await fetch(request);
   if (response.ok && hasExpectedHashedAssetContentType(url, response)) {
-    await cache.put(request, response.clone());
+    event.waitUntil(cache.put(request, response.clone()).catch(() => undefined));
   }
   return response;
 }
@@ -106,7 +106,7 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (isCacheFirstStaticRequest(request, url)) {
-    event.respondWith(cacheFirstStatic(request, url));
+    event.respondWith(cacheFirstStatic(request, url, event));
   }
 });
 
