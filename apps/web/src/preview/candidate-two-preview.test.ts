@@ -385,7 +385,7 @@ test("runtime HTML keeps candidate two and replaces every confirmed fake datum",
     html,
     /class="(?:home-runtime-status|candidate2-profile-action-status|candidate2-lingye-notice|home-mailbox-detail-feedback)"/,
   );
-  assert.match(html, />连接状态</);
+  assert.match(html, />铃连接</);
   assert.match(
     html,
     /class="settings-wake-dot"><\/i><span>唤醒桥「铃」<\/span><strong class="settings-wake-state">正在读取<\/strong><small>与普通消息连接分开<\/small>/,
@@ -1389,8 +1389,8 @@ test("settings View and Log out keep the confirmed handwritten font", () => {
 test("notification and community preferences restore, edit, save, and report status", () => {
   const html = buildCandidateTwoRuntimeHtml();
   const preferenceMarkup = html.slice(
-    html.indexOf("<span>03</span>"),
-    html.indexOf("<span>05</span>"),
+    html.indexOf("<span>04</span>"),
+    html.indexOf("<span>06</span>"),
   );
 
   assert.doesNotMatch(preferenceMarkup, /\bdisabled\b|data-demo-(?:setting|control)/);
@@ -1440,6 +1440,58 @@ test("settings project the real Bell status without a retired Connector control"
   assert.match(html, /online: '连接正常'/);
   assert.match(html, /homeSettings\.wakeBridgeStatus/);
   assert.doesNotMatch(html, /Connector|connector-/);
+});
+
+test("settings separate Bell and MCP management into restrained paper rows", () => {
+  const html = buildCandidateTwoRuntimeHtml();
+  const settingsMarkup = html.slice(
+    html.indexOf('id="screen-settings"'),
+    html.indexOf('id="screen-shared-memes"'),
+  );
+  const bellStart = settingsMarkup.indexOf(
+    'class="candidate2-settings-section candidate2-settings-connection candidate2-settings-bell"',
+  );
+  const mcpStart = settingsMarkup.indexOf(
+    'class="candidate2-settings-section candidate2-settings-mcp"',
+  );
+  const homeStart = settingsMarkup.indexOf(
+    '<div class="candidate2-settings-section-heading"><div><span>03</span><h2>家园与天气</h2>',
+  );
+  const bellMarkup = settingsMarkup.slice(bellStart, mcpStart);
+  const mcpMarkup = settingsMarkup.slice(mcpStart, homeStart);
+
+  assert.ok(bellStart >= 0 && mcpStart > bellStart && homeStart > mcpStart);
+  assert.match(bellMarkup, /<span>01<\/span><h2>铃连接<\/h2>/);
+  assert.match(bellMarkup, /class="settings-wake-state">正在读取<\/strong>/);
+  assert.match(
+    bellMarkup,
+    /id="settings-bell-access" class="candidate2-settings-action-row"[^>]*><span>配置铃<small>/,
+  );
+  assert.doesNotMatch(bellMarkup, /settings-mcp-access-open/);
+  assert.match(mcpMarkup, /<span>02<\/span><h2>MCP 管理<\/h2>/);
+  assert.match(
+    mcpMarkup,
+    /id="settings-mcp-access-open" class="candidate2-settings-action-row"[^>]*><span>管理 MCP 连接<small>/,
+  );
+  assert.doesNotMatch(mcpMarkup, /settings-bell-access|settings-wake-state/);
+  assert.doesNotMatch(
+    settingsMarkup,
+    /id="settings-(?:bell-access|mcp-access-open)" class="candidate2-settings-add-meme"/,
+  );
+  assert.match(
+    settingsMarkup,
+    /<span>04<\/span><h2>通知与唤醒<\/h2>[\s\S]*<span>05<\/span><h2>社区连接偏好<\/h2>[\s\S]*<span>06<\/span><h2>共享梗库<\/h2>/,
+  );
+  assert.match(
+    html,
+    /\.candidate2-settings-row,\s*\.candidate2-settings-toggle,\s*\.candidate2-settings-action-row\s*\{[^}]*min-height: 42px;[^}]*border-top: 0\.5px solid #eee5dc;/s,
+  );
+  assert.match(
+    html,
+    /\.candidate2-settings-action-row > i\s*\{[^}]*border-top: 1px solid #ad9184;[^}]*border-right: 1px solid #ad9184;[^}]*transform: rotate\(45deg\);/s,
+  );
+  assert.match(html, /sendAction\(\{ type: 'bell-access-open' \}\)/);
+  assert.match(html, /sendAction\(\{ type: 'mcp-access-open' \}\)/);
 });
 
 test("full demo data is explicit, local-only, and exposes every preview state", () => {

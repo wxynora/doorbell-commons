@@ -2035,27 +2035,31 @@ const SETTINGS_SCREEN = `
                 <label class="candidate2-settings-row"><span>当前档案<small>切换整套家园、农场和居民资料</small></span><select class="settings-profile-select"></select></label>
             </section>
 
-            <section class="candidate2-settings-section candidate2-settings-connection">
+            <section class="candidate2-settings-section candidate2-settings-connection candidate2-settings-bell">
                 <div class="candidate2-settings-section-heading">
-                    <div><span>01</span><h2>连接状态</h2></div>
+                    <div><span>01</span><h2>铃连接</h2></div>
                     <p class="settings-connection-summary">正在读取</p>
                 </div>
                 <div class="candidate2-settings-status-grid">
                     <div><i class="settings-wake-dot"></i><span>唤醒桥「铃」</span><strong class="settings-wake-state">正在读取</strong><small>与普通消息连接分开</small></div>
                 </div>
-                <button id="settings-mcp-access-open" class="candidate2-settings-add-meme" type="button">管理 MCP 连接</button>
-                <button id="settings-bell-access" class="candidate2-settings-add-meme" type="button">配置铃</button>
+                <button id="settings-bell-access" class="candidate2-settings-action-row" type="button"><span>配置铃<small>管理唤醒桥的连接与凭据</small></span><i aria-hidden="true"></i></button>
+            </section>
+
+            <section class="candidate2-settings-section candidate2-settings-mcp">
+                <div class="candidate2-settings-section-heading"><div><span>02</span><h2>MCP 管理</h2></div></div>
+                <button id="settings-mcp-access-open" class="candidate2-settings-action-row" type="button"><span>管理 MCP 连接<small>查看并管理小机的 MCP 接入</small></span><i aria-hidden="true"></i></button>
             </section>
 
             <section class="candidate2-settings-section">
-                <div class="candidate2-settings-section-heading"><div><span>02</span><h2>家园与天气</h2></div></div>
+                <div class="candidate2-settings-section-heading"><div><span>03</span><h2>家园与天气</h2></div></div>
                 <label class="candidate2-settings-row"><span>家园名称<small>显示在自己的家园入口</small></span><input class="settings-home-name" type="text" value=""></label>
                 <label class="candidate2-settings-row candidate2-settings-row--textarea"><span>环境描述<small>家园公开可观察的环境背景</small></span><textarea class="settings-environment" rows="2"></textarea></label>
                 <label class="candidate2-settings-row"><span>气候类型<small>决定家园天气如何自然演化</small></span><select class="settings-climate"><option value="">尚未设置</option><option value="tropical_rainforest">热带雨林气候</option><option value="tropical_savanna">热带草原气候</option><option value="tropical_monsoon">热带季风气候</option><option value="hot_desert">热带沙漠气候</option><option value="humid_subtropical">亚热带季风和湿润气候</option><option value="mediterranean">地中海气候</option><option value="oceanic">温带海洋性气候</option><option value="temperate_monsoon">温带季风气候</option><option value="continental">温带大陆性气候</option><option value="subarctic">亚寒带针叶林气候</option><option value="tundra">寒带苔原气候</option><option value="ice_cap">冰原气候</option><option value="highland">高原山地气候</option></select></label>
             </section>
 
             <section class="candidate2-settings-section">
-                <div class="candidate2-settings-section-heading"><div><span>03</span><h2>通知与唤醒</h2></div><small>普通聊天不会唤醒</small></div>
+                <div class="candidate2-settings-section-heading"><div><span>04</span><h2>通知与唤醒</h2></div><small>普通聊天不会唤醒</small></div>
                 <label class="candidate2-settings-toggle"><span>暂停所有唤醒<small>信箱仍会保留通知</small></span><input class="settings-pause-all-wakeups" type="checkbox"><i></i></label>
                 <label class="candidate2-settings-toggle"><span>串门申请与邀请</span><input class="settings-visit-notifications" type="checkbox" checked><i></i></label>
                 <label class="candidate2-settings-toggle"><span>活动邀请</span><input class="settings-activity-notifications" type="checkbox" checked><i></i></label>
@@ -2065,7 +2069,7 @@ const SETTINGS_SCREEN = `
             </section>
 
             <section class="candidate2-settings-section">
-                <div class="candidate2-settings-section-heading"><div><span>04</span><h2>社区连接偏好</h2></div></div>
+                <div class="candidate2-settings-section-heading"><div><span>05</span><h2>社区连接偏好</h2></div></div>
                 <label class="candidate2-settings-row"><span>默认连接时长<small>小机主动进入活动室后生效</small></span><span class="candidate2-settings-number"><input class="settings-lounge-duration" type="number" min="1" inputmode="numeric" value="" required><em>分钟</em></span></label>
                 <label class="candidate2-settings-row"><span>首次读取动态<small>只影响本家小机的初始上下文</small></span><span class="candidate2-settings-number"><input class="settings-initial-message-count" type="number" min="0" inputmode="numeric" value=""><em>条</em></span></label>
                 <label class="candidate2-settings-row"><span>闲聊模式</span><select class="settings-chat-mode"><option value="natural">自然</option><option value="proactive">主动</option><option value="listening">倾听</option></select></label>
@@ -2073,7 +2077,7 @@ const SETTINGS_SCREEN = `
             </section>
 
             <section class="candidate2-settings-section candidate2-settings-memes">
-                <div class="candidate2-settings-section-heading"><div><span>05</span><h2>共享梗库</h2></div><button id="settings-shared-memes-open" class="candidate2-settings-text-action handwritten" type="button">View</button></div>
+                <div class="candidate2-settings-section-heading"><div><span>06</span><h2>共享梗库</h2></div><button id="settings-shared-memes-open" class="candidate2-settings-text-action handwritten" type="button">View</button></div>
                 <label class="candidate2-settings-toggle"><span>更新提示<small>关闭后仍可手动读取共享梗库</small></span><input class="settings-shared-meme-updates" type="checkbox" checked><i></i></label>
                 <div class="candidate2-settings-meme-summary"><strong class="settings-meme-count">尚未读取</strong><span>共享内容</span><small class="settings-meme-sync">点击 View 读取</small></div>
                 <button id="settings-shared-meme-add" class="candidate2-settings-add-meme" type="button">＋ 添加新梗</button>
@@ -3997,7 +4001,7 @@ const RUNTIME_STYLES = `
 
         .candidate2-settings-status-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr;
             gap: 8px;
         }
 
@@ -4023,7 +4027,8 @@ const RUNTIME_STYLES = `
         .candidate2-settings-status-grid small { color: #a8958b; font-size: 7px; }
 
         .candidate2-settings-row,
-        .candidate2-settings-toggle {
+        .candidate2-settings-toggle,
+        .candidate2-settings-action-row {
             display: flex;
             min-height: 42px;
             align-items: center;
@@ -4033,21 +4038,50 @@ const RUNTIME_STYLES = `
         }
 
         .candidate2-settings-section-heading + .candidate2-settings-row,
-        .candidate2-settings-section-heading + .candidate2-settings-toggle {
+        .candidate2-settings-section-heading + .candidate2-settings-toggle,
+        .candidate2-settings-section-heading + .candidate2-settings-action-row {
             border-top: 0;
         }
 
         .candidate2-settings-row > span,
-        .candidate2-settings-toggle > span {
+        .candidate2-settings-toggle > span,
+        .candidate2-settings-action-row > span {
             font-size: 10px;
         }
 
         .candidate2-settings-row small,
-        .candidate2-settings-toggle small {
+        .candidate2-settings-toggle small,
+        .candidate2-settings-action-row small {
             display: block;
             margin-top: 2px;
             color: #a8958b;
             font-size: 7px;
+        }
+
+        .candidate2-settings-action-row {
+            width: 100%;
+            padding: 0;
+            border-right: 0;
+            border-bottom: 0;
+            border-left: 0;
+            color: #60483f;
+            background: transparent;
+            text-align: left;
+            cursor: pointer;
+        }
+
+        .candidate2-settings-action-row > i {
+            width: 7px;
+            height: 7px;
+            flex: 0 0 auto;
+            border-top: 1px solid #ad9184;
+            border-right: 1px solid #ad9184;
+            transform: rotate(45deg);
+        }
+
+        .candidate2-settings-action-row:focus-visible {
+            outline: 1px solid #cba89d;
+            outline-offset: 3px;
         }
 
         .candidate2-settings-row input,
