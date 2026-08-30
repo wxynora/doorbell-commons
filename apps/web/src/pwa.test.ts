@@ -3,7 +3,11 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { classifyCommunityRequest, shouldRegisterCommunityServiceWorker } from "./pwa";
+import {
+  classifyCommunityRequest,
+  registerCommunityServiceWorker,
+  shouldRegisterCommunityServiceWorker,
+} from "./pwa";
 
 const serviceWorkerSource = readFileSync(
   new URL("../public/service-worker.js", import.meta.url),
@@ -26,6 +30,18 @@ test("community request classification keeps API authority outside Cache Storage
   assert.equal(classifyCommunityRequest("/api/farm/field?refresh=1"), "api-network-only");
   assert.equal(classifyCommunityRequest("/lingye/farm", "navigate"), "navigation-network-first");
   assert.equal(classifyCommunityRequest("/assets/index-AbCd1234.js"), "hashed-static-cache-first");
+  assert.equal(
+    classifyCommunityRequest("/assets/field-background-CSRs5hGr.png"),
+    "hashed-static-cache-first",
+  );
+  assert.equal(
+    classifyCommunityRequest("/assets/ranch-rain-DzCaMAu7.webp"),
+    "hashed-static-cache-first",
+  );
+  assert.equal(
+    classifyCommunityRequest("/assets/zcool-kuaile-regular-XyZp1234.woff2"),
+    "hashed-static-cache-first",
+  );
   assert.equal(classifyCommunityRequest("/community-icon.v2-192.png"), "hashed-static-cache-first");
   assert.equal(
     classifyCommunityRequest("/community-icon.v2-512-maskable.png"),
@@ -78,6 +94,128 @@ test("service worker registration is explicitly production-only and singular", (
   assert.equal((mainSource.match(/registerCommunityServiceWorker/g) ?? []).length, 2);
 });
 
+test("an existing PWA checks for updates and reloads once when the new worker takes control", async () => {
+  let updateCount = 0;
+  let reloadCount = 0;
+  let visibilityState: DocumentVisibilityState = "hidden";
+  let controllerChange: (() => void) | undefined;
+  let visibilityChange: (() => void) | undefined;
+
+  const registration = {
+    async update() {
+      updateCount += 1;
+    },
+  } as unknown as ServiceWorkerRegistration;
+  const container = {
+    controller: {} as ServiceWorker,
+    async register(url: string | URL, options?: RegistrationOptions) {
+      assert.equal(url, "/service-worker.js");
+      assert.deepEqual(options, { scope: "/" });
+      return registration;
+    },
+    addEventListener(type: string, listener: EventListenerOrEventListenerObject) {
+      if (type === "controllerchange" && typeof listener === "function") {
+        controllerChange = () => listener(new Event("controllerchange"));
+      }
+    },
+  } as unknown as ServiceWorkerContainer;
+  const pageLifecycle = {
+    get visibilityState() {
+      return visibilityState;
+    },
+    addEventListener(type: string, listener: EventListenerOrEventListenerObject) {
+      if (type === "visibilitychange" && typeof listener === "function") {
+        visibilityChange = () => listener(new Event("visibilitychange"));
+      }
+    },
+  } as unknown as Document;
+
+  const result = await registerCommunityServiceWorker(container, pageLifecycle, {
+    reload() {
+      reloadCount += 1;
+    },
+  });
+
+  assert.equal(result, registration);
+  assert.equal(updateCount, 1);
+
+  visibilityState = "visible";
+  visibilityChange?.();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(updateCount, 2);
+
+  controllerChange?.();
+  controllerChange?.();
+  assert.equal(reloadCount, 1);
+});
+
+test("the first PWA install takes control without reloading the initial page", async () => {
+  let reloadCount = 0;
+  let controllerListenerCount = 0;
+  const registration = {
+    update: async () => undefined,
+  } as unknown as ServiceWorkerRegistration;
+  const container = {
+    controller: null,
+    register: async () => registration,
+    addEventListener(type: string) {
+      if (type === "controllerchange") controllerListenerCount += 1;
+    },
+  } as unknown as ServiceWorkerContainer;
+
+  const result = await registerCommunityServiceWorker(container, null, {
+    reload() {
+      reloadCount += 1;
+    },
+  });
+
+  assert.equal(result, registration);
+  assert.equal(controllerListenerCount, 0);
+  assert.equal(reloadCount, 0);
+});
+
+test("a failed update does not stop the already loaded PWA", async () => {
+  const registration = {
+    async update() {
+      throw new Error("offline");
+    },
+  } as unknown as ServiceWorkerRegistration;
+  const container = {
+    controller: {} as ServiceWorker,
+    register: async () => registration,
+    addEventListener: () => undefined,
+  } as unknown as ServiceWorkerContainer;
+  const originalWarn = console.warn;
+  const warnings: unknown[][] = [];
+  console.warn = (...args: unknown[]) => warnings.push(args);
+
+  try {
+    assert.equal(await registerCommunityServiceWorker(container, null, null), registration);
+    assert.equal(warnings.length, 1);
+  } finally {
+    console.warn = originalWarn;
+  }
+});
+
+test("a failed registration does not stop the page", async () => {
+  const container = {
+    controller: null,
+    async register() {
+      throw new Error("registration unavailable");
+    },
+  } as unknown as ServiceWorkerContainer;
+  const originalWarn = console.warn;
+  const warnings: unknown[][] = [];
+  console.warn = (...args: unknown[]) => warnings.push(args);
+
+  try {
+    assert.equal(await registerCommunityServiceWorker(container, null, null), null);
+    assert.equal(warnings.length, 1);
+  } finally {
+    console.warn = originalWarn;
+  }
+});
+
 test("manifest is a Chinese standalone community entry with the existing surface color", () => {
   assert.equal(manifest.name, "门铃社区");
   assert.equal(manifest.short_name, "门铃社区");
@@ -119,9 +257,9 @@ test("manifest is a Chinese standalone community entry with the existing surface
 });
 
 test("service worker has bounded strategies without precaching or background writes", () => {
-  assert.match(serviceWorkerSource, /shell-v2/);
-  assert.match(serviceWorkerSource, /static-v3/);
-  assert.doesNotMatch(serviceWorkerSource, /shell-v1|static-v1|static-v2/);
+  assert.match(serviceWorkerSource, /shell-v3/);
+  assert.match(serviceWorkerSource, /static-v4/);
+  assert.doesNotMatch(serviceWorkerSource, /shell-v1|shell-v2|static-v1|static-v2|static-v3/);
   assert.match(serviceWorkerSource, /request\.mode === "navigate"/);
   assert.match(serviceWorkerSource, /event\.respondWith\(fetch\(request\)\)/);
   assert.match(serviceWorkerSource, /cacheFirstStatic/);
@@ -134,6 +272,8 @@ test("service worker has bounded strategies without precaching or background wri
     serviceWorkerSource,
     /endsWith\("\.css"\)[\s\S]*?contentType\.includes\("text\/css"\)/,
   );
+  assert.match(serviceWorkerSource, /contentType\.startsWith\("image\/"\)/);
+  assert.match(serviceWorkerSource, /contentType\.startsWith\("font\/"\)/);
   assert.match(
     serviceWorkerSource,
     /response\.ok && hasExpectedHashedAssetContentType\(url, response\)/,
@@ -149,6 +289,8 @@ test("service worker has bounded strategies without precaching or background wri
   assert.doesNotMatch(serviceWorkerSource, /cache\.addAll/);
   assert.doesNotMatch(serviceWorkerSource, /background.?sync|addEventListener\("sync"/i);
   assert.doesNotMatch(serviceWorkerSource, /queue|replay/i);
+  assert.match(serviceWorkerSource, /event\.waitUntil\(self\.skipWaiting\(\)\)/);
+  assert.match(serviceWorkerSource, /self\.clients\.claim\(\)/);
   assert.match(serviceWorkerSource, /addEventListener\("push"/);
   assert.match(serviceWorkerSource, /registration\.showNotification/);
   assert.match(serviceWorkerSource, /icon: "\/community-icon\.v2-192\.png"/);

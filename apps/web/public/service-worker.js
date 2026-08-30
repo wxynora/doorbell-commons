@@ -1,7 +1,8 @@
 const CACHE_PREFIX = "doorbell-community-pwa-";
-const APP_SHELL_CACHE = `${CACHE_PREFIX}shell-v2`;
-const STATIC_CACHE = `${CACHE_PREFIX}static-v3`;
-const VITE_HASHED_ASSET_RE = /\/[^/]+-[a-z0-9_-]{8,}\.(?:js|css)$/i;
+const APP_SHELL_CACHE = `${CACHE_PREFIX}shell-v3`;
+const STATIC_CACHE = `${CACHE_PREFIX}static-v4`;
+const VITE_HASHED_ASSET_RE =
+  /\/[^/]+-[a-z0-9_-]{8,}\.(?:avif|css|gif|jpe?g|js|png|svg|ttf|webp|woff2?)$/i;
 const PUBLIC_ASSET_RE = /\.(?:avif|css|gif|jpe?g|png|svg|ttf|webmanifest|webp|woff2?)$/i;
 const PUBLIC_VERSION_MARKER_RE = /(?:^|[._-])(?:v\d+|[a-f0-9]{8,})(?:[._-]|$)/i;
 
@@ -46,6 +47,16 @@ function hasExpectedHashedAssetContentType(url, response) {
   const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
   if (url.pathname.endsWith(".js")) return contentType.includes("javascript");
   if (url.pathname.endsWith(".css")) return contentType.includes("text/css");
+  if (/\.(?:avif|gif|jpe?g|png|svg|webp)$/i.test(url.pathname)) {
+    return contentType.startsWith("image/");
+  }
+  if (/\.(?:ttf|woff2?)$/i.test(url.pathname)) {
+    return (
+      contentType.startsWith("font/") ||
+      contentType.includes("application/font") ||
+      contentType.includes("application/octet-stream")
+    );
+  }
   return false;
 }
 
@@ -72,11 +83,11 @@ async function clearOldCaches() {
 }
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(Promise.resolve());
+  event.waitUntil(self.skipWaiting());
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(clearOldCaches());
+  event.waitUntil(Promise.all([clearOldCaches(), self.clients.claim()]));
 });
 
 self.addEventListener("fetch", (event) => {
