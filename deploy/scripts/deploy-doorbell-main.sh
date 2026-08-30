@@ -179,7 +179,7 @@ cp -a "${build_directory}/apps/web/dist" "${candidate_directory}/apps/web/"
   fail "missing current web assets: ${RUNTIME_DIRECTORY}/apps/web/dist/assets"
   exit 1
 }
-cp -a --no-clobber -- \
+cp -a -- \
   "${RUNTIME_DIRECTORY}/apps/web/dist/assets/." \
   "${candidate_directory}/apps/web/dist/assets/"
 cp -a \
