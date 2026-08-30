@@ -182,6 +182,7 @@ import {
   type FarmLingyeReader,
   type FarmLingyeReadInput,
   FarmLingyeUnavailableError,
+  type FarmReporterIdentityInput,
 } from "./farm-lingye-client.js";
 import type {
   FarmHumanMarketActioner,
@@ -1197,6 +1198,16 @@ class FakeFarmLingyeReader implements FarmLingyeReader {
       default:
         return FARM_TOGETHER_RESULT;
     }
+  }
+
+  async readReporterPublications(_input: FarmReporterIdentityInput): Promise<never> {
+    throw new FarmLingyeContractUnavailableError();
+  }
+
+  async likeReporterPublication(
+    _input: FarmReporterIdentityInput & { likeRef: string },
+  ): Promise<never> {
+    throw new FarmLingyeContractUnavailableError();
   }
 }
 
