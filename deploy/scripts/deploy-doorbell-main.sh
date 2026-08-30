@@ -150,13 +150,6 @@ git -C "${SOURCE_DIRECTORY}" archive "${TARGET_SHA}" | tar -x -C "${build_direct
   npm prune --omit=dev
 )
 
-readonly BUILT_SERVICE_WORKER="${build_directory}/apps/web/dist/service-worker.js"
-[[ -f "${BUILT_SERVICE_WORKER}" ]] || {
-  fail "web build is missing service-worker.js"
-  exit 1
-}
-printf '\n// doorbell-release:%s\n' "${TARGET_SHA}" >>"${BUILT_SERVICE_WORKER}"
-
 [[ -z "$(git -C "${SOURCE_DIRECTORY}" status --porcelain)" ]] || {
   fail "build changed tracked source files"
   exit 1

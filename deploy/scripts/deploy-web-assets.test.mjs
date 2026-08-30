@@ -13,17 +13,6 @@ test("the Main release installs only the newly built web assets", () => {
   assert.ok(buildCopy >= 0 && buildCopy < runtimeSwitch);
 });
 
-test("every Main release changes the built worker without changing its cache rules", () => {
-  assert.match(
-    source,
-    /BUILT_SERVICE_WORKER="\$\{build_directory\}\/apps\/web\/dist\/service-worker\.js"/,
-  );
-  assert.match(source, /printf '\\n\/\/ doorbell-release:%s\\n' "\$\{TARGET_SHA\}"/);
-  const webBuild = source.indexOf("npm run build -w @doorbell/web");
-  const releaseMarker = source.indexOf("// doorbell-release:%s");
-  const buildCopy = source.indexOf(
-    `cp -a "\${build_directory}/apps/web/dist" "\${candidate_directory}/apps/web/"`,
-  );
-  assert.ok(webBuild >= 0 && webBuild < releaseMarker);
-  assert.ok(releaseMarker < buildCopy);
+test("the Main release does not mutate the built worker to force a client reload", () => {
+  assert.doesNotMatch(source, /BUILT_SERVICE_WORKER|doorbell-release:%s/);
 });
