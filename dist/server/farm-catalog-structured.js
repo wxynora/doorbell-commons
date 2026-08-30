@@ -528,6 +528,7 @@ function projectMessage(message) {
 
 function projectMessageBoard(boardFarm, own = false) {
   const closed = boardFarm.guestbook === false;
+  const aiName = typeof boardFarm.aiName === "string" ? boardFarm.aiName.trim() : "";
   const messages = closed
     ? []
     : (Array.isArray(boardFarm.messages) ? boardFarm.messages : [])
@@ -538,6 +539,7 @@ function projectMessageBoard(boardFarm, own = false) {
   return {
     farm_doorplate: String(boardFarm.id),
     farm_name: safeText(boardFarm.name),
+    ai_name: aiName || null,
     is_own: own,
     status: closed ? "closed" : "open",
     messages,

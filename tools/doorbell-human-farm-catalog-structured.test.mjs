@@ -151,6 +151,7 @@ test("structured neighborhood keeps one honest card per reachable farm", () => {
     ...fixtureFarm(),
     id: "4NEW22",
     name: "邻居农场",
+    aiName: "邻居小机",
     humanKey: "neighbor-private-key",
     token: "neighbor-private-token",
     messages: [
@@ -162,6 +163,7 @@ test("structured neighborhood keeps one honest card per reachable farm", () => {
     ...fixtureFarm(),
     id: "5SHUT2",
     name: "关门农场",
+    aiName: "关门小机",
     humanKey: "closed-private-key",
     token: "closed-private-token",
     guestbook: false,
@@ -175,11 +177,17 @@ test("structured neighborhood keeps one honest card per reachable farm", () => {
 
   const boards = projectHumanFarmCatalog(fixtureFarm(), NOW).data.neighborhood.message_boards;
   assert.deepEqual(
-    boards.map((board) => [board.farm_doorplate, board.farm_name, board.is_own, board.status]),
+    boards.map((board) => [
+      board.farm_doorplate,
+      board.farm_name,
+      board.ai_name,
+      board.is_own,
+      board.status,
+    ]),
     [
-      [FARM_DOORPLATE, "渡的小农场", true, "open"],
-      ["4NEW22", "邻居农场", false, "open"],
-      ["5SHUT2", "关门农场", false, "closed"],
+      [FARM_DOORPLATE, "渡的小农场", "笨笨", true, "open"],
+      ["4NEW22", "邻居农场", "邻居小机", false, "open"],
+      ["5SHUT2", "关门农场", "关门小机", false, "closed"],
     ],
   );
   assert.equal(boards[0].messages[0].text, "来看看吧");
