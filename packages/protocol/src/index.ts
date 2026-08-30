@@ -1918,9 +1918,126 @@ export const lingyeDailyIssueSchema = z
   })
   .strict();
 
+export const lingyeDailyReporterPublicationSchema = z
+  .object({
+    like_ref: z.string().trim().min(1),
+    article_text: z.string().min(1),
+    section_name: z.string().min(1).nullable(),
+    author_name: z.string().min(1),
+    author_farm_name: z.string().min(1).nullable(),
+    published_at: z.number().int().nonnegative(),
+    evaluation_closes_at: z.number().int().positive(),
+    valid_likes: z.number().int().nonnegative(),
+    has_liked: z.boolean(),
+    can_like: z.boolean(),
+    own_household: z.boolean(),
+    status: z.enum(["open", "closed"]),
+  })
+  .strict();
+
+export const lingyeDailyReporterPublicationsSchema = z.discriminatedUnion("status", [
+  z
+    .object({
+      status: z.literal("available"),
+      items: z.array(lingyeDailyReporterPublicationSchema),
+    })
+    .strict(),
+  z.object({ status: z.literal("unavailable") }).strict(),
+]);
+
 export const lingyeDailyLatestSuccessSchema = z
   .object({
     issue: lingyeDailyIssueSchema.nullable(),
+    reporter_publications: lingyeDailyReporterPublicationsSchema.default({
+      status: "unavailable",
+    }),
+  })
+  .strict();
+
+export const lingyeDailyLikeRequestSchema = z
+  .object({ like_ref: z.string().trim().min(1) })
+  .strict();
+
+export const lingyeDailyLikeSuccessSchema = z
+  .object({
+    accepted: z.boolean(),
+    duplicate: z.boolean(),
+    valid_likes: z.number().int().nonnegative(),
+    reporter_publications: lingyeDailyReporterPublicationsSchema,
+  })
+  .strict();
+
+const farmHumanReporterIdentitySchema = z
+  .object({
+    farm_human_key: z.string().min(1),
+    expected_farm_doorplate: farmDoorplateSchema,
+    human_actor_key: z.string().uuid(),
+    related_resident_ids: z.array(z.string().uuid()).min(1),
+  })
+  .strict();
+
+export const farmHumanReporterReadRequestSchema = farmHumanReporterIdentitySchema;
+export const farmHumanReporterLikeRequestSchema = farmHumanReporterIdentitySchema.extend({
+  like_ref: z.string().trim().min(1),
+});
+
+export const farmHumanReporterPublicationSchema = z
+  .object({
+    likeRef: z.string().trim().min(1),
+    articleText: z.string().min(1),
+    sectionName: z.string().min(1).nullable(),
+    authorName: z.string().min(1),
+    authorFarmName: z.string().min(1).nullable(),
+    publishedAt: z.number().int().nonnegative(),
+    evaluationClosesAt: z.number().int().positive(),
+    validLikes: z.number().int().nonnegative(),
+    hasLiked: z.boolean(),
+    canLike: z.boolean(),
+    ownHousehold: z.boolean(),
+    status: z.enum(["open", "closed"]),
+  })
+  .strict();
+
+export const farmHumanReporterReadSuccessSchema = z
+  .object({
+    ok: z.literal(true),
+    subject: z.object({ farm_doorplate: farmDoorplateSchema }).strict(),
+    publications: z.array(farmHumanReporterPublicationSchema),
+  })
+  .strict();
+
+export const farmHumanReporterLikeSuccessSchema = z
+  .object({
+    ok: z.literal(true),
+    subject: z.object({ farm_doorplate: farmDoorplateSchema }).strict(),
+    result: z
+      .object({
+        accepted: z.boolean(),
+        duplicate: z.boolean(),
+        likeRef: z.string().trim().min(1),
+        validLikes: z.number().int().nonnegative(),
+      })
+      .strict(),
+    publications: z.array(farmHumanReporterPublicationSchema),
+  })
+  .strict();
+
+export const farmHumanReporterErrorSchema = z
+  .object({
+    error: z
+      .object({
+        code: z.enum([
+          "invalid_request",
+          "authentication_required",
+          "farm_credential_not_found",
+          "farm_doorplate_mismatch",
+          "author_like_forbidden",
+          "evaluation_closed",
+          "farm_unavailable",
+        ]),
+        message: z.string(),
+      })
+      .strict(),
   })
   .strict();
 
@@ -1931,6 +2048,9 @@ export const lingyeDailyErrorCodeSchema = z.enum([
   "onebot_unavailable",
   "registration_profile_required",
   "idempotency_conflict",
+  "author_like_forbidden",
+  "evaluation_closed",
+  "farm_unavailable",
 ]);
 
 export const lingyeDailyErrorSchema = z
@@ -1948,6 +2068,9 @@ export type LingyeDailyPublishRequest = z.infer<typeof lingyeDailyPublishRequest
 export type LingyeDailyEditionPublish = z.infer<typeof lingyeDailyEditionPublishSchema>;
 export type LingyeDailyPublishSuccess = z.infer<typeof lingyeDailyPublishSuccessSchema>;
 export type LingyeDailyIssue = z.infer<typeof lingyeDailyIssueSchema>;
+export type LingyeDailyReporterPublication = z.infer<typeof lingyeDailyReporterPublicationSchema>;
+export type FarmHumanReporterReadSuccess = z.infer<typeof farmHumanReporterReadSuccessSchema>;
+export type FarmHumanReporterLikeSuccess = z.infer<typeof farmHumanReporterLikeSuccessSchema>;
 
 export const bellUpdateAvailableEventType = "update_available" as const;
 

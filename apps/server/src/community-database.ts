@@ -3419,6 +3419,12 @@ export class CommunityDatabase {
     }));
   }
 
+  listHumanResidentIdsByAccountId(accountId: string): string[] {
+    return this.#listCommunitiesByAccountId(accountId).map(
+      (community) => community.resident.residentId,
+    );
+  }
+
   switchActiveHumanSessionProfile(token: string, profileId: string): HumanCommunityRecord {
     const transaction = this.#database.transaction(() => {
       const session = this.#database

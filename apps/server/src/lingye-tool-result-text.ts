@@ -70,6 +70,7 @@ const INSTITUTION_NAMES: Record<string, string> = {
   lingye_daily: "铃野日报社",
   animal_hospital: "铃野动物医院",
   public_security_office: "铃野治安所",
+  public_security: "铃野治安署",
   vocational_school: "铃野职业学校",
   bank: "铃野银行",
 };
@@ -524,6 +525,18 @@ function renderExamSchedule(value: unknown): string[] {
 
 function renderSchoolActionResult(value: unknown): string[] {
   if (!isRecord(value)) return [];
+  if (value.employmentClass === "staff" || value.employmentClass === "external") {
+    const institution =
+      typeof value.institution === "string"
+        ? (INSTITUTION_NAMES[value.institution] ?? "铃野机构")
+        : "铃野机构";
+    const title = safeChineseText(value.title) ?? careerText(value.career);
+    return value.employmentClass === "external"
+      ? [
+          `已进入${institution}，当前为编外${title}。编外照常领取当前资格等级的每日底薪，真实工作绩效按标准的 50% 结算。`,
+        ]
+      : [`已进入${institution}，当前为编内${title}。`];
+  }
   const scheduledAt = finiteNumber(value.scheduledAt);
   const feeGold = finiteNumber(value.feeGold);
   if (scheduledAt !== undefined && feeGold !== undefined) {
@@ -556,10 +569,11 @@ function renderCertificates(value: unknown): string[] {
   if (certificates.length === 0) return ["资格证：暂无。"];
   return [
     "资格证：",
-    ...certificates.map(
-      (certificate) =>
-        `- ${careerText(certificate.career)} ${numberText(certificate.qualificationLevel)} 级：${statusText(certificate.status)}。`,
-    ),
+    ...certificates.map((certificate) => {
+      const title = safeChineseText(certificate.title);
+      const titleSuffix = title ? `（${title}）` : "";
+      return `- ${careerText(certificate.career)} ${numberText(certificate.qualificationLevel)} 级${titleSuffix}：${statusText(certificate.status)}。`;
+    }),
   ];
 }
 
@@ -568,6 +582,16 @@ function renderEmployment(value: unknown): string[] {
   const employment = records(value.records);
   const duties = records(value.duties);
   const lines = ["任职："];
+  const institutions = records(value.institutions);
+  for (const item of institutions) {
+    const institution =
+      typeof item.institution === "string"
+        ? (INSTITUTION_NAMES[item.institution] ?? "铃野机构")
+        : "铃野机构";
+    lines.push(
+      `- ${institution}：编内 ${numberText(item.staffCount)}／${numberText(item.staffCapacity)}，编外 ${numberText(item.externalCount)} 人。`,
+    );
+  }
   if (employment.length === 0) lines.push("- 暂无任职记录。");
   for (const item of employment) {
     const institution =
@@ -576,15 +600,17 @@ function renderEmployment(value: unknown): string[] {
         : "铃野机构";
     const availability =
       item.availability === "available" ? "可到岗" : statusText(item.availability);
+    const employmentClass = item.employmentClass === "external" ? "编外" : "编内";
+    const title = safeChineseText(item.title);
     lines.push(
-      `- ${careerText(item.career)}，任职于${institution}，当前${statusText(item.status)}，${availability}。`,
+      `- ${title ?? careerText(item.career)}（${employmentClass}），任职于${institution}，当前${statusText(item.status)}，${availability}。`,
     );
   }
   if (duties.length > 0) {
     lines.push("排班与工资：");
     for (const duty of duties) {
       lines.push(
-        `- ${careerText(duty.career)}，排班日 ${typeof duty.dutyDate === "string" ? duty.dutyDate : "暂无法读取"}，基本工资 ${numberText(duty.baseWageGold)} 金币，绩效工资 ${numberText(duty.performanceGold)} 金币，当前${statusText(duty.status)}。`,
+        `- ${careerText(duty.career)}，排班日 ${typeof duty.dutyDate === "string" ? duty.dutyDate : "暂无法读取"}，基本工资 ${numberText(duty.baseWageGold)} 金币，绩效工资 ${numberText(duty.performanceGold)} 金币${duty.performanceRateBps === 5000 ? "（编外按 50%）" : ""}，当前${statusText(duty.status)}。`,
       );
     }
   }
@@ -723,14 +749,45 @@ function schoolText(op: string, result: LingyeSuccess): string {
 
 function commissionTitle(op: string): string {
   if (op === "go.hospital.commission") return "🏥 铃野动物医院";
-  if (op === "go.security.commission") return "🛡️ 铃野治安所";
+  if (op === "go.newsroom.commission") return "📰 铃野日报社";
+  if (op === "go.security.commission") return "🛡️ 铃野治安署";
   return "🌾 铃野农场职业";
 }
 
 function commissionKind(op: string): string {
   if (op === "go.hospital.commission") return "病例";
+  if (op === "go.newsroom.commission") return "记者工作";
   if (op === "go.security.commission") return "治安事项";
   return "地块委托";
+}
+
+function renderReporterFacts(data: Record<string, unknown>): string[] {
+  const lines: string[] = [];
+  const sections = records(data.sections);
+  if (sections.length > 0) {
+    lines.push("日报板块：");
+    for (const section of sections) {
+      const name = safeChineseText(section.name);
+      if (name) lines.push(`- 「${name}」`);
+    }
+  }
+  const publications = records(data.publications);
+  if (publications.length > 0) {
+    lines.push("已出版稿件：");
+    for (const publication of publications) {
+      const section = safeChineseText(publication.sectionName) ?? "综合来稿";
+      const article = safeChineseText(publication.articleText) ?? "稿件正文暂无法读取";
+      const author = isRecord(publication.author)
+        ? publication.author.kind === "self"
+          ? "自己"
+          : (publicFarmText(publication.author.farm) ?? "社区记者")
+        : "社区记者";
+      lines.push(
+        `- 「${section}」· ${author}：${article}（${numberText(publication.validLikes)} 个有效赞，${statusText(publication.status)}）`,
+      );
+    }
+  }
+  return lines;
 }
 
 function publicCommissionFacts(item: Record<string, unknown>): Record<string, unknown>[] {
@@ -777,6 +834,8 @@ function commissionItemLines(op: string, item: Record<string, unknown>, index: n
     const animalKind = firstPublicField(facts, "animalKindId");
     const animal = typeof animalKind === "string" ? ANIMAL_NAMES[animalKind] : undefined;
     lines.push(`  动物：${animal ?? "暂无法读取具体描述"}`);
+  } else if (op === "go.newsroom.commission") {
+    lines.push("  稿件任务：整理真实公共素材");
   } else {
     const event = facts.map((fact) => fact.event).find(isRecord);
     const eventKind =
@@ -788,8 +847,7 @@ function commissionItemLines(op: string, item: Record<string, unknown>, index: n
       if (plotId !== undefined) lines.push(`  相关地块：第 ${plotId} 号地`);
     }
   }
-
-  if (op !== "go.security.commission") {
+  if (op !== "go.security.commission" && op !== "go.newsroom.commission") {
     lines.push(`  可观察症状：${observationText(firstPublicField(facts, "observations"))}`);
   }
   const difficulty =
@@ -882,6 +940,7 @@ function commissionText(op: string, result: LingyeSuccess): string {
     const current = isRecord(data.current) ? data.current : undefined;
     lines.push(...renderChefFacts(data.chef ?? current?.chef));
   }
+  if (op === "go.newsroom.commission") lines.push(...renderReporterFacts(data));
   return [...lines, ...renderOptions(op, data)].join("\n");
 }
 

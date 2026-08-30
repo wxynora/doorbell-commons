@@ -355,6 +355,77 @@ body {
   font-size: 11px;
 }
 
+.daily-reporter-publications {
+  display: grid;
+  gap: 18px;
+}
+
+.daily-reporter-publication {
+  padding: 14px 0 18px;
+  border-top: 3px double var(--daily-ink);
+  border-bottom: 1px solid var(--daily-border);
+}
+
+.daily-reporter-publication > header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.daily-reporter-publication h3,
+.daily-reporter-publication p {
+  margin: 0;
+}
+
+.daily-reporter-publication h3 {
+  font-size: 18px;
+}
+
+.daily-reporter-publication > header div > p:not(.daily-reporter-section) {
+  margin-top: 2px;
+  color: color-mix(in srgb, var(--daily-text) 66%, transparent);
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 11px;
+}
+
+.daily-reporter-publication .daily-reporter-likes {
+  color: var(--daily-red);
+  font-weight: 700;
+}
+
+.daily-reporter-section {
+  margin-bottom: 4px;
+  color: var(--daily-red);
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+
+.daily-reporter-publication > p {
+  line-height: 1.8;
+  white-space: pre-wrap;
+}
+
+.daily-reporter-publication button {
+  min-width: 76px;
+  padding: 7px 10px 6px;
+  color: var(--daily-red);
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  background: transparent;
+  transform: rotate(-1.2deg);
+}
+
+.daily-reporter-publication button:disabled {
+  color: color-mix(in srgb, var(--daily-text) 46%, transparent);
+}
+
 .lingye-daily-page--empty {
   display: flex;
   min-height: calc(100svh - 32px);

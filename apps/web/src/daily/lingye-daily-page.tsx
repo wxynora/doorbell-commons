@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+// biome-ignore lint/correctness/noUnusedImports: the direct node:test TSX transform needs React in scope.
+import React, { type ReactNode } from "react";
 
 export interface LingyeDailyFrontPage {
   title: string;
@@ -39,6 +40,21 @@ export interface LingyeDailyFarmObservation {
 export interface LingyeDailySubmission {
   text: string;
   sourceLabel?: string;
+}
+
+export interface LingyeDailyReporterPublication {
+  likeRef: string;
+  articleText: string;
+  sectionName: string | null;
+  authorName: string;
+  authorFarmName: string | null;
+  publishedAt: number;
+  evaluationClosesAt: number;
+  validLikes: number;
+  hasLiked: boolean;
+  canLike: boolean;
+  ownHousehold: boolean;
+  status: "open" | "closed";
 }
 
 export interface LingyeDailyIssue {
@@ -256,7 +272,68 @@ function TomorrowQuestion({ question }: { question: string | undefined }) {
   );
 }
 
-export function LingyeDailyPage({ issue }: { issue: LingyeDailyIssue | null }) {
+function ReporterPublications({
+  items,
+  onLike,
+  pendingLikeRef,
+}: {
+  items: readonly LingyeDailyReporterPublication[];
+  onLike?: ((likeRef: string) => void) | undefined;
+  pendingLikeRef?: string | null;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <DailySection id="daily-reporter-publications" label="记者来稿" tone="ink">
+      <div className="daily-reporter-publications">
+        {items.map((publication) => {
+          const disabled =
+            !onLike || !publication.canLike || pendingLikeRef === publication.likeRef;
+          const label = publication.ownHousehold
+            ? "自己的稿件"
+            : publication.hasLiked
+              ? "已点赞"
+              : publication.status === "closed"
+                ? "评价已结束"
+                : pendingLikeRef === publication.likeRef
+                  ? "正在点赞"
+                  : `点赞 · ${publication.validLikes}`;
+          return (
+            <article className="daily-reporter-publication" key={publication.likeRef}>
+              <header>
+                <div>
+                  <p className="daily-reporter-section">{publication.sectionName ?? "综合来稿"}</p>
+                  <h3>{publication.authorName}</h3>
+                  {publication.authorFarmName ? <p>{publication.authorFarmName}</p> : null}
+                  <p className="daily-reporter-likes">{publication.validLikes} 个有效赞</p>
+                </div>
+                <button
+                  disabled={disabled}
+                  onClick={() => onLike?.(publication.likeRef)}
+                  type="button"
+                >
+                  {label}
+                </button>
+              </header>
+              <p>{publication.articleText}</p>
+            </article>
+          );
+        })}
+      </div>
+    </DailySection>
+  );
+}
+
+export function LingyeDailyPage({
+  issue,
+  onReporterLike,
+  pendingLikeRef = null,
+  reporterPublications = [],
+}: {
+  issue: LingyeDailyIssue | null;
+  onReporterLike?: (likeRef: string) => void;
+  pendingLikeRef?: string | null;
+  reporterPublications?: readonly LingyeDailyReporterPublication[];
+}) {
   if (!issue) {
     return (
       <article className="lingye-daily-page lingye-daily-page--empty">
@@ -268,6 +345,11 @@ export function LingyeDailyPage({ issue }: { issue: LingyeDailyIssue | null }) {
           <h2 id="daily-unpublished-title">尚无已出版日报</h2>
           <p>日报出版后会在这里显示。</p>
         </main>
+        <ReporterPublications
+          items={reporterPublications}
+          onLike={onReporterLike}
+          pendingLikeRef={pendingLikeRef}
+        />
       </article>
     );
   }
@@ -287,6 +369,11 @@ export function LingyeDailyPage({ issue }: { issue: LingyeDailyIssue | null }) {
       </div>
       <Quotes quotes={issue.quotes} />
       <Submissions submissions={issue.submissions} />
+      <ReporterPublications
+        items={reporterPublications}
+        onLike={onReporterLike}
+        pendingLikeRef={pendingLikeRef}
+      />
       <TomorrowQuestion question={issue.tomorrowQuestion} />
       {issue.revisionNote ? <p className="daily-revision-note">{issue.revisionNote}</p> : null}
     </article>

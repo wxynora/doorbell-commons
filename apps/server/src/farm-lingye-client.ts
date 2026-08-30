@@ -1,9 +1,16 @@
 import {
   type FarmHumanGlimmerReadSuccess,
+  type FarmHumanReporterLikeSuccess,
+  type FarmHumanReporterReadSuccess,
   type FarmHumanTogetherReadSuccess,
   farmHumanGlimmerReadErrorSchema,
   farmHumanGlimmerReadRequestSchema,
   farmHumanGlimmerReadSuccessSchema,
+  farmHumanReporterErrorSchema,
+  farmHumanReporterLikeRequestSchema,
+  farmHumanReporterLikeSuccessSchema,
+  farmHumanReporterReadRequestSchema,
+  farmHumanReporterReadSuccessSchema,
   farmHumanTogetherReadErrorSchema,
   farmHumanTogetherReadRequestSchema,
   farmHumanTogetherReadSuccessSchema,
@@ -16,7 +23,16 @@ export interface FarmLingyeReadInput {
 
 export interface FarmLingyeReader {
   readGlimmer(input: FarmLingyeReadInput): Promise<FarmHumanGlimmerReadSuccess>;
+  readReporterPublications(input: FarmReporterIdentityInput): Promise<FarmHumanReporterReadSuccess>;
+  likeReporterPublication(
+    input: FarmReporterIdentityInput & { likeRef: string },
+  ): Promise<FarmHumanReporterLikeSuccess>;
   readTogether(input: FarmLingyeReadInput): Promise<FarmHumanTogetherReadSuccess>;
+}
+
+export interface FarmReporterIdentityInput extends FarmLingyeReadInput {
+  humanActorKey: string;
+  relatedResidentIds: readonly string[];
 }
 
 export class FarmLingyeCredentialInvalidError extends Error {
@@ -47,6 +63,9 @@ export class FarmLingyeContractUnavailableError extends Error {
   }
 }
 
+export class FarmReporterAuthorLikeForbiddenError extends Error {}
+export class FarmReporterEvaluationClosedError extends Error {}
+
 interface FarmLingyeClientOptions {
   apiBaseUrl: string;
   requestTimeoutMs: number;
@@ -71,6 +90,8 @@ interface FarmLingyeErrorPayload {
 
 export class FarmLingyeClient implements FarmLingyeReader {
   readonly #glimmerReadEndpoint: URL;
+  readonly #reporterLikeEndpoint: URL;
+  readonly #reporterReadEndpoint: URL;
   readonly #togetherReadEndpoint: URL;
   readonly #serviceToken: string;
   readonly #fetch: typeof fetch;
@@ -85,6 +106,8 @@ export class FarmLingyeClient implements FarmLingyeReader {
       apiBaseUrl.pathname += "/";
     }
     this.#glimmerReadEndpoint = new URL("internal/doorbell/human/glimmer/read", apiBaseUrl);
+    this.#reporterLikeEndpoint = new URL("internal/doorbell/human/reporter/like", apiBaseUrl);
+    this.#reporterReadEndpoint = new URL("internal/doorbell/human/reporter/read", apiBaseUrl);
     this.#togetherReadEndpoint = new URL("internal/doorbell/human/together/read", apiBaseUrl);
     this.#serviceToken = options.serviceToken;
     this.#fetch = options.fetchImplementation ?? fetch;
@@ -115,6 +138,43 @@ export class FarmLingyeClient implements FarmLingyeReader {
       requestBody,
       farmHumanTogetherReadSuccessSchema,
       farmHumanTogetherReadErrorSchema,
+      input.farmDoorplate,
+    );
+  }
+
+  readReporterPublications(
+    input: FarmReporterIdentityInput,
+  ): Promise<FarmHumanReporterReadSuccess> {
+    const requestBody = farmHumanReporterReadRequestSchema.parse({
+      farm_human_key: input.farmHumanKey,
+      expected_farm_doorplate: input.farmDoorplate,
+      human_actor_key: input.humanActorKey,
+      related_resident_ids: input.relatedResidentIds,
+    });
+    return this.#read(
+      this.#reporterReadEndpoint,
+      requestBody,
+      farmHumanReporterReadSuccessSchema,
+      farmHumanReporterErrorSchema,
+      input.farmDoorplate,
+    );
+  }
+
+  likeReporterPublication(
+    input: FarmReporterIdentityInput & { likeRef: string },
+  ): Promise<FarmHumanReporterLikeSuccess> {
+    const requestBody = farmHumanReporterLikeRequestSchema.parse({
+      farm_human_key: input.farmHumanKey,
+      expected_farm_doorplate: input.farmDoorplate,
+      human_actor_key: input.humanActorKey,
+      related_resident_ids: input.relatedResidentIds,
+      like_ref: input.likeRef,
+    });
+    return this.#read(
+      this.#reporterLikeEndpoint,
+      requestBody,
+      farmHumanReporterLikeSuccessSchema,
+      farmHumanReporterErrorSchema,
       input.farmDoorplate,
     );
   }
@@ -178,6 +238,10 @@ export class FarmLingyeClient implements FarmLingyeReader {
         throw new FarmLingyeNotFoundError();
       case "farm_unavailable":
         throw new FarmLingyeUnavailableError();
+      case "author_like_forbidden":
+        throw new FarmReporterAuthorLikeForbiddenError();
+      case "evaluation_closed":
+        throw new FarmReporterEvaluationClosedError();
       case "upstream_contract_unavailable":
         throw new FarmLingyeContractUnavailableError();
       default:

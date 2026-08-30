@@ -1238,6 +1238,45 @@ export class RegistrationAuthService {
     });
   }
 
+  async getCurrentFarmReporterPublications(token: string) {
+    const community = await this.getCurrentSession(token);
+    const farmHumanKey = community.farmBinding.farmHumanKey;
+    if (farmHumanKey === null) {
+      throw new RegistrationProfileRequiredError();
+    }
+    if (!this.#farmLingyeReader) {
+      throw new FarmLingyeContractUnavailableError();
+    }
+    return this.#farmLingyeReader.readReporterPublications({
+      farmDoorplate: community.farmBinding.farmDoorplate,
+      farmHumanKey,
+      humanActorKey: community.account.accountId,
+      relatedResidentIds: this.#database.listHumanResidentIdsByAccountId(
+        community.account.accountId,
+      ),
+    });
+  }
+
+  async likeCurrentFarmReporterPublication(token: string, likeRef: string) {
+    const community = await this.getCurrentSession(token);
+    const farmHumanKey = community.farmBinding.farmHumanKey;
+    if (farmHumanKey === null) {
+      throw new RegistrationProfileRequiredError();
+    }
+    if (!this.#farmLingyeReader) {
+      throw new FarmLingyeContractUnavailableError();
+    }
+    return this.#farmLingyeReader.likeReporterPublication({
+      farmDoorplate: community.farmBinding.farmDoorplate,
+      farmHumanKey,
+      humanActorKey: community.account.accountId,
+      relatedResidentIds: this.#database.listHumanResidentIdsByAccountId(
+        community.account.accountId,
+      ),
+      likeRef,
+    });
+  }
+
   async getCurrentQixiMemorial(token: string) {
     const community = await this.getCurrentSession(token);
     const farmHumanKey = community.farmBinding.farmHumanKey;

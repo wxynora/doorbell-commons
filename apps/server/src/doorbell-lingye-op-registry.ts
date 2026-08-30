@@ -172,9 +172,9 @@ export const lingyeOperations = [
   }),
   defineOperation({
     op: "go.newsroom.commission",
-    modelVisible: false,
+    modelVisible: true,
     description:
-      "查看或推进由真实公共素材形成的日报工作。空 args 用于查看素材、稿件和合法选项；不存在虚构顾客、稿件或点赞。",
+      "查看或推进由真实公共素材形成的日报工作、正式板块和已出版稿件评价。空 args 查看当前事实与合法 option；后续只提交服务端返回的 option。三级及以上记者可以使用创建板块 option，并在 text 中填写板块名称。板块创建后立即生效；具体稿件仍须通过日报社的事实、来源、隐私和格式审核。",
     argsHint: "{}、{reference}、{option}、{option,amount}、{option,text} 或 {option,amount,text}",
     branches: commissionBranches,
     exampleArgs: [{ option: "returned-option", text: "稿件正文" }],
@@ -208,9 +208,8 @@ if (lingyeOperations.length !== 8 || lingyeOperationByName.size !== lingyeOperat
   throw new Error("The initial Doorbell Lingye registry must contain 8 unique operations");
 }
 if (
-  modelVisibleLingyeOperations.length !== 7 ||
-  modelVisibleLingyeOperationByName.size !== modelVisibleLingyeOperations.length ||
-  modelVisibleLingyeOperationByName.has("go.newsroom.commission")
+  modelVisibleLingyeOperations.length !== 8 ||
+  modelVisibleLingyeOperationByName.size !== modelVisibleLingyeOperations.length
 ) {
-  throw new Error("The Doorbell Lingye registry must expose seven non-newsroom operations");
+  throw new Error("The Doorbell Lingye registry must expose all eight ready operations");
 }

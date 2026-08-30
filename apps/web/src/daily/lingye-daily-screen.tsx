@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
-import { loadLatestLingyeDailyIssue } from "./lingye-daily-client";
-import { type LingyeDailyIssue, LingyeDailyPage } from "./lingye-daily-page";
+import { likeLingyeDailyReporterPublication, loadLatestLingyeDaily } from "./lingye-daily-client";
+import {
+  type LingyeDailyIssue,
+  LingyeDailyPage,
+  type LingyeDailyReporterPublication,
+} from "./lingye-daily-page";
 
 interface LingyeDailyScreenProps {
   onBack(): void;
@@ -8,7 +12,12 @@ interface LingyeDailyScreenProps {
 
 type DailyLoadState =
   | { status: "loading" }
-  | { status: "ready"; issue: LingyeDailyIssue | null }
+  | {
+      status: "ready";
+      issue: LingyeDailyIssue | null;
+      reporterPublications: LingyeDailyReporterPublication[];
+      pendingLikeRef: string | null;
+    }
   | { status: "error" };
 
 function DailyLoadNotice({ error }: { error: boolean }) {
@@ -31,9 +40,11 @@ export function LingyeDailyScreen({ onBack }: LingyeDailyScreenProps) {
 
   useEffect(() => {
     let active = true;
-    void loadLatestLingyeDailyIssue()
-      .then((issue) => {
-        if (active) setState({ status: "ready", issue });
+    void loadLatestLingyeDaily()
+      .then(({ issue, reporterPublications }) => {
+        if (active) {
+          setState({ status: "ready", issue, reporterPublications, pendingLikeRef: null });
+        }
       })
       .catch(() => {
         if (active) setState({ status: "error" });
@@ -43,6 +54,25 @@ export function LingyeDailyScreen({ onBack }: LingyeDailyScreenProps) {
     };
   }, []);
 
+  const likeReporterPublication = (likeRef: string) => {
+    setState((current) =>
+      current.status === "ready" ? { ...current, pendingLikeRef: likeRef } : current,
+    );
+    void likeLingyeDailyReporterPublication(likeRef)
+      .then((reporterPublications) => {
+        setState((current) =>
+          current.status === "ready"
+            ? { ...current, reporterPublications, pendingLikeRef: null }
+            : current,
+        );
+      })
+      .catch(() => {
+        setState((current) =>
+          current.status === "ready" ? { ...current, pendingLikeRef: null } : current,
+        );
+      });
+  };
+
   return (
     <section className="app-screen lingye-subpage" id="main-content">
       <button className="lingye-back-button" onClick={onBack} type="button">
@@ -50,7 +80,12 @@ export function LingyeDailyScreen({ onBack }: LingyeDailyScreenProps) {
         返回铃野地图
       </button>
       {state.status === "ready" ? (
-        <LingyeDailyPage issue={state.issue} />
+        <LingyeDailyPage
+          issue={state.issue}
+          onReporterLike={likeReporterPublication}
+          pendingLikeRef={state.pendingLikeRef}
+          reporterPublications={state.reporterPublications}
+        />
       ) : (
         <DailyLoadNotice error={state.status === "error"} />
       )}

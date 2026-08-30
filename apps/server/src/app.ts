@@ -1,12 +1,6 @@
 import {
   additionalHumanProfileRequestSchema,
   type BellAccessErrorCode,
-  bellAccessErrorMessages,
-  bellAccessErrorSchema,
-  bellAccessMutationBodySchema,
-  bellAccessReadRequestSchema,
-  bellAccessStatusResponseSchema,
-  bellCredentialIssueResponseSchema,
   type BoundConstableInterviewErrorCode,
   type BoundFarmCropCodexActionErrorCode,
   type BoundFarmExpeditionActionErrorCode,
@@ -25,6 +19,12 @@ import {
   type BoundFarmRanchResidentActionErrorCode,
   type BoundFarmSettingsActionErrorCode,
   type BoundFarmSmeltingActionErrorCode,
+  bellAccessErrorMessages,
+  bellAccessErrorSchema,
+  bellAccessMutationBodySchema,
+  bellAccessReadRequestSchema,
+  bellAccessStatusResponseSchema,
+  bellCredentialIssueResponseSchema,
   boundConstableInterviewActionRequestSchema,
   boundConstableInterviewErrorCodeSchema,
   boundConstableInterviewErrorSchema,
@@ -169,6 +169,8 @@ import {
   humanSettingsSuccessSchema,
   lingyeDailyErrorSchema,
   lingyeDailyLatestSuccessSchema,
+  lingyeDailyLikeRequestSchema,
+  lingyeDailyLikeSuccessSchema,
   lingyeDailyPublishRequestSchema,
   lingyeDailyPublishSuccessSchema,
   lingyeDailyReadRequestSchema,
@@ -348,6 +350,8 @@ import {
   FarmLingyeCredentialInvalidError,
   FarmLingyeNotFoundError,
   FarmLingyeUnavailableError,
+  FarmReporterAuthorLikeForbiddenError,
+  FarmReporterEvaluationClosedError,
 } from "./farm-lingye-client.js";
 import {
   FarmHumanMarketActionContractUnavailableError,
@@ -777,6 +781,30 @@ function lingyeDailyIssueResponse(issue: LingyeDailyIssueRecord) {
   };
 }
 
+function lingyeDailyReporterPublicationsResponse(
+  publications: Awaited<
+    ReturnType<RegistrationAuthService["getCurrentFarmReporterPublications"]>
+  >["publications"],
+) {
+  return {
+    status: "available" as const,
+    items: publications.map((publication) => ({
+      like_ref: publication.likeRef,
+      article_text: publication.articleText,
+      section_name: publication.sectionName,
+      author_name: publication.authorName,
+      author_farm_name: publication.authorFarmName,
+      published_at: publication.publishedAt,
+      evaluation_closes_at: publication.evaluationClosesAt,
+      valid_likes: publication.validLikes,
+      has_liked: publication.hasLiked,
+      can_like: publication.canLike,
+      own_household: publication.ownHousehold,
+      status: publication.status,
+    })),
+  };
+}
+
 function readMcpBackendCredential(authorization: string | undefined): string | undefined {
   if (!authorization?.startsWith("Bearer ")) {
     return undefined;
@@ -875,7 +903,10 @@ function sendLingyeDailyError(
     | "qq_not_group_member"
     | "onebot_unavailable"
     | "registration_profile_required"
-    | "idempotency_conflict",
+    | "idempotency_conflict"
+    | "author_like_forbidden"
+    | "evaluation_closed"
+    | "farm_unavailable",
   message: string,
 ) {
   reply.header("cache-control", "no-store");
@@ -3663,11 +3694,101 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       try {
         await options.registrationAuth.getCurrentSession(token);
         const issue = lingyeDailyService.getLatest();
+        let reporterPublications:
+          | ReturnType<typeof lingyeDailyReporterPublicationsResponse>
+          | { status: "unavailable" } = { status: "unavailable" };
+        try {
+          const reporter = await options.registrationAuth.getCurrentFarmReporterPublications(token);
+          reporterPublications = lingyeDailyReporterPublicationsResponse(reporter.publications);
+        } catch (error) {
+          if (
+            !(error instanceof FarmLingyeCredentialInvalidError) &&
+            !(error instanceof FarmLingyeNotFoundError) &&
+            !(error instanceof FarmLingyeContractUnavailableError) &&
+            !(error instanceof FarmLingyeUnavailableError)
+          ) {
+            throw error;
+          }
+        }
         reply.header("cache-control", "no-store");
         return lingyeDailyLatestSuccessSchema.parse({
           issue: issue ? lingyeDailyIssueResponse(issue) : null,
+          reporter_publications: reporterPublications,
         });
       } catch (error) {
+        return sendLingyeDailyHumanFailure(request, reply, error);
+      }
+    });
+
+    app.post("/api/lingye-daily/likes", async (request, reply) => {
+      if (!lingyeDailyReadRequestSchema.safeParse(request.query).success) {
+        return sendLingyeDailyError(
+          reply,
+          400,
+          "invalid_request",
+          "The Lingye Daily like request does not accept query parameters",
+        );
+      }
+      const parsedRequest = lingyeDailyLikeRequestSchema.safeParse(request.body);
+      if (!parsedRequest.success) {
+        return sendLingyeDailyError(
+          reply,
+          400,
+          "invalid_request",
+          "The Lingye Daily like request is invalid",
+        );
+      }
+      const token = readHumanSessionToken(request.headers.cookie);
+      if (!token) {
+        return sendLingyeDailyError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      try {
+        const liked = await options.registrationAuth.likeCurrentFarmReporterPublication(
+          token,
+          parsedRequest.data.like_ref,
+        );
+        reply.header("cache-control", "no-store");
+        return lingyeDailyLikeSuccessSchema.parse({
+          accepted: liked.result.accepted,
+          duplicate: liked.result.duplicate,
+          valid_likes: liked.result.validLikes,
+          reporter_publications: lingyeDailyReporterPublicationsResponse(liked.publications),
+        });
+      } catch (error) {
+        if (error instanceof FarmReporterAuthorLikeForbiddenError) {
+          return sendLingyeDailyError(
+            reply,
+            409,
+            "author_like_forbidden",
+            "The reporter household cannot like its own article",
+          );
+        }
+        if (error instanceof FarmReporterEvaluationClosedError) {
+          return sendLingyeDailyError(
+            reply,
+            409,
+            "evaluation_closed",
+            "The evaluation window is closed",
+          );
+        }
+        if (
+          error instanceof FarmLingyeCredentialInvalidError ||
+          error instanceof FarmLingyeNotFoundError ||
+          error instanceof FarmLingyeContractUnavailableError ||
+          error instanceof FarmLingyeUnavailableError
+        ) {
+          return sendLingyeDailyError(
+            reply,
+            503,
+            "farm_unavailable",
+            "Reporter publications are temporarily unavailable",
+          );
+        }
         return sendLingyeDailyHumanFailure(request, reply, error);
       }
     });

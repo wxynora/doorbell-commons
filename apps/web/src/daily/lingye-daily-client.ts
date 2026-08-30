@@ -1,5 +1,9 @@
-import { lingyeDailyErrorSchema, lingyeDailyLatestSuccessSchema } from "@doorbell/protocol";
-import type { LingyeDailyIssue } from "./lingye-daily-page";
+import {
+  lingyeDailyErrorSchema,
+  lingyeDailyLatestSuccessSchema,
+  lingyeDailyLikeSuccessSchema,
+} from "@doorbell/protocol";
+import type { LingyeDailyIssue, LingyeDailyReporterPublication } from "./lingye-daily-page";
 
 export class LingyeDailyReadError extends Error {
   readonly status: number;
@@ -18,9 +22,31 @@ function dateLabel(issueDate: string): string {
   return `${year}年${Number(month)}月${Number(day)}日`;
 }
 
-export async function loadLatestLingyeDailyIssue(
-  fetchImplementation: typeof fetch = fetch,
-): Promise<LingyeDailyIssue | null> {
+function reporterPublications(
+  input: ReturnType<typeof lingyeDailyLatestSuccessSchema.parse>["reporter_publications"],
+): LingyeDailyReporterPublication[] {
+  return input.status === "available"
+    ? input.items.map((publication) => ({
+        likeRef: publication.like_ref,
+        articleText: publication.article_text,
+        sectionName: publication.section_name,
+        authorName: publication.author_name,
+        authorFarmName: publication.author_farm_name,
+        publishedAt: publication.published_at,
+        evaluationClosesAt: publication.evaluation_closes_at,
+        validLikes: publication.valid_likes,
+        hasLiked: publication.has_liked,
+        canLike: publication.can_like,
+        ownHousehold: publication.own_household,
+        status: publication.status,
+      }))
+    : [];
+}
+
+export async function loadLatestLingyeDaily(fetchImplementation: typeof fetch = fetch): Promise<{
+  issue: LingyeDailyIssue | null;
+  reporterPublications: LingyeDailyReporterPublication[];
+}> {
   const response = await fetchImplementation("/api/lingye-daily/latest", {
     credentials: "same-origin",
     headers: { accept: "application/json" },
@@ -34,50 +60,82 @@ export async function loadLatestLingyeDailyIssue(
     );
   }
   const parsed = lingyeDailyLatestSuccessSchema.parse(body);
-  if (!parsed.issue) return null;
+  const reporterItems = reporterPublications(parsed.reporter_publications);
+  if (!parsed.issue) return { issue: null, reporterPublications: reporterItems };
   return {
-    issueNumber: String(parsed.issue.issue_number),
-    dateLabel: dateLabel(parsed.issue.issue_date),
-    editorName: parsed.issue.editor_model,
-    ...(parsed.issue.front_page
-      ? {
-          frontPage: {
-            title: parsed.issue.front_page.title,
-            paragraphs: parsed.issue.front_page.paragraphs,
-            imageUrls: parsed.issue.front_page.image_urls,
-          },
-        }
-      : {}),
-    groupChat: {
-      summary: parsed.issue.group_chat.summary,
-      topics: parsed.issue.group_chat.topics,
+    issue: {
+      issueNumber: String(parsed.issue.issue_number),
+      dateLabel: dateLabel(parsed.issue.issue_date),
+      editorName: parsed.issue.editor_model,
+      ...(parsed.issue.front_page
+        ? {
+            frontPage: {
+              title: parsed.issue.front_page.title,
+              paragraphs: parsed.issue.front_page.paragraphs,
+              imageUrls: parsed.issue.front_page.image_urls,
+            },
+          }
+        : {}),
+      groupChat: {
+        summary: parsed.issue.group_chat.summary,
+        topics: parsed.issue.group_chat.topics,
+      },
+      behaviorSlices: parsed.issue.behavior_slices.map((slice) => ({
+        title: slice.title,
+        body: slice.body,
+        imageUrls: slice.image_urls,
+      })),
+      quotes: parsed.issue.quotes.map((quote) => ({
+        text: quote.text,
+        sourceLabel: quote.source_label,
+      })),
+      ...(parsed.issue.farm_observation
+        ? {
+            farmObservation: {
+              ...(parsed.issue.farm_observation.summary
+                ? { summary: parsed.issue.farm_observation.summary }
+                : {}),
+              metrics: parsed.issue.farm_observation.metrics,
+            },
+          }
+        : {}),
+      submissions: parsed.issue.submissions.map((submission) => ({
+        text: submission.text,
+        sourceLabel: submission.source_label,
+      })),
+      ...(parsed.issue.tomorrow_question
+        ? { tomorrowQuestion: parsed.issue.tomorrow_question.text }
+        : {}),
+      ...(parsed.issue.revision_note ? { revisionNote: parsed.issue.revision_note } : {}),
     },
-    behaviorSlices: parsed.issue.behavior_slices.map((slice) => ({
-      title: slice.title,
-      body: slice.body,
-      imageUrls: slice.image_urls,
-    })),
-    quotes: parsed.issue.quotes.map((quote) => ({
-      text: quote.text,
-      sourceLabel: quote.source_label,
-    })),
-    ...(parsed.issue.farm_observation
-      ? {
-          farmObservation: {
-            ...(parsed.issue.farm_observation.summary
-              ? { summary: parsed.issue.farm_observation.summary }
-              : {}),
-            metrics: parsed.issue.farm_observation.metrics,
-          },
-        }
-      : {}),
-    submissions: parsed.issue.submissions.map((submission) => ({
-      text: submission.text,
-      sourceLabel: submission.source_label,
-    })),
-    ...(parsed.issue.tomorrow_question
-      ? { tomorrowQuestion: parsed.issue.tomorrow_question.text }
-      : {}),
-    ...(parsed.issue.revision_note ? { revisionNote: parsed.issue.revision_note } : {}),
+    reporterPublications: reporterItems,
   };
+}
+
+export async function loadLatestLingyeDailyIssue(
+  fetchImplementation: typeof fetch = fetch,
+): Promise<LingyeDailyIssue | null> {
+  return (await loadLatestLingyeDaily(fetchImplementation)).issue;
+}
+
+export async function likeLingyeDailyReporterPublication(
+  likeRef: string,
+  fetchImplementation: typeof fetch = fetch,
+): Promise<LingyeDailyReporterPublication[]> {
+  const response = await fetchImplementation("/api/lingye-daily/likes", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { accept: "application/json", "content-type": "application/json" },
+    body: JSON.stringify({ like_ref: likeRef }),
+  });
+  const body = (await response.json()) as unknown;
+  if (!response.ok) {
+    const parsedError = lingyeDailyErrorSchema.safeParse(body);
+    throw new LingyeDailyReadError(
+      response.status,
+      parsedError.success ? parsedError.data.error.code : "invalid_response",
+    );
+  }
+  const parsed = lingyeDailyLikeSuccessSchema.parse(body);
+  return reporterPublications(parsed.reporter_publications);
 }
