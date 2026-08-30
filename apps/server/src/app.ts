@@ -4662,6 +4662,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
     try {
       const result = await options.registrationAuth.acknowledgeCurrentFarmBulletin(token, {
+        acknowledge: parsedBody.data.acknowledge,
         expectedRevision: parsedBody.data.expected_revision,
         idempotencyKey,
       });

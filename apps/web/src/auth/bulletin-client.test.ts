@@ -25,6 +25,21 @@ const BULLETIN_RESULT = {
       ranch_notifications: [],
     },
     unavailable: {},
+    trail: {
+      status: "available",
+      entries: [
+        {
+          event_id: "trail-stolen-1",
+          kind: "stolen",
+          actor_name: "访客",
+          actor_farm_doorplate: "DEF567",
+          plot_id: 3,
+          crop_name: "草莓",
+          at: "2026-08-25T03:58:00.000Z",
+        },
+      ],
+      has_unread: true,
+    },
   },
   revision: `farm-bulletin-v1:${"b".repeat(64)}`,
   server_time: "2026-08-25T04:00:00.000Z",
@@ -63,6 +78,7 @@ test("browser bulletin client acknowledges the displayed revision with a UUID ke
       resource: {
         available: { tasks: [], mature_plots: [], messages: [], ranch_notifications: [] },
         unavailable: {},
+        trail: { ...BULLETIN_RESULT.data.trail, has_unread: false },
       },
     },
     revision: BULLETIN_RESULT.revision,
@@ -72,6 +88,7 @@ test("browser bulletin client acknowledges the displayed revision with a UUID ke
     expectedFarmDoorplate: "ABC234",
     expectedRevision: BULLETIN_RESULT.revision,
     idempotencyKey: IDEMPOTENCY_KEY,
+    acknowledge: "trail",
     fetcher: async (url, init) => {
       requests.push({ url, init });
       return jsonResponse(ackResult);
@@ -84,7 +101,7 @@ test("browser bulletin client acknowledges the displayed revision with a UUID ke
   assert.equal(new Headers(requests[0]?.init?.headers).get("idempotency-key"), IDEMPOTENCY_KEY);
   assert.equal(
     requests[0]?.init?.body,
-    JSON.stringify({ expected_revision: BULLETIN_RESULT.revision }),
+    JSON.stringify({ expected_revision: BULLETIN_RESULT.revision, acknowledge: "trail" }),
   );
 });
 

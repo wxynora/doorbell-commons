@@ -7,6 +7,7 @@ import {
 import {
   acknowledgeBoundBulletin,
   type BoundBulletinRead,
+  type BulletinAcknowledgementScope,
   bulletinIssueMessage,
   getBoundBulletin,
 } from "../../auth/bulletin-client";
@@ -294,19 +295,21 @@ export function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
   );
 
   const acknowledgeDisplayedBulletin = useCallback(
-    async (bulletin: BoundBulletinRead) => {
+    async (bulletin: BoundBulletinRead, acknowledge: BulletinAcknowledgementScope) => {
       const expectedFarmDoorplate = fieldDoorplateRef.current;
       if (!expectedFarmDoorplate) return;
+      const acknowledgementIdentity = `${bulletin.revision}:${acknowledge}`;
       const idempotencyKey =
-        bulletinAckKeysRef.current.get(bulletin.revision) ?? crypto.randomUUID();
-      bulletinAckKeysRef.current.set(bulletin.revision, idempotencyKey);
+        bulletinAckKeysRef.current.get(acknowledgementIdentity) ?? crypto.randomUUID();
+      bulletinAckKeysRef.current.set(acknowledgementIdentity, idempotencyKey);
       const result = await acknowledgeBoundBulletin({
+        acknowledge,
         expectedFarmDoorplate,
         expectedRevision: bulletin.revision,
         idempotencyKey,
       });
       if (result.ok) {
-        bulletinAckKeysRef.current.delete(bulletin.revision);
+        bulletinAckKeysRef.current.delete(acknowledgementIdentity);
         setResources((current) => ({
           ...current,
           bulletin: {
@@ -322,7 +325,7 @@ export function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
         return;
       }
       if (result.issue.code === "state_conflict") {
-        bulletinAckKeysRef.current.delete(bulletin.revision);
+        bulletinAckKeysRef.current.delete(acknowledgementIdentity);
         requireResource("bulletin", true);
       }
     },

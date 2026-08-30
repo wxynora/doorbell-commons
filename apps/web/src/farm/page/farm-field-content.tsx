@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { BoundFarmField } from "../../auth/auth-client";
-import type { BoundBulletinRead } from "../../auth/bulletin-client";
+import type { BoundBulletinRead, BulletinAcknowledgementScope } from "../../auth/bulletin-client";
 import {
   type CreateFarmPurchaseRequestInput,
   farmPurchaseRequestIssueMessage,
@@ -161,7 +161,8 @@ export function compensationBulletinIdentity(bulletin: BoundBulletinRead | null)
 export function bulletinHasUnreadEntries(bulletin: BoundBulletinRead | null): boolean {
   return Boolean(
     bulletin &&
-      Object.values(bulletin.data.available).some((entries) => (entries?.length ?? 0) > 0),
+      (Object.values(bulletin.data.available).some((entries) => (entries?.length ?? 0) > 0) ||
+        (bulletin.data.trail.status === "available" && bulletin.data.trail.has_unread)),
   );
 }
 
@@ -205,7 +206,9 @@ export function FarmFieldContent({
 }: {
   data: BoundFarmField;
   harvestAction?: FarmHarvestActionState;
-  onAcknowledgeBulletin?: ((bulletin: BoundBulletinRead) => void) | undefined;
+  onAcknowledgeBulletin?:
+    | ((bulletin: BoundBulletinRead, acknowledge: BulletinAcknowledgementScope) => void)
+    | undefined;
   landUpgradeAction?: FarmLandUpgradeActionState;
   onCloseHarvestAction?: () => void;
   onCloseLandUpgradeAction?: () => void;
@@ -349,19 +352,16 @@ export function FarmFieldContent({
   const activeResourceState = activeResourceKey ? resources[activeResourceKey] : null;
   const displayedBulletin = resources.bulletin.stage === "ready" ? resources.bulletin.data : null;
   const bulletinUnread = bulletinHasUnreadEntries(displayedBulletin);
-  const acknowledgeDisplayedBulletinIfNeeded = ({
-    allowCompensation = false,
-  }: {
-    allowCompensation?: boolean;
-  } = {}) => {
-    if (
-      !preview &&
-      displayedBulletin &&
-      bulletinUnread &&
-      (allowCompensation || compensationBulletinIdentity(displayedBulletin) === null)
-    ) {
-      onAcknowledgeBulletin?.(displayedBulletin);
-    }
+  const acknowledgeDisplayedBulletin = (acknowledge: BulletinAcknowledgementScope) => {
+    if (preview || !displayedBulletin) return;
+    const hasUnread =
+      acknowledge === "trail"
+        ? displayedBulletin.data.trail.status === "available" &&
+          displayedBulletin.data.trail.has_unread
+        : Object.values(displayedBulletin.data.available).some(
+            (entries) => (entries?.length ?? 0) > 0,
+          );
+    if (hasUnread) onAcknowledgeBulletin?.(displayedBulletin, acknowledge);
   };
   const ranchSceneAnimals: readonly RanchSceneAnimalDefinition[] = preview
     ? RANCH_SHOP_ANIMALS.filter((animal) => animal.demoOwned).flatMap((animal) => {
@@ -768,9 +768,6 @@ export function FarmFieldContent({
   );
 
   const changeScene = (sceneId: FarmSceneId) => {
-    if (sceneId !== activeScene && activeSceneUiState.bulletinOpen) {
-      acknowledgeDisplayedBulletinIfNeeded();
-    }
     if (!preview) {
       if (sceneId === "ranch") {
         onRequireResource?.("ranch");
@@ -1021,9 +1018,10 @@ export function FarmFieldContent({
                 <DingdongBulletin
                   bulletin={resources.bulletin.stage === "ready" ? resources.bulletin.data : null}
                   onClose={() => {
-                    acknowledgeDisplayedBulletinIfNeeded({ allowCompensation: true });
+                    acknowledgeDisplayedBulletin("system_notifications");
                     updateSceneUiState(scene.id, { bulletinOpen: false });
                   }}
+                  onViewTrail={() => acknowledgeDisplayedBulletin("trail")}
                   preview={preview}
                   sceneId={scene.id}
                 />
@@ -1152,9 +1150,6 @@ export function FarmFieldContent({
               const resource = getToolReadResource(activeScene, tool.id);
               if (resource) onRequireResource?.(resource);
             }
-          }
-          if (activeSceneUiState.bulletinOpen) {
-            acknowledgeDisplayedBulletinIfNeeded();
           }
           updateSceneUiState(activeScene, { bulletinOpen: false, selectedTool: tool });
         }}

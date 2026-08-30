@@ -6,6 +6,7 @@ export const farmBulletinDoorplateSchema = z.string().regex(FARM_DOORPLATE_RE);
 export const farmBulletinHumanKeySchema = z.string().min(1);
 export const farmBulletinRevisionSchema = z.string().regex(/^farm-bulletin-v1:[0-9a-f]{64}$/);
 export const farmBulletinAckIdempotencyKeySchema = z.uuid();
+export const farmBulletinAckScopeSchema = z.enum(["system_notifications", "trail"]);
 
 export const farmBulletinUnavailableReasonSchema = z.enum([
   "not_initialized",
@@ -57,6 +58,35 @@ export const farmBulletinRanchNotificationEntrySchema = z
   })
   .strict();
 
+export const farmBulletinTrailEntrySchema = z
+  .object({
+    event_id: z.string().min(1),
+    kind: z.enum(["watered", "stolen", "foiled"]),
+    actor_name: z.string().min(1),
+    actor_farm_doorplate: farmBulletinDoorplateSchema.nullable(),
+    plot_id: z.number().int().positive(),
+    crop_name: z.string().min(1).nullable(),
+    at: z.iso.datetime(),
+  })
+  .strict();
+
+export const farmBulletinTrailSchema = z.discriminatedUnion("status", [
+  z
+    .object({
+      status: z.literal("available"),
+      entries: z.array(farmBulletinTrailEntrySchema).max(20),
+      has_unread: z.boolean(),
+    })
+    .strict(),
+  z
+    .object({
+      status: z.literal("unavailable"),
+      reason: farmBulletinUnavailableReasonSchema,
+      message: z.string().min(1),
+    })
+    .strict(),
+]);
+
 /** Sections are partitioned by availability; an unavailable section is not
  * represented in the available object and vice versa. */
 export const farmBulletinAvailableSchema = z
@@ -83,6 +113,11 @@ export const farmBulletinDataSchema = z
   .object({
     available: farmBulletinAvailableSchema,
     unavailable: farmBulletinUnavailableSchema,
+    trail: farmBulletinTrailSchema.default({
+      status: "available",
+      entries: [],
+      has_unread: false,
+    }),
   })
   .strict();
 
@@ -153,11 +188,15 @@ export const farmHumanBulletinAckRequestSchema = z
     expected_farm_doorplate: farmBulletinDoorplateSchema,
     expected_bulletin_revision: farmBulletinRevisionSchema,
     idempotency_key: farmBulletinAckIdempotencyKeySchema,
+    acknowledge: farmBulletinAckScopeSchema.optional(),
   })
   .strict();
 
 export const boundFarmBulletinAckRequestSchema = z
-  .object({ expected_revision: farmBulletinRevisionSchema })
+  .object({
+    expected_revision: farmBulletinRevisionSchema,
+    acknowledge: farmBulletinAckScopeSchema.default("system_notifications"),
+  })
   .strict();
 
 export const farmHumanBulletinAckResultSchema = z
@@ -243,6 +282,7 @@ export type BoundFarmBulletinReadSuccess = z.infer<typeof boundFarmBulletinReadS
 export type BoundFarmBulletinReadErrorCode = z.infer<typeof boundFarmBulletinReadErrorCodeSchema>;
 export type BoundFarmBulletinReadError = z.infer<typeof boundFarmBulletinReadErrorSchema>;
 export type FarmHumanBulletinAckRequest = z.infer<typeof farmHumanBulletinAckRequestSchema>;
+export type FarmBulletinAckScope = z.infer<typeof farmBulletinAckScopeSchema>;
 export type BoundFarmBulletinAckRequest = z.infer<typeof boundFarmBulletinAckRequestSchema>;
 export type FarmHumanBulletinAckSuccess = z.infer<typeof farmHumanBulletinAckSuccessSchema>;
 export type BoundFarmBulletinAckSuccess = z.infer<typeof boundFarmBulletinAckSuccessSchema>;

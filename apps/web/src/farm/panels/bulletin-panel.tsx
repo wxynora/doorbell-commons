@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import type { BoundBulletinRead } from "../../auth/bulletin-client";
 import { type FarmAssetKey, getFarmAssetUrl } from "../farm-asset-manifest";
 import "./bulletin-panel.css";
@@ -7,6 +8,7 @@ export type FarmBulletinSceneId = "field" | "ranch" | "cooking" | "neighborhood"
 export interface DingdongBulletinProps {
   bulletin?: BoundBulletinRead | null;
   onClose: () => void;
+  onViewTrail?: ((bulletin: BoundBulletinRead) => void) | undefined;
   preview?: boolean;
   sceneId: FarmBulletinSceneId;
 }
@@ -64,7 +66,7 @@ function BulletinEmptyRow({
   );
 }
 
-function BulletinLiveList({ bulletin }: { bulletin?: BoundBulletinRead | null }) {
+function BulletinSystemList({ bulletin }: { bulletin?: BoundBulletinRead | null }) {
   if (!bulletin) {
     return (
       <ul aria-label="叮咚播报列表" className="farm-bulletin__list">
@@ -169,13 +171,111 @@ function BulletinLiveList({ bulletin }: { bulletin?: BoundBulletinRead | null })
   );
 }
 
+type TrailEntry = Extract<
+  BoundBulletinRead["data"]["trail"],
+  { status: "available" }
+>["entries"][number];
+
+function formatTrailTime(at: string): string {
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Shanghai",
+  }).format(new Date(at));
+}
+
+function trailText(event: TrailEntry): string {
+  if (event.kind === "watered") return `${event.actor_name} 给 ${event.plot_id} 号地浇了水`;
+  if (event.kind === "stolen") {
+    return `${event.actor_name} 偷走了 ${event.plot_id} 号地的${event.crop_name ?? "作物"}`;
+  }
+  return `${event.actor_name} 来偷 ${event.plot_id} 号地，被看家狗吓退`;
+}
+
+function BulletinTrailList({ bulletin }: { bulletin?: BoundBulletinRead | null }) {
+  if (!bulletin) {
+    return (
+      <ul aria-label="足迹列表" className="farm-bulletin__list">
+        <BulletinEmptyRow
+          description="正在读取最近的真实来访足迹。"
+          iconKey="neighborhood.message-board"
+          label="足迹"
+          title="正在读取"
+        />
+      </ul>
+    );
+  }
+  const trail = bulletin.data.trail;
+  if (trail.status === "unavailable") {
+    return (
+      <ul aria-label="足迹列表" className="farm-bulletin__list">
+        <BulletinEmptyRow
+          description={trail.message}
+          iconKey="neighborhood.message-board"
+          label="足迹"
+          title="当前无法读取"
+        />
+      </ul>
+    );
+  }
+  return (
+    <ul aria-label="足迹列表" className="farm-bulletin__list">
+      {trail.entries.map((event) => (
+        <BulletinEmptyRow
+          description={`${event.actor_farm_doorplate ? `门牌 ${event.actor_farm_doorplate} · ` : ""}${formatTrailTime(event.at)}`}
+          iconKey={event.kind === "watered" ? "field.crop.ordinary-growing" : "panel.tool.dispatch"}
+          key={event.event_id}
+          label={
+            event.kind === "watered"
+              ? "帮浇水"
+              : event.kind === "stolen"
+                ? "菜被偷了"
+                : "看家狗拦住了访客"
+          }
+          title={trailText(event)}
+        />
+      ))}
+      {trail.entries.length === 0 ? (
+        <BulletinEmptyRow
+          description="别人帮浇水、偷菜或被看家狗拦住后，会留下真实足迹。"
+          iconKey="neighborhood.message-board"
+          label="足迹"
+          title="最近还没有足迹"
+        />
+      ) : null}
+    </ul>
+  );
+}
+
 export function DingdongBulletin({
   bulletin,
   onClose,
+  onViewTrail,
   preview = true,
   sceneId,
 }: DingdongBulletinProps) {
   const titleId = `farm-bulletin-title-${sceneId}`;
+  const [activeTab, setActiveTab] = useState<"system" | "trail">("system");
+  const viewedTrailIdentityRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (
+      activeTab !== "trail" ||
+      !bulletin ||
+      bulletin.data.trail.status !== "available" ||
+      !bulletin.data.trail.has_unread
+    ) {
+      return;
+    }
+    const newestEventId = bulletin.data.trail.entries[0]?.event_id ?? "empty";
+    const identity = `${bulletin.revision}:${newestEventId}`;
+    if (viewedTrailIdentityRef.current === identity) return;
+    viewedTrailIdentityRef.current = identity;
+    onViewTrail?.(bulletin);
+  }, [activeTab, bulletin, onViewTrail]);
 
   return (
     <aside aria-labelledby={titleId} className="farm-bulletin" role="dialog">
@@ -191,8 +291,34 @@ export function DingdongBulletin({
         ×
       </button>
       <div className="farm-bulletin__content">
+        <div aria-label="叮咚播报分类" className="farm-bulletin__tabs" role="tablist">
+          <button
+            aria-selected={activeTab === "system"}
+            onClick={() => setActiveTab("system")}
+            role="tab"
+            type="button"
+          >
+            系统通知
+          </button>
+          <button
+            aria-label={
+              bulletin?.data.trail.status === "available" && bulletin.data.trail.has_unread
+                ? "足迹，有新足迹"
+                : "足迹"
+            }
+            aria-selected={activeTab === "trail"}
+            onClick={() => setActiveTab("trail")}
+            role="tab"
+            type="button"
+          >
+            足迹
+            {bulletin?.data.trail.status === "available" && bulletin.data.trail.has_unread ? (
+              <i aria-hidden="true" />
+            ) : null}
+          </button>
+        </div>
         <div className="farm-bulletin__panel">
-          {preview ? (
+          {preview && activeTab === "system" ? (
             <ul aria-label="叮咚播报列表" className="farm-bulletin__list">
               {DINGDONG_BULLETIN_OPTIONS.map((option) => (
                 <BulletinEmptyRow
@@ -204,8 +330,10 @@ export function DingdongBulletin({
                 />
               ))}
             </ul>
+          ) : activeTab === "system" ? (
+            <BulletinSystemList bulletin={bulletin ?? null} />
           ) : (
-            <BulletinLiveList bulletin={bulletin ?? null} />
+            <BulletinTrailList bulletin={preview ? null : (bulletin ?? null)} />
           )}
         </div>
       </div>

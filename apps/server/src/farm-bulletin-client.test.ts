@@ -28,6 +28,21 @@ const BULLETIN_RESULT = {
       ranch_notifications: [],
     },
     unavailable: {},
+    trail: {
+      status: "available",
+      entries: [
+        {
+          event_id: "trail-watered-1",
+          kind: "watered",
+          actor_name: "访客",
+          actor_farm_doorplate: null,
+          plot_id: 2,
+          crop_name: null,
+          at: "2026-08-25T03:58:00.000Z",
+        },
+      ],
+      has_unread: true,
+    },
   },
   revision: `farm-bulletin-v1:${"a".repeat(64)}`,
   server_time: "2026-08-25T04:00:00.000Z",
@@ -40,6 +55,7 @@ const BULLETIN_ACK_RESULT = {
     resource: {
       available: { tasks: [], mature_plots: [], messages: [], ranch_notifications: [] },
       unavailable: {},
+      trail: { ...BULLETIN_RESULT.data.trail, has_unread: false },
     },
   },
   revision: BULLETIN_RESULT.revision,
@@ -107,6 +123,7 @@ test("farm bulletin client posts a revision-bound idempotent acknowledgement", a
     farmHumanKey: FARM_HUMAN_KEY,
     expectedRevision: BULLETIN_RESULT.revision,
     idempotencyKey: IDEMPOTENCY_KEY,
+    acknowledge: "trail",
   });
   assert.deepEqual(result, BULLETIN_ACK_RESULT);
   assert.deepEqual(calls, [
@@ -116,10 +133,47 @@ test("farm bulletin client posts a revision-bound idempotent acknowledgement", a
         expected_farm_doorplate: FARM_DOORPLATE,
         expected_bulletin_revision: BULLETIN_RESULT.revision,
         idempotency_key: IDEMPOTENCY_KEY,
+        acknowledge: "trail",
       }),
       url: "https://farm.example/farm/internal/doorbell/human/bulletin/ack",
     },
   ]);
+});
+
+test("main can deploy before Farm by accepting legacy reads and omitting the default system scope", async () => {
+  const legacyData = {
+    available: BULLETIN_RESULT.data.available,
+    unavailable: BULLETIN_RESULT.data.unavailable,
+  };
+  const calls: string[] = [];
+  const client = createClient(async (_input, init) => {
+    calls.push(String(init?.body));
+    return calls.length === 1
+      ? Response.json({ ...BULLETIN_RESULT, data: legacyData })
+      : Response.json(BULLETIN_ACK_RESULT);
+  });
+  const read = await client.readBulletin({
+    farmDoorplate: FARM_DOORPLATE,
+    farmHumanKey: FARM_HUMAN_KEY,
+  });
+  assert.deepEqual(read.data.trail, {
+    status: "available",
+    entries: [],
+    has_unread: false,
+  });
+  await client.acknowledgeBulletin({
+    acknowledge: "system_notifications",
+    farmDoorplate: FARM_DOORPLATE,
+    farmHumanKey: FARM_HUMAN_KEY,
+    expectedRevision: BULLETIN_RESULT.revision,
+    idempotencyKey: IDEMPOTENCY_KEY,
+  });
+  assert.deepEqual(JSON.parse(calls[1] ?? "{}"), {
+    farm_human_key: FARM_HUMAN_KEY,
+    expected_farm_doorplate: FARM_DOORPLATE,
+    expected_bulletin_revision: BULLETIN_RESULT.revision,
+    idempotency_key: IDEMPOTENCY_KEY,
+  });
 });
 
 test("farm bulletin client rejects a response bound to another doorplate", async () => {
@@ -152,6 +206,7 @@ test("farm bulletin client accepts a structured unavailable projection section",
             message: "地块纯投影没有可供叮咚播报读取的成熟状态。",
           },
         },
+        trail: BULLETIN_RESULT.data.trail,
       },
     }),
   );

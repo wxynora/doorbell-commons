@@ -1,3 +1,4 @@
+import type { FarmBulletinAckScope } from "@doorbell/protocol";
 import type {
   CommunityDatabase,
   CreatedHumanSession,
@@ -682,7 +683,11 @@ export class RegistrationAuthService {
 
   async acknowledgeCurrentFarmBulletin(
     token: string,
-    input: { expectedRevision: string; idempotencyKey: string },
+    input: {
+      acknowledge: FarmBulletinAckScope;
+      expectedRevision: string;
+      idempotencyKey: string;
+    },
   ) {
     const community = await this.getCurrentSession(token);
     const farmHumanKey = community.farmBinding.farmHumanKey;
@@ -697,6 +702,7 @@ export class RegistrationAuthService {
       farmHumanKey,
       expectedRevision: input.expectedRevision,
       idempotencyKey: input.idempotencyKey,
+      acknowledge: input.acknowledge,
     });
   }
 

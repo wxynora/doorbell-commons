@@ -1382,7 +1382,7 @@ test("neighborhood uses the approved scene and switches one honest section at a 
   assert.doesNotMatch(source, /铃兰的小屋|向日葵农场|薄荷糖の田/);
 });
 
-test("bulletin reads authority-backed entries in one scrolling list and keeps demo empty states isolated", () => {
+test("bulletin separates persistent trail from one-time system notifications", () => {
   const source = readFarmSources();
   const styles = readFarmStyles();
   const bulletinSource = readFarmPanelSource("bulletin");
@@ -1401,7 +1401,14 @@ test("bulletin reads authority-backed entries in one scrolling list and keeps de
   assert.match(bulletinSource, /available\.mature_plots\?\.map/);
   assert.match(bulletinSource, /available\.messages\?\.map/);
   assert.match(bulletinSource, /available\.ranch_notifications\?\.map/);
-  assert.doesNotMatch(bulletinSource, /useState|播报分类|tablist|aria-selected|role="tab"/);
+  assert.match(bulletinSource, /useState<.*system.*trail/);
+  assert.match(bulletinSource, /role="tablist"/);
+  assert.match(bulletinSource, /aria-selected=\{activeTab === "system"\}/);
+  assert.match(bulletinSource, /aria-selected=\{activeTab === "trail"\}/);
+  assert.match(bulletinSource, /bulletin\.data\.trail/);
+  assert.match(bulletinSource, /event\.kind === "watered"/);
+  assert.match(bulletinSource, /event\.kind === "stolen"/);
+  assert.match(bulletinSource, /被看家狗吓退/);
   assert.match(source, /进行中任务尚未接入/);
   assert.match(source, /成熟提醒尚未接入/);
   assert.match(source, /最近留言尚未接入/);
@@ -1414,17 +1421,20 @@ test("bulletin reads authority-backed entries in one scrolling list and keeps de
     styles,
     /\.farm-bulletin\s*\{[\s\S]*right:\s*10\.7%;[\s\S]*z-index:\s*80[\s\S]*width:\s*78cqw[\s\S]*height:\s*118cqw/,
   );
-  assert.doesNotMatch(styles, /\.farm-bulletin__tabs\s*\{/);
+  assert.match(styles, /\.farm-bulletin__tabs\s*\{/);
   assert.match(styles, /\.farm-bulletin__list\s*\{[^}]*display:\s*grid;[^}]*list-style:\s*none/);
   assert.match(
     styles,
     /\.farm-bulletin__empty\s*\{[\s\S]*background:\s*rgba\(255, 253, 241, 0\.62\)/,
   );
   assert.match(styles, /\.farm-bulletin__content\s*\{[^}]*height:\s*100%;[^}]*overflow:\s*hidden/);
-  assert.match(styles, /\.farm-bulletin__panel\s*\{[^}]*height:\s*100%;[^}]*overflow-y:\s*auto/);
+  assert.match(
+    styles,
+    /\.farm-bulletin__panel\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*0;[^}]*overflow-y:\s*auto/,
+  );
   assert.doesNotMatch(styles, /\.farm-bulletin__pagination\s*\{/);
   assert.doesNotMatch(source, /小明家|成熟了|刚刚留言|访问了/);
-  assert.doesNotMatch(source, /足迹/);
+  assert.match(bulletinSource, />\s*足迹\s*/);
 });
 
 test("right-side farm tools open a shared honest content panel", () => {

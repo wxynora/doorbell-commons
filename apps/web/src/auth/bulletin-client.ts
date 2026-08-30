@@ -4,6 +4,7 @@ import {
   boundFarmBulletinAckSuccessSchema,
   boundFarmBulletinReadErrorSchema,
   boundFarmBulletinReadSuccessSchema,
+  type FarmBulletinAckScope,
   farmBulletinAckIdempotencyKeySchema,
   farmBulletinDoorplateSchema,
 } from "@doorbell/protocol";
@@ -11,6 +12,7 @@ import type { ApiResult, ClientIssueCode, FrontendFetcher } from "./auth-client"
 
 export type BoundBulletinRead = ReturnType<typeof boundFarmBulletinReadSuccessSchema.parse>;
 export type BoundBulletinAck = ReturnType<typeof boundFarmBulletinAckSuccessSchema.parse>;
+export type BulletinAcknowledgementScope = FarmBulletinAckScope;
 export type BulletinIssueCode =
   | ReturnType<typeof boundFarmBulletinReadErrorSchema.parse>["error"]["code"]
   | ClientIssueCode;
@@ -33,6 +35,7 @@ export interface BulletinAckIssue {
 }
 
 export interface BulletinAckOptions {
+  acknowledge: FarmBulletinAckScope;
   expectedFarmDoorplate: string;
   expectedRevision: string;
   idempotencyKey: string;
@@ -95,6 +98,7 @@ export async function acknowledgeBoundBulletin(
   const idempotencyKey = farmBulletinAckIdempotencyKeySchema.parse(options.idempotencyKey);
   const body = boundFarmBulletinAckRequestSchema.parse({
     expected_revision: options.expectedRevision,
+    acknowledge: options.acknowledge,
   });
   const fetcher = options.fetcher ?? fetch;
   let response: Response;

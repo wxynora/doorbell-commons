@@ -27,6 +27,7 @@ function bulletin(section: string | null): BoundBulletinRead {
         ],
       },
       unavailable: {},
+      trail: { status: "available", entries: [], has_unread: false },
     },
     revision: `farm-bulletin-v1:${"b".repeat(64)}`,
     server_time: "2026-08-30T00:00:00.000Z",
@@ -48,27 +49,24 @@ test("any authority-backed unread entry drives the bulletin dot", () => {
   const empty = bulletin(null);
   empty.data.available.ranch_notifications = [];
   assert.equal(bulletinHasUnreadEntries(empty), false);
+  if (empty.data.trail.status !== "available") throw new Error("expected available trail");
+  empty.data.trail.has_unread = true;
+  assert.equal(bulletinHasUnreadEntries(empty), true);
   assert.match(chromeSource, /bulletinUnread \? "打开叮咚播报，有新播报"/);
   assert.match(chromeSource, /className="farm-tool-menu__unread"/);
   assert.match(styles, /\.farm-tool-menu__unread\s*\{[^}]*background:\s*#d84738/);
   assert.match(fieldSource, /bulletinUnread=\{bulletinUnread\}/);
 });
 
-test("compensation is acknowledged only from the rendered bulletin close action", () => {
+test("system notifications are acknowledged only from the rendered bulletin close action", () => {
   assert.match(
     fieldSource,
-    /onClose=\{\(\) => \{\s*acknowledgeDisplayedBulletinIfNeeded\(\{ allowCompensation: true \}\)/,
+    /onClose=\{\(\) => \{\s*acknowledgeDisplayedBulletin\("system_notifications"\)/,
   );
-  assert.match(
+  assert.doesNotMatch(fieldSource, /acknowledgeDisplayedBulletinIfNeeded/);
+  assert.doesNotMatch(fieldSource, /sceneId !== activeScene[\s\S]{0,240}onAcknowledgeBulletin/);
+  assert.doesNotMatch(
     fieldSource,
-    /sceneId !== activeScene && activeSceneUiState\.bulletinOpen[\s\S]*?acknowledgeDisplayedBulletinIfNeeded\(\)/,
-  );
-  assert.match(
-    fieldSource,
-    /if \(activeSceneUiState\.bulletinOpen\) \{\s*acknowledgeDisplayedBulletinIfNeeded\(\)/,
-  );
-  assert.match(
-    fieldSource,
-    /allowCompensation \|\| compensationBulletinIdentity\(displayedBulletin\) === null/,
+    /activeSceneUiState\.bulletinOpen[\s\S]{0,240}onAcknowledgeBulletin/,
   );
 });

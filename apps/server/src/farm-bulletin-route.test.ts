@@ -68,6 +68,7 @@ class RecordingBulletinReader implements FarmHumanBulletinReader {
       data: {
         available: { tasks: [], mature_plots: [], messages: [], ranch_notifications: [] },
         unavailable: {},
+        trail: { status: "available" as const, entries: [], has_unread: false },
       },
       revision: REVISION,
       server_time: new Date(NOW).toISOString(),
@@ -83,6 +84,7 @@ class RecordingBulletinReader implements FarmHumanBulletinReader {
         resource: {
           available: { tasks: [], mature_plots: [], messages: [], ranch_notifications: [] },
           unavailable: {},
+          trail: { status: "available" as const, entries: [], has_unread: false },
         },
       },
       revision: input.expectedRevision,
@@ -130,7 +132,7 @@ test("Human bulletin ACK derives farm identity from the session and forwards rev
       cookie: `doorbell_session=${session.token}`,
       "idempotency-key": IDEMPOTENCY_KEY,
     },
-    payload: { expected_revision: REVISION },
+    payload: { expected_revision: REVISION, acknowledge: "trail" },
   });
   assert.equal(response.statusCode, 200);
   assert.match(String(response.headers["cache-control"]), /no-store/);
@@ -140,6 +142,7 @@ test("Human bulletin ACK derives farm identity from the session and forwards rev
       farmHumanKey: FARM_HUMAN_KEY,
       expectedRevision: REVISION,
       idempotencyKey: IDEMPOTENCY_KEY,
+      acknowledge: "trail",
     },
   ]);
   assert.equal(response.json().data.result.receipt_id, IDEMPOTENCY_KEY);

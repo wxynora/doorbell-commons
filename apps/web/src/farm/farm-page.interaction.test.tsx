@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { BoundBulletinRead } from "../auth/bulletin-client";
 import type { BoundFarmCatalogRead } from "../auth/farm-catalog-client";
 import type { BoundRanchRead } from "../auth/ranch-client";
 
@@ -118,6 +119,7 @@ vi.mock("../auth/smelting-action-client", () => ({
 }));
 
 import { FarmPage } from "./farm-page";
+import { DingdongBulletin } from "./panels/bulletin-panel";
 import {
   type ExpeditionActionExecutor,
   FarmExpeditionPanelContent,
@@ -1194,6 +1196,77 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+});
+
+describe("Dingdong bulletin tabs", () => {
+  const bulletin: BoundBulletinRead = {
+    subject: { farm_doorplate: "3ET3FE" },
+    data: {
+      available: {
+        tasks: [],
+        mature_plots: [],
+        messages: [],
+        ranch_notifications: [
+          { text: "系统维护补偿已经发放", at: "2026-08-30T00:00:00.000Z", section: "compensation" },
+        ],
+      },
+      unavailable: {},
+      trail: {
+        status: "available",
+        has_unread: true,
+        entries: [
+          {
+            event_id: "trail-stolen-1",
+            kind: "stolen",
+            actor_name: "顾澄",
+            actor_farm_doorplate: "ABC234",
+            plot_id: 3,
+            crop_name: "草莓",
+            at: "2026-08-30T00:01:00.000Z",
+          },
+          {
+            event_id: "trail-watered-1",
+            kind: "watered",
+            actor_name: "青禾",
+            actor_farm_doorplate: null,
+            plot_id: 2,
+            crop_name: null,
+            at: "2026-08-30T00:00:30.000Z",
+          },
+        ],
+      },
+    },
+    revision: `farm-bulletin-v1:${"c".repeat(64)}`,
+    server_time: "2026-08-30T00:02:00.000Z",
+  };
+
+  it("keeps persistent trail separate from one-time system notifications", () => {
+    const onClose = vi.fn();
+    const onViewTrail = vi.fn();
+    render(
+      <DingdongBulletin
+        bulletin={bulletin}
+        onClose={onClose}
+        onViewTrail={onViewTrail}
+        preview={false}
+        sceneId="field"
+      />,
+    );
+    expect(screen.getByRole("tab", { name: "系统通知" }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+    expect(screen.getByText("系统维护补偿已经发放")).not.toBeNull();
+    expect(screen.queryByText(/偷走了 3 号地的草莓/)).toBeNull();
+
+    fireEvent.click(screen.getByRole("tab", { name: "足迹，有新足迹" }));
+    expect(onViewTrail).toHaveBeenCalledWith(bulletin);
+    expect(screen.getByText(/顾澄.*偷走了 3 号地的草莓/)).not.toBeNull();
+    expect(screen.getByText(/青禾.*给 2 号地浇了水/)).not.toBeNull();
+    expect(screen.queryByText("系统维护补偿已经发放")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "关闭叮咚播报" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("Farm expedition Human UI", () => {

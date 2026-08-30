@@ -1,4 +1,5 @@
 import {
+  type FarmBulletinAckScope,
   type FarmHumanBulletinAckError,
   type FarmHumanBulletinAckSuccess,
   type FarmHumanBulletinReadError,
@@ -22,6 +23,7 @@ export interface FarmHumanBulletinReader {
 }
 
 export interface FarmHumanBulletinAckInput extends FarmHumanBulletinReadInput {
+  acknowledge: FarmBulletinAckScope;
   expectedRevision: string;
   idempotencyKey: string;
 }
@@ -152,6 +154,7 @@ export class FarmHumanBulletinClient implements FarmHumanBulletinReader {
       expected_farm_doorplate: input.farmDoorplate,
       expected_bulletin_revision: input.expectedRevision,
       idempotency_key: input.idempotencyKey,
+      ...(input.acknowledge === "trail" ? { acknowledge: input.acknowledge } : {}),
     });
 
     let response: Response;
