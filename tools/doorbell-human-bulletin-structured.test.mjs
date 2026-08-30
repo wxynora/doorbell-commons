@@ -5,6 +5,7 @@ const NOW = Date.parse("2026-08-25T04:00:00.000Z");
 
 const { TICK_MS } = await import("../dist/config.js");
 const { makeFarm } = await import("../dist/game.js");
+const { steal, visitorWater } = await import("../dist/engine.js");
 const { projectHumanField } = await import("../dist/server/human-structured.js");
 const {
   projectHumanBulletin,
@@ -46,6 +47,16 @@ function fixtureFarm() {
     ],
     privateRanchField: "must-not-leak",
   };
+  farm.trail = Array.from({ length: 22 }, (_, index) => ({
+    eventId: `trail-${index}`,
+    t: NOW - index * 1_000,
+    kind: index % 3 === 0 ? "stolen" : index % 3 === 1 ? "watered" : "foiled",
+    by: `访客${index}`,
+    actorFarmId: index % 3 === 1 ? undefined : "DEF567",
+    plotId: index + 1,
+    crop: index % 3 === 0 ? `作物${index}` : undefined,
+    privateTrailField: "must-not-leak",
+  }));
   return farm;
 }
 
@@ -106,6 +117,19 @@ test("Human bulletin is a pure read with real ordered entries and filtered field
     { text: "新牧场通知", at: "2026-08-25T03:59:30.000Z", section: "ranch" },
     { text: "旧牧场通知", at: "2026-08-25T03:58:00.000Z", section: "ranch" },
   ]);
+  assert.equal(result.data.trail.status, "available");
+  assert.equal(result.data.trail.has_unread, true);
+  assert.equal(result.data.trail.entries.length, 20);
+  assert.deepEqual(result.data.trail.entries[0], {
+    event_id: "trail-0",
+    kind: "stolen",
+    actor_name: "访客0",
+    actor_farm_doorplate: "DEF567",
+    plot_id: 1,
+    crop_name: "作物0",
+    at: "2026-08-25T04:00:00.000Z",
+  });
+  assert.equal(result.data.trail.entries.at(-1).event_id, "trail-19");
   const encoded = JSON.stringify(result);
   assert.equal(encoded.includes("must-not-leak-human-key"), false);
   assert.equal(encoded.includes("must-not-leak-token"), false);
@@ -124,6 +148,7 @@ test("acknowledged stable reminder keys are filtered without mutating their sour
   }
   farm.doorbellHumanBulletinReadState = {
     acknowledged_reminder_keys: acknowledged,
+    trail_seen_event_id: "trail-0",
     receipts: {},
   };
   const sourcesBefore = structuredClone({
@@ -131,6 +156,7 @@ test("acknowledged stable reminder keys are filtered without mutating their sour
     plots: farm.plots,
     messages: farm.messages,
     ranchNotices: farm.ranch.notices,
+    trail: farm.trail,
   });
 
   const consumed = projectHumanBulletin(farm, NOW);
@@ -140,11 +166,27 @@ test("acknowledged stable reminder keys are filtered without mutating their sour
     messages: [],
     ranch_notifications: [],
   });
+  assert.equal(consumed.data.trail.status, "available");
+  assert.equal(consumed.data.trail.has_unread, false);
+  assert.equal(consumed.data.trail.entries.length, 20);
   assert.deepEqual(
-    { task: farm.task, plots: farm.plots, messages: farm.messages, ranchNotices: farm.ranch.notices },
+    {
+      task: farm.task,
+      plots: farm.plots,
+      messages: farm.messages,
+      ranchNotices: farm.ranch.notices,
+      trail: farm.trail,
+    },
     sourcesBefore,
   );
 
+  farm.trail.unshift({
+    eventId: "trail-new",
+    t: NOW,
+    kind: "watered",
+    by: "新访客",
+    plotId: 2,
+  });
   farm.messages.push({ id: "newer", by: "DEF567", name: "新访客", text: "又来一条", at: NOW });
   farm.task.progress = 1;
   farm.ranch.notices.push({ at: NOW, text: "通知发生变化", section: "ranch" });
@@ -156,6 +198,62 @@ test("acknowledged stable reminder keys are filtered without mutating their sour
     "通知发生变化",
   ]);
   assert.deepEqual(changed.data.available.mature_plots.map((entry) => entry.plot_id), [1, 2]);
+  assert.equal(changed.data.trail.has_unread, true);
+  assert.equal(changed.data.trail.entries[0].event_id, "trail-new");
+});
+
+test("successful visitor watering and theft flow through their authoritative trail facts", () => {
+  const victim = makeFarm("足迹目标农场", 17);
+  victim.id = "ABC234";
+  victim.lastTickAt = NOW;
+  const visitor = makeFarm("足迹访客农场", 23);
+  visitor.id = "DEF567";
+  victim.plots[0].crop = {
+    seedType: "common",
+    growTicks: 6,
+    progress: 4,
+    ripe: false,
+    waterCount: 0,
+  };
+  const watered = visitorWater(victim, visitor.id, 1, visitor.name, NOW - 1_000);
+  assert.deepEqual(watered, { ok: true, plotId: 1, ripened: false });
+  victim.plots[0].crop.progress = 6;
+  victim.plots[0].crop.ripe = true;
+  const stolen = steal(victim, 1, visitor.id, NOW, visitor, { resumeGuard: true });
+  assert.equal(stolen.ok, true);
+
+  const bulletin = projectHumanBulletin(victim, NOW);
+  assert.equal(bulletin.data.trail.status, "available");
+  assert.equal(bulletin.data.trail.has_unread, true);
+  assert.deepEqual(
+    bulletin.data.trail.entries.map((entry) => ({
+      kind: entry.kind,
+      actor_name: entry.actor_name,
+      actor_farm_doorplate: entry.actor_farm_doorplate,
+      plot_id: entry.plot_id,
+      crop_name: entry.crop_name,
+      at: entry.at,
+    })),
+    [
+      {
+        kind: "stolen",
+        actor_name: visitor.name,
+        actor_farm_doorplate: visitor.id,
+        plot_id: 1,
+        crop_name: stolen.crop.name,
+        at: "2026-08-25T04:00:00.000Z",
+      },
+      {
+        kind: "watered",
+        actor_name: visitor.name,
+        actor_farm_doorplate: null,
+        plot_id: 1,
+        crop_name: null,
+        at: "2026-08-25T03:59:59.000Z",
+      },
+    ],
+  );
+  assert.ok(bulletin.data.trail.entries.every((entry) => entry.event_id.length > 0));
 });
 
 test("uninitialized bulletin sources stay in the unavailable partition", () => {
@@ -178,6 +276,11 @@ test("uninitialized bulletin sources stay in the unavailable partition", () => {
     assert.equal(section.reason, "not_initialized");
     assert.equal(typeof section.message, "string");
   }
+  assert.deepEqual(result.data.trail, {
+    status: "available",
+    entries: [],
+    has_unread: false,
+  });
 });
 
 test("unknown or inconsistent persisted task identity stays unavailable", () => {

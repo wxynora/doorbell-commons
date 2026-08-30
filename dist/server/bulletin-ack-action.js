@@ -11,6 +11,7 @@ const REQUEST_KEYS = [
   "expected_bulletin_revision",
   "idempotency_key",
 ];
+const ACK_SCOPES = new Set(["system_notifications", "trail"]);
 
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -38,11 +39,16 @@ function fingerprint(body) {
           farm_human_key: body.farm_human_key,
           expected_farm_doorplate: body.expected_farm_doorplate,
           expected_bulletin_revision: body.expected_bulletin_revision,
+          ...(ackScope(body) === "trail" ? { acknowledge: "trail" } : {}),
         }),
       ),
       "utf8",
     )
     .digest("hex");
+}
+
+function ackScope(body) {
+  return body.acknowledge ?? "system_notifications";
 }
 
 function invalidRequest() {
@@ -65,7 +71,7 @@ function conflict(code, message, currentRevision) {
 
 function validateBody(body) {
   return (
-    exactKeys(body, REQUEST_KEYS) &&
+    (exactKeys(body, REQUEST_KEYS) || exactKeys(body, [...REQUEST_KEYS, "acknowledge"])) &&
     typeof body.farm_human_key === "string" &&
     body.farm_human_key.trim().length > 0 &&
     typeof body.expected_farm_doorplate === "string" &&
@@ -73,7 +79,8 @@ function validateBody(body) {
     typeof body.expected_bulletin_revision === "string" &&
     REVISION_RE.test(body.expected_bulletin_revision) &&
     typeof body.idempotency_key === "string" &&
-    UUID_RE.test(body.idempotency_key)
+    UUID_RE.test(body.idempotency_key) &&
+    ACK_SCOPES.has(ackScope(body))
   );
 }
 
@@ -85,6 +92,10 @@ function readState(farm) {
     acknowledged_reminder_keys: Array.isArray(state.acknowledged_reminder_keys)
       ? [...state.acknowledged_reminder_keys]
       : [],
+    trail_seen_event_id:
+      typeof state.trail_seen_event_id === "string" && state.trail_seen_event_id.trim()
+        ? state.trail_seen_event_id
+        : null,
     receipts: isRecord(state.receipts) ? { ...state.receipts } : {},
   };
 }
@@ -141,7 +152,15 @@ export function handleHumanBulletinAck(farm, body, now = Date.now()) {
 
   const working = structuredClone(farm);
   const nextState = readState(working);
-  nextState.acknowledged_reminder_keys = sourceReminderKeys(source);
+  const scope = ackScope(body);
+  let acknowledgedCount = 0;
+  if (scope === "system_notifications") {
+    nextState.acknowledged_reminder_keys = sourceReminderKeys(source);
+    acknowledgedCount = nextState.acknowledged_reminder_keys.length;
+  } else if (source.data.trail.status === "available") {
+    nextState.trail_seen_event_id = source.data.trail.entries[0]?.event_id ?? null;
+    acknowledgedCount = source.data.trail.entries.length > 0 ? 1 : 0;
+  }
   working.doorbellHumanBulletinReadState = nextState;
   const resource = projectHumanBulletin(working, now);
   const response = {
@@ -149,7 +168,7 @@ export function handleHumanBulletinAck(farm, body, now = Date.now()) {
     data: {
       result: {
         receipt_id: body.idempotency_key,
-        acknowledged_count: nextState.acknowledged_reminder_keys.length,
+        acknowledged_count: acknowledgedCount,
       },
       resource: resource.data,
     },

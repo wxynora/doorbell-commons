@@ -138,6 +138,15 @@ test("Doorbell Human catalog, bulletin, kitchen, and ranch reads are registered 
   bulletinFarm.ranch = {
     notices: [{ at: NOW - 30_000, text: "牧场里有新动静", section: "ranch" }],
   };
+  bulletinFarm.trail = [
+    {
+      eventId: "route-trail-watered",
+      t: NOW - 10_000,
+      kind: "watered",
+      by: "邻居",
+      plotId: 2,
+    },
+  ];
   insertFarm(bulletinFarm);
 
   const neighbor = makeFarm("邻里留言目标农场");
@@ -226,16 +235,35 @@ test("Doorbell Human catalog, bulletin, kitchen, and ranch reads are registered 
   assert.equal(bulletinRead.body.subject.farm_doorplate, BULLETIN_FARM_DOORPLATE);
   assert.match(bulletinRead.body.revision, /^farm-bulletin-v1:[0-9a-f]{64}$/);
   assert.equal(JSON.stringify(bulletinRead.body).includes(BULLETIN_FARM_HUMAN_KEY), false);
+  assert.equal(bulletinRead.body.data.trail.has_unread, true);
+  assert.deepEqual(bulletinRead.body.data.trail.entries.map((entry) => entry.event_id), [
+    "route-trail-watered",
+  ]);
   const bulletinSourcesBeforeAck = structuredClone({
     task: getFarm(BULLETIN_FARM_DOORPLATE).task,
     plots: getFarm(BULLETIN_FARM_DOORPLATE).plots,
     messages: getFarm(BULLETIN_FARM_DOORPLATE).messages,
     ranchNotices: getFarm(BULLETIN_FARM_DOORPLATE).ranch.notices,
+    trail: getFarm(BULLETIN_FARM_DOORPLATE).trail,
   });
+  const trailAckPayload = {
+    ...bulletinPayload,
+    expected_bulletin_revision: bulletinRead.body.revision,
+    idempotency_key: "219ffb01-49cd-7020-84af-3d04fb1ed03e",
+    acknowledge: "trail",
+  };
+  const trailAck = await readResource(baseUrl, BULLETIN_ACK_PATH, trailAckPayload);
+  assert.equal(trailAck.response.status, 200);
+  assert.equal(trailAck.body.data.resource.trail.has_unread, false);
+  assert.deepEqual(trailAck.body.data.resource.trail.entries.map((entry) => entry.event_id), [
+    "route-trail-watered",
+  ]);
+  assert.equal(trailAck.body.data.resource.available.messages.length, 1);
   const bulletinAckPayload = {
     ...bulletinPayload,
     expected_bulletin_revision: bulletinRead.body.revision,
     idempotency_key: "219ffb01-49cd-7020-84af-3d04fb1ed03d",
+    acknowledge: "system_notifications",
   };
   const bulletinAck = await readResource(baseUrl, BULLETIN_ACK_PATH, bulletinAckPayload);
   assert.equal(bulletinAck.response.status, 200);
@@ -247,18 +275,30 @@ test("Doorbell Human catalog, bulletin, kitchen, and ranch reads are registered 
     messages: [],
     ranch_notifications: [],
   });
+  assert.equal(bulletinAck.body.data.resource.trail.has_unread, false);
+  assert.equal(bulletinAck.body.data.resource.trail.entries.length, 1);
   assert.deepEqual(
     {
       task: getFarm(BULLETIN_FARM_DOORPLATE).task,
       plots: getFarm(BULLETIN_FARM_DOORPLATE).plots,
       messages: getFarm(BULLETIN_FARM_DOORPLATE).messages,
       ranchNotices: getFarm(BULLETIN_FARM_DOORPLATE).ranch.notices,
+      trail: getFarm(BULLETIN_FARM_DOORPLATE).trail,
     },
     bulletinSourcesBeforeAck,
   );
   const replayedBulletinAck = await readResource(baseUrl, BULLETIN_ACK_PATH, bulletinAckPayload);
   assert.equal(replayedBulletinAck.response.status, 200);
   assert.deepEqual(replayedBulletinAck.body, bulletinAck.body);
+  const legacySystemAckPayload = { ...bulletinAckPayload };
+  delete legacySystemAckPayload.acknowledge;
+  const legacyReplayedBulletinAck = await readResource(
+    baseUrl,
+    BULLETIN_ACK_PATH,
+    legacySystemAckPayload,
+  );
+  assert.equal(legacyReplayedBulletinAck.response.status, 200);
+  assert.deepEqual(legacyReplayedBulletinAck.body, bulletinAck.body);
 
   const persistedWorld = JSON.parse(readFileSync(join(dataDirectory, "world.json"), "utf8"));
   const persistedBulletinFarm = persistedWorld.farms.find(
@@ -269,11 +309,17 @@ test("Doorbell Human catalog, bulletin, kitchen, and ranch reads are registered 
     getFarm(BULLETIN_FARM_DOORPLATE).doorbellHumanBulletinReadState
       .acknowledged_reminder_keys,
   );
+  assert.equal(
+    persistedBulletinFarm.doorbellHumanBulletinReadState.trail_seen_event_id,
+    "route-trail-watered",
+  );
   const bulletinAfterAck = await readResource(baseUrl, BULLETIN_PATH, bulletinPayload);
   assert.deepEqual(bulletinAfterAck.body.data.available.tasks, []);
   assert.deepEqual(bulletinAfterAck.body.data.available.mature_plots, []);
   assert.deepEqual(bulletinAfterAck.body.data.available.messages, []);
   assert.deepEqual(bulletinAfterAck.body.data.available.ranch_notifications, []);
+  assert.equal(bulletinAfterAck.body.data.trail.has_unread, false);
+  assert.equal(bulletinAfterAck.body.data.trail.entries.length, 1);
   getFarm(BULLETIN_FARM_DOORPLATE).messages.push({
     id: "route-message-new",
     by: NEIGHBOR_DOORPLATE,
@@ -281,11 +327,22 @@ test("Doorbell Human catalog, bulletin, kitchen, and ranch reads are registered 
     text: "这是新留言",
     at: NOW,
   });
+  getFarm(BULLETIN_FARM_DOORPLATE).trail.unshift({
+    eventId: "route-trail-stolen",
+    t: NOW,
+    kind: "stolen",
+    by: "另一位邻居",
+    actorFarmId: NEIGHBOR_DOORPLATE,
+    plotId: 3,
+    crop: "草莓",
+  });
   const bulletinWithNewMessage = await readResource(baseUrl, BULLETIN_PATH, bulletinPayload);
   assert.deepEqual(
     bulletinWithNewMessage.body.data.available.messages.map((message) => message.id),
     ["route-message-new"],
   );
+  assert.equal(bulletinWithNewMessage.body.data.trail.has_unread, true);
+  assert.equal(bulletinWithNewMessage.body.data.trail.entries[0].event_id, "route-trail-stolen");
 
   const sellerBeforeCatalogRead = structuredClone(getFarm(MARKET_SELLER_DOORPLATE));
   const catalogRead = await readResource(baseUrl, PATHS[0], payload);

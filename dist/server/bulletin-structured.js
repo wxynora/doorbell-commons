@@ -7,6 +7,8 @@ const TASK_UNAVAILABLE_MESSAGE = "任务槽没有可供叮咚播报确认的持�
 const PLOTS_UNAVAILABLE_MESSAGE = "地块状态没有可供叮咚播报读取的持久化数据。";
 const MESSAGES_UNAVAILABLE_MESSAGE = "留言板没有可供叮咚播报读取的持久化数据。";
 const RANCH_NOTICES_UNAVAILABLE_MESSAGE = "牧场通知没有可供叮咚播报读取的持久化数据。";
+const TRAIL_KINDS = new Set(["watered", "stolen", "foiled"]);
+const TRAIL_LIMIT = 20;
 
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -60,6 +62,11 @@ function acknowledgedReminderKeys(farm) {
         )
       : [],
   );
+}
+
+function seenTrailEventId(farm) {
+  const value = farm?.doorbellHumanBulletinReadState?.trail_seen_event_id;
+  return typeof value === "string" && value.trim() ? value : null;
 }
 
 function unavailable(reason, message) {
@@ -233,6 +240,56 @@ function projectRanchNotifications(farm) {
   return { available: true, entries };
 }
 
+function projectTrailEntry(entry) {
+  if (
+    !isRecord(entry) ||
+    typeof entry.eventId !== "string" ||
+    !entry.eventId.trim() ||
+    !TRAIL_KINDS.has(entry.kind) ||
+    typeof entry.by !== "string" ||
+    !entry.by.trim() ||
+    !Number.isSafeInteger(entry.plotId) ||
+    entry.plotId <= 0
+  ) {
+    return null;
+  }
+  const at = nullableIso(entry.t);
+  if (!at) return null;
+  return {
+    event_id: entry.eventId,
+    kind: entry.kind,
+    actor_name: entry.by,
+    actor_farm_doorplate:
+      typeof entry.actorFarmId === "string" && FARM_DOORPLATE_RE.test(entry.actorFarmId)
+        ? entry.actorFarmId
+        : null,
+    plot_id: entry.plotId,
+    crop_name: entry.kind === "stolen" ? nullableText(entry.crop) : null,
+    at,
+  };
+}
+
+function projectTrail(farm) {
+  if (farm.trail !== undefined && !Array.isArray(farm.trail)) {
+    return {
+      status: "unavailable",
+      reason: "invalid_persisted_state",
+      message: "农场足迹的持久化字段无法安全读取。",
+    };
+  }
+  const entries = (farm.trail ?? []).slice(0, TRAIL_LIMIT).map(projectTrailEntry).filter(Boolean);
+  return { status: "available", entries, has_unread: false };
+}
+
+function withTrailUnread(trail, farm) {
+  if (trail.status !== "available") return trail;
+  const newestEventId = trail.entries[0]?.event_id ?? null;
+  return {
+    ...trail,
+    has_unread: newestEventId !== null && newestEventId !== seenTrailEventId(farm),
+  };
+}
+
 function addSection(available, unavailableSections, key, result) {
   if (result.available) available[key] = result.entries;
   else unavailableSections[key] = result.unavailable;
@@ -255,7 +312,7 @@ export function projectHumanBulletinSource(farm, now = Date.now()) {
   addSection(available, unavailableSections, "messages", projectMessages(farm));
   addSection(available, unavailableSections, "ranch_notifications", projectRanchNotifications(farm));
 
-  const data = { available, unavailable: unavailableSections };
+  const data = { available, unavailable: unavailableSections, trail: projectTrail(farm) };
   return {
     subject,
     data,
@@ -275,7 +332,11 @@ export function projectHumanBulletin(farm, now = Date.now()) {
   }
   return {
     ...source,
-    data: { available, unavailable: source.data.unavailable },
+    data: {
+      available,
+      unavailable: source.data.unavailable,
+      trail: withTrailUnread(source.data.trail, farm),
+    },
   };
 }
 
