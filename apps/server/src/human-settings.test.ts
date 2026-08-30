@@ -491,6 +491,17 @@ test("browser notification setup exposes a real public key and persists an authe
       activity_reminders_enabled: false,
     });
 
+    const status = () =>
+      harness.app.inject({
+        method: "POST",
+        url: "/api/browser-notifications/subscription/status",
+        headers: { cookie: sessionCookie },
+        payload: { endpoint: "https://push.example.test/subscription" },
+      });
+    const beforeSubscription = await status();
+    assert.equal(beforeSubscription.statusCode, 200);
+    assert.deepEqual(beforeSubscription.json(), { subscribed: false });
+
     const subscribed = await harness.app.inject({
       method: "POST",
       url: "/api/browser-notifications/subscription",
@@ -507,6 +518,7 @@ test("browser notification setup exposes a real public key and persists an authe
       harness.database.listBrowserPushSubscriptions(created.community.resident.residentId).length,
       1,
     );
+    assert.deepEqual((await status()).json(), { subscribed: true });
 
     const removed = await harness.app.inject({
       method: "DELETE",
@@ -523,6 +535,7 @@ test("browser notification setup exposes a real public key and persists an authe
       harness.database.listBrowserPushSubscriptions(created.community.resident.residentId).length,
       0,
     );
+    assert.deepEqual((await status()).json(), { subscribed: false });
   } finally {
     await harness.close();
     rmSync(directory, { recursive: true, force: true });

@@ -1,6 +1,7 @@
 import {
   browserPushErrorSchema,
   browserPushSubscriptionDeleteSuccessSchema,
+  browserPushSubscriptionStatusSuccessSchema,
   browserPushSubscriptionSuccessSchema,
 } from "@doorbell/protocol";
 import type { AuthIssue, FrontendFetcher } from "./auth/auth-client";
@@ -9,6 +10,13 @@ export interface BrowserNotificationRuntime {
   notification: Pick<typeof Notification, "permission" | "requestPermission">;
   serviceWorker: ServiceWorkerContainer;
 }
+
+export type BrowserNotificationDeviceState =
+  | "checking"
+  | "not_subscribed"
+  | "subscribed"
+  | "unavailable"
+  | "unknown";
 
 function issue(code: AuthIssue["code"], serverMessage: string | null = null): AuthIssue {
   return { code, serverMessage };
@@ -42,6 +50,37 @@ function runtimeFromWindow(): BrowserNotificationRuntime | null {
     return null;
   }
   return { notification: Notification, serviceWorker: navigator.serviceWorker };
+}
+
+export async function getBrowserNotificationDeviceState(
+  options: { fetcher?: FrontendFetcher; runtime?: BrowserNotificationRuntime | null } = {},
+): Promise<BrowserNotificationDeviceState> {
+  const runtime = options.runtime === undefined ? runtimeFromWindow() : options.runtime;
+  if (!runtime) return "unavailable";
+  if (runtime.notification.permission !== "granted") return "not_subscribed";
+  try {
+    const registration = await runtime.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+    if (!subscription) return "not_subscribed";
+    const response = await (options.fetcher ?? fetch)(
+      "/api/browser-notifications/subscription/status",
+      {
+        body: JSON.stringify({ endpoint: subscription.endpoint }),
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      },
+    );
+    const payload = await readPayload(response);
+    const parsed = browserPushSubscriptionStatusSuccessSchema.safeParse(payload);
+    return response.ok && parsed.success && parsed.data.subscribed
+      ? "subscribed"
+      : response.ok && parsed.success
+        ? "not_subscribed"
+        : "unknown";
+  } catch {
+    return "unknown";
+  }
 }
 
 export async function enableBrowserNotifications(options: {

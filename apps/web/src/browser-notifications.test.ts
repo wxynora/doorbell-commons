@@ -4,11 +4,13 @@ import {
   type BrowserNotificationRuntime,
   disableBrowserNotifications,
   enableBrowserNotifications,
+  getBrowserNotificationDeviceState,
 } from "./browser-notifications.js";
 
 function runtime(options: {
   permission?: NotificationPermission;
   requestPermission?: NotificationPermission;
+  onPermissionRequest?: () => void;
   existing?: PushSubscription | null;
   created?: PushSubscription;
 }): BrowserNotificationRuntime {
@@ -19,7 +21,10 @@ function runtime(options: {
   return {
     notification: {
       permission: options.permission ?? "default",
-      requestPermission: async () => options.requestPermission ?? "granted",
+      requestPermission: async () => {
+        options.onPermissionRequest?.();
+        return options.requestPermission ?? "granted";
+      },
     },
     serviceWorker: {
       ready: Promise.resolve({ pushManager } as ServiceWorkerRegistration),
@@ -38,6 +43,53 @@ function subscription(): PushSubscription {
     unsubscribe: async () => true,
   } as unknown as PushSubscription;
 }
+
+test("current device state never treats another device's profile switch as a local subscription", async () => {
+  let requestedPermission = false;
+  const currentDeviceMissing = await getBrowserNotificationDeviceState({
+    runtime: runtime({
+      permission: "default",
+      requestPermission: "granted",
+      onPermissionRequest: () => {
+        requestedPermission = true;
+      },
+      existing: null,
+    }),
+    fetcher: async () => {
+      throw new Error("must not query without a local subscription");
+    },
+  });
+  assert.equal(currentDeviceMissing, "not_subscribed");
+  assert.equal(requestedPermission, false);
+
+  const requests: Array<{ input: string; init: RequestInit | undefined }> = [];
+  const currentDeviceRegistered = await getBrowserNotificationDeviceState({
+    runtime: runtime({ permission: "granted", existing: subscription() }),
+    fetcher: async (input, init) => {
+      requests.push({ input, init });
+      return new Response(JSON.stringify({ subscribed: true }), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      });
+    },
+  });
+  assert.equal(currentDeviceRegistered, "subscribed");
+  assert.equal(requests[0]?.input, "/api/browser-notifications/subscription/status");
+  assert.equal(requests[0]?.init?.method, "POST");
+  assert.deepEqual(JSON.parse(String(requests[0]?.init?.body)), {
+    endpoint: subscription().endpoint,
+  });
+
+  const localEndpointBelongsToAnotherProfile = await getBrowserNotificationDeviceState({
+    runtime: runtime({ permission: "granted", existing: subscription() }),
+    fetcher: async () =>
+      new Response(JSON.stringify({ subscribed: false }), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }),
+  });
+  assert.equal(localEndpointBelongsToAnotherProfile, "not_subscribed");
+});
 
 test("enabling browser notifications requires permission and registers the real subscription", async () => {
   const deniedRequests: Array<{ input: string; init: RequestInit | undefined }> = [];

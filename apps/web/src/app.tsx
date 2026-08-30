@@ -38,7 +38,12 @@ import {
   listSharedMemes,
   sharedMemeIssueMessage,
 } from "./auth/shared-meme-client";
-import { disableBrowserNotifications, enableBrowserNotifications } from "./browser-notifications";
+import {
+  type BrowserNotificationDeviceState,
+  disableBrowserNotifications,
+  enableBrowserNotifications,
+  getBrowserNotificationDeviceState,
+} from "./browser-notifications";
 import { AdditionalProfileForm } from "./components/additional-profile-form";
 import { AuthScreen, RegistrationHeader, SessionCheckingScreen } from "./components/auth-screen";
 import { McpAccessPage } from "./components/mcp-access-panel";
@@ -136,6 +141,7 @@ type AppState =
   | { stage: "adding-profile"; identity: HumanIdentity }
   | {
       stage: "authenticated";
+      browserNotificationDeviceState: BrowserNotificationDeviceState;
       homeSettings: HomeSettingsState;
       homeSettingsIssue: AuthIssue | null;
       homeSettingsPending: boolean;
@@ -163,7 +169,10 @@ function identityView(identity: HumanIdentity): CandidateTwoIdentityView {
   };
 }
 
-export function homeSettingsView(homeSettings: HomeSettingsState): CandidateTwoHomeSettingsView {
+export function homeSettingsView(
+  homeSettings: HomeSettingsState,
+  browserNotificationDeviceState: BrowserNotificationDeviceState = "checking",
+): CandidateTwoHomeSettingsView {
   if (homeSettings.stage === "error") {
     return { stage: "error", message: authIssueMessage(homeSettings.issue) };
   }
@@ -190,6 +199,7 @@ export function homeSettingsView(homeSettings: HomeSettingsState): CandidateTwoH
     activityRemindersEnabled: browser_notification_preferences.activity_reminders_enabled,
     allowActivityRoomWarmup: community_connection_preferences.allow_activity_room_warmup ?? true,
     browserNotificationsAvailable: browser_notification_preferences.browser_notifications_available,
+    browserNotificationDeviceState,
     browserNotificationsEnabled: browser_notification_preferences.browser_notifications_enabled,
     browserNotificationApplicationServerKey:
       browser_notification_preferences.application_server_key,
@@ -318,6 +328,7 @@ function authenticatedState(
 ): Extract<AppState, { stage: "authenticated" }> {
   return {
     stage: "authenticated",
+    browserNotificationDeviceState: "checking",
     homeSettings: { stage: "loading" },
     homeSettingsIssue: null,
     homeSettingsPending: false,
@@ -347,7 +358,7 @@ function authenticatedViewState(
 ): CandidateTwoViewState {
   return {
     stage: "authenticated",
-    homeSettings: homeSettingsView(appState.homeSettings),
+    homeSettings: homeSettingsView(appState.homeSettings, appState.browserNotificationDeviceState),
     homeSettingsIssueMessage: appState.homeSettingsIssue
       ? authIssueMessage(appState.homeSettingsIssue)
       : null,
@@ -440,6 +451,17 @@ function LiveApp() {
 
   const settingsLoading =
     appState.stage === "authenticated" ? appState.homeSettings.stage === "loading" : false;
+  const browserNotificationDeviceStatusKey =
+    appState.stage === "authenticated" && appState.homeSettings.stage === "ready"
+      ? `${appState.homeSettings.data.active_profile_id}:${String(
+          appState.homeSettings.data.browser_notification_preferences
+            .browser_notifications_available,
+        )}`
+      : null;
+  const browserNotificationsAvailable =
+    appState.stage === "authenticated" && appState.homeSettings.stage === "ready"
+      ? appState.homeSettings.data.browser_notification_preferences.browser_notifications_available
+      : false;
   const mailboxListLoading =
     appState.stage === "authenticated" && appState.mailbox.list.stage === "loading"
       ? appState.mailbox.list
@@ -475,6 +497,35 @@ function LiveApp() {
 
     return () => controller.abort();
   }, [settingsLoading]);
+
+  useEffect(() => {
+    if (!browserNotificationDeviceStatusKey) return;
+    if (!browserNotificationsAvailable) {
+      setAppState((current) =>
+        current.stage === "authenticated"
+          ? { ...current, browserNotificationDeviceState: "unavailable" }
+          : current,
+      );
+      return;
+    }
+    let cancelled = false;
+    setAppState((current) =>
+      current.stage === "authenticated"
+        ? { ...current, browserNotificationDeviceState: "checking" }
+        : current,
+    );
+    void getBrowserNotificationDeviceState().then((deviceState) => {
+      if (cancelled) return;
+      setAppState((current) =>
+        current.stage === "authenticated"
+          ? { ...current, browserNotificationDeviceState: deviceState }
+          : current,
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [browserNotificationDeviceStatusKey, browserNotificationsAvailable]);
 
   useEffect(() => {
     if (!mailboxListRequestKey) {
@@ -968,19 +1019,25 @@ function LiveApp() {
         }
         setAppState({
           ...appState,
+          browserNotificationDeviceState: action.value
+            ? "checking"
+            : appState.browserNotificationDeviceState,
           homeSettingsIssue: null,
           homeSettingsPending: true,
         });
+        let nextDeviceState = appState.browserNotificationDeviceState;
         if (action.value) {
           const enabled = await enableBrowserNotifications({
             applicationServerKey:
               appState.homeSettings.data.browser_notification_preferences.application_server_key,
           });
           if (!enabled.ok) {
+            const failedDeviceState = await getBrowserNotificationDeviceState();
             setAppState((current) =>
               current.stage === "authenticated"
                 ? {
                     ...current,
+                    browserNotificationDeviceState: failedDeviceState,
                     homeSettingsIssue: enabled.issue,
                     homeSettingsPending: false,
                   }
@@ -988,6 +1045,7 @@ function LiveApp() {
             );
             return;
           }
+          nextDeviceState = "subscribed";
         }
         const result = await updateHumanSettings({
           browser_notification_preferences: {
@@ -996,18 +1054,21 @@ function LiveApp() {
         });
         if (result.ok && !action.value) {
           await disableBrowserNotifications();
+          nextDeviceState = await getBrowserNotificationDeviceState();
         }
         setAppState((current) => {
           if (current.stage !== "authenticated") return current;
           return result.ok
             ? {
                 ...current,
+                browserNotificationDeviceState: nextDeviceState,
                 homeSettings: { stage: "ready", data: result.data },
                 homeSettingsIssue: null,
                 homeSettingsPending: false,
               }
             : {
                 ...current,
+                browserNotificationDeviceState: nextDeviceState,
                 homeSettingsIssue: result.issue,
                 homeSettingsPending: false,
               };

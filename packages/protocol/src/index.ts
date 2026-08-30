@@ -2248,7 +2248,15 @@ export const browserPushSubscriptionDeleteRequestSchema = z
   .object({ endpoint: browserPushEndpointSchema })
   .strict();
 
+export const browserPushSubscriptionStatusRequestSchema = z
+  .object({ endpoint: browserPushEndpointSchema })
+  .strict();
+
 export const browserPushSubscriptionSuccessSchema = z.object({ subscribed: z.boolean() }).strict();
+
+export const browserPushSubscriptionStatusSuccessSchema = z
+  .object({ subscribed: z.boolean() })
+  .strict();
 
 export const browserPushSubscriptionDeleteSuccessSchema = z
   .object({
@@ -2818,6 +2826,9 @@ export type HumanSettingsSuccess = z.infer<typeof humanSettingsSuccessSchema>;
 export type HumanSettingsError = z.infer<typeof humanSettingsErrorSchema>;
 export type BrowserPushSubscriptionRequest = z.infer<typeof browserPushSubscriptionRequestSchema>;
 export type BrowserPushSubscriptionSuccess = z.infer<typeof browserPushSubscriptionSuccessSchema>;
+export type BrowserPushSubscriptionStatusSuccess = z.infer<
+  typeof browserPushSubscriptionStatusSuccessSchema
+>;
 export type BrowserPushSubscriptionDeleteSuccess = z.infer<
   typeof browserPushSubscriptionDeleteSuccessSchema
 >;

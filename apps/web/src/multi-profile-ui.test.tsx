@@ -87,6 +87,36 @@ test("settings hide a single profile and expose only the server list when multip
   });
 });
 
+test("browser notification settings keep the profile switch separate from this device", () => {
+  const enabledProfileWithoutThisDevice = homeSettingsView(
+    {
+      stage: "ready",
+      data: {
+        ...SETTINGS,
+        browser_notification_preferences: {
+          application_server_key: "AQID",
+          browser_notifications_available: true,
+          browser_notifications_enabled: true,
+          activity_reminders_enabled: true,
+        },
+      },
+    },
+    "not_subscribed",
+  );
+  assert.equal(enabledProfileWithoutThisDevice.stage, "ready");
+  if (enabledProfileWithoutThisDevice.stage !== "ready") return;
+  assert.equal(enabledProfileWithoutThisDevice.browserNotificationsEnabled, true);
+  assert.equal(enabledProfileWithoutThisDevice.browserNotificationDeviceState, "not_subscribed");
+
+  const html = buildCandidateTwoRuntimeHtml();
+  assert.match(html, /本档案已开启 · 本设备尚未开启/);
+  assert.match(
+    html,
+    /settingsBrowserNotifications\.checked =\s*homeSettings\.browserNotificationsEnabled && browserNotificationDeviceSubscribed/,
+  );
+  assert.match(html, /homeSettings\.browserNotificationDeviceState === 'checking'/);
+});
+
 test("additional registration clearly separates existing and new farms without asking for a password", () => {
   const source = readFileSync(
     new URL("./components/additional-profile-form.tsx", import.meta.url),

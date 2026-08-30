@@ -437,6 +437,7 @@ Human registration/login uses these routes:
 | `GET /api/settings` | Live-checks the human session's QQ membership and returns persisted human/home preferences, the selected climate and structured current-weather state, plus the honest wake-bridge integration state |
 | `PATCH /api/settings` | Strictly updates only the current session's supported home, climate, notification, and community-connection preferences; the browser cannot select another account, home, resident, or farm |
 | `POST /api/browser-notifications/subscription` | Live-checks the Human session and QQ membership, requires the configured Web Push service, and upserts only the current resident's strict HTTPS Push endpoint plus `p256dh`／`auth` keys |
+| `POST /api/browser-notifications/subscription/status` | Accepts only the current browser's local HTTPS endpoint, live-checks the Human session, and reports whether that exact endpoint is bound to the active resident／home; it does not request permission, create a subscription, or expose any stored endpoint |
 | `DELETE /api/browser-notifications/subscription` | Live-checks the same authority and deletes only the current resident's matching endpoint; it cannot remove another resident's subscription |
 | `GET /api/mcp-access` | Returns the current resident's server-derived migration and independent MCP credential status without returning any credential, farm humanKey, or caller-selected identity |
 | `POST /api/mcp-access/claim` | Starts or resumes one stable pending farm-link migration only after the MCP runtime readiness gate; the same migration ID is reused until a strict farm receipt confirms revocation |
@@ -450,6 +451,10 @@ and the response never returns a credential. The same home-scoped settings row n
 shared-meme Bell-signal preference plus browser-notification and activity-reminder switches. Browser
 notification availability and the public application-server key are reported only when the complete
 deployment-side Web Push configuration is present; private VAPID material is never returned.
+The profile-level notification switch is not treated as current-device readiness. The browser first
+checks its own Service Worker subscription, then asks the authenticated status endpoint whether that
+exact endpoint belongs to the active profile; no local subscription or no matching profile binding is
+rendered as this device not enabled. Creating a local subscription remains a user-gesture action.
 The existing nullable activity-room and visit preference columns have no room, invitation, or
 notification producer while those business lines are frozen. Settings does not become a second
 notification source: implemented notification bodies live only in the mailbox, while Bell remains a

@@ -94,6 +94,12 @@ export class BrowserPushService {
     return !this.#database.deleteBrowserPushSubscription(residentId, endpoint).endpointStillUsed;
   }
 
+  isSubscribed(residentId: string, homeId: string, endpoint: string): boolean {
+    return this.#database
+      .listBrowserPushSubscriptions(residentId)
+      .some((subscription) => subscription.homeId === homeId && subscription.endpoint === endpoint);
+  }
+
   async sendActivityReminder(input: ActivityReminderPush): Promise<boolean> {
     let preferences: HumanSettingsRecord;
     try {

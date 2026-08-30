@@ -112,6 +112,8 @@ import {
   browserPushSubscriptionDeleteRequestSchema,
   browserPushSubscriptionDeleteSuccessSchema,
   browserPushSubscriptionRequestSchema,
+  browserPushSubscriptionStatusRequestSchema,
+  browserPushSubscriptionStatusSuccessSchema,
   browserPushSubscriptionSuccessSchema,
   createdFarmHumanSessionSuccessSchema,
   currentHumanSessionSuccessSchema,
@@ -3651,6 +3653,56 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       }
       reply.header("cache-control", "no-store");
       return browserPushSubscriptionSuccessSchema.parse({ subscribed: true });
+    } catch (error) {
+      return sendHumanSettingsFailure(request, reply, error);
+    }
+  });
+
+  app.post("/api/browser-notifications/subscription/status", async (request, reply) => {
+    if (!humanSettingsReadRequestSchema.safeParse(request.query).success) {
+      return sendBrowserPushError(
+        reply,
+        400,
+        "invalid_request",
+        "The browser notification subscription status does not accept query parameters",
+      );
+    }
+    const parsed = browserPushSubscriptionStatusRequestSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return sendBrowserPushError(
+        reply,
+        400,
+        "invalid_request",
+        "The browser notification subscription status does not match the supported contract",
+      );
+    }
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendBrowserPushError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+    if (!options.browserPushService) {
+      return sendBrowserPushError(
+        reply,
+        503,
+        "browser_notifications_unavailable",
+        "Browser notifications are not configured",
+      );
+    }
+    try {
+      const community = await options.registrationAuth.getCurrentSession(token);
+      reply.header("cache-control", "no-store");
+      return browserPushSubscriptionStatusSuccessSchema.parse({
+        subscribed: options.browserPushService.isSubscribed(
+          community.resident.residentId,
+          community.home.homeId,
+          parsed.data.endpoint,
+        ),
+      });
     } catch (error) {
       return sendHumanSettingsFailure(request, reply, error);
     }

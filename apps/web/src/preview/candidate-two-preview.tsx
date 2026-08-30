@@ -312,6 +312,12 @@ export type CandidateTwoHomeSettingsView =
       activityRemindersEnabled: boolean;
       allowActivityRoomWarmup: boolean;
       browserNotificationsAvailable: boolean;
+      browserNotificationDeviceState:
+        | "checking"
+        | "not_subscribed"
+        | "subscribed"
+        | "unavailable"
+        | "unknown";
       browserNotificationsEnabled: boolean;
       browserNotificationApplicationServerKey: string | null;
       climateType: string | null;
@@ -1057,6 +1063,7 @@ export function buildCandidateTwoDemoPreset(
         activityRemindersEnabled: false,
         allowActivityRoomWarmup: true,
         browserNotificationsAvailable: true,
+        browserNotificationDeviceState: "not_subscribed",
         browserNotificationsEnabled: false,
         browserNotificationApplicationServerKey: "preview-public-key",
         chatMode: "natural",
@@ -2039,7 +2046,7 @@ const SETTINGS_SCREEN = `
                 <label class="candidate2-settings-toggle"><span>串门申请与邀请</span><input class="settings-visit-notifications" type="checkbox" checked><i></i></label>
                 <label class="candidate2-settings-toggle"><span>活动邀请</span><input class="settings-activity-notifications" type="checkbox" checked><i></i></label>
                 <label class="candidate2-settings-toggle"><span>重要系统通知</span><input class="settings-system-notifications" type="checkbox" checked><i></i></label>
-                <label class="candidate2-settings-toggle"><span>浏览器通知<small>需要允许本设备发送系统通知</small></span><input class="settings-browser-notifications" type="checkbox"><i></i></label>
+                <label class="candidate2-settings-toggle"><span>浏览器通知<small class="settings-browser-notification-device-state">正在确认本设备</small></span><input class="settings-browser-notifications" type="checkbox"><i></i></label>
                 <label class="candidate2-settings-toggle"><span>活动提醒<small>菜成熟、冷却结束等个人到点提醒</small></span><input class="settings-activity-reminders" type="checkbox"><i></i></label>
             </section>
 
@@ -8464,6 +8471,7 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     const settingsActivityNotifications = document.querySelector('.settings-activity-notifications');
     const settingsSystemNotifications = document.querySelector('.settings-system-notifications');
     const settingsBrowserNotifications = document.querySelector('.settings-browser-notifications');
+    const settingsBrowserNotificationDeviceState = document.querySelector('.settings-browser-notification-device-state');
     const settingsActivityReminders = document.querySelector('.settings-activity-reminders');
     const settingsSharedMemeUpdates = document.querySelector('.settings-shared-meme-updates');
     const settingsLoungeDuration = document.querySelector('.settings-lounge-duration');
@@ -8620,7 +8628,23 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         settingsVisitNotifications.checked = homeSettings.visitRequestsAndInvitationsEnabled;
         settingsActivityNotifications.checked = homeSettings.activityInvitationsEnabled;
         settingsSystemNotifications.checked = homeSettings.importantSystemNotificationsEnabled;
-        settingsBrowserNotifications.checked = homeSettings.browserNotificationsEnabled;
+        const browserNotificationDeviceSubscribed =
+            homeSettings.browserNotificationDeviceState === 'subscribed';
+        settingsBrowserNotifications.checked =
+            homeSettings.browserNotificationsEnabled && browserNotificationDeviceSubscribed;
+        const browserNotificationDeviceLabels = {
+            checking: '正在确认本设备',
+            not_subscribed: homeSettings.browserNotificationsEnabled
+                ? '本档案已开启 · 本设备尚未开启'
+                : '本档案与本设备均未开启',
+            subscribed: homeSettings.browserNotificationsEnabled
+                ? '本档案已开启 · 本设备可接收'
+                : '本档案已关闭 · 本设备暂不接收',
+            unavailable: '本设备不支持浏览器通知',
+            unknown: '本设备状态读取失败，请重试',
+        };
+        settingsBrowserNotificationDeviceState.textContent =
+            browserNotificationDeviceLabels[homeSettings.browserNotificationDeviceState];
         settingsActivityReminders.checked = homeSettings.activityRemindersEnabled;
         settingsSharedMemeUpdates.checked = homeSettings.sharedMemeUpdateSignalsEnabled;
         settingsLoungeDuration.value = String(homeSettings.defaultConnectionDurationMinutes);
@@ -8656,7 +8680,11 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         document.querySelector('.home-name').textContent = homeSettings.homeName;
         document.querySelector('.home-weather-summary').lastChild.textContent = homeSettings.weatherSummary;
         setHomeSettingsDisabled(pending);
-        settingsBrowserNotifications.disabled = pending || !homeSettings.browserNotificationsAvailable;
+        settingsBrowserNotifications.disabled =
+            pending ||
+            !homeSettings.browserNotificationsAvailable ||
+            homeSettings.browserNotificationDeviceState === 'checking' ||
+            homeSettings.browserNotificationDeviceState === 'unavailable';
         settingsActivityReminders.disabled = pending || !homeSettings.browserNotificationsAvailable;
 
         if (pending) {
