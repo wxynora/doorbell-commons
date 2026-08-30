@@ -4,6 +4,7 @@ import {
     handleDoorbellHumanCatalogRead,
     handleDoorbellHumanCropCodexAction,
     handleDoorbellHumanFarmSettingsAction,
+    handleDoorbellHumanFarmShopOpen,
     handleDoorbellHumanFieldRead,
     handleDoorbellHumanHarvestAssist,
     handleDoorbellHumanLandUpgrade,
@@ -78,6 +79,10 @@ export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExe
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "catalog" && parts[4] === "read" && parts.length === 5) {
             await handleDoorbellHumanCatalogRead(req, res, method);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "catalog" && parts[4] === "shop" && parts[5] === "open" && parts.length === 6) {
+            await handleDoorbellHumanFarmShopOpen(req, res, method);
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "bulletin" && parts[4] === "read" && parts.length === 5) {

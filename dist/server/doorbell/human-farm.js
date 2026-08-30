@@ -5,6 +5,7 @@ import { projectHumanField } from "../human-structured.js";
 import { handleHumanHarvestAssist } from "../human-harvest-assist.js";
 import { handleHumanLandUpgrade } from "../human-land-upgrade.js";
 import { projectHumanFarmCatalog } from "../farm-catalog-structured.js";
+import { handleHumanFarmShopOpen } from "../farm-shop-open-action.js";
 import { projectHumanBulletin } from "../bulletin-structured.js";
 import { handleHumanBulletinAck } from "../bulletin-ack-action.js";
 import { handleHumanCropCodexAction } from "../crop-codex-action.js";
@@ -73,6 +74,29 @@ export async function handleDoorbellHumanCatalogRead(req, res, method) {
             return humanFieldError(res, 400, "invalid_request", "The request body must be valid JSON");
         console.error("[doorbell-human-catalog] read failed");
         return humanFieldError(res, 503, "farm_unavailable", "The farm catalog could not be read");
+    }
+}
+
+export async function handleDoorbellHumanFarmShopOpen(req, res, method) {
+    if (!requireDoorbellHumanFieldService(req, res, method))
+        return;
+    try {
+        const body = await readJsonBody(req, MAX_BODY_BYTES);
+        if (!isPlainObject(body))
+            return humanFieldError(res, 400, "invalid_request", "The request body must be an object");
+        const binding = validateFarmBinding(body);
+        if (binding.error)
+            return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
+        const out = handleHumanFarmShopOpen(binding.farm, body, Date.now());
+        return jsonOut(res, out.status, out.json);
+    }
+    catch (error) {
+        if (error instanceof PublicSyncError) {
+            const tooLarge = error.status === 413;
+            return humanFieldError(res, tooLarge ? 413 : 400, tooLarge ? "body_too_large" : "invalid_request", tooLarge ? "The request body is too large" : "The request body must be valid JSON");
+        }
+        console.error("[doorbell-human-farm-shop] open failed");
+        return humanFieldError(res, 503, "farm_unavailable", "The farm shop could not be opened");
     }
 }
 
