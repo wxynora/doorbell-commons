@@ -312,7 +312,7 @@ test("manifest is a Chinese standalone community entry with the existing surface
 });
 
 test("service worker restores the 04:17 bounded cache strategies", () => {
-  assert.match(serviceWorkerSource, /^\/\/ approved-pwa-release:2026-08-30\.2$/mu);
+  assert.match(serviceWorkerSource, /^\/\/ approved-pwa-release:2026-08-30\.3$/mu);
   assert.equal((serviceWorkerSource.match(/approved-pwa-release:/gu) ?? []).length, 1);
   assert.match(serviceWorkerSource, /shell-v4/);
   assert.match(serviceWorkerSource, /static-v5/);
