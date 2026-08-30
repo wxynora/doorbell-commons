@@ -150,16 +150,6 @@ git -C "${SOURCE_DIRECTORY}" archive "${TARGET_SHA}" | tar -x -C "${build_direct
   npm prune --omit=dev
 )
 
-node "${build_directory}/deploy/scripts/resolve-approved-pwa-release.mjs" \
-  "${RUNTIME_DIRECTORY}/apps/web/dist/index.html" \
-  "${RUNTIME_DIRECTORY}/apps/web/dist/service-worker.js" \
-  "${build_directory}/apps/web/dist/index.html" \
-  "${build_directory}/apps/web/dist/service-worker.js"
-
-node "${build_directory}/deploy/scripts/merge-web-assets.mjs" \
-  "${RUNTIME_DIRECTORY}/apps/web/dist/assets" \
-  "${build_directory}/apps/web/dist/assets"
-
 [[ -z "$(git -C "${SOURCE_DIRECTORY}" status --porcelain)" ]] || {
   fail "build changed tracked source files"
   exit 1
