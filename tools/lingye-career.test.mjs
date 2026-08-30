@@ -467,7 +467,7 @@ test("career schema adds frozen course delivery and exam no-show columns without
     }
 });
 test("runtime curriculum opens all approved courses but keeps exams fail closed without the private bank", () => {
-    assert.equal(CAREER_CURRICULUM_VERSION, "career-curriculum-2026-08-27.1");
+    assert.equal(CAREER_CURRICULUM_VERSION, "career-curriculum-2026-08-30.2");
     assert.equal(careerCourseAvailability("agronomist", 1, 1), true);
     assert.equal(careerCourseAvailability("chef", 4, 1), true);
     assert.equal(careerCourseAvailability("chef", 4, 3), true);

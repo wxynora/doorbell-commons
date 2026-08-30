@@ -3,11 +3,13 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const CAREERS = ["chef", "agronomist", "veterinarian", "reporter", "constable"];
-const VERSION = "career-curriculum-2026-08-27.1";
-const GENERATOR_VERSION = 2;
+const VERSION = "career-curriculum-2026-08-30.2";
+const GENERATOR_VERSION = 3;
 const LEVELS = [1, 2, 3, 4];
 const SOURCE_FILE_NAMES = CAREERS.map((career) => `${career}.md`);
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
+const SAFE_PUBLIC_OPTION_PATTERN = /^(?:\d+(?:\.\d+)?%?|N|R|SR|SSR|SP|[BPS]=\d+(?:\.\d+)?|`[A-Z]-\d{2}`|\d{2}:\d{2})$/u;
+const INTERNAL_TOKEN_PATTERN = /\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/u;
 
 function assertExactKeys(value, expectedKeys, label) {
     if (!value || typeof value !== "object" || Array.isArray(value))
@@ -21,6 +23,22 @@ function assertExactKeys(value, expectedKeys, label) {
 function assertNonEmptyString(value, label) {
     if (typeof value !== "string" || value.trim().length === 0)
         throw new Error(`${label} must be a non-empty string`);
+}
+
+function assertModelVisiblePracticeOption(value, label) {
+    assertNonEmptyString(value, label);
+    const text = value.trim();
+    if (INTERNAL_TOKEN_PATTERN.test(text) ||
+        (!/\p{Script=Han}/u.test(text) && !SAFE_PUBLIC_OPTION_PATTERN.test(text))) {
+        throw new Error(`${label} is not model-visible player text`);
+    }
+}
+
+function assertModelVisiblePracticeStem(value, label) {
+    assertNonEmptyString(value, label);
+    if (!/\p{Script=Han}/u.test(value) || INTERNAL_TOKEN_PATTERN.test(value)) {
+        throw new Error(`${label} is not model-visible player text`);
+    }
 }
 
 function approvalFromReadiness(entry) {
@@ -145,6 +163,7 @@ function parseQuestions(lines, expectedCount, prefix) {
             currentOption = null;
             continue;
         }
+        if (/^\s*---\s*$/u.test(line)) continue;
         if (current.answer && line.trim()) {
             current.explanation = `${current.explanation}\n${line.trim()}`.trim();
         } else if (currentOption && line.trim()) {
@@ -281,11 +300,17 @@ function assertPracticeQuestion(question, career, level, courseIndex, questionIn
         !["A", "B", "C", "D"].includes(question.answer)) {
         throw new Error(`${label} identity is invalid`);
     }
-    assertNonEmptyString(question.stem, `${label} stem`);
+    assertModelVisiblePracticeStem(question.stem, `${label} stem`);
     assertNonEmptyString(question.explanation, `${label} explanation`);
     assertExactKeys(question.options, ["A", "B", "C", "D"], `${label} options`);
-    for (const key of ["A", "B", "C", "D"])
-        assertNonEmptyString(question.options[key], `${label} option ${key}`);
+    const normalizedOptions = [];
+    for (const key of ["A", "B", "C", "D"]) {
+        assertModelVisiblePracticeOption(question.options[key], `${label} option ${key}`);
+        normalizedOptions.push(question.options[key].trim().normalize("NFKC"));
+    }
+    if (new Set(normalizedOptions).size !== normalizedOptions.length) {
+        throw new Error(`${label} options must be unique`);
+    }
 }
 
 function verifyPublicCurriculum(curriculum, readiness, readinessText) {

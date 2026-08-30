@@ -14,6 +14,62 @@ const COOKING_PATH = process.env.AIFARM_COOKING_CONTENT_PATH
 const curriculum = JSON.parse(readFileSync(CONTENT_PATH, "utf8"));
 const cooking = JSON.parse(readFileSync(COOKING_PATH, "utf8"));
 const ANSWER_VALUES = new Set(["A", "B", "C", "D"]);
+const OPTION_KEYS = ["A", "B", "C", "D"];
+const SAFE_PUBLIC_OPTION_PATTERN = /^(?:\d+(?:\.\d+)?%?|N|R|SR|SSR|SP|[BPS]=\d+(?:\.\d+)?|`[A-Z]-\d{2}`|\d{2}:\d{2})$/u;
+const INTERNAL_TOKEN_PATTERN = /\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/u;
+
+function unavailableAssessmentContent() {
+    throw new CareerDomainError("assessment_content_not_available", "The private written exam bank is unavailable");
+}
+
+function nonEmptyText(value) {
+    return typeof value === "string" && value.trim().length > 0;
+}
+
+function modelVisibleStem(value) {
+    return nonEmptyText(value) && /\p{Script=Han}/u.test(value) && !INTERNAL_TOKEN_PATTERN.test(value);
+}
+
+function modelVisibleOption(value) {
+    if (!nonEmptyText(value) || INTERNAL_TOKEN_PATTERN.test(value))
+        return false;
+    const text = value.trim();
+    return /\p{Script=Han}/u.test(text) || SAFE_PUBLIC_OPTION_PATTERN.test(text);
+}
+
+function validateFinalQuestion(question) {
+    if (!question || typeof question !== "object" || Array.isArray(question) ||
+        !nonEmptyText(question.id) || !modelVisibleStem(question.stem) ||
+        !nonEmptyText(question.explanation) || !question.options ||
+        typeof question.options !== "object" || Array.isArray(question.options) ||
+        JSON.stringify(Object.keys(question.options).sort()) !== JSON.stringify([...OPTION_KEYS].sort())) {
+        unavailableAssessmentContent();
+    }
+    const optionValues = OPTION_KEYS.map((key) => question.options[key]);
+    if (optionValues.some((value) => !modelVisibleOption(value)) ||
+        new Set(optionValues.map((value) => value.trim().normalize("NFKC"))).size !== OPTION_KEYS.length) {
+        unavailableAssessmentContent();
+    }
+    try {
+        normalizeAnswerSelection(question.answer);
+    }
+    catch {
+        unavailableAssessmentContent();
+    }
+    return question;
+}
+
+function validateFinalQuestionSet(questions, expectedCount) {
+    if (!Array.isArray(questions) || questions.length !== expectedCount)
+        unavailableAssessmentContent();
+    const ids = new Set();
+    for (const question of questions) {
+        validateFinalQuestion(question);
+        if (ids.has(question.id)) unavailableAssessmentContent();
+        ids.add(question.id);
+    }
+    return questions;
+}
 
 function normalizeAnswerSelection(value) {
     const raw = Array.isArray(value) ? value : [value];
@@ -47,19 +103,12 @@ function findExam(career, level) {
         return null;
     const bank = privateExamBank();
     const matches = bank?.exams.filter((exam) => exam.career === career && exam.level === level) ?? [];
-    if (matches.length !== 1 || !Array.isArray(matches[0].questions) || matches[0].questions.length !== 20 ||
-        matches[0].questions.some((question) => {
-            if (question?.type === "existing_recipe_ingredients")
-                return false;
-            try {
-                normalizeAnswerSelection(question?.answer);
-                return false;
-            }
-            catch {
-                return true;
-            }
-        }))
-        throw new CareerDomainError("assessment_content_not_available", "The private written exam bank is unavailable");
+    if (matches.length !== 1 || !Array.isArray(matches[0].questions) || matches[0].questions.length !== 20)
+        unavailableAssessmentContent();
+    validateFinalQuestionSet(matches[0].questions.map((question) =>
+        question?.type === "existing_recipe_ingredients"
+            ? expandExistingRecipeQuestion(question, "availability-check")
+            : question), 20);
     return { ...metadata, ...matches[0], bankVersion: bank.version };
 }
 
@@ -145,6 +194,7 @@ function expandExamQuestion(question, attemptId) {
 }
 
 function paperFromQuestions(kind, targetKey, questions, bankVersion = curriculum.version) {
+    validateFinalQuestionSet(questions, kind === "written_exam" ? 20 : 5);
     const normalizedAnswers = questions.map((question) => normalizeAnswerSelection(question.answer));
     return {
         kind,

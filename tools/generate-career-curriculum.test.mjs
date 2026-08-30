@@ -120,6 +120,28 @@ test("career curriculum generation rejects duplicate readiness facts", async (t)
     );
 });
 
+test("career curriculum generation rejects practice options that the model-visible renderer would hide", async (t) => {
+    const fixture = await createFixture(t);
+    const sourcePath = join(fixture.sourceDirectory, "chef.md");
+    const source = await readFile(sourcePath, "utf8");
+    await writeFile(sourcePath, source.replace("A. 选项甲", "A. completed"), "utf8");
+    await assert.rejects(
+        execute(process.execPath, [generator, fixture.sourceDirectory, fixture.outputPath, fixture.readinessPath]),
+        /is not model-visible player text/u,
+    );
+});
+
+test("career curriculum generation rejects normalized duplicate options", async (t) => {
+    const fixture = await createFixture(t);
+    const sourcePath = join(fixture.sourceDirectory, "chef.md");
+    const source = await readFile(sourcePath, "utf8");
+    await writeFile(sourcePath, source.replace("B. 选项乙", "B. 选项甲"), "utf8");
+    await assert.rejects(
+        execute(process.execPath, [generator, fixture.sourceDirectory, fixture.outputPath, fixture.readinessPath]),
+        /options must be unique/u,
+    );
+});
+
 test("career curriculum generation rejects a ready exam before all three level courses are ready", async (t) => {
     const fixture = await createFixture(t);
     const readiness = fixtureReadiness();
@@ -149,6 +171,9 @@ test("committed public curriculum matches its manifests and rejects exam questio
                 committedOpenCourses[career].has(`${course.level}:${course.courseIndex}`),
                 `${career} course ${course.level}:${course.courseIndex}`,
             );
+            for (const question of course.practiceQuestions) {
+                assert.equal(question.explanation.includes("\n---"), false);
+            }
         }
         for (const exam of committed.careers[career].exams) {
             assert.equal(

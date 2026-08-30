@@ -1,14 +1,14 @@
 {
-  "version": "career-curriculum-2026-08-27.1",
+  "version": "career-curriculum-2026-08-30.2",
   "build": {
-    "generatorVersion": 2,
+    "generatorVersion": 3,
     "sourceRepository": "doorbell-commons/main",
     "sourceFiles": {
       "chef.md": "5ea5a6b6b5e562b936e379d53a022a7f84a611f7ca73c00bc79e5df13152dd3f",
-      "agronomist.md": "8544aa92c9c1ec2ce7fbb245b2938b8d868d3f798a26d053b7124b4c2a3f5741",
+      "agronomist.md": "a23897f290d0df2418ebe3c79042a5acacfe2a0ad4db0867b3114d4744c24a92",
       "veterinarian.md": "85870ab8bc89cb0ae2f80ff992ee1436d72e3934d0420f71ff8134a99b41a3f4",
       "reporter.md": "62d1d1212634ed1583aaaeb4dd331b7a856959dcf0b7781839b58fc9ddac95db",
-      "constable.md": "f86f21225044a44dbe4e7864ada3a7a8ece1dacff474ce2ca49b6140217ed175"
+      "constable.md": "ef2d0c887d5e23a3ac56c2f55ae28bc31e17d9e6959495abe223ac40965951db"
     },
     "readinessManifestSha256": "a5882339b24a0e96e732f7cdb323b02dcffd3f5b12dcd5dde1d8f3f51701a694"
   },
@@ -1117,7 +1117,7 @@
                 "D": "使用错误材料"
               },
               "answer": "A",
-              "explanation": "检查不消耗物资；实际处理无论正确或错误，都会形成真实消耗。\n---",
+              "explanation": "检查不消耗物资；实际处理无论正确或错误，都会形成真实消耗。",
               "id": "course.agronomist.1.1.practice.5"
             }
           ]
@@ -1198,7 +1198,7 @@
                 "D": "把三天分别登记成三次独立异常"
               },
               "answer": "B",
-              "explanation": "同一地块异常最多造成一次品相降档，不按天叠加，也不删除产物或直接扣钱。\n---",
+              "explanation": "同一地块异常最多造成一次品相降档，不按天叠加，也不删除产物或直接扣钱。",
               "id": "course.agronomist.1.2.practice.5"
             }
           ]
@@ -1273,13 +1273,13 @@
               "number": 5,
               "stem": "委托在接单前，作物已被主人真实收获。原工作需求应进入哪种结果？",
               "options": {
-                "A": "completed",
-                "B": "transferred",
-                "C": "expired",
-                "D": "active"
+                "A": "已完成",
+                "B": "已转交",
+                "C": "已过期",
+                "D": "处理中"
               },
               "answer": "C",
-              "explanation": "底层真实对象已经不存在，工作应失效；不能对不存在的作物继续处理或冒充完成。\n---",
+              "explanation": "底层真实对象已经不存在，工作应失效；不能对不存在的作物继续处理或冒充完成。",
               "id": "course.agronomist.1.3.practice.5"
             }
           ]
@@ -1355,12 +1355,12 @@
               "stem": "虫灾进入恢复期后，仍未清除的一块虫害地会怎样？",
               "options": {
                 "A": "立即解除地块 source",
-                "B": "允许继续登记新的 `plot_pest` impact",
+                "B": "允许继续登记新的地块虫害影响",
                 "C": "把原 source 改绑到别的地块",
                 "D": "不再新增 impact；未解决的 P3 局部虫害仍保留"
               },
               "answer": "D",
-              "explanation": "recovery 停止新增影响，公共事件结束也不会删除尚未解决的地块状态。\n---",
+              "explanation": "recovery 停止新增影响，公共事件结束也不会删除尚未解决的地块状态。",
               "id": "course.agronomist.2.1.practice.5"
             }
           ]
@@ -1441,7 +1441,7 @@
                 "D": "只有农艺师登记后才能开始计算自然退水"
               },
               "answer": "A",
-              "explanation": "自然退水只解除暂停，不补偿已发生的品相变化或物资支出。\n---",
+              "explanation": "自然退水只解除暂停，不补偿已发生的品相变化或物资支出。",
               "id": "course.agronomist.2.2.practice.5"
             }
           ]
@@ -1462,7 +1462,7 @@
           "practiceQuestions": [
             {
               "number": 1,
-              "stem": "已完成叶／虫迹检查的 P3 local_pest source，当前 core 处理使用什么？",
+              "stem": "已完成叶／虫迹检查的 P3 局部虫害来源事实，当前核心处理使用什么？",
               "options": {
                 "A": "排水材料",
                 "B": "诱虫板",
@@ -1522,7 +1522,7 @@
                 "D": "把金币改成银币"
               },
               "answer": "B",
-              "explanation": "不可逆处理和真实消耗发生后，工作不能回到从未发生的状态。\n---",
+              "explanation": "不可逆处理和真实消耗发生后，工作不能回到从未发生的状态。",
               "id": "course.agronomist.2.3.practice.5"
             }
           ]
@@ -1543,7 +1543,7 @@
           "practiceQuestions": [
             {
               "number": 1,
-              "stem": "一号地有局部虫害 source，相邻二号地没有 source／impact，B 户番茄地有同一公共事件的 `plot_pest` impact。哪项处理边界正确？",
+              "stem": "一号地有局部虫害来源事实，相邻二号地没有来源事实或灾害影响，B 户番茄地有同一公共事件的地块虫害影响。哪项处理边界正确？",
               "options": {
                 "A": "把 B 户工作合并进 A 户账单",
                 "B": "自动给二号地补一个异常",
@@ -1582,7 +1582,7 @@
             },
             {
               "number": 4,
-              "stem": "高级农艺师面对已确认的 root_damage，已经完成一次合法根部检查。当前 core 允许的处理是？",
+              "stem": "高级农艺师面对已确认的根部受损，已经完成一次合法根部检查。当前核心允许的处理是？",
               "options": {
                 "A": "使用诱虫板",
                 "B": "使用护根剂",
@@ -1595,7 +1595,7 @@
             },
             {
               "number": 5,
-              "stem": "一号地是已检查的 root_damage，二号地是已完成叶／土／处理历史检查的 nutrient_imbalance。正确物资对应是？",
+              "stem": "一号地是已检查的根部受损，二号地是已完成叶／土／处理历史检查的营养失衡。正确物资对应是？",
               "options": {
                 "A": "两块都用诱虫板",
                 "B": "一号地土壤调理剂；二号地护根剂",
@@ -1603,7 +1603,7 @@
                 "D": "两块都用排水材料"
               },
               "answer": "C",
-              "explanation": "两项高级异常各有自己的检查与 treatment 合同，不能用一个 source 的材料替另一个结案。\n---",
+              "explanation": "两项高级异常各有自己的检查与 treatment 合同，不能用一个 source 的材料替另一个结案。",
               "id": "course.agronomist.3.1.practice.5"
             }
           ]
@@ -1684,7 +1684,7 @@
                 "D": "不合法；只有 active 阶段能新增影响"
               },
               "answer": "D",
-              "explanation": "recovery 已停止新增影响，后续只处理遗留状态。\n---",
+              "explanation": "recovery 已停止新增影响，后续只处理遗留状态。",
               "id": "course.agronomist.3.2.practice.5"
             }
           ]
@@ -1765,7 +1765,7 @@
                 "D": "只要冷却期间又满足同一触发窗口即可"
               },
               "answer": "A",
-              "explanation": "冷却避免公共灾害连续覆盖日常玩法。\n---",
+              "explanation": "冷却避免公共灾害连续覆盖日常玩法。",
               "id": "course.agronomist.3.3.practice.5"
             }
           ]
@@ -1846,7 +1846,7 @@
                 "D": "创建假 completed"
               },
               "answer": "B",
-              "explanation": "并发上限不能靠漏记、欠费或伪造终态绕过。\n---",
+              "explanation": "并发上限不能靠漏记、欠费或伪造终态绕过。",
               "id": "course.agronomist.4.1.practice.5"
             }
           ]
@@ -1927,7 +1927,7 @@
                 "D": "由特级农艺师增发银币"
               },
               "answer": "C",
-              "explanation": "P4 首发没有救助、保险或灾害补偿，也不自动贷款。\n---",
+              "explanation": "P4 首发没有救助、保险或灾害补偿，也不自动贷款。",
               "id": "course.agronomist.4.2.practice.5"
             }
           ]
@@ -2008,7 +2008,7 @@
                 "D": "不能，还必须满足时间和准备结算栅栏"
               },
               "answer": "D",
-              "explanation": "解决对象不是唯一条件，事件阶段与最低时点同样是权威合同。\n---",
+              "explanation": "解决对象不是唯一条件，事件阶段与最低时点同样是权威合同。",
               "id": "course.agronomist.4.3.practice.5"
             }
           ]
@@ -4176,7 +4176,7 @@
               "number": 4,
               "stem": "两条足迹里出现相同显示名，最稳妥的结论是？",
               "options": {
-                "A": "必然是同一 `resident_id`",
+                "A": "必然是同一居民",
                 "B": "必然是同一户的两只小机",
                 "C": "可以据此合并全部投诉",
                 "D": "显示名相同是待核对线索，身份仍需权威映射支持"
@@ -5001,7 +5001,7 @@
               "options": {
                 "A": "考试立即失败",
                 "B": "证书立即生效",
-                "C": "公示进入 `pending_review_configuration`，证书继续待生效",
+                "C": "公示进入等待复核配置状态，证书继续待生效",
                 "D": "自动重做笔试"
               },
               "answer": "C",
@@ -5080,10 +5080,10 @@
               "number": 5,
               "stem": "哪个不是当前治安事项允许提交的完成结果？",
               "options": {
-                "A": "`bank_notice`",
-                "B": "`rules_explained`",
-                "C": "`voluntary_mediation`",
-                "D": "`detention_started`"
+                "A": "银行通知",
+                "B": "规则说明",
+                "C": "自愿调解",
+                "D": "开始关押"
               },
               "answer": "D",
               "explanation": "当前封闭结果只有银行通知、规则说明、自愿调解和投诉复核维持；没有关押结果。",
