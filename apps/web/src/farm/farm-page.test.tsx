@@ -1408,6 +1408,9 @@ test("bulletin separates persistent trail from one-time system notifications", (
   assert.match(bulletinSource, /bulletin\.data\.trail/);
   assert.match(bulletinSource, /event\.kind === "watered"/);
   assert.match(bulletinSource, /event\.kind === "stolen"/);
+  assert.match(bulletinSource, /"panel\.trail\.watered"/);
+  assert.match(bulletinSource, /"panel\.trail\.stolen"/);
+  assert.match(bulletinSource, /"panel\.trail\.foiled"/);
   assert.match(bulletinSource, /被看家狗吓退/);
   assert.match(source, /进行中任务尚未接入/);
   assert.match(source, /成熟提醒尚未接入/);

@@ -1233,6 +1233,15 @@ describe("Dingdong bulletin tabs", () => {
             crop_name: null,
             at: "2026-08-30T00:00:30.000Z",
           },
+          {
+            event_id: "trail-foiled-1",
+            kind: "foiled",
+            actor_name: "栗子",
+            actor_farm_doorplate: "DEF567",
+            plot_id: 4,
+            crop_name: null,
+            at: "2026-08-30T00:00:10.000Z",
+          },
         ],
       },
     },
@@ -1260,8 +1269,18 @@ describe("Dingdong bulletin tabs", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "足迹，有新足迹" }));
     expect(onViewTrail).toHaveBeenCalledWith(bulletin);
-    expect(screen.getByText(/顾澄.*偷走了 3 号地的草莓/)).not.toBeNull();
-    expect(screen.getByText(/青禾.*给 2 号地浇了水/)).not.toBeNull();
+    const stolenText = screen.getByText(/顾澄.*偷走了 3 号地的草莓/);
+    const wateredText = screen.getByText(/青禾.*给 2 号地浇了水/);
+    const foiledText = screen.getByText(/栗子.*来偷 4 号地，被看家狗吓退/);
+    expect(stolenText.closest("li")?.querySelector("img")?.getAttribute("src")).toContain(
+      "trail-stolen",
+    );
+    expect(wateredText.closest("li")?.querySelector("img")?.getAttribute("src")).toContain(
+      "trail-watered",
+    );
+    expect(foiledText.closest("li")?.querySelector("img")?.getAttribute("src")).toContain(
+      "trail-foiled",
+    );
     expect(screen.queryByText("系统维护补偿已经发放")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "关闭叮咚播报" }));

@@ -47,6 +47,14 @@ export const FARM_ASSET_SOURCE_URLS = {
   "/farm/ui-icons/smelting.png": new URL("./assets/ui-icons/smelting.png", import.meta.url).href,
   "/farm/ui-icons/settings.png": new URL("./assets/ui-icons/settings.png", import.meta.url).href,
   "/farm/ui-icons/dispatch.png": new URL("./assets/ui-icons/dispatch.png", import.meta.url).href,
+  "/farm/ui-icons/trail-watered.png": new URL(
+    "./assets/ui-icons/trail-watered.png",
+    import.meta.url,
+  ).href,
+  "/farm/ui-icons/trail-stolen.png": new URL("./assets/ui-icons/trail-stolen.png", import.meta.url)
+    .href,
+  "/farm/ui-icons/trail-foiled.png": new URL("./assets/ui-icons/trail-foiled.png", import.meta.url)
+    .href,
   "/farm/ui-icons/recipes.png": new URL("./assets/ui-icons/recipes.png", import.meta.url).href,
   "/farm/ui-icons/ranking.png": new URL("./assets/ui-icons/ranking.png", import.meta.url).href,
   "/farm/ui-icons/message-board.png": new URL(

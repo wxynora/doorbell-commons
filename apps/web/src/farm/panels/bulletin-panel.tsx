@@ -226,7 +226,13 @@ function BulletinTrailList({ bulletin }: { bulletin?: BoundBulletinRead | null }
       {trail.entries.map((event) => (
         <BulletinEmptyRow
           description={`${event.actor_farm_doorplate ? `门牌 ${event.actor_farm_doorplate} · ` : ""}${formatTrailTime(event.at)}`}
-          iconKey={event.kind === "watered" ? "field.crop.ordinary-growing" : "panel.tool.dispatch"}
+          iconKey={
+            event.kind === "watered"
+              ? "panel.trail.watered"
+              : event.kind === "stolen"
+                ? "panel.trail.stolen"
+                : "panel.trail.foiled"
+          }
           key={event.event_id}
           label={
             event.kind === "watered"
