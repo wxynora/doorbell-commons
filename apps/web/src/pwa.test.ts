@@ -32,7 +32,10 @@ test("community request classification keeps API authority outside Cache Storage
   assert.equal(classifyCommunityRequest("/assets/index-AbCd1234.js"), "hashed-static-cache-first");
   assert.equal(classifyCommunityRequest("/assets/field-background-CSRs5hGr.png"), "network-only");
   assert.equal(classifyCommunityRequest("/assets/ranch-rain-DzCaMAu7.webp"), "network-only");
-  assert.equal(classifyCommunityRequest("/assets/zcool-kuaile-regular-XyZp1234.woff2"), "network-only");
+  assert.equal(
+    classifyCommunityRequest("/assets/zcool-kuaile-regular-XyZp1234.woff2"),
+    "network-only",
+  );
   assert.equal(classifyCommunityRequest("/community-icon.v2-192.png"), "hashed-static-cache-first");
   assert.equal(
     classifyCommunityRequest("/community-icon.v2-512-maskable.png"),
@@ -248,6 +251,8 @@ test("manifest is a Chinese standalone community entry with the existing surface
 });
 
 test("service worker restores the 04:17 bounded cache strategies", () => {
+  assert.match(serviceWorkerSource, /^\/\/ approved-pwa-release:2026-08-30\.1$/mu);
+  assert.equal((serviceWorkerSource.match(/approved-pwa-release:/gu) ?? []).length, 1);
   assert.match(serviceWorkerSource, /shell-v4/);
   assert.match(serviceWorkerSource, /static-v5/);
   assert.doesNotMatch(
