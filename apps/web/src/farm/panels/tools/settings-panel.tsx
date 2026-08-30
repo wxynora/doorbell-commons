@@ -32,6 +32,7 @@ function shouldRetryFarmSettingsAction(issue: FarmSettingsActionIssue): boolean 
 }
 
 function fitWelcomeMessageHeight(textarea: HTMLTextAreaElement): void {
+  if (textarea.clientWidth <= 0) return;
   textarea.style.height = "auto";
   const borderBoxHeight = Math.max(0, textarea.offsetHeight - textarea.clientHeight);
   textarea.style.height = `${textarea.scrollHeight + borderBoxHeight}px`;
@@ -70,8 +71,28 @@ export function FarmSettingsPanelContent({
       const textarea = welcomeMessageRef.current;
       if (textarea) fitWelcomeMessageHeight(textarea);
     };
+    const textarea = welcomeMessageRef.current;
+    let observedWidth = textarea?.clientWidth ?? 0;
+    const observer =
+      textarea && typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(([entry]) => {
+            const width = entry?.contentRect.width ?? 0;
+            if (width <= 0 || width === observedWidth) return;
+            observedWidth = width;
+            fitWelcomeMessageHeight(textarea);
+          })
+        : null;
+    if (textarea && observer) observer.observe(textarea);
     window.addEventListener("resize", resize);
-    return () => window.removeEventListener("resize", resize);
+    let active = true;
+    void document.fonts?.ready.then(() => {
+      if (active) resize();
+    });
+    return () => {
+      active = false;
+      observer?.disconnect();
+      window.removeEventListener("resize", resize);
+    };
   }, []);
 
   const submitSetting = async (

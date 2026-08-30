@@ -574,7 +574,7 @@ export function FarmCropCodex({
   preview: boolean;
 }) {
   const [categoryId, setCategoryId] = useState<FarmCropCategoryId | "all">("common");
-  const [expandedCropId, setExpandedCropId] = useState<string | null>(null);
+  const [selectedCropId, setSelectedCropId] = useState<string | null>(null);
   const [action, setAction] = useState<CropCodexActionState>({ stage: "idle" });
 
   if (!preview) {
@@ -607,6 +607,8 @@ export function FarmCropCodex({
         return leftRarity - rightRarity;
       });
     const busy = action.stage === "submitting";
+    const selectedEntry =
+      entries.find((entry) => entry.discovered && entry.crop_id === selectedCropId) ?? null;
 
     const submit = async (attempt: CropCodexActionAttempt) => {
       if (!onCropCodexAction) return;
@@ -655,7 +657,10 @@ export function FarmCropCodex({
             <button
               aria-pressed={categoryId === category.id}
               key={category.id}
-              onClick={() => setCategoryId(category.id)}
+              onClick={() => {
+                setCategoryId(category.id);
+                setSelectedCropId(null);
+              }}
               type="button"
             >
               <span>{category.label}</span>
@@ -663,7 +668,11 @@ export function FarmCropCodex({
             </button>
           ))}
         </nav>
-        <div className="farm-crop-codex__body">
+        <div
+          aria-hidden={selectedEntry ? true : undefined}
+          className="farm-crop-codex__body"
+          inert={selectedEntry ? true : undefined}
+        >
           {action.stage === "success" ? (
             <p className="farm-crop-codex__feedback" role="status">
               {action.result.data.result.starred ? "已收藏" : "已取消收藏"}：
@@ -686,22 +695,19 @@ export function FarmCropCodex({
             {entries.length > 0 ? (
               entries.map((entry) => {
                 const discovered = entry.discovered;
-                const expanded = discovered && expandedCropId === entry.crop_id;
                 const name =
                   entry.identity_state === "known" && entry.name ? entry.name : "身份不可用";
                 return (
-                  <li
-                    className={expanded ? "farm-crop-codex__entry--expanded" : undefined}
-                    key={entry.crop_id}
-                  >
+                  <li key={entry.crop_id}>
                     <div className="farm-crop-codex__entry-head">
                       <button
-                        aria-expanded={discovered ? expanded : undefined}
+                        aria-expanded={discovered ? selectedCropId === entry.crop_id : undefined}
+                        aria-haspopup={discovered ? "dialog" : undefined}
                         className="farm-crop-codex__entry-toggle"
                         disabled={!discovered}
                         onClick={() => {
                           if (discovered) {
-                            setExpandedCropId(expanded ? null : entry.crop_id);
+                            setSelectedCropId(entry.crop_id);
                           }
                         }}
                         type="button"
@@ -726,7 +732,6 @@ export function FarmCropCodex({
                         </button>
                       ) : null}
                     </div>
-                    {expanded ? <FarmCropCodexDetail entry={entry} /> : null}
                   </li>
                 );
               })
@@ -737,6 +742,41 @@ export function FarmCropCodex({
             )}
           </ul>
         </div>
+        {selectedEntry ? (
+          <div
+            className="farm-crop-codex__detail-backdrop"
+            onClick={(event) => {
+              if (event.target === event.currentTarget) setSelectedCropId(null);
+            }}
+          >
+            <section
+              aria-label={`${selectedEntry.name ?? "作物"}详情`}
+              aria-modal="true"
+              className="farm-crop-codex__detail-dialog"
+              role="dialog"
+            >
+              <header>
+                <div>
+                  <h3>{selectedEntry.name ?? "作物详情"}</h3>
+                  <small data-rarity={selectedEntry.rarity ?? undefined}>
+                    {selectedEntry.rarity ?? "已发现"}
+                  </small>
+                </div>
+                <button
+                  aria-label={`关闭${selectedEntry.name ?? "作物"}详情`}
+                  autoFocus
+                  onClick={() => setSelectedCropId(null)}
+                  type="button"
+                >
+                  ×
+                </button>
+              </header>
+              <div className="farm-crop-codex__detail-scroll">
+                <FarmCropCodexDetail entry={selectedEntry} />
+              </div>
+            </section>
+          </div>
+        ) : null}
       </section>
     );
   }
