@@ -882,9 +882,14 @@ function schoolView(database, backend, residentId, now, args) {
         });
     }
     const section = args.section ?? null;
+    const value = section === "courses"
+        ? { catalog: facts.courseCatalog, progress: facts.courses }
+        : section === null
+            ? facts
+            : facts[section];
     return success("已读取职业学校当前事实。", section === null
         ? facts
-        : { section, value: facts[section], options: facts.options, contentSources: facts.contentSources });
+        : { section, value, options: facts.options, contentSources: facts.contentSources });
 }
 
 function schoolChoose(database, backend, residentId, now, args) {

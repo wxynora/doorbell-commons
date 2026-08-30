@@ -460,6 +460,12 @@ test("Doorbell Lingye exposes only ready authoritative bank, school and commissi
     assert.equal(schoolBefore.data.options.some((entry) =>
         entry.option.includes("school:career-select") && entry.option.endsWith(":reporter")), true);
     assert.equal(schoolBefore.data.courseCatalog.find((entry) => entry.career === "reporter").contentAvailable, true);
+    const courseSection = execute(executor, "go.school.view", { section: "courses" });
+    assert.equal(courseSection.ok, true);
+    assert.deepEqual(courseSection.data.value.progress, []);
+    assert.equal(courseSection.data.value.catalog.length, 60);
+    assert.equal(courseSection.data.value.catalog.some((entry) =>
+        entry.career === "reporter" && entry.contentAvailable === true), true);
     const agronomistOption = schoolBefore.data.options.find((entry) => entry.option.includes("school:career-select") && entry.option.endsWith(":agronomist"));
     assert.ok(agronomistOption);
     const selectedCareer = execute(executor, "go.school.choose", { option: agronomistOption.option });
