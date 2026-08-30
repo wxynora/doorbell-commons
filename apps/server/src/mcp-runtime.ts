@@ -93,7 +93,6 @@ interface DoorbellIssue {
 
 interface DoorbellCallToolResult {
   content: Array<{ type: "text"; text: string }>;
-  structuredContent: Record<string, unknown>;
   isError: boolean;
 }
 
@@ -125,6 +124,42 @@ function textContent(text: string) {
   return [{ type: "text" as const, text }];
 }
 
+function renderToolErrorText(
+  message: string,
+  issues?: readonly DoorbellIssue[],
+  examples?: readonly DoorbellCallExample[],
+): string {
+  const lines = [message];
+  if (issues?.length) {
+    lines.push("需要修正：");
+    for (const issue of issues) {
+      const path = issue.path.length > 0 ? issue.path.join(".") : "args";
+      lines.push(`- ${path}：${issue.message}`);
+    }
+  }
+  if (examples?.length) {
+    lines.push("可参考：");
+    for (const example of examples) lines.push(`doorbell(${JSON.stringify(example)})`);
+  }
+  return lines.join("\n");
+}
+
+function renderFarmDetail(value: unknown, indent = ""): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => [`${indent}-`, ...renderFarmDetail(entry, `${indent}  `)]);
+  }
+  if (!isPlainObject(value)) return [`${indent}${String(value ?? "无")}`];
+  const lines: string[] = [];
+  for (const [key, entry] of Object.entries(value)) {
+    if (Array.isArray(entry) || isPlainObject(entry)) {
+      lines.push(`${indent}${key}：`, ...renderFarmDetail(entry, `${indent}  `));
+    } else {
+      lines.push(`${indent}${key}：${String(entry ?? "无")}`);
+    }
+  }
+  return lines;
+}
+
 function doorbellToolError(
   code: DoorbellToolErrorCode,
   options: {
@@ -139,23 +174,12 @@ function doorbellToolError(
     throw new Error(`Missing Doorbell error message for ${code}`);
   }
   return {
-    content: textContent(message),
-    structuredContent: {
-      ok: false,
-      ...(options.op ? { op: options.op } : {}),
-      source: "doorbell",
-      error: {
-        code,
-        ...(options.issues ? { issues: options.issues } : {}),
-        ...(options.examples ? { examples: options.examples } : {}),
-      },
-    },
+    content: textContent(renderToolErrorText(message, options.issues, options.examples)),
     isError: true,
   };
 }
 
 function farmToolResult(
-  op: string,
   text: string,
   ok: boolean,
   farm?: Record<string, unknown>,
@@ -163,23 +187,12 @@ function farmToolResult(
   if (!ok) {
     return {
       content: textContent(text),
-      structuredContent: {
-        ok: false,
-        op,
-        source: "farm",
-        error: { code: "OP_REJECTED" },
-      },
       isError: true,
     };
   }
+  const resultText = farm ? `${text}\n\n农场详情：\n${renderFarmDetail(farm).join("\n")}` : text;
   return {
-    content: textContent(text),
-    structuredContent: {
-      ok: true,
-      op,
-      source: "farm",
-      ...(farm ? { farm } : {}),
-    },
+    content: textContent(resultText),
     isError: false,
   };
 }
@@ -192,31 +205,19 @@ function lingyeToolResult(
   if (!result.ok) {
     return {
       content: textContent(result.error.message),
-      structuredContent: {
-        ok: false,
-        op,
-        source: "lingye",
-        error: { code: result.error.code },
-      },
       isError: true,
     };
   }
   const modelText = renderLingyeToolText(op, args, result);
   return {
     content: textContent(modelText),
-    structuredContent: {
-      ok: true,
-      op,
-      source: "lingye",
-    },
     isError: false,
   };
 }
 
-function helpToolResult(op: string, text: string): DoorbellCallToolResult {
+function helpToolResult(text: string): DoorbellCallToolResult {
   return {
     content: textContent(text),
-    structuredContent: { ok: true, op, source: "doorbell" },
     isError: false,
   };
 }
@@ -637,7 +638,7 @@ export class DoorbellMcpRuntime {
       if (shouldAppendStatus) {
         text = await this.#appendStatusWhenAvailable(text, context);
       }
-      return helpToolResult(op, text);
+      return helpToolResult(text);
     }
 
     try {
@@ -652,7 +653,7 @@ export class DoorbellMcpRuntime {
       if (shouldAppendStatus && op !== "farm.status") {
         text = await this.#appendStatusWhenAvailable(text, context);
       }
-      return farmToolResult(op, text, result.ok, result.farm);
+      return farmToolResult(text, result.ok, result.farm);
     } catch (error) {
       if (
         error instanceof FarmMcpActionCredentialInvalidError ||
