@@ -1,4 +1,4 @@
-// approved-pwa-release:2026-08-30.3
+// approved-pwa-release:auto
 const CACHE_PREFIX = "doorbell-community-pwa-";
 const APP_SHELL_CACHE = `${CACHE_PREFIX}shell-v4`;
 const STATIC_CACHE = `${CACHE_PREFIX}static-v5`;

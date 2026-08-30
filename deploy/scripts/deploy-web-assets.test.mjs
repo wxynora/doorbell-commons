@@ -13,6 +13,13 @@ test("the Main release installs only the newly built web assets", () => {
   assert.ok(buildCopy >= 0 && buildCopy < runtimeSwitch);
 });
 
-test("the Main release does not mutate the built worker to force a client reload", () => {
-  assert.doesNotMatch(source, /BUILT_SERVICE_WORKER|doorbell-release:%s/);
+test("the Main release advances only distinct Web builds before installing assets", () => {
+  assert.doesNotMatch(source, /TARGET_SHA.*service-worker|doorbell-release:%s/);
+  const webBuild = source.indexOf("npm run build -w @doorbell/web");
+  const releaseResolution = source.indexOf("resolve-approved-pwa-release.mjs");
+  const buildCopy = source.indexOf(
+    `cp -a "\${build_directory}/apps/web/dist" "\${candidate_directory}/apps/web/"`,
+  );
+  assert.ok(webBuild >= 0 && webBuild < releaseResolution);
+  assert.ok(releaseResolution < buildCopy);
 });
