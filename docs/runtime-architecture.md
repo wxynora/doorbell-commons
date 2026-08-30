@@ -196,10 +196,22 @@ can be opened and submitted only from 14:00 through 16:00 for that assigned sess
 registered or active attempt is lazily finalized as a missed session at the authoritative deadline. An unstarted
 reservation is settled rather than released; the next registration uses a new attempt and the full normal fee,
 while the existing half-price retake remains limited to a submitted paper that failed its score. Production now
-loads the deployment-private version `career-private-exam-2026-08-30.3-full20`: all five careers and all four
+loads the deployment-private version `career-private-exam-2026-08-30.4-complete`: all five careers and all four
 levels have exactly one 20-question formal paper, for 20 papers／400 questions total. The file remains outside
 Git at mode `0600` under the `aifarm` account. Public curriculum continues to contain no formal question,
 answer or explanation field.
+
+Public curriculum version `career-curriculum-2026-08-30.2` contains 60 courses, 300 practice questions and
+1,200 complete A／B／C／D options. The generator rejects non-displayable stems, internal snake-case choices,
+normalized duplicate choices and trailing section separators. The private installer and Farm runtime now
+apply the same final-paper checks before readiness and freezing; malformed static or expanded dynamic papers
+cannot remain ready. Main uses assessment-specific rendering for safe numbers, percentages, time, rarity and
+approved status terms, while UUIDs, hashes and unknown internal tokens remain hidden.
+
+Community schema v14 repairs the historical `career_exam_reminders.wake_id` foreign key from the deleted
+`bell_wakes_v6` table to the current `bell_wakes` table while preserving reminder rows. Exam-reminder
+reconciliation is an attached notification side effect: its failure is reported but cannot overturn a completed
+school action. Successful registration text explicitly carries the frozen fee and full Beijing exam session.
 
 P3 farm-world mutations and the SQLite economy／career authority cannot share one physical transaction.
 The farm candidate therefore persists `lingye_cross_store_operations` with a stable operation id,
