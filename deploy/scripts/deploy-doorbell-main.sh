@@ -156,6 +156,10 @@ node "${build_directory}/deploy/scripts/resolve-approved-pwa-release.mjs" \
   "${build_directory}/apps/web/dist/index.html" \
   "${build_directory}/apps/web/dist/service-worker.js"
 
+node "${build_directory}/deploy/scripts/merge-web-assets.mjs" \
+  "${RUNTIME_DIRECTORY}/apps/web/dist/assets" \
+  "${build_directory}/apps/web/dist/assets"
+
 [[ -z "$(git -C "${SOURCE_DIRECTORY}" status --porcelain)" ]] || {
   fail "build changed tracked source files"
   exit 1

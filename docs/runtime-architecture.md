@@ -502,11 +502,18 @@ PWA client activation uses an approved release sequence independent of Git commi
 source contains the `approved-pwa-release:auto` placeholder. During deployment,
 `resolve-approved-pwa-release.mjs` compares the current and candidate Vite entry JS／CSS names plus Worker
 content after normalizing the marker. A distinct Web build advances the current numeric suffix once; a
-backend-only release, identical build or retry reuses it. The current production marker is
-`approved-pwa-release:2026-08-30.3`. Existing controlled pages request updates on registration and when
-visible. On approved upgrade activation, an existing Doorbell Cache Storage namespace causes the Worker to
-navigate current same-origin windows once before `clients.claim()`; first installs only claim. Unapproved
-historical builds are not stepped through.
+backend-only release, identical build or retry reuses it. Before runtime switch,
+`merge-web-assets.mjs` copies every previous content-hashed asset missing from the candidate into the new
+`dist/assets`; a current entry always wins the same filename. Nginx continues to serve that union under the
+existing immutable `/assets/` rule, so an already-running old document can still make its first request for
+an old lazy chunk after a release. No automatic retention or garbage collection is defined yet.
+
+The Worker no longer owns a fetch handler or Cache Storage. It keeps only immediate install／claim plus
+strict Push and notification-click behavior. Existing controlled pages request one update during normal
+startup and reload at most once when `controllerchange` confirms that the approved Worker took control;
+foreground visibility does not start another update check. Worker activation never clears caches or
+navigates live clients. HTML／Worker remain `no-cache`, hashed assets remain immutable, and API authority
+remains network-only through nginx and Fastify rather than a Worker branch.
 
 ## Doorbell MCP, Bell, and direct shared-data access
 

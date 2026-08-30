@@ -4,11 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { runInNewContext } from "node:vm";
-import {
-  classifyCommunityRequest,
-  registerCommunityServiceWorker,
-  shouldRegisterCommunityServiceWorker,
-} from "./pwa";
+import { registerCommunityServiceWorker, shouldRegisterCommunityServiceWorker } from "./pwa";
 
 const serviceWorkerSource = readFileSync(
   new URL("../public/service-worker.js", import.meta.url),
@@ -20,10 +16,7 @@ const manifest = JSON.parse(
   readFileSync(new URL("../public/manifest.webmanifest", import.meta.url), "utf8"),
 ) as Record<string, unknown>;
 
-async function activateWorkerWithCaches(
-  cacheNames: string[],
-  options: { navigateFails?: boolean } = {},
-): Promise<string[]> {
+async function activateWorker(): Promise<string[]> {
   const listeners = new Map<
     string,
     (event: { waitUntil(value: Promise<unknown>): void }) => void
@@ -31,18 +24,6 @@ async function activateWorkerWithCaches(
   const calls: string[] = [];
   runInNewContext(serviceWorkerSource, {
     URL,
-    caches: {
-      async delete(name: string) {
-        calls.push(`delete:${name}`);
-        return true;
-      },
-      async keys() {
-        return [...cacheNames];
-      },
-    },
-    fetch: async () => {
-      throw new Error("fetch is not used by activation tests");
-    },
     self: {
       addEventListener(
         type: string,
@@ -54,17 +35,11 @@ async function activateWorkerWithCaches(
         async claim() {
           calls.push("claim");
         },
-        async matchAll(input: unknown) {
-          calls.push(`match:${JSON.stringify(input)}`);
-          return [
-            {
-              url: "https://doorbellcommons.com/lingye/farm",
-              async navigate() {
-                calls.push("navigate");
-                if (options.navigateFails) throw new Error("stale client");
-              },
-            },
-          ];
+        async matchAll() {
+          return [];
+        },
+        async openWindow() {
+          return undefined;
         },
       },
       registration: { showNotification: async () => undefined },
@@ -86,59 +61,6 @@ function readPngDimensions(filename: string): [number, number] {
   return [source.readUInt32BE(16), source.readUInt32BE(20)];
 }
 
-test("community request classification keeps API authority outside Cache Storage", () => {
-  assert.equal(classifyCommunityRequest("/api/farm/field", "navigate"), "api-network-only");
-  assert.equal(classifyCommunityRequest("/api/farm/field?refresh=1"), "api-network-only");
-  assert.equal(classifyCommunityRequest("/lingye/farm", "navigate"), "navigation-network-first");
-  assert.equal(classifyCommunityRequest("/assets/index-AbCd1234.js"), "hashed-static-cache-first");
-  assert.equal(classifyCommunityRequest("/assets/field-background-CSRs5hGr.png"), "network-only");
-  assert.equal(classifyCommunityRequest("/assets/ranch-rain-DzCaMAu7.webp"), "network-only");
-  assert.equal(
-    classifyCommunityRequest("/assets/zcool-kuaile-regular-XyZp1234.woff2"),
-    "network-only",
-  );
-  assert.equal(classifyCommunityRequest("/community-icon.v2-192.png"), "hashed-static-cache-first");
-  assert.equal(
-    classifyCommunityRequest("/community-icon.v2-512-maskable.png"),
-    "hashed-static-cache-first",
-  );
-  assert.equal(classifyCommunityRequest("/manifest.webmanifest?v=2"), "hashed-static-cache-first");
-  assert.equal(
-    classifyCommunityRequest("/lingye/together/same-kitchen-opening-v1.jpg"),
-    "hashed-static-cache-first",
-  );
-  assert.equal(
-    classifyCommunityRequest("/lingye/together/river-opening-v1.webp"),
-    "hashed-static-cache-first",
-  );
-  assert.equal(
-    classifyCommunityRequest("/fonts/doorbell-fonts.v2.css"),
-    "hashed-static-cache-first",
-  );
-  assert.equal(
-    classifyCommunityRequest("/fonts/gaegu-latin-400.v1.woff2"),
-    "hashed-static-cache-first",
-  );
-  assert.equal(
-    classifyCommunityRequest("/fonts/gaegu-latin-700.v1.woff2"),
-    "hashed-static-cache-first",
-  );
-  assert.equal(
-    classifyCommunityRequest("/fonts/noto-serif-sc-ui-400.v2.woff2"),
-    "hashed-static-cache-first",
-  );
-  assert.equal(
-    classifyCommunityRequest("/fonts/zcool-kuaile-regular.v1.ttf"),
-    "hashed-static-cache-first",
-  );
-  assert.equal(
-    classifyCommunityRequest("/assets/index-AbCd1234.js", "same-origin", "POST"),
-    "network-only",
-  );
-  assert.equal(classifyCommunityRequest("/assets/index.js"), "network-only");
-  assert.equal(classifyCommunityRequest("/farm/field.png"), "network-only");
-});
-
 test("service worker registration is explicitly production-only and singular", () => {
   assert.equal(shouldRegisterCommunityServiceWorker(true, true), true);
   assert.equal(shouldRegisterCommunityServiceWorker(false, true), false);
@@ -152,9 +74,7 @@ test("service worker registration is explicitly production-only and singular", (
 test("an existing PWA checks for updates and reloads once when the new worker takes control", async () => {
   let updateCount = 0;
   let reloadCount = 0;
-  let visibilityState: DocumentVisibilityState = "hidden";
   let controllerChange: (() => void) | undefined;
-  let visibilityChange: (() => void) | undefined;
 
   const registration = {
     async update() {
@@ -174,18 +94,7 @@ test("an existing PWA checks for updates and reloads once when the new worker ta
       }
     },
   } as unknown as ServiceWorkerContainer;
-  const pageLifecycle = {
-    get visibilityState() {
-      return visibilityState;
-    },
-    addEventListener(type: string, listener: EventListenerOrEventListenerObject) {
-      if (type === "visibilitychange" && typeof listener === "function") {
-        visibilityChange = () => listener(new Event("visibilitychange"));
-      }
-    },
-  } as unknown as Document;
-
-  const result = await registerCommunityServiceWorker(container, pageLifecycle, {
+  const result = await registerCommunityServiceWorker(container, {
     reload() {
       reloadCount += 1;
     },
@@ -193,11 +102,6 @@ test("an existing PWA checks for updates and reloads once when the new worker ta
 
   assert.equal(result, registration);
   assert.equal(updateCount, 1);
-
-  visibilityState = "visible";
-  visibilityChange?.();
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(updateCount, 2);
 
   controllerChange?.();
   controllerChange?.();
@@ -218,7 +122,7 @@ test("the first PWA install takes control without reloading the initial page", a
     },
   } as unknown as ServiceWorkerContainer;
 
-  const result = await registerCommunityServiceWorker(container, null, {
+  const result = await registerCommunityServiceWorker(container, {
     reload() {
       reloadCount += 1;
     },
@@ -245,7 +149,7 @@ test("a failed update does not stop the already loaded PWA", async () => {
   console.warn = (...args: unknown[]) => warnings.push(args);
 
   try {
-    assert.equal(await registerCommunityServiceWorker(container, null, null), registration);
+    assert.equal(await registerCommunityServiceWorker(container, null), registration);
     assert.equal(warnings.length, 1);
   } finally {
     console.warn = originalWarn;
@@ -264,7 +168,7 @@ test("a failed registration does not stop the page", async () => {
   console.warn = (...args: unknown[]) => warnings.push(args);
 
   try {
-    assert.equal(await registerCommunityServiceWorker(container, null, null), null);
+    assert.equal(await registerCommunityServiceWorker(container, null), null);
     assert.equal(warnings.length, 1);
   } finally {
     console.warn = originalWarn;
@@ -311,22 +215,11 @@ test("manifest is a Chinese standalone community entry with the existing surface
   );
 });
 
-test("service worker restores the 04:17 bounded cache strategies", () => {
+test("service worker leaves page and asset loading to the browser and keeps only app lifecycle", () => {
   assert.match(serviceWorkerSource, /^\/\/ approved-pwa-release:auto$/mu);
   assert.equal((serviceWorkerSource.match(/approved-pwa-release:/gu) ?? []).length, 1);
-  assert.match(serviceWorkerSource, /shell-v4/);
-  assert.match(serviceWorkerSource, /static-v5/);
-  assert.doesNotMatch(
-    serviceWorkerSource,
-    /shell-v1|shell-v2|shell-v3|static-v1|static-v2|static-v3|static-v4/,
-  );
-  assert.match(serviceWorkerSource, /request\.mode === "navigate"/);
-  assert.match(serviceWorkerSource, /event\.respondWith\(fetch\(request\)\)/);
-  assert.match(serviceWorkerSource, /cacheFirstStatic/);
-  assert.match(serviceWorkerSource, /APP_SHELL_CACHE/);
-  assert.match(serviceWorkerSource, /cache\.match\("\/"\)/);
-  assert.doesNotMatch(serviceWorkerSource, /hasExpectedHashedAssetContentType/);
-  assert.match(serviceWorkerSource, /name\.startsWith\(CACHE_PREFIX\)/);
+  assert.doesNotMatch(serviceWorkerSource, /addEventListener\("fetch"/);
+  assert.doesNotMatch(serviceWorkerSource, /\bcaches\b|Cache Storage|cacheFirst|networkFirst/u);
   const installBlock = serviceWorkerSource.slice(
     serviceWorkerSource.indexOf('addEventListener("install"'),
     serviceWorkerSource.indexOf('addEventListener("activate"'),
@@ -337,27 +230,17 @@ test("service worker restores the 04:17 bounded cache strategies", () => {
   assert.doesNotMatch(serviceWorkerSource, /queue|replay/i);
   assert.match(serviceWorkerSource, /event\.waitUntil\(self\.skipWaiting\(\)\)/);
   assert.match(serviceWorkerSource, /self\.clients\.claim\(\)/);
+  const lifecycleBlock = serviceWorkerSource.slice(
+    0,
+    serviceWorkerSource.indexOf('addEventListener("push"'),
+  );
+  assert.doesNotMatch(lifecycleBlock, /matchAll|\.navigate\(|openWindow/);
   assert.match(serviceWorkerSource, /addEventListener\("push"/);
   assert.match(serviceWorkerSource, /registration\.showNotification/);
   assert.match(serviceWorkerSource, /icon: "\/community-icon\.v2-192\.png"/);
   assert.match(serviceWorkerSource, /addEventListener\("notificationclick"/);
-  assert.match(
-    serviceWorkerSource,
-    /if \(isApiRequest\(url\)\) \{[\s\S]*?event\.respondWith\(fetch\(request\)\);[\s\S]*?return;/,
-  );
 });
 
-test("approved activation navigates only existing PWA clients and still claims after failure", async () => {
-  assert.deepEqual(await activateWorkerWithCaches([]), ["claim"]);
-  assert.deepEqual(await activateWorkerWithCaches(["doorbell-community-pwa-shell-v4"]), [
-    'match:{"type":"window","includeUncontrolled":true}',
-    "navigate",
-    "claim",
-  ]);
-  assert.deepEqual(
-    await activateWorkerWithCaches(["doorbell-community-pwa-static-v5"], {
-      navigateFails: true,
-    }),
-    ['match:{"type":"window","includeUncontrolled":true}', "navigate", "claim"],
-  );
+test("approved activation claims once without navigating existing pages", async () => {
+  assert.deepEqual(await activateWorker(), ["claim"]);
 });
