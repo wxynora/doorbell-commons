@@ -324,7 +324,7 @@ export function NeighborhoodScene({
                   <label htmlFor="farm-neighborhood-message-target">留言给</label>
                   <select
                     aria-label="选择留言目标农场"
-                    disabled={!hasMessageTarget || messageState.stage === "submitting"}
+                    disabled={publicFarmTargets.length === 0 || messageState.stage === "submitting"}
                     id="farm-neighborhood-message-target"
                     onChange={(event) => setMessageTarget(event.target.value)}
                     value={messageTarget}

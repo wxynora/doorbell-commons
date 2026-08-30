@@ -204,6 +204,38 @@ describe("NeighborhoodScene live rankings", () => {
 });
 
 describe("NeighborhoodScene message boards", () => {
+  it("lets the player choose an available public farm before enabling message input", () => {
+    render(
+      <NeighborhoodScene
+        emptyLabels={{}}
+        farmCatalog={catalog()}
+        onMessageAction={async () => {
+          throw new Error("not submitted in this operability test");
+        }}
+        options={OPTIONS}
+        preview={false}
+        shellUrl="/farm/neighborhood-shell.png"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: "留言板" }));
+    fireEvent.click(screen.getByText("写留言"));
+
+    const target = screen.getByRole("combobox", { name: "选择留言目标农场" });
+    const body = screen.getByRole("textbox", { name: "留言内容" });
+    const submit = screen.getByRole("button", { name: "发送留言" });
+    expect((target as HTMLSelectElement).disabled).toBe(false);
+    expect((body as HTMLTextAreaElement).disabled).toBe(true);
+    expect((submit as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.change(target, { target: { value: "ABC234" } });
+    expect((body as HTMLTextAreaElement).disabled).toBe(false);
+    expect((submit as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.change(body, { target: { value: "来串门啦" } });
+    expect((submit as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it("keeps one horizontal card per real farm and moves compose behind a secondary disclosure", () => {
     render(
       <NeighborhoodScene

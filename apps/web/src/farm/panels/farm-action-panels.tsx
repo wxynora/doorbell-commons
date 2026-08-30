@@ -1219,11 +1219,7 @@ export function RanchDispatchPanelContent({
   const [selectedTargetFarmDoorplate, setSelectedTargetFarmDoorplate] = useState("");
   const [durationHours, setDurationHours] = useState("1");
   const [amount, setAmount] = useState("1");
-  const residents = [
-    ...ranch.data.residents.animals,
-    ...ranch.data.residents.pets,
-    ...(ranch.data.residents.patrol_goose ? [ranch.data.residents.patrol_goose] : []),
-  ].filter(
+  const residents = ranch.data.residents.animals.filter(
     (resident) =>
       resident.status === "known" &&
       resident.identity.status === "known" &&

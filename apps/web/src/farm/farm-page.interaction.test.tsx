@@ -1359,6 +1359,54 @@ function dispatchRanch(): BoundRanchRead {
 }
 
 describe("Ranch dispatch target selection", () => {
+  it("offers only production animals accepted by the dispatch authority", () => {
+    const ranch = dispatchRanch();
+    if (ranch.data.dispatch.status !== "available") throw new Error("dispatch fixture");
+    ranch.data.residents.pets = [
+      {
+        status: "known",
+        identity: { status: "known", kind_id: "cat", name: "猫", custom_name: "星夜" },
+        level: 1,
+        pinned: false,
+        accessories: { status: "available", items: [] },
+        produce: null,
+        dispatch: { state: "home", raid_id: null },
+      },
+    ];
+    ranch.data.residents.patrol_goose = {
+      status: "known",
+      identity: {
+        status: "known",
+        kind_id: "patrol_goose",
+        name: "巡逻鹅",
+        custom_name: "鹅警长",
+      },
+      level: 1,
+      pinned: false,
+      accessories: { status: "available", items: [] },
+      produce: null,
+      dispatch: { state: "home", raid_id: null },
+    };
+
+    render(
+      <RanchDispatchPanelContent
+        dispatch={ranch.data.dispatch}
+        farmCatalog={dispatchCatalog(undefined)}
+        onRanchInteractionAction={vi.fn()}
+        ranch={ranch}
+      />,
+    );
+
+    const animalSelect = screen.getByRole("combobox", { name: "动物" });
+    expect(
+      within(animalSelect)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual(["花花"]);
+    expect(within(animalSelect).queryByRole("option", { name: "星夜" })).toBeNull();
+    expect(within(animalSelect).queryByRole("option", { name: "鹅警长" })).toBeNull();
+  });
+
   it("offers every real non-own message board and submits the selected original doorplate", async () => {
     const farmCatalog = dispatchCatalog([
       {
