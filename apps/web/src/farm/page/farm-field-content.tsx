@@ -71,6 +71,7 @@ import {
   toRawKitchenCookItemRef,
 } from "./cooking/model";
 import { CookingPrepOverlay } from "./cooking/prep-overlay";
+import { FarmLazyLoading } from "./farm-lazy-boundary";
 import {
   createEmptyShopCarts,
   createInitialFarmReadResources,
@@ -770,7 +771,9 @@ export function FarmFieldContent({
       {SCENE_OPTIONS.map((scene) =>
         visitedScenes.has(scene.id) ? (
           <div className="farm-scene-state" hidden={scene.id !== activeScene} key={scene.id}>
-            <Suspense fallback={null}>
+            <Suspense
+              fallback={<FarmLazyLoading label={`正在打开${scene.label}`} mode="surface" />}
+            >
               {scene.id === "field" ? (
                 <FieldScene
                   backgroundUrl={getFarmEnvironmentAssetUrl(
@@ -983,7 +986,17 @@ export function FarmFieldContent({
             hidden={scene.id !== activeScene}
             key={`farm-page-state-${scene.id}`}
           >
-            <Suspense fallback={null}>
+            <Suspense
+              fallback={
+                <FarmLazyLoading
+                  label={
+                    sceneState.bulletinOpen
+                      ? "正在打开叮咚播报"
+                      : `正在打开${sceneState.selectedTool?.label ?? "面板"}`
+                  }
+                />
+              }
+            >
               {sceneState.bulletinOpen ? (
                 <DingdongBulletin
                   bulletin={resources.bulletin.stage === "ready" ? resources.bulletin.data : null}

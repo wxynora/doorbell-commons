@@ -1,6 +1,6 @@
 const CACHE_PREFIX = "doorbell-community-pwa-";
 const APP_SHELL_CACHE = `${CACHE_PREFIX}shell-v2`;
-const STATIC_CACHE = `${CACHE_PREFIX}static-v2`;
+const STATIC_CACHE = `${CACHE_PREFIX}static-v3`;
 const VITE_HASHED_ASSET_RE = /\/[^/]+-[a-z0-9_-]{8,}\.(?:js|css)$/i;
 const PUBLIC_ASSET_RE = /\.(?:avif|css|gif|jpe?g|png|svg|ttf|webmanifest|webp|woff2?)$/i;
 const PUBLIC_VERSION_MARKER_RE = /(?:^|[._-])(?:v\d+|[a-f0-9]{8,})(?:[._-]|$)/i;
@@ -41,13 +41,21 @@ async function networkFirstNavigation(request) {
   }
 }
 
-async function cacheFirstStatic(request) {
+function hasExpectedHashedAssetContentType(url, response) {
+  if (!VITE_HASHED_ASSET_RE.test(url.pathname)) return true;
+  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+  if (url.pathname.endsWith(".js")) return contentType.includes("javascript");
+  if (url.pathname.endsWith(".css")) return contentType.includes("text/css");
+  return false;
+}
+
+async function cacheFirstStatic(request, url) {
   const cache = await caches.open(STATIC_CACHE);
   const cached = await cache.match(request);
   if (cached) return cached;
 
   const response = await fetch(request);
-  if (response.ok) {
+  if (response.ok && hasExpectedHashedAssetContentType(url, response)) {
     await cache.put(request, response.clone());
   }
   return response;
@@ -87,7 +95,7 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (isCacheFirstStaticRequest(request, url)) {
-    event.respondWith(cacheFirstStatic(request));
+    event.respondWith(cacheFirstStatic(request, url));
   }
 });
 

@@ -26,10 +26,7 @@ test("community request classification keeps API authority outside Cache Storage
   assert.equal(classifyCommunityRequest("/api/farm/field?refresh=1"), "api-network-only");
   assert.equal(classifyCommunityRequest("/lingye/farm", "navigate"), "navigation-network-first");
   assert.equal(classifyCommunityRequest("/assets/index-AbCd1234.js"), "hashed-static-cache-first");
-  assert.equal(
-    classifyCommunityRequest("/community-icon.v2-192.png"),
-    "hashed-static-cache-first",
-  );
+  assert.equal(classifyCommunityRequest("/community-icon.v2-192.png"), "hashed-static-cache-first");
   assert.equal(
     classifyCommunityRequest("/community-icon.v2-512-maskable.png"),
     "hashed-static-cache-first",
@@ -123,11 +120,24 @@ test("manifest is a Chinese standalone community entry with the existing surface
 
 test("service worker has bounded strategies without precaching or background writes", () => {
   assert.match(serviceWorkerSource, /shell-v2/);
-  assert.match(serviceWorkerSource, /static-v2/);
-  assert.doesNotMatch(serviceWorkerSource, /shell-v1|static-v1/);
+  assert.match(serviceWorkerSource, /static-v3/);
+  assert.doesNotMatch(serviceWorkerSource, /shell-v1|static-v1|static-v2/);
   assert.match(serviceWorkerSource, /request\.mode === "navigate"/);
   assert.match(serviceWorkerSource, /event\.respondWith\(fetch\(request\)\)/);
   assert.match(serviceWorkerSource, /cacheFirstStatic/);
+  assert.match(serviceWorkerSource, /hasExpectedHashedAssetContentType/);
+  assert.match(
+    serviceWorkerSource,
+    /endsWith\("\.js"\)[\s\S]*?contentType\.includes\("javascript"\)/,
+  );
+  assert.match(
+    serviceWorkerSource,
+    /endsWith\("\.css"\)[\s\S]*?contentType\.includes\("text\/css"\)/,
+  );
+  assert.match(
+    serviceWorkerSource,
+    /response\.ok && hasExpectedHashedAssetContentType\(url, response\)/,
+  );
   assert.match(serviceWorkerSource, /APP_SHELL_CACHE/);
   assert.match(serviceWorkerSource, /cache\.match\("\/"\)/);
   assert.match(serviceWorkerSource, /name\.startsWith\(CACHE_PREFIX\)/);

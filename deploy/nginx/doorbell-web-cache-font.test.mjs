@@ -17,4 +17,7 @@ test("HTML and the service worker always revalidate while sandboxed fonts allow 
     source,
     /location \^~ \/fonts\/ \{[\s\S]*?text\/css css;[\s\S]*?font\/ttf ttf;[\s\S]*?font\/woff2 woff2;[\s\S]*?add_header Access-Control-Allow-Origin "\*" always;[\s\S]*?try_files \$uri =404;[\s\S]*?\}/,
   );
+  assert.match(source, /location \^~ \/assets\/ \{[\s\S]*?try_files \$uri =404;[\s\S]*?\}/);
+  const assetsBlock = source.match(/location \^~ \/assets\/ \{[^}]*\}/)?.[0] ?? "";
+  assert.doesNotMatch(assetsBlock, /\/index\.html/);
 });

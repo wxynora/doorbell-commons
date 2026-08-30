@@ -316,6 +316,71 @@ body {
   }
 }
 
+.farm-lazy-state {
+  position: absolute;
+  inset: 0;
+  z-index: 72;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  padding: 24px;
+  color: #5c4028;
+  text-align: center;
+  background: rgba(246, 235, 203, 0.94);
+  font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif;
+}
+
+.farm-lazy-state--page {
+  position: fixed;
+  z-index: 225;
+  min-width: 320px;
+  min-height: 100svh;
+  background: #f0dfb9;
+}
+
+.farm-lazy-state__sprout {
+  color: #7d9748;
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+}
+
+.farm-lazy-state > p,
+.farm-lazy-state__note p {
+  max-width: 22rem;
+  margin: 0;
+  line-height: 1.7;
+}
+
+.farm-lazy-state__note {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+}
+
+.farm-lazy-state__note strong {
+  font-size: 1.1rem;
+}
+
+.farm-lazy-state__note button {
+  min-height: 42px;
+  padding: 0 22px;
+  color: #fff8dc;
+  border: 1px solid #52672f;
+  border-radius: 999px;
+  background: #78943f;
+  box-shadow: 0 4px 0 #52672f;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+
+.farm-lazy-state__note button:active {
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 #52672f;
+}
+
 button,
 input {
   font: inherit;

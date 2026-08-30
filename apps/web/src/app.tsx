@@ -43,6 +43,7 @@ import { AdditionalProfileForm } from "./components/additional-profile-form";
 import { AuthScreen, RegistrationHeader, SessionCheckingScreen } from "./components/auth-screen";
 import { McpAccessPage } from "./components/mcp-access-panel";
 import { ResidencePermitTransition } from "./components/residence-permit-transition";
+import { FarmLazyBoundary, FarmLazyFailure, FarmLazyLoading } from "./farm/page/farm-lazy-boundary";
 import {
   buildCandidateTwoDemoPreset,
   type CandidateTwoAction,
@@ -1152,9 +1153,18 @@ function LiveApp() {
         state={authenticatedViewState(appState)}
       />
       {appState.stage === "authenticated" && activeInternalPage === "farm" ? (
-        <Suspense fallback={null}>
-          <FarmPage onBack={closeFarmPage} />
-        </Suspense>
+        <FarmLazyBoundary
+          fallback={
+            <FarmLazyFailure
+              label="农场画面没有打开，社区页面和登录状态仍然保留。"
+              onDismiss={closeFarmPage}
+            />
+          }
+        >
+          <Suspense fallback={<FarmLazyLoading label="正在打开农场" mode="page" />}>
+            <FarmPage onBack={closeFarmPage} />
+          </Suspense>
+        </FarmLazyBoundary>
       ) : null}
     </div>
   );
@@ -1196,12 +1206,21 @@ function CandidateTwoDemoApp({ initialPreset }: { initialPreset: CandidateTwoDem
     <div className="live-app">
       <CandidateTwoPreview demo={preset.demo} onAction={handleDemoAction} state={preset.state} />
       {activeInternalPage === "farm" ? (
-        <Suspense fallback={null}>
-          <FarmPage
-            onBack={() => setActiveInternalPage("community")}
-            previewData={candidateTwoFarmPreview}
-          />
-        </Suspense>
+        <FarmLazyBoundary
+          fallback={
+            <FarmLazyFailure
+              label="农场画面没有打开，社区预览仍然保留。"
+              onDismiss={() => setActiveInternalPage("community")}
+            />
+          }
+        >
+          <Suspense fallback={<FarmLazyLoading label="正在打开农场" mode="page" />}>
+            <FarmPage
+              onBack={() => setActiveInternalPage("community")}
+              previewData={candidateTwoFarmPreview}
+            />
+          </Suspense>
+        </FarmLazyBoundary>
       ) : null}
     </div>
   );

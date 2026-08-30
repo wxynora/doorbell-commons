@@ -175,6 +175,13 @@ cp -a \
   "${build_directory}/apps/server/dist" \
   "${candidate_directory}/apps/server/"
 cp -a "${build_directory}/apps/web/dist" "${candidate_directory}/apps/web/"
+[[ -d "${RUNTIME_DIRECTORY}/apps/web/dist/assets" ]] || {
+  fail "missing current web assets: ${RUNTIME_DIRECTORY}/apps/web/dist/assets"
+  exit 1
+}
+cp -a --no-clobber -- \
+  "${RUNTIME_DIRECTORY}/apps/web/dist/assets/." \
+  "${candidate_directory}/apps/web/dist/assets/"
 cp -a \
   "${SOURCE_DIRECTORY}/deploy/scripts/backup-community-database.mjs" \
   "${SOURCE_DIRECTORY}/deploy/scripts/restore-community-database.mjs" \

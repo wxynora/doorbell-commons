@@ -1,5 +1,6 @@
 import { lazy, Suspense } from "react";
 import { getFarmAssetUrl } from "../farm-asset-manifest";
+import { FarmLazyLoading } from "../page/farm-lazy-boundary";
 import { FarmBackpackPanel } from "./tools/backpack-panel";
 import { FARM_FEATURE_PANELS, FarmFeaturePanelContent, FarmUnavailablePanel } from "./tools/common";
 import { CookingRecipeCatalog } from "./tools/cooking-recipe-catalog";
@@ -108,7 +109,7 @@ export function FarmToolPanel({
         ×
       </button>
       {tool.id === "shop" && activeScene !== "neighborhood" ? (
-        <Suspense fallback={null}>
+        <Suspense fallback={<FarmLazyLoading label="正在打开商店" />}>
           <FarmShopPanelContent
             activeScene={activeScene}
             cart={cart}
@@ -128,7 +129,7 @@ export function FarmToolPanel({
           />
         </Suspense>
       ) : activeScene === "field" && tool.id === "crop-codex" ? (
-        <Suspense fallback={null}>
+        <Suspense fallback={<FarmLazyLoading label="正在打开作物图鉴" />}>
           <FarmCropCodex
             farmCatalog={farmCatalog ?? null}
             onCropCodexAction={onCropCodexAction}

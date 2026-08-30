@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 import type { BoundFarmCatalogRead } from "../../../auth/farm-catalog-client";
 import type { BoundRanchRead } from "../../../auth/ranch-client";
+import { FarmLazyLoading } from "../../page/farm-lazy-boundary";
 import type {
   ExpeditionActionExecutor,
   MarketActionExecutor,
@@ -52,7 +53,7 @@ export function FarmMarketPanel({
   }
 
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<FarmLazyLoading label="正在打开集市" />}>
       <FarmMarketPanelContent
         farmCatalog={farmCatalog}
         market={market}
@@ -90,7 +91,7 @@ export function FarmExpeditionPanel({
   }
 
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<FarmLazyLoading label="正在打开探险" />}>
       <FarmExpeditionPanelContent
         expedition={expedition}
         farmCatalog={farmCatalog}
@@ -125,7 +126,7 @@ export function RanchDispatchPanel({
   }
 
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<FarmLazyLoading label="正在打开派遣" />}>
       <RanchDispatchPanelContent
         dispatch={dispatch}
         farmCatalog={farmCatalog ?? null}

@@ -173,6 +173,7 @@ test("farm page facade keeps its stylesheet and FarmFieldContent compatibility e
 
   assert.match(source, /import "\.\/farm-page\.css";/);
   assert.match(source, /export \{ FarmFieldContent \} from "\.\/page\/farm-field-content";/);
+  assert.match(source, /<FarmLazyBoundary[\s\S]*<FarmLazyFailure/);
 });
 
 test("farm field summarizes only the plots returned by the server", () => {
@@ -635,11 +636,11 @@ test("farm scenes use the approved backgrounds and replaceable cooking tool laye
 
   assert.match(fieldStyles, /url\("\.\.\/\.\.\/assets\/scenes\/field-background\.png"\)/);
   assert.match(ranchStyles, /url\("\.\.\/\.\.\/assets\/scenes\/ranch-background\.png"\)/);
-  assert.match(
-    cookingStyles,
-    /url\("\.\.\/\.\.\/assets\/scenes\/cooking-background\.png"\)/,
+  assert.match(cookingStyles, /url\("\.\.\/\.\.\/assets\/scenes\/cooking-background\.png"\)/);
+  assert.doesNotMatch(
+    `${styles}\n${fieldStyles}\n${ranchStyles}\n${cookingStyles}`,
+    /\/farm\/scenes\//,
   );
-  assert.doesNotMatch(`${styles}\n${fieldStyles}\n${ranchStyles}\n${cookingStyles}`, /\/farm\/scenes\//);
   assert.doesNotMatch(styles, /ranch-background|cooking-background|neighborhood-background/);
   assert.doesNotMatch(styles, /\.farm-scene--field\s*\{[^}]*field-background/);
   assert.match(source, /stir-fry[^\n]+kitchen\.method\.wok/);
@@ -996,7 +997,8 @@ test("farm scenes cross four lazy JS and CSS boundaries before their first visit
   assert.doesNotMatch(commonStyles, /ranch-background|cooking-background|neighborhood-background/);
   assert.doesNotMatch(commonStyles, /\.farm-scene--field\s*\{[^}]*field-background/);
   assert.match(source, /visitedScenes\.has\(scene\.id\)/);
-  assert.match(source, /<Suspense fallback=\{null\}>/);
+  assert.match(source, /FarmLazyLoading[\s\S]*正在打开/);
+  assert.doesNotMatch(source, /<Suspense fallback=\{null\}>/);
 });
 
 test("farm panels load only after their entry opens across real JS and CSS boundaries", () => {
@@ -1015,9 +1017,10 @@ test("farm panels load only after their entry opens across real JS and CSS bound
   assert.match(source, /import\("\.\.\/panels\/bulletin-panel"\)/);
   assert.match(source, /import\("\.\.\/panels\/tool-panel"\)/);
   assert.match(toolSource, /import\("\.\/shop-panel"\)/);
-  assert.match(source, /<Suspense fallback=\{null\}>[\s\S]*<DingdongBulletin/);
-  assert.match(source, /<Suspense fallback=\{null\}>[\s\S]*<FarmToolPanel/);
-  assert.match(toolSource, /<Suspense fallback=\{null\}>[\s\S]*<FarmShopPanelContent/);
+  assert.match(source, /FarmLazyLoading[\s\S]*正在打开叮咚播报[\s\S]*<DingdongBulletin/);
+  assert.match(source, /FarmLazyLoading[\s\S]*正在打开[\s\S]*<FarmToolPanel/);
+  assert.match(toolSource, /FarmLazyLoading[\s\S]*正在打开商店[\s\S]*<FarmShopPanelContent/);
+  assert.doesNotMatch(`${source}\n${toolSource}`, /<Suspense fallback=\{null\}>/);
   assert.doesNotMatch(source, /function DingdongBulletin|function FarmToolPanel/);
   assert.doesNotMatch(toolSource, /function FarmShopPanelContent/);
   assert.match(bulletinSource, /export function DingdongBulletin/);
@@ -2321,7 +2324,7 @@ test("temporary farm tool editor keeps icon and text as separately adjustable la
 
   assert.match(
     source,
-    /return import\.meta\.env\.DEV && isFarmToolEditorEnabled\(\) \? \([\s\S]*<FarmToolEditor/,
+    /<FarmLazyBoundary[\s\S]*import\.meta\.env\.DEV && isFarmToolEditorEnabled\(\) \? \([\s\S]*<FarmToolEditor/,
   );
   assert.match(source, /get\("editor"\) === "farm-tools"/);
   assert.match(source, /FARM_TOOL_EDITOR_CANVAS_SIZE = 192/);
