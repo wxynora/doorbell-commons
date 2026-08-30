@@ -491,12 +491,15 @@ notification, and focuses or navigates the same origin on click. The existing ca
 is the first producer. Crop `matures_at` currently lacks a durable cross-action scheduler, and Glimmer
 does not yet expose an authoritative ready timestamp, so neither is fabricated from a browser timer.
 
-PWA client activation is deliberately separate from ordinary Main deployment. The deployer installs the
-built Worker byte-for-byte and is forbidden to append `TARGET_SHA` or otherwise mutate it per backend
-release. Only a user-approved Web release changes the explicit marker in the tracked Worker; the current
-marker is `approved-pwa-release:2026-08-30.1`. Existing controlled pages request an update on registration
-and whenever they become visible, then reload at most once on `controllerchange`. This lets installed iOS
-clients jump directly to one approved Web build without activating unapproved historical builds.
+PWA client activation uses an approved release sequence independent of Git commit SHA. Tracked Worker
+source contains the `approved-pwa-release:auto` placeholder. During deployment,
+`resolve-approved-pwa-release.mjs` compares the current and candidate Vite entry JS／CSS names plus Worker
+content after normalizing the marker. A distinct Web build advances the current numeric suffix once; a
+backend-only release, identical build or retry reuses it. The current production marker is
+`approved-pwa-release:2026-08-30.3`. Existing controlled pages request updates on registration and when
+visible. On approved upgrade activation, an existing Doorbell Cache Storage namespace causes the Worker to
+navigate current same-origin windows once before `clients.claim()`; first installs only claim. Unapproved
+historical builds are not stepped through.
 
 ## Doorbell MCP, Bell, and direct shared-data access
 
