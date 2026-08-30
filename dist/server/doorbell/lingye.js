@@ -24,6 +24,7 @@ import {
     reporterMaterialPackForJob,
     syncAuthorityJobs,
     treatmentGold,
+    veterinarianTreatmentMaterialGold,
     workerOptions,
 } from "../../career/p3-commission-runtime.js";
 import { EconomyError } from "../../economy/economy-errors.js";
@@ -1462,7 +1463,13 @@ function beginCommissionWorldOperation(database, backend, residentId, career, ar
         if (job.decisionCount >= 4)
             throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托已经达到四次决策上限。");
         const level = qualificationLevel(database, residentId, career);
-        const goldAmount = kind === "treat" ? treatmentGold(job, actionValue, level) : 0;
+        const selfVeterinarianTreatment = kind === "treat" && job.career === "veterinarian" &&
+            job.ownerResidentId === residentId;
+        const goldAmount = kind === "treat"
+            ? selfVeterinarianTreatment
+                ? veterinarianTreatmentMaterialGold(job, actionValue)
+                : treatmentGold(job, actionValue, level)
+            : 0;
         const reservation = kind === "treat"
             ? backend.trustedSystemCommands.reserveSystemGold({
                 residentId: job.ownerResidentId,

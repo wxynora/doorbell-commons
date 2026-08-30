@@ -192,7 +192,9 @@ export class CareerJobService {
                 .run(now, now, input.worldResultReference, paymentReference, job.job_id);
             this.#releaseObjectLock(job.job_id);
             const level = requireActiveCertificate(this.#database, input.workerResidentId, job.career, job.required_level);
-            const performanceUnits = institutionForCareer(job.career)
+            const selfVeterinarianTreatment = job.career === "veterinarian" &&
+                job.owner_resident_id === input.workerResidentId;
+            const performanceUnits = institutionForCareer(job.career) && !selfVeterinarianTreatment
                 ? JOB_PERFORMANCE_UNITS[job.difficulty_level]
                 : 0;
             this.#database

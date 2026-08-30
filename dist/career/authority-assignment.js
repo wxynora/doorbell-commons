@@ -57,11 +57,17 @@ export class CareerAuthorityAssignmentService {
             for (const row of this.#database.prepare(`SELECT resident_id
               FROM career_job_assignment_exclusions WHERE job_id = ?`).all(job.jobId))
                 excludedResidents.add(row.resident_id);
-            if (job.ownerResidentId !== null)
+            if (job.ownerResidentId !== null && job.career !== "veterinarian")
                 excludedResidents.add(job.ownerResidentId);
-            const candidate = candidates.find((entry) =>
+            const eligible = (entry) =>
                 !excludedResidents.has(entry.resident_id) &&
-                entry.active_job_count < INSTITUTION_ASSIGNED_CONCURRENT_CAPACITY[entry.qualification_level]);
+                entry.active_job_count < INSTITUTION_ASSIGNED_CONCURRENT_CAPACITY[entry.qualification_level];
+            const otherCandidate = candidates.find((entry) =>
+                entry.resident_id !== job.ownerResidentId && eligible(entry));
+            const ownerFallback = job.career === "veterinarian" && job.ownerResidentId !== null
+                ? candidates.find((entry) => entry.resident_id === job.ownerResidentId && eligible(entry))
+                : undefined;
+            const candidate = otherCandidate ?? ownerFallback;
             if (!candidate) {
                 throw new CareerDomainError("authoritative_worker_unavailable", "No qualified on-duty institution worker has assignment capacity");
             }

@@ -835,13 +835,20 @@ export function treatmentGold(job, treatment, qualificationLevel = job.difficult
         return agronomyTreatmentMaterialUsage(requirements, qualificationLevel).consumedGold;
     }
     if (job.career === "veterinarian") {
-        const contract = Object.values(ANIMAL_CONDITIONS)
-            .find((entry) => entry.materials.join("+") === treatment);
-        if (!contract)
-            throw new Error("animal_treatment_not_available");
-        return contract.materialGold + HOSPITAL_BASE_FEE_GOLD[job.difficultyLevel];
+        return veterinarianTreatmentMaterialGold(job, treatment) + HOSPITAL_BASE_FEE_GOLD[job.difficultyLevel];
     }
     throw new Error("commission_treatment_not_available");
+}
+
+export function veterinarianTreatmentMaterialGold(job, treatment) {
+    sourceState(job);
+    if (job.career !== "veterinarian")
+        throw new Error("animal_treatment_not_available");
+    const contract = Object.values(ANIMAL_CONDITIONS)
+        .find((entry) => entry.materials.join("+") === treatment);
+    if (!contract)
+        throw new Error("animal_treatment_not_available");
+    return contract.materialGold;
 }
 
 function npcServiceContract(source) {
