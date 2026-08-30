@@ -191,9 +191,11 @@ fixed Beijing sessions: registration selects the next Tuesday, Thursday, or Satu
 can be opened and submitted only from 14:00 through 16:00 for that assigned session. At 16:00, any still
 registered or active attempt is lazily finalized as a missed session at the authoritative deadline. An unstarted
 reservation is settled rather than released; the next registration uses a new attempt and the full normal fee,
-while the existing half-price retake remains limited to a submitted paper that failed its score. The current repository
-does not contain a production private exam bank and the previously public formal questions are not valid
-exam material.
+while the existing half-price retake remains limited to a submitted paper that failed its score. Production now
+loads the deployment-private version `career-private-exam-2026-08-30.3-full20`: all five careers and all four
+levels have exactly one 20-question formal paper, for 20 papers／400 questions total. The file remains outside
+Git at mode `0600` under the `aifarm` account. Public curriculum continues to contain no formal question,
+answer or explanation field.
 
 P3 farm-world mutations and the SQLite economy／career authority cannot share one physical transaction.
 The farm candidate therefore persists `lingye_cross_store_operations` with a stable operation id,
@@ -218,11 +220,14 @@ Farm commit `a897c50` and the current Main release candidate keep one public too
 `farm.*` plus seven authoritative non-newsroom `go.*`; only `go.newsroom.commission` remains model-hidden.
 The existing surfaces now also carry real player-loan options, method-bound cooking and paid tools,
 original-recipe／chef-store options, bound-job replies, owner-confirmed NPC fallback after transfer, and
-whole-paper multi-select answers. Readiness requires the seven public operations, the explicit eight
-approved public/private exam levels, economy and nature rules, and nine named capability flags rather
-than accepting an arbitrary non-empty exam set. None of these candidates is active in production: the
-private exam bank is not installed, MCP readiness is closed, and no real-player migration, deployment,
-or restart was performed.
+whole-paper multi-select answers. Readiness requires the seven public operations, all 20 public/private
+career levels, economy and nature rules, and nine named capability flags rather than accepting an arbitrary
+non-empty exam set. The former partial blockers were reconciled only against existing runtime facts:
+adjacent pest spread, P4 agronomy impacts and P4 animal cases were already implemented; courses that had
+named unimplemented seasonal-supply, public-order, group-infection, automatic-triage or P7-enforcement
+features were rewritten to the real daily shop, chef-store recovery, single-case treatment, qualification／seat／
+transfer boundaries, and complaint／loan／review authority limits. Production Farm `8551900` plus the private
+bank now reports `ready=true` and `missing=[]`.
 
 Chef-store options now bind the exact business round without adding another order service. A public
 listing projects a SHA-256 revision over its authoritative receipt id, remaining quantity, price and
