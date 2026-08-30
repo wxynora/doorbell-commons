@@ -199,6 +199,7 @@ export function applyMaintenanceSilverGrant(farmValues = farms.values(), now = D
         const silver = Math.max(0, Math.floor(Number(raw?.silver) || 0));
         const notice = String(raw?.notice ?? "").trim();
         const section = String(raw?.section ?? "").trim();
+        const replaceSection = String(raw?.replaceSection ?? "").trim();
         const sendInbox = raw?.sendInbox !== false;
         if (!id || (gold <= 0 && silver <= 0 && !notice) || appliedMaintenanceGrantIds.includes(id))
             continue;
@@ -208,6 +209,8 @@ export function applyMaintenanceSilverGrant(farmValues = farms.values(), now = D
             if (notice) {
                 if (sendInbox)
                     pushInbox(farm, notice, now);
+                if (replaceSection && Array.isArray(farm.ranch?.notices))
+                    farm.ranch.notices = farm.ranch.notices.filter((entry) => entry?.section !== replaceSection);
                 pushRanchNotice(farm, notice, now, section || undefined);
             }
         }

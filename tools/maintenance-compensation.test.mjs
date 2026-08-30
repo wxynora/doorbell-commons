@@ -11,7 +11,7 @@ const { makeFarm } = await import("../dist/game.js");
 const { NPC_ID } = await import("../dist/config.js");
 const grants = JSON.parse(readFileSync(new URL("../content/maintenance-grants.json", import.meta.url)));
 const compensationId = "compensation-20260830-bug-recovery";
-const popupId = "compensation-20260830-bug-recovery-popup";
+const popupId = "compensation-20260830-bug-recovery-popup-v2";
 const popupText = "近期问题补偿：已发放 100,000 金币和 1,000 银币。";
 const {
   allFarms,
@@ -136,6 +136,13 @@ test("one compensation campaign credits every player farm and the migrated ledge
 test("compensation popup is a Human-only notice campaign with no second currency grant", () => {
   const ordinary = farm("ABC234", 102_000, 1_020);
   const npc = farm(NPC_ID, 9_000, 90);
+  ordinary.ranch = {
+    ...(ordinary.ranch ?? {}),
+    notices: [
+      { at: 1_788_040_000_000, text: popupText, section: "compensation" },
+      { at: 1_788_040_500_000, text: "保留的牧场消息", section: "ranch" },
+    ],
+  };
   const previousIds = grants.map((entry) => entry.id).filter((id) => id !== popupId);
   restoreWorldSnapshotInMemory({
     format: "aifarm-world",
@@ -159,6 +166,7 @@ test("compensation popup is a Human-only notice campaign with no second currency
   );
   assert.equal(values.ABC234.inbox?.length ?? 0, inboxCount);
   assert.deepEqual(values.ABC234.ranch.notices, [
+    { at: 1_788_040_500_000, text: "保留的牧场消息", section: "ranch" },
     { at: 1_788_041_000_000, text: popupText, section: "compensation" },
   ]);
   assert.equal(values[NPC_ID].ranch?.notices?.length ?? 0, 0);

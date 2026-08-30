@@ -44,5 +44,12 @@
     "notice": "近期问题补偿：已发放 100,000 金币和 1,000 银币。",
     "section": "compensation",
     "sendInbox": false
+  },
+  {
+    "id": "compensation-20260830-bug-recovery-popup-v2",
+    "notice": "近期问题补偿：已发放 100,000 金币和 1,000 银币。",
+    "section": "compensation",
+    "replaceSection": "compensation",
+    "sendInbox": false
   }
 ]
