@@ -9,6 +9,7 @@ export * from "./farm-kitchen.js";
 export * from "./farm-kitchen-cook.js";
 export * from "./farm-kitchen-inventory-action.js";
 export * from "./farm-kitchen-purchase.js";
+export * from "./farm-kitchen-shop-open.js";
 export * from "./farm-kitchen-shop-refresh.js";
 export * from "./farm-market-action.js";
 export * from "./farm-neighborhood-message-action.js";

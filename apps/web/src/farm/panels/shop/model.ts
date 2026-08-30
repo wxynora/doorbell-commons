@@ -87,6 +87,12 @@ export type CookingShopRefreshFeedback =
   | { stage: "error"; message: string; retryable: boolean }
   | { stage: "success" };
 
+export type CookingShopOpenFeedback =
+  | { stage: "idle" }
+  | { stage: "submitting" }
+  | { stage: "error"; message: string }
+  | { stage: "success" };
+
 export type ShopCartVisual =
   | {
       kind: "farm";
@@ -120,6 +126,7 @@ export interface FarmShopPanelProps {
   cart: Readonly<Record<string, number>>;
   cookingCheckoutFeedback?: CookingCartCheckoutFeedback | undefined;
   cookingShopRefreshFeedback?: CookingShopRefreshFeedback | undefined;
+  cookingShopOpenFeedback?: CookingShopOpenFeedback | undefined;
   farmCheckoutFeedback?: FarmCartCheckoutFeedback | undefined;
   farmShopOpenFeedback?: FarmShopOpenFeedback | undefined;
   onChangeCartQuantity: (cartKey: string, delta: number, maxQuantity?: number) => void;
@@ -128,6 +135,7 @@ export interface FarmShopPanelProps {
   onRetryFarmCheckout?: (() => void) | undefined;
   onRetryFarmShopOpen?: (() => void) | undefined;
   onRetryCookingCheckout?: (() => void) | undefined;
+  onRetryCookingShopOpen?: (() => void) | undefined;
   onRefreshCookingShop?: (() => void) | undefined;
   preview: boolean;
   farmCatalog?: BoundFarmCatalogRead | null | undefined;

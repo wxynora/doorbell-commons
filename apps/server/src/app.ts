@@ -57,6 +57,9 @@ import {
   boundFarmKitchenReadErrorSchema,
   boundFarmKitchenReadRequestSchema,
   boundFarmKitchenReadSuccessSchema,
+  boundFarmKitchenShopOpenErrorSchema,
+  boundFarmKitchenShopOpenRequestSchema,
+  boundFarmKitchenShopOpenSuccessSchema,
   boundFarmKitchenShopRefreshErrorSchema,
   boundFarmKitchenShopRefreshRequestSchema,
   boundFarmKitchenShopRefreshSuccessSchema,
@@ -132,6 +135,7 @@ import {
   farmKitchenCookIdempotencyKeySchema,
   farmKitchenInventoryActionIdempotencyKeySchema,
   farmKitchenPurchaseIdempotencyKeySchema,
+  farmKitchenShopOpenIdempotencyKeySchema,
   farmKitchenShopRefreshIdempotencyKeySchema,
   farmLookupErrorSchema,
   farmLookupRequestSchema,
@@ -283,6 +287,9 @@ import {
   FarmHumanKitchenContractUnavailableError,
   FarmHumanKitchenCredentialInvalidError,
   FarmHumanKitchenNotFoundError,
+  FarmHumanKitchenShopOpenIdempotencyConflictError,
+  FarmHumanKitchenShopOpenShopUnavailableError,
+  FarmHumanKitchenShopOpenStateConflictError,
   FarmHumanKitchenUnavailableError,
 } from "./farm-kitchen-client.js";
 import {
@@ -1198,6 +1205,27 @@ function sendBoundFarmKitchenReadError(
   return reply.code(statusCode).send(
     boundFarmKitchenReadErrorSchema.parse({
       error: { code, message },
+    }),
+  );
+}
+
+function sendBoundFarmKitchenShopOpenError(
+  reply: FastifyReply,
+  statusCode: BoundFarmStructuredStatusCode,
+  code: ReturnType<typeof boundFarmKitchenShopOpenErrorSchema.parse>["error"]["code"],
+  message: string,
+  currentShopRevision?: string,
+) {
+  reply.header("cache-control", "no-store");
+  return reply.code(statusCode).send(
+    boundFarmKitchenShopOpenErrorSchema.parse({
+      error: {
+        code,
+        message,
+        ...(currentShopRevision === undefined
+          ? {}
+          : { current_shop_revision: currentShopRevision }),
+      },
     }),
   );
 }
@@ -4858,6 +4886,155 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
           503,
           "farm_unavailable",
           "The farm kitchen is unavailable",
+        );
+      }
+      throw error;
+    }
+  });
+
+  app.post("/api/farm/kitchen/shop/openings", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    const parsedBody = boundFarmKitchenShopOpenRequestSchema.safeParse(request.body);
+    if (
+      !boundFarmKitchenReadRequestSchema.safeParse(request.query).success ||
+      !parsedBody.success
+    ) {
+      return sendBoundFarmKitchenShopOpenError(
+        reply,
+        400,
+        "invalid_request",
+        "Open the current kitchen shop without query parameters",
+      );
+    }
+    const idempotencyKey = request.headers["idempotency-key"];
+    if (
+      typeof idempotencyKey !== "string" ||
+      !farmKitchenShopOpenIdempotencyKeySchema.safeParse(idempotencyKey).success
+    ) {
+      return sendBoundFarmKitchenShopOpenError(
+        reply,
+        400,
+        "invalid_request",
+        "Kitchen shop open requires a UUID Idempotency-Key",
+      );
+    }
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendBoundFarmKitchenShopOpenError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+
+    try {
+      const result = await options.registrationAuth.openCurrentFarmKitchenShop(token, {
+        expectedShopRevision: parsedBody.data.expected_shop_revision,
+        idempotencyKey,
+      });
+      const parsedResult = boundFarmKitchenShopOpenSuccessSchema.safeParse(result);
+      if (!parsedResult.success) {
+        return sendBoundFarmKitchenShopOpenError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The kitchen shop open response could not be verified",
+        );
+      }
+      return reply.send(parsedResult.data);
+    } catch (error) {
+      if (error instanceof AuthenticationRequiredError) {
+        return sendBoundFarmKitchenShopOpenError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
+        return sendBoundFarmKitchenShopOpenError(
+          reply,
+          403,
+          "qq_not_group_member",
+          "The session QQ number is no longer a current member of the community group",
+        );
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendBoundFarmKitchenShopOpenError(
+          reply,
+          503,
+          "onebot_unavailable",
+          "QQ group membership could not be verified",
+        );
+      }
+      if (error instanceof RegistrationProfileRequiredError) {
+        return sendBoundFarmKitchenShopOpenError(
+          reply,
+          409,
+          "registration_profile_required",
+          "A resident, home, and farm binding are required",
+        );
+      }
+      if (error instanceof FarmHumanKitchenShopOpenStateConflictError) {
+        return sendBoundFarmKitchenShopOpenError(
+          reply,
+          409,
+          "state_conflict",
+          "The kitchen shop has changed",
+          error.currentShopRevision,
+        );
+      }
+      if (error instanceof FarmHumanKitchenShopOpenShopUnavailableError) {
+        return sendBoundFarmKitchenShopOpenError(
+          reply,
+          409,
+          "shop_unavailable",
+          "The current kitchen shop is unavailable",
+        );
+      }
+      if (error instanceof FarmHumanKitchenShopOpenIdempotencyConflictError) {
+        return sendBoundFarmKitchenShopOpenError(
+          reply,
+          409,
+          "idempotency_conflict",
+          "This idempotency key was used for a different request",
+        );
+      }
+      if (error instanceof FarmHumanKitchenCredentialInvalidError) {
+        return sendBoundFarmKitchenShopOpenError(
+          reply,
+          409,
+          "farm_credential_invalid",
+          "The bound farm human credential is no longer valid",
+        );
+      }
+      if (error instanceof FarmHumanKitchenNotFoundError) {
+        return sendBoundFarmKitchenShopOpenError(
+          reply,
+          404,
+          "farm_not_found",
+          "The bound farm no longer exists",
+        );
+      }
+      if (error instanceof FarmHumanKitchenContractUnavailableError) {
+        request.log.error({ error_name: error.name }, "Kitchen shop open is unavailable");
+        return sendBoundFarmKitchenShopOpenError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The kitchen shop open response could not be verified",
+        );
+      }
+      if (error instanceof FarmHumanKitchenUnavailableError) {
+        request.log.error({ error_name: error.name }, "Kitchen shop open is unavailable");
+        return sendBoundFarmKitchenShopOpenError(
+          reply,
+          503,
+          "farm_unavailable",
+          "The kitchen shop is unavailable",
         );
       }
       throw error;

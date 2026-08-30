@@ -18,6 +18,7 @@ import {
   COOKING_SHOP_PREVIEW_RECIPE_IDS,
   type CookingCartCheckoutFeedback,
   type CookingCartCheckoutLine,
+  type CookingShopOpenFeedback,
   type CookingShopRefreshFeedback,
   type CookingShopSectionId,
   getCookingToolAssetKey,
@@ -433,21 +434,25 @@ export function CookingShopPanelContent({
   cart,
   cookingCheckoutFeedback,
   cookingShopRefreshFeedback,
+  cookingShopOpenFeedback,
   kitchen,
   live,
   onChangeCartQuantity,
   onCheckoutCookingCart,
   onRetryCookingCheckout,
+  onRetryCookingShopOpen,
   onRefreshCookingShop,
 }: {
   cart: ShopCartQuantities;
   cookingCheckoutFeedback?: CookingCartCheckoutFeedback | undefined;
   cookingShopRefreshFeedback?: CookingShopRefreshFeedback | undefined;
+  cookingShopOpenFeedback?: CookingShopOpenFeedback | undefined;
   kitchen?: BoundKitchenRead | null | undefined;
   live?: boolean;
   onChangeCartQuantity: (cartKey: string, delta: number, maxQuantity?: number) => void;
   onCheckoutCookingCart?: ((items: CookingCartCheckoutLine[]) => void) | undefined;
   onRetryCookingCheckout?: (() => void) | undefined;
+  onRetryCookingShopOpen?: (() => void) | undefined;
   onRefreshCookingShop?: (() => void) | undefined;
 }) {
   const [sectionId, setSectionId] = useState<CookingShopSectionId>("ingredients");
@@ -493,6 +498,18 @@ export function CookingShopPanelContent({
           </button>
         ))}
       </nav>
+      {cookingShopOpenFeedback?.stage === "submitting" ? (
+        <div className="farm-shop__refresh-state" role="status">
+          正在准备今天的料理货架…
+        </div>
+      ) : cookingShopOpenFeedback?.stage === "error" ? (
+        <div className="farm-shop__refresh-state farm-shop__refresh-state--error" role="alert">
+          <span>{cookingShopOpenFeedback.message}</span>
+          <button onClick={onRetryCookingShopOpen} type="button">
+            重试
+          </button>
+        </div>
+      ) : null}
       {live && !liveShopUnavailable && sectionId !== "tools" && kitchen ? (
         <p className="cooking-recipe-shop__refresh">
           {sectionId === "recipes" ? "每日 2 道 · " : null}
@@ -503,14 +520,17 @@ export function CookingShopPanelContent({
         </p>
       ) : null}
       {sectionId !== "tools" && liveShopUnavailable ? (
-        <div className="farm-shop__unavailable" role="status">
-          <strong>
-            {kitchen?.data.daily_shop.is_current_day === false
-              ? "料理商店货架已过期"
-              : "料理商店数据暂不可用"}
-          </strong>
-          <span>当前不会显示旧货架或示例商品。</span>
-        </div>
+        cookingShopOpenFeedback?.stage === "submitting" ||
+        cookingShopOpenFeedback?.stage === "error" ? null : (
+          <div className="farm-shop__unavailable" role="status">
+            <strong>
+              {kitchen?.data.daily_shop.is_current_day === false
+                ? "料理商店货架已过期"
+                : "料理商店数据暂不可用"}
+            </strong>
+            <span>当前不会显示旧货架或示例商品。</span>
+          </div>
+        )
       ) : sectionId === "ingredients" ? (
         <CookingIngredientCatalog
           cart={cart}

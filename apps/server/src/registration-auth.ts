@@ -54,6 +54,7 @@ import { buildFarmHumanUrl, extractFarmHumanKey } from "./farm-human-url.js";
 import {
   FarmHumanKitchenContractUnavailableError,
   type FarmHumanKitchenReader,
+  type FarmHumanKitchenShopOpener,
 } from "./farm-kitchen-client.js";
 import {
   FarmHumanKitchenCookContractUnavailableError,
@@ -236,6 +237,7 @@ interface RegistrationAuthServiceOptions {
   farmShopOpener?: FarmHumanShopOpener;
   farmBulletinReader?: FarmHumanBulletinReader;
   farmKitchenReader?: FarmHumanKitchenReader;
+  farmKitchenShopOpener?: FarmHumanKitchenShopOpener;
   farmKitchenPurchaser?: FarmHumanKitchenPurchaser;
   farmKitchenCooker?: FarmHumanKitchenCooker;
   farmKitchenInventoryActioner?: FarmHumanKitchenInventoryActioner;
@@ -288,6 +290,7 @@ export class RegistrationAuthService {
   readonly #farmShopOpener: FarmHumanShopOpener | undefined;
   readonly #farmBulletinReader: FarmHumanBulletinReader | undefined;
   readonly #farmKitchenReader: FarmHumanKitchenReader | undefined;
+  readonly #farmKitchenShopOpener: FarmHumanKitchenShopOpener | undefined;
   readonly #farmKitchenPurchaser: FarmHumanKitchenPurchaser | undefined;
   readonly #farmKitchenCooker: FarmHumanKitchenCooker | undefined;
   readonly #farmKitchenInventoryActioner: FarmHumanKitchenInventoryActioner | undefined;
@@ -326,6 +329,7 @@ export class RegistrationAuthService {
     this.#farmShopOpener = options.farmShopOpener;
     this.#farmBulletinReader = options.farmBulletinReader;
     this.#farmKitchenReader = options.farmKitchenReader;
+    this.#farmKitchenShopOpener = options.farmKitchenShopOpener;
     this.#farmKitchenPurchaser = options.farmKitchenPurchaser;
     this.#farmKitchenCooker = options.farmKitchenCooker;
     this.#farmKitchenInventoryActioner = options.farmKitchenInventoryActioner;
@@ -718,6 +722,23 @@ export class RegistrationAuthService {
     return this.#farmKitchenReader.readKitchen({
       farmDoorplate: community.farmBinding.farmDoorplate,
       farmHumanKey,
+    });
+  }
+
+  async openCurrentFarmKitchenShop(
+    token: string,
+    input: { expectedShopRevision: string; idempotencyKey: string },
+  ) {
+    const community = await this.getCurrentSession(token);
+    const farmHumanKey = community.farmBinding.farmHumanKey;
+    if (farmHumanKey === null) throw new RegistrationProfileRequiredError();
+    if (!this.#farmKitchenShopOpener) {
+      throw new FarmHumanKitchenContractUnavailableError();
+    }
+    return this.#farmKitchenShopOpener.openKitchenShop({
+      farmDoorplate: community.farmBinding.farmDoorplate,
+      farmHumanKey,
+      ...input,
     });
   }
 

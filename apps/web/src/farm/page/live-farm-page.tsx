@@ -23,7 +23,14 @@ import {
 } from "../../auth/farm-catalog-client";
 import { createBoundFarmPurchaseRequest } from "../../auth/farm-purchase-request-client";
 import { executeBoundFarmSettingsAction } from "../../auth/farm-settings-action-client";
-import { getBoundKitchen, kitchenIssueMessage } from "../../auth/kitchen-client";
+import {
+  type BoundKitchenRead,
+  getBoundKitchen,
+  kitchenIssueMessage,
+  kitchenShopOpenIssueMessage,
+  openBoundKitchenShop,
+  replaceKitchenAfterShopOpen,
+} from "../../auth/kitchen-client";
 import { executeBoundKitchenCook } from "../../auth/kitchen-cook-client";
 import { executeBoundKitchenInventoryAction } from "../../auth/kitchen-inventory-action-client";
 import { purchaseBoundKitchenItem } from "../../auth/kitchen-purchase-client";
@@ -41,7 +48,7 @@ import { executeBoundRanchDecorationAction } from "../../auth/ranch-decoration-a
 import { executeBoundRanchInteractionAction } from "../../auth/ranch-interaction-action-client";
 import { executeBoundSmeltingAction } from "../../auth/smelting-action-client";
 import { farmFieldIssueMessage } from "../farm-overview";
-import type { FarmShopOpenFeedback } from "../panels/shop-panel";
+import type { CookingShopOpenFeedback, FarmShopOpenFeedback } from "../panels/shop-panel";
 import type {
   CropCodexActionExecutor,
   ExpeditionActionExecutor,
@@ -90,6 +97,9 @@ export function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
   const [farmShopOpenFeedback, setFarmShopOpenFeedback] = useState<FarmShopOpenFeedback>({
     stage: "idle",
   });
+  const [cookingShopOpenFeedback, setCookingShopOpenFeedback] = useState<CookingShopOpenFeedback>({
+    stage: "idle",
+  });
   const fieldDoorplateRef = useRef(previewData?.data.farm.farm_doorplate ?? null);
   const requestControllerRef = useRef<AbortController | null>(null);
   const fieldRequestGenerationRef = useRef(0);
@@ -105,6 +115,12 @@ export function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
     idempotencyKey: string;
   } | null>(null);
   const farmShopOpenInFlightRef = useRef(false);
+  const kitchenRef = useRef<BoundKitchenRead | null>(null);
+  const cookingShopOpenAttemptRef = useRef<{
+    expectedShopRevision: string;
+    idempotencyKey: string;
+  } | null>(null);
+  const cookingShopOpenInFlightRef = useRef(false);
 
   const requireResource = useCallback(
     (resource: keyof FarmReadResources, force = false) => {
@@ -135,6 +151,7 @@ export function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
         void getBoundKitchen({ signal: controller.signal }).then((result) => {
           if (controller.signal.aborted) return;
           if (!result.ok) requestedResourcesRef.current.delete(resource);
+          if (result.ok) kitchenRef.current = result.data;
           setResources((current) => ({
             ...current,
             kitchen: result.ok
@@ -289,6 +306,76 @@ export function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
         setFarmShopOpenFeedback({ stage: "success" });
       } finally {
         farmShopOpenInFlightRef.current = false;
+      }
+    },
+    [previewData],
+  );
+
+  const openCurrentKitchenShop = useCallback(
+    async (retry = false) => {
+      if (previewData || cookingShopOpenInFlightRef.current) return;
+      cookingShopOpenInFlightRef.current = true;
+      setCookingShopOpenFeedback({ stage: "submitting" });
+      try {
+        let kitchen = kitchenRef.current;
+        if (!kitchen) {
+          const read = await getBoundKitchen();
+          if (!read.ok) {
+            setCookingShopOpenFeedback({
+              stage: "error",
+              message: kitchenIssueMessage(read.issue),
+            });
+            return;
+          }
+          kitchen = read.data;
+          kitchenRef.current = kitchen;
+          requestedResourcesRef.current.add("kitchen");
+          setResources((current) => ({
+            ...current,
+            kitchen: { stage: "ready", data: read.data },
+          }));
+        }
+
+        const priorAttempt = retry ? cookingShopOpenAttemptRef.current : null;
+        const attempt =
+          priorAttempt?.expectedShopRevision === kitchen.shop_revision
+            ? priorAttempt
+            : {
+                expectedShopRevision: kitchen.shop_revision,
+                idempotencyKey: crypto.randomUUID(),
+              };
+        cookingShopOpenAttemptRef.current = attempt;
+        const result = await openBoundKitchenShop(attempt);
+        if (!result.ok) {
+          if (result.issue.code === "state_conflict") {
+            cookingShopOpenAttemptRef.current = null;
+            const reread = await getBoundKitchen();
+            if (reread.ok) {
+              kitchen = reread.data;
+              kitchenRef.current = reread.data;
+              setResources((current) => ({
+                ...current,
+                kitchen: { stage: "ready", data: reread.data },
+              }));
+            }
+          }
+          setCookingShopOpenFeedback({
+            stage: "error",
+            message: kitchenShopOpenIssueMessage(result.issue),
+          });
+          return;
+        }
+
+        cookingShopOpenAttemptRef.current = null;
+        const updatedKitchen = replaceKitchenAfterShopOpen(kitchen, result.data);
+        kitchenRef.current = updatedKitchen;
+        setResources((current) => ({
+          ...current,
+          kitchen: { stage: "ready", data: updatedKitchen },
+        }));
+        setCookingShopOpenFeedback({ stage: "success" });
+      } finally {
+        cookingShopOpenInFlightRef.current = false;
       }
     },
     [previewData],
@@ -626,8 +713,11 @@ export function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
     setHarvestAction({ stage: "idle" });
     setLandUpgradeAction({ stage: "idle" });
     setFarmShopOpenFeedback({ stage: "idle" });
+    setCookingShopOpenFeedback({ stage: "idle" });
     farmCatalogRef.current = null;
     farmShopOpenAttemptRef.current = null;
+    kitchenRef.current = null;
+    cookingShopOpenAttemptRef.current = null;
     if (previewData) {
       setState({ stage: "ready", data: previewData });
       return;
@@ -768,6 +858,7 @@ export function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
 
         {state.stage === "ready" ? (
           <FarmFieldContent
+            cookingShopOpenFeedback={cookingShopOpenFeedback}
             data={state.data}
             farmShopOpenFeedback={farmShopOpenFeedback}
             harvestAction={harvestAction}
@@ -781,6 +872,7 @@ export function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
             onHarvestAssist={previewData ? undefined : () => void submitHarvestAssist()}
             onLandUpgrade={previewData ? undefined : () => void submitLandUpgrade()}
             onOpenFarmShop={previewData ? undefined : () => void openCurrentFarmShop()}
+            onOpenKitchenShop={previewData ? undefined : () => void openCurrentKitchenShop()}
             onFarmSettingsAction={previewData ? undefined : submitFarmSettingsAction}
             onKitchenInventoryAction={previewData ? undefined : submitKitchenInventoryAction}
             onKitchenCook={previewData ? undefined : submitKitchenCookAction}
@@ -804,6 +896,9 @@ export function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
               }
             }}
             onRetryFarmShopOpen={previewData ? undefined : () => void openCurrentFarmShop(true)}
+            onRetryCookingShopOpen={
+              previewData ? undefined : () => void openCurrentKitchenShop(true)
+            }
             onRetryLandUpgrade={() => {
               if (landUpgradeAction.stage === "error" && landUpgradeAction.attempt) {
                 void submitLandUpgrade(landUpgradeAction.attempt);

@@ -47,6 +47,7 @@ export function FarmToolPanel({
   cart,
   cookingCheckoutFeedback,
   cookingShopRefreshFeedback,
+  cookingShopOpenFeedback,
   farmCheckoutFeedback,
   farmCatalog,
   farmShopOpenFeedback,
@@ -68,6 +69,7 @@ export function FarmToolPanel({
   onRanchInteractionAction,
   onSmeltingAction,
   onRetryCookingCheckout,
+  onRetryCookingShopOpen,
   onRetryFarmCheckout,
   onRetryFarmShopOpen,
   onRefreshCookingShop,
@@ -117,6 +119,7 @@ export function FarmToolPanel({
             cart={cart}
             cookingCheckoutFeedback={cookingCheckoutFeedback}
             cookingShopRefreshFeedback={cookingShopRefreshFeedback}
+            cookingShopOpenFeedback={cookingShopOpenFeedback}
             farmCheckoutFeedback={farmCheckoutFeedback}
             farmCatalog={farmCatalog ?? null}
             farmShopOpenFeedback={farmShopOpenFeedback}
@@ -125,6 +128,7 @@ export function FarmToolPanel({
             onCheckoutCookingCart={onCheckoutCookingCart}
             onCheckoutFarmCart={onCheckoutFarmCart}
             onRetryCookingCheckout={onRetryCookingCheckout}
+            onRetryCookingShopOpen={onRetryCookingShopOpen}
             onRetryFarmCheckout={onRetryFarmCheckout}
             onRetryFarmShopOpen={onRetryFarmShopOpen}
             onRefreshCookingShop={onRefreshCookingShop}

@@ -188,6 +188,7 @@ const registrationAuth = new RegistrationAuthService({
   farmHumanReader,
   farmExpeditionActioner,
   farmKitchenReader,
+  farmKitchenShopOpener: farmKitchenReader,
   farmKitchenPurchaser,
   farmKitchenCooker,
   farmKitchenInventoryActioner,

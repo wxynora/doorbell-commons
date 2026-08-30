@@ -21,6 +21,7 @@ import "./shop-panel.css";
 export type {
   CookingCartCheckoutFeedback,
   CookingCartCheckoutLine,
+  CookingShopOpenFeedback,
   CookingShopRefreshFeedback,
   FarmCartCheckoutFeedback,
   FarmCartCheckoutLine,
@@ -196,6 +197,7 @@ export function FarmShopPanelContent({
   cart,
   cookingCheckoutFeedback,
   cookingShopRefreshFeedback,
+  cookingShopOpenFeedback,
   farmCheckoutFeedback,
   farmCatalog,
   farmShopOpenFeedback,
@@ -206,6 +208,7 @@ export function FarmShopPanelContent({
   onRetryFarmCheckout,
   onRetryFarmShopOpen,
   onRetryCookingCheckout,
+  onRetryCookingShopOpen,
   onRefreshCookingShop,
   preview,
   ranch,
@@ -234,6 +237,7 @@ export function FarmShopPanelContent({
         cart={cart}
         cookingCheckoutFeedback={cookingCheckoutFeedback}
         cookingShopRefreshFeedback={cookingShopRefreshFeedback}
+        cookingShopOpenFeedback={cookingShopOpenFeedback}
         onChangeCartQuantity={onChangeCartQuantity}
       />
     ) : (
@@ -241,11 +245,13 @@ export function FarmShopPanelContent({
         cart={cart}
         cookingCheckoutFeedback={cookingCheckoutFeedback}
         cookingShopRefreshFeedback={cookingShopRefreshFeedback}
+        cookingShopOpenFeedback={cookingShopOpenFeedback}
         kitchen={kitchen}
         live
         onChangeCartQuantity={onChangeCartQuantity}
         onCheckoutCookingCart={onCheckoutCookingCart}
         onRetryCookingCheckout={onRetryCookingCheckout}
+        onRetryCookingShopOpen={onRetryCookingShopOpen}
         onRefreshCookingShop={onRefreshCookingShop}
       />
     );

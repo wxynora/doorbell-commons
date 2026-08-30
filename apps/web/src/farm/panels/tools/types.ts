@@ -37,6 +37,7 @@ import type {
 import type {
   CookingCartCheckoutFeedback,
   CookingCartCheckoutLine,
+  CookingShopOpenFeedback,
   CookingShopRefreshFeedback,
   FarmCartCheckoutFeedback,
   FarmCartCheckoutLine,
@@ -97,6 +98,7 @@ export interface FarmToolPanelProps {
   cart: ShopCartQuantities;
   cookingCheckoutFeedback?: CookingCartCheckoutFeedback | undefined;
   cookingShopRefreshFeedback?: CookingShopRefreshFeedback | undefined;
+  cookingShopOpenFeedback?: CookingShopOpenFeedback | undefined;
   farmCheckoutFeedback?: FarmCartCheckoutFeedback | undefined;
   farmShopOpenFeedback?: FarmShopOpenFeedback | undefined;
   farmCatalog?: BoundFarmCatalogRead | null;
@@ -118,6 +120,7 @@ export interface FarmToolPanelProps {
   onRanchInteractionAction?: RanchInteractionActionExecutor | undefined;
   onSmeltingAction?: SmeltingActionExecutor | undefined;
   onRetryCookingCheckout?: (() => void) | undefined;
+  onRetryCookingShopOpen?: (() => void) | undefined;
   onRetryFarmCheckout?: (() => void) | undefined;
   onRetryFarmShopOpen?: (() => void) | undefined;
   onRefreshCookingShop?: (() => void) | undefined;
