@@ -491,6 +491,13 @@ notification, and focuses or navigates the same origin on click. The existing ca
 is the first producer. Crop `matures_at` currently lacks a durable cross-action scheduler, and Glimmer
 does not yet expose an authoritative ready timestamp, so neither is fabricated from a browser timer.
 
+PWA client activation is deliberately separate from ordinary Main deployment. The deployer installs the
+built Worker byte-for-byte and is forbidden to append `TARGET_SHA` or otherwise mutate it per backend
+release. Only a user-approved Web release changes the explicit marker in the tracked Worker; the current
+marker is `approved-pwa-release:2026-08-30.1`. Existing controlled pages request an update on registration
+and whenever they become visible, then reload at most once on `controllerchange`. This lets installed iOS
+clients jump directly to one approved Web build without activating unapproved historical builds.
+
 ## Doorbell MCP, Bell, and direct shared-data access
 
 The official Connector runtime has been retired before any real household installed it. The server no
