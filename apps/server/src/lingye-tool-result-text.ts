@@ -549,6 +549,22 @@ function renderCourseContent(reference: Record<string, unknown>): string[] {
   return lines;
 }
 
+function renderCurrentCourses(value: unknown): string[] {
+  const currentCourses = records(value);
+  const lines: string[] = [];
+  for (const course of currentCourses) {
+    const stage =
+      course.stage === "awaiting_read_confirmation"
+        ? "当前阶段：课程已经报名并交付；阅读完后确认已阅读。"
+        : course.stage === "awaiting_practice"
+          ? "当前阶段：已经确认阅读；请一次提交下面全部 5 题的答案。"
+          : undefined;
+    if (stage) lines.push(stage);
+    lines.push(...renderCourseContent(course));
+  }
+  return lines;
+}
+
 function renderSchoolReference(reference: Record<string, unknown>): string[] {
   if (!isRecord(reference.value)) return [];
   if (reference.type === "exam") return renderExams([reference.value]);
@@ -581,6 +597,7 @@ function schoolText(result: LingyeSuccess): string {
   const lines = ["🏫 铃野职业学校", resultMessage(result.text, "已读取铃野职业学校当前事实。")];
   const reference = isRecord(data.reference) ? data.reference : undefined;
   if (reference) lines.push(...renderCourseContent(reference), ...renderSchoolReference(reference));
+  lines.push(...renderCurrentCourses(data.currentCourses));
   lines.push(...renderExamPaper(data));
 
   if (data.section === "courses" && isRecord(data.value)) {

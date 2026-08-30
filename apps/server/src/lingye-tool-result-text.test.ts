@@ -289,6 +289,61 @@ test("course view keeps the complete body and all five practice questions", () =
   assertNoPrivateLeak(text);
 });
 
+test("paid incomplete course resumes with the frozen body, all questions, and the legal next step", () => {
+  const text = renderLingyeToolText(
+    "go.school.view",
+    {},
+    success("已读取职业学校当前事实。", {
+      careers: [{ career: "chef" }],
+      courses: [
+        {
+          career: "chef",
+          qualificationLevel: 1,
+          courseIndex: 1,
+          enrolledAt: "2026-08-30T04:00:00.000Z",
+          contentReadAt: null,
+          completedAt: null,
+        },
+      ],
+      exams: [],
+      certificates: [],
+      employment: { records: [], duties: [] },
+      currentCourses: [
+        {
+          career: "chef",
+          qualificationLevel: 1,
+          courseIndex: 1,
+          stage: "awaiting_read_confirmation",
+          content: {
+            title: "料理台的第一份判断",
+            contentMarkdown: "这一份冻结课程正文必须能够重新读取。",
+            contentDeliveryId: PRIVATE_UUID,
+            practiceQuestions: Array.from({ length: 5 }, (_, index) => ({
+              id: `private-${index + 1}`,
+              stem: `恢复练习第 ${index + 1} 题`,
+              options: { A: "甲项", B: "乙项", C: "丙项", D: "丁项" },
+            })),
+          },
+        },
+      ],
+      options: [
+        {
+          option: "opt_HHHHHHHHHHHH",
+          label: "确认已阅读课程：料理师 1 级第 1 门",
+          requires: [],
+        },
+      ],
+    }),
+  );
+
+  assert.match(text, /课程已经报名并交付；阅读完后确认已阅读/u);
+  assert.match(text, /这一份冻结课程正文必须能够重新读取/u);
+  assert.match(text, /课程练习（一次查看全部 5 题）/u);
+  assert.match(text, /5\. 恢复练习第 5 题/u);
+  assert.match(text, /确认已阅读课程/u);
+  assertNoPrivateLeak(text);
+});
+
 test("course catalog renders only the career rows supplied by the courses section", () => {
   const text = renderLingyeToolText(
     "go.school.view",
