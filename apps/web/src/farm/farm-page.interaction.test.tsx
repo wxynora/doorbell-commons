@@ -1465,6 +1465,57 @@ describe("Ranch dispatch target selection", () => {
   it("offers only production animals accepted by the dispatch authority", () => {
     const ranch = dispatchRanch();
     if (ranch.data.dispatch.status !== "available") throw new Error("dispatch fixture");
+    ranch.data.residents.animals.push(
+      {
+        status: "known",
+        identity: { status: "known", kind_id: "chicken", name: "鸡", custom_name: "小鸡" },
+        level: 1,
+        pinned: false,
+        accessories: { status: "available", items: [] },
+        produce: null,
+        dispatch: { state: "active", raid_id: "raid-active" },
+      },
+      {
+        status: "known",
+        identity: {
+          status: "known",
+          kind_id: "dream_cat",
+          name: "梦貘猫",
+          custom_name: "梦梦",
+        },
+        level: 1,
+        pinned: false,
+        accessories: { status: "available", items: [] },
+        produce: null,
+        dispatch: { state: "pending_settlement", raid_id: "raid-pending" },
+      },
+    );
+    ranch.data.dispatch.active = [
+      {
+        status: "known",
+        state: "active",
+        raid_id: "raid-active",
+        animal_kind_id: "chicken",
+        animal_name: "鸡",
+        target_farm_doorplate: "352HQ6",
+        started_at: "2026-08-30T00:00:00.000Z",
+        ends_at: "2026-08-30T01:00:00.000Z",
+        remaining_ms: 30 * 60 * 1000,
+        reserved_coins: 100,
+      },
+      {
+        status: "known",
+        state: "pending_settlement",
+        raid_id: "raid-pending",
+        animal_kind_id: "dream_cat",
+        animal_name: "梦貘猫",
+        target_farm_doorplate: "CD9KVW",
+        started_at: "2026-08-29T22:00:00.000Z",
+        ends_at: "2026-08-29T23:00:00.000Z",
+        remaining_ms: 0,
+        reserved_coins: 100,
+      },
+    ];
     ranch.data.residents.pets = [
       {
         status: "known",
@@ -1506,8 +1557,20 @@ describe("Ranch dispatch target selection", () => {
         .getAllByRole("option")
         .map((option) => option.textContent),
     ).toEqual(["花花"]);
+    expect(within(animalSelect).queryByRole("option", { name: "小鸡" })).toBeNull();
+    expect(within(animalSelect).queryByRole("option", { name: "梦梦" })).toBeNull();
     expect(within(animalSelect).queryByRole("option", { name: "星夜" })).toBeNull();
     expect(within(animalSelect).queryByRole("option", { name: "鹅警长" })).toBeNull();
+    const activeDispatches = screen.getByRole("region", { name: "正在潜伏" });
+    expect(within(activeDispatches).getByText("鸡")).toBeTruthy();
+    expect(within(activeDispatches).getByText(/排行榜里的夏安农场 · 剩余 30 分钟/)).toBeTruthy();
+    expect(within(activeDispatches).getByText("梦貘猫")).toBeTruthy();
+    expect(within(activeDispatches).getByText(/排行榜里的悬崖边 · 待结算/)).toBeTruthy();
+    expect(within(activeDispatches).queryByRole("button", { name: "收取" })).toBeNull();
+    const money = screen.getByRole("region", { name: "牧场金币往来" });
+    expect(
+      activeDispatches.compareDocumentPosition(money) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
   });
 
   it("offers every real non-own message board and submits the selected original doorplate", async () => {

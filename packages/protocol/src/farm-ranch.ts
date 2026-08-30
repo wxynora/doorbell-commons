@@ -154,6 +154,11 @@ export const farmRanchDispatchEntrySchema = z
     raid_id: ranchIdSchema.nullable(),
     animal_kind_id: ranchIdSchema.nullable(),
     animal_name: ranchTextSchema.nullable(),
+    target_farm_doorplate: z
+      .string()
+      .regex(/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/)
+      .nullable()
+      .optional(),
     started_at: z.iso.datetime().nullable(),
     ends_at: z.iso.datetime().nullable(),
     remaining_ms: nullableCountSchema,

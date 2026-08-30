@@ -367,107 +367,107 @@ export function FarmMarketPanelContent({
                 </header>
                 <ul>
                   {group.listings.map((listing, index) => {
-              const itemId = listing.item_id;
-              const canBuy =
-                !ownListing && itemId !== null && listing.quantity > 0 && onMarketAction;
-              return (
-                <li
-                  key={`${listing.seller_farm_doorplate}:${listing.kind}:${listing.item_id ?? index}`}
-                >
-                  <span>{listing.name}</span>
-                  <span className="farm-market__listing-meta">
-                    <small>
-                      ×{listing.quantity}
-                      {listing.price === null ? "" : ` · 价格 ${listing.price}`}
-                    </small>
-                    {ownListing && itemId ? (
-                      <button
-                        disabled={busy || !onMarketAction}
-                        onClick={() =>
-                          void submit({
-                            input: {
-                              action: "unlist",
-                              expectedFarmDoorplate: farmDoorplate,
-                              expectedRevision,
-                              idempotencyKey: crypto.randomUUID(),
-                              itemId,
-                              kind: listing.kind,
-                            },
-                            label: "下架",
-                          })
-                        }
-                        type="button"
+                    const itemId = listing.item_id;
+                    const canBuy =
+                      !ownListing && itemId !== null && listing.quantity > 0 && onMarketAction;
+                    return (
+                      <li
+                        key={`${listing.seller_farm_doorplate}:${listing.kind}:${listing.item_id ?? index}`}
                       >
-                        下架
-                      </button>
-                    ) : canBuy ? (
-                      <button
-                        disabled={busy}
-                        onClick={() =>
-                          void submit({
-                            input: {
-                              action: "buy",
-                              expectedFarmDoorplate: farmDoorplate,
-                              expectedRevision,
-                              idempotencyKey: crypto.randomUUID(),
-                              sellerDoorplate: listing.seller_farm_doorplate,
-                              kind: listing.kind,
-                              itemId,
-                              quantity: Math.min(1, listing.quantity),
-                            },
-                            label: "购买",
-                          })
-                        }
-                        type="button"
-                      >
-                        购买
-                      </button>
-                    ) : null}
-                  </span>
-                </li>
-              );
+                        <span>{listing.name}</span>
+                        <span className="farm-market__listing-meta">
+                          <small>
+                            ×{listing.quantity}
+                            {listing.price === null ? "" : ` · 价格 ${listing.price}`}
+                          </small>
+                          {ownListing && itemId ? (
+                            <button
+                              disabled={busy || !onMarketAction}
+                              onClick={() =>
+                                void submit({
+                                  input: {
+                                    action: "unlist",
+                                    expectedFarmDoorplate: farmDoorplate,
+                                    expectedRevision,
+                                    idempotencyKey: crypto.randomUUID(),
+                                    itemId,
+                                    kind: listing.kind,
+                                  },
+                                  label: "下架",
+                                })
+                              }
+                              type="button"
+                            >
+                              下架
+                            </button>
+                          ) : canBuy ? (
+                            <button
+                              disabled={busy}
+                              onClick={() =>
+                                void submit({
+                                  input: {
+                                    action: "buy",
+                                    expectedFarmDoorplate: farmDoorplate,
+                                    expectedRevision,
+                                    idempotencyKey: crypto.randomUUID(),
+                                    sellerDoorplate: listing.seller_farm_doorplate,
+                                    kind: listing.kind,
+                                    itemId,
+                                    quantity: Math.min(1, listing.quantity),
+                                  },
+                                  label: "购买",
+                                })
+                              }
+                              type="button"
+                            >
+                              购买
+                            </button>
+                          ) : null}
+                        </span>
+                      </li>
+                    );
                   })}
                   {group.barterListings.map((listing) => {
-              return (
-                <li key={`barter:${listing.seller_farm_doorplate}:${listing.listing_id}`}>
-                  <span>
-                    用 {marketBarterItemLabel(listing.give)} 换{" "}
-                    {marketBarterItemLabel(listing.want)}
-                  </span>
-                  <span className="farm-market__listing-meta">
-                    <small>
-                      {ownListing ? "我的换物" : `来自 ${listing.seller_farm_doorplate}`}
-                    </small>
-                    <button
-                      disabled={busy || !onMarketAction}
-                      onClick={() =>
-                        void submit({
-                          input: ownListing
-                            ? {
-                                action: "barter-unlist",
-                                expectedFarmDoorplate: farmDoorplate,
-                                expectedRevision,
-                                idempotencyKey: crypto.randomUUID(),
-                                listingId: listing.listing_id,
-                              }
-                            : {
-                                action: "barter-accept",
-                                expectedFarmDoorplate: farmDoorplate,
-                                expectedRevision,
-                                idempotencyKey: crypto.randomUUID(),
-                                sellerDoorplate: listing.seller_farm_doorplate,
-                                listingId: listing.listing_id,
-                              },
-                          label: ownListing ? "撤下换物" : "接受换物",
-                        })
-                      }
-                      type="button"
-                    >
-                      {ownListing ? "撤下" : "接受换物"}
-                    </button>
-                  </span>
-                </li>
-              );
+                    return (
+                      <li key={`barter:${listing.seller_farm_doorplate}:${listing.listing_id}`}>
+                        <span>
+                          用 {marketBarterItemLabel(listing.give)} 换{" "}
+                          {marketBarterItemLabel(listing.want)}
+                        </span>
+                        <span className="farm-market__listing-meta">
+                          <small>
+                            {ownListing ? "我的换物" : `来自 ${listing.seller_farm_doorplate}`}
+                          </small>
+                          <button
+                            disabled={busy || !onMarketAction}
+                            onClick={() =>
+                              void submit({
+                                input: ownListing
+                                  ? {
+                                      action: "barter-unlist",
+                                      expectedFarmDoorplate: farmDoorplate,
+                                      expectedRevision,
+                                      idempotencyKey: crypto.randomUUID(),
+                                      listingId: listing.listing_id,
+                                    }
+                                  : {
+                                      action: "barter-accept",
+                                      expectedFarmDoorplate: farmDoorplate,
+                                      expectedRevision,
+                                      idempotencyKey: crypto.randomUUID(),
+                                      sellerDoorplate: listing.seller_farm_doorplate,
+                                      listingId: listing.listing_id,
+                                    },
+                                label: ownListing ? "撤下换物" : "接受换物",
+                              })
+                            }
+                            type="button"
+                          >
+                            {ownListing ? "撤下" : "接受换物"}
+                          </button>
+                        </span>
+                      </li>
+                    );
                   })}
                 </ul>
               </section>
@@ -809,10 +809,7 @@ function FarmExpeditionEmpty({ children }: { children: string }) {
 }
 
 function summarizeExpeditionBag(bag: FarmCatalogExpeditionAvailable["bag"]) {
-  const rows = new Map<
-    string,
-    { key: string; name: string; quantity: number | null }
-  >();
+  const rows = new Map<string, { key: string; name: string; quantity: number | null }>();
   for (const drop of bag) {
     const key = `${drop.kind}:${drop.item_id ?? ""}:${drop.name ?? ""}`;
     const previous = rows.get(key);
@@ -999,9 +996,7 @@ export function FarmExpeditionPanelContent({
                 ) : expedition.pending === null ? (
                   <button
                     disabled={busy || !onExpeditionAction || !validCharges}
-                    onClick={() =>
-                      currentAction("explore", { charges: parsedCharges }, "继续探索")
-                    }
+                    onClick={() => currentAction("explore", { charges: parsedCharges }, "继续探索")}
                     type="button"
                   >
                     继续探索
@@ -1051,7 +1046,9 @@ export function FarmExpeditionPanelContent({
                   <select
                     aria-label="祈福方式"
                     disabled={busy || !onExpeditionAction}
-                    onChange={(event) => setCharmKind(event.currentTarget.value as typeof charmKind)}
+                    onChange={(event) =>
+                      setCharmKind(event.currentTarget.value as typeof charmKind)
+                    }
                     value={charmKind}
                   >
                     <option value="check">勇气符（下次检定）</option>
@@ -1223,7 +1220,8 @@ export function RanchDispatchPanelContent({
     (resident) =>
       resident.status === "known" &&
       resident.identity.status === "known" &&
-      resident.identity.kind_id !== null,
+      resident.identity.kind_id !== null &&
+      resident.dispatch?.state === "home",
   );
   const [animalKindId, setAnimalKindId] = useState(residents[0]?.identity.kind_id ?? "");
   const expectedRevision = ranch.revision;
@@ -1238,6 +1236,20 @@ export function RanchDispatchPanelContent({
     dispatchTargets.find((target) => target.farmDoorplate === selectedTargetFarmDoorplate) ??
     dispatchTargets[0] ??
     null;
+  const dispatchTargetLabel = (farmDoorplate: string | null | undefined) => {
+    if (!farmDoorplate) return "目标农场未记录";
+    const target = dispatchTargets.find((candidate) => candidate.farmDoorplate === farmDoorplate);
+    if (!target) return `门牌 ${farmDoorplate}`;
+    return target.aiName ? `${target.farmName}（${target.aiName}）` : target.farmName;
+  };
+  const dispatchStateLabel = (entry: RanchDispatchAvailable["active"][number]) => {
+    if (entry.state === "pending_settlement") return "待结算";
+    if (entry.state !== "active" || entry.remaining_ms === null) return "状态不可用";
+    const minutes = Math.max(1, Math.ceil(entry.remaining_ms / 60_000));
+    return minutes >= 60
+      ? `剩余 ${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分钟`
+      : `剩余 ${minutes} 分钟`;
+  };
   const shouldRetry = (issue: RanchInteractionActionIssue) =>
     issue.code === "network_unavailable" ||
     issue.code === "farm_unavailable" ||
@@ -1331,11 +1343,15 @@ export function RanchDispatchPanelContent({
             onChange={(event) => setAnimalKindId(event.currentTarget.value)}
             value={selectedResident?.identity.kind_id ?? ""}
           >
-            {residents.map((resident) => (
-              <option key={resident.identity.kind_id} value={resident.identity.kind_id as string}>
-                {resident.identity.custom_name ?? resident.identity.name ?? "身份不可用"}
-              </option>
-            ))}
+            {residents.length > 0 ? (
+              residents.map((resident) => (
+                <option key={resident.identity.kind_id} value={resident.identity.kind_id as string}>
+                  {resident.identity.custom_name ?? resident.identity.name ?? "身份不可用"}
+                </option>
+              ))
+            ) : (
+              <option value="">没有在家的生产动物</option>
+            )}
           </select>
         </label>
         <label>
@@ -1393,6 +1409,30 @@ export function RanchDispatchPanelContent({
           派遣
         </button>
       </form>
+      <section aria-label="正在潜伏" className="farm-ranch-active-dispatches">
+        <div className="farm-action-toolbar">
+          <strong>正在潜伏</strong>
+          <span>{dispatch.active.length} 只</span>
+        </div>
+        <ul className="farm-crop-codex__list">
+          {dispatch.active.length > 0 ? (
+            dispatch.active.map((entry) => (
+              <li key={`${entry.raid_id ?? "dispatch"}-${entry.animal_kind_id ?? "animal"}`}>
+                <span>
+                  {entry.status === "known" && entry.animal_name ? entry.animal_name : "身份不可用"}
+                </span>
+                <small>
+                  {dispatchTargetLabel(entry.target_farm_doorplate)} · {dispatchStateLabel(entry)}
+                </small>
+              </li>
+            ))
+          ) : (
+            <li>
+              <span>当前没有正在潜伏的动物</span>
+            </li>
+          )}
+        </ul>
+      </section>
       <section aria-label="牧场金币往来" className="farm-ranch-money">
         <div className="farm-action-toolbar">
           <strong>金币往来</strong>
@@ -1425,40 +1465,6 @@ export function RanchDispatchPanelContent({
           </button>
         </div>
       </section>
-      <ul className="farm-crop-codex__list">
-        {dispatch.active.length > 0 ? (
-          dispatch.active.map((entry) => (
-            <li key={`${entry.raid_id ?? "dispatch"}-${entry.animal_kind_id ?? "animal"}`}>
-              <span>
-                {entry.status === "known" && entry.animal_name ? entry.animal_name : "身份不可用"}
-              </span>
-              <small>
-                {entry.state === "active"
-                  ? "进行中"
-                  : entry.state === "pending_settlement"
-                    ? "待结算"
-                    : "不可用"}
-              </small>
-              {entry.state === "pending_settlement" && entry.raid_id && onRanchInteractionAction ? (
-                <button
-                  className="farm-inventory-action"
-                  disabled={busy}
-                  onClick={() =>
-                    currentAction({ action: "catch", raidId: entry.raid_id as string }, "收取")
-                  }
-                  type="button"
-                >
-                  收取
-                </button>
-              ) : null}
-            </li>
-          ))
-        ) : (
-          <li>
-            <span>当前没有真实派遣</span>
-          </li>
-        )}
-      </ul>
     </section>
   );
 }
