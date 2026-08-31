@@ -20,7 +20,7 @@ test("the production deployer accepts a prebuilt artifact and never builds or in
 
 test("Linux dependency installation and all builds live only in the local Docker builder", () => {
   assert.match(builder, /BUILD_PLATFORM="linux\/amd64"/u);
-  assert.match(builder, /docker run --rm --platform/u);
+  assert.match(builder, /docker run --rm --platform .*--cpus 2 --memory 1g --pids-limit 256/u);
   assert.match(builder, /npm ci/u);
   assert.match(builder, /npm run build -w @doorbell\/protocol/u);
   assert.match(builder, /npm run build -w @doorbell\/server/u);
@@ -37,10 +37,12 @@ test("the publisher uploads the artifact and deployer without remote build comma
 
 test("approved release resolution and old hash retention happen before the runtime switch", () => {
   const extraction = deployer.indexOf("tar --extract --gzip");
+  const directoryPermission = deployer.search(/chmod 0755 "\$\{candidate_directory\}"/u);
   const releaseResolution = deployer.indexOf("resolve-approved-pwa-release.mjs");
   const assetMerge = deployer.indexOf("merge-web-assets.mjs");
   const runtimeSwitch = deployer.search(/mv "\$\{RUNTIME_DIRECTORY\}" "\$\{previous_directory\}"/u);
   assert.ok(extraction >= 0 && extraction < releaseResolution);
+  assert.ok(extraction < directoryPermission && directoryPermission < releaseResolution);
   assert.ok(releaseResolution < assetMerge);
   assert.ok(assetMerge < runtimeSwitch);
 });

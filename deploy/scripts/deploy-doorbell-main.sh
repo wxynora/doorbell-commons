@@ -155,6 +155,7 @@ trap cleanup_and_rollback EXIT
 
 tar --extract --gzip --file "${ARTIFACT_PATH}" --directory "${candidate_directory}" \
   --no-same-owner --no-same-permissions
+chmod 0755 "${candidate_directory}"
 node "${candidate_directory}/deploy/scripts/verify-doorbell-runtime-artifact.mjs" \
   "${candidate_directory}" "${TARGET_SHA}"
 rm -f -- "${ARTIFACT_PATH}"

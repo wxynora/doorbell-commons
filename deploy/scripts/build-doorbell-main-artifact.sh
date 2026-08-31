@@ -69,7 +69,7 @@ trap cleanup EXIT
 
 git -C "${repository_root}" archive "${TARGET_SHA}" | tar -x -C "${build_directory}"
 
-docker run --rm --platform "${BUILD_PLATFORM}" \
+docker run --rm --platform "${BUILD_PLATFORM}" --cpus 2 --memory 1g --pids-limit 256 \
   --user "$(id -u):$(id -g)" \
   --env HOME=/tmp/doorbell-build-home \
   --env npm_config_cache=/tmp/doorbell-npm-cache \
@@ -121,7 +121,7 @@ printf '%s\n' \
   >"${runtime_directory}/.doorbell-runtime-artifact.json"
 printf '%s\n' "${TARGET_SHA}" >"${runtime_directory}/.doorbell-release-sha"
 
-COPYFILE_DISABLE=1 tar -czf "${temporary_output}" -C "${runtime_directory}" .
+COPYFILE_DISABLE=1 tar --no-xattrs -czf "${temporary_output}" -C "${runtime_directory}" .
 mv "${temporary_output}" "${OUTPUT_PATH}"
 trap - EXIT
 rm -rf -- "${build_directory}" "${runtime_directory}"

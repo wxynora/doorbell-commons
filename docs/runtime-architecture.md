@@ -1215,12 +1215,14 @@ stopped while the entry restores and validates the pre-release database under it
 schema and restores the previous runtime. It restarts Doorbell only after both rollbacks succeed; an
 incomplete rollback withholds automatic restart for manual recovery.
 
-Current production Main is `16e1de61524276d8f69c0a6dfdde9955c7743b2a`; the source checkout and
+Current production Main is `673089962bf3dd8315a86c0b39a35fa47cef7fdb`; the source checkout and
 runtime release marker match that exact SHA. The live database is schema v12 with integrity OK and
 zero foreign-key violations. `doorbell-commons.service` is active/running with `NRestarts=0`, one
 `127.0.0.1:3000` listener, direct/public health 200 and no warning-or-higher startup line. The
-required upstream request deadline remains explicitly `60000` ms on this VPS. MCP readiness is
-enabled; deployment did not claim, migrate or issue a credential for any player.
+required upstream request deadline remains explicitly `60000` ms on this VPS. This release was the
+first accepted prebuilt-artifact deployment: approved PWA release `2026-08-30.9`, previous runtime
+and the mode-0600 pre-release SQLite backup remain available. MCP readiness is enabled; deployment
+did not claim, migrate or issue a credential for any player.
 
 The current `doorbell-commons.service` is active/running with `NRestarts=0`, one
 `127.0.0.1:3000` listener, and no warning-or-higher startup log. The already loaded nginx
