@@ -29,7 +29,7 @@ test("only explicitly versioned public assets receive immutable caching", () => 
   assert.ok(cacheMap);
   assert.match(cacheMap, /default "public, max-age=0";/);
   const cachePatterns = [
-    ...cacheMap.matchAll(/\n\s*~(\^.+\$) "public, max-age=31536000, immutable";/g),
+    ...cacheMap.matchAll(/\n\s*"~(\^.+\$)" "public, max-age=31536000, immutable";/g),
   ].map((match) => {
     const pattern = match[1];
     assert.ok(pattern);
