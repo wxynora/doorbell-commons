@@ -18,9 +18,11 @@ import {
 import {
   RANCH_PATROL_GOOSE_ID,
   RANCH_PATROL_GOOSE_NAME,
+  RANCH_PATROL_GOOSE_DAILY_CAP,
   RANCH_ANIMAL_MAX_LEVEL,
   RANCH_LEVEL_INCOME_STEP,
 } from "../config.js";
+import { currentDayIndex } from "../time.js";
 import {
   animalUpgradeCost,
   ranchFeedAnimal,
@@ -82,6 +84,21 @@ function safeTimestamp(value) {
 function safeTimestampMs(value) {
   if (!Number.isSafeInteger(value)) return null;
   return Number.isFinite(new Date(value).getTime()) ? value : null;
+}
+
+function projectPatrolGooseDaily(ranch, now) {
+  const catches = ranch?.patrolGooseCatches;
+  const recorded = isRecord(catches) && catches.day === currentDayIndex(now)
+    ? safeCount(catches.n)
+    : 0;
+  const usedToday = recorded !== null && recorded <= RANCH_PATROL_GOOSE_DAILY_CAP
+    ? recorded
+    : null;
+  return {
+    daily_limit: RANCH_PATROL_GOOSE_DAILY_CAP,
+    used_today: usedToday,
+    remaining_today: usedToday === null ? null : RANCH_PATROL_GOOSE_DAILY_CAP - usedToday,
+  };
 }
 
 function itemStatus(itemId, definition) {
@@ -615,6 +632,7 @@ function projectResident(type, raw, now, raids, pinned, farm, index) {
       known,
     ),
     produce,
+    patrol: type === "patrol_goose" && known ? projectPatrolGooseDaily(farm.ranch, now) : null,
     dispatch: dispatch
       ? { state: dispatch.state, raid_id: dispatch.raid_id }
       : type === "animal" && known

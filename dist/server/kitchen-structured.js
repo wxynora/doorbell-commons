@@ -278,6 +278,15 @@ function ingredientCounts(ids) {
     counts.set(id, (counts.get(id) ?? 0) + 1);
   }
   return [...counts].map(([id, quantity]) => {
+    if (id === "fish:any") {
+      return {
+        status: "available",
+        ingredient_id: id,
+        name: "任意鱼",
+        quantity,
+        reason: null,
+      };
+    }
     const item = cookingIngredientById.get(id) ?? cookingProductById.get(id);
     return item
       ? { status: "available", ingredient_id: id, name: item.name, quantity, reason: null }

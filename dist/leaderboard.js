@@ -15,21 +15,58 @@ function top(farms, score, n = 5) {
         .sort((a, b) => b.value - a.value)
         .slice(0, n);
 }
-export function buildLeaderboards(farms, ugc, now) {
+function leaderboardScores(now) {
     const today = currentDayIndex(now);
     return {
-        wealth: top(farms, (f) => f.coins + (f.ranch?.coins ?? 0)),
-        collection: top(farms, officialCodex),
-        diligence: top(farms, (f) => f.harvested ?? 0),
-        kindness: top(farms, (f) => f.watered ?? 0),
-        thief: top(farms, (f) => f.stolen ?? 0),
-        land: top(farms, (f) => f.landTier),
-        todayTasks: top(farms, dailyScore(today, "tasks")),
-        todayLogins: top(farms, dailyScore(today, "logins")),
-        todayMessages: top(farms, dailyScore(today, "messages")),
-        todayEvents: top(farms, dailyScore(today, "events")),
-        todayRaidIncome: top(farms, (f) => f.ranch?.raidIncome?.day === today ? f.ranch.raidIncome.n : 0),
-        todayRaidLoss: top(farms, (f) => f.ranch?.raidLoss?.day === today ? f.ranch.raidLoss.n : 0),
+        wealth: (f) => f.coins + (f.ranch?.coins ?? 0),
+        collection: officialCodex,
+        diligence: (f) => f.harvested ?? 0,
+        kindness: (f) => f.watered ?? 0,
+        thief: (f) => f.stolen ?? 0,
+        land: (f) => f.landTier,
+        todayTasks: dailyScore(today, "tasks"),
+        todayLogins: dailyScore(today, "logins"),
+        todayMessages: dailyScore(today, "messages"),
+        todayEvents: dailyScore(today, "events"),
+        todayRaidIncome: (f) => f.ranch?.raidIncome?.day === today ? f.ranch.raidIncome.n : 0,
+        todayRaidLoss: (f) => f.ranch?.raidLoss?.day === today ? f.ranch.raidLoss.n : 0,
+    };
+}
+function rankOf(farms, currentFarm, score) {
+    const value = score(currentFarm);
+    let rank = 1;
+    for (const farm of farms)
+        if (score(farm) > value)
+            rank++;
+    return rank;
+}
+/** 当前农场在每个农场榜的权威全服名次；榜外和 0 分也保留。 */
+export function buildCurrentFarmLeaderboardRows(farms, currentFarm, now) {
+    const title = equippedTitle(currentFarm);
+    return Object.fromEntries(Object.entries(leaderboardScores(now)).map(([key, score]) => [key, {
+            name: currentFarm.name,
+            code: currentFarm.id,
+            value: score(currentFarm),
+            rank: rankOf(farms, currentFarm, score),
+            title: title?.name,
+            titleColor: title?.color,
+        }]));
+}
+export function buildLeaderboards(farms, ugc, now) {
+    const scores = leaderboardScores(now);
+    return {
+        wealth: top(farms, scores.wealth),
+        collection: top(farms, scores.collection),
+        diligence: top(farms, scores.diligence),
+        kindness: top(farms, scores.kindness),
+        thief: top(farms, scores.thief),
+        land: top(farms, scores.land),
+        todayTasks: top(farms, scores.todayTasks),
+        todayLogins: top(farms, scores.todayLogins),
+        todayMessages: top(farms, scores.todayMessages),
+        todayEvents: top(farms, scores.todayEvents),
+        todayRaidIncome: top(farms, scores.todayRaidIncome),
+        todayRaidLoss: top(farms, scores.todayRaidLoss),
         hot: ugc
             .filter((c) => (c.buyers?.length ?? 0) > 0 && !c.banned)
             .sort((a, b) => (b.buyers?.length ?? 0) - (a.buyers?.length ?? 0))

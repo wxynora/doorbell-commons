@@ -21,7 +21,7 @@ import {
 import { allUgc } from "../ugc.js";
 import { currentDayIndex } from "../time.js";
 import { titleById } from "../titles.js";
-import { buildLeaderboards } from "../leaderboard.js";
+import { buildCurrentFarmLeaderboardRows, buildLeaderboards } from "../leaderboard.js";
 import { playerFarms } from "../store.js";
 import { cropCodexActionRevision } from "./crop-codex-revision.js";
 import { originalPlantActionRevision } from "./original-plant-action.js";
@@ -591,18 +591,33 @@ function projectNeighborhood(farm, now) {
   if (!farms.some((item) => item.id === farm.id)) farms.push(farm);
   const ugcs = allUgc();
   const leaderboards = buildLeaderboards(farms, ugcs, now);
+  const currentFarmRows = buildCurrentFarmLeaderboardRows(farms, farm, now);
   const rankings = {};
   for (const [key, rows] of Object.entries(leaderboards)) {
     if (key === "hot" || !Array.isArray(rows)) continue;
-    rankings[key] = rows.flatMap((row) => {
+    const projectedRows = rows.flatMap((row, index) => {
       if (!FARM_DOORPLATE_RE.test(String(row.code ?? "")) || !row.name) return [];
       return [{
         farm_doorplate: row.code,
         farm_name: row.name,
         value: cleanInt(row.value),
         equipped_title: nullableText(row.title),
+        rank: index + 1,
+        is_own: row.code === farm.id,
       }];
     });
+    const currentFarmRow = currentFarmRows[key];
+    if (currentFarmRow && !projectedRows.some((row) => row.is_own)) {
+      projectedRows.push({
+        farm_doorplate: String(farm.id),
+        farm_name: safeText(farm.name),
+        value: cleanInt(currentFarmRow.value),
+        equipped_title: nullableText(currentFarmRow.title),
+        rank: cleanInt(currentFarmRow.rank, 1),
+        is_own: true,
+      });
+    }
+    rankings[key] = projectedRows;
   }
   const originalCrops = ugcs.map((crop) => ({
     crop_id: String(crop.id),
