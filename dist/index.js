@@ -12,7 +12,7 @@ const lingyeWorldDatabase = openLingyeWorldDatabase();
 let server;
 try {
     setWorldPersistenceAdapter(createFarmWorldSqlitePersistence(lingyeWorldDatabase));
-    load();
+    load({ settle: false });
     server = startServer(PORT, HOST, {
         lingyeWorldDatabase,
         closeLingyeWorldDatabaseOnClose: true,

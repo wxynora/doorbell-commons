@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import { advance, steal, visitorWater, tryWaterReward, buyPotionSet, ensureHumanKey, pushSocialInbox, pushLog, craft, cookingDebuffReason, cookingDebuffStatusText, bribeGuardDog } from "./engine.js";
 import { dispatch, farmView, viewShop, viewEncyclopedia, shopBrief, viewMarket, buyFromMarket, visitView, tendNpc, buyNpcSeed, hasDamagedPublicName, viewKitchen } from "./game.js";
 import { harvestText, stealThiefText, statusFooter, waterText } from "./flavor.js";
-import { createFarm, getFarm, allFarms, playerFarms, replaceFarm, save, getGlimmerWorld, getPublicExpeditionWorld, getQixiLantern2026World, restoreWorldSnapshotInMemory, setWorldCommitCoordinator, setWorldPersistenceAdapter, snapshotWorldForRollback, withWorldCommitContext } from "./store.js";
+import { createFarm, getFarm, allFarms, playerFarms, replaceFarm, save, getGlimmerWorld, getPublicExpeditionWorld, getQixiLantern2026World, restoreWorldSnapshotInMemory, setWorldCommitCoordinator, setWorldPersistenceAdapter, settleLoadedWorld, snapshotWorldForRollback, withWorldCommitContext } from "./store.js";
 import { MAX_FARMS, MESSAGE_TEXT_MAX, MESSAGES_MAX, NPC_ID, GROW_TICKS, BASE, REGISTRATION_OPEN, REGISTRATION_CLOSED_TEXT, REGISTRATION_CAP, REGISTRATION_FULL_TEXT, SHOW_MIGRATION_NOTICE, MIGRATION_NOTICE_TEXT, MIGRATION_NOTICE_HTML } from "./config.js";
 import { allowRequest, allowCreate, sweepGuard } from "./guard.js";
 import { sweepNonces, htmlReadme, htmlGuide } from "./agent.js";
@@ -769,6 +769,11 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
             save();
     };
     try {
+        withWorldCommitContext({ balanceAuthority: "farm", actor: "system" }, () => {
+            // Startup-only grants and backfills must reach the farm snapshot and
+            // migrated economy ledger in the same durable transaction.
+            settleLoadedWorld({ forceSave: true });
+        });
         withWorldCommitContext({ balanceAuthority: "ledger", actor: "system" }, () => {
             // Register/import every migrated ledger before any recovery reads
             // it, then recover Chef farm checkpoints under ledger authority.

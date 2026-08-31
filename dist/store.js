@@ -34,6 +34,8 @@ let qixiLantern2026World = normalizeQixiLantern2026World({});
 let natureWorld = normalizeNatureWorld(null);
 let worldCommitCoordinator = null;
 let worldPersistenceAdapter = null;
+let startupSettlementPending = false;
+let startupSettlementReconciliationPending = false;
 const worldCommitContext = new AsyncLocalStorage();
 setNatureWorldProvider(() => natureWorld);
 const DOORBELL_WELCOME_SILVER = 200;
@@ -583,8 +585,16 @@ function publishLoadedWorld(world) {
     for (const farm of world.farms)
         farms.set(farm.id, normalizeFarm(farm));
 }
-function finishLoadedWorld() {
-    console.log(`[store] 已载入 ${farms.size} 个农场`);
+export function settleLoadedWorld(options = {}) {
+    const forceSave = options?.forceSave === true;
+    if (!startupSettlementPending) {
+        if (startupSettlementReconciliationPending && forceSave) {
+            save();
+            startupSettlementReconciliationPending = false;
+            return { applied: false, reconciled: true };
+        }
+        return { applied: false, reconciled: false };
+    }
     const npcCreated = ensureNpc();
     const grant = applyMaintenanceSilverGrant();
     for (const campaign of grant.campaigns)
@@ -598,14 +608,24 @@ function finishLoadedWorld() {
     const achievementBackfill = applyGlimmerAchievementRewardBackfill();
     if (achievementBackfill.applied)
         console.log(`[store] 流光原野成就奖励已补发 ${achievementBackfill.count} 个玩家农场、${achievementBackfill.achievements} 项，共 ${achievementBackfill.coins} 金、${achievementBackfill.silver} 银`);
-    if (npcCreated || grant.applied || qixiRefund.applied || nazhiTitleGrant.applied || achievementBackfill.applied)
+    const changed = npcCreated || grant.applied || qixiRefund.applied || nazhiTitleGrant.applied || achievementBackfill.applied;
+    if (changed || forceSave)
         save();
+    startupSettlementPending = false;
+    startupSettlementReconciliationPending = changed && worldCommitCoordinator === null;
+    return { applied: changed, reconciled: worldCommitCoordinator !== null && (changed || forceSave) };
 }
-export function load() {
+function finishLoadedWorld(options = {}) {
+    console.log(`[store] 已载入 ${farms.size} 个农场`);
+    startupSettlementPending = true;
+    if (options?.settle !== false)
+        settleLoadedWorld();
+}
+export function load(options = {}) {
     if (worldPersistenceAdapter) {
         try {
             publishLoadedWorld(worldPersistenceAdapter.loadLegacyWorld());
-            finishLoadedWorld();
+            finishLoadedWorld(options);
             return;
         }
         catch (err) {
@@ -616,7 +636,7 @@ export function load() {
     if (existsSync(WORLD_FILE)) {
         try {
             publishLoadedWorld(JSON.parse(readFileSync(WORLD_FILE, "utf8")));
-            finishLoadedWorld();
+            finishLoadedWorld(options);
             return;
         }
         catch (err) {
@@ -638,11 +658,7 @@ export function load() {
     qixiLantern2026World = normalizeQixiLantern2026World({});
     natureWorld = normalizeNatureWorld(null);
     if (!existsSync(DATA_FILE)) {
-        ensureNpc();
-        applyMaintenanceSilverGrant();
-        applyQixi2026SeedPriceRefund();
-        applyNazhiExclusiveTitleGrant();
-        save();
+        finishLoadedWorld(options);
         return;
     } // 全新启动：先把常驻 NPC 阿土建出来
     try {
@@ -660,19 +676,6 @@ export function load() {
         catch { }
         console.error(`[store] 存档损坏，已备份到 ${bak}，以空状态启动:`, err);
     }
-    ensureNpc();
-    const grant = applyMaintenanceSilverGrant();
-    for (const campaign of grant.campaigns)
-        console.log(`[store] 维护福利 ${campaign.id} 已发放 ${campaign.count} 个玩家农场，每家 ${campaign.gold} 金、${campaign.silver} 银`);
-    const qixiRefund = applyQixi2026SeedPriceRefund();
-    if (qixiRefund.applied)
-        console.log(`[store] 七夕种子降价退款已发放 ${qixiRefund.count} 个玩家农场、${qixiRefund.seeds} 颗种子，共 ${qixiRefund.coins} 金`);
-    const nazhiTitleGrant = applyNazhiExclusiveTitleGrant();
-    if (nazhiTitleGrant.applied)
-        console.log(`[store] 那智专属称号已发放 ${nazhiTitleGrant.count} 个玩家农场`);
-    const achievementBackfill = applyGlimmerAchievementRewardBackfill();
-    if (achievementBackfill.applied)
-        console.log(`[store] 流光原野成就奖励已补发 ${achievementBackfill.count} 个玩家农场、${achievementBackfill.achievements} 项，共 ${achievementBackfill.coins} 金、${achievementBackfill.silver} 银`);
-    save(); // 老格式只读一次，随后迁入单文件原子 world.json
+    finishLoadedWorld(options); // 老格式只读一次，随后迁入单文件原子 world.json
 }
 //# sourceMappingURL=store.js.map
