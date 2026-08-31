@@ -16,7 +16,7 @@ fi
 readonly TARGET_SHA="$1"
 readonly SSH_HOST="$2"
 
-for required_command in git scp ssh; do
+for required_command in git mktemp scp ssh tar; do
   command -v "${required_command}" >/dev/null || {
     fail "required local command is unavailable: ${required_command}"
     exit 1
@@ -31,10 +31,13 @@ readonly builder="${repository_root}/deploy/scripts/build-doorbell-main-artifact
   exit 1
 }
 
-artifact="$(mktemp "${TMPDIR:-/tmp}/doorbell-main-${TARGET_SHA}.XXXXXX.tar.gz")"
-deployer_directory="$(mktemp -d "${TMPDIR:-/tmp}/doorbell-main-deployer.XXXXXX")"
+publish_directory="$(mktemp -d "${TMPDIR:-/tmp}/doorbell-main-publish.XXXXXX")"
+artifact="${publish_directory}/doorbell-main-${TARGET_SHA}.tar.gz"
+deployer_directory="${publish_directory}/control"
+control_archive="${publish_directory}/control.tar"
+mkdir "${deployer_directory}"
 remote_suffix="${TARGET_SHA}.$$"
-readonly artifact deployer_directory remote_suffix
+readonly publish_directory artifact deployer_directory control_archive remote_suffix
 readonly deployer="${deployer_directory}/deploy/scripts/deploy-doorbell-main.sh"
 readonly dependency_migrator="${deployer_directory}/deploy/scripts/migrate-doorbell-dependency-layer.sh"
 readonly remote_artifact_stage="/tmp/doorbell-main-${remote_suffix}.tar.gz"
@@ -45,17 +48,18 @@ readonly remote_artifact="/var/lib/doorbell-commons/releases/incoming/doorbell-m
 cleanup() {
   local exit_status=$?
   trap - EXIT
-  rm -f -- "${artifact}"
-  rm -rf -- "${deployer_directory}"
+  rm -rf -- "${publish_directory}"
   exit "${exit_status}"
 }
 trap cleanup EXIT
 
 "${builder}" "${TARGET_SHA}" "${artifact}"
-git -C "${repository_root}" archive "${TARGET_SHA}" \
+git -C "${repository_root}" archive --format=tar --output="${control_archive}" \
+  "${TARGET_SHA}" \
   deploy/scripts/deploy-doorbell-main.sh \
-  deploy/scripts/migrate-doorbell-dependency-layer.sh | \
-  tar -x -C "${deployer_directory}"
+  deploy/scripts/migrate-doorbell-dependency-layer.sh
+tar --extract --file "${control_archive}" --directory "${deployer_directory}"
+rm -f -- "${control_archive}"
 
 scp -- "${artifact}" "${SSH_HOST}:${remote_artifact_stage}"
 scp -- "${deployer}" "${SSH_HOST}:${remote_deployer_stage}"
@@ -71,5 +75,4 @@ rm -f -- '${remote_artifact_stage}' '${remote_deployer_stage}' '${remote_depende
 sudo -n /usr/local/sbin/doorbell-deploy-main '${TARGET_SHA}' '${remote_artifact}'"
 
 trap - EXIT
-rm -f -- "${artifact}"
-rm -rf -- "${deployer_directory}"
+rm -rf -- "${publish_directory}"

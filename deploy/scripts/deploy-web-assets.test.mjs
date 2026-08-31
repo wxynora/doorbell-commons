@@ -44,6 +44,20 @@ test("the publisher uploads the artifact and deployer without remote build comma
   assert.doesNotMatch(publisher, /ssh[^\n]*(?:npm|npx|tsc|vite|docker|podman)/u);
 });
 
+test("the macOS publisher uses terminal mktemp placeholders and no archive pipe", () => {
+  assert.match(
+    publisher,
+    /publish_directory="\$\(mktemp -d "\$\{TMPDIR:-\/tmp\}\/doorbell-main-publish\.XXXXXX"\)"/u,
+  );
+  assert.doesNotMatch(publisher, /mktemp[^\n]*XXXXXX\.tar\.gz/u);
+  const archive = publisher.indexOf("archive --format=tar --output");
+  const extraction = publisher.search(/tar --extract --file "\$\{control_archive\}"/u);
+  const upload = publisher.search(/scp -- "\$\{artifact\}"/u);
+  assert.ok(archive >= 0 && archive < extraction && extraction < upload);
+  assert.doesNotMatch(publisher, /archive[^\n]*\|[\s\\]*tar/u);
+  assert.match(publisher, /rm -rf -- "\$\{publish_directory\}"/u);
+});
+
 test("approved release resolution and old hash retention happen before the runtime switch", () => {
   const extraction = deployer.indexOf("tar --extract --gzip");
   const directoryPermission = deployer.search(/chmod 0755 "\$\{candidate_directory\}"/u);
