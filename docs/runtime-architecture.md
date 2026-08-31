@@ -1247,14 +1247,16 @@ directories and latest three scheduled SQLite files, and never touches source, d
 manual recovery directories, browser state, or Web assets. The daily backup unit invokes the same
 helper in `--daily-only` mode, which can remove only old top-level scheduled `.sqlite` files.
 
-Current production Main is `673089962bf3dd8315a86c0b39a35fa47cef7fdb`; the source checkout and
-runtime release marker match that exact SHA. The live database is schema v12 with integrity OK and
-zero foreign-key violations. `doorbell-commons.service` is active/running with `NRestarts=0`, one
-`127.0.0.1:3000` listener, direct/public health 200 and no warning-or-higher startup line. The
-required upstream request deadline remains explicitly `60000` ms on this VPS. This release was the
-first accepted prebuilt-artifact deployment: approved PWA release `2026-08-30.9`, previous runtime
-and the mode-0600 pre-release SQLite backup remain available. MCP readiness is enabled; deployment
-did not claim, migrate or issue a credential for any player.
+Current production Main is `cd7863454435b1880318b6b88ba2edfceda99202`; the source checkout and
+runtime release marker match that exact SHA. The live database is schema v16 with `quick_check=ok`
+and zero foreign-key violations. `doorbell-commons.service` is active/running with `NRestarts=0`,
+direct/public health 200, and the required upstream request deadline remains explicitly `60000` ms.
+The approved PWA release remains `2026-08-30.9` because this release changed no Web build or Worker.
+The fixed Linux dependency layer is active, its lockfile matches the runtime, `better-sqlite3` and
+protocol runtime imports succeed, and all three workspace links resolve to the stable current runtime.
+The one retained direct previous runtime is `673089962bf3dd8315a86c0b39a35fa47cef7fdb`;
+failed／build／candidate counts are zero, release backups are two, scheduled backups are three, and
+the incoming artifact inbox is empty. Deployment did not mutate player data or browser state.
 
 The current `doorbell-commons.service` is active/running with `NRestarts=0`, one
 `127.0.0.1:3000` listener, and no warning-or-higher startup log. The already loaded nginx
