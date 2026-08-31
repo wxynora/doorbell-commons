@@ -6,27 +6,43 @@ import { join } from "node:path";
 import test from "node:test";
 import { mergeWebAssets } from "./merge-web-assets.mjs";
 
-const source = readFileSync(new URL("./deploy-doorbell-main.sh", import.meta.url), "utf8");
+const deployer = readFileSync(new URL("./deploy-doorbell-main.sh", import.meta.url), "utf8");
+const builder = readFileSync(new URL("./build-doorbell-main-artifact.sh", import.meta.url), "utf8");
+const publisher = readFileSync(new URL("./publish-doorbell-main.sh", import.meta.url), "utf8");
 
-test("the Main release retains previous content-hashed assets before switching runtimes", () => {
-  const buildCopy = source.search(
-    /cp -a "\$\{build_directory\}\/apps\/web\/dist" "\$\{candidate_directory\}\/apps\/web\/"/,
-  );
-  const assetMerge = source.indexOf("merge-web-assets.mjs");
-  const runtimeSwitch = source.search(/mv "\$\{RUNTIME_DIRECTORY\}" "\$\{previous_directory\}"/);
-  assert.ok(assetMerge >= 0 && assetMerge < buildCopy);
-  assert.ok(buildCopy < runtimeSwitch);
+test("the production deployer accepts a prebuilt artifact and never builds or installs packages", () => {
+  assert.match(deployer, /usage: doorbell-deploy-main .* <runtime-artifact>/u);
+  assert.match(deployer, /tar --extract --gzip/u);
+  assert.match(deployer, /verify-doorbell-runtime-artifact\.mjs/u);
+  assert.doesNotMatch(deployer, /\b(?:npm|npx|tsc|vite|docker|podman)\b/u);
+  assert.doesNotMatch(deployer, /git .* archive/u);
 });
 
-test("the Main release advances only distinct Web builds before installing assets", () => {
-  assert.doesNotMatch(source, /TARGET_SHA.*service-worker|doorbell-release:%s/);
-  const webBuild = source.indexOf("npm run build -w @doorbell/web");
-  const releaseResolution = source.indexOf("resolve-approved-pwa-release.mjs");
-  const buildCopy = source.indexOf(
-    `cp -a "\${build_directory}/apps/web/dist" "\${candidate_directory}/apps/web/"`,
-  );
-  assert.ok(webBuild >= 0 && webBuild < releaseResolution);
-  assert.ok(releaseResolution < buildCopy);
+test("Linux dependency installation and all builds live only in the local Docker builder", () => {
+  assert.match(builder, /BUILD_PLATFORM="linux\/amd64"/u);
+  assert.match(builder, /docker run --rm --platform/u);
+  assert.match(builder, /npm ci/u);
+  assert.match(builder, /npm run build -w @doorbell\/protocol/u);
+  assert.match(builder, /npm run build -w @doorbell\/server/u);
+  assert.match(builder, /npm run build -w @doorbell\/web/u);
+  assert.match(builder, /npm prune --omit=dev/u);
+  assert.match(builder, /new Database\(":memory:"\)/u);
+});
+
+test("the publisher uploads the artifact and deployer without remote build commands", () => {
+  assert.match(publisher, /build-doorbell-main-artifact\.sh/u);
+  assert.match(publisher, /\/usr\/local\/sbin\/doorbell-deploy-main/u);
+  assert.doesNotMatch(publisher, /ssh[^\n]*(?:npm|npx|tsc|vite|docker|podman)/u);
+});
+
+test("approved release resolution and old hash retention happen before the runtime switch", () => {
+  const extraction = deployer.indexOf("tar --extract --gzip");
+  const releaseResolution = deployer.indexOf("resolve-approved-pwa-release.mjs");
+  const assetMerge = deployer.indexOf("merge-web-assets.mjs");
+  const runtimeSwitch = deployer.search(/mv "\$\{RUNTIME_DIRECTORY\}" "\$\{previous_directory\}"/u);
+  assert.ok(extraction >= 0 && extraction < releaseResolution);
+  assert.ok(releaseResolution < assetMerge);
+  assert.ok(assetMerge < runtimeSwitch);
 });
 
 test("old lazy chunks remain available without replacing a newly built hash", async () => {

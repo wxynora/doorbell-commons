@@ -8,6 +8,7 @@ readonly SOURCE_DIRECTORY="/opt/doorbell-commons-source"
 readonly RUNTIME_DIRECTORY="/opt/doorbell-commons"
 readonly DATABASE_PATH="/var/lib/doorbell-commons/doorbell.sqlite"
 readonly BACKUP_ROOT="/var/backups/doorbell-commons/releases"
+readonly ARTIFACT_INBOX="/var/lib/doorbell-commons/releases/incoming"
 readonly SERVICE_NAME="doorbell-commons.service"
 readonly HEALTH_URL="http://127.0.0.1:3000/api/health"
 readonly HEALTH_ATTEMPTS=60
@@ -22,20 +23,41 @@ if [[ ${EUID} -ne 0 ]]; then
   exit 1
 fi
 
-if [[ $# -ne 1 || ! $1 =~ ^[0-9a-f]{40}$ ]]; then
-  fail "usage: doorbell-deploy-main <40-character-main-sha>"
+if [[ $# -ne 2 || ! $1 =~ ^[0-9a-f]{40}$ ]]; then
+  fail "usage: doorbell-deploy-main <40-character-main-sha> <runtime-artifact>"
   exit 1
 fi
 
 readonly TARGET_SHA="$1"
 readonly SHORT_SHA="${TARGET_SHA:0:7}"
+readonly ARTIFACT_PATH="$2"
+readonly EXPECTED_ARTIFACT_PATH="${ARTIFACT_INBOX}/doorbell-main-${TARGET_SHA}.tar.gz"
 
-for required_command in curl git node npm systemctl tar; do
+for required_command in curl git node stat systemctl tar; do
   command -v "${required_command}" >/dev/null || {
     fail "required command is unavailable: ${required_command}"
     exit 1
   }
 done
+
+[[ "${ARTIFACT_PATH}" == "${EXPECTED_ARTIFACT_PATH}" ]] || {
+  fail "runtime artifact must use the root-owned release inbox path"
+  exit 1
+}
+[[ -f "${ARTIFACT_PATH}" && ! -L "${ARTIFACT_PATH}" ]] || {
+  fail "runtime artifact is missing or is not a regular file"
+  exit 1
+}
+[[ "$(stat -c '%U' "${ARTIFACT_PATH}")" == "root" ]] || {
+  fail "runtime artifact must be owned by root"
+  exit 1
+}
+artifact_mode="$(stat -c '%a' "${ARTIFACT_PATH}")"
+readonly artifact_mode
+(( (8#${artifact_mode} & 077) == 0 )) || {
+  fail "runtime artifact must not be readable by group or other users"
+  exit 1
+}
 
 [[ -d "${SOURCE_DIRECTORY}/.git" ]] || {
   fail "missing dedicated main checkout: ${SOURCE_DIRECTORY}"
@@ -76,13 +98,7 @@ git -C "${SOURCE_DIRECTORY}" merge-base --is-ancestor HEAD "${TARGET_SHA}" || {
   fail "source main cannot fast-forward to requested SHA"
   exit 1
 }
-git -C "${SOURCE_DIRECTORY}" merge --ff-only "${TARGET_SHA}"
-[[ "$(git -C "${SOURCE_DIRECTORY}" rev-parse HEAD)" == "${TARGET_SHA}" ]] || {
-  fail "source checkout did not reach requested SHA"
-  exit 1
-}
 
-build_directory="$(mktemp -d "/opt/.doorbell-commons.build.${SHORT_SHA}.XXXXXX")"
 candidate_directory="$(mktemp -d "/opt/.doorbell-commons.candidate.${SHORT_SHA}.XXXXXX")"
 previous_directory=""
 failed_directory=""
@@ -105,7 +121,7 @@ cleanup_and_rollback() {
         rollback_ok=0
       fi
       if [[ -n "${backup_path}" && -n "${pre_release_schema}" ]]; then
-        node "${SOURCE_DIRECTORY}/deploy/scripts/restore-community-database.mjs" \
+        node "${RUNTIME_DIRECTORY}/deploy/scripts/restore-community-database.mjs" \
           --stopped "${backup_path}" "${pre_release_schema}" || rollback_ok=0
       else
         rollback_ok=0
@@ -133,59 +149,39 @@ cleanup_and_rollback() {
   if [[ -n "${candidate_directory}" && -d "${candidate_directory}" ]]; then
     rm -rf -- "${candidate_directory}"
   fi
-  if [[ -n "${build_directory}" && -d "${build_directory}" ]]; then
-    rm -rf -- "${build_directory}"
-  fi
   exit "${exit_status}"
 }
 trap cleanup_and_rollback EXIT
 
-git -C "${SOURCE_DIRECTORY}" archive "${TARGET_SHA}" | tar -x -C "${build_directory}"
-(
-  cd "${build_directory}"
-  npm ci
-  npm run build -w @doorbell/protocol
-  npm run build -w @doorbell/server
-  npm run build -w @doorbell/web
-  npm prune --omit=dev
-)
-
-[[ -z "$(git -C "${SOURCE_DIRECTORY}" status --porcelain)" ]] || {
-  fail "build changed tracked source files"
-  exit 1
-}
-
-chmod 0755 "${candidate_directory}"
-install -d -m 0755 \
-  "${candidate_directory}/apps/server" \
-  "${candidate_directory}/apps/web" \
-  "${candidate_directory}/packages/protocol" \
-  "${candidate_directory}/deploy/scripts"
-cp -a \
-  "${SOURCE_DIRECTORY}/package.json" \
-  "${SOURCE_DIRECTORY}/package-lock.json" \
-  "${build_directory}/node_modules" \
-  "${candidate_directory}/"
-cp -a \
-  "${SOURCE_DIRECTORY}/packages/protocol/package.json" \
-  "${build_directory}/packages/protocol/dist" \
-  "${candidate_directory}/packages/protocol/"
-cp -a \
-  "${SOURCE_DIRECTORY}/apps/server/package.json" \
-  "${build_directory}/apps/server/dist" \
-  "${candidate_directory}/apps/server/"
-cp -a "${build_directory}/apps/web/dist" "${candidate_directory}/apps/web/"
-cp -a \
-  "${SOURCE_DIRECTORY}/deploy/scripts/backup-community-database.mjs" \
-  "${SOURCE_DIRECTORY}/deploy/scripts/restore-community-database.mjs" \
-  "${candidate_directory}/deploy/scripts/"
-printf '%s\n' "${TARGET_SHA}" >"${candidate_directory}/.doorbell-release-sha"
-rm -rf -- "${build_directory}"
-build_directory=""
+tar --extract --gzip --file "${ARTIFACT_PATH}" --directory "${candidate_directory}" \
+  --no-same-owner --no-same-permissions
+node "${candidate_directory}/deploy/scripts/verify-doorbell-runtime-artifact.mjs" \
+  "${candidate_directory}" "${TARGET_SHA}"
+rm -f -- "${ARTIFACT_PATH}"
 
 node --check "${candidate_directory}/apps/server/dist/index.js"
 (
-  cd "${SOURCE_DIRECTORY}"
+  cd "${candidate_directory}"
+  node --input-type=module --eval '
+    import Database from "better-sqlite3";
+    const database = new Database(":memory:");
+    database.close();
+  '
+)
+
+pwa_release="$({ node \
+  "${candidate_directory}/deploy/scripts/resolve-approved-pwa-release.mjs" \
+  "${RUNTIME_DIRECTORY}/apps/web/dist/index.html" \
+  "${RUNTIME_DIRECTORY}/apps/web/dist/service-worker.js" \
+  "${candidate_directory}/apps/web/dist/index.html" \
+  "${candidate_directory}/apps/web/dist/service-worker.js"; })"
+readonly pwa_release
+node "${candidate_directory}/deploy/scripts/merge-web-assets.mjs" \
+  "${RUNTIME_DIRECTORY}/apps/web/dist/assets" \
+  "${candidate_directory}/apps/web/dist/assets"
+
+(
+  cd "${candidate_directory}"
   node --input-type=module --eval '
     import { DatabaseSync } from "node:sqlite";
     const database = new DatabaseSync(process.argv[1], { readOnly: true });
@@ -216,6 +212,12 @@ pre_release_schema="$(node --input-type=module --eval '
   exit 1
 }
 
+git -C "${SOURCE_DIRECTORY}" merge --ff-only "${TARGET_SHA}"
+[[ "$(git -C "${SOURCE_DIRECTORY}" rev-parse HEAD)" == "${TARGET_SHA}" ]] || {
+  fail "source checkout did not reach requested SHA"
+  exit 1
+}
+
 RELEASE_TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 readonly RELEASE_TIMESTAMP
 readonly BACKUP_DIRECTORY="${BACKUP_ROOT}/${RELEASE_TIMESTAMP}-pre-${SHORT_SHA}"
@@ -226,7 +228,7 @@ failed_directory="${RUNTIME_DIRECTORY}.failed-${RELEASE_TIMESTAMP}"
 [[ ! -e "${failed_directory}" ]] || fail "failed runtime path already exists"
 install -d -m 0700 "${BACKUP_DIRECTORY}"
 backup_path="$({ umask 077; node \
-  "${SOURCE_DIRECTORY}/deploy/scripts/backup-community-database.mjs" \
+  "${candidate_directory}/deploy/scripts/backup-community-database.mjs" \
   "${DATABASE_PATH}" "${BACKUP_DIRECTORY}"; })"
 chmod 0600 "${backup_path}"
 
@@ -269,6 +271,7 @@ runtime_moved=0
 switched=0
 trap - EXIT
 printf 'Doorbell main %s deployed successfully.\n' "${TARGET_SHA}"
+printf 'PWA release: %s\n' "${pwa_release}"
 printf 'Source checkout: %s\n' "${SOURCE_DIRECTORY}"
 printf 'Previous runtime: %s\n' "${previous_directory}"
 printf 'Database backup: %s\n' "${backup_path}"

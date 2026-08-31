@@ -1197,16 +1197,22 @@ Community source is now a separate root-owned Git checkout at `/opt/doorbell-com
 to branch `main` with origin `https://github.com/wxynora/doorbell-commons.git`. It never shares a
 worktree or branch switch with `/opt/aifarm`. The root-owned entry
 `/usr/local/sbin/doorbell-deploy-main`, versioned as `deploy/scripts/deploy-doorbell-main.sh`, accepts
-one exact 40-character SHA only when it equals the fetched `origin/main`, the checkout is clean, and
-local main can fast-forward. It expands that exact revision into a disposable build directory, runs
-`npm ci` plus protocol/server/web builds and production pruning there, assembles a runtime-only
-candidate, validates the current SQLite before an online backup, and only then stops Doorbell for an
-atomic runtime switch. This keeps npm's platform-specific lockfile rewrites out of the persistent
-checkout. The installed runtime records its exact source in `.doorbell-release-sha`. After start,
-the entry checks local health once per second for the confirmed maximum of 60 seconds. If a switched
-candidate fails, the service remains stopped while the entry atomically restores and validates the
-pre-release database under its recorded original schema, and restores the
-previous runtime. It restarts Doorbell only after both database and runtime rollback succeed; any
+one exact 40-character SHA and one root-owned mode-0600 artifact from the fixed incoming directory.
+The SHA must equal fetched `origin/main`, the checkout must be clean and fast-forwardable, and the
+artifact manifest／release marker must match the SHA plus the production Linux x64／Node 24 runtime.
+The production entry has no package installation, TypeScript／Vite compilation, pruning, container
+build, source archive build or fallback build path. `deploy/scripts/build-doorbell-main-artifact.sh`
+runs `npm ci`, protocol／server／web builds, production pruning and a real `better-sqlite3` open inside
+the local `linux/amd64` Node 24 container, then emits the runtime-only artifact.
+`deploy/scripts/publish-doorbell-main.sh` uploads that artifact plus the exact target revision's
+server entry before invoking it. On the VPS, extraction and target verification happen before any
+service stop; the approved PWA release is resolved against the current runtime and previous
+content-hashed assets are merged without replacing candidate files. The entry then validates SQLite,
+makes the mode-0600 online backup and atomically switches `/opt/doorbell-commons`. The installed
+runtime records its exact source in `.doorbell-release-sha`. After start, the entry checks local
+health once per second for at most 60 seconds. If a switched candidate fails, the service remains
+stopped while the entry restores and validates the pre-release database under its recorded original
+schema and restores the previous runtime. It restarts Doorbell only after both rollbacks succeed; an
 incomplete rollback withholds automatic restart for manual recovery.
 
 Current production Main is `16e1de61524276d8f69c0a6dfdde9955c7743b2a`; the source checkout and
