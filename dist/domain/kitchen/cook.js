@@ -110,8 +110,6 @@ export function kitchenCook(farm, refs, now, options = {}) {
             ...originalRecipes.filter((item) => originalRecipeMatchesIngredients(item, preview.selected.map((entry) => entry.id), methodId)),
             ...matchingRecipes,
         ];
-        if (matchingRecipes.length > 0 && !matchingRecipes.some((item) => kitchenRecipeMethodId(item) === methodId))
-            return { ok: false, code: "recipe_method_mismatch", methodId };
         picked = preview;
     }
     else {

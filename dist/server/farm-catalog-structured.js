@@ -403,14 +403,32 @@ function projectSmelting(farm) {
     const recipe = recipes.find((item) => item.output === recipeId);
     const output = recipe ? cropById.get(recipe.output) : null;
     const known = !!recipe && !!output;
+    const requirementCounts = new Map();
+    for (const materialId of Array.isArray(recipe?.materials) ? recipe.materials : []) {
+      if (typeof materialId !== "string" || !materialId) continue;
+      requirementCounts.set(materialId, (requirementCounts.get(materialId) ?? 0) + 1);
+    }
+    const requiredMaterials = [...requirementCounts].map(([materialId, quantity]) => {
+      const definition = materialById.get(materialId);
+      return {
+        material_id: materialId,
+        identity_state: definition ? "known" : "unavailable",
+        name: definition?.name ?? null,
+        quantity,
+      };
+    });
     return {
       recipe_id: recipeId,
       identity_state: known ? "known" : "unavailable",
       output_crop_id: output?.id ?? null,
       output_name: output?.name ?? null,
-      materials: recipe?.materials?.filter((id) => typeof id === "string") ?? [],
+      materials: requiredMaterials,
       known: known,
-      can_start: known && recipe.materials.every((id) => (quantities.get(id) ?? 0) > 0),
+      can_start:
+        known &&
+        requiredMaterials.every(
+          (material) => (quantities.get(material.material_id) ?? 0) >= material.quantity,
+        ),
     };
   });
   return {

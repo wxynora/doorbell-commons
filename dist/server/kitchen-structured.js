@@ -559,15 +559,23 @@ function projectShopRecipe(id, knownIds) {
   if (!recipe) return null;
   if (recipe.status === "unavailable") {
     return {
-      ...recipe,
+      status: recipe.status,
+      recipe_id: recipe.recipe_id,
+      name: recipe.name,
+      rarity: recipe.rarity,
       price_silver: null,
       known: null,
+      reason: recipe.reason,
     };
   }
   return {
-    ...recipe,
+    status: recipe.status,
+    recipe_id: recipe.recipe_id,
+    name: recipe.name,
+    rarity: recipe.rarity,
     price_silver: finiteInt(cooking.recipePrices?.[recipe.rarity]) ?? 0,
     known: knownIds ? knownIds.has(recipe.recipe_id) : null,
+    reason: null,
   };
 }
 
