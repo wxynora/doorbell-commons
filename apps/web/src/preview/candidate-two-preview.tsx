@@ -1248,6 +1248,7 @@ export type CandidateTwoAction =
   | { type: "lingye-glimmer-open" }
   | { type: "lingye-memorial-open" }
   | { type: "lingye-together-open" }
+  | { type: "lingye-presence-change"; active: boolean }
   | { type: "home-mailbox-list"; category: MailboxCategory | null; page: number }
   | { type: "home-mailbox-detail-open"; letterId: string }
   | { type: "home-mailbox-claim"; letterId: string }
@@ -1287,6 +1288,7 @@ const candidateTwoActionKeys = {
   "lingye-glimmer-open": ["type"],
   "lingye-memorial-open": ["type"],
   "lingye-together-open": ["type"],
+  "lingye-presence-change": ["type", "active"],
   "home-mailbox-list": ["type", "category", "page"],
   "home-mailbox-detail-open": ["type", "letterId"],
   "home-mailbox-claim": ["type", "letterId"],
@@ -1396,6 +1398,10 @@ export function parseCandidateTwoAction(value: unknown): CandidateTwoAction | nu
       candidateTwoInternalPaths.includes(value.path as CandidateTwoInternalPath)
       ? { type, path: value.path as CandidateTwoInternalPath }
       : null;
+  }
+
+  if (type === "lingye-presence-change") {
+    return typeof value.active === "boolean" ? { type, active: value.active } : null;
   }
 
   if (type === "home-settings-save") {
@@ -10516,6 +10522,10 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         if (currentStage === 'authenticated') {
             syncAuthenticatedMainNavigation(screenId);
         }
+        sendAction({
+            type: 'lingye-presence-change',
+            active: screenId === 'screen-lingye' || screenId.startsWith('screen-lingye-'),
+        });
         if (screenId === 'screen-home') syncHomeScale();
         if (screenId === 'screen-lingye-memorial') {
             scheduleMemorialLayoutFit(memorialEntry.hidden ? 'index' : 'entry');

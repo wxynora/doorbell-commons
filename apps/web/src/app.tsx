@@ -50,6 +50,7 @@ import { BellAccessPanel } from "./components/bell-access-panel";
 import { McpAccessPage } from "./components/mcp-access-panel";
 import { ResidencePermitTransition } from "./components/residence-permit-transition";
 import { FarmLazyBoundary, FarmLazyFailure, FarmLazyLoading } from "./farm/page/farm-lazy-boundary";
+import { LingyeBackgroundMusic } from "./lingye/lingye-background-music";
 import {
   buildCandidateTwoDemoPreset,
   type CandidateTwoAction,
@@ -383,6 +384,7 @@ function LiveApp() {
   );
   const [showMcpAfterPermit, setShowMcpAfterPermit] = useState(false);
   const [showBellAccess, setShowBellAccess] = useState(false);
+  const [lingyeScreenActive, setLingyeScreenActive] = useState(false);
   const lingyeRequestIdsRef = useRef({ glimmer: 0, memorial: 0, together: 0 });
   const lingyeControllersRef = useRef<{
     glimmer: AbortController | null;
@@ -640,6 +642,11 @@ function LiveApp() {
 
   const handleCandidateAction = useCallback(
     async (action: CandidateTwoAction) => {
+      if (action.type === "lingye-presence-change") {
+        setLingyeScreenActive(action.active);
+        return;
+      }
+
       if (action.type === "navigate") {
         if (action.path === DOORBELL_FARM_PATH && appState.stage === "authenticated") {
           openFarmPage();
@@ -837,6 +844,7 @@ function LiveApp() {
           return;
         }
         setShowMcpAfterPermit(false);
+        setLingyeScreenActive(false);
         setShowBellAccess(false);
         lingyeControllersRef.current.glimmer?.abort();
         lingyeControllersRef.current.memorial?.abort();
@@ -1152,6 +1160,7 @@ function LiveApp() {
         const result = await deleteHumanSession();
         if (result.ok || result.issue.code === "authentication_required") {
           setShowMcpAfterPermit(false);
+          setLingyeScreenActive(false);
           if (isDoorbellFarmPath(window.location.pathname)) {
             window.history.replaceState({}, "", "/");
           }
@@ -1229,6 +1238,7 @@ function LiveApp() {
         onAction={handleCandidateAction}
         state={authenticatedViewState(appState)}
       />
+      <LingyeBackgroundMusic active={lingyeScreenActive || activeInternalPage === "farm"} />
       {appState.stage === "authenticated" && showBellAccess ? (
         <BellAccessPanel onClose={() => setShowBellAccess(false)} />
       ) : null}
@@ -1253,8 +1263,14 @@ function LiveApp() {
 function CandidateTwoDemoApp({ initialPreset }: { initialPreset: CandidateTwoDemoPreset }) {
   const [preset, setPreset] = useState(initialPreset);
   const [activeInternalPage, setActiveInternalPage] = useState<"community" | "farm">("community");
+  const [lingyeScreenActive, setLingyeScreenActive] = useState(false);
 
   const handleDemoAction = useCallback((action: CandidateTwoAction) => {
+    if (action.type === "lingye-presence-change") {
+      setLingyeScreenActive(action.active);
+      return;
+    }
+
     if (action.type === "navigate") {
       if (action.path === DOORBELL_FARM_PATH) {
         setActiveInternalPage("farm");
@@ -1278,6 +1294,7 @@ function CandidateTwoDemoApp({ initialPreset }: { initialPreset: CandidateTwoDem
     }
 
     if (action.type === "logout") {
+      setLingyeScreenActive(false);
       setPreset(buildCandidateTwoDemoPreset("login"));
     }
   }, []);
@@ -1285,6 +1302,7 @@ function CandidateTwoDemoApp({ initialPreset }: { initialPreset: CandidateTwoDem
   return (
     <div className="live-app">
       <CandidateTwoPreview demo={preset.demo} onAction={handleDemoAction} state={preset.state} />
+      <LingyeBackgroundMusic active={lingyeScreenActive || activeInternalPage === "farm"} />
       {activeInternalPage === "farm" ? (
         <FarmLazyBoundary
           fallback={
