@@ -2,6 +2,10 @@ import { createHash } from "node:crypto";
 import { refreshKitchenIngredients } from "../engine.js";
 import { replaceFarm } from "../store.js";
 import { kitchenShopRevisionFromData, projectHumanKitchen } from "./kitchen-structured.js";
+import {
+  createMinimalHumanActionReceipt,
+  replayMinimalHumanActionReceipt,
+} from "../minimal-action-receipt.js";
 
 const FARM_DOORPLATE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -89,6 +93,15 @@ function currentKitchenState(farm, now, options) {
   }
 }
 
+function responseFor(farm, now, options, result) {
+  const projected = projectHumanKitchen(farm, now, options);
+  return {
+    data: { result, resource: projected.data },
+    shop_revision: projected.shop_revision,
+    server_time: projected.server_time,
+  };
+}
+
 function unavailableShop(projected) {
   const reason = projected?.data?.daily_shop?.reason;
   return reason === "stale_shop"
@@ -119,12 +132,24 @@ export function handleHumanKitchenShopRefresh(farm, body, now = Date.now(), opti
   const requestFingerprint = fingerprint(body);
   const existing = receipts[body.idempotency_key];
   if (existing !== undefined) {
-    return existing?.fingerprint === requestFingerprint && isRecord(existing.response)
-      ? { status: 200, json: existing.response }
-      : errorResponse(
-          "idempotency_conflict",
-          "This idempotency key was used for a different request",
-        );
+    if (existing?.fingerprint !== requestFingerprint) {
+      return errorResponse(
+        "idempotency_conflict",
+        "This idempotency key was used for a different request",
+      );
+    }
+    try {
+      const response = replayMinimalHumanActionReceipt(
+        existing,
+        requestFingerprint,
+        responseFor(farm, now, options, null),
+      );
+      return response
+        ? { status: 200, json: response }
+        : errorResponse("idempotency_conflict", "The stored action receipt is invalid");
+    } catch {
+      return errorResponse("farm_unavailable", "The kitchen could not be read", 503);
+    }
   }
 
   const current = currentKitchenState(farm, now, options);
@@ -190,30 +215,23 @@ export function handleHumanKitchenShopRefresh(farm, body, now = Date.now(), opti
       return errorResponse("farm_unavailable", "The kitchen refresh state was invalid", 503);
     }
 
-    const response = {
-      data: {
-        result: {
-          receipt_id: body.idempotency_key,
-          cost_coins: authority.cost,
-          coins_balance: authority.coins,
-          refresh_window_id: dailyShop.refresh_window_id,
-          refresh_used_count: dailyShop.refresh_used_count,
-          refresh_remaining_count: dailyShop.refresh_remaining_count,
-          refresh_limit: dailyShop.refresh_limit,
-          next_cost_coins: dailyShop.next_cost_coins,
-          can_refresh: dailyShop.can_refresh,
-        },
-        resource: projected.data,
-      },
-      shop_revision: projected.shop_revision,
-      server_time: projected.server_time,
-    };
+    const response = responseFor(working, now, options, {
+      receipt_id: body.idempotency_key,
+      cost_coins: authority.cost,
+      coins_balance: authority.coins,
+      refresh_window_id: dailyShop.refresh_window_id,
+      refresh_used_count: dailyShop.refresh_used_count,
+      refresh_remaining_count: dailyShop.refresh_remaining_count,
+      refresh_limit: dailyShop.refresh_limit,
+      next_cost_coins: dailyShop.next_cost_coins,
+      can_refresh: dailyShop.can_refresh,
+    });
 
     working.doorbellHumanKitchenShopRefreshReceipts = {
       ...(isRecord(working.doorbellHumanKitchenShopRefreshReceipts)
         ? working.doorbellHumanKitchenShopRefreshReceipts
         : {}),
-      [body.idempotency_key]: { fingerprint: requestFingerprint, response },
+      [body.idempotency_key]: createMinimalHumanActionReceipt(requestFingerprint, response),
     };
     replaceFarm(farm.id, working);
     return { status: 200, json: response };

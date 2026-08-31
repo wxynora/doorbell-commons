@@ -2,6 +2,10 @@ import { createHash } from "node:crypto";
 import { refreshShop } from "../engine.js";
 import { replaceFarm } from "../store.js";
 import { projectHumanFarmCatalog } from "./farm-catalog-structured.js";
+import {
+  createMinimalHumanActionReceipt,
+  replayMinimalHumanActionReceipt,
+} from "../minimal-action-receipt.js";
 
 const FARM_DOORPLATE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -79,6 +83,16 @@ function currentShop(farm, now) {
   };
 }
 
+function responseFor(farm, now, result) {
+  const projected = projectHumanFarmCatalog(farm, now);
+  const shop = projected.data.shop;
+  return {
+    data: { result, resource: shop },
+    shop_revision: shop.status === "available" ? shop.revision : null,
+    server_time: projected.server_time,
+  };
+}
+
 /**
  * Bring the persisted field shop forward through the existing four-hour
  * authority. The catalog GET remains read-only; opening the shop is the only
@@ -91,12 +105,27 @@ export function handleHumanFarmShopOpen(farm, body, now = Date.now()) {
   const requestFingerprint = fingerprint(body);
   const existing = receipts[body.idempotency_key];
   if (existing !== undefined) {
-    return existing?.fingerprint === requestFingerprint && isRecord(existing.response)
-      ? { status: 200, json: existing.response }
-      : errorResponse(
-          "idempotency_conflict",
-          "This idempotency key was used for a different request",
-        );
+    if (existing?.fingerprint !== requestFingerprint) {
+      return errorResponse(
+        "idempotency_conflict",
+        "This idempotency key was used for a different request",
+      );
+    }
+    try {
+      const response = replayMinimalHumanActionReceipt(
+        existing,
+        requestFingerprint,
+        responseFor(farm, now, null),
+      );
+      return response
+        ? { status: 200, json: response }
+        : errorResponse(
+            "idempotency_conflict",
+            "This idempotency key was used for a different request",
+          );
+    } catch {
+      return errorResponse("farm_unavailable", "The farm shop could not be read", 503);
+    }
   }
 
   let before;
@@ -124,21 +153,14 @@ export function handleHumanFarmShopOpen(farm, body, now = Date.now()) {
       return errorResponse("shop_unavailable", "The current farm shop is unavailable");
     }
     const refreshed = Number(working.shop?.refreshAt) !== beforeRefreshAt;
-    const response = {
-      data: {
-        result: {
-          receipt_id: body.idempotency_key,
-          refreshed,
-        },
-        resource: shop,
-      },
-      shop_revision: shop.revision,
-      server_time: projected.server_time,
-    };
+    const response = responseFor(working, now, {
+      receipt_id: body.idempotency_key,
+      refreshed,
+    });
 
     working[RECEIPTS_FIELD] = {
       ...(isRecord(working[RECEIPTS_FIELD]) ? working[RECEIPTS_FIELD] : {}),
-      [body.idempotency_key]: { fingerprint: requestFingerprint, response },
+      [body.idempotency_key]: createMinimalHumanActionReceipt(requestFingerprint, response),
     };
     replaceFarm(farm.id, working);
     return { status: 200, json: response };

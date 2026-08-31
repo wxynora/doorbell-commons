@@ -4,9 +4,14 @@ import { bumpDaily } from "../daily.js";
 import { onTaskEvent } from "../tasks.js";
 import { checkTitles } from "../titles.js";
 import { pushSocialInbox } from "../engine.js";
-import { getFarm, save } from "../store.js";
+import { getFarm, replaceFarmsAtomic } from "../store.js";
 import { projectHumanFarmCatalog } from "./farm-catalog-structured.js";
 import { neighborhoodMessageActionRevision } from "./neighborhood-revision.js";
+import {
+  normalizeMinimalHumanActionReceipt,
+  createMinimalHumanActionReceipt,
+  replayMinimalHumanActionReceipt,
+} from "../minimal-action-receipt.js";
 
 export { neighborhoodMessageActionRevision } from "./neighborhood-revision.js";
 
@@ -139,6 +144,17 @@ function projectNeighborhoodResource(farm, now, messages = projectedMessages(far
   return { ...projected, messages };
 }
 
+function responseFor(source, target, now, result) {
+  return {
+    data: {
+      result,
+      resource: projectNeighborhoodResource(target, now),
+    },
+    revision: neighborhoodMessageActionRevision(source, now),
+    server_time: new Date(now).toISOString(),
+  };
+}
+
 function restoreFarm(target, snapshot) {
   for (const key of Object.keys(target)) delete target[key];
   Object.assign(target, structuredClone(snapshot));
@@ -163,23 +179,12 @@ function withWorkingPair(source, target, sourceWorking, targetWorking, callback)
 }
 
 function commitFarmPair(source, target, sourceWorking, targetWorking) {
-  const sourceBefore = structuredClone(source);
-  const targetBefore = source === target ? sourceBefore : structuredClone(target);
-  try {
-    for (const key of Object.keys(source)) delete source[key];
-    Object.assign(source, sourceWorking);
-    if (source !== target) {
-      for (const key of Object.keys(target)) delete target[key];
-      Object.assign(target, targetWorking);
-    }
-    // store.save writes the complete world to a temporary file and renames it;
-    // both farm mutations therefore become visible in the same persisted world.
-    save();
-  } catch (error) {
-    restoreFarm(source, sourceBefore);
-    if (source !== target) restoreFarm(target, targetBefore);
-    throw error;
-  }
+  replaceFarmsAtomic(source === target
+    ? [{ id: source.id, farm: sourceWorking }]
+    : [
+        { id: source.id, farm: sourceWorking },
+        { id: target.id, farm: targetWorking },
+      ]);
 }
 
 function bindingError(farm, body) {
@@ -234,9 +239,25 @@ export function handleHumanNeighborhoodMessageAction(farm, body, now = Date.now(
   const requestFingerprint = fingerprint(body);
   const existing = receipts[key];
   if (existing !== undefined) {
-    return existing?.fingerprint === requestFingerprint && isRecord(existing.response)
-      ? { status: 200, json: existing.response }
-      : errorResponse("idempotency_conflict", "This idempotency key was used for a different request");
+    if (existing?.fingerprint !== requestFingerprint) {
+      return errorResponse("idempotency_conflict", "This idempotency key was used for a different request");
+    }
+    try {
+      const stable = normalizeMinimalHumanActionReceipt(existing).result;
+      const target = getFarm(stable?.target_farm_doorplate);
+      const response = target
+        ? replayMinimalHumanActionReceipt(
+            existing,
+            requestFingerprint,
+            responseFor(farm, target, now, null),
+          )
+        : null;
+      return response
+        ? { status: 200, json: response }
+        : errorResponse("idempotency_conflict", "This idempotency key was used for a different request");
+    } catch {
+      return errorResponse("farm_unavailable", "The neighborhood could not be read");
+    }
   }
 
   const target = getFarm(body.target_farm_doorplate);
@@ -290,28 +311,18 @@ export function handleHumanNeighborhoodMessageAction(farm, body, now = Date.now(
       target,
       sourceWorking,
       targetWorking,
-      () => {
-        const resource = projectNeighborhoodResource(target, now);
-        return {
-          data: {
-            result: {
-              receipt_id: key,
-              target_farm_doorplate: targetWorking.id,
-              message_id: message.id,
-              message: projectMessage(message),
-            },
-            resource,
-          },
-          revision: neighborhoodMessageActionRevision(farm, now),
-          server_time: new Date(now).toISOString(),
-        };
-      },
+      () => responseFor(farm, target, now, {
+        receipt_id: key,
+        target_farm_doorplate: targetWorking.id,
+        message_id: message.id,
+        message: projectMessage(message),
+      }),
     );
     sourceWorking.doorbellHumanNeighborhoodMessageReceipts = {
       ...(isRecord(sourceWorking.doorbellHumanNeighborhoodMessageReceipts)
         ? sourceWorking.doorbellHumanNeighborhoodMessageReceipts
         : {}),
-      [key]: { fingerprint: requestFingerprint, response },
+      [key]: createMinimalHumanActionReceipt(requestFingerprint, response),
     };
 
     commitFarmPair(farm, target, sourceWorking, targetWorking);

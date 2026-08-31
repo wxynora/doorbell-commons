@@ -16,6 +16,19 @@ import {
 import { setGlimmerVariant } from "../glimmer.js";
 import { replaceFarm } from "../store.js";
 import { projectHumanRanch } from "./ranch-structured.js";
+import {
+  createMinimalHumanActionReceipt,
+  replayMinimalHumanActionReceipt,
+} from "../minimal-action-receipt.js";
+
+function responseFor(farm, now, result) {
+  const resource = projectHumanRanch(farm, now);
+  return {
+    data: { result, resource: resource.data },
+    revision: resource.revision,
+    server_time: resource.server_time,
+  };
+}
 
 const FARM_DOORPLATE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/;
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -312,12 +325,27 @@ export function handleHumanRanchResidentAction(farm, body, now = Date.now()) {
   const requestFingerprint = fingerprint(body);
   const existing = receipts[key];
   if (existing !== undefined) {
-    return existing?.fingerprint === requestFingerprint && isRecord(existing.response)
-      ? { status: 200, json: existing.response }
-      : errorResponse(
-          "idempotency_conflict",
-          "This idempotency key was used for a different request",
-        );
+    if (existing?.fingerprint !== requestFingerprint) {
+      return errorResponse(
+        "idempotency_conflict",
+        "This idempotency key was used for a different request",
+      );
+    }
+    try {
+      const response = replayMinimalHumanActionReceipt(
+        existing,
+        requestFingerprint,
+        responseFor(farm, now, null),
+      );
+      return response
+        ? { status: 200, json: response }
+        : errorResponse("idempotency_conflict", "The stored action receipt is invalid");
+    } catch {
+      return {
+        status: 503,
+        json: { error: { code: "farm_unavailable", message: "The ranch could not be read" } },
+      };
+    }
   }
 
   let current;
@@ -360,27 +388,19 @@ export function handleHumanRanchResidentAction(farm, body, now = Date.now()) {
     if (!outcome) {
       return errorResponse("action_rejected", "The ranch action returned an unusable result");
     }
-    const resource = projectHumanRanch(working, now);
-    const response = {
-      data: {
-        result: {
-          receipt_id: key,
-          action: body.action,
-          resident_type: body.resident_type,
-          kind_id: body.kind_id,
-          outcome,
-        },
-        resource: resource.data,
-      },
-      revision: resource.revision,
-      server_time: resource.server_time,
-    };
+    const response = responseFor(working, now, {
+      receipt_id: key,
+      action: body.action,
+      resident_type: body.resident_type,
+      kind_id: body.kind_id,
+      outcome,
+    });
 
     working.doorbellHumanRanchResidentActionReceipts = {
       ...(isRecord(working.doorbellHumanRanchResidentActionReceipts)
         ? working.doorbellHumanRanchResidentActionReceipts
         : {}),
-      [key]: { fingerprint: requestFingerprint, response },
+      [key]: createMinimalHumanActionReceipt(requestFingerprint, response),
     };
     replaceFarm(farm.id, working);
     return { status: 200, json: response };

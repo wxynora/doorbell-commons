@@ -4,6 +4,10 @@ import { buyFromMarket } from "../game.js";
 import { dumpUgc, loadUgc } from "../ugc.js";
 import { normalizeFarm, replaceFarmsAtomic } from "../store.js";
 import { marketActionRevision } from "./market-revision.js";
+import {
+  createMinimalHumanActionReceipt,
+  replayMinimalHumanActionReceipt,
+} from "../minimal-action-receipt.js";
 
 const FARM_DOORPLATE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -131,15 +135,19 @@ function barterOutcome(body, result) {
   };
 }
 
-function responseFor(buyer, seller, body, result, now) {
+function stableResult(body, result) {
   const outcome = body.action === "buy" ? buyOutcome(body, result) : barterOutcome(body, result);
   return {
+    receipt_id: body.idempotency_key,
+    action: body.action,
+    outcome,
+  };
+}
+
+function responseFor(buyer, seller, result, now) {
+  return {
     data: {
-      result: {
-        receipt_id: body.idempotency_key,
-        action: body.action,
-        outcome,
-      },
+      result,
       buyer_doorplate: buyer.id,
       seller_doorplate: seller.id,
     },
@@ -177,9 +185,21 @@ export function handleHumanCrossFarmMarketAction(buyer, seller, body, now = Date
   const receipts = isRecord(buyer[MARKET_RECEIPTS]) ? buyer[MARKET_RECEIPTS] : {};
   const existing = receipts[body.idempotency_key];
   if (existing !== undefined) {
-    return existing?.fingerprint === requestFingerprint && isRecord(existing.response)
-      ? { status: 200, json: existing.response }
-      : errorResponse("idempotency_conflict", "This idempotency key was used for a different request");
+    if (existing?.fingerprint !== requestFingerprint) {
+      return errorResponse("idempotency_conflict", "This idempotency key was used for a different request");
+    }
+    try {
+      const response = replayMinimalHumanActionReceipt(
+        existing,
+        requestFingerprint,
+        responseFor(buyer, seller, null, now),
+      );
+      return response
+        ? { status: 200, json: response }
+        : errorResponse("idempotency_conflict", "The stored action receipt is invalid");
+    } catch {
+      return errorResponse("farm_unavailable", "The market state could not be read", undefined, 503);
+    }
   }
 
   let currentRevision;
@@ -205,10 +225,15 @@ export function handleHumanCrossFarmMarketAction(buyer, seller, body, now = Date
       return errorResponse("action_rejected", result?.error || "The market action was rejected", currentRevision);
     }
     nextUgc = structuredClone(dumpUgc());
-    const response = responseFor(buyerWorking, sellerWorking, body, result, now);
+    const response = responseFor(
+      buyerWorking,
+      sellerWorking,
+      stableResult(body, result),
+      now,
+    );
     buyerWorking[MARKET_RECEIPTS] = {
       ...(isRecord(buyerWorking[MARKET_RECEIPTS]) ? buyerWorking[MARKET_RECEIPTS] : {}),
-      [body.idempotency_key]: { fingerprint: requestFingerprint, response },
+      [body.idempotency_key]: createMinimalHumanActionReceipt(requestFingerprint, response),
     };
     // The authorities may have updated the live UGC catalog while operating
     // on clones (UGC sales counters); restore it before the store commit so a

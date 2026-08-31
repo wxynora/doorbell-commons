@@ -21,6 +21,7 @@ import {
     constableExamTheftEligibility,
     publishBoundSource,
     publicCommissionSource,
+    requireStandaloneP3Checkpoint,
     recoverBoundNpcSource,
     recoverPendingNpcFallbackServices,
     reporterMaterialPackForJob,
@@ -1726,6 +1727,7 @@ function crossStoreOperation(database, actionKey) {
 }
 
 function beginCommissionWorldOperation(database, backend, residentId, career, args, sources, actionKey, payloadHash, now) {
+    requireStandaloneP3Checkpoint(database);
     return runLingyeWorldTransaction(database, () => {
         const existing = crossStoreOperation(database, actionKey);
         if (existing)
@@ -1856,6 +1858,7 @@ function completeCommissionWorldOperation(database, backend, row, world) {
 function resumeCommissionWorldOperation(database, backend, row, afterWorldApplyForTesting) {
     if (row.status === "completed")
         return JSON.parse(row.result_json);
+    requireStandaloneP3Checkpoint(database);
     const job = backend.trustedQueries.getJob(row.job_id);
     let world = row.world_result_json ? JSON.parse(row.world_result_json) : null;
     if (!world) {
@@ -2302,6 +2305,20 @@ function commissionAction(database, backend, residentId, career, args, sources, 
         }
         return resumeCommissionWorldOperation(database, backend, crossStore,
             afterWorldApplyForTesting);
+    }
+    if (/^commission:npc(?::|-transfer:)/u.test(args.option)) {
+        // NPC fallback owns its pending -> world -> final SQL checkpoints.
+        // Keeping it inside the generic receipt transaction would roll back
+        // the reservation after the world receipt had already been published.
+        const response = commissionChoose(database, backend, residentId, career, args, sources, now);
+        return runLingyeWorldTransaction(database, () => {
+            database.prepare(`
+              INSERT INTO lingye_commission_action_receipts (
+                action_key, resident_id, career, payload_hash, result_json, created_at
+              ) VALUES (?, ?, ?, ?, ?, ?)
+            `).run(actionKey, residentId, career, payloadHash, JSON.stringify(response), now);
+            return response;
+        });
     }
     return runLingyeWorldTransaction(database, () => {
         const response = commissionChoose(database, backend, residentId, career, args, sources, now);

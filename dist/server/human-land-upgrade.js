@@ -4,6 +4,19 @@ import { landTierByLevel } from "../content.js";
 import { advance, upgradeLand } from "../engine.js";
 import { replaceFarm } from "../store.js";
 import { projectHumanField } from "./human-structured.js";
+import {
+    createMinimalHumanActionReceipt,
+    replayMinimalHumanActionReceipt,
+} from "../minimal-action-receipt.js";
+
+function responseFor(farm, now, result) {
+    const resource = projectHumanField(farm, now);
+    return {
+        data: { result, resource: resource.data },
+        revision: resource.revision,
+        server_time: resource.server_time,
+    };
+}
 
 function canonicalize(value) {
     if (Array.isArray(value))
@@ -57,9 +70,17 @@ export function handleHumanLandUpgrade(farm, body, now = Date.now()) {
     const fp = fingerprint(body);
     if (Object.prototype.hasOwnProperty.call(receipts, key)) {
         const old = receipts[key];
-        return old.fingerprint === fp
-            ? { status: 200, json: old.response }
-            : errorResponse("idempotency_conflict", "This idempotency key was used for a different request");
+        if (old?.fingerprint !== fp)
+            return errorResponse("idempotency_conflict", "This idempotency key was used for a different request");
+        try {
+            const response = replayMinimalHumanActionReceipt(old, fp, responseFor(farm, now, null));
+            return response
+                ? { status: 200, json: response }
+                : errorResponse("idempotency_conflict", "This idempotency key was used for a different request");
+        }
+        catch {
+            return { status: 503, json: { error: { code: "farm_unavailable", message: "The farm field could not be read" } } };
+        }
     }
 
     let current;
@@ -82,7 +103,6 @@ export function handleHumanLandUpgrade(farm, body, now = Date.now()) {
             return errorResponse("land_upgrade_rejected", upgraded.error, current.revision);
 
         const upgradedLand = landSnapshot(working);
-        const resource = projectHumanField(working, now);
         const result = {
             receipt_id: key,
             previous_land: previousLand,
@@ -90,14 +110,10 @@ export function handleHumanLandUpgrade(farm, body, now = Date.now()) {
             farm_coins_spent: coinsBefore - working.coins,
             message: upgraded.text,
         };
-        const response = {
-            data: { result, resource: resource.data },
-            revision: resource.revision,
-            server_time: resource.server_time,
-        };
+        const response = responseFor(working, now, result);
         working.doorbellHumanLandUpgradeReceipts = {
             ...(working.doorbellHumanLandUpgradeReceipts ?? {}),
-            [key]: { fingerprint: fp, response },
+            [key]: createMinimalHumanActionReceipt(fp, response),
         };
         replaceFarm(farm.id, working);
         return { status: 200, json: response };

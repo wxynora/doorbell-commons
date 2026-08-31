@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import { advance, steal, visitorWater, tryWaterReward, buyPotionSet, ensureHumanKey, pushSocialInbox, pushLog, craft, cookingDebuffReason, cookingDebuffStatusText, bribeGuardDog } from "./engine.js";
 import { dispatch, farmView, viewShop, viewEncyclopedia, shopBrief, viewMarket, buyFromMarket, visitView, tendNpc, buyNpcSeed, hasDamagedPublicName, viewKitchen } from "./game.js";
 import { harvestText, stealThiefText, statusFooter, waterText } from "./flavor.js";
-import { createFarm, getFarm, allFarms, playerFarms, save, getGlimmerWorld, getPublicExpeditionWorld, getQixiLantern2026World, restoreWorldSnapshotInMemory, setWorldCommitCoordinator, snapshotWorldForRollback, withWorldCommitContext } from "./store.js";
+import { createFarm, getFarm, allFarms, playerFarms, save, getGlimmerWorld, getPublicExpeditionWorld, getQixiLantern2026World, restoreWorldSnapshotInMemory, setWorldCommitCoordinator, setWorldPersistenceAdapter, snapshotWorldForRollback, withWorldCommitContext } from "./store.js";
 import { MAX_FARMS, MESSAGE_TEXT_MAX, MESSAGES_MAX, NPC_ID, GROW_TICKS, BASE, REGISTRATION_OPEN, REGISTRATION_CLOSED_TEXT, REGISTRATION_CAP, REGISTRATION_FULL_TEXT, SHOW_MIGRATION_NOTICE, MIGRATION_NOTICE_TEXT, MIGRATION_NOTICE_HTML } from "./config.js";
 import { allowRequest, allowCreate, sweepGuard } from "./guard.js";
 import { sweepNonces, htmlReadme, htmlGuide } from "./agent.js";
@@ -663,8 +663,16 @@ function maintenanceOut(req, res, parts, method) {
     }
     return jsonOut(res, 503, { ok: false, text: MAINTENANCE_API_TEXT });
 }
-export function startServer(port, host = "127.0.0.1") {
-    const lingyeWorldDatabase = openLingyeWorldDatabase();
+export function startServer(port, host = "127.0.0.1", options = {}) {
+    const injectedDatabase = options?.lingyeWorldDatabase;
+    if (injectedDatabase !== undefined &&
+        (!injectedDatabase || typeof injectedDatabase.prepare !== "function" || typeof injectedDatabase.close !== "function")) {
+        throw new TypeError("startServer lingyeWorldDatabase must be a DatabaseSync instance");
+    }
+    const ownsLingyeWorldDatabase = injectedDatabase === undefined;
+    const closeLingyeWorldDatabaseOnClose = ownsLingyeWorldDatabase || options.closeLingyeWorldDatabaseOnClose === true;
+    const clearWorldPersistenceAdapterOnClose = options.clearWorldPersistenceAdapterOnClose === true;
+    const lingyeWorldDatabase = injectedDatabase ?? openLingyeWorldDatabase();
     let rescheduleReporterEvaluation = () => {};
     activeLingyeWorldDatabase = lingyeWorldDatabase;
     const lingyeEconomyRules = Object.freeze({
@@ -697,7 +705,10 @@ export function startServer(port, host = "127.0.0.1") {
     }
     catch (error) {
         setWorldCommitCoordinator(null);
-        lingyeWorldDatabase.close();
+        if (clearWorldPersistenceAdapterOnClose)
+            setWorldPersistenceAdapter(null);
+        if (closeLingyeWorldDatabaseOnClose && lingyeWorldDatabase.isOpen)
+            lingyeWorldDatabase.close();
         activeLingyeWorldDatabase = null;
         activeLingyeWorldBackend = null;
         throw error;
@@ -1028,11 +1039,14 @@ export function startServer(port, host = "127.0.0.1") {
         if (reporterEvaluationTimer)
             clearTimeout(reporterEvaluationTimer);
         setWorldCommitCoordinator(null);
+        if (clearWorldPersistenceAdapterOnClose)
+            setWorldPersistenceAdapter(null);
         if (activeLingyeWorldDatabase === lingyeWorldDatabase)
             activeLingyeWorldDatabase = null;
         if (activeLingyeWorldBackend === lingyeWorldBackend)
             activeLingyeWorldBackend = null;
-        lingyeWorldDatabase.close();
+        if (closeLingyeWorldDatabaseOnClose && lingyeWorldDatabase.isOpen)
+            lingyeWorldDatabase.close();
     });
     server.listen(port, host, () => console.log(`[server] 🌾 AI 农场已开门 http://${host}:${port}`));
     return server;

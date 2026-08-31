@@ -5,8 +5,12 @@ import {
   farmSendRanch,
   ranchRemit,
 } from "../engine.js";
-import { playerFarms, save } from "../store.js";
+import { playerFarms, replaceFarmsAtomic } from "../store.js";
 import { projectHumanRanch, ranchDispatchHealthReason } from "./ranch-structured.js";
+import {
+  createMinimalHumanActionReceipt,
+  replayMinimalHumanActionReceipt,
+} from "../minimal-action-receipt.js";
 
 const FARM_DOORPLATE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/;
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -219,32 +223,18 @@ function actionResult(body, authorityResult, target) {
   }
 }
 
-function setFarmState(target, source) {
-  for (const key of Object.keys(target)) delete target[key];
-  Object.assign(target, structuredClone(source));
-}
-
 /**
- * Commit one or more already-cloned farm states with one world save.  The
- * store has no multi-farm replace primitive, so the in-memory references are
- * replaced together and restored from snapshots if the atomic world save
- * fails.  No authority is called against live farm objects.
+ * Commit one or more already-cloned farm states through the store's explicit
+ * multi-farm delta. No authority is called against live farm objects.
  */
 function commitFarmStates(entries) {
-  const snapshots = entries.map(({ actual }) => ({ actual, snapshot: structuredClone(actual) }));
-  try {
-    for (const { actual, working } of entries) setFarmState(actual, working);
-    save();
-  } catch (error) {
-    for (const { actual, snapshot } of snapshots) setFarmState(actual, snapshot);
-    throw error;
-  }
+  replaceFarmsAtomic(entries.map(({ actual, working }) => ({ id: actual.id, farm: working })));
 }
 
 function storeReceipt(working, key, requestFingerprint, response) {
   working[RECEIPTS_FIELD] = {
     ...(isRecord(working[RECEIPTS_FIELD]) ? working[RECEIPTS_FIELD] : {}),
-    [key]: { fingerprint: requestFingerprint, response },
+    [key]: createMinimalHumanActionReceipt(requestFingerprint, response),
   };
 }
 
@@ -268,6 +258,17 @@ function currentResource(farm, now) {
   }
 }
 
+function responseFor(farm, now, result) {
+  const resource = currentResource(farm, now);
+  return resource
+    ? {
+        data: { result, resource: resource.data },
+        revision: resource.revision,
+        server_time: resource.server_time,
+      }
+    : null;
+}
+
 /**
  * Execute dispatch/catch/remit/send through the existing farm authorities.
  * Inputs are stable IDs and current ranch revision only; prices, probability,
@@ -285,9 +286,17 @@ export function handleHumanRanchInteractionAction(farm, body, now = Date.now()) 
   const receipts = isRecord(farm[RECEIPTS_FIELD]) ? farm[RECEIPTS_FIELD] : {};
   const existing = receipts[key];
   if (existing !== undefined) {
-    return existing?.fingerprint === requestFingerprint && isRecord(existing.response)
-      ? { status: 200, json: existing.response }
-      : errorResponse("idempotency_conflict", "This idempotency key was used for a different request");
+    if (existing?.fingerprint !== requestFingerprint) {
+      return errorResponse("idempotency_conflict", "This idempotency key was used for a different request");
+    }
+    const response = replayMinimalHumanActionReceipt(
+      existing,
+      requestFingerprint,
+      responseFor(farm, now, null),
+    );
+    return response
+      ? { status: 200, json: response }
+      : unavailable("The ranch could not be read");
   }
 
   const current = currentResource(farm, now);
@@ -371,20 +380,12 @@ export function handleHumanRanchInteractionAction(farm, body, now = Date.now()) 
   if (!outcome) return unavailable("The ranch interaction returned an invalid result");
 
   const responseFarm = body.action === "catch" ? workingTarget : workingFarm;
-  const resource = currentResource(responseFarm, now);
-  if (!resource) return unavailable("The ranch interaction resource could not be read");
-  const response = {
-    data: {
-      result: {
-        receipt_id: key,
-        action: body.action,
-        outcome,
-      },
-      resource: resource.data,
-    },
-    revision: resource.revision,
-    server_time: resource.server_time,
-  };
+  const response = responseFor(responseFarm, now, {
+    receipt_id: key,
+    action: body.action,
+    outcome,
+  });
+  if (!response) return unavailable("The ranch interaction resource could not be read");
   const receiptFarm = body.action === "dispatch" ? workingFarm : workingTarget;
   storeReceipt(receiptFarm, key, requestFingerprint, response);
 

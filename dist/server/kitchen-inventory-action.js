@@ -7,6 +7,10 @@ import { sellFishingCatchIds, sellFishingTreasure } from "../fishing.js";
 import { replaceFarm } from "../store.js";
 import { kitchenInventoryRevisionFromData } from "./kitchen-inventory-revision.js";
 import { projectHumanKitchen } from "./kitchen-structured.js";
+import {
+  createMinimalHumanActionReceipt,
+  replayMinimalHumanActionReceipt,
+} from "../minimal-action-receipt.js";
 
 const FARM_DOORPLATE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -184,6 +188,17 @@ function currentResource(farm, now, options) {
   }
 }
 
+function responseFor(farm, now, options, result) {
+  const resource = currentResource(farm, now, options);
+  return resource
+    ? {
+        data: { result, resource: resource.data },
+        kitchen_inventory_revision: resource.revision,
+        server_time: resource.server_time,
+      }
+    : null;
+}
+
 function actionOutcome(body, result) {
   if (!result || result.ok !== true) return null;
   switch (body.action) {
@@ -278,9 +293,17 @@ export function handleHumanKitchenInventoryAction(farm, body, now = Date.now(), 
   const receipts = isRecord(farm[RECEIPTS_FIELD]) ? farm[RECEIPTS_FIELD] : {};
   const existing = receipts[key];
   if (existing !== undefined) {
-    return existing?.fingerprint === requestFingerprint && isRecord(existing.response)
-      ? { status: 200, json: existing.response }
-      : errorResponse("idempotency_conflict", "This idempotency key was used for a different request");
+    if (existing?.fingerprint !== requestFingerprint) {
+      return errorResponse("idempotency_conflict", "This idempotency key was used for a different request");
+    }
+    const response = replayMinimalHumanActionReceipt(
+      existing,
+      requestFingerprint,
+      responseFor(farm, now, options, null),
+    );
+    return response
+      ? { status: 200, json: response }
+      : unavailable("The kitchen inventory could not be read");
   }
 
   const current = currentResource(farm, now, options);
@@ -306,24 +329,16 @@ export function handleHumanKitchenInventoryAction(farm, body, now = Date.now(), 
 
   const outcome = actionOutcome(body, authorityResult);
   if (!outcome) return unavailable("The kitchen inventory action returned an invalid result");
-  const resource = currentResource(working, now, options);
-  if (!resource) return unavailable("The kitchen inventory resource could not be read");
-  const response = {
-    data: {
-      result: {
-        receipt_id: key,
-        action: body.action,
-        outcome,
-      },
-      resource: resource.data,
-    },
-    kitchen_inventory_revision: resource.revision,
-    server_time: resource.server_time,
-  };
+  const response = responseFor(working, now, options, {
+    receipt_id: key,
+    action: body.action,
+    outcome,
+  });
+  if (!response) return unavailable("The kitchen inventory resource could not be read");
 
   working[RECEIPTS_FIELD] = {
     ...(isRecord(working[RECEIPTS_FIELD]) ? working[RECEIPTS_FIELD] : {}),
-    [key]: { fingerprint: requestFingerprint, response },
+    [key]: createMinimalHumanActionReceipt(requestFingerprint, response),
   };
   try {
     replaceFarm(farm.id, working);

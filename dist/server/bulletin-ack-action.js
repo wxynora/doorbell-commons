@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
 import { replaceFarm } from "../store.js";
 import { projectHumanBulletin, projectHumanBulletinSource } from "./bulletin-structured.js";
+import {
+  createMinimalHumanActionReceipt,
+  replayMinimalHumanActionReceipt,
+} from "../minimal-action-receipt.js";
 
 const FARM_DOORPLATE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -106,6 +110,17 @@ function sourceReminderKeys(source) {
     .map((entry) => entry.reminder_key);
 }
 
+function responseFor(farm, now, result) {
+  const source = projectHumanBulletinSource(farm, now);
+  const resource = projectHumanBulletin(farm, now);
+  return {
+    subject: source.subject,
+    data: { result, resource: resource.data },
+    revision: source.revision,
+    server_time: source.server_time,
+  };
+}
+
 /**
  * Mark the currently verified bulletin projection as read.  The source task,
  * plot, guestbook and ranch-notice arrays are never changed; only the Human
@@ -129,12 +144,27 @@ export function handleHumanBulletinAck(farm, body, now = Date.now()) {
   const requestFingerprint = fingerprint(body);
   const existing = state.receipts[body.idempotency_key];
   if (existing !== undefined) {
-    return existing?.fingerprint === requestFingerprint && isRecord(existing.response)
-      ? { status: 200, json: existing.response }
-      : conflict(
-          "idempotency_conflict",
-          "This idempotency key was used for a different bulletin acknowledgement",
-        );
+    if (existing?.fingerprint !== requestFingerprint) {
+      return conflict(
+        "idempotency_conflict",
+        "This idempotency key was used for a different bulletin acknowledgement",
+      );
+    }
+    try {
+      const response = replayMinimalHumanActionReceipt(
+        existing,
+        requestFingerprint,
+        responseFor(farm, now, null),
+      );
+      return response
+        ? { status: 200, json: response }
+        : conflict("idempotency_conflict", "The stored bulletin receipt is invalid");
+    } catch {
+      return {
+        status: 503,
+        json: { error: { code: "farm_unavailable", message: "The farm bulletin could not be read" } },
+      };
+    }
   }
 
   let source;
@@ -162,23 +192,14 @@ export function handleHumanBulletinAck(farm, body, now = Date.now()) {
     acknowledgedCount = source.data.trail.entries.length > 0 ? 1 : 0;
   }
   working.doorbellHumanBulletinReadState = nextState;
-  const resource = projectHumanBulletin(working, now);
-  const response = {
-    subject: source.subject,
-    data: {
-      result: {
-        receipt_id: body.idempotency_key,
-        acknowledged_count: acknowledgedCount,
-      },
-      resource: resource.data,
-    },
-    revision: source.revision,
-    server_time: source.server_time,
-  };
-  nextState.receipts[body.idempotency_key] = {
-    fingerprint: requestFingerprint,
-    response: structuredClone(response),
-  };
+  const response = responseFor(working, now, {
+    receipt_id: body.idempotency_key,
+    acknowledged_count: acknowledgedCount,
+  });
+  nextState.receipts[body.idempotency_key] = createMinimalHumanActionReceipt(
+    requestFingerprint,
+    response,
+  );
   working.doorbellHumanBulletinReadState = nextState;
 
   try {

@@ -5,6 +5,19 @@ import { checkTitles } from "../titles.js";
 import { replaceFarm } from "../store.js";
 import { getCrop } from "../content.js";
 import { projectHumanField } from "./human-structured.js";
+import {
+  createMinimalHumanActionReceipt,
+  replayMinimalHumanActionReceipt,
+} from "../minimal-action-receipt.js";
+
+function responseFor(farm, now, result) {
+  const resource = projectHumanField(farm, now);
+  return {
+    data: { result, resource: resource.data },
+    revision: resource.revision,
+    server_time: resource.server_time,
+  };
+}
 
 function canonicalize(value) {
   if (Array.isArray(value)) return value.map(canonicalize);
@@ -56,9 +69,22 @@ export function handleHumanHarvestAssist(farm, body, now = Date.now(), options =
   const fp = fingerprint(body);
   if (Object.prototype.hasOwnProperty.call(receipts, key)) {
     const old = receipts[key];
-    return old.fingerprint === fp
-      ? { status: 200, json: old.response }
-      : {
+    if (old?.fingerprint !== fp) {
+      return {
+        status: 409,
+        json: {
+          error: {
+            code: "idempotency_conflict",
+            message: "This idempotency key was used for a different request",
+          },
+        },
+      };
+    }
+    try {
+      const response = replayMinimalHumanActionReceipt(old, fp, responseFor(farm, now, null));
+      return response
+        ? { status: 200, json: response }
+        : {
           status: 409,
           json: {
             error: {
@@ -67,6 +93,9 @@ export function handleHumanHarvestAssist(farm, body, now = Date.now(), options =
             },
           },
         };
+    } catch {
+      return { status: 503, json: { error: { code: "farm_unavailable", message: "The harvest could not be read" } } };
+    }
   }
 
   let current;
@@ -132,7 +161,6 @@ export function handleHumanHarvestAssist(farm, body, now = Date.now(), options =
         bonus_value: bonusValue,
       };
     });
-    const resource = projectHumanField(working, now);
     const result = {
       receipt_id: key,
       harvested_count: harvest.count,
@@ -146,17 +174,13 @@ export function handleHumanHarvestAssist(farm, body, now = Date.now(), options =
         : null,
       new_titles: titles.map((title) => ({ title_id: title.id, name: title.name })),
     };
-    const response = {
-      data: { result, resource: resource.data },
-      revision: resource.revision,
-      server_time: resource.server_time,
-    };
+    const response = responseFor(working, now, result);
 
     // Receipt persistence belongs to the same clone and the same atomic
     // replaceFarm commit as the gameplay result.
     working.doorbellHumanHarvestReceipts = {
       ...(working.doorbellHumanHarvestReceipts ?? {}),
-      [key]: { fingerprint: fp, response },
+      [key]: createMinimalHumanActionReceipt(fp, response),
     };
     replaceFarm(farm.id, working);
     return { status: 200, json: response };

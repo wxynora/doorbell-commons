@@ -273,6 +273,7 @@ export class ChefStoreService {
         this.rollbackOpeningListing = options.rollbackOpeningListing;
         this.isRealResident = options.isRealResident ?? options.resolveResident;
         this.executeOrder = options.executeOrder;
+        this.completeOrder = options.completeOrder;
         this.recordDebt = options.recordDebt;
         this.assertActiveChefQualification = options.assertActiveChefQualification;
     }
@@ -467,10 +468,10 @@ export class ChefStoreService {
         const payload = { leaseId, buyerResidentId, productId, quantity, orderId };
         const payloadHash = digest(canonicalJson(payload));
         const now = nowOf(this);
-        return runInTransaction(this.database, () => {
+        const prepared = runInTransaction(this.database, () => {
             const replay = ensureActionReplay(this.database, idempotencyKey, "order", buyerResidentId, payloadHash);
             if (replay)
-                return replay;
+                return { replay };
             if (typeof this.executeOrder !== "function")
                 fail("chef_store_order_authority_unavailable");
             let lease = this.#requireLease(leaseId);
@@ -499,51 +500,98 @@ export class ChefStoreService {
             );
             if (!realResident)
                 fail("chef_store_real_resident_required");
-            const callbackResult = assertNoPromise(this.executeOrder({
-                orderId,
-                leaseId,
+            return {
                 ownerResidentId: lease.owner_resident_id,
-                buyerResidentId,
-                productId,
-                quantity,
-                idempotencyKey,
-                now,
-            }), "chef_store_order_authority_unavailable");
-            const orderReceipt = callbackReceipt(callbackResult, "order");
-            if (existingOrder !== undefined) {
-                this.database.prepare(`
-                  UPDATE chef_store_orders
-                  SET payment_receipt_id = COALESCE(?, payment_receipt_id)
+            };
+        });
+        if (prepared.replay)
+            return prepared.replay;
+        const orderInput = {
+            orderId,
+            leaseId,
+            ownerResidentId: prepared.ownerResidentId,
+            buyerResidentId,
+            productId,
+            quantity,
+            idempotencyKey,
+            now,
+        };
+        const stagedOrder = typeof this.completeOrder === "function";
+        const inventoryResult = stagedOrder
+            ? assertNoPromise(this.executeOrder(orderInput),
+                "chef_store_order_authority_unavailable")
+            : null;
+        if (stagedOrder)
+            callbackReceipt(inventoryResult, "order");
+        let completedReceipt = null;
+        try {
+            return runInTransaction(this.database, () => {
+                const replay = ensureActionReplay(this.database, idempotencyKey, "order", buyerResidentId, payloadHash);
+                if (replay)
+                    return replay;
+                const existingOrder = this.database.prepare(`
+                  SELECT lease_id, owner_resident_id, buyer_resident_id, product_id, quantity
+                  FROM chef_store_orders
                   WHERE order_id = ?
-                `).run(orderReceipt.paymentReceiptId, orderId);
+                `).get(orderId);
+                if (existingOrder !== undefined &&
+                    (existingOrder.lease_id !== leaseId ||
+                        existingOrder.owner_resident_id !== prepared.ownerResidentId ||
+                        existingOrder.buyer_resident_id !== buyerResidentId ||
+                        existingOrder.product_id !== productId ||
+                        existingOrder.quantity !== quantity)) {
+                    fail("chef_store_order_receipt_conflict");
+                }
+                const callbackResult = stagedOrder
+                    ? assertNoPromise(this.completeOrder(orderInput),
+                        "chef_store_order_authority_unavailable")
+                    : assertNoPromise(this.executeOrder(orderInput),
+                        "chef_store_order_authority_unavailable");
+                completedReceipt = callbackReceipt(callbackResult, "order");
+                if (existingOrder !== undefined) {
+                    this.database.prepare(`
+                      UPDATE chef_store_orders
+                      SET payment_receipt_id = COALESCE(?, payment_receipt_id)
+                      WHERE order_id = ?
+                    `).run(completedReceipt.paymentReceiptId, orderId);
+                    const result = mapOrder(this.database.prepare(
+                        "SELECT * FROM chef_store_orders WHERE order_id = ?",
+                    ).get(orderId));
+                    recordAction(this.database, idempotencyKey, "order", buyerResidentId, payloadHash, result, now);
+                    return result;
+                }
+                try {
+                    this.database.prepare(`
+                      INSERT INTO chef_store_orders (
+                        order_id, lease_id, owner_resident_id, buyer_resident_id,
+                        product_id, quantity, inventory_receipt_id, payment_receipt_id,
+                        state, created_at
+                      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?)
+                    `).run(orderId, leaseId, prepared.ownerResidentId, buyerResidentId,
+                        productId, quantity, completedReceipt.receiptId,
+                        completedReceipt.paymentReceiptId, now);
+                }
+                catch (error) {
+                    if (error instanceof Error && error.message.includes("UNIQUE constraint failed"))
+                        fail("chef_store_order_receipt_conflict");
+                    throw error;
+                }
                 const result = mapOrder(this.database.prepare(
                     "SELECT * FROM chef_store_orders WHERE order_id = ?",
                 ).get(orderId));
                 recordAction(this.database, idempotencyKey, "order", buyerResidentId, payloadHash, result, now);
                 return result;
+            });
+        }
+        catch (error) {
+            if (completedReceipt !== null && stagedOrder) {
+                assertNoPromise(this.completeOrder({
+                    ...orderInput,
+                    paymentReceiptId: completedReceipt.paymentReceiptId,
+                }), "chef_store_order_authority_unavailable");
             }
-            try {
-                this.database.prepare(`
-                  INSERT INTO chef_store_orders (
-                    order_id, lease_id, owner_resident_id, buyer_resident_id,
-                    product_id, quantity, inventory_receipt_id, payment_receipt_id,
-                    state, created_at
-                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?)
-                `).run(orderId, leaseId, lease.owner_resident_id, buyerResidentId,
-                    productId, quantity, orderReceipt.receiptId,
-                    orderReceipt.paymentReceiptId, now);
-            }
-            catch (error) {
-                if (error instanceof Error && error.message.includes("UNIQUE constraint failed"))
-                    fail("chef_store_order_receipt_conflict");
-                throw error;
-            }
-            const result = mapOrder(this.database.prepare(
-                "SELECT * FROM chef_store_orders WHERE order_id = ?",
-            ).get(orderId));
-            recordAction(this.database, idempotencyKey, "order", buyerResidentId, payloadHash, result, now);
-            return result;
-        });
+            throw error;
+        }
     }
 
     getLease(leaseId) {

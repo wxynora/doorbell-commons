@@ -4,6 +4,10 @@ import { getCrop } from "../content.js";
 import { replaceFarm } from "../store.js";
 import { projectHumanFarmCatalog } from "./farm-catalog-structured.js";
 import { cropCodexActionRevision } from "./crop-codex-revision.js";
+import {
+  createMinimalHumanActionReceipt,
+  replayMinimalHumanActionReceipt,
+} from "../minimal-action-receipt.js";
 
 export { cropCodexActionRevision } from "./crop-codex-revision.js";
 
@@ -21,6 +25,16 @@ const REQUEST_KEYS = [
   "idempotency_key",
 ];
 const RECEIPTS_FIELD = "doorbellHumanCropCodexActionReceipts";
+
+function responseFor(farm, now, result) {
+  const projected = projectHumanFarmCatalog(farm, now);
+  return {
+    data: { result, resource: projected.data },
+    revision: projected.revision,
+    codex_revision: cropCodexActionRevision(farm, now),
+    server_time: projected.server_time,
+  };
+}
 
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -137,12 +151,27 @@ export function handleHumanCropCodexAction(farm, body, now = Date.now()) {
   const requestFingerprint = fingerprint(body);
   const existing = receipts[key];
   if (existing !== undefined) {
-    return existing?.fingerprint === requestFingerprint && isRecord(existing.response)
-      ? { status: 200, json: existing.response }
-      : errorResponse(
-          "idempotency_conflict",
-          "This idempotency key was used for a different request",
-        );
+    if (existing?.fingerprint !== requestFingerprint) {
+      return errorResponse(
+        "idempotency_conflict",
+        "This idempotency key was used for a different request",
+      );
+    }
+    try {
+      const response = replayMinimalHumanActionReceipt(
+        existing,
+        requestFingerprint,
+        responseFor(farm, now, null),
+      );
+      return response
+        ? { status: 200, json: response }
+        : errorResponse(
+            "idempotency_conflict",
+            "This idempotency key was used for a different request",
+          );
+    } catch {
+      return errorResponse("farm_unavailable", "The crop codex could not be read");
+    }
   }
 
   let currentRevision;
@@ -162,25 +191,16 @@ export function handleHumanCropCodexAction(farm, body, now = Date.now()) {
       return errorResponse("action_rejected", authority?.error || "The crop codex action was rejected");
     }
 
-    const projected = projectHumanFarmCatalog(working, now);
-    const response = {
-      data: {
-        result: {
-          receipt_id: key,
-          crop_id: body.crop_id,
-          action: body.action,
-          starred: authority.on === true,
-        },
-        resource: projected.data,
-      },
-      revision: projected.revision,
-      codex_revision: cropCodexActionRevision(working, now),
-      server_time: projected.server_time,
-    };
+    const response = responseFor(working, now, {
+      receipt_id: key,
+      crop_id: body.crop_id,
+      action: body.action,
+      starred: authority.on === true,
+    });
 
     working[RECEIPTS_FIELD] = {
       ...(isRecord(working[RECEIPTS_FIELD]) ? working[RECEIPTS_FIELD] : {}),
-      [key]: { fingerprint: requestFingerprint, response },
+      [key]: createMinimalHumanActionReceipt(requestFingerprint, response),
     };
     replaceFarm(farm.id, working);
     return { status: 200, json: response };

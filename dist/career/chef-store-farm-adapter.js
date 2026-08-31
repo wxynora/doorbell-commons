@@ -551,8 +551,8 @@ export function createChefStoreFarmAdapter(options = {}) {
         }
     }
 
-    function completeOrder(input, sellerFarm, receipt, now) {
-        const paymentReceiptId = ensurePayment(economy, receipt);
+    function commitOrderCompletion(input, sellerFarm, receipt, now, providedPaymentReceiptId = null) {
+        const paymentReceiptId = providedPaymentReceiptId ?? ensurePayment(economy, receipt);
         const currentSeller = resolveFarmById(listFarms, sellerFarm.id);
         const orders = cloneReceipts(
             currentSeller,
@@ -611,7 +611,10 @@ export function createChefStoreFarmAdapter(options = {}) {
                 CHEF_STORE_ORDER_RECEIPTS_FIELD,
                 "chef_store_farm_order_receipts_invalid",
             )[input.orderId];
-            return completeOrder(input, refreshedSeller, refreshed, now);
+            return {
+                orderReceiptId: refreshed.orderId,
+                paymentReceiptId: refreshed.paymentReceiptId ?? null,
+            };
         }
         const listing = listingForLease(sellerFarm, input.leaseId, input.ownerResidentId);
         if (listing.marketId !== input.productId)
@@ -646,7 +649,28 @@ export function createChefStoreFarmAdapter(options = {}) {
             CHEF_STORE_ORDER_RECEIPTS_FIELD,
             "chef_store_farm_order_receipts_invalid",
         )[input.orderId];
-        return completeOrder(input, refreshedSeller, refreshed, now);
+        return {
+            orderReceiptId: refreshed.orderId,
+            paymentReceiptId: refreshed.paymentReceiptId ?? null,
+        };
+    }
+
+    function completeOrder(rawInput) {
+        const input = orderInput(rawInput);
+        const now = nowOf(rawInput.now ?? clock);
+        const sellerFarm = ownerFarm(input.ownerResidentId);
+        const receipt = receiptsOnFarm(
+            sellerFarm,
+            CHEF_STORE_ORDER_RECEIPTS_FIELD,
+            "chef_store_farm_order_receipts_invalid",
+        )[input.orderId];
+        assertOrderReceiptMatches(receipt, input);
+        if (receipt.state === "pending")
+            fail("chef_store_farm_inventory_pending");
+        const paymentReceiptId = rawInput.paymentReceiptId === undefined || rawInput.paymentReceiptId === null
+            ? null
+            : identifier(rawInput.paymentReceiptId, "payment_receipt_id");
+        return commitOrderCompletion(input, sellerFarm, receipt, now, paymentReceiptId);
     }
 
     function reconcileTerminatedLeases() {
@@ -697,8 +721,8 @@ export function createChefStoreFarmAdapter(options = {}) {
     }
 
     function recoverPendingOrders(options = {}) {
-        const completeOrder = options.completeOrder;
-        if (completeOrder !== undefined && typeof completeOrder !== "function")
+        const completionCallback = options.completeOrder;
+        if (completionCallback !== undefined && typeof completionCallback !== "function")
             fail("chef_store_farm_recovery_callback_invalid");
         let recovered = 0;
         for (const initialFarm of listFarms()) {
@@ -726,9 +750,11 @@ export function createChefStoreFarmAdapter(options = {}) {
                 const externalPending = ["pending", "inventory_applied"].includes(receipt.state);
                 if (externalPending)
                     executeOrder(input);
-                if (stored === undefined && completeOrder)
+                if (stored === undefined && completionCallback)
+                    completionCallback(input);
+                else if (externalPending)
                     completeOrder(input);
-                if (externalPending || (stored === undefined && completeOrder))
+                if (externalPending || (stored === undefined && completionCallback))
                     recovered += 1;
             }
         }
@@ -780,6 +806,7 @@ export function createChefStoreFarmAdapter(options = {}) {
         prepareOpeningListing,
         rollbackOpeningListing,
         executeOrder,
+        completeOrder,
         recoverOrphanedListings,
         reconcileTerminatedLeases,
         recoverPendingOrders,

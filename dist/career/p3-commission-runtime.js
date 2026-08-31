@@ -48,6 +48,14 @@ function digest(value) {
     return createHash("sha256").update(String(value), "utf8").digest("hex");
 }
 
+export function requireStandaloneP3Checkpoint(database) {
+    // P3 world state may share this SQLite connection with career/economy.
+    // A caller-owned transaction would make the durable phases collapse into
+    // one savepoint while the in-memory world has already been published.
+    if (database.isTransaction)
+        throw new Error("p3_world_checkpoint_requires_standalone_transaction");
+}
+
 export function commissionJobId(sourceId) {
     return `doorbell-job:${digest(sourceId).slice(0, 32)}`;
 }
@@ -1031,6 +1039,7 @@ export function completeNpcFallbackService(database, backend, source, actionKey,
       SELECT * FROM lingye_cross_store_operations WHERE action_key = ?
     `).get(actionKey);
     if (!operation) {
+        requireStandaloneP3Checkpoint(database);
         operation = runLingyeWorldTransaction(database, () => {
             const contract = npcServiceContract(source);
             const totalFeeGold = contract.baseFeeGold + contract.materialFeeGold;
@@ -1064,6 +1073,7 @@ export function completeNpcFallbackService(database, backend, source, actionKey,
 function resumeNpcFallbackService(database, backend, operation) {
     if (operation.status === "completed")
         return JSON.parse(operation.result_json);
+    requireStandaloneP3Checkpoint(database);
     const source = JSON.parse(operation.source_json);
     const contract = npcServiceContract(source);
     let world = operation.world_result_json ? JSON.parse(operation.world_result_json) : null;

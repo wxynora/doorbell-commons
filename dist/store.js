@@ -33,6 +33,7 @@ let publicExpeditionWorld = normalizePublicExpeditionWorld({});
 let qixiLantern2026World = normalizeQixiLantern2026World({});
 let natureWorld = normalizeNatureWorld(null);
 let worldCommitCoordinator = null;
+let worldPersistenceAdapter = null;
 const worldCommitContext = new AsyncLocalStorage();
 setNatureWorldProvider(() => natureWorld);
 const DOORBELL_WELCOME_SILVER = 200;
@@ -169,15 +170,13 @@ export const getPublicExpeditionWorld = () => publicExpeditionWorld;
 export const getQixiLantern2026World = () => qixiLantern2026World;
 export const getNatureWorld = () => natureWorld;
 export function commitNatureWorld(next) {
-    const before = natureWorld;
-    natureWorld = normalizeNatureWorld(next);
-    try {
-        save();
-    }
-    catch (error) {
-        natureWorld = before;
-        throw error;
-    }
+    const staged = normalizeNatureWorld(next);
+    commitWorld(worldSnapshot(farms.values(), dumpUgc(), staged), {
+        farmIds: [],
+        componentKeys: ["nature"],
+        allowCrossDomain: true,
+    });
+    natureWorld = staged;
     return natureWorld;
 }
 export function activateStoredNatureWorld({ now, seed }) {
@@ -347,18 +346,15 @@ export function insertFarm(farm) {
     }
 }
 export function replaceFarm(id, farm) {
-    const before = farms.get(id);
-    if (!before)
+    if (!farms.has(id))
         throw new Error(`farm not found: ${id}`);
     farm.id = id;
-    farms.set(id, normalizeFarm(farm));
-    try {
-        save();
-    }
-    catch (err) {
-        farms.set(id, before);
-        throw err;
-    }
+    const staged = normalizeFarm(farm);
+    const position = [...farms.keys()].indexOf(id);
+    const nextFarms = [...farms.values()].map((current) => current.id === id ? staged : current);
+    const world = worldSnapshot(nextFarms);
+    commitWorld(world, { farmIds: [id], componentKeys: [], allowCrossDomain: false });
+    farms.set(id, staged);
 }
 function worldSnapshot(farmValues = farms.values(), ugcValues = dumpUgc(), natureValue = natureWorld) {
     return {
@@ -383,16 +379,45 @@ function writeWorldAtomic(world) {
     writeFileSync(tmp, data, "utf8");
     renameSync(tmp, WORLD_FILE);
 }
-function commitWorld(world) {
-    const write = () => writeWorldAtomic(world);
+function mergePersistenceHints(base, additional) {
+    if (base == null && additional == null)
+        return null;
+    const left = base ?? { farmIds: [], componentKeys: [] };
+    const right = additional ?? { farmIds: [], componentKeys: [] };
+    const durableValues = [left.durableBoundary, right.durableBoundary]
+        .filter((value) => value !== undefined);
+    return {
+        farmIds: [...new Set([...(left.farmIds ?? []), ...(right.farmIds ?? [])])],
+        componentKeys: [...new Set([...(left.componentKeys ?? []), ...(right.componentKeys ?? [])])],
+        allowCrossDomain: left.allowCrossDomain === true || right.allowCrossDomain === true,
+        ...(durableValues.length === 0
+            ? {}
+            : { durableBoundary: durableValues.every((value) => value === true) }),
+    };
+}
+function commitWorld(world, hints = null) {
+    const context = worldCommitContext.getStore() ?? null;
+    const write = (additionalHints = null) => worldPersistenceAdapter
+        ? worldPersistenceAdapter.commitLegacySnapshot(world, mergePersistenceHints(hints, additionalHints))
+        : writeWorldAtomic(world);
     return worldCommitCoordinator
-        ? worldCommitCoordinator(world, worldCommitContext.getStore() ?? null, write)
+        ? worldCommitCoordinator(world, context, write)
         : write();
 }
 export function setWorldCommitCoordinator(coordinator) {
     if (coordinator !== null && typeof coordinator !== "function")
         throw new TypeError("world commit coordinator must be a function or null");
     worldCommitCoordinator = coordinator;
+}
+export function setWorldPersistenceAdapter(adapter) {
+    if (adapter !== null &&
+        (typeof adapter !== "object" ||
+            typeof adapter.loadLegacyWorld !== "function" ||
+            typeof adapter.commitMutation !== "function" ||
+            typeof adapter.commitLegacySnapshot !== "function")) {
+        throw new TypeError("world persistence adapter is invalid");
+    }
+    worldPersistenceAdapter = adapter;
 }
 export function withWorldCommitContext(context, operation) {
     if (!context || typeof context !== "object" || typeof operation !== "function")
@@ -439,7 +464,11 @@ export function replaceFarmsAtomic(replacements, ugcValues = dumpUgc()) {
     }
     const nextUgc = structuredClone(ugcValues);
     const nextFarms = [...farms.values()].map((farm) => staged.get(farm.id) ?? farm);
-    commitWorld(worldSnapshot(nextFarms, nextUgc));
+    commitWorld(worldSnapshot(nextFarms, nextUgc), {
+        farmIds: [...staged.keys()],
+        componentKeys: ["ugc"],
+        allowCrossDomain: true,
+    });
     // Map.set and loadUgc do not perform I/O; the world file is already
     // committed, so publish both sides together after rename succeeds.
     loadUgc(nextUgc);
@@ -472,7 +501,11 @@ export function replaceFarmsAndNatureAtomic({ replacements, nextNatureWorld, ugc
     const nextUgc = structuredClone(ugc);
     const stagedNature = normalizeNatureWorld(nextNatureWorld);
     const nextFarms = [...farms.values()].map((farm) => staged.get(farm.id) ?? farm);
-    commitWorld(worldSnapshot(nextFarms, nextUgc, stagedNature));
+    commitWorld(worldSnapshot(nextFarms, nextUgc, stagedNature), {
+        farmIds: [...staged.keys()],
+        componentKeys: ["ugc", "nature"],
+        allowCrossDomain: true,
+    });
     loadUgc(nextUgc);
     for (const [id, farm] of staged)
         farms.set(id, farm);
@@ -487,48 +520,71 @@ function ensureNpc() {
     return true;
 }
 export function save() {
-    commitWorld(worldSnapshot());
+    const rollback = worldPersistenceAdapter?.loadLegacyWorld() ?? null;
+    try {
+        commitWorld(worldSnapshot());
+    }
+    catch (error) {
+        if (rollback)
+            restoreWorldSnapshotInMemory(rollback);
+        throw error;
+    }
+}
+function publishLoadedWorld(world) {
+    if (world?.format !== "aifarm-world" || world?.version !== 1 || !Array.isArray(world?.farms))
+        throw new Error("unknown world format");
+    appliedMaintenanceGrantIds = Array.isArray(world.maintenanceGrantIds)
+        ? world.maintenanceGrantIds.map(String)
+        : [];
+    doorbellWelcomeRewardGrants = Array.isArray(world.doorbellWelcomeRewardGrants)
+        ? world.doorbellWelcomeRewardGrants.filter((grant) => grant && typeof grant.grantId === "string" && typeof grant.farmId === "string" && typeof grant.seedId === "string" && typeof grant.seedName === "string" && Number.isFinite(grant.grantedAt))
+        : [];
+    doorbellFarmCreations = Array.isArray(world.doorbellFarmCreations)
+        ? world.doorbellFarmCreations.filter((entry) => entry && typeof entry.creationId === "string" && typeof entry.farmId === "string" && typeof entry.requestFingerprint === "string" && Number.isFinite(entry.createdAt))
+        : [];
+    glimmerWorld = normalizeGlimmerWorld(world.glimmer);
+    publicExpeditionWorld = normalizePublicExpeditionWorld(world.publicExpedition);
+    qixiLantern2026World = normalizeQixiLantern2026World(world.qixiLantern2026);
+    natureWorld = normalizeNatureWorld(world.nature);
+    loadUgc(Array.isArray(world.ugc) ? world.ugc : []);
+    farms.clear();
+    for (const farm of world.farms)
+        farms.set(farm.id, normalizeFarm(farm));
+}
+function finishLoadedWorld() {
+    console.log(`[store] 已载入 ${farms.size} 个农场`);
+    const npcCreated = ensureNpc();
+    const grant = applyMaintenanceSilverGrant();
+    for (const campaign of grant.campaigns)
+        console.log(`[store] 维护福利 ${campaign.id} 已发放 ${campaign.count} 个玩家农场，每家 ${campaign.gold} 金、${campaign.silver} 银`);
+    const qixiRefund = applyQixi2026SeedPriceRefund();
+    if (qixiRefund.applied)
+        console.log(`[store] 七夕种子降价退款已发放 ${qixiRefund.count} 个玩家农场、${qixiRefund.seeds} 颗种子，共 ${qixiRefund.coins} 金`);
+    const nazhiTitleGrant = applyNazhiExclusiveTitleGrant();
+    if (nazhiTitleGrant.applied)
+        console.log(`[store] 那智专属称号已发放 ${nazhiTitleGrant.count} 个玩家农场`);
+    const achievementBackfill = applyGlimmerAchievementRewardBackfill();
+    if (achievementBackfill.applied)
+        console.log(`[store] 流光原野成就奖励已补发 ${achievementBackfill.count} 个玩家农场、${achievementBackfill.achievements} 项，共 ${achievementBackfill.coins} 金、${achievementBackfill.silver} 银`);
+    if (npcCreated || grant.applied || qixiRefund.applied || nazhiTitleGrant.applied || achievementBackfill.applied)
+        save();
 }
 export function load() {
+    if (worldPersistenceAdapter) {
+        try {
+            publishLoadedWorld(worldPersistenceAdapter.loadLegacyWorld());
+            finishLoadedWorld();
+            return;
+        }
+        catch (err) {
+            console.error("[store] SQLite 联机世界存档损坏或未迁移，拒绝启动:", err);
+            throw new Error("SQLite 联机世界存档损坏或未迁移，拒绝启动", { cause: err });
+        }
+    }
     if (existsSync(WORLD_FILE)) {
         try {
-            const world = JSON.parse(readFileSync(WORLD_FILE, "utf8"));
-            if (world?.format !== "aifarm-world" || world?.version !== 1 || !Array.isArray(world?.farms)) {
-                throw new Error("unknown world format");
-            }
-            appliedMaintenanceGrantIds = Array.isArray(world.maintenanceGrantIds)
-                ? world.maintenanceGrantIds.map(String)
-                : [];
-            doorbellWelcomeRewardGrants = Array.isArray(world.doorbellWelcomeRewardGrants)
-                ? world.doorbellWelcomeRewardGrants.filter((grant) => grant && typeof grant.grantId === "string" && typeof grant.farmId === "string" && typeof grant.seedId === "string" && typeof grant.seedName === "string" && Number.isFinite(grant.grantedAt))
-                : [];
-            doorbellFarmCreations = Array.isArray(world.doorbellFarmCreations)
-                ? world.doorbellFarmCreations.filter((entry) => entry && typeof entry.creationId === "string" && typeof entry.farmId === "string" && typeof entry.requestFingerprint === "string" && Number.isFinite(entry.createdAt))
-                : [];
-            glimmerWorld = normalizeGlimmerWorld(world.glimmer);
-            publicExpeditionWorld = normalizePublicExpeditionWorld(world.publicExpedition);
-            qixiLantern2026World = normalizeQixiLantern2026World(world.qixiLantern2026);
-            natureWorld = normalizeNatureWorld(world.nature);
-            loadUgc(Array.isArray(world.ugc) ? world.ugc : []);
-            farms.clear();
-            for (const f of world.farms)
-                farms.set(f.id, normalizeFarm(f));
-            console.log(`[store] 已载入 ${farms.size} 个农场`);
-            const npcCreated = ensureNpc();
-            const grant = applyMaintenanceSilverGrant();
-            for (const campaign of grant.campaigns)
-                console.log(`[store] 维护福利 ${campaign.id} 已发放 ${campaign.count} 个玩家农场，每家 ${campaign.gold} 金、${campaign.silver} 银`);
-            const qixiRefund = applyQixi2026SeedPriceRefund();
-            if (qixiRefund.applied)
-                console.log(`[store] 七夕种子降价退款已发放 ${qixiRefund.count} 个玩家农场、${qixiRefund.seeds} 颗种子，共 ${qixiRefund.coins} 金`);
-            const nazhiTitleGrant = applyNazhiExclusiveTitleGrant();
-            if (nazhiTitleGrant.applied)
-                console.log(`[store] 那智专属称号已发放 ${nazhiTitleGrant.count} 个玩家农场`);
-            const achievementBackfill = applyGlimmerAchievementRewardBackfill();
-            if (achievementBackfill.applied)
-                console.log(`[store] 流光原野成就奖励已补发 ${achievementBackfill.count} 个玩家农场、${achievementBackfill.achievements} 项，共 ${achievementBackfill.coins} 金、${achievementBackfill.silver} 银`);
-            if (npcCreated || grant.applied || qixiRefund.applied || nazhiTitleGrant.applied || achievementBackfill.applied)
-                save();
+            publishLoadedWorld(JSON.parse(readFileSync(WORLD_FILE, "utf8")));
+            finishLoadedWorld();
             return;
         }
         catch (err) {

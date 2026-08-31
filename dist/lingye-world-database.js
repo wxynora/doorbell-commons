@@ -58,7 +58,72 @@ import {
     submitReporterSupplement,
 } from "./career/reporter-service.js";
 
-export const LINGYE_WORLD_SCHEMA_VERSION = 1;
+export const LINGYE_WORLD_SCHEMA_VERSION = 2;
+
+const FARM_WORLD_PERSISTENCE_SCHEMA_SQL = `
+  CREATE TABLE farm_states (
+    farm_id TEXT PRIMARY KEY CHECK (length(farm_id) > 0),
+    position INTEGER NOT NULL UNIQUE CHECK (position >= 0),
+    state_json TEXT NOT NULL CHECK (json_valid(state_json))
+  );
+
+  CREATE TABLE farm_action_receipts (
+    farm_id TEXT NOT NULL REFERENCES farm_states(farm_id) ON DELETE RESTRICT,
+    scope TEXT NOT NULL CHECK (length(scope) > 0),
+    receipt_key TEXT NOT NULL,
+    payload_hash TEXT NOT NULL CHECK (length(payload_hash) > 0),
+    result_json TEXT NOT NULL CHECK (json_valid(result_json)),
+    PRIMARY KEY (farm_id, scope, receipt_key)
+  ) WITHOUT ROWID;
+
+  CREATE TABLE world_components (
+    component_key TEXT PRIMARY KEY CHECK (length(component_key) > 0 AND component_key <> 'farms'),
+    state_json TEXT NOT NULL CHECK (json_valid(state_json))
+  );
+`;
+
+const FARM_WORLD_PERSISTENCE_TABLES = Object.freeze({
+    farm_states: Object.freeze(["farm_id", "position", "state_json"]),
+    farm_action_receipts: Object.freeze([
+        "farm_id",
+        "scope",
+        "receipt_key",
+        "payload_hash",
+        "result_json",
+    ]),
+    world_components: Object.freeze(["component_key", "state_json"]),
+});
+
+function assertFarmWorldPersistenceSchema(database) {
+    for (const [table, expectedColumns] of Object.entries(FARM_WORLD_PERSISTENCE_TABLES)) {
+        const tableEntry = database
+            .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?")
+            .get(table);
+        if (typeof tableEntry?.sql !== "string")
+            throw new Error(`Lingye farm persistence table is missing: ${table}`);
+        const actualColumns = database.prepare(`PRAGMA table_info(${table})`).all().map((row) => row.name);
+        if (actualColumns.length !== expectedColumns.length ||
+            actualColumns.some((column, index) => column !== expectedColumns[index])) {
+            throw new Error(`Lingye farm persistence table is incompatible: ${table}`);
+        }
+    }
+}
+
+function migrateLingyeWorldSchemaV1ToV2(database) {
+    runLingyeWorldTransaction(database, () => {
+        database.exec(`
+          ALTER TABLE lingye_world_schema_meta RENAME TO lingye_world_schema_meta_v1;
+          CREATE TABLE lingye_world_schema_meta (
+            singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+            schema_version INTEGER NOT NULL CHECK (schema_version >= 1)
+          );
+          INSERT INTO lingye_world_schema_meta (singleton_id, schema_version)
+          VALUES (1, ${LINGYE_WORLD_SCHEMA_VERSION});
+          DROP TABLE lingye_world_schema_meta_v1;
+          ${FARM_WORLD_PERSISTENCE_SCHEMA_SQL}
+        `);
+    });
+}
 
 const DEFAULT_DATA_DIR = process.env.AIFARM_DATA_DIR
     ? resolve(process.env.AIFARM_DATA_DIR)
@@ -98,7 +163,7 @@ export function installLingyeWorldSchema(database) {
             database.exec(`
         CREATE TABLE lingye_world_schema_meta (
           singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
-          schema_version INTEGER NOT NULL CHECK (schema_version = ${LINGYE_WORLD_SCHEMA_VERSION})
+          schema_version INTEGER NOT NULL CHECK (schema_version >= 1)
         );
         INSERT INTO lingye_world_schema_meta (singleton_id, schema_version)
         VALUES (1, ${LINGYE_WORLD_SCHEMA_VERSION});
@@ -110,14 +175,23 @@ export function installLingyeWorldSchema(database) {
           binding_reference TEXT NOT NULL UNIQUE,
           registered_at INTEGER NOT NULL
         );
+
+        ${FARM_WORLD_PERSISTENCE_SCHEMA_SQL}
       `);
         });
     }
-    const version = database
+    let version = database
         .prepare("SELECT schema_version FROM lingye_world_schema_meta WHERE singleton_id = 1")
         .get();
+    if (version?.schema_version === 1) {
+        migrateLingyeWorldSchemaV1ToV2(database);
+        version = database
+            .prepare("SELECT schema_version FROM lingye_world_schema_meta WHERE singleton_id = 1")
+            .get();
+    }
     if (version?.schema_version !== LINGYE_WORLD_SCHEMA_VERSION)
         throw new Error(`Unsupported Lingye world schema version: ${version?.schema_version ?? "missing"}`);
+    assertFarmWorldPersistenceSchema(database);
     database.exec(`
       CREATE TABLE IF NOT EXISTS lingye_school_action_receipts (
         action_key TEXT PRIMARY KEY,
@@ -242,95 +316,121 @@ export function registerLingyeResidentReference(database, input) {
 
 export function createLingyeFarmBalanceCoordinator(database, backend, options = {}) {
     const generateOperationId = options.generateOperationId ?? randomUUID;
-    return (world, context, writeWorld) => runLingyeWorldTransaction(database, () => {
-        const migrated = world.farms.filter((farm) => farm?.doorbellMcpMigration?.migrationId);
-        const byResident = new Set();
-        for (const farm of migrated) {
-            const migration = farm.doorbellMcpMigration;
-            const residentId = String(migration.residentId ?? "").trim();
-            const bindingReference = String(migration.migrationId ?? "").trim();
-            if (!residentId || byResident.has(residentId))
-                throw new Error("Migrated farm resident binding is unavailable or duplicated");
-            byResident.add(residentId);
-            const registeredAt = Number.isFinite(Date.parse(migration.revokedAt))
-                ? Date.parse(migration.revokedAt)
-                : Date.now();
-            registerLingyeResidentReference(database, { residentId, bindingReference, registeredAt });
-            const account = database.prepare("SELECT resident_id FROM economy_accounts WHERE resident_id = ?").get(residentId);
-            if (account === undefined) {
-                backend.trustedSystemCommands.importLegacyBalances({
-                    residentId,
-                    gold: migration.legacyGold,
-                    silver: migration.legacySilver,
-                    migrationId: bindingReference,
-                    idempotencyKey: `farm-migration:${bindingReference}:legacy-balances`,
-                });
-            }
-        }
-        const ledgerAuthority = context?.balanceAuthority === "ledger";
-        const changes = [];
-        const farmChanges = [];
-        for (const farm of migrated) {
-            const migration = farm.doorbellMcpMigration;
-            const residentId = migration.residentId;
-            const account = backend.trustedQueries.getAccount(residentId);
-            if (ledgerAuthority) {
-                farm.coins = account.availableGold;
-                farm.silver = account.availableSilver;
-                migration.balanceProjection = {
-                    authority: "ledger",
-                    operationId: String(context?.operationId ?? generateOperationId()),
-                    gold: account.availableGold,
-                    silver: account.availableSilver,
-                };
-                continue;
-            }
-            const projection = migration.balanceProjection;
-            const rolledBackLedgerProjection = projection?.authority === "ledger" &&
-                (projection.gold !== account.availableGold || projection.silver !== account.availableSilver);
-            if (rolledBackLedgerProjection) {
-                farm.coins = account.availableGold;
-                farm.silver = account.availableSilver;
-                migration.balanceProjection = {
-                    authority: "ledger",
-                    operationId: String(projection.operationId),
-                    gold: account.availableGold,
-                    silver: account.availableSilver,
-                };
-                continue;
-            }
-            if (farm.coins !== account.availableGold || farm.silver !== account.availableSilver) {
-                changes.push({ residentId, gold: farm.coins, silver: farm.silver });
-                farmChanges.push(farm);
-            }
-            else if (!projection) {
-                migration.balanceProjection = {
-                    authority: "farm",
-                    operationId: String(migration.migrationId),
-                    gold: farm.coins,
-                    silver: farm.silver,
-                };
-            }
-        }
-        if (changes.length > 0) {
-            const operationId = generateOperationId();
-            backend.trustedSystemCommands.applyFarmBalanceChanges({
-                actor: context?.actor ?? "human",
-                changes,
-                businessReference: `farm-balance:${operationId}`,
-                idempotencyKey: `farm-balance:${operationId}`,
+    return (world, context, writeWorld) => {
+        const ownsDurableTransaction = !database.isTransaction;
+        const publications = [];
+        const result = runLingyeWorldTransaction(database, () => {
+            world.farms = world.farms.map((farm) => {
+                if (!farm?.doorbellMcpMigration?.migrationId)
+                    return farm;
+                const staged = structuredClone(farm);
+                publications.push({ target: farm, staged });
+                return staged;
             });
-            for (const farm of farmChanges) {
-                farm.doorbellMcpMigration.balanceProjection = {
-                    authority: "farm",
-                    operationId: String(operationId),
-                    gold: farm.coins,
-                    silver: farm.silver,
-                };
+            const migrated = world.farms.filter((farm) => farm?.doorbellMcpMigration?.migrationId);
+            const byResident = new Set();
+            for (const farm of migrated) {
+                const migration = farm.doorbellMcpMigration;
+                const residentId = String(migration.residentId ?? "").trim();
+                const bindingReference = String(migration.migrationId ?? "").trim();
+                if (!residentId || byResident.has(residentId))
+                    throw new Error("Migrated farm resident binding is unavailable or duplicated");
+                byResident.add(residentId);
+                const registeredAt = Number.isFinite(Date.parse(migration.revokedAt))
+                    ? Date.parse(migration.revokedAt)
+                    : Date.now();
+                registerLingyeResidentReference(database, { residentId, bindingReference, registeredAt });
+                const account = database.prepare("SELECT resident_id FROM economy_accounts WHERE resident_id = ?").get(residentId);
+                if (account === undefined) {
+                    backend.trustedSystemCommands.importLegacyBalances({
+                        residentId,
+                        gold: migration.legacyGold,
+                        silver: migration.legacySilver,
+                        migrationId: bindingReference,
+                        idempotencyKey: `farm-migration:${bindingReference}:legacy-balances`,
+                    });
+                }
             }
+            const ledgerAuthority = context?.balanceAuthority === "ledger";
+            const changes = [];
+            const farmChanges = [];
+            const persistenceFarmIds = new Set();
+            for (const farm of migrated) {
+                const migration = farm.doorbellMcpMigration;
+                const residentId = migration.residentId;
+                const account = backend.trustedQueries.getAccount(residentId);
+                if (ledgerAuthority) {
+                    farm.coins = account.availableGold;
+                    farm.silver = account.availableSilver;
+                    migration.balanceProjection = {
+                        authority: "ledger",
+                        operationId: String(context?.operationId ?? generateOperationId()),
+                        gold: account.availableGold,
+                        silver: account.availableSilver,
+                    };
+                    persistenceFarmIds.add(farm.id);
+                    continue;
+                }
+                const projection = migration.balanceProjection;
+                const rolledBackLedgerProjection = projection?.authority === "ledger" &&
+                    (projection.gold !== account.availableGold || projection.silver !== account.availableSilver);
+                if (rolledBackLedgerProjection) {
+                    farm.coins = account.availableGold;
+                    farm.silver = account.availableSilver;
+                    migration.balanceProjection = {
+                        authority: "ledger",
+                        operationId: String(projection.operationId),
+                        gold: account.availableGold,
+                        silver: account.availableSilver,
+                    };
+                    persistenceFarmIds.add(farm.id);
+                    continue;
+                }
+                if (farm.coins !== account.availableGold || farm.silver !== account.availableSilver) {
+                    changes.push({ residentId, gold: farm.coins, silver: farm.silver });
+                    farmChanges.push(farm);
+                }
+                else if (!projection) {
+                    migration.balanceProjection = {
+                        authority: "farm",
+                        operationId: String(migration.migrationId),
+                        gold: farm.coins,
+                        silver: farm.silver,
+                    };
+                    persistenceFarmIds.add(farm.id);
+                }
+            }
+            if (changes.length > 0) {
+                const operationId = generateOperationId();
+                backend.trustedSystemCommands.applyFarmBalanceChanges({
+                    actor: context?.actor ?? "human",
+                    changes,
+                    businessReference: `farm-balance:${operationId}`,
+                    idempotencyKey: `farm-balance:${operationId}`,
+                });
+                for (const farm of farmChanges) {
+                    farm.doorbellMcpMigration.balanceProjection = {
+                        authority: "farm",
+                        operationId: String(operationId),
+                        gold: farm.coins,
+                        silver: farm.silver,
+                    };
+                    persistenceFarmIds.add(farm.id);
+                }
+            }
+            return writeWorld({
+                farmIds: [...persistenceFarmIds],
+                componentKeys: [],
+                durableBoundary: ownsDurableTransaction,
+            });
+        });
+        for (const { target, staged } of publications) {
+            for (const key of Object.keys(target))
+                delete target[key];
+            Object.assign(target, staged);
         }
-        return writeWorld();
-    });
+        return result;
+    };
 }
 
 const CHEF_CLIENT_IDENTITY_FIELDS = Object.freeze([
@@ -513,6 +613,9 @@ export function createLingyeWorldBackend(database, options) {
     const listingPreparer = configuredListingPreparer ?? farmStoreAuthority?.prepareOpeningListing;
     const listingRollback = configuredListingRollback ?? farmStoreAuthority?.rollbackOpeningListing;
     const orderExecutor = configuredOrderExecutor ?? farmStoreAuthority?.executeOrder;
+    const orderCompleter = configuredOrderExecutor === undefined
+        ? farmStoreAuthority?.completeOrder
+        : undefined;
     const resolveChefOriginalRecipe = (recipeId) => {
         const recipe = configuredOriginalRecipeResolver
             ? configuredOriginalRecipeResolver(recipeId)
@@ -577,6 +680,7 @@ export function createLingyeWorldBackend(database, options) {
             return configuredResidentResolver ? configuredResidentResolver(residentId) : true;
         },
         ...(orderExecutor === undefined ? {} : { executeOrder: orderExecutor }),
+        ...(orderCompleter === undefined ? {} : { completeOrder: orderCompleter }),
         ...(configuredDebtRecorder === undefined ? {} : { recordDebt: configuredDebtRecorder }),
         assertActiveChefQualification: (input) => chefStoreQualification(database, input),
     });
@@ -1064,9 +1168,9 @@ export function createLingyeWorldBackend(database, options) {
                 value: (leaseId) => ownChefStoreLease(leaseId, authenticatedResidentId),
             },
             placeChefStoreOrder: {
-                value: (input) => atomic(() => chefStore.placeOrder(
+                value: (input) => chefStore.placeOrder(
                     chefResidentInput(input, "buyerResidentId", authenticatedResidentId),
-                )),
+                ),
             },
             getOwnChefStoreOrder: {
                 value: (orderId) => ownChefStoreOrder(orderId, authenticatedResidentId),

@@ -6,6 +6,10 @@ import {
   PAID_KITCHEN_TOOLS,
   projectHumanKitchen,
 } from "./kitchen-structured.js";
+import {
+  createMinimalHumanActionReceipt,
+  replayMinimalHumanActionReceipt,
+} from "../minimal-action-receipt.js";
 
 const FARM_DOORPLATE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -176,6 +180,15 @@ function currentKitchenState(farm, now, options) {
   }
 }
 
+function responseFor(farm, now, options, result) {
+  const projected = projectHumanKitchen(farm, now, options);
+  return {
+    data: { result, resource: projected.data },
+    shop_revision: projected.shop_revision,
+    server_time: projected.server_time,
+  };
+}
+
 /**
  * Execute one Human kitchen purchase cart.  The old kitchenBuy remains the
  * source of ingredient/recipe prices, limits, shelf checks, silver debit and
@@ -192,12 +205,27 @@ export function handleHumanKitchenPurchase(farm, body, now = Date.now(), options
   const existing = receipts[body.idempotency_key];
   const requestFingerprint = fingerprint(body);
   if (existing !== undefined) {
-    return existing?.fingerprint === requestFingerprint && isRecord(existing.response)
-      ? { status: 200, json: existing.response }
-      : errorResponse(
-          "idempotency_conflict",
-          "This idempotency key was used for a different request",
-        );
+    if (existing?.fingerprint !== requestFingerprint) {
+      return errorResponse(
+        "idempotency_conflict",
+        "This idempotency key was used for a different request",
+      );
+    }
+    try {
+      const response = replayMinimalHumanActionReceipt(
+        existing,
+        requestFingerprint,
+        responseFor(farm, now, options, null),
+      );
+      return response
+        ? { status: 200, json: response }
+        : errorResponse("idempotency_conflict", "The stored action receipt is invalid");
+    } catch {
+      return {
+        status: 503,
+        json: { error: { code: "farm_unavailable", message: "The kitchen could not be read" } },
+      };
+    }
   }
 
   const current = currentKitchenState(farm, now, options);
@@ -267,25 +295,18 @@ export function handleHumanKitchenPurchase(farm, body, now = Date.now(), options
     if (projected.data.daily_shop.status !== "available") {
       return errorResponse("shop_unavailable", "The kitchen shop became unavailable");
     }
-    const response = {
-      data: {
-        result: {
-          receipt_id: body.idempotency_key,
-          items: resultItems,
-          total_price_silver: totalPrice,
-          silver_balance: working.silver,
-        },
-        resource: projected.data,
-      },
-      shop_revision: projected.shop_revision,
-      server_time: projected.server_time,
-    };
+    const response = responseFor(working, now, options, {
+      receipt_id: body.idempotency_key,
+      items: resultItems,
+      total_price_silver: totalPrice,
+      silver_balance: working.silver,
+    });
 
     working.doorbellHumanKitchenPurchaseReceipts = {
       ...(isRecord(working.doorbellHumanKitchenPurchaseReceipts)
         ? working.doorbellHumanKitchenPurchaseReceipts
         : {}),
-      [body.idempotency_key]: { fingerprint: requestFingerprint, response },
+      [body.idempotency_key]: createMinimalHumanActionReceipt(requestFingerprint, response),
     };
     replaceFarm(farm.id, working);
     return { status: 200, json: response };

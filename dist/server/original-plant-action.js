@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
 import { designCrop } from "../engine.js";
-import { replaceFarm } from "../store.js";
+import { replaceFarmsAtomic } from "../store.js";
 import { dumpUgc, loadUgc } from "../ugc.js";
+import {
+  createMinimalHumanActionReceipt,
+  replayMinimalHumanActionReceipt,
+} from "../minimal-action-receipt.js";
 
 const FARM_DOORPLATE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -14,6 +18,14 @@ const REQUEST_KEYS = [
   "payload",
 ];
 const DESIGN_KEYS = ["name", "latin", "desc", "plant", "harvest"];
+
+function responseFor(farm, now, result) {
+  return {
+    data: { result },
+    revision: originalPlantActionRevision(farm, now),
+    server_time: new Date(now).toISOString(),
+  };
+}
 
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -140,12 +152,24 @@ export function handleHumanOriginalPlantAction(farm, body, now = Date.now()) {
   const requestFingerprint = fingerprint(body);
   const existing = receipts[key];
   if (existing !== undefined) {
-    return existing?.fingerprint === requestFingerprint && isRecord(existing.response)
-      ? { status: 200, json: existing.response }
-      : errorResponse(
+    if (existing?.fingerprint !== requestFingerprint) {
+      return errorResponse(
           "idempotency_conflict",
           "This idempotency key was used for a different request",
-        );
+      );
+    }
+    try {
+      const response = replayMinimalHumanActionReceipt(
+        existing,
+        requestFingerprint,
+        responseFor(farm, now, null),
+      );
+      return response
+        ? { status: 200, json: response }
+        : errorResponse("idempotency_conflict", "The stored action receipt is invalid");
+    } catch {
+      return errorResponse("farm_unavailable", "The original plant state could not be read");
+    }
   }
 
   let currentRevision;
@@ -181,26 +205,22 @@ export function handleHumanOriginalPlantAction(farm, body, now = Date.now()) {
       return errorResponse("farm_unavailable", "The original plant result was invalid");
     }
 
-    const response = {
-      data: {
-        result: {
-          receipt_id: key,
-          crop: structuredClone(authorityResult.crop),
-          fee: authorityResult.fee,
-          seeds: authorityResult.seeds,
-          coins_balance: working.coins,
-        },
-      },
-      revision: originalPlantActionRevision(working, now),
-      server_time: new Date(now).toISOString(),
-    };
+    const response = responseFor(working, now, {
+      receipt_id: key,
+      crop: structuredClone(authorityResult.crop),
+      fee: authorityResult.fee,
+      seeds: authorityResult.seeds,
+      coins_balance: working.coins,
+    });
     working.doorbellHumanOriginalPlantActionReceipts = {
       ...(isRecord(working.doorbellHumanOriginalPlantActionReceipts)
         ? working.doorbellHumanOriginalPlantActionReceipts
         : {}),
-      [key]: { fingerprint: requestFingerprint, response },
+      [key]: createMinimalHumanActionReceipt(requestFingerprint, response),
     };
-    replaceFarm(farm.id, working);
+    const nextUgc = structuredClone(dumpUgc());
+    loadUgc(ugcSnapshot);
+    replaceFarmsAtomic([{ id: farm.id, farm: working }], nextUgc);
     return { status: 200, json: response };
   } catch {
     if (ugcSnapshot !== undefined) loadUgc(ugcSnapshot);

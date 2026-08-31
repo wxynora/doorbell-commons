@@ -4,6 +4,10 @@ import { replaceFarm } from "../store.js";
 import { equipTitle } from "../titles.js";
 import { projectHumanFarmCatalog } from "./farm-catalog-structured.js";
 import { applyHumanFarmNickname, applyHumanFarmSocialSetting } from "./farm-settings-authority.js";
+import {
+  createMinimalHumanActionReceipt,
+  replayMinimalHumanActionReceipt,
+} from "../minimal-action-receipt.js";
 
 const FARM_DOORPLATE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -20,6 +24,15 @@ const FIELDS = new Set([
 ]);
 const TEXT_FIELDS = new Set(["farm_name", "ai_name", "human_name", "welcome_message"]);
 const SOCIAL_FIELDS = new Set(["social.visit", "social.steal", "social.water", "social.message"]);
+
+function responseFor(farm, now, result) {
+  const projected = projectHumanFarmCatalog(farm, now);
+  return {
+    data: { result, resource: projected.data },
+    revision: projected.revision,
+    server_time: projected.server_time,
+  };
+}
 
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -119,7 +132,7 @@ function applySupportedAction(farm, body, now) {
  * Execute one settings field against a clone. Existing game/title authorities
  * remain the only writers; unsupported fields are explicit rejects rather than
  * direct persistence edits. A successful action replaces the farm once and
- * stores its complete catalog response for exact idempotent replay.
+ * stores only the stable action result; replay projects the current catalog.
  */
 export function handleHumanFarmSettingsAction(farm, body, now = Date.now()) {
   if (!validateBody(body)) {
@@ -131,9 +144,21 @@ export function handleHumanFarmSettingsAction(farm, body, now = Date.now()) {
   const existing = receipts[body.idempotency_key];
   const requestFingerprint = fingerprint(body);
   if (existing !== undefined) {
-    return existing?.fingerprint === requestFingerprint && isRecord(existing.response)
-      ? { status: 200, json: existing.response }
-      : errorResponse("idempotency_conflict", "This idempotency key was used for a different request");
+    if (existing?.fingerprint !== requestFingerprint) {
+      return errorResponse("idempotency_conflict", "This idempotency key was used for a different request");
+    }
+    try {
+      const response = replayMinimalHumanActionReceipt(
+        existing,
+        requestFingerprint,
+        responseFor(farm, now, null),
+      );
+      return response
+        ? { status: 200, json: response }
+        : errorResponse("idempotency_conflict", "This idempotency key was used for a different request");
+    } catch {
+      return errorResponse("farm_unavailable", "The farm settings could not be read");
+    }
   }
 
   let currentRevision;
@@ -151,20 +176,15 @@ export function handleHumanFarmSettingsAction(farm, body, now = Date.now()) {
     const action = applySupportedAction(working, body, now);
     if (!action?.ok) return errorResponse("action_rejected", action?.error || "The settings action was rejected");
 
-    const projected = projectHumanFarmCatalog(working, now);
-    const response = {
-      data: {
-        result: { receipt_id: body.idempotency_key, field: body.field },
-        resource: projected.data,
-      },
-      revision: projected.revision,
-      server_time: projected.server_time,
-    };
+    const response = responseFor(working, now, {
+      receipt_id: body.idempotency_key,
+      field: body.field,
+    });
     working.doorbellHumanFarmSettingsActionReceipts = {
       ...(isRecord(working.doorbellHumanFarmSettingsActionReceipts)
         ? working.doorbellHumanFarmSettingsActionReceipts
         : {}),
-      [body.idempotency_key]: { fingerprint: requestFingerprint, response },
+      [body.idempotency_key]: createMinimalHumanActionReceipt(requestFingerprint, response),
     };
     replaceFarm(farm.id, working);
     return { status: 200, json: response };

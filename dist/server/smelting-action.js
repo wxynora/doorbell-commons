@@ -3,6 +3,10 @@ import { craft } from "../engine.js";
 import { replaceFarm } from "../store.js";
 import { projectHumanFarmCatalog } from "./farm-catalog-structured.js";
 import { smeltingActionRevision } from "./smelting-revision.js";
+import {
+  createMinimalHumanActionReceipt,
+  replayMinimalHumanActionReceipt,
+} from "../minimal-action-receipt.js";
 
 export { smeltingActionRevision } from "./smelting-revision.js";
 
@@ -18,6 +22,16 @@ const REQUEST_KEYS = [
   "idempotency_key",
 ];
 const RECEIPTS_FIELD = "doorbellHumanSmeltingActionReceipts";
+
+function responseFor(farm, now, result) {
+  const projected = projectHumanFarmCatalog(farm, now);
+  return {
+    data: { result, resource: projected.data },
+    revision: projected.revision,
+    smelting_revision: smeltingActionRevision(farm),
+    server_time: projected.server_time,
+  };
+}
 
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -113,12 +127,27 @@ export function handleHumanSmeltingAction(farm, body, now = Date.now()) {
   const requestFingerprint = fingerprint(body);
   const existing = receipts[key];
   if (existing !== undefined) {
-    return existing?.fingerprint === requestFingerprint && isRecord(existing.response)
-      ? { status: 200, json: existing.response }
-      : errorResponse(
-          "idempotency_conflict",
-          "This idempotency key was used for a different request",
-        );
+    if (existing?.fingerprint !== requestFingerprint) {
+      return errorResponse(
+        "idempotency_conflict",
+        "This idempotency key was used for a different request",
+      );
+    }
+    try {
+      const response = replayMinimalHumanActionReceipt(
+        existing,
+        requestFingerprint,
+        responseFor(farm, now, null),
+      );
+      return response
+        ? { status: 200, json: response }
+        : errorResponse(
+            "idempotency_conflict",
+            "This idempotency key was used for a different request",
+          );
+    } catch {
+      return errorResponse("farm_unavailable", "The smelting inventory could not be read");
+    }
   }
 
   let currentRevision;
@@ -138,27 +167,18 @@ export function handleHumanSmeltingAction(farm, body, now = Date.now()) {
       return errorResponse("action_rejected", authority?.error || "The smelting action was rejected");
     }
 
-    const projected = projectHumanFarmCatalog(working, now);
-    const response = {
-      data: {
-        result: {
-          receipt_id: key,
-          material_ids: [...body.material_ids],
-          crop_id: authority.cropId,
-          crop_name: authority.cropName,
-          rarity: authority.rarity,
-          by_recipe: authority.byRecipe === true,
-        },
-        resource: projected.data,
-      },
-      revision: projected.revision,
-      smelting_revision: smeltingActionRevision(working),
-      server_time: projected.server_time,
-    };
+    const response = responseFor(working, now, {
+      receipt_id: key,
+      material_ids: [...body.material_ids],
+      crop_id: authority.cropId,
+      crop_name: authority.cropName,
+      rarity: authority.rarity,
+      by_recipe: authority.byRecipe === true,
+    });
 
     working[RECEIPTS_FIELD] = {
       ...(isRecord(working[RECEIPTS_FIELD]) ? working[RECEIPTS_FIELD] : {}),
-      [key]: { fingerprint: requestFingerprint, response },
+      [key]: createMinimalHumanActionReceipt(requestFingerprint, response),
     };
     replaceFarm(farm.id, working);
     return { status: 200, json: response };

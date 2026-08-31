@@ -10,8 +10,21 @@ import {
 import { replaceFarm } from "../store.js";
 import { expeditionActionRevision } from "./expedition-revision.js";
 import { projectHumanFarmCatalog } from "./farm-catalog-structured.js";
+import {
+  createMinimalHumanActionReceipt,
+  replayMinimalHumanActionReceipt,
+} from "../minimal-action-receipt.js";
 
 export { expeditionActionRevision } from "./expedition-revision.js";
+
+function responseFor(farm, now, result) {
+  const resource = projectHumanFarmCatalog(farm, now);
+  return {
+    data: { result, resource: resource.data },
+    revision: expeditionActionRevision(farm, now),
+    server_time: resource.server_time,
+  };
+}
 
 const FARM_DOORPLATE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -160,12 +173,27 @@ export function handleHumanExpeditionAction(farm, body, now = Date.now()) {
   const requestFingerprint = fingerprint(body);
   const existing = receipts[key];
   if (existing !== undefined) {
-    return existing?.fingerprint === requestFingerprint && isRecord(existing.response)
-      ? { status: 200, json: existing.response }
-      : errorResponse(
-          "idempotency_conflict",
-          "This idempotency key was used for a different request",
-        );
+    if (existing?.fingerprint !== requestFingerprint) {
+      return errorResponse(
+        "idempotency_conflict",
+        "This idempotency key was used for a different request",
+      );
+    }
+    try {
+      const response = replayMinimalHumanActionReceipt(
+        existing,
+        requestFingerprint,
+        responseFor(farm, now, null),
+      );
+      return response
+        ? { status: 200, json: response }
+        : errorResponse(
+            "idempotency_conflict",
+            "This idempotency key was used for a different request",
+          );
+    } catch {
+      return errorResponse("farm_unavailable", "The expedition state could not be read");
+    }
   }
 
   let currentRevision;
@@ -192,25 +220,17 @@ export function handleHumanExpeditionAction(farm, body, now = Date.now()) {
       return errorResponse("farm_unavailable", "The expedition action returned an invalid result");
     }
 
-    const resource = projectHumanFarmCatalog(working, now);
-    const response = {
-      data: {
-        result: {
-          receipt_id: key,
-          action: body.action,
-          outcome,
-        },
-        resource: resource.data,
-      },
-      revision: expeditionActionRevision(working, now),
-      server_time: resource.server_time,
-    };
+    const response = responseFor(working, now, {
+      receipt_id: key,
+      action: body.action,
+      outcome,
+    });
 
     working.doorbellHumanExpeditionActionReceipts = {
       ...(isRecord(working.doorbellHumanExpeditionActionReceipts)
         ? working.doorbellHumanExpeditionActionReceipts
         : {}),
-      [key]: { fingerprint: requestFingerprint, response },
+      [key]: createMinimalHumanActionReceipt(requestFingerprint, response),
     };
     replaceFarm(farm.id, working);
     return { status: 200, json: response };

@@ -2,9 +2,13 @@ import { createHash } from "node:crypto";
 import { kitchenSellSelected, humanBarterList, humanBarterUnlist } from "../engine.js";
 import { listForSale, unlistItem } from "../game.js";
 import { dumpUgc, loadUgc } from "../ugc.js";
-import { normalizeFarm, replaceFarm } from "../store.js";
+import { normalizeFarm, replaceFarmsAtomic } from "../store.js";
 import { projectHumanFarmCatalog } from "./farm-catalog-structured.js";
 import { marketActionRevision } from "./market-revision.js";
+import {
+  createMinimalHumanActionReceipt,
+  replayMinimalHumanActionReceipt,
+} from "../minimal-action-receipt.js";
 
 export { marketActionRevision } from "./market-revision.js";
 
@@ -352,9 +356,21 @@ export function handleHumanMarketAction(farm, body, now = Date.now()) {
   const requestFingerprint = fingerprint(body);
   const existing = receipts[body.idempotency_key];
   if (existing !== undefined) {
-    return existing?.fingerprint === requestFingerprint && isRecord(existing.response)
-      ? { status: 200, json: existing.response }
-      : errorResponse("idempotency_conflict", "This idempotency key was used for a different request");
+    if (existing?.fingerprint !== requestFingerprint) {
+      return errorResponse("idempotency_conflict", "This idempotency key was used for a different request");
+    }
+    try {
+      const response = replayMinimalHumanActionReceipt(
+        existing,
+        requestFingerprint,
+        resourceResponse(farm, body.idempotency_key, body.action, null, now),
+      );
+      return response
+        ? { status: 200, json: response }
+        : errorResponse("idempotency_conflict", "The stored action receipt is invalid");
+    } catch {
+      return errorResponse("farm_unavailable", "The market could not be read", undefined, 503);
+    }
   }
 
   let currentRevision;
@@ -406,9 +422,11 @@ export function handleHumanMarketAction(farm, body, now = Date.now()) {
     );
     working[MARKET_RECEIPTS] = {
       ...(isRecord(working[MARKET_RECEIPTS]) ? working[MARKET_RECEIPTS] : {}),
-      [body.idempotency_key]: { fingerprint: requestFingerprint, response },
+      [body.idempotency_key]: createMinimalHumanActionReceipt(requestFingerprint, response),
     };
-    replaceFarm(farm.id, working);
+    const nextUgc = structuredClone(dumpUgc());
+    loadUgc(ugcSnapshot);
+    replaceFarmsAtomic([{ id: farm.id, farm: working }], nextUgc);
     return { status: 200, json: response };
   } catch {
     if (ugcSnapshot !== undefined) loadUgc(ugcSnapshot);

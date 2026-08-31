@@ -2,6 +2,19 @@ import { createHash } from "node:crypto";
 import { ranchCollect } from "../engine.js";
 import { playerFarms, replaceFarm } from "../store.js";
 import { projectHumanRanch } from "./ranch-structured.js";
+import {
+  createMinimalHumanActionReceipt,
+  replayMinimalHumanActionReceipt,
+} from "../minimal-action-receipt.js";
+
+function responseFor(farm, now, result) {
+  const resource = projectHumanRanch(farm, now);
+  return {
+    data: { result, resource: resource.data },
+    revision: resource.revision,
+    server_time: resource.server_time,
+  };
+}
 
 const FARM_DOORPLATE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -233,12 +246,27 @@ export function handleHumanRanchCollection(farm, body, now = Date.now()) {
   const requestFingerprint = fingerprint(body);
   const existing = receipts[key];
   if (existing !== undefined) {
-    return existing?.fingerprint === requestFingerprint && isRecord(existing.response)
-      ? { status: 200, json: existing.response }
-      : errorResponse(
-          "idempotency_conflict",
-          "This idempotency key was used for a different request",
-        );
+    if (existing?.fingerprint !== requestFingerprint) {
+      return errorResponse(
+        "idempotency_conflict",
+        "This idempotency key was used for a different request",
+      );
+    }
+    try {
+      const response = replayMinimalHumanActionReceipt(
+        existing,
+        requestFingerprint,
+        responseFor(farm, now, null),
+      );
+      return response
+        ? { status: 200, json: response }
+        : errorResponse("idempotency_conflict", "The stored action receipt is invalid");
+    } catch {
+      return {
+        status: 503,
+        json: { error: { code: "farm_unavailable", message: "The ranch could not be read" } },
+      };
+    }
   }
 
   let current;
@@ -272,18 +300,13 @@ export function handleHumanRanchCollection(farm, body, now = Date.now()) {
     }
 
     const result = resultFor(current.data, working, authorityResult, key, beforeProductIds);
-    const resource = projectHumanRanch(working, now);
-    const response = {
-      data: { result, resource: resource.data },
-      revision: resource.revision,
-      server_time: resource.server_time,
-    };
+    const response = responseFor(working, now, result);
 
     working.doorbellHumanRanchCollectionReceipts = {
       ...(isRecord(working.doorbellHumanRanchCollectionReceipts)
         ? working.doorbellHumanRanchCollectionReceipts
         : {}),
-      [key]: { fingerprint: requestFingerprint, response },
+      [key]: createMinimalHumanActionReceipt(requestFingerprint, response),
     };
     replaceFarm(farm.id, working);
     return { status: 200, json: response };
