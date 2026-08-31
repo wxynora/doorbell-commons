@@ -2,6 +2,7 @@
 import { flavor, landTierByLevel, getCrop, totalCropCount } from "./content.js";
 import { currentSeason } from "./time.js";
 import { taskLine } from "./tasks.js";
+import { agronomyObservationsForPlot } from "./career/p3-world.js";
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
 const RITUAL_RARITY = new Set(["SR", "SSR", "SP"]);
 const PLANT_LINES = [""];
@@ -189,6 +190,11 @@ export function describeFarm(farm, now, opts = {}) {
         lines.push(pick(flavor.ambient.allEmpty));
     else if (empty)
         lines.push(pick(flavor.ambient.empty));
+    for (const plot of farm.plots) {
+        const observations = agronomyObservationsForPlot(plot);
+        if (observations.includes("leaf_damage") && observations.includes("visible_pest_trace"))
+            lines.push(`⚠️ ${plot.id} 号地的叶片有啃咬痕迹，叶间还能看见虫迹；这块地需要农艺师检查。`);
+    }
     return lines.join("\n");
 }
 //# sourceMappingURL=flavor.js.map

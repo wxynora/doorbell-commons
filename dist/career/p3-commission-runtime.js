@@ -13,6 +13,7 @@ import {
     advanceP3Farm,
     agronomyCheckCandidates,
     agronomyChecksFor,
+    agronomyIssuesForFarm,
     agronomyMaterialUsage,
     agronomyObservationsFor,
     agronomyTreatmentCandidates,
@@ -581,9 +582,10 @@ function sourceState(job) {
     const sources = currentP3Sources(farm);
     if (job.career === "agronomist") {
         const plotId = Number(job.objectId.slice(job.objectId.lastIndexOf(":plot:") + 6));
-        const plot = farm.plots?.find((entry) => entry.id === plotId);
-        const issue = plot?.crop?.lingyeAgronomy;
-        if (issue?.sourceId === job.sourceId) {
+        const entry = agronomyIssuesForFarm(farm)
+            .find(({ plot, issue }) => plot.id === plotId && issue.sourceId === job.sourceId);
+        if (entry) {
+            const { issue } = entry;
             return {
                 farm,
                 source: {

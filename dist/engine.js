@@ -107,6 +107,7 @@ import {
     agronomyGrowthEffect,
     agronomyHarvestPenalty,
     agronomyTreatmentLocked,
+    normalizeFarmAgronomyIssues,
     recordAgronomyHarvest,
 } from "./career/p3-world.js";
 import { randomUUID } from "node:crypto";
@@ -216,7 +217,7 @@ export function advance(farm, now) {
         return 0;
     for (const p of farm.plots) {
         if (p.crop && !p.crop.ripe) {
-            const growthEffect = agronomyGrowthEffect(p.crop);
+            const growthEffect = agronomyGrowthEffect(p);
             let growthTicks = elapsed;
             if (growthEffect === "paused")
                 growthTicks = 0;
@@ -301,7 +302,7 @@ export function harvest(farm, plotId, now, seasonMod, options = {}) {
         return { ok: false, error: `${plotId} 号地没有作物` };
     if (!plot.crop.ripe)
         return { ok: false, error: "作物还没成熟" };
-    if (agronomyTreatmentLocked(plot.crop))
+    if (agronomyTreatmentLocked(plot))
         return { ok: false, error: "OP_REJECTED" };
     const rng = new Rng(farm.rngState);
     const c = plot.crop;
@@ -319,7 +320,7 @@ export function harvest(farm, plotId, now, seasonMod, options = {}) {
         else if (seasonMod.type === "quality_down")
             quality = qualityByTier(Math.max(1, quality.tier - (seasonMod.value ?? 1))) ?? quality;
     }
-    if (agronomyHarvestPenalty(c))
+    if (agronomyHarvestPenalty(plot))
         quality = qualityByTier(Math.max(1, quality.tier - 1)) ?? quality;
     // 奖励事件（季节事件触发时抑制，互斥）
     const ev = seasonMod ? null : rollBonusEvent(rng);
@@ -525,6 +526,7 @@ export function steal(victim, plotId, by, now, thief, options = {}) {
     const refund = Math.round(seedCost * 0.5);
     if (refund > 0)
         victim.coins += refund;
+    normalizeFarmAgronomyIssues(victim);
     plot.crop = null;
     if (!options.resumeGuard)
         recordStealAttempt(thief, now);

@@ -6,6 +6,7 @@ import { playerFarms } from "../store.js";
 import { checkTitles, equippedTitle } from "../titles.js";
 import { qixi2026ShopRows, qixi2026TaskView } from "../qixi-2026.js";
 import { isQixiLantern2026Active } from "../qixi-lantern-2026.js";
+import { agronomyObservationsForPlot } from "../career/p3-world.js";
 import { ago, clock, esc, farmLabel, farmNames, fmtDur, num, page, rarityDot, stamp } from "./shell.js";
 import { codexGot, rankOf } from "./stats.js";
 
@@ -18,6 +19,22 @@ function recentCodex(f, n) {
         .map((c) => ({ name: c.name, rarity: c.rarity }));
 }
 const barFill = (pct, color) => `<span style="width:${Math.max(0, Math.min(100, Math.round(pct)))}%;background:${color}"></span>`;
+const AGRONOMY_OBSERVATION_LABELS = Object.freeze({
+    leaf_wilt: "枝叶打蔫",
+    soil_surface_dry: "土面明显发干",
+    soil_surface_saturated: "土面一直湿着",
+    lower_leaf_yellowing: "下层叶片泛黄",
+    leaf_damage: "叶片有啃咬痕迹",
+    visible_pest_trace: "叶间能看见虫迹",
+    uneven_leaf_color: "叶色深浅不一",
+    uneven_growth: "长势参差",
+    whole_plant_wilt: "整株萎蔫",
+    root_zone_instability: "根部土面松动",
+});
+const agronomyObservationText = (plot) => agronomyObservationsForPlot(plot)
+    .map((observation) => AGRONOMY_OBSERVATION_LABELS[observation])
+    .filter(Boolean)
+    .join(" · ");
 // ——————————————————————————————————————————————————————————————
 // 🏡 农场主页 / 总览（打样）
 // ——————————————————————————————————————————————————————————————
@@ -83,8 +100,12 @@ export function uiHome(f, now, key, flash) {
     // 他的田 mini
     const harvestLeft = humanHarvestLeft(f, now);
     const plots = f.plots.map((p) => {
+        const agronomyText = agronomyObservationText(p);
+        const agronomyNotice = agronomyText
+            ? `<span class="small" style="color:#a35f45;line-height:1.35">⚠️ ${esc(agronomyText)}</span>`
+            : "";
         if (!p.crop)
-            return `<div class="plot empty"><span class="ico">🟫</span><span class="small">空地</span></div>`;
+            return `<div class="plot empty"><span class="ico">🟫</span><span class="small">空地</span>${agronomyNotice}</div>`;
         const c = p.crop;
         const ico = c.ripe ? "🥕" : c.seedType === "fantasy" ? "✨" : c.seedType === "limited" ? "🎏" : "🌱";
         const gp = c.ripe ? 100 : Math.min(99, (c.progress / Math.max(1, c.growTicks)) * 100);
@@ -97,7 +118,7 @@ export function uiHome(f, now, key, flash) {
         return `<div class="plot ${c.ripe ? "ripe" : ""}"><span class="ico">${ico}</span>
       <span class="small muted">${lbl} · 💧${c.waterCount}</span>
       <div class="pminibar">${barFill(gp, c.ripe ? "var(--SSR)" : "var(--leaf)")}</div>
-      ${eta}</div>`;
+      ${eta}${agronomyNotice}</div>`;
     }).join("");
     const ripeN = f.plots.filter((p) => p.crop?.ripe).length;
     const growN = f.plots.filter((p) => p.crop && !p.crop.ripe).length;

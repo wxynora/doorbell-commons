@@ -359,14 +359,8 @@ function reconcileFarmResolutions(world, farm, event, now) {
     for (const history of farm.lingyeP3?.history ?? []) {
         if (history.natureEventId !== event.eventId || !history.natureImpactId)
             continue;
-        const kind = history.type === "agronomy_harvested" ? "owner" : "transferred";
-        world = resolveImpact(world, event, history.natureImpactId, kind, history.sourceId, now);
-    }
-    for (const impact of event.impacts.filter((entry) => entry.farmId === farm.id &&
-        entry.objectId.startsWith("plot:") && entry.resolvedAtDay == null)) {
-        const plotId = Number(impact.objectId.slice("plot:".length));
-        if (!farm.plots?.find((plot) => plot.id === plotId)?.crop)
-            world = resolveImpact(world, event, impact.impactId, "owner", `harvest:${farm.id}:${plotId}`, now);
+        if (history.type !== "agronomy_harvested")
+            world = resolveImpact(world, event, history.natureImpactId, "transferred", history.sourceId, now);
     }
     return world;
 }
@@ -602,23 +596,11 @@ export function commitNatureFarmReconciliation(farm, now = Date.now()) {
     return true;
 }
 
-export function commitNatureRemovedPlot(farm, plotId, resolutionKind, resolutionRef, now = Date.now()) {
-    const world = getNatureWorld();
-    const event = world.currentEvent;
-    if (!event)
-        return false;
-    const impact = event.impacts.find((entry) => entry.farmId === farm.id &&
-        entry.objectId === `plot:${Number(plotId)}` && entry.resolvedAtDay == null);
-    if (!impact)
-        return false;
-    const nextWorld = resolveImpact(structuredClone(world), event, impact.impactId,
-        resolutionKind, String(resolutionRef), now);
-    const committed = replaceFarmsAndNatureAtomic({
-        replacements: [{ id: farm.id, farm: structuredClone(farm) }],
-        nextNatureWorld: nextWorld,
-    });
-    Object.assign(farm, structuredClone(committed.farms[0]));
-    return true;
+export function commitNatureRemovedPlot(farm, _plotId, _resolutionKind, _resolutionRef, now = Date.now()) {
+    // Harvesting or stealing only removes the crop.  Plot-level agronomy
+    // issues remain authoritative until career treatment or an existing
+    // nature-event recovery contract resolves them.
+    return commitNatureFarmReconciliation(farm, now);
 }
 
 export function collectFloodFishForFarm(farm, now = Date.now()) {

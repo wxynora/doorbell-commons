@@ -296,15 +296,66 @@ export function runP3WorldAction(farm, actionKey, payloadHash, operation, now = 
     return result;
 }
 
-function cropAgronomyIssues(crop) {
-    return [crop?.lingyeAgronomy, ...(Array.isArray(crop?.lingyeNatureAgronomy) ? crop.lingyeNatureAgronomy : [])]
-        .filter(Boolean);
+const ACTIVE_AGRONOMY_STATUSES = new Set(["open", "stabilized", "treating"]);
+
+function plotAgronomyIssues(plot) {
+    const candidates = [
+        plot?.lingyeAgronomy,
+        ...(Array.isArray(plot?.lingyeNatureAgronomy) ? plot.lingyeNatureAgronomy : []),
+        plot?.crop?.lingyeAgronomy,
+        ...(Array.isArray(plot?.crop?.lingyeNatureAgronomy) ? plot.crop.lingyeNatureAgronomy : []),
+    ].filter(Boolean);
+    const seen = new Set();
+    return candidates.filter((issue) => {
+        const key = String(issue?.sourceId ?? "");
+        if (key && seen.has(key))
+            return false;
+        if (key)
+            seen.add(key);
+        return true;
+    });
+}
+
+function migratePlotAgronomyIssues(plot) {
+    const crop = plot?.crop;
+    if (!crop)
+        return false;
+    let changed = false;
+    if (crop.lingyeAgronomy) {
+        if (!plot.lingyeAgronomy || plot.lingyeAgronomy.sourceId === crop.lingyeAgronomy.sourceId) {
+            plot.lingyeAgronomy = crop.lingyeAgronomy;
+            delete crop.lingyeAgronomy;
+            changed = true;
+        }
+    }
+    if (Array.isArray(crop.lingyeNatureAgronomy) && crop.lingyeNatureAgronomy.length > 0) {
+        plot.lingyeNatureAgronomy ??= [];
+        const existing = new Set(plot.lingyeNatureAgronomy.map((issue) => String(issue?.sourceId ?? "")));
+        for (const issue of crop.lingyeNatureAgronomy) {
+            const sourceId = String(issue?.sourceId ?? "");
+            if (!sourceId || !existing.has(sourceId)) {
+                plot.lingyeNatureAgronomy.push(issue);
+                if (sourceId)
+                    existing.add(sourceId);
+            }
+        }
+        delete crop.lingyeNatureAgronomy;
+        changed = true;
+    }
+    return changed;
+}
+
+export function normalizeFarmAgronomyIssues(farm) {
+    let changed = false;
+    for (const plot of farm.plots ?? [])
+        changed = migratePlotAgronomyIssues(plot) || changed;
+    return changed;
 }
 
 function activeAgronomyIssue(farm, predicate = () => true) {
     for (const plot of farm.plots ?? []) {
-        for (const issue of cropAgronomyIssues(plot.crop)) {
-            if (["open", "stabilized", "treating"].includes(issue?.status) && predicate(issue))
+        for (const issue of plotAgronomyIssues(plot)) {
+            if (ACTIVE_AGRONOMY_STATUSES.has(issue?.status) && predicate(issue))
                 return { issue, plot };
         }
     }
@@ -313,7 +364,7 @@ function activeAgronomyIssue(farm, predicate = () => true) {
 
 function findAgronomyIssue(farm, sourceId) {
     for (const plot of farm.plots ?? []) {
-        const issue = cropAgronomyIssues(plot.crop).find((entry) => entry.sourceId === sourceId);
+        const issue = plotAgronomyIssues(plot).find((entry) => entry.sourceId === sourceId);
         if (issue)
             return { issue, plot };
     }
@@ -372,7 +423,7 @@ function generateAgronomyIssue(farm, day, now) {
     const plot = stablePick(plots, farm.id, day, "agronomy-plot");
     const condition = stablePick(eligibleAgronomyConditions(plot), farm.id, day, plot.id, "agronomy-condition");
     const sourceId = `p3:agronomy:${farm.id}:${day}:${plot.id}`;
-    plot.crop.lingyeAgronomy = {
+    plot.lingyeAgronomy = {
         sourceId,
         condition,
         status: "open",
@@ -414,9 +465,10 @@ function generateAnimalCase(farm, state, day, now) {
 
 export function advanceP3Farm(farm, now = Date.now()) {
     const day = beijingDay(now);
+    const migrated = normalizeFarmAgronomyIssues(farm);
     const state = p3State(farm, day);
     const generated = [];
-    let changed = false;
+    let changed = migrated;
     for (let candidateDay = state.lastAdvancedDay + 1; candidateDay <= day; candidateDay += 1) {
         changed = advanceRecoveries(farm, state, candidateDay, now) || changed;
         const agronomy = generateAgronomyIssue(farm, candidateDay, now);
@@ -431,23 +483,30 @@ export function advanceP3Farm(farm, now = Date.now()) {
     return { changed, generated, state };
 }
 
-export function agronomyGrowthEffect(crop) {
-    const effects = cropAgronomyIssues(crop)
+export function agronomyGrowthEffect(plot) {
+    const effects = plotAgronomyIssues(plot)
         .filter((issue) => issue.status !== "resolved")
         .map((issue) => AGRONOMY_CONDITIONS[issue.condition]?.growth ?? "normal");
     return effects.includes("paused") ? "paused" : effects.includes("half") ? "half" : "normal";
 }
 
-export function agronomyHarvestPenalty(crop) {
-    return cropAgronomyIssues(crop).some((issue) => issue.status !== "resolved" && issue.qualityPenalty);
+export function agronomyHarvestPenalty(plot) {
+    return plotAgronomyIssues(plot).some((issue) => issue.status !== "resolved" && issue.qualityPenalty);
 }
 
-export function agronomyTreatmentLocked(crop) {
-    return cropAgronomyIssues(crop).some((issue) => issue.status === "treating");
+export function agronomyTreatmentLocked(plot) {
+    return plotAgronomyIssues(plot).some((issue) => issue.status === "treating");
+}
+
+export function agronomyObservationsForPlot(plot) {
+    return [...new Set(plotAgronomyIssues(plot)
+        .filter((issue) => ACTIVE_AGRONOMY_STATUSES.has(issue?.status))
+        .flatMap((issue) => agronomyObservationsFor(issue.condition)))];
 }
 
 export function recordAgronomyHarvest(farm, plot, now = Date.now()) {
-    const issues = cropAgronomyIssues(plot?.crop);
+    migratePlotAgronomyIssues(plot);
+    const issues = plotAgronomyIssues(plot).filter((issue) => ACTIVE_AGRONOMY_STATUSES.has(issue?.status));
     if (issues.length === 0)
         return;
     const state = p3State(farm, beijingDay(now));
@@ -497,6 +556,7 @@ export function maybeApplyRanchRaidInjury(farm, animal, eventReference, now = Da
 }
 
 function requireIssue(farm, sourceId) {
+    normalizeFarmAgronomyIssues(farm);
     const entry = findAgronomyIssue(farm, sourceId);
     if (!entry || !["open", "stabilized", "treating"].includes(entry.issue.status))
         throw new Error("agronomy_source_not_available");
@@ -639,12 +699,15 @@ export function currentP3Sources(farm) {
 
 export function addNatureAgronomyIssue(farm, input) {
     const plot = farm.plots?.find((entry) => entry.id === Number(input.plotId));
-    if (!plot?.crop)
+    if (!plot)
         return null;
-    plot.crop.lingyeNatureAgronomy ??= [];
-    const existing = plot.crop.lingyeNatureAgronomy.find((issue) => issue.sourceId === String(input.sourceId));
+    migratePlotAgronomyIssues(plot);
+    plot.lingyeNatureAgronomy ??= [];
+    const existing = plot.lingyeNatureAgronomy.find((issue) => issue.sourceId === String(input.sourceId));
     if (existing)
         return existing;
+    if (!plot.crop)
+        return null;
     const contract = AGRONOMY_CONDITIONS[input.condition];
     if (!contract)
         throw new Error("agronomy_condition_not_available");
@@ -664,7 +727,7 @@ export function addNatureAgronomyIssue(farm, input) {
         lastSpreadDay: input.lastSpreadDay ?? null,
         protectedForEvent: false,
     };
-    plot.crop.lingyeNatureAgronomy.push(issue);
+    plot.lingyeNatureAgronomy.push(issue);
     p3State(farm, Number(input.generatedDay));
     return issue;
 }
@@ -693,6 +756,6 @@ export function addNatureAnimalCase(farm, input) {
 }
 
 export function agronomyIssuesForFarm(farm) {
-    return (farm.plots ?? []).flatMap((plot) => cropAgronomyIssues(plot.crop)
+    return (farm.plots ?? []).flatMap((plot) => plotAgronomyIssues(plot)
         .map((issue) => ({ plot, issue })));
 }
