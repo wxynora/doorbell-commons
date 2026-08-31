@@ -248,8 +248,15 @@ export function startRegisteredP3Scheduler(database, options = {}) {
         timer = setTimer(() => {
             if (stopped)
                 return;
-            advanceRegisteredP3Farms(database, now());
-            schedule();
+            try {
+                advanceRegisteredP3Farms(database, now());
+            }
+            catch (error) {
+                console.error("[lingye-p3] daily farm advancement failed", error);
+            }
+            finally {
+                schedule();
+            }
         }, Math.max(0, nextBeijingDayBoundary(current) - current));
         timer?.unref?.();
     };

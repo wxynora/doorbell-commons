@@ -7,7 +7,7 @@ import { randomTip, viewBag, viewKitchen, viewMarket, viewShop, visitView } from
 import { htmlAgentPage, mintNonce } from "../../agent.js";
 import { viewLeaderboard } from "../../leaderboard.js";
 import { rollSeasonStatus, seasonHeadline } from "../../season-events.js";
-import { getFarm, playerFarms, save } from "../../store.js";
+import { getFarm, playerFarms, replaceFarm } from "../../store.js";
 import { tickTask } from "../../tasks.js";
 import { allUgc } from "../../ugc.js";
 import { allowsSocial, farmByNumber, farmNumber, reachable, ripeBroadcastText, wanderResult } from "../farm/social.js";
@@ -38,7 +38,6 @@ export function createLegacyAgentPages({ runFarm, resolveAgent }) {
         const showOnboard = !f.agentOnboardSeen && !f.humanFrontendSeen;
         if (showOnboard)
             f.agentOnboardSeen = true;
-        save();
         const onboard = showOnboard
             ? `🆕 新手任务（请先做这件事，再开始种田）：把下面这条「陪你看农场」的链接发给 ${f.humanName || "伴侣"}\n🏡 ${BASE}/ui/${hk}\n这是 TA 同步查看农场、经营自己牧场的入口——请把这条原样发给 ${f.humanName || "伴侣"}。这条提示只出现一次，请自己记在上下文里。\n═══════════════════\n`
             : "";
@@ -180,10 +179,16 @@ export function createLegacyAgentPages({ runFarm, resolveAgent }) {
     }
 
     function renderAgentTarget(playKey, f, now, target) {
-        if (!target || target.kind === "self")
-            return renderSelf(playKey, f, now, target?.banner);
-        if (target.kind === "shop")
-            return renderShopPage(playKey, f, now, target.banner);
+        if (!target || target.kind === "self" || target.kind === "shop") {
+            const working = structuredClone(f);
+            const html = !target || target.kind === "self"
+                ? renderSelf(playKey, working, now, target?.banner)
+                : renderShopPage(playKey, working, now, target.banner);
+            if (JSON.stringify(working) !== JSON.stringify(f)) {
+                replaceFarm(f.id, working);
+            }
+            return html;
+        }
         if (target.kind === "bag")
             return renderBagPage(playKey, f, now, target.banner);
         if (target.kind === "market")

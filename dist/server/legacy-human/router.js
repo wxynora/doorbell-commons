@@ -44,7 +44,11 @@ import {
     getPublicExpeditionWorld,
     getQixiLantern2026World,
     playerFarms,
+    replaceFarm,
+    replaceFarmsAtomic,
+    restoreWorldSnapshotInMemory,
     save,
+    snapshotWorldForRollback,
 } from "../../store.js";
 import { BASE, HUMAN_HARVEST_DAILY_CAP, WELCOME_MAX } from "../../config.js";
 import {
@@ -112,32 +116,46 @@ export async function handleLegacyHumanRoute({
     careerBenefitsForFarm,
 }) {
     const key = parts[1] ?? "";
-    const f = key ? allFarms().find((x) => x.humanKey === key) : undefined;
+    let f = key ? allFarms().find((x) => x.humanKey === key) : undefined;
     if (!f) {
         res.writeHead(404, AGENT_HEADERS);
         return res.end(uiInvalid());
     }
-    const raidSettlement = settleRanchRaids(playerFarms(), now);
-    if (raidSettlement.settled > 0)
-        for (const farm of playerFarms())
+    const currentPlayers = playerFarms();
+    const stagedPlayers = currentPlayers.map((farm) => structuredClone(farm));
+    const raidSettlement = settleRanchRaids(stagedPlayers, now);
+    if (raidSettlement.settled > 0) {
+        for (const farm of stagedPlayers)
             checkTitles(farm);
+        const replacements = stagedPlayers
+            .filter((farm, index) => JSON.stringify(farm) !== JSON.stringify(currentPlayers[index]))
+            .map((farm) => ({ id: farm.id, farm }));
+        if (replacements.length > 0)
+            replaceFarmsAtomic(replacements);
+        f = allFarms().find((farm) => farm.humanKey === key);
+    }
+    if (method === "GET")
+        f = structuredClone(f);
     advance(f, now);
     if (!f.humanFrontendSeen) {
         f.humanFrontendSeen = true;
-        save();
+        replaceFarm(f.id, f);
+        f = method === "GET" ? structuredClone(getFarm(f.id)) : getFarm(f.id);
     } // 伴侣已打开前端 → Agent 页"先发链接"新手任务可撤掉
-    else if (raidSettlement.settled > 0)
-        save();
     const section = parts[2];
+    const persistHumanReadFarm = () => {
+        const current = getFarm(f.id);
+        if (method === "GET" && current && JSON.stringify(f) !== JSON.stringify(current))
+            replaceFarm(f.id, f);
+    };
     const renderHuman = (html) => {
         if (method !== "GET")
             return html;
-        const publicWorld = getPublicExpeditionWorld();
-        const publicFarms = playerFarms();
+        const publicWorld = structuredClone(getPublicExpeditionWorld());
+        const publicFarms = playerFarms().map((farm) => structuredClone(farm));
         advancePublicExpedition(publicWorld, publicFarms, now);
         const notices = takeRanchNotices(f, section);
-        if (notices.length)
-            save();
+        persistHumanReadFarm();
         return uiHumanNotices(html, notices);
     };
     // 🌾 人类帮自己的 AI 一键收完当时全部成熟作物：只认本页 humanKey，成功一批才消耗每日 1 次额度。
@@ -419,7 +437,7 @@ export async function handleLegacyHumanRoute({
             return res.end();
         }
         if (reconciled)
-            save();
+            replaceFarm(f.id, f);
         res.writeHead(200, AGENT_HEADERS);
         return res.end(renderHuman(uiQixiLantern(f, world, now, key, url.searchParams.get("flash") ?? undefined, url.searchParams.get("letter") === "latest", url.searchParams.get("item") ?? undefined)));
     }
@@ -653,8 +671,16 @@ export async function handleLegacyHumanRoute({
     // 🧭 铃野共行：独立于个人探险的全服公共副本，只读展示共享剧情、任务、结局与往期故事。
     if (section === "together") {
         const world = getPublicExpeditionWorld();
-        advancePublicExpedition(world, playerFarms(), now);
-        save();
+        const rollback = snapshotWorldForRollback();
+        try {
+            advancePublicExpedition(world, playerFarms(), now);
+            save();
+        }
+        catch (error) {
+            restoreWorldSnapshotInMemory(rollback);
+            throw error;
+        }
+        persistHumanReadFarm();
         res.writeHead(200, AGENT_HEADERS);
         return res.end(renderHuman(uiTogether(f, world, now, key)));
     }
@@ -698,11 +724,15 @@ export async function handleLegacyHumanRoute({
     // 他的田/商店/原创已并进主页，连同乱填的 section 一律回落主页；排行榜仍占位。
     if (section === "messages")
         return res.end(renderHuman(uiMessages(f, now, key)));
-    if (section === "leaderboard")
+    if (section === "leaderboard") {
+        persistHumanReadFarm();
         return res.end(renderHuman(uiLeaderboard(f, now, key)));
+    }
     const quiet = settleQixi2026QuietTask(f, now);
     if (quiet)
-        save();
+        replaceFarm(f.id, f);
+    else
+        persistHumanReadFarm();
     const homeFlash = [url.searchParams.get("flash") ?? "", qixi2026CompletionText(quiet)].filter(Boolean).join("\n");
     return res.end(renderHuman(uiHome(f, now, key, homeFlash || undefined)));
 }

@@ -9,7 +9,7 @@ import { normalizeDishPricing, pushInbox, pushLog, pushRanchNotice } from "./eng
 import { dumpUgc, loadUgc } from "./ugc.js";
 import { NPC_ID } from "./config.js";
 import { ensureFishing } from "./fishing.js";
-import { glimmerAchievementRewardText, normalizeGlimmerFarm, normalizeGlimmerWorld, settleGlimmerAchievementRewards } from "./glimmer.js";
+import { glimmerAchievementRewardText, glimmerTracks, normalizeGlimmerFarm, normalizeGlimmerWorld, settleGlimmerAchievementRewards } from "./glimmer.js";
 import { normalizePublicExpeditionWorld } from "./public-expedition.js";
 import { activateNatureWorld, advanceNatureWorld, normalizeNatureWorld } from "./nature.js";
 import { setNatureWorldProvider } from "./time.js";
@@ -200,11 +200,24 @@ export function applyMaintenanceSilverGrant(farmValues = farms.values(), now = D
         const section = String(raw?.section ?? "").trim();
         const replaceSection = String(raw?.replaceSection ?? "").trim();
         const sendInbox = raw?.sendInbox !== false;
-        if (!id || (gold <= 0 && silver <= 0 && !notice) || appliedMaintenanceGrantIds.includes(id))
+        const glimmerPityBonus = Math.max(0, Math.floor(Number(raw?.glimmerPityBonus) || 0));
+        const glimmerTrackAt = Date.parse(String(raw?.glimmerTrackAt ?? ""));
+        if (glimmerPityBonus > 0 && !Number.isFinite(glimmerTrackAt))
+            throw new Error(`Maintenance grant ${id || "<unknown>"} has an invalid Glimmer track time`);
+        const glimmerPityKindIds = glimmerPityBonus > 0
+            ? [...new Set(glimmerTracks(glimmerTrackAt, structuredClone(glimmerWorld)).map((track) => track.kindId))]
+            : [];
+        if (!id || (gold <= 0 && silver <= 0 && !notice && glimmerPityKindIds.length === 0) || appliedMaintenanceGrantIds.includes(id))
             continue;
         for (const farm of players) {
             farm.coins = Math.max(0, Math.floor(Number(farm.coins) || 0)) + gold;
             farm.silver = Math.max(0, Math.floor(Number(farm.silver) || 0)) + silver;
+            if (glimmerPityKindIds.length > 0) {
+                const state = normalizeGlimmerFarm(farm);
+                for (const kindId of glimmerPityKindIds)
+                    state.capturePity[kindId] = (state.capturePity[kindId] ?? 0) + glimmerPityBonus;
+                normalizeGlimmerFarm(farm);
+            }
             if (notice) {
                 if (sendInbox)
                     pushInbox(farm, notice, now);
@@ -346,7 +359,8 @@ export function insertFarm(farm) {
     }
 }
 export function replaceFarm(id, farm) {
-    if (!farms.has(id))
+    const before = farms.get(id);
+    if (!before)
         throw new Error(`farm not found: ${id}`);
     farm.id = id;
     const staged = normalizeFarm(farm);
@@ -354,7 +368,13 @@ export function replaceFarm(id, farm) {
     const nextFarms = [...farms.values()].map((current) => current.id === id ? staged : current);
     const world = worldSnapshot(nextFarms);
     commitWorld(world, { farmIds: [id], componentKeys: [], allowCrossDomain: false });
-    farms.set(id, staged);
+    if (before !== staged) {
+        for (const key of Object.keys(before))
+            delete before[key];
+        Object.assign(before, staged);
+    }
+    farms.set(id, before);
+    return before;
 }
 function worldSnapshot(farmValues = farms.values(), ugcValues = dumpUgc(), natureValue = natureWorld) {
     return {
@@ -382,8 +402,21 @@ function writeWorldAtomic(world) {
 function mergePersistenceHints(base, additional) {
     if (base == null && additional == null)
         return null;
-    const left = base ?? { farmIds: [], componentKeys: [] };
-    const right = additional ?? { farmIds: [], componentKeys: [] };
+    if (base == null) {
+        return {
+            farmIds: [],
+            componentKeys: [],
+            dirtyDiff: true,
+            allowCrossDomain: additional.allowCrossDomain === true,
+            ...(additional.durableBoundary === undefined
+                ? {}
+                : { durableBoundary: additional.durableBoundary }),
+        };
+    }
+    if (additional == null)
+        return base;
+    const left = base;
+    const right = additional;
     const durableValues = [left.durableBoundary, right.durableBoundary]
         .filter((value) => value !== undefined);
     return {
@@ -401,7 +434,7 @@ function commitWorld(world, hints = null) {
         ? worldPersistenceAdapter.commitLegacySnapshot(world, mergePersistenceHints(hints, additionalHints))
         : writeWorldAtomic(world);
     return worldCommitCoordinator
-        ? worldCommitCoordinator(world, context, write)
+        ? worldCommitCoordinator(world, context, write, hints)
         : write();
 }
 export function setWorldCommitCoordinator(coordinator) {
@@ -520,13 +553,12 @@ function ensureNpc() {
     return true;
 }
 export function save() {
-    const rollback = worldPersistenceAdapter?.loadLegacyWorld() ?? null;
     try {
         commitWorld(worldSnapshot());
     }
     catch (error) {
-        if (rollback)
-            restoreWorldSnapshotInMemory(rollback);
+        if (worldPersistenceAdapter)
+            restoreWorldSnapshotInMemory(worldPersistenceAdapter.loadLegacyWorld());
         throw error;
     }
 }

@@ -104,7 +104,7 @@ export const nameWithTitle = (f) => `${titlePrefix(f)}${f.name}`;
 export function equipTitle(f, id) {
     checkTitles(f); // 先把刚达标的补登，免得"明明够了却选不了"
     if (!id) {
-        f.titleEquipped = undefined;
+        delete f.titleEquipped;
         return { ok: true, text: "已卸下称号。" };
     }
     const t = titleById(id);

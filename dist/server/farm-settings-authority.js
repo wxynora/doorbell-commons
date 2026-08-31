@@ -54,8 +54,14 @@ export function applyHumanFarmNames(farm, { aiName = "", humanName = "" } = {}) 
   if (!ai.ok) return ai;
   const human = validateName(humanName);
   if (!human.ok) return human;
-  farm.aiName = ai.value;
-  farm.humanName = human.value;
+  if (ai.value === undefined)
+    delete farm.aiName;
+  else
+    farm.aiName = ai.value;
+  if (human.value === undefined)
+    delete farm.humanName;
+  else
+    farm.humanName = human.value;
   return { ok: true, aiName: ai.value, humanName: human.value };
 }
 
@@ -67,7 +73,10 @@ export function applyHumanFarmNickname(farm, field, value) {
   }
   const result = validateName(value);
   if (!result.ok) return result;
-  farm[property] = result.value;
+  if (result.value === undefined)
+    delete farm[property];
+  else
+    farm[property] = result.value;
   return { ok: true, field, value: result.value };
 }
 

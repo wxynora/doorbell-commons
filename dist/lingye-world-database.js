@@ -316,12 +316,16 @@ export function registerLingyeResidentReference(database, input) {
 
 export function createLingyeFarmBalanceCoordinator(database, backend, options = {}) {
     const generateOperationId = options.generateOperationId ?? randomUUID;
-    return (world, context, writeWorld) => {
+    return (world, context, writeWorld, persistenceHints = null) => {
         const ownsDurableTransaction = !database.isTransaction;
         const publications = [];
         const result = runLingyeWorldTransaction(database, () => {
+            const candidateFarmIds = Array.isArray(persistenceHints?.farmIds)
+                ? new Set(persistenceHints.farmIds)
+                : null;
             world.farms = world.farms.map((farm) => {
-                if (!farm?.doorbellMcpMigration?.migrationId)
+                if (!farm?.doorbellMcpMigration?.migrationId ||
+                    (candidateFarmIds && !candidateFarmIds.has(farm.id)))
                     return farm;
                 const staged = structuredClone(farm);
                 publications.push({ target: farm, staged });
@@ -360,6 +364,12 @@ export function createLingyeFarmBalanceCoordinator(database, backend, options = 
                 const residentId = migration.residentId;
                 const account = backend.trustedQueries.getAccount(residentId);
                 if (ledgerAuthority) {
+                    // A caller-owned SQL transaction may contain only the
+                    // receipt-only Chef completion. Balance projection waits
+                    // until that transaction commits and the server performs
+                    // its explicit post-commit sync.
+                    if (!ownsDurableTransaction)
+                        continue;
                     farm.coins = account.availableGold;
                     farm.silver = account.availableSilver;
                     migration.balanceProjection = {
@@ -684,13 +694,22 @@ export function createLingyeWorldBackend(database, options) {
         ...(configuredDebtRecorder === undefined ? {} : { recordDebt: configuredDebtRecorder }),
         assertActiveChefQualification: (input) => chefStoreQualification(database, input),
     });
-    if (farmStoreAuthority) {
-        farmStoreAuthority.recoverOrphanedListings();
-        farmStoreAuthority.recoverPendingOrders({
+    const recoverChefStoreFarmState = () => {
+        if (!farmStoreAuthority)
+            return { orphanedListings: 0, pendingOrders: 0, restoredListings: 0 };
+        const orphaned = farmStoreAuthority.recoverOrphanedListings();
+        const pending = farmStoreAuthority.recoverPendingOrders({
             completeOrder: (input) => chefStore.placeOrder(input),
         });
-        farmStoreAuthority.reconcileTerminatedLeases();
-    }
+        const terminated = farmStoreAuthority.reconcileTerminatedLeases();
+        return {
+            orphanedListings: orphaned.restoredListings,
+            pendingOrders: pending.recovered,
+            restoredListings: terminated.restoredListings,
+        };
+    };
+    if (options.deferChefFarmRecovery !== true)
+        recoverChefStoreFarmState();
     const reconcileChefStoreFarmListings = () =>
         farmStoreAuthority?.reconcileTerminatedLeases();
     const expireDueExamAttempts = (residentId) => {
@@ -1044,6 +1063,7 @@ export function createLingyeWorldBackend(database, options) {
             reconcileChefStoreFarmListings();
             return result;
         },
+        recoverChefStoreFarmState,
     });
     const trustedQueries = Object.freeze({
         getAccount: (residentId) => economy.getAccount(residentId),
@@ -1149,12 +1169,12 @@ export function createLingyeWorldBackend(database, options) {
         Object.defineProperties(residentFacade, {
             openChefStore: {
                 value: (input) => {
-                    const result = atomic(() => chefStore.openStore(
+                    const result = chefStore.openStore(
                         stableChefStoreOpeningInput(
                             chefResidentInput(input, "ownerResidentId", authenticatedResidentId),
                             authenticatedResidentId,
                         ),
-                    ));
+                    );
                     reconcileChefStoreFarmListings();
                     return result;
                 },

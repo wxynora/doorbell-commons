@@ -37,8 +37,15 @@ export function startConstableInterviewScheduler(database, backend, options = {}
         timer = setTimer(() => {
             if (stopped)
                 return;
-            advance();
-            schedule();
+            try {
+                advance();
+            }
+            catch (error) {
+                console.error("[lingye-constable] interview advancement failed", error);
+            }
+            finally {
+                schedule();
+            }
         }, Math.max(0, nextConstableDue(database, current) - current));
         timer?.unref?.();
     };

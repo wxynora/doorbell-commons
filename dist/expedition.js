@@ -228,7 +228,7 @@ export function expRoll(f, byHuman, now) {
     // 消耗：buff 清零、护身符检定加成用掉
     exp.buffMod = 0;
     if (exp.charm?.kind === "check")
-        exp.charm.kind = undefined;
+        delete exp.charm.kind;
     let band;
     if (natural === 12 || total >= target + 3)
         band = "crit";
@@ -339,7 +339,10 @@ function settle(f, now, how) {
         haul.push(`🏡${decorNames.join("、")}（已进农场，${human(f)}可摆出来）`);
     const summary = `${how}·${haul.length ? haul.join("、") : "空手而归"}`;
     f.expJourneys ??= [];
-    f.expJourneys.unshift({ mapId: exp.mapId, mapName: map?.name ?? "秘境", at: now, summary, log: exp.log.slice(), blessing: exp.charm?.blessing });
+    const journey = { mapId: exp.mapId, mapName: map?.name ?? "秘境", at: now, summary, log: exp.log.slice() };
+    if (exp.charm?.blessing !== undefined)
+        journey.blessing = exp.charm.blessing;
+    f.expJourneys.unshift(journey);
     if (f.expJourneys.length > 30)
         f.expJourneys.length = 30;
     const blessLine = exp.charm?.blessing ? `\n💗 这趟带着${human(f)}的祝福：「${exp.charm.blessing}」` : "";
@@ -369,7 +372,7 @@ export function expEnter(f, now, charges = 1) {
     let hp = EXP_START_HP;
     if (charm?.kind === "hp") {
         hp += 1;
-        charm.kind = undefined;
+        delete charm.kind;
     }
     f.expCharm = null;
     f.expedition = {
@@ -430,7 +433,11 @@ export function expView(f, now) {
 // —— 出门前祈福：伴侣前端设置（active 时设给这趟，否则预存到下趟）——
 export function expSetCharm(f, kind, blessing, now) {
     const bl = (blessing ?? "").trim().slice(0, EXP_BLESSING_MAX);
-    const charm = { kind, blessing: bl || undefined };
+    const charm = {};
+    if (kind !== undefined)
+        charm.kind = kind;
+    if (bl)
+        charm.blessing = bl;
     if (f.expedition) {
         // 进行中：检定加成可续上；hp 立即 +1（仅当本趟还没用过 hp 护符的简单处理：直接加）
         const cur = (f.expedition.charm ??= {});

@@ -9,6 +9,7 @@ import {
     grantDoorbellWelcomeReward,
     playerFarms,
     save,
+    withWorldCommitContext,
 } from "../../store.js";
 import {
     MAX_BODY_BYTES,
@@ -140,9 +141,9 @@ export async function handleDoorbellMcpMigration(req, res, method, runtime) {
             if (existing.migrationId !== migrationId || existing.residentId !== residentId)
                 return internalServiceError(res, 409, "migration_conflict", "This farm was migrated by a different operation");
         }
-        const receipt = runLingyeWorldTransaction(runtime.database, () => {
-            const legacyGold = existing?.legacyGold ?? farm.coins;
-            const legacySilver = existing?.legacySilver ?? farm.silver;
+        const legacyGold = existing?.legacyGold ?? farm.coins;
+        const legacySilver = existing?.legacySilver ?? farm.silver;
+        runLingyeWorldTransaction(runtime.database, () => {
             registerLingyeResidentReference(runtime.database, {
                 residentId,
                 bindingReference: migrationId,
@@ -155,42 +156,45 @@ export async function handleDoorbellMcpMigration(req, res, method, runtime) {
                 migrationId,
                 idempotencyKey: `farm-migration:${migrationId}:legacy-balances`,
             });
-            if (existing) {
-                if (farm.agentKey !== undefined) {
-                    const previousAgentKey = farm.agentKey;
-                    farm.agentKey = undefined;
-                    try {
-                        save();
-                    }
-                    catch (error) {
-                        farm.agentKey = previousAgentKey;
-                        throw error;
-                    }
-                }
-                return migrationReceipt(farm);
-            }
-            const previousAgentKey = farm.agentKey;
-            farm.agentKey = undefined;
-            farm.doorbellMcpMigration = {
-                migrationId,
-                residentId,
-                legacyGold,
-                legacySilver,
-                confirmationId: randomUUID(),
-                revokedAt: new Date(runtime.now?.() ?? Date.now()).toISOString(),
-                legacyMcpRevoked: true,
-            };
-            try {
-                save();
-            }
-            catch (error) {
-                farm.agentKey = previousAgentKey;
-                delete farm.doorbellMcpMigration;
-                throw error;
-            }
-            return migrationReceipt(farm);
         });
-        return jsonOut(res, 200, receipt);
+        if (existing) {
+            if (farm.agentKey !== undefined) {
+                const previousAgentKey = farm.agentKey;
+                delete farm.agentKey;
+                try {
+                    withWorldCommitContext({ balanceAuthority: "ledger", actor: "system" }, () => save());
+                }
+                catch (error) {
+                    farm.agentKey = previousAgentKey;
+                    throw error;
+                }
+            }
+            return jsonOut(res, 200, migrationReceipt(farm));
+        }
+        const hadPreviousAgentKey = Object.hasOwn(farm, "agentKey");
+        const previousAgentKey = farm.agentKey;
+        delete farm.agentKey;
+        farm.doorbellMcpMigration = {
+            migrationId,
+            residentId,
+            legacyGold,
+            legacySilver,
+            confirmationId: randomUUID(),
+            revokedAt: new Date(runtime.now?.() ?? Date.now()).toISOString(),
+            legacyMcpRevoked: true,
+        };
+        try {
+            withWorldCommitContext({ balanceAuthority: "ledger", actor: "system" }, () => save());
+        }
+        catch (error) {
+            if (hadPreviousAgentKey)
+                farm.agentKey = previousAgentKey;
+            else
+                delete farm.agentKey;
+            delete farm.doorbellMcpMigration;
+            throw error;
+        }
+        return jsonOut(res, 200, migrationReceipt(farm));
     }
     catch (error) {
         if (error instanceof PublicSyncError)

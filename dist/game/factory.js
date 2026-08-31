@@ -26,9 +26,12 @@ export function makeFarm(name, seed, opts) {
     const plotCount = landTierByLevel(1).plots;
     const plots = Array.from({ length: plotCount }, (_, i) => ({ id: i + 1, crop: null }));
     const clean = (s) => { const t = String(s ?? "").trim(); return t ? t.slice(0, UGC_NAME_MAX) : undefined; };
+    const aiName = clean(opts?.aiName);
+    const humanName = clean(opts?.humanName);
     const farm = {
         id, name: name?.trim().slice(0, UGC_NAME_MAX) || `${id} 的农场`,
-        aiName: clean(opts?.aiName), humanName: clean(opts?.humanName),
+        ...(aiName === undefined ? {} : { aiName }),
+        ...(humanName === undefined ? {} : { humanName }),
         coins: STARTING_COINS, silver: 0, landTier: 1, plots,
         rngState: (seed != null && Number.isFinite(seed)) ? (seed | 0) || 1 : freshSeed(),
         codex: {}, materials: {}, seeds: {}, items: { speed_potion: STARTER_POTIONS },

@@ -296,48 +296,60 @@ export class ChefStoreService {
         };
         const payloadHash = digest(canonicalJson(payload));
         const now = nowOf(this);
-        return runInTransaction(this.database, () => {
-            const replay = ensureActionReplay(this.database, idempotencyKey, "open", ownerResidentId, payloadHash);
-            if (replay)
-                return replay;
-            if (typeof this.assertActiveChefQualification === "function") {
-                const qualified = assertNoPromise(
-                    this.assertActiveChefQualification({ ownerResidentId, grade, now }),
-                    "chef_store_qualification_authority_unavailable",
+        const replay = ensureActionReplay(this.database, idempotencyKey, "open", ownerResidentId, payloadHash);
+        if (replay)
+            return replay;
+        if (typeof this.prepareOpeningListing !== "function" ||
+            typeof this.rollbackOpeningListing !== "function") {
+            fail("chef_store_opening_listing_authority_unavailable");
+        }
+        const leaseId = requestedLeaseId ?? identifier(this.generateId(), "lease_id");
+        let listing = null;
+        try {
+            // The farm listing reservation is a standalone durable checkpoint.
+            // It must survive a process loss before the SQLite lease is created,
+            // so startup recovery can restore the exact listing once.
+            listing = callbackReceipt(assertNoPromise(this.prepareOpeningListing({
+                leaseId,
+                ownerResidentId,
+                grade,
+                listingReference: payload.listingReference ?? null,
+                idempotencyKey,
+                now,
+            }), "chef_store_opening_listing_authority_unavailable"), "listing");
+            return runInTransaction(this.database, () => {
+                const transactionReplay = ensureActionReplay(
+                    this.database,
+                    idempotencyKey,
+                    "open",
+                    ownerResidentId,
+                    payloadHash,
                 );
-                if (!qualified)
-                    fail("chef_store_active_qualification_required");
-            }
-            const existing = this.database.prepare(`
-              SELECT * FROM chef_store_leases
-              WHERE owner_resident_id = ? AND state IN ('active', 'suspended')
-              ORDER BY created_at DESC LIMIT 1
-            `).get(ownerResidentId);
-            if (existing) {
-                this.#reconcileLease(existing, now);
-                const live = this.database.prepare(`
+                if (transactionReplay)
+                    return transactionReplay;
+                if (typeof this.assertActiveChefQualification === "function") {
+                    const qualified = assertNoPromise(
+                        this.assertActiveChefQualification({ ownerResidentId, grade, now }),
+                        "chef_store_qualification_authority_unavailable",
+                    );
+                    if (!qualified)
+                        fail("chef_store_active_qualification_required");
+                }
+                const existing = this.database.prepare(`
                   SELECT * FROM chef_store_leases
                   WHERE owner_resident_id = ? AND state IN ('active', 'suspended')
                   ORDER BY created_at DESC LIMIT 1
                 `).get(ownerResidentId);
-                if (live)
-                    fail("chef_store_one_live_store_per_resident");
-            }
-            if (typeof this.prepareOpeningListing !== "function" ||
-                typeof this.rollbackOpeningListing !== "function") {
-                fail("chef_store_opening_listing_authority_unavailable");
-            }
-            const leaseId = requestedLeaseId ?? identifier(this.generateId(), "lease_id");
-            let listing = null;
-            try {
-                listing = callbackReceipt(assertNoPromise(this.prepareOpeningListing({
-                    leaseId,
-                    ownerResidentId,
-                    grade,
-                    listingReference: payload.listingReference ?? null,
-                    idempotencyKey,
-                    now,
-                }), "chef_store_opening_listing_authority_unavailable"), "listing");
+                if (existing) {
+                    this.#reconcileLease(existing, now);
+                    const live = this.database.prepare(`
+                      SELECT * FROM chef_store_leases
+                      WHERE owner_resident_id = ? AND state IN ('active', 'suspended')
+                      ORDER BY created_at DESC LIMIT 1
+                    `).get(ownerResidentId);
+                    if (live)
+                        fail("chef_store_one_live_store_per_resident");
+                }
                 const charged = this.economy.chargeToSystem({
                     residentId: ownerResidentId,
                     currency: "gold",
@@ -371,26 +383,26 @@ export class ChefStoreService {
                 ).get(leaseId));
                 recordAction(this.database, idempotencyKey, "open", ownerResidentId, payloadHash, result, now);
                 return result;
-            }
-            catch (error) {
-                if (listing) {
-                    try {
-                        this.rollbackOpeningListing({
-                            leaseId,
-                            ownerResidentId,
-                            grade,
-                            listingReceiptId: listing.receiptId,
-                            idempotencyKey,
-                            now,
-                        });
-                    }
-                    catch {
-                        // Keep the original failed opening operation authoritative.
-                    }
+            });
+        }
+        catch (error) {
+            if (listing) {
+                try {
+                    this.rollbackOpeningListing({
+                        leaseId,
+                        ownerResidentId,
+                        grade,
+                        listingReceiptId: listing.receiptId,
+                        idempotencyKey,
+                        now,
+                    });
                 }
-                throw error;
+                catch {
+                    // The durable reservation remains recoverable at startup.
+                }
             }
-        });
+            throw error;
+        }
     }
 
     payRent(input) {

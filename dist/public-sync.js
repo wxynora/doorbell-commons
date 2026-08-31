@@ -2,7 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { makeFarm } from "./game.js";
 import { fishing, getCrop } from "./content.js";
 import { allUgc, dumpUgc, loadUgc, registerUgc } from "./ugc.js";
-import { allFarms, getFarm, insertFarm, normalizeFarm, replaceFarm } from "./store.js";
+import { allFarms, getFarm, insertFarm, normalizeFarm, replaceFarm, replaceFarmsAtomic } from "./store.js";
 export class PublicSyncError extends Error {
     status;
     constructor(status, message) {
@@ -419,7 +419,10 @@ export function syncFarm(farmId, syncKey, body) {
         merged.token = current.token;
         merged.humanKey = current.humanKey;
         merged.agentKey = current.agentKey;
-        merged.doorbellMcpMigration = current.doorbellMcpMigration;
+        if (current.doorbellMcpMigration === undefined)
+            delete merged.doorbellMcpMigration;
+        else
+            merged.doorbellMcpMigration = current.doorbellMcpMigration;
         const events = remoteEvents(owner, merged);
         const nextHub = {
             ...hub,
@@ -430,7 +433,9 @@ export function syncFarm(farmId, syncKey, body) {
             ownerBaseline: withoutHubAndSecrets(merged),
         };
         merged.syncHub = nextHub;
-        replaceFarm(current.id, merged);
+        const nextUgc = structuredClone(dumpUgc());
+        loadUgc(ugcBefore);
+        replaceFarmsAtomic([{ id: current.id, farm: merged }], nextUgc);
         return {
             snapshot: withoutHubAndSecrets(merged),
             ugc: farmUgc(merged),

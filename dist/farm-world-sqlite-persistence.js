@@ -1,14 +1,22 @@
 import {
+    assertJsonCompatible,
     canonicalFarmWorldJson,
     decomposeFarmForPersistence,
     exportFarmWorldFromDatabase,
 } from "./farm-world-sqlite-migration.js";
 import { runLingyeWorldTransaction } from "./lingye-world-database.js";
 
-const DEFERRED_SAGA_SCOPES = new Set([
-    "/chefRecipeInventoryActionReceipts",
-    "/chefOriginalCookingReceipts",
+const REQUIRED_WORLD_COMPONENT_KEYS = Object.freeze([
+    "maintenanceGrantIds",
+    "doorbellWelcomeRewardGrants",
+    "doorbellFarmCreations",
+    "ugc",
+    "glimmer",
+    "publicExpedition",
+    "qixiLantern2026",
+    "nature",
 ]);
+
 const CHEF_STORE_SCOPE = "/chefStoreOrderReceipts";
 const DEFERRED_CROSS_DOMAIN_SCOPES = new Set([
     "/doorbellHumanMarketActionReceipts",
@@ -78,8 +86,6 @@ function sameReceiptMetadata(existing, candidate) {
 }
 
 function failDeferredReceiptScope(scope, options = {}) {
-    if (DEFERRED_SAGA_SCOPES.has(scope))
-        fail("farm_saga_scope_unsupported", `Farm saga receipt scope is not connected in Phase 2: ${scope}`);
     if (DEFERRED_CROSS_DOMAIN_SCOPES.has(scope) && options.allowCrossDomain !== true)
         fail("farm_cross_domain_scope_unsupported", `Farm cross-domain receipt scope is not connected in Phase 2: ${scope}`);
 }
@@ -243,43 +249,48 @@ function legacyWorldProjection(world) {
             id: farm.id,
             state: farm,
             position,
-            decomposed: decomposeFarmForPersistence(farm),
         };
     });
     const components = Object.entries(world)
         .filter(([key]) => !["format", "version", "farms"].includes(key))
-        .map(([key, value]) => {
-            const stateJson = JSON.stringify(value);
-            if (stateJson === undefined)
-                throw new TypeError(`World component is not JSON-compatible: ${key}`);
-            return { key, value, stateJson };
-        });
+        .map(([key, value]) => ({ key, value }));
     return { farms, components };
 }
 
+function materializeFarm(entry) {
+    return { ...entry, decomposed: decomposeFarmForPersistence(entry.state) };
+}
+
+function materializeComponent(entry) {
+    assertJsonCompatible(entry.value, `$.${entry.key}`);
+    return { ...entry, stateJson: JSON.stringify(entry.value) };
+}
+
 function selectedProjection(projection, hints, database) {
-    if (hints === null || hints === undefined) {
+    if (hints === null || hints === undefined || hints.dirtyDiff === true) {
+        const farms = projection.farms.map(materializeFarm);
+        const components = projection.components.map(materializeComponent);
         const persistedFarmIds = database.prepare("SELECT farm_id FROM farm_states").all().map((row) => row.farm_id);
-        const candidateFarmIds = new Set(projection.farms.map((entry) => entry.id));
+        const candidateFarmIds = new Set(farms.map((entry) => entry.id));
         if (persistedFarmIds.some((farmId) => !candidateFarmIds.has(farmId)))
             fail("farm_removal_unsupported", "Legacy dirty-diff cannot remove a farm");
         const persistedComponents = database.prepare("SELECT component_key FROM world_components").all().map((row) => row.component_key);
-        const candidateComponents = new Set(projection.components.map((entry) => entry.key));
+        const candidateComponents = new Set(components.map((entry) => entry.key));
         if (persistedComponents.some((key) => !candidateComponents.has(key)))
             fail("farm_component_removal_unsupported", "Legacy dirty-diff cannot remove a world component");
         return {
-            farms: projection.farms.filter((entry) => farmChanged(database, entry)),
-            components: projection.components.filter((entry) => componentChanged(database, entry)),
-            allowCrossDomain: false,
-            durableBoundary: !database.isTransaction,
+            farms: farms.filter((entry) => farmChanged(database, entry)),
+            components: components.filter((entry) => componentChanged(database, entry)),
+            allowCrossDomain: hints?.allowCrossDomain === true,
+            durableBoundary: hints?.durableBoundary ?? !database.isTransaction,
         };
     }
     if (!isRecord(hints) || !Array.isArray(hints.farmIds) || !Array.isArray(hints.componentKeys))
         throw new TypeError("Farm persistence hints require farmIds and componentKeys arrays");
     const farmIds = new Set(hints.farmIds);
     const componentKeys = new Set(hints.componentKeys);
-    const farms = projection.farms.filter((entry) => farmIds.has(entry.id));
-    const components = projection.components.filter((entry) => componentKeys.has(entry.key));
+    const farms = projection.farms.filter((entry) => farmIds.has(entry.id)).map(materializeFarm);
+    const components = projection.components.filter((entry) => componentKeys.has(entry.key)).map(materializeComponent);
     if (farms.length !== farmIds.size || components.length !== componentKeys.size)
         fail("farm_persistence_hint_invalid", "Farm persistence hint does not resolve in the candidate world");
     return {
@@ -307,9 +318,11 @@ export function createFarmWorldSqlitePersistence(database) {
         const components = input.components.map((entry) => {
             if (!isRecord(entry) || typeof entry.key !== "string" || entry.key.length === 0 || entry.key === "farms")
                 throw new TypeError("Farm persistence mutation has an invalid component entry");
-            const stateJson = entry.stateJson ?? JSON.stringify(entry.value);
-            if (stateJson === undefined)
-                throw new TypeError(`World component is not JSON-compatible: ${entry.key}`);
+            const state = entry.stateJson === undefined
+                ? entry.value
+                : parseJson(entry.stateJson, `component:${entry.key}`);
+            assertJsonCompatible(state, `$.${entry.key}`);
+            const stateJson = entry.stateJson ?? JSON.stringify(state);
             return { ...entry, stateJson };
         });
         if (durableBoundary === false && components.length > 0)
@@ -373,9 +386,13 @@ export function createFarmWorldSqlitePersistence(database) {
         loadLegacyWorld() {
             assertDatabase(database);
             const farms = database.prepare("SELECT COUNT(*) AS count FROM farm_states").get().count;
-            const components = database.prepare("SELECT COUNT(*) AS count FROM world_components").get().count;
-            if (farms === 0 || components === 0)
+            const componentKeys = database.prepare("SELECT component_key FROM world_components").all().map((row) => row.component_key);
+            if (farms === 0 || componentKeys.length === 0)
                 fail("farm_persistence_not_migrated", "Farm world has not been imported into Lingye SQLite");
+            const present = new Set(componentKeys);
+            const missing = REQUIRED_WORLD_COMPONENT_KEYS.filter((key) => !present.has(key));
+            if (missing.length > 0)
+                fail("farm_persistence_corrupt", `Farm world is missing required components: ${missing.join(", ")}`);
             return exportFarmWorldFromDatabase(database);
         },
         commitMutation(input) {

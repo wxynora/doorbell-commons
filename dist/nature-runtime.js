@@ -536,8 +536,15 @@ export function startNatureRuntimeScheduler(options = {}) {
         timer = setTimer(() => {
             if (stopped)
                 return;
-            advanceNatureGameplay(now(), { config });
-            schedule();
+            try {
+                advanceNatureGameplay(now(), { config });
+            }
+            catch (error) {
+                console.error("[lingye-nature] daily world advancement failed", error);
+            }
+            finally {
+                schedule();
+            }
         }, Math.max(0, nextBeijingDayBoundary(current) - current));
         timer?.unref?.();
     };
