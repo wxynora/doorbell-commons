@@ -76,6 +76,18 @@ readonly artifact_mode
   fail "persistent dependency lock is missing"
   exit 1
 }
+for workspace_name in protocol server web; do
+  case "${workspace_name}" in
+    protocol) expected_workspace_target="${RUNTIME_DIRECTORY}/packages/protocol" ;;
+    server) expected_workspace_target="${RUNTIME_DIRECTORY}/apps/server" ;;
+    web) expected_workspace_target="${RUNTIME_DIRECTORY}/apps/web" ;;
+  esac
+  workspace_link="${DEPENDENCY_DIRECTORY}/node_modules/@doorbell/${workspace_name}"
+  [[ -L "${workspace_link}" && "$(readlink "${workspace_link}")" == "${expected_workspace_target}" ]] || {
+    fail "persistent workspace link is invalid: @doorbell/${workspace_name}"
+    exit 1
+  }
+done
 [[ -f "${DATABASE_PATH}" ]] || {
   fail "missing community database: ${DATABASE_PATH}"
   exit 1

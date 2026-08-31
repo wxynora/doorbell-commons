@@ -55,6 +55,10 @@ test("the VPS links one persistent dependency layer only when the lockfile is id
   assert.ok(verification >= 0 && verification < lockComparison);
   assert.ok(lockComparison < dependencyLink && dependencyLink < serviceStop);
   assert.match(deployer, /dependency lock changed; refusing to install or build dependencies/u);
+  assert.match(deployer, /persistent workspace link is invalid/u);
+  assert.match(deployer, /RUNTIME_DIRECTORY.*packages\/protocol/u);
+  assert.match(deployer, /RUNTIME_DIRECTORY.*apps\/server/u);
+  assert.match(deployer, /RUNTIME_DIRECTORY.*apps\/web/u);
   assert.doesNotMatch(deployer, /cp -a .*node_modules/u);
 });
 
