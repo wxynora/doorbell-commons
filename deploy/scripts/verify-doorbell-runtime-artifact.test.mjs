@@ -18,6 +18,7 @@ const REQUIRED_PATHS = [
   "apps/web/dist/service-worker.js",
   "apps/web/dist/assets",
   "deploy/scripts/backup-community-database.mjs",
+  "deploy/scripts/cleanup-doorbell-release-state.mjs",
   "deploy/scripts/merge-web-assets.mjs",
   "deploy/scripts/resolve-approved-pwa-release.mjs",
   "deploy/scripts/restore-community-database.mjs",
@@ -92,6 +93,19 @@ test("rejects an incomplete artifact before any runtime switch", async () => {
     await assert.rejects(
       verifyDoorbellRuntimeArtifact(root, SHA, linuxNode24),
       /missing apps\/server\/dist\/index\.js/u,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("rejects an artifact that cannot perform bounded post-release cleanup", async () => {
+  const root = await runtimeFixture();
+  rmSync(join(root, "deploy/scripts/cleanup-doorbell-release-state.mjs"));
+  try {
+    await assert.rejects(
+      verifyDoorbellRuntimeArtifact(root, SHA, linuxNode24),
+      /missing deploy\/scripts\/cleanup-doorbell-release-state\.mjs/u,
     );
   } finally {
     rmSync(root, { recursive: true, force: true });

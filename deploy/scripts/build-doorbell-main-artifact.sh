@@ -94,6 +94,7 @@ cp -a \
 cp -a "${build_directory}/apps/web/dist" "${runtime_directory}/apps/web/"
 cp -a \
   "${build_directory}/deploy/scripts/backup-community-database.mjs" \
+  "${build_directory}/deploy/scripts/cleanup-doorbell-release-state.mjs" \
   "${build_directory}/deploy/scripts/merge-web-assets.mjs" \
   "${build_directory}/deploy/scripts/resolve-approved-pwa-release.mjs" \
   "${build_directory}/deploy/scripts/restore-community-database.mjs" \

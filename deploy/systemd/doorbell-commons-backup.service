@@ -8,6 +8,7 @@ User=doorbell
 Group=doorbell
 UMask=0077
 ExecStart=/usr/bin/node /opt/doorbell-commons/deploy/scripts/backup-community-database.mjs /var/lib/doorbell-commons/doorbell.sqlite /var/backups/doorbell-commons
+ExecStartPost=/usr/bin/ionice -c3 /usr/bin/nice -n 19 /usr/bin/node /opt/doorbell-commons/deploy/scripts/cleanup-doorbell-release-state.mjs --daily-only
 NoNewPrivileges=true
 PrivateTmp=true
 PrivateDevices=true

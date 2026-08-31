@@ -1222,6 +1222,31 @@ stopped while the entry restores and validates the pre-release database under it
 schema and restores the previous runtime. It restarts Doorbell only after both rollbacks succeed; an
 incomplete rollback withholds automatic restart for manual recovery.
 
+The fixed dependency layer is immutable after activation. No deployment may run npm into it or repair
+a lock mismatch in place. A future lockfile change requires a separately authorized Linux dependency
+directory built and verified side by side; the old layer remains until neither current nor previous
+runtime references it. Automatic dependency upgrades are intentionally absent.
+
+`migrate-doorbell-dependency-layer.sh` is the one-time production transition for the existing Linux
+dependency tree. It takes the same deployment lock, stops Main, moves the live real `node_modules`
+directory on the same filesystem, rewrites the three npm-workspace links to absolute stable current
+runtime paths, installs the runtime dependency symlink, and starts Main only after exact lock／link
+verification. Any failure stops Main before moving the layer back, restores the original workspace
+links, removes the partial fixed layer, and then restarts the original runtime. It never invokes npm,
+builds packages, copies `node_modules`, or touches SQLite. The publisher uploads the migrator from the
+same exact target SHA as the deployer and runs it before installing the runtime artifact into the
+release inbox. A previously completed valid migration is an idempotent success; an incomplete fixed
+layer rejects rather than being repaired in place.
+
+Main deployment, dependency migration, and post-release cleanup share
+`/run/lock/doorbell-main-deploy.lock`. After a candidate is active and healthy, the deployer passes the
+exact runtime directory it just moved aside to `cleanup-doorbell-release-state.mjs` under idle IO／low
+CPU priority. The cleanup whitelist keeps current plus that direct previous runtime, removes every
+other Doorbell previous／failed／build／candidate directory, retains the latest two valid release backup
+directories and latest three scheduled SQLite files, and never touches source, dependencies, Farm,
+manual recovery directories, browser state, or Web assets. The daily backup unit invokes the same
+helper in `--daily-only` mode, which can remove only old top-level scheduled `.sqlite` files.
+
 Current production Main is `673089962bf3dd8315a86c0b39a35fa47cef7fdb`; the source checkout and
 runtime release marker match that exact SHA. The live database is schema v12 with integrity OK and
 zero foreign-key violations. `doorbell-commons.service` is active/running with `NRestarts=0`, one

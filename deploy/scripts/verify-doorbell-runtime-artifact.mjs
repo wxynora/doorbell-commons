@@ -14,6 +14,7 @@ const REQUIRED_PATHS = [
   "apps/web/dist/service-worker.js",
   "apps/web/dist/assets",
   "deploy/scripts/backup-community-database.mjs",
+  "deploy/scripts/cleanup-doorbell-release-state.mjs",
   "deploy/scripts/merge-web-assets.mjs",
   "deploy/scripts/resolve-approved-pwa-release.mjs",
   "deploy/scripts/restore-community-database.mjs",

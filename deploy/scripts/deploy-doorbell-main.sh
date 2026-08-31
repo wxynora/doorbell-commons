@@ -10,6 +10,7 @@ readonly DEPENDENCY_DIRECTORY="/opt/doorbell-commons-deps"
 readonly DATABASE_PATH="/var/lib/doorbell-commons/doorbell.sqlite"
 readonly BACKUP_ROOT="/var/backups/doorbell-commons/releases"
 readonly ARTIFACT_INBOX="/var/lib/doorbell-commons/releases/incoming"
+readonly DEPLOY_LOCK_PATH="/run/lock/doorbell-main-deploy.lock"
 readonly SERVICE_NAME="doorbell-commons.service"
 readonly HEALTH_URL="http://127.0.0.1:3000/api/health"
 readonly HEALTH_ATTEMPTS=60
@@ -34,12 +35,18 @@ readonly SHORT_SHA="${TARGET_SHA:0:7}"
 readonly ARTIFACT_PATH="$2"
 readonly EXPECTED_ARTIFACT_PATH="${ARTIFACT_INBOX}/doorbell-main-${TARGET_SHA}.tar.gz"
 
-for required_command in cmp cp curl git node stat systemctl tar; do
+for required_command in cmp cp curl flock git ionice nice node stat systemctl tar; do
   command -v "${required_command}" >/dev/null || {
     fail "required command is unavailable: ${required_command}"
     exit 1
   }
 done
+
+exec 9>"${DEPLOY_LOCK_PATH}"
+flock --nonblock 9 || {
+  fail "another Doorbell deployment is already running"
+  exit 1
+}
 
 [[ "${ARTIFACT_PATH}" == "${EXPECTED_ARTIFACT_PATH}" ]] || {
   fail "runtime artifact must use the root-owned release inbox path"
@@ -299,8 +306,16 @@ service_stopped=0
 runtime_moved=0
 switched=0
 trap - EXIT
+cleanup_result=""
+if ! cleanup_result="$({ ionice -c3 nice -n 19 node \
+  "${RUNTIME_DIRECTORY}/deploy/scripts/cleanup-doorbell-release-state.mjs" \
+  --after-deploy "${previous_directory}"; })"; then
+  fail "release is active, but post-release cleanup failed; do not retry the deployment"
+  exit 1
+fi
 printf 'Doorbell main %s deployed successfully.\n' "${TARGET_SHA}"
 printf 'PWA release: %s\n' "${pwa_release}"
 printf 'Source checkout: %s\n' "${SOURCE_DIRECTORY}"
 printf 'Previous runtime: %s\n' "${previous_directory}"
 printf 'Database backup: %s\n' "${backup_path}"
+printf 'Cleanup: %s\n' "${cleanup_result}"

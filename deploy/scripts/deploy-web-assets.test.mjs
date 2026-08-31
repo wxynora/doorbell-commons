@@ -9,6 +9,10 @@ import { mergeWebAssets } from "./merge-web-assets.mjs";
 const deployer = readFileSync(new URL("./deploy-doorbell-main.sh", import.meta.url), "utf8");
 const builder = readFileSync(new URL("./build-doorbell-main-artifact.sh", import.meta.url), "utf8");
 const publisher = readFileSync(new URL("./publish-doorbell-main.sh", import.meta.url), "utf8");
+const backupUnit = readFileSync(
+  new URL("../systemd/doorbell-commons-backup.service", import.meta.url),
+  "utf8",
+);
 
 test("the production deployer accepts a prebuilt artifact and never builds or installs packages", () => {
   assert.match(deployer, /usage: doorbell-deploy-main .* <runtime-artifact>/u);
@@ -30,6 +34,13 @@ test("all application builds run locally without Docker", () => {
 test("the publisher uploads the artifact and deployer without remote build commands", () => {
   assert.match(publisher, /build-doorbell-main-artifact\.sh/u);
   assert.match(publisher, /\/usr\/local\/sbin\/doorbell-deploy-main/u);
+  assert.match(publisher, /git[\s\S]*archive[\s\S]*migrate-doorbell-dependency-layer\.sh/u);
+  assert.match(publisher, /scp -- "\$\{dependency_migrator\}"/u);
+  const migration = publisher.indexOf("/usr/local/sbin/doorbell-migrate-dependencies");
+  const artifactInstall = publisher.indexOf("install -m 0600");
+  const deployment = publisher.lastIndexOf("/usr/local/sbin/doorbell-deploy-main");
+  assert.ok(migration >= 0 && migration < artifactInstall);
+  assert.ok(artifactInstall < deployment);
   assert.doesNotMatch(publisher, /ssh[^\n]*(?:npm|npx|tsc|vite|docker|podman)/u);
 });
 
@@ -60,6 +71,20 @@ test("the VPS links one persistent dependency layer only when the lockfile is id
   assert.match(deployer, /RUNTIME_DIRECTORY.*apps\/server/u);
   assert.match(deployer, /RUNTIME_DIRECTORY.*apps\/web/u);
   assert.doesNotMatch(deployer, /cp -a .*node_modules/u);
+});
+
+test("deployment and cleanup share one lock and retain only the dynamic direct previous runtime", () => {
+  const lock = deployer.indexOf("flock --nonblock 9");
+  const candidate = deployer.indexOf('candidate_directory="$(mktemp');
+  const health = deployer.indexOf("systemctl is-active --quiet");
+  const cleanup = deployer.indexOf("cleanup-doorbell-release-state.mjs");
+  assert.ok(lock >= 0 && lock < candidate);
+  assert.ok(health >= 0 && health < cleanup);
+  assert.match(deployer, /ionice -c3 nice -n 19 node/u);
+  assert.match(deployer, /--after-deploy "\$\{previous_directory\}"/u);
+  assert.match(deployer, /post-release cleanup failed; do not retry the deployment/u);
+  assert.match(builder, /cleanup-doorbell-release-state\.mjs/u);
+  assert.match(backupUnit, /cleanup-doorbell-release-state\.mjs --daily-only/u);
 });
 
 test("old lazy chunks remain available without replacing a newly built hash", async () => {
