@@ -3736,58 +3736,62 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
   const lingyeDailyService = options.lingyeDailyService;
   if (lingyeDailyService) {
-    app.post("/api/internal/lingye-daily/issues", async (request, reply) => {
-      if (!lingyeDailyReadRequestSchema.safeParse(request.query).success) {
-        return sendLingyeDailyError(
-          reply,
-          400,
-          "invalid_request",
-          "The Lingye Daily publish request does not accept query parameters",
-        );
-      }
-      const parsedRequest = lingyeDailyPublishRequestSchema.safeParse(request.body);
-      if (!parsedRequest.success) {
-        return sendLingyeDailyError(
-          reply,
-          400,
-          "invalid_request",
-          "The Lingye Daily issue does not match the supported publish contract",
-        );
-      }
-      try {
-        const published = lingyeDailyService.publish(
-          request.headers.authorization,
-          parsedRequest.data,
-        );
-        reply.header("cache-control", "no-store");
-        return lingyeDailyPublishSuccessSchema.parse({
-          published: true,
-          status: published.status,
-          issue_date: published.issue.issueDate,
-          issue_number: published.issue.issueNumber,
-          revision: published.issue.revision,
-          published_at: new Date(published.issue.publishedAt).toISOString(),
-        });
-      } catch (error) {
-        if (error instanceof LingyeDailyPublishAuthenticationError) {
+    app.post(
+      "/api/internal/lingye-daily/issues",
+      { bodyLimit: 8 * 1024 * 1024 },
+      async (request, reply) => {
+        if (!lingyeDailyReadRequestSchema.safeParse(request.query).success) {
           return sendLingyeDailyError(
             reply,
-            401,
-            "authentication_required",
-            "A valid Lingye Daily publish credential is required",
+            400,
+            "invalid_request",
+            "The Lingye Daily publish request does not accept query parameters",
           );
         }
-        if (error instanceof LingyeDailyIdempotencyConflictError) {
+        const parsedRequest = lingyeDailyPublishRequestSchema.safeParse(request.body);
+        if (!parsedRequest.success) {
           return sendLingyeDailyError(
             reply,
-            409,
-            "idempotency_conflict",
-            "The issue date or revision conflicts with the stored Lingye Daily issue",
+            400,
+            "invalid_request",
+            "The Lingye Daily issue does not match the supported publish contract",
           );
         }
-        throw error;
-      }
-    });
+        try {
+          const published = lingyeDailyService.publish(
+            request.headers.authorization,
+            parsedRequest.data,
+          );
+          reply.header("cache-control", "no-store");
+          return lingyeDailyPublishSuccessSchema.parse({
+            published: true,
+            status: published.status,
+            issue_date: published.issue.issueDate,
+            issue_number: published.issue.issueNumber,
+            revision: published.issue.revision,
+            published_at: new Date(published.issue.publishedAt).toISOString(),
+          });
+        } catch (error) {
+          if (error instanceof LingyeDailyPublishAuthenticationError) {
+            return sendLingyeDailyError(
+              reply,
+              401,
+              "authentication_required",
+              "A valid Lingye Daily publish credential is required",
+            );
+          }
+          if (error instanceof LingyeDailyIdempotencyConflictError) {
+            return sendLingyeDailyError(
+              reply,
+              409,
+              "idempotency_conflict",
+              "The issue date or revision conflicts with the stored Lingye Daily issue",
+            );
+          }
+          throw error;
+        }
+      },
+    );
 
     app.get("/api/lingye-daily/latest", async (request, reply) => {
       if (!lingyeDailyReadRequestSchema.safeParse(request.query).success) {
