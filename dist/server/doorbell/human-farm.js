@@ -2,6 +2,7 @@ import { MAX_BODY_BYTES } from "../../config.js";
 import { PublicSyncError } from "../../public-sync.js";
 import { jsonOut, readJsonBody } from "../http.js";
 import { projectHumanField } from "../human-structured.js";
+import { projectHumanActionListAuthority } from "../action-list-authority-structured.js";
 import { handleHumanHarvestAssist } from "../human-harvest-assist.js";
 import { handleHumanLandUpgrade } from "../human-land-upgrade.js";
 import { projectHumanFarmCatalog } from "../farm-catalog-structured.js";
@@ -46,6 +47,34 @@ export async function handleDoorbellHumanFieldRead(req, res, method) {
             return humanFieldError(res, 400, "invalid_request", "The request body must be valid JSON");
         console.error("[doorbell-human-field] field read failed");
         return humanFieldError(res, 503, "farm_unavailable", "The farm field could not be read");
+    }
+}
+
+export async function handleDoorbellHumanActionListAuthorityRead(req, res, method) {
+    if (!requireDoorbellHumanFieldService(req, res, method))
+        return;
+    try {
+        const body = await readJsonBody(req, MAX_BODY_BYTES);
+        const keys = isPlainObject(body) ? Object.keys(body) : [];
+        if (!isPlainObject(body)
+            || keys.length !== 2
+            || !keys.includes("farm_human_key")
+            || !keys.includes("expected_farm_doorplate")
+            || typeof body.farm_human_key !== "string"
+            || !body.farm_human_key
+            || typeof body.expected_farm_doorplate !== "string"
+            || !FARM_DOORPLATE_RE.test(body.expected_farm_doorplate))
+            return humanFieldError(res, 400, "invalid_request", "Submit only farm_human_key and expected_farm_doorplate");
+        const binding = validateFarmBinding(body);
+        if (binding.error)
+            return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
+        return jsonOut(res, 200, projectHumanActionListAuthority(binding.farm, Date.now()));
+    }
+    catch (error) {
+        if (error instanceof PublicSyncError)
+            return humanFieldError(res, 400, "invalid_request", "The request body must be valid JSON");
+        console.error("[doorbell-human-action-list-authority] read failed");
+        return humanFieldError(res, 503, "farm_unavailable", "The farm action-list authority could not be read");
     }
 }
 

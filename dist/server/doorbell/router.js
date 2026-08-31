@@ -1,6 +1,7 @@
 import {
     handleDoorbellHumanBulletinAck,
     handleDoorbellHumanBulletinRead,
+    handleDoorbellHumanActionListAuthorityRead,
     handleDoorbellHumanCatalogRead,
     handleDoorbellHumanCropCodexAction,
     handleDoorbellHumanFarmSettingsAction,
@@ -96,6 +97,10 @@ export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExe
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "memorial" && parts[4] === "qixi-2026" && parts[5] === "read" && parts.length === 6) {
             await handleDoorbellHumanQixiMemorialRead(req, res, method);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "action-list" && parts[4] === "authority" && parts[5] === "read" && parts.length === 6) {
+            await handleDoorbellHumanActionListAuthorityRead(req, res, method);
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "catalog" && parts[4] === "read" && parts.length === 5) {
