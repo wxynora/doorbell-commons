@@ -72,9 +72,9 @@ body {
 
 .lingye-music-toggle {
   position: fixed;
-  z-index: 260;
-  top: max(58px, calc(env(safe-area-inset-top) + 48px));
-  right: max(10px, env(safe-area-inset-right));
+  z-index: 180;
+  top: max(12px, calc(env(safe-area-inset-top) + 8px));
+  left: max(12px, calc(env(safe-area-inset-left) + 8px));
   display: grid;
   width: 44px;
   height: 44px;

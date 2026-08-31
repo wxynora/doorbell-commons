@@ -1248,7 +1248,7 @@ export type CandidateTwoAction =
   | { type: "lingye-glimmer-open" }
   | { type: "lingye-memorial-open" }
   | { type: "lingye-together-open" }
-  | { type: "lingye-presence-change"; active: boolean }
+  | { type: "lingye-presence-change"; active: boolean; mapActive: boolean }
   | { type: "home-mailbox-list"; category: MailboxCategory | null; page: number }
   | { type: "home-mailbox-detail-open"; letterId: string }
   | { type: "home-mailbox-claim"; letterId: string }
@@ -1288,7 +1288,7 @@ const candidateTwoActionKeys = {
   "lingye-glimmer-open": ["type"],
   "lingye-memorial-open": ["type"],
   "lingye-together-open": ["type"],
-  "lingye-presence-change": ["type", "active"],
+  "lingye-presence-change": ["type", "active", "mapActive"],
   "home-mailbox-list": ["type", "category", "page"],
   "home-mailbox-detail-open": ["type", "letterId"],
   "home-mailbox-claim": ["type", "letterId"],
@@ -1401,7 +1401,9 @@ export function parseCandidateTwoAction(value: unknown): CandidateTwoAction | nu
   }
 
   if (type === "lingye-presence-change") {
-    return typeof value.active === "boolean" ? { type, active: value.active } : null;
+    return typeof value.active === "boolean" && typeof value.mapActive === "boolean"
+      ? { type, active: value.active, mapActive: value.mapActive }
+      : null;
   }
 
   if (type === "home-settings-save") {
@@ -10525,6 +10527,7 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         sendAction({
             type: 'lingye-presence-change',
             active: screenId === 'screen-lingye' || screenId.startsWith('screen-lingye-'),
+            mapActive: screenId === 'screen-lingye',
         });
         if (screenId === 'screen-home') syncHomeScale();
         if (screenId === 'screen-lingye-memorial') {
