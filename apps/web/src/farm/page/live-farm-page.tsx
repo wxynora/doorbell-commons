@@ -233,13 +233,29 @@ export function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
       }
       if (result.ok) {
         fieldDoorplateRef.current = result.data.data.farm.farm_doorplate;
+        setState({ stage: "ready", data: result.data });
+      } else if (showLoading) {
+        setState({ stage: "error", issue: result.issue });
       }
-      setState(
-        result.ok ? { stage: "ready", data: result.data } : { stage: "error", issue: result.issue },
-      );
     },
     [previewData],
   );
+
+  const refreshFarmCatalogInBackground = useCallback(() => {
+    if (previewData || !requestedResourcesRef.current.has("farmCatalog")) return;
+    resourceControllersRef.current.farmCatalog?.abort();
+    const controller = new AbortController();
+    resourceControllersRef.current.farmCatalog = controller;
+    void getBoundFarmCatalog({ signal: controller.signal }).then((result) => {
+      if (controller.signal.aborted || !result.ok) return;
+      farmCatalogRef.current = result.data;
+      setSettingsInitializationKey((current) => current + 1);
+      setResources((current) => ({
+        ...current,
+        farmCatalog: { stage: "ready", data: result.data },
+      }));
+    });
+  }, [previewData]);
 
   const refreshRequestedResources = useCallback(() => {
     const requestedResources = [...requestedResourcesRef.current];
@@ -448,11 +464,12 @@ export function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
             },
           },
         }));
-        await invalidateAfterFarmMutation();
+        void refreshField();
+        refreshFarmCatalogInBackground();
       }
       return result;
     },
-    [invalidateAfterFarmMutation],
+    [refreshFarmCatalogInBackground, refreshField],
   );
 
   const submitRanchCollectionAction = useCallback<RanchCollectionExecutor>(
@@ -533,13 +550,28 @@ export function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
     async (input) => {
       const result = await executeBoundSmeltingAction(input);
       if (result.ok) {
-        await invalidateAfterFarmMutation();
+        const currentCatalog = farmCatalogRef.current;
+        if (currentCatalog) {
+          const nextCatalog: BoundFarmCatalogRead = {
+            ...currentCatalog,
+            data: result.data.data.resource,
+            revision: result.data.revision,
+            server_time: result.data.server_time,
+          };
+          farmCatalogRef.current = nextCatalog;
+          setSettingsInitializationKey((current) => current + 1);
+          setResources((current) => ({
+            ...current,
+            farmCatalog: { stage: "ready", data: nextCatalog },
+          }));
+        }
+        void refreshField();
       } else if (result.issue.code === "state_conflict") {
         requireResource("farmCatalog", true);
       }
       return result;
     },
-    [invalidateAfterFarmMutation, requireResource],
+    [refreshField, requireResource],
   );
 
   const submitMarketAction = useCallback<MarketActionExecutor>(
@@ -699,28 +731,28 @@ export function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
     async (input) => {
       const result = await executeBoundKitchenCook(input);
       if (result.ok) {
-        setResources((current) => {
-          if (current.kitchen.stage !== "ready") return current;
-          return {
-            ...current,
-            kitchen: {
-              stage: "ready",
-              data: {
-                data: result.data.data.resource,
-                kitchen_inventory_revision: result.data.kitchen_inventory_revision,
-                shop_revision: current.kitchen.data.shop_revision,
-                server_time: result.data.server_time,
-              },
-            },
+        const currentKitchen = kitchenRef.current;
+        if (currentKitchen) {
+          const nextKitchen: BoundKitchenRead = {
+            data: result.data.data.resource,
+            kitchen_inventory_revision: result.data.kitchen_inventory_revision,
+            shop_revision: currentKitchen.shop_revision,
+            server_time: result.data.server_time,
           };
-        });
-        await invalidateAfterFarmMutation();
+          kitchenRef.current = nextKitchen;
+          setResources((current) => ({
+            ...current,
+            kitchen: { stage: "ready", data: nextKitchen },
+          }));
+        }
+        void refreshField();
+        refreshFarmCatalogInBackground();
       } else if (result.issue.code === "state_conflict") {
         requireResource("kitchen", true);
       }
       return result;
     },
-    [invalidateAfterFarmMutation, requireResource],
+    [refreshFarmCatalogInBackground, refreshField, requireResource],
   );
 
   const reload = useCallback(() => {
