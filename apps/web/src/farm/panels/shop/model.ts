@@ -284,32 +284,28 @@ export function getCookingToolAssetKey(toolId: string): FarmAssetKey | undefined
   return COOKING_TOOL_ASSET_KEYS[toolId as keyof typeof COOKING_TOOL_ASSET_KEYS];
 }
 
+const FARM_SHOP_ICON_KEYS: Readonly<
+  Record<LiveFarmShopItem["kind"], Readonly<Record<string, FarmAssetKey>>>
+> = {
+  seed: {
+    common: "field.crop.ordinary-growing",
+    fantasy: "field.crop.fantasy-growing",
+    limited: "field.crop.limited-growing",
+  },
+  potion: {
+    speed_potion: "field.shop.speed-potion",
+  },
+  potion_set: {
+    potion_set: "field.shop.potion-set",
+  },
+  recipe: {},
+};
+
 function getFarmShopIconKey(
   kind: LiveFarmShopItem["kind"],
   itemId: string,
 ): FarmAssetKey | undefined {
-  if (kind === "potion" && itemId === "speed_potion") {
-    return "field.shop.speed-potion";
-  }
-  if (kind === "potion_set" && itemId === "potion_set") {
-    return "field.shop.potion-set";
-  }
-  if (kind === "recipe") {
-    return "field.shop.seed-recipe";
-  }
-  if (kind !== "seed") {
-    return undefined;
-  }
-  if (itemId === "common") {
-    return "field.crop.ordinary-growing";
-  }
-  if (itemId === "fantasy") {
-    return "field.crop.fantasy-growing";
-  }
-  if (itemId === "limited") {
-    return "field.crop.limited-growing";
-  }
-  return undefined;
+  return FARM_SHOP_ICON_KEYS[kind][itemId];
 }
 
 export function getLiveFarmShopItems(

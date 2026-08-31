@@ -1154,6 +1154,7 @@
 .farm-shop__item-copy {
   display: grid;
   min-width: 0;
+  grid-column: 2;
   gap: 0.45cqw;
 }
 
@@ -1174,6 +1175,7 @@
 
 .farm-shop__price {
   display: flex;
+  grid-column: 3;
   align-items: center;
   gap: 0.7cqw;
   color: #76542c;

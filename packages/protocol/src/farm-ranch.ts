@@ -123,6 +123,33 @@ export const farmRanchResidentVariantsSchema = z
   })
   .strict();
 
+export const farmRanchPatrolSchema = z
+  .object({
+    daily_limit: z.number().int().positive(),
+    used_today: nullableCountSchema,
+    remaining_today: nullableCountSchema,
+  })
+  .strict()
+  .superRefine((patrol, context) => {
+    if ((patrol.used_today === null) !== (patrol.remaining_today === null)) {
+      context.addIssue({
+        code: "custom",
+        message: "patrol usage and remaining counts must both be available or unavailable",
+      });
+      return;
+    }
+    if (
+      patrol.used_today !== null &&
+      patrol.remaining_today !== null &&
+      patrol.used_today + patrol.remaining_today !== patrol.daily_limit
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "patrol usage and remaining counts must add up to the daily limit",
+      });
+    }
+  });
+
 export const farmRanchResidentSchema = z
   .object({
     status: ranchItemStatusSchema,
@@ -145,6 +172,7 @@ export const farmRanchResidentSchema = z
       .strict()
       .optional(),
     produce: farmRanchProduceSchema.nullable(),
+    patrol: farmRanchPatrolSchema.nullable().optional(),
     dispatch: z
       .object({
         state: z.enum(["home", "active", "pending_settlement", "unavailable"]),

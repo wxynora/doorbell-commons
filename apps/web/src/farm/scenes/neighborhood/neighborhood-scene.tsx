@@ -37,6 +37,8 @@ interface NeighborhoodRankingDisplayRow {
   detail: string | null;
   title: string | null;
   value: number;
+  rank: number;
+  isOwn: boolean;
 }
 
 const TOTAL_RANKINGS: readonly NeighborhoodRankingDefinition[] = [
@@ -72,16 +74,22 @@ function NeighborhoodRankingBoard({
       <h5 id={headingId}>{definition.label}</h5>
       {rows.length > 0 ? (
         <ol>
-          {rows.map((row, index) => (
-            <li key={row.key}>
+          {rows.map((row) => (
+            <li
+              className={row.isOwn ? "farm-neighborhood__ranking-row--own" : undefined}
+              key={row.key}
+            >
               <span aria-hidden="true" className="farm-neighborhood__ranking-position">
-                {index + 1}
+                {row.rank}
               </span>
               <span className="farm-neighborhood__ranking-identity">
                 {row.title ? (
                   <small className="farm-neighborhood__ranking-title">✧{row.title}✧</small>
                 ) : null}
                 <strong>{row.name}</strong>
+                {row.isOwn ? (
+                  <small className="farm-neighborhood__ranking-own-label">我的排名</small>
+                ) : null}
                 {row.detail ? <small>{row.detail}</small> : null}
               </span>
               <span className="farm-neighborhood__ranking-value">
@@ -189,6 +197,8 @@ export function NeighborhoodScene({
           detail: row.farm_doorplate,
           title: row.equipped_title,
           value: row.value,
+          rank: row.rank,
+          isOwn: row.is_own,
         }));
       const hotRows = liveNeighborhood.original_crops
         .filter(
@@ -200,12 +210,14 @@ export function NeighborhoodScene({
         )
         .sort((left, right) => (right.buyers ?? 0) - (left.buyers ?? 0))
         .slice(0, 5)
-        .map((crop) => ({
+        .map((crop, index) => ({
           key: crop.crop_id,
           name: crop.name ?? crop.crop_id,
           detail: `设计者 ${crop.designer_name ?? "?"}`,
           title: null,
           value: crop.buyers ?? 0,
+          rank: index + 1,
+          isOwn: false,
         }));
       const hotDefinition = {
         id: "hot",

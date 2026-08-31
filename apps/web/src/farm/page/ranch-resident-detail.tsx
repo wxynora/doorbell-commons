@@ -404,6 +404,18 @@ export function RanchResidentDetail({
               <dd>{residentData.health.label}</dd>
             </div>
           ) : null}
+          {view.kind === "live" &&
+          liveResident?.residentType === "patrol_goose" &&
+          residentData?.patrol?.remaining_today !== null &&
+          residentData?.patrol?.remaining_today !== undefined ? (
+            <div>
+              <dt>今日巡逻</dt>
+              <dd>
+                今日剩余 {residentData.patrol.remaining_today.toLocaleString("zh-CN")}／
+                {residentData.patrol.daily_limit.toLocaleString("zh-CN")} 次
+              </dd>
+            </div>
+          ) : null}
           {view.kind === "live" && residentData?.accessories.status === "available" ? (
             <div>
               <dt>配饰</dt>

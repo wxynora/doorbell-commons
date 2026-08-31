@@ -396,6 +396,8 @@ export const farmCatalogNeighborhoodRankingRowSchema = z
     farm_name: z.string().min(1),
     value: z.number().int().nonnegative(),
     equipped_title: z.string().nullable(),
+    rank: z.number().int().positive(),
+    is_own: z.boolean(),
   })
   .strict();
 
