@@ -25,6 +25,7 @@ import { FarmLingyeClient } from "./farm-lingye-client.js";
 import { FarmHumanMarketActionClient } from "./farm-market-action-client.js";
 import { FarmHumanNeighborhoodMessageActionClient } from "./farm-neighborhood-message-action-client.js";
 import { FarmHumanOriginalPlantActionClient } from "./farm-original-plant-action-client.js";
+import { FarmPlantRequestService } from "./farm-plant-request-service.js";
 import { FarmPurchaseRequestService } from "./farm-purchase-request-service.js";
 import { FarmHumanRanchResidentActionClient } from "./farm-ranch-action-client.js";
 import { FarmHumanRanchClient } from "./farm-ranch-client.js";
@@ -282,6 +283,10 @@ const farmHarvestRequestService = new FarmHarvestRequestService({
   database,
   bellNotifier: bellService,
 });
+const farmPlantRequestService = new FarmPlantRequestService({
+  database,
+  bellNotifier: bellService,
+});
 const mailboxService = new MailboxService({
   database,
   farmRewardGranter,
@@ -363,6 +368,7 @@ const app = buildApp({
   groupMembership,
   registrationAuth,
   farmHarvestRequestService,
+  farmPlantRequestService,
   farmPurchaseRequestService,
   bellAccessService,
   bellService,

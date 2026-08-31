@@ -15,6 +15,7 @@ export * from "./farm-kitchen-shop-refresh.js";
 export * from "./farm-market-action.js";
 export * from "./farm-neighborhood-message-action.js";
 export * from "./farm-original-plant-action.js";
+export * from "./farm-plant-request.js";
 export * from "./farm-purchase-request.js";
 export * from "./farm-ranch.js";
 export * from "./farm-ranch-action.js";

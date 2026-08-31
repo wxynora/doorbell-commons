@@ -2400,3 +2400,22 @@ test("farm field error copy distinguishes qualification, credential, contract an
     "农场服务暂时不可用，农场数据没有完成读取。",
   );
 });
+
+test("field plant and harvest requests share the plot anchor without entering the bottom dock", () => {
+  const fieldScene = readFileSync(
+    new URL("./scenes/field/field-scene.tsx", import.meta.url),
+    "utf8",
+  );
+  const feedback = readFileSync(new URL("./page/action-feedback.tsx", import.meta.url), "utf8");
+  const styles = readFileSync(new URL("./farm-page.css", import.meta.url), "utf8");
+
+  assert.match(fieldScene, /\{requestControls\}[\s\S]*<fieldset className="farm-plots">/);
+  assert.match(feedback, /aria-label="通知 TA 处理田地"[\s\S]*喊 TA 来种[\s\S]*喊 TA 来收/);
+  assert.match(feedback, /aria-label="农场帮收"[\s\S]*一键帮 TA 收[\s\S]*<\/aside>/);
+  const bottomDock = feedback.match(/aria-label="农场帮收"[\s\S]*?<\/aside>/)?.[0] ?? "";
+  assert.doesNotMatch(bottomDock, /喊 TA/);
+  assert.match(
+    styles,
+    /\.farm-field-request-controls[\s\S]*top:\s*39%[\s\S]*left:\s*46%[\s\S]*width:\s*74\.96cqw/,
+  );
+});

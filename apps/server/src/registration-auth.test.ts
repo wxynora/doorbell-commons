@@ -31,6 +31,8 @@ import {
   boundFarmOriginalPlantActionSuccessSchema,
   boundFarmOverviewErrorSchema,
   boundFarmOverviewSuccessSchema,
+  boundFarmPlantRequestCreateSuccessSchema,
+  boundFarmPlantRequestErrorSchema,
   boundFarmPurchaseRequestCreateSuccessSchema,
   boundFarmPurchaseRequestErrorSchema,
   boundFarmRanchCollectionErrorSchema,
@@ -198,6 +200,7 @@ import {
   type FarmHumanOriginalPlantActionInput,
   FarmHumanOriginalPlantActionStateConflictError,
 } from "./farm-original-plant-action-client.js";
+import { FarmPlantRequestService } from "./farm-plant-request-service.js";
 import { FarmPurchaseRequestService } from "./farm-purchase-request-service.js";
 import {
   FarmHumanRanchResidentActionContractUnavailableError,
@@ -1071,6 +1074,7 @@ class FakeFarmHumanReader implements FarmHumanFieldReader {
   readonly harvestCalls: FarmHumanFieldHarvestAssistInput[] = [];
   readonly landUpgradeCalls: FarmHumanFieldLandUpgradeInput[] = [];
   fieldResult: "found" | "credential" | "missing" | "unavailable" | "contract" = "found";
+  success: FarmHumanFieldReadSuccess = FARM_FIELD_RESULT;
   harvestResult:
     | "found"
     | "exhausted"
@@ -1105,7 +1109,7 @@ class FakeFarmHumanReader implements FarmHumanFieldReader {
     if (this.fieldResult === "contract") {
       throw new FarmHumanFieldContractUnavailableError();
     }
-    return FARM_FIELD_RESULT;
+    return this.success;
   }
 
   async harvestAssist(
@@ -1661,6 +1665,7 @@ interface AuthHarness {
   farmLingyeReader: FakeFarmLingyeReader;
   farmCreator: FakeFarmCreator;
   farmPurchaseRequestService: FarmPurchaseRequestService;
+  farmPlantRequestService: FarmPlantRequestService;
   now: { value: number };
   revokedResidentIds: string[];
   close(): Promise<void>;
@@ -1740,11 +1745,16 @@ function createHarness(secureCookies = false): AuthHarness {
     database,
     now: () => now.value,
   });
+  const farmPlantRequestService = new FarmPlantRequestService({
+    database,
+    now: () => now.value,
+  });
   const app = buildApp({
     groupId: COMMUNITY_QQ_GROUP_ID,
     groupMembership: membership,
     registrationAuth,
     farmPurchaseRequestService,
+    farmPlantRequestService,
     mailboxService,
     secureCookies,
     logger: false,
@@ -1776,6 +1786,7 @@ function createHarness(secureCookies = false): AuthHarness {
     farmLingyeReader,
     farmCreator,
     farmPurchaseRequestService,
+    farmPlantRequestService,
     membership,
     now,
     revokedResidentIds,
@@ -3835,6 +3846,100 @@ test("bound farm shop open derives identity, preserves idempotency, and maps ret
       message: "The farm shop has changed",
       current_shop_revision: `farm-catalog-v1:${"8".repeat(64)}`,
     });
+  } finally {
+    await harness.close();
+  }
+});
+
+test("bound plant request requires an empty plot and replays before rereading Farm", async () => {
+  const harness = createHarness();
+  try {
+    const emptyPlot = {
+      plot_id: 4,
+      state: "empty" as const,
+      seed_type: null,
+      watered: 0,
+      progress: null,
+      matures_at: null,
+      identity_state: "empty" as const,
+      crop_identity: null,
+    };
+    harness.farmHumanReader.success = {
+      ...FARM_FIELD_RESULT,
+      data: {
+        ...FARM_FIELD_RESULT.data,
+        plots: [...FARM_FIELD_RESULT.data.plots, emptyPlot],
+      },
+    };
+    harness.farmCatalogReader.success = {
+      ...FARM_CATALOG_RESULT,
+      data: {
+        ...FARM_CATALOG_RESULT.data,
+        settings: {
+          status: "available",
+          farm_name: FARM_NAME,
+          ai_name: FARM_AI_NAME,
+          human_name: "辛玥",
+          welcome_message: null,
+          equipped_title: null,
+          unlocked_titles: [],
+          social: { visit: null, steal: null, water: null, message: null },
+        },
+      },
+    };
+    harness.membership.members.add(QQ_NUMBER);
+    const code = harness.database.getCurrentRegistrationCode(harness.now.value);
+    const session = await harness.app.inject({
+      method: "POST",
+      url: "/api/auth/session",
+      payload: { ...FULL_REGISTRATION_PAYLOAD, registration_code: code.code },
+    });
+    const cookie = cookieFrom(session);
+    const idempotencyKey = "619ffb01-49cd-7020-84af-3d04fb1ed03d";
+    const create = await harness.app.inject({
+      method: "POST",
+      url: "/api/farm/plant-requests",
+      headers: { cookie, "idempotency-key": idempotencyKey },
+      payload: { field_revision: FARM_FIELD_RESULT.revision },
+    });
+    assert.equal(create.statusCode, 200);
+    const created = boundFarmPlantRequestCreateSuccessSchema.parse(create.json());
+    assert.equal(created.data.empty_plot_count, 1);
+    assert.equal(created.data.status, "requested");
+    const fieldCallsAfterCreate = harness.farmHumanReader.fieldCalls.length;
+    harness.farmHumanReader.success = FARM_FIELD_RESULT;
+
+    const replay = await harness.app.inject({
+      method: "POST",
+      url: "/api/farm/plant-requests",
+      headers: { cookie, "idempotency-key": idempotencyKey },
+      payload: { field_revision: FARM_FIELD_RESULT.revision },
+    });
+    assert.equal(replay.statusCode, 200);
+    assert.equal(harness.farmHumanReader.fieldCalls.length, fieldCallsAfterCreate);
+    assert.deepEqual(
+      boundFarmPlantRequestCreateSuccessSchema.parse(replay.json()).data,
+      created.data,
+    );
+    const wake = harness.database
+      .listPendingBellWakes("b60a5f78-9e87-4bc4-a06f-50df4e23d42d")
+      .find((candidate) => candidate.reason === "farm_plant_request");
+    assert.equal(wake?.payload?.text, "【📢来自铃野的通知】\n你的人类辛玥喊你来农场种菜。");
+
+    const noEmpty = await harness.app.inject({
+      method: "POST",
+      url: "/api/farm/plant-requests",
+      headers: {
+        cookie,
+        "idempotency-key": "619ffb01-49cd-7020-84af-3d04fb1ed03e",
+      },
+      payload: { field_revision: FARM_FIELD_RESULT.revision },
+    });
+    assert.equal(noEmpty.statusCode, 409);
+    assert.equal(
+      boundFarmPlantRequestErrorSchema.parse(noEmpty.json()).error.code,
+      "no_empty_plots",
+    );
   } finally {
     await harness.close();
   }

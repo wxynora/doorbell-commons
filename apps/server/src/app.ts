@@ -88,6 +88,9 @@ import {
   boundFarmOverviewErrorSchema,
   boundFarmOverviewRequestSchema,
   boundFarmOverviewSuccessSchema,
+  boundFarmPlantRequestCreateSchema,
+  boundFarmPlantRequestCreateSuccessSchema,
+  boundFarmPlantRequestErrorSchema,
   boundFarmPurchaseRequestCreateSchema,
   boundFarmPurchaseRequestCreateSuccessSchema,
   boundFarmPurchaseRequestErrorSchema,
@@ -154,6 +157,7 @@ import {
   farmMarketActionIdempotencyKeySchema,
   farmNeighborhoodMessageActionIdempotencyKeySchema,
   farmOriginalPlantActionIdempotencyKeySchema,
+  farmPlantRequestIdempotencyKeySchema,
   farmPurchaseRequestIdempotencyKeySchema,
   farmRanchDecorationActionIdempotencyKeySchema,
   farmRanchInteractionActionIdempotencyKeySchema,
@@ -228,6 +232,7 @@ import {
 import type { BrowserPushService } from "./browser-push-service.js";
 import {
   FarmHarvestRequestIdempotencyConflictError,
+  FarmPlantRequestIdempotencyConflictError,
   FarmPurchaseRequestIdempotencyConflictError,
   HumanProfileNotAvailableError,
   type HumanSettingsPatch,
@@ -392,6 +397,11 @@ import {
   FarmHumanOriginalPlantActionUnavailableError,
 } from "./farm-original-plant-action-client.js";
 import {
+  type FarmPlantRequestCreateResult,
+  FarmPlantRequestInputError,
+  type FarmPlantRequestService,
+} from "./farm-plant-request-service.js";
+import {
   type FarmPurchaseRequestCreateResult,
   FarmPurchaseRequestInputError,
   type FarmPurchaseRequestService,
@@ -533,6 +543,7 @@ export interface BuildAppOptions {
   groupMembership: QqGroupMembershipReader;
   registrationAuth: RegistrationAuthService;
   farmHarvestRequestService?: FarmHarvestRequestService;
+  farmPlantRequestService?: FarmPlantRequestService;
   farmPurchaseRequestService?: FarmPurchaseRequestService;
   bellAccessService?: BellAccessService;
   bellService?: BellService;
@@ -1222,6 +1233,53 @@ function sendBoundFarmHarvestRequestSuccess(
     data: {
       field_revision: result.request.fieldRevision,
       mature_plot_count: result.request.maturePlotCount,
+      status: result.request.status,
+      expires_at: new Date(result.request.expiresAt).toISOString(),
+    },
+    server_time: new Date().toISOString(),
+  });
+}
+
+function sendBoundFarmPlantRequestError(
+  reply: FastifyReply,
+  statusCode: 400 | 401 | 403 | 404 | 409 | 502 | 503,
+  code:
+    | "field_changed"
+    | "no_empty_plots"
+    | "idempotency_conflict"
+    | "invalid_request"
+    | "authentication_required"
+    | "qq_not_group_member"
+    | "onebot_unavailable"
+    | "registration_profile_required"
+    | "farm_not_found"
+    | "farm_credential_invalid"
+    | "farm_unavailable"
+    | "upstream_contract_unavailable",
+  message: string,
+  currentFieldRevision?: string,
+) {
+  reply.header("cache-control", "no-store");
+  return reply.code(statusCode).send(
+    boundFarmPlantRequestErrorSchema.parse({
+      error: {
+        code,
+        message,
+        ...(currentFieldRevision ? { current_field_revision: currentFieldRevision } : {}),
+      },
+    }),
+  );
+}
+
+function sendBoundFarmPlantRequestSuccess(
+  reply: FastifyReply,
+  result: FarmPlantRequestCreateResult,
+) {
+  reply.header("cache-control", "no-store");
+  return boundFarmPlantRequestCreateSuccessSchema.parse({
+    data: {
+      field_revision: result.request.fieldRevision,
+      empty_plot_count: result.request.emptyPlotCount,
       status: result.request.status,
       expires_at: new Date(result.request.expiresAt).toISOString(),
     },
@@ -4799,6 +4857,184 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         error instanceof FarmHumanCatalogUnavailableError
       ) {
         return sendBoundFarmHarvestRequestError(
+          reply,
+          503,
+          "farm_unavailable",
+          "The farm is unavailable",
+        );
+      }
+      throw error;
+    }
+  });
+
+  app.post("/api/farm/plant-requests", async (request, reply) => {
+    const parsedBody = boundFarmPlantRequestCreateSchema.safeParse(request.body);
+    const idempotencyHeader = request.headers["idempotency-key"];
+    const parsedIdempotencyKey = farmPlantRequestIdempotencyKeySchema.safeParse(
+      typeof idempotencyHeader === "string" ? idempotencyHeader : undefined,
+    );
+    if (!parsedBody.success || !parsedIdempotencyKey.success) {
+      return sendBoundFarmPlantRequestError(
+        reply,
+        400,
+        "invalid_request",
+        "A valid field revision and Idempotency-Key are required",
+      );
+    }
+    if (!options.farmPlantRequestService) {
+      return sendBoundFarmPlantRequestError(
+        reply,
+        503,
+        "farm_unavailable",
+        "Farm plant requests are unavailable",
+      );
+    }
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendBoundFarmPlantRequestError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+
+    try {
+      const community = await options.registrationAuth.getCurrentSession(token);
+      const replay = options.farmPlantRequestService.replay({
+        residentId: community.resident.residentId,
+        fieldRevision: parsedBody.data.field_revision,
+        idempotencyKey: parsedIdempotencyKey.data,
+      });
+      if (replay) return sendBoundFarmPlantRequestSuccess(reply, replay);
+
+      const field = await options.registrationAuth.getCurrentFarmField(token);
+      if (field.revision !== parsedBody.data.field_revision) {
+        return sendBoundFarmPlantRequestError(
+          reply,
+          409,
+          "field_changed",
+          "The farm field has changed",
+          field.revision,
+        );
+      }
+      const emptyPlotCount = field.data.plots.filter((plot) => plot.state === "empty").length;
+      if (emptyPlotCount <= 0) {
+        return sendBoundFarmPlantRequestError(
+          reply,
+          409,
+          "no_empty_plots",
+          "The farm has no empty plots to plant",
+        );
+      }
+      const catalog = await options.registrationAuth.getCurrentFarmCatalog(token);
+      const humanName =
+        catalog.data.settings.status === "available"
+          ? catalog.data.settings.human_name?.trim()
+          : undefined;
+      if (!humanName) {
+        return sendBoundFarmPlantRequestError(
+          reply,
+          409,
+          "invalid_request",
+          "Set the farm human name before creating a plant request",
+        );
+      }
+      return sendBoundFarmPlantRequestSuccess(
+        reply,
+        options.farmPlantRequestService.create({
+          residentId: community.resident.residentId,
+          homeId: community.home.homeId,
+          humanName,
+          fieldRevision: field.revision,
+          emptyPlotCount,
+          idempotencyKey: parsedIdempotencyKey.data,
+        }),
+      );
+    } catch (error) {
+      if (error instanceof AuthenticationRequiredError) {
+        return sendBoundFarmPlantRequestError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
+        return sendBoundFarmPlantRequestError(
+          reply,
+          403,
+          "qq_not_group_member",
+          "The session QQ number is no longer a current member of the community group",
+        );
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendBoundFarmPlantRequestError(
+          reply,
+          503,
+          "onebot_unavailable",
+          "QQ group membership could not be verified",
+        );
+      }
+      if (error instanceof RegistrationProfileRequiredError) {
+        return sendBoundFarmPlantRequestError(
+          reply,
+          409,
+          "registration_profile_required",
+          "A resident, home, and farm binding are required",
+        );
+      }
+      if (error instanceof FarmPlantRequestIdempotencyConflictError) {
+        return sendBoundFarmPlantRequestError(
+          reply,
+          409,
+          "idempotency_conflict",
+          "This Idempotency-Key was used for another plant request",
+        );
+      }
+      if (error instanceof FarmPlantRequestInputError) {
+        return sendBoundFarmPlantRequestError(reply, 400, "invalid_request", error.message);
+      }
+      if (
+        error instanceof FarmHumanFieldCredentialInvalidError ||
+        error instanceof FarmHumanCatalogCredentialInvalidError
+      ) {
+        return sendBoundFarmPlantRequestError(
+          reply,
+          409,
+          "farm_credential_invalid",
+          "The bound farm human credential is no longer valid",
+        );
+      }
+      if (
+        error instanceof FarmHumanFieldNotFoundError ||
+        error instanceof FarmHumanCatalogNotFoundError
+      ) {
+        return sendBoundFarmPlantRequestError(
+          reply,
+          404,
+          "farm_not_found",
+          "The bound farm no longer exists",
+        );
+      }
+      if (
+        error instanceof FarmHumanFieldContractUnavailableError ||
+        error instanceof FarmHumanCatalogContractUnavailableError
+      ) {
+        return sendBoundFarmPlantRequestError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The farm response could not be verified",
+        );
+      }
+      if (
+        error instanceof FarmHumanFieldUnavailableError ||
+        error instanceof FarmHumanCatalogUnavailableError
+      ) {
+        return sendBoundFarmPlantRequestError(
           reply,
           503,
           "farm_unavailable",

@@ -1027,7 +1027,7 @@ application error logs. File copying or host/database permission
 compromise can therefore expose the key; the file and host permission boundary is the current
 explicit tradeoff.
 
-The Doorbell server SQLite currently uses schema version 16 in SQLite `PRAGMA user_version`.
+The Doorbell server SQLite currently uses schema version 17 in SQLite `PRAGMA user_version`.
 Opening an existing unversioned database first runs the historical
 identity-column additions and advances to v1, then the ordered v2 migration adds login failures and
 locks without replacing existing data. The historical ordered v3 migration changed the now-retired
@@ -1041,6 +1041,10 @@ Schema v15 adds the last valid non-empty QQ group-member snapshot used only by a
 residents during OneBot outages. Schema v16 adds `farm_harvest_requests`, which stores one
 resident-bound 24-hour idempotent field snapshot plus Bell delivery state for each Human
 「喊 TA 来收菜」request; it contains no crop identity, harvest result, Bell credential, or Farm save.
+Schema v17 adds the separate `farm_plant_requests` table with the same 24-hour Bell lifecycle but an
+independent idempotency namespace, field revision and positive empty-plot count. It never calls Farm
+planting or stores a seed／crop choice; ACK, blocked delivery, cancellation and expiry affect only the
+matching plant wake and cannot consume a harvest request.
 Opening a database from a newer unsupported schema version fails before table initialization. Future
 schema changes must add an ordered migration and advance this version instead of relying only on
 `CREATE TABLE IF NOT EXISTS`.
@@ -1101,6 +1105,9 @@ The current tables are:
 - `farm_harvest_requests` for one 24-hour idempotent Human request keyed by resident and UUID. It
   stores the accepted field revision, mature-plot count, confirmed notification text and Bell
   pending／ACK／blocked／cancelled state. It never performs a harvest or stores a harvest result.
+- `farm_plant_requests` for the independent 24-hour Human plant request. It stores only the accepted
+  field revision, positive empty-plot count, confirmed notification and its own Bell lifecycle; it
+  never stores a seed choice, calls Farm planting or shares replay／terminal state with Harvest.
 
 The human API exposes `GET /api/mailbox`, `GET /api/mailbox/:letterId`, and
 `POST /api/mailbox/:letterId/claim`. Resident delivery is not a model-visible mailbox tool or a

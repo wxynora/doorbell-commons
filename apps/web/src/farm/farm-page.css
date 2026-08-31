@@ -929,17 +929,55 @@
   width: auto;
 }
 
-.farm-scene-action-dock__field-actions {
-  display: grid;
-  width: 24cqw;
-  gap: 0.65cqw;
-}
-
-.farm-scene-action-dock--field .farm-scene-action-dock__field-actions > button {
+.farm-scene-action-dock--field > button {
   min-width: 22cqw;
   min-height: clamp(28px, 8cqw, 34px);
   padding: 0.2cqw 1cqw;
   border-width: 0.25cqw;
+}
+
+.farm-field-request-controls {
+  position: absolute;
+  top: 39%;
+  left: 46%;
+  z-index: 4;
+  display: grid;
+  width: 74.96cqw;
+  gap: 0.5cqw;
+  transform: translateX(-50%);
+}
+
+.farm-field-request-controls > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.1cqw;
+}
+
+.farm-field-request-controls button {
+  min-width: 0;
+  min-height: clamp(32px, 8.2cqw, 38px);
+  padding: 0.35cqw 1.2cqw;
+  color: #fff8dc;
+  font-size: clamp(0.54rem, 2.2cqw, 0.68rem);
+  font-weight: 900;
+  white-space: nowrap;
+  border: 0.28cqw solid #5f7f32;
+  border-radius: 999px;
+  background: linear-gradient(#8caa4e, #688d38);
+  box-shadow: inset 0 0.28cqw rgba(255, 255, 222, 0.38);
+}
+
+.farm-field-request-controls button:disabled {
+  color: #fff6d6;
+  border-color: #7e755f;
+  background: #aaa087;
+  box-shadow: none;
+}
+
+.farm-field-request-controls .farm-harvest-request-error {
+  padding: 0.35cqw 1cqw;
+  border-radius: 1.2cqw;
+  background: rgba(255, 247, 218, 0.9);
 }
 
 .farm-harvest-request-error {

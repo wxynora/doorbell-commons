@@ -409,7 +409,7 @@ test("schema v1 preserves login security state while upgrading through the curre
         migratedDatabase.pragma("user_version", { simple: true }),
         COMMUNITY_DATABASE_SCHEMA_VERSION,
       );
-      assert.equal(COMMUNITY_DATABASE_SCHEMA_VERSION, 15);
+      assert.equal(COMMUNITY_DATABASE_SCHEMA_VERSION, 17);
       assert.deepEqual(
         migratedDatabase
           .prepare("SELECT account_id, qq_number, password_credential FROM human_accounts")
@@ -978,6 +978,35 @@ test("schema v7 preserves purchase wakes while adding career exam reminder refer
           'ranch', 'revision-new', '人类', 'requested', 20, 86400020, 'payload-new'
         );
       `);
+      assert.deepEqual(database.pragma("foreign_key_check"), []);
+    } finally {
+      database.close();
+    }
+  });
+});
+
+test("schema v16 migrates the independent farm plant request table", () => {
+  withTemporaryDatabase((databasePath) => {
+    const initialized = new CommunityDatabase(databasePath);
+    initialized.close();
+
+    const versionSixteen = new Database(databasePath);
+    versionSixteen.exec("DROP TABLE farm_plant_requests");
+    versionSixteen.pragma("user_version = 16");
+    versionSixteen.close();
+
+    const migrated = new CommunityDatabase(databasePath);
+    migrated.close();
+
+    const database = new Database(databasePath, { readonly: true });
+    try {
+      assert.equal(database.pragma("user_version", { simple: true }), 17);
+      assert.deepEqual(
+        database
+          .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+          .get("farm_plant_requests"),
+        { name: "farm_plant_requests" },
+      );
       assert.deepEqual(database.pragma("foreign_key_check"), []);
     } finally {
       database.close();

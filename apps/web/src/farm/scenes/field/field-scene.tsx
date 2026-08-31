@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { type FarmAssetKey, getFarmAssetUrl } from "../../farm-asset-manifest";
 import type { FarmPlot } from "../../farm-overview";
 import { farmPlotStateLabel } from "../../farm-overview";
@@ -75,12 +75,14 @@ export function FieldScene({
   selectedPlot,
   onSelectPlot,
   onClosePlot,
+  requestControls,
 }: {
   backgroundUrl: string;
   plots: readonly FarmPlot[];
   selectedPlot: FarmPlot | null;
   onSelectPlot: (plotId: number) => void;
   onClosePlot: () => void;
+  requestControls?: ReactNode;
 }) {
   return (
     <section
@@ -91,6 +93,8 @@ export function FieldScene({
       <h2 className="farm-visually-hidden" id="farm-field-title">
         农场
       </h2>
+
+      {requestControls}
 
       {plots.length > 0 ? (
         <fieldset className="farm-plots">

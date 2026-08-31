@@ -10,9 +10,11 @@ const clients = vi.hoisted(() => ({
   field: vi.fn(),
   farmPurchaseRequest: vi.fn(),
   harvest: vi.fn(),
+  harvestRequest: vi.fn(),
   kitchen: vi.fn(),
   market: vi.fn(),
   originalPlant: vi.fn(),
+  plantRequest: vi.fn(),
   openFarmShop: vi.fn(),
   purchase: vi.fn(),
   ranch: vi.fn(),
@@ -49,6 +51,16 @@ vi.mock("../auth/farm-purchase-request-client", () => ({
   createBoundFarmPurchaseRequest: clients.farmPurchaseRequest,
   farmPurchaseRequestIssueMessage: (issue: { serverMessage: string | null }) =>
     issue.serverMessage ?? "现在无法通知 TA",
+}));
+
+vi.mock("../auth/farm-harvest-request-client", () => ({
+  createBoundFarmHarvestRequest: clients.harvestRequest,
+  farmHarvestRequestIssueMessage: () => "收菜通知失败",
+}));
+
+vi.mock("../auth/farm-plant-request-client", () => ({
+  createBoundFarmPlantRequest: clients.plantRequest,
+  farmPlantRequestIssueMessage: () => "种菜通知失败",
 }));
 
 vi.mock("../auth/kitchen-client", () => ({
@@ -1143,6 +1155,18 @@ beforeEach(() => {
     .mockReset()
     .mockImplementation(async (input) => farmPurchaseRequestSuccess(input));
   clients.harvest.mockReset().mockResolvedValue(HARVEST_SUCCESS);
+  clients.harvestRequest.mockReset().mockImplementation(async (input) => ({
+    ok: true,
+    data: {
+      data: {
+        field_revision: input.fieldRevision,
+        mature_plot_count: 1,
+        status: "requested",
+        expires_at: "2026-09-01T00:00:00.000Z",
+      },
+      server_time: "2026-08-31T00:00:00.000Z",
+    },
+  }));
   clients.kitchen.mockReset().mockResolvedValue(KITCHEN_RESULT);
   clients.market.mockReset();
   clients.originalPlant
@@ -1150,6 +1174,18 @@ beforeEach(() => {
     .mockImplementation(async (input: { idempotencyKey: string }) =>
       originalPlantSuccess(input.idempotencyKey),
     );
+  clients.plantRequest.mockReset().mockImplementation(async (input) => ({
+    ok: true,
+    data: {
+      data: {
+        field_revision: input.fieldRevision,
+        empty_plot_count: 1,
+        status: "requested",
+        expires_at: "2026-09-01T00:00:00.000Z",
+      },
+      server_time: "2026-08-31T00:00:00.000Z",
+    },
+  }));
   clients.openFarmShop
     .mockReset()
     .mockImplementation(
@@ -1681,6 +1717,67 @@ describe("Ranch dispatch target selection", () => {
 });
 
 describe("FarmPage authority resource lifecycle", () => {
+  it("shows independent plant and harvest requests above the plots while keeping help-harvest below", async () => {
+    clients.field.mockResolvedValue({
+      ok: true,
+      data: {
+        ...FIELD_BEFORE,
+        data: {
+          ...FIELD_BEFORE.data,
+          plots: [
+            {
+              plot_id: 2,
+              seed_type: null,
+              state: "empty",
+              watered: 0,
+              progress: null,
+              matures_at: null,
+              identity_state: "empty",
+              crop_identity: null,
+            },
+            ...FIELD_BEFORE.data.plots,
+          ],
+        },
+      },
+    });
+    await renderLiveFarm();
+
+    const requestControls = await screen.findByRole("complementary", {
+      name: "通知 TA 处理田地",
+    });
+    const helpHarvest = screen.getByRole("complementary", { name: "农场帮收" });
+    expect(within(helpHarvest).getByRole("button", { name: "一键帮 TA 收" })).toBeTruthy();
+    expect(within(helpHarvest).queryByRole("button", { name: /喊 TA/ })).toBeNull();
+
+    fireEvent.click(within(requestControls).getByRole("button", { name: "喊 TA 来种" }));
+    fireEvent.click(within(requestControls).getByRole("button", { name: "喊 TA 来收" }));
+
+    await waitFor(() => {
+      expect(clients.plantRequest).toHaveBeenCalledTimes(1);
+      expect(clients.harvestRequest).toHaveBeenCalledTimes(1);
+    });
+    expect(clients.plantRequest.mock.calls[0]?.[0]).toMatchObject({
+      fieldRevision: FIELD_BEFORE.revision,
+    });
+    expect(clients.harvestRequest.mock.calls[0]?.[0]).toMatchObject({
+      fieldRevision: FIELD_BEFORE.revision,
+    });
+    expect(clients.plantRequest.mock.calls[0]?.[0].idempotencyKey).not.toBe(
+      clients.harvestRequest.mock.calls[0]?.[0].idempotencyKey,
+    );
+  });
+
+  it("disables plant requests when the authority field has no empty plot", async () => {
+    await renderLiveFarm();
+    const controls = await screen.findByRole("complementary", { name: "通知 TA 处理田地" });
+    expect(
+      (within(controls).getByRole("button", { name: "喊 TA 来种" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(
+      (within(controls).getByRole("button", { name: "喊 TA 来收" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
   it("reloads an opened backpack after harvest and reinitializes settings from authority data", async () => {
     clients.catalog
       .mockResolvedValueOnce(catalogResult("旧种子", "旧目录农场"))

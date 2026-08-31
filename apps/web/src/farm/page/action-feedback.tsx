@@ -1,41 +1,26 @@
 import type { BoundFarmField, BoundFarmHarvestAssist } from "../../auth/auth-client";
 import { farmHarvestRequestIssueMessage } from "../../auth/farm-harvest-request-client";
+import { farmPlantRequestIssueMessage } from "../../auth/farm-plant-request-client";
 import { ranchCollectionIssueMessage } from "../../auth/ranch-collection-client";
 import { farmHarvestAssistIssueMessage, farmLandUpgradeIssueMessage } from "../farm-overview";
 import type {
   FarmHarvestActionState,
   FarmHarvestRequestActionState,
   FarmLandUpgradeActionState,
+  FarmPlantRequestActionState,
   RanchCollectionState,
 } from "./model";
 
 export function FieldSceneOverlay({
   harvestAssist,
-  harvestRequestAction,
   onHarvestAssist,
-  onHarvestRequest,
-  onRetryHarvestRequest,
   submitting,
 }: {
   harvestAssist: BoundFarmField["data"]["harvest_assist"];
-  harvestRequestAction: FarmHarvestRequestActionState;
   onHarvestAssist?: (() => void) | undefined;
-  onHarvestRequest?: (() => void) | undefined;
-  onRetryHarvestRequest?: (() => void) | undefined;
   submitting: boolean;
 }) {
   const enabled = harvestAssist.can_assist && Boolean(onHarvestAssist) && !submitting;
-  const requestSubmitting = harvestRequestAction.stage === "submitting";
-  const requestSent = harvestRequestAction.stage === "success";
-  const requestEnabled =
-    harvestAssist.mature_plot_count > 0 &&
-    Boolean(onHarvestRequest) &&
-    !requestSubmitting &&
-    !requestSent;
-  const retryRequest =
-    harvestRequestAction.stage === "error" && harvestRequestAction.attempt
-      ? onRetryHarvestRequest
-      : undefined;
   return (
     <aside aria-label="农场帮收" className="farm-scene-action-dock farm-scene-action-dock--field">
       <dl>
@@ -50,20 +35,79 @@ export function FieldSceneOverlay({
           </dd>
         </div>
       </dl>
-      <div className="farm-scene-action-dock__field-actions">
-        <button disabled={!enabled} onClick={onHarvestAssist} type="button">
-          {submitting ? "正在帮收…" : "一键帮 TA 收"}
-        </button>
-        <button disabled={!requestEnabled} onClick={retryRequest ?? onHarvestRequest} type="button">
-          {requestSubmitting
+      <button disabled={!enabled} onClick={onHarvestAssist} type="button">
+        {submitting ? "正在帮收…" : "一键帮 TA 收"}
+      </button>
+    </aside>
+  );
+}
+
+export function FieldRequestControls({
+  emptyPlotCount,
+  harvestRequestAction,
+  maturePlotCount,
+  onHarvestRequest,
+  onPlantRequest,
+  onRetryHarvestRequest,
+  onRetryPlantRequest,
+  plantRequestAction,
+}: {
+  emptyPlotCount: number;
+  harvestRequestAction: FarmHarvestRequestActionState;
+  maturePlotCount: number;
+  onHarvestRequest?: (() => void) | undefined;
+  onPlantRequest?: (() => void) | undefined;
+  onRetryHarvestRequest?: (() => void) | undefined;
+  onRetryPlantRequest?: (() => void) | undefined;
+  plantRequestAction: FarmPlantRequestActionState;
+}) {
+  const harvestSubmitting = harvestRequestAction.stage === "submitting";
+  const harvestSent = harvestRequestAction.stage === "success";
+  const harvestRetry =
+    harvestRequestAction.stage === "error" && harvestRequestAction.attempt
+      ? onRetryHarvestRequest
+      : undefined;
+  const plantSubmitting = plantRequestAction.stage === "submitting";
+  const plantSent = plantRequestAction.stage === "success";
+  const plantRetry =
+    plantRequestAction.stage === "error" && plantRequestAction.attempt
+      ? onRetryPlantRequest
+      : undefined;
+  return (
+    <aside aria-label="通知 TA 处理田地" className="farm-field-request-controls">
+      <div>
+        <button
+          disabled={emptyPlotCount <= 0 || !onPlantRequest || plantSubmitting || plantSent}
+          onClick={plantRetry ?? onPlantRequest}
+          type="button"
+        >
+          {plantSubmitting
             ? "正在通知…"
-            : requestSent
+            : plantSent
+              ? "已通知 TA"
+              : plantRequestAction.stage === "error"
+                ? "重试喊 TA 来种"
+                : "喊 TA 来种"}
+        </button>
+        <button
+          disabled={maturePlotCount <= 0 || !onHarvestRequest || harvestSubmitting || harvestSent}
+          onClick={harvestRetry ?? onHarvestRequest}
+          type="button"
+        >
+          {harvestSubmitting
+            ? "正在通知…"
+            : harvestSent
               ? "已通知 TA"
               : harvestRequestAction.stage === "error"
-                ? "重试通知"
-                : "喊 TA 来收菜"}
+                ? "重试喊 TA 来收"
+                : "喊 TA 来收"}
         </button>
       </div>
+      {plantRequestAction.stage === "error" ? (
+        <p className="farm-harvest-request-error" role="alert">
+          {farmPlantRequestIssueMessage(plantRequestAction.issue)}
+        </p>
+      ) : null}
       {harvestRequestAction.stage === "error" ? (
         <p className="farm-harvest-request-error" role="alert">
           {farmHarvestRequestIssueMessage(harvestRequestAction.issue)}

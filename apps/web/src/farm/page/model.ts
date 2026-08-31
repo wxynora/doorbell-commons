@@ -14,6 +14,11 @@ import type {
   FarmHarvestRequestIssue,
 } from "../../auth/farm-harvest-request-client";
 import type {
+  CreateFarmPlantRequestInput,
+  createBoundFarmPlantRequest,
+  FarmPlantRequestIssue,
+} from "../../auth/farm-plant-request-client";
+import type {
   CreateFarmPurchaseRequestInput,
   createBoundFarmPurchaseRequest,
   FarmPurchaseRequestIssue,
@@ -96,6 +101,20 @@ export type FarmHarvestRequestActionState =
       stage: "error";
       attempt: CreateFarmHarvestRequestInput | null;
       issue: FarmHarvestRequestIssue;
+    }
+  | { stage: "success" };
+
+export type FarmPlantRequestResult = Awaited<ReturnType<typeof createBoundFarmPlantRequest>>;
+export type FarmPlantRequestExecutor = (
+  input: CreateFarmPlantRequestInput,
+) => Promise<FarmPlantRequestResult>;
+export type FarmPlantRequestActionState =
+  | { stage: "idle" }
+  | { stage: "submitting"; attempt: CreateFarmPlantRequestInput }
+  | {
+      stage: "error";
+      attempt: CreateFarmPlantRequestInput | null;
+      issue: FarmPlantRequestIssue;
     }
   | { stage: "success" };
 
@@ -345,6 +364,16 @@ export function shouldRetryFarmPurchaseRequest(issue: FarmPurchaseRequestIssue):
 }
 
 export function shouldRetryFarmHarvestRequest(issue: FarmHarvestRequestIssue): boolean {
+  return (
+    issue.code === "network_unavailable" ||
+    issue.code === "farm_unavailable" ||
+    issue.code === "onebot_unavailable" ||
+    issue.code === "upstream_contract_unavailable" ||
+    issue.code === "unexpected_response"
+  );
+}
+
+export function shouldRetryFarmPlantRequest(issue: FarmPlantRequestIssue): boolean {
   return (
     issue.code === "network_unavailable" ||
     issue.code === "farm_unavailable" ||
