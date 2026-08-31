@@ -344,8 +344,13 @@ export async function handleLegacyHumanRoute({
     }
     // 🐮 牧场：人类主要经营页。POST 收获/回传 → 做完 303 跳回（PRG，刷新不会重复提交）。
     if (section === "glimmer") {
+        const world = getGlimmerWorld();
+        const worldBefore = JSON.stringify(world);
+        const html = uiGlimmer(f, world, now, key);
+        if (worldBefore !== JSON.stringify(world))
+            save();
         res.writeHead(200, AGENT_HEADERS);
-        return res.end(renderHuman(uiGlimmer(f, getGlimmerWorld(), now, key)));
+        return res.end(renderHuman(html));
     }
     if (section === "qixi") {
         if (!isQixiLantern2026Active(now)) {

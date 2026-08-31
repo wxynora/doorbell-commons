@@ -20,7 +20,6 @@ import {
     REGISTRATION_OPEN,
 } from "../../config.js";
 import { PublicSyncError } from "../../public-sync.js";
-import { registerLingyeResidentReference, runLingyeWorldTransaction } from "../../lingye-world-database.js";
 import { jsonOut, readJsonBody } from "../http.js";
 import {
     DOORBELL_SERVICE_TOKEN,
@@ -143,31 +142,20 @@ export async function handleDoorbellMcpMigration(req, res, method, runtime) {
         }
         const legacyGold = existing?.legacyGold ?? farm.coins;
         const legacySilver = existing?.legacySilver ?? farm.silver;
-        runLingyeWorldTransaction(runtime.database, () => {
-            registerLingyeResidentReference(runtime.database, {
-                residentId,
-                bindingReference: migrationId,
-                registeredAt: runtime.now?.() ?? Date.now(),
-            });
-            runtime.backend.trustedSystemCommands.importLegacyBalances({
-                residentId,
-                gold: legacyGold,
-                silver: legacySilver,
-                migrationId,
-                idempotencyKey: `farm-migration:${migrationId}:legacy-balances`,
-            });
-        });
         if (existing) {
-            if (farm.agentKey !== undefined) {
-                const previousAgentKey = farm.agentKey;
+            const previousAgentKey = farm.agentKey;
+            if (farm.agentKey !== undefined)
                 delete farm.agentKey;
-                try {
-                    withWorldCommitContext({ balanceAuthority: "ledger", actor: "system" }, () => save());
-                }
-                catch (error) {
+            try {
+                // Replays still pass through the coordinator so an existing
+                // farm migration and its resident/account rows are checked in
+                // the same durable transaction.
+                withWorldCommitContext({ balanceAuthority: "ledger", actor: "system" }, () => save());
+            }
+            catch (error) {
+                if (previousAgentKey !== undefined)
                     farm.agentKey = previousAgentKey;
-                    throw error;
-                }
+                throw error;
             }
             return jsonOut(res, 200, migrationReceipt(farm));
         }

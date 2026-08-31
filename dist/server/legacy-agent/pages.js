@@ -179,11 +179,15 @@ export function createLegacyAgentPages({ runFarm, resolveAgent }) {
     }
 
     function renderAgentTarget(playKey, f, now, target) {
-        if (!target || target.kind === "self" || target.kind === "shop") {
+        if (!target || target.kind === "self" || target.kind === "shop" || target.kind === "kitchen" || target.kind === "mypage") {
             const working = structuredClone(f);
             const html = !target || target.kind === "self"
                 ? renderSelf(playKey, working, now, target?.banner)
-                : renderShopPage(playKey, working, now, target.banner);
+                : target.kind === "shop"
+                    ? renderShopPage(playKey, working, now, target.banner)
+                    : target.kind === "kitchen"
+                        ? renderKitchenPage(playKey, working, now, target.banner)
+                        : renderMyPublicPage(playKey, working, now, target.banner);
             if (JSON.stringify(working) !== JSON.stringify(f)) {
                 replaceFarm(f.id, working);
             }
@@ -193,12 +197,8 @@ export function createLegacyAgentPages({ runFarm, resolveAgent }) {
             return renderBagPage(playKey, f, now, target.banner);
         if (target.kind === "market")
             return renderMarketPage(playKey, f, now, target.banner);
-        if (target.kind === "kitchen")
-            return renderKitchenPage(playKey, f, now, target.banner);
         if (target.kind === "leaderboard")
             return renderLeaderboardPage(playKey, now, target.banner);
-        if (target.kind === "mypage")
-            return renderMyPublicPage(playKey, f, now, target.banner);
         if (target.kind === "wander")
             return renderWanderPage(playKey, f, now);
         return renderVisitPage(playKey, target.targetId, now);

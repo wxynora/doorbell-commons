@@ -646,13 +646,13 @@ function authenticatedResultFarm(farmId, body) {
     return own?.token && own.token === token ? own : undefined;
 }
 function runFarm(farmId, action, body = {}, encArg, now, options = {}) {
+    const publicWorldBefore = JSON.stringify(getPublicExpeditionWorld());
     const out = runFarmCore(farmId, action, body, encArg, now, options);
     const viewer = authenticatedResultFarm(farmId, body);
     if (!viewer || !out?.json || out.status === 401 || out.status === 403)
         return out;
     const world = getPublicExpeditionWorld();
     const publicFarms = playerFarms();
-    const publicWorldBefore = JSON.stringify(world);
     const publicFarmBefore = new Map(publicFarms.map((farm) => [farm.id, JSON.stringify(farm)]));
     advancePublicExpedition(world, publicFarms, now);
     const notices = takePublicAiNotices(world, viewer, now);
