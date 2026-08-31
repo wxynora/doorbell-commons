@@ -277,9 +277,6 @@ function CookingLiveRecipeShop({
                       <small data-rarity={recipe.rarity}>{recipe.rarity}</small>
                     ) : null}
                   </span>
-                  <span className="cooking-recipe-catalog__ingredients">
-                    {recipe.ingredientNames.join("、")}
-                  </span>
                 </span>
                 <span className="cooking-recipe-catalog__actions">
                   <CookingSilverPrice amount={recipe.price} />

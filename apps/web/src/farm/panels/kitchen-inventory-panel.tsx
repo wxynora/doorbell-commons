@@ -11,6 +11,7 @@ import type { KitchenInventoryActionExecutor } from "./tool-panel";
 import "./kitchen-inventory-panel.css";
 
 type KitchenData = BoundKitchenRead["data"];
+type KitchenProductInstance = KitchenData["product_instances"]["items"][number];
 type KitchenInventoryActionAttempt = {
   input: KitchenInventoryActionInput;
   label: string;
@@ -126,6 +127,39 @@ function KitchenIngredientSection({ section }: { section: KitchenData["stacked_i
   );
 }
 
+interface KitchenProductDisplayGroup {
+  key: string;
+  items: KitchenProductInstance[];
+}
+
+function groupKitchenProductsForDisplay(
+  items: KitchenProductInstance[],
+): KitchenProductDisplayGroup[] {
+  const groups: KitchenProductDisplayGroup[] = [];
+  const stackableGroups = new Map<string, KitchenProductDisplayGroup>();
+  for (const [index, item] of items.entries()) {
+    const stackable =
+      item.status === "available" &&
+      item.name !== null &&
+      item.value_gold !== null &&
+      item.reason === null;
+    if (!stackable) {
+      groups.push({ key: `instance:${item.product_instance_id}:${index}`, items: [item] });
+      continue;
+    }
+    const key = `stack:${JSON.stringify([item.product_id, item.name, item.value_gold])}`;
+    const existing = stackableGroups.get(key);
+    if (existing) {
+      existing.items.push(item);
+      continue;
+    }
+    const group = { key, items: [item] };
+    stackableGroups.set(key, group);
+    groups.push(group);
+  }
+  return groups;
+}
+
 function KitchenProductSection({
   actionsEnabled,
   busy,
@@ -137,35 +171,72 @@ function KitchenProductSection({
   onSubmit: KitchenActionSubmitter;
   section: KitchenData["product_instances"];
 }) {
+  const [recycleQuantities, setRecycleQuantities] = useState<Record<string, string>>({});
   if (section.status === "unavailable") {
     return <InventoryUnavailable label="牧场产物库存暂不可用" />;
   }
   if (section.items.length === 0) {
     return <InventoryEmpty label="当前没有真实牧场产物" />;
   }
+  const groups = groupKitchenProductsForDisplay(section.items);
   return (
     <ul aria-label="真实牧场产物库存" className="kitchen-inventory-panel__list">
-      {section.items.map((item) => {
+      {groups.map((group) => {
+        const item = group.items[0];
+        if (!item) return null;
         const actionable = actionsEnabled && canOperate(item.status, item.product_instance_id);
         const name = itemName(item.name, "身份不可用");
+        const rawQuantity = recycleQuantities[group.key] ?? "1";
+        const quantity = Number(rawQuantity);
+        const validQuantity =
+          actionable &&
+          Number.isSafeInteger(quantity) &&
+          quantity > 0 &&
+          quantity <= group.items.length;
         return (
-          <li className="kitchen-inventory-panel__row" key={`product:${item.product_instance_id}`}>
+          <li className="kitchen-inventory-panel__row" key={group.key}>
             <div className="kitchen-inventory-panel__copy">
               <span className="kitchen-inventory-panel__name">{name}</span>
-              <small className="kitchen-inventory-panel__meta">单件产物</small>
+              <small className="kitchen-inventory-panel__meta">
+                数量 {group.items.length}
+                {item.value_gold === null ? "" : ` · 每份回收价 ${item.value_gold} 牧场金币`}
+              </small>
             </div>
             {actionable ? (
               <div className="kitchen-inventory-panel__actions">
+                {group.items.length > 1 ? (
+                  <label className="kitchen-inventory-panel__quantity">
+                    <span>数量</span>
+                    <input
+                      aria-label={`${name}回收数量`}
+                      disabled={busy}
+                      inputMode="numeric"
+                      max={group.items.length}
+                      min="1"
+                      onChange={(event) =>
+                        setRecycleQuantities((current) => ({
+                          ...current,
+                          [group.key]: event.currentTarget.value,
+                        }))
+                      }
+                      step="1"
+                      type="number"
+                      value={rawQuantity}
+                    />
+                  </label>
+                ) : null}
                 <button
                   className="farm-inventory-action"
-                  disabled={busy}
+                  disabled={busy || !validQuantity}
                   onClick={() =>
                     onSubmit(
                       {
                         action: "recycle",
-                        itemInstanceIds: [item.product_instance_id],
+                        itemInstanceIds: group.items
+                          .slice(0, quantity)
+                          .map((entry) => entry.product_instance_id),
                         itemKind: "product",
-                        quantity: 1,
+                        quantity,
                       },
                       `${name}回收`,
                     )

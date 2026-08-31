@@ -192,6 +192,13 @@ export function SmeltingPanelContent({
           known: material.identity_state === "known" && material.name !== null,
         }))
       : [];
+  const recipes =
+    !preview && liveSmelting?.status === "available"
+      ? liveSmelting.recipes.filter(
+          (recipe) =>
+            recipe.known && recipe.identity_state === "known" && recipe.output_name !== null,
+        )
+      : [];
 
   const addMaterial = (materialId: string, availableQuantity: number | null) => {
     setSelectedMaterialIds((current) => {
@@ -262,6 +269,27 @@ export function SmeltingPanelContent({
 
   return (
     <section aria-label="熔炼素材选择" className="smelting-catalog">
+      <section aria-label="已学熔炼配方" className="smelting-catalog__recipes">
+        <h3>已学配方</h3>
+        {recipes.length > 0 ? (
+          <ul>
+            {recipes.map((recipe) => (
+              <li key={recipe.recipe_id}>
+                <strong>{recipe.output_name}</strong>
+                <span>
+                  {recipe.materials.map((material) => (
+                    <span key={material.material_id}>
+                      {material.name ?? "身份不可用素材"} ×{material.quantity}
+                    </span>
+                  ))}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p>还没有已学配方</p>
+        )}
+      </section>
       <ul className="smelting-catalog__grid" aria-label="熔炼素材列表">
         {materials.map((material) => {
           const selectedCount = selectedMaterialIds.filter(

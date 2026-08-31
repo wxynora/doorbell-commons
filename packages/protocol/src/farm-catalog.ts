@@ -237,13 +237,22 @@ export const farmCatalogSmeltingMaterialSchema = z
   })
   .strict();
 
+export const farmCatalogSmeltingRecipeMaterialSchema = z
+  .object({
+    material_id: z.string().min(1),
+    identity_state: farmCatalogItemIdentityStateSchema,
+    name: z.string().min(1).nullable(),
+    quantity: z.number().int().positive(),
+  })
+  .strict();
+
 export const farmCatalogSmeltingRecipeSchema = z
   .object({
     recipe_id: z.string().min(1),
     identity_state: farmCatalogItemIdentityStateSchema,
     output_crop_id: z.string().min(1).nullable(),
     output_name: z.string().min(1).nullable(),
-    materials: z.array(z.string().min(1)),
+    materials: z.array(farmCatalogSmeltingRecipeMaterialSchema),
     known: z.boolean(),
     can_start: z.boolean(),
   })

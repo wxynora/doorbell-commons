@@ -135,9 +135,13 @@ export const farmKitchenShopIngredientSchema = z
 
 export const farmKitchenShopRecipeSchema = z
   .object({
-    ...farmKitchenRecipeFields,
+    status: farmKitchenAvailabilitySchema,
+    recipe_id: z.string().min(1),
+    name: z.string().min(1).nullable(),
+    rarity: farmKitchenRaritySchema.nullable(),
     price_silver: z.number().int().nonnegative().nullable(),
     known: z.boolean().nullable(),
+    reason: farmKitchenUnavailableReasonSchema.nullable(),
   })
   .strict();
 

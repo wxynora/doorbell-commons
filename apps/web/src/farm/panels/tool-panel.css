@@ -284,11 +284,61 @@
 
 .smelting-catalog {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 1.2cqw;
   height: 100%;
   min-height: 0;
   overflow: hidden;
+}
+
+.smelting-catalog__recipes {
+  display: grid;
+  max-height: 25cqw;
+  gap: 0.7cqw;
+  padding: 1.2cqw 1.4cqw;
+  overflow-y: auto;
+  color: #60452e;
+  border-radius: 1.6cqw;
+  background: rgba(255, 253, 241, 0.68);
+  scrollbar-width: thin;
+}
+
+.smelting-catalog__recipes h3,
+.smelting-catalog__recipes p {
+  margin: 0;
+}
+
+.smelting-catalog__recipes h3 {
+  font-size: clamp(0.62rem, 2.5cqw, 0.76rem);
+}
+
+.smelting-catalog__recipes p {
+  color: #806d52;
+  font-size: clamp(0.54rem, 2.1cqw, 0.66rem);
+}
+
+.smelting-catalog__recipes ul {
+  display: grid;
+  gap: 0.7cqw;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.smelting-catalog__recipes li {
+  display: grid;
+  grid-template-columns: minmax(15cqw, 0.8fr) minmax(0, 1.8fr);
+  align-items: start;
+  gap: 1cqw;
+  font-size: clamp(0.5rem, 1.95cqw, 0.62rem);
+  line-height: 1.35;
+}
+
+.smelting-catalog__recipes li > span {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35cqw 1cqw;
+  color: #755f43;
 }
 
 .smelting-catalog__grid {

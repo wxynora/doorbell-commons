@@ -176,7 +176,6 @@ export type LiveCookingRecipe = {
   id: string;
   name: string;
   rarity: string | null;
-  ingredientNames: readonly string[];
   price: number;
 };
 
@@ -479,13 +478,6 @@ export function getLiveCookingRecipes(
           id: item.recipe_id,
           name: item.name,
           rarity: item.rarity,
-          ingredientNames: item.ingredients.flatMap((ingredient) =>
-            ingredient.status === "available" &&
-            ingredient.name !== null &&
-            ingredient.quantity !== null
-              ? [`${ingredient.name} ×${ingredient.quantity}`]
-              : [],
-          ),
           price: item.price_silver,
         },
       ];
