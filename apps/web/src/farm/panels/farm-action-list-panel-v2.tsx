@@ -5,7 +5,7 @@ import type {
   FarmActionListItemKind,
   FarmActionListSchedule,
 } from "@doorbell/protocol";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   createFarmActionList,
   deleteFarmActionList,
@@ -40,7 +40,7 @@ interface ListDraft {
   onceAt: string;
   startTime: string;
   endTime: string;
-  intervalMinutes: number;
+  intervalMinutes: string;
   items: FarmActionListItem[];
 }
 
@@ -64,6 +64,24 @@ function localDateTime(value: string): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+const TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/u;
+const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/u;
+
+function isValidDate(value: string): boolean {
+  const match = DATE_PATTERN.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+}
+
+function isValidLocalDateTime(value: string): boolean {
+  const [date, time, extra] = value.split("T");
+  return extra === undefined && isValidDate(date ?? "") && TIME_PATTERN.test(time ?? "");
+}
+
 function emptyDraft(): ListDraft {
   return {
     listId: null,
@@ -74,7 +92,7 @@ function emptyDraft(): ListDraft {
     onceAt: "",
     startTime: "09:00",
     endTime: "21:00",
-    intervalMinutes: 120,
+    intervalMinutes: "120",
     items: [],
   };
 }
@@ -89,7 +107,8 @@ function draftFromList(list: FarmActionList): ListDraft {
     onceAt: list.schedule?.kind === "once" ? localDateTime(list.schedule.trigger_at) : "",
     startTime: list.schedule?.kind === "daily_window" ? list.schedule.start_time : "09:00",
     endTime: list.schedule?.kind === "daily_window" ? list.schedule.end_time : "21:00",
-    intervalMinutes: list.schedule?.kind === "daily_window" ? list.schedule.interval_minutes : 120,
+    intervalMinutes:
+      list.schedule?.kind === "daily_window" ? String(list.schedule.interval_minutes) : "120",
     items: list.items.map((entry) => entry.item),
   };
 }
@@ -103,7 +122,7 @@ function scheduleFromDraft(draft: ListDraft): FarmActionListSchedule | null {
     kind: "daily_window",
     start_time: draft.startTime,
     end_time: draft.endTime,
-    interval_minutes: draft.intervalMinutes,
+    interval_minutes: Number(draft.intervalMinutes),
   };
 }
 
@@ -198,10 +217,12 @@ const DEMO_LISTS = (activities: readonly FarmActionListActivityOption[]): FarmAc
 
 export function FarmActionListPanelV2({
   onBack,
+  visible = true,
   preview = false,
   previewActivityOptions = [],
 }: {
   onBack: () => void;
+  visible?: boolean;
   preview?: boolean;
   previewActivityOptions?: readonly FarmActionListActivityOption[];
 }) {
@@ -227,23 +248,31 @@ export function FarmActionListPanelV2({
   }, []);
 
   useEffect(() => {
-    if (!preview) void load();
-  }, [load, preview]);
+    if (!preview && visible) void load();
+  }, [load, preview, visible]);
 
-  const request = useMemo(() => {
-    if (!draft) return null;
-    return {
+  const saveDraft = async () => {
+    if (!draft) return;
+    if (!draft.name.trim()) return setStatus("请填写清单名称");
+    if (draft.mode === "once" && !isValidLocalDateTime(draft.onceAt)) {
+      return setStatus("请按 YYYY-MM-DD 和 24 小时制 HH:mm 填写时间");
+    }
+    if (draft.mode === "daily_window") {
+      if (!TIME_PATTERN.test(draft.startTime) || !TIME_PATTERN.test(draft.endTime)) {
+        return setStatus("开始和结束时间请按 24 小时制 HH:mm 填写");
+      }
+      if (draft.startTime >= draft.endTime) return setStatus("结束时间要晚于开始时间");
+      const interval = Number(draft.intervalMinutes);
+      if (!Number.isInteger(interval) || interval < 1 || interval > 1_440) {
+        return setStatus("间隔请填写 1—1440 之间的整数分钟");
+      }
+    }
+    const request = {
       name: draft.name,
       enabled: draft.enabled,
       schedule: scheduleFromDraft(draft),
       items: draft.items,
     };
-  }, [draft]);
-
-  const saveDraft = async () => {
-    if (!draft || !request) return;
-    if (!draft.name.trim()) return setStatus("请填写清单名称");
-    if (draft.mode === "once" && !draft.onceAt) return setStatus("请选择时间");
     setBusy(true);
     try {
       if (preview) {
@@ -322,7 +351,7 @@ export function FarmActionListPanelV2({
   };
 
   return (
-    <section aria-label="喊 TA 来做" className="farm-action-lists-v2">
+    <section aria-label="喊 TA 来做" className="farm-action-lists-v2" hidden={!visible}>
       <header>
         <button
           aria-label={draft ? "返回清单总览" : "返回农场"}
@@ -346,7 +375,7 @@ export function FarmActionListPanelV2({
             onClick={() => setDraft(emptyDraft())}
             type="button"
           >
-            ＋
+            +
           </button>
         ) : null}
       </header>
@@ -362,7 +391,7 @@ export function FarmActionListPanelV2({
           </label>
           <div className="farm-action-list-editor-v2__schedule">
             <label>
-              频率
+              <span className="farm-action-list-editor-v2__frequency">频率</span>
               <select
                 value={draft.mode}
                 onChange={(event) =>
@@ -375,21 +404,56 @@ export function FarmActionListPanelV2({
               </select>
             </label>
             {draft.mode === "once" ? (
-              <label>
-                时间
-                <input
-                  type="datetime-local"
-                  value={draft.onceAt}
-                  onChange={(event) => setDraft({ ...draft, onceAt: event.currentTarget.value })}
-                />
-              </label>
+              <>
+                <label>
+                  日期
+                  <input
+                    autoComplete="off"
+                    inputMode="numeric"
+                    maxLength={10}
+                    placeholder="2026-09-01"
+                    spellCheck={false}
+                    type="text"
+                    value={draft.onceAt.split("T")[0] ?? ""}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        onceAt: `${event.currentTarget.value}T${draft.onceAt.split("T")[1] ?? ""}`,
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  时间（24小时）
+                  <input
+                    autoComplete="off"
+                    inputMode="numeric"
+                    maxLength={5}
+                    placeholder="09:30"
+                    spellCheck={false}
+                    type="text"
+                    value={draft.onceAt.split("T")[1] ?? ""}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        onceAt: `${draft.onceAt.split("T")[0] ?? ""}T${event.currentTarget.value}`,
+                      })
+                    }
+                  />
+                </label>
+              </>
             ) : null}
             {draft.mode === "daily_window" ? (
               <>
                 <label>
-                  开始
+                  开始时间
                   <input
-                    type="time"
+                    autoComplete="off"
+                    inputMode="numeric"
+                    maxLength={5}
+                    placeholder="09:00"
+                    spellCheck={false}
+                    type="text"
                     value={draft.startTime}
                     onChange={(event) =>
                       setDraft({ ...draft, startTime: event.currentTarget.value })
@@ -397,27 +461,32 @@ export function FarmActionListPanelV2({
                   />
                 </label>
                 <label>
-                  结束
+                  结束时间
                   <input
-                    type="time"
+                    autoComplete="off"
+                    inputMode="numeric"
+                    maxLength={5}
+                    placeholder="21:00"
+                    spellCheck={false}
+                    type="text"
                     value={draft.endTime}
                     onChange={(event) => setDraft({ ...draft, endTime: event.currentTarget.value })}
                   />
                 </label>
-                <label>
-                  间隔
-                  <select
+                <label className="farm-action-list-editor-v2__interval">
+                  间隔（分钟）
+                  <input
+                    inputMode="numeric"
+                    max="1440"
+                    min="1"
+                    placeholder="例如 90"
+                    step="1"
+                    type="number"
                     value={draft.intervalMinutes}
                     onChange={(event) =>
-                      setDraft({ ...draft, intervalMinutes: Number(event.currentTarget.value) })
+                      setDraft({ ...draft, intervalMinutes: event.currentTarget.value })
                     }
-                  >
-                    {[30, 60, 120, 180, 240, 360].map((minutes) => (
-                      <option key={minutes} value={minutes}>
-                        {minutes < 60 ? `${minutes} 分钟` : `${minutes / 60} 小时`}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </label>
               </>
             ) : null}

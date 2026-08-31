@@ -18,6 +18,10 @@
   box-shadow: 0 6px 16px rgba(71, 46, 25, 0.24);
 }
 
+.farm-action-lists-v2[hidden] {
+  display: none;
+}
+
 .farm-action-lists-v2 button,
 .farm-action-lists-v2 input,
 .farm-action-lists-v2 select {
@@ -84,6 +88,13 @@
 }
 
 .farm-action-lists-v2 > header .farm-action-lists-v2__new {
+  display: grid;
+  width: 38px;
+  padding: 0;
+  place-items: center;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1;
   border: 0;
   background: transparent;
 }
@@ -286,11 +297,16 @@
 
 .farm-action-list-editor-v2__schedule {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
   padding: 8px;
   border-radius: 10px;
   background: rgba(255, 253, 238, 0.6);
+}
+
+.farm-action-list-editor-v2__schedule > label:first-child,
+.farm-action-list-editor-v2__interval {
+  grid-column: 1 / -1;
 }
 
 .farm-action-list-editor-v2__items-head {

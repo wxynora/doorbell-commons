@@ -10,7 +10,7 @@
   position: absolute;
   top: clamp(18px, 2.6vmin, 24px);
   left: calc(50% + clamp(52px, 8vmin, 72px));
-  z-index: 260;
+  z-index: 40;
   display: inline-flex;
   box-sizing: border-box;
   min-width: clamp(92px, 23vmin, 116px);

@@ -16,6 +16,7 @@ const FARM_ACTION_LIST_DEMO_ACTIVITIES = [
 
 export function FarmPage(props: FarmPageProps) {
   const [actionListOpen, setActionListOpen] = useState(false);
+  const [actionListMounted, setActionListMounted] = useState(false);
 
   return (
     <FarmLazyBoundary
@@ -33,7 +34,10 @@ export function FarmPage(props: FarmPageProps) {
           <LiveFarmPage {...props} />
           <button
             className="farm-action-list-launcher"
-            onClick={() => setActionListOpen(true)}
+            onClick={() => {
+              setActionListMounted(true);
+              setActionListOpen(true);
+            }}
             type="button"
           >
             <svg aria-hidden="true" viewBox="0 0 24 24">
@@ -41,9 +45,10 @@ export function FarmPage(props: FarmPageProps) {
             </svg>
             <span>喊 TA 来做</span>
           </button>
-          {actionListOpen ? (
+          {actionListMounted ? (
             <FarmActionListPanelV2
               onBack={() => setActionListOpen(false)}
+              visible={actionListOpen}
               preview={Boolean(props.previewData)}
               {...(props.previewData
                 ? { previewActivityOptions: FARM_ACTION_LIST_DEMO_ACTIVITIES }
