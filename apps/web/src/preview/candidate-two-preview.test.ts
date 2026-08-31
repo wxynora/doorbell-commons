@@ -5,10 +5,35 @@ import test from "node:test";
 import {
   buildCandidateTwoRuntimeHtml,
   CandidateTwoPreview,
+  deferCandidateTwoMarkupImageSources,
   parseCandidateTwoAction,
   resolveCandidateTwoDemoPreset,
   shouldHandleCandidateNavigationInParent,
 } from "./candidate-two-preview";
+
+test("community screen images wait until their screen opens", () => {
+  const fixture = `
+    <div id="screen-lounge" class="screen"><p>ready</p></div>
+    <div id="screen-lingye" class="screen"><img src="/lingye/map.png" alt="map"></div>
+    <script>const dynamic = '<img src="/runtime-created.png">';</script>
+  `;
+  const deferred = deferCandidateTwoMarkupImageSources(fixture);
+
+  assert.match(deferred, /<img data-src="\/lingye\/map\.png" alt="map">/);
+  assert.match(deferred, /const dynamic = '<img src="\/runtime-created\.png">'/);
+
+  const html = buildCandidateTwoRuntimeHtml();
+  assert.match(html, /<img[^>]*data-src="\/lingye\/map\.png"/);
+  assert.doesNotMatch(html, /<img[^>]*\ssrc="\/lingye\/map\.png"/);
+  assert.match(
+    html,
+    /function deferInactiveCandidateScreenImages\(\)[\s\S]*\.screen:not\(\.active\) img\[src\][\s\S]*window\.showScreen = \(screenId\) => \{[\s\S]*deferInactiveCandidateScreenImages\(\);[\s\S]*originalShowScreen\(screenId\);[\s\S]*activateCandidateDeferredImages\(document\.getElementById\(screenId\)\)/,
+  );
+  assert.match(
+    html,
+    /function applyRuntimeState\(state, demo\)[\s\S]*applyDemoContent\(demo\);[\s\S]*deferInactiveCandidateScreenImages\(\);/,
+  );
+});
 
 test("candidate bridge accepts only exact known child actions", () => {
   assert.deepEqual(
@@ -430,7 +455,7 @@ test("runtime HTML keeps candidate two and replaces every confirmed fake datum",
   );
   assert.match(
     html,
-    /class="candidate2-settings-paperclip" src="\/candidate-two\/settings-paperclip-silver-v1\.png"/,
+    /class="candidate2-settings-paperclip" data-src="\/candidate-two\/settings-paperclip-silver-v1\.png"/,
   );
   assert.match(
     html,
@@ -446,7 +471,7 @@ test("runtime HTML keeps candidate two and replaces every confirmed fake datum",
   assert.doesNotMatch(html, /data-place-id="moonlight-pond"/);
   assert.match(
     html,
-    /src="\/lingye\/lingye-together-game-icon-v5\.png"[^>]*width="512" height="512"/,
+    /data-src="\/lingye\/lingye-together-game-icon-v5\.png"[^>]*width="512" height="512"/,
   );
 });
 
@@ -508,7 +533,7 @@ test("six Lingye institutions open their own background-only scenes", () => {
     assert.match(
       html,
       new RegExp(
-        `src="/lingye/institutions/${assetName}\\.avif" width="1024" height="1536" alt="${label}场景背景"`,
+        `data-src="/lingye/institutions/${assetName}\\.avif" width="1024" height="1536" alt="${label}场景背景"`,
       ),
     );
     assert.match(
@@ -586,7 +611,7 @@ test("lingye demo opens distinct Together and Glimmer Human UI previews", () => 
   });
   assert.doesNotMatch(
     togetherMarkup,
-    /<img[^>]+src="\/lingye\/together\/same-kitchen-opening\.jpg"/,
+    /<img[^>]+(?:src|data-src)="\/lingye\/together\/same-kitchen-opening\.jpg"/,
   );
   assert.match(
     html,
@@ -646,7 +671,7 @@ test("lingye demo opens distinct Together and Glimmer Human UI previews", () => 
   assert.doesNotMatch(togetherMarkup, /candidate2-place-card|candidate2-together-history-title/);
   assert.match(
     html,
-    /class="candidate2-lingye-memories" type="button" aria-label="打开纪念册" onclick="openLingyeMemorial\(\)">[\s\S]*src="\/lingye\/ui\/memorial-album\.png"[^>]*width="256" height="256"/,
+    /class="candidate2-lingye-memories" type="button" aria-label="打开纪念册" onclick="openLingyeMemorial\(\)">[\s\S]*data-src="\/lingye\/ui\/memorial-album\.png"[^>]*width="256" height="256"/,
   );
   assert.doesNotMatch(html, /candidate2-lingye-memories[^>]*disabled/);
   assert.match(
@@ -659,7 +684,7 @@ test("lingye demo opens distinct Together and Glimmer Human UI previews", () => 
   );
   assert.match(
     html,
-    /class="candidate2-memorial-entry-view candidate2-memorial-entry-view--qixi"[^>]*hidden>[\s\S]*aria-label="返回纪念册目录"[^>]*onclick="closeLingyeMemorialEntry\(\)"[\s\S]*class="candidate2-memorial-entry-qixi-stickers"[^>]*src="\/lingye\/memorial\/qixi-stickers-v1\.png"[\s\S]*2026 · 七夕[\s\S]*class="candidate2-memorial-entry-title-art"[^>]*aria-label="灯河有信。灯河相逢 · 愿思念抵达归处"[\s\S]*src="\/lingye\/memorial\/qixi-title-lockup-v1\.png"[\s\S]*2026\.08\.19[\s\S]*2026\.08\.21[\s\S]*src="\/lingye\/memorial\/qixi-2026-lantern-night\.jpg"[\s\S]*class="candidate2-memorial-entry-note"[\s\S]*愿今夜所有思念，[\s\S]*src="\/lingye\/memorial\/qixi-2026-objects-return-bg-v3\.jpg"/,
+    /class="candidate2-memorial-entry-view candidate2-memorial-entry-view--qixi"[^>]*hidden>[\s\S]*aria-label="返回纪念册目录"[^>]*onclick="closeLingyeMemorialEntry\(\)"[\s\S]*class="candidate2-memorial-entry-qixi-stickers"[^>]*data-src="\/lingye\/memorial\/qixi-stickers-v1\.png"[\s\S]*2026 · 七夕[\s\S]*class="candidate2-memorial-entry-title-art"[^>]*aria-label="灯河有信。灯河相逢 · 愿思念抵达归处"[\s\S]*data-src="\/lingye\/memorial\/qixi-title-lockup-v1\.png"[\s\S]*2026\.08\.19[\s\S]*2026\.08\.21[\s\S]*data-src="\/lingye\/memorial\/qixi-2026-lantern-night\.jpg"[\s\S]*class="candidate2-memorial-entry-note"[\s\S]*愿今夜所有思念，[\s\S]*data-src="\/lingye\/memorial\/qixi-2026-objects-return-bg-v3\.jpg"/,
   );
   assert.doesNotMatch(html, /<h2>活动回顾<\/h2>/);
   assert.doesNotMatch(html, /candidate2-memorial-entry-story|旧铜铃|七夕纪念手帐|>活动回顾</);
@@ -1268,7 +1293,10 @@ test("Live Lingye entries use parent-owned structured reads and keep template da
   assert.doesNotMatch(html, /第二期 · 同一间厨房/);
   assert.doesNotMatch(html, /20:00—22:00/);
   assert.doesNotMatch(html, /任务链样张|公共选择样张/);
-  assert.doesNotMatch(html, /<img[^>]+src="\/lingye\/together\/same-kitchen-opening\.jpg"/);
+  assert.doesNotMatch(
+    html,
+    /<img[^>]+(?:src|data-src)="\/lingye\/together\/same-kitchen-opening\.jpg"/,
+  );
   assert.match(html, /applyLiveLingyeState\(state\.lingye\)/);
   assert.match(html, /doorbell-candidate2:state/);
   assert.match(
@@ -1557,7 +1585,7 @@ test("runtime contains populated-demo slots without changing production empty st
   assert.match(html, /applyDemoContent\(demo\)/);
   assert.match(
     html,
-    /class="candidate2-profile-note">[\s\S]*class="candidate2-profile-paperclip" src="\/candidate-two\/settings-paperclip-silver-v1\.png"[\s\S]*>RESIDENCE INFO<[\s\S]*class="candidate2-profile-note-body"[\s\S]*class="chibi-avatar"[\s\S]*居民姓名[\s\S]*class="profile-resident-name"/,
+    /class="candidate2-profile-note">[\s\S]*class="candidate2-profile-paperclip" data-src="\/candidate-two\/settings-paperclip-silver-v1\.png"[\s\S]*>RESIDENCE INFO<[\s\S]*class="candidate2-profile-note-body"[\s\S]*class="chibi-avatar"[\s\S]*居民姓名[\s\S]*class="profile-resident-name"/,
   );
   assert.doesNotMatch(
     html,
@@ -1846,7 +1874,7 @@ test("runtime contains populated-demo slots without changing production empty st
   );
   assert.match(
     html,
-    /class="candidate2-activity-paperclip" src="\/candidate-two\/profile-activity-paperclip-v1\.svg"[^>]*aria-hidden="true"/,
+    /class="candidate2-activity-paperclip" data-src="\/candidate-two\/profile-activity-paperclip-v1\.svg"[^>]*aria-hidden="true"/,
   );
   assert.match(
     html,

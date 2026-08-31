@@ -10187,6 +10187,7 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         if (!demo && state.stage === 'authenticated') {
             applyLiveLingyeState(state.lingye);
         }
+        deferInactiveCandidateScreenImages();
 
         if (state.stage === 'checking-session') {
             showScreen('screen-login');
@@ -10475,9 +10476,32 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         else mainNav.removeAttribute('aria-hidden');
     }
 
+    function deferInactiveCandidateScreenImages() {
+        document.querySelectorAll('.screen:not(.active) img[src]').forEach((image) => {
+            const source = image.getAttribute('src');
+            if (!source) return;
+            image.setAttribute('data-src', source);
+            image.removeAttribute('src');
+        });
+    }
+
+    function activateCandidateDeferredImage(image) {
+        const source = image.getAttribute('data-src');
+        if (!source) return;
+        image.setAttribute('src', source);
+        image.removeAttribute('data-src');
+    }
+
+    function activateCandidateDeferredImages(root) {
+        if (!root) return;
+        root.querySelectorAll('img[data-src]').forEach(activateCandidateDeferredImage);
+    }
+
     const originalShowScreen = window.showScreen;
     window.showScreen = (screenId) => {
+        deferInactiveCandidateScreenImages();
         originalShowScreen(screenId);
+        activateCandidateDeferredImages(document.getElementById(screenId));
         if (currentStage === 'authenticated') {
             syncAuthenticatedMainNavigation(screenId);
         }
@@ -10486,6 +10510,10 @@ const CANDIDATE_RUNTIME_SCRIPT = `
             scheduleMemorialLayoutFit(memorialEntry.hidden ? 'index' : 'entry');
         }
     };
+
+    document.querySelectorAll('img[data-src]').forEach((image) => {
+        if (!image.closest('.screen')) activateCandidateDeferredImage(image);
+    });
 
     restoreMemorialEditorLayout(null, 'index');
     restoreMemorialEditorLayout(null, 'entry');
@@ -10511,6 +10539,27 @@ function replaceBetween(source: string, start: string, end: string, replacement:
   }
 
   return `${source.slice(0, startIndex)}${replacement}${source.slice(endIndex)}`;
+}
+
+export function deferCandidateTwoMarkupImageSources(html: string): string {
+  const deferImagesInMarkup = (markup: string) =>
+    markup.replace(/<img\b[^>]*>/gi, (tag) => {
+      if (/\sdata-src\s*=/i.test(tag)) return tag;
+      return tag.replace(/(\s)src\s*=\s*(["'])([^"']+)\2/i, (attribute, space, quote, source) =>
+        source.trim().length > 0 ? `${space}data-src=${quote}${source}${quote}` : attribute,
+      );
+    });
+
+  const rawBlockPattern = /<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi;
+  let result = "";
+  let cursor = 0;
+  for (const match of html.matchAll(rawBlockPattern)) {
+    const index = match.index ?? cursor;
+    result += deferImagesInMarkup(html.slice(cursor, index));
+    result += match[0];
+    cursor = index + match[0].length;
+  }
+  return result + deferImagesInMarkup(html.slice(cursor));
 }
 
 export function buildCandidateTwoRuntimeHtml() {
@@ -10608,7 +10657,7 @@ export function buildCandidateTwoRuntimeHtml() {
       '$1"',
     );
 
-  return html;
+  return deferCandidateTwoMarkupImageSources(html);
 }
 
 const candidateTwoMemorialBackdropSource = "/lingye/memorial/memorial-album-backdrop-v1.jpg";
