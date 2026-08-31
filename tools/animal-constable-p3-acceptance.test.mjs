@@ -21,6 +21,7 @@ const {
     treatAnimalCase,
     advanceP3Farm,
 } = await import("../dist/career/p3-world.js");
+const { constableExamTheftEligibility } = await import("../dist/career/p3-commission-runtime.js");
 const {
     createLingyeWorldBackend,
     openLingyeWorldDatabase,
@@ -157,6 +158,48 @@ function registerResident(database, backend, residentId, bindingReference, gold 
     });
 }
 
+test("constable exam theft eligibility uses only stable successful thefts in the rolling 72-hour window", () => {
+    const database = openLingyeWorldDatabase(":memory:");
+    const backend = createLingyeWorldBackend(database, { economyRules: RULES, now: () => NOW });
+    const residentId = "019ffc19-49cd-7020-84af-3d04fb1ed03d";
+    const binding = "019ffc19-49cd-7020-94af-3d04fb1ed03d";
+    registerResident(database, backend, residentId, binding);
+    const actor = makeFarm("constable candidate", 799);
+    actor.id = "P3CONSTABLEACTOR";
+    actor.doorbellMcpMigration = { migrationId: binding };
+    const victim = makeFarm("constable victim", 800);
+    victim.id = "P3CONSTABLEVICTIM";
+    insertFarm(actor);
+    insertFarm(victim);
+
+    victim.trail = [{ t: NOW - 1, kind: "stolen", actorFarmId: actor.id, by: "同名", plotId: 1 }];
+    replaceFarm(victim.id, victim);
+    assert.deepEqual(constableExamTheftEligibility(database, residentId, NOW), {
+        eligible: false,
+        latestStolenAt: NOW - 1,
+    });
+
+    victim.trail = [{ t: NOW - 1, kind: "foiled", actorFarmId: actor.id, by: "同名", plotId: 1 }];
+    replaceFarm(victim.id, victim);
+    assert.deepEqual(constableExamTheftEligibility(database, residentId, NOW), {
+        eligible: true,
+        latestStolenAt: null,
+    });
+
+    victim.trail = [{ t: NOW - 72 * 60 * 60 * 1_000, kind: "stolen", actorFarmId: actor.id, by: "同名", plotId: 1 }];
+    replaceFarm(victim.id, victim);
+    assert.equal(constableExamTheftEligibility(database, residentId, NOW).eligible, true);
+
+    victim.trail = [{ t: NOW - 72 * 60 * 60 * 1_000 + 1, kind: "stolen", actorFarmId: actor.id, by: "同名", plotId: 1 }];
+    replaceFarm(victim.id, victim);
+    assert.equal(constableExamTheftEligibility(database, residentId, NOW).eligible, false);
+
+    victim.trail = [{ t: NOW - 1, kind: "stolen", actorFarmId: "another-farm", by: actor.name, plotId: 1 }];
+    replaceFarm(victim.id, victim);
+    assert.equal(constableExamTheftEligibility(database, residentId, NOW).eligible, true);
+    database.close();
+});
+
 function certify(database, residentId, career, level = 1) {
     database.prepare(`
       INSERT INTO career_tracks (resident_id, career, track_order, selected_at)
@@ -244,6 +287,63 @@ test("completed animal history remains readable after recovery without exposing 
     assert.deepEqual(job.sourceFacts.currentState, { status: "completed" });
     assert.equal(currentP3Sources(getFarm(farmId)).animal, null);
     database.close();
+});
+
+test("veterinarian owners pay 75 percent of the base fee to another real doctor without reducing worker performance", () => {
+    const runScenario = (ownerIsVeterinarian, suffix) => {
+        const database = openLingyeWorldDatabase(":memory:");
+        const backend = createLingyeWorldBackend(database, { economyRules: RULES, now: () => NOW });
+        const executor = createLingyeActionExecutor({ database, backend, economyRules: RULES, now: () => NOW });
+        const owner = `019ffc30-49cd-7020-84af-3d04fb1ed0${suffix}`;
+        const veterinarian = `019ffc30-49cd-7020-94af-3d04fb1ed0${suffix}`;
+        const migration = `019ffc30-49cd-7020-a4af-3d04fb1ed0${suffix}`;
+        const farmId = `P3PEERDISCOUNT${suffix}`;
+        registerResident(database, backend, owner, migration, 100_000);
+        registerResident(database, backend, veterinarian, `binding:${veterinarian}`);
+        if (ownerIsVeterinarian)
+            certify(database, owner, "veterinarian", 1);
+        certify(database, veterinarian, "veterinarian", 1);
+        scheduleDuty(database, veterinarian, "veterinarian", "animal_hospital", 1);
+        const farm = animalFarm("indigestion", "open", farmId);
+        farm.doorbellMcpMigration = { migrationId: migration };
+        insertFarm(farm);
+        const run = (residentId, args = {}) => executor.execute({
+            residentId,
+            bindingReference: residentId === owner ? migration : `binding:${residentId}`,
+            farm: getFarm(farmId),
+            op: "go.hospital.commission",
+            args,
+        });
+        const initial = run(owner);
+        const source = initial.data.sources[0];
+        const published = run(owner, {
+            option: publicOption(database, owner, "go.hospital.commission", `commission:publish:${source.sourceId}`),
+        });
+        const jobId = published.data.result.jobId;
+        run(veterinarian);
+        run(veterinarian, {
+            option: publicOption(database, veterinarian, "go.hospital.commission", `commission:check:${jobId}:feed-history`),
+        });
+        run(veterinarian);
+        const before = backend.trustedQueries.getAccount(owner).availableGold;
+        const treated = run(veterinarian, {
+            option: publicOption(database, veterinarian, "go.hospital.commission", `commission:treat:${jobId}:stomach-powder`),
+        });
+        assert.equal(treated.ok, true, JSON.stringify(treated));
+        const after = backend.trustedQueries.getAccount(owner).availableGold;
+        const work = database.prepare(`SELECT performance_units FROM career_work_records
+          WHERE job_id = ? AND resident_id = ? AND record_kind = 'completed'`).get(jobId, veterinarian);
+        database.close();
+        return { chargedGold: before - after, performanceUnits: work.performance_units };
+    };
+
+    const materialGold = ANIMAL_CONDITIONS.indigestion.materialGold;
+    const ordinary = runScenario(false, "01");
+    const colleague = runScenario(true, "02");
+    assert.equal(ordinary.chargedGold, materialGold + 5_000);
+    assert.equal(colleague.chargedGold, materialGold + 3_750);
+    assert.equal(colleague.performanceUnits, ordinary.performanceUnits);
+    assert.ok(colleague.performanceUnits > 0);
 });
 
 test("security P3 exposes stable real trail sources and only non-punitive results", () => {

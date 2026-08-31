@@ -186,6 +186,29 @@ function registeredResidentForFarm(database, farm) {
     return database.prepare("SELECT resident_id FROM residents WHERE binding_reference = ?").get(bindingReference)?.resident_id ?? null;
 }
 
+const CONSTABLE_THEFT_LOOKBACK_MS = 72 * 60 * 60 * 1_000;
+
+export function constableExamTheftEligibility(database, residentId, now = Date.now()) {
+    const actorFarms = allFarms()
+        .filter((farm) => registeredResidentForFarm(database, farm) === residentId)
+        .map((farm) => farm.id);
+    if (actorFarms.length === 0)
+        return { eligible: true, latestStolenAt: null };
+    const actorFarmIds = new Set(actorFarms);
+    const cutoff = now - CONSTABLE_THEFT_LOOKBACK_MS;
+    let latestStolenAt = null;
+    for (const farm of allFarms()) {
+        for (const entry of farm.trail ?? []) {
+            const happenedAt = Number(entry?.t);
+            if (entry?.kind !== "stolen" || !actorFarmIds.has(entry.actorFarmId) ||
+                !Number.isFinite(happenedAt) || happenedAt <= cutoff || happenedAt > now)
+                continue;
+            latestStolenAt = latestStolenAt === null ? happenedAt : Math.max(latestStolenAt, happenedAt);
+        }
+    }
+    return { eligible: latestStolenAt === null, latestStolenAt };
+}
+
 export function advanceRegisteredP3Farms(database, now = Date.now()) {
     const changedFarmIds = [];
     for (const farm of allFarms()) {

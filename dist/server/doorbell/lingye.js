@@ -18,6 +18,7 @@ import {
     boundFarmSources,
     commissionSourceFacts,
     completeNpcFallbackService,
+    constableExamTheftEligibility,
     publishBoundSource,
     publicCommissionSource,
     recoverBoundNpcSource,
@@ -1672,6 +1673,18 @@ function qualificationLevel(database, residentId, career) {
     `).get(residentId, career).level ?? 0;
 }
 
+function veterinarianTreatmentChargeGold(database, job, workerResidentId, treatment, workerLevel) {
+    const materialGold = veterinarianTreatmentMaterialGold(job, treatment);
+    if (job.ownerResidentId === workerResidentId)
+        return materialGold;
+    const fullGold = treatmentGold(job, treatment, workerLevel);
+    const ownerIsVeterinarian = qualificationLevel(database, job.ownerResidentId, "veterinarian") > 0;
+    if (!ownerIsVeterinarian)
+        return fullGold;
+    const baseGold = fullGold - materialGold;
+    return materialGold + baseGold * 3 / 4;
+}
+
 function bindCommission(database, backend, residentId, job, actionKey) {
     if (job.ownerResidentId === residentId)
         throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "不能承接自己的委托。");
@@ -1734,11 +1747,9 @@ function beginCommissionWorldOperation(database, backend, residentId, career, ar
         if (job.decisionCount >= 4)
             throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托已经达到四次决策上限。");
         const level = qualificationLevel(database, residentId, career);
-        const selfVeterinarianTreatment = kind === "treat" && job.career === "veterinarian" &&
-            job.ownerResidentId === residentId;
         const goldAmount = kind === "treat"
-            ? selfVeterinarianTreatment
-                ? veterinarianTreatmentMaterialGold(job, actionValue)
+            ? job.career === "veterinarian"
+                ? veterinarianTreatmentChargeGold(database, job, residentId, actionValue, level)
                 : treatmentGold(job, actionValue, level)
             : 0;
         const reservation = kind === "treat"
@@ -2318,6 +2329,8 @@ function mapDomainError(error) {
         return failure("OP_REJECTED", "银行拒绝了本次操作。");
     }
     if (error instanceof CareerDomainError) {
+        if (error.code === "constable_recent_theft_record")
+            return failure("OP_REJECTED", "最近 3 天有偷窃记录，暂时不能报名治安官资格考试。");
         if (["active_certificate_required", "qualification_level_insufficient"].includes(error.code))
             return failure("QUALIFICATION_REQUIRED", "当前职业资格不满足这项操作。");
         if (["job_not_found", "employment_not_found", "duty_day_not_found", "exam_attempt_not_found"].includes(error.code))
@@ -2502,7 +2515,10 @@ function getDefaultExecutor() {
     if (defaultExecutor)
         return defaultExecutor;
     const database = openLingyeWorldDatabase();
-    const backend = createLingyeWorldBackend(database, { economyRules: DEFAULT_ECONOMY_RULES });
+    const backend = createLingyeWorldBackend(database, {
+        economyRules: DEFAULT_ECONOMY_RULES,
+        constableExamEligibility: (residentId, now) => constableExamTheftEligibility(database, residentId, now),
+    });
     defaultExecutor = createLingyeActionExecutor({ database, backend, economyRules: DEFAULT_ECONOMY_RULES });
     return defaultExecutor;
 }

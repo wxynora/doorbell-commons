@@ -34,7 +34,7 @@ import { createLingyeFarmBalanceCoordinator, createLingyeWorldBackend, openLingy
 import { createLingyeActionExecutor } from "./server/doorbell/lingye.js";
 import { resolveChefOriginalCookingReceipt } from "./domain/kitchen/original.js";
 import { farmCareerBenefits, farmDoorbellKitchenCareerBenefits } from "./career/farm-benefits.js";
-import { farmActionTouchesLockedCareerObject, lockedCareerObjectText, startRegisteredP3Scheduler } from "./career/p3-commission-runtime.js";
+import { constableExamTheftEligibility, farmActionTouchesLockedCareerObject, lockedCareerObjectText, startRegisteredP3Scheduler } from "./career/p3-commission-runtime.js";
 import { startConstableInterviewScheduler } from "./career/constable-interview-scheduler.js";
 import { loadConstableInterviewBank } from "./career/constable-interview-bank.js";
 import { applyDroughtWatering, collectFloodFishForFarm, commitNatureFarmReconciliation, commitNatureRemovedPlot, startNatureRuntimeScheduler } from "./nature-runtime.js";
@@ -686,6 +686,7 @@ export function startServer(port, host = "127.0.0.1") {
             useFarmStore: true,
         },
         constableInterviewBank: loadConstableInterviewBank(),
+        constableExamEligibility: (residentId, now) => constableExamTheftEligibility(lingyeWorldDatabase, residentId, now),
         onReporterPublication: () => rescheduleReporterEvaluation(),
     });
     activeLingyeWorldBackend = lingyeWorldBackend;

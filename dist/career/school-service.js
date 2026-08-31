@@ -85,12 +85,14 @@ export class CareerSchoolService {
     #generateId;
     #curriculum;
     #constableInterviewBank;
+    #constableExamEligibility;
     constructor(options) {
         this.#database = options.database;
         this.#now = options.now ?? Date.now;
         this.#generateId = options.generateId ?? randomUUID;
         this.#curriculum = options.curriculum ?? DEFAULT_CURRICULUM;
         this.#constableInterviewBank = options.constableInterviewBank ?? null;
+        this.#constableExamEligibility = options.constableExamEligibility ?? null;
         installCareerSchema(this.#database);
     }
     selectCareer(residentId, career) {
@@ -1392,6 +1394,12 @@ export class CareerSchoolService {
     #requireExamEligibility(residentId, career, level) {
         if (!this.#curriculum.careerExamAvailability(career, level)) {
             throw new CareerDomainError("assessment_content_not_available", "This written exam is not available");
+        }
+        if (career === "constable" && this.#constableExamEligibility) {
+            const eligibility = this.#constableExamEligibility(residentId, this.#now());
+            if (!eligibility || eligibility.eligible !== true) {
+                throw new CareerDomainError("constable_recent_theft_record", "A successful theft within the previous 72 hours blocks constable exam registration");
+            }
         }
         requireCareerTrack(this.#database, residentId, career);
         const activeCertificate = this.#database

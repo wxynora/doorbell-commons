@@ -49,6 +49,50 @@ test("career school uses the approved 1.5x tuition and exam fees", () => {
         540_000,
     ]);
 });
+
+test("constable exam registration obeys the injected recent-theft eligibility without creating an attempt", () => {
+    let eligible = false;
+    const harness = createHarness(beijingTimestamp("2026-08-26", 11), {
+        constableExamEligibility: () => ({ eligible, latestStolenAt: eligible ? null : 1 }),
+    });
+    try {
+        const residentId = "constable-candidate";
+        harness.ensureAccount(residentId);
+        harness.school.selectCareer(residentId, "constable");
+        for (const courseIndex of [1, 2, 3]) {
+            harness.school.enrollCourse({
+                career: "constable",
+                courseIndex,
+                level: 1,
+                residentId,
+                tuitionReceipt: goldReceipt(harness, residentId, "system_gold_charge", COURSE_TUITION_GOLD[1], `career-course:${residentId}:constable:1:${courseIndex}`),
+            });
+            deliverAndReadCourse(harness, { career: "constable", courseIndex, level: 1, residentId });
+            submitPracticeScore(harness, { career: "constable", courseIndex, level: 1, residentId }, 4);
+        }
+        assert.throws(() => harness.school.registerExam({
+            attemptId: "constable-theft-blocked",
+            career: "constable",
+            level: 1,
+            reservationReceipt: goldReceipt(harness, residentId, "system_gold_reserve", EXAM_FEE_GOLD[1], "career-exam:constable-theft-blocked:reserve"),
+            residentId,
+        }), assertCareerError("constable_recent_theft_record"));
+        assert.equal(harness.database.prepare("SELECT COUNT(*) AS count FROM career_exam_attempts WHERE resident_id = ?").get(residentId).count, 0);
+
+        eligible = true;
+        const registered = harness.school.registerExam({
+            attemptId: "constable-theft-expired",
+            career: "constable",
+            level: 1,
+            reservationReceipt: goldReceipt(harness, residentId, "system_gold_reserve", EXAM_FEE_GOLD[1], "career-exam:constable-theft-expired:reserve"),
+            residentId,
+        });
+        assert.equal(registered.attemptId, "constable-theft-expired");
+    }
+    finally {
+        harness.database.close();
+    }
+});
 const TEST_CONSTABLE_INTERVIEW_BANK = Object.freeze({
     getConstableInterviewPaper: ({ interviewId, candidateResidentId, scheduledAt }) => ({
         bankVersion: "constable-interview-test-bank-v1",
@@ -139,7 +183,7 @@ const TEST_CURRICULUM = Object.freeze({
         20,
     ),
 });
-function createHarness(initialNow = beijingTimestamp("2026-08-26", 11)) {
+function createHarness(initialNow = beijingTimestamp("2026-08-26", 11), options = {}) {
     const database = new DatabaseSync(":memory:");
     database.exec("PRAGMA foreign_keys = ON");
     database.exec(`CREATE TABLE residents (
@@ -181,6 +225,7 @@ function createHarness(initialNow = beijingTimestamp("2026-08-26", 11)) {
         now: () => now,
         curriculum: TEST_CURRICULUM,
         constableInterviewBank: TEST_CONSTABLE_INTERVIEW_BANK,
+        ...(options.constableExamEligibility ? { constableExamEligibility: options.constableExamEligibility } : {}),
     });
     const employment = new CareerEmploymentService({ database, generateId, now: () => now });
     const job = new CareerJobService({ database, generateId, now: () => now });

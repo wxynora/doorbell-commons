@@ -438,6 +438,7 @@ export function createLingyeWorldBackend(database, options) {
         database,
         ...(options.curriculum === undefined ? {} : { curriculum: options.curriculum }),
         ...(options.constableInterviewBank === undefined ? {} : { constableInterviewBank: options.constableInterviewBank }),
+        ...(options.constableExamEligibility === undefined ? {} : { constableExamEligibility: options.constableExamEligibility }),
         ...(options.now === undefined ? {} : { now: options.now }),
         ...(options.generateId === undefined ? {} : { generateId: options.generateId }),
     };
