@@ -1,4 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { BoundKitchenRead } from "../../auth/kitchen-client";
 import type {
@@ -132,6 +134,65 @@ function kitchen(): BoundKitchenRead {
 afterEach(cleanup);
 
 describe("kitchen inventory presentation", () => {
+  it("does not retain the transient input event inside a deferred quantity updater", () => {
+    const source = readFileSync(
+      join(process.cwd(), "apps/web/src/farm/panels/kitchen-inventory-panel.tsx"),
+      "utf8",
+    );
+    const updaterStart = source.indexOf("setRecycleQuantities((current) => ({");
+    const updaterEnd = source.indexOf("}));", updaterStart);
+    expect(updaterStart).toBeGreaterThan(-1);
+    expect(updaterEnd).toBeGreaterThan(updaterStart);
+    expect(source.slice(updaterStart, updaterEnd)).not.toContain("event.currentTarget");
+  });
+
+  it("keeps a multi-product quantity stable and submits exactly that many instances", async () => {
+    const fixture = kitchen();
+    fixture.data.product_instances = {
+      status: "available",
+      reason: null,
+      items: Array.from({ length: 14 }, (_, index) => ({
+        status: "available" as const,
+        product_instance_id: `milk-${String(index + 1)}`,
+        product_id: "milk",
+        name: "牛奶",
+        value_gold: 12,
+        created_at: null,
+        reason: null,
+      })),
+    };
+    const submitted: KitchenInventoryActionInput[] = [];
+    render(
+      <KitchenInventoryPanelContent
+        kitchen={fixture}
+        onKitchenInventoryAction={async (input) => {
+          submitted.push(input);
+          throw new Error("stop after recording the attempted request");
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "牧场产物" }));
+    const quantityInput = screen.getByLabelText("牛奶回收数量");
+    const valueSetter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    expect(valueSetter).toBeTypeOf("function");
+    valueSetter?.call(quantityInput, "5");
+    quantityInput.dispatchEvent(new Event("input", { bubbles: true }));
+    await waitFor(() => expect((quantityInput as HTMLInputElement).value).toBe("5"));
+    fireEvent.click(screen.getByRole("button", { name: "回收" }));
+
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0]).toMatchObject({
+      action: "recycle",
+      itemInstanceIds: ["milk-1", "milk-2", "milk-3", "milk-4", "milk-5"],
+      itemKind: "product",
+      quantity: 5,
+    });
+  });
+
   it("groups dishes and only exposes authority-valid actions for normal and odd dishes", () => {
     const submitted: KitchenInventoryActionInput[] = [];
     render(

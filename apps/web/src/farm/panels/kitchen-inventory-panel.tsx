@@ -213,12 +213,13 @@ function KitchenProductSection({
                       inputMode="numeric"
                       max={group.items.length}
                       min="1"
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        const value = event.currentTarget.value;
                         setRecycleQuantities((current) => ({
                           ...current,
-                          [group.key]: event.currentTarget.value,
-                        }))
-                      }
+                          [group.key]: value,
+                        }));
+                      }}
                       step="1"
                       type="number"
                       value={rawQuantity}
