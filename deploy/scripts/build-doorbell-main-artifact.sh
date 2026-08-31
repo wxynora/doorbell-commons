@@ -53,6 +53,7 @@ output_parent="$(dirname "${OUTPUT_PATH}")"
 
 build_directory="$(mktemp -d "${TMPDIR:-/tmp}/doorbell-main-build.XXXXXX")"
 runtime_directory="$(mktemp -d "${TMPDIR:-/tmp}/doorbell-main-runtime.XXXXXX")"
+source_archive="${build_directory}/source.tar"
 temporary_output="${OUTPUT_PATH}.tmp.$$"
 
 cleanup() {
@@ -64,7 +65,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
-git -C "${repository_root}" archive "${TARGET_SHA}" | tar -x -C "${build_directory}"
+git -C "${repository_root}" archive --format=tar --output="${source_archive}" "${TARGET_SHA}"
+tar --extract --file "${source_archive}" --directory "${build_directory}"
+rm -f -- "${source_archive}"
 
 (
   cd "${build_directory}"
