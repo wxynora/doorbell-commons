@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import {
   getBoundFarmField,
   harvestBoundFarmField,
@@ -90,7 +90,11 @@ import {
   shouldRetryFarmPlantRequest,
 } from "./model";
 
-export function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
+interface LiveFarmPageProps extends FarmPageProps {
+  actionListLauncher?: ReactNode;
+}
+
+export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFarmPageProps) {
   const [state, setState] = useState<FarmPageState>(
     previewData ? { stage: "ready", data: previewData } : { stage: "loading" },
   );
@@ -952,6 +956,8 @@ export function LiveFarmPage({ onBack, previewData }: FarmPageProps) {
             <RefreshIcon />
           </button>
         </div>
+
+        {actionListLauncher}
 
         {state.stage === "loading" ? (
           <section className="farm-game__state" role="status">

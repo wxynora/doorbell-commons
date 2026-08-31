@@ -31,20 +31,24 @@ export function FarmPage(props: FarmPageProps) {
         <FarmToolEditor onBack={props.onBack} />
       ) : (
         <div className="farm-action-list-host">
-          <LiveFarmPage {...props} />
-          <button
-            className="farm-action-list-launcher"
-            onClick={() => {
-              setActionListMounted(true);
-              setActionListOpen(true);
-            }}
-            type="button"
-          >
-            <svg aria-hidden="true" viewBox="0 0 24 24">
-              <path d="m4 6 1.5 1.5L8 4.8M11 6h9M4 12l1.5 1.5L8 10.8M11 12h9M4 18l1.5 1.5L8 16.8M11 18h9" />
-            </svg>
-            <span>喊 TA 来做</span>
-          </button>
+          <LiveFarmPage
+            {...props}
+            actionListLauncher={
+              <button
+                className="farm-action-list-launcher"
+                onClick={() => {
+                  setActionListMounted(true);
+                  setActionListOpen(true);
+                }}
+                type="button"
+              >
+                <svg aria-hidden="true" viewBox="0 0 24 24">
+                  <path d="m4 6 1.5 1.5L8 4.8M11 6h9M4 12l1.5 1.5L8 10.8M11 12h9M4 18l1.5 1.5L8 16.8M11 18h9" />
+                </svg>
+                <span>喊 TA 来做</span>
+              </button>
+            }
+          />
           {actionListMounted ? (
             <FarmActionListPanelV2
               onBack={() => setActionListOpen(false)}
