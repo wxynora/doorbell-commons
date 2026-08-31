@@ -148,7 +148,7 @@ export function handleHumanHarvestAssist(farm, body, now = Date.now(), options =
           category: crop.category,
           rarity: crop.rarity,
         },
-        quality: item.quality ? { id: item.quality.id, name: item.quality.name } : null,
+        quality: item.quality ? { name: item.quality.name } : null,
         value,
         currency: item.currency,
         is_new: !!item.isNew,
