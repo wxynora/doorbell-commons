@@ -3,7 +3,8 @@
 set -Eeuo pipefail
 umask 022
 
-readonly EXPECTED_ORIGIN="https://github.com/wxynora/doorbell-commons.git"
+readonly EXPECTED_HTTPS_ORIGIN="https://github.com/wxynora/doorbell-commons.git"
+readonly EXPECTED_SSH_ORIGIN="git@github.com:wxynora/doorbell-commons.git"
 readonly BUILD_IMAGE="node:24-bookworm"
 readonly BUILD_PLATFORM="linux/amd64"
 
@@ -29,10 +30,15 @@ done
 
 repository_root="$(git rev-parse --show-toplevel)"
 readonly repository_root
-[[ "$(git -C "${repository_root}" remote get-url origin)" == "${EXPECTED_ORIGIN}" ]] || {
-  fail "unexpected source origin"
-  exit 1
-}
+actual_origin="$(git -C "${repository_root}" remote get-url origin)"
+readonly actual_origin
+case "${actual_origin}" in
+  "${EXPECTED_HTTPS_ORIGIN}" | "${EXPECTED_SSH_ORIGIN}") ;;
+  *)
+    fail "unexpected source origin"
+    exit 1
+    ;;
+esac
 
 git -C "${repository_root}" fetch --prune origin main
 remote_main_sha="$(git -C "${repository_root}" rev-parse refs/remotes/origin/main)"
