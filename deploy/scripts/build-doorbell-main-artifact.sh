@@ -5,9 +5,6 @@ umask 022
 
 readonly EXPECTED_HTTPS_ORIGIN="https://github.com/wxynora/doorbell-commons.git"
 readonly EXPECTED_SSH_ORIGIN="git@github.com:wxynora/doorbell-commons.git"
-readonly BUILD_IMAGE="node:24-bookworm"
-readonly BUILD_PLATFORM="linux/amd64"
-
 fail() {
   printf 'doorbell artifact build failed: %s\n' "$*" >&2
   return 1
@@ -21,7 +18,7 @@ fi
 readonly TARGET_SHA="$1"
 readonly OUTPUT_PATH="$2"
 
-for required_command in docker git tar; do
+for required_command in git node npm tar; do
   command -v "${required_command}" >/dev/null || {
     fail "required local command is unavailable: ${required_command}"
     exit 1
@@ -69,25 +66,13 @@ trap cleanup EXIT
 
 git -C "${repository_root}" archive "${TARGET_SHA}" | tar -x -C "${build_directory}"
 
-docker run --rm --platform "${BUILD_PLATFORM}" --cpus 2 --memory 1g --pids-limit 256 \
-  --user "$(id -u):$(id -g)" \
-  --env HOME=/tmp/doorbell-build-home \
-  --env npm_config_cache=/tmp/doorbell-npm-cache \
-  --volume "${build_directory}:/workspace" \
-  --workdir /workspace \
-  "${BUILD_IMAGE}" \
-  bash -Eeuo pipefail -c '
-    npm ci
-    npm run build -w @doorbell/protocol
-    npm run build -w @doorbell/server
-    npm run build -w @doorbell/web
-    npm prune --omit=dev
-    node --input-type=module --eval '\''
-      import Database from "better-sqlite3";
-      const database = new Database(":memory:");
-      database.close();
-    '\''
-  '
+(
+  cd "${build_directory}"
+  npm ci
+  npm run build -w @doorbell/protocol
+  npm run build -w @doorbell/server
+  npm run build -w @doorbell/web
+)
 
 install -d -m 0755 \
   "${runtime_directory}/apps/server" \
@@ -97,7 +82,6 @@ install -d -m 0755 \
 cp -a \
   "${build_directory}/package.json" \
   "${build_directory}/package-lock.json" \
-  "${build_directory}/node_modules" \
   "${runtime_directory}/"
 cp -a \
   "${build_directory}/packages/protocol/package.json" \
@@ -117,7 +101,7 @@ cp -a \
   "${runtime_directory}/deploy/scripts/"
 
 printf '%s\n' \
-  "{\"schema\":1,\"source_sha\":\"${TARGET_SHA}\",\"platform\":\"linux\",\"arch\":\"x64\",\"node_major\":24}" \
+  "{\"schema\":2,\"source_sha\":\"${TARGET_SHA}\",\"node_major\":24,\"dependency_mode\":\"reuse-exact-lock\"}" \
   >"${runtime_directory}/.doorbell-runtime-artifact.json"
 printf '%s\n' "${TARGET_SHA}" >"${runtime_directory}/.doorbell-release-sha"
 
@@ -125,4 +109,4 @@ COPYFILE_DISABLE=1 tar --no-xattrs -czf "${temporary_output}" -C "${runtime_dire
 mv "${temporary_output}" "${OUTPUT_PATH}"
 trap - EXIT
 rm -rf -- "${build_directory}" "${runtime_directory}"
-printf 'Built Linux Doorbell runtime artifact: %s\n' "${OUTPUT_PATH}"
+printf 'Built Doorbell application artifact: %s\n' "${OUTPUT_PATH}"

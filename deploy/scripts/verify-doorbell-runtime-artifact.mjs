@@ -6,7 +6,6 @@ import { join, resolve } from "node:path";
 const REQUIRED_PATHS = [
   "package.json",
   "package-lock.json",
-  "node_modules",
   "packages/protocol/package.json",
   "packages/protocol/dist/index.js",
   "apps/server/package.json",
@@ -44,11 +43,10 @@ export async function verifyDoorbellRuntimeArtifact(rootDirectory, expectedSha, 
 
   const nodeMajor = Number.parseInt(runtime.versions.node.split(".")[0] ?? "", 10);
   if (
-    manifest?.schema !== 1 ||
+    manifest?.schema !== 2 ||
     manifest.source_sha !== expectedSha ||
-    manifest.platform !== runtime.platform ||
-    manifest.arch !== runtime.arch ||
-    manifest.node_major !== nodeMajor
+    manifest.node_major !== nodeMajor ||
+    manifest.dependency_mode !== "reuse-exact-lock"
   ) {
     throw new Error("Runtime artifact target does not match this release host");
   }

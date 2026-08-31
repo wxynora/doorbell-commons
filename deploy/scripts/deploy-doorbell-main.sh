@@ -33,7 +33,7 @@ readonly SHORT_SHA="${TARGET_SHA:0:7}"
 readonly ARTIFACT_PATH="$2"
 readonly EXPECTED_ARTIFACT_PATH="${ARTIFACT_INBOX}/doorbell-main-${TARGET_SHA}.tar.gz"
 
-for required_command in curl git node stat systemctl tar; do
+for required_command in cmp cp curl git node stat systemctl tar; do
   command -v "${required_command}" >/dev/null || {
     fail "required command is unavailable: ${required_command}"
     exit 1
@@ -65,6 +65,10 @@ readonly artifact_mode
 }
 [[ -d "${RUNTIME_DIRECTORY}" ]] || {
   fail "missing current runtime: ${RUNTIME_DIRECTORY}"
+  exit 1
+}
+[[ -d "${RUNTIME_DIRECTORY}/node_modules" ]] || {
+  fail "current runtime has no reusable Linux dependencies"
   exit 1
 }
 [[ -f "${DATABASE_PATH}" ]] || {
@@ -158,6 +162,13 @@ tar --extract --gzip --file "${ARTIFACT_PATH}" --directory "${candidate_director
 chmod 0755 "${candidate_directory}"
 node "${candidate_directory}/deploy/scripts/verify-doorbell-runtime-artifact.mjs" \
   "${candidate_directory}" "${TARGET_SHA}"
+cmp --silent \
+  "${candidate_directory}/package-lock.json" \
+  "${RUNTIME_DIRECTORY}/package-lock.json" || {
+  fail "dependency lock changed; refusing to install or build dependencies on the VPS"
+  exit 1
+}
+cp -a "${RUNTIME_DIRECTORY}/node_modules" "${candidate_directory}/"
 rm -f -- "${ARTIFACT_PATH}"
 
 node --check "${candidate_directory}/apps/server/dist/index.js"

@@ -10,7 +10,6 @@ const SHA = "a".repeat(40);
 const REQUIRED_PATHS = [
   "package.json",
   "package-lock.json",
-  "node_modules",
   "packages/protocol/package.json",
   "packages/protocol/dist/index.js",
   "apps/server/package.json",
@@ -28,17 +27,16 @@ const REQUIRED_PATHS = [
 async function runtimeFixture(overrides = {}) {
   const root = mkdtempSync(join(tmpdir(), "doorbell-runtime-artifact-"));
   const manifest = {
-    schema: 1,
+    schema: 2,
     source_sha: SHA,
-    platform: "linux",
-    arch: "x64",
     node_major: 24,
+    dependency_mode: "reuse-exact-lock",
     ...overrides,
   };
   writeFileSync(join(root, ".doorbell-runtime-artifact.json"), JSON.stringify(manifest));
   writeFileSync(join(root, ".doorbell-release-sha"), `${SHA}\n`);
   for (const path of REQUIRED_PATHS) {
-    if (path === "node_modules" || path.endsWith("/assets")) {
+    if (path.endsWith("/assets")) {
       await mkdir(join(root, path), { recursive: true });
       continue;
     }
@@ -54,7 +52,7 @@ const linuxNode24 = {
   versions: { node: "24.13.0" },
 };
 
-test("accepts a complete Linux Node 24 artifact for the requested SHA", async () => {
+test("accepts a complete Node 24 application artifact for the requested SHA", async () => {
   const root = await runtimeFixture();
   try {
     await verifyDoorbellRuntimeArtifact(root, SHA, linuxNode24);
@@ -75,8 +73,8 @@ test("rejects an artifact built for a different source SHA", async () => {
   }
 });
 
-test("rejects an artifact built for a different runtime platform", async () => {
-  const root = await runtimeFixture({ platform: "darwin", arch: "arm64" });
+test("rejects an artifact with a different dependency contract", async () => {
+  const root = await runtimeFixture({ dependency_mode: "bundled-native-dependencies" });
   try {
     await assert.rejects(
       verifyDoorbellRuntimeArtifact(root, SHA, linuxNode24),

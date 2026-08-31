@@ -18,15 +18,13 @@ test("the production deployer accepts a prebuilt artifact and never builds or in
   assert.doesNotMatch(deployer, /git .* archive/u);
 });
 
-test("Linux dependency installation and all builds live only in the local Docker builder", () => {
-  assert.match(builder, /BUILD_PLATFORM="linux\/amd64"/u);
-  assert.match(builder, /docker run --rm --platform .*--cpus 2 --memory 1g --pids-limit 256/u);
+test("all application builds run locally without Docker", () => {
+  assert.doesNotMatch(builder, /\b(?:docker|podman)\b/u);
   assert.match(builder, /npm ci/u);
   assert.match(builder, /npm run build -w @doorbell\/protocol/u);
   assert.match(builder, /npm run build -w @doorbell\/server/u);
   assert.match(builder, /npm run build -w @doorbell\/web/u);
-  assert.match(builder, /npm prune --omit=dev/u);
-  assert.match(builder, /new Database\(":memory:"\)/u);
+  assert.doesNotMatch(builder, /node_modules.*runtime_directory/u);
 });
 
 test("the publisher uploads the artifact and deployer without remote build commands", () => {
@@ -45,6 +43,18 @@ test("approved release resolution and old hash retention happen before the runti
   assert.ok(extraction < directoryPermission && directoryPermission < releaseResolution);
   assert.ok(releaseResolution < assetMerge);
   assert.ok(assetMerge < runtimeSwitch);
+});
+
+test("the VPS reuses dependencies only when the lockfile is byte-for-byte identical", () => {
+  const verification = deployer.indexOf("verify-doorbell-runtime-artifact.mjs");
+  const lockComparison = deployer.indexOf("cmp --silent");
+  const dependencyReuse = deployer.search(
+    /cp -a "\$\{RUNTIME_DIRECTORY\}\/node_modules" "\$\{candidate_directory\}\//u,
+  );
+  const serviceStop = deployer.lastIndexOf("systemctl stop");
+  assert.ok(verification >= 0 && verification < lockComparison);
+  assert.ok(lockComparison < dependencyReuse && dependencyReuse < serviceStop);
+  assert.match(deployer, /dependency lock changed; refusing to install or build dependencies/u);
 });
 
 test("old lazy chunks remain available without replacing a newly built hash", async () => {

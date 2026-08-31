@@ -1199,16 +1199,19 @@ worktree or branch switch with `/opt/aifarm`. The root-owned entry
 `/usr/local/sbin/doorbell-deploy-main`, versioned as `deploy/scripts/deploy-doorbell-main.sh`, accepts
 one exact 40-character SHA and one root-owned mode-0600 artifact from the fixed incoming directory.
 The SHA must equal fetched `origin/main`, the checkout must be clean and fast-forwardable, and the
-artifact manifest／release marker must match the SHA plus the production Linux x64／Node 24 runtime.
-The production entry has no package installation, TypeScript／Vite compilation, pruning, container
-build, source archive build or fallback build path. `deploy/scripts/build-doorbell-main-artifact.sh`
-runs `npm ci`, protocol／server／web builds, production pruning and a real `better-sqlite3` open inside
-the local `linux/amd64` Node 24 container, then emits the runtime-only artifact.
+artifact manifest／release marker must match the SHA and Node 24 runtime. The production entry has no
+package installation, TypeScript／Vite compilation, pruning, container build, source archive build or
+fallback build path. `deploy/scripts/build-doorbell-main-artifact.sh` runs ordinary local `npm ci`
+plus protocol／server／web builds from the exact `origin/main` archive, then packages only portable
+application build output and manifests; it never runs Docker and never packages Mac `node_modules`.
 `deploy/scripts/publish-doorbell-main.sh` uploads that artifact plus the exact target revision's
 server entry before invoking it. On the VPS, extraction and target verification happen before any
-service stop; the approved PWA release is resolved against the current runtime and previous
-content-hashed assets are merged without replacing candidate files. The entry then validates SQLite,
-makes the mode-0600 online backup and atomically switches `/opt/doorbell-commons`. The installed
+service stop. The candidate and current runtime `package-lock.json` must be byte-for-byte identical;
+only then are the current Linux `node_modules` copied into the candidate. A dependency change rejects
+the release before service stop rather than installing or building on the VPS. The approved PWA
+release is resolved against the current runtime and previous content-hashed assets are merged without
+replacing candidate files. The entry then validates SQLite, makes the mode-0600 online backup and
+atomically switches `/opt/doorbell-commons`. The installed
 runtime records its exact source in `.doorbell-release-sha`. After start, the entry checks local
 health once per second for at most 60 seconds. If a switched candidate fails, the service remains
 stopped while the entry restores and validates the pre-release database under its recorded original
