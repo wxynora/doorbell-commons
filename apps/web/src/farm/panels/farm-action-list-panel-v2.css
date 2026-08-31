@@ -1,0 +1,388 @@
+.farm-action-lists-v2 {
+  position: absolute;
+  top: 4cqw;
+  right: 4cqw;
+  left: 4cqw;
+  z-index: 280;
+  display: flex;
+  max-height: calc(100svh - 20cqw);
+  flex-direction: column;
+  box-sizing: border-box;
+  padding: 12px;
+  overflow: hidden;
+  color: #60462f;
+  font-size: 12px;
+  border: 1px solid rgba(118, 84, 47, 0.56);
+  border-radius: 12px;
+  background: #fff8df url("/farm/ui/panel-parchment.png") center / cover;
+  box-shadow: 0 6px 16px rgba(71, 46, 25, 0.24);
+}
+
+.farm-action-lists-v2 button,
+.farm-action-lists-v2 input,
+.farm-action-lists-v2 select {
+  box-sizing: border-box;
+  height: 38px;
+  font: inherit;
+  border-radius: 8px;
+}
+
+.farm-action-lists-v2 > header {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 38px;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 10px;
+}
+
+.farm-action-lists-v2 > header > button {
+  padding: 0;
+  color: #60462f;
+  border: 0;
+  background: transparent;
+}
+
+.farm-action-lists-v2 > header .farm-action-lists-v2__back {
+  display: grid;
+  place-items: center;
+}
+
+.farm-action-lists-v2__back svg {
+  width: 26px;
+  height: 26px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.4;
+}
+
+.farm-action-lists-v2 > header small,
+.farm-action-lists-v2 > header h2,
+.farm-action-lists-v2 > header p {
+  margin: 0;
+}
+
+.farm-action-lists-v2 > header small {
+  color: #9a7b57;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+
+.farm-action-lists-v2 > header h2 {
+  margin-top: 2px;
+  font-family: "ZCOOL KuaiLe", "Noto Sans SC", sans-serif;
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+.farm-action-lists-v2 > header p {
+  margin-top: 3px;
+  color: #826a4c;
+  font-size: 10px;
+}
+
+.farm-action-lists-v2 > header .farm-action-lists-v2__new {
+  border: 0;
+  background: transparent;
+}
+
+.farm-action-lists-v2__cards,
+.farm-action-list-editor-v2 {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.farm-action-lists-v2__cards {
+  display: grid;
+  gap: 8px;
+}
+
+.farm-action-list-card-v2 {
+  padding: 10px;
+  border: 1px solid rgba(133, 96, 54, 0.25);
+  border-radius: 10px;
+  background: rgba(255, 253, 235, 0.72);
+}
+
+.farm-action-list-card-v2 > header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.farm-action-list-card-v2 h3,
+.farm-action-list-card-v2 p {
+  margin: 0;
+}
+
+.farm-action-list-card-v2 h3 {
+  font-size: 14px;
+}
+
+.farm-action-list-card-v2 p {
+  margin-top: 3px;
+  color: #947553;
+  font-size: 10px;
+}
+
+.farm-action-list-card-v2__title,
+.farm-action-list-card-v2__status-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.farm-action-list-card-v2__title button {
+  width: auto;
+  height: 28px;
+  min-height: 28px;
+  padding: 0 7px;
+  color: #755b3e;
+  font-size: 10px;
+  border: 0;
+  background: transparent;
+}
+
+.farm-action-list-card-v2__status-row {
+  margin-top: 2px;
+}
+
+.farm-action-list-card-v2__toggle {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  color: #806344;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.farm-action-list-card-v2__toggle input {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  padding: 0;
+  appearance: none;
+  border: 1px solid rgba(119, 87, 52, 0.34);
+  border-radius: 999px;
+  background: #d8cfb9;
+  transition: background 160ms ease-out;
+  cursor: pointer;
+}
+
+.farm-action-list-card-v2__toggle input::after {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  content: "";
+  background: #fffaf0;
+  box-shadow: 0 1px 2px rgba(71, 46, 25, 0.28);
+  transition: transform 160ms ease-out;
+}
+
+.farm-action-list-card-v2__toggle input:checked {
+  background: #7d9f48;
+}
+
+.farm-action-list-card-v2__toggle input:checked::after {
+  transform: translateX(14px);
+}
+
+.farm-action-list-card-v2 ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 9px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.farm-action-list-card-v2 li {
+  padding: 4px 8px;
+  color: #705437;
+  font-size: 10px;
+  border-radius: 999px;
+  background: rgba(226, 210, 170, 0.48);
+}
+
+.farm-action-list-card-v2 footer,
+.farm-action-list-editor-v2 > footer {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.farm-action-list-card-v2 footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.farm-action-list-card-v2 footer button,
+.farm-action-list-editor-v2 > footer button {
+  color: #6b5136;
+  font-size: 11px;
+  font-weight: 900;
+  border: 1px solid rgba(119, 87, 52, 0.38);
+  background: rgba(255, 252, 231, 0.86);
+}
+
+.farm-action-list-card-v2 footer button {
+  width: auto;
+  height: 30px;
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 10px;
+}
+
+.farm-action-list-card-v2 footer .farm-action-list-card-v2__remove {
+  color: #8c5b43;
+  border-color: transparent;
+  background: transparent;
+}
+
+.farm-action-list-card-v2 footer button:last-child,
+.farm-action-list-editor-v2 > footer button:last-child {
+  color: #fff7db;
+  border-color: #5e7633;
+  background: linear-gradient(#91ad55, #6d913c);
+}
+
+.farm-action-lists-v2__empty {
+  color: #5e7633;
+  font-weight: 900;
+  border: 1px dashed rgba(94, 118, 51, 0.55);
+  background: rgba(255, 252, 231, 0.7);
+}
+
+.farm-action-list-editor-v2 {
+  display: grid;
+  gap: 9px;
+  padding-right: 2px;
+}
+
+.farm-action-list-editor-v2 label {
+  display: grid;
+  gap: 4px;
+  color: #795f43;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.farm-action-list-editor-v2 input,
+.farm-action-list-editor-v2 select {
+  width: 100%;
+  min-width: 0;
+  padding: 0 9px;
+  color: #5f472f;
+  border: 1px solid rgba(137, 101, 62, 0.3);
+  background: rgba(255, 253, 240, 0.88);
+}
+
+.farm-action-list-editor-v2__schedule {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 8px;
+  border-radius: 10px;
+  background: rgba(255, 253, 238, 0.6);
+}
+
+.farm-action-list-editor-v2__items-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.farm-action-list-editor-v2__items-head strong {
+  font-size: 11px;
+}
+
+.farm-action-list-editor-v2__items-head button {
+  width: 36px;
+  padding: 0;
+  color: #5e7633;
+  font-size: 18px;
+  border: 0;
+  background: transparent;
+}
+
+.farm-action-list-editor-v2__menu {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 6px;
+  border-radius: 9px;
+  background: rgba(244, 232, 202, 0.66);
+}
+
+.farm-action-list-editor-v2__menu button {
+  color: #60462f;
+  font-size: 11px;
+  border: 0;
+  background: rgba(255, 252, 231, 0.72);
+}
+
+.farm-action-list-editor-v2__items {
+  display: grid;
+  gap: 6px;
+}
+
+.farm-action-list-editor-v2__items article {
+  padding: 3px 6px;
+  border: 1px solid rgba(133, 96, 54, 0.22);
+  border-radius: 9px;
+  background: rgba(255, 253, 235, 0.72);
+}
+
+.farm-action-list-editor-v2__items article.has-fields {
+  padding: 7px;
+}
+
+.farm-action-list-editor-v2__items article > header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  align-items: center;
+  margin-bottom: 0;
+}
+
+.farm-action-list-editor-v2__items article.has-fields > header {
+  margin-bottom: 5px;
+}
+
+.farm-action-list-editor-v2__items article > header strong {
+  font-size: 12px;
+}
+
+.farm-action-list-editor-v2__items article > header button {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  color: #8c5b43;
+  font-size: 22px;
+  border: 0;
+  background: transparent;
+}
+
+.farm-action-lists-v2__status {
+  margin: 7px 0 0;
+  color: #8b6c4e;
+  font-size: 10px;
+  text-align: center;
+}
+
+@container farm (max-width: 360px) {
+  .farm-action-lists-v2 {
+    right: 2.8cqw;
+    left: 2.8cqw;
+  }
+
+  .farm-action-list-editor-v2__schedule {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

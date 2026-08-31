@@ -7,6 +7,10 @@ import { CareerExamReminderService } from "./career-exam-reminder-service.js";
 import { CommunityDatabase } from "./community-database.js";
 import { readDoorbellServerConfig } from "./config.js";
 import { ConstableInterviewSignupMailService } from "./constable-interview-signup-mail-service.js";
+import { FarmActionListAuthority } from "./farm-action-list-authority.js";
+import { FarmActionListAuthorityClient } from "./farm-action-list-authority-client.js";
+import { FarmActionListScheduler } from "./farm-action-list-scheduler.js";
+import { FarmActionListService } from "./farm-action-list-service.js";
 import { FarmHumanBulletinClient } from "./farm-bulletin-client.js";
 import { FarmHumanCatalogClient } from "./farm-catalog-client.js";
 import { FarmConstableInterviewClient } from "./farm-constable-interview-client.js";
@@ -181,6 +185,11 @@ const farmQixiMemorialReader = new FarmHumanQixiMemorialClient({
   requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
   serviceToken: serverConfig.farmServiceToken,
 });
+const farmActionListAuthorityReader = new FarmActionListAuthorityClient({
+  apiBaseUrl: serverConfig.farmApiBaseUrl,
+  requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+  serviceToken: serverConfig.farmServiceToken,
+});
 let disconnectRealtimeResident = (_residentId: string): void => undefined;
 const registrationAuth = new RegistrationAuthService({
   database,
@@ -287,6 +296,51 @@ const farmPlantRequestService = new FarmPlantRequestService({
   database,
   bellNotifier: bellService,
 });
+const farmActionListAuthority = new FarmActionListAuthority({
+  actionListStateReader: farmActionListAuthorityReader,
+  fieldReader: farmHumanReader,
+  catalogReader: farmCatalogReader,
+  kitchenReader: farmKitchenReader,
+});
+const farmActionListService = new FarmActionListService({
+  database,
+  authority: farmActionListAuthority,
+  bellNotifier: bellService,
+  profileResolver: {
+    resolve: async (residentId) => {
+      await registrationAuth.confirmCurrentResidentMembership(residentId);
+      const community = database.findActiveHumanCommunityByResidentId(residentId);
+      const farmHumanKey = community?.farmBinding.farmHumanKey;
+      if (!community || !farmHumanKey) {
+        throw new Error("The scheduled farm action list resident is not active");
+      }
+      const catalog = await farmCatalogReader.readCatalog({
+        farmDoorplate: community.farmBinding.farmDoorplate,
+        farmHumanKey,
+      });
+      const humanName =
+        catalog.data.settings.status === "available"
+          ? catalog.data.settings.human_name?.trim()
+          : undefined;
+      if (!humanName) throw new Error("The scheduled farm action list has no Human name");
+      return {
+        humanName,
+        profile: {
+          residentId,
+          homeId: community.home.homeId,
+          farmDoorplate: community.farmBinding.farmDoorplate,
+          farmHumanKey,
+        },
+      };
+    },
+  },
+});
+const farmActionListScheduler = new FarmActionListScheduler({
+  store: database,
+  sender: farmActionListService,
+  onError: reportBellError,
+});
+farmActionListScheduler.start();
 const mailboxService = new MailboxService({
   database,
   farmRewardGranter,
@@ -367,6 +421,8 @@ const app = buildApp({
   groupId: serverConfig.qqGroupId,
   groupMembership,
   registrationAuth,
+  farmActionListService,
+  refreshFarmActionListSchedule: () => farmActionListScheduler.refresh(),
   farmHarvestRequestService,
   farmPlantRequestService,
   farmPurchaseRequestService,
@@ -384,6 +440,7 @@ const app = buildApp({
   secureCookies: process.env.NODE_ENV === "production",
 });
 app.addHook("onClose", () => {
+  farmActionListScheduler.close();
   activityReminderService?.close();
   careerExamReminderService.close();
   constableInterviewSignupMailService?.close();

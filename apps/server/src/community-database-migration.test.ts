@@ -409,7 +409,7 @@ test("schema v1 preserves login security state while upgrading through the curre
         migratedDatabase.pragma("user_version", { simple: true }),
         COMMUNITY_DATABASE_SCHEMA_VERSION,
       );
-      assert.equal(COMMUNITY_DATABASE_SCHEMA_VERSION, 17);
+      assert.equal(COMMUNITY_DATABASE_SCHEMA_VERSION, 18);
       assert.deepEqual(
         migratedDatabase
           .prepare("SELECT account_id, qq_number, password_credential FROM human_accounts")
@@ -1000,12 +1000,55 @@ test("schema v16 migrates the independent farm plant request table", () => {
 
     const database = new Database(databasePath, { readonly: true });
     try {
-      assert.equal(database.pragma("user_version", { simple: true }), 17);
+      assert.equal(
+        database.pragma("user_version", { simple: true }),
+        COMMUNITY_DATABASE_SCHEMA_VERSION,
+      );
       assert.deepEqual(
         database
           .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
           .get("farm_plant_requests"),
         { name: "farm_plant_requests" },
+      );
+      assert.deepEqual(database.pragma("foreign_key_check"), []);
+    } finally {
+      database.close();
+    }
+  });
+});
+
+test("schema v17 migrates the Human farm action list tables", () => {
+  withTemporaryDatabase((databasePath) => {
+    const initialized = new CommunityDatabase(databasePath);
+    initialized.close();
+
+    const versionSeventeen = new Database(databasePath);
+    versionSeventeen.exec(`
+      DROP TABLE farm_action_list_notifications;
+      DROP TABLE farm_action_lists;
+    `);
+    versionSeventeen.pragma("user_version = 17");
+    versionSeventeen.close();
+
+    const migrated = new CommunityDatabase(databasePath);
+    migrated.close();
+
+    const database = new Database(databasePath, { readonly: true });
+    try {
+      assert.equal(
+        database.pragma("user_version", { simple: true }),
+        COMMUNITY_DATABASE_SCHEMA_VERSION,
+      );
+      assert.deepEqual(
+        database
+          .prepare(
+            `SELECT name
+             FROM sqlite_master
+             WHERE type = 'table' AND name LIKE 'farm_action_list%'
+             ORDER BY name`,
+          )
+          .all(),
+        [{ name: "farm_action_list_notifications" }, { name: "farm_action_lists" }],
       );
       assert.deepEqual(database.pragma("foreign_key_check"), []);
     } finally {

@@ -1064,6 +1064,16 @@ Schema v17 adds the separate `farm_plant_requests` table with the same 24-hour B
 independent idempotency namespace, field revision and positive empty-plot count. It never calls Farm
 planting or stores a seed／crop choice; ACK, blocked delivery, cancellation and expiry affect only the
 matching plant wake and cannot consume a harvest request.
+Schema v18 adds resident-owned rows in `farm_action_lists` and an isolated
+`farm_action_list_notifications` wake ledger. Each list row stores a stable list ID, resident link, list name, items in natural
+insertion order, schedule, enable state, next trigger and latest system check result; it does not create Workflow
+templates, Human crossing/reordering semantics or execution history. Due delivery is driven by one nearest-deadline timer, rechecks Farm authority
+before creating a Bell wake, advances daily schedules to the next Beijing occurrence, disables a completed
+one-time schedule, and creates no wake when every item is crossed. Farm supplies the existing stolen-today
+and fishing daily-cast facts plus its current real activity options through the service-authenticated structured read
+`POST /internal/doorbell/human/action-list/authority/read`; Main never parses model-facing status text.
+The Human panel reads those activity choices through `GET /api/farm/action-list/options`; it never accepts
+free-form activity IDs or choice fields.
 Opening a database from a newer unsupported schema version fails before table initialization. Future
 schema changes must add an ordered migration and advance this version instead of relying only on
 `CREATE TABLE IF NOT EXISTS`.
@@ -1127,6 +1137,9 @@ The current tables are:
 - `farm_plant_requests` for the independent 24-hour Human plant request. It stores only the accepted
   field revision, positive empty-plot count, confirmed notification and its own Bell lifecycle; it
   never stores a seed choice, calls Farm planting or shares replay／terminal state with Harvest.
+- `farm_action_lists` for the current resident-owned Human action list template and its schedule;
+  `farm_action_list_notifications` stores only idempotent occurrence checks plus the optional Bell
+  lifecycle. Neither table stores Farm state, model output or a second copy of action settlement.
 
 The human API exposes `GET /api/mailbox`, `GET /api/mailbox/:letterId`, and
 `POST /api/mailbox/:letterId/claim`. Resident delivery is not a model-visible mailbox tool or a

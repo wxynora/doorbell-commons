@@ -137,6 +137,16 @@ import {
   createdFarmHumanSessionSuccessSchema,
   currentHumanSessionSuccessSchema,
   type FarmHumanConstableInterviewSuccess,
+  farmActionListCreateRequestSchema,
+  farmActionListDeleteRequestSchema,
+  farmActionListErrorSchema,
+  farmActionListIdempotencyKeySchema,
+  farmActionListIdSchema,
+  farmActionListMutationSuccessSchema,
+  farmActionListNotifySuccessSchema,
+  farmActionListOptionsSuccessSchema,
+  farmActionListReadSuccessSchema,
+  farmActionListUpdateRequestSchema,
   farmBulletinAckIdempotencyKeySchema,
   farmCropCodexActionIdempotencyKeySchema,
   farmExpeditionActionIdempotencyKeySchema,
@@ -231,6 +241,8 @@ import {
 } from "./bell-service.js";
 import type { BrowserPushService } from "./browser-push-service.js";
 import {
+  FarmActionListIdempotencyConflictError,
+  FarmActionListRevisionConflictError,
   FarmHarvestRequestIdempotencyConflictError,
   FarmPlantRequestIdempotencyConflictError,
   FarmPurchaseRequestIdempotencyConflictError,
@@ -240,6 +252,8 @@ import {
   type LingyeDailyIssueRecord,
   type MailboxLetterRecord,
 } from "./community-database.js";
+import type { FarmActionListService } from "./farm-action-list-service.js";
+import { FarmActionListScheduleError } from "./farm-action-list-time.js";
 import {
   FarmHumanBulletinContractUnavailableError,
   FarmHumanBulletinCredentialInvalidError,
@@ -542,6 +556,8 @@ export interface BuildAppOptions {
   groupId: string;
   groupMembership: QqGroupMembershipReader;
   registrationAuth: RegistrationAuthService;
+  farmActionListService?: FarmActionListService;
+  refreshFarmActionListSchedule?: () => void;
   farmHarvestRequestService?: FarmHarvestRequestService;
   farmPlantRequestService?: FarmPlantRequestService;
   farmPurchaseRequestService?: FarmPurchaseRequestService;
@@ -1285,6 +1301,39 @@ function sendBoundFarmPlantRequestSuccess(
     },
     server_time: new Date().toISOString(),
   });
+}
+
+function sendFarmActionListError(
+  reply: FastifyReply,
+  statusCode: 400 | 401 | 403 | 409 | 502 | 503,
+  code:
+    | "invalid_request"
+    | "authentication_required"
+    | "qq_not_group_member"
+    | "onebot_unavailable"
+    | "registration_profile_required"
+    | "revision_conflict"
+    | "idempotency_conflict"
+    | "unsupported_item"
+    | "authority_unavailable"
+    | "notification_unavailable",
+  message: string,
+  currentRevision?: number,
+) {
+  reply.header("cache-control", "no-store");
+  return reply.code(statusCode).send(
+    farmActionListErrorSchema.parse({
+      error: {
+        code,
+        message,
+        ...(currentRevision === undefined ? {} : { current_revision: currentRevision }),
+      },
+    }),
+  );
+}
+
+function farmActionListResponse(list: ReturnType<FarmActionListService["create"]>) {
+  return { list, server_time: new Date().toISOString() };
 }
 
 type BoundFarmStructuredErrorCode =
@@ -4690,6 +4739,457 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         );
       }
       throw error;
+    }
+  });
+
+  app.get("/api/farm/action-list", async (request, reply) => {
+    if (!options.farmActionListService) {
+      return sendFarmActionListError(
+        reply,
+        503,
+        "notification_unavailable",
+        "Farm action lists are unavailable",
+      );
+    }
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendFarmActionListError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+    try {
+      const community = await options.registrationAuth.getCurrentSession(token);
+      reply.header("cache-control", "no-store");
+      return farmActionListReadSuccessSchema.parse({
+        lists: options.farmActionListService.readAll(community.resident.residentId),
+        server_time: new Date().toISOString(),
+      });
+    } catch (error) {
+      if (error instanceof AuthenticationRequiredError) {
+        return sendFarmActionListError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
+        return sendFarmActionListError(
+          reply,
+          403,
+          "qq_not_group_member",
+          "The session QQ number is no longer a current member of the community group",
+        );
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendFarmActionListError(
+          reply,
+          503,
+          "onebot_unavailable",
+          "QQ group membership could not be verified",
+        );
+      }
+      if (error instanceof RegistrationProfileRequiredError) {
+        return sendFarmActionListError(
+          reply,
+          409,
+          "registration_profile_required",
+          "A resident, home, and farm binding are required",
+        );
+      }
+      throw error;
+    }
+  });
+
+  app.get("/api/farm/action-list/options", async (request, reply) => {
+    if (!options.farmActionListService) {
+      return sendFarmActionListError(
+        reply,
+        503,
+        "authority_unavailable",
+        "Farm action-list options are unavailable",
+      );
+    }
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendFarmActionListError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+    try {
+      const community = await options.registrationAuth.getCurrentSession(token);
+      const farmHumanKey = community.farmBinding.farmHumanKey;
+      if (!farmHumanKey) {
+        return sendFarmActionListError(
+          reply,
+          409,
+          "registration_profile_required",
+          "A resident, home, and farm binding are required",
+        );
+      }
+      const activities = await options.farmActionListService.readOptions({
+        residentId: community.resident.residentId,
+        homeId: community.home.homeId,
+        farmDoorplate: community.farmBinding.farmDoorplate,
+        farmHumanKey,
+      });
+      reply.header("cache-control", "no-store");
+      return farmActionListOptionsSuccessSchema.parse({
+        activities,
+        server_time: new Date().toISOString(),
+      });
+    } catch (error) {
+      if (error instanceof AuthenticationRequiredError) {
+        return sendFarmActionListError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
+        return sendFarmActionListError(
+          reply,
+          403,
+          "qq_not_group_member",
+          "The session QQ number is no longer a current member of the community group",
+        );
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendFarmActionListError(
+          reply,
+          503,
+          "onebot_unavailable",
+          "QQ group membership could not be verified",
+        );
+      }
+      if (error instanceof RegistrationProfileRequiredError) {
+        return sendFarmActionListError(
+          reply,
+          409,
+          "registration_profile_required",
+          "A resident, home, and farm binding are required",
+        );
+      }
+      request.log.error(
+        { error_name: error instanceof Error ? error.name : "UnknownError" },
+        "Farm action-list options are unavailable",
+      );
+      return sendFarmActionListError(
+        reply,
+        503,
+        "authority_unavailable",
+        "Current farm activities could not be read",
+      );
+    }
+  });
+
+  app.post("/api/farm/action-list", async (request, reply) => {
+    const body = farmActionListCreateRequestSchema.safeParse(request.body);
+    if (!body.success) {
+      return sendFarmActionListError(
+        reply,
+        400,
+        "invalid_request",
+        "The farm action list is invalid",
+      );
+    }
+    if (!options.farmActionListService) {
+      return sendFarmActionListError(
+        reply,
+        503,
+        "notification_unavailable",
+        "Farm action lists are unavailable",
+      );
+    }
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendFarmActionListError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+    try {
+      const community = await options.registrationAuth.getCurrentSession(token);
+      const list = options.farmActionListService.create(community.resident.residentId, body.data);
+      options.refreshFarmActionListSchedule?.();
+      reply.header("cache-control", "no-store");
+      return farmActionListMutationSuccessSchema.parse(farmActionListResponse(list));
+    } catch (error) {
+      if (error instanceof FarmActionListScheduleError) {
+        return sendFarmActionListError(reply, 400, "invalid_request", error.message);
+      }
+      if (error instanceof FarmActionListRevisionConflictError) {
+        return sendFarmActionListError(
+          reply,
+          409,
+          "revision_conflict",
+          error.message,
+          error.currentRevision,
+        );
+      }
+      if (error instanceof AuthenticationRequiredError) {
+        return sendFarmActionListError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
+        return sendFarmActionListError(
+          reply,
+          403,
+          "qq_not_group_member",
+          "The session QQ number is no longer a current member of the community group",
+        );
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendFarmActionListError(
+          reply,
+          503,
+          "onebot_unavailable",
+          "QQ group membership could not be verified",
+        );
+      }
+      if (error instanceof RegistrationProfileRequiredError) {
+        return sendFarmActionListError(
+          reply,
+          409,
+          "registration_profile_required",
+          "A resident, home, and farm binding are required",
+        );
+      }
+      throw error;
+    }
+  });
+
+  app.put("/api/farm/action-list/:listId", async (request, reply) => {
+    const listId = farmActionListIdSchema.safeParse(
+      (request.params as { listId?: unknown }).listId,
+    );
+    const body = farmActionListUpdateRequestSchema.safeParse(request.body);
+    if (!listId.success || !body.success || !options.farmActionListService) {
+      return sendFarmActionListError(reply, 400, "invalid_request", "The list update is invalid");
+    }
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendFarmActionListError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+    try {
+      const community = await options.registrationAuth.getCurrentSession(token);
+      const list = options.farmActionListService.update(
+        listId.data,
+        community.resident.residentId,
+        body.data,
+      );
+      options.refreshFarmActionListSchedule?.();
+      reply.header("cache-control", "no-store");
+      return farmActionListMutationSuccessSchema.parse(farmActionListResponse(list));
+    } catch (error) {
+      if (error instanceof FarmActionListScheduleError) {
+        return sendFarmActionListError(reply, 400, "invalid_request", error.message);
+      }
+      if (error instanceof FarmActionListRevisionConflictError) {
+        return sendFarmActionListError(
+          reply,
+          409,
+          "revision_conflict",
+          error.message,
+          error.currentRevision,
+        );
+      }
+      throw error;
+    }
+  });
+
+  app.delete("/api/farm/action-list/:listId", async (request, reply) => {
+    const listId = farmActionListIdSchema.safeParse(
+      (request.params as { listId?: unknown }).listId,
+    );
+    const body = farmActionListDeleteRequestSchema.safeParse(request.body);
+    if (!listId.success || !body.success || !options.farmActionListService) {
+      return sendFarmActionListError(reply, 400, "invalid_request", "The list delete is invalid");
+    }
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendFarmActionListError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+    const community = await options.registrationAuth.getCurrentSession(token);
+    options.farmActionListService.delete(
+      listId.data,
+      community.resident.residentId,
+      body.data.expected_revision,
+    );
+    options.refreshFarmActionListSchedule?.();
+    reply.header("cache-control", "no-store");
+    return reply.code(204).send();
+  });
+
+  app.post("/api/farm/action-list/:listId/notify", async (request, reply) => {
+    const listId = farmActionListIdSchema.safeParse(
+      (request.params as { listId?: unknown }).listId,
+    );
+    const idempotencyHeader = request.headers["idempotency-key"];
+    const idempotencyKey = farmActionListIdempotencyKeySchema.safeParse(
+      typeof idempotencyHeader === "string" ? idempotencyHeader : undefined,
+    );
+    const bodyIsEmptyObject =
+      request.body !== null &&
+      typeof request.body === "object" &&
+      !Array.isArray(request.body) &&
+      Object.keys(request.body).length === 0;
+    if (!listId.success || !idempotencyKey.success || !bodyIsEmptyObject) {
+      return sendFarmActionListError(
+        reply,
+        400,
+        "invalid_request",
+        "A UUID Idempotency-Key and an empty JSON object are required",
+      );
+    }
+    if (!options.farmActionListService) {
+      return sendFarmActionListError(
+        reply,
+        503,
+        "notification_unavailable",
+        "Farm action lists are unavailable",
+      );
+    }
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendFarmActionListError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+    try {
+      const community = await options.registrationAuth.getCurrentSession(token);
+      const catalog = await options.registrationAuth.getCurrentFarmCatalog(token);
+      const humanName =
+        catalog.data.settings.status === "available"
+          ? catalog.data.settings.human_name?.trim()
+          : undefined;
+      const farmHumanKey = community.farmBinding.farmHumanKey;
+      if (!humanName || !farmHumanKey) {
+        return sendFarmActionListError(
+          reply,
+          409,
+          "invalid_request",
+          "Set the farm human name before sending an action list",
+        );
+      }
+      const result = await options.farmActionListService.notifyManual(
+        {
+          humanName,
+          profile: {
+            residentId: community.resident.residentId,
+            homeId: community.home.homeId,
+            farmDoorplate: community.farmBinding.farmDoorplate,
+            farmHumanKey,
+          },
+        },
+        listId.data,
+        idempotencyKey.data,
+      );
+      reply.header("cache-control", "no-store");
+      return farmActionListNotifySuccessSchema.parse({
+        ...farmActionListResponse(result.list),
+        notification_status: result.notificationStatus,
+      });
+    } catch (error) {
+      if (error instanceof FarmActionListIdempotencyConflictError) {
+        return sendFarmActionListError(reply, 409, "idempotency_conflict", error.message);
+      }
+      if (error instanceof FarmActionListRevisionConflictError) {
+        return sendFarmActionListError(
+          reply,
+          409,
+          "revision_conflict",
+          error.message,
+          error.currentRevision,
+        );
+      }
+      if (error instanceof AuthenticationRequiredError) {
+        return sendFarmActionListError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
+        return sendFarmActionListError(
+          reply,
+          403,
+          "qq_not_group_member",
+          "The session QQ number is no longer a current member of the community group",
+        );
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendFarmActionListError(
+          reply,
+          503,
+          "onebot_unavailable",
+          "QQ group membership could not be verified",
+        );
+      }
+      if (error instanceof RegistrationProfileRequiredError) {
+        return sendFarmActionListError(
+          reply,
+          409,
+          "registration_profile_required",
+          "A resident, home, and farm binding are required",
+        );
+      }
+      if (
+        error instanceof FarmHumanCatalogCredentialInvalidError ||
+        error instanceof FarmHumanCatalogNotFoundError
+      ) {
+        return sendFarmActionListError(
+          reply,
+          409,
+          "authority_unavailable",
+          "The bound farm authority is unavailable",
+        );
+      }
+      request.log.error(
+        { error_name: error instanceof Error ? error.name : "UnknownError" },
+        "Farm action list notification is unavailable",
+      );
+      return sendFarmActionListError(
+        reply,
+        503,
+        "notification_unavailable",
+        "The farm action list could not be sent",
+      );
     }
   });
 

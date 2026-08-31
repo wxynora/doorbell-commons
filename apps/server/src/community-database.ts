@@ -4,6 +4,12 @@ import { dirname } from "node:path";
 import {
   type ClimateType,
   climateTypeValues,
+  type FarmActionListItem,
+  type FarmActionListItemView,
+  type FarmActionListSchedule,
+  farmActionListItemSchema,
+  farmActionListItemViewSchema,
+  farmActionListScheduleSchema,
   type LingyeDailyEditionPublish,
   type LingyeDailyPublishRequest,
   lingyeDailyEditionPublishSchema,
@@ -25,7 +31,7 @@ export const HUMAN_LOGIN_LOCK_DURATION_MS = 30 * 60 * 1000;
 export const FARM_PURCHASE_REQUEST_TTL_MS = 24 * 60 * 60 * 1000;
 export const FARM_HARVEST_REQUEST_TTL_MS = 24 * 60 * 60 * 1000;
 export const FARM_PLANT_REQUEST_TTL_MS = 24 * 60 * 60 * 1000;
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 17;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 18;
 const LEGACY_CONNECTOR_DELIVERY_GENERATION = "00000000-0000-0000-0000-000000000000";
 
 export interface RegistrationCodeRecord {
@@ -190,8 +196,58 @@ export type BellWakeReason =
   | "farm_purchase_request"
   | "farm_harvest_request"
   | "farm_plant_request"
+  | "farm_action_list"
   | "career_exam_reminder"
   | "career_job_update";
+
+export type FarmActionListNotificationStatus = "sent" | "all_crossed" | "failed";
+
+export interface FarmActionListRecord {
+  listId: string;
+  residentId: string;
+  revision: number;
+  name: string;
+  enabled: boolean;
+  schedule: FarmActionListSchedule | null;
+  nextTriggerAt: number | null;
+  items: FarmActionListItem[];
+  checkedItems: FarmActionListItemView[];
+  checkedAt: number | null;
+  lastNotificationStatus: FarmActionListNotificationStatus | null;
+  lastNotificationAt: number | null;
+  updatedAt: number;
+}
+
+export interface FarmActionListNotificationRecord {
+  notificationId: string;
+  listId: string;
+  residentId: string;
+  sourceKey: string;
+  requestHash: string;
+  listRevision: number;
+  scheduledFor: number | null;
+  status: FarmActionListNotificationStatus;
+  wakeId: string | null;
+  checkedItems: FarmActionListItemView[];
+  createdAt: number;
+}
+
+export class FarmActionListRevisionConflictError extends Error {
+  readonly currentRevision: number;
+
+  constructor(currentRevision: number) {
+    super("The farm action list revision has changed");
+    this.name = "FarmActionListRevisionConflictError";
+    this.currentRevision = currentRevision;
+  }
+}
+
+export class FarmActionListIdempotencyConflictError extends Error {
+  constructor() {
+    super("The farm action list notification key is already bound to different facts");
+    this.name = "FarmActionListIdempotencyConflictError";
+  }
+}
 
 export type CareerExamReminderStatus = "scheduled" | "delivered" | "cancelled";
 
@@ -797,6 +853,36 @@ interface FarmPlantRequestRow {
   payload_hash: string;
 }
 
+interface FarmActionListRow {
+  list_id: string;
+  resident_id: string;
+  revision: number;
+  name: string;
+  enabled: number;
+  schedule_json: string | null;
+  next_trigger_at: number | null;
+  items_json: string;
+  checked_items_json: string;
+  checked_at: number | null;
+  last_notification_status: FarmActionListNotificationStatus | null;
+  last_notification_at: number | null;
+  updated_at: number;
+}
+
+interface FarmActionListNotificationRow {
+  notification_id: string;
+  list_id: string;
+  resident_id: string;
+  source_key: string;
+  request_hash: string;
+  list_revision: number;
+  scheduled_for: number | null;
+  notification_status: FarmActionListNotificationStatus;
+  wake_id: string | null;
+  checked_items_json: string;
+  created_at: number;
+}
+
 interface MailboxLetterRow {
   letter_id: string;
   home_id: string;
@@ -1079,6 +1165,57 @@ function mapFarmPlantRequest(row: FarmPlantRequestRow): FarmPlantRequestRecord {
     createdAt: row.created_at,
     expiresAt: row.expires_at,
     payloadHash: row.payload_hash,
+  };
+}
+
+function parseFarmActionListItems(value: string): FarmActionListItem[] {
+  const parsed: unknown = JSON.parse(value);
+  if (!Array.isArray(parsed)) throw new Error("Stored farm action list items are invalid");
+  return parsed.map((item) => farmActionListItemSchema.parse(item));
+}
+
+function parseFarmActionListItemViews(value: string): FarmActionListItemView[] {
+  const parsed: unknown = JSON.parse(value);
+  if (!Array.isArray(parsed)) throw new Error("Stored farm action list checks are invalid");
+  return parsed.map((item) => farmActionListItemViewSchema.parse(item));
+}
+
+function mapFarmActionList(row: FarmActionListRow): FarmActionListRecord {
+  return {
+    listId: row.list_id,
+    residentId: row.resident_id,
+    revision: row.revision,
+    name: row.name,
+    enabled: row.enabled === 1,
+    schedule:
+      row.schedule_json === null
+        ? null
+        : farmActionListScheduleSchema.parse(JSON.parse(row.schedule_json)),
+    nextTriggerAt: row.next_trigger_at,
+    items: parseFarmActionListItems(row.items_json),
+    checkedItems: parseFarmActionListItemViews(row.checked_items_json),
+    checkedAt: row.checked_at,
+    lastNotificationStatus: row.last_notification_status,
+    lastNotificationAt: row.last_notification_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapFarmActionListNotification(
+  row: FarmActionListNotificationRow,
+): FarmActionListNotificationRecord {
+  return {
+    notificationId: row.notification_id,
+    listId: row.list_id,
+    residentId: row.resident_id,
+    sourceKey: row.source_key,
+    requestHash: row.request_hash,
+    listRevision: row.list_revision,
+    scheduledFor: row.scheduled_for,
+    status: row.notification_status,
+    wakeId: row.wake_id,
+    checkedItems: parseFarmActionListItemViews(row.checked_items_json),
+    createdAt: row.created_at,
   };
 }
 
@@ -1734,6 +1871,89 @@ export class CommunityDatabase {
 
       CREATE INDEX IF NOT EXISTS farm_plant_requests_resident_created
         ON farm_plant_requests (resident_id, created_at DESC, request_id DESC);
+
+      CREATE TABLE IF NOT EXISTS farm_action_lists (
+        list_id TEXT PRIMARY KEY,
+        resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+        revision INTEGER NOT NULL CHECK (revision >= 0),
+        name TEXT NOT NULL,
+        enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+        schedule_json TEXT,
+        next_trigger_at INTEGER,
+        items_json TEXT NOT NULL,
+        checked_items_json TEXT NOT NULL,
+        checked_at INTEGER,
+        last_notification_status TEXT CHECK (
+          last_notification_status IS NULL
+          OR last_notification_status IN ('sent', 'all_crossed', 'failed')
+        ),
+        last_notification_at INTEGER,
+        updated_at INTEGER NOT NULL,
+        CHECK (
+          (last_notification_status IS NULL AND last_notification_at IS NULL)
+          OR (last_notification_status IS NOT NULL AND last_notification_at IS NOT NULL)
+        )
+      );
+
+      CREATE INDEX IF NOT EXISTS farm_action_lists_due
+        ON farm_action_lists (enabled, next_trigger_at, resident_id);
+
+      CREATE TABLE IF NOT EXISTS farm_action_list_notifications (
+        notification_id TEXT PRIMARY KEY,
+        list_id TEXT NOT NULL REFERENCES farm_action_lists(list_id) ON DELETE CASCADE,
+        resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+        source_key TEXT NOT NULL,
+        request_hash TEXT NOT NULL,
+        list_revision INTEGER NOT NULL CHECK (list_revision >= 0),
+        scheduled_for INTEGER,
+        notification_status TEXT NOT NULL CHECK (
+          notification_status IN ('sent', 'all_crossed', 'failed')
+        ),
+        wake_id TEXT UNIQUE,
+        wake_status TEXT CHECK (
+          wake_status IS NULL OR wake_status IN ('pending', 'acked', 'blocked', 'cancelled')
+        ),
+        ended_at INTEGER,
+        block_reason TEXT,
+        error_code TEXT,
+        payload_json TEXT,
+        checked_items_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        UNIQUE (list_id, source_key),
+        CHECK (
+          (notification_status IN ('all_crossed', 'failed')
+            AND wake_id IS NULL
+            AND wake_status IS NULL
+            AND ended_at IS NULL
+            AND block_reason IS NULL
+            AND error_code IS NULL
+            AND payload_json IS NULL)
+          OR (notification_status = 'sent'
+            AND wake_id IS NOT NULL
+            AND payload_json IS NOT NULL
+            AND (
+              (wake_status = 'pending'
+                AND ended_at IS NULL
+                AND block_reason IS NULL
+                AND error_code IS NULL)
+              OR (wake_status = 'acked'
+                AND ended_at IS NOT NULL
+                AND block_reason IS NULL
+                AND error_code IS NULL)
+              OR (wake_status = 'blocked'
+                AND ended_at IS NOT NULL
+                AND block_reason IS NOT NULL
+                AND error_code IS NOT NULL)
+              OR (wake_status = 'cancelled'
+                AND ended_at IS NOT NULL
+                AND block_reason IS NULL
+                AND error_code IS NULL)
+            ))
+        )
+      );
+
+      CREATE INDEX IF NOT EXISTS farm_action_list_notifications_resident_created
+        ON farm_action_list_notifications (resident_id, created_at DESC, notification_id DESC);
     `);
     let migratedSchemaVersion = databaseSchemaVersion;
     if (migratedSchemaVersion < 1) {
@@ -2943,6 +3163,96 @@ export class CommunityDatabase {
       })();
       migratedSchemaVersion = 17;
     }
+    if (migratedSchemaVersion < 18) {
+      this.#database.transaction(() => {
+        this.#database.exec(`
+          CREATE TABLE IF NOT EXISTS farm_action_lists (
+            list_id TEXT PRIMARY KEY,
+            resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+            revision INTEGER NOT NULL CHECK (revision >= 0),
+            name TEXT NOT NULL,
+            enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+            schedule_json TEXT,
+            next_trigger_at INTEGER,
+            items_json TEXT NOT NULL,
+            checked_items_json TEXT NOT NULL,
+            checked_at INTEGER,
+            last_notification_status TEXT CHECK (
+              last_notification_status IS NULL
+              OR last_notification_status IN ('sent', 'all_crossed', 'failed')
+            ),
+            last_notification_at INTEGER,
+            updated_at INTEGER NOT NULL,
+            CHECK (
+              (last_notification_status IS NULL AND last_notification_at IS NULL)
+              OR (last_notification_status IS NOT NULL AND last_notification_at IS NOT NULL)
+            )
+          );
+
+          CREATE INDEX IF NOT EXISTS farm_action_lists_due
+            ON farm_action_lists (enabled, next_trigger_at, resident_id);
+
+          CREATE TABLE IF NOT EXISTS farm_action_list_notifications (
+            notification_id TEXT PRIMARY KEY,
+            list_id TEXT NOT NULL REFERENCES farm_action_lists(list_id) ON DELETE CASCADE,
+            resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+            source_key TEXT NOT NULL,
+            request_hash TEXT NOT NULL,
+            list_revision INTEGER NOT NULL CHECK (list_revision >= 0),
+            scheduled_for INTEGER,
+            notification_status TEXT NOT NULL CHECK (
+              notification_status IN ('sent', 'all_crossed', 'failed')
+            ),
+            wake_id TEXT UNIQUE,
+            wake_status TEXT CHECK (
+              wake_status IS NULL OR wake_status IN ('pending', 'acked', 'blocked', 'cancelled')
+            ),
+            ended_at INTEGER,
+            block_reason TEXT,
+            error_code TEXT,
+            payload_json TEXT,
+            checked_items_json TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            UNIQUE (list_id, source_key),
+            CHECK (
+              (notification_status IN ('all_crossed', 'failed')
+                AND wake_id IS NULL
+                AND wake_status IS NULL
+                AND ended_at IS NULL
+                AND block_reason IS NULL
+                AND error_code IS NULL
+                AND payload_json IS NULL)
+              OR (notification_status = 'sent'
+                AND wake_id IS NOT NULL
+                AND payload_json IS NOT NULL
+                AND (
+                  (wake_status = 'pending'
+                    AND ended_at IS NULL
+                    AND block_reason IS NULL
+                    AND error_code IS NULL)
+                  OR (wake_status = 'acked'
+                    AND ended_at IS NOT NULL
+                    AND block_reason IS NULL
+                    AND error_code IS NULL)
+                  OR (wake_status = 'blocked'
+                    AND ended_at IS NOT NULL
+                    AND block_reason IS NOT NULL
+                    AND error_code IS NOT NULL)
+                  OR (wake_status = 'cancelled'
+                    AND ended_at IS NOT NULL
+                    AND block_reason IS NULL
+                    AND error_code IS NULL)
+                ))
+            )
+          );
+
+          CREATE INDEX IF NOT EXISTS farm_action_list_notifications_resident_created
+            ON farm_action_list_notifications (resident_id, created_at DESC, notification_id DESC);
+        `);
+        this.#database.pragma("user_version = 18");
+      })();
+      migratedSchemaVersion = 18;
+    }
     this.#database.transaction(() => {
       const itemColumns = this.#database.pragma(
         "table_info(farm_purchase_request_items)",
@@ -2964,6 +3274,317 @@ export class CommunityDatabase {
     this.#database.exec(
       "CREATE UNIQUE INDEX IF NOT EXISTS bell_wakes_one_purchase_request ON bell_wakes (purchase_request_id) WHERE purchase_request_id IS NOT NULL",
     );
+  }
+
+  getFarmActionList(residentId: string, listId: string): FarmActionListRecord | undefined {
+    const row = this.#database
+      .prepare(
+        `SELECT list_id,
+                resident_id,
+                revision,
+                name,
+                enabled,
+                schedule_json,
+                next_trigger_at,
+                items_json,
+                checked_items_json,
+                checked_at,
+                last_notification_status,
+                last_notification_at,
+                updated_at
+         FROM farm_action_lists
+         WHERE resident_id = ? AND list_id = ?`,
+      )
+      .get(residentId, listId) as FarmActionListRow | undefined;
+    return row ? mapFarmActionList(row) : undefined;
+  }
+
+  listFarmActionLists(residentId: string): FarmActionListRecord[] {
+    const rows = this.#database
+      .prepare(
+        `SELECT list_id, resident_id, revision, name, enabled, schedule_json, next_trigger_at,
+                items_json, checked_items_json, checked_at, last_notification_status,
+                last_notification_at, updated_at
+         FROM farm_action_lists
+         WHERE resident_id = ?
+         ORDER BY updated_at DESC, list_id ASC`,
+      )
+      .all(residentId) as FarmActionListRow[];
+    return rows.map(mapFarmActionList);
+  }
+
+  updateFarmActionList(input: {
+    listId: string;
+    residentId: string;
+    expectedRevision: number;
+    name: string;
+    enabled: boolean;
+    schedule: FarmActionListSchedule | null;
+    nextTriggerAt: number | null;
+    items: readonly FarmActionListItem[];
+    checkedItems: readonly FarmActionListItemView[];
+    now: number;
+  }): FarmActionListRecord {
+    const schedule =
+      input.schedule === null ? null : farmActionListScheduleSchema.parse(input.schedule);
+    const items = input.items.map((item) => farmActionListItemSchema.parse(item));
+    const checkedItems = input.checkedItems.map((item) => farmActionListItemViewSchema.parse(item));
+    const transaction = this.#database.transaction(() => {
+      const resident = this.#database
+        .prepare("SELECT 1 FROM residents WHERE resident_id = ?")
+        .get(input.residentId);
+      if (!resident) throw new Error("The farm action list resident does not exist");
+      const current = this.getFarmActionList(input.residentId, input.listId);
+      const currentRevision = current?.revision ?? 0;
+      if (currentRevision !== input.expectedRevision) {
+        throw new FarmActionListRevisionConflictError(currentRevision);
+      }
+      const revision = currentRevision + 1;
+      this.#database
+        .prepare(
+          `INSERT INTO farm_action_lists (
+             list_id,
+             resident_id,
+             revision,
+             name,
+             enabled,
+             schedule_json,
+             next_trigger_at,
+             items_json,
+             checked_items_json,
+             checked_at,
+             last_notification_status,
+             last_notification_at,
+             updated_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?)
+           ON CONFLICT(list_id) DO UPDATE SET
+             revision = excluded.revision,
+             name = excluded.name,
+             enabled = excluded.enabled,
+             schedule_json = excluded.schedule_json,
+             next_trigger_at = excluded.next_trigger_at,
+             items_json = excluded.items_json,
+             checked_items_json = excluded.checked_items_json,
+             checked_at = NULL,
+             updated_at = excluded.updated_at`,
+        )
+        .run(
+          input.listId,
+          input.residentId,
+          revision,
+          input.name,
+          input.enabled ? 1 : 0,
+          schedule === null ? null : JSON.stringify(schedule),
+          input.nextTriggerAt,
+          JSON.stringify(items),
+          JSON.stringify(checkedItems),
+          input.now,
+        );
+      const updated = this.getFarmActionList(input.residentId, input.listId);
+      if (!updated) throw new Error("The farm action list could not be read after update");
+      return updated;
+    });
+    return transaction.immediate();
+  }
+
+  deleteFarmActionList(residentId: string, listId: string, expectedRevision: number): boolean {
+    const current = this.getFarmActionList(residentId, listId);
+    if (!current) return false;
+    if (current.revision !== expectedRevision) {
+      throw new FarmActionListRevisionConflictError(current.revision);
+    }
+    return (
+      this.#database
+        .prepare("DELETE FROM farm_action_lists WHERE resident_id = ? AND list_id = ?")
+        .run(residentId, listId).changes === 1
+    );
+  }
+
+  listDueActionLists(
+    now: number,
+  ): Array<{ listId: string; residentId: string; scheduledFor: number }> {
+    const rows = this.#database
+      .prepare(
+        `SELECT list_id, resident_id, next_trigger_at
+         FROM farm_action_lists
+         WHERE enabled = 1 AND next_trigger_at IS NOT NULL AND next_trigger_at <= ?
+         ORDER BY next_trigger_at ASC, resident_id ASC`,
+      )
+      .all(now) as Array<{ list_id: string; resident_id: string; next_trigger_at: number }>;
+    return rows.map((row) => ({
+      listId: row.list_id,
+      residentId: row.resident_id,
+      scheduledFor: row.next_trigger_at,
+    }));
+  }
+
+  nextActionListDueAt(): number | null {
+    const row = this.#database
+      .prepare(
+        `SELECT MIN(next_trigger_at) AS next_trigger_at
+         FROM farm_action_lists
+         WHERE enabled = 1 AND next_trigger_at IS NOT NULL`,
+      )
+      .get() as { next_trigger_at: number | null };
+    return row.next_trigger_at;
+  }
+
+  getFarmActionListNotification(
+    residentId: string,
+    listId: string,
+    sourceKey: string,
+  ): FarmActionListNotificationRecord | undefined {
+    const row = this.#database
+      .prepare(
+        `SELECT notification_id,
+                list_id,
+                resident_id,
+                source_key,
+                request_hash,
+                list_revision,
+                scheduled_for,
+                notification_status,
+                wake_id,
+                checked_items_json,
+                created_at
+         FROM farm_action_list_notifications
+         WHERE resident_id = ? AND list_id = ? AND source_key = ?`,
+      )
+      .get(residentId, listId, sourceKey) as FarmActionListNotificationRow | undefined;
+    return row ? mapFarmActionListNotification(row) : undefined;
+  }
+
+  recordFarmActionListNotification(input: {
+    notificationId: string;
+    listId: string;
+    residentId: string;
+    sourceKey: string;
+    requestHash: string;
+    expectedRevision: number;
+    scheduledFor: number | null;
+    status: FarmActionListNotificationStatus;
+    wakeId: string | null;
+    message: string | null;
+    checkedItems: readonly FarmActionListItemView[];
+    advanceSchedule: { enabled: boolean; nextTriggerAt: number | null } | null;
+    now: number;
+  }): {
+    notification: FarmActionListNotificationRecord;
+    list: FarmActionListRecord;
+    created: boolean;
+  } {
+    const checkedItems = input.checkedItems.map((item) => farmActionListItemViewSchema.parse(item));
+    const transaction = this.#database.transaction(() => {
+      const existing = this.getFarmActionListNotification(
+        input.residentId,
+        input.listId,
+        input.sourceKey,
+      );
+      if (existing) {
+        if (existing.requestHash !== input.requestHash) {
+          throw new FarmActionListIdempotencyConflictError();
+        }
+        const current = this.getFarmActionList(input.residentId, input.listId);
+        if (!current) throw new Error("The farm action list is missing during replay");
+        return { notification: existing, list: current, created: false };
+      }
+      const current = this.getFarmActionList(input.residentId, input.listId);
+      const currentRevision = current?.revision ?? 0;
+      if (!current || currentRevision !== input.expectedRevision) {
+        throw new FarmActionListRevisionConflictError(currentRevision);
+      }
+      if (input.status === "sent") {
+        if (!input.wakeId || !input.message?.trim()) {
+          throw new Error("A sent farm action list notification needs a Bell wake");
+        }
+        const collision = this.#database
+          .prepare(
+            `SELECT wake_id FROM bell_wakes WHERE wake_id = ?
+             UNION ALL SELECT wake_id FROM career_job_wakes WHERE wake_id = ?
+             UNION ALL SELECT wake_id FROM farm_harvest_requests WHERE wake_id = ?
+             UNION ALL SELECT wake_id FROM farm_plant_requests WHERE wake_id = ?
+             UNION ALL SELECT wake_id FROM farm_action_list_notifications WHERE wake_id = ?`,
+          )
+          .get(input.wakeId, input.wakeId, input.wakeId, input.wakeId, input.wakeId);
+        if (collision) throw new Error("The farm action list wake id is already in use");
+      } else if (input.wakeId !== null || input.message !== null) {
+        throw new Error("An all-crossed farm action list must not create a Bell wake");
+      }
+      this.#database
+        .prepare(
+          `INSERT INTO farm_action_list_notifications (
+             notification_id,
+             list_id,
+             resident_id,
+             source_key,
+             request_hash,
+             list_revision,
+             scheduled_for,
+             notification_status,
+             wake_id,
+             wake_status,
+             ended_at,
+             block_reason,
+             error_code,
+             payload_json,
+             checked_items_json,
+             created_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?)`,
+        )
+        .run(
+          input.notificationId,
+          input.listId,
+          input.residentId,
+          input.sourceKey,
+          input.requestHash,
+          input.expectedRevision,
+          input.scheduledFor,
+          input.status,
+          input.wakeId,
+          input.status === "sent" ? "pending" : null,
+          input.message === null ? null : JSON.stringify({ text: input.message }),
+          JSON.stringify(checkedItems),
+          input.now,
+        );
+      const revision = current.revision + 1;
+      this.#database
+        .prepare(
+          `UPDATE farm_action_lists
+           SET revision = ?,
+               enabled = ?,
+               next_trigger_at = ?,
+               checked_items_json = ?,
+               checked_at = ?,
+               last_notification_status = ?,
+               last_notification_at = ?,
+               updated_at = ?
+           WHERE resident_id = ? AND list_id = ? AND revision = ?`,
+        )
+        .run(
+          revision,
+          input.advanceSchedule ? (input.advanceSchedule.enabled ? 1 : 0) : current.enabled ? 1 : 0,
+          input.advanceSchedule ? input.advanceSchedule.nextTriggerAt : current.nextTriggerAt,
+          JSON.stringify(checkedItems),
+          input.now,
+          input.status,
+          input.now,
+          input.now,
+          input.residentId,
+          input.listId,
+          current.revision,
+        );
+      const notification = this.getFarmActionListNotification(
+        input.residentId,
+        input.listId,
+        input.sourceKey,
+      );
+      const updated = this.getFarmActionList(input.residentId, input.listId);
+      if (!notification || !updated) {
+        throw new Error("The farm action list notification could not be read after creation");
+      }
+      return { notification, list: updated, created: true };
+    });
+    return transaction.immediate();
   }
 
   upsertBrowserPushSubscription(input: {
@@ -3877,6 +4498,12 @@ export class CommunityDatabase {
       )
       .all() as HumanCommunityRow[];
     return rows.map(mapCommunity);
+  }
+
+  findActiveHumanCommunityByResidentId(residentId: string): HumanCommunityRecord | undefined {
+    return this.listActiveHumanCommunities().find(
+      (community) => community.resident.residentId === residentId,
+    );
   }
 
   findHomeIdByResidentId(residentId: string): string | undefined {
@@ -4925,7 +5552,26 @@ export class CommunityDatabase {
          WHERE resident_id = ? AND wake_status = 'pending'`,
       )
       .all(residentId) as BellWakeRow[];
-    return [...rows, ...harvestRows, ...plantRows, ...careerRows]
+    const actionListRows = this.#database
+      .prepare(
+        `SELECT wake_id,
+                resident_id,
+                'farm_action_list' AS reason,
+                wake_status AS status,
+                created_at,
+                ended_at,
+                block_reason,
+                error_code,
+                NULL AS purchase_request_id,
+                NULL AS letter_id,
+                payload_json
+         FROM farm_action_list_notifications
+         WHERE resident_id = ?
+           AND notification_status = 'sent'
+           AND wake_status = 'pending'`,
+      )
+      .all(residentId) as BellWakeRow[];
+    return [...rows, ...harvestRows, ...plantRows, ...actionListRows, ...careerRows]
       .map(mapBellWake)
       .sort(
         (left, right) =>
@@ -5059,6 +5705,25 @@ export class CommunityDatabase {
       .prepare(
         `SELECT wake_id,
                 resident_id,
+                'farm_action_list' AS reason,
+                wake_status AS status,
+                created_at,
+                ended_at,
+                block_reason,
+                error_code,
+                NULL AS purchase_request_id,
+                NULL AS letter_id,
+                payload_json
+         FROM farm_action_list_notifications
+         WHERE resident_id = ?
+           AND wake_id = ?
+           AND notification_status = 'sent'`,
+      )
+      .get(residentId, wakeId) as BellWakeRow | undefined;
+    row ??= this.#database
+      .prepare(
+        `SELECT wake_id,
+                resident_id,
                 'career_job_update' AS reason,
                 status,
                 created_at,
@@ -5098,7 +5763,7 @@ export class CommunityDatabase {
            WHERE resident_id = ? AND wake_id = ?`,
         )
         .get(residentId, wakeId) as BellWakeRow | undefined;
-      let wakeSource: "bell" | "harvest" | "plant" | "career" = "bell";
+      let wakeSource: "bell" | "harvest" | "plant" | "action" | "career" = "bell";
       if (!row) {
         wakeSource = "harvest";
         row = this.#database
@@ -5139,6 +5804,28 @@ export class CommunityDatabase {
           )
           .get(residentId, wakeId) as BellWakeRow | undefined;
       }
+      if (!row) {
+        wakeSource = "action";
+        row = this.#database
+          .prepare(
+            `SELECT wake_id,
+                    resident_id,
+                    'farm_action_list' AS reason,
+                    wake_status AS status,
+                    created_at,
+                    ended_at,
+                    block_reason,
+                    error_code,
+                    NULL AS purchase_request_id,
+                    NULL AS letter_id,
+                    payload_json
+             FROM farm_action_list_notifications
+             WHERE resident_id = ?
+               AND wake_id = ?
+               AND notification_status = 'sent'`,
+          )
+          .get(residentId, wakeId) as BellWakeRow | undefined;
+      }
       if (!row) wakeSource = "career";
       row ??= this.#database
         .prepare(
@@ -5163,13 +5850,17 @@ export class CommunityDatabase {
       const wakeTable =
         wakeSource === "career"
           ? "career_job_wakes"
-          : wakeSource === "plant"
-            ? "farm_plant_requests"
-            : wakeSource === "harvest"
-              ? "farm_harvest_requests"
-              : "bell_wakes";
+          : wakeSource === "action"
+            ? "farm_action_list_notifications"
+            : wakeSource === "plant"
+              ? "farm_plant_requests"
+              : wakeSource === "harvest"
+                ? "farm_harvest_requests"
+                : "bell_wakes";
       const wakeStatusColumn =
-        wakeSource === "harvest" || wakeSource === "plant" ? "wake_status" : "status";
+        wakeSource === "harvest" || wakeSource === "plant" || wakeSource === "action"
+          ? "wake_status"
+          : "status";
       this.#database
         .prepare(
           `UPDATE ${wakeTable}
@@ -5216,7 +5907,7 @@ export class CommunityDatabase {
            WHERE resident_id = ? AND wake_id = ?`,
         )
         .get(residentId, wakeId) as BellWakeRow | undefined;
-      let wakeSource: "bell" | "harvest" | "plant" | "career" = "bell";
+      let wakeSource: "bell" | "harvest" | "plant" | "action" | "career" = "bell";
       if (!row) {
         wakeSource = "harvest";
         row = this.#database
@@ -5254,6 +5945,28 @@ export class CommunityDatabase {
                     payload_json
              FROM farm_plant_requests
              WHERE resident_id = ? AND wake_id = ?`,
+          )
+          .get(residentId, wakeId) as BellWakeRow | undefined;
+      }
+      if (!row) {
+        wakeSource = "action";
+        row = this.#database
+          .prepare(
+            `SELECT wake_id,
+                    resident_id,
+                    'farm_action_list' AS reason,
+                    wake_status AS status,
+                    created_at,
+                    ended_at,
+                    block_reason,
+                    error_code,
+                    NULL AS purchase_request_id,
+                    NULL AS letter_id,
+                    payload_json
+             FROM farm_action_list_notifications
+             WHERE resident_id = ?
+               AND wake_id = ?
+               AND notification_status = 'sent'`,
           )
           .get(residentId, wakeId) as BellWakeRow | undefined;
       }
@@ -5296,6 +6009,17 @@ export class CommunityDatabase {
              WHERE resident_id = ? AND wake_id = ? AND wake_status = 'pending'`,
           )
           .run(now, blockReason, errorCode, residentId, wakeId);
+      } else if (wakeSource === "action") {
+        this.#database
+          .prepare(
+            `UPDATE farm_action_list_notifications
+             SET wake_status = 'blocked',
+                 ended_at = ?,
+                 block_reason = ?,
+                 error_code = ?
+             WHERE resident_id = ? AND wake_id = ? AND wake_status = 'pending'`,
+          )
+          .run(now, blockReason, errorCode, residentId, wakeId);
       } else {
         this.#database
           .prepare(
@@ -5330,7 +6054,7 @@ export class CommunityDatabase {
            WHERE resident_id = ? AND wake_id = ? AND status = 'pending'`,
         )
         .get(residentId, wakeId) as { wake_id: string } | undefined;
-      let wakeSource: "bell" | "harvest" | "plant" | "career" = "bell";
+      let wakeSource: "bell" | "harvest" | "plant" | "action" | "career" = "bell";
       if (!row) {
         wakeSource = "harvest";
         row = this.#database
@@ -5351,6 +6075,19 @@ export class CommunityDatabase {
           )
           .get(residentId, wakeId) as { wake_id: string } | undefined;
       }
+      if (!row) {
+        wakeSource = "action";
+        row = this.#database
+          .prepare(
+            `SELECT wake_id
+             FROM farm_action_list_notifications
+             WHERE resident_id = ?
+               AND wake_id = ?
+               AND notification_status = 'sent'
+               AND wake_status = 'pending'`,
+          )
+          .get(residentId, wakeId) as { wake_id: string } | undefined;
+      }
       if (!row) wakeSource = "career";
       row ??= this.#database
         .prepare(
@@ -5365,13 +6102,17 @@ export class CommunityDatabase {
       const wakeTable =
         wakeSource === "career"
           ? "career_job_wakes"
-          : wakeSource === "plant"
-            ? "farm_plant_requests"
-            : wakeSource === "harvest"
-              ? "farm_harvest_requests"
-              : "bell_wakes";
+          : wakeSource === "action"
+            ? "farm_action_list_notifications"
+            : wakeSource === "plant"
+              ? "farm_plant_requests"
+              : wakeSource === "harvest"
+                ? "farm_harvest_requests"
+                : "bell_wakes";
       const wakeStatusColumn =
-        wakeSource === "harvest" || wakeSource === "plant" ? "wake_status" : "status";
+        wakeSource === "harvest" || wakeSource === "plant" || wakeSource === "action"
+          ? "wake_status"
+          : "status";
       this.#database
         .prepare(
           `UPDATE ${wakeTable}
