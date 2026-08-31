@@ -8546,12 +8546,21 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     let sharedMemeListScrollTop = 0;
     let sharedMemeSelectedId = '';
     let settingsSaveScope = '';
-    const lingyeFullscreenScreenIds = new Set([
-        'screen-lingye-glimmer',
-        'screen-lingye-memorial',
-        'screen-lingye-together',
-        'screen-lingye-together-history',
+    const authenticatedMainNavigationScreenIds = new Set([
+        'screen-lounge',
+        'screen-lingye',
+        'screen-home',
+        'screen-profile',
+        'screen-settings',
     ]);
+    const candidateScreenParentIds = new Map([
+        ['screen-shared-memes', 'screen-settings'],
+        ['screen-lingye-glimmer', 'screen-lingye'],
+        ['screen-lingye-memorial', 'screen-lingye'],
+        ['screen-lingye-together', 'screen-lingye'],
+        ['screen-lingye-together-history', 'screen-lingye-together'],
+    ]);
+    let currentCandidateScreenId = '';
     let settingsWasSaving = '';
     let permitTimer = 0;
     const homeScaleShell = document.querySelector('.candidate2-home-scale-shell');
@@ -10478,10 +10487,15 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     });
 
     function syncAuthenticatedMainNavigation(screenId) {
-        const lingyeFullscreenPageOpen = lingyeFullscreenScreenIds.has(screenId);
-        mainNav.style.display = lingyeFullscreenPageOpen ? 'none' : 'flex';
-        if (lingyeFullscreenPageOpen) mainNav.setAttribute('aria-hidden', 'true');
+        const mainScreenOpen = authenticatedMainNavigationScreenIds.has(screenId);
+        mainNav.style.display = mainScreenOpen ? 'flex' : 'none';
+        if (!mainScreenOpen) mainNav.setAttribute('aria-hidden', 'true');
         else mainNav.removeAttribute('aria-hidden');
+    }
+
+    function candidateParentScreenId(screenId) {
+        if (screenId.startsWith('screen-lingye-institution-')) return 'screen-lingye';
+        return candidateScreenParentIds.get(screenId) || '';
     }
 
     function deferInactiveCandidateScreenImages() {
@@ -10516,9 +10530,10 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     }
 
     const originalShowScreen = window.showScreen;
-    window.showScreen = (screenId) => {
+    function renderCandidateScreen(screenId) {
         deferInactiveCandidateScreenImages();
         originalShowScreen(screenId);
+        currentCandidateScreenId = screenId;
         activateCandidateDeferredImages(document.getElementById(screenId));
         activateCandidateScreenStylesheets(screenId);
         if (currentStage === 'authenticated') {
@@ -10533,7 +10548,49 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         if (screenId === 'screen-lingye-memorial') {
             scheduleMemorialLayoutFit(memorialEntry.hidden ? 'index' : 'entry');
         }
+    }
+
+    window.showScreen = (screenId) => {
+        if (currentStage !== 'authenticated') {
+            renderCandidateScreen(screenId);
+            return;
+        }
+        if (screenId === currentCandidateScreenId) {
+            renderCandidateScreen(screenId);
+            window.history.replaceState({ doorbellCandidateScreenId: screenId }, '');
+            return;
+        }
+        const parentScreenId = candidateParentScreenId(currentCandidateScreenId);
+        if (
+            parentScreenId === screenId &&
+            window.history.state?.doorbellCandidateScreenId === currentCandidateScreenId
+        ) {
+            window.history.back();
+            return;
+        }
+        const hasCandidateHistory = typeof window.history.state?.doorbellCandidateScreenId === 'string';
+        const initialParentScreenId = candidateParentScreenId(screenId);
+        if (!hasCandidateHistory && initialParentScreenId) {
+            window.history.replaceState(
+                { doorbellCandidateScreenId: initialParentScreenId },
+                '',
+            );
+        }
+        renderCandidateScreen(screenId);
+        if (authenticatedMainNavigationScreenIds.has(screenId)) {
+            window.history.replaceState({ doorbellCandidateScreenId: screenId }, '');
+        } else if (!hasCandidateHistory && initialParentScreenId) {
+            window.history.pushState({ doorbellCandidateScreenId: screenId }, '');
+        } else if (window.history.state?.doorbellCandidateScreenId !== screenId) {
+            window.history.pushState({ doorbellCandidateScreenId: screenId }, '');
+        }
     };
+
+    window.addEventListener('popstate', (event) => {
+        const screenId = event.state?.doorbellCandidateScreenId;
+        if (typeof screenId !== 'string' || !document.getElementById(screenId)) return;
+        renderCandidateScreen(screenId);
+    });
 
     document.querySelectorAll('img[data-src]').forEach((image) => {
         if (!image.closest('.screen')) activateCandidateDeferredImage(image);

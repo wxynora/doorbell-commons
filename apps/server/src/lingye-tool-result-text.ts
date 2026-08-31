@@ -226,6 +226,10 @@ function statusText(value: unknown): string {
   return typeof value === "string" ? (STATUS_NAMES[value] ?? "暂无法读取具体描述") : "暂无法读取";
 }
 
+function certificateStatusText(value: unknown): string {
+  return value === "active" ? "已生效" : statusText(value);
+}
+
 function careerText(value: unknown): string {
   return typeof value === "string" ? (CAREER_NAMES[value] ?? "暂无法读取具体描述") : "暂无法读取";
 }
@@ -550,6 +554,14 @@ function renderSchoolActionResult(value: unknown): string[] {
   }
   const correctAnswers = finiteNumber(value.correctAnswers);
   if (correctAnswers !== undefined && typeof value.passed === "boolean") {
+    if (
+      typeof value.status === "string" &&
+      ["passed", "failed", "written_passed", "expired"].includes(value.status)
+    ) {
+      return [
+        `资格考试：答对 ${numberText(correctAnswers)}/20；${value.passed ? "已通过" : "未通过"}。`,
+      ];
+    }
     return [
       `课程练习：答对 ${numberText(correctAnswers)}/5；${value.passed ? "已通过" : "尚未通过，可以重新作答"}。`,
     ];
@@ -572,7 +584,7 @@ function renderCertificates(value: unknown): string[] {
     ...certificates.map((certificate) => {
       const title = safeChineseText(certificate.title);
       const titleSuffix = title ? `（${title}）` : "";
-      return `- ${careerText(certificate.career)} ${numberText(certificate.qualificationLevel)} 级${titleSuffix}：${statusText(certificate.status)}。`;
+      return `- ${careerText(certificate.career)} ${numberText(certificate.qualificationLevel)} 级${titleSuffix}：${certificateStatusText(certificate.status)}。`;
     }),
   ];
 }
