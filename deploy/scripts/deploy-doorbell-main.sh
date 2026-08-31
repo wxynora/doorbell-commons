@@ -6,6 +6,7 @@ umask 022
 readonly EXPECTED_ORIGIN="https://github.com/wxynora/doorbell-commons.git"
 readonly SOURCE_DIRECTORY="/opt/doorbell-commons-source"
 readonly RUNTIME_DIRECTORY="/opt/doorbell-commons"
+readonly DEPENDENCY_DIRECTORY="/opt/doorbell-commons-deps"
 readonly DATABASE_PATH="/var/lib/doorbell-commons/doorbell.sqlite"
 readonly BACKUP_ROOT="/var/backups/doorbell-commons/releases"
 readonly ARTIFACT_INBOX="/var/lib/doorbell-commons/releases/incoming"
@@ -67,8 +68,12 @@ readonly artifact_mode
   fail "missing current runtime: ${RUNTIME_DIRECTORY}"
   exit 1
 }
-[[ -d "${RUNTIME_DIRECTORY}/node_modules" ]] || {
-  fail "current runtime has no reusable Linux dependencies"
+[[ -d "${DEPENDENCY_DIRECTORY}/node_modules" ]] || {
+  fail "persistent Linux dependencies are missing"
+  exit 1
+}
+[[ -f "${DEPENDENCY_DIRECTORY}/package-lock.json" ]] || {
+  fail "persistent dependency lock is missing"
   exit 1
 }
 [[ -f "${DATABASE_PATH}" ]] || {
@@ -164,11 +169,11 @@ node "${candidate_directory}/deploy/scripts/verify-doorbell-runtime-artifact.mjs
   "${candidate_directory}" "${TARGET_SHA}"
 cmp --silent \
   "${candidate_directory}/package-lock.json" \
-  "${RUNTIME_DIRECTORY}/package-lock.json" || {
+  "${DEPENDENCY_DIRECTORY}/package-lock.json" || {
   fail "dependency lock changed; refusing to install or build dependencies on the VPS"
   exit 1
 }
-cp -a "${RUNTIME_DIRECTORY}/node_modules" "${candidate_directory}/"
+ln -s "${DEPENDENCY_DIRECTORY}/node_modules" "${candidate_directory}/node_modules"
 rm -f -- "${ARTIFACT_PATH}"
 
 node --check "${candidate_directory}/apps/server/dist/index.js"

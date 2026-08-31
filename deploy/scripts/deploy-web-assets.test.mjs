@@ -45,16 +45,17 @@ test("approved release resolution and old hash retention happen before the runti
   assert.ok(assetMerge < runtimeSwitch);
 });
 
-test("the VPS reuses dependencies only when the lockfile is byte-for-byte identical", () => {
+test("the VPS links one persistent dependency layer only when the lockfile is identical", () => {
   const verification = deployer.indexOf("verify-doorbell-runtime-artifact.mjs");
   const lockComparison = deployer.indexOf("cmp --silent");
-  const dependencyReuse = deployer.search(
-    /cp -a "\$\{RUNTIME_DIRECTORY\}\/node_modules" "\$\{candidate_directory\}\//u,
+  const dependencyLink = deployer.search(
+    /ln -s "\$\{DEPENDENCY_DIRECTORY\}\/node_modules" "\$\{candidate_directory\}\/node_modules"/u,
   );
   const serviceStop = deployer.lastIndexOf("systemctl stop");
   assert.ok(verification >= 0 && verification < lockComparison);
-  assert.ok(lockComparison < dependencyReuse && dependencyReuse < serviceStop);
+  assert.ok(lockComparison < dependencyLink && dependencyLink < serviceStop);
   assert.match(deployer, /dependency lock changed; refusing to install or build dependencies/u);
+  assert.doesNotMatch(deployer, /cp -a .*node_modules/u);
 });
 
 test("old lazy chunks remain available without replacing a newly built hash", async () => {

@@ -1206,9 +1206,11 @@ plus protocol／server／web builds from the exact `origin/main` archive, then p
 application build output and manifests; it never runs Docker and never packages Mac `node_modules`.
 `deploy/scripts/publish-doorbell-main.sh` uploads that artifact plus the exact target revision's
 server entry before invoking it. On the VPS, extraction and target verification happen before any
-service stop. The candidate and current runtime `package-lock.json` must be byte-for-byte identical;
-only then are the current Linux `node_modules` copied into the candidate. A dependency change rejects
-the release before service stop rather than installing or building on the VPS. The approved PWA
+service stop. Linux production dependencies live once at
+`/opt/doorbell-commons-deps/{node_modules,package-lock.json}`. The candidate and persistent dependency
+`package-lock.json` must be byte-for-byte identical; only then does the candidate receive one absolute
+symlink to that fixed `node_modules`. A dependency change rejects the release before service stop
+rather than installing, rebuilding or copying dependencies. The approved PWA
 release is resolved against the current runtime and previous content-hashed assets are merged without
 replacing candidate files. The entry then validates SQLite, makes the mode-0600 online backup and
 atomically switches `/opt/doorbell-commons`. The installed
