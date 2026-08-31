@@ -27,7 +27,12 @@ test("community screen images wait until their screen opens", () => {
   assert.doesNotMatch(html, /<img[^>]*\ssrc="\/lingye\/map\.png"/);
   assert.match(
     html,
-    /function deferInactiveCandidateScreenImages\(\)[\s\S]*\.screen:not\(\.active\) img\[src\][\s\S]*window\.showScreen = \(screenId\) => \{[\s\S]*deferInactiveCandidateScreenImages\(\);[\s\S]*originalShowScreen\(screenId\);[\s\S]*activateCandidateDeferredImages\(document\.getElementById\(screenId\)\)/,
+    /<link data-screen-stylesheet="screen-lingye-memorial" data-href="\/lingye\/memorial\/qixi-archive\/moqu-gufeng-ti\.css" rel="stylesheet">/,
+  );
+  assert.doesNotMatch(html, /<link href="\/lingye\/memorial\/qixi-archive\/moqu-gufeng-ti\.css"/);
+  assert.match(
+    html,
+    /function deferInactiveCandidateScreenImages\(\)[\s\S]*\.screen:not\(\.active\) img\[src\][\s\S]*function activateCandidateScreenStylesheets\(screenId\)[\s\S]*window\.showScreen = \(screenId\) => \{[\s\S]*deferInactiveCandidateScreenImages\(\);[\s\S]*originalShowScreen\(screenId\);[\s\S]*activateCandidateDeferredImages\(document\.getElementById\(screenId\)\);[\s\S]*activateCandidateScreenStylesheets\(screenId\)/,
   );
   assert.match(
     html,

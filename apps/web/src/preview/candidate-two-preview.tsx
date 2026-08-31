@@ -10,7 +10,7 @@ import {
   type SharedMemeListSuccess,
   sharedMemeAddRequestSchema,
 } from "@doorbell/protocol";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   BoundGlimmerRead,
   BoundQixiMemorialRead,
@@ -1612,7 +1612,7 @@ interface CandidateTwoPreviewProps {
 const DOORBELL_FONTS = '<link href="/fonts/doorbell-fonts.v2.css" rel="stylesheet">';
 
 const MOQU_GUFENG_FONT =
-  '<link href="/lingye/memorial/qixi-archive/moqu-gufeng-ti.css" rel="stylesheet">';
+  '<link data-screen-stylesheet="screen-lingye-memorial" data-href="/lingye/memorial/qixi-archive/moqu-gufeng-ti.css" rel="stylesheet">';
 
 const LOGIN_RUNTIME_CONTENT = `        <form id="credentials-form" class="candidate2-auth-step">
             <div class="input-group">
@@ -10497,11 +10497,22 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         root.querySelectorAll('img[data-src]').forEach(activateCandidateDeferredImage);
     }
 
+    function activateCandidateScreenStylesheets(screenId) {
+        document.querySelectorAll('link[data-screen-stylesheet][data-href]').forEach((stylesheet) => {
+            if (stylesheet.getAttribute('data-screen-stylesheet') !== screenId) return;
+            const href = stylesheet.getAttribute('data-href');
+            if (!href) return;
+            stylesheet.setAttribute('href', href);
+            stylesheet.removeAttribute('data-href');
+        });
+    }
+
     const originalShowScreen = window.showScreen;
     window.showScreen = (screenId) => {
         deferInactiveCandidateScreenImages();
         originalShowScreen(screenId);
         activateCandidateDeferredImages(document.getElementById(screenId));
+        activateCandidateScreenStylesheets(screenId);
         if (currentStage === 'authenticated') {
             syncAuthenticatedMainNavigation(screenId);
         }
@@ -10704,7 +10715,22 @@ export function CandidateTwoPreview({ demo = null, onAction, state }: CandidateT
   const demoRef = useRef(demo);
   const onActionRef = useRef(onAction);
   const stateRef = useRef(state);
-  const srcDoc = useMemo(() => buildCandidateTwoRuntimeHtml(), []);
+  const runtimeHtml = useMemo(() => buildCandidateTwoRuntimeHtml(), []);
+  const [srcDoc, setSrcDoc] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void import("virtual:candidate-two-asset-urls")
+      .then(({ rewriteCandidateTwoAssetUrls }) => {
+        if (active) setSrcDoc(rewriteCandidateTwoAssetUrls(runtimeHtml));
+      })
+      .catch(() => {
+        if (active) setSrcDoc(runtimeHtml);
+      });
+    return () => {
+      active = false;
+    };
+  }, [runtimeHtml]);
 
   useEffect(() => {
     onActionRef.current = onAction;
@@ -10815,13 +10841,15 @@ export function CandidateTwoPreview({ demo = null, onAction, state }: CandidateT
 
   return (
     <main className="candidate-two-preview">
-      <iframe
-        allow="clipboard-write"
-        ref={iframeRef}
-        sandbox="allow-forms allow-scripts"
-        srcDoc={srcDoc}
-        title="Doorbell Commons"
-      />
+      {srcDoc ? (
+        <iframe
+          allow="clipboard-write"
+          ref={iframeRef}
+          sandbox="allow-forms allow-scripts"
+          srcDoc={srcDoc}
+          title="Doorbell Commons"
+        />
+      ) : null}
     </main>
   );
 }
