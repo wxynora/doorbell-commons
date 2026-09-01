@@ -650,6 +650,7 @@ function projectNeighborhood(farm, now) {
 }
 
 const MARKET_KINDS = new Set(["seed", "material", "ingredient", "dish"]);
+const PURCHASE_ORDER_KINDS = new Set(["material", "ingredient"]);
 
 function marketDefinition(kind, itemId, ugcById, listing = null) {
   if (kind === "seed") return cropDefinition(itemId, ugcById);
@@ -713,7 +714,7 @@ function projectPurchaseOrder(owner, order, ugcById) {
   const filledQuantity = cleanInt(order?.filledQuantity);
   const remainingQuantity = Math.max(0, targetQuantity - filledQuantity);
   const price = nullableInt(order?.unitPrice);
-  if (!listingId || !kind || !MARKET_KINDS.has(kind) || !itemId || targetQuantity <= 0 || remainingQuantity <= 0 || !price) {
+  if (!listingId || !kind || !PURCHASE_ORDER_KINDS.has(kind) || !itemId || targetQuantity <= 0 || remainingQuantity <= 0 || !price) {
     return null;
   }
   const definition = marketDefinition(kind, itemId, ugcById);

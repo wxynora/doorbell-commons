@@ -38,6 +38,7 @@ const ACTIONS = new Set([
   "mystery-merchant-buy",
 ]);
 const LISTING_KINDS = new Set(["seed", "material", "ingredient", "dish"]);
+const PURCHASE_ORDER_KINDS = new Set(["material", "ingredient"]);
 const STACKED_LISTING_KINDS = new Set(["seed", "material"]);
 const MARKET_RECEIPTS = "doorbellHumanMarketActionReceipts";
 
@@ -194,7 +195,7 @@ function validateBody(body) {
   if (body.action === "purchase-order-list") {
     return (
       commonBodyValid(body, [...common, "kind", "item_id", "qty", "price"]) &&
-      LISTING_KINDS.has(body.kind) &&
+      PURCHASE_ORDER_KINDS.has(body.kind) &&
       nonEmptyText(body.item_id) &&
       positiveInteger(body.qty) &&
       positiveInteger(body.price)
@@ -276,7 +277,7 @@ function validPurchaseOrderListResult(result) {
     result?.ok === true &&
     isRecord(result.order) &&
     UUID_RE.test(String(result.order.id ?? "")) &&
-    LISTING_KINDS.has(result.order.kind) &&
+    PURCHASE_ORDER_KINDS.has(result.order.kind) &&
     nonEmptyText(result.order.itemId) &&
     positiveInteger(result.order.targetQuantity) &&
     result.order.filledQuantity === 0 &&
