@@ -24,6 +24,16 @@ function resolveLimitedRef(farm, ref) {
     return crops.find((c) => c.category === "limited" && c.name === ref)?.id; // 官方限定按名字全库找
 }
 
+function heldSeedRefs(farm) {
+    return Object.entries(farm.seeds ?? {})
+        .filter(([, qty]) => Number(qty) > 0)
+        .map(([id, qty]) => {
+        const crop = getCrop(id);
+        return crop ? `${crop.name}（id: ${id}）×${qty}` : null;
+    })
+        .filter(Boolean);
+}
+
 // —— 播种 ——
 export function plant(farm, plotId, seedType, limitedId, now) {
     const plot = farm.plots.find((p) => p.id === plotId);
@@ -35,9 +45,15 @@ export function plant(farm, plotId, seedType, limitedId, now) {
     if (seedType !== "common" && seedType !== "fantasy" && seedType !== "limited")
         return { ok: false, error: "种子类型只能是 common / fantasy / limited" };
     if (seedType === "limited") {
-        const resolved = resolveLimitedRef(farm, String(limitedId ?? "")); // 兼容 id 和中文名
-        if (!resolved)
-            return { ok: false, error: "没有这种限定/自创作物（填它的中文名或 id，名字去 bag 抄）" };
+        const requestedRef = String(limitedId ?? "").trim();
+        const resolved = resolveLimitedRef(farm, requestedRef); // 兼容 id 和中文名
+        if (!resolved) {
+            const held = heldSeedRefs(farm);
+            const available = held.length
+                ? `当前持有：${held.join("、")}。`
+                : "当前没有可播种的限定/自创种子。";
+            return { ok: false, error: `无法识别限定/自创作物「${requestedRef || "（空）"}」。请使用 farm.bag 显示的精确中文名或 id。${available}` };
+        }
         limitedId = resolved;
         const crop = getCrop(limitedId);
         if (!canPlantQixi2026Crop(farm, limitedId, now))

@@ -51,7 +51,7 @@ export function viewBag(f) {
     const mats = Object.entries(f.materials).filter(([, n]) => n > 0)
         .map(([id, n]) => { const m = materialById.get(id); return m ? `${m.name}·${m.rarity}×${n}` : `⚠️未知素材[${id}]×${n}（内容表里没有这个 id，存档或配方写错了）`; });
     const seeds = Object.entries(f.seeds).filter(([, n]) => n > 0)
-        .map(([id, n]) => `${getCrop(id)?.name ?? id}×${n}（参考价🪙${refPrice("seed", id)}）`);
+        .map(([id, n]) => `${getCrop(id)?.name ?? id}×${n}（id: ${id}；参考价🪙${refPrice("seed", id)}）`);
     // 已学配方：列组合 + 是否现在能熔（缺哪个料）
     const recipeLines = f.knownRecipes
         .map((out) => recipes.find((r) => r.output === out))
