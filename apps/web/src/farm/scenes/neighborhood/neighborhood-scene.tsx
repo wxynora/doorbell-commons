@@ -41,20 +41,15 @@ interface NeighborhoodRankingDisplayRow {
   isOwn: boolean;
 }
 
-const TOTAL_RANKINGS: readonly NeighborhoodRankingDefinition[] = [
-  { id: "wealth", label: "财富榜", unit: "金" },
-  { id: "collection", label: "收集榜", unit: "种" },
-  { id: "diligence", label: "勤劳榜", unit: "株" },
-  { id: "kindness", label: "热心榜", unit: "次" },
-  { id: "thief", label: "大盗榜", unit: "次" },
-  { id: "land", label: "土地榜", unit: "阶" },
-];
-
 const TODAY_RANKINGS: readonly NeighborhoodRankingDefinition[] = [
   { id: "todayTasks", label: "卷王榜", unit: "个" },
   { id: "todayLogins", label: "网瘾榜", unit: "次" },
-  { id: "todayMessages", label: "热情榜", unit: "次" },
+  { id: "todayMessages", label: "小纸条榜", unit: "次" },
   { id: "todayEvents", label: "奇遇榜", unit: "次" },
+  { id: "todayStolen", label: "大盗榜", unit: "次" },
+  { id: "todayWatered", label: "热心榜", unit: "次" },
+  { id: "todaySpent", label: "败家榜", unit: "金" },
+  { id: "todayOddDishes", label: "厨鬼榜", unit: "次" },
   { id: "todayRaidIncome", label: "摸金榜", unit: "金" },
   { id: "todayRaidLoss", label: "漏财榜", unit: "金", valuePrefix: "-" },
 ];
@@ -227,14 +222,7 @@ export function NeighborhoodScene({
       return (
         <div aria-label="真实排行榜" className="farm-neighborhood__ranking-groups">
           <section className="farm-neighborhood__ranking-group">
-            <h4>总榜（累计）</h4>
-            {TOTAL_RANKINGS.map((definition) => (
-              <NeighborhoodRankingBoard
-                definition={definition}
-                key={definition.id}
-                rows={rankingRows(definition)}
-              />
-            ))}
+            <h4>原创热门</h4>
             <NeighborhoodRankingBoard
               definition={hotDefinition}
               emptyLabel="还没有热卖的原创"

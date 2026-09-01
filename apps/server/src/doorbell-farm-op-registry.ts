@@ -124,7 +124,7 @@ const nonHelpOperations: FarmOperationDefinition[] = [
     [{}, { id: "crop-id" }],
   ),
   direct("farm.ledger", "查看主农场与人类牧场相关的金币、动物购买和药水往来记录。", "{}", "ledger"),
-  direct("farm.leaderboard", "查看全服总榜和今日榜。", "{}", "leaderboard"),
+  direct("farm.leaderboard", "查看原创热门榜和每天零点重置的今日榜。", "{}", "leaderboard"),
   defineOperation({
     op: "farm.plant",
     description: "播种作物：批量按种类播种，或在指定地块播种；两种形式二选一。",
