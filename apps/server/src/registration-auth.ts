@@ -1,4 +1,4 @@
-import type { FarmBulletinAckScope } from "@doorbell/protocol";
+import type { FarmBulletinAckScope, OwnerProfileCareerSummarySuccess } from "@doorbell/protocol";
 import type {
   CommunityDatabase,
   CreatedHumanSession,
@@ -596,6 +596,20 @@ export class RegistrationAuthService {
       ...context,
       settings: this.#database.getHumanSettings(context.community.home.homeId),
     };
+  }
+
+  async getCurrentOwnerProfileCareerSummary(
+    token: string,
+  ): Promise<OwnerProfileCareerSummarySuccess> {
+    const community = await this.getCurrentSession(token);
+    const farmHumanKey = community.farmBinding.farmHumanKey;
+    if (farmHumanKey === null) throw new RegistrationProfileRequiredError();
+    if (!this.#farmLingyeReader) throw new FarmLingyeContractUnavailableError();
+    return this.#farmLingyeReader.readCareerSummary({
+      residentId: community.resident.residentId,
+      farmDoorplate: community.farmBinding.farmDoorplate,
+      farmHumanKey,
+    });
   }
 
   async confirmCurrentResidentMembership(residentId: string): Promise<void> {

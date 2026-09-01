@@ -11,6 +11,7 @@ import {
   deleteHumanSession,
   getCurrentHumanSession,
   getHumanSettings,
+  getOwnerProfileCareerSummary,
   type HumanIdentity,
   switchHumanProfile,
   updateHumanSettings,
@@ -59,6 +60,7 @@ import {
   type CandidateTwoIdentityView,
   type CandidateTwoLingyeReadState,
   type CandidateTwoMailboxView,
+  type CandidateTwoOwnerProfileCareerView,
   CandidateTwoPreview,
   type CandidateTwoSharedMemeDetailView,
   type CandidateTwoSharedMemeListView,
@@ -160,6 +162,7 @@ type AppState =
         together: CandidateTwoLingyeReadState<BoundTogetherRead>;
       };
       mailbox: CandidateTwoMailboxView;
+      ownerProfileCareer: CandidateTwoOwnerProfileCareerView;
     };
 
 function identityView(identity: HumanIdentity): CandidateTwoIdentityView {
@@ -352,6 +355,7 @@ function authenticatedState(
       detail: { stage: "idle" },
       list: { stage: "loading", category: null, page: 1 },
     },
+    ownerProfileCareer: { stage: "idle" },
   };
 }
 
@@ -374,6 +378,7 @@ function authenticatedViewState(
     sharedMemes: appState.sharedMemes,
     lingye: appState.lingye,
     mailbox: appState.mailbox,
+    ownerProfileCareer: appState.ownerProfileCareer,
   };
 }
 
@@ -387,6 +392,10 @@ function LiveApp() {
   const [lingyeScreenActive, setLingyeScreenActive] = useState(false);
   const [lingyeMapActive, setLingyeMapActive] = useState(false);
   const farmOpen = activeInternalPage === "farm";
+  const ownerProfileCareerRequestRef = useRef<{
+    controller: AbortController | null;
+    id: number;
+  }>({ controller: null, id: 0 });
   const lingyeRequestIdsRef = useRef({ glimmer: 0, memorial: 0, together: 0 });
   const lingyeControllersRef = useRef<{
     glimmer: AbortController | null;
@@ -399,6 +408,7 @@ function LiveApp() {
       lingyeControllersRef.current.glimmer?.abort();
       lingyeControllersRef.current.memorial?.abort();
       lingyeControllersRef.current.together?.abort();
+      ownerProfileCareerRequestRef.current.controller?.abort();
     },
     [],
   );
@@ -657,6 +667,39 @@ function LiveApp() {
         return;
       }
 
+      if (action.type === "owner-profile-career-open") {
+        if (appState.stage !== "authenticated") return;
+        ownerProfileCareerRequestRef.current.controller?.abort();
+        const controller = new AbortController();
+        const requestId = ownerProfileCareerRequestRef.current.id + 1;
+        const residentId = appState.identity.resident.resident_id;
+        ownerProfileCareerRequestRef.current = { controller, id: requestId };
+        setAppState((current) =>
+          current.stage === "authenticated"
+            ? { ...current, ownerProfileCareer: { stage: "loading" } }
+            : current,
+        );
+        const result = await getOwnerProfileCareerSummary({ signal: controller.signal });
+        if (controller.signal.aborted || ownerProfileCareerRequestRef.current.id !== requestId) {
+          return;
+        }
+        setAppState((current) => {
+          if (
+            current.stage !== "authenticated" ||
+            current.identity.resident.resident_id !== residentId
+          ) {
+            return current;
+          }
+          return {
+            ...current,
+            ownerProfileCareer: result.ok
+              ? { stage: "ready", titles: result.data.careers.map((career) => career.title) }
+              : { stage: "error" },
+          };
+        });
+        return;
+      }
+
       if (
         action.type === "lingye-glimmer-open" ||
         action.type === "lingye-memorial-open" ||
@@ -853,6 +896,8 @@ function LiveApp() {
         lingyeControllersRef.current.glimmer?.abort();
         lingyeControllersRef.current.memorial?.abort();
         lingyeControllersRef.current.together?.abort();
+        ownerProfileCareerRequestRef.current.controller?.abort();
+        ownerProfileCareerRequestRef.current.id += 1;
         lingyeRequestIdsRef.current.glimmer += 1;
         lingyeRequestIdsRef.current.memorial += 1;
         lingyeRequestIdsRef.current.together += 1;
@@ -1156,6 +1201,8 @@ function LiveApp() {
         lingyeControllersRef.current.glimmer?.abort();
         lingyeControllersRef.current.memorial?.abort();
         lingyeControllersRef.current.together?.abort();
+        ownerProfileCareerRequestRef.current.controller?.abort();
+        ownerProfileCareerRequestRef.current.id += 1;
         lingyeRequestIdsRef.current.glimmer += 1;
         lingyeRequestIdsRef.current.memorial += 1;
         lingyeRequestIdsRef.current.together += 1;

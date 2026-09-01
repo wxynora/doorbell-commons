@@ -206,6 +206,8 @@ import {
   mcpAccessStatusResponseSchema,
   mcpCredentialIssueResponseSchema,
   mcpCredentialSchema,
+  ownerProfileCareerSummaryErrorSchema,
+  ownerProfileCareerSummarySuccessSchema,
   qqGroupEligibilityErrorSchema,
   qqGroupEligibilityRequestSchema,
   qqGroupEligibilitySuccessSchema,
@@ -1950,6 +1952,29 @@ function sendFarmHumanUiError(
 ) {
   return reply.code(statusCode).send(
     farmHumanUiErrorSchema.parse({
+      error: { code, message },
+    }),
+  );
+}
+
+function sendOwnerProfileCareerSummaryError(
+  reply: FastifyReply,
+  statusCode: 400 | 401 | 403 | 404 | 409 | 502 | 503,
+  code:
+    | "invalid_request"
+    | "authentication_required"
+    | "qq_not_group_member"
+    | "onebot_unavailable"
+    | "registration_profile_required"
+    | "farm_credential_invalid"
+    | "farm_not_found"
+    | "farm_unavailable"
+    | "upstream_contract_unavailable",
+  message: string,
+) {
+  reply.header("cache-control", "no-store");
+  return reply.code(statusCode).send(
+    ownerProfileCareerSummaryErrorSchema.parse({
       error: { code, message },
     }),
   );
@@ -4002,6 +4027,105 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       });
     } catch (error) {
       return sendHumanSettingsFailure(request, reply, error);
+    }
+  });
+
+  app.get("/api/owner-profile/career", { exposeHeadRoute: false }, async (request, reply) => {
+    if (
+      !humanSettingsReadRequestSchema.safeParse(request.query).success ||
+      requestHasBody(request)
+    ) {
+      return sendOwnerProfileCareerSummaryError(
+        reply,
+        400,
+        "invalid_request",
+        "The owner-profile career read does not accept query parameters or a request body",
+      );
+    }
+    const token = readHumanSessionToken(request.headers.cookie);
+    if (!token) {
+      return sendOwnerProfileCareerSummaryError(
+        reply,
+        401,
+        "authentication_required",
+        "An active human session is required",
+      );
+    }
+
+    try {
+      const summary = await options.registrationAuth.getCurrentOwnerProfileCareerSummary(token);
+      reply.header("cache-control", "no-store");
+      return ownerProfileCareerSummarySuccessSchema.parse(summary);
+    } catch (error) {
+      if (error instanceof AuthenticationRequiredError) {
+        return sendOwnerProfileCareerSummaryError(
+          reply,
+          401,
+          "authentication_required",
+          "An active human session is required",
+        );
+      }
+      if (error instanceof QqNotGroupMemberError) {
+        reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
+        return sendOwnerProfileCareerSummaryError(
+          reply,
+          403,
+          "qq_not_group_member",
+          "The session QQ number is no longer a current member of the community group",
+        );
+      }
+      if (error instanceof OneBotUnavailableError) {
+        reportOneBotUnavailable(request, error);
+        return sendOwnerProfileCareerSummaryError(
+          reply,
+          503,
+          "onebot_unavailable",
+          "QQ group membership could not be verified",
+        );
+      }
+      if (error instanceof RegistrationProfileRequiredError) {
+        return sendOwnerProfileCareerSummaryError(
+          reply,
+          409,
+          "registration_profile_required",
+          "A complete resident, home, and farm registration is required",
+        );
+      }
+      if (error instanceof FarmLingyeCredentialInvalidError) {
+        return sendOwnerProfileCareerSummaryError(
+          reply,
+          409,
+          "farm_credential_invalid",
+          "The bound farm human credential is no longer valid",
+        );
+      }
+      if (error instanceof FarmLingyeNotFoundError) {
+        return sendOwnerProfileCareerSummaryError(
+          reply,
+          404,
+          "farm_not_found",
+          "The bound farm no longer exists",
+        );
+      }
+      if (error instanceof FarmLingyeContractUnavailableError) {
+        reportFarmLingyeUnavailable(request, error);
+        return sendOwnerProfileCareerSummaryError(
+          reply,
+          502,
+          "upstream_contract_unavailable",
+          "The owner-profile career response could not be verified",
+        );
+      }
+      if (error instanceof FarmLingyeUnavailableError) {
+        reportFarmLingyeUnavailable(request, error);
+        return sendOwnerProfileCareerSummaryError(
+          reply,
+          503,
+          "farm_unavailable",
+          "The owner-profile career service is unavailable",
+        );
+      }
+      throw error;
     }
   });
 

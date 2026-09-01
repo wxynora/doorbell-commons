@@ -1491,6 +1491,53 @@ export const currentHumanSessionSuccessSchema = z
     },
   );
 
+export const ownerProfileCareerIdSchema = z.enum([
+  "chef",
+  "agronomist",
+  "veterinarian",
+  "reporter",
+  "constable",
+]);
+
+export const ownerProfileCareerSummarySuccessSchema = z
+  .object({
+    careers: z
+      .array(
+        z
+          .object({
+            career: ownerProfileCareerIdSchema,
+            qualification_level: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
+            title: z.string().trim().min(1),
+          })
+          .strict(),
+      )
+      .max(2),
+  })
+  .strict();
+
+export const ownerProfileCareerSummaryErrorCodeSchema = z.enum([
+  "invalid_request",
+  "authentication_required",
+  "qq_not_group_member",
+  "onebot_unavailable",
+  "registration_profile_required",
+  "farm_credential_invalid",
+  "farm_not_found",
+  "farm_unavailable",
+  "upstream_contract_unavailable",
+]);
+
+export const ownerProfileCareerSummaryErrorSchema = z
+  .object({
+    error: z
+      .object({
+        code: ownerProfileCareerSummaryErrorCodeSchema,
+        message: z.string(),
+      })
+      .strict(),
+  })
+  .strict();
+
 export const humanLogoutSuccessSchema = z
   .object({
     logged_out: z.literal(true),
@@ -3075,5 +3122,10 @@ export type FarmMcpActionRequest = z.infer<typeof farmMcpActionRequestSchema>;
 export type FarmMcpActionResult = z.infer<typeof farmMcpActionResultSchema>;
 export type FarmMcpActionErrorCode = z.infer<typeof farmMcpActionErrorCodeSchema>;
 export type FarmMcpActionError = z.infer<typeof farmMcpActionErrorSchema>;
+export type OwnerProfileCareerId = z.infer<typeof ownerProfileCareerIdSchema>;
+export type OwnerProfileCareerSummarySuccess = z.infer<
+  typeof ownerProfileCareerSummarySuccessSchema
+>;
+export type OwnerProfileCareerSummaryError = z.infer<typeof ownerProfileCareerSummaryErrorSchema>;
 export type HumanAuthenticationError = z.infer<typeof humanAuthenticationErrorSchema>;
 export type FarmHumanUiError = z.infer<typeof farmHumanUiErrorSchema>;

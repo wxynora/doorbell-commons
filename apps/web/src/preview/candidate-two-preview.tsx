@@ -362,6 +362,12 @@ export type CandidateTwoLingyeReadState<T> =
   | { stage: "empty" }
   | { stage: "error"; message: string };
 
+export type CandidateTwoOwnerProfileCareerView =
+  | { stage: "idle" }
+  | { stage: "loading" }
+  | { stage: "ready"; titles: readonly string[] }
+  | { stage: "error" };
+
 export type CandidateTwoMailboxListView =
   | { stage: "loading"; category: MailboxCategory | null; page: number }
   | { stage: "error"; category: MailboxCategory | null; message: string; page: number }
@@ -398,6 +404,7 @@ export type CandidateTwoViewState =
       identity: CandidateTwoIdentityView;
       issueMessage: string | null;
       mailbox: CandidateTwoMailboxView;
+      ownerProfileCareer: CandidateTwoOwnerProfileCareerView;
       pendingLogout: boolean;
       sharedMemeCreateMessage: string | null;
       sharedMemeCreatePending: boolean;
@@ -1097,6 +1104,7 @@ export function buildCandidateTwoDemoPreset(
           },
         },
       },
+      ownerProfileCareer: { stage: "ready", titles: [] },
       pendingLogout: false,
       sharedMemeCreateMessage: null,
       sharedMemeCreatePending: false,
@@ -1201,6 +1209,7 @@ export type CandidateTwoAction =
       value: string;
     }
   | { type: "profile-add" }
+  | { type: "owner-profile-career-open" }
   | { type: "profile-switch"; profileId: string }
   | { type: "mcp-access-open" }
   | { type: "bell-access-open" }
@@ -1277,6 +1286,7 @@ const candidateTwoActionKeys = {
   "permit-complete": ["type"],
   "home-settings-save": ["type", "field", "value"],
   "profile-add": ["type"],
+  "owner-profile-career-open": ["type"],
   "profile-switch": ["type", "profileId"],
   "mcp-access-open": ["type"],
   "bell-access-open": ["type"],
@@ -1565,6 +1575,7 @@ export function parseCandidateTwoAction(value: unknown): CandidateTwoAction | nu
     type === "lingye-glimmer-open" ||
     type === "lingye-memorial-open" ||
     type === "lingye-together-open" ||
+    type === "owner-profile-career-open" ||
     type === "view-ready"
     ? { type }
     : null;
@@ -1981,6 +1992,7 @@ const PROFILE_RUNTIME_CONTENT = `        <div class="candidate2-profile-scale-sh
                         <p><span>家园名称</span><strong class="profile-home-name">—</strong></p>
                         <p><span>家园门牌</span><strong class="profile-doorplate">DB-—</strong></p>
                         <p><span>农场门牌</span><strong class="profile-farm-doorplate">—</strong></p>
+                        <p><span>职业</span><strong class="profile-career">—</strong></p>
                     </div>
                 </div>
             </div>
@@ -9050,6 +9062,15 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         document.querySelector('.settings-home-name').value = identity.homeName;
     }
 
+    function applyOwnerProfileCareer(career) {
+        const value = document.querySelector('.profile-career');
+        if (career.stage === 'ready') {
+            value.textContent = career.titles.length === 0 ? '暂无' : career.titles.join('、');
+            return;
+        }
+        value.textContent = career.stage === 'error' ? '暂无法读取' : '正在读取…';
+    }
+
     function setDemoVisibility(emptySelector, demoSelector, enabled) {
         const emptyElement = document.querySelector(emptySelector);
         const demoElement = document.querySelector(demoSelector);
@@ -10269,6 +10290,7 @@ const CANDIDATE_RUNTIME_SCRIPT = `
                 state.sharedMemeCreateMessage,
             );
         }
+        applyOwnerProfileCareer(state.ownerProfileCareer);
         setStatus(document.querySelector('.candidate2-profile-empty'), state.issueMessage || '最近活动尚未接入真实数据');
         if (previousStage !== 'authenticated') {
             const initialScreen = demo && demo.initialScreen ? demo.initialScreen : 'lounge';
@@ -10545,6 +10567,9 @@ const CANDIDATE_RUNTIME_SCRIPT = `
             mapActive: screenId === 'screen-lingye',
         });
         if (screenId === 'screen-home') syncHomeScale();
+        if (screenId === 'screen-profile' && !window.__doorbellCandidateDemo) {
+            sendAction({ type: 'owner-profile-career-open' });
+        }
         if (screenId === 'screen-lingye-memorial') {
             scheduleMemorialLayoutFit(memorialEntry.hidden ? 'index' : 'entry');
         }

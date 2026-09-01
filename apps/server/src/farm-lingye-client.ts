@@ -14,7 +14,14 @@ import {
   farmHumanTogetherReadErrorSchema,
   farmHumanTogetherReadRequestSchema,
   farmHumanTogetherReadSuccessSchema,
+  lingyeActionRequestSchema,
+  lingyeActionResultSchema,
+  lingyeActionServiceErrorSchema,
+  type OwnerProfileCareerSummarySuccess,
+  ownerProfileCareerIdSchema,
+  ownerProfileCareerSummarySuccessSchema,
 } from "@doorbell/protocol";
+import { z } from "zod";
 
 export interface FarmLingyeReadInput {
   farmDoorplate: string;
@@ -22,12 +29,17 @@ export interface FarmLingyeReadInput {
 }
 
 export interface FarmLingyeReader {
+  readCareerSummary(input: FarmLingyeCareerReadInput): Promise<OwnerProfileCareerSummarySuccess>;
   readGlimmer(input: FarmLingyeReadInput): Promise<FarmHumanGlimmerReadSuccess>;
   readReporterPublications(input: FarmReporterIdentityInput): Promise<FarmHumanReporterReadSuccess>;
   likeReporterPublication(
     input: FarmReporterIdentityInput & { likeRef: string },
   ): Promise<FarmHumanReporterLikeSuccess>;
   readTogether(input: FarmLingyeReadInput): Promise<FarmHumanTogetherReadSuccess>;
+}
+
+export interface FarmLingyeCareerReadInput extends FarmLingyeReadInput {
+  residentId: string;
 }
 
 export interface FarmReporterIdentityInput extends FarmLingyeReadInput {
@@ -88,7 +100,22 @@ interface FarmLingyeErrorPayload {
   };
 }
 
+const CAREER_ORDER = ["chef", "agronomist", "veterinarian", "reporter", "constable"] as const;
+
+const careerCertificateSectionSchema = z.object({
+  section: z.literal("certificates"),
+  value: z.array(
+    z.object({
+      career: ownerProfileCareerIdSchema,
+      qualificationLevel: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
+      status: z.string(),
+      title: z.string().trim().min(1).nullable(),
+    }),
+  ),
+});
+
 export class FarmLingyeClient implements FarmLingyeReader {
+  readonly #careerSummaryEndpoint: URL;
   readonly #glimmerReadEndpoint: URL;
   readonly #reporterLikeEndpoint: URL;
   readonly #reporterReadEndpoint: URL;
@@ -106,12 +133,105 @@ export class FarmLingyeClient implements FarmLingyeReader {
       apiBaseUrl.pathname += "/";
     }
     this.#glimmerReadEndpoint = new URL("internal/doorbell/human/glimmer/read", apiBaseUrl);
+    this.#careerSummaryEndpoint = new URL("internal/doorbell/lingye-actions/execute", apiBaseUrl);
     this.#reporterLikeEndpoint = new URL("internal/doorbell/human/reporter/like", apiBaseUrl);
     this.#reporterReadEndpoint = new URL("internal/doorbell/human/reporter/read", apiBaseUrl);
     this.#togetherReadEndpoint = new URL("internal/doorbell/human/together/read", apiBaseUrl);
     this.#serviceToken = options.serviceToken;
     this.#fetch = options.fetchImplementation ?? fetch;
     this.#requestTimeoutMs = options.requestTimeoutMs;
+  }
+
+  async readCareerSummary(
+    input: FarmLingyeCareerReadInput,
+  ): Promise<OwnerProfileCareerSummarySuccess> {
+    const requestBody = lingyeActionRequestSchema.parse({
+      resident_id: input.residentId,
+      farm_human_key: input.farmHumanKey,
+      expected_farm_doorplate: input.farmDoorplate,
+      op: "go.school.view",
+      args: { section: "certificates" },
+    });
+
+    let response: Response;
+    try {
+      response = await this.#fetch(this.#careerSummaryEndpoint, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${this.#serviceToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+        signal: AbortSignal.timeout(this.#requestTimeoutMs),
+      });
+    } catch {
+      throw new FarmLingyeUnavailableError();
+    }
+
+    if (response.status === 502) throw new FarmLingyeContractUnavailableError();
+    if (response.status >= 500) throw new FarmLingyeUnavailableError();
+
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch {
+      throw new FarmLingyeContractUnavailableError();
+    }
+
+    if (!response.ok) {
+      const serviceError = lingyeActionServiceErrorSchema.safeParse(payload);
+      if (!serviceError.success) throw new FarmLingyeContractUnavailableError();
+      switch (serviceError.data.error.code) {
+        case "farm_credential_not_found":
+        case "farm_doorplate_mismatch":
+        case "farm_migration_required":
+          throw new FarmLingyeCredentialInvalidError();
+        case "lingye_unavailable":
+        case "service_not_configured":
+          throw new FarmLingyeUnavailableError();
+        default:
+          throw new FarmLingyeContractUnavailableError();
+      }
+    }
+
+    const actionResult = lingyeActionResultSchema.safeParse(payload);
+    if (!actionResult.success) throw new FarmLingyeContractUnavailableError();
+    if (!actionResult.data.ok) {
+      if (actionResult.data.error.code === "LINGYE_NOT_READY") {
+        throw new FarmLingyeUnavailableError();
+      }
+      throw new FarmLingyeContractUnavailableError();
+    }
+
+    const section = careerCertificateSectionSchema.safeParse(actionResult.data.data);
+    if (!section.success) throw new FarmLingyeContractUnavailableError();
+
+    const highestActiveByCareer = new Map<
+      (typeof CAREER_ORDER)[number],
+      (typeof section.data.value)[number]
+    >();
+    for (const certificate of section.data.value) {
+      if (certificate.status !== "active") continue;
+      const current = highestActiveByCareer.get(certificate.career);
+      if (!current || current.qualificationLevel < certificate.qualificationLevel) {
+        highestActiveByCareer.set(certificate.career, certificate);
+      }
+    }
+
+    return ownerProfileCareerSummarySuccessSchema.parse({
+      careers: CAREER_ORDER.flatMap((career) => {
+        const certificate = highestActiveByCareer.get(career);
+        if (!certificate) return [];
+        if (certificate.title === null) throw new FarmLingyeContractUnavailableError();
+        return [
+          {
+            career,
+            qualification_level: certificate.qualificationLevel,
+            title: certificate.title,
+          },
+        ];
+      }),
+    });
   }
 
   readGlimmer(input: FarmLingyeReadInput): Promise<FarmHumanGlimmerReadSuccess> {

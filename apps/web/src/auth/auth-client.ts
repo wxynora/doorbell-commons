@@ -38,6 +38,10 @@ import {
   mcpAccessErrorSchema,
   mcpAccessStatusResponseSchema,
   mcpCredentialIssueResponseSchema,
+  type OwnerProfileCareerSummaryError,
+  type OwnerProfileCareerSummarySuccess,
+  ownerProfileCareerSummaryErrorSchema,
+  ownerProfileCareerSummarySuccessSchema,
 } from "@doorbell/protocol";
 
 export type ClientIssueCode = "network_unavailable" | "unexpected_response";
@@ -65,6 +69,15 @@ export type BellAccessIssueCode = BellAccessError["error"]["code"] | ClientIssue
 
 export interface BellAccessIssue {
   code: BellAccessIssueCode;
+  serverMessage: string | null;
+}
+
+export type OwnerProfileCareerIssueCode =
+  | OwnerProfileCareerSummaryError["error"]["code"]
+  | ClientIssueCode;
+
+export interface OwnerProfileCareerIssue {
+  code: OwnerProfileCareerIssueCode;
   serverMessage: string | null;
 }
 
@@ -221,6 +234,35 @@ function parseBellAccessIssue(payload: unknown): BellAccessIssue {
   const parsed = bellAccessErrorSchema.safeParse(payload);
   if (!parsed.success) return clientIssue("unexpected_response");
   return { code: parsed.data.error.code, serverMessage: parsed.data.error.message };
+}
+
+function parseOwnerProfileCareerIssue(payload: unknown): OwnerProfileCareerIssue {
+  const parsed = ownerProfileCareerSummaryErrorSchema.safeParse(payload);
+  if (!parsed.success) return clientIssue("unexpected_response");
+  return { code: parsed.data.error.code, serverMessage: parsed.data.error.message };
+}
+
+export async function getOwnerProfileCareerSummary(
+  options: { signal?: AbortSignal; fetcher?: FrontendFetcher } = {},
+): Promise<ApiResult<OwnerProfileCareerSummarySuccess, OwnerProfileCareerIssue>> {
+  const fetcher = options.fetcher ?? fetch;
+  let response: Response;
+  try {
+    response = await fetcher("/api/owner-profile/career", {
+      credentials: "same-origin",
+      method: "GET",
+      ...(options.signal ? { signal: options.signal } : {}),
+    });
+  } catch {
+    return { ok: false, issue: clientIssue("network_unavailable") };
+  }
+
+  const payload = await readPayload(response);
+  if (!response.ok) return { ok: false, issue: parseOwnerProfileCareerIssue(payload) };
+  const parsed = ownerProfileCareerSummarySuccessSchema.safeParse(payload);
+  return parsed.success
+    ? { ok: true, data: parsed.data }
+    : { ok: false, issue: clientIssue("unexpected_response") };
 }
 
 export async function getCurrentHumanSession(
