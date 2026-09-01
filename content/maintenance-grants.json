@@ -66,5 +66,11 @@
     "glimmerTrackAt": "2026-08-31T20:00:00+08:00",
     "notice": "SQLite 存档迁移期间，流光原野保底与部分操作持久化异常。已为每个真实玩家农场补发 100,000 金币、500 银币，并按 8 月 31 日晚流光原野踪迹的每种动物补 5 次保底。",
     "section": "compensation"
+  },
+  {
+    "id": "compensation-20260902-maintenance",
+    "gold": 100000,
+    "notice": "🎁 农场维护补偿：已发放 100,000 金币。",
+    "section": "compensation"
   }
 ]

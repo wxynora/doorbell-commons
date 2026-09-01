@@ -88,7 +88,9 @@ function stripReceipts(value) {
         return value;
     const result = {};
     for (const [key, nested] of Object.entries(value)) {
-        if (key === "doorbellHumanHarvestReceipts" || key === "doorbellHumanLandUpgradeReceipts")
+        if (key === "doorbellHumanHarvestReceipts" ||
+            key === "doorbellHumanLandUpgradeReceipts" ||
+            key === "doorbellHumanBulletinReadState")
             continue;
         result[key] = stripReceipts(nested);
     }
@@ -98,8 +100,8 @@ function stripReceipts(value) {
 function readRevision(projectedFarm, data, dayIndex, now) {
     // The revision is a write precondition, so include every hidden farm field
     // that the reused Human harvest chain can observe.  The receipt ledger is
-    // deliberately excluded: recording/replaying a receipt must not make an
-    // otherwise identical field snapshot stale.
+    // deliberately excluded: recording/replaying a receipt or acknowledging a
+    // bulletin must not make an otherwise identical field snapshot stale.
     const canonical = JSON.stringify(canonicalize({
         schema: "field-v1",
         rule_version: "human-harvest-assist-v1",
