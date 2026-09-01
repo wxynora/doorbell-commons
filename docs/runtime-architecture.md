@@ -1286,11 +1286,12 @@ directories and latest three scheduled SQLite files, and never touches source, d
 manual recovery directories, browser state, or Web assets. The daily backup unit invokes the same
 helper in `--daily-only` mode, which can remove only old top-level scheduled `.sqlite` files.
 
-Current production Main is `61975e16a24bbd7fd6e739e3fef1e75f958fd4d6`; the source checkout and
-runtime release marker match that exact SHA. The live database is schema v17 with `quick_check=ok`
+Current production Main is `e6a9e39705dfb128f2815496d317778615b2cc20`; the source checkout and
+runtime release marker match that exact SHA. The live database is schema v18 with `quick_check=ok`
 and zero foreign-key violations. `doorbell-commons.service` is active/running with `NRestarts=0`,
 direct/public health 200, and the required upstream request deadline remains explicitly `60000` ms.
-The approved PWA release is `2026-08-30.10`; the Plant release changed the Web field scene.
+The approved PWA release is `2026-08-30.23`; this release adds the authoritative Ranch
+resident／visitor projection to the Human scene while remaining compatible with the prior Farm response.
 The fixed Linux dependency layer is active, its lockfile matches the runtime, `better-sqlite3` and
 protocol runtime imports succeed, and all three workspace links resolve to the stable current runtime.
 The one retained direct previous runtime is `cd7863454435b1880318b6b88ba2edfceda99202`;
@@ -1331,7 +1332,7 @@ It has not been committed, deployed, activated, or tested against production dat
 
 The existing public farm at `/farm/` and port 8091 remains an independent external production
 service. Its clean `farm` branch currently runs
-`db72a27169f71e389441985ffd99b36ed38da73e`. The current release includes the 2026-08-19 one-day
+`dee068d5434cc074304304225d6ff6f4335b61ce`. The current release includes the 2026-08-19 one-day
 `灯河有信` module, its mobile legacy Human page, compressed scene／lantern assets and persistent
 family-private lamp records without adding another MCP tool or changing the generic `farm` Schema.
 The first phase derives one shared clue from each of fishing, harvesting and ranch feeding, so three
