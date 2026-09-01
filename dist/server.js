@@ -33,7 +33,7 @@ import { createLegacyAgentHandler } from "./server/legacy-agent/runtime.js";
 import { createLingyeFarmBalanceCoordinator, createLingyeWorldBackend, openLingyeWorldDatabase, runLingyeWorldTransaction } from "./lingye-world-database.js";
 import { createLingyeActionExecutor } from "./server/doorbell/lingye.js";
 import { resolveChefOriginalCookingReceipt } from "./domain/kitchen/original.js";
-import { farmCareerBenefits, farmDoorbellKitchenCareerBenefits } from "./career/farm-benefits.js";
+import { farmCareerBenefits, farmDoorbellKitchenCareerBenefits, farmResidentId } from "./career/farm-benefits.js";
 import { constableExamTheftEligibility, farmActionTouchesLockedCareerObject, lockedCareerObjectText, startRegisteredP3Scheduler } from "./career/p3-commission-runtime.js";
 import { startConstableInterviewScheduler } from "./career/constable-interview-scheduler.js";
 import { loadConstableInterviewBank } from "./career/constable-interview-bank.js";
@@ -45,6 +45,9 @@ let activeLingyeWorldDatabase = null;
 let activeLingyeWorldBackend = null;
 let activeMysteryMerchantRuntime = null;
 function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
+    const detention = activeDetentionForFarm(farm, now);
+    if (detention && !detentionAllowsFarmAction(action))
+        return { status: 400, json: { ok: false, code: "RESIDENT_DETAINED", text: "OP_REJECTED", detention } };
     const careerBenefits = farmDoorbellKitchenCareerBenefits(
         activeLingyeWorldDatabase,
         activeLingyeWorldBackend,
@@ -92,6 +95,9 @@ function executeDoorbellFarmAction(farm, action, params, detail, now) {
     }
 }
 function executeLegacyMcpAction(me, action, params, now) {
+    const detention = activeDetentionForFarm(me, now);
+    if (detention && !detentionAllowsFarmAction(action))
+        return { ok: false, text: "OP_REJECTED", code: "RESIDENT_DETAINED", detention };
     const b = { ...params };
     if (action === "help")
         return { ok: true, text: MCP_HELP };
@@ -129,6 +135,58 @@ function fresh(id) {
     if (f.id === NPC_ID)
         tendNpc(f, now); // 阿土：每次访问前补满地 + 刷摊位/商店
     return f;
+}
+function caughtCropTheftFact(database, input) {
+    const prefix = "p3:security:trail:";
+    const eventId = typeof input?.sourceId === "string" && input.sourceId.startsWith(prefix)
+        ? input.sourceId.slice(prefix.length)
+        : "";
+    if (!eventId)
+        return null;
+    const matches = allFarms().flatMap((farm) => (farm.trail ?? [])
+        .filter((entry) => entry?.eventId === eventId)
+        .map((entry) => ({ entry })));
+    if (matches.length !== 1)
+        return null;
+    const { entry } = matches[0];
+    const actorFarm = typeof entry.actorFarmId === "string" ? getFarm(entry.actorFarmId) : null;
+    const residentId = actorFarm ? farmResidentId(database, actorFarm) : null;
+    if (!residentId)
+        return null;
+    return {
+        sourceId: input.sourceId,
+        kind: entry.kind,
+        successful: entry.kind === "stolen",
+        residentId,
+        occurredAt: entry.t,
+    };
+}
+function activeDetentionForFarm(farm, now) {
+    if (!activeLingyeWorldDatabase || !activeLingyeWorldBackend)
+        return null;
+    const residentId = farmResidentId(activeLingyeWorldDatabase, farm);
+    if (!residentId)
+        return null;
+    return activeLingyeWorldBackend.trustedQueries.isResidentDetained(residentId, { at: now })
+        ? activeLingyeWorldBackend.trustedQueries.getResidentDetention(residentId, { at: now })
+        : null;
+}
+function detentionAllowsFarmAction(action) {
+    return !action || action === "status" || action === "help";
+}
+function catchNpcCropTheft(victim, actorFarmId, now) {
+    if (!activeLingyeWorldBackend ||
+        activeLingyeWorldBackend.trustedQueries.getSecurityPatrolStatus({ at: now }).status !== "patrolling")
+        return null;
+    const trail = (victim.trail ?? []).find((entry) => entry?.kind === "stolen" &&
+        entry.actorFarmId === actorFarmId && entry.t === now && typeof entry.eventId === "string");
+    if (!trail)
+        return null;
+    return activeLingyeWorldBackend.trustedSystemCommands.catchCropTheft({
+        sourceId: `p3:security:trail:${trail.eventId}`,
+        caughtBy: "npc_patrol",
+        caughtAt: now,
+    });
 }
 const reply = (res, ok, t, f) => jsonOut(res, ok ? 200 : 400, f ? { ok, text: t, farm: farmView(f, Date.now()) } : { ok, text: t });
 const DAMAGED_PUBLIC_NAME_TEXT = "名称看起来已经发生编码损坏（只剩问号或包含 �），请用 UTF-8 重新发送原名称。";
@@ -220,6 +278,10 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         || b?.verbose === true || b?.verbose === "1" || b?.verbose === "true";
     const vf = (ff) => detail ? { farm: farmView(ff, now) } : {};
     if (action === "visit") {
+        const visitor = b.by ? getFarm(String(b.by)) : null;
+        const detention = visitor ? activeDetentionForFarm(visitor, now) : null;
+        if (detention)
+            return { status: 400, json: { ok: false, code: "RESIDENT_DETAINED", text: "OP_REJECTED", detention } };
         if (!reachable(f))
             return { status: 403, json: { ok: false, text: `「${f.name}」设了谢绝来访，已闭门谢客。` } };
         const visitorId = String(b.by ?? ""); // 串门任务：身份已知（带 by）时按家去重计一次
@@ -268,6 +330,9 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         return { status: isByAction ? 403 : 401, json: { ok: false, text: isByAction
                     ? "需要带上你农场的 id + token（by + token）证明这是你本人。"
                     : "这是私有操作，需要你农场的 token。串门看公开页用 visit（GET /c?a=visit&farm=对方id）。" } };
+    const detention = activeDetentionForFarm(principal, now);
+    if (detention && !detentionAllowsFarmAction(action))
+        return { status: 400, json: { ok: false, code: "RESIDENT_DETAINED", text: "OP_REJECTED", detention } };
     if (!projectedRead) {
         advance(f, now);
         if (f.id === NPC_ID)
@@ -542,6 +607,15 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         const r = steal(f, Number(b.plotId), byId, now, thief);
         checkTitles(thief);
         checkTitles(f); // 大盗 / 倒霉称号
+        let securityResult = null;
+        if (r.ok) {
+            try {
+                securityResult = catchNpcCropTheft(f, byId, now);
+            }
+            catch {
+                console.error("[security] one successful crop theft could not be recorded");
+            }
+        }
         if (r.ok) {
             pushSocialInbox(f, `🥷 「${thief.name}」偷了你的菜`, now);
             commitNatureRemovedPlot(f, Number(b.plotId), "visitor", `steal:${thief.id}:${f.id}:${Number(b.plotId)}`, now);
@@ -555,7 +629,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         }
         const got = stealThiefText(r.crop) + `（${r.quality.name}·+${r.value}金）`;
         const reveal = r.isNewForThief ? `\n${harvestText(r.crop, r.quality, r.value, true, r.codexReward, false)}` : "";
-        return { status: 200, json: { ok: true, text: `${got}${reveal}\n${statusFooter(thief, now)}`, ...vf(thief) } };
+        return { status: 200, json: { ok: true, text: `${got}${reveal}\n${statusFooter(thief, now)}`, ...(securityResult ? { security: securityResult } : {}), ...vf(thief) } };
     }
     if (isGuardBribe) {
         const thief = getFarm(byId);
@@ -565,12 +639,19 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
             save();
             return { status: 400, json: { ok: false, text: `${r.error}${r.dishKept ? "（料理没有消耗，本次尝试结束。）" : ""}`, ...vf(thief) } };
         }
+        let securityResult = null;
+        try {
+            securityResult = catchNpcCropTheft(f, byId, now);
+        }
+        catch {
+            console.error("[security] one successful crop theft could not be recorded");
+        }
         commitNatureRemovedPlot(f, pendingPlotId, "visitor", `steal:${thief.id}:${f.id}:${pendingPlotId}`, now);
         pushSocialInbox(f, `🥷 「${thief.name}」用料理哄住看家狗后偷了你的菜`, now);
         save();
         const got = stealThiefText(r.crop) + `（${r.quality.name}·+${r.value}金）`;
         const reveal = r.isNewForThief ? `\n${harvestText(r.crop, r.quality, r.value, true, r.codexReward, false)}` : "";
-        return { status: 200, json: { ok: true, text: `🍖 用「${r.dishName}」哄住了看家狗，继续原本那次偷菜；料理已消耗，没有重复计算出手或冷却。\n${got}${reveal}\n${statusFooter(thief, now)}`, ...vf(thief) } };
+        return { status: 200, json: { ok: true, text: `🍖 用「${r.dishName}」哄住了看家狗，继续原本那次偷菜；料理已消耗，没有重复计算出手或冷却。\n${got}${reveal}\n${statusFooter(thief, now)}`, ...(securityResult ? { security: securityResult } : {}), ...vf(thief) } };
     }
     // 帮别人浇水：给对方加速 30 分钟 + 给浇水者(by)掉 1 瓶加速药水（1 家 1 天只能浇 1 次，防互刷）
     if (action === "water" && b.by) {
@@ -818,6 +899,9 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
         chefAuthority: {
             resolveCookingReceipt: resolveOriginalCookingReceipt,
             useFarmStore: true,
+        },
+        securityAuthority: {
+            getCaughtCropTheftFact: (input) => caughtCropTheftFact(lingyeWorldDatabase, input),
         },
         deferChefFarmRecovery: true,
         constableInterviewBank: loadConstableInterviewBank(),

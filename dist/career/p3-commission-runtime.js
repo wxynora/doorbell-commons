@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { allFarms, getFarm, getNatureWorld, replaceFarm, replaceFarmsAndNatureAtomic } from "../store.js";
 import { reconcileNatureTreatment } from "../nature-runtime.js";
 import { runLingyeWorldTransaction } from "../lingye-world-database.js";
-import { CareerDomainError } from "./contracts.js";
+import { AGRONOMY_COMMISSION_REWARD_GOLD, AGRONOMY_COMMISSION_SILVER, CareerDomainError } from "./contracts.js";
 import {
     getReporterArticle,
     getReporterMaterialPack,
@@ -45,6 +45,25 @@ export const AGRONOMY_NPC_BASE_FEE_GOLD = Object.freeze({
     3: 150_000,
     4: 400_000,
 });
+
+export function playerServiceCommissionPrice(source) {
+    if (!source || !Number.isSafeInteger(source.difficultyLevel))
+        throw new Error("commission_price_unavailable");
+    if (source.career === "agronomist") {
+        const laborSilver = AGRONOMY_COMMISSION_SILVER[source.difficultyLevel];
+        const systemRewardGold = AGRONOMY_COMMISSION_REWARD_GOLD[source.difficultyLevel];
+        if (!laborSilver || !systemRewardGold)
+            throw new Error("commission_price_unavailable");
+        return Object.freeze({ baseFeeGold: 0, laborSilver, systemRewardGold });
+    }
+    if (source.career === "veterinarian") {
+        const baseFeeGold = HOSPITAL_BASE_FEE_GOLD[source.difficultyLevel];
+        if (!baseFeeGold)
+            throw new Error("commission_price_unavailable");
+        return Object.freeze({ baseFeeGold, laborSilver: 0, systemRewardGold: 0 });
+    }
+    throw new Error("commission_price_unavailable");
+}
 
 function digest(value) {
     return createHash("sha256").update(String(value), "utf8").digest("hex");
@@ -341,7 +360,7 @@ function animalSource(farm, ownerResidentId, source) {
 
 function securityTrailSources(database, farm, ownerResidentId) {
     return (farm.trail ?? [])
-        .filter((entry) => (entry?.kind === "stolen" || entry?.kind === "foiled") &&
+        .filter((entry) => entry?.kind === "stolen" &&
             typeof entry.eventId === "string" && entry.eventId.length > 0)
         .map((entry) => {
             const sourceId = `p3:security:trail:${entry.eventId}`;
@@ -391,20 +410,19 @@ export function boundFarmSources(database, farm, ownerResidentId, now = Date.now
 }
 
 export function syncAuthorityJobs(database, backend, now = Date.now()) {
-    const overdueLoans = database.prepare(`
-      SELECT loan_id, borrower_resident_id, status FROM economy_system_loans
-      WHERE status IN ('overdue', 'restricted')
-    `).all();
+    const overdueLoans = backend.trustedQueries.listPunishableSystemLoanFacts();
     for (const loan of overdueLoans) {
-        const sourceId = `p3:security:system-loan:${loan.loan_id}`;
+        const sourceId = `p3:security:system-loan:${loan.loanId}`;
         database.prepare(`
           INSERT OR IGNORE INTO career_commission_source_facts (
             source_id, source_type, fact_json, recorded_at
           ) VALUES (?, 'bank_overdue_notice', ?, ?)
         `).run(sourceId, JSON.stringify({
-            loanId: loan.loan_id,
-            borrowerResidentId: loan.borrower_resident_id,
-            status: loan.status,
+            loanId: loan.loanId,
+            borrowerResidentId: loan.borrowerResidentId,
+            outstandingGold: loan.outstandingGold,
+            dueDay: loan.dueDay,
+            graceDays: loan.graceDays,
         }), now);
         try {
             runLingyeWorldTransaction(database, () => {
@@ -414,12 +432,12 @@ export function syncAuthorityJobs(database, backend, now = Date.now()) {
                     sourceType: "bank_overdue_notice",
                     sourceId,
                     objectType: "system_loan",
-                    objectId: loan.loan_id,
-                    ownerResidentId: loan.borrower_resident_id,
+                    objectId: loan.loanId,
+                    ownerResidentId: loan.borrowerResidentId,
                     requiredLevel: 1,
                     difficultyLevel: 1,
                     assignmentMode: "assigned",
-                    excludedResidentIds: [loan.borrower_resident_id],
+                    excludedResidentIds: [loan.borrowerResidentId],
                 });
                 if (job.workerResidentId === null)
                     backend.trustedSystemCommands.assignAuthorityJob({ jobId: job.jobId });
@@ -482,7 +500,32 @@ export function lockedCareerObjectText(action) {
         ?? "目标对象正在由职业委托处理，本次操作没有执行。";
 }
 
-export function publishBoundSource(database, backend, source, amount, now = Date.now()) {
+function servicePublicationRequest(source, request) {
+    const price = playerServiceCommissionPrice(source);
+    if (typeof request === "number") {
+        if (source.career !== "agronomist" || request !== price.laborSilver)
+            throw new Error("commission_price_invalid");
+        return { audience: "public", targetResidentId: null, price };
+    }
+    if (request !== undefined && (request === null || typeof request !== "object" || Array.isArray(request)))
+        throw new Error("commission_publication_invalid");
+    const audience = request?.audience ?? "public";
+    const targetResidentId = request?.targetResidentId ?? null;
+    if (!["public", "targeted"].includes(audience) ||
+        (audience === "targeted") !== (targetResidentId !== null) ||
+        (request?.amount !== undefined && request.amount !== price.laborSilver)) {
+        throw new Error("commission_publication_invalid");
+    }
+    return { audience, targetResidentId, price };
+}
+
+export function publishBoundSource(database, backend, source, request, now = Date.now()) {
+    if (!source || source.status !== "open")
+        throw new Error("commission_source_not_available");
+    const serviceCommission = ["agronomist", "veterinarian"].includes(source.career);
+    if (!serviceCommission && request !== undefined)
+        throw new Error("commission_amount_not_available");
+    const publication = serviceCommission ? servicePublicationRequest(source, request) : null;
     const existing = database.prepare("SELECT * FROM career_jobs WHERE source_type = ? AND source_id = ?")
         .get(source.sourceType, source.sourceId);
     if (existing) {
@@ -496,24 +539,21 @@ export function publishBoundSource(database, backend, source, amount, now = Date
         if (expectedExclusions.length !== storedExclusions.length ||
             expectedExclusions.some((residentId, index) => residentId !== storedExclusions[index]))
             throw new Error("commission_publish_conflict");
+        if (serviceCommission &&
+            (!existing.service_commission || existing.service_audience !== publication.audience ||
+                existing.target_resident_id !== publication.targetResidentId))
+            throw new Error("commission_publish_conflict");
         if (source.career === "agronomist") {
             const payment = database.prepare("SELECT silver_amount FROM career_commission_payments WHERE job_id = ?")
                 .get(existing.job_id);
-            if (!payment || payment.silver_amount !== amount)
+            if (!payment || payment.silver_amount !== publication.price.laborSilver)
                 throw new Error("commission_publish_conflict");
         }
-        else if (amount !== undefined) {
-            throw new Error("commission_publish_conflict");
-        }
         const job = backend.trustedQueries.getJob(existing.job_id);
-        if (job.assignmentMode === "assigned" && job.workerResidentId === null)
+        if (!serviceCommission && job.assignmentMode === "assigned" && job.workerResidentId === null)
             return backend.trustedSystemCommands.assignAuthorityJob({ jobId: job.jobId });
         return job;
     }
-    if (source.career === "agronomist" && (!Number.isSafeInteger(amount) || amount <= 0))
-        throw new Error("agronomy_payment_required");
-    if (source.career !== "agronomist" && amount !== undefined)
-        throw new Error("commission_amount_not_available");
     const job = backend.trustedSystemCommands.createJob({
         jobId: commissionJobId(source.sourceId),
         career: source.career,
@@ -524,16 +564,21 @@ export function publishBoundSource(database, backend, source, amount, now = Date
         ownerResidentId: source.ownerResidentId,
         requiredLevel: source.requiredLevel,
         difficultyLevel: source.difficultyLevel,
-        assignmentMode: source.assignmentMode,
+        assignmentMode: serviceCommission ? "accepted" : source.assignmentMode,
+        ...(serviceCommission ? {
+            serviceCommission: true,
+            serviceAudience: publication.audience,
+            ...(publication.targetResidentId === null ? {} : { targetResidentId: publication.targetResidentId }),
+        } : {}),
         excludedResidentIds: source.excludedResidentIds ?? [],
     });
     if (source.career === "agronomist") {
         database.prepare(`
           INSERT INTO career_commission_payments (job_id, trade_id, silver_amount, created_at)
           VALUES (?, NULL, ?, ?)
-        `).run(job.jobId, amount, now);
+        `).run(job.jobId, publication.price.laborSilver, now);
     }
-    return job.assignmentMode === "assigned"
+    return !serviceCommission && job.assignmentMode === "assigned"
         ? backend.trustedSystemCommands.assignAuthorityJob({ jobId: job.jobId })
         : job;
 }
@@ -635,9 +680,9 @@ export function workerOptions(job, residentId, qualificationLevel = job.required
         if (job.decisionCount === 0)
             return [`commission:check:${job.jobId}:facts`];
         const results = job.sourceType === "bank_overdue_notice"
-            ? ["bank_notice"]
+            ? ["bank_system_loan_refusal"]
             : job.sourceType === "farm_interaction_complaint"
-                ? ["rules_explained", "voluntary_mediation"]
+                ? ["farm_crop_theft"]
                 : job.sourceType === "complaint_review"
                     ? ["review_upheld"]
                     : [];
@@ -874,7 +919,8 @@ export function treatmentGold(job, treatment, qualificationLevel = job.difficult
         return agronomyTreatmentMaterialUsage(requirements, qualificationLevel).consumedGold;
     }
     if (job.career === "veterinarian") {
-        return veterinarianTreatmentMaterialGold(job, treatment) + HOSPITAL_BASE_FEE_GOLD[job.difficultyLevel];
+        return veterinarianTreatmentMaterialGold(job, treatment) +
+            (job.serviceCommission ? 0 : HOSPITAL_BASE_FEE_GOLD[job.difficultyLevel]);
     }
     throw new Error("commission_treatment_not_available");
 }
@@ -923,6 +969,11 @@ function npcServiceContract(source) {
         };
     }
     throw new Error("commission_npc_not_available");
+}
+
+export function npcServiceGold(source) {
+    const contract = npcServiceContract(source);
+    return contract.baseFeeGold + contract.materialFeeGold;
 }
 
 function npcWorldTreatment(source, treatment, actionKey, payloadHash, now) {
@@ -1034,7 +1085,7 @@ export function completeNpcFallbackService(database, backend, source, actionKey,
         requireStandaloneP3Checkpoint(database);
         operation = runLingyeWorldTransaction(database, () => {
             const contract = npcServiceContract(source);
-            const totalFeeGold = contract.baseFeeGold + contract.materialFeeGold;
+            const totalFeeGold = npcServiceGold(source);
             const reserved = backend.trustedSystemCommands.reserveSystemGold({
                 residentId: source.ownerResidentId,
                 amount: totalFeeGold,

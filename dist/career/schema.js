@@ -1,4 +1,4 @@
-export const CAREER_SCHEMA_VERSION = 9;
+export const CAREER_SCHEMA_VERSION = 10;
 export function installCareerSchema(database) {
     database.exec(`
     CREATE TABLE IF NOT EXISTS career_tracks (
@@ -239,6 +239,9 @@ export function installCareerSchema(database) {
       required_level INTEGER NOT NULL CHECK (required_level BETWEEN 1 AND 4),
       difficulty_level INTEGER NOT NULL CHECK (difficulty_level BETWEEN 1 AND 4),
       assignment_mode TEXT NOT NULL CHECK (assignment_mode IN ('accepted', 'assigned', 'self')),
+      service_commission INTEGER NOT NULL DEFAULT 0 CHECK (service_commission IN (0, 1)),
+      service_audience TEXT CHECK (service_audience IN ('public', 'targeted', 'owner_choice')),
+      target_resident_id TEXT REFERENCES residents(resident_id) ON DELETE RESTRICT,
       status TEXT NOT NULL CHECK (status IN (
         'available', 'accepted', 'assigned', 'active', 'completed', 'cancelled', 'transferred', 'expired'
       )),
@@ -246,6 +249,8 @@ export function installCareerSchema(database) {
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       started_at INTEGER,
+      accepted_at INTEGER,
+      accepted_day TEXT,
       ended_at INTEGER,
       decision_count INTEGER NOT NULL DEFAULT 0 CHECK (decision_count BETWEEN 0 AND 4),
       has_irreversible_action INTEGER NOT NULL DEFAULT 0 CHECK (has_irreversible_action IN (0, 1)),
@@ -338,6 +343,21 @@ export function installCareerSchema(database) {
       trade_id TEXT UNIQUE,
       silver_amount INTEGER NOT NULL CHECK (silver_amount > 0),
       created_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS career_service_commission_funds (
+      source_id TEXT PRIMARY KEY,
+      current_job_id TEXT NOT NULL UNIQUE REFERENCES career_jobs(job_id),
+      owner_resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE RESTRICT,
+      currency TEXT NOT NULL CHECK (currency IN ('gold', 'silver')),
+      amount INTEGER NOT NULL CHECK (amount > 0),
+      reservation_id TEXT NOT NULL,
+      reserve_receipt_id TEXT NOT NULL,
+      trade_id TEXT,
+      state TEXT NOT NULL CHECK (state IN ('reserved', 'frozen', 'settled', 'released')),
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      CHECK (trade_id IS NULL)
     );
 
     CREATE TABLE IF NOT EXISTS career_commission_source_facts (
@@ -622,7 +642,10 @@ export function installCareerSchema(database) {
       resolution_id TEXT PRIMARY KEY,
       job_id TEXT NOT NULL UNIQUE REFERENCES career_jobs(job_id),
       resident_id TEXT NOT NULL,
-      result_kind TEXT NOT NULL CHECK (result_kind IN ('rules_explained', 'voluntary_mediation', 'bank_notice', 'review_upheld')),
+      result_kind TEXT NOT NULL CHECK (result_kind IN (
+        'rules_explained', 'voluntary_mediation', 'bank_notice', 'review_upheld',
+        'farm_crop_theft', 'bank_system_loan_refusal'
+      )),
       note TEXT,
       resolved_at INTEGER NOT NULL
     );
@@ -639,6 +662,40 @@ export function installCareerSchema(database) {
     CREATE INDEX IF NOT EXISTS career_job_messages_job_index
       ON career_job_messages(job_id, created_at, message_id);
   `);
+    const securityResolutionSql = database.prepare(`
+      SELECT sql FROM sqlite_master
+      WHERE type = 'table' AND name = 'career_security_resolutions'
+    `).get()?.sql ?? "";
+    const securityResolutionNeedsMigration = !securityResolutionSql.includes("farm_crop_theft") ||
+        !securityResolutionSql.includes("bank_system_loan_refusal");
+    if (securityResolutionNeedsMigration) {
+        if (database.isTransaction)
+            throw new Error("career_security_resolution_schema_migration_requires_startup");
+        const foreignKeysEnabled = database.prepare("PRAGMA foreign_keys").get().foreign_keys === 1;
+        database.exec(`
+          PRAGMA foreign_keys = OFF;
+          CREATE TABLE career_security_resolutions_v2 (
+            resolution_id TEXT PRIMARY KEY,
+            job_id TEXT NOT NULL UNIQUE REFERENCES career_jobs(job_id),
+            resident_id TEXT NOT NULL,
+            result_kind TEXT NOT NULL CHECK (result_kind IN (
+              'rules_explained', 'voluntary_mediation', 'bank_notice', 'review_upheld',
+              'farm_crop_theft', 'bank_system_loan_refusal'
+            )),
+            note TEXT,
+            resolved_at INTEGER NOT NULL
+          );
+          INSERT INTO career_security_resolutions_v2 (
+            resolution_id, job_id, resident_id, result_kind, note, resolved_at
+          ) SELECT resolution_id, job_id, resident_id, result_kind, note, resolved_at
+            FROM career_security_resolutions;
+          DROP TABLE career_security_resolutions;
+          ALTER TABLE career_security_resolutions_v2 RENAME TO career_security_resolutions;
+          ${foreignKeysEnabled ? "PRAGMA foreign_keys = ON;" : ""}
+        `);
+        if (foreignKeysEnabled && database.prepare("PRAGMA foreign_key_check").all().length > 0)
+            throw new Error("career_security_resolution_schema_migration_foreign_key_failed");
+    }
     const courseColumns = new Set(database
         .prepare("PRAGMA table_info(career_courses)")
         .all()
@@ -658,6 +715,25 @@ export function installCareerSchema(database) {
         .map((column) => column.name));
     if (!examColumns.has("missed_session_at"))
         database.exec("ALTER TABLE career_exam_attempts ADD COLUMN missed_session_at INTEGER");
+    const jobColumns = new Set(database
+        .prepare("PRAGMA table_info(career_jobs)")
+        .all()
+        .map((column) => column.name));
+    for (const [name, definition] of [
+        ["service_commission", "INTEGER NOT NULL DEFAULT 0 CHECK (service_commission IN (0, 1))"],
+        ["service_audience", "TEXT CHECK (service_audience IN ('public', 'targeted', 'owner_choice'))"],
+        ["target_resident_id", "TEXT"],
+        ["accepted_at", "INTEGER"],
+        ["accepted_day", "TEXT"],
+    ]) {
+        if (!jobColumns.has(name))
+            database.exec(`ALTER TABLE career_jobs ADD COLUMN ${name} ${definition}`);
+    }
+    database.exec(`
+      CREATE INDEX IF NOT EXISTS career_jobs_service_acceptance_index
+        ON career_jobs(worker_resident_id, career, accepted_day, accepted_at)
+        WHERE service_commission = 1;
+    `);
     const employmentColumns = new Set(database
         .prepare("PRAGMA table_info(career_employments)")
         .all()

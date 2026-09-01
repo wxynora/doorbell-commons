@@ -173,8 +173,13 @@ export class EconomyService {
         const term = this.#database
             .prepare("SELECT COALESCE(SUM(principal), 0) AS amount FROM economy_term_deposits WHERE resident_id = ? AND state = 'active'")
             .get(residentId);
+        const reservedSilver = this.#database
+            .prepare(`SELECT COALESCE(SUM(amount), 0) AS amount
+         FROM economy_silver_escrows
+         WHERE payer_resident_id = ? AND state = 'reserved'`)
+            .get(residentId);
         const frozenGold = (frozen.find((item) => item.currency === "gold")?.amount ?? 0) + reservedGold;
-        const frozenSilver = frozen.find((item) => item.currency === "silver")?.amount ?? 0;
+        const frozenSilver = (frozen.find((item) => item.currency === "silver")?.amount ?? 0) + reservedSilver.amount;
         return {
             residentId,
             availableGold: account.available_gold,
@@ -799,6 +804,136 @@ export class EconomyService {
             return this.#trade(input.tradeId);
         });
     }
+    reserveSilverEscrow(input) {
+        this.#assertReceiptNotProvided(input);
+        assertPositiveInteger(input.amount);
+        const payerResidentId = this.#requiredIdentifier(input.payerResidentId, "payer_resident_id");
+        const escrowId = this.#requiredIdentifier(input.escrowId, "escrow_id");
+        return this.#command("silver_escrow.reserve", input.idempotencyKey, `silver-escrow:${escrowId}`, input, (journal, now) => {
+            const existing = this.#database
+                .prepare("SELECT escrow_id FROM economy_silver_escrows WHERE escrow_id = ?")
+                .get(escrowId);
+            if (existing !== undefined) {
+                throw new EconomyError("ESCROW_STATE_CONFLICT", { escrowId });
+            }
+            this.#assertSpendAllowed(payerResidentId, "silver", input.amount, "agent", null, now);
+            this.#changeAvailable(journal, payerResidentId, "silver", -input.amount, now);
+            this.#database
+                .prepare(`INSERT INTO economy_silver_escrows (
+              escrow_id, payer_resident_id, amount, state, reserve_journal_id,
+              created_at, updated_at
+            ) VALUES (?, ?, ?, 'reserved', ?, ?, ?)`)
+                .run(escrowId, payerResidentId, input.amount, journal.journalId, now, now);
+            this.#residentEntry(journal, payerResidentId, "silver", "frozen", input.amount, this.#frozenBalance(payerResidentId, "silver"));
+            this.#recordRestrictedSpend(payerResidentId, "silver", input.amount, null, now);
+            this.#contractEvent(journal, "silver_escrow", escrowId, "reserved", {
+                payerResidentId,
+                amount: input.amount,
+            });
+            const escrowReceipt = this.#silverEscrowReceipt(journal, {
+                escrowId,
+                kind: "silver_escrow_reserve",
+                payerResidentId,
+                payeeResidentId: null,
+                amount: input.amount,
+            });
+            return {
+                ...this.#silverEscrow(escrowId),
+                account: this.getAccount(payerResidentId),
+                receiptId: escrowReceipt.receiptId,
+                escrowReceipt,
+            };
+        });
+    }
+    settleSilverEscrowToResident(input) {
+        this.#assertReceiptNotProvided(input);
+        const escrowId = this.#requiredIdentifier(input.escrowId, "escrow_id");
+        const payeeResidentId = this.#requiredIdentifier(input.payeeResidentId, "payee_resident_id");
+        return this.#command("silver_escrow.settle", input.idempotencyKey, `silver-escrow:${escrowId}`, input, (journal, now) => {
+            const escrow = this.#silverEscrow(escrowId);
+            if (escrow.state !== "reserved") {
+                throw new EconomyError("ESCROW_STATE_CONFLICT", { escrowId, state: escrow.state });
+            }
+            if (payeeResidentId === escrow.payer_resident_id) {
+                throw new EconomyError("ESCROW_STATE_CONFLICT", { escrowId, reason: "same_party" });
+            }
+            this.#account(payeeResidentId);
+            this.#database
+                .prepare(`UPDATE economy_silver_escrows
+             SET state = 'settled', payee_resident_id = ?, settle_journal_id = ?,
+                 updated_at = ?, closed_at = ?
+             WHERE escrow_id = ?`)
+                .run(payeeResidentId, journal.journalId, now, now, escrowId);
+            this.#residentEntry(journal, escrow.payer_resident_id, "silver", "frozen", -escrow.amount, this.#frozenBalance(escrow.payer_resident_id, "silver"));
+            this.#changeAvailable(journal, payeeResidentId, "silver", escrow.amount, now);
+            this.#contractEvent(journal, "silver_escrow", escrowId, "settled", {
+                payerResidentId: escrow.payer_resident_id,
+                payeeResidentId,
+                amount: escrow.amount,
+            });
+            const escrowReceipt = this.#silverEscrowReceipt(journal, {
+                escrowId,
+                kind: "silver_escrow_settle",
+                payerResidentId: escrow.payer_resident_id,
+                payeeResidentId,
+                amount: escrow.amount,
+            });
+            return {
+                ...this.#silverEscrow(escrowId),
+                payerAccount: this.getAccount(escrow.payer_resident_id),
+                payeeAccount: this.getAccount(payeeResidentId),
+                receiptId: escrowReceipt.receiptId,
+                escrowReceipt,
+            };
+        });
+    }
+    releaseSilverEscrow(input) {
+        this.#assertReceiptNotProvided(input);
+        const escrowId = this.#requiredIdentifier(input.escrowId, "escrow_id");
+        return this.#command("silver_escrow.release", input.idempotencyKey, `silver-escrow:${escrowId}`, input, (journal, now) => {
+            const escrow = this.#silverEscrow(escrowId);
+            if (escrow.state !== "reserved") {
+                throw new EconomyError("ESCROW_STATE_CONFLICT", { escrowId, state: escrow.state });
+            }
+            this.#database
+                .prepare(`UPDATE economy_silver_escrows
+             SET state = 'released', release_journal_id = ?, updated_at = ?, closed_at = ?
+             WHERE escrow_id = ?`)
+                .run(journal.journalId, now, now, escrowId);
+            this.#residentEntry(journal, escrow.payer_resident_id, "silver", "frozen", -escrow.amount, this.#frozenBalance(escrow.payer_resident_id, "silver"));
+            this.#changeAvailable(journal, escrow.payer_resident_id, "silver", escrow.amount, now);
+            this.#releaseRestrictedSpend(escrow.payer_resident_id, "silver", escrow.amount, escrow.created_at, now);
+            this.#contractEvent(journal, "silver_escrow", escrowId, "released", {
+                payerResidentId: escrow.payer_resident_id,
+                amount: escrow.amount,
+            });
+            const escrowReceipt = this.#silverEscrowReceipt(journal, {
+                escrowId,
+                kind: "silver_escrow_release",
+                payerResidentId: escrow.payer_resident_id,
+                payeeResidentId: null,
+                amount: escrow.amount,
+            });
+            return {
+                ...this.#silverEscrow(escrowId),
+                account: this.getAccount(escrow.payer_resident_id),
+                receiptId: escrowReceipt.receiptId,
+                escrowReceipt,
+            };
+        });
+    }
+    getSilverEscrow(escrowId) {
+        return this.#silverEscrow(this.#requiredIdentifier(escrowId, "escrow_id"));
+    }
+    getSilverEscrowReceipt(receiptId) {
+        const row = this.#database
+            .prepare("SELECT * FROM economy_silver_escrow_receipts WHERE receipt_id = ?")
+            .get(receiptId);
+        if (row === undefined) {
+            throw new EconomyError("ESCROW_RECEIPT_NOT_FOUND", { receiptId });
+        }
+        return this.#silverEscrowReceiptRow(row);
+    }
     openSystemLoan(input) {
         assertPositiveInteger(input.principal);
         if (!SYSTEM_LOAN_TERMS.has(input.termDays)) {
@@ -1045,6 +1180,69 @@ export class EconomyService {
             return this.getAccount(input.residentId);
         });
     }
+    listPunishableSystemLoanFacts(input = {}) {
+        const currentDay = beijingDay(this.#now());
+        const rows = input.residentId === undefined
+            ? this.#database
+                .prepare(`SELECT * FROM economy_system_loans
+               WHERE status != 'repaid'
+               ORDER BY due_day, loan_id`)
+                .all()
+            : this.#database
+                .prepare(`SELECT * FROM economy_system_loans
+               WHERE borrower_resident_id = ? AND status != 'repaid'
+               ORDER BY due_day, loan_id`)
+                .all(input.residentId);
+        return rows
+            .filter((loan) => currentDay >= loan.due_day + 1 + GRACE_DAYS)
+            .map((loan) => this.#punishableSystemLoanFact(loan, currentDay));
+    }
+    getPunishableSystemLoanFact(input) {
+        const loan = this.#database
+            .prepare("SELECT * FROM economy_system_loans WHERE loan_id = ? AND status != 'repaid'")
+            .get(input.loanId);
+        if (loan === undefined ||
+            (input.residentId !== undefined && loan.borrower_resident_id !== input.residentId)) {
+            return null;
+        }
+        const currentDay = beijingDay(this.#now());
+        if (currentDay < loan.due_day + 1 + GRACE_DAYS) {
+            return null;
+        }
+        return this.#punishableSystemLoanFact(loan, currentDay);
+    }
+    payDetentionEarlyRelease(input) {
+        this.#assertReceiptNotProvided(input);
+        assertPositiveInteger(input.amount);
+        if (typeof input.residentId !== "string" ||
+            input.residentId.length === 0 ||
+            typeof input.detentionId !== "string" ||
+            input.detentionId.length === 0) {
+            throw new EconomyError("DETENTION_PAYMENT_INVALID");
+        }
+        return this.#command("security.detention.early_release_payment", input.idempotencyKey, `security:detention:${input.detentionId}:early-release`, input, (journal, now) => {
+            this.#changeAvailable(journal, input.residentId, "gold", -input.amount, now);
+            this.#systemEntry(journal, "detention_early_release", "gold", input.amount);
+            this.#contractEvent(journal, "detention_release_payment", input.detentionId, "paid", {
+                residentId: input.residentId,
+                amount: input.amount,
+            });
+            const financialReceipt = this.#financialReceipt(journal, {
+                residentId: input.residentId,
+                kind: "system_gold_charge",
+                currency: "gold",
+                amount: input.amount,
+                businessReference: `security:detention:${input.detentionId}:early-release`,
+            });
+            return {
+                detentionId: input.detentionId,
+                paidGold: input.amount,
+                receiptId: financialReceipt.receiptId,
+                account: this.getAccount(input.residentId),
+                financialReceipt,
+            };
+        });
+    }
     #command(commandType, idempotencyKey, businessRef, payload, operation) {
         if (idempotencyKey.length === 0)
             throw new EconomyError("IDEMPOTENCY_CONFLICT");
@@ -1067,6 +1265,7 @@ export class EconomyService {
                 contractEvents: [],
                 lockEvents: [],
                 financialReceipts: [],
+                silverEscrowReceipts: [],
             };
             const result = operation(journal, now);
             this.#assertBalanced(journal.entries);
@@ -1101,6 +1300,13 @@ export class EconomyService {
             for (const receipt of journal.financialReceipts) {
                 insertFinancialReceipt.run(receipt.receiptId, receipt.residentId, receipt.kind, receipt.currency, receipt.amount, receipt.businessReference, now);
             }
+            const insertSilverEscrowReceipt = this.#database.prepare(`INSERT INTO economy_silver_escrow_receipts (
+          receipt_id, escrow_id, kind, payer_resident_id, payee_resident_id,
+          amount, currency, business_reference, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, 'silver', ?, ?)`);
+            for (const receipt of journal.silverEscrowReceipts) {
+                insertSilverEscrowReceipt.run(receipt.receiptId, receipt.escrowId, receipt.kind, receipt.payerResidentId, receipt.payeeResidentId, receipt.amount, receipt.businessReference, now);
+            }
             this.#database
                 .prepare(`INSERT INTO economy_commands (
             idempotency_key, command_type, payload_hash, journal_id, result_json, created_at
@@ -1114,6 +1320,13 @@ export class EconomyService {
             throw new EconomyError("IDEMPOTENCY_CONFLICT");
         }
         const result = JSON.parse(existing.result_json);
+        const escrowReceiptId = result?.escrowReceipt?.receiptId;
+        if (typeof escrowReceiptId === "string" && escrowReceiptId.length > 0) {
+            return {
+                ...result,
+                escrowReceipt: this.getSilverEscrowReceipt(escrowReceiptId),
+            };
+        }
         const receiptId = result?.financialReceipt?.receiptId;
         if (typeof receiptId !== "string" || receiptId.length === 0) {
             return result;
@@ -1145,6 +1358,14 @@ export class EconomyService {
             throw new EconomyError("TRADE_NOT_FOUND", { tradeId });
         return row;
     }
+    #silverEscrow(escrowId) {
+        const row = this.#database
+            .prepare("SELECT * FROM economy_silver_escrows WHERE escrow_id = ?")
+            .get(escrowId);
+        if (row === undefined)
+            throw new EconomyError("ESCROW_NOT_FOUND", { escrowId });
+        return row;
+    }
     #systemGoldReservation(reservationId) {
         const row = this.#database
             .prepare("SELECT * FROM economy_system_gold_reservations WHERE reservation_id = ?")
@@ -1168,6 +1389,24 @@ export class EconomyService {
         if (row === undefined)
             throw new EconomyError("LOAN_NOT_FOUND", { loanId });
         return row;
+    }
+    #punishableSystemLoanFact(loan, currentDay) {
+        const targetDay = Math.min(currentDay, loan.due_day + 1);
+        const days = Math.max(0, targetDay - loan.accrued_through_day);
+        const numerator = loan.principal_outstanding * loan.daily_rate_ppm * days + loan.interest_remainder;
+        const accruedInterest = loan.accrued_interest + Math.floor(numerator / INTEREST_RATE_DENOMINATOR);
+        return {
+            loanId: loan.loan_id,
+            residentId: loan.borrower_resident_id,
+            borrowerResidentId: loan.borrower_resident_id,
+            punishable: true,
+            principalOutstanding: loan.principal_outstanding,
+            accruedInterest,
+            outstandingGold: loan.principal_outstanding + accruedInterest,
+            dueDay: loan.due_day,
+            graceDays: GRACE_DAYS,
+            punishableSinceDay: loan.due_day + 1 + GRACE_DAYS,
+        };
     }
     #playerLoan(loanId) {
         const row = this.#database
@@ -1294,6 +1533,12 @@ export class EconomyService {
             throw new EconomyError("FINANCIAL_RECEIPT_INPUT_FORBIDDEN");
         }
     }
+    #requiredIdentifier(value, field) {
+        if (typeof value !== "string" || value.trim().length === 0) {
+            throw new EconomyError("ESCROW_CONTRACT_INVALID", { field });
+        }
+        return value.trim();
+    }
     #financialReceipt(journal, input) {
         const receipt = Object.freeze({
             receiptId: journal.journalId,
@@ -1324,6 +1569,32 @@ export class EconomyService {
             ...(row.reserve_journal_id === null || row.reserve_journal_id === undefined
                 ? {}
                 : { reserveReceiptId: row.reserve_journal_id }),
+        };
+    }
+    #silverEscrowReceipt(journal, input) {
+        const receipt = Object.freeze({
+            receiptId: journal.journalId,
+            escrowId: input.escrowId,
+            kind: input.kind,
+            payerResidentId: input.payerResidentId,
+            payeeResidentId: input.payeeResidentId,
+            currency: "silver",
+            amount: input.amount,
+            businessReference: `silver-escrow:${input.escrowId}`,
+        });
+        journal.silverEscrowReceipts.push(receipt);
+        return receipt;
+    }
+    #silverEscrowReceiptRow(row) {
+        return {
+            receiptId: row.receipt_id,
+            escrowId: row.escrow_id,
+            kind: row.kind,
+            payerResidentId: row.payer_resident_id,
+            payeeResidentId: row.payee_resident_id,
+            currency: row.currency,
+            amount: row.amount,
+            businessReference: row.business_reference,
         };
     }
     #assertBalanced(entries) {
@@ -1408,8 +1679,14 @@ export class EconomyService {
             .prepare(`SELECT COALESCE(SUM(frozen_amount), 0) AS amount FROM economy_trades
          WHERE payer_resident_id = ? AND currency = ? AND state = 'frozen'`)
             .get(residentId, currency);
-        if (currency !== "gold")
-            return trade.amount;
+        if (currency !== "gold") {
+            const escrow = this.#database
+                .prepare(`SELECT COALESCE(SUM(amount), 0) AS amount
+           FROM economy_silver_escrows
+           WHERE payer_resident_id = ? AND state = 'reserved'`)
+                .get(residentId);
+            return trade.amount + escrow.amount;
+        }
         const reservation = this.#database
             .prepare(`SELECT COALESCE(SUM(amount), 0) AS amount
          FROM economy_system_gold_reservations

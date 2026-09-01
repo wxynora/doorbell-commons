@@ -64,6 +64,20 @@ export const AGRONOMIST_CONCURRENT_CAPACITY = {
     3: 4,
     4: 8,
 };
+export const SERVICE_COMMISSION_DAILY_ACCEPT_LIMIT = 3;
+export const SERVICE_COMMISSION_REST_MS = 3 * 60 * 60 * 1000;
+export const AGRONOMY_COMMISSION_SILVER = Object.freeze({
+    1: 20,
+    2: 60,
+    3: 150,
+    4: 400,
+});
+export const AGRONOMY_COMMISSION_REWARD_GOLD = Object.freeze({
+    1: 1_000,
+    2: 5_000,
+    3: 15_000,
+    4: 40_000,
+});
 export class CareerDomainError extends Error {
     code;
     constructor(code, message) {

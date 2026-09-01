@@ -1,4 +1,4 @@
-export const ECONOMY_SCHEMA_VERSION = 3;
+export const ECONOMY_SCHEMA_VERSION = 4;
 function runImmediate(database, operation) {
     if (database.isTransaction) {
         return operation();
@@ -87,13 +87,81 @@ const ECONOMY_SCHEMA_V3_META_SQL = `
   );
   INSERT INTO economy_schema_meta (singleton_id, schema_version) VALUES (1, 3);
 `;
+const ECONOMY_SCHEMA_V4_ADDITIONS_SQL = `
+  CREATE TABLE economy_silver_escrows (
+    escrow_id TEXT PRIMARY KEY,
+    payer_resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE RESTRICT,
+    payee_resident_id TEXT REFERENCES residents(resident_id) ON DELETE RESTRICT,
+    amount INTEGER NOT NULL CHECK (amount > 0),
+    state TEXT NOT NULL CHECK (state IN ('reserved', 'settled', 'released')),
+    reserve_journal_id TEXT NOT NULL UNIQUE REFERENCES economy_journals(journal_id) ON DELETE RESTRICT
+      DEFERRABLE INITIALLY DEFERRED,
+    settle_journal_id TEXT UNIQUE REFERENCES economy_journals(journal_id) ON DELETE RESTRICT
+      DEFERRABLE INITIALLY DEFERRED,
+    release_journal_id TEXT UNIQUE REFERENCES economy_journals(journal_id) ON DELETE RESTRICT
+      DEFERRABLE INITIALLY DEFERRED,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    closed_at INTEGER,
+    CHECK (payee_resident_id IS NULL OR payee_resident_id != payer_resident_id),
+    CHECK (
+      (state = 'reserved' AND payee_resident_id IS NULL
+        AND settle_journal_id IS NULL AND release_journal_id IS NULL AND closed_at IS NULL)
+      OR
+      (state = 'settled' AND payee_resident_id IS NOT NULL
+        AND settle_journal_id IS NOT NULL AND release_journal_id IS NULL AND closed_at IS NOT NULL)
+      OR
+      (state = 'released' AND payee_resident_id IS NULL
+        AND settle_journal_id IS NULL AND release_journal_id IS NOT NULL AND closed_at IS NOT NULL)
+    )
+  );
+
+  CREATE INDEX economy_silver_escrows_payer_state
+    ON economy_silver_escrows (payer_resident_id, state, created_at);
+
+  CREATE TABLE economy_silver_escrow_receipts (
+    receipt_id TEXT PRIMARY KEY REFERENCES economy_journals(journal_id) ON DELETE RESTRICT,
+    escrow_id TEXT NOT NULL REFERENCES economy_silver_escrows(escrow_id) ON DELETE RESTRICT,
+    kind TEXT NOT NULL CHECK (kind IN (
+      'silver_escrow_reserve',
+      'silver_escrow_settle',
+      'silver_escrow_release'
+    )),
+    payer_resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE RESTRICT,
+    payee_resident_id TEXT REFERENCES residents(resident_id) ON DELETE RESTRICT,
+    amount INTEGER NOT NULL CHECK (amount > 0),
+    currency TEXT NOT NULL CHECK (currency = 'silver'),
+    business_reference TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    UNIQUE (escrow_id, kind),
+    CHECK (
+      (kind = 'silver_escrow_settle' AND payee_resident_id IS NOT NULL)
+      OR (kind != 'silver_escrow_settle' AND payee_resident_id IS NULL)
+    )
+  );
+
+  CREATE TRIGGER economy_silver_escrows_no_delete
+    BEFORE DELETE ON economy_silver_escrows BEGIN SELECT RAISE(ABORT, 'immutable silver escrow identity'); END;
+  CREATE TRIGGER economy_silver_escrow_receipts_no_update
+    BEFORE UPDATE ON economy_silver_escrow_receipts BEGIN SELECT RAISE(ABORT, 'immutable silver escrow receipt'); END;
+  CREATE TRIGGER economy_silver_escrow_receipts_no_delete
+    BEFORE DELETE ON economy_silver_escrow_receipts BEGIN SELECT RAISE(ABORT, 'immutable silver escrow receipt'); END;
+`;
+const ECONOMY_SCHEMA_V4_META_SQL = `
+  DROP TABLE economy_schema_meta;
+  CREATE TABLE economy_schema_meta (
+    singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+    schema_version INTEGER NOT NULL CHECK (schema_version = 4)
+  );
+  INSERT INTO economy_schema_meta (singleton_id, schema_version) VALUES (1, 4);
+`;
 export const ECONOMY_SCHEMA_SQL = `
   CREATE TABLE economy_schema_meta (
     singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
-    schema_version INTEGER NOT NULL CHECK (schema_version = 3)
+    schema_version INTEGER NOT NULL CHECK (schema_version = 4)
   );
 
-  INSERT INTO economy_schema_meta (singleton_id, schema_version) VALUES (1, 3);
+  INSERT INTO economy_schema_meta (singleton_id, schema_version) VALUES (1, 4);
 
   CREATE TABLE economy_accounts (
     resident_id TEXT PRIMARY KEY REFERENCES residents(resident_id) ON DELETE RESTRICT,
@@ -289,6 +357,7 @@ export const ECONOMY_SCHEMA_SQL = `
   );
 
   ${ECONOMY_SCHEMA_V2_ADDITIONS_SQL}
+  ${ECONOMY_SCHEMA_V4_ADDITIONS_SQL}
 
   CREATE TRIGGER economy_journals_no_update
     BEFORE UPDATE ON economy_journals BEGIN SELECT RAISE(ABORT, 'immutable economy journal'); END;
@@ -326,6 +395,8 @@ export function installEconomySchema(database) {
           ${ECONOMY_SCHEMA_V2_ADDITIONS_SQL}
           ${ECONOMY_SCHEMA_V3_MIGRATION_SQL}
           ${ECONOMY_SCHEMA_V3_META_SQL}
+          ${ECONOMY_SCHEMA_V4_ADDITIONS_SQL}
+          ${ECONOMY_SCHEMA_V4_META_SQL}
         `));
             return;
         }
@@ -333,6 +404,15 @@ export function installEconomySchema(database) {
             runImmediate(database, () => database.exec(`
           ${ECONOMY_SCHEMA_V3_MIGRATION_SQL}
           ${ECONOMY_SCHEMA_V3_META_SQL}
+          ${ECONOMY_SCHEMA_V4_ADDITIONS_SQL}
+          ${ECONOMY_SCHEMA_V4_META_SQL}
+        `));
+            return;
+        }
+        if (existing.schema_version === 3) {
+            runImmediate(database, () => database.exec(`
+          ${ECONOMY_SCHEMA_V4_ADDITIONS_SQL}
+          ${ECONOMY_SCHEMA_V4_META_SQL}
         `));
             return;
         }

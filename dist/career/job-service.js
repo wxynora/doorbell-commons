@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { AGRONOMIST_CONCURRENT_CAPACITY, CareerDomainError, institutionForCareer, JOB_PERFORMANCE_UNITS, PERFORMANCE_PAY_GOLD, } from "./contracts.js";
+import { AGRONOMIST_CONCURRENT_CAPACITY, CareerDomainError, institutionForCareer, JOB_PERFORMANCE_UNITS, PERFORMANCE_PAY_GOLD, SERVICE_COMMISSION_DAILY_ACCEPT_LIMIT, SERVICE_COMMISSION_REST_MS, } from "./contracts.js";
 import { beijingDate, recordFinancialReceipt, requireActiveCertificate, runInTransaction } from "./persistence.js";
 import { installCareerSchema } from "./schema.js";
 const AUTHORITY_ASSIGN_JOB = Symbol("career-authority-assign-job");
@@ -22,6 +22,74 @@ function assignmentExclusions(input) {
 }
 function sameStrings(left, right) {
     return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+function verifyServiceSilverSettlement(database, job, workerResidentId, receiptId) {
+    const authority = database.prepare(`SELECT
+        fund.source_id, fund.owner_resident_id, fund.amount, fund.reservation_id,
+        fund.state AS fund_state,
+        escrow.amount AS escrow_amount, escrow.payer_resident_id,
+        escrow.payee_resident_id, escrow.state AS escrow_state,
+        escrow.settle_journal_id,
+        receipt.kind, receipt.currency, receipt.amount AS receipt_amount,
+        receipt.business_reference
+      FROM career_service_commission_funds AS fund
+      JOIN economy_silver_escrows AS escrow
+        ON escrow.escrow_id = fund.reservation_id
+      JOIN economy_silver_escrow_receipts AS receipt
+        ON receipt.receipt_id = escrow.settle_journal_id
+       AND receipt.escrow_id = escrow.escrow_id
+      WHERE fund.current_job_id = ? AND fund.currency = 'silver'
+        AND receipt.receipt_id = ?`)
+        .get(job.job_id, receiptId);
+    if (!authority || authority.fund_state !== "settled" ||
+        authority.escrow_state !== "settled" ||
+        authority.owner_resident_id !== job.owner_resident_id ||
+        authority.payer_resident_id !== job.owner_resident_id ||
+        authority.payee_resident_id !== workerResidentId ||
+        authority.kind !== "silver_escrow_settle" ||
+        authority.currency !== "silver" ||
+        authority.escrow_amount !== authority.amount ||
+        authority.receipt_amount !== authority.amount ||
+        authority.business_reference !== `silver-escrow:${authority.reservation_id}` ||
+        authority.settle_journal_id !== receiptId) {
+        throw new CareerDomainError("job_payment_receipt_mismatch", "The settled service escrow does not match this agronomy commission");
+    }
+    const entries = database.prepare(`SELECT resident_id, partition_name, delta
+      FROM economy_ledger_entries WHERE journal_id = ? AND currency = 'silver'`)
+        .all(receiptId);
+    const paidWorker = entries.some((entry) => entry.resident_id === workerResidentId &&
+        entry.partition_name === "available" && entry.delta === authority.amount);
+    const releasedOwner = entries.some((entry) => entry.resident_id === job.owner_resident_id &&
+        entry.partition_name === "frozen" && entry.delta === -authority.amount);
+    if (entries.length !== 2 || !paidWorker || !releasedOwner)
+        throw new CareerDomainError("job_payment_receipt_unverified", "The settled service escrow journal is invalid");
+    return receiptId;
+}
+function serviceCommissionContract(input, excludedResidentIds) {
+    if (input.serviceCommission !== true) {
+        if (input.serviceAudience !== undefined || input.targetResidentId !== undefined) {
+            throw new CareerDomainError("service_commission_contract_invalid", "Only a service commission can declare its audience");
+        }
+        return { enabled: false, audience: null, targetResidentId: null };
+    }
+    if (!['agronomist', 'veterinarian'].includes(input.career) ||
+        input.assignmentMode !== 'accepted' || !input.ownerResidentId) {
+        throw new CareerDomainError("service_commission_contract_invalid", "A real service commission needs an owner and accepted assignment mode");
+    }
+    const audience = input.serviceAudience ?? 'public';
+    if (!['public', 'targeted'].includes(audience)) {
+        throw new CareerDomainError("service_commission_contract_invalid", "A new service commission must be public or targeted");
+    }
+    const targetResidentId = input.targetResidentId ?? null;
+    if ((audience === 'targeted') !== (targetResidentId !== null) ||
+        (targetResidentId !== null &&
+            (typeof targetResidentId !== 'string' || !targetResidentId.length || targetResidentId.trim() !== targetResidentId))) {
+        throw new CareerDomainError("service_commission_contract_invalid", "A targeted service commission needs one valid target resident");
+    }
+    if (targetResidentId === input.ownerResidentId || excludedResidentIds.includes(targetResidentId)) {
+        throw new CareerDomainError("service_commission_target_invalid", "The owner or an excluded resident cannot be targeted");
+    }
+    return { enabled: true, audience, targetResidentId };
 }
 export const INSTITUTION_ASSIGNED_CONCURRENT_CAPACITY = Object.freeze({
     1: 1,
@@ -49,6 +117,7 @@ export class CareerJobService {
         const now = this.#now();
         return runInTransaction(this.#database, () => {
             const excludedResidentIds = assignmentExclusions(input.excludedResidentIds);
+            const serviceCommission = serviceCommissionContract(input, excludedResidentIds);
             const existing = this.#database
                 .prepare(`SELECT * FROM career_jobs WHERE job_id = ? OR (source_type = ? AND source_id = ?)`)
                 .get(input.jobId, input.sourceType, input.sourceId);
@@ -63,6 +132,9 @@ export class CareerJobService {
                     existing.required_level !== input.requiredLevel ||
                     existing.difficulty_level !== input.difficultyLevel ||
                     existing.assignment_mode !== input.assignmentMode ||
+                    Boolean(existing.service_commission) !== serviceCommission.enabled ||
+                    existing.service_audience !== serviceCommission.audience ||
+                    existing.target_resident_id !== serviceCommission.targetResidentId ||
                     (input.assignmentMode === "self" &&
                         existing.worker_resident_id !== input.selfWorkerResidentId) ||
                     !sameStrings(excludedResidentIds, this.#assignmentExclusions(existing.job_id))) {
@@ -88,14 +160,22 @@ export class CareerJobService {
                 .prepare(`INSERT INTO career_jobs (
              job_id, career, source_type, source_id, object_type, object_id,
              owner_resident_id, required_level, difficulty_level, assignment_mode,
+             service_commission, service_audience, target_resident_id,
              status, worker_resident_id, created_at, updated_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-                .run(input.jobId, input.career, input.sourceType, input.sourceId, input.objectType, input.objectId, input.ownerResidentId ?? null, input.requiredLevel, input.difficultyLevel, input.assignmentMode, status, workerResidentId, now, now);
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+                .run(input.jobId, input.career, input.sourceType, input.sourceId, input.objectType, input.objectId,
+                    input.ownerResidentId ?? null, input.requiredLevel, input.difficultyLevel,
+                    input.assignmentMode, Number(serviceCommission.enabled), serviceCommission.audience,
+                    serviceCommission.targetResidentId, status, workerResidentId, now, now);
             const insertExclusion = this.#database.prepare(`INSERT INTO career_job_assignment_exclusions (
               job_id, resident_id, relation_kind, source_reference, recorded_at
             ) VALUES (?, ?, 'source_party', ?, ?)`);
             for (const residentId of excludedResidentIds)
                 insertExclusion.run(input.jobId, residentId, input.sourceId, now);
+            if (serviceCommission.enabled && serviceCommission.targetResidentId) {
+                this.#requireServiceCandidate(this.#requireJob(input.jobId),
+                    serviceCommission.targetResidentId, now);
+            }
             return mapJob(this.#requireJob(input.jobId));
         });
     }
@@ -107,6 +187,91 @@ export class CareerJobService {
     }
     [AUTHORITY_ASSIGN_JOB](jobId, workerResidentId) {
         return this.#bindWorker(jobId, workerResidentId, "assigned");
+    }
+    configureServiceCommission(input) {
+        const now = this.#now();
+        return runInTransaction(this.#database, () => {
+            const job = this.#requireJob(input.jobId);
+            if (!job.service_commission || job.owner_resident_id !== input.ownerResidentId ||
+                job.status !== "available") {
+                throw new CareerDomainError("service_commission_not_configurable", "The service commission cannot be reconfigured");
+            }
+            if (!["public", "targeted"].includes(input.audience)) {
+                throw new CareerDomainError("service_commission_contract_invalid", "The service commission audience is invalid");
+            }
+            const targetResidentId = input.audience === "targeted" ? input.targetResidentId : null;
+            if ((input.audience === "targeted" &&
+                (typeof targetResidentId !== "string" || !targetResidentId.length || targetResidentId.trim() !== targetResidentId)) ||
+                (input.audience === "public" && input.targetResidentId !== undefined)) {
+                throw new CareerDomainError("service_commission_contract_invalid", "A targeted service commission needs one valid target resident");
+            }
+            if (targetResidentId !== null) {
+                if (targetResidentId === job.owner_resident_id ||
+                    this.#assignmentExclusions(job.job_id).includes(targetResidentId)) {
+                    throw new CareerDomainError("service_commission_target_invalid", "The owner or an excluded resident cannot be targeted");
+                }
+                this.#requireServiceCandidate({
+                    ...job,
+                    service_audience: "targeted",
+                    target_resident_id: targetResidentId,
+                }, targetResidentId, now);
+            }
+            this.#database.prepare(`UPDATE career_jobs
+              SET service_audience = ?, target_resident_id = ?, updated_at = ?
+              WHERE job_id = ?`)
+                .run(input.audience, targetResidentId, now, job.job_id);
+            return mapJob(this.#requireJob(job.job_id));
+        });
+    }
+    declineTargetedServiceCommission(input) {
+        const now = this.#now();
+        return runInTransaction(this.#database, () => {
+            const job = this.#requireJob(input.jobId);
+            if (!job.service_commission || job.status !== "available" ||
+                job.target_resident_id !== input.workerResidentId ||
+                !["targeted", "owner_choice"].includes(job.service_audience)) {
+                throw new CareerDomainError("service_commission_not_declineable", "The targeted service commission cannot be declined");
+            }
+            if (job.service_audience === "targeted") {
+                this.#database.prepare(`UPDATE career_jobs
+                  SET service_audience = 'owner_choice', updated_at = ? WHERE job_id = ?`)
+                    .run(now, job.job_id);
+            }
+            return mapJob(this.#requireJob(job.job_id));
+        });
+    }
+    getServiceCommissionAvailability(workerResidentId, career) {
+        const now = this.#now();
+        if (!["agronomist", "veterinarian"].includes(career)) {
+            throw new CareerDomainError("service_commission_career_invalid", "This career does not use service commission limits");
+        }
+        const acceptedDay = beijingDate(now);
+        const active = this.#database.prepare(`SELECT job_id FROM career_jobs
+          WHERE service_commission = 1 AND worker_resident_id = ? AND career = ?
+            AND status IN ('accepted', 'active')
+          ORDER BY accepted_at, job_id LIMIT 1`)
+            .get(workerResidentId, career);
+        const acceptedToday = this.#database.prepare(`SELECT COUNT(*) AS count FROM career_jobs
+          WHERE service_commission = 1 AND worker_resident_id = ? AND career = ?
+            AND accepted_day = ?`)
+            .get(workerResidentId, career, acceptedDay).count;
+        const lastCompleted = this.#database.prepare(`SELECT MAX(ended_at) AS ended_at FROM career_jobs
+          WHERE service_commission = 1 AND worker_resident_id = ? AND career = ?
+            AND status = 'completed'`)
+            .get(workerResidentId, career).ended_at;
+        const restUntil = Number.isSafeInteger(lastCompleted)
+            ? lastCompleted + SERVICE_COMMISSION_REST_MS
+            : null;
+        return {
+            acceptedDay,
+            acceptedToday,
+            activeJobId: active?.job_id ?? null,
+            dailyLimit: SERVICE_COMMISSION_DAILY_ACCEPT_LIMIT,
+            restUntil,
+            remainingRestMs: restUntil !== null ? Math.max(0, restUntil - now) : 0,
+            canAccept: !active && acceptedToday < SERVICE_COMMISSION_DAILY_ACCEPT_LIMIT &&
+                (restUntil === null || now >= restUntil),
+        };
     }
     recordDecision(input) {
         const now = this.#now();
@@ -173,17 +338,25 @@ export class CareerJobService {
             }
             let paymentReference = input.externalPaymentReference ?? null;
             if (job.career === "agronomist") {
-                if (!input.paymentReceipt || !input.expectedSilverPayment) {
-                    throw new CareerDomainError("job_payment_required", "A real agronomy commission needs its settled silver receipt");
+                if (job.service_commission) {
+                    if (typeof input.externalPaymentReference !== "string" || input.externalPaymentReference.length === 0)
+                        throw new CareerDomainError("job_payment_required", "A real agronomy commission needs its settled silver escrow");
+                    paymentReference = verifyServiceSilverSettlement(this.#database, job,
+                        input.workerResidentId, input.externalPaymentReference);
                 }
-                recordFinancialReceipt(this.#database, input.paymentReceipt, {
-                    amount: input.expectedSilverPayment,
-                    businessReference: `career-job:${job.job_id}:settlement`,
-                    currency: "silver",
-                    kind: "player_silver_settle",
-                    residentId: input.workerResidentId,
-                }, now);
-                paymentReference = input.paymentReceipt.receiptId;
+                else {
+                    if (!input.paymentReceipt || !input.expectedSilverPayment) {
+                        throw new CareerDomainError("job_payment_required", "A real agronomy commission needs its settled silver receipt");
+                    }
+                    recordFinancialReceipt(this.#database, input.paymentReceipt, {
+                        amount: input.expectedSilverPayment,
+                        businessReference: `career-job:${job.job_id}:settlement`,
+                        currency: "silver",
+                        kind: "player_silver_settle",
+                        residentId: input.workerResidentId,
+                    }, now);
+                    paymentReference = input.paymentReceipt.receiptId;
+                }
             }
             this.#database
                 .prepare(`UPDATE career_jobs
@@ -214,7 +387,8 @@ export class CareerJobService {
              work_record_id, job_id, resident_id, career, qualification_level,
              difficulty_level, record_kind, performance_units, performance_rate_bps, recorded_at
            ) VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?)`)
-                .run(this.#generateId(), job.job_id, input.workerResidentId, job.career, level, job.difficulty_level, performanceUnits, performanceRateBps, now);
+                .run(this.#generateId(), job.job_id, input.workerResidentId, job.career, level,
+                    job.difficulty_level, performanceUnits, performanceRateBps, now);
             return mapJob(this.#requireJob(job.job_id));
         });
     }
@@ -307,9 +481,14 @@ export class CareerJobService {
                 .prepare(`INSERT INTO career_jobs (
              job_id, parent_job_id, career, source_type, source_id, object_type, object_id,
              owner_resident_id, required_level, difficulty_level, assignment_mode,
+             service_commission, service_audience, target_resident_id,
              status, created_at, updated_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'available', ?, ?)`)
-                .run(input.successorJobId, job.job_id, job.career, successorSourceType, input.successorSourceId, job.object_type, job.object_id, job.owner_resident_id, job.required_level, job.difficulty_level, job.assignment_mode, now, now);
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'available', ?, ?)`)
+                .run(input.successorJobId, job.job_id, job.career, successorSourceType,
+                    input.successorSourceId, job.object_type, job.object_id, job.owner_resident_id,
+                    job.required_level, job.difficulty_level, job.assignment_mode,
+                    Number(Boolean(job.service_commission)), job.service_commission ? "owner_choice" : null,
+                    now, now);
             this.#database.prepare(`INSERT INTO career_job_assignment_exclusions (
               job_id, resident_id, relation_kind, source_reference, recorded_at
             )
@@ -437,8 +616,10 @@ export class CareerJobService {
             if (job.status !== "available" || job.assignment_mode !== status) {
                 throw new CareerDomainError("job_not_bindable", "The job cannot use this binding mode");
             }
-            const workerLevel = requireActiveCertificate(this.#database, workerResidentId, job.career, job.required_level, now);
-            if (job.career === "agronomist") {
+            const workerLevel = job.service_commission
+                ? this.#requireServiceCandidate(job, workerResidentId, now)
+                : requireActiveCertificate(this.#database, workerResidentId, job.career, job.required_level, now);
+            if (!job.service_commission && job.career === "agronomist") {
                 const activeJobs = this.#database
                     .prepare(`SELECT COUNT(*) AS count FROM career_jobs
              WHERE worker_resident_id = ? AND career = 'agronomist'
@@ -448,7 +629,7 @@ export class CareerJobService {
                     throw new CareerDomainError("career_job_capacity_reached", "The agronomist has reached the qualification-level commission capacity");
                 }
             }
-            if (job.career === "veterinarian" || job.career === "constable") {
+            if (!job.service_commission && (job.career === "veterinarian" || job.career === "constable")) {
                 const activeJobs = this.#database
                     .prepare(`SELECT COUNT(*) AS count FROM career_jobs
              WHERE worker_resident_id = ? AND career = ?
@@ -459,7 +640,7 @@ export class CareerJobService {
                 }
             }
             const institution = institutionForCareer(job.career);
-            if (institution) {
+            if (institution && !job.service_commission) {
                 const duty = this.#database
                     .prepare(`SELECT 1 FROM career_duty_days
              WHERE resident_id = ? AND career = ? AND institution = ? AND duty_date = ?
@@ -470,16 +651,68 @@ export class CareerJobService {
                 }
             }
             this.#database
-                .prepare(`UPDATE career_jobs SET status = ?, worker_resident_id = ?, updated_at = ?
+                .prepare(`UPDATE career_jobs SET status = ?, worker_resident_id = ?,
+                  accepted_at = CASE WHEN service_commission = 1 THEN ? ELSE accepted_at END,
+                  accepted_day = CASE WHEN service_commission = 1 THEN ? ELSE accepted_day END,
+                  updated_at = ?
            WHERE job_id = ?`)
-                .run(status, workerResidentId, now, jobId);
+                .run(status, workerResidentId, now, beijingDate(now), now, jobId);
             return mapJob(this.#requireJob(jobId));
         });
+    }
+    #requireServiceCandidate(job, workerResidentId, now) {
+        if (!job.service_commission || !["agronomist", "veterinarian"].includes(job.career)) {
+            throw new CareerDomainError("service_commission_contract_invalid", "The job is not a real service commission");
+        }
+        if (job.owner_resident_id === workerResidentId) {
+            throw new CareerDomainError("service_commission_owner_cannot_accept", "The owner cannot accept this commission");
+        }
+        if (this.#assignmentExclusions(job.job_id).includes(workerResidentId)) {
+            throw new CareerDomainError("service_commission_worker_excluded", "This resident is excluded from the commission");
+        }
+        if (job.service_audience === "owner_choice" ||
+            (job.service_audience === "targeted" && job.target_resident_id !== workerResidentId)) {
+            throw new CareerDomainError("service_commission_target_mismatch", "This commission is not available to the resident");
+        }
+        if (!["public", "targeted"].includes(job.service_audience)) {
+            throw new CareerDomainError("service_commission_contract_invalid", "The service commission audience is invalid");
+        }
+        const workerLevel = requireActiveCertificate(this.#database, workerResidentId,
+            job.career, job.required_level, now);
+        const availability = this.getServiceCommissionAvailability(workerResidentId, job.career);
+        if (availability.activeJobId) {
+            throw new CareerDomainError("service_commission_active_job", "The worker already has an unfinished service commission");
+        }
+        if (availability.acceptedToday >= availability.dailyLimit) {
+            throw new CareerDomainError("service_commission_daily_limit", "The worker has reached today's service commission limit");
+        }
+        if (availability.remainingRestMs > 0) {
+            const error = new CareerDomainError("service_commission_resting", "The worker is resting after the last completed commission");
+            error.restUntil = availability.restUntil;
+            error.remainingRestMs = availability.remainingRestMs;
+            throw error;
+        }
+        if (job.career === "veterinarian") {
+            const duty = this.#database.prepare(`SELECT 1
+              FROM career_duty_days AS duty
+              JOIN career_employments AS employment
+                ON employment.employment_id = duty.employment_id
+              WHERE duty.resident_id = ? AND duty.career = 'veterinarian'
+                AND duty.institution = 'animal_hospital' AND duty.duty_date = ?
+                AND duty.status = 'scheduled' AND employment.status = 'active'
+                AND employment.availability = 'available'`)
+                .get(workerResidentId, beijingDate(now));
+            if (!duty) {
+                throw new CareerDomainError("active_duty_required", "Animal hospital work requires a scheduled duty day");
+            }
+        }
+        return workerLevel;
     }
     #assertAssignmentMode(career, mode) {
         const valid = (career === "chef" && mode === "self") ||
             ((career === "agronomist" || career === "reporter") && mode === "accepted") ||
-            ((career === "veterinarian" || career === "constable") && mode === "assigned");
+            (career === "veterinarian" && ["accepted", "assigned"].includes(mode)) ||
+            (career === "constable" && mode === "assigned");
         if (!valid) {
             throw new CareerDomainError("invalid_job_assignment_mode", "The assignment mode does not match the confirmed career workflow");
         }
@@ -520,6 +753,8 @@ function isTerminal(status) {
 }
 function mapJob(row) {
     return {
+        acceptedAt: row.accepted_at,
+        acceptedDay: row.accepted_day,
         assignmentMode: row.assignment_mode,
         career: row.career,
         createdAt: row.created_at,
@@ -534,10 +769,13 @@ function mapJob(row) {
         parentJobId: row.parent_job_id,
         paymentReference: row.payment_reference,
         requiredLevel: row.required_level,
+        serviceAudience: row.service_audience,
+        serviceCommission: Boolean(row.service_commission),
         sourceId: row.source_id,
         sourceType: row.source_type,
         startedAt: row.started_at,
         status: row.status,
+        targetResidentId: row.target_resident_id,
         updatedAt: row.updated_at,
         workerResidentId: row.worker_resident_id,
         worldResultReference: row.world_result_reference,

@@ -7,7 +7,7 @@ import { CareerEmploymentService } from "./career/employment-service.js";
 import { CareerAuthorityAssignmentService } from "./career/authority-assignment.js";
 import { CareerDomainError } from "./career/contracts.js";
 import { CareerJobService } from "./career/job-service.js";
-import { EXAM_SESSION_DURATION_MS } from "./career/persistence.js";
+import { beijingDate, EXAM_SESSION_DURATION_MS } from "./career/persistence.js";
 import { installCareerSchema } from "./career/schema.js";
 import { CareerSchoolService } from "./career/school-service.js";
 import {
@@ -32,6 +32,7 @@ import { createChefStoreFarmAdapter } from "./career/chef-store-farm-adapter.js"
 import { installEconomySchema } from "./economy/economy-schema.js";
 import { EconomyError } from "./economy/economy-errors.js";
 import { EconomyService } from "./economy/economy-service.js";
+import { installSecuritySchema, LingyeSecurityService } from "./security/index.js";
 import {
     claimReporterMaterialPack,
     createReporterSection,
@@ -264,6 +265,7 @@ export function installLingyeWorldSchema(database) {
     `);
     installEconomySchema(database);
     installCareerSchema(database);
+    installSecuritySchema(database);
     ensureChefRecipeSchema(database);
     ensureChefCommerceSchema(database);
     ensureChefStoreSchema(database);
@@ -558,6 +560,33 @@ export function createLingyeWorldBackend(database, options) {
         ...(options.now === undefined ? {} : { now: options.now }),
         ...(options.generateId === undefined ? {} : { generateId: options.generateId }),
     });
+    const securityAuthority = options.securityAuthority ?? {};
+    const security = new LingyeSecurityService(database, {
+        ...(options.now === undefined ? {} : { now: options.now }),
+        ...(options.generateId === undefined ? {} : { generateId: options.generateId }),
+        ...(securityAuthority.getCaughtCropTheftFact === undefined
+            ? {}
+            : { getCaughtCropTheftFact: securityAuthority.getCaughtCropTheftFact }),
+        authorizeConstableCatch: securityAuthority.authorizeConstableCatch ?? ((input) => Boolean(database.prepare(`
+          SELECT 1
+          FROM career_jobs AS job
+          JOIN career_duty_days AS duty
+            ON duty.resident_id = job.worker_resident_id
+           AND duty.career = 'constable'
+           AND duty.institution = 'public_security'
+          WHERE job.worker_resident_id = ?
+            AND job.career = 'constable'
+            AND job.status IN ('accepted', 'assigned', 'active')
+            AND job.decision_count >= 1
+            AND (job.source_id = ? OR job.object_id = ?)
+            AND duty.status = 'scheduled'
+            AND duty.duty_date = ?
+          LIMIT 1
+        `).get(input.actorResidentId, input.sourceId, input.sourceId, beijingDate(input.caughtAt)))),
+        listPunishableSystemLoanFacts: (input) => economy.listPunishableSystemLoanFacts(input),
+        getPunishableSystemLoanFact: (input) => economy.getPunishableSystemLoanFact(input),
+        payDetentionEarlyRelease: (input) => economy.payDetentionEarlyRelease(input),
+    });
     const school = new CareerSchoolService(shared);
     const employment = new CareerEmploymentService(shared);
     const jobs = new CareerJobService(shared);
@@ -759,6 +788,9 @@ export function createLingyeWorldBackend(database, options) {
             settleTrade: (input) => atomic(() => economy.settleTrade(input)),
             cancelTrade: (input) => atomic(() => economy.cancelTrade(input)),
             refundTrade: (input) => atomic(() => economy.refundTrade(input)),
+            reserveSilverEscrow: (input) => atomic(() => economy.reserveSilverEscrow(input)),
+            settleSilverEscrowToResident: (input) => atomic(() => economy.settleSilverEscrowToResident(input)),
+            releaseSilverEscrow: (input) => atomic(() => economy.releaseSilverEscrow(input)),
             openSystemLoan: (input) => atomic(() => economy.openSystemLoan(input)),
             repaySystemLoan: (input) => atomic(() => economy.repaySystemLoan(input)),
             proposePlayerLoan: (input) => atomic(() => economy.proposePlayerLoan(input)),
@@ -1101,8 +1133,14 @@ export function createLingyeWorldBackend(database, options) {
         settleTrade: economyCommands.settleTrade,
         cancelTrade: economyCommands.cancelTrade,
         refundTrade: economyCommands.refundTrade,
+        reserveSilverEscrow: economyCommands.reserveSilverEscrow,
+        settleSilverEscrowToResident: economyCommands.settleSilverEscrowToResident,
+        releaseSilverEscrow: economyCommands.releaseSilverEscrow,
         openSystemLoan: economyCommands.openSystemLoan,
         refreshDebtStatus: economyCommands.refreshDebtStatus,
+        runNpcLoanPatrol: (input) => security.runNpcLoanPatrol(input),
+        catchCropTheft: (input) => atomic(() => security.catchCropTheft(input)),
+        catchPunishableSystemLoan: (input) => atomic(() => security.catchPunishableSystemLoan(input)),
         ...careerCommands,
         ...reporterCommands,
         // Store expiry is the only chef mutation exposed to the trusted
@@ -1117,7 +1155,16 @@ export function createLingyeWorldBackend(database, options) {
     });
     const trustedQueries = Object.freeze({
         getAccount: (residentId) => economy.getAccount(residentId),
+        listPunishableSystemLoanFacts: (input = {}) => economy.listPunishableSystemLoanFacts(input),
+        getPunishableSystemLoanFact: (input) => economy.getPunishableSystemLoanFact(input),
+        getSecurityPatrolStatus: (input) => security.getPatrolStatus(input),
+        getResidentDetention: (residentId, input) => security.getResidentDetention(residentId, input),
+        listResidentDetentions: (residentId, input) => security.listResidentDetentions(residentId, input),
+        isResidentDetained: (residentId, input) => security.isResidentDetained(residentId, input),
+        quoteDetentionEarlyRelease: (input) => security.quoteEarlyRelease(input),
         getFinancialReceipt: (receiptId) => economy.getFinancialReceipt(receiptId),
+        getSilverEscrow: (escrowId) => economy.getSilverEscrow(escrowId),
+        getSilverEscrowReceipt: (receiptId) => economy.getSilverEscrowReceipt(receiptId),
         previewExchange: (residentId, goldPrincipal, at) => economy.previewExchange(residentId, goldPrincipal, at),
         getCourseContent: (input) => school.getCourseContent(input),
         courseAvailable: (career, level, courseIndex) => school.courseAvailable(career, level, courseIndex),
@@ -1196,6 +1243,16 @@ export function createLingyeWorldBackend(database, options) {
             cancelPlayerLoan: (input) => residentCommands.cancelPlayerLoan({ ...input, actorResidentId: authenticatedResidentId }),
             repayPlayerLoan: (input) => residentCommands.repayPlayerLoan({ ...input, actorResidentId: authenticatedResidentId }),
             repayOwnSystemLoan: (input) => residentCommands.repaySystemLoan({ ...input, actorResidentId: authenticatedResidentId }),
+            getOwnDetention: (input) => security.getResidentDetention(authenticatedResidentId, input),
+            listOwnDetentions: (input) => security.listResidentDetentions(authenticatedResidentId, input),
+            quoteOwnDetentionEarlyRelease: (input) => security.quoteEarlyRelease({
+                ...input,
+                residentId: authenticatedResidentId,
+            }),
+            releaseOwnDetentionEarly: (input) => atomic(() => security.releaseEarly({
+                ...input,
+                residentId: authenticatedResidentId,
+            })),
             recordOwnJobDecision: (input) => careerCommands.recordDecision({ ...input, workerResidentId: authenticatedResidentId }),
             transferOwnJob: (input) => careerCommands.transferJob({ ...input, workerResidentId: authenticatedResidentId }),
             getOwnAccount: () => economy.getAccount(authenticatedResidentId),
