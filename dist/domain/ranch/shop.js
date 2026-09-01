@@ -1,5 +1,6 @@
 import { Rng } from "../../rng.js";
 import { currentDayIndex } from "../../time.js";
+import { bumpDaily } from "../../daily.js";
 import {
     accessories,
     accessoryById,
@@ -49,6 +50,7 @@ export function ranchBuyAccessory(farm, accId, now) {
     if (ranch.coins < acc.price)
         return { ok: false, error: `牧场金币不足（${acc.name}要 ${acc.price}，现有 ${ranch.coins}）。` };
     ranch.coins -= acc.price;
+    bumpDaily(farm, now, "coinSpend", acc.price);
     (ranch.wardrobe ??= []).push(acc.id);
     return { ok: true, name: acc.name, cost: acc.price };
 }
@@ -69,6 +71,7 @@ export function ranchBuyDecoration(farm, decoId, now) {
     if (ranch.coins < deco.price)
         return { ok: false, error: `牧场金币不足（${deco.name}要 ${deco.price}，现有 ${ranch.coins}）。` };
     ranch.coins -= deco.price;
+    bumpDaily(farm, now, "coinSpend", deco.price);
     (ranch.decorStore ??= []).push(deco.id);
     return { ok: true, name: deco.name, cost: deco.price };
 }

@@ -192,7 +192,7 @@ export function handleHumanOriginalPlantAction(farm, body, now = Date.now()) {
       desc: body.payload.desc,
       plant: body.payload.plant,
       harvest: body.payload.harvest,
-    });
+    }, now);
     if (!authorityResult?.ok) {
       loadUgc(ugcSnapshot);
       return errorResponse(

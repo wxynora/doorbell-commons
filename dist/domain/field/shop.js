@@ -10,6 +10,7 @@ import {
     SHOP_REFRESH_MS,
 } from "../../config.js";
 import { cropById, recipes } from "../../content.js";
+import { bumpDaily } from "../../daily.js";
 import { Rng } from "../../rng.js";
 import { activeFestivals } from "../../time.js";
 import { isQixi2026CropId } from "../../qixi-2026.js";
@@ -66,6 +67,7 @@ export function buyRecipe(farm, now) {
     if (farm.coins < RECIPE_PRICE)
         return { ok: false, error: `金币不足，配方要 ${RECIPE_PRICE}` };
     farm.coins -= RECIPE_PRICE;
+    bumpDaily(farm, now, "coinSpend", RECIPE_PRICE);
     farm.knownRecipes.push(out);
     farm.shop.recipe = null;
     const name = cropById.get(out)?.name ?? out;
@@ -97,6 +99,7 @@ export function buyPotionSet(shopFarm, buyer, now) {
     if (buyer.coins < set.price)
         return { ok: false, error: `金币不足，药水套装（${set.qty} 瓶）要 ${set.price}，你只有 ${buyer.coins}。` };
     buyer.coins -= set.price;
+    bumpDaily(buyer, now, "coinSpend", set.price);
     buyer.items.speed_potion = (buyer.items.speed_potion ?? 0) + set.qty;
     set.buyers.push(buyer.id);
     pushLog(buyer, `买下药水套装（${set.qty} 瓶加速药水）`);

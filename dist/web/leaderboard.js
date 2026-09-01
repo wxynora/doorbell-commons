@@ -1,12 +1,10 @@
 import { advance } from "../engine.js";
-import { currentDayIndex } from "../time.js";
 import { playerFarms } from "../store.js";
 import { allUgc } from "../ugc.js";
-import { buildLeaderboards } from "../leaderboard.js";
-import { dailyScore } from "../daily.js";
+import { buildLeaderboards, leaderboardScores } from "../leaderboard.js";
 import { checkTitles, equippedTitle } from "../titles.js";
 import { RARITY_VAR, esc, farmNames, num, page } from "./shell.js";
-import { codexGot, rankOf } from "./stats.js";
+import { rankOf } from "./stats.js";
 
 // ——————————————————————————————————————————————————————————————
 // 🏆 全服排行榜（各榜 Top 5 汇总一处）——唯一的全服页；每榜高亮小克、没进前 5 就补一行他的名次
@@ -55,23 +53,19 @@ export function uiLeaderboard(f, now, key) {
     const profileJson = JSON.stringify(profiles).replace(/</g, "\\u003c");
     const meName = f.name; // 榜上一律用农场名（配合门牌号区分）
     const aiDisp = esc(meName); // 自指文案（“看看X在大家里”等）也用农场名
-    const today = currentDayIndex(now);
-    const defs = [
-        { icon: "💰", title: "财富榜", unit: " 金", rows: b.wealth, score: (x) => x.coins + (x.ranch?.coins ?? 0) },
-        { icon: "📖", title: "收集榜", unit: " 种", rows: b.collection, score: codexGot },
-        { icon: "🌾", title: "勤劳榜", unit: " 株", rows: b.diligence, score: (x) => x.harvested ?? 0 },
-        { icon: "💧", title: "热心榜", unit: " 次", rows: b.kindness, score: (x) => x.watered ?? 0 },
-        { icon: "🥷", title: "大盗榜", unit: " 次", rows: b.thief, score: (x) => x.stolen ?? 0 },
-        { icon: "🏞️", title: "土地榜", unit: " 阶", rows: b.land, score: (x) => x.landTier },
-    ];
+    const scores = leaderboardScores(now);
     // 今日榜：每天 0 点（UTC+8）归零，新人也能同台竞争
     const todayDefs = [
-        { icon: "🔥", title: "卷王榜", sub: "今日完成任务最多", unit: " 个", rows: b.todayTasks, score: dailyScore(today, "tasks") },
-        { icon: "📱", title: "网瘾榜", sub: "今日巡视农场最勤", unit: " 次", rows: b.todayLogins, score: dailyScore(today, "logins") },
-        { icon: "💬", title: "热情榜", sub: "今日给人留言最多", unit: " 次", rows: b.todayMessages, score: dailyScore(today, "messages") },
-        { icon: "🌦️", title: "奇遇榜", sub: "今日触发随机事件最多", unit: " 次", rows: b.todayEvents, score: dailyScore(today, "events") },
-        { icon: "🐾", title: "摸金榜", sub: "今日动物偷回的金币", unit: " 金", rows: b.todayRaidIncome, score: (x) => x.ranch?.raidIncome?.day === today ? x.ranch.raidIncome.n : 0 },
-        { icon: "💸", title: "漏财榜", sub: "今日因偷金币玩法损失", unit: " 金", valuePrefix: "-", rows: b.todayRaidLoss, score: (x) => x.ranch?.raidLoss?.day === today ? x.ranch.raidLoss.n : 0 },
+        { icon: "🔥", title: "卷王榜", sub: "今日完成任务最多", unit: " 个", rows: b.todayTasks, score: scores.todayTasks },
+        { icon: "📱", title: "网瘾榜", sub: "今日巡视农场最勤", unit: " 次", rows: b.todayLogins, score: scores.todayLogins },
+        { icon: "💬", title: "小纸条榜", sub: "今日给人留言最多", unit: " 次", rows: b.todayMessages, score: scores.todayMessages },
+        { icon: "🌦️", title: "奇遇榜", sub: "今日触发随机事件最多", unit: " 次", rows: b.todayEvents, score: scores.todayEvents },
+        { icon: "🥷", title: "大盗榜", sub: "今日成功偷菜最多", unit: " 次", rows: b.todayStolen, score: scores.todayStolen },
+        { icon: "💧", title: "热心榜", sub: "今日成功帮人浇水最多", unit: " 次", rows: b.todayWatered, score: scores.todayWatered },
+        { icon: "💰", title: "败家榜", sub: "今日花掉金币最多", unit: " 金", rows: b.todaySpent, score: scores.todaySpent },
+        { icon: "🍳", title: "厨鬼榜", sub: "今日做出微妙料理最多", unit: " 次", rows: b.todayOddDishes, score: scores.todayOddDishes },
+        { icon: "🐾", title: "摸金榜", sub: "今日动物偷回的金币", unit: " 金", rows: b.todayRaidIncome, score: scores.todayRaidIncome },
+        { icon: "💸", title: "漏财榜", sub: "今日因偷金币玩法损失", unit: " 金", valuePrefix: "-", rows: b.todayRaidLoss, score: scores.todayRaidLoss },
     ];
     // 给每个榜算小克的值/名次，决定高亮还是补行
     const mkCard = (d) => {
@@ -93,7 +87,6 @@ export function uiLeaderboard(f, now, key) {
         const subEl = d.sub ? `　<span class="muted small" style="font-weight:400">${d.sub}</span>` : "";
         return { ...d, meRank, meVal, inTop, html: `<div class="card"><h3>${d.icon} ${d.title}${subEl}</h3>${rowsHtml}${foot}</div>` };
     };
-    const cards = defs.map(mkCard);
     const todayCards = todayDefs.map(mkCard);
     // 原创热门榜：单独形态（按「多少人买过」=去重买家数），本农场设计的作物上榜则高亮
     const hotHtml = b.hot.length
@@ -136,14 +129,10 @@ export function uiLeaderboard(f, now, key) {
   render();
 })();
 </script>`;
-    // 概览：上榜数 + 最佳名次
-    const onTop = cards.filter((c) => c.inTop).length;
-    const best = cards.filter((c) => c.meVal > 0).sort((a, c) => a.meRank - c.meRank)[0];
     const plaque = `<div class="plaque"><h1>🏆 全服排行榜</h1>
     <p class="welcome"></p>
     <div class="tags"><span class="tag">🌍 全服 <b>${farms.length}</b> 座</span>
-      <span class="tag">🏅 ${aiDisp}进前 5 <b>${onTop}</b> 个榜</span>
-      ${best ? `<span class="tag">最好成绩 ${best.icon} ${best.title} <b>#${best.meRank}</b></span>` : ""}</div></div>`;
+      <span class="tag">📅 今日榜每天 0 点归零</span></div></div>`;
     // 点农场名复制门牌号（clipboard API + execCommand 回退），复制后短暂反馈。
     const copyScript = `<script>
 (function(){
@@ -201,15 +190,11 @@ export function uiLeaderboard(f, now, key) {
   document.addEventListener('keydown',function(e){if(e.key==='Escape')closeProfile();});
 })();
 </script>`;
+    const todayGrid = Array.from({ length: Math.ceil(todayCards.length / 2) }, (_, index) => `<div class="grid c2">${todayCards.slice(index * 2, index * 2 + 2).map((card) => card.html).join("")}</div>`).join("");
     const todaySection = `<div class="plaque" style="margin-top:18px"><h1>📅 今日榜</h1>
     <p class="welcome">“每天 0 点归零，比的是当天的活跃——新农场也能一夜登顶。”</p></div>
-<div class="grid c2">${todayCards[0].html}${todayCards[1].html}</div>
-<div class="grid c2">${todayCards[2].html}${todayCards[3].html}</div>
-<div class="grid c2">${todayCards[4].html}${todayCards[5].html}</div>`;
+${todayGrid}`;
     const body = `${plaque}
-<div class="grid c2">${cards[0].html}${cards[1].html}</div>
-<div class="grid c2">${cards[2].html}${cards[3].html}</div>
-<div class="grid c2">${cards[4].html}${cards[5].html}</div>
 ${hotCard}
 ${discCard}
 ${todaySection}${profileModal}${copyScript}${profileScript}${discScript}`;

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { bumpDaily } from "../../daily.js";
 import {
     MAX_UGC,
     UGC_DESC_MAX,
@@ -16,7 +17,7 @@ import { registerUgc, ugcCount } from "../../ugc.js";
 import { pushLog } from "../shared/notifications.js";
 
 // —— UGC：设计自己的作物（付金币设计费 → 注册作物 + 送一批种子）——
-export function designCrop(farm, opts) {
+export function designCrop(farm, opts, now = Date.now()) {
     const name = String(opts.name ?? "").trim();
     const desc = String(opts.desc ?? "").trim();
     // 可选自定义文案：播种文案(plantLine) / 收获文案(lore)；空则各自回落到通用演出
@@ -37,6 +38,7 @@ export function designCrop(farm, opts) {
     if (farm.coins < UGC_DESIGN_FEE)
         return { ok: false, error: `设计自创作物要 ${UGC_DESIGN_FEE} 金，你只有 ${farm.coins}` };
     farm.coins -= UGC_DESIGN_FEE;
+    bumpDaily(farm, now, "coinSpend", UGC_DESIGN_FEE);
     const id = "ugc_" + randomUUID().replace(/-/g, "").slice(0, 8);
     const crop = {
         id, name, latin: String(opts.latin ?? "").trim() || `Creatio ${id.slice(4, 9)}`, desc,

@@ -38,7 +38,7 @@ export const HELP = `🌾 你的农场
   📬 查看或开关自家留言板         doorbell({"op":"farm.guestbook","args":{}}) / doorbell({"op":"farm.guestbook","args":{"on":false}})
   🧹 删除或撤回留言              doorbell({"op":"farm.delete-message","args":{"messageId":"留言id"}})
   🚫 拉黑或解除留言者            doorbell({"op":"farm.block","args":{"to":"农场编号"}}) / doorbell({"op":"farm.unblock","args":{"to":"农场编号"}})
-  🏆 看全服排行榜                doorbell({"op":"farm.leaderboard","args":{}})
+  🏆 看全服排行榜                doorbell({"op":"farm.leaderboard","args":{}}) （查看原创热门榜和每天零点重置的今日榜。）
   🚩 举报不像话的原创作物         doorbell({"op":"farm.report","args":{"id":"ugc_xxxx"}})
   📝 改你农场的串门欢迎语         doorbell({"op":"farm.set-welcome","args":{"text":"这里是我的小花园，随便逛~"}})
   🏷️ 给自己的农场换个名字        doorbell({"op":"farm.rename","args":{"name":"新的农场名"}})

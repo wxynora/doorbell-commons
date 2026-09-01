@@ -7,6 +7,7 @@ import {
 } from "../../config.js";
 import { cropById, getCrop } from "../../content.js";
 import { currentDayIndex } from "../../time.js";
+import { bumpDaily } from "../../daily.js";
 import { pushLog } from "../shared/notifications.js";
 
 // —— 道具：买 / 用 ——
@@ -54,6 +55,7 @@ export function buyItem(farm, item, qty = 1, now = Date.now()) {
     if (farm.coins < cost)
         return { ok: false, error: `金币不足，${want} 个${def.name}要 ${cost}` };
     farm.coins -= cost;
+    bumpDaily(farm, now, "coinSpend", cost);
     farm.items[item] = (farm.items[item] ?? 0) + want;
     if (item === "speed_potion")
         farm.potionBuy.n += want;

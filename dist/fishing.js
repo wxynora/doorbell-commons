@@ -5,6 +5,7 @@ import {
     fishingSpotById, fishingFishById, fishingBaitById, fishingEventById, fishingItemById,
 } from "./content.js";
 import { currentSeason, currentDayIndex, currentWeather } from "./time.js";
+import { bumpDaily } from "./daily.js";
 import { randomBytes, randomUUID } from "node:crypto";
 import { glimmerBuffMultiplier } from "./glimmer.js";
 import { qixi2026FishText, submitQixi2026Fish } from "./qixi-2026.js";
@@ -540,7 +541,7 @@ function castMany(farm, state, farms, params, now) {
     return { ok: true, text: [text, ecologyLimit, qixi2026FishText(qixiResult)].filter(Boolean).join("\n") };
 }
 
-function buyBait(farm, state, requested, qty) {
+function buyBait(farm, state, requested, qty, now) {
     const bait = byIdOrName(fishingBaits, requested ?? "basic_worm");
     if (!bait)
         return { ok: false, text: `没有这种鱼饵：${requested}。` };
@@ -551,6 +552,7 @@ function buyBait(farm, state, requested, qty) {
     if (farm.coins < cost)
         return { ok: false, text: `金币不足：${bait.name}×${count}要 ${cost} 金（你有 ${farm.coins}）。` };
     farm.coins -= cost;
+    bumpDaily(farm, now, "coinSpend", cost);
     state.baitInventory[bait.id] = cleanCount(state.baitInventory[bait.id]) + count;
     return { ok: true, text: `🎣 买下${bait.name}×${count}，花 ${cost} 金；现有 ${bait.name}×${state.baitInventory[bait.id]}。` };
 }
@@ -624,7 +626,7 @@ function sellFishing(farm, state, target) {
     return { ok: false, text: `鱼篓里找不到「${q}」。` };
 }
 
-function openChest(farm, state, chestId) {
+function openChest(farm, state, chestId, now) {
     const referenced = findFishingReference(state, chestId, "chest");
     if (referenced.status === "wrong-kind")
         return { ok: false, text: "这是鱼获引用，不能拿来开宝箱。" };
@@ -648,6 +650,7 @@ function openChest(farm, state, chestId) {
             return { ok: false, text: `打开【${event.name}】需要${key}花 ${lock.orGold} 金（你有 ${farm.coins}）。` };
         }
         farm.coins -= lock.orGold;
+        bumpDaily(farm, now, "coinSpend", lock.orGold);
         paid = `花 ${lock.orGold} 金`;
     }
     const rng = new FishingRng(state.rngState, state.rngCalls);
@@ -800,14 +803,14 @@ export function runFishing(farm, params, now, farms) {
     if (params.sell !== undefined)
         return finish(sellFishing(farm, state, params.sell));
     if (params.open !== undefined)
-        return finish(openChest(farm, state, params.open));
+        return finish(openChest(farm, state, params.open, now));
     const shouldCast = params.times !== undefined || (params.bait !== undefined && params.buy === undefined)
         || (params.buy === undefined && params.location === undefined);
     if (shouldCast && FISHING_BLOCKED_WEATHER.has(currentWeather(now)?.condition))
         return finish({ ok: false, text: FISHING_BAD_WEATHER_TEXT });
     const out = [];
     if (params.buy !== undefined) {
-        const bought = buyBait(farm, state, params.bait, Number(params.buy));
+        const bought = buyBait(farm, state, params.bait, Number(params.buy), now);
         if (!bought.ok)
             return finish(bought);
         out.push(bought.text);

@@ -204,7 +204,7 @@ export function handleFieldAction(action, f, b, now, options = {}) {
             return { ok: r.ok, text: r.ok ? withFooter(f, now, [`⚗️ 熔炼成功！得到限定种子【${r.cropName}·${r.rarity}】${r.byRecipe ? "（命中隐藏配方！）" : ""}\n${plantHint(f, r.cropId, r.cropName)}`, qixi2026CompletionText(r.qixi)].filter(Boolean).join("\n")) : r.error };
         }
         case "design": {
-            const r = designCrop(f, { name: b.name, desc: b.desc, latin: b.latin, plant: b.plant, harvest: b.harvest });
+            const r = designCrop(f, { name: b.name, desc: b.desc, latin: b.latin, plant: b.plant, harvest: b.harvest }, now);
             const lines = r.ok
                 ? [
                     `🎨 你设计出了作物【${r.crop.name}·${r.crop.rarity}】 ${r.crop.latin}`,

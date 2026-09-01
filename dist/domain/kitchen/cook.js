@@ -3,6 +3,7 @@ import { cooking, cookingRecipeById, cookingRecipes } from "../../content.js";
 import { removeFishingCatchIds } from "../../fishing.js";
 import { glimmerBuffMultiplier } from "../../glimmer.js";
 import { submitQixi2026Dish } from "../../qixi-2026.js";
+import { bumpDaily } from "../../daily.js";
 import { ensureKitchen } from "../ranch/state.js";
 import {
     applyChefMaterialRefund,
@@ -171,6 +172,8 @@ export function kitchenCook(farm, refs, now, options = {}) {
         dish = { id: randomUUID(), recipeId: "odd_dish", name: "微妙的料理", rarity: "N", value: 1, image: "odd-dish.webp", createdAt: now, pricingVersion: COOKING_PRICE_VERSION };
     }
     kitchen.dishes.push(dish);
+    if (!recipe)
+        bumpDaily(farm, now, "oddDishes");
     const qixi = submitQixi2026Dish(farm, kitchen, dish, now);
     const cookingReceipt = isOriginalRecipe
         ? persistChefOriginalCookingReceipt(farm, recipe, dish, cookOptions, now)

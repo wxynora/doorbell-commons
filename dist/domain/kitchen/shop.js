@@ -1,5 +1,6 @@
 import { Rng } from "../../rng.js";
 import { currentDayIndex } from "../../time.js";
+import { bumpDaily } from "../../daily.js";
 import { cooking, cookingIngredientById, cookingIngredients, cookingRecipeById, cookingRecipes } from "../../content.js";
 import { isQixiLantern2026Active } from "../../qixi-lantern-2026.js";
 import { ensureKitchen } from "../ranch/state.js";
@@ -121,6 +122,7 @@ export function refreshKitchenIngredients(farm, now = Date.now()) {
 
     farm.rngState = generatedFarm.rngState;
     farm.coins -= costCoins;
+    bumpDaily(farm, now, "coinSpend", costCoins);
     shop.ingredientIds = ingredientIds;
     shop.refreshWindowId = day;
     shop.refreshCount = usedCount + 1;

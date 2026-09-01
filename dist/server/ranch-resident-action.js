@@ -285,7 +285,7 @@ function actionOutcome(body, authorityResult, working) {
 function callAuthority(farm, body, ref, now) {
   const { action, resident_type: residentType, kind_id: kindId, payload } = body;
   if (action === "feed") return ranchFeedAnimal(farm, ref.index, now);
-  if (action === "upgrade") return ranchUpgradeAnimal(farm, ref.index);
+  if (action === "upgrade") return ranchUpgradeAnimal(farm, ref.index, now);
   if (action === "rename") {
     if (residentType === "animal") return ranchNameAnimal(farm, ref.index, payload.name);
     if (residentType === "pet") return ranchNamePet(farm, ref.index, payload.name);

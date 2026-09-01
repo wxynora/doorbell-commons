@@ -8,6 +8,7 @@ import { onTaskEvent } from "./tasks.js";
 import { glimmerBuffMultiplier } from "./glimmer.js";
 import { qixi2026HarvestSilver, qixi2026TransferAllowed, recordQixi2026Harvest } from "./qixi-2026.js";
 import { recordWelfareWeekProgress } from "./welfare-week.js";
+import { bumpDaily } from "./daily.js";
 import { pushInbox, pushLog, pushSocialInbox, pushTrail, takeInbox } from "./domain/shared/notifications.js";
 import {
     affordablePotions,
@@ -541,7 +542,8 @@ export function steal(victim, plotId, by, now, thief, options = {}) {
     let codexReward = 0;
     if (thief) {
         thief.coins += value;
-        thief.stolen = (thief.stolen ?? 0) + 1; // 大盗榜累计
+        thief.stolen = (thief.stolen ?? 0) + 1; // 大盗称号累计
+        bumpDaily(thief, now, "stolen");
         isNewForThief = addCodex(thief, crop.id, quality.tier, now);
         if (isNewForThief && crop.category !== "ugc") {
             codexReward = NEW_CODEX_REWARD[crop.rarity] ?? 0;
@@ -784,6 +786,7 @@ export function buyAnimalForPartner(farm, id, now) {
     if (farm.coins < kind.buyCost)
         return { ok: false, error: `金币不足，${kind.name}要 ${kind.buyCost} 金（你有 ${farm.coins}）` };
     farm.coins -= kind.buyCost;
+    bumpDaily(farm, now, "coinSpend", kind.buyCost);
     const ranch = ensureRanch(farm);
     ranch.animals.push({ kindId: kind.id, ticksSinceProduce: 0, pending: 0, level: 1 });
     pushLedger(farm, "buy-animal", kind.buyCost, `买下${kind.name}送进牧场`, now);
@@ -816,6 +819,7 @@ export function buyPetForPartner(farm, id, now) {
     if (farm.coins < kind.buyCost)
         return { ok: false, error: `金币不足，${kind.name}要 ${kind.buyCost} 金（你有 ${farm.coins}）` };
     farm.coins -= kind.buyCost;
+    bumpDaily(farm, now, "coinSpend", kind.buyCost);
     (ranch.pets ??= []).push({ kindId: kind.id });
     pushLedger(farm, "buy-pet", kind.buyCost, `买下${kind.name}送进牧场`, now);
     pushLog(farm, `给伴侣买了一只${kind.name}（-${kind.buyCost}）`);

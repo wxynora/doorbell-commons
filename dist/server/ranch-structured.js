@@ -365,7 +365,7 @@ function projectFeedAction(farm, type, raw, kind, index, now, known) {
   );
 }
 
-function projectUpgradeAction(farm, type, raw, kind, index, known) {
+function projectUpgradeAction(farm, type, raw, kind, index, known, now) {
   if (type !== "animal") {
     return allowedAction(false, actionCost(), "升级仅适用于生产动物");
   }
@@ -383,7 +383,7 @@ function projectUpgradeAction(farm, type, raw, kind, index, known) {
   if (safeMoney(farm?.ranch?.coins) === null) {
     return allowedAction(false, costShape, "牧场金币余额不可用");
   }
-  const result = probeAuthority(farm, (probe) => ranchUpgradeAnimal(probe, index));
+  const result = probeAuthority(farm, (probe) => ranchUpgradeAnimal(probe, index, now));
   if (!result) return allowedAction(false, costShape, "牧场升级状态不可用");
   if (!result.ok) return allowedAction(false, costShape, result.error);
   return allowedAction(
@@ -581,7 +581,7 @@ function projectResidentAllowedActions(
   if (!known) return unavailableActions("居民资料不可用");
   return {
     feed: projectFeedAction(farm, type, raw, kind, index, now, known),
-    upgrade: projectUpgradeAction(farm, type, raw, kind, index, known),
+    upgrade: projectUpgradeAction(farm, type, raw, kind, index, known, now),
     rename: projectRenameAction(known),
     toggle_pin: projectTogglePinAction(farm, type, kind, pinned, known),
     wear_accessory: projectWearAccessoryAction(farm, type, raw, index, known),

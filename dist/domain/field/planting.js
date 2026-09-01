@@ -4,6 +4,7 @@ import { onTaskEvent } from "../../tasks.js";
 import { currentDayIndex } from "../../time.js";
 import { canPlantQixi2026Crop } from "../../qixi-2026.js";
 import { recordWelfareWeekProgress } from "../../welfare-week.js";
+import { bumpDaily } from "../../daily.js";
 import { pushLog, pushTrail } from "../shared/notifications.js";
 
 /** 把"限定/自创种子"的引用解析成作物 id：接受 id 或中文名（背包/熔炼都给中文名，玩家自然照着填）。
@@ -62,6 +63,7 @@ export function plant(farm, plotId, seedType, limitedId, now) {
     if (farm.coins < price)
         return { ok: false, error: `金币不足，${seedType === "common" ? "普通" : "奇幻"}种子要 ${price}` };
     farm.coins -= price;
+    bumpDaily(farm, now, "coinSpend", price);
     plot.crop = { seedType, growTicks: GROW_TICKS[seedType], progress: 0, ripe: false, waterCount: 0 };
     recordWelfareWeekProgress(farm, "plant", 1, now);
     pushLog(farm, `种下一颗${seedType === "common" ? "普通" : "奇幻"}种子`);

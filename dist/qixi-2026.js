@@ -1,5 +1,6 @@
 import { cropById, qixi2026 } from "./content.js";
 import { currentDayIndex } from "./time.js";
+import { bumpDaily } from "./daily.js";
 
 const STARTS_AT = Date.parse(qixi2026.startsAt);
 const ENDS_AT = Date.parse(qixi2026.endsAt);
@@ -265,6 +266,7 @@ export function buyQixi2026Seed(farm, ref, now = Date.now(), requestedQty = 1) {
     if (farm.coins < cost)
         return { handled: true, ok: false, error: `金币不足，${crop.name}种子要 ${cost}。` };
     farm.coins -= cost;
+    bumpDaily(farm, now, "coinSpend", cost);
     farm.seeds ??= {};
     farm.seeds[crop.id] = cleanInt(farm.seeds[crop.id]) + qty;
     buys[crop.id] = bought + qty;
@@ -287,6 +289,7 @@ export function buyAllQixi2026Seeds(farm, now = Date.now()) {
         return { handled: true, ok: false, error: `金币不足，全部买满还差 ${cost - farm.coins} 金，本次没有购买。` };
     const buys = seedBuysForDay(state, now);
     farm.coins -= cost;
+    bumpDaily(farm, now, "coinSpend", cost);
     farm.seeds ??= {};
     for (const item of items) {
         farm.seeds[item.id] = cleanInt(farm.seeds[item.id]) + item.qty;

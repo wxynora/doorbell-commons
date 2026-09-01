@@ -469,7 +469,7 @@ export async function handleLegacyHumanRoute({
                 flash = r.ok ? `🚨 抓住了${r.owner}家的${r.animal}，收到 ${r.compensation} 金赔偿` : r.error;
             }
             else if (act === "upgrade") {
-                const r = ranchUpgradeAnimal(f, Number(form.animal));
+                const r = ranchUpgradeAnimal(f, Number(form.animal), now);
                 flash = r.ok ? `⬆ ${r.name}升到 Lv.${r.level}（-${r.cost}金）——每份产出更值钱了` : r.error;
             }
             else if (act === "collect") {
@@ -590,7 +590,7 @@ export async function handleLegacyHumanRoute({
                 flash = text ? `✅ 串门欢迎语已更新：${text}` : `✅ 已清空欢迎语，恢复默认句`;
             }
             else if (act === "design") {
-                const r = designCrop(f, { name: form.name, desc: form.desc, plant: form.plant, harvest: form.harvest, latin: form.latin });
+                const r = designCrop(f, { name: form.name, desc: form.desc, plant: form.plant, harvest: form.harvest, latin: form.latin }, now);
                 save();
                 flash = r.ok
                     ? `🎨 替${ai}设计出原创作物【${r.crop.name}·${r.crop.rarity}】，设计费 -${r.fee} 金，到手 ${r.seeds} 颗种子（可在 TA 的田里种、或上架卖给别的玩家）。`

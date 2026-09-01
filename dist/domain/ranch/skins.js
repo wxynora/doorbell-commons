@@ -1,4 +1,5 @@
 import { ranchSkinById, ranchSkinByName, ranchSkins } from "../../content.js";
+import { bumpDaily } from "../../daily.js";
 import { pushLog } from "../shared/notifications.js";
 import { pushLedger } from "./ledger.js";
 import { ensureRanch } from "./state.js";
@@ -39,6 +40,7 @@ export function buyRanchSkinItem(farm, value, now = Date.now()) {
     if (farm.coins < skin.price)
         return { handled: true, ok: false, error: `金币不足，1 个${skin.name}要 ${skin.price}` };
     farm.coins -= skin.price;
+    bumpDaily(farm, now, "coinSpend", skin.price);
     ranch.skins.push(skin.id);
     pushLedger(farm, "buy-item", skin.price, `买下限定皮肤${skin.name}`, now);
     pushLog(farm, `买了 1 个${skin.name}`);

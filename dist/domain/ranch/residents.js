@@ -6,6 +6,7 @@ import {
 } from "../../config.js";
 import { accessoryById, animalById, petById, ranchSkinById } from "../../content.js";
 import { pushLog } from "../shared/notifications.js";
+import { bumpDaily } from "../../daily.js";
 import { pushLedger } from "./ledger.js";
 import { ensureRanch } from "./state.js";
 
@@ -43,6 +44,7 @@ export function buyPatrolGoose(farm, now) {
     if (farm.coins < RANCH_PATROL_GOOSE_BUY_COST)
         return { ok: false, error: `金币不足，${RANCH_PATROL_GOOSE_NAME}要 ${RANCH_PATROL_GOOSE_BUY_COST} 金（你有 ${farm.coins}）` };
     farm.coins -= RANCH_PATROL_GOOSE_BUY_COST;
+    bumpDaily(farm, now, "coinSpend", RANCH_PATROL_GOOSE_BUY_COST);
     const ranch = ensureRanch(farm);
     ranch.patrolGoose = { boughtAt: now };
     pushLedger(farm, "buy-patrol-goose", RANCH_PATROL_GOOSE_BUY_COST, `给牧场请来${RANCH_PATROL_GOOSE_NAME}`, now);

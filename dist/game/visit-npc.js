@@ -2,6 +2,7 @@ import { decorLines, isUgcCrop, refreshShop } from "../engine.js";
 import { getCrop } from "../content.js";
 import { GROW_TICKS, MESSAGES_MAX, NPC_ID, NPC_NAME, SEED_PRICE } from "../config.js";
 import { currentDayIndex } from "../time.js";
+import { bumpDaily } from "../daily.js";
 import { titlePrefix } from "../titles.js";
 import { makeFarm } from "./factory.js";
 import { itemName, viewMarket } from "./market.js";
@@ -106,6 +107,7 @@ export function buyNpcSeed(npc, buyer, id, now) {
     if (buyer.coins < stock.price)
         return { ok: false, error: `金币不足，${c.name}种子要 💰${stock.price}金，你只有 ${buyer.coins}。` };
     buyer.coins -= stock.price;
+    bumpDaily(buyer, now, "coinSpend", stock.price);
     buyer.seeds[id] = (buyer.seeds[id] ?? 0) + 1;
     buyer.limitedSeedBuys.ids.push(id);
     return { ok: true, name: c.name, qty: 1, cost: stock.price };

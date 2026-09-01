@@ -7,6 +7,7 @@ import {
     cookingRecipeById, fishingFishById, fishingBaitById, titles,
 } from "./content.js";
 import { currentDayIndex, currentSeason } from "./time.js";
+import { bumpDaily } from "./daily.js";
 import { Rng } from "./rng.js";
 import { RANCH_LEVEL_INCOME_STEP } from "./config.js";
 import { recordWelfareWeekProgress, takeWelfareWeekNotice } from "./welfare-week.js";
@@ -590,6 +591,7 @@ function ticket(farm, now) {
     if (farm.coins < glimmer.ticketCost)
         return { ok: false, text: `金币不足，通票要 500 金（你有 ${farm.coins} 金）。` };
     farm.coins -= glimmer.ticketCost;
+    bumpDaily(farm, now, "coinSpend", glimmer.ticketCost);
     state.ticketDay = currentDayIndex(now);
     history(farm, { at: now, kind: "ticket", text: "今日通票" });
     recordWelfareWeekProgress(farm, "glimmer_ticket", 1, now);

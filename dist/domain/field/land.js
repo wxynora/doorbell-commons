@@ -1,6 +1,7 @@
 import { LAND_UPGRADE_REQ } from "../../config.js";
 import { crops, landTiers } from "../../content.js";
 import { pushLog } from "../shared/notifications.js";
+import { bumpDaily } from "../../daily.js";
 import { codexCountByCategory, collectionPct } from "./codex.js";
 
 /** 某品阶新解锁的作物种类数（升级提示用） */
@@ -36,6 +37,7 @@ export function upgradeLand(farm, now) {
     if (miss.length)
         return { ok: false, error: `升级到「${next.name}」还差：${miss.join("、")}` };
     farm.coins -= req.coins;
+    bumpDaily(farm, now, "coinSpend", req.coins);
     farm.landTier = next.tier;
     for (let id = farm.plots.length + 1; id <= next.plots; id++)
         farm.plots.push({ id, crop: null });

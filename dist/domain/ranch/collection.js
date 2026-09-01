@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Rng } from "../../rng.js";
 import { currentDayIndex } from "../../time.js";
+import { bumpDaily } from "../../daily.js";
 import {
     RANCH_ANIMAL_MAX_LEVEL,
     RANCH_FEED_BONUS_RATE,
@@ -98,7 +99,7 @@ export function ranchCollect(farm, farms, now) {
 }
 
 /** 伴侣花牧场金币把某动物升一级（每级每周期多产 1 份，封顶 RANCH_ANIMAL_MAX_LEVEL）。 */
-export function ranchUpgradeAnimal(farm, animalIdx) {
+export function ranchUpgradeAnimal(farm, animalIdx, now = Date.now()) {
     const ranch = farm.ranch;
     if (!ranch || !ranch.animals.length)
         return { ok: false, error: "牧场还没有动物。" };
@@ -115,6 +116,7 @@ export function ranchUpgradeAnimal(farm, animalIdx) {
     if (ranch.coins < cost)
         return { ok: false, error: `牧场金币不足（升到 ${lvl + 1} 级要 ${cost}，现有 ${ranch.coins}）。` };
     ranch.coins -= cost;
+    bumpDaily(farm, now, "coinSpend", cost);
     a.level = lvl + 1;
     return { ok: true, name: kind.name, level: a.level, cost };
 }

@@ -8,7 +8,7 @@ import { qixi2026ShopRows, qixi2026TaskView } from "../qixi-2026.js";
 import { isQixiLantern2026Active } from "../qixi-lantern-2026.js";
 import { agronomyObservationsForPlot } from "../career/p3-world.js";
 import { ago, clock, esc, farmLabel, farmNames, fmtDur, num, page, rarityDot, stamp } from "./shell.js";
-import { codexGot, rankOf } from "./stats.js";
+import { codexGot } from "./stats.js";
 
 /** 已收集的原创(ugc)物种数。 */
 const ugcGot = (f) => Object.keys(f.codex).filter((id) => getCrop(id)?.category === "ugc").length;
@@ -150,17 +150,9 @@ export function uiHome(f, now, key, flash) {
     ${shopBits.length
         ? shopBits.map((b) => `<div class="line small"><span>${b}</span></div>`).join("")
         : `<p class="small muted" style="margin:6px 0 0">寻常的种子铺：普通 ${s.common.price} 金 · 奇幻 ${s.fantasy.price} 金常备，配方与药水套装看缘分刷新。</p>`}</div>`;
-    // 他在榜上
-    const rCodex = rankOf(farms, f, codexGot);
-    const rCoins = rankOf(farms, f, (x) => x.coins + (x.ranch?.coins ?? 0));
-    const rTier = rankOf(farms, f, (x) => x.landTier);
-    const rankCard = `<div class="card"><div class="line"><h3 style="margin:0">🏆 他在榜上</h3>
-      <a class="cta" href="${BASE}/ui/${key}/leaderboard">看全服排行 →</a></div>
-    <div class="grid c2b" style="gap:8px;margin-top:6px;grid-template-columns:1fr 1fr 1fr">
-      <div><span class="rank-big">#${rCodex}</span><div class="small muted">图鉴榜</div></div>
-      <div><span class="rank-big">#${rCoins}</span><div class="small muted">财富榜</div></div>
-      <div><span class="rank-big">#${rTier}</span><div class="small muted">土地榜</div></div>
-    </div><p class="small muted" style="margin:8px 0 0">全服共 ${farms.length} 座农场</p></div>`;
+    const rankCard = `<div class="card"><div class="line"><h3 style="margin:0">🏞️ 土地品阶</h3>
+      <a class="cta" href="${BASE}/ui/${key}/leaderboard">看今日排行 →</a></div>
+    <p style="margin:10px 0 0"><b>${esc(tier.name)}</b> · ${num(f.landTier)} 阶 · ${num(f.plots.length)} 块地</p></div>`;
     // 最近留言
     const lastMsg = (f.guestbook !== false && (f.messages ?? []).length)
         ? (() => { const m = f.messages[f.messages.length - 1]; return `<b>${esc(m.name)}</b>${m.by ? ` <span class="muted">🏠${esc(m.by)}</span>` : ""}：${esc(m.text)}`; })()

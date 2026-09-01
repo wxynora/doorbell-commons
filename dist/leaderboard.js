@@ -1,10 +1,8 @@
-// 全服排行榜：把各项榜单汇总在一处，各取 Top 5。纯函数（数据由调用方传入），AI 文字版 + 数据版共用。
-import { cropById } from "./content.js";
+// 全服排行榜：把各项榜单汇总在一处，各取 Top 5；AI 文字版与数据版共用。
 import { equippedTitle } from "./titles.js";
 import { currentDayIndex } from "./time.js";
 import { dailyScore } from "./daily.js";
-/** 一座农场已集齐的官方作物图鉴种数（UGC 不计）。 */
-const officialCodex = (f) => Object.keys(f.codex ?? {}).filter((id) => cropById.has(id)).length;
+import { economyGoldSpentToday } from "./daily-spend.js";
 function top(farms, score, n = 5) {
     return farms
         .map((f) => {
@@ -15,19 +13,18 @@ function top(farms, score, n = 5) {
         .sort((a, b) => b.value - a.value)
         .slice(0, n);
 }
-function leaderboardScores(now) {
+export function leaderboardScores(now) {
     const today = currentDayIndex(now);
+    const directCoinSpend = dailyScore(today, "coinSpend");
     return {
-        wealth: (f) => f.coins + (f.ranch?.coins ?? 0),
-        collection: officialCodex,
-        diligence: (f) => f.harvested ?? 0,
-        kindness: (f) => f.watered ?? 0,
-        thief: (f) => f.stolen ?? 0,
-        land: (f) => f.landTier,
         todayTasks: dailyScore(today, "tasks"),
         todayLogins: dailyScore(today, "logins"),
         todayMessages: dailyScore(today, "messages"),
         todayEvents: dailyScore(today, "events"),
+        todayStolen: dailyScore(today, "stolen"),
+        todayWatered: dailyScore(today, "watered"),
+        todaySpent: (f) => directCoinSpend(f) + economyGoldSpentToday(f, now),
+        todayOddDishes: dailyScore(today, "oddDishes"),
         todayRaidIncome: (f) => f.ranch?.raidIncome?.day === today ? f.ranch.raidIncome.n : 0,
         todayRaidLoss: (f) => f.ranch?.raidLoss?.day === today ? f.ranch.raidLoss.n : 0,
     };
@@ -55,16 +52,14 @@ export function buildCurrentFarmLeaderboardRows(farms, currentFarm, now) {
 export function buildLeaderboards(farms, ugc, now) {
     const scores = leaderboardScores(now);
     return {
-        wealth: top(farms, scores.wealth),
-        collection: top(farms, scores.collection),
-        diligence: top(farms, scores.diligence),
-        kindness: top(farms, scores.kindness),
-        thief: top(farms, scores.thief),
-        land: top(farms, scores.land),
         todayTasks: top(farms, scores.todayTasks),
         todayLogins: top(farms, scores.todayLogins),
         todayMessages: top(farms, scores.todayMessages),
         todayEvents: top(farms, scores.todayEvents),
+        todayStolen: top(farms, scores.todayStolen),
+        todayWatered: top(farms, scores.todayWatered),
+        todaySpent: top(farms, scores.todaySpent),
+        todayOddDishes: top(farms, scores.todayOddDishes),
         todayRaidIncome: top(farms, scores.todayRaidIncome),
         todayRaidLoss: top(farms, scores.todayRaidLoss),
         hot: ugc
@@ -83,19 +78,16 @@ export function viewLeaderboard(farms, ugc, now) {
         : "  （暂无）";
     return [
         `🏆 全服排行榜（共 ${farms.length} 座农场，各取 Top 5）`,
-        `— — — 总榜（累计） — — —`,
-        `💰 财富榜（金币）\n${fmt(b.wealth, " 金")}`,
-        `📖 收集榜（图鉴种数）\n${fmt(b.collection, " 种")}`,
-        `🌾 勤劳榜（累计收获）\n${fmt(b.diligence, " 株")}`,
-        `💧 热心榜（帮人浇水）\n${fmt(b.kindness, " 次")}`,
-        `🥷 大盗榜（偷菜得手）\n${fmt(b.thief, " 次")}`,
-        `🏞️ 土地榜（品阶）\n${fmt(b.land, " 阶")}`,
         `🔥 原创热门榜（多少人买过）\n${hot}`,
         `— — — 今日榜（每天 0 点归零，新人同台） — — —`,
         `🔥 卷王榜（今日完成任务）\n${fmt(b.todayTasks, " 个")}`,
         `📱 网瘾榜（今日巡视农场）\n${fmt(b.todayLogins, " 次")}`,
-        `💬 热情榜（今日给人留言）\n${fmt(b.todayMessages, " 次")}`,
+        `💬 小纸条榜（今日给人留言）\n${fmt(b.todayMessages, " 次")}`,
         `🌦️ 奇遇榜（今日触发随机事件）\n${fmt(b.todayEvents, " 次")}`,
+        `🥷 大盗榜（今日成功偷菜）\n${fmt(b.todayStolen, " 次")}`,
+        `💧 热心榜（今日成功帮人浇水）\n${fmt(b.todayWatered, " 次")}`,
+        `💰 败家榜（今日花掉金币）\n${fmt(b.todaySpent, " 金")}`,
+        `🍳 厨鬼榜（今日做出微妙料理）\n${fmt(b.todayOddDishes, " 次")}`,
         `🐾 摸金榜（今日偷到金币）\n${fmt(b.todayRaidIncome, " 金")}`,
         `💸 漏财榜（今日损失金币）\n${fmt(b.todayRaidLoss, " 金", "-")}`,
     ].join("\n\n");
