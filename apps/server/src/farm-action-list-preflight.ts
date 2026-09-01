@@ -23,6 +23,11 @@ export interface FarmActionListStealSnapshot {
   targets: readonly { target: string; plotId: number }[];
 }
 
+export interface FarmActionListWaterSnapshot {
+  targets: readonly { target: string }[];
+  visitedTargets: readonly { target: string }[];
+}
+
 export interface FarmActionListFishSnapshot {
   remainingAttempts: number;
   availableBaits: readonly string[];
@@ -50,6 +55,7 @@ export interface FarmActionListActivitySnapshot {
 export interface FarmActionListAuthorityReader {
   readField(profile: FarmActionListProfile): Promise<FarmActionListFieldSnapshot>;
   readSteal(profile: FarmActionListProfile): Promise<FarmActionListStealSnapshot>;
+  readWater(profile: FarmActionListProfile): Promise<FarmActionListWaterSnapshot>;
   readFish(profile: FarmActionListProfile): Promise<FarmActionListFishSnapshot>;
   readExplore(profile: FarmActionListProfile): Promise<FarmActionListExploreSnapshot>;
   resolveCook(
@@ -73,6 +79,12 @@ const plantCall = (): FarmActionListToolCall => ({ op: "farm.plant", args: {} })
 const fishCall = (): FarmActionListToolCall => ({ op: "farm.fish.cast", args: {} });
 
 const exploreCall = (): FarmActionListToolCall => ({ op: "farm.explore", args: {} });
+
+function waterDisplayText(visitedTargets: readonly { target: string }[]): string {
+  return visitedTargets.length > 0
+    ? `帮邻居浇水（今天已浇：${visitedTargets.map((target) => target.target).join("、")}）`
+    : "帮邻居浇水";
+}
 
 function fallback(item: FarmActionListItem): {
   displayText: string;
@@ -98,6 +110,9 @@ function fallback(item: FarmActionListItem): {
         { op: "farm.steal", args: { to: "1", plotId: 1 } },
       ],
     };
+  }
+  if (item.kind === "water") {
+    return { displayText: "帮邻居浇水", toolCalls: [] };
   }
   if (item.kind === "fish") return { displayText: "钓鱼", toolCalls: [fishCall()] };
   if (item.kind === "explore") return { displayText: "探险", toolCalls: [exploreCall()] };
@@ -138,6 +153,7 @@ export async function preflightFarmActionList(
 ): Promise<FarmActionListCheckedItem[]> {
   let field: Promise<FarmActionListFieldSnapshot> | undefined;
   let steal: Promise<FarmActionListStealSnapshot> | undefined;
+  let water: Promise<FarmActionListWaterSnapshot> | undefined;
   let fish: Promise<FarmActionListFishSnapshot> | undefined;
   let explore: Promise<FarmActionListExploreSnapshot> | undefined;
   const readField = () => {
@@ -147,6 +163,10 @@ export async function preflightFarmActionList(
   const readSteal = () => {
     if (!steal) steal = authority.readSteal(profile);
     return steal;
+  };
+  const readWater = () => {
+    if (!water) water = authority.readWater(profile);
+    return water;
   };
   const readFish = () => {
     if (!fish) fish = authority.readFish(profile);
@@ -190,6 +210,21 @@ export async function preflightFarmActionList(
                 { op: "farm.steal", args: { to: target.target, plotId: target.plotId } },
               ])
             : checked(item, "crossed", "当前没有可偷目标", "偷菜", []);
+        }
+        if (item.kind === "water") {
+          const snapshot = await readWater();
+          const displayText = waterDisplayText(snapshot.visitedTargets);
+          return snapshot.targets.length > 0
+            ? checked(item, "active", null, displayText, [])
+            : checked(
+                item,
+                "crossed",
+                snapshot.visitedTargets.length > 0
+                  ? "今天可浇的邻居都已经去过"
+                  : "当前没有可帮浇水的邻居",
+                displayText,
+                [],
+              );
         }
         if (item.kind === "fish") {
           const snapshot = await readFish();

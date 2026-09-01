@@ -60,6 +60,10 @@ test("preflight crosses completed facts and leaves authority failures visible", 
       kind: "activity",
       activity_id: "glimmer",
     },
+    {
+      item_id: "00000000-0000-4000-8000-000000000006",
+      kind: "water",
+    },
   ];
   const authority: FarmActionListAuthorityReader = {
     readField: async () => ({
@@ -70,6 +74,10 @@ test("preflight crosses completed facts and leaves authority failures visible", 
       limitedSeeds: {},
     }),
     readSteal: async () => ({ targets: [] }),
+    readWater: async () => ({
+      targets: [{ target: "4" }],
+      visitedTargets: [{ target: "1" }, { target: "3" }],
+    }),
     readFish: async () => {
       throw new Error("unavailable");
     },
@@ -97,12 +105,26 @@ test("preflight crosses completed facts and leaves authority failures visible", 
       { status: "active", reason: null },
       { status: "authority_unavailable", reason: "权威状态暂时无法核对" },
       { status: "crossed", reason: "今天已经参加过" },
+      { status: "active", reason: null },
     ],
   );
   assert.deepEqual(
     checked.flatMap((entry) => (entry.messageItem ? [entry.messageItem.text] : [])),
-    ["看看留言", "钓鱼"],
+    ["看看留言", "钓鱼", "帮邻居浇水（今天已浇：1、3）"],
   );
+  assert.deepEqual(checked[5]?.messageItem?.toolCalls, []);
+
+  const [allVisited] = await preflightFarmActionList(
+    profile,
+    [{ item_id: "00000000-0000-4000-8000-000000000006", kind: "water" }],
+    {
+      ...authority,
+      readWater: async () => ({ targets: [], visitedTargets: [{ target: "1" }] }),
+    },
+  );
+  assert.equal(allVisited?.view.status, "crossed");
+  assert.equal(allVisited?.view.reason, "今天可浇的邻居都已经去过");
+  assert.equal(allVisited?.messageItem, null);
 });
 
 test("daily list scheduling uses the next Beijing occurrence", () => {

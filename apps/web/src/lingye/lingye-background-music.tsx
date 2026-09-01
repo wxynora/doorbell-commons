@@ -5,6 +5,29 @@ export const LINGYE_BGM_OPUS_PATH = new URL("./audio/doorbell-farm-loop.webm", i
 export const LINGYE_BGM_AAC_PATH = new URL("./audio/doorbell-farm-loop.m4a", import.meta.url).href;
 export const LINGYE_BGM_STORAGE_KEY = "doorbell.lingye.background-music-muted";
 export const LINGYE_BGM_VOLUME = 0.2;
+export const LINGYE_BGM_IOS_VOLUME = 0.1;
+
+export function lingyeBackgroundMusicVolumeForPlatform({
+  userAgent,
+  platform,
+  maxTouchPoints,
+}: {
+  userAgent: string;
+  platform: string;
+  maxTouchPoints: number;
+}) {
+  const isIosDevice =
+    /iPhone|iPad|iPod/u.test(userAgent) || (platform === "MacIntel" && maxTouchPoints > 1);
+  return isIosDevice ? LINGYE_BGM_IOS_VOLUME : LINGYE_BGM_VOLUME;
+}
+
+function currentBackgroundMusicVolume() {
+  return lingyeBackgroundMusicVolumeForPlatform({
+    userAgent: window.navigator.userAgent,
+    platform: window.navigator.platform,
+    maxTouchPoints: window.navigator.maxTouchPoints,
+  });
+}
 
 type BackgroundMusicEngine = {
   context: AudioContext;
@@ -73,7 +96,7 @@ export function LingyeBackgroundMusic({
     const context = new AudioContextClass();
     const lifecycleGeneration = lifecycleGenerationRef.current;
     const gain = context.createGain();
-    gain.gain.value = mutedRef.current ? 0 : LINGYE_BGM_VOLUME;
+    gain.gain.value = mutedRef.current ? 0 : currentBackgroundMusicVolume();
     gain.connect(context.destination);
     contextRef.current = context;
 
@@ -132,7 +155,7 @@ export function LingyeBackgroundMusic({
         return;
       }
 
-      engine.gain.gain.value = mutedRef.current ? 0 : LINGYE_BGM_VOLUME;
+      engine.gain.gain.value = mutedRef.current ? 0 : currentBackgroundMusicVolume();
       if (!activeRef.current || document.visibilityState === "hidden") {
         if (engine.context.state === "running") await engine.context.suspend();
         if (mountedRef.current && lifecycleGenerationRef.current === lifecycleGeneration) {
@@ -197,7 +220,7 @@ export function LingyeBackgroundMusic({
     if (muted) {
       mutedRef.current = false;
       const gain = engineRef.current?.gain;
-      if (gain) gain.gain.value = LINGYE_BGM_VOLUME;
+      if (gain) gain.gain.value = currentBackgroundMusicVolume();
       setMuted(false);
       writeStoredMuted(false);
       return;

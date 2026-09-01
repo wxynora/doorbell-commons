@@ -31,6 +31,27 @@ export const farmActionListAuthorityReadSuccessSchema = z
             ),
           })
           .strict(),
+        water: z
+          .object({
+            status: z.literal("available"),
+            targets: z.array(
+              z
+                .object({
+                  target: z.string().regex(/^[1-9]\d*$/u),
+                  farm_name: z.string().min(1),
+                })
+                .strict(),
+            ),
+            visited_targets: z.array(
+              z
+                .object({
+                  target: z.string().regex(/^[1-9]\d*$/u),
+                  farm_name: z.string().min(1),
+                })
+                .strict(),
+            ),
+          })
+          .strict(),
         fishing: z
           .object({
             status: z.literal("available"),

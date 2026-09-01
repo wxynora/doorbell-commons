@@ -36,6 +36,7 @@ function harness() {
       limitedSeeds: {},
     }),
     readSteal: async () => ({ targets: [] }),
+    readWater: async () => ({ targets: [], visitedTargets: [] }),
     readFish: async () => ({ remainingAttempts: 0, availableBaits: [] }),
     readExplore: async () => ({ remainingCharges: 0, activeJourney: false }),
     resolveCook: async () => ({

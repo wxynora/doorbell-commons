@@ -15,6 +15,7 @@ import {
   notifyFarmActionList,
   updateFarmActionList,
 } from "../../auth/farm-action-list-client";
+import { formatActionListDateInput, formatActionListTimeInput } from "./farm-action-list-input";
 import "./farm-action-list-panel-v2.css";
 
 const LABELS: Readonly<Record<FarmActionListItemKind, string>> = {
@@ -22,6 +23,7 @@ const LABELS: Readonly<Record<FarmActionListItemKind, string>> = {
   plant: "种菜",
   buy: "购买",
   steal: "偷菜",
+  water: "帮邻居浇水",
   fish: "钓鱼",
   explore: "探险",
   cook: "做饭",
@@ -255,7 +257,7 @@ export function FarmActionListPanelV2({
     if (!draft) return;
     if (!draft.name.trim()) return setStatus("请填写清单名称");
     if (draft.mode === "once" && !isValidLocalDateTime(draft.onceAt)) {
-      return setStatus("请按 YYYY-MM-DD 和 24 小时制 HH:mm 填写时间");
+      return setStatus("日期请输入 8 位数字（如 20260901），时间请输入 4 位数字（如 0930）");
     }
     if (draft.mode === "daily_window") {
       if (!TIME_PATTERN.test(draft.startTime) || !TIME_PATTERN.test(draft.endTime)) {
@@ -411,14 +413,14 @@ export function FarmActionListPanelV2({
                     autoComplete="off"
                     inputMode="numeric"
                     maxLength={10}
-                    placeholder="2026-09-01"
+                    placeholder="例如 20260901"
                     spellCheck={false}
                     type="text"
                     value={draft.onceAt.split("T")[0] ?? ""}
                     onChange={(event) =>
                       setDraft({
                         ...draft,
-                        onceAt: `${event.currentTarget.value}T${draft.onceAt.split("T")[1] ?? ""}`,
+                        onceAt: `${formatActionListDateInput(event.currentTarget.value)}T${draft.onceAt.split("T")[1] ?? ""}`,
                       })
                     }
                   />
@@ -429,14 +431,14 @@ export function FarmActionListPanelV2({
                     autoComplete="off"
                     inputMode="numeric"
                     maxLength={5}
-                    placeholder="09:30"
+                    placeholder="例如 0930"
                     spellCheck={false}
                     type="text"
                     value={draft.onceAt.split("T")[1] ?? ""}
                     onChange={(event) =>
                       setDraft({
                         ...draft,
-                        onceAt: `${draft.onceAt.split("T")[0] ?? ""}T${event.currentTarget.value}`,
+                        onceAt: `${draft.onceAt.split("T")[0] ?? ""}T${formatActionListTimeInput(event.currentTarget.value)}`,
                       })
                     }
                   />

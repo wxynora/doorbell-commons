@@ -78,6 +78,16 @@ export class FarmActionListAuthority implements FarmActionListAuthorityReader {
     };
   }
 
+  async readWater(profile: FarmActionListProfile) {
+    const authority = await this.#actionListStateReader.readActionListAuthority(identity(profile));
+    return {
+      targets: authority.data.water.targets.map((target) => ({ target: target.target })),
+      visitedTargets: authority.data.water.visited_targets.map((target) => ({
+        target: target.target,
+      })),
+    };
+  }
+
   async readFish(profile: FarmActionListProfile) {
     const authority = await this.#actionListStateReader.readActionListAuthority(identity(profile));
     return {

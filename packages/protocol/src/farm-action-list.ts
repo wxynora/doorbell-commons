@@ -33,6 +33,7 @@ const plantItem = z
   .strict();
 const buyItem = z.object({ ...itemBase, kind: z.literal("buy"), details: nonEmptyText }).strict();
 const stealItem = z.object({ ...itemBase, kind: z.literal("steal") }).strict();
+const waterItem = z.object({ ...itemBase, kind: z.literal("water") }).strict();
 const fishItem = z.object({ ...itemBase, kind: z.literal("fish") }).strict();
 const exploreItem = z.object({ ...itemBase, kind: z.literal("explore") }).strict();
 const cookItem = z.object({ ...itemBase, kind: z.literal("cook") }).strict();
@@ -50,6 +51,7 @@ export const farmActionListItemSchema = z.union([
   plantItem,
   buyItem,
   stealItem,
+  waterItem,
   fishItem,
   exploreItem,
   cookItem,
@@ -62,6 +64,7 @@ export const farmActionListItemKindSchema = z.enum([
   "plant",
   "buy",
   "steal",
+  "water",
   "fish",
   "explore",
   "cook",

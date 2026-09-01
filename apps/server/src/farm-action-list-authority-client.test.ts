@@ -26,6 +26,11 @@ test("action-list authority client accepts only the bound structured projection"
                 },
               ],
             },
+            water: {
+              status: "available",
+              targets: [{ target: "4", farm_name: "待浇农场" }],
+              visited_targets: [{ target: "2", farm_name: "今天浇过" }],
+            },
             fishing: {
               status: "available",
               daily_limit: 20,
@@ -54,6 +59,8 @@ test("action-list authority client accepts only the bound structured projection"
     farmHumanKey: "human-key",
   });
   assert.equal(result.data.steal.targets[0]?.target, "2");
+  assert.equal(result.data.water.targets[0]?.target, "4");
+  assert.equal(result.data.water.visited_targets[0]?.target, "2");
   assert.equal(result.data.fishing.remaining_today, 3);
   assert.equal(result.data.activities[0]?.name, "流光原野");
 });
