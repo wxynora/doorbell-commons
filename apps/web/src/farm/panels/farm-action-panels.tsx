@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { ApiResult } from "../../auth/auth-client";
 import {
   type BoundCropCodexAction,
@@ -164,7 +164,6 @@ export function FarmMarketPanelContent({
   const [purchasePrice, setPurchasePrice] = useState("1");
   const [fulfillQuantities, setFulfillQuantities] = useState<Record<string, string>>({});
   const [selectedMerchantItemIds, setSelectedMerchantItemIds] = useState<string[]>([]);
-  const initialBrowseRequested = useRef(false);
   type Attempt = { input: MarketActionInput; label: string };
   type ActionState =
     | { stage: "idle" }
@@ -255,12 +254,6 @@ export function FarmMarketPanelContent({
       label: "刷新集市",
     });
   };
-
-  useEffect(() => {
-    if (initialBrowseRequested.current || !onMarketAction || !farmDoorplate) return;
-    initialBrowseRequested.current = true;
-    submitBrowse();
-  }, [farmDoorplate, onMarketAction]);
 
   const submitList = (barter: boolean) => {
     if (!onMarketAction || !farmDoorplate || !selectedItem || !validQuantity) return;
