@@ -92,7 +92,7 @@ export function dispatchRanchRaid(owner, target, animalIdx, durationHours, now) 
     return { ok: true, raid, animal: animalName };
 }
 
-/** 目标人类主动抓住仍在潜伏的外来动物；按实际潜伏时长收取等额赔偿，未用保证金退回。 */
+/** 目标人类主动抓住仍在潜伏的外来动物；按本次派遣已经冻结的整额保证金赔偿。 */
 export function catchRanchRaid(target, owners, raidId, now) {
     for (const owner of owners) {
         const raids = owner.ranch?.raids ?? [];
@@ -104,8 +104,7 @@ export function catchRanchRaid(target, owners, raidId, now) {
             return { ok: false, error: "这只动物不在你家。" };
         if (now >= raid.endsAt)
             return { ok: false, error: "它已经结束潜伏、跑回自己家了。" };
-        const compensation = ranchRaidCoins(raid, now);
-        owner.ranch.coins += raid.reservedCoins - compensation;
+        const compensation = raid.reservedCoins;
         if (compensation > 0) {
             const day = currentDayIndex(now);
             if (!owner.ranch.raidLoss || owner.ranch.raidLoss.day !== day)
