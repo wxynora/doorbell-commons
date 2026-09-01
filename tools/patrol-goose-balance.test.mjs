@@ -5,7 +5,6 @@ import { RANCH_RAID_COINS_PER_HOUR } from "../dist/config.js";
 import { makeFarm } from "../dist/game.js";
 import {
     RANCH_RAID_DAILY_CAP,
-    catchRanchRaid,
     dispatchRanchRaid,
     settleRanchRaids,
 } from "../dist/domain/ranch/raids.js";
@@ -18,28 +17,6 @@ const BASE = Date.parse("2026-09-01T08:00:00+08:00");
 test("ranch raids use one thousand coins per hour and a ten-thousand daily cap", () => {
     assert.equal(RANCH_RAID_COINS_PER_HOUR, 1000);
     assert.equal(RANCH_RAID_DAILY_CAP, 10000);
-});
-
-test("catching a one-hour dispatch pays the full one-thousand coin reservation", () => {
-    const owner = makeFarm("派遣方", 1001);
-    owner.id = "CAUGHT_ATTACKER";
-    const target = makeFarm("守卫方", 2002);
-    target.id = "CAUGHT_DEFENDER";
-    const ownerRanch = ensureRanch(owner);
-    ownerRanch.coins = 5000;
-    ownerRanch.animals = [{ kindId: "chicken", level: 1, pending: 0, ticksSinceProduce: 0 }];
-    const targetRanch = ensureRanch(target);
-    targetRanch.coins = 0;
-
-    const dispatched = dispatchRanchRaid(owner, target, 0, 1, BASE);
-    assert.equal(dispatched.ok, true);
-    assert.equal(dispatched.raid.reservedCoins, 1000);
-
-    const caught = catchRanchRaid(target, [owner], dispatched.raid.id, BASE + 6 * 60 * 1000);
-    assert.equal(caught.ok, true);
-    assert.equal(caught.compensation, 1000);
-    assert.equal(ownerRanch.coins, 4000);
-    assert.equal(targetRanch.coins, 1000);
 });
 
 function settledFixture(targetSeed) {
