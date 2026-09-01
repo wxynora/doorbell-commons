@@ -81,6 +81,7 @@ import {
   humanAuthenticationErrorSchema,
   humanLogoutSuccessSchema,
   humanSessionSuccessSchema,
+  type OwnerProfileCareerSummarySuccess,
 } from "@doorbell/protocol";
 import Database from "better-sqlite3";
 import { buildApp } from "./app.js";
@@ -178,6 +179,7 @@ import {
   FarmHumanKitchenShopRefreshStateConflictError,
 } from "./farm-kitchen-shop-refresh-client.js";
 import {
+  type FarmLingyeCareerReadInput,
   FarmLingyeContractUnavailableError,
   FarmLingyeCredentialInvalidError,
   FarmLingyeNotFoundError,
@@ -1167,10 +1169,32 @@ class FakeFarmHumanReader implements FarmHumanFieldReader {
 }
 
 class FakeFarmLingyeReader implements FarmLingyeReader {
+  readonly careerCalls: FarmLingyeCareerReadInput[] = [];
   readonly glimmerCalls: Array<{ farmDoorplate: string; farmHumanKey: string }> = [];
   readonly togetherCalls: Array<{ farmDoorplate: string; farmHumanKey: string }> = [];
   glimmerResult: "found" | "credential" | "missing" | "unavailable" | "contract" = "found";
   togetherResult: "found" | "credential" | "missing" | "unavailable" | "contract" = "found";
+  careerResult: "found" | "credential" | "missing" | "unavailable" | "contract" = "found";
+
+  async readCareerSummary(
+    input: FarmLingyeCareerReadInput,
+  ): Promise<OwnerProfileCareerSummarySuccess> {
+    this.careerCalls.push(input);
+    switch (this.careerResult) {
+      case "credential":
+        throw new FarmLingyeCredentialInvalidError();
+      case "missing":
+        throw new FarmLingyeNotFoundError();
+      case "unavailable":
+        throw new FarmLingyeUnavailableError();
+      case "contract":
+        throw new FarmLingyeContractUnavailableError();
+      default:
+        return {
+          careers: [{ career: "reporter", qualification_level: 3, title: "副主编" }],
+        };
+    }
+  }
 
   async readGlimmer(input: FarmLingyeReadInput): Promise<FarmHumanGlimmerReadSuccess> {
     this.glimmerCalls.push(input);
