@@ -1421,3 +1421,26 @@ During the migration period that service may still serve its existing legacy Hum
 unmigrated users. This does not change the confirmed target: all new Human frontend code lives in
 Doorbell Commons, and after the authorized cutover the `farm` deployment remains only the Lingye／farm
 backend game engine and its authoritative service boundaries.
+
+## 2026-09-01 casual farm leaderboard release
+
+Production Farm now runs clean `farm` commit `0e0697ac657490730e457d45ea3164fb792500e8` in
+`/opt/aifarm`; production Main source and runtime run `3e6901516ce9453b23516054db0b0ebdf3da5e09`.
+Farm is still the independent `aifarm.service` on loopback 8091, while Main continues to expose the
+Human neighborhood page and the canonical `doorbell` registry. Public rankings now contain only the
+original-crop popularity board and ten Asia/Shanghai daily boards. Historical cumulative farm facts
+remain in saves for existing titles and compatibility but no longer enter leaderboard calculation,
+sorting, structured projection, the legacy Human home／ranking pages, or the Main Human neighborhood.
+
+Main was released through the exact-SHA artifact publisher and advanced the PWA release to
+`2026-08-30.29`; its pre-release database backup is
+`/var/backups/doorbell-commons/releases/20260901T063710Z-pre-3e69015/`. Farm entered the existing
+maintenance gate before backup and fast-forward; its root-only pre-release backup is
+`/var/backups/aifarm/releases/20260901T064436Z-pre-9393f80/`. The first Farm release commit
+`9393f80a6bdad1cb9f45cca23dd53fc2cb412f68` accidentally carried an uncommitted mystery-merchant
+import in `dist/server.js` without that module. Startup failed closed while the maintenance marker
+remained present. Corrective commit `0e0697a` rebuilt that file from deployed parent `a91e8a6` plus
+only the daily-leaderboard hooks; a complete candidate import passed before restart. Final Farm is
+active with one 8091 listener, `NRestarts=0`, no warning-or-higher startup entry, a clean checkout and
+direct／public 200 health. Main is active with local／public health 200. Neither release read player
+records, executed a player action, changed reward settlement, or shipped local tests.
