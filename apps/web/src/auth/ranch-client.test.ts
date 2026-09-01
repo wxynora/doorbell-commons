@@ -10,6 +10,7 @@ const RANCH_RESULT = {
     farm: { farm_doorplate: "3ET3FE" },
     balance: { status: "available", ranch_coins: 321, debt_status: "available", debt_coins: 0 },
     residents: { status: "available", animals: [], pets: [], patrol_goose: null },
+    scene: { status: "available", resident_count: 0, visitor_count: 0, visitors: [] },
     collectable: {
       status: "available",
       total_pending_count: 0,

@@ -18,6 +18,7 @@ export interface RanchSceneAnimalDefinition {
   spriteStyle: CSSProperties;
   staticSprite?: boolean | undefined;
   randomizeInitialPosition?: boolean | undefined;
+  visitor?: boolean | undefined;
 }
 
 function RanchSceneAnimal({
@@ -126,20 +127,14 @@ function RanchSceneAnimal({
     layout.roam.minY,
   ]);
 
-  return (
-    <button
-      aria-label={`查看牧场里的${animal.name}`}
-      className="farm-ranch-resident"
-      data-animal-id={animal.id}
-      onClick={() => onSelectAnimal(animal.id)}
-      style={{
-        left: `${initialPosition.x}%`,
-        top: `${initialPosition.y}%`,
-        width: `${layout.size}%`,
-        zIndex: Math.round(initialPosition.y),
-      }}
-      type="button"
-    >
+  const style = {
+    left: `${initialPosition.x}%`,
+    top: `${initialPosition.y}%`,
+    width: `${layout.size}%`,
+    zIndex: Math.round(initialPosition.y),
+  };
+  const content = (
+    <>
       <span className="farm-ranch-resident__roamer" data-roamer ref={roamerRef}>
         <span className="farm-ranch-resident__portrait" ref={portraitRef}>
           <span className="farm-ranch-resident__portrait-sprite" style={animal.placementStyle}>
@@ -168,6 +163,29 @@ function RanchSceneAnimal({
           </span>
         ) : null}
       </span>
+      {animal.visitor ? <span className="farm-ranch-resident__visitor-badge">来客</span> : null}
+    </>
+  );
+  return animal.visitor ? (
+    <span
+      aria-label={`牧场来客${animal.name}`}
+      className="farm-ranch-resident is-visitor"
+      data-animal-id={animal.id}
+      role="img"
+      style={style}
+    >
+      {content}
+    </span>
+  ) : (
+    <button
+      aria-label={`查看牧场里的${animal.name}`}
+      className="farm-ranch-resident"
+      data-animal-id={animal.id}
+      onClick={() => onSelectAnimal(animal.id)}
+      style={style}
+      type="button"
+    >
+      {content}
     </button>
   );
 }
@@ -177,11 +195,15 @@ export function RanchScene({
   animals,
   backgroundUrl,
   onSelectAnimal,
+  residentCount,
+  visitorCount,
 }: {
   active: boolean;
   animals: readonly RanchSceneAnimalDefinition[];
   backgroundUrl: string;
   onSelectAnimal: (animalId: string) => void;
+  residentCount: number | null;
+  visitorCount: number | null;
 }) {
   const mountEntropyRef = useRef<number | null>(null);
   const mountEntropy = mountEntropyRef.current ?? createRanchSceneMountEntropy();
@@ -196,6 +218,10 @@ export function RanchScene({
       <h2 className="farm-visually-hidden" id="farm-ranch-title">
         牧场
       </h2>
+
+      <div aria-live="polite" className="farm-ranch-presence">
+        在场动物 {residentCount ?? "—"} 只 · 来客 {visitorCount ?? "—"} 只
+      </div>
 
       {animals.map((animal) => (
         <RanchSceneAnimal

@@ -103,23 +103,21 @@ export const farmRanchResidentAllowedActionsSchema = z
   })
   .strict();
 
+export const farmRanchVariantOptionSchema = z
+  .object({
+    variant_id: ranchIdSchema,
+    name: ranchTextSchema,
+    atlas: z.literal("glimmer.variants").nullable(),
+    set: z.union([z.literal(1), z.literal(2), z.literal(3)]).nullable(),
+    sprite_index: z.number().int().nonnegative().max(255).nullable(),
+  })
+  .strict();
+
 export const farmRanchResidentVariantsSchema = z
   .object({
     current_variant_id: ranchIdSchema.nullable(),
     available_variant_ids: z.array(ranchIdSchema).max(16),
-    available_variants: z
-      .array(
-        z
-          .object({
-            variant_id: ranchIdSchema,
-            name: ranchTextSchema,
-            atlas: z.literal("glimmer.variants").nullable(),
-            set: z.union([z.literal(1), z.literal(2), z.literal(3)]).nullable(),
-            sprite_index: z.number().int().nonnegative().max(255).nullable(),
-          })
-          .strict(),
-      )
-      .max(16),
+    available_variants: z.array(farmRanchVariantOptionSchema).max(16),
   })
   .strict();
 
@@ -201,6 +199,27 @@ export const farmRanchDispatchEntrySchema = z
     reserved_coins: nullableCountSchema,
   })
   .strict();
+
+export const farmRanchSceneVisitorSchema = z
+  .object({
+    status: ranchItemStatusSchema,
+    raid_id: ranchIdSchema.nullable(),
+    animal_kind_id: ranchIdSchema.nullable(),
+    animal_name: ranchTextSchema.nullable(),
+    variant: farmRanchVariantOptionSchema.nullable(),
+  })
+  .strict()
+  .superRefine((visitor, context) => {
+    if (
+      visitor.status === "known" &&
+      (!visitor.raid_id || !visitor.animal_kind_id || !visitor.animal_name || !visitor.variant)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "a known ranch visitor must expose its raid, animal, name, and variant",
+      });
+    }
+  });
 
 export const farmRanchShopAnimalSchema = z
   .object({
@@ -319,6 +338,40 @@ export const farmRanchDataSchema = z
         patrol_goose: farmRanchResidentSchema.nullable(),
       })
       .strict(),
+    scene: z
+      .object({
+        status: ranchStatusSchema,
+        resident_count: nullableCountSchema,
+        visitor_count: nullableCountSchema,
+        visitors: z.array(farmRanchSceneVisitorSchema).max(128),
+      })
+      .strict()
+      .superRefine((scene, context) => {
+        if (scene.status === "available") {
+          if (scene.resident_count === null || scene.visitor_count === null) {
+            context.addIssue({
+              code: "custom",
+              message: "available ranch scene counts are required",
+            });
+          }
+          if (
+            scene.visitor_count !==
+            scene.visitors.filter((visitor) => visitor.status === "known").length
+          ) {
+            context.addIssue({
+              code: "custom",
+              message: "ranch visitor count must match known visitors",
+            });
+          }
+        } else if (
+          scene.resident_count !== null ||
+          scene.visitor_count !== null ||
+          scene.visitors.length > 0
+        ) {
+          context.addIssue({ code: "custom", message: "unavailable ranch scene must stay empty" });
+        }
+      })
+      .optional(),
     collectable: z
       .object({
         status: ranchStatusSchema,

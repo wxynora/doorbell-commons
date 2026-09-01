@@ -119,6 +119,8 @@ import {
 import {
   getLiveRanchResidents,
   getLiveRanchSceneLayout,
+  getLiveRanchSceneResidents,
+  getLiveRanchVisitors,
   type LiveRanchResidentView,
   type RanchResidentActionExecutor,
   RanchResidentDetail,
@@ -354,6 +356,8 @@ export function FarmFieldContent({
   }, [farmCatalog, preview, settingsInitializationKey]);
   const selectedPlot = field.plots.find((plot) => plot.plot_id === selectedPlotId) ?? null;
   const liveRanchResidents = getLiveRanchResidents(ranch);
+  const liveRanchSceneResidents = getLiveRanchSceneResidents(ranch);
+  const liveRanchVisitors = getLiveRanchVisitors(ranch);
   const selectedRanchAnimal = preview
     ? (RANCH_SHOP_ANIMALS.find((animal) => animal.id === selectedRanchAnimalId) ?? null)
     : null;
@@ -400,24 +404,59 @@ export function FarmFieldContent({
             ]
           : [];
       })
-    : liveRanchResidents.map((resident, index) => {
-        const visual = getRanchResidentSpriteVisual(
-          resident.spriteAnimal,
-          resident.resident.variants,
-          resident.resident.identity.kind_id ?? resident.spriteAnimal.id,
-        );
-        return {
-          healthLabel: resident.resident.health?.label,
-          healthStatus: resident.resident.health?.status,
-          id: resident.id,
-          layout: getLiveRanchSceneLayout(index, liveRanchResidents.length),
-          name: resident.resident.identity.custom_name ?? resident.resident.identity.name ?? "",
-          placementStyle: visual.placementStyle,
-          randomizeInitialPosition: true,
-          spriteStyle: visual.spriteStyle,
-          staticSprite: visual.staticSprite,
-        };
-      });
+    : [
+        ...liveRanchSceneResidents.map((resident, index) => {
+          const visual = getRanchResidentSpriteVisual(
+            resident.spriteAnimal,
+            resident.resident.variants,
+            resident.resident.identity.kind_id ?? resident.spriteAnimal.id,
+          );
+          return {
+            healthLabel: resident.resident.health?.label,
+            healthStatus: resident.resident.health?.status,
+            id: resident.id,
+            layout: getLiveRanchSceneLayout(
+              index,
+              liveRanchSceneResidents.length + liveRanchVisitors.length,
+            ),
+            name: resident.resident.identity.custom_name ?? resident.resident.identity.name ?? "",
+            placementStyle: visual.placementStyle,
+            randomizeInitialPosition: true,
+            spriteStyle: visual.spriteStyle,
+            staticSprite: visual.staticSprite,
+          };
+        }),
+        ...liveRanchVisitors.map((visitor, index) => {
+          const visual = getRanchResidentSpriteVisual(
+            visitor.spriteAnimal,
+            visitor.variants,
+            visitor.spriteAnimal.id,
+          );
+          return {
+            id: visitor.id,
+            layout: getLiveRanchSceneLayout(
+              liveRanchSceneResidents.length + index,
+              liveRanchSceneResidents.length + liveRanchVisitors.length,
+            ),
+            name: visitor.name,
+            placementStyle: visual.placementStyle,
+            randomizeInitialPosition: true,
+            spriteStyle: visual.spriteStyle,
+            staticSprite: visual.staticSprite,
+            visitor: true,
+          };
+        }),
+      ];
+  const ranchSceneResidentCount = preview
+    ? ranchSceneAnimals.length
+    : ranch?.data.scene?.status === "available"
+      ? ranch.data.scene.resident_count
+      : null;
+  const ranchSceneVisitorCount = preview
+    ? 0
+    : ranch?.data.scene?.status === "available"
+      ? ranch.data.scene.visitor_count
+      : null;
   const visibleCookingMethods = getVisibleCookingMethods(preview, kitchen);
   const selectedCookingMethod =
     visibleCookingMethods.find((method) => method.id === selectedCookingMethodId) ??
@@ -852,6 +891,8 @@ export function FarmFieldContent({
                     field.weather?.condition ?? null,
                   )}
                   onSelectAnimal={setSelectedRanchAnimalId}
+                  residentCount={ranchSceneResidentCount}
+                  visitorCount={ranchSceneVisitorCount}
                 />
               ) : null}
               {scene.id === "cooking" ? (

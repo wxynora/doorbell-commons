@@ -51,6 +51,13 @@ export interface LiveRanchResidentView {
   spriteAnimal: RanchShopAnimal;
 }
 
+export interface LiveRanchVisitorView {
+  id: string;
+  name: string;
+  spriteAnimal: RanchShopAnimal;
+  variants: RanchVariantSelection;
+}
+
 export function getLiveRanchResidents(
   ranch: BoundRanchRead | null,
 ): readonly LiveRanchResidentView[] {
@@ -103,6 +110,43 @@ export function getLiveRanchResidents(
             resident,
             residentType,
             spriteAnimal,
+          },
+        ]
+      : [];
+  });
+}
+
+export function getLiveRanchSceneResidents(
+  ranch: BoundRanchRead | null,
+): readonly LiveRanchResidentView[] {
+  return getLiveRanchResidents(ranch).filter(
+    (resident) =>
+      resident.residentType !== "animal" || resident.resident.dispatch?.state === "home",
+  );
+}
+
+export function getLiveRanchVisitors(
+  ranch: BoundRanchRead | null,
+): readonly LiveRanchVisitorView[] {
+  if (ranch?.data.scene?.status !== "available") return [];
+  return ranch.data.scene.visitors.flatMap((visitor) => {
+    const kindId = visitor.animal_kind_id;
+    const spriteAnimal = RANCH_SHOP_ANIMALS.find((animal) => animal.id === kindId);
+    return visitor.status === "known" &&
+      visitor.raid_id !== null &&
+      visitor.animal_name !== null &&
+      visitor.variant !== null &&
+      spriteAnimal
+      ? [
+          {
+            id: `visitor:${visitor.raid_id}`,
+            name: visitor.animal_name,
+            spriteAnimal,
+            variants: {
+              current_variant_id: visitor.variant.variant_id,
+              available_variant_ids: [visitor.variant.variant_id],
+              available_variants: [visitor.variant],
+            },
           },
         ]
       : [];
