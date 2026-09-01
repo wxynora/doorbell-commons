@@ -253,6 +253,9 @@ export function nextInterviewSessionAt(now) {
     const todayAt20 = beijingTimestamp(beijingDate(now), 20);
     return now < todayAt8 ? todayAt20 : todayAt20 + DAY_MS;
 }
+export function nextBeijingDayStart(now) {
+    return beijingTimestamp(addBeijingDays(beijingDate(now), 1), 0);
+}
 export function isBeijingHour(timestamp, hour, minute = 0) {
     const shifted = new Date(timestamp + BEIJING_OFFSET_MS);
     return (shifted.getUTCHours() === hour &&
@@ -260,17 +263,27 @@ export function isBeijingHour(timestamp, hour, minute = 0) {
         shifted.getUTCSeconds() === 0 &&
         shifted.getUTCMilliseconds() === 0);
 }
-export function activeCertificateLevel(database, residentId, career) {
+export function activeCertificateLevel(database, residentId, career, now = Date.now()) {
     const row = database
         .prepare(`SELECT MAX(qualification_level) AS qualification_level
        FROM career_certificates
-       WHERE resident_id = ? AND career = ? AND status = 'active'`)
-        .get(residentId, career);
+       WHERE resident_id = ? AND career = ? AND status = 'active'
+         AND (effective_at IS NULL OR effective_at <= ?)`)
+        .get(residentId, career, now);
     return row.qualification_level;
 }
-export function requireActiveCertificate(database, residentId, career, requiredLevel) {
-    const actualLevel = activeCertificateLevel(database, residentId, career);
+export function requireActiveCertificate(database, residentId, career, requiredLevel, now = Date.now()) {
+    const actualLevel = activeCertificateLevel(database, residentId, career, now);
     if (actualLevel === null || actualLevel < requiredLevel) {
+        const pending = database
+            .prepare(`SELECT 1 FROM career_certificates
+         WHERE resident_id = ? AND career = ? AND status = 'active'
+           AND qualification_level >= ? AND effective_at > ?
+         LIMIT 1`)
+            .get(residentId, career, requiredLevel, now);
+        if (pending) {
+            throw new CareerDomainError("qualification_not_effective", "The certificate has not reached its effective time");
+        }
         throw new CareerDomainError("qualification_required", "The resident does not hold the required active certificate");
     }
     return actualLevel;

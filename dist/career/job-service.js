@@ -80,7 +80,7 @@ export class CareerJobService {
                 if (!input.ownerResidentId || input.ownerResidentId !== input.selfWorkerResidentId) {
                     throw new CareerDomainError("self_owner_mismatch", "A self-directed job must belong to its worker");
                 }
-                requireActiveCertificate(this.#database, input.selfWorkerResidentId, input.career, input.requiredLevel);
+                requireActiveCertificate(this.#database, input.selfWorkerResidentId, input.career, input.requiredLevel, now);
                 status = "accepted";
                 workerResidentId = input.selfWorkerResidentId;
             }
@@ -191,7 +191,7 @@ export class CareerJobService {
            WHERE job_id = ?`)
                 .run(now, now, input.worldResultReference, paymentReference, job.job_id);
             this.#releaseObjectLock(job.job_id);
-            const level = requireActiveCertificate(this.#database, input.workerResidentId, job.career, job.required_level);
+            const level = requireActiveCertificate(this.#database, input.workerResidentId, job.career, job.required_level, now);
             const selfVeterinarianTreatment = job.career === "veterinarian" &&
                 job.owner_resident_id === input.workerResidentId;
             const performanceUnits = institutionForCareer(job.career) && !selfVeterinarianTreatment
@@ -286,7 +286,7 @@ export class CareerJobService {
             if (!check) {
                 throw new CareerDomainError("qualified_transfer_check_required", "The worker must complete a lawful current-level check before transfer");
             }
-            const level = requireActiveCertificate(this.#database, input.workerResidentId, job.career, job.required_level);
+            const level = requireActiveCertificate(this.#database, input.workerResidentId, job.career, job.required_level, now);
             this.#database
                 .prepare(`UPDATE career_jobs SET status = 'transferred', ended_at = ?, updated_at = ?
            WHERE job_id = ?`)
@@ -418,7 +418,7 @@ export class CareerJobService {
             if (job.status !== "available" || job.assignment_mode !== status) {
                 throw new CareerDomainError("job_not_bindable", "The job cannot use this binding mode");
             }
-            const workerLevel = requireActiveCertificate(this.#database, workerResidentId, job.career, job.required_level);
+            const workerLevel = requireActiveCertificate(this.#database, workerResidentId, job.career, job.required_level, now);
             if (job.career === "agronomist") {
                 const activeJobs = this.#database
                     .prepare(`SELECT COUNT(*) AS count FROM career_jobs

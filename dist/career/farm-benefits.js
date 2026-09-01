@@ -18,7 +18,7 @@ export function farmResidentId(database, farm) {
         : null;
 }
 
-export function farmCareerQualificationLevel(database, farm, career) {
+export function farmCareerQualificationLevel(database, farm, career, now = Date.now()) {
     const bindingReference = farm?.doorbellMcpMigration?.migrationId;
     if (!database || typeof bindingReference !== "string" || !bindingReference)
         return 0;
@@ -30,7 +30,8 @@ export function farmCareerQualificationLevel(database, farm, career) {
       WHERE resident.binding_reference = ?
         AND certificate.career = ?
         AND certificate.status = 'active'
-    `).get(bindingReference, career);
+        AND (certificate.effective_at IS NULL OR certificate.effective_at <= ?)
+    `).get(bindingReference, career, now);
     return Number.isSafeInteger(row?.qualification_level) ? row.qualification_level : 0;
 }
 

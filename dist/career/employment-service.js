@@ -24,7 +24,7 @@ export class CareerEmploymentService {
             if (CAREER_INSTITUTION[input.career] !== input.institution) {
                 throw new CareerDomainError("institution_career_mismatch", "The career does not work for this institution");
             }
-            requireActiveCertificate(this.#database, input.residentId, input.career, 1);
+            requireActiveCertificate(this.#database, input.residentId, input.career, 1, now);
             const existingById = this.#database
                 .prepare("SELECT * FROM career_employments WHERE employment_id = ?")
                 .get(input.employmentId);
@@ -123,7 +123,7 @@ export class CareerEmploymentService {
                     .get(employment.employment_id, dutyDate);
                 if (existing) {
                     if (existing.status === "invalidated") {
-                        const level = activeCertificateLevel(this.#database, employment.resident_id, employment.career);
+                        const level = activeCertificateLevel(this.#database, employment.resident_id, employment.career, now);
                         if (level === null)
                             continue;
                         this.#database
@@ -141,7 +141,7 @@ export class CareerEmploymentService {
                     });
                     continue;
                 }
-                const level = activeCertificateLevel(this.#database, employment.resident_id, employment.career);
+                const level = activeCertificateLevel(this.#database, employment.resident_id, employment.career, now);
                 if (level === null)
                     continue;
                 const dutyId = this.#generateId();

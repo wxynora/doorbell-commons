@@ -8,7 +8,7 @@ import {
     createWrittenExamPaper,
     gradeAssessment,
 } from "./curriculum.js";
-import { activeCertificateLevel, EXAM_SESSION_DURATION_MS, isBeijingExamSessionOpen, isBeijingHour, nextExamSessionAt, nextInterviewSessionAt, recordFinancialReceipt, requireCareerTrack, runInTransaction, } from "./persistence.js";
+import { activeCertificateLevel, EXAM_SESSION_DURATION_MS, isBeijingExamSessionOpen, isBeijingHour, nextBeijingDayStart, nextExamSessionAt, nextInterviewSessionAt, recordFinancialReceipt, requireCareerTrack, runInTransaction, } from "./persistence.js";
 import { installCareerSchema } from "./schema.js";
 const DEFAULT_CURRICULUM = Object.freeze({
     careerCourseAvailability,
@@ -120,7 +120,7 @@ export class CareerSchoolService {
             const primary = existing[0];
             if (!primary)
                 throw new Error("Career track invariant violated");
-            const primaryLevel = activeCertificateLevel(this.#database, residentId, primary.career);
+            const primaryLevel = activeCertificateLevel(this.#database, residentId, primary.career, now);
             if (primaryLevel === null || primaryLevel < 3) {
                 throw new CareerDomainError("secondary_career_locked", "The primary career must hold an advanced certificate first");
             }
@@ -141,7 +141,7 @@ export class CareerSchoolService {
         const now = this.#now();
         return runInTransaction(this.#database, () => {
             requireCareerTrack(this.#database, input.residentId, input.career);
-            this.#requireLevelPrerequisite(input.residentId, input.career, input.level);
+            this.#requireLevelPrerequisite(input.residentId, input.career, input.level, now);
             if (input.courseIndex > 1) {
                 const previous = this.#database
                     .prepare(`SELECT completed_at
@@ -332,7 +332,7 @@ export class CareerSchoolService {
                     bankVersion: paper.bankVersion,
                 };
             }
-            this.#requireExamEligibility(input.residentId, input.career, input.level);
+            this.#requireExamEligibility(input.residentId, input.career, input.level, now);
             const openAttempt = this.#database
                 .prepare(`SELECT 1 FROM career_exam_attempts
            WHERE resident_id = ? AND career = ? AND qualification_level = ?
@@ -559,13 +559,18 @@ export class CareerSchoolService {
                 this.scheduleConstableInterview(input.attemptId, nextInterviewSessionAt(now));
                 return result;
             }
-            this.#activateCertificate(attempt, now);
+            const employmentStartsAt = this.#activateCertificate(attempt, now);
             this.#database
                 .prepare(`UPDATE career_exam_attempts
            SET registration_status = 'passed', correct_answers = ?, ended_at = ?
            WHERE attempt_id = ?`)
                 .run(graded.correctAnswers, now, input.attemptId);
-            const result = { status: "passed", correctAnswers: graded.correctAnswers, passed: true };
+            const result = {
+                status: "passed",
+                correctAnswers: graded.correctAnswers,
+                passed: true,
+                employmentStartsAt,
+            };
             this.#recordSubmission({
                 paper,
                 residentId: attempt.resident_id,
@@ -1380,23 +1385,24 @@ export class CareerSchoolService {
     #courseBusinessReference(input) {
         return `career-course:${input.residentId}:${input.career}:${input.level}:${input.courseIndex}`;
     }
-    #requireLevelPrerequisite(residentId, career, level) {
+    #requireLevelPrerequisite(residentId, career, level, now) {
         if (level === 1)
             return;
         const previous = this.#database
             .prepare(`SELECT 1 FROM career_certificates
-         WHERE resident_id = ? AND career = ? AND qualification_level = ? AND status = 'active'`)
-            .get(residentId, career, level - 1);
+         WHERE resident_id = ? AND career = ? AND qualification_level = ? AND status = 'active'
+           AND (effective_at IS NULL OR effective_at <= ?)`)
+            .get(residentId, career, level - 1, now);
         if (!previous) {
             throw new CareerDomainError("previous_certificate_required", "Qualification certificates must be earned in order");
         }
     }
-    #requireExamEligibility(residentId, career, level) {
+    #requireExamEligibility(residentId, career, level, now) {
         if (!this.#curriculum.careerExamAvailability(career, level)) {
             throw new CareerDomainError("assessment_content_not_available", "This written exam is not available");
         }
         if (career === "constable" && this.#constableExamEligibility) {
-            const eligibility = this.#constableExamEligibility(residentId, this.#now());
+            const eligibility = this.#constableExamEligibility(residentId, now);
             if (!eligibility || eligibility.eligible !== true) {
                 throw new CareerDomainError("constable_recent_theft_record", "A successful theft within the previous 72 hours blocks constable exam registration");
             }
@@ -1409,7 +1415,7 @@ export class CareerSchoolService {
         if (activeCertificate) {
             throw new CareerDomainError("certificate_already_active", "The qualification certificate is already active");
         }
-        this.#requireLevelPrerequisite(residentId, career, level);
+        this.#requireLevelPrerequisite(residentId, career, level, now);
         const courses = this.#database
             .prepare(`SELECT COUNT(*) AS count FROM career_courses
          WHERE resident_id = ? AND career = ? AND qualification_level = ?
@@ -1452,11 +1458,13 @@ export class CareerSchoolService {
         return receipt;
     }
     #activateCertificate(attempt, now) {
+        const effectiveAt = nextBeijingDayStart(now);
         this.#database
             .prepare(`INSERT INTO career_certificates (
            resident_id, career, qualification_level, status, source_attempt_id, issued_at, effective_at
          ) VALUES (?, ?, ?, 'active', ?, ?, ?)`)
-            .run(attempt.resident_id, attempt.career, attempt.qualification_level, attempt.attempt_id, now, now);
+            .run(attempt.resident_id, attempt.career, attempt.qualification_level, attempt.attempt_id, now, effectiveAt);
+        return effectiveAt;
     }
     #getExamAttempt(attemptId) {
         return this.#database
@@ -1489,6 +1497,7 @@ export class CareerSchoolService {
             .run(status, attempt.attempt_id);
     }
     #activateConstablePublicNotice(noticeId, interviewId, attempt, now) {
+        const effectiveAt = nextBeijingDayStart(now);
         this.#database
             .prepare(`UPDATE career_constable_public_notices
            SET status = 'certificate_activated', finalized_at = ? WHERE notice_id = ?`)
@@ -1500,7 +1509,7 @@ export class CareerSchoolService {
         this.#database
             .prepare(`UPDATE career_certificates
            SET status = 'active', effective_at = ? WHERE source_attempt_id = ?`)
-            .run(now, attempt.attempt_id);
+            .run(effectiveAt, attempt.attempt_id);
         this.#database
             .prepare(`UPDATE career_exam_attempts
            SET registration_status = 'passed', ended_at = ? WHERE attempt_id = ?`)

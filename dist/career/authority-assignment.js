@@ -18,6 +18,7 @@ export class CareerAuthorityAssignmentService {
     }
     assignJob(input) {
         this.#assertRequest(input);
+        const now = this.#now();
         return runInTransaction(this.#database, () => {
             const job = this.#jobs.getJob(input.jobId);
             if (job.assignmentMode !== "assigned" ||
@@ -43,12 +44,13 @@ export class CareerAuthorityAssignmentService {
                    ON certificate.resident_id = duty.resident_id
                   AND certificate.career = duty.career
                   AND certificate.status = 'active'
+                  AND (certificate.effective_at IS NULL OR certificate.effective_at <= ?)
                  WHERE duty.career = ? AND duty.institution = ?
                    AND duty.duty_date = ? AND duty.status = 'scheduled'
                  GROUP BY duty.resident_id
                  HAVING MAX(certificate.qualification_level) >= ?
                 ORDER BY active_job_count ASC, duty.resident_id COLLATE BINARY ASC`)
-                .all(job.career, institution, beijingDate(this.#now()), job.requiredLevel);
+                .all(now, job.career, institution, beijingDate(now), job.requiredLevel);
             const excludedResidents = new Set(this.#database
                 .prepare(`SELECT worker_resident_id FROM career_jobs
                   WHERE source_id = ? AND worker_resident_id IS NOT NULL`)

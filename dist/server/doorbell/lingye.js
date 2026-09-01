@@ -97,11 +97,14 @@ const BANK_SECTIONS = new Set(["account", "deposits", "exchange", "loans", "cred
 const SCHOOL_SECTIONS = new Set(["careers", "courses", "exams", "certificates", "employment", "interviews", "publicNotices"]);
 const TERM_DAYS = new Set([14, 30, 60]);
 const INSUFFICIENT_FUNDS_MESSAGE = "可用余额不足，本次操作没有执行。";
+const EXAM_PASSED_WORK_NOTICE = "考试通过啦！明天正式上班，今天先休息。";
+const WORK_NOT_STARTED_MESSAGE = "还没到上班时间，明天再来吧。";
 const LINGYE_ERROR_MESSAGES = Object.freeze({
     INSUFFICIENT_FUNDS: INSUFFICIENT_FUNDS_MESSAGE,
     OPTION_NOT_AVAILABLE: "当前选项已失效或不适用于这项业务；请重新查看当前事实与 option。",
     REFERENCE_NOT_FOUND: "没有找到这条记录，或当前居民无权读取。",
     QUALIFICATION_REQUIRED: "当前职业资格不足，本次操作没有执行。",
+    QUALIFICATION_NOT_EFFECTIVE: WORK_NOT_STARTED_MESSAGE,
     CONFLICT: "当前状态已经变化，本次操作没有执行；请重新查看。",
     LINGYE_NOT_READY: "铃野相关能力尚未就绪，本次操作没有执行。",
     OP_REJECTED: "本次操作被铃野规则拒绝，没有产生业务结果。",
@@ -216,10 +219,14 @@ function validateArgs(op, args) {
         assertNonEmptyString(args.option, "option");
         if (Object.hasOwn(args, "answers")) {
             if (!Array.isArray(args.answers) || ![5, 20].includes(args.answers.length) ||
-                args.answers.some((selection) => !Array.isArray(selection) || selection.length < 1 || selection.length > 4 ||
-                    selection.some((answer) => typeof answer !== "string" || !["A", "B", "C", "D"].includes(answer.trim().toUpperCase())) ||
-                    new Set(selection.map((answer) => answer.trim().toUpperCase())).size !== selection.length)) {
-                throw new LingyeActionInputError("answers must contain five or twenty non-empty sets of unique A-D choices");
+                args.answers.some((selection) => {
+                    if (typeof selection === "string")
+                        return selection.trim().length === 0;
+                    return !Array.isArray(selection) || selection.length < 1 ||
+                        selection.some((answer) => typeof answer !== "string" || !["A", "B", "C", "D"].includes(answer.trim().toUpperCase())) ||
+                        new Set(selection.map((answer) => answer.trim().toUpperCase())).size !== selection.length;
+                })) {
+                throw new LingyeActionInputError("answers must contain five or twenty choice sets or fill-in texts");
             }
         }
         return;
@@ -873,6 +880,8 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
       ORDER BY career, qualification_level
     `).all(residentId)).map((certificate) => ({
         ...certificate,
+        canWork: certificate.status === "active" &&
+            (certificate.effectiveAt === null || certificate.effectiveAt <= now),
         title: CAREER_TITLES[certificate.career]?.[certificate.qualificationLevel] ?? null,
     }));
     const employment = mapRows(database.prepare(`
@@ -883,7 +892,7 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
     `).all(residentId)).map((record) => {
         const activeLevel = Math.max(0, ...certificates
             .filter((certificate) => certificate.career === record.career &&
-                certificate.status === "active")
+                certificate.canWork)
             .map((certificate) => certificate.qualificationLevel));
         return {
             ...record,
@@ -922,7 +931,7 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
     else if (tracks.length === 1) {
         const primary = tracks[0];
         const primaryLevel = Math.max(0, ...certificates
-            .filter((certificate) => certificate.career === primary.career && certificate.status === "active")
+            .filter((certificate) => certificate.career === primary.career && certificate.canWork)
             .map((certificate) => certificate.qualificationLevel));
         if (primaryLevel >= 3) {
             for (const career of CAREER_IDS.filter((candidate) =>
@@ -932,8 +941,13 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
     }
     for (const track of tracks) {
         const activeLevel = Math.max(0, ...certificates
+            .filter((certificate) => certificate.career === track.career && certificate.canWork)
+            .map((certificate) => certificate.qualificationLevel));
+        const issuedLevel = Math.max(0, ...certificates
             .filter((certificate) => certificate.career === track.career && certificate.status === "active")
             .map((certificate) => certificate.qualificationLevel));
+        if (issuedLevel > activeLevel)
+            continue;
         const nextLevel = activeLevel + 1;
         if (nextLevel > 4)
             continue;
@@ -983,7 +997,7 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
         for (const career of ["reporter", "veterinarian", "constable"].filter((candidate) =>
             careerSchoolAvailable(backend, candidate))) {
             const qualified = certificates.some((certificate) => certificate.career === career &&
-                certificate.qualificationLevel >= 1 && certificate.status === "active");
+                certificate.qualificationLevel >= 1 && certificate.canWork);
             if (!qualified)
                 continue;
             options.push(option(schoolOption(optionRevision, "employment-hire", career)));
@@ -1010,6 +1024,9 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
         employment: { institutions: institutionStaffing, records: employment, duties },
         interviews: constable.interviews,
         publicNotices: constable.publicNotices,
+        ...(certificates.some((certificate) => certificate.status === "active" && !certificate.canWork)
+            ? { workNotice: WORK_NOT_STARTED_MESSAGE }
+            : {}),
         options,
         contentSources: {
             courseCatalogAvailable: true,
@@ -1095,6 +1112,7 @@ function schoolView(database, backend, residentId, now, args) {
             reference,
             options: refreshed.options,
             examSchedule: refreshed.examSchedule,
+            ...(refreshed.workNotice ? { workNotice: refreshed.workNotice } : {}),
         });
     }
     const section = args.section ?? null;
@@ -1121,6 +1139,7 @@ function schoolView(database, backend, residentId, now, args) {
             contentSources: facts.contentSources,
             currentCourses,
             examSchedule: facts.examSchedule,
+            ...(facts.workNotice ? { workNotice: facts.workNotice } : {}),
         });
 }
 
@@ -1129,7 +1148,9 @@ function schoolChoose(database, backend, residentId, now, args) {
         args = {
             ...args,
             answers: args.answers.map((selection) =>
-                selection.map((answer) => answer.trim().toUpperCase()).toSorted()),
+                Array.isArray(selection)
+                    ? selection.map((answer) => answer.trim().toUpperCase()).toSorted()
+                    : selection.trim().normalize("NFKC")),
         };
     }
     const actionKey = idempotencyKey(residentId, "go.school.choose", args);
@@ -1146,8 +1167,14 @@ function schoolChoose(database, backend, residentId, now, args) {
             return JSON.parse(existing.result_json);
         }
         const current = readSchoolFacts(database, backend, residentId, now);
-        if (!current.options.some((entry) => entry.option === args.option))
+        if (!current.options.some((entry) => entry.option === args.option)) {
+            const pendingHire = /^school:employment-hire:\d+:(reporter|veterinarian|constable)$/u.exec(args.option);
+            if (pendingHire && current.certificates.some((certificate) => certificate.career === pendingHire[1] &&
+                certificate.status === "active" && !certificate.canWork)) {
+                throw new LingyeBusinessError("QUALIFICATION_NOT_EFFECTIVE", WORK_NOT_STARTED_MESSAGE);
+            }
             throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个职业学校 option 当前不可用。");
+        }
         let result;
         const careerMatch = /^school:career-select:(\d+):(chef|agronomist|veterinarian|reporter|constable)$/u.exec(args.option);
         const courseMatch = /^school:course-(enroll|practice):(\d+):(chef|agronomist|veterinarian|reporter|constable):([1-4]):([1-3])$/u.exec(args.option);
@@ -1276,6 +1303,8 @@ function schoolChoose(database, backend, residentId, now, args) {
                         answers: args.answers,
                         idempotencyKey: actionKey,
                     });
+                    if (result.status === "passed" && result.passed === true)
+                        result = { ...result, message: EXAM_PASSED_WORK_NOTICE };
                 }
             }
         }
@@ -1291,7 +1320,7 @@ function schoolChoose(database, backend, residentId, now, args) {
                 }),
                 career,
                 institution: CAREER_INSTITUTION[career],
-                title: CAREER_TITLES[career]?.[qualificationLevel(database, residentId, career)] ?? null,
+                title: CAREER_TITLES[career]?.[qualificationLevel(database, residentId, career, now)] ?? null,
             };
         }
         else if (availabilityMatch) {
@@ -1424,7 +1453,7 @@ function chefCommissionFacts(database, backend, residentId, farm, now) {
       WHERE owner_resident_id = ? ORDER BY created_at DESC, lease_id
     `).all(residentId)).map(publicChefLease);
     const listings = chefStoreListings(database, residentId);
-    const level = qualificationLevel(database, residentId, "chef");
+    const level = qualificationLevel(database, residentId, "chef", now);
     const options = [];
     for (const recipe of recipes) {
         if (!recipe.accessible && recipe.author.kind !== "self")
@@ -1473,7 +1502,7 @@ function farmCommissionView(database, backend, residentId, args, sources, farm, 
             });
     }
     const agronomy = commissionView(database, backend, residentId, "agronomist", args,
-        sources.filter((source) => source.career === "agronomist"));
+        sources.filter((source) => source.career === "agronomist"), now);
     return success("已读取公共农场职业事实。", {
         ...agronomy.data,
         chef,
@@ -1560,7 +1589,7 @@ function farmChefCommissionAction(database, backend, residentId, args, farm, now
     });
 }
 
-function commissionOptions(database, backend, rows, residentId, sources) {
+function commissionOptions(database, backend, rows, residentId, sources, now) {
     const options = [];
     for (const source of sources) {
         const existing = database.prepare("SELECT 1 FROM career_jobs WHERE source_type = ? AND source_id = ?")
@@ -1573,12 +1602,14 @@ function commissionOptions(database, backend, rows, residentId, sources) {
     }
     for (const row of rows) {
         const job = backend.trustedQueries.getJob(row.job_id);
+        const workerLevel = qualificationLevel(database, residentId, job.career, now);
         const agronomyPayment = job.career === "agronomist"
             ? database.prepare("SELECT trade_id, silver_amount FROM career_commission_payments WHERE job_id = ?")
                 .get(job.jobId)
             : null;
         if (job.status === "available" && job.ownerResidentId !== residentId &&
             job.assignmentMode === "accepted" &&
+            workerLevel >= job.requiredLevel &&
             (job.career !== "agronomist" || agronomyPayment))
             options.push(option(`commission:accept:${job.jobId}`));
         if (job.career === "agronomist" && job.status === "available" &&
@@ -1600,7 +1631,7 @@ function commissionOptions(database, backend, rows, residentId, sources) {
         const currentWorkerOptions = workerOptions(
             job,
             residentId,
-            qualificationLevel(database, residentId, job.career),
+            workerLevel,
         );
         for (const value of currentWorkerOptions) {
             const requires = value.includes(":submit:") || value.includes(":resolve:") ? ["text"] : [];
@@ -1616,7 +1647,7 @@ function commissionOptions(database, backend, rows, residentId, sources) {
     return options;
 }
 
-function commissionView(database, backend, residentId, career, args, sources) {
+function commissionView(database, backend, residentId, career, args, sources, now) {
     const rows = visibleCommissionRows(database, residentId, career);
     const selected = args.reference === undefined
         ? rows
@@ -1624,8 +1655,9 @@ function commissionView(database, backend, residentId, career, args, sources) {
     if (args.reference !== undefined && selected.length === 0)
         throw new LingyeBusinessError("REFERENCE_NOT_FOUND", "没有找到这条真实委托。");
     const options = commissionOptions(database, backend, selected, residentId,
-        sources.filter((source) => source.career === career));
-    if (career === "reporter" && qualificationLevel(database, residentId, career) >= 3)
+        sources.filter((source) => source.career === career), now);
+    const level = qualificationLevel(database, residentId, career, now);
+    if (career === "reporter" && level >= 3)
         options.unshift(option("commission:section-create", ["text"]));
     const reporterPublications = career === "reporter"
         ? backend.trustedQueries.listReporterPublicationsForResident({ residentId })
@@ -1656,6 +1688,9 @@ function commissionView(database, backend, residentId, career, args, sources) {
                 }),
             }
             : {}),
+        ...(level === 0 && hasPendingCertificate(database, residentId, career, now)
+            ? { workNotice: WORK_NOT_STARTED_MESSAGE }
+            : {}),
         options,
     });
 }
@@ -1667,19 +1702,29 @@ function commissionJob(database, backend, jobId, career) {
     return backend.trustedQueries.getJob(jobId);
 }
 
-function qualificationLevel(database, residentId, career) {
+function qualificationLevel(database, residentId, career, now) {
     return database.prepare(`
       SELECT MAX(qualification_level) AS level FROM career_certificates
       WHERE resident_id = ? AND career = ? AND status = 'active'
-    `).get(residentId, career).level ?? 0;
+        AND (effective_at IS NULL OR effective_at <= ?)
+    `).get(residentId, career, now).level ?? 0;
 }
 
-function veterinarianTreatmentChargeGold(database, job, workerResidentId, treatment, workerLevel) {
+function hasPendingCertificate(database, residentId, career, now) {
+    return Boolean(database.prepare(`
+      SELECT 1 FROM career_certificates
+      WHERE resident_id = ? AND career = ? AND status = 'active'
+        AND effective_at > ?
+      LIMIT 1
+    `).get(residentId, career, now));
+}
+
+function veterinarianTreatmentChargeGold(database, job, workerResidentId, treatment, workerLevel, now) {
     const materialGold = veterinarianTreatmentMaterialGold(job, treatment);
     if (job.ownerResidentId === workerResidentId)
         return materialGold;
     const fullGold = treatmentGold(job, treatment, workerLevel);
-    const ownerIsVeterinarian = qualificationLevel(database, job.ownerResidentId, "veterinarian") > 0;
+    const ownerIsVeterinarian = qualificationLevel(database, job.ownerResidentId, "veterinarian", now) > 0;
     if (!ownerIsVeterinarian)
         return fullGold;
     const baseGold = fullGold - materialGold;
@@ -1739,19 +1784,24 @@ function beginCommissionWorldOperation(database, backend, residentId, career, ar
         }
         const rows = visibleCommissionRows(database, residentId, career);
         const options = commissionOptions(database, backend, rows, residentId,
-            sources.filter((source) => source.career === career));
-        if (!options.some((entry) => entry.option === args.option))
+            sources.filter((source) => source.career === career), now);
+        if (!options.some((entry) => entry.option === args.option)) {
+            if (qualificationLevel(database, residentId, career, now) === 0 &&
+                hasPendingCertificate(database, residentId, career, now)) {
+                throw new LingyeBusinessError("QUALIFICATION_NOT_EFFECTIVE", WORK_NOT_STARTED_MESSAGE);
+            }
             throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托 option 当前不可用。");
+        }
         const [, kind, jobId, actionValue] = match;
         const job = commissionJob(database, backend, jobId, career);
         if (job.workerResidentId !== residentId)
             throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托不属于当前从业者。");
         if (job.decisionCount >= 4)
             throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托已经达到四次决策上限。");
-        const level = qualificationLevel(database, residentId, career);
+        const level = qualificationLevel(database, residentId, career, now);
         const goldAmount = kind === "treat"
             ? job.career === "veterinarian"
-                ? veterinarianTreatmentChargeGold(database, job, residentId, actionValue, level)
+                ? veterinarianTreatmentChargeGold(database, job, residentId, actionValue, level, now)
                 : treatmentGold(job, actionValue, level)
             : 0;
         const reservation = kind === "treat"
@@ -2016,8 +2066,9 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
         currentRows,
         residentId,
         sources.filter((source) => source.career === career),
+        now,
     );
-    if (career === "reporter" && qualificationLevel(database, residentId, career) >= 3)
+    if (career === "reporter" && qualificationLevel(database, residentId, career, now) >= 3)
         currentOptions.unshift(option("commission:section-create", ["text"]));
     if (career === "reporter") {
         for (const publication of backend.trustedQueries
@@ -2026,8 +2077,13 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
             currentOptions.push(option(`commission:like:${encodeURIComponent(publication.publicationId)}`));
         }
     }
-    if (!currentOptions.some((entry) => entry.option === args.option))
+    if (!currentOptions.some((entry) => entry.option === args.option)) {
+        if (qualificationLevel(database, residentId, career, now) === 0 &&
+            hasPendingCertificate(database, residentId, career, now)) {
+            throw new LingyeBusinessError("QUALIFICATION_NOT_EFFECTIVE", WORK_NOT_STARTED_MESSAGE);
+        }
         throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托 option 当前不可用。");
+    }
     if (args.option === "commission:section-create") {
         if (args.amount !== undefined || typeof args.text !== "string")
             throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "创建日报板块需要填写板块名称。");
@@ -2040,7 +2096,7 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
             section,
             sections: backend.trustedQueries.listReporterSections(),
             options: commissionOptions(database, backend,
-                visibleCommissionRows(database, residentId, career), residentId, sources),
+                visibleCommissionRows(database, residentId, career), residentId, sources, now),
         });
     }
     const reporterLike = /^commission:like:(.+)$/u.exec(args.option);
@@ -2086,7 +2142,7 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
             result,
             jobs: mapRows(visibleCommissionRows(database, residentId, career)),
             options: commissionOptions(database, backend,
-                visibleCommissionRows(database, residentId, career), residentId, sources),
+                visibleCommissionRows(database, residentId, career), residentId, sources, now),
         }, commissionNotifications(
             "commission_completed",
             { ownerResidentId: source.ownerResidentId, workerResidentId: null },
@@ -2102,7 +2158,7 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
         return success("委托已登记。", {
             result,
             jobs: mapRows(visibleCommissionRows(database, residentId, career)),
-            options: commissionOptions(database, backend, visibleCommissionRows(database, residentId, career), residentId, sources),
+            options: commissionOptions(database, backend, visibleCommissionRows(database, residentId, career), residentId, sources, now),
         });
     }
     const binding = /^commission:(accept):(.+)$/u.exec(args.option);
@@ -2122,7 +2178,7 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
             result: backend.trustedQueries.getJob(job.jobId),
             jobs: mapRows(visibleCommissionRows(database, residentId, career)),
             options: commissionOptions(database, backend,
-                visibleCommissionRows(database, residentId, career), residentId, sources),
+                visibleCommissionRows(database, residentId, career), residentId, sources, now),
         });
     }
     if (binding) {
@@ -2346,9 +2402,11 @@ function mapDomainError(error) {
         return failure("OP_REJECTED", "银行拒绝了本次操作。");
     }
     if (error instanceof CareerDomainError) {
+        if (error.code === "qualification_not_effective")
+            return failure("QUALIFICATION_NOT_EFFECTIVE", WORK_NOT_STARTED_MESSAGE);
         if (error.code === "constable_recent_theft_record")
             return failure("OP_REJECTED", "最近 3 天有偷窃记录，暂时不能报名治安官资格考试。");
-        if (["active_certificate_required", "qualification_level_insufficient"].includes(error.code))
+        if (["active_certificate_required", "qualification_level_insufficient", "qualification_required"].includes(error.code))
             return failure("QUALIFICATION_REQUIRED", "当前职业资格不满足这项操作。");
         if (["job_not_found", "employment_not_found", "duty_day_not_found", "exam_attempt_not_found"].includes(error.code))
             return failure("REFERENCE_NOT_FOUND", "没有找到对应的职业记录。");
@@ -2429,7 +2487,7 @@ export function createLingyeActionExecutor(options) {
                         sources, actionNow, options.afterWorldApplyForTesting);
                 }
                 else {
-                    result = commissionView(database, backend, input.residentId, career, args, sources);
+                    result = commissionView(database, backend, input.residentId, career, args, sources, actionNow);
                 }
                 return publicLingyeResult(database, input.residentId, input.op, result, actionNow);
             }
