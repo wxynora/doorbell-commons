@@ -226,7 +226,10 @@ function statusText(value: unknown): string {
   return typeof value === "string" ? (STATUS_NAMES[value] ?? "暂无法读取具体描述") : "暂无法读取";
 }
 
-function certificateStatusText(value: unknown): string {
+const WORK_NOT_STARTED_MESSAGE = "还没到上班时间，明天再来吧。";
+
+function certificateStatusText(value: unknown, canWork: unknown): string {
+  if (value === "active" && canWork === false) return WORK_NOT_STARTED_MESSAGE;
   return value === "active" ? "已生效" : statusText(value);
 }
 
@@ -558,8 +561,10 @@ function renderSchoolActionResult(value: unknown): string[] {
       typeof value.status === "string" &&
       ["passed", "failed", "written_passed", "expired"].includes(value.status)
     ) {
+      const message = safeChineseText(value.message);
       return [
         `资格考试：答对 ${numberText(correctAnswers)}/20；${value.passed ? "已通过" : "未通过"}。`,
+        ...(message ? [message] : []),
       ];
     }
     return [
@@ -584,7 +589,7 @@ function renderCertificates(value: unknown): string[] {
     ...certificates.map((certificate) => {
       const title = safeChineseText(certificate.title);
       const titleSuffix = title ? `（${title}）` : "";
-      return `- ${careerText(certificate.career)} ${numberText(certificate.qualificationLevel)} 级${titleSuffix}：${certificateStatusText(certificate.status)}。`;
+      return `- ${careerText(certificate.career)} ${numberText(certificate.qualificationLevel)} 级${titleSuffix}：${certificateStatusText(certificate.status, certificate.canWork)}。`;
     }),
   ];
 }
@@ -731,6 +736,9 @@ function schoolText(op: string, result: LingyeSuccess): string {
   const lines = ["🏫 铃野职业学校", resultMessage(result.text, "已读取铃野职业学校当前事实。")];
   if (op === "go.school.view") lines.push(...renderExamSchedule(data.examSchedule));
   if (op === "go.school.choose") lines.push(...renderSchoolActionResult(data.result));
+  const schoolFacts = isRecord(data.current) ? data.current : data;
+  const workNotice = safeChineseText(data.workNotice) ?? safeChineseText(schoolFacts.workNotice);
+  if (workNotice) lines.push(workNotice);
   const reference = isRecord(data.reference) ? data.reference : undefined;
   if (reference) lines.push(...renderCourseContent(reference), ...renderSchoolReference(reference));
   lines.push(...renderCurrentCourses(data.currentCourses));
@@ -941,6 +949,9 @@ function renderChefFacts(value: unknown): string[] {
 function commissionText(op: string, result: LingyeSuccess): string {
   const data = result.data;
   const lines = [commissionTitle(op), resultMessage(result.text, "已读取当前公开职业业务。")];
+  const current = isRecord(data.current) ? data.current : undefined;
+  const workNotice = safeChineseText(data.workNotice) ?? safeChineseText(current?.workNotice);
+  if (workNotice) lines.push(workNotice);
   const items = commissionRecords(data);
   if (items.length === 0) lines.push(`${commissionKind(op)}：当前没有公开记录。`);
   else {
@@ -949,7 +960,6 @@ function commissionText(op: string, result: LingyeSuccess): string {
       lines.push(...commissionItemLines(op, item, index));
   }
   if (op === "go.farm.commission") {
-    const current = isRecord(data.current) ? data.current : undefined;
     lines.push(...renderChefFacts(data.chef ?? current?.chef));
   }
   if (op === "go.newsroom.commission") lines.push(...renderReporterFacts(data));

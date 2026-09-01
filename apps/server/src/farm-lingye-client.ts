@@ -109,6 +109,7 @@ const careerCertificateSectionSchema = z.object({
       career: ownerProfileCareerIdSchema,
       qualificationLevel: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
       status: z.string(),
+      canWork: z.boolean(),
       title: z.string().trim().min(1).nullable(),
     }),
   ),
@@ -211,7 +212,7 @@ export class FarmLingyeClient implements FarmLingyeReader {
       (typeof section.data.value)[number]
     >();
     for (const certificate of section.data.value) {
-      if (certificate.status !== "active") continue;
+      if (certificate.status !== "active" || !certificate.canWork) continue;
       const current = highestActiveByCareer.get(certificate.career);
       if (!current || current.qualificationLevel < certificate.qualificationLevel) {
         highestActiveByCareer.set(certificate.career, certificate);
