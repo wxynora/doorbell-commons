@@ -19,17 +19,22 @@ export interface RanchSceneAnimalDefinition {
   staticSprite?: boolean | undefined;
   randomizeInitialPosition?: boolean | undefined;
   visitor?: boolean | undefined;
+  visitorRaidId?: string | undefined;
 }
 
 function RanchSceneAnimal({
   active,
   animal,
+  catchingVisitorRaidId,
   mountEntropy,
+  onCatchVisitor,
   onSelectAnimal,
 }: {
   active: boolean;
   animal: RanchSceneAnimalDefinition;
+  catchingVisitorRaidId?: string | null | undefined;
   mountEntropy: number;
+  onCatchVisitor?: ((raidId: string) => void) | undefined;
   onSelectAnimal: (animalId: string) => void;
 }) {
   const roamerRef = useRef<HTMLSpanElement>(null);
@@ -166,16 +171,22 @@ function RanchSceneAnimal({
       {animal.visitor ? <span className="farm-ranch-resident__visitor-badge">来客</span> : null}
     </>
   );
-  return animal.visitor ? (
-    <span
-      aria-label={`牧场来客${animal.name}`}
+  return animal.visitor && animal.visitorRaidId ? (
+    <button
+      aria-label={
+        catchingVisitorRaidId === animal.visitorRaidId
+          ? `正在抓住来客${animal.name}`
+          : `抓住来客${animal.name}`
+      }
       className="farm-ranch-resident is-visitor"
       data-animal-id={animal.id}
-      role="img"
+      disabled={!onCatchVisitor || catchingVisitorRaidId === animal.visitorRaidId}
+      onClick={() => onCatchVisitor?.(animal.visitorRaidId as string)}
       style={style}
+      type="button"
     >
       {content}
-    </span>
+    </button>
   ) : (
     <button
       aria-label={`查看牧场里的${animal.name}`}
@@ -194,11 +205,15 @@ export function RanchScene({
   active,
   animals,
   backgroundUrl,
+  catchingVisitorRaidId,
+  onCatchVisitor,
   onSelectAnimal,
 }: {
   active: boolean;
   animals: readonly RanchSceneAnimalDefinition[];
   backgroundUrl: string;
+  catchingVisitorRaidId?: string | null | undefined;
+  onCatchVisitor?: ((raidId: string) => void) | undefined;
   onSelectAnimal: (animalId: string) => void;
 }) {
   const mountEntropyRef = useRef<number | null>(null);
@@ -219,8 +234,10 @@ export function RanchScene({
         <RanchSceneAnimal
           active={active}
           animal={animal}
+          catchingVisitorRaidId={catchingVisitorRaidId}
           key={animal.id}
           mountEntropy={mountEntropy}
+          onCatchVisitor={onCatchVisitor}
           onSelectAnimal={onSelectAnimal}
         />
       ))}

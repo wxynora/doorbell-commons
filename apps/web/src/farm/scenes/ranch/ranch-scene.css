@@ -24,7 +24,11 @@
 }
 
 .farm-ranch-resident.is-visitor {
-  cursor: default;
+  cursor: pointer;
+}
+
+.farm-ranch-resident.is-visitor:disabled {
+  cursor: wait;
 }
 
 .farm-ranch-resident__visitor-badge {

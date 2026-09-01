@@ -14,6 +14,7 @@ import {
   type KitchenShopRefreshInput,
   kitchenShopRefreshIssueMessage,
 } from "../../auth/kitchen-shop-refresh-client";
+import { ranchInteractionActionIssueMessage } from "../../auth/ranch-interaction-action-client";
 import { type FarmSceneId, NEIGHBORHOOD_OPTIONS } from "../dev/farm-tool-layouts";
 import { getFarmAssetUrl, getFarmEnvironmentAssetUrl } from "../farm-asset-manifest";
 import {
@@ -280,6 +281,12 @@ export function FarmFieldContent({
   const [selectedCookingIngredientIds, setSelectedCookingIngredientIds] = useState<string[]>([]);
   const [cookingIngredientPickerOpen, setCookingIngredientPickerOpen] = useState(false);
   const [selectedRanchAnimalId, setSelectedRanchAnimalId] = useState<string | null>(null);
+  const [ranchVisitorCatchAction, setRanchVisitorCatchAction] = useState<
+    | { stage: "idle" }
+    | { stage: "submitting"; raidId: string }
+    | { stage: "success"; raidId: string }
+    | { stage: "error"; message: string }
+  >({ stage: "idle" });
   const [ranchCollectionAction, setRanchCollectionAction] = useState<RanchCollectionState>({
     stage: "idle",
   });
@@ -444,6 +451,7 @@ export function FarmFieldContent({
             spriteStyle: visual.spriteStyle,
             staticSprite: visual.staticSprite,
             visitor: true,
+            visitorRaidId: visitor.raidId,
           };
         }),
       ];
@@ -830,6 +838,32 @@ export function FarmFieldContent({
     [onRanchCollection, preview, ranch],
   );
 
+  const submitRanchVisitorCatch = useCallback(
+    async (raidId: string): Promise<void> => {
+      if (preview || !ranch || !onRanchInteractionAction) return;
+      setRanchVisitorCatchAction({ stage: "submitting", raidId });
+      try {
+        const result = await onRanchInteractionAction({
+          action: "catch",
+          expectedRevision: ranch.revision,
+          idempotencyKey: crypto.randomUUID(),
+          raidId,
+        });
+        if (result.ok) {
+          setRanchVisitorCatchAction({ stage: "success", raidId });
+          return;
+        }
+        setRanchVisitorCatchAction({
+          stage: "error",
+          message: ranchInteractionActionIssueMessage(result.issue),
+        });
+      } catch {
+        setRanchVisitorCatchAction({ stage: "error", message: "现在抓不到来客，请再试一次。" });
+      }
+    },
+    [onRanchInteractionAction, preview, ranch],
+  );
+
   const changeScene = (sceneId: FarmSceneId) => {
     if (!preview) {
       if (sceneId === "ranch") {
@@ -890,6 +924,17 @@ export function FarmFieldContent({
                     field.season.id,
                     field.weather?.condition ?? null,
                   )}
+                  catchingVisitorRaidId={
+                    ranchVisitorCatchAction.stage === "submitting" ||
+                    ranchVisitorCatchAction.stage === "success"
+                      ? ranchVisitorCatchAction.raidId
+                      : null
+                  }
+                  onCatchVisitor={
+                    onRanchInteractionAction
+                      ? (raidId) => void submitRanchVisitorCatch(raidId)
+                      : undefined
+                  }
                   onSelectAnimal={setSelectedRanchAnimalId}
                 />
               ) : null}
@@ -956,6 +1001,9 @@ export function FarmFieldContent({
         <div className="farm-ranch-status-stack">
           <div aria-live="polite" className="farm-ranch-presence">
             在场动物 {ranchSceneResidentCount ?? "—"} 只 · 来客 {ranchSceneVisitorCount ?? "—"} 只
+            {ranchVisitorCatchAction.stage === "error"
+              ? ` · ${ranchVisitorCatchAction.message}`
+              : ""}
           </div>
           {!activeSceneUiState.selectedTool &&
           !activeSceneUiState.bulletinOpen &&

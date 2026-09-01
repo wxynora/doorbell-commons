@@ -65,12 +65,16 @@ test("Ranch scene excludes dispatched residents and keeps incoming visitors sepa
     ["cow", "cat", "patrol_goose"],
   );
   assert.deepEqual(
-    getLiveRanchVisitors(ranch).map((entry) => ({ id: entry.id, name: entry.name })),
-    [{ id: "visitor:visitor-raid", name: "来客鸡" }],
+    getLiveRanchVisitors(ranch).map((entry) => ({
+      id: entry.id,
+      name: entry.name,
+      raidId: entry.raidId,
+    })),
+    [{ id: "visitor:visitor-raid", name: "来客鸡", raidId: "visitor-raid" }],
   );
 });
 
-test("Ranch scene renders authority counts and non-interactive visitor markers", () => {
+test("Ranch scene renders authority counts and catches visitors from their animal buttons", () => {
   const fieldSource = readFileSync(new URL("./farm-field-content.tsx", import.meta.url), "utf8");
   const sceneSource = readFileSync(
     new URL("../scenes/ranch/ranch-scene.tsx", import.meta.url),
@@ -80,6 +84,8 @@ test("Ranch scene renders authority counts and non-interactive visitor markers",
   assert.match(fieldSource, /getLiveRanchSceneResidents\(ranch\)/);
   assert.match(fieldSource, /getLiveRanchVisitors\(ranch\)/);
   assert.match(fieldSource, /visitor: true/);
+  assert.match(fieldSource, /visitorRaidId: visitor\.raidId/);
+  assert.match(fieldSource, /action: "catch"/);
   assert.ok(
     fieldSource.indexOf('className="farm-ranch-presence"') > fieldSource.indexOf("<SceneBalance"),
   );
@@ -88,7 +94,10 @@ test("Ranch scene renders authority counts and non-interactive visitor markers",
     /在场动物 \{ranchSceneResidentCount \?\? "—"\} 只 · 来客 \{ranchSceneVisitorCount \?\? "—"\} 只/,
   );
   assert.doesNotMatch(sceneSource, /farm-ranch-presence/);
-  assert.match(sceneSource, /return animal\.visitor \? \(\s*<span[\s\S]*牧场来客[\s\S]*role="img"/);
+  assert.match(
+    sceneSource,
+    /return animal\.visitor && animal\.visitorRaidId \? \(\s*<button[\s\S]*抓住来客[\s\S]*onClick/,
+  );
 });
 
 test("Ranch presence and collection control share one non-overlapping vertical stack", () => {
