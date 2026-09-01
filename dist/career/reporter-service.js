@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { CareerDomainError, PERFORMANCE_PAY_GOLD } from "./contracts.js";
 import { recordFinancialReceipt, runInTransaction } from "./persistence.js";
 import { installCareerSchema } from "./schema.js";
+import { reporterPublicationCredits } from "./reporter-newsroom-service.js";
 
 export const REPORTER_SOURCE_TYPES = Object.freeze([
     "public_farm_fact",
@@ -427,7 +428,7 @@ export function createReporterMaterialPack(database, input) {
     const requiredLevel = level(input?.requiredLevel, "required_level");
     const difficultyLevel = level(input?.difficultyLevel ?? requiredLevel, "difficulty_level");
     const sourceIds = normalizeSourceIds(input?.sourceIds);
-    if (sourceIds.length > REPORTER_MAX_SOURCE_FACTS[requiredLevel])
+    if (input?.trustedDailyRelay !== true && sourceIds.length > REPORTER_MAX_SOURCE_FACTS[requiredLevel])
         fail("reporter_material_level_limit");
     return runInTransaction(database, () => {
         const rows = requireSourceRows(database, sourceIds);
@@ -1055,14 +1056,23 @@ export function listReporterPublicationsForHuman(database, input) {
       )
       ORDER BY publication.published_at DESC, publication.publication_id`).all();
     return publications.map((publication) => {
+        const credits = reporterPublicationCredits(database, publication.publication_id);
         const hasLiked = Boolean(database.prepare(`SELECT 1 FROM career_reporter_human_likes
           WHERE job_id = ? AND human_actor_key = ?`).get(publication.job_id, humanActorKey));
-        const ownHousehold = relatedResidentIds.has(publication.resident_id);
+        const creditedResidents = [
+            credits?.selectorResidentId,
+            credits?.writerResidentId ?? publication.resident_id,
+            credits?.reviewerResidentId,
+        ].filter(Boolean);
+        const ownHousehold = creditedResidents.some((residentId) => relatedResidentIds.has(residentId));
         const open = publication.status === "open" &&
             now >= publication.evaluation_opens_at && now < publication.evaluation_closes_at;
         return {
             likeRef: publicationLikeRef(publication.publication_id),
             authorResidentId: publication.resident_id,
+            selectorResidentId: credits?.selectorResidentId ?? publication.resident_id,
+            writerResidentId: credits?.writerResidentId ?? publication.resident_id,
+            reviewerResidentId: credits?.reviewerResidentId ?? null,
             articleText: publication.article_text,
             sectionName: publication.section_name,
             publishedAt: publication.published_at,
@@ -1091,15 +1101,23 @@ export function listReporterPublicationsForResident(database, input) {
         ORDER BY latest.article_version DESC LIMIT 1
       )
       ORDER BY publication.published_at DESC, publication.publication_id`).all().map((publication) => {
+        const credits = reporterPublicationCredits(database, publication.publication_id);
         const hasLiked = Boolean(database.prepare(`SELECT 1
           FROM career_reporter_publication_likes
           WHERE job_id = ? AND resident_id = ?`).get(publication.job_id, residentId));
-        const ownArticle = publication.resident_id === residentId;
+        const ownArticle = [
+            credits?.selectorResidentId,
+            credits?.writerResidentId ?? publication.resident_id,
+            credits?.reviewerResidentId,
+        ].filter(Boolean).includes(residentId);
         const open = publication.status === "open" &&
             now >= publication.evaluation_opens_at && now < publication.evaluation_closes_at;
         return {
             publicationId: publication.publication_id,
             authorResidentId: publication.resident_id,
+            selectorResidentId: credits?.selectorResidentId ?? publication.resident_id,
+            writerResidentId: credits?.writerResidentId ?? publication.resident_id,
+            reviewerResidentId: credits?.reviewerResidentId ?? null,
             articleText: publication.article_text,
             sectionName: publication.section_name,
             publishedAt: publication.published_at,
@@ -1125,7 +1143,13 @@ export function recordReporterHumanLike(database, input) {
     return runInTransaction(database, () => {
         requireResident(database, viaResidentId);
         const publication = publicationByLikeRef(database, input?.likeRef);
-        if (relatedResidentIds.has(publication.resident_id))
+        const credits = reporterPublicationCredits(database, publication.publication_id);
+        const creditedResidents = [
+            credits?.selectorResidentId,
+            credits?.writerResidentId ?? publication.resident_id,
+            credits?.reviewerResidentId,
+        ].filter(Boolean);
+        if (creditedResidents.some((residentId) => relatedResidentIds.has(residentId)))
             fail("reporter_author_like_forbidden");
         const existing = database.prepare(`SELECT publication_id
           FROM career_reporter_human_likes
@@ -1243,6 +1267,7 @@ export function recordReporterLike(database, input) {
     return runInTransaction(database, () => {
         requireResident(database, residentId);
         const publication = requirePublication(database, publicationId);
+        const credits = reporterPublicationCredits(database, publication.publication_id);
         const existing = database.prepare(`
           SELECT publication_id FROM career_reporter_publication_likes
           WHERE job_id = ? AND resident_id = ?
@@ -1255,7 +1280,11 @@ export function recordReporterLike(database, input) {
             fail("reporter_evaluation_window_not_open");
         if (now >= publication.evaluation_closes_at)
             fail("reporter_evaluation_window_closed");
-        if (publication.resident_id === residentId)
+        if ([
+            credits?.selectorResidentId,
+            credits?.writerResidentId ?? publication.resident_id,
+            credits?.reviewerResidentId,
+        ].filter(Boolean).includes(residentId))
             fail("reporter_author_like_forbidden");
         database.prepare(`
           INSERT INTO career_reporter_publication_likes (

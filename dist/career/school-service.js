@@ -61,6 +61,20 @@ export function careerAdvancementWorkEligibility(database, residentId, career, t
           WHERE cook_resident_id = ? AND created_at >= ?`).get(residentId, startsAt).count ?? 0);
         experienceKind = "original_recipe_production";
     }
+    else if (career === "reporter") {
+        currentLevelExperience = Number(database.prepare(`SELECT COUNT(*) AS count
+          FROM career_work_records AS work
+          JOIN career_reporter_story_workflows AS workflow
+            ON work.job_id IN (
+              workflow.selector_job_id,
+              workflow.writer_job_id,
+              workflow.reviewer_job_id
+            )
+          WHERE work.resident_id = ? AND work.career = 'reporter'
+            AND work.qualification_level = ? AND workflow.status = 'published'`)
+            .get(residentId, previousLevel).count ?? 0);
+        experienceKind = "published_reporter_work";
+    }
     else {
         currentLevelExperience = Number(database.prepare(`SELECT COUNT(*) AS count
           FROM career_work_records

@@ -164,8 +164,9 @@ export class CareerJobService {
                 }
                 return mapJob(job);
             }
-            if (job.status !== "active" || job.decision_count < 2) {
-                throw new CareerDomainError("job_decisions_incomplete", "A completed job needs at least two real decisions");
+            const requiredDecisions = job.career === "reporter" ? 1 : 2;
+            if (job.status !== "active" || job.decision_count < requiredDecisions) {
+                throw new CareerDomainError("job_decisions_incomplete", `A completed job needs at least ${requiredDecisions} real decision${requiredDecisions === 1 ? "" : "s"}`);
             }
             if (!input.validationPassed || !input.worldResultReference) {
                 throw new CareerDomainError("job_completion_not_validated", "The authoritative world result did not validate completion");
@@ -194,14 +195,18 @@ export class CareerJobService {
             const level = requireActiveCertificate(this.#database, input.workerResidentId, job.career, job.required_level, now);
             const selfVeterinarianTreatment = job.career === "veterinarian" &&
                 job.owner_resident_id === input.workerResidentId;
-            const performanceUnits = institutionForCareer(job.career) && !selfVeterinarianTreatment
+            const performanceUnits = institutionForCareer(job.career) &&
+                job.career !== "reporter" && !selfVeterinarianTreatment
                 ? JOB_PERFORMANCE_UNITS[job.difficulty_level]
                 : 0;
+            const dutyDate = job.career === "reporter" && Number.isSafeInteger(job.started_at)
+                ? beijingDate(job.started_at)
+                : beijingDate(now);
             const duty = institutionForCareer(job.career)
                 ? this.#database.prepare(`SELECT performance_rate_bps FROM career_duty_days
                     WHERE resident_id = ? AND career = ? AND duty_date = ?
                     ORDER BY generated_at DESC LIMIT 1`)
-                    .get(input.workerResidentId, job.career, beijingDate(now))
+                    .get(input.workerResidentId, job.career, dutyDate)
                 : null;
             const performanceRateBps = duty?.performance_rate_bps ?? 10_000;
             this.#database
@@ -323,6 +328,31 @@ export class CareerJobService {
             .all(jobId)
             .map((row) => row.resident_id);
     }
+    quoteReporterLikePerformance(jobId, validLikes) {
+        if (!Number.isInteger(validLikes) || validLikes < 0) {
+            throw new CareerDomainError("invalid_like_count", "Valid likes must be a nonnegative integer");
+        }
+        const job = this.#requireJob(jobId);
+        if (job.career !== "reporter" || job.status !== "completed" || !job.worker_resident_id) {
+            throw new CareerDomainError("reporter_performance_unavailable", "Only a completed reporter job can receive evaluation performance");
+        }
+        const units = validLikes >= 20 ? 3 : validLikes >= 15 ? 2 : validLikes >= 5 ? 1 : 0;
+        const workRecord = this.#database
+            .prepare(`SELECT qualification_level, performance_rate_bps FROM career_work_records
+         WHERE job_id = ? AND resident_id = ? AND record_kind = 'completed'`)
+            .get(job.job_id, job.worker_resident_id);
+        if (!workRecord) {
+            throw new CareerDomainError("reporter_work_record_missing", "The completed reporter work record is missing");
+        }
+        return {
+            jobId: job.job_id,
+            residentId: job.worker_resident_id,
+            validLikes,
+            units,
+            performanceGold: units * PERFORMANCE_PAY_GOLD[workRecord.qualification_level] *
+                workRecord.performance_rate_bps / 10_000,
+        };
+    }
     addReporterLikePerformance(input) {
         if (!Number.isInteger(input.validLikes) || input.validLikes < 0) {
             throw new CareerDomainError("invalid_like_count", "Valid likes must be a nonnegative integer");
@@ -335,11 +365,9 @@ export class CareerJobService {
         }
         const now = this.#now();
         return runInTransaction(this.#database, () => {
-            const job = this.#requireJob(input.jobId);
-            if (job.career !== "reporter" || job.status !== "completed" || !job.worker_resident_id) {
-                throw new CareerDomainError("reporter_performance_unavailable", "Only a published completed reporter job can receive evaluation performance");
-            }
-            const units = input.validLikes >= 20 ? 3 : input.validLikes >= 15 ? 2 : input.validLikes >= 5 ? 1 : 0;
+            const quote = this.quoteReporterLikePerformance(input.jobId, input.validLikes);
+            const job = this.#requireJob(quote.jobId);
+            const { units, performanceGold } = quote;
             const settlements = this.#database
                 .prepare(`SELECT * FROM career_reporter_evaluation_settlements
            WHERE job_id = ? OR source_reference = ? OR idempotency_key = ?
@@ -363,15 +391,6 @@ export class CareerJobService {
             if (units === 0 && input.wageReceipt) {
                 throw new CareerDomainError("performance_wage_receipt_unexpected", "A zero reporter evaluation cannot have a wage receipt");
             }
-            const workRecord = this.#database
-                .prepare(`SELECT qualification_level, performance_rate_bps FROM career_work_records
-           WHERE job_id = ? AND resident_id = ? AND record_kind = 'completed'`)
-                .get(job.job_id, job.worker_resident_id);
-            if (!workRecord) {
-                throw new CareerDomainError("reporter_work_record_missing", "The completed reporter work record is missing");
-            }
-            const performanceGold = units * PERFORMANCE_PAY_GOLD[workRecord.qualification_level] *
-                workRecord.performance_rate_bps / 10_000;
             if (units === 0) {
                 this.#database
                     .prepare(`INSERT INTO career_reporter_evaluation_settlements (

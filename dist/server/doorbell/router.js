@@ -51,10 +51,66 @@ import {
     handleDoorbellHumanReporterLike,
     handleDoorbellHumanReporterRead,
 } from "./reporter.js";
+import {
+    handleDoorbellLingyeDailyMaterial,
+    handleDoorbellReporterRelayPending,
+    handleDoorbellReporterRelayPublication,
+    handleDoorbellReporterRelayPublished,
+    handleDoorbellReporterRelayStart,
+} from "./daily-material.js";
 import { humanFieldError, internalServiceError } from "./contract.js";
 
 export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExecutor, careerBenefitsForFarm, constableInterviewRuntime) {
     return async function handleDoorbellInternal(req, res, parts, method) {
+        if (parts[0] === "internal" && parts[1] === "doorbell" &&
+            parts[2] === "lingye-daily" && parts[3] === "reporter-relay" &&
+            parts[4] === "start" && parts.length === 5) {
+            if (!constableInterviewRuntime?.database || !constableInterviewRuntime?.backend) {
+                internalServiceError(res, 503, "service_unavailable", "The reporter relay service is unavailable");
+                return true;
+            }
+            await handleDoorbellReporterRelayStart(req, res, method, constableInterviewRuntime);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" &&
+            parts[2] === "lingye-daily" && parts[3] === "reporter-relay" &&
+            parts[4] === "pending" && parts.length === 5) {
+            if (!constableInterviewRuntime?.database || !constableInterviewRuntime?.backend) {
+                internalServiceError(res, 503, "service_unavailable", "The reporter relay service is unavailable");
+                return true;
+            }
+            await handleDoorbellReporterRelayPending(req, res, method, constableInterviewRuntime);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" &&
+            parts[2] === "lingye-daily" && parts[3] === "reporter-relay" &&
+            parts[4] === "publication" && parts.length === 5) {
+            if (!constableInterviewRuntime?.database || !constableInterviewRuntime?.backend) {
+                internalServiceError(res, 503, "service_unavailable", "The reporter relay service is unavailable");
+                return true;
+            }
+            await handleDoorbellReporterRelayPublication(req, res, method, constableInterviewRuntime);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" &&
+            parts[2] === "lingye-daily" && parts[3] === "reporter-relay" &&
+            parts[4] === "published" && parts.length === 5) {
+            if (!constableInterviewRuntime?.database || !constableInterviewRuntime?.backend) {
+                internalServiceError(res, 503, "service_unavailable", "The reporter relay service is unavailable");
+                return true;
+            }
+            await handleDoorbellReporterRelayPublished(req, res, method, constableInterviewRuntime);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" &&
+            parts[2] === "lingye-daily" && parts[3] === "material" && parts.length === 4) {
+            if (!constableInterviewRuntime?.database || !constableInterviewRuntime?.backend) {
+                internalServiceError(res, 503, "service_unavailable", "The Lingye Daily material service is unavailable");
+                return true;
+            }
+            await handleDoorbellLingyeDailyMaterial(req, res, method, constableInterviewRuntime);
+            return true;
+        }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "reporter" && parts[4] === "read" && parts.length === 5) {
             if (!constableInterviewRuntime?.database || !constableInterviewRuntime?.backend) {
                 humanFieldError(res, 503, "farm_unavailable", "The reporter service is unavailable");

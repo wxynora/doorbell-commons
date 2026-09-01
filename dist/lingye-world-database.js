@@ -57,6 +57,7 @@ import {
     submitReporterArticle,
     submitReporterSupplement,
 } from "./career/reporter-service.js";
+import { reporterWorkflowForJob } from "./career/reporter-newsroom-service.js";
 
 export const LINGYE_WORLD_SCHEMA_VERSION = 2;
 
@@ -957,7 +958,12 @@ export function createLingyeWorldBackend(database, options) {
     };
     const publishReporterArticleAndComplete = (input) => {
         const publication = atomic(() => {
-            const published = publishReporterArticle(database, reporterWithClock(input));
+            const publicationNow = input?.publishedAt ?? reporterNow();
+            const { publishedAt: _publishedAt, ...publicationInput } = input ?? {};
+            const published = publishReporterArticle(database, {
+                ...publicationInput,
+                now: publicationNow,
+            });
             const job = jobs.getJob(published.jobId);
             if (job.status !== "completed") {
                 jobs.completeJob({
@@ -994,27 +1000,71 @@ export function createLingyeWorldBackend(database, options) {
             assertReporterSettlementInput(input);
             const now = reporterNow();
             const quote = quoteReporterEvaluation(database, { ...(input ?? {}), now });
+            let writerSettlement;
             if (quote.performanceUnits === 0) {
-                return settleReporterEvaluation(database, {
+                writerSettlement = settleReporterEvaluation(database, {
                     jobId: quote.jobId,
                     publicationId: quote.publicationId,
                     now,
                 });
             }
-            const credited = economy.creditFromSystem({
-                residentId: quote.residentId,
-                currency: "gold",
-                amount: quote.performanceGold,
-                businessType: "career_wage",
-                businessRef: `career-job:${quote.jobId}:evaluation-performance`,
-                idempotencyKey: `reporter-evaluation:${quote.jobId}:credit`,
-            });
-            return settleReporterEvaluation(database, {
-                jobId: quote.jobId,
-                publicationId: quote.publicationId,
-                financialReceipt: credited.financialReceipt,
-                now,
-            });
+            else {
+                const credited = economy.creditFromSystem({
+                    residentId: quote.residentId,
+                    currency: "gold",
+                    amount: quote.performanceGold,
+                    businessType: "career_wage",
+                    businessRef: `career-job:${quote.jobId}:evaluation-performance`,
+                    idempotencyKey: `reporter-evaluation:${quote.jobId}:credit`,
+                });
+                writerSettlement = settleReporterEvaluation(database, {
+                    jobId: quote.jobId,
+                    publicationId: quote.publicationId,
+                    financialReceipt: credited.financialReceipt,
+                    now,
+                });
+            }
+            const workflow = reporterWorkflowForJob(database, quote.jobId);
+            const collaborators = workflow
+                ? [
+                    ["selector", workflow.selectorJobId],
+                    ["reviewer", workflow.reviewerJobId],
+                ].map(([role, jobId]) => {
+                    const collaborator = jobs.quoteReporterLikePerformance(jobId, quote.validLikes);
+                    const idempotencyKey = `reporter-evaluation:${jobId}:credit`;
+                    const sourceReference = `reporter:evaluation:${jobId}`;
+                    if (collaborator.units === 0) {
+                        return {
+                            role,
+                            ...jobs.addReporterLikePerformance({
+                                idempotencyKey,
+                                jobId,
+                                validLikes: quote.validLikes,
+                                sourceReference,
+                            }),
+                        };
+                    }
+                    const credited = economy.creditFromSystem({
+                        residentId: collaborator.residentId,
+                        currency: "gold",
+                        amount: collaborator.performanceGold,
+                        businessType: "career_wage",
+                        businessRef: `career-job:${jobId}:evaluation-performance`,
+                        idempotencyKey,
+                    });
+                    return {
+                        role,
+                        ...jobs.addReporterLikePerformance({
+                            idempotencyKey,
+                            jobId,
+                            validLikes: quote.validLikes,
+                            sourceReference,
+                            wageReceipt: credited.financialReceipt,
+                        }),
+                    };
+                })
+                : [];
+            return { ...writerSettlement, collaborators };
         }),
         settleDueReporterEvaluations: () =>
             dueReporterEvaluationJobIds(database, reporterNow()).map((jobId) =>

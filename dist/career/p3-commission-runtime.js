@@ -1,12 +1,14 @@
 import { createHash } from "node:crypto";
-import { allFarms, getFarm, getNatureWorld, getPublicExpeditionWorld, replaceFarm, replaceFarmsAndNatureAtomic } from "../store.js";
+import { allFarms, getFarm, getNatureWorld, replaceFarm, replaceFarmsAndNatureAtomic } from "../store.js";
 import { reconcileNatureTreatment } from "../nature-runtime.js";
 import { runLingyeWorldTransaction } from "../lingye-world-database.js";
 import { CareerDomainError } from "./contracts.js";
 import {
+    getReporterArticle,
     getReporterMaterialPack,
     getReporterSourceFact,
 } from "./reporter-service.js";
+import { ensureReporterDutyRoles, reporterWorkflowForJob } from "./reporter-newsroom-service.js";
 import {
     AGRONOMY_CONDITIONS,
     ANIMAL_CONDITIONS,
@@ -241,6 +243,12 @@ export function startRegisteredP3Scheduler(database, options = {}) {
     const setTimer = options.setTimer ?? setTimeout;
     let stopped = false;
     let timer;
+    try {
+        ensureReporterDutyRoles(database, now());
+    }
+    catch (error) {
+        console.error("[lingye-p3] reporter duty assignment failed", error);
+    }
     const schedule = () => {
         if (stopped)
             return;
@@ -253,6 +261,12 @@ export function startRegisteredP3Scheduler(database, options = {}) {
             }
             catch (error) {
                 console.error("[lingye-p3] daily farm advancement failed", error);
+            }
+            try {
+                ensureReporterDutyRoles(database, now());
+            }
+            catch (error) {
+                console.error("[lingye-p3] reporter duty assignment failed", error);
             }
             finally {
                 schedule();
@@ -377,59 +391,6 @@ export function boundFarmSources(database, farm, ownerResidentId, now = Date.now
 }
 
 export function syncAuthorityJobs(database, backend, now = Date.now()) {
-    const publicWorld = getPublicExpeditionWorld();
-    for (const entry of (publicWorld?.history ?? [])) {
-        if (!entry || typeof entry !== "object")
-            continue;
-        const occurredAt = reporterPublicHistoryOccurredAt(publicWorld, entry, now);
-        if (!Number.isSafeInteger(occurredAt) || occurredAt > now)
-            continue;
-        const identity = reporterPublicHistoryIdentity(publicWorld, entry, occurredAt);
-        const sourceId = identity.sourceId;
-        const publicSubject = typeof entry.title === "string" && entry.title.trim()
-            ? entry.title.trim()
-            : typeof entry.kind === "string" && entry.kind.trim()
-                ? entry.kind.trim()
-                : "public_event";
-        runLingyeWorldTransaction(database, () => {
-            const fact = {
-                storyId: publicWorld.storyId,
-                round: publicWorld.round,
-                publicHistory: structuredClone(entry),
-            };
-            backend.trustedSystemCommands.registerReporterSourceFact({
-                sourceId,
-                sourceType: "public_event_fact",
-                // This names the public-world authority, not a fabricated resident producer.
-                producerReference: `public-expedition-history:${publicWorld.storyId}:${publicWorld.round}`,
-                occurredAt,
-                recordedAt: occurredAt,
-                publicSubject,
-                fact,
-                allowedNumbers: reporterAllowedNumbers(fact),
-                privacyScope: "public",
-            });
-            backend.trustedSystemCommands.createReporterMaterialPack({
-                packId: identity.packId,
-                issueReference: identity.issueReference,
-                requiredLevel: 1,
-                difficultyLevel: 1,
-                sourceIds: [sourceId],
-            });
-            backend.trustedSystemCommands.createJob({
-                jobId: commissionJobId(sourceId),
-                career: "reporter",
-                sourceType: "public_event_fact",
-                sourceId,
-                objectType: "public_event",
-                objectId: identity.objectId,
-                ownerResidentId: null,
-                requiredLevel: 1,
-                difficultyLevel: 1,
-                assignmentMode: "accepted",
-            });
-        });
-    }
     const overdueLoans = database.prepare(`
       SELECT loan_id, borrower_resident_id, status FROM economy_system_loans
       WHERE status IN ('overdue', 'restricted')
@@ -653,10 +614,23 @@ export function workerOptions(job, residentId, qualificationLevel = job.required
             options.push(`commission:transfer:${job.jobId}`);
         return options;
     }
-    if (job.career === "reporter")
+    if (job.career === "reporter") {
+        if (job.sourceType.endsWith(":reviewing")) {
+            if (job.decisionCount === 0 || job.decisionCount === 2)
+                return [`commission:check:${job.jobId}:article`];
+            if (job.decisionCount === 1 || job.decisionCount === 3) {
+                return [
+                    `commission:resolve:${job.jobId}:approve`,
+                    `commission:resolve:${job.jobId}:needs_supplement`,
+                    `commission:resolve:${job.jobId}:reject`,
+                ];
+            }
+            return [];
+        }
         return job.decisionCount === 0
             ? [`commission:check:${job.jobId}:sources`]
             : [`commission:submit:${job.jobId}`];
+    }
     if (job.career === "constable") {
         if (job.decisionCount === 0)
             return [`commission:check:${job.jobId}:facts`];
@@ -673,9 +647,11 @@ export function workerOptions(job, residentId, qualificationLevel = job.required
 }
 
 function reporterPackRowForJob(database, job) {
+    const workflow = reporterWorkflowForJob(database, job.jobId);
+    const packJobId = workflow?.writerJobId ?? job.jobId;
     const bound = database.prepare(`
       SELECT * FROM career_reporter_material_packs WHERE job_id = ?
-    `).get(job.jobId);
+    `).get(packJobId);
     if (bound)
         return bound;
     const candidates = database.prepare(`
@@ -708,6 +684,7 @@ export function reporterMaterialPackForJob(database, job) {
 
 function reporterCommissionSourceFacts(database, job) {
     const materialPack = reporterMaterialPackForJob(database, job);
+    const workflow = reporterWorkflowForJob(database, job.jobId);
     const sourceFacts = materialPack.sourceIds.map((sourceId) => getReporterSourceFact(database, sourceId));
     const selected = sourceFacts.find((source) => source.sourceId === job.sourceId);
     if (!selected)
@@ -721,6 +698,14 @@ function reporterCommissionSourceFacts(database, job) {
         sourceFacts,
         initialFact: selected.fact,
         publicFact: structuredClone(publicFact),
+        ...(workflow
+            ? {
+                newsroomWorkflow: workflow,
+                ...(workflow.articleId
+                    ? { article: getReporterArticle(database, workflow.articleId) }
+                    : {}),
+            }
+            : {}),
     };
 }
 

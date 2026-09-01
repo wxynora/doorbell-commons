@@ -1,0 +1,867 @@
+import { createHash, randomInt } from "node:crypto";
+import { buildLeaderboards } from "../leaderboard.js";
+import {
+    getNatureWorld,
+    getPublicExpeditionWorld,
+    playerFarms,
+} from "../store.js";
+import { natureSnapshot } from "../nature.js";
+import { CareerDomainError } from "./contracts.js";
+import {
+    addBeijingDays,
+    beijingDate,
+    beijingTimestamp,
+    runInTransaction,
+} from "./persistence.js";
+import {
+    createReporterStoryWorkflow,
+    ensureReporterDutyRoles,
+    markReporterWorkflowPublished,
+    reporterWorkflowForJob,
+} from "./reporter-newsroom-service.js";
+import { installCareerSchema } from "./schema.js";
+
+const DAY_MS = 24 * 60 * 60 * 1_000;
+const RAW_MATERIAL_RETENTION_MS = 2 * DAY_MS;
+const NEWSROOM_OPERATION = "go.newsroom.commission";
+const OPTION_HANDLE_RE = /^opt_[A-Za-z0-9_-]{12}$/u;
+
+const BOARD_TITLES = Object.freeze({
+    todayTasks: "卷王榜（今日完成任务）",
+    todayLogins: "网瘾榜（今日巡视农场）",
+    todayMessages: "小纸条榜（今日给人留言）",
+    todayEvents: "奇遇榜（今日触发随机事件）",
+    todayStolen: "大盗榜（今日成功偷菜）",
+    todayWatered: "热心榜（今日成功帮人浇水）",
+    todaySpent: "败家榜（今日花掉金币）",
+    todayOddDishes: "厨鬼榜（今日做出微妙料理）",
+    todayRaidIncome: "摸金榜（今日偷到金币）",
+    todayRaidLoss: "漏财榜（今日损失金币）",
+});
+
+function fail(code, message = code) {
+    throw new CareerDomainError(code, message);
+}
+
+function identifier(value, field) {
+    if (typeof value !== "string" || value.length === 0 || value.trim() !== value)
+        fail(`reporter_invalid_${field}`);
+    return value;
+}
+
+function timestamp(value, field) {
+    if (!Number.isSafeInteger(value) || value < 0)
+        fail(`reporter_invalid_${field}`);
+    return value;
+}
+
+function canonical(value) {
+    if (value === null)
+        return "null";
+    if (typeof value === "string" || typeof value === "boolean")
+        return JSON.stringify(value);
+    if (typeof value === "number") {
+        if (!Number.isFinite(value))
+            fail("reporter_invalid_json");
+        return JSON.stringify(value);
+    }
+    if (Array.isArray(value))
+        return `[${value.map(canonical).join(",")}]`;
+    if (value && typeof value === "object") {
+        return `{${Object.keys(value).sort().map((key) =>
+            `${JSON.stringify(key)}:${canonical(value[key])}`).join(",")}}`;
+    }
+    fail("reporter_invalid_json");
+}
+
+function digest(value) {
+    return createHash("sha256").update(String(value), "utf8").digest("hex");
+}
+
+function parseJson(value) {
+    return JSON.parse(value);
+}
+
+function normalizeIssueWindow(input) {
+    const issueDate = identifier(input?.issueDate, "issue_date");
+    if (!/^\d{4}-\d{2}-\d{2}$/u.test(issueDate))
+        fail("reporter_invalid_issue_date");
+    const periodStart = timestamp(input?.periodStart, "period_start");
+    const periodEnd = timestamp(input?.periodEnd, "period_end");
+    const expectedEnd = beijingTimestamp(issueDate, 5);
+    const expectedStart = beijingTimestamp(addBeijingDays(issueDate, -1), 5);
+    if (periodStart !== expectedStart || periodEnd !== expectedEnd)
+        fail("reporter_issue_window_conflict");
+    return {
+        issueDate,
+        issueReference: `lingye-daily:${issueDate}`,
+        periodStart,
+        periodEnd,
+    };
+}
+
+function mapIssue(row) {
+    return {
+        issueReference: row.issue_reference,
+        issueDate: row.issue_date,
+        periodStart: row.period_start,
+        periodEnd: row.period_end,
+        packId: row.pack_id,
+        selectorJobId: row.selector_job_id,
+        writerJobId: row.writer_job_id,
+        reviewerJobId: row.reviewer_job_id,
+        selectorResidentId: row.selector_resident_id,
+        writerResidentId: row.writer_resident_id,
+        reviewerResidentId: row.reviewer_resident_id,
+        selectionText: row.selection_text,
+        articleId: row.article_id,
+        reviewFeedback: row.review_feedback,
+        supplementCount: row.supplement_count,
+        status: row.status,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        readyAt: row.ready_at,
+        rejectedAt: row.rejected_at,
+        publishedAt: row.published_at,
+        rawPrunedAt: row.raw_pruned_at,
+    };
+}
+
+function requireIssue(database, issueReference) {
+    const row = database.prepare(`SELECT * FROM career_reporter_relay_issues
+      WHERE issue_reference = ?`).get(identifier(issueReference, "issue_reference"));
+    if (!row)
+        fail("reporter_relay_issue_not_found");
+    return row;
+}
+
+function issueForJobRow(database, jobId) {
+    return database.prepare(`SELECT * FROM career_reporter_relay_issues
+      WHERE selector_job_id = ? OR writer_job_id = ? OR reviewer_job_id = ?`)
+        .get(jobId, jobId, jobId);
+}
+
+export function reporterRelayIssueForJob(database, jobId) {
+    installCareerSchema(database);
+    const row = issueForJobRow(database, identifier(jobId, "job_id"));
+    return row ? mapIssue(row) : null;
+}
+
+export function reporterRelayIssue(database, issueDate) {
+    installCareerSchema(database);
+    const row = database.prepare(`SELECT * FROM career_reporter_relay_issues
+      WHERE issue_date = ?`).get(identifier(issueDate, "issue_date"));
+    return row ? mapIssue(row) : null;
+}
+
+function todayBoardMaterials(now) {
+    const boards = buildLeaderboards(playerFarms(), [], now);
+    return Object.entries(BOARD_TITLES).flatMap(([key, title]) => {
+        const rows = boards[key] ?? [];
+        if (rows.length === 0)
+            return [];
+        return [{
+            category: "today_board",
+            occurredAt: now,
+            title,
+            content: rows.map((row, index) =>
+                `${index + 1}. ${row.title ? `✧${publicText(row.title)}✧` : ""}${publicText(row.name)} · ${publicText(row.code)} — ${row.value}`)
+                .join("\n"),
+        }];
+    });
+}
+
+function weatherMaterials(now) {
+    const snapshot = natureSnapshot(getNatureWorld(), now);
+    return (snapshot.forecast ?? []).slice(1).map((entry) => ({
+        category: "weather_forecast",
+        occurredAt: now,
+        title: `第 ${entry.dayIndex} 日天气预告`,
+        content: `日序：${entry.dayIndex}；季节：${publicText(entry.season)}；季节日：${entry.seasonDay}；天气：${publicText(entry.condition)}`,
+    }));
+}
+
+function publicText(value) {
+    return String(value ?? "").replace(/[<>\r]/gu, "").trim();
+}
+
+function togetherPublicMaterial(entry, occurredAt) {
+    if (entry?.kind === "choice") {
+        const step = Number(entry.step);
+        const option = publicText(entry.option);
+        const label = publicText(entry.label);
+        if (!Number.isSafeInteger(step) || step < 1 || !["A", "B", "C"].includes(option) || !label)
+            return null;
+        return {
+            category: "lingye_together",
+            occurredAt,
+            title: `铃野共行第 ${step} 次公共选择`,
+            content: `${option}：${label}`,
+        };
+    }
+    if (entry?.kind === "task") {
+        const title = publicText(entry.title);
+        const text = publicText(entry.text);
+        const progress = Math.max(0,
+            Math.floor(Number(entry.contributions?.length ?? entry.progress) || 0));
+        const target = Math.max(1, Math.floor(Number(entry.target) || 1));
+        if (!title || !text)
+            return null;
+        return {
+            category: "lingye_together",
+            occurredAt,
+            title,
+            content: `${text}\n公开进度：${progress}/${target}`,
+        };
+    }
+    if (["story", "clue", "ending"].includes(entry?.kind)) {
+        const title = publicText(entry.title);
+        const text = publicText(entry.text);
+        if (!title || !text)
+            return null;
+        return {
+            category: "lingye_together",
+            occurredAt,
+            title,
+            content: text,
+        };
+    }
+    return null;
+}
+
+function togetherEventTimestamp(entry, periodStart, periodEnd) {
+    const candidates = [
+        entry?.at,
+        entry?.occurredAt,
+        entry?.startedAt,
+        entry?.completedAt,
+        entry?.endedAt,
+        ...(Array.isArray(entry?.voters) ? entry.voters.map((item) => item?.at) : []),
+        ...(Array.isArray(entry?.contributions) ? entry.contributions.map((item) => item?.at) : []),
+    ].filter((value) => Number.isSafeInteger(value) &&
+        value >= periodStart && value <= periodEnd);
+    return candidates.length > 0 ? Math.max(...candidates) : periodEnd;
+}
+
+function togetherMaterials(database, window) {
+    const world = getPublicExpeditionWorld();
+    const storyId = String(world?.storyId ?? "").trim();
+    const storyRound = Number(world?.round);
+    const history = Array.isArray(world?.history) ? world.history : [];
+    if (!storyId || !Number.isSafeInteger(storyRound) || storyRound < 1)
+        return [];
+    const cursor = database.prepare(`SELECT * FROM career_reporter_together_cursors
+      WHERE story_id = ? AND story_round = ?`).get(storyId, storyRound);
+    const canUseDelta = cursor && cursor.observed_at >= window.periodStart &&
+        cursor.observed_at <= window.periodEnd && cursor.history_count <= history.length;
+    const startIndex = canUseDelta ? cursor.history_count : history.length;
+    database.prepare(`INSERT INTO career_reporter_together_cursors (
+      story_id, story_round, history_count, observed_at
+    ) VALUES (?, ?, ?, ?)
+    ON CONFLICT(story_id, story_round) DO UPDATE SET
+      history_count = excluded.history_count,
+      observed_at = excluded.observed_at`)
+        .run(storyId, storyRound, history.length, window.periodEnd);
+    if (!canUseDelta)
+        return [];
+    return history.slice(startIndex).flatMap((entry) => {
+        const material = togetherPublicMaterial(entry,
+            togetherEventTimestamp(entry, window.periodStart, window.periodEnd));
+        return material ? [material] : [];
+    });
+}
+
+function materialSourceType(category) {
+    if (category === "today_board")
+        return "public_farm_ranking";
+    if (category === "weather_forecast")
+        return "public_weather_fact";
+    return "public_event_fact";
+}
+
+function allowedNumbers(value) {
+    const values = new Set();
+    const visit = (entry) => {
+        if (typeof entry === "number" && Number.isFinite(entry)) {
+            values.add(entry);
+            return;
+        }
+        if (typeof entry === "string") {
+            for (const match of entry.matchAll(/(?<![\p{L}\p{N}.])[-+]?(?:\d+(?:\.\d+)?|\.\d+)(?![\p{L}\p{N}.])/gu))
+                values.add(Number(match[0]));
+            return;
+        }
+        if (Array.isArray(entry)) {
+            for (const child of entry)
+                visit(child);
+            return;
+        }
+        if (entry && typeof entry === "object") {
+            for (const child of Object.values(entry))
+                visit(child);
+        }
+    };
+    visit(value);
+    return [...values].sort((left, right) => left - right);
+}
+
+function publicMaterials(database, issueReference) {
+    return database.prepare(`SELECT category, occurred_at, title, content_json
+      FROM career_reporter_relay_materials
+      WHERE issue_reference = ? ORDER BY material_index`)
+        .all(issueReference)
+        .map((row) => {
+            const content = parseJson(row.content_json);
+            if (typeof content !== "string" || !content.trim())
+                fail("reporter_relay_material_corrupt");
+            return {
+                category: row.category,
+                occurred_at: new Date(row.occurred_at).toISOString(),
+                title: row.title,
+                content,
+            };
+        });
+}
+
+function reporterOptionHandle(database, residentId, internalOption, now) {
+    const existing = database.prepare(`SELECT handle FROM lingye_option_handles
+      WHERE resident_id = ? AND operation = ? AND internal_option = ?`)
+        .get(residentId, NEWSROOM_OPERATION, internalOption);
+    if (existing)
+        return existing.handle;
+    const handle = `opt_${createHash("sha256")
+        .update(JSON.stringify([residentId, NEWSROOM_OPERATION, internalOption]), "utf8")
+        .digest("base64url").slice(0, 12)}`;
+    if (!OPTION_HANDLE_RE.test(handle))
+        throw new Error("reporter_relay_option_handle_invalid");
+    const collision = database.prepare(`SELECT resident_id, operation, internal_option
+      FROM lingye_option_handles WHERE handle = ?`).get(handle);
+    if (collision && (collision.resident_id !== residentId ||
+        collision.operation !== NEWSROOM_OPERATION || collision.internal_option !== internalOption)) {
+        throw new Error("reporter_relay_option_handle_collision");
+    }
+    database.prepare(`INSERT OR IGNORE INTO lingye_option_handles (
+      handle, resident_id, operation, internal_option, issued_at
+    ) VALUES (?, ?, ?, ?, ?)`)
+        .run(handle, residentId, NEWSROOM_OPERATION, internalOption, now);
+    return handle;
+}
+
+function wakeStageForStatus(status) {
+    if (status === "selector_pending")
+        return "selection";
+    if (status === "writer_pending")
+        return "writing";
+    if (status === "review_pending")
+        return "review";
+    if (status === "supplement_pending")
+        return "supplement";
+    return null;
+}
+
+function wakeRecipient(issue, stage) {
+    if (stage === "selection")
+        return issue.selector_resident_id;
+    if (stage === "review")
+        return issue.reviewer_resident_id;
+    return issue.writer_resident_id;
+}
+
+function wakeSequence(issue, stage) {
+    if (stage === "review")
+        return issue.supplement_count + 1;
+    if (stage === "supplement")
+        return issue.supplement_count;
+    return 1;
+}
+
+function ensureWakeRow(database, issue, stage, now) {
+    const sequence = wakeSequence(issue, stage);
+    const wakeId = `reporter-wake:${issue.issue_date}:${stage}:${sequence}`;
+    const recipient = wakeRecipient(issue, stage);
+    database.prepare(`INSERT OR IGNORE INTO career_reporter_relay_wakes (
+      wake_id, issue_reference, stage, wake_sequence, recipient_resident_id, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?)`)
+        .run(wakeId, issue.issue_reference, stage, sequence, recipient, now);
+    const row = database.prepare(`SELECT * FROM career_reporter_relay_wakes
+      WHERE wake_id = ?`).get(wakeId);
+    if (!row || row.issue_reference !== issue.issue_reference || row.stage !== stage ||
+        row.wake_sequence !== sequence || row.recipient_resident_id !== recipient) {
+        fail("reporter_relay_wake_conflict");
+    }
+    return row;
+}
+
+function stageInputs(database, issue, stage, sequence) {
+    if (stage === "selection")
+        return {};
+    if (stage === "writing")
+        return { selection_text: issue.selection_text };
+    const article = database.prepare(`SELECT article_text FROM career_reporter_articles
+      WHERE job_id = ? AND version = ?`).get(issue.writer_job_id, sequence);
+    if (stage === "review") {
+        return {
+            selection_text: issue.selection_text,
+            article_text: article?.article_text ?? null,
+            ...(sequence > 1 ? { review_feedback: issue.review_feedback } : {}),
+        };
+    }
+    return {
+        selection_text: issue.selection_text,
+        article_text: article?.article_text ?? null,
+        review_feedback: issue.review_feedback,
+    };
+}
+
+function singleAction(database, issue, stage, sequence, now) {
+    const jobId = stage === "selection" ? issue.selector_job_id : issue.writer_job_id;
+    if (!jobId)
+        fail("reporter_relay_job_not_ready");
+    return {
+        op: NEWSROOM_OPERATION,
+        args: {
+            option: reporterOptionHandle(database, wakeRecipient(issue, stage),
+                `commission:submit:${jobId}:relay-${stage}-${sequence}`, now),
+        },
+    };
+}
+
+function reviewActions(database, issue, sequence, now) {
+    if (!issue.reviewer_job_id)
+        fail("reporter_relay_job_not_ready");
+    const action = (decision) => ({
+        op: NEWSROOM_OPERATION,
+        args: {
+            option: reporterOptionHandle(database, issue.reviewer_resident_id,
+                `commission:resolve:${issue.reviewer_job_id}:${decision}`, now),
+        },
+    });
+    const actions = {
+        approve: action("approve"),
+        reject: action("reject"),
+    };
+    if (sequence === 1)
+        actions.supplement = action("needs_supplement");
+    return actions;
+}
+
+export function reporterRelayWake(database, issueReference, now = Date.now(), requestedStage = null,
+    requestedSequence = null) {
+    installCareerSchema(database);
+    const issue = requireIssue(database, issueReference);
+    const stage = requestedStage ?? wakeStageForStatus(issue.status);
+    if (!stage)
+        return null;
+    const sequence = requestedSequence ?? wakeSequence(issue, stage);
+    const wakeId = `reporter-wake:${issue.issue_date}:${stage}:${sequence}`;
+    const existing = database.prepare(`SELECT * FROM career_reporter_relay_wakes
+      WHERE wake_id = ?`).get(wakeId);
+    if (existing?.payload_json) {
+        const payload = parseJson(existing.payload_json);
+        if (!payload || typeof payload !== "object" || Array.isArray(payload))
+            fail("reporter_relay_wake_corrupt");
+        return payload;
+    }
+    if (requestedSequence !== null && sequence !== wakeSequence(issue, stage) && !existing)
+        fail("reporter_relay_wake_not_found");
+    const wake = existing ?? ensureWakeRow(database, issue, stage, now);
+    const payload = {
+        wake_id: wake.wake_id,
+        recipient_resident_id: wake.recipient_resident_id,
+        stage,
+        issue_date: issue.issue_date,
+        materials: publicMaterials(database, issue.issue_reference),
+        ...stageInputs(database, issue, stage, sequence),
+        ...(stage === "review"
+            ? { actions: reviewActions(database, issue, sequence, now) }
+            : { action: singleAction(database, issue, stage, sequence, now) }),
+    };
+    const payloadJson = canonical(payload);
+    database.prepare(`UPDATE career_reporter_relay_wakes
+      SET payload_json = ? WHERE wake_id = ? AND payload_json IS NULL`)
+        .run(payloadJson, wake.wake_id);
+    const stored = database.prepare(`SELECT payload_json FROM career_reporter_relay_wakes
+      WHERE wake_id = ?`).get(wake.wake_id);
+    if (!stored?.payload_json)
+        fail("reporter_relay_wake_not_persisted");
+    return parseJson(stored.payload_json);
+}
+
+function registerMaterials(database, backend, window, materials) {
+    return materials.map((material, index) => {
+        const contentJson = canonical(material.content);
+        const sourceId = `reporter-relay-source:${digest(canonical({
+            issueReference: window.issueReference,
+            index,
+            category: material.category,
+            occurredAt: material.occurredAt,
+            title: material.title,
+            content: material.content,
+        }))}`;
+        backend.trustedSystemCommands.registerReporterSourceFact({
+            sourceId,
+            sourceType: materialSourceType(material.category),
+            producerReference: `lingye-daily-material:${window.issueDate}:${material.category}`,
+            occurredAt: material.occurredAt,
+            recordedAt: window.periodEnd,
+            publicSubject: material.title,
+            fact: { category: material.category, content: material.content },
+            allowedNumbers: allowedNumbers([material.title, material.content]),
+            privacyScope: "public",
+        });
+        return {
+            ...material,
+            sourceId,
+            contentJson,
+        };
+    });
+}
+
+export function pruneReporterRelayRawMaterials(database, now = Date.now()) {
+    installCareerSchema(database);
+    const cutoff = timestamp(now, "timestamp") - RAW_MATERIAL_RETENTION_MS;
+    return runInTransaction(database, () => {
+        const issues = database.prepare(`SELECT * FROM career_reporter_relay_issues
+          WHERE raw_pruned_at IS NULL AND period_end <= ?
+          ORDER BY period_end, issue_reference`).all(cutoff);
+        for (const issue of issues) {
+            if (!["published", "rejected", "expired"].includes(issue.status)) {
+                database.prepare(`UPDATE career_reporter_relay_issues
+                  SET status = 'expired', updated_at = ? WHERE issue_reference = ?`)
+                    .run(now, issue.issue_reference);
+                database.prepare(`UPDATE career_reporter_story_workflows
+                  SET status = 'rejected', reviewed_at = COALESCE(reviewed_at, ?)
+                  WHERE issue_reference = ? AND status <> 'published'`)
+                    .run(now, issue.issue_reference);
+                for (const jobId of [issue.selector_job_id, issue.writer_job_id, issue.reviewer_job_id].filter(Boolean)) {
+                    database.prepare(`UPDATE career_jobs
+                      SET status = 'expired', ended_at = COALESCE(ended_at, ?), updated_at = ?
+                      WHERE job_id = ? AND status NOT IN ('completed', 'cancelled', 'transferred', 'expired')`)
+                        .run(now, now, jobId);
+                    database.prepare(`DELETE FROM career_job_object_locks WHERE job_id = ?`).run(jobId);
+                }
+            }
+            const sourceIds = database.prepare(`SELECT source_id
+              FROM career_reporter_relay_materials WHERE issue_reference = ?`)
+                .all(issue.issue_reference).map((row) => row.source_id);
+            const articleIds = database.prepare(`SELECT article_id FROM career_reporter_articles
+              WHERE job_id = ?`).all(issue.writer_job_id ?? "").map((row) => row.article_id);
+            for (const articleId of articleIds)
+                database.prepare(`DELETE FROM career_reporter_article_citations WHERE article_id = ?`).run(articleId);
+            database.prepare(`UPDATE career_reporter_material_packs
+              SET source_ids_json = '[]', source_snapshot_json = '[]',
+                  status = 'consumed', consumed_at = COALESCE(consumed_at, ?)
+              WHERE pack_id = ?`).run(now, issue.pack_id);
+            database.prepare(`DELETE FROM career_reporter_relay_wakes
+              WHERE issue_reference = ?`).run(issue.issue_reference);
+            database.prepare(`DELETE FROM career_reporter_relay_materials
+              WHERE issue_reference = ?`).run(issue.issue_reference);
+            for (const sourceId of sourceIds) {
+                database.prepare(`DELETE FROM career_reporter_source_facts
+                  WHERE source_id = ? AND NOT EXISTS (
+                    SELECT 1 FROM career_reporter_article_citations WHERE source_id = ?
+                  )`).run(sourceId, sourceId);
+            }
+            database.prepare(`UPDATE career_reporter_relay_issues
+              SET raw_pruned_at = ?, updated_at = ? WHERE issue_reference = ?`)
+                .run(now, now, issue.issue_reference);
+        }
+        return issues.length;
+    });
+}
+
+export function startReporterRelayIssue(database, backend, input) {
+    installCareerSchema(database);
+    const now = timestamp(input?.now ?? Date.now(), "timestamp");
+    const window = normalizeIssueWindow(input);
+    if (now < window.periodEnd || beijingDate(window.periodEnd) !== window.issueDate)
+        fail("reporter_relay_start_too_early");
+    return runInTransaction(database, () => {
+        pruneReporterRelayRawMaterials(database, now);
+        const existing = database.prepare(`SELECT * FROM career_reporter_relay_issues
+          WHERE issue_reference = ?`).get(window.issueReference);
+        if (existing) {
+            if (existing.issue_date !== window.issueDate ||
+                existing.period_start !== window.periodStart || existing.period_end !== window.periodEnd)
+                fail("reporter_relay_issue_conflict");
+            return {
+                issueDate: window.issueDate,
+                status: "already_started",
+                wake: reporterRelayWake(database, window.issueReference, now, "selection"),
+            };
+        }
+        const roster = ensureReporterDutyRoles(database, window.periodEnd, {
+            drawInt: input?.drawInt ?? randomInt,
+        });
+        if (roster.length !== 3)
+            fail("reporter_duty_roster_incomplete");
+        const role = Object.fromEntries(roster.map((entry) => [entry.role, entry]));
+        if (!role.selector || !role.writer || !role.reviewer)
+            fail("reporter_duty_roster_incomplete");
+        const materials = registerMaterials(database, backend, window, [
+            ...todayBoardMaterials(window.periodEnd),
+            ...weatherMaterials(window.periodEnd),
+            ...togetherMaterials(database, window),
+        ]);
+        if (materials.length === 0)
+            fail("reporter_relay_material_empty");
+        const packId = `reporter-relay-pack:${window.issueDate}`;
+        backend.trustedSystemCommands.createReporterMaterialPack({
+            packId,
+            issueReference: window.issueReference,
+            requiredLevel: 1,
+            difficultyLevel: 1,
+            sourceIds: materials.map((material) => material.sourceId),
+            trustedDailyRelay: true,
+        });
+        const selectorJobId = `reporter-relay-job:${window.issueDate}:selector`;
+        backend.trustedSystemCommands.createJob({
+            jobId: selectorJobId,
+            career: "reporter",
+            sourceType: "reporter_daily_selection",
+            sourceId: materials[0].sourceId,
+            objectType: "reporter_issue",
+            objectId: window.issueReference,
+            ownerResidentId: null,
+            requiredLevel: 1,
+            difficultyLevel: 1,
+            assignmentMode: "accepted",
+        });
+        backend.trustedSystemCommands.acceptJob(selectorJobId, role.selector.residentId);
+        database.prepare(`INSERT INTO career_reporter_relay_issues (
+          issue_reference, issue_date, period_start, period_end, pack_id,
+          selector_job_id, selector_resident_id, writer_resident_id, reviewer_resident_id,
+          status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'selector_pending', ?, ?)`)
+            .run(window.issueReference, window.issueDate, window.periodStart, window.periodEnd,
+                packId, selectorJobId, role.selector.residentId, role.writer.residentId,
+                role.reviewer.residentId, now, now);
+        const insertMaterial = database.prepare(`INSERT INTO career_reporter_relay_materials (
+          issue_reference, material_index, source_id, category, occurred_at, title, content_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)`);
+        materials.forEach((material, index) => insertMaterial.run(
+            window.issueReference, index, material.sourceId, material.category,
+            material.occurredAt, material.title, material.contentJson,
+        ));
+        return {
+            issueDate: window.issueDate,
+            status: "started",
+            wake: reporterRelayWake(database, window.issueReference, now, "selection"),
+        };
+    });
+}
+
+export function beginReporterRelayWriting(database, backend, input) {
+    installCareerSchema(database);
+    const now = timestamp(input?.now ?? Date.now(), "timestamp");
+    const selectionText = identifier(input?.selectionText, "selection_text");
+    const issue = requireIssue(database, input?.issueReference);
+    if (issue.status !== "selector_pending" ||
+        issue.selector_resident_id !== input?.residentId ||
+        issue.selector_job_id !== input?.jobId)
+        fail("reporter_relay_selection_not_actionable");
+    const writerJobId = `reporter-relay-job:${issue.issue_date}:writer`;
+    const reviewerJobId = `reporter-relay-job:${issue.issue_date}:reviewer`;
+    const primarySourceId = backend.trustedQueries.getJob(issue.selector_job_id).sourceId;
+    backend.trustedSystemCommands.createJob({
+        jobId: writerJobId,
+        career: "reporter",
+        sourceType: "reporter_daily_writing",
+        sourceId: primarySourceId,
+        objectType: "reporter_article",
+        objectId: `${issue.issue_reference}:article`,
+        ownerResidentId: null,
+        requiredLevel: 1,
+        difficultyLevel: 1,
+        assignmentMode: "accepted",
+    });
+    backend.trustedSystemCommands.acceptJob(writerJobId, issue.writer_resident_id);
+    backend.forResident(issue.writer_resident_id).claimReporterMaterialPack({
+        packId: issue.pack_id,
+        jobId: writerJobId,
+        idempotencyKey: `reporter-relay:${issue.issue_date}:writer:claim`,
+    });
+    backend.trustedSystemCommands.createJob({
+        jobId: reviewerJobId,
+        career: "reporter",
+        sourceType: "reporter_daily_reviewing",
+        sourceId: `${issue.issue_reference}:reviewing`,
+        objectType: "reporter_review",
+        objectId: `${issue.issue_reference}:review`,
+        ownerResidentId: null,
+        requiredLevel: 1,
+        difficultyLevel: 1,
+        assignmentMode: "accepted",
+    });
+    backend.trustedSystemCommands.acceptJob(reviewerJobId, issue.reviewer_resident_id);
+    createReporterStoryWorkflow(database, {
+        workflowId: `reporter-relay-workflow:${issue.issue_date}`,
+        issueReference: issue.issue_reference,
+        selectorJobId: issue.selector_job_id,
+        writerJobId,
+        reviewerJobId,
+        selectorResidentId: issue.selector_resident_id,
+        writerResidentId: issue.writer_resident_id,
+        reviewerResidentId: issue.reviewer_resident_id,
+        now,
+    });
+    database.prepare(`UPDATE career_reporter_relay_issues
+      SET writer_job_id = ?, reviewer_job_id = ?, selection_text = ?,
+          status = 'writer_pending', updated_at = ?
+      WHERE issue_reference = ?`)
+        .run(writerJobId, reviewerJobId, selectionText, now, issue.issue_reference);
+    return reporterRelayWake(database, issue.issue_reference, now);
+}
+
+export function markReporterRelayArticle(database, input) {
+    installCareerSchema(database);
+    const now = timestamp(input?.now ?? Date.now(), "timestamp");
+    const issue = requireIssue(database, input?.issueReference);
+    const expected = issue.status === "writer_pending" ? "writer_pending" : "supplement_pending";
+    if (issue.status !== expected || issue.writer_resident_id !== input?.residentId ||
+        issue.writer_job_id !== input?.jobId)
+        fail("reporter_relay_writing_not_actionable");
+    database.prepare(`UPDATE career_reporter_relay_issues
+      SET article_id = ?, status = 'review_pending', updated_at = ?
+      WHERE issue_reference = ?`)
+        .run(identifier(input?.articleId, "article_id"), now, issue.issue_reference);
+    return reporterRelayWake(database, issue.issue_reference, now);
+}
+
+export function markReporterRelayReview(database, input) {
+    installCareerSchema(database);
+    const now = timestamp(input?.now ?? Date.now(), "timestamp");
+    const issue = requireIssue(database, input?.issueReference);
+    if (issue.status !== "review_pending" || issue.reviewer_resident_id !== input?.residentId ||
+        issue.reviewer_job_id !== input?.jobId)
+        fail("reporter_relay_review_not_actionable");
+    const decision = input?.decision;
+    if (!['approve', 'needs_supplement', 'reject'].includes(decision))
+        fail("reporter_invalid_review_decision");
+    if (decision === "needs_supplement" && issue.supplement_count >= 1)
+        fail("reporter_relay_supplement_limit_reached");
+    const feedback = decision === "approve"
+        ? null
+        : identifier(input?.feedback, "review_feedback");
+    if (decision === "approve") {
+        database.prepare(`UPDATE career_reporter_relay_issues
+          SET status = 'ready', review_feedback = NULL, ready_at = ?, updated_at = ?
+          WHERE issue_reference = ?`).run(now, now, issue.issue_reference);
+        return null;
+    }
+    if (decision === "reject") {
+        database.prepare(`UPDATE career_reporter_relay_issues
+          SET status = 'rejected', review_feedback = ?, rejected_at = ?, updated_at = ?
+          WHERE issue_reference = ?`).run(feedback, now, now, issue.issue_reference);
+        database.prepare(`UPDATE career_reporter_material_packs
+          SET status = 'consumed', consumed_at = COALESCE(consumed_at, ?)
+          WHERE pack_id = ?`).run(now, issue.pack_id);
+        return null;
+    }
+    database.prepare(`UPDATE career_reporter_relay_issues
+      SET status = 'supplement_pending', review_feedback = ?, supplement_count = 1,
+          updated_at = ? WHERE issue_reference = ?`)
+        .run(feedback, now, issue.issue_reference);
+    return reporterRelayWake(database, issue.issue_reference, now);
+}
+
+function reporterName(residentId) {
+    const farm = playerFarms().find((candidate) =>
+        candidate?.doorbellMcpMigration?.residentId === residentId);
+    return String(farm?.aiName || farm?.name || "社区记者");
+}
+
+export function publishReadyReporterRelay(database, backend, input) {
+    installCareerSchema(database);
+    const now = timestamp(input?.now ?? Date.now(), "timestamp");
+    const issueDate = identifier(input?.issueDate, "issue_date");
+    return runInTransaction(database, () => {
+        const issue = database.prepare(`SELECT * FROM career_reporter_relay_issues
+          WHERE issue_date = ?`).get(issueDate);
+        if (!issue || !["ready", "published"].includes(issue.status))
+            return { issueDate, status: "pending", publication: null };
+        const scheduledPublicationAt = beijingTimestamp(issueDate, 9);
+        if (now < scheduledPublicationAt)
+            return { issueDate, status: "pending", publication: null };
+        const article = database.prepare(`SELECT article_text, version
+          FROM career_reporter_articles WHERE article_id = ?`).get(issue.article_id);
+        if (!article)
+            fail("reporter_relay_article_missing");
+        return {
+            issueDate,
+            status: "ready",
+            publication: {
+                publication_id: `reporter-publication:${issue.article_id}`,
+                scheduled_publication_at: new Date(scheduledPublicationAt).toISOString(),
+                selector: reporterName(issue.selector_resident_id),
+                writer: reporterName(issue.writer_resident_id),
+                reviewer: reporterName(issue.reviewer_resident_id),
+                article_text: article.article_text,
+                version: article.version,
+            },
+        };
+    });
+}
+
+export function acknowledgePublishedReporterRelay(database, backend, input) {
+    installCareerSchema(database);
+    const now = timestamp(input?.now ?? Date.now(), "timestamp");
+    const issueDate = identifier(input?.issueDate, "issue_date");
+    const publicationId = identifier(input?.publicationId, "publication_id");
+    const publishedAt = timestamp(input?.publishedAt, "published_at");
+    if (publishedAt < beijingTimestamp(issueDate, 9))
+        fail("reporter_relay_publication_too_early");
+    return runInTransaction(database, () => {
+        const issue = database.prepare(`SELECT * FROM career_reporter_relay_issues
+          WHERE issue_date = ?`).get(issueDate);
+        if (!issue || !["ready", "published"].includes(issue.status))
+            fail("reporter_relay_publication_not_ready");
+        const expectedPublicationId = `reporter-publication:${issue.article_id}`;
+        if (publicationId !== expectedPublicationId)
+            fail("reporter_relay_publication_id_conflict");
+        if (issue.status === "published") {
+            if (issue.published_at !== publishedAt)
+                fail("reporter_relay_publication_ack_conflict");
+            return {
+                issueDate,
+                status: "already_published",
+                publicationId,
+                publishedAt,
+            };
+        }
+        const publication = backend.trustedSystemCommands.publishReporterArticle({
+            articleId: issue.article_id,
+            publicationId,
+            publishedAt,
+        });
+        if (publication.publicationId !== publicationId || publication.publishedAt !== publishedAt)
+            fail("reporter_relay_publication_ack_conflict");
+        const workflow = reporterWorkflowForJob(database, issue.writer_job_id);
+        markReporterWorkflowPublished(database, {
+            workflowId: workflow.workflowId,
+            publicationId,
+            now: publishedAt,
+        });
+        backend.trustedSystemCommands.completeJob({
+            jobId: issue.writer_job_id,
+            workerResidentId: issue.writer_resident_id,
+            validationPassed: true,
+            worldResultReference: `reporter-publication:${publicationId}`,
+        });
+        backend.trustedSystemCommands.completeJob({
+            jobId: issue.reviewer_job_id,
+            workerResidentId: issue.reviewer_resident_id,
+            validationPassed: true,
+            worldResultReference: `reporter-publication-review:${publicationId}`,
+        });
+        database.prepare(`UPDATE career_reporter_relay_issues
+          SET status = 'published', published_at = ?, updated_at = ?
+          WHERE issue_reference = ?`).run(publishedAt, now, issue.issue_reference);
+        return {
+            issueDate,
+            status: "published",
+            publicationId,
+            publishedAt,
+        };
+    });
+}

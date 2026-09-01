@@ -1,4 +1,4 @@
-export const CAREER_SCHEMA_VERSION = 8;
+export const CAREER_SCHEMA_VERSION = 9;
 export function installCareerSchema(database) {
     database.exec(`
     CREATE TABLE IF NOT EXISTS career_tracks (
@@ -420,6 +420,38 @@ export function installCareerSchema(database) {
     CREATE INDEX IF NOT EXISTS career_reporter_sections_owner_index
       ON career_reporter_sections(resident_id, created_at, section_id);
 
+    CREATE TABLE IF NOT EXISTS career_reporter_duty_roles (
+      duty_date TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('selector', 'writer', 'reviewer')),
+      duty_id TEXT NOT NULL UNIQUE REFERENCES career_duty_days(duty_id),
+      resident_id TEXT NOT NULL REFERENCES residents(resident_id),
+      assigned_at INTEGER NOT NULL,
+      PRIMARY KEY (duty_date, role),
+      UNIQUE (duty_date, resident_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS career_reporter_story_workflows (
+      workflow_id TEXT PRIMARY KEY,
+      issue_reference TEXT NOT NULL,
+      selector_job_id TEXT NOT NULL UNIQUE REFERENCES career_jobs(job_id),
+      writer_job_id TEXT NOT NULL UNIQUE REFERENCES career_jobs(job_id),
+      reviewer_job_id TEXT NOT NULL UNIQUE REFERENCES career_jobs(job_id),
+      selector_resident_id TEXT NOT NULL REFERENCES residents(resident_id),
+      writer_resident_id TEXT NOT NULL REFERENCES residents(resident_id),
+      reviewer_resident_id TEXT NOT NULL REFERENCES residents(resident_id),
+      article_id TEXT UNIQUE REFERENCES career_reporter_articles(article_id),
+      publication_id TEXT UNIQUE REFERENCES career_reporter_publications(publication_id),
+      status TEXT NOT NULL CHECK (status IN (
+        'selected', 'pending_review', 'needs_supplement', 'rejected', 'published'
+      )),
+      selected_at INTEGER NOT NULL,
+      submitted_at INTEGER,
+      reviewed_at INTEGER,
+      published_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS career_reporter_story_workflows_issue_index
+      ON career_reporter_story_workflows(issue_reference, selected_at, workflow_id);
+
     CREATE TABLE IF NOT EXISTS career_reporter_articles (
       article_id TEXT PRIMARY KEY,
       job_id TEXT NOT NULL REFERENCES career_jobs(job_id),
@@ -473,6 +505,68 @@ export function installCareerSchema(database) {
     );
     CREATE INDEX IF NOT EXISTS career_reporter_publications_job_index
       ON career_reporter_publications(job_id, article_version);
+
+    CREATE TABLE IF NOT EXISTS career_reporter_relay_issues (
+      issue_reference TEXT PRIMARY KEY,
+      issue_date TEXT NOT NULL UNIQUE,
+      period_start INTEGER NOT NULL,
+      period_end INTEGER NOT NULL CHECK (period_end > period_start),
+      pack_id TEXT NOT NULL UNIQUE REFERENCES career_reporter_material_packs(pack_id),
+      selector_job_id TEXT NOT NULL UNIQUE REFERENCES career_jobs(job_id),
+      writer_job_id TEXT UNIQUE REFERENCES career_jobs(job_id),
+      reviewer_job_id TEXT UNIQUE REFERENCES career_jobs(job_id),
+      selector_resident_id TEXT NOT NULL REFERENCES residents(resident_id),
+      writer_resident_id TEXT NOT NULL REFERENCES residents(resident_id),
+      reviewer_resident_id TEXT NOT NULL REFERENCES residents(resident_id),
+      selection_text TEXT,
+      article_id TEXT REFERENCES career_reporter_articles(article_id),
+      review_feedback TEXT,
+      supplement_count INTEGER NOT NULL DEFAULT 0 CHECK (supplement_count BETWEEN 0 AND 1),
+      status TEXT NOT NULL CHECK (status IN (
+        'selector_pending', 'writer_pending', 'review_pending',
+        'supplement_pending', 'ready', 'rejected', 'expired', 'published'
+      )),
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      ready_at INTEGER,
+      rejected_at INTEGER,
+      published_at INTEGER,
+      raw_pruned_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS career_reporter_relay_issues_status_index
+      ON career_reporter_relay_issues(status, issue_date);
+
+    CREATE TABLE IF NOT EXISTS career_reporter_relay_materials (
+      issue_reference TEXT NOT NULL REFERENCES career_reporter_relay_issues(issue_reference),
+      material_index INTEGER NOT NULL CHECK (material_index >= 0),
+      source_id TEXT NOT NULL UNIQUE REFERENCES career_reporter_source_facts(source_id),
+      category TEXT NOT NULL CHECK (category IN (
+        'today_board', 'weather_forecast', 'lingye_together'
+      )),
+      occurred_at INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      content_json TEXT NOT NULL,
+      PRIMARY KEY (issue_reference, material_index)
+    );
+
+    CREATE TABLE IF NOT EXISTS career_reporter_relay_wakes (
+      wake_id TEXT PRIMARY KEY,
+      issue_reference TEXT NOT NULL REFERENCES career_reporter_relay_issues(issue_reference),
+      stage TEXT NOT NULL CHECK (stage IN ('selection', 'writing', 'review', 'supplement')),
+      wake_sequence INTEGER NOT NULL CHECK (wake_sequence >= 1),
+      recipient_resident_id TEXT NOT NULL REFERENCES residents(resident_id),
+      payload_json TEXT,
+      created_at INTEGER NOT NULL,
+      UNIQUE (issue_reference, stage, wake_sequence)
+    );
+
+    CREATE TABLE IF NOT EXISTS career_reporter_together_cursors (
+      story_id TEXT NOT NULL,
+      story_round INTEGER NOT NULL CHECK (story_round >= 1),
+      history_count INTEGER NOT NULL CHECK (history_count >= 0),
+      observed_at INTEGER NOT NULL,
+      PRIMARY KEY (story_id, story_round)
+    );
 
     CREATE TABLE IF NOT EXISTS career_reporter_publication_likes (
       job_id TEXT NOT NULL REFERENCES career_jobs(job_id),
@@ -619,6 +713,12 @@ export function installCareerSchema(database) {
         .map((column) => column.name));
     if (!reporterArticleColumns.has("section_id"))
         database.exec("ALTER TABLE career_reporter_articles ADD COLUMN section_id TEXT");
+    const reporterRelayWakeColumns = new Set(database
+        .prepare("PRAGMA table_info(career_reporter_relay_wakes)")
+        .all()
+        .map((column) => column.name));
+    if (!reporterRelayWakeColumns.has("payload_json"))
+        database.exec("ALTER TABLE career_reporter_relay_wakes ADD COLUMN payload_json TEXT");
     database.exec(`
       CREATE INDEX IF NOT EXISTS career_reporter_material_packs_issue_index
         ON career_reporter_material_packs(issue_reference, pack_id);

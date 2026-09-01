@@ -14,6 +14,23 @@ import { careerExamAvailability, curriculumCatalogAvailability } from "../../car
 import { courseCatalog } from "../../career/course-catalog.js";
 import { careerAdvancementWorkEligibility } from "../../career/school-service.js";
 import {
+    createReporterStoryWorkflow,
+    ensureReporterDutyRoles,
+    markReporterWorkflowPublished,
+    markReporterWorkflowReviewed,
+    markReporterWorkflowSubmitted,
+    reporterDutyRole,
+    reporterWorkflowForJob,
+} from "../../career/reporter-newsroom-service.js";
+import {
+    beginReporterRelayWriting,
+    markReporterRelayArticle,
+    markReporterRelayReview,
+    reporterRelayIssue,
+    reporterRelayIssueForJob,
+    reporterRelayWake,
+} from "../../career/reporter-relay-service.js";
+import {
     applyWorldCheck,
     applyWorldTreatment,
     boundFarmSources,
@@ -43,6 +60,7 @@ import {
     BEIJING_EXAM_WEEKDAYS,
     EXAM_SESSION_DURATION_MS,
     EXAM_SESSION_START_HOUR,
+    beijingDate,
     isBeijingExamSessionOpen,
 } from "../../career/persistence.js";
 import { MAX_BODY_BYTES } from "../../config.js";
@@ -273,6 +291,11 @@ const CAREER_LABELS = Object.freeze({
     reporter: "记者",
     constable: "治安官",
 });
+const REPORTER_DUTY_TASK_LABELS = Object.freeze({
+    selector: "选题",
+    writer: "撰稿",
+    reviewer: "审稿",
+});
 const BANK_OPTION_LABELS = Object.freeze({
     "demand-deposit": "存入金币活期",
     "demand-withdraw": "取出金币活期",
@@ -315,6 +338,7 @@ const COMMISSION_OPTION_LABELS = Object.freeze([
     ["cancel", "取消委托"],
     ["reply", "回复委托消息"],
     ["check", "执行检查"],
+    ["select", "选入本期报道"],
     ["treat", "执行处理／治疗"],
     ["transfer", "转交委托"],
     ["submit", "提交工作结果"],
@@ -346,6 +370,12 @@ function internalOptionLabel(internalOption) {
         const sectionSubmit = /^commission:submit-section:[^:]+:[^:]+:(.+)$/u.exec(internalOption);
         if (sectionSubmit)
             return `向日报板块「${decodeURIComponent(sectionSubmit[1])}」提交稿件`;
+        if (/^commission:resolve:[^:]+:approve$/u.test(internalOption))
+            return "审稿通过并出版";
+        if (/^commission:resolve:[^:]+:needs_supplement$/u.test(internalOption))
+            return "退回撰稿记者补充";
+        if (/^commission:resolve:[^:]+:reject$/u.test(internalOption))
+            return "退稿";
         const action = internalOption.slice("commission:".length);
         return COMMISSION_OPTION_LABELS.find(([prefix]) => action === prefix || action.startsWith(`${prefix}:`))?.[1]
             ?? "推进委托";
@@ -388,6 +418,8 @@ function exposeOptionHandles(database, residentId, op, value, now) {
         if (!isPlainObject(candidate))
             return candidate;
         if (typeof candidate.option === "string") {
+            if (PUBLIC_OPTION_HANDLE_RE.test(candidate.option))
+                return Object.fromEntries(Object.entries(candidate).map(([key, entry]) => [key, expose(entry)]));
             return {
                 option: optionHandle(database, residentId, operation, candidate.option, now),
                 label: internalOptionLabel(candidate.option),
@@ -1370,7 +1402,7 @@ function schoolChoose(database, backend, residentId, now, args) {
 }
 
 function visibleCommissionRows(database, residentId, career) {
-    return database.prepare(`
+    const rows = database.prepare(`
       SELECT * FROM career_jobs
       WHERE career = ? AND (
         worker_resident_id = ?
@@ -1379,6 +1411,9 @@ function visibleCommissionRows(database, residentId, career) {
       )
       ORDER BY updated_at DESC, job_id
     `).all(career, residentId, residentId);
+    return career === "reporter"
+        ? rows.filter((row) => !row.source_type.startsWith("reporter_daily_"))
+        : rows;
 }
 
 function commissionMessages(database, jobId, residentId) {
@@ -1599,8 +1634,27 @@ function farmChefCommissionAction(database, backend, residentId, args, farm, now
     });
 }
 
+function reporterNewsroomRoster(database, now) {
+    return ensureReporterDutyRoles(database, now).map((assignment) => ({
+        dutyDate: assignment.dutyDate,
+        role: assignment.role,
+        reporter: publicFarmForResident(database, assignment.residentId),
+    }));
+}
+
+function reporterJobMatchesDuty(database, job, now) {
+    if (job.career !== "reporter" || job.status !== "available" ||
+        job.sourceType.endsWith(":writing") || job.sourceType.endsWith(":reviewing"))
+        return false;
+    if (reporterWorkflowForJob(database, job.jobId))
+        return false;
+    const materialPack = reporterMaterialPackForJob(database, job);
+    return materialPack.issueReference === `lingye-daily:${beijingDate(now)}`;
+}
+
 function commissionOptions(database, backend, rows, residentId, sources, now) {
     const options = [];
+    const newsroomRole = reporterDutyRole(database, residentId, now);
     for (const source of sources) {
         const existing = database.prepare("SELECT 1 FROM career_jobs WHERE source_type = ? AND source_id = ?")
             .get(source.sourceType, source.sourceId);
@@ -1617,8 +1671,24 @@ function commissionOptions(database, backend, rows, residentId, sources, now) {
             ? database.prepare("SELECT trade_id, silver_amount FROM career_commission_payments WHERE job_id = ?")
                 .get(job.jobId)
             : null;
-        if (job.status === "available" && job.ownerResidentId !== residentId &&
+        const newsroomWorkflow = job.career === "reporter"
+            ? reporterWorkflowForJob(database, job.jobId)
+            : null;
+        const originalReporterJob = job.career === "reporter" &&
+            !job.sourceType.endsWith(":writing") && !job.sourceType.endsWith(":reviewing") &&
+            !newsroomWorkflow;
+        if (originalReporterJob && newsroomRole?.role === "selector" &&
+            reporterJobMatchesDuty(database, job, now)) {
+            options.push(option(`commission:check:${job.jobId}:sources`));
+        }
+        else if (originalReporterJob && newsroomRole?.role === "selector" &&
+            job.workerResidentId === residentId && job.status === "active" &&
+            job.decisionCount === 1) {
+            options.push(option(`commission:select:${job.jobId}`));
+        }
+        else if (job.status === "available" && job.ownerResidentId !== residentId &&
             job.assignmentMode === "accepted" &&
+            job.career !== "reporter" &&
             workerLevel >= job.requiredLevel &&
             (job.career !== "agronomist" || agronomyPayment))
             options.push(option(`commission:accept:${job.jobId}`));
@@ -1638,13 +1708,22 @@ function commissionOptions(database, backend, rows, residentId, sources, now) {
             ["accepted", "assigned", "active"].includes(job.status)) {
             options.push(option(`commission:reply:${job.jobId}`, ["text"]));
         }
-        const currentWorkerOptions = workerOptions(
-            job,
-            residentId,
-            workerLevel,
-        );
+        let currentWorkerOptions = originalReporterJob
+            ? []
+            : workerOptions(job, residentId, workerLevel);
+        if (job.career === "reporter" && job.sourceType.endsWith(":writing") &&
+            !["selected", "needs_supplement"].includes(newsroomWorkflow?.status)) {
+            currentWorkerOptions = [];
+        }
+        if (job.career === "reporter" && job.sourceType.endsWith(":reviewing") &&
+            newsroomWorkflow?.status !== "pending_review") {
+            currentWorkerOptions = [];
+        }
         for (const value of currentWorkerOptions) {
-            const requires = value.includes(":submit:") || value.includes(":resolve:") ? ["text"] : [];
+            const requires = value.includes(":submit:") ||
+                (value.includes(":resolve:") && job.career !== "reporter")
+                ? ["text"]
+                : [];
             options.push(option(value, requires));
         }
         if (job.career === "reporter" &&
@@ -1686,6 +1765,11 @@ function commissionView(database, backend, residentId, career, args, sources, no
             .map(publicCommissionSource),
         ...(career === "reporter"
             ? {
+                newsroom: {
+                    dutyDate: beijingDate(now),
+                    role: reporterDutyRole(database, residentId, now)?.role ?? null,
+                    roster: reporterNewsroomRoster(database, now),
+                },
                 sections: backend.trustedQueries.listReporterSections(),
                 publications: reporterPublications.map((publication) => {
                     const { publicationId, authorResidentId, ...facts } = publication;
@@ -1705,11 +1789,79 @@ function commissionView(database, backend, residentId, career, args, sources, no
     });
 }
 
+function reporterPendingDutyStatus(database, residentId, now) {
+    const duty = reporterDutyRole(database, residentId, now);
+    if (!duty)
+        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这项记者工作当前不属于你的今日排班。");
+    const issue = reporterRelayIssue(database, duty.dutyDate);
+    const notIssued = !issue ||
+        (duty.role === "writer" && issue.status === "selector_pending") ||
+        (duty.role === "reviewer" &&
+            ["selector_pending", "writer_pending", "supplement_pending"].includes(issue.status));
+    if (!notIssued)
+        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托 option 当前不可用。");
+    const task = REPORTER_DUTY_TASK_LABELS[duty.role];
+    if (!task)
+        throw new Error("reporter_duty_role_invalid");
+    return success(`今日你在报社进行${task}任务，当前具体任务还未发放。届时会通过 bell 向你发放今日任务。`, {
+        newsroom: {
+            dutyDate: duty.dutyDate,
+            role: duty.role,
+            taskStatus: "not_issued",
+        },
+    });
+}
+
 function commissionJob(database, backend, jobId, career) {
     const row = database.prepare("SELECT career FROM career_jobs WHERE job_id = ?").get(jobId);
     if (!row || row.career !== career)
         throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托 option 当前不可用。");
     return backend.trustedQueries.getJob(jobId);
+}
+
+function parseReporterRelaySubmitOption(internalOption) {
+    const matched = /^commission:submit:(.+):relay-(selection|writing|supplement)-(\d+)$/u
+        .exec(internalOption);
+    if (!matched)
+        return null;
+    const sequence = Number(matched[3]);
+    if (!Number.isSafeInteger(sequence) || sequence < 1)
+        return null;
+    return { jobId: matched[1], stage: matched[2], sequence };
+}
+
+function reporterRelayActionAvailable(database, residentId, internalOption) {
+    const relaySubmit = parseReporterRelaySubmitOption(internalOption);
+    const submit = relaySubmit ? null : /^commission:submit:(.+)$/u.exec(internalOption);
+    const resolve = /^commission:resolve:(.+):(approve|needs_supplement|reject)$/u.exec(internalOption);
+    const jobId = relaySubmit?.jobId ?? submit?.[1] ?? resolve?.[1];
+    if (!jobId)
+        return false;
+    const relay = reporterRelayIssueForJob(database, jobId);
+    if (!relay)
+        return false;
+    if (relaySubmit) {
+        if (relaySubmit.stage === "selection") {
+            return relaySubmit.sequence === 1 && relay.selectorJobId === jobId &&
+                relay.status === "selector_pending" && relay.selectorResidentId === residentId;
+        }
+        return relay.writerJobId === jobId && relay.writerResidentId === residentId &&
+            ((relaySubmit.stage === "writing" && relaySubmit.sequence === 1 &&
+                relay.status === "writer_pending") ||
+            (relaySubmit.stage === "supplement" && relaySubmit.sequence === relay.supplementCount &&
+                relay.status === "supplement_pending"));
+    }
+    if (submit) {
+        if (relay.selectorJobId === jobId) {
+            return relay.status === "selector_pending" &&
+                relay.selectorResidentId === residentId;
+        }
+        return relay.writerJobId === jobId && relay.writerResidentId === residentId &&
+            ["writer_pending", "supplement_pending"].includes(relay.status);
+    }
+    return relay.reviewerJobId === jobId && relay.reviewerResidentId === residentId &&
+        relay.status === "review_pending" &&
+        (resolve[2] !== "needs_supplement" || relay.supplementCount === 0);
 }
 
 function qualificationLevel(database, residentId, career, now) {
@@ -1994,9 +2146,155 @@ function resolveSecurity(database, backend, residentId, job, resultKind, args, n
     });
 }
 
+function requireReporterRelayQualification(database, residentId, job, relay, expectedRole, now) {
+    if (qualificationLevel(database, residentId, "reporter", now) < job.requiredLevel) {
+        throw new LingyeBusinessError("QUALIFICATION_REQUIRED", "当前记者资格不满足这项工作。");
+    }
+    const duty = database.prepare(`SELECT 1
+      FROM career_reporter_duty_roles AS role
+      JOIN career_duty_days AS duty ON duty.duty_id = role.duty_id
+      JOIN career_employments AS employment ON employment.employment_id = duty.employment_id
+      WHERE role.duty_date = ? AND role.role = ? AND role.resident_id = ?
+        AND duty.status = 'scheduled' AND employment.status = 'active'
+        AND employment.availability = 'available'`).get(relay.issueDate, expectedRole, residentId);
+    if (beijingDate(now) !== relay.issueDate || !duty) {
+        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这项记者工作当前不属于你的今日排班。");
+    }
+}
+
+function submitReporterRelaySelection(database, backend, residentId, job, args, now) {
+    const relay = reporterRelayIssueForJob(database, job.jobId);
+    if (!relay || relay.selectorJobId !== job.jobId ||
+        relay.selectorResidentId !== residentId || relay.status !== "selector_pending" ||
+        job.workerResidentId !== residentId || !["accepted", "active"].includes(job.status)) {
+        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这份选题当前不属于你的排班。");
+    }
+    requireReporterRelayQualification(database, residentId, job, relay, "selector", now);
+    const actionKey = idempotencyKey(residentId, `commission:${job.jobId}:submit`, args);
+    backend.forResident(residentId).recordOwnJobDecision({
+        jobId: job.jobId,
+        idempotencyKey: actionKey,
+        kind: "question",
+        optionReference: args.option,
+        resultReference: `reporter-selection:${relay.issueReference}`,
+        consumesResources: false,
+        changesWorld: false,
+    });
+    const wake = beginReporterRelayWriting(database, backend, {
+        issueReference: relay.issueReference,
+        residentId,
+        jobId: job.jobId,
+        selectionText: args.text,
+        now,
+    });
+    backend.trustedSystemCommands.completeJob({
+        jobId: job.jobId,
+        workerResidentId: residentId,
+        validationPassed: true,
+        worldResultReference: `reporter-selection:${relay.issueReference}`,
+    });
+    return {
+        issueDate: relay.issueDate,
+        status: "writer_pending",
+        reporter_wake: wake,
+    };
+}
+
+function selectReporterWorkflow(database, backend, residentId, job, args, now) {
+    const role = reporterDutyRole(database, residentId, now);
+    const roster = ensureReporterDutyRoles(database, now);
+    if (role?.role !== "selector" || roster.length !== 3 ||
+        job.workerResidentId !== residentId || job.status !== "active" ||
+        job.decisionCount !== 1 || reporterWorkflowForJob(database, job.jobId)) {
+        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这条素材当前不能由你选入本期报道。");
+    }
+    const writer = roster.find((entry) => entry.role === "writer");
+    const reviewer = roster.find((entry) => entry.role === "reviewer");
+    if (!writer || !reviewer)
+        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "今日日报社三岗排班尚未完整。");
+    const materialPack = reporterMaterialPackForJob(database, job);
+    if (materialPack.issueReference !== `lingye-daily:${role.dutyDate}`)
+        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这条素材不属于今天的日报周期。");
+    const workflowId = `reporter-workflow:${job.jobId}`;
+    const writerJobId = `${job.jobId}:writing`;
+    const reviewerJobId = `${job.jobId}:reviewing`;
+    const selectionKey = idempotencyKey(residentId, `commission:${job.jobId}:select`, args);
+    backend.forResident(residentId).recordOwnJobDecision({
+        jobId: job.jobId,
+        idempotencyKey: selectionKey,
+        kind: "question",
+        optionReference: args.option,
+        resultReference: workflowId,
+        consumesResources: false,
+        changesWorld: false,
+    });
+    backend.trustedSystemCommands.completeJob({
+        jobId: job.jobId,
+        workerResidentId: residentId,
+        validationPassed: true,
+        worldResultReference: `reporter-selection:${workflowId}`,
+    });
+    backend.trustedSystemCommands.createJob({
+        jobId: writerJobId,
+        career: "reporter",
+        sourceType: `${job.sourceType}:writing`,
+        sourceId: job.sourceId,
+        objectType: "reporter_article",
+        objectId: `${workflowId}:article`,
+        ownerResidentId: null,
+        requiredLevel: job.requiredLevel,
+        difficultyLevel: job.difficultyLevel,
+        assignmentMode: "accepted",
+    });
+    backend.trustedSystemCommands.acceptJob(writerJobId, writer.residentId);
+    backend.forResident(writer.residentId).claimReporterMaterialPack({
+        packId: materialPack.packId,
+        jobId: writerJobId,
+        idempotencyKey: `${selectionKey}:writer:claim`,
+    });
+    backend.trustedSystemCommands.createJob({
+        jobId: reviewerJobId,
+        career: "reporter",
+        sourceType: `${job.sourceType}:reviewing`,
+        sourceId: job.sourceId,
+        objectType: "reporter_review",
+        objectId: `${workflowId}:review`,
+        ownerResidentId: null,
+        requiredLevel: job.requiredLevel,
+        difficultyLevel: job.difficultyLevel,
+        assignmentMode: "accepted",
+    });
+    backend.trustedSystemCommands.acceptJob(reviewerJobId, reviewer.residentId);
+    const workflow = createReporterStoryWorkflow(database, {
+        workflowId,
+        issueReference: materialPack.issueReference,
+        selectorJobId: job.jobId,
+        writerJobId,
+        reviewerJobId,
+        selectorResidentId: residentId,
+        writerResidentId: writer.residentId,
+        reviewerResidentId: reviewer.residentId,
+        now,
+    });
+    return {
+        workflow: {
+            workflowId: workflow.workflowId,
+            issueReference: workflow.issueReference,
+            status: workflow.status,
+        },
+        newsroom: {
+            dutyDate: role.dutyDate,
+            roster: reporterNewsroomRoster(database, now),
+        },
+    };
+}
+
 function submitReporter(database, backend, residentId, job, args, now, sectionId = null) {
-    if (job.decisionCount < 1)
+    const relay = reporterRelayIssueForJob(database, job.jobId);
+    if (!relay && job.decisionCount < 1)
         throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这份稿件尚未完成来源核对。");
+    if (relay)
+        requireReporterRelayQualification(database, residentId, job, relay, "writer", now);
     const submissionKey = idempotencyKey(residentId, `commission:${job.jobId}:submit`, args);
     const sourceFacts = commissionSourceFacts(database, job);
     const citations = sourceFacts.materialPack.sourceSnapshot.map((source, citationIndex) => ({
@@ -2004,28 +2302,177 @@ function submitReporter(database, backend, residentId, job, args, now, sectionId
         factDigest: source.factDigest,
         citationIndex,
     }));
-    const article = backend.forResident(residentId).submitReporterArticle({
-        jobId: job.jobId,
-        articleId: `reporter-article:${job.jobId}:v1`,
-        idempotencyKey: submissionKey,
-        articleText: args.text,
-        sectionId,
-        citations,
-        numericClaims: [],
-    });
+    const workflow = reporterWorkflowForJob(database, job.jobId);
+    if (!workflow || workflow.writerJobId !== job.jobId ||
+        workflow.writerResidentId !== residentId ||
+        !["selected", "needs_supplement"].includes(workflow.status) ||
+        (relay && !["writer_pending", "supplement_pending"].includes(relay.status))) {
+        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这份稿件当前不属于你的撰稿班次。");
+    }
+    const parent = workflow.status === "needs_supplement" && workflow.articleId
+        ? backend.trustedQueries.getReporterArticle(workflow.articleId)
+        : null;
+    const numericClaims = [];
+    const numericValues = [...args.text.matchAll(/(?<![\p{L}\p{N}.])[-+]?(?:\d+(?:\.\d+)?|\.\d+)(?![\p{L}\p{N}.])/gu)]
+        .map((match) => Number(match[0]));
+    for (const value of numericValues) {
+        const source = sourceFacts.sourceFacts.find((candidate) =>
+            candidate.allowedNumbers.some((allowed) => Object.is(allowed, value)));
+        if (!source)
+            throw new LingyeBusinessError("OP_REJECTED", "稿件中的数字缺少对应公开素材依据。");
+        numericClaims.push({ sourceId: source.sourceId, value });
+    }
     backend.forResident(residentId).recordOwnJobDecision({
         jobId: job.jobId,
         idempotencyKey: submissionKey,
         kind: "question",
         optionReference: args.option,
-        resultReference: article.articleId,
+        resultReference: `reporter-submission:${workflow.workflowId}:${parent ? parent.version + 1 : 1}`,
         consumesResources: false,
         changesWorld: false,
     });
+    const article = parent
+        ? backend.forResident(residentId).submitReporterSupplement({
+            jobId: job.jobId,
+            parentArticleId: parent.articleId,
+            articleId: `reporter-article:${job.jobId}:v${parent.version + 1}`,
+            idempotencyKey: submissionKey,
+            articleText: args.text,
+            sectionId,
+            citations,
+            numericClaims,
+        })
+        : backend.forResident(residentId).submitReporterArticle({
+            jobId: job.jobId,
+            articleId: `reporter-article:${job.jobId}:v1`,
+            idempotencyKey: submissionKey,
+            articleText: args.text,
+            sectionId,
+            citations,
+            numericClaims,
+        });
+    markReporterWorkflowSubmitted(database, {
+        workflowId: workflow.workflowId,
+        articleId: article.articleId,
+        now,
+    });
+    const wake = relay
+        ? markReporterRelayArticle(database, {
+            issueReference: relay.issueReference,
+            residentId,
+            jobId: job.jobId,
+            articleId: article.articleId,
+            now,
+        })
+        : null;
     return {
         submissionId: article.articleId,
         articleId: article.articleId,
         status: article.status,
+        ...(wake ? { reporter_wake: wake } : {}),
+    };
+}
+
+function reviewReporterWorkflow(database, backend, residentId, job, decision, args, now) {
+    const workflow = reporterWorkflowForJob(database, job.jobId);
+    const relay = reporterRelayIssueForJob(database, job.jobId);
+    if (!workflow || workflow.reviewerJobId !== job.jobId ||
+        workflow.reviewerResidentId !== residentId ||
+        workflow.status !== "pending_review" || !workflow.articleId ||
+        (relay && relay.status !== "review_pending")) {
+        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这份稿件当前不在你的审稿班次里。");
+    }
+    if (relay)
+        requireReporterRelayQualification(database, residentId, job, relay, "reviewer", now);
+    const reasonCode = decision === "approve"
+        ? "hard_checks_passed"
+        : decision === "needs_supplement"
+            ? "supplement_required"
+            : decision === "reject"
+                ? "unsupported_claim"
+                : null;
+    if (!reasonCode)
+        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个审稿结果当前不可用。");
+    const actionKey = idempotencyKey(residentId, `commission:${job.jobId}:review`, args);
+    const article = backend.trustedSystemCommands.reviewReporterArticle({
+        articleId: workflow.articleId,
+        decision,
+        reasonCode,
+        reviewerReference: `resident:${residentId}`,
+    });
+    backend.forResident(residentId).recordOwnJobDecision({
+        jobId: job.jobId,
+        idempotencyKey: actionKey,
+        kind: "question",
+        optionReference: args.option,
+        resultReference: `${article.articleId}:${decision}`,
+        consumesResources: false,
+        changesWorld: decision !== "needs_supplement",
+    });
+    const reviewed = markReporterWorkflowReviewed(database, {
+        workflowId: workflow.workflowId,
+        decision,
+        now,
+    });
+    const wake = relay
+        ? markReporterRelayReview(database, {
+            issueReference: relay.issueReference,
+            residentId,
+            jobId: job.jobId,
+            decision,
+            feedback: args.text,
+            now,
+        })
+        : null;
+    if (decision === "needs_supplement") {
+        return {
+            workflow: reviewed,
+            articleId: article.articleId,
+            status: article.status,
+            ...(wake ? { reporter_wake: wake } : {}),
+        };
+    }
+    if (relay && decision === "approve") {
+        return {
+            workflow: reviewed,
+            articleId: article.articleId,
+            publication: null,
+            status: "ready",
+        };
+    }
+    let publication = null;
+    if (decision === "approve") {
+        publication = backend.trustedSystemCommands.publishReporterArticle({
+            articleId: article.articleId,
+            publicationId: `reporter-publication:${article.articleId}`,
+        });
+        markReporterWorkflowPublished(database, {
+            workflowId: workflow.workflowId,
+            publicationId: publication.publicationId,
+            now,
+        });
+    }
+    else {
+        backend.trustedSystemCommands.completeJob({
+            jobId: workflow.writerJobId,
+            workerResidentId: workflow.writerResidentId,
+            validationPassed: true,
+            worldResultReference: `reporter-rejected:${article.articleId}`,
+        });
+    }
+    backend.trustedSystemCommands.completeJob({
+        jobId: workflow.reviewerJobId,
+        workerResidentId: workflow.reviewerResidentId,
+        validationPassed: true,
+        worldResultReference: decision === "approve"
+            ? `reporter-publication-review:${publication.publicationId}`
+            : `reporter-rejection-review:${article.articleId}`,
+    });
+    return {
+        workflow: reporterWorkflowForJob(database, job.jobId),
+        articleId: article.articleId,
+        publication,
+        status: decision === "approve" ? "published" : "rejected",
     };
 }
 
@@ -2087,7 +2534,9 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
             currentOptions.push(option(`commission:like:${encodeURIComponent(publication.publicationId)}`));
         }
     }
-    if (!currentOptions.some((entry) => entry.option === args.option)) {
+    const structuredReporterRelay = career === "reporter" &&
+        reporterRelayActionAvailable(database, residentId, args.option);
+    if (!structuredReporterRelay && !currentOptions.some((entry) => entry.option === args.option)) {
         if (qualificationLevel(database, residentId, career, now) === 0 &&
             hasPendingCertificate(database, residentId, career, now)) {
             throw new LingyeBusinessError("QUALIFICATION_NOT_EFFECTIVE", WORK_NOT_STARTED_MESSAGE);
@@ -2171,6 +2620,14 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
             options: commissionOptions(database, backend, visibleCommissionRows(database, residentId, career), residentId, sources, now),
         });
     }
+    const reporterSelection = /^commission:select:(.+)$/u.exec(args.option);
+    if (reporterSelection) {
+        if (career !== "reporter" || args.amount !== undefined || args.text !== undefined)
+            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这条素材当前不能进入选题。");
+        const job = commissionJob(database, backend, reporterSelection[1], career);
+        return success("这条素材已选入本期，已经交给今日撰稿记者。",
+            selectReporterWorkflow(database, backend, residentId, job, args, now));
+    }
     const binding = /^commission:(accept):(.+)$/u.exec(args.option);
     const republish = /^commission:republish:(.+)$/u.exec(args.option);
     if (republish) {
@@ -2222,9 +2679,10 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
     if (!actionWithValue && !actionWithoutValue)
         throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托 option 当前不可用。");
     const kind = (actionWithValue ?? actionWithoutValue)[1];
-    const jobId = (actionWithValue ?? actionWithoutValue)[2];
+    const relaySubmit = kind === "submit" ? parseReporterRelaySubmitOption(args.option) : null;
+    const jobId = relaySubmit?.jobId ?? (actionWithValue ?? actionWithoutValue)[2];
     const value = actionWithValue?.[3];
-    const job = commissionJob(database, backend, jobId, career);
+    let job = commissionJob(database, backend, jobId, career);
     if (kind === "cancel") {
         if (job.ownerResidentId !== residentId || args.amount !== undefined || args.text !== undefined)
             throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托 option 当前不可用。");
@@ -2266,6 +2724,11 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
             `commission-reply:${messageId}`,
             args.text,
         ));
+    }
+    if (kind === "check" && career === "reporter" && job.status === "available" &&
+        reporterDutyRole(database, residentId, now)?.role === "selector" &&
+        reporterJobMatchesDuty(database, job, now)) {
+        job = backend.trustedSystemCommands.acceptJob(job.jobId, residentId);
     }
     if (job.workerResidentId !== residentId)
         throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托不属于当前从业者。");
@@ -2328,7 +2791,25 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
     if (kind === "submit" && career === "reporter") {
         if (value !== undefined || args.amount !== undefined || typeof args.text !== "string")
             throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这份稿件当前不可提交。");
+        const relay = reporterRelayIssueForJob(database, job.jobId);
+        if (relay?.selectorJobId === job.jobId) {
+            return success("这条素材已选入本期，已经交给今日撰稿记者。",
+                submitReporterRelaySelection(database, backend, residentId, job, args, now));
+        }
         return success("稿件已进入审核前状态。", submitReporter(database, backend, residentId, job, args, now));
+    }
+    if (kind === "resolve" && career === "reporter") {
+        const relay = reporterRelayIssueForJob(database, job.jobId);
+        const feedbackRequired = relay && ["needs_supplement", "reject"].includes(value);
+        if (!value || args.amount !== undefined ||
+            (feedbackRequired ? typeof args.text !== "string" : args.text !== undefined))
+            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个审稿结果当前不可用。");
+        const result = reviewReporterWorkflow(database, backend, residentId, job, value, args, now);
+        return success(value === "approve"
+            ? "审稿通过，稿件已准备好，等待早上 9 点并入《铃野日报》。"
+            : value === "needs_supplement"
+                ? "稿件已退回撰稿记者补充。"
+                : "稿件未通过审核，本次报道结束。", result);
     }
     if (kind === "resolve" && career === "constable") {
         if (!value || args.amount !== undefined || typeof args.text !== "string")
@@ -2468,7 +2949,7 @@ export function createLingyeActionExecutor(options) {
                 if (result !== undefined)
                     return publicLingyeResult(database, input.residentId, input.op, result, actionNow);
                 const career = COMMISSION_CAREERS[input.op];
-                syncAuthorityJobs(database, backend);
+                syncAuthorityJobs(database, backend, actionNow);
                 const sources = input.farm
                     ? boundFarmSources(database, input.farm, input.residentId)
                     : [];
@@ -2495,6 +2976,9 @@ export function createLingyeActionExecutor(options) {
                 else if (Object.hasOwn(args, "option")) {
                     result = commissionAction(database, backend, input.residentId, career, args,
                         sources, actionNow, options.afterWorldApplyForTesting);
+                }
+                else if (input.op === "go.newsroom.commission") {
+                    result = reporterPendingDutyStatus(database, input.residentId, actionNow);
                 }
                 else {
                     result = commissionView(database, backend, input.residentId, career, args, sources, actionNow);
