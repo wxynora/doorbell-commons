@@ -90,3 +90,28 @@ test("Ranch scene renders authority counts and non-interactive visitor markers",
   assert.doesNotMatch(sceneSource, /farm-ranch-presence/);
   assert.match(sceneSource, /return animal\.visitor \? \(\s*<span[\s\S]*牧场来客[\s\S]*role="img"/);
 });
+
+test("Ranch presence and collection control share one non-overlapping vertical stack", () => {
+  const fieldSource = readFileSync(new URL("./farm-field-content.tsx", import.meta.url), "utf8");
+  const pageStyles = readFileSync(new URL("../farm-page.css", import.meta.url), "utf8");
+  const ranchStyles = readFileSync(
+    new URL("../scenes/ranch/ranch-scene.css", import.meta.url),
+    "utf8",
+  );
+
+  const stackStart = fieldSource.indexOf('className="farm-ranch-status-stack"');
+  const presence = fieldSource.indexOf('className="farm-ranch-presence"', stackStart);
+  const collection = fieldSource.indexOf("<RanchCollectionControl", stackStart);
+  assert.ok(stackStart >= 0);
+  assert.ok(presence > stackStart);
+  assert.ok(collection > presence);
+  assert.match(
+    pageStyles,
+    /\.farm-ranch-status-stack\s*\{[^}]*display:\s*flex[^}]*flex-direction:\s*column[^}]*gap:/s,
+  );
+  assert.match(
+    pageStyles,
+    /\.farm-ranch-status-stack \.farm-ranch-collect\s*\{[^}]*position:\s*static[^}]*transform:\s*none/s,
+  );
+  assert.doesNotMatch(ranchStyles, /\.farm-ranch-presence\s*\{[^}]*position:\s*absolute/s);
+});

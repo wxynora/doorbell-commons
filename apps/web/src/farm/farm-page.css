@@ -2138,6 +2138,25 @@
   opacity: 0.72;
 }
 
+.farm-ranch-status-stack {
+  position: absolute;
+  top: calc(clamp(18px, 2.6vmin, 24px) + clamp(29px, 5.5vmin, 34px));
+  left: 50%;
+  z-index: 35;
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: clamp(7px, 1.4vmin, 10px);
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.farm-ranch-status-stack .farm-ranch-collect {
+  position: static;
+  pointer-events: auto;
+  transform: none;
+}
+
 .farm-scene-tabs span {
   font-size: clamp(0.62rem, 2.55cqw, 0.82rem);
 }

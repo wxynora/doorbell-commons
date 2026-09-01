@@ -953,21 +953,22 @@ export function FarmFieldContent({
         />
       ) : null}
       {activeScene === "ranch" ? (
-        <div aria-live="polite" className="farm-ranch-presence">
-          在场动物 {ranchSceneResidentCount ?? "—"} 只 · 来客 {ranchSceneVisitorCount ?? "—"} 只
+        <div className="farm-ranch-status-stack">
+          <div aria-live="polite" className="farm-ranch-presence">
+            在场动物 {ranchSceneResidentCount ?? "—"} 只 · 来客 {ranchSceneVisitorCount ?? "—"} 只
+          </div>
+          {!activeSceneUiState.selectedTool &&
+          !activeSceneUiState.bulletinOpen &&
+          !selectedLiveRanchResident &&
+          ranchCollectableCount > 0 &&
+          onRanchCollection ? (
+            <RanchCollectionControl
+              count={ranchCollectableCount}
+              onCollect={() => void submitRanchCollection()}
+              submitting={ranchCollectionAction.stage === "submitting"}
+            />
+          ) : null}
         </div>
-      ) : null}
-      {activeScene === "ranch" &&
-      !activeSceneUiState.selectedTool &&
-      !activeSceneUiState.bulletinOpen &&
-      !selectedLiveRanchResident &&
-      ranchCollectableCount > 0 &&
-      onRanchCollection ? (
-        <RanchCollectionControl
-          count={ranchCollectableCount}
-          onCollect={() => void submitRanchCollection()}
-          submitting={ranchCollectionAction.stage === "submitting"}
-        />
       ) : null}
       {activeScene === "ranch" && ranchCollectionAction.stage === "success" ? (
         <RanchCollectionReceipt

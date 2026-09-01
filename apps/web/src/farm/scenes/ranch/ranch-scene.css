@@ -3,10 +3,6 @@
 }
 
 .farm-ranch-presence {
-  position: absolute;
-  z-index: 34;
-  top: calc(clamp(18px, 2.6vmin, 24px) + clamp(29px, 5.5vmin, 34px));
-  left: 50%;
   display: grid;
   box-sizing: border-box;
   min-width: clamp(138px, 38vmin, 176px);
@@ -25,7 +21,6 @@
     inset 0 1px rgba(255, 255, 242, 0.78),
     0 2px 0 rgba(93, 68, 40, 0.28);
   pointer-events: none;
-  transform: translateX(-50%);
 }
 
 .farm-ranch-resident.is-visitor {
