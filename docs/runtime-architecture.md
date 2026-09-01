@@ -152,7 +152,9 @@ the market fee in the SQLite economy. Farm-side listing and order receipts persi
 orders into both stores, and restores unsold listings for terminated leases without duplicating
 inventory or payment.
 
-Human public purchase orders remain in the existing Farm market boundary. The buyer farm persists only
+Human public purchase orders remain in the existing Farm market boundary and accept only authoritative
+Kitchen ingredients (`ingredient`) and smelting materials (`material`); seeds, crops, recipes and
+finished dishes are neither projected nor accepted by the write boundary. The buyer farm persists only
 the requested item, unit silver price, target quantity and filled quantity; it does not pre-charge or
 create a second wallet. Each partial fulfillment validates the seller's current Farm inventory and the
 buyer's current silver on isolated farm copies, then uses the same atomic multi-farm replacement to

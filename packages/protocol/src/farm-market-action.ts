@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   farmCatalogDataSchema,
   farmCatalogDoorplateSchema,
+  farmCatalogMarketPurchaseOrderKindSchema,
   farmCatalogMarketRevisionSchema,
 } from "./farm-catalog.js";
 
@@ -34,6 +35,7 @@ export const farmMarketSupportedActionSchema = z.enum([
 ]);
 
 export const farmMarketListingKindSchema = z.enum(["seed", "material", "ingredient", "dish"]);
+export const farmMarketPurchaseOrderKindSchema = farmCatalogMarketPurchaseOrderKindSchema;
 export const farmMysteryMerchantKindSchema = z.enum(["material", "seed", "potion_set"]);
 
 export const farmMarketActionIdempotencyKeySchema = z.uuid();
@@ -147,7 +149,7 @@ const boundPurchaseOrderListRequestSchema = z
   .object({
     ...marketActionFields,
     action: z.literal("purchase-order-list"),
-    kind: farmMarketListingKindSchema,
+    kind: farmMarketPurchaseOrderKindSchema,
     item_id: marketItemIdSchema,
     qty: positiveIntegerSchema,
     price: positiveIntegerSchema,
@@ -252,7 +254,7 @@ const humanPurchaseOrderListRequestSchema = z
     ...humanIdentityFields,
     ...marketActionFields,
     action: z.literal("purchase-order-list"),
-    kind: farmMarketListingKindSchema,
+    kind: farmMarketPurchaseOrderKindSchema,
     item_id: marketItemIdSchema,
     qty: positiveIntegerSchema,
     price: positiveIntegerSchema,
@@ -329,7 +331,7 @@ const marketBarterUnlistOutcomeSchema = z
 const marketPurchaseOrderListOutcomeSchema = z
   .object({
     listing_id: farmMarketActionIdempotencyKeySchema,
-    kind: farmMarketListingKindSchema,
+    kind: farmMarketPurchaseOrderKindSchema,
     item_id: marketItemIdSchema,
     quantity: positiveIntegerSchema,
     filled_quantity: z.number().int().nonnegative(),
@@ -341,7 +343,7 @@ const marketPurchaseOrderListOutcomeSchema = z
 const marketPurchaseOrderUnlistOutcomeSchema = z
   .object({
     listing_id: farmMarketActionIdempotencyKeySchema,
-    kind: farmMarketListingKindSchema,
+    kind: farmMarketPurchaseOrderKindSchema,
     item_id: marketItemIdSchema,
     quantity: positiveIntegerSchema,
     filled_quantity: z.number().int().nonnegative(),
@@ -453,7 +455,7 @@ const farmMarketCrossFarmPurchaseOrderFulfillOutcomeSchema = z
   .object({
     order_owner_doorplate: farmCatalogDoorplateSchema,
     listing_id: farmMarketActionIdempotencyKeySchema,
-    kind: farmMarketListingKindSchema,
+    kind: farmMarketPurchaseOrderKindSchema,
     item_id: marketItemIdSchema,
     quantity: positiveIntegerSchema,
     remaining_quantity: z.number().int().nonnegative(),
@@ -618,6 +620,7 @@ export const boundFarmMarketActionErrorSchema = z
 export type FarmMarketAction = z.infer<typeof farmMarketActionSchema>;
 export type FarmMarketSupportedAction = z.infer<typeof farmMarketSupportedActionSchema>;
 export type FarmMarketListingKind = z.infer<typeof farmMarketListingKindSchema>;
+export type FarmMarketPurchaseOrderKind = z.infer<typeof farmMarketPurchaseOrderKindSchema>;
 export type FarmMysteryMerchantKind = z.infer<typeof farmMysteryMerchantKindSchema>;
 export type FarmMarketActionIdempotencyKey = z.infer<typeof farmMarketActionIdempotencyKeySchema>;
 export type FarmMarketActionRevision = z.infer<typeof farmMarketActionRevisionSchema>;

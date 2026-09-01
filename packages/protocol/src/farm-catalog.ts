@@ -487,9 +487,11 @@ export const farmCatalogMarketBarterListingSchema = z
   })
   .strict();
 
+export const farmCatalogMarketPurchaseOrderKindSchema = z.enum(["material", "ingredient"]);
+
 export const farmCatalogMarketPurchaseOrderItemSchema = z
   .object({
-    kind: z.enum(["seed", "material", "ingredient", "dish"]),
+    kind: farmCatalogMarketPurchaseOrderKindSchema,
     item_id: z.string().min(1),
     identity_state: z.literal("known"),
     name: z.string().min(1),
@@ -502,7 +504,7 @@ export const farmCatalogMarketPurchaseOrderSchema = z
   .object({
     buyer_farm_doorplate: farmCatalogDoorplateSchema,
     listing_id: z.uuid(),
-    kind: z.enum(["seed", "material", "ingredient", "dish"]),
+    kind: farmCatalogMarketPurchaseOrderKindSchema,
     item_id: z.string().min(1),
     identity_state: farmCatalogItemIdentityStateSchema,
     name: z.string().min(1).nullable(),
