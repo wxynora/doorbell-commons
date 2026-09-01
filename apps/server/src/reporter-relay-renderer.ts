@@ -1,0 +1,119 @@
+import type { ReporterRelayWake } from "@doorbell/protocol";
+
+function materialsJson(wake: ReporterRelayWake): string {
+  return JSON.stringify(wake.materials, null, 2);
+}
+
+function actionCall(
+  action: { op: "go.newsroom.commission"; args: { option: string } },
+  text?: string,
+) {
+  return `doorbell(${JSON.stringify({
+    op: action.op,
+    args: {
+      option: action.args.option,
+      ...(text === undefined ? {} : { text }),
+    },
+  })})`;
+}
+
+export function renderReporterRelayWake(wake: ReporterRelayWake): string {
+  const materials = materialsJson(wake);
+  switch (wake.stage) {
+    case "selection":
+      return `【铃野日报社·今日选题】
+
+今天你负责本期《铃野日报》的选题。以下是本期全部可用的公开素材：
+
+${materials}
+
+请从中决定本期要报道的内容，写明选题重点和采用了哪些素材。无需先查看日报社工作，直接调用：
+
+${actionCall(wake.action, "你的选题结果")}
+
+只能依据以上素材，不要补充素材中没有的事实。`;
+    case "writing":
+      return `【铃野日报社·今日撰稿】
+
+选题记者已经完成选题：
+
+${wake.selection_text}
+
+本次可用的来源事实：
+
+${materials}
+
+请根据选题和来源事实写成可直接刊登的报道原稿。无需先查看日报社工作，直接调用：
+
+${actionCall(wake.action, "你的报道原稿")}
+
+不得把来源中没有的内容写成事实。`;
+    case "review": {
+      const approve = actionCall(wake.actions.approve);
+      const reject = actionCall(wake.actions.reject, "退稿原因");
+      if (wake.actions.supplement) {
+        return `【铃野日报社·今日审稿】
+
+撰稿记者已经提交原稿：
+
+${wake.article_text}
+
+本稿使用的来源事实：
+
+${materials}
+
+请核对事实、来源、隐私和格式，并从下面三种结果中选择一种：
+
+通过并刊登：
+${approve}
+
+退回补充：
+${actionCall(wake.actions.supplement, "需要补充或修改的具体内容")}
+
+退稿：
+${reject}`;
+      }
+      return `【铃野日报社·补充稿复审】
+
+撰稿记者已经提交补充后的原稿：
+
+${wake.article_text}
+
+上次审稿意见：
+
+${wake.review_feedback}
+
+本稿使用的来源事实：
+
+${materials}
+
+本期已经使用过一次退回补充，请核对事实、来源、隐私和格式，并从下面两种结果中选择一种：
+
+通过并刊登：
+${approve}
+
+退稿：
+${reject}`;
+    }
+    case "supplement":
+      return `【铃野日报社·原稿退回补充】
+
+审稿记者的具体意见：
+
+${wake.review_feedback}
+
+你上次提交的原稿：
+
+${wake.article_text}
+
+本稿使用的来源事实：
+
+${materials}
+
+请按审稿意见补充后重新提交。无需先查看日报社工作，直接调用：
+
+${actionCall(wake.action, "补充后的完整报道原稿")}`;
+  }
+}
+
+export const reporterRelayRenderer = { render: renderReporterRelayWake };

@@ -42,14 +42,18 @@ export class LingyeDailyService {
     this.#now = options.now ?? Date.now;
   }
 
-  publish(
-    authorization: string | undefined,
-    input: LingyeDailyPublishRequest,
-  ): LingyeDailyPublishResult {
+  authorize(authorization: string | undefined): void {
     const credential = readBearerCredential(authorization);
     if (!credential || !credentialsEqual(credential, this.#publishToken)) {
       throw new LingyeDailyPublishAuthenticationError();
     }
+  }
+
+  publish(
+    authorization: string | undefined,
+    input: LingyeDailyPublishRequest,
+  ): LingyeDailyPublishResult {
+    this.authorize(authorization);
     return this.#database.publishLingyeDailyIssue(input, this.#now());
   }
 

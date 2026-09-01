@@ -713,6 +713,14 @@ h2 {
   padding: 18px 18px 100px;
 }
 
+.live-app > .lingye-subpage {
+  position: fixed;
+  inset: 0;
+  z-index: 220;
+  min-width: 320px;
+  background: #e8e1d1;
+}
+
 .lingye-back-button {
   display: inline-flex;
   min-height: 44px;

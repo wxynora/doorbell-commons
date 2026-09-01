@@ -8,5 +8,6 @@ export const CANDIDATE_TWO_PUBLIC_ASSET_GLOBS = [
   "public/lingye/memorial/*.{jpg,png,webp}",
   "public/lingye/memorial/qixi-archive/*.{css,png,webp}",
   "public/lingye/together/*.{jpg,webp}",
+  "public/lingye/ui/lingye-daily-newspaper.png",
   "public/lingye/ui/memorial-album.png",
 ] as const;

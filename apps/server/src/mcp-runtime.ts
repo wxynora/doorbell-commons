@@ -34,6 +34,7 @@ import {
   QqNotGroupMemberError,
   type RegistrationAuthService,
 } from "./registration-auth.js";
+import type { ReporterRelayService } from "./reporter-relay-service.js";
 
 const MCP_PROTOCOL_VERSION = "2025-06-18";
 const FARM_STATUS_IDLE_MS = 10 * 60 * 1000;
@@ -306,6 +307,7 @@ export interface DoorbellMcpRuntimeOptions {
   farmActions: FarmMcpActionExecutor;
   lingyeActions: LingyeMcpActionExecutor;
   careerExamReminders?: Pick<CareerExamReminderService, "reconcile">;
+  reporterRelayService?: Pick<ReporterRelayService, "enqueue">;
   mcpEndpoint: string;
   now?: () => number;
   onNotificationDeliveryError?: (error: unknown) => void;
@@ -316,12 +318,41 @@ export interface DoorbellMcpRuntimeOptions {
   onResidentNotificationsRead?: (residentId: string) => void;
 }
 
+export function sanitizeAndEnqueueReporterRelayWake(
+  op: string,
+  result: LingyeActionResult,
+  reporterRelayService: Pick<ReporterRelayService, "enqueue"> | undefined,
+  onError: (error: unknown) => void,
+): LingyeActionResult {
+  if (
+    op !== "go.newsroom.commission" ||
+    !result.ok ||
+    !Object.hasOwn(result.data, "reporter_wake")
+  ) {
+    return result;
+  }
+  const { reporter_wake: reporterWake, ...publicData } = result.data;
+  if (reporterRelayService) {
+    try {
+      reporterRelayService.enqueue(reporterWake);
+    } catch (error) {
+      try {
+        onError(error);
+      } catch {
+        // Reporting a failed relay must not reveal its private payload or overturn completed work.
+      }
+    }
+  }
+  return { ...result, data: publicData };
+}
+
 export class DoorbellMcpRuntime {
   readonly #database: CommunityDatabase;
   readonly #registrationAuth: RegistrationAuthService;
   readonly #farmActions: FarmMcpActionExecutor;
   readonly #lingyeActions: LingyeMcpActionExecutor;
   readonly #careerExamReminders: Pick<CareerExamReminderService, "reconcile"> | undefined;
+  readonly #reporterRelayService: Pick<ReporterRelayService, "enqueue"> | undefined;
   readonly #allowedOrigin: string;
   readonly #now: () => number;
   readonly #onNotificationDeliveryError: (error: unknown) => void;
@@ -342,6 +373,7 @@ export class DoorbellMcpRuntime {
     this.#farmActions = options.farmActions;
     this.#lingyeActions = options.lingyeActions;
     this.#careerExamReminders = options.careerExamReminders;
+    this.#reporterRelayService = options.reporterRelayService;
     this.#allowedOrigin = new URL(options.mcpEndpoint).origin;
     this.#now = options.now ?? Date.now;
     this.#onNotificationDeliveryError = options.onNotificationDeliveryError ?? (() => undefined);
@@ -643,7 +675,16 @@ export class DoorbellMcpRuntime {
             }
           }
         }
-        return lingyeToolResult(op, parsed.data, result);
+        return lingyeToolResult(
+          op,
+          parsed.data,
+          sanitizeAndEnqueueReporterRelayWake(
+            registered.operation.op,
+            result,
+            this.#reporterRelayService,
+            this.#onNotificationDeliveryError,
+          ),
+        );
       } catch (error) {
         if (
           error instanceof LingyeMcpActionCredentialInvalidError ||

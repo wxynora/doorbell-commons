@@ -1255,6 +1255,7 @@ export type CandidateTwoAction =
   | { type: "logout" }
   | { type: "view-ready" }
   | { type: "lingye-glimmer-open" }
+  | { type: "lingye-daily-open" }
   | { type: "lingye-memorial-open" }
   | { type: "lingye-together-open" }
   | { type: "lingye-presence-change"; active: boolean; mapActive: boolean }
@@ -1296,6 +1297,7 @@ const candidateTwoActionKeys = {
   "community-connection-preference-save": ["type", "field", "value"],
   logout: ["type"],
   "lingye-glimmer-open": ["type"],
+  "lingye-daily-open": ["type"],
   "lingye-memorial-open": ["type"],
   "lingye-together-open": ["type"],
   "lingye-presence-change": ["type", "active", "mapActive"],
@@ -1573,6 +1575,7 @@ export function parseCandidateTwoAction(value: unknown): CandidateTwoAction | nu
     type === "logout" ||
     type === "shared-memes-open" ||
     type === "lingye-glimmer-open" ||
+    type === "lingye-daily-open" ||
     type === "lingye-memorial-open" ||
     type === "lingye-together-open" ||
     type === "owner-profile-career-open" ||
@@ -4670,6 +4673,9 @@ const LINGYE_SCREEN = `
         <button class="candidate2-lingye-memories" type="button" aria-label="打开纪念册" onclick="openLingyeMemorial()">
             <img src="/lingye/ui/memorial-album.png" alt="" width="256" height="256" draggable="false">
         </button>
+        <button class="candidate2-lingye-daily-entry" type="button" aria-label="打开铃野日报" onclick="openLingyeDaily()">
+            <img src="/lingye/ui/lingye-daily-newspaper.png" alt="" width="256" height="256" draggable="false">
+        </button>
     </div>
 `;
 
@@ -5103,10 +5109,10 @@ const LINGYE_STYLES = `
             -webkit-user-drag: none;
         }
 
-        .candidate2-lingye-memories {
+        .candidate2-lingye-memories,
+        .candidate2-lingye-daily-entry {
             position: absolute;
             z-index: 30;
-            top: 86px;
             right: 12px;
             width: clamp(52px, 14vw, 60px);
             aspect-ratio: 1;
@@ -5117,7 +5123,16 @@ const LINGYE_STYLES = `
             touch-action: manipulation;
         }
 
-        .candidate2-lingye-memories img {
+        .candidate2-lingye-memories {
+            top: 86px;
+        }
+
+        .candidate2-lingye-daily-entry {
+            top: calc(94px + clamp(52px, 14vw, 60px));
+        }
+
+        .candidate2-lingye-memories img,
+        .candidate2-lingye-daily-entry img {
             display: block;
             width: 100%;
             height: 100%;
@@ -5128,7 +5143,8 @@ const LINGYE_STYLES = `
             -webkit-user-drag: none;
         }
 
-        .candidate2-lingye-memories:focus-visible {
+        .candidate2-lingye-memories:focus-visible,
+        .candidate2-lingye-daily-entry:focus-visible {
             outline: 3px solid rgba(255, 248, 222, 0.92);
             outline-offset: 2px;
             border-radius: 18px;
@@ -7709,6 +7725,10 @@ const LINGYE_SCRIPT = `
             return;
         }
         sendAction({ type: 'lingye-memorial-open' });
+    }
+
+    function openLingyeDaily() {
+        sendAction({ type: 'lingye-daily-open' });
     }
 
     let lingyeMemorialFilter = 'all';

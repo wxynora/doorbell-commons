@@ -18,6 +18,11 @@ import {
 } from "@doorbell/protocol";
 import Database from "better-sqlite3";
 import { migrateCommunityDatabase } from "./database/community-migrations.js";
+import {
+  createReporterBellWake,
+  type ReporterBellWakeCreationStatus,
+  type ReporterBellWakeInput,
+} from "./reporter-relay-store.js";
 
 export { COMMUNITY_DATABASE_SCHEMA_VERSION } from "./database/community-migrations.js";
 
@@ -194,7 +199,8 @@ export type BellWakeReason =
   | "farm_plant_request"
   | "farm_action_list"
   | "career_exam_reminder"
-  | "career_job_update";
+  | "career_job_update"
+  | "reporter_newsroom_work";
 
 export type FarmActionListNotificationStatus = "sent" | "all_crossed" | "failed";
 
@@ -3643,6 +3649,10 @@ export class CommunityDatabase {
         (left, right) =>
           left.createdAt - right.createdAt || left.wakeId.localeCompare(right.wakeId),
       );
+  }
+
+  createReporterBellWake(input: ReporterBellWakeInput): ReporterBellWakeCreationStatus {
+    return createReporterBellWake(this.#database, input);
   }
 
   createCareerJobWake(input: CareerJobWakeInput): BellWakeRecord {

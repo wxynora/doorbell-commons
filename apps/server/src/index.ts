@@ -50,6 +50,8 @@ import { DoorbellMcpRuntime } from "./mcp-runtime.js";
 import { FarmHumanQixiMemorialClient } from "./qixi-memorial-client.js";
 import { OneBotGroupMembershipClient } from "./qq-group-membership.js";
 import { RegistrationAuthService } from "./registration-auth.js";
+import { reporterRelayRenderer } from "./reporter-relay-renderer.js";
+import { ReporterRelayService } from "./reporter-relay-service.js";
 import { SharedMemeBackendService } from "./shared-meme-backend-service.js";
 import { SharedMemeService } from "./shared-meme-service.js";
 
@@ -265,6 +267,11 @@ const bellAccessService = new BellAccessService({
   bellService,
   bellEndpoint: new URL("/api/bell/stream", serverConfig.mcpEndpoint).toString(),
 });
+const reporterRelayService = new ReporterRelayService({
+  database,
+  bellService,
+  renderer: reporterRelayRenderer,
+});
 const browserPushService = serverConfig.browserPush
   ? new BrowserPushService({
       config: serverConfig.browserPush,
@@ -398,6 +405,7 @@ const mcpRuntime = new DoorbellMcpRuntime({
   farmActions: farmMcpActions,
   lingyeActions: lingyeMcpActions,
   careerExamReminders: careerExamReminderService,
+  reporterRelayService,
   mcpEndpoint: serverConfig.mcpEndpoint,
   onNotificationDeliveryError: reportMcpNotificationError,
   onLingyeNotification: (notification, sourceResidentId) =>
@@ -433,6 +441,7 @@ const app = buildApp({
   sharedMemeBackendService,
   weatherEngine,
   lingyeDailyService,
+  reporterRelayService,
   mailboxService,
   mcpAccessService,
   mcpRuntime,

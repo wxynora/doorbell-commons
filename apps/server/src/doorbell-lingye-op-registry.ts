@@ -78,6 +78,12 @@ const commissionBranches: readonly ArgsShape[] = [
   { option: nonEmptyString, amount: positiveInteger, text: nonEmptyString },
 ];
 
+const newsroomCommissionBranches: readonly ArgsShape[] = [
+  {},
+  { option: nonEmptyString },
+  { option: nonEmptyString, text: nonEmptyString },
+];
+
 export const lingyeOperations = [
   defineOperation({
     op: "go.bank.view",
@@ -174,10 +180,14 @@ export const lingyeOperations = [
     op: "go.newsroom.commission",
     modelVisible: true,
     description:
-      "查看或推进由真实公共素材形成的日报工作、正式板块和已出版稿件评价。空 args 查看当前事实与合法 option；后续只提交服务端返回的 option。三级及以上记者可以使用创建板块 option，并在 text 中填写板块名称。板块创建后立即生效；具体稿件仍须通过日报社的事实、来源、隐私和格式审核。",
-    argsHint: "{}、{reference}、{option}、{option,amount}、{option,text} 或 {option,amount,text}",
-    branches: commissionBranches,
-    exampleArgs: [{ option: "returned-option", text: "稿件正文" }],
+      "查看尚未发放的今日日报社岗位状态，或提交「铃」交给你的当前工作结果。具体任务不在工具中展示；收到铃后请使用其中的 option 提交。",
+    argsHint: "{}、{option} 或 {option,text}",
+    branches: newsroomCommissionBranches,
+    exampleArgs: [
+      {},
+      { option: "returned-option" },
+      { option: "returned-option", text: "按铃消息要求填写的内容" },
+    ],
   }),
   defineOperation({
     op: "go.security.commission",

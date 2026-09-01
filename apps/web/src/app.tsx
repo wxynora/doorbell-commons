@@ -50,6 +50,7 @@ import { AuthScreen, RegistrationHeader, SessionCheckingScreen } from "./compone
 import { BellAccessPanel } from "./components/bell-access-panel";
 import { McpAccessPage } from "./components/mcp-access-panel";
 import { ResidencePermitTransition } from "./components/residence-permit-transition";
+import { LingyeDailyScreen } from "./daily/lingye-daily-screen";
 import { FarmLazyBoundary, FarmLazyFailure, FarmLazyLoading } from "./farm/page/farm-lazy-boundary";
 import { LingyeBackgroundMusic } from "./lingye/lingye-background-music";
 import {
@@ -384,8 +385,8 @@ function authenticatedViewState(
 
 function LiveApp() {
   const [appState, setAppState] = useState<AppState>({ stage: "checking-session" });
-  const [activeInternalPage, setActiveInternalPage] = useState<"community" | "farm">(() =>
-    isDoorbellFarmPath(window.location.pathname) ? "farm" : "community",
+  const [activeInternalPage, setActiveInternalPage] = useState<"community" | "daily" | "farm">(
+    () => (isDoorbellFarmPath(window.location.pathname) ? "farm" : "community"),
   );
   const [showMcpAfterPermit, setShowMcpAfterPermit] = useState(false);
   const [showBellAccess, setShowBellAccess] = useState(false);
@@ -415,7 +416,13 @@ function LiveApp() {
 
   useEffect(() => {
     const syncInternalPageFromLocation = () => {
-      setActiveInternalPage(isDoorbellFarmPath(window.location.pathname) ? "farm" : "community");
+      setActiveInternalPage(
+        isDoorbellFarmPath(window.location.pathname)
+          ? "farm"
+          : window.history.state?.doorbellInternalPage === "daily"
+            ? "daily"
+            : "community",
+      );
     };
     window.addEventListener("popstate", syncInternalPageFromLocation);
     return () => window.removeEventListener("popstate", syncInternalPageFromLocation);
@@ -438,6 +445,25 @@ function LiveApp() {
     }
     if (isDoorbellFarmPath(window.location.pathname)) {
       window.history.replaceState({}, "", "/");
+    }
+    setActiveInternalPage("community");
+  }, []);
+
+  const openDailyPage = useCallback(() => {
+    if (window.history.state?.doorbellInternalPage !== "daily") {
+      window.history.pushState(
+        { ...window.history.state, doorbellInternalPage: "daily" },
+        "",
+        window.location.href,
+      );
+    }
+    setActiveInternalPage("daily");
+  }, []);
+
+  const closeDailyPage = useCallback(() => {
+    if (window.history.state?.doorbellInternalPage === "daily") {
+      window.history.back();
+      return;
     }
     setActiveInternalPage("community");
   }, []);
@@ -878,6 +904,11 @@ function LiveApp() {
         return;
       }
 
+      if (action.type === "lingye-daily-open") {
+        if (appState.stage === "authenticated") openDailyPage();
+        return;
+      }
+
       if (action.type === "profile-switch") {
         if (
           appState.stage !== "authenticated" ||
@@ -1232,7 +1263,7 @@ function LiveApp() {
         });
       }
     },
-    [appState, loadLingye, openFarmPage],
+    [appState, loadLingye, openDailyPage, openFarmPage],
   );
 
   if (appState.stage === "checking-session") {
@@ -1296,6 +1327,9 @@ function LiveApp() {
       />
       {appState.stage === "authenticated" && showBellAccess ? (
         <BellAccessPanel onClose={() => setShowBellAccess(false)} />
+      ) : null}
+      {appState.stage === "authenticated" && activeInternalPage === "daily" ? (
+        <LingyeDailyScreen onBack={closeDailyPage} />
       ) : null}
       {appState.stage === "authenticated" && activeInternalPage === "farm" ? (
         <FarmLazyBoundary

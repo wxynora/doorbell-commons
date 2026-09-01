@@ -28,6 +28,7 @@ export * from "./farm-settings-action.js";
 export * from "./farm-shop-open.js";
 export * from "./farm-smelting-action.js";
 export * from "./lingye-action.js";
+export * from "./reporter-relay.js";
 
 export const serviceHealthSchema = z.object({
   service: z.literal("doorbell-commons"),

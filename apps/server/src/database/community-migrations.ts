@@ -9,7 +9,7 @@ import {
 } from "@doorbell/protocol";
 import type Database from "better-sqlite3";
 
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 18;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 19;
 const LEGACY_CONNECTOR_DELIVERY_GENERATION = "00000000-0000-0000-0000-000000000000";
 
 interface FarmCreationRequestRow {
@@ -1963,6 +1963,102 @@ export function migrateCommunityDatabase(
       database.pragma("user_version = 18");
     })();
     migratedSchemaVersion = 18;
+  }
+  if (migratedSchemaVersion < 19) {
+    database.pragma("foreign_keys = OFF");
+    try {
+      database.transaction(() => {
+        database.exec(`
+          DROP INDEX IF EXISTS bell_wakes_one_purchase_request;
+
+          CREATE TABLE bell_wakes_v19 (
+            wake_id TEXT PRIMARY KEY,
+            resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+            reason TEXT NOT NULL CHECK (
+              reason IN (
+                'mailbox_unread',
+                'farm_purchase_request',
+                'career_exam_reminder',
+                'reporter_newsroom_work'
+              )
+            ),
+            status TEXT NOT NULL CHECK (status IN ('pending', 'acked', 'blocked', 'cancelled')),
+            created_at INTEGER NOT NULL,
+            ended_at INTEGER,
+            block_reason TEXT,
+            error_code TEXT,
+            purchase_request_id TEXT,
+            letter_id TEXT REFERENCES mailbox_letters(letter_id) ON DELETE RESTRICT,
+            payload_json TEXT,
+            CHECK (
+              (status = 'pending' AND ended_at IS NULL AND block_reason IS NULL AND error_code IS NULL)
+              OR (status = 'acked' AND ended_at IS NOT NULL AND block_reason IS NULL AND error_code IS NULL)
+              OR (status = 'blocked' AND ended_at IS NOT NULL AND block_reason IS NOT NULL AND error_code IS NOT NULL)
+              OR (status = 'cancelled' AND ended_at IS NOT NULL AND block_reason IS NULL AND error_code IS NULL)
+            ),
+            CHECK (
+              (reason = 'mailbox_unread'
+                AND purchase_request_id IS NULL
+                AND letter_id IS NULL
+                AND payload_json IS NULL)
+              OR (reason = 'farm_purchase_request'
+                AND purchase_request_id IS NOT NULL
+                AND letter_id IS NULL
+                AND payload_json IS NOT NULL)
+              OR (reason = 'career_exam_reminder'
+                AND purchase_request_id IS NULL
+                AND letter_id IS NOT NULL
+                AND payload_json IS NOT NULL)
+              OR (reason = 'reporter_newsroom_work'
+                AND purchase_request_id IS NULL
+                AND letter_id IS NULL
+                AND payload_json IS NOT NULL)
+            )
+          );
+
+          INSERT INTO bell_wakes_v19 (
+            wake_id,
+            resident_id,
+            reason,
+            status,
+            created_at,
+            ended_at,
+            block_reason,
+            error_code,
+            purchase_request_id,
+            letter_id,
+            payload_json
+          )
+          SELECT wake_id,
+                 resident_id,
+                 reason,
+                 status,
+                 created_at,
+                 ended_at,
+                 block_reason,
+                 error_code,
+                 purchase_request_id,
+                 letter_id,
+                 payload_json
+          FROM bell_wakes;
+
+          DROP TABLE bell_wakes;
+          ALTER TABLE bell_wakes_v19 RENAME TO bell_wakes;
+
+          CREATE UNIQUE INDEX bell_wakes_one_purchase_request
+            ON bell_wakes (purchase_request_id)
+            WHERE purchase_request_id IS NOT NULL;
+        `);
+        database.pragma("user_version = 19");
+      })();
+    } finally {
+      database.pragma("foreign_keys = ON");
+    }
+    const foreignKeyErrors = database.pragma("foreign_key_check") as unknown[];
+    if (foreignKeyErrors.length > 0) {
+      throw new Error("Community database schema v19 migration violated foreign keys");
+    }
+    migratedSchemaVersion = 19;
   }
   database.transaction(() => {
     const itemColumns = database.pragma("table_info(farm_purchase_request_items)") as Array<{
