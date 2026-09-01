@@ -15,7 +15,12 @@ import {
   notifyFarmActionList,
   updateFarmActionList,
 } from "../../auth/farm-action-list-client";
-import { formatActionListDateInput, formatActionListTimeInput } from "./farm-action-list-input";
+import {
+  formatActionListDateInput,
+  formatActionListTimeInput,
+  normalizeActionListDateInput,
+  normalizeActionListTimeInput,
+} from "./farm-action-list-input";
 import "./farm-action-list-panel-v2.css";
 
 const LABELS: Readonly<Record<FarmActionListItemKind, string>> = {
@@ -63,7 +68,7 @@ function newItem(
 function localDateTime(value: string): string {
   const date = new Date(value);
   const pad = (part: number) => String(part).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}T${pad(date.getHours())}${pad(date.getMinutes())}`;
 }
 
 const TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/u;
@@ -81,7 +86,11 @@ function isValidDate(value: string): boolean {
 
 function isValidLocalDateTime(value: string): boolean {
   const [date, time, extra] = value.split("T");
-  return extra === undefined && isValidDate(date ?? "") && TIME_PATTERN.test(time ?? "");
+  return (
+    extra === undefined &&
+    isValidDate(normalizeActionListDateInput(date ?? "")) &&
+    TIME_PATTERN.test(normalizeActionListTimeInput(time ?? ""))
+  );
 }
 
 function emptyDraft(): ListDraft {
@@ -92,8 +101,8 @@ function emptyDraft(): ListDraft {
     enabled: true,
     mode: "daily_window",
     onceAt: "",
-    startTime: "09:00",
-    endTime: "21:00",
+    startTime: "0900",
+    endTime: "2100",
     intervalMinutes: "120",
     items: [],
   };
@@ -107,8 +116,14 @@ function draftFromList(list: FarmActionList): ListDraft {
     enabled: list.enabled,
     mode: list.schedule?.kind ?? "none",
     onceAt: list.schedule?.kind === "once" ? localDateTime(list.schedule.trigger_at) : "",
-    startTime: list.schedule?.kind === "daily_window" ? list.schedule.start_time : "09:00",
-    endTime: list.schedule?.kind === "daily_window" ? list.schedule.end_time : "21:00",
+    startTime:
+      list.schedule?.kind === "daily_window"
+        ? formatActionListTimeInput(list.schedule.start_time)
+        : "0900",
+    endTime:
+      list.schedule?.kind === "daily_window"
+        ? formatActionListTimeInput(list.schedule.end_time)
+        : "2100",
     intervalMinutes:
       list.schedule?.kind === "daily_window" ? String(list.schedule.interval_minutes) : "120",
     items: list.items.map((entry) => entry.item),
@@ -118,12 +133,18 @@ function draftFromList(list: FarmActionList): ListDraft {
 function scheduleFromDraft(draft: ListDraft): FarmActionListSchedule | null {
   if (draft.mode === "none") return null;
   if (draft.mode === "once") {
-    return { kind: "once", trigger_at: new Date(draft.onceAt).toISOString() };
+    const [date, time] = draft.onceAt.split("T");
+    return {
+      kind: "once",
+      trigger_at: new Date(
+        `${normalizeActionListDateInput(date ?? "")}T${normalizeActionListTimeInput(time ?? "")}`,
+      ).toISOString(),
+    };
   }
   return {
     kind: "daily_window",
-    start_time: draft.startTime,
-    end_time: draft.endTime,
+    start_time: normalizeActionListTimeInput(draft.startTime),
+    end_time: normalizeActionListTimeInput(draft.endTime),
     interval_minutes: Number(draft.intervalMinutes),
   };
 }
@@ -260,10 +281,12 @@ export function FarmActionListPanelV2({
       return setStatus("日期请输入 8 位数字（如 20260901），时间请输入 4 位数字（如 0930）");
     }
     if (draft.mode === "daily_window") {
-      if (!TIME_PATTERN.test(draft.startTime) || !TIME_PATTERN.test(draft.endTime)) {
+      const startTime = normalizeActionListTimeInput(draft.startTime);
+      const endTime = normalizeActionListTimeInput(draft.endTime);
+      if (!TIME_PATTERN.test(startTime) || !TIME_PATTERN.test(endTime)) {
         return setStatus("开始和结束时间请按 24 小时制 HH:mm 填写");
       }
-      if (draft.startTime >= draft.endTime) return setStatus("结束时间要晚于开始时间");
+      if (startTime >= endTime) return setStatus("结束时间要晚于开始时间");
       const interval = Number(draft.intervalMinutes);
       if (!Number.isInteger(interval) || interval < 1 || interval > 1_440) {
         return setStatus("间隔请填写 1—1440 之间的整数分钟");
@@ -412,8 +435,8 @@ export function FarmActionListPanelV2({
                   <input
                     autoComplete="off"
                     inputMode="numeric"
-                    maxLength={10}
-                    placeholder="例如 20260901"
+                    maxLength={8}
+                    placeholder="20260901"
                     spellCheck={false}
                     type="text"
                     value={draft.onceAt.split("T")[0] ?? ""}
@@ -430,8 +453,8 @@ export function FarmActionListPanelV2({
                   <input
                     autoComplete="off"
                     inputMode="numeric"
-                    maxLength={5}
-                    placeholder="例如 0930"
+                    maxLength={4}
+                    placeholder="0930"
                     spellCheck={false}
                     type="text"
                     value={draft.onceAt.split("T")[1] ?? ""}
@@ -452,13 +475,16 @@ export function FarmActionListPanelV2({
                   <input
                     autoComplete="off"
                     inputMode="numeric"
-                    maxLength={5}
-                    placeholder="09:00"
+                    maxLength={4}
+                    placeholder="0900"
                     spellCheck={false}
                     type="text"
                     value={draft.startTime}
                     onChange={(event) =>
-                      setDraft({ ...draft, startTime: event.currentTarget.value })
+                      setDraft({
+                        ...draft,
+                        startTime: formatActionListTimeInput(event.currentTarget.value),
+                      })
                     }
                   />
                 </label>
@@ -467,12 +493,17 @@ export function FarmActionListPanelV2({
                   <input
                     autoComplete="off"
                     inputMode="numeric"
-                    maxLength={5}
-                    placeholder="21:00"
+                    maxLength={4}
+                    placeholder="2100"
                     spellCheck={false}
                     type="text"
                     value={draft.endTime}
-                    onChange={(event) => setDraft({ ...draft, endTime: event.currentTarget.value })}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        endTime: formatActionListTimeInput(event.currentTarget.value),
+                      })
+                    }
                   />
                 </label>
                 <label className="farm-action-list-editor-v2__interval">
