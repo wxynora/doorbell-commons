@@ -537,8 +537,6 @@ import {
   RegistrationProfileRequiredError,
   type RegistrationSessionResult,
 } from "./registration-auth.js";
-import { registerReporterRelayRoutes } from "./reporter-relay-routes.js";
-import type { ReporterRelayService } from "./reporter-relay-service.js";
 import {
   readHumanSessionToken,
   serializeClearedHumanSessionCookie,
@@ -571,7 +569,6 @@ export interface BuildAppOptions {
   activityReminderService?: Pick<ActivityReminderService, "cancelResident" | "refreshEligibility">;
   weatherEngine?: HomeWeatherEngine;
   lingyeDailyService?: LingyeDailyService;
-  reporterRelayService?: ReporterRelayService;
   mailboxService?: MailboxService;
   mcpAccessService?: McpAccessService;
   mcpRuntime?: DoorbellMcpRuntime;
@@ -2110,13 +2107,6 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       status: "ok",
     }),
   );
-
-  if (options.lingyeDailyService && options.reporterRelayService) {
-    registerReporterRelayRoutes(app, {
-      authorizer: options.lingyeDailyService,
-      service: options.reporterRelayService,
-    });
-  }
 
   const bellAccessService = options.bellAccessService;
   if (bellAccessService) {

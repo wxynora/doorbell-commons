@@ -94,6 +94,20 @@ export const reporterRelayWakeAcceptanceSchema = z
   })
   .strict();
 
+export const reporterRelayStartResponseSchema = z
+  .object({
+    ok: z.literal(true),
+    data: z
+      .object({
+        issue_date: reporterIssueDateSchema,
+        status: z.enum(["started", "already_started"]),
+        wake: reporterRelayWakeSchema,
+      })
+      .strict(),
+  })
+  .strict();
+
 export type ReporterRelayMaterial = z.infer<typeof reporterRelayMaterialSchema>;
 export type ReporterRelayWake = z.infer<typeof reporterRelayWakeSchema>;
 export type ReporterRelayWakeAcceptance = z.infer<typeof reporterRelayWakeAcceptanceSchema>;
+export type ReporterRelayStartResponse = z.infer<typeof reporterRelayStartResponseSchema>;

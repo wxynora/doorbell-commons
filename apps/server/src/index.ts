@@ -50,6 +50,8 @@ import { DoorbellMcpRuntime } from "./mcp-runtime.js";
 import { FarmHumanQixiMemorialClient } from "./qixi-memorial-client.js";
 import { OneBotGroupMembershipClient } from "./qq-group-membership.js";
 import { RegistrationAuthService } from "./registration-auth.js";
+import { ReporterDailyScheduler } from "./reporter-daily-scheduler.js";
+import { ReporterRelayFarmClient } from "./reporter-relay-farm-client.js";
 import { reporterRelayRenderer } from "./reporter-relay-renderer.js";
 import { ReporterRelayService } from "./reporter-relay-service.js";
 import { SharedMemeBackendService } from "./shared-meme-backend-service.js";
@@ -272,6 +274,21 @@ const reporterRelayService = new ReporterRelayService({
   bellService,
   renderer: reporterRelayRenderer,
 });
+const reporterRelayFarm = new ReporterRelayFarmClient({
+  apiBaseUrl: serverConfig.farmApiBaseUrl,
+  requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+  serviceToken: serverConfig.farmServiceToken,
+});
+const reporterDailyScheduler = new ReporterDailyScheduler({
+  farm: reporterRelayFarm,
+  relay: reporterRelayService,
+  onError: (error) => {
+    process.stderr.write(
+      `[doorbell-reporter-daily] ${error instanceof Error ? error.name : "UnknownError"}\n`,
+    );
+  },
+});
+reporterDailyScheduler.start();
 const browserPushService = serverConfig.browserPush
   ? new BrowserPushService({
       config: serverConfig.browserPush,
@@ -441,7 +458,6 @@ const app = buildApp({
   sharedMemeBackendService,
   weatherEngine,
   lingyeDailyService,
-  reporterRelayService,
   mailboxService,
   mcpAccessService,
   mcpRuntime,
@@ -450,6 +466,7 @@ const app = buildApp({
 });
 app.addHook("onClose", () => {
   farmActionListScheduler.close();
+  reporterDailyScheduler.close();
   activityReminderService?.close();
   careerExamReminderService.close();
   constableInterviewSignupMailService?.close();
