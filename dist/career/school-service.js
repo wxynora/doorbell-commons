@@ -21,12 +21,62 @@ const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1_000;
 const TWELVE_HOURS_MS = 12 * 60 * 60 * 1_000;
 const THIRTY_MINUTES_MS = 30 * 60 * 1_000;
 const PUBLIC_NOTICE_MS = 24 * 60 * 60 * 1_000;
+const ADVANCEMENT_WORK_REQUIREMENTS = Object.freeze({
+    chef: Object.freeze({ 2: 20, 3: 200, 4: 500 }),
+    agronomist: Object.freeze({ 2: 10, 3: 100, 4: 200 }),
+    veterinarian: Object.freeze({ 2: 10, 3: 100, 4: 200 }),
+    reporter: Object.freeze({ 2: 5, 3: 30, 4: 80 }),
+    constable: Object.freeze({ 2: 3, 3: 15, 4: 40 }),
+});
 const CONSTABLE_INTERVIEW_DIMENSIONS = Object.freeze([
     "facts",
     "restraint",
     "procedure",
     "explanation",
 ]);
+
+export function careerAdvancementWorkEligibility(database, residentId, career, targetLevel) {
+    const requirement = ADVANCEMENT_WORK_REQUIREMENTS[career]?.[targetLevel];
+    if (!requirement) {
+        return {
+            eligible: true,
+            targetLevel,
+            previousLevel: null,
+            experienceKind: null,
+            currentLevelExperience: 0,
+            requiredCurrentLevelExperience: 0,
+        };
+    }
+    const previousLevel = targetLevel - 1;
+    let currentLevelExperience;
+    let experienceKind;
+    if (career === "chef") {
+        const certificate = database.prepare(`SELECT issued_at, effective_at
+          FROM career_certificates
+          WHERE resident_id = ? AND career = 'chef' AND qualification_level = ? AND status = 'active'`)
+            .get(residentId, previousLevel);
+        const startsAt = certificate?.effective_at ?? certificate?.issued_at ?? Number.MAX_SAFE_INTEGER;
+        currentLevelExperience = Number(database.prepare(`SELECT COUNT(*) AS count
+          FROM chef_recipe_production_commissions
+          WHERE cook_resident_id = ? AND created_at >= ?`).get(residentId, startsAt).count ?? 0);
+        experienceKind = "original_recipe_production";
+    }
+    else {
+        currentLevelExperience = Number(database.prepare(`SELECT COUNT(*) AS count
+          FROM career_work_records
+          WHERE resident_id = ? AND career = ? AND qualification_level = ?`)
+            .get(residentId, career, previousLevel).count ?? 0);
+        experienceKind = "qualified_commission";
+    }
+    return {
+        eligible: currentLevelExperience >= requirement,
+        targetLevel,
+        previousLevel,
+        experienceKind,
+        currentLevelExperience,
+        requiredCurrentLevelExperience: requirement,
+    };
+}
 
 function snapshotJson(value, field) {
     if (value === null || typeof value !== "object")
@@ -1424,17 +1474,8 @@ export class CareerSchoolService {
         if (courses.count !== COURSE_COUNT_PER_LEVEL) {
             throw new CareerDomainError("courses_incomplete", "All three courses must be completed");
         }
-        if (level === 1)
-            return;
-        const records = this.#database
-            .prepare(`SELECT COUNT(*) AS total,
-                SUM(CASE WHEN qualification_level = ? THEN 1 ELSE 0 END) AS level_count
-         FROM career_work_records
-         WHERE resident_id = ? AND career = ?`)
-            .get(level - 1, residentId, career);
-        const requiredTotal = level === 2 ? 10 : level === 3 ? 30 : 70;
-        const requiredLevelCount = level === 2 ? 10 : level === 3 ? 10 : 20;
-        if (records.total < requiredTotal || (records.level_count ?? 0) < requiredLevelCount) {
+        const workEligibility = careerAdvancementWorkEligibility(this.#database, residentId, career, level);
+        if (!workEligibility.eligible) {
             throw new CareerDomainError("work_record_requirement_not_met", "The real work record requirement is not met");
         }
     }

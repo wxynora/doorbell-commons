@@ -12,6 +12,7 @@ import {
 } from "../../career/contracts.js";
 import { careerExamAvailability, curriculumCatalogAvailability } from "../../career/curriculum.js";
 import { courseCatalog } from "../../career/course-catalog.js";
+import { careerAdvancementWorkEligibility } from "../../career/school-service.js";
 import {
     applyWorldCheck,
     applyWorldTreatment,
@@ -924,6 +925,7 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
     });
     const constable = constableInterviewFacts(database, residentId, optionRevision);
     const options = [...constable.options];
+    const advancement = [];
     if (tracks.length === 0) {
         for (const career of CAREER_IDS.filter((candidate) => careerSchoolAvailable(backend, candidate)))
             options.push(option(schoolOption(optionRevision, "career-select", career)));
@@ -951,6 +953,13 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
         const nextLevel = activeLevel + 1;
         if (nextLevel > 4)
             continue;
+        const workEligibility = careerAdvancementWorkEligibility(database, residentId, track.career, nextLevel);
+        advancement.push({
+            career: track.career,
+            ...workEligibility,
+            registrationStatus: workEligibility.eligible ? "eligible" : "work_experience_required",
+            message: workEligibility.eligible ? null : "工作经验不足，不能报考。",
+        });
         const levelCourses = courses.filter((course) => course.career === track.career && course.qualificationLevel === nextLevel);
         const incomplete = levelCourses.find((course) => course.completedAt === null);
         if (incomplete) {
@@ -976,7 +985,7 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
             exam.qualificationLevel === nextLevel &&
             ["registered", "active", "written_passed"].includes(exam.registrationStatus));
         if (!activeExam) {
-            if (backend.trustedQueries.examAvailable(track.career, nextLevel)) {
+            if (workEligibility.eligible && backend.trustedQueries.examAvailable(track.career, nextLevel)) {
                 options.push(option(schoolOption(optionRevision, "exam-register", `${track.career}:${nextLevel}`)));
             }
             continue;
@@ -1015,6 +1024,7 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
         courses,
         exams,
         certificates,
+        advancement,
         examSchedule: {
             timeZone: "Asia/Shanghai",
             weekdays: [...BEIJING_EXAM_WEEKDAYS],
