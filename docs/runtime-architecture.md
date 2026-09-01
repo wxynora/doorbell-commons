@@ -245,6 +245,16 @@ features were rewritten to the real daily shop, chef-store recovery, single-case
 transfer boundaries, and complaint／loan／review authority limits. Production Farm `8551900` plus the private
 bank now reports `ready=true` and `missing=[]`.
 
+The deployed next-day qualification gate is split across Main `8e2fb59` and Farm `a91e8a6`.
+Farm records an ordinary exam pass, or the constable's final approved public-notice result, with an
+effective time at the next Beijing `00:00`. Employment, seats, duty generation, jobs, authority
+assignment, later-level study and chef／agronomist benefits use only qualifications effective at the
+current authoritative time; a still-effective lower level remains usable while a higher level waits.
+Doorbell projects `canWork`, the approved pass／early-use messages and the distinct
+`QUALIFICATION_NOT_EFFECTIVE` result; Main accepts and displays those facts without exposing a pending
+title as current. Production Main later advanced to cumulative commit `3e69015`, which retains
+`8e2fb59` unchanged; production Farm remains clean at the exact isolated career commit `a91e8a6`.
+
 Chef-store options now bind the exact business round without adding another order service. A public
 listing projects a SHA-256 revision over its authoritative receipt id, remaining quantity, price and
 updated time; `commission:chef-store-buy` carries that revision. A successful partial purchase changes
