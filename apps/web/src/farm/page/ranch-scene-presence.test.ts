@@ -80,11 +80,13 @@ test("Ranch scene renders authority counts and non-interactive visitor markers",
   assert.match(fieldSource, /getLiveRanchSceneResidents\(ranch\)/);
   assert.match(fieldSource, /getLiveRanchVisitors\(ranch\)/);
   assert.match(fieldSource, /visitor: true/);
-  assert.match(fieldSource, /residentCount=\{ranchSceneResidentCount\}/);
-  assert.match(fieldSource, /visitorCount=\{ranchSceneVisitorCount\}/);
-  assert.match(
-    sceneSource,
-    /在场动物 \{residentCount \?\? "—"\} 只 · 来客 \{visitorCount \?\? "—"\} 只/,
+  assert.ok(
+    fieldSource.indexOf('className="farm-ranch-presence"') > fieldSource.indexOf("<SceneBalance"),
   );
+  assert.match(
+    fieldSource,
+    /在场动物 \{ranchSceneResidentCount \?\? "—"\} 只 · 来客 \{ranchSceneVisitorCount \?\? "—"\} 只/,
+  );
+  assert.doesNotMatch(sceneSource, /farm-ranch-presence/);
   assert.match(sceneSource, /return animal\.visitor \? \(\s*<span[\s\S]*牧场来客[\s\S]*role="img"/);
 });

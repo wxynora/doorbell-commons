@@ -891,8 +891,6 @@ export function FarmFieldContent({
                     field.weather?.condition ?? null,
                   )}
                   onSelectAnimal={setSelectedRanchAnimalId}
-                  residentCount={ranchSceneResidentCount}
-                  visitorCount={ranchSceneVisitorCount}
                 />
               ) : null}
               {scene.id === "cooking" ? (
@@ -953,6 +951,11 @@ export function FarmFieldContent({
               : null
           }
         />
+      ) : null}
+      {activeScene === "ranch" ? (
+        <div aria-live="polite" className="farm-ranch-presence">
+          在场动物 {ranchSceneResidentCount ?? "—"} 只 · 来客 {ranchSceneVisitorCount ?? "—"} 只
+        </div>
       ) : null}
       {activeScene === "ranch" &&
       !activeSceneUiState.selectedTool &&
