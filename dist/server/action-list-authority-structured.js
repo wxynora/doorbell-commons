@@ -18,6 +18,10 @@ function stolenToday(thief, target, now) {
   return at !== undefined && currentDayIndex(at) === currentDayIndex(now);
 }
 
+function wateredToday(visitor, target, now) {
+  return target.waterVisits?.[visitor.id] === currentDayIndex(now);
+}
+
 function projectStealTargets(thief, now) {
   const projectedThief = structuredClone(thief);
   if (
@@ -57,6 +61,32 @@ function projectStealTargets(thief, now) {
           },
         ];
   });
+}
+
+function projectWater(visitor, now) {
+  const canWater = reachable(visitor) && allowsSocial(visitor, "water");
+  const targets = [];
+  const visitedTargets = [];
+  for (const { number, farm: sourceFarm } of numberedPlayerFarms()) {
+    if (sourceFarm.id === visitor.id) continue;
+    const entry = {
+      target: String(number),
+      farm_name: String(sourceFarm.name || sourceFarm.id),
+    };
+    if (wateredToday(visitor, sourceFarm, now)) {
+      visitedTargets.push(entry);
+      continue;
+    }
+    if (!canWater || !reachable(sourceFarm) || !allowsSocial(sourceFarm, "water")) continue;
+    const farm = structuredClone(sourceFarm);
+    advance(farm, now);
+    if (farm.plots.some((plot) => plot.crop && !plot.crop.ripe)) targets.push(entry);
+  }
+  return {
+    status: "available",
+    targets,
+    visited_targets: visitedTargets,
+  };
 }
 
 function projectFishing(farm, now) {
@@ -114,6 +144,7 @@ export function projectHumanActionListAuthority(farm, now = Date.now()) {
     data: {
       farm: { farm_doorplate: String(farm.id) },
       steal: { status: "available", targets: projectStealTargets(farm, now) },
+      water: projectWater(farm, now),
       fishing: projectFishing(farm, now),
       activities: projectActivities(farm, now),
     },
