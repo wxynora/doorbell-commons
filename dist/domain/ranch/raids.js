@@ -14,7 +14,7 @@ import { ranchAnimalCurrentProduceValue } from "./value.js";
 import { maybeApplyRanchRaidInjury, ranchHealthActionBlocked } from "../../career/p3-world.js";
 
 const HOUR_MS = 60 * 60 * 1000;
-export const RANCH_RAID_DAILY_CAP = 1000;
+export const RANCH_RAID_DAILY_CAP = 10000;
 
 /** 派遣已经潜伏的时长所对应的整数金币；不会超过出发时冻结的保证金。 */
 export function ranchRaidCoins(raid, at) {
@@ -182,7 +182,7 @@ export function settleRanchRaids(farms, now) {
                 if (animal && animalKind && patrolGooseCatchesRaid(target, now)) {
                     maybeApplyRanchRaidInjury(owner, animal, raid.id, now);
                     const currentProduceValue = ranchAnimalCurrentProduceValue(animal);
-                    const rewardCoins = Math.round(currentProduceValue * 0.5);
+                    const rewardCoins = Math.round(currentProduceValue * 0.75);
                     const produce = animalKind.produce;
                     ensureRanch(target).coins += rewardCoins;
                     finishRanchRaidHistory(ranch, raid, "goose-caught", 0, {

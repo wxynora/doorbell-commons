@@ -697,6 +697,67 @@ function projectDispatch(raids, now) {
   };
 }
 
+function unavailableSceneVisitor() {
+  return {
+    status: "unavailable",
+    raid_id: null,
+    animal_kind_id: null,
+    animal_name: null,
+    variant: null,
+  };
+}
+
+function projectSceneVisitor(owner, raid) {
+  if (!isRecord(owner?.ranch) || !Array.isArray(owner.ranch.animals) || !isRecord(raid)) {
+    return unavailableSceneVisitor();
+  }
+  const raidId = safeId(raid.id) && UUID_RE.test(raid.id) ? raid.id : null;
+  const kind = animalById.get(raid.animalKindId);
+  const animal = owner.ranch.animals.find((entry) => isRecord(entry) && entry.kindId === raid.animalKindId);
+  if (!raidId || !kind || !animal) return unavailableSceneVisitor();
+  const variants = projectResidentVariants(owner, "animal", animal, kind.id);
+  const variant = variants.available_variants.find((entry) => entry.variant_id === variants.current_variant_id) ?? null;
+  return {
+    status: "known",
+    raid_id: raidId,
+    animal_kind_id: kind.id,
+    animal_name: safeText(animal.name) ?? safeText(kind.name),
+    variant,
+  };
+}
+
+function projectRanchScene(farm, farms, now, animalResidents, petResidents, patrolGoose) {
+  const residentsAvailable = isRecord(farm?.ranch)
+    && Array.isArray(farm.ranch.animals)
+    && Array.isArray(farm.ranch.pets);
+  const farmsAvailable = Array.isArray(farms);
+  if (!residentsAvailable || !farmsAvailable) {
+    return {
+      status: "unavailable",
+      resident_count: null,
+      visitor_count: null,
+      visitors: [],
+    };
+  }
+  const residentCount = animalResidents.filter((resident) =>
+    resident.status === "known" && resident.dispatch?.state === "home"
+  ).length
+    + petResidents.filter((resident) => resident.status === "known").length
+    + (patrolGoose?.status === "known" ? 1 : 0);
+  const visitors = farms.flatMap((owner) => {
+    if (owner?.id === farm.id || !Array.isArray(owner?.ranch?.raids)) return [];
+    return owner.ranch.raids
+      .filter((raid) => isRecord(raid) && raid.targetFarmId === farm.id && safeTimestampMs(raid.endsAt) > now)
+      .map((raid) => projectSceneVisitor(owner, raid));
+  });
+  return {
+    status: "available",
+    resident_count: residentCount,
+    visitor_count: visitors.filter((visitor) => visitor.status === "known").length,
+    visitors,
+  };
+}
+
 function projectShopItem(kind, owned) {
   const known = !!kind && safeId(kind.id) !== null && safeText(kind.name) !== null && safeMoney(kind.buyCost) !== null;
   return {
@@ -837,7 +898,7 @@ function revisionFor(data) {
  * refreshing, settling, saving, buying, collecting, feeding, upgrading,
  * dispatching, catching, or otherwise changing the authoritative state.
  */
-export function projectHumanRanch(farm, now = Date.now()) {
+export function projectHumanRanch(farm, now = Date.now(), farms = [farm]) {
   const ranch = isRecord(farm?.ranch) ? farm.ranch : null;
   const residentArrays = {
     animals: ranch?.animals,
@@ -858,6 +919,7 @@ export function projectHumanRanch(farm, now = Date.now()) {
   const patrolGoose = ranch && Object.prototype.hasOwnProperty.call(ranch, "patrolGoose") && ranch.patrolGoose !== null
     ? projectResident("patrol_goose", ranch.patrolGoose, now, [], pinned, farm, null)
     : null;
+  const scene = projectRanchScene(farm, farms, now, animalResidents, petResidents, patrolGoose);
   const dispatch = projectDispatch(raids, now);
   const collectableEntries = [];
   let collectableCount = 0;
@@ -913,6 +975,7 @@ export function projectHumanRanch(farm, now = Date.now()) {
       pets: petResidents,
       patrol_goose: patrolGoose,
     },
+    scene,
     collectable: {
       status: collectableTotalsAvailable && (ranch === null || animalsAvailable) ? "available" : "unavailable",
       total_pending_count: collectableTotalsAvailable ? collectableCount : null,

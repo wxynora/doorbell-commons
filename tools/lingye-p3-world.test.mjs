@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
 
 import { TICK_MS } from "../dist/config.js";
@@ -204,4 +205,44 @@ test("a migrated ranch can persist one stable minor injury from a raid return", 
     assert.equal(animal.lingyeHealth.condition, "minor_injury");
     assert.equal(animal.lingyeHealth.status, "open");
     assert.equal(maybeApplyRanchRaidInjury(farm, animal, "another-return", BASE), false);
+});
+
+test("raid-return minor injury uses the confirmed stable ten-percent boundary", () => {
+    const farmId = "P3RAIDTEN";
+    const stableFraction = (eventReference) => createHash("sha256")
+        .update([farmId, eventReference, "ranch-raid-injury"].join(":"), "utf8")
+        .digest()
+        .readUInt32BE(0) / 0x1_0000_0000;
+    let hitReference = null;
+    let oldTwentyOnlyReference = null;
+    for (let index = 0; index < 10_000 && (!hitReference || !oldTwentyOnlyReference); index += 1) {
+        const reference = `raid-boundary:${index}`;
+        const fraction = stableFraction(reference);
+        if (fraction < 0.1)
+            hitReference ??= reference;
+        else if (fraction < 0.2)
+            oldTwentyOnlyReference ??= reference;
+    }
+    assert.ok(hitReference);
+    assert.ok(oldTwentyOnlyReference);
+
+    const createRanch = () => {
+        const farm = plantedFarm(farmId);
+        farm.doorbellMcpMigration = { migrationId: "p3-raid-injury-migration" };
+        farm.ranch = { animals: [{ kindId: "chicken", ticksSinceProduce: 0, pending: 0 }] };
+        return farm;
+    };
+    const missedFarm = createRanch();
+    assert.equal(
+        maybeApplyRanchRaidInjury(missedFarm, missedFarm.ranch.animals[0], oldTwentyOnlyReference, BASE),
+        false,
+    );
+    assert.equal(missedFarm.ranch.animals[0].lingyeHealth, undefined);
+
+    const hitFarm = createRanch();
+    assert.equal(
+        maybeApplyRanchRaidInjury(hitFarm, hitFarm.ranch.animals[0], hitReference, BASE),
+        true,
+    );
+    assert.equal(hitFarm.ranch.animals[0].lingyeHealth.condition, "minor_injury");
 });

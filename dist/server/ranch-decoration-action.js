@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { ranchPlaceDecoration, ranchUnplaceDecoration } from "../engine.js";
-import { replaceFarm } from "../store.js";
+import { playerFarms, replaceFarm } from "../store.js";
 import { projectHumanRanch } from "./ranch-structured.js";
 import {
   createMinimalHumanActionReceipt,
@@ -8,7 +8,7 @@ import {
 } from "../minimal-action-receipt.js";
 
 function responseFor(farm, now, result) {
-  const resource = projectHumanRanch(farm, now);
+  const resource = projectHumanRanch(farm, now, playerFarms());
   return {
     data: { result, resource: resource.data },
     revision: resource.revision,
@@ -173,7 +173,7 @@ export function handleHumanRanchDecorationAction(farm, body, now = Date.now()) {
 
   let current;
   try {
-    current = projectHumanRanch(farm, now);
+    current = projectHumanRanch(farm, now, playerFarms());
   } catch {
     return {
       status: 503,
@@ -225,7 +225,7 @@ export function handleHumanRanchDecorationAction(farm, body, now = Date.now()) {
 }
 
 export function ranchDecorationActionRevision(farm, now = Date.now()) {
-  return projectHumanRanch(farm, now).revision;
+  return projectHumanRanch(farm, now, playerFarms()).revision;
 }
 
 export const handleHumanRanchDecoration = handleHumanRanchDecorationAction;

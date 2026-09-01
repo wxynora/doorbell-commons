@@ -76,12 +76,36 @@ function ranchFarm() {
   return farm;
 }
 
+function visitorFarm(targetFarmId) {
+  const farm = makeFarm("来客来源农场");
+  farm.id = "GHJ567";
+  farm.ranch = {
+    coins: 1000,
+    animals: [{ kindId: "chicken", name: "潜伏鸡", level: 1, pending: 0 }],
+    pets: [],
+    raids: [
+      {
+        id: "0f0f0f0f-0000-4000-8000-000000000002",
+        animalKindId: "chicken",
+        targetFarmId,
+        startedAt: NOW - 15 * 60 * 1000,
+        endsAt: NOW + 45 * 60 * 1000,
+        reservedCoins: 1000,
+      },
+    ],
+  };
+  return farm;
+}
+
 test("Human ranch projection is pure, strict-shaped, and exposes only public target doorplates", () => {
   const farm = ranchFarm();
+  const visitorOwner = visitorFarm(farm.id);
   const before = structuredClone(farm);
-  const result = projectHumanRanch(farm, NOW);
+  const visitorBefore = structuredClone(visitorOwner);
+  const result = projectHumanRanch(farm, NOW, [farm, visitorOwner]);
 
   assert.deepEqual(farm, before);
+  assert.deepEqual(visitorOwner, visitorBefore);
   assert.deepEqual(Object.keys(result).sort(), ["data", "revision", "server_time"]);
   assert.equal(result.data.farm.farm_doorplate, "ABC234");
   assert.equal(result.data.balance.ranch_coins, 321);
@@ -89,6 +113,22 @@ test("Human ranch projection is pure, strict-shaped, and exposes only public tar
   assert.equal(result.data.residents.animals.length, 2);
   assert.equal(result.data.residents.pets.length, 1);
   assert.equal(result.data.residents.patrol_goose.identity.kind_id, "patrol_goose");
+  assert.equal(result.data.scene.status, "available");
+  assert.equal(result.data.scene.resident_count, 2);
+  assert.equal(result.data.scene.visitor_count, 1);
+  assert.deepEqual(result.data.scene.visitors[0], {
+    status: "known",
+    raid_id: "0f0f0f0f-0000-4000-8000-000000000002",
+    animal_kind_id: "chicken",
+    animal_name: "潜伏鸡",
+    variant: {
+      variant_id: "base",
+      name: "原始外观",
+      atlas: null,
+      set: null,
+      sprite_index: null,
+    },
+  });
   assert.equal(result.data.residents.animals[0].produce.item.pending_count, 1);
   const chicken = result.data.residents.animals[0];
   assert.deepEqual(chicken.variants, {
@@ -162,6 +202,18 @@ test("Unknown or damaged Ranch IDs stay neutral unavailable instead of being gue
   assert.equal(result.data.dispatch.active[1].animal_kind_id, null);
 });
 
+test("Ranch scene restores returned residents and removes ended visitors", () => {
+  const farm = ranchFarm();
+  farm.ranch.raids = [];
+  const visitorOwner = visitorFarm(farm.id);
+  visitorOwner.ranch.raids[0].endsAt = NOW;
+
+  const result = projectHumanRanch(farm, NOW, [farm, visitorOwner]);
+  assert.equal(result.data.scene.resident_count, 3);
+  assert.equal(result.data.scene.visitor_count, 0);
+  assert.deepEqual(result.data.scene.visitors, []);
+});
+
 test("the original appearance is always available and is the only option until an alternate unlocks", () => {
   const farm = ranchFarm();
   farm.glimmer = { unlocked: [] };
@@ -202,6 +254,12 @@ test("A farm without an initialized ranch does not synthesize a shop or resident
   assert.deepEqual(result.data.residents.animals, []);
   assert.deepEqual(result.data.residents.pets, []);
   assert.equal(result.data.residents.patrol_goose, null);
+  assert.deepEqual(result.data.scene, {
+    status: "unavailable",
+    resident_count: null,
+    visitor_count: null,
+    visitors: [],
+  });
 });
 
 test("resident action availability exposes authority fees and explicit disabled reasons without mutation", () => {

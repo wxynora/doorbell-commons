@@ -1,5 +1,6 @@
 import { MAX_BODY_BYTES } from "../../config.js";
 import { PublicSyncError } from "../../public-sync.js";
+import { playerFarms } from "../../store.js";
 import { jsonOut, readJsonBody } from "../http.js";
 import { projectHumanRanch } from "../ranch-structured.js";
 import { handleHumanRanchCollection } from "../ranch-collection-action.js";
@@ -32,7 +33,7 @@ export async function handleDoorbellHumanRanchRead(req, res, method) {
         const binding = validateFarmBinding(body);
         if (binding.error)
             return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
-        return jsonOut(res, 200, projectHumanRanch(binding.farm, Date.now()));
+        return jsonOut(res, 200, projectHumanRanch(binding.farm, Date.now(), playerFarms()));
     }
     catch (error) {
         if (error instanceof PublicSyncError)

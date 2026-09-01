@@ -534,7 +534,7 @@ export const ranchHealthActionBlocked = ranchProductionPaused;
 
 export function maybeApplyRanchRaidInjury(farm, animal, eventReference, now = Date.now()) {
     if (!farm?.doorbellMcpMigration?.migrationId || !animal || animal.lingyeHealth ||
-        !stableChance(0.2, farm.id, eventReference, "ranch-raid-injury")) {
+        !stableChance(0.1, farm.id, eventReference, "ranch-raid-injury")) {
         return false;
     }
     const animalIndex = farm.ranch?.animals?.indexOf(animal) ?? -1;

@@ -252,7 +252,7 @@ function raidOwnerFor(raidId, target) {
 
 function currentResource(farm, now) {
   try {
-    return projectHumanRanch(farm, now);
+    return projectHumanRanch(farm, now, playerFarms());
   } catch {
     return null;
   }

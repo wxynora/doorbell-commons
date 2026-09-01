@@ -8,7 +8,7 @@ import {
 } from "../minimal-action-receipt.js";
 
 function responseFor(farm, now, result) {
-  const resource = projectHumanRanch(farm, now);
+  const resource = projectHumanRanch(farm, now, playerFarms());
   return {
     data: { result, resource: resource.data },
     revision: resource.revision,
@@ -271,7 +271,7 @@ export function handleHumanRanchCollection(farm, body, now = Date.now()) {
 
   let current;
   try {
-    current = projectHumanRanch(farm, now);
+    current = projectHumanRanch(farm, now, playerFarms());
   } catch {
     return {
       status: 503,
@@ -321,5 +321,5 @@ export function handleHumanRanchCollection(farm, body, now = Date.now()) {
 export const handleHumanRanchCollect = handleHumanRanchCollection;
 
 export function ranchCollectionRevision(farm, now = Date.now()) {
-  return projectHumanRanch(farm, now).revision;
+  return projectHumanRanch(farm, now, playerFarms()).revision;
 }
