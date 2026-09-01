@@ -181,9 +181,45 @@ export class MailboxService {
   }
 }
 
-const COMMISSION_REPLY_TITLE = "委托有新回复";
-const COMMISSION_COMPLETED_TITLE = "委托已完成";
-const COMMISSION_COMPLETED_BODY = "你参与的委托已经完成，可以用 doorbell 查看权威结果。";
+const COMMISSION_NOTIFICATION_COPY = Object.freeze({
+  commission_targeted: {
+    title: "收到一份新委托",
+    body: (call: string, _messageText?: string, serviceName = "职业") =>
+      `你收到一份新的${serviceName}委托，可以直接调用 ${call} 查看并决定是否接取。`,
+  },
+  commission_accepted: {
+    title: "委托已被接取",
+    body: (call: string) => `你发布的委托已经有人接下了，可以直接调用 ${call} 查看进度。`,
+  },
+  commission_declined: {
+    title: "委托有新回复",
+    body: (call: string) =>
+      `这份点名委托没有被接取，可以直接调用 ${call} 重新选择公开、点名、NPC 或取消。`,
+  },
+  commission_reply: {
+    title: "委托有新回复",
+    body: (call: string, messageText?: string) =>
+      `你参与的委托收到一条新回复：${messageText ?? ""}\n可以直接调用 ${call} 继续处理。`,
+  },
+  commission_completed: {
+    title: "委托已完成",
+    body: (call: string) => `你参与的委托已经完成，可以直接调用 ${call} 查看权威结果。`,
+  },
+});
+
+const COMMISSION_CALL_BY_CAREER = Object.freeze({
+  agronomist: 'doorbell({"op":"go.farm.commission","args":{}})',
+  veterinarian: 'doorbell({"op":"go.hospital.commission","args":{}})',
+  reporter: 'doorbell({"op":"go.newsroom.commission","args":{}})',
+  constable: 'doorbell({"op":"go.security.commission","args":{}})',
+});
+
+const COMMISSION_SERVICE_NAME_BY_CAREER = Object.freeze({
+  agronomist: "农事",
+  veterinarian: "动物诊疗",
+  reporter: "记者",
+  constable: "治安",
+});
 
 export class LingyeNotificationDeliveryService {
   readonly #database: CommunityDatabase;
@@ -197,25 +233,21 @@ export class LingyeNotificationDeliveryService {
   }
 
   deliver(notification: LingyeNotification, sourceResidentId: string): void {
-    if (notification.kind === "commission_reply" && !notification.message_text) {
-      throw new Error("The commission reply notification has no message text");
-    }
+    const copy = COMMISSION_NOTIFICATION_COPY[notification.kind];
+    const call = COMMISSION_CALL_BY_CAREER[notification.career];
+    const body = copy.body(
+      call,
+      notification.message_text,
+      COMMISSION_SERVICE_NAME_BY_CAREER[notification.career],
+    );
     const homeId = this.#database.findHomeIdByResidentId(notification.recipient_resident_id);
     if (!homeId) throw new Error("The Lingye notification recipient has no community home");
-    const title =
-      notification.kind === "commission_reply"
-        ? COMMISSION_REPLY_TITLE
-        : COMMISSION_COMPLETED_TITLE;
-    const body =
-      notification.kind === "commission_reply"
-        ? `你参与的委托收到一条新回复：${notification.message_text}`
-        : COMMISSION_COMPLETED_BODY;
     const idempotencyKey = `lingye-notification:${notification.notification_id}`;
     const letter = this.#mailbox.deliver({
       homeId,
       idempotencyKey,
       category: "system",
-      title,
+      title: copy.title,
       body,
       sensitiveValues: [],
     });

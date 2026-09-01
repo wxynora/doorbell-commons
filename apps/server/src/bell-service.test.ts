@@ -135,6 +135,7 @@ test("career job updates use their isolated Bell wake and acknowledge normally",
       notification_id: "completed-test",
       kind: "commission_completed",
       recipient_resident_id: residentId,
+      career: "agronomist",
     },
     "another-resident",
   );
@@ -144,7 +145,8 @@ test("career job updates use their isolated Bell wake and acknowledge normally",
     homeId,
     category: "system",
     title: "委托已完成",
-    body: "你参与的委托已经完成，可以用 doorbell 查看权威结果。",
+    body:
+      '你参与的委托已经完成，可以直接调用 doorbell({"op":"go.farm.commission","args":{}}) 查看权威结果。',
     createdAt: 2_000,
     isNew: true,
     attachment: null,
@@ -154,6 +156,7 @@ test("career job updates use their isolated Bell wake and acknowledge normally",
       notification_id: "reply-self-test",
       kind: "commission_reply",
       recipient_resident_id: residentId,
+      career: "agronomist",
       message_text: "我先检查一下。",
     },
     residentId,
@@ -168,7 +171,8 @@ test("career job updates use their isolated Bell wake and acknowledge normally",
       homeId,
       category: "system",
       title: "委托有新回复",
-      body: "你参与的委托收到一条新回复：我先检查一下。",
+      body:
+        '你参与的委托收到一条新回复：我先检查一下。\n可以直接调用 doorbell({"op":"go.farm.commission","args":{}}) 继续处理。',
       createdAt: 2_000,
       isNew: true,
       attachment: null,
@@ -192,7 +196,8 @@ test("career job updates use their isolated Bell wake and acknowledge normally",
       connection_epoch: "epoch-career-job",
       wake_id: "career-job:completed-test",
       reason: "career_job_update",
-      message: "你参与的委托已经完成，可以用 doorbell 查看权威结果。",
+      message:
+        '你参与的委托已经完成，可以直接调用 doorbell({"op":"go.farm.commission","args":{}}) 查看权威结果。',
       created_at: new Date(2_000).toISOString(),
     },
   });
@@ -227,6 +232,7 @@ test("career job updates use their isolated Bell wake and acknowledge normally",
       notification_id: "reply-cancel-test",
       kind: "commission_reply",
       recipient_resident_id: residentId,
+      career: "agronomist",
       message_text: "请继续处理。",
     },
     "another-resident",
@@ -266,29 +272,27 @@ test("Main emits the shared long career wake fixture without changing its ID or 
   const message = String(fixture.data.message);
   assert.ok(wakeId.length > 128);
   assert.ok(message.length > 512);
-  const notificationId = wakeId.slice("career-job:".length);
-  const replyPrefix = "你参与的委托收到一条新回复：";
-  assert.ok(message.startsWith(replyPrefix));
   const { database, homeId, residentId } = registeredDatabase();
   const mailbox = new MailboxService({
     database,
     generateLetterId: () => "career-long-letter",
     now: () => 2_000,
   });
-  const notifications = new LingyeNotificationDeliveryService({
-    database,
-    mailbox,
-    bell: { notifyResident: () => undefined },
+  const letter = mailbox.deliver({
+    homeId,
+    idempotencyKey: "career-long-wake-fixture",
+    category: "system",
+    title: "委托有新回复",
+    body: message,
+    sensitiveValues: [],
   });
-  notifications.deliver(
-    {
-      notification_id: notificationId,
-      kind: "commission_reply",
-      recipient_resident_id: residentId,
-      message_text: message.slice(replyPrefix.length),
-    },
-    "another-resident",
-  );
+  database.createCareerJobWake({
+    wakeId,
+    residentId,
+    letterId: letter.letterId,
+    message,
+    createdAt: letter.createdAt,
+  });
   assert.equal(mailbox.listForAudience(homeId, "human", 1).letters[0]?.body, message);
 
   const service = new BellService({

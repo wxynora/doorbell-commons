@@ -43,34 +43,52 @@ export const LINGYE_ACTION_ERROR_MESSAGES = Object.freeze({
   OP_REJECTED: "本次操作被铃野规则拒绝，没有产生业务结果。",
 });
 
+export const lingyeActionNotificationSchema = z
+  .object({
+    notification_id: z.string().trim().min(1),
+    kind: z.enum([
+      "commission_targeted",
+      "commission_accepted",
+      "commission_declined",
+      "commission_reply",
+      "commission_completed",
+    ]),
+    recipient_resident_id: z.uuid(),
+    career: z.enum(["agronomist", "veterinarian", "reporter", "constable"]),
+    message_text: z.string().trim().min(1).optional(),
+  })
+  .strict()
+  .superRefine((notification, context) => {
+    if (
+      (notification.kind === "commission_reply") !==
+      (notification.message_text !== undefined)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Only commission replies carry message_text",
+      });
+    }
+    if (
+      ["commission_targeted", "commission_accepted", "commission_declined"].includes(
+        notification.kind,
+      ) &&
+      !["agronomist", "veterinarian"].includes(notification.career)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Targeted service notifications only support agronomists and veterinarians",
+      });
+    }
+  });
+
 export const lingyeActionSuccessSchema = z
   .object({
     ok: z.literal(true),
     text: z.string(),
     data: z.record(z.string(), z.unknown()),
-    notifications: z
-      .array(
-        z
-          .object({
-            notification_id: z.string().trim().min(1),
-            kind: z.enum(["commission_reply", "commission_completed"]),
-            recipient_resident_id: z.uuid(),
-            message_text: z.string().trim().min(1).optional(),
-          })
-          .strict()
-          .superRefine((notification, context) => {
-            if (
-              (notification.kind === "commission_reply") !==
-              (notification.message_text !== undefined)
-            ) {
-              context.addIssue({
-                code: "custom",
-                message: "Only commission replies carry message_text",
-              });
-            }
-          }),
-      )
-      .optional(),
+    // Notifications are a private, fail-soft sidecar. A malformed sidecar is
+    // discarded instead of turning an already completed action into failure.
+    notifications: z.array(lingyeActionNotificationSchema).optional().catch([]),
   })
   .strict();
 
