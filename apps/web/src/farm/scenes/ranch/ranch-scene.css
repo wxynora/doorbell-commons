@@ -31,20 +31,6 @@
   cursor: wait;
 }
 
-.farm-ranch-resident__visitor-badge {
-  position: absolute;
-  right: -6%;
-  bottom: -8%;
-  padding: 2% 8%;
-  color: #fff9e8;
-  font-size: clamp(0.42rem, 1.8cqw, 0.62rem);
-  font-weight: 900;
-  white-space: nowrap;
-  border-radius: 999px;
-  background: #8e6b42;
-  box-shadow: 0 0.35cqw 0 rgba(74, 49, 29, 0.25);
-}
-
 .farm-ranch-resident__roamer {
   position: relative;
 }

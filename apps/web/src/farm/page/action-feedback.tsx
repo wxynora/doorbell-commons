@@ -2,6 +2,7 @@ import type { BoundFarmField, BoundFarmHarvestAssist } from "../../auth/auth-cli
 import { farmHarvestRequestIssueMessage } from "../../auth/farm-harvest-request-client";
 import { farmPlantRequestIssueMessage } from "../../auth/farm-plant-request-client";
 import { ranchCollectionIssueMessage } from "../../auth/ranch-collection-client";
+import type { BoundRanchInteractionAction } from "../../auth/ranch-interaction-action-client";
 import { farmHarvestAssistIssueMessage, farmLandUpgradeIssueMessage } from "../farm-overview";
 import type {
   FarmHarvestActionState,
@@ -397,6 +398,62 @@ export function RanchCollectionNotice({
           重新读取牧场
         </button>
       )}
+    </aside>
+  );
+}
+
+export type RanchVisitorCatchOutcome = Extract<
+  BoundRanchInteractionAction["data"]["result"]["outcome"],
+  { kind: "catch" }
+>;
+
+export function RanchVisitorCatchReceipt({
+  onClose,
+  outcome,
+}: {
+  onClose: () => void;
+  outcome: RanchVisitorCatchOutcome;
+}) {
+  return (
+    <section
+      aria-label="抓捕来客结果"
+      aria-modal="true"
+      className="farm-harvest-receipt farm-ranch-catch-receipt"
+      role="dialog"
+    >
+      <button
+        aria-label="关闭抓捕来客结果"
+        className="farm-harvest-receipt__close"
+        onClick={onClose}
+        type="button"
+      >
+        ×
+      </button>
+      <header>
+        <span>牧场来客</span>
+        <strong>抓住了{outcome.animal_name}</strong>
+        <small>来自「{outcome.owner}」</small>
+      </header>
+      <footer className="farm-harvest-receipt__summary">
+        <span>牧场金币 +{outcome.compensation.toLocaleString("zh-CN")}</span>
+      </footer>
+    </section>
+  );
+}
+
+export function RanchVisitorCatchNotice({
+  message,
+  onClose,
+}: {
+  message: string;
+  onClose: () => void;
+}) {
+  return (
+    <aside className="farm-harvest-notice farm-ranch-catch-notice" role="alert">
+      <button aria-label="关闭抓捕来客提示" onClick={onClose} type="button">
+        ×
+      </button>
+      <p>{message}</p>
     </aside>
   );
 }

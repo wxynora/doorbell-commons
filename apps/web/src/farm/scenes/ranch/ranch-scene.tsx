@@ -142,7 +142,10 @@ function RanchSceneAnimal({
     <>
       <span className="farm-ranch-resident__roamer" data-roamer ref={roamerRef}>
         <span className="farm-ranch-resident__portrait" ref={portraitRef}>
-          <span className="farm-ranch-resident__portrait-sprite" style={animal.placementStyle}>
+          <span
+            className="farm-ranch-resident__portrait-sprite"
+            style={{ ...animal.placementStyle, pointerEvents: "auto" }}
+          >
             <span
               className="farm-ranch-resident__step"
               style={animal.staticSprite ? { animation: "none" } : undefined}
@@ -168,7 +171,6 @@ function RanchSceneAnimal({
           </span>
         ) : null}
       </span>
-      {animal.visitor ? <span className="farm-ranch-resident__visitor-badge">来客</span> : null}
     </>
   );
   return animal.visitor && animal.visitorRaidId ? (
@@ -182,7 +184,7 @@ function RanchSceneAnimal({
       data-animal-id={animal.id}
       disabled={!onCatchVisitor || catchingVisitorRaidId === animal.visitorRaidId}
       onClick={() => onCatchVisitor?.(animal.visitorRaidId as string)}
-      style={style}
+      style={{ ...style, pointerEvents: "none" }}
       type="button"
     >
       {content}
@@ -193,7 +195,7 @@ function RanchSceneAnimal({
       className="farm-ranch-resident"
       data-animal-id={animal.id}
       onClick={() => onSelectAnimal(animal.id)}
-      style={style}
+      style={{ ...style, pointerEvents: "none" }}
       type="button"
     >
       {content}

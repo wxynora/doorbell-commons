@@ -55,6 +55,9 @@ import {
   RanchCollectionControl,
   RanchCollectionNotice,
   RanchCollectionReceipt,
+  RanchVisitorCatchNotice,
+  type RanchVisitorCatchOutcome,
+  RanchVisitorCatchReceipt,
 } from "./action-feedback";
 import {
   FarmEnvironmentStatus,
@@ -284,7 +287,7 @@ export function FarmFieldContent({
   const [ranchVisitorCatchAction, setRanchVisitorCatchAction] = useState<
     | { stage: "idle" }
     | { stage: "submitting"; raidId: string }
-    | { stage: "success"; raidId: string }
+    | { stage: "success"; outcome: RanchVisitorCatchOutcome }
     | { stage: "error"; message: string }
   >({ stage: "idle" });
   const [ranchCollectionAction, setRanchCollectionAction] = useState<RanchCollectionState>({
@@ -850,7 +853,15 @@ export function FarmFieldContent({
           raidId,
         });
         if (result.ok) {
-          setRanchVisitorCatchAction({ stage: "success", raidId });
+          const outcome = result.data.data.result.outcome;
+          if (outcome.kind !== "catch") {
+            setRanchVisitorCatchAction({
+              stage: "error",
+              message: "抓捕结果无法识别，请重新读取牧场。",
+            });
+            return;
+          }
+          setRanchVisitorCatchAction({ stage: "success", outcome });
           return;
         }
         setRanchVisitorCatchAction({
@@ -927,7 +938,9 @@ export function FarmFieldContent({
                   catchingVisitorRaidId={
                     ranchVisitorCatchAction.stage === "submitting" ||
                     ranchVisitorCatchAction.stage === "success"
-                      ? ranchVisitorCatchAction.raidId
+                      ? ranchVisitorCatchAction.stage === "submitting"
+                        ? ranchVisitorCatchAction.raidId
+                        : ranchVisitorCatchAction.outcome.raid_id
                       : null
                   }
                   onCatchVisitor={
@@ -1001,9 +1014,6 @@ export function FarmFieldContent({
         <div className="farm-ranch-status-stack">
           <div aria-live="polite" className="farm-ranch-presence">
             在场动物 {ranchSceneResidentCount ?? "—"} 只 · 来客 {ranchSceneVisitorCount ?? "—"} 只
-            {ranchVisitorCatchAction.stage === "error"
-              ? ` · ${ranchVisitorCatchAction.message}`
-              : ""}
           </div>
           {!activeSceneUiState.selectedTool &&
           !activeSceneUiState.bulletinOpen &&
@@ -1017,6 +1027,18 @@ export function FarmFieldContent({
             />
           ) : null}
         </div>
+      ) : null}
+      {activeScene === "ranch" && ranchVisitorCatchAction.stage === "success" ? (
+        <RanchVisitorCatchReceipt
+          onClose={() => setRanchVisitorCatchAction({ stage: "idle" })}
+          outcome={ranchVisitorCatchAction.outcome}
+        />
+      ) : null}
+      {activeScene === "ranch" && ranchVisitorCatchAction.stage === "error" ? (
+        <RanchVisitorCatchNotice
+          message={ranchVisitorCatchAction.message}
+          onClose={() => setRanchVisitorCatchAction({ stage: "idle" })}
+        />
       ) : null}
       {activeScene === "ranch" && ranchCollectionAction.stage === "success" ? (
         <RanchCollectionReceipt
