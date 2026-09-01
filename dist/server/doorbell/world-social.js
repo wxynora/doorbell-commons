@@ -104,8 +104,8 @@ export async function handleDoorbellHumanMarketAction(req, res, method) {
         const binding = validateFarmBinding(body);
         if (binding.error)
             return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
-        const out = body.action === "buy" || body.action === "barter-accept"
-            ? handleHumanCrossFarmMarketAction(binding.farm, getFarm(body.seller_doorplate), body)
+        const out = body.action === "buy" || body.action === "barter-accept" || body.action === "purchase-order-fulfill"
+            ? handleHumanCrossFarmMarketAction(binding.farm, getFarm(body.action === "purchase-order-fulfill" ? body.order_owner_doorplate : body.seller_doorplate), body)
             : handleHumanMarketAction(binding.farm, body);
         return jsonOut(res, out.status, out.json);
     }

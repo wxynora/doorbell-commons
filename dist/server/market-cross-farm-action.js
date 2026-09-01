@@ -1,13 +1,14 @@
 import { createHash } from "node:crypto";
 import { humanBarterAccept } from "../engine.js";
 import { buyFromMarket } from "../game.js";
+import { fulfillPurchaseOrder } from "../game/purchase-orders.js";
 import { dumpUgc, loadUgc } from "../ugc.js";
 import { normalizeFarm, replaceFarmsAtomic } from "../store.js";
 import { marketActionRevision } from "./market-revision.js";
 import {
-  createMinimalHumanActionReceipt,
-  replayMinimalHumanActionReceipt,
-} from "../minimal-action-receipt.js";
+  createHumanMarketActionReceipt,
+  replayHumanMarketActionReceipt,
+} from "./market-action-receipt.js";
 
 const FARM_DOORPLATE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -74,11 +75,10 @@ function validateBody(body) {
     "idempotency_key",
     "expected_revision",
     "action",
-    "seller_doorplate",
   ];
   if (body.action === "buy") {
     return (
-      exactKeys(body, [...common, "kind", "item_id", "qty"]) &&
+      exactKeys(body, [...common, "seller_doorplate", "kind", "item_id", "qty"]) &&
       typeof body.farm_human_key === "string" && body.farm_human_key.trim().length > 0 &&
       typeof body.expected_farm_doorplate === "string" && FARM_DOORPLATE_RE.test(body.expected_farm_doorplate) &&
       typeof body.seller_doorplate === "string" && FARM_DOORPLATE_RE.test(body.seller_doorplate) &&
@@ -91,13 +91,25 @@ function validateBody(body) {
   }
   if (body.action === "barter-accept") {
     return (
-      exactKeys(body, [...common, "listing_id"]) &&
+      exactKeys(body, [...common, "seller_doorplate", "listing_id"]) &&
       typeof body.farm_human_key === "string" && body.farm_human_key.trim().length > 0 &&
       typeof body.expected_farm_doorplate === "string" && FARM_DOORPLATE_RE.test(body.expected_farm_doorplate) &&
       typeof body.seller_doorplate === "string" && FARM_DOORPLATE_RE.test(body.seller_doorplate) &&
       typeof body.idempotency_key === "string" && UUID_RE.test(body.idempotency_key) &&
       typeof body.expected_revision === "string" && REVISION_RE.test(body.expected_revision) &&
       UUID_RE.test(body.listing_id)
+    );
+  }
+  if (body.action === "purchase-order-fulfill") {
+    return (
+      exactKeys(body, [...common, "order_owner_doorplate", "listing_id", "qty"]) &&
+      typeof body.farm_human_key === "string" && body.farm_human_key.trim().length > 0 &&
+      typeof body.expected_farm_doorplate === "string" && FARM_DOORPLATE_RE.test(body.expected_farm_doorplate) &&
+      typeof body.order_owner_doorplate === "string" && FARM_DOORPLATE_RE.test(body.order_owner_doorplate) &&
+      typeof body.idempotency_key === "string" && UUID_RE.test(body.idempotency_key) &&
+      typeof body.expected_revision === "string" && REVISION_RE.test(body.expected_revision) &&
+      UUID_RE.test(body.listing_id) &&
+      positiveInteger(body.qty)
     );
   }
   return false;
@@ -135,8 +147,28 @@ function barterOutcome(body, result) {
   };
 }
 
+function purchaseOrderFulfillOutcome(body, result) {
+  return {
+    order_owner_doorplate: body.order_owner_doorplate,
+    listing_id: body.listing_id,
+    kind: result.order.kind,
+    item_id: result.order.itemId,
+    quantity: result.quantity,
+    remaining_quantity: result.remainingQuantity,
+    complete: result.complete,
+    name: result.definition.item.name,
+    cost: result.cost,
+    fee: result.fee,
+    price: result.unitPrice,
+  };
+}
+
 function stableResult(body, result) {
-  const outcome = body.action === "buy" ? buyOutcome(body, result) : barterOutcome(body, result);
+  const outcome = body.action === "buy"
+    ? buyOutcome(body, result)
+    : body.action === "barter-accept"
+      ? barterOutcome(body, result)
+      : purchaseOrderFulfillOutcome(body, result);
   return {
     receipt_id: body.idempotency_key,
     action: body.action,
@@ -144,15 +176,27 @@ function stableResult(body, result) {
   };
 }
 
-function responseFor(buyer, seller, result, now) {
+function responseFor(initiator, counterparty, body, result, now) {
+  if (body.action === "purchase-order-fulfill") {
+    return {
+      data: {
+        result,
+        fulfiller_doorplate: initiator.id,
+        order_owner_doorplate: counterparty.id,
+      },
+      revision: marketActionRevision(initiator, now),
+      order_owner_revision: marketActionRevision(counterparty, now),
+      server_time: new Date(now).toISOString(),
+    };
+  }
   return {
     data: {
       result,
-      buyer_doorplate: buyer.id,
-      seller_doorplate: seller.id,
+      buyer_doorplate: initiator.id,
+      seller_doorplate: counterparty.id,
     },
-    revision: marketActionRevision(buyer, now),
-    seller_revision: marketActionRevision(seller, now),
+    revision: marketActionRevision(initiator, now),
+    seller_revision: marketActionRevision(counterparty, now),
     server_time: new Date(now).toISOString(),
   };
 }
@@ -161,7 +205,8 @@ function callAuthority(body, seller, buyer, now) {
   if (body.action === "buy") {
     return buyFromMarket(seller, buyer, body.kind, body.item_id, body.qty, now);
   }
-  return humanBarterAccept(seller, buyer, body.listing_id, now);
+  if (body.action === "barter-accept") return humanBarterAccept(seller, buyer, body.listing_id, now);
+  return fulfillPurchaseOrder(seller, buyer, body.listing_id, body.qty, now);
 }
 
 /**
@@ -177,8 +222,11 @@ export function handleHumanCrossFarmMarketAction(buyer, seller, body, now = Date
   if (buyer.humanKey !== body.farm_human_key || buyer.id !== body.expected_farm_doorplate) {
     return errorResponse("farm_identity_mismatch", "The Human credential does not match the buyer farm", undefined, 409);
   }
-  if (seller.id !== body.seller_doorplate) {
-    return errorResponse("farm_identity_mismatch", "The seller doorplate does not match the target farm", undefined, 409);
+  const targetDoorplate = body.action === "purchase-order-fulfill"
+    ? body.order_owner_doorplate
+    : body.seller_doorplate;
+  if (seller.id !== targetDoorplate) {
+    return errorResponse("farm_identity_mismatch", "The market target doorplate does not match the target farm", undefined, 409);
   }
 
   const requestFingerprint = fingerprint(body);
@@ -189,10 +237,10 @@ export function handleHumanCrossFarmMarketAction(buyer, seller, body, now = Date
       return errorResponse("idempotency_conflict", "This idempotency key was used for a different request");
     }
     try {
-      const response = replayMinimalHumanActionReceipt(
+      const response = replayHumanMarketActionReceipt(
         existing,
         requestFingerprint,
-        responseFor(buyer, seller, null, now),
+        responseFor(buyer, seller, body, null, now),
       );
       return response
         ? { status: 200, json: response }
@@ -228,12 +276,13 @@ export function handleHumanCrossFarmMarketAction(buyer, seller, body, now = Date
     const response = responseFor(
       buyerWorking,
       sellerWorking,
+      body,
       stableResult(body, result),
       now,
     );
     buyerWorking[MARKET_RECEIPTS] = {
       ...(isRecord(buyerWorking[MARKET_RECEIPTS]) ? buyerWorking[MARKET_RECEIPTS] : {}),
-      [body.idempotency_key]: createMinimalHumanActionReceipt(requestFingerprint, response),
+      [body.idempotency_key]: createHumanMarketActionReceipt(requestFingerprint, response),
     };
     // The authorities may have updated the live UGC catalog while operating
     // on clones (UGC sales counters); restore it before the store commit so a

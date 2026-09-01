@@ -17,6 +17,11 @@ import { crops, ranchSkinById } from "./content.js";
 import { normalizeQixi2026Farm, settleQixi2026SeedPriceRefund } from "./qixi-2026.js";
 import { normalizeQixiLantern2026Farm, normalizeQixiLantern2026World } from "./qixi-lantern-2026.js";
 import { normalizeWelfareWeekFarm } from "./welfare-week.js";
+import {
+    advanceMysteryMerchantWorld,
+    normalizeMysteryMerchantCatalog,
+    normalizeMysteryMerchantWorld,
+} from "./mystery-merchant.js";
 const DATA_DIR = process.env.AIFARM_DATA_DIR
     ? resolve(process.env.AIFARM_DATA_DIR)
     : resolve(dirname(fileURLToPath(import.meta.url)), "../data");
@@ -32,6 +37,7 @@ let glimmerWorld = normalizeGlimmerWorld({});
 let publicExpeditionWorld = normalizePublicExpeditionWorld({});
 let qixiLantern2026World = normalizeQixiLantern2026World({});
 let natureWorld = normalizeNatureWorld(null);
+let mysteryMerchantWorld = normalizeMysteryMerchantWorld(null);
 let worldCommitCoordinator = null;
 let worldPersistenceAdapter = null;
 let startupSettlementPending = false;
@@ -68,6 +74,7 @@ export function normalizeFarm(f) {
         f.shop.potionSet = null;
     f.knownRecipes ??= [];
     f.market ??= [];
+    f.humanPurchaseOrders ??= [];
     f.silver ??= 0;
     f.codex ??= {};
     f.items ??= {};
@@ -171,6 +178,30 @@ export const getGlimmerWorld = () => glimmerWorld;
 export const getPublicExpeditionWorld = () => publicExpeditionWorld;
 export const getQixiLantern2026World = () => qixiLantern2026World;
 export const getNatureWorld = () => natureWorld;
+export const getMysteryMerchantWorld = () => mysteryMerchantWorld;
+export function advanceStoredMysteryMerchantWorld({ now, catalog, shelfSize, drawInt }) {
+    const normalizedCatalog = normalizeMysteryMerchantCatalog(catalog);
+    const farmIds = playerFarms().map((farm) => farm.id);
+    if (farmIds.length === 0)
+        return { changed: false, world: mysteryMerchantWorld };
+    const next = advanceMysteryMerchantWorld(mysteryMerchantWorld, {
+        now,
+        farmIds,
+        catalog: normalizedCatalog,
+        shelfSize,
+        ...(drawInt === undefined ? {} : { drawInt }),
+    });
+    if (!next.changed)
+        return next;
+    const staged = normalizeMysteryMerchantWorld(next.world);
+    commitWorld(worldSnapshot(farms.values(), dumpUgc(), natureWorld, staged), {
+        farmIds: [],
+        componentKeys: ["mysteryMerchant"],
+        allowCrossDomain: true,
+    });
+    mysteryMerchantWorld = staged;
+    return { changed: true, world: mysteryMerchantWorld };
+}
 export function commitNatureWorld(next) {
     const staged = normalizeNatureWorld(next);
     commitWorld(worldSnapshot(farms.values(), dumpUgc(), staged), {
@@ -378,7 +409,12 @@ export function replaceFarm(id, farm) {
     farms.set(id, before);
     return before;
 }
-function worldSnapshot(farmValues = farms.values(), ugcValues = dumpUgc(), natureValue = natureWorld) {
+function worldSnapshot(
+    farmValues = farms.values(),
+    ugcValues = dumpUgc(),
+    natureValue = natureWorld,
+    mysteryMerchantValue = mysteryMerchantWorld,
+) {
     return {
         format: "aifarm-world",
         version: 1,
@@ -391,6 +427,7 @@ function worldSnapshot(farmValues = farms.values(), ugcValues = dumpUgc(), natur
         publicExpedition: publicExpeditionWorld,
         qixiLantern2026: qixiLantern2026World,
         nature: natureValue,
+        mysteryMerchant: mysteryMerchantValue,
     };
 }
 function writeWorldAtomic(world) {
@@ -472,6 +509,7 @@ export function restoreWorldSnapshotInMemory(snapshot) {
     publicExpeditionWorld = normalizePublicExpeditionWorld(snapshot.publicExpedition);
     qixiLantern2026World = normalizeQixiLantern2026World(snapshot.qixiLantern2026);
     natureWorld = normalizeNatureWorld(snapshot.nature);
+    mysteryMerchantWorld = normalizeMysteryMerchantWorld(snapshot.mysteryMerchant);
     loadUgc(structuredClone(snapshot.ugc));
     farms.clear();
     for (const farm of snapshot.farms)
@@ -547,6 +585,41 @@ export function replaceFarmsAndNatureAtomic({ replacements, nextNatureWorld, ugc
     natureWorld = stagedNature;
     return { farms: [...staged.values()], nature: stagedNature };
 }
+/** Commit farm replacements and the shared merchant world in one world rename. */
+export function replaceFarmsAndMysteryMerchantAtomic({ replacements, nextMysteryMerchantWorld }) {
+    if (!Array.isArray(replacements) || replacements.length === 0)
+        throw new TypeError("farm replacements must be a non-empty array");
+    const staged = new Map();
+    for (const replacement of replacements) {
+        const id = String(replacement?.id ?? replacement?.farm?.id ?? "");
+        if (!id || staged.has(id))
+            throw new Error("farm replacements must contain each farm exactly once");
+        if (!farms.has(id))
+            throw new Error(`farm not found: ${id}`);
+        const farm = structuredClone(replacement.farm);
+        farm.id = id;
+        staged.set(id, normalizeFarm(farm));
+    }
+    const stagedMerchant = normalizeMysteryMerchantWorld(nextMysteryMerchantWorld);
+    const nextFarms = [...farms.values()].map((current) => staged.get(current.id) ?? current);
+    commitWorld(worldSnapshot(nextFarms, dumpUgc(), natureWorld, stagedMerchant), {
+        farmIds: [...staged.keys()],
+        componentKeys: ["mysteryMerchant"],
+        allowCrossDomain: true,
+    });
+    for (const [id, farm] of staged)
+        farms.set(id, farm);
+    mysteryMerchantWorld = stagedMerchant;
+    return { farms: [...staged.values()], mysteryMerchant: mysteryMerchantWorld };
+}
+/** Commit one buyer farm and the shared merchant world in the same world rename. */
+export function replaceFarmAndMysteryMerchantAtomic({ replacement, nextMysteryMerchantWorld }) {
+    const committed = replaceFarmsAndMysteryMerchantAtomic({
+        replacements: [replacement],
+        nextMysteryMerchantWorld,
+    });
+    return { farm: committed.farms[0], mysteryMerchant: committed.mysteryMerchant };
+}
 /** 确保常驻 NPC 阿土在库里（首次启动 / 老存档没有时建一座）。返回是否新建。 */
 function ensureNpc() {
     if (farms.has(NPC_ID))
@@ -580,6 +653,7 @@ function publishLoadedWorld(world) {
     publicExpeditionWorld = normalizePublicExpeditionWorld(world.publicExpedition);
     qixiLantern2026World = normalizeQixiLantern2026World(world.qixiLantern2026);
     natureWorld = normalizeNatureWorld(world.nature);
+    mysteryMerchantWorld = normalizeMysteryMerchantWorld(world.mysteryMerchant);
     loadUgc(Array.isArray(world.ugc) ? world.ugc : []);
     farms.clear();
     for (const farm of world.farms)
@@ -657,6 +731,7 @@ export function load(options = {}) {
     publicExpeditionWorld = normalizePublicExpeditionWorld({});
     qixiLantern2026World = normalizeQixiLantern2026World({});
     natureWorld = normalizeNatureWorld(null);
+    mysteryMerchantWorld = normalizeMysteryMerchantWorld(null);
     if (!existsSync(DATA_FILE)) {
         finishLoadedWorld(options);
         return;

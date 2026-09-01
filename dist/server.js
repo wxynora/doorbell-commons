@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import { advance, steal, visitorWater, tryWaterReward, buyPotionSet, ensureHumanKey, pushSocialInbox, pushLog, craft, cookingDebuffReason, cookingDebuffStatusText, bribeGuardDog } from "./engine.js";
 import { dispatch, farmView, viewShop, viewEncyclopedia, shopBrief, viewMarket, buyFromMarket, visitView, tendNpc, buyNpcSeed, hasDamagedPublicName, viewKitchen } from "./game.js";
 import { harvestText, stealThiefText, statusFooter, waterText } from "./flavor.js";
-import { createFarm, getFarm, allFarms, playerFarms, replaceFarm, save, getGlimmerWorld, getPublicExpeditionWorld, getQixiLantern2026World, restoreWorldSnapshotInMemory, setWorldCommitCoordinator, setWorldPersistenceAdapter, settleLoadedWorld, snapshotWorldForRollback, withWorldCommitContext } from "./store.js";
+import { createFarm, getFarm, allFarms, playerFarms, replaceFarm, replaceFarmAndMysteryMerchantAtomic, save, getGlimmerWorld, getMysteryMerchantWorld, getPublicExpeditionWorld, getQixiLantern2026World, restoreWorldSnapshotInMemory, setWorldCommitCoordinator, setWorldPersistenceAdapter, settleLoadedWorld, snapshotWorldForRollback, withWorldCommitContext, advanceStoredMysteryMerchantWorld } from "./store.js";
 import { MAX_FARMS, MESSAGE_TEXT_MAX, MESSAGES_MAX, NPC_ID, GROW_TICKS, BASE, REGISTRATION_OPEN, REGISTRATION_CLOSED_TEXT, REGISTRATION_CAP, REGISTRATION_FULL_TEXT, SHOW_MIGRATION_NOTICE, MIGRATION_NOTICE_TEXT, MIGRATION_NOTICE_HTML } from "./config.js";
 import { allowRequest, allowCreate, sweepGuard } from "./guard.js";
 import { sweepNonces, htmlReadme, htmlGuide } from "./agent.js";
@@ -39,8 +39,11 @@ import { startConstableInterviewScheduler } from "./career/constable-interview-s
 import { loadConstableInterviewBank } from "./career/constable-interview-bank.js";
 import { applyDroughtWatering, collectFloodFishForFarm, commitNatureFarmReconciliation, commitNatureRemovedPlot, startNatureRuntimeScheduler } from "./nature-runtime.js";
 import { setDailySpendEconomyDatabase } from "./daily-spend.js";
+import { activeMysteryMerchantEvent, buyMysteryMerchantOffers, projectMysteryMerchant } from "./mystery-merchant.js";
+import { discoverAndBroadcastMysteryMerchant } from "./server/market-action.js";
 let activeLingyeWorldDatabase = null;
 let activeLingyeWorldBackend = null;
+let activeMysteryMerchantRuntime = null;
 function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
     const careerBenefits = farmDoorbellKitchenCareerBenefits(
         activeLingyeWorldDatabase,
@@ -63,6 +66,7 @@ function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
         const { to: _to, ...ownParams } = body;
         return runFarm(farm.id, action, { ...ownParams, id: resolved.farm.id, token: farm.token }, undefined, now, { detail, careerBenefits });
     }
+    const mysteryMerchantBuy = action === "buy" && body.source === "mystery-merchant";
     const social = action === "kitchen"
         ? body.op === "use" && body.target === "guard-dog" && body.to !== undefined && String(body.to) !== ""
         : body.to !== undefined && String(body.to) !== "";
@@ -73,7 +77,7 @@ function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
     fillRunDefaults(action, body);
     const injected = social
         ? { ...body, by: farm.id, token: farm.token, targetRef: String(resolved.number) }
-        : { ...body, token: farm.token };
+        : { ...body, ...(mysteryMerchantBuy ? { by: farm.id } : {}), token: farm.token };
     return runFarm(target, action, injected, social ? farm.id : body.id, now, { detail, careerBenefits });
 }
 function executeDoorbellFarmAction(farm, action, params, detail, now) {
@@ -191,7 +195,10 @@ function agentReadyText(f, humanUrl, agentUrl, isNew) {
 （🏠 门牌号 ${f.id}，别人串门/偷菜认它、可公开。两条链接都不含主 token，AI 拿不到农场私钥。）`;
 }
 function runFarmCore(farmId, action, b, encArg, now, options = {}) {
-    const currentFarm = getFarm(farmId);
+    const storedFarm = getFarm(farmId);
+    const currentFarm = storedFarm && action === "market"
+        ? discoverAndBroadcastMysteryMerchant(storedFarm, now).farm
+        : storedFarm;
     if (!currentFarm)
         return { status: 400, json: { ok: false, text: `找不到农场 ${farmId || "(没给 farm)"}` } };
     const projectedRead = action === "visit" || action === "leaderboard" || action === "ranking" ||
@@ -442,8 +449,16 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
     }
     if (action === "market") {
         const text = viewMarket(f, true);
+        const mysteryMerchantWorld = getMysteryMerchantWorld();
+        const activeMerchant = activeMysteryMerchantEvent(mysteryMerchantWorld, now);
+        const mysteryMerchant = projectMysteryMerchant(
+            mysteryMerchantWorld,
+            now,
+            playerFarms().find((candidate) => candidate.id === activeMerchant?.hostFarmId)?.name,
+            f.id,
+        );
         persistProjectedRead();
-        return { status: 200, json: { ok: true, text, ...vf(f) } };
+        return { status: 200, json: { ok: true, text, mystery_merchant: mysteryMerchant, ...vf(f) } };
     }
     if (action === "encyclopedia") {
         const text = viewEncyclopedia(f, encArg);
@@ -465,6 +480,41 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
     if (action === "buy") {
         const buyer = getFarm(byId);
         advance(buyer, now);
+        if (b.source === "mystery-merchant") {
+            if (!activeMysteryMerchantRuntime || typeof activeMysteryMerchantRuntime.renderPurchaseResult !== "function")
+                throw new Error("Mystery merchant purchase copy is not configured");
+            const working = structuredClone(buyer);
+            const r = buyMysteryMerchantOffers({
+                world: getMysteryMerchantWorld(),
+                buyer: working,
+                itemIds: b.items,
+                now,
+            });
+            if (!r.ok) {
+                return {
+                    status: 400,
+                    json: {
+                        ok: false,
+                        text: activeMysteryMerchantRuntime.renderPurchaseResult(r),
+                        mystery_merchant: projectMysteryMerchant(getMysteryMerchantWorld(), now, null, buyer.id),
+                        ...vf(buyer),
+                    },
+                };
+            }
+            const committed = replaceFarmAndMysteryMerchantAtomic({
+                replacement: { id: buyer.id, farm: working },
+                nextMysteryMerchantWorld: r.world,
+            });
+            return {
+                status: 200,
+                json: {
+                    ok: true,
+                    text: activeMysteryMerchantRuntime.renderPurchaseResult(r),
+                    mystery_merchant: projectMysteryMerchant(committed.mysteryMerchant, now, null, buyer.id),
+                    ...vf(committed.farm),
+                },
+            };
+        }
         if (f.id === NPC_ID) {
             const r = buyNpcSeed(f, buyer, String(b.id), now);
             if (!r.ok)
@@ -732,9 +782,25 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
     const closeLingyeWorldDatabaseOnClose = ownsLingyeWorldDatabase || options.closeLingyeWorldDatabaseOnClose === true;
     const clearWorldPersistenceAdapterOnClose = options.clearWorldPersistenceAdapterOnClose === true;
     const lingyeWorldDatabase = injectedDatabase ?? openLingyeWorldDatabase();
+    const mysteryMerchantConfig = options.mysteryMerchant === undefined
+        ? null
+        : {
+            catalog: structuredClone(options.mysteryMerchant?.catalog),
+            shelfSize: options.mysteryMerchant?.shelfSize,
+            renderPurchaseResult: options.mysteryMerchant?.renderPurchaseResult,
+        };
+    if (mysteryMerchantConfig !== null &&
+        (typeof mysteryMerchantConfig !== "object" || Array.isArray(mysteryMerchantConfig))) {
+        throw new TypeError("startServer mysteryMerchant must be an object");
+    }
+    if (mysteryMerchantConfig?.renderPurchaseResult !== undefined &&
+        typeof mysteryMerchantConfig.renderPurchaseResult !== "function") {
+        throw new TypeError("startServer mysteryMerchant.renderPurchaseResult must be a function");
+    }
     let rescheduleReporterEvaluation = () => {};
     activeLingyeWorldDatabase = lingyeWorldDatabase;
     setDailySpendEconomyDatabase(lingyeWorldDatabase);
+    activeMysteryMerchantRuntime = mysteryMerchantConfig;
     const lingyeEconomyRules = Object.freeze({
         minimumSystemLoanCreditDays: 7,
         restrictedDailyGoldLimit: 200000,
@@ -777,6 +843,13 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
             // Startup-only grants and backfills must reach the farm snapshot and
             // migrated economy ledger in the same durable transaction.
             settleLoadedWorld({ forceSave: true });
+            if (mysteryMerchantConfig) {
+                advanceStoredMysteryMerchantWorld({
+                    now: Date.now(),
+                    catalog: mysteryMerchantConfig.catalog,
+                    shelfSize: mysteryMerchantConfig.shelfSize,
+                });
+            }
         });
         withWorldCommitContext({ balanceAuthority: "ledger", actor: "system" }, () => {
             // Register/import every migrated ledger before any recovery reads
@@ -794,6 +867,7 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
             lingyeWorldDatabase.close();
         activeLingyeWorldDatabase = null;
         activeLingyeWorldBackend = null;
+        activeMysteryMerchantRuntime = null;
         setDailySpendEconomyDatabase(null);
         throw error;
     }
@@ -859,6 +933,33 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
         employmentTimer.unref();
     };
     scheduleEmploymentCycle();
+    let mysteryMerchantTimer;
+    let mysteryMerchantStopped = false;
+    const scheduleMysteryMerchantCycle = () => {
+        if (!mysteryMerchantConfig || mysteryMerchantStopped)
+            return;
+        const current = Date.now();
+        const offset = 8 * 60 * 60 * 1000;
+        const nextBoundary = (Math.floor((current + offset) / (24 * 60 * 60 * 1000)) + 1) *
+            24 * 60 * 60 * 1000 - offset;
+        mysteryMerchantTimer = setTimeout(() => {
+            try {
+                withWorldCommitContext({ balanceAuthority: "farm", actor: "system" }, () => {
+                    advanceStoredMysteryMerchantWorld({
+                        now: Date.now(),
+                        catalog: mysteryMerchantConfig.catalog,
+                        shelfSize: mysteryMerchantConfig.shelfSize,
+                    });
+                });
+            }
+            catch {
+                console.error("[mystery-merchant] daily schedule failed");
+            }
+            scheduleMysteryMerchantCycle();
+        }, Math.max(0, nextBoundary - current));
+        mysteryMerchantTimer.unref();
+    };
+    scheduleMysteryMerchantCycle();
     let reporterEvaluationTimer;
     let reporterEvaluationStopped = false;
     const runReporterEvaluationCycle = () => {
@@ -1151,6 +1252,9 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
         employmentStopped = true;
         if (employmentTimer)
             clearTimeout(employmentTimer);
+        mysteryMerchantStopped = true;
+        if (mysteryMerchantTimer)
+            clearTimeout(mysteryMerchantTimer);
         reporterEvaluationStopped = true;
         if (reporterEvaluationTimer)
             clearTimeout(reporterEvaluationTimer);
@@ -1161,6 +1265,8 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
             activeLingyeWorldDatabase = null;
         if (activeLingyeWorldBackend === lingyeWorldBackend)
             activeLingyeWorldBackend = null;
+        if (activeMysteryMerchantRuntime === mysteryMerchantConfig)
+            activeMysteryMerchantRuntime = null;
         setDailySpendEconomyDatabase(null);
         if (closeLingyeWorldDatabaseOnClose && lingyeWorldDatabase.isOpen)
             lingyeWorldDatabase.close();

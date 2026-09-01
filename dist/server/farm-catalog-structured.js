@@ -22,13 +22,15 @@ import { allUgc } from "../ugc.js";
 import { currentDayIndex } from "../time.js";
 import { titleById } from "../titles.js";
 import { buildCurrentFarmLeaderboardRows, buildLeaderboards } from "../leaderboard.js";
-import { playerFarms } from "../store.js";
+import { getMysteryMerchantWorld, playerFarms } from "../store.js";
+import { activeMysteryMerchantEvent, projectMysteryMerchant } from "../mystery-merchant.js";
 import { cropCodexActionRevision } from "./crop-codex-revision.js";
 import { originalPlantActionRevision } from "./original-plant-action.js";
 import { expeditionActionRevision } from "./expedition-revision.js";
 import { marketActionRevision } from "./market-revision.js";
 import { neighborhoodMessageActionRevision } from "./neighborhood-revision.js";
 import { smeltingActionRevision } from "./smelting-revision.js";
+import { purchaseOrderItemDefinitions } from "../game/purchase-orders.js";
 
 const FARM_DOORPLATE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/;
 const RARITY_ORDER = new Map([
@@ -703,12 +705,40 @@ function projectHumanBarterListing(seller, listing, ugcById) {
   };
 }
 
-function projectMarket(farm) {
+function projectPurchaseOrder(owner, order, ugcById) {
+  const listingId = typeof order?.id === "string" && order.id ? order.id : null;
+  const kind = typeof order?.kind === "string" ? order.kind : null;
+  const itemId = typeof order?.itemId === "string" && order.itemId ? order.itemId : null;
+  const targetQuantity = cleanInt(order?.targetQuantity);
+  const filledQuantity = cleanInt(order?.filledQuantity);
+  const remainingQuantity = Math.max(0, targetQuantity - filledQuantity);
+  const price = nullableInt(order?.unitPrice);
+  if (!listingId || !kind || !MARKET_KINDS.has(kind) || !itemId || targetQuantity <= 0 || remainingQuantity <= 0 || !price) {
+    return null;
+  }
+  const definition = marketDefinition(kind, itemId, ugcById);
+  return {
+    buyer_farm_doorplate: String(owner.id),
+    listing_id: listingId,
+    kind,
+    item_id: itemId,
+    identity_state: definition ? "known" : "unavailable",
+    name: definition?.name ?? null,
+    rarity: RARITY_ORDER.has(definition?.rarity) ? definition.rarity : null,
+    target_quantity: targetQuantity,
+    filled_quantity: Math.min(filledQuantity, targetQuantity),
+    remaining_quantity: remainingQuantity,
+    price,
+  };
+}
+
+function projectMarket(farm, now, mysteryMerchantWorld = getMysteryMerchantWorld()) {
   const ugcById = new Map(allUgc().map((item) => [item.id, item]));
   const sellers = playerFarms().map((seller) => seller.id === farm.id ? farm : seller);
   if (!sellers.some((seller) => seller.id === farm.id)) sellers.push(farm);
   const listings = [];
   const barterListings = [];
+  const purchaseOrders = [];
   for (const seller of sellers) {
     for (const listing of Array.isArray(seller.market) ? seller.market : []) {
       const projected = projectMarketListing(seller, listing, ugcById);
@@ -718,8 +748,33 @@ function projectMarket(farm) {
       const projected = projectHumanBarterListing(seller, listing, ugcById);
       if (projected) barterListings.push(projected);
     }
+    for (const order of Array.isArray(seller.humanPurchaseOrders) ? seller.humanPurchaseOrders : []) {
+      const projected = projectPurchaseOrder(seller, order, ugcById);
+      if (projected) purchaseOrders.push(projected);
+    }
   }
-  return { status: "available", listings, barter_listings: barterListings };
+  const purchaseOrderItems = purchaseOrderItemDefinitions(farm).map((item) => ({
+    kind: item.kind,
+    item_id: item.id,
+    identity_state: "known",
+    name: item.name,
+    rarity: RARITY_ORDER.has(item.rarity) ? item.rarity : null,
+    owned_quantity: cleanInt(item.ownedQuantity),
+  }));
+  const activeMerchant = activeMysteryMerchantEvent(mysteryMerchantWorld, now);
+  return {
+    status: "available",
+    listings,
+    barter_listings: barterListings,
+    purchase_orders: purchaseOrders,
+    purchase_order_items: purchaseOrderItems,
+    mystery_merchant: projectMysteryMerchant(
+      mysteryMerchantWorld,
+      now,
+      playerFarms().find((candidate) => candidate.id === activeMerchant?.hostFarmId)?.name,
+      farm.id,
+    ),
+  };
 }
 
 /**
@@ -727,7 +782,7 @@ function projectMarket(farm) {
  * lazy time advancement, shop refresh, title check, notification take, or
  * save is performed here.
  */
-export function projectHumanFarmCatalog(farm, now = Date.now()) {
+export function projectHumanFarmCatalog(farm, now = Date.now(), options = {}) {
   if (!farm || typeof farm !== "object") throw new TypeError("Farm catalog requires a farm");
   const data = {
     farm: {
@@ -742,7 +797,7 @@ export function projectHumanFarmCatalog(farm, now = Date.now()) {
     smelting: projectSmelting(farm),
     bulletin: projectBulletin(farm),
     neighborhood: projectNeighborhood(farm, now),
-    market: projectMarket(farm),
+    market: projectMarket(farm, now, options.mysteryMerchantWorld),
   };
   return {
     data,
@@ -750,7 +805,7 @@ export function projectHumanFarmCatalog(farm, now = Date.now()) {
     codex_revision: cropCodexActionRevision(farm, now),
     original_plant_revision: originalPlantActionRevision(farm, now),
     expedition_revision: expeditionActionRevision(farm, now),
-    market_revision: marketActionRevision(farm, now),
+    market_revision: marketActionRevision(farm, now, options.mysteryMerchantWorld),
     neighborhood_revision: neighborhoodMessageActionRevision(farm, now),
     server_time: new Date(now).toISOString(),
   };

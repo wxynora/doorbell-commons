@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { normalizeFarm } from "../store.js";
+import { getMysteryMerchantWorld, normalizeFarm } from "../store.js";
 import { dumpUgc } from "../ugc.js";
 
 function isRecord(value) {
@@ -32,10 +32,11 @@ function revisionFarmSnapshot(farm) {
 }
 
 /** Read-only precondition for current farm inventory/listings and the shared UGC catalog. */
-export function marketActionRevision(farm, _now = Date.now()) {
+export function marketActionRevision(farm, _now = Date.now(), mysteryMerchantWorld = getMysteryMerchantWorld()) {
   return `farm-market-v1:${digest({
     schema: "farm-market-v1",
     farm: revisionFarmSnapshot(farm),
     ugc: structuredClone(dumpUgc()),
+    mystery_merchant: structuredClone(mysteryMerchantWorld),
   })}`;
 }

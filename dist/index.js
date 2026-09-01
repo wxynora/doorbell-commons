@@ -3,6 +3,11 @@
 import { assertSupportedNodeVersion } from "./runtime-version.js";
 import { createFarmWorldSqlitePersistence } from "./farm-world-sqlite-persistence.js";
 import { openLingyeWorldDatabase } from "./lingye-world-database.js";
+import {
+    MYSTERY_MERCHANT_CATALOG,
+    MYSTERY_MERCHANT_SHELF_SIZE,
+    renderMysteryMerchantPurchaseResult,
+} from "./mystery-merchant.js";
 import { load, save, setWorldPersistenceAdapter } from "./store.js";
 import { startServer } from "./server.js";
 assertSupportedNodeVersion();
@@ -17,6 +22,11 @@ try {
         lingyeWorldDatabase,
         closeLingyeWorldDatabaseOnClose: true,
         clearWorldPersistenceAdapterOnClose: true,
+        mysteryMerchant: {
+            catalog: MYSTERY_MERCHANT_CATALOG,
+            shelfSize: MYSTERY_MERCHANT_SHELF_SIZE,
+            renderPurchaseResult: renderMysteryMerchantPurchaseResult,
+        },
     });
 }
 catch (error) {
