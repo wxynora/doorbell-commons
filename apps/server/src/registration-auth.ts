@@ -1172,6 +1172,35 @@ export class RegistrationAuthService {
           idempotencyKey: string;
           action: "barter-unlist";
           listingId: string;
+        }
+      | {
+          expectedRevision: string;
+          idempotencyKey: string;
+          action: "purchase-order-list";
+          kind: "seed" | "material" | "ingredient" | "dish";
+          itemId: string;
+          quantity: number;
+          price: number;
+        }
+      | {
+          expectedRevision: string;
+          idempotencyKey: string;
+          action: "purchase-order-fulfill";
+          orderOwnerDoorplate: string;
+          listingId: string;
+          quantity: number;
+        }
+      | {
+          expectedRevision: string;
+          idempotencyKey: string;
+          action: "purchase-order-unlist";
+          listingId: string;
+        }
+      | {
+          expectedRevision: string;
+          idempotencyKey: string;
+          action: "mystery-merchant-buy";
+          items: string[];
         },
   ) {
     const community = await this.getCurrentSession(token);

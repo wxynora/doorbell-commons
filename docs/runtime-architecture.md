@@ -152,6 +152,14 @@ the market fee in the SQLite economy. Farm-side listing and order receipts persi
 orders into both stores, and restores unsold listings for terminated leases without duplicating
 inventory or payment.
 
+Human public purchase orders remain in the existing Farm market boundary. The buyer farm persists only
+the requested item, unit silver price, target quantity and filled quantity; it does not pre-charge or
+create a second wallet. Each partial fulfillment validates the seller's current Farm inventory and the
+buyer's current silver on isolated farm copies, then uses the same atomic multi-farm replacement to
+move the item, debit the buyer, credit the seller after the existing market fee, advance the order and
+remove it only when full. Doorbell exposes these actions through the existing Human market endpoint and
+strict catalog projection; no new MCP operation or community-owned inventory is introduced.
+
 Agronomist qualification now reaches the ordinary farm settlement as well as paid commissions: normal
 crop harvest uses the approved 3／6／10／15 percent extra-product rule, while commission material batches
 apply the approved level-based saving without reducing a required material below one. Reporter work

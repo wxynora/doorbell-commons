@@ -39,6 +39,9 @@ const uniquePositiveIntegers = z
 const animalName = nonEmptyString.refine((value) => !/^\d+$/.test(value), "动物名称不能是数字代号");
 const integer = z.number().int();
 const nonEmptyStrings = z.array(nonEmptyString);
+const uniqueNonEmptyStrings = nonEmptyStrings
+  .min(1)
+  .refine((values) => new Set(values).size === values.length, "商品不能重复");
 const kitchenItems = z.array(nonEmptyString).min(2).max(5);
 const kitchenResearchItems = z.array(nonEmptyString).min(2).max(5);
 const kitchenMethod = z.enum([
@@ -203,7 +206,7 @@ const nonHelpOperations: FarmOperationDefinition[] = [
     op: "farm.buy",
     description: "购买商品；可从商店、NPC 或其他农场摊位购买，具体来源和商品类型由参数指定。",
     argsHint:
-      '{source:"shop", kind:"recipe"|"seed"|"item", ...}、{source:"farm-shop", kind:"potion-set", ...}、{source:"npc", id} 或 {source:"market", to, kind, id, qty?}',
+      '{source:"shop", kind:"recipe"|"seed"|"item", ...}、{source:"farm-shop", kind:"potion-set", ...}、{source:"npc", id}、{source:"market", to, kind, id, qty?} 或 {source:"mystery-merchant", items:[稳定商品ID,…]}',
     branches: [
       { source: z.literal("shop"), kind: z.literal("recipe") },
       { source: z.literal("shop"), kind: z.literal("seed"), id: nonEmptyString.optional() },
@@ -226,6 +229,7 @@ const nonHelpOperations: FarmOperationDefinition[] = [
         id: nonEmptyString,
         qty: positiveInteger.optional(),
       },
+      { source: z.literal("mystery-merchant"), items: uniqueNonEmptyStrings },
     ],
     exampleArgs: [
       { source: "shop", kind: "recipe" },
@@ -234,6 +238,7 @@ const nonHelpOperations: FarmOperationDefinition[] = [
       { source: "farm-shop", kind: "potion-set", to: "6" },
       { source: "npc", id: "seed-id" },
       { source: "market", to: "6", kind: "seed", id: "seed-id", qty: 1 },
+      { source: "mystery-merchant", items: ["world_tree_seed", "origin_vine"] },
     ],
     adapt: (args) => {
       const { source, kind, ...rest } = args;
@@ -249,6 +254,9 @@ const nonHelpOperations: FarmOperationDefinition[] = [
       }
       if (source === "farm-shop" && kind === "potion-set") {
         return { kind: "farm", action: "buy-potion-set", params: rest };
+      }
+      if (source === "mystery-merchant") {
+        return { kind: "farm", action: "buy", params: { source, ...rest } };
       }
       if (source === "npc") {
         return { kind: "farm", action: "buy", params: rest };

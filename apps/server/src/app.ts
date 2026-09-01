@@ -8817,11 +8817,40 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
                         sellerDoorplate: body.seller_doorplate,
                         listingId: body.listing_id,
                       })
-                    : await options.registrationAuth.executeCurrentFarmMarketAction(token, {
-                        ...common,
-                        action: body.action,
-                        listingId: body.listing_id,
-                      });
+                    : body.action === "barter-unlist"
+                      ? await options.registrationAuth.executeCurrentFarmMarketAction(token, {
+                          ...common,
+                          action: body.action,
+                          listingId: body.listing_id,
+                        })
+                      : body.action === "purchase-order-list"
+                        ? await options.registrationAuth.executeCurrentFarmMarketAction(token, {
+                            ...common,
+                            action: body.action,
+                            kind: body.kind,
+                            itemId: body.item_id,
+                            quantity: body.qty,
+                            price: body.price,
+                          })
+                        : body.action === "purchase-order-fulfill"
+                          ? await options.registrationAuth.executeCurrentFarmMarketAction(token, {
+                              ...common,
+                              action: body.action,
+                              orderOwnerDoorplate: body.order_owner_doorplate,
+                              listingId: body.listing_id,
+                              quantity: body.qty,
+                            })
+                          : body.action === "purchase-order-unlist"
+                            ? await options.registrationAuth.executeCurrentFarmMarketAction(token, {
+                                ...common,
+                                action: body.action,
+                                listingId: body.listing_id,
+                              })
+                            : await options.registrationAuth.executeCurrentFarmMarketAction(token, {
+                                ...common,
+                                action: body.action,
+                                items: body.items,
+                              });
       const parsedResult = boundFarmMarketActionSuccessSchema.safeParse(result);
       if (!parsedResult.success) {
         return sendBoundFarmMarketActionError(
@@ -8877,7 +8906,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         );
       }
       if (error instanceof FarmHumanMarketActionRejectedError) {
-        return sendBoundFarmMarketActionError(reply, 409, "action_rejected", error.message);
+        return sendBoundFarmMarketActionError(reply, 409, error.code, error.message);
       }
       if (error instanceof FarmHumanMarketActionCrossFarmAtomicityUnavailableError) {
         return sendBoundFarmMarketActionError(

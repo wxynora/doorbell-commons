@@ -487,11 +487,103 @@ export const farmCatalogMarketBarterListingSchema = z
   })
   .strict();
 
+export const farmCatalogMarketPurchaseOrderItemSchema = z
+  .object({
+    kind: z.enum(["seed", "material", "ingredient", "dish"]),
+    item_id: z.string().min(1),
+    identity_state: z.literal("known"),
+    name: z.string().min(1),
+    rarity: farmCatalogRaritySchema.nullable(),
+    owned_quantity: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const farmCatalogMarketPurchaseOrderSchema = z
+  .object({
+    buyer_farm_doorplate: farmCatalogDoorplateSchema,
+    listing_id: z.uuid(),
+    kind: z.enum(["seed", "material", "ingredient", "dish"]),
+    item_id: z.string().min(1),
+    identity_state: farmCatalogItemIdentityStateSchema,
+    name: z.string().min(1).nullable(),
+    rarity: farmCatalogRaritySchema.nullable(),
+    target_quantity: z.number().int().positive(),
+    filled_quantity: z.number().int().nonnegative(),
+    remaining_quantity: z.number().int().positive(),
+    price: z.number().int().positive(),
+  })
+  .strict()
+  .superRefine((order, context) => {
+    if (order.filled_quantity + order.remaining_quantity !== order.target_quantity) {
+      context.addIssue({
+        code: "custom",
+        path: ["remaining_quantity"],
+        message: "purchase order quantities must add up to the target",
+      });
+    }
+    if (order.identity_state === "known" && order.name === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["name"],
+        message: "a known purchase-order item must have a name",
+      });
+    }
+  });
+
+export const farmCatalogMysteryMerchantWindowSchema = z
+  .object({
+    starts_at: z.iso.datetime(),
+    ends_at: z.iso.datetime(),
+  })
+  .strict()
+  .refine((window) => Date.parse(window.ends_at) > Date.parse(window.starts_at), {
+    message: "a mystery-merchant window must end after it starts",
+  });
+
+export const farmCatalogMysteryMerchantOfferSchema = z
+  .object({
+    kind: z.enum(["material", "seed", "potion_set"]),
+    item_id: z.string().min(1),
+    name: z.string().min(1),
+    rarity: farmCatalogRaritySchema.nullable(),
+    currency: z.enum(["gold", "silver"]),
+    unit_price: z.number().int().positive(),
+    grant_quantity: z.number().int().positive(),
+    already_bought: z.boolean(),
+  })
+  .strict();
+
+const farmCatalogMysteryMerchantAbsentSchema = z
+  .object({
+    status: z.literal("absent"),
+    approximate_windows: z.array(farmCatalogMysteryMerchantWindowSchema).length(3),
+  })
+  .strict();
+
+const farmCatalogMysteryMerchantPresentSchema = z
+  .object({
+    status: z.literal("present"),
+    approximate_windows: z.array(farmCatalogMysteryMerchantWindowSchema).length(3),
+    host_farm_doorplate: farmCatalogDoorplateSchema,
+    host_farm_name: z.string().min(1).nullable(),
+    ends_at: z.iso.datetime(),
+    offers: z.array(farmCatalogMysteryMerchantOfferSchema).min(1),
+  })
+  .strict();
+
+export const farmCatalogMysteryMerchantSchema = z.union([
+  farmCatalogMysteryMerchantAbsentSchema,
+  farmCatalogMysteryMerchantPresentSchema,
+]);
+
 export const farmCatalogMarketAvailableSchema = z
   .object({
     status: z.literal("available"),
     listings: z.array(farmCatalogMarketListingSchema),
     barter_listings: z.array(farmCatalogMarketBarterListingSchema),
+    purchase_orders: z.array(farmCatalogMarketPurchaseOrderSchema),
+    purchase_order_items: z.array(farmCatalogMarketPurchaseOrderItemSchema),
+    mystery_merchant: farmCatalogMysteryMerchantSchema,
   })
   .strict();
 

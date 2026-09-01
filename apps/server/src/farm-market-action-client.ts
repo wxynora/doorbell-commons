@@ -1,7 +1,9 @@
 import {
   type FarmHumanMarketActionError,
+  type FarmHumanMarketActionErrorCode,
   type FarmHumanMarketActionSuccess,
   type FarmHumanMarketCrossFarmActionSuccess,
+  type FarmHumanMarketPurchaseOrderFulfillSuccess,
   type FarmMarketAction,
   type FarmMarketListingKind,
   farmHumanMarketActionErrorSchema,
@@ -54,6 +56,27 @@ export type FarmHumanMarketActionInput =
   | (FarmHumanMarketActionIdentity & {
       action: "barter-unlist";
       listingId: string;
+    })
+  | (FarmHumanMarketActionIdentity & {
+      action: "purchase-order-list";
+      kind: FarmMarketListingKind;
+      itemId: string;
+      quantity: number;
+      price: number;
+    })
+  | (FarmHumanMarketActionIdentity & {
+      action: "purchase-order-fulfill";
+      orderOwnerDoorplate: string;
+      listingId: string;
+      quantity: number;
+    })
+  | (FarmHumanMarketActionIdentity & {
+      action: "purchase-order-unlist";
+      listingId: string;
+    })
+  | (FarmHumanMarketActionIdentity & {
+      action: "mystery-merchant-buy";
+      items: string[];
     });
 
 export interface FarmHumanMarketActioner {
@@ -98,10 +121,24 @@ export class FarmHumanMarketActionStateConflictError extends Error {
   }
 }
 
+type FarmHumanMarketActionRejectedCode = Extract<
+  FarmHumanMarketActionErrorCode,
+  | "action_rejected"
+  | "merchant_not_present"
+  | "merchant_not_visible"
+  | "already_bought"
+  | "offer_not_found"
+  | "quantity_invalid"
+  | "insufficient_funds"
+>;
+
 export class FarmHumanMarketActionRejectedError extends Error {
-  constructor(message: string) {
+  readonly code: FarmHumanMarketActionRejectedCode;
+
+  constructor(message: string, code: FarmHumanMarketActionRejectedCode = "action_rejected") {
     super(message);
     this.name = "FarmHumanMarketActionRejectedError";
+    this.code = code;
   }
 }
 
@@ -169,6 +206,28 @@ function requestActionFields(input: FarmHumanMarketActionInput): Record<string, 
       };
     case "barter-unlist":
       return { action: input.action, listing_id: input.listingId };
+    case "purchase-order-list":
+      return {
+        action: input.action,
+        kind: input.kind,
+        item_id: input.itemId,
+        qty: input.quantity,
+        price: input.price,
+      };
+    case "purchase-order-fulfill":
+      return {
+        action: input.action,
+        order_owner_doorplate: input.orderOwnerDoorplate,
+        listing_id: input.listingId,
+        qty: input.quantity,
+      };
+    case "purchase-order-unlist":
+      return { action: input.action, listing_id: input.listingId };
+    case "mystery-merchant-buy":
+      return {
+        action: input.action,
+        items: input.items,
+      };
   }
 }
 
@@ -188,12 +247,32 @@ function isCrossFarmSuccess(
   return "seller_revision" in result;
 }
 
+function isPurchaseOrderFulfillSuccess(
+  result: FarmHumanMarketActionSuccess,
+): result is FarmHumanMarketPurchaseOrderFulfillSuccess {
+  return "order_owner_revision" in result;
+}
+
 function resultMatchesInput(
   result: FarmHumanMarketActionSuccess,
   input: FarmHumanMarketActionInput,
 ): boolean {
+  if (input.action === "purchase-order-fulfill") {
+    if (!isPurchaseOrderFulfillSuccess(result)) return false;
+    const actionResult = result.data.result;
+    return (
+      result.data.fulfiller_doorplate === input.farmDoorplate &&
+      result.data.order_owner_doorplate === input.orderOwnerDoorplate &&
+      actionResult.receipt_id === input.idempotencyKey &&
+      actionResult.action === "purchase-order-fulfill" &&
+      actionResult.outcome.order_owner_doorplate === input.orderOwnerDoorplate &&
+      actionResult.outcome.listing_id === input.listingId &&
+      actionResult.outcome.quantity > 0 &&
+      actionResult.outcome.quantity <= input.quantity
+    );
+  }
   if (input.action === "buy" || input.action === "barter-accept") {
-    if (!isCrossFarmSuccess(result)) return false;
+    if (!isCrossFarmSuccess(result) || isPurchaseOrderFulfillSuccess(result)) return false;
     if (
       result.data.buyer_doorplate !== input.farmDoorplate ||
       result.data.seller_doorplate !== input.sellerDoorplate
@@ -223,7 +302,7 @@ function resultMatchesInput(
     );
   }
 
-  if (isCrossFarmSuccess(result)) return false;
+  if (isCrossFarmSuccess(result) || isPurchaseOrderFulfillSuccess(result)) return false;
 
   const actionResult = result.data.result;
   if (actionResult.receipt_id !== input.idempotencyKey || actionResult.action !== input.action) {
@@ -261,6 +340,26 @@ function resultMatchesInput(
       return (
         actionResult.action === "barter-unlist" &&
         actionResult.outcome.listing_id === input.listingId
+      );
+    case "purchase-order-list":
+      return (
+        actionResult.action === "purchase-order-list" &&
+        actionResult.outcome.kind === input.kind &&
+        actionResult.outcome.item_id === input.itemId &&
+        actionResult.outcome.quantity === input.quantity &&
+        actionResult.outcome.price === input.price
+      );
+    case "purchase-order-unlist":
+      return (
+        actionResult.action === "purchase-order-unlist" &&
+        actionResult.outcome.listing_id === input.listingId
+      );
+    case "mystery-merchant-buy":
+      return (
+        actionResult.action === "mystery-merchant-buy" &&
+        actionResult.outcome.items.length === input.items.length &&
+        actionResult.outcome.items.every((item, index) => item.item_id === input.items[index]) &&
+        actionResult.outcome.host_farm_doorplate.length === 6
       );
   }
 }
@@ -334,6 +433,7 @@ export class FarmHumanMarketActionClient implements FarmHumanMarketActioner {
     if (
       !parsed.success ||
       (!isCrossFarmSuccess(parsed.data) &&
+        !isPurchaseOrderFulfillSuccess(parsed.data) &&
         parsed.data.data.resource.farm.farm_doorplate !== input.farmDoorplate) ||
       !resultMatchesInput(parsed.data, input) ||
       !revisionMatchesAction(parsed.data, input.expectedRevision, input.action)
@@ -357,7 +457,13 @@ export class FarmHumanMarketActionClient implements FarmHumanMarketActioner {
       case "cross_farm_atomicity_unavailable":
         throw new FarmHumanMarketActionCrossFarmAtomicityUnavailableError(currentRevision);
       case "action_rejected":
-        throw new FarmHumanMarketActionRejectedError(parsedError.error.message);
+      case "merchant_not_present":
+      case "merchant_not_visible":
+      case "already_bought":
+      case "offer_not_found":
+      case "quantity_invalid":
+      case "insufficient_funds":
+        throw new FarmHumanMarketActionRejectedError(parsedError.error.message, code);
       case "idempotency_conflict":
         throw new FarmHumanMarketActionIdempotencyConflictError();
       case "farm_credential_not_found":

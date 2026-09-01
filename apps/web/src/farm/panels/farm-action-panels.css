@@ -920,6 +920,81 @@
   background: rgba(255, 253, 241, 0.58);
 }
 
+.farm-market__mystery-merchant {
+  display: grid;
+  gap: 0.9cqw;
+  padding: 1.2cqw;
+  color: #5e482f;
+  border: 1px solid rgba(115, 82, 43, 0.22);
+  border-radius: 1.4cqw;
+  background: rgba(237, 219, 178, 0.62);
+}
+
+.farm-market__mystery-merchant > header,
+.farm-market__mystery-merchant li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1cqw;
+}
+
+.farm-market__mystery-merchant > header span,
+.farm-market__mystery-merchant small,
+.farm-market__mystery-merchant p {
+  margin: 0;
+  color: #856e4c;
+  font-size: clamp(0.46rem, 1.8cqw, 0.56rem);
+}
+
+.farm-market__mystery-windows {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6cqw;
+}
+
+.farm-market__mystery-windows span {
+  padding: 0.35cqw 0.7cqw;
+  border-radius: 999px;
+  background: rgba(255, 250, 228, 0.7);
+  font-size: clamp(0.45rem, 1.75cqw, 0.54rem);
+  font-weight: 800;
+}
+
+.farm-market__mystery-merchant ul {
+  display: grid;
+  gap: 0.7cqw;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.farm-market__mystery-merchant li {
+  padding: 0.8cqw 0.9cqw;
+  border-radius: 1cqw;
+  background: rgba(255, 253, 241, 0.66);
+}
+
+.farm-market__mystery-merchant li > span {
+  display: grid;
+  gap: 0.25cqw;
+}
+
+.farm-market__mystery-merchant button {
+  min-height: 6.4cqw;
+  padding: 0.45cqw 1.2cqw;
+  color: #fff7d9;
+  font: inherit;
+  font-weight: 900;
+  border: 0.24cqw solid #607438;
+  border-radius: 999px;
+  background: #789147;
+}
+
+.farm-market__mystery-merchant button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
 .farm-market__barter {
   min-width: 0;
   color: #765b3d;
@@ -936,6 +1011,86 @@
   display: grid;
   gap: 0.8cqw;
   padding-top: 0.4cqw;
+}
+
+.farm-market__purchase-orders {
+  display: grid;
+  gap: 0.8cqw;
+  padding: 1.2cqw;
+  color: #65492f;
+  border: 1px solid rgba(132, 101, 59, 0.2);
+  border-radius: 1.4cqw;
+  background: rgba(247, 230, 192, 0.58);
+}
+
+.farm-market__purchase-orders h3 {
+  margin: 0;
+  font-size: clamp(0.62rem, 2.45cqw, 0.74rem);
+}
+
+.farm-market__purchase-orders ul {
+  display: grid;
+  gap: 0.8cqw;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.farm-market__purchase-orders li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1cqw;
+  align-items: center;
+  padding: 0.9cqw 1cqw;
+  border-radius: 1cqw;
+  background: rgba(255, 253, 241, 0.66);
+}
+
+.farm-market__purchase-orders li > span:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 0.3cqw;
+}
+
+.farm-market__purchase-orders li small {
+  color: #8f7756;
+  font-size: clamp(0.46rem, 1.8cqw, 0.56rem);
+}
+
+.farm-market__purchase-orders button {
+  min-height: 6.4cqw;
+  padding: 0.45cqw 1.2cqw;
+  color: #fff7d9;
+  font: inherit;
+  font-weight: 900;
+  border: 0.24cqw solid #607438;
+  border-radius: 999px;
+  background: #789147;
+}
+
+.farm-market__purchase-orders button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.farm-market__purchase-order-action {
+  display: grid;
+  grid-template-columns: auto 11cqw auto;
+  gap: 0.6cqw;
+  align-items: center;
+}
+
+.farm-market__purchase-order-action input {
+  box-sizing: border-box;
+  width: 11cqw;
+  min-height: 6.4cqw;
+  padding: 0.5cqw;
+  color: #60452e;
+  font: inherit;
+  font-weight: 800;
+  border: 1px solid rgba(145, 112, 62, 0.34);
+  border-radius: 1cqw;
+  background: rgba(255, 249, 226, 0.8);
 }
 
 .farm-market__listing-meta {

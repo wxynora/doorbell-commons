@@ -52,6 +52,27 @@ export type MarketActionInput =
   | (MarketActionBinding & {
       action: "barter-unlist";
       listingId: string;
+    })
+  | (MarketActionBinding & {
+      action: "purchase-order-list";
+      kind: FarmMarketListingKind;
+      itemId: string;
+      quantity: number;
+      price: number;
+    })
+  | (MarketActionBinding & {
+      action: "purchase-order-fulfill";
+      orderOwnerDoorplate: string;
+      listingId: string;
+      quantity: number;
+    })
+  | (MarketActionBinding & {
+      action: "purchase-order-unlist";
+      listingId: string;
+    })
+  | (MarketActionBinding & {
+      action: "mystery-merchant-buy";
+      items: string[];
     });
 
 export type BoundMarketAction = BoundFarmMarketActionSuccess;
@@ -133,6 +154,28 @@ function requestActionFields(input: MarketActionInput): Record<string, unknown> 
       };
     case "barter-unlist":
       return { action: input.action, listing_id: input.listingId };
+    case "purchase-order-list":
+      return {
+        action: input.action,
+        kind: input.kind,
+        item_id: input.itemId,
+        qty: input.quantity,
+        price: input.price,
+      };
+    case "purchase-order-fulfill":
+      return {
+        action: input.action,
+        order_owner_doorplate: input.orderOwnerDoorplate,
+        listing_id: input.listingId,
+        qty: input.quantity,
+      };
+    case "purchase-order-unlist":
+      return { action: input.action, listing_id: input.listingId };
+    case "mystery-merchant-buy":
+      return {
+        action: input.action,
+        items: input.items,
+      };
   }
 }
 
@@ -152,10 +195,30 @@ function isCrossFarmSuccess(
   return "seller_revision" in result;
 }
 
+function isPurchaseOrderFulfillSuccess(
+  result: BoundMarketAction,
+): result is Extract<BoundMarketAction, { order_owner_revision: string }> {
+  return "order_owner_revision" in result;
+}
+
 function resultMatchesInput(result: BoundMarketAction, input: MarketActionInput): boolean {
+  if (input.action === "purchase-order-fulfill") {
+    if (!isPurchaseOrderFulfillSuccess(result)) return false;
+    const actionResult = result.data.result;
+    return (
+      result.data.fulfiller_doorplate === input.expectedFarmDoorplate &&
+      result.data.order_owner_doorplate === input.orderOwnerDoorplate &&
+      actionResult.receipt_id === input.idempotencyKey &&
+      actionResult.action === "purchase-order-fulfill" &&
+      actionResult.outcome.order_owner_doorplate === input.orderOwnerDoorplate &&
+      actionResult.outcome.listing_id === input.listingId &&
+      actionResult.outcome.quantity > 0 &&
+      actionResult.outcome.quantity <= input.quantity
+    );
+  }
   const actionResult = result.data.result;
   if (input.action === "buy" || input.action === "barter-accept") {
-    if (!isCrossFarmSuccess(result)) return false;
+    if (!isCrossFarmSuccess(result) || isPurchaseOrderFulfillSuccess(result)) return false;
     if (
       result.data.buyer_doorplate !== input.expectedFarmDoorplate ||
       result.data.seller_doorplate !== input.sellerDoorplate
@@ -182,7 +245,7 @@ function resultMatchesInput(result: BoundMarketAction, input: MarketActionInput)
       actionResult.outcome.listing_id === input.listingId
     );
   }
-  if (isCrossFarmSuccess(result)) return false;
+  if (isCrossFarmSuccess(result) || isPurchaseOrderFulfillSuccess(result)) return false;
 
   const singleFarmActionResult = result.data.result;
   if (
@@ -224,6 +287,28 @@ function resultMatchesInput(result: BoundMarketAction, input: MarketActionInput)
         singleFarmActionResult.action === "barter-unlist" &&
         singleFarmActionResult.outcome.listing_id === input.listingId
       );
+    case "purchase-order-list":
+      return (
+        singleFarmActionResult.action === "purchase-order-list" &&
+        singleFarmActionResult.outcome.kind === input.kind &&
+        singleFarmActionResult.outcome.item_id === input.itemId &&
+        singleFarmActionResult.outcome.quantity === input.quantity &&
+        singleFarmActionResult.outcome.price === input.price
+      );
+    case "purchase-order-unlist":
+      return (
+        singleFarmActionResult.action === "purchase-order-unlist" &&
+        singleFarmActionResult.outcome.listing_id === input.listingId
+      );
+    case "mystery-merchant-buy":
+      return (
+        singleFarmActionResult.action === "mystery-merchant-buy" &&
+        singleFarmActionResult.outcome.items.length === input.items.length &&
+        singleFarmActionResult.outcome.items.every(
+          (item, index) => item.item_id === input.items[index],
+        ) &&
+        singleFarmActionResult.outcome.host_farm_doorplate.length === 6
+      );
   }
 }
 
@@ -260,6 +345,7 @@ export async function executeBoundMarketAction(
   if (!parsed.success) return { ok: false, issue: clientIssue("unexpected_response") };
   if (
     !isCrossFarmSuccess(parsed.data) &&
+    !isPurchaseOrderFulfillSuccess(parsed.data) &&
     parsed.data.data.resource.farm.farm_doorplate !== options.expectedFarmDoorplate
   ) {
     return { ok: false, issue: clientIssue("unexpected_response") };
@@ -282,6 +368,24 @@ export function marketActionIssueMessage(issue: MarketActionIssue): string {
   }
   if (issue.code === "unexpected_response") {
     return "集市动作返回了无法识别的数据，请稍后再试。";
+  }
+  if (issue.code === "insufficient_funds") {
+    return "可用余额不足，本次操作没有执行";
+  }
+  if (issue.code === "already_bought") {
+    return "这一轮你已经买过这件商品了。";
+  }
+  if (issue.code === "merchant_not_present") {
+    return "神秘商人现在不在。";
+  }
+  if (issue.code === "merchant_not_visible") {
+    return "这次出现的地点还没有被发现。";
+  }
+  if (issue.code === "offer_not_found") {
+    return "这件商品已经不在当前货架上。";
+  }
+  if (issue.code === "quantity_invalid") {
+    return "神秘商人的商品每次只能购买一份。";
   }
   return issue.serverMessage || "集市动作暂时不可用，请稍后再试。";
 }
