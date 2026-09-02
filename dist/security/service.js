@@ -12,10 +12,10 @@ const PATROL_BAND_MS = 8 * HOUR_MS;
 const THEFT_ROLLING_WINDOW_MS = 72 * HOUR_MS;
 
 const THEFT_PENALTIES = Object.freeze([
-    Object.freeze({ maximumOccurrence: 1, durationHours: 4, hourlyReleaseRateGold: 500 }),
-    Object.freeze({ maximumOccurrence: 2, durationHours: 12, hourlyReleaseRateGold: 1_000 }),
-    Object.freeze({ maximumOccurrence: 3, durationHours: 48, hourlyReleaseRateGold: 2_500 }),
-    Object.freeze({ maximumOccurrence: Number.POSITIVE_INFINITY, durationHours: 168, hourlyReleaseRateGold: 5_000 }),
+    Object.freeze({ maximumOccurrence: 3, durationHours: 4, hourlyReleaseRateGold: 500 }),
+    Object.freeze({ maximumOccurrence: 7, durationHours: 12, hourlyReleaseRateGold: 500 }),
+    Object.freeze({ maximumOccurrence: 11, durationHours: 48, hourlyReleaseRateGold: 500 }),
+    Object.freeze({ maximumOccurrence: Number.POSITIVE_INFINITY, durationHours: 72, hourlyReleaseRateGold: 500 }),
 ]);
 
 export class SecurityDomainError extends Error {
