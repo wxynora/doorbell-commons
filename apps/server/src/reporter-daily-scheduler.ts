@@ -1,6 +1,14 @@
 import type { ReporterRelayStarter } from "./reporter-relay-farm-client.js";
 import type { ReporterRelayService } from "./reporter-relay-service.js";
 
+export interface ReporterDailyEvent {
+  event: "dispatch_start" | "dispatch_no_pending" | "dispatch_enqueued";
+  issueDate: string;
+  recovery: boolean;
+  stage?: "selection" | "writing" | "review" | "supplement";
+  status?: "created" | "duplicate";
+}
+
 export interface ReporterDailySchedulerOptions {
   farm: ReporterRelayStarter;
   relay: Pick<ReporterRelayService, "enqueue">;
@@ -8,6 +16,7 @@ export interface ReporterDailySchedulerOptions {
   setTimer?: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
   clearTimer?: (timer: ReturnType<typeof setTimeout>) => void;
   onError?: (error: unknown) => void;
+  onEvent?: (event: ReporterDailyEvent) => void;
 }
 
 const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000;
@@ -55,6 +64,7 @@ export class ReporterDailyScheduler {
   readonly #setTimer: NonNullable<ReporterDailySchedulerOptions["setTimer"]>;
   readonly #clearTimer: NonNullable<ReporterDailySchedulerOptions["clearTimer"]>;
   readonly #onError: (error: unknown) => void;
+  readonly #onEvent: (event: ReporterDailyEvent) => void;
   #timer: ReturnType<typeof setTimeout> | null = null;
   #closed = false;
 
@@ -65,6 +75,7 @@ export class ReporterDailyScheduler {
     this.#setTimer = options.setTimer ?? setTimeout;
     this.#clearTimer = options.clearTimer ?? clearTimeout;
     this.#onError = options.onError ?? (() => undefined);
+    this.#onEvent = options.onEvent ?? (() => undefined);
   }
 
   start(): void {
@@ -92,17 +103,36 @@ export class ReporterDailyScheduler {
     this.#timer = null;
     try {
       const period = issuePeriod(dayStartUtc);
+      this.#emit({ event: "dispatch_start", issueDate: period.issueDate, recovery });
       const startedWake = await this.#farm.startIssue(period);
       const pendingWake = recovery ? await this.#farm.pendingIssue(period.issueDate) : startedWake;
-      if (!pendingWake) return;
+      if (!pendingWake) {
+        this.#emit({ event: "dispatch_no_pending", issueDate: period.issueDate, recovery });
+        return;
+      }
       const wake = recovery
-        ? { ...pendingWake, wake_id: `${pendingWake.wake_id}:recovery` }
+        ? { ...pendingWake, wake_id: `${pendingWake.wake_id}:recovery-release` }
         : pendingWake;
-      this.#relay.enqueue(wake);
+      const acceptance = this.#relay.enqueue(wake);
+      this.#emit({
+        event: "dispatch_enqueued",
+        issueDate: period.issueDate,
+        recovery,
+        stage: wake.stage,
+        status: acceptance.status,
+      });
     } catch (error) {
       this.#onError(error);
     } finally {
       this.#schedule(false);
+    }
+  }
+
+  #emit(event: ReporterDailyEvent): void {
+    try {
+      this.#onEvent(event);
+    } catch {
+      // Logging must not interrupt reporter scheduling.
     }
   }
 }

@@ -273,6 +273,11 @@ const reporterRelayService = new ReporterRelayService({
   database,
   bellService,
   renderer: reporterRelayRenderer,
+  onEvent: (event) => {
+    process.stdout.write(
+      `[doorbell-reporter-relay] event=${event.event} issue_date=${event.issueDate} stage=${event.stage} status=${event.status}\n`,
+    );
+  },
 });
 const reporterRelayFarm = new ReporterRelayFarmClient({
   apiBaseUrl: serverConfig.farmApiBaseUrl,
@@ -285,6 +290,11 @@ const reporterDailyScheduler = new ReporterDailyScheduler({
   onError: (error) => {
     process.stderr.write(
       `[doorbell-reporter-daily] ${error instanceof Error ? error.name : "UnknownError"}\n`,
+    );
+  },
+  onEvent: (event) => {
+    process.stdout.write(
+      `[doorbell-reporter-daily] event=${event.event} issue_date=${event.issueDate} recovery=${event.recovery}${event.stage ? ` stage=${event.stage}` : ""}${event.status ? ` status=${event.status}` : ""}\n`,
     );
   },
 });

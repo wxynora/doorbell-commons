@@ -17,6 +17,14 @@ export interface ReporterRelayServiceOptions {
   bellService: Pick<BellService, "notifyResident">;
   renderer: ReporterRelayRenderer;
   now?: () => number;
+  onEvent?: (event: ReporterRelayEvent) => void;
+}
+
+export interface ReporterRelayEvent {
+  event: "wake_enqueued";
+  issueDate: string;
+  stage: ReporterRelayWake["stage"];
+  status: ReporterRelayWakeAcceptance["status"];
 }
 
 export class ReporterRelayWakeValidationError extends Error {
@@ -38,12 +46,14 @@ export class ReporterRelayService {
   readonly #bellService: ReporterRelayServiceOptions["bellService"];
   readonly #renderer: ReporterRelayRenderer;
   readonly #now: () => number;
+  readonly #onEvent: (event: ReporterRelayEvent) => void;
 
   constructor(options: ReporterRelayServiceOptions) {
     this.#database = options.database;
     this.#bellService = options.bellService;
     this.#renderer = options.renderer;
     this.#now = options.now ?? Date.now;
+    this.#onEvent = options.onEvent ?? (() => undefined);
   }
 
   enqueue(input: unknown): ReporterRelayWakeAcceptance {
@@ -69,6 +79,16 @@ export class ReporterRelayService {
     });
     if (status === "created") {
       this.#bellService.notifyResident(wake.recipient_resident_id);
+    }
+    try {
+      this.#onEvent({
+        event: "wake_enqueued",
+        issueDate: wake.issue_date,
+        stage: wake.stage,
+        status,
+      });
+    } catch {
+      // Logging must not overturn an accepted Bell wake.
     }
     return reporterRelayWakeAcceptanceSchema.parse({
       accepted: true,
