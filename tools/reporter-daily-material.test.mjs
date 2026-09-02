@@ -336,6 +336,9 @@ test("reporter relay internal endpoints persist and replay an explicit selector-
         });
         assert.equal(selection.ok, true, JSON.stringify(selection));
         const writingWake = selection.data.reporter_wake;
+        assert.deepEqual(Object.keys(writingWake).sort(), [
+            "action", "issue_date", "recipient_resident_id", "selection_text", "stage", "wake_id",
+        ]);
         const writing = execute(writingWake.recipient_resident_id, {
             ...writingWake.action.args,
             text: "今日日报依据公开榜单整理，记录农场里的新鲜动静。",

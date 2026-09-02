@@ -303,7 +303,7 @@ test("05:00 relay persists every wake and only publishes and credits all three r
         assert.equal(writingWake.stage, "writing");
         assert.equal(writingWake.selection_text, "今日主线关注农场榜单变化。");
         assert.deepEqual(Object.keys(writingWake).sort(), [
-            "action", "issue_date", "materials", "recipient_resident_id", "selection_text", "stage", "wake_id",
+            "action", "issue_date", "recipient_resident_id", "selection_text", "stage", "wake_id",
         ]);
         assert.deepEqual(reporterRelayWake(context.database, `lingye-daily:${ISSUE_DATE}`, FIVE), writingWake);
 
@@ -459,6 +459,9 @@ test("an explicitly triggered missed selection is handed to the writer without c
         const writingWake = selected.data.reporter_wake;
         assert.equal(writingWake.stage, "writing");
         assert.equal(writingWake.recipient_resident_id, writer);
+        assert.deepEqual(Object.keys(writingWake).sort(), [
+            "action", "issue_date", "recipient_resident_id", "selection_text", "stage", "wake_id",
+        ]);
         const workflow = context.database.prepare(`SELECT *
           FROM career_reporter_story_workflows`).get();
         assert.equal(workflow.selector_resident_id, writer);

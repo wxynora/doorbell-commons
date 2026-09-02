@@ -480,7 +480,9 @@ export function reporterRelayWake(database, issueReference, now = Date.now(), re
         recipient_resident_id: wake.recipient_resident_id,
         stage,
         issue_date: issue.issue_date,
-        materials: publicMaterials(database, issue.issue_reference),
+        ...(stage === "writing"
+            ? {}
+            : { materials: publicMaterials(database, issue.issue_reference) }),
         ...stageInputs(database, issue, stage, sequence),
         ...(stage === "review"
             ? { actions: reviewActions(database, issue, sequence, now) }
