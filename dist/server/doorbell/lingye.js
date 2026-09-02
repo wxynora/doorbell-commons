@@ -46,6 +46,7 @@ import {
     recoverBoundNpcSource,
     recoverPendingNpcFallbackServices,
     reporterMaterialPackForJob,
+    startSelfAgronomyWork,
     syncAuthorityJobs,
     treatmentGold,
     veterinarianTreatmentMaterialGold,
@@ -1805,6 +1806,12 @@ function commissionOptions(database, backend, rows, residentId, sources, now) {
         const existing = database.prepare("SELECT 1 FROM career_jobs WHERE source_type = ? AND source_id = ?")
             .get(source.sourceType, source.sourceId);
         if (!existing) {
+            if (source.career === "agronomist" && source.ownerResidentId === residentId &&
+                qualificationLevel(database, residentId, "agronomist", now) >= source.requiredLevel &&
+                serviceCommissionJobs(database, now)
+                    .getServiceCommissionAvailability(residentId, "agronomist").canAccept) {
+                options.push(option(`commission:self:${source.sourceId}`));
+            }
             options.push(option(`commission:publish:${source.sourceId}`));
             if (["agronomist", "veterinarian"].includes(source.career)) {
                 for (const targetResidentId of serviceCommissionCandidateIds(database,
@@ -2272,6 +2279,18 @@ function completeCommissionWorldOperation(database, backend, row, world) {
                             amount: AGRONOMY_COMMISSION_REWARD_GOLD[job.difficultyLevel],
                             businessType: "career_agronomy_reward",
                             businessRef: `career-service:${job.sourceId}:agronomy-reward`,
+                            idempotencyKey: `${current.action_key}:agronomy-reward`,
+                        });
+                    }
+                    else if (job.assignmentMode === "self" &&
+                        job.ownerResidentId === current.resident_id) {
+                        result = backend.trustedSystemCommands.completeJob(completion);
+                        backend.trustedSystemCommands.creditFromSystem({
+                            residentId: current.resident_id,
+                            currency: "gold",
+                            amount: AGRONOMY_COMMISSION_REWARD_GOLD[job.difficultyLevel],
+                            businessType: "career_agronomy_reward",
+                            businessRef: `career-self:${job.sourceId}:agronomy-reward`,
                             idempotencyKey: `${current.action_key}:agronomy-reward`,
                         });
                     }
@@ -2995,6 +3014,20 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
             career,
             residentId,
         ));
+    }
+    const selfAgronomy = /^commission:self:(.+)$/u.exec(args.option);
+    if (selfAgronomy) {
+        const source = sources.find((entry) => entry.career === "agronomist" &&
+            entry.sourceId === selfAgronomy[1] && entry.ownerResidentId === residentId);
+        if (career !== "agronomist" || !source || args.amount !== undefined || args.text !== undefined)
+            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个自家农艺 option 当前不可用。");
+        const result = startSelfAgronomyWork(database, backend, source);
+        return success("已经开始处理自家地块。", {
+            result,
+            jobs: mapRows(visibleCommissionRows(database, residentId, career)),
+            options: commissionOptions(database, backend,
+                visibleCommissionRows(database, residentId, career), residentId, sources, now),
+        });
     }
     const targetedPublish = /^commission:target:(.+):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/u.exec(args.option);
     if (targetedPublish) {

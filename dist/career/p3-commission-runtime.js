@@ -583,6 +583,37 @@ export function publishBoundSource(database, backend, source, request, now = Dat
         : job;
 }
 
+export function startSelfAgronomyWork(database, backend, source) {
+    if (!source || source.career !== "agronomist" || source.status !== "open" ||
+        typeof source.ownerResidentId !== "string" || source.ownerResidentId.length === 0) {
+        throw new Error("self_agronomy_source_not_available");
+    }
+    const existing = database.prepare("SELECT * FROM career_jobs WHERE source_type = ? AND source_id = ?")
+        .get(source.sourceType, source.sourceId);
+    if (existing) {
+        const job = backend.trustedQueries.getJob(existing.job_id);
+        if (job.career !== "agronomist" || job.assignmentMode !== "self" ||
+            job.ownerResidentId !== source.ownerResidentId || job.workerResidentId !== source.ownerResidentId) {
+            throw new Error("self_agronomy_start_conflict");
+        }
+        return job;
+    }
+    return backend.trustedSystemCommands.createJob({
+        jobId: commissionJobId(source.sourceId),
+        career: "agronomist",
+        sourceType: source.sourceType,
+        sourceId: source.sourceId,
+        objectType: source.objectType,
+        objectId: source.objectId,
+        ownerResidentId: source.ownerResidentId,
+        requiredLevel: source.requiredLevel,
+        difficultyLevel: source.difficultyLevel,
+        assignmentMode: "self",
+        selfWorkerResidentId: source.ownerResidentId,
+        excludedResidentIds: source.excludedResidentIds ?? [],
+    });
+}
+
 function targetFarm(job) {
     if (job.objectType !== "farm_plot" && job.objectType !== "farm_animal" && job.objectType !== "farm_trail_event")
         return null;

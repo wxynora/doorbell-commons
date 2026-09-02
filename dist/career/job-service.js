@@ -153,6 +153,21 @@ export class CareerJobService {
                     throw new CareerDomainError("self_owner_mismatch", "A self-directed job must belong to its worker");
                 }
                 requireActiveCertificate(this.#database, input.selfWorkerResidentId, input.career, input.requiredLevel, now);
+                if (input.career === "agronomist") {
+                    const availability = this.getServiceCommissionAvailability(input.selfWorkerResidentId, input.career);
+                    if (availability.activeJobId) {
+                        throw new CareerDomainError("service_commission_active_job", "The agronomist already has unfinished work");
+                    }
+                    if (availability.acceptedToday >= availability.dailyLimit) {
+                        throw new CareerDomainError("service_commission_daily_limit", "The agronomist has reached today's work limit");
+                    }
+                    if (availability.remainingRestMs > 0) {
+                        const error = new CareerDomainError("service_commission_resting", "The agronomist is resting after the last completed work");
+                        error.restUntil = availability.restUntil;
+                        error.remainingRestMs = availability.remainingRestMs;
+                        throw error;
+                    }
+                }
                 status = "accepted";
                 workerResidentId = input.selfWorkerResidentId;
             }
@@ -161,12 +176,15 @@ export class CareerJobService {
              job_id, career, source_type, source_id, object_type, object_id,
              owner_resident_id, required_level, difficulty_level, assignment_mode,
              service_commission, service_audience, target_resident_id,
-             status, worker_resident_id, created_at, updated_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+             status, worker_resident_id, accepted_at, accepted_day, created_at, updated_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
                 .run(input.jobId, input.career, input.sourceType, input.sourceId, input.objectType, input.objectId,
                     input.ownerResidentId ?? null, input.requiredLevel, input.difficultyLevel,
                     input.assignmentMode, Number(serviceCommission.enabled), serviceCommission.audience,
-                    serviceCommission.targetResidentId, status, workerResidentId, now, now);
+                    serviceCommission.targetResidentId, status, workerResidentId,
+                    input.assignmentMode === "self" ? now : null,
+                    input.assignmentMode === "self" ? beijingDate(now) : null,
+                    now, now);
             const insertExclusion = this.#database.prepare(`INSERT INTO career_job_assignment_exclusions (
               job_id, resident_id, relation_kind, source_reference, recorded_at
             ) VALUES (?, ?, 'source_party', ?, ?)`);
@@ -247,16 +265,19 @@ export class CareerJobService {
         }
         const acceptedDay = beijingDate(now);
         const active = this.#database.prepare(`SELECT job_id FROM career_jobs
-          WHERE service_commission = 1 AND worker_resident_id = ? AND career = ?
+          WHERE (service_commission = 1 OR (career = 'agronomist' AND assignment_mode = 'self'))
+            AND worker_resident_id = ? AND career = ?
             AND status IN ('accepted', 'active')
           ORDER BY accepted_at, job_id LIMIT 1`)
             .get(workerResidentId, career);
         const acceptedToday = this.#database.prepare(`SELECT COUNT(*) AS count FROM career_jobs
-          WHERE service_commission = 1 AND worker_resident_id = ? AND career = ?
+          WHERE (service_commission = 1 OR (career = 'agronomist' AND assignment_mode = 'self'))
+            AND worker_resident_id = ? AND career = ?
             AND accepted_day = ?`)
             .get(workerResidentId, career, acceptedDay).count;
         const lastCompleted = this.#database.prepare(`SELECT MAX(ended_at) AS ended_at FROM career_jobs
-          WHERE service_commission = 1 AND worker_resident_id = ? AND career = ?
+          WHERE (service_commission = 1 OR (career = 'agronomist' AND assignment_mode = 'self'))
+            AND worker_resident_id = ? AND career = ?
             AND status = 'completed'`)
             .get(workerResidentId, career).ended_at;
         const restUntil = Number.isSafeInteger(lastCompleted)
@@ -338,13 +359,15 @@ export class CareerJobService {
             }
             let paymentReference = input.externalPaymentReference ?? null;
             if (job.career === "agronomist") {
+                const selfAgronomyWork = job.assignment_mode === "self" &&
+                    job.owner_resident_id === input.workerResidentId;
                 if (job.service_commission) {
                     if (typeof input.externalPaymentReference !== "string" || input.externalPaymentReference.length === 0)
                         throw new CareerDomainError("job_payment_required", "A real agronomy commission needs its settled silver escrow");
                     paymentReference = verifyServiceSilverSettlement(this.#database, job,
                         input.workerResidentId, input.externalPaymentReference);
                 }
-                else {
+                else if (!selfAgronomyWork) {
                     if (!input.paymentReceipt || !input.expectedSilverPayment) {
                         throw new CareerDomainError("job_payment_required", "A real agronomy commission needs its settled silver receipt");
                     }
@@ -709,7 +732,7 @@ export class CareerJobService {
         return workerLevel;
     }
     #assertAssignmentMode(career, mode) {
-        const valid = (career === "chef" && mode === "self") ||
+        const valid = ((career === "chef" || career === "agronomist") && mode === "self") ||
             ((career === "agronomist" || career === "reporter") && mode === "accepted") ||
             (career === "veterinarian" && ["accepted", "assigned"].includes(mode)) ||
             (career === "constable" && mode === "assigned");
