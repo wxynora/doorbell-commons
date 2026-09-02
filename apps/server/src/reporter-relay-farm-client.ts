@@ -1,4 +1,8 @@
-import { type ReporterRelayWake, reporterRelayStartResponseSchema } from "@doorbell/protocol";
+import {
+  type ReporterRelayWake,
+  reporterRelayPendingResponseSchema,
+  reporterRelayStartResponseSchema,
+} from "@doorbell/protocol";
 
 export interface ReporterRelayStartInput {
   issueDate: string;
@@ -8,6 +12,7 @@ export interface ReporterRelayStartInput {
 
 export interface ReporterRelayStarter {
   startIssue(input: ReporterRelayStartInput): Promise<ReporterRelayWake>;
+  pendingIssue(issueDate: string): Promise<ReporterRelayWake | null>;
 }
 
 export class ReporterRelayFarmUnavailableError extends Error {
@@ -33,6 +38,7 @@ interface ReporterRelayFarmClientOptions {
 
 export class ReporterRelayFarmClient implements ReporterRelayStarter {
   readonly #endpoint: URL;
+  readonly #pendingEndpoint: URL;
   readonly #serviceToken: string;
   readonly #fetch: typeof fetch;
   readonly #requestTimeoutMs: number;
@@ -44,6 +50,10 @@ export class ReporterRelayFarmClient implements ReporterRelayStarter {
     const apiBaseUrl = new URL(options.apiBaseUrl);
     if (!apiBaseUrl.pathname.endsWith("/")) apiBaseUrl.pathname += "/";
     this.#endpoint = new URL("internal/doorbell/lingye-daily/reporter-relay/start", apiBaseUrl);
+    this.#pendingEndpoint = new URL(
+      "internal/doorbell/lingye-daily/reporter-relay/pending",
+      apiBaseUrl,
+    );
     this.#serviceToken = options.serviceToken;
     this.#fetch = options.fetchImplementation ?? fetch;
     this.#requestTimeoutMs = options.requestTimeoutMs;
@@ -86,6 +96,38 @@ export class ReporterRelayFarmClient implements ReporterRelayStarter {
       parsed.data.data.wake.issue_date !== input.issueDate ||
       parsed.data.data.wake.stage !== "selection"
     ) {
+      throw new ReporterRelayFarmContractError();
+    }
+    return parsed.data.data.wake;
+  }
+
+  async pendingIssue(issueDate: string): Promise<ReporterRelayWake | null> {
+    let response: Response;
+    try {
+      response = await this.#fetch(this.#pendingEndpoint, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${this.#serviceToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ issue_date: issueDate }),
+        signal: AbortSignal.timeout(this.#requestTimeoutMs),
+      });
+    } catch {
+      throw new ReporterRelayFarmUnavailableError();
+    }
+
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch {
+      throw response.status >= 500
+        ? new ReporterRelayFarmUnavailableError()
+        : new ReporterRelayFarmContractError();
+    }
+    if (response.status >= 500) throw new ReporterRelayFarmUnavailableError();
+    const parsed = reporterRelayPendingResponseSchema.safeParse(body);
+    if (!response.ok || !parsed.success || parsed.data.data.issue_date !== issueDate) {
       throw new ReporterRelayFarmContractError();
     }
     return parsed.data.data.wake;

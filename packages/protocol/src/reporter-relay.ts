@@ -107,7 +107,20 @@ export const reporterRelayStartResponseSchema = z
   })
   .strict();
 
+export const reporterRelayPendingResponseSchema = z
+  .object({
+    ok: z.literal(true),
+    data: z
+      .object({
+        issue_date: reporterIssueDateSchema,
+        wake: reporterRelayWakeSchema.nullable(),
+      })
+      .strict(),
+  })
+  .strict();
+
 export type ReporterRelayMaterial = z.infer<typeof reporterRelayMaterialSchema>;
 export type ReporterRelayWake = z.infer<typeof reporterRelayWakeSchema>;
 export type ReporterRelayWakeAcceptance = z.infer<typeof reporterRelayWakeAcceptanceSchema>;
 export type ReporterRelayStartResponse = z.infer<typeof reporterRelayStartResponseSchema>;
+export type ReporterRelayPendingResponse = z.infer<typeof reporterRelayPendingResponseSchema>;

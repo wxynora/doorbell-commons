@@ -23,14 +23,19 @@ function scheduleTarget(now: number, catchUpToday: boolean) {
   const dayStartShifted = Math.floor(shifted / DAY_MS) * DAY_MS;
   const todayFiveAt = dayStartShifted + FIVE_AM_MS - BEIJING_OFFSET_MS;
   if (now < todayFiveAt) {
-    return { dueAt: todayFiveAt, dayStartUtc: dayStartShifted - BEIJING_OFFSET_MS };
+    return {
+      dueAt: todayFiveAt,
+      dayStartUtc: dayStartShifted - BEIJING_OFFSET_MS,
+      recovery: false,
+    };
   }
   if (catchUpToday) {
-    return { dueAt: now, dayStartUtc: dayStartShifted - BEIJING_OFFSET_MS };
+    return { dueAt: now, dayStartUtc: dayStartShifted - BEIJING_OFFSET_MS, recovery: true };
   }
   return {
     dueAt: todayFiveAt + DAY_MS,
     dayStartUtc: dayStartShifted - BEIJING_OFFSET_MS + DAY_MS,
+    recovery: false,
   };
 }
 
@@ -77,17 +82,22 @@ export class ReporterDailyScheduler {
     if (this.#closed) return;
     const target = scheduleTarget(this.#now(), catchUpToday);
     this.#timer = this.#setTimer(
-      () => void this.#run(target.dayStartUtc),
+      () => void this.#run(target.dayStartUtc, target.recovery),
       Math.max(0, target.dueAt - this.#now()),
     );
     this.#timer.unref?.();
   }
 
-  async #run(dayStartUtc: number): Promise<void> {
+  async #run(dayStartUtc: number, recovery: boolean): Promise<void> {
     this.#timer = null;
     try {
       const period = issuePeriod(dayStartUtc);
-      const wake = await this.#farm.startIssue(period);
+      const startedWake = await this.#farm.startIssue(period);
+      const pendingWake = recovery ? await this.#farm.pendingIssue(period.issueDate) : startedWake;
+      if (!pendingWake) return;
+      const wake = recovery
+        ? { ...pendingWake, wake_id: `${pendingWake.wake_id}:recovery` }
+        : pendingWake;
       this.#relay.enqueue(wake);
     } catch (error) {
       this.#onError(error);
