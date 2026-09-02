@@ -65,6 +65,13 @@ export class LingyeDailyService {
     const alreadyPublished = this.#database.hasPublishedLingyeDailyIssue(input.issue_date, Number.MAX_SAFE_INTEGER);
     const weather = !alreadyPublished && this.#weather ? await this.#weather.read(input.issue_date) : null;
     const result = this.#database.lingyeDailyStore.publishLingyeDailyIssue(input, this.#now(), weather);
+    // The decided batch is the durable fact. Replaying publication can safely
+    // finish Farm's idempotent work record after a lost response or restart.
+    const review = this.#database.lingyeDailyStore.completedSubmissionReview(input.issue_date);
+    if (review) {
+      if (!this.#submissionRewards) throw new Error("Daily submission reward sender is not configured");
+      await this.#submissionRewards.recordReview(review);
+    }
     // Publishing and the reward outbox commit together. Replaying publication
     // resumes unpaid entries; Farm deduplicates even if its response was lost.
     for (const pending of this.#database.lingyeDailyStore.pendingSubmissionRewards(input.issue_date)) {

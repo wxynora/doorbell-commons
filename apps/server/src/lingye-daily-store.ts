@@ -252,6 +252,16 @@ export class LingyeDailyStore {
     return row ?? null;
   }
 
+  completedSubmissionReview(issueDate: string) {
+    return this.#database.prepare(`SELECT issue_date AS issueDate, reviewer_resident_id AS residentId,
+      decided_at AS decidedAt, json_array_length(candidate_ids_json) AS candidateCount,
+      json_array_length(selected_ids_json) AS selectedCount
+      FROM lingye_daily_submission_batches WHERE issue_date = ?
+        AND selected_ids_json IS NOT NULL AND decided_at IS NOT NULL
+        AND json_array_length(candidate_ids_json) > 0`)
+      .get(issueDate) as {issueDate:string;residentId:string;decidedAt:number;candidateCount:number;selectedCount:number} | undefined;
+  }
+
   assertArticleReviewReady(option: string, residentId?: string): void {
     const batch = this.#database.prepare(`SELECT b.selected_ids_json, b.reviewer_resident_id FROM lingye_daily_submission_batches b
       JOIN lingye_daily_submission_review_options o USING(issue_date) WHERE o.option_id = ?`)

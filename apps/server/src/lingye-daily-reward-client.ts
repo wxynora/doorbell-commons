@@ -6,10 +6,20 @@ export interface DailySubmissionReward {
 
 export interface DailySubmissionRewardSender {
   reward(input: DailySubmissionReward): Promise<void>;
+  recordReview(input: DailySubmissionReviewCompletion): Promise<void>;
+}
+
+export interface DailySubmissionReviewCompletion {
+  issueDate: string;
+  residentId: string;
+  decidedAt: number;
+  candidateCount: number;
+  selectedCount: number;
 }
 
 export class LingyeDailyRewardClient implements DailySubmissionRewardSender {
   readonly #endpoint: URL;
+  readonly #reviewEndpoint: URL;
   readonly #fetch: typeof fetch;
   constructor(private readonly options: {
     apiBaseUrl: string;
@@ -20,6 +30,7 @@ export class LingyeDailyRewardClient implements DailySubmissionRewardSender {
     const base = new URL(options.apiBaseUrl);
     if (!base.pathname.endsWith("/")) base.pathname += "/";
     this.#endpoint = new URL("internal/doorbell/lingye-daily/submission-reward", base);
+    this.#reviewEndpoint = new URL("internal/doorbell/lingye-daily/submission-review-completed", base);
     this.#fetch = options.fetchImplementation ?? fetch;
   }
 
@@ -36,6 +47,24 @@ export class LingyeDailyRewardClient implements DailySubmissionRewardSender {
       data.submission_id !== input.submissionId || data.resident_id !== input.residentId ||
       data.currency !== "gold" || data.amount !== 2000 || typeof data.receipt_id !== "string" || !data.receipt_id) {
       throw new Error("Daily submission reward confirmation does not match the published submission");
+    }
+  }
+
+  async recordReview(input: DailySubmissionReviewCompletion): Promise<void> {
+    const metadata = { issue_date: input.issueDate, resident_id: input.residentId,
+      decided_at: input.decidedAt, candidate_count: input.candidateCount, selected_count: input.selectedCount };
+    const response = await this.#fetch(this.#reviewEndpoint, {
+      method: "POST",
+      headers: { authorization: `Bearer ${this.options.serviceToken}`, "content-type": "application/json" },
+      body: JSON.stringify(metadata),
+      signal: AbortSignal.timeout(this.options.requestTimeoutMs),
+    });
+    const body = await response.json() as { ok?: unknown; data?: Record<string, unknown> };
+    const data = body?.data;
+    if (!response.ok || body?.ok !== true || !data ||
+      Object.entries(metadata).some(([field, value]) => data[field] !== value) ||
+      typeof data.job_id !== "string" || !data.job_id.trim()) {
+      throw new Error("Daily submission review confirmation does not match the completed review");
     }
   }
 }
