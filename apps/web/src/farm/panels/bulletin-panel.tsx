@@ -111,7 +111,7 @@ function BulletinSystemList({ bulletin }: { bulletin?: BoundBulletinRead | null 
       ))}
       {available.messages?.map((message) => (
         <BulletinEmptyRow
-          description={message.at ?? ""}
+          description={formatBulletinTime(message.at)}
           iconKey="neighborhood.message-board"
           key={`message-${message.id ?? `${message.at ?? "message"}-${message.text}`}`}
           label={message.author_name ?? "留言"}
@@ -120,7 +120,7 @@ function BulletinSystemList({ bulletin }: { bulletin?: BoundBulletinRead | null 
       ))}
       {available.ranch_notifications?.map((notice) => (
         <BulletinEmptyRow
-          description={notice.at ?? ""}
+          description={formatBulletinTime(notice.at)}
           iconKey="panel.tool.dispatch"
           key={`ranch-notice-${notice.at ?? "notice"}-${notice.text}`}
           label={notice.section ?? "牧场播报"}
@@ -176,15 +176,18 @@ type TrailEntry = Extract<
   { status: "available" }
 >["entries"][number];
 
-function formatTrailTime(at: string): string {
+function formatBulletinTime(at: string | null | undefined): string {
+  if (!at) return "";
   return new Intl.DateTimeFormat("zh-CN", {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-    hour12: false,
+    hourCycle: "h23",
     timeZone: "Asia/Shanghai",
-  }).format(new Date(at));
+  })
+    .format(new Date(at))
+    .replaceAll("/", "-");
 }
 
 function trailText(event: TrailEntry): string {
@@ -225,7 +228,7 @@ function BulletinTrailList({ bulletin }: { bulletin?: BoundBulletinRead | null }
     <ul aria-label="足迹列表" className="farm-bulletin__list">
       {trail.entries.map((event) => (
         <BulletinEmptyRow
-          description={`${event.actor_farm_doorplate ? `门牌 ${event.actor_farm_doorplate} · ` : ""}${formatTrailTime(event.at)}`}
+          description={`${event.actor_farm_doorplate ? `门牌 ${event.actor_farm_doorplate} · ` : ""}${formatBulletinTime(event.at)}`}
           iconKey={
             event.kind === "watered"
               ? "panel.trail.watered"
