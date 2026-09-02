@@ -60,6 +60,7 @@ import {
     submitReporterSupplement,
 } from "./career/reporter-service.js";
 import { reporterWorkflowForJob } from "./career/reporter-newsroom-service.js";
+import { reporterHasCompletedWork } from "./career/reporter-submission-work.js";
 import { captureReporterBoardSnapshots, installReporterBoardSnapshotSchema, seedReporterBoardSnapshotsFromCommittedWorld } from "./career/reporter-board-snapshot.js";
 
 export const LINGYE_WORLD_SCHEMA_VERSION = 2;
@@ -1072,7 +1073,7 @@ export function createLingyeWorldBackend(database, options) {
                 ? [
                     ["selector", workflow.selectorJobId],
                     ["reviewer", workflow.reviewerJobId],
-                ].map(([role, jobId]) => {
+                ].filter(([, jobId]) => reporterHasCompletedWork(database, jobId)).map(([role, jobId]) => {
                     const collaborator = jobs.quoteReporterLikePerformance(jobId, quote.validLikes);
                     const idempotencyKey = `reporter-evaluation:${jobId}:credit`;
                     const sourceReference = `reporter:evaluation:${jobId}`;

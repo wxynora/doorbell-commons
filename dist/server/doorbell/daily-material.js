@@ -11,6 +11,7 @@ import {
     startReporterRelayIssue,
 } from "../../career/reporter-relay-service.js";
 import { CareerDomainError } from "../../career/contracts.js";
+import { completeReporterSubmissionWork } from "../../career/reporter-submission-work.js";
 import {
     internalServiceError,
     isPlainObject,
@@ -18,6 +19,28 @@ import {
 } from "./contract.js";
 
 const ISSUE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/u;
+
+export async function handleDoorbellSubmissionReviewCompleted(req, res, method, runtime) {
+    if (!requireDoorbellService(req, res, method)) return;
+    try {
+        const body = await readJsonBody(req, MAX_BODY_BYTES);
+        const fields = ["issue_date", "resident_id", "decided_at", "candidate_count", "selected_count"];
+        if (!isPlainObject(body) || Object.keys(body).length !== fields.length ||
+            fields.some(field => !Object.hasOwn(body, field)))
+            return internalServiceError(res, 400, "invalid_request", "The submission review completion request is invalid");
+        const data = completeReporterSubmissionWork(runtime.database, runtime.backend, body);
+        return jsonOut(res, 200, { ok: true, data });
+    }
+    catch (error) {
+        if (error instanceof PublicSyncError)
+            return internalServiceError(res, 400, "invalid_request", "The request body must be valid JSON");
+        if (error instanceof CareerDomainError)
+            return internalServiceError(res, error.code === "reporter_submission_review_invalid" ? 400 : 409,
+                error.code, error.message);
+        console.error("[doorbell-lingye-daily] submission review work could not be recorded");
+        return internalServiceError(res, 503, "service_unavailable", "The submission review work could not be recorded");
+    }
+}
 
 function validIssueDateRequest(body) {
     if (!isPlainObject(body) || Object.keys(body).length !== 1 ||

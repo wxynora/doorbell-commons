@@ -2204,9 +2204,9 @@ function reporterRelayActionAvailable(database, residentId, internalOption) {
         return relay.writerJobId === jobId && relay.writerResidentId === residentId &&
             ["writer_pending", "supplement_pending"].includes(relay.status);
     }
-    return relay.reviewerJobId === jobId && relay.reviewerResidentId === residentId &&
-        relay.status === "review_pending" &&
-        (resolve[2] !== "needs_supplement" || relay.supplementCount === 0);
+    // The independent anonymous-submission option is handled by Commons.
+    // A historical daily article review option no longer grants an action.
+    return false;
 }
 
 function qualificationLevel(database, residentId, career, now) {
@@ -2822,7 +2822,7 @@ function submitReporter(database, backend, residentId, job, args, now, sectionId
     return {
         submissionId: article.articleId,
         articleId: article.articleId,
-        status: article.status,
+        status: relay ? "ready" : article.status,
         ...(wake ? { reporter_wake: wake } : {}),
     };
 }
@@ -3423,7 +3423,8 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
             return success("这条素材已选入本期，已经交给今日撰稿记者。",
                 submitReporterRelaySelection(database, backend, residentId, job, args, now));
         }
-        return success("稿件已进入审核前状态。", submitReporter(database, backend, residentId, job, args, now));
+        return success(relay ? "稿件已保存，等待日报出版。" : "稿件已进入审核前状态。",
+            submitReporter(database, backend, residentId, job, args, now));
     }
     if (kind === "resolve" && career === "reporter") {
         const relay = reporterRelayIssueForJob(database, job.jobId);

@@ -59,6 +59,7 @@ import {
     handleDoorbellReporterRelayPublished,
     handleDoorbellReporterRelayReviewer,
     handleDoorbellReporterRelayStart,
+    handleDoorbellSubmissionReviewCompleted,
 } from "./daily-material.js";
 import { humanFieldError, internalServiceError } from "./contract.js";
 import { handleDoorbellDailySubmissionReward } from "./daily-submission.js";
@@ -66,6 +67,15 @@ import { handleDoorbellDailyWeather } from "./daily-weather.js";
 
 export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExecutor, careerBenefitsForFarm, constableInterviewRuntime) {
     return async function handleDoorbellInternal(req, res, parts, method) {
+        if (parts[0] === "internal" && parts[1] === "doorbell" &&
+            parts[2] === "lingye-daily" && parts[3] === "submission-review-completed" && parts.length === 4) {
+            if (!constableInterviewRuntime?.database || !constableInterviewRuntime?.backend) {
+                internalServiceError(res, 503, "service_unavailable", "The submission review work service is unavailable");
+                return true;
+            }
+            await handleDoorbellSubmissionReviewCompleted(req, res, method, constableInterviewRuntime);
+            return true;
+        }
         if (parts[0] === "internal" && parts[1] === "doorbell" &&
             parts[2] === "lingye-daily" && parts[3] === "weather" && parts.length === 4) {
             await handleDoorbellDailyWeather(req, res, method);

@@ -2,6 +2,7 @@ import { createHash, randomInt } from "node:crypto";
 import { readReporterBoardSnapshot } from "./reporter-board-snapshot.js";
 import { readReporterDetentionMaterials } from "./reporter-detention-material.js";
 import { reporterSelectionWithMaterials } from "./reporter-selection-material.js";
+import { cancelUnperformedReporterSubmissionWork } from "./reporter-submission-work.js";
 import { currentDayIndex } from "../time.js";
 import {
     getPublicExpeditionWorld,
@@ -452,7 +453,9 @@ export function reporterRelayWake(database, issueReference, now = Date.now(), re
     installCareerSchema(database);
     const issue = requireIssue(database, issueReference);
     const stage = requestedStage ?? wakeStageForStatus(issue.status);
-    if (!stage)
+    // Daily article review is no longer a reporter task. Old delivered wakes
+    // remain history, but must never be re-created or returned as actionable.
+    if (!stage || stage === "review")
         return null;
     const sequence = requestedSequence ?? currentWakeSequence(database, issue, stage);
     const wakeId = `reporter-wake:${issue.issue_date}:${stage}:${sequence}`;
@@ -864,10 +867,10 @@ export function beginReporterRelayWriting(database, backend, input) {
     backend.trustedSystemCommands.createJob({
         jobId: reviewerJobId,
         career: "reporter",
-        sourceType: "reporter_daily_reviewing",
-        sourceId: `${issue.issue_reference}:reviewing`,
-        objectType: "reporter_review",
-        objectId: `${issue.issue_reference}:review`,
+        sourceType: "reporter_daily_submission_reviewing",
+        sourceId: `${issue.issue_reference}:submission-reviewing`,
+        objectType: "reporter_submission_batch",
+        objectId: issue.issue_reference,
         ownerResidentId: null,
         requiredLevel: 1,
         difficultyLevel: 1,
@@ -903,11 +906,27 @@ export function markReporterRelayArticle(database, input) {
     if (issue.status !== expected || issue.writer_resident_id !== input?.residentId ||
         issue.writer_job_id !== input?.jobId)
         fail("reporter_relay_writing_not_actionable");
+    const articleId = identifier(input?.articleId, "article_id");
+    return runInTransaction(database, () => {
+        stageReporterRelayArticle(database, issue, articleId, now);
+        return null;
+    });
+}
+
+function stageReporterRelayArticle(database, issue, articleId, now) {
+    const article = database.prepare(`SELECT job_id, resident_id, status, review_decision
+      FROM career_reporter_articles WHERE article_id = ?`).get(articleId);
+    if (!article || article.job_id !== issue.writer_job_id ||
+        article.resident_id !== issue.writer_resident_id ||
+        !["pending_review", "approved"].includes(article.status))
+        fail("reporter_relay_article_missing");
+    // "approved" is the existing publication-eligible storage state. No review
+    // command is executed and no reviewer, decision or reviewed_at is invented.
+    database.prepare(`UPDATE career_reporter_articles SET status = 'approved'
+      WHERE article_id = ? AND status = 'pending_review'`).run(articleId);
     database.prepare(`UPDATE career_reporter_relay_issues
-      SET article_id = ?, status = 'review_pending', updated_at = ?
-      WHERE issue_reference = ?`)
-        .run(identifier(input?.articleId, "article_id"), now, issue.issue_reference);
-    return reporterRelayWake(database, issue.issue_reference, now);
+      SET article_id = ?, status = 'ready', ready_at = COALESCE(ready_at, ?), updated_at = ?
+      WHERE issue_reference = ?`).run(articleId, now, now, issue.issue_reference);
 }
 
 export function markReporterRelayReview(database, input) {
@@ -958,8 +977,14 @@ export function publishReadyReporterRelay(database, backend, input) {
     const now = timestamp(input?.now ?? Date.now(), "timestamp");
     const issueDate = identifier(input?.issueDate, "issue_date");
     return runInTransaction(database, () => {
-        const issue = database.prepare(`SELECT * FROM career_reporter_relay_issues
+        let issue = database.prepare(`SELECT * FROM career_reporter_relay_issues
           WHERE issue_date = ?`).get(issueDate);
+        // Finish the already-written, unpublished daily articles left at the
+        // removed review gate. Keep their text and all historical wake records.
+        if (issue?.status === "review_pending" && issue.article_id) {
+            stageReporterRelayArticle(database, issue, issue.article_id, now);
+            issue = requireIssue(database, issue.issue_reference);
+        }
         if (!issue || !["ready", "published"].includes(issue.status))
             return { issueDate, status: "pending", publication: null };
         const scheduledPublicationAt = beijingTimestamp(issueDate, 9);
@@ -1030,12 +1055,9 @@ export function acknowledgePublishedReporterRelay(database, backend, input) {
             validationPassed: true,
             worldResultReference: `reporter-publication:${publicationId}`,
         });
-        backend.trustedSystemCommands.completeJob({
-            jobId: issue.reviewer_job_id,
-            workerResidentId: issue.reviewer_resident_id,
-            validationPassed: true,
-            worldResultReference: `reporter-publication-review:${publicationId}`,
-        });
+        // Main records any actual anonymous review before publication ACK.
+        // An unused empty-batch job is cancelled, never credited as work.
+        cancelUnperformedReporterSubmissionWork(database, backend, issue.reviewer_job_id);
         database.prepare(`UPDATE career_reporter_relay_issues
           SET status = 'published', published_at = ?, updated_at = ?
           WHERE issue_reference = ?`).run(publishedAt, now, issue.issue_reference);
