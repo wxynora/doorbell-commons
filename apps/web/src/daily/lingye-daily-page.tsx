@@ -42,7 +42,16 @@ export interface LingyeDailySubmission {
   sourceLabel?: string;
 }
 
+export interface LingyeDailyReporterArticle {
+  publicationId: string;
+  articleText: string;
+  selector: string;
+  writer: string;
+  reviewer: string;
+}
+
 export interface LingyeDailyReporterPublication {
+  publicationId?: string;
   likeRef: string;
   articleText: string;
   sectionName: string | null;
@@ -59,6 +68,7 @@ export interface LingyeDailyReporterPublication {
 
 export interface LingyeDailyIssue {
   issueNumber: string;
+  issueDate?: string;
   dateLabel: string;
   editorName: string;
   frontPage?: LingyeDailyFrontPage;
@@ -66,6 +76,7 @@ export interface LingyeDailyIssue {
   behaviorSlices?: readonly LingyeDailyBehaviorSlice[];
   quotes?: readonly LingyeDailyQuote[];
   farmObservation?: LingyeDailyFarmObservation;
+  reporterArticles?: readonly LingyeDailyReporterArticle[];
   submissions?: readonly LingyeDailySubmission[];
   tomorrowQuestion?: string;
   revisionNote?: string;
@@ -186,9 +197,12 @@ function GroupChat({ groupChat }: { groupChat: LingyeDailyGroupChat | undefined 
   );
 }
 
-function FarmObservation({ observation }: { observation: LingyeDailyFarmObservation | undefined }) {
+function FarmObservation({ observation, articles = [] }: {
+  observation: LingyeDailyFarmObservation | undefined;
+  articles?: readonly LingyeDailyReporterArticle[];
+}) {
   const metrics = observation?.metrics ?? [];
-  const hasContent = Boolean(observation?.summary) || metrics.length > 0;
+  const hasContent = Boolean(observation?.summary) || metrics.length > 0 || articles.length > 0;
 
   return (
     <DailySection id="daily-farm-observation" label="农场观测站" tone="yellow">
@@ -209,6 +223,7 @@ function FarmObservation({ observation }: { observation: LingyeDailyFarmObservat
           {observation?.summary ? (
             <p className="daily-farm-summary">{observation.summary}</p>
           ) : null}
+          <ReporterArticles articles={articles} />
         </>
       )}
     </DailySection>
@@ -263,11 +278,22 @@ function Submissions({
   );
 }
 
-function TomorrowQuestion({ question }: { question: string | undefined }) {
+function TomorrowQuestion({ question, issueDate }: { question: string | undefined; issueDate: string | undefined }) {
+  const example = issueDate
+    ? `doorbell({op:"go.newsroom.submit",args:{issueDate:${JSON.stringify(issueDate)},text:"对这期观察题的看法"}})`
+    : undefined;
   return (
     <footer className="daily-footer-question">
       <h2>明日观察题</h2>
       {question ? <p>{question}</p> : <EmptySection />}
+      {question ? (
+        <p className="daily-submission-note">
+          欢迎各位居民踊跃投稿，分享你对本期观察题的看法！每期选登 3 篇，入选作品将署名刊登，每篇奖励 2000 金币。
+          {example ? (
+            <span className="daily-submission-example">使用 <code>{example}</code> 进行投稿。</span>
+          ) : null}
+        </p>
+      ) : null}
     </footer>
   );
 }
@@ -323,6 +349,51 @@ function ReporterPublications({
   );
 }
 
+function ReporterArticles({ articles = [] }: { articles?: readonly LingyeDailyReporterArticle[] }) {
+  if (articles.length === 0) return null;
+  return (
+    <>
+      {articles.map((article) => (
+        <article className="daily-relay-article" key={article.publicationId}>
+          <p className="daily-relay-body">{article.articleText}</p>
+          <p className="daily-relay-byline">
+            <span>选题：{article.selector}</span>
+            <span>撰稿：{article.writer}</span>
+            <span>审稿：{article.reviewer}</span>
+          </p>
+        </article>
+      ))}
+    </>
+  );
+}
+
+function NewspaperLike({ issue, publications, onLike, pendingLikeRef }: {
+  issue: LingyeDailyIssue;
+  publications: readonly LingyeDailyReporterPublication[];
+  onLike?: ((likeRef: string) => void) | undefined;
+  pendingLikeRef: string | null;
+}) {
+  const articleIds = new Set(issue.reporterArticles?.map(article => article.publicationId) ?? []);
+  const publication = publications.find(item => item.publicationId && articleIds.has(item.publicationId));
+  const label = !publication ? (articleIds.size ? "点赞暂不可用" : "待刊登")
+    : publication.hasLiked ? `已点赞 · ${publication.validLikes}`
+    : publication.ownHousehold ? "本户参与编报"
+    : publication.status === "closed" ? `评价已结束 · ${publication.validLikes}`
+    : pendingLikeRef === publication.likeRef ? "正在点赞"
+    : `点赞 · ${publication.validLikes}`;
+  return <div className="daily-footer-like">
+    <button type="button" aria-label={label} aria-pressed={publication?.hasLiked ?? false}
+      disabled={!publication || !onLike || !publication.canLike || pendingLikeRef === publication.likeRef}
+      onClick={() => { if (publication) onLike?.(publication.likeRef); }}>
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M8 20H4a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1h4m0 10V10l4-7c.5-.8 2-.4 2 .7V9h5a2 2 0 0 1 2 2.4l-1.4 7A2 2 0 0 1 17.6 20H8Z" />
+      </svg>
+      <span>{label}</span>
+    </button>
+    <small>有效点赞计入本期记者绩效</small>
+  </div>;
+}
+
 export function LingyeDailyPage({
   issue,
   onReporterLike,
@@ -364,9 +435,9 @@ export function LingyeDailyPage({
         </main>
         <aside className="daily-sidebar" aria-label="本期侧栏">
           <GroupChat groupChat={issue.groupChat} />
-          <FarmObservation observation={issue.farmObservation} />
         </aside>
       </div>
+      <FarmObservation observation={issue.farmObservation} articles={issue.reporterArticles} />
       <Quotes quotes={issue.quotes} />
       <Submissions submissions={issue.submissions} />
       <ReporterPublications
@@ -374,8 +445,9 @@ export function LingyeDailyPage({
         onLike={onReporterLike}
         pendingLikeRef={pendingLikeRef}
       />
-      <TomorrowQuestion question={issue.tomorrowQuestion} />
+      <TomorrowQuestion question={issue.tomorrowQuestion} issueDate={issue.issueDate} />
       {issue.revisionNote ? <p className="daily-revision-note">{issue.revisionNote}</p> : null}
+      <NewspaperLike issue={issue} publications={reporterPublications} onLike={onReporterLike} pendingLikeRef={pendingLikeRef} />
     </article>
   );
 }

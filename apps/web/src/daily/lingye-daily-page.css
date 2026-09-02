@@ -135,7 +135,8 @@ body {
 }
 
 .daily-byline,
-.daily-source-label {
+.daily-source-label,
+.daily-relay-byline {
   margin: 0 0 12px;
   color: var(--daily-red);
   font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -155,17 +156,18 @@ body {
 
 .daily-hero-image {
   width: 100%;
-  height: 200px;
+  height: auto;
   margin: 0 0 12px;
-  overflow: hidden;
+  overflow: visible;
   border-radius: 2px;
   background: var(--daily-blue);
 }
 
 .daily-hero-image img {
+  display: block;
   width: 100%;
-  height: 100%;
-  object-fit: cover;
+  height: auto;
+  object-fit: contain;
 }
 
 .daily-slice + .daily-slice {
@@ -174,13 +176,16 @@ body {
   border-top: 1px solid var(--daily-red);
 }
 
-.daily-slice h3 {
+.daily-slice h3,
+.daily-relay-title,
+.daily-weather-title {
   margin: 0 0 8px;
   font-size: 16px;
   line-height: 1.25;
 }
 
-.daily-slice p {
+.daily-slice p,
+.daily-relay-body {
   font-size: 13px;
   line-height: 1.3;
 }
@@ -340,6 +345,26 @@ body {
   font-weight: 700;
 }
 
+.daily-footer-question > p.daily-submission-note {
+  margin: 12px 0 0;
+  color: var(--daily-text);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.7;
+}
+
+.daily-submission-example {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.daily-submission-example code {
+  font-size: inherit;
+}
+
 .daily-section-empty {
   margin: 4px 0 0;
   color: color-mix(in srgb, var(--daily-text) 68%, transparent);
@@ -353,6 +378,54 @@ body {
   border-top: 1px solid var(--daily-border);
   font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
   font-size: 11px;
+}
+
+.daily-footer-like {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--daily-rule, #d2cbbb);
+}
+.daily-footer-like button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 20px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  background: transparent;
+  color: #a34738;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.daily-footer-like button[aria-pressed="true"] { background: #f1d9cb; }
+.daily-footer-like button:disabled { cursor: default; opacity: .65; }
+.daily-footer-like button:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.daily-footer-like small { font-size: 10px; color: #716657; }
+
+.daily-relay-article {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--daily-border);
+}
+
+.daily-relay-body {
+  margin: 0 0 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.daily-relay-byline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+  color: var(--daily-red);
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  overflow-wrap: anywhere;
 }
 
 .daily-reporter-publications {

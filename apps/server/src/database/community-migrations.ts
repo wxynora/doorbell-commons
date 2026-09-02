@@ -9,7 +9,7 @@ import {
 } from "@doorbell/protocol";
 import type Database from "better-sqlite3";
 
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 19;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 20;
 const LEGACY_CONNECTOR_DELIVERY_GENERATION = "00000000-0000-0000-0000-000000000000";
 
 interface FarmCreationRequestRow {
@@ -2059,6 +2059,45 @@ export function migrateCommunityDatabase(
       throw new Error("Community database schema v19 migration violated foreign keys");
     }
     migratedSchemaVersion = 19;
+  }
+  if (migratedSchemaVersion < 20) {
+    database.transaction(() => {
+      database.exec(`
+        CREATE TABLE lingye_daily_submissions (
+          submission_id TEXT PRIMARY KEY,
+          resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+          question_issue_date TEXT NOT NULL REFERENCES lingye_daily_issues(issue_date) ON DELETE CASCADE,
+          question_text TEXT NOT NULL,
+          body TEXT NOT NULL,
+          source_label TEXT NOT NULL,
+          received_at INTEGER NOT NULL,
+          target_issue_date TEXT NOT NULL,
+          UNIQUE(resident_id, question_issue_date, question_text, body)
+        );
+        CREATE INDEX lingye_daily_submissions_target ON lingye_daily_submissions(target_issue_date, received_at);
+        CREATE TABLE lingye_daily_submission_batches (
+          issue_date TEXT PRIMARY KEY,
+          reviewer_resident_id TEXT NOT NULL,
+          option_id TEXT NOT NULL UNIQUE,
+          candidate_ids_json TEXT NOT NULL,
+          selected_ids_json TEXT,
+          decided_at INTEGER
+        );
+        CREATE TABLE lingye_daily_submission_rewards (
+          submission_id TEXT PRIMARY KEY REFERENCES lingye_daily_submissions(submission_id) ON DELETE CASCADE,
+          issue_date TEXT NOT NULL REFERENCES lingye_daily_issues(issue_date) ON DELETE CASCADE,
+          paid_at INTEGER
+        );
+        CREATE TABLE lingye_daily_submission_review_options (
+          wake_id TEXT PRIMARY KEY,
+          option_id TEXT NOT NULL,
+          include_candidates INTEGER NOT NULL CHECK (include_candidates IN (0, 1)),
+          issue_date TEXT NOT NULL REFERENCES lingye_daily_submission_batches(issue_date) ON DELETE CASCADE
+        );
+        CREATE INDEX lingye_daily_submission_review_option_lookup ON lingye_daily_submission_review_options(option_id);
+      `);
+      database.pragma("user_version = 20");
+    })();
   }
   database.transaction(() => {
     const itemColumns = database.pragma("table_info(farm_purchase_request_items)") as Array<{

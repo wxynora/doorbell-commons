@@ -7,13 +7,14 @@ import {
 import { ZodError } from "zod";
 import type { BellService } from "./bell-service.js";
 import type { CommunityDatabase } from "./community-database.js";
+import { renderDailySubmissionReview } from "./lingye-daily-submission-op.js";
 
 export interface ReporterRelayRenderer {
   render(wake: ReporterRelayWake): string;
 }
 
 export interface ReporterRelayServiceOptions {
-  database: Pick<CommunityDatabase, "createReporterBellWake">;
+  database: Pick<CommunityDatabase, "createReporterBellWake" | "lingyeDailyStore">;
   bellService: Pick<BellService, "notifyResident">;
   renderer: ReporterRelayRenderer;
   now?: () => number;
@@ -71,11 +72,14 @@ export class ReporterRelayService {
     if (typeof text !== "string" || text.trim().length === 0) {
       throw new ReporterRelayRenderError();
     }
-    const status = this.#database.createReporterBellWake({
-      wakeId: wake.wake_id,
-      residentId: wake.recipient_resident_id,
-      text,
-      createdAt: this.#now(),
+    const status = this.#database.lingyeDailyStore.enqueueReviewWake(wake, review => {
+      const candidates = renderDailySubmissionReview(review);
+      return this.#database.createReporterBellWake({
+        wakeId: wake.wake_id,
+        residentId: wake.recipient_resident_id,
+        text: candidates ? `${text}\n\n${candidates}` : text,
+        createdAt: this.#now(),
+      });
     });
     if (status === "created") {
       this.#bellService.notifyResident(wake.recipient_resident_id);

@@ -814,6 +814,7 @@ function lingyeDailyIssueResponse(issue: LingyeDailyIssueRecord) {
     })),
     quotes: issue.edition.quotes.map(({ text, source_label }) => ({ text, source_label })),
     farm_observation: issue.edition.farm_observation,
+    reporter_articles: issue.edition.reporter_articles,
     submissions: issue.edition.submissions,
     tomorrow_question: issue.edition.tomorrow_question
       ? { text: issue.edition.tomorrow_question.text }
@@ -829,6 +830,7 @@ function lingyeDailyReporterPublicationsResponse(
   return {
     status: "available" as const,
     items: publications.map((publication) => ({
+      ...(publication.publicationId ? { publication_id: publication.publicationId } : {}),
       like_ref: publication.likeRef,
       article_text: publication.articleText,
       section_name: publication.sectionName,
@@ -3832,7 +3834,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
           );
         }
         try {
-          const published = lingyeDailyService.publish(
+          const published = await lingyeDailyService.publish(
             request.headers.authorization,
             parsedRequest.data,
           );

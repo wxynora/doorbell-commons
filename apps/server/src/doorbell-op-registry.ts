@@ -1,4 +1,6 @@
 import type { z } from "zod";
+import { dailyReadOperation } from "./lingye-daily-read-op.js";
+import { dailySubmissionOperation } from "./lingye-daily-submission-op.js";
 import {
   DOORBELL_INITIALIZE_INSTRUCTIONS,
   type DoorbellCallExample,
@@ -17,17 +19,21 @@ import {
 export type { DoorbellCallExample };
 export { DOORBELL_INITIALIZE_INSTRUCTIONS };
 
-export type DoorbellOperationDefinition = FarmOperationDefinition | LingyeOperationDefinition;
+type DailyOperationDefinition = typeof dailyReadOperation | typeof dailySubmissionOperation;
+export type DoorbellOperationDefinition = FarmOperationDefinition | LingyeOperationDefinition | DailyOperationDefinition;
 export type DoorbellRegisteredOperation =
   | { kind: "farm"; operation: FarmOperationDefinition }
-  | { kind: "lingye"; operation: LingyeOperationDefinition };
+  | { kind: "lingye"; operation: LingyeOperationDefinition }
+  | { kind: "daily"; operation: DailyOperationDefinition };
 
 export const doorbellOperationNames = [
   ...farmOperationNames,
   ...modelVisibleLingyeOperationNames,
+  dailyReadOperation.op,
+  dailySubmissionOperation.op,
 ] as readonly string[];
 
-const expectedOperationCount = farmOperationNames.length + modelVisibleLingyeOperationNames.length;
+const expectedOperationCount = farmOperationNames.length + modelVisibleLingyeOperationNames.length + 2;
 if (
   doorbellOperationNames.length !== expectedOperationCount ||
   new Set(doorbellOperationNames).size !== expectedOperationCount
@@ -36,6 +42,8 @@ if (
 }
 
 export function findDoorbellOperation(op: string): DoorbellRegisteredOperation | undefined {
+  if (op === dailyReadOperation.op) return { kind: "daily", operation: dailyReadOperation };
+  if (op === dailySubmissionOperation.op) return { kind: "daily", operation: dailySubmissionOperation };
   const farm = farmOperationByName.get(op);
   if (farm) {
     return { kind: "farm", operation: farm };
@@ -44,7 +52,7 @@ export function findDoorbellOperation(op: string): DoorbellRegisteredOperation |
   return lingye ? { kind: "lingye", operation: lingye } : undefined;
 }
 
-const LINGYE_OPERATION_INDEX = modelVisibleLingyeOperations
+const LINGYE_OPERATION_INDEX = [...modelVisibleLingyeOperations, dailyReadOperation, dailySubmissionOperation]
   .map((operation) => `${operation.op} args ${operation.argsHint} — ${operation.description}`)
   .join("\n");
 

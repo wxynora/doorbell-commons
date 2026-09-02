@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import type { LingyeDailyPublishRequest } from "@doorbell/protocol";
+import type { DailySubmissionRewardSender } from "./lingye-daily-reward-client.js";
 import type {
   CommunityDatabase,
   LingyeDailyIssueRecord,
@@ -10,6 +11,7 @@ export interface LingyeDailyServiceOptions {
   database: CommunityDatabase;
   publishToken: string;
   now?: () => number;
+  submissionRewards?: DailySubmissionRewardSender;
 }
 
 export class LingyeDailyPublishAuthenticationError extends Error {
@@ -35,11 +37,13 @@ export class LingyeDailyService {
   readonly #database: CommunityDatabase;
   readonly #publishToken: string;
   readonly #now: () => number;
+  readonly #submissionRewards: DailySubmissionRewardSender | undefined;
 
   constructor(options: LingyeDailyServiceOptions) {
     this.#database = options.database;
     this.#publishToken = options.publishToken;
     this.#now = options.now ?? Date.now;
+    this.#submissionRewards = options.submissionRewards;
   }
 
   authorize(authorization: string | undefined): void {
@@ -49,12 +53,20 @@ export class LingyeDailyService {
     }
   }
 
-  publish(
+  async publish(
     authorization: string | undefined,
     input: LingyeDailyPublishRequest,
-  ): LingyeDailyPublishResult {
+  ): Promise<LingyeDailyPublishResult> {
     this.authorize(authorization);
-    return this.#database.publishLingyeDailyIssue(input, this.#now());
+    const result = this.#database.publishLingyeDailyIssue(input, this.#now());
+    // Publishing and the reward outbox commit together. Replaying publication
+    // resumes unpaid entries; Farm deduplicates even if its response was lost.
+    for (const pending of this.#database.lingyeDailyStore.pendingSubmissionRewards(input.issue_date)) {
+      if (!this.#submissionRewards) throw new Error("Daily submission reward sender is not configured");
+      await this.#submissionRewards.reward({ issueDate: input.issue_date, submissionId: pending.submission_id, residentId: pending.resident_id });
+      this.#database.lingyeDailyStore.markSubmissionRewardPaid(pending.submission_id, this.#now());
+    }
+    return result;
   }
 
   getLatest(): LingyeDailyIssueRecord | undefined {

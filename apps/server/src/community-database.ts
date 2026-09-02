@@ -9,9 +9,7 @@ import {
   farmActionListItemSchema,
   farmActionListItemViewSchema,
   farmActionListScheduleSchema,
-  type LingyeDailyEditionPublish,
   type LingyeDailyPublishRequest,
-  lingyeDailyEditionPublishSchema,
   type MailboxCategory,
   type WeatherCondition,
   type WeatherSeasonPhase,
@@ -499,28 +497,6 @@ export interface MailboxLetterPage {
   totalItems: number;
 }
 
-export interface LingyeDailyIssueRecord {
-  issueDate: string;
-  issueNumber: number;
-  revision: number;
-  revisionNote: string | null;
-  periodStart: string;
-  periodEnd: string;
-  coverageStatus: LingyeDailyPublishRequest["coverage_status"];
-  coverageNote: string;
-  generatedAt: string;
-  publishedAt: number;
-  editorModel: string;
-  screeningModel: string;
-  edition: LingyeDailyEditionPublish;
-}
-
-export type LingyeDailyPublishStatus = "created" | "revised" | "duplicate";
-
-export interface LingyeDailyPublishResult {
-  issue: LingyeDailyIssueRecord;
-  status: LingyeDailyPublishStatus;
-}
 
 export interface HumanSettingsRecord {
   homeId: string;
@@ -628,12 +604,6 @@ export class MailboxIdempotencyConflictError extends Error {
   }
 }
 
-export class LingyeDailyIdempotencyConflictError extends Error {
-  constructor() {
-    super("The Lingye Daily issue date or revision conflicts with the stored issue");
-    this.name = "LingyeDailyIdempotencyConflictError";
-  }
-}
 
 export class McpAccessStateConflictError extends Error {
   constructor() {
@@ -898,21 +868,6 @@ interface MailboxLetterRow {
   read_at: number | null;
 }
 
-interface LingyeDailyIssueRow {
-  issue_date: string;
-  issue_number: number;
-  revision: number;
-  revision_note: string | null;
-  period_start: string;
-  period_end: string;
-  coverage_status: LingyeDailyPublishRequest["coverage_status"];
-  coverage_note: string;
-  generated_at: string;
-  published_at: number;
-  editor_model: string;
-  screening_model: string;
-  edition_json: string;
-}
 
 export interface CommunityDatabaseOptions {
   generateRegistrationCode?: () => string;
@@ -1251,76 +1206,13 @@ function mapMailboxLetter(row: MailboxLetterRow): MailboxLetterRecord {
   };
 }
 
-function mapLingyeDailyIssue(row: LingyeDailyIssueRow): LingyeDailyIssueRecord {
-  const edition = lingyeDailyEditionPublishSchema.parse(JSON.parse(row.edition_json));
-  return {
-    issueDate: row.issue_date,
-    issueNumber: row.issue_number,
-    revision: row.revision,
-    revisionNote: row.revision_note,
-    periodStart: row.period_start,
-    periodEnd: row.period_end,
-    coverageStatus: row.coverage_status,
-    coverageNote: row.coverage_note,
-    generatedAt: row.generated_at,
-    publishedAt: row.published_at,
-    editorModel: row.editor_model,
-    screeningModel: row.screening_model,
-    edition,
-  };
-}
 
-function lingyeDailyEditionFromRequest(
-  input: LingyeDailyPublishRequest,
-): LingyeDailyEditionPublish {
-  return {
-    front_page: input.front_page,
-    group_chat: input.group_chat,
-    behavior_slices: input.behavior_slices,
-    quotes: input.quotes,
-    farm_observation: input.farm_observation,
-    submissions: input.submissions,
-    tomorrow_question: input.tomorrow_question,
-    images: input.images,
-  };
-}
-
-function lingyeDailyComparableIssue(
-  issue: LingyeDailyIssueRecord | LingyeDailyPublishRequest,
-): string {
-  const normalized =
-    "issueDate" in issue
-      ? {
-          issue_date: issue.issueDate,
-          revision: issue.revision,
-          revision_note: issue.revisionNote,
-          period_start: issue.periodStart,
-          period_end: issue.periodEnd,
-          coverage_status: issue.coverageStatus,
-          coverage_note: issue.coverageNote,
-          generated_at: issue.generatedAt,
-          editor_model: issue.editorModel,
-          screening_model: issue.screeningModel,
-          ...issue.edition,
-        }
-      : {
-          issue_date: issue.issue_date,
-          revision: issue.revision,
-          revision_note: issue.revision_note,
-          period_start: issue.period_start,
-          period_end: issue.period_end,
-          coverage_status: issue.coverage_status,
-          coverage_note: issue.coverage_note,
-          generated_at: issue.generated_at,
-          editor_model: issue.editor_model,
-          screening_model: issue.screening_model,
-          ...lingyeDailyEditionFromRequest(issue),
-        };
-  return JSON.stringify(normalized);
-}
+import { LingyeDailyStore, type LingyeDailyIssueRecord, type LingyeDailyPublishResult } from "./lingye-daily-store.js";
+export { LingyeDailyIdempotencyConflictError, type LingyeDailyIssueRecord, type LingyeDailyPublishResult, type LingyeDailyPublishStatus } from "./lingye-daily-store.js";
 
 export class CommunityDatabase {
   readonly #database: Database.Database;
+  readonly #lingyeDailyStore: LingyeDailyStore;
   readonly #generateRegistrationCode: () => string;
   readonly #generateSessionToken: () => string;
   readonly #generateAccountId: () => string;
@@ -1346,6 +1238,7 @@ export class CommunityDatabase {
     this.#generateFarmCreationId = options.generateFarmCreationId ?? randomUUID;
     this.#database.pragma("foreign_keys = ON");
     migrateCommunityDatabase(this.#database, this.#generateProfileId);
+    this.#lingyeDailyStore = new LingyeDailyStore(this.#database);
   }
 
   getFarmActionList(residentId: string, listId: string): FarmActionListRecord | undefined {
@@ -1775,179 +1668,20 @@ export class CommunityDatabase {
     }));
   }
 
-  publishLingyeDailyIssue(
-    input: LingyeDailyPublishRequest,
-    publishedAt: number,
-  ): LingyeDailyPublishResult {
-    const transaction = this.#database.transaction(() => {
-      const existingRow = this.#database
-        .prepare(
-          `SELECT issue_date,
-                  issue_number,
-                  revision,
-                  revision_note,
-                  period_start,
-                  period_end,
-                  coverage_status,
-                  coverage_note,
-                  generated_at,
-                  published_at,
-                  editor_model,
-                  screening_model,
-                  edition_json
-           FROM lingye_daily_issues
-           WHERE issue_date = ?`,
-        )
-        .get(input.issue_date) as LingyeDailyIssueRow | undefined;
-
-      if (existingRow) {
-        const existing = mapLingyeDailyIssue(existingRow);
-        if (input.revision === existing.revision) {
-          if (lingyeDailyComparableIssue(existing) !== lingyeDailyComparableIssue(input)) {
-            throw new LingyeDailyIdempotencyConflictError();
-          }
-          return { issue: existing, status: "duplicate" as const };
-        }
-        if (
-          input.revision !== existing.revision + 1 ||
-          input.period_start !== existing.periodStart ||
-          input.period_end !== existing.periodEnd
-        ) {
-          throw new LingyeDailyIdempotencyConflictError();
-        }
-        this.#database
-          .prepare(
-            `UPDATE lingye_daily_issues
-             SET revision = ?,
-                 revision_note = ?,
-                 coverage_status = ?,
-                 coverage_note = ?,
-                 generated_at = ?,
-                 published_at = ?,
-                 editor_model = ?,
-                 screening_model = ?,
-                 edition_json = ?
-             WHERE issue_date = ?`,
-          )
-          .run(
-            input.revision,
-            input.revision_note,
-            input.coverage_status,
-            input.coverage_note,
-            input.generated_at,
-            publishedAt,
-            input.editor_model,
-            input.screening_model,
-            JSON.stringify(lingyeDailyEditionFromRequest(input)),
-            input.issue_date,
-          );
-        return {
-          issue: {
-            issueDate: input.issue_date,
-            issueNumber: existing.issueNumber,
-            revision: input.revision,
-            revisionNote: input.revision_note,
-            periodStart: input.period_start,
-            periodEnd: input.period_end,
-            coverageStatus: input.coverage_status,
-            coverageNote: input.coverage_note,
-            generatedAt: input.generated_at,
-            publishedAt,
-            editorModel: input.editor_model,
-            screeningModel: input.screening_model,
-            edition: lingyeDailyEditionFromRequest(input),
-          },
-          status: "revised" as const,
-        };
-      }
-
-      if (input.revision !== 1) {
-        throw new LingyeDailyIdempotencyConflictError();
-      }
-      const issueNumber = (
-        this.#database
-          .prepare(
-            "SELECT COALESCE(MAX(issue_number), 0) + 1 AS issue_number FROM lingye_daily_issues",
-          )
-          .get() as { issue_number: number }
-      ).issue_number;
-      this.#database
-        .prepare(
-          `INSERT INTO lingye_daily_issues (
-             issue_date,
-             issue_number,
-             revision,
-             revision_note,
-             period_start,
-             period_end,
-             coverage_status,
-             coverage_note,
-             generated_at,
-             published_at,
-             editor_model,
-             screening_model,
-             edition_json
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          input.issue_date,
-          issueNumber,
-          input.revision,
-          input.revision_note,
-          input.period_start,
-          input.period_end,
-          input.coverage_status,
-          input.coverage_note,
-          input.generated_at,
-          publishedAt,
-          input.editor_model,
-          input.screening_model,
-          JSON.stringify(lingyeDailyEditionFromRequest(input)),
-        );
-      return {
-        issue: {
-          issueDate: input.issue_date,
-          issueNumber,
-          revision: input.revision,
-          revisionNote: input.revision_note,
-          periodStart: input.period_start,
-          periodEnd: input.period_end,
-          coverageStatus: input.coverage_status,
-          coverageNote: input.coverage_note,
-          generatedAt: input.generated_at,
-          publishedAt,
-          editorModel: input.editor_model,
-          screeningModel: input.screening_model,
-          edition: lingyeDailyEditionFromRequest(input),
-        },
-        status: "created" as const,
-      };
-    });
-    return transaction.immediate();
+  publishLingyeDailyIssue(input: LingyeDailyPublishRequest, publishedAt: number): LingyeDailyPublishResult {
+    return this.#lingyeDailyStore.publishLingyeDailyIssue(input, publishedAt);
   }
 
-  getLatestLingyeDailyIssue(): LingyeDailyIssueRecord | undefined {
-    const row = this.#database
-      .prepare(
-        `SELECT issue_date,
-                issue_number,
-                revision,
-                revision_note,
-                period_start,
-                period_end,
-                coverage_status,
-                coverage_note,
-                generated_at,
-                published_at,
-                editor_model,
-                screening_model,
-                edition_json
-         FROM lingye_daily_issues
-         ORDER BY issue_date DESC
-         LIMIT 1`,
-      )
-      .get() as LingyeDailyIssueRow | undefined;
-    return row ? mapLingyeDailyIssue(row) : undefined;
+  getLatestLingyeDailyIssue(publishedBy?: number): LingyeDailyIssueRecord | undefined {
+    return this.#lingyeDailyStore.getLatestLingyeDailyIssue(publishedBy);
+  }
+
+  hasPublishedLingyeDailyIssue(issueDate: string, publishedBy: number): boolean {
+    return this.#lingyeDailyStore.hasPublishedLingyeDailyIssue(issueDate, publishedBy);
+  }
+
+  get lingyeDailyStore(): LingyeDailyStore {
+    return this.#lingyeDailyStore;
   }
 
   close(): void {

@@ -1799,8 +1799,21 @@ export const lingyeDailyFarmObservationSchema = z
 
 export const lingyeDailySubmissionSchema = z
   .object({
-    text: z.string().trim().min(1),
+    submission_id: z.string().min(1).optional(),
+    text: z.string().refine((value) => value.trim().length > 0),
     source_label: z.string().trim().min(1),
+  })
+  .strict();
+
+export const lingyeDailyReporterArticleSchema = z
+  .object({
+    publication_id: z.string().trim().min(1),
+    published_at: z.iso.datetime({ offset: true }),
+    selector: z.string().trim().min(1),
+    writer: z.string().trim().min(1),
+    reviewer: z.string().trim().min(1),
+    article_text: z.string().trim().min(1),
+    version: z.number().int().positive(),
   })
   .strict();
 
@@ -1818,6 +1831,7 @@ export const lingyeDailyEditionPublishSchema = z
     behavior_slices: z.array(lingyeDailyBehaviorSlicePublishSchema),
     quotes: z.array(lingyeDailyQuotePublishSchema),
     farm_observation: lingyeDailyFarmObservationSchema.nullable(),
+    reporter_articles: z.array(lingyeDailyReporterArticleSchema).default([]),
     submissions: z.array(lingyeDailySubmissionSchema),
     tomorrow_question: lingyeDailyTomorrowQuestionPublishSchema.nullable(),
     images: z.array(lingyeDailyImagePublishSchema).default([]),
@@ -1841,6 +1855,7 @@ export const lingyeDailyPublishRequestSchema = z
     behavior_slices: z.array(lingyeDailyBehaviorSlicePublishSchema),
     quotes: z.array(lingyeDailyQuotePublishSchema),
     farm_observation: lingyeDailyFarmObservationSchema.nullable(),
+    reporter_articles: z.array(lingyeDailyReporterArticleSchema).default([]),
     submissions: z.array(lingyeDailySubmissionSchema),
     tomorrow_question: lingyeDailyTomorrowQuestionPublishSchema.nullable(),
     images: z.array(lingyeDailyImagePublishSchema).default([]),
@@ -1963,6 +1978,7 @@ export const lingyeDailyIssueSchema = z
     ),
     quotes: z.array(lingyeDailyQuotePublishSchema.omit({ source_message_ids: true })),
     farm_observation: lingyeDailyFarmObservationSchema.nullable(),
+    reporter_articles: z.array(lingyeDailyReporterArticleSchema).default([]),
     submissions: z.array(lingyeDailySubmissionSchema),
     tomorrow_question: lingyeDailyTomorrowQuestionPublishSchema
       .omit({ source_event_ids: true })
@@ -1972,6 +1988,7 @@ export const lingyeDailyIssueSchema = z
 
 export const lingyeDailyReporterPublicationSchema = z
   .object({
+    publication_id: z.string().trim().min(1).optional(),
     like_ref: z.string().trim().min(1),
     article_text: z.string().min(1),
     section_name: z.string().min(1).nullable(),
@@ -2035,6 +2052,7 @@ export const farmHumanReporterLikeRequestSchema = farmHumanReporterIdentitySchem
 
 export const farmHumanReporterPublicationSchema = z
   .object({
+    publicationId: z.string().trim().min(1).optional(),
     likeRef: z.string().trim().min(1),
     articleText: z.string().min(1),
     sectionName: z.string().min(1).nullable(),

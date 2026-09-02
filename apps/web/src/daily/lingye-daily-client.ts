@@ -27,6 +27,7 @@ function reporterPublications(
 ): LingyeDailyReporterPublication[] {
   return input.status === "available"
     ? input.items.map((publication) => ({
+        ...(publication.publication_id ? { publicationId: publication.publication_id } : {}),
         likeRef: publication.like_ref,
         articleText: publication.article_text,
         sectionName: publication.section_name,
@@ -65,6 +66,7 @@ export async function loadLatestLingyeDaily(fetchImplementation: typeof fetch = 
   return {
     issue: {
       issueNumber: String(parsed.issue.issue_number),
+      issueDate: parsed.issue.issue_date,
       dateLabel: dateLabel(parsed.issue.issue_date),
       editorName: parsed.issue.editor_model,
       ...(parsed.issue.front_page
@@ -99,6 +101,13 @@ export async function loadLatestLingyeDaily(fetchImplementation: typeof fetch = 
             },
           }
         : {}),
+      reporterArticles: parsed.issue.reporter_articles.map((article) => ({
+        publicationId: article.publication_id,
+        articleText: article.article_text,
+        selector: article.selector,
+        writer: article.writer,
+        reviewer: article.reviewer,
+      })),
       submissions: parsed.issue.submissions.map((submission) => ({
         text: submission.text,
         sourceLabel: submission.source_label,

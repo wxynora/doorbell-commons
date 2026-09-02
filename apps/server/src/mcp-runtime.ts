@@ -11,6 +11,8 @@ import {
   findDoorbellOperation,
 } from "./doorbell-op-registry.js";
 import { renderLingyeToolText } from "./lingye-tool-result-text.js";
+import { publishedDailyNotice, renderPublishedDaily } from "./lingye-daily-read-op.js";
+import { dailySubmissionErrorText, reviewDailySubmissions, submitDailyObservation } from "./lingye-daily-submission-op.js";
 import { hashMcpCredential } from "./mcp-access-service.js";
 import {
   FarmMcpActionBindingMismatchError,
@@ -635,8 +637,25 @@ export class DoorbellMcpRuntime {
       });
     }
 
+    if (registered.kind === "daily") {
+      try {
+        const text = registered.operation.op === "go.newsroom.submit"
+          ? submitDailyObservation(this.#database.lingyeDailyStore, context.residentId, parsed.data, this.#now())
+          : renderPublishedDaily(this.#database.getLatestLingyeDailyIssue(this.#now()));
+        return { isError: false, content: textContent(text) };
+      } catch (error) {
+        const message = dailySubmissionErrorText(error);
+        if (message) return { isError: true, content: textContent(message) };
+        return doorbellToolError("INTERNAL_ERROR", { op });
+      }
+    }
+
     if (registered.kind === "lingye") {
       try {
+        if (op === "go.newsroom.commission") {
+          const receipt = reviewDailySubmissions(this.#database.lingyeDailyStore, context.residentId, parsed.data, this.#now());
+          if (receipt !== undefined) return { isError: false, content: textContent(receipt) };
+        }
         const result = await this.#lingyeActions.execute({
           residentId: context.residentId,
           farmDoorplate: context.farmDoorplate,
@@ -686,6 +705,8 @@ export class DoorbellMcpRuntime {
           ),
         );
       } catch (error) {
+        const submissionError = dailySubmissionErrorText(error);
+        if (submissionError) return { isError: true, content: textContent(submissionError) };
         if (
           error instanceof LingyeMcpActionCredentialInvalidError ||
           error instanceof LingyeMcpActionBindingMismatchError
@@ -725,7 +746,9 @@ export class DoorbellMcpRuntime {
         params: plan.params,
         detail,
       });
-      let text = result.text;
+      let text = op === "farm.status" && result.ok
+        ? this.#appendDailyPublicationNotice(result.text)
+        : result.text;
       if (shouldAppendStatus && op !== "farm.status") {
         text = await this.#appendStatusWhenAvailable(text, context);
       }
@@ -779,6 +802,16 @@ export class DoorbellMcpRuntime {
     };
   }
 
+  #appendDailyPublicationNotice(text: string): string {
+    try {
+      const notice = publishedDailyNotice(this.#database, this.#now());
+      return notice ? `${text}\n\n${notice}` : text;
+    } catch (error) {
+      try { this.#onNotificationDeliveryError(error); } catch { /* Preserve the Farm result. */ }
+      return text;
+    }
+  }
+
   #noteValidFarmCall(residentId: string): boolean {
     const now = this.#now();
     const previous = this.#lastFarmCallAt.get(residentId);
@@ -794,7 +827,7 @@ export class DoorbellMcpRuntime {
         action: "status",
         params: {},
       });
-      return status.ok ? `${text}\n\n【农场近况】\n${status.text}` : text;
+      return status.ok ? `${text}\n\n【农场近况】\n${this.#appendDailyPublicationNotice(status.text)}` : text;
     } catch {
       return text;
     }
