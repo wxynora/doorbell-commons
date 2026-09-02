@@ -70,6 +70,7 @@ class UnusedFarmDirectory implements FarmDirectoryReader {
 
 function initialIssue(): LingyeDailyPublishRequest {
   return {
+    reporter_articles: [],
     issue_date: "2026-08-16",
     revision: 1,
     revision_note: null,
