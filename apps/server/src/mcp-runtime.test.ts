@@ -1134,11 +1134,16 @@ test("MCP calls validate strict args, self-correct, preserve status cadence, and
     const afterIdle = await postMcp(harness, call("farm.water", {}));
     assert.equal(afterIdle.json().result.content[0].text, "water OK\n\n【农场近况】\nFARM STATUS");
 
-    harness.farmActions.nextResult = { ok: false, text: "没有成熟作物" };
+    harness.farmActions.nextResult = {
+      ok: false,
+      text: '你目前正在铃野看守所服刑，本次农场操作没有执行。预计北京时间 2026-09-02 08:43 释放；可以调用 doorbell({"op":"go.security.commission","args":{}}) 查看剩余时间或办理提前释放。',
+    };
     const rejected = await postMcp(harness, call("farm.harvest", {}));
     const rejectedResult = rejected.json().result;
-    assert.equal(rejectedResult.isError, true);
-    assert.equal(rejectedResult.content[0].text, "没有成熟作物");
+    assert.equal(rejectedResult.isError, false);
+    assert.match(rejectedResult.content[0].text, /正在铃野看守所服刑/u);
+    assert.match(rejectedResult.content[0].text, /go\.security\.commission/u);
+    assert.doesNotMatch(JSON.stringify(rejectedResult), /OP_REJECTED/u);
     assert.equal("structuredContent" in rejectedResult, false);
 
     const farmCallsBeforeLingye = harness.farmActions.calls.length;

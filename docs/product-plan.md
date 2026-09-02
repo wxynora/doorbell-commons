@@ -320,7 +320,7 @@ Doorbell 社区、铃野公共世界和现有公共农场最终只向小机公�
 - `farm.kitchen.bribe` 的输入固定为 `{dishId,to}`。adapter 在当前调用者身份下解析公开 `to` 到唯一目标农场，消费 `to` 后以目标农场调用旧 `runFarm`，并由服务端注入调用者 `by`、凭据和 `targetRef`，映射为 `kitchen {op:"use",target:"guard-dog",dishId}`；`farm.kitchen.use` 没有 `to`，且必须显式拒绝 `target:"guard-dog"`；
 - `farm.kitchen.sell` 使用 `destination:"system"|"market"` 表示系统回收或摆摊，不复用只表示公开目标农场门牌的 `to`；adapter 只在进入旧 `runFarm` 前映射为旧料理参数；
 - `farm.together.view` 与 `farm.together.choose` 只是同一真实能力的读取／命令拆分，必须共用原唯一全服状态机、公共选择、NPC、奖励和存档；`view` 的状态与历史分支只读同一份全服状态，`choose` 只走原公共选择处理，并以共享状态和转换路径作为定向测试硬约束；
-- 合法 `tools/call doorbell` 的所有结果只使用一种 MCP `CallToolResult` 外壳：`content + structuredContent + isError`。Doorbell 前置、未知 op、无效 args 和上游错误使用 `source:"doorbell"`，其中 `UNKNOWN_OP` 与 `INVALID_ARGS` 分开；旧农场业务拒绝使用 `source:"farm"`、`code:"OP_REJECTED"` 并保留原业务文本；
+- 合法 `tools/call doorbell` 的模型可见结果只保留一份 `content` 人话正文和 `isError`，不再把同一结果重复到 `structuredContent`。Doorbell 前置、未知 op、无效 args 和上游故障是真工具错误；“余额不足”、“没有成熟作物”、“正在看守所服刑”等农场业务拒绝则按未执行的普通人话结果返回，不标成 MCP 错误，不暴露 `OP_REJECTED`、内部 ID 或原始对象；
 - `INVALID_ARGS` 除稳定错误文案外必须返回字段级 `issues` 和当前 canonical op 的正确调用示例；模型可以直接修正，不必再调用一次 `farm.help`。工具 description 只常驻常用操作的简短参数提示，冷门操作才按需使用 `farm.help`；
 - HTTP `/mcp` Bearer 缺失／无效属于 transport authentication，继续返回 HTTP auth 合同，不能伪装成工具结果；JSON-RPC envelope、method 或工具名错误仍属于 protocol error。
 

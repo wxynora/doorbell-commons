@@ -6,7 +6,7 @@ import { renderLingyeToolText } from "./lingye-tool-result-text.js";
 const PRIVATE_UUID = "019ffc05-49cd-7020-84af-3d04fb1ed03d";
 const PRIVATE_HEX = "a".repeat(64);
 const INTERNAL_FIELD =
-  /residentId|sourceId|objectId|ownerId|jobId|loanId|depositId|attemptId|reservationId|employmentId|dutyId|interviewId|noticeId|paperId|contentDeliveryId|journalId|tradeId|actionKey|idempotency|notification_id/iu;
+  /residentId|sourceId|objectId|ownerId|jobId|loanId|depositId|attemptId|reservationId|employmentId|dutyId|interviewId|noticeId|paperId|contentDeliveryId|journalId|tradeId|detentionId|violationId|actionKey|idempotency|notification_id/iu;
 const UUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/iu;
 const LONG_HEX = /\b[0-9a-f]{64}\b/iu;
 const SNAKE_CASE = /\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/u;
@@ -271,6 +271,45 @@ test("all seven public Lingye operations render only player-facing Chinese facts
     }
     assertNoPrivateLeak(text);
   }
+});
+
+test("security view renders the resident's active detention and early release entry without private ids", () => {
+  const text = renderLingyeToolText(
+    "go.security.commission",
+    {},
+    success("已读取铃野治安署当前事实。", {
+      detentions: [
+        {
+          detentionId: PRIVATE_UUID,
+          violationId: "119ffc05-49cd-7020-84af-3d04fb1ed03d",
+          residentId: "219ffc05-49cd-7020-84af-3d04fb1ed03d",
+          startedAt: "2026-09-02T00:43:37.000Z",
+          scheduledReleaseAt: "2026-09-02T04:43:37.000Z",
+          hourlyReleaseRateGold: 500,
+          status: "active",
+          earlyRelease: {
+            detentionId: PRIVATE_UUID,
+            remainingHours: 3.5,
+            costGold: 1_750,
+          },
+        },
+      ],
+      options: [
+        {
+          option: "opt_JJJJJJJJJJJJ",
+          label: "办理提前释放",
+          requires: [],
+        },
+      ],
+    }),
+  );
+
+  assert.match(text, /本人当前状态：正在看守所服刑/u);
+  assert.match(text, /预计释放时间：2026\/09\/02 12:43（北京时间）/u);
+  assert.match(text, /提前释放：当前需支付 1,750 金币，剩余约 3\.5 小时/u);
+  assert.match(text, /办理提前释放/u);
+  assert.match(text, /办理编号：opt_JJJJJJJJJJJJ/u);
+  assertNoPrivateLeak(text);
 });
 
 test("course view keeps the complete body and all five practice questions", () => {

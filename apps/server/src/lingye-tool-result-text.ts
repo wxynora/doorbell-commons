@@ -13,7 +13,7 @@ const UUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a
 const LONG_HEX = /\b[0-9a-f]{64}\b/iu;
 const SNAKE_CASE = /\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/u;
 const INTERNAL_NAME =
-  /\b(?:residentId|sourceId|objectId|ownerId|jobId|loanId|depositId|attemptId|reservationId|employmentId|dutyId|interviewId|noticeId|paperId|contentDeliveryId|journalId|tradeId|actionKey|idempotency|notification_id)\b/iu;
+  /\b(?:residentId|sourceId|objectId|ownerId|jobId|loanId|depositId|attemptId|reservationId|employmentId|dutyId|interviewId|noticeId|paperId|contentDeliveryId|journalId|tradeId|detentionId|violationId|actionKey|idempotency|notification_id)\b/iu;
 
 const CAREER_NAMES: Record<string, string> = {
   chef: "料理师",
@@ -946,6 +946,28 @@ function renderChefFacts(value: unknown): string[] {
   return lines;
 }
 
+function renderSecurityDetention(value: unknown): string[] {
+  const detention = records(value).find((entry) => entry.status === "active");
+  if (!detention) return [];
+
+  const lines = ["本人当前状态：正在看守所服刑。"];
+  lines.push(`预计释放时间：${dateText(detention.scheduledReleaseAt)}（北京时间）。`);
+
+  const earlyRelease = isRecord(detention.earlyRelease) ? detention.earlyRelease : undefined;
+  const costGold = finiteNumber(earlyRelease?.costGold);
+  if (costGold !== undefined) {
+    const remainingHours = finiteNumber(earlyRelease?.remainingHours);
+    lines.push(
+      `提前释放：当前需支付 ${costGold.toLocaleString("zh-CN")} 金币${
+        remainingHours === undefined
+          ? "。"
+          : `，剩余约 ${remainingHours.toLocaleString("zh-CN")} 小时。`
+      }`,
+    );
+  }
+  return lines;
+}
+
 function commissionText(op: string, result: LingyeSuccess): string {
   const data = result.data;
   const lines = [commissionTitle(op), resultMessage(result.text, "已读取当前公开职业业务。")];
@@ -961,6 +983,9 @@ function commissionText(op: string, result: LingyeSuccess): string {
   }
   if (op === "go.farm.commission") {
     lines.push(...renderChefFacts(data.chef ?? current?.chef));
+  }
+  if (op === "go.security.commission") {
+    lines.push(...renderSecurityDetention(data.detentions ?? current?.detentions));
   }
   if (op === "go.newsroom.commission") lines.push(...renderReporterFacts(data));
   return [...lines, ...renderOptions(op, data)].join("\n");
