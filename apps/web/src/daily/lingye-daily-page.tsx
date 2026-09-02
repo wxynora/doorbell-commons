@@ -437,7 +437,7 @@ export function LingyeDailyPage({
           <GroupChat groupChat={issue.groupChat} />
         </aside>
       </div>
-      <FarmObservation observation={issue.farmObservation} articles={issue.reporterArticles} />
+      <FarmObservation observation={issue.farmObservation} articles={issue.reporterArticles ?? []} />
       <Quotes quotes={issue.quotes} />
       <Submissions submissions={issue.submissions} />
       <ReporterPublications
