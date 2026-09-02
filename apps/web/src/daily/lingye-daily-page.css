@@ -262,9 +262,6 @@ body {
 }
 
 .daily-quote-box {
-  display: grid;
-  grid-template-columns: 24px minmax(0, 1fr);
-  column-gap: 8px;
   position: relative;
   margin: 8px 0 20px;
   padding: 16px;
@@ -272,18 +269,18 @@ body {
 }
 
 .daily-quote-box::before {
-  position: static;
-  padding: 0;
+  position: absolute;
+  top: -20px;
+  left: 10px;
+  padding: 0 4px;
   color: var(--daily-red);
-  background: transparent;
+  background: var(--daily-bg);
   content: "“";
-  font-size: 36px;
+  font-size: 60px;
   line-height: 1;
-  align-self: start;
 }
 
 .daily-quote-text {
-  grid-column: 2;
   margin: 0;
   font-size: 18px;
   font-style: italic;
@@ -291,7 +288,6 @@ body {
 }
 
 .daily-quote-box cite {
-  grid-column: 2;
   display: block;
   margin-top: 10px;
   font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -420,11 +416,6 @@ body {
   margin: 0 0 12px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-}
-
-.daily-editorial-emphasis {
-  color: #000;
-  font-weight: 700;
 }
 
 .daily-relay-byline {
