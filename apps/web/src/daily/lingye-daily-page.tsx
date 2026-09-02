@@ -138,7 +138,7 @@ function FrontPage({ frontPage }: { frontPage: LingyeDailyFrontPage | undefined 
           ))}
           {frontPage.paragraphs.map((paragraph) => (
             <p className="daily-body-copy" key={paragraph}>
-              {paragraph}
+              <EmphasizedText text={paragraph} />
             </p>
           ))}
         </>
@@ -166,7 +166,7 @@ function BehaviorSlices({
                   <img alt="本期群聊来源图片" src={imageUrl} />
                 </figure>
               ))}
-              <p>{slice.body}</p>
+              <p><EmphasizedText text={slice.body} /></p>
               {slice.sourceLabel ? <p className="daily-source-label">{slice.sourceLabel}</p> : null}
             </article>
           ))}
@@ -178,7 +178,7 @@ function BehaviorSlices({
 
 function GroupChat({ groupChat }: { groupChat: LingyeDailyGroupChat | undefined }) {
   return (
-    <DailySection id="daily-group-chat" label="今日群聊">
+    <DailySection id="daily-group-chat" label="昨日群聊">
       {!groupChat ? (
         <EmptySection />
       ) : (
@@ -355,7 +355,7 @@ function ReporterArticles({ articles = [] }: { articles?: readonly LingyeDailyRe
     <>
       {articles.map((article) => (
         <article className="daily-relay-article" key={article.publicationId}>
-          <p className="daily-relay-body">{article.articleText}</p>
+          <ReporterBody text={splitWeather(article.articleText)[0]} />
           <p className="daily-relay-byline">
             <span>选题：{article.selector}</span>
             <span>撰稿：{article.writer}</span>
@@ -365,6 +365,37 @@ function ReporterArticles({ articles = [] }: { articles?: readonly LingyeDailyRe
       ))}
     </>
   );
+}
+
+function EmphasizedText({ text }: { text: string }) {
+  return <>{text.split(/(\*\*[^*]+\*\*)/gu).map((part, index) =>
+    part.startsWith("**") && part.endsWith("**")
+      ? <strong className="daily-editorial-emphasis" key={index}>{part.slice(2, -2)}</strong>
+      : part)}</>;
+}
+
+function splitWeather(text: string): [string, string] {
+  const marker = /^## 天气预告\r?\n/m.exec(text);
+  return marker ? [text.slice(0, marker.index).trimEnd(), text.slice(marker.index + marker[0].length).trim()]
+    : [text, ""];
+}
+
+function ReporterBody({ text }: { text: string }) {
+  return <>{text.split(/^(## .+)$/m).map((part, index) => {
+    if (!part.trim()) return null;
+    return part.startsWith("## ")
+      ? <h3 className="daily-relay-title" key={index}>{part.slice(3).trim()}</h3>
+      : <p className="daily-relay-body" key={index}>{part.trim().replace(/\n(?:[\t ]*\n)+/gu, "\n")}</p>;
+  })}</>;
+}
+
+function WeatherForecast({ articles }: { articles: readonly LingyeDailyReporterArticle[] }) {
+  const forecasts = articles.map(article => ({ id: article.publicationId, text: splitWeather(article.articleText)[1] }))
+    .filter(item => item.text);
+  if (!forecasts.length) return null;
+  return <DailySection id="daily-weather-forecast" label="天气预告">
+    {forecasts.map(item => <ReporterBody text={item.text} key={item.id} />)}
+  </DailySection>;
 }
 
 function NewspaperLike({ issue, publications, onLike, pendingLikeRef }: {
@@ -438,6 +469,7 @@ export function LingyeDailyPage({
         </aside>
       </div>
       <FarmObservation observation={issue.farmObservation} articles={issue.reporterArticles ?? []} />
+      <WeatherForecast articles={issue.reporterArticles ?? []} />
       <Quotes quotes={issue.quotes} />
       <Submissions submissions={issue.submissions} />
       <ReporterPublications
