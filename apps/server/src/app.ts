@@ -1,3 +1,4 @@
+import {dailyImageUrl, registerDailyImageRoutes} from "./lingye-daily-images.js";
 import {
   additionalHumanProfileRequestSchema,
   type BellAccessErrorCode,
@@ -775,7 +776,7 @@ function lingyeDailyIssueResponse(issue: LingyeDailyIssueRecord) {
   const imageUrls = new Map(
     issue.edition.images.map((image) => [
       image.image_id,
-      `data:${image.media_type};base64,${image.data_base64}`,
+      dailyImageUrl(issue.issueDate,issue.revision,image.image_id),
     ]),
   );
   return {
@@ -2102,6 +2103,10 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     (_request, body, done) =>
       done(null, new URLSearchParams(typeof body === "string" ? body : body.toString("utf8"))),
   );
+
+  if(options.lingyeDailyService) registerDailyImageRoutes(app, {
+    daily:options.lingyeDailyService,registrationAuth:options.registrationAuth,
+  });
 
   app.get("/api/health", async () =>
     serviceHealthSchema.parse({

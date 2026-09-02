@@ -483,4 +483,12 @@ export class LingyeDailyStore {
     return row ? mapLingyeDailyIssue(row) : undefined;
   }
 
+  getPublishedImage(issueDate: string, revision: number, imageId: string, now: number): {mediaType:string;dataBase64:string} | undefined {
+    return this.#database.prepare(`SELECT json_extract(image.value,'$.media_type') AS mediaType,
+      json_extract(image.value,'$.data_base64') AS dataBase64
+      FROM lingye_daily_issues issue, json_each(issue.edition_json,'$.images') image
+      WHERE issue.issue_date = ? AND issue.revision = ? AND issue.published_at <= ?
+        AND json_extract(image.value,'$.image_id') = ?`).get(issueDate,revision,now,imageId) as {mediaType:string;dataBase64:string} | undefined;
+  }
+
 }

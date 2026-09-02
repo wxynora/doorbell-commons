@@ -72,4 +72,8 @@ export class LingyeDailyService {
   getLatest(): LingyeDailyIssueRecord | undefined {
     return this.#database.getLatestLingyeDailyIssue();
   }
+
+  getPublishedImage(issueDate:string,revision:number,imageId:string) {
+    return this.#database.lingyeDailyStore.getPublishedImage(issueDate,revision,imageId,this.#now());
+  }
 }

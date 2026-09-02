@@ -34,7 +34,8 @@ body {
   overflow-x: hidden;
   color: var(--daily-text);
   background: var(--daily-bg);
-  font-family: "Noto Serif SC", "Songti SC", "STSong", serif;
+  /* The community Noto Serif face only contains UI glyphs, not article text. */
+  font-family: "Songti SC", "STSong", "SimSun", serif;
   line-height: 1.4;
   -webkit-font-smoothing: antialiased;
 }
