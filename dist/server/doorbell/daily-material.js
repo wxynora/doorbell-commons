@@ -117,6 +117,40 @@ function relayError(res, error) {
     return false;
 }
 
+export async function handleDoorbellReporterRelayReviewer(req, res, method, runtime) {
+    if (!requireDoorbellService(req, res, method))
+        return;
+    try {
+        const body = await readJsonBody(req, MAX_BODY_BYTES);
+        const request = validIssueDateRequest(body);
+        if (!request)
+            return internalServiceError(res, 400, "invalid_request", "The reporter reviewer request is invalid");
+        const row = runtime.database.prepare(`SELECT role.resident_id
+          FROM career_reporter_duty_roles AS role
+          JOIN career_duty_days AS duty ON duty.duty_id = role.duty_id
+          JOIN career_employments AS employment ON employment.employment_id = duty.employment_id
+          WHERE role.duty_date = ? AND role.role = 'reviewer'
+            AND duty.status = 'scheduled' AND employment.status = 'active'
+            AND employment.availability = 'available'`).get(request.issueDate);
+        return jsonOut(res, 200, {
+            ok: true,
+            data: {
+                issue_date: request.issueDate,
+                reviewer: row ? {
+                    resident_id: row.resident_id,
+                    display_name: reporterName(row.resident_id),
+                } : null,
+            },
+        });
+    }
+    catch (error) {
+        if (error instanceof PublicSyncError)
+            return internalServiceError(res, 400, "invalid_request", "The request body must be valid JSON");
+        console.error("[doorbell-lingye-daily] reporter reviewer read failed");
+        return internalServiceError(res, 503, "service_unavailable", "The reporter reviewer could not be read");
+    }
+}
+
 export async function handleDoorbellReporterRelayStart(req, res, method, runtime) {
     if (!requireDoorbellService(req, res, method))
         return;

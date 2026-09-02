@@ -1,12 +1,13 @@
 import { createHash, randomInt } from "node:crypto";
 import { readReporterBoardSnapshot } from "./reporter-board-snapshot.js";
+import { readReporterDetentionMaterials } from "./reporter-detention-material.js";
+import { reporterSelectionWithMaterials } from "./reporter-selection-material.js";
 import { currentDayIndex } from "../time.js";
 import {
-    getNatureWorld,
     getPublicExpeditionWorld,
     playerFarms,
 } from "../store.js";
-import { beijingDayStart, natureSnapshot } from "../nature.js";
+import { beijingDayStart } from "../nature.js";
 import { CareerDomainError } from "./contracts.js";
 import {
     addBeijingDays,
@@ -174,19 +175,6 @@ function todayBoardMaterials(database, now) {
     });
 }
 
-function weatherMaterials(now) {
-    const snapshot = natureSnapshot(getNatureWorld(), now);
-    return (snapshot.forecast ?? []).slice(1).map((entry) => {
-        const date = beijingDate(beijingDayStart(entry.dayIndex));
-        return {
-            category: "weather_forecast",
-            occurredAt: now,
-            title: `${date} 天气预告`,
-            content: `日期：${date}；季节：${publicText(entry.season)}；季节日：${entry.seasonDay}；天气：${publicText(entry.condition)}`,
-        };
-    });
-}
-
 function publicText(value) {
     return String(value ?? "").replace(/[<>\r]/gu, "").trim();
 }
@@ -280,8 +268,6 @@ function togetherMaterials(database, window) {
 function materialSourceType(category) {
     if (category === "today_board")
         return "public_farm_ranking";
-    if (category === "weather_forecast")
-        return "public_weather_fact";
     return "public_event_fact";
 }
 
@@ -412,7 +398,9 @@ function stageInputs(database, issue, stage, sequence) {
     if (stage === "selection")
         return {};
     if (stage === "writing")
-        return { selection_text: issue.selection_text };
+        return { selection_text: reporterSelectionWithMaterials(
+            issue.selection_text, publicMaterials(database, issue.issue_reference),
+        ) };
     const article = database.prepare(`SELECT article_text FROM career_reporter_articles
       WHERE job_id = ? AND version = ?`).get(issue.writer_job_id, sequence);
     if (stage === "review") {
@@ -616,8 +604,8 @@ export function startReporterRelayIssue(database, backend, input) {
             fail("reporter_duty_roster_incomplete");
         const materials = registerMaterials(database, backend, window, [
             ...todayBoardMaterials(database, window.periodEnd),
-            ...weatherMaterials(window.periodEnd),
             ...togetherMaterials(database, window),
+            ...readReporterDetentionMaterials(database, playerFarms(), window.periodEnd),
         ]);
         if (materials.length === 0)
             fail("reporter_relay_material_empty");

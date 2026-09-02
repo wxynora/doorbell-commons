@@ -1,4 +1,17 @@
-export const CAREER_SCHEMA_VERSION = 10;
+import { runInTransaction } from "./persistence.js";
+
+export const CAREER_SCHEMA_VERSION = 11;
+
+const REPORTER_RELAY_MATERIAL_COLUMNS = `(
+  issue_reference TEXT NOT NULL REFERENCES career_reporter_relay_issues(issue_reference),
+  material_index INTEGER NOT NULL CHECK (material_index >= 0),
+  source_id TEXT NOT NULL UNIQUE REFERENCES career_reporter_source_facts(source_id),
+  category TEXT NOT NULL,
+  occurred_at INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  content_json TEXT NOT NULL,
+  PRIMARY KEY (issue_reference, material_index)
+)`;
 export function installCareerSchema(database) {
     database.exec(`
     CREATE TABLE IF NOT EXISTS career_tracks (
@@ -556,18 +569,7 @@ export function installCareerSchema(database) {
     CREATE INDEX IF NOT EXISTS career_reporter_relay_issues_status_index
       ON career_reporter_relay_issues(status, issue_date);
 
-    CREATE TABLE IF NOT EXISTS career_reporter_relay_materials (
-      issue_reference TEXT NOT NULL REFERENCES career_reporter_relay_issues(issue_reference),
-      material_index INTEGER NOT NULL CHECK (material_index >= 0),
-      source_id TEXT NOT NULL UNIQUE REFERENCES career_reporter_source_facts(source_id),
-      category TEXT NOT NULL CHECK (category IN (
-        'today_board', 'weather_forecast', 'lingye_together'
-      )),
-      occurred_at INTEGER NOT NULL,
-      title TEXT NOT NULL,
-      content_json TEXT NOT NULL,
-      PRIMARY KEY (issue_reference, material_index)
-    );
+    CREATE TABLE IF NOT EXISTS career_reporter_relay_materials ${REPORTER_RELAY_MATERIAL_COLUMNS};
 
     CREATE TABLE IF NOT EXISTS career_reporter_relay_wakes (
       wake_id TEXT PRIMARY KEY,
@@ -662,6 +664,19 @@ export function installCareerSchema(database) {
     CREATE INDEX IF NOT EXISTS career_job_messages_job_index
       ON career_job_messages(job_id, created_at, message_id);
   `);
+    const reporterMaterialSql = database.prepare(`SELECT sql FROM sqlite_master
+      WHERE type = 'table' AND name = 'career_reporter_relay_materials'`).get()?.sql ?? "";
+    if (/CHECK\s*\(\s*category\s+IN\s*\(/iu.test(reporterMaterialSql)) {
+        runInTransaction(database, () => database.exec(`
+          CREATE TABLE career_reporter_relay_materials_open_category ${REPORTER_RELAY_MATERIAL_COLUMNS};
+          INSERT INTO career_reporter_relay_materials_open_category (
+            issue_reference, material_index, source_id, category, occurred_at, title, content_json
+          ) SELECT issue_reference, material_index, source_id, category, occurred_at, title, content_json
+            FROM career_reporter_relay_materials;
+          DROP TABLE career_reporter_relay_materials;
+          ALTER TABLE career_reporter_relay_materials_open_category RENAME TO career_reporter_relay_materials;
+        `));
+    }
     const securityResolutionSql = database.prepare(`
       SELECT sql FROM sqlite_master
       WHERE type = 'table' AND name = 'career_security_resolutions'
