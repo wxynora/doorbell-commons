@@ -41,13 +41,14 @@ import { applyDroughtWatering, collectFloodFishForFarm, commitNatureFarmReconcil
 import { setDailySpendEconomyDatabase } from "./daily-spend.js";
 import { activeMysteryMerchantEvent, buyMysteryMerchantOffers, projectMysteryMerchant } from "./mystery-merchant.js";
 import { discoverAndBroadcastMysteryMerchant } from "./server/market-action.js";
+import { detentionAllowsFarmAction, detentionBlockedFarmActionText } from "./security/presentation.js";
 let activeLingyeWorldDatabase = null;
 let activeLingyeWorldBackend = null;
 let activeMysteryMerchantRuntime = null;
 function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
     const detention = activeDetentionForFarm(farm, now);
     if (detention && !detentionAllowsFarmAction(action))
-        return { status: 400, json: { ok: false, code: "RESIDENT_DETAINED", text: "OP_REJECTED", detention } };
+        return { status: 400, json: { ok: false, code: "RESIDENT_DETAINED", text: detentionBlockedFarmActionText(detention) } };
     const careerBenefits = farmDoorbellKitchenCareerBenefits(
         activeLingyeWorldDatabase,
         activeLingyeWorldBackend,
@@ -97,7 +98,7 @@ function executeDoorbellFarmAction(farm, action, params, detail, now) {
 function executeLegacyMcpAction(me, action, params, now) {
     const detention = activeDetentionForFarm(me, now);
     if (detention && !detentionAllowsFarmAction(action))
-        return { ok: false, text: "OP_REJECTED", code: "RESIDENT_DETAINED", detention };
+        return { ok: false, text: detentionBlockedFarmActionText(detention), code: "RESIDENT_DETAINED" };
     const b = { ...params };
     if (action === "help")
         return { ok: true, text: MCP_HELP };
@@ -170,9 +171,6 @@ function activeDetentionForFarm(farm, now) {
     return activeLingyeWorldBackend.trustedQueries.isResidentDetained(residentId, { at: now })
         ? activeLingyeWorldBackend.trustedQueries.getResidentDetention(residentId, { at: now })
         : null;
-}
-function detentionAllowsFarmAction(action) {
-    return !action || action === "status" || action === "help";
 }
 function catchNpcCropTheft(victim, actorFarmId, now) {
     if (!activeLingyeWorldBackend ||
@@ -281,7 +279,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         const visitor = b.by ? getFarm(String(b.by)) : null;
         const detention = visitor ? activeDetentionForFarm(visitor, now) : null;
         if (detention)
-            return { status: 400, json: { ok: false, code: "RESIDENT_DETAINED", text: "OP_REJECTED", detention } };
+            return { status: 400, json: { ok: false, code: "RESIDENT_DETAINED", text: detentionBlockedFarmActionText(detention) } };
         if (!reachable(f))
             return { status: 403, json: { ok: false, text: `「${f.name}」设了谢绝来访，已闭门谢客。` } };
         const visitorId = String(b.by ?? ""); // 串门任务：身份已知（带 by）时按家去重计一次
@@ -332,7 +330,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
                     : "这是私有操作，需要你农场的 token。串门看公开页用 visit（GET /c?a=visit&farm=对方id）。" } };
     const detention = activeDetentionForFarm(principal, now);
     if (detention && !detentionAllowsFarmAction(action))
-        return { status: 400, json: { ok: false, code: "RESIDENT_DETAINED", text: "OP_REJECTED", detention } };
+        return { status: 400, json: { ok: false, code: "RESIDENT_DETAINED", text: detentionBlockedFarmActionText(detention) } };
     if (!projectedRead) {
         advance(f, now);
         if (f.id === NPC_ID)
