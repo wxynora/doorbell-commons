@@ -294,7 +294,7 @@ const reporterDailyScheduler = new ReporterDailyScheduler({
   },
   onEvent: (event) => {
     process.stdout.write(
-      `[doorbell-reporter-daily] event=${event.event} issue_date=${event.issueDate} recovery=${event.recovery}${event.stage ? ` stage=${event.stage}` : ""}${event.status ? ` status=${event.status}` : ""}\n`,
+      `[doorbell-reporter-daily] event=${event.event} issue_date=${event.issueDate}${event.stage ? ` stage=${event.stage}` : ""}${event.status ? ` status=${event.status}` : ""}\n`,
     );
   },
 });

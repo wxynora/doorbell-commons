@@ -43,7 +43,6 @@ export const reporterRelayWakeSchema = z.discriminatedUnion("stage", [
   reporterRelayWakeBaseSchema
     .extend({
       stage: z.literal("writing"),
-      materials: z.array(reporterRelayMaterialSchema).optional(),
       selection_text: reporterNonBlankTextSchema,
       action: reporterRelayActionSchema,
     })
@@ -51,8 +50,7 @@ export const reporterRelayWakeSchema = z.discriminatedUnion("stage", [
   reporterRelayWakeBaseSchema
     .extend({
       stage: z.literal("review"),
-      materials: z.array(reporterRelayMaterialSchema).optional(),
-      selection_text: reporterNonBlankTextSchema,
+      ...reporterRelayWakeMaterialsSchema,
       article_text: reporterNonBlankTextSchema,
       review_feedback: reporterNonBlankTextSchema.optional(),
       actions: z
@@ -84,8 +82,6 @@ export const reporterRelayWakeSchema = z.discriminatedUnion("stage", [
   reporterRelayWakeBaseSchema
     .extend({
       stage: z.literal("supplement"),
-      materials: z.array(reporterRelayMaterialSchema).optional(),
-      selection_text: reporterNonBlankTextSchema,
       article_text: reporterNonBlankTextSchema,
       review_feedback: reporterNonBlankTextSchema,
       action: reporterRelayActionSchema,
@@ -114,20 +110,7 @@ export const reporterRelayStartResponseSchema = z
   })
   .strict();
 
-export const reporterRelayPendingResponseSchema = z
-  .object({
-    ok: z.literal(true),
-    data: z
-      .object({
-        issue_date: reporterIssueDateSchema,
-        wake: reporterRelayWakeSchema.nullable(),
-      })
-      .strict(),
-  })
-  .strict();
-
 export type ReporterRelayMaterial = z.infer<typeof reporterRelayMaterialSchema>;
 export type ReporterRelayWake = z.infer<typeof reporterRelayWakeSchema>;
 export type ReporterRelayWakeAcceptance = z.infer<typeof reporterRelayWakeAcceptanceSchema>;
 export type ReporterRelayStartResponse = z.infer<typeof reporterRelayStartResponseSchema>;
-export type ReporterRelayPendingResponse = z.infer<typeof reporterRelayPendingResponseSchema>;

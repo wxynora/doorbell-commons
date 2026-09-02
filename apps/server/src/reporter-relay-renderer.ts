@@ -9,8 +9,13 @@ const materialCategoryLabels: Record<
   lingye_together: "铃野共行",
 };
 
-function materialsText(wake: Extract<ReporterRelayWake, { stage: "selection" }>): string {
-  return wake.materials
+type ReporterRelayMaterial = Extract<
+  ReporterRelayWake,
+  { stage: "selection" }
+>["materials"][number];
+
+function materialsText(materials: ReporterRelayMaterial[]): string {
+  return materials
     .map(
       (material, index) => `素材 ${index + 1}｜${materialCategoryLabels[material.category]}
 发生时间：${material.occurred_at}
@@ -37,7 +42,7 @@ function actionCall(
 export function renderReporterRelayWake(wake: ReporterRelayWake): string {
   switch (wake.stage) {
     case "selection": {
-      const materials = materialsText(wake);
+      const materials = materialsText(wake.materials);
       return `【铃野日报社·今日选题】
 
 今天你负责本期《铃野日报》的选题。以下是本期全部可用的公开素材：
@@ -63,6 +68,7 @@ ${wake.selection_text}`;
     case "review": {
       const approve = actionCall(wake.actions.approve);
       const reject = actionCall(wake.actions.reject, "退稿原因");
+      const materials = materialsText(wake.materials);
       if (wake.actions.supplement) {
         return `【铃野日报社·今日审稿】
 
@@ -77,9 +83,9 @@ ${actionCall(wake.actions.supplement, "需要补充或修改的具体内容")}
 退稿：
 ${reject}
 
-选题记者已经完成选题：
+本期原始公开素材：
 
-${wake.selection_text}
+${materials}
 
 撰稿记者已经提交原稿：
 
@@ -95,13 +101,13 @@ ${approve}
 退稿：
 ${reject}
 
+本期原始公开素材：
+
+${materials}
+
 上次审稿意见：
 
 ${wake.review_feedback}
-
-选题记者已经完成选题：
-
-${wake.selection_text}
 
 撰稿记者已经提交补充后的原稿：
 
