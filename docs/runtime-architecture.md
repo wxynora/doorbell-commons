@@ -255,15 +255,18 @@ features were rewritten to the real daily shop, chef-store recovery, single-case
 transfer boundaries, and complaint／loan／review authority limits. Production Farm `8551900` plus the private
 bank now reports `ready=true` and `missing=[]`.
 
-The reporter rescue keeps `materials` optional only on the `stage:"writing"` branch so
-the already-persisted writing wake for the current issue still validates; newly formed writing wakes may omit it.
-Main's writing renderer ignores that compatibility field in both cases, emits the authoritative
-`go.newsroom.commission` call before the complete `selection_text`, and appends that text without trimming,
-summarizing or imposing a length cap. Selection, review and supplement keep their existing material arrays and
-renderers. The one rescue wake advances the existing startup suffix from `:recovery-release` to
+Selection wake source facts are rendered as ordinary text blocks containing the sequence, category label,
+occurrence time, title and unmodified content; the Main renderer no longer pretty-prints protocol objects as JSON.
+The reporter rescue keeps `materials` optional on `stage:"writing"`, `stage:"review"` and `stage:"supplement"` only
+so already-persisted old wakes for the current issue still validate; newly formed wakes omit it after selection.
+Main ignores that compatibility field on all three follow-up stages. Writing emits the authoritative
+`go.newsroom.commission` call before the complete `selection_text`; review emits all decision calls before the complete
+`selection_text`, `article_text` and any existing `review_feedback`; supplement emits its call before the complete
+`review_feedback` and previous `article_text`. None trims, summarizes or imposes a length cap. Only selection keeps its
+material array and renderer. The one rescue wake advances the existing startup suffix from `:recovery-release` to
 `:recovery-processed`, so its idempotency key creates one new short Bell instead of replaying the prior accepted
 wake. After the current issue finishes, the prepared cleanup removes startup catch-up／pending recovery entirely
-and tightens writing back to strict no-materials.
+and tightens all three follow-up stages back to strict no-materials.
 
 The deployed next-day qualification gate is split across Main `8e2fb59` and Farm `a91e8a6`.
 Farm records an ordinary exam pass, or the constable's final approved public-notice result, with an

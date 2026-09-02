@@ -51,7 +51,7 @@ export const reporterRelayWakeSchema = z.discriminatedUnion("stage", [
   reporterRelayWakeBaseSchema
     .extend({
       stage: z.literal("review"),
-      ...reporterRelayWakeMaterialsSchema,
+      materials: z.array(reporterRelayMaterialSchema).optional(),
       selection_text: reporterNonBlankTextSchema,
       article_text: reporterNonBlankTextSchema,
       review_feedback: reporterNonBlankTextSchema.optional(),
@@ -84,7 +84,7 @@ export const reporterRelayWakeSchema = z.discriminatedUnion("stage", [
   reporterRelayWakeBaseSchema
     .extend({
       stage: z.literal("supplement"),
-      ...reporterRelayWakeMaterialsSchema,
+      materials: z.array(reporterRelayMaterialSchema).optional(),
       selection_text: reporterNonBlankTextSchema,
       article_text: reporterNonBlankTextSchema,
       review_feedback: reporterNonBlankTextSchema,
