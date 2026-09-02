@@ -85,6 +85,8 @@ import {
     validateFarmBinding,
 } from "./contract.js";
 
+import { recordPublishedDailyLike } from "./reporter-like.js";
+
 const LINGYE_OPERATIONS = new Set([
     "go.bank.view",
     "go.bank.choose",
@@ -93,6 +95,7 @@ const LINGYE_OPERATIONS = new Set([
     "go.farm.commission",
     "go.hospital.commission",
     "go.newsroom.commission",
+    "go.newsroom.like",
     "go.security.commission",
 ]);
 const LINGYE_READINESS_SCHEMA_VERSION = 1;
@@ -244,6 +247,14 @@ function assertPositiveInteger(value, field) {
 }
 
 function validateArgs(op, args) {
+    if (op === "go.newsroom.like") {
+        assertExactKeys(args, [["issueDate"]]);
+        if (typeof args.issueDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(args.issueDate) ||
+            !Number.isFinite(Date.parse(`${args.issueDate}T00:00:00Z`)) ||
+            new Date(`${args.issueDate}T00:00:00Z`).toISOString().slice(0, 10) !== args.issueDate)
+            throw new LingyeActionInputError("issueDate is invalid", "extra");
+        return;
+    }
     if (op === "go.bank.view") {
         assertExactKeys(args, [[], ["section"], ["reference"]]);
         if (Object.hasOwn(args, "section") && !BANK_SECTIONS.has(args.section))
@@ -3445,6 +3456,12 @@ function mapDomainError(error) {
         return failure("OP_REJECTED", "治安系统拒绝了本次操作。");
     }
     if (error instanceof CareerDomainError) {
+        if (["reporter_publication_not_found", "reporter_evaluation_window_not_open"].includes(error.code))
+            return failure("REFERENCE_NOT_FOUND", "这期日报尚未发布或不存在。");
+        if (error.code === "reporter_evaluation_window_closed")
+            return failure("OPTION_NOT_AVAILABLE", "本期日报点赞时间已结束。");
+        if (error.code === "reporter_author_like_forbidden")
+            return failure("OP_REJECTED", "不能给自己参与的报道点赞。");
         if (error.code === "qualification_not_effective")
             return failure("QUALIFICATION_NOT_EFFECTIVE", WORK_NOT_STARTED_MESSAGE);
         if (error.code === "constable_recent_theft_record")
@@ -3545,6 +3562,10 @@ export function createLingyeActionExecutor(options) {
                     return failure("LINGYE_NOT_READY", "铃野居民身份或经济账户尚未完成迁移。");
                 backend.forResident(input.residentId).getOwnAccount();
                 const actionNow = now();
+                if (input.op === "go.newsroom.like") {
+                    const result = recordPublishedDailyLike(database, backend, input.residentId, input.args.issueDate, actionNow);
+                    return success("已为这篇日报稿件点赞。", {accepted:result.accepted,duplicate:result.duplicate});
+                }
                 const args = resolveOptionHandle(database, input.residentId, input.op, input.args);
                 const detentions = activeResidentDetentions(backend, input.residentId, actionNow);
                 const detained = detentions.length > 0;

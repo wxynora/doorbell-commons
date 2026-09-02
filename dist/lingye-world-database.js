@@ -10,6 +10,7 @@ import { CareerJobService } from "./career/job-service.js";
 import { beijingDate, EXAM_SESSION_DURATION_MS } from "./career/persistence.js";
 import { installCareerSchema } from "./career/schema.js";
 import { CareerSchoolService } from "./career/school-service.js";
+import { nextReporterEvaluationDueAt } from "./career/reporter-evaluation-window.js";
 import {
     ChefCommerceService,
     ensureChefCommerceSchema,
@@ -1190,12 +1191,7 @@ export function createLingyeWorldBackend(database, options) {
         getReporterPublication: (publicationId) => getReporterPublication(database, publicationId),
         listReporterSections: () => listReporterSections(database),
         getReporterEvaluationQuote: (jobId) => getReporterEvaluationQuote(database, jobId),
-        nextReporterEvaluationDueAt: () => database.prepare(`SELECT MIN(publication.evaluation_closes_at) AS due_at
-          FROM career_reporter_publications publication
-          WHERE NOT EXISTS (
-            SELECT 1 FROM career_reporter_evaluation_settlements settlement
-            WHERE settlement.job_id = publication.job_id
-          )`).get().due_at ?? null,
+        nextReporterEvaluationDueAt: () => nextReporterEvaluationDueAt(database),
         listReporterPublicationsForHuman: (input) =>
             listReporterPublicationsForHuman(database, reporterWithClock(input)),
         listReporterPublicationsForResident: (input) =>

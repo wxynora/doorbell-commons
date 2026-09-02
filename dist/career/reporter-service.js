@@ -29,6 +29,8 @@ export const REPORTER_MAX_ARTICLES_PER_ISSUE = Object.freeze({
     4: 3,
 });
 
+import { reporterEvaluationClosesAt } from "./reporter-evaluation-window.js";
+
 export const REPORTER_EVALUATION_WINDOW_MS = 48 * 60 * 60 * 1_000;
 
 export const REPORTER_REVIEW_DECISIONS = Object.freeze([
@@ -941,7 +943,7 @@ export function reviewReporterArticle(database, input) {
     });
 }
 
-function mapPublication(row) {
+function mapPublication(database, row) {
     return {
         publicationId: row.publication_id,
         articleId: row.article_id,
@@ -950,7 +952,7 @@ function mapPublication(row) {
         articleVersion: row.article_version,
         publishedAt: row.published_at,
         evaluationOpensAt: row.evaluation_opens_at,
-        evaluationClosesAt: row.evaluation_closes_at,
+        evaluationClosesAt: reporterEvaluationClosesAt(database, row),
         status: row.status,
         validLikes: row.valid_likes,
         performanceUnits: row.performance_units,
@@ -994,10 +996,14 @@ function publicationByLikeRef(database, likeRef) {
 }
 
 function validLikeCount(database, jobId) {
+    const publication = latestPublication(database, jobId);
+    const closesAt = reporterEvaluationClosesAt(database, publication);
     const resident = database.prepare(`SELECT COUNT(*) AS count
-      FROM career_reporter_publication_likes WHERE job_id = ?`).get(jobId).count;
+      FROM career_reporter_publication_likes WHERE job_id = ? AND liked_at >= ?
+        AND (? IS NULL OR liked_at < ?)`).get(jobId, publication.evaluation_opens_at, closesAt, closesAt).count;
     const human = database.prepare(`SELECT COUNT(*) AS count
-      FROM career_reporter_human_likes WHERE job_id = ?`).get(jobId).count;
+      FROM career_reporter_human_likes WHERE job_id = ? AND liked_at >= ?
+        AND (? IS NULL OR liked_at < ?)`).get(jobId, publication.evaluation_opens_at, closesAt, closesAt).count;
     return resident + human;
 }
 
@@ -1028,8 +1034,9 @@ export function listReporterPublicationsForHuman(database, input) {
             credits?.reviewerResidentId,
         ].filter(Boolean);
         const ownHousehold = creditedResidents.some((residentId) => relatedResidentIds.has(residentId));
+        const closesAt = reporterEvaluationClosesAt(database, publication);
         const open = publication.status === "open" &&
-            now >= publication.evaluation_opens_at && now < publication.evaluation_closes_at;
+            now >= publication.evaluation_opens_at && (closesAt === null || now < closesAt);
         return {
             likeRef: publicationLikeRef(publication.publication_id),
             publicationId: publication.publication_id,
@@ -1040,7 +1047,7 @@ export function listReporterPublicationsForHuman(database, input) {
             articleText: publication.article_text,
             sectionName: publication.section_name,
             publishedAt: publication.published_at,
-            evaluationClosesAt: publication.evaluation_closes_at,
+            evaluationClosesAt: closesAt,
             validLikes: validLikeCount(database, publication.job_id),
             hasLiked,
             canLike: open && !hasLiked && !ownHousehold,
@@ -1074,8 +1081,9 @@ export function listReporterPublicationsForResident(database, input) {
             credits?.writerResidentId ?? publication.resident_id,
             credits?.reviewerResidentId,
         ].filter(Boolean).includes(residentId);
+        const closesAt = reporterEvaluationClosesAt(database, publication);
         const open = publication.status === "open" &&
-            now >= publication.evaluation_opens_at && now < publication.evaluation_closes_at;
+            now >= publication.evaluation_opens_at && (closesAt === null || now < closesAt);
         return {
             publicationId: publication.publication_id,
             authorResidentId: publication.resident_id,
@@ -1085,7 +1093,7 @@ export function listReporterPublicationsForResident(database, input) {
             articleText: publication.article_text,
             sectionName: publication.section_name,
             publishedAt: publication.published_at,
-            evaluationClosesAt: publication.evaluation_closes_at,
+            evaluationClosesAt: closesAt,
             validLikes: validLikeCount(database, publication.job_id),
             hasLiked,
             canLike: open && !hasLiked && !ownArticle,
@@ -1127,8 +1135,9 @@ export function recordReporterHumanLike(database, input) {
                 validLikes: validLikeCount(database, publication.job_id),
             };
         }
+        const closesAt = reporterEvaluationClosesAt(database, publication);
         if (publication.status !== "open" || now < publication.evaluation_opens_at ||
-            now >= publication.evaluation_closes_at)
+            (closesAt !== null && now >= closesAt))
             fail("reporter_evaluation_window_closed");
         database.prepare(`INSERT INTO career_reporter_human_likes (
           job_id, publication_id, human_actor_key, via_resident_id, liked_at
@@ -1146,14 +1155,17 @@ export function recordReporterHumanLike(database, input) {
 
 export function dueReporterEvaluationJobIds(database, now = Date.now()) {
     installBase(database);
-    return database.prepare(`SELECT DISTINCT publication.job_id
+    const pending = database.prepare(`SELECT publication.*
       FROM career_reporter_publications publication
-      WHERE publication.evaluation_closes_at <= ?
-        AND NOT EXISTS (
+      WHERE NOT EXISTS (
           SELECT 1 FROM career_reporter_evaluation_settlements settlement
           WHERE settlement.job_id = publication.job_id
         )
-      ORDER BY publication.job_id`).all(now).map((row) => row.job_id);
+      ORDER BY publication.job_id`).all();
+    return [...new Set(pending.filter(publication => {
+        const closesAt = reporterEvaluationClosesAt(database, publication);
+        return closesAt !== null && closesAt <= now;
+    }).map(publication => publication.job_id))];
 }
 
 export function publishReporterArticle(database, input) {
@@ -1170,7 +1182,7 @@ export function publishReporterArticle(database, input) {
         if (existingByArticle) {
             if (existingByArticle.publication_id !== publicationId)
                 fail("reporter_publication_id_conflict");
-            return mapPublication(existingByArticle);
+            return mapPublication(database, existingByArticle);
         }
         if (article.status !== "approved")
             fail("reporter_article_not_approved");
@@ -1189,7 +1201,10 @@ export function publishReporterArticle(database, input) {
             fail("reporter_correction_publication_missing");
         const evaluationOpensAt = previous?.evaluation_opens_at ?? now;
         const evaluationClosesAt = previous?.evaluation_closes_at ?? now + REPORTER_EVALUATION_WINDOW_MS;
-        const status = now < evaluationClosesAt ? "open" : "closed";
+        const effectiveClosesAt = reporterEvaluationClosesAt(database, {
+            job_id:article.job_id,evaluation_closes_at:evaluationClosesAt,
+        });
+        const status = effectiveClosesAt === null || now < effectiveClosesAt ? "open" : "closed";
         if (previous) {
             database.prepare(`
               UPDATE career_reporter_publications
@@ -1214,7 +1229,7 @@ export function publishReporterArticle(database, input) {
               SET status = 'consumed', consumed_at = ? WHERE pack_id = ?
             `).run(now, pack.pack_id);
         }
-        return mapPublication(requirePublication(database, publicationId));
+        return mapPublication(database, requirePublication(database, publicationId));
     });
 }
 
@@ -1239,7 +1254,8 @@ export function recordReporterLike(database, input) {
             fail("reporter_evaluation_window_closed");
         if (now < publication.evaluation_opens_at)
             fail("reporter_evaluation_window_not_open");
-        if (now >= publication.evaluation_closes_at)
+        const closesAt = reporterEvaluationClosesAt(database, publication);
+        if (closesAt !== null && now >= closesAt)
             fail("reporter_evaluation_window_closed");
         if ([
             credits?.selectorResidentId,
@@ -1294,7 +1310,8 @@ export function quoteReporterEvaluation(database, input) {
         const publication = latestPublication(database, jobId);
         if (!publication)
             fail("reporter_publication_not_found");
-        if (now < publication.evaluation_closes_at)
+        const closesAt = reporterEvaluationClosesAt(database, publication);
+        if (closesAt === null || now < closesAt)
             fail("reporter_evaluation_window_open");
         if (job.status !== "completed")
             fail("reporter_job_not_completed");
@@ -1321,7 +1338,7 @@ export function quoteReporterEvaluation(database, input) {
             performanceUnits,
             performanceGold,
             qualificationLevel: work.qualification_level,
-            evaluationClosesAt: publication.evaluation_closes_at,
+            evaluationClosesAt: closesAt,
             status: "quoted",
             quotedAt: now,
         };
@@ -1509,7 +1526,7 @@ export function getReporterArticle(database, articleId) {
 
 export function getReporterPublication(database, publicationId) {
     installBase(database);
-    return mapPublication(requirePublication(database, identifier(publicationId, "publication_id")));
+    return mapPublication(database, requirePublication(database, identifier(publicationId, "publication_id")));
 }
 
 export function getReporterEvaluationQuote(database, jobId) {
