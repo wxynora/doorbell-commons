@@ -1961,7 +1961,8 @@ function reporterPendingDutyStatus(database, residentId, now) {
         throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这项记者工作当前不属于你的今日排班。");
     const issue = reporterRelayIssue(database, duty.dutyDate);
     const notIssued = !issue ||
-        (duty.role === "writer" && issue.status === "selector_pending") ||
+        (duty.role === "writer" && issue.status === "selector_pending" &&
+            issue.selectorResidentId !== residentId) ||
         (duty.role === "reviewer" &&
             ["selector_pending", "writer_pending", "supplement_pending"].includes(issue.status));
     if (!notIssued)
@@ -2008,7 +2009,11 @@ function reporterRelayActionAvailable(database, residentId, internalOption) {
         return false;
     if (relaySubmit) {
         if (relaySubmit.stage === "selection") {
-            return relaySubmit.sequence === 1 && relay.selectorJobId === jobId &&
+            const wake = database.prepare(`SELECT 1 FROM career_reporter_relay_wakes
+              WHERE issue_reference = ? AND stage = 'selection' AND wake_sequence = ?
+                AND recipient_resident_id = ? AND payload_json IS NOT NULL`)
+                .get(relay.issueReference, relaySubmit.sequence, residentId);
+            return Boolean(wake) && relay.selectorJobId === jobId &&
                 relay.status === "selector_pending" && relay.selectorResidentId === residentId;
         }
         return relay.writerJobId === jobId && relay.writerResidentId === residentId &&
@@ -2423,14 +2428,17 @@ function requireReporterRelayQualification(database, residentId, job, relay, exp
     if (qualificationLevel(database, residentId, "reporter", now) < job.requiredLevel) {
         throw new LingyeBusinessError("QUALIFICATION_REQUIRED", "当前记者资格不满足这项工作。");
     }
-    const duty = database.prepare(`SELECT 1
+    const duty = database.prepare(`SELECT role.role
       FROM career_reporter_duty_roles AS role
       JOIN career_duty_days AS duty ON duty.duty_id = role.duty_id
       JOIN career_employments AS employment ON employment.employment_id = duty.employment_id
-      WHERE role.duty_date = ? AND role.role = ? AND role.resident_id = ?
+      WHERE role.duty_date = ? AND role.resident_id = ?
         AND duty.status = 'scheduled' AND employment.status = 'active'
-        AND employment.availability = 'available'`).get(relay.issueDate, expectedRole, residentId);
-    if (beijingDate(now) !== relay.issueDate || !duty) {
+        AND employment.availability = 'available'`).get(relay.issueDate, residentId);
+    const combinedSelector = expectedRole === "selector" && duty?.role === "writer" &&
+        relay.selectorResidentId === residentId && relay.writerResidentId === residentId;
+    if (beijingDate(now) !== relay.issueDate || !duty ||
+        (duty.role !== expectedRole && !combinedSelector)) {
         throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这项记者工作当前不属于你的今日排班。");
     }
 }

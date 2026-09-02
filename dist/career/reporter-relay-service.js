@@ -375,8 +375,18 @@ function wakeSequence(issue, stage) {
     return 1;
 }
 
-function ensureWakeRow(database, issue, stage, now) {
-    const sequence = wakeSequence(issue, stage);
+function latestWakeSequence(database, issue, stage) {
+    return database.prepare(`SELECT MAX(wake_sequence) AS sequence
+      FROM career_reporter_relay_wakes
+      WHERE issue_reference = ? AND stage = ?`)
+        .get(issue.issue_reference, stage)?.sequence ?? 0;
+}
+
+function currentWakeSequence(database, issue, stage) {
+    return Math.max(wakeSequence(issue, stage), latestWakeSequence(database, issue, stage));
+}
+
+function ensureWakeRow(database, issue, stage, now, sequence = wakeSequence(issue, stage)) {
     const wakeId = `reporter-wake:${issue.issue_date}:${stage}:${sequence}`;
     const recipient = wakeRecipient(issue, stage);
     database.prepare(`INSERT OR IGNORE INTO career_reporter_relay_wakes (
@@ -452,7 +462,7 @@ export function reporterRelayWake(database, issueReference, now = Date.now(), re
     const stage = requestedStage ?? wakeStageForStatus(issue.status);
     if (!stage)
         return null;
-    const sequence = requestedSequence ?? wakeSequence(issue, stage);
+    const sequence = requestedSequence ?? currentWakeSequence(database, issue, stage);
     const wakeId = `reporter-wake:${issue.issue_date}:${stage}:${sequence}`;
     const existing = database.prepare(`SELECT * FROM career_reporter_relay_wakes
       WHERE wake_id = ?`).get(wakeId);
@@ -464,7 +474,7 @@ export function reporterRelayWake(database, issueReference, now = Date.now(), re
     }
     if (requestedSequence !== null && sequence !== wakeSequence(issue, stage) && !existing)
         fail("reporter_relay_wake_not_found");
-    const wake = existing ?? ensureWakeRow(database, issue, stage, now);
+    const wake = existing ?? ensureWakeRow(database, issue, stage, now, sequence);
     const payload = {
         wake_id: wake.wake_id,
         recipient_resident_id: wake.recipient_resident_id,
@@ -651,6 +661,72 @@ export function startReporterRelayIssue(database, backend, input) {
     });
 }
 
+export function handoffReporterRelayDuty(database, backend, input) {
+    installCareerSchema(database);
+    const now = timestamp(input?.now ?? Date.now(), "timestamp");
+    const issueDate = identifier(input?.issueDate, "issue_date");
+    if (input?.expectedStage !== "selection")
+        fail("reporter_relay_handoff_stage_invalid");
+    return runInTransaction(database, () => {
+        const issue = database.prepare(`SELECT * FROM career_reporter_relay_issues
+          WHERE issue_date = ?`).get(issueDate);
+        if (!issue)
+            fail("reporter_relay_issue_not_found");
+        const successorJobId = `reporter-relay-job:${issue.issue_date}:selector:handoff:writer`;
+        if (issue.selector_job_id === successorJobId &&
+            issue.selector_resident_id === issue.writer_resident_id) {
+            const sequence = latestWakeSequence(database, issue, "selection");
+            if (sequence < 2)
+                fail("reporter_relay_handoff_wake_missing");
+            return {
+                issueDate,
+                status: "already_handed_off",
+                wake: reporterRelayWake(database, issue.issue_reference, now, "selection", sequence),
+            };
+        }
+        if (issue.status !== "selector_pending")
+            fail("reporter_relay_handoff_stage_conflict");
+        if (issue.selector_resident_id === issue.writer_resident_id)
+            fail("reporter_relay_handoff_conflict");
+        const originalJob = backend.trustedQueries.getJob(issue.selector_job_id);
+        if (!originalJob || originalJob.career !== "reporter" ||
+            !["accepted", "active"].includes(originalJob.status) ||
+            originalJob.workerResidentId !== issue.selector_resident_id) {
+            fail("reporter_relay_handoff_job_not_actionable");
+        }
+        backend.trustedSystemCommands.cancelJob(issue.selector_job_id);
+        backend.trustedSystemCommands.createJob({
+            jobId: successorJobId,
+            career: "reporter",
+            sourceType: "reporter_daily_selection_handoff",
+            sourceId: originalJob.sourceId,
+            objectType: originalJob.objectType,
+            objectId: originalJob.objectId,
+            ownerResidentId: originalJob.ownerResidentId,
+            requiredLevel: originalJob.requiredLevel,
+            difficultyLevel: originalJob.difficultyLevel,
+            assignmentMode: "accepted",
+        });
+        backend.trustedSystemCommands.acceptJob(successorJobId, issue.writer_resident_id);
+        const updated = database.prepare(`UPDATE career_reporter_relay_issues
+          SET selector_job_id = ?, selector_resident_id = ?, updated_at = ?
+          WHERE issue_reference = ? AND status = 'selector_pending'
+            AND selector_job_id = ? AND selector_resident_id = ?`)
+            .run(successorJobId, issue.writer_resident_id, now, issue.issue_reference,
+                issue.selector_job_id, issue.selector_resident_id);
+        if (updated.changes !== 1)
+            fail("reporter_relay_handoff_conflict");
+        const reassigned = requireIssue(database, issue.issue_reference);
+        const sequence = latestWakeSequence(database, reassigned, "selection") + 1;
+        ensureWakeRow(database, reassigned, "selection", now, sequence);
+        return {
+            issueDate,
+            status: "handed_off",
+            wake: reporterRelayWake(database, issue.issue_reference, now, "selection", sequence),
+        };
+    });
+}
+
 export function beginReporterRelayWriting(database, backend, input) {
     installCareerSchema(database);
     const now = timestamp(input?.now ?? Date.now(), "timestamp");
@@ -703,6 +779,8 @@ export function beginReporterRelayWriting(database, backend, input) {
         selectorResidentId: issue.selector_resident_id,
         writerResidentId: issue.writer_resident_id,
         reviewerResidentId: issue.reviewer_resident_id,
+        allowSelectorWriterCombination:
+            issue.selector_resident_id === issue.writer_resident_id,
         now,
     });
     database.prepare(`UPDATE career_reporter_relay_issues

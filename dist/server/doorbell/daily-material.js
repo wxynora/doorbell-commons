@@ -4,6 +4,7 @@ import { allFarms } from "../../store.js";
 import { jsonOut, readJsonBody } from "../http.js";
 import {
     acknowledgePublishedReporterRelay,
+    handoffReporterRelayDuty,
     publishReadyReporterRelay,
     reporterRelayIssue,
     reporterRelayWake,
@@ -40,6 +41,16 @@ function validRequest(body) {
         periodStart < 0 || periodEnd <= periodStart)
         return null;
     return { issueDate: body.issue_date, periodStart, periodEnd };
+}
+
+function validHandoffRequest(body) {
+    if (!isPlainObject(body) || Object.keys(body).length !== 2 ||
+        !Object.hasOwn(body, "issue_date") ||
+        !Object.hasOwn(body, "expected_stage") ||
+        typeof body.issue_date !== "string" || !ISSUE_DATE_RE.test(body.issue_date) ||
+        body.expected_stage !== "selection")
+        return null;
+    return { issueDate: body.issue_date, expectedStage: body.expected_stage };
 }
 
 function validPublishedRequest(body) {
@@ -139,6 +150,37 @@ export async function handleDoorbellReporterRelayPending(req, res, method, runti
             return;
         console.error("[doorbell-lingye-daily] reporter relay pending read failed");
         return internalServiceError(res, 503, "service_unavailable", "The reporter relay pending wake could not be read");
+    }
+}
+
+export async function handleDoorbellReporterRelayHandoff(req, res, method, runtime) {
+    if (!requireDoorbellService(req, res, method))
+        return;
+    try {
+        const body = await readJsonBody(req, MAX_BODY_BYTES);
+        const request = validHandoffRequest(body);
+        if (!request)
+            return internalServiceError(res, 400, "invalid_request", "The reporter relay handoff request is invalid");
+        const result = handoffReporterRelayDuty(runtime.database, runtime.backend, {
+            ...request,
+            now: runtime.now?.() ?? Date.now(),
+        });
+        return jsonOut(res, 200, {
+            ok: true,
+            data: {
+                issue_date: result.issueDate,
+                status: result.status,
+                wake: publicStartWake(result.wake),
+            },
+        });
+    }
+    catch (error) {
+        if (error instanceof PublicSyncError)
+            return internalServiceError(res, 400, "invalid_request", "The request body must be valid JSON");
+        if (relayError(res, error))
+            return;
+        console.error("[doorbell-lingye-daily] reporter relay handoff failed");
+        return internalServiceError(res, 503, "service_unavailable", "The reporter relay duty could not be handed off");
     }
 }
 

@@ -53,6 +53,7 @@ import {
 } from "./reporter.js";
 import {
     handleDoorbellLingyeDailyMaterial,
+    handleDoorbellReporterRelayHandoff,
     handleDoorbellReporterRelayPending,
     handleDoorbellReporterRelayPublication,
     handleDoorbellReporterRelayPublished,
@@ -70,6 +71,16 @@ export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExe
                 return true;
             }
             await handleDoorbellReporterRelayStart(req, res, method, constableInterviewRuntime);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" &&
+            parts[2] === "lingye-daily" && parts[3] === "reporter-relay" &&
+            parts[4] === "handoff" && parts.length === 5) {
+            if (!constableInterviewRuntime?.database || !constableInterviewRuntime?.backend) {
+                internalServiceError(res, 503, "service_unavailable", "The reporter relay service is unavailable");
+                return true;
+            }
+            await handleDoorbellReporterRelayHandoff(req, res, method, constableInterviewRuntime);
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" &&

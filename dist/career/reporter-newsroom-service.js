@@ -126,11 +126,15 @@ export function createReporterStoryWorkflow(database, input) {
         writerResidentId: identifier(input?.writerResidentId, "writer_resident_id"),
         reviewerResidentId: identifier(input?.reviewerResidentId, "reviewer_resident_id"),
     };
-    if (new Set([
+    const distinctResidents = new Set([
         workflow.selectorResidentId,
         workflow.writerResidentId,
         workflow.reviewerResidentId,
-    ]).size !== 3) {
+    ]);
+    const allowedCombination = input?.allowSelectorWriterCombination === true &&
+        workflow.selectorResidentId === workflow.writerResidentId &&
+        workflow.reviewerResidentId !== workflow.writerResidentId;
+    if (distinctResidents.size !== 3 && !allowedCombination) {
         fail("reporter_workflow_distinct_roles_required");
     }
     return runInTransaction(database, () => {
