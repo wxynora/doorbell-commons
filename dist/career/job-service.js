@@ -65,6 +65,20 @@ function verifyServiceSilverSettlement(database, job, workerResidentId, receiptI
         throw new CareerDomainError("job_payment_receipt_unverified", "The settled service escrow journal is invalid");
     return receiptId;
 }
+function reporterRelayRolePerformanceRate(database, jobId) {
+    return database.prepare(`SELECT duty.performance_rate_bps
+      FROM career_reporter_relay_issues AS issue
+      JOIN career_reporter_duty_roles AS role
+        ON role.duty_date = issue.issue_date
+       AND role.role = CASE
+         WHEN issue.selector_job_id = ? THEN 'selector'
+         WHEN issue.writer_job_id = ? THEN 'writer'
+         WHEN issue.reviewer_job_id = ? THEN 'reviewer'
+       END
+      JOIN career_duty_days AS duty ON duty.duty_id = role.duty_id
+      WHERE issue.selector_job_id = ? OR issue.writer_job_id = ? OR issue.reviewer_job_id = ?`)
+        .get(jobId, jobId, jobId, jobId, jobId, jobId)?.performance_rate_bps ?? null;
+}
 function serviceCommissionContract(input, excludedResidentIds) {
     if (input.serviceCommission !== true) {
         if (input.serviceAudience !== undefined || input.targetResidentId !== undefined) {
@@ -404,7 +418,10 @@ export class CareerJobService {
                     ORDER BY generated_at DESC LIMIT 1`)
                     .get(input.workerResidentId, job.career, dutyDate)
                 : null;
-            const performanceRateBps = duty?.performance_rate_bps ?? 10_000;
+            const performanceRateBps = job.career === "reporter"
+                ? reporterRelayRolePerformanceRate(this.#database, job.job_id) ??
+                    duty?.performance_rate_bps ?? 10_000
+                : duty?.performance_rate_bps ?? 10_000;
             this.#database
                 .prepare(`INSERT INTO career_work_records (
              work_record_id, job_id, resident_id, career, qualification_level,

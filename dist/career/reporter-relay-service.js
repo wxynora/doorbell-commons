@@ -17,6 +17,7 @@ import {
     createReporterStoryWorkflow,
     ensureReporterDutyRoles,
     markReporterWorkflowPublished,
+    reassignReporterStoryWorkflowWriter,
     reporterWorkflowForJob,
 } from "./reporter-newsroom-service.js";
 import { installCareerSchema } from "./schema.js";
@@ -411,13 +412,11 @@ function stageInputs(database, issue, stage, sequence) {
       WHERE job_id = ? AND version = ?`).get(issue.writer_job_id, sequence);
     if (stage === "review") {
         return {
-            selection_text: issue.selection_text,
             article_text: article?.article_text ?? null,
             ...(sequence > 1 ? { review_feedback: issue.review_feedback } : {}),
         };
     }
     return {
-        selection_text: issue.selection_text,
         article_text: article?.article_text ?? null,
         review_feedback: issue.review_feedback,
     };
@@ -480,7 +479,7 @@ export function reporterRelayWake(database, issueReference, now = Date.now(), re
         recipient_resident_id: wake.recipient_resident_id,
         stage,
         issue_date: issue.issue_date,
-        ...(stage === "selection"
+        ...(["selection", "review"].includes(stage)
             ? { materials: publicMaterials(database, issue.issue_reference) }
             : {}),
         ...stageInputs(database, issue, stage, sequence),
@@ -663,68 +662,178 @@ export function startReporterRelayIssue(database, backend, input) {
     });
 }
 
+function relayDutyAssignment(database, issueDate, role) {
+    return database.prepare(`SELECT duty_role.role, duty_role.resident_id,
+        duty.performance_rate_bps
+      FROM career_reporter_duty_roles AS duty_role
+      JOIN career_duty_days AS duty ON duty.duty_id = duty_role.duty_id
+      JOIN career_employments AS employment
+        ON employment.employment_id = duty.employment_id
+      WHERE duty_role.duty_date = ? AND duty_role.role = ?
+        AND duty.status = 'scheduled' AND employment.status = 'active'
+        AND employment.availability = 'available'`)
+        .get(issueDate, role) ?? null;
+}
+
+function relayDutyRoleForResident(database, issueDate, residentId) {
+    return database.prepare(`SELECT duty_role.role, duty_role.resident_id,
+        duty.performance_rate_bps
+      FROM career_reporter_duty_roles AS duty_role
+      JOIN career_duty_days AS duty ON duty.duty_id = duty_role.duty_id
+      WHERE duty_role.duty_date = ? AND duty_role.resident_id = ?`)
+        .get(issueDate, residentId) ?? null;
+}
+
+function handoffSuccessorWake(database, issue, expectedWake) {
+    const successor = database.prepare(`SELECT * FROM career_reporter_relay_wakes
+      WHERE issue_reference = ? AND stage = ? AND wake_sequence = ?`)
+        .get(issue.issue_reference, expectedWake.stage, expectedWake.wake_sequence + 1);
+    if (!successor)
+        return null;
+    if (!successor.payload_json)
+        fail("reporter_relay_handoff_wake_missing");
+    return parseJson(successor.payload_json);
+}
+
+function createReporterRelayHandoffJob(backend, originalJob, successorJobId, targetRole) {
+    backend.trustedSystemCommands.createJob({
+        jobId: successorJobId,
+        career: "reporter",
+        sourceType: `${originalJob.sourceType}:handoff:${targetRole}`,
+        sourceId: originalJob.sourceId,
+        objectType: originalJob.objectType,
+        objectId: originalJob.objectId,
+        ownerResidentId: originalJob.ownerResidentId,
+        requiredLevel: originalJob.requiredLevel,
+        difficultyLevel: originalJob.difficultyLevel,
+        assignmentMode: "accepted",
+    });
+}
+
 export function handoffReporterRelayDuty(database, backend, input) {
     installCareerSchema(database);
     const now = timestamp(input?.now ?? Date.now(), "timestamp");
     const issueDate = identifier(input?.issueDate, "issue_date");
-    if (input?.expectedStage !== "selection")
+    const expectedStage = input?.expectedStage;
+    if (!["selection", "writing"].includes(expectedStage))
         fail("reporter_relay_handoff_stage_invalid");
+    const expectedWakeId = identifier(input?.expectedWakeId, "expected_wake_id");
     return runInTransaction(database, () => {
         const issue = database.prepare(`SELECT * FROM career_reporter_relay_issues
           WHERE issue_date = ?`).get(issueDate);
         if (!issue)
             fail("reporter_relay_issue_not_found");
-        const successorJobId = `reporter-relay-job:${issue.issue_date}:selector:handoff:writer`;
-        if (issue.selector_job_id === successorJobId &&
-            issue.selector_resident_id === issue.writer_resident_id) {
-            const sequence = latestWakeSequence(database, issue, "selection");
-            if (sequence < 2)
-                fail("reporter_relay_handoff_wake_missing");
-            return {
-                issueDate,
-                status: "already_handed_off",
-                wake: reporterRelayWake(database, issue.issue_reference, now, "selection", sequence),
-            };
+        const expectedWake = database.prepare(`SELECT * FROM career_reporter_relay_wakes
+          WHERE wake_id = ?`).get(expectedWakeId);
+        if (!expectedWake || expectedWake.issue_reference !== issue.issue_reference ||
+            expectedWake.stage !== expectedStage || !expectedWake.payload_json) {
+            fail("reporter_relay_handoff_wake_conflict");
         }
-        if (issue.status !== "selector_pending")
+        const replayWake = handoffSuccessorWake(database, issue, expectedWake);
+        if (replayWake) {
+            return { issueDate, status: "already_handed_off", wake: replayWake };
+        }
+        if (wakeStageForStatus(issue.status) !== expectedStage ||
+            currentWakeSequence(database, issue, expectedStage) !== expectedWake.wake_sequence ||
+            wakeRecipient(issue, expectedStage) !== expectedWake.recipient_resident_id) {
             fail("reporter_relay_handoff_stage_conflict");
-        if (issue.selector_resident_id === issue.writer_resident_id)
-            fail("reporter_relay_handoff_conflict");
-        const originalJob = backend.trustedQueries.getJob(issue.selector_job_id);
+        }
+        const currentResidentId = wakeRecipient(issue, expectedStage);
+        const currentDuty = relayDutyRoleForResident(database, issueDate, currentResidentId);
+        const targetRole = expectedStage === "selection"
+            ? currentDuty?.role === "selector"
+                ? "writer"
+                : currentDuty?.role === "writer"
+                    ? "reviewer"
+                    : null
+            : currentDuty?.role === "writer"
+                ? "reviewer"
+                : null;
+        const targetDuty = targetRole
+            ? relayDutyAssignment(database, issueDate, targetRole)
+            : null;
+        if (!targetDuty || targetDuty.resident_id === currentResidentId)
+            fail("reporter_relay_handoff_exhausted");
+        const currentJobId = expectedStage === "selection"
+            ? issue.selector_job_id
+            : issue.writer_job_id;
+        const originalJob = backend.trustedQueries.getJob(currentJobId);
         if (!originalJob || originalJob.career !== "reporter" ||
             !["accepted", "active"].includes(originalJob.status) ||
-            originalJob.workerResidentId !== issue.selector_resident_id) {
+            originalJob.workerResidentId !== currentResidentId) {
             fail("reporter_relay_handoff_job_not_actionable");
         }
-        backend.trustedSystemCommands.cancelJob(issue.selector_job_id);
-        backend.trustedSystemCommands.createJob({
-            jobId: successorJobId,
-            career: "reporter",
-            sourceType: "reporter_daily_selection_handoff",
-            sourceId: originalJob.sourceId,
-            objectType: originalJob.objectType,
-            objectId: originalJob.objectId,
-            ownerResidentId: originalJob.ownerResidentId,
-            requiredLevel: originalJob.requiredLevel,
-            difficultyLevel: originalJob.difficultyLevel,
-            assignmentMode: "accepted",
-        });
-        backend.trustedSystemCommands.acceptJob(successorJobId, issue.writer_resident_id);
-        const updated = database.prepare(`UPDATE career_reporter_relay_issues
-          SET selector_job_id = ?, selector_resident_id = ?, updated_at = ?
-          WHERE issue_reference = ? AND status = 'selector_pending'
-            AND selector_job_id = ? AND selector_resident_id = ?`)
-            .run(successorJobId, issue.writer_resident_id, now, issue.issue_reference,
-                issue.selector_job_id, issue.selector_resident_id);
-        if (updated.changes !== 1)
-            fail("reporter_relay_handoff_conflict");
+        const successorJobId = `reporter-relay-job:${issue.issue_date}:${expectedStage}:handoff:${targetRole}`;
+        if (expectedStage === "writing") {
+            const workflow = reporterWorkflowForJob(database, currentJobId);
+            if (!workflow || workflow.writerJobId !== currentJobId ||
+                workflow.writerResidentId !== currentResidentId ||
+                workflow.status !== "selected" || workflow.articleId !== null) {
+                fail("reporter_relay_handoff_workflow_not_actionable");
+            }
+            backend.forResident(currentResidentId).returnReporterMaterialPack({
+                packId: issue.pack_id,
+                jobId: currentJobId,
+                idempotencyKey: `reporter-relay:${issue.issue_date}:writer:handoff:return`,
+            });
+            backend.trustedSystemCommands.cancelJob(currentJobId);
+            createReporterRelayHandoffJob(backend, originalJob, successorJobId, targetRole);
+            backend.trustedSystemCommands.acceptJob(successorJobId, targetDuty.resident_id);
+            backend.forResident(targetDuty.resident_id).claimReporterMaterialPack({
+                packId: issue.pack_id,
+                jobId: successorJobId,
+                idempotencyKey: `reporter-relay:${issue.issue_date}:writer:handoff:${targetRole}:claim`,
+            });
+            reassignReporterStoryWorkflowWriter(database, {
+                workflowId: workflow.workflowId,
+                previousJobId: currentJobId,
+                previousResidentId: currentResidentId,
+                writerJobId: successorJobId,
+                writerResidentId: targetDuty.resident_id,
+                now,
+            });
+            const updated = database.prepare(`UPDATE career_reporter_relay_issues
+              SET writer_job_id = ?, writer_resident_id = ?, updated_at = ?
+              WHERE issue_reference = ? AND status = 'writer_pending'
+                AND writer_job_id = ? AND writer_resident_id = ?`)
+                .run(successorJobId, targetDuty.resident_id, now, issue.issue_reference,
+                    currentJobId, currentResidentId);
+            if (updated.changes !== 1)
+                fail("reporter_relay_handoff_conflict");
+        }
+        else {
+            backend.trustedSystemCommands.cancelJob(currentJobId);
+            createReporterRelayHandoffJob(backend, originalJob, successorJobId, targetRole);
+            backend.trustedSystemCommands.acceptJob(successorJobId, targetDuty.resident_id);
+            const transfersFutureWriting = currentDuty.role === "writer" && targetRole === "reviewer";
+            if (transfersFutureWriting && issue.writer_job_id !== null)
+                fail("reporter_relay_handoff_conflict");
+            const updated = transfersFutureWriting
+                ? database.prepare(`UPDATE career_reporter_relay_issues
+                    SET selector_job_id = ?, selector_resident_id = ?,
+                        writer_resident_id = ?, updated_at = ?
+                    WHERE issue_reference = ? AND status = 'selector_pending'
+                      AND selector_job_id = ? AND selector_resident_id = ?
+                      AND writer_job_id IS NULL AND writer_resident_id = ?`)
+                    .run(successorJobId, targetDuty.resident_id, targetDuty.resident_id,
+                        now, issue.issue_reference, currentJobId, currentResidentId,
+                        currentResidentId)
+                : database.prepare(`UPDATE career_reporter_relay_issues
+                    SET selector_job_id = ?, selector_resident_id = ?, updated_at = ?
+                    WHERE issue_reference = ? AND status = 'selector_pending'
+                      AND selector_job_id = ? AND selector_resident_id = ?`)
+                    .run(successorJobId, targetDuty.resident_id, now,
+                        issue.issue_reference, currentJobId, currentResidentId);
+            if (updated.changes !== 1)
+                fail("reporter_relay_handoff_conflict");
+        }
         const reassigned = requireIssue(database, issue.issue_reference);
-        const sequence = latestWakeSequence(database, reassigned, "selection") + 1;
-        ensureWakeRow(database, reassigned, "selection", now, sequence);
+        const sequence = expectedWake.wake_sequence + 1;
+        ensureWakeRow(database, reassigned, expectedStage, now, sequence);
         return {
             issueDate,
             status: "handed_off",
-            wake: reporterRelayWake(database, issue.issue_reference, now, "selection", sequence),
+            wake: reporterRelayWake(database, issue.issue_reference, now, expectedStage, sequence),
         };
     });
 }

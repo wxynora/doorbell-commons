@@ -124,6 +124,26 @@ const TERM_DAYS = new Set([14, 30, 60]);
 const INSUFFICIENT_FUNDS_MESSAGE = "可用余额不足，本次操作没有执行。";
 const EXAM_PASSED_WORK_NOTICE = "考试通过啦！明天正式上班，今天先休息。";
 const WORK_NOT_STARTED_MESSAGE = "还没到上班时间，明天再来吧。";
+const LINGYE_ACTION_MESSAGES = Object.freeze({
+    INPUT_MISSING: "这项操作缺少必要内容，请使用当前页面或 Bell 提供的完整操作参数。",
+    INPUT_EXTRA: "这项操作带了当前步骤不接受的参数，请按当前 option 的要求重新提交。",
+    OPTION_IDENTITY: "这个 option 不是当前账号在这个入口获得的，请使用最新 option。",
+    OPTION_STALE: "这项工作已经进入下一阶段，原 option 已失效，请以最新页面或 Bell 为准。",
+    NO_DUTY: "你今天没有排到这个机构的值班，不能执行这项工作。",
+    TRANSFERRED: "这份工作已经交给其他从业者，当前不能由你处理。",
+    TERMINAL: "这份工作已经完成、取消、转交或失效，原 option 不能再使用。",
+    ACTIVE_SERVICE: "你还有一份未完成的服务委托，完成或转交后才能接下一份。",
+    DAILY_LIMIT: "你今天已经接满 3 份服务委托，今天不能再接单。",
+    SELF: "这是你自己的委托，不能由自己接单。",
+    TARGET_MISMATCH: "这是一份定向委托，当前不是发给你的。",
+    EXCLUDED: "你与这项委托存在回避关系，不能接单。",
+    WORLD_CHANGED: "对应的异常状态已经变化，请重新查看后选择当前可执行的操作。",
+    CHECK_REQUIRED: "还没有完成必要检查，暂时不能进行处理。",
+    STORE_INVENTORY: "店里这份料理库存不足，本次没有下单。",
+    STORE_SUSPENDED: "这家料理店目前暂停接单。",
+    ALREADY_REVIEWED: "这份稿件已经审过，不能重复提交审稿结果。",
+    INTERNAL: "职业服务暂时无法完成，请稍后再试；本次没有产生业务结果。",
+});
 const LINGYE_ERROR_MESSAGES = Object.freeze({
     INSUFFICIENT_FUNDS: INSUFFICIENT_FUNDS_MESSAGE,
     OPTION_NOT_AVAILABLE: "当前选项已失效或不适用于这项业务；请重新查看当前事实与 option。",
@@ -141,9 +161,10 @@ const DEFAULT_ECONOMY_RULES = Object.freeze({
 });
 
 class LingyeActionInputError extends Error {
-    constructor(message) {
+    constructor(message, kind = "missing") {
         super(message);
         this.name = "LingyeActionInputError";
+        this.kind = kind;
     }
 }
 
@@ -186,11 +207,13 @@ function commissionNotifications(kind, job, notificationKey, career, actorReside
         return [];
     }
 }
-const failure = (code, _message) => ({
+const failure = (code, message) => ({
     ok: false,
     error: {
         code,
-        message: LINGYE_ERROR_MESSAGES[code] ?? LINGYE_ERROR_MESSAGES.OP_REJECTED,
+        message: typeof message === "string" && message.trim().length > 0
+            ? message
+            : LINGYE_ERROR_MESSAGES[code] ?? LINGYE_ERROR_MESSAGES.OP_REJECTED,
     },
 });
 
@@ -202,8 +225,12 @@ function assertExactKeys(value, branches) {
         const expected = [...branch].sort();
         return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
     });
-    if (!matches)
-        throw new LingyeActionInputError("args do not match this operation");
+    if (!matches) {
+        const hasOnlyAcceptedKeys = branches.some((branch) =>
+            actual.every((key) => branch.includes(key)) && actual.length < branch.length);
+        throw new LingyeActionInputError("args do not match this operation",
+            hasOnlyAcceptedKeys ? "missing" : "extra");
+    }
 }
 
 function assertNonEmptyString(value, field) {
@@ -213,14 +240,14 @@ function assertNonEmptyString(value, field) {
 
 function assertPositiveInteger(value, field) {
     if (!Number.isSafeInteger(value) || value <= 0)
-        throw new LingyeActionInputError(`${field} must be a positive integer`);
+        throw new LingyeActionInputError(`${field} must be a positive integer`, "extra");
 }
 
 function validateArgs(op, args) {
     if (op === "go.bank.view") {
         assertExactKeys(args, [[], ["section"], ["reference"]]);
         if (Object.hasOwn(args, "section") && !BANK_SECTIONS.has(args.section))
-            throw new LingyeActionInputError("section is invalid");
+            throw new LingyeActionInputError("section is invalid", "extra");
         if (Object.hasOwn(args, "reference"))
             assertNonEmptyString(args.reference, "reference");
         return;
@@ -237,7 +264,7 @@ function validateArgs(op, args) {
         if (Object.hasOwn(args, "amount"))
             assertPositiveInteger(args.amount, "amount");
         if (Object.hasOwn(args, "termDays") && !TERM_DAYS.has(args.termDays))
-            throw new LingyeActionInputError("termDays is invalid");
+            throw new LingyeActionInputError("termDays is invalid", "extra");
         if (Object.hasOwn(args, "totalRatePpm"))
             assertPositiveInteger(args.totalRatePpm, "totalRatePpm");
         if (Object.hasOwn(args, "to"))
@@ -247,7 +274,7 @@ function validateArgs(op, args) {
     if (op === "go.school.view") {
         assertExactKeys(args, [[], ["section"], ["reference"]]);
         if (Object.hasOwn(args, "section") && !SCHOOL_SECTIONS.has(args.section))
-            throw new LingyeActionInputError("section is invalid");
+            throw new LingyeActionInputError("section is invalid", "extra");
         if (Object.hasOwn(args, "reference"))
             assertNonEmptyString(args.reference, "reference");
         return;
@@ -264,7 +291,7 @@ function validateArgs(op, args) {
                         selection.some((answer) => typeof answer !== "string" || !["A", "B", "C", "D"].includes(answer.trim().toUpperCase())) ||
                         new Set(selection.map((answer) => answer.trim().toUpperCase())).size !== selection.length;
                 })) {
-                throw new LingyeActionInputError("answers must contain five or twenty choice sets or fill-in texts");
+                throw new LingyeActionInputError("answers must contain five or twenty choice sets or fill-in texts", "extra");
             }
         }
         return;
@@ -296,6 +323,43 @@ function mapRows(rows) {
 
 function isoTime(value) {
     return value === null || value === undefined ? null : new Date(value).toISOString();
+}
+
+const BEIJING_DATE_TIME_FORMATTER = new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+});
+
+function beijingDateTime(value) {
+    const parts = Object.fromEntries(
+        BEIJING_DATE_TIME_FORMATTER.formatToParts(new Date(value))
+            .filter((part) => part.type !== "literal")
+            .map((part) => [part.type, part.value]),
+    );
+    return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
+}
+
+function detainedFailure(detentions) {
+    const releaseAt = detentions.reduce((latest, detention) =>
+        Number.isSafeInteger(detention.scheduledReleaseAt)
+            ? Math.max(latest, detention.scheduledReleaseAt)
+            : latest, Number.NEGATIVE_INFINITY);
+    if (!Number.isSafeInteger(releaseAt))
+        return failure("OP_REJECTED", LINGYE_ACTION_MESSAGES.INTERNAL);
+    return failure("RESIDENT_DETAINED",
+        `你目前还在看守所，预计北京时间 ${beijingDateTime(releaseAt)} 释放；释放前不能执行职业工作。`);
+}
+
+function restingFailure(restUntil) {
+    if (!Number.isSafeInteger(restUntil))
+        return failure("OP_REJECTED", LINGYE_ACTION_MESSAGES.INTERNAL);
+    return failure("OPTION_NOT_AVAILABLE",
+        `你刚完成一份委托，正在休息；北京时间 ${beijingDateTime(restUntil)} 后可以接下一份。`);
 }
 
 function option(option, requires = []) {
@@ -472,13 +536,13 @@ function resolveOptionHandle(database, residentId, op, args) {
     if (!Object.hasOwn(args, "option"))
         return args;
     if (typeof args.option !== "string" || !PUBLIC_OPTION_HANDLE_RE.test(args.option))
-        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "当前 option 无效，请重新查看可办理事项。");
+        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.OPTION_IDENTITY);
     const row = database.prepare(`
       SELECT internal_option FROM lingye_option_handles
       WHERE handle = ? AND resident_id = ? AND operation = ?
     `).get(args.option, residentId, optionOperation(op));
     if (!row)
-        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "当前 option 无效，请重新查看可办理事项。");
+        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.OPTION_IDENTITY);
     return { ...args, option: row.internal_option };
 }
 
@@ -1965,7 +2029,7 @@ function commissionView(database, backend, residentId, career, args, sources, no
 function reporterPendingDutyStatus(database, residentId, now) {
     const duty = reporterDutyRole(database, residentId, now);
     if (!duty)
-        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这项记者工作当前不属于你的今日排班。");
+        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.NO_DUTY);
     const issue = reporterRelayIssue(database, duty.dutyDate);
     const notIssued = !issue ||
         (duty.role === "writer" && issue.status === "selector_pending" &&
@@ -2023,11 +2087,18 @@ function reporterRelayActionAvailable(database, residentId, internalOption) {
             return Boolean(wake) && relay.selectorJobId === jobId &&
                 relay.status === "selector_pending" && relay.selectorResidentId === residentId;
         }
+        if (relaySubmit.stage === "writing") {
+            const wake = database.prepare(`SELECT 1 FROM career_reporter_relay_wakes
+              WHERE issue_reference = ? AND stage = 'writing' AND wake_sequence = ?
+                AND recipient_resident_id = ? AND payload_json IS NOT NULL`)
+                .get(relay.issueReference, relaySubmit.sequence, residentId);
+            return Boolean(wake) && relay.writerJobId === jobId &&
+                relay.writerResidentId === residentId && relay.status === "writer_pending";
+        }
         return relay.writerJobId === jobId && relay.writerResidentId === residentId &&
-            ((relaySubmit.stage === "writing" && relaySubmit.sequence === 1 &&
-                relay.status === "writer_pending") ||
-            (relaySubmit.stage === "supplement" && relaySubmit.sequence === relay.supplementCount &&
-                relay.status === "supplement_pending"));
+            relaySubmit.stage === "supplement" &&
+            relaySubmit.sequence === relay.supplementCount &&
+            relay.status === "supplement_pending";
     }
     if (submit) {
         if (relay.selectorJobId === jobId) {
@@ -2192,7 +2263,7 @@ function beginCommissionWorldOperation(database, backend, residentId, career, ar
         const [, kind, jobId, actionValue] = match;
         const job = commissionJob(database, backend, jobId, career);
         if (job.workerResidentId !== residentId)
-            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托不属于当前从业者。");
+            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.TRANSFERRED);
         if (job.decisionCount >= 4)
             throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托已经达到四次决策上限。");
         const level = qualificationLevel(database, residentId, career, now);
@@ -2454,11 +2525,14 @@ function requireReporterRelayQualification(database, residentId, job, relay, exp
       WHERE role.duty_date = ? AND role.resident_id = ?
         AND duty.status = 'scheduled' AND employment.status = 'active'
         AND employment.availability = 'available'`).get(relay.issueDate, residentId);
-    const combinedSelector = expectedRole === "selector" && duty?.role === "writer" &&
-        relay.selectorResidentId === residentId && relay.writerResidentId === residentId;
+    const handedOffSelector = expectedRole === "selector" &&
+        ["writer", "reviewer"].includes(duty?.role) &&
+        relay.selectorResidentId === residentId;
+    const handedOffWriter = expectedRole === "writer" && duty?.role === "reviewer" &&
+        relay.writerResidentId === residentId;
     if (beijingDate(now) !== relay.issueDate || !duty ||
-        (duty.role !== expectedRole && !combinedSelector)) {
-        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这项记者工作当前不属于你的今日排班。");
+        (duty.role !== expectedRole && !handedOffSelector && !handedOffWriter)) {
+        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.NO_DUTY);
     }
 }
 
@@ -2467,7 +2541,7 @@ function submitReporterRelaySelection(database, backend, residentId, job, args, 
     if (!relay || relay.selectorJobId !== job.jobId ||
         relay.selectorResidentId !== residentId || relay.status !== "selector_pending" ||
         job.workerResidentId !== residentId || !["accepted", "active"].includes(job.status)) {
-        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这份选题当前不属于你的排班。");
+        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.TRANSFERRED);
     }
     requireReporterRelayQualification(database, residentId, job, relay, "selector", now);
     const actionKey = idempotencyKey(residentId, `commission:${job.jobId}:submit`, args);
@@ -2596,32 +2670,16 @@ function submitReporter(database, backend, residentId, job, args, now, sectionId
     if (relay)
         requireReporterRelayQualification(database, residentId, job, relay, "writer", now);
     const submissionKey = idempotencyKey(residentId, `commission:${job.jobId}:submit`, args);
-    const sourceFacts = commissionSourceFacts(database, job);
-    const citations = sourceFacts.materialPack.sourceSnapshot.map((source, citationIndex) => ({
-        sourceId: source.sourceId,
-        factDigest: source.factDigest,
-        citationIndex,
-    }));
     const workflow = reporterWorkflowForJob(database, job.jobId);
     if (!workflow || workflow.writerJobId !== job.jobId ||
         workflow.writerResidentId !== residentId ||
         !["selected", "needs_supplement"].includes(workflow.status) ||
         (relay && !["writer_pending", "supplement_pending"].includes(relay.status))) {
-        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这份稿件当前不属于你的撰稿班次。");
+        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.TRANSFERRED);
     }
     const parent = workflow.status === "needs_supplement" && workflow.articleId
         ? backend.trustedQueries.getReporterArticle(workflow.articleId)
         : null;
-    const numericClaims = [];
-    const numericValues = [...args.text.matchAll(/(?<![\p{L}\p{N}.])[-+]?(?:\d+(?:\.\d+)?|\.\d+)(?![\p{L}\p{N}.])/gu)]
-        .map((match) => Number(match[0]));
-    for (const value of numericValues) {
-        const source = sourceFacts.sourceFacts.find((candidate) =>
-            candidate.allowedNumbers.some((allowed) => Object.is(allowed, value)));
-        if (!source)
-            throw new LingyeBusinessError("OP_REJECTED", "稿件中的数字缺少对应公开素材依据。");
-        numericClaims.push({ sourceId: source.sourceId, value });
-    }
     backend.forResident(residentId).recordOwnJobDecision({
         jobId: job.jobId,
         idempotencyKey: submissionKey,
@@ -2639,8 +2697,8 @@ function submitReporter(database, backend, residentId, job, args, now, sectionId
             idempotencyKey: submissionKey,
             articleText: args.text,
             sectionId,
-            citations,
-            numericClaims,
+            citations: [],
+            numericClaims: [],
         })
         : backend.forResident(residentId).submitReporterArticle({
             jobId: job.jobId,
@@ -2648,8 +2706,8 @@ function submitReporter(database, backend, residentId, job, args, now, sectionId
             idempotencyKey: submissionKey,
             articleText: args.text,
             sectionId,
-            citations,
-            numericClaims,
+            citations: [],
+            numericClaims: [],
         });
     markReporterWorkflowSubmitted(database, {
         workflowId: workflow.workflowId,
@@ -2680,7 +2738,7 @@ function reviewReporterWorkflow(database, backend, residentId, job, decision, ar
         workflow.reviewerResidentId !== residentId ||
         workflow.status !== "pending_review" || !workflow.articleId ||
         (relay && relay.status !== "review_pending")) {
-        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这份稿件当前不在你的审稿班次里。");
+        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.TRANSFERRED);
     }
     if (relay)
         requireReporterRelayQualification(database, residentId, job, relay, "reviewer", now);
@@ -2876,7 +2934,7 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
             hasPendingCertificate(database, residentId, career, now)) {
             throw new LingyeBusinessError("QUALIFICATION_NOT_EFFECTIVE", WORK_NOT_STARTED_MESSAGE);
         }
-        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托 option 当前不可用。");
+        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.OPTION_STALE);
     }
     if (args.option === "commission:section-create") {
         if (args.amount !== undefined || typeof args.text !== "string")
@@ -3032,8 +3090,10 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
     const targetedPublish = /^commission:target:(.+):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/u.exec(args.option);
     if (targetedPublish) {
         const source = sources.find((entry) => entry.career === career && entry.sourceId === targetedPublish[1]);
-        if (!source || args.amount !== undefined || args.text !== undefined)
-            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个真实来源当前不能发布委托。");
+        if (!source)
+            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.WORLD_CHANGED);
+        if (args.amount !== undefined || args.text !== undefined)
+            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.INPUT_EXTRA);
         const result = publishPlayerServiceCommission(database, backend, source, {
             audience: "targeted", targetResidentId: targetedPublish[2],
         }, idempotencyKey(residentId, "commission:publish", args), now);
@@ -3051,8 +3111,10 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
     const publish = /^commission:publish:(.+)$/u.exec(args.option);
     if (publish) {
         const source = sources.find((entry) => entry.career === career && entry.sourceId === publish[1]);
-        if (!source || args.amount !== undefined || args.text !== undefined)
-            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个真实来源当前不能发布委托。");
+        if (!source)
+            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.WORLD_CHANGED);
+        if (args.amount !== undefined || args.text !== undefined)
+            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.INPUT_EXTRA);
         const result = ["agronomist", "veterinarian"].includes(source.career)
             ? publishPlayerServiceCommission(database, backend, source,
                 { audience: "public" }, idempotencyKey(residentId, "commission:publish", args), now)
@@ -3112,7 +3174,7 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
             throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这份稿件当前不可提交。");
         const job = commissionJob(database, backend, decodeURIComponent(sectionSubmit[1]), career);
         if (job.workerResidentId !== residentId)
-            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托不属于当前从业者。");
+            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.TRANSFERRED);
         return success("稿件已进入审核前状态。", submitReporter(
             database,
             backend,
@@ -3187,7 +3249,7 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
         job = backend.trustedSystemCommands.acceptJob(job.jobId, residentId);
     }
     if (job.workerResidentId !== residentId)
-        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托不属于当前从业者。");
+        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.TRANSFERRED);
     if (kind === "check") {
         if (!value || args.amount !== undefined || args.text !== undefined)
             throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个检查 option 当前不可用。");
@@ -3349,7 +3411,17 @@ function commissionAction(database, backend, residentId, career, args, sources, 
     });
 }
 
+function isInternalDomainCode(code) {
+    return typeof code === "string" &&
+        /(database|authority|receipt|corrupt|contract|invariant)/u.test(code);
+}
+
 function mapDomainError(error) {
+    if (error instanceof LingyeActionInputError) {
+        return failure("OPTION_NOT_AVAILABLE", error.kind === "extra"
+            ? LINGYE_ACTION_MESSAGES.INPUT_EXTRA
+            : LINGYE_ACTION_MESSAGES.INPUT_MISSING);
+    }
     if (error instanceof LingyeBusinessError)
         return failure(error.code, error.message);
     if (error instanceof EconomyError) {
@@ -3364,7 +3436,9 @@ function mapDomainError(error) {
         return failure("OP_REJECTED", "银行拒绝了本次操作。");
     }
     if (error instanceof SecurityDomainError) {
-        if (["detention_not_found", "security_source_not_found"].includes(error.code))
+        if (isInternalDomainCode(error.code))
+            return failure("OP_REJECTED", LINGYE_ACTION_MESSAGES.INTERNAL);
+        if (["security_detention_not_found", "security_source_not_found"].includes(error.code))
             return failure("REFERENCE_NOT_FOUND", "没有找到对应的治安记录。");
         if (error.code.includes("idempotency") || error.code.includes("conflict"))
             return failure("CONFLICT", "当前治安记录与本次操作发生冲突。");
@@ -3375,17 +3449,72 @@ function mapDomainError(error) {
             return failure("QUALIFICATION_NOT_EFFECTIVE", WORK_NOT_STARTED_MESSAGE);
         if (error.code === "constable_recent_theft_record")
             return failure("OP_REJECTED", "最近 3 天有偷窃记录，暂时不能报名治安官资格考试。");
-        if (["active_certificate_required", "qualification_level_insufficient", "qualification_required"].includes(error.code))
+        if ([
+            "active_certificate_required",
+            "qualification_level_insufficient",
+            "qualification_required",
+            "chef_active_qualification_required",
+            "chef_store_active_qualification_required",
+            "reporter_active_qualification_required",
+            "reporter_qualification_level_insufficient",
+        ].includes(error.code))
             return failure("QUALIFICATION_REQUIRED", "当前职业资格不满足这项操作。");
+        if (error.code === "active_duty_required")
+            return failure("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.NO_DUTY);
+        if (error.code === "job_worker_mismatch")
+            return failure("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.TRANSFERRED);
+        if (error.code === "job_already_terminal")
+            return failure("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.TERMINAL);
+        if (error.code === "service_commission_active_job")
+            return failure("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.ACTIVE_SERVICE);
+        if (error.code === "service_commission_daily_limit")
+            return failure("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.DAILY_LIMIT);
+        if (error.code === "service_commission_resting")
+            return restingFailure(error.restUntil);
+        if (error.code === "service_commission_owner_cannot_accept")
+            return failure("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.SELF);
+        if (error.code === "service_commission_target_mismatch")
+            return failure("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.TARGET_MISMATCH);
+        if (error.code === "service_commission_worker_excluded")
+            return failure("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.EXCLUDED);
+        if (error.code === "chef_store_farm_inventory_insufficient")
+            return failure("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.STORE_INVENTORY);
+        if (["chef_store_farm_new_orders_suspended", "chef_store_new_orders_suspended"].includes(error.code))
+            return failure("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.STORE_SUSPENDED);
+        if (error.code === "reporter_article_already_reviewed")
+            return failure("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.ALREADY_REVIEWED);
+        if ([
+            "reporter_workflow_not_submittable",
+            "reporter_workflow_not_reviewable",
+            "reporter_workflow_not_publishable",
+            "reporter_supplement_not_requested",
+            "reporter_relay_selection_not_actionable",
+            "reporter_relay_writing_not_actionable",
+            "reporter_relay_review_not_actionable",
+        ].includes(error.code))
+            return failure("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.OPTION_STALE);
+        if (isInternalDomainCode(error.code))
+            return failure("OP_REJECTED", LINGYE_ACTION_MESSAGES.INTERNAL);
         if (["job_not_found", "employment_not_found", "duty_day_not_found", "exam_attempt_not_found"].includes(error.code))
             return failure("REFERENCE_NOT_FOUND", "没有找到对应的职业记录。");
         if (error.code.includes("conflict") || error.code.includes("idempotency"))
             return failure("CONFLICT", "当前职业记录与本次操作发生冲突。");
-        if (["job_not_bindable", "career_job_capacity_reached", "active_duty_required", "institution_full"].includes(error.code))
+        if (["job_not_bindable", "career_job_capacity_reached", "institution_full"].includes(error.code))
             return failure("OPTION_NOT_AVAILABLE", "这个职业 option 当前不可用。");
         return failure("OP_REJECTED", "职业系统拒绝了本次操作。");
     }
     if (error instanceof Error && /^(agronomy|animal|commission|p3_world)_/u.test(error.message)) {
+        if ([
+            "agronomy_source_not_available",
+            "agronomy_condition_not_available",
+            "animal_source_not_available",
+            "commission_source_not_available",
+        ].includes(error.message))
+            return failure("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.WORLD_CHANGED);
+        if (["agronomy_check_required", "animal_check_required"].includes(error.message))
+            return failure("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.CHECK_REQUIRED);
+        if (isInternalDomainCode(error.message))
+            return failure("OP_REJECTED", LINGYE_ACTION_MESSAGES.INTERNAL);
         if (error.message.includes("qualification"))
             return failure("QUALIFICATION_REQUIRED", "当前职业资格不满足这项操作。");
         if (error.message.includes("not_available") || error.message.includes("required"))
@@ -3394,6 +3523,8 @@ function mapDomainError(error) {
             return failure("CONFLICT", "当前职业记录与本次操作发生冲突。");
         return failure("OP_REJECTED", "职业系统拒绝了本次操作。");
     }
+    if (error instanceof Error)
+        return failure("OP_REJECTED", LINGYE_ACTION_MESSAGES.INTERNAL);
     return null;
 }
 
@@ -3405,17 +3536,18 @@ export function createLingyeActionExecutor(options) {
     recoverCommissionWorldOperations(database, backend);
     return Object.freeze({
         execute(input) {
-            validateArgs(input.op, input.args);
-            const identity = database.prepare(`
-              SELECT resident_id, binding_reference FROM residents WHERE resident_id = ?
-            `).get(input.residentId);
-            if (!identity || identity.binding_reference !== input.bindingReference)
-                return failure("LINGYE_NOT_READY", "铃野居民身份或经济账户尚未完成迁移。");
             try {
+                validateArgs(input.op, input.args);
+                const identity = database.prepare(`
+                  SELECT resident_id, binding_reference FROM residents WHERE resident_id = ?
+                `).get(input.residentId);
+                if (!identity || identity.binding_reference !== input.bindingReference)
+                    return failure("LINGYE_NOT_READY", "铃野居民身份或经济账户尚未完成迁移。");
                 backend.forResident(input.residentId).getOwnAccount();
                 const actionNow = now();
                 const args = resolveOptionHandle(database, input.residentId, input.op, input.args);
-                const detained = activeResidentDetentions(backend, input.residentId, actionNow).length > 0;
+                const detentions = activeResidentDetentions(backend, input.residentId, actionNow);
+                const detained = detentions.length > 0;
                 let result;
                 if (input.op === "go.bank.view")
                     result = detained
@@ -3423,14 +3555,14 @@ export function createLingyeActionExecutor(options) {
                         : bankView(database, backend, economyRules, input.residentId, args);
                 else if (input.op === "go.bank.choose") {
                     if (detained && parseBankOption(args.option)?.action !== "system-loan-repay")
-                        return failure("RESIDENT_DETAINED", "RESIDENT_DETAINED");
+                        return detainedFailure(detentions);
                     result = bankChoose(database, backend, economyRules, input.residentId, args);
                 }
                 else if (input.op === "go.security.commission" && Object.hasOwn(args, "option") &&
                     args.option.startsWith("security:release:"))
                     result = securityRelease(database, backend, input.residentId, args, actionNow);
                 else if (detained && input.op !== "go.security.commission")
-                    return failure("RESIDENT_DETAINED", "RESIDENT_DETAINED");
+                    return detainedFailure(detentions);
                 else if (input.op === "go.school.view")
                     result = schoolView(database, backend, input.residentId, actionNow, args);
                 else if (input.op === "go.school.choose")
@@ -3446,7 +3578,7 @@ export function createLingyeActionExecutor(options) {
                     result = securityCommissionView(database, backend, input.residentId, args,
                         sources, actionNow, detained);
                 else if (detained)
-                    return failure("RESIDENT_DETAINED", "RESIDENT_DETAINED");
+                    return detainedFailure(detentions);
                 else if (input.op === "go.farm.commission") {
                     if (Object.hasOwn(args, "option")) {
                         const chefResult = farmChefCommissionAction(
@@ -3600,7 +3732,6 @@ export async function handleDoorbellLingyeAction(req, res, method, injectedExecu
             !isPlainObject(body?.args)) {
             return internalServiceError(res, 400, "invalid_request", "Submit one valid Lingye action request");
         }
-        validateArgs(body.op, body.args);
         const binding = validateFarmBinding(body);
         if (binding.error)
             return internalServiceError(res, binding.error.status, binding.error.code, binding.error.message);

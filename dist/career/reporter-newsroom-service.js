@@ -132,8 +132,7 @@ export function createReporterStoryWorkflow(database, input) {
         workflow.reviewerResidentId,
     ]);
     const allowedCombination = input?.allowSelectorWriterCombination === true &&
-        workflow.selectorResidentId === workflow.writerResidentId &&
-        workflow.reviewerResidentId !== workflow.writerResidentId;
+        workflow.selectorResidentId === workflow.writerResidentId;
     if (distinctResidents.size !== 3 && !allowedCombination) {
         fail("reporter_workflow_distinct_roles_required");
     }
@@ -170,6 +169,41 @@ export function createReporterStoryWorkflow(database, input) {
         return mapWorkflow(database.prepare(`
           SELECT * FROM career_reporter_story_workflows WHERE workflow_id = ?
         `).get(workflow.workflowId));
+    });
+}
+
+export function reassignReporterStoryWorkflowWriter(database, input) {
+    installCareerSchema(database);
+    const workflowId = identifier(input?.workflowId, "workflow_id");
+    const previousJobId = identifier(input?.previousJobId, "previous_job_id");
+    const previousResidentId = identifier(input?.previousResidentId, "previous_resident_id");
+    const writerJobId = identifier(input?.writerJobId, "writer_job_id");
+    const writerResidentId = identifier(input?.writerResidentId, "writer_resident_id");
+    return runInTransaction(database, () => {
+        const row = database.prepare(`
+          SELECT * FROM career_reporter_story_workflows WHERE workflow_id = ?
+        `).get(workflowId);
+        if (!row)
+            fail("reporter_workflow_not_found");
+        if (row.writer_job_id === writerJobId && row.writer_resident_id === writerResidentId)
+            return mapWorkflow(row);
+        if (row.status !== "selected" || row.article_id !== null ||
+            row.writer_job_id !== previousJobId ||
+            row.writer_resident_id !== previousResidentId) {
+            fail("reporter_workflow_writer_handoff_conflict");
+        }
+        const updated = database.prepare(`
+          UPDATE career_reporter_story_workflows
+          SET writer_job_id = ?, writer_resident_id = ?
+          WHERE workflow_id = ? AND status = 'selected' AND article_id IS NULL
+            AND writer_job_id = ? AND writer_resident_id = ?
+        `).run(writerJobId, writerResidentId, workflowId,
+            previousJobId, previousResidentId);
+        if (updated.changes !== 1)
+            fail("reporter_workflow_writer_handoff_conflict");
+        return mapWorkflow(database.prepare(`
+          SELECT * FROM career_reporter_story_workflows WHERE workflow_id = ?
+        `).get(workflowId));
     });
 }
 

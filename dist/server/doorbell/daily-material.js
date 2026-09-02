@@ -44,13 +44,20 @@ function validRequest(body) {
 }
 
 function validHandoffRequest(body) {
-    if (!isPlainObject(body) || Object.keys(body).length !== 2 ||
+    if (!isPlainObject(body) || Object.keys(body).length !== 3 ||
         !Object.hasOwn(body, "issue_date") ||
         !Object.hasOwn(body, "expected_stage") ||
+        !Object.hasOwn(body, "expected_wake_id") ||
         typeof body.issue_date !== "string" || !ISSUE_DATE_RE.test(body.issue_date) ||
-        body.expected_stage !== "selection")
+        !["selection", "writing"].includes(body.expected_stage) ||
+        typeof body.expected_wake_id !== "string" || body.expected_wake_id.length === 0 ||
+        body.expected_wake_id.trim() !== body.expected_wake_id)
         return null;
-    return { issueDate: body.issue_date, expectedStage: body.expected_stage };
+    return {
+        issueDate: body.issue_date,
+        expectedStage: body.expected_stage,
+        expectedWakeId: body.expected_wake_id,
+    };
 }
 
 function validPublishedRequest(body) {
@@ -83,6 +90,21 @@ function publicStartWake(wake) {
         issue_date: wake.issue_date,
         stage: wake.stage,
         materials: wake.materials,
+        action: wake.action,
+    };
+}
+
+function publicHandoffWake(wake) {
+    if (wake?.stage === "selection")
+        return publicStartWake(wake);
+    if (wake?.stage !== "writing")
+        throw new Error("reporter_relay_handoff_wake_missing");
+    return {
+        wake_id: wake.wake_id,
+        recipient_resident_id: wake.recipient_resident_id,
+        issue_date: wake.issue_date,
+        stage: wake.stage,
+        selection_text: wake.selection_text,
         action: wake.action,
     };
 }
@@ -170,7 +192,7 @@ export async function handleDoorbellReporterRelayHandoff(req, res, method, runti
             data: {
                 issue_date: result.issueDate,
                 status: result.status,
-                wake: publicStartWake(result.wake),
+                wake: publicHandoffWake(result.wake),
             },
         });
     }

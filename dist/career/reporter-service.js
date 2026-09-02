@@ -576,8 +576,6 @@ function normalizeCitations(value) {
             citationIndex: timestamp(citationIndex, "citation_index"),
         };
     });
-    if (citations.length === 0)
-        fail("reporter_citations_required");
     assertUnique(citations.map((entry) => entry.sourceId), "reporter_duplicate_citation");
     assertUnique(citations.map((entry) => entry.citationIndex), "reporter_duplicate_citation_index");
     const ordered = [...citations].sort((left, right) => left.citationIndex - right.citationIndex);
@@ -597,37 +595,6 @@ function normalizeNumericClaims(value) {
             value: claim.value,
         };
     });
-}
-
-function validateArticlePayload(database, pack, citations, numericClaims, submittedAt) {
-    const sourceIds = parseJson(pack.source_ids_json);
-    const sourceIdSet = new Set(sourceIds);
-    if (citations.length !== sourceIds.length || citations.some((citation) => !sourceIdSet.has(citation.sourceId)))
-        fail("reporter_citation_set_mismatch");
-    const snapshotById = new Map(parseJson(pack.source_snapshot_json).map((entry) => [entry.sourceId, entry]));
-    const sourceRows = new Map();
-    for (const citation of citations) {
-        const row = requireSource(database, citation.sourceId);
-        const snapshot = snapshotById.get(citation.sourceId);
-        if (!snapshot || snapshot.factDigest !== row.fact_digest)
-            fail("reporter_source_revision");
-        if (citation.factDigest !== row.fact_digest)
-            fail("reporter_citation_fact_mismatch");
-        if (row.occurred_at > submittedAt)
-            fail("reporter_citation_time_invalid");
-        if (row.privacy_scope !== "public")
-            fail("reporter_citation_not_public");
-        sourceRows.set(citation.sourceId, row);
-    }
-    for (const claim of numericClaims) {
-        const row = sourceRows.get(claim.sourceId);
-        if (!row)
-            fail("reporter_numeric_source_not_cited");
-        const allowedNumbers = parseJson(row.allowed_numbers_json);
-        if (!allowedNumbers.some((value) => Object.is(value, claim.value)))
-            fail("reporter_numeric_claim_not_allowed");
-    }
-    return { sourceIds, sourceRows };
 }
 
 function articleCitations(database, articleId) {
@@ -757,7 +724,6 @@ function insertArticle(database, input) {
     }
     const citations = normalizeCitations(input.citations);
     const numericClaims = normalizeNumericClaims(input.numericClaims);
-    validateArticlePayload(database, pack, citations, numericClaims, now);
     if (input.revisionKind === "initial") {
         const qualificationLevel = activeReporterQualification(database, input.residentId, now);
         if (qualificationLevel < pack.required_level)
@@ -962,9 +928,6 @@ export function reviewReporterArticle(database, input) {
         }
         const pack = packForJob(database, article.job_id);
         requireIssueReference(pack);
-        const citations = articleCitations(database, article.article_id);
-        const numericClaims = parseJson(article.numeric_claims_json);
-        validateArticlePayload(database, pack, citations, numericClaims, article.submitted_at);
         const status = decision === "approve"
             ? "approved"
             : decision === "reject" ? "rejected" : "needs_supplement";
@@ -1213,9 +1176,6 @@ export function publishReporterArticle(database, input) {
         const job = requireWorkerJob(database, article.job_id, article.resident_id);
         const pack = packForJob(database, article.job_id);
         requireIssueReference(pack);
-        const citations = articleCitations(database, article.article_id);
-        const numericClaims = parseJson(article.numeric_claims_json);
-        validateArticlePayload(database, pack, citations, numericClaims, article.submitted_at);
         const existingById = database.prepare(`
           SELECT * FROM career_reporter_publications WHERE publication_id = ?
         `).get(publicationId);
