@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import type { LingyeDailyPublishRequest } from "@doorbell/protocol";
 import type { DailySubmissionRewardSender } from "./lingye-daily-reward-client.js";
+import type { LingyeDailyWeatherReader } from "./lingye-daily-weather.js";
 import type {
   CommunityDatabase,
   LingyeDailyIssueRecord,
@@ -12,6 +13,7 @@ export interface LingyeDailyServiceOptions {
   publishToken: string;
   now?: () => number;
   submissionRewards?: DailySubmissionRewardSender;
+  weather?: LingyeDailyWeatherReader;
 }
 
 export class LingyeDailyPublishAuthenticationError extends Error {
@@ -38,12 +40,14 @@ export class LingyeDailyService {
   readonly #publishToken: string;
   readonly #now: () => number;
   readonly #submissionRewards: DailySubmissionRewardSender | undefined;
+  readonly #weather: LingyeDailyWeatherReader | undefined;
 
   constructor(options: LingyeDailyServiceOptions) {
     this.#database = options.database;
     this.#publishToken = options.publishToken;
     this.#now = options.now ?? Date.now;
     this.#submissionRewards = options.submissionRewards;
+    this.#weather = options.weather;
   }
 
   authorize(authorization: string | undefined): void {
@@ -58,7 +62,9 @@ export class LingyeDailyService {
     input: LingyeDailyPublishRequest,
   ): Promise<LingyeDailyPublishResult> {
     this.authorize(authorization);
-    const result = this.#database.publishLingyeDailyIssue(input, this.#now());
+    const alreadyPublished = this.#database.hasPublishedLingyeDailyIssue(input.issue_date, Number.MAX_SAFE_INTEGER);
+    const weather = !alreadyPublished && this.#weather ? await this.#weather.read(input.issue_date) : null;
+    const result = this.#database.lingyeDailyStore.publishLingyeDailyIssue(input, this.#now(), weather);
     // Publishing and the reward outbox commit together. Replaying publication
     // resumes unpaid entries; Farm deduplicates even if its response was lost.
     for (const pending of this.#database.lingyeDailyStore.pendingSubmissionRewards(input.issue_date)) {

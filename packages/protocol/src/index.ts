@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { lingyeDailyWeatherForecastSchema } from "./lingye-daily-weather.js";
 
 export * from "./farm-action-list.js";
 export * from "./farm-action-list-authority.js";
@@ -29,6 +30,7 @@ export * from "./farm-shop-open.js";
 export * from "./farm-smelting-action.js";
 export * from "./lingye-action.js";
 export * from "./lingye-daily-presentation.js";
+export * from "./lingye-daily-weather.js";
 export * from "./reporter-relay.js";
 
 export const serviceHealthSchema = z.object({
@@ -1834,6 +1836,8 @@ export const lingyeDailyEditionPublishSchema = z
     farm_observation: lingyeDailyFarmObservationSchema.nullable(),
     reporter_articles: z.array(lingyeDailyReporterArticleSchema).default([]),
     submissions: z.array(lingyeDailySubmissionSchema),
+    submission_reviewer: z.string().min(1).nullable().optional(),
+    weather_forecast: lingyeDailyWeatherForecastSchema.nullable().optional(),
     tomorrow_question: lingyeDailyTomorrowQuestionPublishSchema.nullable(),
     images: z.array(lingyeDailyImagePublishSchema).default([]),
   })
@@ -1981,6 +1985,8 @@ export const lingyeDailyIssueSchema = z
     farm_observation: lingyeDailyFarmObservationSchema.nullable(),
     reporter_articles: z.array(lingyeDailyReporterArticleSchema).default([]),
     submissions: z.array(lingyeDailySubmissionSchema),
+    submission_reviewer: z.string().min(1).nullable().optional(),
+    weather_forecast: lingyeDailyWeatherForecastSchema.nullable().optional(),
     tomorrow_question: lingyeDailyTomorrowQuestionPublishSchema
       .omit({ source_event_ids: true })
       .nullable(),

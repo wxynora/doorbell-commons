@@ -72,14 +72,20 @@ export class ReporterRelayService {
     if (typeof text !== "string" || text.trim().length === 0) {
       throw new ReporterRelayRenderError();
     }
-    const status = this.#database.lingyeDailyStore.enqueueReviewWake(wake, review => {
-      const candidates = renderDailySubmissionReview(review);
-      return this.#database.createReporterBellWake({
+    const status = this.#database.lingyeDailyStore.enqueueArticleReviewWake(wake, transferredReview => {
+      const status = this.#database.createReporterBellWake({
         wakeId: wake.wake_id,
         residentId: wake.recipient_resident_id,
-        text: candidates ? `${text}\n\n${candidates}` : text,
+        text,
         createdAt: this.#now(),
       });
+      if (transferredReview) this.#database.createReporterBellWake({
+        wakeId: `daily-submissions:${wake.issue_date}:${wake.wake_id}`,
+        residentId: transferredReview.reviewerResidentId,
+        text: renderDailySubmissionReview(transferredReview),
+        createdAt: this.#now(),
+      });
+      return status;
     });
     if (status === "created") {
       this.#bellService.notifyResident(wake.recipient_resident_id);
@@ -99,5 +105,23 @@ export class ReporterRelayService {
       status,
       wake_id: wake.wake_id,
     });
+  }
+
+  enqueueSubmissions(input: { issueDate: string; reviewerResidentId: string }) {
+    const now = this.#now();
+    let recipient = input.reviewerResidentId;
+    const status = this.#database.lingyeDailyStore.enqueueSubmissionReview(
+      input.issueDate, input.reviewerResidentId, now, review => {
+        recipient = review.reviewerResidentId;
+        return this.#database.createReporterBellWake({
+          wakeId: `daily-submissions:${input.issueDate}`,
+          residentId: recipient,
+          text: renderDailySubmissionReview(review),
+          createdAt: now,
+        });
+      },
+    );
+    if (status === "created") this.#bellService.notifyResident(recipient);
+    return { status };
   }
 }

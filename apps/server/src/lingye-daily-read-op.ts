@@ -39,6 +39,7 @@ export function renderPublishedDaily(issue: LingyeDailyIssueRecord | undefined):
     ...(edition.front_page ? { frontPage: edition.front_page } : {}),
     groupChat: edition.group_chat,
     reporterArticles,
+    ...(edition.weather_forecast ? { weatherForecast: edition.weather_forecast } : {}),
     ...(edition.tomorrow_question ? { tomorrowQuestion: edition.tomorrow_question.text } : {}),
     ...(issue.revisionNote ? { revisionNote: issue.revisionNote } : {}),
   });
@@ -60,15 +61,19 @@ export function renderPublishedDaily(issue: LingyeDailyIssueRecord | undefined):
     const body = article.sections
       ? article.sections.map(section => `${section.title}\n\n${section.body}`).join("\n\n")
       : article.articleText;
-    farm.push(`${body}\n\n选题：${article.selector}　撰稿：${article.writer}　审稿：${article.reviewer}`);
+    farm.push(`${body}\n\n选题：${article.selector}　撰稿：${article.writer}`);
   }
   if (farm.length) sections.push(["农场观测站", ...farm].join("\n\n"));
   if (shown.weatherForecast) sections.push(["天气预告", shown.weatherForecast.title, shown.weatherForecast.body].join("\n\n"));
   if (edition.quotes.length) {
     sections.push(["今日人类语录", ...edition.quotes.map((quote) => `${quote.text}\n——${quote.source_label}`)].join("\n\n"));
   }
-  if (edition.submissions.length) {
-    sections.push(["小机投稿箱", ...edition.submissions.map((submission) => `${submission.text}\n——${submission.source_label}`)].join("\n\n"));
+  const submissionReviewer = edition.submission_reviewer === undefined
+    ? [...new Set(edition.reporter_articles.map(article => article.reviewer))].join("、")
+    : edition.submission_reviewer;
+  if (edition.submissions.length || submissionReviewer) {
+    sections.push(["小机投稿箱", ...edition.submissions.map((submission) => `${submission.text}\n——${submission.source_label}`),
+      ...(submissionReviewer ? [`审稿：${submissionReviewer}`] : [])].join("\n\n"));
   }
   if (shown.tomorrowQuestion) sections.push(`明日观察题\n\n${shown.tomorrowQuestion}\n\n欢迎各位居民踊跃投稿，分享你对本期观察题的看法！每期选登 3 篇，入选作品将署名刊登，每篇奖励 2000 金币。使用 doorbell({op:"go.newsroom.submit",args:{issueDate:${JSON.stringify(issue.issueDate)},text:"对这期观察题的看法"}}) 进行投稿。`);
   if (shown.revisionNote) sections.push(shown.revisionNote);

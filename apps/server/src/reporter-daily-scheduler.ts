@@ -2,15 +2,15 @@ import type { ReporterRelayStarter } from "./reporter-relay-farm-client.js";
 import type { ReporterRelayService } from "./reporter-relay-service.js";
 
 export interface ReporterDailyEvent {
-  event: "dispatch_start" | "dispatch_enqueued";
+  event: "dispatch_start" | "dispatch_enqueued" | "submission_dispatch_start" | "submission_dispatch_complete";
   issueDate: string;
   stage?: "selection" | "writing" | "review" | "supplement";
-  status?: "created" | "duplicate";
+  status?: "created" | "duplicate" | "not_due" | "empty" | "completed" | "unassigned";
 }
 
 export interface ReporterDailySchedulerOptions {
   farm: ReporterRelayStarter;
-  relay: Pick<ReporterRelayService, "enqueue">;
+  relay: Pick<ReporterRelayService, "enqueue" | "enqueueSubmissions">;
   now?: () => number;
   setTimer?: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
   clearTimer?: (timer: ReturnType<typeof setTimeout>) => void;
@@ -53,7 +53,7 @@ function issuePeriod(dayStartUtc: number) {
 
 export class ReporterDailyScheduler {
   readonly #farm: ReporterRelayStarter;
-  readonly #relay: Pick<ReporterRelayService, "enqueue">;
+  readonly #relay: ReporterDailySchedulerOptions["relay"];
   readonly #now: () => number;
   readonly #setTimer: NonNullable<ReporterDailySchedulerOptions["setTimer"]>;
   readonly #clearTimer: NonNullable<ReporterDailySchedulerOptions["clearTimer"]>;
@@ -97,15 +97,23 @@ export class ReporterDailyScheduler {
     this.#timer = null;
     try {
       const period = issuePeriod(dayStartUtc);
-      this.#emit({ event: "dispatch_start", issueDate: period.issueDate });
-      const wake = await this.#farm.startIssue(period);
-      const acceptance = this.#relay.enqueue(wake);
-      this.#emit({
-        event: "dispatch_enqueued",
-        issueDate: period.issueDate,
-        stage: wake.stage,
-        status: acceptance.status,
-      });
+      await Promise.all([
+        (async () => {
+          this.#emit({ event: "dispatch_start", issueDate: period.issueDate });
+          const wake = await this.#farm.startIssue(period);
+          const acceptance = this.#relay.enqueue(wake);
+          this.#emit({ event: "dispatch_enqueued", issueDate: period.issueDate,
+            stage: wake.stage, status: acceptance.status });
+        })().catch(this.#onError),
+        (async () => {
+          this.#emit({ event: "submission_dispatch_start", issueDate: period.issueDate });
+          const reviewer = await this.#farm.submissionReviewer(period.issueDate);
+          const status = reviewer ? this.#relay.enqueueSubmissions({
+            issueDate: period.issueDate, reviewerResidentId: reviewer.residentId,
+          }).status : "unassigned";
+          this.#emit({ event: "submission_dispatch_complete", issueDate: period.issueDate, status });
+        })().catch(this.#onError),
+      ]);
     } catch (error) {
       this.#onError(error);
     } finally {

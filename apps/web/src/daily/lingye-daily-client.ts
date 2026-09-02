@@ -112,6 +112,8 @@ export async function loadLatestLingyeDaily(fetchImplementation: typeof fetch = 
         text: submission.text,
         sourceLabel: submission.source_label,
       })),
+      ...(parsed.issue.submission_reviewer !== undefined ? { submissionReviewer: parsed.issue.submission_reviewer } : {}),
+      ...(parsed.issue.weather_forecast ? { weatherForecast: parsed.issue.weather_forecast } : {}),
       ...(parsed.issue.tomorrow_question
         ? { tomorrowQuestion: parsed.issue.tomorrow_question.text }
         : {}),

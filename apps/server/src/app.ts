@@ -818,6 +818,8 @@ function lingyeDailyIssueResponse(issue: LingyeDailyIssueRecord) {
     farm_observation: issue.edition.farm_observation,
     reporter_articles: issue.edition.reporter_articles,
     submissions: issue.edition.submissions,
+    ...(issue.edition.submission_reviewer !== undefined ? { submission_reviewer: issue.edition.submission_reviewer } : {}),
+    ...(issue.edition.weather_forecast !== undefined ? { weather_forecast: issue.edition.weather_forecast } : {}),
     tomorrow_question: issue.edition.tomorrow_question
       ? { text: issue.edition.tomorrow_question.text }
       : null,

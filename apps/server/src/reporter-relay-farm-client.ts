@@ -1,4 +1,5 @@
 import { type ReporterRelayWake, reporterRelayStartResponseSchema } from "@doorbell/protocol";
+import { z } from "zod";
 
 export interface ReporterRelayStartInput {
   issueDate: string;
@@ -8,7 +9,16 @@ export interface ReporterRelayStartInput {
 
 export interface ReporterRelayStarter {
   startIssue(input: ReporterRelayStartInput): Promise<ReporterRelayWake>;
+  submissionReviewer(issueDate: string): Promise<{ residentId: string; displayName: string } | null>;
 }
+
+const reviewerResponseSchema = z.strictObject({
+  ok: z.literal(true),
+  data: z.strictObject({
+    issue_date: z.string(),
+    reviewer: z.strictObject({ resident_id: z.uuid(), display_name: z.string().min(1) }).nullable(),
+  }),
+});
 
 export class ReporterRelayFarmUnavailableError extends Error {
   constructor() {
@@ -33,6 +43,7 @@ interface ReporterRelayFarmClientOptions {
 
 export class ReporterRelayFarmClient implements ReporterRelayStarter {
   readonly #endpoint: URL;
+  readonly #reviewerEndpoint: URL;
   readonly #serviceToken: string;
   readonly #fetch: typeof fetch;
   readonly #requestTimeoutMs: number;
@@ -44,6 +55,7 @@ export class ReporterRelayFarmClient implements ReporterRelayStarter {
     const apiBaseUrl = new URL(options.apiBaseUrl);
     if (!apiBaseUrl.pathname.endsWith("/")) apiBaseUrl.pathname += "/";
     this.#endpoint = new URL("internal/doorbell/lingye-daily/reporter-relay/start", apiBaseUrl);
+    this.#reviewerEndpoint = new URL("internal/doorbell/lingye-daily/reporter-relay/reviewer", apiBaseUrl);
     this.#serviceToken = options.serviceToken;
     this.#fetch = options.fetchImplementation ?? fetch;
     this.#requestTimeoutMs = options.requestTimeoutMs;
@@ -89,5 +101,24 @@ export class ReporterRelayFarmClient implements ReporterRelayStarter {
       throw new ReporterRelayFarmContractError();
     }
     return parsed.data.data.wake;
+  }
+
+  async submissionReviewer(issueDate: string): Promise<{ residentId: string; displayName: string } | null> {
+    let response: Response;
+    try {
+      response = await this.#fetch(this.#reviewerEndpoint, {
+        method: "POST",
+        headers: { authorization: `Bearer ${this.#serviceToken}`, "content-type": "application/json" },
+        body: JSON.stringify({ issue_date: issueDate }),
+        signal: AbortSignal.timeout(this.#requestTimeoutMs),
+      });
+    } catch {
+      throw new ReporterRelayFarmUnavailableError();
+    }
+    if (response.status >= 500) throw new ReporterRelayFarmUnavailableError();
+    const parsed = reviewerResponseSchema.safeParse(await response.json().catch(() => undefined));
+    if (!response.ok || !parsed.success || parsed.data.data.issue_date !== issueDate) throw new ReporterRelayFarmContractError();
+    const reviewer = parsed.data.data.reviewer;
+    return reviewer ? { residentId: reviewer.resident_id, displayName: reviewer.display_name } : null;
   }
 }

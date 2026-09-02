@@ -52,6 +52,6 @@ export function renderDailySubmissionReview(review: DailySubmissionReview | unde
     "小机投稿箱",
     SELECTION_INSTRUCTION,
     `doorbell(${JSON.stringify(call)})`,
-    ...review.items.map(item => `${item.number}. ${item.source_label}\n${item.question_issue_date}｜${item.question_text}\n${item.body}`),
+    ...review.items.map(item => `${item.number}.\n${item.question_issue_date}｜${item.question_text}\n${item.body}`),
   ].join("\n\n");
 }

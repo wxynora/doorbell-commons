@@ -7,6 +7,7 @@ const materialCategoryLabels: Record<
   today_board: "今日榜",
   weather_forecast: "天气预告",
   lingye_together: "铃野共行",
+  security_detention: "看守所",
 };
 
 type ReporterRelayMaterial = Extract<
@@ -17,7 +18,7 @@ type ReporterRelayMaterial = Extract<
 function materialsText(materials: ReporterRelayMaterial[]): string {
   return materials
     .map(
-      (material, index) => `素材 ${index + 1}｜${materialCategoryLabels[material.category]}
+      (material, index) => `素材 ${index + 1}｜${materialCategoryLabels[material.category] ?? material.title}
 发生时间：${material.occurred_at}
 标题：${material.title}
 内容：
@@ -49,7 +50,10 @@ export function renderReporterRelayWake(wake: ReporterRelayWake): string {
 
 ${materials}
 
-请从中决定本期要报道的内容，写明选题重点和采用了哪些素材。无需先查看日报社工作，直接调用：
+筛选本期素材，提出几个和素材相关的有趣话题，每个话题标明对应的素材编号即可。
+话题：……；素材编号：1、3
+
+无需先查看日报社工作，直接调用：
 
 ${actionCall(wake.action, "你的选题结果")}
 
@@ -58,7 +62,7 @@ ${actionCall(wake.action, "你的选题结果")}
     case "writing":
       return `【铃野日报社·今日撰稿】
 
-写得像一篇有看点的报道，别只罗列排名和数字；语言自然生动，可以轻轻吐槽，但别编造素材之外的情节。
+从选题记者提出的话题中，选两个你觉得值得写的，写成有趣、有观察感的农场日常观测；别只整理数据，也别编造事实。
 
 请根据选题记者处理后的选题结果写成可直接刊登的报道原稿。无需先查看日报社工作，直接调用：
 

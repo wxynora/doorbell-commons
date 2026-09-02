@@ -42,6 +42,7 @@ import { FarmHumanSmeltingActionClient } from "./farm-smelting-action-client.js"
 import { HomeWeatherEngine } from "./home-weather-engine.js";
 import { LingyeDailyService } from "./lingye-daily-service.js";
 import { LingyeDailyRewardClient } from "./lingye-daily-reward-client.js";
+import { LingyeDailyWeatherClient } from "./lingye-daily-weather.js";
 import { LingyeNotificationDeliveryService, MailboxService } from "./mailbox-service.js";
 import { McpAccessService } from "./mcp-access-service.js";
 import { FarmMcpActionClient } from "./mcp-farm-action-client.js";
@@ -452,6 +453,11 @@ const weatherEngine = new HomeWeatherEngine({ database });
 const lingyeDailyService = new LingyeDailyService({
   database,
   publishToken: serverConfig.lingyeDailyPublishToken,
+  weather: new LingyeDailyWeatherClient({
+    apiBaseUrl: serverConfig.farmApiBaseUrl,
+    serviceToken: serverConfig.farmServiceToken,
+    requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+  }),
   submissionRewards: new LingyeDailyRewardClient({
     apiBaseUrl: serverConfig.farmApiBaseUrl,
     serviceToken: serverConfig.farmServiceToken,

@@ -82,6 +82,7 @@ export interface LingyeDailyIssue {
   farmObservation?: LingyeDailyFarmObservation;
   reporterArticles?: readonly LingyeDailyReporterArticle[];
   submissions?: readonly LingyeDailySubmission[];
+  submissionReviewer?: string | null;
   tomorrowQuestion?: string;
   revisionNote?: string;
   weatherForecast?: { title: string; body: string };
@@ -255,8 +256,10 @@ function Quotes({ quotes = [] }: { quotes: readonly LingyeDailyQuote[] | undefin
 
 function Submissions({
   submissions = [],
+  reviewer,
 }: {
   submissions: readonly LingyeDailySubmission[] | undefined;
+  reviewer: string | null | undefined;
 }) {
   return (
     <DailySection id="daily-submissions" label="小机投稿箱" tone="ink">
@@ -280,6 +283,7 @@ function Submissions({
           ))}
         </div>
       )}
+      {reviewer ? <p className="daily-relay-byline"><span>审稿：{reviewer}</span></p> : null}
     </DailySection>
   );
 }
@@ -370,7 +374,6 @@ function ReporterArticles({ articles = [] }: { articles?: readonly LingyeDailyRe
           <p className="daily-relay-byline">
             <span>选题：{article.selector}</span>
             <span>撰稿：{article.writer}</span>
-            <span>审稿：{article.reviewer}</span>
           </p>
         </article>
       ))}
@@ -467,7 +470,9 @@ export function LingyeDailyPage({
       <FarmObservation observation={issue.farmObservation} articles={issue.reporterArticles ?? []} />
       <WeatherForecast forecast={issue.weatherForecast} />
       <Quotes quotes={issue.quotes} />
-      <Submissions submissions={issue.submissions} />
+      <Submissions submissions={issue.submissions} reviewer={issue.submissionReviewer === undefined
+        ? [...new Set(issue.reporterArticles?.map(article => article.reviewer) ?? [])].join("、")
+        : issue.submissionReviewer} />
       <ReporterPublications
         items={reporterPublications.filter(publication => !issue.reporterArticles?.some(article => article.publicationId === publication.publicationId))}
         onLike={onReporterLike}

@@ -8,7 +8,7 @@ const reporterNonBlankTextSchema = z.string().refine((value) => value.trim().len
 
 export const reporterRelayMaterialSchema = z
   .object({
-    category: z.enum(["today_board", "weather_forecast", "lingye_together"]),
+    category: reporterNonBlankTextSchema,
     occurred_at: z.iso.datetime({ offset: true }),
     title: reporterNonBlankTextSchema,
     content: reporterNonBlankTextSchema,
