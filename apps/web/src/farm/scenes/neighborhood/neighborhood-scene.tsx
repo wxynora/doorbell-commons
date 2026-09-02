@@ -105,6 +105,15 @@ function messageActionKey(): string {
   return globalThis.crypto.randomUUID();
 }
 
+const MESSAGE_TIME_FORMAT = new Intl.DateTimeFormat("zh-CN", {
+  timeZone: "Asia/Shanghai",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
 export function NeighborhoodScene({
   emptyLabels,
   farmCatalog,
@@ -298,7 +307,14 @@ export function NeighborhoodScene({
                           {message.author_farm_doorplate ? (
                             <small>门牌 {message.author_farm_doorplate}</small>
                           ) : null}
-                          {message.at ? <time dateTime={message.at}>{message.at}</time> : null}
+                          {message.at ? (
+                            <time dateTime={message.at}>
+                              {MESSAGE_TIME_FORMAT.format(new Date(message.at)).replaceAll(
+                                "/",
+                                "-",
+                              )}
+                            </time>
+                          ) : null}
                         </div>
                         <p>{message.text}</p>
                       </li>
