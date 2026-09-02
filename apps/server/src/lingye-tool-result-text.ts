@@ -853,7 +853,10 @@ function commissionItemLines(op: string, item: Record<string, unknown>, index: n
   } else if (op === "go.hospital.commission") {
     const animalKind = firstPublicField(facts, "animalKindId");
     const animal = typeof animalKind === "string" ? ANIMAL_NAMES[animalKind] : undefined;
-    lines.push(`  动物：${animal ?? "暂无法读取具体描述"}`);
+    const animalIndex = integer(firstPublicField(facts, "animalIndex"));
+    lines.push(`  动物：${animal ?? "暂无法读取具体描述"}${
+      animal && animalIndex !== undefined && animalIndex >= 0 ? `（第 ${animalIndex + 1} 只）` : ""
+    }`);
   } else if (op === "go.newsroom.commission") {
     lines.push("  稿件任务：整理真实公共素材");
   } else {
@@ -874,7 +877,19 @@ function commissionItemLines(op: string, item: Record<string, unknown>, index: n
     integer(firstPublicField(facts, "difficultyLevel")) ??
     integer(firstPublicField(facts, "requiredLevel"));
   lines.push(`  难度：${difficulty === undefined ? "暂无法读取" : `${difficulty} 级`}`);
-  lines.push(`  状态：${statusText(firstPublicField(facts, "status"))}`);
+  if (op === "go.hospital.commission" && isRecord(item.serviceFee)) {
+    const fee = item.serviceFee;
+    const amount = integer(fee.amount);
+    if (fee.currency === "gold" && amount !== undefined && amount >= 0) {
+      lines.push(`  诊金：${numberText(amount)} 金币${
+        fee.state === "quoted" ? "，发布时冻结；治疗材料另计" : ""
+      }`);
+      if (fee.state === "reserved" && fee.canRetarget === true) {
+        lines.push("  诊金已冻结，改选医生不重复收费");
+      }
+    }
+  }
+  lines.push(`  状态：${statusText(item.status ?? firstPublicField(facts, "status"))}`);
   return lines;
 }
 
