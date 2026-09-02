@@ -1,5 +1,6 @@
 // biome-ignore lint/correctness/noUnusedImports: the direct node:test TSX transform needs React in scope.
 import React, { type ReactNode } from "react";
+import { presentDailyIssue } from "./lingye-daily-presentation";
 
 export interface LingyeDailyFrontPage {
   title: string;
@@ -43,7 +44,10 @@ export interface LingyeDailySubmission {
 }
 
 export interface LingyeDailyReporterArticle {
+  sections?: readonly { title: string; body: string }[];
   publicationId: string;
+  publishedAt?: string;
+  version?: number;
   articleText: string;
   selector: string;
   writer: string;
@@ -80,6 +84,8 @@ export interface LingyeDailyIssue {
   submissions?: readonly LingyeDailySubmission[];
   tomorrowQuestion?: string;
   revisionNote?: string;
+  weatherForecast?: { title: string; body: string };
+  emphasisText?: string;
 }
 
 interface SectionProps {
@@ -120,7 +126,7 @@ function DailyMasthead({ issue }: { issue: LingyeDailyIssue }) {
   );
 }
 
-function FrontPage({ frontPage }: { frontPage: LingyeDailyFrontPage | undefined }) {
+function FrontPage({ frontPage, emphasisText }: { frontPage: LingyeDailyFrontPage | undefined; emphasisText: string | undefined }) {
   const imageUrls =
     frontPage?.imageUrls ?? (frontPage?.illustrationUrl ? [frontPage.illustrationUrl] : []);
   return (
@@ -138,7 +144,7 @@ function FrontPage({ frontPage }: { frontPage: LingyeDailyFrontPage | undefined 
           ))}
           {frontPage.paragraphs.map((paragraph) => (
             <p className="daily-body-copy" key={paragraph}>
-              {paragraph}
+              <ParagraphText text={paragraph} emphasisText={emphasisText} />
             </p>
           ))}
         </>
@@ -178,7 +184,7 @@ function BehaviorSlices({
 
 function GroupChat({ groupChat }: { groupChat: LingyeDailyGroupChat | undefined }) {
   return (
-    <DailySection id="daily-group-chat" label="今日群聊">
+    <DailySection id="daily-group-chat" label="昨日群聊">
       {!groupChat ? (
         <EmptySection />
       ) : (
@@ -355,7 +361,12 @@ function ReporterArticles({ articles = [] }: { articles?: readonly LingyeDailyRe
     <>
       {articles.map((article) => (
         <article className="daily-relay-article" key={article.publicationId}>
-          <p className="daily-relay-body">{article.articleText}</p>
+          {article.sections ? article.sections.map(section => (
+            <React.Fragment key={section.title}>
+              <h3 className="daily-relay-title">{section.title}</h3>
+              <p className="daily-relay-body">{section.body}</p>
+            </React.Fragment>
+          )) : <p className="daily-relay-body">{article.articleText}</p>}
           <p className="daily-relay-byline">
             <span>选题：{article.selector}</span>
             <span>撰稿：{article.writer}</span>
@@ -365,6 +376,21 @@ function ReporterArticles({ articles = [] }: { articles?: readonly LingyeDailyRe
       ))}
     </>
   );
+}
+
+function ParagraphText({ text, emphasisText }: { text: string; emphasisText: string | undefined }) {
+  const start = emphasisText ? text.indexOf(emphasisText) : -1;
+  if (start < 0 || !emphasisText) return <>{text}</>;
+  return <>{text.slice(0, start)}<strong className="daily-nain-emphasis" style={{ color: "#000", fontWeight: 700 }}>{emphasisText}</strong>{text.slice(start + emphasisText.length)}</>;
+}
+
+function WeatherForecast({ forecast }: { forecast: LingyeDailyIssue["weatherForecast"] }) {
+  if (!forecast) return null;
+  return <section className="daily-section" id="daily-weather-forecast" aria-labelledby="daily-weather-label">
+    <h2 className="daily-section-tag daily-section-tag--blue" id="daily-weather-label">天气预告</h2>
+    <h3 className="daily-weather-title">{forecast.title}</h3>
+    <p className="daily-relay-body">{forecast.body}</p>
+  </section>;
 }
 
 function NewspaperLike({ issue, publications, onLike, pendingLikeRef }: {
@@ -395,7 +421,7 @@ function NewspaperLike({ issue, publications, onLike, pendingLikeRef }: {
 }
 
 export function LingyeDailyPage({
-  issue,
+  issue: sourceIssue,
   onReporterLike,
   pendingLikeRef = null,
   reporterPublications = [],
@@ -405,6 +431,7 @@ export function LingyeDailyPage({
   pendingLikeRef?: string | null;
   reporterPublications?: readonly LingyeDailyReporterPublication[];
 }) {
+  const issue = presentDailyIssue(sourceIssue);
   if (!issue) {
     return (
       <article className="lingye-daily-page lingye-daily-page--empty">
@@ -430,7 +457,7 @@ export function LingyeDailyPage({
       <DailyMasthead issue={issue} />
       <div className="daily-newspaper-body">
         <main className="daily-main-column">
-          <FrontPage frontPage={issue.frontPage} />
+          <FrontPage frontPage={issue.frontPage} emphasisText={issue.emphasisText} />
           <BehaviorSlices slices={issue.behaviorSlices} />
         </main>
         <aside className="daily-sidebar" aria-label="本期侧栏">
@@ -438,10 +465,11 @@ export function LingyeDailyPage({
         </aside>
       </div>
       <FarmObservation observation={issue.farmObservation} articles={issue.reporterArticles ?? []} />
+      <WeatherForecast forecast={issue.weatherForecast} />
       <Quotes quotes={issue.quotes} />
       <Submissions submissions={issue.submissions} />
       <ReporterPublications
-        items={reporterPublications}
+        items={reporterPublications.filter(publication => !issue.reporterArticles?.some(article => article.publicationId === publication.publicationId))}
         onLike={onReporterLike}
         pendingLikeRef={pendingLikeRef}
       />

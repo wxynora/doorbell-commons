@@ -552,3 +552,8 @@ body {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+
+/* Keep the decorative quote in its own flow column, without an opaque backing. */
+.daily-quote-box { display: grid; grid-template-columns: 24px minmax(0, 1fr); column-gap: 8px; }
+.daily-quote-box::before { position: static; padding: 0; background: transparent; font-size: 36px; line-height: 1; align-self: start; }
+.daily-quote-text, .daily-quote-box cite { grid-column: 2; }
