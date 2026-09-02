@@ -47,7 +47,7 @@ function projectPublications(backend, body, now) {
         humanActorKey: body.human_actor_key,
         relatedResidentIds: body.related_resident_ids,
         now,
-    }).map(({ authorResidentId, ...publication }) => ({
+    }).map(({ authorResidentId, selectorResidentId, writerResidentId, reviewerResidentId, ...publication }) => ({
         ...publication,
         ...authorFacts(authorResidentId),
     }));

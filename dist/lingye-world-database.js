@@ -59,6 +59,7 @@ import {
     submitReporterSupplement,
 } from "./career/reporter-service.js";
 import { reporterWorkflowForJob } from "./career/reporter-newsroom-service.js";
+import { captureReporterBoardSnapshots, installReporterBoardSnapshotSchema, seedReporterBoardSnapshotsFromCommittedWorld } from "./career/reporter-board-snapshot.js";
 
 export const LINGYE_WORLD_SCHEMA_VERSION = 2;
 
@@ -269,6 +270,7 @@ export function installLingyeWorldSchema(database) {
     ensureChefRecipeSchema(database);
     ensureChefCommerceSchema(database);
     ensureChefStoreSchema(database);
+    installReporterBoardSnapshotSchema(database);
 }
 
 export function openLingyeWorldDatabase(databasePath = DEFAULT_LINGYE_WORLD_DATABASE_PATH) {
@@ -431,6 +433,7 @@ export function createLingyeFarmBalanceCoordinator(database, backend, options = 
                     persistenceFarmIds.add(farm.id);
                 }
             }
+            captureReporterBoardSnapshots(database, world.farms, options.now?.() ?? Date.now());
             return writeWorld({
                 farmIds: [...persistenceFarmIds],
                 componentKeys: [],
@@ -591,7 +594,14 @@ export function createLingyeWorldBackend(database, options) {
     const employment = new CareerEmploymentService(shared);
     const jobs = new CareerJobService(shared);
     const authorityAssignment = new CareerAuthorityAssignmentService({ ...shared, jobs });
-    const atomic = (operation) => runLingyeWorldTransaction(database, operation);
+    const atomic = (operation) => {
+        const ownsTransaction = !database.isTransaction;
+        return runLingyeWorldTransaction(database, () => {
+            const result = operation();
+            if (ownsTransaction) seedReporterBoardSnapshotsFromCommittedWorld(database, options.now?.() ?? Date.now());
+            return result;
+        });
+    };
     const chefAuthority = options.chefAuthority ?? options.chef ?? {};
     const chefNow = options.now ?? Date.now;
     const configuredOriginalRecipeResolver = chefAuthorityOption(

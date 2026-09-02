@@ -1032,6 +1032,7 @@ export function listReporterPublicationsForHuman(database, input) {
             now >= publication.evaluation_opens_at && now < publication.evaluation_closes_at;
         return {
             likeRef: publicationLikeRef(publication.publication_id),
+            publicationId: publication.publication_id,
             authorResidentId: publication.resident_id,
             selectorResidentId: credits?.selectorResidentId ?? publication.resident_id,
             writerResidentId: credits?.writerResidentId ?? publication.resident_id,

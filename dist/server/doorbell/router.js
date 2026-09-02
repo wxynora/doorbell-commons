@@ -60,9 +60,19 @@ import {
     handleDoorbellReporterRelayStart,
 } from "./daily-material.js";
 import { humanFieldError, internalServiceError } from "./contract.js";
+import { handleDoorbellDailySubmissionReward } from "./daily-submission.js";
 
 export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExecutor, careerBenefitsForFarm, constableInterviewRuntime) {
     return async function handleDoorbellInternal(req, res, parts, method) {
+        if (parts[0] === "internal" && parts[1] === "doorbell" &&
+            parts[2] === "lingye-daily" && parts[3] === "submission-reward" && parts.length === 4) {
+            if (!constableInterviewRuntime?.database || !constableInterviewRuntime?.backend) {
+                internalServiceError(res, 503, "service_unavailable", "The submission reward service is unavailable");
+                return true;
+            }
+            await handleDoorbellDailySubmissionReward(req, res, method, constableInterviewRuntime);
+            return true;
+        }
         if (parts[0] === "internal" && parts[1] === "doorbell" &&
             parts[2] === "lingye-daily" && parts[3] === "reporter-relay" &&
             parts[4] === "start" && parts.length === 5) {

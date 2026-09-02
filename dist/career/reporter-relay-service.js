@@ -1,11 +1,12 @@
 import { createHash, randomInt } from "node:crypto";
-import { buildLeaderboards } from "../leaderboard.js";
+import { readReporterBoardSnapshot } from "./reporter-board-snapshot.js";
+import { currentDayIndex } from "../time.js";
 import {
     getNatureWorld,
     getPublicExpeditionWorld,
     playerFarms,
 } from "../store.js";
-import { natureSnapshot } from "../nature.js";
+import { beijingDayStart, natureSnapshot } from "../nature.js";
 import { CareerDomainError } from "./contracts.js";
 import {
     addBeijingDays,
@@ -155,18 +156,19 @@ export function reporterRelayIssue(database, issueDate) {
     return row ? mapIssue(row) : null;
 }
 
-function todayBoardMaterials(now) {
-    const boards = buildLeaderboards(playerFarms(), [], now);
+function todayBoardMaterials(database, now) {
+    const day = currentDayIndex(now) - 1;
+    const boards = readReporterBoardSnapshot(database, day, now);
     return Object.entries(BOARD_TITLES).flatMap(([key, title]) => {
         const rows = boards[key] ?? [];
         if (rows.length === 0)
             return [];
         return [{
             category: "today_board",
-            occurredAt: now,
-            title,
+            occurredAt: beijingDayStart(day + 1) - 1,
+            title: `${beijingDate(beijingDayStart(day))} ${title}`,
             content: rows.map((row, index) =>
-                `${index + 1}. ${row.title ? `✧${publicText(row.title)}✧` : ""}${publicText(row.name)} · ${publicText(row.code)} — ${row.value}`)
+                `${index + 1}. ${row.title ? `✧${publicText(row.title)}✧` : ""}${publicText(row.name)} — ${row.value}`)
                 .join("\n"),
         }];
     });
@@ -174,12 +176,15 @@ function todayBoardMaterials(now) {
 
 function weatherMaterials(now) {
     const snapshot = natureSnapshot(getNatureWorld(), now);
-    return (snapshot.forecast ?? []).slice(1).map((entry) => ({
-        category: "weather_forecast",
-        occurredAt: now,
-        title: `第 ${entry.dayIndex} 日天气预告`,
-        content: `日序：${entry.dayIndex}；季节：${publicText(entry.season)}；季节日：${entry.seasonDay}；天气：${publicText(entry.condition)}`,
-    }));
+    return (snapshot.forecast ?? []).slice(1).map((entry) => {
+        const date = beijingDate(beijingDayStart(entry.dayIndex));
+        return {
+            category: "weather_forecast",
+            occurredAt: now,
+            title: `${date} 天气预告`,
+            content: `日期：${date}；季节：${publicText(entry.season)}；季节日：${entry.seasonDay}；天气：${publicText(entry.condition)}`,
+        };
+    });
 }
 
 function publicText(value) {
@@ -610,7 +615,7 @@ export function startReporterRelayIssue(database, backend, input) {
         if (!role.selector || !role.writer || !role.reviewer)
             fail("reporter_duty_roster_incomplete");
         const materials = registerMaterials(database, backend, window, [
-            ...todayBoardMaterials(window.periodEnd),
+            ...todayBoardMaterials(database, window.periodEnd),
             ...weatherMaterials(window.periodEnd),
             ...togetherMaterials(database, window),
         ]);
