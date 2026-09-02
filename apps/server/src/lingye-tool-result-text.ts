@@ -996,6 +996,7 @@ export function renderLingyeToolText(
   _args: Record<string, unknown>,
   result: LingyeSuccess,
 ): string {
+  if (op === "go.newsroom.like") return result.text;
   if (op.startsWith("go.bank.")) return bankText(op, result);
   if (op.startsWith("go.school.")) return schoolText(op, result);
   return commissionText(op, result);

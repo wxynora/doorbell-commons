@@ -8,6 +8,7 @@ export const lingyeDoorbellOperationSchema = z.enum([
   "go.farm.commission",
   "go.hospital.commission",
   "go.newsroom.commission",
+  "go.newsroom.like",
   "go.security.commission",
 ]);
 

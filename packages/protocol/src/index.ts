@@ -28,6 +28,7 @@ export * from "./farm-settings-action.js";
 export * from "./farm-shop-open.js";
 export * from "./farm-smelting-action.js";
 export * from "./lingye-action.js";
+export * from "./lingye-daily-presentation.js";
 export * from "./reporter-relay.js";
 
 export const serviceHealthSchema = z.object({
@@ -1995,7 +1996,7 @@ export const lingyeDailyReporterPublicationSchema = z
     author_name: z.string().min(1),
     author_farm_name: z.string().min(1).nullable(),
     published_at: z.number().int().nonnegative(),
-    evaluation_closes_at: z.number().int().positive(),
+    evaluation_closes_at: z.number().int().positive().nullable(),
     valid_likes: z.number().int().nonnegative(),
     has_liked: z.boolean(),
     can_like: z.boolean(),
@@ -2059,7 +2060,7 @@ export const farmHumanReporterPublicationSchema = z
     authorName: z.string().min(1),
     authorFarmName: z.string().min(1).nullable(),
     publishedAt: z.number().int().nonnegative(),
-    evaluationClosesAt: z.number().int().positive(),
+    evaluationClosesAt: z.number().int().positive().nullable(),
     validLikes: z.number().int().nonnegative(),
     hasLiked: z.boolean(),
     canLike: z.boolean(),

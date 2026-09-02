@@ -62,7 +62,7 @@ export interface LingyeDailyReporterPublication {
   authorName: string;
   authorFarmName: string | null;
   publishedAt: number;
-  evaluationClosesAt: number;
+  evaluationClosesAt: number | null;
   validLikes: number;
   hasLiked: boolean;
   canLike: boolean;

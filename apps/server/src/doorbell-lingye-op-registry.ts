@@ -10,6 +10,7 @@ export interface LingyeOperationDefinition {
     | "go.farm.commission"
     | "go.hospital.commission"
     | "go.newsroom.commission"
+    | "go.newsroom.like"
     | "go.security.commission";
   modelVisible: boolean;
   description: string;
@@ -85,6 +86,14 @@ const newsroomCommissionBranches: readonly ArgsShape[] = [
 ];
 
 export const lingyeOperations = [
+  defineOperation({
+    op: "go.newsroom.like",
+    modelVisible: true,
+    description: "给指定期次的已出版日报点赞，无需记者资格。",
+    argsHint: "{issueDate}",
+    branches: [{issueDate:z.iso.date()}],
+    exampleArgs: [{issueDate:"2026-09-02"}],
+  }),
   defineOperation({
     op: "go.bank.view",
     modelVisible: true,
@@ -214,12 +223,12 @@ export const modelVisibleLingyeOperationByName = new Map<string, LingyeOperation
   modelVisibleLingyeOperations.map((operation) => [operation.op, operation] as const),
 );
 
-if (lingyeOperations.length !== 8 || lingyeOperationByName.size !== lingyeOperations.length) {
-  throw new Error("The initial Doorbell Lingye registry must contain 8 unique operations");
+if (lingyeOperations.length !== 9 || lingyeOperationByName.size !== lingyeOperations.length) {
+  throw new Error("The Doorbell Lingye registry must contain 9 unique operations");
 }
 if (
-  modelVisibleLingyeOperations.length !== 8 ||
+  modelVisibleLingyeOperations.length !== 9 ||
   modelVisibleLingyeOperationByName.size !== modelVisibleLingyeOperations.length
 ) {
-  throw new Error("The Doorbell Lingye registry must expose all eight ready operations");
+  throw new Error("The Doorbell Lingye registry must expose all nine ready operations");
 }
