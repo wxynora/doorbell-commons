@@ -223,11 +223,17 @@ export function settleRanchRaids(farms, now) {
                     (targetRanch.raidDebts ??= []).push({ creditorFarmId: owner.id, coins: debt });
                 if (stolenCoins > 0) {
                     const capLine = stolenCoins < raid.reservedCoins ? `（今日累计已达 ${RANCH_RAID_DAILY_CAP} 金上限）` : "";
-                    pushSocialInbox(owner, `🥷 你的${animalName}从「${targetLabel}」带回 ${stolenCoins} 金，已进入牧场钱包${capLine}`, now);
-                    pushSocialInbox(target, `🥷 「${ownerLabel}」家的${animalName}从你的牧场拿走 ${stolenCoins} 金（现扣 ${paidNow}${debt > 0 ? `，另记欠款 ${debt}` : ""}）`, now);
+                    const ownerText = `🥷 你的${animalName}从「${targetLabel}」带回 ${stolenCoins} 金，已进入牧场钱包${capLine}`;
+                    const targetText = `🥷 「${ownerLabel}」家的${animalName}从你的牧场拿走 ${stolenCoins} 金（现扣 ${paidNow}${debt > 0 ? `，另记欠款 ${debt}` : ""}）`;
+                    pushSocialInbox(owner, ownerText, now);
+                    pushSocialInbox(target, targetText, now);
+                    pushRanchNotice(owner, ownerText, now, "ranch");
+                    pushRanchNotice(target, targetText, now, "ranch");
                 }
                 else {
-                    pushSocialInbox(owner, `🥷 你的${animalName}结束潜伏，但今天偷金币已达 ${RANCH_RAID_DAILY_CAP} 金上限，空手回来；保证金已全部退回`, now);
+                    const ownerText = `🥷 你的${animalName}结束潜伏，但今天偷金币已达 ${RANCH_RAID_DAILY_CAP} 金上限，空手回来；保证金已全部退回`;
+                    pushSocialInbox(owner, ownerText, now);
+                    pushRanchNotice(owner, ownerText, now, "ranch");
                 }
             }
             finishRanchRaidHistory(ranch, raid, "returned", resultCoins);

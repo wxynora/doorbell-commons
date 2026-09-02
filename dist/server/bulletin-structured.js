@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { projectHumanField } from "./human-structured.js";
+import { projectHealthBulletinNotices } from "./bulletin-health-notices.js";
 import { taskView } from "../tasks.js";
 
 const FARM_DOORPLATE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/;
@@ -226,17 +227,32 @@ function projectRanchNotice(notice) {
 }
 
 function projectRanchNotifications(farm) {
-  if (!isRecord(farm.ranch) || !Array.isArray(farm.ranch.notices)) {
+  if (!isRecord(farm.ranch) && !Array.isArray(farm.plots)) {
     return {
       available: false,
       unavailable: unavailable("not_initialized", RANCH_NOTICES_UNAVAILABLE_MESSAGE),
     };
   }
-  const entries = farm.ranch.notices
+  // The queue is created lazily by pushRanchNotice. A valid field can also
+  // have health notices before its owner has opened a ranch.
+  if (farm.ranch?.notices !== undefined && !Array.isArray(farm.ranch.notices)) {
+    return {
+      available: false,
+      unavailable: unavailable("invalid_persisted_state", RANCH_NOTICES_UNAVAILABLE_MESSAGE),
+    };
+  }
+  const entries = (farm.ranch?.notices ?? [])
     .slice(-10)
     .reverse()
     .map(projectRanchNotice)
     .filter(Boolean);
+  for (const notice of projectHealthBulletinNotices(farm)) {
+    entries.push({
+      ...projectRanchNotice(notice),
+      reminder_key: reminderKey("health_notification", notice.identity),
+    });
+  }
+  entries.sort((left, right) => Date.parse(right.at ?? "") - Date.parse(left.at ?? "") || 0);
   return { available: true, entries };
 }
 

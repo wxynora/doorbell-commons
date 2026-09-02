@@ -298,7 +298,7 @@ export function runP3WorldAction(farm, actionKey, payloadHash, operation, now = 
 
 const ACTIVE_AGRONOMY_STATUSES = new Set(["open", "stabilized", "treating"]);
 
-function plotAgronomyIssues(plot) {
+export function plotAgronomyIssues(plot) {
     const candidates = [
         plot?.lingyeAgronomy,
         ...(Array.isArray(plot?.lingyeNatureAgronomy) ? plot.lingyeNatureAgronomy : []),
