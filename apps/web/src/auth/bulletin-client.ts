@@ -9,9 +9,10 @@ import {
   farmBulletinDoorplateSchema,
 } from "@doorbell/protocol";
 import type { ApiResult, ClientIssueCode, FrontendFetcher } from "./auth-client";
+import {loadHumanNotices,acknowledgeHumanNotices,type HumanNotice} from "./human-notices-client";
 
-export type BoundBulletinRead = ReturnType<typeof boundFarmBulletinReadSuccessSchema.parse>;
-export type BoundBulletinAck = ReturnType<typeof boundFarmBulletinAckSuccessSchema.parse>;
+export type BoundBulletinRead = ReturnType<typeof boundFarmBulletinReadSuccessSchema.parse> & {humanNotices?:HumanNotice[];humanNoticesUnavailable?:boolean};
+export type BoundBulletinAck = ReturnType<typeof boundFarmBulletinAckSuccessSchema.parse> & {humanNotices?:HumanNotice[]};
 export type BulletinAcknowledgementScope = FarmBulletinAckScope;
 export type BulletinIssueCode =
   | ReturnType<typeof boundFarmBulletinReadErrorSchema.parse>["error"]["code"]
@@ -35,6 +36,7 @@ export interface BulletinAckIssue {
 }
 
 export interface BulletinAckOptions {
+  humanNoticeIds?:readonly string[];
   acknowledge: FarmBulletinAckScope;
   expectedFarmDoorplate: string;
   expectedRevision: string;
@@ -85,7 +87,12 @@ export async function getBoundBulletin(
   if (!parsed.success || parsed.data.subject.farm_doorplate !== expectedFarmDoorplate) {
     return { ok: false, issue: clientIssue("unexpected_response") };
   }
-  return { ok: true, data: parsed.data };
+  try {
+    const humanNotices=await loadHumanNotices(fetcher,options.signal);
+    return {ok:true,data:{...parsed.data,humanNotices}};
+  } catch {
+    return {ok:true,data:{...parsed.data,humanNoticesUnavailable:true}};
+  }
 }
 
 export const getFarmBulletin = getBoundBulletin;
@@ -149,6 +156,14 @@ export async function acknowledgeBoundBulletin(
       ok: false,
       issue: { code: "unexpected_response", currentRevision: null, serverMessage: null },
     };
+  }
+  if(options.acknowledge!=="trail" && options.humanNoticeIds?.length) {
+    try {
+      const humanNotices=await acknowledgeHumanNotices(options.humanNoticeIds,fetcher,options.signal);
+      return {ok:true,data:{...parsed.data,humanNotices}};
+    } catch {
+      return {ok:false,issue:{code:"network_unavailable",currentRevision:null,serverMessage:null}};
+    }
   }
   return { ok: true, data: parsed.data };
 }

@@ -424,6 +424,7 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
         bulletinAckKeysRef.current.get(acknowledgementIdentity) ?? crypto.randomUUID();
       bulletinAckKeysRef.current.set(acknowledgementIdentity, idempotencyKey);
       const result = await acknowledgeBoundBulletin({
+        humanNoticeIds:bulletin.humanNotices?.map(notice=>notice.id) ?? [],
         acknowledge,
         expectedFarmDoorplate,
         expectedRevision: bulletin.revision,
@@ -440,6 +441,7 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
               data: result.data.data.resource,
               revision: result.data.revision,
               server_time: result.data.server_time,
+              humanNotices:result.data.humanNotices ?? bulletin.humanNotices ?? [],
             },
           },
         }));

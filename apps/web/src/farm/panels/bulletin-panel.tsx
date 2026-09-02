@@ -83,14 +83,24 @@ function BulletinSystemList({ bulletin }: { bulletin?: BoundBulletinRead | null 
   const available = bulletin.data.available;
   const unavailable = bulletin.data.unavailable;
   const hasEntries =
+    (bulletin.humanNotices?.length ?? 0) > 0 ||
     (available.tasks?.length ?? 0) > 0 ||
     (available.mature_plots?.length ?? 0) > 0 ||
     (available.messages?.length ?? 0) > 0 ||
     (available.ranch_notifications?.length ?? 0) > 0;
-  const hasUnavailable = Object.keys(unavailable).length > 0;
+  const hasUnavailable = bulletin.humanNoticesUnavailable || Object.keys(unavailable).length > 0;
 
   return (
     <ul aria-label="叮咚播报列表" className="farm-bulletin__list">
+      {bulletin.humanNotices?.map(notice=>(
+        <li className="farm-bulletin__empty" key={notice.id}>
+          <img alt="" aria-hidden="true" src={getFarmAssetUrl("neighborhood.message-board")} />
+          <div className="farm-bulletin__empty-copy">
+            <strong>{notice.title}</strong><span style={{whiteSpace:"pre-line"}}>{notice.text}</span><small>{formatBulletinTime(notice.at)}</small>
+          </div>
+        </li>
+      ))}
+      {bulletin.humanNoticesUnavailable ? <BulletinEmptyRow label="社区公告" title="暂时无法读取" description="重新打开叮咚播报可再试。" iconKey="neighborhood.message-board" /> : null}
       {available.tasks?.map((task) => (
         <BulletinEmptyRow
           description={`${task.progress} / ${task.target} · 奖励 ${task.reward} ${task.currency === "silver" ? "银币" : "农场金币"}`}

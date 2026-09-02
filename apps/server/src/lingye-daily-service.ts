@@ -76,4 +76,8 @@ export class LingyeDailyService {
   getPublishedImage(issueDate:string,revision:number,imageId:string) {
     return this.#database.lingyeDailyStore.getPublishedImage(issueDate,revision,imageId,this.#now());
   }
+
+  get humanBulletinStore() {
+    return this.#database.humanBulletinStore;
+  }
 }

@@ -172,6 +172,7 @@ export function bulletinHasUnreadEntries(bulletin: BoundBulletinRead | null): bo
   return Boolean(
     bulletin &&
       (Object.values(bulletin.data.available).some((entries) => (entries?.length ?? 0) > 0) ||
+        (bulletin.humanNotices?.length ?? 0) > 0 ||
         (bulletin.data.trail.status === "available" && bulletin.data.trail.has_unread)),
   );
 }
@@ -394,7 +395,7 @@ export function FarmFieldContent({
       acknowledge === "trail"
         ? displayedBulletin.data.trail.status === "available" &&
           displayedBulletin.data.trail.has_unread
-        : Object.values(displayedBulletin.data.available).some(
+        : (displayedBulletin.humanNotices?.length ?? 0) > 0 || Object.values(displayedBulletin.data.available).some(
             (entries) => (entries?.length ?? 0) > 0,
           );
     if (hasUnread) onAcknowledgeBulletin?.(displayedBulletin, acknowledge);

@@ -1,3 +1,4 @@
+import { registerHumanBulletinRoutes } from "./human-bulletin-routes.js";
 import {dailyImageUrl, registerDailyImageRoutes} from "./lingye-daily-images.js";
 import {
   additionalHumanProfileRequestSchema,
@@ -2104,6 +2105,11 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       done(null, new URLSearchParams(typeof body === "string" ? body : body.toString("utf8"))),
   );
 
+  if(options.lingyeDailyService) registerHumanBulletinRoutes(app, {
+    store:options.lingyeDailyService.humanBulletinStore,
+    registrationAuth:options.registrationAuth,
+    secureCookies:options.secureCookies,
+  });
   if(options.lingyeDailyService) registerDailyImageRoutes(app, {
     daily:options.lingyeDailyService,registrationAuth:options.registrationAuth,
   });
