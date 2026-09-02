@@ -86,6 +86,11 @@ import {
 } from "./contract.js";
 
 import { recordPublishedDailyLike } from "./reporter-like.js";
+import {
+    serviceCommissionObjectLabel,
+    serviceCommissionTargetLabel,
+    serviceCommissionWorkerName,
+} from "./service-commission-options.js";
 
 const LINGYE_OPERATIONS = new Set([
     "go.bank.view",
@@ -516,7 +521,9 @@ function exposeOptionHandles(database, residentId, op, value, now) {
                 return Object.fromEntries(Object.entries(candidate).map(([key, entry]) => [key, expose(entry)]));
             return {
                 option: optionHandle(database, residentId, operation, candidate.option, now),
-                label: internalOptionLabel(candidate.option),
+                label: typeof candidate.label === "string" && candidate.label.trim()
+                    ? candidate.label
+                    : internalOptionLabel(candidate.option),
                 requires: Array.isArray(candidate.requires) ? [...candidate.requires] : [],
             };
         }
@@ -1881,19 +1888,26 @@ function commissionOptions(database, backend, rows, residentId, sources, now) {
         const existing = database.prepare("SELECT 1 FROM career_jobs WHERE source_type = ? AND source_id = ?")
             .get(source.sourceType, source.sourceId);
         if (!existing) {
+            const serviceCommission = ["agronomist", "veterinarian"].includes(source.career);
+            const objectLabel = serviceCommission ? serviceCommissionObjectLabel(source) : null;
             if (source.career === "agronomist" && source.ownerResidentId === residentId &&
                 qualificationLevel(database, residentId, "agronomist", now) >= source.requiredLevel &&
                 serviceCommissionJobs(database, now)
                     .getServiceCommissionAvailability(residentId, "agronomist").canAccept) {
                 options.push(option(`commission:self:${source.sourceId}`));
             }
-            options.push(option(`commission:publish:${source.sourceId}`));
-            if (["agronomist", "veterinarian"].includes(source.career)) {
+            options.push({ ...option(`commission:publish:${source.sourceId}`),
+                ...(objectLabel ? { label: `公开委托：${objectLabel}` } : {}) });
+            if (serviceCommission) {
                 for (const targetResidentId of serviceCommissionCandidateIds(database,
                     source.career, source.requiredLevel, source.ownerResidentId, null, now)) {
-                    options.push(option(`commission:target:${source.sourceId}:${targetResidentId}`));
+                    const workerName = serviceCommissionWorkerName(database, targetResidentId);
+                    if (workerName)
+                        options.push({ ...option(`commission:target:${source.sourceId}:${targetResidentId}`),
+                            label: serviceCommissionTargetLabel(source.career, workerName, objectLabel) });
                 }
-                options.push(option(`commission:npc:${source.sourceId}`));
+                options.push({ ...option(`commission:npc:${source.sourceId}`),
+                    label: `转交机构 NPC：${objectLabel}` });
             }
         }
     }
@@ -1933,21 +1947,33 @@ function commissionOptions(database, backend, rows, residentId, sources, now) {
             job.serviceAudience === "targeted" && job.targetResidentId === residentId)
             options.push(option(`commission:decline:${job.jobId}`));
         if (job.serviceCommission && job.status === "available" && job.ownerResidentId === residentId) {
+            const source = sources.find((entry) => entry.sourceId === job.sourceId) ?? job;
+            const objectLabel = serviceCommissionObjectLabel(source);
             if (job.serviceAudience === "owner_choice") {
-                options.push(option(`commission:reopen:${job.jobId}`));
+                options.push({ ...option(`commission:reopen:${job.jobId}`),
+                    label: `公开委托：${objectLabel}` });
+            }
+            if (["public", "owner_choice"].includes(job.serviceAudience)) {
                 for (const targetResidentId of serviceCommissionCandidateIds(database,
                     job.career, job.requiredLevel, job.ownerResidentId, job.jobId, now)) {
-                    options.push(option(`commission:retarget:${job.jobId}:${targetResidentId}`));
+                    const workerName = serviceCommissionWorkerName(database, targetResidentId);
+                    if (workerName)
+                        options.push({ ...option(`commission:retarget:${job.jobId}:${targetResidentId}`),
+                            label: serviceCommissionTargetLabel(job.career, workerName, objectLabel, true) });
                 }
             }
-            options.push(option(`commission:npc-job:${job.jobId}`));
+            options.push({ ...option(`commission:npc-job:${job.jobId}`),
+                label: `转交机构 NPC：${objectLabel}` });
         }
         if (job.career === "agronomist" && job.status === "available" &&
             job.ownerResidentId === residentId && job.parentJobId && !agronomyPayment)
             options.push(option(`commission:republish:${job.jobId}`, ["amount"]));
         if (["agronomist", "veterinarian"].includes(job.career) &&
-            job.status === "available" && job.ownerResidentId === residentId && job.parentJobId) {
-            options.push(option(`commission:npc-transfer:${job.jobId}`));
+            !job.serviceCommission && job.status === "available" &&
+            job.ownerResidentId === residentId && job.parentJobId) {
+            const source = sources.find((entry) => entry.sourceId === job.sourceId) ?? job;
+            options.push({ ...option(`commission:npc-transfer:${job.jobId}`),
+                label: `转交机构 NPC：${serviceCommissionObjectLabel(source)}` });
         }
         if (job.ownerResidentId === residentId &&
             (job.serviceCommission || ["farm_plot_condition", "animal_health_case"].includes(job.sourceType)) &&
@@ -1983,6 +2009,72 @@ function commissionOptions(database, backend, rows, residentId, sources, now) {
     return options;
 }
 
+function commissionPresentationSourceFacts(database, job) {
+    try {
+        return commissionSourceFacts(database, job);
+    }
+    catch (error) {
+        if (error?.message !== "commission_source_not_available" ||
+            !["agronomist", "veterinarian"].includes(job.career) ||
+            !["completed", "cancelled", "transferred", "expired"].includes(job.status))
+            throw error;
+        const recorded = database.prepare(`SELECT source_type, fact_json, recorded_at
+            FROM career_commission_source_facts WHERE source_id = ?`).get(job.sourceId);
+        if (!recorded || recorded.source_type !== job.sourceType.split(":transfer", 1)[0])
+            throw error;
+        const { condition: _condition, ...initialFact } = JSON.parse(recorded.fact_json);
+        return { sourceId: job.sourceId, sourceType: job.sourceType,
+            recordedAt: recorded.recorded_at, initialFact, currentState: { status: job.status } };
+    }
+}
+
+function commissionPresentation(database, backend, residentId, career, rows, sources, now) {
+    const isServiceCareer = ["agronomist", "veterinarian"].includes(career);
+    const careerSources = sources.filter((source) => source.career === career && (!isServiceCareer ||
+        (source.status === "open" &&
+        !database.prepare("SELECT 1 FROM career_jobs WHERE source_type = ? AND source_id = ?")
+            .get(source.sourceType, source.sourceId) &&
+        !database.prepare("SELECT 1 FROM career_npc_service_settlements WHERE source_id = ?")
+            .get(source.sourceId))));
+    const options = commissionOptions(database, backend, rows, residentId, careerSources, now);
+    return {
+        jobs: mapRows(rows).map((job, index) => {
+            const fund = career === "veterinarian"
+                ? database.prepare(`SELECT currency, amount, state FROM career_service_commission_funds
+                    WHERE current_job_id = ?`).get(job.jobId)
+                : null;
+            return {
+                ...job,
+                sourceFacts: commissionPresentationSourceFacts(database, backend.trustedQueries.getJob(rows[index].job_id)),
+                messages: commissionMessages(database, rows[index].job_id, residentId),
+                ...(fund ? { serviceFee: { ...fund, canRetarget: options.some((entry) =>
+                    entry.option.startsWith(`commission:retarget:${job.jobId}:`)) } } : {}),
+            };
+        }),
+        sources: careerSources.map((source) => ({
+            ...publicCommissionSource(source),
+            ...(career === "veterinarian" ? { serviceFee: { currency: "gold",
+                amount: playerServiceCommissionPrice(source).baseFeeGold, state: "quoted" } } : {}),
+        })),
+        options,
+    };
+}
+
+function currentServiceCommissionResult(database, backend, residentId, career, sources, now, response) {
+    if (!response.ok || !["agronomist", "veterinarian"].includes(career))
+        return response;
+    // Action receipts retain the original settlement result.  Navigation and
+    // case descriptions are a current projection, including on receipt replay.
+    return {
+        ...response,
+        data: {
+            ...response.data,
+            ...commissionPresentation(database, backend, residentId, career,
+                visibleCommissionRows(database, residentId, career), sources, now),
+        },
+    };
+}
+
 function commissionView(database, backend, residentId, career, args, sources, now) {
     expireUnavailableOwnedServiceCommissions(database, backend, residentId, career, sources, now);
     const rows = visibleCommissionRows(database, residentId, career);
@@ -1991,8 +2083,8 @@ function commissionView(database, backend, residentId, career, args, sources, no
         : rows.filter((row) => row.job_id === args.reference);
     if (args.reference !== undefined && selected.length === 0)
         throw new LingyeBusinessError("REFERENCE_NOT_FOUND", "没有找到这条真实委托。");
-    const options = commissionOptions(database, backend, selected, residentId,
-        sources.filter((source) => source.career === career), now);
+    const presentation = commissionPresentation(database, backend, residentId, career, selected, sources, now);
+    const options = presentation.options;
     const level = qualificationLevel(database, residentId, career, now);
     if (career === "reporter" && level >= 3)
         options.unshift(option("commission:section-create", ["text"]));
@@ -2003,14 +2095,7 @@ function commissionView(database, backend, residentId, career, args, sources, no
         options.push(option(`commission:like:${encodeURIComponent(publication.publicationId)}`));
     }
     return success("已读取当前真实委托。", {
-        jobs: mapRows(selected).map((job, index) => ({
-            ...job,
-            sourceFacts: commissionSourceFacts(database, backend.trustedQueries.getJob(selected[index].job_id)),
-            messages: commissionMessages(database, selected[index].job_id, residentId),
-        })),
-        sources: sources
-            .filter((source) => source.career === career)
-            .map(publicCommissionSource),
+        ...presentation,
         ...(career === "reporter"
             ? {
                 newsroom: {
@@ -3370,6 +3455,8 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
 }
 
 function commissionAction(database, backend, residentId, career, args, sources, now, afterWorldApplyForTesting) {
+    const present = (response) => currentServiceCommissionResult(database, backend,
+        residentId, career, sources, now, response);
     const actionKey = idempotencyKey(residentId, `go.${career}.commission`, args);
     const payloadHash = createHash("sha256")
         .update(JSON.stringify({ args, career, residentId }))
@@ -3383,7 +3470,7 @@ function commissionAction(database, backend, residentId, career, args, sources, 
             existing.payload_hash !== payloadHash) {
             throw new LingyeBusinessError("CONFLICT", "这个委托操作已经使用了不同参数。");
         }
-        return JSON.parse(existing.result_json);
+        return present(JSON.parse(existing.result_json));
     }
     if (["agronomist", "veterinarian"].includes(career) &&
         /^commission:(check|treat):/u.test(args.option)) {
@@ -3394,14 +3481,14 @@ function commissionAction(database, backend, residentId, career, args, sources, 
             crossStore.payload_hash !== payloadHash) {
             throw new LingyeBusinessError("CONFLICT", "这个委托操作已经使用了不同参数。");
         }
-        return resumeCommissionWorldOperation(database, backend, crossStore,
-            afterWorldApplyForTesting);
+        return present(resumeCommissionWorldOperation(database, backend, crossStore,
+            afterWorldApplyForTesting));
     }
     if (/^commission:npc(?::|-job:|-transfer:)/u.test(args.option)) {
         // NPC fallback owns its pending -> world -> final SQL checkpoints.
         // Keeping it inside the generic receipt transaction would roll back
         // the reservation after the world receipt had already been published.
-        const response = commissionChoose(database, backend, residentId, career, args, sources, now);
+        const response = present(commissionChoose(database, backend, residentId, career, args, sources, now));
         return runLingyeWorldTransaction(database, () => {
             database.prepare(`
               INSERT INTO lingye_commission_action_receipts (
@@ -3412,7 +3499,7 @@ function commissionAction(database, backend, residentId, career, args, sources, 
         });
     }
     return runLingyeWorldTransaction(database, () => {
-        const response = commissionChoose(database, backend, residentId, career, args, sources, now);
+        const response = present(commissionChoose(database, backend, residentId, career, args, sources, now));
         database.prepare(`
           INSERT INTO lingye_commission_action_receipts (
             action_key, resident_id, career, payload_hash, result_json, created_at
