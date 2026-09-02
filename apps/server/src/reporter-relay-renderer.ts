@@ -1,6 +1,6 @@
 import type { ReporterRelayWake } from "@doorbell/protocol";
 
-function materialsJson(wake: ReporterRelayWake): string {
+function materialsJson(wake: Exclude<ReporterRelayWake, { stage: "writing" }>): string {
   return JSON.stringify(wake.materials, null, 2);
 }
 
@@ -18,9 +18,9 @@ function actionCall(
 }
 
 export function renderReporterRelayWake(wake: ReporterRelayWake): string {
-  const materials = materialsJson(wake);
   switch (wake.stage) {
-    case "selection":
+    case "selection": {
+      const materials = materialsJson(wake);
       return `【铃野日报社·今日选题】
 
 今天你负责本期《铃野日报》的选题。以下是本期全部可用的公开素材：
@@ -32,23 +32,19 @@ ${materials}
 ${actionCall(wake.action, "你的选题结果")}
 
 只能依据以上素材，不要补充素材中没有的事实。`;
+    }
     case "writing":
       return `【铃野日报社·今日撰稿】
 
-选题记者已经完成选题：
-
-${wake.selection_text}
-
-本次可用的来源事实：
-
-${materials}
-
-请根据选题和来源事实写成可直接刊登的报道原稿。无需先查看日报社工作，直接调用：
+请根据选题记者处理后的选题结果写成可直接刊登的报道原稿。无需先查看日报社工作，直接调用：
 
 ${actionCall(wake.action, "你的报道原稿")}
 
-不得把来源中没有的内容写成事实。`;
+选题记者已经完成选题：
+
+${wake.selection_text}`;
     case "review": {
+      const materials = materialsJson(wake);
       const approve = actionCall(wake.actions.approve);
       const reject = actionCall(wake.actions.reject, "退稿原因");
       if (wake.actions.supplement) {
@@ -95,7 +91,8 @@ ${approve}
 退稿：
 ${reject}`;
     }
-    case "supplement":
+    case "supplement": {
+      const materials = materialsJson(wake);
       return `【铃野日报社·原稿退回补充】
 
 审稿记者的具体意见：
@@ -113,6 +110,7 @@ ${materials}
 请按审稿意见补充后重新提交。无需先查看日报社工作，直接调用：
 
 ${actionCall(wake.action, "补充后的完整报道原稿")}`;
+    }
   }
 }
 

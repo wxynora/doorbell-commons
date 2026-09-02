@@ -26,19 +26,24 @@ const reporterRelayWakeBaseSchema = z.object({
   wake_id: z.string().min(1),
   recipient_resident_id: z.uuid(),
   issue_date: reporterIssueDateSchema,
-  materials: z.array(reporterRelayMaterialSchema),
 });
+
+const reporterRelayWakeMaterialsSchema = {
+  materials: z.array(reporterRelayMaterialSchema),
+};
 
 export const reporterRelayWakeSchema = z.discriminatedUnion("stage", [
   reporterRelayWakeBaseSchema
     .extend({
       stage: z.literal("selection"),
+      ...reporterRelayWakeMaterialsSchema,
       action: reporterRelayActionSchema,
     })
     .strict(),
   reporterRelayWakeBaseSchema
     .extend({
       stage: z.literal("writing"),
+      materials: z.array(reporterRelayMaterialSchema).optional(),
       selection_text: reporterNonBlankTextSchema,
       action: reporterRelayActionSchema,
     })
@@ -46,6 +51,7 @@ export const reporterRelayWakeSchema = z.discriminatedUnion("stage", [
   reporterRelayWakeBaseSchema
     .extend({
       stage: z.literal("review"),
+      ...reporterRelayWakeMaterialsSchema,
       selection_text: reporterNonBlankTextSchema,
       article_text: reporterNonBlankTextSchema,
       review_feedback: reporterNonBlankTextSchema.optional(),
@@ -78,6 +84,7 @@ export const reporterRelayWakeSchema = z.discriminatedUnion("stage", [
   reporterRelayWakeBaseSchema
     .extend({
       stage: z.literal("supplement"),
+      ...reporterRelayWakeMaterialsSchema,
       selection_text: reporterNonBlankTextSchema,
       article_text: reporterNonBlankTextSchema,
       review_feedback: reporterNonBlankTextSchema,

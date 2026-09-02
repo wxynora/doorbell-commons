@@ -255,6 +255,16 @@ features were rewritten to the real daily shop, chef-store recovery, single-case
 transfer boundaries, and complaint／loan／review authority limits. Production Farm `8551900` plus the private
 bank now reports `ready=true` and `missing=[]`.
 
+The reporter rescue keeps `materials` optional only on the `stage:"writing"` branch so
+the already-persisted writing wake for the current issue still validates; newly formed writing wakes may omit it.
+Main's writing renderer ignores that compatibility field in both cases, emits the authoritative
+`go.newsroom.commission` call before the complete `selection_text`, and appends that text without trimming,
+summarizing or imposing a length cap. Selection, review and supplement keep their existing material arrays and
+renderers. The one rescue wake advances the existing startup suffix from `:recovery-release` to
+`:recovery-processed`, so its idempotency key creates one new short Bell instead of replaying the prior accepted
+wake. After the current issue finishes, the prepared cleanup removes startup catch-up／pending recovery entirely
+and tightens writing back to strict no-materials.
+
 The deployed next-day qualification gate is split across Main `8e2fb59` and Farm `a91e8a6`.
 Farm records an ordinary exam pass, or the constable's final approved public-notice result, with an
 effective time at the next Beijing `00:00`. Employment, seats, duty generation, jobs, authority

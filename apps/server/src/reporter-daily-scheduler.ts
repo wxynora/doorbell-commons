@@ -111,7 +111,7 @@ export class ReporterDailyScheduler {
         return;
       }
       const wake = recovery
-        ? { ...pendingWake, wake_id: `${pendingWake.wake_id}:recovery-release` }
+        ? { ...pendingWake, wake_id: `${pendingWake.wake_id}:recovery-processed` }
         : pendingWake;
       const acceptance = this.#relay.enqueue(wake);
       this.#emit({
