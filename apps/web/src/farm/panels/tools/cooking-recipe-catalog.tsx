@@ -80,6 +80,13 @@ interface CookingRecipeDisplay {
 
 type LiveCookingRecipe = BoundKitchenRead["data"]["known_recipes"]["items"][number];
 
+// Recipe requirements use physical-tool IDs; shop ownership keeps the purchase IDs.
+const PURCHASE_TOOL_ID_BY_RECIPE_TOOL_ID: Readonly<Record<string, string>> = {
+  oven: "roast",
+  steamer: "steam",
+  fryer: "deep-fry",
+};
+
 function getLiveRecipeMissingItems(kitchen: BoundKitchenRead, recipe: LiveCookingRecipe): string[] {
   const availableCounts = new Map<string, number>();
   if (kitchen.data.stacked_ingredients.status === "available") {
@@ -110,9 +117,13 @@ function getLiveRecipeMissingItems(kitchen: BoundKitchenRead, recipe: LiveCookin
     availableCounts.set(ingredient.ingredient_id, Math.max(0, available - required));
   }
   if (recipe.tool.id) {
+    const requiredToolId = recipe.tool.id;
+    const purchaseToolId = PURCHASE_TOOL_ID_BY_RECIPE_TOOL_ID[requiredToolId];
     const tool =
       kitchen.data.tools.status === "available"
-        ? kitchen.data.tools.items.find((item) => item.tool_id === recipe.tool.id)
+        ? kitchen.data.tools.items.find(
+            (item) => item.tool_id === requiredToolId || item.tool_id === purchaseToolId,
+          )
         : null;
     if (!tool || tool.status !== "available" || tool.owned !== true) {
       missing.push(recipe.tool.name ?? "料理工具");
