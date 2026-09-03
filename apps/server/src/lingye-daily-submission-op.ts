@@ -38,7 +38,6 @@ export function reviewDailySubmissions(store: LingyeDailyStore, residentId: stri
   if (typeof args.option !== "string") return undefined;
   const result = store.reviewSubmission(residentId, args.option, args.text as string | undefined, now);
   if (result) return REVIEW_RECEIPT;
-  store.assertArticleReviewReady(args.option, residentId);
   return undefined;
 }
 

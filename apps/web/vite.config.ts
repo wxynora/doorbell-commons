@@ -84,6 +84,14 @@ function farmAssetCoveragePlugin(): Plugin {
 
 export default defineConfig({
   plugins: [candidateTwoAssetUrlPlugin(), farmAssetCoveragePlugin(), react()],
+  build: {
+    rollupOptions: {
+      input: {
+        community: resolve(import.meta.dirname, "index.html"),
+        dailyEditor: resolve(import.meta.dirname, "daily-editor/index.html"),
+      },
+    },
+  },
   server: {
     proxy: {
       "/api": "http://127.0.0.1:3000",

@@ -229,25 +229,18 @@ export class LingyeDailyStore {
     }).immediate();
   }
 
-  enqueueArticleReviewWake(wake: ReporterRelayWake,
-    persist: (transferredReview?: DailySubmissionReview) => ReporterBellWakeCreationStatus) {
-    if (wake.stage !== "review") return persist();
-    return this.#database.transaction(() => {
-      // Only a new authoritative review wake can transfer unfinished submission work.
-      if (this.#database.prepare("SELECT 1 FROM bell_wakes WHERE wake_id = ?").get(wake.wake_id)) return persist();
-      const batch = this.#database.prepare("SELECT * FROM lingye_daily_submission_batches WHERE issue_date = ?")
-        .get(wake.issue_date) as DailySubmissionBatch | undefined;
-      if (!batch || batch.selected_ids_json !== null || batch.reviewer_resident_id === wake.recipient_resident_id) return persist();
-      this.#database.prepare("UPDATE lingye_daily_submission_batches SET reviewer_resident_id = ? WHERE issue_date = ?")
-        .run(wake.recipient_resident_id, wake.issue_date);
-      return persist(this.submissionReview({ ...batch, reviewer_resident_id: wake.recipient_resident_id }));
-    }).immediate();
+  enqueueArticleReviewWake(_wake: ReporterRelayWake,
+    persist: () => ReporterBellWakeCreationStatus) {
+    // Farm delivery, including a historical replay, never owns or transfers
+    // anonymous selection. The ordinary Bell store owns delivery atomicity.
+    return persist();
   }
 
   submissionReviewer(issueDate: string): { resident_id: string; display_name: string } | null {
     const row = this.#database.prepare(`SELECT b.reviewer_resident_id AS resident_id, r.resident_name AS display_name
       FROM lingye_daily_submission_batches b JOIN residents r ON r.resident_id = b.reviewer_resident_id
-      WHERE b.issue_date = ? AND b.selected_ids_json IS NOT NULL AND b.decided_at IS NOT NULL`)
+      WHERE b.issue_date = ? AND b.selected_ids_json IS NOT NULL AND b.decided_at IS NOT NULL
+        AND json_array_length(b.candidate_ids_json) > 0`)
       .get(issueDate) as { resident_id: string; display_name: string } | undefined;
     return row ?? null;
   }
@@ -260,14 +253,6 @@ export class LingyeDailyStore {
         AND selected_ids_json IS NOT NULL AND decided_at IS NOT NULL
         AND json_array_length(candidate_ids_json) > 0`)
       .get(issueDate) as {issueDate:string;residentId:string;decidedAt:number;candidateCount:number;selectedCount:number} | undefined;
-  }
-
-  assertArticleReviewReady(option: string, residentId?: string): void {
-    const batch = this.#database.prepare(`SELECT b.selected_ids_json, b.reviewer_resident_id FROM lingye_daily_submission_batches b
-      JOIN lingye_daily_submission_review_options o USING(issue_date) WHERE o.option_id = ?`)
-      .get(option) as { selected_ids_json: string | null; reviewer_resident_id: string } | undefined;
-    if (batch && residentId !== undefined && batch.reviewer_resident_id !== residentId) throw new DailySubmissionError("reviewer_mismatch");
-    if (batch?.selected_ids_json === null) throw new DailySubmissionError("submission_review_pending");
   }
 
   reviewSubmission(residentId: string, option: string, text: string | undefined, now: number) {
@@ -312,7 +297,8 @@ export class LingyeDailyStore {
     return (JSON.parse(batch.selected_ids_json) as string[]).map(id => {
       const row = this.#database.prepare("SELECT * FROM lingye_daily_submissions WHERE submission_id = ?").get(id) as DailySubmission | undefined;
       if (!row) throw new DailySubmissionError("selected_submission_missing");
-      return { submission_id: row.submission_id, text: row.body, source_label: row.source_label };
+      return { submission_id: row.submission_id, text: row.body, source_label: row.source_label,
+        question_text: row.question_text, question_issue_date: row.question_issue_date };
     });
   }
 
@@ -528,7 +514,16 @@ export class LingyeDailyStore {
          LIMIT 1`,
       )
       .get(publishedBy) as LingyeDailyIssueRow | undefined;
-    return row ? mapLingyeDailyIssue(row) : undefined;
+    if (!row) return undefined;
+    const issue = mapLingyeDailyIssue(row);
+    issue.edition.submissions = issue.edition.submissions.map(submission => {
+      if (submission.question_text || !submission.submission_id) return submission;
+      const original = this.#database.prepare(
+        "SELECT question_text, question_issue_date FROM lingye_daily_submissions WHERE submission_id = ? AND body = ?",
+      ).get(submission.submission_id, submission.text) as Pick<DailySubmission, "question_text" | "question_issue_date"> | undefined;
+      return original ? { ...submission, ...original } : submission;
+    });
+    return issue;
   }
 
   getPublishedImage(issueDate: string, revision: number, imageId: string, now: number): {mediaType:string;dataBase64:string} | undefined {

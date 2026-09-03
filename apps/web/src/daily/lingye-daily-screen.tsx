@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import "./lingye-daily-editor.css";
 import { likeLingyeDailyReporterPublication, loadLatestLingyeDaily } from "./lingye-daily-client";
 import {
   type LingyeDailyIssue,

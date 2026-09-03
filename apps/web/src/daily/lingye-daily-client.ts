@@ -65,6 +65,8 @@ export async function loadLatestLingyeDaily(fetchImplementation: typeof fetch = 
   if (!parsed.issue) return { issue: null, reporterPublications: reporterItems };
   return {
     issue: {
+      ...(parsed.issue.editor_document ? {editorDocument:parsed.issue.editor_document,
+        editorImageUrls:parsed.issue.editor_image_urls ?? {}} : {}),
       issueNumber: String(parsed.issue.issue_number),
       issueDate: parsed.issue.issue_date,
       dateLabel: dateLabel(parsed.issue.issue_date),
@@ -111,6 +113,8 @@ export async function loadLatestLingyeDaily(fetchImplementation: typeof fetch = 
       submissions: parsed.issue.submissions.map((submission) => ({
         text: submission.text,
         sourceLabel: submission.source_label,
+        ...(submission.question_text ? { questionText: submission.question_text } : {}),
+        ...(submission.question_issue_date ? { questionIssueDate: submission.question_issue_date } : {}),
       })),
       ...(parsed.issue.submission_reviewer !== undefined ? { submissionReviewer: parsed.issue.submission_reviewer } : {}),
       ...(parsed.issue.weather_forecast ? { weatherForecast: parsed.issue.weather_forecast } : {}),

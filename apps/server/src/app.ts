@@ -1,5 +1,6 @@
 import { registerHumanBulletinRoutes } from "./human-bulletin-routes.js";
 import {dailyImageUrl, registerDailyImageRoutes} from "./lingye-daily-images.js";
+import {registerDailyEditorRoutes} from "./lingye-daily-editor-routes.js";
 import {
   additionalHumanProfileRequestSchema,
   type BellAccessErrorCode,
@@ -781,6 +782,8 @@ function lingyeDailyIssueResponse(issue: LingyeDailyIssueRecord) {
     ]),
   );
   return {
+    ...(issue.edition.editor_document ? {editor_document:issue.edition.editor_document,
+      editor_image_urls:Object.fromEntries(imageUrls)} : {}),
     issue_number: issue.issueNumber,
     issue_date: issue.issueDate,
     revision: issue.revision,
@@ -3825,63 +3828,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
   const lingyeDailyService = options.lingyeDailyService;
   if (lingyeDailyService) {
-    app.post(
-      "/api/internal/lingye-daily/issues",
-      { bodyLimit: 8 * 1024 * 1024 },
-      async (request, reply) => {
-        if (!lingyeDailyReadRequestSchema.safeParse(request.query).success) {
-          return sendLingyeDailyError(
-            reply,
-            400,
-            "invalid_request",
-            "The Lingye Daily publish request does not accept query parameters",
-          );
-        }
-        const parsedRequest = lingyeDailyPublishRequestSchema.safeParse(request.body);
-        if (!parsedRequest.success) {
-          return sendLingyeDailyError(
-            reply,
-            400,
-            "invalid_request",
-            "The Lingye Daily issue does not match the supported publish contract",
-          );
-        }
-        try {
-          const published = await lingyeDailyService.publish(
-            request.headers.authorization,
-            parsedRequest.data,
-          );
-          reply.header("cache-control", "no-store");
-          return lingyeDailyPublishSuccessSchema.parse({
-            published: true,
-            status: published.status,
-            issue_date: published.issue.issueDate,
-            issue_number: published.issue.issueNumber,
-            revision: published.issue.revision,
-            published_at: new Date(published.issue.publishedAt).toISOString(),
-          });
-        } catch (error) {
-          if (error instanceof LingyeDailyPublishAuthenticationError) {
-            return sendLingyeDailyError(
-              reply,
-              401,
-              "authentication_required",
-              "A valid Lingye Daily publish credential is required",
-            );
-          }
-          if (error instanceof LingyeDailyIdempotencyConflictError) {
-            return sendLingyeDailyError(
-              reply,
-              409,
-              "idempotency_conflict",
-              "The issue date or revision conflicts with the stored Lingye Daily issue",
-            );
-          }
-          throw error;
-        }
-      },
-    );
-
+    registerDailyEditorRoutes(app,{daily:lingyeDailyService,auth:options.registrationAuth});
     app.get("/api/lingye-daily/latest", async (request, reply) => {
       if (!lingyeDailyReadRequestSchema.safeParse(request.query).success) {
         return sendLingyeDailyError(

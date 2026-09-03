@@ -1,0 +1,11 @@
+html, body, #daily-editor-root { min-height: 100%; }
+body { margin: 0; background: #f8f3e8; font-family: "PingFang SC", "Microsoft YaHei", sans-serif; }
+.daily-editor-access { max-width: 560px; margin: 12vh auto; padding: 28px; color: #292318; border-block: 3px double #c6bca8; }
+.daily-editor-access-eyebrow { margin: 0 0 14px; font-size: 12px; letter-spacing: .2em; color: #78612c; }
+.daily-editor-access h1 { margin: 0 0 24px; font-family: "Songti SC", "STSong", "SimSun", serif; font-size: 28px; }
+.daily-editor-access p { line-height: 1.6; }
+.daily-editor-access-help { font-size: 13px; color: #6a5f4d; }
+.daily-editor-access-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+.daily-editor-access-actions a, .daily-editor-access-actions button { display: inline-flex; align-items: center; min-height: 44px; padding: 10px 14px; border: 1px solid #c6bca8; border-radius: 6px; color: #292318; background: #fffdf8; font: inherit; text-decoration: none; cursor: pointer; }
+.daily-editor-access-actions :focus-visible { outline: 2px solid #78612c; outline-offset: 3px; }
+@media (max-width: 600px) { .daily-editor-access { margin: 8vh 20px; padding: 24px 4px; } }

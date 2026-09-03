@@ -1,6 +1,8 @@
 // biome-ignore lint/correctness/noUnusedImports: the direct node:test TSX transform needs React in scope.
 import React, { type ReactNode } from "react";
 import { presentDailyIssue } from "./lingye-daily-presentation";
+import { type DailyDocument, dailyObservationQuestion } from "@doorbell/protocol";
+import { DailyDocumentView } from "./lingye-daily-document-view";
 
 export interface LingyeDailyFrontPage {
   title: string;
@@ -41,10 +43,12 @@ export interface LingyeDailyFarmObservation {
 export interface LingyeDailySubmission {
   text: string;
   sourceLabel?: string;
+  questionText?: string;
+  questionIssueDate?: string;
 }
 
 export interface LingyeDailyReporterArticle {
-  sections?: readonly { title: string; body: string }[];
+  sections?: readonly { title: string; body: string; paragraphs?: readonly string[] }[];
   publicationId: string;
   publishedAt?: string;
   version?: number;
@@ -71,6 +75,8 @@ export interface LingyeDailyReporterPublication {
 }
 
 export interface LingyeDailyIssue {
+  editorDocument?: DailyDocument;
+  editorImageUrls?: Record<string,string>;
   issueNumber: string;
   issueDate?: string;
   dateLabel: string;
@@ -87,6 +93,7 @@ export interface LingyeDailyIssue {
   revisionNote?: string;
   weatherForecast?: { title: string; body: string };
   emphasisText?: string;
+  emphasisTexts?: readonly string[];
 }
 
 interface SectionProps {
@@ -127,7 +134,7 @@ function DailyMasthead({ issue }: { issue: LingyeDailyIssue }) {
   );
 }
 
-function FrontPage({ frontPage, emphasisText }: { frontPage: LingyeDailyFrontPage | undefined; emphasisText: string | undefined }) {
+function FrontPage({ frontPage, emphasisText, emphasisTexts }: { frontPage: LingyeDailyFrontPage | undefined; emphasisText: string | undefined; emphasisTexts?: readonly string[] | undefined }) {
   const imageUrls =
     frontPage?.imageUrls ?? (frontPage?.illustrationUrl ? [frontPage.illustrationUrl] : []);
   return (
@@ -145,7 +152,7 @@ function FrontPage({ frontPage, emphasisText }: { frontPage: LingyeDailyFrontPag
           ))}
           {frontPage.paragraphs.map((paragraph) => (
             <p className="daily-body-copy" key={paragraph}>
-              <ParagraphText text={paragraph} emphasisText={emphasisText} />
+              <ParagraphText text={paragraph} emphasisText={emphasisText} emphasisTexts={emphasisTexts} />
             </p>
           ))}
         </>
@@ -156,8 +163,10 @@ function FrontPage({ frontPage, emphasisText }: { frontPage: LingyeDailyFrontPag
 
 function BehaviorSlices({
   slices = [],
+  emphasisTexts,
 }: {
   slices: readonly LingyeDailyBehaviorSlice[] | undefined;
+  emphasisTexts?: readonly string[] | undefined;
 }) {
   return (
     <DailySection id="daily-behavior-slices" label="人类行为切片" tone="green">
@@ -173,7 +182,7 @@ function BehaviorSlices({
                   <img alt="本期群聊来源图片" src={imageUrl} />
                 </figure>
               ))}
-              <p>{slice.body}</p>
+              <p><ParagraphText text={slice.body} emphasisTexts={emphasisTexts} /></p>
               {slice.sourceLabel ? <p className="daily-source-label">{slice.sourceLabel}</p> : null}
             </article>
           ))}
@@ -204,9 +213,10 @@ function GroupChat({ groupChat }: { groupChat: LingyeDailyGroupChat | undefined 
   );
 }
 
-function FarmObservation({ observation, articles = [] }: {
+function FarmObservation({ observation, articles = [], emphasisTexts }: {
   observation: LingyeDailyFarmObservation | undefined;
   articles?: readonly LingyeDailyReporterArticle[];
+  emphasisTexts?: readonly string[] | undefined;
 }) {
   const metrics = observation?.metrics ?? [];
   const hasContent = Boolean(observation?.summary) || metrics.length > 0 || articles.length > 0;
@@ -230,7 +240,7 @@ function FarmObservation({ observation, articles = [] }: {
           {observation?.summary ? (
             <p className="daily-farm-summary">{observation.summary}</p>
           ) : null}
-          <ReporterArticles articles={articles} />
+          <ReporterArticles articles={articles} emphasisTexts={emphasisTexts} />
         </>
       )}
     </DailySection>
@@ -257,12 +267,15 @@ function Quotes({ quotes = [] }: { quotes: readonly LingyeDailyQuote[] | undefin
 function Submissions({
   submissions = [],
   reviewer,
+  questions = [],
 }: {
   submissions: readonly LingyeDailySubmission[] | undefined;
   reviewer: string | null | undefined;
+  questions?: readonly {label:string;text:string}[];
 }) {
   return (
     <DailySection id="daily-submissions" label="小机投稿箱" tone="ink">
+      {questions.map(question => <p className="daily-submission-question" key={`${question.label}:${question.text}`}><strong>{question.label}：</strong>{question.text}</p>)}
       {submissions.length === 0 ? (
         <EmptySection />
       ) : (
@@ -275,10 +288,7 @@ function Submissions({
               <div aria-hidden="true" className="daily-stamp">
                 已查收
               </div>
-              <p>{submission.text}</p>
-              {submission.sourceLabel ? (
-                <p className="daily-source-label">{submission.sourceLabel}</p>
-              ) : null}
+              <p className="daily-submission-copy">{submission.text}</p>
             </article>
           ))}
         </div>
@@ -286,6 +296,12 @@ function Submissions({
       {reviewer ? <p className="daily-relay-byline"><span>审稿：{reviewer}</span></p> : null}
     </DailySection>
   );
+}
+
+function SubmissionInvitation({issueDate}:{issueDate:string|undefined}) {
+  const example=issueDate ? `doorbell({op:"go.newsroom.submit",args:{issueDate:${JSON.stringify(issueDate)},text:"对这期观察题的看法"}})` : undefined;
+  return <p className="daily-submission-note">欢迎各位居民踊跃投稿，分享你对本期观察题的看法！每期选登 3 篇，入选作品将署名刊登，每篇奖励 2000 金币。
+    {example ? <span className="daily-submission-example">使用 <code>{example}</code> 进行投稿。</span> : null}</p>;
 }
 
 function TomorrowQuestion({ question, issueDate }: { question: string | undefined; issueDate: string | undefined }) {
@@ -308,58 +324,7 @@ function TomorrowQuestion({ question, issueDate }: { question: string | undefine
   );
 }
 
-function ReporterPublications({
-  items,
-  onLike,
-  pendingLikeRef,
-}: {
-  items: readonly LingyeDailyReporterPublication[];
-  onLike?: ((likeRef: string) => void) | undefined;
-  pendingLikeRef?: string | null;
-}) {
-  if (items.length === 0) return null;
-  return (
-    <DailySection id="daily-reporter-publications" label="记者来稿" tone="ink">
-      <div className="daily-reporter-publications">
-        {items.map((publication) => {
-          const disabled =
-            !onLike || !publication.canLike || pendingLikeRef === publication.likeRef;
-          const label = publication.ownHousehold
-            ? "自己的稿件"
-            : publication.hasLiked
-              ? "已点赞"
-              : publication.status === "closed"
-                ? "评价已结束"
-                : pendingLikeRef === publication.likeRef
-                  ? "正在点赞"
-                  : `点赞 · ${publication.validLikes}`;
-          return (
-            <article className="daily-reporter-publication" key={publication.likeRef}>
-              <header>
-                <div>
-                  <p className="daily-reporter-section">{publication.sectionName ?? "综合来稿"}</p>
-                  <h3>{publication.authorName}</h3>
-                  {publication.authorFarmName ? <p>{publication.authorFarmName}</p> : null}
-                  <p className="daily-reporter-likes">{publication.validLikes} 个有效赞</p>
-                </div>
-                <button
-                  disabled={disabled}
-                  onClick={() => onLike?.(publication.likeRef)}
-                  type="button"
-                >
-                  {label}
-                </button>
-              </header>
-              <p>{publication.articleText}</p>
-            </article>
-          );
-        })}
-      </div>
-    </DailySection>
-  );
-}
-
-function ReporterArticles({ articles = [] }: { articles?: readonly LingyeDailyReporterArticle[] }) {
+function ReporterArticles({ articles = [], emphasisTexts }: { articles?: readonly LingyeDailyReporterArticle[]; emphasisTexts?: readonly string[] | undefined }) {
   if (articles.length === 0) return null;
   return (
     <>
@@ -368,7 +333,9 @@ function ReporterArticles({ articles = [] }: { articles?: readonly LingyeDailyRe
           {article.sections ? article.sections.map(section => (
             <React.Fragment key={section.title}>
               <h3 className="daily-relay-title">{section.title}</h3>
-              <p className="daily-relay-body">{section.body}</p>
+              {section.paragraphs ? section.paragraphs.map((paragraph, index) => (
+                <p className="daily-body-copy" key={index}><ParagraphText text={paragraph} emphasisTexts={emphasisTexts} /></p>
+              )) : <p className="daily-relay-body">{section.body}</p>}
             </React.Fragment>
           )) : <p className="daily-relay-body">{article.articleText}</p>}
           <p className="daily-relay-byline">
@@ -381,10 +348,13 @@ function ReporterArticles({ articles = [] }: { articles?: readonly LingyeDailyRe
   );
 }
 
-function ParagraphText({ text, emphasisText }: { text: string; emphasisText: string | undefined }) {
-  const start = emphasisText ? text.indexOf(emphasisText) : -1;
-  if (start < 0 || !emphasisText) return <>{text}</>;
-  return <>{text.slice(0, start)}<strong className="daily-nain-emphasis" style={{ color: "#000", fontWeight: 700 }}>{emphasisText}</strong>{text.slice(start + emphasisText.length)}</>;
+function ParagraphText({ text, emphasisText, emphasisTexts = [] }: { text: string; emphasisText?: string | undefined; emphasisTexts?: readonly string[] | undefined }) {
+  const highlights = [...(emphasisText ? [emphasisText] : []), ...emphasisTexts].filter(part => part && text.includes(part));
+  if (highlights.length === 0) return <>{text}</>;
+  const pattern = new RegExp(`(${highlights.map(part => part.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")).join("|")})`, "gu");
+  return <>{text.split(pattern).map((part, index) => highlights.includes(part)
+    ? <strong className="daily-nain-emphasis" style={{ color: "#000", fontWeight: 700 }} key={index}>{part}</strong>
+    : part)}</>;
 }
 
 function WeatherForecast({ forecast }: { forecast: LingyeDailyIssue["weatherForecast"] }) {
@@ -446,11 +416,6 @@ export function LingyeDailyPage({
           <h2 id="daily-unpublished-title">尚无已出版日报</h2>
           <p>日报出版后会在这里显示。</p>
         </main>
-        <ReporterPublications
-          items={reporterPublications}
-          onLike={onReporterLike}
-          pendingLikeRef={pendingLikeRef}
-        />
       </article>
     );
   }
@@ -458,27 +423,27 @@ export function LingyeDailyPage({
   return (
     <article className="lingye-daily-page">
       <DailyMasthead issue={issue} />
+      {issue.editorDocument ? <>
+        <DailyDocumentView document={issue.editorDocument} images={issue.editorImageUrls ?? {}} />
+        {dailyObservationQuestion(issue.editorDocument) ? <SubmissionInvitation issueDate={issue.issueDate} /> : null}
+      </> : <>
       <div className="daily-newspaper-body">
         <main className="daily-main-column">
-          <FrontPage frontPage={issue.frontPage} emphasisText={issue.emphasisText} />
-          <BehaviorSlices slices={issue.behaviorSlices} />
+          <FrontPage frontPage={issue.frontPage} emphasisText={issue.emphasisText} emphasisTexts={issue.emphasisTexts} />
+          <BehaviorSlices slices={issue.behaviorSlices} emphasisTexts={issue.emphasisTexts} />
         </main>
         <aside className="daily-sidebar" aria-label="本期侧栏">
           <GroupChat groupChat={issue.groupChat} />
         </aside>
       </div>
-      <FarmObservation observation={issue.farmObservation} articles={issue.reporterArticles ?? []} />
+      <FarmObservation observation={issue.farmObservation} articles={issue.reporterArticles ?? []} emphasisTexts={issue.emphasisTexts} />
       <WeatherForecast forecast={issue.weatherForecast} />
       <Quotes quotes={issue.quotes} />
-      <Submissions submissions={issue.submissions} reviewer={issue.submissionReviewer === undefined
+      <Submissions submissions={issue.submissions} questions={issue.submissionQuestions ?? []} reviewer={issue.submissionReviewer === undefined
         ? [...new Set(issue.reporterArticles?.map(article => article.reviewer) ?? [])].join("、")
         : issue.submissionReviewer} />
-      <ReporterPublications
-        items={reporterPublications.filter(publication => !issue.reporterArticles?.some(article => article.publicationId === publication.publicationId))}
-        onLike={onReporterLike}
-        pendingLikeRef={pendingLikeRef}
-      />
       <TomorrowQuestion question={issue.tomorrowQuestion} issueDate={issue.issueDate} />
+      </>}
       {issue.revisionNote ? <p className="daily-revision-note">{issue.revisionNote}</p> : null}
       <NewspaperLike issue={issue} publications={reporterPublications} onLike={onReporterLike} pendingLikeRef={pendingLikeRef} />
     </article>

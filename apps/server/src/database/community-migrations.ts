@@ -9,7 +9,7 @@ import {
 } from "@doorbell/protocol";
 import type Database from "better-sqlite3";
 
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 21;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 22;
 const LEGACY_CONNECTOR_DELIVERY_GENERATION = "00000000-0000-0000-0000-000000000000";
 
 interface FarmCreationRequestRow {
@@ -2111,6 +2111,31 @@ export function migrateCommunityDatabase(
         );
       `);
       database.pragma("user_version = 21");
+    })();
+  }
+  if (migratedSchemaVersion < 22) {
+    database.transaction(() => {
+      database.exec(`
+        CREATE TABLE lingye_daily_editor_drafts (
+          issue_date TEXT PRIMARY KEY, input_json TEXT NOT NULL, edition_json TEXT NOT NULL,
+          document_json TEXT NOT NULL, version INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+          updated_by TEXT, published_version INTEGER, publication_synced INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE lingye_daily_editor_history (
+          issue_date TEXT NOT NULL, version INTEGER NOT NULL, document_json TEXT NOT NULL,
+          saved_at INTEGER NOT NULL, saved_by TEXT, PRIMARY KEY(issue_date, version)
+        );
+        CREATE TABLE lingye_daily_editor_sources (
+          source_id INTEGER PRIMARY KEY, issue_date TEXT NOT NULL, kind TEXT NOT NULL,
+          source_json TEXT NOT NULL, received_at INTEGER NOT NULL
+        );
+        CREATE TABLE lingye_daily_editor_rewards (
+          submission_id TEXT PRIMARY KEY REFERENCES lingye_daily_submissions(submission_id),
+          issue_date TEXT NOT NULL, requested_by TEXT NOT NULL, requested_at INTEGER NOT NULL,
+          paid_at INTEGER
+        );
+      `);
+      database.pragma("user_version = 22");
     })();
   }
   database.transaction(() => {

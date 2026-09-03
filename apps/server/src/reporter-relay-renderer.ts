@@ -72,6 +72,20 @@ ${actionCall(wake.action, "你的报道原稿")}
 
 ${wake.selection_text}`;
     case "review": {
+      if ("review_kind" in wake) {
+        return [
+          "【铃野日报社·农场稿审稿】",
+          "请结合对应素材核对稿件的事实和表达。通过后交主编；需要修改时，可以把意见退给撰稿记者，也可以直接润色后提交主编。",
+          `通过后交主编：\n${actionCall(wake.actions.approve)}`,
+          ...(wake.actions.supplement ? [
+            `把意见退给撰稿记者：\n${actionCall(wake.actions.supplement, "需要补充或修改的具体内容")}`,
+          ] : []),
+          `直接润色后提交主编：\n${actionCall(wake.actions.polish, "你的报道原稿")}`,
+          `选题记者已经完成选题：\n\n${wake.selection_text}`,
+          ...(wake.review_feedback ? [`上次审稿意见：\n\n${wake.review_feedback}`] : []),
+          `撰稿记者已经提交原稿：\n\n${wake.article_text}`,
+        ].join("\n\n");
+      }
       const approve = actionCall(wake.actions.approve);
       const reject = actionCall(wake.actions.reject, "退稿原因");
       const materials = materialsText(wake.materials);

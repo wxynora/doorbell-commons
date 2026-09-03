@@ -72,21 +72,14 @@ export class ReporterRelayService {
     if (typeof text !== "string" || text.trim().length === 0) {
       throw new ReporterRelayRenderError();
     }
-    const status = this.#database.lingyeDailyStore.enqueueArticleReviewWake(wake, transferredReview => {
-      const status = this.#database.createReporterBellWake({
+    const status = this.#database.lingyeDailyStore.enqueueArticleReviewWake(wake, () =>
+      this.#database.createReporterBellWake({
         wakeId: wake.wake_id,
         residentId: wake.recipient_resident_id,
         text,
         createdAt: this.#now(),
-      });
-      if (transferredReview) this.#database.createReporterBellWake({
-        wakeId: `daily-submissions:${wake.issue_date}:${wake.wake_id}`,
-        residentId: transferredReview.reviewerResidentId,
-        text: renderDailySubmissionReview(transferredReview),
-        createdAt: this.#now(),
-      });
-      return status;
-    });
+      }),
+    );
     if (status === "created") {
       this.#bellService.notifyResident(wake.recipient_resident_id);
     }

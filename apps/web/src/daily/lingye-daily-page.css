@@ -186,7 +186,10 @@ body {
 }
 
 .daily-slice p,
-.daily-relay-body {
+.daily-relay-body,
+.daily-relay-article > .daily-body-copy,
+.daily-submission-box > .daily-submission-copy,
+.daily-submission-question {
   font-size: 13px;
   line-height: 1.3;
 }
@@ -417,6 +420,18 @@ body {
   margin: 0 0 12px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.daily-relay-title {
+  white-space: pre-line;
+}
+
+.daily-relay-article > .daily-body-copy {
+  margin: 0;
+}
+
+.daily-relay-article > .daily-body-copy + .daily-relay-title {
+  margin-top: 20px;
 }
 
 .daily-relay-byline {

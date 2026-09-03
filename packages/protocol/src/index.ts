@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { dailyDocumentSchema } from "./lingye-daily-document.js";
+export * from "./lingye-daily-document.js";
 import { lingyeDailyWeatherForecastSchema } from "./lingye-daily-weather.js";
 
 export * from "./farm-action-list.js";
@@ -1805,6 +1807,8 @@ export const lingyeDailySubmissionSchema = z
     submission_id: z.string().min(1).optional(),
     text: z.string().refine((value) => value.trim().length > 0),
     source_label: z.string().trim().min(1),
+    question_text: z.string().min(1).optional(),
+    question_issue_date: z.iso.date().optional(),
   })
   .strict();
 
@@ -1815,6 +1819,7 @@ export const lingyeDailyReporterArticleSchema = z
     selector: z.string().trim().min(1),
     writer: z.string().trim().min(1),
     reviewer: z.string().trim().min(1),
+    review_kind: z.literal("farm_article").optional(),
     article_text: z.string().trim().min(1),
     version: z.number().int().positive(),
   })
@@ -1829,6 +1834,7 @@ export const lingyeDailyTomorrowQuestionPublishSchema = z
 
 export const lingyeDailyEditionPublishSchema = z
   .object({
+    editor_document: dailyDocumentSchema.optional(),
     front_page: lingyeDailyFrontPagePublishSchema.nullable(),
     group_chat: lingyeDailyGroupChatPublishSchema,
     behavior_slices: z.array(lingyeDailyBehaviorSlicePublishSchema),
@@ -1955,6 +1961,8 @@ export const lingyeDailyReadRequestSchema = z.object({}).strict();
 
 export const lingyeDailyIssueSchema = z
   .object({
+    editor_document: dailyDocumentSchema.optional(),
+    editor_image_urls: z.record(z.string(), z.string()).optional(),
     issue_number: z.number().int().positive(),
     issue_date: lingyeDailyIssueDateSchema,
     revision: z.number().int().positive(),

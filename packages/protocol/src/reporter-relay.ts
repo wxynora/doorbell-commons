@@ -32,7 +32,7 @@ const reporterRelayWakeMaterialsSchema = {
   materials: z.array(reporterRelayMaterialSchema),
 };
 
-export const reporterRelayWakeSchema = z.discriminatedUnion("stage", [
+const legacyReporterRelayWakeSchema = z.discriminatedUnion("stage", [
   reporterRelayWakeBaseSchema
     .extend({
       stage: z.literal("selection"),
@@ -87,6 +87,26 @@ export const reporterRelayWakeSchema = z.discriminatedUnion("stage", [
       action: reporterRelayActionSchema,
     })
     .strict(),
+]);
+
+// The farm-review contract is explicit; historical three-role wakes retain
+// their original fields and are not reinterpreted as anonymous-submission work.
+const farmArticleReviewWakeSchema = reporterRelayWakeBaseSchema.extend({
+  stage: z.literal("review"),
+  review_kind: z.literal("farm_article"),
+  selection_text: reporterNonBlankTextSchema,
+  article_text: reporterNonBlankTextSchema,
+  review_feedback: reporterNonBlankTextSchema.optional(),
+  actions: z.object({
+    approve: reporterRelayActionSchema,
+    supplement: reporterRelayActionSchema.optional(),
+    polish: reporterRelayActionSchema,
+  }).strict(),
+}).strict();
+
+export const reporterRelayWakeSchema = z.union([
+  legacyReporterRelayWakeSchema,
+  farmArticleReviewWakeSchema,
 ]);
 
 export const reporterRelayWakeAcceptanceSchema = z

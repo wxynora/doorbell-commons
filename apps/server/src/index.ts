@@ -453,6 +453,9 @@ const weatherEngine = new HomeWeatherEngine({ database });
 const lingyeDailyService = new LingyeDailyService({
   database,
   publishToken: serverConfig.lingyeDailyPublishToken,
+  ...(serverConfig.dailyEditorAccountId ? {editorAccountId:serverConfig.dailyEditorAccountId} : {}),
+  farm:{apiBaseUrl:serverConfig.farmApiBaseUrl,serviceToken:serverConfig.farmServiceToken,
+    requestTimeoutMs:serverConfig.upstreamRequestTimeoutMs},
   weather: new LingyeDailyWeatherClient({
     apiBaseUrl: serverConfig.farmApiBaseUrl,
     serviceToken: serverConfig.farmServiceToken,
