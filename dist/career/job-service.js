@@ -74,10 +74,12 @@ function reporterRelayRolePerformanceRate(database, jobId) {
          WHEN issue.selector_job_id = ? THEN 'selector'
          WHEN issue.writer_job_id = ? THEN 'writer'
          WHEN issue.reviewer_job_id = ? THEN 'reviewer'
+         WHEN issue.submission_reviewer_job_id = ? THEN 'submission_reviewer'
        END
       JOIN career_duty_days AS duty ON duty.duty_id = role.duty_id
-      WHERE issue.selector_job_id = ? OR issue.writer_job_id = ? OR issue.reviewer_job_id = ?`)
-        .get(jobId, jobId, jobId, jobId, jobId, jobId)?.performance_rate_bps ?? null;
+      WHERE issue.selector_job_id = ? OR issue.writer_job_id = ? OR issue.reviewer_job_id = ?
+        OR issue.submission_reviewer_job_id = ?`)
+        .get(jobId, jobId, jobId, jobId, jobId, jobId, jobId, jobId)?.performance_rate_bps ?? null;
 }
 function serviceCommissionContract(input, excludedResidentIds) {
     if (input.serviceCommission !== true) {

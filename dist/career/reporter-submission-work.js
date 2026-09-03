@@ -42,13 +42,40 @@ export function completeReporterSubmissionWork(database, backend, input) {
         fail("reporter_submission_review_invalid", "A completed submission review needs a real nonempty batch and valid decision metadata");
     }
     return runInTransaction(database, () => {
-        const issue = database.prepare(`SELECT issue_reference, reviewer_job_id, reviewer_resident_id
+        const issue = database.prepare(`SELECT issue_reference, reviewer_job_id, reviewer_resident_id,
+          submission_reviewer_job_id, submission_reviewer_resident_id
           FROM career_reporter_relay_issues WHERE issue_date = ?`).get(issueDate);
-        if (!issue?.reviewer_job_id)
+        const submissionDuty = database.prepare(`SELECT role.resident_id FROM career_reporter_duty_roles role
+          JOIN career_duty_days duty ON duty.duty_id = role.duty_id
+          WHERE role.duty_date = ? AND role.role = 'submission_reviewer' AND duty.status = 'scheduled'`)
+            .get(issueDate);
+        const fourRole = issue ? Boolean(issue.submission_reviewer_resident_id) : Boolean(submissionDuty);
+        const assignedResidentId = fourRole
+            ? issue?.submission_reviewer_resident_id ?? submissionDuty?.resident_id
+            : issue?.reviewer_resident_id;
+        if (assignedResidentId !== residentId)
+            fail("reporter_submission_reviewer_mismatch", "The completed batch reviewer does not match the assigned reporter job");
+        const issueReference = issue?.issue_reference ?? `lingye-daily:${issueDate}`;
+        const jobId = fourRole
+            ? issue?.submission_reviewer_job_id ?? `reporter-relay-job:${issueDate}:submission-reviewer`
+            : issue?.reviewer_job_id;
+        if (!jobId)
             fail("reporter_submission_job_missing", "The issue has no assigned submission review job");
-        const job = database.prepare("SELECT * FROM career_jobs WHERE job_id = ?").get(issue.reviewer_job_id);
+        if (fourRole && !database.prepare("SELECT 1 FROM career_jobs WHERE job_id = ?").get(jobId)) {
+            backend.trustedSystemCommands.createJob({
+                jobId, career: "reporter", sourceType: SOURCE_TYPE,
+                sourceId: `${issueReference}:submission-reviewing`,
+                objectType: "reporter_submission_batch", objectId: issueReference,
+                ownerResidentId: null, requiredLevel: 1, difficultyLevel: 1, assignmentMode: "accepted",
+            });
+            backend.trustedSystemCommands.acceptJob(jobId, residentId);
+        }
+        if (fourRole && issue) database.prepare(`UPDATE career_reporter_relay_issues
+          SET submission_reviewer_job_id = ? WHERE issue_date = ? AND submission_reviewer_resident_id = ?`)
+            .run(jobId, issueDate, residentId);
+        const job = database.prepare("SELECT * FROM career_jobs WHERE job_id = ?").get(jobId);
         if (!job || job.career !== "reporter" || job.worker_resident_id !== residentId ||
-            issue.reviewer_resident_id !== residentId)
+            assignedResidentId !== residentId)
             fail("reporter_submission_reviewer_mismatch", "The completed batch reviewer does not match the assigned reporter job");
         const resultReference = `reporter-submission-review:${issueDate}:${residentId}:${decidedAt}:${candidateCount}:${selectedCount}`;
         const response = { issue_date: issueDate, resident_id: residentId, decided_at: decidedAt,
@@ -61,16 +88,16 @@ export function completeReporterSubmissionWork(database, backend, input) {
         }
         if (!["accepted", "assigned", "active"].includes(job.status))
             fail("reporter_submission_job_not_actionable", "The assigned submission review job is no longer actionable");
-        if (job.source_type === "reporter_daily_reviewing") {
+        if (!fourRole && job.source_type === "reporter_daily_reviewing") {
             if (job.decision_count !== 0)
                 fail("reporter_submission_legacy_review_conflict", "An article review decision cannot be relabelled as submission work");
             database.prepare(`UPDATE career_jobs SET source_type = ?, source_id = ?,
               object_type = 'reporter_submission_batch', object_id = ? WHERE job_id = ?`)
-                .run(SOURCE_TYPE, `${issue.issue_reference}:submission-reviewing`, issue.issue_reference, job.job_id);
+                .run(SOURCE_TYPE, `${issueReference}:submission-reviewing`, issueReference, job.job_id);
         }
         else if (job.source_type !== SOURCE_TYPE ||
-            job.source_id !== `${issue.issue_reference}:submission-reviewing` ||
-            job.object_type !== "reporter_submission_batch" || job.object_id !== issue.issue_reference) {
+            job.source_id !== `${issueReference}:submission-reviewing` ||
+            job.object_type !== "reporter_submission_batch" || job.object_id !== issueReference) {
             fail("reporter_submission_job_source_mismatch", "The job is not the issue's submission review work");
         }
         backend.trustedSystemCommands.recordDecision({

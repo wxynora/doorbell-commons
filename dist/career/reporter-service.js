@@ -881,6 +881,60 @@ export function submitReporterSupplement(database, input) {
 
 export const resubmitReporterArticle = submitReporterSupplement;
 
+export function polishReporterArticle(database, input) {
+    installBase(database);
+    const now = nowOf(input);
+    const parentArticleId = identifier(input?.parentArticleId, "parent_article_id");
+    const reviewerResidentId = identifier(input?.reviewerResidentId, "resident_id");
+    const reviewerJobId = identifier(input?.reviewerJobId, "job_id");
+    if (input?.trustedReview !== true)
+        fail("reporter_review_not_trusted");
+    return runInTransaction(database, () => {
+        const parent = requireArticle(database, parentArticleId);
+        const workflow = database.prepare(`SELECT workflow.*
+          FROM career_reporter_story_workflows AS workflow
+          JOIN career_reporter_relay_issues AS issue ON issue.issue_reference = workflow.issue_reference
+          WHERE workflow.reviewer_job_id = ? AND workflow.reviewer_resident_id = ?
+            AND workflow.writer_job_id = ? AND workflow.writer_resident_id = ?
+            AND issue.submission_reviewer_resident_id IS NOT NULL`)
+            .get(reviewerJobId, reviewerResidentId, parent.job_id, parent.resident_id);
+        if (!workflow)
+            fail("reporter_relay_review_not_actionable");
+        const revision = {
+            articleId: input?.articleId,
+            jobId: parent.job_id,
+            residentId: parent.resident_id,
+            parentArticleId,
+            sectionId: parent.section_id,
+            articleText: input?.articleText,
+            citations: articleCitations(database, parentArticleId),
+            numericClaims: parseJson(parent.numeric_claims_json),
+            idempotencyKey: input?.idempotencyKey,
+        };
+        const replay = replayArticleByIdempotency(database, revision, "polish", parentArticleId);
+        if (replay) {
+            if (replay.reviewerReference !== `resident:${reviewerResidentId}`)
+                fail("reporter_article_idempotency_conflict");
+            return replay;
+        }
+        if (workflow.status !== "pending_review" || workflow.article_id !== parentArticleId ||
+            parent.status !== "pending_review" || parent.review_decision !== null)
+            fail("reporter_workflow_not_reviewable");
+        const issue = database.prepare(`SELECT status, article_id FROM career_reporter_relay_issues
+          WHERE issue_reference = ?`).get(workflow.issue_reference);
+        if (issue?.status !== "review_pending" || issue.article_id !== parentArticleId)
+            fail("reporter_relay_review_not_actionable");
+        requireWorkerJob(database, reviewerJobId, reviewerResidentId);
+        activeReporterQualification(database, reviewerResidentId, now);
+        validateRevisionParent(database, parentArticleId, "polish", parent.job_id, parent.resident_id);
+        const article = insertArticle(database, { ...revision, now,
+            version: nextArticleVersion(database, parent.job_id), revisionKind: "polish" });
+        return reviewReporterArticle(database, { articleId: article.articleId,
+            decision: "approve", reviewerReference: `resident:${reviewerResidentId}`,
+            trustedReview: true, now });
+    });
+}
+
 export function createReporterCorrection(database, input) {
     installBase(database);
     const now = nowOf(input);
@@ -1032,6 +1086,7 @@ export function listReporterPublicationsForHuman(database, input) {
             credits?.selectorResidentId,
             credits?.writerResidentId ?? publication.resident_id,
             credits?.reviewerResidentId,
+            credits?.submissionReviewerResidentId,
         ].filter(Boolean);
         const ownHousehold = creditedResidents.some((residentId) => relatedResidentIds.has(residentId));
         const closesAt = reporterEvaluationClosesAt(database, publication);
@@ -1080,6 +1135,7 @@ export function listReporterPublicationsForResident(database, input) {
             credits?.selectorResidentId,
             credits?.writerResidentId ?? publication.resident_id,
             credits?.reviewerResidentId,
+            credits?.submissionReviewerResidentId,
         ].filter(Boolean).includes(residentId);
         const closesAt = reporterEvaluationClosesAt(database, publication);
         const open = publication.status === "open" &&
@@ -1120,6 +1176,7 @@ export function recordReporterHumanLike(database, input) {
             credits?.selectorResidentId,
             credits?.writerResidentId ?? publication.resident_id,
             credits?.reviewerResidentId,
+            credits?.submissionReviewerResidentId,
         ].filter(Boolean);
         if (creditedResidents.some((residentId) => relatedResidentIds.has(residentId)))
             fail("reporter_author_like_forbidden");
@@ -1261,6 +1318,7 @@ export function recordReporterLike(database, input) {
             credits?.selectorResidentId,
             credits?.writerResidentId ?? publication.resident_id,
             credits?.reviewerResidentId,
+            credits?.submissionReviewerResidentId,
         ].filter(Boolean).includes(residentId))
             fail("reporter_author_like_forbidden");
         database.prepare(`

@@ -148,13 +148,16 @@ export async function handleDoorbellReporterRelayReviewer(req, res, method, runt
         const request = validIssueDateRequest(body);
         if (!request)
             return internalServiceError(res, 400, "invalid_request", "The reporter reviewer request is invalid");
+        const fourRole = runtime.database.prepare(`SELECT 1 FROM career_reporter_duty_roles
+          WHERE duty_date = ? AND role = 'submission_reviewer'`).get(request.issueDate);
         const row = runtime.database.prepare(`SELECT role.resident_id
           FROM career_reporter_duty_roles AS role
           JOIN career_duty_days AS duty ON duty.duty_id = role.duty_id
           JOIN career_employments AS employment ON employment.employment_id = duty.employment_id
-          WHERE role.duty_date = ? AND role.role = 'reviewer'
+          WHERE role.duty_date = ? AND role.role = ?
             AND duty.status = 'scheduled' AND employment.status = 'active'
-            AND employment.availability = 'available'`).get(request.issueDate);
+            AND employment.availability = 'available'`)
+            .get(request.issueDate, fourRole ? "submission_reviewer" : "reviewer");
         return jsonOut(res, 200, {
             ok: true,
             data: {

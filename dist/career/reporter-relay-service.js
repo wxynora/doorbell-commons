@@ -117,6 +117,8 @@ function mapIssue(row) {
         selectorResidentId: row.selector_resident_id,
         writerResidentId: row.writer_resident_id,
         reviewerResidentId: row.reviewer_resident_id,
+        submissionReviewerJobId: row.submission_reviewer_job_id ?? null,
+        submissionReviewerResidentId: row.submission_reviewer_resident_id ?? null,
         selectionText: row.selection_text,
         articleId: row.article_id,
         reviewFeedback: row.review_feedback,
@@ -436,12 +438,13 @@ function reviewActions(database, issue, sequence, now) {
         op: NEWSROOM_OPERATION,
         args: {
             option: reporterOptionHandle(database, issue.reviewer_resident_id,
-                `commission:resolve:${issue.reviewer_job_id}:${decision}`, now),
+                `commission:resolve:${issue.reviewer_job_id}:relay-review-${sequence}-${decision}`, now),
         },
     });
     const actions = {
         approve: action("approve"),
-        reject: action("reject"),
+        ...(issue.submission_reviewer_resident_id
+            ? { polish: action("polish") } : { reject: action("reject") }),
     };
     if (sequence === 1)
         actions.supplement = action("needs_supplement");
@@ -453,9 +456,9 @@ export function reporterRelayWake(database, issueReference, now = Date.now(), re
     installCareerSchema(database);
     const issue = requireIssue(database, issueReference);
     const stage = requestedStage ?? wakeStageForStatus(issue.status);
-    // Daily article review is no longer a reporter task. Old delivered wakes
-    // remain history, but must never be re-created or returned as actionable.
-    if (!stage || stage === "review")
+    // Only newly frozen four-role issues restore article review. The three-role
+    // already-written issues retain their direct-to-editor publication boundary.
+    if (!stage || (stage === "review" && !issue.submission_reviewer_resident_id))
         return null;
     const sequence = requestedSequence ?? currentWakeSequence(database, issue, stage);
     const wakeId = `reporter-wake:${issue.issue_date}:${stage}:${sequence}`;
@@ -475,9 +478,14 @@ export function reporterRelayWake(database, issueReference, now = Date.now(), re
         recipient_resident_id: wake.recipient_resident_id,
         stage,
         issue_date: issue.issue_date,
-        ...(["selection", "review"].includes(stage)
+        ...(stage === "selection"
             ? { materials: publicMaterials(database, issue.issue_reference) }
             : {}),
+        ...(stage === "review" ? {
+            review_kind: "farm_article",
+            selection_text: reporterSelectionWithMaterials(
+                issue.selection_text, publicMaterials(database, issue.issue_reference)),
+        } : {}),
         ...stageInputs(database, issue, stage, sequence),
         ...(stage === "review"
             ? { actions: reviewActions(database, issue, sequence, now) }
@@ -540,7 +548,8 @@ export function pruneReporterRelayRawMaterials(database, now = Date.now()) {
                   SET status = 'rejected', reviewed_at = COALESCE(reviewed_at, ?)
                   WHERE issue_reference = ? AND status <> 'published'`)
                     .run(now, issue.issue_reference);
-                for (const jobId of [issue.selector_job_id, issue.writer_job_id, issue.reviewer_job_id].filter(Boolean)) {
+                for (const jobId of [issue.selector_job_id, issue.writer_job_id, issue.reviewer_job_id,
+                    issue.submission_reviewer_job_id].filter(Boolean)) {
                     database.prepare(`UPDATE career_jobs
                       SET status = 'expired', ended_at = COALESCE(ended_at, ?), updated_at = ?
                       WHERE job_id = ? AND status NOT IN ('completed', 'cancelled', 'transferred', 'expired')`)
@@ -600,7 +609,7 @@ export function startReporterRelayIssue(database, backend, input) {
         const roster = ensureReporterDutyRoles(database, window.periodEnd, {
             drawInt: input?.drawInt ?? randomInt,
         });
-        if (roster.length !== 3)
+        if (![3, 4].includes(roster.length))
             fail("reporter_duty_roster_incomplete");
         const role = Object.fromEntries(roster.map((entry) => [entry.role, entry]));
         if (!role.selector || !role.writer || !role.reviewer)
@@ -638,11 +647,17 @@ export function startReporterRelayIssue(database, backend, input) {
         database.prepare(`INSERT INTO career_reporter_relay_issues (
           issue_reference, issue_date, period_start, period_end, pack_id,
           selector_job_id, selector_resident_id, writer_resident_id, reviewer_resident_id,
+          submission_reviewer_job_id, submission_reviewer_resident_id,
           status, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'selector_pending', ?, ?)`)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'selector_pending', ?, ?)`)
             .run(window.issueReference, window.issueDate, window.periodStart, window.periodEnd,
                 packId, selectorJobId, role.selector.residentId, role.writer.residentId,
-                role.reviewer.residentId, now, now);
+                role.reviewer.residentId,
+                role.submission_reviewer ? database.prepare(`SELECT job_id FROM career_jobs
+                  WHERE job_id = ? AND worker_resident_id = ?`)
+                    .get(`reporter-relay-job:${window.issueDate}:submission-reviewer`,
+                        role.submission_reviewer.residentId)?.job_id ?? null : null,
+                role.submission_reviewer?.residentId ?? null, now, now);
         const insertMaterial = database.prepare(`INSERT INTO career_reporter_relay_materials (
           issue_reference, material_index, source_id, category, occurred_at, title, content_json
         ) VALUES (?, ?, ?, ?, ?, ?, ?)`);
@@ -867,10 +882,11 @@ export function beginReporterRelayWriting(database, backend, input) {
     backend.trustedSystemCommands.createJob({
         jobId: reviewerJobId,
         career: "reporter",
-        sourceType: "reporter_daily_submission_reviewing",
-        sourceId: `${issue.issue_reference}:submission-reviewing`,
-        objectType: "reporter_submission_batch",
-        objectId: issue.issue_reference,
+        sourceType: issue.submission_reviewer_resident_id
+            ? "reporter_daily_reviewing" : "reporter_daily_submission_reviewing",
+        sourceId: `${issue.issue_reference}:${issue.submission_reviewer_resident_id ? "reviewing" : "submission-reviewing"}`,
+        objectType: issue.submission_reviewer_resident_id ? "reporter_review" : "reporter_submission_batch",
+        objectId: issue.submission_reviewer_resident_id ? `${issue.issue_reference}:review` : issue.issue_reference,
         ownerResidentId: null,
         requiredLevel: 1,
         difficultyLevel: 1,
@@ -908,6 +924,16 @@ export function markReporterRelayArticle(database, input) {
         fail("reporter_relay_writing_not_actionable");
     const articleId = identifier(input?.articleId, "article_id");
     return runInTransaction(database, () => {
+        if (issue.submission_reviewer_resident_id) {
+            const article = database.prepare(`SELECT 1 FROM career_reporter_articles
+              WHERE article_id = ? AND job_id = ? AND resident_id = ? AND status = 'pending_review'`)
+                .get(articleId, issue.writer_job_id, issue.writer_resident_id);
+            if (!article) fail("reporter_relay_article_missing");
+            database.prepare(`UPDATE career_reporter_relay_issues SET article_id = ?,
+              status = 'review_pending', updated_at = ? WHERE issue_reference = ?`)
+                .run(articleId, now, issue.issue_reference);
+            return reporterRelayWake(database, issue.issue_reference, now);
+        }
         stageReporterRelayArticle(database, issue, articleId, now);
         return null;
     });
@@ -945,9 +971,20 @@ export function markReporterRelayReview(database, input) {
         ? null
         : identifier(input?.feedback, "review_feedback");
     if (decision === "approve") {
+        const articleId = input?.articleId ?? issue.article_id;
+        if (articleId !== issue.article_id) {
+            const polished = database.prepare(`SELECT 1 FROM career_reporter_articles
+              WHERE article_id = ? AND job_id = ? AND resident_id = ?
+                AND revision_kind = 'polish' AND parent_article_id = ?
+                AND status = 'approved' AND review_decision = 'approve'
+                AND reviewer_reference = ?`).get(articleId, issue.writer_job_id,
+                    issue.writer_resident_id, issue.article_id, `resident:${issue.reviewer_resident_id}`);
+            if (!issue.submission_reviewer_resident_id || !polished)
+                fail("reporter_relay_review_not_actionable");
+        }
         database.prepare(`UPDATE career_reporter_relay_issues
-          SET status = 'ready', review_feedback = NULL, ready_at = ?, updated_at = ?
-          WHERE issue_reference = ?`).run(now, now, issue.issue_reference);
+          SET status = 'ready', article_id = ?, review_feedback = NULL, ready_at = ?, updated_at = ?
+          WHERE issue_reference = ?`).run(articleId, now, now, issue.issue_reference);
         return null;
     }
     if (decision === "reject") {
@@ -981,19 +1018,25 @@ export function publishReadyReporterRelay(database, backend, input) {
           WHERE issue_date = ?`).get(issueDate);
         // Finish the already-written, unpublished daily articles left at the
         // removed review gate. Keep their text and all historical wake records.
-        if (issue?.status === "review_pending" && issue.article_id) {
+        if (issue?.status === "review_pending" && issue.article_id && !issue.submission_reviewer_resident_id) {
             stageReporterRelayArticle(database, issue, issue.article_id, now);
             issue = requireIssue(database, issue.issue_reference);
         }
         if (!issue || !["ready", "published"].includes(issue.status))
             return { issueDate, status: "pending", publication: null };
-        const scheduledPublicationAt = beijingTimestamp(issueDate, 9);
-        if (now < scheduledPublicationAt)
+        const scheduledPublicationAt = issue.submission_reviewer_resident_id
+            ? issue.ready_at : beijingTimestamp(issueDate, 9);
+        if (!issue.submission_reviewer_resident_id && now < scheduledPublicationAt)
             return { issueDate, status: "pending", publication: null };
-        const article = database.prepare(`SELECT article_text, version
+        const article = database.prepare(`SELECT article_text, version, status, review_decision,
+          reviewer_reference
           FROM career_reporter_articles WHERE article_id = ?`).get(issue.article_id);
         if (!article)
             fail("reporter_relay_article_missing");
+        if (issue.submission_reviewer_resident_id &&
+            (!["approved", "published"].includes(article.status) || article.review_decision !== "approve" ||
+                article.reviewer_reference !== `resident:${issue.reviewer_resident_id}`))
+            fail("reporter_relay_publication_not_ready");
         return {
             issueDate,
             status: "ready",
@@ -1005,6 +1048,7 @@ export function publishReadyReporterRelay(database, backend, input) {
                 reviewer: reporterName(issue.reviewer_resident_id),
                 article_text: article.article_text,
                 version: article.version,
+                ...(issue.submission_reviewer_resident_id ? { review_kind: "farm_article" } : {}),
             },
         };
     });
@@ -1016,11 +1060,11 @@ export function acknowledgePublishedReporterRelay(database, backend, input) {
     const issueDate = identifier(input?.issueDate, "issue_date");
     const publicationId = identifier(input?.publicationId, "publication_id");
     const publishedAt = timestamp(input?.publishedAt, "published_at");
-    if (publishedAt < beijingTimestamp(issueDate, 9))
-        fail("reporter_relay_publication_too_early");
     return runInTransaction(database, () => {
         const issue = database.prepare(`SELECT * FROM career_reporter_relay_issues
           WHERE issue_date = ?`).get(issueDate);
+        if (!issue?.submission_reviewer_resident_id && publishedAt < beijingTimestamp(issueDate, 9))
+            fail("reporter_relay_publication_too_early");
         if (!issue || !["ready", "published"].includes(issue.status))
             fail("reporter_relay_publication_not_ready");
         const expectedPublicationId = `reporter-publication:${issue.article_id}`;
@@ -1057,7 +1101,8 @@ export function acknowledgePublishedReporterRelay(database, backend, input) {
         });
         // Main records any actual anonymous review before publication ACK.
         // An unused empty-batch job is cancelled, never credited as work.
-        cancelUnperformedReporterSubmissionWork(database, backend, issue.reviewer_job_id);
+        if (!issue.submission_reviewer_resident_id)
+            cancelUnperformedReporterSubmissionWork(database, backend, issue.reviewer_job_id);
         database.prepare(`UPDATE career_reporter_relay_issues
           SET status = 'published', published_at = ?, updated_at = ?
           WHERE issue_reference = ?`).run(publishedAt, now, issue.issue_reference);

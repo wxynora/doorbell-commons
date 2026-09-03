@@ -55,6 +55,7 @@ import {
     registerReporterSourceFact,
     returnReporterMaterialPack,
     reviewReporterArticle,
+    polishReporterArticle,
     settleReporterEvaluation,
     submitReporterArticle,
     submitReporterSupplement,
@@ -1042,6 +1043,10 @@ export function createLingyeWorldBackend(database, options) {
             ...reporterWithClock(input),
             trustedReview: true,
         })),
+        polishReporterArticle: (input) => atomic(() => polishReporterArticle(database, {
+            ...reporterWithClock(input),
+            trustedReview: true,
+        })),
         publishReporterArticle: publishReporterArticleAndComplete,
         quoteReporterEvaluation: (input) => atomic(() => {
             assertReporterSettlementInput(input);
@@ -1076,10 +1081,14 @@ export function createLingyeWorldBackend(database, options) {
                 });
             }
             const workflow = reporterWorkflowForJob(database, quote.jobId);
+            const submissionJobId = workflow ? database.prepare(`SELECT submission_reviewer_job_id
+              FROM career_reporter_relay_issues WHERE issue_reference = ?`)
+                .get(workflow.issueReference)?.submission_reviewer_job_id : null;
             const collaborators = workflow
                 ? [
                     ["selector", workflow.selectorJobId],
                     ["reviewer", workflow.reviewerJobId],
+                    ...(submissionJobId ? [["submission_reviewer", submissionJobId]] : []),
                 ].filter(([, jobId]) => reporterHasCompletedWork(database, jobId)).map(([role, jobId]) => {
                     const collaborator = jobs.quoteReporterLikePerformance(jobId, quote.validLikes);
                     const idempotencyKey = `reporter-evaluation:${jobId}:credit`;

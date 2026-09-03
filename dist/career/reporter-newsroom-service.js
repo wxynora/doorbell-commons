@@ -3,7 +3,8 @@ import { CareerDomainError } from "./contracts.js";
 import { beijingDate, runInTransaction } from "./persistence.js";
 import { installCareerSchema } from "./schema.js";
 
-export const REPORTER_DUTY_ROLES = Object.freeze(["selector", "writer", "reviewer"]);
+export const REPORTER_DUTY_ROLES = Object.freeze(["selector", "writer", "reviewer", "submission_reviewer"]);
+const LEGACY_REPORTER_DUTY_ROLES = REPORTER_DUTY_ROLES.slice(0, 3);
 
 function fail(code, message = code) {
     throw new CareerDomainError(code, message);
@@ -74,7 +75,9 @@ export function ensureReporterDutyRoles(database, now = Date.now(), options = {}
           WHERE duty_date = ? ORDER BY role
         `).all(dutyDate);
         if (existing.length > 0) {
-            if (existing.length !== REPORTER_DUTY_ROLES.length)
+            const expectedRoles = existing.length === 3 ? LEGACY_REPORTER_DUTY_ROLES : REPORTER_DUTY_ROLES;
+            if (existing.length !== expectedRoles.length ||
+                expectedRoles.some(role => !existing.some(row => row.role === role)))
                 fail("reporter_duty_roster_conflict");
             const scheduled = new Set(reporterDutyRows(database, dutyDate).map((row) => row.duty_id));
             if (existing.some((row) => !scheduled.has(row.duty_id)))
@@ -273,10 +276,21 @@ export function markReporterWorkflowReviewed(database, input) {
             fail("reporter_workflow_not_found");
         if (row.status !== "pending_review")
             fail("reporter_workflow_not_reviewable");
+        const articleId = input?.articleId ?? row.article_id;
+        if (articleId !== row.article_id) {
+            const polished = database.prepare(`SELECT 1 FROM career_reporter_articles
+              WHERE article_id = ? AND job_id = ? AND resident_id = ?
+                AND revision_kind = 'polish' AND parent_article_id = ?
+                AND status = 'approved' AND review_decision = 'approve'
+                AND reviewer_reference = ?`).get(articleId, row.writer_job_id,
+                    row.writer_resident_id, row.article_id, `resident:${row.reviewer_resident_id}`);
+            if (decision !== "approve" || !polished)
+                fail("reporter_workflow_not_reviewable");
+        }
         database.prepare(`
           UPDATE career_reporter_story_workflows
-          SET status = ?, reviewed_at = ? WHERE workflow_id = ?
-        `).run(status, now, workflowId);
+          SET status = ?, article_id = ?, reviewed_at = ? WHERE workflow_id = ?
+        `).run(status, articleId, now, workflowId);
         return mapWorkflow(database.prepare(`
           SELECT * FROM career_reporter_story_workflows WHERE workflow_id = ?
         `).get(workflowId));
@@ -314,5 +328,19 @@ export function reporterPublicationCredits(database, publicationId) {
     const row = database.prepare(`
       SELECT * FROM career_reporter_story_workflows WHERE publication_id = ?
     `).get(identifier(publicationId, "publication_id"));
-    return row ? mapWorkflow(row) : null;
+    if (!row)
+        return null;
+    const submissionReview = database.prepare(`
+      SELECT job.job_id, job.worker_resident_id
+      FROM career_reporter_relay_issues AS issue
+      JOIN career_jobs AS job ON job.job_id = issue.submission_reviewer_job_id
+      JOIN career_work_records AS record ON record.job_id = job.job_id
+        AND record.resident_id = job.worker_resident_id AND record.record_kind = 'completed'
+      WHERE issue.issue_reference = ? AND job.career = 'reporter' AND job.status = 'completed'
+    `).get(row.issue_reference);
+    return {
+        ...mapWorkflow(row),
+        submissionReviewerJobId: submissionReview?.job_id ?? null,
+        submissionReviewerResidentId: submissionReview?.worker_resident_id ?? null,
+    };
 }

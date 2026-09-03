@@ -1,6 +1,39 @@
 import { runInTransaction } from "./persistence.js";
 
-export const CAREER_SCHEMA_VERSION = 11;
+export const CAREER_SCHEMA_VERSION = 13;
+
+const REPORTER_ARTICLE_COLUMNS = `(
+  article_id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL REFERENCES career_jobs(job_id),
+  resident_id TEXT NOT NULL REFERENCES residents(resident_id),
+  pack_id TEXT NOT NULL REFERENCES career_reporter_material_packs(pack_id),
+  version INTEGER NOT NULL CHECK (version >= 1),
+  revision_kind TEXT NOT NULL CHECK (revision_kind IN ('initial', 'supplement', 'correction', 'polish')),
+  parent_article_id TEXT REFERENCES career_reporter_articles(article_id),
+  section_id TEXT REFERENCES career_reporter_sections(section_id),
+  article_text TEXT NOT NULL,
+  numeric_claims_json TEXT NOT NULL,
+  payload_hash TEXT NOT NULL,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL CHECK (status IN ('pending_review', 'needs_supplement', 'rejected', 'approved', 'published')),
+  review_decision TEXT,
+  review_reason_code TEXT,
+  reviewer_reference TEXT,
+  submitted_at INTEGER NOT NULL,
+  reviewed_at INTEGER,
+  published_at INTEGER,
+  UNIQUE (job_id, version)
+)`;
+
+const REPORTER_DUTY_ROLE_COLUMNS = `(
+  duty_date TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('selector', 'writer', 'reviewer', 'submission_reviewer')),
+  duty_id TEXT NOT NULL UNIQUE REFERENCES career_duty_days(duty_id),
+  resident_id TEXT NOT NULL REFERENCES residents(resident_id),
+  assigned_at INTEGER NOT NULL,
+  PRIMARY KEY (duty_date, role),
+  UNIQUE (duty_date, resident_id)
+)`;
 
 const REPORTER_RELAY_MATERIAL_COLUMNS = `(
   issue_reference TEXT NOT NULL REFERENCES career_reporter_relay_issues(issue_reference),
@@ -453,15 +486,7 @@ export function installCareerSchema(database) {
     CREATE INDEX IF NOT EXISTS career_reporter_sections_owner_index
       ON career_reporter_sections(resident_id, created_at, section_id);
 
-    CREATE TABLE IF NOT EXISTS career_reporter_duty_roles (
-      duty_date TEXT NOT NULL,
-      role TEXT NOT NULL CHECK (role IN ('selector', 'writer', 'reviewer')),
-      duty_id TEXT NOT NULL UNIQUE REFERENCES career_duty_days(duty_id),
-      resident_id TEXT NOT NULL REFERENCES residents(resident_id),
-      assigned_at INTEGER NOT NULL,
-      PRIMARY KEY (duty_date, role),
-      UNIQUE (duty_date, resident_id)
-    );
+    CREATE TABLE IF NOT EXISTS career_reporter_duty_roles ${REPORTER_DUTY_ROLE_COLUMNS};
 
     CREATE TABLE IF NOT EXISTS career_reporter_story_workflows (
       workflow_id TEXT PRIMARY KEY,
@@ -485,28 +510,7 @@ export function installCareerSchema(database) {
     CREATE INDEX IF NOT EXISTS career_reporter_story_workflows_issue_index
       ON career_reporter_story_workflows(issue_reference, selected_at, workflow_id);
 
-    CREATE TABLE IF NOT EXISTS career_reporter_articles (
-      article_id TEXT PRIMARY KEY,
-      job_id TEXT NOT NULL REFERENCES career_jobs(job_id),
-      resident_id TEXT NOT NULL REFERENCES residents(resident_id),
-      pack_id TEXT NOT NULL REFERENCES career_reporter_material_packs(pack_id),
-      version INTEGER NOT NULL CHECK (version >= 1),
-      revision_kind TEXT NOT NULL CHECK (revision_kind IN ('initial', 'supplement', 'correction')),
-      parent_article_id TEXT REFERENCES career_reporter_articles(article_id),
-      section_id TEXT REFERENCES career_reporter_sections(section_id),
-      article_text TEXT NOT NULL,
-      numeric_claims_json TEXT NOT NULL,
-      payload_hash TEXT NOT NULL,
-      idempotency_key TEXT NOT NULL UNIQUE,
-      status TEXT NOT NULL CHECK (status IN ('pending_review', 'needs_supplement', 'rejected', 'approved', 'published')),
-      review_decision TEXT,
-      review_reason_code TEXT,
-      reviewer_reference TEXT,
-      submitted_at INTEGER NOT NULL,
-      reviewed_at INTEGER,
-      published_at INTEGER,
-      UNIQUE (job_id, version)
-    );
+    CREATE TABLE IF NOT EXISTS career_reporter_articles ${REPORTER_ARTICLE_COLUMNS};
     CREATE INDEX IF NOT EXISTS career_reporter_articles_job_index
       ON career_reporter_articles(job_id, version);
 
@@ -548,9 +552,11 @@ export function installCareerSchema(database) {
       selector_job_id TEXT NOT NULL UNIQUE REFERENCES career_jobs(job_id),
       writer_job_id TEXT UNIQUE REFERENCES career_jobs(job_id),
       reviewer_job_id TEXT UNIQUE REFERENCES career_jobs(job_id),
+      submission_reviewer_job_id TEXT REFERENCES career_jobs(job_id),
       selector_resident_id TEXT NOT NULL REFERENCES residents(resident_id),
       writer_resident_id TEXT NOT NULL REFERENCES residents(resident_id),
       reviewer_resident_id TEXT NOT NULL REFERENCES residents(resident_id),
+      submission_reviewer_resident_id TEXT REFERENCES residents(resident_id),
       selection_text TEXT,
       article_id TEXT REFERENCES career_reporter_articles(article_id),
       review_feedback TEXT,
@@ -664,6 +670,26 @@ export function installCareerSchema(database) {
     CREATE INDEX IF NOT EXISTS career_job_messages_job_index
       ON career_job_messages(job_id, created_at, message_id);
   `);
+    const reporterRoleSql = database.prepare(`SELECT sql FROM sqlite_master
+      WHERE type = 'table' AND name = 'career_reporter_duty_roles'`).get()?.sql ?? "";
+    if (!reporterRoleSql.includes("'submission_reviewer'")) {
+        runInTransaction(database, () => database.exec(`
+          CREATE TABLE career_reporter_duty_roles_four ${REPORTER_DUTY_ROLE_COLUMNS};
+          INSERT INTO career_reporter_duty_roles_four (duty_date, role, duty_id, resident_id, assigned_at)
+            SELECT duty_date, role, duty_id, resident_id, assigned_at FROM career_reporter_duty_roles;
+          DROP TABLE career_reporter_duty_roles;
+          ALTER TABLE career_reporter_duty_roles_four RENAME TO career_reporter_duty_roles;
+        `));
+    }
+    const reporterRelayColumns = new Set(database.prepare("PRAGMA table_info(career_reporter_relay_issues)")
+        .all().map(column => column.name));
+    if (!reporterRelayColumns.has("submission_reviewer_job_id"))
+        database.exec("ALTER TABLE career_reporter_relay_issues ADD COLUMN submission_reviewer_job_id TEXT REFERENCES career_jobs(job_id)");
+    if (!reporterRelayColumns.has("submission_reviewer_resident_id"))
+        database.exec("ALTER TABLE career_reporter_relay_issues ADD COLUMN submission_reviewer_resident_id TEXT REFERENCES residents(resident_id)");
+    database.exec(`CREATE UNIQUE INDEX IF NOT EXISTS career_reporter_relay_submission_job
+      ON career_reporter_relay_issues(submission_reviewer_job_id)
+      WHERE submission_reviewer_job_id IS NOT NULL`);
     const reporterMaterialSql = database.prepare(`SELECT sql FROM sqlite_master
       WHERE type = 'table' AND name = 'career_reporter_relay_materials'`).get()?.sql ?? "";
     if (/CHECK\s*\(\s*category\s+IN\s*\(/iu.test(reporterMaterialSql)) {
@@ -804,6 +830,38 @@ export function installCareerSchema(database) {
         .map((column) => column.name));
     if (!reporterArticleColumns.has("section_id"))
         database.exec("ALTER TABLE career_reporter_articles ADD COLUMN section_id TEXT");
+    const reporterArticleSql = database.prepare(`SELECT sql FROM sqlite_master
+      WHERE type = 'table' AND name = 'career_reporter_articles'`).get()?.sql ?? "";
+    if (!reporterArticleSql.includes("'polish'")) {
+        if (database.isTransaction)
+            throw new Error("career_reporter_article_schema_migration_requires_startup");
+        const foreignKeysEnabled = database.prepare("PRAGMA foreign_keys").get().foreign_keys === 1;
+        database.exec("PRAGMA foreign_keys = OFF");
+        try {
+            runInTransaction(database, () => {
+                database.exec(`
+                  CREATE TABLE career_reporter_articles_with_polish ${REPORTER_ARTICLE_COLUMNS};
+                  INSERT INTO career_reporter_articles_with_polish (
+                    article_id, job_id, resident_id, pack_id, version, revision_kind,
+                    parent_article_id, section_id, article_text, numeric_claims_json,
+                    payload_hash, idempotency_key, status, review_decision, review_reason_code,
+                    reviewer_reference, submitted_at, reviewed_at, published_at
+                  ) SELECT article_id, job_id, resident_id, pack_id, version, revision_kind,
+                    parent_article_id, section_id, article_text, numeric_claims_json,
+                    payload_hash, idempotency_key, status, review_decision, review_reason_code,
+                    reviewer_reference, submitted_at, reviewed_at, published_at
+                    FROM career_reporter_articles;
+                  DROP TABLE career_reporter_articles;
+                  ALTER TABLE career_reporter_articles_with_polish RENAME TO career_reporter_articles;
+                  CREATE INDEX career_reporter_articles_job_index ON career_reporter_articles(job_id, version);
+                `);
+                if (database.prepare("PRAGMA foreign_key_check").all().length > 0)
+                    throw new Error("career_reporter_article_schema_migration_foreign_key_failed");
+            });
+        } finally {
+            if (foreignKeysEnabled) database.exec("PRAGMA foreign_keys = ON");
+        }
+    }
     const reporterRelayWakeColumns = new Set(database
         .prepare("PRAGMA table_info(career_reporter_relay_wakes)")
         .all()
