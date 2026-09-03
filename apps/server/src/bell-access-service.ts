@@ -68,7 +68,7 @@ export class BellAccessService {
   }
 
   async issueCredential(token: string): Promise<BellCredentialIssueResponse> {
-    const community = await this.#registrationAuth.getCurrentSession(token);
+    const community = await this.#registrationAuth.getCurrentSessionWithMembership(token);
     const credential = bellCredentialSchema.parse(this.#generateCredential());
     const credentialId = this.#generateCredentialId();
     const issuedAt = this.#now();
@@ -90,7 +90,7 @@ export class BellAccessService {
   }
 
   async revokeCredential(token: string): Promise<BellAccessStatusResponse> {
-    const community = await this.#registrationAuth.getCurrentSession(token);
+    const community = await this.#registrationAuth.getCurrentSessionWithMembership(token);
     const revoked = this.#database.revokeBellCredential(community.resident.residentId, this.#now());
     if (!revoked) throw new BellCredentialNotConfiguredError();
     this.#bellService.disconnectResident(community.resident.residentId);

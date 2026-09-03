@@ -480,7 +480,7 @@ export class RegistrationAuthService {
     token: string,
     input: AdditionalProfileFields,
   ): Promise<AdditionalProfileResult> {
-    const current = await this.getCurrentSession(token);
+    const current = await this.getCurrentSessionWithMembership(token);
     const now = this.#now();
     let verifiedRegistration: HumanRegistrationInput;
     let createdFarm: CreatedFarmDelivery | undefined;
@@ -554,11 +554,6 @@ export class RegistrationAuthService {
       throw new AuthenticationRequiredError();
     }
 
-    if (!(await this.#groupMembership.isCurrentMember(this.#groupId, session.account.qqNumber))) {
-      this.#revokeMembership(session.account.accountId, this.#now());
-      throw new QqNotGroupMemberError();
-    }
-    this.#database.confirmHumanAccountMembership(session.account.accountId, this.#now());
     if (!session.community) {
       throw new RegistrationProfileRequiredError();
     }
@@ -566,6 +561,12 @@ export class RegistrationAuthService {
       throw new RegistrationProfileRequiredError();
     }
     return session.community;
+  }
+
+  async getCurrentSessionWithMembership(token: string): Promise<HumanCommunityRecord> {
+    const community = await this.getCurrentSession(token);
+    await this.confirmCurrentResidentMembership(community.resident.residentId);
+    return community;
   }
 
   async getCurrentProfileContext(token: string): Promise<HumanProfileContext> {

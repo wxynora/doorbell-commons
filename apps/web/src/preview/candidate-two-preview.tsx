@@ -10542,6 +10542,8 @@ const CANDIDATE_RUNTIME_SCRIPT = `
 
     function deferInactiveCandidateScreenImages() {
         document.querySelectorAll('.screen:not(.active) img[src]').forEach((image) => {
+            // Map artwork is deferred in the initial markup; keep it mounted after its first visit.
+            if (image.closest('#screen-lingye')) return;
             const source = image.getAttribute('src');
             if (!source) return;
             image.setAttribute('data-src', source);

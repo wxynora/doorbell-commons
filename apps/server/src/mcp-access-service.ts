@@ -93,7 +93,7 @@ export class McpAccessService {
   }
 
   async claim(token: string): Promise<McpAccessStatusResponse> {
-    const community = await this.#registrationAuth.getCurrentSession(token);
+    const community = await this.#registrationAuth.getCurrentSessionWithMembership(token);
     let binding = this.#database.getMcpAccessBinding(community.resident.residentId);
     if (binding) this.#assertBindingTargetsCommunity(binding, community);
     if ((!binding || binding.farmRevokedAt === null) && !(await this.#runtimeReady())) {
@@ -149,7 +149,7 @@ export class McpAccessService {
   }
 
   async issueCredential(token: string): Promise<McpCredentialIssueResponse> {
-    const community = await this.#registrationAuth.getCurrentSession(token);
+    const community = await this.#registrationAuth.getCurrentSessionWithMembership(token);
     const binding = this.#database.getMcpAccessBinding(community.resident.residentId);
     if (!binding || binding.farmRevokedAt === null || binding.farmConfirmationId === null) {
       throw new McpMigrationNotConfirmedError();
@@ -182,7 +182,7 @@ export class McpAccessService {
   }
 
   async revokeCredential(token: string): Promise<McpAccessStatusResponse> {
-    const community = await this.#registrationAuth.getCurrentSession(token);
+    const community = await this.#registrationAuth.getCurrentSessionWithMembership(token);
     const revoked = this.#database.revokeMcpCredential(community.resident.residentId, this.#now());
     if (!revoked) {
       throw new McpCredentialNotConfiguredError();
