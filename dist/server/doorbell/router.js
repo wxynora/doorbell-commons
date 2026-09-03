@@ -62,7 +62,7 @@ import {
     handleDoorbellSubmissionReviewCompleted,
 } from "./daily-material.js";
 import { humanFieldError, internalServiceError } from "./contract.js";
-import { handleDoorbellDailySubmissionReward } from "./daily-submission.js";
+import { handleDoorbellDailyEditorReward, handleDoorbellDailySubmissionReward } from "./daily-submission.js";
 import { handleDoorbellDailyWeather } from "./daily-weather.js";
 
 export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExecutor, careerBenefitsForFarm, constableInterviewRuntime) {
@@ -98,6 +98,15 @@ export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExe
                 return true;
             }
             await handleDoorbellDailySubmissionReward(req, res, method, constableInterviewRuntime);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" &&
+            parts[2] === "lingye-daily" && parts[3] === "editor-publication-reward" && parts.length === 4) {
+            if (!constableInterviewRuntime?.database || !constableInterviewRuntime?.backend) {
+                internalServiceError(res, 503, "service_unavailable", "The editor reward service is unavailable");
+                return true;
+            }
+            await handleDoorbellDailyEditorReward(req, res, method, constableInterviewRuntime);
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" &&
