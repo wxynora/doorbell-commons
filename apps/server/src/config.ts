@@ -16,7 +16,6 @@ export interface DoorbellServerConfig extends QqGroupEligibilityConfig {
   farmHumanUiBaseUrl: string;
   farmServiceToken: string;
   lingyeDailyPublishToken: string;
-  dailyEditorAccountId?: string;
   mcpEndpoint: string;
   mcpRuntimeReady: boolean;
   upstreamRequestTimeoutMs: number;
@@ -230,8 +229,6 @@ export function readDoorbellServerConfig(
     farmHumanUiBaseUrl: readFarmHumanUiBaseUrl(environment),
     farmServiceToken: readRequiredEnvironmentValue(environment, "DOORBELL_FARM_SERVICE_TOKEN"),
     lingyeDailyPublishToken: readLingyeDailyPublishToken(environment),
-    ...(environment.DOORBELL_DAILY_EDITOR_ACCOUNT_ID?.trim()
-      ? {dailyEditorAccountId:environment.DOORBELL_DAILY_EDITOR_ACCOUNT_ID.trim()} : {}),
     mcpEndpoint: readMcpEndpoint(environment),
     mcpRuntimeReady: readMcpRuntimeReady(environment),
     upstreamRequestTimeoutMs: readUpstreamRequestTimeoutMs(environment),

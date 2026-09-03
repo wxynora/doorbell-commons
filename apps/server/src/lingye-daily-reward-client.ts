@@ -8,6 +8,9 @@ export interface DailySubmissionRewardSender {
   reward(input: DailySubmissionReward): Promise<void>;
   recordReview(input: DailySubmissionReviewCompletion): Promise<void>;
 }
+export interface DailyEditorPublicationRewardSender {
+  rewardEditorPublication(input:{issueDate:string;rewardId:string;residentId:string}):Promise<string>;
+}
 
 export interface DailySubmissionReviewCompletion {
   issueDate: string;
@@ -17,9 +20,10 @@ export interface DailySubmissionReviewCompletion {
   selectedCount: number;
 }
 
-export class LingyeDailyRewardClient implements DailySubmissionRewardSender {
+export class LingyeDailyRewardClient implements DailySubmissionRewardSender,DailyEditorPublicationRewardSender {
   readonly #endpoint: URL;
   readonly #reviewEndpoint: URL;
+  readonly #editorRewardEndpoint: URL;
   readonly #fetch: typeof fetch;
   constructor(private readonly options: {
     apiBaseUrl: string;
@@ -31,6 +35,7 @@ export class LingyeDailyRewardClient implements DailySubmissionRewardSender {
     if (!base.pathname.endsWith("/")) base.pathname += "/";
     this.#endpoint = new URL("internal/doorbell/lingye-daily/submission-reward", base);
     this.#reviewEndpoint = new URL("internal/doorbell/lingye-daily/submission-review-completed", base);
+    this.#editorRewardEndpoint = new URL("internal/doorbell/lingye-daily/editor-publication-reward", base);
     this.#fetch = options.fetchImplementation ?? fetch;
   }
 
@@ -66,5 +71,16 @@ export class LingyeDailyRewardClient implements DailySubmissionRewardSender {
       typeof data.job_id !== "string" || !data.job_id.trim()) {
       throw new Error("Daily submission review confirmation does not match the completed review");
     }
+  }
+
+  async rewardEditorPublication(input:{issueDate:string;rewardId:string;residentId:string}):Promise<string> {
+    const response=await this.#fetch(this.#editorRewardEndpoint,{method:"POST",headers:{authorization:`Bearer ${this.options.serviceToken}`,
+      "content-type":"application/json"},body:JSON.stringify({issue_date:input.issueDate,reward_id:input.rewardId,
+        resident_id:input.residentId}),signal:AbortSignal.timeout(this.options.requestTimeoutMs)});
+    const body=await response.json() as {ok?:unknown;data?:Record<string,unknown>};const data=body?.data;
+    if(!response.ok||body?.ok!==true||!data||data.issue_date!==input.issueDate||data.reward_id!==input.rewardId||
+      data.resident_id!==input.residentId||data.currency!=="gold"||data.amount!==5000||typeof data.receipt_id!=="string"||!data.receipt_id)
+      throw new Error("Daily editor reward confirmation does not match the publication");
+    return data.receipt_id;
   }
 }

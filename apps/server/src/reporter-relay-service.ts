@@ -8,6 +8,7 @@ import { ZodError } from "zod";
 import type { BellService } from "./bell-service.js";
 import type { CommunityDatabase } from "./community-database.js";
 import { renderDailySubmissionReview } from "./lingye-daily-submission-op.js";
+import type { DailySubmissionReview } from "./lingye-daily-store.js";
 
 export interface ReporterRelayRenderer {
   render(wake: ReporterRelayWake): string;
@@ -117,4 +118,19 @@ export class ReporterRelayService {
     if (status === "created") this.#bellService.notifyResident(recipient);
     return { status };
   }
+
+  createResentFarmWake(wake:ReporterRelayWake,wakeId:string) {
+    const resent=reporterRelayWakeSchema.parse({...wake,wake_id:wakeId});
+    return {recipientResidentId:resent.recipient_resident_id,sourceWakeId:wake.wake_id,
+      status:this.#database.createReporterBellWake({wakeId,residentId:resent.recipient_resident_id,
+        text:this.#renderer.render(resent),createdAt:this.#now()})};
+  }
+
+  createResentSubmissionWake(review:DailySubmissionReview,wakeId:string) {
+    return {recipientResidentId:review.reviewerResidentId,sourceWakeId:`daily-submissions:${review.issueDate}`,
+      status:this.#database.createReporterBellWake({wakeId,residentId:review.reviewerResidentId,
+        text:renderDailySubmissionReview(review),createdAt:this.#now()})};
+  }
+
+  notifyResentWake(residentId:string) { this.#bellService.notifyResident(residentId); }
 }

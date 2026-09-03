@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { z } from "zod";
 import { dailyDocumentSchema, lingyeDailyPublishRequestSchema } from "@doorbell/protocol";
 import type { RegistrationAuthService } from "./registration-auth.js";
+import type { HumanCommunityRecord } from "./community-database.js";
 import { readHumanSessionToken } from "./session-cookie.js";
 import { DailyEditorError } from "./lingye-daily-editor-store.js";
 import { LingyeDailyPublishAuthenticationError, type LingyeDailyService } from "./lingye-daily-service.js";
@@ -12,14 +13,12 @@ export function registerDailyEditorRoutes(app:FastifyInstance, options:{daily:Li
     const token=readHumanSessionToken(request.headers.cookie);
     if(!token) throw new DailyEditorError(401,"请先登录社区。");
     const community=await auth.getCurrentSession(token);
-    if(!daily.editorAccountId || community.account.accountId!==daily.editorAccountId)
-      throw new DailyEditorError(403,"只有主编可以进入工作台。");
     if(request.method!=="GET" && request.headers.origin) {
       if(new URL(request.headers.origin).host!==request.headers.host) throw new DailyEditorError(403,"请从社区工作台提交修改。");
     }
-    return community.account.accountId;
+    return community;
   };
-  const handle=(action:(request:FastifyRequest,account:string)=>unknown|Promise<unknown>)=>async(request:FastifyRequest,reply:FastifyReply)=>{
+  const handle=(action:(request:FastifyRequest,community:HumanCommunityRecord)=>unknown|Promise<unknown>)=>async(request:FastifyRequest,reply:FastifyReply)=>{
     reply.header("cache-control","no-store");
     try{return await action(request,await authorize(request));}
     catch(error){
@@ -39,17 +38,23 @@ export function registerDailyEditorRoutes(app:FastifyInstance, options:{daily:Li
   }));
   app.get("/api/lingye-daily/editor/issues/:date",handle(request=>daily.editor.get(date(request))));
   app.post("/api/lingye-daily/editor/issues/:date/refresh",handle(request=>daily.refreshDraft(date(request))));
-  app.put("/api/lingye-daily/editor/issues/:date",{bodyLimit:8*1024*1024},handle((request,account)=>{
+  app.put("/api/lingye-daily/editor/issues/:date",{bodyLimit:8*1024*1024},handle((request,community)=>{
     const body=z.object({version:z.number().int().positive(),document:dailyDocumentSchema}).strict().parse(request.body);
-    return daily.saveDraft(date(request),body.version,body.document,account);
+    return daily.saveDraft(date(request),body.version,body.document,community.account.accountId);
   }));
-  app.post("/api/lingye-daily/editor/issues/:date/publish",handle(request=>{
+  app.post("/api/lingye-daily/editor/issues/:date/publish",handle((request,community)=>{
     const body=z.object({version:z.number().int().positive()}).strict().parse(request.body);
-    return daily.publishDraft(date(request),body.version);
+    return daily.publishDraft(date(request),body.version,{accountId:community.account.accountId,
+      profileId:community.profileId,residentId:community.resident.residentId,residentName:community.resident.residentName});
   }));
-  app.post("/api/lingye-daily/editor/issues/:date/rewards",handle((request,account)=>{
+  app.post("/api/lingye-daily/editor/issues/:date/rewards",handle((request,community)=>{
     const body=z.object({submissionIds:z.array(z.string().min(1)).min(1)}).strict().parse(request.body);
-    return daily.rewardSubmissions(date(request),body.submissionIds,account);
+    return daily.rewardSubmissions(date(request),body.submissionIds,community.account.accountId);
+  }));
+  app.get("/api/lingye-daily/editor/issues/:date/progress",handle(request=>daily.editorProgress(date(request))));
+  app.post("/api/lingye-daily/editor/issues/:date/resend",handle((request,community)=>{
+    const body=z.object({lane:z.enum(["farm","submissions"]),requestId:z.uuid()}).strict().parse(request.body);
+    return daily.resendEditorWake(date(request),body.lane,body.requestId,community.account.accountId);
   }));
   // The pre-existing machine delivery URL now saves a draft, never a public issue.
   app.post("/api/internal/lingye-daily/issues",{bodyLimit:8*1024*1024},async(request,reply)=>{

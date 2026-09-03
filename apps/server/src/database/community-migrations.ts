@@ -9,7 +9,7 @@ import {
 } from "@doorbell/protocol";
 import type Database from "better-sqlite3";
 
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 22;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 23;
 const LEGACY_CONNECTOR_DELIVERY_GENERATION = "00000000-0000-0000-0000-000000000000";
 
 interface FarmCreationRequestRow {
@@ -2136,6 +2136,35 @@ export function migrateCommunityDatabase(
         );
       `);
       database.pragma("user_version = 22");
+    })();
+  }
+  if (migratedSchemaVersion < 23) {
+    database.transaction(() => {
+      database.exec(`
+        CREATE TABLE lingye_daily_editor_publication_rewards (
+          issue_date TEXT PRIMARY KEY,
+          publication_revision INTEGER NOT NULL,
+          account_id TEXT NOT NULL REFERENCES human_accounts(account_id) ON DELETE CASCADE,
+          profile_id TEXT NOT NULL,
+          resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+          resident_name TEXT NOT NULL,
+          reward_id TEXT NOT NULL UNIQUE,
+          requested_at INTEGER NOT NULL,
+          paid_at INTEGER,
+          receipt_id TEXT
+        );
+        CREATE TABLE lingye_daily_editor_resends (
+          request_id TEXT PRIMARY KEY,
+          issue_date TEXT NOT NULL,
+          lane TEXT NOT NULL CHECK (lane IN ('farm', 'submissions')),
+          source_wake_id TEXT NOT NULL,
+          wake_id TEXT NOT NULL UNIQUE,
+          recipient_resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+          requested_by TEXT NOT NULL REFERENCES human_accounts(account_id) ON DELETE CASCADE,
+          created_at INTEGER NOT NULL
+        );
+      `);
+      database.pragma("user_version = 23");
     })();
   }
   database.transaction(() => {

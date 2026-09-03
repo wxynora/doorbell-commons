@@ -1,4 +1,4 @@
-import { type ReporterRelayWake, reporterRelayStartResponseSchema } from "@doorbell/protocol";
+import { type ReporterRelayWake, reporterRelayStartResponseSchema, reporterRelayWakeSchema } from "@doorbell/protocol";
 import { z } from "zod";
 
 export interface ReporterRelayStartInput {
@@ -10,6 +10,7 @@ export interface ReporterRelayStartInput {
 export interface ReporterRelayStarter {
   startIssue(input: ReporterRelayStartInput): Promise<ReporterRelayWake>;
   submissionReviewer(issueDate: string): Promise<{ residentId: string; displayName: string } | null>;
+  pendingIssue(issueDate:string):Promise<ReporterRelayWake|null>;
 }
 
 const reviewerResponseSchema = z.strictObject({
@@ -19,6 +20,9 @@ const reviewerResponseSchema = z.strictObject({
     reviewer: z.strictObject({ resident_id: z.uuid(), display_name: z.string().min(1) }).nullable(),
   }),
 });
+const pendingResponseSchema=z.strictObject({ok:z.literal(true),data:z.strictObject({
+  issue_date:z.string(),wake:reporterRelayWakeSchema.nullable(),
+})});
 
 export class ReporterRelayFarmUnavailableError extends Error {
   constructor() {
@@ -44,6 +48,7 @@ interface ReporterRelayFarmClientOptions {
 export class ReporterRelayFarmClient implements ReporterRelayStarter {
   readonly #endpoint: URL;
   readonly #reviewerEndpoint: URL;
+  readonly #pendingEndpoint: URL;
   readonly #serviceToken: string;
   readonly #fetch: typeof fetch;
   readonly #requestTimeoutMs: number;
@@ -56,6 +61,7 @@ export class ReporterRelayFarmClient implements ReporterRelayStarter {
     if (!apiBaseUrl.pathname.endsWith("/")) apiBaseUrl.pathname += "/";
     this.#endpoint = new URL("internal/doorbell/lingye-daily/reporter-relay/start", apiBaseUrl);
     this.#reviewerEndpoint = new URL("internal/doorbell/lingye-daily/reporter-relay/reviewer", apiBaseUrl);
+    this.#pendingEndpoint = new URL("internal/doorbell/lingye-daily/reporter-relay/pending", apiBaseUrl);
     this.#serviceToken = options.serviceToken;
     this.#fetch = options.fetchImplementation ?? fetch;
     this.#requestTimeoutMs = options.requestTimeoutMs;
@@ -120,5 +126,16 @@ export class ReporterRelayFarmClient implements ReporterRelayStarter {
     if (!response.ok || !parsed.success || parsed.data.data.issue_date !== issueDate) throw new ReporterRelayFarmContractError();
     const reviewer = parsed.data.data.reviewer;
     return reviewer ? { residentId: reviewer.resident_id, displayName: reviewer.display_name } : null;
+  }
+
+  async pendingIssue(issueDate:string):Promise<ReporterRelayWake|null> {
+    let response:Response;
+    try {response=await this.#fetch(this.#pendingEndpoint,{method:"POST",headers:{authorization:`Bearer ${this.#serviceToken}`,
+      "content-type":"application/json"},body:JSON.stringify({issue_date:issueDate}),signal:AbortSignal.timeout(this.#requestTimeoutMs)});}
+    catch {throw new ReporterRelayFarmUnavailableError();}
+    if(response.status>=500) throw new ReporterRelayFarmUnavailableError();
+    const parsed=pendingResponseSchema.safeParse(await response.json().catch(()=>undefined));
+    if(!response.ok||!parsed.success||parsed.data.data.issue_date!==issueDate) throw new ReporterRelayFarmContractError();
+    return parsed.data.data.wake;
   }
 }

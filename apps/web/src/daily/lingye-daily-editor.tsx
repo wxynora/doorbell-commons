@@ -1,7 +1,7 @@
 import React,{useEffect,useRef,useState} from "react";
 import {dailyDocumentSchema,type DailyBlock,type DailyDocument,type DailyTextRun} from "@doorbell/protocol";
 import {DailyDocumentView} from "./lingye-daily-document-view";
-import {editorRequest,type EditorDraft} from "./lingye-daily-editor-client";
+import {editorRequest,type EditorDraft,type EditorProgress} from "./lingye-daily-editor-client";
 import "./lingye-daily-editor.css";
 
 function textRuns(node:Node,bold=false):DailyTextRun[] {
@@ -42,16 +42,19 @@ export function LingyeDailyEditor({onBack}:{onBack?:()=>void} = {}) {
   const [busy,setBusy]=useState(false);
   const [notice,setNotice]=useState("");
   const [selected,setSelected]=useState<string[]>([]);
+  const [progress,setProgress]=useState<EditorProgress|null>(null);
   const paper=useRef<HTMLDivElement>(null);
+  const resendRequestIds=useRef<Partial<Record<"farm"|"submissions",string>>>({});
   const [epoch,setEpoch]=useState(0);
   const install=(next:EditorDraft)=>{setDraft(next);setDirty(false);setEpoch(value=>value+1);setSelected([]);};
+  const loadProgress=async(date:string)=>setProgress(await editorRequest<EditorProgress>(`/issues/${date}/progress`));
   const run=async(action:()=>Promise<void>)=>{if(busy)return;setBusy(true);setNotice("");try{await action();}catch(error){setNotice(error instanceof Error?error.message:"操作未完成，请重试。");}finally{setBusy(false);}};
   const open=async(date:string)=>{
-    const saved=await editorRequest<EditorDraft>(`/issues/${date}`);install(saved);
+    resendRequestIds.current={};setProgress(null);const saved=await editorRequest<EditorDraft>(`/issues/${date}`);install(saved);
     if(saved.publishedVersion===null) {
       try{install(await editorRequest<EditorDraft>(`/issues/${date}/refresh`,"POST",{}));}
       catch(error){setNotice(`已打开保存的稿件；${error instanceof Error?error.message:"新来稿暂未取到，可稍后更新。"}`);}
-    }
+    } await loadProgress(date);
   };
   useEffect(()=>{void run(async()=>{
     const result=await editorRequest<{issues:{issue_date:string;published_version:number|null}[]}>("/issues");
@@ -88,14 +91,17 @@ export function LingyeDailyEditor({onBack}:{onBack?:()=>void} = {}) {
       <button disabled={busy||!draft} onMouseDown={event=>event.preventDefault()} onClick={()=>command("undo")}>撤销</button>
       <button disabled={busy||!draft||!dirty} onClick={()=>void run(async()=>{await save();setNotice("正文与排版已保存，尚未出版。");})}>保存修改</button>
       <button disabled={busy||!draft||dirty} onClick={()=>void run(async()=>{
-        if(draft)install(await editorRequest<EditorDraft>(`/issues/${draft.issueDate}/refresh`,"POST",{}));
+        if(draft){install(await editorRequest<EditorDraft>(`/issues/${draft.issueDate}/refresh`,"POST",{}));await loadProgress(draft.issueDate);}
         setNotice("已更新到达工作台的稿件，你已保存的修改保持不变。");
       })}>更新来稿</button>
       <button className="daily-editor-publish" disabled={busy||!draft} onClick={()=>void run(async()=>{
         if(!window.confirm("确认将这版正文与排版正式出版？人类和小机将同时读到这一版。"))return;
         const current=dirty?await save():draft;if(!current)return;
         const result=await editorRequest<{draft:EditorDraft}>(`/issues/${current.issueDate}/publish`,"POST",{version:current.version});
-        install(result.draft);setNotice("已出版，人类页面和小机读报已同步。");
+        install(result.draft);await loadProgress(current.issueDate);
+        const reward=result.draft.publicationReward;
+        setNotice(reward?.paid ? `已出版，人类页面和小机读报已同步；${reward.recipientName}的农场已收到 5000 金。`
+          : "已出版，人类页面和小机读报已同步。");
       })}>{busy?"处理中…":"出版"}</button>
     </div>
     <p className="daily-editor-status" role="status">{notice || (dirty?"有未保存的修改":draft?`已保存 · ${draft.publishedVersion===draft.version?"当前版本已出版":"仅工作台可见"}`:"正在读取稿件…")}</p>
@@ -106,7 +112,21 @@ export function LingyeDailyEditor({onBack}:{onBack?:()=>void} = {}) {
         <header className="daily-masthead"><h1 className="daily-masthead-title">铃野日报</h1><p>{draft.issueDate} · {draft.editorModel}</p></header>
         <DailyDocumentView document={draft.document} images={images} editable={!busy} />
       </div>
-      <aside className="daily-editor-prizes"><h2>本期来稿</h2><p>群聊 {draft.readiness.group?"已到":"待到"} · 记者 {draft.readiness.reporter?"已到":"待到"}<br/>投稿 {draft.readiness.submissions?"已审":"待审"} · 天气 {draft.readiness.weather?"已到":"待到"}</p>
+      <aside className="daily-editor-prizes"><h2>记者进度</h2>
+        <div className="daily-editor-progress">{progress?.lanes.map(lane=><div key={lane.lane} className="daily-editor-progress-row">
+          <p><strong>{lane.lane==="farm"?"农场稿":"小机投稿"}</strong><br/>{lane.label}{lane.reporterName?` · ${lane.reporterName}`:""}</p>
+          {lane.resendable?<button disabled={busy} onClick={()=>void run(async()=>{
+            const requestId=resendRequestIds.current[lane.lane] ?? crypto.randomUUID();
+            resendRequestIds.current[lane.lane]=requestId;
+            const result=await editorRequest<{status:"sent"|"already_sent";reporterName:string}>(`/issues/${draft.issueDate}/resend`,"POST",{lane:lane.lane,requestId});
+            delete resendRequestIds.current[lane.lane];
+            await loadProgress(draft.issueDate);setNotice(`已向${result.reporterName}补发当前任务的铃。`);
+          })}>补发铃</button>:null}
+        </div>) ?? <p>正在读取记者进度…</p>}</div>
+        <h2>本期来稿</h2><p>群聊 {draft.readiness.group?"已到":"待到"} · 记者 {draft.readiness.reporter?"已到":"待到"}<br/>投稿 {draft.readiness.submissions?"已审":"待审"} · 天气 {draft.readiness.weather?"已到":"待到"}</p>
+        <h2>出版审稿奖金</h2><small>{draft.publicationReward
+          ? `${draft.publicationReward.recipientName} · ${draft.publicationReward.paid?"已发 5000 金":"5000 金待确认"}`
+          : "以本期第一次成功出版时的登录账号为准，每期一次。"}</small>
         <h2>投稿奖金</h2><small>每篇 2000 金；已发放的不再重复发。</small>
         {draft.submissions.map((sub,index)=><label key={sub.submission_id ?? index}>
           <input type="checkbox" disabled={busy||sub.paid||!sub.submission_id} checked={!!sub.submission_id&&selected.includes(sub.submission_id)}

@@ -36,4 +36,9 @@
 .daily-editor-prizes p {font-size:13px;line-height:1.5;white-space:pre-wrap}
 .daily-editor-prizes small {color:#69604d}
 .daily-editor-prizes button {width:100%;margin-top:12px}
+.daily-editor-progress {margin:0 0 18px;border-block:1px solid var(--editor-line)}
+.daily-editor-progress-row {display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid #ded5c4}
+.daily-editor-progress-row:last-child {border-bottom:0}
+.daily-editor-progress-row p {margin:0;min-width:0}
+.daily-editor-progress-row button {width:auto;flex:none;margin:0}
 @media(max-width:700px){.daily-editor{padding:12px}.daily-editor-header{align-items:flex-start;flex-wrap:wrap}.daily-editor-layout{grid-template-columns:1fr}.daily-editor-sheet{padding:16px}.daily-editor-toolbar{top:0}.daily-editor-prizes{margin-top:8px}}

@@ -450,22 +450,25 @@ const mcpAccessService = new McpAccessService({
     serverConfig.mcpRuntimeReady && (await lingyeMcpActions.isRuntimeReady()),
 });
 const weatherEngine = new HomeWeatherEngine({ database });
+const lingyeDailyRewards=new LingyeDailyRewardClient({
+  apiBaseUrl:serverConfig.farmApiBaseUrl,
+  serviceToken:serverConfig.farmServiceToken,
+  requestTimeoutMs:serverConfig.upstreamRequestTimeoutMs,
+});
 const lingyeDailyService = new LingyeDailyService({
   database,
   publishToken: serverConfig.lingyeDailyPublishToken,
-  ...(serverConfig.dailyEditorAccountId ? {editorAccountId:serverConfig.dailyEditorAccountId} : {}),
   farm:{apiBaseUrl:serverConfig.farmApiBaseUrl,serviceToken:serverConfig.farmServiceToken,
     requestTimeoutMs:serverConfig.upstreamRequestTimeoutMs},
+  reporterFlow:reporterRelayFarm,
+  reporterRelay:reporterRelayService,
   weather: new LingyeDailyWeatherClient({
     apiBaseUrl: serverConfig.farmApiBaseUrl,
     serviceToken: serverConfig.farmServiceToken,
     requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
   }),
-  submissionRewards: new LingyeDailyRewardClient({
-    apiBaseUrl: serverConfig.farmApiBaseUrl,
-    serviceToken: serverConfig.farmServiceToken,
-    requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
-  }),
+  submissionRewards:lingyeDailyRewards,
+  editorRewards:lingyeDailyRewards,
 });
 const app = buildApp({
   groupId: serverConfig.qqGroupId,

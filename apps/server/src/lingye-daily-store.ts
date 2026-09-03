@@ -209,6 +209,18 @@ export class LingyeDailyStore {
         option: batch.option_id, items };
   }
 
+  submissionReviewStatus(issueDate:string):
+    | {status:"not_started"}
+    | {status:"pending";review:DailySubmissionReview}
+    | {status:"completed"|"empty";reviewerResidentId:string} {
+    const batch=this.#database.prepare("SELECT * FROM lingye_daily_submission_batches WHERE issue_date=?")
+      .get(issueDate) as DailySubmissionBatch|undefined;
+    if(!batch) return {status:"not_started"};
+    const review=this.submissionReview(batch);
+    if(batch.selected_ids_json===null&&review.items.length) return {status:"pending",review};
+    return {status:review.items.length?"completed":"empty",reviewerResidentId:batch.reviewer_resident_id};
+  }
+
   enqueueSubmissionReview(issueDate: string, reviewerResidentId: string, now: number,
     persist: (review: DailySubmissionReview) => ReporterBellWakeCreationStatus) {
     if (now < Date.parse(`${issueDate}T05:00:00+08:00`)) return "not_due" as const;

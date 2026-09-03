@@ -1,8 +1,10 @@
 import { timingSafeEqual } from "node:crypto";
-import type { LingyeDailyPublishRequest } from "@doorbell/protocol";
+import type { LingyeDailyPublishRequest, ReporterRelayWake } from "@doorbell/protocol";
 import { lingyeDailyReporterArticleSchema, type DailyDocument } from "@doorbell/protocol";
-import { LingyeDailyEditorStore, DailyEditorError } from "./lingye-daily-editor-store.js";
-import type { DailySubmissionRewardSender } from "./lingye-daily-reward-client.js";
+import { LingyeDailyEditorStore, DailyEditorError, type DailyEditorPublisher } from "./lingye-daily-editor-store.js";
+import type { DailyEditorPublicationRewardSender, DailySubmissionRewardSender } from "./lingye-daily-reward-client.js";
+import type { ReporterRelayStarter } from "./reporter-relay-farm-client.js";
+import type { ReporterRelayService } from "./reporter-relay-service.js";
 import type { LingyeDailyWeatherReader } from "./lingye-daily-weather.js";
 import type {
   CommunityDatabase,
@@ -15,8 +17,10 @@ export interface LingyeDailyServiceOptions {
   publishToken: string;
   now?: () => number;
   submissionRewards?: DailySubmissionRewardSender;
+  editorRewards?:DailyEditorPublicationRewardSender;
+  reporterFlow?:Pick<ReporterRelayStarter,"pendingIssue">;
+  reporterRelay?:Pick<ReporterRelayService,"createResentFarmWake"|"createResentSubmissionWake"|"notifyResentWake">;
   weather?: LingyeDailyWeatherReader;
-  editorAccountId?: string;
   farm?: {apiBaseUrl:string;serviceToken:string;requestTimeoutMs:number;fetchImplementation?:typeof fetch};
 }
 
@@ -41,12 +45,14 @@ function readBearerCredential(authorization: string | undefined): string | undef
 
 export class LingyeDailyService {
   readonly editor: LingyeDailyEditorStore;
-  readonly editorAccountId: string | undefined;
   readonly #farm: LingyeDailyServiceOptions["farm"];
   readonly #database: CommunityDatabase;
   readonly #publishToken: string;
   readonly #now: () => number;
   readonly #submissionRewards: DailySubmissionRewardSender | undefined;
+  readonly #editorRewards:DailyEditorPublicationRewardSender|undefined;
+  readonly #reporterFlow:LingyeDailyServiceOptions["reporterFlow"];
+  readonly #reporterRelay:LingyeDailyServiceOptions["reporterRelay"];
   readonly #weather: LingyeDailyWeatherReader | undefined;
 
   constructor(options: LingyeDailyServiceOptions) {
@@ -54,9 +60,11 @@ export class LingyeDailyService {
     this.#publishToken = options.publishToken;
     this.#now = options.now ?? Date.now;
     this.#submissionRewards = options.submissionRewards;
+    this.#editorRewards=options.editorRewards;
+    this.#reporterFlow=options.reporterFlow;
+    this.#reporterRelay=options.reporterRelay;
     this.#weather = options.weather;
     this.editor=new LingyeDailyEditorStore(options.database.lingyeDailyStore.database);
-    this.editorAccountId=options.editorAccountId;
     this.#farm=options.farm;
   }
 
@@ -115,8 +123,8 @@ export class LingyeDailyService {
     return this.editor.save(date,version,document,account,this.#now());
   }
 
-  async publishDraft(date:string,version:number) {
-    const result=this.editor.publish(date,version,this.#now());
+  async publishDraft(date:string,version:number,publisher:DailyEditorPublisher) {
+    const result=this.editor.publish(date,version,publisher,this.#now());
     const row=this.editor.row(date);
     if(!row.publication_synced) {
       try {
@@ -142,7 +150,70 @@ export class LingyeDailyService {
         throw new DailyEditorError(502,"正文已出版，记者结算确认尚未完成；再次点出版即可继续，不会重复出版。");
       }
     }
+    const reward=this.editor.pendingPublicationReward(date);
+    if(reward) {
+      if(!this.#editorRewards) throw new DailyEditorError(503,"日报已出版，出版审稿奖金暂未到账，请重试出版确认。");
+      try {
+        const receipt=await this.#editorRewards.rewardEditorPublication(reward);
+        this.editor.markPublicationRewardPaid(date,receipt,this.#now());
+      } catch {
+        throw new DailyEditorError(503,"日报已出版，出版审稿奖金暂未到账，请重试出版确认。");
+      }
+    }
     return {published:true,...result,draft:this.editor.get(date)};
+  }
+
+  private reporterName(residentId:string) {
+    const name=this.#database.findActiveHumanCommunityByResidentId(residentId)?.resident.residentName;
+    return name?.includes(" & ") ? name.slice(name.lastIndexOf(" & ")+3) : name ?? "当班记者";
+  }
+
+  async editorProgress(date:string) {
+    const draft=this.editor.get(date);let farmWake:ReporterRelayWake|null=null;let farmUnavailable=false;
+    if(this.#reporterFlow) {
+      try {farmWake=await this.#reporterFlow.pendingIssue(date);} catch {farmUnavailable=true;}
+    } else farmUnavailable=true;
+    const stageLabels={selection:"等待选题",writing:"等待撰稿",review:"等待农场稿审稿",supplement:"等待修改稿"} as const;
+    const farm=farmWake ? {lane:"farm" as const,status:"pending" as const,label:stageLabels[farmWake.stage],
+      reporterName:this.reporterName(farmWake.recipient_resident_id),resendable:true} :
+      farmUnavailable ? {lane:"farm" as const,status:"unavailable" as const,label:"农场稿进度暂时无法读取",resendable:false} :
+      draft.readiness.reporter ? {lane:"farm" as const,status:"completed" as const,label:"农场稿已到工作台",resendable:false} :
+      {lane:"farm" as const,status:"not_started" as const,label:"农场稿尚未派发",resendable:false};
+    const submission=this.editor.daily.submissionReviewStatus(date);
+    const submissions=submission.status==="pending" ? {lane:"submissions" as const,status:"pending" as const,
+      label:"等待匿名投稿审稿",reporterName:this.reporterName(submission.review.reviewerResidentId),resendable:true} :
+      submission.status==="completed" ? {lane:"submissions" as const,status:"completed" as const,label:"匿名投稿已审",resendable:false} :
+      submission.status==="empty" ? {lane:"submissions" as const,status:"empty" as const,label:"本期没有待审投稿",resendable:false} :
+      {lane:"submissions" as const,status:"not_started" as const,label:"匿名投稿尚未派发",resendable:false};
+    return {issueDate:date,lanes:[farm,submissions]};
+  }
+
+  async resendEditorWake(date:string,lane:"farm"|"submissions",requestId:string,accountId:string) {
+    if(!this.#reporterRelay) throw new DailyEditorError(503,"补发铃服务暂时无法连接。");
+    const replay=this.editor.resendByRequest(requestId);
+    if(replay) {
+      if(replay.issue_date!==date||replay.lane!==lane||replay.requested_by!==accountId)
+        throw new DailyEditorError(409,"这次补发请求与原记录不一致。");
+      this.#reporterRelay.notifyResentWake(replay.recipient_resident_id);
+      return {status:"already_sent" as const,lane,reporterName:this.reporterName(replay.recipient_resident_id)};
+    }
+    let sourceWakeId:string,recipientResidentId:string,persist:(wakeId:string)=>"created"|"duplicate";
+    if(lane==="farm") {
+      if(!this.#reporterFlow) throw new DailyEditorError(503,"农场记者进度暂时无法读取。");
+      const wake=await this.#reporterFlow.pendingIssue(date);
+      if(!wake) throw new DailyEditorError(409,"当前没有可补发的农场记者任务。");
+      sourceWakeId=wake.wake_id;recipientResidentId=wake.recipient_resident_id;
+      persist=wakeId=>this.#reporterRelay!.createResentFarmWake(wake,wakeId).status;
+    } else {
+      const status=this.editor.daily.submissionReviewStatus(date);
+      if(status.status!=="pending") throw new DailyEditorError(409,"当前没有可补发的匿名投稿审稿任务。");
+      sourceWakeId=`daily-submissions:${date}`;recipientResidentId=status.review.reviewerResidentId;
+      persist=wakeId=>this.#reporterRelay!.createResentSubmissionWake(status.review,wakeId).status;
+    }
+    const result=this.editor.createResend({requestId,issueDate:date,lane,sourceWakeId,recipientResidentId,
+      requestedBy:accountId,now:this.#now()},persist);
+    this.#reporterRelay.notifyResentWake(result.recipientResidentId);
+    return {status:result.status,lane,reporterName:this.reporterName(result.recipientResidentId)};
   }
 
   async rewardSubmissions(date:string,ids:string[],account:string) {
