@@ -32,7 +32,6 @@ import {
     ranchUnplaceDecoration,
     ranchUpgradeAnimal,
     ranchWearAccessory,
-    settleRanchRaids,
     takeRanchNotices,
     toggleStar,
 } from "../../engine.js";
@@ -45,7 +44,6 @@ import {
     getQixiLantern2026World,
     playerFarms,
     replaceFarm,
-    replaceFarmsAtomic,
     restoreWorldSnapshotInMemory,
     save,
     snapshotWorldForRollback,
@@ -90,6 +88,7 @@ import {
 import { htmlGenLink } from "../../agent.js";
 import { AGENT_HEADERS, readFormBody } from "../http.js";
 import { internalServiceError } from "../doorbell/contract.js";
+import { settleDueRanchRaids } from "../ranch-raid-settlement.js";
 import {
     applyHumanFarmNames,
     applyHumanFarmSocialSetting,
@@ -121,17 +120,8 @@ export async function handleLegacyHumanRoute({
         res.writeHead(404, AGENT_HEADERS);
         return res.end(uiInvalid());
     }
-    const currentPlayers = playerFarms();
-    const stagedPlayers = currentPlayers.map((farm) => structuredClone(farm));
-    const raidSettlement = settleRanchRaids(stagedPlayers, now);
+    const raidSettlement = settleDueRanchRaids(now);
     if (raidSettlement.settled > 0) {
-        for (const farm of stagedPlayers)
-            checkTitles(farm);
-        const replacements = stagedPlayers
-            .filter((farm, index) => JSON.stringify(farm) !== JSON.stringify(currentPlayers[index]))
-            .map((farm) => ({ id: farm.id, farm }));
-        if (replacements.length > 0)
-            replaceFarmsAtomic(replacements);
         f = allFarms().find((farm) => farm.humanKey === key);
     }
     if (method === "GET")

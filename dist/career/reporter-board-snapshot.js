@@ -16,47 +16,23 @@ export function installReporterBoardSnapshotSchema(database) {
       stolen INTEGER NOT NULL, watered INTEGER NOT NULL, coinSpend INTEGER NOT NULL, oddDishes INTEGER NOT NULL,
       raidIncome INTEGER NOT NULL, raidLoss INTEGER NOT NULL,
       PRIMARY KEY(day_index, farm_id)
+    );
+    CREATE TABLE IF NOT EXISTS career_reporter_board_snapshot_state (
+      singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+      open_day INTEGER NOT NULL
     )`);
 }
 
-// Called inside the existing world/economy transaction, never from a new timer.
-export function captureReporterBoardSnapshots(database, farms, now) {
-    const today = currentDayIndex(now);
-    database.prepare("DELETE FROM career_reporter_board_snapshots WHERE day_index < ?").run(today - 2);
-    const read = database.prepare("SELECT * FROM career_reporter_board_snapshots WHERE day_index = ? AND farm_id = ?");
-    const write = database.prepare(`INSERT INTO career_reporter_board_snapshots (${COLUMNS.join(",")})
-      VALUES (${COLUMNS.map(() => "?").join(",")}) ON CONFLICT(day_index, farm_id) DO UPDATE SET
-      ${COLUMNS.filter(key => !["day_index", "farm_id"].includes(key)).map(key => `${key}=excluded.${key}`).join(",")}`);
-    farms.forEach((farm, index) => {
-        if (!farm || farm.id === NPC_ID) return;
-        const days = new Set([today, farm.daily?.day, farm.ranch?.raidIncome?.day, farm.ranch?.raidLoss?.day]);
-        for (const day of days) {
-            if (!Number.isInteger(day) || day < today - 2 || day > today) continue;
-            const previous = read.get(day, farm.id);
-            // Deployment cannot reconstruct an already lost day. An operation
-            // begun just before midnight may still finish its existing day row.
-            if (day !== today && !previous) continue;
-            const title = equippedTitle(farm);
-            const row = day !== today ? { ...previous } : {
-                day_index: day, farm_id: farm.id, farm_order: index, name: farm.name,
-                title: title?.name ?? null, title_color: title?.color ?? null,
-                resident_id: farm.doorbellMcpMigration?.residentId ?? null,
-                binding_reference: farm.doorbellMcpMigration?.migrationId ?? null,
-                ...Object.fromEntries(VALUE_KEYS.map(key => [key, previous?.[key] ?? 0])),
-            };
-            if (farm.daily?.day === day) for (const key of DAILY_KEYS) row[key] = farm.daily[key] ?? 0;
-            for (const key of ["raidIncome", "raidLoss"])
-                if (farm.ranch?.[key]?.day === day) row[key] = farm.ranch[key].n ?? 0;
-            write.run(...COLUMNS.map(key => row[key]));
-        }
-    });
+function applyDayCounters(row, farm, day) {
+    if (farm.daily?.day === day)
+        for (const key of DAILY_KEYS) row[key] = farm.daily[key] ?? 0;
+    for (const key of ["raidIncome", "raidLoss"])
+        if (farm.ranch?.[key]?.day === day) row[key] = farm.ranch[key].n ?? 0;
+    return row;
 }
 
-// A ledger-only operation may be the first activity of a day. Seed missing
-// rows from committed farm state, not the mutable in-memory world of another
-// operation. Existing rows are untouched; final ledger totals are read by day.
-export function seedReporterBoardSnapshotsFromCommittedWorld(database, now) {
-    const day = currentDayIndex(now);
+// Read before the first new-day farm write can replace yesterday's counters.
+function sealCommittedDay(database, day) {
     const rows = database.prepare(`SELECT f.farm_id, f.position,
       json_extract(f.state_json, '$.name') AS name,
       json_extract(f.state_json, '$.daily') AS daily,
@@ -66,23 +42,72 @@ export function seedReporterBoardSnapshotsFromCommittedWorld(database, now) {
       json_extract(f.state_json, '$.titles') AS titles,
       json_extract(f.state_json, '$.doorbellMcpMigration.residentId') AS resident_id,
       json_extract(f.state_json, '$.doorbellMcpMigration.migrationId') AS binding_reference
-      FROM farm_states f WHERE f.farm_id <> ? AND NOT EXISTS (
-        SELECT 1 FROM career_reporter_board_snapshots s WHERE s.day_index = ? AND s.farm_id = f.farm_id
-      ) ORDER BY f.position`).all(NPC_ID, day);
+      FROM farm_states f WHERE f.farm_id <> ? ORDER BY f.position`).all(NPC_ID);
     const parse = value => value === null ? undefined : JSON.parse(value);
-    captureReporterBoardSnapshots(database, rows.map(row => ({
-        id: row.farm_id, name: row.name, daily: parse(row.daily),
-        ranch: { raidIncome: parse(row.raid_income), raidLoss: parse(row.raid_loss) },
-        titleEquipped: row.equipped, titles: parse(row.titles),
-        doorbellMcpMigration: { residentId: row.resident_id, migrationId: row.binding_reference },
-    })), now);
-    for (const row of rows) database.prepare("UPDATE career_reporter_board_snapshots SET farm_order = ? WHERE farm_id = ? AND day_index = ?")
-        .run(row.position, row.farm_id, day);
+    const write = database.prepare(`INSERT INTO career_reporter_board_snapshots (${COLUMNS.join(",")})
+      VALUES (${COLUMNS.map(() => "?").join(",")}) ON CONFLICT(day_index, farm_id) DO UPDATE SET
+      ${COLUMNS.filter(key => !["day_index", "farm_id"].includes(key)).map(key => `${key}=excluded.${key}`).join(",")}`);
+    for (const source of rows) {
+        const farm = {
+            daily: parse(source.daily),
+            ranch: { raidIncome: parse(source.raid_income), raidLoss: parse(source.raid_loss) },
+            titleEquipped: source.equipped, titles: parse(source.titles),
+        };
+        const title = equippedTitle(farm);
+        const row = applyDayCounters({
+            day_index: day, farm_id: source.farm_id, farm_order: source.position, name: source.name,
+            title: title?.name ?? null, title_color: title?.color ?? null,
+            resident_id: source.resident_id, binding_reference: source.binding_reference,
+            ...Object.fromEntries(VALUE_KEYS.map(key => [key, 0])),
+        }, farm, day);
+        write.run(...COLUMNS.map(key => row[key]));
+    }
+}
+
+// The existing midnight duty cycle and first cross-day commit use the same
+// transaction-owned boundary. The marker rolls back with its archived rows.
+export function advanceReporterBoardSnapshotDay(database, now) {
+    const today = currentDayIndex(now);
+    let state = database.prepare("SELECT open_day FROM career_reporter_board_snapshot_state WHERE singleton = 1").get();
+    if (!state) {
+        // Preserve existing rolling snapshots on upgrade, but never invent a
+        // day for a fresh installation whose counters may already be reset.
+        const legacy = database.prepare("SELECT MAX(day_index) AS day FROM career_reporter_board_snapshots WHERE day_index <= ?").get(today);
+        state = { open_day: legacy.day ?? today };
+        database.prepare("INSERT INTO career_reporter_board_snapshot_state (singleton, open_day) VALUES (1, ?)").run(state.open_day);
+    }
+    if (state.open_day >= today) return;
+    if (state.open_day >= today - 2) sealCommittedDay(database, state.open_day);
+    // A stopped server has no saved counters for intervening unobserved days.
+    database.prepare("DELETE FROM career_reporter_board_snapshots WHERE day_index < ?").run(today - 2);
+    database.prepare("UPDATE career_reporter_board_snapshot_state SET open_day = ? WHERE singleton = 1").run(today);
+}
+
+// An action timestamped before midnight can commit after the boundary. Only
+// its actually persisted farms may amend an existing retained day, never seed
+// missing history or roll the whole server's boards forward on every action.
+export function amendReporterBoardSnapshotsForCommittedFarms(database, farms, now) {
+    const today = currentDayIndex(now);
+    const read = database.prepare("SELECT * FROM career_reporter_board_snapshots WHERE day_index = ? AND farm_id = ?");
+    const update = database.prepare(`UPDATE career_reporter_board_snapshots
+      SET ${VALUE_KEYS.map(key => `${key} = ?`).join(",")}
+      WHERE day_index = ? AND farm_id = ?`);
+    for (const farm of farms) {
+        if (!farm || farm.id === NPC_ID) continue;
+        const days = new Set([farm.daily?.day, farm.ranch?.raidIncome?.day, farm.ranch?.raidLoss?.day]);
+        for (const day of days) {
+            if (!Number.isInteger(day) || day < today - 2 || day >= today) continue;
+            const previous = read.get(day, farm.id);
+            if (!previous) continue;
+            const row = applyDayCounters({ ...previous }, farm, day);
+            if (VALUE_KEYS.some(key => row[key] !== previous[key]))
+                update.run(...VALUE_KEYS.map(key => row[key]), day, farm.id);
+        }
+    }
 }
 
 export function readReporterBoardSnapshot(database, day, now) {
     const today = currentDayIndex(now);
-    database.prepare("DELETE FROM career_reporter_board_snapshots WHERE day_index < ?").run(today - 2);
     if (day < today - 2 || day >= today) return {};
     const rows = database.prepare("SELECT * FROM career_reporter_board_snapshots WHERE day_index = ? ORDER BY farm_order").all(day);
     const instant = day * 86_400_000 - 8 * 3_600_000;

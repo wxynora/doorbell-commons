@@ -1,12 +1,13 @@
 import { MAX_BODY_BYTES } from "../../config.js";
 import { PublicSyncError } from "../../public-sync.js";
-import { playerFarms } from "../../store.js";
+import { getFarm, playerFarms } from "../../store.js";
 import { jsonOut, readJsonBody } from "../http.js";
 import { projectHumanRanch } from "../ranch-structured.js";
 import { handleHumanRanchCollection } from "../ranch-collection-action.js";
 import { handleHumanRanchDecorationAction } from "../ranch-decoration-action.js";
 import { handleHumanRanchInteractionAction } from "../ranch-interaction-action.js";
 import { handleHumanRanchResidentAction } from "../ranch-resident-action.js";
+import { settleDueRanchRaids } from "../ranch-raid-settlement.js";
 import {
     FARM_DOORPLATE_RE,
     humanFieldError,
@@ -33,7 +34,9 @@ export async function handleDoorbellHumanRanchRead(req, res, method) {
         const binding = validateFarmBinding(body);
         if (binding.error)
             return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
-        return jsonOut(res, 200, projectHumanRanch(binding.farm, Date.now(), playerFarms()));
+        const now = Date.now();
+        settleDueRanchRaids(now);
+        return jsonOut(res, 200, projectHumanRanch(getFarm(binding.farm.id), now, playerFarms()));
     }
     catch (error) {
         if (error instanceof PublicSyncError)

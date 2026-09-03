@@ -61,7 +61,7 @@ import {
 } from "./career/reporter-service.js";
 import { reporterWorkflowForJob } from "./career/reporter-newsroom-service.js";
 import { reporterHasCompletedWork } from "./career/reporter-submission-work.js";
-import { captureReporterBoardSnapshots, installReporterBoardSnapshotSchema, seedReporterBoardSnapshotsFromCommittedWorld } from "./career/reporter-board-snapshot.js";
+import { advanceReporterBoardSnapshotDay, amendReporterBoardSnapshotsForCommittedFarms, installReporterBoardSnapshotSchema } from "./career/reporter-board-snapshot.js";
 
 export const LINGYE_WORLD_SCHEMA_VERSION = 2;
 
@@ -327,6 +327,8 @@ export function createLingyeFarmBalanceCoordinator(database, backend, options = 
         const ownsDurableTransaction = !database.isTransaction;
         const publications = [];
         const result = runLingyeWorldTransaction(database, () => {
+            const now = options.now?.() ?? Date.now();
+            advanceReporterBoardSnapshotDay(database, now);
             const candidateFarmIds = Array.isArray(persistenceHints?.farmIds)
                 ? new Set(persistenceHints.farmIds)
                 : null;
@@ -435,12 +437,18 @@ export function createLingyeFarmBalanceCoordinator(database, backend, options = 
                     persistenceFarmIds.add(farm.id);
                 }
             }
-            captureReporterBoardSnapshots(database, world.farms, options.now?.() ?? Date.now());
-            return writeWorld({
+            const written = writeWorld({
                 farmIds: [...persistenceFarmIds],
                 componentKeys: [],
                 durableBoundary: ownsDurableTransaction,
             });
+            const committedFarmIds = new Set(written?.farms ?? []);
+            amendReporterBoardSnapshotsForCommittedFarms(
+                database,
+                world.farms.filter(farm => committedFarmIds.has(farm.id)),
+                now,
+            );
+            return written;
         });
         for (const { target, staged } of publications) {
             for (const key of Object.keys(target))
@@ -597,11 +605,10 @@ export function createLingyeWorldBackend(database, options) {
     const jobs = new CareerJobService(shared);
     const authorityAssignment = new CareerAuthorityAssignmentService({ ...shared, jobs });
     const atomic = (operation) => {
-        const ownsTransaction = !database.isTransaction;
         return runLingyeWorldTransaction(database, () => {
-            const result = operation();
-            if (ownsTransaction) seedReporterBoardSnapshotsFromCommittedWorld(database, options.now?.() ?? Date.now());
-            return result;
+            // Also runs inside the existing midnight employment transaction.
+            advanceReporterBoardSnapshotDay(database, options.now?.() ?? Date.now());
+            return operation();
         });
     };
     const chefAuthority = options.chefAuthority ?? options.chef ?? {};
