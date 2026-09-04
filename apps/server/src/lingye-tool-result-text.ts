@@ -854,9 +854,13 @@ function commissionItemLines(op: string, item: Record<string, unknown>, index: n
     const animalKind = firstPublicField(facts, "animalKindId");
     const animal = typeof animalKind === "string" ? ANIMAL_NAMES[animalKind] : undefined;
     const animalIndex = integer(firstPublicField(facts, "animalIndex"));
-    lines.push(`  动物：${animal ?? "暂无法读取具体描述"}${
-      animal && animalIndex !== undefined && animalIndex >= 0 ? `（第 ${animalIndex + 1} 只）` : ""
-    }`);
+    lines.push(
+      `  动物：${animal ?? "暂无法读取具体描述"}${
+        animal && animalIndex !== undefined && animalIndex >= 0
+          ? `（第 ${animalIndex + 1} 只）`
+          : ""
+      }`,
+    );
   } else if (op === "go.newsroom.commission") {
     lines.push("  稿件任务：整理真实公共素材");
   } else {
@@ -881,9 +885,11 @@ function commissionItemLines(op: string, item: Record<string, unknown>, index: n
     const fee = item.serviceFee;
     const amount = integer(fee.amount);
     if (fee.currency === "gold" && amount !== undefined && amount >= 0) {
-      lines.push(`  诊金：${numberText(amount)} 金币${
-        fee.state === "quoted" ? "，发布时冻结；治疗材料另计" : ""
-      }`);
+      lines.push(
+        `  诊金：${numberText(amount)} 金币${
+          fee.state === "quoted" ? "，发布时冻结；治疗材料另计" : ""
+        }`,
+      );
       if (fee.state === "reserved" && fee.canRetarget === true) {
         lines.push("  诊金已冻结，改选医生不重复收费");
       }
@@ -918,6 +924,36 @@ function commissionRecords(data: Record<string, unknown>): Record<string, unknow
     seen.add(privateKey);
     return true;
   });
+}
+
+function commissionJobs(data: Record<string, unknown>): Record<string, unknown>[] {
+  const current = isRecord(data.current) ? data.current : undefined;
+  const values = [...records(data.jobs), ...records(current?.jobs)];
+  const seen = new Set<string>();
+  return values.filter((item, index) => {
+    const sourceFacts = isRecord(item.sourceFacts) ? item.sourceFacts : undefined;
+    const privateKey =
+      (typeof item.jobId === "string" && `job:${item.jobId}`) ||
+      (sourceFacts &&
+        typeof sourceFacts.sourceId === "string" &&
+        `source:${sourceFacts.sourceId}`) ||
+      `public-job:${index}`;
+    if (seen.has(privateKey)) return false;
+    seen.add(privateKey);
+    return true;
+  });
+}
+
+function currentServiceCommissionLines(
+  op: "go.farm.commission" | "go.hospital.commission",
+  item: Record<string, unknown>,
+): string[] {
+  return [
+    "当前委托：",
+    ...commissionItemLines(op, item, 0)
+      .slice(1)
+      .filter((line) => !line.startsWith("  诊金")),
+  ];
 }
 
 function renderChefFacts(value: unknown): string[] {
@@ -989,12 +1025,32 @@ function commissionText(op: string, result: LingyeSuccess): string {
   const current = isRecord(data.current) ? data.current : undefined;
   const workNotice = safeChineseText(data.workNotice) ?? safeChineseText(current?.workNotice);
   if (workNotice) lines.push(workNotice);
-  const items = commissionRecords(data);
-  if (items.length === 0) lines.push(`${commissionKind(op)}：当前没有公开记录。`);
-  else {
-    lines.push(`${commissionKind(op)}：`);
-    for (const [index, item] of items.entries())
-      lines.push(...commissionItemLines(op, item, index));
+  if (op === "go.farm.commission" || op === "go.hospital.commission") {
+    const jobs = commissionJobs(data);
+    const acceptedJobCount = integer(data.acceptedJobCount);
+    lines.push(
+      `已接委托：${acceptedJobCount !== undefined && acceptedJobCount >= 0 ? acceptedJobCount : 0}`,
+    );
+    const currentWorkerJobId =
+      typeof data.currentWorkerJobId === "string" && data.currentWorkerJobId.length > 0
+        ? data.currentWorkerJobId
+        : undefined;
+    const currentJob = jobs.find(
+      (job) =>
+        currentWorkerJobId !== undefined &&
+        job.jobId === currentWorkerJobId &&
+        typeof job.status === "string" &&
+        ["accepted", "assigned", "active"].includes(job.status),
+    );
+    if (currentJob) lines.push(...currentServiceCommissionLines(op, currentJob));
+  } else {
+    const items = commissionRecords(data);
+    if (items.length === 0) lines.push(`${commissionKind(op)}：当前没有公开记录。`);
+    else {
+      lines.push(`${commissionKind(op)}：`);
+      for (const [index, item] of items.entries())
+        lines.push(...commissionItemLines(op, item, index));
+    }
   }
   if (op === "go.farm.commission") {
     lines.push(...renderChefFacts(data.chef ?? current?.chef));

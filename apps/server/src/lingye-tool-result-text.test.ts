@@ -204,7 +204,8 @@ test("all seven public Lingye operations render only player-facing Chinese facts
         },
         options: [{ option: "opt_EEEEEEEEEEEE", label: "接取三号地农艺委托", requires: [] }],
       },
-      matches: [/第 3 号地/u, /叶片失去挺度、土面发干/u, /月光蔬菜汤/u, /接取三号地农艺委托/u],
+      matches: [/已接委托：0/u, /月光蔬菜汤/u, /接取三号地农艺委托/u],
+      excludes: [/第 3 号地/u, /叶片失去挺度、土面发干/u],
     },
     {
       op: "go.hospital.commission",
@@ -226,7 +227,8 @@ test("all seven public Lingye operations render only player-facing Chinese facts
         ],
         options: [{ option: "opt_FFFFFFFFFFFF", label: "挂号这只云绵羊", requires: [] }],
       },
-      matches: [/动物：云绵羊/u, /活动减少、局部外伤痕迹/u, /状态：待处理/u, /挂号这只云绵羊/u],
+      matches: [/已接委托：0/u, /挂号这只云绵羊/u],
+      excludes: [/动物：云绵羊/u, /活动减少、局部外伤痕迹/u, /状态：待处理/u],
     },
     {
       op: "go.security.commission",
@@ -271,6 +273,137 @@ test("all seven public Lingye operations render only player-facing Chinese facts
     }
     assertNoPrivateLeak(text);
   }
+});
+
+test("farm and hospital commission text uses authoritative worker count and current job", () => {
+  const fixtures = [
+    {
+      op: "go.farm.commission",
+      object: { plotId: 4 },
+      currentMatch:
+        /当前委托：[\s\S]*委托方公开农场：门牌 NOW123[\s\S]*地块：第 4 号地[\s\S]*可观察症状：叶片失去挺度[\s\S]*难度：2 级[\s\S]*状态：处理中/u,
+      hiddenObjects: [/OLD111/u, /OLD222/u, /第 1 号地/u, /第 2 号地/u],
+    },
+    {
+      op: "go.hospital.commission",
+      object: { animalKindId: "cloud_sheep", animalIndex: 1 },
+      currentMatch:
+        /当前委托：[\s\S]*委托方公开农场：门牌 NOW123[\s\S]*动物：云绵羊（第 2 只）[\s\S]*可观察症状：活动减少[\s\S]*难度：2 级[\s\S]*状态：处理中/u,
+      hiddenObjects: [/OLD111/u, /OLD222/u, /鸡/u, /鸭子/u],
+    },
+  ] as const;
+
+  for (const fixture of fixtures) {
+    const job = (
+      jobId: string,
+      status: "active" | "cancelled" | "completed",
+      farmDoorplate: string,
+      object: Record<string, unknown>,
+    ) => ({
+      jobId,
+      difficultyLevel: status === "active" ? 2 : 1,
+      status,
+      sourceFacts: {
+        initialFact: {
+          farmDoorplate,
+          observations:
+            status === "active"
+              ? [fixture.op === "go.farm.commission" ? "leaf_wilt" : "reduced_activity"]
+              : ["soil_surface_dry"],
+          ...object,
+        },
+      },
+    });
+    const text = renderLingyeToolText(
+      fixture.op,
+      {},
+      success("检查已记录。", {
+        acceptedJobCount: 1,
+        currentWorkerJobId: "current-active",
+        jobs: [
+          job(
+            "history-completed",
+            "completed",
+            "OLD111",
+            fixture.op === "go.farm.commission"
+              ? { plotId: 1 }
+              : { animalKindId: "chicken", animalIndex: 0 },
+          ),
+          job(
+            "history-cancelled",
+            "cancelled",
+            "OLD222",
+            fixture.op === "go.farm.commission"
+              ? { plotId: 2 }
+              : { animalKindId: "duck", animalIndex: 0 },
+          ),
+          job(
+            "owner-active",
+            "active",
+            "OWNER888",
+            fixture.op === "go.farm.commission"
+              ? { plotId: 8 }
+              : { animalKindId: "goose", animalIndex: 0 },
+          ),
+          job("current-active", "active", "NOW123", fixture.object),
+          {
+            jobId: "public-available",
+            difficultyLevel: 4,
+            status: "available",
+            sourceFacts: {
+              initialFact: {
+                farmDoorplate: "PUBLIC777",
+                observations: ["abnormal_breathing"],
+              },
+            },
+          },
+        ],
+        sources: [
+          {
+            sourceId: "unaccepted-source",
+            status: "open",
+            difficultyLevel: 4,
+            fact: { farmDoorplate: "OPEN999", observations: ["abnormal_breathing"] },
+          },
+        ],
+        options: [
+          { option: "opt_RRRRRRRRRRRR", label: "回复委托消息", requires: ["text"] },
+          { option: "opt_CCCCCCCCCCCC", label: "检查当前情况", requires: [] },
+        ],
+      }),
+    );
+
+    assert.match(text, /检查已记录。/u);
+    assert.match(text, /已接委托：1/u);
+    assert.doesNotMatch(text, /已接委托：[45]/u);
+    assert.match(text, fixture.currentMatch);
+    assert.match(text, /回复委托消息/u);
+    assert.match(text, /办理编号：opt_RRRRRRRRRRRR/u);
+    assert.match(text, /检查当前情况/u);
+    assert.doesNotMatch(text, /OPEN999|OWNER888|PUBLIC777|地块委托 \d|病例 \d|已完成|已取消/u);
+    for (const hidden of fixture.hiddenObjects) assert.doesNotMatch(text, hidden);
+    assertNoPrivateLeak(text);
+  }
+
+  const invalidAuthority = renderLingyeToolText(
+    "go.farm.commission",
+    {},
+    success("已读取当前真实委托。", {
+      acceptedJobCount: 1.5,
+      jobs: [
+        {
+          jobId: "must-not-be-inferred",
+          difficultyLevel: 1,
+          status: "active",
+          sourceFacts: { initialFact: { farmDoorplate: "GUESS999", plotId: 9 } },
+        },
+      ],
+      options: [{ option: "opt_NNNNNNNNNNNN", label: "回复委托消息", requires: ["text"] }],
+    }),
+  );
+  assert.match(invalidAuthority, /已接委托：0/u);
+  assert.doesNotMatch(invalidAuthority, /当前委托：|GUESS999|第 9 号地/u);
+  assert.match(invalidAuthority, /回复委托消息/u);
 });
 
 test("security view renders the resident's active detention and early release entry without private ids", () => {
@@ -591,8 +724,7 @@ test("unknown player-world enums never fall back to snake case", () => {
     }),
   );
 
-  assert.match(text, /动物：暂无法读取具体描述/u);
-  assert.match(text, /可观察症状：暂无法读取具体描述/u);
-  assert.match(text, /状态：暂无法读取具体描述/u);
+  assert.match(text, /已接委托：0/u);
+  assert.doesNotMatch(text, /动物：|可观察症状：|状态：/u);
   assertNoPrivateLeak(text);
 });
