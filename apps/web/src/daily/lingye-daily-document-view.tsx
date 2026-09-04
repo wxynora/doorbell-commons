@@ -39,9 +39,13 @@ export function DailyDocumentView({document,images,editable=false}:{document:Dai
   const render=(key:string)=>{
     const section=document.sections.find(item=>item.key===key);
     if(!section?.blocks.length)return null;
-    return <section key={key} className={`${key==="tomorrow"?"daily-footer-question":"daily-section"} daily-document-section daily-document-${key}`} data-section-key={key}>
-      <h2 contentEditable={editable} suppressContentEditableWarning className={`daily-section-tag daily-section-tag--${key==="front"?"red":key==="slices"?"green":"blue"}`}>{section.title}</h2>
-      <div contentEditable={editable} suppressContentEditableWarning className="daily-document-copy" role={editable?"textbox":undefined} aria-label={editable?section.title:undefined} aria-multiline={editable?true:undefined}><DailyDocumentBlocks blocks={section.blocks} images={images} groupQuotes={key==="quotes"} /></div>
+    const tone=key==="front"||key==="quotes"?"red":key==="slices"?"green":key==="farm"?"yellow":key==="submissions"?"ink":"blue";
+    const blocks=<DailyDocumentBlocks blocks={section.blocks} images={images} groupQuotes={key==="quotes"} />;
+    return <section key={key} className={`${key==="tomorrow"?"daily-footer-question":"daily-section"}${key==="quotes"?" daily-quotes":""} daily-document-section daily-document-${key}`} data-section-key={key}>
+      {key==="tomorrow"
+        ? <h2 contentEditable={editable} suppressContentEditableWarning>{section.title}</h2>
+        : <h2 contentEditable={editable} suppressContentEditableWarning className={`daily-section-tag daily-section-tag--${tone}`}>{section.title}</h2>}
+      <div contentEditable={editable} suppressContentEditableWarning className="daily-document-copy" role={editable?"textbox":undefined} aria-label={editable?section.title:undefined} aria-multiline={editable?true:undefined}>{key==="group"?<div className="daily-group-card daily-document-group-card">{blocks}</div>:blocks}</div>
     </section>;
   };
   return <div className="daily-document">
