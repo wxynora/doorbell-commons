@@ -340,8 +340,8 @@ test("veterinarian owners pay 75 percent of the base fee to another real doctor 
     const materialGold = ANIMAL_CONDITIONS.indigestion.materialGold;
     const ordinary = runScenario(false, "01");
     const colleague = runScenario(true, "02");
-    assert.equal(ordinary.chargedGold, materialGold + 3_000);
-    assert.equal(colleague.chargedGold, materialGold + 2_250);
+    assert.equal(ordinary.chargedGold, materialGold + 5_000);
+    assert.equal(colleague.chargedGold, materialGold + 3_750);
     assert.equal(colleague.performanceUnits, ordinary.performanceUnits);
     assert.ok(colleague.performanceUnits > 0);
 });
