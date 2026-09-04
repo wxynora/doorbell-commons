@@ -424,7 +424,7 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
         bulletinAckKeysRef.current.get(acknowledgementIdentity) ?? crypto.randomUUID();
       bulletinAckKeysRef.current.set(acknowledgementIdentity, idempotencyKey);
       const result = await acknowledgeBoundBulletin({
-        humanNoticeIds:bulletin.humanNotices?.map(notice=>notice.id) ?? [],
+        humanNoticeIds: bulletin.humanNotices?.map((notice) => notice.id) ?? [],
         acknowledge,
         expectedFarmDoorplate,
         expectedRevision: bulletin.revision,
@@ -441,7 +441,7 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
               data: result.data.data.resource,
               revision: result.data.revision,
               server_time: result.data.server_time,
-              humanNotices:result.data.humanNotices ?? bulletin.humanNotices ?? [],
+              humanNotices: result.data.humanNotices ?? bulletin.humanNotices ?? [],
             },
           },
         }));
@@ -556,16 +556,24 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
     async (input) => {
       const result = await executeBoundSmeltingAction(input);
       if (result.ok) {
+        resourceControllersRef.current.farmCatalog?.abort();
         const currentCatalog = farmCatalogRef.current;
         if (currentCatalog) {
+          const resource = result.data.data.resource;
           const nextCatalog: BoundFarmCatalogRead = {
             ...currentCatalog,
-            data: result.data.data.resource,
-            revision: result.data.revision,
+            data: {
+              ...currentCatalog.data,
+              ...resource,
+              smelting:
+                resource.smelting.status === "available" &&
+                resource.smelting.write_status === "available"
+                  ? { ...resource.smelting, revision: result.data.smelting_revision }
+                  : resource.smelting,
+            },
             server_time: result.data.server_time,
           };
           farmCatalogRef.current = nextCatalog;
-          setSettingsInitializationKey((current) => current + 1);
           setResources((current) => ({
             ...current,
             farmCatalog: { stage: "ready", data: nextCatalog },

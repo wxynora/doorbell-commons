@@ -51,15 +51,20 @@ export const farmSmeltingActionReceiptSchema = z
   })
   .strict();
 
+export const farmSmeltingActionResourceSchema = farmCatalogDataSchema.pick({
+  farm: true,
+  backpack: true,
+  smelting: true,
+});
+
 export const farmHumanSmeltingActionSuccessSchema = z
   .object({
     data: z
       .object({
         result: farmSmeltingActionReceiptSchema,
-        resource: farmCatalogDataSchema,
+        resource: farmSmeltingActionResourceSchema,
       })
       .strict(),
-    revision: z.string().min(1),
     smelting_revision: farmSmeltingActionRevisionSchema,
     server_time: z.iso.datetime(),
   })
