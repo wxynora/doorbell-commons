@@ -33,10 +33,10 @@ import {
 } from "./p3-world.js";
 
 export const HOSPITAL_BASE_FEE_GOLD = Object.freeze({
-    1: 5_000,
-    2: 15_000,
-    3: 40_000,
-    4: 100_000,
+    1: 3_000,
+    2: 9_000,
+    3: 24_000,
+    4: 60_000,
 });
 
 export const AGRONOMY_NPC_BASE_FEE_GOLD = Object.freeze({
@@ -664,29 +664,39 @@ export function workerOptions(job, residentId, qualificationLevel = job.required
     const decisionCapacityReached = job.decisionCount >= 4;
     if (job.career === "agronomist") {
         const state = sourceState(job).source;
-        if (decisionCapacityReached)
-            return state.checks.length > 0 ? [`commission:transfer:${job.jobId}`] : [];
+        const treatmentOptions = state.checks.length > 0 && state.status !== "resolved"
+            ? agronomyTreatmentCandidates(qualificationLevel)
+                .map((treatment) => `commission:treat:${job.jobId}:${treatment}`)
+            : [];
+        if (decisionCapacityReached) {
+            if (state.checks.length > 0 && job.assignmentMode !== "self")
+                treatmentOptions.push(`commission:transfer:${job.jobId}`);
+            return treatmentOptions;
+        }
         const options = agronomyCheckCandidates(qualificationLevel)
             .filter((check) => !state.checks.includes(check))
             .map((check) => `commission:check:${job.jobId}:${check}`);
-        if (state.checks.length > 0 && state.status !== "resolved")
-            options.push(...agronomyTreatmentCandidates(qualificationLevel)
-                .map((treatment) => `commission:treat:${job.jobId}:${treatment}`));
-        if (state.checks.length > 0)
+        options.push(...treatmentOptions);
+        if (state.checks.length > 0 && job.assignmentMode !== "self")
             options.push(`commission:transfer:${job.jobId}`);
         return options;
     }
     if (job.career === "veterinarian") {
         const state = sourceState(job).source;
-        if (decisionCapacityReached)
-            return state.checks.length > 0 ? [`commission:transfer:${job.jobId}`] : [];
+        const treatmentOptions = state.checks.length > 0 && ["open", "treating"].includes(state.status)
+            ? animalTreatmentCandidates(qualificationLevel)
+                .map((treatment) => `commission:treat:${job.jobId}:${treatment}`)
+            : [];
+        if (decisionCapacityReached) {
+            if (state.checks.length > 0 && job.assignmentMode !== "self")
+                treatmentOptions.push(`commission:transfer:${job.jobId}`);
+            return treatmentOptions;
+        }
         const options = animalCheckCandidates(qualificationLevel)
             .filter((check) => !state.checks.includes(check))
             .map((check) => `commission:check:${job.jobId}:${check}`);
-        if (state.checks.length > 0 && ["open", "treating"].includes(state.status))
-            options.push(...animalTreatmentCandidates(qualificationLevel)
-                .map((treatment) => `commission:treat:${job.jobId}:${treatment}`));
-        if (state.checks.length > 0)
+        options.push(...treatmentOptions);
+        if (state.checks.length > 0 && job.assignmentMode !== "self")
             options.push(`commission:transfer:${job.jobId}`);
         return options;
     }

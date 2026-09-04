@@ -44,7 +44,7 @@ export function craft(farm, materialIds, _now) {
     const recipe = recipes.find((r) => [...r.materials].sort().join("+") === sortedKey);
     let cropId;
     let byRecipe = false;
-    if (recipe && cropById.get(recipe.output)) {
+    if (recipe && cropById.get(recipe.output) && (!recipe.requiresCodex || !!farm.codex?.[recipe.output])) {
         cropId = recipe.output;
         byRecipe = true;
     }

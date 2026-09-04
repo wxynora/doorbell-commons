@@ -248,12 +248,12 @@ test("P3 commissions bind real sources to payment, world results, review state, 
     assert.equal(wrongTreatment.ok, true);
     assert.equal(wrongTreatment.data.result.status, "active");
     assert.equal(getFarm(FARM_ID).ranch.animals[0].lingyeHealth.status, "treating");
-    assert.equal(backend.forResident(OWNER).getOwnAccount().availableGold, 84_000);
+    assert.equal(backend.forResident(OWNER).getOwnAccount().availableGold, 86_000);
     assert.deepEqual(
         execute(executor, VETERINARIAN, "go.hospital.commission", wrongTreatmentArgs),
         wrongTreatment,
     );
-    assert.equal(backend.forResident(OWNER).getOwnAccount().availableGold, 84_000);
+    assert.equal(backend.forResident(OWNER).getOwnAccount().availableGold, 86_000);
     execute(executor, VETERINARIAN, "go.hospital.commission", {});
     const treatedAnimal = execute(executor, VETERINARIAN, "go.hospital.commission", {
         option: publicOption(database, VETERINARIAN, "go.hospital.commission",
@@ -262,7 +262,7 @@ test("P3 commissions bind real sources to payment, world results, review state, 
     assert.equal(treatedAnimal.ok, true);
     assert.equal(treatedAnimal.data.result.status, "completed");
     assert.equal(getFarm(FARM_ID).ranch.animals[0].lingyeHealth.status, "recovering");
-    assert.equal(backend.forResident(OWNER).getOwnAccount().availableGold, 76_000);
+    assert.equal(backend.forResident(OWNER).getOwnAccount().availableGold, 80_000);
     assert.equal(database.prepare(`SELECT COUNT(*) AS count
       FROM economy_system_gold_reservations
       WHERE resident_id = ? AND business_reference LIKE ?`)
@@ -759,10 +759,10 @@ test("system NPC fallback settles real agronomy and hospital sources without pla
     });
     assert.deepEqual(Object.fromEntries(Object.entries(HOSPITAL_BASE_FEE_GOLD)
         .map(([level, baseFee]) => [level, baseFee * 3])), {
-        1: 15_000,
-        2: 45_000,
-        3: 120_000,
-        4: 300_000,
+        1: 9_000,
+        2: 27_000,
+        3: 72_000,
+        4: 180_000,
     });
     const database = openLingyeWorldDatabase(":memory:");
     let sequence = 0;
@@ -870,12 +870,12 @@ test("system NPC fallback settles real agronomy and hospital sources without pla
     const treatedAnimal = executeOwner("go.hospital.commission", animalOption, getFarm(farmId));
     assert.equal(treatedAnimal.ok, true, JSON.stringify(treatedAnimal));
     assert.deepEqual(treatedAnimal.data.result.fee, {
-        baseGold: 300_000,
+        baseGold: 180_000,
         materialGold: 22_000,
-        totalGold: 322_000,
+        totalGold: 202_000,
     });
     assert.equal(getFarm(farmId).ranch.animals[0].lingyeHealth.status, "recovering");
-    assert.equal(backend.forResident(owner).getOwnAccount().availableGold, 153_000);
+    assert.equal(backend.forResident(owner).getOwnAccount().availableGold, 273_000);
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM career_npc_service_settlements").get().count, 2);
     assert.equal(database.prepare(`
       SELECT COUNT(*) AS count FROM career_jobs

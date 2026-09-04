@@ -448,6 +448,52 @@ const COMMISSION_OPTION_LABELS = Object.freeze([
     ["resolve", "提交治安处理结果"],
     ["npc", "委托机构 NPC 处理"],
 ]);
+const AGRONOMY_CHECK_OPTION_LABELS = Object.freeze({
+    leaf: "检查叶片",
+    soil: "检查土壤",
+    "pest-trace": "检查虫迹",
+    root: "检查根部",
+    "treatment-history": "检查近期处理记录",
+});
+const AGRONOMY_TREATMENT_OPTION_LABELS = Object.freeze({
+    "water-retaining-cover": "按缺水处理（保水覆盖物）",
+    "drainage-material": "按普通积水处理（排水材料）",
+    "insect-trap": "按局部虫害处理（诱虫板）",
+    "pest-net": "按传播虫害处理（防虫网）",
+    "soil-conditioner": "按营养失衡处理（土壤调理剂）",
+    "root-treatment": "按根部受损处理（护根剂）",
+});
+const VETERINARIAN_CHECK_OPTION_LABELS = Object.freeze({
+    "feed-history": "检查近期饲料",
+    abdomen: "检查腹部状态",
+    injury: "检查伤处",
+    "activity-history": "检查活动记录",
+    temperature: "检查体温",
+    bedding: "检查垫料",
+    breathing: "检查呼吸",
+    "water-intake": "检查饮水",
+    hydration: "检查补水状态",
+});
+const VETERINARIAN_TREATMENT_OPTION_LABELS = Object.freeze({
+    "stomach-powder": "按食滞治疗（理胃粉）",
+    "wound-cleanser+bandage": "按轻微外伤治疗（伤口清洗剂＋包扎材料）",
+    "dry-bedding+warm-compress": "按湿冷症治疗（干燥垫料＋温敷包）",
+    "rehydration-salt": "按脱水治疗（补液盐）",
+    "respiratory-medicine": "按呼吸道感染治疗（呼吸药剂）",
+    "antipyretic+rehydration-salt+respiratory-medicine": "按复合高热治疗（退热剂＋补液盐＋呼吸药剂）",
+});
+
+function commissionDecisionOptionLabel(operation, internalOption) {
+    const match = /^commission:(check|treat):.+:([^:]+)$/u.exec(internalOption);
+    if (!match)
+        return null;
+    const [, kind, value] = match;
+    if (operation === "go.farm.commission")
+        return (kind === "check" ? AGRONOMY_CHECK_OPTION_LABELS : AGRONOMY_TREATMENT_OPTION_LABELS)[value] ?? null;
+    if (operation === "go.hospital.commission")
+        return (kind === "check" ? VETERINARIAN_CHECK_OPTION_LABELS : VETERINARIAN_TREATMENT_OPTION_LABELS)[value] ?? null;
+    return null;
+}
 
 function optionOperation(op) {
     if (op.startsWith("go.bank."))
@@ -530,9 +576,10 @@ function exposeOptionHandles(database, residentId, op, value, now) {
                 return Object.fromEntries(Object.entries(candidate).map(([key, entry]) => [key, expose(entry)]));
             return {
                 option: optionHandle(database, residentId, operation, candidate.option, now),
-                label: typeof candidate.label === "string" && candidate.label.trim()
-                    ? candidate.label
-                    : internalOptionLabel(candidate.option),
+                label: commissionDecisionOptionLabel(operation, candidate.option) ??
+                    (typeof candidate.label === "string" && candidate.label.trim()
+                        ? candidate.label
+                        : internalOptionLabel(candidate.option)),
                 requires: Array.isArray(candidate.requires) ? [...candidate.requires] : [],
             };
         }
@@ -2063,7 +2110,8 @@ function commissionPresentation(database, backend, residentId, career, rows, sou
         sources: careerSources.map((source) => ({
             ...publicCommissionSource(source),
             ...(career === "veterinarian" ? { serviceFee: { currency: "gold",
-                amount: playerServiceCommissionPrice(source).baseFeeGold, state: "quoted" } } : {}),
+                amount: quotedPlayerServiceCommissionPrice(database, source, now).baseFeeGold,
+                state: "quoted" } } : {}),
         })),
         options,
     };
@@ -2267,6 +2315,18 @@ function veterinarianTreatmentChargeGold(database, job, workerResidentId, treatm
     return materialGold + baseGold * 3 / 4;
 }
 
+function quotedPlayerServiceCommissionPrice(database, source, now) {
+    const price = playerServiceCommissionPrice(source);
+    if (source.career !== "veterinarian" ||
+        qualificationLevel(database, source.ownerResidentId, "veterinarian", now) === 0) {
+        return price;
+    }
+    return Object.freeze({
+        ...price,
+        baseFeeGold: price.baseFeeGold * 3 / 4,
+    });
+}
+
 function serviceCommissionFund(database, jobId) {
     return database.prepare(`SELECT * FROM career_service_commission_funds
       WHERE current_job_id = ?`).get(jobId);
@@ -2389,9 +2449,10 @@ function beginCommissionWorldOperation(database, backend, residentId, career, ar
         const job = commissionJob(database, backend, jobId, career);
         if (job.workerResidentId !== residentId)
             throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.TRANSFERRED);
-        if (job.decisionCount >= 4)
-            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托已经达到四次决策上限。");
         const level = qualificationLevel(database, residentId, career, now);
+        const decisionLimitContinuation = job.decisionCount === 4 && kind === "treat";
+        if (job.decisionCount >= 4 && !decisionLimitContinuation)
+            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托已经达到四次决策上限。");
         const goldAmount = kind === "treat"
             ? job.career === "veterinarian"
                 ? veterinarianTreatmentChargeGold(database, job, residentId, actionValue, level, now)
@@ -2434,15 +2495,19 @@ function completeCommissionWorldOperation(database, backend, row, world) {
                 idempotencyKey: `${current.action_key}:settle`,
             });
         }
-        const decision = backend.forResident(current.resident_id).recordOwnJobDecision({
-            jobId: job.jobId,
-            idempotencyKey: current.action_key,
-            kind: current.operation_kind === "commission_check" ? "check" : "treatment",
-            optionReference: current.option_reference,
-            resultReference: current.operation_kind === "commission_check" ? world.sourceId : current.action_key,
-            consumesResources: current.operation_kind === "commission_treatment",
-            changesWorld: true,
-        });
+        const decisionLimitContinuation = current.operation_kind === "commission_treatment" &&
+            job.decisionCount === 4;
+        const decision = decisionLimitContinuation
+            ? { sequence: job.decisionCount, status: "active", continuedAtDecisionLimit: true }
+            : backend.forResident(current.resident_id).recordOwnJobDecision({
+                jobId: job.jobId,
+                idempotencyKey: current.action_key,
+                kind: current.operation_kind === "commission_check" ? "check" : "treatment",
+                optionReference: current.option_reference,
+                resultReference: current.operation_kind === "commission_check" ? world.sourceId : current.action_key,
+                consumesResources: current.operation_kind === "commission_treatment",
+                changesWorld: true,
+            });
         let result = decision;
         if (current.operation_kind === "commission_treatment") {
             if (world.resolved !== true) {
@@ -2520,7 +2585,9 @@ function completeCommissionWorldOperation(database, backend, row, world) {
         const response = current.operation_kind === "commission_check"
             ? success("检查已记录。", { result, world })
             : success(
-                "处理已完成。",
+                world.resolved === true
+                    ? "处理已完成。"
+                    : "这次处理没有解决异常，请根据检查结果换一种处理方法。",
                 { result, world },
                 finalJob.status === "completed"
                     ? commissionNotifications("commission_completed", finalJob,
@@ -2980,7 +3047,7 @@ function reviewReporterWorkflow(database, backend, residentId, job, decision, ar
 }
 
 function publishPlayerServiceCommission(database, backend, source, publication, actionKey, now) {
-    const price = playerServiceCommissionPrice(source);
+    const price = quotedPlayerServiceCommissionPrice(database, source, now);
     const silverEscrowId = `career-service:${createHash("sha256").update(source.sourceId).digest("hex").slice(0, 32)}`;
     const reserved = source.career === "agronomist"
         ? backend.trustedSystemCommands.reserveSilverEscrow({

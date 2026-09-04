@@ -23,7 +23,8 @@ export function refreshShop(farm, now) {
         return;
     farm.shop.refreshAt = now;
     const rng = new Rng(farm.rngState);
-    const unknown = recipes.filter((r) => !farm.knownRecipes.includes(r.output) && cropById.get(r.output));
+    const unknown = recipes.filter((r) => !farm.knownRecipes.includes(r.output) && cropById.get(r.output)
+        && (!r.requiresCodex || !!farm.codex?.[r.output]));
     farm.shop.recipe = unknown.length && rng.next() < SHOP_RECIPE_CHANCE ? unknown[rng.int(unknown.length)].output : null;
     // 药水套装：随机刷出（不固定售卖），每份限购 1（buyers 记录已买过的农场，刷新即清空=新一份）
     farm.shop.potionSet = rng.next() < POTION_SET_CHANCE ? { price: POTION_SET_PRICE, qty: POTION_SET_QTY, buyers: [] } : null;
@@ -60,6 +61,11 @@ export function buyRecipe(farm, now) {
     const out = farm.shop.recipe;
     if (!out)
         return { ok: false, error: "商店现在没有配方在售（每隔几小时刷新，看缘分）" };
+    const offeredRecipe = recipes.find((recipe) => recipe.output === out);
+    if (!offeredRecipe || (offeredRecipe.requiresCodex && !farm.codex?.[out])) {
+        farm.shop.recipe = null;
+        return { ok: false, error: "商店现在没有配方在售（每隔几小时刷新，看缘分）" };
+    }
     if (farm.knownRecipes.includes(out)) {
         farm.shop.recipe = null;
         return { ok: false, error: "这个配方你已经学过了" };

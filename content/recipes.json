@@ -79,5 +79,24 @@
     ],
     "output": "world_root_crown",
     "hint": "用世界树之籽、古树脂与创世余音接回最初的根。"
+  },
+  {
+    "materials": [
+      "time_amber",
+      "tarnished_lunar_bronze",
+      "world_tree_seed"
+    ],
+    "output": "season_wheel_tree",
+    "hint": "以时光琥珀记年、锈月铜定节，让世界树之籽转过完整四时。"
+  },
+  {
+    "materials": [
+      "clay_lump",
+      "ancient_resin",
+      "phoenix_ember"
+    ],
+    "output": "thirty_six_furrow_sunflower",
+    "hint": "把三十六畦的旧土、古树脂与一粒日焰放在一起，向阳的种子会记住来路。",
+    "requiresCodex": true
   }
 ]
