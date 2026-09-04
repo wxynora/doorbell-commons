@@ -2,7 +2,13 @@ import React,{useEffect,useRef,useState} from "react";
 import {dailyDocumentSchema,type DailyBlock,type DailyDocument,type DailyTextRun} from "@doorbell/protocol";
 import {DailyDocumentView} from "./lingye-daily-document-view";
 import {editorRequest,type EditorDraft,type EditorProgress} from "./lingye-daily-editor-client";
+import {DailyMasthead} from "./lingye-daily-page";
 import "./lingye-daily-editor.css";
+
+function dateLabel(issueDate:string) {
+  const [year,month,day]=issueDate.split("-");
+  return `${year}年${Number(month)}月${Number(day)}日`;
+}
 
 function textRuns(node:Node,bold=false):DailyTextRun[] {
   if(node.nodeType===3)return node.textContent ? [{text:node.textContent,...(bold?{bold:true}:{})}] : [];
@@ -109,7 +115,7 @@ export function LingyeDailyEditor({onBack}:{onBack?:()=>void} = {}) {
       <div ref={paper} key={epoch} className="lingye-daily-page daily-editor-sheet" onInput={()=>setDirty(true)}
         onPaste={event=>{event.preventDefault();document.execCommand("insertText",false,event.clipboardData.getData("text/plain"));setDirty(true);}}
         onDrop={event=>event.preventDefault()}>
-        <header className="daily-masthead"><h1 className="daily-masthead-title">铃野日报</h1><p>{draft.issueDate} · {draft.editorModel}</p></header>
+        <DailyMasthead issue={{issueNumber:String(draft.issueNumber),dateLabel:dateLabel(draft.issueDate),editorName:draft.editorModel}} />
         <DailyDocumentView document={draft.document} images={images} editable={!busy} />
       </div>
       <aside className="daily-editor-prizes"><h2>记者进度</h2>

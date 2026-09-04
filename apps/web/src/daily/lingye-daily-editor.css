@@ -7,8 +7,10 @@
 .daily-document-copy .daily-document-byline {font-size:12px;margin-top:8px;margin-bottom:8px;color:#625747}
 .daily-document-copy .daily-document-question {margin:0 0 10px}
 .daily-document-copy .daily-document-submission {padding:16px;margin:12px 0}
-.daily-document-copy .daily-document-quote {margin:8px 0 16px;padding:16px;display:grid}
+.daily-document-copy .daily-document-quote-group {margin:8px 0 20px;padding:16px}
+.daily-document-copy .daily-document-quote {display:contents;margin:0;padding:0;border:0}
 .daily-document-copy .daily-document-quote .daily-quote-text {font:inherit}
+.daily-document-copy .daily-document-quote-group .daily-document-byline {grid-column:2;margin:10px 0 0;color:inherit;font-family:"PingFang SC", "Microsoft YaHei", sans-serif;font-size:12px;font-style:normal;text-align:right}
 .daily-document-tomorrow .daily-document-copy {color:var(--daily-red);font-weight:700;font-size:18px}
 .daily-document-copy figure {margin:10px 0}
 .daily-document-copy img {display:block;width:100%;max-width:100%;height:auto;object-fit:contain}
@@ -24,7 +26,7 @@
 .daily-editor-toolbar {position:sticky;top:0;z-index:5;background:#f8f3e8f5;border-block:1px solid var(--editor-line);display:flex;flex-wrap:wrap;gap:8px;padding:10px;max-width:1080px;margin:auto}
 .daily-editor-status {max-width:1080px;margin:12px auto;min-height:20px;font-size:14px}
 .daily-editor-layout {max-width:1080px;margin:auto;display:grid;grid-template-columns:minmax(0,1fr) 240px;gap:24px;align-items:start}
-.daily-editor-sheet {background:#fffdf5;padding:24px;border:1px solid var(--editor-line);min-width:0}
+.daily-editor-sheet {min-width:0}
 .daily-editor-sheet .daily-section {margin-top:20px}
 .daily-editor-sheet .daily-section:first-child {margin-top:0}
 .daily-editor [contenteditable=true] {outline:none;min-height:24px}
@@ -41,4 +43,4 @@
 .daily-editor-progress-row:last-child {border-bottom:0}
 .daily-editor-progress-row p {margin:0;min-width:0}
 .daily-editor-progress-row button {width:auto;flex:none;margin:0}
-@media(max-width:700px){.daily-editor{padding:12px}.daily-editor-header{align-items:flex-start;flex-wrap:wrap}.daily-editor-layout{grid-template-columns:1fr}.daily-editor-sheet{padding:16px}.daily-editor-toolbar{top:0}.daily-editor-prizes{margin-top:8px}}
+@media(max-width:700px){.daily-editor{padding:12px}.daily-editor-header{align-items:flex-start;flex-wrap:wrap}.daily-editor-layout{grid-template-columns:1fr}.daily-editor-toolbar{top:0}.daily-editor-prizes{margin-top:8px}}

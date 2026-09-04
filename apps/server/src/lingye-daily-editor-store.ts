@@ -38,10 +38,15 @@ export class LingyeDailyEditorStore {
   get(date:string) {
     const row=this.row(date);
     const edition=lingyeDailyEditionPublishSchema.parse(JSON.parse(row.edition_json));
+    const publishedIssue=this.database.prepare("SELECT issue_number FROM lingye_daily_issues WHERE issue_date=?")
+      .get(date) as {issue_number:number}|undefined;
+    const issueNumber=publishedIssue?.issue_number ?? (this.database.prepare(
+      "SELECT COALESCE(MAX(issue_number), 0) + 1 AS issue_number FROM lingye_daily_issues",
+    ).get() as {issue_number:number}).issue_number;
     return {issueDate:date,version:row.version,updatedAt:row.updated_at,publishedVersion:row.published_version,
       document:dailyDocumentSchema.parse(JSON.parse(row.document_json)),
       editorModel:(JSON.parse(row.input_json) as LingyeDailyPublishRequest).editor_model,
-      issueNumber:(this.database.prepare("SELECT issue_number FROM lingye_daily_issues WHERE issue_date=?").get(date) as {issue_number:number}|undefined)?.issue_number ?? null,
+      issueNumber,
       images:edition.images,
       readiness:{group:true,reporter:edition.reporter_articles.length>0,
         submissions:this.reviewReady(date),weather:edition.weather_forecast!==undefined},

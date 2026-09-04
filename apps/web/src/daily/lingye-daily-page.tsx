@@ -120,7 +120,11 @@ function EmptySection() {
   return <p className="daily-section-empty">本期没有新内容。</p>;
 }
 
-function DailyMasthead({ issue }: { issue: LingyeDailyIssue }) {
+export function DailyMasthead({
+  issue,
+}: {
+  issue: Pick<LingyeDailyIssue, "issueNumber" | "dateLabel" | "editorName">;
+}) {
   return (
     <header className="daily-masthead">
       <div className="daily-masthead-meta">

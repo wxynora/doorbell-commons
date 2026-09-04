@@ -1,6 +1,6 @@
 import {dailyDocumentSchema,type DailyDocument} from "@doorbell/protocol";
 export interface EditorDraft {
-  issueDate:string;version:number;publishedVersion:number|null;updatedAt:number;editorModel:string;issueNumber:number|null;
+  issueDate:string;version:number;publishedVersion:number|null;updatedAt:number;editorModel:string;issueNumber:number;
   document:DailyDocument;images:{image_id:string;media_type:string;data_base64:string}[];
   readiness:{group:boolean;reporter:boolean;submissions:boolean;weather:boolean};
   submissions:{submission_id?:string;text:string;source_label:string;paid:boolean}[];
