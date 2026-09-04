@@ -216,7 +216,7 @@ function farmToolResult(
   if (!ok) {
     return {
       content: textContent(text),
-      isError: false,
+      isError: true,
     };
   }
   const resultText = farm
