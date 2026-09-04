@@ -25,7 +25,9 @@ done
 
 repository_root="$(git rev-parse --show-toplevel)"
 readonly repository_root
-readonly builder="${repository_root}/deploy/scripts/build-doorbell-main-artifact.sh"
+script_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+readonly script_directory
+readonly builder="${script_directory}/build-doorbell-main-artifact.sh"
 [[ -x "${builder}" ]] || {
   fail "local publisher scripts are missing"
   exit 1
