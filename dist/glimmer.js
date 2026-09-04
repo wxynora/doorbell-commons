@@ -385,6 +385,11 @@ function findDish(farm, query) {
         ?? dishes.find((item) => item.recipeId === q || item.name === q);
 }
 
+function findDishDefinition(query) {
+    const q = String(query ?? "").trim();
+    return cookingRecipeById.get(q) ?? cookingRecipes.find((item) => item.name === q);
+}
+
 function resolveTrack(query, tracks) {
     const q = String(query ?? "").trim();
     if ((typeof query === "number" || /^\d+$/.test(q)) && Number.isSafeInteger(Number(q)))
@@ -431,8 +436,12 @@ function catchVariant(farm, world, now, animalQuery, dishQuery) {
     if (locked)
         return { ok: false, text: locked };
     const dish = findDish(farm, dishQuery);
-    if (!dish || dish.recipeId === "odd_dish")
+    if (!dish || dish.recipeId === "odd_dish") {
+        const definition = findDishDefinition(dishQuery);
+        if (!dish && definition)
+            return { ok: false, text: `料理柜里「${definition.name}」不足，料理没有消耗。` };
         return { ok: false, text: "料理柜里没有这份正常料理，料理没有消耗。" };
+    }
     const dishes = farm.ranch.kitchen.dishes;
     const favorite = dish.recipeId === glimmer.favorites[variant.kindId];
     if (favorite && !gate.state.favoriteSeen.includes(variant.kindId))
@@ -513,15 +522,23 @@ function takeCoopItem(farm, event, query) {
     const kitchen = farm.ranch?.kitchen;
     if (event.kind === "dish") {
         const item = (kitchen?.dishes ?? []).find((entry) => entry.id === q || entry.recipeId === q || entry.name === q);
-        if (!item || item.recipeId === "odd_dish")
-            return null;
-        return { name: item.name, consume: () => kitchen.dishes.splice(kitchen.dishes.indexOf(item), 1) };
+        if (!item || item.recipeId === "odd_dish") {
+            const definition = findDishDefinition(q);
+            return !item && definition
+                ? { status: "insufficient", name: definition.name }
+                : { status: "unsupported" };
+        }
+        return { status: "available", name: item.name, consume: () => kitchen.dishes.splice(kitchen.dishes.indexOf(item), 1) };
     }
     if (event.kind === "product") {
         const item = (kitchen?.products ?? []).find((entry) => entry.id === q || entry.itemId === q || entry.name === q);
-        if (!item)
-            return null;
-        return { name: item.name, consume: () => kitchen.products.splice(kitchen.products.indexOf(item), 1) };
+        if (!item) {
+            const definition = cookingProductById.get(q) ?? cookingProducts.find((entry) => entry.name === q);
+            return definition
+                ? { status: "insufficient", name: definition.name }
+                : { status: "unsupported" };
+        }
+        return { status: "available", name: item.name, consume: () => kitchen.products.splice(kitchen.products.indexOf(item), 1) };
     }
     if (event.kind === "cookable") {
         const productDef = cookingProductById.get(q) ?? cookingProducts.find((entry) => entry.name === q);
@@ -529,26 +546,41 @@ function takeCoopItem(farm, event, query) {
         if (product) {
             const definition = cookingProductById.get(product.itemId);
             if (!definition?.cookable)
-                return null;
-            return { name: definition.name, consume: () => kitchen.products.splice(kitchen.products.indexOf(product), 1) };
+                return { status: "unsupported" };
+            return { status: "available", name: definition.name, consume: () => kitchen.products.splice(kitchen.products.indexOf(product), 1) };
         }
+        if (productDef)
+            return productDef.cookable
+                ? { status: "insufficient", name: productDef.name }
+                : { status: "unsupported" };
         const catches = Array.isArray(farm.fishing?.catchInventory) ? farm.fishing.catchInventory : [];
-        const fish = catches.find((entry) => entry.id === q)
+        const exactCatch = catches.find((entry) => entry.id === q);
+        const fishDefinition = fishingFishById.get(q)
+            ?? [...fishingFishById.values()].find((entry) => entry.name === q);
+        const fish = exactCatch
             ?? (q === "fish:any" ? catches[0] : undefined)
-            ?? catches.find((entry) => entry.fishId === q || fishingFishById.get(entry.fishId)?.name === q);
+            ?? (fishDefinition ? catches.find((entry) => entry.fishId === fishDefinition.id) : undefined);
         if (fish) {
             const definition = fishingFishById.get(fish.fishId);
-            return { name: definition?.name ?? fish.fishId, consume: () => catches.splice(catches.indexOf(fish), 1) };
+            return { status: "available", name: definition?.name ?? fish.fishId, consume: () => catches.splice(catches.indexOf(fish), 1) };
         }
+        if (q === "fish:any")
+            return { status: "insufficient", name: "任意鱼" };
+        if (fishDefinition)
+            return { status: "insufficient", name: fishDefinition.name };
         const item = cookingIngredientById.get(q) ?? cookingIngredients.find((entry) => entry.name === q);
-        if (!item || (kitchen?.ingredients?.[item.id] ?? 0) < 1)
-            return null;
-        return { name: item.name, consume: () => { kitchen.ingredients[item.id]--; if (kitchen.ingredients[item.id] <= 0) delete kitchen.ingredients[item.id]; } };
+        if (!item)
+            return { status: "unsupported" };
+        if ((kitchen?.ingredients?.[item.id] ?? 0) < 1)
+            return { status: "insufficient", name: item.name };
+        return { status: "available", name: item.name, consume: () => { kitchen.ingredients[item.id]--; if (kitchen.ingredients[item.id] <= 0) delete kitchen.ingredients[item.id]; } };
     }
     const bait = fishingBaitById.get(q) ?? [...fishingBaitById.values()].find((entry) => entry.name === q);
-    if (!bait || (farm.fishing?.baitInventory?.[bait.id] ?? 0) < 1)
-        return null;
-    return { name: bait.name, consume: () => { farm.fishing.baitInventory[bait.id]--; } };
+    if (!bait)
+        return { status: "unsupported" };
+    if ((farm.fishing?.baitInventory?.[bait.id] ?? 0) < 1)
+        return { status: "insufficient", name: bait.name };
+    return { status: "available", name: bait.name, consume: () => { farm.fishing.baitInventory[bait.id]--; } };
 }
 
 function assist(farm, world, now, itemQuery) {
@@ -562,8 +594,10 @@ function assist(farm, world, now, itemQuery) {
     if (world.coop.contributors.some((item) => item.farmId === farm.id))
         return { ok: false, text: "🤝 今天已经为这个事件贡献过一次，物品没有消耗。" };
     const item = takeCoopItem(farm, event, itemQuery);
-    if (!item)
-        return { ok: false, text: `〔${event.name}〕需要提交${event.requirement}，你填写的「${String(itemQuery ?? "")}」不符合要求，没有消耗。` };
+    if (item.status === "insufficient")
+        return { ok: false, text: `〔${event.name}〕「${item.name}」不足，无法提交${event.requirement}，没有消耗。` };
+    if (item.status === "unsupported")
+        return { ok: false, text: `〔${event.name}〕不支持你填写的「${String(itemQuery ?? "")}」；这里需要提交${event.requirement}，没有消耗。` };
     item.consume();
     world.coop.contributors.push({ farmId: farm.id, farmName: farm.name, at: now, item: item.name });
     farm.coins += glimmer.coopRewardCoins;

@@ -1610,8 +1610,8 @@
       "id": "ancient_key",
       "name": "古老的钥匙",
       "type": "key",
-      "sellSilver": 0,
-      "sellable": false
+      "sellSilver": 30,
+      "sellable": true
     }
   ]
 }
