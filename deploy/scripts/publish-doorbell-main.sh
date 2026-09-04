@@ -84,7 +84,7 @@ tar --no-xattrs --exclude='./node_modules' --file='${remote_artifact_stage}' \
   --create --directory=/opt/doorbell-commons .; \
 chmod 0600 '${remote_artifact_stage}'"
 
-rsync --archive --checksum --inplace --no-whole-file --stats -- \
+rsync --archive --checksum --no-whole-file --stats -- \
   "${artifact}" "${SSH_HOST}:${remote_artifact_stage}"
 scp -- "${deployer}" "${SSH_HOST}:${remote_deployer_stage}"
 scp -- "${dependency_migrator}" "${SSH_HOST}:${remote_dependency_migrator_stage}"
