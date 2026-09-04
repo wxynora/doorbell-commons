@@ -43,10 +43,13 @@ export class LingyeDailyEditorStore {
     const issueNumber=publishedIssue?.issue_number ?? (this.database.prepare(
       "SELECT COALESCE(MAX(issue_number), 0) + 1 AS issue_number FROM lingye_daily_issues",
     ).get() as {issue_number:number}).issue_number;
+    const activeEditor=row.updated_by ? this.database.prepare(
+      "SELECT resident_name FROM residents WHERE account_id=? ORDER BY created_at DESC LIMIT 1",
+    ).get(row.updated_by) as {resident_name:string}|undefined : undefined;
     return {issueDate:date,version:row.version,updatedAt:row.updated_at,publishedVersion:row.published_version,
       document:dailyDocumentSchema.parse(JSON.parse(row.document_json)),
       editorModel:(JSON.parse(row.input_json) as LingyeDailyPublishRequest).editor_model,
-      issueNumber,
+      issueNumber,activeEditorName:activeEditor?.resident_name ?? null,
       images:edition.images,
       readiness:{group:true,reporter:edition.reporter_articles.length>0,
         submissions:this.reviewReady(date),weather:edition.weather_forecast!==undefined},

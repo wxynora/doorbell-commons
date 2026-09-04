@@ -1,24 +1,9 @@
-/* The published paper and workbench share these exact typesetting rules. */
-.daily-document-copy {font-family:"Songti SC", "STSong", "SimSun", serif;font-size:13px;line-height:1.3;color:var(--daily-text)}
-.daily-document-copy p,.daily-document-copy blockquote {font:inherit;margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
-.daily-document-copy h3 {font-family:inherit;font-size:20px;line-height:1.35;margin:14px 0 8px;color:#17140f;font-weight:700}
-.daily-document-copy h3:first-child {margin-top:0}
-.daily-document-copy strong {font-family:inherit;font-weight:700;color:#000}
-.daily-document-copy .daily-document-byline {font-size:12px;margin-top:8px;margin-bottom:8px;color:#625747}
-.daily-document-copy .daily-document-question {margin:0 0 10px}
-.daily-document-copy .daily-document-submission {padding:16px;margin:12px 0}
-.daily-document-copy .daily-document-quote-group {margin:8px 0 20px;padding:16px}
-.daily-document-copy .daily-document-quote {display:contents;margin:0;padding:0;border:0}
-.daily-document-copy .daily-document-quote .daily-quote-text {font:inherit}
-.daily-document-copy .daily-document-quote-group .daily-document-byline {grid-column:2;margin:10px 0 0;color:inherit;font-family:"PingFang SC", "Microsoft YaHei", sans-serif;font-size:12px;font-style:normal;text-align:right}
-.daily-document-tomorrow .daily-document-copy {color:var(--daily-red);font-weight:700;font-size:18px}
-.daily-document-copy figure {margin:10px 0}
-.daily-document-copy img {display:block;width:100%;max-width:100%;height:auto;object-fit:contain}
-.daily-document-group .daily-document-copy {font-size:13px}
 .daily-editor {--editor-ink:#292318;--editor-paper:#f8f3e8;--editor-line:#c6bca8;color:var(--editor-ink);background:var(--editor-paper);min-height:100%;padding:20px}
 .daily-editor-header {display:flex;align-items:center;justify-content:space-between;gap:16px;max-width:1080px;margin:0 auto 16px}
 .daily-editor-header h1 {font-size:24px;margin:0 0 6px}
 .daily-editor-header p {margin:0;color:#6a5f4d;font-size:13px}
+.daily-editor-header .daily-editor-duty {margin-left:auto;padding-bottom:4px;border-bottom:1px solid #78612c;color:#53441f;white-space:nowrap}
+.daily-editor-duty strong {font-weight:700;color:var(--editor-ink)}
 .daily-editor button,.daily-editor select {min-height:44px;padding:8px 14px;border:1px solid var(--editor-line);background:#fffdf8;color:var(--editor-ink);border-radius:6px;font:inherit;cursor:pointer}
 .daily-editor button:disabled {opacity:.45;cursor:default}
 .daily-editor button:focus-visible,.daily-editor select:focus-visible,.daily-editor [contenteditable]:focus-visible {outline:2px solid #78612c;outline-offset:3px}

@@ -11,7 +11,7 @@ fail() {
 }
 
 if [[ $# -ne 2 || ! $1 =~ ^[0-9a-f]{40}$ ]]; then
-  fail "usage: build-doorbell-main-artifact <40-character-main-sha> <output.tar.gz>"
+  fail "usage: build-doorbell-main-artifact <40-character-main-sha> <output.tar|output.tar.gz>"
   exit 1
 fi
 
@@ -109,7 +109,18 @@ printf '%s\n' \
   >"${runtime_directory}/.doorbell-runtime-artifact.json"
 printf '%s\n' "${TARGET_SHA}" >"${runtime_directory}/.doorbell-release-sha"
 
-COPYFILE_DISABLE=1 tar --no-xattrs -czf "${temporary_output}" -C "${runtime_directory}" .
+case "${OUTPUT_PATH}" in
+  *.tar)
+    COPYFILE_DISABLE=1 tar --no-xattrs -cf "${temporary_output}" -C "${runtime_directory}" .
+    ;;
+  *.tar.gz)
+    COPYFILE_DISABLE=1 tar --no-xattrs -czf "${temporary_output}" -C "${runtime_directory}" .
+    ;;
+  *)
+    fail "output must end in .tar or .tar.gz"
+    exit 1
+    ;;
+esac
 mv "${temporary_output}" "${OUTPUT_PATH}"
 trap - EXIT
 rm -rf -- "${build_directory}" "${runtime_directory}"

@@ -1,12 +1,18 @@
 import React from "react";
 import {type DailyDocument,type DailyBlock} from "@doorbell/protocol";
 
+export const DAILY_SUBMISSION_STAMP_URL="/lingye/daily/submission-received-stamp-v1.png";
+
+export function DailySubmissionStamp() {
+  return <img aria-hidden="true" alt="" className="daily-stamp" contentEditable={false} draggable={false} src={DAILY_SUBMISSION_STAMP_URL} />;
+}
+
 export function DailyDocumentBlock({block,images}:{block:DailyBlock;images:Record<string,string>}) {
   const content=block.runs.map((run,index)=>run.bold?<strong key={index}>{run.text}</strong>:run.text);
   if(block.type==="image") return images[block.imageId ?? ""] ? <figure className="daily-hero-image" contentEditable={false} data-image-id={block.imageId}>
     <img src={images[block.imageId ?? ""]} alt="本期来源图片" /></figure> : null;
   if(block.type==="heading") return <h3>{content}</h3>;
-  if(block.type==="submission") return <p className="daily-submission-box daily-document-submission" data-block-type="submission" data-submission-id={block.submissionId}>{content}</p>;
+  if(block.type==="submission") return <p className="daily-submission-box daily-document-submission" data-block-type="submission" data-submission-id={block.submissionId}><DailySubmissionStamp />{content}</p>;
   if(block.type==="quote") return <blockquote className="daily-document-quote" data-block-type="quote"><span className="daily-quote-text">{content}</span></blockquote>;
   return <p data-block-type={block.type} className={`daily-document-${block.type}`}>{content}</p>;
 }

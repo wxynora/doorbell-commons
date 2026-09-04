@@ -2,6 +2,7 @@ import React,{useEffect,useRef,useState} from "react";
 import {dailyDocumentSchema,type DailyBlock,type DailyDocument,type DailyTextRun} from "@doorbell/protocol";
 import {DailyDocumentView} from "./lingye-daily-document-view";
 import {editorRequest,type EditorDraft,type EditorProgress} from "./lingye-daily-editor-client";
+import {DailyEditorDuty} from "./lingye-daily-editor-duty";
 import {DailyMasthead} from "./lingye-daily-page";
 import "./lingye-daily-editor.css";
 
@@ -86,6 +87,7 @@ export function LingyeDailyEditor({onBack}:{onBack?:()=>void} = {}) {
   const images=Object.fromEntries((draft?.images ?? []).map(image=>[image.image_id,`data:${image.media_type};base64,${image.data_base64}`]));
   return <section className="daily-editor">
     <header className="daily-editor-header"><div><h1>铃野主编工作台</h1><p>改好这一版，再交到大家手里。</p></div>
+      <DailyEditorDuty name={draft?.activeEditorName ?? null} />
       {onBack ? <button onClick={()=>{if(!dirty||window.confirm("还有未保存的修改，确定离开？"))onBack();}}>返回日报</button> : null}</header>
     <div className="daily-editor-toolbar" role="toolbar" aria-label="正文排版与出版">
       <select aria-label="选择期次" disabled={busy} value={draft?.issueDate ?? ""} onChange={event=>{

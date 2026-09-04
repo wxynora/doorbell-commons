@@ -2,7 +2,7 @@
 import React, { type ReactNode } from "react";
 import { presentDailyIssue } from "./lingye-daily-presentation";
 import { type DailyDocument, dailyObservationQuestion } from "@doorbell/protocol";
-import { DailyDocumentView } from "./lingye-daily-document-view";
+import { DailyDocumentView, DailySubmissionStamp } from "./lingye-daily-document-view";
 
 export interface LingyeDailyFrontPage {
   title: string;
@@ -289,9 +289,7 @@ function Submissions({
               className="daily-submission-box"
               key={`${submission.text}-${submission.sourceLabel ?? ""}`}
             >
-              <div aria-hidden="true" className="daily-stamp">
-                已查收
-              </div>
+              <DailySubmissionStamp />
               <p className="daily-submission-copy">{submission.text}</p>
             </article>
           ))}
