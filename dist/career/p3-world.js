@@ -196,6 +196,35 @@ const ANIMAL_FINDINGS = Object.freeze({
     compound_fever: Object.freeze({ temperature: "temperature_high", hydration: "dehydration_confirmed", breathing: "respiratory_sign_confirmed" }),
 });
 
+const CHECK_FINDING_TEXT = Object.freeze({
+    leaf_water_stress: "叶片失去挺度，呈现缺水压力。",
+    soil_moisture_low: "土面发干，土壤水分偏低。",
+    soil_water_excess: "土面有积水。",
+    root_oxygen_low: "根区缺氧。",
+    leaf_feeding_damage: "叶片发现取食缺口。",
+    localized_pest_trace: "地块发现局部虫迹。",
+    adjacent_pest_trace_continuation: "虫迹沿相邻地块连续延伸。",
+    leaf_nutrient_pattern: "叶色存在异常。",
+    soil_nutrient_imbalance: "土壤情况支持营养失衡。",
+    prior_input_mismatch: "近期处理记录与当前状态不匹配。",
+    root_tissue_damage: "根部组织存在受损迹象。",
+    soil_structure_unstable: "根区土壤结构不稳定。",
+    recent_feed_irregularity: "近期饲料记录存在异常。",
+    abdominal_discomfort_confirmed: "腹部不适已确认。",
+    minor_external_injury: "发现轻微外伤。",
+    recent_activity_reduction: "近期活动减少。",
+    temperature_slightly_low: "体温略低。",
+    bedding_damp: "垫料潮湿。",
+    breathing_clear: "呼吸未见异常。",
+    water_intake_increased: "饮水增加。",
+    temperature_not_elevated: "体温未升高。",
+    temperature_elevated: "体温升高。",
+    respiratory_sign_confirmed: "呼吸异常已确认。",
+    temperature_high: "体温呈高热。",
+    dehydration_confirmed: "补水状态异常，脱水已确认。",
+    no_relevant_abnormality: "本项检查没有发现与当前异常直接相关的迹象。",
+});
+
 const ANIMAL_RECOVERY_REDUCTION = Object.freeze({ 1: 0, 2: 0.1, 3: 0.2, 4: 0.3 });
 
 export function agronomyChecksFor(condition) {
@@ -224,6 +253,10 @@ export function agronomyObservationsFor(condition) {
 
 export function animalObservationsFor(condition) {
     return [...(ANIMAL_OBSERVATIONS[condition] ?? [])];
+}
+
+export function p3CheckFindingText(finding) {
+    return CHECK_FINDING_TEXT[finding] ?? CHECK_FINDING_TEXT.no_relevant_abnormality;
 }
 
 export function agronomyTreatmentCandidates(qualificationLevel) {
@@ -581,9 +614,12 @@ export function checkAgronomyIssue(farm, sourceId, check) {
         throw new Error("agronomy_check_not_available");
     addUnique(issue.checks, check);
     issue.status = "treating";
+    const finding = issue.condition === "local_pest" && check === "pest-trace" && issue.spreadFromSourceId
+        ? "adjacent_pest_trace_continuation"
+        : AGRONOMY_FINDINGS[issue.condition][check] ?? "no_relevant_abnormality";
     return {
         check,
-        finding: AGRONOMY_FINDINGS[issue.condition][check] ?? "no_relevant_abnormality",
+        finding,
         sourceId,
     };
 }

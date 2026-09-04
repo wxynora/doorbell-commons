@@ -73,6 +73,7 @@ import { MAX_BODY_BYTES } from "../../config.js";
 import { PublicSyncError } from "../../public-sync.js";
 import { natureRuntimeReadiness } from "../../nature-runtime.js";
 import { allFarms, getFarm } from "../../store.js";
+import { p3CheckFindingText } from "../../career/p3-world.js";
 import { jsonOut, readJsonBody } from "../http.js";
 import {
     UUID_RE,
@@ -1623,6 +1624,34 @@ function serviceCommissionJobs(database, now) {
     return new CareerJobService({ database, now: () => now });
 }
 
+function hasCurrentVeterinarianDuty(database, residentId, now) {
+    return database.prepare(`SELECT 1
+      FROM career_duty_days AS duty
+      JOIN career_employments AS employment
+        ON employment.employment_id = duty.employment_id
+      WHERE duty.resident_id = ? AND duty.career = 'veterinarian'
+        AND duty.institution = 'animal_hospital' AND duty.duty_date = ?
+        AND duty.status = 'scheduled' AND employment.status = 'active'
+        AND employment.availability = 'available' LIMIT 1`)
+        .get(residentId, beijingDate(now)) !== undefined;
+}
+
+function serviceCommissionWorkNotice(database, residentId, career, now) {
+    if (!["agronomist", "veterinarian"].includes(career))
+        return null;
+    if (career === "veterinarian" && !hasCurrentVeterinarianDuty(database, residentId, now))
+        return LINGYE_ACTION_MESSAGES.NO_DUTY;
+    const availability = serviceCommissionJobs(database, now)
+        .getServiceCommissionAvailability(residentId, career);
+    if (availability.activeJobId)
+        return LINGYE_ACTION_MESSAGES.ACTIVE_SERVICE;
+    if (availability.acceptedToday >= availability.dailyLimit)
+        return LINGYE_ACTION_MESSAGES.DAILY_LIMIT;
+    if (availability.remainingRestMs > 0)
+        return restingFailure(availability.restUntil).error.message;
+    return null;
+}
+
 function serviceCommissionCandidateIds(database, career, requiredLevel, ownerResidentId, jobId, now) {
     if (!["agronomist", "veterinarian"].includes(career))
         return [];
@@ -1641,19 +1670,8 @@ function serviceCommissionCandidateIds(database, career, requiredLevel, ownerRes
         .filter((candidateId) => candidateId !== ownerResidentId && !exclusions.includes(candidateId));
     const jobs = serviceCommissionJobs(database, now);
     return candidates.filter((candidateId) => {
-        if (career === "veterinarian") {
-            const duty = database.prepare(`SELECT 1
-              FROM career_duty_days AS duty
-              JOIN career_employments AS employment
-                ON employment.employment_id = duty.employment_id
-              WHERE duty.resident_id = ? AND duty.career = 'veterinarian'
-                AND duty.institution = 'animal_hospital' AND duty.duty_date = ?
-                AND duty.status = 'scheduled' AND employment.status = 'active'
-                AND employment.availability = 'available' LIMIT 1`)
-                .get(candidateId, beijingDate(now));
-            if (!duty)
-                return false;
-        }
+        if (career === "veterinarian" && !hasCurrentVeterinarianDuty(database, candidateId, now))
+            return false;
         return jobs.getServiceCommissionAvailability(candidateId, career).canAccept;
     });
 }
@@ -2093,7 +2111,13 @@ function commissionPresentation(database, backend, residentId, career, rows, sou
         !database.prepare("SELECT 1 FROM career_npc_service_settlements WHERE source_id = ?")
             .get(source.sourceId))));
     const options = commissionOptions(database, backend, rows, residentId, careerSources, now);
+    const acceptedJobCount = rows.filter((row) =>
+        row.worker_resident_id === residentId && row.accepted_at !== null).length;
+    const currentWorkerJob = rows.find((row) =>
+        row.worker_resident_id === residentId && ["accepted", "assigned", "active"].includes(row.status));
     return {
+        acceptedJobCount,
+        currentWorkerJobId: currentWorkerJob?.job_id ?? null,
         jobs: mapRows(rows).map((job, index) => {
             const fund = career === "veterinarian"
                 ? database.prepare(`SELECT currency, amount, state FROM career_service_commission_funds
@@ -2143,6 +2167,11 @@ function commissionView(database, backend, residentId, career, args, sources, no
     const presentation = commissionPresentation(database, backend, residentId, career, selected, sources, now);
     const options = presentation.options;
     const level = qualificationLevel(database, residentId, career, now);
+    const pendingCertificateNotice = level === 0 && hasPendingCertificate(database, residentId, career, now)
+        ? WORK_NOT_STARTED_MESSAGE
+        : null;
+    const workNotice = pendingCertificateNotice ??
+        (level > 0 ? serviceCommissionWorkNotice(database, residentId, career, now) : null);
     if (career === "reporter" && level >= 3)
         options.unshift(option("commission:section-create", ["text"]));
     const reporterPublications = career === "reporter"
@@ -2172,9 +2201,7 @@ function commissionView(database, backend, residentId, career, args, sources, no
                 }),
             }
             : {}),
-        ...(level === 0 && hasPendingCertificate(database, residentId, career, now)
-            ? { workNotice: WORK_NOT_STARTED_MESSAGE }
-            : {}),
+        ...(workNotice ? { workNotice } : {}),
         options,
     });
 }
@@ -2583,7 +2610,7 @@ function completeCommissionWorldOperation(database, backend, row, world) {
         }
         const finalJob = backend.trustedQueries.getJob(job.jobId);
         const response = current.operation_kind === "commission_check"
-            ? success("检查已记录。", { result, world })
+            ? success(`检查结果：${p3CheckFindingText(world.finding)}`, { result, world })
             : success(
                 world.resolved === true
                     ? "处理已完成。"
