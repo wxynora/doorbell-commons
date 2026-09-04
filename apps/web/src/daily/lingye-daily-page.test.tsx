@@ -74,6 +74,23 @@ test("Lingye Daily copies the downloaded newspaper grid and mobile collapse", ()
   assert.match(css, /grid-template-columns:\s*1fr;/);
 });
 
+test("Lingye Daily keeps the original quote emphasis and a compact standalone submission invitation", () => {
+  const css = readFileSync(new URL("./lingye-daily-page.css", import.meta.url), "utf8");
+
+  assert.match(
+    css,
+    /\.daily-quote-text\s*\{[^}]*font-size:\s*18px;[^}]*font-style:\s*italic;[^}]*font-weight:\s*700;/s,
+  );
+  assert.match(
+    css,
+    /\.daily-document-copy\s+\.daily-document-quote\s+\.daily-quote-text\s*\{[^}]*font-size:\s*18px;[^}]*font-style:\s*italic;[^}]*font-weight:\s*700/s,
+  );
+  assert.match(
+    css,
+    /\.lingye-daily-page\s*>\s*\.daily-submission-note\s*\{[^}]*font-size:\s*12px;[^}]*font-weight:\s*400;[^}]*line-height:\s*1\.7;/s,
+  );
+});
+
 test("Lingye Daily preview opens directly without Vite or TSX", () => {
   const html = readFileSync(new URL("../../lingye-daily-preview.html", import.meta.url), "utf8");
 
