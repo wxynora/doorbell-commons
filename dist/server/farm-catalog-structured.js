@@ -442,6 +442,19 @@ function projectSmelting(farm) {
   };
 }
 
+/** The complete post-action resource needed to render and retry Human smelting. */
+export function projectHumanSmeltingActionResource(farm) {
+  if (!farm || typeof farm !== "object") throw new TypeError("Farm smelting resource requires a farm");
+  return {
+    farm: {
+      farm_doorplate: String(farm.id ?? ""),
+      farm_name: safeText(farm.name),
+    },
+    backpack: projectBackpack(farm),
+    smelting: projectSmelting(farm),
+  };
+}
+
 function projectExpeditionLog(entry) {
   if (!isObject(entry)) return null;
   const eventId = typeof entry.eventId === "string" && entry.eventId ? entry.eventId : null;

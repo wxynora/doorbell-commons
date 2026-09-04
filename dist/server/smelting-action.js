@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { craft } from "../engine.js";
 import { replaceFarm } from "../store.js";
-import { projectHumanFarmCatalog } from "./farm-catalog-structured.js";
+import { projectHumanSmeltingActionResource } from "./farm-catalog-structured.js";
 import { smeltingActionRevision } from "./smelting-revision.js";
 import {
   createMinimalHumanActionReceipt,
@@ -24,12 +24,11 @@ const REQUEST_KEYS = [
 const RECEIPTS_FIELD = "doorbellHumanSmeltingActionReceipts";
 
 function responseFor(farm, now, result) {
-  const projected = projectHumanFarmCatalog(farm, now);
+  const resource = projectHumanSmeltingActionResource(farm);
   return {
-    data: { result, resource: projected.data },
-    revision: projected.revision,
-    smelting_revision: smeltingActionRevision(farm),
-    server_time: projected.server_time,
+    data: { result, resource },
+    smelting_revision: resource.smelting.revision,
+    server_time: new Date(now).toISOString(),
   };
 }
 

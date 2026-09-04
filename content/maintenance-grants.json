@@ -72,5 +72,11 @@
     "gold": 100000,
     "notice": "🎁 农场维护补偿：已发放 100,000 金币。",
     "section": "compensation"
+  },
+  {
+    "id": "compensation-20260904-smelting-latency",
+    "gold": 10000,
+    "notice": "",
+    "sendInbox": false
   }
 ]
