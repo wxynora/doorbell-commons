@@ -1239,17 +1239,12 @@ export function FarmExpeditionPanelContent({
     | { stage: "success"; message: string }
     | { stage: "error"; attempt: Attempt | null; issue: ExpeditionActionIssue };
   const [action, setAction] = useState<ActionState>({ stage: "idle" });
-  const [charges, setCharges] = useState("1");
-  const [charmKind, setCharmKind] = useState<"check" | "hp">("check");
-  const [blessing, setBlessing] = useState("");
   const [activeTab, setActiveTab] = useState<FarmExpeditionTabId>("journey");
   const bagRows = summarizeExpeditionBag(expedition.bag);
   const codex = buildExpeditionCodex(expedition);
   const busy = action.stage === "submitting";
   const writable = onExpeditionAction !== undefined;
   const expectedRevision = farmCatalog.expedition_revision;
-  const parsedCharges = Number(charges);
-  const validCharges = Number.isSafeInteger(parsedCharges) && parsedCharges > 0;
   const shouldRetry = (issue: ExpeditionActionIssue) =>
     issue.code === "network_unavailable" ||
     issue.code === "farm_unavailable" ||
@@ -1310,7 +1305,7 @@ export function FarmExpeditionPanelContent({
         <div className="farm-action-toolbar">
           <strong>探险</strong>
           <span>
-            今日还可探险 {expedition.remaining_today}/{expedition.daily_limit} 次
+            新旅程可用次数 {expedition.remaining_today}/{expedition.daily_limit}
           </span>
         </div>
         {action.stage === "success" ? (
@@ -1350,6 +1345,8 @@ export function FarmExpeditionPanelContent({
                   : "当前没有进行中的旅程"}
               </strong>
               {expedition.active ? (
+                <>
+                <p>当前旅程仍可由小机继续。</p>
                 <dl>
                   <div>
                     <dt>阶段</dt>
@@ -1360,6 +1357,7 @@ export function FarmExpeditionPanelContent({
                     <dd>{expedition.hp === null ? "暂不可读" : expedition.hp}</dd>
                   </div>
                 </dl>
+                </>
               ) : null}
               {expedition.pending ? (
                 <p>
@@ -1370,116 +1368,22 @@ export function FarmExpeditionPanelContent({
                 </p>
               ) : null}
             </div>
-            {!writable ? (
-              <p className="farm-expedition__readonly" role="status">
-                当前探险只读，暂时不能提交选择或推进旅程。
-              </p>
-            ) : (
-              <div className="farm-action-controls">
-                {!expedition.active || (expedition.active && expedition.pending === null) ? (
-                  <label>
-                    <span>{expedition.active ? "探索次数" : "进入次数"}</span>
-                    <input
-                      aria-label={expedition.active ? "探索次数" : "进入次数"}
-                      disabled={busy || !onExpeditionAction}
-                      min="1"
-                      onChange={(event) => setCharges(event.currentTarget.value)}
-                      type="number"
-                      value={charges}
-                    />
-                  </label>
-                ) : null}
-                <div className="farm-action-buttons farm-expedition__actions">
-                  {!expedition.active ? (
-                    <button
-                      disabled={busy || !onExpeditionAction || !validCharges}
-                      onClick={() => currentAction("enter", { charges: parsedCharges }, "进入探险")}
-                      type="button"
-                    >
-                      进入探险
-                    </button>
-                  ) : expedition.pending === null ? (
-                    <button
-                      disabled={busy || !onExpeditionAction || !validCharges}
-                      onClick={() =>
-                        currentAction("explore", { charges: parsedCharges }, "继续探索")
-                      }
-                      type="button"
-                    >
-                      继续探索
-                    </button>
-                  ) : expedition.pending.kind === "choice" ? (
-                    expedition.pending.options && expedition.pending.options.length > 0 ? (
-                      <fieldset aria-label="当前选择" className="farm-expedition__choices">
-                        {expedition.pending.options.map((option) => (
-                          <button
-                            disabled={busy || !onExpeditionAction}
-                            key={option.key}
-                            onClick={() =>
-                              currentAction("choose", { option: option.key }, option.label)
-                            }
-                            type="button"
-                          >
-                            {option.label}
-                          </button>
-                        ))}
-                      </fieldset>
-                    ) : (
-                      <FarmExpeditionEmpty>当前选择暂时没有可读选项。</FarmExpeditionEmpty>
-                    )
-                  ) : (
-                    <button
-                      disabled={busy || !onExpeditionAction}
-                      onClick={() => currentAction("roll", {}, "掷骰推进战斗")}
-                      type="button"
-                    >
-                      掷骰推进战斗
-                    </button>
-                  )}
-                  {expedition.active ? (
-                    <button
-                      className="farm-expedition__secondary-action"
-                      disabled={busy || !onExpeditionAction}
-                      onClick={() => currentAction("retreat", {}, "结束本趟旅程")}
-                      type="button"
-                    >
-                      结束本趟旅程
-                    </button>
-                  ) : null}
-                </div>
-                {expedition.pending ? (
-                  <fieldset className="farm-expedition__blessing">
-                    <legend>为这趟旅程祈福</legend>
-                    <select
-                      aria-label="祈福方式"
-                      disabled={busy || !onExpeditionAction}
-                      onChange={(event) =>
-                        setCharmKind(event.currentTarget.value as typeof charmKind)
-                      }
-                      value={charmKind}
-                    >
-                      <option value="check">勇气符（下次检定）</option>
-                      <option value="hp">暖意符（恢复体力）</option>
-                    </select>
-                    <input
-                      aria-label="祈福内容"
-                      disabled={busy || !onExpeditionAction}
-                      onChange={(event) => setBlessing(event.currentTarget.value)}
-                      placeholder="写一句祝福的话"
-                      type="text"
-                      value={blessing}
-                    />
-                    <button
-                      disabled={busy || !onExpeditionAction}
-                      onClick={() => currentAction("charm", { kind: charmKind, blessing }, "祈福")}
-                      type="button"
-                    >
-                      送出祈福
-                    </button>
-                  </fieldset>
-                ) : null}
+            {expedition.pending?.kind === "choice" && expedition.pending.options?.length ? (
+              <ul aria-label="当前分支选项">
+                {expedition.pending.options.map((option) => <li key={option.key}>{option.label}</li>)}
+              </ul>
+            ) : null}
+            {writable && expedition.active && expedition.pending?.kind === "combat" ? (
+              <div className="farm-action-buttons farm-expedition__actions">
+                <button
+                  disabled={busy}
+                  onClick={() => currentAction("roll", {}, "掷骰推进战斗")}
+                  type="button"
+                >
+                  掷骰推进战斗
+                </button>
               </div>
-            )}
+            ) : null}
           </div>
         ) : null}
         {activeTab === "bag" ? (
