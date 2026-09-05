@@ -48,6 +48,8 @@ export const NPC_SCENE_STYLES = `
   .candidate2-npc-layer { position:absolute; left:0; top:0; width:1024px; height:1536px; transform-origin:top left; pointer-events:none; z-index:6; font-family:'Songti SC','STSong','SimSun',serif; color:#51483f; }
   .candidate2-npc-layer [hidden] { display:none !important; }
   .candidate2-npc-presence { position:absolute; inset:0; pointer-events:none; }
+  .candidate2-npc-map-reminder { position:absolute; width:44px; height:38px; transform:translate(-50%,-50%); pointer-events:none; }
+  .candidate2-npc-map-reminder svg { display:block; width:100%; height:100%; }
   .candidate2-npc-read-status { position:absolute; left:48px; bottom:70px; margin:0; padding:12px 20px; font-size:30px; background:#fff8e9; }
   .candidate2-npc-talk { position:absolute; transform:translate(-50%,-50%); pointer-events:auto; font:inherit; font-size:30px; line-height:1.35; min-height:88px; padding:15px 23px; color:#51483f; background:#fff7e5; border:2px solid #947b5a; border-radius:40% 44% 38% 42%; cursor:pointer; }
   .candidate2-npc-presence-portrait { position:absolute; width:360px; height:540px; object-fit:contain; transform:translate(-50%,-100%); pointer-events:none; user-select:none; }
@@ -253,6 +255,14 @@ export function npcSceneScript(
         const counts={};
         current.forEach((npc,localIndex)=>{
           const location=positions[npc.location_id];if(activePlace==='map'&&!location)return;
+          if(activePlace==='map'){
+            if(!npc.talk_option||counts[npc.location_id])return;
+            counts[npc.location_id]=1;
+            const reminder=document.createElement('span');reminder.className='candidate2-npc-map-reminder';
+            reminder.setAttribute('role','img');reminder.setAttribute('aria-label','这里有NPC可以闲聊');
+            reminder.innerHTML=talkIcon;reminder.style.left=location.x+'px';reminder.style.top=location.y+'px';
+            presence.append(reminder);return;
+          }
           const index=counts[npc.location_id]||0;counts[npc.location_id]=index+1;
           const placement=placements[npc.npc_id]||{x:620,footY:1160,width:320,foot:.9};
           const imageHeight=placement.width*1.5;
