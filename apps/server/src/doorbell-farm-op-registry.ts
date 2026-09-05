@@ -259,7 +259,7 @@ const nonHelpOperations: FarmOperationDefinition[] = [
         return { kind: "farm", action: "buy", params: { source, ...rest } };
       }
       if (source === "npc") {
-        return { kind: "farm", action: "buy", params: rest };
+        return { kind: "farm", action: "buy", params: { source, ...rest } };
       }
       return { kind: "farm", action: "buy", params: { kind, ...rest } };
     },

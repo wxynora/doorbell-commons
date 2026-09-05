@@ -111,6 +111,9 @@ const TOOL_ERROR_MESSAGES = {
   INTERNAL_ERROR: "Doorbell 暂时无法完成这次操作，本次操作没有执行。",
 } as const;
 
+const FARM_RESULT_UNCONFIRMED_MESSAGE =
+  "未能取得本次农场操作的可靠结果，无法确认是否已经执行。";
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -764,12 +767,21 @@ export class DoorbellMcpRuntime {
         return doorbellToolError("FARM_MIGRATION_REQUIRED", { op });
       }
       if (error instanceof FarmMcpActionUnavailableError) {
-        return doorbellToolError("UPSTREAM_UNAVAILABLE", { op });
+        return doorbellToolError("UPSTREAM_UNAVAILABLE", {
+          op,
+          message: FARM_RESULT_UNCONFIRMED_MESSAGE,
+        });
       }
       if (error instanceof FarmMcpActionContractUnavailableError) {
-        return doorbellToolError("INTERNAL_ERROR", { op });
+        return doorbellToolError("INTERNAL_ERROR", {
+          op,
+          message: FARM_RESULT_UNCONFIRMED_MESSAGE,
+        });
       }
-      return doorbellToolError("INTERNAL_ERROR", { op });
+      return doorbellToolError("INTERNAL_ERROR", {
+        op,
+        message: FARM_RESULT_UNCONFIRMED_MESSAGE,
+      });
     }
   }
 
