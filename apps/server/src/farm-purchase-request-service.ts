@@ -15,6 +15,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-
 const SHOP_LABELS: Record<FarmPurchaseShop, string> = {
   field: "农场商店",
   ranch: "牧场商店",
+  "mystery-merchant": "神秘商店",
 };
 
 export interface FarmPurchaseRequestItemInput {
@@ -138,6 +139,15 @@ export function buildFarmPurchaseDoorbellCalls(
   shop: FarmPurchaseShop,
   items: readonly Pick<FarmPurchaseRequestItemInput, "itemId" | "kind" | "qty">[],
 ): FarmPurchaseDoorbellCall[] {
+  if (shop === "mystery-merchant") {
+    if (items.some((item) => item.qty !== 1 || !["seed", "material", "potion_set"].includes(item.kind))) {
+      throw new FarmPurchaseRequestInputError("Each merchant offer is limited to one per visit");
+    }
+    return [validatedDoorbellCall("farm.buy", {
+      source: "mystery-merchant",
+      items: items.map((item) => item.itemId),
+    })];
+  }
   const calls: FarmPurchaseDoorbellCall[] = [];
   for (const item of items) {
     if (shop === "field") {
@@ -288,7 +298,7 @@ export class FarmPurchaseRequestService {
       throw new FarmPurchaseRequestInputError("Idempotency-Key must be a UUID");
     }
     if (!Object.hasOwn(SHOP_LABELS, input.shop)) {
-      throw new FarmPurchaseRequestInputError("Only the field and ranch shops can be requested");
+      throw new FarmPurchaseRequestInputError("This shop does not support purchase requests");
     }
     const idempotencyKey = input.idempotencyKey.toLowerCase();
     if (input.humanName.length === 0 || input.shopRevision.length === 0) {
@@ -326,7 +336,7 @@ export class FarmPurchaseRequestService {
       throw new FarmPurchaseRequestInputError("Idempotency-Key must be a UUID");
     }
     if (!Object.hasOwn(SHOP_LABELS, input.shop)) {
-      throw new FarmPurchaseRequestInputError("Only the field and ranch shops can be requested");
+      throw new FarmPurchaseRequestInputError("This shop does not support purchase requests");
     }
     if (input.shopRevision.length === 0) {
       throw new FarmPurchaseRequestInputError("Shop revision is required");

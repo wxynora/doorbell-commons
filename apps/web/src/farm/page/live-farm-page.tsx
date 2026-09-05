@@ -150,7 +150,12 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
       resourceControllersRef.current[resource]?.abort();
       const controller = new AbortController();
       resourceControllersRef.current[resource] = controller;
-      setResources((current) => ({ ...current, [resource]: { stage: "loading" } }));
+      setResources((current) => ({
+        ...current,
+        [resource]: resource === "farmCatalog" && current.farmCatalog.stage === "ready"
+          ? current.farmCatalog
+          : { stage: "loading" },
+      }));
 
       if (resource === "ranch") {
         void getBoundRanch({ signal: controller.signal }).then((result) => {

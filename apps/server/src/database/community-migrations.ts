@@ -9,7 +9,7 @@ import {
 } from "@doorbell/protocol";
 import type Database from "better-sqlite3";
 
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 24;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 25;
 const LEGACY_CONNECTOR_DELIVERY_GENERATION = "00000000-0000-0000-0000-000000000000";
 
 interface FarmCreationRequestRow {
@@ -2181,6 +2181,43 @@ export function migrateCommunityDatabase(
       `);
       database.pragma("user_version = 24");
     })();
+  }
+  if (migratedSchemaVersion < 25) {
+    database.pragma("foreign_keys = OFF");
+    try {
+      database.transaction(() => {
+        database.exec(`
+          CREATE TABLE farm_purchase_requests_v25 (
+            request_id TEXT PRIMARY KEY,
+            wake_id TEXT NOT NULL UNIQUE REFERENCES bell_wakes(wake_id) ON DELETE RESTRICT,
+            resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+            home_id TEXT NOT NULL REFERENCES homes(home_id) ON DELETE CASCADE,
+            idempotency_key TEXT NOT NULL,
+            shop TEXT NOT NULL CHECK (shop IN ('field', 'ranch', 'mystery-merchant')),
+            shop_revision TEXT NOT NULL,
+            human_name TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (status IN (
+              'requested', 'processing', 'completed', 'partially_completed', 'declined', 'expired', 'failed'
+            )),
+            created_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL CHECK (expires_at = created_at + 86400000),
+            payload_hash TEXT NOT NULL,
+            UNIQUE (resident_id, idempotency_key)
+          );
+          INSERT INTO farm_purchase_requests_v25 SELECT * FROM farm_purchase_requests;
+          DROP TABLE farm_purchase_requests;
+          ALTER TABLE farm_purchase_requests_v25 RENAME TO farm_purchase_requests;
+          CREATE INDEX farm_purchase_requests_resident_created
+            ON farm_purchase_requests (resident_id, created_at DESC, request_id DESC);
+        `);
+        if ((database.pragma("foreign_key_check") as unknown[]).length > 0) {
+          throw new Error("Purchase-request shop migration violated foreign keys");
+        }
+        database.pragma("user_version = 25");
+      })();
+    } finally {
+      database.pragma("foreign_keys = ON");
+    }
   }
   database.transaction(() => {
     const itemColumns = database.pragma("table_info(farm_purchase_request_items)") as Array<{

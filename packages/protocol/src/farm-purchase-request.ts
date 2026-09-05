@@ -2,7 +2,7 @@ import { z } from "zod";
 
 const farmPurchaseRequestTextSchema = z.string().trim().min(1).max(256);
 
-export const farmPurchaseRequestShopSchema = z.enum(["field", "ranch"]);
+export const farmPurchaseRequestShopSchema = z.enum(["field", "ranch", "mystery-merchant"]);
 export const farmPurchaseRequestKindSchema = z.enum([
   "seed",
   "potion",
@@ -11,6 +11,7 @@ export const farmPurchaseRequestKindSchema = z.enum([
   "animal",
   "pet",
   "item",
+  "material",
 ]);
 export const farmPurchaseRequestStatusSchema = z.enum(["requested", "expired", "failed"]);
 export const farmPurchaseRequestIdempotencyKeySchema = z.uuid();
@@ -69,8 +70,13 @@ export const boundFarmPurchaseRequestCreateSchema = z
     const allowedKinds =
       request.shop === "field"
         ? new Set(["seed", "potion", "potion_set", "recipe"])
-        : new Set(["animal", "pet", "item"]);
+        : request.shop === "mystery-merchant"
+          ? new Set(["seed", "material", "potion_set"])
+          : new Set(["animal", "pet", "item"]);
     request.items.forEach((item, index) => {
+      if (request.shop === "mystery-merchant" && item.qty !== 1) {
+        context.addIssue({ code: "custom", path: ["items", index, "qty"], message: "Each merchant offer is limited to one per visit" });
+      }
       if (!allowedKinds.has(item.kind)) {
         context.addIssue({
           code: "custom",

@@ -33,6 +33,7 @@ import {
   type FarmCropCategoryId,
 } from "../farm-crop-catalog";
 import { FarmUnavailablePanel } from "./tool-panel";
+import { MysteryMerchantShop } from "./shop/mystery-merchant-shop";
 import "./farm-action-panels.css";
 
 export type CropCodexActionExecutor = (
@@ -70,18 +71,6 @@ function purchaseOrderItemKey(kind: string, itemId: string): string {
   return `${kind}:${itemId}`;
 }
 
-function mysteryMerchantTime(value: string): string {
-  return new Intl.DateTimeFormat("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: "Asia/Shanghai",
-  }).format(new Date(value));
-}
-
-function mysteryMerchantCurrency(currency: "gold" | "silver"): string {
-  return currency === "gold" ? "金币" : "银币";
-}
 
 export function FarmMarketPanelContent({
   farmCatalog,
@@ -163,7 +152,6 @@ export function FarmMarketPanelContent({
   const [purchaseQuantity, setPurchaseQuantity] = useState("1");
   const [purchasePrice, setPurchasePrice] = useState("1");
   const [fulfillQuantities, setFulfillQuantities] = useState<Record<string, string>>({});
-  const [selectedMerchantItemIds, setSelectedMerchantItemIds] = useState<string[]>([]);
   type Attempt = { input: MarketActionInput; label: string };
   type ActionState =
     | { stage: "idle" }
@@ -221,7 +209,6 @@ export function FarmMarketPanelContent({
     if (result.ok) {
       const outcome = result.data.data.result.outcome;
       const completedAction = result.data.data.result.action;
-      if (completedAction === "mystery-merchant-buy") setSelectedMerchantItemIds([]);
       setAction({
         stage: "success",
         message:
@@ -233,7 +220,7 @@ export function FarmMarketPanelContent({
               ? "集市动作已完成"
               : "集市动作已完成",
       });
-      return;
+      return true;
     }
     setAction({
       stage: "error",
@@ -337,82 +324,19 @@ export function FarmMarketPanelContent({
           ) : null}
         </p>
       ) : null}
-      <section aria-label="神秘商人" className="farm-market__mystery-merchant">
-        <header>
-          <strong>神秘商人</strong>
-          {mysteryMerchant.status === "present" ? (
-            <span>停留至 {mysteryMerchantTime(mysteryMerchant.ends_at)}</span>
-          ) : (
-            <span>今天会出现三次</span>
-          )}
-        </header>
-        <div aria-label="今日大概出现时段" className="farm-market__mystery-windows">
-          {mysteryMerchant.approximate_windows.map((window) => (
-            <span key={window.starts_at}>
-              {mysteryMerchantTime(window.starts_at)}–{mysteryMerchantTime(window.ends_at)}
-            </span>
-          ))}
-        </div>
-        {mysteryMerchant.status === "present" ? (
-          <>
-            <p>
-              现在在 <strong>{mysteryMerchant.host_farm_name ?? mysteryMerchant.host_farm_doorplate}</strong>
-            </p>
-            <ul>
-              {mysteryMerchant.offers.map((offer) => (
-                <li key={offer.kind + ":" + offer.item_id}>
-                  <span>
-                    <strong>{offer.name}</strong>
-                    <small>
-                      {offer.rarity ? offer.rarity + " · " : ""}
-                      {offer.unit_price} {mysteryMerchantCurrency(offer.currency)}
-                      {offer.grant_quantity > 1 ? " · 得到 " + offer.grant_quantity : ""}
-                    </small>
-                  </span>
-                  <button
-                    aria-pressed={selectedMerchantItemIds.includes(offer.item_id)}
-                    disabled={busy || !onMarketAction || offer.already_bought}
-                    onClick={() =>
-                      setSelectedMerchantItemIds((current) =>
-                        current.includes(offer.item_id)
-                          ? current.filter((itemId) => itemId !== offer.item_id)
-                          : [...current, offer.item_id],
-                      )
-                    }
-                    type="button"
-                  >
-                    {offer.already_bought
-                      ? "本轮已买"
-                      : selectedMerchantItemIds.includes(offer.item_id)
-                        ? "已选"
-                        : "选择"}
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <button
-              disabled={busy || !onMarketAction || selectedMerchantItemIds.length === 0}
-              onClick={() =>
-                void submit({
-                  input: {
-                    action: "mystery-merchant-buy",
-                    expectedFarmDoorplate: farmDoorplate,
-                    expectedRevision,
-                    idempotencyKey: crypto.randomUUID(),
-                    items: selectedMerchantItemIds,
-                  },
-                  label: "向神秘商人结账",
-                })
-              }
-              type="button"
-            >
-              结账（{selectedMerchantItemIds.length}）
-            </button>
-          </>
-        ) : (
-          <p>还没有发现这次商人的准确位置。</p>
-        )}
-      </section>
+      <MysteryMerchantShop
+        key={farmDoorplate + ":" + (mysteryMerchant.status === "present" ? mysteryMerchant.host_farm_doorplate + ":" + mysteryMerchant.ends_at : "absent")}
+        merchant={mysteryMerchant}
+        revision={expectedRevision}
+        busy={busy}
+        onPurchase={onMarketAction ? async (items) => Boolean(await submit({
+          input: {
+            action: "mystery-merchant-buy", expectedFarmDoorplate: farmDoorplate,
+            expectedRevision, idempotencyKey: crypto.randomUUID(), items,
+          },
+          label: "向神秘商人结账",
+        })) : undefined}
+      />
       {onMarketAction && (inventory.length > 0 || purchaseOrderItems.length > 0) ? (
         <form
           aria-label="发布集市商品"

@@ -21,10 +21,10 @@ export interface FarmPurchaseRequestIssue {
 
 export interface CreateFarmPurchaseRequestInput {
   idempotencyKey: string;
-  shop: "field" | "ranch";
+  shop: "field" | "ranch" | "mystery-merchant";
   shopRevision: string;
   items: Array<{
-    kind: "seed" | "potion" | "potion_set" | "recipe" | "animal" | "pet" | "item";
+    kind: "seed" | "potion" | "potion_set" | "recipe" | "animal" | "pet" | "item" | "material";
     itemId: string;
     quantity: number;
   }>;

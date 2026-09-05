@@ -185,7 +185,7 @@ export interface CareerJobWakeInput {
 
 export type BellWakeStatus = "pending" | "acked" | "blocked" | "cancelled";
 
-export const FARM_PURCHASE_SHOPS = ["field", "ranch"] as const;
+export const FARM_PURCHASE_SHOPS = ["field", "ranch", "mystery-merchant"] as const;
 export type FarmPurchaseShop = (typeof FARM_PURCHASE_SHOPS)[number];
 
 export const FARM_PURCHASE_REQUEST_STATUSES = ["requested", "expired", "failed"] as const;
