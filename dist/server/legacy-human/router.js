@@ -65,7 +65,7 @@ import {
     uiTa,
     uiTogether,
 } from "../../web.js";
-import { expRoll, expSetCharm } from "../../expedition.js";
+import { expRoll } from "../../expedition.js";
 import { onTaskEvent } from "../../tasks.js";
 import { checkTitles, equipTitle } from "../../titles.js";
 import { rollSeasonHarvest } from "../../season-events.js";
@@ -119,6 +119,10 @@ export async function handleLegacyHumanRoute({
     if (!f) {
         res.writeHead(404, AGENT_HEADERS);
         return res.end(uiInvalid());
+    }
+    if (parts[2] === "expedition" && method === "POST" && parts[3] !== "roll") {
+        res.writeHead(403, AGENT_HEADERS);
+        return res.end("人类端探险目前只支持协助掷骰。");
     }
     const raidSettlement = settleDueRanchRaids(now);
     if (raidSettlement.settled > 0) {
@@ -679,20 +683,13 @@ export async function handleLegacyHumanRoute({
         res.writeHead(200, AGENT_HEADERS);
         return res.end(renderHuman(uiTogether(f, world, now, key)));
     }
-    // 🗺️ 探险页：摇骰（伴侣替 AI 摇，同心+1）/ 出门前祈福。其余推进(explore/choose/retreat)是 AI 自己发，这页只看+摇骰+祈福。
+    // 人类端只查看探险并协助摇骰；主动探险由 AI 执行。
     if (section === "expedition") {
         const act = parts[3];
-        if (method === "POST" && (act === "roll" || act === "charm")) {
-            const form = await readFormBody(req);
-            let flash;
-            if (act === "roll") {
-                flash = expRoll(f, true, now).text;
-                checkTitles(f); // 默契称号：伴侣摇骰赢一场战斗会 +1 默契度
-            }
-            else {
-                const kind = form.kind === "check" || form.kind === "hp" ? form.kind : undefined;
-                flash = expSetCharm(f, kind, String(form.blessing ?? ""), now).text;
-            }
+        if (method === "POST" && act === "roll") {
+            await readFormBody(req);
+            const flash = expRoll(f, true, now).text;
+            checkTitles(f); // 默契称号：伴侣摇骰赢一场战斗会 +1 默契度
             save();
             res.writeHead(303, { ...AGENT_HEADERS, Location: `${BASE}/ui/${key}/expedition?flash=${encodeURIComponent(flash)}` });
             return res.end();

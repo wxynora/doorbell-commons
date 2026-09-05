@@ -1,12 +1,5 @@
 import { createHash } from "node:crypto";
-import {
-  expChoose,
-  expEnter,
-  expExplore,
-  expRetreat,
-  expRoll,
-  expSetCharm,
-} from "../expedition.js";
+import { expRoll } from "../expedition.js";
 import { replaceFarm } from "../store.js";
 import { expeditionActionRevision } from "./expedition-revision.js";
 import { projectHumanFarmCatalog } from "./farm-catalog-structured.js";
@@ -133,38 +126,20 @@ function validateBody(body) {
   );
 }
 
-function callAuthority(farm, body, now) {
-  switch (body.action) {
-    case "enter":
-      return expEnter(farm, now, body.payload.charges);
-    case "explore":
-      return expExplore(farm, now, body.payload.charges);
-    case "roll":
-      return expRoll(farm, true, now);
-    case "choose":
-      return expChoose(farm, body.payload.option, now);
-    case "charm":
-      return expSetCharm(farm, body.payload.kind, body.payload.blessing, now);
-    case "retreat":
-      return expRetreat(farm, now);
-    default:
-      return { ok: false, text: "Unknown expedition action" };
-  }
-}
-
 function actionOutcome(authorityResult) {
   if (authorityResult?.ok !== true || typeof authorityResult.text !== "string") return null;
   return { text: authorityResult.text };
 }
 
 /**
- * Execute one Human expedition action. The legacy expedition functions remain
- * the only gameplay authorities; this adapter supplies strict targets,
- * revision/idempotency, an isolated clone, a catalog resource, and one save.
- * In particular, entering remains random because expEnter chooses the map.
+ * Human expedition participation is limited to the original battle dice roll.
+ * Retain revision/idempotency, isolated mutation and the existing save boundary.
  */
 export function handleHumanExpeditionAction(farm, body, now = Date.now()) {
   if (!validateBody(body)) return invalidRequest();
+  if (body.action !== "roll") {
+    return errorResponse("action_rejected", "人类端探险目前只支持协助掷骰。");
+  }
 
   const receipts = isRecord(farm?.doorbellHumanExpeditionActionReceipts)
     ? farm.doorbellHumanExpeditionActionReceipts
@@ -208,7 +183,7 @@ export function handleHumanExpeditionAction(farm, body, now = Date.now()) {
 
   try {
     const working = structuredClone(farm);
-    const authorityResult = callAuthority(working, body, now);
+    const authorityResult = expRoll(working, true, now);
     if (authorityResult?.ok !== true) {
       return errorResponse(
         "action_rejected",

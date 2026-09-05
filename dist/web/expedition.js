@@ -1,12 +1,12 @@
 import { advance } from "../engine.js";
 import { expMaps, expEventById, expMapById, expDecorById } from "../content.js";
-import { BASE, EXP_DC, EXP_DAILY_CAP, EXP_BLESSING_MAX } from "../config.js";
+import { BASE, EXP_DC, EXP_DAILY_CAP } from "../config.js";
 import { currentDayIndex } from "../time.js";
 import { concordTierName } from "../titles.js";
 import { esc, farmNames, fmtDate, page } from "./shell.js";
 
 // ——————————————————————————————————————————————————————————————
-// 🗺️ 探险页：当前探险/摇骰 · 出门前祈福 · 本趟故事书 · 秘境图鉴 · 旅程簿
+// 🗺️ 探险页：当前探险/摇骰 · 本趟故事书 · 秘境图鉴 · 旅程簿
 // ——————————————————————————————————————————————————————————————
 const EXP_TYPE_LABEL = { story: "剧情", drop: "掉落", choice: "分支", encounter: "奇遇", combat: "⚔️战斗" };
 function expBagPreview(exp) {
@@ -86,16 +86,6 @@ export function uiExpedition(f, now, key, flash) {
         cards.push(`<div class="card"><h3>🧭 探险进行中 · ${esc(map?.name ?? "")}</h3>
       <p class="small muted" style="margin:0">${ai}在第 ${exp.step} 格。❤ ${exp.hp} · 🎒 ${esc(expBagPreview(exp))}。${where}</p></div>`);
     }
-    // —— 2. 出门前祈福 ——
-    const blessing = esc(exp?.charm?.blessing ?? f.expCharm?.blessing ?? "");
-    cards.push(`<div class="card"><h3>🧿 ${exp ? "为这趟祈福" : "出门前祈福"}　<span class="muted small" style="font-weight:400">给 ${ai} 添点底气</span></h3>
-    <p class="small muted" style="margin:0 0 8px">挑一个护身符，再写一句祝福的话——它会随 ${ai} 一起带走，状态告急时在 TA 耳边回响，回来结算时再回放给你听。${exp ? "" : `${ai}下次 explore 出门时生效。`}</p>
-    <form method="post" action="${base}/charm" style="display:grid;gap:8px">
-      <label class="small"><input type="radio" name="kind" value="check" checked> 🍀 勇气符（下次检定 +1）</label>
-      <label class="small"><input type="radio" name="kind" value="hp"> 💗 暖意符（回 1 点状态）</label>
-      <textarea class="inp" style="width:100%" name="blessing" rows="2" maxlength="${EXP_BLESSING_MAX}" placeholder="写一句祝福的话（最多 ${EXP_BLESSING_MAX} 字，如：平平安安回来就好）">${blessing}</textarea>
-      <div><button class="btn" type="submit">🧿 祈福</button></div>
-    </form></div>`);
     // —— 3. 本趟故事书 ——
     if (exp && exp.log.length) {
         const pages = exp.log.map((l) => `<p style="margin:0 0 10px"><b>${esc(l.title)}</b><br><span class="small" style="white-space:pre-wrap">${esc(l.text)}</span></p>`).join("");
