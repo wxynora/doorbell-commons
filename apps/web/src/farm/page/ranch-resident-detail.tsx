@@ -54,6 +54,7 @@ export interface LiveRanchResidentView {
 export interface LiveRanchVisitorView {
   id: string;
   name: string;
+  ownerName: string | null;
   raidId: string;
   spriteAnimal: RanchShopAnimal;
   variants: RanchVariantSelection;
@@ -142,6 +143,7 @@ export function getLiveRanchVisitors(
           {
             id: `visitor:${visitor.raid_id}`,
             name: visitor.animal_name,
+            ownerName: visitor.owner_name ?? null,
             raidId: visitor.raid_id,
             spriteAnimal,
             variants: {

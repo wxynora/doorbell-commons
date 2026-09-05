@@ -9,6 +9,7 @@ import type {
 } from "./community-database.js";
 import type { FarmHumanFieldReader } from "./farm-human-client.js";
 import type { FarmLingyeReader } from "./farm-lingye-client.js";
+import type { MysteryMerchantReminderService } from "./mystery-merchant-reminder-service.js";
 
 export const ACTIVITY_REMINDER_RECONCILE_INTERVAL_MS = 5 * 60 * 1000;
 export const CROP_MATURED_NOTIFICATION_TITLE = "农场可以收菜了";
@@ -36,6 +37,7 @@ export interface ActivityReminderServiceOptions {
   };
   farmFieldReader: Pick<FarmHumanFieldReader, "readField">;
   farmLingyeReader: Pick<FarmLingyeReader, "readGlimmer">;
+  mysteryMerchantReminder?: Pick<MysteryMerchantReminderService, "reconcile">;
   now?: () => number;
   onError?: (error: unknown) => void;
   autoStart?: boolean;
@@ -103,6 +105,7 @@ export class ActivityReminderService {
   readonly #registrationAuth: ActivityReminderServiceOptions["registrationAuth"];
   readonly #farmFieldReader: Pick<FarmHumanFieldReader, "readField">;
   readonly #farmLingyeReader: Pick<FarmLingyeReader, "readGlimmer">;
+  readonly #mysteryMerchantReminder: ActivityReminderServiceOptions["mysteryMerchantReminder"];
   readonly #now: () => number;
   readonly #onError: (error: unknown) => void;
   readonly #interval: NodeJS.Timeout | undefined;
@@ -116,6 +119,7 @@ export class ActivityReminderService {
     this.#registrationAuth = options.registrationAuth;
     this.#farmFieldReader = options.farmFieldReader;
     this.#farmLingyeReader = options.farmLingyeReader;
+    this.#mysteryMerchantReminder = options.mysteryMerchantReminder;
     this.#now = options.now ?? Date.now;
     this.#onError = options.onError ?? (() => undefined);
     if (options.autoStart === false) return;
@@ -246,10 +250,12 @@ export class ActivityReminderService {
       farmDoorplate: community.farmBinding.farmDoorplate,
       farmHumanKey,
     };
-    const [field, glimmer] = await Promise.allSettled([
+    const [field, glimmer, merchant] = await Promise.allSettled([
       this.#farmFieldReader.readField(input),
       this.#farmLingyeReader.readGlimmer(input),
+      this.#mysteryMerchantReminder?.reconcile(profile, farmHumanKey),
     ]);
+    if (merchant.status === "rejected") this.#onError(merchant.reason);
     if (field.status === "fulfilled") {
       try {
         await this.#reconcileCrops(community, field.value, now);

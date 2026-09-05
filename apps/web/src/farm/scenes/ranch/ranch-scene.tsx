@@ -178,7 +178,7 @@ function RanchSceneAnimal({
       aria-label={
         catchingVisitorRaidId === animal.visitorRaidId
           ? `正在抓住来客${animal.name}`
-          : `抓住来客${animal.name}`
+          : `查看来客${animal.name}`
       }
       className="farm-ranch-resident is-visitor"
       data-animal-id={animal.id}

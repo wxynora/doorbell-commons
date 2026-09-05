@@ -206,6 +206,7 @@ export const farmRanchSceneVisitorSchema = z
     raid_id: ranchIdSchema.nullable(),
     animal_kind_id: ranchIdSchema.nullable(),
     animal_name: ranchTextSchema.nullable(),
+    owner_name: ranchTextSchema.nullable().optional(),
     variant: farmRanchVariantOptionSchema.nullable(),
   })
   .strict()

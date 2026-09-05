@@ -407,6 +407,29 @@ export type RanchVisitorCatchOutcome = Extract<
   { kind: "catch" }
 >;
 
+export function RanchVisitorDetail({ name, ownerName, onCatch, onClose }: {
+  name: string;
+  ownerName: string | null;
+  onCatch: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <section aria-label="牧场来客" aria-modal="true" role="dialog"
+      className="farm-harvest-receipt farm-ranch-catch-receipt">
+      <button aria-label="关闭来客详情" className="farm-harvest-receipt__close"
+        onClick={onClose} type="button">×</button>
+      <header>
+        <span>牧场来客</span>
+        <strong>{name}</strong>
+        <small>{ownerName ? `来自「${ownerName}」` : "主人信息暂未读取"}</small>
+      </header>
+      <footer className="ranch-resident-detail__action-row">
+        <button onClick={onCatch} type="button">抓</button>
+      </footer>
+    </section>
+  );
+}
+
 export function RanchVisitorCatchReceipt({
   onClose,
   outcome,

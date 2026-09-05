@@ -15,6 +15,7 @@ import {
   type WeatherSeasonPhase,
 } from "@doorbell/protocol";
 import Database from "better-sqlite3";
+import { MysteryMerchantReminderStore } from "./mystery-merchant-reminder-store.js";
 import { migrateCommunityDatabase } from "./database/community-migrations.js";
 import {
   createReporterBellWake,
@@ -1215,6 +1216,7 @@ export class CommunityDatabase {
   readonly #database: Database.Database;
   readonly #lingyeDailyStore: LingyeDailyStore;
   readonly humanBulletinStore: HumanBulletinStore;
+  readonly mysteryMerchantReminderStore: MysteryMerchantReminderStore;
   readonly #generateRegistrationCode: () => string;
   readonly #generateSessionToken: () => string;
   readonly #generateAccountId: () => string;
@@ -1242,6 +1244,7 @@ export class CommunityDatabase {
     migrateCommunityDatabase(this.#database, this.#generateProfileId);
     this.#lingyeDailyStore = new LingyeDailyStore(this.#database);
     this.humanBulletinStore = new HumanBulletinStore(this.#database);
+    this.mysteryMerchantReminderStore = new MysteryMerchantReminderStore(this.#database);
   }
 
   getFarmActionList(residentId: string, listId: string): FarmActionListRecord | undefined {

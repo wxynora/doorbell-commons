@@ -9,7 +9,7 @@ import {
 } from "@doorbell/protocol";
 import type Database from "better-sqlite3";
 
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 23;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 24;
 const LEGACY_CONNECTOR_DELIVERY_GENERATION = "00000000-0000-0000-0000-000000000000";
 
 interface FarmCreationRequestRow {
@@ -2165,6 +2165,21 @@ export function migrateCommunityDatabase(
         );
       `);
       database.pragma("user_version = 23");
+    })();
+  }
+  if (migratedSchemaVersion < 24) {
+    database.transaction(() => {
+      database.exec(`
+        CREATE TABLE mystery_merchant_notices (
+          resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+          home_id TEXT NOT NULL REFERENCES homes(home_id) ON DELETE CASCADE,
+          farm_doorplate TEXT NOT NULL REFERENCES farm_bindings(farm_doorplate) ON DELETE CASCADE,
+          ends_at TEXT NOT NULL,
+          delivered_at INTEGER NOT NULL,
+          PRIMARY KEY (resident_id, home_id, farm_doorplate, ends_at)
+        );
+      `);
+      database.pragma("user_version = 24");
     })();
   }
   database.transaction(() => {

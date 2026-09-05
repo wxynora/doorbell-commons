@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ApiResult } from "../../auth/auth-client";
 import {
   type BoundCropCodexAction,
@@ -254,6 +254,13 @@ export function FarmMarketPanelContent({
       label: "刷新集市",
     });
   };
+
+  const browsedFarm = useRef<string | null>(null);
+  useEffect(() => {
+    if (!onMarketAction || !farmDoorplate || browsedFarm.current === farmDoorplate) return;
+    browsedFarm.current = farmDoorplate;
+    submitBrowse();
+  }, [farmDoorplate, onMarketAction, submitBrowse]);
 
   const submitList = (barter: boolean) => {
     if (!onMarketAction || !farmDoorplate || !selectedItem || !validQuantity) return;

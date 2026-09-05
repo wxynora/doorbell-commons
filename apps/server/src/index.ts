@@ -1,4 +1,5 @@
 import { ActivityReminderService } from "./activity-reminder-service.js";
+import { MysteryMerchantReminderService } from "./mystery-merchant-reminder-service.js";
 import { buildApp } from "./app.js";
 import { BellAccessService } from "./bell-access-service.js";
 import { BellService } from "./bell-service.js";
@@ -317,6 +318,11 @@ const activityReminderService = browserPushService
       registrationAuth,
       farmFieldReader: farmHumanReader,
       farmLingyeReader,
+      mysteryMerchantReminder: new MysteryMerchantReminderService({
+        reader: farmCatalogReader,
+        store: database.mysteryMerchantReminderStore,
+        push: browserPushService,
+      }),
       onError: reportBrowserPushError,
     })
   : undefined;

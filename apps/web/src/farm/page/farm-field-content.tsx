@@ -58,6 +58,7 @@ import {
   RanchVisitorCatchNotice,
   type RanchVisitorCatchOutcome,
   RanchVisitorCatchReceipt,
+  RanchVisitorDetail,
 } from "./action-feedback";
 import {
   FarmEnvironmentStatus,
@@ -285,6 +286,7 @@ export function FarmFieldContent({
   const [selectedCookingIngredientIds, setSelectedCookingIngredientIds] = useState<string[]>([]);
   const [cookingIngredientPickerOpen, setCookingIngredientPickerOpen] = useState(false);
   const [selectedRanchAnimalId, setSelectedRanchAnimalId] = useState<string | null>(null);
+  const [selectedVisitorRaidId, setSelectedVisitorRaidId] = useState<string | null>(null);
   const [ranchVisitorCatchAction, setRanchVisitorCatchAction] = useState<
     | { stage: "idle" }
     | { stage: "submitting"; raidId: string }
@@ -369,6 +371,7 @@ export function FarmFieldContent({
   const liveRanchResidents = getLiveRanchResidents(ranch);
   const liveRanchSceneResidents = getLiveRanchSceneResidents(ranch);
   const liveRanchVisitors = getLiveRanchVisitors(ranch);
+  const selectedVisitor = liveRanchVisitors.find((visitor) => visitor.raidId === selectedVisitorRaidId) ?? null;
   const selectedRanchAnimal = preview
     ? (RANCH_SHOP_ANIMALS.find((animal) => animal.id === selectedRanchAnimalId) ?? null)
     : null;
@@ -946,7 +949,7 @@ export function FarmFieldContent({
                   }
                   onCatchVisitor={
                     onRanchInteractionAction
-                      ? (raidId) => void submitRanchVisitorCatch(raidId)
+                      ? setSelectedVisitorRaidId
                       : undefined
                   }
                   onSelectAnimal={setSelectedRanchAnimalId}
@@ -1028,6 +1031,17 @@ export function FarmFieldContent({
             />
           ) : null}
         </div>
+      ) : null}
+      {activeScene === "ranch" && selectedVisitor ? (
+        <RanchVisitorDetail
+          name={selectedVisitor.name}
+          ownerName={selectedVisitor.ownerName}
+          onClose={() => setSelectedVisitorRaidId(null)}
+          onCatch={() => {
+            setSelectedVisitorRaidId(null);
+            void submitRanchVisitorCatch(selectedVisitor.raidId);
+          }}
+        />
       ) : null}
       {activeScene === "ranch" && ranchVisitorCatchAction.stage === "success" ? (
         <RanchVisitorCatchReceipt
