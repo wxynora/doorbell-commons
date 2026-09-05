@@ -88,6 +88,7 @@ import {
 } from "./contract.js";
 
 import { recordPublishedDailyLike } from "./reporter-like.js";
+import { createLingyeNpcRuntime, isLingyeNpcInternalOption } from "./npc.js";
 import {
     serviceCommissionObjectLabel,
     serviceCommissionTargetLabel,
@@ -3789,7 +3790,13 @@ export function createLingyeActionExecutor(options) {
     const now = options.now ?? Date.now;
     recoverPendingNpcFallbackServices(database, backend);
     recoverCommissionWorldOperations(database, backend);
+    const npc = createLingyeNpcRuntime({ database, backend, now,
+        issueOption: (residentId, operation, internalOption, issuedAt) =>
+            optionHandle(database, residentId, operation, internalOption, issuedAt),
+        ...(options.npcDialogueRandom ? { dialogueRandom: options.npcDialogueRandom } : {}),
+    });
     return Object.freeze({
+        npc,
         execute(input) {
             try {
                 validateArgs(input.op, input.args);
@@ -3807,6 +3814,22 @@ export function createLingyeActionExecutor(options) {
                 const args = resolveOptionHandle(database, input.residentId, input.op, input.args);
                 const detentions = activeResidentDetentions(backend, input.residentId, actionNow);
                 const detained = detentions.length > 0;
+                if (isLingyeNpcInternalOption(args.option)) {
+                    assertExactKeys(args, [["option"]]);
+                    if (detained) return detainedFailure(detentions);
+                    try {
+                        const interaction = npc.chooseInternal(input.residentId, input.op, args.option);
+                        return success(interaction.dialogue.lines.join("\n"), {
+                            npc: interaction.npc, npc_dialogue: interaction.dialogue,
+                            options: interaction.dialogue.options,
+                        });
+                    }
+                    catch (error) {
+                        if (error instanceof Error && /lingye_npc_.*(?:option|choice|not_present|reference|conflict|mismatch|unavailable)/u.test(error.message))
+                            return failure("OPTION_NOT_AVAILABLE", LINGYE_ERROR_MESSAGES.OPTION_NOT_AVAILABLE);
+                        throw error;
+                    }
+                }
                 let result;
                 if (input.op === "go.bank.view")
                     result = detained
@@ -3827,7 +3850,8 @@ export function createLingyeActionExecutor(options) {
                 else if (input.op === "go.school.choose")
                     result = schoolChoose(database, backend, input.residentId, actionNow, args);
                 if (result !== undefined)
-                    return publicLingyeResult(database, input.residentId, input.op, result, actionNow);
+                    return publicLingyeResult(database, input.residentId, input.op,
+                        npc.decorate(input.residentId, input.op, input.args, result), actionNow);
                 const career = COMMISSION_CAREERS[input.op];
                 syncAuthorityJobs(database, backend, actionNow);
                 const sources = input.farm
@@ -3868,7 +3892,8 @@ export function createLingyeActionExecutor(options) {
                 else {
                     result = commissionView(database, backend, input.residentId, career, args, sources, actionNow);
                 }
-                return publicLingyeResult(database, input.residentId, input.op, result, actionNow);
+                return publicLingyeResult(database, input.residentId, input.op,
+                    npc.decorate(input.residentId, input.op, input.args, result), actionNow);
             }
             catch (error) {
                 if (options.rethrowDomainErrorsForTesting === true)

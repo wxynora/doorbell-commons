@@ -64,9 +64,16 @@ import {
 import { humanFieldError, internalServiceError } from "./contract.js";
 import { handleDoorbellDailyEditorReward, handleDoorbellDailySubmissionReward } from "./daily-submission.js";
 import { handleDoorbellDailyWeather } from "./daily-weather.js";
+import { handleDoorbellHumanNpcRead, handleDoorbellHumanNpcInteract } from "./npc.js";
 
 export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExecutor, careerBenefitsForFarm, constableInterviewRuntime) {
     return async function handleDoorbellInternal(req, res, parts, method) {
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" &&
+            parts[3] === "npcs" && parts.length === 5 && ["read", "interact"].includes(parts[4])) {
+            const handler = parts[4] === "read" ? handleDoorbellHumanNpcRead : handleDoorbellHumanNpcInteract;
+            await handler(req, res, method, lingyeActionExecutor?.npc);
+            return true;
+        }
         if (parts[0] === "internal" && parts[1] === "doorbell" &&
             parts[2] === "lingye-daily" && parts[3] === "submission-review-completed" && parts.length === 4) {
             if (!constableInterviewRuntime?.database || !constableInterviewRuntime?.backend) {

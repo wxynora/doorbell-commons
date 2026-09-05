@@ -39,6 +39,7 @@ export function upgradeLand(farm, now) {
     farm.coins -= req.coins;
     bumpDaily(farm, now, "coinSpend", req.coins);
     farm.landTier = next.tier;
+    farm.lastLandExpandedAt = now;
     for (let id = farm.plots.length + 1; id <= next.plots; id++)
         farm.plots.push({ id, crop: null });
     pushLog(farm, `土地升级为 ${next.name}`);

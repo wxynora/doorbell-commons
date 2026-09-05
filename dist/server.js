@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { randomUUID, randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { advance, steal, visitorWater, tryWaterReward, buyPotionSet, ensureHumanKey, pushSocialInbox, pushLog, craft, cookingDebuffReason, cookingDebuffStatusText, bribeGuardDog } from "./engine.js";
-import { dispatch, farmView, viewShop, viewEncyclopedia, shopBrief, viewMarket, buyFromMarket, visitView, tendNpc, buyNpcSeed, hasDamagedPublicName, viewKitchen } from "./game.js";
+import { dispatch, farmView, viewShop, viewEncyclopedia, shopBrief, viewMarket, buyFromMarket, visitView, tendNpc, hasDamagedPublicName, viewKitchen } from "./game.js";
 import { harvestText, stealThiefText, statusFooter, waterText } from "./flavor.js";
 import { createFarm, getFarm, allFarms, playerFarms, replaceFarm, replaceFarmAndMysteryMerchantAtomic, save, getGlimmerWorld, getMysteryMerchantWorld, getPublicExpeditionWorld, getQixiLantern2026World, restoreWorldSnapshotInMemory, setWorldCommitCoordinator, setWorldPersistenceAdapter, settleLoadedWorld, snapshotWorldForRollback, withWorldCommitContext, advanceStoredMysteryMerchantWorld } from "./store.js";
 import { MAX_FARMS, MESSAGE_TEXT_MAX, MESSAGES_MAX, NPC_ID, GROW_TICKS, BASE, REGISTRATION_OPEN, REGISTRATION_CLOSED_TEXT, REGISTRATION_CAP, REGISTRATION_FULL_TEXT, SHOW_MIGRATION_NOTICE, MIGRATION_NOTICE_TEXT, MIGRATION_NOTICE_HTML } from "./config.js";
@@ -43,6 +43,7 @@ import { setDailySpendEconomyDatabase } from "./daily-spend.js";
 import { activeMysteryMerchantEvent, buyMysteryMerchantOffers, projectMysteryMerchant } from "./mystery-merchant.js";
 import { discoverAndBroadcastMysteryMerchant } from "./server/market-action.js";
 import { detentionAllowsFarmAction, detentionBlockedFarmActionText } from "./security/presentation.js";
+import { buyAndPersistLingyeNpcSeed, recordPendingLingyeNpcFarmBusiness } from "./npc/farm-business.js";
 let activeLingyeWorldDatabase = null;
 let activeLingyeWorldBackend = null;
 let activeMysteryMerchantRuntime = null;
@@ -583,10 +584,9 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
             };
         }
         if (f.id === NPC_ID) {
-            const r = buyNpcSeed(f, buyer, String(b.id), now);
+            const r = buyAndPersistLingyeNpcSeed({ npc: f, buyer, seedId: String(b.id), now, persist: save });
             if (!r.ok)
                 return { status: 400, json: { ok: false, text: r.error, ...vf(buyer) } };
-            save();
             return { status: 200, json: { ok: true, text: `🛒 从「${f.name}」买到限定种子「${r.name}」×${r.qty}，-💰${r.cost}金\n${statusFooter(buyer, now)}`, ...vf(buyer) } };
         }
         const r = buyFromMarket(f, buyer, String(b.kind), String(b.id), b.qty, now);
@@ -912,7 +912,9 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
         onReporterPublication: () => rescheduleReporterEvaluation(),
     });
     activeLingyeWorldBackend = lingyeWorldBackend;
-    const balanceCoordinator = createLingyeFarmBalanceCoordinator(lingyeWorldDatabase, lingyeWorldBackend);
+    const balanceCoordinator = createLingyeFarmBalanceCoordinator(lingyeWorldDatabase, lingyeWorldBackend, {
+        beforeWorldWrite: (input) => recordPendingLingyeNpcFarmBusiness(lingyeWorldDatabase, input),
+    });
     setWorldCommitCoordinator((world, ...args) => {
         const result = balanceCoordinator(world, ...args);
         ranchRaidScheduler?.reschedule(world.farms);
@@ -975,12 +977,14 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
         () => syncLedgerProjection(),
     );
     const lingyeActionExecutor = Object.freeze({
+        npc: rawLingyeActionExecutor.npc,
         execute(input) {
             const operation = () => withWorldCommitContext(
                 { balanceAuthority: "ledger", actor: "human" },
                 () => rawLingyeActionExecutor.execute(input),
             );
-            const result = input.op.startsWith("go.bank.") || input.op.startsWith("go.school.")
+            const result = !rawLingyeActionExecutor.npc.isAction(input) &&
+                (input.op.startsWith("go.bank.") || input.op.startsWith("go.school."))
                 ? runLingyeWorldTransaction(lingyeWorldDatabase, operation)
                 : operation();
             // The ledger transaction is already committed. Project it into the
@@ -1012,15 +1016,19 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
         const offset = 8 * 60 * 60 * 1000;
         const nextBoundary = (Math.floor((current + offset) / (24 * 60 * 60 * 1000)) + 1) *
             24 * 60 * 60 * 1000 - offset;
+        const nextNpcBoundary = rawLingyeActionExecutor.npc.nextTransitionAt();
+        const nextWorldBoundary = typeof nextNpcBoundary === "number" && nextNpcBoundary > current
+            ? Math.min(nextBoundary, nextNpcBoundary) : nextBoundary;
         employmentTimer = setTimeout(() => {
             try {
-                runEmploymentCycle();
+                rawLingyeActionExecutor.npc.advance();
+                if (Date.now() >= nextBoundary) runEmploymentCycle();
             }
             catch {
                 console.error("[lingye-employment] daily duty settlement failed");
             }
             scheduleEmploymentCycle();
-        }, Math.max(0, nextBoundary - current));
+        }, Math.max(0, nextWorldBoundary - current));
         employmentTimer.unref();
     };
     scheduleEmploymentCycle();

@@ -63,6 +63,9 @@ import {
 import { reporterWorkflowForJob } from "./career/reporter-newsroom-service.js";
 import { reporterHasCompletedWork } from "./career/reporter-submission-work.js";
 import { advanceReporterBoardSnapshotDay, amendReporterBoardSnapshotsForCommittedFarms, installReporterBoardSnapshotSchema } from "./career/reporter-board-snapshot.js";
+import { installLingyeNpcSchema } from "./npc/schema.js";
+import { advanceLingyeNpcWorld } from "./npc/world-schedule.js";
+import { createLingyeNpcBusinessObserver } from "./npc/business-affinity-integration.js";
 
 export const LINGYE_WORLD_SCHEMA_VERSION = 2;
 
@@ -366,6 +369,7 @@ export function createLingyeFarmBalanceCoordinator(database, backend, options = 
                 }
             }
             const ledgerAuthority = context?.balanceAuthority === "ledger";
+            let balanceOperation = null;
             const changes = [];
             const farmChanges = [];
             const persistenceFarmIds = new Set();
@@ -428,6 +432,7 @@ export function createLingyeFarmBalanceCoordinator(database, backend, options = 
                     businessReference: `farm-balance:${operationId}`,
                     idempotencyKey: `farm-balance:${operationId}`,
                 });
+                balanceOperation = { operationId, changes };
                 for (const farm of farmChanges) {
                     farm.doorbellMcpMigration.balanceProjection = {
                         authority: "farm",
@@ -438,6 +443,7 @@ export function createLingyeFarmBalanceCoordinator(database, backend, options = 
                     persistenceFarmIds.add(farm.id);
                 }
             }
+            options.beforeWorldWrite?.({ world, context, balanceOperation });
             const written = writeWorld({
                 farmIds: [...persistenceFarmIds],
                 componentKeys: [],
@@ -561,6 +567,12 @@ function chefAuthorityOption(options, authority, ...names) {
 export function createLingyeWorldBackend(database, options) {
     if (!options?.economyRules)
         throw new Error("Lingye economy rules are required");
+    const npcNow = options.now ?? Date.now;
+    const npcBootstrapAt = npcNow();
+    runLingyeWorldTransaction(database, () => {
+        installLingyeNpcSchema(database, { bootstrapAt: npcBootstrapAt });
+        advanceLingyeNpcWorld(database, { now: npcBootstrapAt });
+    });
     const shared = {
         database,
         ...(options.curriculum === undefined ? {} : { curriculum: options.curriculum }),
@@ -612,6 +624,13 @@ export function createLingyeWorldBackend(database, options) {
             return operation();
         });
     };
+    const npcBusiness = createLingyeNpcBusinessObserver(database, { now: npcNow });
+    const bankCommand = (commandType, input, operation) => atomic(() => {
+        const result = operation();
+        npcBusiness.bank(commandType, input.idempotencyKey,
+            input.residentId ?? input.actorResidentId ?? input.borrowerResidentId);
+        return result;
+    });
     const chefAuthority = options.chefAuthority ?? options.chef ?? {};
     const chefNow = options.now ?? Date.now;
     const configuredOriginalRecipeResolver = chefAuthorityOption(
@@ -797,12 +816,12 @@ export function createLingyeWorldBackend(database, options) {
             settleSystemGoldReservation: (input) => atomic(() => economy.settleSystemGoldReservation(input)),
             releaseSystemGoldReservation: (input) => atomic(() => economy.releaseSystemGoldReservation(input)),
             setSilverAgentLock: (input) => atomic(() => economy.setSilverAgentLock(input)),
-            depositDemandGold: (input) => atomic(() => economy.depositDemandGold(input)),
-            withdrawDemandGold: (input) => atomic(() => economy.withdrawDemandGold(input)),
+            depositDemandGold: (input) => bankCommand("bank.demand.deposit", input, () => economy.depositDemandGold(input)),
+            withdrawDemandGold: (input) => bankCommand("bank.demand.withdraw", input, () => economy.withdrawDemandGold(input)),
             accrueDemandInterest: (input) => atomic(() => economy.accrueDemandInterest(input)),
-            openTermDeposit: (input) => atomic(() => economy.openTermDeposit(input)),
-            closeTermDeposit: (input) => atomic(() => economy.closeTermDeposit(input)),
-            exchangeGoldForSilver: (input) => atomic(() => economy.exchangeGoldForSilver(input)),
+            openTermDeposit: (input) => bankCommand("bank.term.open", input, () => economy.openTermDeposit(input)),
+            closeTermDeposit: (input) => bankCommand("bank.term.close", input, () => economy.closeTermDeposit(input)),
+            exchangeGoldForSilver: (input) => bankCommand("bank.exchange.gold_to_silver", input, () => economy.exchangeGoldForSilver(input)),
             createTrade: (input) => atomic(() => economy.createTrade(input)),
             confirmTrade: (input) => atomic(() => economy.confirmTrade(input)),
             settleTrade: (input) => atomic(() => economy.settleTrade(input)),
@@ -811,12 +830,12 @@ export function createLingyeWorldBackend(database, options) {
             reserveSilverEscrow: (input) => atomic(() => economy.reserveSilverEscrow(input)),
             settleSilverEscrowToResident: (input) => atomic(() => economy.settleSilverEscrowToResident(input)),
             releaseSilverEscrow: (input) => atomic(() => economy.releaseSilverEscrow(input)),
-            openSystemLoan: (input) => atomic(() => economy.openSystemLoan(input)),
-            repaySystemLoan: (input) => atomic(() => economy.repaySystemLoan(input)),
+            openSystemLoan: (input) => bankCommand("bank.system_loan.open", input, () => economy.openSystemLoan(input)),
+            repaySystemLoan: (input) => bankCommand("bank.system_loan.repay", input, () => economy.repaySystemLoan(input)),
             proposePlayerLoan: (input) => atomic(() => economy.proposePlayerLoan(input)),
-            confirmPlayerLoan: (input) => atomic(() => economy.confirmPlayerLoan(input)),
+            confirmPlayerLoan: (input) => bankCommand("bank.player_loan.confirm", input, () => economy.confirmPlayerLoan(input)),
             cancelPlayerLoan: (input) => atomic(() => economy.cancelPlayerLoan(input)),
-            repayPlayerLoan: (input) => atomic(() => economy.repayPlayerLoan(input)),
+            repayPlayerLoan: (input) => bankCommand("bank.player_loan.repay", input, () => economy.repayPlayerLoan(input)),
             refreshDebtStatus: (input) => atomic(() => economy.refreshDebtStatus(input)),
     };
     const careerCommands = {
@@ -832,16 +851,22 @@ export function createLingyeWorldBackend(database, options) {
                     businessRef: businessReference,
                     idempotencyKey: input.idempotencyKey,
                 });
-                return school.enrollCourse({
+                const result = school.enrollCourse({
                     residentId: input.residentId,
                     career: input.career,
                     level: input.level,
                     courseIndex: input.courseIndex,
                     tuitionReceipt: charged.financialReceipt,
                 });
+                npcBusiness.courseEnrollment(input);
+                return result;
             }),
             markCourseContentRead: (input) => atomic(() => school.markCourseContentRead(input)),
-            submitCoursePractice: (input) => atomic(() => school.submitCoursePractice(input)),
+            submitCoursePractice: (input) => atomic(() => {
+                const result = school.submitCoursePractice(input);
+                npcBusiness.courseCompletion(input);
+                return result;
+            }),
             registerExam: (input) => atomic(() => {
                 expireDueExamAttempts(input.residentId);
                 const businessReference = `career-exam:${input.attemptId}:reserve`;
@@ -873,6 +898,7 @@ export function createLingyeWorldBackend(database, options) {
                     idempotencyKey: input.idempotencyKey,
                 });
                 const paper = school.startExam(input.attemptId, settled.financialReceipt);
+                npcBusiness.examStart(input.attemptId);
                 return {
                     attemptId: input.attemptId,
                     reservationId: input.reservationId,
@@ -893,7 +919,11 @@ export function createLingyeWorldBackend(database, options) {
                     releaseReceiptId: released.financialReceipt.receiptId,
                 };
             }),
-            submitWrittenExam: (input) => atomic(() => school.submitWrittenExam(input)),
+            submitWrittenExam: (input) => atomic(() => {
+                const result = school.submitWrittenExam(input);
+                npcBusiness.examCompletion(input);
+                return result;
+            }),
             scheduleConstableInterview: (attemptId, scheduledAt) => atomic(() => school.scheduleConstableInterview(attemptId, scheduledAt)),
             signupConstableExaminer: (input) => atomic(() => school.signupConstableExaminer(input)),
             confirmConstableExaminerAttendance: (input) => atomic(() => school.confirmConstableExaminerAttendance(input)),
@@ -944,18 +974,22 @@ export function createLingyeWorldBackend(database, options) {
             completeJob: (input) => atomic(() => {
                 if (Object.hasOwn(input, "paymentReceipt") || Object.hasOwn(input, "expectedSilverPayment"))
                     throw new Error("Paid jobs must use completePaidJob");
-                return jobs.completeJob(input);
+                const result = jobs.completeJob(input);
+                npcBusiness.completedJob(result.jobId);
+                return result;
             }),
             completePaidJob: (input) => atomic(() => {
                 const settled = economy.settleTrade({
                     tradeId: input.tradeId,
                     idempotencyKey: input.tradeSettlementIdempotencyKey,
                 });
-                return jobs.completeJob({
+                const result = jobs.completeJob({
                     ...input.completion,
                     paymentReceipt: settled.financialReceipt,
                     expectedSilverPayment: input.expectedSilverPayment,
                 });
+                npcBusiness.completedJob(result.jobId);
+                return result;
             }),
             cancelJob: (jobId) => atomic(() => jobs.cancelJob(jobId)),
             expireJob: (jobId, demandStillExists) => atomic(() => jobs.expireJob(jobId, demandStillExists)),
@@ -1031,6 +1065,7 @@ export function createLingyeWorldBackend(database, options) {
             `).get(published.jobId, published.residentId)) {
                 throw new CareerDomainError("reporter_work_record_missing", "The completed reporter work record is missing");
             }
+            npcBusiness.completedJob(published.jobId);
             return published;
         });
         options.onReporterPublication?.(publication);
