@@ -81,6 +81,37 @@ export function commissionJobId(sourceId) {
     return `doorbell-job:${digest(sourceId).slice(0, 32)}`;
 }
 
+export function commissionSourceType(sourceType) {
+    return sourceType.split(/:transfer|:republication/u, 1)[0];
+}
+
+export function currentBoundSourceJob(database, source) {
+    if (!["agronomist", "veterinarian"].includes(source.career))
+        return database.prepare("SELECT * FROM career_jobs WHERE source_type = ? AND source_id = ?")
+            .get(source.sourceType, source.sourceId);
+    return database.prepare(`SELECT * FROM career_jobs WHERE source_id = ? AND career = ?
+      ORDER BY created_at DESC, rowid DESC LIMIT 1`).get(source.sourceId, source.career);
+}
+
+export function boundSourcePublicationIdentity(database, source) {
+    const existing = currentBoundSourceJob(database, source);
+    const retry = existing?.status === "cancelled" &&
+        ["agronomist", "veterinarian"].includes(source.career);
+    const optionId = retry ? `${source.sourceId}:republication:${existing.job_id}` : source.sourceId;
+    return {
+        optionId,
+        jobId: retry ? commissionJobId(optionId) : existing?.job_id ?? commissionJobId(source.sourceId),
+        sourceType: retry ? `${existing.source_type}:republication` : existing?.source_type ?? source.sourceType,
+        parentJobId: retry ? existing.job_id : null,
+    };
+}
+
+export function boundSourceCanPublish(database, source) {
+    const existing = currentBoundSourceJob(database, source);
+    return !existing || (["agronomist", "veterinarian"].includes(source.career) &&
+        source.status === "open" && existing.status === "cancelled");
+}
+
 function canonicalPublicValue(value) {
     if (value === null)
         return "null";
@@ -526,8 +557,8 @@ export function publishBoundSource(database, backend, source, request, now = Dat
     if (!serviceCommission && request !== undefined)
         throw new Error("commission_amount_not_available");
     const publication = serviceCommission ? servicePublicationRequest(source, request) : null;
-    const existing = database.prepare("SELECT * FROM career_jobs WHERE source_type = ? AND source_id = ?")
-        .get(source.sourceType, source.sourceId);
+    const identity = boundSourcePublicationIdentity(database, source);
+    const existing = identity.parentJobId ? null : currentBoundSourceJob(database, source);
     if (existing) {
         const expectedExclusions = [...(source.excludedResidentIds ?? [])]
             .sort((left, right) => left < right ? -1 : left > right ? 1 : 0);
@@ -555,9 +586,9 @@ export function publishBoundSource(database, backend, source, request, now = Dat
         return job;
     }
     const job = backend.trustedSystemCommands.createJob({
-        jobId: commissionJobId(source.sourceId),
+        jobId: identity.jobId,
         career: source.career,
-        sourceType: source.sourceType,
+        sourceType: identity.sourceType,
         sourceId: source.sourceId,
         objectType: source.objectType,
         objectId: source.objectId,
@@ -572,6 +603,9 @@ export function publishBoundSource(database, backend, source, request, now = Dat
         } : {}),
         excludedResidentIds: source.excludedResidentIds ?? [],
     });
+    if (identity.parentJobId)
+        database.prepare("UPDATE career_jobs SET parent_job_id = ? WHERE job_id = ?")
+            .run(identity.parentJobId, job.jobId);
     if (source.career === "agronomist") {
         database.prepare(`
           INSERT INTO career_commission_payments (job_id, trade_id, silver_amount, created_at)
@@ -580,7 +614,7 @@ export function publishBoundSource(database, backend, source, request, now = Dat
     }
     return !serviceCommission && job.assignmentMode === "assigned"
         ? backend.trustedSystemCommands.assignAuthorityJob({ jobId: job.jobId })
-        : job;
+        : backend.trustedQueries.getJob(job.jobId);
 }
 
 export function startSelfAgronomyWork(database, backend, source) {
@@ -588,8 +622,8 @@ export function startSelfAgronomyWork(database, backend, source) {
         typeof source.ownerResidentId !== "string" || source.ownerResidentId.length === 0) {
         throw new Error("self_agronomy_source_not_available");
     }
-    const existing = database.prepare("SELECT * FROM career_jobs WHERE source_type = ? AND source_id = ?")
-        .get(source.sourceType, source.sourceId);
+    const identity = boundSourcePublicationIdentity(database, source);
+    const existing = identity.parentJobId ? null : currentBoundSourceJob(database, source);
     if (existing) {
         const job = backend.trustedQueries.getJob(existing.job_id);
         if (job.career !== "agronomist" || job.assignmentMode !== "self" ||
@@ -598,10 +632,10 @@ export function startSelfAgronomyWork(database, backend, source) {
         }
         return job;
     }
-    return backend.trustedSystemCommands.createJob({
-        jobId: commissionJobId(source.sourceId),
+    const job = backend.trustedSystemCommands.createJob({
+        jobId: identity.jobId,
         career: "agronomist",
-        sourceType: source.sourceType,
+        sourceType: identity.sourceType,
         sourceId: source.sourceId,
         objectType: source.objectType,
         objectId: source.objectId,
@@ -612,6 +646,10 @@ export function startSelfAgronomyWork(database, backend, source) {
         selfWorkerResidentId: source.ownerResidentId,
         excludedResidentIds: source.excludedResidentIds ?? [],
     });
+    if (identity.parentJobId)
+        database.prepare("UPDATE career_jobs SET parent_job_id = ? WHERE job_id = ?")
+            .run(identity.parentJobId, job.jobId);
+    return backend.trustedQueries.getJob(job.jobId);
 }
 
 function targetFarm(job) {
@@ -796,7 +834,7 @@ function reporterCommissionSourceFacts(database, job) {
 }
 
 export function commissionSourceFacts(database, job) {
-    const authoritativeSourceType = job.sourceType.split(":transfer", 1)[0];
+    const authoritativeSourceType = commissionSourceType(job.sourceType);
     if (job.career === "reporter")
         return reporterCommissionSourceFacts(database, job);
     const recorded = database.prepare(`

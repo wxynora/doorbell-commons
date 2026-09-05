@@ -35,6 +35,10 @@ import {
     applyWorldCheck,
     applyWorldTreatment,
     boundFarmSources,
+    boundSourceCanPublish,
+    boundSourcePublicationIdentity,
+    commissionSourceType,
+    currentBoundSourceJob,
     commissionSourceFacts,
     completeNpcFallbackService,
     playerServiceCommissionPrice,
@@ -438,6 +442,7 @@ const COMMISSION_OPTION_LABELS = Object.freeze([
     ["publish", "发布真实委托"],
     ["republish", "重新发布委托"],
     ["accept", "接取委托"],
+    ["decline", "拒绝这份委托"],
     ["cancel", "取消委托"],
     ["reply", "回复委托消息"],
     ["check", "执行检查"],
@@ -1961,28 +1966,27 @@ function commissionOptions(database, backend, rows, residentId, sources, now) {
     const options = [];
     const newsroomRole = reporterDutyRole(database, residentId, now);
     for (const source of sources) {
-        const existing = database.prepare("SELECT 1 FROM career_jobs WHERE source_type = ? AND source_id = ?")
-            .get(source.sourceType, source.sourceId);
-        if (!existing) {
+        if (boundSourceCanPublish(database, source)) {
+            const sourceOptionId = boundSourcePublicationIdentity(database, source).optionId;
             const serviceCommission = ["agronomist", "veterinarian"].includes(source.career);
             const objectLabel = serviceCommission ? serviceCommissionObjectLabel(source) : null;
             if (source.career === "agronomist" && source.ownerResidentId === residentId &&
                 qualificationLevel(database, residentId, "agronomist", now) >= source.requiredLevel &&
                 serviceCommissionJobs(database, now)
                     .getServiceCommissionAvailability(residentId, "agronomist").canAccept) {
-                options.push(option(`commission:self:${source.sourceId}`));
+                options.push(option(`commission:self:${sourceOptionId}`));
             }
-            options.push({ ...option(`commission:publish:${source.sourceId}`),
+            options.push({ ...option(`commission:publish:${sourceOptionId}`),
                 ...(objectLabel ? { label: `公开委托：${objectLabel}` } : {}) });
             if (serviceCommission) {
                 for (const targetResidentId of serviceCommissionCandidateIds(database,
                     source.career, source.requiredLevel, source.ownerResidentId, null, now)) {
                     const workerName = serviceCommissionWorkerName(database, targetResidentId);
                     if (workerName)
-                        options.push({ ...option(`commission:target:${source.sourceId}:${targetResidentId}`),
+                        options.push({ ...option(`commission:target:${sourceOptionId}:${targetResidentId}`),
                             label: serviceCommissionTargetLabel(source.career, workerName, objectLabel) });
                 }
-                options.push({ ...option(`commission:npc:${source.sourceId}`),
+                options.push({ ...option(`commission:npc:${sourceOptionId}`),
                     label: `转交机构 NPC：${objectLabel}` });
             }
         }
@@ -2052,7 +2056,7 @@ function commissionOptions(database, backend, rows, residentId, sources, now) {
                 label: `转交机构 NPC：${serviceCommissionObjectLabel(source)}` });
         }
         if (job.ownerResidentId === residentId &&
-            (job.serviceCommission || ["farm_plot_condition", "animal_health_case"].includes(job.sourceType)) &&
+            (job.serviceCommission || ["farm_plot_condition", "animal_health_case"].includes(commissionSourceType(job.sourceType))) &&
             ["available", "accepted", "assigned"].includes(job.status))
             options.push(option(`commission:cancel:${job.jobId}`));
         if (job.workerResidentId &&
@@ -2096,7 +2100,7 @@ function commissionPresentationSourceFacts(database, job) {
             throw error;
         const recorded = database.prepare(`SELECT source_type, fact_json, recorded_at
             FROM career_commission_source_facts WHERE source_id = ?`).get(job.sourceId);
-        if (!recorded || recorded.source_type !== job.sourceType.split(":transfer", 1)[0])
+        if (!recorded || recorded.source_type !== commissionSourceType(job.sourceType))
             throw error;
         const { condition: _condition, ...initialFact } = JSON.parse(recorded.fact_json);
         return { sourceId: job.sourceId, sourceType: job.sourceType,
@@ -2108,8 +2112,7 @@ function commissionPresentation(database, backend, residentId, career, rows, sou
     const isServiceCareer = ["agronomist", "veterinarian"].includes(career);
     const careerSources = sources.filter((source) => source.career === career && (!isServiceCareer ||
         (source.status === "open" &&
-        !database.prepare("SELECT 1 FROM career_jobs WHERE source_type = ? AND source_id = ?")
-            .get(source.sourceType, source.sourceId) &&
+        boundSourceCanPublish(database, source) &&
         !database.prepare("SELECT 1 FROM career_npc_service_settlements WHERE source_id = ?")
             .get(source.sourceId))));
     const options = commissionOptions(database, backend, rows, residentId, careerSources, now);
@@ -3077,7 +3080,8 @@ function reviewReporterWorkflow(database, backend, residentId, job, decision, ar
 
 function publishPlayerServiceCommission(database, backend, source, publication, actionKey, now) {
     const price = quotedPlayerServiceCommissionPrice(database, source, now);
-    const silverEscrowId = `career-service:${createHash("sha256").update(source.sourceId).digest("hex").slice(0, 32)}`;
+    const identity = boundSourcePublicationIdentity(database, source);
+    const silverEscrowId = `career-service:${createHash("sha256").update(identity.optionId).digest("hex").slice(0, 32)}`;
     const reserved = source.career === "agronomist"
         ? backend.trustedSystemCommands.reserveSilverEscrow({
             payerResidentId: source.ownerResidentId,
@@ -3089,14 +3093,20 @@ function publishPlayerServiceCommission(database, backend, source, publication, 
             residentId: source.ownerResidentId,
             amount: price.baseFeeGold,
             actor: "agent",
-            businessReference: `career-service:${source.sourceId}:base-fee`,
+            businessReference: `career-service:${identity.optionId}:base-fee`,
             idempotencyKey: `${actionKey}:base-fee:reserve`,
         });
     const job = publishBoundSource(database, backend, source, publication, now);
     database.prepare(`INSERT INTO career_service_commission_funds (
       source_id, current_job_id, owner_resident_id, currency, amount,
       reservation_id, reserve_receipt_id, trade_id, state, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 'reserved', ?, ?)`)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 'reserved', ?, ?)
+    ON CONFLICT(source_id) DO UPDATE SET
+      current_job_id = excluded.current_job_id, currency = excluded.currency,
+      amount = excluded.amount, reservation_id = excluded.reservation_id,
+      reserve_receipt_id = excluded.reserve_receipt_id, state = 'reserved',
+      updated_at = excluded.updated_at
+    WHERE career_service_commission_funds.state = 'released'`)
         .run(source.sourceId, job.jobId, source.ownerResidentId,
             source.career === "agronomist" ? "silver" : "gold",
             source.career === "agronomist" ? price.laborSilver : price.baseFeeGold,
@@ -3111,10 +3121,11 @@ function publishPlayerServiceCommission(database, backend, source, publication, 
 function commissionChoose(database, backend, residentId, career, args, sources, now = Date.now()) {
     const npc = /^commission:npc:(.+)$/u.exec(args.option);
     if (npc) {
+        const sourceId = npc[1].split(":republication:", 1)[0];
         const settled = database.prepare(`
           SELECT result_json FROM career_npc_service_settlements
           WHERE source_id = ? AND owner_resident_id = ? AND career = ?
-        `).get(npc[1], residentId, career);
+        `).get(sourceId, residentId, career);
         if (settled && args.amount === undefined && args.text === undefined) {
             return success("处理已完成。", {
                 result: JSON.parse(settled.result_json),
@@ -3123,13 +3134,11 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
             });
         }
         const actionKey = idempotencyKey(residentId, "commission:npc", args);
-        const source = sources.find((entry) => entry.career === career && entry.sourceId === npc[1]) ??
-            recoverBoundNpcSource(database, residentId, career, npc[1], actionKey);
-        const existingJob = source
-            ? database.prepare("SELECT 1 FROM career_jobs WHERE source_type = ? AND source_id = ?")
-                .get(source.sourceType, source.sourceId)
-            : undefined;
-        if (!source || existingJob || args.amount !== undefined || args.text !== undefined)
+        const source = sources.find((entry) => entry.career === career &&
+            boundSourcePublicationIdentity(database, entry).optionId === npc[1]) ??
+            recoverBoundNpcSource(database, residentId, career, sourceId, actionKey);
+        const currentJob = source ? currentBoundSourceJob(database, source) : null;
+        if (!source || (currentJob && currentJob.status !== "cancelled") || args.amount !== undefined || args.text !== undefined)
             throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个委托 option 当前不可用。");
         const payloadHash = createHash("sha256").update(JSON.stringify({
             sourceId: source.sourceId,
@@ -3249,7 +3258,7 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
         const result = serviceJobs.declineTargetedServiceCommission({
             jobId: decline[1], workerResidentId: residentId,
         });
-        return success("委托已登记。", { result }, commissionNotifications(
+        return success("已拒绝这份委托，等待委托人重新安排", { result }, commissionNotifications(
             "commission_declined", job,
             `commission-declined:${idempotencyKey(residentId, "commission:decline", args)}`,
             career, residentId,
@@ -3317,7 +3326,7 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
     const selfAgronomy = /^commission:self:(.+)$/u.exec(args.option);
     if (selfAgronomy) {
         const source = sources.find((entry) => entry.career === "agronomist" &&
-            entry.sourceId === selfAgronomy[1] && entry.ownerResidentId === residentId);
+            boundSourcePublicationIdentity(database, entry).optionId === selfAgronomy[1] && entry.ownerResidentId === residentId);
         if (career !== "agronomist" || !source || args.amount !== undefined || args.text !== undefined)
             throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个自家农艺 option 当前不可用。");
         const result = startSelfAgronomyWork(database, backend, source);
@@ -3330,7 +3339,8 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
     }
     const targetedPublish = /^commission:target:(.+):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/u.exec(args.option);
     if (targetedPublish) {
-        const source = sources.find((entry) => entry.career === career && entry.sourceId === targetedPublish[1]);
+        const source = sources.find((entry) => entry.career === career &&
+            boundSourcePublicationIdentity(database, entry).optionId === targetedPublish[1]);
         if (!source)
             throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.WORLD_CHANGED);
         if (args.amount !== undefined || args.text !== undefined)
@@ -3351,7 +3361,8 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
     }
     const publish = /^commission:publish:(.+)$/u.exec(args.option);
     if (publish) {
-        const source = sources.find((entry) => entry.career === career && entry.sourceId === publish[1]);
+        const source = sources.find((entry) => entry.career === career &&
+            boundSourcePublicationIdentity(database, entry).optionId === publish[1]);
         if (!source)
             throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.WORLD_CHANGED);
         if (args.amount !== undefined || args.text !== undefined)
