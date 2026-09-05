@@ -64,6 +64,7 @@ import type {
 import type { NeighborhoodMessageActionExecutor } from "../scenes/neighborhood/neighborhood-scene";
 import { BackIcon, RefreshIcon } from "./chrome";
 import { FarmFieldContent } from "./farm-field-content";
+import { useRanchReturnRefresh } from "./use-ranch-return-refresh";
 import {
   createInitialFarmReadResources,
   type FarmHarvestActionState,
@@ -141,7 +142,7 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
   const cookingShopOpenInFlightRef = useRef(false);
 
   const requireResource = useCallback(
-    (resource: keyof FarmReadResources, force = false) => {
+    function readResource(resource: keyof FarmReadResources, force = false) {
       if (previewData || (!force && requestedResourcesRef.current.has(resource))) {
         return;
       }
@@ -161,6 +162,7 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
               ? { stage: "ready", data: result.data }
               : { stage: "error", message: ranchIssueMessage(result.issue) },
           }));
+          if (result.ok) readResource("bulletin", true);
         });
         return;
       }
@@ -215,6 +217,12 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
       });
     },
     [previewData],
+  );
+
+  const refreshRanchReturn = useCallback(() => requireResource("ranch", true), [requireResource]);
+  useRanchReturnRefresh(
+    !previewData && resources.ranch.stage === "ready" ? resources.ranch.data : null,
+    refreshRanchReturn,
   );
 
   const refreshField = useCallback(

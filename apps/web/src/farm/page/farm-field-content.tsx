@@ -261,7 +261,7 @@ export function FarmFieldContent({
   onReloadAfterHarvestError?: () => void;
   onReloadAfterLandUpgradeError?: () => void;
   onReloadRanch?: (() => void) | undefined;
-  onRequireResource?: (resource: keyof FarmReadResources) => void;
+  onRequireResource?: (resource: keyof FarmReadResources, force?: boolean) => void;
   onRetryHarvestAssist?: () => void;
   onRetryHarvestRequest?: () => void;
   onRetryPlantRequest?: () => void;
@@ -1288,7 +1288,7 @@ export function FarmFieldContent({
             setCookingIngredientPickerOpen(false);
           }
           if (!preview) {
-            onRequireResource?.("bulletin");
+            onRequireResource?.("bulletin", true);
           }
           updateSceneUiState(activeScene, { bulletinOpen: true, selectedTool: null });
         }}
