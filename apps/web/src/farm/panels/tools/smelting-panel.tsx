@@ -52,6 +52,12 @@ const SMELTING_MATERIALS = [
   { id: "void_fabric", name: "虚空布片", rarity: "SSR" },
   { id: "time_amber", name: "时光琥珀", rarity: "SSR" },
   { id: "creation_echo", name: "创世余音", rarity: "SP" },
+  { id: "rain_marked_glass", name: "雨痕玻璃", rarity: "R" },
+  { id: "morning_mist_gauze", name: "晨雾纱", rarity: "R" },
+  { id: "moon_honey_wax", name: "月蜜蜡", rarity: "SR" },
+  { id: "cloud_whale_bone", name: "云鲸骨片", rarity: "SR" },
+  { id: "starwatch_feather", name: "候星羽", rarity: "SSR" },
+  { id: "sky_clock_core", name: "天穹钟芯", rarity: "SP" },
 ] as const satisfies readonly SmeltingMaterial[];
 
 const SMELTING_RARITY_ORDER = {
@@ -84,7 +90,11 @@ function getSmeltingMaterialSpriteStyle(asset: FarmAssetManifestEntry): CSSPrope
 function SmeltingMaterialSprite({ material }: { material: { id: string; name: string } }) {
   const asset = getSmeltingMaterialAsset(material.id);
 
-  return asset?.atlasViewport ? (
+  if (!asset) {
+    return <span aria-hidden="true" className="smelting-catalog__sprite" />;
+  }
+
+  return asset.atlasViewport ? (
     <span
       aria-label={`${material.name}素材图标`}
       className="smelting-catalog__sprite"
@@ -92,7 +102,11 @@ function SmeltingMaterialSprite({ material }: { material: { id: string; name: st
       style={getSmeltingMaterialSpriteStyle(asset)}
     />
   ) : (
-    <span aria-hidden="true" className="smelting-catalog__sprite" />
+    <img
+      alt={`${material.name}素材图标`}
+      className="smelting-catalog__sprite"
+      src={asset.url}
+    />
   );
 }
 

@@ -83,6 +83,30 @@ export const FARM_ASSET_SOURCE_URLS = {
     "./assets/smelting/materials-atlas.png",
     import.meta.url,
   ).href,
+  "/farm/smelting/limited-batch-20260904/rain-marked-glass.png": new URL(
+    "./assets/smelting/limited-batch-20260904/rain-marked-glass.png",
+    import.meta.url,
+  ).href,
+  "/farm/smelting/limited-batch-20260904/morning-mist-gauze.png": new URL(
+    "./assets/smelting/limited-batch-20260904/morning-mist-gauze.png",
+    import.meta.url,
+  ).href,
+  "/farm/smelting/limited-batch-20260904/moon-honey-wax.png": new URL(
+    "./assets/smelting/limited-batch-20260904/moon-honey-wax.png",
+    import.meta.url,
+  ).href,
+  "/farm/smelting/limited-batch-20260904/cloud-whale-bone.png": new URL(
+    "./assets/smelting/limited-batch-20260904/cloud-whale-bone.png",
+    import.meta.url,
+  ).href,
+  "/farm/smelting/limited-batch-20260904/starwatch-feather.png": new URL(
+    "./assets/smelting/limited-batch-20260904/starwatch-feather.png",
+    import.meta.url,
+  ).href,
+  "/farm/smelting/limited-batch-20260904/sky-clock-core.png": new URL(
+    "./assets/smelting/limited-batch-20260904/sky-clock-core.png",
+    import.meta.url,
+  ).href,
   "/farm/cooking-tools/roast-oven.png": new URL(
     "./assets/cooking-tools/roast-oven.png",
     import.meta.url,

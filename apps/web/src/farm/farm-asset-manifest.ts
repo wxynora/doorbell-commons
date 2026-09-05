@@ -599,6 +599,72 @@ export const FARM_ASSET_MANIFEST = {
     status: "production",
     usage: "wired",
   }),
+  "field.material.rain-marked-glass": asset({
+    domain: "field",
+    entityKind: "material",
+    entityId: "rain_marked_glass",
+    visualState: "catalog-icon",
+    url: "/farm/smelting/limited-batch-20260904/rain-marked-glass.png",
+    pixelWidth: 256,
+    pixelHeight: 256,
+    status: "production",
+    usage: "wired",
+  }),
+  "field.material.morning-mist-gauze": asset({
+    domain: "field",
+    entityKind: "material",
+    entityId: "morning_mist_gauze",
+    visualState: "catalog-icon",
+    url: "/farm/smelting/limited-batch-20260904/morning-mist-gauze.png",
+    pixelWidth: 256,
+    pixelHeight: 256,
+    status: "production",
+    usage: "wired",
+  }),
+  "field.material.moon-honey-wax": asset({
+    domain: "field",
+    entityKind: "material",
+    entityId: "moon_honey_wax",
+    visualState: "catalog-icon",
+    url: "/farm/smelting/limited-batch-20260904/moon-honey-wax.png",
+    pixelWidth: 256,
+    pixelHeight: 256,
+    status: "production",
+    usage: "wired",
+  }),
+  "field.material.cloud-whale-bone": asset({
+    domain: "field",
+    entityKind: "material",
+    entityId: "cloud_whale_bone",
+    visualState: "catalog-icon",
+    url: "/farm/smelting/limited-batch-20260904/cloud-whale-bone.png",
+    pixelWidth: 256,
+    pixelHeight: 256,
+    status: "production",
+    usage: "wired",
+  }),
+  "field.material.starwatch-feather": asset({
+    domain: "field",
+    entityKind: "material",
+    entityId: "starwatch_feather",
+    visualState: "catalog-icon",
+    url: "/farm/smelting/limited-batch-20260904/starwatch-feather.png",
+    pixelWidth: 256,
+    pixelHeight: 256,
+    status: "production",
+    usage: "wired",
+  }),
+  "field.material.sky-clock-core": asset({
+    domain: "field",
+    entityKind: "material",
+    entityId: "sky_clock_core",
+    visualState: "catalog-icon",
+    url: "/farm/smelting/limited-batch-20260904/sky-clock-core.png",
+    pixelWidth: 256,
+    pixelHeight: 256,
+    status: "production",
+    usage: "wired",
+  }),
   "kitchen.method.roast": asset({
     domain: "kitchen",
     entityKind: "cooking-method",
@@ -924,9 +990,24 @@ export const SMELTING_MATERIAL_IDS = [
   "void_fabric",
   "time_amber",
   "creation_echo",
+  "rain_marked_glass",
+  "morning_mist_gauze",
+  "moon_honey_wax",
+  "cloud_whale_bone",
+  "starwatch_feather",
+  "sky_clock_core",
 ] as const;
 
 export type SmeltingMaterialId = (typeof SMELTING_MATERIAL_IDS)[number];
+
+const STANDALONE_SMELTING_MATERIAL_ASSET_KEYS = {
+  rain_marked_glass: "field.material.rain-marked-glass",
+  morning_mist_gauze: "field.material.morning-mist-gauze",
+  moon_honey_wax: "field.material.moon-honey-wax",
+  cloud_whale_bone: "field.material.cloud-whale-bone",
+  starwatch_feather: "field.material.starwatch-feather",
+  sky_clock_core: "field.material.sky-clock-core",
+} as const satisfies Partial<Record<SmeltingMaterialId, FarmAssetKey>>;
 
 const SMELTING_ATLAS_COLUMN_X = [27, 263, 499, 750, 974] as const;
 const SMELTING_ATLAS_ROW_Y = [32, 231, 426, 616, 806, 1006] as const;
@@ -1085,6 +1166,13 @@ export function getCookingRecipeAsset(entityId: string): FarmAssetManifestEntry 
 }
 
 export function getSmeltingMaterialAsset(entityId: string): FarmAssetManifestEntry | undefined {
+  const standaloneAssetKey = (
+    STANDALONE_SMELTING_MATERIAL_ASSET_KEYS as Partial<Record<string, FarmAssetKey>>
+  )[entityId];
+  if (standaloneAssetKey) {
+    return getFarmAsset(standaloneAssetKey);
+  }
+
   const materialIndex = (SMELTING_MATERIAL_IDS as readonly string[]).indexOf(entityId);
   const x = SMELTING_ATLAS_COLUMN_X[materialIndex % 5];
   const y = SMELTING_ATLAS_ROW_Y[Math.floor(materialIndex / 5)];
