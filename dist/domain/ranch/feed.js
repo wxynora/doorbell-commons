@@ -32,8 +32,10 @@ export function ranchFeedAnimal(farm, animalRef, now) {
     const animal = ranchAnimalByRef(ranch, animalRef);
     if (!animal)
         return { ok: false, error: "选的动物不存在。" };
-    if (ranchHealthActionBlocked(animal))
-        return { ok: false, error: "OP_REJECTED" };
+    if (ranchHealthActionBlocked(animal)) {
+        const state = { open: "生病", treating: "治疗", recovering: "恢复" }[animal.lingyeHealth.status];
+        return { ok: false, error: `这只动物正在${state}，暂时不能投喂；本次没有消耗银币。` };
+    }
     if (ranchRaidForAnimal(farm, animal.kindId))
         return { ok: false, error: "这只动物正在外面派遣，回来后再投喂。" };
     if ((animal.pending ?? 0) > 0 || (animal.pendingMeat ?? 0) > 0)

@@ -9,6 +9,9 @@ import {
 } from "../content.js";
 import { currentDayIndex } from "../time.js";
 import { kitchenInventoryRevisionFromData } from "./kitchen-inventory-revision.js";
+import { PAID_KITCHEN_TOOLS } from "../domain/kitchen/tool-catalog.js";
+
+export { PAID_KITCHEN_TOOLS } from "../domain/kitchen/tool-catalog.js";
 
 const ODD_DISH = {
   id: "odd_dish",
@@ -17,15 +20,6 @@ const ODD_DISH = {
   category: null,
   ingredients: [],
 };
-
-// These are the paid cooking tools exposed by the Human kitchen shop.  The
-// free cooking methods remain implicit and do not need an ownership field in
-// a farm save.
-export const PAID_KITCHEN_TOOLS = [
-  { tool_id: "roast", name: "烤炉", price_silver: 800 },
-  { tool_id: "steam", name: "蒸笼", price_silver: 1_200 },
-  { tool_id: "deep-fry", name: "炸锅", price_silver: 1_600 },
-];
 
 // Recipe methods are authoritative content IDs.  The purchase catalog above
 // keeps its existing action IDs for compatibility; recipe tool IDs use the

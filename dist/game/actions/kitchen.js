@@ -9,6 +9,7 @@ import {
 import { qixi2026CompletionText } from "../../qixi-2026.js";
 import { viewKitchen } from "../presentation/catalog.js";
 import { withFooter } from "../presentation/farm.js";
+import { kitchenToolOffer } from "../../domain/kitchen/tool-catalog.js";
 
 export const KITCHEN_DOMAIN_ERROR_TEXT = Object.freeze({
     anchor_content_unavailable: "料理评分内容暂时不可用，本次没有执行。",
@@ -55,6 +56,11 @@ export function kitchenDomainErrorText(failure, fallback = "料理台暂时无�
     const code = typeof failure?.code === "string"
         ? failure.code
         : typeof failure === "string" ? failure : "";
+    if (code === "tool_required") {
+        const tool = kitchenToolOffer(failure.toolId);
+        if (tool)
+            return `缺少${tool.name}，这次没有消耗食材。\n购买：doorbell({"op":"farm.kitchen.buy","args":{"kind":"tool","id":"${tool.tool_id}"}})`;
+    }
     return KITCHEN_DOMAIN_ERROR_TEXT[code] ?? fallback;
 }
 

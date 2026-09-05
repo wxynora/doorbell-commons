@@ -787,6 +787,8 @@ function directCallGuide(world, farm) {
     const state = world.tasks[task.id] ?? { contributions: [] };
     if (state.contributions.some((item) => String(item.farmId) === String(farm.id)))
         return `你已经为【${task.name}】完成过一份关键贡献；等其他农场接棒吧。`;
+    if ((task.id === "service_pancake" || task.id === "service_honey_tea") && world.serviceFarmIds.includes(String(farm.id)))
+        return "你已经交过其中一单，请等其他农场接棒。";
     if (task.kind === "plant_encounter")
         return "请把三条公共记录联系起来，直接尝试对应的普通农场行动。";
     if (task.kind === "dish") {

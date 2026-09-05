@@ -70,6 +70,9 @@ function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
         const { to: _to, ...ownParams } = body;
         return runFarm(farm.id, action, { ...ownParams, id: resolved.farm.id, token: farm.token }, undefined, now, { detail, careerBenefits });
     }
+    if (action === "buy" && body.source === "npc") {
+        return runFarm(NPC_ID, action, { ...body, by: farm.id, token: farm.token }, farm.id, now, { detail, careerBenefits });
+    }
     const mysteryMerchantBuy = action === "buy" && body.source === "mystery-merchant";
     const social = action === "kitchen"
         ? body.op === "use" && body.target === "guard-dog" && body.to !== undefined && String(body.to) !== ""

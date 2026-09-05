@@ -670,7 +670,7 @@ export function glimmerView(farm, worldValue, now = Date.now()) {
         `🐾 今日动物踪迹：${tracks.map((item, index) => `${index + 1}.${item.name}（保底 ${capturePityCount(state, item.kindId)}/${CAPTURE_PITY_LIMIT}）`).join("、")}`,
         glimmerDishInventoryLine(farm),
         glimmerFavoriteLine(farm),
-        `🤝 今日协作：〔${event.name}〕· ${Math.min(world.coop.contributors.length, glimmer.coopRequired)}/${glimmer.coopRequired}${world.coop.completedAt ? " · 已完成，额外稀有踪迹已出现" : ""}`,
+        `🤝 今日协作：〔${event.name}〕· ${Math.min(world.coop.contributors.length, glimmer.coopRequired)}/${glimmer.coopRequired} · 需提交${event.requirement}${world.coop.completedAt ? " · 已完成，额外稀有踪迹已出现" : ""}`,
         world.logs.length ? `📜 最新公共事件：\n${world.logs.map(publicLogText).join("\n")}` : "📜 最新公共事件：暂无",
     ].filter(Boolean);
     if (state.pending) {

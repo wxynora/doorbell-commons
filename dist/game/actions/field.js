@@ -76,9 +76,7 @@ function doRun(f, b, now, options = {}) {
         if (!pr.ok)
             parts.push(`【补种】${pr.error}`);
         else {
-            // leftover 多半是"空地不够"(组合一轮会按总地数请求、已把空地种满)；只有还剩空地却没种下才是金币不够，那时才提示
-            const emptyLeft = f.plots.filter((p) => !p.crop).length;
-            const note = emptyLeft > 0 && pr.leftover ? `；还有 ${emptyLeft} 块空地没钱种` : "";
+            const note = pr.leftover ? `；还有 ${pr.leftover} 份未种下：${pr.error}` : "";
             parts.push(`【补种】${summarizePlanted(pr.planted)}（-${pr.spent} 金${note}）`);
         }
     }
@@ -150,7 +148,7 @@ export function handleFieldAction(action, f, b, now, options = {}) {
             }
             const r = plantBatch(f, { common: Number(b.common) || 0, fantasy: Number(b.fantasy) || 0, limited: b.limited }, now);
             const lim = r.limitedIds;
-            return { ok: r.ok, text: r.ok ? withFooter(f, now, `${plantText(lim)}\n（种下 ${summarizePlanted(r.planted)}，-${r.spent} 金${r.leftover ? `；${r.leftover} 个没种下（空地不够或买不起）` : ""}）`) : (r.error ?? "种不了") };
+            return { ok: r.ok, text: r.ok ? withFooter(f, now, `${plantText(lim)}\n（种下 ${summarizePlanted(r.planted)}，-${r.spent} 金${r.leftover ? `；还有 ${r.leftover} 份未种下：${r.error}` : ""}）`) : (r.error ?? "种不了") };
         }
         case "water": {
             const isOwner = !b.by;

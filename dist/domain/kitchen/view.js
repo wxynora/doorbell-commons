@@ -5,6 +5,8 @@ import { activeCookingDebuff } from "./effects.js";
 import { dishSystemRecycleSilver } from "./pricing.js";
 import { selectCookingItems } from "./selection.js";
 import { kitchenIngredientDailyBuyLimit, refreshKitchenShop } from "./shop.js";
+import { kitchenMethodToolStatus, kitchenRecipeMethodId, kitchenToolIsOwned } from "./chef.js";
+import { PAID_KITCHEN_TOOLS } from "./tool-catalog.js";
 
 /** 料理台当前的真实库存、商店、配方与效果，AI 与人类页共用。 */
 export function kitchenView(farm, now, options = {}) {
@@ -22,8 +24,18 @@ export function kitchenView(farm, now, options = {}) {
             .map(([id, qty]) => ({ ...cookingIngredientById.get(id), id, qty })),
         dishes: kitchen.dishes.map((dish) => ({ ...dish, recycleSilver: dishSystemRecycleSilver(dish) })),
         recipeOffers,
+        tools: PAID_KITCHEN_TOOLS.map((tool) => ({ ...tool, owned: kitchenToolIsOwned(kitchen, tool.tool_id) })),
         knownRecipes: kitchen.knownRecipes.map((id) => cookingRecipeById.get(id)).filter(Boolean)
-            .map((recipe) => ({ ...recipe, canCook: selectCookingItems(farm, recipe.ingredients).ok })),
+            .map((recipe) => {
+                const method = kitchenMethodToolStatus(kitchen, kitchenRecipeMethodId(recipe));
+                const ingredients = selectCookingItems(farm, recipe.ingredients);
+                return {
+                    ...recipe,
+                    canCook: method.ok && ingredients.ok,
+                    missingIngredients: !ingredients.ok,
+                    missingToolId: method.code === "tool_required" ? method.toolId : null,
+                };
+            }),
         debuff: activeCookingDebuff(farm, now),
         shop,
     };

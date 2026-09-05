@@ -2,6 +2,7 @@ import { codexCountByCategory, collectionPct, kitchenView, nextUpgradeReq } from
 import { cropById, crops, cropsByCategory, getCrop, materialById, materials, recipes, totalCropCount } from "../../content.js";
 import { allUgc } from "../../ugc.js";
 import { refPrice } from "../market.js";
+import { kitchenToolOffer } from "../../domain/kitchen/tool-catalog.js";
 
 const TOT = {
     common: cropsByCategory("common").length,
@@ -121,7 +122,11 @@ export function viewKitchen(f, now, section = "overview", options = {}) {
     const offers = view.recipeOffers.length
         ? view.recipeOffers.map((recipe) => `${recipe.name}·${recipe.rarity}〔${recipe.id}〕 🪙${recipe.price}${recipe.known ? "（已会）" : ""}`).join("\n  ")
         : "（今天没有未知食谱可卖）";
-    const recipeLine = (recipe) => `${recipe.name}·${recipe.rarity}${recipe.canCook ? " ✓可做" : "（缺料）"}`;
+    const recipeLine = (recipe) => {
+        const tool = kitchenToolOffer(recipe.missingToolId);
+        const missing = [recipe.missingIngredients ? "缺料" : "", tool ? `缺${tool.name}` : ""].filter(Boolean);
+        return `${recipe.name}·${recipe.rarity}${recipe.canCook ? " ✓可做" : `（${missing.join("、")}）`}`;
+    };
     const recipeCategories = ["主食小吃", "热菜", "汤羹", "甜品点心", "饮品"];
     const known = !view.knownRecipes.length
         ? "（还没解锁；买食谱或用正确组合试做都能解锁）"
@@ -136,7 +141,8 @@ export function viewKitchen(f, now, section = "overview", options = {}) {
     const cookable = view.knownRecipes.filter((recipe) => recipe.canCook);
     const cookableText = cookable.length
         ? cookable.map((recipe) => `${recipe.name}·${recipe.rarity}`).join("、")
-        : "（当前没有材料齐全的食谱）";
+        : "（无）";
     const debuff = view.debuff ? `\n🥴 当前效果：${view.debuff.name}` : "";
-    return `🍳 料理台 · 🪙${f.silver} · 牧场金币 ${f.ranch?.coins ?? 0}${debuff}\n\n🥚 动物产物／渔获：\n  ${products}\n\n🧂 已有商店食材：\n  ${ownedIngredients}\n\n🧺 今日食材铺：\n  ${ingredients}\n\n📜 今日食谱铺：\n  ${offers}\n\n🍲 料理柜：\n  ${dishes}\n\n📖 现在可做：\n  ${cookableText}\n\n全部已解锁食谱：\n· doorbell({"op":"farm.kitchen.view","args":{"section":"recipes"}})\n\n常用操作：\n· 购买：doorbell({"op":"farm.kitchen.buy","args":{"kind":"ingredient","id":"食材id","qty":1}})\n· 制作：doorbell({"op":"farm.kitchen.cook","args":{"recipe":"食谱名"}})\n· 使用：doorbell({"op":"farm.kitchen.use","args":{"dishId":"料理名","target":"self"}})\n· 回收：doorbell({"op":"farm.kitchen.sell","args":{"destination":"system","itemId":"名称","qty":1}})\n· 摆摊：doorbell({"op":"farm.kitchen.sell","args":{"destination":"market","itemId":"名称","qty":1,"price":25}})`;
+    const tools = view.tools.map((tool) => `${tool.name}〔${tool.tool_id}〕 · ${tool.owned ? "已拥有" : "未购买"}${tool.owned ? "" : `\n  购买：doorbell({"op":"farm.kitchen.buy","args":{"kind":"tool","id":"${tool.tool_id}"}})`}`).join("\n  ");
+    return `🍳 料理台 · 🪙${f.silver} · 牧场金币 ${f.ranch?.coins ?? 0}${debuff}\n\n🥚 动物产物／渔获：\n  ${products}\n\n🧂 已有商店食材：\n  ${ownedIngredients}\n\n🧺 今日食材铺：\n  ${ingredients}\n\n📜 今日食谱铺：\n  ${offers}\n\n🧰 料理工具：\n  ${tools}\n\n🍲 料理柜：\n  ${dishes}\n\n📖 现在可做：\n  ${cookableText}\n\n全部已解锁食谱：\n· doorbell({"op":"farm.kitchen.view","args":{"section":"recipes"}})\n\n常用操作：\n· 购买：doorbell({"op":"farm.kitchen.buy","args":{"kind":"ingredient","id":"食材id","qty":1}})\n· 制作：doorbell({"op":"farm.kitchen.cook","args":{"recipe":"食谱名"}})\n· 使用：doorbell({"op":"farm.kitchen.use","args":{"dishId":"料理名","target":"self"}})\n· 回收：doorbell({"op":"farm.kitchen.sell","args":{"destination":"system","itemId":"名称","qty":1}})\n· 摆摊：doorbell({"op":"farm.kitchen.sell","args":{"destination":"market","itemId":"名称","qty":1,"price":25}})`;
 }

@@ -43,9 +43,10 @@ export function plantBatch(farm, spec, now) {
             break;
         } // 买不起/不可种 → 停（队列已按便宜在前）
     }
-    // 一颗都没种下时，把真实原因透传出去——限定/UGC 种子是从背包扣的、不花金币，别再一律甩"买不起"误导玩家
-    const error = qi > 0 ? undefined
-        : (empties.length === 0 ? "没有空地可种（先收获或升级土地）" : (lastErr ?? "买不起种子"));
+    // 部分成功也保留停止原因；限定种子失败不能被改写成金币不足。
+    const error = qi < queue.length
+        ? (lastErr ?? "没有空地可种（先收获或升级土地）")
+        : undefined;
     return { ok: qi > 0, planted, limitedIds, spent: before - farm.coins, leftover: queue.length - qi, error };
 }
 

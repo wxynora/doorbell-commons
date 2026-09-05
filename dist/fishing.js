@@ -818,13 +818,13 @@ export function runFishing(farm, params, now, farms) {
     if (params.location !== undefined) {
         const moved = chooseSpot(state, params.location);
         if (!moved.ok)
-            return finish(moved);
+            return finish({ ...moved, text: [...out, moved.text].join("\n") });
         out.push(moved.text);
     }
     if (shouldCast) {
         const cast = castMany(farm, state, farms, params, now);
         if (!cast.ok)
-            return finish(cast);
+            return finish({ ...cast, text: [...out, cast.text].join("\n") });
         out.push(cast.text);
     }
     return finish({ ok: true, text: out.join("\n") });
