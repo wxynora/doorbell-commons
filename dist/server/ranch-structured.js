@@ -703,6 +703,7 @@ function unavailableSceneVisitor() {
     raid_id: null,
     animal_kind_id: null,
     animal_name: null,
+    owner_name: null,
     variant: null,
   };
 }
@@ -722,6 +723,7 @@ function projectSceneVisitor(owner, raid) {
     raid_id: raidId,
     animal_kind_id: kind.id,
     animal_name: safeText(animal.name) ?? safeText(kind.name),
+    owner_name: safeText(owner.name),
     variant,
   };
 }

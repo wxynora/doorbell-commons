@@ -54,6 +54,7 @@ import {
 } from "../../career/p3-commission-runtime.js";
 import { EconomyError } from "../../economy/economy-errors.js";
 import { SecurityDomainError } from "../../security/index.js";
+import { rewardSuccessfulTheftReport } from "../../security/theft-report-reward.js";
 import { CareerJobService } from "../../career/job-service.js";
 import { CHEF_ORIGINAL_RECIPE_SILVER_PRICE } from "../../career/chef-commerce-service.js";
 import { CHEF_STORE_LISTINGS_FIELD } from "../../career/chef-store-farm-adapter.js";
@@ -3358,6 +3359,7 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
             ? publishPlayerServiceCommission(database, backend, source,
                 { audience: "public" }, idempotencyKey(residentId, "commission:publish", args), now)
             : publishBoundSource(database, backend, source, undefined, now);
+        rewardSuccessfulTheftReport(backend, source, residentId);
         return success("委托已登记。", {
             result,
             jobs: mapRows(visibleCommissionRows(database, residentId, career)),

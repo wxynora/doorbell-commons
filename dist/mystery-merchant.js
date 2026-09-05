@@ -3,7 +3,7 @@ import { cropById, materialById } from "./content.js";
 import { currentDayIndex } from "./time.js";
 
 export const MYSTERY_MERCHANT_EVENT_COUNT = 3;
-export const MYSTERY_MERCHANT_DURATION_MS = 30 * 60 * 1000;
+export const MYSTERY_MERCHANT_DURATION_MS = 60 * 60 * 1000;
 export const MYSTERY_MERCHANT_WINDOW_MS = 3 * 60 * 60 * 1000;
 export const MYSTERY_MERCHANT_SHELF_SIZE = 4;
 
@@ -67,9 +67,9 @@ export const MYSTERY_MERCHANT_CATALOG = Object.freeze([
   },
 ].map((entry) => Object.freeze(entry)));
 
-const HALF_HOUR_MS = MYSTERY_MERCHANT_DURATION_MS;
+const HALF_HOUR_MS = 30 * 60 * 1000;
 const WINDOWS_PER_DAY = 24 * 60 * 60 * 1000 / MYSTERY_MERCHANT_WINDOW_MS;
-const EVENT_SLOTS_PER_WINDOW = MYSTERY_MERCHANT_WINDOW_MS / HALF_HOUR_MS;
+const EVENT_SLOTS_PER_WINDOW = (MYSTERY_MERCHANT_WINDOW_MS - MYSTERY_MERCHANT_DURATION_MS) / HALF_HOUR_MS + 1;
 const SUPPORTED_CURRENCIES = new Set(["gold", "silver"]);
 const SUPPORTED_INVENTORIES = new Set(["materials", "seeds", "items"]);
 
@@ -253,7 +253,8 @@ function normalizeEvent(raw, day) {
   const broadcastedAt = raw.broadcastedAt === null ? null : Number(raw.broadcastedAt);
   const dayStart = beijingDayStart(day);
   if (!eventId || !hostFarmId || !Number.isSafeInteger(startsAt) ||
-      !Number.isSafeInteger(endsAt) || endsAt - startsAt !== MYSTERY_MERCHANT_DURATION_MS ||
+      // Keep already scheduled half-hour visits (and their purchases) readable.
+      !Number.isSafeInteger(endsAt) || ![HALF_HOUR_MS, MYSTERY_MERCHANT_DURATION_MS].includes(endsAt - startsAt) ||
       !Number.isSafeInteger(windowStartsAt) || !Number.isSafeInteger(windowEndsAt) ||
       windowEndsAt - windowStartsAt !== MYSTERY_MERCHANT_WINDOW_MS ||
       windowStartsAt < dayStart || windowEndsAt > beijingDayStart(day + 1) ||
