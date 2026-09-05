@@ -1,8 +1,8 @@
-import pupu from "./assets/pupu-watercolor-20260905.png?url";
-import modian from "./assets/modian-watercolor-20260905.png?url";
-import liyuan from "./assets/liyuan-watercolor-20260905.png?url";
-import songmo from "./assets/songmo.png?url";
-import beiheng from "./assets/beiheng-watercolor-20260905.png?url";
+import pupu from "./assets/pupu-watercolor-20260905.webp?url";
+import modian from "./assets/modian-watercolor-20260905.webp?url";
+import liyuan from "./assets/liyuan-watercolor-20260905.webp?url";
+import songmo from "./assets/songmo.webp?url";
+import beiheng from "./assets/beiheng-watercolor-20260905.webp?url";
 import { npcGiftArtwork } from "./gift-artwork";
 
 /** URL imports emit versioned assets; scene.ts assigns src only to visible artwork. */

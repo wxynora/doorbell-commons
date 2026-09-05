@@ -48,6 +48,7 @@ export const NPC_SCENE_STYLES = `
   .candidate2-npc-layer { position:absolute; left:0; top:0; width:1024px; height:1536px; transform-origin:top left; pointer-events:none; z-index:6; font-family:'Songti SC','STSong','SimSun',serif; color:#51483f; }
   .candidate2-npc-layer [hidden] { display:none !important; }
   .candidate2-npc-presence { position:absolute; inset:0; pointer-events:none; }
+  .candidate2-npc-away-note { position:absolute; left:512px; top:1420px; width:600px; box-sizing:border-box; transform:translate(-50%,-100%); margin:0; padding:14px 20px; border-radius:4px; background:#fff8e9eb; font:inherit; font-size:28px; line-height:1.6; text-align:center; pointer-events:none; }
   .candidate2-npc-map-reminder { position:absolute; width:44px; height:38px; transform:translate(-50%,-50%); pointer-events:none; }
   .candidate2-npc-map-reminder svg { display:block; width:100%; height:100%; }
   .candidate2-npc-read-status { position:absolute; left:48px; bottom:70px; margin:0; padding:12px 20px; font-size:30px; background:#fff8e9; }
@@ -100,6 +101,8 @@ export function npcSceneScript(
   return `
   (() => {
     const positions = ${JSON.stringify(positions)};
+    const locationNames = ${JSON.stringify(Object.fromEntries(locations.map(([id,name])=>[id,name])))};
+    const homePlaces = { farm:'farm-ranch',animal_hospital:'animal-hospital',lingye_daily:'lingye-daily',bank:'bank',vocational_school:'vocational-school',public_security:'lingye-public-security-office' };
     const stages = {new:'初识',known:'熟面',familiar:'熟络',close:'亲近',trusted:'信赖'};
     const talkIcon = ${JSON.stringify(NPC_TALK_ICON)};
     const placements = {
@@ -138,6 +141,11 @@ export function npcSceneScript(
         const originX=(clipLeft-layerBounds.left)/scale;
         const originY=(clipTop-layerBounds.top)/scale;
         const presence=layer.querySelector('[data-npc-presence]');
+        const awayNote=presence.querySelector('.candidate2-npc-away-note');
+        if(awayNote){
+          awayNote.style.left=(originX+visibleWidth/2)+'px';awayNote.style.top=(originY+visibleHeight-72)+'px';
+          awayNote.style.width=Math.min(600,visibleWidth-72)+'px';
+        }
         presence.querySelectorAll('[data-npc-portrait-id]').forEach(image=>{
           const bubble=presence.querySelector('[data-npc-id="'+image.dataset.npcPortraitId+'"]');
           const bubbleX=Number(image.dataset.bubbleX);
@@ -249,9 +257,17 @@ export function npcSceneScript(
       for(const layer of layers){
         const presence=layer.querySelector('[data-npc-presence]');presence.replaceChildren();
         if(layer.dataset.npcPlace!==activePlace)continue;
-        const current=npcs.filter(npc=>activePlace==='map'||npc.location_id===activePlace);
+        const offShift=npc=>['npc_pupu','npc_beiheng'].includes(npc.npc_id)&&npc.work_status!=='on_duty';
+        const current=npcs.filter(npc=>!offShift(npc)&&(activePlace==='map'||npc.location_id===activePlace));
         presence.hidden=selectedNpc!==null;
         if(selectedNpc!==null){applyConversationArtwork(layer);fit(layer);continue;}
+        const host=npcs.find(npc=>homePlaces[npc.institution_id]===activePlace);
+        if(host&&(host.location_id!==activePlace||offShift(host))){
+          const note=document.createElement('p');note.className='candidate2-npc-away-note';note.setAttribute('role','status');
+          const status=host.work_status==='off_duty'?'下班了':host.work_status==='away'?'暂时离开了':'暂时不在这里';
+          const destination=locationNames[host.location_id];
+          note.textContent=host.name+status+(destination?'，现在在'+destination+'。':'。');presence.append(note);
+        }
         const counts={};
         current.forEach((npc,localIndex)=>{
           const location=positions[npc.location_id];if(activePlace==='map'&&!location)return;
