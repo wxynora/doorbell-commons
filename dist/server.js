@@ -36,6 +36,7 @@ import { resolveChefOriginalCookingReceipt } from "./domain/kitchen/original.js"
 import { farmCareerBenefits, farmDoorbellKitchenCareerBenefits, farmResidentId } from "./career/farm-benefits.js";
 import { constableExamTheftEligibility, farmActionTouchesLockedCareerObject, lockedCareerObjectText, startRegisteredP3Scheduler } from "./career/p3-commission-runtime.js";
 import { startConstableInterviewScheduler } from "./career/constable-interview-scheduler.js";
+import { startRanchRaidScheduler } from "./server/ranch-raid-scheduler.js";
 import { loadConstableInterviewBank } from "./career/constable-interview-bank.js";
 import { applyDroughtWatering, collectFloodFishForFarm, commitNatureFarmReconciliation, commitNatureRemovedPlot, startNatureRuntimeScheduler } from "./nature-runtime.js";
 import { setDailySpendEconomyDatabase } from "./daily-spend.js";
@@ -880,6 +881,7 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
         throw new TypeError("startServer mysteryMerchant.renderPurchaseResult must be a function");
     }
     let rescheduleReporterEvaluation = () => {};
+    let ranchRaidScheduler = null;
     activeLingyeWorldDatabase = lingyeWorldDatabase;
     setDailySpendEconomyDatabase(lingyeWorldDatabase);
     activeMysteryMerchantRuntime = mysteryMerchantConfig;
@@ -911,7 +913,11 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
     });
     activeLingyeWorldBackend = lingyeWorldBackend;
     const balanceCoordinator = createLingyeFarmBalanceCoordinator(lingyeWorldDatabase, lingyeWorldBackend);
-    setWorldCommitCoordinator(balanceCoordinator);
+    setWorldCommitCoordinator((world, ...args) => {
+        const result = balanceCoordinator(world, ...args);
+        ranchRaidScheduler?.reschedule(world.farms);
+        return result;
+    });
     const syncLedgerProjection = () => {
         const needsProjection = playerFarms().some((farm) => {
             const residentId = farm.doorbellMcpMigration?.residentId;
@@ -1105,6 +1111,7 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
     const stopP3Scheduler = startRegisteredP3Scheduler(lingyeWorldDatabase);
     const stopNatureScheduler = startNatureRuntimeScheduler();
     const stopConstableInterviewScheduler = startConstableInterviewScheduler(lingyeWorldDatabase, lingyeWorldBackend);
+    ranchRaidScheduler = startRanchRaidScheduler();
     const server = createServer(async (req, res) => {
         const url = new URL(req.url ?? "/", `http://localhost:${port}`);
         const parts = url.pathname.split("/").filter(Boolean);
@@ -1334,6 +1341,7 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
         stopP3Scheduler();
         stopNatureScheduler();
         stopConstableInterviewScheduler();
+        ranchRaidScheduler.stop();
         employmentStopped = true;
         if (employmentTimer)
             clearTimeout(employmentTimer);
