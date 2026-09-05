@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { LINGYE_NPCS, requireLingyeNpc } from "./registry.js";
+import { lingyeNpcRotatingDuty, lingyeNpcScheduleVersion } from "./shift-policy.js";
 import { getLingyeNpcWorldState, LingyeNpcError, runLingyeNpcTransaction, setLingyeNpcWorldState } from "./service.js";
 
 export const LINGYE_NPC_SCHEDULE_VERSION = 1;
@@ -35,7 +36,7 @@ export function lingyeNpcBeijingDay(now) {
 }
 
 function createDailySchedule(npc, day) {
-    const dutyPeriods = DUTY_PERIODS[npc.npcId];
+    const dutyPeriods = lingyeNpcRotatingDuty(npc.npcId, day.start) ?? DUTY_PERIODS[npc.npcId];
     const restPeriods = REST_PERIODS[npc.npcId];
     const hours = [...new Set([0, 5, 8, 11, 14, 18, 23, 24, ...dutyPeriods.flat(), ...restPeriods.flat()])].sort((a, b) => a - b);
     const blocks = [];
@@ -57,7 +58,7 @@ function createDailySchedule(npc, day) {
 
 function dailySchedule(database, npc, day) {
     const saved = database.prepare("SELECT * FROM lingye_npc_schedules WHERE npc_id = ?").get(npc.npcId);
-    if (saved?.schedule_date === day.date)
+    if (saved?.schedule_date === day.date && saved.schedule_version === lingyeNpcScheduleVersion(npc.npcId))
         return JSON.parse(saved.blocks_json);
     const blocks = createDailySchedule(npc, day);
     database.prepare(`
@@ -65,19 +66,25 @@ function dailySchedule(database, npc, day) {
       VALUES (?, ?, ?, ?)
       ON CONFLICT(npc_id) DO UPDATE SET schedule_date = excluded.schedule_date,
         schedule_version = excluded.schedule_version, blocks_json = excluded.blocks_json
-    `).run(npc.npcId, day.date, LINGYE_NPC_SCHEDULE_VERSION, JSON.stringify(blocks));
+    `).run(npc.npcId, day.date, lingyeNpcScheduleVersion(npc.npcId), JSON.stringify(blocks));
     return blocks;
 }
 
 /** Existing world scheduler calls this. Reads never select or advance an NPC. */
 export function advanceLingyeNpcWorld(database, { now }) {
     assertTime(now);
+    // Refresh only the two changed calendars on upgrade, even before the old clock expires.
+    const needsShiftUpgrade = () => !!database.prepare(`
+      SELECT 1 FROM lingye_npcs n LEFT JOIN lingye_npc_schedules s ON s.npc_id = n.npc_id
+      WHERE n.npc_id IN ('npc_pupu', 'npc_beiheng') AND n.active = 1
+        AND (s.schedule_version IS NULL OR s.schedule_version <> 2) LIMIT 1
+    `).get();
     const savedClock = database.prepare("SELECT * FROM lingye_npc_schedule_clock WHERE singleton = 1").get();
-    if (savedClock && now < savedClock.next_transition_at)
+    if (savedClock && now < savedClock.next_transition_at && !needsShiftUpgrade())
         return { advancedAt: savedClock.advanced_at, nextTransitionAt: savedClock.next_transition_at, moved: 0, encounters: 0 };
     return runLingyeNpcTransaction(database, () => {
         const clock = database.prepare("SELECT * FROM lingye_npc_schedule_clock WHERE singleton = 1").get();
-        if (clock && now < clock.next_transition_at)
+        if (clock && now < clock.next_transition_at && !needsShiftUpgrade())
             return { advancedAt: clock.advanced_at, nextTransitionAt: clock.next_transition_at, moved: 0, encounters: 0 };
         const day = lingyeNpcBeijingDay(now);
         const current = [];
@@ -94,7 +101,7 @@ export function advanceLingyeNpcWorld(database, { now }) {
             // A delayed scheduler must not overwrite a newer authoritative story move.
             if (before.updatedAt > now)
                 continue;
-            const sourceReference = `v${LINGYE_NPC_SCHEDULE_VERSION}:${day.date}:${block.startsAt}`;
+            const sourceReference = `v${lingyeNpcScheduleVersion(npc.npcId)}:${day.date}:${block.startsAt}`;
             const applied = database.prepare(`
               SELECT event_id FROM lingye_npc_world_events
               WHERE npc_id = ? AND source_kind = 'schedule' AND source_reference = ?

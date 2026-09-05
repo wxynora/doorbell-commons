@@ -9,6 +9,7 @@ import { createLingyeNpcDialogueService } from "../../npc/dialogue-service.js";
 import { createLingyeNpcGiftAdapter } from "../../npc/gift-adapter.js";
 import { getLingyeNpcWorldState, listResidentLingyeNpcViews } from "../../npc/service.js";
 import { advanceLingyeNpcWorld, nextLingyeNpcWorldTransitionAt } from "../../npc/world-schedule.js";
+import { isLingyeNpcChatAvailable } from "../../npc/shift-policy.js";
 
 const LOCATION_OPERATIONS = Object.freeze({
     bank: "go.bank.choose",
@@ -68,7 +69,7 @@ export function createLingyeNpcRuntime({ database, backend, issueOption, now = D
     const advance = () => advanceLingyeNpcWorld(database, { now: now() });
     const view = (residentId, npc) => {
         const sessionId = dialogue.prepare({ residentId, npcId: npc.npcId });
-        const talk = !sessionId || npc.workStatus === "away" || detained(residentId) ? null : issue(residentId,
+        const talk = !sessionId || !isLingyeNpcChatAvailable(npc.npcId, npc.workStatus) || detained(residentId) ? null : issue(residentId,
             locationOperation(npc.locationId),
             `npc:open:${part(npc.npcId)}:${part(sessionId)}:${npc.worldRevision}`,
             `和${npc.name}聊聊`);
@@ -99,7 +100,7 @@ export function createLingyeNpcRuntime({ database, backend, issueOption, now = D
         const previous = dialogue.read({ residentId, npcId: selected.npcId, sessionId: selected.sessionId });
         // A completed receipt remains readable after the NPC has moved. It cannot
         // award anything twice or authorise a new choice at the previous place.
-        if (previous?.status !== "completed" && (detained(residentId) || world.workStatus === "away" ||
+        if (previous?.status !== "completed" && (detained(residentId) || !isLingyeNpcChatAvailable(selected.npcId, world.workStatus) ||
             world.revision !== selected.revision || actionOperation(operation) !== locationOperation(world.locationId)))
             throw new Error("lingye_npc_option_stale");
         const result = selected.kind === "open"
