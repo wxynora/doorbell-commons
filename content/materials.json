@@ -178,5 +178,41 @@
     "name": "创世余音",
     "rarity": "SP",
     "desc": ""
+  },
+  {
+    "id": "rain_marked_glass",
+    "name": "雨痕玻璃",
+    "rarity": "R",
+    "desc": ""
+  },
+  {
+    "id": "morning_mist_gauze",
+    "name": "晨雾纱",
+    "rarity": "R",
+    "desc": ""
+  },
+  {
+    "id": "moon_honey_wax",
+    "name": "月蜜蜡",
+    "rarity": "SR",
+    "desc": ""
+  },
+  {
+    "id": "cloud_whale_bone",
+    "name": "云鲸骨片",
+    "rarity": "SR",
+    "desc": ""
+  },
+  {
+    "id": "starwatch_feather",
+    "name": "候星羽",
+    "rarity": "SSR",
+    "desc": ""
+  },
+  {
+    "id": "sky_clock_core",
+    "name": "天穹钟芯",
+    "rarity": "SP",
+    "desc": ""
   }
 ]

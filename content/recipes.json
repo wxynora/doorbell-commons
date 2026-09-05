@@ -98,5 +98,23 @@
     "output": "thirty_six_furrow_sunflower",
     "hint": "把三十六畦的旧土、古树脂与一粒日焰放在一起，向阳的种子会记住来路。",
     "requiresCodex": true
+  },
+  {
+    "materials": [
+      "moon_honey_wax",
+      "starwatch_feather",
+      "sky_clock_core"
+    ],
+    "output": "sky_lantern_lotus",
+    "hint": ""
+  },
+  {
+    "materials": [
+      "cloud_whale_bone",
+      "creation_echo",
+      "starwatch_feather"
+    ],
+    "output": "galaxy_post_station_tree",
+    "hint": ""
   }
 ]
