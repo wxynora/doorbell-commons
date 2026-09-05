@@ -22,13 +22,14 @@ import {
   ownerProfileCareerSummarySuccessSchema,
 } from "@doorbell/protocol";
 import { z } from "zod";
+import { FarmNpcClient, type FarmNpcReader } from "./lingye-npc/farm-client.js";
 
 export interface FarmLingyeReadInput {
   farmDoorplate: string;
   farmHumanKey: string;
 }
 
-export interface FarmLingyeReader {
+export interface FarmLingyeReader extends Partial<FarmNpcReader> {
   readCareerSummary(input: FarmLingyeCareerReadInput): Promise<OwnerProfileCareerSummarySuccess>;
   readGlimmer(input: FarmLingyeReadInput): Promise<FarmHumanGlimmerReadSuccess>;
   readReporterPublications(input: FarmReporterIdentityInput): Promise<FarmHumanReporterReadSuccess>;
@@ -116,6 +117,7 @@ const careerCertificateSectionSchema = z.object({
 });
 
 export class FarmLingyeClient implements FarmLingyeReader {
+  readonly #npcClient: FarmNpcClient;
   readonly #careerSummaryEndpoint: URL;
   readonly #glimmerReadEndpoint: URL;
   readonly #reporterLikeEndpoint: URL;
@@ -126,6 +128,7 @@ export class FarmLingyeClient implements FarmLingyeReader {
   readonly #requestTimeoutMs: number;
 
   constructor(options: FarmLingyeClientOptions) {
+    this.#npcClient = new FarmNpcClient(options);
     if (!Number.isSafeInteger(options.requestTimeoutMs) || options.requestTimeoutMs <= 0) {
       throw new TypeError("Farm Lingye API timeout must be a positive integer in milliseconds");
     }
@@ -142,6 +145,9 @@ export class FarmLingyeClient implements FarmLingyeReader {
     this.#fetch = options.fetchImplementation ?? fetch;
     this.#requestTimeoutMs = options.requestTimeoutMs;
   }
+
+  readNpcs: FarmNpcReader["readNpcs"] = input => this.#npcClient.readNpcs(input);
+  interactNpc: FarmNpcReader["interactNpc"] = input => this.#npcClient.interactNpc(input);
 
   async readCareerSummary(
     input: FarmLingyeCareerReadInput,

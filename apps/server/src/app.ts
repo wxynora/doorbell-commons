@@ -1,4 +1,5 @@
 import { registerHumanBulletinRoutes } from "./human-bulletin-routes.js";
+import { registerHumanNpcRoutes } from "./lingye-npc/routes.js";
 import {dailyImageUrl, registerDailyImageRoutes} from "./lingye-daily-images.js";
 import {registerDailyEditorRoutes} from "./lingye-daily-editor-routes.js";
 import {
@@ -2049,6 +2050,8 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     (_request, body, done) =>
       done(null, new URLSearchParams(typeof body === "string" ? body : body.toString("utf8"))),
   );
+
+  registerHumanNpcRoutes(app, { registrationAuth: options.registrationAuth, secureCookies: options.secureCookies });
 
   if(options.lingyeDailyService) registerHumanBulletinRoutes(app, {
     store:options.lingyeDailyService.humanBulletinStore,

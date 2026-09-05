@@ -1,4 +1,4 @@
-import type { FarmBulletinAckScope, OwnerProfileCareerSummarySuccess } from "@doorbell/protocol";
+import type { FarmBulletinAckScope, OwnerProfileCareerSummarySuccess, LingyeNpcInteractRequest } from "@doorbell/protocol";
 import type {
   CommunityDatabase,
   CreatedHumanSession,
@@ -1250,6 +1250,22 @@ export class RegistrationAuthService {
       farmHumanKey,
       ...input,
     });
+  }
+
+  async getCurrentFarmNpcs(token: string) {
+    const community = await this.getCurrentSession(token);
+    const farmHumanKey = community.farmBinding.farmHumanKey;
+    if (farmHumanKey === null) throw new RegistrationProfileRequiredError();
+    if (!this.#farmLingyeReader?.readNpcs) throw new FarmLingyeContractUnavailableError();
+    return this.#farmLingyeReader.readNpcs({ residentId: community.resident.residentId, farmDoorplate: community.farmBinding.farmDoorplate, farmHumanKey });
+  }
+
+  async interactCurrentFarmNpc(token: string, input: LingyeNpcInteractRequest) {
+    const community = await this.getCurrentSession(token);
+    const farmHumanKey = community.farmBinding.farmHumanKey;
+    if (farmHumanKey === null) throw new RegistrationProfileRequiredError();
+    if (!this.#farmLingyeReader?.interactNpc) throw new FarmLingyeContractUnavailableError();
+    return this.#farmLingyeReader.interactNpc({ residentId: community.resident.residentId, farmDoorplate: community.farmBinding.farmDoorplate, farmHumanKey, ...input });
   }
 
   async getCurrentFarmGlimmer(token: string) {

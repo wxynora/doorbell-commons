@@ -18,6 +18,8 @@ import type {
 } from "../auth/lingye-client";
 import { DOORBELL_FARM_PATH } from "../routes";
 import { candidateTwoHtml } from "./candidate-two-source";
+import { npcSceneMarkup, npcSceneScript, NPC_SCENE_STYLES } from "../npc/scene";
+import { useNpcBridge } from "../npc/use-npc-bridge";
 
 export type CandidateTwoScreen =
   | "login"
@@ -4656,6 +4658,7 @@ const LINGYE_SCREEN = `
         <section class="candidate2-lingye-viewport" aria-label="铃野地图，可左右滑动查看全部地点" tabindex="0">
             <div class="candidate2-lingye-canvas">
                 <img class="candidate2-lingye-map" src="/lingye/map.png" width="1024" height="1536" alt="铃野公共世界地图" draggable="false">
+                ${npcSceneMarkup("map")}
                 ${lingyePlaces
                   .filter(([id]) => !hiddenFishingPlaceIds.has(id))
                   .map(
@@ -4686,6 +4689,7 @@ const LINGYE_INSTITUTION_SCREENS = lingyeInstitutionScenes
         <section class="candidate2-institution-scene-viewport" aria-label="${label}场景，可左右滑动查看" tabindex="0">
             <div class="candidate2-institution-scene-canvas">
                 <img class="candidate2-institution-scene-background" src="${backgroundUrl}" width="1024" height="1536" alt="${label}场景背景" draggable="false">
+                ${npcSceneMarkup(id)}
             </div>
         </section>
         <button class="candidate2-place-back-link candidate2-institution-scene-back" type="button" aria-label="返回铃野地图" onclick="showScreen('screen-lingye')">
@@ -10575,11 +10579,19 @@ const CANDIDATE_RUNTIME_SCRIPT = `
 
     const originalShowScreen = window.showScreen;
     function renderCandidateScreen(screenId) {
+        const npcScreenChanged = currentCandidateScreenId !== screenId;
+        if (npcScreenChanged) window.doorbellNpc?.leave();
         deferInactiveCandidateScreenImages();
         originalShowScreen(screenId);
         currentCandidateScreenId = screenId;
         activateCandidateDeferredImages(document.getElementById(screenId));
         activateCandidateScreenStylesheets(screenId);
+        if (npcScreenChanged) {
+            if (screenId === 'screen-lingye') window.doorbellNpc?.open('map');
+            else if (screenId.startsWith('screen-lingye-institution-')) {
+                window.doorbellNpc?.open(screenId.slice('screen-lingye-institution-'.length));
+            }
+        }
         if (currentStage === 'authenticated') {
             syncAuthenticatedMainNavigation(screenId);
         }
@@ -10698,7 +10710,7 @@ export function buildCandidateTwoRuntimeHtml() {
     )
     .replace(
       "</style>",
-      `${HOME_SIGN_STYLES}${RUNTIME_STYLES}${SHARED_MEME_STYLES}${RESIDENCY_PERMIT_STYLES}${LINGYE_STYLES}    </style>`,
+      `${HOME_SIGN_STYLES}${RUNTIME_STYLES}${SHARED_MEME_STYLES}${RESIDENCY_PERMIT_STYLES}${LINGYE_STYLES}${NPC_SCENE_STYLES}    </style>`,
     )
     .replace(HOME_HEADER, HOME_HEADER_RUNTIME)
     .replace(HOME_CLIMATE_CARD, "")
@@ -10714,7 +10726,7 @@ export function buildCandidateTwoRuntimeHtml() {
       "if (screenId === 'screen-profile') updateNav(2);",
       "if (screenId === 'screen-profile') updateNav(3);",
     )
-    .replace("</script>", `${HOME_SCRIPT}\n${LINGYE_SCRIPT}\n</script>`);
+    .replace("</script>", `${HOME_SCRIPT}\n${LINGYE_SCRIPT}\n${npcSceneScript(lingyePlaces)}\n</script>`);
 
   html = replaceBetween(
     html,
@@ -10829,6 +10841,7 @@ async function sampleCandidateTwoMemorialBackdropColor(xRatio: number, yRatio: n
 
 export function CandidateTwoPreview({ demo = null, onAction, state }: CandidateTwoPreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  useNpcBridge(iframeRef, !demo && state.stage === "authenticated" ? `${state.identity.qqNumber}/${state.identity.farmDoorplate}` : null);
   const demoRef = useRef(demo);
   const onActionRef = useRef(onAction);
   const stateRef = useRef(state);

@@ -1062,13 +1062,47 @@ function commissionText(op: string, result: LingyeSuccess): string {
   return [...lines, ...renderOptions(op, data)].join("\n");
 }
 
+const NPC_AFFINITY_NAMES: Record<string, string> = {
+  new: "初识", known: "熟面", familiar: "熟络", close: "亲近", trusted: "信赖",
+};
+
+function npcFamiliarity(npc: Record<string, unknown>): string | undefined {
+  const stage = typeof npc.affinity_stage === "string" ? NPC_AFFINITY_NAMES[npc.affinity_stage] : undefined;
+  return stage ? `熟悉程度：${stage}` : undefined;
+}
+
+function npcDialogueText(op: string, result: LingyeSuccess): string | undefined {
+  const dialogue = isRecord(result.data.npc_dialogue) ? result.data.npc_dialogue : undefined;
+  const npc = isRecord(result.data.npc) ? result.data.npc : undefined;
+  if (!dialogue || !npc || !Array.isArray(dialogue.lines) ||
+      !dialogue.lines.every((line): line is string => typeof line === "string")) return undefined;
+  const name = safeChineseText(npc.name);
+  if (!name) return undefined;
+  const lines = [name, ...dialogue.lines];
+  const familiarity = npcFamiliarity(npc);
+  if (familiarity) lines.push(familiarity);
+  const gift = isRecord(dialogue.gift) ? dialogue.gift : undefined;
+  if (gift && typeof gift.name === "string" && typeof gift.quantity === "number" &&
+      Number.isSafeInteger(gift.quantity) && gift.quantity > 0 && ["金币", "份"].includes(String(gift.unit))) {
+    lines.push(`已到账：${gift.name} × ${gift.quantity}${gift.unit}`);
+  }
+  return [...lines, ...renderOptions(op, result.data)].join("\n");
+}
+
 export function renderLingyeToolText(
   op: string,
   _args: Record<string, unknown>,
   result: LingyeSuccess,
 ): string {
   if (op === "go.newsroom.like") return result.text;
-  if (op.startsWith("go.bank.")) return bankText(op, result);
-  if (op.startsWith("go.school.")) return schoolText(op, result);
-  return commissionText(op, result);
+  const dialogue = npcDialogueText(op, result);
+  if (dialogue !== undefined) return dialogue;
+  const text = op.startsWith("go.bank.") ? bankText(op, result)
+    : op.startsWith("go.school.") ? schoolText(op, result) : commissionText(op, result);
+  const npcs = records(result.data.npcs).flatMap((npc) => {
+    const name = safeChineseText(npc.name);
+    const familiarity = npcFamiliarity(npc);
+    return name && familiarity ? [`${name} · ${familiarity}`] : [];
+  });
+  return npcs.length ? [text, ...npcs].join("\n") : text;
 }
