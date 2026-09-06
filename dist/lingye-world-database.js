@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { CareerEmploymentService } from "./career/employment-service.js";
+import { takeDutyWageNoticeText } from "./career/wage-notices.js";
 import { CareerAuthorityAssignmentService } from "./career/authority-assignment.js";
 import { CareerDomainError } from "./career/contracts.js";
 import { CareerJobService } from "./career/job-service.js";
@@ -938,6 +939,7 @@ export function createLingyeWorldBackend(database, options) {
             setAvailability: (employmentId, availability) => atomic(() => employment.setAvailability(employmentId, availability)),
             endEmployment: (employmentId) => atomic(() => employment.endEmployment(employmentId)),
             generateNextDutyDays: () => atomic(() => employment.generateNextDutyDays()),
+            takeDutyWageNoticeText: (residentId) => takeDutyWageNoticeText(database, residentId),
             advanceEmploymentDays: () => atomic(() => {
                 const generated = employment.generateNextDutyDays();
                 const settled = employment.dueDutyWages().map((quote) => {

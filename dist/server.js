@@ -87,7 +87,16 @@ function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
     const injected = social
         ? { ...body, by: farm.id, token: farm.token, targetRef: String(resolved.number) }
         : { ...body, ...(mysteryMerchantBuy ? { by: farm.id } : {}), token: farm.token };
-    return runFarm(target, action, injected, social ? farm.id : body.id, now, { detail, careerBenefits });
+    const result = runFarm(target, action, injected, social ? farm.id : body.id, now, { detail, careerBenefits });
+    if (action === "status" && result.json?.ok === true) {
+        const residentId = farmResidentId(activeLingyeWorldDatabase, farm);
+        if (residentId) {
+            const wages = activeLingyeWorldBackend.trustedSystemCommands.takeDutyWageNoticeText(residentId);
+            if (wages)
+                result.json.text = `${wages}\n\n${result.json.text}`;
+        }
+    }
+    return result;
 }
 function executeDoorbellFarmAction(farm, action, params, detail, now) {
     const rollback = snapshotWorldForRollback();

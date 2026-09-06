@@ -205,7 +205,7 @@ export class CareerEmploymentService {
             this.#database
                 .prepare(`UPDATE career_duty_days
            SET status = 'settled', settled_at = ?, performance_units = ?,
-               performance_gold = ?, wage_receipt_id = ?
+               performance_gold = ?, wage_receipt_id = ?, wage_notice_pending = 1
            WHERE duty_id = ?`)
                 .run(now, performanceUnits, performanceGold, wageReceipt.receiptId, dutyId);
             return {
