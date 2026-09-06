@@ -2130,9 +2130,14 @@ function commissionPresentation(database, backend, residentId, career, rows, sou
         row.worker_resident_id === residentId && row.status === "completed").length;
     const currentWorkerJob = rows.find((row) =>
         row.worker_resident_id === residentId && ["accepted", "assigned", "active"].includes(row.status));
+    const ownerJobs = rows.filter((row) => row.owner_resident_id === residentId &&
+        row.assignment_mode !== "self" && row.worker_resident_id !== residentId);
     return {
         completedJobCount,
         currentWorkerJobId: currentWorkerJob?.job_id ?? null,
+        completedOwnerJobCount: ownerJobs.filter((row) => row.status === "completed").length,
+        currentOwnerJobIds: ownerJobs.filter((row) =>
+            ["available", "accepted", "assigned", "active"].includes(row.status)).map((row) => row.job_id),
         jobs: mapRows(rows).map((job, index) => {
             const fund = career === "veterinarian"
                 ? database.prepare(`SELECT currency, amount, state FROM career_service_commission_funds
