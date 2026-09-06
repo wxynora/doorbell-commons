@@ -485,6 +485,8 @@ import {
   FarmHumanSmeltingActionUnavailableError,
 } from "./farm-smelting-action-client.js";
 import type { HomeWeatherEngine } from "./home-weather-engine.js";
+import type { LingyeDailyCommentsService } from "./lingye-daily-comments-service.js";
+import { registerDailyCommentRoutes } from "./lingye-daily-comment-routes.js";
 import {
   LingyeDailyPublishAuthenticationError,
   type LingyeDailyService,
@@ -565,6 +567,7 @@ export interface BuildAppOptions {
   activityReminderService?: Pick<ActivityReminderService, "cancelResident" | "refreshEligibility">;
   weatherEngine?: HomeWeatherEngine;
   lingyeDailyService?: LingyeDailyService;
+  dailyComments?: LingyeDailyCommentsService;
   mailboxService?: MailboxService;
   mcpAccessService?: McpAccessService;
   mcpRuntime?: DoorbellMcpRuntime;
@@ -3771,6 +3774,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
   const lingyeDailyService = options.lingyeDailyService;
   if (lingyeDailyService) {
+    if (options.dailyComments) registerDailyCommentRoutes(app,{comments:options.dailyComments,auth:options.registrationAuth});
     registerDailyEditorRoutes(app,{daily:lingyeDailyService,auth:options.registrationAuth});
     app.get("/api/lingye-daily/latest", async (request, reply) => {
       if (!lingyeDailyReadRequestSchema.safeParse(request.query).success) {
@@ -3811,7 +3815,8 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         }
         reply.header("cache-control", "no-store");
         return lingyeDailyLatestSuccessSchema.parse({
-          issue: issue ? lingyeDailyIssueResponse(issue) : null,
+          issue: issue ? {...lingyeDailyIssueResponse(issue),
+            ...(options.dailyComments ? {comment_counts:options.dailyComments.counts(issue.issueDate)} : {})} : null,
           reporter_publications: reporterPublications,
         });
       } catch (error) {

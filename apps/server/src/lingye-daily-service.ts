@@ -6,6 +6,7 @@ import type { DailyEditorPublicationRewardSender, DailySubmissionRewardSender } 
 import type { ReporterRelayStarter } from "./reporter-relay-farm-client.js";
 import type { ReporterRelayService } from "./reporter-relay-service.js";
 import type { LingyeDailyWeatherReader } from "./lingye-daily-weather.js";
+import type { LingyeDailyVoiceService } from "./lingye-daily-voice-service.js";
 import type {
   CommunityDatabase,
   LingyeDailyIssueRecord,
@@ -21,6 +22,7 @@ export interface LingyeDailyServiceOptions {
   reporterFlow?:Pick<ReporterRelayStarter,"pendingIssue">;
   reporterRelay?:Pick<ReporterRelayService,"createResentFarmWake"|"createResentSubmissionWake"|"notifyResentWake">;
   weather?: LingyeDailyWeatherReader;
+  voice?: LingyeDailyVoiceService;
   farm?: {apiBaseUrl:string;serviceToken:string;requestTimeoutMs:number;fetchImplementation?:typeof fetch};
 }
 
@@ -54,6 +56,7 @@ export class LingyeDailyService {
   readonly #reporterFlow:LingyeDailyServiceOptions["reporterFlow"];
   readonly #reporterRelay:LingyeDailyServiceOptions["reporterRelay"];
   readonly #weather: LingyeDailyWeatherReader | undefined;
+  readonly #voice: LingyeDailyVoiceService | undefined;
 
   constructor(options: LingyeDailyServiceOptions) {
     this.#database = options.database;
@@ -64,6 +67,7 @@ export class LingyeDailyService {
     this.#reporterFlow=options.reporterFlow;
     this.#reporterRelay=options.reporterRelay;
     this.#weather = options.weather;
+    this.#voice = options.voice;
     this.editor=new LingyeDailyEditorStore(options.database.lingyeDailyStore.database);
     this.#farm=options.farm;
   }
@@ -83,9 +87,10 @@ export class LingyeDailyService {
     throw new DailyEditorError(403,"自动出版已关闭，请在主编工作台确认后出版。");
   }
 
-  stage(authorization:string|undefined,input:LingyeDailyPublishRequest) {
+  async stage(authorization:string|undefined,input:LingyeDailyPublishRequest) {
     this.authorize(authorization);
     this.editor.receive(input,this.#now());
+    await this.#voice?.groupArrived(input.issue_date);
     return {saved:true,published:false,issue_date:input.issue_date};
   }
 
@@ -99,7 +104,7 @@ export class LingyeDailyService {
       if(payload.issue_date!==date || !["pending","ready"].includes(String(payload.status)))
         throw new DailyEditorError(502,"记者来稿读取回执不匹配，原稿未修改。");
       if(payload.status==="ready") {
-        const {scheduled_publication_at,...candidate}=payload.publication as Record<string,unknown>;
+        const {scheduled_publication_at,writer_resident_id,...candidate}=payload.publication as Record<string,unknown>;
         const article=lingyeDailyReporterArticleSchema.parse({...candidate,published_at:scheduled_publication_at});
         this.editor.merge(date,{reporter_articles:[article]},["farm"],this.#now());
       }
@@ -144,6 +149,8 @@ export class LingyeDailyService {
         if(ack.issue_date!==date||ack.publication_id!==article.publication_id||ack.published_at!==publishedAt||!["published","already_published"].includes(String(ack.status)))
           throw new DailyEditorError(502,"正文已出版，记者结算确认尚未完成；再次点出版即可继续，不会重复出版。");
       }
+      if(edition.reporter_articles[0]) await this.#voice?.published(date,edition.reporter_articles[0].publication_id,
+        publishedAt,this.editor.get(date).document);
       this.editor.database.prepare("UPDATE lingye_daily_editor_drafts SET publication_synced=1 WHERE issue_date=? AND published_version=?")
         .run(date,version);
       } catch {
@@ -185,10 +192,11 @@ export class LingyeDailyService {
       submission.status==="completed" ? {lane:"submissions" as const,status:"completed" as const,label:"匿名投稿已审",resendable:false} :
       submission.status==="empty" ? {lane:"submissions" as const,status:"empty" as const,label:"本期没有待审投稿",resendable:false} :
       {lane:"submissions" as const,status:"not_started" as const,label:"匿名投稿尚未派发",resendable:false};
-    return {issueDate:date,lanes:[farm,submissions]};
+    const voice=await this.#voice?.progress(date);
+    return {issueDate:date,lanes:[farm,submissions,...(voice?[voice]:[])]};
   }
 
-  async resendEditorWake(date:string,lane:"farm"|"submissions",requestId:string,accountId:string) {
+  async resendEditorWake(date:string,lane:"farm"|"submissions"|"voice",requestId:string,accountId:string) {
     if(!this.#reporterRelay) throw new DailyEditorError(503,"补发铃服务暂时无法连接。");
     const replay=this.editor.resendByRequest(requestId);
     if(replay) {
@@ -204,6 +212,11 @@ export class LingyeDailyService {
       if(!wake) throw new DailyEditorError(409,"当前没有可补发的农场记者任务。");
       sourceWakeId=wake.wake_id;recipientResidentId=wake.recipient_resident_id;
       persist=wakeId=>this.#reporterRelay!.createResentFarmWake(wake,wakeId).status;
+    } else if(lane==="voice") {
+      const task=this.#voice?.store.task(date);
+      if(!task||task.body!==null) throw new DailyEditorError(409,"当前没有可补发的记者任务。");
+      sourceWakeId=`daily-voice:${date}`;recipientResidentId=task.resident_id;
+      persist=wakeId=>this.#voice!.createResentWake(date,wakeId).status;
     } else {
       const status=this.editor.daily.submissionReviewStatus(date);
       if(status.status!=="pending") throw new DailyEditorError(409,"当前没有可补发的匿名投稿审稿任务。");

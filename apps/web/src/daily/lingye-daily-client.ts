@@ -2,8 +2,42 @@ import {
   lingyeDailyErrorSchema,
   lingyeDailyLatestSuccessSchema,
   lingyeDailyLikeSuccessSchema,
+  lingyeDailySectionCommentsSuccessSchema,
+  type DailyDocument,
 } from "@doorbell/protocol";
 import type { LingyeDailyIssue, LingyeDailyReporterPublication } from "./lingye-daily-page";
+
+export type LingyeDailyCommentSection = DailyDocument["sections"][number]["key"];
+export type LingyeDailySectionComment = ReturnType<typeof lingyeDailySectionCommentsSuccessSchema.parse>["comments"][number];
+export type LingyeDailySectionCommentsLoader = (issueDate: string, section: LingyeDailyCommentSection) => Promise<LingyeDailySectionComment[]>;
+export type LingyeDailySectionCommentPublisher = (issueDate: string, section: LingyeDailyCommentSection, text: string) => Promise<LingyeDailySectionComment[]>;
+
+export async function loadLingyeDailySectionComments(issueDate: string, section: LingyeDailyCommentSection,
+  fetchImplementation: typeof fetch = fetch): Promise<LingyeDailySectionComment[]> {
+  const response = await fetchImplementation(`/api/lingye-daily/issues/${encodeURIComponent(issueDate)}/sections/${encodeURIComponent(section)}/comments`, {
+    credentials: "same-origin", headers: { accept: "application/json" },
+  });
+  const body = await response.json() as unknown;
+  if (!response.ok) {
+    const parsedError = lingyeDailyErrorSchema.safeParse(body);
+    throw new LingyeDailyReadError(response.status, parsedError.success ? parsedError.data.error.code : "invalid_response");
+  }
+  return lingyeDailySectionCommentsSuccessSchema.parse(body).comments;
+}
+
+export async function publishLingyeDailySectionComment(issueDate: string, section: LingyeDailyCommentSection, text: string,
+  fetchImplementation: typeof fetch = fetch): Promise<LingyeDailySectionComment[]> {
+  const response = await fetchImplementation(`/api/lingye-daily/issues/${encodeURIComponent(issueDate)}/sections/${encodeURIComponent(section)}/comments`, {
+    method: "POST", credentials: "same-origin", headers: { accept: "application/json", "content-type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  const body = await response.json() as unknown;
+  if (!response.ok) {
+    const parsedError = lingyeDailyErrorSchema.safeParse(body);
+    throw new LingyeDailyReadError(response.status, parsedError.success ? parsedError.data.error.code : "invalid_response");
+  }
+  return lingyeDailySectionCommentsSuccessSchema.parse(body).comments;
+}
 
 export class LingyeDailyReadError extends Error {
   readonly status: number;
@@ -65,6 +99,7 @@ export async function loadLatestLingyeDaily(fetchImplementation: typeof fetch = 
   if (!parsed.issue) return { issue: null, reporterPublications: reporterItems };
   return {
     issue: {
+      ...(parsed.issue.comment_counts ? { commentCounts: parsed.issue.comment_counts } : {}),
       ...(parsed.issue.editor_document ? {editorDocument:parsed.issue.editor_document,
         editorImageUrls:parsed.issue.editor_image_urls ?? {}} : {}),
       issueNumber: String(parsed.issue.issue_number),

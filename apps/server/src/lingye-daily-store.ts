@@ -113,6 +113,7 @@ function lingyeDailyEditionFromRequest(
     quotes: input.quotes,
     farm_observation: input.farm_observation,
     reporter_articles: input.reporter_articles,
+    ...("voice_article" in input && input.voice_article !== undefined ? { voice_article: input.voice_article } : {}),
     submissions: input.submissions,
     tomorrow_question: input.tomorrow_question,
     images: input.images,

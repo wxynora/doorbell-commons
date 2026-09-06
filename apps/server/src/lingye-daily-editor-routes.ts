@@ -53,13 +53,13 @@ export function registerDailyEditorRoutes(app:FastifyInstance, options:{daily:Li
   }));
   app.get("/api/lingye-daily/editor/issues/:date/progress",handle(request=>daily.editorProgress(date(request))));
   app.post("/api/lingye-daily/editor/issues/:date/resend",handle((request,community)=>{
-    const body=z.object({lane:z.enum(["farm","submissions"]),requestId:z.uuid()}).strict().parse(request.body);
+    const body=z.object({lane:z.enum(["farm","submissions","voice"]),requestId:z.uuid()}).strict().parse(request.body);
     return daily.resendEditorWake(date(request),body.lane,body.requestId,community.account.accountId);
   }));
   // The pre-existing machine delivery URL now saves a draft, never a public issue.
   app.post("/api/internal/lingye-daily/issues",{bodyLimit:8*1024*1024},async(request,reply)=>{
     reply.header("cache-control","no-store");
-    try{return daily.stage(request.headers.authorization,lingyeDailyPublishRequestSchema.parse(request.body));}
+    try{return await daily.stage(request.headers.authorization,lingyeDailyPublishRequestSchema.parse(request.body));}
     catch(error){
       if(error instanceof LingyeDailyPublishAuthenticationError)return reply.code(401).send({error:{message:"Authentication required"}});
       if(error instanceof z.ZodError)return reply.code(400).send({error:{message:"Invalid daily draft"}});

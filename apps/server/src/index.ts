@@ -42,6 +42,8 @@ import { FarmHumanFarmSettingsActionClient } from "./farm-settings-action-client
 import { FarmHumanSmeltingActionClient } from "./farm-smelting-action-client.js";
 import { HomeWeatherEngine } from "./home-weather-engine.js";
 import { LingyeDailyService } from "./lingye-daily-service.js";
+import { LingyeDailyVoiceService } from "./lingye-daily-voice-service.js";
+import { LingyeDailyCommentsService } from "./lingye-daily-comments-service.js";
 import { LingyeDailyRewardClient } from "./lingye-daily-reward-client.js";
 import { LingyeDailyWeatherClient } from "./lingye-daily-weather.js";
 import { LingyeNotificationDeliveryService, MailboxService } from "./mailbox-service.js";
@@ -434,6 +436,10 @@ const careerExamReminderService = new CareerExamReminderService({
   lingyeActions: lingyeMcpActions,
   onError: reportBellError,
 });
+const dailyVoiceService = new LingyeDailyVoiceService({ database, farm: reporterRelayFarm, bell: bellService,
+  onSyncError: error => process.stderr.write(`[doorbell-daily-voice] ${error instanceof Error ? error.name : "UnknownError"}\n`),
+});
+const dailyCommentsService = new LingyeDailyCommentsService({database,farm:reporterRelayFarm});
 const mcpRuntime = new DoorbellMcpRuntime({
   database,
   registrationAuth,
@@ -441,6 +447,8 @@ const mcpRuntime = new DoorbellMcpRuntime({
   lingyeActions: lingyeMcpActions,
   careerExamReminders: careerExamReminderService,
   reporterRelayService,
+  dailyVoice: dailyVoiceService,
+  dailyComments: dailyCommentsService,
   mcpEndpoint: serverConfig.mcpEndpoint,
   onNotificationDeliveryError: reportMcpNotificationError,
   onLingyeNotification: (notification, sourceResidentId) =>
@@ -463,6 +471,7 @@ const lingyeDailyRewards=new LingyeDailyRewardClient({
 });
 const lingyeDailyService = new LingyeDailyService({
   database,
+  voice: dailyVoiceService,
   publishToken: serverConfig.lingyeDailyPublishToken,
   farm:{apiBaseUrl:serverConfig.farmApiBaseUrl,serviceToken:serverConfig.farmServiceToken,
     requestTimeoutMs:serverConfig.upstreamRequestTimeoutMs},
@@ -492,6 +501,7 @@ const app = buildApp({
   sharedMemeBackendService,
   weatherEngine,
   lingyeDailyService,
+  dailyComments: dailyCommentsService,
   mailboxService,
   mcpAccessService,
   mcpRuntime,

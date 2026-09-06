@@ -3,12 +3,12 @@ export interface EditorDraft {
   issueDate:string;version:number;publishedVersion:number|null;updatedAt:number;editorModel:string;issueNumber:number;
   activeEditorName:string|null;
   document:DailyDocument;images:{image_id:string;media_type:string;data_base64:string}[];
-  readiness:{group:boolean;reporter:boolean;submissions:boolean;weather:boolean};
+  readiness:{group:boolean;reporter:boolean;voice:boolean;submissions:boolean;weather:boolean};
   submissions:{submission_id?:string;text:string;source_label:string;paid:boolean}[];
   publicationReward:{recipientName:string;amount:5000;paid:boolean}|null;
 }
 export interface EditorProgressLane {
-  lane:"farm"|"submissions";status:"pending"|"completed"|"empty"|"not_started"|"unavailable";
+  lane:"farm"|"voice"|"submissions";status:"pending"|"completed"|"empty"|"not_started"|"unavailable";
   label:string;reporterName?:string;resendable:boolean;
 }
 export interface EditorProgress {issueDate:string;lanes:EditorProgressLane[];}

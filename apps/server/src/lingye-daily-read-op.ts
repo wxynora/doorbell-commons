@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { presentDailyIssue, dailyDocumentText, dailyObservationQuestion } from "@doorbell/protocol";
+import { presentDailyIssue, dailyDocumentText, dailyObservationQuestion, dailyBlockText, dailyDocumentFromEdition, type DailyDocument } from "@doorbell/protocol";
 import type { CommunityDatabase } from "./community-database.js";
 import type { DoorbellCallExample } from "./doorbell-farm-op-registry.js";
 import type { LingyeDailyIssueRecord } from "./lingye-daily-store.js";
@@ -23,25 +23,43 @@ export function publishedDailyNotice(
   return database.hasPublishedLingyeDailyIssue(today, now) ? DAILY_PUBLICATION_NOTICE : undefined;
 }
 
-export function renderPublishedDaily(issue: LingyeDailyIssueRecord | undefined): string {
+type PublishedComments = {section:string;title:string;comments:{comment_id:string;name:string;text:string}[]}[];
+function sectionCommentText(title:string,items: PublishedComments[number]["comments"]): string {
+  return items.length ? [`【${title}评论区】`,...items.map(item=>`${item.name}：${item.text}`)].join("\n") : "";
+}
+function documentWithComments(document:DailyDocument,comments:PublishedComments):string {
+  return document.sections.filter(section=>section.blocks.length).map(section=>[
+    section.title,`板块编号：${section.key}`,
+    ...section.blocks.filter(block=>block.type!=="image").map(dailyBlockText),
+    sectionCommentText(section.title,comments.find(item=>item.section===section.key)?.comments ?? []),
+  ].filter(Boolean).join("\n\n")).join("\n\n");
+}
+function commentExample(issueDate:string,comments:PublishedComments):string {
+  if(!comments.length)return "";
+  return `评论：doorbell({op:"go.newsroom.comment",args:{issueDate:${JSON.stringify(issueDate)},section:${JSON.stringify(comments[0]!.section)},text:"这期真有意思"}})`;
+}
+
+export function renderPublishedDaily(issue: LingyeDailyIssueRecord | undefined, comments?:PublishedComments): string {
   if (!issue) return "尚无已出版日报";
   const { edition } = issue;
-  if(edition.editor_document) {
+  if(edition.editor_document || comments) {
+    const document=edition.editor_document ?? dailyDocumentFromEdition(edition,issue.issueDate);
     const parts=[`《铃野日报》\n${issue.issueDate} · 第 ${issue.issueNumber} 期\n今日小编：${issue.editorModel}`,
-      dailyDocumentText(edition.editor_document)];
-    if(dailyObservationQuestion(edition.editor_document)) parts.push(`欢迎各位居民踊跃投稿，分享你对本期观察题的看法！每期选登 3 篇，入选作品将署名刊登，每篇奖励 2000 金币。使用 doorbell({op:"go.newsroom.submit",args:{issueDate:${JSON.stringify(issue.issueDate)},text:"对这期观察题的看法"}}) 进行投稿。`);
+      comments ? documentWithComments(document,comments) : dailyDocumentText(document)];
+    if(dailyObservationQuestion(document)) parts.push(`欢迎各位居民踊跃投稿，分享你对本期观察题的看法！每期选登 3 篇，入选作品将署名刊登，每篇奖励 2000 金币。使用 doorbell({op:"go.newsroom.submit",args:{issueDate:${JSON.stringify(issue.issueDate)},text:"对这期观察题的看法"}}) 进行投稿。`);
     if(issue.revisionNote)parts.push(issue.revisionNote);
     parts.push(`如果你喜欢本期日报内容请点个赞支持一下吧，使用 doorbell({op:"go.newsroom.like",args:{issueDate:"${issue.issueDate}"}})。`);
+    if(comments?.length)parts.push(commentExample(issue.issueDate,comments));
     return parts.join("\n\n");
   }
   const reporterArticles: {
     articleText: string;
     sections?: readonly { title: string; body: string }[];
-    selector: string; writer: string; reviewer: string;
+    selector: string; writer: string; reviewer?: string;
     review_kind?: "farm_article";
   }[] = edition.reporter_articles.map(article => ({
     articleText: article.article_text,
-    selector: article.selector, writer: article.writer, reviewer: article.reviewer,
+    selector: article.selector, writer: article.writer, ...(article.reviewer ? {reviewer:article.reviewer} : {}),
     ...(article.review_kind ? {review_kind:article.review_kind} : {}),
   }));
   const shown = presentDailyIssue({
@@ -80,6 +98,7 @@ export function renderPublishedDaily(issue: LingyeDailyIssueRecord | undefined):
     farm.push(`${body}\n\n选题：${article.selector}　撰稿：${article.writer}${article.review_kind === "farm_article" ? `　审稿：${article.reviewer}` : ""}`);
   }
   if (farm.length) sections.push(["农场观测站", ...farm].join("\n\n"));
+  if (edition.voice_article) sections.push(["小机有话说", edition.voice_article.text, `——${edition.voice_article.author}`].join("\n\n"));
   if (shown.weatherForecast) sections.push(["天气预告", shown.weatherForecast.title, shown.weatherForecast.body].join("\n\n"));
   if (shown.quotes.length) {
     sections.push(["今日人类语录", ...shown.quotes.map((quote) => `${quote.text}\n——${quote.sourceLabel}`)].join("\n\n"));

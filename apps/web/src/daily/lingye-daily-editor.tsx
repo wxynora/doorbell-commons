@@ -1,7 +1,7 @@
 import React,{useEffect,useRef,useState} from "react";
 import {dailyDocumentSchema,type DailyBlock,type DailyDocument,type DailyTextRun} from "@doorbell/protocol";
 import {DailyDocumentView} from "./lingye-daily-document-view";
-import {editorRequest,type EditorDraft,type EditorProgress} from "./lingye-daily-editor-client";
+import {editorRequest,type EditorDraft,type EditorProgress,type EditorProgressLane} from "./lingye-daily-editor-client";
 import {DailyEditorDuty} from "./lingye-daily-editor-duty";
 import {DailyMasthead} from "./lingye-daily-page";
 import "./lingye-daily-editor.css";
@@ -51,7 +51,7 @@ export function LingyeDailyEditor({onBack}:{onBack?:()=>void} = {}) {
   const [selected,setSelected]=useState<string[]>([]);
   const [progress,setProgress]=useState<EditorProgress|null>(null);
   const paper=useRef<HTMLDivElement>(null);
-  const resendRequestIds=useRef<Partial<Record<"farm"|"submissions",string>>>({});
+  const resendRequestIds=useRef<Partial<Record<EditorProgressLane["lane"],string>>>({});
   const [epoch,setEpoch]=useState(0);
   const install=(next:EditorDraft)=>{setDraft(next);setDirty(false);setEpoch(value=>value+1);setSelected([]);};
   const loadProgress=async(date:string)=>setProgress(await editorRequest<EditorProgress>(`/issues/${date}/progress`));
@@ -85,6 +85,7 @@ export function LingyeDailyEditor({onBack}:{onBack?:()=>void} = {}) {
     document.execCommand(name,false,value);setDirty(true);
   };
   const images=Object.fromEntries((draft?.images ?? []).map(image=>[image.image_id,`data:${image.media_type};base64,${image.data_base64}`]));
+  const hasVoice=progress?.lanes.some(lane=>lane.lane==="voice") || draft?.document.sections.some(section=>section.key==="voice"&&section.blocks.length>0);
   return <section className="daily-editor">
     <header className="daily-editor-header"><div><h1>铃野主编工作台</h1><p>改好这一版，再交到大家手里。</p></div>
       <DailyEditorDuty name={draft?.activeEditorName ?? null} />
@@ -122,7 +123,7 @@ export function LingyeDailyEditor({onBack}:{onBack?:()=>void} = {}) {
       </div>
       <aside className="daily-editor-prizes"><h2>记者进度</h2>
         <div className="daily-editor-progress">{progress?.lanes.map(lane=><div key={lane.lane} className="daily-editor-progress-row">
-          <p><strong>{lane.lane==="farm"?"农场稿":"小机投稿"}</strong><br/>{lane.label}{lane.reporterName?` · ${lane.reporterName}`:""}</p>
+          <p><strong>{lane.lane==="farm"?"农场稿":lane.lane==="voice"?"小机有话说":"小机投稿"}</strong><br/>{lane.label}{lane.reporterName?` · ${lane.reporterName}`:""}</p>
           {lane.resendable?<button disabled={busy} onClick={()=>void run(async()=>{
             const requestId=resendRequestIds.current[lane.lane] ?? crypto.randomUUID();
             resendRequestIds.current[lane.lane]=requestId;
@@ -131,7 +132,7 @@ export function LingyeDailyEditor({onBack}:{onBack?:()=>void} = {}) {
             await loadProgress(draft.issueDate);setNotice(`已向${result.reporterName}补发当前任务的铃。`);
           })}>补发铃</button>:null}
         </div>) ?? <p>正在读取记者进度…</p>}</div>
-        <h2>本期来稿</h2><p>群聊 {draft.readiness.group?"已到":"待到"} · 记者 {draft.readiness.reporter?"已到":"待到"}<br/>投稿 {draft.readiness.submissions?"已审":"待审"} · 天气 {draft.readiness.weather?"已到":"待到"}</p>
+        <h2>本期来稿</h2><p>群聊 {draft.readiness.group?"已到":"待到"} · 记者 {draft.readiness.reporter?"已到":"待到"}<br/>投稿 {draft.readiness.submissions?"已审":"待审"} · 天气 {draft.readiness.weather?"已到":"待到"}{hasVoice?<><br/>小机有话说 {(draft.readiness.voice ?? false)?"已到":"待到"}</>:null}</p>
         <h2>出版审稿奖金</h2><small>{draft.publicationReward
           ? `${draft.publicationReward.recipientName} · ${draft.publicationReward.paid?"已发 5000 金":"5000 金待确认"}`
           : "以本期第一次成功出版时的登录账号为准，每期一次。"}</small>

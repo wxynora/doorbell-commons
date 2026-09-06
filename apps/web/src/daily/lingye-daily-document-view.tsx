@@ -35,7 +35,8 @@ function DailyDocumentBlocks({blocks,images,groupQuotes}:{blocks:DailyBlock[];im
   return <>{rendered}</>;
 }
 
-export function DailyDocumentView({document,images,editable=false}:{document:DailyDocument;images:Record<string,string>;editable?:boolean}) {
+export function DailyDocumentView({document,images,editable=false,renderSectionComments}:{document:DailyDocument;images:Record<string,string>;editable?:boolean;
+  renderSectionComments?:(section:DailyDocument["sections"][number])=>React.ReactNode}) {
   const render=(key:string)=>{
     const section=document.sections.find(item=>item.key===key);
     if(!section?.blocks.length)return null;
@@ -45,12 +46,13 @@ export function DailyDocumentView({document,images,editable=false}:{document:Dai
       {key==="tomorrow"
         ? <h2 contentEditable={editable} suppressContentEditableWarning>{section.title}</h2>
         : <h2 contentEditable={editable} suppressContentEditableWarning className={`daily-section-tag daily-section-tag--${tone}`}>{section.title}</h2>}
+      {!editable ? renderSectionComments?.(section) : null}
       <div contentEditable={editable} suppressContentEditableWarning className="daily-document-copy" role={editable?"textbox":undefined} aria-label={editable?section.title:undefined} aria-multiline={editable?true:undefined}>{key==="group"?<div className="daily-group-card daily-document-group-card">{blocks}</div>:blocks}</div>
     </section>;
   };
   return <div className="daily-document">
     <div className="daily-newspaper-body"><main className="daily-main-column">{render("front")}{render("slices")}</main>
       <aside className="daily-sidebar">{render("group")}</aside></div>
-    {(["farm","weather","quotes","submissions","tomorrow"] as const).map(render)}
+    {(["farm","voice","weather","quotes","submissions","tomorrow"] as const).map(render)}
   </div>;
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import "./lingye-daily-editor.css";
-import { likeLingyeDailyReporterPublication, loadLatestLingyeDaily } from "./lingye-daily-client";
+import { likeLingyeDailyReporterPublication, loadLatestLingyeDaily, loadLingyeDailySectionComments, publishLingyeDailySectionComment } from "./lingye-daily-client";
 import {
   type LingyeDailyIssue,
   LingyeDailyPage,
@@ -86,6 +86,8 @@ export function LingyeDailyScreen({ onBack }: LingyeDailyScreenProps) {
           onReporterLike={likeReporterPublication}
           pendingLikeRef={state.pendingLikeRef}
           reporterPublications={state.reporterPublications}
+          onLoadSectionComments={loadLingyeDailySectionComments}
+          onPublishSectionComment={publishLingyeDailySectionComment}
         />
       ) : (
         <DailyLoadNotice error={state.status === "error"} />

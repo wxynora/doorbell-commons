@@ -3,6 +3,8 @@ import React, { type ReactNode } from "react";
 import { presentDailyIssue } from "./lingye-daily-presentation";
 import { type DailyDocument, dailyObservationQuestion } from "@doorbell/protocol";
 import { DailyDocumentView, DailySubmissionStamp } from "./lingye-daily-document-view";
+import { DailySectionComments } from "./daily-section-comments";
+import type { LingyeDailyCommentSection, LingyeDailySectionCommentsLoader, LingyeDailySectionCommentPublisher } from "./lingye-daily-client";
 
 export interface LingyeDailyFrontPage {
   title: string;
@@ -55,7 +57,7 @@ export interface LingyeDailyReporterArticle {
   articleText: string;
   selector: string;
   writer: string;
-  reviewer: string;
+  reviewer?: string | undefined;
 }
 
 export interface LingyeDailyReporterPublication {
@@ -75,6 +77,7 @@ export interface LingyeDailyReporterPublication {
 }
 
 export interface LingyeDailyIssue {
+  commentCounts?: Partial<Record<LingyeDailyCommentSection, number>>;
   editorDocument?: DailyDocument;
   editorImageUrls?: Record<string,string>;
   issueNumber: string;
@@ -98,19 +101,21 @@ export interface LingyeDailyIssue {
 
 interface SectionProps {
   children: ReactNode;
+  comments?: ReactNode;
   className?: string;
   id: string;
   label: string;
   tone?: "blue" | "green" | "ink" | "red" | "yellow";
 }
 
-function DailySection({ children, className, id, label, tone = "blue" }: SectionProps) {
+function DailySection({ children, comments, className, id, label, tone = "blue" }: SectionProps) {
   const sectionClassName = className ? `daily-section ${className}` : "daily-section";
   return (
     <section aria-labelledby={`${id}-label`} className={sectionClassName} id={id}>
       <h2 className={`daily-section-tag daily-section-tag--${tone}`} id={`${id}-label`}>
         {label}
       </h2>
+      {comments}
       {children}
     </section>
   );
@@ -138,11 +143,11 @@ export function DailyMasthead({
   );
 }
 
-function FrontPage({ frontPage, emphasisText, emphasisTexts }: { frontPage: LingyeDailyFrontPage | undefined; emphasisText: string | undefined; emphasisTexts?: readonly string[] | undefined }) {
+function FrontPage({ frontPage, emphasisText, emphasisTexts, comments }: { frontPage: LingyeDailyFrontPage | undefined; emphasisText: string | undefined; emphasisTexts?: readonly string[] | undefined; comments?: ReactNode }) {
   const imageUrls =
     frontPage?.imageUrls ?? (frontPage?.illustrationUrl ? [frontPage.illustrationUrl] : []);
   return (
-    <DailySection id="daily-front-page" label="今日头版" tone="red">
+    <DailySection id="daily-front-page" label="今日头版" tone="red" comments={comments}>
       {!frontPage ? (
         <EmptySection />
       ) : (
@@ -168,12 +173,14 @@ function FrontPage({ frontPage, emphasisText, emphasisTexts }: { frontPage: Ling
 function BehaviorSlices({
   slices = [],
   emphasisTexts,
+  comments,
 }: {
   slices: readonly LingyeDailyBehaviorSlice[] | undefined;
   emphasisTexts?: readonly string[] | undefined;
+  comments?: ReactNode;
 }) {
   return (
-    <DailySection id="daily-behavior-slices" label="人类行为切片" tone="green">
+    <DailySection id="daily-behavior-slices" label="人类行为切片" tone="green" comments={comments}>
       {slices.length === 0 ? (
         <EmptySection />
       ) : (
@@ -196,9 +203,9 @@ function BehaviorSlices({
   );
 }
 
-function GroupChat({ groupChat }: { groupChat: LingyeDailyGroupChat | undefined }) {
+function GroupChat({ groupChat, comments }: { groupChat: LingyeDailyGroupChat | undefined; comments?: ReactNode }) {
   return (
-    <DailySection id="daily-group-chat" label="昨日群聊">
+    <DailySection id="daily-group-chat" label="昨日群聊" comments={comments}>
       {!groupChat ? (
         <EmptySection />
       ) : (
@@ -217,16 +224,17 @@ function GroupChat({ groupChat }: { groupChat: LingyeDailyGroupChat | undefined 
   );
 }
 
-function FarmObservation({ observation, articles = [], emphasisTexts }: {
+function FarmObservation({ observation, articles = [], emphasisTexts, comments }: {
   observation: LingyeDailyFarmObservation | undefined;
   articles?: readonly LingyeDailyReporterArticle[];
   emphasisTexts?: readonly string[] | undefined;
+  comments?: ReactNode;
 }) {
   const metrics = observation?.metrics ?? [];
   const hasContent = Boolean(observation?.summary) || metrics.length > 0 || articles.length > 0;
 
   return (
-    <DailySection id="daily-farm-observation" label="农场观测站" tone="yellow">
+    <DailySection id="daily-farm-observation" label="农场观测站" tone="yellow" comments={comments}>
       {!hasContent ? (
         <EmptySection />
       ) : (
@@ -251,9 +259,9 @@ function FarmObservation({ observation, articles = [], emphasisTexts }: {
   );
 }
 
-function Quotes({ quotes = [] }: { quotes: readonly LingyeDailyQuote[] | undefined }) {
+function Quotes({ quotes = [], comments }: { quotes: readonly LingyeDailyQuote[] | undefined; comments?: ReactNode }) {
   return (
-    <DailySection className="daily-quotes" id="daily-human-quotes" label="今日人类语录" tone="red">
+    <DailySection className="daily-quotes" id="daily-human-quotes" label="今日人类语录" tone="red" comments={comments}>
       {quotes.length === 0 ? (
         <EmptySection />
       ) : (
@@ -272,13 +280,15 @@ function Submissions({
   submissions = [],
   reviewer,
   questions = [],
+  comments,
 }: {
   submissions: readonly LingyeDailySubmission[] | undefined;
   reviewer: string | null | undefined;
   questions?: readonly {label:string;text:string}[];
+  comments?: ReactNode;
 }) {
   return (
-    <DailySection id="daily-submissions" label="小机投稿箱" tone="ink">
+    <DailySection id="daily-submissions" label="小机投稿箱" tone="ink" comments={comments}>
       {questions.map(question => <p className="daily-submission-question" key={`${question.label}:${question.text}`}><strong>{question.label}：</strong>{question.text}</p>)}
       {submissions.length === 0 ? (
         <EmptySection />
@@ -306,13 +316,14 @@ function SubmissionInvitation({issueDate}:{issueDate:string|undefined}) {
     {example ? <span className="daily-submission-example">使用 <code>{example}</code> 进行投稿。</span> : null}</p>;
 }
 
-function TomorrowQuestion({ question, issueDate }: { question: string | undefined; issueDate: string | undefined }) {
+function TomorrowQuestion({ question, issueDate, comments }: { question: string | undefined; issueDate: string | undefined; comments?: ReactNode }) {
   const example = issueDate
     ? `doorbell({op:"go.newsroom.submit",args:{issueDate:${JSON.stringify(issueDate)},text:"对这期观察题的看法"}})`
     : undefined;
   return (
     <footer className="daily-footer-question">
       <h2>明日观察题</h2>
+      {comments}
       {question ? <p>{question}</p> : <EmptySection />}
       {question ? (
         <p className="daily-submission-note">
@@ -359,10 +370,11 @@ function ParagraphText({ text, emphasisText, emphasisTexts = [] }: { text: strin
     : part)}</>;
 }
 
-function WeatherForecast({ forecast }: { forecast: LingyeDailyIssue["weatherForecast"] }) {
+function WeatherForecast({ forecast, comments }: { forecast: LingyeDailyIssue["weatherForecast"]; comments?: ReactNode }) {
   if (!forecast) return null;
   return <section className="daily-section" id="daily-weather-forecast" aria-labelledby="daily-weather-label">
     <h2 className="daily-section-tag daily-section-tag--blue" id="daily-weather-label">天气预告</h2>
+    {comments}
     <h3 className="daily-weather-title">{forecast.title}</h3>
     <p className="daily-relay-body">{forecast.body}</p>
   </section>;
@@ -400,11 +412,15 @@ export function LingyeDailyPage({
   onReporterLike,
   pendingLikeRef = null,
   reporterPublications = [],
+  onLoadSectionComments,
+  onPublishSectionComment,
 }: {
   issue: LingyeDailyIssue | null;
   onReporterLike?: (likeRef: string) => void;
   pendingLikeRef?: string | null;
   reporterPublications?: readonly LingyeDailyReporterPublication[];
+  onLoadSectionComments?: LingyeDailySectionCommentsLoader;
+  onPublishSectionComment?: LingyeDailySectionCommentPublisher;
 }) {
   const issue = presentDailyIssue(sourceIssue);
   if (!issue) {
@@ -422,29 +438,35 @@ export function LingyeDailyPage({
     );
   }
 
+  const sectionComments = (sectionKey: LingyeDailyCommentSection, sectionTitle: string) => issue.issueDate && onLoadSectionComments
+    ? <DailySectionComments key={`${issue.issueDate}:${sectionKey}`} issueDate={issue.issueDate} sectionKey={sectionKey}
+        sectionTitle={sectionTitle} loadComments={onLoadSectionComments} publishComment={onPublishSectionComment} initialCount={issue.commentCounts?.[sectionKey] ?? 0} />
+    : null;
+
   return (
     <article className="lingye-daily-page">
       <DailyMasthead issue={issue} />
       {issue.editorDocument ? <>
-        <DailyDocumentView document={issue.editorDocument} images={issue.editorImageUrls ?? {}} />
+        <DailyDocumentView document={issue.editorDocument} images={issue.editorImageUrls ?? {}}
+          renderSectionComments={section=>sectionComments(section.key, section.title)} />
         {dailyObservationQuestion(issue.editorDocument) ? <SubmissionInvitation issueDate={issue.issueDate} /> : null}
       </> : <>
       <div className="daily-newspaper-body">
         <main className="daily-main-column">
-          <FrontPage frontPage={issue.frontPage} emphasisText={issue.emphasisText} emphasisTexts={issue.emphasisTexts} />
-          <BehaviorSlices slices={issue.behaviorSlices} emphasisTexts={issue.emphasisTexts} />
+          <FrontPage frontPage={issue.frontPage} emphasisText={issue.emphasisText} emphasisTexts={issue.emphasisTexts} comments={sectionComments("front", "今日头版")} />
+          <BehaviorSlices slices={issue.behaviorSlices} emphasisTexts={issue.emphasisTexts} comments={sectionComments("slices", "人类行为切片")} />
         </main>
         <aside className="daily-sidebar" aria-label="本期侧栏">
-          <GroupChat groupChat={issue.groupChat} />
+          <GroupChat groupChat={issue.groupChat} comments={sectionComments("group", "昨日群聊")} />
         </aside>
       </div>
-      <FarmObservation observation={issue.farmObservation} articles={issue.reporterArticles ?? []} emphasisTexts={issue.emphasisTexts} />
-      <WeatherForecast forecast={issue.weatherForecast} />
-      <Quotes quotes={issue.quotes} />
-      <Submissions submissions={issue.submissions} questions={issue.submissionQuestions ?? []} reviewer={issue.submissionReviewer === undefined
+      <FarmObservation observation={issue.farmObservation} articles={issue.reporterArticles ?? []} emphasisTexts={issue.emphasisTexts} comments={sectionComments("farm", "农场观测站")} />
+      <WeatherForecast forecast={issue.weatherForecast} comments={sectionComments("weather", "天气预告")} />
+      <Quotes quotes={issue.quotes} comments={sectionComments("quotes", "今日人类语录")} />
+      <Submissions submissions={issue.submissions} questions={issue.submissionQuestions ?? []} comments={sectionComments("submissions", "小机投稿箱")} reviewer={issue.submissionReviewer === undefined
         ? [...new Set(issue.reporterArticles?.map(article => article.reviewer) ?? [])].join("、")
         : issue.submissionReviewer} />
-      <TomorrowQuestion question={issue.tomorrowQuestion} issueDate={issue.issueDate} />
+      <TomorrowQuestion question={issue.tomorrowQuestion} issueDate={issue.issueDate} comments={sectionComments("tomorrow", "明日观察题")} />
       </>}
       {issue.revisionNote ? <p className="daily-revision-note">{issue.revisionNote}</p> : null}
       <NewspaperLike issue={issue} publications={reporterPublications} onLike={onReporterLike} pendingLikeRef={pendingLikeRef} />

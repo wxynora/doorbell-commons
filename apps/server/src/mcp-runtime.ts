@@ -13,6 +13,8 @@ import {
 import { renderLingyeToolText } from "./lingye-tool-result-text.js";
 import { publishedDailyNotice, renderPublishedDaily } from "./lingye-daily-read-op.js";
 import { dailySubmissionErrorText, reviewDailySubmissions, submitDailyObservation } from "./lingye-daily-submission-op.js";
+import { dailyVoiceErrorText, type LingyeDailyVoiceService } from "./lingye-daily-voice-service.js";
+import { dailyCommentErrorText, type LingyeDailyCommentsService } from "./lingye-daily-comments-service.js";
 import { hashMcpCredential } from "./mcp-access-service.js";
 import {
   FarmMcpActionBindingMismatchError,
@@ -313,6 +315,8 @@ export interface DoorbellMcpRuntimeOptions {
   lingyeActions: LingyeMcpActionExecutor;
   careerExamReminders?: Pick<CareerExamReminderService, "reconcile">;
   reporterRelayService?: Pick<ReporterRelayService, "enqueue">;
+  dailyVoice?: Pick<LingyeDailyVoiceService, "commission">;
+  dailyComments?: Pick<LingyeDailyCommentsService, "submit" | "forIssue" | "takeResidentNotifications">;
   mcpEndpoint: string;
   now?: () => number;
   onNotificationDeliveryError?: (error: unknown) => void;
@@ -358,6 +362,8 @@ export class DoorbellMcpRuntime {
   readonly #lingyeActions: LingyeMcpActionExecutor;
   readonly #careerExamReminders: Pick<CareerExamReminderService, "reconcile"> | undefined;
   readonly #reporterRelayService: Pick<ReporterRelayService, "enqueue"> | undefined;
+  readonly #dailyVoice: Pick<LingyeDailyVoiceService, "commission"> | undefined;
+  readonly #dailyComments: DoorbellMcpRuntimeOptions["dailyComments"];
   readonly #allowedOrigin: string;
   readonly #now: () => number;
   readonly #onNotificationDeliveryError: (error: unknown) => void;
@@ -379,6 +385,8 @@ export class DoorbellMcpRuntime {
     this.#lingyeActions = options.lingyeActions;
     this.#careerExamReminders = options.careerExamReminders;
     this.#reporterRelayService = options.reporterRelayService;
+    this.#dailyVoice = options.dailyVoice;
+    this.#dailyComments = options.dailyComments;
     this.#allowedOrigin = new URL(options.mcpEndpoint).origin;
     this.#now = options.now ?? Date.now;
     this.#onNotificationDeliveryError = options.onNotificationDeliveryError ?? (() => undefined);
@@ -642,12 +650,19 @@ export class DoorbellMcpRuntime {
 
     if (registered.kind === "daily") {
       try {
-        const text = registered.operation.op === "go.newsroom.submit"
-          ? submitDailyObservation(this.#database.lingyeDailyStore, context.residentId, parsed.data, this.#now())
-          : renderPublishedDaily(this.#database.getLatestLingyeDailyIssue(this.#now()));
+        let text: string;
+        if (registered.operation.op === "go.newsroom.comment") {
+          if (!this.#dailyComments) return doorbellToolError("INTERNAL_ERROR",{op});
+          text = await this.#dailyComments.submit(context.residentId,parsed.data as {issueDate:string;section:string;text:string});
+        } else if (registered.operation.op === "go.newsroom.submit") {
+          text = submitDailyObservation(this.#database.lingyeDailyStore, context.residentId, parsed.data, this.#now());
+        } else {
+          const issue = this.#database.getLatestLingyeDailyIssue(this.#now());
+          text = renderPublishedDaily(issue,issue ? this.#dailyComments?.forIssue(issue.issueDate) : undefined);
+        }
         return { isError: false, content: textContent(text) };
       } catch (error) {
-        const message = dailySubmissionErrorText(error);
+        const message = dailySubmissionErrorText(error) ?? dailyCommentErrorText(error);
         if (message) return { isError: true, content: textContent(message) };
         return doorbellToolError("INTERNAL_ERROR", { op });
       }
@@ -656,6 +671,8 @@ export class DoorbellMcpRuntime {
     if (registered.kind === "lingye") {
       try {
         if (op === "go.newsroom.commission") {
+          const voice = await this.#dailyVoice?.commission(context.residentId, parsed.data);
+          if (voice !== undefined) return { isError: false, content: textContent(voice) };
           const receipt = reviewDailySubmissions(this.#database.lingyeDailyStore, context.residentId, parsed.data, this.#now());
           if (receipt !== undefined) return { isError: false, content: textContent(receipt) };
         }
@@ -708,7 +725,7 @@ export class DoorbellMcpRuntime {
           ),
         );
       } catch (error) {
-        const submissionError = dailySubmissionErrorText(error);
+        const submissionError = dailyVoiceErrorText(error) ?? dailySubmissionErrorText(error);
         if (submissionError) return { isError: true, content: textContent(submissionError) };
         if (
           error instanceof LingyeMcpActionCredentialInvalidError ||
@@ -789,15 +806,16 @@ export class DoorbellMcpRuntime {
     result: DoorbellCallToolResult,
     context: DoorbellFarmContext,
   ): DoorbellCallToolResult {
-    const notifications = this.#database.takeResidentMailboxNotifications(
+    const mailbox = this.#database.takeResidentMailboxNotifications(
       context.homeId,
       this.#now(),
     );
+    const notifications = [...mailbox,...(this.#dailyComments?.takeResidentNotifications(context.residentId) ?? [])];
     if (notifications.length === 0) {
       return result;
     }
     try {
-      this.#onResidentNotificationsRead?.(context.residentId);
+      if (mailbox.length) this.#onResidentNotificationsRead?.(context.residentId);
     } catch (error) {
       try {
         this.#onNotificationDeliveryError(error);

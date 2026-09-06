@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import { dailyReadOperation } from "./lingye-daily-read-op.js";
 import { dailySubmissionOperation } from "./lingye-daily-submission-op.js";
+import { dailyCommentOperation } from "./lingye-daily-comment-op.js";
 import {
   DOORBELL_INITIALIZE_INSTRUCTIONS,
   type DoorbellCallExample,
@@ -19,7 +20,7 @@ import {
 export type { DoorbellCallExample };
 export { DOORBELL_INITIALIZE_INSTRUCTIONS };
 
-type DailyOperationDefinition = typeof dailyReadOperation | typeof dailySubmissionOperation;
+type DailyOperationDefinition = typeof dailyReadOperation | typeof dailySubmissionOperation | typeof dailyCommentOperation;
 export type DoorbellOperationDefinition = FarmOperationDefinition | LingyeOperationDefinition | DailyOperationDefinition;
 export type DoorbellRegisteredOperation =
   | { kind: "farm"; operation: FarmOperationDefinition }
@@ -31,9 +32,10 @@ export const doorbellOperationNames = [
   ...modelVisibleLingyeOperationNames,
   dailyReadOperation.op,
   dailySubmissionOperation.op,
+  dailyCommentOperation.op,
 ] as readonly string[];
 
-const expectedOperationCount = farmOperationNames.length + modelVisibleLingyeOperationNames.length + 2;
+const expectedOperationCount = farmOperationNames.length + modelVisibleLingyeOperationNames.length + 3;
 if (
   doorbellOperationNames.length !== expectedOperationCount ||
   new Set(doorbellOperationNames).size !== expectedOperationCount
@@ -42,6 +44,7 @@ if (
 }
 
 export function findDoorbellOperation(op: string): DoorbellRegisteredOperation | undefined {
+  if (op === dailyCommentOperation.op) return { kind: "daily", operation: dailyCommentOperation };
   if (op === dailyReadOperation.op) return { kind: "daily", operation: dailyReadOperation };
   if (op === dailySubmissionOperation.op) return { kind: "daily", operation: dailySubmissionOperation };
   const farm = farmOperationByName.get(op);
@@ -52,7 +55,7 @@ export function findDoorbellOperation(op: string): DoorbellRegisteredOperation |
   return lingye ? { kind: "lingye", operation: lingye } : undefined;
 }
 
-const LINGYE_OPERATION_INDEX = [...modelVisibleLingyeOperations, dailyReadOperation, dailySubmissionOperation]
+const LINGYE_OPERATION_INDEX = [...modelVisibleLingyeOperations, dailyReadOperation, dailySubmissionOperation, dailyCommentOperation]
   .map((operation) => `${operation.op} args ${operation.argsHint} — ${operation.description}`)
   .join("\n");
 

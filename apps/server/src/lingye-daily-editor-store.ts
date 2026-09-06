@@ -21,7 +21,7 @@ interface PublicationRewardRow {
   resident_name:string;reward_id:string;requested_at:number;paid_at:number|null;receipt_id:string|null;
 }
 interface ResendRow {
-  request_id:string;issue_date:string;lane:"farm"|"submissions";source_wake_id:string;wake_id:string;
+  request_id:string;issue_date:string;lane:"farm"|"submissions"|"voice";source_wake_id:string;wake_id:string;
   recipient_resident_id:string;requested_by:string;created_at:number;
 }
 export class LingyeDailyEditorStore {
@@ -51,7 +51,7 @@ export class LingyeDailyEditorStore {
       editorModel:(JSON.parse(row.input_json) as LingyeDailyPublishRequest).editor_model,
       issueNumber,activeEditorName:activeEditor?.resident_name ?? null,
       images:edition.images,
-      readiness:{group:true,reporter:edition.reporter_articles.length>0,
+      readiness:{group:true,reporter:edition.reporter_articles.length>0,voice:edition.voice_article!==undefined,
         submissions:this.reviewReady(date),weather:edition.weather_forecast!==undefined},
       submissions:edition.submissions.map(sub=>({...sub,paid:this.paid(sub.submission_id ?? "")})),
       publicationReward:this.publicationReward(date),
@@ -115,7 +115,7 @@ export class LingyeDailyEditorStore {
           if(added) existingFarm.blocks.push(...added.blocks);
         }
       }
-      const order:DailyDocument["sections"][number]["key"][]=["front","group","slices","farm","weather","quotes","submissions","tomorrow"];
+      const order:DailyDocument["sections"][number]["key"][]=["front","group","slices","farm","voice","weather","quotes","submissions","tomorrow"];
       for(const section of fresh.sections.filter(section=>keys.includes(section.key)&&!sections.some(current=>current.key===section.key))) {
         const position=sections.findIndex(current=>order.indexOf(current.key)>order.indexOf(section.key));
         sections.splice(position<0?sections.length:position,0,section);
@@ -228,7 +228,7 @@ export class LingyeDailyEditorStore {
   resendByRequest(requestId:string) {
     return this.database.prepare("SELECT * FROM lingye_daily_editor_resends WHERE request_id=?").get(requestId) as ResendRow|undefined;
   }
-  createResend(input:{requestId:string;issueDate:string;lane:"farm"|"submissions";sourceWakeId:string;
+  createResend(input:{requestId:string;issueDate:string;lane:"farm"|"submissions"|"voice";sourceWakeId:string;
     recipientResidentId:string;requestedBy:string;now:number},persist:(wakeId:string)=>"created"|"duplicate") {
     return this.database.transaction(()=>{
       const current=this.resendByRequest(input.requestId);

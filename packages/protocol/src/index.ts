@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { dailyDocumentSchema } from "./lingye-daily-document.js";
 export * from "./lingye-daily-document.js";
+import { lingyeDailyVoiceArticleSchema } from "./lingye-daily-voice.js";
+export * from "./lingye-daily-voice.js";
+export * from "./lingye-daily-comments.js";
+import { lingyeDailyCommentCountsSchema } from "./lingye-daily-comments.js";
 import { lingyeDailyWeatherForecastSchema } from "./lingye-daily-weather.js";
 
 export * from "./farm-action-list.js";
@@ -1819,12 +1823,15 @@ export const lingyeDailyReporterArticleSchema = z
     published_at: z.iso.datetime({ offset: true }),
     selector: z.string().trim().min(1),
     writer: z.string().trim().min(1),
-    reviewer: z.string().trim().min(1),
+    reviewer: z.string().trim().min(1).optional(),
     review_kind: z.literal("farm_article").optional(),
     article_text: z.string().trim().min(1),
     version: z.number().int().positive(),
   })
-  .strict();
+  .strict().superRefine((article, context) => {
+    if (article.review_kind === "farm_article" && !article.reviewer)
+      context.addIssue({code:"custom",path:["reviewer"],message:"reviewer is required for reviewed farm articles"});
+  });
 
 export const lingyeDailyTomorrowQuestionPublishSchema = z
   .object({
@@ -1836,6 +1843,7 @@ export const lingyeDailyTomorrowQuestionPublishSchema = z
 export const lingyeDailyEditionPublishSchema = z
   .object({
     editor_document: dailyDocumentSchema.optional(),
+    voice_article: lingyeDailyVoiceArticleSchema.optional(),
     front_page: lingyeDailyFrontPagePublishSchema.nullable(),
     group_chat: lingyeDailyGroupChatPublishSchema,
     behavior_slices: z.array(lingyeDailyBehaviorSlicePublishSchema),
@@ -1975,6 +1983,7 @@ export const lingyeDailyIssueSchema = z
     generated_at: z.iso.datetime({ offset: true }),
     published_at: z.iso.datetime(),
     editor_model: z.string().min(1),
+    comment_counts: lingyeDailyCommentCountsSchema.optional(),
     front_page: lingyeDailyFrontPagePublishSchema
       .omit({ source_event_ids: true, image_ids: true })
       .extend({ image_urls: z.array(z.string().min(1)) })
@@ -1992,6 +2001,7 @@ export const lingyeDailyIssueSchema = z
     ),
     quotes: z.array(lingyeDailyQuotePublishSchema.omit({ source_message_ids: true })),
     farm_observation: lingyeDailyFarmObservationSchema.nullable(),
+    voice_article: lingyeDailyVoiceArticleSchema.optional(),
     reporter_articles: z.array(lingyeDailyReporterArticleSchema).default([]),
     submissions: z.array(lingyeDailySubmissionSchema),
     submission_reviewer: z.string().min(1).nullable().optional(),

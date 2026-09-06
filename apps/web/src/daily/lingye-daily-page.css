@@ -129,6 +129,77 @@ body {
   background: var(--daily-text);
 }
 
+.daily-comments-toggle {
+  position: relative;
+  margin-left: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.daily-comments-count {
+  position: absolute;
+  right: -4px;
+  bottom: -2px;
+  font-size: 9px;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.daily-comments-toggle:focus-visible {
+  outline: 2px solid var(--daily-blue);
+  outline-offset: 3px;
+}
+
+.daily-footer-question:has(> .daily-comments-toggle) > h2 {
+  display: inline-block;
+}
+
+.daily-section-comments {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.daily-section-comments p {
+  margin: 0 0 6px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.daily-comment-action {
+  margin-right: 8px;
+  padding: 3px 8px;
+  border: 1px solid var(--daily-border);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.daily-comment-form {
+  display: grid;
+  gap: 6px;
+}
+
+.daily-comment-character-count {
+  text-align: right;
+}
+
+.daily-comment-form textarea {
+  width: 100%;
+  min-height: 5em;
+  padding: 6px;
+  resize: vertical;
+  border: 1px solid var(--daily-border);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
 .daily-front-page-title {
   margin: 0 0 8px;
   font-size: 24px;

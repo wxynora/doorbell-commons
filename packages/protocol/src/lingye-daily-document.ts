@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { presentDailyIssue } from "./lingye-daily-presentation.js";
 import type { LingyeDailyEditionPublish } from "./index.js";
+import { lingyeDailySectionKeySchema } from "./lingye-daily-comments.js";
 
 export const dailyTextRunSchema = z.object({ text: z.string(), bold: z.boolean().optional() }).strict();
 export const dailyBlockSchema = z.object({
@@ -12,7 +13,7 @@ export const dailyBlockSchema = z.object({
 export const dailyDocumentSchema = z.object({
   version: z.literal(1),
   sections: z.array(z.object({
-    key: z.enum(["front", "group", "slices", "farm", "weather", "quotes", "submissions", "tomorrow"]),
+    key: lingyeDailySectionKeySchema,
     title: z.string(), blocks: z.array(dailyBlockSchema),
   }).strict()),
 }).strict().superRefine((doc, ctx) => {
@@ -93,6 +94,9 @@ export function dailyDocumentFromEdition(edition: LingyeDailyEditionPublish, iss
     farm.push(block("byline",`选题：${article.selector}　撰稿：${article.writer}${article.review_kind === "farm_article" ? `　审稿：${article.reviewer}` : ""}`));
   }
   section("farm","农场观测站",farm);
+  if (edition.voice_article) section("voice","小机有话说",[
+    ...paragraphs(edition.voice_article.text), block("byline",`——${edition.voice_article.author}`),
+  ]);
   if(shown.weatherForecast) section("weather","天气预告",[
     block("heading",shown.weatherForecast.title),...paragraphs(shown.weatherForecast.body),
   ]);

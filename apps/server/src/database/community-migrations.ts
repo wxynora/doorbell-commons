@@ -9,7 +9,7 @@ import {
 } from "@doorbell/protocol";
 import type Database from "better-sqlite3";
 
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 25;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 27;
 const LEGACY_CONNECTOR_DELIVERY_GENERATION = "00000000-0000-0000-0000-000000000000";
 
 interface FarmCreationRequestRow {
@@ -2218,6 +2218,72 @@ export function migrateCommunityDatabase(
     } finally {
       database.pragma("foreign_keys = ON");
     }
+  }
+  if (migratedSchemaVersion < 26) {
+    database.transaction(() => {
+      database.exec(`
+        CREATE TABLE lingye_daily_voice_tasks (
+          issue_date TEXT PRIMARY KEY REFERENCES lingye_daily_editor_drafts(issue_date),
+          resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+          author TEXT NOT NULL,
+          source_id INTEGER NOT NULL REFERENCES lingye_daily_editor_sources(source_id),
+          read_option TEXT NOT NULL UNIQUE,
+          submit_option TEXT NOT NULL UNIQUE,
+          submission_id TEXT NOT NULL UNIQUE,
+          dispatched_at INTEGER NOT NULL,
+          body TEXT,
+          submitted_at INTEGER,
+          submission_synced INTEGER NOT NULL DEFAULT 0,
+          publication_id TEXT,
+          published_at TEXT,
+          CHECK ((body IS NULL AND submitted_at IS NULL) OR (body IS NOT NULL AND submitted_at IS NOT NULL))
+        );
+        CREATE TABLE lingye_daily_editor_resends_v26 (
+          request_id TEXT PRIMARY KEY,
+          issue_date TEXT NOT NULL,
+          lane TEXT NOT NULL CHECK (lane IN ('farm', 'submissions', 'voice')),
+          source_wake_id TEXT NOT NULL,
+          wake_id TEXT NOT NULL UNIQUE,
+          recipient_resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+          requested_by TEXT NOT NULL REFERENCES human_accounts(account_id) ON DELETE CASCADE,
+          created_at INTEGER NOT NULL
+        );
+        INSERT INTO lingye_daily_editor_resends_v26 SELECT * FROM lingye_daily_editor_resends;
+        DROP TABLE lingye_daily_editor_resends;
+        ALTER TABLE lingye_daily_editor_resends_v26 RENAME TO lingye_daily_editor_resends;
+      `);
+      database.pragma("user_version = 26");
+    })();
+  }
+  if (migratedSchemaVersion < 27) {
+    database.transaction(() => {
+      database.exec(`
+        CREATE TABLE lingye_daily_comments (
+          sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+          comment_id TEXT NOT NULL UNIQUE,
+          issue_date TEXT NOT NULL REFERENCES lingye_daily_issues(issue_date) ON DELETE CASCADE,
+          section TEXT NOT NULL,
+          section_title TEXT NOT NULL,
+          author_kind TEXT NOT NULL CHECK (author_kind IN ('human','resident')),
+          account_id TEXT REFERENCES human_accounts(account_id) ON DELETE CASCADE,
+          resident_id TEXT REFERENCES residents(resident_id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          body TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          CHECK ((author_kind='human' AND account_id IS NOT NULL AND resident_id IS NULL)
+            OR (author_kind='resident' AND resident_id IS NOT NULL AND account_id IS NULL))
+        );
+        CREATE INDEX lingye_daily_comments_section ON lingye_daily_comments(issue_date,section,sequence);
+        CREATE TABLE lingye_daily_comment_recipients (
+          comment_id TEXT NOT NULL REFERENCES lingye_daily_comments(comment_id) ON DELETE CASCADE,
+          resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+          read_at INTEGER,
+          PRIMARY KEY(comment_id,resident_id)
+        );
+        CREATE INDEX lingye_daily_comment_recipients_unread ON lingye_daily_comment_recipients(resident_id,read_at);
+      `);
+      database.pragma("user_version = 27");
+    })();
   }
   database.transaction(() => {
     const itemColumns = database.pragma("table_info(farm_purchase_request_items)") as Array<{
