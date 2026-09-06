@@ -322,6 +322,8 @@ function renderOptions(op: string, data: Record<string, unknown>): string[] {
 
   const lines = ["下一步可以办理："];
   let hiddenLegacyOption = false;
+  let hasRequiredFields = false;
+  let hasVisibleOption = false;
   for (const entry of options) {
     const label = safeChineseText(entry.label) ?? "办理当前业务";
     if (!OPTION_HANDLE.test(entry.option)) {
@@ -330,12 +332,18 @@ function renderOptions(op: string, data: Record<string, unknown>): string[] {
     }
     lines.push(`- ${label}`);
     lines.push(`  办理编号：${entry.option}`);
+    hasVisibleOption = true;
     const required = (entry.requires ?? [])
       .map((field) => REQUIRED_FIELD_NAMES[field])
       .filter(Boolean);
-    if (required.length > 0) lines.push(`  还需提供：${required.join("、")}`);
+    if (required.length > 0) {
+      hasRequiredFields = true;
+      lines.push(`  还需提供：${required.join("、")}`);
+    }
+  }
+  if (hasVisibleOption) {
     lines.push(
-      `  调用 ${chooseOperation(op)}，原样提交这个办理编号${required.length > 0 ? "和上述信息" : ""}。`,
+      `调用 ${chooseOperation(op)}，原样提交这个办理编号${hasRequiredFields ? "和上述信息" : ""}。`,
     );
   }
   if (hiddenLegacyOption)
@@ -949,7 +957,7 @@ function currentServiceCommissionLines(
   item: Record<string, unknown>,
 ): string[] {
   return [
-    "当前委托：",
+    "正在处理：",
     ...commissionItemLines(op, item, 0)
       .slice(1)
       .filter((line) => !line.startsWith("  诊金")),
@@ -1027,9 +1035,9 @@ function commissionText(op: string, result: LingyeSuccess): string {
   if (workNotice) lines.push(workNotice);
   if (op === "go.farm.commission" || op === "go.hospital.commission") {
     const jobs = commissionJobs(data);
-    const acceptedJobCount = integer(data.acceptedJobCount);
+    const completedJobCount = integer(data.completedJobCount);
     lines.push(
-      `已接委托：${acceptedJobCount !== undefined && acceptedJobCount >= 0 ? acceptedJobCount : 0}`,
+      `已完成委托：${completedJobCount !== undefined && completedJobCount >= 0 ? completedJobCount : 0}`,
     );
     const currentWorkerJobId =
       typeof data.currentWorkerJobId === "string" && data.currentWorkerJobId.length > 0
@@ -1043,6 +1051,7 @@ function commissionText(op: string, result: LingyeSuccess): string {
         ["accepted", "assigned", "active"].includes(job.status),
     );
     if (currentJob) lines.push(...currentServiceCommissionLines(op, currentJob));
+    else lines.push("正在处理：无");
   } else {
     const items = commissionRecords(data);
     if (items.length === 0) lines.push(`${commissionKind(op)}：当前没有公开记录。`);
@@ -1097,12 +1106,6 @@ export function renderLingyeToolText(
   if (op === "go.newsroom.like") return result.text;
   const dialogue = npcDialogueText(op, result);
   if (dialogue !== undefined) return dialogue;
-  const text = op.startsWith("go.bank.") ? bankText(op, result)
+  return op.startsWith("go.bank.") ? bankText(op, result)
     : op.startsWith("go.school.") ? schoolText(op, result) : commissionText(op, result);
-  const npcs = records(result.data.npcs).flatMap((npc) => {
-    const name = safeChineseText(npc.name);
-    const familiarity = npcFamiliarity(npc);
-    return name && familiarity ? [`${name} · ${familiarity}`] : [];
-  });
-  return npcs.length ? [text, ...npcs].join("\n") : text;
 }
