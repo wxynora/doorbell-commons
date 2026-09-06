@@ -29,6 +29,8 @@ import {
 } from "./content.js";
 import {
   season3Actions,
+  season3ActionMatchesOption,
+  season3ActionRequestId,
   season3ReplayAction,
   season3UnavailableAction,
   season3Text,
@@ -254,7 +256,7 @@ export function runStoredTogetherSeason3(farm, input = {}, now = Date.now()) {
     };
   }
   const action =
-    actions.find((item) => item.option === input.option) ??
+    actions.find((item) => season3ActionMatchesOption(state, actor, item, input.option)) ??
     season3ReplayAction(state, actor, identity, input.option);
   if (!action) {
     const unavailable = season3UnavailableAction(state, actor, identity, input.option);
@@ -280,7 +282,7 @@ export function runStoredTogetherSeason3(farm, input = {}, now = Date.now()) {
     result = deliverTogetherSeason3Dish(
       state,
       actor,
-      { ...action.args, requestId: input.option, now },
+      { ...action.args, requestId: season3ActionRequestId(state, actor, action), now },
       nature,
     );
     if (result.ok) {

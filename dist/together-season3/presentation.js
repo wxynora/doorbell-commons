@@ -4,11 +4,25 @@ import { togetherSeason3DishNeeds } from "./runtime.js";
 import { listInterviewNpcs, listOwnInterviewRecords, listInterviewSources, interviewOpeningText, completedInterviewTaskMessage } from "./interviews.js";
 
 const copy = (value) => structuredClone(value);
-const optionKey = (state, farm, kind, args) =>
+const receiptKey = (state, farm, kind, args) =>
   "s3:" +
   createHash("sha256")
     .update(JSON.stringify([state.eventId, farm.id, kind, args]))
     .digest("hex");
+
+// Keep the durable receipt identity unchanged; only the displayed handle shrinks.
+const shortOption = (key) => /^s3:[a-f0-9]{64}$/.test(key)
+  ? "s3:" + Buffer.from(key.slice(3), "hex").toString("base64url").slice(0, 12)
+  : key;
+const optionKey = (state, farm, kind, args) => shortOption(receiptKey(state, farm, kind, args));
+const matchesOption = (state, farm, kind, args, option) => {
+  const key = receiptKey(state, farm, kind, args);
+  return option === key || option === shortOption(key);
+};
+export const season3ActionMatchesOption = (state, farm, action, option) =>
+  matchesOption(state, farm, action.kind, action.args, option);
+export const season3ActionRequestId = (state, farm, action) =>
+  action.requestId ?? receiptKey(state, farm, action.kind, action.args);
 
 export function season3Actions(state, farm, identity) {
   const actions = [];
@@ -67,7 +81,8 @@ export function season3InterviewNotice(actions, phase) {
 // embedded in a player-supplied string. No free-form option parser exists.
 export function season3ReplayAction(state, farm, identity, option) {
   const prior = state.receipts.find(
-    (entry) => entry.farmId === farm.id && entry.requestId === option,
+    (entry) => entry.farmId === farm.id &&
+      (entry.requestId === option || shortOption(entry.requestId) === option),
   );
   if (prior?.kind === "delivery") {
     const delivery = state.deliveries.find((entry) => entry.deliveryId === prior.resultId);
@@ -75,6 +90,7 @@ export function season3ReplayAction(state, farm, identity, option) {
       return {
         kind: "delivery",
         args: { needId: delivery.needId, dishSelector: delivery.dishId },
+        requestId: prior.requestId,
         option,
       };
   }
@@ -84,7 +100,7 @@ export function season3ReplayAction(state, farm, identity, option) {
   })) {
     for (const answer of record.answers) {
       const args = { npcId: record.npcId, questionId: answer.questionId };
-      if (option === optionKey(state, farm, "question", args))
+      if (matchesOption(state, farm, "question", args, option))
         return { kind: "question", args, option };
     }
   }
@@ -98,7 +114,7 @@ export function season3UnavailableAction(state, farm, identity, option) {
     if (need.status !== "closed" && need.status !== "delivered") continue;
     for (const dish of farm.ranch?.kitchen?.dishes ?? []) {
       if (dish.recipeId !== need.recipeId || dish.name !== need.dishName || typeof dish.id !== "string") continue;
-      if (option === optionKey(state, farm, "delivery", { needId: need.id, dishSelector: dish.id }))
+      if (matchesOption(state, farm, "delivery", { needId: need.id, dishSelector: dish.id }, option))
         return need.status === "delivered"
           ? { code: "season3_dish_already_delivered", text: content.messages.already_delivered }
           : { code: "season3_dish_window_closed", text: content.messages.dish_closed };
@@ -106,11 +122,11 @@ export function season3UnavailableAction(state, farm, identity, option) {
   }
   if (identity?.isReporter && identity.reporterId) {
     for (const record of state.interviews.interviews) {
-      const readOption = optionKey(state, farm, "interview-read", { npcId: record.npcId });
-      const answeredOption = record.answers.some((answer) => option === optionKey(state, farm, "question", {
+      const readOption = matchesOption(state, farm, "interview-read", { npcId: record.npcId }, option);
+      const answeredOption = record.answers.some((answer) => matchesOption(state, farm, "question", {
         npcId: record.npcId, questionId: answer.questionId,
-      }));
-      if (option === readOption || answeredOption)
+      }, option));
+      if (readOption || answeredOption)
         return { code: "interview_completed", text: completedInterviewTaskMessage() };
     }
   }
