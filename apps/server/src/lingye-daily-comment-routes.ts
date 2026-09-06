@@ -1,12 +1,12 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { z } from "zod";
-import { lingyeDailySectionCommentsSuccessSchema } from "@doorbell/protocol";
+import { lingyeDailySectionCommentsSuccessSchema, lingyeDailyCommentSectionKeySchema } from "@doorbell/protocol";
 import { readHumanSessionToken } from "./session-cookie.js";
 import { AuthenticationRequiredError, QqNotGroupMemberError, type RegistrationAuthService } from "./registration-auth.js";
 import { dailyCommentErrorText, type LingyeDailyCommentsService } from "./lingye-daily-comments-service.js";
 
 export function registerDailyCommentRoutes(app:FastifyInstance,options:{comments:LingyeDailyCommentsService;auth:RegistrationAuthService}) {
-  const params = z.object({date:z.iso.date(),section:z.string()}).strict();
+  const params = z.object({date:z.iso.date(),section:lingyeDailyCommentSectionKeySchema}).strict();
   const handler = async (request:FastifyRequest,reply:FastifyReply) => {
     reply.header("cache-control","no-store");
     try {

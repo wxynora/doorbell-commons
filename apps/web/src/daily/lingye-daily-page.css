@@ -140,22 +140,26 @@ body {
   cursor: pointer;
 }
 
+.daily-comments-icon {
+  position: relative;
+  display: inline-block;
+  line-height: 1;
+}
+
 .daily-comments-count {
   position: absolute;
-  right: -4px;
+  right: -2px;
   bottom: -2px;
-  font-size: 9px;
+  font-size: 8px;
   line-height: 1;
   font-weight: 700;
+  text-shadow: -1px -1px 0 #fff, 0 -1px 0 #fff, 1px -1px 0 #fff,
+    -1px 0 0 #fff, 1px 0 0 #fff, -1px 1px 0 #fff, 0 1px 0 #fff, 1px 1px 0 #fff;
 }
 
 .daily-comments-toggle:focus-visible {
   outline: 2px solid var(--daily-blue);
   outline-offset: 3px;
-}
-
-.daily-footer-question:has(> .daily-comments-toggle) > h2 {
-  display: inline-block;
 }
 
 .daily-section-comments {

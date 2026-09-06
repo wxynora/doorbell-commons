@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { dailyDocumentFromEdition, lingyeDailyEditionPublishSchema, type LingyeDailyEditionPublish } from "@doorbell/protocol";
+import { dailyDocumentFromEdition, lingyeDailyEditionPublishSchema, lingyeDailyCommentSectionKeySchema, type LingyeDailyEditionPublish } from "@doorbell/protocol";
 import type Database from "better-sqlite3";
 
 export interface DailySectionComment { comment_id: string; name: string; text: string }
@@ -21,7 +21,8 @@ export class LingyeDailyCommentsStore {
   }
 
   sections(date: string, now: number) {
-    return dailyDocumentFromEdition(this.issue(date, now), date).sections.filter(section => section.blocks.length > 0);
+    return dailyDocumentFromEdition(this.issue(date, now), date).sections.filter(section =>
+      section.blocks.length > 0 && lingyeDailyCommentSectionKeySchema.safeParse(section.key).success);
   }
 
   section(date: string, key: string, now: number) {

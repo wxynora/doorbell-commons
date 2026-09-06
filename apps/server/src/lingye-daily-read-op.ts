@@ -29,7 +29,7 @@ function sectionCommentText(title:string,items: PublishedComments[number]["comme
 }
 function documentWithComments(document:DailyDocument,comments:PublishedComments):string {
   return document.sections.filter(section=>section.blocks.length).map(section=>[
-    section.title,`板块编号：${section.key}`,
+    section.title,comments.some(item=>item.section===section.key) ? `板块编号：${section.key}` : "",
     ...section.blocks.filter(block=>block.type!=="image").map(dailyBlockText),
     sectionCommentText(section.title,comments.find(item=>item.section===section.key)?.comments ?? []),
   ].filter(Boolean).join("\n\n")).join("\n\n");

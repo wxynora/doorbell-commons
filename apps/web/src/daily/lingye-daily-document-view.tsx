@@ -1,5 +1,5 @@
 import React from "react";
-import {type DailyDocument,type DailyBlock} from "@doorbell/protocol";
+import {lingyeDailyCommentSectionKeySchema,type DailyDocument,type DailyBlock} from "@doorbell/protocol";
 
 export const DAILY_SUBMISSION_STAMP_URL="/lingye/daily/submission-received-stamp-v1.png";
 
@@ -46,7 +46,7 @@ export function DailyDocumentView({document,images,editable=false,renderSectionC
       {key==="tomorrow"
         ? <h2 contentEditable={editable} suppressContentEditableWarning>{section.title}</h2>
         : <h2 contentEditable={editable} suppressContentEditableWarning className={`daily-section-tag daily-section-tag--${tone}`}>{section.title}</h2>}
-      {!editable ? renderSectionComments?.(section) : null}
+      {!editable && lingyeDailyCommentSectionKeySchema.safeParse(section.key).success ? renderSectionComments?.(section) : null}
       <div contentEditable={editable} suppressContentEditableWarning className="daily-document-copy" role={editable?"textbox":undefined} aria-label={editable?section.title:undefined} aria-multiline={editable?true:undefined}>{key==="group"?<div className="daily-group-card daily-document-group-card">{blocks}</div>:blocks}</div>
     </section>;
   };

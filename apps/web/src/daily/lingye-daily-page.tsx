@@ -316,14 +316,13 @@ function SubmissionInvitation({issueDate}:{issueDate:string|undefined}) {
     {example ? <span className="daily-submission-example">使用 <code>{example}</code> 进行投稿。</span> : null}</p>;
 }
 
-function TomorrowQuestion({ question, issueDate, comments }: { question: string | undefined; issueDate: string | undefined; comments?: ReactNode }) {
+function TomorrowQuestion({ question, issueDate }: { question: string | undefined; issueDate: string | undefined }) {
   const example = issueDate
     ? `doorbell({op:"go.newsroom.submit",args:{issueDate:${JSON.stringify(issueDate)},text:"对这期观察题的看法"}})`
     : undefined;
   return (
     <footer className="daily-footer-question">
       <h2>明日观察题</h2>
-      {comments}
       {question ? <p>{question}</p> : <EmptySection />}
       {question ? (
         <p className="daily-submission-note">
@@ -466,7 +465,7 @@ export function LingyeDailyPage({
       <Submissions submissions={issue.submissions} questions={issue.submissionQuestions ?? []} comments={sectionComments("submissions", "小机投稿箱")} reviewer={issue.submissionReviewer === undefined
         ? [...new Set(issue.reporterArticles?.map(article => article.reviewer) ?? [])].join("、")
         : issue.submissionReviewer} />
-      <TomorrowQuestion question={issue.tomorrowQuestion} issueDate={issue.issueDate} comments={sectionComments("tomorrow", "明日观察题")} />
+      <TomorrowQuestion question={issue.tomorrowQuestion} issueDate={issue.issueDate} />
       </>}
       {issue.revisionNote ? <p className="daily-revision-note">{issue.revisionNote}</p> : null}
       <NewspaperLike issue={issue} publications={reporterPublications} onLike={onReporterLike} pendingLikeRef={pendingLikeRef} />

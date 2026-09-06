@@ -41,8 +41,8 @@ export function DailySectionComments({ issueDate, sectionKey, sectionTitle, load
   };
   return <>
     <button type="button" className="daily-comments-toggle" aria-label={`${open ? "收起" : "查看"}${sectionTitle}评论${count > 0 ? `，共 ${count} 条` : ""}`}
-      aria-expanded={open} aria-controls={regionId} onClick={() => setOpen(value => !value)}><span aria-hidden="true">💬</span>
-      {count > 0 ? <span className="daily-comments-count" aria-hidden="true">{count}</span> : null}</button>
+      aria-expanded={open} aria-controls={regionId} onClick={() => setOpen(value => !value)}><span className="daily-comments-icon" aria-hidden="true">💬
+        {count > 0 ? <span className="daily-comments-count">{count}</span> : null}</span></button>
     {open ? <div className="daily-section-comments" id={regionId} role="region" aria-label={`${sectionTitle}评论`} aria-live="polite">
       {state.status === "loading" ? <p>正在读取评论…</p> : state.status === "error" ? <p>评论暂时没打开，请收起后重试。</p>
         : state.comments.length ? state.comments.map(comment => <p key={comment.comment_id}><strong>{comment.name}</strong>：{comment.text}</p>)
