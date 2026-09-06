@@ -612,7 +612,7 @@ export function startReporterRelayIssue(database, backend, input) {
         if (![3, 4].includes(roster.length))
             fail("reporter_duty_roster_incomplete");
         const role = Object.fromEntries(roster.map((entry) => [entry.role, entry]));
-        if (!role.selector || !role.writer || !role.reviewer)
+        if (!role.selector || !role.writer || (!role.reviewer && !role.voice))
             fail("reporter_duty_roster_incomplete");
         const materials = registerMaterials(database, backend, window, [
             ...todayBoardMaterials(database, window.periodEnd),
@@ -652,7 +652,7 @@ export function startReporterRelayIssue(database, backend, input) {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'selector_pending', ?, ?)`)
             .run(window.issueReference, window.issueDate, window.periodStart, window.periodEnd,
                 packId, selectorJobId, role.selector.residentId, role.writer.residentId,
-                role.reviewer.residentId,
+                role.reviewer?.residentId ?? null,
                 role.submission_reviewer ? database.prepare(`SELECT job_id FROM career_jobs
                   WHERE job_id = ? AND worker_resident_id = ?`)
                     .get(`reporter-relay-job:${window.issueDate}:submission-reviewer`,
@@ -859,7 +859,7 @@ export function beginReporterRelayWriting(database, backend, input) {
         issue.selector_job_id !== input?.jobId)
         fail("reporter_relay_selection_not_actionable");
     const writerJobId = `reporter-relay-job:${issue.issue_date}:writer`;
-    const reviewerJobId = `reporter-relay-job:${issue.issue_date}:reviewer`;
+    const reviewerJobId = issue.reviewer_resident_id ? `reporter-relay-job:${issue.issue_date}:reviewer` : null;
     const primarySourceId = backend.trustedQueries.getJob(issue.selector_job_id).sourceId;
     backend.trustedSystemCommands.createJob({
         jobId: writerJobId,
@@ -879,20 +879,22 @@ export function beginReporterRelayWriting(database, backend, input) {
         jobId: writerJobId,
         idempotencyKey: `reporter-relay:${issue.issue_date}:writer:claim`,
     });
-    backend.trustedSystemCommands.createJob({
-        jobId: reviewerJobId,
-        career: "reporter",
-        sourceType: issue.submission_reviewer_resident_id
-            ? "reporter_daily_reviewing" : "reporter_daily_submission_reviewing",
-        sourceId: `${issue.issue_reference}:${issue.submission_reviewer_resident_id ? "reviewing" : "submission-reviewing"}`,
-        objectType: issue.submission_reviewer_resident_id ? "reporter_review" : "reporter_submission_batch",
-        objectId: issue.submission_reviewer_resident_id ? `${issue.issue_reference}:review` : issue.issue_reference,
-        ownerResidentId: null,
-        requiredLevel: 1,
-        difficultyLevel: 1,
-        assignmentMode: "accepted",
-    });
-    backend.trustedSystemCommands.acceptJob(reviewerJobId, issue.reviewer_resident_id);
+    if (reviewerJobId) {
+        backend.trustedSystemCommands.createJob({
+            jobId: reviewerJobId,
+            career: "reporter",
+            sourceType: issue.submission_reviewer_resident_id
+                ? "reporter_daily_reviewing" : "reporter_daily_submission_reviewing",
+            sourceId: `${issue.issue_reference}:${issue.submission_reviewer_resident_id ? "reviewing" : "submission-reviewing"}`,
+            objectType: issue.submission_reviewer_resident_id ? "reporter_review" : "reporter_submission_batch",
+            objectId: issue.submission_reviewer_resident_id ? `${issue.issue_reference}:review` : issue.issue_reference,
+            ownerResidentId: null,
+            requiredLevel: 1,
+            difficultyLevel: 1,
+            assignmentMode: "accepted",
+        });
+        backend.trustedSystemCommands.acceptJob(reviewerJobId, issue.reviewer_resident_id);
+    }
     createReporterStoryWorkflow(database, {
         workflowId: `reporter-relay-workflow:${issue.issue_date}`,
         issueReference: issue.issue_reference,
@@ -924,7 +926,7 @@ export function markReporterRelayArticle(database, input) {
         fail("reporter_relay_writing_not_actionable");
     const articleId = identifier(input?.articleId, "article_id");
     return runInTransaction(database, () => {
-        if (issue.submission_reviewer_resident_id) {
+        if (issue.submission_reviewer_resident_id && issue.reviewer_resident_id) {
             const article = database.prepare(`SELECT 1 FROM career_reporter_articles
               WHERE article_id = ? AND job_id = ? AND resident_id = ? AND status = 'pending_review'`)
                 .get(articleId, issue.writer_job_id, issue.writer_resident_id);
@@ -1033,7 +1035,7 @@ export function publishReadyReporterRelay(database, backend, input) {
           FROM career_reporter_articles WHERE article_id = ?`).get(issue.article_id);
         if (!article)
             fail("reporter_relay_article_missing");
-        if (issue.submission_reviewer_resident_id &&
+        if (issue.submission_reviewer_resident_id && issue.reviewer_resident_id &&
             (!["approved", "published"].includes(article.status) || article.review_decision !== "approve" ||
                 article.reviewer_reference !== `resident:${issue.reviewer_resident_id}`))
             fail("reporter_relay_publication_not_ready");
@@ -1045,10 +1047,11 @@ export function publishReadyReporterRelay(database, backend, input) {
                 scheduled_publication_at: new Date(scheduledPublicationAt).toISOString(),
                 selector: reporterName(issue.selector_resident_id),
                 writer: reporterName(issue.writer_resident_id),
-                reviewer: reporterName(issue.reviewer_resident_id),
+                writer_resident_id: issue.writer_resident_id,
+                ...(issue.reviewer_resident_id ? { reviewer: reporterName(issue.reviewer_resident_id) } : {}),
                 article_text: article.article_text,
                 version: article.version,
-                ...(issue.submission_reviewer_resident_id ? { review_kind: "farm_article" } : {}),
+                ...(issue.submission_reviewer_resident_id && issue.reviewer_resident_id ? { review_kind: "farm_article" } : {}),
             },
         };
     });

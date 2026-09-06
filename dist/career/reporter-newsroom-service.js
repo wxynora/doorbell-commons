@@ -3,8 +3,9 @@ import { CareerDomainError } from "./contracts.js";
 import { beijingDate, runInTransaction } from "./persistence.js";
 import { installCareerSchema } from "./schema.js";
 
-export const REPORTER_DUTY_ROLES = Object.freeze(["selector", "writer", "reviewer", "submission_reviewer"]);
-const LEGACY_REPORTER_DUTY_ROLES = REPORTER_DUTY_ROLES.slice(0, 3);
+export const REPORTER_DUTY_ROLES = Object.freeze(["selector", "writer", "voice", "submission_reviewer"]);
+const LEGACY_REPORTER_DUTY_ROLES = ["selector", "writer", "reviewer"];
+const LEGACY_FOUR_REPORTER_DUTY_ROLES = [...LEGACY_REPORTER_DUTY_ROLES, "submission_reviewer"];
 
 function fail(code, message = code) {
     throw new CareerDomainError(code, message);
@@ -75,7 +76,9 @@ export function ensureReporterDutyRoles(database, now = Date.now(), options = {}
           WHERE duty_date = ? ORDER BY role
         `).all(dutyDate);
         if (existing.length > 0) {
-            const expectedRoles = existing.length === 3 ? LEGACY_REPORTER_DUTY_ROLES : REPORTER_DUTY_ROLES;
+            const expectedRoles = existing.length === 3 ? LEGACY_REPORTER_DUTY_ROLES
+                : existing.some(row => row.role === "reviewer") ? LEGACY_FOUR_REPORTER_DUTY_ROLES
+                    : REPORTER_DUTY_ROLES;
             if (existing.length !== expectedRoles.length ||
                 expectedRoles.some(role => !existing.some(row => row.role === role)))
                 fail("reporter_duty_roster_conflict");
@@ -124,19 +127,20 @@ export function createReporterStoryWorkflow(database, input) {
         issueReference: identifier(input?.issueReference, "issue_reference"),
         selectorJobId: identifier(input?.selectorJobId, "selector_job_id"),
         writerJobId: identifier(input?.writerJobId, "writer_job_id"),
-        reviewerJobId: identifier(input?.reviewerJobId, "reviewer_job_id"),
+        reviewerJobId: input?.reviewerJobId === null ? null : identifier(input?.reviewerJobId, "reviewer_job_id"),
         selectorResidentId: identifier(input?.selectorResidentId, "selector_resident_id"),
         writerResidentId: identifier(input?.writerResidentId, "writer_resident_id"),
-        reviewerResidentId: identifier(input?.reviewerResidentId, "reviewer_resident_id"),
+        reviewerResidentId: input?.reviewerResidentId === null ? null : identifier(input?.reviewerResidentId, "reviewer_resident_id"),
     };
     const distinctResidents = new Set([
         workflow.selectorResidentId,
         workflow.writerResidentId,
         workflow.reviewerResidentId,
-    ]);
+    ].filter(Boolean));
     const allowedCombination = input?.allowSelectorWriterCombination === true &&
         workflow.selectorResidentId === workflow.writerResidentId;
-    if (distinctResidents.size !== 3 && !allowedCombination) {
+    if ((workflow.reviewerJobId === null) !== (workflow.reviewerResidentId === null) ||
+        (distinctResidents.size !== (workflow.reviewerResidentId ? 3 : 2) && !allowedCombination)) {
         fail("reporter_workflow_distinct_roles_required");
     }
     return runInTransaction(database, () => {

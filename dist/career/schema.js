@@ -1,6 +1,6 @@
 import { runInTransaction } from "./persistence.js";
 
-export const CAREER_SCHEMA_VERSION = 14;
+export const CAREER_SCHEMA_VERSION = 15;
 
 const REPORTER_ARTICLE_COLUMNS = `(
   article_id TEXT PRIMARY KEY,
@@ -27,7 +27,7 @@ const REPORTER_ARTICLE_COLUMNS = `(
 
 const REPORTER_DUTY_ROLE_COLUMNS = `(
   duty_date TEXT NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('selector', 'writer', 'reviewer', 'submission_reviewer')),
+  role TEXT NOT NULL CHECK (role IN ('selector', 'writer', 'reviewer', 'voice', 'submission_reviewer')),
   duty_id TEXT NOT NULL UNIQUE REFERENCES career_duty_days(duty_id),
   resident_id TEXT NOT NULL REFERENCES residents(resident_id),
   assigned_at INTEGER NOT NULL,
@@ -494,10 +494,10 @@ export function installCareerSchema(database) {
       issue_reference TEXT NOT NULL,
       selector_job_id TEXT NOT NULL UNIQUE REFERENCES career_jobs(job_id),
       writer_job_id TEXT NOT NULL UNIQUE REFERENCES career_jobs(job_id),
-      reviewer_job_id TEXT NOT NULL UNIQUE REFERENCES career_jobs(job_id),
+      reviewer_job_id TEXT UNIQUE REFERENCES career_jobs(job_id),
       selector_resident_id TEXT NOT NULL REFERENCES residents(resident_id),
       writer_resident_id TEXT NOT NULL REFERENCES residents(resident_id),
-      reviewer_resident_id TEXT NOT NULL REFERENCES residents(resident_id),
+      reviewer_resident_id TEXT REFERENCES residents(resident_id),
       article_id TEXT UNIQUE REFERENCES career_reporter_articles(article_id),
       publication_id TEXT UNIQUE REFERENCES career_reporter_publications(publication_id),
       status TEXT NOT NULL CHECK (status IN (
@@ -556,7 +556,7 @@ export function installCareerSchema(database) {
       submission_reviewer_job_id TEXT REFERENCES career_jobs(job_id),
       selector_resident_id TEXT NOT NULL REFERENCES residents(resident_id),
       writer_resident_id TEXT NOT NULL REFERENCES residents(resident_id),
-      reviewer_resident_id TEXT NOT NULL REFERENCES residents(resident_id),
+      reviewer_resident_id TEXT REFERENCES residents(resident_id),
       submission_reviewer_resident_id TEXT REFERENCES residents(resident_id),
       selection_text TEXT,
       article_id TEXT REFERENCES career_reporter_articles(article_id),
@@ -673,7 +673,7 @@ export function installCareerSchema(database) {
   `);
     const reporterRoleSql = database.prepare(`SELECT sql FROM sqlite_master
       WHERE type = 'table' AND name = 'career_reporter_duty_roles'`).get()?.sql ?? "";
-    if (!reporterRoleSql.includes("'submission_reviewer'")) {
+    if (!reporterRoleSql.includes("'voice'")) {
         runInTransaction(database, () => database.exec(`
           CREATE TABLE career_reporter_duty_roles_four ${REPORTER_DUTY_ROLE_COLUMNS};
           INSERT INTO career_reporter_duty_roles_four (duty_date, role, duty_id, resident_id, assigned_at)
@@ -682,6 +682,43 @@ export function installCareerSchema(database) {
           ALTER TABLE career_reporter_duty_roles_four RENAME TO career_reporter_duty_roles;
         `));
     }
+    // New farm articles have no reporter reviewer. Historical rows and all
+    // inbound references stay unchanged; this only removes the obsolete gate.
+    const nullableReviewerTables = ["career_reporter_story_workflows", "career_reporter_relay_issues"];
+    for (const table of nullableReviewerTables) {
+        const columns = database.prepare(`PRAGMA table_info(${table})`).all();
+        if (!columns.some(column => column.name === "reviewer_resident_id" && column.notnull))
+            continue;
+        if (database.isTransaction)
+            throw new Error("career_reporter_voice_schema_migration_requires_startup");
+        const foreignKeysEnabled = database.prepare("PRAGMA foreign_keys").get().foreign_keys === 1;
+        const schema = database.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?").get(table).sql;
+        const indexes = database.prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL").all(table);
+        const replacement = `${table}_voice`;
+        const create = schema.replace(new RegExp(`^CREATE TABLE "?${table}"?`, "u"), `CREATE TABLE ${replacement}`)
+            .replace(/reviewer_job_id TEXT NOT NULL/gu, "reviewer_job_id TEXT")
+            .replace(/reviewer_resident_id TEXT NOT NULL/gu, "reviewer_resident_id TEXT");
+        database.exec("PRAGMA foreign_keys = OFF");
+        try {
+            runInTransaction(database, () => {
+                database.exec(create);
+                database.exec(`INSERT INTO ${replacement} SELECT * FROM ${table}; DROP TABLE ${table}; ALTER TABLE ${replacement} RENAME TO ${table}`);
+                for (const index of indexes) database.exec(index.sql);
+            });
+        }
+        finally {
+            if (foreignKeysEnabled) database.exec("PRAGMA foreign_keys = ON");
+        }
+    }
+    database.exec(`CREATE TABLE IF NOT EXISTS career_reporter_voice_work (
+      issue_date TEXT PRIMARY KEY,
+      resident_id TEXT NOT NULL REFERENCES residents(resident_id),
+      job_id TEXT NOT NULL UNIQUE REFERENCES career_jobs(job_id),
+      submission_id TEXT NOT NULL UNIQUE,
+      submitted_at INTEGER NOT NULL,
+      publication_id TEXT REFERENCES career_reporter_publications(publication_id),
+      published_at INTEGER
+    )`);
     const reporterRelayColumns = new Set(database.prepare("PRAGMA table_info(career_reporter_relay_issues)")
         .all().map(column => column.name));
     if (!reporterRelayColumns.has("submission_reviewer_job_id"))

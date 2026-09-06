@@ -64,10 +64,27 @@ import {
 import { humanFieldError, internalServiceError } from "./contract.js";
 import { handleDoorbellDailyEditorReward, handleDoorbellDailySubmissionReward } from "./daily-submission.js";
 import { handleDoorbellDailyWeather } from "./daily-weather.js";
+import { handleDoorbellDailyVoice } from "./daily-voice.js";
+import { handleDoorbellDailyCommentAuthor } from "./daily-comment-author.js";
 import { handleDoorbellHumanNpcRead, handleDoorbellHumanNpcInteract } from "./npc.js";
 
 export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExecutor, careerBenefitsForFarm, constableInterviewRuntime) {
     return async function handleDoorbellInternal(req, res, parts, method) {
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "lingye-daily" &&
+            parts[3] === "comment-author" && parts.length === 4) {
+            await handleDoorbellDailyCommentAuthor(req, res, method);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "lingye-daily" &&
+            parts[3] === "reporter-relay" && parts.length === 5 &&
+            ["voice-author", "voice-submitted", "voice-published"].includes(parts[4])) {
+            if (!constableInterviewRuntime?.database || !constableInterviewRuntime?.backend) {
+                internalServiceError(res, 503, "service_unavailable", "The reporter relay service is unavailable");
+                return true;
+            }
+            await handleDoorbellDailyVoice(req, res, method, constableInterviewRuntime, parts[4].slice("voice-".length));
+            return true;
+        }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" &&
             parts[3] === "npcs" && parts.length === 5 && ["read", "interact"].includes(parts[4])) {
             const handler = parts[4] === "read" ? handleDoorbellHumanNpcRead : handleDoorbellHumanNpcInteract;

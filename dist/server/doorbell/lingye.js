@@ -399,6 +399,7 @@ const CAREER_LABELS = Object.freeze({
     constable: "治安官",
 });
 const REPORTER_DUTY_TASK_LABELS = Object.freeze({
+    voice: "小机有话说",
     selector: "选题",
     writer: "撰稿",
     reviewer: "审稿",
@@ -2227,7 +2228,7 @@ function reporterPendingDutyStatus(database, residentId, now) {
     const issue = reporterRelayIssue(database, duty.dutyDate);
     // Anonymous task delivery is owned by Main. The absence of a Farm completion
     // job cannot tell us whether Main has already issued its five-o'clock Bell.
-    const notIssued = duty.role === "submission_reviewer"
+    const notIssued = duty.role === "voice" ? true : duty.role === "submission_reviewer"
         ? now < Date.parse(`${duty.dutyDate}T05:00:00+08:00`)
         : !issue ||
         (duty.role === "writer" && issue.status === "selector_pending" &&

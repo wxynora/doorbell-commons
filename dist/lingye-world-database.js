@@ -1121,12 +1121,16 @@ export function createLingyeWorldBackend(database, options) {
             const submissionJobId = workflow ? database.prepare(`SELECT submission_reviewer_job_id
               FROM career_reporter_relay_issues WHERE issue_reference = ?`)
                 .get(workflow.issueReference)?.submission_reviewer_job_id : null;
+            const voiceJobId = workflow ? database.prepare(`SELECT job_id FROM career_reporter_voice_work
+              WHERE publication_id = ? AND published_at IS NOT NULL`)
+                .get(quote.publicationId)?.job_id : null;
             const collaborators = workflow
                 ? [
                     ["selector", workflow.selectorJobId],
                     ["reviewer", workflow.reviewerJobId],
                     ...(submissionJobId ? [["submission_reviewer", submissionJobId]] : []),
-                ].filter(([, jobId]) => reporterHasCompletedWork(database, jobId)).map(([role, jobId]) => {
+                    ...(voiceJobId ? [["voice", voiceJobId]] : []),
+                ].filter(([, jobId]) => jobId && reporterHasCompletedWork(database, jobId)).map(([role, jobId]) => {
                     const collaborator = jobs.quoteReporterLikePerformance(jobId, quote.validLikes);
                     const idempotencyKey = `reporter-evaluation:${jobId}:credit`;
                     const sourceReference = `reporter:evaluation:${jobId}`;
