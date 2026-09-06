@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { togetherSeason3Content as content } from "./content.js";
+import { togetherSeason3Content as content, season3StoryHistory } from "./content.js";
 import { togetherSeason3DishNeeds } from "./runtime.js";
 import { listInterviewNpcs, listOwnInterviewRecords, listInterviewSources, interviewOpeningText, completedInterviewTaskMessage } from "./interviews.js";
 
@@ -140,7 +140,7 @@ export function season3HumanData(state, _farm) {
     artFile: `rain-not-yet-${state.phase === "ended" ? "ending" : state.phase}-v4.png`,
     round: 1,
     status: phase.title,
-    history: copy(state.storyHistory ?? []),
+    history: copy(season3StoryHistory(state)),
     currentTask: null,
     currentChoice: null,
     cooldown: null,

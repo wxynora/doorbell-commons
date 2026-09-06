@@ -39,8 +39,26 @@ export function appendSeason3Story(state, phase = state.phase, at = Date.now()) 
   });
 }
 
+// A shared meal scene is one story beat, while deliveries remain per household.
+// Only collapse identical scenes linked to actual pancake delivery records.
+export function season3StoryHistory(state) {
+  const sharedDeliveryIds = new Set((state.deliveries ?? [])
+    .filter((delivery) => delivery.needId === "preparation_pancake")
+    .map((delivery) => delivery.deliveryId));
+  const seen = new Set();
+  return (state.storyHistory ?? []).filter((entry) => {
+    if (entry.kind !== "story" || !sharedDeliveryIds.has(entry.id)) return true;
+    const scene = JSON.stringify([entry.title, entry.text]);
+    if (seen.has(scene)) return false;
+    seen.add(scene);
+    return true;
+  });
+}
+
 export function appendSeason3FactText(state, { id, title, text, at }) {
   state.storyHistory ??= [];
-  if (!state.storyHistory.some((entry) => entry.id === id))
-    state.storyHistory.push({ id, kind: "story", title, text, at });
+  if (state.storyHistory.some((entry) => entry.id === id)) return;
+  const scene = { id, kind: "story", title, text, at };
+  if (season3StoryHistory({ ...state, storyHistory: [...state.storyHistory, scene] }).includes(scene))
+    state.storyHistory.push(scene);
 }
