@@ -97,7 +97,19 @@ export function npcSceneScript(
   locations: readonly (readonly [string, string, number, number, number])[],
   initialArtwork: NpcArtwork = { portraits: {} },
 ) {
-  const positions = Object.fromEntries(locations.map(([id, , x, y]) => [id, { x: x * 10.24, y: (y + 4.5) * 15.36 }]));
+  // User-positioned reminder centres on the same 1024 × 1536 map canvas.
+  // Independent of building-label anchors; do not add another display offset.
+  const positions = {
+    'moonlight-pond': { x: 100.07, y: 406.8 },
+    'lingye-daily': { x: 329.72, y: 446.69 },
+    'lingye-public-security-office': { x: 768.91, y: 579.27 },
+    'animal-hospital': { x: 687.76, y: 499.94 },
+    'vocational-school': { x: 376.44, y: 598.51 },
+    bank: { x: 471.33, y: 737.73 },
+    'commercial-street': { x: 575.05, y: 911.23 },
+    'doorbell-community': { x: 517.48, y: 415.96 },
+    'farm-ranch': { x: 486.72, y: 1257.56 },
+  };
   return `
   (() => {
     const positions = ${JSON.stringify(positions)};
@@ -384,7 +396,7 @@ export function npcSceneScript(
         if(selectedNpc)showLine(layer,'暂无法读取');else{status.hidden=false;status.textContent='暂无法读取';}
         return;
       }
-      if(Array.isArray(result.data.npcs)){status.hidden=true;npcs=result.data.npcs;renderPresence();}
+      if(Array.isArray(result.data.npcs)){status.hidden=true;npcs=result.data.npcs.filter(npc=>npc.npc_id!=='npc_atu');renderPresence();}
       else if(selectedNpc)renderDialogue(layer,result.data);
     });
     window.doorbellNpc={leave,open(place){
