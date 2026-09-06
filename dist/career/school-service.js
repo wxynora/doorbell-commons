@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { CareerDomainError, COURSE_COUNT_PER_LEVEL, COURSE_PRACTICE_PASS_COUNT, COURSE_TUITION_GOLD, EXAM_FEE_GOLD, EXAM_PASS_COUNT, } from "./contracts.js";
+import { CareerDomainError, COURSE_COUNT_PER_LEVEL, COURSE_PRACTICE_PASS_COUNT, EXAM_FEE_GOLD, EXAM_PASS_COUNT, } from "./contracts.js";
 import {
     careerCourseAvailability,
     careerCourseContent,
@@ -10,6 +10,7 @@ import {
 } from "./curriculum.js";
 import { activeCertificateLevel, EXAM_SESSION_DURATION_MS, isBeijingExamSessionOpen, isBeijingHour, nextBeijingDayStart, nextExamSessionAt, nextInterviewSessionAt, recordFinancialReceipt, requireCareerTrack, runInTransaction, } from "./persistence.js";
 import { installCareerSchema } from "./schema.js";
+import { activateCareerTrack, careerCourseBusinessReference, careerCourseTuition, careerLearningGeneration, careerProgressPredicate } from "./learning-state.js";
 const DEFAULT_CURRICULUM = Object.freeze({
     careerCourseAvailability,
     careerCourseContent,
@@ -57,8 +58,9 @@ export function careerAdvancementWorkEligibility(database, residentId, career, t
             .get(residentId, previousLevel);
         const startsAt = certificate?.effective_at ?? certificate?.issued_at ?? Number.MAX_SAFE_INTEGER;
         currentLevelExperience = Number(database.prepare(`SELECT COUNT(*) AS count
-          FROM chef_recipe_production_commissions
-          WHERE cook_resident_id = ? AND created_at >= ?`).get(residentId, startsAt).count ?? 0);
+          FROM chef_recipe_production_commissions AS production
+          WHERE cook_resident_id = ? AND created_at >= ?
+            AND ${careerProgressPredicate("production", "chef_production")}`).get(residentId, startsAt).count ?? 0);
         experienceKind = "original_recipe_production";
     }
     else if (career === "reporter") {
@@ -73,20 +75,23 @@ export function careerAdvancementWorkEligibility(database, residentId, career, t
             )
           WHERE work.resident_id = ? AND work.career = 'reporter'
             AND work.qualification_level = ? AND workflow.status = 'published'
+            AND ${careerProgressPredicate("work", "work")}
           UNION
           SELECT work.job_id FROM career_work_records work
           JOIN career_reporter_voice_work voice ON voice.job_id = work.job_id
           WHERE work.resident_id = ? AND work.career = 'reporter'
             AND work.qualification_level = ? AND work.record_kind = 'completed'
             AND voice.published_at IS NOT NULL
+            AND ${careerProgressPredicate("work", "work")}
         )`)
             .get(residentId, previousLevel, residentId, previousLevel).count ?? 0);
         experienceKind = "published_reporter_work";
     }
     else {
         currentLevelExperience = Number(database.prepare(`SELECT COUNT(*) AS count
-          FROM career_work_records
-          WHERE resident_id = ? AND career = ? AND qualification_level = ?`)
+          FROM career_work_records AS work
+          WHERE resident_id = ? AND career = ? AND qualification_level = ?
+            AND ${careerProgressPredicate("work", "work")}`)
             .get(residentId, career, previousLevel).count ?? 0);
         experienceKind = "qualified_commission";
     }
@@ -173,35 +178,44 @@ export class CareerSchoolService {
             const existing = this.#database
                 .prepare(`SELECT career, track_order
            FROM career_tracks
-           WHERE resident_id = ?
+           WHERE resident_id = ? AND track_order IS NOT NULL
            ORDER BY track_order`)
                 .all(residentId);
             const same = existing.find((row) => row.career === career);
             if (same)
                 return { career: same.career, trackOrder: same.track_order };
-            if (existing.length === 0) {
-                this.#database
-                    .prepare(`INSERT INTO career_tracks (resident_id, career, track_order, selected_at)
-             VALUES (?, ?, 1, ?)`)
-                    .run(residentId, career, now);
-                return { career, trackOrder: 1 };
-            }
             if (existing.length >= 2) {
                 throw new CareerDomainError("career_track_limit_reached", "Only two careers are allowed");
             }
-            const primary = existing[0];
-            if (!primary)
-                throw new Error("Career track invariant violated");
-            const primaryLevel = activeCertificateLevel(this.#database, residentId, primary.career, now);
-            if (primaryLevel === null || primaryLevel < 3) {
+            const slot = this.availableCareerSlot(residentId);
+            if (!slot) {
                 throw new CareerDomainError("secondary_career_locked", "The primary career must hold an advanced certificate first");
             }
-            this.#database
-                .prepare(`INSERT INTO career_tracks (resident_id, career, track_order, selected_at)
-           VALUES (?, ?, 2, ?)`)
-                .run(residentId, career, now);
-            return { career, trackOrder: 2 };
+            return activateCareerTrack(this.#database, residentId, career, slot.trackOrder, now, slot.tuitionDiscount);
         });
+    }
+    availableCareerSlot(residentId) {
+        const active = this.#database.prepare(`SELECT career, track_order FROM career_tracks
+          WHERE resident_id = ? AND track_order IS NOT NULL`).all(residentId);
+        if (active.length >= 2) return null;
+        const trackOrder = active.some((track) => track.track_order === 1) ? 2 : 1;
+        const replacement = this.#database.prepare(`SELECT 1 FROM career_resignations
+          WHERE resident_id = ? AND track_order = ? AND confirmed_at IS NOT NULL
+            AND restored_at IS NULL LIMIT 1`).get(residentId, trackOrder);
+        if (replacement) return { trackOrder, tuitionDiscount: true };
+        if (trackOrder === 1) return { trackOrder, tuitionDiscount: false };
+        const primary = active.find((track) => track.track_order === 1);
+        const level = primary && activeCertificateLevel(this.#database, residentId, primary.career, this.#now());
+        return level >= 3 ? { trackOrder, tuitionDiscount: false } : null;
+    }
+    courseTuition(residentId, career, level) {
+        return careerCourseTuition(this.#database, residentId, career, level);
+    }
+    courseBusinessReference(input) {
+        return careerCourseBusinessReference(this.#database, input);
+    }
+    examFee(residentId, career, level) {
+        return this.#examFee(residentId, career, level);
     }
     courseAvailable(career, level, courseIndex) {
         return this.#curriculum.careerCourseAvailability(career, level, courseIndex);
@@ -236,7 +250,7 @@ export class CareerSchoolService {
                     throw new CareerDomainError("course_enrollment_conflict", "The course is already enrolled with another receipt");
                 }
                 recordFinancialReceipt(this.#database, input.tuitionReceipt, {
-                    amount: COURSE_TUITION_GOLD[input.level],
+                    amount: this.courseTuition(input.residentId, input.career, input.level),
                     businessReference,
                     currency: "gold",
                     kind: "system_gold_charge",
@@ -260,7 +274,7 @@ export class CareerSchoolService {
                 throw new CareerDomainError("assessment_content_not_available", "The course content and practice bank do not match");
             }
             recordFinancialReceipt(this.#database, input.tuitionReceipt, {
-                amount: COURSE_TUITION_GOLD[input.level],
+                amount: this.courseTuition(input.residentId, input.career, input.level),
                 businessReference,
                 currency: "gold",
                 kind: "system_gold_charge",
@@ -381,6 +395,7 @@ export class CareerSchoolService {
         return runInTransaction(this.#database, () => {
             const existing = this.#getExamAttempt(input.attemptId);
             if (existing) {
+                this.#requireCurrentExamAttempt(existing);
                 if (existing.resident_id !== input.residentId ||
                     existing.career !== input.career ||
                     existing.qualification_level !== input.level ||
@@ -407,9 +422,10 @@ export class CareerSchoolService {
             this.#requireExamEligibility(input.residentId, input.career, input.level, now);
             const openAttempt = this.#database
                 .prepare(`SELECT 1 FROM career_exam_attempts
-           WHERE resident_id = ? AND career = ? AND qualification_level = ?
+           WHERE resident_id = ? AND career = ? AND qualification_level = ? AND learning_generation = ?
              AND registration_status IN ('registered', 'active', 'written_passed')`)
-                .get(input.residentId, input.career, input.level);
+                .get(input.residentId, input.career, input.level,
+                careerLearningGeneration(this.#database, input.residentId, input.career));
             if (openAttempt) {
                 throw new CareerDomainError("exam_attempt_already_open", "An exam attempt is already open");
             }
@@ -426,9 +442,11 @@ export class CareerSchoolService {
             this.#database
                 .prepare(`INSERT INTO career_exam_attempts (
              attempt_id, resident_id, career, qualification_level, scheduled_at,
-             registration_status, reservation_receipt_id, registered_at
-           ) VALUES (?, ?, ?, ?, ?, 'registered', ?, ?)`)
-                .run(input.attemptId, input.residentId, input.career, input.level, scheduledAt, input.reservationReceipt.receiptId, now);
+             registration_status, reservation_receipt_id, registered_at, learning_generation
+           ) VALUES (?, ?, ?, ?, ?, 'registered', ?, ?, ?)`)
+                .run(input.attemptId, input.residentId, input.career, input.level, scheduledAt,
+                input.reservationReceipt.receiptId, now,
+                careerLearningGeneration(this.#database, input.residentId, input.career));
             const paper = this.#ensureExamPaper(this.#requireExamAttempt(input.attemptId), now);
             return {
                 attemptId: input.attemptId,
@@ -1057,11 +1075,12 @@ export class CareerSchoolService {
         if (!['no_objection', 'review_request'].includes(choice))
             throw new CareerDomainError("invalid_public_notice_choice", "The public notice choice is invalid");
         const notice = this.#database
-            .prepare(`SELECT status, closes_at FROM career_constable_public_notices WHERE notice_id = ?`)
+            .prepare(`SELECT interview_id, status, closes_at FROM career_constable_public_notices WHERE notice_id = ?`)
             .get(noticeId);
         if (notice?.status !== "open" || now >= notice.closes_at) {
             throw new CareerDomainError("public_notice_closed", "The public notice is closed");
         }
+        this.#requireInterview(notice.interview_id);
         const result = this.#database
             .prepare(`UPDATE career_constable_notice_voters
          SET choice = ?, voted_at = ?
@@ -1080,13 +1099,13 @@ export class CareerSchoolService {
                 .get(noticeId);
             if (!notice)
                 throw new CareerDomainError("public_notice_not_found", "Notice not found");
+            const interview = this.#requireInterview(notice.interview_id);
             if (now < notice.closes_at) {
                 throw new CareerDomainError("public_notice_still_open", "The 24-hour notice is still open");
             }
             if (notice.status === "review_required" || notice.status === "certificate_activated") {
                 return notice.status;
             }
-            const interview = this.#requireInterview(notice.interview_id);
             const attempt = this.#requireExamAttempt(interview.attempt_id);
             const count = this.#database
                 .prepare(`SELECT COUNT(*) AS count FROM career_constable_notice_voters
@@ -1119,18 +1138,27 @@ export class CareerSchoolService {
     advanceConstableInterviews(now = this.#now()) {
         const progressed = [];
         const duePanels = this.#database
-            .prepare(`SELECT interview_id FROM career_constable_interviews
-          WHERE status = 'signup_open' AND scheduled_at <= ?
-          ORDER BY scheduled_at, interview_id`)
+            .prepare(`SELECT interview.interview_id FROM career_constable_interviews AS interview
+          JOIN career_exam_attempts AS attempt ON attempt.attempt_id = interview.attempt_id
+          JOIN career_tracks AS track ON track.resident_id = attempt.resident_id AND track.career = attempt.career
+          WHERE interview.status = 'signup_open' AND interview.scheduled_at <= ?
+            AND track.track_order IS NOT NULL AND track.generation = attempt.learning_generation
+            AND NOT EXISTS (SELECT 1 FROM career_resignation_exam_refunds AS refund WHERE refund.attempt_id = attempt.attempt_id)
+          ORDER BY interview.scheduled_at, interview.interview_id`)
             .all(now);
         for (const row of duePanels) {
             const result = this.finalizeConstableExaminerPanel(row.interview_id);
             progressed.push({ interviewId: row.interview_id, result });
         }
         const dueNotices = this.#database
-            .prepare(`SELECT notice_id FROM career_constable_public_notices
-          WHERE status = 'open' AND closes_at <= ?
-          ORDER BY closes_at, notice_id`)
+            .prepare(`SELECT notice.notice_id FROM career_constable_public_notices AS notice
+          JOIN career_constable_interviews AS interview ON interview.interview_id = notice.interview_id
+          JOIN career_exam_attempts AS attempt ON attempt.attempt_id = interview.attempt_id
+          JOIN career_tracks AS track ON track.resident_id = attempt.resident_id AND track.career = attempt.career
+          WHERE notice.status = 'open' AND notice.closes_at <= ?
+            AND track.track_order IS NOT NULL AND track.generation = attempt.learning_generation
+            AND NOT EXISTS (SELECT 1 FROM career_resignation_exam_refunds AS refund WHERE refund.attempt_id = attempt.attempt_id)
+          ORDER BY notice.closes_at, notice.notice_id`)
             .all(now);
         for (const row of dueNotices) {
             const result = this.finalizeConstablePublicNotice(row.notice_id);
@@ -1274,6 +1302,7 @@ export class CareerSchoolService {
         return false;
     }
     #requireCourse(input) {
+        requireCareerTrack(this.#database, input.residentId, input.career);
         const course = this.#database
             .prepare(`SELECT * FROM career_courses
          WHERE resident_id = ? AND career = ? AND qualification_level = ? AND course_index = ?`)
@@ -1455,7 +1484,7 @@ export class CareerSchoolService {
             resultJson, input.now);
     }
     #courseBusinessReference(input) {
-        return `career-course:${input.residentId}:${input.career}:${input.level}:${input.courseIndex}`;
+        return this.courseBusinessReference(input);
     }
     #requireLevelPrerequisite(residentId, career, level, now) {
         if (level === 1)
@@ -1504,10 +1533,10 @@ export class CareerSchoolService {
     #examFee(residentId, career, level) {
         const priorFailure = this.#database
             .prepare(`SELECT 1 FROM career_exam_attempts
-         WHERE resident_id = ? AND career = ? AND qualification_level = ?
+         WHERE resident_id = ? AND career = ? AND qualification_level = ? AND learning_generation = ?
            AND registration_status = 'failed' AND missed_session_at IS NULL
          LIMIT 1`)
-            .get(residentId, career, level);
+            .get(residentId, career, level, careerLearningGeneration(this.#database, residentId, career));
         return priorFailure ? EXAM_FEE_GOLD[level] / 2 : EXAM_FEE_GOLD[level];
     }
     #requireEconomyFinancialReceipt(receiptId) {
@@ -1538,7 +1567,18 @@ export class CareerSchoolService {
         const attempt = this.#getExamAttempt(attemptId);
         if (!attempt)
             throw new CareerDomainError("exam_attempt_not_found", "Exam attempt not found");
+        this.#requireCurrentExamAttempt(attempt);
         return attempt;
+    }
+    #requireCurrentExamAttempt(attempt) {
+        const track = this.#database.prepare(`SELECT generation FROM career_tracks
+          WHERE resident_id = ? AND career = ? AND track_order IS NOT NULL`)
+            .get(attempt.resident_id, attempt.career);
+        const refunded = this.#database.prepare(`SELECT 1 FROM career_resignation_exam_refunds WHERE attempt_id = ?`)
+            .get(attempt.attempt_id);
+        if (!track || track.generation !== attempt.learning_generation || refunded) {
+            throw new CareerDomainError("exam_attempt_not_found", "The exam attempt is not part of the active career");
+        }
     }
     #requireInterview(interviewId) {
         const interview = this.#database
@@ -1546,6 +1586,7 @@ export class CareerSchoolService {
             .get(interviewId);
         if (!interview)
             throw new CareerDomainError("interview_not_found", "Interview not found");
+        this.#requireExamAttempt(interview.attempt_id);
         return interview;
     }
     #setPublicNoticeStatus(noticeId, interviewId, attempt, status, now) {

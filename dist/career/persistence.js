@@ -290,7 +290,7 @@ export function requireActiveCertificate(database, residentId, career, requiredL
 }
 export function requireCareerTrack(database, residentId, career) {
     const row = database
-        .prepare("SELECT 1 FROM career_tracks WHERE resident_id = ? AND career = ?")
+        .prepare("SELECT 1 FROM career_tracks WHERE resident_id = ? AND career = ? AND track_order IS NOT NULL")
         .get(residentId, career);
     if (!row) {
         throw new CareerDomainError("career_not_selected", "The career track is not selected");

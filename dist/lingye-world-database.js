@@ -11,6 +11,7 @@ import { CareerJobService } from "./career/job-service.js";
 import { beijingDate, EXAM_SESSION_DURATION_MS } from "./career/persistence.js";
 import { installCareerSchema } from "./career/schema.js";
 import { CareerSchoolService } from "./career/school-service.js";
+import { CareerResignationService } from "./career/resignation-service.js";
 import { nextReporterEvaluationDueAt } from "./career/reporter-evaluation-window.js";
 import {
     ChefCommerceService,
@@ -616,6 +617,7 @@ export function createLingyeWorldBackend(database, options) {
     });
     const school = new CareerSchoolService(shared);
     const employment = new CareerEmploymentService(shared);
+    const resignations = new CareerResignationService({ ...shared, economy, employment });
     const jobs = new CareerJobService(shared);
     const authorityAssignment = new CareerAuthorityAssignmentService({ ...shared, jobs });
     const atomic = (operation) => {
@@ -841,12 +843,15 @@ export function createLingyeWorldBackend(database, options) {
     };
     const careerCommands = {
             selectCareer: (residentId, career) => atomic(() => school.selectCareer(residentId, career)),
+            prepareCareerResignation: (residentId, career) => atomic(() => resignations.prepare(residentId, career)),
+            confirmCareerResignation: (input) => atomic(() => resignations.confirm(input)),
+            restoreCareerResignation: (input) => atomic(() => resignations.restore(input)),
             enrollCourse: (input) => atomic(() => {
-                const businessReference = `career-course:${input.residentId}:${input.career}:${input.level}:${input.courseIndex}`;
+                const businessReference = school.courseBusinessReference(input);
                 const charged = economy.chargeToSystem({
                     residentId: input.residentId,
                     currency: "gold",
-                    amount: input.amount,
+                    amount: school.courseTuition(input.residentId, input.career, input.level),
                     actor: input.actor,
                     businessType: "career_tuition",
                     businessRef: businessReference,
@@ -873,7 +878,7 @@ export function createLingyeWorldBackend(database, options) {
                 const businessReference = `career-exam:${input.attemptId}:reserve`;
                 const reserved = economy.reserveSystemGold({
                     residentId: input.residentId,
-                    amount: input.amount,
+                    amount: school.examFee(input.residentId, input.career, input.level),
                     actor: input.actor,
                     businessReference,
                     idempotencyKey: input.idempotencyKey,
@@ -1236,6 +1241,11 @@ export function createLingyeWorldBackend(database, options) {
         getSilverEscrowReceipt: (receiptId) => economy.getSilverEscrowReceipt(receiptId),
         previewExchange: (residentId, goldPrincipal, at) => economy.previewExchange(residentId, goldPrincipal, at),
         getCourseContent: (input) => school.getCourseContent(input),
+        availableCareerSlot: (residentId) => school.availableCareerSlot(residentId),
+        courseTuition: (residentId, career, level) => school.courseTuition(residentId, career, level),
+        examFee: (residentId, career, level) => school.examFee(residentId, career, level),
+        careerResignations: (residentId) => resignations.list(residentId),
+        careerResignationQuote: (residentId, career) => resignations.quote(residentId, career),
         courseAvailable: (career, level, courseIndex) => school.courseAvailable(career, level, courseIndex),
         examAvailable: (career, level) => school.examAvailable(career, level),
         getWrittenExamPaper: (attemptId) => school.getWrittenExamPaper(attemptId),

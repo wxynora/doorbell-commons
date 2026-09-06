@@ -1,6 +1,6 @@
 import { runInTransaction } from "./persistence.js";
 
-export const CAREER_SCHEMA_VERSION = 15;
+export const CAREER_SCHEMA_VERSION = 16;
 
 const REPORTER_ARTICLE_COLUMNS = `(
   article_id TEXT PRIMARY KEY,
@@ -50,8 +50,10 @@ export function installCareerSchema(database) {
     CREATE TABLE IF NOT EXISTS career_tracks (
       resident_id TEXT NOT NULL,
       career TEXT NOT NULL CHECK (career IN ('chef', 'agronomist', 'veterinarian', 'reporter', 'constable')),
-      track_order INTEGER NOT NULL CHECK (track_order IN (1, 2)),
+      track_order INTEGER CHECK (track_order IN (1, 2)),
       selected_at INTEGER NOT NULL,
+      generation INTEGER NOT NULL DEFAULT 0,
+      tuition_discount INTEGER NOT NULL DEFAULT 0 CHECK (tuition_discount IN (0, 1)),
       PRIMARY KEY (resident_id, career),
       UNIQUE (resident_id, track_order)
     );
@@ -911,5 +913,92 @@ export function installCareerSchema(database) {
     database.exec(`
       CREATE INDEX IF NOT EXISTS career_reporter_material_packs_issue_index
         ON career_reporter_material_packs(issue_reference, pack_id);
+    `);
+    installResignationSchema(database);
+}
+
+function installResignationSchema(database) {
+    const trackColumns = database.prepare("PRAGMA table_info(career_tracks)").all();
+    if (trackColumns.find((column) => column.name === "track_order").notnull) {
+        if (database.isTransaction)
+            throw new Error("career_resignation_schema_migration_requires_startup");
+        const foreignKeys = database.prepare("PRAGMA foreign_keys").get().foreign_keys === 1;
+        database.exec("PRAGMA foreign_keys = OFF");
+        try {
+            runInTransaction(database, () => {
+                // Retain the parent table's name: existing courses and exams keep their foreign keys.
+                database.exec(`
+                  CREATE TABLE career_tracks_with_resignation (
+                    resident_id TEXT NOT NULL,
+                    career TEXT NOT NULL CHECK (career IN ('chef', 'agronomist', 'veterinarian', 'reporter', 'constable')),
+                    track_order INTEGER CHECK (track_order IN (1, 2)),
+                    selected_at INTEGER NOT NULL,
+                    generation INTEGER NOT NULL DEFAULT 0,
+                    tuition_discount INTEGER NOT NULL DEFAULT 0 CHECK (tuition_discount IN (0, 1)),
+                    PRIMARY KEY (resident_id, career), UNIQUE (resident_id, track_order)
+                  );
+                  INSERT INTO career_tracks_with_resignation (resident_id, career, track_order, selected_at)
+                    SELECT resident_id, career, track_order, selected_at FROM career_tracks;
+                  DROP TABLE career_tracks;
+                  ALTER TABLE career_tracks_with_resignation RENAME TO career_tracks;
+                `);
+                if (database.prepare("PRAGMA foreign_key_check").all().length)
+                    throw new Error("career_resignation_schema_foreign_key_failed");
+            });
+        } finally {
+            if (foreignKeys) database.exec("PRAGMA foreign_keys = ON");
+        }
+    }
+    const examColumns = database.prepare("PRAGMA table_info(career_exam_attempts)").all();
+    if (!examColumns.some((column) => column.name === "learning_generation"))
+        database.exec("ALTER TABLE career_exam_attempts ADD COLUMN learning_generation INTEGER NOT NULL DEFAULT 0");
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS career_learning_archives (
+        archive_id TEXT PRIMARY KEY,
+        resident_id TEXT NOT NULL,
+        career TEXT NOT NULL,
+        generation INTEGER NOT NULL,
+        snapshot_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (resident_id, career) REFERENCES career_tracks(resident_id, career)
+      );
+      CREATE INDEX IF NOT EXISTS career_learning_archive_track
+        ON career_learning_archives(resident_id, career, generation);
+      CREATE TABLE IF NOT EXISTS career_progress_records (
+        resident_id TEXT NOT NULL,
+        career TEXT NOT NULL,
+        source_kind TEXT NOT NULL CHECK (source_kind IN ('work', 'chef_production')),
+        record_id TEXT NOT NULL,
+        generation INTEGER NOT NULL,
+        PRIMARY KEY (resident_id, career, source_kind, record_id)
+      );
+      CREATE TABLE IF NOT EXISTS career_resignations (
+        resignation_id TEXT PRIMARY KEY,
+        resident_id TEXT NOT NULL,
+        career TEXT NOT NULL,
+        track_order INTEGER NOT NULL CHECK (track_order IN (1, 2)),
+        generation INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        confirmed_at INTEGER,
+        restore_until INTEGER,
+        restored_at INTEGER,
+        month_key TEXT,
+        archive_id TEXT REFERENCES career_learning_archives(archive_id),
+        confirmation_json TEXT,
+        restoration_json TEXT,
+        fee_gold INTEGER NOT NULL CHECK (fee_gold >= 0),
+        sequence_number INTEGER NOT NULL CHECK (sequence_number > 0),
+        FOREIGN KEY (resident_id, career) REFERENCES career_tracks(resident_id, career),
+        UNIQUE (resident_id, month_key)
+      );
+      CREATE INDEX IF NOT EXISTS career_resignations_resident
+        ON career_resignations(resident_id, confirmed_at, created_at);
+      CREATE TABLE IF NOT EXISTS career_resignation_exam_refunds (
+        attempt_id TEXT PRIMARY KEY REFERENCES career_exam_attempts(attempt_id),
+        resignation_id TEXT NOT NULL REFERENCES career_resignations(resignation_id),
+        receipt_id TEXT NOT NULL UNIQUE REFERENCES career_financial_receipts(receipt_id),
+        amount INTEGER NOT NULL CHECK (amount > 0),
+        refunded_at INTEGER NOT NULL
+      );
     `);
 }

@@ -5,8 +5,6 @@ import {
     CAREER_INSTITUTION,
     CAREER_TITLES,
     AGRONOMY_COMMISSION_REWARD_GOLD,
-    COURSE_TUITION_GOLD,
-    EXAM_FEE_GOLD,
     EXAM_PASS_COUNT,
     EXAM_QUESTION_COUNT,
     QUALIFICATION_LEVELS,
@@ -14,6 +12,13 @@ import {
 import { careerExamAvailability, curriculumCatalogAvailability } from "../../career/curriculum.js";
 import { courseCatalog } from "../../career/course-catalog.js";
 import { careerAdvancementWorkEligibility } from "../../career/school-service.js";
+import {
+    resignationExplanation,
+    resignationSuccess,
+    resignationRestored,
+    resignationLabel,
+    RESIGNATION_ERROR_MESSAGES,
+} from "../../career/resignation-copy.js";
 import {
     createReporterStoryWorkflow,
     ensureReporterDutyRoles,
@@ -520,6 +525,8 @@ function internalOptionLabel(internalOption) {
     const school = /^school:([a-z-]+):/u.exec(internalOption)?.[1];
     if (school) {
         const career = /:(chef|agronomist|veterinarian|reporter|constable)(?::|$)/u.exec(internalOption)?.[1];
+        if (school.startsWith("career-resignation-") && career)
+            return resignationLabel(school.slice("career-resignation-".length), CAREER_LABELS[career]);
         return `${SCHOOL_OPTION_LABELS[school] ?? "办理职业学校业务"}${career ? `：${CAREER_LABELS[career]}` : ""}`;
     }
     if (internalOption.startsWith("commission:")) {
@@ -604,10 +611,10 @@ function exposeOptionHandles(database, residentId, op, value, now) {
     return expose(value);
 }
 
-function selectedCourseCatalog(backend, careers) {
+function selectedCourseCatalog(backend, residentId, careers) {
     return courseCatalog(careers).map((course) => ({
         ...course,
-        tuitionGold: COURSE_TUITION_GOLD[course.qualificationLevel],
+        tuitionGold: backend.trustedQueries.courseTuition(residentId, course.career, course.qualificationLevel),
         contentAvailable: backend.trustedQueries.courseAvailable(
             course.career,
             course.qualificationLevel,
@@ -1035,12 +1042,23 @@ function constableInterviewFacts(database, residentId, optionRevision) {
       SELECT interview_id, candidate_resident_id, scheduled_at, status,
              last_postponed_at, postponed_count
       FROM career_constable_interviews
-      WHERE candidate_resident_id = ?
+      WHERE (candidate_resident_id = ?
          OR EXISTS (
            SELECT 1 FROM career_constable_examiner_signups AS signup
            WHERE signup.interview_id = career_constable_interviews.interview_id
              AND signup.examiner_resident_id = ?
-         )
+         ))
+        AND NOT EXISTS (
+          SELECT 1 FROM career_resignation_exam_refunds AS refund
+          WHERE refund.attempt_id = career_constable_interviews.attempt_id
+        )
+        AND EXISTS (
+          SELECT 1 FROM career_exam_attempts AS attempt
+          JOIN career_tracks AS track
+            ON track.resident_id = attempt.resident_id AND track.career = attempt.career
+           AND track.track_order IS NOT NULL AND track.generation = attempt.learning_generation
+          WHERE attempt.attempt_id = career_constable_interviews.attempt_id
+        )
       ORDER BY scheduled_at DESC, interview_id
     `).all(residentId, residentId)).map((interview) => {
         const signup = mapRows(database.prepare(`
@@ -1078,8 +1096,15 @@ function constableInterviewFacts(database, residentId, optionRevision) {
       FROM career_constable_public_notices AS notice
       JOIN career_constable_interviews AS interview ON interview.interview_id = notice.interview_id
       JOIN career_exam_attempts AS attempt ON attempt.attempt_id = interview.attempt_id
+      JOIN career_tracks AS track
+        ON track.resident_id = attempt.resident_id AND track.career = attempt.career
+       AND track.track_order IS NOT NULL AND track.generation = attempt.learning_generation
       JOIN career_constable_notice_voters AS voter ON voter.notice_id = notice.notice_id
       WHERE voter.resident_id = ?
+        AND NOT EXISTS (
+          SELECT 1 FROM career_resignation_exam_refunds AS refund
+          WHERE refund.attempt_id = attempt.attempt_id
+        )
       ORDER BY notice.opened_at DESC, notice.notice_id
     `).all(residentId)).map((notice) => ({
         noticeId: notice.noticeId,
@@ -1111,7 +1136,7 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
     backend.trustedSystemCommands.expireDueExamAttempts(residentId);
     const tracks = mapRows(database.prepare(`
       SELECT career, track_order, selected_at FROM career_tracks
-      WHERE resident_id = ? ORDER BY track_order
+      WHERE resident_id = ? AND track_order IS NOT NULL ORDER BY track_order
     `).all(residentId));
     const courses = mapRows(database.prepare(`
       SELECT career, qualification_level, course_index, enrolled_at,
@@ -1127,6 +1152,9 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
              attempt.missed_session_at,
              reservation.reservation_id
       FROM career_exam_attempts AS attempt
+      JOIN career_tracks AS track
+        ON track.resident_id = attempt.resident_id AND track.career = attempt.career
+       AND track.track_order IS NOT NULL AND track.generation = attempt.learning_generation
       LEFT JOIN economy_system_gold_reservations AS reservation
         ON reservation.reserve_journal_id = attempt.reservation_receipt_id
       WHERE attempt.resident_id = ?
@@ -1186,20 +1214,19 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
     const constable = constableInterviewFacts(database, residentId, optionRevision);
     const options = [...constable.options];
     const advancement = [];
-    if (tracks.length === 0) {
-        for (const career of CAREER_IDS.filter((candidate) => careerSchoolAvailable(backend, candidate)))
+    if (backend.trustedQueries.availableCareerSlot(residentId)) {
+        for (const career of CAREER_IDS.filter((candidate) =>
+            !tracks.some((track) => track.career === candidate) && careerSchoolAvailable(backend, candidate)))
             options.push(option(schoolOption(optionRevision, "career-select", career)));
     }
-    else if (tracks.length === 1) {
-        const primary = tracks[0];
-        const primaryLevel = Math.max(0, ...certificates
-            .filter((certificate) => certificate.career === primary.career && certificate.canWork)
-            .map((certificate) => certificate.qualificationLevel));
-        if (primaryLevel >= 3) {
-            for (const career of CAREER_IDS.filter((candidate) =>
-                candidate !== primary.career && careerSchoolAvailable(backend, candidate)))
-                options.push(option(schoolOption(optionRevision, "career-select", career)));
-        }
+    const resignations = backend.trustedQueries.careerResignations(residentId);
+    for (const track of tracks) {
+        options.push(option(schoolOption(optionRevision, "career-resignation-begin", track.career)));
+    }
+    for (const resignation of resignations) {
+        const action = resignation.state === "proposed" ? "confirm" : "restore";
+        options.push(option(schoolOption(optionRevision, `career-resignation-${action}`,
+            `${resignation.career}:${resignation.resignationId}`)));
     }
     for (const track of tracks) {
         const activeLevel = Math.max(0, ...certificates
@@ -1394,7 +1421,7 @@ function schoolView(database, backend, residentId, now, args) {
     }
     const value = section === "courses"
         ? {
-            catalog: selectedCourseCatalog(backend, facts.careers.map((track) => track.career)),
+            catalog: selectedCourseCatalog(backend, residentId, facts.careers.map((track) => track.career)),
             progress: facts.courses,
         }
         : section === null
@@ -1434,7 +1461,27 @@ function schoolChoose(database, backend, residentId, now, args) {
         if (existing) {
             if (existing.resident_id !== residentId || existing.payload_hash !== payloadHash)
                 throw new LingyeBusinessError("CONFLICT", "这个职业学校操作已经使用了不同参数。");
-            return JSON.parse(existing.result_json);
+            const receipt = JSON.parse(existing.result_json);
+            if (!args.option.startsWith("school:career-resignation-"))
+                return receipt;
+            // Keep the settled action idempotent; never replay its historical
+            // school snapshot or obsolete confirmation handles as current facts.
+            const current = readSchoolFacts(database, backend, residentId, now);
+            const result = receipt.data.result;
+            let text = "已读取职业学校当前事实。";
+            if (args.option.startsWith("school:career-resignation-begin:")) {
+                const confirmationOption = schoolOption(schoolRevision(database, residentId),
+                    "career-resignation-confirm", `${result.career}:${result.resignationId}`);
+                const confirmation = current.options.find((entry) => entry.option === confirmationOption);
+                if (confirmation) {
+                    current.options = [confirmation];
+                    text = resignationExplanation({
+                        ...result, careerName: CAREER_LABELS[result.career],
+                        confirmationCode: optionHandle(database, residentId, "go.school.choose", confirmationOption, now),
+                    });
+                }
+            }
+            return { ...receipt, text, data: { ...receipt.data, current, currentCourses: [] } };
         }
         const current = readSchoolFacts(database, backend, residentId, now);
         if (!current.options.some((entry) => entry.option === args.option)) {
@@ -1453,7 +1500,22 @@ function schoolChoose(database, backend, residentId, now, args) {
         const hireMatch = /^school:employment-hire:(\d+):(reporter|veterinarian|constable)$/u.exec(args.option);
         const availabilityMatch = /^school:employment-(leave|resume|end):(\d+):(.+)$/u.exec(args.option);
         const publicNoticeVoteMatch = /^school:constable-public-notice-vote:(\d+):(.+):(no_objection|review_request)$/u.exec(args.option);
-        if (publicNoticeVoteMatch) {
+        const resignationMatch = /^school:career-resignation-(begin|confirm|restore):(\d+):(chef|agronomist|veterinarian|reporter|constable)(?::([^:]+))?$/u.exec(args.option);
+        if (resignationMatch) {
+            if (Object.hasOwn(args, "answers"))
+                throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个 option 不接收答案。");
+            const [, action, , career, resignationId] = resignationMatch;
+            if (action === "begin") {
+                result = backend.trustedSystemCommands.prepareCareerResignation(residentId, career);
+            }
+            else {
+                const input = { residentId, resignationId, actor: "agent" };
+                result = action === "confirm"
+                    ? backend.trustedSystemCommands.confirmCareerResignation(input)
+                    : backend.trustedSystemCommands.restoreCareerResignation(input);
+            }
+        }
+        else if (publicNoticeVoteMatch) {
             if (Object.hasOwn(args, "answers"))
                 throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个职业学校 option 当前不可用。");
             result = backend.trustedSystemCommands.voteConstablePublicNotice(
@@ -1492,7 +1554,7 @@ function schoolChoose(database, backend, residentId, now, args) {
                     career,
                     level,
                     courseIndex,
-                    amount: COURSE_TUITION_GOLD[level],
+                    amount: backend.trustedQueries.courseTuition(residentId, career, level),
                     actor: "agent",
                     idempotencyKey: actionKey,
                 });
@@ -1527,16 +1589,12 @@ function schoolChoose(database, backend, residentId, now, args) {
                     throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "考试报名 option 无效。");
                 const career = registration[1];
                 const level = Number(registration[2]);
-                const priorFailure = database.prepare(`SELECT 1 FROM career_exam_attempts
-                  WHERE resident_id = ? AND career = ? AND qualification_level = ?
-                    AND registration_status = 'failed' AND missed_session_at IS NULL
-                  LIMIT 1`).get(residentId, career, level);
                 result = backend.trustedSystemCommands.registerExam({
                     attemptId: `exam-${actionKey.slice(-32)}`,
                     residentId,
                     career,
                     level,
-                    amount: priorFailure ? EXAM_FEE_GOLD[level] / 2 : EXAM_FEE_GOLD[level],
+                    amount: backend.trustedQueries.examFee(residentId, career, level),
                     actor: "agent",
                     idempotencyKey: actionKey,
                 });
@@ -1615,7 +1673,26 @@ function schoolChoose(database, backend, residentId, now, args) {
         const resumable = courseReadMatch || courseMatch
             ? resumableSchoolCourses(database, backend, residentId, now, nextFacts, nextRevision)
             : { current: nextFacts, currentCourses: [] };
-        const response = success("职业学校业务已办理。", {
+        let responseText = "职业学校业务已办理。";
+        if (resignationMatch) {
+            const careerName = CAREER_LABELS[result.career];
+            if (resignationMatch[1] === "begin") {
+                const confirmationOption = schoolOption(nextRevision, "career-resignation-confirm",
+                    `${result.career}:${result.resignationId}`);
+                // Focus this confirmation receipt, not the ordinary school view.
+                nextFacts.options = nextFacts.options.filter((entry) => entry.option === confirmationOption);
+                responseText = resignationExplanation({
+                    ...result, careerName,
+                    confirmationCode: optionHandle(database, residentId, "go.school.choose", confirmationOption, now),
+                });
+            }
+            else {
+                responseText = resignationMatch[1] === "confirm"
+                    ? resignationSuccess({ ...result, careerName })
+                    : resignationRestored({ careerName });
+            }
+        }
+        const response = success(responseText, {
             result,
             current: resumable.current,
             currentCourses: resumable.currentCourses,
@@ -3724,6 +3801,8 @@ function mapDomainError(error) {
         return failure("OP_REJECTED", "治安系统拒绝了本次操作。");
     }
     if (error instanceof CareerDomainError) {
+        if (Object.hasOwn(RESIGNATION_ERROR_MESSAGES, error.code))
+            return failure("OPTION_NOT_AVAILABLE", RESIGNATION_ERROR_MESSAGES[error.code]);
         if (["reporter_publication_not_found", "reporter_evaluation_window_not_open"].includes(error.code))
             return failure("REFERENCE_NOT_FOUND", "这期日报尚未发布或不存在。");
         if (error.code === "reporter_evaluation_window_closed")
