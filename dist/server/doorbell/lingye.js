@@ -51,6 +51,7 @@ import {
     recoverPendingNpcFallbackServices,
     reporterMaterialPackForJob,
     startSelfAgronomyWork,
+    startSelfVeterinarianWork,
     syncAuthorityJobs,
     treatmentGold,
     veterinarianTreatmentMaterialGold,
@@ -1683,6 +1684,16 @@ function serviceCommissionCandidateIds(database, career, requiredLevel, ownerRes
     });
 }
 
+function canStartOwnServiceWork(database, residentId, source, now) {
+    if (!["agronomist", "veterinarian"].includes(source.career) || source.ownerResidentId !== residentId ||
+        !boundSourceCanPublish(database, source) ||
+        qualificationLevel(database, residentId, source.career, now) < source.requiredLevel ||
+        !serviceCommissionJobs(database, now).getServiceCommissionAvailability(residentId, source.career).canAccept)
+        return false;
+    return source.career === "agronomist" || (hasCurrentVeterinarianDuty(database, residentId, now) &&
+        serviceCommissionCandidateIds(database, source.career, source.requiredLevel, residentId, null, now).length === 0);
+}
+
 function expireUnavailableOwnedServiceCommissions(database, backend, residentId, career, sources, now) {
     if (!["agronomist", "veterinarian"].includes(career))
         return;
@@ -1970,11 +1981,9 @@ function commissionOptions(database, backend, rows, residentId, sources, now) {
             const sourceOptionId = boundSourcePublicationIdentity(database, source).optionId;
             const serviceCommission = ["agronomist", "veterinarian"].includes(source.career);
             const objectLabel = serviceCommission ? serviceCommissionObjectLabel(source) : null;
-            if (source.career === "agronomist" && source.ownerResidentId === residentId &&
-                qualificationLevel(database, residentId, "agronomist", now) >= source.requiredLevel &&
-                serviceCommissionJobs(database, now)
-                    .getServiceCommissionAvailability(residentId, "agronomist").canAccept) {
-                options.push(option(`commission:self:${sourceOptionId}`));
+            if (canStartOwnServiceWork(database, residentId, source, now)) {
+                options.push({ ...option(`commission:self:${sourceOptionId}`),
+                    label: `${source.career === "agronomist" ? "处理自己家的地" : "给自己家的动物看病"}：${objectLabel}` });
             }
             options.push({ ...option(`commission:publish:${sourceOptionId}`),
                 ...(objectLabel ? { label: `公开委托：${objectLabel}` } : {}) });
@@ -2116,12 +2125,12 @@ function commissionPresentation(database, backend, residentId, career, rows, sou
         !database.prepare("SELECT 1 FROM career_npc_service_settlements WHERE source_id = ?")
             .get(source.sourceId))));
     const options = commissionOptions(database, backend, rows, residentId, careerSources, now);
-    const acceptedJobCount = rows.filter((row) =>
-        row.worker_resident_id === residentId && row.accepted_at !== null).length;
+    const completedJobCount = rows.filter((row) =>
+        row.worker_resident_id === residentId && row.status === "completed").length;
     const currentWorkerJob = rows.find((row) =>
         row.worker_resident_id === residentId && ["accepted", "assigned", "active"].includes(row.status));
     return {
-        acceptedJobCount,
+        completedJobCount,
         currentWorkerJobId: currentWorkerJob?.job_id ?? null,
         jobs: mapRows(rows).map((job, index) => {
             const fund = career === "veterinarian"
@@ -3323,14 +3332,17 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
             residentId,
         ));
     }
-    const selfAgronomy = /^commission:self:(.+)$/u.exec(args.option);
-    if (selfAgronomy) {
-        const source = sources.find((entry) => entry.career === "agronomist" &&
-            boundSourcePublicationIdentity(database, entry).optionId === selfAgronomy[1] && entry.ownerResidentId === residentId);
-        if (career !== "agronomist" || !source || args.amount !== undefined || args.text !== undefined)
-            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个自家农艺 option 当前不可用。");
-        const result = startSelfAgronomyWork(database, backend, source);
-        return success("已经开始处理自家地块。", {
+    const selfWork = /^commission:self:(.+)$/u.exec(args.option);
+    if (selfWork) {
+        const source = sources.find((entry) => entry.career === career &&
+            boundSourcePublicationIdentity(database, entry).optionId === selfWork[1] && entry.ownerResidentId === residentId);
+        if (!source || args.amount !== undefined || args.text !== undefined ||
+            !canStartOwnServiceWork(database, residentId, source, now))
+            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.WORLD_CHANGED);
+        const result = career === "agronomist" ? startSelfAgronomyWork(database, backend, source)
+            : startSelfVeterinarianWork(database, backend, source);
+        return success(career === "agronomist" ? "已经开始处理自家地块。"
+            : `给自己家的动物看病：${serviceCommissionObjectLabel(source)}`, {
             result,
             jobs: mapRows(visibleCommissionRows(database, residentId, career)),
             options: commissionOptions(database, backend,

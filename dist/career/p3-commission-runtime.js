@@ -618,7 +618,15 @@ export function publishBoundSource(database, backend, source, request, now = Dat
 }
 
 export function startSelfAgronomyWork(database, backend, source) {
-    if (!source || source.career !== "agronomist" || source.status !== "open" ||
+    return startOwnServiceWork(database, backend, source, "agronomist");
+}
+
+export function startSelfVeterinarianWork(database, backend, source) {
+    return startOwnServiceWork(database, backend, source, "veterinarian");
+}
+
+function startOwnServiceWork(database, backend, source, career) {
+    if (!source || source.career !== career || source.status !== "open" ||
         typeof source.ownerResidentId !== "string" || source.ownerResidentId.length === 0) {
         throw new Error("self_agronomy_source_not_available");
     }
@@ -626,7 +634,7 @@ export function startSelfAgronomyWork(database, backend, source) {
     const existing = identity.parentJobId ? null : currentBoundSourceJob(database, source);
     if (existing) {
         const job = backend.trustedQueries.getJob(existing.job_id);
-        if (job.career !== "agronomist" || job.assignmentMode !== "self" ||
+        if (job.career !== career || job.assignmentMode !== "self" ||
             job.ownerResidentId !== source.ownerResidentId || job.workerResidentId !== source.ownerResidentId) {
             throw new Error("self_agronomy_start_conflict");
         }
@@ -634,7 +642,7 @@ export function startSelfAgronomyWork(database, backend, source) {
     }
     const job = backend.trustedSystemCommands.createJob({
         jobId: identity.jobId,
-        career: "agronomist",
+        career,
         sourceType: identity.sourceType,
         sourceId: source.sourceId,
         objectType: source.objectType,

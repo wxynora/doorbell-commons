@@ -136,7 +136,10 @@ export function createLingyeNpcRuntime({ database, backend, issueOption, now = D
         },
         decorate(residentId, op, args, result) {
             if (!result.ok || Object.keys(args).length !== 0 || op === "go.newsroom.like" || detained(residentId)) return result;
-            const npcs = list(residentId).filter((npc) => locationOperation(npc.location_id) === actionOperation(op));
+            // Human encounters also cover leisure locations; those locations do
+            // not imply an AI farm-commission chat entry.
+            if (!Object.values(LOCATION_OPERATIONS).includes(actionOperation(op))) return result;
+            const npcs = list(residentId).filter((npc) => LOCATION_OPERATIONS[npc.location_id] === actionOperation(op));
             if (npcs.length === 0) return result;
             return { ...result, data: { ...result.data, npcs,
                 options: [...(result.data?.options ?? []), ...npcs.filter((npc) => npc.talk_option)

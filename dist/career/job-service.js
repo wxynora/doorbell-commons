@@ -169,7 +169,7 @@ export class CareerJobService {
                     throw new CareerDomainError("self_owner_mismatch", "A self-directed job must belong to its worker");
                 }
                 requireActiveCertificate(this.#database, input.selfWorkerResidentId, input.career, input.requiredLevel, now);
-                if (input.career === "agronomist") {
+                if (["agronomist", "veterinarian"].includes(input.career)) {
                     const availability = this.getServiceCommissionAvailability(input.selfWorkerResidentId, input.career);
                     if (availability.activeJobId) {
                         throw new CareerDomainError("service_commission_active_job", "The agronomist already has unfinished work");
@@ -281,18 +281,18 @@ export class CareerJobService {
         }
         const acceptedDay = beijingDate(now);
         const active = this.#database.prepare(`SELECT job_id FROM career_jobs
-          WHERE (service_commission = 1 OR (career = 'agronomist' AND assignment_mode = 'self'))
+          WHERE (service_commission = 1 OR assignment_mode = 'self')
             AND worker_resident_id = ? AND career = ?
             AND status IN ('accepted', 'active')
           ORDER BY accepted_at, job_id LIMIT 1`)
             .get(workerResidentId, career);
         const acceptedToday = this.#database.prepare(`SELECT COUNT(*) AS count FROM career_jobs
-          WHERE (service_commission = 1 OR (career = 'agronomist' AND assignment_mode = 'self'))
+          WHERE (service_commission = 1 OR assignment_mode = 'self')
             AND worker_resident_id = ? AND career = ?
             AND accepted_day = ?`)
             .get(workerResidentId, career, acceptedDay).count;
         const lastCompleted = this.#database.prepare(`SELECT MAX(ended_at) AS ended_at FROM career_jobs
-          WHERE (service_commission = 1 OR (career = 'agronomist' AND assignment_mode = 'self'))
+          WHERE (service_commission = 1 OR assignment_mode = 'self')
             AND worker_resident_id = ? AND career = ?
             AND status = 'completed'`)
             .get(workerResidentId, career).ended_at;
@@ -751,7 +751,7 @@ export class CareerJobService {
         return workerLevel;
     }
     #assertAssignmentMode(career, mode) {
-        const valid = ((career === "chef" || career === "agronomist") && mode === "self") ||
+        const valid = (["chef", "agronomist", "veterinarian"].includes(career) && mode === "self") ||
             ((career === "agronomist" || career === "reporter") && mode === "accepted") ||
             (career === "veterinarian" && ["accepted", "assigned"].includes(mode)) ||
             (career === "constable" && mode === "assigned");
