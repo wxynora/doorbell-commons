@@ -271,6 +271,16 @@
   background: rgba(255, 252, 231, 0.7);
 }
 
+.farm-action-list-card-v2 .farm-action-list-card-v2__notify-feedback {
+  margin-top: 8px;
+  padding: 8px;
+  color: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 6px;
+  background: rgba(226, 210, 170, 0.48);
+}
+
 .farm-action-list-editor-v2 {
   display: grid;
   gap: 9px;

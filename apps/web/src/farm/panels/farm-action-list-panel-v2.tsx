@@ -258,6 +258,9 @@ export function FarmActionListPanelV2({
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(preview ? "" : "正在读取清单…");
+  const [notifyFeedback, setNotifyFeedback] = useState<
+    Record<string, { sending: boolean; message: string }>
+  >({});
 
   const load = useCallback(async () => {
     const [listResult, optionResult] = await Promise.all([
@@ -361,10 +364,16 @@ export function FarmActionListPanelV2({
   };
 
   const notifyList = async (list: FarmActionList) => {
-    if (preview) return setStatus("预览模式不会真的发铃");
+    const report = (message: string, sending = false) =>
+      setNotifyFeedback((current) => ({
+        ...current,
+        [list.list_id]: { sending, message },
+      }));
+    if (preview) return report("预览模式不会真的发铃");
+    report("正在通知…", true);
     const result = await notifyFarmActionList(list.list_id, crypto.randomUUID());
-    if (!result.ok) return setStatus(farmActionListIssueMessage(result.issue));
-    setStatus(result.data.notification_status === "sent" ? "已发铃" : "没有需要执行的事项");
+    if (!result.ok) return report(farmActionListIssueMessage(result.issue));
+    report(result.data.notification_status === "sent" ? "已通知 TA" : "没有需要执行的事项，本次未发铃");
     await load();
   };
 
@@ -682,10 +691,20 @@ export function FarmActionListPanelV2({
                 >
                   删除
                 </button>
-                <button onClick={() => void notifyList(list)} type="button">
-                  现在喊 TA
+                <button
+                  disabled={notifyFeedback[list.list_id]?.sending}
+                  aria-busy={notifyFeedback[list.list_id]?.sending}
+                  onClick={() => void notifyList(list)}
+                  type="button"
+                >
+                  {notifyFeedback[list.list_id]?.sending ? "正在通知…" : "现在喊 TA"}
                 </button>
               </footer>
+              {notifyFeedback[list.list_id] ? (
+                <p className="farm-action-list-card-v2__notify-feedback" role="status">
+                  {notifyFeedback[list.list_id].message}
+                </p>
+              ) : null}
             </article>
           ))}
           {lists.length === 0 ? (
