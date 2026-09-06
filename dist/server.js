@@ -45,7 +45,7 @@ import { discoverAndBroadcastMysteryMerchant } from "./server/market-action.js";
 import { detentionAllowsFarmAction, detentionBlockedFarmActionText } from "./security/presentation.js";
 import { configureTogetherSeason3Authority, isTogetherSeason3, runStoredTogetherSeason3,
     captureStoredTogetherSeason3Harvest, attachStoredTogetherSeason3Harvest,
-    storedTogetherSeason3StatusText } from "./together-season3/service.js";
+    storedTogetherSeason3Notices } from "./together-season3/service.js";
 import { TOGETHER_STORY_ENV, readTogetherSeason3StartupSelection, applyTogetherSeason3StartupSelection } from "./together-season3/activation.js";
 import { buyAndPersistLingyeNpcSeed, recordPendingLingyeNpcFarmBusiness } from "./npc/farm-business.js";
 let activeLingyeWorldDatabase = null;
@@ -810,19 +810,19 @@ function runFarm(farmId, action, body = {}, encArg, now, options = {}) {
     if (!viewer || !out?.json || out.status === 401 || out.status === 403)
         return out;
     const world = getPublicExpeditionWorld();
+    const season3 = isTogetherSeason3(world);
     const publicFarms = playerFarms();
     const publicFarmBefore = new Map(publicFarms.map((farm) => [farm.id, JSON.stringify(farm)]));
-    advancePublicExpedition(world, publicFarms, now);
-    const notices = takePublicAiNotices(world, viewer, now);
     const extras = [];
-    if (notices.length)
-        extras.push(notices.join("\n\n"));
-    if (!action || action === "status") {
-        if (isTogetherSeason3(world)) {
-            const tasks = storedTogetherSeason3StatusText(viewer, now);
-            if (tasks) extras.push(tasks);
-        }
-        else extras.push(`🧭 铃野共行：${publicExpeditionStatusLine(world, now, false)}。下一步：doorbell({"op":"farm.together.view","args":{}})`);
+    if (season3) {
+        const notices = storedTogetherSeason3Notices(viewer, now, { includeTasks: !action || action === "status" });
+        if (notices) extras.push(notices);
+    } else {
+        advancePublicExpedition(world, publicFarms, now);
+        const notices = takePublicAiNotices(world, viewer, now);
+        if (notices.length) extras.push(notices.join("\n\n"));
+        if (!action || action === "status")
+            extras.push(`🧭 铃野共行：${publicExpeditionStatusLine(world, now, false)}。下一步：doorbell({"op":"farm.together.view","args":{}})`);
     }
     const qixiAiLampReleased = Boolean(viewer.qixiLantern2026?.lamps?.ai?.releasedAt);
     if (isQixiLantern2026Active(now) && !qixiAiLampReleased && (!action || action === "status")) {
@@ -833,8 +833,8 @@ function runFarm(farmId, action, body = {}, encArg, now, options = {}) {
     }
     if (extras.length)
         out.json.text = `${String(out.json.text ?? "")}\n\n${extras.join("\n\n")}`;
-    const publicStateChanged = publicWorldBefore !== JSON.stringify(world) ||
-        publicFarms.some((farm) => publicFarmBefore.get(farm.id) !== JSON.stringify(farm));
+    const publicStateChanged = !season3 && (publicWorldBefore !== JSON.stringify(world) ||
+        publicFarms.some((farm) => publicFarmBefore.get(farm.id) !== JSON.stringify(farm)));
     if (publicStateChanged)
         save();
     return out;

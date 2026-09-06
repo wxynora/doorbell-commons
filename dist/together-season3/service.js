@@ -5,7 +5,8 @@ import {
   playerFarms,
   replaceFarmsAndPublicExpeditionAtomic,
 } from "../store.js";
-import { settlePublicExpeditionRewards, publicExpeditionRewardText } from "../public-expedition.js";
+import { settlePublicExpeditionRewards, publicExpeditionRewardText, takePublicAiNotices } from "../public-expedition.js";
+import { season3PendingDeliveryCalls } from "./notifications.js";
 import { farmResidentId, farmCareerQualificationLevel } from "../career/farm-benefits.js";
 import { registerTogetherFlood } from "../nature.js";
 import {
@@ -179,6 +180,10 @@ export function storedTogetherSeason3StatusText(farm, now = Date.now()) {
   const actor = getFarm(farm?.id);
   if (!actor || !isTogetherSeason3(raw)) return "";
   const state = assertResult(advanceTogetherSeason3(raw, getNatureWorld(), now)).state;
+  return statusText(state, actor, now);
+}
+
+function statusText(state, actor, now) {
   if (state.phase === "ended") return "";
   const identity = identityFor(actor, now);
   const actions = season3Actions(state, actor, identity);
@@ -198,6 +203,26 @@ export function storedTogetherSeason3StatusText(farm, now = Date.now()) {
     }
   }
   return parts.filter(Boolean).join("\n\n");
+}
+
+// Ordinary authenticated Farm results carry the same per-household notices as
+// earlier seasons. Nature catch-up and consumed markers commit together.
+export function storedTogetherSeason3Notices(farm, now, { includeTasks = false } = {}) {
+  const farms = playerFarms().map(clone);
+  const actor = farms.find((entry) => entry.id === farm.id);
+  if (!actor || !isTogetherSeason3(getPublicExpeditionWorld())) return "";
+  const state = prepare(getPublicExpeditionWorld(), getNatureWorld(), farms, now);
+  const messages = takePublicAiNotices(state, actor, now, farms);
+  if (includeTasks || messages.length) {
+    const deliveries = season3PendingDeliveryCalls(state, actor);
+    if (deliveries) messages.push(deliveries);
+  }
+  if (includeTasks) {
+    const tasks = statusText(state, actor, now);
+    if (tasks) messages.push(tasks);
+  }
+  commit(state, farms);
+  return messages.join("\n\n");
 }
 
 export function runStoredTogetherSeason3(farm, input = {}, now = Date.now()) {

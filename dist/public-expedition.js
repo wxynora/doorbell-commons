@@ -10,6 +10,7 @@ import { checkTitles, titleById } from "./titles.js";
 import { TOGETHER_SEASON3_STORY_ID, normalizeTogetherSeason3State } from "./together-season3/runtime.js";
 import { season3HumanData, season3Text } from "./together-season3/presentation.js";
 import { togetherSeason3Content } from "./together-season3/content.js";
+import { takeSeason3AiNotices } from "./together-season3/notifications.js";
 
 const DIR = resolve(dirname(fileURLToPath(import.meta.url)), "../content");
 export const publicExpeditionContent = JSON.parse(readFileSync(resolve(DIR, "public-expedition.json"), "utf8"));
@@ -890,8 +891,9 @@ export function publicPhaseKey(world) {
     return `${world.storyId}:${world.round}:${world.phase}:${world.choiceIndex}:${task?.id ?? world.cooldown?.taskId ?? "-"}:${world.cooldown?.readyAt ?? "-"}:${world.endingId ?? "-"}`;
 }
 
-function takeNotices(world, farm, side, now) {
-    if (world.storyId === TOGETHER_SEASON3_STORY_ID) return [];
+function takeNotices(world, farm, side, now, farms = []) {
+    if (world.storyId === TOGETHER_SEASON3_STORY_ID)
+        return side === "ai" ? takeSeason3AiNotices(world, farm, reads(farm), farms) : [];
     const value = reads(farm);
     const openingKey = `${world.storyId}:${world.round}`;
     const openingList = side === "ai" ? value.aiOpenings : value.humanOpenings;
@@ -919,8 +921,8 @@ function takeNotices(world, farm, side, now) {
     return notices;
 }
 
-export function takePublicAiNotices(world, farm, now = Date.now()) {
-    return takeNotices(world, farm, "ai", now);
+export function takePublicAiNotices(world, farm, now = Date.now(), farms = []) {
+    return takeNotices(world, farm, "ai", now, farms);
 }
 
 export function takePublicHumanNotices(world, farm, now = Date.now()) {
