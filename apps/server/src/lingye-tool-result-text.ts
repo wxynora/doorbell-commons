@@ -540,6 +540,8 @@ function renderExamSchedule(value: unknown): string[] {
 
 function renderSchoolActionResult(value: unknown): string[] {
   if (!isRecord(value)) return [];
+  // Resignation has its own full receipt; its trackOrder is not a career selection.
+  if (typeof value.resignationId === "string") return [];
   if (value.employmentClass === "staff" || value.employmentClass === "external") {
     const institution =
       typeof value.institution === "string"
@@ -741,7 +743,15 @@ function renderExamPaper(data: Record<string, unknown>): string[] {
 
 function schoolText(op: string, result: LingyeSuccess): string {
   const data = result.data;
-  const lines = ["🏫 铃野职业学校", resultMessage(result.text, "已读取铃野职业学校当前事实。")];
+  // School confirmations quote an option from this same response. Mask only those
+  // complete, validated public handles for inspection; keep the original text intact.
+  const publicOptions = new Set(collectOptions(data).map((entry) => entry.option).filter((entry) => OPTION_HANDLE.test(entry)));
+  const inspectedText = result.text.replace(
+    /(?<![A-Za-z0-9_-])opt_[A-Za-z0-9_-]{12}(?![A-Za-z0-9_-])/gu,
+    (handle) => publicOptions.has(handle) ? "办理编号" : handle,
+  );
+  const message = safeChineseText(inspectedText) ? result.text.trim() : "已读取铃野职业学校当前事实。";
+  const lines = ["🏫 铃野职业学校", message];
   if (op === "go.school.view") lines.push(...renderExamSchedule(data.examSchedule));
   if (op === "go.school.choose") lines.push(...renderSchoolActionResult(data.result));
   const schoolFacts = isRecord(data.current) ? data.current : data;
