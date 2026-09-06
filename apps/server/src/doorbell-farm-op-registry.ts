@@ -681,8 +681,7 @@ const nonHelpOperations: FarmOperationDefinition[] = [
   }),
   defineOperation({
     op: "farm.together.choose",
-    description:
-      "在同一铃野共行全服状态中提交当前要求的选项，用于公共选择、阶段问答或投票，并可能推进共享状态。",
+    description: "提交铃野共行当前提供的可执行选项。",
     argsHint: "{option, detail?}",
     branches: [{ option: nonEmptyString }],
     exampleArgs: [{ option: "A" }],
