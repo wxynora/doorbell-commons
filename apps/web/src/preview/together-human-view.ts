@@ -51,8 +51,8 @@ function normalizeLiveTogether(read) {
         interviews: season3 ? data.clues.map((clue) => ({ id: clue.id, title: clue.title, text: clue.text })) : [],
         stageCount: data.stage.total, stageIndex: data.stage.index, stageName: data.stage.name,
         tasks: data.current_task ? [{
-            detail: data.current_task.text, name: data.current_task.title,
-            progress: data.current_task.progress + ' / ' + data.current_task.target,
+            detail: data.current_task.text, name: season3 ? '公共料理交付' : data.current_task.title,
+            progress: season3 ? '' : data.current_task.progress + ' / ' + data.current_task.target,
             status: season3 ? '实际交付' : data.phase === 'task' ? '进行中' : data.status,
         }] : [],
         routeName: data.story_id, episodeLabel: togetherEpisodeLabel(data.story_id),
