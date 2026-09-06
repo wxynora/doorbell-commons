@@ -563,7 +563,7 @@ const nonHelpOperations: FarmOperationDefinition[] = [
   }),
   defineOperation({
     op: "farm.fish.cast",
-    description: "购买鱼饵、选择钓点或抛竿。",
+    description: "购买鱼饵、选择钓点或抛竿。只买鱼饵时传 bait 和 buy，buy 是购买数量；不传 times 就不会抛竿。",
     argsHint: "{times?, bait?, buy?, location?, stop?, detail?}",
     branches: [
       {
@@ -577,6 +577,7 @@ const nonHelpOperations: FarmOperationDefinition[] = [
     exampleArgs: [
       {},
       { times: 10, bait: "普通蚯蚓", location: "月光池塘", stop: "rare" },
+      { bait: "普通蚯蚓", buy: 10 },
       { bait: "普通蚯蚓", buy: 10, times: 10 },
     ],
     adapt: (args) => ({ kind: "farm", action: "fish", params: args }),
