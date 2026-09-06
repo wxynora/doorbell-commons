@@ -148,15 +148,21 @@ export function advanceTogetherSeason3(state, nature, now = Date.now()) {
     });
 }
 
-export function togetherSeason3DishNeeds(raw) {
+export function togetherSeason3DishNeeds(raw, farmId = null) {
     const state = normalizeTogetherSeason3State(raw);
     if (state === null) return [];
     return DISH_NEEDS.map((need) => {
-        const delivery = state.deliveries.find((entry) => entry.needId === need.id);
-        const status = delivery ? "delivered"
+        const deliveries = state.deliveries.filter((entry) => entry.needId === need.id);
+        const sharedMeal = need.id === "preparation_pancake";
+        const ownDelivery = sharedMeal && farmId !== null
+            ? deliveries.find((entry) => entry.farmId === farmId) : null;
+        const delivery = ownDelivery ?? deliveries[0];
+        const status = sharedMeal
+            ? ownDelivery ? "delivered" : state.phase === "ended" ? "closed" : "open"
+            : delivery ? "delivered"
             : PHASES.indexOf(state.phase) > PHASES.indexOf(need.phase) ? "closed"
             : state.phase !== need.phase ? "not_open" : "open";
-        return { ...need, quantity: 1, status, delivery: copy(delivery ?? null) };
+        return { ...need, quantity: 1, status, delivery: copy(delivery ?? null), deliveries: copy(deliveries) };
     });
 }
 
@@ -190,7 +196,7 @@ export function deliverTogetherSeason3Dish(raw, farm, { needId, dishSelector, re
             requireValue(prior.kind === "delivery" && delivery, "invalid_season3_state");
             return { ok: true, changed: changed(raw, state), replayed: true, state, farm: copy(farm), delivery: copy(delivery) };
         }
-        const need = togetherSeason3DishNeeds(state).find((entry) => entry.id === needId);
+        const need = togetherSeason3DishNeeds(state, farm.id).find((entry) => entry.id === needId);
         requireValue(need, "season3_dish_need_not_found");
         requireValue(need.status !== "delivered", "season3_dish_already_delivered");
         requireValue(need.status !== "closed", "season3_dish_window_closed");
@@ -203,7 +209,9 @@ export function deliverTogetherSeason3Dish(raw, farm, { needId, dishSelector, re
         requireValue(index >= 0 && id(dishes[index].id), "season3_dish_not_found");
         const nextFarm = copy(farm);
         const [dish] = nextFarm.ranch.kitchen.dishes.splice(index, 1);
-        const deliveryId = stableId(state.storyId, state.eventId, "delivery", needId);
+        const deliveryId = needId === "preparation_pancake"
+            ? stableId(state.storyId, state.eventId, "delivery", needId, farm.id)
+            : stableId(state.storyId, state.eventId, "delivery", needId);
         const delivery = {
             deliveryId, eventId: state.eventId, needId, farmId: farm.id, dishId: dish.id,
             recipeId: need.recipeId, phase: state.phase, deliveredAt: now,

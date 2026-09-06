@@ -24,7 +24,7 @@ export function takeSeason3AiNotices(state, farm, reads, farms) {
     fresh("aiOpenings", prefix);
     messages.push(`🧭 铃野共行｜本期故事：《${content.title}》\n【${stage.title}】\n${stage.text.split("\n\n")[0]}`);
   }
-  const needs = togetherSeason3DishNeeds(state);
+  const needs = togetherSeason3DishNeeds(state, farm.id);
   for (const need of needs.filter((entry) => entry.status === "open")) {
     if (fresh("aiClues", `${prefix}:need:${need.id}`)) {
       const narrative = content.needs[need.id].notice ?? content.needs[need.id].text;
@@ -32,8 +32,8 @@ export function takeSeason3AiNotices(state, farm, reads, farms) {
     }
   }
   const nameFor = (id) => farms.find((entry) => entry.id === id)?.aiName ?? id;
-  for (const need of needs.filter((entry) => entry.status === "delivered")) {
-    const delivery = need.delivery;
+  for (const delivery of state.deliveries) {
+    const need = needs.find((entry) => entry.id === delivery.needId);
     if (!fresh("aiClues", `${prefix}:delivery:${delivery.deliveryId}`)) continue;
     // The actor already received the same scene in the successful action result.
     if (delivery.farmId === farm.id) continue;

@@ -15,7 +15,7 @@ export function season3Actions(state, farm, identity) {
   const add = (kind, args, label) =>
     actions.push({ kind, args, label, option: optionKey(state, farm, kind, args) });
   if (state.phase !== "ended") {
-    for (const need of togetherSeason3DishNeeds(state).filter((entry) => entry.status === "open")) {
+    for (const need of togetherSeason3DishNeeds(state, farm.id).filter((entry) => entry.status === "open")) {
       for (const dish of farm.ranch?.kitchen?.dishes ?? []) {
         if (
           dish.recipeId === need.recipeId &&
@@ -94,7 +94,7 @@ export function season3ReplayAction(state, farm, identity, option) {
 // Classify only exact handles derived from this event and authenticated farm.
 // This never executes an old action or changes the completed answer replay path.
 export function season3UnavailableAction(state, farm, identity, option) {
-  for (const need of togetherSeason3DishNeeds(state)) {
+  for (const need of togetherSeason3DishNeeds(state, farm.id)) {
     if (need.status !== "closed" && need.status !== "delivered") continue;
     for (const dish of farm.ranch?.kitchen?.dishes ?? []) {
       if (dish.recipeId !== need.recipeId || dish.name !== need.dishName || typeof dish.id !== "string") continue;
@@ -156,12 +156,12 @@ export function season3Text(
   for (const scene of scenes) paragraphs.push(`【${scene.title}】\n${scene.text}`);
   // The public source already includes the reporter's own answer.
   for (const clue of data.clues) paragraphs.push(`【${clue.title}】\n${clue.text}`);
-  paragraphs.push(season3NextStepsText(state, { actions, identity }));
+  paragraphs.push(season3NextStepsText(state, { actions, identity, farmId: farm.id }));
   return paragraphs.filter(Boolean).join("\n\n");
 }
 
-export function season3NextStepsText(state, { actions = [], identity = null } = {}) {
-  const paragraphs = togetherSeason3DishNeeds(state)
+export function season3NextStepsText(state, { actions = [], identity = null, farmId = null } = {}) {
+  const paragraphs = togetherSeason3DishNeeds(state, farmId)
     .filter((need) => need.status === "open")
     .map((need) => `${content.needs[need.id].text}\n${need.dishName} ×${need.quantity}`);
   const ownNpcs = new Set(identity?.reporterId ? listOwnInterviewRecords(state.interviews,

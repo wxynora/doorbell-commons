@@ -263,7 +263,7 @@ export function runStoredTogetherSeason3(farm, input = {}, now = Date.now()) {
       farm: clone(current),
       code: unavailable?.code ?? "option_not_available",
       text: [unavailable?.text ?? content.messages.option_unavailable,
-        season3NextStepsText(state, { actions, identity })].filter(Boolean).join("\n\n"),
+        season3NextStepsText(state, { actions, identity, farmId: actor.id })].filter(Boolean).join("\n\n"),
     };
   }
   if (action.kind === "interview-read") {
@@ -309,14 +309,16 @@ export function runStoredTogetherSeason3(farm, input = {}, now = Date.now()) {
   } else {
     const needs = togetherSeason3DishNeeds(state);
     const tea = needs.find((need) => need.id === "flood_tea");
-    const pancake = needs.find((need) => need.id === "preparation_pancake").status === "delivered";
-    const riceBall = needs.find((need) => need.id === "preparation_rice_ball").status === "delivered";
+    const preparationDeliveries = state.deliveries.filter((delivery) => delivery.phase === "preparation"
+      && ["preparation_pancake", "preparation_rice_ball"].includes(delivery.needId));
+    const pancake = preparationDeliveries.some((delivery) => delivery.needId === "preparation_pancake");
+    const riceBall = preparationDeliveries.some((delivery) => delivery.needId === "preparation_rice_ball");
     const context = {
       secondEnding: state.previousStory.endingId,
       teaStatus: tea.status === "not_open" ? "open" : tea.status,
       preparationDelivery: pancake ? (riceBall ? "both" : "pancake_only") : (riceBall ? "rice_ball_only" : "neither"),
       publicFactReferences: [{ kind: "nature_event", id: state.eventId },
-        ...state.deliveries.filter((delivery) => ["preparation_pancake", "preparation_rice_ball"].includes(delivery.needId))
+        ...preparationDeliveries
           .map((delivery) => ({ kind: "delivery", id: delivery.deliveryId }))],
     };
     const phase = state.phase;
@@ -385,7 +387,7 @@ export function runStoredTogetherSeason3(farm, input = {}, now = Date.now()) {
     ok: true,
     farm: clone(getFarm(actor.id)),
     text: withOwnReward(
-      [response, actionScene, season3NextStepsText(state, { actions: nextActions, identity })]
+      [response, actionScene, season3NextStepsText(state, { actions: nextActions, identity, farmId: actor.id })]
         .filter(Boolean).join("\n\n"),
       state,
       actor,

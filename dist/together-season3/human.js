@@ -18,18 +18,21 @@ export function season3PublicHumanData(state, viewer, farms) {
     return name ? `${name}（门牌 ${farmId}）` : `门牌 ${farmId}`;
   };
   const needs = togetherSeason3DishNeeds(state).filter((need) => need.status !== "not_open");
-  const deliveryLines = needs.map((need) => {
+  const deliveryLines = needs.flatMap((need) => {
     const label = `${need.dishName} ×${need.quantity}`;
-    if (need.status === "delivered") {
-      return `${label}：已交付 · ${author(need.delivery.farmId)} · ${dateFormat.format(need.delivery.deliveredAt)}（北京时间）`;
-    }
-    return `${label}：${need.status === "closed" ? "交付窗口已结束，未送达" : "待交付"}`;
+    const deliveries = need.deliveries.map((delivery) =>
+      `${label}：已交付 · ${author(delivery.farmId)} · ${dateFormat.format(delivery.deliveredAt)}（北京时间）`,
+    );
+    if (need.id === "preparation_pancake" && need.status === "open")
+      deliveries.push(`${label}：公共备餐接力`);
+    return deliveries.length ? deliveries
+      : [`${label}：${need.status === "closed" ? "交付窗口已结束，未送达" : "待交付"}`];
   });
   shared.currentTask = needs.length ? {
     id: "rain-not-yet-dishes",
-    name: "公共料理交付",
+    name: "公共料理交付（种类）",
     opening: deliveryLines.join("\n"),
-    progress: needs.filter((need) => need.status === "delivered").length,
+    progress: needs.filter((need) => need.deliveries.length > 0).length,
     target: needs.length,
   } : null;
   const contributions = new Map(state.contributions

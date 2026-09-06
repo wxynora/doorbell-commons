@@ -8,9 +8,11 @@ export const togetherSeason3Content = JSON.parse(
 export function season3EndingText(state) {
   const results=togetherSeason3Content.results;
   const parts=[];
-  const preparation=state.deliveries.filter(item=>item.phase==="preparation");
-  if(preparation.length) parts.push(results.preparation);
-  if(preparation.length<2) parts.push(results.incomplete);
+  const preparation=new Set(state.deliveries.filter(item=>item.phase==="preparation")
+    .map(item=>item.needId));
+  if(preparation.size) parts.push(results.preparation);
+  if(!preparation.has("preparation_pancake") || !preparation.has("preparation_rice_ball"))
+    parts.push(results.incomplete);
   if(state.deliveries.length) parts.push(results.delivered);
   parts.push(togetherSeason3Content.stages.ended.text);
   return parts.join("\n\n");
