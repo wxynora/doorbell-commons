@@ -9231,7 +9231,7 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         copy.className = 'candidate2-together-archive-index-copy';
         const round = document.createElement('span');
         round.className = 'candidate2-together-archive-index-round';
-        round.textContent = '第 ' + archive.round + ' 期';
+        round.textContent = archive.episodeLabel || '';
         const title = document.createElement('strong');
         title.className = 'candidate2-together-archive-index-title';
         title.textContent = archive.title;
@@ -9251,7 +9251,7 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         const archive = togetherArchives[togetherArchiveIndex];
         const entry = archive?.history[togetherArchivePageIndex];
         if (!archive || !entry) return;
-        setTogetherText('.candidate2-together-archive-reader-round', '第 ' + archive.round + ' 期');
+        setTogetherText('.candidate2-together-archive-reader-round', archive.episodeLabel || '');
         setTogetherText('.candidate2-together-archive-reader-title', archive.title);
         setTogetherText('.candidate2-together-archive-entry-title', entry.title);
         setTogetherText('.candidate2-together-archive-entry-text', entry.text);
@@ -9388,7 +9388,7 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         if (liveEmpty) liveEmpty.hidden = true;
         if (currentContent) currentContent.hidden = false;
         renderTogetherArchives(data.archives);
-        setTogetherText('.candidate2-together-current-kicker', '第 ' + data.round + ' 期');
+        setTogetherText('.candidate2-together-current-kicker', data.episodeLabel || '');
         setTogetherText('#candidate2-together-current-title', data.title);
         setTogetherText('.candidate2-together-current-status', data.status);
         setTogetherText('.candidate2-together-stage-name', data.stageName);

@@ -1,6 +1,16 @@
 // Shared by the existing embedded Human page and its direct DOM regression.
 // Only already-published public facts are rendered; no action is submitted here.
 export const TOGETHER_HUMAN_VIEW_SCRIPT = String.raw`
+function togetherEpisodeLabel(storyId) {
+    // round counts restarts within a story; it is not the published episode.
+    switch (storyId) {
+        case 'river_from_tomorrow': return '第 1 期';
+        case 'same_kitchen': return '第 2 期';
+        case 'rain_not_yet': return '第 3 期';
+        default: return '';
+    }
+}
+
 function normalizeLiveTogether(read) {
     const data = read && read.data;
     if (!data) return null;
@@ -29,6 +39,7 @@ function normalizeLiveTogether(read) {
                 ...(entry.kind === 'task' ? { progress: entry.progress, target: entry.target } : {}),
                 text: entry.text, title: entry.title,
             })),
+            storyId: archive.story_id, episodeLabel: togetherEpisodeLabel(archive.story_id),
             round: archive.round, title: archive.title,
         })),
         currentChoice: data.current_choice ? {
@@ -44,7 +55,8 @@ function normalizeLiveTogether(read) {
             progress: data.current_task.progress + ' / ' + data.current_task.target,
             status: season3 ? '实际交付' : data.phase === 'task' ? '进行中' : data.status,
         }] : [],
-        routeName: data.story_id, round: data.round, status: data.status, title: data.title,
+        routeName: data.story_id, episodeLabel: togetherEpisodeLabel(data.story_id),
+        round: data.round, status: data.status, title: data.title,
     };
 }
 
