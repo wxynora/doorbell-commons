@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 参与修复前，请先看贡献指南
+    url: https://github.com/wxynora/doorbell-commons/blob/main/CONTRIBUTING.md
+    about: 查看可认领问题、认领方式、本地验证和隐私边界。

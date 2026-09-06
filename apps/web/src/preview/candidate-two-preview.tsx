@@ -21,6 +21,12 @@ import { candidateTwoHtml } from "./candidate-two-source";
 import { npcSceneMarkup, npcSceneScript, NPC_SCENE_STYLES } from "../npc/scene";
 import { useNpcBridge } from "../npc/use-npc-bridge";
 import { TOGETHER_HUMAN_VIEW_SCRIPT } from "./together-human-view";
+import {
+  FEEDBACK_CONTRIBUTION_ENTRY,
+  FEEDBACK_CONTRIBUTION_MODAL,
+  FEEDBACK_CONTRIBUTION_SCRIPT,
+  FEEDBACK_CONTRIBUTION_STYLES,
+} from "./feedback-contribution";
 
 export type CandidateTwoScreen =
   | "login"
@@ -2108,6 +2114,8 @@ const SETTINGS_SCREEN = `
                 <div class="candidate2-settings-meme-summary"><strong class="settings-meme-count">尚未读取</strong><span>共享内容</span><small class="settings-meme-sync">点击 View 读取</small></div>
                 <button id="settings-shared-meme-add" class="candidate2-settings-add-meme" type="button">＋ 添加新梗</button>
             </section>
+
+${FEEDBACK_CONTRIBUTION_ENTRY}
 
             <section class="candidate2-settings-section candidate2-settings-account">
                 <button id="settings-add-profile" class="candidate2-settings-add-meme" type="button">＋ 添加小机档案</button>
@@ -10662,7 +10670,7 @@ export function buildCandidateTwoRuntimeHtml() {
     )
     .replace(
       "</style>",
-      `${HOME_SIGN_STYLES}${RUNTIME_STYLES}${SHARED_MEME_STYLES}${RESIDENCY_PERMIT_STYLES}${LINGYE_STYLES}${NPC_SCENE_STYLES}    </style>`,
+      `${HOME_SIGN_STYLES}${RUNTIME_STYLES}${SHARED_MEME_STYLES}${RESIDENCY_PERMIT_STYLES}${LINGYE_STYLES}${NPC_SCENE_STYLES}${FEEDBACK_CONTRIBUTION_STYLES}    </style>`,
     )
     .replace(HOME_HEADER, HOME_HEADER_RUNTIME)
     .replace(HOME_CLIMATE_CARD, "")
@@ -10742,7 +10750,7 @@ export function buildCandidateTwoRuntimeHtml() {
     )
     .replace(
       "</body>",
-      `${TRANSIENT_NOTICE_MODAL}\n<script>${CANDIDATE_RUNTIME_SCRIPT}\n    document.querySelectorAll('.nav-item[role="button"]').forEach((item) => {\n        item.addEventListener('keydown', (event) => {\n            if (event.key === 'Enter' || event.key === ' ') {\n                event.preventDefault();\n                item.click();\n            }\n        });\n    });\n</script>\n</body>`,
+      `${TRANSIENT_NOTICE_MODAL}\n${FEEDBACK_CONTRIBUTION_MODAL}\n<script id="feedback-contribution-runtime">${FEEDBACK_CONTRIBUTION_SCRIPT}</script>\n<script>${CANDIDATE_RUNTIME_SCRIPT}\n    document.querySelectorAll('.nav-item[role="button"]').forEach((item) => {\n        item.addEventListener('keydown', (event) => {\n            if (event.key === 'Enter' || event.key === ' ') {\n                event.preventDefault();\n                item.click();\n            }\n        });\n    });\n</script>\n</body>`,
     )
     .replace(
       /(id="screen-(?:login|residency|lounge|lingye|home|profile|settings|shared-memes)" class="screen(?: screen--lingye)?) active"/g,
@@ -10927,7 +10935,7 @@ export function CandidateTwoPreview({ demo = null, onAction, state }: CandidateT
         <iframe
           allow="clipboard-write"
           ref={iframeRef}
-          sandbox="allow-forms allow-scripts"
+          sandbox="allow-forms allow-scripts allow-popups allow-popups-to-escape-sandbox"
           srcDoc={srcDoc}
           title="Doorbell Commons"
         />
