@@ -31,10 +31,10 @@ const PEST_WARM_WEATHER = new Set([
 const PEST_MOIST_WEATHER = new Set(["light_rain", "cloudy", "fog"]);
 const DROUGHT_RECOVERY_WEATHER = new Set(["light_rain", "heavy_rain", "thunderstorm"]);
 const IMPACT_KINDS = new Set([
-    "plot_pest", "plot_flooded", "plot_drought", "flood_fish", "animal_wet_cold", "animal_dehydration",
+    "plot_pest", "plot_flooded", "plot_drought", "flood_fish", "animal_wet_cold", "animal_indigestion", "animal_dehydration",
 ]);
 const IMPACT_KINDS_BY_DISASTER = {
-    flood: new Set(["plot_flooded", "flood_fish", "animal_wet_cold"]),
+    flood: new Set(["plot_flooded", "plot_pest", "flood_fish", "animal_wet_cold", "animal_indigestion"]),
     drought: new Set(["plot_drought", "animal_dehydration"]),
     pest: new Set(["plot_pest"]),
 };
@@ -146,7 +146,8 @@ export function plannedWeatherForDay(world, dayIndex) {
         dayIndex,
         season: season.name,
         seasonDay: season.day,
-        condition: weightedWeather(world.seed, dayIndex, season.name),
+        condition: world.weatherRevisions?.find((entry) => entry.dayIndex === dayIndex)?.condition
+            ?? weightedWeather(world.seed, dayIndex, season.name),
     };
 }
 
@@ -199,7 +200,10 @@ function normalizeEvent(event) {
     const triggerDays = Array.isArray(event.triggerDays)
         ? event.triggerDays.map((day) => assertDay(day, "event.triggerDays"))
         : [];
-    if (triggerDays.length < 2)
+    const storyId = event.storyId;
+    if (storyId !== undefined && (storyId !== "rain_not_yet" || type !== "flood"))
+        throw new NatureContractError("invalid_nature_state", "unsupported story disaster");
+    if (triggerDays.length < (storyId === "rain_not_yet" ? 1 : 2))
         throw new NatureContractError("invalid_nature_state", "current disaster must retain its trigger days");
     const impacts = Array.isArray(event.impacts) ? event.impacts.map(normalizeImpact) : [];
     if (impacts.some((impact) => !IMPACT_KINDS_BY_DISASTER[type].has(impact.kind)))
@@ -207,6 +211,7 @@ function normalizeEvent(event) {
     return {
         eventId,
         type,
+        ...(storyId ? { storyId } : {}),
         region: "public_farm",
         phase,
         triggerDays,
@@ -255,6 +260,21 @@ export function normalizeNatureWorld(raw) {
         : assertDay(raw.lastAdvancedDay, "lastAdvancedDay");
     if (world.lastAdvancedDay < world.activationDay - 1)
         throw new NatureContractError("invalid_nature_state", "lastAdvancedDay cannot precede nature activation");
+    if (raw.weatherRevisions !== undefined) {
+        if (!Array.isArray(raw.weatherRevisions))
+            throw new NatureContractError("invalid_nature_state", "weather revisions must be an array");
+        const revisedDays = new Set();
+        world.weatherRevisions = raw.weatherRevisions.map((entry) => {
+            const dayIndex = assertDay(entry?.dayIndex, "weatherRevision.dayIndex");
+            if (dayIndex < world.activationDay || revisedDays.has(dayIndex) ||
+                !WEATHER_CONDITIONS.includes(entry.condition) ||
+                !Number.isSafeInteger(entry.recordedAt) || entry.recordedAt < 0 ||
+                entry.recordedAt >= beijingDayStart(dayIndex))
+                throw new NatureContractError("invalid_nature_state", "invalid weather revision");
+            revisedDays.add(dayIndex);
+            return { dayIndex, condition: entry.condition, recordedAt: entry.recordedAt };
+        }).sort((a, b) => a.dayIndex - b.dayIndex);
+    }
     const seenDays = new Set();
     world.weatherPlan = (Array.isArray(raw.weatherPlan) ? raw.weatherPlan : []).map((entry) => {
         const normalized = normalizeWeatherEntry(entry, world);
@@ -265,11 +285,69 @@ export function normalizeNatureWorld(raw) {
     }).sort((a, b) => a.dayIndex - b.dayIndex);
     world.currentEvent = raw.currentEvent == null ? null : normalizeEvent(raw.currentEvent);
     world.settledEvents = (Array.isArray(raw.settledEvents) ? raw.settledEvents : []).map(normalizeSettledEvent);
+    if (raw.storyEvent !== undefined) {
+        world.storyEvent = raw.storyEvent == null ? null : normalizeEvent(raw.storyEvent);
+        if (world.storyEvent && (world.storyEvent.storyId !== "rain_not_yet" ||
+            world.storyEvent.eventId === world.currentEvent?.eventId ||
+            world.settledEvents.some(event => event.eventId === world.storyEvent.eventId)))
+            throw new NatureContractError("invalid_nature_state", "invalid story disaster binding");
+    }
     return world;
+}
+
+export function ongoingNatureEvents(world) {
+    return [world?.currentEvent, world?.storyEvent].filter(Boolean);
+}
+
+export function findNatureEvent(world, eventId) {
+    return ongoingNatureEvents(world).find(event => event.eventId === eventId) ??
+        world?.settledEvents?.find(event => event.eventId === eventId) ?? null;
+}
+
+/** Explicit episode launch only; ordinary disasters retain their original triggers. */
+export function registerTogetherFlood(raw, now) {
+    const world = normalizeNatureWorld(raw);
+    if (world.status !== "active") return world;
+    if (world.storyEvent || world.settledEvents.some(event => event.storyId === "rain_not_yet") ||
+        world.currentEvent?.type === "flood") return world;
+    const today = beijingDayIndex(now);
+    // Only use the already published forecast, never invent/reseed a weather day.
+    const storm = world.weatherPlan.find(entry => entry.dayIndex >= today &&
+        entry.dayIndex <= today + FORECAST_FUTURE_DAYS && FLOOD_WEATHER.has(entry.condition));
+    if (!storm) return world;
+    world.storyEvent = {
+        eventId: eventIdFor(world, "flood", storm.dayIndex), storyId: "rain_not_yet",
+        type: "flood", region: "public_farm", phase: "forecast",
+        triggerDays: [storm.dayIndex], forecastedAtDay: today, activeFromDay: storm.dayIndex,
+        activatedAtDay: null, recoveryAtDay: null, readyForSettlementAtDay: null, impacts: [],
+    };
+    return normalizeNatureWorld(world);
 }
 
 export function createNatureSeed() {
     return randomBytes(16).toString("hex");
+}
+
+/** Trusted future-day adjustment; the seed, calendar and disaster history stay intact. */
+export function reviseNatureWeather(raw, { dayIndex, condition, now }) {
+    const world = normalizeNatureWorld(raw);
+    assertDay(dayIndex, "weatherRevision.dayIndex");
+    if (world.status !== "active" || !WEATHER_CONDITIONS.includes(condition) ||
+        !Number.isSafeInteger(now) || now < 0)
+        throw new NatureContractError("invalid_weather_revision", "weather revision is invalid");
+    const existing = world.weatherRevisions?.find((entry) => entry.dayIndex === dayIndex);
+    if (existing) {
+        if (existing.condition !== condition)
+            throw new NatureContractError("weather_revision_conflict", "weather revision already exists");
+        return { changed: false, world };
+    }
+    if (dayIndex <= beijingDayIndex(now) || dayIndex <= world.lastAdvancedDay)
+        throw new NatureContractError("weather_revision_not_future", "only future weather may be revised");
+    world.weatherRevisions = [...(world.weatherRevisions ?? []), { dayIndex, condition, recordedAt: now }]
+        .sort((a, b) => a.dayIndex - b.dayIndex);
+    world.weatherPlan = world.weatherPlan.map((entry) => entry.dayIndex === dayIndex
+        ? plannedWeatherForDay(world, dayIndex) : entry);
+    return { changed: true, world: normalizeNatureWorld(world) };
 }
 
 export function activateNatureWorld(raw, { now, seed }) {
@@ -385,8 +463,8 @@ function minimumSettlementDay(event) {
     return event.recoveryAtDay;
 }
 
-function settleIfReady(world, today) {
-    const event = world.currentEvent;
+function settleIfReady(world, today, slot = "currentEvent") {
+    const event = world[slot];
     if (!event || event.phase !== "recovery" || event.readyForSettlementAtDay == null)
         return;
     if (event.impacts.some((impact) => impact.resolvedAtDay == null))
@@ -400,12 +478,12 @@ function settleIfReady(world, today) {
     if (today < earliestSettlementDay)
         return;
     world.settledEvents.push({ ...clone(event), phase: "settled", settledAtDay: today });
-    world.currentEvent = null;
-    world.cooldownUntilDay = today + 8;
+    world[slot] = null;
+    if (slot === "currentEvent") world.cooldownUntilDay = today + 8;
 }
 
-function advanceNatureDay(world, day) {
-    const event = world.currentEvent;
+function advanceEventDay(world, day, slot) {
+    const event = world[slot];
     if (event?.phase === "forecast" && day >= event.activeFromDay) {
         event.phase = "active";
         event.activatedAtDay = event.activeFromDay;
@@ -417,8 +495,13 @@ function advanceNatureDay(world, day) {
             event.recoveryAtDay = recoveryAtDay;
         }
     }
-    settleIfReady(world, day);
-    if (world.currentEvent == null && (world.cooldownUntilDay == null || day >= world.cooldownUntilDay)) {
+    settleIfReady(world, day, slot);
+}
+
+function advanceNatureDay(world, day) {
+    advanceEventDay(world, day, "currentEvent");
+    advanceEventDay(world, day, "storyEvent");
+    if (world.currentEvent == null && !world.storyEvent && (world.cooldownUntilDay == null || day >= world.cooldownUntilDay)) {
         const candidate = findForecastCandidate(world, day);
         if (candidate) {
             world.currentEvent = {
@@ -459,8 +542,8 @@ export function advanceNatureWorld(raw, now) {
 }
 
 function requireCurrentEvent(world, eventId) {
-    const event = world.currentEvent;
-    if (!event || event.eventId !== eventId)
+    const event = ongoingNatureEvents(world).find(event => event.eventId === eventId);
+    if (!event)
         throw new NatureContractError("nature_event_not_current", "the disaster event is not current");
     return event;
 }
@@ -542,6 +625,7 @@ export function natureSnapshot(raw, now) {
         season: ecologicalSeasonForDay(world, today),
         weather: forecast[0],
         forecast,
-        currentEvent: world.currentEvent ? clone(world.currentEvent) : null,
+        currentEvent: clone(world.storyEvent && ["active", "recovery"].includes(world.storyEvent.phase)
+            ? world.storyEvent : world.currentEvent),
     };
 }

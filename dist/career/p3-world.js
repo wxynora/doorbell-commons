@@ -496,7 +496,7 @@ function generateAnimalCase(farm, state, day, now) {
     return { type: "animal", sourceId, animalIndex, condition };
 }
 
-export function advanceP3Farm(farm, now = Date.now()) {
+export function advanceP3Farm(farm, now = Date.now(), options = {}) {
     const day = beijingDay(now);
     const migrated = normalizeFarmAgronomyIssues(farm);
     const state = p3State(farm, day);
@@ -504,12 +504,14 @@ export function advanceP3Farm(farm, now = Date.now()) {
     let changed = migrated;
     for (let candidateDay = state.lastAdvancedDay + 1; candidateDay <= day; candidateDay += 1) {
         changed = advanceRecoveries(farm, state, candidateDay, now) || changed;
-        const agronomy = generateAgronomyIssue(farm, candidateDay, now);
-        if (agronomy)
-            generated.push(agronomy);
-        const animal = generateAnimalCase(farm, state, candidateDay, now);
-        if (animal)
-            generated.push(animal);
+        if (options.generateNewCases !== false) {
+            const agronomy = generateAgronomyIssue(farm, candidateDay, now);
+            if (agronomy)
+                generated.push(agronomy);
+            const animal = generateAnimalCase(farm, state, candidateDay, now);
+            if (animal)
+                generated.push(animal);
+        }
         state.lastAdvancedDay = candidateDay;
         changed = true;
     }

@@ -43,10 +43,15 @@ import { setDailySpendEconomyDatabase } from "./daily-spend.js";
 import { activeMysteryMerchantEvent, buyMysteryMerchantOffers, projectMysteryMerchant } from "./mystery-merchant.js";
 import { discoverAndBroadcastMysteryMerchant } from "./server/market-action.js";
 import { detentionAllowsFarmAction, detentionBlockedFarmActionText } from "./security/presentation.js";
+import { configureTogetherSeason3Authority, isTogetherSeason3, runStoredTogetherSeason3,
+    captureStoredTogetherSeason3Harvest, attachStoredTogetherSeason3Harvest,
+    storedTogetherSeason3StatusText } from "./together-season3/service.js";
+import { TOGETHER_STORY_ENV, readTogetherSeason3StartupSelection, applyTogetherSeason3StartupSelection } from "./together-season3/activation.js";
 import { buyAndPersistLingyeNpcSeed, recordPendingLingyeNpcFarmBusiness } from "./npc/farm-business.js";
 let activeLingyeWorldDatabase = null;
 let activeLingyeWorldBackend = null;
 let activeMysteryMerchantRuntime = null;
+configureTogetherSeason3Authority({getDatabase:()=>activeLingyeWorldDatabase,getBackend:()=>activeLingyeWorldBackend});
 function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
     const detention = activeDetentionForFarm(farm, now);
     if (detention && !detentionAllowsFarmAction(action))
@@ -405,6 +410,10 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         return { status: 200, json: { ok: true, text: r.text, ...vf(f) } };
     }
     if (action === "together") {
+        if (isTogetherSeason3(publicWorld)) {
+            const result = runStoredTogetherSeason3(f, b, now);
+            return {status:result.ok?200:400,json:{ok:result.ok,text:result.text,...vf(result.farm)}};
+        }
         if (b.option === undefined && b.key === undefined && b.id === undefined) {
             const view = String(b.view ?? "").trim().toLowerCase() === "history" ? "history" : "recent";
             save();
@@ -748,7 +757,10 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
     const qixiCropsBefore = isQixiLantern2026Active(now) && (action === "harvest" || action === "run")
         ? new Map(f.plots.map((plot) => [plot.id, plot.crop]))
         : null;
+    const season3Harvest = action === "harvest" || action === "run"
+        ? captureStoredTogetherSeason3Harvest(f,now) : null;
     const r = dispatch(f, { ...b, action }, now, careerBenefits);
+    if(r?.ok && season3Harvest) attachStoredTogetherSeason3Harvest(f,season3Harvest,now);
     if (r?.ok && action === "water") {
         const plotIds = b.plotId != null ? [Number(b.plotId)] : f.plots.map((plot) => plot.id);
         applyDroughtWatering(f, plotIds, now);
@@ -793,6 +805,7 @@ function authenticatedResultFarm(farmId, body) {
 function runFarm(farmId, action, body = {}, encArg, now, options = {}) {
     const publicWorldBefore = JSON.stringify(getPublicExpeditionWorld());
     const out = runFarmCore(farmId, action, body, encArg, now, options);
+    if (action === "together" && isTogetherSeason3(getPublicExpeditionWorld())) return out;
     const viewer = authenticatedResultFarm(farmId, body);
     if (!viewer || !out?.json || out.status === 401 || out.status === 403)
         return out;
@@ -804,8 +817,13 @@ function runFarm(farmId, action, body = {}, encArg, now, options = {}) {
     const extras = [];
     if (notices.length)
         extras.push(notices.join("\n\n"));
-    if (!action || action === "status")
-        extras.push(`🧭 铃野共行：${publicExpeditionStatusLine(world, now, false)}。下一步：doorbell({"op":"farm.together.view","args":{}})`);
+    if (!action || action === "status") {
+        if (isTogetherSeason3(world)) {
+            const tasks = storedTogetherSeason3StatusText(viewer, now);
+            if (tasks) extras.push(tasks);
+        }
+        else extras.push(`🧭 铃野共行：${publicExpeditionStatusLine(world, now, false)}。下一步：doorbell({"op":"farm.together.view","args":{}})`);
+    }
     const qixiAiLampReleased = Boolean(viewer.qixiLantern2026?.lamps?.ai?.releasedAt);
     if (isQixiLantern2026Active(now) && !qixiAiLampReleased && (!action || action === "status")) {
         const opening = qixiLantern2026.openingAnnouncement.split("\n").filter((line) => !line.startsWith("用 ")).join("\n");
@@ -865,6 +883,9 @@ function maintenanceOut(req, res, parts, method) {
     return jsonOut(res, 503, { ok: false, text: MAINTENANCE_API_TEXT });
 }
 export function startServer(port, host = "127.0.0.1", options = {}) {
+    const togetherStorySelection = options.togetherStorySelection === null ? null
+        : readTogetherSeason3StartupSelection(options.togetherStorySelection === undefined
+            ? process.env : {[TOGETHER_STORY_ENV]:options.togetherStorySelection});
     const injectedDatabase = options?.lingyeWorldDatabase;
     if (injectedDatabase !== undefined &&
         (!injectedDatabase || typeof injectedDatabase.prepare !== "function" || typeof injectedDatabase.close !== "function")) {
@@ -960,6 +981,10 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
             lingyeWorldBackend.trustedSystemCommands.recoverChefStoreFarmState();
             syncLedgerProjection();
         });
+        const storyStartup = withWorldCommitContext({balanceAuthority:"farm",actor:"system"},()=>
+            applyTogetherSeason3StartupSelection(togetherStorySelection,{now:Date.now()}));
+        if (storyStartup.status === "not_ready")
+            console.warn("[together]", storyStartup.status, storyStartup.code);
     }
     catch (error) {
         setWorldCommitCoordinator(null);

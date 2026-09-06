@@ -5,6 +5,7 @@ import { checkTitles } from "../titles.js";
 import { replaceFarm } from "../store.js";
 import { getCrop } from "../content.js";
 import { projectHumanField } from "./human-structured.js";
+import { captureStoredTogetherSeason3Harvest, attachStoredTogetherSeason3Harvest } from "../together-season3/service.js";
 import {
   createMinimalHumanActionReceipt,
   replayMinimalHumanActionReceipt,
@@ -120,6 +121,7 @@ export function handleHumanHarvestAssist(farm, body, now = Date.now(), options =
     const remainingBefore = humanHarvestLeft(working, now);
     const canRollSeason = states.some((state) => state.ripe) && remainingBefore > 0;
     const season = canRollSeason ? rollSeasonHarvest(working, now) : null;
+    const season3Harvest=captureStoredTogetherSeason3Harvest(working,now);
     const harvest = humanHarvestAll(working, now, season?.mod, options);
     if (!harvest.ok) {
       return errorResponse(
@@ -129,6 +131,7 @@ export function handleHumanHarvestAssist(farm, body, now = Date.now(), options =
       );
     }
 
+    if(season3Harvest) attachStoredTogetherSeason3Harvest(working,season3Harvest,now);
     pushSocialInbox(
       working,
       `🌾 ${working.humanName || "你的伴侣"}刚帮你一键收了 ${harvest.count} 株，空出了 ${harvest.count} 块地。`,

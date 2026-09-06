@@ -423,6 +423,11 @@ export function syncFarm(farmId, syncKey, body) {
             delete merged.doorbellMcpMigration;
         else
             merged.doorbellMcpMigration = current.doorbellMcpMigration;
+        // Only the public server can issue or change Season 3 harvest receipts.
+        if (current.togetherSeason3HarvestReceipts === undefined)
+            delete merged.togetherSeason3HarvestReceipts;
+        else
+            merged.togetherSeason3HarvestReceipts = current.togetherSeason3HarvestReceipts;
         const events = remoteEvents(owner, merged);
         const nextHub = {
             ...hub,

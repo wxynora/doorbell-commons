@@ -620,6 +620,31 @@ export function replaceFarmAndMysteryMerchantAtomic({ replacement, nextMysteryMe
     });
     return { farm: committed.farms[0], mysteryMerchant: committed.mysteryMerchant };
 }
+
+/** Publish inventory, rewards and the shared story only after one durable write. */
+export function replaceFarmsAndPublicExpeditionAtomic({ replacements = [], nextPublicExpeditionWorld, nextNatureWorld }) {
+    if (!Array.isArray(replacements) || !nextPublicExpeditionWorld)
+        throw new TypeError("valid story replacements are required");
+    const staged = new Map();
+    for (const replacement of replacements) {
+        const id = String(replacement?.id ?? replacement?.farm?.id ?? "");
+        if (!id || staged.has(id) || !farms.has(id))
+            throw new Error("invalid story farm replacement");
+        const farm = structuredClone(replacement.farm);
+        farm.id = id;
+        staged.set(id, normalizeFarm(farm));
+    }
+    const story = normalizePublicExpeditionWorld(structuredClone(nextPublicExpeditionWorld));
+    const nature = nextNatureWorld === undefined ? natureWorld : normalizeNatureWorld(nextNatureWorld);
+    const nextFarms = [...farms.values()].map(farm => staged.get(farm.id) ?? farm);
+    commitWorld({...worldSnapshot(nextFarms), publicExpedition:story, nature}, {
+        farmIds:[...staged.keys()],componentKeys:["publicExpedition", ...(nextNatureWorld === undefined ? [] : ["nature"])],allowCrossDomain:true,
+    });
+    for (const [id,farm] of staged) farms.set(id,farm);
+    publicExpeditionWorld = story;
+    natureWorld = nature;
+    return {world:story,farms:[...staged.values()]};
+}
 /** 确保常驻 NPC 阿土在库里（首次启动 / 老存档没有时建一座）。返回是否新建。 */
 function ensureNpc() {
     if (farms.has(NPC_ID))

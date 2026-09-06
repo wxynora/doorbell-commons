@@ -10,7 +10,9 @@ import {
 } from "./mystery-merchant.js";
 import { load, save, setWorldPersistenceAdapter } from "./store.js";
 import { startServer } from "./server.js";
+import { readTogetherSeason3StartupSelection } from "./together-season3/activation.js";
 assertSupportedNodeVersion();
+const togetherStorySelection = readTogetherSeason3StartupSelection();
 const PORT = Number(process.env.PORT ?? 8080);
 const HOST = String(process.env.HOST ?? "127.0.0.1");
 const lingyeWorldDatabase = openLingyeWorldDatabase();
@@ -19,6 +21,7 @@ try {
     setWorldPersistenceAdapter(createFarmWorldSqlitePersistence(lingyeWorldDatabase));
     load({ settle: false });
     server = startServer(PORT, HOST, {
+        togetherStorySelection,
         lingyeWorldDatabase,
         closeLingyeWorldDatabaseOnClose: true,
         clearWorldPersistenceAdapterOnClose: true,

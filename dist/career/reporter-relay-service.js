@@ -2,6 +2,7 @@ import { createHash, randomInt } from "node:crypto";
 import { readReporterBoardSnapshot } from "./reporter-board-snapshot.js";
 import { readReporterDetentionMaterials } from "./reporter-detention-material.js";
 import { reporterSelectionWithMaterials } from "./reporter-selection-material.js";
+import { assertRegisteredInterviewMaterial, readInterviewReporterMaterials } from "../together-season3/reporter-materials.js";
 import { cancelUnperformedReporterSubmissionWork } from "./reporter-submission-work.js";
 import { currentDayIndex } from "../time.js";
 import {
@@ -505,6 +506,10 @@ export function reporterRelayWake(database, issueReference, now = Date.now(), re
 function registerMaterials(database, backend, window, materials) {
     return materials.map((material, index) => {
         const contentJson = canonical(material.content);
+        if (material.sourceId !== undefined) {
+            assertRegisteredInterviewMaterial(database, material);
+            return { ...material, contentJson };
+        }
         const sourceId = `reporter-relay-source:${digest(canonical({
             issueReference: window.issueReference,
             index,
@@ -617,6 +622,7 @@ export function startReporterRelayIssue(database, backend, input) {
         const materials = registerMaterials(database, backend, window, [
             ...todayBoardMaterials(database, window.periodEnd),
             ...togetherMaterials(database, window),
+            ...readInterviewReporterMaterials(database, window),
             ...readReporterDetentionMaterials(database, playerFarms(), window.periodEnd),
         ]);
         if (materials.length === 0)

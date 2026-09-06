@@ -11,12 +11,15 @@ import {
     ecologicalSeasonForDay,
     markNatureEventReadyForSettlement,
     normalizeNatureWorld,
+    ongoingNatureEvents,
+    findNatureEvent,
     registerNatureImpact,
     resolveNatureImpact,
 } from "./nature.js";
 import {
     commitNatureWorld,
     getNatureWorld,
+    getPublicExpeditionWorld,
     playerFarms,
     replaceFarmsAndNatureAtomic,
 } from "./store.js";
@@ -165,7 +168,7 @@ function installPlotImpact(world, farm, event, plot, condition, day, now, extra 
         eventId: event.eventId,
         farmId: farm.id,
         objectId: `plot:${plot.id}`,
-        kind: event.type === "flood" ? "plot_flooded" : event.type === "drought" ? "plot_drought" : "plot_pest",
+        kind: extra.kind ?? (event.type === "flood" ? "plot_flooded" : event.type === "drought" ? "plot_drought" : "plot_pest"),
         now,
     });
     const sourceId = extra.sourceId ?? `p4:agronomy:${event.eventId}:${farm.id}:${plot.id}:${day}`;
@@ -224,14 +227,31 @@ function generateFloodFish(world, farm, event, state, now) {
     return world;
 }
 
-function applyFlood(world, farm, event, day, now) {
+function isFirstTogetherFlood(publicExpedition, event) {
+    return publicExpedition?.storyId === "rain_not_yet" && publicExpedition.eventId === event?.eventId &&
+        event?.type === "flood";
+}
+
+function applyFlood(world, farm, event, day, now, firstTogetherFlood = false) {
     const state = eventState(farm, event);
     if (!state.initialApplied) {
         state.initialApplied = true;
         if (!farmExistedWhenEventStarted(farm, event))
             return world;
-        for (const plot of occupiedPlots(farm))
-            world = installPlotImpact(world, farm, event, plot, "waterlogging", day, now);
+        const plots = occupiedPlots(farm);
+        if (firstTogetherFlood) {
+            if (plots.length > 0) {
+                const plot = plots[stableInteger(event.eventId, farm.id, "first-flood-plot") % plots.length];
+                world = installPlotImpact(world, farm, event, plot, "local_pest", day, now, { kind: "plot_pest" });
+            }
+            world = maybeCreateAnimalImpact(world, farm, event, "indigestion", "animal_indigestion",
+                P4_ANIMAL_EVENT_CHANCES.floodAfterManualDrainage, day, now);
+            state.floodAnimalChecked = true;
+        }
+        else {
+            for (const plot of plots)
+                world = installPlotImpact(world, farm, event, plot, "waterlogging", day, now);
+        }
         world = generateFloodFish(world, farm, event, state, now);
     }
     return world;
@@ -327,9 +347,9 @@ function maybeCreateAnimalImpact(world, farm, event, condition, kind, chance, da
     }).world;
 }
 
-function applyActiveEvent(world, farm, event, day, now) {
+function applyActiveEvent(world, farm, event, day, now, publicExpedition) {
     if (event.type === "flood")
-        return applyFlood(world, farm, event, day, now);
+        return applyFlood(world, farm, event, day, now, isFirstTogetherFlood(publicExpedition, event));
     if (event.type === "drought")
         return applyDrought(world, farm, event, day, now);
     return applyPest(world, farm, event, day, now);
@@ -373,7 +393,7 @@ function markIssueResolved(entry, now, reason) {
     entry.issue.natureResolution = reason;
 }
 
-function recoverFlood(world, farm, event, day, now) {
+function recoverFlood(world, farm, event, day, now, firstTogetherFlood = false) {
     const state = eventState(farm, event);
     if (!state.floodAnimalChecked) {
         state.floodAnimalChecked = true;
@@ -386,7 +406,8 @@ function recoverFlood(world, farm, event, day, now) {
     if (day < event.recoveryAtDay + 1)
         return world;
     for (const impact of event.impacts.filter((entry) => entry.farmId === farm.id &&
-        entry.kind === "plot_flooded" && entry.resolvedAtDay == null)) {
+        (entry.kind === "plot_flooded" || (firstTogetherFlood && entry.kind === "plot_pest")) &&
+        entry.resolvedAtDay == null)) {
         for (const issue of issuesForImpact(farm, impact.impactId))
             markIssueResolved(issue, now, "natural-drainage");
         world = resolveImpact(world, event, impact.impactId, "natural", `flood-drainage:${event.eventId}:${farm.id}`, now);
@@ -420,12 +441,12 @@ function recoverPest(world, farm, event, day, now) {
     return world;
 }
 
-function applyRecovery(world, farm, event, day, now) {
+function applyRecovery(world, farm, event, day, now, publicExpedition) {
     const state = eventState(farm, event);
     if (!state.recoveryProcessedDays.includes(day))
         state.recoveryProcessedDays.push(day);
     if (event.type === "flood")
-        return recoverFlood(world, farm, event, day, now);
+        return recoverFlood(world, farm, event, day, now, isFirstTogetherFlood(publicExpedition, event));
     if (event.type === "drought")
         return recoverDrought(world, farm, event, now);
     return recoverPest(world, farm, event, day, now);
@@ -441,8 +462,8 @@ function eventCanBeReady(event, day) {
     return day >= event.recoveryAtDay;
 }
 
-function finalizeEvent(world, day, now) {
-    const event = world.currentEvent;
+function finalizeEvent(world, day, now, eventId = world.currentEvent?.eventId) {
+    const event = findNatureEvent(world, eventId);
     if (!event || !eventCanBeReady(event, day) || event.impacts.some((impact) => impact.resolvedAtDay == null))
         return world;
     world = markNatureEventReadyForSettlement(world, { eventId: event.eventId, now });
@@ -478,30 +499,29 @@ export function advanceNatureGameplay(now = Date.now(), options = {}) {
     const firstDay = Math.max(world.activationDay, world.lastAdvancedDay + 1);
     const processDays = firstDay <= today ? Array.from({ length: today - firstDay + 1 }, (_, index) => firstDay + index) : [today];
     let committedFarms = [];
+    const publicExpedition = options.publicExpedition === undefined ? getPublicExpeditionWorld() : options.publicExpedition;
     let sourceFarms = options.farms ? options.farms.map((farm) => structuredClone(farm)) : null;
     for (const day of processDays) {
         const dayNow = beijingDayStart(day) + 12 * 3_600_000;
         const farms = (sourceFarms ?? playerFarms()).map((farm) => structuredClone(farm));
+        const firstTogetherFlood = ongoingNatureEvents(world).some(event => isFirstTogetherFlood(publicExpedition, event));
         for (const farm of farms) {
             if (farm.doorbellMcpMigration?.migrationId)
-                advanceP3Farm(farm, dayNow);
+                advanceP3Farm(farm, dayNow, { generateNewCases: !firstTogetherFlood });
         }
         world = advanceNatureWorld(world, dayNow);
-        let event = world.currentEvent;
-        if (event?.phase === "active") {
+        for (const { eventId } of ongoingNatureEvents(world)) {
+            if (findNatureEvent(world, eventId)?.phase === "active") {
+                for (const farm of farms)
+                    world = applyActiveEvent(world, farm, findNatureEvent(world, eventId), day, dayNow, publicExpedition);
+            }
             for (const farm of farms)
-                world = applyActiveEvent(world, farm, world.currentEvent, day, dayNow);
-        }
-        event = world.currentEvent;
-        if (event) {
-            for (const farm of farms)
-                world = reconcileFarmResolutions(world, farm, world.currentEvent, dayNow);
-        }
-        event = world.currentEvent;
-        if (event?.phase === "recovery") {
-            for (const farm of farms)
-                world = applyRecovery(world, farm, world.currentEvent, day, dayNow);
-            world = finalizeEvent(world, day, dayNow);
+                world = reconcileFarmResolutions(world, farm, findNatureEvent(world, eventId), dayNow);
+            if (findNatureEvent(world, eventId)?.phase === "recovery") {
+                for (const farm of farms)
+                    world = applyRecovery(world, farm, findNatureEvent(world, eventId), day, dayNow, publicExpedition);
+                world = finalizeEvent(world, day, dayNow, eventId);
+            }
         }
         if (options.commit === false) {
             world = normalizeNatureWorld(world);
@@ -576,10 +596,11 @@ export function applyDroughtWatering(farm, plotIds, now = Date.now(), rawWorld =
 }
 
 export function reconcileNatureTreatment(world, farm, sourceId, result, now = Date.now()) {
-    const event = world?.currentEvent;
-    if (!event || result?.resolved !== true)
+    if (result?.resolved !== true)
         return world;
     const agronomy = issueForSource(farm, sourceId)?.issue;
+    const event = ongoingNatureEvents(world).find(event => event.eventId === agronomy?.natureEventId);
+    if (!event) return world;
     if (!agronomy?.natureImpactId || agronomy.natureEventId !== event.eventId)
         return world;
     if (agronomy.condition === "drought" && !agronomy.protectedForEvent)
@@ -589,10 +610,12 @@ export function reconcileNatureTreatment(world, farm, sourceId, result, now = Da
 
 export function commitNatureFarmReconciliation(farm, now = Date.now()) {
     const world = getNatureWorld();
-    if (!world.currentEvent)
+    if (ongoingNatureEvents(world).length === 0)
         return false;
     const stagedFarm = structuredClone(farm);
-    const nextWorld = reconcileFarmResolutions(structuredClone(world), stagedFarm, world.currentEvent, now);
+    let nextWorld = structuredClone(world);
+    for (const {eventId} of ongoingNatureEvents(world))
+        nextWorld = reconcileFarmResolutions(nextWorld, stagedFarm, findNatureEvent(nextWorld, eventId), now);
     if (JSON.stringify(nextWorld) === JSON.stringify(world))
         return false;
     const committed = replaceFarmsAndNatureAtomic({
@@ -624,7 +647,7 @@ export function collectFloodFishForFarm(farm, now = Date.now()) {
 }
 
 export function collectFloodFishInPlace(farm, world, now = Date.now()) {
-    const event = world.currentEvent;
+    const event = ongoingNatureEvents(world).find(event => event.type === "flood" && ["active", "recovery"].includes(event.phase));
     if (!event || event.type !== "flood" || !["active", "recovery"].includes(event.phase))
         return { collected: 0, text: "", farm, world };
     const state = eventState(farm, event);
@@ -638,9 +661,9 @@ export function collectFloodFishInPlace(farm, world, now = Date.now()) {
         names.push(caught.name);
         entry.status = "collected";
         entry.collectedAt = now;
-        nextWorld = resolveImpact(nextWorld, nextWorld.currentEvent, entry.impactId, "owner", `farm.run:${farm.id}:${event.eventId}`, now);
+        nextWorld = resolveImpact(nextWorld, findNatureEvent(nextWorld, event.eventId), entry.impactId, "owner", `farm.run:${farm.id}:${event.eventId}`, now);
     }
-    nextWorld = reconcileFarmResolutions(nextWorld, farm, nextWorld.currentEvent, now);
-    nextWorld = finalizeEvent(nextWorld, beijingDayIndex(now), now);
+    nextWorld = reconcileFarmResolutions(nextWorld, farm, findNatureEvent(nextWorld, event.eventId), now);
+    nextWorld = finalizeEvent(nextWorld, beijingDayIndex(now), now, event.eventId);
     return { collected: pending.length, names, text: FLOOD_FISH_COLLECTED_TEXT(names), farm, world: nextWorld };
 }

@@ -664,6 +664,10 @@
     "field": "togetherSameKitchenPublicKitchen", "min": 1, "name": "公厨值班员", "flavor": ""
   },
   {
+    "id": "together_rain_not_yet", "cat": "铃野共行", "tier": 1,
+    "field": "togetherRainNotYet", "min": 1, "name": "雨中同行", "flavor": ""
+  },
+  {
     "id": "land_6", "cat": "土地", "tier": 1,
     "field": "landTier", "min": 6, "name": "田埂拓荒者", "flavor": ""
   },

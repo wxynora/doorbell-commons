@@ -7,6 +7,9 @@ import { crops } from "./content.js";
 import { Rng } from "./rng.js";
 import { pushInbox, pushRanchNotice } from "./engine.js";
 import { checkTitles, titleById } from "./titles.js";
+import { TOGETHER_SEASON3_STORY_ID, normalizeTogetherSeason3State } from "./together-season3/runtime.js";
+import { season3HumanData, season3Text } from "./together-season3/presentation.js";
+import { togetherSeason3Content } from "./together-season3/content.js";
 
 const DIR = resolve(dirname(fileURLToPath(import.meta.url)), "../content");
 export const publicExpeditionContent = JSON.parse(readFileSync(resolve(DIR, "public-expedition.json"), "utf8"));
@@ -132,6 +135,8 @@ function normalizeTaskState(value, task) {
 }
 
 export function normalizePublicExpeditionWorld(value, now = Date.now()) {
+    if (value?.storyId === TOGETHER_SEASON3_STORY_ID)
+        return normalizeTogetherSeason3State(value);
     if (!value || typeof value !== "object" || !value.storyId)
         return makeRound(1, now);
     if (value.storyId !== publicExpeditionContent.id) {
@@ -215,10 +220,14 @@ export function settlePublicExpeditionRewards(world, farms = [], now = Date.now(
     const issueId = String(world.storyId);
     const meta = world.storyId === publicExpeditionContent.id ? currentStoryMeta(world) : legacyStoryMeta(world);
     const contributorIds = new Set();
-    for (const state of Object.values(world.tasks ?? {}))
-        for (const contribution of state?.contributions ?? [])
-            contributorIds.add(String(contribution.farmId));
-    const participantIds = new Set(cleanIdList(world.participants));
+    if (world.storyId === TOGETHER_SEASON3_STORY_ID) {
+        for (const contribution of world.contributions ?? []) contributorIds.add(String(contribution.farmId));
+    } else {
+        for (const state of Object.values(world.tasks ?? {}))
+            for (const contribution of state?.contributions ?? [])
+                contributorIds.add(String(contribution.farmId));
+    }
+    const participantIds = new Set(world.storyId === TOGETHER_SEASON3_STORY_ID ? [] : cleanIdList(world.participants));
     const grants = [];
     for (const farm of farms) {
         const farmId = String(farm.id);
@@ -364,6 +373,7 @@ function currentTaskState(world) {
 }
 
 export function currentPublicTask(world) {
+    if (world.storyId === TOGETHER_SEASON3_STORY_ID) return null;
     if (world.phase !== "task")
         return null;
     return taskById.get(world.currentTaskId) ?? null;
@@ -459,6 +469,9 @@ function resumeCooldown(world) {
 }
 
 export function advancePublicExpedition(world, farms = [], now = Date.now()) {
+    // Season 3 reads/commands advance through its joint durable service, not
+    // through the legacy choice/cooldown/reopen-vote state machine.
+    if (world.storyId === TOGETHER_SEASON3_STORY_ID) return world;
     for (const archived of world.archives ?? [])
         if (archived?.endingId)
             settlePublicExpeditionRewards(archived, farms, now);
@@ -605,6 +618,8 @@ function answerQuestion(world, farm, option, now, farms) {
 }
 
 export function runPublicChoice(world, farm, rawOption, now = Date.now(), farms = []) {
+    if (world.storyId === TOGETHER_SEASON3_STORY_ID)
+        return {ok:false,text:togetherSeason3Content.messages.unavailable};
     advancePublicExpedition(world, farms, now);
     const option = String(rawOption ?? "").trim().toUpperCase();
     const options = choiceOptions(world);
@@ -834,6 +849,8 @@ function historyText(entries) {
 }
 
 export function publicExpeditionText(world, farm, now = Date.now(), farms = [], view = "recent") {
+    if (world.storyId === TOGETHER_SEASON3_STORY_ID)
+        return season3Text(world,farm,{history:view === "history"});
     advancePublicExpedition(world, farms, now);
     const header = `🧭 铃野共行｜本期故事：《${world.storyTitle ?? publicExpeditionContent.title}》｜第 ${world.round} 轮`;
     const ownReward = farm ? (world.rewards ?? []).find((reward) => String(reward.farmId) === String(farm.id)) : null;
@@ -845,6 +862,8 @@ export function publicExpeditionText(world, farm, now = Date.now(), farms = [], 
 }
 
 export function publicExpeditionStatusLine(world, now = Date.now(), showChoiceCounts = true) {
+    if (world.storyId === TOGETHER_SEASON3_STORY_ID)
+        return togetherSeason3Content.stages[world.phase].title;
     if (world.phase === "task") {
         const task = currentPublicTask(world);
         const progress = world.tasks[task.id]?.contributions?.length ?? 0;
@@ -872,6 +891,7 @@ export function publicPhaseKey(world) {
 }
 
 function takeNotices(world, farm, side, now) {
+    if (world.storyId === TOGETHER_SEASON3_STORY_ID) return [];
     const value = reads(farm);
     const openingKey = `${world.storyId}:${world.round}`;
     const openingList = side === "ai" ? value.aiOpenings : value.humanOpenings;
@@ -908,6 +928,7 @@ export function takePublicHumanNotices(world, farm, now = Date.now()) {
 }
 
 export function publicExpeditionHumanData(world, farm, now = Date.now()) {
+    if (world.storyId === TOGETHER_SEASON3_STORY_ID) return season3HumanData(world,farm);
     let artFile = publicExpeditionContent.art.opening;
     if (world.endingId)
         artFile = publicExpeditionContent.art[world.endingId] ?? artFile;
