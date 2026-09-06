@@ -9185,10 +9185,10 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     }
 
     const togetherCoverAssets = {
-        'together.rain-not-yet-preparation': '/lingye/together/rain-not-yet-preparation-v4.png',
-        'together.rain-not-yet-flood': '/lingye/together/rain-not-yet-flood-v4.png',
-        'together.rain-not-yet-recovery': '/lingye/together/rain-not-yet-recovery-v4.png',
-        'together.rain-not-yet-ending': '/lingye/together/rain-not-yet-ending-v4.png',
+        'together.rain-not-yet-preparation': '/lingye/together/rain-not-yet-preparation-v4.webp',
+        'together.rain-not-yet-flood': '/lingye/together/rain-not-yet-flood-v4.webp',
+        'together.rain-not-yet-recovery': '/lingye/together/rain-not-yet-recovery-v4.webp',
+        'together.rain-not-yet-ending': '/lingye/together/rain-not-yet-ending-v4.webp',
         'together.river-from-tomorrow-opening': '/lingye/together/river-opening-v1.webp',
         'together.river-future-wharf': '/lingye/together/river-future-wharf-v1.webp',
         'together.river-cooperative-investigation': '/lingye/together/river-investigation-v1.webp',
