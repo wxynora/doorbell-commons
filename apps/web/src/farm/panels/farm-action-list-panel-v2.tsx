@@ -702,7 +702,7 @@ export function FarmActionListPanelV2({
               </footer>
               {notifyFeedback[list.list_id] ? (
                 <p className="farm-action-list-card-v2__notify-feedback" role="status">
-                  {notifyFeedback[list.list_id].message}
+                  {notifyFeedback[list.list_id]?.message}
                 </p>
               ) : null}
             </article>
