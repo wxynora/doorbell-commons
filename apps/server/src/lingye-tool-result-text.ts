@@ -954,13 +954,16 @@ function commissionJobs(data: Record<string, unknown>): Record<string, unknown>[
 
 function currentServiceCommissionLines(
   op: "go.farm.commission" | "go.hospital.commission",
-  item: Record<string, unknown>,
+  items: Record<string, unknown>[],
 ): string[] {
   return [
     "正在处理：",
-    ...commissionItemLines(op, item, 0)
-      .slice(1)
-      .filter((line) => !line.startsWith("  诊金")),
+    ...items.flatMap((item, index) => [
+      ...(index > 0 ? [""] : []),
+      ...commissionItemLines(op, item, 0)
+        .slice(1)
+        .filter((line) => !line.startsWith("  诊金")),
+    ]),
   ];
 }
 
@@ -1037,6 +1040,7 @@ function commissionText(op: string, result: LingyeSuccess): string {
     const jobs = commissionJobs(data);
     const completedJobCount = integer(data.completedJobCount);
     lines.push(
+      "", "我处理的工作：",
       `已完成委托：${completedJobCount !== undefined && completedJobCount >= 0 ? completedJobCount : 0}`,
     );
     const currentWorkerJobId =
@@ -1050,7 +1054,19 @@ function commissionText(op: string, result: LingyeSuccess): string {
         typeof job.status === "string" &&
         ["accepted", "assigned", "active"].includes(job.status),
     );
-    if (currentJob) lines.push(...currentServiceCommissionLines(op, currentJob));
+    if (currentJob) lines.push(...currentServiceCommissionLines(op, [currentJob]));
+    else lines.push("正在处理：无");
+    const completedOwnerJobCount = integer(data.completedOwnerJobCount);
+    lines.push(
+      "", "我发出的委托：",
+      `已完成委托：${completedOwnerJobCount !== undefined && completedOwnerJobCount >= 0 ? completedOwnerJobCount : 0}`,
+    );
+    const currentOwnerJobIds = Array.isArray(data.currentOwnerJobIds) ? data.currentOwnerJobIds : [];
+    const currentOwnerJobs = jobs.filter((job) =>
+      currentOwnerJobIds.includes(job.jobId) && typeof job.status === "string" &&
+      ["available", "accepted", "assigned", "active"].includes(job.status),
+    );
+    if (currentOwnerJobs.length > 0) lines.push(...currentServiceCommissionLines(op, currentOwnerJobs));
     else lines.push("正在处理：无");
   } else {
     const items = commissionRecords(data);
