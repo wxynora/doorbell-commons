@@ -6,6 +6,7 @@ import {
 } from "../public-expedition.js";
 import { TOGETHER_SEASON3_STORY_ID } from "../together-season3/runtime.js";
 import { readStoredTogetherSeason3 } from "../together-season3/service.js";
+import { season3PublicHumanData } from "../together-season3/human.js";
 
 const ART_ASSET_KEYS = new Map([
   ["rain-not-yet-preparation-v4.png", "together.rain-not-yet-preparation"],
@@ -273,9 +274,11 @@ function projectStage(world) {
   };
 }
 
-function projectHumanTogether(world, farm, now = Date.now()) {
-  const shared = publicExpeditionHumanData(world, farm, now);
+function projectHumanTogether(world, farm, now = Date.now(), publicFarms = []) {
   const season3 = world.storyId === TOGETHER_SEASON3_STORY_ID;
+  const shared = season3
+    ? season3PublicHumanData(world, farm, publicFarms)
+    : publicExpeditionHumanData(world, farm, now);
   const history = season3
     ? (shared.history ?? []).filter((entry) => ["story", "clue", "ending"].includes(entry?.kind))
     : (shared.history ?? []);
@@ -289,7 +292,7 @@ function projectHumanTogether(world, farm, now = Date.now()) {
     art_asset_key: artAssetKey(shared.artFile),
     history: projectHistory(history.slice(-128)),
     archives: projectArchives(shared.archives),
-    current_task: season3 ? null : projectTask(shared.currentTask),
+    current_task: projectTask(shared.currentTask),
     current_choice: season3 ? null : projectChoice(shared.currentChoice),
     cooldown: season3 ? null : projectCooldown(shared.cooldown),
     ending: projectEnding(shared.ending, world.endingId),
@@ -311,7 +314,7 @@ export function readHumanTogether(farm, now = Date.now()) {
   const world = getPublicExpeditionWorld();
   if (world.storyId === TOGETHER_SEASON3_STORY_ID) {
     const stored = readStoredTogetherSeason3(farm, now);
-    return projectHumanTogether(stored.world, stored.farm, now);
+    return projectHumanTogether(stored.world, stored.farm, now, playerFarms());
   }
   const farms = playerFarms();
   advancePublicExpedition(world, farms, now);
