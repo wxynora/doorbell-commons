@@ -20,6 +20,7 @@ import { DOORBELL_FARM_PATH } from "../routes";
 import { candidateTwoHtml } from "./candidate-two-source";
 import { npcSceneMarkup, npcSceneScript, NPC_SCENE_STYLES } from "../npc/scene";
 import { useNpcBridge } from "../npc/use-npc-bridge";
+import { TOGETHER_HUMAN_VIEW_SCRIPT } from "./together-human-view";
 
 export type CandidateTwoScreen =
   | "login"
@@ -7665,6 +7666,7 @@ const LINGYE_STYLES = `
 `;
 
 const LINGYE_SCRIPT = `
+    ${TOGETHER_HUMAN_VIEW_SCRIPT}
     const lingyeInstitutionScreenIds = {
         'lingye-daily': 'screen-lingye-institution-lingye-daily',
         'lingye-public-security-office': 'screen-lingye-institution-lingye-public-security-office',
@@ -9366,19 +9368,20 @@ const CANDIDATE_RUNTIME_SCRIPT = `
             if (choiceList) choiceList.replaceChildren();
             renderTogetherArchives([]);
             setTogetherText('.candidate2-together-current-kicker', '');
-            setTogetherText('.candidate2-together-current-title', '');
+            setTogetherText('#candidate2-together-current-title', '');
             setTogetherText('.candidate2-together-current-status', '');
             setTogetherText('.candidate2-together-stage-name', '');
             setTogetherText('.candidate2-together-current-copy', '');
             setTogetherText('.candidate2-together-task-kicker', '');
-            setTogetherText('.candidate2-together-task-title', '');
+            setTogetherText('#candidate2-together-task-title', '');
             setTogetherText('.candidate2-together-choice-kicker', '');
-            setTogetherText('.candidate2-together-choice-title', '');
+            setTogetherText('#candidate2-together-choice-title', '');
             setTogetherText('.candidate2-together-choice-copy', '');
             setTogetherText('.candidate2-together-rules-title', '');
             setTogetherText('.candidate2-together-rules-copy', '');
             const emptyStageRail = document.querySelector('.candidate2-together-stage-rail');
             if (emptyStageRail) emptyStageRail.replaceChildren();
+            renderTogetherPublicFacts(null);
             return;
         }
 
@@ -9386,7 +9389,7 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         if (currentContent) currentContent.hidden = false;
         renderTogetherArchives(data.archives);
         setTogetherText('.candidate2-together-current-kicker', '第 ' + data.round + ' 期');
-        setTogetherText('.candidate2-together-current-title', data.title);
+        setTogetherText('#candidate2-together-current-title', data.title);
         setTogetherText('.candidate2-together-current-status', data.status);
         setTogetherText('.candidate2-together-stage-name', data.stageName);
         setTogetherText(
@@ -9395,10 +9398,10 @@ const CANDIDATE_RUNTIME_SCRIPT = `
                 || (data.currentTask ? data.currentTask.opening : '当前没有可读取的阶段任务。'),
         );
         setTogetherText('.candidate2-together-task-kicker', '当前阶段');
-        setTogetherText('.candidate2-together-task-title', '任务链');
+        setTogetherText('#candidate2-together-task-title', '任务链');
         setTogetherText('.candidate2-together-choice-kicker', '公共选择');
         setTogetherText(
-            '.candidate2-together-choice-title',
+            '#candidate2-together-choice-title',
             data.currentChoice ? data.currentChoice.title : '当前没有公共选择',
         );
         setTogetherText(
@@ -9463,6 +9466,7 @@ const CANDIDATE_RUNTIME_SCRIPT = `
                     : []),
             );
         }
+        renderTogetherPublicFacts(data);
     }
 
     const glimmerPage = document.querySelector('.candidate2-glimmer-page');
@@ -9904,62 +9908,6 @@ const CANDIDATE_RUNTIME_SCRIPT = `
                 reward: achievement.reward.coins + ' 金 + ' + achievement.reward.silver + ' 银',
                 status: achievement.rewarded ? '已达成' : '未达成',
             })),
-        };
-    }
-
-    function normalizeLiveTogether(read) {
-        const data = read && read.data;
-        if (!data) return null;
-        const currentTask = data.current_task ? {
-            contributors: [],
-            name: data.current_task.title,
-            opening: data.current_task.text,
-            progress: data.current_task.target > 0
-                ? Math.round(data.current_task.progress / data.current_task.target * 100)
-                : 0,
-        } : null;
-        let currentSummary = currentTask ? currentTask.opening : null;
-        if (!currentSummary && data.ending) currentSummary = data.ending.text;
-        if (!currentSummary && data.cooldown) {
-            currentSummary = [data.cooldown.text, data.cooldown.ready_text].filter(Boolean).join(' · ');
-        }
-        return {
-            artFile: data.art_asset_key,
-            archives: data.archives.map((archive) => ({
-                artFile: archive.art_asset_key,
-              history: archive.history.map((entry) => ({
-                artFile: entry.art_asset_key,
-                kind: entry.kind,
-                ...(entry.kind === "task"
-                  ? { progress: entry.progress, target: entry.target }
-                  : {}),
-                text: entry.text,
-                title: entry.title,
-              })),
-                round: archive.round,
-                title: archive.title,
-            })),
-            currentChoice: data.current_choice ? {
-                counts: data.current_choice.counts,
-                index: data.current_choice.index,
-                options: Object.fromEntries(data.current_choice.options.map((option) => [option.key, option.label])),
-                title: data.current_choice.title,
-            } : null,
-            currentTask,
-            currentSummary,
-            stageCount: data.stage.total,
-            stageIndex: data.stage.index,
-            stageName: data.stage.name,
-            tasks: data.current_task ? [{
-                detail: data.current_task.text,
-                name: data.current_task.title,
-                progress: data.current_task.progress + ' / ' + data.current_task.target,
-                status: data.phase === 'task' ? '进行中' : data.status,
-            }] : [],
-            routeName: data.story_id,
-            round: data.round,
-            status: data.status,
-            title: data.title,
         };
     }
 
