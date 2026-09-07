@@ -1,11 +1,11 @@
 import { useState } from "react";
+import { ShopCartSelectionBadge, ShopCartShortcut } from "./shared";
 import type { BoundFarmCatalogRead } from "../../../auth/farm-catalog-client";
 import {
 	createBoundFarmPurchaseRequest,
 	farmPurchaseRequestIssueMessage,
 	type CreateFarmPurchaseRequestInput,
 } from "../../../auth/farm-purchase-request-client";
-import { ShopCartShortcut } from "./shared";
 import "../shop-panel.css";
 
 type Market = Extract<
@@ -60,12 +60,12 @@ export function MysteryMerchantShop({
 				sum + (offer.currency === currency ? offer.unit_price : 0),
 			0,
 		);
-	const changeSelection = (id: string) => {
+	const changeSelection = (id: string, quantity: 0 | 1) => {
 		if (locked) return;
 		setSelected((current) =>
-			current.includes(id)
+			quantity === 0
 				? current.filter((item) => item !== id)
-				: [...current, id],
+				: current.includes(id) ? current : [...current, id],
 		);
 		setFeedback({ stage: "idle" });
 	};
@@ -170,7 +170,7 @@ export function MysteryMerchantShop({
 											<button
 												aria-label={`移除${offer.name}`}
 												disabled={locked}
-												onClick={() => changeSelection(offer.item_id)}
+												onClick={() => changeSelection(offer.item_id, 0)}
 												type="button"
 											>
 												移除
@@ -213,8 +213,14 @@ export function MysteryMerchantShop({
 						<>
 							<ul>
 								{offers.map((offer) => (
-									<li key={offer.item_id}>
-										<span>
+									<li className="farm-market__merchant-offer" key={offer.item_id}>
+										<button
+											aria-label={offer.already_bought ? `${offer.name}本轮已买` : `将${offer.name}加入购物车`}
+											className="farm-market__merchant-product"
+											disabled={locked || !onPurchase || offer.already_bought}
+											onClick={() => changeSelection(offer.item_id, 1)}
+											type="button"
+										>
 											<strong>{offer.name}</strong>
 											<small>
 												{offer.rarity ? offer.rarity + " · " : ""}
@@ -224,34 +230,20 @@ export function MysteryMerchantShop({
 													? ` · 得到 ${offer.grant_quantity}`
 													: ""}
 											</small>
-										</span>
-										<button
-											aria-label={`${offer.already_bought ? "本轮已买" : selected.includes(offer.item_id) ? "移除" : "加入购物车"}${offer.name}`}
-											aria-pressed={
-												selected.includes(offer.item_id) &&
-												!offer.already_bought
-											}
-											disabled={locked || !onPurchase || offer.already_bought}
-											onClick={() => changeSelection(offer.item_id)}
-											type="button"
-										>
-											{offer.already_bought
-												? "本轮已买"
-												: selected.includes(offer.item_id)
-													? "已入车"
-													: "加入购物车"}
+											{offer.already_bought ? <small>本轮已买</small> : null}
 										</button>
+										<ShopCartSelectionBadge
+											itemName={offer.name}
+											onRemove={() => changeSelection(offer.item_id, 0)}
+											quantity={!offer.already_bought && selected.includes(offer.item_id) ? 1 : 0}
+										/>
 									</li>
 								))}
 							</ul>
-							<div style={{ position: "relative", height: "15cqw" }}>
-								<ShopCartShortcut
-									cart={Object.fromEntries(
-										cartItems.map((offer) => [offer.item_id, 1]),
-									)}
-									onOpen={() => setCartOpen(true)}
-								/>
-							</div>
+							<ShopCartShortcut
+								cart={Object.fromEntries(cartItems.map((offer) => [offer.item_id, 1]))}
+								onOpen={() => setCartOpen(true)}
+							/>
 						</>
 					)}
 					{feedback.stage === "submitting" ? (

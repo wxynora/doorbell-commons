@@ -91,6 +91,21 @@ export function FarmMarketPanelContent({
   const mysteryMerchant = market.mystery_merchant;
   const purchaseOrderItems = market.purchase_order_items;
   const farmDoorplate = farmCatalog.data.farm.farm_doorplate;
+  const [section, setSection] = useState<"browse" | "stall" | "merchant">("browse");
+  const [tradeType, setTradeType] = useState<"sale" | "barter" | "purchase">("sale");
+  const [posting, setPosting] = useState<"sale" | "barter" | "purchase" | null>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const visiblePurchaseOrders = purchaseOrders.filter((order) =>
+    section === "stall"
+      ? order.buyer_farm_doorplate === farmDoorplate
+      : section === "browse" &&
+        tradeType === "purchase" &&
+        order.buyer_farm_doorplate !== farmDoorplate,
+  );
+  const showSeller = (doorplate: string, type: "sale" | "barter") =>
+    section === "stall"
+      ? doorplate === farmDoorplate
+      : section === "browse" && tradeType === type && doorplate !== farmDoorplate;
   const farmNameByDoorplate = new Map<string, string>([
     [farmDoorplate, farmCatalog.data.farm.farm_name],
   ]);
@@ -107,6 +122,7 @@ export function FarmMarketPanelContent({
     { barterListings: typeof barterListings; listings: typeof listings }
   >();
   for (const listing of listings) {
+    if (!showSeller(listing.seller_farm_doorplate, "sale")) continue;
     const group = sellerGroups.get(listing.seller_farm_doorplate) ?? {
       barterListings: [],
       listings: [],
@@ -115,6 +131,7 @@ export function FarmMarketPanelContent({
     sellerGroups.set(listing.seller_farm_doorplate, group);
   }
   for (const listing of barterListings) {
+    if (!showSeller(listing.seller_farm_doorplate, "barter")) continue;
     const group = sellerGroups.get(listing.seller_farm_doorplate) ?? {
       barterListings: [],
       listings: [],
@@ -216,9 +233,9 @@ export function FarmMarketPanelContent({
             ? "集市已重新读取"
             : completedAction === "mystery-merchant-buy"
               ? "神秘商人这一单已经买下"
-            : outcome === null
-              ? "集市动作已完成"
-              : "集市动作已完成",
+              : outcome === null
+                ? "集市动作已完成"
+                : "集市动作已完成",
       });
       return true;
     }
@@ -303,131 +320,231 @@ export function FarmMarketPanelContent({
   };
 
   return (
-    <section aria-label="真实集市" className="farm-feature">
-      <div className="farm-action-toolbar">
-        <strong>集市</strong>
-        <button disabled={!onMarketAction || busy} onClick={submitBrowse} type="button">
-          {busy ? "处理中" : "重新读取"}
+    <section aria-label="真实集市" className="farm-feature farm-market" data-section={section}>
+      <div className="farm-market__header">
+        <nav aria-label="集市分区" className="farm-market__tabs">
+          {(
+            [
+              ["browse", "逛集市"],
+              ["stall", "我的摊位"],
+              ["merchant", "神秘商店"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              aria-pressed={section === id}
+              key={id}
+              onClick={() => {
+                setSection(id);
+                if (contentRef.current) contentRef.current.scrollTop = 0;
+              }}
+              type="button"
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+        <button
+          aria-label={busy ? "处理中" : "重新读取"}
+          className="farm-market__refresh"
+          disabled={!onMarketAction || busy}
+          onClick={submitBrowse}
+          title="重新读取"
+          type="button"
+        >
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <path d="M20 6v5h-5M19 11a7 7 0 1 0-1.5 6.3" />
+          </svg>
         </button>
       </div>
-      {action.stage === "success" ? (
-        <p className="farm-action-feedback" role="status">
-          {action.message}
-        </p>
-      ) : action.stage === "error" ? (
-        <p className="farm-action-feedback farm-action-feedback--error" role="alert">
-          {marketActionIssueMessage(action.issue)}
-          {action.attempt ? (
-            <button onClick={() => void submit(action.attempt as Attempt)} type="button">
-              重试
-            </button>
-          ) : null}
-        </p>
-      ) : null}
-      <MysteryMerchantShop
-        key={farmDoorplate + ":" + (mysteryMerchant.status === "present" ? mysteryMerchant.host_farm_doorplate + ":" + mysteryMerchant.ends_at : "absent")}
-        merchant={mysteryMerchant}
-        revision={expectedRevision}
-        busy={busy}
-        onPurchase={onMarketAction ? async (items) => Boolean(await submit({
-          input: {
-            action: "mystery-merchant-buy", expectedFarmDoorplate: farmDoorplate,
-            expectedRevision, idempotencyKey: crypto.randomUUID(), items,
-          },
-          label: "向神秘商人结账",
-        })) : undefined}
-      />
-      {onMarketAction && (inventory.length > 0 || purchaseOrderItems.length > 0) ? (
-        <form
-          aria-label="发布集市商品"
-          className="farm-market__form"
-          onSubmit={(event) => event.preventDefault()}
-        >
-          {inventory.length > 0 ? (
-            <>
-              <label>
-                <span>上架物品</span>
-                <select
-                  disabled={busy}
-                  onChange={(event) => setSelectedItemId(event.currentTarget.value)}
-                  value={selectedItem?.item_id ?? ""}
-                >
-                  {inventory.map((item) => (
-                    <option key={`${item.kind}:${item.item_id}`} value={item.item_id}>
-                      {item.name} · {item.quantity}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span>数量</span>
-                <input
-                  disabled={busy}
-                  min="1"
-                  onChange={(event) => setQuantity(event.currentTarget.value)}
-                  type="number"
-                  value={quantity}
-                />
-              </label>
+      <div aria-label="集市内容" className="farm-market__content" ref={contentRef} tabIndex={0}>
+        {action.stage === "success" ? (
+          <p className="farm-action-feedback" role="status">
+            {action.message}
+          </p>
+        ) : action.stage === "error" ? (
+          <p className="farm-action-feedback farm-action-feedback--error" role="alert">
+            {marketActionIssueMessage(action.issue)}
+            {action.attempt ? (
+              <button onClick={() => void submit(action.attempt as Attempt)} type="button">
+                重试
+              </button>
+            ) : null}
+          </p>
+        ) : null}
+        <div hidden={section !== "merchant"}>
+          <MysteryMerchantShop
+            key={
+              farmDoorplate +
+              ":" +
+              (mysteryMerchant.status === "present"
+                ? mysteryMerchant.host_farm_doorplate + ":" + mysteryMerchant.ends_at
+                : "absent")
+            }
+            merchant={mysteryMerchant}
+            revision={expectedRevision}
+            busy={busy}
+            onPurchase={
+              onMarketAction
+                ? async (items) =>
+                    Boolean(
+                      await submit({
+                        input: {
+                          action: "mystery-merchant-buy",
+                          expectedFarmDoorplate: farmDoorplate,
+                          expectedRevision,
+                          idempotencyKey: crypto.randomUUID(),
+                          items,
+                        },
+                        label: "向神秘商人结账",
+                      }),
+                    )
+                : undefined
+            }
+          />
+        </div>
+        {section === "browse" ? (
+          <div aria-label="交易类型" className="farm-market__filters">
+            {(
+              [
+                ["sale", "出售"],
+                ["barter", "换物"],
+                ["purchase", "收购"],
+              ] as const
+            ).map(([id, label]) => (
               <button
-                disabled={busy || !validQuantity}
-                onClick={() => submitList(false)}
+                aria-pressed={tradeType === id}
+                key={id}
+                onClick={() => setTradeType(id)}
                 type="button"
               >
-                上架
+                {label}
               </button>
-              <details className="farm-market__barter">
-                <summary>发布换物</summary>
-                <div className="farm-market__barter-fields">
-                  <label>
-                    <span>想换类型</span>
-                    <select
-                      disabled={busy}
-                      onChange={(event) =>
-                        setWantKind(event.currentTarget.value as typeof wantKind)
-                      }
-                      value={wantKind}
-                    >
-                      <option value="seed">种子</option>
-                      <option value="material">素材</option>
-                      <option value="ingredient">食材</option>
-                      <option value="dish">料理</option>
-                    </select>
-                  </label>
-                  <label>
-                    <span>想换 ID</span>
-                    <input
-                      disabled={busy}
-                      onChange={(event) => setWantItemId(event.currentTarget.value)}
-                      placeholder="填写真实物品 ID"
-                      type="text"
-                      value={wantItemId}
-                    />
-                  </label>
-                  <label>
-                    <span>想换数量</span>
-                    <input
-                      disabled={busy}
-                      min="1"
-                      onChange={(event) => setWantQuantity(event.currentTarget.value)}
-                      type="number"
-                      value={wantQuantity}
-                    />
-                  </label>
+            ))}
+          </div>
+        ) : null}
+        {section === "stall" && onMarketAction ? (
+          <div aria-label="发布交易" className="farm-market__posting-actions">
+            {(
+              [
+                ["sale", "上架物品", inventory.length > 0],
+                ["barter", "发布换物", inventory.length > 0],
+                ["purchase", "发布收购", purchaseOrderItems.length > 0],
+              ] as const
+            ).map(([id, label, available]) =>
+              available ? (
+                <button
+                  aria-expanded={posting === id}
+                  key={id}
+                  onClick={() => setPosting(posting === id ? null : id)}
+                  type="button"
+                >
+                  {label}
+                </button>
+              ) : null,
+            )}
+          </div>
+        ) : null}
+        {section === "stall" &&
+        posting &&
+        onMarketAction &&
+        (inventory.length > 0 || purchaseOrderItems.length > 0) ? (
+          <form
+            aria-label="发布集市商品"
+            className="farm-market__form"
+            onSubmit={(event) => event.preventDefault()}
+          >
+            <div className="farm-market__form-heading">
+              <strong>
+                {posting === "sale" ? "上架物品" : posting === "barter" ? "发布换物" : "发布收购"}
+              </strong>
+              <button aria-label="收起发布表单" onClick={() => setPosting(null)} type="button">
+                收起
+              </button>
+            </div>
+            {posting !== "purchase" && inventory.length > 0 ? (
+              <>
+                <label>
+                  <span>上架物品</span>
+                  <select
+                    disabled={busy}
+                    onChange={(event) => setSelectedItemId(event.currentTarget.value)}
+                    value={selectedItem?.item_id ?? ""}
+                  >
+                    {inventory.map((item) => (
+                      <option key={`${item.kind}:${item.item_id}`} value={item.item_id}>
+                        {item.name} · {item.quantity}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>数量</span>
+                  <input
+                    disabled={busy}
+                    min="1"
+                    onChange={(event) => setQuantity(event.currentTarget.value)}
+                    type="number"
+                    value={quantity}
+                  />
+                </label>
+                {posting === "sale" ? (
                   <button
-                    disabled={busy || !validQuantity || !validWant}
-                    onClick={() => submitList(true)}
+                    disabled={busy || !validQuantity}
+                    onClick={() => submitList(false)}
                     type="button"
                   >
-                    发布换物
+                    上架
                   </button>
-                </div>
-              </details>
-            </>
-          ) : null}
-          {purchaseOrderItems.length > 0 ? (
-            <details className="farm-market__barter">
-              <summary>发布收购</summary>
+                ) : null}
+                {posting === "barter" ? (
+                  <div className="farm-market__barter-fields">
+                    <label>
+                      <span>想换类型</span>
+                      <select
+                        disabled={busy}
+                        onChange={(event) =>
+                          setWantKind(event.currentTarget.value as typeof wantKind)
+                        }
+                        value={wantKind}
+                      >
+                        <option value="seed">种子</option>
+                        <option value="material">素材</option>
+                        <option value="ingredient">食材</option>
+                        <option value="dish">料理</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>想换 ID</span>
+                      <input
+                        disabled={busy}
+                        onChange={(event) => setWantItemId(event.currentTarget.value)}
+                        placeholder="填写真实物品 ID"
+                        type="text"
+                        value={wantItemId}
+                      />
+                    </label>
+                    <label>
+                      <span>想换数量</span>
+                      <input
+                        disabled={busy}
+                        min="1"
+                        onChange={(event) => setWantQuantity(event.currentTarget.value)}
+                        type="number"
+                        value={wantQuantity}
+                      />
+                    </label>
+                    <button
+                      disabled={busy || !validQuantity || !validWant}
+                      onClick={() => submitList(true)}
+                      type="button"
+                    >
+                      发布换物
+                    </button>
+                  </div>
+                ) : null}
+              </>
+            ) : null}
+            {posting === "purchase" && purchaseOrderItems.length > 0 ? (
               <div className="farm-market__barter-fields">
                 <label>
                   <span>想收什么</span>
@@ -481,232 +598,246 @@ export function FarmMarketPanelContent({
                   发布收购
                 </button>
               </div>
-            </details>
-          ) : null}
-        </form>
-      ) : null}
-      {purchaseOrders.length > 0 ? (
-        <section aria-label="公开收购需求" className="farm-market__purchase-orders">
-          <h3>大家正在收购</h3>
-          <ul>
-            {purchaseOrders.map((order) => {
-              const ownOrder = order.buyer_farm_doorplate === farmDoorplate;
-              const ownedQuantity =
-                purchaseOrderItems.find(
-                  (item) => item.kind === order.kind && item.item_id === order.item_id,
-                )?.owned_quantity ?? 0;
-              const maximum = Math.min(ownedQuantity, order.remaining_quantity);
-              const rawQuantity = fulfillQuantities[order.listing_id] ?? "1";
-              const parsedFulfillQuantity = Number(rawQuantity);
-              const validFulfillQuantity =
-                Number.isSafeInteger(parsedFulfillQuantity) &&
-                parsedFulfillQuantity > 0 &&
-                parsedFulfillQuantity <= maximum;
-              return (
-                <li key={`purchase-order:${order.buyer_farm_doorplate}:${order.listing_id}`}>
-                  <span>
-                    <strong>{order.name}</strong>
-                    <small>
-                      {farmNameByDoorplate.get(order.buyer_farm_doorplate) ??
-                        `农场 ${order.buyer_farm_doorplate}`}
-                      {` · 还收 ${order.remaining_quantity}/${order.target_quantity} · 每份 ${order.price} 银币`}
-                    </small>
-                  </span>
-                  {ownOrder ? (
-                    <button
-                      disabled={busy || !onMarketAction}
-                      onClick={() =>
-                        void submit({
-                          input: {
-                            action: "purchase-order-unlist",
-                            expectedFarmDoorplate: farmDoorplate,
-                            expectedRevision,
-                            idempotencyKey: crypto.randomUUID(),
-                            listingId: order.listing_id,
-                          },
-                          label: "撤下收购",
-                        })
-                      }
-                      type="button"
-                    >
-                      撤下
-                    </button>
-                  ) : (
-                    <span className="farm-market__purchase-order-action">
-                      <small>你有 {ownedQuantity}</small>
-                      <input
-                        aria-label={`交付${order.name ?? "物品"}数量`}
-                        disabled={busy || maximum <= 0}
-                        max={maximum}
-                        min="1"
-                        onChange={(event) => {
-                          const nextValue = event.currentTarget.value;
-                          setFulfillQuantities((current) => ({
-                            ...current,
-                            [order.listing_id]: nextValue,
-                          }));
-                        }}
-                        type="number"
-                        value={rawQuantity}
-                      />
+            ) : null}
+          </form>
+        ) : null}
+        {visiblePurchaseOrders.length > 0 ? (
+          <section
+            aria-label={section === "stall" ? "我的收购" : "公开收购需求"}
+            className="farm-market__purchase-orders"
+          >
+            <h3>{section === "stall" ? "我的收购" : "大家正在收购"}</h3>
+            <ul>
+              {visiblePurchaseOrders.map((order) => {
+                const ownOrder = order.buyer_farm_doorplate === farmDoorplate;
+                const ownedQuantity =
+                  purchaseOrderItems.find(
+                    (item) => item.kind === order.kind && item.item_id === order.item_id,
+                  )?.owned_quantity ?? 0;
+                const maximum = Math.min(ownedQuantity, order.remaining_quantity);
+                const rawQuantity = fulfillQuantities[order.listing_id] ?? "1";
+                const parsedFulfillQuantity = Number(rawQuantity);
+                const validFulfillQuantity =
+                  Number.isSafeInteger(parsedFulfillQuantity) &&
+                  parsedFulfillQuantity > 0 &&
+                  parsedFulfillQuantity <= maximum;
+                return (
+                  <li key={`purchase-order:${order.buyer_farm_doorplate}:${order.listing_id}`}>
+                    <span>
+                      <strong>{order.name}</strong>
+                      <small>
+                        {farmNameByDoorplate.get(order.buyer_farm_doorplate) ??
+                          `农场 ${order.buyer_farm_doorplate}`}
+                        {` · 还收 ${order.remaining_quantity}/${order.target_quantity} · 每份 ${order.price} 银币`}
+                      </small>
+                    </span>
+                    {ownOrder ? (
                       <button
-                        disabled={busy || !onMarketAction || !validFulfillQuantity}
+                        disabled={busy || !onMarketAction}
                         onClick={() =>
                           void submit({
                             input: {
-                              action: "purchase-order-fulfill",
+                              action: "purchase-order-unlist",
                               expectedFarmDoorplate: farmDoorplate,
                               expectedRevision,
                               idempotencyKey: crypto.randomUUID(),
-                              orderOwnerDoorplate: order.buyer_farm_doorplate,
                               listingId: order.listing_id,
-                              quantity: parsedFulfillQuantity,
                             },
-                            label: "交货",
+                            label: "撤下收购",
                           })
                         }
                         type="button"
                       >
-                        交货
+                        撤下
                       </button>
-                    </span>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      ) : null}
-      <div aria-label="真实集市商品" className="farm-market__seller-list">
-        {sellerGroups.size > 0 ? (
-          [...sellerGroups.entries()].map(([sellerDoorplate, group]) => {
-            const ownListing = farmDoorplate === sellerDoorplate;
-            return (
-              <section
-                aria-label={`${farmNameByDoorplate.get(sellerDoorplate) ?? sellerDoorplate}的摊位`}
-                className="farm-market__seller-card"
-                data-own={ownListing}
-                key={sellerDoorplate}
-              >
-                <header>
-                  <strong>
-                    {ownListing
-                      ? `${farmNameByDoorplate.get(sellerDoorplate) ?? "我的农场"} · 我的摊位`
-                      : (farmNameByDoorplate.get(sellerDoorplate) ?? `农场 ${sellerDoorplate}`)}
-                  </strong>
-                  <span>门牌 {sellerDoorplate}</span>
-                </header>
-                <ul>
-                  {group.listings.map((listing, index) => {
-                    const itemId = listing.item_id;
-                    const canBuy =
-                      !ownListing && itemId !== null && listing.quantity > 0 && onMarketAction;
-                    return (
-                      <li
-                        key={`${listing.seller_farm_doorplate}:${listing.kind}:${listing.item_id ?? index}`}
-                      >
-                        <span>{listing.name}</span>
-                        <span className="farm-market__listing-meta">
-                          <small>
-                            ×{listing.quantity}
-                            {listing.price === null ? "" : ` · 价格 ${listing.price}`}
-                          </small>
-                          {ownListing && itemId ? (
-                            <button
-                              disabled={busy || !onMarketAction}
-                              onClick={() =>
-                                void submit({
-                                  input: {
-                                    action: "unlist",
-                                    expectedFarmDoorplate: farmDoorplate,
-                                    expectedRevision,
-                                    idempotencyKey: crypto.randomUUID(),
-                                    itemId,
-                                    kind: listing.kind,
-                                  },
-                                  label: "下架",
-                                })
-                              }
-                              type="button"
-                            >
-                              下架
-                            </button>
-                          ) : canBuy ? (
-                            <button
-                              disabled={busy}
-                              onClick={() =>
-                                void submit({
-                                  input: {
-                                    action: "buy",
-                                    expectedFarmDoorplate: farmDoorplate,
-                                    expectedRevision,
-                                    idempotencyKey: crypto.randomUUID(),
-                                    sellerDoorplate: listing.seller_farm_doorplate,
-                                    kind: listing.kind,
-                                    itemId,
-                                    quantity: Math.min(1, listing.quantity),
-                                  },
-                                  label: "购买",
-                                })
-                              }
-                              type="button"
-                            >
-                              购买
-                            </button>
-                          ) : null}
-                        </span>
-                      </li>
-                    );
-                  })}
-                  {group.barterListings.map((listing) => {
-                    return (
-                      <li key={`barter:${listing.seller_farm_doorplate}:${listing.listing_id}`}>
-                        <span>
-                          用 {marketBarterItemLabel(listing.give)} 换{" "}
-                          {marketBarterItemLabel(listing.want)}
-                        </span>
-                        <span className="farm-market__listing-meta">
-                          <small>
-                            {ownListing ? "我的换物" : `来自 ${listing.seller_farm_doorplate}`}
-                          </small>
-                          <button
-                            disabled={busy || !onMarketAction}
-                            onClick={() =>
-                              void submit({
-                                input: ownListing
-                                  ? {
-                                      action: "barter-unlist",
-                                      expectedFarmDoorplate: farmDoorplate,
-                                      expectedRevision,
-                                      idempotencyKey: crypto.randomUUID(),
-                                      listingId: listing.listing_id,
-                                    }
-                                  : {
-                                      action: "barter-accept",
-                                      expectedFarmDoorplate: farmDoorplate,
-                                      expectedRevision,
-                                      idempotencyKey: crypto.randomUUID(),
-                                      sellerDoorplate: listing.seller_farm_doorplate,
-                                      listingId: listing.listing_id,
-                                    },
-                                label: ownListing ? "撤下换物" : "接受换物",
-                              })
-                            }
-                            type="button"
+                    ) : (
+                      <span className="farm-market__purchase-order-action">
+                        <small>你有 {ownedQuantity}</small>
+                        <input
+                          aria-label={`交付${order.name ?? "物品"}数量`}
+                          disabled={busy || maximum <= 0}
+                          max={maximum}
+                          min="1"
+                          onChange={(event) => {
+                            const nextValue = event.currentTarget.value;
+                            setFulfillQuantities((current) => ({
+                              ...current,
+                              [order.listing_id]: nextValue,
+                            }));
+                          }}
+                          type="number"
+                          value={rawQuantity}
+                        />
+                        <button
+                          disabled={busy || !onMarketAction || !validFulfillQuantity}
+                          onClick={() =>
+                            void submit({
+                              input: {
+                                action: "purchase-order-fulfill",
+                                expectedFarmDoorplate: farmDoorplate,
+                                expectedRevision,
+                                idempotencyKey: crypto.randomUUID(),
+                                orderOwnerDoorplate: order.buyer_farm_doorplate,
+                                listingId: order.listing_id,
+                                quantity: parsedFulfillQuantity,
+                              },
+                              label: "交货",
+                            })
+                          }
+                          type="button"
+                        >
+                          交货
+                        </button>
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ) : null}
+        {section !== "merchant" && !(section === "browse" && tradeType === "purchase") ? (
+          <div aria-label="真实集市商品" className="farm-market__seller-list">
+            {sellerGroups.size > 0 ? (
+              [...sellerGroups.entries()].map(([sellerDoorplate, group]) => {
+                const ownListing = farmDoorplate === sellerDoorplate;
+                return (
+                  <section
+                    aria-label={`${farmNameByDoorplate.get(sellerDoorplate) ?? sellerDoorplate}的摊位`}
+                    className="farm-market__seller-card"
+                    data-own={ownListing}
+                    key={sellerDoorplate}
+                  >
+                    <header>
+                      <strong>
+                        {ownListing
+                          ? `${farmNameByDoorplate.get(sellerDoorplate) ?? "我的农场"} · 我的摊位`
+                          : (farmNameByDoorplate.get(sellerDoorplate) ?? `农场 ${sellerDoorplate}`)}
+                      </strong>
+                      <span>门牌 {sellerDoorplate}</span>
+                    </header>
+                    <ul>
+                      {group.listings.map((listing, index) => {
+                        const itemId = listing.item_id;
+                        const canBuy =
+                          !ownListing && itemId !== null && listing.quantity > 0 && onMarketAction;
+                        return (
+                          <li
+                            key={`${listing.seller_farm_doorplate}:${listing.kind}:${listing.item_id ?? index}`}
                           >
-                            {ownListing ? "撤下" : "接受换物"}
-                          </button>
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </section>
-            );
-          })
-        ) : (
-          <p className="farm-market__empty">当前没有真实摊位</p>
-        )}
+                            <span>{listing.name}</span>
+                            <span className="farm-market__listing-meta">
+                              <small>
+                                ×{listing.quantity}
+                                {listing.price === null ? "" : ` · 价格 ${listing.price}`}
+                              </small>
+                              {ownListing && itemId ? (
+                                <button
+                                  disabled={busy || !onMarketAction}
+                                  onClick={() =>
+                                    void submit({
+                                      input: {
+                                        action: "unlist",
+                                        expectedFarmDoorplate: farmDoorplate,
+                                        expectedRevision,
+                                        idempotencyKey: crypto.randomUUID(),
+                                        itemId,
+                                        kind: listing.kind,
+                                      },
+                                      label: "下架",
+                                    })
+                                  }
+                                  type="button"
+                                >
+                                  下架
+                                </button>
+                              ) : canBuy ? (
+                                <button
+                                  disabled={busy}
+                                  onClick={() =>
+                                    void submit({
+                                      input: {
+                                        action: "buy",
+                                        expectedFarmDoorplate: farmDoorplate,
+                                        expectedRevision,
+                                        idempotencyKey: crypto.randomUUID(),
+                                        sellerDoorplate: listing.seller_farm_doorplate,
+                                        kind: listing.kind,
+                                        itemId,
+                                        quantity: Math.min(1, listing.quantity),
+                                      },
+                                      label: "购买",
+                                    })
+                                  }
+                                  type="button"
+                                >
+                                  购买
+                                </button>
+                              ) : null}
+                            </span>
+                          </li>
+                        );
+                      })}
+                      {group.barterListings.map((listing) => {
+                        return (
+                          <li key={`barter:${listing.seller_farm_doorplate}:${listing.listing_id}`}>
+                            <span>
+                              用 {marketBarterItemLabel(listing.give)} 换{" "}
+                              {marketBarterItemLabel(listing.want)}
+                            </span>
+                            <span className="farm-market__listing-meta">
+                              <small>
+                                {ownListing ? "我的换物" : `来自 ${listing.seller_farm_doorplate}`}
+                              </small>
+                              <button
+                                disabled={busy || !onMarketAction}
+                                onClick={() =>
+                                  void submit({
+                                    input: ownListing
+                                      ? {
+                                          action: "barter-unlist",
+                                          expectedFarmDoorplate: farmDoorplate,
+                                          expectedRevision,
+                                          idempotencyKey: crypto.randomUUID(),
+                                          listingId: listing.listing_id,
+                                        }
+                                      : {
+                                          action: "barter-accept",
+                                          expectedFarmDoorplate: farmDoorplate,
+                                          expectedRevision,
+                                          idempotencyKey: crypto.randomUUID(),
+                                          sellerDoorplate: listing.seller_farm_doorplate,
+                                          listingId: listing.listing_id,
+                                        },
+                                    label: ownListing ? "撤下换物" : "接受换物",
+                                  })
+                                }
+                                type="button"
+                              >
+                                {ownListing ? "撤下" : "接受换物"}
+                              </button>
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </section>
+                );
+              })
+            ) : (
+              <p className="farm-market__empty">
+                {section === "stall"
+                  ? "还没有上架出售或换物的物品"
+                  : tradeType === "barter"
+                    ? "暂时没有换物摊位"
+                    : "暂时没有出售的物品"}
+              </p>
+            )}
+          </div>
+        ) : null}
+        {section === "browse" && tradeType === "purchase" && visiblePurchaseOrders.length === 0 ? (
+          <p className="farm-market__empty">暂时没有收购需求</p>
+        ) : null}
       </div>
     </section>
   );
