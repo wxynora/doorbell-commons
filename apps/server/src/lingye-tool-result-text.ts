@@ -858,6 +858,7 @@ function observationText(value: unknown): string {
 
 function commissionItemLines(op: string, item: Record<string, unknown>, index: number): string[] {
   const facts = publicCommissionFacts(item);
+  if (op === "go.security.commission" && isRecord(item.sourceFacts)) facts.push(item.sourceFacts);
   const kind = commissionKind(op);
   const lines = [`- ${kind} ${index + 1}`];
   const farm =
@@ -883,6 +884,11 @@ function commissionItemLines(op: string, item: Record<string, unknown>, index: n
     lines.push("  稿件任务：整理真实公共素材");
   } else {
     const event = facts.map((fact) => fact.event).find(isRecord);
+    if (op === "go.security.commission" && event?.kind === "stolen" &&
+        typeof event.by === "string") {
+      const label = safeChineseText(`报案：${event.by} · ${dateText(event.t)}`);
+      if (label) lines[0] = `- ${label}`;
+    }
     const eventKind =
       event && typeof event.kind === "string" ? SECURITY_EVENT_NAMES[event.kind] : undefined;
     const isOverdueLoan = facts.some((fact) => fact.principalOutstanding !== undefined);
@@ -1078,6 +1084,29 @@ function commissionText(op: string, result: LingyeSuccess): string {
     );
     if (currentOwnerJobs.length > 0) lines.push(...currentServiceCommissionLines(op, currentOwnerJobs));
     else lines.push("正在处理：无");
+  } else if (op === "go.security.commission") {
+    const jobs = commissionJobs(data);
+    const reportJobIds = data.reportJobIds ?? current?.reportJobIds;
+    const assignedCaseJobIds = data.assignedCaseJobIds ?? current?.assignedCaseJobIds;
+    const reports = jobs.filter((job) => Array.isArray(reportJobIds) && reportJobIds.includes(job.jobId));
+    const assignedCases = jobs.filter((job) =>
+      Array.isArray(assignedCaseJobIds) && assignedCaseJobIds.includes(job.jobId));
+    const otherCases = jobs.filter((job) => !reports.includes(job) && !assignedCases.includes(job));
+    lines.push(reports.length > 0 ? "我的报案进度：" : "我的报案进度：无");
+    for (const [index, report] of reports.entries()) {
+      lines.push(...commissionItemLines(op, report, index)
+        .filter((line) => !line.startsWith("  委托方公开农场：") && !line.startsWith("  难度：")));
+    }
+    if (assignedCases.length > 0) {
+      lines.push("我负责的案件：");
+      for (const [index, item] of assignedCases.entries())
+        lines.push(...commissionItemLines(op, item, index));
+    }
+    if (otherCases.length > 0) {
+      lines.push(`${commissionKind(op)}：`);
+      for (const [index, item] of otherCases.entries())
+        lines.push(...commissionItemLines(op, item, index));
+    }
   } else {
     const items = commissionRecords(data);
     if (items.length === 0) lines.push(`${commissionKind(op)}：当前没有公开记录。`);
