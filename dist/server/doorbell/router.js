@@ -1,3 +1,4 @@
+import { handleDoorbellHumanFarmDecorations } from "./farm-decoration.js";
 import {
     handleDoorbellHumanBulletinAck,
     handleDoorbellHumanBulletinRead,
@@ -238,6 +239,10 @@ export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExe
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "action-list" && parts[4] === "authority" && parts[5] === "read" && parts.length === 6) {
             await handleDoorbellHumanActionListAuthorityRead(req, res, method);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "farm-decorations" && ["read", "save"].includes(parts[4]) && parts.length === 5) {
+            await handleDoorbellHumanFarmDecorations(req, res, method, parts[4]);
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "catalog" && parts[4] === "read" && parts.length === 5) {
