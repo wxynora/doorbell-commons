@@ -4,6 +4,12 @@ export const CANVAS = { width: 900, height: 1000 };
 export const MIN_ZOOM = 1;
 export const MAX_ZOOM = 2.7;
 export const CAMERA_TARGET = new T.Vector3(0, 1.4, 0);
+export function limitFarmView(camera, controls) {
+  controls.minPolarAngle = Math.PI / 5;
+  // Keep the bottom orthographic rays above the meadow even on tall screens.
+  controls.maxPolarAngle = Math.min(Math.PI / 3,
+    Math.atan2(camera.position.distanceTo(CAMERA_TARGET), camera.top / camera.zoom + 1));
+}
 export function resizeFarmCamera(camera, width, height) {
   if (!(width > 0 && height > 0)) return;
   // Preserve the central composition and world scale. Extra portrait height

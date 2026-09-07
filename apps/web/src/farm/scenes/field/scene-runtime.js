@@ -1,7 +1,7 @@
 import * as T from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { createWorld } from "./models/world.js";
-import { createFarmCamera, resizeFarmCamera, CAMERA_TARGET, MIN_ZOOM, MAX_ZOOM } from "./models/camera.js";
+import { createFarmCamera, resizeFarmCamera, limitFarmView, CAMERA_TARGET, MIN_ZOOM, MAX_ZOOM } from "./models/camera.js";
 import { createEnvironment, createSeasonController, createNightLighting } from "./models/environment.js";
 import { createPlacement, CELL_SIZE } from "./models/placement.js";
 import { setRoofColor } from "./models/cottage.js";
@@ -41,12 +41,12 @@ export function createFieldRuntime(host, options) {
   const controls=new OrbitControls(camera,canvas);
   controls.target.copy(CAMERA_TARGET);
   controls.enableDamping=true; controls.dampingFactor=.08;
-  controls.minPolarAngle=.2; controls.maxPolarAngle=Math.PI*.46;
+  limitFarmView(camera,controls);
   controls.minZoom=MIN_ZOOM; controls.maxZoom=MAX_ZOOM; controls.enablePan=false;
   controls.update(); controls.saveState();
   const listeners=[];
   const listen=(name,fn)=>{canvas.addEventListener(name,fn);listeners.push([name,fn]);};
-  const resize=()=>{const {width,height}=host.getBoundingClientRect();if(width&&height){resizeFarmCamera(camera,width,height);renderer.setSize(width,height);}};
+  const resize=()=>{const {width,height}=host.getBoundingClientRect();if(width&&height){resizeFarmCamera(camera,width,height);limitFarmView(camera,controls);controls.update();renderer.setSize(width,height);}};
   const observer=new ResizeObserver(resize);observer.observe(host);resize();
   const ray=new T.Raycaster(),pointer=new T.Vector2(),plane=new T.Plane(new T.Vector3(0,1,0),-.25);
   const pose=o=>({x:o.position.x,z:o.position.z,rotation:o.rotation.y});
@@ -169,7 +169,7 @@ export function createFieldRuntime(host, options) {
     hemi.groundColor.set("#b7af9c").lerp(new T.Color("#819474"),light);hemi.intensity=T.MathUtils.lerp(.94,.32,light);
     renderer.toneMappingExposure=T.MathUtils.lerp(.99,.93,light);
     setNightLighting(light);updateDecorationLights(world.decorations,light);updateDecorationMotion(world.decorations,time);
-    world.update(time,light);natureEffects.update(time);environment.update(time,light,scene,camera);controls.update();renderer.render(scene,camera);
+    world.update(time,light);natureEffects.update(time);environment.update(time,light,scene,camera);limitFarmView(camera,controls);controls.update();renderer.render(scene,camera);
     frame=requestAnimationFrame(animate);
   }
   frame=requestAnimationFrame(animate);

@@ -107,11 +107,6 @@ export function FieldScene({
       {!edit.editing ? requestControls : null}
       {failure ? <p className="farm-scene__notice" role="alert">{failure}</p> : null}
       {!edit.editing && edit.message ? <p className="farm-scene__notice" role="status">{edit.message}</p> : null}
-      <div className="farm-field-view-tools" aria-label="农场视角">
-        <button type="button" aria-label="放大场景" onClick={()=>runtime.current?.zoom(1.18)}>＋</button>
-        <button type="button" aria-label="缩小场景" onClick={()=>runtime.current?.zoom(1/1.18)}>−</button>
-        <button type="button" onClick={()=>runtime.current?.resetView()}>归位</button>
-      </div>
       {edit.editing ? <section className="farm-field-editor" aria-label="装饰摆放">
         <strong>{edit.title}</strong>
         <p role="status">{edit.message || (edit.valid?"拖动摆放 · 绿色位置可保存":"这里放不下，请移到绿色格子")}</p>

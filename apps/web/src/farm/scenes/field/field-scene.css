@@ -12,8 +12,10 @@
 .farm-field-canvas { position:absolute; inset:0; touch-action:none; }
 .farm-field-canvas canvas { display:block; width:100%; height:100%; }
 .farm-game__shell:has(.farm-scene-state:not([hidden]) .farm-scene--field) { width:min(100%,90svh); }
-.farm-field-view-tools { position:absolute; left:3cqw; top:58cqw; display:grid; gap:1cqw; }
-.farm-field-view-tools button, .farm-field-editor button { min-width:5.4cqw; min-height:5.4cqw; border:1px solid #b7b498; border-radius:1.4cqw; background:#f6efd9; color:#425143; font:inherit; padding:.9cqw 1.4cqw; cursor:pointer; }
+.farm-field-bottom-actions { position:absolute; bottom:17.6cqw; left:50%; width:74cqw; transform:translateX(-50%); z-index:18; display:grid; gap:1cqw; }
+.farm-field-bottom-actions > .farm-field-request-controls,
+.farm-field-bottom-actions > .farm-scene-action-dock--field { position:static; width:100%; transform:none; }
+.farm-field-editor button { min-width:5.4cqw; min-height:5.4cqw; border:1px solid #b7b498; border-radius:1.4cqw; background:#f6efd9; color:#425143; font:inherit; padding:.9cqw 1.4cqw; cursor:pointer; }
 .farm-field-editor { position:absolute; left:5%; right:5%; bottom:13%; padding:2.2cqw; background:#f5eedbeF; color:#435442; border:1px solid #c7c4a9; border-radius:2cqw; font-size:3.2cqw; }
 .farm-field-editor p { margin:1cqw 0 1.8cqw; }
 .farm-field-editor > div { display:flex; flex-wrap:wrap; gap:1.1cqw; }

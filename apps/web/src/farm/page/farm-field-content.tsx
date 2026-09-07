@@ -930,22 +930,6 @@ export function FarmFieldContent({
                   onClosePlot={() => setSelectedPlotId(null)}
                   onSelectPlot={setSelectedPlotId}
                   plots={field.plots}
-                  requestControls={
-                    !decorationEditing &&
-                    !activeSceneUiState.selectedTool &&
-                    !activeSceneUiState.bulletinOpen ? (
-                      <FieldRequestControls
-                        emptyPlotCount={field.plots.filter((plot) => plot.state === "empty").length}
-                        harvestRequestAction={harvestRequestAction}
-                        maturePlotCount={field.harvest_assist.mature_plot_count}
-                        onHarvestRequest={onHarvestRequest}
-                        onPlantRequest={onPlantRequest}
-                        onRetryHarvestRequest={onRetryHarvestRequest}
-                        onRetryPlantRequest={onRetryPlantRequest}
-                        plantRequestAction={plantRequestAction}
-                      />
-                    ) : null
-                  }
                   selectedPlot={selectedPlot}
                 />
               ) : null}
@@ -1094,11 +1078,23 @@ export function FarmFieldContent({
       !activeSceneUiState.selectedTool &&
       !activeSceneUiState.bulletinOpen &&
       activeScene === "field" ? (
+        <div className="farm-field-bottom-actions">
+          <FieldRequestControls
+            emptyPlotCount={field.plots.filter((plot) => plot.state === "empty").length}
+            harvestRequestAction={harvestRequestAction}
+            maturePlotCount={field.harvest_assist.mature_plot_count}
+            onHarvestRequest={onHarvestRequest}
+            onPlantRequest={onPlantRequest}
+            onRetryHarvestRequest={onRetryHarvestRequest}
+            onRetryPlantRequest={onRetryPlantRequest}
+            plantRequestAction={plantRequestAction}
+          />
         <FieldSceneOverlay
           harvestAssist={field.harvest_assist}
           onHarvestAssist={onHarvestAssist}
           submitting={harvestAction.stage === "submitting"}
         />
+        </div>
       ) : null}
       {activeScene === "field" && harvestAction.stage === "success" && onCloseHarvestAction ? (
         <FarmHarvestReceipt onClose={onCloseHarvestAction} result={harvestAction.result} />
