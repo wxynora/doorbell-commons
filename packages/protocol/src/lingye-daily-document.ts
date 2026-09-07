@@ -4,12 +4,20 @@ import type { LingyeDailyEditionPublish } from "./index.js";
 import { lingyeDailySectionKeySchema } from "./lingye-daily-comments.js";
 
 export const dailyTextRunSchema = z.object({ text: z.string(), bold: z.boolean().optional() }).strict();
+// Source-pixel coordinates: the original stays intact; the document owns the crop.
+export const dailyImageCropSchema = z.object({
+  x:z.number().int().nonnegative(), y:z.number().int().nonnegative(),
+  width:z.number().int().positive(), height:z.number().int().positive(),
+  sourceWidth:z.number().int().positive(), sourceHeight:z.number().int().positive(),
+}).strict().refine(crop=>crop.x+crop.width<=crop.sourceWidth && crop.y+crop.height<=crop.sourceHeight);
+export type DailyImageCrop = z.infer<typeof dailyImageCropSchema>;
 export const dailyBlockSchema = z.object({
   type: z.enum(["paragraph", "heading", "quote", "byline", "submission", "question", "image"]),
   runs: z.array(dailyTextRunSchema),
   imageId: z.string().optional(),
+  crop: dailyImageCropSchema.optional(),
   submissionId: z.string().optional(),
-}).strict();
+}).strict().refine(block=>!block.crop || (block.type==="image" && !!block.imageId));
 export const dailyDocumentSchema = z.object({
   version: z.literal(1),
   sections: z.array(z.object({

@@ -1,5 +1,6 @@
 import React,{useEffect,useRef,useState} from "react";
-import {dailyDocumentSchema,type DailyBlock,type DailyDocument,type DailyTextRun} from "@doorbell/protocol";
+import {dailyDocumentSchema,dailyImageCropSchema,type DailyImageCrop,type DailyBlock,type DailyDocument,type DailyTextRun} from "@doorbell/protocol";
+import {DailyImageEditor} from "./daily-image-editor";
 import {DailyDocumentView} from "./lingye-daily-document-view";
 import {editorRequest,type EditorDraft,type EditorProgress,type EditorProgressLane} from "./lingye-daily-editor-client";
 import {DailyEditorDuty} from "./lingye-daily-editor-duty";
@@ -24,7 +25,8 @@ export function readEditedDocument(root:HTMLElement):DailyDocument {
     const blocks:DailyBlock[]=[];
     const walk=(node:Node)=>{
       if(node instanceof HTMLElement && node.dataset.imageId) {
-        blocks.push({type:"image",runs:[],imageId:node.dataset.imageId});return;
+        blocks.push({type:"image",runs:[],imageId:node.dataset.imageId,
+          ...(node.dataset.imageCrop?{crop:dailyImageCropSchema.parse(JSON.parse(node.dataset.imageCrop))}:{})});return;
       }
       if(node instanceof HTMLElement && node.tagName==="DIV" && node.querySelector("p,div,h3,figure")) {
         [...node.childNodes].forEach(walk);return;
@@ -53,6 +55,7 @@ export function LingyeDailyEditor({onBack}:{onBack?:()=>void} = {}) {
   const paper=useRef<HTMLDivElement>(null);
   const resendRequestIds=useRef<Partial<Record<EditorProgressLane["lane"],string>>>({});
   const [epoch,setEpoch]=useState(0);
+  const [editingImage,setEditingImage]=useState<HTMLElement|null>(null);
   const install=(next:EditorDraft)=>{setDraft(next);setDirty(false);setEpoch(value=>value+1);setSelected([]);};
   const loadProgress=async(date:string)=>setProgress(await editorRequest<EditorProgress>(`/issues/${date}/progress`));
   const run=async(action:()=>Promise<void>)=>{if(busy)return;setBusy(true);setNotice("");try{await action();}catch(error){setNotice(error instanceof Error?error.message:"操作未完成，请重试。");}finally{setBusy(false);}};
@@ -85,6 +88,20 @@ export function LingyeDailyEditor({onBack}:{onBack?:()=>void} = {}) {
     document.execCommand(name,false,value);setDirty(true);
   };
   const images=Object.fromEntries((draft?.images ?? []).map(image=>[image.image_id,`data:${image.media_type};base64,${image.data_base64}`]));
+  const changeImage=(figure:HTMLElement,action:"crop"|"delete",crop?:DailyImageCrop)=>{
+    if(!paper.current||!draft)return;
+    // Read current text edits before remounting the paper; image controls are never body text.
+    const document=readEditedDocument(paper.current);
+    const sectionElement=figure.closest<HTMLElement>("[data-section-key]")!;
+    const ordinal=[...sectionElement.querySelectorAll("figure[data-image-id]")].indexOf(figure);
+    const section=document.sections.find(item=>item.key===sectionElement.dataset.sectionKey)!;
+    const block=section.blocks.filter(item=>item.type==="image")[ordinal];
+    if(!block)return;
+    if(action==="delete")section.blocks.splice(section.blocks.indexOf(block),1);
+    else if(crop)block.crop=crop;
+    else delete block.crop;
+    setDraft({...draft,document});setDirty(true);setEpoch(value=>value+1);setEditingImage(null);
+  };
   const hasVoice=progress?.lanes.some(lane=>lane.lane==="voice") || draft?.document.sections.some(section=>section.key==="voice"&&section.blocks.length>0);
   return <section className="daily-editor">
     <header className="daily-editor-header"><div><h1>铃野主编工作台</h1><p>改好这一版，再交到大家手里。</p></div>
@@ -119,7 +136,10 @@ export function LingyeDailyEditor({onBack}:{onBack?:()=>void} = {}) {
         onPaste={event=>{event.preventDefault();document.execCommand("insertText",false,event.clipboardData.getData("text/plain"));setDirty(true);}}
         onDrop={event=>event.preventDefault()}>
         <DailyMasthead issue={{issueNumber:String(draft.issueNumber),dateLabel:dateLabel(draft.issueDate),editorName:draft.editorModel}} />
-        <DailyDocumentView document={draft.document} images={images} editable={!busy} />
+        <DailyDocumentView document={draft.document} images={images} editable={!busy} onImageAction={(figure,action)=>{
+          if(action==="crop")setEditingImage(figure);
+          else changeImage(figure,"delete");
+        }} />
       </div>
       <aside className="daily-editor-prizes"><h2>记者进度</h2>
         <div className="daily-editor-progress">{progress?.lanes.map(lane=><div key={lane.lane} className="daily-editor-progress-row">
@@ -149,5 +169,8 @@ export function LingyeDailyEditor({onBack}:{onBack?:()=>void} = {}) {
         })}>发放 {selected.length*2000} 金</button>
       </aside>
     </div>:!busy?<p>还没有待编排的稿件，生成后的日报会先送到这里。</p>:null}
+    {editingImage?<DailyImageEditor src={images[editingImage.dataset.imageId!]!}
+      initialCrop={editingImage.dataset.imageCrop?dailyImageCropSchema.parse(JSON.parse(editingImage.dataset.imageCrop)):undefined}
+      onApply={crop=>changeImage(editingImage,"crop",crop)} onClose={()=>setEditingImage(null)}/>:null}
   </section>;
 }
