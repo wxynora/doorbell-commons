@@ -1,6 +1,6 @@
 export const FEEDBACK_CONTRIBUTION_ENTRY = `
-            <section class="candidate2-settings-section">
-                <button id="settings-feedback-open" class="candidate2-settings-action-row" type="button" aria-haspopup="dialog" aria-controls="feedback-contribution-modal"><span>反馈与共建<small>反馈问题，或参与修复</small></span><i aria-hidden="true"></i></button>
+            <section class="candidate2-settings-section candidate2-settings-feedback-section">
+                <div class="candidate2-settings-section-heading"><div><span>07</span><h2>反馈与共建</h2></div><button id="settings-feedback-open" class="candidate2-settings-text-action handwritten" type="button" aria-label="打开反馈与共建" aria-haspopup="dialog" aria-controls="feedback-contribution-modal">View</button></div>
             </section>`;
 
 export const FEEDBACK_CONTRIBUTION_MODAL = `
@@ -17,6 +17,8 @@ export const FEEDBACK_CONTRIBUTION_MODAL = `
     </div>`;
 
 export const FEEDBACK_CONTRIBUTION_STYLES = `
+        .candidate2-settings-feedback-section { border-bottom: 0; }
+        .candidate2-settings-feedback-section .candidate2-settings-section-heading { margin-bottom: 0; }
         .candidate2-feedback-modal {
             position: fixed;
             inset: 0;
@@ -71,7 +73,7 @@ export const FEEDBACK_CONTRIBUTION_STYLES = `
             min-height: 48px;
             align-items: center;
             justify-content: space-between;
-            border-top: 1px solid #eadfd4;
+            border: 0;
             color: #60483f;
             font-size: 14px;
             text-decoration: none;
@@ -89,7 +91,7 @@ export const FEEDBACK_CONTRIBUTION_STYLES = `
         .candidate2-feedback-close:hover { color: #47332a; background: #f8f0e7; }
         .candidate2-feedback-links a:active,
         .candidate2-feedback-close:active { background: #eee2d5; }
-        #settings-feedback-open { min-height: 44px; }
+        #settings-feedback-open { min-width: 44px; min-height: 44px; }
         #settings-feedback-open:focus-visible,
         .candidate2-feedback-links a:focus-visible,
         .candidate2-feedback-close:focus-visible {
