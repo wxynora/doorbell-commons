@@ -12,6 +12,7 @@ export const farmPurchaseRequestKindSchema = z.enum([
   "pet",
   "item",
   "material",
+  "decoration",
 ]);
 export const farmPurchaseRequestStatusSchema = z.enum(["requested", "expired", "failed"]);
 export const farmPurchaseRequestIdempotencyKeySchema = z.uuid();
@@ -69,7 +70,7 @@ export const boundFarmPurchaseRequestCreateSchema = z
   .superRefine((request, context) => {
     const allowedKinds =
       request.shop === "field"
-        ? new Set(["seed", "potion", "potion_set", "recipe"])
+        ? new Set(["seed", "potion", "potion_set", "recipe", "decoration"])
         : request.shop === "mystery-merchant"
           ? new Set(["seed", "material", "potion_set"])
           : new Set(["animal", "pet", "item"]);

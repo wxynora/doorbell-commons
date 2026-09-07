@@ -3174,3 +3174,4 @@ export type OwnerProfileCareerSummarySuccess = z.infer<
 export type OwnerProfileCareerSummaryError = z.infer<typeof ownerProfileCareerSummaryErrorSchema>;
 export type HumanAuthenticationError = z.infer<typeof humanAuthenticationErrorSchema>;
 export type FarmHumanUiError = z.infer<typeof farmHumanUiErrorSchema>;
+export * from "./farm-decoration.js";

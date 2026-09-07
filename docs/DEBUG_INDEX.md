@@ -1,5 +1,14 @@
 # Doorbell Commons Implementation Index
 
+## 正式农场三维与装饰接线（2026-09-07）
+
+- 画面入口：`apps/web/src/farm/scenes/field/{field-scene.tsx,scene-runtime.js,models/**}`；复用预览模型，实际地块驱动作物，统一世界坐标、相机和命中测试。默认相机相对目标(6.5,24,36)、zoom1.55；天空与前景草地填充可视区域。
+- UI入口：`page/live-farm-page.tsx`、`panels/shop-panel.tsx`、`panels/tools/backpack-panel.tsx`；装饰商店、背包摆放及保存后退出。环境随既有资源读取/刷新更新，不新增轮询。
+- Main接口：`GET /api/farm/decorations`、`POST /api/farm/decorations/layout`；`farm-decoration-client.ts`与`farm-decoration-routes.ts`绑定已登录用户农场身份，严格协议在`packages/protocol/src/farm-decoration.ts`。既有购买请求服务将新装饰映射至原farm.buy，不改工具文案。
+- Farm入口（farm发布线）：`dist/domain/farm-decoration/{catalog,layout,state}.js`、`dist/server/farm-decoration-action.js`、`dist/server/doorbell/farm-decoration.js`；20款商品、库存数量、完整布局、版本冲突、幂等保存及SQLite提交。回执独立保存于Human回执分区。
+- 已通过最小定向检查：Farm购买/布局/保存持久化3项；Main购买映射与身份代理2项；客户端保存回执、商店购物车、背包/+1退出；三类作物六态、相机窄宽高比例、去银河/流星投影与去木框。协议构建和Main/Web类型检查通过。
+- 隔离整页实测：真实Farm本地购买→背包装饰→摆放→+1→保存两处绣球，金币不因摆放再次扣减，保存后退出编辑。测试/本地fixture不发布，未对生产玩家做购买或布局写入；发布健康检查不等于真人手机体验验收。
+
 This index records implemented and currently valid entry points only. `docs/product-plan.md` is the
 only product, frontend-design, and pending-protocol fact source. The three legacy frontend documents
 are migration pointers only and must not be used to recover older

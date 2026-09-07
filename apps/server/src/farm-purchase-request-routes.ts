@@ -204,6 +204,7 @@ export function registerFarmPurchaseRequestRoutes(
 							candidate.item_id === requested.item_id,
 					);
 					const supported =
+						(requested.kind === "decoration" && item?.source === "permanent") ||
 						(requested.kind === "potion" &&
 							requested.item_id === "speed_potion") ||
 						(requested.kind === "seed" && item?.source === "persisted") ||
@@ -214,8 +215,8 @@ export function registerFarmPurchaseRequestRoutes(
 						!supported ||
 						item.identity_state !== "known" ||
 						item.name === null ||
-						item.available_quantity === null ||
-						item.available_quantity < requested.qty ||
+						(item.available_quantity === null && requested.kind !== "decoration") ||
+						(item.available_quantity !== null && item.available_quantity < requested.qty) ||
 						item.condition === "already_owned"
 					) {
 						throw new FarmPurchaseRequestInputError(

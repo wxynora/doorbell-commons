@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState } from "react";
 import type { BoundFarmCatalogRead } from "../../../auth/farm-catalog-client";
+import type { BoundFarmDecorationsRead } from "../../../auth/farm-decoration-client";
 import type { BoundKitchenRead } from "../../../auth/kitchen-client";
 import type { BoundRanchRead } from "../../../auth/ranch-client";
 import {
@@ -41,6 +42,7 @@ export function getFarmBackpackItemsForTab(
   if (tab === "素材") {
     return items.filter((item) => item.kind === "material");
   }
+  if (tab === "装饰") return [];
   return items.filter((item) => item.kind === "item" && item.item_id !== "speed_potion");
 }
 
@@ -102,6 +104,8 @@ export function FarmBackpackPanel({
   preview,
   ranch,
   farmCatalog,
+  farmDecorations,
+  onPlaceFarmDecoration,
   scene,
 }: {
   kitchen?: BoundKitchenRead | null;
@@ -110,6 +114,8 @@ export function FarmBackpackPanel({
   preview: boolean;
   ranch?: BoundRanchRead | null;
   farmCatalog?: BoundFarmCatalogRead | null;
+  farmDecorations?: BoundFarmDecorationsRead | null;
+  onPlaceFarmDecoration?: ((itemId: string) => void) | undefined;
   scene: Exclude<FarmSceneId, "neighborhood">;
 }) {
   const tabs = FARM_FEATURE_PANELS[scene].backpack?.tabs ?? [];
@@ -157,7 +163,7 @@ export function FarmBackpackPanel({
 
   if (scene === "field") {
     const section = farmCatalog?.data.backpack;
-    if (!section || section.status === "unavailable") {
+    if (activeTab !== "装饰" && (!section || section.status === "unavailable")) {
       return (
         <FarmUnavailablePanel
           iconKey="panel.tool.backpack"
@@ -179,10 +185,60 @@ export function FarmBackpackPanel({
             </button>
           ))}
         </nav>
-        <CatalogInventoryRows
-          emptyLabel="当前分类没有真实物品"
-          items={getFarmBackpackItemsForTab(section.items, activeTab)}
-        />
+        {activeTab === "装饰" ? (
+          !farmDecorations ? (
+            <FarmUnavailablePanel iconKey="panel.tool.backpack" label="装饰库存暂不可用" />
+          ) : (
+            <ul className="farm-crop-codex__list" aria-label="装饰库存">
+              {farmDecorations.data.inventory
+                .filter((item) => item.unlocked || item.owned_quantity > 0)
+                .map((item) => {
+                  const definition = farmDecorations.data.catalog.find(
+                    (entry) => entry.item_id === item.item_id,
+                  );
+                  if (!definition) return null;
+                  const unlimited = definition.purchase_mode === "unlock";
+                  return (
+                    <li key={item.item_id}>
+                      <span>{definition.name}</span>
+                      <small>
+                        {unlimited
+                          ? "永久解锁 · 无限摆放"
+                          : `可摆 ${item.available_quantity ?? 0} 件 · 已摆 ${item.placed_quantity} 件`}
+                      </small>
+                      <button
+                        className="farm-inventory-action"
+                        type="button"
+                        disabled={
+                          !onPlaceFarmDecoration ||
+                          (!unlimited && (item.available_quantity ?? 0) < 1)
+                        }
+                        onClick={() => onPlaceFarmDecoration?.(item.item_id)}
+                      >
+                        摆放
+                      </button>
+                    </li>
+                  );
+                })}
+              {!farmDecorations.data.inventory.some(
+                (item) => item.unlocked || item.owned_quantity > 0,
+              ) ? (
+                <li>
+                  <span>还没有装饰，去农场商店看看吧。</span>
+                </li>
+              ) : null}
+            </ul>
+          )
+        ) : (
+          <CatalogInventoryRows
+            emptyLabel="当前分类没有真实物品"
+            items={
+              section?.status === "available"
+                ? getFarmBackpackItemsForTab(section.items, activeTab)
+                : []
+            }
+          />
+        )}
       </section>
     );
   }
@@ -205,8 +261,7 @@ export function FarmBackpackPanel({
         resident.accessories.status === "available"
           ? resident.accessories.items.map((item) => ({
               item,
-              wearer:
-                resident.identity.custom_name ?? resident.identity.name ?? "身份不可用",
+              wearer: resident.identity.custom_name ?? resident.identity.name ?? "身份不可用",
             }))
           : [],
       );
@@ -234,10 +289,10 @@ export function FarmBackpackPanel({
                   </li>
                 ))}
                 {wornAccessories.map(({ item, wearer }, index) => (
-                <li key={`worn-${item.accessory_id ?? "unavailable"}-${wearer}-${index}`}>
-                  <span>{item.status === "known" && item.name ? item.name : "身份不可用"}</span>
-                  <small>穿戴中 · {wearer}</small>
-                </li>
+                  <li key={`worn-${item.accessory_id ?? "unavailable"}-${wearer}-${index}`}>
+                    <span>{item.status === "known" && item.name ? item.name : "身份不可用"}</span>
+                    <small>穿戴中 · {wearer}</small>
+                  </li>
                 ))}
               </>
             ) : (

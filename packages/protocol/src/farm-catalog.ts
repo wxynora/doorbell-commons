@@ -47,7 +47,7 @@ export const farmCatalogCurrencySchema = z.enum(["gold", "silver"]);
 
 export const farmCatalogShopItemSchema = z
   .object({
-    kind: z.enum(["seed", "potion", "potion_set", "recipe"]),
+    kind: z.enum(["seed", "potion", "potion_set", "recipe", "decoration"]),
     item_id: z.string().min(1),
     identity_state: farmCatalogItemIdentityStateSchema,
     name: z.string().min(1).nullable(),

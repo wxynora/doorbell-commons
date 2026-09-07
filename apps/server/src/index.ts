@@ -1,4 +1,5 @@
 import { ActivityReminderService } from "./activity-reminder-service.js";
+import { FarmDecorationClient } from "./farm-decoration-client.js";
 import { MysteryMerchantReminderService } from "./mystery-merchant-reminder-service.js";
 import { buildApp } from "./app.js";
 import { BellAccessService } from "./bell-access-service.js";
@@ -114,6 +115,11 @@ const farmKitchenPurchaser = new FarmHumanKitchenPurchaseClient({
   requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
   serviceToken: serverConfig.farmServiceToken,
 });
+const farmDecorationClient = new FarmDecorationClient({
+  apiBaseUrl: serverConfig.farmApiBaseUrl,
+  requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+  serviceToken: serverConfig.farmServiceToken,
+});
 const farmKitchenCooker = new FarmHumanKitchenCookClient({
   apiBaseUrl: serverConfig.farmApiBaseUrl,
   requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
@@ -212,6 +218,7 @@ const registrationAuth = new RegistrationAuthService({
   farmKitchenReader,
   farmKitchenShopOpener: farmKitchenReader,
   farmKitchenPurchaser,
+  farmDecorationClient,
   farmKitchenCooker,
   farmKitchenInventoryActioner,
   farmKitchenShopRefresher,

@@ -50,6 +50,8 @@ export function FarmToolPanel({
   cookingShopOpenFeedback,
   farmCheckoutFeedback,
   farmCatalog,
+  farmDecorations,
+  onPlaceFarmDecoration,
   farmShopOpenFeedback,
   kitchen,
   onClose,
@@ -115,6 +117,7 @@ export function FarmToolPanel({
       {tool.id === "shop" && activeScene !== "neighborhood" ? (
         <Suspense fallback={<FarmLazyLoading label="正在打开商店" />}>
           <FarmShopPanelContent
+            farmDecorations={farmDecorations}
             activeScene={activeScene}
             cart={cart}
             cookingCheckoutFeedback={cookingCheckoutFeedback}
@@ -160,6 +163,8 @@ export function FarmToolPanel({
       ) : tool.id === "backpack" && activeScene !== "neighborhood" ? (
         <FarmBackpackPanel
           farmCatalog={farmCatalog ?? null}
+          farmDecorations={farmDecorations ?? null}
+          onPlaceFarmDecoration={onPlaceFarmDecoration}
           kitchen={kitchen ?? null}
           onKitchenInventoryAction={onKitchenInventoryAction}
           onRanchDecorationAction={onRanchDecorationAction}

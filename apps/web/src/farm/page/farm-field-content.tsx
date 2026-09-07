@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { BoundFarmField } from "../../auth/auth-client";
+import type { FarmDecorationLayout } from "../../auth/farm-decoration-client";
 import type { BoundBulletinRead, BulletinAcknowledgementScope } from "../../auth/bulletin-client";
 import {
   type CreateFarmPurchaseRequestInput,
@@ -190,6 +191,7 @@ export function FarmFieldContent({
   onCropCodexAction,
   onExpeditionAction,
   onFarmPurchaseRequest,
+  onSaveDecorationLayout,
   farmShopOpenFeedback = { stage: "idle" },
   cookingShopOpenFeedback = { stage: "idle" },
   onHarvestAssist,
@@ -238,6 +240,7 @@ export function FarmFieldContent({
   onCropCodexAction?: CropCodexActionExecutor | undefined;
   onExpeditionAction?: ExpeditionActionExecutor | undefined;
   onFarmPurchaseRequest?: FarmPurchaseRequestExecutor | undefined;
+  onSaveDecorationLayout?: ((layout: FarmDecorationLayout) => Promise<void>) | undefined;
   farmShopOpenFeedback?: FarmShopOpenFeedback | undefined;
   cookingShopOpenFeedback?: CookingShopOpenFeedback | undefined;
   onHarvestAssist?: (() => void) | undefined;
@@ -275,6 +278,12 @@ export function FarmFieldContent({
 }) {
   const field = data.data;
   const farmCatalog = resources.farmCatalog.stage === "ready" ? resources.farmCatalog.data : null;
+  const farmDecorations =
+    resources.farmDecorations?.stage === "ready" ? resources.farmDecorations.data : null;
+  const [placementRequest, setPlacementRequest] = useState<
+    { decorationId: string; requestKey: string } | undefined
+  >();
+  const [decorationEditing, setDecorationEditing] = useState(false);
   const kitchen = resources.kitchen.stage === "ready" ? resources.kitchen.data : null;
   const ranch = resources.ranch.stage === "ready" ? resources.ranch.data : null;
   const [activeScene, setActiveScene] = useState<FarmSceneId>("field");
@@ -371,7 +380,8 @@ export function FarmFieldContent({
   const liveRanchResidents = getLiveRanchResidents(ranch);
   const liveRanchSceneResidents = getLiveRanchSceneResidents(ranch);
   const liveRanchVisitors = getLiveRanchVisitors(ranch);
-  const selectedVisitor = liveRanchVisitors.find((visitor) => visitor.raidId === selectedVisitorRaidId) ?? null;
+  const selectedVisitor =
+    liveRanchVisitors.find((visitor) => visitor.raidId === selectedVisitorRaidId) ?? null;
   const selectedRanchAnimal = preview
     ? (RANCH_SHOP_ANIMALS.find((animal) => animal.id === selectedRanchAnimalId) ?? null)
     : null;
@@ -398,7 +408,8 @@ export function FarmFieldContent({
       acknowledge === "trail"
         ? displayedBulletin.data.trail.status === "available" &&
           displayedBulletin.data.trail.has_unread
-        : (displayedBulletin.humanNotices?.length ?? 0) > 0 || Object.values(displayedBulletin.data.available).some(
+        : (displayedBulletin.humanNotices?.length ?? 0) > 0 ||
+          Object.values(displayedBulletin.data.available).some(
             (entries) => (entries?.length ?? 0) > 0,
           );
     if (hasUnread) onAcknowledgeBulletin?.(displayedBulletin, acknowledge);
@@ -538,6 +549,7 @@ export function FarmFieldContent({
     if (preview || compensationBulletinRequestedRef.current) return;
     compensationBulletinRequestedRef.current = true;
     onRequireResource?.("bulletin");
+    onRequireResource?.("farmDecorations");
   }, [onRequireResource, preview]);
 
   useEffect(() => {
@@ -905,6 +917,11 @@ export function FarmFieldContent({
             >
               {scene.id === "field" ? (
                 <FieldScene
+                  decorationData={farmDecorations?.data}
+                  placementRequest={placementRequest}
+                  onSaveLayout={onSaveDecorationLayout}
+                  onFinishEditing={() => setPlacementRequest(undefined)}
+                  onEditingChange={setDecorationEditing}
                   backgroundUrl={getFarmEnvironmentAssetUrl(
                     "field",
                     field.season.id,
@@ -914,7 +931,9 @@ export function FarmFieldContent({
                   onSelectPlot={setSelectedPlotId}
                   plots={field.plots}
                   requestControls={
-                    !activeSceneUiState.selectedTool && !activeSceneUiState.bulletinOpen ? (
+                    !decorationEditing &&
+                    !activeSceneUiState.selectedTool &&
+                    !activeSceneUiState.bulletinOpen ? (
                       <FieldRequestControls
                         emptyPlotCount={field.plots.filter((plot) => plot.state === "empty").length}
                         harvestRequestAction={harvestRequestAction}
@@ -947,11 +966,7 @@ export function FarmFieldContent({
                         : ranchVisitorCatchAction.outcome.raid_id
                       : null
                   }
-                  onCatchVisitor={
-                    onRanchInteractionAction
-                      ? setSelectedVisitorRaidId
-                      : undefined
-                  }
+                  onCatchVisitor={onRanchInteractionAction ? setSelectedVisitorRaidId : undefined}
                   onSelectAnimal={setSelectedRanchAnimalId}
                 />
               ) : null}
@@ -991,7 +1006,9 @@ export function FarmFieldContent({
             landTier={field.land.tier}
             seasonName={field.season.name}
           />
-          {!activeSceneUiState.selectedTool && !activeSceneUiState.bulletinOpen ? (
+          {!decorationEditing &&
+          !activeSceneUiState.selectedTool &&
+          !activeSceneUiState.bulletinOpen ? (
             <FarmLandUpgradeControl
               land={field.land}
               onUpgrade={onLandUpgrade}
@@ -1073,7 +1090,8 @@ export function FarmFieldContent({
           }}
         />
       ) : null}
-      {!activeSceneUiState.selectedTool &&
+      {!decorationEditing &&
+      !activeSceneUiState.selectedTool &&
       !activeSceneUiState.bulletinOpen &&
       activeScene === "field" ? (
         <FieldSceneOverlay
@@ -1197,6 +1215,12 @@ export function FarmFieldContent({
               {sceneState.selectedTool ? (
                 <FarmToolPanel
                   activeScene={scene.id}
+                  farmDecorations={farmDecorations}
+                  onPlaceFarmDecoration={(itemId) => {
+                    updateSceneUiState("field", { selectedTool: null, bulletinOpen: false });
+                    setSelectedPlotId(null);
+                    setPlacementRequest({ decorationId: itemId, requestKey: crypto.randomUUID() });
+                  }}
                   cart={scene.id === "neighborhood" ? EMPTY_SHOP_CART : shopCarts[scene.id]}
                   cookingCheckoutFeedback={cookingCheckoutFeedback}
                   cookingShopRefreshFeedback={cookingShopRefreshFeedback}
@@ -1294,39 +1318,56 @@ export function FarmFieldContent({
         );
       })}
 
-      <FarmToolBar
-        activeScene={activeScene}
-        bulletinUnread={bulletinUnread}
-        onOpenBulletin={() => {
-          if (activeScene === "cooking") {
-            setCookingIngredientPickerOpen(false);
-          }
-          if (!preview) {
-            onRequireResource?.("bulletin", true);
-          }
-          updateSceneUiState(activeScene, { bulletinOpen: true, selectedTool: null });
-        }}
-        onSelect={(tool) => {
-          if (activeScene === "cooking") {
-            setCookingIngredientPickerOpen(false);
-          }
-          if (!preview) {
-            if (activeScene === "ranch" && tool.id === "dispatch") {
-              onRequireResource?.("farmCatalog");
+      {!decorationEditing ? (
+        <FarmToolBar
+          activeScene={activeScene}
+          bulletinUnread={bulletinUnread}
+          onOpenBulletin={() => {
+            if (activeScene === "cooking") {
+              setCookingIngredientPickerOpen(false);
             }
-            if (activeScene === "field" && tool.id === "shop" && onOpenFarmShop) {
-              onOpenFarmShop();
-            } else if (activeScene === "cooking" && tool.id === "shop" && onOpenKitchenShop) {
-              onOpenKitchenShop();
-            } else {
-              const resource = getToolReadResource(activeScene, tool.id);
-              if (resource) onRequireResource?.(resource);
+            if (!preview) {
+              onRequireResource?.("bulletin", true);
             }
-          }
-          updateSceneUiState(activeScene, { bulletinOpen: false, selectedTool: tool });
-        }}
-      />
-      <div className="farm-game__bottom">
+            updateSceneUiState(activeScene, { bulletinOpen: true, selectedTool: null });
+          }}
+          onSelect={(tool) => {
+            if (activeScene === "cooking") {
+              setCookingIngredientPickerOpen(false);
+            }
+            if (!preview) {
+              if (activeScene === "field" && tool.id === "backpack") {
+                onRequireResource?.("farmDecorations", true);
+              }
+              if (activeScene === "ranch" && tool.id === "dispatch") {
+                onRequireResource?.("farmCatalog");
+              }
+              if (activeScene === "field" && tool.id === "shop" && onOpenFarmShop) {
+                onOpenFarmShop();
+              } else if (activeScene === "cooking" && tool.id === "shop" && onOpenKitchenShop) {
+                onOpenKitchenShop();
+              } else {
+                const resource = getToolReadResource(activeScene, tool.id);
+                if (resource) onRequireResource?.(resource);
+              }
+            }
+            updateSceneUiState(activeScene, { bulletinOpen: false, selectedTool: tool });
+          }}
+        />
+      ) : null}
+      <div className="farm-game__bottom" hidden={decorationEditing}>
+        {activeScene === "field" && resources.farmDecorations?.stage === "error" ? (
+          <div className="farm-tool-notice" role="alert">
+            <span>{resources.farmDecorations.message}</span>
+            <button
+              aria-label="重新读取农场装饰"
+              type="button"
+              onClick={() => onRequireResource?.("farmDecorations", true)}
+            >
+              ↻
+            </button>
+          </div>
+        ) : null}
         {activeResourceKey && activeResourceState?.stage === "error" ? (
           <div className="farm-tool-notice" role="alert">
             <span>{activeResourceState.message}</span>

@@ -1,5 +1,6 @@
 import type { ApiResult } from "../../../auth/auth-client";
 import type { BoundFarmCatalogRead } from "../../../auth/farm-catalog-client";
+import type { BoundFarmDecorationsRead } from "../../../auth/farm-decoration-client";
 import type {
   BoundFarmSettingsAction,
   FarmSettingsActionInput,
@@ -102,6 +103,8 @@ export interface FarmToolPanelProps {
   farmCheckoutFeedback?: FarmCartCheckoutFeedback | undefined;
   farmShopOpenFeedback?: FarmShopOpenFeedback | undefined;
   farmCatalog?: BoundFarmCatalogRead | null;
+  farmDecorations?: BoundFarmDecorationsRead | null;
+  onPlaceFarmDecoration?: ((itemId: string) => void) | undefined;
   kitchen?: BoundKitchenRead | null;
   onClose: () => void;
   onChangeCartQuantity: (cartKey: string, delta: number, maxQuantity?: number) => void;

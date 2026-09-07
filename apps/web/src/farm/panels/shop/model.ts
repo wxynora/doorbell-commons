@@ -1,4 +1,5 @@
 import type { BoundFarmCatalogRead } from "../../../auth/farm-catalog-client";
+import type { BoundFarmDecorationsRead } from "../../../auth/farm-decoration-client";
 import type { BoundKitchenRead } from "../../../auth/kitchen-client";
 import type { BoundRanchRead } from "../../../auth/ranch-client";
 import {
@@ -19,7 +20,7 @@ import {
   type RanchSkinDefinition,
 } from "../ranch-animal-data";
 
-export type FarmFieldShopSectionId = "seeds-and-potions" | "today";
+export type FarmFieldShopSectionId = "seeds-and-potions" | "today" | "decorations";
 export type CookingShopSectionId = "ingredients" | "recipes" | "tools";
 export type CookingMethodId =
   | "roast"
@@ -39,7 +40,7 @@ export interface CookingMethod {
 
 export interface FarmShopPreviewItem {
   id: string;
-  kind: "seed" | "potion" | "potion_set" | "recipe";
+  kind: "seed" | "potion" | "potion_set" | "recipe" | "decoration";
   iconKey?: FarmAssetKey | undefined;
   name: string;
   note: string;
@@ -58,7 +59,7 @@ export interface CookingCartCheckoutLine {
 }
 
 export interface FarmCartCheckoutLine {
-  kind: "seed" | "potion" | "potion_set" | "recipe" | "animal" | "pet" | "item";
+  kind: "seed" | "potion" | "potion_set" | "recipe" | "animal" | "pet" | "item" | "decoration";
   itemId: string;
   quantity: number;
 }
@@ -97,7 +98,7 @@ export type ShopCartVisual =
   | {
       kind: "farm";
       entityId: string;
-      catalogKind: "seed" | "potion" | "potion_set" | "recipe";
+      catalogKind: "seed" | "potion" | "potion_set" | "recipe" | "decoration";
       iconKey?: FarmAssetKey | undefined;
     }
   | {
@@ -139,6 +140,7 @@ export interface FarmShopPanelProps {
   onRefreshCookingShop?: (() => void) | undefined;
   preview: boolean;
   farmCatalog?: BoundFarmCatalogRead | null | undefined;
+  farmDecorations?: BoundFarmDecorationsRead | null | undefined;
   ranch?: BoundRanchRead | null | undefined;
   kitchen?: BoundKitchenRead | null | undefined;
 }
@@ -150,7 +152,7 @@ export interface FarmShopLiveResources {
 }
 
 export type LiveFarmShopItem = FarmShopPreviewItem & {
-  kind: "seed" | "potion" | "potion_set" | "recipe";
+  kind: "seed" | "potion" | "potion_set" | "recipe" | "decoration";
   source: "permanent" | "persisted";
 };
 
@@ -192,11 +194,13 @@ export const FARM_FIELD_SHOP_SECTIONS: readonly {
 }[] = [
   { id: "seeds-and-potions", label: "种子与药水" },
   { id: "today", label: "今日商店" },
+  { id: "decorations", label: "装饰" },
 ];
 
 export const FARM_FIELD_SHOP_PREVIEW_ITEMS: Readonly<
   Record<FarmFieldShopSectionId, readonly FarmShopPreviewItem[]>
 > = {
+  decorations: [],
   "seeds-and-potions": [
     {
       id: "common-seed-preview",
@@ -299,6 +303,7 @@ const FARM_SHOP_ICON_KEYS: Readonly<
     potion_set: "field.shop.potion-set",
   },
   recipe: {},
+  decoration: {},
 };
 
 function getFarmShopIconKey(
@@ -542,6 +547,7 @@ export function getShopCartItemDefinition(
       name: item.name,
       price: item.price,
       currency: "gold",
+      maxQuantity: item.availableQuantity ?? undefined,
       visual: {
         kind: "farm",
         catalogKind: item.kind,

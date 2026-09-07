@@ -418,6 +418,7 @@ import {
 } from "./farm-plant-request-service.js";
 import type { FarmPurchaseRequestService } from "./farm-purchase-request-service.js";
 import { registerFarmPurchaseRequestRoutes } from "./farm-purchase-request-routes.js";
+import { registerFarmDecorationRoutes } from "./farm-decoration-routes.js";
 import {
   FarmHumanRanchResidentActionContractUnavailableError,
   FarmHumanRanchResidentActionCredentialInvalidError,
@@ -5584,6 +5585,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   });
 
   registerFarmPurchaseRequestRoutes(app, options);
+  registerFarmDecorationRoutes(app, options);
 
   app.get("/api/farm/bulletin", { exposeHeadRoute: false }, async (request, reply) => {
     if (

@@ -151,7 +151,7 @@ export function buildFarmPurchaseDoorbellCalls(
   const calls: FarmPurchaseDoorbellCall[] = [];
   for (const item of items) {
     if (shop === "field") {
-      if (item.kind === "potion") {
+      if (item.kind === "potion" || item.kind === "decoration") {
         calls.push(
           validatedDoorbellCall("farm.buy", {
             source: "shop",

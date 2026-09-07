@@ -1,4 +1,5 @@
-import type { FarmBulletinAckScope, OwnerProfileCareerSummarySuccess, LingyeNpcInteractRequest } from "@doorbell/protocol";
+import type { FarmBulletinAckScope, OwnerProfileCareerSummarySuccess, LingyeNpcInteractRequest, BoundFarmDecorationLayoutSaveRequest } from "@doorbell/protocol";
+import { FarmDecorationClient, FarmDecorationError } from "./farm-decoration-client.js";
 import type {
   CommunityDatabase,
   CreatedHumanSession,
@@ -239,6 +240,7 @@ interface RegistrationAuthServiceOptions {
   farmKitchenReader?: FarmHumanKitchenReader;
   farmKitchenShopOpener?: FarmHumanKitchenShopOpener;
   farmKitchenPurchaser?: FarmHumanKitchenPurchaser;
+  farmDecorationClient?: FarmDecorationClient;
   farmKitchenCooker?: FarmHumanKitchenCooker;
   farmKitchenInventoryActioner?: FarmHumanKitchenInventoryActioner;
   farmKitchenShopRefresher?: FarmHumanKitchenShopRefresher;
@@ -292,6 +294,7 @@ export class RegistrationAuthService {
   readonly #farmKitchenReader: FarmHumanKitchenReader | undefined;
   readonly #farmKitchenShopOpener: FarmHumanKitchenShopOpener | undefined;
   readonly #farmKitchenPurchaser: FarmHumanKitchenPurchaser | undefined;
+  readonly #farmDecorationClient: FarmDecorationClient | undefined;
   readonly #farmKitchenCooker: FarmHumanKitchenCooker | undefined;
   readonly #farmKitchenInventoryActioner: FarmHumanKitchenInventoryActioner | undefined;
   readonly #farmKitchenShopRefresher: FarmHumanKitchenShopRefresher | undefined;
@@ -331,6 +334,7 @@ export class RegistrationAuthService {
     this.#farmKitchenReader = options.farmKitchenReader;
     this.#farmKitchenShopOpener = options.farmKitchenShopOpener;
     this.#farmKitchenPurchaser = options.farmKitchenPurchaser;
+    this.#farmDecorationClient = options.farmDecorationClient;
     this.#farmKitchenCooker = options.farmKitchenCooker;
     this.#farmKitchenInventoryActioner = options.farmKitchenInventoryActioner;
     this.#farmKitchenShopRefresher = options.farmKitchenShopRefresher;
@@ -976,6 +980,31 @@ export class RegistrationAuthService {
       farmDoorplate: community.farmBinding.farmDoorplate,
       farmHumanKey,
     });
+  }
+
+  async getCurrentFarmDecorations(token: string) {
+    const { client, binding } = await this.#currentDecorationBinding(token);
+    return client.read(binding);
+  }
+
+  async saveCurrentFarmDecorationLayout(token: string, body: BoundFarmDecorationLayoutSaveRequest) {
+    const { client, binding } = await this.#currentDecorationBinding(token);
+    return client.save(binding, body);
+  }
+
+  async #currentDecorationBinding(token: string) {
+    const community = await this.getCurrentSession(token);
+    const farmHumanKey = community.farmBinding.farmHumanKey;
+    if (farmHumanKey === null) {
+      throw new RegistrationProfileRequiredError();
+    }
+    if (!this.#farmDecorationClient) {
+      throw new FarmDecorationError(503, { code: "farm_unavailable", message: "农场装饰暂时不可用。" });
+    }
+    return { client: this.#farmDecorationClient, binding: {
+      farmDoorplate: community.farmBinding.farmDoorplate,
+      farmHumanKey,
+    } };
   }
 
   async executeCurrentFarmRanchResidentAction(

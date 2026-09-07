@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { BoundFarmCatalogRead } from "../../auth/farm-catalog-client";
+import type { BoundFarmDecorationsRead } from "../../auth/farm-decoration-client";
 import { getFarmAssetUrl } from "../farm-asset-manifest";
 import { CookingShopPanelContent } from "./shop/cooking-shop";
 import {
@@ -47,6 +48,7 @@ function FarmLiveShopPanelContent({
   cart,
   farmCheckoutFeedback,
   farmCatalog,
+  farmDecorations,
   farmShopOpenFeedback,
   onChangeCartQuantity,
   onCheckoutFarmCart,
@@ -56,6 +58,7 @@ function FarmLiveShopPanelContent({
   cart: ShopCartQuantities;
   farmCheckoutFeedback?: FarmCartCheckoutFeedback | undefined;
   farmCatalog?: BoundFarmCatalogRead | null | undefined;
+  farmDecorations?: BoundFarmDecorationsRead | null | undefined;
   farmShopOpenFeedback?: FarmShopOpenFeedback | undefined;
   onChangeCartQuantity: (cartKey: string, delta: number, maxQuantity?: number) => void;
   onCheckoutFarmCart?: ((items: FarmCartCheckoutLine[]) => void) | undefined;
@@ -65,7 +68,10 @@ function FarmLiveShopPanelContent({
   const [sectionId, setSectionId] = useState<FarmFieldShopSectionId>("seeds-and-potions");
   const [cartOpen, setCartOpen] = useState(false);
   const items = getLiveFarmShopItems(farmCatalog).filter((item) =>
-    sectionId === "today" ? item.source === "persisted" : item.source === "permanent",
+    sectionId === "decorations"
+      ? item.kind === "decoration"
+      : item.kind !== "decoration" &&
+        (sectionId === "today" ? item.source === "persisted" : item.source === "permanent"),
   );
   const showEmptyTodayShelf =
     sectionId === "today" &&
@@ -139,6 +145,10 @@ function FarmLiveShopPanelContent({
       ) : null}
       <ul className="farm-shop__items" hidden={showEmptyTodayShelf}>
         {items.map((item) => {
+          const decoration =
+            item.kind === "decoration"
+              ? farmDecorations?.data.catalog.find((entry) => entry.item_id === item.id)
+              : undefined;
           const disabled = item.note === "已拥有" || item.availableQuantity === 0;
           const cartKey = getShopCartKey("farm", item.id);
           const quantity = cart[cartKey] ?? 0;
@@ -162,7 +172,17 @@ function FarmLiveShopPanelContent({
                 ) : null}
                 <span className="farm-shop__item-copy">
                   <strong>{item.name}</strong>
-                  <small>{item.note}</small>
+                  <small>
+                    {item.note === "已拥有"
+                      ? decoration
+                        ? "已解锁 · 无限摆放"
+                        : item.note
+                      : decoration
+                        ? decoration.purchase_mode === "unlock"
+                          ? "一次解锁 · 无限摆放"
+                          : "按件购买 · 可重复购买"
+                        : item.note}
+                  </small>
                 </span>
               </button>
               <span className="farm-shop__price">
@@ -200,6 +220,7 @@ export function FarmShopPanelContent({
   cookingShopOpenFeedback,
   farmCheckoutFeedback,
   farmCatalog,
+  farmDecorations,
   farmShopOpenFeedback,
   kitchen,
   onChangeCartQuantity,
@@ -263,6 +284,7 @@ export function FarmShopPanelContent({
         cart={cart}
         farmCheckoutFeedback={farmCheckoutFeedback}
         farmCatalog={farmCatalog}
+        farmDecorations={farmDecorations}
         farmShopOpenFeedback={farmShopOpenFeedback}
         onChangeCartQuantity={onChangeCartQuantity}
         onCheckoutFarmCart={onCheckoutFarmCart}
