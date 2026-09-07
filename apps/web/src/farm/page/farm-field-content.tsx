@@ -284,6 +284,7 @@ export function FarmFieldContent({
     { decorationId: string; requestKey: string } | undefined
   >();
   const [decorationEditing, setDecorationEditing] = useState(false);
+  const [interfaceHidden, setInterfaceHidden] = useState(false);
   const kitchen = resources.kitchen.stage === "ready" ? resources.kitchen.data : null;
   const ranch = resources.ranch.stage === "ready" ? resources.ranch.data : null;
   const [activeScene, setActiveScene] = useState<FarmSceneId>("field");
@@ -908,7 +909,17 @@ export function FarmFieldContent({
   };
 
   return (
-    <div className="farm-game__ready">
+    <div className={`farm-game__ready${interfaceHidden && activeScene === "field" ? " farm-game__ready--interface-hidden" : ""}`}>
+      {activeScene === "field" && !decorationEditing ? (
+        <button
+          className="farm-interface-toggle"
+          type="button"
+          aria-pressed={interfaceHidden}
+          onClick={() => setInterfaceHidden((hidden) => !hidden)}
+        >
+          {interfaceHidden ? "显示界面" : "隐藏界面"}
+        </button>
+      ) : null}
       {SCENE_OPTIONS.map((scene) =>
         visitedScenes.has(scene.id) ? (
           <div className="farm-scene-state" hidden={scene.id !== activeScene} key={scene.id}>
@@ -921,7 +932,10 @@ export function FarmFieldContent({
                   placementRequest={placementRequest}
                   onSaveLayout={onSaveDecorationLayout}
                   onFinishEditing={() => setPlacementRequest(undefined)}
-                  onEditingChange={setDecorationEditing}
+                  onEditingChange={(editing) => {
+                    setDecorationEditing(editing);
+                    if (editing) setInterfaceHidden(false);
+                  }}
                   backgroundUrl={getFarmEnvironmentAssetUrl(
                     "field",
                     field.season.id,

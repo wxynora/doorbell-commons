@@ -11,6 +11,12 @@
 }
 .farm-field-canvas { position:absolute; inset:0; touch-action:none; }
 .farm-field-canvas canvas { display:block; width:100%; height:100%; }
+.farm-interface-toggle { position:absolute; left:2.5cqw; top:12cqw; z-index:30; border:1px solid #b7b498; border-radius:1.4cqw; padding:1.5cqw 2cqw; background:#f6efd9e8; color:#425143; font:inherit; font-size:2.8cqw; cursor:pointer; }
+.farm-game__ready--interface-hidden > :not(.farm-scene-state):not(.farm-interface-toggle),
+.farm-game__ready--interface-hidden .farm-plot-detail,
+.farm-game__ready--interface-hidden .farm-field-accessible-plots,
+.farm-game__shell:has(.farm-game__ready--interface-hidden) > .farm-game__controls,
+.farm-game__shell:has(.farm-game__ready--interface-hidden) > .farm-action-list-launcher { visibility:hidden; pointer-events:none; }
 .farm-game__shell:has(.farm-scene-state:not([hidden]) .farm-scene--field) { width:min(100%,90svh); }
 .farm-field-bottom-actions { position:absolute; bottom:17.6cqw; left:50%; width:74cqw; transform:translateX(-50%); z-index:18; display:grid; gap:1cqw; }
 .farm-field-bottom-actions > .farm-field-request-controls,
