@@ -189,7 +189,7 @@ export function FarmBackpackPanel({
           !farmDecorations ? (
             <FarmUnavailablePanel iconKey="panel.tool.backpack" label="装饰库存暂不可用" />
           ) : (
-            <ul className="farm-crop-codex__list" aria-label="装饰库存">
+            <ul className="farm-crop-codex__list farm-decoration-inventory" aria-label="装饰库存">
               {farmDecorations.data.inventory
                 .filter((item) => item.unlocked || item.owned_quantity > 0)
                 .map((item) => {

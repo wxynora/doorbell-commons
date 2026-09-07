@@ -915,9 +915,18 @@ export function FarmFieldContent({
           className="farm-interface-toggle"
           type="button"
           aria-pressed={interfaceHidden}
+          aria-label={interfaceHidden ? "显示界面" : "隐藏界面"}
+          title={interfaceHidden ? "显示界面" : "隐藏界面"}
           onClick={() => setInterfaceHidden((hidden) => !hidden)}
         >
-          {interfaceHidden ? "显示界面" : "隐藏界面"}
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+            {interfaceHidden ? <>
+              <path d="M3 9c2.4 4 5.4 6 9 6s6.6-2 9-6M5 12l-2 3m6-1-1 4m7-4 1 4m3-6 2 3"/>
+            </> : <>
+              <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </>}
+          </svg>
         </button>
       ) : null}
       {SCENE_OPTIONS.map((scene) =>

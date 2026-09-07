@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { createFieldRuntime, type SceneRuntime } from "./scene-runtime.js";
+import { createFieldRuntime, roofChoices, type SceneRuntime } from "./scene-runtime.js";
 import type { SceneDecorationData, SceneDecorationLayout, SceneEditState } from "./scene-types";
 export type { SceneDecorationData, SceneDecorationLayout } from "./scene-types";
 import type { FarmPlot } from "../../farm-overview";
@@ -64,6 +64,8 @@ export function FieldScene({
 }) {
   const host = useRef<HTMLDivElement>(null), runtime = useRef<SceneRuntime | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
+  const [roofPalette, setRoofPalette] = useState(false);
+  const [roofChoice, setRoofChoice] = useState("mint");
   const [edit, setEdit] = useState<SceneEditState>({editing:false,valid:false,title:"",canAdd:false,canRemove:false,message:""});
   const [renderPlots, setRenderPlots] = useState(plots);
   const callbacks = useRef({onSelectPlot,onSaveLayout,onFinishEditing,onEditingChange});
@@ -94,6 +96,7 @@ export function FieldScene({
   useEffect(()=>{if(decorationData)runtime.current?.setDecorations(decorationData);},[decorationData,plotKey]);
   useEffect(()=>{runtime.current?.selectPlot(selectedPlot?.plot_id??null);},[selectedPlot?.plot_id,plotKey]);
   useEffect(()=>{if(placementRequest)runtime.current?.startPlacement(placementRequest.decorationId);},[placementRequest?.requestKey]);
+  useEffect(()=>{if(!edit.editing)setRoofPalette(false);},[edit.editing]);
   return (
     <section
       aria-labelledby="farm-field-title"
@@ -104,16 +107,27 @@ export function FieldScene({
       </h2>
 
       <div className="farm-field-canvas" ref={host} />
+      {!edit.editing && decorationData ? <button className="farm-roof-toggle" type="button" onClick={()=>{
+        const key=decorationData.layout.roof;
+        setRoofChoice(key);setRoofPalette(true);runtime.current?.changeRoof(key);
+      }}>屋顶配色</button> : null}
       {!edit.editing ? requestControls : null}
       {failure ? <p className="farm-scene__notice" role="alert">{failure}</p> : null}
       {!edit.editing && edit.message ? <p className="farm-scene__notice" role="status">{edit.message}</p> : null}
       {edit.editing ? <section className="farm-field-editor" aria-label="装饰摆放">
-        <strong>{edit.title}</strong>
-        <p role="status">{edit.message || (edit.valid?"拖动摆放 · 绿色位置可保存":"这里放不下，请移到绿色格子")}</p>
+        <strong>{roofPalette ? "屋顶配色" : edit.title}</strong>
+        <p role="status">{edit.message || (roofPalette ? "选好颜色后保存，取消可恢复原色" : edit.valid?"拖动摆放 · 绿色位置可保存":"这里放不下，请移到绿色格子")}</p>
+        {roofPalette ? <div className="farm-roof-palette" aria-label="屋顶颜色">
+          {roofChoices.map(choice=><button key={choice.id} type="button" disabled={!edit.valid} aria-pressed={roofChoice===choice.id} onClick={()=>{
+            setRoofChoice(choice.id);runtime.current?.changeRoof(choice.id);
+          }}><i aria-hidden="true" style={{backgroundColor:choice.color}}/>{choice.label}</button>)}
+        </div> : null}
         <div>
-          <button type="button" onClick={()=>runtime.current?.rotate()}>旋转</button>
-          <button type="button" disabled={!edit.canAdd} onClick={()=>runtime.current?.addOne()}>+1</button>
-          <button type="button" disabled={!edit.canRemove} onClick={()=>runtime.current?.remove()}>收起</button>
+          {!roofPalette ? <>
+            <button type="button" onClick={()=>runtime.current?.rotate()}>旋转</button>
+            <button type="button" disabled={!edit.canAdd} onClick={()=>runtime.current?.addOne()}>+1</button>
+            <button type="button" disabled={!edit.canRemove} onClick={()=>runtime.current?.remove()}>收起</button>
+          </> : null}
           <button type="button" onClick={()=>runtime.current?.cancel()}>取消</button>
           <button type="button" disabled={!edit.valid} onClick={()=>void runtime.current?.save()}>保存</button>
         </div>

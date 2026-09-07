@@ -36,7 +36,7 @@ export function setRoofColor(house, key) {
 export function createCottage(parent, mat) {
   const house = new T.Group();
   house.name = "cottage";
-  house.position.set(0.45, 0.24, -4.79);
+  house.position.set(0.45, 0.24, -4.92);
   parent.add(house);
   const wall = mat("#e8dbbb"),
     wood = wall,

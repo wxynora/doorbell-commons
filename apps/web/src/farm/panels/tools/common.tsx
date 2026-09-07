@@ -13,7 +13,7 @@ export const FARM_FEATURE_PANELS: Readonly<
   field: {
     backpack: {
       emptyLabel: "暂无物品",
-      tabs: ["种子与药水", "素材", "装饰", "其他"],
+      tabs: ["种子与药水", "素材", "装饰"],
     },
     market: {
       emptyLabel: "集市数据尚未接入",

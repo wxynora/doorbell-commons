@@ -39,15 +39,18 @@ export function createPlacement(world, authoritativeGrid = null) {
   let target = stall,
     isNew = false;
   world.root.updateMatrixWorld(true);
-  const blockers = [...world.plots, world.house, world.root.getObjectByName("bridge")].map((o) =>
+  const blockers = [...world.plots, world.root.getObjectByName("bridge")].map((o) =>
     new T.Box3().setFromObject(o),
   );
+  // Match the authority's actual foundation/porch/steps, not the roof bounding box.
+  for (const [x1,z1,x2,z2] of [
+    [-1.7,-6.57,2.6,-3.27],[-1.76,-3.39,2.66,-2.39],[.45,-2.48,1.75,-1.8],
+  ]) blockers.push(new T.Box3(new T.Vector3(x1,0,z1),new T.Vector3(x2,4,z2)));
   const planted = [
-    // Only the two trunks and the fixed watering can occupy these small spots.
+    // Only the two trunks occupy these small spots.
     // Background grass and flowers are not furniture blockers.
     [3.35, -5.89],
     [-4.4, -5.34],
-    [-0.65, 4.73],
   ];
   function canPlace({ x, z }, object = target) {
     const [width, depth] = placementCells(object);

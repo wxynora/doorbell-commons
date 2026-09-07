@@ -209,6 +209,10 @@
   list-style: none;
 }
 
+.farm-crop-codex__list.farm-decoration-inventory {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .farm-crop-codex__list li {
   display: flex;
   min-width: 0;

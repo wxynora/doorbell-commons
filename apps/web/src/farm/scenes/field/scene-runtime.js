@@ -4,9 +4,11 @@ import { createWorld } from "./models/world.js";
 import { createFarmCamera, resizeFarmCamera, limitFarmView, CAMERA_TARGET, MIN_ZOOM, MAX_ZOOM } from "./models/camera.js";
 import { createEnvironment, createSeasonController, createNightLighting } from "./models/environment.js";
 import { createPlacement, CELL_SIZE } from "./models/placement.js";
-import { setRoofColor } from "./models/cottage.js";
+import { setRoofColor, ROOF_COLORS } from "./models/cottage.js";
 import { createDecoration, disposeDecoration, updateDecorationLights, updateDecorationMotion } from "./models/decorations.js";
 import { createNatureEffects } from "./models/nature-effects.js";
+
+export const roofChoices=Object.entries(ROOF_COLORS).map(([id,value])=>({id,...value}));
 
 export function createFieldRuntime(host, options) {
   const renderer = new T.WebGLRenderer({ antialias: true, alpha: true });
@@ -109,6 +111,11 @@ export function createFieldRuntime(host, options) {
     world.root.add(object);world.decorations.push(object);begin(object,true);
   }
   function cancel() {if(!editing||saving)return;applyLayout(committed);finish();}
+  function changeRoof(key) {
+    if(!data||saving||!ROOF_COLORS[key])return;
+    editing=true;controls.enabled=false;world.selector.visible=false;
+    roof=key;setRoofColor(world.house,key);emit();
+  }
   async function save() {
     if(!editing||saving)return;
     if(placement.active&&!placement.confirm()){emit("红色位置不能保存，请移到绿色格子");return;}
@@ -173,7 +180,7 @@ export function createFieldRuntime(host, options) {
     frame=requestAnimationFrame(animate);
   }
   frame=requestAnimationFrame(animate);
-  return {setEnvironment,setDecorations,selectPlot,startPlacement,rotate,addOne,remove,cancel,save,
+  return {setEnvironment,setDecorations,selectPlot,startPlacement,rotate,addOne,remove,cancel,save,changeRoof,
     zoom(factor){camera.zoom=T.MathUtils.clamp(camera.zoom*factor,MIN_ZOOM,MAX_ZOOM);camera.updateProjectionMatrix();},
     resetView(){controls.reset();},
     dispose(){disposed=true;cancelAnimationFrame(frame);observer.disconnect();for(const [name,fn] of listeners)canvas.removeEventListener(name,fn);controls.dispose();environment.dispose();world.dispose();renderer.dispose();canvas.remove();}

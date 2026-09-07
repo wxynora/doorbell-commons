@@ -12,7 +12,16 @@
 .farm-field-canvas { position:absolute; inset:0; touch-action:none; }
 .farm-field-canvas canvas { display:block; width:100%; height:100%; }
 .farm-interface-toggle { position:absolute; left:2.5cqw; top:12cqw; z-index:30; border:1px solid #b7b498; border-radius:1.4cqw; padding:1.5cqw 2cqw; background:#f6efd9e8; color:#425143; font:inherit; font-size:2.8cqw; cursor:pointer; }
+.farm-interface-toggle { top:calc(var(--farm-control-size) / 3 + var(--farm-control-size) + 2cqw); width:8cqw; height:8cqw; padding:1.5cqw; display:grid; place-items:center; }
+.farm-interface-toggle svg { width:100%; height:100%; }
+.farm-roof-toggle { position:absolute; left:2.5cqw; top:calc(var(--farm-control-size) / 3 + var(--farm-control-size) + 12cqw); z-index:20; padding:1.5cqw 2cqw; border:1px solid #b7b498; border-radius:1.4cqw; background:#f6efd9e8; color:#425143; font:inherit; font-size:2.8cqw; cursor:pointer; }
+.farm-roof-palette { margin-bottom:2cqw; }
+.farm-game__bottom[hidden] { display:none; }
+.farm-roof-palette button { display:flex; align-items:center; gap:1cqw; }
+.farm-roof-palette button[aria-pressed="true"] { outline:2px solid #648775; }
+.farm-roof-palette i { width:3cqw; height:3cqw; border-radius:50%; border:1px solid #827e69; }
 .farm-game__ready--interface-hidden > :not(.farm-scene-state):not(.farm-interface-toggle),
+.farm-game__ready--interface-hidden .farm-roof-toggle,
 .farm-game__ready--interface-hidden .farm-plot-detail,
 .farm-game__ready--interface-hidden .farm-field-accessible-plots,
 .farm-game__shell:has(.farm-game__ready--interface-hidden) > .farm-game__controls,
