@@ -2059,12 +2059,17 @@ function commissionOptions(database, backend, rows, residentId, sources, now) {
             const sourceOptionId = boundSourcePublicationIdentity(database, source).optionId;
             const serviceCommission = ["agronomist", "veterinarian"].includes(source.career);
             const objectLabel = serviceCommission ? serviceCommissionObjectLabel(source) : null;
+            const reportLabel = source.career === "constable" &&
+                source.sourceType === "farm_interaction_complaint"
+                ? `报案：${source.fact.event.by} · ${beijingDateTime(source.fact.event.t)}`
+                : null;
             if (canStartOwnServiceWork(database, residentId, source, now)) {
                 options.push({ ...option(`commission:self:${sourceOptionId}`),
                     label: `${source.career === "agronomist" ? "处理自己家的地" : "给自己家的动物看病"}：${objectLabel}` });
             }
             options.push({ ...option(`commission:publish:${sourceOptionId}`),
-                ...(objectLabel ? { label: `公开委托：${objectLabel}` } : {}) });
+                ...(reportLabel ? { label: reportLabel }
+                    : objectLabel ? { label: `公开委托：${objectLabel}` } : {}) });
             if (serviceCommission) {
                 for (const targetResidentId of serviceCommissionCandidateIds(database,
                     source.career, source.requiredLevel, source.ownerResidentId, null, now)) {
@@ -2149,7 +2154,8 @@ function commissionOptions(database, backend, rows, residentId, sources, now) {
         if (job.workerResidentId &&
             [job.ownerResidentId, job.workerResidentId].includes(residentId) &&
             ["accepted", "assigned", "active"].includes(job.status)) {
-            options.push(option(`commission:reply:${job.jobId}`, ["text"]));
+            options.push({ ...option(`commission:reply:${job.jobId}`, ["text"]),
+                ...(job.career === "constable" ? { label: "回复办案消息" } : {}) });
         }
         let currentWorkerOptions = originalReporterJob
             ? []
@@ -2215,6 +2221,13 @@ function commissionPresentation(database, backend, residentId, career, rows, sou
         completedOwnerJobCount: ownerJobs.filter((row) => row.status === "completed").length,
         currentOwnerJobIds: ownerJobs.filter((row) =>
             ["available", "accepted", "assigned", "active"].includes(row.status)).map((row) => row.job_id),
+        ...(career === "constable" ? {
+            reportJobIds: ownerJobs.filter((row) =>
+                commissionSourceType(row.source_type) === "farm_interaction_complaint")
+                .map((row) => row.job_id),
+            assignedCaseJobIds: rows.filter((row) => row.worker_resident_id === residentId)
+                .map((row) => row.job_id),
+        } : {}),
         jobs: mapRows(rows).map((job, index) => {
             const fund = career === "veterinarian"
                 ? database.prepare(`SELECT currency, amount, state FROM career_service_commission_funds
@@ -2239,7 +2252,7 @@ function commissionPresentation(database, backend, residentId, career, rows, sou
 }
 
 function currentServiceCommissionResult(database, backend, residentId, career, sources, now, response) {
-    if (!response.ok || !["agronomist", "veterinarian"].includes(career))
+    if (!response.ok || !["agronomist", "veterinarian", "constable"].includes(career))
         return response;
     // Action receipts retain the original settlement result.  Navigation and
     // case descriptions are a current projection, including on receipt replay.
@@ -3467,7 +3480,8 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
                 { audience: "public" }, idempotencyKey(residentId, "commission:publish", args), now)
             : publishBoundSource(database, backend, source, undefined, now);
         rewardSuccessfulTheftReport(backend, source, residentId);
-        return success("委托已登记。", {
+        return success(source.career === "constable" && source.sourceType === "farm_interaction_complaint"
+            ? "报案已登记。" : "委托已登记。", {
             result,
             jobs: mapRows(visibleCommissionRows(database, residentId, career)),
             options: commissionOptions(database, backend, visibleCommissionRows(database, residentId, career), residentId, sources, now),
