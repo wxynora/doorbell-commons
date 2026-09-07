@@ -25,9 +25,11 @@ const overlaps = (a, b) => a[0] < b[2] - 1e-7 && a[2] > b[0] + 1e-7 && a[1] < b[
 // blockers use actual owned plots, never the demo's fixed 36 samples.
 export function decorationGrid(farm) {
   const blockers = [
-    [-1.86, -6.811, 2.76, -1.67], // cottage incl. porch
+    [-1.7, -6.57, 2.6, -3.27], // cottage foundation, not the roof overhang
+    [-1.76, -3.39, 2.66, -2.39], // porch
+    [.45, -2.48, 1.75, -1.8], // narrow front steps, not the entire house width
     [-.65, 8.5675, .75, 10.8675], // bridge
-    ...[[3.35, -5.89], [-4.4, -5.34], [-.65, 4.73]].map(([x, z]) => [x - .42, z - .42, x + .42, z + .42]),
+    ...[[3.35, -5.89], [-4.4, -5.34]].map(([x, z]) => [x - .42, z - .42, x + .42, z + .42]),
     ...(farm.plots ?? []).map((plot, i) => {
       const index = Number.isInteger(plot.id) && plot.id > 0 ? plot.id - 1 : i;
       const x = (index % 6 - 2.5) * CELL_SIZE, z = -.97 + Math.floor(index / 6) * CELL_SIZE;
