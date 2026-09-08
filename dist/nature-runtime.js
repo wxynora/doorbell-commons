@@ -43,6 +43,7 @@ export const P4_ANIMAL_EVENT_CHANCES = Object.freeze({
     floodAfterManualDrainage: 0.05,
     droughtAfterTwoDays: 0.10,
 });
+const FIRST_TOGETHER_FLOOD_ANIMAL_CHANCE = 0.20;
 
 function stableInteger(...parts) {
     return createHash("sha256").update(parts.join(":"), "utf8").digest().readUInt32BE(0);
@@ -244,15 +245,24 @@ function applyFlood(world, farm, event, day, now, firstTogetherFlood = false) {
                 const plot = plots[stableInteger(event.eventId, farm.id, "first-flood-plot") % plots.length];
                 world = installPlotImpact(world, farm, event, plot, "local_pest", day, now, { kind: "plot_pest" });
             }
-            world = maybeCreateAnimalImpact(world, farm, event, "indigestion", "animal_indigestion",
-                P4_ANIMAL_EVENT_CHANCES.floodAfterManualDrainage, day, now);
-            state.floodAnimalChecked = true;
         }
         else {
             for (const plot of plots)
                 world = installPlotImpact(world, farm, event, plot, "waterlogging", day, now);
         }
         world = generateFloodFish(world, farm, event, state, now);
+    }
+    if (firstTogetherFlood && !state.firstTogetherAnimalChanceChecked && farmExistedWhenEventStarted(farm, event)) {
+        // Reuse the original stable roll at the approved threshold, once per household.
+        // An old case remains authoritative even after treatment or transfer.
+        state.firstTogetherAnimalChanceChecked = true;
+        state.floodAnimalChecked = true;
+        const alreadyCreated = event.impacts.some(impact => impact.farmId === farm.id &&
+            impact.kind === "animal_indigestion");
+        if (!alreadyCreated) {
+            world = maybeCreateAnimalImpact(world, farm, event, "indigestion", "animal_indigestion",
+                FIRST_TOGETHER_FLOOD_ANIMAL_CHANCE, day, now);
+        }
     }
     return world;
 }
