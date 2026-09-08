@@ -1,3 +1,4 @@
+import { createRipeSparkles } from "./ripe-sparkles.js";
 import * as T from "three";
 import { batchStaticMeshes } from "./batch-static-meshes.js";
 import {
@@ -516,6 +517,8 @@ export function createWorld(plotDefinitions = [], houseLevel = 1) {
   );
   selector.visible = false;
   root.add(selector);
+  const ripeSparkles = createRipeSparkles(plotDefinitions);
+  if (ripeSparkles) root.add(ripeSparkles.points);
   batchStaticMeshes(root);
   return {
     root,
@@ -527,6 +530,7 @@ export function createWorld(plotDefinitions = [], houseLevel = 1) {
     selector,
     riverFish,
     update(time, evening) {
+      ripeSparkles?.update(time);
       riverFish.update(time, evening);
       wind.value = time;
       waterMaterial.uniforms.time.value = time;
