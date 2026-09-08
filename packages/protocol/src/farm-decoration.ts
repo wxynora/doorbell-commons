@@ -4,14 +4,16 @@ const itemId = z.string().regex(/^farm_decor:[a-z_]+$/);
 const point = { x: z.number(), z: z.number(), rotation: z.number() };
 export const farmDecorationLayoutSchema = z.object({
   roof: z.string(),
+  canopy: z.enum(["plain", "floral"]),
   stall: z.object(point).strict(),
   decorations: z.array(z.object({ instance_id: z.uuid(), item_id: itemId, ...point }).strict()),
 }).strict();
 export const farmDecorationsDataSchema = z.object({
+  house: z.object({ level: z.union([z.literal(1), z.literal(2), z.literal(3)]), canopy_unlocked: z.boolean(), blocked_rects: z.array(z.tuple([z.number(), z.number(), z.number(), z.number()])) }).strict(),
   catalog: z.array(z.object({
     item_id: itemId, model_id: z.string(), name: z.string(),
     cells: z.tuple([z.number().int().positive(), z.number().int().positive()]),
-    layer: z.enum(["ground", "furniture"]), purchase_mode: z.enum(["unlock", "unit"]),
+    layer: z.enum(["ground", "furniture", "house"]), purchase_mode: z.enum(["unlock", "unit"]),
     price_farm_coins: z.number().int().nonnegative(),
   }).strict()),
   inventory: z.array(z.object({
@@ -32,6 +34,7 @@ export const farmDecorationsDataSchema = z.object({
     weather: z.object({ condition: z.string() }).strict().nullable(),
     night: z.number().min(0).max(1),
     disaster: z.object({ type: z.string(), phase: z.string() }).strict().nullable(),
+    flood: z.object({ plot_ids: z.array(z.number().int()), fish: z.array(z.object({ id: z.string(), fish_id: z.string(), size: z.number() }).strict()) }).strict().optional(),
   }).strict(),
 }).strict();
 const resourceMetadata = { revision: z.string().min(1), server_time: z.iso.datetime() };

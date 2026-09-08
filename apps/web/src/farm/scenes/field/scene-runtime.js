@@ -1,10 +1,11 @@
 import * as T from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { createWorld } from "./models/world.js";
+import { createWorld, groundPoint } from "./models/world.js";
 import { createFarmCamera, resizeFarmCamera, limitFarmView, CAMERA_TARGET, MIN_ZOOM, MAX_ZOOM } from "./models/camera.js";
 import { createEnvironment, createSeasonController, createNightLighting } from "./models/environment.js";
 import { createPlacement, CELL_SIZE } from "./models/placement.js";
 import { setRoofColor, ROOF_COLORS } from "./models/cottage.js";
+import { setStudyCanopy } from "./models/local-house-upgrades.js";
 import { createDecoration, disposeDecoration, updateDecorationLights, updateDecorationMotion } from "./models/decorations.js";
 import { createNatureEffects } from "./models/nature-effects.js";
 
@@ -33,13 +34,13 @@ export function createFieldRuntime(host, options) {
   sun.shadow.bias=-.00015;
   scene.add(hemi,sun);
   const definitions = options.plots.map(p=>{const i=p.plot_id-1;return {...p,id:p.plot_id,x:((i%6)-2.5)*.94,z:-.97+Math.floor(i/6)*.94};});
-  const world=createWorld(definitions);
+  const world=createWorld(definitions,options.houseLevel??1);
   world.decorations=[];
-  const natureEffects=createNatureEffects(world.root,definitions);
+  const natureEffects=createNatureEffects(world.root,definitions,groundPoint);
   scene.add(world.root);
   const environment=createEnvironment(world.root), setSeason=createSeasonController(world.root), setNightLighting=createNightLighting(world);
   let nature=options.environment, data=null, placement=null, committed=null, pendingData=null;
-  let editing=false, saving=false, disposed=false, light=nature.night, roof="mint";
+  let editing=false, saving=false, disposed=false, light=nature.night, roof="mint",canopy="plain";
   const controls=new OrbitControls(camera,canvas);
   controls.target.copy(CAMERA_TARGET);
   controls.enableDamping=true; controls.dampingFactor=.08;
@@ -52,7 +53,7 @@ export function createFieldRuntime(host, options) {
   const observer=new ResizeObserver(resize);observer.observe(host);resize();
   const ray=new T.Raycaster(),pointer=new T.Vector2(),plane=new T.Plane(new T.Vector3(0,1,0),-.25);
   const pose=o=>({x:o.position.x,z:o.position.z,rotation:o.rotation.y});
-  const capture=()=>({roof,stall:pose(world.root.getObjectByName("market-stall")),decorations:world.decorations.map(o=>({instance_id:o.userData.instanceId,item_id:o.userData.itemId,...pose(o)}))});
+  const capture=()=>({roof,canopy,stall:pose(world.root.getObjectByName("market-stall")),decorations:world.decorations.map(o=>({instance_id:o.userData.instanceId,item_id:o.userData.itemId,...pose(o)}))});
   const definition=id=>data?.catalog.find(d=>d.item_id===id);
   const inventory=id=>data?.inventory.find(d=>d.item_id===id);
   function remaining(id) {
@@ -72,6 +73,7 @@ export function createFieldRuntime(host, options) {
     const stall=world.root.getObjectByName("market-stall");
     stall.position.x=layout.stall.x;stall.position.z=layout.stall.z;stall.rotation.y=layout.stall.rotation;
     roof=layout.roof;setRoofColor(world.house,roof);
+    canopy=layout.canopy??"plain";setStudyCanopy(world.house,canopy==="floral");
     for(const item of layout.decorations) {
       const def=definition(item.item_id);
       if(!def)throw new Error("装饰目录尚未包含已保存的物品，请重新读取");
@@ -83,7 +85,9 @@ export function createFieldRuntime(host, options) {
     // Old edit grid uses its own resources and must not accumulate on each refresh.
     const oldGrid=world.root.getObjectByName("placement-grid");
     if(oldGrid)disposeDecoration(oldGrid);
+    world.houseBlockedRects=data.house?.blocked_rects??[];
     placement=createPlacement(world,data.grid);
+    environment.refreshRainSurfaces();
   }
   function setDecorations(value) {
     if(editing){pendingData=value;return;}
@@ -116,6 +120,12 @@ export function createFieldRuntime(host, options) {
     editing=true;controls.enabled=false;world.selector.visible=false;
     roof=key;setRoofColor(world.house,key);emit();
   }
+  function changeCanopy(key) {
+    if(!data||saving||!(key==="plain"||key==="floral"))return;
+    if(key==="floral"&&!data.house?.canopy_unlocked)return;
+    editing=true;controls.enabled=false;world.selector.visible=false;
+    canopy=key;setStudyCanopy(world.house,key==="floral");emit();
+  }
   async function save() {
     if(!editing||saving)return;
     if(placement.active&&!placement.confirm()){emit("红色位置不能保存，请移到绿色格子");return;}
@@ -140,7 +150,8 @@ export function createFieldRuntime(host, options) {
     if(placement?.active){move(e);down=null;return;}
     if(!down||moved){down=null;return;}down=null;pointerRay(e);
     const hit=ray.intersectObject(world.root,true).find(h=>h.object.isMesh);
-    if(hit?.object.userData.decoration&&placement)begin(hit.object.userData.decoration);
+    if(hit?.object.userData.house&&!editing)options.onSelectHouse?.();
+    else if(hit?.object.userData.decoration&&placement)begin(hit.object.userData.decoration);
     else if(hit?.object.userData.stall&&placement)begin(placement.stall);
     else if(hit?.object.userData.plot&&!editing)options.onSelectPlot(hit.object.userData.plot.id);
     else if(hit?.object===world.water)world.waterMaterial.uniforms.ripple.value.set(hit.point.x,hit.point.z,time);
@@ -158,7 +169,7 @@ export function createFieldRuntime(host, options) {
   function selectPlot(id){const plot=definitions.find(p=>p.id===id);world.selector.visible=!!plot;if(plot){world.selector.position.set(plot.x,.46,plot.z);world.selector.scale.setScalar(.5);}}
   function setEnvironment(value){
     nature=value;setSeason(value.season);
-    natureEffects.setEvent(value.disaster);
+    natureEffects.setEvent(value.disaster,value.flood);
     environment.setWeather(["light_snow","blizzard"].includes(value.weather)?"snow":["light_rain","heavy_rain","thunderstorm"].includes(value.weather)?"rain":"clear");
     scene.fog=value.weather==="fog"?new T.FogExp2("#b8c9c8",.025):null;
   }
@@ -170,7 +181,7 @@ export function createFieldRuntime(host, options) {
     light=T.MathUtils.damp(light,nature.night,3,dt);
     const overcast=["cloudy","fog","heavy_rain","thunderstorm","blizzard"].includes(nature.weather);
     sun.color.set(nature.weather==="hot"?"#ffedc0":"#fff0cc").lerp(new T.Color("#acc4e4"),light);
-    sun.intensity=T.MathUtils.lerp(1.85,.12,light)*(overcast?.62:1);
+    sun.intensity=T.MathUtils.lerp(1.85,.12,light)*(nature.weather==="light_rain"?.78:overcast?.62:1);
     sun.position.set(-7-light*7,14-light*8,7);
     hemi.color.set("#eef5ff").lerp(new T.Color("#f4f1d6"),light);
     hemi.groundColor.set("#b7af9c").lerp(new T.Color("#819474"),light);hemi.intensity=T.MathUtils.lerp(.94,.32,light);
@@ -180,7 +191,7 @@ export function createFieldRuntime(host, options) {
     frame=requestAnimationFrame(animate);
   }
   frame=requestAnimationFrame(animate);
-  return {setEnvironment,setDecorations,selectPlot,startPlacement,rotate,addOne,remove,cancel,save,changeRoof,
+  return {setEnvironment,setDecorations,selectPlot,startPlacement,rotate,addOne,remove,cancel,save,changeRoof,changeCanopy,
     zoom(factor){camera.zoom=T.MathUtils.clamp(camera.zoom*factor,MIN_ZOOM,MAX_ZOOM);camera.updateProjectionMatrix();},
     resetView(){controls.reset();},
     dispose(){disposed=true;cancelAnimationFrame(frame);observer.disconnect();for(const [name,fn] of listeners)canvas.removeEventListener(name,fn);controls.dispose();environment.dispose();world.dispose();renderer.dispose();canvas.remove();}

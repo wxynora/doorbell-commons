@@ -173,7 +173,9 @@ function FarmLiveShopPanelContent({
                 <span className="farm-shop__item-copy">
                   <strong>{item.name}</strong>
                   <small>
-                    {item.note === "已拥有"
+                    {decoration?.layer === "house"
+                      ? item.note === "已拥有" ? "已解锁 · 房屋专用" : item.note || "永久解锁 · 房屋专用"
+                      : item.note === "已拥有"
                       ? decoration
                         ? "已解锁 · 无限摆放"
                         : item.note

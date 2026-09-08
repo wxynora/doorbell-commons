@@ -44,18 +44,22 @@ export function createPlacement(world, authoritativeGrid = null) {
   );
   // Match the authority's actual foundation/porch/steps, not the roof bounding box.
   for (const [x1,z1,x2,z2] of [
-    [-1.7,-6.57,2.6,-3.27],[-1.76,-3.39,2.66,-2.39],[.45,-2.48,1.75,-1.8],
+    [-1.8,-6.57,2.5,-3.27],[-1.86,-3.39,2.56,-2.39],[.35,-2.48,1.65,-1.8],
   ]) blockers.push(new T.Box3(new T.Vector3(x1,0,z1),new T.Vector3(x2,4,z2)));
   const planted = [
     // Only the two trunks occupy these small spots.
     // Background grass and flowers are not furniture blockers.
-    [3.35, -5.89],
+    [4.45, -6.35],
     [-4.4, -5.34],
   ];
   function canPlace({ x, z }, object = target) {
     const [width, depth] = placementCells(object);
     const halfX = (CELL_SIZE * width) / 2,
       halfZ = (CELL_SIZE * depth) / 2;
+    const model=object.userData.decorationId??"";
+    const groundFinish=object.userData.groundCover||model==="flowerbed"||model.startsWith("flowerbed_");
+    if(!groundFinish&&(world.houseBlockedRects??[]).some(([x1,z1,x2,z2])=>
+      x+halfX>x1+1e-7&&x-halfX<x2-1e-7&&z+halfZ>z1+1e-7&&z-halfZ<z2-1e-7))return false;
     const allowed = isWaterwheel(object) ? onWater : onLand;
     if (authoritativeGrid) {
       const cells = isWaterwheel(object) ? authoritativeGrid.river_cells : authoritativeGrid.land_cells;

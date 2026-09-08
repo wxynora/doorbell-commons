@@ -3,9 +3,11 @@ import { box, mesh, beam, branch, palette, leafGeometry } from "./primitives.js"
 import { buildGardenFurniture, updatePondFish } from "./garden-furniture.js";
 import { PAVING, buildPaving } from "./paving.js";
 import { FLOWERBEDS, buildFlowerbed } from "./flowerbeds.js";
+import { GARDEN_TRIO, buildGardenTrio } from './garden-trio.js';
 
 // First six IDs match ranch-items; new furniture IDs are local design candidates only.
 export const DECORATIONS = {
+  ...GARDEN_TRIO,
   flowerbed: { name: "花圃", cells: [1, 1] },
   ...FLOWERBEDS,
   scarecrow: { name: "稻草人", cells: [1, 1] },
@@ -293,6 +295,7 @@ export function createDecoration(id) {
   if (["parasol_lounger", "garden_pond", "garden_string_lights", "garden_lamppost"].includes(id))
     buildGardenFurniture(root, id, mat);
   if (definition.groundCover) buildPaving(root, id, mat);
+  if (Object.hasOwn(GARDEN_TRIO,id)) buildGardenTrio(root,id,mat);
   if (Object.hasOwn(FLOWERBEDS, id)) buildFlowerbed(root, id, mat);
   root.traverse((o) => {
     if (o.isMesh) o.userData.decoration = root;
@@ -313,6 +316,7 @@ export function updateDecorationMotion(objects, time) {
     object.traverse((o) => {
       if (o.userData.spinSpeed) o.rotation.z = time * o.userData.spinSpeed;
       if (o.userData.pondFish !== undefined) updatePondFish(o, time);
+      if (o.userData.gardenSwing) o.rotation.x=Math.sin(time*.85)*.035;
     });
 }
 

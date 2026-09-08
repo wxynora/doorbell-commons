@@ -2,6 +2,7 @@ import * as T from "three";
 import { mesh, palette, seededRandom, Instances, leafGeometry } from "./primitives.js";
 import { LAND, groundPoint } from "./world.js";
 import { createNightSky } from "./night-sky.js";
+import { createRainEffects } from "./rain-effects.js";
 
 export const SEASONS = {
   spring: { ground: "#a9bf78", leaf: "#9bb969", tree: "#f8d4df" },
@@ -202,21 +203,15 @@ export function createEnvironment(parent) {
       puff.receiveShadow = false;
     }
   }
-  const rainData = new Float32Array(420 * 6),
-    snowData = new Float32Array(420 * 3);
+  const snowData = new Float32Array(420 * 3);
   const seeds = Array.from({ length: 420 }, () => [
     random() * 24 - 12,
     random() * 14,
     random() * 24 - 12,
   ]);
-  const rainGeometry = new T.BufferGeometry(),
-    snowGeometry = new T.BufferGeometry();
-  rainGeometry.setAttribute("position", new T.BufferAttribute(rainData, 3));
+  const snowGeometry = new T.BufferGeometry();
   snowGeometry.setAttribute("position", new T.BufferAttribute(snowData, 3));
-  const rain = new T.LineSegments(
-    rainGeometry,
-    new T.LineBasicMaterial({ color: "#c6e1ed", transparent: true, opacity: 0.7 }),
-  );
+  const rainfall=createRainEffects(root,parent),rain=rainfall.root;
   const snow = new T.Points(
     snowGeometry,
     new T.PointsMaterial({ color: "#ffffff", size: 2.2, transparent: true, opacity: 0.9 }),
@@ -233,7 +228,7 @@ export function createEnvironment(parent) {
   petals.frustumCulled = false;
   root.add(petals);
   const blossomTrees = [
-    [3.35, -5.89, 5.7],
+    [4.45, -6.35, 5.7],
     [-4.4, -5.34, 3.1],
   ];
   const petalSeeds = Array.from({ length: 90 }, (_, i) => ({
@@ -242,14 +237,14 @@ export function createEnvironment(parent) {
     angle: random() * Math.PI * 2,
   }));
   const petalTransform = new T.Object3D();
-  root.add(rain, snow);
+  root.add(snow);
   rain.frustumCulled = false;
   snow.frustumCulled = false;
   let weather = "clear";
   function setWeather(value) {
     if (!["clear", "rain", "snow"].includes(value)) return;
     weather = value;
-    rain.visible = value === "rain";
+    rainfall.setActive(value === "rain");
     snow.visible = value === "snow";
   }
   setWeather("clear");
@@ -261,6 +256,7 @@ export function createEnvironment(parent) {
     meteor,
     petals,
     setWeather,
+    refreshRainSurfaces:rainfall.refreshSurfaces,
     dispose() {
       skyGradient.dispose();
     },
@@ -331,13 +327,13 @@ export function createEnvironment(parent) {
         petals.instanceMatrix.needsUpdate = true;
       }
       if (weather === "clear") return;
+      if(weather==="rain"){rainfall.update(time,evening);return;}
       seeds.forEach(([x, y, z], i) => {
-        const height = (((y - time * (weather === "rain" ? 7 : 0.85)) % 14) + 14) % 14;
-        const drift = weather === "snow" ? Math.sin(time * 0.6 + i) * 0.3 : 0;
-        if (weather === "rain") rainData.set([x, height, z, x + 0.075, height - 0.42, z], i * 6);
-        else snowData.set([x + drift, height, z], i * 3);
+        const height = (((y - time * .85) % 14) + 14) % 14;
+        const drift = Math.sin(time * .6 + i) * .3;
+        snowData.set([x + drift, height, z], i * 3);
       });
-      (weather === "rain" ? rainGeometry : snowGeometry).attributes.position.needsUpdate = true;
+      snowGeometry.attributes.position.needsUpdate = true;
     },
   };
 }

@@ -940,6 +940,11 @@ export function FarmFieldContent({
                   decorationData={farmDecorations?.data}
                   placementRequest={placementRequest}
                   onSaveLayout={onSaveDecorationLayout}
+                  housePurchaseFeedback={getFarmCheckoutFeedback("field")}
+                  onOpenHouse={()=>{onRequireResource?.("farmCatalog",true);onRequireResource?.("farmDecorations",true);}}
+                  onRequestHousePurchase={!preview&&onFarmPurchaseRequest&&farmCatalog?.data.shop.status==="available" ? itemId=>{
+                    void submitFarmPurchaseRequest("field",[{kind:"decoration",itemId,quantity:1}]);
+                  }:undefined}
                   onFinishEditing={() => setPlacementRequest(undefined)}
                   onEditingChange={(editing) => {
                     setDecorationEditing(editing);

@@ -9,7 +9,7 @@ import {
   leafGeometry,
   Instances,
 } from "./primitives.js";
-import { createCottage } from "./cottage.js";
+import { createHouseStudy } from "./local-house-upgrades.js";
 import { createStall } from "./stall.js";
 import { createRiverFish } from "./river-fish.js";
 import { addTreeLights } from "./tree-lights.js";
@@ -120,13 +120,20 @@ function terrain(parent, mat) {
     vertexShader:
       "varying vec3 p;varying vec2 riverUv; void main(){p=position;riverUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}",
     fragmentShader: `varying vec3 p;varying vec2 riverUv; uniform float time; uniform float evening; uniform vec3 ripple;
+      float hashWater(vec2 v){return fract(sin(dot(v,vec2(127.1,311.7)))*43758.5453);}
+      float waterNoise(vec2 v){vec2 i=floor(v),f=fract(v);f=f*f*(3.-2.*f);return mix(mix(hashWater(i),hashWater(i+vec2(1.,0.)),f.x),mix(hashWater(i+vec2(0.,1.)),hashWater(i+1.),f.x),f.y);}
+      float waterHeight(vec2 v){return waterNoise(v)*.6+waterNoise(v*2.13+vec2(time*.07,-time*.04))*.28+waterNoise(v*4.1)*.12;}
       void main(){float current=riverUv.x*6.283185-time*.1;
       float depth=smoothstep(0.,.24,riverUv.y)*smoothstep(0.,.24,1.-riverUv.y);
-      float lanes=sin(riverUv.y*36.+sin(current*3.)*.8);
-      float glint=smoothstep(.976,1.,lanes)*smoothstep(.1,.85,sin(current*19.+riverUv.y*4.));
+      vec2 flow=vec2(cos(current),sin(current))*(8.+riverUv.y*1.6);
+      float h=waterHeight(flow);
+      vec2 slope=vec2(waterHeight(flow+vec2(.08,0.))-waterHeight(flow-vec2(.08,0.)),waterHeight(flow+vec2(0.,.08))-waterHeight(flow-vec2(0.,.08)))/.16;
+      vec3 waveNormal=normalize(vec3(-slope.x*.45,1.,-slope.y*.45));
+      float reflection=pow(max(0.,dot(waveNormal,normalize(vec3(-.28,1.,.22)))),24.);
+      float glint=reflection*smoothstep(.28,.78,waterNoise(flow*.65+vec2(time*.04)));
       vec3 c=mix(vec3(.60,.71,.63),vec3(.33,.59,.61),depth*.88);
-      c+=sin(current*7.+riverUv.y*9.)*.014;
-      c=mix(c,vec3(.83,.91,.84),glint*.52);float age=time-ripple.z;
+      c+=(h-.5)*.09;
+      c=mix(c,vec3(.77,.89,.91),glint*.34);float age=time-ripple.z;
       float d=length(p.xz-ripple.xy);float ring=exp(-pow((d-age*1.4)*15.,2.))*max(0.,1.-age/2.);
       if(age>=0.) c+=ring*.19; c=mix(c,c*vec3(.13,.21,.28),evening*.92);gl_FragColor=vec4(c,.87);}`,
   });
@@ -136,7 +143,7 @@ function terrain(parent, mat) {
   return { water, waterMaterial };
 }
 
-export function createWorld(plotDefinitions = []) {
+export function createWorld(plotDefinitions = [], houseLevel = 1) {
   const root = new T.Group();
   root.name = "farm-world";
   const random = seededRandom();
@@ -144,7 +151,10 @@ export function createWorld(plotDefinitions = []) {
   const { water, waterMaterial } = terrain(root, mat);
   createFence(root, groundPoint, LAND.fenceInset);
   const riverFish = createRiverFish(root, groundPoint, LAND.riverWidth);
-  const { house, glow } = createCottage(root, mat);
+  const house = createHouseStudy(root, mat, houseLevel);
+  house.position.set(.35,.24,-4.92);
+  house.traverse(object=>{object.userData.house=true;});
+  const glow = house.getObjectByName('cottage-exterior-light');
   createStall(root, mat);
   const sphere = new T.IcosahedronGeometry(1, 1),
     smallSphere = new T.IcosahedronGeometry(1, 0);
@@ -212,13 +222,37 @@ export function createWorld(plotDefinitions = []) {
     ]).scale.z = 0.8;
   }
   const plots = [];
+  const soilMaterial=mat('#806048').clone();soilMaterial.roughness=1;
+  soilMaterial.onBeforeCompile=shader=>{
+    shader.vertexShader='varying vec3 soilPosition;\n'+shader.vertexShader;
+    shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nsoilPosition=(modelMatrix*vec4(position,1.)).xyz;');
+    shader.fragmentShader='varying vec3 soilPosition;\n'+shader.fragmentShader;
+    shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>
+      vec2 q=soilPosition.xz;
+      float clumps=sin(q.x*23.+sin(q.y*17.)*1.7)*sin(q.y*29.+cos(q.x*11.));
+      float grain=fract(sin(dot(floor(q*155.),vec2(127.1,311.7)))*43758.5453);
+      diffuseColor.rgb*=.92+clumps*.13+grain*.13;
+      diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.36,.24,.16),smoothstep(.8,.98,grain)*.15);`);
+  };
+  soilMaterial.customProgramCacheKey=()=> 'farm-crumbly-soil-v1';
   const soilPebbles = new Instances(root, smallSphere, mat("#ffffff"));
   for (const plot of plotDefinitions) {
     const group = new T.Group();
     group.name = `plot-${plot.id}`;
     group.position.set(plot.x, 0.255, plot.z);
     root.add(group);
-    const soil = box(group, mat("#796844"), [0, 0.045, 0], [0.785, 0.07, 0.785]);
+    const soilGeometry=new T.BoxGeometry(.785,.07,.785,12,1,12);
+    const soilVertices=soilGeometry.attributes.position;
+    for(let v=0;v<soilVertices.count;v++){
+      if(soilVertices.getY(v)<0)continue;
+      const x=soilVertices.getX(v),z=soilVertices.getZ(v);
+      const taper=Math.max(0,1-Math.pow(Math.max(Math.abs(x),Math.abs(z))/.3925,6));
+      const ridge=Math.pow(Math.sin((x+.04*Math.sin(z*12.+plot.id))*13.),2)*.009;
+      const crumb=Math.sin(x*71.+plot.id)*Math.cos(z*67.-plot.id)*.004;
+      soilVertices.setY(v,.035+(ridge+crumb)*taper);
+    }
+    soilGeometry.computeVertexNormals();
+    const soil=mesh(group,soilGeometry,soilMaterial,[0,.045,0]);
     soil.userData.plot = plot;
     plots.push(soil);
     const snow = addSnowCover(soil, {
@@ -238,8 +272,6 @@ export function createWorld(plotDefinitions = []) {
         [0, random() * 6, 0],
         k % 2 ? "#9a895a" : "#67573e",
       );
-    for (let k = 0; k < 3; k++)
-      box(group, mat("#6c5c3b"), [-0.24 + k * 0.24, 0.085, 0], [0.016, 0.008, 0.72]);
   }
   soilPebbles.finish(false);
   // All leaf and flower meshes are shared and instanced, rather than thousands of draw calls.
@@ -440,7 +472,7 @@ export function createWorld(plotDefinitions = []) {
     tl.finish().userData.seasonRole = "tree";
     addTreeLights(tree);
   }
-  tree(3.35, -5.89, 1.25, true);
+  tree(4.45, -6.35, 1.25, true);
   tree(-4.4, -5.34, 0.67);
   // The bridge crosses the creek at z-positive. Every board and support is real geometry.
   const bridge = new T.Group();
