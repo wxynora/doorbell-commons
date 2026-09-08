@@ -281,10 +281,11 @@ export function npcSceneScript(
           note.textContent=host.name+status+(destination?'，现在在'+destination+'。':'。');presence.append(note);
         }
         const counts={};
+        const openMapPlaces=new Set(Array.from(layer.parentElement.querySelectorAll('.candidate2-lingye-place[data-place-id]'),entry=>entry.dataset.placeId));
         current.forEach((npc,localIndex)=>{
           const location=positions[npc.location_id];if(activePlace==='map'&&!location)return;
           if(activePlace==='map'){
-            if(!npc.talk_option||counts[npc.location_id])return;
+            if(!openMapPlaces.has(npc.location_id)||!npc.talk_option||counts[npc.location_id])return;
             counts[npc.location_id]=1;
             const reminder=document.createElement('span');reminder.className='candidate2-npc-map-reminder';
             reminder.setAttribute('role','img');reminder.setAttribute('aria-label','这里有NPC可以闲聊');
