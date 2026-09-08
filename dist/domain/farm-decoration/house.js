@@ -1,4 +1,5 @@
 import { decorationById } from "./catalog.js";
+import { rectangle, boundsRectangle, intersects } from "./placement-geometry.js";
 
 const EXTENSION = Object.freeze([2.325, -6.61, 3.885, -2.51]);
 const TWO = "farm_decor:house_level_two", THREE = "farm_decor:house_level_three", CANOPY = "farm_decor:floral_canopy";
@@ -8,10 +9,7 @@ export function houseState(owned) {
 }
 export const isGroundDecoration = item => item.layer === "ground" || item.model_id === "flowerbed" || item.model_id.startsWith("flowerbed_");
 export function overlapsHouseExtension(pose, cells) {
-  const quarterTurns = Math.round(pose.rotation / (Math.PI / 2));
-  const [w, d] = (Math.abs(quarterTurns) % 2 ? [cells[1], cells[0]] : cells).map(n => n * .94);
-  return pose.x - w / 2 < EXTENSION[2] - 1e-7 && pose.x + w / 2 > EXTENSION[0] + 1e-7
-    && pose.z - d / 2 < EXTENSION[3] - 1e-7 && pose.z + d / 2 > EXTENSION[1] + 1e-7;
+  return intersects(rectangle(pose, cells), boundsRectangle(EXTENSION));
 }
 export function housePurchaseError(state, itemId) {
   if ((itemId === THREE || itemId === CANOPY) && houseState(state.owned).level < 2) return "请先升级二级房屋。";

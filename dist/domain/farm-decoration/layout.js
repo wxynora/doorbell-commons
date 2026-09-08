@@ -1,5 +1,6 @@
 import { decorationById, ROOF_COLORS } from "./catalog.js";
 import { houseState, overlapsHouseExtension, isGroundDecoration } from "./house.js";
+import { snapCells, rectangle, intersects, touchedCells } from "./placement-geometry.js";
 
 export const CELL_SIZE = .94;
 export const Z_ORIGIN = -1.44;
@@ -50,12 +51,13 @@ export function decorationGrid(farm) {
 
 export function footprint(pose, cells) {
   if (!pose || ![pose.x, pose.z, pose.rotation].every(Number.isFinite)) return null;
-  const turns = pose.rotation / (Math.PI / 2);
+  const turns = pose.rotation / (Math.PI / 4);
   if (Math.abs(turns - Math.round(turns)) > 1e-7) return null;
-  const [w, d] = Math.abs(Math.round(turns)) % 2 ? [cells[1], cells[0]] : cells;
+  const [w, d] = snapCells(cells, pose.rotation);
   const c = pose.x / CELL_SIZE - w / 2, r = (pose.z - Z_ORIGIN) / CELL_SIZE - d / 2;
   if (Math.abs(c - Math.round(c)) > 1e-7 || Math.abs(r - Math.round(r)) > 1e-7) return null;
-  return Array.from({ length: w * d }, (_, i) => [Math.round(c) + i % w, Math.round(r) + Math.floor(i / w)]);
+  const used = touchedCells(rectangle(pose, cells));
+  return used.length ? used : null;
 }
 const exactKeys = (object, keys) => object && typeof object === "object" && !Array.isArray(object) && Object.keys(object).length === keys.length && keys.every(k => Object.hasOwn(object, k));
 const key = ([c, r]) => `${c},${r}`;
@@ -65,11 +67,13 @@ export function validateDecorationLayout(farm, layout, owned) {
   const house = houseState(owned);
   if (layout.canopy === "floral" && (!house.canopy_unlocked || house.level < 2)) return "decoration_not_owned";
   const grid = decorationGrid(farm), land = new Set(grid.land_cells.map(key)), river = new Set(grid.river_cells.map(key));
-  const occupied = { ground: new Set(), furniture: new Set() }, counts = {}, ids = new Set();
+  const occupied = { ground: [], furniture: [] }, counts = {}, ids = new Set();
   function place(pose, cells, layer, water = false) {
     const cellsUsed = footprint(pose, cells), allowed = water ? river : land;
-    if (!cellsUsed || cellsUsed.some(cell => !allowed.has(key(cell)) || occupied[layer].has(key(cell)))) return false;
-    cellsUsed.forEach(cell => occupied[layer].add(key(cell)));
+    if (!cellsUsed || cellsUsed.some(cell => !allowed.has(key(cell)))) return false;
+    const polygon = rectangle(pose, cells);
+    if (occupied[layer].some(other => intersects(polygon, other))) return false;
+    occupied[layer].push(polygon);
     return true;
   }
   if (!place(layout.stall, [2, 2], "furniture")) return "invalid_stall_position";
