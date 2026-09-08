@@ -1,3 +1,4 @@
+import { batchStaticMeshes } from "./batch-static-meshes.js";
 import * as T from "three";
 import { box, mesh, beam, branch, palette, leafGeometry } from "./primitives.js";
 import { buildGardenFurniture, updatePondFish } from "./garden-furniture.js";
@@ -297,6 +298,7 @@ export function createDecoration(id) {
   if (definition.groundCover) buildPaving(root, id, mat);
   if (Object.hasOwn(GARDEN_TRIO,id)) buildGardenTrio(root,id,mat);
   if (Object.hasOwn(FLOWERBEDS, id)) buildFlowerbed(root, id, mat);
+  batchStaticMeshes(root);
   root.traverse((o) => {
     if (o.isMesh) o.userData.decoration = root;
   });

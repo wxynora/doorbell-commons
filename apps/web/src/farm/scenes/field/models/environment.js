@@ -1,3 +1,4 @@
+import { batchStaticMeshes } from "./batch-static-meshes.js";
 import * as T from "three";
 import { mesh, palette, seededRandom, Instances, leafGeometry } from "./primitives.js";
 import { LAND, groundPoint } from "./world.js";
@@ -248,6 +249,7 @@ export function createEnvironment(parent) {
     snow.visible = value === "snow";
   }
   setWeather("clear");
+  batchStaticMeshes(root);
   return {
     root,
     rain,

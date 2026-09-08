@@ -1,6 +1,7 @@
 import type { FarmPlot } from "../../farm-overview";
 import type { SceneDecorationData, SceneDecorationLayout, SceneEditState, SceneEnvironment } from "./scene-types";
 export interface SceneRuntime {
+  setActive(active: boolean): void;
   changeRoof(key: string): void;
   changeCanopy(key: "plain" | "floral"): void;
   setEnvironment(value: SceneEnvironment): void;
@@ -18,6 +19,7 @@ export interface SceneRuntime {
 }
 export const roofChoices: readonly {id:string;label:string;color:string}[];
 export function createFieldRuntime(host: HTMLElement, options: {
+  active?: boolean;
   plots: readonly FarmPlot[];
   houseLevel?: 1 | 2 | 3;
   onSelectHouse?(): void;

@@ -39,6 +39,7 @@ function formatMaturesAt(maturesAt: string): string {
 }
 
 export function FieldScene({
+  active = true,
   plots,
   selectedPlot,
   onSelectPlot,
@@ -53,6 +54,7 @@ export function FieldScene({
   housePurchaseFeedback,
   onOpenHouse,
 }: {
+  active?: boolean;
   backgroundUrl?: string;
   plots: readonly FarmPlot[];
   selectedPlot: FarmPlot | null;
@@ -80,6 +82,7 @@ export function FieldScene({
   const [renderPlots, setRenderPlots] = useState(plots);
   const callbacks = useRef({onSelectPlot,onSaveLayout,onFinishEditing,onEditingChange,onOpenHouse,onClosePlot});
   callbacks.current={onSelectPlot,onSaveLayout,onFinishEditing,onEditingChange,onOpenHouse,onClosePlot};
+  const currentActive=useRef(active);currentActive.current=active;
   const currentData=useRef(decorationData);currentData.current=decorationData;
   const plotKey=JSON.stringify(renderPlots);
   const nature=decorationData?.environment;
@@ -91,7 +94,7 @@ export function FieldScene({
     if(!host.current)return;
     try {
       const instance=createFieldRuntime(host.current,{
-        plots:renderPlots,environment:currentEnvironment.current,houseLevel,
+        active:currentActive.current,plots:renderPlots,environment:currentEnvironment.current,houseLevel,
         onSelectHouse:()=>{if(currentData.current){setHouseMenu(true);setRequestedHouseItem(null);callbacks.current.onClosePlot();callbacks.current.onOpenHouse?.();}},
         onSelectPlot:id=>callbacks.current.onSelectPlot(id),
         onEditState:state=>{setEdit(state);callbacks.current.onEditingChange?.(state.editing);},
@@ -104,6 +107,7 @@ export function FieldScene({
       return()=>{instance.dispose();runtime.current=null;};
     } catch(error) {setFailure(error instanceof Error?error.message:"浏览器未能开启三维画面，请启用硬件加速。");}
   },[plotKey,houseLevel]);
+  useEffect(()=>{runtime.current?.setActive(active);},[active,plotKey,houseLevel]);
   useEffect(()=>{runtime.current?.setEnvironment(environment);},[environment.season,environment.weather,environment.night,environment.disaster?.type,environment.disaster?.phase,JSON.stringify(environment.flood),plotKey]);
   useEffect(()=>{if(decorationData)runtime.current?.setDecorations(decorationData);},[decorationData,plotKey]);
   useEffect(()=>{runtime.current?.selectPlot(selectedPlot?.plot_id??null);},[selectedPlot?.plot_id,plotKey]);

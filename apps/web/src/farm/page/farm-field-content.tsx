@@ -937,6 +937,7 @@ export function FarmFieldContent({
             >
               {scene.id === "field" ? (
                 <FieldScene
+                  active={activeScene === "field"}
                   decorationData={farmDecorations?.data}
                   placementRequest={placementRequest}
                   onSaveLayout={onSaveDecorationLayout}

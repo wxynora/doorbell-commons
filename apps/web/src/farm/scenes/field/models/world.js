@@ -1,4 +1,5 @@
 import * as T from "three";
+import { batchStaticMeshes } from "./batch-static-meshes.js";
 import {
   seededRandom,
   palette,
@@ -127,13 +128,9 @@ function terrain(parent, mat) {
       float depth=smoothstep(0.,.24,riverUv.y)*smoothstep(0.,.24,1.-riverUv.y);
       vec2 flow=vec2(cos(current),sin(current))*(8.+riverUv.y*1.6);
       float h=waterHeight(flow);
-      vec2 slope=vec2(waterHeight(flow+vec2(.08,0.))-waterHeight(flow-vec2(.08,0.)),waterHeight(flow+vec2(0.,.08))-waterHeight(flow-vec2(0.,.08)))/.16;
-      vec3 waveNormal=normalize(vec3(-slope.x*.45,1.,-slope.y*.45));
-      float reflection=pow(max(0.,dot(waveNormal,normalize(vec3(-.28,1.,.22)))),24.);
-      float glint=reflection*smoothstep(.28,.78,waterNoise(flow*.65+vec2(time*.04)));
       vec3 c=mix(vec3(.60,.71,.63),vec3(.33,.59,.61),depth*.88);
       c+=(h-.5)*.09;
-      c=mix(c,vec3(.77,.89,.91),glint*.34);float age=time-ripple.z;
+      float age=time-ripple.z;
       float d=length(p.xz-ripple.xy);float ring=exp(-pow((d-age*1.4)*15.,2.))*max(0.,1.-age/2.);
       if(age>=0.) c+=ring*.19; c=mix(c,c*vec3(.13,.21,.28),evening*.92);gl_FragColor=vec4(c,.87);}`,
   });
@@ -519,6 +516,7 @@ export function createWorld(plotDefinitions = [], houseLevel = 1) {
   );
   selector.visible = false;
   root.add(selector);
+  batchStaticMeshes(root);
   return {
     root,
     plots,

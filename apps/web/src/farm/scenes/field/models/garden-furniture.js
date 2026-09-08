@@ -180,8 +180,8 @@ function buildPond(root, mat) {
   const bed = disc(root, mat("#6d9c95"), [0, 0.08, 0], 1, 0.12);
   bed.scale.set(0.73, 1, 0.62);
   bed.name = "pond-basin";
-  const waterMaterial = new T.MeshPhysicalMaterial({ color: "#71c8cb", roughness: 0.2,
-    transparent: true, opacity: 0.48, depthWrite: false, metalness: 0 });
+  const waterMaterial = new T.MeshLambertMaterial({ color: "#71c8cb",
+    transparent: true, opacity: 0.48, depthWrite: false });
   const water = mesh(root, new T.CircleGeometry(1, 64), waterMaterial, [0, 0.185, 0], [0.7, 0.59, 1]);
   water.rotation.x = -Math.PI / 2;
   water.name = "pond-water";

@@ -177,8 +177,16 @@ export function createFieldRuntime(host, options) {
   }
   setEnvironment(nature);
   const reduce=matchMedia("(prefers-reduced-motion: reduce)");
-  let time=0,last=performance.now(),frame;
+  let time=0,last=performance.now(),frame=null,active=options.active??true;
+  function setActive(value){
+    if(disposed||active===value)return;
+    active=value;down=null;
+    if(active){resize();last=performance.now();frame=requestAnimationFrame(animate);}
+    else if(frame!==null){cancelAnimationFrame(frame);frame=null;}
+  }
   function animate(now){
+    frame=null;
+    if(disposed||!active)return;
     const dt=document.hidden?0:Math.min((now-last)/1000,.08);last=now;if(!reduce.matches)time+=dt;
     light=T.MathUtils.damp(light,nature.night,3,dt);
     const overcast=["cloudy","fog","heavy_rain","thunderstorm","blizzard"].includes(nature.weather);
@@ -192,10 +200,10 @@ export function createFieldRuntime(host, options) {
     world.update(time,light);natureEffects.update(time);environment.update(time,light,scene,camera);limitFarmView(camera,controls);controls.update();renderer.render(scene,camera);
     frame=requestAnimationFrame(animate);
   }
-  frame=requestAnimationFrame(animate);
-  return {setEnvironment,setDecorations,selectPlot,startPlacement,rotate,addOne,remove,cancel,save,changeRoof,changeCanopy,
+  if(active)frame=requestAnimationFrame(animate);
+  return {setActive,setEnvironment,setDecorations,selectPlot,startPlacement,rotate,addOne,remove,cancel,save,changeRoof,changeCanopy,
     zoom(factor){camera.zoom=T.MathUtils.clamp(camera.zoom*factor,MIN_ZOOM,MAX_ZOOM);camera.updateProjectionMatrix();},
     resetView(){controls.reset();},
-    dispose(){disposed=true;cancelAnimationFrame(frame);observer.disconnect();for(const [name,fn] of listeners)canvas.removeEventListener(name,fn);controls.dispose();environment.dispose();world.dispose();renderer.dispose();canvas.remove();}
+    dispose(){disposed=true;if(frame!==null)cancelAnimationFrame(frame);frame=null;observer.disconnect();for(const [name,fn] of listeners)canvas.removeEventListener(name,fn);controls.dispose();environment.dispose();world.dispose();renderer.dispose();canvas.remove();}
   };
 }

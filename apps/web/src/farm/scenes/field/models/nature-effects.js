@@ -6,7 +6,7 @@ export function createNatureEffects(parent, plots, groundPoint) {
   const flood=new T.Group(), drought=new T.Group(), pest=new T.Group();
   root.add(flood,drought,pest);
   flood.name='flood-water';
-  const water=new T.MeshStandardMaterial({color:"#83bdcc",transparent:true,opacity:.52,roughness:.18,depthWrite:false});
+  const water=new T.MeshLambertMaterial({color:"#83bdcc",transparent:true,opacity:.52,depthWrite:false});
   const waveTime={value:0};
   water.onBeforeCompile=shader=>{
     shader.uniforms.floodTime=waveTime;
@@ -18,14 +18,8 @@ export function createNatureEffects(parent, plots, groundPoint) {
       float floodNoise(vec2 v){vec2 i=floor(v),f=fract(v);f=f*f*(3.-2.*f);return mix(mix(floodHash(i),floodHash(i+vec2(1.,0.)),f.x),mix(floodHash(i+vec2(0.,1.)),floodHash(i+1.),f.x),f.y);}
       float floodHeight(vec2 v){v+=vec2(floodTime*.12,-floodTime*.07);return floodNoise(v)*.6+floodNoise(v*2.13+vec2(-floodTime*.06,floodTime*.09))*.28+floodNoise(v*4.1)*.12;}
       `+shader.fragmentShader;
-    shader.fragmentShader=shader.fragmentShader.replace('#include <normal_fragment_begin>',`#include <normal_fragment_begin>
-      vec2 waveP=floodPosition*1.2;
-      vec2 slope=vec2(floodHeight(waveP+vec2(.08,0.))-floodHeight(waveP-vec2(.08,0.)),floodHeight(waveP+vec2(0.,.08))-floodHeight(waveP-vec2(0.,.08)))/.16;
-      normal = normalize(normal + vec3(-slope.x*.16,slope.y*.16,0.));`);
     shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>
       float swell=floodHeight(floodPosition*1.2);
-      float glint=smoothstep(.40,.80,swell)*smoothstep(.25,.75,floodNoise(floodPosition*.45-vec2(floodTime*.05)));
-      diffuseColor.rgb = mix(diffuseColor.rgb,vec3(.80,.93,.96),glint * .27);
       diffuseColor.rgb *= .96 + swell*.08;
       // World-surface sampling covers the meadow and long foreground too.
       vec2 rainP=floodPosition*1.15, rainCell=floor(rainP);
@@ -41,7 +35,7 @@ export function createNatureEffects(parent, plots, groundPoint) {
       float rainRing=(1.-smoothstep(edge,edge*2.2,abs(distanceToRing)))*(4.*age*(1.-age));
       diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.83,.94,.97),rainRing*.30);`);
   };
-  water.customProgramCacheKey=()=> 'farm-flood-waves-v4';
+  water.customProgramCacheKey=()=> 'farm-flood-matte-v5';
   // Same world-space meadow + foreground extent as the surrounding lawn,
   // not just the fenced island. A single surface avoids overlapping water layers.
   const outline=new T.Shape();outline.moveTo(-100,0);outline.lineTo(-14,0);

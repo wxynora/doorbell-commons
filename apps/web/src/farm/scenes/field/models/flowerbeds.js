@@ -10,7 +10,16 @@ export const FLOWERBEDS = {
 export function buildFlowerbed(root, id, mat) {
   const pink = mat("#edbfc9"), rim = mat("#f3d1d8"), green = mat("#689c58");
   const blossomGeometry = new T.SphereGeometry(1, 10, 7), leaf = leafGeometry();
-  const oval = (parent, material, p, s) => mesh(parent, blossomGeometry, material, p, s);
+  const batches = new Map();
+  function instance(parent, geometry, material, p, s) {
+    const object = new T.Object3D();
+    object.position.set(...p); object.scale.set(...s); parent.add(object);
+    const key = geometry.uuid + material.uuid;
+    if (!batches.has(key)) batches.set(key,{geometry,material,objects:[]});
+    batches.get(key).objects.push(object);
+    return object;
+  }
+  const oval = (parent, material, p, s) => instance(parent, blossomGeometry, material, p, s);
   box(root, mat("#c894a4"), [0, .07, 0], [.94, .09, .94]);
   for (const z of [-.4375, .4375]) {
     box(root, pink, [0, .18, z], [.94, .23, .065]).name = "flowerbed-pink-frame";
@@ -24,7 +33,7 @@ export function buildFlowerbed(root, id, mat) {
   function foliage(x, z, height, i) {
     beam(root, green, [x, .25, z], [x, height, z], .01);
     for (let j = 0; j < 3; j++) {
-      const o = mesh(root, leaf, mat(j % 2 ? "#91b864" : "#689c58"), [x, .27 + j * .025, z], [.14, .24, .14]);
+      const o = instance(root, leaf, mat(j % 2 ? "#91b864" : "#689c58"), [x, .27 + j * .025, z], [.14, .24, .14]);
       o.rotation.set(.75 + j * .3, i * 2.4 + j * 2.1, .3);
     }
   }
@@ -88,4 +97,20 @@ export function buildFlowerbed(root, id, mat) {
       petals(flower, .072 + i % 3 * .01, ["#e899ba", "#b298d7", "#f0cb6c", "#eeafa2"][i % 4]);
     }
   }
+  root.updateWorldMatrix(true,true);
+  const inverse = root.matrixWorld.clone().invert();
+  for (const {geometry,material,objects} of batches.values()) {
+    const batch = new T.InstancedMesh(geometry,material,objects.length);
+    batch.name = geometry === blossomGeometry ? "flowerbed-petal-batch" : "flowerbed-leaf-batch";
+    batch.castShadow = true; batch.receiveShadow = true;
+    objects.forEach((object,i) => {
+      batch.setMatrixAt(i,new T.Matrix4().multiplyMatrices(inverse,object.matrixWorld));
+      object.removeFromParent();
+    });
+    batch.instanceMatrix.needsUpdate = true;
+    root.add(batch);
+  }
+  const empty = [];
+  root.traverse(object => {if(object !== root && object.isGroup && !object.children.length)empty.push(object);});
+  empty.forEach(object => object.removeFromParent());
 }
