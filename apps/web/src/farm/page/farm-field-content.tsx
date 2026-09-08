@@ -1,3 +1,4 @@
+import type { SceneDecorationLayout } from "../scenes/field/scene-types";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { BoundFarmField } from "../../auth/auth-client";
 import type { FarmDecorationLayout } from "../../auth/farm-decoration-client";
@@ -283,6 +284,7 @@ export function FarmFieldContent({
   const [placementRequest, setPlacementRequest] = useState<
     { decorationId: string; requestKey: string } | undefined
   >();
+  const [layoutPreviewRequest,setLayoutPreviewRequest] = useState<{layout:SceneDecorationLayout;requestKey:string}>();
   const [decorationEditing, setDecorationEditing] = useState(false);
   const [interfaceHidden, setInterfaceHidden] = useState(false);
   const kitchen = resources.kitchen.stage === "ready" ? resources.kitchen.data : null;
@@ -940,13 +942,14 @@ export function FarmFieldContent({
                   active={activeScene === "field"}
                   decorationData={farmDecorations?.data}
                   placementRequest={placementRequest}
+                  layoutPreviewRequest={layoutPreviewRequest}
                   onSaveLayout={onSaveDecorationLayout}
                   housePurchaseFeedback={getFarmCheckoutFeedback("field")}
                   onOpenHouse={()=>{onRequireResource?.("farmCatalog",true);onRequireResource?.("farmDecorations",true);}}
                   onRequestHousePurchase={!preview&&onFarmPurchaseRequest&&farmCatalog?.data.shop.status==="available" ? itemId=>{
                     void submitFarmPurchaseRequest("field",[{kind:"decoration",itemId,quantity:1}]);
                   }:undefined}
-                  onFinishEditing={() => setPlacementRequest(undefined)}
+                  onFinishEditing={() => {setPlacementRequest(undefined);setLayoutPreviewRequest(undefined);}}
                   onEditingChange={(editing) => {
                     setDecorationEditing(editing);
                     if (editing) setInterfaceHidden(false);
@@ -1334,6 +1337,13 @@ export function FarmFieldContent({
                   preview={preview}
                   ranch={ranch}
                   selectedCookingIngredientIds={selectedCookingIngredientIds}
+                  onPreviewLayout={!preview && farmDecorations && onSaveDecorationLayout ? layout=>{
+                    setSelectedPlotId(null);
+                    updateSceneUiState(scene.id,{selectedTool:null});
+                    setActiveScene("field");
+                    setInterfaceHidden(false);
+                    setLayoutPreviewRequest({layout,requestKey:crypto.randomUUID()});
+                  }:undefined}
                   settingsDraft={settingsDraft}
                   tool={sceneState.selectedTool}
                 />

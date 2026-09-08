@@ -42,3 +42,5 @@
 .farm-field-accessible-plots { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); padding:0; border:0; }
 .farm-field-accessible-plots:focus-within { clip-path:none; width:auto; height:auto; left:5%; right:5%; bottom:20%; display:flex; flex-wrap:wrap; background:#f5eedb; gap:1cqw; padding:2cqw; }
 .farm-field-accessible-plots .farm-plot { position:static; width:auto; height:auto; min-height:5.4cqw; aspect-ratio:auto; transform:none; background:#dce4bf; }
+
+.farm-layout-share-skipped { max-height:20cqw; overflow-y:auto; padding-left:4cqw; }

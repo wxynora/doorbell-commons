@@ -1,3 +1,4 @@
+import { registerFarmLayoutShareRoutes } from "./farm-layout-sharing/routes.js";
 import { installFaultReports, type FaultReports } from "./fault-reports/collector.js";
 import { registerHumanBulletinRoutes } from "./human-bulletin-routes.js";
 import { registerHumanNpcRoutes } from "./lingye-npc/routes.js";
@@ -5589,6 +5590,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
   registerFarmPurchaseRequestRoutes(app, options);
   registerFarmDecorationRoutes(app, options);
+  registerFarmLayoutShareRoutes(app, options);
 
   app.get("/api/farm/bulletin", { exposeHeadRoute: false }, async (request, reply) => {
     if (

@@ -1,3 +1,4 @@
+import { FarmLayoutShareStore } from "./farm-layout-sharing/store.js";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { chmodSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
@@ -1216,6 +1217,7 @@ export class CommunityDatabase {
   readonly #database: Database.Database;
   readonly #lingyeDailyStore: LingyeDailyStore;
   readonly humanBulletinStore: HumanBulletinStore;
+  readonly farmLayoutShareStore: FarmLayoutShareStore;
   readonly mysteryMerchantReminderStore: MysteryMerchantReminderStore;
   readonly #generateRegistrationCode: () => string;
   readonly #generateSessionToken: () => string;
@@ -1244,6 +1246,7 @@ export class CommunityDatabase {
     migrateCommunityDatabase(this.#database, this.#generateProfileId);
     this.#lingyeDailyStore = new LingyeDailyStore(this.#database);
     this.humanBulletinStore = new HumanBulletinStore(this.#database);
+    this.farmLayoutShareStore = new FarmLayoutShareStore(this.#database);
     this.mysteryMerchantReminderStore = new MysteryMerchantReminderStore(this.#database);
   }
 

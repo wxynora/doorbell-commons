@@ -1,3 +1,4 @@
+import type { LayoutShareSkip } from "./layout-sharing-plan.js";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createFieldRuntime, roofChoices, type SceneRuntime } from "./scene-runtime.js";
 import type { SceneDecorationData, SceneDecorationLayout, SceneEditState } from "./scene-types";
@@ -47,6 +48,7 @@ export function FieldScene({
   requestControls,
   decorationData,
   placementRequest,
+  layoutPreviewRequest,
   onSaveLayout,
   onFinishEditing,
   onEditingChange,
@@ -54,6 +56,7 @@ export function FieldScene({
   housePurchaseFeedback,
   onOpenHouse,
 }: {
+  layoutPreviewRequest?: { layout: SceneDecorationLayout; requestKey: string } | undefined;
   active?: boolean;
   backgroundUrl?: string;
   plots: readonly FarmPlot[];
@@ -71,6 +74,7 @@ export function FieldScene({
   onOpenHouse?: (()=>void) | undefined;
 }) {
   const host = useRef<HTMLDivElement>(null), runtime = useRef<SceneRuntime | null>(null);
+  const [shareSkipped, setShareSkipped] = useState<LayoutShareSkip[]>([]);
   const [failure, setFailure] = useState<string | null>(null);
   const [roofPalette, setRoofPalette] = useState(false);
   const [roofChoice, setRoofChoice] = useState("mint");
@@ -112,8 +116,16 @@ export function FieldScene({
   useEffect(()=>{if(decorationData)runtime.current?.setDecorations(decorationData);},[decorationData,plotKey]);
   useEffect(()=>{runtime.current?.selectPlot(selectedPlot?.plot_id??null);},[selectedPlot?.plot_id,plotKey]);
   useEffect(()=>{if(placementRequest)runtime.current?.startPlacement(placementRequest.decorationId);},[placementRequest?.requestKey]);
+  useEffect(()=>{
+    if(!layoutPreviewRequest)return;
+    try {
+      if(!runtime.current)throw new Error("场景尚未就绪，请稍后再试。");
+      setShareSkipped(runtime.current.previewLayout(layoutPreviewRequest.layout));
+      setFailure(null);
+    } catch(error) {setFailure(error instanceof Error?error.message:"布局预览未完成，请重试。");}
+  },[layoutPreviewRequest?.requestKey]);
   useEffect(()=>{if(!edit.editing)setRoofPalette(false);},[edit.editing]);
-  useEffect(()=>{if(edit.editing)setHouseMenu(false);else setCanopyEditor(false);},[edit.editing]);
+  useEffect(()=>{if(edit.editing){setHouseMenu(false);}else setCanopyEditor(false);},[edit.editing]);
   const upgradeId=houseLevel===1?"farm_decor:house_level_two":"farm_decor:house_level_three";
   const upgrade=decorationData?.catalog.find(item=>item.item_id===upgradeId);
   const canopyProduct=decorationData?.catalog.find(item=>item.item_id==="farm_decor:floral_canopy");
@@ -151,7 +163,11 @@ export function FieldScene({
       {!edit.editing && edit.message ? <p className="farm-scene__notice" role="status">{edit.message}</p> : null}
       {edit.editing ? <section className="farm-field-editor" aria-label="装饰摆放">
         <strong>{roofPalette ? "屋顶配色" : canopyEditor?"雨棚款式":edit.title}</strong>
-        <p role="status">{edit.message || (roofPalette ? "选好颜色后保存，取消可恢复原色" : canopyEditor?"选好款式后保存，取消可恢复原款":"拖动摆放 · 绿色位置可保存")}</p>
+        <p role="status">{edit.message || (edit.layoutPreview ? "确认布置后保存" : roofPalette ? "选好颜色后保存，取消可恢复原色" : canopyEditor?"选好款式后保存，取消可恢复原款":"拖动摆放 · 绿色位置可保存")}</p>
+        {edit.layoutPreview ? <>
+          <p>这是预览；保存后替换当前装饰布置，取消可恢复。</p>
+          {shareSkipped.length ? <ul className="farm-layout-share-skipped">{shareSkipped.map(item=><li key={item.name+item.reason}>{item.name} × {item.quantity}：{item.reason === "missing" ? "未拥有或数量不足" : "位置冲突"}</li>)}</ul> : <p>所需装饰齐全，均可摆放。</p>}
+        </> : null}
         {canopyEditor ? <div>{([['plain','默认米白雨棚'],['floral','花植雨棚']] as const).map(([key,label])=><button key={key} type="button" disabled={!edit.valid} aria-pressed={canopyChoice===key} onClick={()=>{setCanopyChoice(key);runtime.current?.changeCanopy(key);}}>{label}</button>)}</div>:null}
         {roofPalette ? <div className="farm-roof-palette" aria-label="屋顶颜色">
           {roofChoices.map(choice=><button key={choice.id} type="button" disabled={!edit.valid} aria-pressed={roofChoice===choice.id} onClick={()=>{
@@ -159,7 +175,7 @@ export function FieldScene({
           }}><i aria-hidden="true" style={{backgroundColor:choice.color}}/>{choice.label}</button>)}
         </div> : null}
         <div>
-          {!roofPalette&&!canopyEditor ? <>
+          {!roofPalette&&!canopyEditor&&!edit.layoutPreview ? <>
             <button type="button" onClick={()=>runtime.current?.rotate()}>旋转</button>
             <button type="button" disabled={!edit.canAdd} onClick={()=>runtime.current?.addOne()}>+1</button>
             <button type="button" disabled={!edit.canRemove} onClick={()=>runtime.current?.remove()}>收起</button>

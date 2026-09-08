@@ -1,3 +1,5 @@
+import { LayoutSharingPanel } from "../../scenes/field/layout-sharing-panel";
+import type { SceneDecorationLayout } from "../../scenes/field/scene-types";
 import { useState } from "react";
 import type { BoundFarmCatalogRead } from "../../../auth/farm-catalog-client";
 import {
@@ -32,6 +34,7 @@ function shouldRetryFarmSettingsAction(issue: FarmSettingsActionIssue): boolean 
 }
 
 export function FarmSettingsPanelContent({
+  onPreviewLayout,
   availableTitles = [],
   baseline,
   catalogRevision,
@@ -40,6 +43,7 @@ export function FarmSettingsPanelContent({
   onChange,
   onSave,
 }: {
+  onPreviewLayout?: ((layout: SceneDecorationLayout) => void) | undefined;
   availableTitles?: readonly { id: string; name: string }[];
   baseline?: FarmSettingsDraft | undefined;
   catalogRevision?: string | undefined;
@@ -307,6 +311,7 @@ export function FarmSettingsPanelContent({
           value={draft.messagesAllowed}
         />
       </fieldset>
+      {onPreviewLayout ? <LayoutSharingPanel onPreview={onPreviewLayout}/> : null}
     </form>
   );
 }

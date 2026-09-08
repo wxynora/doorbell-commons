@@ -79,6 +79,7 @@ export function FarmToolPanel({
   preview,
   selectedCookingIngredientIds,
   ranch,
+  onPreviewLayout,
   settingsDraft,
   tool,
 }: FarmToolPanelProps) {
@@ -205,6 +206,7 @@ export function FarmToolPanel({
           <FarmUnavailablePanel label={settingsUnavailableMessage ?? "设置数据尚未接入"} />
         ) : (
           <FarmSettingsPanelContent
+            onPreviewLayout={onPreviewLayout}
             availableTitles={availableTitles}
             baseline={baselineSettingsDraft}
             catalogRevision={farmCatalog?.revision}

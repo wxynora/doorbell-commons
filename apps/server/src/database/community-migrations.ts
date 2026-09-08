@@ -9,7 +9,7 @@ import {
 } from "@doorbell/protocol";
 import type Database from "better-sqlite3";
 
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 27;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 28;
 const LEGACY_CONNECTOR_DELIVERY_GENERATION = "00000000-0000-0000-0000-000000000000";
 
 interface FarmCreationRequestRow {
@@ -2283,6 +2283,20 @@ export function migrateCommunityDatabase(
         CREATE INDEX lingye_daily_comment_recipients_unread ON lingye_daily_comment_recipients(resident_id,read_at);
       `);
       database.pragma("user_version = 27");
+    })();
+  }
+  if (migratedSchemaVersion < 28) {
+    database.transaction(() => {
+      database.exec(`
+        CREATE TABLE farm_layout_shares (
+          code TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL REFERENCES human_accounts(account_id) ON DELETE CASCADE,
+          layout_json TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          UNIQUE(account_id, layout_json)
+        );
+      `);
+      database.pragma("user_version = 28");
     })();
   }
   database.transaction(() => {

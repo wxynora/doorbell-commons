@@ -1,3 +1,4 @@
+import type { SceneDecorationLayout } from "../../scenes/field/scene-types";
 import type { ApiResult } from "../../../auth/auth-client";
 import type { BoundFarmCatalogRead } from "../../../auth/farm-catalog-client";
 import type { BoundFarmDecorationsRead } from "../../../auth/farm-decoration-client";
@@ -131,6 +132,7 @@ export interface FarmToolPanelProps {
   preview: boolean;
   selectedCookingIngredientIds: readonly string[];
   ranch?: BoundRanchRead | null;
+  onPreviewLayout?: ((layout: SceneDecorationLayout) => void) | undefined;
   settingsDraft: FarmSettingsDraft;
   tool: FarmToolOption;
 }

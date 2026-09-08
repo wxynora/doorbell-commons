@@ -992,6 +992,17 @@ export class RegistrationAuthService {
     return client.save(binding, body);
   }
 
+  async createCurrentFarmLayoutShare(token: string) {
+    const { client, binding, accountId } = await this.#currentDecorationBinding(token);
+    const current = await client.read(binding);
+    return this.#database.farmLayoutShareStore.create(accountId, current.data.layout);
+  }
+
+  async readCurrentFarmLayoutShare(token: string, code: string) {
+    await this.getCurrentSession(token);
+    return this.#database.farmLayoutShareStore.read(code);
+  }
+
   async #currentDecorationBinding(token: string) {
     const community = await this.getCurrentSession(token);
     const farmHumanKey = community.farmBinding.farmHumanKey;
@@ -1001,7 +1012,7 @@ export class RegistrationAuthService {
     if (!this.#farmDecorationClient) {
       throw new FarmDecorationError(503, { code: "farm_unavailable", message: "农场装饰暂时不可用。" });
     }
-    return { client: this.#farmDecorationClient, binding: {
+    return { client: this.#farmDecorationClient, accountId: community.account.accountId, binding: {
       farmDoorplate: community.farmBinding.farmDoorplate,
       farmHumanKey,
     } };

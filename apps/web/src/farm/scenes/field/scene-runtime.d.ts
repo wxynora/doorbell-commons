@@ -1,6 +1,8 @@
+import type { LayoutShareSkip } from "./layout-sharing-plan.js";
 import type { FarmPlot } from "../../farm-overview";
 import type { SceneDecorationData, SceneDecorationLayout, SceneEditState, SceneEnvironment } from "./scene-types";
 export interface SceneRuntime {
+  previewLayout(layout: SceneDecorationLayout): LayoutShareSkip[];
   setActive(active: boolean): void;
   changeRoof(key: string): void;
   changeCanopy(key: "plain" | "floral"): void;

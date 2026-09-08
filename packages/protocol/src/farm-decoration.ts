@@ -61,3 +61,8 @@ export type BoundFarmDecorationsReadSuccess = z.infer<typeof boundFarmDecoration
 export type BoundFarmDecorationLayoutSaveRequest = z.infer<typeof boundFarmDecorationLayoutSaveRequestSchema>;
 export type BoundFarmDecorationLayoutSaveSuccess = z.infer<typeof boundFarmDecorationLayoutSaveSuccessSchema>;
 export type BoundFarmDecorationLayoutSaveError = z.infer<typeof boundFarmDecorationLayoutSaveErrorSchema>;
+
+export const farmLayoutShareCodeSchema = z.string().trim().toUpperCase().regex(/^LY-[0-9A-F]{8}$/);
+export const farmLayoutShareLookupSchema = z.strictObject({ code: farmLayoutShareCodeSchema });
+export const farmLayoutShareSchema = z.strictObject({ code: farmLayoutShareCodeSchema, version: z.literal(1), layout: farmDecorationLayoutSchema });
+export type FarmLayoutShare = z.infer<typeof farmLayoutShareSchema>;

@@ -1,3 +1,4 @@
+import { planSharedLayout } from "./layout-sharing-plan.js";
 import * as T from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { createWorld, groundPoint } from "./models/world.js";
@@ -40,7 +41,7 @@ export function createFieldRuntime(host, options) {
   scene.add(world.root);
   const environment=createEnvironment(world.root), setSeason=createSeasonController(world.root), setNightLighting=createNightLighting(world);
   let nature=options.environment, data=null, placement=null, committed=null, pendingData=null;
-  let editing=false, saving=false, disposed=false, light=nature.night, roof="mint",canopy="plain";
+  let importing=false, editing=false, saving=false, disposed=false, light=nature.night, roof="mint",canopy="plain";
   const controls=new OrbitControls(camera,canvas);
   controls.target.copy(CAMERA_TARGET);
   controls.enableDamping=true; controls.dampingFactor=.08;
@@ -64,7 +65,7 @@ export function createFieldRuntime(host, options) {
   }
   function emit(message="") {
     const object=placement?.object,id=object?.userData.itemId;
-    options.onEditState({editing,valid:!saving&&(!placement?.active||placement.valid),title:object?.userData.label||"布置农场",canAdd:!saving&&!!id&&remaining(id),canRemove:!saving&&!!id,message});
+    options.onEditState({editing,valid:!saving&&(!placement?.active||placement.valid),title:importing?"导入布局预览":object?.userData.label||"布置农场",layoutPreview:importing,canAdd:!saving&&!!id&&remaining(id),canRemove:!saving&&!!id,message});
   }
   function applyLayout(layout) {
     placement?.cancel();
@@ -94,7 +95,7 @@ export function createFieldRuntime(host, options) {
     data=value;committed=structuredClone(value.layout);applyLayout(committed);
   }
   function finish() {
-    editing=false;controls.enabled=true;emit();options.onFinishEditing();
+    importing=false;editing=false;controls.enabled=true;emit();options.onFinishEditing();
     if(pendingData){const next=pendingData;pendingData=null;setDecorations(next);}
   }
   function begin(object,adding=false) {
@@ -115,6 +116,30 @@ export function createFieldRuntime(host, options) {
     object.userData.instanceId=crypto.randomUUID();object.userData.itemId=id;
     object.position.set(free.x,.25,free.z);
     world.root.add(object);world.decorations.push(object);begin(object,true);
+  }
+  function previewLayout(source) {
+    if(!data||!placement||editing||saving)throw new Error("请先结束当前布置，再导入布局。");
+    try {
+      applyLayout({...committed,decorations:[]});
+      const result=planSharedLayout(source,data,(id,pose)=>{
+        if(id==="stall") {
+          const stall=placement.stall,rotation=stall.rotation.y;
+          stall.rotation.y=pose.rotation;
+          if(!placement.canPlace(pose,stall)){stall.rotation.y=rotation;return false;}
+          stall.position.x=pose.x;stall.position.z=pose.z;return true;
+        }
+        const def=definition(id),object=createDecoration(def.model_id);
+        object.position.set(pose.x,.25,pose.z);object.rotation.y=pose.rotation;
+        if(!placement.canPlace(pose,object)){disposeDecoration(object);return false;}
+        object.userData.itemId=id;world.root.add(object);world.decorations.push(object);return true;
+      });
+      for(let i=0;i<world.decorations.length;i++)world.decorations[i].userData.instanceId=result.layout.decorations[i].instance_id;
+      roof=result.layout.roof;setRoofColor(world.house,roof);
+      canopy=result.layout.canopy;setStudyCanopy(world.house,canopy==="floral");
+      environment.refreshRainSurfaces();
+      importing=true;editing=true;world.selector.visible=false;emit();
+      return result.skipped;
+    } catch(error) {applyLayout(committed);throw error;}
   }
   function cancel() {if(!editing||saving)return;applyLayout(committed);finish();}
   function changeRoof(key) {
@@ -148,7 +173,7 @@ export function createFieldRuntime(host, options) {
   listen("pointermove",e=>{if(down&&Math.hypot(e.clientX-down[0],e.clientY-down[1])>7)moved=true;if(down&&placement?.active&&!saving)move(e);});
   listen("pointercancel",()=>{down=null;});
   listen("pointerup",e=>{
-    if(saving){down=null;return;}
+    if(saving||importing){down=null;return;}
     if(placement?.active){move(e);down=null;return;}
     if(!down||moved){down=null;return;}down=null;pointerRay(e);
     const hit=ray.intersectObject(world.root,true).find(h=>h.object.isMesh);
@@ -201,7 +226,7 @@ export function createFieldRuntime(host, options) {
     frame=requestAnimationFrame(animate);
   }
   if(active)frame=requestAnimationFrame(animate);
-  return {setActive,setEnvironment,setDecorations,selectPlot,startPlacement,rotate,addOne,remove,cancel,save,changeRoof,changeCanopy,
+  return {previewLayout,setActive,setEnvironment,setDecorations,selectPlot,startPlacement,rotate,addOne,remove,cancel,save,changeRoof,changeCanopy,
     zoom(factor){camera.zoom=T.MathUtils.clamp(camera.zoom*factor,MIN_ZOOM,MAX_ZOOM);camera.updateProjectionMatrix();},
     resetView(){controls.reset();},
     dispose(){disposed=true;if(frame!==null)cancelAnimationFrame(frame);frame=null;observer.disconnect();for(const [name,fn] of listeners)canvas.removeEventListener(name,fn);controls.dispose();environment.dispose();world.dispose();renderer.dispose();canvas.remove();}

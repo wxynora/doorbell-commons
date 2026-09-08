@@ -22,6 +22,7 @@ export interface SceneEnvironment {
   flood?: SceneFlood | undefined;
 }
 export interface SceneEditState {
+  layoutPreview?: boolean;
   editing: boolean;
   valid: boolean;
   title: string;
