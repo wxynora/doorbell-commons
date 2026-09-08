@@ -150,6 +150,7 @@ function FarmLiveShopPanelContent({
               ? farmDecorations?.data.catalog.find((entry) => entry.item_id === item.id)
               : undefined;
           const disabled = item.note === "已拥有" || item.availableQuantity === 0;
+          const unlocked = item.kind === "decoration" && item.note === "已拥有";
           const cartKey = getShopCartKey("farm", item.id);
           const quantity = cart[cartKey] ?? 0;
           const addToCart = () => {
@@ -161,7 +162,7 @@ function FarmLiveShopPanelContent({
           return (
             <li key={item.id}>
               <button
-                aria-label={`将${item.name}加入购物车`}
+                aria-label={unlocked ? `${item.name}，已解锁` : `将${item.name}加入购物车`}
                 disabled={disabled}
                 onClick={addToCart}
                 style={{ display: "contents" }}
@@ -187,11 +188,11 @@ function FarmLiveShopPanelContent({
                   </small>
                 </span>
               </button>
-              <span className="farm-shop__price">
+              {unlocked ? <span className="farm-shop__price">已解锁</span> : <span className="farm-shop__price">
                 <span className="farm-visually-hidden">价格</span>
                 <i aria-hidden="true" />
                 {item.price}
-              </span>
+              </span>}
               <ShopCartSelectionBadge
                 itemName={item.name}
                 onRemove={() =>

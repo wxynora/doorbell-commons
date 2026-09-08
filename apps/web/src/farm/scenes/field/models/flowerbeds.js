@@ -11,16 +11,16 @@ export function buildFlowerbed(root, id, mat) {
   const pink = mat("#edbfc9"), rim = mat("#f3d1d8"), green = mat("#689c58");
   const blossomGeometry = new T.SphereGeometry(1, 10, 7), leaf = leafGeometry();
   const oval = (parent, material, p, s) => mesh(parent, blossomGeometry, material, p, s);
-  box(root, mat("#c894a4"), [0, .07, 0], [.82, .09, .72]);
-  for (const z of [-.35, .35]) {
-    box(root, pink, [0, .18, z], [.88, .23, .055]).name = "flowerbed-pink-frame";
-    box(root, rim, [0, .305, z], [.89, .04, .065]);
+  box(root, mat("#c894a4"), [0, .07, 0], [.94, .09, .94]);
+  for (const z of [-.4375, .4375]) {
+    box(root, pink, [0, .18, z], [.94, .23, .065]).name = "flowerbed-pink-frame";
+    box(root, rim, [0, .305, z], [.94, .04, .065]);
   }
-  for (const x of [-.412, .412]) {
-    box(root, pink, [x, .18, 0], [.055, .23, .65]).name = "flowerbed-pink-frame";
-    box(root, rim, [x, .305, 0], [.065, .04, .66]);
+  for (const x of [-.4375, .4375]) {
+    box(root, pink, [x, .18, 0], [.065, .23, .81]).name = "flowerbed-pink-frame";
+    box(root, rim, [x, .305, 0], [.065, .04, .81]);
   }
-  box(root, mat("#806149"), [0, .235, 0], [.77, .035, .63]);
+  box(root, mat("#806149"), [0, .235, 0], [.81, .035, .81]);
   function foliage(x, z, height, i) {
     beam(root, green, [x, .25, z], [x, height, z], .01);
     for (let j = 0; j < 3; j++) {

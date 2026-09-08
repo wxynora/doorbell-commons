@@ -103,12 +103,14 @@ export function createFieldRuntime(host, options) {
     editing=true;controls.enabled=false;world.selector.visible=false;
     placement.begin(object,adding);emit();canvas.focus();
   }
-  function startPlacement(id) {
+  function startPlacement(id, source = null) {
     if(!data||!placement||saving)return;
     const def=definition(id);
     if(!def||!remaining(id)){emit("背包里没有可用的这件装饰");return;}
     if(placement.active&&!placement.valid){emit("先摆好当前装饰，再追加下一件");return;}
-    const object=createDecoration(def.model_id),free=placement.findFree(object);
+    const object=createDecoration(def.model_id);
+    if(source)object.rotation.y=source.rotation.y;
+    const free=placement.findFree(object,source?.position);
     if(!free){disposeDecoration(object);emit("没有合适的空位，请先调整或收起其他装饰");return;}
     object.userData.instanceId=crypto.randomUUID();object.userData.itemId=id;
     object.position.set(free.x,.25,free.z);
@@ -137,7 +139,7 @@ export function createFieldRuntime(host, options) {
     } catch(error) {saving=false;emit(error instanceof Error?error.message:"保存未完成，布置还在编辑中");}
   }
   function rotate(){if(saving||!placement?.active)return;placement.rotate();emit();}
-  function addOne(){const id=placement?.object?.userData.itemId;if(id)startPlacement(id);}
+  function addOne(){const source=placement?.object,id=source?.userData.itemId;if(id)startPlacement(id,source);}
   function remove(){if(!saving&&placement?.remove())emit("已收起，点击保存完成布置");}
   function pointerRay(e){const rect=canvas.getBoundingClientRect();pointer.set((e.clientX-rect.left)/rect.width*2-1,-(e.clientY-rect.top)/rect.height*2+1);ray.setFromCamera(pointer,camera);}
   function move(e){pointerRay(e);const p=ray.ray.intersectPlane(plane,new T.Vector3());if(p){placement.move(p.x,p.z);emit();}}

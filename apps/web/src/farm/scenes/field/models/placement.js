@@ -1,14 +1,13 @@
 import * as T from "three";
 import { islandRadius, LAND } from "./world.js";
 import { disposeDecoration } from "./decorations.js";
+import { snapCells, rectangle, boundsRectangle, intersects, touchedCells } from "./placement-geometry.js";
 
 export const CELL_SIZE = 0.94;
 const Z_ORIGIN = -1.44;
 export function placementCells(object) {
   const cells = object?.userData.cells || [2, 2];
-  return Math.round((object?.rotation.y || 0) / (Math.PI / 2)) % 2 === 0
-    ? cells
-    : [cells[1], cells[0]];
+  return snapCells(cells, object?.rotation.y || 0);
 }
 export function snapPlacement(x, z, cells = [2, 2]) {
   const offsetX = ((cells[0] % 2) * CELL_SIZE) / 2,
@@ -53,45 +52,37 @@ export function createPlacement(world, authoritativeGrid = null) {
     [-4.4, -5.34],
   ];
   function canPlace({ x, z }, object = target) {
-    const [width, depth] = placementCells(object);
-    const halfX = (CELL_SIZE * width) / 2,
-      halfZ = (CELL_SIZE * depth) / 2;
+    const polygon = rectangle({x,z,rotation:object.rotation.y}, object.userData.cells || [2,2]);
     const model=object.userData.decorationId??"";
     const groundFinish=object.userData.groundCover||model==="flowerbed"||model.startsWith("flowerbed_");
-    if(!groundFinish&&(world.houseBlockedRects??[]).some(([x1,z1,x2,z2])=>
-      x+halfX>x1+1e-7&&x-halfX<x2-1e-7&&z+halfZ>z1+1e-7&&z-halfZ<z2-1e-7))return false;
+    if(!groundFinish&&(world.houseBlockedRects??[]).some(rect=>
+      intersects(polygon,boundsRectangle(rect))))return false;
     const allowed = isWaterwheel(object) ? onWater : onLand;
     if (authoritativeGrid) {
       const cells = isWaterwheel(object) ? authoritativeGrid.river_cells : authoritativeGrid.land_cells;
       const occupied = new Set(cells.map(([col,row]) => `${col},${row}`));
-      const col = Math.round((x-halfX)/CELL_SIZE), row = Math.round((z-halfZ-Z_ORIGIN)/CELL_SIZE);
-      for(let dx=0;dx<width;dx++) for(let dz=0;dz<depth;dz++)
-        if(!occupied.has(`${col+dx},${row+dz}`)) return false;
+      const used = touchedCells(polygon);
+      if(!used.length || used.some(([col,row])=>!occupied.has(`${col},${row}`))) return false;
     } else {
       if (!allowed(x, z)) return false;
-      for (const dx of [-halfX, halfX])
-        for (const dz of [-halfZ, halfZ]) if (!allowed(x + dx, z + dz)) return false;
+      if(polygon.some(([px,pz])=>!allowed(px,pz))) return false;
     }
     if (!authoritativeGrid &&
       blockers.some(
         (b) =>
-          x + halfX > b.min.x && x - halfX < b.max.x && z + halfZ > b.min.z && z - halfZ < b.max.z,
+          intersects(polygon,boundsRectangle([b.min.x,b.min.z,b.max.x,b.max.z])),
       )
     )
       return false;
     if (!authoritativeGrid &&
-      planted.some(([px, pz]) => Math.abs(px - x) < halfX + 0.42 && Math.abs(pz - z) < halfZ + 0.42)
+      planted.some(([px, pz]) => intersects(polygon,boundsRectangle([px-.42,pz-.42,px+.42,pz+.42])))
     )
       return false;
     return ![stall, ...decorations].some((other) => {
       if (other === object) return false;
       // Ground finishes and furniture occupy different layers; two finishes still cannot stack.
       if (Boolean(other.userData.groundCover) !== Boolean(object.userData.groundCover)) return false;
-      const [w, d] = placementCells(other);
-      return (
-        Math.abs(other.position.x - x) < halfX + (w * CELL_SIZE) / 2 - 1e-7 &&
-        Math.abs(other.position.z - z) < halfZ + (d * CELL_SIZE) / 2 - 1e-7
-      );
+      return intersects(polygon,rectangle({x:other.position.x,z:other.position.z,rotation:other.rotation.y},other.userData.cells||[2,2]));
     });
   }
   const grid = new T.Group();
@@ -156,12 +147,14 @@ export function createPlacement(world, authoritativeGrid = null) {
     const point = snapPlacement(x, z, cells);
     valid = canPlace(point);
     target.position.set(point.x, 0.25, point.z);
-    footprint.scale.set(cells[0] / 2, cells[1] / 2, 1);
+    const modelCells=target.userData.cells||[2,2];
+    footprint.scale.set(modelCells[0] / 2, modelCells[1] / 2, 1);
+    footprint.rotation.set(-Math.PI/2,0,target.rotation.y);
     footprint.position.set(point.x, 0.3, point.z);
     footprint.material.color.set(valid ? "#b5e78c" : "#ec867c");
     return valid;
   }
-  function findFree(object) {
+  function findFree(object, origin = {x:0,z:4.6}) {
     const available = [];
     const limitX = isWaterwheel(object) ? LAND.x + LAND.riverWidth : LAND.x - CELL_SIZE;
     const limitZ = isWaterwheel(object) ? LAND.z + LAND.riverWidth : LAND.z - CELL_SIZE;
@@ -170,7 +163,7 @@ export function createPlacement(world, authoritativeGrid = null) {
         const p = snapPlacement(x, z, placementCells(object));
         if (canPlace(p, object)) available.push(p);
       }
-    available.sort((a, b) => a.x ** 2 + (a.z - 4.6) ** 2 - (b.x ** 2 + (b.z - 4.6) ** 2));
+    available.sort((a, b) => (a.x-origin.x) ** 2 + (a.z-origin.z) ** 2 - ((b.x-origin.x) ** 2 + (b.z-origin.z) ** 2));
     return available[0] || null;
   }
   return {
@@ -223,12 +216,12 @@ export function createPlacement(world, authoritativeGrid = null) {
     },
     rotate() {
       if (!active) return;
-      const [oldWidth, oldDepth] = placementCells(target);
-      const cornerX = target.position.x - (oldWidth * CELL_SIZE) / 2;
-      const cornerZ = target.position.z - (oldDepth * CELL_SIZE) / 2;
-      target.rotation.y = (target.rotation.y + Math.PI / 2) % (Math.PI * 2);
-      const [width, depth] = placementCells(target);
-      move(cornerX + (width * CELL_SIZE) / 2, cornerZ + (depth * CELL_SIZE) / 2);
+      const before=placementCells(target);
+      const cornerX=target.position.x-before[0]*CELL_SIZE/2;
+      const cornerZ=target.position.z-before[1]*CELL_SIZE/2;
+      target.rotation.y = (target.rotation.y + Math.PI / 4) % (Math.PI * 2);
+      const after=placementCells(target);
+      move(cornerX+after[0]*CELL_SIZE/2,cornerZ+after[1]*CELL_SIZE/2);
     },
     confirm() {
       if (!active || !valid) return false;

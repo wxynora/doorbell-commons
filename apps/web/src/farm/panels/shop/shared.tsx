@@ -269,6 +269,7 @@ export function ShopCartPanelContent({
     items.length > 0 &&
     items.length === cartEntries.length &&
     farmCheckoutLines.length === items.length &&
+    items.every(({ item, quantity }) => item.maxQuantity === undefined || quantity <= item.maxQuantity) &&
     !farmCartLocked;
   const quantityLocked = sceneId === "cooking" ? cartLocked : farmCartLocked;
 
