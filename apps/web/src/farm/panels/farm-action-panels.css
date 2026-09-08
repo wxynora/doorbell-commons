@@ -484,6 +484,25 @@
   margin-bottom: 12cqw;
 }
 
+/* The merchant cart owns its scroll area; checkout stays inside the frame. */
+.farm-market[data-section="merchant"] .farm-market__content:has(.shop-cart) {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0;
+  overflow: hidden;
+}
+
+.farm-market[data-section="merchant"] .farm-market__content:has(.shop-cart) > div:not([hidden]) {
+  flex: 1;
+  min-height: 0;
+}
+
+.farm-market__mystery-merchant:has(.shop-cart) {
+  height: 100%;
+  min-height: 0;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+}
+
 .farm-market__filters,
 .farm-market__posting-actions {
   display: flex;

@@ -117,7 +117,7 @@ const nonHelpOperations: FarmOperationDefinition[] = [
   direct("farm.status", "查看并刷新当前农场状态、可做事项和实时公告。", "{}", "status"),
   direct("farm.shop", "查看自己商店当前在售的种子、物品、限定货物和隐藏配方。", "{}", "shop"),
   direct("farm.bag", "查看素材、限定种子、已学配方和熔炼提示。", "{}", "bag"),
-  direct("farm.market", "查看自己摊位当前上架的商品。", "{}", "market"),
+  direct("farm.market", "查看自己的摊位、神秘商人的今日预告和已发现的当前货架。", "{}", "market"),
   direct(
     "farm.encyclopedia",
     "查看图鉴进度；提供 id 时查看指定作物或素材详情。",
@@ -204,7 +204,7 @@ const nonHelpOperations: FarmOperationDefinition[] = [
   direct("farm.upgrade-land", "将自己的土地升级到下一等级。", "{}", "upgrade-land"),
   defineOperation({
     op: "farm.buy",
-    description: "购买商品；可从商店、NPC 或其他农场摊位购买，具体来源和商品类型由参数指定。",
+    description: '购买商品；可从商店、NPC 或其他农场摊位购买，具体来源和商品类型由参数指定。查看当前货架：doorbell({"op":"farm.market","args":{}})',
     argsHint:
       '{source:"shop", kind:"recipe"|"seed"|"item", ...}、{source:"farm-shop", kind:"potion-set", ...}、{source:"npc", id}、{source:"market", to, kind, id, qty?} 或 {source:"mystery-merchant", items:[稳定商品ID,…]}',
     branches: [

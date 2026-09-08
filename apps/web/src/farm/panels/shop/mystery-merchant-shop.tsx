@@ -137,7 +137,6 @@ export function MysteryMerchantShop({
 						<section
 							aria-label="神秘商店购物车"
 							className="shop-cart"
-							style={{ height: "auto" }}
 						>
 							<header className="shop-cart__header">
 								<button
