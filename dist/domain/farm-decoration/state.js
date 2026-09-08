@@ -2,16 +2,19 @@ import { createHash } from "node:crypto";
 import { FARM_DECORATION_CATALOG, decorationById } from "./catalog.js";
 import { decorationGrid } from "./layout.js";
 import { bumpDaily } from "../../daily.js";
+import { houseState, housePurchaseError } from "./house.js";
 
 export function decorationState(farm) {
-  if (farm.farmDecorations === undefined) return { version: 1, owned: {}, layout: { roof: "mint", stall: { x: -3.76, z: 2.32, rotation: 0 }, decorations: [] } };
+  if (farm.farmDecorations === undefined) return { version: 1, owned: {}, layout: { roof: "mint", canopy: "plain", stall: { x: -3.76, z: 2.32, rotation: 0 }, decorations: [] } };
   const state = farm.farmDecorations;
   if (!state || state.version !== 1 || !state.owned || typeof state.owned !== "object" || Array.isArray(state.owned) || !state.layout || !Array.isArray(state.layout.decorations)) throw new Error("Invalid farm decoration state");
   for (const [id, count] of Object.entries(state.owned)) {
     const item = decorationById.get(id);
     if (!item || !Number.isSafeInteger(count) || count < 0 || (item.purchase_mode === "unlock" && count > 1)) throw new Error("Invalid farm decoration holdings");
   }
-  return structuredClone(state);
+  const result = structuredClone(state);
+  result.layout.canopy ??= "plain";
+  return result;
 }
 export function decorationRevision(farm) {
   const state = decorationState(farm);
@@ -22,7 +25,8 @@ export function decorationResource(farm) {
   if (!Number.isSafeInteger(farm.coins) || farm.coins < 0) throw new Error("Invalid farm coin balance");
   return {
     catalog: FARM_DECORATION_CATALOG,
-    inventory: FARM_DECORATION_CATALOG.map(item => {
+    house: houseState(state.owned),
+    inventory: FARM_DECORATION_CATALOG.filter(item => item.layer !== "house").map(item => {
       const owned_quantity = state.owned[item.item_id] ?? 0;
       const placed_quantity = state.layout.decorations.filter(instance => instance.item_id === item.item_id).length;
       return { item_id: item.item_id, owned_quantity, placed_quantity, available_quantity: item.purchase_mode === "unlock" ? null : owned_quantity - placed_quantity, unlocked: owned_quantity > 0 };
@@ -43,6 +47,8 @@ export function buyFarmDecoration(farm, itemId, quantity, now = Date.now()) {
   try { state = decorationState(farm); } catch { return reject("农场装饰持有状态无效。"); }
   const owned = state.owned[itemId] ?? 0;
   if (item.purchase_mode === "unlock" && owned) return reject("这款装饰已经永久解锁。");
+  const houseError = housePurchaseError(state, itemId);
+  if (houseError) return reject(houseError);
   const cost = item.price_farm_coins * quantity, left = owned + quantity;
   if (!Number.isSafeInteger(cost) || !Number.isSafeInteger(left)) return reject("装饰购买数量无效。");
   if (!Number.isSafeInteger(farm.coins) || farm.coins < cost) return reject(`金币不足，需要 ${cost} 金。`);

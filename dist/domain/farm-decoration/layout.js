@@ -1,4 +1,5 @@
 import { decorationById, ROOF_COLORS } from "./catalog.js";
+import { houseState, overlapsHouseExtension, isGroundDecoration } from "./house.js";
 
 export const CELL_SIZE = .94;
 export const Z_ORIGIN = -1.44;
@@ -25,11 +26,11 @@ const overlaps = (a, b) => a[0] < b[2] - 1e-7 && a[2] > b[0] + 1e-7 && a[1] < b[
 // blockers use actual owned plots, never the demo's fixed 36 samples.
 export function decorationGrid(farm) {
   const blockers = [
-    [-1.7, -6.57, 2.6, -3.27], // cottage foundation, not the roof overhang
-    [-1.76, -3.39, 2.66, -2.39], // porch
-    [.45, -2.48, 1.75, -1.8], // narrow front steps, not the entire house width
+    [-1.8, -6.57, 2.5, -3.27], // cottage foundation, not the roof overhang
+    [-1.86, -3.39, 2.56, -2.39], // porch
+    [.35, -2.48, 1.65, -1.8], // narrow front steps, not the entire house width
     [-.65, 8.5675, .75, 10.8675], // bridge
-    ...[[3.35, -5.89], [-4.4, -5.34]].map(([x, z]) => [x - .42, z - .42, x + .42, z + .42]),
+    ...[[4.45, -6.35], [-4.4, -5.34]].map(([x, z]) => [x - .42, z - .42, x + .42, z + .42]),
     ...(farm.plots ?? []).map((plot, i) => {
       const index = Number.isInteger(plot.id) && plot.id > 0 ? plot.id - 1 : i;
       const x = (index % 6 - 2.5) * CELL_SIZE, z = -.97 + Math.floor(index / 6) * CELL_SIZE;
@@ -60,7 +61,9 @@ const exactKeys = (object, keys) => object && typeof object === "object" && !Arr
 const key = ([c, r]) => `${c},${r}`;
 
 export function validateDecorationLayout(farm, layout, owned) {
-  if (!exactKeys(layout, ["roof", "stall", "decorations"]) || !ROOF_COLORS.includes(layout.roof) || !Array.isArray(layout.decorations) || !exactKeys(layout.stall, ["x", "z", "rotation"])) return "invalid_layout";
+  if (!exactKeys(layout, ["roof", "canopy", "stall", "decorations"]) || !ROOF_COLORS.includes(layout.roof) || !["plain", "floral"].includes(layout.canopy) || !Array.isArray(layout.decorations) || !exactKeys(layout.stall, ["x", "z", "rotation"])) return "invalid_layout";
+  const house = houseState(owned);
+  if (layout.canopy === "floral" && (!house.canopy_unlocked || house.level < 2)) return "decoration_not_owned";
   const grid = decorationGrid(farm), land = new Set(grid.land_cells.map(key)), river = new Set(grid.river_cells.map(key));
   const occupied = { ground: new Set(), furniture: new Set() }, counts = {}, ids = new Set();
   function place(pose, cells, layer, water = false) {
@@ -70,11 +73,14 @@ export function validateDecorationLayout(farm, layout, owned) {
     return true;
   }
   if (!place(layout.stall, [2, 2], "furniture")) return "invalid_stall_position";
+  if (house.level >= 2 && overlapsHouseExtension(layout.stall, [2, 2])) return "invalid_stall_position";
   for (const item of layout.decorations) {
     if (!exactKeys(item, ["instance_id", "item_id", "x", "z", "rotation"]) || typeof item.instance_id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(item.instance_id) || ids.has(item.instance_id)) return "invalid_instance";
     ids.add(item.instance_id);
     const definition = decorationById.get(item.item_id);
     if (!definition || !(owned[item.item_id] > 0)) return "decoration_not_owned";
+    if (definition.layer === "house") return "invalid_decoration_position";
+    if (house.level >= 2 && !isGroundDecoration(definition) && overlapsHouseExtension(item, definition.cells)) return "invalid_decoration_position";
     counts[item.item_id] = (counts[item.item_id] ?? 0) + 1;
     if (definition.purchase_mode === "unit" && counts[item.item_id] > owned[item.item_id]) return "decoration_quantity_exceeded";
     if (!place(item, definition.cells, definition.layer, definition.model_id === "waterwheel")) return "invalid_decoration_position";

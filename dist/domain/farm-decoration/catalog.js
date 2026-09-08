@@ -1,5 +1,8 @@
 // Separate namespace: old ranch decoration holdings are never imported here.
 const rows = [
+  ["house_level_two", "二级房屋升级", 1, 1, 150000, "unlock", "house"],
+  ["house_level_three", "三级房屋升级", 1, 1, 300000, "unlock", "house"],
+  ["floral_canopy", "花植雨棚", 1, 1, 50000, "unlock", "house"],
   ["paving_sandstone", "暖米石砖", 1, 1, 30000, "unlock", "ground"],
   ["paving_terracotta", "红陶砖", 1, 1, 40000, "unlock", "ground"],
   ["paving_slate", "灰蓝石板", 1, 1, 50000, "unlock", "ground"],
@@ -20,6 +23,9 @@ const rows = [
   ["garden_pond", "小池塘", 3, 3, 50000],
   ["garden_string_lights", "木柱串灯", 3, 1, 22000],
   ["garden_lamppost", "庭院路灯", 1, 1, 18000],
+  ["double_swing", "双人秋千", 3, 2, 48000],
+  ["floral_arch", "花藤拱门", 2, 1, 36000],
+  ["garden_mailbox", "庭院信箱", 1, 1, 18000],
 ];
 export const FARM_DECORATION_CATALOG = Object.freeze(rows.map(([model_id, name, w, d, price_farm_coins, purchase_mode = "unit", layer = "furniture"]) => Object.freeze({
   item_id: `farm_decor:${model_id}`, model_id, name, cells: Object.freeze([w, d]),

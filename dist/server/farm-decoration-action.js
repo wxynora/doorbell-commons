@@ -1,12 +1,14 @@
 import { createHash } from "node:crypto";
 import { replaceFarm, getNatureWorld } from "../store.js";
 import { natureSnapshot } from "../nature.js";
+import { floodVisuals } from "../domain/farm-decoration/flood-visuals.js";
 import { decorationResource, decorationRevision, decorationState } from "../domain/farm-decoration/state.js";
 import { validateDecorationLayout } from "../domain/farm-decoration/layout.js";
 import { createMinimalHumanActionReceipt, replayMinimalHumanActionReceipt } from "../minimal-action-receipt.js";
 
 export function projectHumanFarmDecorations(farm, now = Date.now()) {
-  const nature = natureSnapshot(getNatureWorld(), now);
+  const world = getNatureWorld();
+  const nature = natureSnapshot(world, now);
   const hour = ((now / 3600000 + 8) % 24 + 24) % 24;
   const night = hour < 5 || hour >= 19 ? 1 : hour < 7 ? (7 - hour) / 2 : hour < 17 ? 0 : (hour - 17) / 2;
   return {
@@ -16,6 +18,7 @@ export function projectHumanFarmDecorations(farm, now = Date.now()) {
       weather: nature.weather ? { condition: nature.weather.condition } : null,
       night,
       disaster: nature.currentEvent ? { type: nature.currentEvent.type, phase: nature.currentEvent.phase } : null,
+      flood: floodVisuals(world, farm),
     } },
     revision: decorationRevision(farm), server_time: new Date(now).toISOString(),
   };

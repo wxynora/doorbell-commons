@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { FARM_DECORATION_CATALOG } from "../domain/farm-decoration/catalog.js";
 import { decorationState } from "../domain/farm-decoration/state.js";
+import { housePurchaseError } from "../domain/farm-decoration/house.js";
 import {
   EXP_DAILY_CAP,
   ITEMS,
@@ -255,13 +256,14 @@ function projectShop(farm, now) {
     );
   }
 
-  const decorationOwned = decorationState(farm).owned;
+  const decoration = decorationState(farm), decorationOwned = decoration.owned;
   for (const item of FARM_DECORATION_CATALOG) {
     const unlocked = item.purchase_mode === "unlock" && decorationOwned[item.item_id] > 0;
+    const blocked = !!housePurchaseError(decoration, item.item_id);
     items.push(projectShopItem({
       kind: "decoration", itemId: item.item_id, name: item.name,
       price: item.price_farm_coins, currency: "gold", source: "permanent",
-      availableQuantity: item.purchase_mode === "unlock" ? (unlocked ? 0 : 1) : null,
+      availableQuantity: item.purchase_mode === "unlock" ? (unlocked || blocked ? 0 : 1) : null,
       condition: unlocked ? "already_owned" : null,
     }));
   }
@@ -271,7 +273,7 @@ function projectShop(farm, now) {
     revision: opaqueRevision({
       shop: farm.shop,
       potion_buy: farm.potionBuy ?? null,
-      decorations: { catalog: FARM_DECORATION_CATALOG, owned: decorationOwned },
+      decorations: { catalog: FARM_DECORATION_CATALOG, owned: decorationOwned, layout: decoration.layout },
     }),
     refreshed_at: refreshedAt,
     next_refresh_at: nextRefreshAt,
