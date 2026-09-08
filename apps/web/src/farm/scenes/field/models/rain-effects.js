@@ -21,6 +21,8 @@ export function createRainEffects(parent,world){
   const ray=new T.Raycaster(),normal=new T.Vector3(),forward=new T.Vector3(0,0,1),transform=new T.Object3D();
   const visible=o=>{for(let p=o;p;p=p.parent)if(!p.visible)return false;return true;};
   function refreshSurfaces(){
+    // Hidden rain has no impacts to place; sample once when rain becomes active.
+    if(!root.visible)return;
     world.updateMatrixWorld(true);
     const surfaces=[world.getObjectByName('ground'),world.getObjectByName('creek'),world.getObjectByName('cottage'),world.getObjectByName('market-stall'),...world.children.filter(o=>o.userData.decorationId)].filter(Boolean);
     for(const drop of drops){
@@ -32,9 +34,9 @@ export function createRainEffects(parent,world){
       drop.normal=normal.clone();
     }
   }
-  refreshSurfaces();root.visible=false;
+  root.visible=false;
   return {root,streaks,rings,drops,refreshSurfaces,
-    setActive(active){root.visible=active;if(active)refreshSurfaces();},
+    setActive(active){if(root.visible===active)return;root.visible=active;if(active)refreshSurfaces();},
     update(time,night=0){
       if(!root.visible)return;
       ringMaterial.uniforms.night.value=night;streaks.material.opacity=.65-night*.24;

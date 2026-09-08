@@ -46,15 +46,19 @@ export function createNightLighting(world) {
   world.house.traverse((o) => {
     if (o.material?.userData.windowGlow) windows.add(o.material);
   });
+  const setLight = (light, intensity) => { light.intensity = intensity; light.visible = intensity !== 0; };
+  let lastAmount;
   return (amount) => {
+    if (amount === lastAmount) return;
+    lastAmount = amount;
     stars.forEach((m) => (m.emissiveIntensity = amount * 3.5));
     windows.forEach((m) => (m.emissiveIntensity = amount * 1.2));
-    lights.forEach((l) => (l.intensity = amount * 0.5));
-    world.glow.intensity = amount * 2;
-    interior.intensity = amount * 1.8;
+    lights.forEach((l) => setLight(l, amount * 0.5));
+    setLight(world.glow, amount * 2);
+    setLight(interior, amount * 1.8);
     treeBulbs.forEach((m) => m.color.setScalar(0.15 + amount * 0.85));
     treeHalos.forEach((m) => (m.opacity = amount * 0.12));
-    treeIllumination.forEach((l) => (l.intensity = amount * 1.8));
+    treeIllumination.forEach((l) => setLight(l, amount * 1.8));
   };
 }
 
@@ -74,9 +78,11 @@ export function createSeasonController(root) {
       if (m.userData.seasonRole) materials.set(m, m.userData.seasonRole);
     }
   });
+  let lastSeason;
   return (season) => {
     const colors = SEASONS[season];
-    if (!colors) return;
+    if (!colors || season === lastSeason) return;
+    lastSeason = season;
     root.userData.season = season;
     seasonalObjects.forEach((o) => (o.visible = o.userData.seasonOnly === season));
     materials.forEach((role, m) => m.color.set(colors[role]));
@@ -241,9 +247,9 @@ export function createEnvironment(parent) {
   root.add(snow);
   rain.frustumCulled = false;
   snow.frustumCulled = false;
-  let weather = "clear";
+  let weather;
   function setWeather(value) {
-    if (!["clear", "rain", "snow"].includes(value)) return;
+    if (!["clear", "rain", "snow"].includes(value) || value === weather) return;
     weather = value;
     rainfall.setActive(value === "rain");
     snow.visible = value === "snow";

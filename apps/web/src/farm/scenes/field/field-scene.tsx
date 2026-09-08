@@ -88,7 +88,7 @@ export function FieldScene({
   callbacks.current={onSelectPlot,onSaveLayout,onFinishEditing,onEditingChange,onOpenHouse,onClosePlot};
   const currentActive=useRef(active);currentActive.current=active;
   const currentData=useRef(decorationData);currentData.current=decorationData;
-  const plotKey=JSON.stringify(renderPlots);
+  const plotKey=JSON.stringify(renderPlots.map(plot=>plot.plot_id));
   const nature=decorationData?.environment;
   const environment={season:nature?.season?.id??"summer",weather:nature?.weather?.condition??null,night:nature?.night??0,disaster:nature?.disaster??null,flood:nature?.flood};
   const currentEnvironment=useRef(environment);currentEnvironment.current=environment;
@@ -106,15 +106,15 @@ export function FieldScene({
         onFinishEditing:()=>callbacks.current.onFinishEditing?.(),
       });
       runtime.current=instance;
-      if(currentData.current)instance.setDecorations(currentData.current);
       setFailure(null);
       return()=>{instance.dispose();runtime.current=null;};
     } catch(error) {setFailure(error instanceof Error?error.message:"浏览器未能开启三维画面，请启用硬件加速。");}
   },[plotKey,houseLevel]);
+  useEffect(()=>{runtime.current?.setPlots(renderPlots);},[renderPlots,houseLevel]);
   useEffect(()=>{runtime.current?.setActive(active);},[active,plotKey,houseLevel]);
-  useEffect(()=>{runtime.current?.setEnvironment(environment);},[environment.season,environment.weather,environment.night,environment.disaster?.type,environment.disaster?.phase,JSON.stringify(environment.flood),plotKey]);
-  useEffect(()=>{if(decorationData)runtime.current?.setDecorations(decorationData);},[decorationData,plotKey]);
-  useEffect(()=>{runtime.current?.selectPlot(selectedPlot?.plot_id??null);},[selectedPlot?.plot_id,plotKey]);
+  useEffect(()=>{runtime.current?.setEnvironment(environment);},[environment.season,environment.weather,environment.night,environment.disaster?.type,environment.disaster?.phase,JSON.stringify(environment.flood),plotKey,houseLevel]);
+  useEffect(()=>{if(decorationData)runtime.current?.setDecorations(decorationData);},[decorationData,plotKey,houseLevel]);
+  useEffect(()=>{runtime.current?.selectPlot(selectedPlot?.plot_id??null);},[selectedPlot?.plot_id,plotKey,houseLevel]);
   useEffect(()=>{if(placementRequest)runtime.current?.startPlacement(placementRequest.decorationId);},[placementRequest?.requestKey]);
   useEffect(()=>{
     if(!layoutPreviewRequest)return;

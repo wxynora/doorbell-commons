@@ -4,6 +4,7 @@ import type { SceneDecorationData, SceneDecorationLayout, SceneEditState, SceneE
 export interface SceneRuntime {
   previewLayout(layout: SceneDecorationLayout): LayoutShareSkip[];
   setActive(active: boolean): void;
+  setPlots(plots: readonly FarmPlot[]): void;
   changeRoof(key: string): void;
   changeCanopy(key: "plain" | "floral"): void;
   setEnvironment(value: SceneEnvironment): void;

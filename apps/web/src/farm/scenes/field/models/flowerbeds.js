@@ -9,7 +9,8 @@ export const FLOWERBEDS = {
 
 export function buildFlowerbed(root, id, mat) {
   const pink = mat("#edbfc9"), rim = mat("#f3d1d8"), green = mat("#689c58");
-  const blossomGeometry = new T.SphereGeometry(1, 10, 7), leaf = leafGeometry();
+  // Tiny florets keep all petals, but do not need the large display-sphere topology.
+  const blossomGeometry = new T.SphereGeometry(1, id === "flowerbed_hydrangea" ? 6 : 8, 4), leaf = leafGeometry();
   const batches = new Map();
   function instance(parent, geometry, material, p, s) {
     const object = new T.Object3D();

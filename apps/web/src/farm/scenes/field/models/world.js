@@ -141,6 +141,21 @@ function terrain(parent, mat) {
   return { water, waterMaterial };
 }
 
+function disposeResources(root) {
+  const geometries = new Set(), materials = new Set(), textures = new Set();
+  root.traverse(object => {
+    if (object.geometry) geometries.add(object.geometry);
+    for (const material of object.material ? (Array.isArray(object.material) ? object.material : [object.material]) : [])
+      materials.add(material);
+  });
+  for (const material of materials) {
+    for (const value of Object.values(material)) if (value?.isTexture) textures.add(value);
+    material.dispose();
+  }
+  for (const geometry of geometries) geometry.dispose();
+  for (const texture of textures) texture.dispose();
+}
+
 export function createWorld(plotDefinitions = [], houseLevel = 1) {
   const root = new T.Group();
   root.name = "farm-world";
@@ -296,9 +311,11 @@ export function createWorld(plotDefinitions = [], houseLevel = 1) {
       leaf(x, 0.35, z, size, (i * Math.PI) / 4, 0.75 + random() * 0.55, greens[i % 4]);
     buds.add([x, 0.4, z], [size * 0.24, size * 0.23, size * 0.24], [0, random() * 6, 0], "#a7be66");
   }
+  const cropModels = new Map();
   for (const plot of plotDefinitions) {
     const crop = createCropModel(plot);
     if (crop) { crop.position.set(plot.x, .35, plot.z); root.add(crop); }
+    cropModels.set(plot.id, crop);
   }
   const flowerColors = ["#f6ebcf", "#e7a9c0", "#ad8acb", "#ebcd68"];
   function flowers(x, z, count, radius, stretch) {
@@ -517,9 +534,10 @@ export function createWorld(plotDefinitions = [], houseLevel = 1) {
   );
   selector.visible = false;
   root.add(selector);
-  const ripeSparkles = createRipeSparkles(plotDefinitions);
+  let ripeSparkles = createRipeSparkles(plotDefinitions);
   if (ripeSparkles) root.add(ripeSparkles.points);
   batchStaticMeshes(root);
+  const plotsById = new Map(plotDefinitions.map(plot => [plot.id, plot]));
   return {
     root,
     plots,
@@ -529,6 +547,28 @@ export function createWorld(plotDefinitions = [], houseLevel = 1) {
     glow,
     selector,
     riverFish,
+    // FieldScene recreates the world only when IDs/coordinates or house level change.
+    setPlots(nextPlots) {
+      let sparklesChanged = false;
+      for (const next of nextPlots) {
+        const plot = plotsById.get(next.id);
+        const cropChanged = plot.state !== next.state || plot.seed_type !== next.seed_type;
+        sparklesChanged ||= (plot.state === "ripe" || next.state === "ripe") && cropChanged;
+        // Keep the soil, snow and crop picking references current without walking meshes.
+        Object.assign(plot, next);
+        if (!cropChanged) continue;
+        const previous = cropModels.get(plot.id);
+        if (previous) { previous.removeFromParent(); disposeResources(previous); }
+        const crop = createCropModel(plot);
+        if (crop) { crop.position.set(plot.x, .35, plot.z); root.add(crop); }
+        cropModels.set(plot.id, crop);
+      }
+      if (sparklesChanged) {
+        if (ripeSparkles) { ripeSparkles.points.removeFromParent(); disposeResources(ripeSparkles.points); }
+        ripeSparkles = createRipeSparkles(plotDefinitions);
+        if (ripeSparkles) root.add(ripeSparkles.points);
+      }
+    },
     update(time, evening) {
       ripeSparkles?.update(time);
       riverFish.update(time, evening);
@@ -541,20 +581,7 @@ export function createWorld(plotDefinitions = [], houseLevel = 1) {
       });
     },
     dispose() {
-      const gs = new Set(),
-        ms = new Set(),
-        ts = new Set();
-      root.traverse((o) => {
-        if (o.geometry) gs.add(o.geometry);
-        if (o.material)
-          for (const m of Array.isArray(o.material) ? o.material : [o.material]) ms.add(m);
-      });
-      for (const m of ms) {
-        for (const value of Object.values(m)) if (value?.isTexture) ts.add(value);
-        m.dispose();
-      }
-      for (const g of gs) g.dispose();
-      for (const t of ts) t.dispose();
+      disposeResources(root);
     },
   };
 }

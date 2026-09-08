@@ -26,6 +26,9 @@ export const DECORATIONS = {
   ...PAVING,
 };
 
+// Model structure is fixed after construction; frame updates only need these nodes.
+const animationNodes = new WeakMap();
+
 export function createDecoration(id) {
   const definition = DECORATIONS[id];
   if (!definition) throw new Error(`Unknown decoration: ${id}`);
@@ -299,27 +302,39 @@ export function createDecoration(id) {
   if (Object.hasOwn(GARDEN_TRIO,id)) buildGardenTrio(root,id,mat);
   if (Object.hasOwn(FLOWERBEDS, id)) buildFlowerbed(root, id, mat);
   batchStaticMeshes(root);
+  const nodes = { lights: [], materials: new Set(), motion: [] };
   root.traverse((o) => {
     if (o.isMesh) o.userData.decoration = root;
+    if (o.isPointLight && o.userData.decorationGlow) nodes.lights.push(o);
+    for (const material of o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [])
+      if (material.userData.decorationGlow) nodes.materials.add(material);
+    if (o.userData.spinSpeed || o.userData.pondFish !== undefined || o.userData.gardenSwing)
+      nodes.motion.push(o);
   });
+  animationNodes.set(root, nodes);
   return root;
 }
 
 export function updateDecorationLights(objects, night) {
-  for (const object of objects)
-    object.traverse((o) => {
-      if (o.isPointLight && o.userData.decorationGlow) o.intensity = night * (o.userData.nightIntensity ?? 0.8);
-      if (o.material?.userData.decorationGlow) o.material.emissiveIntensity = night * 2.3;
-    });
+  for (const object of objects) {
+    const nodes = animationNodes.get(object);
+    if (!nodes || nodes.night === night) continue;
+    nodes.night = night;
+    for (const light of nodes.lights) {
+      light.intensity = night * (light.userData.nightIntensity ?? 0.8);
+      light.visible = light.intensity !== 0;
+    }
+    for (const material of nodes.materials) material.emissiveIntensity = night * 2.3;
+  }
 }
 
 export function updateDecorationMotion(objects, time) {
   for (const object of objects)
-    object.traverse((o) => {
+    for (const o of animationNodes.get(object)?.motion ?? []) {
       if (o.userData.spinSpeed) o.rotation.z = time * o.userData.spinSpeed;
       if (o.userData.pondFish !== undefined) updatePondFish(o, time);
       if (o.userData.gardenSwing) o.rotation.x=Math.sin(time*.85)*.035;
-    });
+    }
 }
 
 export function disposeDecoration(object) {
@@ -337,5 +352,6 @@ export function disposeDecoration(object) {
   });
   geometries.forEach((g) => g.dispose());
   textures.forEach((t) => t.dispose());
+  animationNodes.delete(object);
   object.removeFromParent();
 }

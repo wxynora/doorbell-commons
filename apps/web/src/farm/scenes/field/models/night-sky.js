@@ -15,25 +15,19 @@ export function createNightSky(parent, random) {
       float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);
         return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);}
       float dust(vec2 p){return .56*noise(p)+.28*noise(p*2.07+13.)+.16*noise(p*4.13+29.);}
-      float starLayer(vec2 uv,float scale,float threshold,float radius){
-        vec2 p=uv*scale,id=floor(p),f=fract(p);
-        vec2 center=.2+.6*vec2(hash(id+11.),hash(id+79.));
-        float d=length(f-center),seed=hash(id+3.);
-        float point=exp(-d*d/(radius*radius));
-        return step(threshold,seed)*point*(.76+.24*sin(time*.5+seed*83.));
-      }
       void main(){
         // Fixed world-space chart: orbiting reveals another part of the sky, never a camera-locked image.
         vec3 direction=normalize(skyPosition);
         vec3 right=normalize(vec3(1.,0.,-1.)),up=normalize(vec3(-1.,2.,-1.));
         vec2 uv=vec2(dot(skyPosition,right)/21.,(dot(skyPosition,up)-1.1431)/23.3333)+.5;
-        vec3 color=vec3(.4,.49,.64)*starLayer(uv,230.,.987,.055)*.45;
-        color+=vec3(.75,.83,1.)*starLayer(uv,112.,.97,.07);
-        color+=vec3(1.,.9,.73)*starLayer(uv,47.,.984,.055);
+        vec3 color=vec3(0.);
         // A softly shaded full moon, including maria, small craters and a restrained halo.
         vec2 moon=(uv-vec2(.77,.83))*vec2(.9,1.)/.039;
         float moonSide=smoothstep(.1,.4,dot(direction,normalize(vec3(-1.,-1.,-1.))));
-        float r=length(moon),disc=(1.-smoothstep(.97,1.,r))*moonSide;
+        float r=length(moon);
+        // Only the small moon/halo region needs procedural shading; stars are one point batch.
+        if(r>3.5||moonSide<=0.)discard;
+        float disc=(1.-smoothstep(.97,1.,r))*moonSide;
         float maria=dust(moon*3.4+17.);
         float shade=.65+.35*max(0.,dot(vec3(moon,sqrt(max(0.,1.-r*r))),normalize(vec3(-.3,.35,1.))));
         float crater=exp(-dot(moon-vec2(-.34,.16),moon-vec2(-.34,.16))*48.)
@@ -45,7 +39,7 @@ export function createNightSky(parent, random) {
         #include <colorspace_fragment>
       }`,
   });
-  const skyBackdrop = new T.Mesh(new T.SphereGeometry(100, 96, 64), skyMaterial);
+  const skyBackdrop = new T.Mesh(new T.SphereGeometry(100, 24, 16), skyMaterial);
   skyBackdrop.name = "stars-and-moon";
   skyBackdrop.frustumCulled = false;
   skyBackdrop.raycast = () => {};
@@ -54,12 +48,14 @@ export function createNightSky(parent, random) {
     sizes = [],
     phases = [],
     colors = [];
-  for (let i = 0; i < 36000; i++) {
+  // A smaller world-space shell stays outside the fixed camera orbit, so fewer
+  // stars remain visible from every allowed direction without following the camera.
+  for (let i = 0; i < 4096; i++) {
     const a = random() * Math.PI * 2,
       y = random() * 2 - 1,
       r = Math.sqrt(1 - y * y);
-    positions.push(Math.cos(a) * r * 90, y * 90, Math.sin(a) * r * 90);
-    sizes.push(i % 67 === 0 ? 7 + random() * 2 : i % 5 === 0 ? 4 + random() * 2 : 2.8 + random() * 1.8);
+    positions.push(Math.cos(a) * r * 55, y * 55, Math.sin(a) * r * 55);
+    sizes.push(i % 31 === 0 ? 6 + random() * 1.5 : 4.2 + random() * 1.3);
     phases.push(random() * Math.PI * 2);
     const c = new T.Color(["#f3edd9", "#cee2f5", "#ffdeb8", "#e5e4f3"][i % 4]);
     colors.push(c.r, c.g, c.b);
@@ -78,7 +74,7 @@ export function createNightSky(parent, random) {
     vertexShader: `attribute float starSize; attribute float phase; uniform float pixelScale; varying float vPhase; varying vec3 vColor;
     void main(){vPhase=phase;vColor=color;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);gl_PointSize=starSize*pixelScale;}`,
     fragmentShader: `uniform float time;uniform float night;varying float vPhase;varying vec3 vColor;
-    void main(){vec2 p=gl_PointCoord-.5;float r=length(p);float core=1.-smoothstep(0.,.32,r);float halo=exp(-r*r*25.)*.38;float flicker=.9+.1*sin(time*.7+vPhase);gl_FragColor=vec4(vColor,(core+halo)*night*flicker);
+    void main(){vec2 p=gl_PointCoord-.5;float r=length(p);float core=1.-smoothstep(.15,.44,r);float halo=exp(-r*r*25.)*.22;float flicker=.9+.1*sin(time*.7+vPhase);gl_FragColor=vec4(vColor,min(1.,core+halo)*night*flicker);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
     }`,

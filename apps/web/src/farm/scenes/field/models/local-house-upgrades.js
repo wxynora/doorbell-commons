@@ -113,14 +113,32 @@ export function createHouseStudy(parent,mat,level=1){
   mesh(roofGroup,new T.CylinderGeometry(.23,.23,.07,24),wood,[0,3.2,1.6]).rotation.x=Math.PI/2;
   mesh(roofGroup,new T.CylinderGeometry(.17,.17,.075,24),mat('#697c70'),[0,3.2,1.64]).rotation.x=Math.PI/2;
   for(const y of [3.12,3.2,3.28])box(roofGroup,wood,[0,y,1.69],[.3,.024,.025]);
-  const glass=new T.MeshStandardMaterial({color:'#c2ddd5',emissive:'#ffd48d',emissiveIntensity:0,roughness:.18,metalness:0,transparent:true,opacity:.2,depthWrite:false,side:T.DoubleSide});
-  glass.userData.windowGlow=true;
+  const glass=new T.MeshStandardMaterial({color:'#c2ddd5',roughness:.18,metalness:0,transparent:true,opacity:.2,depthWrite:false,side:T.DoubleSide});
+  // Illuminate the view behind the clear pane, not the pane itself. Reuse the
+  // existing night controller without adding a light for each window.
+  const roomWall=mat('#9d987f').clone();
+  roomWall.emissive.set('#e7b66c');roomWall.emissiveIntensity=0;
+  roomWall.userData.windowGlow=true;
+  const interiorMaterials=new Map(),warmTint=new T.Color('#ffdda6');
+  function warmInterior(room){
+    room.traverse(object=>{
+      if(!object.isMesh||object.material===roomWall)return;
+      const original=object.material;
+      if(!interiorMaterials.has(original)){
+        const material=original.clone();
+        material.emissive.copy(material.color).multiply(warmTint).multiplyScalar(.55);
+        material.emissiveIntensity=0;material.userData.windowGlow=true;
+        interiorMaterials.set(original,material);
+      }
+      object.material=interiorMaterials.get(original);
+    });
+  }
   let windowIndex=0;
-  function window(parent,x,y,z,w,h,crossbar=true){
+  function window(parent,x,y,z,w,h,crossbar=true,backDepth=-.032){
     for(const side of [-1,1])box(parent,wood,[x+side*(w+.07)/2,y,z],[.07,h+.15,.13],true);
     for(const side of [-1,1])box(parent,wood,[x,y+side*(h+.07)/2,z],[w+.15,.07,.13],true);
     const room=new T.Group();room.name='window-display-interior';room.position.set(x,y,z);parent.add(room);
-    box(room,mat('#9d987f'),[0,0,-.032],[w,h,.012]);
+    box(room,roomWall,[0,0,backDepth],[w,h,.012]);
     box(room,mat('#dacba7'),[0,-h*.36,.002],[w,.06,.085]);
     // Exterior-study placeholders only; the actual interior will be designed separately.
     const variant=windowIndex++%4;room.userData.placeholderVariant=variant;
@@ -138,6 +156,7 @@ export function createHouseStudy(parent,mat,level=1){
       box(room,mat('#b2bca5'),[0,shelf+.085,.025],[w*.56,.12,.05]);
       box(room,mat('#d8b6a5'),[-w*.1,shelf+.18,.03],[.16,.12,.04]);
     }
+    warmInterior(room);
     box(parent,glass,[x,y,z+.075],[w,h,.03]);
     box(parent,wood,[x,y,z+.055],[.035,h+.07,.08]);
     box(parent,wood,[x,y-h/2-.1,z+.05],[w+.3,.1,.28],true);
@@ -173,7 +192,9 @@ export function createHouseStudy(parent,mat,level=1){
     }
     window(wing,2.73,1.45,1.43,.95,1.24,false);flowerBox(wing,2.73,.69,1.65,1.16);
     const wingSide=new T.Group();wingSide.position.set(3.51,0,-.2);wingSide.rotation.y=Math.PI/2;wing.add(wingSide);
-    window(wingSide,0,1.47,0,1.72,1.16);
+    // This side wall reaches x=3.5: keep the display backing beyond that wall,
+    // but still behind the clear pane (whose inner face is local z=.06).
+    window(wingSide,0,1.47,0,1.72,1.16,true,.012);
     for(const z of [-1.66,1.36])box(wing,edge,[3.51,level===3?1.42:1.27,z],[.1,level===3?2.75:2.45,.1],true);
     box(wing,edge,[2.75,.32,1.4],[1.57,.13,.09],true);
     box(house,wall,[2.77,.13,1.94],[1.53,.26,.94],true);
@@ -200,6 +221,7 @@ export function createHouseStudy(parent,mat,level=1){
     box(room,wood,[.9,2.97,.34],[.05,.25,.05]);
     mesh(room,new T.CylinderGeometry(.11,.16,.18,12),mat('#f0dfb2'),[.9,3.43,.34]);
     beam(room,wood,[.9,3.13,.34],[.9,3.38,.34],.014);
+    warmInterior(room);
     for(const y of [2.77,4.25])box(upper,edge,[-.24,y,-.16],[3.44,.105,2.78],true);
     window(upper,-1.04,3.5,1.235,.82,.92,false);
     window(upper,.57,3.48,1.235,.8,1.04,false);
