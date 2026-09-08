@@ -1,7 +1,9 @@
 import * as T from "three";
-import { islandRadius, LAND } from "./world.js";
+import { LAND } from "./world.js";
 import { disposeDecoration } from "./decorations.js";
-import { snapCells, rectangle, boundsRectangle, intersects, touchedCells } from "./placement-geometry.js";
+import { snapCells, rectangle, boundsRectangle, intersects } from "./placement-geometry.js";
+
+import { createPlacementTerrain } from "./placement-terrain.js";
 
 export const CELL_SIZE = 0.94;
 const Z_ORIGIN = -1.44;
@@ -17,67 +19,21 @@ export function snapPlacement(x, z, cells = [2, 2]) {
     z: Z_ORIGIN + offsetZ + Math.round((z - Z_ORIGIN - offsetZ) / CELL_SIZE) * CELL_SIZE,
   };
 }
-function onLand(x, z) {
-  const a = Math.atan2(z / LAND.z, x / LAND.x),
-    r = islandRadius(a);
-  return (
-    (x / (LAND.x * r - LAND.fenceInset - 0.12)) ** 2 +
-      (z / (LAND.z * r - LAND.fenceInset - 0.12)) ** 2 <=
-    1
-  );
-}
 export function createPlacement(world, authoritativeGrid = null) {
   const stall = world.root.getObjectByName("market-stall");
   const decorations = (world.decorations ||= []);
-  const waterRay = new T.Raycaster();
   const isWaterwheel = (object) => object.userData.decorationId === "waterwheel";
-  function onWater(x, z) {
-    waterRay.set(new T.Vector3(x, 3, z), new T.Vector3(0, -1, 0));
-    return waterRay.intersectObject(world.water, false).length > 0;
-  }
+  const terrain = createPlacementTerrain(world.plots.map(o=>o.userData.plot));
   let target = stall,
     isNew = false;
   world.root.updateMatrixWorld(true);
-  const blockers = [...world.plots, world.root.getObjectByName("bridge")].map((o) =>
-    new T.Box3().setFromObject(o),
-  );
-  // Match the authority's actual foundation/porch/steps, not the roof bounding box.
-  for (const [x1,z1,x2,z2] of [
-    [-1.8,-6.57,2.5,-3.27],[-1.86,-3.39,2.56,-2.39],[.35,-2.48,1.65,-1.8],
-  ]) blockers.push(new T.Box3(new T.Vector3(x1,0,z1),new T.Vector3(x2,4,z2)));
-  const planted = [
-    // Only the two trunks occupy these small spots.
-    // Background grass and flowers are not furniture blockers.
-    [4.45, -6.35],
-    [-4.4, -5.34],
-  ];
   function canPlace({ x, z }, object = target) {
     const polygon = rectangle({x,z,rotation:object.rotation.y}, object.userData.cells || [2,2]);
     const model=object.userData.decorationId??"";
     const groundFinish=object.userData.groundCover||model==="flowerbed"||model.startsWith("flowerbed_");
     if(!groundFinish&&(world.houseBlockedRects??[]).some(rect=>
       intersects(polygon,boundsRectangle(rect))))return false;
-    const allowed = isWaterwheel(object) ? onWater : onLand;
-    if (authoritativeGrid) {
-      const cells = isWaterwheel(object) ? authoritativeGrid.river_cells : authoritativeGrid.land_cells;
-      const occupied = new Set(cells.map(([col,row]) => `${col},${row}`));
-      const used = touchedCells(polygon);
-      if(!used.length || used.some(([col,row])=>!occupied.has(`${col},${row}`))) return false;
-    } else {
-      if (!allowed(x, z)) return false;
-      if(polygon.some(([px,pz])=>!allowed(px,pz))) return false;
-    }
-    if (!authoritativeGrid &&
-      blockers.some(
-        (b) =>
-          intersects(polygon,boundsRectangle([b.min.x,b.min.z,b.max.x,b.max.z])),
-      )
-    )
-      return false;
-    if (!authoritativeGrid &&
-      planted.some(([px, pz]) => intersects(polygon,boundsRectangle([px-.42,pz-.42,px+.42,pz+.42])))
-    )
-      return false;
+    if (!terrain.canPlace(polygon,isWaterwheel(object))) return false;
     return ![stall, ...decorations].some((other) => {
       if (other === object) return false;
       // Ground finishes and furniture occupy different layers; two finishes still cannot stack.
@@ -104,17 +60,11 @@ export function createPlacement(world, authoritativeGrid = null) {
         [x + CELL_SIZE, z + CELL_SIZE],
         [x, z + CELL_SIZE],
       ];
-      const containsCell = (cells) => cells.some(([c,r])=>c===col&&r===row);
-      const points = authoritativeGrid
-        ? containsCell(authoritativeGrid.land_cells) ? linePoints : containsCell(authoritativeGrid.river_cells) ? riverPoints : null
-        : corners.every(([px, pz]) => onLand(px, pz)) ? linePoints
-          : corners.every(([px, pz]) => onWater(px, pz)) ? riverPoints : null;
-      if (!points) continue;
-      for (let i = 0; i < 4; i++)
-        points.push(
-          new T.Vector3(corners[i][0], 0.285, corners[i][1]),
-          new T.Vector3(corners[(i + 1) % 4][0], 0.285, corners[(i + 1) % 4][1]),
-        );
+      // Draw only usable pieces of each grid edge, including partial boundary cells.
+      for(const [points,water] of [[linePoints,false],[riverPoints,true]])
+        for(let edge=0;edge<4;edge++)
+          for(const [a,b] of terrain.clip(corners[edge],corners[(edge+1)%4],water))
+            points.push(new T.Vector3(a[0],.285,a[1]),new T.Vector3(b[0],.285,b[1]));
     }
   const landGrid = new T.LineSegments(
       new T.BufferGeometry().setFromPoints(linePoints),
