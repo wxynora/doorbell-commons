@@ -1,3 +1,4 @@
+import { installFaultReports, type FaultReports } from "./fault-reports/collector.js";
 import { registerHumanBulletinRoutes } from "./human-bulletin-routes.js";
 import { registerHumanNpcRoutes } from "./lingye-npc/routes.js";
 import {dailyImageUrl, registerDailyImageRoutes} from "./lingye-daily-images.js";
@@ -554,6 +555,7 @@ import {
 } from "./shared-meme-service.js";
 
 export interface BuildAppOptions {
+  faultReports?: FaultReports;
   groupId: string;
   groupMembership: QqGroupMembershipReader;
   registrationAuth: RegistrationAuthService;
@@ -2048,6 +2050,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
             },
           },
   });
+  installFaultReports(app, options.faultReports);
   app.addContentTypeParser(
     "application/x-www-form-urlencoded",
     { parseAs: "string" },

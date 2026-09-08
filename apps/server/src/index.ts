@@ -1,3 +1,4 @@
+import { createFaultReports } from "./fault-reports/collector.js";
 import { ActivityReminderService } from "./activity-reminder-service.js";
 import { FarmDecorationClient } from "./farm-decoration-client.js";
 import { MysteryMerchantReminderService } from "./mystery-merchant-reminder-service.js";
@@ -64,6 +65,7 @@ import { SharedMemeBackendService } from "./shared-meme-backend-service.js";
 import { SharedMemeService } from "./shared-meme-service.js";
 
 const serverConfig = readDoorbellServerConfig();
+const faultReports = createFaultReports(serverConfig.databasePath);
 const database = new CommunityDatabase(serverConfig.databasePath);
 const groupMembership = new OneBotGroupMembershipClient({
   apiBaseUrl: serverConfig.oneBotApiBaseUrl,
@@ -448,6 +450,7 @@ const dailyVoiceService = new LingyeDailyVoiceService({ database, farm: reporter
 });
 const dailyCommentsService = new LingyeDailyCommentsService({database,farm:reporterRelayFarm});
 const mcpRuntime = new DoorbellMcpRuntime({
+  ...(faultReports ? { faultReports } : {}),
   database,
   registrationAuth,
   farmActions: farmMcpActions,
@@ -493,6 +496,7 @@ const lingyeDailyService = new LingyeDailyService({
   editorRewards:lingyeDailyRewards,
 });
 const app = buildApp({
+  ...(faultReports ? { faultReports } : {}),
   groupId: serverConfig.qqGroupId,
   groupMembership,
   registrationAuth,

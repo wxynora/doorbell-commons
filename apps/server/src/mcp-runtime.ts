@@ -1,3 +1,4 @@
+import type { FaultReports } from "./fault-reports/collector.js";
 import type { LingyeActionResult } from "@doorbell/protocol";
 import type { CareerExamReminderService } from "./career-exam-reminder-service.js";
 import type { CommunityDatabase } from "./community-database.js";
@@ -309,6 +310,7 @@ function protocolVersionError(
 }
 
 export interface DoorbellMcpRuntimeOptions {
+  faultReports?: FaultReports;
   database: CommunityDatabase;
   registrationAuth: RegistrationAuthService;
   farmActions: FarmMcpActionExecutor;
@@ -356,6 +358,7 @@ export function sanitizeAndEnqueueReporterRelayWake(
 }
 
 export class DoorbellMcpRuntime {
+  readonly #faultReports: FaultReports | undefined;
   readonly #database: CommunityDatabase;
   readonly #registrationAuth: RegistrationAuthService;
   readonly #farmActions: FarmMcpActionExecutor;
@@ -379,6 +382,7 @@ export class DoorbellMcpRuntime {
   readonly #lastFarmCallAt = new Map<string, number>();
 
   constructor(options: DoorbellMcpRuntimeOptions) {
+    this.#faultReports = options.faultReports;
     this.#database = options.database;
     this.#registrationAuth = options.registrationAuth;
     this.#farmActions = options.farmActions;
@@ -570,12 +574,18 @@ export class DoorbellMcpRuntime {
     }
   }
 
+  #faultToolError(code: "INTERNAL_ERROR" | "UPSTREAM_UNAVAILABLE" | "ELIGIBILITY_UNAVAILABLE",
+    options: Parameters<typeof doorbellToolError>[1] = {}, error?: unknown): DoorbellCallToolResult {
+    this.#faultReports?.tool(code, options.op, error);
+    return doorbellToolError(code, options);
+  }
+
   #contextToolError(error: unknown) {
     if (error instanceof QqNotGroupMemberError) {
       return doorbellToolError("ELIGIBILITY_REVOKED");
     }
     if (error instanceof OneBotUnavailableError) {
-      return doorbellToolError("ELIGIBILITY_UNAVAILABLE");
+      return this.#faultToolError("ELIGIBILITY_UNAVAILABLE", {}, error);
     }
     if (error instanceof FarmNotBoundError) {
       return doorbellToolError("FARM_NOT_BOUND");
@@ -583,7 +593,7 @@ export class DoorbellMcpRuntime {
     if (error instanceof FarmMigrationRequiredError) {
       return doorbellToolError("FARM_MIGRATION_REQUIRED");
     }
-    return doorbellToolError("INTERNAL_ERROR");
+    return this.#faultToolError("INTERNAL_ERROR", {}, error);
   }
 
   #contextProtocolMessage(error: unknown): string {
@@ -652,7 +662,7 @@ export class DoorbellMcpRuntime {
       try {
         let text: string;
         if (registered.operation.op === "go.newsroom.comment") {
-          if (!this.#dailyComments) return doorbellToolError("INTERNAL_ERROR",{op});
+          if (!this.#dailyComments) return this.#faultToolError("INTERNAL_ERROR",{op});
           text = await this.#dailyComments.submit(context.residentId,parsed.data as {issueDate:string;section:string;text:string});
         } else if (registered.operation.op === "go.newsroom.submit") {
           text = submitDailyObservation(this.#database.lingyeDailyStore, context.residentId, parsed.data, this.#now());
@@ -664,7 +674,7 @@ export class DoorbellMcpRuntime {
       } catch (error) {
         const message = dailySubmissionErrorText(error) ?? dailyCommentErrorText(error);
         if (message) return { isError: true, content: textContent(message) };
-        return doorbellToolError("INTERNAL_ERROR", { op });
+        return this.#faultToolError("INTERNAL_ERROR", { op }, error);
       }
     }
 
@@ -737,12 +747,12 @@ export class DoorbellMcpRuntime {
           return doorbellToolError("FARM_MIGRATION_REQUIRED", { op });
         }
         if (error instanceof LingyeMcpActionUnavailableError) {
-          return doorbellToolError("UPSTREAM_UNAVAILABLE", { op });
+          return this.#faultToolError("UPSTREAM_UNAVAILABLE", { op }, error);
         }
         if (error instanceof LingyeMcpActionContractUnavailableError) {
-          return doorbellToolError("INTERNAL_ERROR", { op });
+          return this.#faultToolError("INTERNAL_ERROR", { op }, error);
         }
-        return doorbellToolError("INTERNAL_ERROR", { op });
+        return this.#faultToolError("INTERNAL_ERROR", { op }, error);
       }
     }
 
@@ -784,21 +794,21 @@ export class DoorbellMcpRuntime {
         return doorbellToolError("FARM_MIGRATION_REQUIRED", { op });
       }
       if (error instanceof FarmMcpActionUnavailableError) {
-        return doorbellToolError("UPSTREAM_UNAVAILABLE", {
+        return this.#faultToolError("UPSTREAM_UNAVAILABLE", {
           op,
           message: FARM_RESULT_UNCONFIRMED_MESSAGE,
-        });
+        }, error);
       }
       if (error instanceof FarmMcpActionContractUnavailableError) {
-        return doorbellToolError("INTERNAL_ERROR", {
+        return this.#faultToolError("INTERNAL_ERROR", {
           op,
           message: FARM_RESULT_UNCONFIRMED_MESSAGE,
-        });
+        }, error);
       }
-      return doorbellToolError("INTERNAL_ERROR", {
+      return this.#faultToolError("INTERNAL_ERROR", {
         op,
         message: FARM_RESULT_UNCONFIRMED_MESSAGE,
-      });
+      }, error);
     }
   }
 

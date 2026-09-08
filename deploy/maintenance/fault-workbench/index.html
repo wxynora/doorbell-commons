@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>故障材料 · 维护工作台</title><link rel="stylesheet" href="/workbench.css"></head>
+<body>
+<main>
+  <header><div><p class="eyebrow">DOORBELL COMMONS <span>／ 维护工作台</span></p><h1>故障材料<span class="dot">.</span></h1><p class="intro">系统记下发生了什么，你只需选中那一次。</p></div><p class="retention"><strong>24 小时</strong><span>记录与报告，到期一起删除</span></p></header>
+  <p id="notice" class="notice" role="status" aria-live="polite"></p>
+  <div class="workspace">
+    <section class="inbox" aria-labelledby="list-title">
+      <div class="section-head"><h2 id="list-title">最近的故障 <span id="count"></span></h2><button id="refresh" class="quiet" type="button">刷新</button></div>
+      <div id="records" aria-busy="true"><p class="empty">正在读取记录…</p></div>
+      <details id="manual-details"><summary>找不到这次故障</summary><p class="hint">没有留下明确报错时，补充大概时间和页面名称即可。不要填聊天内容或密钥。</p>
+        <form id="manual-form"><label for="time">大概发生时间</label><input id="time" type="datetime-local" required><label for="page">所在页面或功能</label><input id="page" placeholder="例如：农场背包" required autocomplete="off"><button type="submit" class="secondary">补充这次反馈</button></form>
+      </details>
+    </section>
+    <section class="detail" aria-labelledby="detail-title">
+      <div id="placeholder"><span class="paper-mark" aria-hidden="true">↗</span><h2 id="detail-title">从左侧选一次故障</h2><p>时间、功能和已记录的错误会自动带入。<br>点击整理，即可得到一份排查材料。</p></div>
+      <div id="selected" hidden>
+        <p id="source" class="eyebrow"></p><h2 id="feature"></h2><dl id="facts"></dl>
+        <div class="action-row"><button id="generate" type="button" class="primary">整理材料 <span aria-hidden="true">↗</span></button><p id="expiry" class="hint"></p></div>
+        <section id="report-section" hidden aria-labelledby="report-title"><div class="section-head"><h3 id="report-title">排查材料</h3><span class="hint">随原记录到期删除</span></div><pre id="report" tabindex="0"></pre></section>
+      </div>
+    </section>
+  </div>
+  <footer>当前自动收集：社区接口异常、社区／农场／铃野工具异常。正常玩法拒绝不记为故障。<br>未覆盖浏览器无响应、农场独立后台任务及没有明确报错的卡顿。</footer>
+</main><script type="module" src="/workbench.js"></script>
+</body></html>
