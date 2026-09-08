@@ -1,5 +1,45 @@
 import * as T from "three";
 
+// Sparse rain circles share one draw, without a shader over the whole water surface.
+function createSimpleFloodRipples() {
+  const centers=[],unitCircle=[];
+  for(let row=0;row<8;row++)for(let col=0;col<8;col++){
+    const seed=row*8+col;
+    const x=-16.8+col*4.8+Math.sin(seed*7.3)*.9;
+    const z=-11.2+row*4.8+Math.cos(seed*4.1)*.8;
+    if(z<0&&Math.hypot(x,z)>12.6)continue;
+    centers.push({x,z,phase:seed*.61803398875%1});
+  }
+  for(let segment=0;segment<12;segment++)for(const step of [segment,segment+1]){
+    const angle=(step%12)/12*Math.PI*2;
+    unitCircle.push(Math.cos(angle),Math.sin(angle));
+  }
+  const vertices=unitCircle.length/2;
+  const positions=new Float32Array(centers.length*vertices*3);
+  const colors=new Float32Array(centers.length*vertices*4).fill(1);
+  const position=new T.BufferAttribute(positions,3).setUsage(T.DynamicDrawUsage);
+  const color=new T.BufferAttribute(colors,4).setUsage(T.DynamicDrawUsage);
+  const geometry=new T.BufferGeometry();
+  geometry.setAttribute('position',position);geometry.setAttribute('color',color);
+  const material=new T.LineBasicMaterial({color:'#cae3e6',vertexColors:true,transparent:true,opacity:.32,depthWrite:false});
+  const mesh=new T.LineSegments(geometry,material);
+  mesh.name='flood-simple-ripples';mesh.position.y=.414;mesh.renderOrder=1;mesh.frustumCulled=false;
+  return {mesh,update(time){
+    for(let i=0;i<centers.length;i++){
+      const center=centers[i],phase=(time*.42+center.phase)%1;
+      const age=Math.min(phase/.52,1),radius=.045+age*.42;
+      const alpha=4*age*(1-age);
+      for(let j=0;j<vertices;j++){
+        const vertex=i*vertices+j;
+        positions[vertex*3]=center.x+unitCircle[j*2]*radius;
+        positions[vertex*3+2]=center.z+unitCircle[j*2+1]*radius;
+        colors[vertex*4+3]=alpha;
+      }
+    }
+    position.needsUpdate=true;color.needsUpdate=true;
+  }};
+}
+
 // Local animation illustrates authoritative active events. It never starts an event.
 export function createNatureEffects(parent, plots, groundPoint) {
   const root=new T.Group();root.name="active-nature-event";parent.add(root);
@@ -7,35 +47,6 @@ export function createNatureEffects(parent, plots, groundPoint) {
   root.add(flood,drought,pest);
   flood.name='flood-water';
   const water=new T.MeshLambertMaterial({color:"#83bdcc",transparent:true,opacity:.52,depthWrite:false});
-  const waveTime={value:0};
-  water.onBeforeCompile=shader=>{
-    shader.uniforms.floodTime=waveTime;
-    shader.vertexShader='varying vec2 floodPosition;\n'+shader.vertexShader;
-    shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nfloodPosition=position.xy;');
-    shader.fragmentShader=`uniform float floodTime;
-      varying vec2 floodPosition;
-      float floodHash(vec2 v){return fract(sin(dot(v,vec2(127.1,311.7)))*43758.5453);}
-      float floodNoise(vec2 v){vec2 i=floor(v),f=fract(v);f=f*f*(3.-2.*f);return mix(mix(floodHash(i),floodHash(i+vec2(1.,0.)),f.x),mix(floodHash(i+vec2(0.,1.)),floodHash(i+1.),f.x),f.y);}
-      float floodHeight(vec2 v){v+=vec2(floodTime*.12,-floodTime*.07);return floodNoise(v)*.6+floodNoise(v*2.13+vec2(-floodTime*.06,floodTime*.09))*.28+floodNoise(v*4.1)*.12;}
-      `+shader.fragmentShader;
-    shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>
-      float swell=floodHeight(floodPosition*1.2);
-      diffuseColor.rgb *= .96 + swell*.08;
-      // World-surface sampling covers the meadow and long foreground too.
-      vec2 rainP=floodPosition*1.15, rainCell=floor(rainP);
-      vec2 hashP=fract(rainCell*vec2(.1031,.1030));
-      hashP+=dot(hashP,hashP.yx+33.33);
-      float seed=fract((hashP.x+hashP.y)*hashP.x);
-      vec2 center=vec2(.35)+vec2(seed,fract(seed*17.31))*.3;
-      float age=fract(floodTime*.7+seed*7.);
-      float radius=age*.30;
-      vec2 offset=fract(rainP)-center;
-      float distanceToRing=dot(offset,offset)-radius*radius;
-      float edge=max(fwidth(distanceToRing)*1.1,.018*radius);
-      float rainRing=(1.-smoothstep(edge,edge*2.2,abs(distanceToRing)))*(4.*age*(1.-age));
-      diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.83,.94,.97),rainRing*.30);`);
-  };
-  water.customProgramCacheKey=()=> 'farm-flood-matte-v5';
   // Same world-space meadow + foreground extent as the surrounding lawn,
   // not just the fenced island. A single surface avoids overlapping water layers.
   const outline=new T.Shape();outline.moveTo(-100,0);outline.lineTo(-14,0);
@@ -44,6 +55,7 @@ export function createNatureEffects(parent, plots, groundPoint) {
   const waterExtent=new T.Group();flood.add(waterExtent);
   const surface=new T.Mesh(new T.ShapeGeometry(outline),water);
   surface.name='flood-continuous-surface';surface.rotation.x=-Math.PI/2;surface.position.y=.406;waterExtent.add(surface);
+  const ripples=createSimpleFloodRipples();waterExtent.add(ripples.mesh);
   const puddles=new Map(), swimmers=[];
   let floodKey='';
   const crackMat=new T.LineBasicMaterial({color:"#816848"});
@@ -92,9 +104,9 @@ export function createNatureEffects(parent, plots, groundPoint) {
       flood.traverse(o=>{o.raycast=()=>{};});
     },
     update(time){
-      waveTime.value=time;
       if(pest.visible)for(const f of flies)f.mesh.position.set(f.x+Math.sin(time*1.7+f.phase)*.24,.65+Math.sin(time*2+f.phase)*.08,f.z+Math.cos(time*1.4+f.phase)*.24);
       if(flood.visible){
+        ripples.update(time);
         waterExtent.rotation.y=parent.getObjectByName('foreground-lawn')?.rotation.y??0;
         for(const f of swimmers){const a=time*.65+f.phase;f.mesh.position.set(f.x+Math.cos(a)*.22,.389,f.z+Math.sin(a)*.18);f.mesh.rotation.y=-Math.atan2(Math.cos(a)*.18,-Math.sin(a)*.22);f.tail.rotation.z=Math.sin(time*8+f.phase)*.2;}
       }
