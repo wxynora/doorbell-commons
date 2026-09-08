@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { kitchenSellSelected, humanBarterList, humanBarterUnlist, pushInbox } from "../engine.js";
 import { listForSale, unlistItem } from "../game.js";
 import { cancelPurchaseOrder, createPurchaseOrder } from "../game/purchase-orders.js";
-import { buyMysteryMerchantOffers, discoverMysteryMerchantEvent } from "../mystery-merchant.js";
+import { buyMysteryMerchantOffers, discoverMysteryMerchantEvent, MYSTERY_MERCHANT_MARKET_GUIDANCE } from "../mystery-merchant.js";
 import { dumpUgc, loadUgc } from "../ugc.js";
 import {
   getMysteryMerchantWorld,
@@ -456,7 +456,7 @@ export function discoverAndBroadcastMysteryMerchant(farm, now) {
     normalizeFarm(working);
     pushInbox(
       working,
-      `📣 神秘商人出现在「${farm.name}」，将在 ${beijingTime(discovery.endsAt)} 离开。`,
+      `📣 神秘商人出现在「${farm.name}」，将在 ${beijingTime(discovery.endsAt)} 离开。\n${MYSTERY_MERCHANT_MARKET_GUIDANCE}`,
       now,
     );
     return { id: working.id, farm: working };

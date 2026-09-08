@@ -40,7 +40,7 @@ import { startRanchRaidScheduler } from "./server/ranch-raid-scheduler.js";
 import { loadConstableInterviewBank } from "./career/constable-interview-bank.js";
 import { applyDroughtWatering, collectFloodFishForFarm, commitNatureFarmReconciliation, commitNatureRemovedPlot, startNatureRuntimeScheduler } from "./nature-runtime.js";
 import { setDailySpendEconomyDatabase } from "./daily-spend.js";
-import { activeMysteryMerchantEvent, buyMysteryMerchantOffers, projectMysteryMerchant } from "./mystery-merchant.js";
+import { activeMysteryMerchantEvent, buyMysteryMerchantOffers, projectMysteryMerchant, renderMysteryMerchantMarket } from "./mystery-merchant.js";
 import { discoverAndBroadcastMysteryMerchant } from "./server/market-action.js";
 import { detentionAllowsFarmAction, detentionBlockedFarmActionText } from "./security/presentation.js";
 import { configureTogetherSeason3Authority, isTogetherSeason3, runStoredTogetherSeason3,
@@ -534,7 +534,6 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         return { status: 200, json: { ok: true, text, ...vf(f) } };
     }
     if (action === "market") {
-        const text = viewMarket(f, true);
         const mysteryMerchantWorld = getMysteryMerchantWorld();
         const activeMerchant = activeMysteryMerchantEvent(mysteryMerchantWorld, now);
         const mysteryMerchant = projectMysteryMerchant(
@@ -544,6 +543,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
             f.id,
         );
         persistProjectedRead();
+        const text = `${viewMarket(f, true)}\n\n${renderMysteryMerchantMarket(mysteryMerchant)}`;
         return { status: 200, json: { ok: true, text, mystery_merchant: mysteryMerchant, ...vf(f) } };
     }
     if (action === "encyclopedia") {

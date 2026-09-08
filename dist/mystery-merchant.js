@@ -201,6 +201,32 @@ export function projectMysteryMerchant(rawWorld, now, hostFarmName = null, buyer
   };
 }
 
+export const MYSTERY_MERCHANT_MARKET_GUIDANCE = '查看当前货架：doorbell({"op":"farm.market","args":{}})';
+
+/** Render only the same buyer-safe projection used by the Human catalog. */
+export function renderMysteryMerchantMarket(merchant) {
+  const time = (value) => new Intl.DateTimeFormat("zh-CN", {
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Asia/Shanghai",
+  }).format(new Date(value));
+  const lines = ["【神秘商店】"];
+  if (merchant.approximate_windows.length) {
+    lines.push(`今日大概出现时段：${merchant.approximate_windows.map((window) =>
+      `${time(window.starts_at)}–${time(window.ends_at)}`).join("、")}`);
+  }
+  if (merchant.status !== "present") {
+    lines.push("当前没有已发现且仍在营业的神秘商店。");
+    return lines.join("\n");
+  }
+  lines.push(`现在在「${merchant.host_farm_name ?? merchant.host_farm_doorplate}」，停留至 ${time(merchant.ends_at)}。`);
+  for (const offer of merchant.offers) {
+    lines.push(`${offer.name} × ${offer.grant_quantity} · ${offer.unit_price} ${offer.currency === "gold" ? "金币" : "银币"} · ${offer.already_bought ? "本轮已买" : "可购买"}`);
+    if (!offer.already_bought) {
+      lines.push("doorbell：", JSON.stringify({ op: "farm.buy", args: { source: "mystery-merchant", items: [offer.item_id] } }));
+    }
+  }
+  return lines.join("\n");
+}
+
 function normalizeOffer(raw, eventId) {
   if (!isRecord(raw)) throw new TypeError("Mystery merchant offer must be an object");
   const offerId = text(raw.offerId);
@@ -497,19 +523,19 @@ export function renderMysteryMerchantPurchaseResult(result) {
     return `🛒 买到了：${items}。共花费 ${costs}。`;
   }
   if (result?.code === "insufficient_funds") {
-    return "可用余额不足，本次操作没有执行。";
+    return "可用余额不足，本次操作没有执行。\n" + MYSTERY_MERCHANT_MARKET_GUIDANCE;
   }
   if (result?.code === "already_bought") {
-    return "这份清单里有你本次已经买过的商品，本次操作没有执行。";
+    return "这份清单里有你本次已经买过的商品，本次操作没有执行。\n" + MYSTERY_MERCHANT_MARKET_GUIDANCE;
   }
   if (result?.code === "merchant_not_present") {
-    return "神秘商人现在不在铃野，本次操作没有执行。";
+    return "神秘商人现在不在铃野，本次操作没有执行。\n" + MYSTERY_MERCHANT_MARKET_GUIDANCE;
   }
   if (result?.code === "merchant_not_visible") {
-    return "这次神秘商人的位置还没有被发现，本次操作没有执行。";
+    return "这次神秘商人的位置还没有被发现，本次操作没有执行。\n" + MYSTERY_MERCHANT_MARKET_GUIDANCE;
   }
   if (result?.code === "offer_not_found") {
-    return "这份清单里有不在当前货架上的商品，本次操作没有执行。";
+    return "这份清单里有不在当前货架上的商品，本次操作没有执行。\n" + MYSTERY_MERCHANT_MARKET_GUIDANCE;
   }
-  return "这份购买清单无效，本次操作没有执行。";
+  return "这份购买清单无效，本次操作没有执行。\n" + MYSTERY_MERCHANT_MARKET_GUIDANCE;
 }
