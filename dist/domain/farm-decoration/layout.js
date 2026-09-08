@@ -1,52 +1,19 @@
 import { decorationById, ROOF_COLORS } from "./catalog.js";
 import { houseState, overlapsHouseExtension, isGroundDecoration } from "./house.js";
 import { snapCells, rectangle, intersects, touchedCells } from "./placement-geometry.js";
+import { createPlacementTerrain } from "./placement-terrain.js";
 
 export const CELL_SIZE = .94;
 export const Z_ORIGIN = -1.44;
-const LAND = { x: 7.5, z: 8.7, fenceInset: .3, riverWidth: 1.6 };
-const radius = a => 1 + .025 * Math.sin(a * 5) + .02 * Math.cos(a * 9);
-const groundPoint = (a, extra) => [Math.cos(a) * (LAND.x * radius(a) + extra), Math.sin(a) * (LAND.z * radius(a) + extra)];
-const waterQuads = Array.from({ length: 160 }, (_, i) => [groundPoint(i / 160 * Math.PI * 2, .05), groundPoint(i / 160 * Math.PI * 2, 1.6), groundPoint((i + 1) / 160 * Math.PI * 2, 1.6), groundPoint((i + 1) / 160 * Math.PI * 2, .05)]);
-const cross = (a, b, p) => (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]);
-function inTriangle(p, a, b, c) {
-  const signs = [cross(a, b, p), cross(b, c, p), cross(c, a, p)];
-  return signs.every(v => v >= -1e-7) || signs.every(v => v <= 1e-7);
-}
-function onWater(x, z) {
-  const p = [x, z];
-  return waterQuads.some(([a, b, c, d]) => inTriangle(p, a, b, d) || inTriangle(p, b, c, d));
-}
-function onLand(x, z) {
-  const r = radius(Math.atan2(z / LAND.z, x / LAND.x));
-  return (x / (LAND.x * r - LAND.fenceInset - .12)) ** 2 + (z / (LAND.z * r - LAND.fenceInset - .12)) ** 2 <= 1;
-}
-const overlaps = (a, b) => a[0] < b[2] - 1e-7 && a[2] > b[0] + 1e-7 && a[1] < b[3] - 1e-7 && a[3] > b[1] + 1e-7;
-
-// Same frozen preview geometry, without browser/Three dependencies. Plot
-// blockers use actual owned plots, never the demo's fixed 36 samples.
+// Candidate cells expose partial edges; actual placement uses terrain geometry.
 export function decorationGrid(farm) {
-  const blockers = [
-    [-1.8, -6.57, 2.5, -3.27], // cottage foundation, not the roof overhang
-    [-1.86, -3.39, 2.56, -2.39], // porch
-    [.35, -2.48, 1.65, -1.8], // narrow front steps, not the entire house width
-    [-.65, 8.5675, .75, 10.8675], // bridge
-    ...[[4.45, -6.35], [-4.4, -5.34]].map(([x, z]) => [x - .42, z - .42, x + .42, z + .42]),
-    ...(farm.plots ?? []).map((plot, i) => {
-      const index = Number.isInteger(plot.id) && plot.id > 0 ? plot.id - 1 : i;
-      const x = (index % 6 - 2.5) * CELL_SIZE, z = -.97 + Math.floor(index / 6) * CELL_SIZE;
-      return [x - .435, z - .456, x + .435, z + .456];
-    }),
-  ];
-  const land_cells = [], river_cells = [];
-  for (let col = -10; col <= 9; col++) for (let row = -10; row <= 12; row++) {
-    const x = col * CELL_SIZE, z = Z_ORIGIN + row * CELL_SIZE;
-    if (blockers.some(b => overlaps([x, z, x + CELL_SIZE, z + CELL_SIZE], b))) continue;
-    const corners = [[x, z], [x + CELL_SIZE, z], [x, z + CELL_SIZE], [x + CELL_SIZE, z + CELL_SIZE]];
-    if (corners.every(([px, pz]) => onLand(px, pz))) land_cells.push([col, row]);
-    else if (corners.every(([px, pz]) => onWater(px, pz))) river_cells.push([col, row]);
+  const terrain=createPlacementTerrain(farm.plots??[]);
+  const land_cells=[],river_cells=[];
+  for(let col=-10;col<=9;col++)for(let row=-10;row<=12;row++){
+    if(terrain.cellVisible(col,row))land_cells.push([col,row]);
+    if(terrain.cellVisible(col,row,true))river_cells.push([col,row]);
   }
-  return { cell_size: CELL_SIZE, z_origin: Z_ORIGIN, land_cells, river_cells };
+  return {cell_size:CELL_SIZE,z_origin:Z_ORIGIN,land_cells,river_cells};
 }
 
 export function footprint(pose, cells) {
@@ -60,18 +27,17 @@ export function footprint(pose, cells) {
   return used.length ? used : null;
 }
 const exactKeys = (object, keys) => object && typeof object === "object" && !Array.isArray(object) && Object.keys(object).length === keys.length && keys.every(k => Object.hasOwn(object, k));
-const key = ([c, r]) => `${c},${r}`;
 
 export function validateDecorationLayout(farm, layout, owned) {
   if (!exactKeys(layout, ["roof", "canopy", "stall", "decorations"]) || !ROOF_COLORS.includes(layout.roof) || !["plain", "floral"].includes(layout.canopy) || !Array.isArray(layout.decorations) || !exactKeys(layout.stall, ["x", "z", "rotation"])) return "invalid_layout";
   const house = houseState(owned);
   if (layout.canopy === "floral" && (!house.canopy_unlocked || house.level < 2)) return "decoration_not_owned";
-  const grid = decorationGrid(farm), land = new Set(grid.land_cells.map(key)), river = new Set(grid.river_cells.map(key));
+  const terrain = createPlacementTerrain(farm.plots ?? []);
   const occupied = { ground: [], furniture: [] }, counts = {}, ids = new Set();
   function place(pose, cells, layer, water = false) {
-    const cellsUsed = footprint(pose, cells), allowed = water ? river : land;
-    if (!cellsUsed || cellsUsed.some(cell => !allowed.has(key(cell)))) return false;
+    if (!footprint(pose, cells)) return false;
     const polygon = rectangle(pose, cells);
+    if (!terrain.canPlace(polygon, water)) return false;
     if (occupied[layer].some(other => intersects(polygon, other))) return false;
     occupied[layer].push(polygon);
     return true;
