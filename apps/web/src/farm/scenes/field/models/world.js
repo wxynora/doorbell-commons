@@ -19,7 +19,8 @@ import { createFence } from "./fence.js";
 import { createCropModel } from "./crop-models.js";
 import { addSnowCover } from "./seasonal-cover.js";
 
-export const LAND = { x: 7.5, z: 8.7, riverWidth: 1.6, fenceInset: 0.3 };
+import { LAND } from "./placement-terrain.js";
+export { LAND };
 
 export const PLOTS = Array.from({ length: 36 }, (_, i) => ({
   id: i + 1,
@@ -227,7 +228,7 @@ export function createWorld(plotDefinitions = [], houseLevel = 1) {
     stone.rotation.y = random();
   }
   for (let i = 0; i < 12; i++) {
-    const z = 4.42 + i * 0.32;
+    const z = 4.42 + i * (groundPoint(Math.PI / 2)[1] - .8 - 4.42) / 11;
     mesh(root, new T.CylinderGeometry(0.28, 0.31, 0.045, 6), mat("#d4c8a3"), [
       0.07 + Math.sin(i) * 0.06,
       0.265,
@@ -349,10 +350,15 @@ export function createWorld(plotDefinitions = [], houseLevel = 1) {
     flowers(x, z, count, radius, stretch);
   });
   // Organic bushes and curved grass occupy the margins, leaving small decoration pockets.
+  // Retain the original scatter count and random sequence; only the border moves.
+  const scatterLand = { x: 7.5, z: 8.7 };
   for (let k = 0; k < 200; k++) {
     const a = random() * Math.PI * 2,
-      [x, z] = groundPoint(a, -0.28 - random() * 0.3);
-    if (z > 6 && Math.abs(x) < 1.1) continue;
+      inset = -0.28 - random() * 0.3,
+      [x, z] = groundPoint(a, inset),
+      originalX = Math.cos(a) * (scatterLand.x * islandRadius(a) + inset),
+      originalZ = Math.sin(a) * (scatterLand.z * islandRadius(a) + inset);
+    if (originalZ > 6 && Math.abs(originalX) < 1.1) continue;
     if (k % 3 === 0)
       buds.add(
         [x, 0.38, z],
@@ -373,10 +379,10 @@ export function createWorld(plotDefinitions = [], houseLevel = 1) {
   }
   // Small ground flecks create a restrained painted meadow texture, not a flat green disk.
   for (let i = 0; i < 3600; i++) {
-    const x = (random() - 0.5) * (LAND.x * 2 - 0.6),
-      z = (random() - 0.5) * (LAND.z * 2 - 0.6);
+    const x = (random() - 0.5) * (scatterLand.x * 2 - 0.6),
+      z = (random() - 0.5) * (scatterLand.z * 2 - 0.6);
     if (
-      (x / (LAND.x - 0.2)) ** 2 + (z / (LAND.z - 0.2)) ** 2 > 0.96 ||
+      (x / (scatterLand.x - 0.2)) ** 2 + (z / (scatterLand.z - 0.2)) ** 2 > 0.96 ||
       (Math.abs(x) < 3.03 && z > -1.5 && z < 4.5) ||
       (x > -4.95 && x < -2.9 && z > 1.9 && z < 3.85) ||
       (x > -1.8 && x < 2.8 && z < -1.3)

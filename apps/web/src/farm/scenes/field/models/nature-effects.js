@@ -1,4 +1,5 @@
 import * as T from "three";
+import { LAND } from "./placement-terrain.js";
 
 // Sparse rain circles share one draw, without a shader over the whole water surface.
 function createSimpleFloodRipples() {
@@ -49,8 +50,9 @@ export function createNatureEffects(parent, plots, groundPoint) {
   const water=new T.MeshLambertMaterial({color:"#83bdcc",transparent:true,opacity:.52,depthWrite:false});
   // Same world-space meadow + foreground extent as the surrounding lawn,
   // not just the fenced island. A single surface avoids overlapping water layers.
-  const outline=new T.Shape();outline.moveTo(-100,0);outline.lineTo(-14,0);
-  for(let i=0;i<=64;i++){const a=Math.PI-i/64*Math.PI;outline.lineTo(Math.cos(a)*14,Math.sin(a)*14);}
+  const radius=LAND.z+5.3; // Meadow radius plus its one-unit rear offset.
+  const outline=new T.Shape();outline.moveTo(-100,0);outline.lineTo(-radius,0);
+  for(let i=0;i<=64;i++){const a=Math.PI-i/64*Math.PI;outline.lineTo(Math.cos(a)*radius,Math.sin(a)*radius);}
   outline.lineTo(100,0);outline.lineTo(100,-200);outline.lineTo(-100,-200);outline.closePath();
   const waterExtent=new T.Group();flood.add(waterExtent);
   const surface=new T.Mesh(new T.ShapeGeometry(outline),water);

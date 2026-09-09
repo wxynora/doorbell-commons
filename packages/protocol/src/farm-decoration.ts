@@ -3,6 +3,7 @@ import { z } from "zod";
 const itemId = z.string().regex(/^farm_decor:[a-z_]+$/);
 const point = { x: z.number(), z: z.number(), rotation: z.number() };
 export const farmDecorationLayoutSchema = z.object({
+  house: z.object({ x: z.number(), z: z.number() }).strict().optional(),
   roof: z.string(),
   canopy: z.enum(["plain", "floral"]),
   stall: z.object(point).strict(),

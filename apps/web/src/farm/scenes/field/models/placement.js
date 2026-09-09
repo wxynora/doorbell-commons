@@ -23,7 +23,7 @@ export function createPlacement(world, authoritativeGrid = null) {
   const stall = world.root.getObjectByName("market-stall");
   const decorations = (world.decorations ||= []);
   const isWaterwheel = (object) => object.userData.decorationId === "waterwheel";
-  const terrain = createPlacementTerrain(world.plots.map(o=>o.userData.plot));
+  const terrain = createPlacementTerrain(world.plots.map(o=>o.userData.plot),world.house.position);
   let target = stall,
     isNew = false;
   world.root.updateMatrixWorld(true);
@@ -34,12 +34,8 @@ export function createPlacement(world, authoritativeGrid = null) {
     if(!groundFinish&&(world.houseBlockedRects??[]).some(rect=>
       intersects(polygon,boundsRectangle(rect))))return false;
     if (!terrain.canPlace(polygon,isWaterwheel(object))) return false;
-    return ![stall, ...decorations].some((other) => {
-      if (other === object) return false;
-      // Ground finishes and furniture occupy different layers; two finishes still cannot stack.
-      if (Boolean(other.userData.groundCover) !== Boolean(object.userData.groundCover)) return false;
-      return intersects(polygon,rectangle({x:other.position.x,z:other.position.z,rotation:other.rotation.y},other.userData.cells||[2,2]));
-    });
+    // Decoration overlap is intentional; only terrain and the house block placement.
+    return true;
   }
   const grid = new T.Group();
   grid.name = "placement-grid";
@@ -111,9 +107,14 @@ export function createPlacement(world, authoritativeGrid = null) {
     for (let z = -limitZ; z <= limitZ; z += CELL_SIZE)
       for (let x = -limitX; x <= limitX; x += CELL_SIZE) {
         const p = snapPlacement(x, z, placementCells(object));
-        if (canPlace(p, object)) available.push(p);
+        if (canPlace(p, object)) {
+          const polygon=rectangle({...p,rotation:object.rotation.y},object.userData.cells||[2,2]);
+          const occupied=[stall,...decorations].some(other=>other!==object&&intersects(polygon,rectangle({x:other.position.x,z:other.position.z,rotation:other.rotation.y},other.userData.cells||[2,2])));
+          available.push({...p,occupied});
+        }
       }
-    available.sort((a, b) => (a.x-origin.x) ** 2 + (a.z-origin.z) ** 2 - ((b.x-origin.x) ** 2 + (b.z-origin.z) ** 2));
+    // +1 still suggests an empty nearby spot; manual overlap remains allowed.
+    available.sort((a, b) => Number(a.occupied)-Number(b.occupied) || (a.x-origin.x) ** 2 + (a.z-origin.z) ** 2 - ((b.x-origin.x) ** 2 + (b.z-origin.z) ** 2));
     return available[0] || null;
   }
   return {

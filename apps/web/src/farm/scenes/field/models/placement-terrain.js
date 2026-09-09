@@ -1,12 +1,15 @@
 // Mirrored between the scene and Farm authority; grid cells are guides, not collision masks.
 import {CELL_SIZE,Z_ORIGIN,boundsRectangle,intersects} from "./placement-geometry.js";
-const LAND={x:7.5,z:8.7,fenceInset:.3,riverWidth:1.6};
+import {DEFAULT_HOUSE_POSITION,houseBaseRects} from "./house-geometry.js";
+// Expand by two existing grid cells per side; creek width and scene anchors stay unchanged.
+export const LAND={x:7.5+2*CELL_SIZE,z:8.7+2*CELL_SIZE,fenceInset:.3,riverWidth:1.6};
 const radius=a=>1+.025*Math.sin(a*5)+.02*Math.cos(a*9);
 const outline=extra=>Array.from({length:160},(_,i)=>{
   const a=i/160*Math.PI*2,r=radius(a);
   return [Math.cos(a)*(LAND.x*r+extra),Math.sin(a)*(LAND.z*r+extra)];
 });
-const land=outline(-LAND.fenceInset-.12),outer=outline(1.6),inner=outline(.05);
+const land=outline(-LAND.fenceInset-.12),outer=outline(LAND.riverWidth),inner=outline(.05);
+const bridgeZ=LAND.z*radius(Math.PI/2)+LAND.riverWidth/2;
 const cross=(a,b)=>a[0]*b[1]-a[1]*b[0];
 function cuts(a,b,poly){
   const v=[b[0]-a[0],b[1]-a[1]],out=[];
@@ -27,11 +30,10 @@ function inside(p,poly){
   }
   return yes;
 }
-export function createPlacementTerrain(plots=[]){
+export function createPlacementTerrain(plots=[],housePosition=DEFAULT_HOUSE_POSITION){
   const rects=[
-    [-1.8,-6.57,2.5,-3.27],[-1.86,-3.39,2.56,-2.39],[.35,-2.48,1.65,-1.8],
-    [-.65,8.5675,.75,10.8675],
-    ...[[4.45,-6.35],[-4.4,-5.34]].map(([x,z])=>[x-.42,z-.42,x+.42,z+.42]),
+    ...(housePosition===null?[]:houseBaseRects(housePosition)),
+    [-.65,bridgeZ-1.15,.75,bridgeZ+1.15],
     ...plots.map((plot,i)=>{
       const index=Number.isInteger(plot.id)&&plot.id>0?plot.id-1:i;
       const x=(index%6-2.5)*CELL_SIZE,z=-.97+Math.floor(index/6)*CELL_SIZE;

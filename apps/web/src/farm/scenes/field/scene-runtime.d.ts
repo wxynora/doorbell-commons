@@ -11,6 +11,7 @@ export interface SceneRuntime {
   setDecorations(value: SceneDecorationData): void;
   selectPlot(id: number | null): void;
   startPlacement(id: string): void;
+  startHouseMove(): void;
   rotate(): void;
   addOne(): void;
   remove(): void;

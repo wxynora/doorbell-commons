@@ -112,7 +112,8 @@ export function createEnvironment(parent) {
     random = seededRandom(1804);
   const grass = mat("#9db868");
   grass.userData.seasonRole = "ground";
-  const meadow = mesh(root, new T.CircleGeometry(13, 96), grass, [0, -0.08, -1]);
+  const meadowRadius = LAND.z + 4.3;
+  const meadow = mesh(root, new T.CircleGeometry(meadowRadius, 96), grass, [0, -0.08, -1]);
   meadow.rotation.x = -Math.PI / 2;
   meadow.castShadow = false;
   // Extend only the foreground so low views see lawn below, while the rear keeps its sky horizon.
@@ -126,26 +127,30 @@ export function createEnvironment(parent) {
   lawn.castShadow = false;
   const flowers = new Instances(root, new T.IcosahedronGeometry(1, 0), mat("#ffffff"));
   const blades = new Instances(root, leafGeometry(), mat("#ffffff"));
+  // Move the existing outer scatter outward without increasing its count.
+  const scatterLand = { x: 7.5, z: 8.7 };
   for (let i = 0; i < 2800; i++) {
     const a = random() * Math.PI * 2,
       r = 7.2 + random() * 5.1;
     const x = Math.cos(a) * r,
       z = Math.sin(a) * r - 1;
     if (
-      (x / (LAND.x + LAND.riverWidth + 0.2)) ** 2 + (z / (LAND.z + LAND.riverWidth + 0.2)) ** 2 <
+      (x / (scatterLand.x + LAND.riverWidth + 0.2)) ** 2 + (z / (scatterLand.z + LAND.riverWidth + 0.2)) ** 2 <
         1.08 ||
       (Math.abs(x) < 0.85 && z > 7)
     )
       continue;
+    const outerX = x + Math.cos(a) * (LAND.x - scatterLand.x),
+      outerZ = z + Math.sin(a) * (LAND.z - scatterLand.z);
     blades.add(
-      [x, -0.06, z],
+      [outerX, -0.06, outerZ],
       [0.12, 0.12 + random() * 0.13, 0.18],
       [0.3, random() * 6, 0],
       i % 2 ? "#99b368" : "#789450",
     );
     if (i % 2 === 0)
       flowers.add(
-        [x, 0.015, z],
+        [outerX, 0.015, outerZ],
         [0.09, 0.025, 0.09],
         [0, 0, 0],
         ["#eee5c4", "#d5acc0", "#b6a3cc", "#e3cb74"][i % 4],

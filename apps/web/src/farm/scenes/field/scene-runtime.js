@@ -5,6 +5,8 @@ import { createWorld, groundPoint } from "./models/world.js";
 import { createFarmCamera, resizeFarmCamera, limitFarmView, CAMERA_TARGET, MIN_ZOOM, MAX_ZOOM } from "./models/camera.js";
 import { createEnvironment, createSeasonController, createNightLighting } from "./models/environment.js";
 import { createPlacement, CELL_SIZE } from "./models/placement.js";
+import { createHousePlacement } from "./models/house-placement.js";
+import { DEFAULT_HOUSE_POSITION, houseExtensionRect } from "./models/house-geometry.js";
 import { setRoofColor, ROOF_COLORS } from "./models/cottage.js";
 import { setStudyCanopy } from "./models/local-house-upgrades.js";
 import { createDecoration, disposeDecoration, updateDecorationLights, updateDecorationMotion } from "./models/decorations.js";
@@ -43,7 +45,8 @@ export function createFieldRuntime(host, options) {
   const environment=createEnvironment(world.root), setSeason=createSeasonController(world.root), setNightLighting=createNightLighting(world);
   let nature=options.environment, data=null, placement=null, committed=null, pendingData=null;
   let importing=false, editing=false, saving=false, disposed=false, light=nature.night, roof="mint",canopy="plain";
-  let placementKey="",fogWeather;
+  let placementKey="",fogWeather,housePlacement=null;
+  const currentPlacement=()=>housePlacement??placement;
   const controls=new OrbitControls(camera,canvas);
   controls.target.copy(CAMERA_TARGET);
   controls.enableDamping=true; controls.dampingFactor=.08;
@@ -56,7 +59,7 @@ export function createFieldRuntime(host, options) {
   const observer=new ResizeObserver(resize);observer.observe(host);resize();
   const ray=new T.Raycaster(),pointer=new T.Vector2(),plane=new T.Plane(new T.Vector3(0,1,0),-.25);
   const pose=o=>({x:o.position.x,z:o.position.z,rotation:o.rotation.y});
-  const capture=()=>({roof,canopy,stall:pose(world.root.getObjectByName("market-stall")),decorations:world.decorations.map(o=>({instance_id:o.userData.instanceId,item_id:o.userData.itemId,...pose(o)}))});
+  const capture=()=>({house:{x:world.house.position.x,z:world.house.position.z},roof,canopy,stall:pose(world.root.getObjectByName("market-stall")),decorations:world.decorations.map(o=>({instance_id:o.userData.instanceId,item_id:o.userData.itemId,...pose(o)}))});
   const definition=id=>data?.catalog.find(d=>d.item_id===id);
   const inventory=id=>data?.inventory.find(d=>d.item_id===id);
   function remaining(id) {
@@ -66,15 +69,19 @@ export function createFieldRuntime(host, options) {
     return world.decorations.filter(o=>o.userData.itemId===id).length<owned.owned_quantity;
   }
   function emit(message="") {
-    const object=placement?.object,id=object?.userData.itemId;
-    options.onEditState({editing,valid:!saving&&(!placement?.active||placement.valid),title:importing?"导入布局预览":object?.userData.label||"布置农场",layoutPreview:importing,canAdd:!saving&&!!id&&remaining(id),canRemove:!saving&&!!id,message});
+    const current=currentPlacement(),object=current?.object,id=object?.userData.itemId;
+    options.onEditState({editing,valid:!saving&&(!current?.active||current.valid),houseMoving:!!housePlacement,title:housePlacement?"移动房屋":importing?"导入布局预览":object?.userData.label||"布置农场",layoutPreview:importing,canAdd:!saving&&!!id&&remaining(id),canRemove:!saving&&!!id,message});
   }
   function applyLayout(layout) {
+    housePlacement?.cancel();housePlacement?.dispose();housePlacement=null;
     placement?.cancel();
     const existing=new Map(world.decorations.map(object=>[object.userData.instanceId,object]));
     const next=[];
     const stall=world.root.getObjectByName("market-stall");
-    let surfacesChanged=stall.position.x!==layout.stall.x||stall.position.z!==layout.stall.z||stall.rotation.y!==layout.stall.rotation;
+    const housePosition=layout.house??DEFAULT_HOUSE_POSITION;
+    let surfacesChanged=world.house.position.x!==housePosition.x||world.house.position.z!==housePosition.z;
+    world.house.position.x=housePosition.x;world.house.position.z=housePosition.z;
+    surfacesChanged||=stall.position.x!==layout.stall.x||stall.position.z!==layout.stall.z||stall.rotation.y!==layout.stall.rotation;
     stall.position.x=layout.stall.x;stall.position.z=layout.stall.z;stall.rotation.y=layout.stall.rotation;
     if(roof!==layout.roof){roof=layout.roof;setRoofColor(world.house,roof);}
     const nextCanopy=layout.canopy??"plain";
@@ -96,8 +103,8 @@ export function createFieldRuntime(host, options) {
     for(const object of existing.values()){disposeDecoration(object);surfacesChanged=true;}
     // Placement retains this array, so update its contents rather than replace it.
     world.decorations.splice(0,world.decorations.length,...next);
-    world.houseBlockedRects=data.house?.blocked_rects??[];
-    const nextPlacementKey=JSON.stringify([data.grid,world.houseBlockedRects]);
+    world.houseBlockedRects=(data.house?.level??1)>=2?[houseExtensionRect(housePosition)]:[];
+    const nextPlacementKey=JSON.stringify([data.grid,housePosition,world.houseBlockedRects]);
     if(!placement||placementKey!==nextPlacementKey){
       const oldGrid=world.root.getObjectByName("placement-grid");
       if(oldGrid)disposeDecoration(oldGrid);
@@ -119,8 +126,14 @@ export function createFieldRuntime(host, options) {
     editing=true;controls.enabled=false;world.selector.visible=false;
     placement.begin(object,adding);emit();canvas.focus();
   }
+  function startHouseMove(){
+    if(!data||!placement||editing||saving)return;
+    housePlacement=createHousePlacement(world,data.house?.level??1);
+    editing=true;controls.enabled=false;world.selector.visible=false;
+    housePlacement.begin();emit();canvas.focus();
+  }
   function startPlacement(id, source = null) {
-    if(!data||!placement||saving)return;
+    if(!data||!placement||saving||housePlacement)return;
     const def=definition(id);
     if(!def||!remaining(id)){emit("背包里没有可用的这件装饰");return;}
     if(placement.active&&!placement.valid){emit("先摆好当前装饰，再追加下一件");return;}
@@ -170,26 +183,32 @@ export function createFieldRuntime(host, options) {
   }
   async function save() {
     if(!editing||saving)return;
-    if(placement.active&&!placement.confirm()){emit("红色位置不能保存，请移到绿色格子");return;}
+    if(housePlacement?!housePlacement.valid:placement.active&&!placement.confirm()){emit("红色位置不能保存，请移到绿色格子");return;}
     saving=true;emit("正在保存布置…");
     try {
       const layout=capture();await options.onSaveLayout(layout);
       if(disposed)return;
-      committed=structuredClone(layout);saving=false;environment.refreshRainSurfaces();finish();
+      committed=structuredClone(layout);saving=false;
+      if(housePlacement){housePlacement.confirm();applyLayout(committed);}
+      environment.refreshRainSurfaces();finish();
     } catch(error) {saving=false;emit(error instanceof Error?error.message:"保存未完成，布置还在编辑中");}
   }
-  function rotate(){if(saving||!placement?.active)return;placement.rotate();emit();}
-  function addOne(){const source=placement?.object,id=source?.userData.itemId;if(id)startPlacement(id,source);}
-  function remove(){if(!saving&&placement?.remove())emit("已收起，点击保存完成布置");}
+  function rotate(){if(saving||housePlacement||!placement?.active)return;placement.rotate();emit();}
+  function addOne(){if(housePlacement)return;const source=placement?.object,id=source?.userData.itemId;if(id)startPlacement(id,source);}
+  function remove(){if(!saving&&!housePlacement&&placement?.remove())emit("已收起，点击保存完成布置");}
   function pointerRay(e){const rect=canvas.getBoundingClientRect();pointer.set((e.clientX-rect.left)/rect.width*2-1,-(e.clientY-rect.top)/rect.height*2+1);ray.setFromCamera(pointer,camera);}
-  function move(e){pointerRay(e);const p=ray.ray.intersectPlane(plane,new T.Vector3());if(p){placement.move(p.x,p.z);emit();}}
-  let down=null,moved=false;
-  listen("pointerdown",e=>{down=[e.clientX,e.clientY];moved=false;if(editing)canvas.setPointerCapture(e.pointerId);});
-  listen("pointermove",e=>{if(down&&Math.hypot(e.clientX-down[0],e.clientY-down[1])>7)moved=true;if(down&&placement?.active&&!saving)move(e);});
+  function move(e){pointerRay(e);const p=ray.ray.intersectPlane(plane,new T.Vector3());if(p){currentPlacement().move(p.x-(houseDrag?.x??0),p.z-(houseDrag?.z??0));emit();}}
+  let down=null,moved=false,houseDrag=null;
+  listen("pointerdown",e=>{
+    down=[e.clientX,e.clientY];moved=false;houseDrag=null;
+    if(housePlacement){pointerRay(e);const p=ray.ray.intersectPlane(plane,new T.Vector3());if(p)houseDrag={x:p.x-world.house.position.x,z:p.z-world.house.position.z};}
+    if(editing)canvas.setPointerCapture(e.pointerId);
+  });
+  listen("pointermove",e=>{if(down&&Math.hypot(e.clientX-down[0],e.clientY-down[1])>7)moved=true;if(down&&currentPlacement()?.active&&!saving)move(e);});
   listen("pointercancel",()=>{down=null;});
   listen("pointerup",e=>{
     if(saving||importing){down=null;return;}
-    if(placement?.active){move(e);down=null;return;}
+    if(currentPlacement()?.active){move(e);down=null;return;}
     if(!down||moved){down=null;return;}down=null;pointerRay(e);
     const hit=ray.intersectObject(world.root,true).find(h=>h.object.isMesh);
     if(hit?.object.userData.house&&!editing)options.onSelectHouse?.();
@@ -203,9 +222,9 @@ export function createFieldRuntime(host, options) {
     if(e.key==="Escape")cancel();
     else if(e.key==="Enter")void save();
     else if(e.key.toLowerCase()==="r")rotate();
-    else if(e.key.startsWith("Arrow")&&placement.active&&!saving){
-      e.preventDefault();const {x,z}=placement.object.position;
-      placement.move(x+(e.key==="ArrowRight"?CELL_SIZE:e.key==="ArrowLeft"?-CELL_SIZE:0),z+(e.key==="ArrowDown"?CELL_SIZE:e.key==="ArrowUp"?-CELL_SIZE:0));emit();
+    else if(e.key.startsWith("Arrow")&&currentPlacement()?.active&&!saving){
+      e.preventDefault();const current=currentPlacement(),{x,z}=current.object.position;
+      current.move(x+(e.key==="ArrowRight"?CELL_SIZE:e.key==="ArrowLeft"?-CELL_SIZE:0),z+(e.key==="ArrowDown"?CELL_SIZE:e.key==="ArrowUp"?-CELL_SIZE:0));emit();
     }
   });
   function selectPlot(id){const plot=definitions.find(p=>p.id===id);world.selector.visible=!!plot;if(plot){world.selector.position.set(plot.x,.46,plot.z);world.selector.scale.setScalar(.5);}}
@@ -253,7 +272,7 @@ export function createFieldRuntime(host, options) {
     frame=requestAnimationFrame(animate);
   }
   if(active)frame=requestAnimationFrame(animate);
-  return {previewLayout,setActive,setPlots,setEnvironment,setDecorations,selectPlot,startPlacement,rotate,addOne,remove,cancel,save,changeRoof,changeCanopy,
+  return {previewLayout,setActive,setPlots,setEnvironment,setDecorations,selectPlot,startPlacement,startHouseMove,rotate,addOne,remove,cancel,save,changeRoof,changeCanopy,
     zoom(factor){camera.zoom=T.MathUtils.clamp(camera.zoom*factor,MIN_ZOOM,MAX_ZOOM);camera.updateProjectionMatrix();},
     resetView(){controls.reset();},
     dispose(){disposed=true;if(frame!==null)cancelAnimationFrame(frame);frame=null;observer.disconnect();for(const [name,fn] of listeners)canvas.removeEventListener(name,fn);controls.dispose();environment.dispose();world.dispose();renderer.dispose();canvas.remove();}

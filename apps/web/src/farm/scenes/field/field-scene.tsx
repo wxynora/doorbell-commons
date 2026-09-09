@@ -149,6 +149,7 @@ export function FieldScene({
         const key=decorationData.layout.roof;
         setRoofChoice(key);setRoofPalette(true);setCanopyEditor(false);runtime.current?.changeRoof(key);
       }}>屋顶换色</button>
+        <button type="button" onClick={()=>runtime.current?.startHouseMove()}>移动房屋</button>
         {decorationData.house?.canopy_unlocked ? <button type="button" onClick={()=>{
           const key=decorationData.layout.canopy??"plain";setCanopyChoice(key);setCanopyEditor(true);setRoofPalette(false);runtime.current?.changeCanopy(key);
         }}>更换雨棚</button> : null}</div>
@@ -175,7 +176,7 @@ export function FieldScene({
           }}><i aria-hidden="true" style={{backgroundColor:choice.color}}/>{choice.label}</button>)}
         </div> : null}
         <div>
-          {!roofPalette&&!canopyEditor&&!edit.layoutPreview ? <>
+          {!roofPalette&&!canopyEditor&&!edit.layoutPreview&&!edit.houseMoving ? <>
             <button type="button" onClick={()=>runtime.current?.rotate()}>旋转</button>
             <button type="button" disabled={!edit.canAdd} onClick={()=>runtime.current?.addOne()}>+1</button>
             <button type="button" disabled={!edit.canRemove} onClick={()=>runtime.current?.remove()}>收起</button>
