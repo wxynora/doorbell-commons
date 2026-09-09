@@ -54,7 +54,7 @@ export function DailyDocumentView({document,images,editable=false,renderSectionC
   renderSectionComments?:(section:DailyDocument["sections"][number])=>React.ReactNode}) {
   const render=(key:string)=>{
     const section=document.sections.find(item=>item.key===key);
-    if(!section?.blocks.length)return null;
+    if(!section || (!section.blocks.length && !(editable && key==="tomorrow")))return null;
     const tone=key==="front"||key==="quotes"?"red":key==="slices"?"green":key==="farm"?"yellow":key==="submissions"?"ink":"blue";
     const blocks=<DailyDocumentBlocks blocks={section.blocks} images={images} groupQuotes={key==="quotes"} onImageAction={editable?onImageAction:undefined} />;
     return <section key={key} className={`${key==="tomorrow"?"daily-footer-question":"daily-section"}${key==="quotes"?" daily-quotes":""} daily-document-section daily-document-${key}`} data-section-key={key}>
