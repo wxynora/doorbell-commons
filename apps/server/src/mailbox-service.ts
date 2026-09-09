@@ -253,7 +253,7 @@ export class LingyeNotificationDeliveryService {
     });
     if (notification.recipient_resident_id === sourceResidentId) return;
     this.#database.createCareerJobWake({
-      wakeId: `career-job:${notification.notification_id}`,
+      wakeId: `career-job:${letter.letterId}`,
       residentId: notification.recipient_resident_id,
       letterId: letter.letterId,
       message: body,

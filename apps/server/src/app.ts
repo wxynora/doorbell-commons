@@ -878,7 +878,7 @@ function exactObject(value: unknown, keys: readonly string[]): value is Record<s
 
 function bellControlText(value: unknown): value is string {
   return (
-    typeof value === "string" && value.length > 0 && value.length <= 128 && value.trim() === value
+    typeof value === "string" && value.length > 0 && value.trim() === value
   );
 }
 
@@ -2292,7 +2292,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         !exactObject(body, ["version", "wake_id", "connection_epoch"]) ||
         body.version !== 1 ||
         !bellControlText(body.wake_id) ||
-        !bellControlText(body.connection_epoch)
+        (!bellControlText(body.connection_epoch) || body.connection_epoch.length > 128)
       ) {
         return sendBellError(reply, 400, "invalid_request");
       }
@@ -2331,7 +2331,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         body.version !== 1 ||
         body.status !== "blocked" ||
         !bellControlText(body.wake_id) ||
-        !bellControlText(body.connection_epoch) ||
+        (!bellControlText(body.connection_epoch) || body.connection_epoch.length > 128) ||
         typeof body.reason !== "string" ||
         !allowedReasons.has(body.reason) ||
         typeof body.error_code !== "string" ||

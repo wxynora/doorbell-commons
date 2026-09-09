@@ -3443,7 +3443,6 @@ export class CommunityDatabase {
         | undefined;
       if (existing) {
         if (
-          existing.wake_id !== input.wakeId ||
           existing.resident_id !== input.residentId ||
           existing.letter_id !== input.letterId ||
           existing.created_at !== input.createdAt ||
@@ -3461,7 +3460,8 @@ export class CommunityDatabase {
           )
           .run(input.wakeId, input.residentId, input.letterId, input.createdAt, payloadJson);
       }
-      return this.getBellWake(input.residentId, input.wakeId);
+      // The letter is the durable deduplication key; never rename an existing wake.
+      return this.getBellWake(input.residentId, existing?.wake_id ?? input.wakeId);
     });
     const wake = transaction.immediate();
     if (!wake) throw new Error("The career job wake could not be read after creation");
