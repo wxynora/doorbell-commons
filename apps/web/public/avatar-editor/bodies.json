@@ -1,0 +1,17 @@
+[
+  {
+    "id": "base-blank",
+    "label": "无五官素体",
+    "variants": {
+      "original": "bodies/base-blank-original.webp",
+      "light": "bodies/base-blank-light.webp",
+      "wheat": "bodies/base-blank-wheat.webp"
+    },
+    "box": {
+      "left": 315,
+      "top": 272,
+      "width": 320,
+      "height": 477
+    }
+  }
+]

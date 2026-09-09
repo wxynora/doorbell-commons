@@ -10367,8 +10367,17 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     });
 
     document.getElementById('permit-finish-button').addEventListener('click', completePermit);
+    window.addEventListener('message',(event)=>{
+        if(event.source!==window.parent||event.data?.type!=='doorbell-resident-avatar')return;
+        const host=document.querySelector('.chibi-avatar');if(!host)return;
+        let image=host.querySelector('img');if(!image){image=document.createElement('img');image.alt='居民形象';image.style.cssText='width:100%;height:100%;object-fit:contain';host.append(image);}
+        const src=event.data.image;const valid=typeof src==='string'&&src.startsWith('data:image/png;base64,');
+        image.hidden=!valid;if(valid)image.src=src;
+        const placeholder=host.querySelector('svg');if(placeholder)placeholder.style.display=valid?'none':'';
+        host.setAttribute('aria-label',valid?'居民形象':'居民形象尚未设置');
+    });
     document.getElementById('profile-design-button').addEventListener('click', () => {
-        showCandidateNotice('Q版形象设计暂未开放');
+        sendAction({type:'resident-avatar-open'});
     });
     document.getElementById('profile-edit-button').addEventListener('click', () => {
         showCandidateNotice('资料编辑暂未开放');
@@ -10801,6 +10810,33 @@ async function sampleCandidateTwoMemorialBackdropColor(xRatio: number, yRatio: n
 
 export function CandidateTwoPreview({ demo = null, onAction, state }: CandidateTwoPreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const avatarEditorRef=useRef<HTMLIFrameElement>(null);
+  const avatarPortraitRef=useRef<HTMLIFrameElement>(null);
+  const avatarImageRef=useRef<string|null>(null);
+  const [avatarOpen,setAvatarOpen]=useState(false);
+  const [avatarVersion,setAvatarVersion]=useState(0);
+  const avatarProfileKey=!demo&&state.stage==='authenticated'?`${state.identity.qqNumber}/${state.identity.farmDoorplate}`:null;
+  useEffect(()=>{setAvatarOpen(false);avatarImageRef.current=null;iframeRef.current?.contentWindow?.postMessage({type:'doorbell-resident-avatar',image:null},'*');},[avatarProfileKey]);
+  useEffect(()=>{
+    const relay=(event:MessageEvent)=>{
+      if(event.source===iframeRef.current?.contentWindow){
+        if(event.data?.type==='resident-avatar-open'&&avatarProfileKey)setAvatarOpen(true);
+        if(event.data?.type==='view-ready')iframeRef.current?.contentWindow?.postMessage({type:'doorbell-resident-avatar',image:avatarImageRef.current},'*');
+        return;
+      }
+      if(event.origin!==window.location.origin)return;
+      if(event.source===avatarEditorRef.current?.contentWindow){
+        if(event.data?.type==='resident-avatar-close')setAvatarOpen(false);
+        if(event.data?.type==='resident-avatar-saved')setAvatarVersion(v=>v+1);
+      }
+      if(event.source===avatarPortraitRef.current?.contentWindow&&event.data?.type==='resident-avatar-portrait'){
+        const image=event.data.image;avatarImageRef.current=typeof image==='string'&&image.startsWith('data:image/png;base64,')?image:null;
+        iframeRef.current?.contentWindow?.postMessage({type:'doorbell-resident-avatar',image:avatarImageRef.current},'*');
+      }
+    };
+    window.addEventListener('message',relay);return()=>window.removeEventListener('message',relay);
+  },[avatarProfileKey]);
+
   useNpcBridge(iframeRef, !demo && state.stage === "authenticated" ? `${state.identity.qqNumber}/${state.identity.farmDoorplate}` : null);
   const demoRef = useRef(demo);
   const onActionRef = useRef(onAction);
@@ -10931,6 +10967,9 @@ export function CandidateTwoPreview({ demo = null, onAction, state }: CandidateT
 
   return (
     <main className="candidate-two-preview">
+      {avatarProfileKey ? <iframe key={avatarProfileKey+'/'+avatarVersion} ref={avatarPortraitRef} src="/avatar-editor/?mode=portrait" title="读取居民形象" aria-hidden="true" tabIndex={-1} style={{position:'fixed',left:-1000,width:384,height:640,visibility:'hidden',pointerEvents:'none'}}/> : null}
+      {avatarOpen&&avatarProfileKey ? <section role="dialog" aria-modal="true" aria-label="小机试衣间" style={{position:'fixed',inset:0,zIndex:10000,background:'#fdf9f3'}}><iframe ref={avatarEditorRef} src="/avatar-editor/" title="小机试衣间" style={{width:'100%',height:'100%',border:0}}/></section> : null}
+
       {srcDoc ? (
         <iframe
           allow="clipboard-write"

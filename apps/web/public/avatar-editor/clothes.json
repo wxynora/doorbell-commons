@@ -1,0 +1,200 @@
+[
+  {
+    "id": "clothes-v2-04",
+    "label": "衣服 01",
+    "src": "clothes/clothes-04.webp",
+    "box": {
+      "left": 559,
+      "top": 89,
+      "width": 181,
+      "height": 190
+    }
+  },
+  {
+    "id": "clothes-v2-05",
+    "label": "衣服 02",
+    "src": "clothes/clothes-05.webp",
+    "box": {
+      "left": 749,
+      "top": 95,
+      "width": 180,
+      "height": 185
+    }
+  },
+  {
+    "id": "clothes-v2-08",
+    "label": "衣服 03",
+    "src": "clothes/clothes-08.webp",
+    "box": {
+      "left": 1313,
+      "top": 89,
+      "width": 215,
+      "height": 194
+    }
+  },
+  {
+    "id": "clothes-v2-09",
+    "label": "衣服 04",
+    "src": "clothes/clothes-09.webp",
+    "box": {
+      "left": 6,
+      "top": 326,
+      "width": 181,
+      "height": 184
+    }
+  },
+  {
+    "id": "clothes-v2-11",
+    "label": "衣服 05",
+    "src": "clothes/clothes-11.webp",
+    "box": {
+      "left": 371,
+      "top": 317,
+      "width": 177,
+      "height": 196
+    }
+  },
+  {
+    "id": "clothes-v2-12",
+    "label": "衣服 06",
+    "src": "clothes/clothes-12.webp",
+    "box": {
+      "left": 557,
+      "top": 323,
+      "width": 188,
+      "height": 187
+    }
+  },
+  {
+    "id": "clothes-v2-13",
+    "label": "衣服 07",
+    "src": "clothes/clothes-13.webp",
+    "box": {
+      "left": 747,
+      "top": 321,
+      "width": 185,
+      "height": 192
+    }
+  },
+  {
+    "id": "clothes-v2-14",
+    "label": "衣服 08",
+    "src": "clothes/clothes-14.webp",
+    "box": {
+      "left": 934,
+      "top": 323,
+      "width": 177,
+      "height": 191
+    }
+  },
+  {
+    "id": "clothes-v2-17",
+    "label": "衣服 09",
+    "src": "clothes/clothes-17.webp",
+    "box": {
+      "left": 11,
+      "top": 543,
+      "width": 176,
+      "height": 201
+    }
+  },
+  {
+    "id": "clothes-v2-18",
+    "label": "衣服 10",
+    "src": "clothes/clothes-18.webp",
+    "box": {
+      "left": 185,
+      "top": 544,
+      "width": 182,
+      "height": 199
+    }
+  },
+  {
+    "id": "clothes-v2-19",
+    "label": "衣服 11",
+    "src": "clothes/clothes-19.webp",
+    "box": {
+      "left": 368,
+      "top": 545,
+      "width": 181,
+      "height": 196
+    }
+  },
+  {
+    "id": "clothes-v2-20",
+    "label": "衣服 12",
+    "src": "clothes/clothes-20.webp",
+    "box": {
+      "left": 552,
+      "top": 549,
+      "width": 192,
+      "height": 194
+    }
+  },
+  {
+    "id": "clothes-v2-21",
+    "label": "衣服 13",
+    "src": "clothes/clothes-21.webp",
+    "box": {
+      "left": 749,
+      "top": 544,
+      "width": 177,
+      "height": 197
+    }
+  },
+  {
+    "id": "clothes-v2-23",
+    "label": "衣服 14",
+    "src": "clothes/clothes-23.webp",
+    "box": {
+      "left": 1117,
+      "top": 548,
+      "width": 197,
+      "height": 194
+    }
+  },
+  {
+    "id": "clothes-v2-25",
+    "label": "衣服 15",
+    "src": "clothes/clothes-25.webp",
+    "box": {
+      "left": 8,
+      "top": 772,
+      "width": 182,
+      "height": 201
+    }
+  },
+  {
+    "id": "clothes-v2-27",
+    "label": "衣服 16",
+    "src": "clothes/clothes-27.webp",
+    "box": {
+      "left": 370,
+      "top": 772,
+      "width": 177,
+      "height": 200
+    }
+  },
+  {
+    "id": "clothes-v2-31",
+    "label": "衣服 17",
+    "src": "clothes/clothes-31.webp",
+    "box": {
+      "left": 1118,
+      "top": 769,
+      "width": 197,
+      "height": 203
+    }
+  },
+  {
+    "id": "clothes-v2-32",
+    "label": "衣服 18",
+    "src": "clothes/clothes-32.webp",
+    "box": {
+      "left": 1323,
+      "top": 769,
+      "width": 189,
+      "height": 202
+    }
+  }
+]

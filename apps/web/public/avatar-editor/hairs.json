@@ -1,0 +1,134 @@
+[
+  {
+    "id": "hair1-01",
+    "label": "发型 01",
+    "src": "hairs/hair1-01.webp",
+    "box": {
+      "left": 17,
+      "top": 74,
+      "width": 251,
+      "height": 223
+    }
+  },
+  {
+    "id": "hair1-02",
+    "label": "发型 02",
+    "src": "hairs/hair1-02.webp",
+    "box": {
+      "left": 256,
+      "top": 83,
+      "width": 238,
+      "height": 211
+    }
+  },
+  {
+    "id": "hair1-04",
+    "label": "发型 03",
+    "src": "hairs/hair1-04.webp",
+    "box": {
+      "left": 732,
+      "top": 82,
+      "width": 239,
+      "height": 244
+    }
+  },
+  {
+    "id": "hair1-05",
+    "label": "发型 04",
+    "src": "hairs/hair1-05.webp",
+    "box": {
+      "left": 969,
+      "top": 78,
+      "width": 245,
+      "height": 241
+    }
+  },
+  {
+    "id": "hair1-07",
+    "label": "发型 05",
+    "src": "hairs/hair1-07.webp",
+    "box": {
+      "left": 251,
+      "top": 345,
+      "width": 236,
+      "height": 266
+    }
+  },
+  {
+    "id": "hair1-08",
+    "label": "发型 06",
+    "src": "hairs/hair1-08.webp",
+    "box": {
+      "left": 491,
+      "top": 345,
+      "width": 239,
+      "height": 310
+    }
+  },
+  {
+    "id": "hair1-09",
+    "label": "发型 07",
+    "src": "hairs/hair1-09.webp",
+    "box": {
+      "left": 728,
+      "top": 342,
+      "width": 248,
+      "height": 303
+    }
+  },
+  {
+    "id": "hair1-10",
+    "label": "发型 08",
+    "src": "hairs/hair1-10.webp",
+    "box": {
+      "left": 975,
+      "top": 332,
+      "width": 233,
+      "height": 303
+    }
+  },
+  {
+    "id": "hair1-11",
+    "label": "发型 09",
+    "src": "hairs/hair1-11.webp",
+    "box": {
+      "left": 11,
+      "top": 639,
+      "width": 243,
+      "height": 274
+    }
+  },
+  {
+    "id": "hair1-12",
+    "label": "发型 10",
+    "src": "hairs/hair1-12.webp",
+    "box": {
+      "left": 255,
+      "top": 643,
+      "width": 236,
+      "height": 232
+    }
+  },
+  {
+    "id": "hair1-15",
+    "label": "发型 11",
+    "src": "hairs/hair1-15.webp",
+    "box": {
+      "left": 960,
+      "top": 643,
+      "width": 247,
+      "height": 284
+    }
+  },
+  {
+    "id": "hair1-17",
+    "label": "发型 12",
+    "src": "hairs/hair1-17.webp",
+    "box": {
+      "left": 247,
+      "top": 926,
+      "width": 239,
+      "height": 285
+    }
+  }
+]

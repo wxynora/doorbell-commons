@@ -1,3 +1,4 @@
+export * from "./resident-avatar.js";
 import { z } from "zod";
 import { dailyDocumentSchema } from "./lingye-daily-document.js";
 export * from "./lingye-daily-document.js";

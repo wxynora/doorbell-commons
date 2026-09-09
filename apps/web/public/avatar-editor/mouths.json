@@ -1,0 +1,266 @@
+[
+  {
+    "id": "mouth-01",
+    "label": "嘴形 01",
+    "src": "mouths/mouth-01.webp",
+    "box": {
+      "left": 32,
+      "top": 300,
+      "width": 128,
+      "height": 105
+    }
+  },
+  {
+    "id": "mouth-02",
+    "label": "嘴形 02",
+    "src": "mouths/mouth-02.webp",
+    "box": {
+      "left": 208,
+      "top": 300,
+      "width": 128,
+      "height": 105
+    }
+  },
+  {
+    "id": "mouth-03",
+    "label": "嘴形 03",
+    "src": "mouths/mouth-03.webp",
+    "box": {
+      "left": 384,
+      "top": 300,
+      "width": 128,
+      "height": 105
+    }
+  },
+  {
+    "id": "mouth-04",
+    "label": "嘴形 04",
+    "src": "mouths/mouth-04.webp",
+    "box": {
+      "left": 560,
+      "top": 300,
+      "width": 128,
+      "height": 105
+    }
+  },
+  {
+    "id": "mouth-05",
+    "label": "嘴形 05",
+    "src": "mouths/mouth-05.webp",
+    "box": {
+      "left": 728,
+      "top": 300,
+      "width": 128,
+      "height": 105
+    }
+  },
+  {
+    "id": "mouth-06",
+    "label": "嘴形 06",
+    "src": "mouths/mouth-06.webp",
+    "box": {
+      "left": 32,
+      "top": 450,
+      "width": 128,
+      "height": 105
+    }
+  },
+  {
+    "id": "mouth-07",
+    "label": "嘴形 07",
+    "src": "mouths/mouth-07.webp",
+    "box": {
+      "left": 208,
+      "top": 450,
+      "width": 128,
+      "height": 105
+    }
+  },
+  {
+    "id": "mouth-08",
+    "label": "嘴形 08",
+    "src": "mouths/mouth-08.webp",
+    "box": {
+      "left": 384,
+      "top": 450,
+      "width": 128,
+      "height": 105
+    }
+  },
+  {
+    "id": "mouth-09",
+    "label": "嘴形 09",
+    "src": "mouths/mouth-09.webp",
+    "box": {
+      "left": 560,
+      "top": 450,
+      "width": 128,
+      "height": 105
+    }
+  },
+  {
+    "id": "mouth-10",
+    "label": "嘴形 10",
+    "src": "mouths/mouth-10.webp",
+    "box": {
+      "left": 728,
+      "top": 450,
+      "width": 128,
+      "height": 105
+    }
+  },
+  {
+    "id": "mouth-11",
+    "label": "嘴形 11",
+    "src": "mouths/mouth-11.webp",
+    "box": {
+      "left": 32,
+      "top": 600,
+      "width": 128,
+      "height": 105
+    }
+  },
+  {
+    "id": "mouth-12",
+    "label": "嘴形 12",
+    "src": "mouths/mouth-12.webp",
+    "box": {
+      "left": 208,
+      "top": 600,
+      "width": 128,
+      "height": 105
+    }
+  },
+  {
+    "id": "mouth-13",
+    "label": "嘴形 13",
+    "src": "mouths/mouth-13.webp",
+    "box": {
+      "left": 384,
+      "top": 600,
+      "width": 128,
+      "height": 105
+    }
+  },
+  {
+    "id": "mouth-14",
+    "label": "嘴形 14",
+    "src": "mouths/mouth-14.webp",
+    "box": {
+      "left": 560,
+      "top": 600,
+      "width": 128,
+      "height": 105
+    }
+  },
+  {
+    "id": "mouth-15",
+    "label": "嘴形 15",
+    "src": "mouths/mouth-15.webp",
+    "box": {
+      "left": 728,
+      "top": 600,
+      "width": 128,
+      "height": 105
+    }
+  },
+  {
+    "id": "mouth-16",
+    "label": "嘴形 16",
+    "src": "mouths/mouth-16.webp",
+    "box": {
+      "left": 32,
+      "top": 750,
+      "width": 128,
+      "height": 105
+    }
+  },
+  {
+    "id": "mouth-17",
+    "label": "嘴形 17",
+    "src": "mouths/mouth-17.webp",
+    "box": {
+      "left": 208,
+      "top": 750,
+      "width": 128,
+      "height": 105
+    }
+  },
+  {
+    "id": "mouth-18",
+    "label": "嘴形 18",
+    "src": "mouths/mouth-18.webp",
+    "box": {
+      "left": 384,
+      "top": 750,
+      "width": 128,
+      "height": 105
+    }
+  },
+  {
+    "id": "mouth-19",
+    "label": "嘴形 19",
+    "src": "mouths/mouth-19.webp",
+    "box": {
+      "left": 560,
+      "top": 750,
+      "width": 128,
+      "height": 105
+    }
+  },
+  {
+    "id": "mouth-20",
+    "label": "嘴形 20",
+    "src": "mouths/mouth-20.webp",
+    "box": {
+      "left": 728,
+      "top": 750,
+      "width": 128,
+      "height": 105
+    }
+  },
+  {
+    "id": "mouth-21",
+    "label": "嘴形 21",
+    "src": "mouths/mouth-21.webp",
+    "box": {
+      "left": 32,
+      "top": 900,
+      "width": 128,
+      "height": 105
+    }
+  },
+  {
+    "id": "mouth-22",
+    "label": "嘴形 22",
+    "src": "mouths/mouth-22.webp",
+    "box": {
+      "left": 208,
+      "top": 900,
+      "width": 128,
+      "height": 105
+    }
+  },
+  {
+    "id": "mouth-23",
+    "label": "嘴形 23",
+    "src": "mouths/mouth-23.webp",
+    "box": {
+      "left": 384,
+      "top": 900,
+      "width": 128,
+      "height": 105
+    }
+  },
+  {
+    "id": "mouth-24",
+    "label": "嘴形 24",
+    "src": "mouths/mouth-24.webp",
+    "box": {
+      "left": 560,
+      "top": 900,
+      "width": 128,
+      "height": 105
+    }
+  }
+]

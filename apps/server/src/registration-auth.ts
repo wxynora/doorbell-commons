@@ -1,3 +1,5 @@
+import { residentAvatarSaveSchema } from "@doorbell/protocol";
+import { AvatarRevisionConflict } from "./resident-avatar/store.js";
 import type { FarmBulletinAckScope, OwnerProfileCareerSummarySuccess, LingyeNpcInteractRequest, BoundFarmDecorationLayoutSaveRequest } from "@doorbell/protocol";
 import { FarmDecorationClient, FarmDecorationError } from "./farm-decoration-client.js";
 import type {
@@ -990,6 +992,17 @@ export class RegistrationAuthService {
   async saveCurrentFarmDecorationLayout(token: string, body: BoundFarmDecorationLayoutSaveRequest) {
     const { client, binding } = await this.#currentDecorationBinding(token);
     return client.save(binding, body);
+  }
+
+  async readCurrentResidentAvatar(token: string, residentId?: string) {
+    const community = await this.getCurrentSessionWithMembership(token);
+    return this.#database.residentAvatarStore.read(residentId ?? community.resident.residentId);
+  }
+
+  async saveCurrentResidentAvatar(token: string, input: ReturnType<typeof residentAvatarSaveSchema.parse>) {
+    const community = await this.getCurrentSessionWithMembership(token);
+    if (community.resident.residentId !== input.resident_id) throw new AvatarRevisionConflict();
+    return this.#database.residentAvatarStore.save(community.resident.residentId, input.expected_revision, input.manifest);
   }
 
   async createCurrentFarmLayoutShare(token: string) {
