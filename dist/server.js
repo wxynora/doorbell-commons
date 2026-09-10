@@ -769,7 +769,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         applyDroughtWatering(f, f.plots.map((plot) => plot.id), now);
     if (r?.ok && (action === "harvest" || action === "run"))
         commitNatureFarmReconciliation(f, now);
-    if (r?.ok && action === "run") {
+    if (r?.ok && (action === "harvest" || action === "run")) {
         const floodFish = collectFloodFishForFarm(f, now);
         if (floodFish.collected > 0)
             r.text = `${r.text}\n${floodFish.text}`;

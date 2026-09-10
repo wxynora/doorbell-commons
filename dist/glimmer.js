@@ -667,7 +667,7 @@ export function glimmerView(farm, worldValue, now = Date.now()) {
         `✨ 流光原野 · ${currentSeason(now).name}`,
         glimmerStatusLine(farm, now),
         glimmerBuffActive(now) ? GLIMMER_BUFF_TEXT : "",
-        `🐾 今日动物踪迹：${tracks.map((item, index) => `${index + 1}.${item.name}（保底 ${capturePityCount(state, item.kindId)}/${CAPTURE_PITY_LIMIT}）`).join("、")}`,
+        `🐾 今日动物踪迹：${tracks.map((item, index) => `${index + 1}.${item.name}（${state.unlocked.includes(item.id) ? "已拥有" : "未拥有"} · 保底 ${capturePityCount(state, item.kindId)}/${CAPTURE_PITY_LIMIT}）`).join("、")}`,
         glimmerDishInventoryLine(farm),
         glimmerFavoriteLine(farm),
         `🤝 今日协作：〔${event.name}〕· ${Math.min(world.coop.contributors.length, glimmer.coopRequired)}/${glimmer.coopRequired} · 需提交${event.requirement}${world.coop.completedAt ? " · 已完成，额外稀有踪迹已出现" : ""}`,
