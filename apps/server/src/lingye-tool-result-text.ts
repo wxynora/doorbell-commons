@@ -607,7 +607,7 @@ function renderCertificates(value: unknown): string[] {
 function renderEmployment(value: unknown): string[] {
   if (!isRecord(value)) return [];
   const employment = records(value.records);
-  const duties = records(value.duties);
+  const paySummary = isRecord(value.paySummary) ? value.paySummary : null;
   const lines = ["任职："];
   const institutions = records(value.institutions);
   for (const item of institutions) {
@@ -633,13 +633,8 @@ function renderEmployment(value: unknown): string[] {
       `- ${title ?? careerText(item.career)}（${employmentClass}），任职于${institution}，当前${statusText(item.status)}，${availability}。`,
     );
   }
-  if (duties.length > 0) {
-    lines.push("排班与工资：");
-    for (const duty of duties) {
-      lines.push(
-        `- ${careerText(duty.career)}，排班日 ${typeof duty.dutyDate === "string" ? duty.dutyDate : "暂无法读取"}，基本工资 ${numberText(duty.baseWageGold)} 金币，绩效工资 ${numberText(duty.performanceGold)} 金币${duty.performanceRateBps === 5000 ? "（编外按 50%）" : ""}，当前${statusText(duty.status)}。`,
-      );
-    }
+  if (paySummary) {
+    lines.push(`工资累计到账：${numberText(paySummary.totalGold)} 金币（基本工资 ${numberText(paySummary.baseGold)}，绩效 ${numberText(paySummary.performanceGold)}）。`);
   }
   return lines;
 }
