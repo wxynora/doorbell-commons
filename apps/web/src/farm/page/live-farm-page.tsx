@@ -51,7 +51,7 @@ import {
   executeBoundRanchResidentAction,
   type RanchResidentActionInput,
 } from "../../auth/ranch-action-client";
-import { getBoundRanch, ranchIssueMessage } from "../../auth/ranch-client";
+import { type BoundRanchRead, getBoundRanch, ranchIssueMessage } from "../../auth/ranch-client";
 import { collectBoundRanch } from "../../auth/ranch-collection-client";
 import { executeBoundRanchDecorationAction } from "../../auth/ranch-decoration-action-client";
 import { executeBoundRanchInteractionAction } from "../../auth/ranch-interaction-action-client";
@@ -155,7 +155,12 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
   const cookingShopOpenInFlightRef = useRef(false);
 
   const requireResource = useCallback(
-    function readResource(resource: keyof FarmReadResources, force = false) {
+    function readResource(
+      resource: keyof FarmReadResources,
+      force = false,
+      showLoading = true,
+      preserveReadyOnError = false,
+    ) {
       if (previewData || (!force && requestedResourcesRef.current.has(resource))) {
         return;
       }
@@ -163,18 +168,21 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
       resourceControllersRef.current[resource]?.abort();
       const controller = new AbortController();
       resourceControllersRef.current[resource] = controller;
-      setResources((current) => ({
-        ...current,
-        [resource]:
-          (resource === "farmCatalog" || resource === "farmDecorations") &&
-          current[resource].stage === "ready"
-            ? current[resource]
-            : { stage: "loading" },
-      }));
+      if (showLoading) {
+        setResources((current) => ({
+          ...current,
+          [resource]:
+            (resource === "farmCatalog" || resource === "farmDecorations") &&
+            current[resource].stage === "ready"
+              ? current[resource]
+              : { stage: "loading" },
+        }));
+      }
 
       if (resource === "ranch") {
         void getBoundRanch({ signal: controller.signal }).then((result) => {
           if (controller.signal.aborted) return;
+          if (!result.ok && preserveReadyOnError) return;
           if (!result.ok) requestedResourcesRef.current.delete(resource);
           setResources((current) => ({
             ...current,
@@ -182,7 +190,6 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
               ? { stage: "ready", data: result.data }
               : { stage: "error", message: ranchIssueMessage(result.issue) },
           }));
-          if (result.ok) readResource("bulletin", true);
         });
         return;
       }
@@ -190,6 +197,7 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
       if (resource === "farmDecorations") {
         void getBoundFarmDecorations({ signal: controller.signal }).then((result) => {
           if (controller.signal.aborted) return;
+          if (!result.ok && preserveReadyOnError) return;
           if (!result.ok) requestedResourcesRef.current.delete(resource);
           if (result.ok) farmDecorationsRef.current = result.data;
           setResources((current) => ({
@@ -205,6 +213,7 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
       if (resource === "kitchen") {
         void getBoundKitchen({ signal: controller.signal }).then((result) => {
           if (controller.signal.aborted) return;
+          if (!result.ok && preserveReadyOnError) return;
           if (!result.ok) requestedResourcesRef.current.delete(resource);
           if (result.ok) kitchenRef.current = result.data;
           setResources((current) => ({
@@ -228,6 +237,7 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
           signal: controller.signal,
         }).then((result) => {
           if (controller.signal.aborted) return;
+          if (!result.ok && preserveReadyOnError) return;
           if (!result.ok) requestedResourcesRef.current.delete(resource);
           setResources((current) => ({
             ...current,
@@ -241,8 +251,12 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
 
       void getBoundFarmCatalog({ signal: controller.signal }).then((result) => {
         if (controller.signal.aborted) return;
+        if (!result.ok && preserveReadyOnError) return;
         if (!result.ok) requestedResourcesRef.current.delete(resource);
         if (result.ok) farmCatalogRef.current = result.data;
+        if (result.ok && !showLoading) {
+          setSettingsInitializationKey((current) => current + 1);
+        }
         setResources((current) => ({
           ...current,
           farmCatalog: result.ok
@@ -322,22 +336,6 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
     [previewData],
   );
 
-  const refreshFarmCatalogInBackground = useCallback(() => {
-    if (previewData || !requestedResourcesRef.current.has("farmCatalog")) return;
-    resourceControllersRef.current.farmCatalog?.abort();
-    const controller = new AbortController();
-    resourceControllersRef.current.farmCatalog = controller;
-    void getBoundFarmCatalog({ signal: controller.signal }).then((result) => {
-      if (controller.signal.aborted || !result.ok) return;
-      farmCatalogRef.current = result.data;
-      setSettingsInitializationKey((current) => current + 1);
-      setResources((current) => ({
-        ...current,
-        farmCatalog: { stage: "ready", data: result.data },
-      }));
-    });
-  }, [previewData]);
-
   const refreshRequestedResources = useCallback(() => {
     const requestedResources = [...requestedResourcesRef.current];
     if (requestedResources.includes("farmCatalog")) {
@@ -348,10 +346,13 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
     }
   }, [requireResource]);
 
-  const invalidateAfterFarmMutation = useCallback(async () => {
-    await refreshField();
-    refreshRequestedResources();
-  }, [refreshField, refreshRequestedResources]);
+  const refreshResourceInBackground = useCallback(
+    (resource: keyof FarmReadResources) => {
+      if (!requestedResourcesRef.current.has(resource)) return;
+      requireResource(resource, true, false, true);
+    },
+    [requireResource],
+  );
 
   const openCurrentFarmShop = useCallback(
     async (retry = false) => {
@@ -532,101 +533,150 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
     [requireResource],
   );
 
+  const applyRanchMutationResource = useCallback((response: {
+    data: { resource: BoundRanchRead["data"] };
+    revision: string;
+    server_time: string;
+  }) => {
+    resourceControllersRef.current.ranch?.abort();
+    setResources((current) => ({ ...current, ranch: { stage: "ready", data: {
+      data: response.data.resource,
+      revision: response.revision,
+      server_time: response.server_time,
+    } } }));
+  }, []);
+
+  const applyKitchenMutationResource = useCallback((response: {
+    data: { resource: BoundKitchenRead["data"] };
+    kitchen_inventory_revision?: string;
+    shop_revision?: string;
+    server_time: string;
+  }) => {
+    resourceControllersRef.current.kitchen?.abort();
+    setResources((current) => {
+      if (current.kitchen.stage !== "ready") return current;
+      const nextKitchen: BoundKitchenRead = {
+        data: response.data.resource,
+        kitchen_inventory_revision:
+          response.kitchen_inventory_revision ?? current.kitchen.data.kitchen_inventory_revision,
+        shop_revision: response.shop_revision ?? current.kitchen.data.shop_revision,
+        server_time: response.server_time,
+      };
+      kitchenRef.current = nextKitchen;
+      return { ...current, kitchen: { stage: "ready", data: nextKitchen } };
+    });
+  }, []);
+
+  const applyCatalogMutationResource = useCallback((response: {
+    resource: BoundFarmCatalogRead["data"];
+    revisions?: Partial<Pick<BoundFarmCatalogRead,
+      "revision" | "codex_revision" | "original_plant_revision" |
+      "expedition_revision" | "market_revision" | "neighborhood_revision">>;
+    server_time: string;
+  }) => {
+    resourceControllersRef.current.farmCatalog?.abort();
+    setResources((current) => {
+      if (current.farmCatalog.stage !== "ready") return current;
+      const nextCatalog: BoundFarmCatalogRead = {
+        ...current.farmCatalog.data,
+        data: response.resource,
+        ...response.revisions,
+        server_time: response.server_time,
+      };
+      farmCatalogRef.current = nextCatalog;
+      return { ...current, farmCatalog: { stage: "ready", data: nextCatalog } };
+    });
+  }, []);
+
+  const applyCatalogNeighborhoodResource = useCallback((response: {
+    resource: BoundFarmCatalogRead["data"]["neighborhood"];
+    revision: string;
+    server_time: string;
+  }) => {
+    resourceControllersRef.current.farmCatalog?.abort();
+    setResources((current) => {
+      if (current.farmCatalog.stage !== "ready") return current;
+      const nextCatalog: BoundFarmCatalogRead = {
+        ...current.farmCatalog.data,
+        data: { ...current.farmCatalog.data.data, neighborhood: response.resource },
+        neighborhood_revision: response.revision,
+        server_time: response.server_time,
+      };
+      farmCatalogRef.current = nextCatalog;
+      return { ...current, farmCatalog: { stage: "ready", data: nextCatalog } };
+    });
+  }, []);
+
   const submitRanchResidentAction = useCallback(
     async (input: RanchResidentActionInput): Promise<RanchResidentActionResult> => {
       const result = await executeBoundRanchResidentAction(input);
       if (result.ok) {
-        setResources((current) => ({
-          ...current,
-          ranch: {
-            stage: "ready",
-            data: {
-              data: result.data.data.resource,
-              revision: result.data.revision,
-              server_time: result.data.server_time,
-            },
-          },
-        }));
-        void refreshField();
-        refreshFarmCatalogInBackground();
+        applyRanchMutationResource(result.data);
+        if (result.data.data.result.outcome.kind === "feed") {
+          refreshResourceInBackground("kitchen");
+        }
       }
       return result;
     },
-    [refreshFarmCatalogInBackground, refreshField],
+    [applyRanchMutationResource, refreshResourceInBackground],
   );
 
   const submitRanchCollectionAction = useCallback<RanchCollectionExecutor>(
     async (input) => {
       const result = await collectBoundRanch(input);
       if (result.ok) {
-        setResources((current) => ({
-          ...current,
-          ranch: {
-            stage: "ready",
-            data: {
-              data: result.data.data.resource,
-              revision: result.data.revision,
-              server_time: result.data.server_time,
-            },
-          },
-        }));
-        await invalidateAfterFarmMutation();
+        applyRanchMutationResource(result.data);
+        if (result.data.data.result.items.some(({ destination }) => destination === "kitchen")) {
+          refreshResourceInBackground("kitchen");
+        }
       } else if (result.issue.code === "state_conflict") {
         requireResource("ranch", true);
       }
       return result;
     },
-    [invalidateAfterFarmMutation, requireResource],
+    [applyRanchMutationResource, refreshResourceInBackground, requireResource],
   );
 
   const submitRanchDecorationAction = useCallback<RanchDecorationActionExecutor>(
     async (input) => {
       const result = await executeBoundRanchDecorationAction(input);
       if (result.ok) {
-        setResources((current) => ({
-          ...current,
-          ranch: {
-            stage: "ready",
-            data: {
-              data: result.data.data.resource,
-              revision: result.data.revision,
-              server_time: result.data.server_time,
-            },
-          },
-        }));
-        await invalidateAfterFarmMutation();
+        applyRanchMutationResource(result.data);
       } else if (result.issue.code === "state_conflict") {
         requireResource("ranch", true);
       }
       return result;
     },
-    [invalidateAfterFarmMutation, requireResource],
+    [applyRanchMutationResource, requireResource],
   );
 
   const submitExpeditionAction = useCallback<ExpeditionActionExecutor>(
     async (input) => {
       const result = await executeBoundExpeditionAction(input);
       if (result.ok) {
-        await invalidateAfterFarmMutation();
+        applyCatalogMutationResource({ resource: result.data.data.resource,
+          revisions: { expedition_revision: result.data.revision }, server_time: result.data.server_time });
       } else if (result.issue.code === "state_conflict") {
         requireResource("farmCatalog", true);
       }
       return result;
     },
-    [invalidateAfterFarmMutation, requireResource],
+    [applyCatalogMutationResource, requireResource],
   );
 
   const submitCropCodexAction = useCallback<CropCodexActionExecutor>(
     async (input) => {
       const result = await executeBoundCropCodexAction(input);
       if (result.ok) {
-        await invalidateAfterFarmMutation();
+        applyCatalogMutationResource({ resource: result.data.data.resource,
+          revisions: { revision: result.data.revision, codex_revision: result.data.codex_revision },
+          server_time: result.data.server_time });
       } else if (result.issue.code === "state_conflict") {
         requireResource("farmCatalog", true);
       }
       return result;
     },
-    [invalidateAfterFarmMutation, requireResource],
+    [applyCatalogMutationResource, requireResource],
   );
 
   const submitSmeltingAction = useCallback<SmeltingActionExecutor>(
@@ -656,39 +706,85 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
             farmCatalog: { stage: "ready", data: nextCatalog },
           }));
         }
-        void refreshField();
       } else if (result.issue.code === "state_conflict") {
         requireResource("farmCatalog", true);
       }
       return result;
     },
-    [refreshField, requireResource],
+    [requireResource],
   );
 
   const submitMarketAction = useCallback<MarketActionExecutor>(
     async (input) => {
       const result = await executeBoundMarketAction(input);
       if (result.ok) {
-        await invalidateAfterFarmMutation();
+        const usesKitchenInventory = (kind: string) => kind === "ingredient" || kind === "dish";
+        if ("seller_revision" in result.data || "order_owner_revision" in result.data) {
+          refreshResourceInBackground("farmCatalog");
+          if (
+            input.action === "buy" ||
+            input.action === "purchase-order-fulfill" ||
+            (input.action === "barter-accept" &&
+              result.data.data.result.action === "barter-accept" &&
+              (usesKitchenInventory(result.data.data.result.outcome.give.kind) ||
+                usesKitchenInventory(result.data.data.result.outcome.want.kind)))
+          ) {
+            refreshResourceInBackground("kitchen");
+          }
+        } else {
+          applyCatalogMutationResource({
+            resource: result.data.data.resource,
+            revisions: { market_revision: result.data.revision },
+            server_time: result.data.server_time,
+          });
+          if (
+            (input.action === "list" && usesKitchenInventory(input.kind)) ||
+            (input.action === "unlist" && usesKitchenInventory(input.kind)) ||
+            (input.action === "barter-list" && usesKitchenInventory(input.giveKind)) ||
+            (result.data.data.result.action === "barter-unlist" &&
+              usesKitchenInventory(result.data.data.result.outcome.give.kind)) ||
+            input.action === "purchase-order-list" ||
+            input.action === "purchase-order-unlist" ||
+            (result.data.data.result.action === "mystery-merchant-buy" &&
+              (result.data.data.result.outcome.costs.silver > 0 ||
+                result.data.data.result.outcome.items.some(({ kind }) => usesKitchenInventory(kind))))
+          ) {
+            refreshResourceInBackground("kitchen");
+          }
+          if (result.data.data.result.action === "mystery-merchant-buy" &&
+              result.data.data.result.outcome.costs.gold > 0) {
+            void refreshField();
+          }
+        }
       } else if (result.issue.code === "state_conflict") {
         requireResource("farmCatalog", true);
       }
       return result;
     },
-    [invalidateAfterFarmMutation, requireResource],
+    [applyCatalogMutationResource, refreshField, refreshResourceInBackground, requireResource],
   );
 
   const submitRanchInteractionAction = useCallback<RanchInteractionActionExecutor>(
     async (input) => {
       const result = await executeBoundRanchInteractionAction(input);
       if (result.ok) {
-        await invalidateAfterFarmMutation();
+        applyRanchMutationResource(result.data);
+        if (result.data.data.result.outcome.kind === "send") {
+          const farmCoinsRemaining = result.data.data.result.outcome.farm_coins_remaining;
+          setState((current) => current.stage === "ready" ? { ...current, data: {
+            ...current.data, data: { ...current.data.data, balance: { farm_coins: farmCoinsRemaining } },
+          } } : current);
+        }
+        if (result.data.data.result.outcome.kind === "send" ||
+            result.data.data.result.outcome.kind === "remit") {
+          void refreshField();
+        }
       } else if (result.issue.code === "state_conflict") {
         requireResource("ranch", true);
       }
       return result;
     },
-    [invalidateAfterFarmMutation, requireResource],
+    [applyRanchMutationResource, refreshField, requireResource],
   );
 
   const submitOriginalPlantAction = useCallback<OriginalPlantActionExecutor>(
@@ -709,13 +805,14 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
               }
             : current,
         );
-        await invalidateAfterFarmMutation();
+        void refreshField();
+        refreshResourceInBackground("farmCatalog");
       } else if (result.issue.code === "state_conflict") {
         requireResource("farmCatalog", true);
       }
       return result;
     },
-    [invalidateAfterFarmMutation, requireResource],
+    [refreshField, refreshResourceInBackground, requireResource],
   );
 
   const submitNeighborhoodMessageAction = useCallback<NeighborhoodMessageActionExecutor>(
@@ -723,40 +820,72 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
       const result = await executeBoundNeighborhoodMessage(input);
       if (result.ok || result.issue.code === "state_conflict") {
         if (result.ok) {
-          await invalidateAfterFarmMutation();
+          applyCatalogNeighborhoodResource({
+            resource: result.data.data.resource,
+            revision: result.data.revision,
+            server_time: result.data.server_time,
+          });
         } else {
           requireResource("farmCatalog", true);
         }
       }
       return result;
     },
-    [invalidateAfterFarmMutation, requireResource],
+    [applyCatalogNeighborhoodResource, requireResource],
   );
 
   const submitKitchenInventoryAction = useCallback<KitchenInventoryActionExecutor>(
     async (input) => {
       const result = await executeBoundKitchenInventoryAction(input);
       if (result.ok) {
-        await invalidateAfterFarmMutation();
+        applyKitchenMutationResource(result.data);
+        if (result.data.data.result.outcome.kind === "stall") {
+          refreshResourceInBackground("farmCatalog");
+        }
+        if (result.data.data.result.outcome.kind === "use" &&
+            result.data.data.result.outcome.target !== "self") {
+          refreshResourceInBackground("ranch");
+        }
       } else if (result.issue.code === "state_conflict") {
         requireResource("kitchen", true);
       }
       return result;
     },
-    [invalidateAfterFarmMutation, requireResource],
+    [applyKitchenMutationResource, refreshResourceInBackground, requireResource],
   );
 
   const submitFarmSettingsAction = useCallback<FarmSettingsActionExecutor>(
     async (input) => {
       const result = await executeBoundFarmSettingsAction(input);
       if (result.ok) {
-        await invalidateAfterFarmMutation();
+        applyCatalogMutationResource({
+          resource: result.data.data.resource,
+          revisions: { revision: result.data.revision },
+          server_time: result.data.server_time,
+        });
+        const settings = result.data.data.resource.settings;
+        if (settings.status === "available" &&
+            (input.field === "farm_name" || input.field === "welcome_message" ||
+             input.field === "equip_title")) {
+          setState((current) => current.stage === "ready" &&
+            current.data.data.farm.farm_doorplate === result.data.data.resource.farm.farm_doorplate
+            ? { ...current, data: { ...current.data, data: { ...current.data.data, farm: {
+              ...current.data.data.farm,
+              ...(input.field === "farm_name" ? { farm_name: settings.farm_name } : {}),
+              ...(input.field === "welcome_message" ? { welcome_message: settings.welcome_message } : {}),
+              ...(input.field === "equip_title" ? { equipped_title:
+                settings.equipped_title?.identity_state === "known"
+                  ? { title_id: settings.equipped_title.title_id, name: settings.equipped_title.name }
+                  : null } : {}),
+            } } } } : current);
+          void refreshField();
+        }
       } else if (result.issue.code === "state_conflict") {
         requireResource("farmCatalog", true);
       }
       return result;
     },
-    [invalidateAfterFarmMutation, requireResource],
+    [applyCatalogMutationResource, refreshField, requireResource],
   );
 
   const submitFarmPurchaseRequestAction = useCallback<FarmPurchaseRequestExecutor>(
@@ -777,13 +906,13 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
     async (input) => {
       const result = await purchaseBoundKitchenItem(input);
       if (result.ok) {
-        await invalidateAfterFarmMutation();
+        applyKitchenMutationResource(result.data);
       } else if (result.issue.code === "shop_changed" || result.issue.code === "state_conflict") {
         requireResource("kitchen", true);
       }
       return result;
     },
-    [invalidateAfterFarmMutation, requireResource],
+    [applyKitchenMutationResource, requireResource],
   );
 
   const submitKitchenShopRefreshAction = useCallback<KitchenShopRefreshExecutor>(
@@ -806,7 +935,8 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
               }
             : current,
         );
-        await invalidateAfterFarmMutation();
+        applyKitchenMutationResource(result.data);
+        void refreshField();
       } else if (
         result.issue.code === "state_conflict" ||
         result.issue.code === "shop_unavailable"
@@ -815,35 +945,20 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
       }
       return result;
     },
-    [invalidateAfterFarmMutation, requireResource],
+    [applyKitchenMutationResource, refreshField, requireResource],
   );
 
   const submitKitchenCookAction = useCallback<KitchenCookExecutor>(
     async (input) => {
       const result = await executeBoundKitchenCook(input);
       if (result.ok) {
-        const currentKitchen = kitchenRef.current;
-        if (currentKitchen) {
-          const nextKitchen: BoundKitchenRead = {
-            data: result.data.data.resource,
-            kitchen_inventory_revision: result.data.kitchen_inventory_revision,
-            shop_revision: currentKitchen.shop_revision,
-            server_time: result.data.server_time,
-          };
-          kitchenRef.current = nextKitchen;
-          setResources((current) => ({
-            ...current,
-            kitchen: { stage: "ready", data: nextKitchen },
-          }));
-        }
-        void refreshField();
-        refreshFarmCatalogInBackground();
+        applyKitchenMutationResource(result.data);
       } else if (result.issue.code === "state_conflict") {
         requireResource("kitchen", true);
       }
       return result;
     },
-    [refreshFarmCatalogInBackground, refreshField, requireResource],
+    [applyKitchenMutationResource, requireResource],
   );
 
   const reload = useCallback(() => {
@@ -888,7 +1003,16 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
           },
         });
         setHarvestAction({ stage: "success", result: result.data.data.result });
-        refreshRequestedResources();
+        const harvestResult = result.data.data.result;
+        if (harvestResult.new_titles.length > 0 || harvestResult.harvests.some(
+          ({ is_new, material_drop, potion_drop }) =>
+            is_new || material_drop !== null || potion_drop !== null,
+        )) {
+          refreshResourceInBackground("farmCatalog");
+        }
+        if (harvestResult.silver_gained > 0) {
+          refreshResourceInBackground("kitchen");
+        }
         return;
       }
       setHarvestAction({
@@ -897,7 +1021,7 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
         issue: result.issue,
       });
     },
-    [previewData, refreshRequestedResources, state],
+    [previewData, refreshResourceInBackground, state],
   );
 
   const submitHarvestRequest = useCallback<FarmHarvestRequestExecutor>(
@@ -993,7 +1117,6 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
           },
         });
         setLandUpgradeAction({ stage: "success", result: result.data.data.result });
-        refreshRequestedResources();
         return;
       }
       setLandUpgradeAction({
@@ -1002,7 +1125,7 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
         issue: result.issue,
       });
     },
-    [previewData, refreshRequestedResources, state],
+    [previewData, state],
   );
 
   useEffect(() => {
