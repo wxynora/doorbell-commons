@@ -690,6 +690,7 @@ function sourceState(job) {
                     sourceId: issue.sourceId,
                     plotId,
                     condition: issue.condition,
+                    requiredTreatment: issue.requiredTreatment,
                     status: issue.status,
                     checks: [...issue.checks],
                     treatments: [...issue.treatments],
@@ -1218,6 +1219,8 @@ function resumeNpcFallbackService(database, backend, operation) {
             `).run(JSON.stringify(world), Date.now(), operation.action_key);
         });
     }
+    if (world?.resolved !== true)
+        throw new Error("commission_npc_treatment_unresolved");
     return runLingyeWorldTransaction(database, () => {
         const current = database.prepare("SELECT * FROM lingye_cross_store_operations WHERE action_key = ?")
             .get(operation.action_key);
