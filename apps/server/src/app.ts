@@ -645,6 +645,7 @@ function humanSettingsResponse(
 ) {
   const { settings } = context;
   return humanSettingsSuccessSchema.parse({
+    game_preferences: settings.gamePreferences,
     ...profileSelectionResponse(context),
     connection_status: {
       wake_bridge: {
@@ -701,6 +702,7 @@ function humanSettingsResponse(
 
 function humanSettingsPatch(request: HumanSettingsPatchRequest): HumanSettingsPatch {
   const patch: HumanSettingsPatch = {};
+  if (request.game_preferences !== undefined) patch.gamePreferences = request.game_preferences;
   if (request.home?.home_name !== undefined) {
     patch.homeName = request.home.home_name;
   }

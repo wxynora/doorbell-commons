@@ -1,6 +1,6 @@
 export const FEEDBACK_CONTRIBUTION_ENTRY = `
             <section class="candidate2-settings-section candidate2-settings-feedback-section">
-                <div class="candidate2-settings-section-heading"><div><span>07</span><h2>反馈与共建</h2></div><button id="settings-feedback-open" class="candidate2-settings-text-action handwritten" type="button" aria-label="打开反馈与共建" aria-haspopup="dialog" aria-controls="feedback-contribution-modal">View</button></div>
+                <div class="candidate2-settings-section-heading"><div><span>08</span><h2>反馈与共建</h2></div><button id="settings-feedback-open" class="candidate2-settings-text-action handwritten" type="button" aria-label="打开反馈与共建" aria-haspopup="dialog" aria-controls="feedback-contribution-modal">View</button></div>
             </section>`;
 
 export const FEEDBACK_CONTRIBUTION_MODAL = `

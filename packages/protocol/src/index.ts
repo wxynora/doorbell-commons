@@ -2519,11 +2519,27 @@ export const browserPushPayloadSchema = z
   })
   .strict();
 
+export const gamePreferencesSchema = z.object({
+  invitations_enabled: z.boolean(),
+  quiet_hours_enabled: z.boolean(),
+  quiet_hours: z.array(z.object({
+    start: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+    end: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  }).strict().refine((range) => range.start !== range.end, {
+    message: "start and end must differ",
+  })),
+  round_limit: z.number().int().positive().nullable(),
+}).strict().refine((value) => !value.quiet_hours_enabled || value.quiet_hours.length > 0, {
+  message: "enabled quiet hours require a time range",
+});
+export type GamePreferences = z.infer<typeof gamePreferencesSchema>;
+
 export const humanSettingsReadRequestSchema = z.object({}).strict();
 
 export const humanSettingsPatchRequestSchema = z
   .object({
     home: humanSettingsHomePatchSchema.optional(),
+    game_preferences: gamePreferencesSchema.optional(),
     notification_preferences: humanNotificationPreferencesPatchSchema.optional(),
     community_connection_preferences: humanCommunityConnectionPreferencesPatchSchema.optional(),
     shared_data_preferences: humanSharedDataPreferencesPatchSchema.optional(),
@@ -2893,6 +2909,7 @@ export const farmMcpActionErrorSchema = z
 
 export const humanSettingsSuccessSchema = z
   .object({
+    game_preferences: gamePreferencesSchema,
     ...humanProfileSelectionSchema,
     connection_status: z
       .object({

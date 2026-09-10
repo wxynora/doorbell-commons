@@ -18,6 +18,7 @@ const FIRST_PROFILE = {
 };
 
 const SETTINGS: HumanSettingsSuccess = {
+  game_preferences: { invitations_enabled: false, quiet_hours_enabled: false, quiet_hours: [], round_limit: null },
   active_profile_id: FIRST_PROFILE.profile_id,
   profiles: [FIRST_PROFILE],
   connection_status: {

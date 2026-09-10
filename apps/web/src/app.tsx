@@ -201,6 +201,7 @@ export function homeSettingsView(
   }
   return {
     stage: "ready",
+    gamePreferences: homeSettings.data.game_preferences,
     activityInvitationsEnabled: notification_preferences.activity_invitations_enabled ?? true,
     activityRemindersEnabled: browser_notification_preferences.activity_reminders_enabled,
     allowActivityRoomWarmup: community_connection_preferences.allow_activity_room_warmup ?? true,
@@ -242,6 +243,8 @@ export function homeSettingsView(
 export function preferencePatchForCandidateAction(
   action: CandidateTwoAction,
 ): HumanSettingsPatchRequest | null {
+  if (action.type === "game-preferences-save") return { game_preferences: action.value };
+
   if (action.type === "notification-preference-save") {
     if (action.field === "pauseAllWakeups") {
       return { notification_preferences: { pause_all_wakeups: action.value } };
@@ -1181,6 +1184,7 @@ function LiveApp() {
       }
 
       if (
+        action.type === "game-preferences-save" ||
         action.type === "notification-preference-save" ||
         action.type === "shared-data-preference-save" ||
         action.type === "browser-notification-preference-save" ||

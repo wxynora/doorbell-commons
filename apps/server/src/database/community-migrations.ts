@@ -2328,4 +2328,9 @@ export function migrateCommunityDatabase(
   database.exec(
     "CREATE UNIQUE INDEX IF NOT EXISTS bell_wakes_one_purchase_request ON bell_wakes (purchase_request_id) WHERE purchase_request_id IS NOT NULL",
   );
+  database.exec(`CREATE TABLE IF NOT EXISTS home_game_preferences (
+    home_id TEXT PRIMARY KEY REFERENCES homes(home_id) ON DELETE CASCADE,
+    preferences_json TEXT NOT NULL
+  )`);
+
 }

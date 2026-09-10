@@ -1,5 +1,7 @@
 import {
   type HumanSettingsChatMode,
+  type GamePreferences,
+  gamePreferencesSchema,
   type MailboxCategory,
   type MailboxDetailSuccess,
   type MailboxListSuccess,
@@ -317,6 +319,7 @@ export type CandidateTwoHomeSettingsView =
   | { stage: "error"; message: string }
   | {
       stage: "ready";
+      gamePreferences?: GamePreferences;
       activityInvitationsEnabled: boolean;
       activityRemindersEnabled: boolean;
       allowActivityRoomWarmup: boolean;
@@ -1075,6 +1078,7 @@ export function buildCandidateTwoDemoPreset(
       stage: "authenticated",
       homeSettings: {
         stage: "ready",
+        gamePreferences: { invitations_enabled: false, quiet_hours_enabled: false, quiet_hours: [], round_limit: null },
         activityInvitationsEnabled: true,
         activityRemindersEnabled: false,
         allowActivityRoomWarmup: true,
@@ -1223,6 +1227,10 @@ export type CandidateTwoAction =
   | { type: "mcp-access-open" }
   | { type: "bell-access-open" }
   | {
+      type: "game-preferences-save";
+      value: GamePreferences;
+    }
+  | {
       type: "notification-preference-save";
       field:
         | "activityInvitationsEnabled"
@@ -1300,6 +1308,7 @@ const candidateTwoActionKeys = {
   "profile-switch": ["type", "profileId"],
   "mcp-access-open": ["type"],
   "bell-access-open": ["type"],
+  "game-preferences-save": ["type", "value"],
   "notification-preference-save": ["type", "field", "value"],
   "shared-data-preference-save": ["type", "field", "value"],
   "browser-notification-preference-save": ["type", "field", "value"],
@@ -1453,6 +1462,11 @@ export function parseCandidateTwoAction(value: unknown): CandidateTwoAction | nu
 
   if (type === "bell-access-open") {
     return { type };
+  }
+
+  if (type === "game-preferences-save") {
+    const parsed = gamePreferencesSchema.safeParse(value.value);
+    return parsed.success ? { type, value: parsed.data } : null;
   }
 
   if (type === "notification-preference-save") {
@@ -2108,8 +2122,19 @@ const SETTINGS_SCREEN = `
                 <label class="candidate2-settings-toggle"><span>允许活动室热场</span><input class="settings-activity-room-warmup" type="checkbox" checked><i></i></label>
             </section>
 
+            <section class="candidate2-settings-section candidate2-settings-games">
+                <div class="candidate2-settings-section-heading"><div><span>06</span><h2>游戏设置</h2></div></div>
+                <label class="candidate2-settings-toggle"><span>游戏邀请铃<small>默认关闭，自愿接收小伙伴的游戏邀请</small></span><input class="settings-game-invitations" type="checkbox"><i></i></label>
+                <label class="candidate2-settings-toggle"><span>邀请免打扰<small>北京时间 · 跨过午夜的时段也可以</small></span><input class="settings-game-quiet" type="checkbox"><i></i></label>
+                <div class="settings-game-ranges"></div>
+                <button class="candidate2-settings-text-action settings-game-add-range" type="button">＋ 添加免打扰时段</button>
+                <label class="candidate2-settings-row"><span>游戏局数上限<small>留空不设上限，统计周期待确认</small></span><span class="candidate2-settings-number"><input class="settings-game-round-limit" type="number" min="1" step="1" inputmode="numeric" aria-label="游戏局数上限"><em>局</em></span></label>
+                <div class="candidate2-settings-row"><span><small>先保存偏好，邀请与开局限制将在游戏接入后生效。</small></span><button class="candidate2-settings-text-action settings-game-save" type="button">保存</button></div>
+                <p class="settings-game-feedback candidate2-settings-feedback" role="status" aria-live="polite"></p>
+            </section>
+
             <section class="candidate2-settings-section candidate2-settings-memes">
-                <div class="candidate2-settings-section-heading"><div><span>06</span><h2>共享梗库</h2></div><button id="settings-shared-memes-open" class="candidate2-settings-text-action handwritten" type="button">View</button></div>
+                <div class="candidate2-settings-section-heading"><div><span>07</span><h2>共享梗库</h2></div><button id="settings-shared-memes-open" class="candidate2-settings-text-action handwritten" type="button">View</button></div>
                 <label class="candidate2-settings-toggle"><span>更新提示<small>关闭后仍可手动读取共享梗库</small></span><input class="settings-shared-meme-updates" type="checkbox" checked><i></i></label>
                 <div class="candidate2-settings-meme-summary"><strong class="settings-meme-count">尚未读取</strong><span>共享内容</span><small class="settings-meme-sync">点击 View 读取</small></div>
                 <button id="settings-shared-meme-add" class="candidate2-settings-add-meme" type="button">＋ 添加新梗</button>
@@ -4159,6 +4184,11 @@ const RUNTIME_STYLES = `
                 0 1px 1px rgba(112, 84, 70, 0.06);
             text-align: left;
         }
+
+        .settings-game-range { display: flex; align-items: center; gap: 6px; margin: 8px 0; }
+        .settings-game-range input { min-width: 0; flex: 1; width: 35%; }
+        .settings-game-range button { flex-shrink: 0; }
+        .settings-game-ranges:empty { display: none; }
 
         .candidate2-settings-number {
             display: flex;
@@ -8685,7 +8715,55 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         });
     }
 
+    const gamePanel = document.querySelector('.candidate2-settings-games');
+    const gameInvitations = gamePanel.querySelector('.settings-game-invitations');
+    const gameQuiet = gamePanel.querySelector('.settings-game-quiet');
+    const gameRanges = gamePanel.querySelector('.settings-game-ranges');
+    const gameLimit = gamePanel.querySelector('.settings-game-round-limit');
+    const gameFeedback = gamePanel.querySelector('.settings-game-feedback');
+    let gameSavedValue = '';
+    let gameSaving = false;
+    function addGameRange(start = '', end = '') {
+        const row = document.createElement('div');
+        row.className = 'candidate2-settings-row settings-game-range';
+        const from = document.createElement('input');
+        from.type = 'time'; from.value = start; from.required = true;
+        from.setAttribute('aria-label', '免打扰开始时间');
+        const to = document.createElement('input');
+        to.type = 'time'; to.value = end; to.required = true;
+        to.setAttribute('aria-label', '免打扰结束时间');
+        const remove = document.createElement('button');
+        remove.type = 'button'; remove.className = 'candidate2-settings-text-action';
+        remove.textContent = '删除'; remove.onclick = () => row.remove();
+        row.append(from, document.createTextNode('至'), to, remove);
+        gameRanges.append(row);
+    }
+    gamePanel.querySelector('.settings-game-add-range').onclick = () => addGameRange();
+    gameQuiet.onchange = () => {
+        if (gameQuiet.checked && !gameRanges.children.length) addGameRange();
+    };
+    gamePanel.querySelector('.settings-game-save').onclick = () => {
+        const ranges = Array.from(gameRanges.children).map((row) => {
+            const inputs = row.querySelectorAll('input');
+            return { start: inputs[0].value, end: inputs[1].value };
+        });
+        if (ranges.some((range) => !range.start || !range.end || range.start === range.end) ||
+            (gameQuiet.checked && !ranges.length)) {
+            setStatus(gameFeedback, '请填写完整时段，开始和结束时间不能相同。'); return;
+        }
+        if (!gameLimit.reportValidity()) return;
+        const value = { invitations_enabled: gameInvitations.checked, quiet_hours_enabled: gameQuiet.checked,
+            quiet_hours: ranges, round_limit: gameLimit.value === '' ? null : Number(gameLimit.value) };
+        if (window.__doorbellCandidateDemo) {
+            setStatus(gameFeedback, '演示设置已更新，不会保存到账号。'); return;
+        }
+        gameSaving = true;
+        setStatus(gameFeedback, '正在保存…');
+        sendAction({ type: 'game-preferences-save', value });
+    };
+
     function setHomeSettingsDisabled(disabled) {
+        gamePanel.querySelectorAll('input, button').forEach((control) => { control.disabled = disabled; });
         [
             settingsHomeName,
             settingsProfileSelect,
@@ -8723,6 +8801,20 @@ const CANDIDATE_RUNTIME_SCRIPT = `
             return;
         }
 
+        const gameValue = homeSettings.gamePreferences || { invitations_enabled: false, quiet_hours_enabled: false, quiet_hours: [], round_limit: null };
+        const serializedGameValue = JSON.stringify(gameValue);
+        if (!pending && serializedGameValue !== gameSavedValue) {
+            gameInvitations.checked = gameValue.invitations_enabled;
+            gameQuiet.checked = gameValue.quiet_hours_enabled;
+            gameLimit.value = gameValue.round_limit === null ? '' : String(gameValue.round_limit);
+            gameRanges.replaceChildren();
+            gameValue.quiet_hours.forEach((range) => addGameRange(range.start, range.end));
+            gameSavedValue = serializedGameValue;
+        }
+        if (gameSaving && !pending) {
+            setStatus(gameFeedback, issueMessage || '已保存');
+            gameSaving = false;
+        }
         settingsHomeName.value = homeSettings.homeName;
         settingsProfilesSection.hidden = homeSettings.profileSwitcher === null;
         settingsProfileSelect.replaceChildren();

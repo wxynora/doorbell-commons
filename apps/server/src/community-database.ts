@@ -1,3 +1,5 @@
+import { readGamePreferences, writeGamePreferences } from "./game-settings-store.js";
+import type { GamePreferences } from "@doorbell/protocol";
 import { ResidentAvatarStore } from "./resident-avatar/store.js";
 import { FarmLayoutShareStore } from "./farm-layout-sharing/store.js";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
@@ -502,6 +504,7 @@ export interface MailboxLetterPage {
 
 
 export interface HumanSettingsRecord {
+  gamePreferences?: GamePreferences;
   homeId: string;
   residentId: string;
   homeName: string;
@@ -522,6 +525,7 @@ export interface HumanSettingsRecord {
 }
 
 export interface HumanSettingsPatch {
+  gamePreferences?: GamePreferences;
   homeName?: string;
   environmentDescription?: string | null;
   climateType?: ClimateType;
@@ -4751,7 +4755,7 @@ export class CommunityDatabase {
     if (!row) {
       throw new Error("The registered home does not exist");
     }
-    return mapHumanSettings(row);
+    return { ...mapHumanSettings(row), gamePreferences: readGamePreferences(this.#database, homeId) };
   }
 
   updateHomeWeatherState(
@@ -4947,11 +4951,13 @@ export class CommunityDatabase {
           );
       }
 
+      if (patch.gamePreferences !== undefined) writeGamePreferences(this.#database, homeId, patch.gamePreferences);
+
       const updated = this.#findHumanSettingsRow(homeId);
       if (!updated) {
         throw new Error("The registered home does not exist");
       }
-      return mapHumanSettings(updated);
+      return { ...mapHumanSettings(updated), gamePreferences: readGamePreferences(this.#database, homeId) };
     });
 
     return transaction.immediate();
