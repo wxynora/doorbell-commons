@@ -5,6 +5,7 @@ import type { RegistrationAuthService } from "./registration-auth.js";
 import type { HumanCommunityRecord } from "./community-database.js";
 import { readHumanSessionToken } from "./session-cookie.js";
 import { DailyEditorError } from "./lingye-daily-editor-store.js";
+import {HumanSubmissionEditor} from "./lingye-daily-human-submissions.js";
 import { LingyeDailyPublishAuthenticationError, type LingyeDailyService } from "./lingye-daily-service.js";
 
 export function registerDailyEditorRoutes(app:FastifyInstance, options:{daily:LingyeDailyService;auth:RegistrationAuthService}) {
@@ -32,6 +33,12 @@ export function registerDailyEditorRoutes(app:FastifyInstance, options:{daily:Li
   };
   const date=(request:FastifyRequest)=>z.object({date:z.iso.date()}).parse(request.params).date;
   app.get("/api/lingye-daily/editor/access",handle(()=>({allowed:true})));
+  app.post("/api/lingye-daily/editor/issues/:date/submissions/takeover",handle((request,community)=>
+    new HumanSubmissionEditor(daily.editor).takeover(date(request),community.account.accountId,Date.now())));
+  app.put("/api/lingye-daily/editor/issues/:date/submissions/selection",handle((request,community)=>{
+    const body=z.object({version:z.number().int().positive(),submissionIds:z.array(z.string().min(1)).max(3)}).strict().parse(request.body);
+    return new HumanSubmissionEditor(daily.editor).select(date(request),body.version,body.submissionIds,community.account.accountId,Date.now());
+  }));
   app.get("/api/lingye-daily/editor/issues",handle(()=>{
     const latest=daily.getLatest();if(latest)daily.editor.seedPublished(latest,Date.now());
     return {issues:daily.editor.list()};

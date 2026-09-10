@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import {hasHumanSubmissionReview} from "./lingye-daily-human-submissions.js";
 import type { LingyeDailyPublishRequest, ReporterRelayWake } from "@doorbell/protocol";
 import { lingyeDailyReporterArticleSchema, type DailyDocument } from "@doorbell/protocol";
 import { LingyeDailyEditorStore, DailyEditorError, type DailyEditorPublisher } from "./lingye-daily-editor-store.js";
@@ -167,6 +168,10 @@ export class LingyeDailyService {
         throw new DailyEditorError(503,"日报已出版，出版审稿奖金暂未到账，请重试出版确认。");
       }
     }
+    if(hasHumanSubmissionReview(this.editor.database,date)) {
+      const ids=this.editor.daily.selectedSubmissions(date).map(item=>item.submission_id);
+      if(ids.length)await this.rewardSubmissions(date,ids,publisher.accountId);
+    }
     return {published:true,...result,draft:this.editor.get(date)};
   }
 
@@ -187,7 +192,7 @@ export class LingyeDailyService {
       draft.readiness.reporter ? {lane:"farm" as const,status:"completed" as const,label:"农场稿已到工作台",resendable:false} :
       {lane:"farm" as const,status:"not_started" as const,label:"农场稿尚未派发",resendable:false};
     const submission=this.editor.daily.submissionReviewStatus(date);
-    const submissions=submission.status==="pending" ? {lane:"submissions" as const,status:"pending" as const,
+    const submissions=draft.humanReview ? {lane:"submissions" as const,status:draft.humanReview.decided?"completed" as const:"pending" as const,label:draft.humanReview.decided?"主编已选稿":"由主编人工选稿",resendable:false} : submission.status==="pending" ? {lane:"submissions" as const,status:"pending" as const,
       label:"等待匿名投稿审稿",reporterName:this.reporterName(submission.review.reviewerResidentId),resendable:true} :
       submission.status==="completed" ? {lane:"submissions" as const,status:"completed" as const,label:"匿名投稿已审",resendable:false} :
       submission.status==="empty" ? {lane:"submissions" as const,status:"empty" as const,label:"本期没有待审投稿",resendable:false} :
@@ -230,6 +235,8 @@ export class LingyeDailyService {
   }
 
   async rewardSubmissions(date:string,ids:string[],account:string) {
+    if(hasHumanSubmissionReview(this.editor.database,date)&&this.editor.row(date).published_version===null)
+      throw new DailyEditorError(409,"入选投稿将在出版后发放奖金。");
     if(!this.#submissionRewards) throw new DailyEditorError(503,"奖金发放服务未配置。");
     const pending=this.editor.requestRewards(date,ids,account,this.#now());
     for(const item of pending) {

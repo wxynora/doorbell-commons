@@ -51,12 +51,13 @@ export function LingyeDailyEditor({onBack}:{onBack?:()=>void} = {}) {
   const [busy,setBusy]=useState(false);
   const [notice,setNotice]=useState("");
   const [selected,setSelected]=useState<string[]>([]);
+  const [picked,setPicked]=useState<string[]>([]);
   const [progress,setProgress]=useState<EditorProgress|null>(null);
   const paper=useRef<HTMLDivElement>(null);
   const resendRequestIds=useRef<Partial<Record<EditorProgressLane["lane"],string>>>({});
   const [epoch,setEpoch]=useState(0);
   const [editingImage,setEditingImage]=useState<HTMLElement|null>(null);
-  const install=(next:EditorDraft)=>{setDraft(next);setDirty(false);setEpoch(value=>value+1);setSelected([]);};
+  const install=(next:EditorDraft)=>{setDraft(next);setDirty(false);setEpoch(value=>value+1);setSelected([]);setPicked(next.humanReview?.selectedIds ?? []);};
   const loadProgress=async(date:string)=>setProgress(await editorRequest<EditorProgress>(`/issues/${date}/progress`));
   const run=async(action:()=>Promise<void>)=>{if(busy)return;setBusy(true);setNotice("");try{await action();}catch(error){setNotice(error instanceof Error?error.message:"操作未完成，请重试。");}finally{setBusy(false);}};
   const open=async(date:string)=>{
@@ -76,8 +77,9 @@ export function LingyeDailyEditor({onBack}:{onBack?:()=>void} = {}) {
   },[dirty]);
   const save=async()=>{
     if(!draft||!paper.current)return draft;
+    const chosen=[...picked];
     const next=await editorRequest<EditorDraft>(`/issues/${draft.issueDate}`,"PUT",{version:draft.version,document:readEditedDocument(paper.current)});
-    install(next);return next;
+    install(next);setPicked(chosen);return next;
   };
   const command=(name:string,value?:string)=>{
     const selection=window.getSelection();
@@ -122,7 +124,10 @@ export function LingyeDailyEditor({onBack}:{onBack?:()=>void} = {}) {
       })}>更新来稿</button>
       <button className="daily-editor-publish" disabled={busy||!draft} onClick={()=>void run(async()=>{
         if(!window.confirm("确认将这版正文与排版正式出版？人类和小机将同时读到这一版。"))return;
-        const current=dirty?await save():draft;if(!current)return;
+        const chosen=[...picked];let current=dirty?await save():draft;if(!current)return;
+        if(current.humanReview && (!current.humanReview.decided || JSON.stringify(chosen)!==JSON.stringify(current.humanReview.selectedIds))) {
+          current=await editorRequest<EditorDraft>(`/issues/${current.issueDate}/submissions/selection`,"PUT",{version:current.version,submissionIds:chosen});install(current);
+        }
         const result=await editorRequest<{draft:EditorDraft}>(`/issues/${current.issueDate}/publish`,"POST",{version:current.version});
         install(result.draft);await loadProgress(current.issueDate);
         const reward=result.draft.publicationReward;
@@ -156,7 +161,21 @@ export function LingyeDailyEditor({onBack}:{onBack?:()=>void} = {}) {
         <h2>出版审稿奖金</h2><small>{draft.publicationReward
           ? `${draft.publicationReward.recipientName} · ${draft.publicationReward.paid?"已发 5000 金":"5000 金待确认"}`
           : "以本期第一次成功出版时的登录账号为准，每期一次。"}</small>
-        <h2>投稿奖金</h2><small>每篇 2000 金；已发放的不再重复发。</small>
+        {draft.issueDate==="2026-09-10"&&draft.publishedVersion===null&&!draft.humanReview?<button disabled={busy||dirty} onClick={()=>void run(async()=>{
+          install(await editorRequest<EditorDraft>(`/issues/${draft.issueDate}/submissions/takeover`,"POST",{}));await loadProgress(draft.issueDate);
+        })}>接管投稿选稿</button>:null}
+        {draft.humanReview?<><h2>投稿选稿</h2><small>选择最多三篇。出版后每篇发放 2000 金，已发不重发。</small>
+          {draft.humanReview.candidates.map(sub=><label key={sub.submission_id}>
+            <input type="checkbox" disabled={busy||draft.publishedVersion!==null||(!picked.includes(sub.submission_id)&&picked.length>=3)} checked={picked.includes(sub.submission_id)}
+              onChange={event=>setPicked(current=>event.target.checked?[...current,sub.submission_id]:current.filter(id=>id!==sub.submission_id))}/>
+            投稿 {sub.number}<small>{sub.question}</small><p style={{whiteSpace:"pre-wrap"}}>{sub.text}</p>
+          </label>)}
+          <button disabled={busy||draft.publishedVersion!==null} onClick={()=>void run(async()=>{
+            const chosen=[...picked],current=dirty?await save():draft;if(!current)return;
+            install(await editorRequest<EditorDraft>(`/issues/${current.issueDate}/submissions/selection`,"PUT",{version:current.version,submissionIds:chosen}));
+            await loadProgress(current.issueDate);setNotice("入选投稿已放入正文，出版后发放奖金。");
+          })}>采用所选投稿（{picked.length}/3）</button>
+        </>:<><h2>投稿奖金</h2><small>每篇 2000 金；已发放的不再重复发。</small>
         {draft.submissions.map((sub,index)=><label key={sub.submission_id ?? index}>
           <input type="checkbox" disabled={busy||sub.paid||!sub.submission_id} checked={!!sub.submission_id&&selected.includes(sub.submission_id)}
             onChange={event=>{const id=sub.submission_id!;setSelected(current=>event.target.checked?[...current,id]:current.filter(value=>value!==id));}}/>
@@ -166,7 +185,7 @@ export function LingyeDailyEditor({onBack}:{onBack?:()=>void} = {}) {
           if(!window.confirm(`给选中的 ${selected.length} 篇投稿发放 ${selected.length*2000} 金？`))return;
           const next=await editorRequest<EditorDraft>(`/issues/${draft.issueDate}/rewards`,"POST",{submissionIds:selected});
           setDraft(current=>current?{...current,submissions:next.submissions}:current);setSelected([]);setNotice("所选投稿奖金已发放。");
-        })}>发放 {selected.length*2000} 金</button>
+        })}>发放 {selected.length*2000} 金</button></>}
       </aside>
     </div>:!busy?<p>还没有待编排的稿件，生成后的日报会先送到这里。</p>:null}
     {editingImage?<DailyImageEditor src={images[editingImage.dataset.imageId!]!}

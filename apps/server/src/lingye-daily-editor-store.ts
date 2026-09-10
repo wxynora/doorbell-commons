@@ -5,6 +5,7 @@ import {
   type LingyeDailyPublishRequest,
 } from "@doorbell/protocol";
 import { LingyeDailyStore, type LingyeDailyIssueRecord } from "./lingye-daily-store.js";
+import {HumanSubmissionEditor} from "./lingye-daily-human-submissions.js";
 
 export class DailyEditorError extends Error {
   constructor(readonly status: number, message: string) { super(message); }
@@ -55,6 +56,7 @@ export class LingyeDailyEditorStore {
         submissions:this.reviewReady(date),weather:edition.weather_forecast!==undefined},
       submissions:edition.submissions.map(sub=>({...sub,paid:this.paid(sub.submission_id ?? "")})),
       publicationReward:this.publicationReward(date),
+      humanReview:new HumanSubmissionEditor(this).get(date),
     };
   }
   reviewReady(date:string):boolean {

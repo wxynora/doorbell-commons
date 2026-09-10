@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
+import {hasHumanSubmissionReview} from "./lingye-daily-human-submissions.js";
 import type Database from "better-sqlite3";
 import { type LingyeDailyEditionPublish, type LingyeDailyPublishRequest, type LingyeDailyWeatherForecast, lingyeDailyEditionPublishSchema } from "@doorbell/protocol";
 import type { ReporterRelayWake } from "@doorbell/protocol";
@@ -214,6 +215,7 @@ export class LingyeDailyStore {
     | {status:"not_started"}
     | {status:"pending";review:DailySubmissionReview}
     | {status:"completed"|"empty";reviewerResidentId:string} {
+    if(hasHumanSubmissionReview(this.#database,issueDate))return {status:"not_started"};
     const batch=this.#database.prepare("SELECT * FROM lingye_daily_submission_batches WHERE issue_date=?")
       .get(issueDate) as DailySubmissionBatch|undefined;
     if(!batch) return {status:"not_started"};
@@ -225,6 +227,7 @@ export class LingyeDailyStore {
   enqueueSubmissionReview(issueDate: string, reviewerResidentId: string, now: number,
     persist: (review: DailySubmissionReview) => ReporterBellWakeCreationStatus) {
     if (now < Date.parse(`${issueDate}T05:00:00+08:00`)) return "not_due" as const;
+    if(hasHumanSubmissionReview(this.#database,issueDate))return "completed" as const;
     return this.#database.transaction(() => {
       if (this.#database.prepare("SELECT 1 FROM lingye_daily_issues WHERE issue_date = ?").get(issueDate)) return "completed" as const;
       const review = this.assignSubmissionReviews(issueDate, reviewerResidentId);
@@ -250,6 +253,7 @@ export class LingyeDailyStore {
   }
 
   submissionReviewer(issueDate: string): { resident_id: string; display_name: string } | null {
+    if(hasHumanSubmissionReview(this.#database,issueDate))return null;
     const row = this.#database.prepare(`SELECT b.reviewer_resident_id AS resident_id, r.resident_name AS display_name
       FROM lingye_daily_submission_batches b JOIN residents r ON r.resident_id = b.reviewer_resident_id
       WHERE b.issue_date = ? AND b.selected_ids_json IS NOT NULL AND b.decided_at IS NOT NULL
@@ -259,6 +263,7 @@ export class LingyeDailyStore {
   }
 
   completedSubmissionReview(issueDate: string) {
+    if(hasHumanSubmissionReview(this.#database,issueDate))return undefined;
     return this.#database.prepare(`SELECT issue_date AS issueDate, reviewer_resident_id AS residentId,
       decided_at AS decidedAt, json_array_length(candidate_ids_json) AS candidateCount,
       json_array_length(selected_ids_json) AS selectedCount
@@ -273,6 +278,7 @@ export class LingyeDailyStore {
       const batch = this.#database.prepare("SELECT * FROM lingye_daily_submission_batches WHERE option_id = ?")
         .get(option) as DailySubmissionBatch | undefined;
       if (!batch) return undefined;
+      if(hasHumanSubmissionReview(this.#database,batch.issue_date))throw new DailySubmissionError("review_closed");
       if (batch.reviewer_resident_id !== residentId) throw new DailySubmissionError("reviewer_mismatch");
       const selection = text?.trim() ?? "";
       if (!/^(?:0|[1-9]\d*(?:\s*,\s*[1-9]\d*)*)$/u.test(selection))

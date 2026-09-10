@@ -6,6 +6,7 @@ export interface EditorDraft {
   readiness:{group:boolean;reporter:boolean;voice:boolean;submissions:boolean;weather:boolean};
   submissions:{submission_id?:string;text:string;source_label:string;paid:boolean}[];
   publicationReward:{recipientName:string;amount:5000;paid:boolean}|null;
+  humanReview?:{candidates:{submission_id:string;number:number;text:string;question:string;source_label:string}[];selectedIds:string[];decided:boolean}|null;
 }
 export interface EditorProgressLane {
   lane:"farm"|"voice"|"submissions";status:"pending"|"completed"|"empty"|"not_started"|"unavailable";
