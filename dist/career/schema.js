@@ -1,6 +1,6 @@
 import { runInTransaction } from "./persistence.js";
 
-export const CAREER_SCHEMA_VERSION = 16;
+export const CAREER_SCHEMA_VERSION = 17;
 
 const REPORTER_ARTICLE_COLUMNS = `(
   article_id TEXT PRIMARY KEY,
@@ -833,6 +833,9 @@ export function installCareerSchema(database) {
         database.exec("ALTER TABLE career_duty_days ADD COLUMN performance_rate_bps INTEGER NOT NULL DEFAULT 10000 CHECK (performance_rate_bps IN (5000, 10000))");
     if (!dutyColumns.has("wage_notice_pending"))
         database.exec("ALTER TABLE career_duty_days ADD COLUMN wage_notice_pending INTEGER NOT NULL DEFAULT 0 CHECK (wage_notice_pending IN (0, 1))");
+    const performanceColumns = new Set(database.prepare("PRAGMA table_info(career_performance_adjustments)").all().map((column) => column.name));
+    if (!performanceColumns.has("notice_pending"))
+        database.exec("ALTER TABLE career_performance_adjustments ADD COLUMN notice_pending INTEGER NOT NULL DEFAULT 0 CHECK (notice_pending IN (0, 1))");
     const workRecordColumns = new Set(database
         .prepare("PRAGMA table_info(career_work_records)")
         .all()

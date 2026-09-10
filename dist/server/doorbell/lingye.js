@@ -1,3 +1,4 @@
+import { readCareerPaySummary } from "../../career/pay-summary.js";
 import { createHash } from "node:crypto";
 import {
     CareerDomainError,
@@ -1318,7 +1319,7 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
             startHour: EXAM_SESSION_START_HOUR,
             durationMinutes: EXAM_SESSION_DURATION_MS / (60 * 1_000),
         },
-        employment: { institutions: institutionStaffing, records: employment, duties },
+        employment: { institutions: institutionStaffing, records: employment, duties, paySummary: readCareerPaySummary(database, residentId) },
         interviews: constable.interviews,
         publicNotices: constable.publicNotices,
         ...(certificates.some((certificate) => certificate.status === "active" && !certificate.canWork)
@@ -1419,6 +1420,8 @@ function schoolView(database, backend, residentId, now, args) {
         facts = resumable.current;
         currentCourses = resumable.currentCourses;
     }
+    const { duties: _duties, ...employmentSummary } = facts.employment;
+    facts = { ...facts, employment: employmentSummary };
     const value = section === "courses"
         ? {
             catalog: selectedCourseCatalog(backend, residentId, facts.careers.map((track) => track.career)),

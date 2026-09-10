@@ -1511,8 +1511,8 @@ export function settleReporterEvaluation(database, input) {
             database.prepare(`
               INSERT INTO career_performance_adjustments (
                 adjustment_id, job_id, resident_id, units, performance_gold,
-                receipt_id, source_reference, recorded_at
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                receipt_id, source_reference, recorded_at, notice_pending
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
             `).run(`${quote.quoteId}:adjustment`, quote.jobId, quote.residentId,
                 quote.performanceUnits, quote.performanceGold,
                 input.financialReceipt.receiptId, `${quote.sourceReference}:performance`, now);

@@ -640,8 +640,8 @@ export class CareerJobService {
             this.#database
                 .prepare(`INSERT INTO career_performance_adjustments (
              adjustment_id, job_id, resident_id, units, performance_gold,
-             receipt_id, source_reference, recorded_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+             receipt_id, source_reference, recorded_at, notice_pending
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`)
                 .run(this.#generateId(), job.job_id, job.worker_resident_id, units, performanceGold, input.wageReceipt.receiptId, input.sourceReference, now);
             this.#database
                 .prepare(`INSERT INTO career_reporter_evaluation_settlements (
