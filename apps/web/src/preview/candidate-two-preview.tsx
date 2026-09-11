@@ -8479,7 +8479,7 @@ const LINGYE_SCRIPT = `
         }
     });
 
-    const glimmerExpansionAssets = {"crab_sakura": "/farm/ranch-expansion/crab_sakura.png", "crab_celadon": "/farm/ranch-expansion/crab_celadon.png", "crab_starsand": "/farm/ranch-expansion/crab_starsand.png", "frost_antler_deer_peachsnow": "/farm/ranch-expansion/frost_antler_deer_peachsnow.png", "frost_antler_deer_aurora": "/farm/ranch-expansion/frost_antler_deer_aurora.png", "frost_antler_deer_smokycrystal": "/farm/ranch-expansion/frost_antler_deer_smokycrystal.png", "amber_dragon_beeswax": "/farm/ranch-expansion/amber_dragon_beeswax.png", "amber_dragon_cherry": "/farm/ranch-expansion/amber_dragon_cherry.png", "amber_dragon_blue": "/farm/ranch-expansion/amber_dragon_blue.png"};
+    const glimmerExpansionAssets = {"crab_sakura": "/lingye/ranch-expansion/crab_sakura.png", "crab_celadon": "/lingye/ranch-expansion/crab_celadon.png", "crab_starsand": "/lingye/ranch-expansion/crab_starsand.png", "frost_antler_deer_peachsnow": "/lingye/ranch-expansion/frost_antler_deer_peachsnow.png", "frost_antler_deer_aurora": "/lingye/ranch-expansion/frost_antler_deer_aurora.png", "frost_antler_deer_smokycrystal": "/lingye/ranch-expansion/frost_antler_deer_smokycrystal.png", "amber_dragon_beeswax": "/lingye/ranch-expansion/amber_dragon_beeswax.png", "amber_dragon_cherry": "/lingye/ranch-expansion/amber_dragon_cherry.png", "amber_dragon_blue": "/lingye/ranch-expansion/amber_dragon_blue.png"};
     const glimmerTrackAssets = {
         'duck_peach': '/lingye/glimmer/tracks/duck-peach.png',
         'turkey_maple': '/lingye/glimmer/tracks/turkey-maple.png',

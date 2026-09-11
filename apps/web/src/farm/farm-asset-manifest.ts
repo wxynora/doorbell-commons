@@ -98,19 +98,19 @@ function standaloneRanchSkin(
 }
 
 export const FARM_ASSET_MANIFEST = {
-  "ranch.animal.crab": standaloneAnimal("crab", "/farm/ranch-expansion/crab.png"),
-  "ranch.animal.frost_antler_deer": standaloneAnimal("frost_antler_deer", "/farm/ranch-expansion/frost_antler_deer.png"),
-  "ranch.animal.amber_dragon": standaloneAnimal("amber_dragon", "/farm/ranch-expansion/amber_dragon.png"),
-  "ranch.skin.crab_sakura": { ...standaloneRanchSkin("crab_sakura", "/farm/ranch-expansion/crab_sakura.png"), pixelWidth: 200, pixelHeight: 200 },
-  "ranch.skin.crab_celadon": { ...standaloneRanchSkin("crab_celadon", "/farm/ranch-expansion/crab_celadon.png"), pixelWidth: 200, pixelHeight: 200 },
-  "ranch.skin.crab_starsand": { ...standaloneRanchSkin("crab_starsand", "/farm/ranch-expansion/crab_starsand.png"), pixelWidth: 200, pixelHeight: 200 },
-  "ranch.skin.frost_antler_deer_peachsnow": { ...standaloneRanchSkin("frost_antler_deer_peachsnow", "/farm/ranch-expansion/frost_antler_deer_peachsnow.png"), pixelWidth: 200, pixelHeight: 200 },
-  "ranch.skin.frost_antler_deer_aurora": { ...standaloneRanchSkin("frost_antler_deer_aurora", "/farm/ranch-expansion/frost_antler_deer_aurora.png"), pixelWidth: 200, pixelHeight: 200 },
-  "ranch.skin.frost_antler_deer_smokycrystal": { ...standaloneRanchSkin("frost_antler_deer_smokycrystal", "/farm/ranch-expansion/frost_antler_deer_smokycrystal.png"), pixelWidth: 200, pixelHeight: 200 },
-  "ranch.skin.amber_dragon_beeswax": { ...standaloneRanchSkin("amber_dragon_beeswax", "/farm/ranch-expansion/amber_dragon_beeswax.png"), pixelWidth: 200, pixelHeight: 200 },
-  "ranch.skin.amber_dragon_cherry": { ...standaloneRanchSkin("amber_dragon_cherry", "/farm/ranch-expansion/amber_dragon_cherry.png"), pixelWidth: 200, pixelHeight: 200 },
-  "ranch.skin.amber_dragon_blue": { ...standaloneRanchSkin("amber_dragon_blue", "/farm/ranch-expansion/amber_dragon_blue.png"), pixelWidth: 200, pixelHeight: 200 },
-  "kitchen.catalog.ranch-expansion": asset({ domain: "kitchen", entityKind: "ingredient-atlas", entityId: "ranch-expansion", visualState: "catalog-icon", url: "/farm/ranch-expansion/food-atlas.png", pixelWidth: 480, pixelHeight: 480, status: "production", usage: "wired" }),
+  "ranch.animal.crab": standaloneAnimal("crab", "/lingye/ranch-expansion/crab.png"),
+  "ranch.animal.frost_antler_deer": standaloneAnimal("frost_antler_deer", "/lingye/ranch-expansion/frost_antler_deer.png"),
+  "ranch.animal.amber_dragon": standaloneAnimal("amber_dragon", "/lingye/ranch-expansion/amber_dragon.png"),
+  "ranch.skin.crab_sakura": { ...standaloneRanchSkin("crab_sakura", "/lingye/ranch-expansion/crab_sakura.png"), pixelWidth: 200, pixelHeight: 200 },
+  "ranch.skin.crab_celadon": { ...standaloneRanchSkin("crab_celadon", "/lingye/ranch-expansion/crab_celadon.png"), pixelWidth: 200, pixelHeight: 200 },
+  "ranch.skin.crab_starsand": { ...standaloneRanchSkin("crab_starsand", "/lingye/ranch-expansion/crab_starsand.png"), pixelWidth: 200, pixelHeight: 200 },
+  "ranch.skin.frost_antler_deer_peachsnow": { ...standaloneRanchSkin("frost_antler_deer_peachsnow", "/lingye/ranch-expansion/frost_antler_deer_peachsnow.png"), pixelWidth: 200, pixelHeight: 200 },
+  "ranch.skin.frost_antler_deer_aurora": { ...standaloneRanchSkin("frost_antler_deer_aurora", "/lingye/ranch-expansion/frost_antler_deer_aurora.png"), pixelWidth: 200, pixelHeight: 200 },
+  "ranch.skin.frost_antler_deer_smokycrystal": { ...standaloneRanchSkin("frost_antler_deer_smokycrystal", "/lingye/ranch-expansion/frost_antler_deer_smokycrystal.png"), pixelWidth: 200, pixelHeight: 200 },
+  "ranch.skin.amber_dragon_beeswax": { ...standaloneRanchSkin("amber_dragon_beeswax", "/lingye/ranch-expansion/amber_dragon_beeswax.png"), pixelWidth: 200, pixelHeight: 200 },
+  "ranch.skin.amber_dragon_cherry": { ...standaloneRanchSkin("amber_dragon_cherry", "/lingye/ranch-expansion/amber_dragon_cherry.png"), pixelWidth: 200, pixelHeight: 200 },
+  "ranch.skin.amber_dragon_blue": { ...standaloneRanchSkin("amber_dragon_blue", "/lingye/ranch-expansion/amber_dragon_blue.png"), pixelWidth: 200, pixelHeight: 200 },
+  "kitchen.catalog.ranch-expansion": asset({ domain: "kitchen", entityKind: "ingredient-atlas", entityId: "ranch-expansion", visualState: "catalog-icon", url: "/lingye/ranch-expansion/food-atlas.png", pixelWidth: 480, pixelHeight: 480, status: "production", usage: "wired" }),
 
   "shell.scene.field": asset({
     domain: "shell",
