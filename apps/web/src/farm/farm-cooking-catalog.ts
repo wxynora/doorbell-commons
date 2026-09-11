@@ -892,8 +892,16 @@ export const COOKING_CATALOG_RECIPES = [
     category: "热菜",
     ingredients: ["beef", "truffle", "butter", "spice"],
   },
+  {"id": "crab_roe_tofu", "name": "蟹黄豆腐", "rarity": "SR", "category": "热菜", "ingredients": ["crab_roe", "tofu", "ginger", "salt"]},
+  {"id": "crab_roe_noodles", "name": "蟹黄拌面", "rarity": "SR", "category": "主食小吃", "ingredients": ["crab_roe", "flour", "scallion", "soy_sauce"]},
+  {"id": "strawberry_frost_cheesecake", "name": "草莓冻乳酪", "rarity": "SSR", "category": "甜品点心", "ingredients": ["frost_cheese", "strawberry", "fresh_milk", "sugar"]},
+  {"id": "frost_cheese_truffle_potato", "name": "霜酪松露焗薯", "rarity": "SSR", "category": "热菜", "ingredients": ["frost_cheese", "truffle", "potato", "butter"]},
+  {"id": "amber_pudding", "name": "琥珀布丁", "rarity": "SP", "category": "甜品点心", "ingredients": ["amber_sugar_fat", "chicken_egg", "fresh_milk", "vanilla"]},
+  {"id": "crispy_amber_pumpkin", "name": "脆壳烤南瓜", "rarity": "SP", "category": "甜品点心", "ingredients": ["amber_sugar_fat", "pumpkin", "butter", "salt"]},
 ] as const satisfies readonly CookingCatalogRecipe[];
 
 export const COOKING_INGREDIENT_NAME_BY_ID: Readonly<Record<string, string>> = Object.fromEntries(
   COOKING_CATALOG_INGREDIENTS.map((ingredient) => [ingredient.id, ingredient.name]),
 );
+
+Object.assign(COOKING_INGREDIENT_NAME_BY_ID, {"fresh_milk": "鲜奶", "truffle": "松露", "chicken_egg": "鸡蛋", "crab_roe": "蟹黄", "frost_cheese": "霜乳酪", "amber_sugar_fat": "琥珀糖脂"});

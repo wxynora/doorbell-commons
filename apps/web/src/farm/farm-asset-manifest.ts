@@ -98,6 +98,20 @@ function standaloneRanchSkin(
 }
 
 export const FARM_ASSET_MANIFEST = {
+  "ranch.animal.crab": standaloneAnimal("crab", "/farm/ranch-expansion/crab.png"),
+  "ranch.animal.frost_antler_deer": standaloneAnimal("frost_antler_deer", "/farm/ranch-expansion/frost_antler_deer.png"),
+  "ranch.animal.amber_dragon": standaloneAnimal("amber_dragon", "/farm/ranch-expansion/amber_dragon.png"),
+  "ranch.skin.crab_sakura": { ...standaloneRanchSkin("crab_sakura", "/farm/ranch-expansion/crab_sakura.png"), pixelWidth: 200, pixelHeight: 200 },
+  "ranch.skin.crab_celadon": { ...standaloneRanchSkin("crab_celadon", "/farm/ranch-expansion/crab_celadon.png"), pixelWidth: 200, pixelHeight: 200 },
+  "ranch.skin.crab_starsand": { ...standaloneRanchSkin("crab_starsand", "/farm/ranch-expansion/crab_starsand.png"), pixelWidth: 200, pixelHeight: 200 },
+  "ranch.skin.frost_antler_deer_peachsnow": { ...standaloneRanchSkin("frost_antler_deer_peachsnow", "/farm/ranch-expansion/frost_antler_deer_peachsnow.png"), pixelWidth: 200, pixelHeight: 200 },
+  "ranch.skin.frost_antler_deer_aurora": { ...standaloneRanchSkin("frost_antler_deer_aurora", "/farm/ranch-expansion/frost_antler_deer_aurora.png"), pixelWidth: 200, pixelHeight: 200 },
+  "ranch.skin.frost_antler_deer_smokycrystal": { ...standaloneRanchSkin("frost_antler_deer_smokycrystal", "/farm/ranch-expansion/frost_antler_deer_smokycrystal.png"), pixelWidth: 200, pixelHeight: 200 },
+  "ranch.skin.amber_dragon_beeswax": { ...standaloneRanchSkin("amber_dragon_beeswax", "/farm/ranch-expansion/amber_dragon_beeswax.png"), pixelWidth: 200, pixelHeight: 200 },
+  "ranch.skin.amber_dragon_cherry": { ...standaloneRanchSkin("amber_dragon_cherry", "/farm/ranch-expansion/amber_dragon_cherry.png"), pixelWidth: 200, pixelHeight: 200 },
+  "ranch.skin.amber_dragon_blue": { ...standaloneRanchSkin("amber_dragon_blue", "/farm/ranch-expansion/amber_dragon_blue.png"), pixelWidth: 200, pixelHeight: 200 },
+  "kitchen.catalog.ranch-expansion": asset({ domain: "kitchen", entityKind: "ingredient-atlas", entityId: "ranch-expansion", visualState: "catalog-icon", url: "/farm/ranch-expansion/food-atlas.png", pixelWidth: 480, pixelHeight: 480, status: "production", usage: "wired" }),
+
   "shell.scene.field": asset({
     domain: "shell",
     entityKind: "scene-tab",
@@ -834,6 +848,10 @@ export const FARM_ASSET_MANIFEST = {
 export type FarmAssetKey = keyof typeof FARM_ASSET_MANIFEST;
 
 export const RANCH_ANIMAL_ASSET_KEYS = {
+  crab: "ranch.animal.crab",
+  frost_antler_deer: "ranch.animal.frost_antler_deer",
+  amber_dragon: "ranch.animal.amber_dragon",
+
   chicken: "ranch.animal.chicken",
   duck: "ranch.animal.duck",
   quail: "ranch.animal.quail",
@@ -856,6 +874,16 @@ export const RANCH_ANIMAL_ASSET_KEYS = {
 } as const satisfies Record<string, FarmAssetKey>;
 
 export const RANCH_SKIN_ASSET_KEYS = {
+  crab_sakura: "ranch.skin.crab_sakura",
+  crab_celadon: "ranch.skin.crab_celadon",
+  crab_starsand: "ranch.skin.crab_starsand",
+  frost_antler_deer_peachsnow: "ranch.skin.frost_antler_deer_peachsnow",
+  frost_antler_deer_aurora: "ranch.skin.frost_antler_deer_aurora",
+  frost_antler_deer_smokycrystal: "ranch.skin.frost_antler_deer_smokycrystal",
+  amber_dragon_beeswax: "ranch.skin.amber_dragon_beeswax",
+  amber_dragon_cherry: "ranch.skin.amber_dragon_cherry",
+  amber_dragon_blue: "ranch.skin.amber_dragon_blue",
+
   pompompurin: "ranch.skin.pompompurin",
   hachiware: "ranch.skin.hachiware",
   usagi: "ranch.skin.usagi",
@@ -1084,7 +1112,11 @@ function withCatalogFrame(
   };
 }
 
+const RANCH_EXPANSION_FOOD_IDS: readonly string[] = ["crab_roe", "crab_roe_tofu", "crab_roe_noodles", "frost_cheese", "strawberry_frost_cheesecake", "frost_cheese_truffle_potato", "amber_sugar_fat", "amber_pudding", "crispy_amber_pumpkin"];
+
 export function getCookingIngredientAsset(entityId: string): FarmAssetManifestEntry | undefined {
+  const expansionIndex = RANCH_EXPANSION_FOOD_IDS.indexOf(entityId);
+  if (expansionIndex >= 0) return withCatalogFrame("kitchen.catalog.ranch-expansion", "ingredient", entityId, expansionIndex % 3, 3, Math.floor(expansionIndex / 3), 3);
   if (entityId === "fish:any" || entityId.startsWith("fish:")) {
     return withCatalogFrame(
       "kitchen.catalog.dish.fishing-atlas",
@@ -1125,6 +1157,8 @@ export function getCookingIngredientAsset(entityId: string): FarmAssetManifestEn
 }
 
 export function getCookingRecipeAsset(entityId: string): FarmAssetManifestEntry | undefined {
+  const expansionIndex = RANCH_EXPANSION_FOOD_IDS.indexOf(entityId);
+  if (expansionIndex >= 0) return withCatalogFrame("kitchen.catalog.ranch-expansion", "recipe", entityId, expansionIndex % 3, 3, Math.floor(expansionIndex / 3), 3);
   const fishingIndex = FISHING_RECIPE_IDS.indexOf(entityId);
   if (fishingIndex >= 0) {
     return withCatalogFrame(

@@ -8479,6 +8479,7 @@ const LINGYE_SCRIPT = `
         }
     });
 
+    const glimmerExpansionAssets = {"crab_sakura": "/farm/ranch-expansion/crab_sakura.png", "crab_celadon": "/farm/ranch-expansion/crab_celadon.png", "crab_starsand": "/farm/ranch-expansion/crab_starsand.png", "frost_antler_deer_peachsnow": "/farm/ranch-expansion/frost_antler_deer_peachsnow.png", "frost_antler_deer_aurora": "/farm/ranch-expansion/frost_antler_deer_aurora.png", "frost_antler_deer_smokycrystal": "/farm/ranch-expansion/frost_antler_deer_smokycrystal.png", "amber_dragon_beeswax": "/farm/ranch-expansion/amber_dragon_beeswax.png", "amber_dragon_cherry": "/farm/ranch-expansion/amber_dragon_cherry.png", "amber_dragon_blue": "/farm/ranch-expansion/amber_dragon_blue.png"};
     const glimmerTrackAssets = {
         'duck_peach': '/lingye/glimmer/tracks/duck-peach.png',
         'turkey_maple': '/lingye/glimmer/tracks/turkey-maple.png',
@@ -9217,7 +9218,13 @@ const CANDIDATE_RUNTIME_SCRIPT = `
             visual.textContent = '?';
         } else {
             const trackAsset = glimmerTrackAssets[animal.id];
-            if (animal.atlas === 'glimmer.variants' && animal.set && animal.spriteIndex != null) {
+            if (glimmerExpansionAssets[animal.id]) {
+                const image = document.createElement('img');
+                image.src = glimmerExpansionAssets[animal.id];
+                image.alt = animal.name;
+                image.width = 200; image.height = 200; image.draggable = false;
+                visual.append(image);
+            } else if (animal.atlas === 'glimmer.variants' && animal.set && animal.spriteIndex != null) {
                 const column = animal.spriteIndex % 5;
                 const row = Math.floor(animal.spriteIndex / 5);
                 visual.classList.add('candidate2-glimmer-variant-visual');
@@ -9276,6 +9283,15 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         }
         visual.style.setProperty('--glimmer-variant-x', column * 25 + '%');
         visual.style.setProperty('--glimmer-variant-y', row * 100 / 3 + '%');
+        if (glimmerExpansionAssets[variant.id]) {
+            visual.classList.remove('candidate2-glimmer-variant-visual');
+            visual.style.backgroundImage = 'none';
+            const image = document.createElement('img');
+            image.src = glimmerExpansionAssets[variant.id];
+            image.alt = variant.name;
+            image.width = 200; image.height = 200; image.draggable = false;
+            visual.append(image);
+        }
         const caption = document.createElement('figcaption');
         const name = document.createElement('strong');
         name.textContent = variant.name;

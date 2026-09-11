@@ -93,6 +93,10 @@ export const RANCH_LIMITED_SKINS: readonly RanchSkinDefinition[] = [
 ];
 
 export const RANCH_SHOP_ANIMALS: readonly RanchShopAnimal[] = [
+  {"id": "crab", "name": "螃蟹", "shopSection": "animals", "category": "普通", "description": "", "produce": "蟹黄", "produceEveryTicks": 16, "producePrice": 1150, "buyCost": 12000, "unlockCondition": "图鉴集齐 32 种解锁"},
+  {"id": "frost_antler_deer", "name": "霜角鹿", "shopSection": "animals", "category": "奇幻", "description": "", "produce": "霜乳酪", "produceEveryTicks": 28, "producePrice": 4800, "buyCost": 52000, "unlockCondition": "图鉴集齐 58 种解锁"},
+  {"id": "amber_dragon", "name": "琥珀龙", "shopSection": "animals", "category": "奇幻", "description": "", "produce": "琥珀糖脂", "produceEveryTicks": 32, "producePrice": 7500, "buyCost": 80000, "unlockCondition": "图鉴集齐 70 种解锁"},
+
   {
     id: "chicken",
     name: "鸡",
@@ -343,6 +347,10 @@ const RANCH_ORDINARY_VARIANT_IDS = {
   cat: ["cat_tuxedo", "cat_british_blue", "cat_calico"],
   dog: ["dog_corgi", "dog_golden", "dog_samoyed"],
   patrol_goose: ["patrol_goose_sheriff", "patrol_goose_raincoat", "patrol_goose_detective"],
+  crab: ["crab_sakura", "crab_celadon", "crab_starsand"],
+  frost_antler_deer: ["frost_antler_deer_peachsnow", "frost_antler_deer_aurora", "frost_antler_deer_smokycrystal"],
+  amber_dragon: ["amber_dragon_beeswax", "amber_dragon_cherry", "amber_dragon_blue"],
+
 } as const;
 
 export const RANCH_ORDINARY_VARIANT_TARGETS: ReadonlyMap<string, RanchOrdinaryVariantTarget> =
@@ -445,6 +453,8 @@ const GLIMMER_VARIANT_SHEET_URLS = {
 } as const;
 
 export function getRanchVariantSpriteStyle(variant: RanchVariantVisualOption): CSSProperties {
+  const standalone = getRanchSkinAsset(variant.variant_id);
+  if (RANCH_ORDINARY_VARIANT_TARGETS.has(variant.variant_id) && standalone) return { backgroundImage: `url("${standalone.url}")`, backgroundPosition: "center", backgroundSize: "100% 100%" };
   if (
     variant.atlas !== "glimmer.variants" ||
     variant.set === null ||
