@@ -187,6 +187,8 @@ export function projectMysteryMerchant(rawWorld, now, hostFarmName = null, buyer
     approximate_windows: approximateWindows,
     host_farm_doorplate: event.hostFarmId,
     host_farm_name: text(hostFarmName) || null,
+    starts_at: new Date(event.startsAt).toISOString(),
+    discovered_at: event.broadcastedAt === null ? null : new Date(event.broadcastedAt).toISOString(),
     ends_at: new Date(event.endsAt).toISOString(),
     offers: event.offers.map((offer) => ({
         kind: offer.kind,
