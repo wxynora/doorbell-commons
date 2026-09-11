@@ -9,6 +9,7 @@ import type {
 } from "./community-database.js";
 import type { FarmHumanFieldReader } from "./farm-human-client.js";
 import type { FarmLingyeReader } from "./farm-lingye-client.js";
+import type { MysteryMerchantNightService } from "./mystery-merchant-night-service.js";
 import type { MysteryMerchantReminderService } from "./mystery-merchant-reminder-service.js";
 
 export const ACTIVITY_REMINDER_RECONCILE_INTERVAL_MS = 5 * 60 * 1000;
@@ -31,12 +32,13 @@ type ActivityReminderDatabase = Pick<
 
 export interface ActivityReminderServiceOptions {
   database: ActivityReminderDatabase;
-  browserPushService: Pick<BrowserPushService, "sendActivityReminder">;
+  browserPushService?: Pick<BrowserPushService, "sendActivityReminder">;
   registrationAuth: {
     confirmCurrentResidentMembership(residentId: string): Promise<unknown>;
   };
   farmFieldReader: Pick<FarmHumanFieldReader, "readField">;
   farmLingyeReader: Pick<FarmLingyeReader, "readGlimmer">;
+  mysteryMerchantNight?: Pick<MysteryMerchantNightService, "needsReconcile" | "reconcile">;
   mysteryMerchantReminder?: Pick<MysteryMerchantReminderService, "reconcile">;
   now?: () => number;
   onError?: (error: unknown) => void;
@@ -101,10 +103,11 @@ function scheduledByKind(
 
 export class ActivityReminderService {
   readonly #database: ActivityReminderDatabase;
-  readonly #browserPushService: Pick<BrowserPushService, "sendActivityReminder">;
+  readonly #browserPushService: ActivityReminderServiceOptions["browserPushService"];
   readonly #registrationAuth: ActivityReminderServiceOptions["registrationAuth"];
   readonly #farmFieldReader: Pick<FarmHumanFieldReader, "readField">;
   readonly #farmLingyeReader: Pick<FarmLingyeReader, "readGlimmer">;
+  readonly #mysteryMerchantNight: ActivityReminderServiceOptions["mysteryMerchantNight"];
   readonly #mysteryMerchantReminder: ActivityReminderServiceOptions["mysteryMerchantReminder"];
   readonly #now: () => number;
   readonly #onError: (error: unknown) => void;
@@ -119,6 +122,7 @@ export class ActivityReminderService {
     this.#registrationAuth = options.registrationAuth;
     this.#farmFieldReader = options.farmFieldReader;
     this.#farmLingyeReader = options.farmLingyeReader;
+    this.#mysteryMerchantNight = options.mysteryMerchantNight;
     this.#mysteryMerchantReminder = options.mysteryMerchantReminder;
     this.#now = options.now ?? Date.now;
     this.#onError = options.onError ?? (() => undefined);
@@ -232,20 +236,25 @@ export class ActivityReminderService {
     const hasSubscription = this.#database
       .listBrowserPushSubscriptions(residentId)
       .some((subscription) => subscription.homeId === homeId);
-    if (
-      !settings.browserNotificationsEnabled ||
-      !settings.activityRemindersEnabled ||
-      !hasSubscription
-    ) {
-      this.#database.cancelAllScheduledActivityReminders(profile, now);
-      return;
-    }
+    const browserEligible = Boolean(this.#browserPushService &&
+      settings.browserNotificationsEnabled && settings.activityRemindersEnabled && hasSubscription);
+    const nightEligible = this.#mysteryMerchantNight?.needsReconcile() ?? false;
+    if (!browserEligible) this.#database.cancelAllScheduledActivityReminders(profile, now);
+    if (!browserEligible && !nightEligible) return;
     await this.#registrationAuth.confirmCurrentResidentMembership(residentId);
     const farmHumanKey = community.farmBinding.farmHumanKey;
     if (!farmHumanKey) {
       this.#database.cancelAllScheduledActivityReminders(profile, now);
       return;
     }
+    if (nightEligible) {
+      try {
+        await this.#mysteryMerchantNight?.reconcile(profile, farmHumanKey);
+      } catch (error) {
+        this.#onError(error);
+      }
+    }
+    if (!browserEligible) return;
     const input = {
       farmDoorplate: community.farmBinding.farmDoorplate,
       farmHumanKey,
@@ -320,7 +329,7 @@ export class ActivityReminderService {
       now,
     );
     if (due.length === 0) return;
-    const delivered = await this.#browserPushService.sendActivityReminder({
+    const delivered = await this.#browserPushService?.sendActivityReminder({
       residentId,
       homeId,
       title: CROP_MATURED_NOTIFICATION_TITLE,
@@ -369,7 +378,7 @@ export class ActivityReminderService {
       now,
     );
     if (due.length === 0) return;
-    const delivered = await this.#browserPushService.sendActivityReminder({
+    const delivered = await this.#browserPushService?.sendActivityReminder({
       residentId,
       homeId,
       title: GLIMMER_READY_NOTIFICATION_TITLE,

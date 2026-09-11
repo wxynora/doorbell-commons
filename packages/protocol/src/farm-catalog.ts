@@ -568,6 +568,8 @@ const farmCatalogMysteryMerchantPresentSchema = z
     approximate_windows: z.array(farmCatalogMysteryMerchantWindowSchema).length(3),
     host_farm_doorplate: farmCatalogDoorplateSchema,
     host_farm_name: z.string().min(1).nullable(),
+    starts_at: z.iso.datetime(),
+    discovered_at: z.iso.datetime().nullable(),
     ends_at: z.iso.datetime(),
     offers: z.array(farmCatalogMysteryMerchantOfferSchema).min(1),
   })

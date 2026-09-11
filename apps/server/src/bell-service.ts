@@ -350,6 +350,7 @@ export class BellService {
   #emitPendingWakes(residentId: string): void {
     const active = this.#connections.get(residentId);
     if (!active || active.closed) return;
+    this.#emitCancellations(this.#database.mysteryMerchantNightStore.expirePending(residentId, this.#now()));
     const pendingWakes = this.#database.listPendingBellWakes(residentId);
     for (const wake of pendingWakes) {
       if (active.sentWakeIds.has(wake.wakeId)) continue;

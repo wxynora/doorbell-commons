@@ -19,6 +19,7 @@ import {
   type WeatherSeasonPhase,
 } from "@doorbell/protocol";
 import Database from "better-sqlite3";
+import { MysteryMerchantNightStore } from "./mystery-merchant-night-store.js";
 import { MysteryMerchantReminderStore } from "./mystery-merchant-reminder-store.js";
 import { migrateCommunityDatabase } from "./database/community-migrations.js";
 import {
@@ -203,7 +204,8 @@ export type BellWakeReason =
   | "farm_action_list"
   | "career_exam_reminder"
   | "career_job_update"
-  | "reporter_newsroom_work";
+  | "reporter_newsroom_work"
+  | "mystery_merchant";
 
 export type FarmActionListNotificationStatus = "sent" | "all_crossed" | "failed";
 
@@ -1224,6 +1226,7 @@ export class CommunityDatabase {
   readonly humanBulletinStore: HumanBulletinStore;
   readonly residentAvatarStore: ResidentAvatarStore;
   readonly farmLayoutShareStore: FarmLayoutShareStore;
+  readonly mysteryMerchantNightStore: MysteryMerchantNightStore;
   readonly mysteryMerchantReminderStore: MysteryMerchantReminderStore;
   readonly #generateRegistrationCode: () => string;
   readonly #generateSessionToken: () => string;
@@ -1254,6 +1257,7 @@ export class CommunityDatabase {
     this.humanBulletinStore = new HumanBulletinStore(this.#database);
     this.residentAvatarStore = new ResidentAvatarStore(this.#database);
     this.farmLayoutShareStore = new FarmLayoutShareStore(this.#database);
+    this.mysteryMerchantNightStore = new MysteryMerchantNightStore(this.#database);
     this.mysteryMerchantReminderStore = new MysteryMerchantReminderStore(this.#database);
   }
 

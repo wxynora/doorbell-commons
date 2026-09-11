@@ -1,6 +1,7 @@
 import { createFaultReports } from "./fault-reports/collector.js";
 import { ActivityReminderService } from "./activity-reminder-service.js";
 import { FarmDecorationClient } from "./farm-decoration-client.js";
+import { MysteryMerchantNightService } from "./mystery-merchant-night-service.js";
 import { MysteryMerchantReminderService } from "./mystery-merchant-reminder-service.js";
 import { buildApp } from "./app.js";
 import { BellAccessService } from "./bell-access-service.js";
@@ -322,21 +323,21 @@ const browserPushService = serverConfig.browserPush
       onError: reportBrowserPushError,
     })
   : undefined;
-const activityReminderService = browserPushService
-  ? new ActivityReminderService({
-      database,
-      browserPushService,
-      registrationAuth,
-      farmFieldReader: farmHumanReader,
-      farmLingyeReader,
-      mysteryMerchantReminder: new MysteryMerchantReminderService({
-        reader: farmCatalogReader,
-        store: database.mysteryMerchantReminderStore,
-        push: browserPushService,
-      }),
-      onError: reportBrowserPushError,
-    })
-  : undefined;
+const activityReminderService = new ActivityReminderService({
+  database,
+  ...(browserPushService ? { browserPushService,
+    mysteryMerchantReminder: new MysteryMerchantReminderService({
+      reader: farmCatalogReader, store: database.mysteryMerchantReminderStore, push: browserPushService,
+    }),
+  } : {}),
+  registrationAuth,
+  farmFieldReader: farmHumanReader,
+  farmLingyeReader,
+  mysteryMerchantNight: new MysteryMerchantNightService({
+    reader: farmCatalogReader, store: database.mysteryMerchantNightStore, bell: bellService,
+  }),
+  onError: reportBrowserPushError,
+});
 const farmPurchaseRequestService = new FarmPurchaseRequestService({
   database,
   bellNotifier: bellService,
