@@ -1,3 +1,4 @@
+import { ranchSpriteIndexByKind } from "./content-assets.js";
 import { randomUUID } from "node:crypto";
 import {
     glimmer, glimmerVariants, glimmerEncounters, glimmerCoopEvents, glimmerVariantById,
@@ -20,9 +21,7 @@ const GLIMMER_ACHIEVEMENTS = titles.filter((item) => GLIMMER_ACHIEVEMENT_FIELDS.
 const GLIMMER_ACHIEVEMENT_IDS = new Set(GLIMMER_ACHIEVEMENTS.map((item) => item.id));
 const GLIMMER_KIND_IDS = new Set(glimmerVariants.map((item) => item.kindId));
 const CAPTURE_PITY_LIMIT = Math.max(1, Math.floor(Number(glimmer.capturePityLimit) || 20));
-const ANIMAL_INDEX = new Map(animals.map((item, index) => [item.id, index]));
-const PET_INDEX = new Map(pets.map((item, index) => [item.id, animals.length + index]));
-const GOOSE_INDEX = animals.length + pets.length;
+
 
 function cleanCount(value) {
     return Math.max(0, Math.floor(Number(value) || 0));
@@ -748,7 +747,7 @@ export function runGlimmer(farm, worldValue, params, now = Date.now()) {
 
 export function glimmerVariantSpriteInfo(entity, kindId, type = "animal") {
     const variant = ranchVariantById.get(entity?.variantId);
-    const index = type === "animal" ? ANIMAL_INDEX.get(kindId) : type === "pet" ? PET_INDEX.get(kindId) : GOOSE_INDEX;
+    const index = ranchSpriteIndexByKind.get(type === "goose" || type === "patrol_goose" ? "patrol_goose" : kindId);
     return { index, set: variant?.set ?? 0, variant };
 }
 

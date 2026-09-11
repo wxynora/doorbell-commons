@@ -1,3 +1,4 @@
+import { standaloneFarmAssetById } from "../content-assets.js";
 import { advance, kitchenView } from "../engine.js";
 import { cooking, cookingProductById, cookingIngredientById } from "../content.js";
 import { BASE } from "../config.js";
@@ -21,9 +22,10 @@ const cookingItemAtlas2Index = new Map([
     "pork", "soy_sauce", "ginger", "scallion", "butter", "yellow_wine", "tofu",
 ].map((id, index) => [id, index]));
 const cookingItemIndex = new Map([...cooking.products.filter((item) => item.cookable), ...cooking.ingredients]
-    .filter((item) => !cookingItemAtlas2Index.has(item.id))
+    .filter((item) => !cookingItemAtlas2Index.has(item.id) && !standaloneFarmAssetById.has(item.id))
     .map((item, index) => [item.id, index]));
 function cookingItemLayout(itemId) {
+    if (standaloneFarmAssetById.has(itemId)) return { asset: `expansion-${itemId}`, x: 0, y: 0 };
     const atlas2Index = cookingItemAtlas2Index.get(itemId);
     if (atlas2Index !== undefined)
         return { asset: "second", x: atlas2Index % 4, y: Math.floor(atlas2Index / 4) };
@@ -31,6 +33,8 @@ function cookingItemLayout(itemId) {
     return index === undefined ? null : { asset: "main", x: index % 7, y: Math.floor(index / 7) };
 }
 function dishSprite(recipeId, name, className = "") {
+    const asset = standaloneFarmAssetById.get(recipeId);
+    if (asset) return `<img class="dish-thumb ${className}" src="${BASE}/assets/${asset}" alt="${esc(name)}料理小图">`;
     const fishingIndex = fishingRecipeIndex.get(recipeId);
     if (fishingIndex !== undefined)
         return `<span class="dish-sprite fish-dish-sprite ${className}" role="img" aria-label="${esc(name)}料理小图" style="--fish-dish-x:${fishingIndex % 3};--fish-dish-y:${Math.floor(fishingIndex / 3)}"></span>`;
@@ -48,7 +52,7 @@ function cookingItemSprite(itemId, name) {
     const layout = cookingItemLayout(itemId);
     if (!layout)
         return "";
-    return `<span class="cook-pick-icon${layout.asset === "second" ? " second-item-icon" : ""}" role="img" aria-label="${esc(name)}图标" style="--item-x:${layout.x};--item-y:${layout.y}"></span>`;
+    return `<span class="cook-pick-icon${layout.asset === "second" ? " second-item-icon" : layout.asset.startsWith("expansion-") ? ` ${layout.asset}` : ""}" role="img" aria-label="${esc(name)}图标" style="--item-x:${layout.x};--item-y:${layout.y}"></span>`;
 }
 // ——————————————————————————————————————————————————————————————
 // 🍳 料理台：三层像素场景 + 点料入锅；食材/料理实例都使用收取或出锅时锁定的价值。
@@ -182,7 +186,7 @@ export function uiCooking(f, now, key, flash, resultRaw, options = {}) {
       const showRecipeCategory=category=>{for(const tab of recipeTabs)tab.setAttribute("aria-selected",tab.dataset.recipeCategoryTab===category?"true":"false");for(const section of recipeList?.querySelectorAll("[data-recipe-category]")||[])section.hidden=section.dataset.recipeCategory!==category;};
       function removeChoice(index){if(!Number.isInteger(index)||index<0||index>=chosen.length)return;chosen.splice(index,1);render();}
       function render(){hidden.value=JSON.stringify(chosen.map(x=>x.ref));count.textContent=String(chosen.length);start.disabled=chosen.length<2;
-        pot.innerHTML=Array.from({length:5},(_,i)=>{const item=chosen[i];const iconClass=item?(item.asset==='fish'?' fish-item-icon':item.asset==='second'?' second-item-icon':''):'';return item?'<button type="button" class="cook-pot-slot" data-remove="'+i+'" title="取出'+item.name+'" aria-label="从第'+(i+1)+'个槽位取出'+item.name+'"><span class="cook-slot-icon'+iconClass+'" style="--item-x:'+item.x+';--item-y:'+item.y+'" aria-hidden="true"></span></button>':'<span class="cook-pot-slot empty" aria-hidden="true"></span>';}).join("");
+        pot.innerHTML=Array.from({length:5},(_,i)=>{const item=chosen[i];const iconClass=item?(item.asset==='fish'?' fish-item-icon':item.asset==='second'?' second-item-icon':item.asset.startsWith('expansion-')?' '+item.asset:''):'';return item?'<button type="button" class="cook-pot-slot" data-remove="'+i+'" title="取出'+item.name+'" aria-label="从第'+(i+1)+'个槽位取出'+item.name+'"><span class="cook-slot-icon'+iconClass+'" style="--item-x:'+item.x+';--item-y:'+item.y+'" aria-hidden="true"></span></button>':'<span class="cook-pot-slot empty" aria-hidden="true"></span>';}).join("");
         for(const slot of pot.querySelectorAll("[data-remove]"))slot.addEventListener("click",()=>removeChoice(Number(slot.dataset.remove)));
         for(const b of buttons()){const used=chosen.filter(x=>x.key===b.dataset.cookKey).length;b.setAttribute("aria-pressed",used>0?"true":"false");b.disabled=used>=Number(b.dataset.cookStock||1)||chosen.length>=5;}
       }

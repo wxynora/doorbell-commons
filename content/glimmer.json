@@ -40,7 +40,10 @@
     "dream_cat": "starlight_fish_feast",
     "cat": "pan_fried_fish",
     "dog": "tomato_beef_stew",
-    "patrol_goose": "goose_pancake"
+    "patrol_goose": "goose_pancake",
+    "crab": "fish_rice_ball",
+    "frost_antler_deer": "honey_strawberry_jelly",
+    "amber_dragon": "honey_pumpkin_pudding"
   },
   "variants": [
     {"id":"chicken_strawberry","kindId":"chicken","type":"animal","name":"草莓冠鸡","set":1},
@@ -99,7 +102,16 @@
     {"id":"dog_samoyed","kindId":"dog","type":"pet","name":"萨摩耶","set":3},
     {"id":"patrol_goose_sheriff","kindId":"patrol_goose","type":"goose","name":"巡逻鹅·小警长","set":1},
     {"id":"patrol_goose_raincoat","kindId":"patrol_goose","type":"goose","name":"巡逻鹅·黄雨衣","set":2},
-    {"id":"patrol_goose_detective","kindId":"patrol_goose","type":"goose","name":"巡逻鹅·小侦探","set":3}
+    {"id":"patrol_goose_detective","kindId":"patrol_goose","type":"goose","name":"巡逻鹅·小侦探","set":3},
+    {"id": "crab_sakura", "kindId": "crab", "type": "animal", "name": "樱花蟹", "set": 1},
+    {"id": "crab_celadon", "kindId": "crab", "type": "animal", "name": "青瓷蟹", "set": 2},
+    {"id": "crab_starsand", "kindId": "crab", "type": "animal", "name": "星砂蟹", "set": 3},
+    {"id": "frost_antler_deer_peachsnow", "kindId": "frost_antler_deer", "type": "animal", "name": "桃雪鹿", "set": 1},
+    {"id": "frost_antler_deer_aurora", "kindId": "frost_antler_deer", "type": "animal", "name": "极光鹿", "set": 2},
+    {"id": "frost_antler_deer_smokycrystal", "kindId": "frost_antler_deer", "type": "animal", "name": "墨晶鹿", "set": 3},
+    {"id": "amber_dragon_beeswax", "kindId": "amber_dragon", "type": "animal", "name": "蜜蜡龙", "set": 1},
+    {"id": "amber_dragon_cherry", "kindId": "amber_dragon", "type": "animal", "name": "樱珀龙", "set": 2},
+    {"id": "amber_dragon_blue", "kindId": "amber_dragon", "type": "animal", "name": "蓝珀龙", "set": 3}
   ],
   "encounters": [
     {"id":"lost_backpack","name":"跑丢的背包","type":"instant","text":"🎒〔跑丢的背包〕草丛里卡着一只鼓鼓的背包，清单写得很详细，唯独没写主人是谁。你等了一会儿，只等来一张“捡到就是你的”字条。+120 金。","reward":{"kind":"coins","amount":120}},
@@ -121,7 +133,11 @@
     {"id":"stone_sheep","name":"冒充石头的羊","type":"choice","text":"🐑〔冒充石头的羊〕一块毛茸茸的“石头”打了个喷嚏，然后坚持说刚才只是山体活动。","options":{"A":{"label":"为打扰山体活动道歉","text":"“石头”原谅了你，并告诉你一种尚未收录动物喜欢的料理。","reward":{"kind":"favorite"}},"B":{"label":"问它为什么要装石头","text":"它小声说是在躲剪毛，随后塞给你 80 金作为保密费。","reward":{"kind":"coins","amount":80}}}},
     {"id":"dusk_tea_stall","name":"黄昏茶摊","type":"choice","text":"☕〔黄昏茶摊〕摊主把几张沾着爪印的点单纸摊开：“客人没留名字，只能靠脚印猜它们爱吃什么。”","options":{"A":{"label":"帮它整理点单纸","text":"你按脚印把点单纸分好，记下了一种尚未收录动物喜欢的料理。","reward":{"kind":"favorite"}},"B":{"label":"先买一份今日点心","text":"摊主送你一份随机正常料理：“吃饱了再查账。”","reward":{"kind":"dish"}}}},
     {"id":"animal_post_wrong_letter","name":"动物邮局的错件","type":"choice","text":"📮〔动物邮局的错件〕邮差抱着一封只写了“送给最爱这道菜的动物”的信，急得团团转。","options":{"A":{"label":"根据信封上的气味帮忙投递","text":"信顺利送到了。邮差把对应关系抄给你，你记下了一种尚未收录动物喜欢的料理。","reward":{"kind":"favorite"}},"B":{"label":"先退回重写地址","text":"寄件人补写地址时塞来一份随机食材作为谢礼。","reward":{"kind":"ingredient"}}}},
-    {"id":"chicken_meeting","name":"正在开会的鸡","type":"choice","text":"🐔〔正在开会的鸡〕几只鸡围成一圈，严肃讨论“蛋到底算不算员工产出”。看见你后，全场突然安静。","options":{"A":{"label":"坐下旁听会议","text":"会议最终通过了《路人旁听补贴》，你获得一份随机蛋类牧场产物。","reward":{"kind":"egg"}},"B":{"label":"举手发表意见","text":"你刚说到“提高效率”，就被全体鸡一致请出会场。什么也没得到。","reward":{"kind":"none"}}}}
+    {"id":"chicken_meeting","name":"正在开会的鸡","type":"choice","text":"🐔〔正在开会的鸡〕几只鸡围成一圈，严肃讨论“蛋到底算不算员工产出”。看见你后，全场突然安静。","options":{"A":{"label":"坐下旁听会议","text":"会议最终通过了《路人旁听补贴》，你获得一份随机蛋类牧场产物。","reward":{"kind":"egg"}},"B":{"label":"举手发表意见","text":"你刚说到“提高效率”，就被全体鸡一致请出会场。什么也没得到。","reward":{"kind":"none"}}}},
+    {"id": "crab_lost_property", "name": "横着开的失物招领处", "type": "instant", "text": "🦀〔横着开的失物招领处〕一只螃蟹把失物分成了“左边捡的”和“右边捡的”。你问有没有按物品分类，它沉默片刻，把“咨询费”那一栏划掉，退给你 80 金。+80 金。", "reward": {"kind": "coins", "amount": 80}},
+    {"id": "deer_antler_note", "name": "鹿角上的便签", "type": "instant", "text": "🦌〔鹿角上的便签〕一张便签挂在低枝上，纸角留着浅浅的鹿角压痕。上面把某道菜圈了三遍，旁边写着：“下次还吃这个。”你记下了一条动物的口味线索。", "reward": {"kind": "favorite"}},
+    {"id": "dragon_burnt_receipt", "name": "烤过头的收据", "type": "instant", "text": "🐉〔烤过头的收据〕小龙对着收据吹了口热气，想把折痕熨平。纸变成了焦糖色，字没了。摊主叹了口气，把剩下的一份食材交给你：“总得留点能认出来的。”获得随机食材×1。", "reward": {"kind": "ingredient"}},
+    {"id": "moon_clocking_off", "name": "坚持下班的月亮", "type": "choice", "text": "🌙〔坚持下班的月亮〕水洼里的月亮正在往岸边挪：“天上那个还在值班，我是倒影，先走了。”", "options": {"A": {"label": "给它让条路", "text": "倒影顺着水沟溜走，留下一小片银光。你捞起来一看，是 8 枚银币。+8 银。", "reward": {"kind": "silver", "amount": 8}}, "B": {"label": "指给它看另一处水洼", "text": "月亮探头一看，里面也有一个自己。它默默退回原位，决定明天再谈交接。什么也没得到。", "reward": {"kind": "none"}}}}
   ],
   "coopEvents": [
     {"id":"migration_help","name":"给迁徙队补一顿夜宵","kind":"dish","requirement":"一份正常料理"},

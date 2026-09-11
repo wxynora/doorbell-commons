@@ -42,7 +42,10 @@
     { "id": "goat_meat", "name": "山羊肉", "emoji": "🥩", "cookable": true },
     { "id": "turkey_egg", "name": "火鸡蛋", "emoji": "🥚", "cookable": true },
     { "id": "turkey_meat", "name": "火鸡肉", "emoji": "🥩", "cookable": true },
-    { "id": "alpaca_wool", "name": "羊驼毛", "emoji": "🧶", "cookable": false }
+    { "id": "alpaca_wool", "name": "羊驼毛", "emoji": "🧶", "cookable": false },
+    {"id": "crab_roe", "name": "蟹黄", "emoji": "🦀", "cookable": true},
+    {"id": "frost_cheese", "name": "霜乳酪", "emoji": "🧀", "cookable": true},
+    {"id": "amber_sugar_fat", "name": "琥珀糖脂", "emoji": "🍯", "cookable": true}
   ],
   "ingredients": [
     { "id": "salt", "name": "盐", "emoji": "🧂", "price": 5, "staple": true, "dailyBuyLimit": 10 },
@@ -161,6 +164,12 @@
     { "id": "red_braised_pork", "name": "红烧肉", "rarity": "SR", "category": "热菜", "method_id": "stew", "tool_id": null, "ingredients": ["pork", "soy_sauce", "sugar", "spice"] },
     { "id": "custard_bun", "name": "奶黄包", "rarity": "SR", "category": "甜品点心", "method_id": "steam", "tool_id": "steamer", "ingredients": ["chicken_egg", "fresh_milk", "flour", "butter", "sugar"] },
     { "id": "dongpo_pork", "name": "东坡肉", "rarity": "SSR", "category": "热菜", "method_id": "stew", "tool_id": null, "ingredients": ["pork", "soy_sauce", "sugar", "yellow_wine", "scallion"] },
-    { "id": "truffle_butter_steak", "name": "松露黄油牛排", "rarity": "SSR", "category": "热菜", "method_id": "pan-fry", "tool_id": null, "ingredients": ["beef", "truffle", "butter", "spice"] }
+    { "id": "truffle_butter_steak", "name": "松露黄油牛排", "rarity": "SSR", "category": "热菜", "method_id": "pan-fry", "tool_id": null, "ingredients": ["beef", "truffle", "butter", "spice"] },
+    {"id": "crab_roe_tofu", "name": "蟹黄豆腐", "rarity": "SR", "category": "热菜", "method_id": "stew", "tool_id": null, "ingredients": ["crab_roe", "tofu", "ginger", "salt"]},
+    {"id": "crab_roe_noodles", "name": "蟹黄拌面", "rarity": "SR", "category": "主食小吃", "method_id": "stew", "tool_id": null, "ingredients": ["crab_roe", "flour", "scallion", "soy_sauce"]},
+    {"id": "strawberry_frost_cheesecake", "name": "草莓冻乳酪", "rarity": "SSR", "category": "甜品点心", "method_id": "dessert", "tool_id": null, "ingredients": ["frost_cheese", "strawberry", "fresh_milk", "sugar"]},
+    {"id": "frost_cheese_truffle_potato", "name": "霜酪松露焗薯", "rarity": "SSR", "category": "热菜", "method_id": "roast", "tool_id": "oven", "ingredients": ["frost_cheese", "truffle", "potato", "butter"]},
+    {"id": "amber_pudding", "name": "琥珀布丁", "rarity": "SP", "category": "甜品点心", "method_id": "dessert", "tool_id": null, "ingredients": ["amber_sugar_fat", "chicken_egg", "fresh_milk", "vanilla"]},
+    {"id": "crispy_amber_pumpkin", "name": "脆壳烤南瓜", "rarity": "SP", "category": "甜品点心", "method_id": "roast", "tool_id": "oven", "ingredients": ["amber_sugar_fat", "pumpkin", "butter", "salt"]}
   ]
 }

@@ -1,4 +1,5 @@
-import { animals, ranchSkinById, ranchVariantById } from "../content.js";
+import { ranchSpriteIndexByKind, standaloneFarmAssetById } from "../content-assets.js";
+import { animals, pets, ranchSkinById, ranchVariantById } from "../content.js";
 import { BASE } from "../config.js";
 import { isQixiLantern2026Active } from "../qixi-lantern-2026.js";
 
@@ -10,8 +11,12 @@ export function esc(s) {
 export const num = (n) => (n ?? 0).toLocaleString("en-US");
 const alpacaSpriteIndex = animals.findIndex((kind) => kind.id === "alpaca");
 export function ranchSprite(index, name, extraClass = "", variantId) {
-    const col = index % 5;
-    const row = Math.floor(index / 5);
+    const kindId = animals[index]?.id ?? pets[index - animals.length]?.id ?? "patrol_goose";
+    const asset = standaloneFarmAssetById.get(variantId ?? kindId);
+    if (asset) return `<span class="ranch-sprite ranch-sprite-skin ${esc(extraClass)}" role="img" aria-label="${esc(name)}像素画" style="--ranch-sheet:url('${BASE}/assets/${asset}');background-size:100% 100%;background-position:center"></span>`;
+    const atlasIndex = ranchSpriteIndexByKind.get(kindId) ?? index;
+    const col = atlasIndex % 5;
+    const row = Math.floor(atlasIndex / 5);
     const variant = ranchVariantById.get(variantId);
     const skin = ranchSkinById.get(variantId);
     const classes = [extraClass, index === alpacaSpriteIndex && !variant ? "ranch-sprite-alpaca" : "", variant ? "ranch-sprite-variant" : "", skin ? "ranch-sprite-skin" : ""].filter(Boolean).join(" ");
@@ -412,7 +417,11 @@ button.cook-pot-slot:active{background:#fff1b8}
 .cook-pick{position:relative;appearance:none;min-height:72px;padding:8px;border:1px solid var(--line);border-radius:13px;background:#fffdf7;color:var(--ink);font:inherit;cursor:pointer;text-align:center;transition:transform .14s ease,border-color .14s ease,box-shadow .14s ease}
 .cook-pick:hover{transform:translateY(-2px);border-color:#e6a854;box-shadow:0 8px 16px #67401d22}.cook-pick:focus-visible{outline:2px solid #d58b35;outline-offset:2px}
 .cook-pick[aria-pressed="true"]{border-color:#d58b35;background:#fff0cf;box-shadow:0 0 0 2px #e3a44f33 inset}
-.cook-pick-icon{display:block;width:42px;height:42px;margin:0 auto 3px;background:url("${BASE}/assets/cooking/ingredient-atlas.webp?v=20260806a") calc(var(--item-x)*16.666667%) calc(var(--item-y)*20%)/700% 600% no-repeat;image-rendering:pixelated}.cook-pick-name{display:block;font-size:12px;font-weight:700}.cook-pick-stock{display:block;font-size:10px;color:var(--ink-soft)}
+.cook-pick-icon{display:block;width:42px;height:42px;margin:0 auto 3px;background:url("${BASE}/assets/cooking/ingredient-atlas.webp?v=20260806a") calc(var(--item-x)*16.666667%) calc(var(--item-y)*20%)/700% 600% no-repeat;image-rendering:pixelated}
+.cook-slot-icon.expansion-crab_roe,.cook-pick-icon.expansion-crab_roe{background-image:url("${BASE}/assets/ranch-expansion/crab_roe.png");background-size:contain;background-position:center;background-repeat:no-repeat}
+.cook-slot-icon.expansion-frost_cheese,.cook-pick-icon.expansion-frost_cheese{background-image:url("${BASE}/assets/ranch-expansion/frost_cheese.png");background-size:contain;background-position:center;background-repeat:no-repeat}
+.cook-slot-icon.expansion-amber_sugar_fat,.cook-pick-icon.expansion-amber_sugar_fat{background-image:url("${BASE}/assets/ranch-expansion/amber_sugar_fat.png");background-size:contain;background-position:center;background-repeat:no-repeat}
+.cook-pick-name{display:block;font-size:12px;font-weight:700}.cook-pick-stock{display:block;font-size:10px;color:var(--ink-soft)}
 .cook-slot-icon.second-item-icon,.cook-pick-icon.second-item-icon{background-image:url("${BASE}/assets/cooking/ingredient-atlas-2.webp?v=20260810a");background-position:calc(var(--item-x)*33.333333%) calc(var(--item-y)*100%);background-size:400% 200%}
 .cook-pick-qty{position:absolute;right:5px;top:5px;min-width:25px;height:21px;display:grid;place-items:center;padding:0 5px;border-radius:999px;background:#713b2f;color:#fff8e7;font:800 12px/1 system-ui;box-shadow:0 2px 5px #32160844;pointer-events:none}
 .cook-recipe-list{max-height:320px;overflow-y:auto;overscroll-behavior:contain;padding-right:3px}

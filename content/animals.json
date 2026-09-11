@@ -256,5 +256,8 @@
     "buyCost": 65000,
     "unlockCodex": 64,
     "unlockCond": "图鉴集齐 64 种解锁"
-  }
+  },
+  {"id": "crab", "name": "螃蟹", "emoji": "🦀", "desc": "", "roam": "", "category": "普通", "produceId": "crab_roe", "produce": "蟹黄", "produceEveryTicks": 16, "producePrice": 1150, "buyCost": 12000, "unlockCodex": 32, "unlockCond": "图鉴集齐 32 种解锁"},
+  {"id": "frost_antler_deer", "name": "霜角鹿", "emoji": "🦌", "desc": "", "roam": "", "category": "奇幻", "produceId": "frost_cheese", "produce": "霜乳酪", "produceEveryTicks": 28, "producePrice": 4800, "buyCost": 52000, "unlockCodex": 58, "unlockCond": "图鉴集齐 58 种解锁"},
+  {"id": "amber_dragon", "name": "琥珀龙", "emoji": "🐉", "desc": "", "roam": "", "category": "奇幻", "produceId": "amber_sugar_fat", "produce": "琥珀糖脂", "produceEveryTicks": 32, "producePrice": 7500, "buyCost": 80000, "unlockCodex": 70, "unlockCond": "图鉴集齐 70 种解锁"}
 ]
