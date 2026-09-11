@@ -5,6 +5,20 @@
  * directory scans from becoming an implicit asset lookup protocol.
  */
 export const FARM_ASSET_SOURCE_URLS = {
+  "/farm/ranch-expansion/amber_dragon_blue.png": new URL("../../public/farm/ranch-expansion/amber_dragon_blue.png", import.meta.url).href,
+  "/farm/ranch-expansion/crab_sakura.png": new URL("../../public/farm/ranch-expansion/crab_sakura.png", import.meta.url).href,
+  "/farm/ranch-expansion/crab_celadon.png": new URL("../../public/farm/ranch-expansion/crab_celadon.png", import.meta.url).href,
+  "/farm/ranch-expansion/amber_dragon.png": new URL("../../public/farm/ranch-expansion/amber_dragon.png", import.meta.url).href,
+  "/farm/ranch-expansion/frost_antler_deer.png": new URL("../../public/farm/ranch-expansion/frost_antler_deer.png", import.meta.url).href,
+  "/farm/ranch-expansion/crab_starsand.png": new URL("../../public/farm/ranch-expansion/crab_starsand.png", import.meta.url).href,
+  "/farm/ranch-expansion/amber_dragon_beeswax.png": new URL("../../public/farm/ranch-expansion/amber_dragon_beeswax.png", import.meta.url).href,
+  "/farm/ranch-expansion/frost_antler_deer_peachsnow.png": new URL("../../public/farm/ranch-expansion/frost_antler_deer_peachsnow.png", import.meta.url).href,
+  "/farm/ranch-expansion/crab.png": new URL("../../public/farm/ranch-expansion/crab.png", import.meta.url).href,
+  "/farm/ranch-expansion/frost_antler_deer_aurora.png": new URL("../../public/farm/ranch-expansion/frost_antler_deer_aurora.png", import.meta.url).href,
+  "/farm/ranch-expansion/amber_dragon_cherry.png": new URL("../../public/farm/ranch-expansion/amber_dragon_cherry.png", import.meta.url).href,
+  "/farm/ranch-expansion/frost_antler_deer_smokycrystal.png": new URL("../../public/farm/ranch-expansion/frost_antler_deer_smokycrystal.png", import.meta.url).href,
+  "/farm/ranch-expansion/food-atlas.png": new URL("../../public/farm/ranch-expansion/food-atlas.png", import.meta.url).href,
+
   "/farm/animals/animal-codex-atlas.png": new URL(
     "./assets/animals/animal-codex-atlas.png",
     import.meta.url,
