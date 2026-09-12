@@ -1,3 +1,5 @@
+import { handleDoorbellGameEconomyBalances, handleDoorbellGameEconomySettle } from "./game-economy.js";
+import { handleDoorbellGameReaction } from "./game-reaction.js";
 import { handleDoorbellHumanFarmDecorations } from "./farm-decoration.js";
 import {
     handleDoorbellHumanBulletinAck,
@@ -68,8 +70,12 @@ import { handleDoorbellDailyWeather } from "./daily-weather.js";
 import { handleDoorbellDailyVoice } from "./daily-voice.js";
 import { handleDoorbellDailyCommentAuthor } from "./daily-comment-author.js";
 import { handleDoorbellHumanNpcRead, handleDoorbellHumanNpcInteract } from "./npc.js";
+import {
+    handleDoorbellHumanGachaAction,
+    handleDoorbellHumanGachaRead,
+} from "./gacha.js";
 
-export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExecutor, careerBenefitsForFarm, constableInterviewRuntime) {
+export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExecutor, careerBenefitsForFarm, constableInterviewRuntime, gachaRuntime) {
     return async function handleDoorbellInternal(req, res, parts, method) {
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "lingye-daily" &&
             parts[3] === "comment-author" && parts.length === 4) {
@@ -249,6 +255,14 @@ export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExe
             await handleDoorbellHumanCatalogRead(req, res, method);
             return true;
         }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "gacha" && parts[4] === "read" && parts.length === 5) {
+            await handleDoorbellHumanGachaRead(req, res, method, gachaRuntime);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "gacha" && parts[4] === "action" && parts.length === 5) {
+            await handleDoorbellHumanGachaAction(req, res, method, gachaRuntime);
+            return true;
+        }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "catalog" && parts[4] === "shop" && parts[5] === "open" && parts.length === 6) {
             await handleDoorbellHumanFarmShopOpen(req, res, method);
             return true;
@@ -349,6 +363,15 @@ export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExe
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "field" && parts[4] === "upgrade" && parts.length === 5) { await handleDoorbellHumanLandUpgrade(req, res, method); return true; }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "welcome-reward" && parts.length === 3) {
             await handleDoorbellWelcomeReward(req, res, method);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "game-economy" && parts.length === 4 && ["balances", "settle"].includes(parts[3])) {
+            const handler = parts[3] === "balances" ? handleDoorbellGameEconomyBalances : handleDoorbellGameEconomySettle;
+            await handler(req, res, method, constableInterviewRuntime);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "game-reaction" && parts.length === 3) {
+            await handleDoorbellGameReaction(req, res, method, constableInterviewRuntime);
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "farm-creation" && parts.length === 3) {

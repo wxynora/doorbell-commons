@@ -817,6 +817,7 @@ export function createLingyeWorldBackend(database, options) {
     };
     const economyCommands = {
             importLegacyBalances: (input) => atomic(() => economy.importLegacyBalances(input)),
+            settleGame: (input) => atomic(() => economy.settleGame(input)),
             creditFromSystem: (input) => atomic(() => economy.creditFromSystem(input)),
             chargeToSystem: (input) => atomic(() => economy.chargeToSystem(input)),
             reserveSystemGold: (input) => atomic(() => economy.reserveSystemGold(input)),
@@ -1196,6 +1197,7 @@ export function createLingyeWorldBackend(database, options) {
     const trustedSystemCommands = Object.freeze({
         importLegacyBalances: economyCommands.importLegacyBalances,
         applyFarmBalanceChanges: (input) => atomic(() => economy.applyFarmBalanceChanges(input)),
+        settleGame: economyCommands.settleGame,
         creditFromSystem: economyCommands.creditFromSystem,
         chargeToSystem: economyCommands.chargeToSystem,
         reserveSystemGold: economyCommands.reserveSystemGold,

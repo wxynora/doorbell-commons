@@ -14,7 +14,15 @@ import { onTaskEvent } from "./tasks.js";
 import { bumpDaily, recordSuccessfulWatering } from "./daily.js";
 import { checkTitles } from "./titles.js";
 import { allUgc } from "./ugc.js";
-import { qixiLantern2026 } from "./content.js";
+import { FARM_DECORATION_CATALOG } from "./domain/farm-decoration/catalog.js";
+import {
+    cooking,
+    cookingIngredients,
+    cookingRecipes,
+    crops,
+    materials,
+    qixiLantern2026,
+} from "./content.js";
 import { PublicSyncError } from "./public-sync.js";
 import { runFishing } from "./fishing.js";
 import { runGlimmer } from "./glimmer.js";
@@ -24,6 +32,7 @@ import { isQixiLantern2026Active, qixiLantern2026StatusText, reconcileQixiLanter
 import { AGENT_HEADERS, RequestBodyError, clientIp, jsonOut, readBody, smartParams, textOut } from "./server/http.js";
 import { createAssetHandler } from "./server/assets.js";
 import { createDoorbellInternalHandler, internalServiceError, legacyAgentAccessRevoked } from "./server/doorbell-internal.js";
+import { createDoorbellGachaRuntime } from "./server/doorbell/gacha.js";
 import { handleSyncRoute } from "./server/sync.js";
 import { createLegacyMcpHandler } from "./server/legacy-mcp.js";
 import { handleLegacyHumanRoute } from "./server/legacy-human/router.js";
@@ -945,6 +954,18 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
         onReporterPublication: () => rescheduleReporterEvaluation(),
     });
     activeLingyeWorldBackend = lingyeWorldBackend;
+    const gachaRuntime = createDoorbellGachaRuntime({
+        database: lingyeWorldDatabase,
+        backend: lingyeWorldBackend,
+        catalog: {
+            crops,
+            materials,
+            decorations: FARM_DECORATION_CATALOG,
+            cooking,
+            cookingIngredients,
+            cookingRecipes,
+        },
+    });
     const balanceCoordinator = createLingyeFarmBalanceCoordinator(lingyeWorldDatabase, lingyeWorldBackend, {
         beforeWorldWrite: (input) => recordPendingLingyeNpcFarmBusiness(lingyeWorldDatabase, input),
     });
@@ -1152,6 +1173,7 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
         lingyeActionExecutor,
         doorbellCareerBenefitsForFarm,
         { database: lingyeWorldDatabase, backend: lingyeWorldBackend, economyRules: lingyeEconomyRules },
+        gachaRuntime,
     );
     const stopP3Scheduler = startRegisteredP3Scheduler(lingyeWorldDatabase);
     const stopNatureScheduler = startNatureRuntimeScheduler();

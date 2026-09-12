@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { EconomyError } from "./economy-errors.js";
+import { applyGameSettlement, validateGameSettlementInput } from "./game-settlement.js";
 const DAY_MS = 86_400_000;
 const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000;
 const GOLD_PER_SILVER = 500;
@@ -268,6 +269,15 @@ export class EconomyService {
             this.#contractEvent(journal, "farm_balance_operation", input.businessReference, "applied", payload);
             return changes.map((change) => this.getAccount(change.residentId));
         });
+    }
+    settleGame(input) {
+        const settlement = validateGameSettlementInput(input);
+        const commandKey = `game.settlement:${settlement.settlementId}`;
+        return this.#command("game.settle", commandKey, commandKey, settlement, (journal, now) => applyGameSettlement(settlement, {
+            getAccount: (residentId) => this.getAccount(residentId),
+            changeSilver: (residentId, delta) => this.#changeAvailable(journal, residentId, "silver", delta, now),
+            systemSilver: (delta) => this.#systemEntry(journal, "game_settlement", "silver", delta),
+        }));
     }
     creditFromSystem(input) {
         this.#assertReceiptNotProvided(input);

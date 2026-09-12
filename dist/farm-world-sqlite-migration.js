@@ -20,6 +20,7 @@ const WORLD_FORMAT = "aifarm-world";
 const WORLD_VERSION = 1;
 
 const HUMAN_RECEIPT_FIELDS = Object.freeze([
+    "doorbellGachaReceipts",
     "doorbellHumanFarmDecorationReceipts",
     "doorbellHumanCropCodexActionReceipts",
     "doorbellHumanExpeditionActionReceipts",
