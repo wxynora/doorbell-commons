@@ -1,10 +1,5 @@
 import * as T from 'three';
 import {defaultSlots,defaultMaterials,characters} from './interaction-slots.js';
-const catalogs=new Map();
-async function poseFor(character,poseId){
- if(!catalogs.has(character.id))catalogs.set(character.id,import('./'+character.poseCatalog).then(m=>m.poses));
- return (await catalogs.get(character.id)).find(p=>p.id===poseId);
-}
 function applyMask(material,mask){
  if(!mask?.enabled)return;
  material.onBeforeCompile=shader=>{
@@ -23,9 +18,9 @@ export function createResidents({scene,draw}){
  function remove(id){const mesh=visible.get(id);if(!mesh)return false;scene.remove(mesh);mesh.geometry.dispose();mesh.material.map?.dispose();mesh.material.dispose();visible.delete(id);return true;}
  async function loadResident(person,entry){
    const slot=defaultSlots.find(s=>s.slotId===person.slotId),character=characters.find(c=>c.doorplate===person.doorplate);
-   const pose=slot&&character?await poseFor(character,slot.pose):null;
+   const poseSrc=slot&&character?`./poses${character.id==='du'?'':'-'+character.id}/${slot.pose}.png`:null;
    if(disposed||desired.get(person.residentId)!==entry)return;
-   const src=pose?.src||(!slot?person.avatarSrc:null);
+   const src=poseSrc||(!slot?person.avatarSrc:null);
    if(!src){if(remove(person.residentId))draw();return;}
    const key=JSON.stringify([src,person.slotId,person.position]);
    if(visible.get(person.residentId)?.userData.key===key)return;
