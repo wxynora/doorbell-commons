@@ -30,6 +30,10 @@ import {
 import { LoungeChatWakeService } from "./lounge-chat-wake-service.js";
 import { LoungeGamePresenceAdapter } from "./lounge-game-presence.js";
 import { LoungeService } from "./lounge-service.js";
+import { LoungePetService } from "./lounge-pet/service.js";
+import { LoungeGachaViewOptions } from "./lounge-gacha/gacha-view-options.js";
+import type { LoungeGachaReader } from "./lounge-gacha/gacha-client.js";
+import type { LoungePetRewards } from "./lounge-pet/client.js";
 import { LoungeTools } from "./lounge-tools.js";
 import type { RegistrationAuthService } from "./registration-auth.js";
 
@@ -55,6 +59,7 @@ export type LoungeRuntimeBell = Pick<
 export type LoungeChatRuntimeLoungeService = Pick<LoungeService, "readSnapshotForResident"> & {
   enter(input: Parameters<LoungeService["enter"]>[0]): unknown;
   chooseArea(input: Parameters<LoungeService["chooseArea"]>[0]): unknown;
+  leave(residentId: string): unknown;
 };
 
 /** Runtime state shared by the chat adapter and the actual lounge scene. */
@@ -129,7 +134,7 @@ export class LoungeChatRuntime implements LoungeChatRuntimePort {
     this.#notifySessionChanged(residentId);
     // A game-owned presence is authoritative and must stay where the game
     // placed it. The trusted guard also covers this expiry path.
-    if (await this.canChat(residentId)) this.#moveConversationToIdle(residentId);
+    if (await this.canChat(residentId)) this.#leaveLounge(residentId);
     return true;
   }
 
@@ -143,7 +148,6 @@ export class LoungeChatRuntime implements LoungeChatRuntimePort {
     if (!(await this.canChat(residentId))) return null;
 
     const existing = this.#sessionStore.active(residentId, at);
-    if (existing) return existing;
 
     const snapshot = this.#loungeService.readSnapshotForResident(residentId);
     const presence = currentPresence(snapshot, residentId);
@@ -151,6 +155,8 @@ export class LoungeChatRuntime implements LoungeChatRuntimePort {
     if (presence?.area_id !== "conversation") {
       this.#loungeService.chooseArea({ residentId, areaId: "conversation" });
     }
+
+    if (existing) return existing;
 
     const session = this.#sessionStore.enter(
       residentId,
@@ -174,7 +180,7 @@ export class LoungeChatRuntime implements LoungeChatRuntimePort {
       this.#bumpLeaseRevision(residentId);
       this.#notifySessionChanged(residentId);
     }
-    if (await this.canChat(residentId)) this.#moveConversationToIdle(residentId);
+    if (await this.canChat(residentId)) this.#leaveLounge(residentId);
     return hadLease;
   }
 
@@ -182,12 +188,15 @@ export class LoungeChatRuntime implements LoungeChatRuntimePort {
     const at = this.#now();
     await this.expire(residentId, at);
     const session = this.#sessionStore.active(residentId, at);
-    if (!session) return null;
+    if (!session || !(await this.canChat(residentId))) return null;
     const presence = currentPresence(
       this.#loungeService.readSnapshotForResident(residentId),
       residentId,
     );
-    return presence?.area_id === "conversation" ? session : null;
+    if (presence?.area_id !== "conversation") {
+      this.#loungeService.chooseArea({ residentId, areaId: "conversation" });
+    }
+    return session;
   }
 
   #readChatMode(residentId: string): LoungeChatMode {
@@ -196,10 +205,8 @@ export class LoungeChatRuntime implements LoungeChatRuntimePort {
     return this.#settings.getHumanSettings(community.home.homeId).chatMode ?? "natural";
   }
 
-  #moveConversationToIdle(residentId: string): void {
-    const snapshot = this.#loungeService.readSnapshotForResident(residentId);
-    if (currentPresence(snapshot, residentId)?.area_id !== "conversation") return;
-    this.#loungeService.chooseArea({ residentId, areaId: "idle" });
+  #leaveLounge(residentId: string): void {
+    this.#loungeService.leave(residentId);
   }
 
   #bumpLeaseRevision(residentId: string): void {
@@ -222,6 +229,8 @@ export interface LoungeRuntimeOptions {
   invitationFormatter: LoungeGameInvitationFormatter;
   turnFormatter: GameTurnWakeFormatter;
   reactionCharge: ReactionCharge;
+  petRewards?: LoungePetRewards;
+  gachaReader?: LoungeGachaReader;
   nameOf(playerId: string): Promise<string>;
   now?: () => number;
   onSessionChanged?: LoungeChatSessionChanged;
@@ -359,6 +368,10 @@ export function createLoungeRuntime(options: LoungeRuntimeOptions) {
     wakes: database.loungeWakeStore,
     bell: options.bell,
     message: options.chatWakeMessage,
+    currentMode: (residentId) => {
+      const community = database.findActiveHumanCommunityByResidentId(residentId);
+      return community ? database.getHumanSettings(community.home.homeId).chatMode ?? "natural" : "natural";
+    },
     canChat,
     now,
     onError: options.onError,
@@ -391,6 +404,6 @@ export function createLoungeRuntime(options: LoungeRuntimeOptions) {
     turnWakes,
     reactionHub,
     reactionService,
-    tools: new LoungeTools(lounge, say, game),
+    tools: new LoungeTools(lounge, say, game, options.petRewards ? new LoungePetService(database, lounge, options.petRewards, now) : undefined, options.gachaReader ? new LoungeGachaViewOptions(database, options.gachaReader) : undefined),
   };
 }

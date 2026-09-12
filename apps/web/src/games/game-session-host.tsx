@@ -12,6 +12,7 @@ import {FlyingChessPage} from "./flying-chess/flying-chess-page";
 import {MonopolyPage} from "./monopoly/monopoly-page";
 import {MahjongPage} from "./mahjong/mahjong-page";
 import "./game-session-host.css";
+import {gamePlayerProfiles} from './game-player-names';
 
 export interface GameSessionHostProps {
   roomId:string;
@@ -30,8 +31,9 @@ export function GameSessionHost(props:GameSessionHostProps){
 }
 const pages={uno:UnoPage,doudizhu:DoudizhuPage,"leaf-game":LeafGamePage,"flying-chess":FlyingChessPage,monopoly:MonopolyPage,mahjong:MahjongPage};
 const projection=(game:unknown)=>game as {viewer_id?:string;revision?:number;phase?:string};
-function Session({roomId,viewerId,profiles,watchOnly=false,transport=watchOnly?ownerWatchClient:gameSessionClient,reactions,onExit,onNewTable}:GameSessionHostProps){
+function Session({roomId,viewerId,profiles:registeredProfiles,watchOnly=false,transport=watchOnly?ownerWatchClient:gameSessionClient,reactions,onExit,onNewTable}:GameSessionHostProps){
   const [room,setRoom]=useState<SessionRoom|null>(null);
+  const profiles=useMemo(()=>gamePlayerProfiles(room?.seats??[],registeredProfiles),[room?.seats,registeredProfiles]);
   const current=useRef<SessionRoom|null>(null);
   const active=useRef(true);
   const [connected,setConnected]=useState(false);

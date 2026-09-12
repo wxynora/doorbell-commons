@@ -1,7 +1,10 @@
+import { loungeDisplayName, loungeHumanName } from "./lounge-display-name.js";
 import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 import { PythonGameEngineAdapter } from './games/engine-adapter.js';
 import { GameEconomyClient } from './games/game-economy-client.js';
+import { LoungeGachaClient } from "./lounge-gacha/gacha-client.js";
+import { LoungePetClient } from "./lounge-pet/client.js";
 import { GameReactionClient } from './games/game-reaction-client.js';
 import { createLoungeRuntime, type LoungeRuntimeOptions } from './lounge-runtime.js';
 
@@ -21,13 +24,15 @@ export function launchLounge(path:string|undefined, options:Pick<LoungeRuntimeOp
   return createLoungeRuntime({
     database:options.database,registrationAuth:options.registrationAuth,bell:options.bell,onError:options.onError,
     engine:new PythonGameEngineAdapter(config),economy:new GameEconomyClient(options.farm),
+    petRewards:new LoungePetClient(options.farm),
+    gachaReader:new LoungeGachaClient(options.farm),
     reactionCharge:new GameReactionClient(options.farm),chatWakeMessage:config.chatWakeMessage,
-    invitationFormatter:input=>format(config.invitationMessage,{sender:input.fromDisplayName,game:names[input.kind]!}),
+    invitationFormatter:input=>format(config.invitationMessage,{sender:loungeDisplayName(input.fromDisplayName),game:names[input.kind]!}),
     turnFormatter:input=>input.message,
     nameOf:async playerId=>{
       const community=options.database.listActiveHumanCommunities().find(c=>playerId===`resident:${c.resident.residentId}`||playerId===`human:${c.account.accountId}`);
       if(!community)throw new Error('player_not_active');
-      return playerId.startsWith('human:') ? options.humanName(community.resident.residentId) : community.resident.residentName;
+      return playerId.startsWith('human:') ? loungeHumanName(community.resident.residentName) : loungeDisplayName(community.resident.residentName);
     },
   });
 }

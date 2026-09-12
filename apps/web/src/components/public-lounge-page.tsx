@@ -306,9 +306,8 @@ export function PublicLoungePage({
   const issue = loadState.stage === "error" ? loadState.issue : null;
   const chatSnapshot = loadState.stage === "ready" ? loadState.snapshot : null;
   const gameProfiles = useMemo(() => ({
-    ...Object.fromEntries((chatSnapshot?.presence ?? []).map(p => [`resident:${p.resident_id}`, { name: p.resident_name }])),
-    ...(gameViewerId ? { [gameViewerId]: { name: "你" } } : {}),
-  }), [chatSnapshot?.presence, gameViewerId]);
+    ...Object.fromEntries((chatSnapshot?.residents ?? []).map(p => [`resident:${p.resident_id}`, { name: p.resident_name }])),
+  }), [chatSnapshot?.residents]);
   const returnFromGame = () => { setGameRoomId(null); setWatchOnly(false); setReloadKey(key => key + 1); };
   const standingResidentIds = useMemo(
     () => [

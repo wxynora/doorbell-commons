@@ -46,6 +46,7 @@ function publicSeat(seat: GameSeat): GameSeat {
   return {
     playerId: seat.playerId,
     controllerType: seat.controllerType,
+    ...(seat.residentId ? { residentId: seat.residentId } : {}),
     ready: seat.ready,
   };
 }

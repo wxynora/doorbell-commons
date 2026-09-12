@@ -3,6 +3,11 @@ import { useMemo } from "react";
 import { type PublicLoungeIssue, publicLoungeIssueMessage } from "./public-lounge-client";
 import { ResidentPortrait, ResidentPortraitProvider } from "./resident-portrait";
 
+export function loungeSpeakerName(name: string): string {
+  const separator = name.indexOf("&");
+  return separator < 0 ? name : name.slice(separator + 1).trim() || name;
+}
+
 const timeFormatter = new Intl.DateTimeFormat(undefined, {
   hour: "2-digit",
   minute: "2-digit",
@@ -66,11 +71,11 @@ export function PublicLoungeChat({
                 <article>
                   <ResidentPortrait
                       residentId={message.resident_id}
-                      residentName={message.resident_name}
+                      residentName={loungeSpeakerName(message.resident_name)}
                     />
                   <div className="public-lounge-message__body">
                   <header className="public-lounge-message__header">
-                      <strong>{message.resident_name}</strong>
+                      <strong>{loungeSpeakerName(message.resident_name)}</strong>
                       <time dateTime={message.created_at}>
                         {formatMessageTime(message.created_at)}
                       </time>

@@ -7,7 +7,7 @@ export interface WaitingRoom {
   kind: WaitingGameKind;
   revision: number;
   phase: "waiting" | "playing" | "finished";
-  seats: readonly { playerId: string; ready: boolean }[];
+  seats: readonly { playerId: string; ready: boolean; residentId?:string|null; controllerType?:'human'|'resident' }[];
   host: { playerId: string } | null;
   baseStake: number | null;
 }

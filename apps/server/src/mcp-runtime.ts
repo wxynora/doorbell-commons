@@ -1,3 +1,5 @@
+import { LoungeGachaViewError } from "./lounge-gacha/gacha-view-options.js";
+import { LoungePetToolError } from "./lounge-pet/service.js";
 import { LoungeChatToolError } from "./lounge-chat-tool.js";
 import { GameStateError } from "./games/types.js";
 import { LoungeGameToolError } from "./games/lounge-game-tool.js";
@@ -680,7 +682,7 @@ export class DoorbellMcpRuntime {
         });
         return { isError: false, content: textContent(text) };
       } catch (error) {
-        if (error instanceof LoungeChatToolError) {
+        if (error instanceof LoungeChatToolError || error instanceof LoungePetToolError || error instanceof LoungeGachaViewError) {
           return { isError: true, content: textContent(renderLoungeUsageError(op, error.message)) };
         }
         if (error instanceof LoungeGameToolError || (error instanceof GameStateError && error.message === "game_round_limit_reached")) {

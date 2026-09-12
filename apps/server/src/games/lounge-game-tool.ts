@@ -1,3 +1,4 @@
+import { loungeDisplayName } from "../lounge-display-name.js";
 import { randomBytes, randomUUID } from "node:crypto";
 import {gameContext} from './game-context.js';
 import {GAME_RULES_COPY} from './game-rules-copy.js';
@@ -834,6 +835,12 @@ export class LoungeGameTool {
   #renderRoomSummary(playerId: string, table: LoungePublicTable, view: LoungeGamePlayerView): string {
     const readyCount = view.seats.filter((seat) => seat.ready).length;
     let summary = `${this.#tableLabel(table)}：${GAME_LABELS[view.kind]}，${PHASE_LABELS[view.phase]}；${view.seats.length} 人，${readyCount} 人已准备。`;
+    if (view.phase === "waiting") {
+      const missing = Math.max(0, MIN_PLAYERS[view.kind] - view.seats.length);
+      summary += missing > 0 ? ` 至少${MIN_PLAYERS[view.kind]}人开局，还差${missing}人入座。`
+        : readyCount < view.seats.length ? ` 人数已够，还差${view.seats.length - readyCount}人准备。`
+        : " 已全员准备，可以开始游戏。";
+    }
     if (view.phase === "playing") {
       const game = asRecord(view.game);
       const currentPlayerId = currentPlayerFor(view.kind, game);
@@ -1017,9 +1024,9 @@ export class LoungeGameTool {
     table: LoungePublicTable,
     view: LoungeGamePlayerView,
   ): Promise<void> {
-    if (!this.#invitations) return;
+    if (!this.#invitations || view.phase !== "waiting") return;
     const targets = await this.#eligibleTargets(residentId, view.roomId);
-    if (targets.length === 0) return;
+    if (targets.length === 0) lines.push("邀请：当前没有符合邀请设置且未入座的居民。");
 
     this.#addOption(lines, residentId, {
       kind: "invite-broadcast",
@@ -1336,7 +1343,7 @@ export class LoungeGameTool {
     await this.#assertSeatedInRoom(caller, pending.roomId);
     if (!this.#invitations) throw new LoungeGameToolError("game_invitation_unavailable");
     if ((await this.#eligibleTargets(residentId, pending.roomId)).length === 0) {
-      throw new LoungeGameToolError("game_invitation_not_allowed");
+      return this.#withState("当前没有可接收邀请的居民，本次未发送。", residentId, caller);
     }
     await this.#invitations.broadcast({
       requestId: pending.requestId,
@@ -1839,7 +1846,7 @@ function actionFields(kind: GameKind): readonly string[] {
 
 function displayName(target: LoungeGameInvitationTarget): string {
   const name = target.displayName?.replace(/[\r\n\t]+/gu, " ").trim();
-  return name && name.length > 0 ? name : "指定玩家";
+  return name && name.length > 0 ? loungeDisplayName(name) : "指定玩家";
 }
 
 function hasErrorCode(error: unknown, code: string): boolean {

@@ -1,5 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import type { LoungeSnapshot } from "@doorbell/protocol";
+import { loungeDisplayName } from "./lounge-display-name.js";
 import {
   LOUNGE_CHAT_DURATION_MINUTES,
   type LoungeChatDurationMinutes,
@@ -110,7 +111,7 @@ function messageLine(message: LoungeSnapshot["messages"][number]): string[] {
     ? `\n  回复消息编号：${message.reply_to_message_id}`
     : "";
   return [
-    `- ${message.resident_name}：${message.text}`,
+    `- ${loungeDisplayName(message.resident_name)}：${message.text}`,
     `  消息编号：${message.message_id}　时间：${message.created_at}${reply}`,
   ];
 }

@@ -13,8 +13,8 @@ const gameArgs = chatArgs.safeExtend({ to: z.string().min(1).optional() })
 
 export const loungeOperations = [
   {
-    op: "go.lounge.view", description: "查看休息室、在场者和当前状态。查看不会进入或退出活动，也不会发言。",
-    argsHint: "{}", argsSchema: z.strictObject({}),
+    op: "go.lounge.view", description: "查看休息室、在场者和当前状态；用返回的短 option 与猫狗互动或查看、使用扭蛋机。无 option 只查看。",
+    argsHint: "{} | {option}", argsSchema: z.strictObject({ option: z.string().min(1).optional() }),
     examples: [{ op: "go.lounge.view", args: {} }] as readonly DoorbellCallExample[],
   },
   {
