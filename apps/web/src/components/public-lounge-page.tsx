@@ -11,7 +11,7 @@ import { getPublicLoungeSnapshot, type PublicLoungeIssue } from "../lounge/publi
 import { mergeLoungeSnapshotDelta } from "../lounge/public-lounge-delta";
 import { ResidentStandingLoader } from "../lounge/resident-standing";
 import { GameSessionHost } from "../games/game-session-host";
-import { createGameTable, joinGameTable } from "../games/game-session-client";
+import { createGameTable, joinGameTable, type SessionRoom } from "../games/game-session-client";
 
 export interface LoungeScenePresence {
   residentId: string;
@@ -78,6 +78,8 @@ export function PublicLoungePage({
 }: PublicLoungePageProps = {}) {
   const [gameRoomId, setGameRoomId] = useState<string | null>(null);
   const [watchOnly, setWatchOnly] = useState(false);
+  const [initialGameRoom, setInitialGameRoom] = useState<SessionRoom | null>(null);
+  const [gameEntering, setGameEntering] = useState(false);
   const [watchViewerId, setWatchViewerId] = useState("");
   const [gameError, setGameError] = useState("");
   const enteringGame = useRef(false);
@@ -126,7 +128,7 @@ export function PublicLoungePage({
         const residentId = snapshotRef.current?.self_resident_id;
         if (!residentId) return;
         setWatchViewerId(`resident:${residentId}`);
-        setGameError(""); setWatchOnly(true); setGameRoomId(table.room.room_id); return;
+        setGameError(""); setInitialGameRoom(null); setWatchOnly(true); setGameRoomId(table.room.room_id); return;
       }
       const kinds = ["mahjong", "doudizhu", "leaf-game", "uno", "monopoly", "flying-chess"] as const;
       if (data.type === "lounge-game-create" && (table.room || !kinds.includes(data.kind))) return;
@@ -134,13 +136,14 @@ export function PublicLoungePage({
         setGameError("这桌状态已更新，请重新点开桌子。"); return;
       }
       enteringGame.current = true;
+      setGameEntering(true);
       setGameError("");
       const request = data.type === "lounge-game-create"
         ? createGameTable(table.table_id, data.kind)
         : joinGameTable(table.room!.room_id, table.room!.revision);
-      void request.then(room => { setWatchOnly(false); setGameRoomId(room.roomId); })
+      void request.then(room => { setInitialGameRoom(room); setWatchOnly(false); setGameRoomId(room.roomId); })
         .catch(error => setGameError(error instanceof Error ? error.message : "未能进入游戏"))
-        .finally(() => { enteringGame.current = false; });
+        .finally(() => { enteringGame.current = false; setGameEntering(false); });
     };
     window.addEventListener("message", handleGameMessage);
     return () => window.removeEventListener("message", handleGameMessage);
@@ -308,7 +311,7 @@ export function PublicLoungePage({
   const gameProfiles = useMemo(() => ({
     ...Object.fromEntries((chatSnapshot?.residents ?? []).map(p => [`resident:${p.resident_id}`, { name: p.resident_name }])),
   }), [chatSnapshot?.residents]);
-  const returnFromGame = () => { setGameRoomId(null); setWatchOnly(false); setReloadKey(key => key + 1); };
+  const returnFromGame = () => { setInitialGameRoom(null); setGameRoomId(null); setWatchOnly(false); setReloadKey(key => key + 1); };
   const standingResidentIds = useMemo(
     () => [
       ...new Set(
@@ -344,9 +347,10 @@ export function PublicLoungePage({
         snapshot={chatSnapshot}
         status={loadState.stage}
       /> : null}
+      {gameEntering && <div className="game-session-status" role="status">正在进入游戏…</div>}
       {gameError && <div role="alert">{gameError}<button type="button" onClick={() => setGameError("")}>关闭</button></div>}
       {gameRoomId && gameViewerId && createPortal(<div style={{ position: "fixed", inset: 0, zIndex: 1000 }}>
-        <GameSessionHost roomId={gameRoomId} viewerId={watchOnly?watchViewerId:gameViewerId} watchOnly={watchOnly} profiles={gameProfiles} onExit={returnFromGame} onNewTable={returnFromGame} />
+        <GameSessionHost roomId={gameRoomId} initialRoom={initialGameRoom ?? undefined} viewerId={watchOnly?watchViewerId:gameViewerId} watchOnly={watchOnly} profiles={gameProfiles} onExit={returnFromGame} onNewTable={returnFromGame} />
       </div>, document.body)}
     </main>
   );

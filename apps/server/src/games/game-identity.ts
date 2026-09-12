@@ -10,7 +10,6 @@ export class GameIdentity {
   human(sessionToken: string): GameCaller {
     return { authenticate: async () => {
       const community = await this.auth.getCurrentSession(sessionToken);
-      await this.auth.confirmCurrentResidentMembership(community.resident.residentId);
       return {
         playerId: `human:${community.account.accountId}`,
         controllerType: "human",

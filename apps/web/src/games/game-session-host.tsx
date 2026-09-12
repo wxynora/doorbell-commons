@@ -16,6 +16,8 @@ import {gamePlayerProfiles} from './game-player-names';
 
 export interface GameSessionHostProps {
   roomId:string;
+  /** Authenticated create/join receipt, reused for the initial waiting room. */
+  initialRoom?:SessionRoom;
   watchOnly?:boolean;
   /** Supplied by authenticated session, not a query parameter. */
   viewerId:string;
@@ -31,10 +33,10 @@ export function GameSessionHost(props:GameSessionHostProps){
 }
 const pages={uno:UnoPage,doudizhu:DoudizhuPage,"leaf-game":LeafGamePage,"flying-chess":FlyingChessPage,monopoly:MonopolyPage,mahjong:MahjongPage};
 const projection=(game:unknown)=>game as {viewer_id?:string;revision?:number;phase?:string};
-function Session({roomId,viewerId,profiles:registeredProfiles,watchOnly=false,transport=watchOnly?ownerWatchClient:gameSessionClient,reactions,onExit,onNewTable}:GameSessionHostProps){
-  const [room,setRoom]=useState<SessionRoom|null>(null);
+function Session({roomId,initialRoom,viewerId,profiles:registeredProfiles,watchOnly=false,transport=watchOnly?ownerWatchClient:gameSessionClient,reactions,onExit,onNewTable}:GameSessionHostProps){
+  const [room,setRoom]=useState<SessionRoom|null>(initialRoom??null);
   const profiles=useMemo(()=>gamePlayerProfiles(room?.seats??[],registeredProfiles),[room?.seats,registeredProfiles]);
-  const current=useRef<SessionRoom|null>(null);
+  const current=useRef<SessionRoom|null>(initialRoom??null);
   const active=useRef(true);
   const [connected,setConnected]=useState(false);
   const connection=useRef(false);
@@ -55,18 +57,26 @@ function Session({roomId,viewerId,profiles:registeredProfiles,watchOnly=false,tr
     setError("");
     let disposed=false;
     let close:(()=>void)|undefined;
-    transport.read(roomId).then(next=>{
-      if(disposed)return;
-      accept(next);
+    const subscribe=()=>{
       close=transport.subscribe(roomId,0,{
         game:value=>{try{accept(value);setError("");}catch(e){setError((e as Error).message);connection.current=false;setConnected(false);}},
         chat:message=>{if(active.current&&message.roomId===roomId)setMessages(old=>old.some(m=>m.sequence===message.sequence)?old:[...old,message].sort((a,b)=>a.sequence-b.sequence));},
         connection:value=>{if(active.current){connection.current=value;setConnected(value);}},
         reaction:event=>{if(active.current&&event.roomId===roomId)reactionListeners.current.forEach(listener=>listener(event));},
       });
-    }).catch(e=>{if(!disposed)setError((e as Error).message);});
+    };
+    if(initialRoom && reloadKey===0){
+      accept(initialRoom);
+      subscribe();
+    }else{
+      transport.read(roomId).then(next=>{
+        if(disposed)return;
+        accept(next);
+        subscribe();
+      }).catch(e=>{if(!disposed)setError((e as Error).message);});
+    }
     return()=>{disposed=true;active.current=false;connection.current=false;close?.();};
-  },[roomId,viewerId,transport,reloadKey]);
+  },[roomId,viewerId,transport,reloadKey,initialRoom]);
   const requireRoom=()=>{
     if(!connection.current||!current.current)throw new Error("尚未连接本桌");
     return current.current;

@@ -53,7 +53,7 @@ export interface LoungeGameReactionPort {
 }
 
 export interface LoungeGameRoutesOptions {
-  auth: Pick<RegistrationAuthService, "getCurrentSessionWithMembership">;
+  auth: Pick<RegistrationAuthService, "getCurrentSession">;
   identity: Pick<GameIdentity, "human">;
   games: LoungeGameRouteGameService;
   gameChat: LoungeGameRouteChatService;
@@ -144,7 +144,7 @@ async function authenticateRequest(
 ): Promise<AuthenticatedGameRequest> {
   const token = readHumanSessionToken(request.headers.cookie);
   if (!token) throw new AuthenticationRequiredError();
-  await options.auth.getCurrentSessionWithMembership(token);
+  await options.auth.getCurrentSession(token);
   return { caller: options.identity.human(token) };
 }
 
