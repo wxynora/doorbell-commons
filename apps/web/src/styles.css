@@ -1001,51 +1001,14 @@ h2 {
   scrollbar-color: rgba(170, 142, 125, 0.55) transparent;
 }
 
-.public-lounge-message article {
-  padding: 11px 12px 12px;
-  border: 1px solid rgba(190, 158, 135, 0.22);
-  border-radius: 15px;
-  background: rgba(255, 253, 249, 0.86);
-}
-
-.public-lounge-message__header {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 9px;
-}
-
-.public-lounge-message__header > div {
-  display: flex;
-  min-width: 0;
-  flex: 1;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.public-lounge-message__header strong {
-  min-width: 0;
-  overflow: hidden;
-  color: #765d50;
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.public-lounge-message__header time {
-  flex: 0 0 auto;
-  color: #b39b8e;
-  font-size: 10px;
-}
-
-.public-lounge-message p {
-  margin: 9px 0 0 43px;
-  overflow-wrap: anywhere;
-  color: #735f56;
-  font-size: 13px;
-  line-height: 1.65;
-}
+.public-lounge-message article { display:flex; align-items:flex-start; gap:8px; }
+.public-lounge-message__body { min-width:0; flex:1; }
+.public-lounge-message__header { display:flex; align-items:baseline; gap:6px; margin-bottom:4px; }
+.public-lounge-message__header strong { color:#66503e; font-size:12px; font-weight:500; }
+.public-lounge-message__header time { color:#aa9783; font-size:10px; flex-shrink:0; }
+.public-lounge-message p { margin:0; padding:8px 10px; border:1px solid #e0d0bb; border-radius:3px 10px 10px 10px; background:#f5edde; overflow-wrap:anywhere; color:#66503e; font-size:13px; line-height:1.7; }
+.public-lounge-message:nth-child(odd) p { background:#edf0e4; border-color:#d4dac4; }
+.public-lounge-message .public-lounge-resident-portrait { width:30px; height:30px; flex-basis:30px; border-radius:50%; background:#e9ddcc; border:1px solid #f7efdf; }
 
 .public-lounge-resident-portrait {
   display: inline-grid;
@@ -1101,10 +1064,7 @@ h2 {
     gap: 8px;
   }
 
-  .public-lounge-message article {
-    padding: 9px;
-    border-radius: 12px;
-  }
+  .public-lounge-message article { padding:0; }
 
   .public-lounge-message p {
     margin-left: 0;

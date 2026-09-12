@@ -53,9 +53,9 @@ document.querySelector('#reset').onclick=()=>{state={zoom:1,pan:0};draw();};
 document.querySelector('#more').onclick=()=>{state.zoom*=1.2;draw();};document.querySelector('#less').onclick=()=>{state.zoom/=1.2;draw();};
 const pointers=new Map();let lastDistance=0;
 renderer.domElement.addEventListener('pointerdown',e=>{pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});renderer.domElement.setPointerCapture(e.pointerId);lastDistance=0;});
-renderer.domElement.addEventListener('pointermove',e=>{const old=pointers.get(e.pointerId);if(!old)return;pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(pointers.size===2){const[a,b]=[...pointers.values()],d=Math.hypot(a.x-b.x,a.y-b.y);if(lastDistance>0)state.zoom*=d/lastDistance;lastDistance=d;}else state.pan-=(e.clientX-old.x)/scale/WIDTH*18/state.zoom;draw();});
+renderer.domElement.addEventListener('pointermove',e=>{const old=pointers.get(e.pointerId);if(!old)return;pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(pointers.size===2){const[a,b]=[...pointers.values()],d=Math.hypot(a.x-b.x,a.y-b.y);if(lastDistance>0)state.zoom*=d/lastDistance;lastDistance=d;}else if(clickStart&&Math.hypot(e.clientX-clickStart.x,e.clientY-clickStart.y)>5){state.pan-=(e.clientX-old.x)/scale/WIDTH*18/state.zoom;}else return;requestDraw();});
 for(const type of ['pointerup','pointercancel','lostpointercapture'])renderer.domElement.addEventListener(type,e=>{pointers.delete(e.pointerId);lastDistance=0;});
-renderer.domElement.addEventListener('wheel',e=>{e.preventDefault();state.zoom*=Math.exp(-e.deltaY*.001);draw();},{passive:false});resize();
+renderer.domElement.addEventListener('wheel',e=>{e.preventDefault();state.zoom*=Math.exp(-e.deltaY*.001);requestDraw();},{passive:false});resize();
 
 const windowViews=[];room.traverse(object=>{if(object.userData.updateWindow)windowViews.push(object);});
 let windowTimer;
@@ -107,7 +107,7 @@ for(const [kind,label] of [['mahjong','麻将'],['doudizhu','斗地主'],['leaf-
  button.onclick=()=>{if(gamesEnabled){parent.postMessage({type:'lounge-game-create',tableId:chosenTable,kind},location.origin);}else if(parent===window){room.userData.tabletopGames.set(chosenTable,kind);draw();}gameDialog.close();};
  gameDialog.querySelector('.game-choices').append(button);
 }
-renderer.domElement.addEventListener('pointermove',e=>{renderer.domElement.style.cursor=pickInteractive(e)?'pointer':'';if(clickStart&&Math.hypot(e.clientX-clickStart.x,e.clientY-clickStart.y)>5)clickCancelled=true;});
+renderer.domElement.addEventListener('pointermove',e=>{if(e.pointerType==='mouse'&&!pointers.size)renderer.domElement.style.cursor=pickInteractive(e)?'pointer':'';if(clickStart&&Math.hypot(e.clientX-clickStart.x,e.clientY-clickStart.y)>5)clickCancelled=true;});
 renderer.domElement.addEventListener('pointerleave',()=>{renderer.domElement.style.cursor='';});
 renderer.domElement.addEventListener('pointerdown',e=>{if(pointers.size===1){clickStart={pointerId:e.pointerId,x:e.clientX,y:e.clientY};clickCancelled=false;}else clickCancelled=true;});
 renderer.domElement.addEventListener('pointercancel',()=>{clickStart=null;clickCancelled=true;});
@@ -116,7 +116,7 @@ renderer.domElement.addEventListener('pointerup',e=>{
  if(!start||clickCancelled||start.pointerId!==e.pointerId||Math.hypot(e.clientX-start.x,e.clientY-start.y)>5)return;
  const object=pickInteractive(e);
  for(const [target,selected] of selections)selected.visible=target===object;
- draw();if(!object)return;
+ requestDraw();if(!object)return;
  if(object.userData.gachaMachine){
   if(parent!==window)parent.postMessage({type:'lounge-gacha-open'},location.origin);
   else import('./gacha-dialog.js').then(module=>module.openGachaDialog({preview:true}));

@@ -64,19 +64,19 @@ export function PublicLoungeChat({
             {snapshot.messages.map((message) => (
               <li key={message.message_id} className="public-lounge-message">
                 <article>
-                  <header className="public-lounge-message__header">
-                    <ResidentPortrait
+                  <ResidentPortrait
                       residentId={message.resident_id}
                       residentName={message.resident_name}
                     />
-                    <div>
+                  <div className="public-lounge-message__body">
+                  <header className="public-lounge-message__header">
                       <strong>{message.resident_name}</strong>
                       <time dateTime={message.created_at}>
                         {formatMessageTime(message.created_at)}
                       </time>
-                    </div>
                   </header>
                   <p>{message.text}</p>
+                  </div>
                 </article>
               </li>
             ))}
