@@ -66,6 +66,7 @@ const REFRESH_RESULT = {
     resource: KITCHEN_DATA,
   },
   shop_revision: NEXT_SHOP_REVISION,
+  kitchen_inventory_revision: `kitchen-inventory-v1:${"c".repeat(64)}`,
   server_time: "2026-08-24T04:00:00.000Z",
 } as const;
 

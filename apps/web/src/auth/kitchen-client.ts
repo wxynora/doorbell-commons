@@ -161,12 +161,11 @@ export function kitchenShopOpenIssueMessage(issue: KitchenShopOpenIssue): string
 }
 
 export function replaceKitchenAfterShopOpen(
-  kitchen: BoundKitchenRead,
   opened: BoundKitchenShopOpen,
 ): BoundKitchenRead {
   return {
     data: opened.data.resource,
-    kitchen_inventory_revision: kitchen.kitchen_inventory_revision,
+    kitchen_inventory_revision: opened.kitchen_inventory_revision,
     shop_revision: opened.shop_revision,
     server_time: opened.server_time,
   };

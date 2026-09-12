@@ -63,6 +63,7 @@ const COOK_RESULT = {
     resource: KITCHEN_DATA,
   },
   kitchen_inventory_revision: `kitchen-inventory-v1:${"b".repeat(64)}`,
+  shop_revision: `kitchen-v1:${"c".repeat(64)}`,
   server_time: "2026-08-25T04:00:00.000Z",
 };
 

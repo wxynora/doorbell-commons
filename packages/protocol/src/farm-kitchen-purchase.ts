@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { farmKitchenDataSchema, farmKitchenShopRevisionSchema } from "./farm-kitchen.js";
+import { farmKitchenDataSchema, farmKitchenShopRevisionSchema, farmKitchenInventoryRevisionSchema } from "./farm-kitchen.js";
 
 const farmKitchenPurchaseDoorplateSchema = z
   .string()
@@ -101,6 +101,7 @@ export const farmHumanKitchenPurchaseSuccessSchema = z
       })
       .strict(),
     shop_revision: farmKitchenShopRevisionSchema,
+    kitchen_inventory_revision: farmKitchenInventoryRevisionSchema,
     server_time: z.iso.datetime(),
   })
   .strict();

@@ -73,6 +73,7 @@ import { BackIcon, RefreshIcon } from "./chrome";
 import { FarmFieldContent } from "./farm-field-content";
 import { useRanchReturnRefresh } from "./use-ranch-return-refresh";
 import { useFarmVisibility } from "./use-farm-visibility";
+import { hasCurrentKitchenShelf, mergeKitchenPurchaseResource } from "./kitchen-shop-state";
 import {
   createInitialFarmReadResources,
   type FarmHarvestActionState,
@@ -151,6 +152,10 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
   } | null>(null);
   const farmShopOpenInFlightRef = useRef(false);
   const kitchenRef = useRef<BoundKitchenRead | null>(null);
+  const kitchenReadInFlightRef = useRef<{
+    controller: AbortController;
+    promise: ReturnType<typeof getBoundKitchen>;
+  } | null>(null);
   const cookingShopOpenAttemptRef = useRef<{
     expectedShopRevision: string;
     idempotencyKey: string;
@@ -213,7 +218,9 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
       }
 
       if (resource === "kitchen") {
-        void getBoundKitchen({ signal: controller.signal }).then((result) => {
+        const pending = { controller, promise: getBoundKitchen({ signal: controller.signal }) };
+        kitchenReadInFlightRef.current = pending;
+        void pending.promise.then((result) => {
           if (controller.signal.aborted) return;
           if (!result.ok && preserveReadyOnError) return;
           if (!result.ok) requestedResourcesRef.current.delete(resource);
@@ -224,6 +231,8 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
               ? { stage: "ready", data: result.data }
               : { stage: "error", message: kitchenIssueMessage(result.issue) },
           }));
+        }).finally(() => {
+          if (kitchenReadInFlightRef.current === pending) kitchenReadInFlightRef.current = null;
         });
         return;
       }
@@ -446,12 +455,26 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
   const openCurrentKitchenShop = useCallback(
     async (retry = false) => {
       if (previewData || cookingShopOpenInFlightRef.current) return;
+      if (!retry && hasCurrentKitchenShelf(kitchenRef.current)) {
+        setCookingShopOpenFeedback({ stage: "idle" });
+        return;
+      }
       cookingShopOpenInFlightRef.current = true;
       setCookingShopOpenFeedback({ stage: "submitting" });
       try {
         let kitchen = kitchenRef.current;
         if (!kitchen) {
-          const read = await getBoundKitchen();
+          if (!kitchenReadInFlightRef.current || kitchenReadInFlightRef.current.controller.signal.aborted) {
+            requireResource("kitchen", true);
+          }
+          const pending = kitchenReadInFlightRef.current;
+          if (!pending) return;
+          const read = await pending.promise;
+          if (!mountedRef.current) return;
+          if (pending.controller.signal.aborted) {
+            setCookingShopOpenFeedback({ stage: "idle" });
+            return;
+          }
           if (!read.ok) {
             setCookingShopOpenFeedback({
               stage: "error",
@@ -460,12 +483,10 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
             return;
           }
           kitchen = read.data;
-          kitchenRef.current = kitchen;
-          requestedResourcesRef.current.add("kitchen");
-          setResources((current) => ({
-            ...current,
-            kitchen: { stage: "ready", data: read.data },
-          }));
+        }
+        if (!retry && hasCurrentKitchenShelf(kitchen)) {
+          setCookingShopOpenFeedback({ stage: "idle" });
+          return;
         }
 
         const priorAttempt = retry ? cookingShopOpenAttemptRef.current : null;
@@ -478,6 +499,7 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
               };
         cookingShopOpenAttemptRef.current = attempt;
         const result = await openBoundKitchenShop(attempt);
+        if (!mountedRef.current) return;
         if (!result.ok) {
           if (result.issue.code === "state_conflict") {
             cookingShopOpenAttemptRef.current = null;
@@ -500,7 +522,7 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
 
         cookingShopOpenAttemptRef.current = null;
         resourceControllersRef.current.kitchen?.abort();
-        const updatedKitchen = replaceKitchenAfterShopOpen(kitchen, result.data);
+        const updatedKitchen = replaceKitchenAfterShopOpen(result.data);
         kitchenRef.current = updatedKitchen;
         setResources((current) => ({
           ...current,
@@ -511,7 +533,7 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
         cookingShopOpenInFlightRef.current = false;
       }
     },
-    [previewData],
+    [previewData, requireResource],
   );
 
   const acknowledgeDisplayedBulletin = useCallback(
@@ -569,18 +591,19 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
 
   const applyKitchenMutationResource = useCallback((response: {
     data: { resource: BoundKitchenRead["data"] };
-    kitchen_inventory_revision?: string;
-    shop_revision?: string;
+    kitchen_inventory_revision: string;
+    shop_revision: string;
     server_time: string;
-  }) => {
+  }, preserveUnchanged = false) => {
     resourceControllersRef.current.kitchen?.abort();
     setResources((current) => {
       if (current.kitchen.stage !== "ready") return current;
       const nextKitchen: BoundKitchenRead = {
-        data: response.data.resource,
-        kitchen_inventory_revision:
-          response.kitchen_inventory_revision ?? current.kitchen.data.kitchen_inventory_revision,
-        shop_revision: response.shop_revision ?? current.kitchen.data.shop_revision,
+        data: preserveUnchanged
+          ? mergeKitchenPurchaseResource(current.kitchen.data.data, response.data.resource)
+          : response.data.resource,
+        kitchen_inventory_revision: response.kitchen_inventory_revision,
+        shop_revision: response.shop_revision,
         server_time: response.server_time,
       };
       kitchenRef.current = nextKitchen;
@@ -927,7 +950,7 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
     async (input) => {
       const result = await purchaseBoundKitchenItem(input);
       if (result.ok) {
-        applyKitchenMutationResource(result.data);
+        applyKitchenMutationResource(result.data, true);
       } else if (result.issue.code === "shop_changed" || result.issue.code === "state_conflict") {
         requireResource("kitchen", true);
       }

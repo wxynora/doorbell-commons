@@ -62,6 +62,7 @@ const RECYCLE_RESULT = {
     resource: KITCHEN_DATA,
   },
   kitchen_inventory_revision: NEXT_INVENTORY_REVISION,
+  shop_revision: `kitchen-v1:${"c".repeat(64)}`,
   server_time: "2026-08-25T04:00:00.000Z",
 } as const;
 

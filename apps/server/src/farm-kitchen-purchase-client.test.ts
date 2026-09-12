@@ -62,6 +62,7 @@ const PURCHASE_RESULT = {
     resource: KITCHEN_DATA,
   },
   shop_revision: `kitchen-v1:${"b".repeat(64)}`,
+  kitchen_inventory_revision: `kitchen-inventory-v1:${"c".repeat(64)}`,
   server_time: "2026-08-24T04:00:00.000Z",
 };
 
@@ -105,6 +106,7 @@ const TOOL_PURCHASE_RESULT = {
     resource: TOOL_KITCHEN_DATA,
   },
   shop_revision: `kitchen-v1:${"b".repeat(64)}`,
+  kitchen_inventory_revision: `kitchen-inventory-v1:${"c".repeat(64)}`,
   server_time: "2026-08-24T04:00:00.000Z",
 };
 const TOOL_INPUT = {

@@ -760,6 +760,7 @@ const FARM_KITCHEN_PURCHASE_RESULT = {
     resource: FARM_KITCHEN_RESULT.data,
   },
   shop_revision: `kitchen-v1:${"b".repeat(64)}`,
+  kitchen_inventory_revision: `kitchen-inventory-v1:${"b".repeat(64)}`,
   server_time: "2026-08-24T13:00:00.000Z",
 } satisfies FarmHumanKitchenPurchaseSuccess;
 
@@ -785,6 +786,7 @@ const FARM_KITCHEN_COOK_RESULT = {
     resource: FARM_KITCHEN_RESULT.data,
   },
   kitchen_inventory_revision: `kitchen-inventory-v1:${"b".repeat(64)}`,
+  shop_revision: `kitchen-v1:${"b".repeat(64)}`,
   server_time: "2026-08-24T13:02:00.000Z",
 } satisfies FarmHumanKitchenCookSuccess;
 
@@ -806,6 +808,7 @@ const FARM_KITCHEN_INVENTORY_ACTION_RESULT = {
     resource: FARM_KITCHEN_RESULT.data,
   },
   kitchen_inventory_revision: `kitchen-inventory-v1:${"b".repeat(64)}`,
+  shop_revision: `kitchen-v1:${"b".repeat(64)}`,
   server_time: "2026-08-24T13:00:30.000Z",
 } satisfies FarmHumanKitchenInventoryActionSuccess;
 
@@ -826,6 +829,7 @@ const FARM_KITCHEN_SHOP_REFRESH_RESULT = {
     resource: FARM_KITCHEN_RESULT.data,
   },
   shop_revision: `kitchen-v1:${"b".repeat(64)}`,
+  kitchen_inventory_revision: `kitchen-inventory-v1:${"b".repeat(64)}`,
   server_time: "2026-08-24T13:01:00.000Z",
 } satisfies FarmHumanKitchenShopRefreshSuccess;
 

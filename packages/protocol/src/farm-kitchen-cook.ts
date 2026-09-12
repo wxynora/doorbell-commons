@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { farmKitchenDataSchema, farmKitchenInventoryRevisionSchema } from "./farm-kitchen.js";
+import { farmKitchenDataSchema, farmKitchenInventoryRevisionSchema, farmKitchenShopRevisionSchema } from "./farm-kitchen.js";
 
 const farmKitchenCookDoorplateSchema = z.string().regex(/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/);
 const farmKitchenCookHumanKeySchema = z
@@ -104,6 +104,7 @@ export const farmHumanKitchenCookSuccessSchema = z
       })
       .strict(),
     kitchen_inventory_revision: farmKitchenCookRevisionSchema,
+    shop_revision: farmKitchenShopRevisionSchema,
     server_time: z.iso.datetime(),
   })
   .strict();
