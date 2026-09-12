@@ -180,6 +180,7 @@ function currentResource(farm, now, options) {
     const projected = projectHumanKitchen(farm, now, options);
     return {
       data: projected.data,
+      shop_revision: projected.shop_revision,
       revision: kitchenInventoryRevisionFromData(projected.data),
       server_time: projected.server_time,
     };
@@ -194,6 +195,7 @@ function responseFor(farm, now, options, result) {
     ? {
         data: { result, resource: resource.data },
         kitchen_inventory_revision: resource.revision,
+        shop_revision: resource.shop_revision,
         server_time: resource.server_time,
       }
     : null;

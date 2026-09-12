@@ -98,6 +98,7 @@ function responseFor(farm, now, options, result) {
   return {
     data: { result, resource: projected.data },
     shop_revision: projected.shop_revision,
+    kitchen_inventory_revision: projected.kitchen_inventory_revision,
     server_time: projected.server_time,
   };
 }
