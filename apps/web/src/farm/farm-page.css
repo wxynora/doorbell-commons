@@ -1986,8 +1986,27 @@
   font-weight: 900;
 }
 
+.farm-cooking-result-preview__actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 100%;
+  gap: 2cqw;
+}
+
+.farm-cooking-result-preview__feedback {
+  margin: 0;
+  color: #8b3d2e;
+  font-size: clamp(0.62rem, 2.6cqw, 0.76rem);
+  text-align: center;
+}
+
+.farm-cooking-result-preview__collect:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
 .farm-cooking-result-preview__collect {
-  min-width: 29cqw;
+  min-width: 0;
   min-height: clamp(32px, 8.4vmin, 44px);
   padding: 0.6cqw 3cqw;
   color: #fff7d9;

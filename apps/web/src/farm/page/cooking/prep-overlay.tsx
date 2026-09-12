@@ -1,6 +1,11 @@
-import { type CSSProperties, useState } from "react";
+import { type CSSProperties, useRef, useState } from "react";
 import type { BoundKitchenRead } from "../../../auth/kitchen-client";
 import { kitchenCookIssueMessage } from "../../../auth/kitchen-cook-client";
+import {
+  kitchenInventoryActionIssueMessage,
+  type KitchenInventoryActionInput,
+} from "../../../auth/kitchen-inventory-action-client";
+import type { KitchenInventoryActionExecutor } from "../../panels/tools/types";
 import {
   type FarmAssetManifestEntry,
   getCookingIngredientAsset,
@@ -28,6 +33,7 @@ export function CookingPrepOverlay({
   ingredientPickerOpen,
   onCloseIngredientPicker,
   onCloseCookResult,
+  onKitchenInventoryAction,
   onCook,
   onOpenIngredientPicker,
   onRemoveIngredient,
@@ -43,6 +49,7 @@ export function CookingPrepOverlay({
   ingredientPickerOpen: boolean;
   onCloseIngredientPicker: () => void;
   onCloseCookResult: () => void;
+  onKitchenInventoryAction?: KitchenInventoryActionExecutor | undefined;
   onCook: () => void;
   onOpenIngredientPicker: () => void;
   onRemoveIngredient: (slotIndex: number) => void;
@@ -173,7 +180,13 @@ export function CookingPrepOverlay({
         />
       ) : null}
       {!preview && cookAction.stage === "success" ? (
-        <CookingResultReceipt onClose={onCloseCookResult} outcome={cookAction.outcome} />
+        <CookingResultReceipt
+          key={cookAction.outcome.dish_instance_id}
+          kitchen={kitchen}
+          onClose={onCloseCookResult}
+          onKitchenInventoryAction={onKitchenInventoryAction}
+          outcome={cookAction.outcome}
+        />
       ) : null}
       {!preview && cookAction.stage === "error" ? (
         <CookingCookNotice action={cookAction} onClose={onCloseCookResult} onRetry={onRetryCook} />
@@ -285,12 +298,55 @@ function CookingIngredientPicker({
 }
 
 function CookingResultReceipt({
+  kitchen,
   onClose,
+  onKitchenInventoryAction,
   outcome,
 }: {
+  kitchen: BoundKitchenRead | null;
   onClose: () => void;
+  onKitchenInventoryAction?: KitchenInventoryActionExecutor | undefined;
   outcome: KitchenCookOutcome;
 }) {
+  const submitting = useRef(false);
+  const retryInput = useRef<KitchenInventoryActionInput | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const sell = async (): Promise<void> => {
+    if (submitting.current || !kitchen || !onKitchenInventoryAction) return;
+    const input: KitchenInventoryActionInput = retryInput.current ?? {
+      action: "recycle",
+      itemKind: "dish",
+      itemInstanceIds: [outcome.dish_instance_id],
+      quantity: 1,
+      expectedFarmDoorplate: kitchen.data.farm.farm_doorplate,
+      expectedInventoryRevision: kitchen.kitchen_inventory_revision,
+      idempotencyKey: crypto.randomUUID(),
+    };
+    submitting.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await onKitchenInventoryAction(input);
+      if (result.ok) {
+        onClose();
+        return;
+      }
+      const code: string = result.issue.code;
+      retryInput.current = ["network_unavailable", "network_unknown", "unexpected_response"].includes(code)
+        ? input
+        : null;
+      setError(kitchenInventoryActionIssueMessage(result.issue));
+    } catch {
+      retryInput.current = input;
+      setError("暂时无法确认售卖结果，请再点一次卖掉确认。");
+    } finally {
+      submitting.current = false;
+      setBusy(false);
+    }
+  };
+
   return (
     <section
       aria-label="料理结果"
@@ -301,6 +357,7 @@ function CookingResultReceipt({
       <div className="farm-cooking-result-preview__paper" data-rarity={outcome.rarity}>
         <button
           aria-label="关闭料理结果"
+          disabled={busy}
           className="farm-cooking-result-preview__close"
           onClick={onClose}
           type="button"
@@ -328,9 +385,25 @@ function CookingResultReceipt({
             <strong>{outcome.recycle_silver}</strong>
           </span>
         </section>
-        <button className="farm-cooking-result-preview__collect" onClick={onClose} type="button">
-          收进料理柜
-        </button>
+        <div className="farm-cooking-result-preview__actions">
+          <button
+            className="farm-cooking-result-preview__collect"
+            disabled={busy || !kitchen || !onKitchenInventoryAction}
+            onClick={() => void sell()}
+            type="button"
+          >
+            {busy ? "正在卖出…" : "卖掉"}
+          </button>
+          <button
+            className="farm-cooking-result-preview__collect"
+            disabled={busy}
+            onClick={onClose}
+            type="button"
+          >
+            收进料理柜
+          </button>
+        </div>
+        {error ? <p className="farm-cooking-result-preview__feedback" role="alert">{error}</p> : null}
       </div>
     </section>
   );
@@ -404,9 +477,14 @@ function CookingResultStylePreview({
             <strong>—</strong>
           </span>
         </section>
-        <button className="farm-cooking-result-preview__collect" onClick={onClose} type="button">
-          收进料理柜
-        </button>
+        <div className="farm-cooking-result-preview__actions">
+          <button className="farm-cooking-result-preview__collect" disabled type="button">
+            卖掉
+          </button>
+          <button className="farm-cooking-result-preview__collect" onClick={onClose} type="button">
+            收进料理柜
+          </button>
+        </div>
       </div>
     </section>
   );

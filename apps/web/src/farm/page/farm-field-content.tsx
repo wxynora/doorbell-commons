@@ -1201,6 +1201,7 @@ export function FarmFieldContent({
         }
       >
         <CookingPrepOverlay
+          onKitchenInventoryAction={onKitchenInventoryAction}
           cookAction={kitchenCookAction}
           ingredientPickerOpen={cookingIngredientPickerOpen}
           kitchen={kitchen}
