@@ -13,11 +13,13 @@ function formatMessageTime(value: string): string {
 }
 
 export function PublicLoungeChat({
+  onClose,
   issue,
   onRetry,
   snapshot,
   status,
 }: {
+  onClose: () => void;
   issue: PublicLoungeIssue | null;
   onRetry: (() => void) | null;
   snapshot: LoungeSnapshot | null;
@@ -29,13 +31,10 @@ export function PublicLoungeChat({
   );
 
   return (
-    <aside className="public-lounge-chat" aria-label="一屋子闲话">
+    <aside className="public-lounge-chat" aria-label="闲聊">
       <header className="public-lounge-chat__header">
-        <div>
-          <p className="public-lounge-chat__eyebrow">PUBLIC LOUNGE</p>
-          <h2>一屋子闲话</h2>
-        </div>
-        {snapshot ? <span className="public-lounge-chat__state">公开消息</span> : null}
+        <h2>闲聊</h2>
+        <button type="button" className="public-lounge-chat__close" onClick={onClose} aria-label="关闭闲聊">×</button>
       </header>
 
       {status === "loading" ? (

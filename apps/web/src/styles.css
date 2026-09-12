@@ -915,122 +915,38 @@ h2 {
 }
 
 .public-lounge-page {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(220px, min(34vw, 480px));
-  gap: clamp(10px, 1.4vw, 22px);
-  width: 100%;
-  min-width: 0;
-  min-height: 100svh;
-  padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
-    max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
-  overflow: hidden;
-  background: linear-gradient(135deg, #f7efe6 0%, #f2e7dc 52%, #eee1d4 100%);
-}
-
-.live-app > .public-lounge-page {
-  position: fixed;
-  inset: 0;
-  z-index: 220;
-}
-
-.public-lounge-room {
-  display: flex;
-  min-width: 0;
-  min-height: 0;
-  flex-direction: column;
-  gap: clamp(8px, 1.2vw, 16px);
-}
-
-.public-lounge-room__header,
-.public-lounge-chat__header {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.public-lounge-room__header {
-  flex: 0 0 auto;
-  min-height: 48px;
-  padding: 0 2px;
-}
-
-.public-lounge-room__eyebrow,
-.public-lounge-chat__eyebrow {
-  margin: 0 0 3px;
-  color: #aa8e7d;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.16em;
-}
-
-.public-lounge-room__header h1,
-.public-lounge-chat__header h2 {
-  min-width: 0;
-  margin: 0;
-  color: #69554c;
-  font-size: clamp(17px, 2vw, 24px);
-  line-height: 1.15;
-}
-
-.public-lounge-room__back {
-  min-height: 40px;
-  padding: 8px 12px;
-  border: 1px solid rgba(181, 145, 119, 0.42);
-  border-radius: 999px;
-  color: #806351;
-  background: rgba(255, 250, 243, 0.72);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.public-lounge-room__back:focus-visible,
-.public-lounge-chat__retry:focus-visible {
-  outline: 2px solid #b98264;
-  outline-offset: 2px;
-}
-
-.public-lounge-room__viewport {
   position: relative;
-  display: grid;
-  min-width: 0;
-  min-height: 0;
-  flex: 1 1 auto;
-  place-items: center;
-  overflow: hidden;
-  border: 1px solid rgba(183, 143, 113, 0.36);
-  border-radius: clamp(16px, 2vw, 26px);
-  background: #ecdfd0;
-  box-shadow: 0 18px 42px rgba(106, 78, 58, 0.12);
-}
-
-.public-lounge-room__viewport iframe {
-  display: block;
   width: 100%;
   height: 100%;
   min-width: 0;
   min-height: 0;
-  border: 0;
+  overflow: hidden;
   background: #ede2d4;
 }
-
+.live-app > .public-lounge-page { position: fixed; z-index: 220; }
+.public-lounge-room, .public-lounge-room__viewport { position: absolute; inset: 0; overflow: hidden; }
+.public-lounge-room__viewport iframe { display: block; width: 100%; height: 100%; border: 0; }
 .public-lounge-chat {
+  position: absolute;
+  inset: 0 0 0 auto;
+  z-index: 2;
   display: flex;
+  width: min(360px, 72%);
   min-width: 0;
   min-height: 0;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid rgba(183, 143, 113, 0.32);
-  border-radius: clamp(16px, 2vw, 24px);
-  background: rgba(255, 250, 244, 0.9);
-  box-shadow: 0 18px 42px rgba(106, 78, 58, 0.1);
+  color: #69554c;
+  background: #fffaf4;
+  border-left: 1px solid #d7cec3;
+  box-shadow: -8px 0 24px #60483f18;
 }
-
+.public-lounge-chat__header h2 { margin: 0; font: inherit; font-size: 18px; }
+.public-lounge-chat__close { border: 0; background: transparent; color: inherit; font: inherit; font-size: 28px; cursor: pointer; }
 .public-lounge-chat__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   flex: 0 0 auto;
   padding: clamp(16px, 2vw, 24px) clamp(14px, 2vw, 22px) 14px;
   border-bottom: 1px solid rgba(183, 143, 113, 0.2);
@@ -1171,34 +1087,6 @@ h2 {
 }
 
 @media (max-width: 700px) {
-  .public-lounge-page {
-    grid-template-columns: minmax(0, 1fr) minmax(205px, 42vw);
-    gap: 8px;
-    padding-top: max(8px, env(safe-area-inset-top));
-    padding-right: max(8px, env(safe-area-inset-right));
-    padding-bottom: max(8px, env(safe-area-inset-bottom));
-    padding-left: max(8px, env(safe-area-inset-left));
-  }
-
-  .public-lounge-room__header {
-    min-height: 42px;
-  }
-
-  .public-lounge-room__eyebrow {
-    display: none;
-  }
-
-  .public-lounge-room__header h1,
-  .public-lounge-chat__header h2 {
-    font-size: 16px;
-  }
-
-  .public-lounge-room__back {
-    min-height: 36px;
-    padding: 6px 10px;
-    font-size: 11px;
-  }
-
   .public-lounge-chat__header {
     align-items: flex-start;
     padding: 14px 12px 11px;

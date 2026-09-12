@@ -24,7 +24,7 @@ export interface LoungeScenePresence {
 
 export interface PublicLoungePageProps {
   loadSnapshot?: typeof getPublicLoungeSnapshot;
-  onBack?: () => void;
+  viewport?: { left: number; top: number; width: number; height: number };
   snapshot?: LoungeSnapshot;
   gameViewerId?: string;
   gamesEnabled?: boolean;
@@ -70,7 +70,7 @@ function scenePresenceForSnapshot(
 
 export function PublicLoungePage({
   loadSnapshot,
-  onBack,
+  viewport,
   snapshot: suppliedSnapshot,
   gameViewerId,
   gamesEnabled = false,
@@ -79,6 +79,7 @@ export function PublicLoungePage({
   const [gameError, setGameError] = useState("");
   const enteringGame = useRef(false);
   const [dailyOpen, setDailyOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [loadState, setLoadState] = useState<LoungeLoadState>(() =>
     suppliedSnapshot ? { stage: "ready", snapshot: suppliedSnapshot } : { stage: "loading" },
@@ -272,8 +273,7 @@ export function PublicLoungePage({
       }
       if (data.type === "lounge-daily-open") { setDailyOpen(true); return; }
       if (data.type === "lounge-chat-focus") {
-        const chat = document.querySelector<HTMLElement>(".public-lounge-chat");
-        if (chat) { chat.tabIndex = -1; chat.focus({ preventScroll: true }); }
+        setChatOpen(open => !open);
         return;
       }
       markSceneReady();
@@ -312,19 +312,8 @@ export function PublicLoungePage({
   );
 
   return (
-    <main className="public-lounge-page" id="main-content" aria-label="公共休息室">
+    <main className="public-lounge-page" style={viewport} id="main-content" aria-label="公共休息室">
       <section className="public-lounge-room" aria-label="公共休息室场景">
-        <header className="public-lounge-room__header">
-          <div>
-            <p className="public-lounge-room__eyebrow">DOORBELL COMMONS</p>
-            <h1>公共休息室</h1>
-          </div>
-          {onBack ? (
-            <button type="button" className="public-lounge-room__back" onClick={onBack}>
-              返回铃野
-            </button>
-          ) : null}
-        </header>
         <div className="public-lounge-room__viewport">
           <iframe
             ref={sceneFrameRef}
@@ -339,12 +328,13 @@ export function PublicLoungePage({
         residentIds={standingResidentIds}
         onImagesChange={setStandingImages}
       />
-      <PublicLoungeChat
+      {chatOpen ? <PublicLoungeChat
+        onClose={() => setChatOpen(false)}
         issue={issue}
         onRetry={loadState.stage === "error" ? () => setReloadKey((current) => current + 1) : null}
         snapshot={chatSnapshot}
         status={loadState.stage}
-      />
+      /> : null}
       {gameError && <div role="alert">{gameError}<button type="button" onClick={() => setGameError("")}>关闭</button></div>}
       {gameRoomId && gameViewerId && <div style={{ position: "fixed", inset: 0, zIndex: 1000 }}>
         <GameSessionHost roomId={gameRoomId} viewerId={gameViewerId} profiles={gameProfiles} onExit={returnFromGame} onNewTable={returnFromGame} />

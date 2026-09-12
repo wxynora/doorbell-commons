@@ -1668,7 +1668,10 @@ export interface CandidateTwoScreenCommand {
   screen: CandidateTwoScreenId;
 }
 
+export type LoungeViewport = { left: number; top: number; width: number; height: number };
+
 interface CandidateTwoPreviewProps {
+  onLoungeViewport?: (viewport: LoungeViewport | null) => void;
   demo?: CandidateTwoDemoView | null;
   onAction: (action: CandidateTwoAction) => void;
   state: CandidateTwoViewState;
@@ -10825,6 +10828,14 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         });
     }
 
+    function publishLoungeViewport() {
+        const active = currentStage === 'authenticated' && currentCandidateScreenId === 'screen-lounge';
+        const nav = document.getElementById('main-nav');
+        const top = nav && getComputedStyle(nav).display !== 'none' ? nav.getBoundingClientRect().top : innerHeight;
+        parent.postMessage({ type: 'doorbell-lounge-viewport', rect: active ? { left: 0, top: 0, width: 1, height: Math.max(0, Math.min(1, top / innerHeight)) } : null }, '*');
+    }
+    addEventListener('resize', publishLoungeViewport);
+    new ResizeObserver(publishLoungeViewport).observe(document.documentElement);
     const originalShowScreen = window.showScreen;
     function renderCandidateScreen(screenId) {
         const npcScreenChanged = currentCandidateScreenId !== screenId;
@@ -10846,6 +10857,7 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         if (screenId === 'screen-lounge' && currentStage === 'authenticated' && !window.__doorbellCandidateDemo) {
             sendAction({ type: 'lounge-open' });
         }
+        requestAnimationFrame(publishLoungeViewport);
         sendAction({
             type: 'lingye-presence-change',
             active: screenId === 'screen-lingye' || screenId.startsWith('screen-lingye-'),
@@ -11094,9 +11106,12 @@ export function CandidateTwoPreview({
   demo = null,
   onAction,
   screenCommand = null,
+  onLoungeViewport,
   state,
 }: CandidateTwoPreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const loungeViewportCallback = useRef(onLoungeViewport);
+  loungeViewportCallback.current = onLoungeViewport;
   const avatarEditorRef=useRef<HTMLIFrameElement>(null);
   const avatarPortraitRef=useRef<HTMLIFrameElement>(null);
   const avatarImageRef=useRef<string|null>(null);
@@ -11165,6 +11180,16 @@ export function CandidateTwoPreview({
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (event.source !== iframeRef.current?.contentWindow) {
+        return;
+      }
+
+      if (event.data?.type === "doorbell-lounge-viewport") {
+        const rect = event.data.rect;
+        if (rect === null) { loungeViewportCallback.current?.(null); return; }
+        const frame = iframeRef.current?.getBoundingClientRect();
+        if (frame && rect && [rect.left, rect.top, rect.width, rect.height].every(value => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1)) {
+          loungeViewportCallback.current?.({ left: frame.left + rect.left * frame.width, top: frame.top + rect.top * frame.height, width: rect.width * frame.width, height: rect.height * frame.height });
+        }
         return;
       }
 

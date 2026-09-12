@@ -426,7 +426,11 @@ function LiveApp() {
   }, [farmOpen, authenticatedResidentId]);
 
   const loungeOpen = activeInternalPage === "lounge";
-  const loungeScreenCommandNonceRef = useRef(0);
+  const [loungeViewport, setLoungeViewport] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+  const updateLoungeViewport = useCallback((viewport: { left: number; top: number; width: number; height: number } | null) => {
+    setLoungeViewport(viewport);
+    if (!viewport) setActiveInternalPage(current => current === "lounge" ? "community" : current);
+  }, []);
   const ownerProfileCareerRequestRef = useRef<{
     controller: AbortController | null;
     id: number;
@@ -507,14 +511,6 @@ function LiveApp() {
     setActiveInternalPage("lounge");
   }, []);
 
-  const closeLoungePage = useCallback(() => {
-    loungeScreenCommandNonceRef.current += 1;
-    setCandidateTwoScreenCommand({
-      nonce: loungeScreenCommandNonceRef.current,
-      screen: "screen-lingye",
-    });
-    setActiveInternalPage("community");
-  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1436,6 +1432,7 @@ function LiveApp() {
       {updatedPermit && appState.stage === "authenticated" ? <div style={{position:"fixed",inset:0,zIndex:1000,overflow:"auto"}}><ResidencePermitTransition identity={updatedPermit} onComplete={() => setUpdatedPermit(null)} /></div> : null}
       <CandidateTwoPreview
         onAction={handleCandidateAction}
+        onLoungeViewport={updateLoungeViewport}
         screenCommand={candidateTwoScreenCommand}
         state={authenticatedViewState(appState)}
       />
@@ -1453,8 +1450,8 @@ function LiveApp() {
           </Suspense>
         </FarmLazyBoundary>
       ) : null}
-      {appState.stage === "authenticated" && loungeOpen ? (
-        <PublicLoungePage onBack={closeLoungePage} gamesEnabled gameViewerId={`human:${appState.identity.account.account_id}`} />
+      {appState.stage === "authenticated" && loungeOpen && loungeViewport ? (
+        <PublicLoungePage viewport={loungeViewport} gamesEnabled gameViewerId={`human:${appState.identity.account.account_id}`} />
       ) : null}
       {appState.stage === "authenticated" && (farmOpen || retainedFarmResidentId === authenticatedResidentId) ? (
         <div className="live-app__retained-farm" hidden={!farmOpen} key={authenticatedResidentId}>
