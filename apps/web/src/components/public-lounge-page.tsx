@@ -76,6 +76,8 @@ export function PublicLoungePage({
   gamesEnabled = false,
 }: PublicLoungePageProps = {}) {
   const [gameRoomId, setGameRoomId] = useState<string | null>(null);
+  const [watchOnly, setWatchOnly] = useState(false);
+  const [watchViewerId, setWatchViewerId] = useState("");
   const [gameError, setGameError] = useState("");
   const enteringGame = useRef(false);
   const [dailyOpen, setDailyOpen] = useState(false);
@@ -102,7 +104,7 @@ export function PublicLoungePage({
       {
         type: "lounge-state",
         gamesEnabled: Boolean(gamesEnabled && gameViewerId && nextSnapshot),
-        tables: nextSnapshot?.tables.map(t => ({ tableId: t.table_id, gameKind: t.room?.kind ?? null, roomId: t.room?.room_id ?? null, revision: t.room?.revision ?? null })) ?? [],
+        tables: nextSnapshot?.tables.map(t => ({ tableId: t.table_id, gameKind: t.room?.kind ?? null, roomId: t.room?.room_id ?? null, revision: t.room?.revision ?? null, phase: t.room?.phase ?? null })) ?? [],
         presence: nextSnapshot
           ? scenePresenceForSnapshot(nextSnapshot, standingImagesRef.current)
           : [],
@@ -115,9 +117,16 @@ export function PublicLoungePage({
     const handleGameMessage = (event: MessageEvent) => {
       if (!gamesEnabled || !gameViewerId || event.origin !== window.location.origin || event.source !== sceneFrameRef.current?.contentWindow) return;
       const data = event.data;
-      if (!data || (data.type !== "lounge-game-create" && data.type !== "lounge-game-join") || enteringGame.current) return;
+      if (!data || (data.type !== "lounge-game-create" && data.type !== "lounge-game-join" && data.type !== "lounge-game-watch") || enteringGame.current) return;
       const table = snapshotRef.current?.tables.find(t => t.table_id === data.tableId);
       if (!table) return;
+      if (data.type === "lounge-game-watch") {
+        if (table.room?.phase !== "playing" || table.room.room_id !== data.roomId) return;
+        const residentId = snapshotRef.current?.self_resident_id;
+        if (!residentId) return;
+        setWatchViewerId(`resident:${residentId}`);
+        setGameError(""); setWatchOnly(true); setGameRoomId(table.room.room_id); return;
+      }
       const kinds = ["mahjong", "doudizhu", "leaf-game", "uno", "monopoly", "flying-chess"] as const;
       if (data.type === "lounge-game-create" && (table.room || !kinds.includes(data.kind))) return;
       if (data.type === "lounge-game-join" && (!table.room || table.room.room_id !== data.roomId || table.room.revision !== data.revision)) {
@@ -128,7 +137,7 @@ export function PublicLoungePage({
       const request = data.type === "lounge-game-create"
         ? createGameTable(table.table_id, data.kind)
         : joinGameTable(table.room!.room_id, table.room!.revision);
-      void request.then(room => setGameRoomId(room.roomId))
+      void request.then(room => { setWatchOnly(false); setGameRoomId(room.roomId); })
         .catch(error => setGameError(error instanceof Error ? error.message : "未能进入游戏"))
         .finally(() => { enteringGame.current = false; });
     };
@@ -299,7 +308,7 @@ export function PublicLoungePage({
     ...Object.fromEntries((chatSnapshot?.presence ?? []).map(p => [`resident:${p.resident_id}`, { name: p.resident_name }])),
     ...(gameViewerId ? { [gameViewerId]: { name: "你" } } : {}),
   }), [chatSnapshot?.presence, gameViewerId]);
-  const returnFromGame = () => { setGameRoomId(null); setReloadKey(key => key + 1); };
+  const returnFromGame = () => { setGameRoomId(null); setWatchOnly(false); setReloadKey(key => key + 1); };
   const standingResidentIds = useMemo(
     () => [
       ...new Set(
@@ -313,7 +322,7 @@ export function PublicLoungePage({
 
   return (
     <main className="public-lounge-page" style={viewport} id="main-content" aria-label="公共休息室">
-      <section className="public-lounge-room" aria-label="公共休息室场景">
+      {!gameRoomId && <section className="public-lounge-room" aria-label="公共休息室场景">
         <div className="public-lounge-room__viewport">
           <iframe
             ref={sceneFrameRef}
@@ -322,12 +331,12 @@ export function PublicLoungePage({
             onLoad={markSceneReady}
           />
         </div>
-      </section>
+      </section>}
       {dailyOpen ? <LoungeDailyDialog onClose={() => setDailyOpen(false)} /> : null}
-      <ResidentStandingLoader
+      {!gameRoomId && <ResidentStandingLoader
         residentIds={standingResidentIds}
         onImagesChange={setStandingImages}
-      />
+      />}
       {chatOpen ? <PublicLoungeChat
         onClose={() => setChatOpen(false)}
         issue={issue}
@@ -337,7 +346,7 @@ export function PublicLoungePage({
       /> : null}
       {gameError && <div role="alert">{gameError}<button type="button" onClick={() => setGameError("")}>关闭</button></div>}
       {gameRoomId && gameViewerId && <div style={{ position: "fixed", inset: 0, zIndex: 1000 }}>
-        <GameSessionHost roomId={gameRoomId} viewerId={gameViewerId} profiles={gameProfiles} onExit={returnFromGame} onNewTable={returnFromGame} />
+        <GameSessionHost roomId={gameRoomId} viewerId={watchOnly?watchViewerId:gameViewerId} watchOnly={watchOnly} profiles={gameProfiles} onExit={returnFromGame} onNewTable={returnFromGame} />
       </div>}
     </main>
   );

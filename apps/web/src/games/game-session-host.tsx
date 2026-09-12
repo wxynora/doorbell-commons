@@ -4,7 +4,7 @@ import {GameChatContext} from "./game-chat-window";
 import {GameReactionContext,type GameReactionBinding,type GameReactionEvent} from "./game-reaction-binding";
 import {GameRoundExitContext} from "./game-round-exit";
 import {GameWaitingRoom,type GameWaitingRoomProps} from "./game-waiting-room";
-import {gameSessionClient,type GameSessionTransport,type SessionRoom,type SessionChatMessage} from "./game-session-client";
+import {gameSessionClient,ownerWatchClient,type GameSessionTransport,type SessionRoom,type SessionChatMessage} from "./game-session-client";
 import {UnoPage} from "./uno/uno-page";
 import {DoudizhuPage} from "./doudizhu/doudizhu-page";
 import {LeafGamePage} from "./leaf-game/leaf-game-page";
@@ -15,6 +15,7 @@ import "./game-session-host.css";
 
 export interface GameSessionHostProps {
   roomId:string;
+  watchOnly?:boolean;
   /** Supplied by authenticated session, not a query parameter. */
   viewerId:string;
   profiles:GameWaitingRoomProps["profiles"];
@@ -29,7 +30,7 @@ export function GameSessionHost(props:GameSessionHostProps){
 }
 const pages={uno:UnoPage,doudizhu:DoudizhuPage,"leaf-game":LeafGamePage,"flying-chess":FlyingChessPage,monopoly:MonopolyPage,mahjong:MahjongPage};
 const projection=(game:unknown)=>game as {viewer_id?:string;revision?:number;phase?:string};
-function Session({roomId,viewerId,profiles,transport=gameSessionClient,reactions,onExit,onNewTable}:GameSessionHostProps){
+function Session({roomId,viewerId,profiles,watchOnly=false,transport=watchOnly?ownerWatchClient:gameSessionClient,reactions,onExit,onNewTable}:GameSessionHostProps){
   const [room,setRoom]=useState<SessionRoom|null>(null);
   const current=useRef<SessionRoom|null>(null);
   const active=useRef(true);
@@ -69,11 +70,13 @@ function Session({roomId,viewerId,profiles,transport=gameSessionClient,reactions
     return current.current;
   };
   const leave=async()=>{
+    if(watchOnly){await onExit();return;}
     const latest=requireRoom();
     await transport.leave(roomId,latest.revision);
     if(active.current)await onExit();
   };
   const command=async(move:Record<string,unknown>)=>{
+    if(watchOnly)throw new Error("围观时不能操作对局");
     const latest=requireRoom();
     // Only the server binds actor_id. Both room and engine revisions travel intact.
     const {actor_id:_actor,...body}=move;
@@ -93,6 +96,7 @@ function Session({roomId,viewerId,profiles,transport=gameSessionClient,reactions
     refresh:async()=>accept(await transport.read(roomId)).game,
     command,
     again:async()=>{
+      if(watchOnly)throw new Error("围观时不能操作对局");
       const latest=requireRoom();
       const game=projection(latest.game);
       if((latest.kind==="uno"||latest.kind==="doudizhu")&&game.phase==="round_over"){
@@ -111,15 +115,19 @@ function Session({roomId,viewerId,profiles,transport=gameSessionClient,reactions
   const reaction=reactions
     ?reactions.roomId===roomId&&reactions.viewerId===viewerId?{...reactions,connected:connected&&reactions.connected}:null
     :defaultReaction;
-  if(!room)return <div className="game-session-status" role="status">{error||"正在连接游戏…"}{error&&<button type="button" onClick={()=>setReloadKey(key=>key+1)}>重新连接</button>}</div>;
+  const watchExit=watchOnly?<button type="button" className="game-session-status" style={{top:12,bottom:"auto",zIndex:110}} onClick={()=>void onExit()}>退出围观</button>:null;
+  if(!room)return <div className="game-session-status" role="status">{watchExit}{error||"正在连接游戏…"}{error&&<button type="button" onClick={()=>setReloadKey(key=>key+1)}>重新连接</button>}</div>;
   const Page=pages[room.kind];
   return <div className={`game-session-host game-session--${room.kind}`}>
+    {watchExit}
+    <div style={{display:"contents"}} inert={watchOnly}>
     {room.phase==="waiting"?<GameWaitingRoom room={room} viewerId={viewerId} profiles={profiles} connected={connected}
       onReady={async ready=>{const r=requireRoom();accept(await transport.ready(roomId,r.revision,ready));}}
       onStart={async()=>{const r=requireRoom();accept(await transport.start(roomId,r.revision));}}
       onBack={()=>void leave().catch(e=>setError((e as Error).message))}/>
       :session?<GameSessionContext.Provider value={session}><GameChatContext.Provider value={chat}><GameReactionContext.Provider value={reaction}><GameRoundExitContext.Provider value={leave}><Page/></GameRoundExitContext.Provider></GameReactionContext.Provider></GameChatContext.Provider></GameSessionContext.Provider>
       :<div role="status">正在读取局面…</div>}
+    </div>
     {(error||!connected)&&<div className="game-session-status" role="status">{error||"连接已断开，正在重新连接…"}</div>}
   </div>;
 }

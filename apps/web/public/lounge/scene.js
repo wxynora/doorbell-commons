@@ -97,11 +97,12 @@ function pickInteractive(e){
  return object;
 }
 const gameDialog=document.createElement('dialog');gameDialog.id='table-games';gameDialog.setAttribute('aria-label','选择桌上游戏');
-gameDialog.innerHTML='<button class="game-close" aria-label="关闭" type="button">×</button><h2></h2><p>想玩哪一局？</p><div class="game-choices"></div><button class="game-join" type="button" disabled hidden>加入这局</button><p class="game-note">当前为桌面外观预览，正式开局尚未开放。</p>';
+gameDialog.innerHTML='<button class="game-close" aria-label="关闭" type="button">×</button><h2></h2><p>想玩哪一局？</p><div class="game-choices"></div><button class="game-join" type="button" disabled hidden>加入这局</button><button class="game-watch game-join" type="button" hidden>围观</button><p class="game-note">当前为桌面外观预览，正式开局尚未开放。</p>';
 document.body.append(gameDialog);
 gameDialog.querySelector('.game-close').onclick=()=>gameDialog.close();
 let chosenTable;
 gameDialog.querySelector('.game-join').onclick=()=>{const table=publicTables.find(t=>t.tableId===chosenTable);if(!gamesEnabled||!table?.roomId)return;parent.postMessage({type:'lounge-game-join',tableId:chosenTable,roomId:table.roomId,revision:table.revision},location.origin);gameDialog.close();};
+gameDialog.querySelector('.game-watch').onclick=()=>{const table=publicTables.find(t=>t.tableId===chosenTable);if(!gamesEnabled||table?.phase!=='playing')return;parent.postMessage({type:'lounge-game-watch',tableId:chosenTable,roomId:table.roomId},location.origin);gameDialog.close();};
 for(const [kind,label] of [['mahjong','麻将'],['doudizhu','斗地主'],['leaf-game','叶子戏'],['uno','UNO'],['monopoly','大富翁'],['flying-chess','飞行棋']]){
  const button=document.createElement('button');button.type='button';button.textContent=label;
  button.onclick=()=>{if(gamesEnabled){parent.postMessage({type:'lounge-game-create',tableId:chosenTable,kind},location.origin);}else if(parent===window){room.userData.tabletopGames.set(chosenTable,kind);draw();}gameDialog.close();};
@@ -126,7 +127,8 @@ renderer.domElement.addEventListener('pointerup',e=>{
  const names={'mahjong':'麻将','doudizhu':'斗地主','leaf-game':'叶子戏','uno':'UNO','monopoly':'大富翁','flying-chess':'飞行棋'};
  gameDialog.querySelector('h2').textContent=(chosenTable==='square'?'方桌':'圆桌')+(active?' · '+names[active]:' · 选个游戏');
  gameDialog.querySelector('.game-choices').hidden=Boolean(active);
- gameDialog.querySelector('.game-join').hidden=!active;
+ gameDialog.querySelector('.game-join').hidden=!active||publicTables.find(t=>t.tableId===chosenTable)?.phase==='playing';
+ gameDialog.querySelector('.game-watch').hidden=!gamesEnabled||publicTables.find(t=>t.tableId===chosenTable)?.phase!=='playing';
  gameDialog.querySelector('.game-join').disabled=!gamesEnabled;
  gameDialog.querySelectorAll('.game-choices button').forEach(button=>{button.disabled=!gamesEnabled&&parent!==window;});
  gameDialog.querySelector('h2 + p').textContent=active?'这桌已有对局':'想玩哪一局？';

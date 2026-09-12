@@ -1,3 +1,4 @@
+import { registerOwnerWatchRoutes } from "./owner-watch-routes.js";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { OneBotUnavailableError } from "../qq-group-membership.js";
@@ -301,6 +302,12 @@ export function registerLoungeGameRoutes(
   app: FastifyInstance,
   options: LoungeGameRoutesOptions,
 ): void {
+  registerOwnerWatchRoutes(app, {
+    games: options.games, sync: options.gameSync,
+    authenticate: async request => { assertSameOrigin(request); return (await authenticateRequest(request, options)).caller; },
+    failure: (request, reply, error) => sendFailure(request, reply, error, options.secureCookies),
+  });
+
   app.post(`${ROOT}/tables/:tableId/rooms`, async (request, reply) =>
     handleApi(request, reply, options, async ({ caller }) => {
       const { tableId } = tableParamsSchema.parse(request.params) as TableParams;

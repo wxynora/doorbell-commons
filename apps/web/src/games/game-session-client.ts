@@ -27,14 +27,17 @@ async function request<T>(path:string,body?:unknown):Promise<T>{
   return data as T;
 }
 /** Uses cookie-authenticated same-origin routes; no player identity comes from a URL. */
-export const gameSessionClient:GameSessionTransport={
-  read:id=>request(roomPath(id)),
-  ready:(id,revision,ready)=>request(`${roomPath(id)}/ready`,{revision,ready}),
-  start:(id,revision)=>request(`${roomPath(id)}/start`,{revision}),
-  command:(id,revision,command)=>request(`${roomPath(id)}/command`,{revision,command}),
-  leave:(id,revision)=>request(`${roomPath(id)}/leave`,{revision}),
-  say:(id,text,clientMessageId)=>request(`${roomPath(id)}/chat`,{text,clientMessageId}),
-  sendReaction:(id,targetId,kind,requestId)=>request(`${roomPath(id)}/reactions`,{targetId,kind,requestId}),
+function createSessionClient(watchOnly = false):GameSessionTransport {
+const readPath=(id:string)=>watchOnly?`${roomPath(id)}/watch`:roomPath(id);
+const rejectWatch=()=>{if(watchOnly)throw new Error("围观时不能操作对局");};
+return {
+  read:id=>request(readPath(id)),
+  ready:(id,revision,ready)=>{rejectWatch();return request(`${roomPath(id)}/ready`,{revision,ready});},
+  start:(id,revision)=>{rejectWatch();return request(`${roomPath(id)}/start`,{revision});},
+  command:(id,revision,command)=>{rejectWatch();return request(`${roomPath(id)}/command`,{revision,command});},
+  leave:(id,revision)=>{rejectWatch();return request(`${roomPath(id)}/leave`,{revision});},
+  say:(id,text,clientMessageId)=>{rejectWatch();return request(`${roomPath(id)}/chat`,{text,clientMessageId});},
+  sendReaction:(id,targetId,kind,requestId)=>{rejectWatch();return request(`${roomPath(id)}/reactions`,{targetId,kind,requestId});},
   subscribe(id,afterChatSequence,handlers){
     let source:EventSource;
     let baseline:SessionRoom|null=null;
@@ -46,8 +49,9 @@ export const gameSessionClient:GameSessionTransport={
       seenReactions.add(event.id);handlers.reaction?.(event);
     };
     const open=()=>{
-    source=new EventSource(`${roomPath(id)}/stream?afterChatSequence=${chatCursor}`);
+    source=new EventSource(`${readPath(id)}/stream${watchOnly?"":`?afterChatSequence=${chatCursor}`}`);
     source.onopen=()=>{handlers.connection(true);
+      if(watchOnly)return;
       const initial=!historyReady;
       void request<GameReactionEvent[]>(`${roomPath(id)}/reactions`).then(events=>{
         if(closed)return;
@@ -80,6 +84,9 @@ export const gameSessionClient:GameSessionTransport={
     return()=>{closed=true;source.close();};
   },
 };
+}
+export const gameSessionClient=createSessionClient();
+export const ownerWatchClient=createSessionClient(true);
 export function createGameTable(tableId:"square"|"round",kind:WaitingGameKind,baseStake?:number):Promise<SessionRoom>{
   return request(`${ROOT}/tables/${tableId}/rooms`,{kind,...(baseStake===undefined?{}:{baseStake})});
 }
