@@ -1,3 +1,4 @@
+import { furnitureProductImages } from "./shop/furniture-images";
 import { useState } from "react";
 import type { BoundFarmCatalogRead } from "../../auth/farm-catalog-client";
 import type { BoundFarmDecorationsRead } from "../../auth/farm-decoration-client";
@@ -168,7 +169,9 @@ function FarmLiveShopPanelContent({
                 style={{ display: "contents" }}
                 type="button"
               >
-                {item.iconKey ? (
+                {item.kind === "decoration" && furnitureProductImages[item.id] ? (
+                  <img alt="" aria-hidden="true" src={furnitureProductImages[item.id]} />
+                ) : item.iconKey ? (
                   <img alt="" aria-hidden="true" src={getFarmAssetUrl(item.iconKey)} />
                 ) : null}
                 <span className="farm-shop__item-copy">
