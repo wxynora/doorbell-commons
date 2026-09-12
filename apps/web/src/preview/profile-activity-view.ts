@@ -44,9 +44,6 @@ export const PROFILE_ACTIVITY_SCRIPT = `
         more.hidden = activities.length <= 4;
         more.dataset.expanded = String(expanded);
         more.textContent = expanded ? 'Less' : 'More';
-        const refresh = document.getElementById('profile-activity-refresh');
-        refresh.disabled = Boolean(loading);
-        refresh.hidden = !view;
         const byResident = new Map();
         for (const relation of ready ? view.data.relationships : []) {
             let row = byResident.get(relation.residentId);
@@ -61,13 +58,10 @@ export const PROFILE_ACTIVITY_SCRIPT = `
         graph.hidden = profileRelationshipRows.length === 0;
         graphEmpty.hidden = profileRelationshipRows.length > 0;
         graphEmpty.textContent = loading ? '正在读取来往…' : unavailable ? '来往数据读取失败，请重新读取。' : '暂时没有来往记录';
-        document.getElementById('profile-relationship-edit').hidden = true;
+        document.getElementById('profile-relationship-edit').hidden = profileRelationshipRows.length === 0;
         document.getElementById('profile-relationship-editor').hidden = true;
         renderProfileRelationships();
     }
-    document.getElementById('profile-activity-refresh').addEventListener('click', () => {
-        if (!window.__doorbellCandidateDemo) sendAction({ type: 'owner-profile-career-open' });
-    });
     document.getElementById('profile-relationship-more').addEventListener('click', () => { profileRelationshipPage += 1; renderProfileRelationships(); });
     document.getElementById('profile-relationship-less').addEventListener('click', () => { profileRelationshipPage = Math.max(0, profileRelationshipPage - 1); renderProfileRelationships(); });
 `;

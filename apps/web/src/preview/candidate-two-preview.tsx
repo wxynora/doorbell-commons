@@ -1678,7 +1678,8 @@ interface CandidateTwoPreviewProps {
   screenCommand?: CandidateTwoScreenCommand | null;
 }
 
-const DOORBELL_FONTS = '<link href="/fonts/doorbell-fonts.v2.css" rel="stylesheet">';
+const DOORBELL_FONTS =
+  '<link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Noto+Serif+SC:wght@400;500;600&family=Playfair+Display:ital,wght@0,400;1,600&family=ZCOOL+KuaiLe&display=swap" rel="stylesheet" media="print" onload="this.media=\'all\'"><noscript><link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Noto+Serif+SC:wght@400;500;600&family=Playfair+Display:ital,wght@0,400;1,600&family=ZCOOL+KuaiLe&display=swap" rel="stylesheet"></noscript>';
 
 const MOQU_GUFENG_FONT =
   '<link data-screen-stylesheet="screen-lingye-memorial" data-href="/lingye/memorial/qixi-archive/moqu-gufeng-ti.css" rel="stylesheet">';
@@ -2092,7 +2093,6 @@ const PROFILE_RUNTIME_CONTENT = `        <div class="candidate2-profile-scale-sh
         <section class="candidate2-profile-section candidate2-activity-section">
             <img class="candidate2-activity-paperclip" src="/candidate-two/profile-activity-paperclip-v1.svg" alt="" aria-hidden="true">
             <p class="candidate2-profile-section-title handwritten">Recent Activity</p>
-            <button id="profile-activity-refresh" class="candidate2-profile-more handwritten" type="button">Refresh</button>
             <p class="candidate2-empty-copy candidate2-profile-empty">暂无可读取的活动数据</p>
             <div class="candidate2-demo-activity-list" hidden></div>
             <button id="profile-activity-more" class="candidate2-profile-more handwritten" type="button" hidden>More</button>
@@ -10373,11 +10373,15 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     }
 
     function openRelationshipEditor() {
-        if (!window.__doorbellCandidateDemo || relationshipEditButton.hidden) {
+        if (relationshipEditButton.hidden) {
             showCandidateNotice('暂无可编辑的来往数据');
             return;
         }
-        relationshipEditor.querySelectorAll('[data-relation-index]').forEach((row) => {
+        relationshipEditor.querySelectorAll('[data-relation-index]').forEach((row, index) => {
+            const node = document.querySelectorAll('.candidate2-demo-relation-node')[index];
+            row.hidden = !node || node.hidden;
+            row.querySelector('strong').textContent = node ? node.querySelector('strong').textContent : '';
+            row.dataset.detail = node ? node.querySelector('small').textContent : '';
             const select = row.querySelector('select');
             const input = row.querySelector('input');
             select.value = '还行';
@@ -10454,7 +10458,6 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         currentStage = state.stage;
         window.__doorbellCandidateDemo = Boolean(demo);
         applyDemoContent(demo);
-        document.getElementById('profile-activity-refresh').hidden = Boolean(demo);
         if (!demo) applyOwnerProfileActivity(state.stage === 'authenticated' ? state.ownerProfileActivity : null);
         if (!demo && state.stage === 'authenticated') {
             applyLiveLingyeState(state.lingye);
