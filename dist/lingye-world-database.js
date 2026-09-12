@@ -32,6 +32,7 @@ import {
     ensureChefStoreSchema,
 } from "./career/chef-store-service.js";
 import { createChefStoreFarmAdapter } from "./career/chef-store-farm-adapter.js";
+import { installLoungePetSchema } from "./lounge-pet/schema.js";
 import { installEconomySchema } from "./economy/economy-schema.js";
 import { EconomyError } from "./economy/economy-errors.js";
 import { EconomyService } from "./economy/economy-service.js";
@@ -273,6 +274,7 @@ export function installLingyeWorldSchema(database) {
         ON lingye_cross_store_operations(status, created_at, action_key);
     `);
     installEconomySchema(database);
+    installLoungePetSchema(database);
     installCareerSchema(database);
     installSecuritySchema(database);
     ensureChefRecipeSchema(database);

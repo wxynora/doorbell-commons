@@ -1,4 +1,5 @@
 import { handleDoorbellGameEconomyBalances, handleDoorbellGameEconomySettle } from "./game-economy.js";
+import { handleDoorbellLoungePet } from "./lounge-pet.js";
 import { handleDoorbellGameReaction } from "./game-reaction.js";
 import { handleDoorbellHumanFarmDecorations } from "./farm-decoration.js";
 import {
@@ -77,6 +78,10 @@ import {
 
 export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExecutor, careerBenefitsForFarm, constableInterviewRuntime, gachaRuntime) {
     return async function handleDoorbellInternal(req, res, parts, method) {
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "lounge-pet" && parts.length === 3) {
+            await handleDoorbellLoungePet(req, res, method, constableInterviewRuntime);
+            return true;
+        }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "lingye-daily" &&
             parts[3] === "comment-author" && parts.length === 4) {
             await handleDoorbellDailyCommentAuthor(req, res, method);
