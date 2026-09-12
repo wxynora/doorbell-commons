@@ -180,6 +180,20 @@ export function bulletinHasUnreadEntries(bulletin: BoundBulletinRead | null): bo
   );
 }
 
+export function bulletinReminderKeys(bulletin: BoundBulletinRead | null): string[] {
+  if (!bulletin) return [];
+  const owner = bulletin.subject.farm_doorplate;
+  return [
+    ...Object.entries(bulletin.data.available).flatMap(([section, entries]) =>
+      (entries ?? []).map((entry) => JSON.stringify([owner, section, entry])),
+    ),
+    ...(bulletin.humanNotices ?? []).map((notice) => JSON.stringify([owner, "human", notice.id])),
+    ...(bulletin.data.trail.status === "available" && bulletin.data.trail.has_unread
+      ? bulletin.data.trail.entries.map((entry) => JSON.stringify([owner, "trail", entry.event_id]))
+      : []),
+  ];
+}
+
 export function FarmFieldContent({
   active = true,
   data,
@@ -417,7 +431,12 @@ export function FarmFieldContent({
       : getSceneReadResource(activeScene);
   const activeResourceState = activeResourceKey ? resources[activeResourceKey] : null;
   const displayedBulletin = resources.bulletin.stage === "ready" ? resources.bulletin.data : null;
-  const bulletinUnread = bulletinHasUnreadEntries(displayedBulletin);
+  const [viewedBulletinKeys, setViewedBulletinKeys] = useState<ReadonlySet<string>>(() => new Set());
+  const bulletinUnread = bulletinReminderKeys(displayedBulletin).some((key) => !viewedBulletinKeys.has(key));
+  useEffect(() => {
+    if (!activeSceneUiState.bulletinOpen || !displayedBulletin) return;
+    setViewedBulletinKeys(new Set(bulletinReminderKeys(displayedBulletin)));
+  }, [activeSceneUiState.bulletinOpen, displayedBulletin]);
   const acknowledgeDisplayedBulletin = (acknowledge: BulletinAcknowledgementScope) => {
     if (preview || !displayedBulletin) return;
     const hasUnread =
