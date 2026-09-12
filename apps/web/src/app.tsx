@@ -16,6 +16,11 @@ import {
   switchHumanProfile,
   updateHumanSettings,
 } from "./auth/auth-client";
+import {
+  getProfileActivity,
+  refreshProfileActivity,
+  type ProfileActivityView,
+} from "./auth/profile-activity-client";
 import { authIssueMessage } from "./auth/auth-errors";
 import {
   type BoundGlimmerRead,
@@ -49,6 +54,7 @@ import { AdditionalProfileForm } from "./components/additional-profile-form";
 import { AuthScreen, RegistrationHeader, SessionCheckingScreen } from "./components/auth-screen";
 import { BellAccessPanel } from "./components/bell-access-panel";
 import { McpAccessPage } from "./components/mcp-access-panel";
+import { PublicLoungePage } from "./components/public-lounge-page";
 import { ResidencePermitTransition } from "./components/residence-permit-transition";
 import { FarmLazyBoundary, FarmLazyFailure, FarmLazyLoading } from "./farm/page/farm-lazy-boundary";
 import { LingyeBackgroundMusic } from "./lingye/lingye-background-music";
@@ -62,6 +68,7 @@ import {
   type CandidateTwoMailboxView,
   type CandidateTwoOwnerProfileCareerView,
   CandidateTwoPreview,
+  type CandidateTwoScreenCommand,
   type CandidateTwoSharedMemeDetailView,
   type CandidateTwoSharedMemeListView,
   type CandidateTwoViewState,
@@ -168,6 +175,7 @@ type AppState =
       };
       mailbox: CandidateTwoMailboxView;
       ownerProfileCareer: CandidateTwoOwnerProfileCareerView;
+      ownerProfileActivity: ProfileActivityView;
     };
 
 function identityView(identity: HumanIdentity): CandidateTwoIdentityView {
@@ -364,6 +372,7 @@ function authenticatedState(
       list: { stage: "loading", category: null, page: 1 },
     },
     ownerProfileCareer: { stage: "idle" },
+    ownerProfileActivity: { stage: "idle" },
   };
 }
 
@@ -387,14 +396,17 @@ function authenticatedViewState(
     lingye: appState.lingye,
     mailbox: appState.mailbox,
     ownerProfileCareer: appState.ownerProfileCareer,
+    ownerProfileActivity: appState.ownerProfileActivity,
   };
 }
 
 function LiveApp() {
   const [appState, setAppState] = useState<AppState>({ stage: "checking-session" });
-  const [activeInternalPage, setActiveInternalPage] = useState<"community" | "daily" | "farm">(
-    () => (isDoorbellFarmPath(window.location.pathname) ? "farm" : "community"),
-  );
+  const [activeInternalPage, setActiveInternalPage] = useState<
+    "community" | "daily" | "farm" | "lounge"
+  >(() => (isDoorbellFarmPath(window.location.pathname) ? "farm" : "community"));
+  const [candidateTwoScreenCommand, setCandidateTwoScreenCommand] =
+    useState<CandidateTwoScreenCommand | null>(null);
   const [showMcpAfterPermit, setShowMcpAfterPermit] = useState(false);
   const [updatedPermit, setUpdatedPermit] = useState<HumanIdentity | null>(null);
   const [showBellAccess, setShowBellAccess] = useState(false);
@@ -413,6 +425,8 @@ function LiveApp() {
       : current === authenticatedResidentId ? current : null);
   }, [farmOpen, authenticatedResidentId]);
 
+  const loungeOpen = activeInternalPage === "lounge";
+  const loungeScreenCommandNonceRef = useRef(0);
   const ownerProfileCareerRequestRef = useRef<{
     controller: AbortController | null;
     id: number;
@@ -485,6 +499,20 @@ function LiveApp() {
       window.history.back();
       return;
     }
+    setActiveInternalPage("community");
+  }, []);
+
+  const openLoungePage = useCallback(() => {
+    setCandidateTwoScreenCommand(null);
+    setActiveInternalPage("lounge");
+  }, []);
+
+  const closeLoungePage = useCallback(() => {
+    loungeScreenCommandNonceRef.current += 1;
+    setCandidateTwoScreenCommand({
+      nonce: loungeScreenCommandNonceRef.current,
+      screen: "screen-lingye",
+    });
     setActiveInternalPage("community");
   }, []);
 
@@ -720,6 +748,13 @@ function LiveApp() {
         return;
       }
 
+      if (action.type === "lounge-open") {
+        if (appState.stage === "authenticated" && activeInternalPage === "community") {
+          openLoungePage();
+        }
+        return;
+      }
+
       if (action.type === "navigate") {
         if (action.path === DOORBELL_FARM_PATH && appState.stage === "authenticated") {
           openFarmPage();
@@ -736,26 +771,61 @@ function LiveApp() {
         ownerProfileCareerRequestRef.current = { controller, id: requestId };
         setAppState((current) =>
           current.stage === "authenticated"
-            ? { ...current, ownerProfileCareer: { stage: "loading" } }
+            ? { ...current, ownerProfileCareer: { stage: "loading" }, ownerProfileActivity: { stage: "loading" } }
             : current,
         );
-        const result = await getOwnerProfileCareerSummary({ signal: controller.signal });
-        if (controller.signal.aborted || ownerProfileCareerRequestRef.current.id !== requestId) {
-          return;
-        }
-        setAppState((current) => {
-          if (
-            current.stage !== "authenticated" ||
-            current.identity.resident.resident_id !== residentId
-          ) {
-            return current;
-          }
-          return {
-            ...current,
-            ownerProfileCareer: result.ok
-              ? { stage: "ready", titles: result.data.careers.map((career) => career.title) }
-              : { stage: "error" },
-          };
+        const isCurrentProfileRequest = () =>
+          !controller.signal.aborted && ownerProfileCareerRequestRef.current.id === requestId;
+        void getOwnerProfileCareerSummary({ signal: controller.signal }).then((result) => {
+          if (!isCurrentProfileRequest()) return;
+          setAppState((current) => {
+            if (
+              current.stage !== "authenticated" ||
+              current.identity.resident.resident_id !== residentId
+            ) {
+              return current;
+            }
+            return {
+              ...current,
+              ownerProfileCareer: result.ok
+                ? { stage: "ready", titles: result.data.careers.map((career) => career.title) }
+                : { stage: "error" },
+            };
+          });
+        });
+        void getProfileActivity({ signal: controller.signal }).then((activity) => {
+          if (!isCurrentProfileRequest()) return;
+          setAppState((current) => {
+            if (
+              current.stage !== "authenticated" ||
+              current.identity.resident.resident_id !== residentId
+            ) {
+              return current;
+            }
+            return { ...current, ownerProfileActivity: activity };
+          });
+          if (activity.stage !== "ready") return;
+          void refreshProfileActivity({ signal: controller.signal }).then((refreshed) => {
+            if (!isCurrentProfileRequest()) return;
+            setAppState((current) => {
+              if (
+                current.stage !== "authenticated" ||
+                current.identity.resident.resident_id !== residentId
+              ) {
+                return current;
+              }
+              return {
+                ...current,
+                ownerProfileActivity:
+                  refreshed.stage === "ready"
+                    ? refreshed
+                    : {
+                        stage: "ready",
+                        data: { ...activity.data, farmUnavailable: true },
+                      },
+              };
+            });
+          });
         });
         return;
       }
@@ -1309,7 +1379,7 @@ function LiveApp() {
         });
       }
     },
-    [appState, loadLingye, openDailyPage, openFarmPage],
+    [activeInternalPage, appState, loadLingye, openDailyPage, openFarmPage, openLoungePage],
   );
 
   if (appState.stage === "checking-session") {
@@ -1366,10 +1436,11 @@ function LiveApp() {
       {updatedPermit && appState.stage === "authenticated" ? <div style={{position:"fixed",inset:0,zIndex:1000,overflow:"auto"}}><ResidencePermitTransition identity={updatedPermit} onComplete={() => setUpdatedPermit(null)} /></div> : null}
       <CandidateTwoPreview
         onAction={handleCandidateAction}
+        screenCommand={candidateTwoScreenCommand}
         state={authenticatedViewState(appState)}
       />
       <LingyeBackgroundMusic
-        active={lingyeScreenActive || farmOpen}
+        active={!loungeOpen && (lingyeScreenActive || farmOpen)}
         controlVisible={lingyeMapActive && !farmOpen}
       />
       {appState.stage === "authenticated" && showBellAccess ? (
@@ -1381,6 +1452,9 @@ function LiveApp() {
             <LingyeDailyScreen onBack={closeDailyPage} />
           </Suspense>
         </FarmLazyBoundary>
+      ) : null}
+      {appState.stage === "authenticated" && loungeOpen ? (
+        <PublicLoungePage onBack={closeLoungePage} gamesEnabled gameViewerId={`human:${appState.identity.account.account_id}`} />
       ) : null}
       {appState.stage === "authenticated" && (farmOpen || retainedFarmResidentId === authenticatedResidentId) ? (
         <div className="live-app__retained-farm" hidden={!farmOpen} key={authenticatedResidentId}>

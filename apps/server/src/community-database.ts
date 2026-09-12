@@ -1,4 +1,11 @@
 import {ResidentProfileStore} from "./resident-profile/store.js";
+import {GameRuleChoiceStore} from './games/game-rule-choice-store.js';
+import { GameReactionStore } from "./games/game-reaction-store.js";
+import { GameRoundLimitStore } from "./games/game-round-limit-store.js";
+import { ResidentSocialStore } from "./resident-social/resident-social-store.js";
+import { LoungeWakeStore } from "./lounge-wake-store.js";
+import { LoungeChatSessionStore } from "./lounge-chat-session-store.js";
+import { SqliteGameChatStore } from "./games/game-chat-store.js";
 import { readGamePreferences, writeGamePreferences } from "./game-settings-store.js";
 import type { GamePreferences } from "@doorbell/protocol";
 import { ResidentAvatarStore } from "./resident-avatar/store.js";
@@ -25,6 +32,8 @@ import { MysteryMerchantReminderStore } from "./mystery-merchant-reminder-store.
 import { HumanSessionStore } from "./human-session-store.js";
 import { CareerExamReminderRetryStore } from "./career-exam-reminder-retry-store.js";
 import { HumanMembershipStore } from "./human-membership-store.js";
+import { LoungeGameTableStore } from "./lounge-game-table-store.js";
+import { LoungeStore } from "./lounge-store.js";
 import { migrateCommunityDatabase } from "./database/community-migrations.js";
 import {
   createReporterBellWake,
@@ -132,7 +141,7 @@ export interface FarmCreationReceiptInput {
   farmCreatedAt: number;
 }
 
-export type HumanSettingsChatMode = "natural" | "proactive" | "listening";
+export type HumanSettingsChatMode = "natural" | "proactive" | "listening" | "passive";
 
 export interface HomeWeatherStateRecord {
   climateType: ClimateType;
@@ -201,6 +210,7 @@ export const FARM_PURCHASE_REQUEST_STATUSES = ["requested", "expired", "failed"]
 export type FarmPurchaseRequestStatus = (typeof FARM_PURCHASE_REQUEST_STATUSES)[number];
 
 export type BellWakeReason =
+  | "lounge_chat" | "game_invitation" | "game_turn" | "game_reaction"
   | "mailbox_unread"
   | "farm_purchase_request"
   | "farm_harvest_request"
@@ -1230,6 +1240,15 @@ export class CommunityDatabase {
   readonly humanBulletinStore: HumanBulletinStore;
   readonly residentAvatarStore: ResidentAvatarStore;
   readonly residentProfileStore: ResidentProfileStore;
+  readonly loungeWakeStore: LoungeWakeStore;
+  readonly loungeChatSessionStore: LoungeChatSessionStore;
+  readonly gameChatStore: SqliteGameChatStore;
+  readonly gameRuleChoiceStore: GameRuleChoiceStore;
+  readonly gameReactionStore: GameReactionStore;
+  readonly gameRoundLimitStore: GameRoundLimitStore;
+  readonly residentSocialStore: ResidentSocialStore;
+  readonly loungeStore: LoungeStore;
+  readonly loungeGameTableStore: LoungeGameTableStore;
   readonly farmLayoutShareStore: FarmLayoutShareStore;
   readonly mysteryMerchantNightStore: MysteryMerchantNightStore;
   readonly mysteryMerchantReminderStore: MysteryMerchantReminderStore;
@@ -1265,6 +1284,15 @@ export class CommunityDatabase {
     this.humanBulletinStore = new HumanBulletinStore(this.#database);
     this.residentAvatarStore = new ResidentAvatarStore(this.#database);
     this.residentProfileStore = new ResidentProfileStore(this.#database);
+    this.loungeWakeStore = new LoungeWakeStore(this.#database);
+    this.loungeChatSessionStore = new LoungeChatSessionStore(this.#database);
+    this.gameChatStore = new SqliteGameChatStore(this.#database);
+    this.gameRuleChoiceStore = new GameRuleChoiceStore(this.#database);
+    this.gameReactionStore = new GameReactionStore(this.#database);
+    this.gameRoundLimitStore = new GameRoundLimitStore(this.#database);
+    this.residentSocialStore = new ResidentSocialStore(this.#database);
+    this.loungeStore = new LoungeStore(this.#database, this.residentSocialStore);
+    this.loungeGameTableStore = new LoungeGameTableStore(this.#database);
     this.farmLayoutShareStore = new FarmLayoutShareStore(this.#database);
     this.mysteryMerchantNightStore = new MysteryMerchantNightStore(this.#database);
     this.mysteryMerchantReminderStore = new MysteryMerchantReminderStore(this.#database);
@@ -3394,8 +3422,7 @@ export class CommunityDatabase {
            AND wake_status = 'pending'`,
       )
       .all(residentId) as BellWakeRow[];
-    return [...rows, ...harvestRows, ...plantRows, ...actionListRows, ...careerRows]
-      .map(mapBellWake)
+    return [...[...rows, ...harvestRows, ...plantRows, ...actionListRows, ...careerRows].map(mapBellWake), ...this.loungeWakeStore.pending(residentId)]
       .sort(
         (left, right) =>
           left.createdAt - right.createdAt || left.wakeId.localeCompare(right.wakeId),
@@ -3477,6 +3504,7 @@ export class CommunityDatabase {
   }
 
   getBellWake(residentId: string, wakeId: string): BellWakeRecord | undefined {
+    const lounge = this.loungeWakeStore.get(residentId,wakeId); if (lounge) return lounge;
     let row = this.#database
       .prepare(
         `SELECT wake_id,
@@ -3572,6 +3600,7 @@ export class CommunityDatabase {
     wakeId: string,
     now: number,
   ): "acked" | "duplicate" | "conflict" | "missing" {
+    if(this.loungeWakeStore.get(residentId,wakeId)){ const result=this.loungeWakeStore.finish(residentId,wakeId,"acked",now); return result === "changed" ? "acked" : result; }
     const transaction = this.#database.transaction(() => {
       let row = this.#database
         .prepare(
@@ -3716,6 +3745,7 @@ export class CommunityDatabase {
     blockReason: string,
     errorCode: string,
   ): "blocked" | "duplicate" | "conflict" | "missing" {
+    if(this.loungeWakeStore.get(residentId,wakeId)){ const result=this.loungeWakeStore.finish(residentId,wakeId,"blocked",now,blockReason,errorCode); return result === "changed" ? "blocked" : result; }
     const transaction = this.#database.transaction(() => {
       let row = this.#database
         .prepare(
@@ -3873,6 +3903,7 @@ export class CommunityDatabase {
   }
 
   cancelBellWake(residentId: string, wakeId: string, now: number): BellWakeCancellationResult {
+    if(this.loungeWakeStore.get(residentId,wakeId)){const cancelled=this.loungeWakeStore.finish(residentId,wakeId,"cancelled",now)==="changed"; return {residentId,cancelledWakeId:cancelled?wakeId:null,cancelledWakeIds:cancelled?[wakeId]:[]};}
     const transaction = this.#database.transaction(() => {
       let row = this.#database
         .prepare(

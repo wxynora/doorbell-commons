@@ -40,6 +40,7 @@ export * from "./lingye-daily-presentation.js";
 export * from "./lingye-daily-weather.js";
 export * from "./lingye-npc.js";
 export * from "./reporter-relay.js";
+export * from "./lounge.js";
 
 export const serviceHealthSchema = z.object({
   service: z.literal("doorbell-commons"),
@@ -2213,7 +2214,7 @@ export const sharedMemeBackendPullSuccessSchema = z
     }
   });
 
-export const humanSettingsChatModeSchema = z.enum(["natural", "proactive", "listening"]);
+export const humanSettingsChatModeSchema = z.enum(["natural", "proactive", "listening", "passive"]);
 
 export const climateTypeValues = [
   "tropical_rainforest",

@@ -9,7 +9,7 @@ import {
 } from "@doorbell/protocol";
 import type Database from "better-sqlite3";
 
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 31;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 44;
 const LEGACY_CONNECTOR_DELIVERY_GENERATION = "00000000-0000-0000-0000-000000000000";
 
 interface FarmCreationRequestRow {
@@ -2419,6 +2419,338 @@ export function migrateCommunityDatabase(
     })();
     migratedSchemaVersion = 31;
   }
+  if (migratedSchemaVersion < 32) {
+    database.transaction(() => {
+      database.exec(`
+        CREATE TABLE lounge_event_sequence (
+          singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+          next_sequence INTEGER NOT NULL CHECK (next_sequence > 0)
+        );
+        INSERT INTO lounge_event_sequence (singleton_id, next_sequence)
+        VALUES (1, 1);
+
+        CREATE TABLE lounge_presence (
+          resident_id TEXT PRIMARY KEY REFERENCES residents(resident_id) ON DELETE CASCADE,
+          area_id TEXT NOT NULL CHECK (length(trim(area_id)) > 0),
+          slot_id TEXT CHECK (slot_id IS NULL OR length(trim(slot_id)) > 0),
+          idle_position_json TEXT NOT NULL,
+          entered_at INTEGER NOT NULL CHECK (entered_at >= 0),
+          last_spoke_at INTEGER CHECK (last_spoke_at IS NULL OR last_spoke_at >= 0)
+        );
+        CREATE INDEX lounge_presence_area_slot
+          ON lounge_presence (area_id ASC, slot_id ASC, resident_id ASC);
+
+        CREATE TABLE lounge_public_activities (
+          activity_id TEXT PRIMARY KEY,
+          sequence INTEGER NOT NULL UNIQUE CHECK (sequence > 0),
+          resident_id TEXT REFERENCES residents(resident_id) ON DELETE CASCADE,
+          kind TEXT NOT NULL CHECK (length(trim(kind)) > 0),
+          data_json TEXT NOT NULL,
+          created_at INTEGER NOT NULL CHECK (created_at >= 0)
+        );
+        CREATE INDEX lounge_public_activities_order
+          ON lounge_public_activities (sequence ASC, activity_id ASC);
+
+        CREATE TABLE lounge_public_messages (
+          message_id TEXT PRIMARY KEY,
+          sequence INTEGER NOT NULL UNIQUE CHECK (sequence > 0),
+          resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+          text TEXT NOT NULL CHECK (length(trim(text)) > 0),
+          created_at INTEGER NOT NULL CHECK (created_at >= 0),
+          reply_to_message_id TEXT REFERENCES lounge_public_messages(message_id)
+            ON DELETE SET NULL,
+          activity_id TEXT REFERENCES lounge_public_activities(activity_id)
+            ON DELETE SET NULL,
+          withdrawn_at INTEGER CHECK (withdrawn_at IS NULL OR withdrawn_at >= 0)
+        );
+        CREATE INDEX lounge_public_messages_order
+          ON lounge_public_messages (sequence ASC, message_id ASC);
+      `);
+      database.pragma("user_version = 32");
+    })();
+  }
+  if (databaseSchemaVersion < 33) {
+    database.transaction(() => {
+      database.exec(`
+        CREATE TABLE game_rooms (
+          room_id TEXT PRIMARY KEY, kind TEXT NOT NULL, revision INTEGER NOT NULL,
+          phase TEXT NOT NULL, seats_json TEXT NOT NULL, snapshot_json TEXT NOT NULL,
+          host_player_id TEXT, host_controller_type TEXT, base_stake INTEGER, last_settlement_id TEXT
+        );
+        CREATE TABLE lounge_game_tables (
+          table_id TEXT PRIMARY KEY CHECK(table_id IN ('square','round')),
+          room_id TEXT UNIQUE REFERENCES game_rooms(room_id)
+        );
+        INSERT INTO lounge_game_tables(table_id) VALUES ('square'), ('round');
+      `);
+      database.pragma("user_version = 33");
+    })();
+  }
+  if (databaseSchemaVersion < 34) {
+    database.transaction(() => {
+      database.exec(`CREATE TABLE game_reactions (
+        event_id TEXT PRIMARY KEY,
+        sender_id TEXT NOT NULL,
+        request_id TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        paid INTEGER NOT NULL DEFAULT 0 CHECK(paid IN (0,1)),
+        delivered INTEGER NOT NULL DEFAULT 0 CHECK(delivered IN (0,1)),
+        UNIQUE(sender_id, request_id)
+      );`);
+      database.pragma("user_version = 34");
+    })();
+  }
+  if (databaseSchemaVersion < 35) {
+    database.transaction(() => {
+      database.exec("ALTER TABLE game_reactions ADD COLUMN charging INTEGER NOT NULL DEFAULT 0 CHECK(charging IN (0,1))");
+      database.pragma("user_version = 35");
+    })();
+  }
+  if (databaseSchemaVersion < 36) {
+    database.transaction(() => {
+      database.exec(`CREATE TABLE game_chat_messages (
+        room_id TEXT NOT NULL REFERENCES game_rooms(room_id),
+        sequence INTEGER NOT NULL CHECK (sequence > 0),
+        player_id TEXT NOT NULL,
+        controller_type TEXT NOT NULL CHECK (controller_type IN ('human', 'resident')),
+        client_message_id TEXT NOT NULL, text TEXT NOT NULL, created_at INTEGER NOT NULL,
+        reply_to_message_id TEXT,
+        PRIMARY KEY(room_id, sequence),
+        UNIQUE(room_id, player_id, controller_type, client_message_id)
+      )`);
+      database.pragma("user_version = 36");
+    })();
+  }
+  if (databaseSchemaVersion < 37) {
+    database.transaction(() => {
+      database.exec(`CREATE TABLE lounge_chat_sessions (
+        resident_id TEXT PRIMARY KEY REFERENCES residents(resident_id) ON DELETE CASCADE,
+        session_json TEXT NOT NULL
+      )`);
+      database.pragma("user_version = 37");
+    })();
+  }
+  if (databaseSchemaVersion < 38) {
+    database.transaction(() => {
+      database.exec(`
+        CREATE TABLE human_settings_v36 (
+          home_id TEXT PRIMARY KEY REFERENCES homes(home_id) ON DELETE CASCADE,
+          environment_description TEXT,
+          pause_all_wakeups INTEGER CHECK (pause_all_wakeups IN (0, 1)),
+          visit_requests_and_invitations_enabled INTEGER
+            CHECK (visit_requests_and_invitations_enabled IN (0, 1)),
+          activity_invitations_enabled INTEGER CHECK (activity_invitations_enabled IN (0, 1)),
+          important_system_notifications_enabled INTEGER
+            CHECK (important_system_notifications_enabled IN (0, 1)),
+          shared_meme_update_signals_enabled INTEGER NOT NULL DEFAULT 1
+            CHECK (shared_meme_update_signals_enabled IN (0, 1)),
+          browser_notifications_enabled INTEGER NOT NULL DEFAULT 0
+            CHECK (browser_notifications_enabled IN (0, 1)),
+          activity_reminders_enabled INTEGER NOT NULL DEFAULT 0
+            CHECK (activity_reminders_enabled IN (0, 1)),
+          default_connection_duration_minutes INTEGER
+            CHECK (default_connection_duration_minutes > 0),
+          initial_recent_activity_count INTEGER CHECK (initial_recent_activity_count >= 0),
+          chat_mode TEXT CHECK (chat_mode IN ('natural', 'proactive', 'listening', 'passive')),
+          allow_activity_room_warmup INTEGER CHECK (allow_activity_room_warmup IN (0, 1)),
+          updated_at INTEGER NOT NULL
+        );
+
+        INSERT INTO human_settings_v36 (
+          home_id,
+          environment_description,
+          pause_all_wakeups,
+          visit_requests_and_invitations_enabled,
+          activity_invitations_enabled,
+          important_system_notifications_enabled,
+          shared_meme_update_signals_enabled,
+          browser_notifications_enabled,
+          activity_reminders_enabled,
+          default_connection_duration_minutes,
+          initial_recent_activity_count,
+          chat_mode,
+          allow_activity_room_warmup,
+          updated_at
+        )
+        SELECT
+          home_id,
+          environment_description,
+          pause_all_wakeups,
+          visit_requests_and_invitations_enabled,
+          activity_invitations_enabled,
+          important_system_notifications_enabled,
+          shared_meme_update_signals_enabled,
+          browser_notifications_enabled,
+          activity_reminders_enabled,
+          default_connection_duration_minutes,
+          initial_recent_activity_count,
+          chat_mode,
+          allow_activity_room_warmup,
+          updated_at
+        FROM human_settings;
+
+        DROP TABLE human_settings;
+        ALTER TABLE human_settings_v36 RENAME TO human_settings;
+      `);
+      database.pragma("user_version = 38");
+    })();
+  }
+  if (databaseSchemaVersion < 39) {
+    database.transaction(() => {
+      database.exec(`CREATE TABLE lounge_wakes (
+        wake_id TEXT PRIMARY KEY,
+        resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+        source_key TEXT NOT NULL,
+        record_json TEXT NOT NULL,
+        expires_at INTEGER,
+        UNIQUE(resident_id,source_key)
+      )`);
+      database.pragma("user_version = 39");
+    })();
+  }
+  if (databaseSchemaVersion < 40) {
+    database.transaction(() => {
+      database.exec(`
+        CREATE TABLE game_round_counts (
+          player_id TEXT NOT NULL,
+          calendar_day TEXT NOT NULL,
+          round_count INTEGER NOT NULL CHECK (round_count >= 0),
+          PRIMARY KEY (player_id, calendar_day)
+        )
+      `);
+      database.pragma("user_version = 40");
+    })();
+  }
+  if (databaseSchemaVersion < 41) {
+    database.transaction(() => {
+      database.exec(`
+        CREATE TABLE resident_recent_activity (
+          resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+          source TEXT NOT NULL,
+          source_sequence INTEGER NOT NULL,
+          occurred_at INTEGER NOT NULL,
+          label TEXT NOT NULL,
+          PRIMARY KEY(resident_id, source, source_sequence)
+        );
+        CREATE TABLE resident_social_cursors (
+          resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+          source TEXT NOT NULL,
+          source_sequence INTEGER NOT NULL,
+          PRIMARY KEY(resident_id, source)
+        );
+        CREATE TABLE resident_chat_days (
+          resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+          peer_resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+          day TEXT NOT NULL,
+          PRIMARY KEY(resident_id, peer_resident_id, day),
+          CHECK(resident_id <> peer_resident_id)
+        );
+        CREATE TABLE resident_interaction_totals (
+          resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+          peer_resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+          kind TEXT NOT NULL CHECK(kind IN ('chat','game')),
+          interaction_count INTEGER NOT NULL,
+          last_at INTEGER NOT NULL,
+          PRIMARY KEY(resident_id, peer_resident_id, kind),
+          CHECK(resident_id <> peer_resident_id)
+        );
+        CREATE TABLE resident_social_source_sequences (
+          source TEXT PRIMARY KEY,
+          next_sequence INTEGER NOT NULL CHECK(next_sequence > 0)
+        );
+        INSERT INTO resident_social_source_sequences(source, next_sequence)
+        VALUES ('farm', 1), ('game', 1);
+        CREATE TABLE resident_farm_event_ids (
+          resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+          event_id TEXT NOT NULL,
+          PRIMARY KEY(resident_id, event_id)
+        );
+
+        -- Retraction hides the public body; cumulative social facts remain.
+        INSERT INTO resident_recent_activity (
+          resident_id, source, source_sequence, occurred_at, label
+        )
+        SELECT message.resident_id, 'lounge', message.sequence, message.created_at, '休息室互动'
+        FROM lounge_public_messages AS message;
+
+        INSERT INTO resident_recent_activity (
+          resident_id, source, source_sequence, occurred_at, label
+        )
+        SELECT parent.resident_id, 'lounge', message.sequence, message.created_at, '休息室互动'
+        FROM lounge_public_messages AS message
+        JOIN lounge_public_messages AS parent
+          ON parent.message_id = message.reply_to_message_id
+        WHERE parent.resident_id <> message.resident_id;
+
+        INSERT INTO resident_social_cursors (resident_id, source, source_sequence)
+        SELECT resident_id, source, max(source_sequence)
+        FROM resident_recent_activity
+        GROUP BY resident_id, source;
+
+        WITH replies AS (
+          SELECT message.resident_id AS author_id,
+                 parent.resident_id AS parent_id,
+                 message.created_at AS created_at
+          FROM lounge_public_messages AS message
+          JOIN lounge_public_messages AS parent
+            ON parent.message_id = message.reply_to_message_id
+          WHERE parent.resident_id <> message.resident_id
+        ), directions AS (
+          SELECT author_id AS resident_id, parent_id AS peer_resident_id, created_at
+          FROM replies
+          UNION ALL
+          SELECT parent_id AS resident_id, author_id AS peer_resident_id, created_at
+          FROM replies
+        )
+        INSERT OR IGNORE INTO resident_chat_days (resident_id, peer_resident_id, day)
+        SELECT resident_id,
+               peer_resident_id,
+               strftime('%Y-%m-%d', created_at / 1000, 'unixepoch', '+8 hours')
+        FROM directions;
+
+        WITH replies AS (
+          SELECT message.resident_id AS author_id,
+                 parent.resident_id AS parent_id,
+                 message.created_at AS created_at
+          FROM lounge_public_messages AS message
+          JOIN lounge_public_messages AS parent
+            ON parent.message_id = message.reply_to_message_id
+          WHERE parent.resident_id <> message.resident_id
+        ), directions AS (
+          SELECT author_id AS resident_id, parent_id AS peer_resident_id, created_at
+          FROM replies
+          UNION ALL
+          SELECT parent_id AS resident_id, author_id AS peer_resident_id, created_at
+          FROM replies
+        )
+        INSERT INTO resident_interaction_totals (
+          resident_id, peer_resident_id, kind, interaction_count, last_at
+        )
+        SELECT resident_id,
+               peer_resident_id,
+               'chat',
+               count(DISTINCT strftime('%Y-%m-%d', created_at / 1000, 'unixepoch', '+8 hours')),
+               max(created_at)
+        FROM directions
+        GROUP BY resident_id, peer_resident_id;
+
+        DELETE FROM resident_recent_activity
+        WHERE rowid IN (
+          SELECT rowid
+          FROM (
+            SELECT rowid,
+                   row_number() OVER (
+                     PARTITION BY resident_id
+                     ORDER BY occurred_at DESC, source ASC, source_sequence DESC
+                   ) AS activity_rank
+            FROM resident_recent_activity
+          )
+          WHERE activity_rank > 50
+        );
+      `);
+      database.pragma("user_version = 41");
+    })();
+  }
   database.transaction(() => {
     const itemColumns = database.pragma("table_info(farm_purchase_request_items)") as Array<{
       name: string;
@@ -2438,6 +2770,24 @@ export function migrateCommunityDatabase(
   database.exec(
     "CREATE UNIQUE INDEX IF NOT EXISTS bell_wakes_one_purchase_request ON bell_wakes (purchase_request_id) WHERE purchase_request_id IS NOT NULL",
   );
+  if (databaseSchemaVersion < 42) {
+    database.transaction(() => {
+      database.exec('ALTER TABLE game_rooms ADD COLUMN deadline_json TEXT');
+      database.pragma('user_version = 42');
+    })();
+  }
+  if(databaseSchemaVersion < 43) database.transaction(()=>{
+  database.exec(`CREATE TABLE IF NOT EXISTS game_rule_choices (
+    room_id TEXT NOT NULL REFERENCES game_rooms(room_id) ON DELETE CASCADE,
+    player_id TEXT NOT NULL, needs_rules INTEGER NOT NULL, shown INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY(room_id,player_id)
+  )`);
+  database.pragma('user_version = 43');
+  })();
+  if(databaseSchemaVersion < 44) database.transaction(()=>{
+    database.exec("ALTER TABLE game_rule_choices ADD COLUMN round_key TEXT NOT NULL DEFAULT '1'");
+    database.pragma('user_version = 44');
+  })();
   database.exec(`CREATE TABLE IF NOT EXISTS home_game_preferences (
     home_id TEXT PRIMARY KEY REFERENCES homes(home_id) ON DELETE CASCADE,
     preferences_json TEXT NOT NULL

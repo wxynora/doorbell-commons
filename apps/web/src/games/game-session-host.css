@@ -1,0 +1,3 @@
+.game-session-host { position:fixed; inset:0; overflow:hidden; }
+.game-session-status { position:fixed; left:50%; bottom:12px; transform:translateX(-50%); z-index:100; padding:10px 16px; border-radius:12px; background:#fff8e9; color:#3b5147; font:16px/1.4 sans-serif; }
+.game-session-host [hidden] { display:none !important; }

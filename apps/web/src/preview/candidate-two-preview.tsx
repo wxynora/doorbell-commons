@@ -1,3 +1,5 @@
+import type { ProfileActivityView } from "../auth/profile-activity-client";
+import { PROFILE_ACTIVITY_SCRIPT } from "./profile-activity-view";
 import {
   type HumanSettingsChatMode,
   type GamePreferences,
@@ -417,6 +419,7 @@ export type CandidateTwoViewState =
       issueMessage: string | null;
       mailbox: CandidateTwoMailboxView;
       ownerProfileCareer: CandidateTwoOwnerProfileCareerView;
+      ownerProfileActivity?: ProfileActivityView;
       pendingLogout: boolean;
       sharedMemeCreateMessage: string | null;
       sharedMemeCreatePending: boolean;
@@ -1272,6 +1275,7 @@ export type CandidateTwoAction =
     }
   | { type: "logout" }
   | { type: "view-ready" }
+  | { type: "lounge-open" }
   | { type: "lingye-glimmer-open" }
   | { type: "lingye-daily-open" }
   | { type: "lingye-memorial-open" }
@@ -1316,6 +1320,7 @@ const candidateTwoActionKeys = {
   "browser-notification-preference-save": ["type", "field", "value"],
   "community-connection-preference-save": ["type", "field", "value"],
   logout: ["type"],
+  "lounge-open": ["type"],
   "lingye-glimmer-open": ["type"],
   "lingye-daily-open": ["type"],
   "lingye-memorial-open": ["type"],
@@ -1517,7 +1522,7 @@ export function parseCandidateTwoAction(value: unknown): CandidateTwoAction | nu
     if (
       value.field === "chatMode" &&
       typeof value.value === "string" &&
-      ["natural", "proactive", "listening"].includes(value.value)
+      ["natural", "proactive", "listening", "passive"].includes(value.value)
     ) {
       return { type, field: value.field, value: value.value as HumanSettingsChatMode };
     }
@@ -1604,6 +1609,7 @@ export function parseCandidateTwoAction(value: unknown): CandidateTwoAction | nu
     type === "lingye-memorial-open" ||
     type === "lingye-together-open" ||
     type === "owner-profile-career-open" ||
+    type === "lounge-open" ||
     type === "view-ready"
     ? { type }
     : null;
@@ -1650,10 +1656,23 @@ const hiddenFishingPlaceIds = new Set<string>([
   "abyssal-trench",
 ]);
 
+export type CandidateTwoScreenId =
+  | "screen-lingye"
+  | "screen-home"
+  | "screen-profile"
+  | "screen-settings"
+  | "screen-lounge";
+
+export interface CandidateTwoScreenCommand {
+  nonce: number;
+  screen: CandidateTwoScreenId;
+}
+
 interface CandidateTwoPreviewProps {
   demo?: CandidateTwoDemoView | null;
   onAction: (action: CandidateTwoAction) => void;
   state: CandidateTwoViewState;
+  screenCommand?: CandidateTwoScreenCommand | null;
 }
 
 const DOORBELL_FONTS = '<link href="/fonts/doorbell-fonts.v2.css" rel="stylesheet">';
@@ -2054,6 +2073,8 @@ const PROFILE_RUNTIME_CONTENT = `        <div class="candidate2-profile-scale-sh
                         <div class="candidate2-demo-relation-node candidate2-demo-relation-b"><strong></strong><small></small></div>
                         <div class="candidate2-demo-relation-node candidate2-demo-relation-c"><strong></strong><small></small></div>
                     </div>
+                    <button id="profile-relationship-less" class="candidate2-profile-more handwritten" type="button" hidden>Less</button>
+                    <button id="profile-relationship-more" class="candidate2-profile-more handwritten" type="button" hidden>More</button>
                     <form id="profile-relationship-editor" class="candidate2-relationship-editor" hidden>
                         <p class="candidate2-relationship-editor-title">编辑关系备注</p>
                         <label data-relation-index="0"><strong>—</strong><select><option value="不熟">不熟</option><option value="还行">还行</option><option value="朋友">朋友</option><option value="自定义">自定义</option></select><input type="text" maxlength="12" placeholder="输入关系"></label>
@@ -2068,6 +2089,7 @@ const PROFILE_RUNTIME_CONTENT = `        <div class="candidate2-profile-scale-sh
         <section class="candidate2-profile-section candidate2-activity-section">
             <img class="candidate2-activity-paperclip" src="/candidate-two/profile-activity-paperclip-v1.svg" alt="" aria-hidden="true">
             <p class="candidate2-profile-section-title handwritten">Recent Activity</p>
+            <button id="profile-activity-refresh" class="candidate2-profile-more handwritten" type="button">Refresh</button>
             <p class="candidate2-empty-copy candidate2-profile-empty">暂无可读取的活动数据</p>
             <div class="candidate2-demo-activity-list" hidden></div>
             <button id="profile-activity-more" class="candidate2-profile-more handwritten" type="button" hidden>More</button>
@@ -2129,7 +2151,7 @@ const SETTINGS_SCREEN = `
                 <div class="candidate2-settings-section-heading"><div><span>05</span><h2>社区连接偏好</h2></div></div>
                 <label class="candidate2-settings-row"><span>默认连接时长<small>小机主动进入活动室后生效</small></span><span class="candidate2-settings-number"><input class="settings-lounge-duration" type="number" min="1" inputmode="numeric" value="" required><em>分钟</em></span></label>
                 <label class="candidate2-settings-row"><span>首次读取动态<small>只影响本家小机的初始上下文</small></span><span class="candidate2-settings-number"><input class="settings-initial-message-count" type="number" min="0" inputmode="numeric" value=""><em>条</em></span></label>
-                <label class="candidate2-settings-row"><span>闲聊模式</span><select class="settings-chat-mode"><option value="natural">自然</option><option value="proactive">主动</option><option value="listening">倾听</option></select></label>
+                <label class="candidate2-settings-row"><span>闲聊模式</span><select class="settings-chat-mode"><option value="natural">自然</option><option value="proactive">主动</option><option value="listening">倾听</option><option value="passive">被动</option></select></label>
                 <label class="candidate2-settings-toggle"><span>允许活动室热场</span><input class="settings-activity-room-warmup" type="checkbox" checked><i></i></label>
             </section>
 
@@ -2139,7 +2161,7 @@ const SETTINGS_SCREEN = `
                 <label class="candidate2-settings-toggle"><span>邀请免打扰<small>北京时间 · 跨过午夜的时段也可以</small></span><input class="settings-game-quiet" type="checkbox"><i></i></label>
                 <div class="settings-game-ranges"></div>
                 <button class="candidate2-settings-text-action settings-game-add-range" type="button">＋ 添加免打扰时段</button>
-                <label class="candidate2-settings-row"><span>游戏局数上限<small>留空不设上限，统计周期待确认</small></span><span class="candidate2-settings-number"><input class="settings-game-round-limit" type="number" min="1" step="1" inputmode="numeric" aria-label="游戏局数上限"><em>局</em></span></label>
+                <label class="candidate2-settings-row"><span>游戏局数上限<small>留空不限；北京时间每天重置，所有游戏累计</small></span><span class="candidate2-settings-number"><input class="settings-game-round-limit" type="number" min="1" step="1" inputmode="numeric" aria-label="游戏局数上限"><em>局</em></span></label>
                 <div class="candidate2-settings-row"><span><small>先保存偏好，邀请与开局限制将在游戏接入后生效。</small></span><button class="candidate2-settings-text-action settings-game-save" type="button">保存</button></div>
                 <p class="settings-game-feedback candidate2-settings-feedback" role="status" aria-live="polite"></p>
             </section>
@@ -8663,6 +8685,7 @@ const LINGYE_SCRIPT = `
 `;
 
 const CANDIDATE_RUNTIME_SCRIPT = `
+    ${PROFILE_ACTIVITY_SCRIPT}
     const credentialsForm = document.getElementById('credentials-form');
     const profileForm = document.getElementById('profile-form');
     const credentialsStatus = document.querySelector('.credentials-status');
@@ -10428,6 +10451,8 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         currentStage = state.stage;
         window.__doorbellCandidateDemo = Boolean(demo);
         applyDemoContent(demo);
+        document.getElementById('profile-activity-refresh').hidden = Boolean(demo);
+        if (!demo) applyOwnerProfileActivity(state.stage === 'authenticated' ? state.ownerProfileActivity : null);
         if (!demo && state.stage === 'authenticated') {
             applyLiveLingyeState(state.lingye);
         }
@@ -10498,7 +10523,7 @@ const CANDIDATE_RUNTIME_SCRIPT = `
             );
         }
         applyOwnerProfileCareer(state.ownerProfileCareer);
-        setStatus(document.querySelector('.candidate2-profile-empty'), state.issueMessage || '最近活动尚未接入真实数据');
+
         if (previousStage !== 'authenticated') {
             const initialScreen = demo && demo.initialScreen ? demo.initialScreen : 'lounge';
             showScreen('screen-' + initialScreen);
@@ -10721,6 +10746,12 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         if (event.source !== window.parent) return;
         const data = event.data;
         if (!data || typeof data !== 'object') return;
+        if (data.type === 'doorbell-candidate2:screen') {
+            const allowedScreens = ['screen-lingye', 'screen-home', 'screen-profile', 'screen-settings', 'screen-lounge'];
+            if (Object.keys(data).length !== 2 || typeof data.screen !== 'string' || !allowedScreens.includes(data.screen)) return;
+            showScreen(data.screen);
+            return;
+        }
         if (data.type === 'doorbell-candidate2:memorial-color-sampled') {
             const keys = Object.keys(data).sort();
             if (
@@ -10811,6 +10842,9 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         }
         if (currentStage === 'authenticated') {
             syncAuthenticatedMainNavigation(screenId);
+        }
+        if (screenId === 'screen-lounge' && currentStage === 'authenticated' && !window.__doorbellCandidateDemo) {
+            sendAction({ type: 'lounge-open' });
         }
         sendAction({
             type: 'lingye-presence-change',
@@ -11056,7 +11090,12 @@ async function sampleCandidateTwoMemorialBackdropColor(xRatio: number, yRatio: n
     .join("")}`;
 }
 
-export function CandidateTwoPreview({ demo = null, onAction, state }: CandidateTwoPreviewProps) {
+export function CandidateTwoPreview({
+  demo = null,
+  onAction,
+  screenCommand = null,
+  state,
+}: CandidateTwoPreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const avatarEditorRef=useRef<HTMLIFrameElement>(null);
   const avatarPortraitRef=useRef<HTMLIFrameElement>(null);
@@ -11118,6 +11157,11 @@ export function CandidateTwoPreview({ demo = null, onAction, state }: CandidateT
     stateRef.current = state;
   }, [state]);
 
+  const screenCommandRef = useRef(screenCommand);
+  useEffect(() => {
+    screenCommandRef.current = screenCommand;
+  }, [screenCommand]);
+
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (event.source !== iframeRef.current?.contentWindow) {
@@ -11134,6 +11178,13 @@ export function CandidateTwoPreview({ demo = null, onAction, state }: CandidateT
           { type: "doorbell-candidate2:state", state: stateRef.current, demo: demoRef.current },
           "*",
         );
+        const currentScreenCommand = screenCommandRef.current;
+        if (currentScreenCommand) {
+          iframeRef.current?.contentWindow?.postMessage(
+            { type: "doorbell-candidate2:screen", screen: currentScreenCommand.screen },
+            "*",
+          );
+        }
         return;
       }
 
@@ -11212,6 +11263,14 @@ export function CandidateTwoPreview({ demo = null, onAction, state }: CandidateT
       "*",
     );
   }, [demo, state]);
+
+  useEffect(() => {
+    if (!screenCommand) return;
+    iframeRef.current?.contentWindow?.postMessage(
+      { type: "doorbell-candidate2:screen", screen: screenCommand.screen },
+      "*",
+    );
+  }, [screenCommand]);
 
   return (
     <main className="candidate-two-preview">

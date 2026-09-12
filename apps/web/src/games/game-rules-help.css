@@ -1,0 +1,22 @@
+.game-rules-icon.game-rules-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  flex: 0 0 34px; width: 34px; height: 34px; min-height: 34px;
+  padding: 5px; border: 0; border-radius: 50%; background: transparent;
+  color: inherit; cursor: pointer; list-style: none;
+}
+.game-rules-icon::-webkit-details-marker { display: none; }
+.game-rules-icon:hover { background: #819c8220; }
+.game-rules-icon:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.game-rules-dialog {
+  position: fixed; inset: 0; margin: auto; width: min(440px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px); padding: 22px; border: 0;
+  border-radius: 18px; background: #fffaf0; color: #385449;
+  font: 16px/1.8 "PingFang SC", sans-serif; box-shadow: 0 12px 48px #263b3826;
+}
+.game-rules-dialog::backdrop { background: #263b3855; }
+.game-rules-dialog article > header { display: flex; align-items: center; justify-content: space-between; position: static; width: auto; height: auto; }
+.game-rules-dialog h2 { margin: 0; font-size: 20px; }
+.game-rules-dialog header button { width: 36px; height: 36px; background: transparent; border: 0; font-size: 26px; color: inherit; cursor: pointer; }
+.game-rules-dialog p { margin: 16px 0 0; }
+.fc-stage > .game-rules-icon { position: absolute; right: 14px; top: 10px; z-index: 12; }
+.monopoly-header > .game-rules-icon { margin-left: auto; margin-right: 10px; }

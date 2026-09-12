@@ -1,0 +1,47 @@
+.game-reaction-target { cursor: pointer; }
+.game-reaction-target:focus-visible { outline: 2px solid #d7ad60; outline-offset: 3px; }
+.game-reaction-menu { position: absolute; z-index: 80; width: 198px; border-radius: 14px; padding: 10px; background: #fff8eb; color: #40574b; box-shadow: 0 6px 18px #152d3526; font: 12px/1.4 "PingFang SC",sans-serif; }
+.game-reaction-caption { display: flex; align-items: center; justify-content: space-between; color: #7b7d69; }
+.game-reaction-caption button { background: transparent; color: inherit; border: 0; font: 20px/1 sans-serif; cursor: pointer; }
+.game-reaction-options { display: flex; gap: 6px; margin-top: 6px; }
+.game-reaction-options button { display: flex; align-items: center; gap: 4px; flex: 1; padding: 5px 2px; border: 0; border-radius: 8px; background: #f2ead8; color: inherit; font: inherit; cursor: pointer; }
+.game-reaction-options button:hover { background: #e7dcc1; }
+.game-reaction-options svg { width: 32px; height: 32px; }
+.game-reaction-options small { display: block; font-size: 10px; color: #8d7652; }
+.game-reaction-layer { position: absolute; inset: 0; pointer-events: none; z-index: 90; overflow: hidden; }
+.game-reaction-flight { position: absolute; width: 68px; height: 80px; left: -34px; top: -40px; animation: reaction-flight 900ms linear forwards; filter: drop-shadow(0 3px 2px #20332d22); }
+.game-reaction-flight svg { width: 100%; height: 100%; }
+@keyframes reaction-flight {
+  0% { transform: translate(var(--sx),var(--sy)) rotate(-24deg) scale(.65); }
+  99% { opacity: 1; }
+  100% { transform: translate(var(--rx),var(--ry)) rotate(-8deg); opacity: 0; }
+}
+.game-reaction--bomb .game-reaction-flight { animation: reaction-bomb-flight 850ms linear forwards; }
+@keyframes reaction-bomb-flight {
+  0% { transform: translate(var(--sx),var(--sy)) rotate(-25deg) scale(.6); }
+  99% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--rx),var(--ry)) rotate(360deg) scale(.92); }
+}
+.reaction-fuse-flame { transform-box: fill-box; transform-origin: center bottom; animation: reaction-fuse 160ms ease-in-out infinite alternate; }
+@keyframes reaction-fuse { from { opacity: .75; scale: .85 1; } to { opacity: 1; scale: 1.12 .88; } }
+.game-reaction-impact { position: absolute; left: var(--rx); top: var(--ry); }
+.game-reaction-mini-flower, .game-reaction-smoke, .game-reaction-twinkle { position: absolute; opacity: 0; }
+.game-reaction-mini-flower { width: 23px; height: 23px; left: -11.5px; top: -11.5px; animation: reaction-small-flowers 1700ms var(--delay) cubic-bezier(.12,.5,.4,1) forwards; }
+@keyframes reaction-small-flowers { 0% { opacity: 1; transform: rotate(var(--angle)) translateY(-10px) scale(.7); } 30% { opacity: 1; transform: rotate(var(--angle)) translateY(-37px) rotate(35deg); } 65% { opacity: .9; } 100% { opacity: 0; transform: translateY(27px) rotate(var(--angle)) translateY(-62px) rotate(110deg) scale(.7); } }
+.game-flower-sparkle { position: absolute; left: -10px; top: -10px; width: 20px; height: 20px; opacity: 0; filter: drop-shadow(0 0 3px #fff) drop-shadow(0 0 6px #ffd76b); animation: flower-sparkle 1500ms var(--delay) ease-out forwards; }
+.game-flower-sparkle::before { content: ""; position: absolute; inset: 0; background: #fffef2; clip-path: polygon(50% 0,62% 37%,100% 50%,62% 63%,50% 100%,38% 63%,0 50%,38% 37%); }
+@keyframes flower-sparkle { 0% { opacity: 1; transform: rotate(var(--angle)) translateY(-22px) scale(.6); } 20% { opacity: 1; transform: rotate(var(--angle)) translateY(-38px) scale(1.25); } 45% { opacity: .65; } 60% { opacity: 1; } 78% { opacity: .9; } 100% { opacity: 0; transform: rotate(var(--angle)) translateY(-58px) scale(.3); } }
+.game-reaction-ring { position: absolute; left: -22px; top: -8px; width: 44px; height: 16px; border: 3px solid #f2dca0; border-radius: 50%; opacity: 0; animation: reaction-ring 650ms 850ms ease-out forwards; }
+@keyframes reaction-ring { 0% { opacity: .8; transform: scale(.25); } 100% { opacity: 0; transform: scale(3); } }
+.game-reaction-star { position: absolute; left: -40px; top: -40px; width: 80px; height: 80px; background: #f1ce86; clip-path: polygon(50% 0,62% 32%,87% 13%,75% 40%,100% 52%,70% 64%,85% 90%,59% 75%,48% 100%,37% 71%,9% 88%,24% 58%,0 46%,29% 37%,13% 9%,39% 26%); opacity: 0; animation: reaction-burst 440ms 850ms ease-out forwards; }
+@keyframes reaction-burst { 0% { opacity: .9; transform: scale(.3); } 35% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(1.3); } }
+.game-reaction-smoke { width: 54px; height: 46px; left: -27px; top: -23px; animation: reaction-smoke 1750ms var(--delay) cubic-bezier(.1,.5,.25,1) forwards; }
+@keyframes reaction-smoke {
+  0% { opacity: 1; transform: rotate(var(--angle)) translateY(-4px) scale(.35); }
+  18% { opacity: 1; transform: rotate(var(--angle)) translateY(-18px) scale(.85); }
+  60% { opacity: .8; }
+  100% { opacity: 0; transform: translateY(-18px) rotate(var(--angle)) translateY(-49px) scale(1.15); }
+}
+.game-reaction-twinkle { width: 12px; height: 12px; background: #f1d496; clip-path: polygon(50% 0,62% 35%,100% 50%,64% 63%,50% 100%,36% 64%,0 50%,36% 35%); animation: reaction-twinkle 1350ms 940ms ease-out forwards; }
+@keyframes reaction-twinkle { 0% { opacity: 0; transform: rotate(var(--angle)) translateY(-20px) scale(.2); } 22%,60% { opacity: 1; } 100% { opacity: 0; transform: rotate(var(--angle)) translateY(-72px) rotate(100deg) scale(.6); } }
+@media (prefers-reduced-motion: reduce) { .game-reaction-flight { display: none; } .reaction-fuse-flame { animation: none; } .game-reaction-impact * { animation-delay: 0ms; animation-duration: 1200ms; } }

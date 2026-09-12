@@ -1,0 +1,4 @@
+.game-round-exit { display: inline-flex; flex-direction: column; align-items: center; gap: 6px; }
+.game-round-exit button { font: inherit; color: inherit; background: #fff8e9; border: 1px solid #b9ba9d; border-radius: 20px; padding: 9px 22px; cursor: pointer; }
+.game-round-exit small { max-width: 230px; font-size: 12px; color: #9a4d35; }
+.game-round-exit--floating { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 35; color: #375647; }

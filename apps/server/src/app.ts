@@ -1,5 +1,10 @@
 import {registerResidentProfileRoutes} from "./resident-profile/routes.js";
 import { registerResidentAvatarRoutes } from "./resident-avatar/routes.js";
+import {
+  registerResidentSocialRoutes,
+  type ResidentSocialStoreReader,
+} from "./resident-social/resident-social-routes.js";
+import { registerLoungeRoutes } from "./lounge-routes.js";
 import { registerFarmLayoutShareRoutes } from "./farm-layout-sharing/routes.js";
 import { installFaultReports, type FaultReports } from "./fault-reports/collector.js";
 import { registerHumanBulletinRoutes } from "./human-bulletin-routes.js";
@@ -517,6 +522,7 @@ import {
   FarmMcpMigrationUnavailableError,
 } from "./mcp-farm-migration-client.js";
 import type { DoorbellMcpRuntime } from "./mcp-runtime.js";
+import type { LoungeService } from "./lounge-service.js";
 import {
   FarmHumanQixiMemorialContractUnavailableError,
   FarmHumanQixiMemorialCredentialInvalidError,
@@ -577,6 +583,9 @@ export interface BuildAppOptions {
   mailboxService?: MailboxService;
   mcpAccessService?: McpAccessService;
   mcpRuntime?: DoorbellMcpRuntime;
+  loungeService?: LoungeService;
+  residentSocialStore?: ResidentSocialStoreReader;
+  refreshResidentActivity?: (community: Awaited<ReturnType<RegistrationAuthService["getCurrentSessionWithMembership"]>>) => Promise<void>;
   sharedMemeBackendService?: SharedMemeBackendService;
   sharedMemeService?: SharedMemeService;
   secureCookies: boolean;
@@ -2081,6 +2090,13 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       status: "ok",
     }),
   );
+
+  if (options.loungeService) {
+    registerLoungeRoutes(app, {
+      loungeService: options.loungeService,
+      secureCookies: options.secureCookies,
+    });
+  }
 
   const bellAccessService = options.bellAccessService;
   if (bellAccessService) {
@@ -5597,6 +5613,14 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   registerFarmDecorationRoutes(app, options);
   registerFarmLayoutShareRoutes(app, options);
   registerResidentAvatarRoutes(app, options);
+  if (options.residentSocialStore) {
+    registerResidentSocialRoutes(app, {
+      registrationAuth: options.registrationAuth,
+      secureCookies: options.secureCookies,
+      store: options.residentSocialStore,
+      refreshActivity: options.refreshResidentActivity,
+    });
+  }
 
   app.get("/api/farm/bulletin", { exposeHeadRoute: false }, async (request, reply) => {
     if (

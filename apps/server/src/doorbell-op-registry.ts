@@ -1,3 +1,4 @@
+import { loungeOperations, loungeOperationByName, type LoungeOperationDefinition } from "./lounge-tool-registry.js";
 import type { z } from "zod";
 import { dailyReadOperation } from "./lingye-daily-read-op.js";
 import { dailySubmissionOperation } from "./lingye-daily-submission-op.js";
@@ -21,13 +22,15 @@ export type { DoorbellCallExample };
 export { DOORBELL_INITIALIZE_INSTRUCTIONS };
 
 type DailyOperationDefinition = typeof dailyReadOperation | typeof dailySubmissionOperation | typeof dailyCommentOperation;
-export type DoorbellOperationDefinition = FarmOperationDefinition | LingyeOperationDefinition | DailyOperationDefinition;
+export type DoorbellOperationDefinition = FarmOperationDefinition | LingyeOperationDefinition | DailyOperationDefinition | LoungeOperationDefinition;
 export type DoorbellRegisteredOperation =
   | { kind: "farm"; operation: FarmOperationDefinition }
   | { kind: "lingye"; operation: LingyeOperationDefinition }
-  | { kind: "daily"; operation: DailyOperationDefinition };
+  | { kind: "daily"; operation: DailyOperationDefinition }
+  | { kind: "lounge"; operation: LoungeOperationDefinition };
 
 export const doorbellOperationNames = [
+  ...loungeOperations.map(operation => operation.op),
   ...farmOperationNames,
   ...modelVisibleLingyeOperationNames,
   dailyReadOperation.op,
@@ -35,7 +38,7 @@ export const doorbellOperationNames = [
   dailyCommentOperation.op,
 ] as readonly string[];
 
-const expectedOperationCount = farmOperationNames.length + modelVisibleLingyeOperationNames.length + 3;
+const expectedOperationCount = farmOperationNames.length + modelVisibleLingyeOperationNames.length + 3 + loungeOperations.length;
 if (
   doorbellOperationNames.length !== expectedOperationCount ||
   new Set(doorbellOperationNames).size !== expectedOperationCount
@@ -44,6 +47,8 @@ if (
 }
 
 export function findDoorbellOperation(op: string): DoorbellRegisteredOperation | undefined {
+  const lounge = loungeOperationByName.get(op);
+  if (lounge) return { kind: "lounge", operation: lounge };
   if (op === dailyCommentOperation.op) return { kind: "daily", operation: dailyCommentOperation };
   if (op === dailyReadOperation.op) return { kind: "daily", operation: dailyReadOperation };
   if (op === dailySubmissionOperation.op) return { kind: "daily", operation: dailySubmissionOperation };
@@ -55,7 +60,7 @@ export function findDoorbellOperation(op: string): DoorbellRegisteredOperation |
   return lingye ? { kind: "lingye", operation: lingye } : undefined;
 }
 
-const LINGYE_OPERATION_INDEX = [...modelVisibleLingyeOperations, dailyReadOperation, dailySubmissionOperation, dailyCommentOperation]
+const LINGYE_OPERATION_INDEX = [...loungeOperations, ...modelVisibleLingyeOperations, dailyReadOperation, dailySubmissionOperation, dailyCommentOperation]
   .map((operation) => `${operation.op} args ${operation.argsHint} — ${operation.description}`)
   .join("\n");
 
@@ -120,4 +125,21 @@ export function examplesForDoorbellInvalidArgs(
     }
   }
   return matches;
+}
+
+/** Only advertise lounge actions after their real runtime has been assembled. */
+export function doorbellDefinitionForRuntime(loungeReady: boolean) {
+  if (loungeReady) return doorbellToolDefinition;
+  return {
+    ...doorbellToolDefinition,
+    description: doorbellToolDefinition.description.split("\n").filter(line => !line.startsWith("go.lounge.")).join("\n"),
+    inputSchema: {
+      ...doorbellToolDefinition.inputSchema,
+      properties: {
+        ...doorbellToolDefinition.inputSchema.properties,
+        op: { ...doorbellToolDefinition.inputSchema.properties.op,
+          enum: doorbellOperationNames.filter(op => !loungeOperationByName.has(op)) },
+      },
+    },
+  };
 }

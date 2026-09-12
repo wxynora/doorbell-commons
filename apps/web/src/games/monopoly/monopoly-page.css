@@ -1,0 +1,967 @@
+/* One logical scene: all art, cells and hit areas share monopoly-visual.ts. */
+:where(#monopoly-root, .game-session--monopoly) {
+  font-family: "Hiragino Maru Gothic ProN", "Yuanti SC", "PingFang SC", sans-serif;
+  color: #3d5145;
+  font-synthesis: none;
+}
+:where(#monopoly-root, .game-session--monopoly) * {
+  box-sizing: border-box;
+}
+:where(#monopoly-root, .game-session--monopoly) {
+  margin: 0;
+}
+:where(#monopoly-root, .game-session--monopoly) button {
+  font: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+.monopoly-shell {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #eef2e9;
+}
+.monopoly-stage {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform-origin: center;
+  isolation: isolate;
+}
+.monopoly-table-content {
+  position: absolute;
+  inset: 0;
+}
+:where(.monopoly-stage) button {
+  cursor: pointer;
+  color: inherit;
+}
+.monopoly-stage button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+.monopoly-stage button:focus-visible {
+  outline: 2px solid #527965;
+  outline-offset: 2px;
+  z-index: 20;
+}
+.monopoly-stage button:active:not(:disabled) {
+  filter: brightness(0.96);
+}
+.monopoly-header {
+  position: absolute;
+  left: 28px;
+  top: 28px;
+  width: 716px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.monopoly-header h1 {
+  margin: 0;
+  font-size: 27px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: #456452;
+}
+.monopoly-round-button {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  background: #e5e9df;
+  padding: 0;
+  font-size: 23px;
+  line-height: 1;
+}
+.monopoly-players {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.monopoly-player {
+  --seat-color: #b96c59;
+  position: absolute;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  width: 204px;
+  height: 62px;
+  gap: 14px;
+  text-align: left;
+}
+.monopoly-player--sky {
+  --seat-color: #497d9d;
+}
+.monopoly-player--gold {
+  --seat-color: #997122;
+}
+.monopoly-player--mint {
+  --seat-color: #4f8567;
+}
+.monopoly-player[data-seat="0"] {
+  left: 548px;
+  top: 104px;
+}
+.monopoly-player[data-seat="1"] {
+  left: 548px;
+  top: 184px;
+}
+.monopoly-player[data-seat="2"] {
+  left: 548px;
+  top: 264px;
+}
+.monopoly-player[data-seat="3"] {
+  left: 548px;
+  top: 344px;
+}
+.monopoly-toy {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.monopoly-player__portrait {
+  width: 50px;
+  height: 50px;
+  position: relative;
+  flex-shrink: 0;
+}
+.monopoly-player__portrait .monopoly-toy {
+  position: absolute;
+  inset: -7px;
+  width: 64px;
+  height: 64px;
+}
+.monopoly-player__identity {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.monopoly-player__identity > strong {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 5px;
+  font-size: 16px;
+  font-weight: 650;
+  white-space: nowrap;
+  max-width: 112px;
+  overflow: hidden;
+}
+.monopoly-player__you {
+  font-size: 10px;
+  font-weight: 500;
+  color: #738171;
+}
+.monopoly-player__identity > b {
+  font-size: 20px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.monopoly-player__identity > small {
+  font-size: 10px;
+  color: #866d58;
+}
+.monopoly-player--current .monopoly-player__identity > strong {
+  color: var(--seat-color);
+}
+.monopoly-player__turn {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: var(--seat-color);
+  border-radius: 50%;
+  top: 28px;
+  right: 8px;
+  font-size: 0;
+}
+.monopoly-player--bankrupt {
+  opacity: 0.45;
+}
+.monopoly-board {
+  position: absolute;
+  left: 28px;
+  top: 90px;
+  border-radius: 12px;
+  background: #fdfbf3;
+  box-shadow:
+    0 0 0 7px #fffcf5,
+    0 6px 0 7px #d6dfcf,
+    0 16px 24px #42523d12;
+}
+.monopoly-garden {
+  position: absolute;
+  inset: 64px;
+  background: #edf1e6;
+  border-radius: 8px;
+  border: 5px solid #fffcf4;
+  pointer-events: none;
+}
+.monopoly-village {
+  position: absolute;
+  top: 37px;
+  left: 65px;
+  width: 220px;
+  height: 80px;
+}
+.monopoly-cell {
+  --group: #bac9ae;
+  position: absolute;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  background: none;
+  color: #405145;
+}
+.monopoly-cell::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border: 1px solid #e9e6d9;
+  border-radius: 3px;
+  background: #fffcf4;
+  pointer-events: none;
+}
+.monopoly-cell--g1 {
+  --group: #d9a7b0;
+}
+.monopoly-cell--g2 {
+  --group: #95bbc8;
+}
+.monopoly-cell--g3 {
+  --group: #b6a5c2;
+}
+.monopoly-cell--g4 {
+  --group: #dbb78c;
+}
+.monopoly-cell--g5 {
+  --group: #d69484;
+}
+.monopoly-cell--g6 {
+  --group: #d8c579;
+}
+.monopoly-cell--g7 {
+  --group: #9db595;
+}
+.monopoly-cell--g8 {
+  --group: #7f9eae;
+}
+.monopoly-cell__group {
+  position: absolute;
+  background: var(--group);
+  border-radius: 2px;
+}
+.monopoly-cell[data-side="top"] .monopoly-cell__group {
+  bottom: 4px;
+  left: 4px;
+  right: 4px;
+  height: 7px;
+}
+.monopoly-cell[data-side="bottom"] .monopoly-cell__group {
+  top: 4px;
+  left: 4px;
+  right: 4px;
+  height: 7px;
+}
+.monopoly-cell[data-side="left"] .monopoly-cell__group {
+  right: 4px;
+  top: 4px;
+  bottom: 4px;
+  width: 7px;
+}
+.monopoly-cell[data-side="right"] .monopoly-cell__group {
+  left: 4px;
+  top: 4px;
+  bottom: 4px;
+  width: 7px;
+}
+.monopoly-cell__name {
+  position: absolute;
+  font-size: 15px;
+  line-height: 1.3;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.monopoly-cell[data-side="top"]:not(.monopoly-cell--corner) .monopoly-cell__name {
+  left: 2px;
+  right: 2px;
+  top: 29px;
+  transform: translateY(-50%);
+}
+.monopoly-cell[data-side="bottom"]:not(.monopoly-cell--corner) .monopoly-cell__name {
+  left: 2px;
+  right: 2px;
+  top: 40px;
+  transform: translateY(-50%);
+}
+.monopoly-cell[data-side="left"] .monopoly-cell__name {
+  left: 4px;
+  width: 47px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.monopoly-cell[data-side="right"] .monopoly-cell__name {
+  right: 4px;
+  width: 47px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.monopoly-cell__icon {
+  position: absolute;
+  display: block;
+  width: 24px;
+  height: 24px;
+}
+.monopoly-cell-symbol {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.monopoly-question {
+  font-family: Georgia, serif;
+  font-weight: 700;
+  font-size: 29px;
+  line-height: 1;
+  color: #72919a;
+}
+.monopoly-cell[data-side="top"] .monopoly-cell__icon,
+.monopoly-cell[data-side="bottom"] .monopoly-cell__icon {
+  left: 50%;
+  top: 8px;
+  transform: translateX(-50%);
+}
+.monopoly-cell[data-side="left"] .monopoly-cell__icon {
+  left: 6px;
+  top: 5px;
+  width: 20px;
+  height: 20px;
+}
+.monopoly-cell[data-side="right"] .monopoly-cell__icon {
+  right: 6px;
+  top: 5px;
+  width: 20px;
+  height: 20px;
+}
+.monopoly-cell:not(.monopoly-cell--prop):not(.monopoly-cell--corner) .monopoly-cell__name {
+  font-size: 12px;
+}
+.monopoly-cell[data-side="top"]:not(.monopoly-cell--prop):not(.monopoly-cell--corner)
+  .monopoly-cell__name,
+.monopoly-cell[data-side="bottom"]:not(.monopoly-cell--prop):not(.monopoly-cell--corner)
+  .monopoly-cell__name {
+  top: 47px;
+}
+.monopoly-cell[data-side="left"]:not(.monopoly-cell--prop) .monopoly-cell__name {
+  left: 29px;
+  width: 32px;
+}
+.monopoly-cell[data-side="right"]:not(.monopoly-cell--prop) .monopoly-cell__name {
+  right: 29px;
+  width: 32px;
+}
+.monopoly-cell--corner::before {
+  border-radius: 12px;
+  background: #edf0e4;
+  border: none;
+}
+.monopoly-cell--go::before {
+  background: #f4e6d8;
+}
+.monopoly-cell--jail::before {
+  background: #f1ead9;
+}
+.monopoly-cell--goto_jail::before {
+  background: #e9eef0;
+}
+.monopoly-corner-symbol {
+  position: absolute;
+  left: 9px;
+  top: 1px;
+  width: 46px;
+  height: 46px;
+}
+.monopoly-cell--corner .monopoly-cell__name {
+  bottom: 7px;
+  left: 0;
+  width: 100%;
+  font-size: 12px;
+}
+.monopoly-cell--selected::before {
+  border-color: #648167;
+}
+.monopoly-cell--actionable::before {
+  background: #f4f5d9;
+  border-color: #91a665;
+}
+.monopoly-cell__owner {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 6px;
+  height: 6px;
+  border: 1px solid #fffcf3;
+  border-radius: 50%;
+  z-index: 3;
+}
+.monopoly-color--coral {
+  background: #c97765;
+}
+.monopoly-color--sky {
+  background: #608fa9;
+}
+.monopoly-color--gold {
+  background: #b89b43;
+}
+.monopoly-color--mint {
+  background: #6a9677;
+}
+.monopoly-cell__houses {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  font-size: 9px;
+  color: #3b704b;
+  white-space: nowrap;
+}
+.monopoly-pawns {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.monopoly-pawn {
+  position: absolute;
+  padding: 0;
+  border: 0;
+  background: none;
+  transform: translate(-50%, -82%);
+  pointer-events: auto;
+  filter: drop-shadow(0 2px 1px #52674630);
+}
+.monopoly-pawn--current::before {
+  content: "";
+  position: absolute;
+  width: 64%;
+  height: 18%;
+  border-radius: 50%;
+  background: #f4d893;
+  bottom: 8%;
+  left: 18%;
+  z-index: -1;
+}
+.monopoly-pawn--moving .monopoly-toy {
+  animation: monopoly-hop 190ms cubic-bezier(0.3, 0, 0.5, 1);
+}
+@keyframes monopoly-hop {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  48% {
+    transform: translateY(-9px);
+  }
+}
+.monopoly-plaza {
+  position: absolute;
+  left: 124px;
+  top: 222px;
+  width: 240px;
+  text-align: center;
+  pointer-events: none;
+}
+.monopoly-turn-label {
+  height: 30px;
+  font-size: 16px;
+  line-height: 24px;
+  color: #536e58;
+}
+.monopoly-turn-label strong {
+  font-weight: 600;
+}
+.monopoly-dice {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+  height: 65px;
+}
+.monopoly-dice > svg {
+  width: 52px;
+  height: 57px;
+  flex-shrink: 0;
+  transform: rotate(-8deg);
+}
+.monopoly-dice > svg:nth-child(2) {
+  transform: rotate(9deg) translateY(3px);
+}
+.monopoly-dice-caption {
+  display: block;
+  margin-top: 8px;
+  font-size: 13px;
+  color: #697962;
+}
+.monopoly-plaza--rolling .monopoly-dice {
+  animation: monopoly-dice-roll 180ms linear infinite;
+}
+@keyframes monopoly-dice-roll {
+  0%,
+  100% {
+    transform: rotate(-4deg);
+  }
+  50% {
+    transform: translateY(-6px) rotate(4deg);
+  }
+}
+.monopoly-actions {
+  position: absolute;
+  left: 542px;
+  top: 454px;
+  width: 212px;
+  text-align: center;
+}
+.monopoly-event {
+  height: 26px;
+  margin: 0 0 6px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: #737a69;
+  overflow-y: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.monopoly-actions__buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  min-height: 46px;
+}
+.monopoly-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  gap: 9px;
+  min-height: 46px;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: #557760;
+  color: #fffcf2;
+  box-shadow: 0 3px 0 #3e5c48;
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.2;
+}
+.monopoly-stage .monopoly-action {
+  color: #fffcf2;
+}
+.monopoly-action--roll {
+  font-size: 20px;
+  letter-spacing: 1px;
+}
+.monopoly-action__die {
+  font-size: 25px;
+  line-height: 1;
+  transform: rotate(-10deg);
+}
+.monopoly-stage .monopoly-action--decline,
+.monopoly-stage .monopoly-action--pay_bail,
+.monopoly-stage .monopoly-action--use_jail_card {
+  background: #e2e7da;
+  color: #53604c;
+  box-shadow: 0 3px 0 #c7d0bf;
+  font-size: 12px;
+  flex: 0.8;
+}
+.monopoly-actions__waiting {
+  height: 46px;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  color: #65785f;
+}
+.monopoly-assets-button {
+  display: block;
+  margin: 8px auto 0;
+  padding: 3px 12px;
+  height: 26px;
+  border: 0;
+  background: none;
+  font-size: 13px;
+  color: #637059;
+}
+.monopoly-assets-button span {
+  margin-left: 5px;
+  font-variant-numeric: tabular-nums;
+}
+.monopoly-card-slip {
+  position: absolute;
+  left: 116px;
+  top: 347px;
+  width: 256px;
+  max-height: 61px;
+  overflow-y: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  background: #fff9e9;
+  border-radius: 8px;
+  z-index: 12;
+  color: #6e6953;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.monopoly-card-slip b {
+  flex-shrink: 0;
+  font-size: 12px;
+}
+.monopoly-error {
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #975847;
+  overflow: auto;
+}
+.monopoly-error p {
+  margin: 0;
+  max-width: 220px;
+}
+.monopoly-error button {
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: #eee3d5;
+  border: 0;
+}
+.monopoly-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+}
+.monopoly-overlay__dismiss {
+  position: absolute;
+  inset: 0;
+  background: #39493f45;
+  border: none;
+}
+.monopoly-property-sheet {
+  position: absolute;
+  width: 372px;
+  top: 50%;
+  left: 174px;
+  max-height: 470px;
+  transform: translateY(-50%);
+  background: #fffcf4;
+  border: 1px solid #e5e5d7;
+  border-radius: 20px;
+  box-shadow: 0 12px 36px #36433826;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: monopoly-sheet-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes monopoly-sheet-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.monopoly-property-sheet > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 15px 18px 12px;
+}
+.monopoly-property-sheet h2 {
+  font-size: 20px;
+  margin: 0;
+  color: #5c645d;
+}
+.monopoly-property-sheet__body {
+  padding: 8px 18px 16px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+.monopoly-property-sheet footer {
+  padding: 12px;
+  font-size: 10px;
+  text-align: center;
+  color: #727767;
+  border-top: 1px solid #e9dfcc;
+}
+.monopoly-property-summary {
+  font-size: 13px;
+  color: #8b7b62;
+  margin: 4px 0 18px;
+}
+.monopoly-property-summary b {
+  color: #514d43;
+}
+.monopoly-property-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.monopoly-property-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #e0d7c4;
+  background: #fffdf5;
+  border-radius: 10px;
+  padding: 10px;
+  min-height: 58px;
+  text-align: left;
+}
+.monopoly-property-item > i {
+  width: 8px;
+  align-self: stretch;
+  border-radius: 5px;
+  background: var(--group);
+}
+.monopoly-property-item > span {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  flex: 1;
+}
+.monopoly-property-item strong {
+  font-size: 13px;
+}
+.monopoly-property-item small {
+  font-size: 11px;
+  color: #727767;
+}
+.monopoly-empty-properties {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-top: 15px;
+}
+.monopoly-empty-properties .monopoly-toy {
+  width: 112px;
+  height: 112px;
+  margin-bottom: 15px;
+}
+.monopoly-empty-properties strong {
+  font-size: 16px;
+  color: #75634c;
+}
+.monopoly-empty-properties p {
+  font-size: 13px;
+  line-height: 1.8;
+  color: #92816b;
+}
+.monopoly-cell-detail__title {
+  display: flex;
+  gap: 9px;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 8px 0 18px;
+}
+.monopoly-cell-detail__title p {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  flex: 1;
+  margin: 0;
+}
+.monopoly-cell-detail__title strong {
+  font-size: 18px;
+}
+.monopoly-cell-detail__title small {
+  font-size: 11px;
+  color: #8d816d;
+}
+.monopoly-cell-detail__title > b {
+  font-size: 16px;
+  color: #b58348;
+}
+.monopoly-cell-detail__swatch {
+  width: 8px;
+  height: 38px;
+  border-radius: 6px;
+  background: #bdcfc4;
+}
+.monopoly-cell-detail__swatch--g1 {
+  background: #e996b4;
+}
+.monopoly-cell-detail__swatch--g2 {
+  background: #78bbd9;
+}
+.monopoly-cell-detail__swatch--g3 {
+  background: #bca5d4;
+}
+.monopoly-cell-detail__swatch--g4 {
+  background: #f5b274;
+}
+.monopoly-cell-detail__swatch--g5 {
+  background: #e8897e;
+}
+.monopoly-cell-detail__swatch--g6 {
+  background: #efd272;
+}
+.monopoly-cell-detail__swatch--g7 {
+  background: #79bb96;
+}
+.monopoly-cell-detail__swatch--g8 {
+  background: #6a9ecc;
+}
+.monopoly-cell-detail__facts {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: #82775f;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.monopoly-rent-line {
+  margin: 20px 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: #e8dfcb;
+  border: 1px solid #e8dfcb;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.monopoly-rent-line > span {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  padding: 11px 3px;
+  background: #fffdf6;
+  font-size: 13px;
+}
+.monopoly-rent-line small {
+  font-size: 10px;
+  color: #727767;
+}
+.monopoly-cell-detail__actions {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0;
+}
+.monopoly-cell-detail__actions button {
+  flex: 1;
+  padding: 12px 7px;
+  background: #e2eddf;
+  border: 1px solid #c4d5ba;
+  border-radius: 12px;
+  font-size: 13px;
+}
+.monopoly-cell-detail__tip {
+  display: block;
+  margin: 18px 0;
+  color: #857d5d;
+}
+.monopoly-back-link {
+  margin-top: 25px;
+  padding: 10px 0;
+  background: none;
+  border: 0;
+  text-decoration: underline;
+  font-size: 12px;
+  color: #7b8671;
+}
+
+.monopoly-stage--portrait .monopoly-header {
+  left: 20px;
+  top: 12px;
+  width: 464px;
+  height: 34px;
+}
+.monopoly-stage--portrait .monopoly-header h1 {
+  font-size: 25px;
+}
+.monopoly-stage--portrait .monopoly-player {
+  width: 174px;
+  height: 48px;
+  flex-direction: row;
+  gap: 8px;
+  text-align: left;
+}
+.monopoly-stage--portrait .monopoly-player__identity > strong {
+  font-size: 16px;
+  justify-content: flex-start;
+}
+.monopoly-stage--portrait .monopoly-player__identity > b {
+  font-size: 20px;
+}
+.monopoly-stage--portrait .monopoly-player__turn {
+  left: auto;
+  right: 6px;
+  top: 21px;
+  bottom: auto;
+}
+.monopoly-stage--portrait .monopoly-player[data-seat="0"] {
+  left: 20px;
+  top: 56px;
+}
+.monopoly-stage--portrait .monopoly-player[data-seat="1"] {
+  left: 310px;
+  top: 56px;
+}
+.monopoly-stage--portrait .monopoly-player[data-seat="2"] {
+  left: 20px;
+  top: 618px;
+}
+.monopoly-stage--portrait .monopoly-player[data-seat="3"] {
+  left: 310px;
+  top: 618px;
+}
+.monopoly-stage--portrait .monopoly-board {
+  left: 8px;
+  top: 116px;
+}
+.monopoly-stage--portrait .monopoly-actions {
+  left: 28px;
+  top: 668px;
+  width: 448px;
+}
+.monopoly-stage--portrait .monopoly-event {
+  height: 26px;
+  font-size: 12px;
+  margin-bottom: 5px;
+}
+.monopoly-stage--portrait .monopoly-action {
+  min-height: 46px;
+}
+.monopoly-stage--portrait .monopoly-action--roll {
+  flex: 0 1 270px;
+}
+.monopoly-stage--portrait .monopoly-property-sheet {
+  left: 52px;
+  width: 400px;
+  max-height: 480px;
+}
+@media (hover: hover) {
+  .monopoly-action:hover:not(:disabled) {
+    filter: brightness(1.08);
+  }
+  .monopoly-cell:hover::before {
+    background: #eef1df;
+    border-color: #97ac8e;
+  }
+  .monopoly-assets-button:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .monopoly-pawn--moving .monopoly-toy,
+  .monopoly-plaza--rolling .monopoly-dice,
+  .monopoly-property-sheet {
+    animation: none;
+  }
+}

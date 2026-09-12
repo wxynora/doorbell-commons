@@ -1,6 +1,10 @@
+import { GameRulesIcon , GameRulesText } from "../game-rules-help";
+import { useGameSession, liveMove, asSession } from "../game-session-binding";
+import { GameChatWindow, GameSpeechBubble } from "../game-chat-window";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createUnoGame,
+  refreshUnoGame,
   sendUnoMove,
   type UnoCard,
   type UnoColor,
@@ -18,7 +22,6 @@ import "./uno-page.css";
 
 const CANVAS_WIDTH = 844;
 const CANVAS_HEIGHT = 390;
-const HUMAN_ID = "player-1";
 const COLOR_NAMES: Record<UnoColor, string> = { R: "红", G: "绿", B: "蓝", Y: "黄" };
 
 function cardMark(card: UnoCard): string {
@@ -39,130 +42,155 @@ function cardActionName(card: UnoCard): string {
   return "";
 }
 
+// UNO card anatomy and compact seats adapted from CedarDuet's UNO renderer.
 function CardFace({
   card,
   compact = false,
   disabled = false,
   onClick,
   order = 0,
+  playable = false,
 }: {
   card: UnoCard;
   compact?: boolean;
   disabled?: boolean;
   onClick?: () => void;
   order?: number;
+  playable?: boolean;
 }) {
-  const isAction = card.kind !== "number";
-  const className = `uno-card uno-card--${card.color ?? "wild"} uno-card--kind-${card.kind} ${
-    isAction ? "uno-card--action" : ""
-  } ${compact ? "uno-card--compact" : ""}`;
+  const className = `uno-card uno-card--${card.color ?? "wild"} uno-card--kind-${card.kind}${compact ? " uno-card--compact" : ""}${playable ? " is-playable" : ""}`;
   const contents = (
     <>
-      <span className="uno-card__corner">{cardMark(card)}</span>
-      <span className="uno-card__oval">
-        {card.wild ? (
-          <span className="uno-card__wild-wheel" aria-hidden="true">
-            <i />
-            <i />
-            <i />
-            <i />
-            {card.kind === "wild4" ? <b>+4</b> : null}
-          </span>
-        ) : (
-          <b>{cardMark(card)}</b>
-        )}
+      <span className="uno-card-corner top" aria-hidden="true">
+        {cardMark(card)}
       </span>
-      {isAction ? <span className="uno-card__name">{cardActionName(card)}</span> : null}
+      <span className="uno-card-face" aria-hidden="true">
+        {cardMark(card)}
+      </span>
+      <span className="uno-card-corner bottom" aria-hidden="true">
+        {cardMark(card)}
+      </span>
+      {card.kind !== "number" ? (
+        <span className="uno-card-name">{cardActionName(card)}</span>
+      ) : null}
     </>
   );
-  if (!onClick) {
+  if (!onClick)
     return (
-      <div
-        aria-label={card.label}
-        className={className}
-        role="img"
-        style={{ "--uno-order": order } as React.CSSProperties}
-      >
+      <div className={className} role="img" aria-label={card.label}>
         {contents}
       </div>
     );
-  }
   return (
     <button
-      aria-label={`${card.label}，点击出牌`}
+      type="button"
       className={className}
       disabled={disabled}
+      aria-label={`${card.label}，点击出牌`}
       onClick={onClick}
       style={{ "--uno-order": order } as React.CSSProperties}
-      type="button"
     >
       {contents}
     </button>
   );
 }
 
-function PlayerEdge({ player, current }: { player: UnoPlayer; current: boolean }) {
+function CardBack() {
   return (
-    <div
-      className={`uno-player uno-player--seat-${player.seat} uno-player--${player.accent} ${
-        current ? "uno-player--current" : ""
-      }`}
-    >
-      <div className="uno-player__avatar" aria-hidden="true">
-        <span className="uno-player__hair" />
-        <span className="uno-player__eyes">••</span>
-      </div>
-      <div className="uno-player__words">
-        <strong>
-          {player.name}
-          {player.controller_type === "resident" ? <i className="uno-player__type">小机</i> : null}
-        </strong>
-        <span>
-          {player.hand_count} 张 · {player.score} 分
-        </span>
-      </div>
-      {current ? <b className="uno-player__turn">出牌中</b> : null}
-      {player.uno ? <em className="uno-player__alarm">UNO!</em> : null}
-      {player.uno_missed ? <em className="uno-player__missed">漏喊!</em> : null}
-    </div>
+    <span className="uno-card-back" aria-hidden="true">
+      <span>UNO</span>
+    </span>
   );
 }
 
-function handRows(hand: UnoCard[]): UnoCard[][] {
-  if (hand.length <= 16) return [hand];
-  const split = Math.ceil(hand.length / 2);
-  return [hand.slice(0, split), hand.slice(split)];
+function PlayerEdge({ player, current }: { player: UnoPlayer; current: boolean }) {
+  return (
+    <article
+      className={`uno-opponent${current ? " current" : ""}`}
+      aria-label={`${player.name}，${player.hand_count} 张牌，${player.score} 分${current ? "，行动中" : ""}`}
+    >
+      <span className={`uno-avatar uno-avatar--${player.accent}`} aria-hidden="true">
+        {Array.from(player.name)[0] ?? "?"}
+      </span>
+      <GameSpeechBubble playerId={player.id} name={player.name} />
+      <div className="uno-opponent-copy">
+        <strong>
+          {player.name}
+          {player.controller_type === "human" ? <small>人类</small> : null}
+        </strong>
+        <span>
+          {player.score} 分{current ? <b className="uno-seat-turn">行动中</b> : null}
+        </span>
+      </div>
+      <div className="uno-opponent-backs" aria-hidden="true">
+        {player.hand_count > 0 ? <CardBack /> : null}
+        {player.hand_count > 1 ? <CardBack /> : null}
+      </div>
+      <div className="uno-hand-count">
+        <b>{player.hand_count}</b>
+        <small>张</small>
+      </div>
+      {player.uno ? <em className="uno-player-alarm">UNO!</em> : null}
+    </article>
+  );
 }
 
-function handStep(row: UnoCard[]): number {
-  if (row.length <= 1) return 60;
-  return Math.max(38, Math.min(56, 684 / (row.length - 1)));
+function handStep(hand: UnoCard[], portrait: boolean): number {
+  if (hand.length <= 1) return 64;
+  const availableWidth = (portrait ? 352 : CANVAS_WIDTH) - 2 * (12 + 8) - 64;
+  return Math.min(56, (availableWidth - 64) / (hand.length - 1));
 }
 
 export function UnoPage() {
-  const stageRef = useRef<HTMLDivElement>(null);
+  const live = useGameSession();
+  const HUMAN_ID = live?.viewerId ?? "player-1";
   const startedRef = useRef(false);
   const [session, setSession] = useState<UnoSession | null>(null);
+  useEffect(() => { if (live) setSession(asSession<UnoSession>(live.game)); }, [live?.game]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [wildCardId, setWildCardId] = useState<string | null>(null);
+  const [reactionFeedback, setReactionFeedback] = useState<string | null>(null);
+  const [layout, setLayout] = useState({ scale: 1, portrait: false });
 
   useEffect(() => {
     const resize = () => {
-      const stage = stageRef.current;
-      if (!stage) return;
-      const scale = Math.min(window.innerWidth / CANVAS_WIDTH, window.innerHeight / CANVAS_HEIGHT);
-      stage.style.transform = `translate(-50%, -50%) scale(${scale})`;
+      const portrait = window.innerHeight / window.innerWidth > 1.25;
+      setLayout({
+        scale: Math.min(
+          window.innerWidth / (portrait ? 352 : CANVAS_WIDTH),
+          window.innerHeight / (portrait ? 694 : CANVAS_HEIGHT),
+        ),
+        portrait,
+      });
     };
     resize();
     window.addEventListener("resize", resize);
     return () => window.removeEventListener("resize", resize);
   }, []);
 
+  const syncGame = async () => {
+    const currentView = session?.display;
+    if (!currentView || busy) return;
+    setBusy(true);
+    try {
+      const next = live ? asSession<UnoSession>(await live.refresh()) : await refreshUnoGame(currentView);
+      setSession(next);
+
+      setError(null);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "暂时无法同步，请再试一次");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const startGame = useCallback(async (seed = 43) => {
+    if (live) { try { await live.again(); } catch (e) { setError(e instanceof Error ? e.message : "操作未完成"); } return; }
     setBusy(true);
     setError(null);
     setWildCardId(null);
+    setReactionFeedback(null);
     try {
       setSession(await createUnoGame(seed));
     } catch (caught) {
@@ -170,9 +198,10 @@ export function UnoPage() {
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [live]);
 
   useEffect(() => {
+    if (live) return;
     if (startedRef.current) return;
     startedRef.current = true;
     void startGame();
@@ -183,8 +212,9 @@ export function UnoPage() {
       if (!session || busy) return;
       setBusy(true);
       setError(null);
+      setReactionFeedback(null);
       try {
-        setSession(await sendUnoMove(session, move, actorId));
+        setSession(live ? asSession<UnoSession>(await liveMove(live, session.display.revision, move)) : await sendUnoMove(session, move, actorId));
         if (move.action !== "call_uno") setWildCardId(null);
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : "这一步没有成功。");
@@ -192,7 +222,7 @@ export function UnoPage() {
         setBusy(false);
       }
     },
-    [busy, session],
+    [busy, session, live],
   );
 
   const display = session?.display ?? null;
@@ -202,7 +232,6 @@ export function UnoPage() {
   const humanTurn = display?.phase === "playing" && display.current_player_id === HUMAN_ID;
   const residentTurn = display?.phase === "playing" && current?.controller_type === "resident";
   const hand = human?.hand ?? [];
-  const rows = useMemo(() => handRows(hand), [hand]);
   const latestEvent = useMemo(
     () =>
       display
@@ -214,11 +243,11 @@ export function UnoPage() {
   );
 
   useEffect(() => {
-    if (!residentTurn || !controller || busy) return;
+    if (live || !residentTurn || !controller || busy || error) return;
     const move = chooseResidentMove(controller);
     const actorId = controller.viewer_id ?? controller.current_player_id;
     if (move && actorId) void runMove(move, actorId);
-  }, [busy, controller, residentTurn, runMove]);
+  }, [busy, controller, error, residentTurn, runMove]);
 
   const clickCard = useCallback(
     (card: UnoCard) => {
@@ -252,42 +281,47 @@ export function UnoPage() {
   const turnHint = display
     ? display.phase === "round_over"
       ? "本局收盘"
-      : humanCatchUnoMove
-        ? `快抓！${display.uno_catch?.offender_name ?? "有人"} 漏喊 UNO`
-        : humanTurn
-          ? display.pending?.mine
-            ? "刚摸的牌能出：直接点它，或保留"
-            : "轮到你：点手牌直接出"
-          : `${current?.name ?? "小机"} 的回合`
+      : humanTurn
+        ? display.pending?.mine
+          ? "出牌或保留"
+          : "轮到你"
+        : `${current?.name ?? "小机"} 的回合`
     : "正在洗牌…";
 
   return (
     <main className="uno-shell">
-      <div className="uno-stage" ref={stageRef}>
-        <div className="uno-confetti" aria-hidden="true">
-          <i />
-          <i />
-          <i />
-          <i />
-          <i />
-          <i />
-        </div>
+      <div
+        className={`uno-stage${layout.portrait ? " uno-stage--portrait" : ""}`}
+        style={{
+          width: layout.portrait ? 352 : CANVAS_WIDTH,
+          height: layout.portrait ? 694 : CANVAS_HEIGHT,
+          transform: `translate(-50%, -50%) scale(${layout.scale})`,
+        }}
+      >
         <header className="uno-header">
           <div className="uno-brand" aria-label="UNO" role="img">
-            <span>U</span>
-            <span>N</span>
-            <span>O</span>
+            UNO
           </div>
-          {display ? (
-            <div className="uno-round-info">
-              <b>第 {display.round} 局</b>
-              <span>
-                {display.direction > 0 ? "↻" : "↺"} {display.direction_label}
-              </span>
+          <span className="uno-round-info">第 {display?.round ?? 1} 局</span>
+          <details
+            className="uno-rules"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.currentTarget.open = false;
+                event.currentTarget.querySelector("summary")?.focus();
+              }
+            }}
+          >
+            <summary className="game-rules-icon" aria-label="查看规则"><GameRulesIcon /></summary>
+            <div>
+              <strong>怎么玩</strong>
+              <GameRulesText kind="uno" />
             </div>
-          ) : null}
+          </details>
+          <GameChatWindow />
           <button
             className="uno-new-game"
+            hidden={Boolean(live)}
             disabled={busy}
             onClick={() => void startGame(Date.now())}
             type="button"
@@ -298,138 +332,179 @@ export function UnoPage() {
 
         {display ? (
           <>
-            {display.players.map((player) => (
-              <PlayerEdge
-                current={player.id === display.current_player_id}
-                key={player.id}
-                player={player}
-              />
-            ))}
-
-            <section className="uno-center" aria-label="UNO 桌面牌区">
-              <div className="uno-turn-hint">{turnHint}</div>
-              <div className="uno-piles">
-                {drawMove && humanTurn ? (
-                  <button
-                    aria-label={`摸一张，牌库剩 ${display.deck_count} 张`}
-                    className="uno-draw-pile"
-                    disabled={busy}
-                    onClick={() => void runMove(drawMove, HUMAN_ID)}
-                    type="button"
-                  >
-                    <span>抽</span>
-                    <b>{display.deck_count}</b>
-                  </button>
-                ) : (
-                  <div
-                    className="uno-draw-pile"
-                    aria-label={`牌库剩 ${display.deck_count} 张`}
-                    role="img"
-                  >
-                    <span>抽</span>
-                    <b>{display.deck_count}</b>
-                  </div>
-                )}
-                <div className={`uno-active-color uno-active-color--${display.active_color}`}>
-                  <span>{display.active_color_name}色</span>
-                  {display.top_card ? <CardFace card={display.top_card} compact /> : null}
-                </div>
-              </div>
-              {latestEvent ? <div className="uno-event-line">{latestEvent}</div> : null}
+            <section className="uno-opponents" aria-label="其他玩家">
+              {display.players
+                .filter((player) => player.id !== HUMAN_ID)
+                .map((player) => (
+                  <PlayerEdge
+                    key={player.id}
+                    player={player}
+                    current={display.phase === "playing" && player.id === display.current_player_id}
+                  />
+                ))}
             </section>
 
-            {humanCallUnoMove || humanCatchUnoMove ? (
-              <div className="uno-reaction-bar">
-                {humanCallUnoMove ? (
-                  <button
-                    className="uno-call-button"
-                    disabled={busy}
-                    onClick={() => void runMove(humanCallUnoMove, HUMAN_ID)}
-                    type="button"
-                  >
-                    UNO!
-                    <small>{display.uno_catch?.offender_id === HUMAN_ID ? "补喊" : "喊牌"}</small>
-                  </button>
+            <section className="uno-arena" aria-label="UNO 桌面牌区">
+              <div className="uno-table-info">
+                <div className="uno-status">
+                  <span className={`uno-current-color uno-current-color--${display.active_color}`}>
+                    <i aria-hidden="true" />
+                    {display.active_color_name}色
+                  </span>
+                  <span className="uno-direction">
+                    {display.direction > 0 ? "↻" : "↺"} {display.direction_label}
+                  </span>
+                </div>
+                <strong className="uno-turn-hint">{turnHint}</strong>
+                {reactionFeedback || latestEvent ? (
+                  <p className="uno-event-line" aria-live="polite">
+                    {reactionFeedback ?? latestEvent}
+                  </p>
                 ) : null}
-                {humanCatchUnoMove ? (
-                  <button
-                    className="uno-catch-button"
-                    disabled={busy}
-                    onClick={() => void runMove(humanCatchUnoMove, HUMAN_ID)}
-                    type="button"
-                  >
-                    抓！
-                    <small>{display.uno_catch?.offender_name} 漏喊</small>
-                  </button>
+                {error ? (
+                  <p className="uno-error-line" role="alert">
+                    {error}
+                    <button
+                      className="uno-sync-button"
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void syncGame()}
+                    >
+                      重新同步本局
+                    </button>
+                  </p>
                 ) : null}
               </div>
-            ) : null}
 
-            {keepMove && humanTurn && !humanCallUnoMove && !humanCatchUnoMove ? (
-              <button
-                className="uno-keep-button"
-                disabled={busy}
-                onClick={() => void runMove(keepMove, HUMAN_ID)}
-                type="button"
-              >
-                保留 · 结束回合
-              </button>
-            ) : null}
-
-            {wildCardId &&
-            controller &&
-            colorChoices.length &&
-            !humanCallUnoMove &&
-            !humanCatchUnoMove ? (
-              <fieldset className="uno-color-picker">
-                <legend>变成哪种颜色？</legend>
-                {colorChoices.map((color) => (
+              <div className="uno-center">
+                <div className="uno-pile">
                   <button
-                    aria-label={`变成${COLOR_NAMES[color]}色`}
-                    className={`uno-color-choice uno-color-choice--${color}`}
+                    type="button"
+                    className="uno-draw-pile"
+                    aria-label={`摸一张，牌库剩 ${display.deck_count} 张`}
+                    disabled={busy || !humanTurn || !drawMove}
+                    onClick={() => drawMove && void runMove(drawMove, HUMAN_ID)}
+                  >
+                    <CardBack />
+                  </button>
+                  <span>
+                    摸牌堆 <b>{display.deck_count}</b>
+                  </span>
+                </div>
+                <div className="uno-pile">
+                  {display.top_card ? <CardFace card={display.top_card} compact /> : null}
+                  <span>弃牌堆顶</span>
+                </div>
+              </div>
+
+              <div className="uno-actions">
+                {keepMove && humanTurn ? (
+                  <button
+                    className="uno-keep-button"
                     disabled={busy}
-                    key={color}
+                    onClick={() => void runMove(keepMove, HUMAN_ID)}
+                    type="button"
+                  >
+                    保留
+                  </button>
+                ) : null}
+                {wildCardId && controller && colorChoices.length ? (
+                  <fieldset className="uno-color-picker">
+                    <legend>变成哪种颜色？</legend>
+                    {colorChoices.map((color) => (
+                      <button
+                        aria-label={`变成${COLOR_NAMES[color]}色`}
+                        className={`uno-color-choice uno-color-choice--${color}`}
+                        disabled={busy}
+                        key={color}
+                        onClick={() => {
+                          const move = playForCard(controller, wildCardId, color);
+                          if (move) void runMove(move, HUMAN_ID);
+                        }}
+                        type="button"
+                      >
+                        {COLOR_NAMES[color]}
+                      </button>
+                    ))}
+                    <button
+                      aria-label="取消选择颜色"
+                      className="uno-color-cancel"
+                      onClick={() => setWildCardId(null)}
+                      type="button"
+                    >
+                      ×
+                    </button>
+                  </fieldset>
+                ) : null}
+              </div>
+            </section>
+
+            <section className="uno-hand-area" aria-label="本人席位与手牌">
+              <header className="uno-hand-heading">
+                <span className="uno-self-name">
+                  <GameSpeechBubble playerId={human?.id ?? ""} name={human?.name ?? ""} />
+                  <span className="uno-avatar uno-avatar--coral" aria-hidden="true">
+                    {Array.from(human?.name ?? "你")[0]}
+                  </span>
+                  <strong>{human?.name ?? "你"}</strong>
+                  <small>你的手牌</small>
+                </span>
+                <span className="uno-own-count">{hand.length} 张</span>
+                <span className="uno-own-score">{human?.score ?? 0} 分</span>
+                {humanTurn ? <b className="uno-seat-turn">轮到你</b> : null}
+              </header>
+              <section className="uno-hand" aria-label={`你的手牌，共 ${hand.length} 张`}>
+                <div className="uno-reaction-bar">
+                  <button
+                    className="uno-call-button"
+                    disabled={busy || display.phase !== "playing"}
                     onClick={() => {
-                      const move = playForCard(controller, wildCardId, color);
-                      if (move) void runMove(move, HUMAN_ID);
+                      if (humanCallUnoMove) void runMove(humanCallUnoMove, HUMAN_ID);
+                      else setReactionFeedback("现在不能喊 UNO");
+                    }}
+                    aria-label="喊 UNO"
+                    type="button"
+                  >
+                    UNO
+                  </button>
+                  <button
+                    className="uno-catch-button"
+                    disabled={busy || display.phase !== "playing"}
+                    onClick={() => {
+                      if (humanCatchUnoMove) void runMove(humanCatchUnoMove, HUMAN_ID);
+                      else setReactionFeedback("没有抓到漏喊");
                     }}
                     type="button"
                   >
-                    {COLOR_NAMES[color]}
+                    抓漏喊
                   </button>
-                ))}
-                <button
-                  aria-label="取消选择颜色"
-                  className="uno-color-cancel"
-                  onClick={() => setWildCardId(null)}
-                  type="button"
-                >
-                  ×
-                </button>
-              </fieldset>
-            ) : null}
-
-            <section
-              className={`uno-hand ${rows.length > 1 ? "uno-hand--two-rows" : ""}`}
-              aria-label={`你的手牌，共 ${hand.length} 张`}
-            >
-              {rows.map((row) => (
+                </div>
                 <div
                   className="uno-hand__row"
-                  key={row.map((card) => card.id).join("|") || "empty-hand"}
-                  style={{ "--uno-hand-step": `${handStep(row)}px` } as React.CSSProperties}
+                  style={
+                    {
+                      "--uno-hand-step": `${handStep(hand, layout.portrait)}px`,
+                      width: 80 + Math.max(0, hand.length - 1) * handStep(hand, layout.portrait),
+                    } as React.CSSProperties
+                  }
                 >
-                  {row.map((card, cardIndex) => (
-                    <CardFace
-                      card={card}
-                      disabled={!humanTurn || busy}
-                      key={card.id}
-                      onClick={() => clickCard(card)}
-                      order={cardIndex}
-                    />
-                  ))}
+                  {hand.map((card, cardIndex) => {
+                    const playable = Boolean(
+                      controller && humanTurn && playsForCard(controller, card.id).length,
+                    );
+                    return (
+                      <CardFace
+                        key={card.id}
+                        card={card}
+                        disabled={!playable || busy}
+                        playable={playable}
+                        onClick={() => clickCard(card)}
+                        order={cardIndex}
+                      />
+                    );
+                  })}
                 </div>
-              ))}
+              </section>
             </section>
 
             {display.phase === "round_over" && display.last_results ? (
@@ -450,35 +525,32 @@ export function UnoPage() {
                 {nextRoundMove ? (
                   <button
                     disabled={busy}
-                    onClick={() => void runMove(nextRoundMove, HUMAN_ID)}
+                    onClick={() => live ? void startGame() : void runMove(nextRoundMove, HUMAN_ID)}
                     type="button"
                   >
-                    开下一局
+                    再来一局
                   </button>
                 ) : null}
+                <GameRoundExit />
               </section>
-            ) : null}
-
-            {error ? (
-              <div className="uno-error-line" aria-live="polite">
-                {error}
-              </div>
             ) : null}
           </>
         ) : (
-          <div className="uno-loading" aria-live="polite">
-            <span>洗</span>
-            <span>牌</span>
-            <span>中</span>
-            <small>{error ?? "参与者身份由接入方式自动确认"}</small>
+          <section className="uno-loading" aria-live="polite">
+            <div className="uno-brand" aria-hidden="true">
+              UNO
+            </div>
+            <strong>{error ? "牌桌未连接" : "正在洗牌…"}</strong>
+            {error ? <small>{error}</small> : null}
             {error ? (
               <button disabled={busy} onClick={() => void startGame()} type="button">
                 再试一次
               </button>
             ) : null}
-          </div>
+          </section>
         )}
       </div>
     </main>
   );
 }
+import { GameRoundExit } from "../game-round-exit";

@@ -85,7 +85,7 @@ type ApiSuccess<T> = { ok: true; data: T };
 type ApiFailure = { ok: false; error: { code: string; message: string } };
 
 const configuredApi = new URLSearchParams(window.location.search).get("api");
-const apiBase = (configuredApi || "http://127.0.0.1:8765").replace(/\/$/, "");
+const apiBase = (configuredApi || "http://127.0.0.1:8766").replace(/\/$/, "");
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${apiBase}${path}`, {
@@ -97,6 +97,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(payload.error.message);
   }
   return payload.data;
+}
+
+export async function refreshLeafGame(view: LeafGameView): Promise<LeafGameView> {
+  const latest = await getLeafGame(view.game_id, view.viewer_id ?? "player-1");
+  const viewer = latest.current_player_id ?? latest.winner_id ?? latest.viewer_id;
+  return viewer && viewer !== latest.viewer_id ? getLeafGame(latest.game_id, viewer) : latest;
 }
 
 export async function createLeafGame(seed: number): Promise<LeafGameView> {

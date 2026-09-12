@@ -1,3 +1,6 @@
+import { GameRulesIcon , GameRulesText } from "../game-rules-help";
+import { useGameSession, liveMove } from "../game-session-binding";
+import { GameChatWindow, GameSpeechBubble } from "../game-chat-window";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createDoudizhuGame,
@@ -55,7 +58,7 @@ function CardFace({
       aria-pressed={onClick ? selected : undefined}
       className={`ddz-card ${red ? "ddz-card--red" : ""} ${card.joker ? "ddz-card--joker" : ""} ${
         selected ? "ddz-card--selected" : ""
-      } ${compact ? "ddz-card--compact" : ""}`}
+      } ${compact ? "ddz-card--compact" : ""} ${card.rank === 10 ? "ddz-card--ten" : ""}`}
       disabled={onClick ? disabled : undefined}
       onClick={onClick}
       style={{ "--card-order": index } as React.CSSProperties}
@@ -63,6 +66,9 @@ function CardFace({
     >
       <span className="ddz-card__rank">{rankText(card)}</span>
       <span className="ddz-card__suit">{suitText(card)}</span>
+      <span className="ddz-card__center" aria-hidden="true">
+        {suitText(card)}
+      </span>
       {card.joker ? <span className="ddz-card__joker-mark">JOKER</span> : null}
     </Tag>
   );
@@ -88,14 +94,13 @@ function PlayerMarker({
       className={`ddz-player ddz-player--${side} ddz-player--${player.accent} ${current ? "ddz-player--current" : ""}`}
     >
       <div className="ddz-player__avatar" aria-hidden="true">
-        <span className="ddz-player__hair" />
-        <span className="ddz-player__eyes">••</span>
+        {Array.from(player.name)[0]}
       </div>
+      <GameSpeechBubble playerId={player.id} name={player.name} />
       {current ? <span className="ddz-player__turn-tag">轮到</span> : null}
       <div className="ddz-player__words">
         <span className="ddz-player__name">
           {player.name}
-          <b>{player.controller_type === "human" ? "人类" : "小机"}</b>
           {player.is_landlord ? <i>地主</i> : null}
         </span>
         <span className="ddz-player__meta">
@@ -119,7 +124,130 @@ function PlayerMarker({
   );
 }
 
-function Field({ view }: { view: DdzView }) {
+function Hand({
+  cards,
+  name,
+  selected,
+  disabled,
+  portrait,
+  onChange,
+}: {
+  cards: DdzCard[];
+  name: string;
+  selected: string[];
+  disabled: boolean;
+  portrait: boolean;
+  onChange: (ids: string[]) => void;
+}) {
+  const gesture = useRef<{
+    pointerId: number;
+    start: number;
+    startX: number;
+    initial: string[];
+    selecting: boolean;
+    leftEdges: number[];
+  } | null>(null);
+  const suppressPointerClick = useRef(false);
+
+  const extendSelection = (event: React.PointerEvent<HTMLElement>) => {
+    const active = gesture.current;
+    if (!active || active.pointerId !== event.pointerId) return;
+    const startLeft = active.leftEdges[active.start];
+    if (startLeft === undefined) return;
+    const nextLeft = active.leftEdges[active.start + 1] ?? startLeft + 64;
+    const selectionX = startLeft + (nextLeft - startLeft) / 2 + event.clientX - active.startX;
+    const end = Math.max(
+      0,
+      active.leftEdges.findLastIndex((left) => selectionX >= left),
+    );
+    const low = Math.min(active.start, end);
+    const high = Math.max(active.start, end);
+    onChange(
+      cards
+        .filter((card, index) =>
+          index >= low && index <= high ? active.selecting : active.initial.includes(card.id),
+        )
+        .map((card) => card.id),
+    );
+  };
+  const cancelSelection = (event: React.PointerEvent<HTMLElement>) => {
+    const active = gesture.current;
+    if (!active || active.pointerId !== event.pointerId) return;
+    onChange(active.initial);
+    gesture.current = null;
+    suppressPointerClick.current = false;
+  };
+
+  return (
+    <section
+      className="ddz-hand"
+      aria-label={`${name}的手牌，可按住拖选相邻牌`}
+      style={
+        {
+          "--hand-step": `${Math.min(48, ((portrait ? 312 : 804) - 64) / Math.max(1, cards.length - 1))}px`,
+        } as React.CSSProperties
+      }
+      onPointerDown={(event) => {
+        if (disabled || event.button !== 0 || !event.isPrimary || gesture.current) return;
+        const button = (event.target as HTMLElement).closest<HTMLButtonElement>(".ddz-card");
+        if (!button || button.disabled) return;
+        const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>(".ddz-card")];
+        const start = buttons.indexOf(button);
+        if (start < 0 || !cards[start]) return;
+        gesture.current = {
+          pointerId: event.pointerId,
+          start,
+          startX: event.clientX,
+          initial: selected,
+          selecting: !selected.includes(cards[start].id),
+          // Use rendered coordinates so hit testing follows the shared canvas scale.
+          leftEdges: buttons.map((card) => card.getBoundingClientRect().left),
+        };
+        suppressPointerClick.current = false;
+        event.currentTarget.setPointerCapture(event.pointerId);
+        extendSelection(event);
+      }}
+      onPointerMove={extendSelection}
+      onPointerUp={(event) => {
+        if (gesture.current?.pointerId !== event.pointerId) return;
+        extendSelection(event);
+        gesture.current = null;
+        suppressPointerClick.current = true;
+        if (event.currentTarget.hasPointerCapture(event.pointerId))
+          event.currentTarget.releasePointerCapture(event.pointerId);
+      }}
+      onPointerCancel={cancelSelection}
+      onLostPointerCapture={cancelSelection}
+      onClickCapture={(event) => {
+        // Pointer selection already happened; keep keyboard-generated clicks (detail 0).
+        if (event.detail > 0 && suppressPointerClick.current) {
+          suppressPointerClick.current = false;
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      }}
+    >
+      {cards.map((card, index) => (
+        <CardFace
+          card={card}
+          disabled={disabled}
+          index={index}
+          key={card.id}
+          onClick={() =>
+            onChange(
+              selected.includes(card.id)
+                ? selected.filter((id) => id !== card.id)
+                : [...selected, card.id],
+            )
+          }
+          selected={selected.includes(card.id)}
+        />
+      ))}
+    </section>
+  );
+}
+
+function Field({ view, portrait }: { view: DdzView; portrait: boolean }) {
   const current = view.players.find((player) => player.id === view.current_player_id);
   if (!view.field) {
     return (
@@ -141,7 +269,14 @@ function Field({ view }: { view: DdzView }) {
         <span>{actor?.name} 出</span>
         <strong>{view.field.combo.label}</strong>
       </div>
-      <div className="ddz-field__cards">
+      <div
+        className="ddz-field__cards"
+        style={
+          {
+            "--trick-step": `${Math.min(36, ((portrait ? 312 : 480) - 44) / Math.max(1, view.field.cards.length - 1))}px`,
+          } as React.CSSProperties
+        }
+      >
         {view.field.cards.map((card, index) => (
           <CardFace card={card} compact index={index} key={card.id} />
         ))}
@@ -203,20 +338,39 @@ function RoundResult({
       <button disabled={pending} onClick={onNext} type="button">
         再来一局
       </button>
+      <GameRoundExit />
     </section>
   );
 }
 
 export function DoudizhuPage() {
+  const live = useGameSession();
   const [view, setView] = useState<DdzView | null>(null);
+  useEffect(() => { if (live) setView(live.game as DdzView); }, [live?.game]);
   const [selected, setSelected] = useState<string[]>([]);
   const [pending, setPending] = useState(false);
   const [residentId, setResidentId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [scale, setScale] = useState(1);
+  const [layout, setLayout] = useState({ scale: 1, portrait: false });
   const initialStartRef = useRef(false);
 
+  const syncGame = async () => {
+    if (!view || pending) return;
+    setPending(true);
+    try {
+      const next = live ? await live.refresh() as DdzView : await getDoudizhuGame(view.game_id, view.viewer_id ?? PREVIEW_OBSERVER_ID);
+      setView(next);
+      setSelected([]);
+      setError(null);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "暂时无法同步，请再试一次");
+    } finally {
+      setPending(false);
+    }
+  };
+
   const startGame = useCallback(async () => {
+    if (live) { try { await live.again(); } catch (e) { setError(e instanceof Error ? e.message : "操作未完成"); } return; }
     setPending(true);
     setError(null);
     setSelected([]);
@@ -227,9 +381,10 @@ export function DoudizhuPage() {
     } finally {
       setPending(false);
     }
-  }, []);
+  }, [live]);
 
   useEffect(() => {
+    if (live) return;
     if (initialStartRef.current) return;
     initialStartRef.current = true;
     void startGame();
@@ -240,7 +395,14 @@ export function DoudizhuPage() {
       const viewport = window.visualViewport;
       const width = viewport?.width ?? window.innerWidth;
       const height = viewport?.height ?? window.innerHeight;
-      setScale(Math.min(width / CANVAS_WIDTH, height / CANVAS_HEIGHT));
+      const portrait = height / width > 1.25;
+      setLayout({
+        scale: Math.min(
+          width / (portrait ? 352 : CANVAS_WIDTH),
+          height / (portrait ? 694 : CANVAS_HEIGHT),
+        ),
+        portrait,
+      });
     };
     resize();
     window.addEventListener("resize", resize);
@@ -253,8 +415,9 @@ export function DoudizhuPage() {
 
   useEffect(() => {
     if (
-      !view ||
+      live || !view ||
       pending ||
+      error ||
       !view.current_player_id ||
       !["bidding", "playing"].includes(view.phase)
     ) {
@@ -307,7 +470,7 @@ export function DoudizhuPage() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [pending, view]);
+  }, [error, pending, view]);
 
   const self = view?.players.find((player) => player.id === view.viewer_id);
   const [left, right] = view ? tableOpponents(view) : [undefined, undefined];
@@ -330,7 +493,7 @@ export function DoudizhuPage() {
       setPending(true);
       setError(null);
       try {
-        setView(await sendDoudizhuMove(view, move, view.viewer_id));
+        setView(live ? await liveMove<DdzView>(live, view.revision, move) : await sendDoudizhuMove(view, move, view.viewer_id));
         setSelected([]);
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : "这步没有出成，再试一下。");
@@ -338,83 +501,86 @@ export function DoudizhuPage() {
         setPending(false);
       }
     },
-    [view],
+    [view, live],
   );
 
   return (
     <main className="ddz-shell">
-      <div className="ddz-stage" style={{ transform: `translate(-50%, -50%) scale(${scale})` }}>
-        <div className="ddz-felt-marks" aria-hidden="true">
-          <span>♣</span>
-          <span>♦</span>
-          <span>♠</span>
-        </div>
+      <div
+        className={`ddz-stage${layout.portrait ? " ddz-stage--portrait" : ""}`}
+        style={{
+          width: layout.portrait ? 352 : CANVAS_WIDTH,
+          height: layout.portrait ? 694 : CANVAS_HEIGHT,
+          transform: `translate(-50%, -50%) scale(${layout.scale})`,
+        }}
+      >
         <header className="ddz-header">
           <div className="ddz-brand">
-            <span>豆</span>
-            <strong>欢乐斗地主</strong>
+            <span aria-hidden="true">♠</span>
+            <strong>斗地主</strong>
           </div>
-          <div className="ddz-round-chip">第 {view?.round ?? 1} 局</div>
-          {view ? (
-            <div className="ddz-header__actions">
-              <button className="ddz-new-game" disabled={pending} onClick={startGame} type="button">
-                重开
-              </button>
+          <span className="ddz-round-chip">第 {view?.round ?? 1} 局</span>
+          <details
+            className="ddz-rules"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.currentTarget.open = false;
+                event.currentTarget.querySelector("summary")?.focus();
+              }
+            }}
+          >
+            <summary className="game-rules-icon" aria-label="查看规则"><GameRulesIcon /></summary>
+            <div>
+              <strong>怎么玩</strong>
+              <GameRulesText kind="doudizhu" />
             </div>
+          </details>
+          <GameChatWindow />
+          {view && !live ? (
+            <button className="ddz-new-game" disabled={pending} onClick={startGame} type="button">
+              重开
+            </button>
           ) : null}
         </header>
-
         {view ? (
           <>
-            <BottomCards view={view} />
-            <div className="ddz-score-strip">
-              <span>
-                叫分 <b>{view.base ?? view.high_bid?.value ?? 0}</b>
-              </span>
-              <span>
-                倍数 <b>×{view.multiplier}</b>
-              </span>
-              {view.bombs ? (
+            <div className="ddz-table-meta">
+              <BottomCards view={view} />
+              <div className="ddz-score-strip">
                 <span>
-                  炸弹 <b>{view.bombs}</b>
+                  叫分 <b>{view.base ?? view.high_bid?.value ?? 0}</b>
                 </span>
-              ) : null}
+                <span>
+                  倍数 <b>×{view.multiplier}</b>
+                </span>
+                {view.bombs ? (
+                  <span>
+                    炸弹 <b>{view.bombs}</b>
+                  </span>
+                ) : null}
+              </div>
             </div>
-
-            <PlayerMarker
-              current={view.current_player_id === left?.id}
-              player={left}
-              showBid={view.phase === "bidding"}
-              side="left"
-              thinking={residentId === left?.id}
-            />
-            <PlayerMarker
-              current={view.current_player_id === right?.id}
-              player={right}
-              showBid={view.phase === "bidding"}
-              side="right"
-              thinking={residentId === right?.id}
-            />
-            <PlayerMarker
-              current={view.current_player_id === self?.id}
-              player={self}
-              showBid={view.phase === "bidding"}
-              side="self"
-              thinking={false}
-            />
-
-            {view.phase === "round_over" ? (
-              <RoundResult
-                pending={pending}
-                view={view}
-                onNext={() => void runMove({ action: "next_round" })}
+            <div className="ddz-opponents">
+              <PlayerMarker
+                current={view.current_player_id === left?.id}
+                player={left}
+                showBid={view.phase === "bidding"}
+                side="left"
+                thinking={residentId === left?.id}
               />
-            ) : (
-              <>
-                <Field view={view} />
+              <PlayerMarker
+                current={view.current_player_id === right?.id}
+                player={right}
+                showBid={view.phase === "bidding"}
+                side="right"
+                thinking={residentId === right?.id}
+              />
+            </div>
+            <section className="ddz-arena">
+              <Field view={view} portrait={layout.portrait} />
+              <div className="ddz-decision">
                 {view.phase === "bidding" && humanTurn ? (
                   <section className="ddz-bidding" aria-label="叫分">
-                    <span>要当地主吗？</span>
                     <div>
                       {view.legal_bid_values.map((value) => (
                         <button
@@ -428,58 +594,7 @@ export function DoudizhuPage() {
                       ))}
                     </div>
                   </section>
-                ) : null}
-                {residentId && view.phase === "bidding" ? (
-                  <div className="ddz-turn-hint">
-                    {view.players.find((player) => player.id === residentId)?.name} 正在叫分…
-                  </div>
-                ) : null}
-
-                {(view.phase === "bidding" || view.phase === "playing") && self?.hand ? (
-                  <section
-                    className="ddz-hand"
-                    aria-label={`${self.name}的手牌`}
-                    style={
-                      {
-                        "--hand-step": `${
-                          self.hand.length > 1
-                            ? Math.min(42, (740 - 55) / (self.hand.length - 1))
-                            : 55
-                        }px`,
-                      } as React.CSSProperties
-                    }
-                  >
-                    {self.controller_type === "human" ? (
-                      self.hand.map((card, index) => {
-                        const isSelected = selected.includes(card.id);
-                        return (
-                          <CardFace
-                            card={card}
-                            disabled={!humanTurn || pending}
-                            index={index}
-                            key={card.id}
-                            onClick={() =>
-                              setSelected((cards) =>
-                                isSelected
-                                  ? cards.filter((id) => id !== card.id)
-                                  : [...cards, card.id],
-                              )
-                            }
-                            selected={isSelected}
-                          />
-                        );
-                      })
-                    ) : (
-                      <div className="ddz-resident-hand">
-                        <span aria-hidden="true">豆</span>
-                        <strong>小机手牌已隐藏</strong>
-                        <small>{self.hand_count} 张 · 正按合法牌型行动</small>
-                      </div>
-                    )}
-                  </section>
-                ) : null}
-
-                {view.phase === "playing" && humanTurn ? (
+                ) : view.phase === "playing" && humanTurn ? (
                   <div className="ddz-play-actions">
                     <button
                       className="ddz-play-button"
@@ -504,19 +619,58 @@ export function DoudizhuPage() {
                       </button>
                     ) : null}
                   </div>
-                ) : null}
-              </>
-            )}
-
-            {eventMessage ? (
+                ) : (
+                  <div className="ddz-turn-hint">
+                    {residentId
+                      ? `${view.players.find((player) => player.id === residentId)?.name} 正在行动…`
+                      : "等待行动"}
+                  </div>
+                )}
+              </div>
               <div
-                className={`ddz-event-line ${
-                  view.phase === "bidding" ? "ddz-event-line--bidding" : ""
-                } ${error ? "ddz-event-line--error" : ""}`}
+                className={`ddz-event-line ${error ? "ddz-event-line--error" : ""}`}
                 aria-live="polite"
               >
                 {eventMessage}
+                {error ? (
+                  <button type="button" disabled={pending} onClick={() => void syncGame()}>
+                    重新同步本局
+                  </button>
+                ) : null}
               </div>
+            </section>
+            <section className="ddz-hand-area">
+              <PlayerMarker
+                current={view.current_player_id === self?.id}
+                player={self}
+                showBid={view.phase === "bidding"}
+                side="self"
+                thinking={false}
+              />
+              {(view.phase === "bidding" || view.phase === "playing") && self?.hand ? (
+                self.controller_type === "human" ? (
+                  <Hand
+                    cards={self.hand}
+                    name={self.name}
+                    selected={selected}
+                    disabled={!humanTurn || pending}
+                    portrait={layout.portrait}
+                    onChange={setSelected}
+                  />
+                ) : (
+                  <div className="ddz-resident-hand">
+                    <strong>手牌已隐藏</strong>
+                    <small>{self.hand_count} 张</small>
+                  </div>
+                )
+              ) : null}
+            </section>
+            {view.phase === "round_over" ? (
+              <RoundResult
+                pending={pending}
+                view={view}
+                onNext={() => live ? void startGame() : void runMove({ action: "next_round" })}
+              />
             ) : null}
           </>
         ) : (
@@ -534,3 +688,4 @@ export function DoudizhuPage() {
     </main>
   );
 }
+import { GameRoundExit } from "../game-round-exit";

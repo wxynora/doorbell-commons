@@ -107,6 +107,12 @@ function wakeMessage(wake: Pick<BellWakeRecord, "payload">): string {
 }
 
 export class BellService {
+  #beforePendingWakes: ((residentId: string) => void) | undefined;
+
+  setBeforePendingWakes(validate: ((residentId: string) => void) | undefined): void {
+    this.#beforePendingWakes = validate;
+  }
+
   readonly #database: CommunityDatabase;
   readonly #registrationAuth: BellRegistrationAuth;
   readonly #heartbeatIntervalMs: number;
@@ -234,6 +240,8 @@ export class BellService {
 
   refreshResident(residentId: string): void {
     const now = this.#now();
+    const expiredLounge = [...this.#database.loungeWakeStore.expire(residentId,now), ...this.#database.loungeWakeStore.cancelInvalidChat(residentId,this.#database.loungeChatSessionStore.active(residentId,now)?.enteredAt??null,now)];
+    this.#emitCancellations({residentId,cancelledWakeId:expiredLounge[0]??null,cancelledWakeIds:expiredLounge});
     const expiredPurchases = this.#database.expirePendingFarmPurchaseRequestsForResident(
       residentId,
       now,
@@ -351,6 +359,7 @@ export class BellService {
     const active = this.#connections.get(residentId);
     if (!active || active.closed) return;
     this.#emitCancellations(this.#database.mysteryMerchantNightStore.expirePending(residentId, this.#now()));
+    this.#beforePendingWakes?.(residentId);
     const pendingWakes = this.#database.listPendingBellWakes(residentId);
     for (const wake of pendingWakes) {
       if (active.sentWakeIds.has(wake.wakeId)) continue;

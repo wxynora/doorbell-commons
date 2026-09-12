@@ -133,6 +133,10 @@ async function attachControllerView(display: UnoView): Promise<UnoSession> {
   return { display, controller: display };
 }
 
+export async function refreshUnoGame(display: UnoView): Promise<UnoSession> {
+  return attachControllerView(await getUnoGame(display.game_id, display.viewer_id ?? "player-1"));
+}
+
 export async function createUnoGame(seed: number): Promise<UnoSession> {
   const display = await request<UnoView>("/api/games", {
     method: "POST",

@@ -110,6 +110,12 @@ async function viewForCurrentController(view: FlyingView): Promise<FlyingView> {
   return view;
 }
 
+export async function refreshFlyingChessGame(view: FlyingView): Promise<FlyingView> {
+  return viewForCurrentController(
+    await getFlyingChessGame(view.game_id, view.viewer_id ?? "player-1"),
+  );
+}
+
 export async function createFlyingChessGame(seed: number): Promise<FlyingView> {
   const view = await request<FlyingView>("/api/games", {
     method: "POST",

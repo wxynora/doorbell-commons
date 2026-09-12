@@ -1,3 +1,6 @@
+import { GameRulesIcon , GameRulesText } from "../game-rules-help";
+import { useGameSession, liveMove } from "../game-session-binding";
+import { GameChatWindow, GameSpeechBubble } from "../game-chat-window";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createLeafGame,
@@ -5,6 +8,7 @@ import {
   type LeafCard,
   type LeafGameView,
   type LeafPlayer,
+  refreshLeafGame,
   sendLeafCommand,
 } from "./leaf-game-client";
 import {
@@ -12,6 +16,7 @@ import {
   type LeafPlayAction,
   resolveSelectedPlayAction,
 } from "./leaf-game-interaction";
+import { leafHandStep } from "./leaf-game-layout";
 import "./leaf-game-page.css";
 
 const ranks = Array.from({ length: 10 }, (_, index) => index + 1);
@@ -43,19 +48,12 @@ function PlayerStatus({
       } ${player.knocked_out ? "leaf-player--out" : ""}`}
     >
       <div className="leaf-player__avatar" aria-hidden="true">
-        <span className="leaf-player__hair" />
-        <span className="leaf-player__face">
-          <i />
-          <i />
-          <b />
-        </span>
+        <span className="leaf-player__initial">{Array.from(player.name)[0] ?? "?"}</span>
       </div>
+      <GameSpeechBubble playerId={player.id} name={player.name} />
       <div className="leaf-player__info">
         <div className="leaf-player__name-row">
           <strong>{player.name}</strong>
-          <span className="leaf-player__controller">
-            {player.controller_type === "human" ? "人类" : "小机"}
-          </span>
           {isDealer ? <span className="leaf-player__dealer">主家</span> : null}
         </div>
         <div className="leaf-player__meta">
@@ -185,14 +183,6 @@ function TablePile({
 }) {
   const lastActor = view.pile.at(-1)?.actor_id ?? null;
   const actorName = playerById(view, lastActor)?.name;
-  const canPlayCards = view.legal_actions.some(
-    (action) => action === "lead" || action === "follow",
-  );
-  const pileHint = selectedCount
-    ? `点这里盖下 ${selectedCount} 张`
-    : canPlayCards
-      ? "先点选一张或多张手牌"
-      : null;
   return (
     <button
       aria-label={
@@ -210,14 +200,17 @@ function TablePile({
         <span />
         <span />
       </div>
-      <strong>{view.pile_card_count ? `${view.pile_card_count} 张` : "等主家开牌"}</strong>
+      <strong>
+        {selectedCount
+          ? `盖下 ${selectedCount} 张`
+          : view.pile_card_count
+            ? `${view.pile_card_count} 张`
+            : "等主家开牌"}
+      </strong>
       <span>
-        {view.declared_rank
-          ? `本轮只报 ${view.declared_rank} 点${actorName ? ` · ${actorName} 刚出` : ""}`
-          : "主家选牌后再报点"}
+        {view.declared_rank ? `${view.declared_rank} 点${actorName ? ` · ${actorName}` : ""}` : ""}
       </span>
       {view.pile_card_count ? <small>本轮罚饮醉意 +{view.pile_risk_percent}%</small> : null}
-      {pileHint ? <em>{pileHint}</em> : null}
     </button>
   );
 }
@@ -246,36 +239,29 @@ function TableControls({
     return null;
   }
   return (
-    <>
-      {view.declared_rank ? (
-        <div className="leaf-table-declaration">
-          本轮报 <strong>{view.declared_rank}</strong> 点
-        </div>
+    <fieldset className="leaf-table-actions">
+      <legend className="leaf-visually-hidden">桌边行动</legend>
+      {view.legal_actions.includes("challenge") ? (
+        <button
+          className="leaf-table-action leaf-table-action--challenge"
+          disabled={pending}
+          onClick={() => onAction("challenge")}
+          type="button"
+        >
+          质疑
+        </button>
       ) : null}
-      <fieldset className="leaf-table-actions">
-        <legend className="leaf-visually-hidden">桌边行动</legend>
-        {view.legal_actions.includes("challenge") ? (
-          <button
-            className="leaf-table-action leaf-table-action--challenge"
-            disabled={pending}
-            onClick={() => onAction("challenge")}
-            type="button"
-          >
-            质疑
-          </button>
-        ) : null}
-        {view.legal_actions.includes("concede") ? (
-          <button
-            className="leaf-table-action leaf-table-action--concede"
-            disabled={pending}
-            onClick={() => onAction("concede")}
-            type="button"
-          >
-            认罚
-          </button>
-        ) : null}
-      </fieldset>
-    </>
+      {view.legal_actions.includes("concede") ? (
+        <button
+          className="leaf-table-action leaf-table-action--concede"
+          disabled={pending}
+          onClick={() => onAction("concede")}
+          type="button"
+        >
+          认罚
+        </button>
+      ) : null}
+    </fieldset>
   );
 }
 
@@ -314,24 +300,25 @@ function RankDeclaration({
 }
 
 export function LeafGamePage() {
+  const live = useGameSession();
   const [view, setView] = useState<LeafGameView | null>(null);
+  useEffect(() => { if (live) setView(live.game as LeafGameView); }, [live?.game]);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pendingLeadCardIds, setPendingLeadCardIds] = useState<string[]>([]);
   const [playingCardIds, setPlayingCardIds] = useState<Set<string>>(new Set());
   const [flight, setFlight] = useState<{ key: number; count: number } | null>(null);
-  const [narrowPreviewScale, setNarrowPreviewScale] = useState<number | null>(null);
+  const [narrowPreviewScale, setNarrowPreviewScale] = useState(1);
   const initialStartRef = useRef(false);
+  const residentActionKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     const resize = () => {
       const viewport = window.visualViewport;
       const width = viewport?.width ?? window.innerWidth;
       const height = viewport?.height ?? window.innerHeight;
-      setNarrowPreviewScale(
-        height > width ? Math.min(width / CANVAS_WIDTH, height / CANVAS_HEIGHT) : null,
-      );
+      setNarrowPreviewScale(Math.min(width / CANVAS_WIDTH, height / CANVAS_HEIGHT));
     };
 
     resize();
@@ -343,16 +330,36 @@ export function LeafGamePage() {
     };
   }, []);
 
-  const scalerStyle =
-    narrowPreviewScale === null
-      ? undefined
-      : {
-          width: CANVAS_WIDTH,
-          height: CANVAS_HEIGHT,
-          transform: `scale(${narrowPreviewScale})`,
-        };
+  const scalerStyle = {
+    position: "absolute" as const,
+    left: "50%",
+    top: "50%",
+    width: CANVAS_WIDTH,
+    height: CANVAS_HEIGHT,
+    transform: `translate(-50%, -50%) scale(${narrowPreviewScale})`,
+  };
+
+  const syncGame = async () => {
+    const currentView = view;
+    if (!currentView || pending) return;
+    setPending(true);
+    try {
+      const next = live ? await live.refresh() as LeafGameView : await refreshLeafGame(currentView);
+      setView(next);
+      residentActionKeyRef.current = null;
+      setSelected(new Set());
+      setPendingLeadCardIds([]);
+      setError(null);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "暂时无法同步，请再试一次");
+    } finally {
+      setPending(false);
+    }
+  };
 
   const startGame = useCallback(async () => {
+    if (live) { try { await live.again(); } catch (e) { setError(e instanceof Error ? e.message : "操作未完成"); } return; }
+    residentActionKeyRef.current = null;
     setError(null);
     setPending(true);
     try {
@@ -369,15 +376,17 @@ export function LeafGamePage() {
     } finally {
       setPending(false);
     }
-  }, []);
+  }, [live]);
 
   useEffect(() => {
+    if (live) return;
     if (initialStartRef.current) return;
     initialStartRef.current = true;
     void startGame();
   }, [startGame]);
 
   useEffect(() => {
+    if (live) return;
     const viewerId = view?.viewer_id;
     if (
       view?.status !== "active" ||
@@ -409,7 +418,7 @@ export function LeafGamePage() {
   }, [view]);
 
   const currentViewer = view ? playerById(view, view.viewer_id) : undefined;
-  const humanTurn = currentViewer?.controller_type === "human";
+  const humanTurn = currentViewer?.controller_type === "human" && view?.current_player_id === view?.viewer_id;
   const visibleHand = currentViewer?.hand ?? [];
   const orderedPlayers = useMemo(() => {
     if (!view || !currentViewer) {
@@ -438,28 +447,31 @@ export function LeafGamePage() {
     });
   };
 
-  const act = async (
-    action: "lead" | "follow" | "challenge" | "concede",
-    cardIds: string[] = [],
-    leadRank = 1,
-  ) => {
-    if (!view) {
-      return;
-    }
-    setPending(true);
-    setError(null);
-    try {
-      const next = await sendLeafCommand(view, action, cardIds, leadRank);
-      setView(next);
-      setSelected(new Set());
-      setPendingLeadCardIds([]);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "这个动作没有成功。 ");
-    } finally {
-      setPlayingCardIds(new Set());
-      setPending(false);
-    }
-  };
+  const act = useCallback(
+    async (
+      action: "lead" | "follow" | "challenge" | "concede",
+      cardIds: string[] = [],
+      leadRank = 1,
+    ) => {
+      if (!view) {
+        return;
+      }
+      setPending(true);
+      setError(null);
+      try {
+        const next = live ? await liveMove<LeafGameView>(live, view.revision, {action,...(action==="lead" || action==="follow" ? {card_ids:cardIds} : {}),...(action==="lead" ? {declared_rank:leadRank} : {})}) : await sendLeafCommand(view, action, cardIds, leadRank);
+        setView(next);
+        setSelected(new Set());
+        setPendingLeadCardIds([]);
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : "这个动作没有成功。 ");
+      } finally {
+        setPlayingCardIds(new Set());
+        setPending(false);
+      }
+    },
+    [view, live],
+  );
 
   const playCards = (action: LeafPlayAction, cardIds: string[], leadRank = 1) => {
     setPlayingCardIds(new Set(cardIds));
@@ -480,7 +492,16 @@ export function LeafGamePage() {
     view?.rules.max_play_size ?? 0,
     pending || !humanTurn,
   );
-  const residentMove = view && !humanTurn ? chooseResidentMove(view) : null;
+
+  useEffect(() => {
+    if (live || !view || humanTurn || pending || error || view.status !== "active") return;
+    const move = chooseResidentMove(view);
+    if (!move) return;
+    const key = `${view.game_id}:${view.revision}`;
+    if (residentActionKeyRef.current === key) return;
+    residentActionKeyRef.current = key;
+    void act(move.action, move.cardIds, move.declaredRank);
+  }, [act, error, humanTurn, pending, view]);
 
   if (!view) {
     return (
@@ -512,11 +533,11 @@ export function LeafGamePage() {
         ? `${currentName} 可在 3 秒内质疑最后一手`
         : view.phase === "lead"
           ? humanTurn
-            ? `${currentName} 做主家：先选牌，再报点`
-            : `${currentName} 小机准备出牌`
+            ? `${currentName} 开牌`
+            : `${currentName} 准备出牌`
           : humanTurn
-            ? `${currentName} 行动：点选手牌出牌，或者质疑／认罚`
-            : `${currentName} 小机正在判断这一手`;
+            ? `轮到 ${currentName}`
+            : `${currentName} 正在判断这一手`;
 
   return (
     <main className="leaf-game-shell">
@@ -528,7 +549,6 @@ export function LeafGamePage() {
                 叶
               </span>
               <div>
-                <span>小机活动室</span>
                 <h1>叶子戏</h1>
               </div>
             </div>
@@ -537,10 +557,23 @@ export function LeafGamePage() {
               {stageMessage}
             </div>
             <div className="leaf-game-header__tools">
-              <span>
-                {humanTurn ? "人类行动" : "小机行动"} · r{view.revision}
-              </span>
-              <button disabled={pending} onClick={startGame} type="button">
+              <GameChatWindow />
+              <details
+                className="leaf-rules"
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    event.currentTarget.open = false;
+                    event.currentTarget.querySelector("summary")?.focus();
+                  }
+                }}
+              >
+            <summary className="game-rules-icon" aria-label="查看规则"><GameRulesIcon /></summary>
+                <div>
+                  <strong>怎么玩</strong>
+              <GameRulesText kind="leaf-game" />
+            </div>
+              </details>
+              <button hidden={Boolean(live)} disabled={pending} onClick={startGame} type="button">
                 重开
               </button>
             </div>
@@ -599,21 +632,6 @@ export function LeafGamePage() {
 
           <ResolutionNotice view={view} />
 
-          {residentMove ? (
-            <button
-              type="button"
-              className="leaf-resident-action"
-              disabled={pending}
-              onClick={() =>
-                residentMove.action === "lead" || residentMove.action === "follow"
-                  ? playCards(residentMove.action, residentMove.cardIds, residentMove.declaredRank)
-                  : void act(residentMove.action)
-              }
-            >
-              {pending ? "小机行动中…" : `推进 ${currentViewer?.name ?? "小机"} 一步`}
-            </button>
-          ) : null}
-
           <RankDeclaration
             cardCount={pendingLeadCardIds.length}
             onCancel={() => {
@@ -630,13 +648,20 @@ export function LeafGamePage() {
                   {view.phase === "final_challenge"
                     ? "最后一手，等待质疑"
                     : selected.size
-                      ? `已选 ${selected.size} 张 · 点桌面出牌`
-                      : `点选手牌 · 一次最多 ${view.rules.max_play_size} 张`}
+                      ? `已选 ${selected.size} 张`
+                      : ""}
                 </strong>
                 <span className="leaf-hand__count">{visibleHand.length} 张</span>
               </div>
             </div>
-            <div className="leaf-hand__cards">
+            <div
+              className="leaf-hand__cards"
+              style={
+                {
+                  "--hand-step": `${leafHandStep(visibleHand.length)}px`,
+                } as React.CSSProperties
+              }
+            >
               {humanTurn ? (
                 visibleHand.map((card, index) => (
                   <LeafCardButton
@@ -657,13 +682,13 @@ export function LeafGamePage() {
               ) : (
                 <div className="leaf-hand__resident-note">
                   <span aria-hidden="true">叶</span>
-                  <strong>小机手牌已隐藏</strong>
-                  <small>{visibleHand.length} 张 · 只用合法动作推进</small>
+                  <strong>手牌已隐藏</strong>
                 </div>
               )}
             </div>
           </section>
 
+          {view.status === "finished" && <GameRoundExit floating onAgain={() => void startGame()} />}
           {flight ? (
             <div
               className={`leaf-card-flight ${flight.count > 1 ? "leaf-card-flight--stack" : ""}`}
@@ -678,8 +703,8 @@ export function LeafGamePage() {
           {error ? (
             <div className="leaf-game-error" role="alert">
               <span>{error}</span>
-              <button onClick={() => setError(null)} type="button">
-                知道了
+              <button disabled={pending} onClick={() => void syncGame()} type="button">
+                重新同步本局
               </button>
             </div>
           ) : null}
@@ -688,3 +713,4 @@ export function LeafGamePage() {
     </main>
   );
 }
+import { GameRoundExit } from "../game-round-exit";

@@ -17,7 +17,9 @@ const eyeType3Defaults=()=>({iris:{spacing:-3,x:0,y:2,scale:110},highlight:{spac
 const preset=await(await fetch('preset.json')).json();
 const defaults=()=>structuredClone(preset);
 let state=defaults(),category='mouth',editTarget='iris',closeup=false;
-const portrait=new URLSearchParams(location.search).get('mode')==='portrait';
+const avatarMode=new URLSearchParams(location.search).get('mode');
+const portrait=avatarMode==='portrait';
+const standing=avatarMode==='standing';
 let revision=0,residentId=null,loadFailed=false;
 function applyManifest(m){state=defaults();if(!m)return;Object.assign(state,{skin:m.skin,hair:m.hair,eyes:m.eyes,mouth:m.mouth,clothes:m.clothes,color:m.hair_color,irisColor:m.iris_color,eyelashColor:m.eyelash_color});state.accessories={mole:{...m.mole}};}
 function manifest(){const mole=accessoryState(state,'mole');return {version:1,catalog_version:1,skin:state.skin,hair:state.hair,eyes:state.eyes,mouth:state.mouth,clothes:state.clothes,color:undefined,hair_color:state.color||null,iris_color:state.irisColor,eyelash_color:state.eyelashColor||null,mole:{enabled:mole.enabled,x:mole.x,y:mole.y,scale:mole.scale,color:mole.color||'#57443b'}};}
@@ -26,9 +28,9 @@ try{
  const response=await fetch(requested?'/api/residents/'+encodeURIComponent(requested)+'/avatar':'/api/resident-avatar',{credentials:'same-origin',cache:'no-store'});
  const saved=await response.json();if(!response.ok)throw Error(saved.error?.message||'形象暂时无法读取');
  residentId=saved.resident_id;revision=saved.revision;applyManifest(saved.manifest);
- if(portrait&&!saved.manifest)document.body.dataset.empty='true';
+ if((portrait||standing)&&!saved.manifest)document.body.dataset.empty='true';
 }catch(error){loadFailed=true;document.querySelector('#status').textContent=error.message;}
-if(portrait)document.body.classList.add('portrait-only');
+if(portrait||standing)document.body.classList.add('portrait-only');
 state.body='base-blank';if(state.eyes===undefined)state.eyes='eyes-01';state.adjust.eyes??={spacing:-3,x:0,y:-18,scale:90};
 state.adjust.iris??={x:0,y:0,scale:100};state.adjust.highlight??={x:0,y:0,scale:100};
 if(state.mouth===undefined)state.mouth='mouth-01';state.adjust.mouth??={x:0,y:0,scale:80};
@@ -210,3 +212,4 @@ if(loadFailed){$('#save').textContent='重新加载';$('.editor').hidden=true;ca
 if(portrait){$('#status').textContent=loadFailed?'形象暂不可用':document.body.dataset.empty?'尚未设置形象':'';}
 
 if(portrait){const headshot=document.createElement('canvas');headshot.width=300;headshot.height=393;headshot.getContext('2d').drawImage(canvas,42,65,300,393,0,0,300,393);parent.postMessage({type:'resident-avatar-portrait',residentId,image:loadFailed||document.body.dataset.empty?null:headshot.toDataURL('image/png')},location.origin);}
+if(standing){parent.postMessage({type:'resident-avatar-standing',residentId,image:loadFailed||document.body.dataset.empty?null:canvas.toDataURL('image/png')},location.origin);}

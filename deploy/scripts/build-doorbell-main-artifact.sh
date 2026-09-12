@@ -69,6 +69,10 @@ git -C "${repository_root}" archive --format=tar --output="${source_archive}" "$
 tar --extract --file "${source_archive}" --directory "${build_directory}"
 rm -f -- "${source_archive}"
 
+# Verification sources are local-only and are not part of a production build.
+find "${build_directory}/apps/server/src" "${build_directory}/apps/web/src" -type f \
+  \( -name '*.test.ts' -o -name '*.test.tsx' -o -name '*.test.mjs' \) -delete
+
 (
   cd "${build_directory}"
   npm ci
@@ -103,6 +107,28 @@ cp -a \
   "${build_directory}/deploy/scripts/restore-community-database.mjs" \
   "${build_directory}/deploy/scripts/verify-doorbell-runtime-artifact.mjs" \
   "${runtime_directory}/deploy/scripts/"
+
+# Python bridge resolves engines relative to the deployed repository root.
+install -d -m 0755 "${runtime_directory}/apps/server/src/games"
+cp -a "${build_directory}/apps/server/src/games/engine-bridge.py" \
+  "${build_directory}/apps/server/src/games/game_incremental.py" \
+  "${runtime_directory}/apps/server/src/games/"
+for game in leaf-game doudizhu flying-chess uno monopoly mahjong; do
+  install -d -m 0755 "${runtime_directory}/games/${game}"
+  cp -a "${build_directory}/games/${game}/src" "${runtime_directory}/games/${game}/"
+done
+install -d -m 0755 "${runtime_directory}/games/mahjong/third_party"
+cp -a "${build_directory}/games/mahjong/third_party/pymahjonggb" \
+  "${runtime_directory}/games/mahjong/third_party/"
+cp -a "${build_directory}/games/mahjong/THIRD_PARTY_LICENSE" \
+  "${runtime_directory}/games/mahjong/"
+# Local verification and Python build caches are not production runtime files.
+find "${runtime_directory}/apps/server/dist" -type f \
+  \( -name '*.test.js' -o -name '*.test.js.map' -o -name '*.test.d.ts' -o -name '*.test.d.ts.map' \) -delete
+find "${runtime_directory}/games" -type d \
+  \( -name __pycache__ -o -name .venv -o -name build -o -name '*.egg-info' \) -prune -exec rm -rf -- {} +
+find "${runtime_directory}/games" -type f \
+  \( -name '*.pyc' -o -name '*.so' -o -name preview_server.py \) -delete
 
 printf '%s\n' \
   "{\"schema\":2,\"source_sha\":\"${TARGET_SHA}\",\"node_major\":24,\"dependency_mode\":\"reuse-exact-lock\"}" \

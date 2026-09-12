@@ -1,0 +1,84 @@
+:where(#mahjong-root, .game-session--mahjong) * { box-sizing: border-box; }
+:where(#mahjong-root, .game-session--mahjong) { width: 100%; height: 100%; margin: 0; }
+:where(#mahjong-root, .game-session--mahjong) { background: #dbe8d8; color: #284c40; font-family: "Hiragino Sans GB", "PingFang SC", sans-serif; }
+:where(#mahjong-root, .game-session--mahjong) button { font: inherit; cursor: pointer; color: inherit; }
+:where(#mahjong-root, .game-session--mahjong) button:focus-visible { outline: 3px solid #b9672e; outline-offset: 4px; }
+.mj-host { width: 100%; height: 100dvh; position: relative; overflow: hidden; }
+.mj-stage { position: absolute; top: 50%; left: 50%; transform-origin: center; background: #dbe8d8; overflow: hidden; }
+.mj-stage header { position: absolute; top: 24px; left: 28px; right: 28px; display: flex; align-items: center; justify-content: space-between; }
+:where(#mahjong-root, .game-session--mahjong) h1 { margin: 0; font-family: "HanziPen SC", "Kaiti SC", serif; font-size: 31px; letter-spacing: 3px; }
+:where(#mahjong-root, .game-session--mahjong) h1 span { font: 13px "PingFang SC", sans-serif; letter-spacing: 2px; margin-left: 12px; opacity: .7; }
+:where(#mahjong-root, .game-session--mahjong) nav { display: flex; gap: 22px; }
+:where(#mahjong-root, .game-session--mahjong) nav button, .mj-close { background: none; border: 0; font-size: 15px; padding: 7px 0; }
+.mj-anchor { position: absolute; transform: translate(-50%, -50%); }
+.mj-seat { position: absolute; transform: translate(-50%, -50%); display: flex; gap: 9px; align-items: center; white-space: nowrap; font-size: 15px; }
+.mj-seat small { display: block; font-size: 12px; margin-top: 2px; color: #587565; }
+.mj-avatar { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; background: #eebfac; font-weight: 700; }
+.tone-1 { background: #eadca4; }.tone-2 { background: #b3ced8; }.tone-3 { background: #bbcba3; }
+.mj-seat.active .mj-avatar { outline: 2px solid #658549; outline-offset: 4px; }
+.mj-center { width: 134px; min-height: 100px; text-align: center; display: flex; flex-direction: column; justify-content: center; }
+.mj-center small { font-size: 14px; letter-spacing: 3px; }
+.mj-center strong { font-size: 32px; line-height: 1.35; font-weight: 600; }
+.mj-center span { font-size: 12px; color: #587565; }
+.mj-river { width: 252px; display: grid; grid-template-columns: repeat(6, 40px); gap: 4px 2px; transform-origin: center; }
+.mj-tile { position: relative; display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 48px; height: 66px; border: 1px solid #ede9d7; border-radius: 5px; background: #fffdf0; box-shadow: 0 4px 0 #8caa87, 0 6px 5px #496b4233; padding: 3px; vertical-align: middle; }
+.mj-tile svg { width: 100%; height: 100%; }
+.mj-small { width: 40px; height: 54px; padding: 2px; border-radius: 4px; box-shadow: 0 2px 0 #95ac8d, 0 3px 2px #496b421f; }
+.mj-tile.recent { box-shadow: 0 0 0 2px #ae703a, 0 2px 0 #95ac8d; }
+.mj-wan { display: flex; flex-direction: column; align-items: center; line-height: 1.05; font-family: "Kaiti SC", "Songti SC", serif; }
+.mj-wan b { font-size: 24px; color: #2c514b; }.mj-wan strong { font-size: 26px; color: #b3483c; }
+.mj-small .mj-wan b { font-size: 21px; }.mj-small .mj-wan strong { font-size: 23px; }
+.mj-honor { font: bold 36px "Kaiti SC", "Songti SC", serif; }.mj-honor.red { color: #b3483c; }.mj-honor.green { color: #38734e; }
+.mj-honor i { display: block; width: 24px; height: 38px; border: 2px solid #537f92; border-radius: 2px; box-shadow: inset 0 0 0 2px #fffdf0, inset 0 0 0 3px #537f92; }
+.mj-small .mj-honor { font-size: 31px; }.mj-small .mj-honor i { width: 23px; height: 36px; border-width: 2px; box-shadow: none; }
+.mj-back { position: absolute; inset: 1px; border-radius: 2px; background: #769b77; border: 1px solid #abc3a4; }
+.mj-other-hand { display: flex; gap: 12px; align-items: center; }
+.mj-meld { position: relative; display: inline-flex; flex: 0 0 auto; gap: 2px; vertical-align: middle; }
+.mj-meld-slot { display: inline-flex; }
+.mj-kong-top { position: absolute; right: 0; top: -12px; z-index: 1; display: inline-flex; }
+.mj-concealed-rack { position: relative; height: 54px; flex: 0 0 auto; }
+.mj-concealed-rack > span { position: absolute; top: 0; }
+.mj-other-melds { position: relative; flex: 0 0 auto; }
+.mj-other-melds > div { position: absolute; left: 0; top: 0; display: flex; gap: 12px; transform-origin: top left; }
+.mj-other-melds .mj-tile { width: 52px; height: 70px; }
+.mj-other-melds .mj-wan b { font-size: 28px; }.mj-other-melds .mj-wan strong { font-size: 30px; }
+.mj-other-melds .mj-honor { font-size: 40px; }.mj-other-melds .mj-honor i { width: 29px; height: 45px; }
+.mj-own-hand { display: flex; align-items: center; gap: 2px; white-space: nowrap; transform: translate(-50%, -50%) scale(.9); }
+.mj-own-hand .mj-tile { transition: transform .13s ease-out, box-shadow .13s ease-out; }
+.landscape .mj-own-hand .mj-tile { width: 72px; height: 94px; }
+.mj-own-hand .mj-wan b { font-size: 36px; }.mj-own-hand .mj-wan strong { font-size: 40px; }
+.mj-own-hand .mj-honor { font-size: 55px; }.mj-own-hand .mj-honor i { width: 39px; height: 61px; }
+.landscape .mj-actions button { font-size: 22px; min-width: 84px; padding: 10px 22px; border-radius: 23px; }
+.landscape .mj-seat { font-size: 20px; }.landscape .mj-seat small { font-size: 15px; }
+.landscape nav button { font-size: 20px; }.landscape .mj-wait { font-size: 20px; }
+.mj-own-hand .mj-tile.selected { transform: translateY(-13px); box-shadow: 0 4px 0 #739766, 0 10px 10px #44623d3d; outline: 2px solid #76905e; }
+.mj-own-hand .mj-tile:disabled { opacity: 1; cursor: default; }
+.mj-actions { display: flex; gap: 8px; justify-content: center; max-width: 700px; flex-wrap: wrap; }
+.mj-actions button { min-width: 65px; padding: 9px 17px; border: 1px solid #8fa58a; border-radius: 18px; background: #f3f2df; font-weight: 600; font-size: 16px; white-space: nowrap; }
+.mj-actions button.primary { background: #4e7050; color: #fffdf0; border-color: #4e7050; }
+.mj-actions button:disabled { opacity: .48; cursor: default; }
+.mj-wait { color: #5c7766; font-size: 15px; white-space: nowrap; }
+.mj-loading { position: absolute; inset: 45% 0 auto; text-align: center; }
+.mj-error { position: absolute; bottom: 7px; left: 28px; right: 28px; font-size: 14px; color: #8c382f; text-align: center; }
+.mj-error button { background: none; border: 0; text-decoration: underline; margin-left: 12px; }
+.mj-overlay { position: absolute; inset: 0; background: #284c4066; display: grid; place-items: center; z-index: 10; }
+.mj-overlay section { width: 470px; max-height: 540px; overflow: auto; background: #fffdf0; padding: 28px; border-radius: 14px; font-size: 18px; line-height: 1.8; }
+.mj-close { float: right; }.mj-overlay h2 { font-size: 24px; margin-top: 0; }.mj-fan { float: right; }
+.portrait header { top: 36px; left: 32px; right: 32px; }
+.portrait h1 { font-size: 38px; }.portrait h1 span { font-size: 18px; }
+.portrait nav button { font-size: 22px; padding: 10px 0; }
+.portrait .mj-seat { font-size: 21px; }.portrait .mj-seat small { font-size: 17px; }.portrait .mj-avatar { width: 42px; height: 42px; }
+.portrait .mj-own-hand { display: flex; flex-wrap: wrap; justify-content: center; align-content: center; width: 630px; height: 210px; gap: 10px 5px; }
+.portrait .mj-own-hand .mj-tile { width: 78px; height: 100px; }
+.portrait .mj-own-hand .drawn { margin-left: 0; box-shadow: 0 4px 0 #4e7050, 0 6px 5px #496b4233; }
+.portrait .mj-actions { width: 610px; gap: 8px; }
+.portrait .mj-actions button { font-size: 26px; padding: 12px 24px; min-width: 100px; border-radius: 23px; }
+.portrait .mj-wait { font-size: 22px; }
+.portrait .mj-center strong { font-size: 35px; }.portrait .mj-center small { font-size: 19px; }.portrait .mj-center span { font-size: 18px; }
+.portrait .mj-overlay section { width: 610px; max-height: 780px; font-size: 25px; }.portrait .mj-overlay h2 { font-size: 30px; }.portrait .mj-close { font-size: 24px; }
+.portrait .mj-error { font-size: 20px; }
+.mj-own-hand > .mj-meld { margin-right: 9px; }
+.mj-own-hand .mj-meld .mj-tile { width: 64px; height: 86px; }
+.mj-own-hand .mj-meld .mj-wan b { font-size: 32px; }.mj-own-hand .mj-meld .mj-wan strong { font-size: 36px; }
+.mj-own-hand .mj-meld .mj-honor { font-size: 49px; }.mj-own-hand .mj-meld .mj-honor i { width: 35px; height: 55px; }
+@media (prefers-reduced-motion: reduce) { .mj-own-hand .mj-tile { transition: none; } }

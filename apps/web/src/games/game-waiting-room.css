@@ -1,0 +1,62 @@
+.game-waiting-viewport { width: 100%; height: 100%; min-height: 0; overflow: hidden; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); place-items: center; background: #e5ebe2; }
+.game-waiting-stage { --ink: #2f5948; --paper: #f8f4e9; --accent: #e7b759; --surface: #dfead9; position: relative; flex: none; width: 390px; height: 720px; transform: scale(var(--waiting-scale)); color: var(--ink); background: var(--surface); font-family: "PingFang SC", "Microsoft YaHei", sans-serif; }
+.game-waiting-stage * { box-sizing: border-box; }
+.game-waiting-stage button { font: inherit; cursor: pointer; color: inherit; }
+.game-waiting-stage button:disabled { opacity: .45; cursor: default; }
+.game-waiting-stage button:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
+.game-waiting--uno { --surface: #194e40; --ink: #fff6dc; --accent: #edc869; --paper: #fff8df; }
+.game-waiting--doudizhu { --surface: #e5efe2; --accent: #d6a455; }
+.game-waiting--leaf-game { --surface: #f2e8d8; --ink: #62513b; --accent: #bd965c; }
+.game-waiting--mahjong { --surface: #dde9d6; --accent: #8aab78; }
+.game-waiting--monopoly { --surface: #faf0de; --ink: #705b4a; --accent: #dfad7e; }
+.game-waiting--flying-chess { --surface: #e0eff5; --ink: #3a6271; --accent: #81b4cd; }
+.game-waiting-header { position: absolute; top: 25px; left: 22px; right: 22px; display: flex; align-items: center; gap: 12px; }
+.game-waiting-header button { border: 0; background: transparent; width: 40px; height: 40px; font-size: 32px; }
+.game-waiting-header h1 { font-size: 24px; letter-spacing: 2px; margin: 0; }
+.game-waiting-header .game-waiting-rules { margin-left: auto; font-size: 14px; width: 48px; }
+.game-waiting-room-id { position: absolute; top: 83px; left: 28px; right: 28px; font-size: 11px; opacity: .65; display: flex; gap: 8px; }
+.game-waiting-room-id span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.game-waiting-center { position: absolute; top: 278px; left: 115px; width: 160px; text-align: center; }
+.game-waiting-center h2 { font-size: 19px; margin: 14px 0 8px; letter-spacing: 1px; }
+.game-waiting-center p { font-size: 13px; margin: 0 0 8px; }
+.game-waiting-center small { font-size: 12px; opacity: .8; }
+.game-waiting-motif { position: relative; width: 72px; height: 62px; margin: auto; color: #497956; }
+.game-waiting-motif i, .game-waiting-motif b { position: absolute; width: 44px; height: 58px; left: 14px; top: 0; border: 2px solid #fffbed; border-radius: 7px; background: var(--paper); box-shadow: 0 3px 0 #16382818; }
+.game-waiting-motif i:first-child { transform: rotate(-20deg) translateX(-8px); background: var(--accent); }
+.game-waiting-motif i:nth-child(2) { transform: rotate(16deg) translateX(8px); }
+.game-waiting-motif b { display: grid; place-items: center; font-size: 28px; }
+.game-waiting--uno .game-waiting-motif b { font-size: 16px; background: #c84845; color: #fff8df; transform: rotate(-8deg); }
+.game-waiting--monopoly .game-waiting-motif b, .game-waiting--flying-chess .game-waiting-motif b { border-radius: 50%; height: 48px; top: 6px; color: var(--ink); }
+.game-waiting--monopoly .game-waiting-motif i, .game-waiting--flying-chess .game-waiting-motif i { display: none; }
+.game-waiting-seat { position: absolute; width: 108px; text-align: center; }
+.game-waiting-seat.seat-0 { top: 148px; left: 141px; }
+.game-waiting-seat.seat-1 { top: 296px; left: 12px; }
+.game-waiting-seat.seat-2 { top: 296px; left: 270px; }
+.game-waiting-seat.seat-3 { top: 461px; left: 141px; }
+.seats-3 .seat-0 { top: 461px; }
+.game-waiting-avatar { position: relative; width: 60px; height: 60px; border-radius: 50%; margin: 0 auto 9px; background: var(--paper); color: #536d57; box-shadow: 0 4px 0 #153d2312; display: grid; place-items: center; font-size: 26px; }
+.game-waiting-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+.empty .game-waiting-avatar { background: transparent; border: 1px dashed currentColor; color: var(--ink); opacity: .42; box-shadow: none; }
+.game-waiting-avatar i { position: absolute; bottom: -2px; right: -3px; background: #628a5e; color: #fff9e9; border: 2px solid var(--surface); border-radius: 50%; width: 23px; height: 23px; font: normal 14px/19px sans-serif; }
+.game-waiting-player-name { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; max-height: 40px; overflow: hidden; }
+.game-waiting-player-name small { font-size: 10px; margin-left: 5px; opacity: .7; }
+.game-waiting-seat-status { display: block; font-size: 11px; margin-top: 5px; opacity: .7; }
+.game-waiting-footer { position: absolute; bottom: 38px; left: 24px; right: 24px; text-align: center; }
+.game-waiting-notice { min-height: 32px; font-size: 13px; margin-bottom: 10px; overflow-wrap: anywhere; }
+.game-waiting-actions { display: flex; justify-content: center; gap: 12px; }
+.game-waiting-actions button { min-width: 136px; height: 46px; padding: 0 18px; background: var(--accent); border: 0; border-radius: 24px; color: #374a37; font-weight: 600; }
+.game-waiting-actions button.secondary { background: transparent; color: var(--ink); border: 1px solid currentColor; }
+.game-waiting-stage.is-wide { width: 780px; height: 430px; }
+.is-wide .game-waiting-header { top: 18px; }
+.is-wide .game-waiting-room-id { top: 65px; }
+.is-wide .game-waiting-center { top: 132px; left: 310px; }
+.is-wide .seat-0 { top: 117px; left: 135px; }
+.is-wide .seat-1 { top: 252px; left: 135px; }
+.is-wide .seat-2 { top: 117px; left: 537px; }
+.is-wide .seat-3 { top: 252px; left: 537px; }
+.is-wide .seats-3 .seat-0 { top: 252px; left: 135px; }
+.is-wide .seats-3 .seat-1 { top: 117px; }
+.is-wide .seats-3 .seat-2 { top: 117px; }
+.is-wide .game-waiting-footer { bottom: 22px; left: 245px; right: 245px; }
+.is-wide .seats-3 ~ .game-waiting-footer { left: 245px; right: 245px; bottom: 10px; }
+.is-wide .game-waiting-notice { min-height: 18px; margin-bottom: 7px; }

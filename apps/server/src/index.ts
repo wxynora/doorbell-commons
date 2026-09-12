@@ -1,3 +1,8 @@
+import { LoungeGachaClient } from "./lounge-gacha/gacha-client.js";
+import { registerLoungeGachaRoutes } from "./lounge-gacha/gacha-routes.js";
+import { createResidentSocialFarmRefresh } from "./resident-social/resident-social-farm-reader.js";
+import { launchLounge } from "./lounge-launch.js";
+import { registerLoungeGameRoutes } from "./games/lounge-game-routes.js";
 import { createFaultReports } from "./fault-reports/collector.js";
 import { ActivityReminderService } from "./activity-reminder-service.js";
 import { FarmDecorationClient } from "./farm-decoration-client.js";
@@ -50,6 +55,7 @@ import { LingyeDailyCommentsService } from "./lingye-daily-comments-service.js";
 import { LingyeDailyRewardClient } from "./lingye-daily-reward-client.js";
 import { LingyeDailyWeatherClient } from "./lingye-daily-weather.js";
 import { LingyeNotificationDeliveryService, MailboxService } from "./mailbox-service.js";
+import { LoungeService } from "./lounge-service.js";
 import { McpAccessService } from "./mcp-access-service.js";
 import { FarmMcpActionClient } from "./mcp-farm-action-client.js";
 import { FarmMcpMigrationClient } from "./mcp-farm-migration-client.js";
@@ -278,6 +284,23 @@ const bellService = new BellService({
   getSharedMemeLibraryVersion: () => sharedMemeService.getMetadata().library_version,
   onError: reportBellError,
 });
+const loungeRuntime = launchLounge(process.env.DOORBELL_LOUNGE_CONFIG, {
+  humanName: async residentId => {
+    const community=database.findActiveHumanCommunityByResidentId(residentId);
+    if(!community || !community.farmBinding.farmHumanKey) throw new Error("player_not_active");
+    const catalog=await farmCatalogReader.readCatalog({farmDoorplate:community.farmBinding.farmDoorplate,farmHumanKey:community.farmBinding.farmHumanKey});
+    if(catalog.data.settings.status!=="available" || !catalog.data.settings.human_name) throw new Error("human_name_unavailable");
+    return catalog.data.settings.human_name;
+  },
+  database, registrationAuth, bell: bellService, onError: reportBellError,
+  farm: {apiBaseUrl: serverConfig.farmApiBaseUrl, serviceToken: serverConfig.farmServiceToken, requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs},
+});
+const loungeService = loungeRuntime?.lounge ?? new LoungeService({
+  database,
+  registrationAuth,
+  store: database.loungeStore,
+  gameTables: database.loungeGameTableStore,
+});
 const bellAccessService = new BellAccessService({
   database,
   registrationAuth,
@@ -422,6 +445,7 @@ const constableInterviewSignupMailService = serverConfig.constableInterviewSignu
 constableInterviewSignupMailService?.start();
 disconnectRealtimeResident = (residentId): void => {
   bellService.disconnectResident(residentId);
+  loungeService.disconnectResident(residentId);
 };
 const farmMcpMigration = new FarmMcpMigrationClient({
   apiBaseUrl: serverConfig.farmApiBaseUrl,
@@ -452,6 +476,7 @@ const dailyVoiceService = new LingyeDailyVoiceService({ database, farm: reporter
 });
 const dailyCommentsService = new LingyeDailyCommentsService({database,farm:reporterRelayFarm});
 const mcpRuntime = new DoorbellMcpRuntime({
+  ...(loungeRuntime ? { loungeTools: loungeRuntime.tools } : {}),
   ...(faultReports ? { faultReports } : {}),
   database,
   registrationAuth,
@@ -518,15 +543,34 @@ const app = buildApp({
   mailboxService,
   mcpAccessService,
   mcpRuntime,
+  loungeService,
+  residentSocialStore: database.residentSocialStore,
+  refreshResidentActivity: createResidentSocialFarmRefresh(farmBulletinReader, database.residentSocialStore),
   sharedMemeService,
   secureCookies: process.env.NODE_ENV === "production",
 });
+registerLoungeGachaRoutes(app, {
+  registrationAuth,
+  gacha: new LoungeGachaClient({
+    apiBaseUrl: serverConfig.farmApiBaseUrl,
+    serviceToken: serverConfig.farmServiceToken,
+    requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+  }),
+  secureCookies: process.env.NODE_ENV === "production",
+});
+if (loungeRuntime) registerLoungeGameRoutes(app, {
+  auth: registrationAuth, identity: loungeRuntime.identity, games: loungeRuntime.games,
+  gameChat: loungeRuntime.gameChat, gameSync: loungeRuntime.sync, reactions: loungeRuntime.reactions,
+  secureCookies: process.env.NODE_ENV === "production",
+});
 app.addHook("onClose", () => {
+  loungeRuntime?.close();
   farmActionListScheduler.close();
   reporterDailyScheduler.close();
   activityReminderService?.close();
   careerExamReminderService.close();
   constableInterviewSignupMailService?.close();
+  loungeService.close();
   sharedMemeService.close();
   database.close();
 });

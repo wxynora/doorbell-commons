@@ -1,3 +1,7 @@
+import { LoungeChatToolError } from "./lounge-chat-tool.js";
+import { GameStateError } from "./games/types.js";
+import { LoungeGameToolError } from "./games/lounge-game-tool.js";
+import type { LoungeToolExecutor } from "./lounge-tool-registry.js";
 import type { FaultReports } from "./fault-reports/collector.js";
 import type { LingyeActionResult } from "@doorbell/protocol";
 import type { CareerExamReminderService } from "./career-exam-reminder-service.js";
@@ -7,7 +11,7 @@ import {
   DOORBELL_INITIALIZE_INSTRUCTIONS,
   type DoorbellCallExample,
   type DoorbellOperationDefinition,
-  doorbellToolDefinition,
+  doorbellDefinitionForRuntime,
   examplesForDoorbellInvalidArgs,
   findDoorbellOperation,
 } from "./doorbell-op-registry.js";
@@ -172,6 +176,10 @@ function renderToolErrorText(
   return lines.join("\n");
 }
 
+export function renderLoungeUsageError(op: string, message: string): string {
+  return `${message}\n示例：\n${renderCanonicalCall({ op, args: {} })}`;
+}
+
 function renderFarmDetail(value: unknown): string[] {
   if (!isPlainObject(value)) return ["农场公开详情暂无法读取。"];
   const lines: string[] = [];
@@ -310,6 +318,7 @@ function protocolVersionError(
 }
 
 export interface DoorbellMcpRuntimeOptions {
+  loungeTools?: LoungeToolExecutor;
   faultReports?: FaultReports;
   database: CommunityDatabase;
   registrationAuth: RegistrationAuthService;
@@ -366,6 +375,7 @@ export class DoorbellMcpRuntime {
   readonly #careerExamReminders: Pick<CareerExamReminderService, "reconcile"> | undefined;
   readonly #reporterRelayService: Pick<ReporterRelayService, "enqueue"> | undefined;
   readonly #dailyVoice: Pick<LingyeDailyVoiceService, "commission"> | undefined;
+  readonly #loungeTools: LoungeToolExecutor | undefined;
   readonly #dailyComments: DoorbellMcpRuntimeOptions["dailyComments"];
   readonly #allowedOrigin: string;
   readonly #now: () => number;
@@ -391,6 +401,7 @@ export class DoorbellMcpRuntime {
     this.#reporterRelayService = options.reporterRelayService;
     this.#dailyVoice = options.dailyVoice;
     this.#dailyComments = options.dailyComments;
+    this.#loungeTools = options.loungeTools;
     this.#allowedOrigin = new URL(options.mcpEndpoint).origin;
     this.#now = options.now ?? Date.now;
     this.#onNotificationDeliveryError = options.onNotificationDeliveryError ?? (() => undefined);
@@ -543,7 +554,7 @@ export class DoorbellMcpRuntime {
       case "ping":
         return isNotification ? undefined : jsonRpcSuccess(id, {});
       case "tools/list":
-        return isNotification ? undefined : jsonRpcSuccess(id, { tools: [doorbellToolDefinition] });
+        return isNotification ? undefined : jsonRpcSuccess(id, { tools: [doorbellDefinitionForRuntime(this.#loungeTools !== undefined)] });
       case "tools/call":
         if (isNotification) {
           return undefined;
@@ -656,6 +667,30 @@ export class DoorbellMcpRuntime {
         issues: formatIssues(registered.operation, parsed.error),
         examples: examplesForDoorbellInvalidArgs(registered.operation, call.args),
       });
+    }
+
+    if (registered.kind === "lounge") {
+      if (!this.#loungeTools) return doorbellToolError("UNKNOWN_OP", { op, message: `未开放的操作：${op}。请使用 doorbell 工具 Schema 中列出的完整 op。` });
+      try {
+        const input = parsed.data as Record<string, unknown>;
+        const text = await this.#loungeTools.execute(context.residentId, op, {
+          ...(typeof input.option === "string" ? { option: input.option } : {}),
+          ...(typeof input.text === "string" ? { text: input.text } : {}),
+          ...(typeof input.replyToMessageId === "string" ? { replyToMessageId: input.replyToMessageId } : {}),
+        });
+        return { isError: false, content: textContent(text) };
+      } catch (error) {
+        if (error instanceof LoungeChatToolError) {
+          return { isError: true, content: textContent(renderLoungeUsageError(op, error.message)) };
+        }
+        if (error instanceof LoungeGameToolError || (error instanceof GameStateError && error.message === "game_round_limit_reached")) {
+          return { isError: true, content: textContent(renderLoungeUsageError(op, "当前游戏操作未完成，请重新查看当前状态和可用选项。")) };
+        }
+        return this.#faultToolError("INTERNAL_ERROR", {
+          op,
+          message: renderLoungeUsageError(op, TOOL_ERROR_MESSAGES.INTERNAL_ERROR.split("，")[0] + "。"),
+        }, error);
+      }
     }
 
     if (registered.kind === "daily") {
