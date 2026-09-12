@@ -350,7 +350,7 @@ export function PublicLoungePage({
       {gameEntering && <div className="game-session-status" role="status">正在进入游戏…</div>}
       {gameError && <div role="alert">{gameError}<button type="button" onClick={() => setGameError("")}>关闭</button></div>}
       {gameRoomId && gameViewerId && createPortal(<div style={{ position: "fixed", inset: 0, zIndex: 1000 }}>
-        <GameSessionHost roomId={gameRoomId} initialRoom={initialGameRoom ?? undefined} viewerId={watchOnly?watchViewerId:gameViewerId} watchOnly={watchOnly} profiles={gameProfiles} onExit={returnFromGame} onNewTable={returnFromGame} />
+        <GameSessionHost roomId={gameRoomId} {...(initialGameRoom ? { initialRoom: initialGameRoom } : {})} viewerId={watchOnly?watchViewerId:gameViewerId} watchOnly={watchOnly} profiles={gameProfiles} onExit={returnFromGame} onNewTable={returnFromGame} />
       </div>, document.body)}
     </main>
   );
