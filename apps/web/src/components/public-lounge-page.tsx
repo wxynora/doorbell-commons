@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { LoungeDailyDialog } from "./lounge-daily-dialog";
 import {
   type LoungeSnapshot,
@@ -345,9 +346,9 @@ export function PublicLoungePage({
         status={loadState.stage}
       /> : null}
       {gameError && <div role="alert">{gameError}<button type="button" onClick={() => setGameError("")}>关闭</button></div>}
-      {gameRoomId && gameViewerId && <div style={{ position: "fixed", inset: 0, zIndex: 1000 }}>
+      {gameRoomId && gameViewerId && createPortal(<div style={{ position: "fixed", inset: 0, zIndex: 1000 }}>
         <GameSessionHost roomId={gameRoomId} viewerId={watchOnly?watchViewerId:gameViewerId} watchOnly={watchOnly} profiles={gameProfiles} onExit={returnFromGame} onNewTable={returnFromGame} />
-      </div>}
+      </div>, document.body)}
     </main>
   );
 }
