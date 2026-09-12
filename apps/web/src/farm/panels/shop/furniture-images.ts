@@ -1,3 +1,10 @@
+import missingImage0 from "../../assets/furniture/house_level_two.webp";
+import missingImage1 from "../../assets/furniture/house_level_three.webp";
+import missingImage2 from "../../assets/furniture/floral_canopy.webp";
+import missingImage3 from "../../assets/furniture/paving_sandstone.webp";
+import missingImage4 from "../../assets/furniture/paving_terracotta.webp";
+import missingImage5 from "../../assets/furniture/paving_slate.webp";
+import missingImage6 from "../../assets/furniture/paving_pebbles.webp";
 import image0 from "../../assets/furniture/flowerbed.webp";
 import image1 from "../../assets/furniture/flowerbed_hydrangea.webp";
 import image2 from "../../assets/furniture/flowerbed_sunflower.webp";
@@ -38,4 +45,11 @@ export const furnitureProductImages: Readonly<Record<string, string>> = {
   "farm_decor:double_swing": image16,
   "farm_decor:floral_arch": image17,
   "farm_decor:garden_mailbox": image18,
+  "farm_decor:house_level_two": missingImage0,
+  "farm_decor:house_level_three": missingImage1,
+  "farm_decor:floral_canopy": missingImage2,
+  "farm_decor:paving_sandstone": missingImage3,
+  "farm_decor:paving_terracotta": missingImage4,
+  "farm_decor:paving_slate": missingImage5,
+  "farm_decor:paving_pebbles": missingImage6,
 };
