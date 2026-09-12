@@ -50,7 +50,6 @@ import { AuthScreen, RegistrationHeader, SessionCheckingScreen } from "./compone
 import { BellAccessPanel } from "./components/bell-access-panel";
 import { McpAccessPage } from "./components/mcp-access-panel";
 import { ResidencePermitTransition } from "./components/residence-permit-transition";
-import { LingyeDailyScreen } from "./daily/lingye-daily-screen";
 import { FarmLazyBoundary, FarmLazyFailure, FarmLazyLoading } from "./farm/page/farm-lazy-boundary";
 import { LingyeBackgroundMusic } from "./lingye/lingye-background-music";
 import {
@@ -69,6 +68,11 @@ import {
   resolveCandidateTwoDemoPreset,
 } from "./preview/candidate-two-preview";
 import { DOORBELL_FARM_PATH, isDoorbellFarmPath } from "./routes";
+
+const LingyeDailyScreen = lazy(async () => {
+  const module = await import("./daily/lingye-daily-screen");
+  return { default: module.LingyeDailyScreen };
+});
 
 const FarmPage = lazy(async () => {
   const module = await import("./farm/farm-page");
@@ -396,6 +400,18 @@ function LiveApp() {
   const [lingyeScreenActive, setLingyeScreenActive] = useState(false);
   const [lingyeMapActive, setLingyeMapActive] = useState(false);
   const farmOpen = activeInternalPage === "farm";
+  const authenticatedResidentId = appState.stage === "authenticated"
+    ? appState.identity.resident.resident_id
+    : null;
+  const [retainedFarmResidentId, setRetainedFarmResidentId] = useState<string | null>(null);
+  const mailboxClaimRef = useRef<{ residentId: string; letterId: string } | null>(null);
+
+  useEffect(() => {
+    setRetainedFarmResidentId((current) => farmOpen && authenticatedResidentId
+      ? authenticatedResidentId
+      : current === authenticatedResidentId ? current : null);
+  }, [farmOpen, authenticatedResidentId]);
+
   const ownerProfileCareerRequestRef = useRef<{
     controller: AbortController | null;
     id: number;
@@ -514,7 +530,7 @@ function LiveApp() {
   const mailboxListCategory = mailboxListLoading?.category ?? null;
   const mailboxListPage = mailboxListLoading?.page ?? 0;
   const mailboxListRequestKey = mailboxListLoading
-    ? `${mailboxListCategory ?? "all"}:${mailboxListPage}`
+    ? `${authenticatedResidentId}:${mailboxListCategory ?? "all"}:${mailboxListPage}`
     : null;
 
   useEffect(() => {
@@ -577,6 +593,7 @@ function LiveApp() {
       return;
     }
 
+    const residentId = authenticatedResidentId;
     const category = mailboxListCategory;
     const page = mailboxListPage;
     const controller = new AbortController();
@@ -591,6 +608,7 @@ function LiveApp() {
       setAppState((current) => {
         if (
           current.stage !== "authenticated" ||
+          current.identity.resident.resident_id !== residentId ||
           current.mailbox.list.stage !== "loading" ||
           current.mailbox.list.category !== category ||
           current.mailbox.list.page !== page
@@ -610,7 +628,7 @@ function LiveApp() {
     });
 
     return () => controller.abort();
-  }, [mailboxListCategory, mailboxListPage, mailboxListRequestKey]);
+  }, [authenticatedResidentId, mailboxListCategory, mailboxListPage, mailboxListRequestKey]);
 
   const loadLingye = useCallback(
     (kind: "glimmer" | "memorial" | "together") => {
@@ -754,7 +772,7 @@ function LiveApp() {
                 ...current,
                 mailbox: {
                   claimMessage: null,
-                  claimPending: false,
+                  claimPending: mailboxClaimRef.current?.residentId === current.identity.resident.resident_id,
                   detail: { stage: "idle" },
                   list: {
                     stage: "loading",
@@ -772,6 +790,7 @@ function LiveApp() {
         if (appState.stage !== "authenticated") {
           return;
         }
+        const residentId = appState.identity.resident.resident_id;
         setAppState((current) =>
           current.stage === "authenticated"
             ? {
@@ -788,6 +807,7 @@ function LiveApp() {
         setAppState((current) => {
           if (
             current.stage !== "authenticated" ||
+            current.identity.resident.resident_id !== residentId ||
             current.mailbox.detail.stage !== "loading" ||
             current.mailbox.detail.letterId !== action.letterId
           ) {
@@ -830,12 +850,15 @@ function LiveApp() {
         if (
           appState.stage !== "authenticated" ||
           appState.mailbox.claimPending ||
+          mailboxClaimRef.current?.residentId === appState.identity.resident.resident_id ||
           appState.mailbox.detail.stage !== "ready" ||
           appState.mailbox.detail.data.letter.letter_id !== action.letterId ||
           appState.mailbox.detail.data.letter.attachment?.status !== "available"
         ) {
           return;
         }
+        const claim = { residentId: appState.identity.resident.resident_id, letterId: action.letterId };
+        mailboxClaimRef.current = claim;
         setAppState((current) =>
           current.stage === "authenticated" &&
           current.mailbox.detail.stage === "ready" &&
@@ -851,14 +874,17 @@ function LiveApp() {
             : current,
         );
         const result = await claimMailboxAttachment(action.letterId);
+        if (mailboxClaimRef.current !== claim) return;
+        mailboxClaimRef.current = null;
         setAppState((current) => {
           if (
             current.stage !== "authenticated" ||
-            current.mailbox.detail.stage !== "ready" ||
-            current.mailbox.detail.data.letter.letter_id !== action.letterId
+            current.identity.resident.resident_id !== claim.residentId
           ) {
             return current;
           }
+          const showingClaimedLetter = current.mailbox.detail.stage === "ready" &&
+            current.mailbox.detail.data.letter.letter_id === action.letterId;
           const list = current.mailbox.list;
           const nextList =
             result.ok && list.stage === "ready"
@@ -878,9 +904,12 @@ function LiveApp() {
             ...current,
             mailbox: {
               ...current.mailbox,
-              claimMessage: result.ok ? "附件已领取。" : mailboxIssueMessage(result.issue),
+              claimMessage: showingClaimedLetter
+                ? result.ok ? "附件已领取。" : mailboxIssueMessage(result.issue)
+                : current.mailbox.claimMessage,
               claimPending: false,
-              detail: result.ok ? { stage: "ready", data: result.data } : current.mailbox.detail,
+              detail: result.ok && showingClaimedLetter
+                ? { stage: "ready", data: result.data } : current.mailbox.detail,
               list: nextList,
             },
           };
@@ -1333,9 +1362,14 @@ function LiveApp() {
         <BellAccessPanel onClose={() => setShowBellAccess(false)} />
       ) : null}
       {appState.stage === "authenticated" && activeInternalPage === "daily" ? (
-        <LingyeDailyScreen onBack={closeDailyPage} />
+        <FarmLazyBoundary fallback={<FarmLazyFailure label="日报画面没有打开，请返回后再试。" onDismiss={closeDailyPage} />}>
+          <Suspense fallback={<FarmLazyLoading label="正在打开日报" mode="page" />}>
+            <LingyeDailyScreen onBack={closeDailyPage} />
+          </Suspense>
+        </FarmLazyBoundary>
       ) : null}
-      {appState.stage === "authenticated" && activeInternalPage === "farm" ? (
+      {appState.stage === "authenticated" && (farmOpen || retainedFarmResidentId === authenticatedResidentId) ? (
+        <div className="live-app__retained-farm" hidden={!farmOpen} key={authenticatedResidentId}>
         <FarmLazyBoundary
           fallback={
             <FarmLazyFailure
@@ -1345,9 +1379,10 @@ function LiveApp() {
           }
         >
           <Suspense fallback={<FarmLazyLoading label="正在打开农场" mode="page" />}>
-            <FarmPage onBack={closeFarmPage} />
+            <FarmPage active={farmOpen} onBack={closeFarmPage} />
           </Suspense>
         </FarmLazyBoundary>
+        </div>
       ) : null}
     </div>
   );

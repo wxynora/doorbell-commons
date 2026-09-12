@@ -72,6 +72,7 @@ import type { NeighborhoodMessageActionExecutor } from "../scenes/neighborhood/n
 import { BackIcon, RefreshIcon } from "./chrome";
 import { FarmFieldContent } from "./farm-field-content";
 import { useRanchReturnRefresh } from "./use-ranch-return-refresh";
+import { useFarmVisibility } from "./use-farm-visibility";
 import {
   createInitialFarmReadResources,
   type FarmHarvestActionState,
@@ -102,7 +103,9 @@ interface LiveFarmPageProps extends FarmPageProps {
   actionListLauncher?: ReactNode;
 }
 
-export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFarmPageProps) {
+export function LiveFarmPage({ active = true, actionListLauncher, onBack, previewData }: LiveFarmPageProps) {
+  const visible = useFarmVisibility(active);
+  const wasVisibleRef = useRef(visible);
   const [state, setState] = useState<FarmPageState>(
     previewData ? { stage: "ready", data: previewData } : { stage: "loading" },
   );
@@ -172,7 +175,6 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
         setResources((current) => ({
           ...current,
           [resource]:
-            (resource === "farmCatalog" || resource === "farmDecorations") &&
             current[resource].stage === "ready"
               ? current[resource]
               : { stage: "loading" },
@@ -336,13 +338,13 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
     [previewData],
   );
 
-  const refreshRequestedResources = useCallback(() => {
+  const refreshRequestedResources = useCallback((background = false) => {
     const requestedResources = [...requestedResourcesRef.current];
     if (requestedResources.includes("farmCatalog")) {
       setSettingsInitializationKey((current) => current + 1);
     }
     for (const resource of requestedResources) {
-      requireResource(resource, true);
+      requireResource(resource, true, !background, background);
     }
   }, [requireResource]);
 
@@ -353,6 +355,23 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
     },
     [requireResource],
   );
+
+  const requestVisibleResource = useCallback((resource: keyof FarmReadResources, refresh = false) => {
+    requireResource(resource, refresh, true, refresh);
+  }, [requireResource]);
+
+  const refreshFieldScene = useCallback(() => {
+    void refreshField();
+    refreshResourceInBackground("farmDecorations");
+  }, [refreshField, refreshResourceInBackground]);
+
+  useEffect(() => {
+    const resumed = visible && !wasVisibleRef.current;
+    wasVisibleRef.current = visible;
+    if (!resumed || previewData) return;
+    void refreshField();
+    refreshRequestedResources(true);
+  }, [previewData, refreshField, refreshRequestedResources, visible]);
 
   const openCurrentFarmShop = useCallback(
     async (retry = false) => {
@@ -409,6 +428,7 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
         }
 
         farmShopOpenAttemptRef.current = null;
+        resourceControllersRef.current.farmCatalog?.abort();
         const updatedCatalog = replaceFarmCatalogShop(catalog, result.data);
         farmCatalogRef.current = updatedCatalog;
         setResources((current) => ({
@@ -479,6 +499,7 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
         }
 
         cookingShopOpenAttemptRef.current = null;
+        resourceControllersRef.current.kitchen?.abort();
         const updatedKitchen = replaceKitchenAfterShopOpen(kitchen, result.data);
         kitchenRef.current = updatedKitchen;
         setResources((current) => ({
@@ -994,6 +1015,8 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
       setHarvestAction({ stage: "submitting", attempt });
       const result = await harvestBoundFarmField(attempt);
       if (result.ok) {
+        requestControllerRef.current?.abort();
+        fieldRequestGenerationRef.current += 1;
         setState({
           stage: "ready",
           data: {
@@ -1108,6 +1131,8 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
       setLandUpgradeAction({ stage: "submitting", attempt });
       const result = await upgradeBoundFarmLand(attempt);
       if (result.ok) {
+        requestControllerRef.current?.abort();
+        fieldRequestGenerationRef.current += 1;
         setState({
           stage: "ready",
           data: {
@@ -1192,6 +1217,7 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
 
         {state.stage === "ready" ? (
           <FarmFieldContent
+            active={visible}
             cookingShopOpenFeedback={cookingShopOpenFeedback}
             data={state.data}
             farmShopOpenFeedback={farmShopOpenFeedback}
@@ -1228,7 +1254,8 @@ export function LiveFarmPage({ actionListLauncher, onBack, previewData }: LiveFa
             onReloadAfterHarvestError={reload}
             onReloadAfterLandUpgradeError={reload}
             onReloadRanch={previewData ? undefined : () => requireResource("ranch", true)}
-            onRequireResource={requireResource}
+            onRequireResource={requestVisibleResource}
+            onRefreshField={refreshFieldScene}
             onRetryHarvestAssist={() => {
               if (harvestAction.stage === "error" && harvestAction.attempt) {
                 void submitHarvestAssist(harvestAction.attempt);

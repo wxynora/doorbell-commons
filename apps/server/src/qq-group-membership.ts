@@ -37,6 +37,8 @@ interface OneBotGroupMembershipClientOptions {
   snapshotStore: QqGroupMemberSnapshotStore;
 }
 
+type CurrentGroupMembers = { memberIds: string[] } | { unavailable: unknown };
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -53,6 +55,7 @@ export class OneBotGroupMembershipClient implements QqGroupMembershipReader {
   readonly #now: () => number;
   readonly #requestTimeoutMs: number;
   readonly #snapshotStore: QqGroupMemberSnapshotStore;
+  readonly #readingGroups = new Map<string, Promise<CurrentGroupMembers>>();
 
   constructor(options: OneBotGroupMembershipClientOptions) {
     if (!Number.isSafeInteger(options.requestTimeoutMs) || options.requestTimeoutMs <= 0) {
@@ -71,10 +74,9 @@ export class OneBotGroupMembershipClient implements QqGroupMembershipReader {
     qqNumber: string,
     options: QqGroupMembershipCheckOptions = {},
   ): Promise<boolean> {
-    let memberIds: string[];
-    try {
-      memberIds = await this.#readCurrentMemberIds(groupId);
-    } catch (error) {
+    const result = await this.#readGroupOnce(groupId);
+    if ("unavailable" in result) {
+      const error = result.unavailable;
       if (options.allowPersistedSnapshot === false) throw error;
       let snapshot: ReturnType<QqGroupMemberSnapshotStore["getQqGroupMemberSnapshot"]>;
       try {
@@ -88,6 +90,27 @@ export class OneBotGroupMembershipClient implements QqGroupMembershipReader {
       throw error;
     }
 
+    return result.memberIds.includes(qqNumber);
+  }
+
+  #readGroupOnce(groupId: string): Promise<CurrentGroupMembers> {
+    const current = this.#readingGroups.get(groupId);
+    if (current) return current;
+    const running = this.#readAndPersistCurrentMembers(groupId).finally(() => {
+      if (this.#readingGroups.get(groupId) === running) this.#readingGroups.delete(groupId);
+    });
+    this.#readingGroups.set(groupId, running);
+    return running;
+  }
+
+  async #readAndPersistCurrentMembers(groupId: string): Promise<CurrentGroupMembers> {
+    let memberIds: string[];
+    try {
+      memberIds = await this.#readCurrentMemberIds(groupId);
+    } catch (unavailable) {
+      return { unavailable };
+    }
+
     try {
       this.#snapshotStore.replaceQqGroupMemberSnapshot(groupId, memberIds, this.#now());
     } catch (error) {
@@ -95,7 +118,7 @@ export class OneBotGroupMembershipClient implements QqGroupMembershipReader {
         cause: error,
       });
     }
-    return memberIds.includes(qqNumber);
+    return { memberIds };
   }
 
   async #readCurrentMemberIds(groupId: string): Promise<string[]> {

@@ -2962,6 +2962,11 @@ const HOME_SIGN_STYLES = `
 `;
 
 const RUNTIME_STYLES = `
+    @keyframes candidate-screen-enter { from { opacity: 0.6; } to { opacity: 1; } }
+    @media (prefers-reduced-motion: no-preference) {
+        .screen.active { animation: candidate-screen-enter 180ms ease-out; }
+    }
+
         .candidate2-auth-step[hidden],
         .candidate2-farm-confirmation[hidden] {
             display: none;
@@ -8787,7 +8792,19 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         settingsAddProfileButton.disabled = disabled;
     }
 
-    function applyHomeSettings(homeSettings, pending, issueMessage) {
+    let settingsAppliedProfile = '';
+    function applySettingValue(control, value, profileChanged) {
+        const incoming = String(value ?? '');
+        const isCheckbox = typeof value === 'boolean';
+        const current = isCheckbox ? String(control.checked) : control.value;
+        if (profileChanged || control.dataset.savedValue === undefined || current === control.dataset.savedValue) {
+            if (isCheckbox) control.checked = value;
+            else control.value = incoming;
+        }
+        control.dataset.savedValue = incoming;
+    }
+
+    function applyHomeSettings(homeSettings, pending, issueMessage, profileKey) {
         if (homeSettings.stage === 'loading') {
             document.querySelector('.settings-connection-summary').textContent = '正在读取';
             document.querySelector('.settings-wake-state').textContent = '正在读取';
@@ -8802,9 +8819,11 @@ const CANDIDATE_RUNTIME_SCRIPT = `
             return;
         }
 
+        const profileChanged = settingsAppliedProfile !== profileKey;
+        settingsAppliedProfile = profileKey;
         const gameValue = homeSettings.gamePreferences || { invitations_enabled: false, quiet_hours_enabled: false, quiet_hours: [], round_limit: null };
         const serializedGameValue = JSON.stringify(gameValue);
-        if (!pending && serializedGameValue !== gameSavedValue) {
+        if (!pending && (profileChanged || serializedGameValue !== gameSavedValue)) {
             gameInvitations.checked = gameValue.invitations_enabled;
             gameQuiet.checked = gameValue.quiet_hours_enabled;
             gameLimit.value = gameValue.round_limit === null ? '' : String(gameValue.round_limit);
@@ -8816,7 +8835,7 @@ const CANDIDATE_RUNTIME_SCRIPT = `
             setStatus(gameFeedback, issueMessage || '已保存');
             gameSaving = false;
         }
-        settingsHomeName.value = homeSettings.homeName;
+        applySettingValue(settingsHomeName, homeSettings.homeName, profileChanged);
         settingsProfilesSection.hidden = homeSettings.profileSwitcher === null;
         settingsProfileSelect.replaceChildren();
         if (homeSettings.profileSwitcher) {
@@ -8828,16 +8847,16 @@ const CANDIDATE_RUNTIME_SCRIPT = `
             }
             settingsProfileSelect.value = homeSettings.profileSwitcher.activeProfileId;
         }
-        settingsEnvironment.value = homeSettings.environmentDescription || '';
-        settingsClimate.value = homeSettings.climateType || '';
-        settingsPauseAllWakeups.checked = homeSettings.pauseAllWakeups;
-        settingsVisitNotifications.checked = homeSettings.visitRequestsAndInvitationsEnabled;
-        settingsActivityNotifications.checked = homeSettings.activityInvitationsEnabled;
-        settingsSystemNotifications.checked = homeSettings.importantSystemNotificationsEnabled;
+        applySettingValue(settingsEnvironment, homeSettings.environmentDescription || '', profileChanged);
+        applySettingValue(settingsClimate, homeSettings.climateType || '', profileChanged);
+        applySettingValue(settingsPauseAllWakeups, homeSettings.pauseAllWakeups, profileChanged);
+        applySettingValue(settingsVisitNotifications, homeSettings.visitRequestsAndInvitationsEnabled, profileChanged);
+        applySettingValue(settingsActivityNotifications, homeSettings.activityInvitationsEnabled, profileChanged);
+        applySettingValue(settingsSystemNotifications, homeSettings.importantSystemNotificationsEnabled, profileChanged);
         const browserNotificationDeviceSubscribed =
             homeSettings.browserNotificationDeviceState === 'subscribed';
-        settingsBrowserNotifications.checked =
-            homeSettings.browserNotificationsEnabled && browserNotificationDeviceSubscribed;
+        applySettingValue(settingsBrowserNotifications,
+            homeSettings.browserNotificationsEnabled && browserNotificationDeviceSubscribed, profileChanged);
         const browserNotificationDeviceLabels = {
             checking: '正在确认本设备',
             not_subscribed: homeSettings.browserNotificationsEnabled
@@ -8851,14 +8870,14 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         };
         settingsBrowserNotificationDeviceState.textContent =
             browserNotificationDeviceLabels[homeSettings.browserNotificationDeviceState];
-        settingsActivityReminders.checked = homeSettings.activityRemindersEnabled;
-        settingsSharedMemeUpdates.checked = homeSettings.sharedMemeUpdateSignalsEnabled;
-        settingsLoungeDuration.value = String(homeSettings.defaultConnectionDurationMinutes);
-        settingsInitialMessageCount.value = homeSettings.initialRecentActivityCount === null
+        applySettingValue(settingsActivityReminders, homeSettings.activityRemindersEnabled, profileChanged);
+        applySettingValue(settingsSharedMemeUpdates, homeSettings.sharedMemeUpdateSignalsEnabled, profileChanged);
+        applySettingValue(settingsLoungeDuration, String(homeSettings.defaultConnectionDurationMinutes), profileChanged);
+        applySettingValue(settingsInitialMessageCount, homeSettings.initialRecentActivityCount === null
             ? ''
-            : String(homeSettings.initialRecentActivityCount);
-        settingsChatMode.value = homeSettings.chatMode;
-        settingsActivityRoomWarmup.checked = homeSettings.allowActivityRoomWarmup;
+            : String(homeSettings.initialRecentActivityCount), profileChanged);
+        applySettingValue(settingsChatMode, homeSettings.chatMode, profileChanged);
+        applySettingValue(settingsActivityRoomWarmup, homeSettings.allowActivityRoomWarmup, profileChanged);
         const wakeLabels = {
             not_configured: '尚未配置',
             offline: '已离线',
@@ -8869,20 +8888,6 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         document.querySelector('.settings-wake-state').textContent = wakeLabel;
         document.querySelector('.settings-wake-dot').style.background =
             homeSettings.wakeBridgeStatus === 'online' ? '#9dbcae' : '#c9b9ae';
-        settingsHomeName.dataset.savedValue = settingsHomeName.value;
-        settingsEnvironment.dataset.savedValue = settingsEnvironment.value;
-        settingsClimate.dataset.savedValue = settingsClimate.value;
-        settingsPauseAllWakeups.dataset.savedValue = String(settingsPauseAllWakeups.checked);
-        settingsVisitNotifications.dataset.savedValue = String(settingsVisitNotifications.checked);
-        settingsActivityNotifications.dataset.savedValue = String(settingsActivityNotifications.checked);
-        settingsSystemNotifications.dataset.savedValue = String(settingsSystemNotifications.checked);
-        settingsBrowserNotifications.dataset.savedValue = String(settingsBrowserNotifications.checked);
-        settingsActivityReminders.dataset.savedValue = String(settingsActivityReminders.checked);
-        settingsSharedMemeUpdates.dataset.savedValue = String(settingsSharedMemeUpdates.checked);
-        settingsLoungeDuration.dataset.savedValue = settingsLoungeDuration.value;
-        settingsInitialMessageCount.dataset.savedValue = settingsInitialMessageCount.value;
-        settingsChatMode.dataset.savedValue = settingsChatMode.value;
-        settingsActivityRoomWarmup.dataset.savedValue = String(settingsActivityRoomWarmup.checked);
         document.querySelector('.home-name').textContent = homeSettings.homeName;
         document.querySelector('.home-weather-summary').lastChild.textContent = homeSettings.weatherSummary;
         setHomeSettingsDisabled(pending);
@@ -10373,6 +10378,7 @@ const CANDIDATE_RUNTIME_SCRIPT = `
                 state.homeSettings,
                 state.homeSettingsPending,
                 state.homeSettingsIssueMessage,
+                state.identity.qqNumber + '/' + state.identity.farmDoorplate,
             );
             applyHomeMailboxState(state.mailbox);
             applySharedMemeState(

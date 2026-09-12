@@ -1,5 +1,7 @@
+import { HUMAN_SESSION_MAX_AGE_SECONDS } from "./human-session-policy.js";
+
+export { HUMAN_SESSION_MAX_AGE_SECONDS } from "./human-session-policy.js";
 export const HUMAN_SESSION_COOKIE_NAME = "doorbell_session";
-export const HUMAN_SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 
 function secureAttribute(secure: boolean): string {
   return secure ? "; Secure" : "";

@@ -11,6 +11,7 @@ export interface ReporterRelayStarter {
   startIssue(input: ReporterRelayStartInput): Promise<ReporterRelayWake>;
   submissionReviewer(issueDate: string): Promise<{ residentId: string; displayName: string } | null>;
   pendingIssue(issueDate:string):Promise<ReporterRelayWake|null>;
+  issueState(issueDate: string): Promise<{ status: string | null; wake: ReporterRelayWake | null }>;
 }
 
 const reviewerResponseSchema = z.strictObject({
@@ -21,7 +22,7 @@ const reviewerResponseSchema = z.strictObject({
   }),
 });
 const pendingResponseSchema=z.strictObject({ok:z.literal(true),data:z.strictObject({
-  issue_date:z.string(),wake:reporterRelayWakeSchema.nullable(),
+  issue_date:z.string(),issue_status:z.string().min(1).nullable(),wake:reporterRelayWakeSchema.nullable(),
 })});
 
 export class ReporterRelayFarmUnavailableError extends Error {
@@ -152,14 +153,22 @@ export class ReporterRelayFarmClient implements ReporterRelayStarter, DailyVoice
   }
 
   async pendingIssue(issueDate:string):Promise<ReporterRelayWake|null> {
+    return (await this.issueState(issueDate)).wake;
+  }
+
+  async issueState(issueDate: string): Promise<{ status: string | null; wake: ReporterRelayWake | null }> {
     let response:Response;
     try {response=await this.#fetch(this.#pendingEndpoint,{method:"POST",headers:{authorization:`Bearer ${this.#serviceToken}`,
-      "content-type":"application/json"},body:JSON.stringify({issue_date:issueDate}),signal:AbortSignal.timeout(this.#requestTimeoutMs)});}
+      "content-type":"application/json"},body:JSON.stringify({issue_date:issueDate,include_state:true}),signal:AbortSignal.timeout(this.#requestTimeoutMs)});}
     catch {throw new ReporterRelayFarmUnavailableError();}
     if(response.status>=500) throw new ReporterRelayFarmUnavailableError();
     const parsed=pendingResponseSchema.safeParse(await response.json().catch(()=>undefined));
     if(!response.ok||!parsed.success||parsed.data.data.issue_date!==issueDate) throw new ReporterRelayFarmContractError();
-    return parsed.data.data.wake;
+    const data = parsed.data.data;
+    if (data.wake && (data.issue_status === null || data.wake.issue_date !== issueDate)) {
+      throw new ReporterRelayFarmContractError();
+    }
+    return { status: data.issue_status, wake: data.wake };
   }
 
   private async voiceRequest(operation: string, input: object): Promise<unknown> {

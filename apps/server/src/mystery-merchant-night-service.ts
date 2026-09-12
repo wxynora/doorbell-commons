@@ -1,4 +1,5 @@
 import type { BellService } from "./bell-service.js";
+import type { FarmHumanCatalogReadSuccess } from "@doorbell/protocol";
 import type { ActivityReminderProfileKey } from "./community-database.js";
 import type { FarmHumanCatalogReader } from "./farm-catalog-client.js";
 import { merchantNightWakes } from "./mystery-merchant-night-bell.js";
@@ -19,9 +20,12 @@ export class MysteryMerchantNightService {
     return hour >= 1 && hour < 6;
   }
 
-  async reconcile(profile: ActivityReminderProfileKey, farmHumanKey: string): Promise<void> {
+  async reconcile(
+    profile: ActivityReminderProfileKey, farmHumanKey: string,
+    catalogRead?: FarmHumanCatalogReadSuccess,
+  ): Promise<void> {
     if (!this.needsReconcile()) return;
-    const catalog = await this.options.reader.readCatalog({
+    const catalog = catalogRead ?? await this.options.reader.readCatalog({
       farmDoorplate: profile.farmDoorplate, farmHumanKey,
     });
     if (catalog.data.farm.farm_doorplate !== profile.farmDoorplate) return;

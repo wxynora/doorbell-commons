@@ -2859,3 +2859,11 @@ h2 {
     padding-left: 20px;
   }
 }
+
+/* Reuse the current page without keeping a covered farm interactive. */
+.live-app__retained-farm[hidden] { display: none; }
+@keyframes community-page-enter { from { opacity: 0.6; } to { opacity: 1; } }
+@media (prefers-reduced-motion: no-preference) {
+  .live-app__retained-farm:not([hidden]),
+  .live-app > .lingye-subpage { animation: community-page-enter 180ms ease-out; }
+}

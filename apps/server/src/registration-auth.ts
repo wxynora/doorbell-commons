@@ -555,7 +555,7 @@ export class RegistrationAuthService {
   }
 
   async getCurrentSession(token: string): Promise<HumanCommunityRecord> {
-    const session = this.#database.findActiveHumanSession(token);
+    const session = this.#database.findActiveHumanSession(token, this.#now());
     if (!session) {
       throw new AuthenticationRequiredError();
     }
@@ -628,7 +628,9 @@ export class RegistrationAuthService {
       this.#revokeMembership(account.accountId, this.#now());
       throw new QqNotGroupMemberError();
     }
-    this.#database.confirmHumanAccountMembership(account.accountId, this.#now());
+    if (!this.#database.confirmHumanAccountMembership(account.accountId, this.#now())) {
+      throw new AuthenticationRequiredError();
+    }
   }
 
   #revokeMembership(accountId: string, now: number): void {

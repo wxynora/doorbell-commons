@@ -11,6 +11,7 @@ export interface FarmMcpActionInput {
   action: string;
   params: Record<string, unknown>;
   detail?: boolean;
+  includeStatus?: boolean;
 }
 
 export interface FarmMcpActionExecutor {
@@ -86,6 +87,7 @@ export class FarmMcpActionClient implements FarmMcpActionExecutor {
       action: input.action,
       params: input.params,
       ...(input.detail === undefined ? {} : { detail: input.detail }),
+      ...(input.includeStatus === undefined ? {} : { include_status: input.includeStatus }),
     });
 
     let response: Response;

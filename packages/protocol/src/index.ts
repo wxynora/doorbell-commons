@@ -2872,6 +2872,7 @@ export const farmMcpActionRequestSchema = z
     action: z.string().trim().min(1),
     params: z.record(z.string(), z.unknown()),
     detail: z.boolean().optional(),
+    include_status: z.boolean().optional(),
   })
   .strict();
 
@@ -2879,6 +2880,7 @@ export const farmMcpActionResultSchema = z
   .object({
     ok: z.boolean(),
     text: z.string(),
+    status_text: z.string().optional(),
     farm: z.record(z.string(), z.unknown()).optional(),
   })
   .strict();

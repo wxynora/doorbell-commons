@@ -1,4 +1,4 @@
-import type { FarmHumanFieldReadSuccess, FarmHumanGlimmerReadSuccess } from "@doorbell/protocol";
+import type { FarmHumanCatalogReadSuccess, FarmHumanFieldReadSuccess, FarmHumanGlimmerReadSuccess } from "@doorbell/protocol";
 import type { BrowserPushService } from "./browser-push-service.js";
 import type {
   ActivityReminderKind,
@@ -9,6 +9,7 @@ import type {
 } from "./community-database.js";
 import type { FarmHumanFieldReader } from "./farm-human-client.js";
 import type { FarmLingyeReader } from "./farm-lingye-client.js";
+import type { FarmHumanCatalogReader } from "./farm-catalog-client.js";
 import type { MysteryMerchantNightService } from "./mystery-merchant-night-service.js";
 import type { MysteryMerchantReminderService } from "./mystery-merchant-reminder-service.js";
 
@@ -38,6 +39,7 @@ export interface ActivityReminderServiceOptions {
   };
   farmFieldReader: Pick<FarmHumanFieldReader, "readField">;
   farmLingyeReader: Pick<FarmLingyeReader, "readGlimmer">;
+  farmCatalogReader?: Pick<FarmHumanCatalogReader, "readCatalog">;
   mysteryMerchantNight?: Pick<MysteryMerchantNightService, "needsReconcile" | "reconcile">;
   mysteryMerchantReminder?: Pick<MysteryMerchantReminderService, "reconcile">;
   now?: () => number;
@@ -48,6 +50,11 @@ export interface ActivityReminderServiceOptions {
 interface CropReminderFact {
   sourceKey: string;
   readyAt: number;
+}
+
+interface ReminderCycleReads {
+  membership(residentId: string): Promise<unknown>;
+  catalog(profile: ActivityReminderProfileKey, farmHumanKey: string): Promise<FarmHumanCatalogReadSuccess | undefined>;
 }
 
 function parseIsoTimestamp(value: string): number {
@@ -107,13 +114,14 @@ export class ActivityReminderService {
   readonly #registrationAuth: ActivityReminderServiceOptions["registrationAuth"];
   readonly #farmFieldReader: Pick<FarmHumanFieldReader, "readField">;
   readonly #farmLingyeReader: Pick<FarmLingyeReader, "readGlimmer">;
+  readonly #farmCatalogReader: ActivityReminderServiceOptions["farmCatalogReader"];
   readonly #mysteryMerchantNight: ActivityReminderServiceOptions["mysteryMerchantNight"];
   readonly #mysteryMerchantReminder: ActivityReminderServiceOptions["mysteryMerchantReminder"];
   readonly #now: () => number;
   readonly #onError: (error: unknown) => void;
   readonly #interval: NodeJS.Timeout | undefined;
-  #running: Promise<void> | undefined;
-  readonly #refreshingProfiles = new Map<string, Promise<void>>();
+  #browserRunning: Promise<void> | undefined;
+  #nightRunning: Promise<void> | undefined;
   #closed = false;
 
   constructor(options: ActivityReminderServiceOptions) {
@@ -122,6 +130,7 @@ export class ActivityReminderService {
     this.#registrationAuth = options.registrationAuth;
     this.#farmFieldReader = options.farmFieldReader;
     this.#farmLingyeReader = options.farmLingyeReader;
+    this.#farmCatalogReader = options.farmCatalogReader;
     this.#mysteryMerchantNight = options.mysteryMerchantNight;
     this.#mysteryMerchantReminder = options.mysteryMerchantReminder;
     this.#now = options.now ?? Date.now;
@@ -135,12 +144,47 @@ export class ActivityReminderService {
 
   processAll(): Promise<void> {
     if (this.#closed) return Promise.resolve();
-    if (this.#running) return this.#running;
-    const running = this.#processAll().finally(() => {
-      if (this.#running === running) this.#running = undefined;
-    });
-    this.#running = running;
-    return running;
+    const reads = this.#cycleReads();
+    if (!this.#nightRunning) {
+      const running = this.#processNight(reads).finally(() => {
+        if (this.#nightRunning === running) this.#nightRunning = undefined;
+      });
+      this.#nightRunning = running;
+    }
+    if (!this.#browserRunning) {
+      const running = this.#processBrowser(reads).finally(() => {
+        if (this.#browserRunning === running) this.#browserRunning = undefined;
+      });
+      this.#browserRunning = running;
+    }
+    return Promise.all([this.#nightRunning, this.#browserRunning]).then(() => undefined);
+  }
+
+  #cycleReads(): ReminderCycleReads {
+    const membership = new Map<string, Promise<unknown>>();
+    const catalogs = new Map<string, Promise<FarmHumanCatalogReadSuccess>>();
+    return {
+      membership: residentId => {
+        let pending = membership.get(residentId);
+        if (!pending) {
+          pending = this.#registrationAuth.confirmCurrentResidentMembership(residentId);
+          membership.set(residentId, pending);
+        }
+        return pending;
+      },
+      catalog: (profile, farmHumanKey) => {
+        if (!this.#farmCatalogReader) return Promise.resolve(undefined);
+        const key = profileKey(profile);
+        let pending = catalogs.get(key);
+        if (!pending) {
+          pending = this.#farmCatalogReader.readCatalog({
+            farmDoorplate: profile.farmDoorplate, farmHumanKey,
+          });
+          catalogs.set(key, pending);
+        }
+        return pending;
+      },
+    };
   }
 
   refreshEligibility(residentId: string): void {
@@ -188,7 +232,7 @@ export class ActivityReminderService {
     if (this.#interval) clearInterval(this.#interval);
   }
 
-  async #processAll(): Promise<void> {
+  async #processBrowser(reads: ReminderCycleReads): Promise<void> {
     const communities = this.#database.listActiveHumanCommunities();
     const activeProfiles = new Set(
       communities.map((community) => profileKey(profileOf(community))),
@@ -206,28 +250,34 @@ export class ActivityReminderService {
       this.#database.cancelAllScheduledActivityReminders(profile, this.#now());
     }
     for (const community of communities) {
+      if (this.#closed) return;
       try {
-        await this.#runCommunity(community);
+        await this.#reconcileCommunity(community, reads);
       } catch (error) {
         this.#onError(error);
       }
     }
   }
 
-  #runCommunity(community: HumanCommunityRecord): Promise<void> {
-    const key = profileKey(profileOf(community));
-    const current = this.#refreshingProfiles.get(key);
-    if (current) return current;
-    const running = this.#reconcileCommunity(community).finally(() => {
-      if (this.#refreshingProfiles.get(key) === running) {
-        this.#refreshingProfiles.delete(key);
+  async #processNight(reads: ReminderCycleReads): Promise<void> {
+    if (!this.#mysteryMerchantNight?.needsReconcile()) return;
+    for (const community of this.#database.listActiveHumanCommunities()) {
+      if (this.#closed || !this.#mysteryMerchantNight.needsReconcile()) return;
+      try {
+        const farmHumanKey = community.farmBinding.farmHumanKey;
+        if (!farmHumanKey) continue;
+        const profile = profileOf(community);
+        await reads.membership(profile.residentId);
+        const catalog = await reads.catalog(profile, farmHumanKey);
+        if (this.#closed) return;
+        await this.#mysteryMerchantNight.reconcile(profile, farmHumanKey, catalog);
+      } catch (error) {
+        this.#onError(error);
       }
-    });
-    this.#refreshingProfiles.set(key, running);
-    return running;
+    }
   }
 
-  async #reconcileCommunity(community: HumanCommunityRecord): Promise<void> {
+  async #reconcileCommunity(community: HumanCommunityRecord, reads: ReminderCycleReads): Promise<void> {
     const residentId = community.resident.residentId;
     const homeId = community.home.homeId;
     const profile = profileOf(community);
@@ -238,23 +288,14 @@ export class ActivityReminderService {
       .some((subscription) => subscription.homeId === homeId);
     const browserEligible = Boolean(this.#browserPushService &&
       settings.browserNotificationsEnabled && settings.activityRemindersEnabled && hasSubscription);
-    const nightEligible = this.#mysteryMerchantNight?.needsReconcile() ?? false;
     if (!browserEligible) this.#database.cancelAllScheduledActivityReminders(profile, now);
-    if (!browserEligible && !nightEligible) return;
-    await this.#registrationAuth.confirmCurrentResidentMembership(residentId);
+    if (!browserEligible) return;
+    await reads.membership(residentId);
     const farmHumanKey = community.farmBinding.farmHumanKey;
     if (!farmHumanKey) {
       this.#database.cancelAllScheduledActivityReminders(profile, now);
       return;
     }
-    if (nightEligible) {
-      try {
-        await this.#mysteryMerchantNight?.reconcile(profile, farmHumanKey);
-      } catch (error) {
-        this.#onError(error);
-      }
-    }
-    if (!browserEligible) return;
     const input = {
       farmDoorplate: community.farmBinding.farmDoorplate,
       farmHumanKey,
@@ -262,8 +303,12 @@ export class ActivityReminderService {
     const [field, glimmer, merchant] = await Promise.allSettled([
       this.#farmFieldReader.readField(input),
       this.#farmLingyeReader.readGlimmer(input),
-      this.#mysteryMerchantReminder?.reconcile(profile, farmHumanKey),
+      this.#mysteryMerchantReminder
+        ? reads.catalog(profile, farmHumanKey).then(catalog =>
+          this.#mysteryMerchantReminder?.reconcile(profile, farmHumanKey, catalog))
+        : undefined,
     ]);
+    if (this.#closed) return;
     if (merchant.status === "rejected") this.#onError(merchant.reason);
     if (field.status === "fulfilled") {
       try {

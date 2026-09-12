@@ -7,6 +7,7 @@ import type { MailboxService } from "./mailbox-service.js";
 import type { LingyeMcpActionExecutor } from "./mcp-lingye-action-client.js";
 
 export const CAREER_EXAM_REMINDER_LEAD_MS = 5 * 60 * 1000;
+export const CAREER_EXAM_REMINDER_RETRY_DELAY_MS = 60 * 1000;
 const BEIJING_UTC_OFFSET_MS = 8 * 60 * 60 * 1000;
 const CAREER_EXAM_BEIJING_WEEKDAYS = new Set([2, 4, 6]);
 export const CAREER_EXAM_REMINDER_TITLE = "职业资格考试提醒";
@@ -86,6 +87,7 @@ export class CareerExamReminderService {
   readonly #generateWakeId: () => string;
   readonly #onError: (error: unknown) => void;
   readonly #timers = new Map<string, NodeJS.Timeout>();
+  readonly #attempts = new Map<string, Promise<void>>();
   #closed = false;
 
   constructor(options: CareerExamReminderServiceOptions) {
@@ -99,7 +101,12 @@ export class CareerExamReminderService {
     this.#generateWakeId = options.generateWakeId ?? randomUUID;
     this.#onError = options.onError ?? (() => undefined);
     for (const reminder of this.#database.listScheduledCareerExamReminders()) {
-      this.#arm(reminder);
+      const retry = this.#database.careerExamReminderRetryStore.get(reminder.attemptId);
+      if (retry?.claimedAt != null) {
+        this.#database.cancelScheduledCareerExamReminder(reminder.attemptId, this.#now());
+      } else {
+        this.#arm(reminder);
+      }
     }
   }
 
@@ -131,7 +138,7 @@ export class CareerExamReminderService {
     for (const reminder of this.#database.listScheduledCareerExamReminders()) {
       if (reminder.remindAt <= now) {
         this.#clearTimer(reminder.attemptId);
-        await this.#deliver(reminder.attemptId);
+        await this.#attemptDelivery(reminder.attemptId);
       }
     }
   }
@@ -150,13 +157,58 @@ export class CareerExamReminderService {
       this.#database.cancelScheduledCareerExamReminder(reminder.attemptId, now);
       return;
     }
-    const delay = Math.max(0, reminder.remindAt - now);
+    const retry = this.#database.careerExamReminderRetryStore.get(reminder.attemptId);
+    if (retry?.claimedAt != null) return;
+    const delay = Math.max(0, (retry?.retryAt ?? reminder.remindAt) - now);
     const timer = setTimeout(() => {
       this.#timers.delete(reminder.attemptId);
-      void this.#deliver(reminder.attemptId).catch((error) => this.#onError(error));
+      void this.#attemptDelivery(reminder.attemptId).catch((error) => this.#onError(error));
     }, delay);
     timer.unref?.();
     this.#timers.set(reminder.attemptId, timer);
+  }
+
+  #attemptDelivery(attemptId: string): Promise<void> {
+    const current = this.#attempts.get(attemptId);
+    if (current) return current;
+    const running = this.#runAttempt(attemptId).finally(() => {
+      if (this.#attempts.get(attemptId) === running) this.#attempts.delete(attemptId);
+    });
+    this.#attempts.set(attemptId, running);
+    return running;
+  }
+
+  async #runAttempt(attemptId: string): Promise<void> {
+    const reminder = this.#database.getCareerExamReminder(attemptId);
+    if (this.#closed || reminder?.status !== "scheduled") return;
+    const now = this.#now();
+    if (now >= reminder.scheduledAt) {
+      this.#database.cancelScheduledCareerExamReminder(attemptId, now);
+      return;
+    }
+    const retry = this.#database.careerExamReminderRetryStore.get(attemptId);
+    if (retry && now < retry.retryAt) {
+      this.#arm(reminder);
+      return;
+    }
+    if (retry && !this.#database.careerExamReminderRetryStore.claim(attemptId, now)) return;
+    try {
+      await this.#deliver(attemptId);
+    } catch (error) {
+      const current = this.#database.getCareerExamReminder(attemptId);
+      if (current?.status === "scheduled") {
+        const failedAt = this.#now();
+        const retryAt = failedAt + CAREER_EXAM_REMINDER_RETRY_DELAY_MS;
+        if (retry || retryAt >= current.scheduledAt ||
+          !this.#database.findActiveHumanAccountByResidentId(current.residentId)) {
+          this.#database.cancelScheduledCareerExamReminder(attemptId, failedAt);
+        } else {
+          this.#database.careerExamReminderRetryStore.scheduleOnce(attemptId, retryAt);
+          this.#arm(current);
+        }
+      }
+      throw error;
+    }
   }
 
   async #deliver(attemptId: string): Promise<void> {

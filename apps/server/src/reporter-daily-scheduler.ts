@@ -61,6 +61,7 @@ export class ReporterDailyScheduler {
   readonly #onEvent: (event: ReporterDailyEvent) => void;
   #timer: ReturnType<typeof setTimeout> | null = null;
   #closed = false;
+  #started = false;
 
   constructor(options: ReporterDailySchedulerOptions) {
     this.#farm = options.farm;
@@ -73,8 +74,15 @@ export class ReporterDailyScheduler {
   }
 
   start(): void {
-    if (this.#closed || this.#timer) return;
-    this.#schedule();
+    if (this.#closed || this.#started) return;
+    this.#started = true;
+    const now = this.#now();
+    const dayStartUtc = Math.floor((now + BEIJING_OFFSET_MS) / DAY_MS) * DAY_MS - BEIJING_OFFSET_MS;
+    if (now >= dayStartUtc + FIVE_AM_MS) {
+      void this.#run(dayStartUtc, true);
+    } else {
+      this.#schedule();
+    }
   }
 
   close(): void {
@@ -93,14 +101,21 @@ export class ReporterDailyScheduler {
     this.#timer.unref?.();
   }
 
-  async #run(dayStartUtc: number): Promise<void> {
+  async #run(dayStartUtc: number, recoverToday = false): Promise<void> {
     this.#timer = null;
     try {
       const period = issuePeriod(dayStartUtc);
       await Promise.all([
         (async () => {
           this.#emit({ event: "dispatch_start", issueDate: period.issueDate });
-          const wake = await this.#farm.startIssue(period);
+          const current = recoverToday ? await this.#farm.issueState(period.issueDate) : null;
+          const wake = current?.status != null
+            ? current.wake
+            : await this.#farm.startIssue(period);
+          if (!wake) {
+            this.#emit({ event: "dispatch_enqueued", issueDate: period.issueDate, status: "empty" });
+            return;
+          }
           const acceptance = this.#relay.enqueue(wake);
           this.#emit({ event: "dispatch_enqueued", issueDate: period.issueDate,
             stage: wake.stage, status: acceptance.status });

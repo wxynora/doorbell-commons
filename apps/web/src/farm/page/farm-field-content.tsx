@@ -181,6 +181,7 @@ export function bulletinHasUnreadEntries(bulletin: BoundBulletinRead | null): bo
 }
 
 export function FarmFieldContent({
+  active = true,
   data,
   harvestAction = { stage: "idle" },
   harvestRequestAction = { stage: "idle" },
@@ -217,6 +218,7 @@ export function FarmFieldContent({
   onReloadAfterHarvestError,
   onReloadAfterLandUpgradeError,
   onReloadRanch,
+  onRefreshField,
   onRequireResource,
   onRetryHarvestAssist,
   onRetryHarvestRequest,
@@ -228,6 +230,7 @@ export function FarmFieldContent({
   resources = createInitialFarmReadResources(),
   settingsInitializationKey = 0,
 }: {
+  active?: boolean;
   data: BoundFarmField;
   harvestAction?: FarmHarvestActionState;
   harvestRequestAction?: FarmHarvestRequestActionState;
@@ -266,6 +269,7 @@ export function FarmFieldContent({
   onReloadAfterHarvestError?: () => void;
   onReloadAfterLandUpgradeError?: () => void;
   onReloadRanch?: (() => void) | undefined;
+  onRefreshField?: (() => void) | undefined;
   onRequireResource?: (resource: keyof FarmReadResources, force?: boolean) => void;
   onRetryHarvestAssist?: () => void;
   onRetryHarvestRequest?: () => void;
@@ -348,6 +352,7 @@ export function FarmFieldContent({
   const settingsCatalogInitializationRef = useRef<{
     key: number;
     revision: string;
+    draft: FarmSettingsDraft;
   } | null>(null);
   const compensationBulletinRequestedRef = useRef(false);
   const openedCompensationBulletinRef = useRef<string | null>(null);
@@ -362,11 +367,7 @@ export function FarmFieldContent({
     ) {
       return;
     }
-    settingsCatalogInitializationRef.current = {
-      key: settingsInitializationKey,
-      revision: farmCatalog.revision,
-    };
-    setSettingsDraft({
+    const nextDraft: FarmSettingsDraft = {
       activeTitle:
         settings.equipped_title?.identity_state === "known" ? settings.equipped_title.title_id : "",
       aiNickname: settings.ai_name ?? "",
@@ -377,7 +378,19 @@ export function FarmFieldContent({
       visitsAllowed: settings.social.visit,
       wateringHelpAllowed: settings.social.water,
       welcomeMessage: settings.welcome_message ?? "",
-    });
+    };
+    const previousDraft = settingsCatalogInitializationRef.current?.draft;
+    settingsCatalogInitializationRef.current = {
+      key: settingsInitializationKey,
+      revision: farmCatalog.revision,
+      draft: nextDraft,
+    };
+    setSettingsDraft((current) => previousDraft
+      ? Object.fromEntries(Object.entries(nextDraft).map(([name, value]) => {
+          const key = name as keyof FarmSettingsDraft;
+          return [key, current[key] === previousDraft[key] ? value : current[key]];
+        })) as unknown as FarmSettingsDraft
+      : nextDraft);
   }, [farmCatalog, preview, settingsInitializationKey]);
   const selectedPlot = field.plots.find((plot) => plot.plot_id === selectedPlotId) ?? null;
   const liveRanchResidents = getLiveRanchResidents(ranch);
@@ -895,13 +908,17 @@ export function FarmFieldContent({
   );
 
   const changeScene = (sceneId: FarmSceneId) => {
+    if (sceneId === activeScene) return;
     if (!preview) {
+      const returning = visitedScenes.has(sceneId);
       if (sceneId === "ranch") {
-        onRequireResource?.("ranch");
+        onRequireResource?.("ranch", returning);
       } else if (sceneId === "cooking") {
-        onRequireResource?.("kitchen");
+        onRequireResource?.("kitchen", returning);
       } else if (sceneId === "neighborhood") {
-        onRequireResource?.("farmCatalog");
+        onRequireResource?.("farmCatalog", returning);
+      } else if (sceneId === "field") {
+        onRefreshField?.();
       }
     }
     setVisitedScenes((current) =>
@@ -939,7 +956,7 @@ export function FarmFieldContent({
             >
               {scene.id === "field" ? (
                 <FieldScene
-                  active={activeScene === "field"}
+                  active={active && activeScene === "field"}
                   decorationData={farmDecorations?.data}
                   placementRequest={placementRequest}
                   layoutPreviewRequest={layoutPreviewRequest}
@@ -967,7 +984,7 @@ export function FarmFieldContent({
               ) : null}
               {scene.id === "ranch" ? (
                 <RanchScene
-                  active={activeScene === "ranch"}
+                  active={active && activeScene === "ranch"}
                   animals={ranchSceneAnimals}
                   backgroundUrl={getFarmEnvironmentAssetUrl(
                     "ranch",
@@ -1383,7 +1400,7 @@ export function FarmFieldContent({
                 onOpenKitchenShop();
               } else {
                 const resource = getToolReadResource(activeScene, tool.id);
-                if (resource) onRequireResource?.(resource);
+                if (resource) onRequireResource?.(resource, true);
               }
             }
             updateSceneUiState(activeScene, { bulletinOpen: false, selectedTool: tool });

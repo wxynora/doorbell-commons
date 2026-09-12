@@ -333,6 +333,7 @@ const activityReminderService = new ActivityReminderService({
   registrationAuth,
   farmFieldReader: farmHumanReader,
   farmLingyeReader,
+  farmCatalogReader,
   mysteryMerchantNight: new MysteryMerchantNightService({
     reader: farmCatalogReader, store: database.mysteryMerchantNightStore, bell: bellService,
   }),

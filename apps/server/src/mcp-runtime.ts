@@ -775,12 +775,13 @@ export class DoorbellMcpRuntime {
         action: plan.action,
         params: plan.params,
         detail,
+        ...(shouldAppendStatus && op !== "farm.status" ? { includeStatus: true } : {}),
       });
       let text = op === "farm.status" && result.ok
         ? this.#appendDailyPublicationNotice(result.text)
         : result.text;
-      if (shouldAppendStatus && op !== "farm.status") {
-        text = await this.#appendStatusWhenAvailable(text, context);
+      if (shouldAppendStatus && op !== "farm.status" && result.status_text !== undefined) {
+        text = `${text}\n\n【农场近况】\n${this.#appendDailyPublicationNotice(result.status_text)}`;
       }
       return farmToolResult(text, result.ok, result.farm);
     } catch (error) {

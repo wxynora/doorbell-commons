@@ -1,4 +1,5 @@
 import type { BrowserPushService } from "./browser-push-service.js";
+import type { FarmHumanCatalogReadSuccess } from "@doorbell/protocol";
 import type { ActivityReminderProfileKey } from "./community-database.js";
 import type { FarmHumanCatalogReader } from "./farm-catalog-client.js";
 import type { MysteryMerchantReminderStore } from "./mystery-merchant-reminder-store.js";
@@ -12,8 +13,11 @@ export class MysteryMerchantReminderService {
     now?: () => number;
   }) {}
 
-  async reconcile(profile: ActivityReminderProfileKey, farmHumanKey: string): Promise<void> {
-    const catalog = await this.options.reader.readCatalog({
+  async reconcile(
+    profile: ActivityReminderProfileKey, farmHumanKey: string,
+    catalogRead?: FarmHumanCatalogReadSuccess,
+  ): Promise<void> {
+    const catalog = catalogRead ?? await this.options.reader.readCatalog({
       farmDoorplate: profile.farmDoorplate,
       farmHumanKey,
     });

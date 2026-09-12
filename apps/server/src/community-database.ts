@@ -21,6 +21,9 @@ import {
 import Database from "better-sqlite3";
 import { MysteryMerchantNightStore } from "./mystery-merchant-night-store.js";
 import { MysteryMerchantReminderStore } from "./mystery-merchant-reminder-store.js";
+import { HumanSessionStore } from "./human-session-store.js";
+import { CareerExamReminderRetryStore } from "./career-exam-reminder-retry-store.js";
+import { HumanMembershipStore } from "./human-membership-store.js";
 import { migrateCommunityDatabase } from "./database/community-migrations.js";
 import {
   createReporterBellWake,
@@ -1228,6 +1231,9 @@ export class CommunityDatabase {
   readonly farmLayoutShareStore: FarmLayoutShareStore;
   readonly mysteryMerchantNightStore: MysteryMerchantNightStore;
   readonly mysteryMerchantReminderStore: MysteryMerchantReminderStore;
+  readonly #humanSessionStore: HumanSessionStore;
+  readonly careerExamReminderRetryStore: CareerExamReminderRetryStore;
+  readonly #humanMembershipStore: HumanMembershipStore;
   readonly #generateRegistrationCode: () => string;
   readonly #generateSessionToken: () => string;
   readonly #generateAccountId: () => string;
@@ -1259,6 +1265,9 @@ export class CommunityDatabase {
     this.farmLayoutShareStore = new FarmLayoutShareStore(this.#database);
     this.mysteryMerchantNightStore = new MysteryMerchantNightStore(this.#database);
     this.mysteryMerchantReminderStore = new MysteryMerchantReminderStore(this.#database);
+    this.#humanSessionStore = new HumanSessionStore(this.#database);
+    this.careerExamReminderRetryStore = new CareerExamReminderRetryStore(this.#database);
+    this.#humanMembershipStore = new HumanMembershipStore(this.#database);
   }
 
   getFarmActionList(residentId: string, listId: string): FarmActionListRecord | undefined {
@@ -2162,23 +2171,8 @@ export class CommunityDatabase {
     this.#database.prepare("DELETE FROM human_login_locks WHERE account_id = ?").run(accountId);
   }
 
-  findActiveHumanSession(token: string): ActiveHumanSessionRecord | undefined {
-    const row = this.#database
-      .prepare(
-        `SELECT a.account_id,
-                a.qq_number,
-                a.created_at,
-                a.membership_status,
-                s.active_profile_id
-         FROM human_sessions AS s
-         JOIN human_accounts AS a ON a.account_id = s.account_id
-         WHERE s.token_hash = ?
-           AND s.revoked_at IS NULL
-           AND a.membership_status = 'active'`,
-      )
-      .get(hashSessionToken(token)) as
-      | (HumanAccountRow & { active_profile_id: string })
-      | undefined;
+  findActiveHumanSession(token: string, now = Date.now()): ActiveHumanSessionRecord | undefined {
+    const row = this.#humanSessionStore.findActiveSession(hashSessionToken(token), now);
     if (!row) {
       return undefined;
     }
@@ -5315,16 +5309,8 @@ export class CommunityDatabase {
     };
   }
 
-  confirmHumanAccountMembership(accountId: string, now: number): void {
-    this.#database
-      .prepare(
-        `UPDATE human_accounts
-         SET membership_status = 'active',
-             membership_checked_at = ?,
-             membership_inactive_at = NULL
-         WHERE account_id = ?`,
-      )
-      .run(now, accountId);
+  confirmHumanAccountMembership(accountId: string, now: number): boolean {
+    return this.#humanMembershipStore.confirmActiveAccount(accountId, now);
   }
 
   revokeHumanAccountMembership(accountId: string, now: number): string[] {

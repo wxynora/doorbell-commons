@@ -9,7 +9,7 @@ import {
 } from "@doorbell/protocol";
 import type Database from "better-sqlite3";
 
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 30;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 31;
 const LEGACY_CONNECTOR_DELIVERY_GENERATION = "00000000-0000-0000-0000-000000000000";
 
 interface FarmCreationRequestRow {
@@ -2405,6 +2405,19 @@ export function migrateCommunityDatabase(
       throw new Error("Community database schema v30 migration violated foreign keys");
     }
     migratedSchemaVersion = 30;
+  }
+  if (migratedSchemaVersion < 31) {
+    database.transaction(() => {
+      database.exec(`
+        CREATE TABLE career_exam_reminder_retries (
+          attempt_id TEXT PRIMARY KEY REFERENCES career_exam_reminders(attempt_id) ON DELETE CASCADE,
+          retry_at INTEGER NOT NULL,
+          claimed_at INTEGER
+        );
+      `);
+      database.pragma("user_version = 31");
+    })();
+    migratedSchemaVersion = 31;
   }
   database.transaction(() => {
     const itemColumns = database.pragma("table_info(farm_purchase_request_items)") as Array<{

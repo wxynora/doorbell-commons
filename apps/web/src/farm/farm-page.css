@@ -2725,3 +2725,8 @@
     animation: none;
   }
 }
+
+@keyframes farm-scene-enter { from { opacity: 0.6; } to { opacity: 1; } }
+@media (prefers-reduced-motion: no-preference) {
+  .farm-scene-state:not([hidden]) > .farm-scene { animation: farm-scene-enter 180ms ease-out; }
+}
