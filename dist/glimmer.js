@@ -1,3 +1,4 @@
+import { settleEncounterCost } from "./domain/glimmer/encounter-cost.js";
 import { ranchSpriteIndexByKind } from "./content-assets.js";
 import { randomUUID } from "node:crypto";
 import {
@@ -346,13 +347,15 @@ function explore(farm, world, now) {
     publicLog(world, farm, `${timeLabel(now)} · 「${farm.name}」遇见了〔${event.name}〕`, now, "encounter", event.id);
     history(farm, { at: now, kind: "encounter", refId: event.id, text: event.name });
     let suffix = "";
+    let text = encounterPrompt(event);
     if (event.type === "choice")
         gate.state.pending = { eventId: event.id, day: currentDayIndex(now) };
     else {
+        text = settleEncounterCost(farm, event, true).text;
         suffix = grantReward(farm, event.reward, rng, now);
         farm.rngState = rng.state;
     }
-    return { ok: true, text: withStatus(farm, now, encounterPrompt(event) + suffix) };
+    return { ok: true, text: withStatus(farm, now, text + suffix) };
 }
 
 function choose(farm, now, option) {
@@ -369,6 +372,8 @@ function choose(farm, now, option) {
     const selected = event.options[key];
     if (!selected)
         return { ok: false, text: "流光原野选择只接受 A 或 B。示例：doorbell({\"op\":\"farm.glimmer.choose\",\"args\":{\"option\":\"A\"}})" };
+    const settlement = settleEncounterCost(farm, selected);
+    if (!settlement.ok) return { ok: false, text: settlement.text };
     gate.state.pending = null;
     const rng = new Rng(farm.rngState ?? 1);
     const suffix = grantReward(farm, selected.reward, rng, now);

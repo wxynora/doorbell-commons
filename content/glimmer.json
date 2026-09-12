@@ -46,103 +46,1231 @@
     "amber_dragon": "honey_pumpkin_pudding"
   },
   "variants": [
-    {"id":"chicken_strawberry","kindId":"chicken","type":"animal","name":"草莓冠鸡","set":1},
-    {"id":"chicken_cream","kindId":"chicken","type":"animal","name":"奶油花鸡","set":2},
-    {"id":"chicken_cloud","kindId":"chicken","type":"animal","name":"乌云鸡","set":3},
-    {"id":"duck_mint","kindId":"duck","type":"animal","name":"薄荷鸭","set":1},
-    {"id":"duck_peach","kindId":"duck","type":"animal","name":"蜜桃鸭","set":2},
-    {"id":"duck_starry","kindId":"duck","type":"animal","name":"星河鸭","set":3},
-    {"id":"quail_chestnut","kindId":"quail","type":"animal","name":"栗子鹌鹑","set":1},
-    {"id":"quail_milkcandy","kindId":"quail","type":"animal","name":"奶糖鹌鹑","set":2},
-    {"id":"quail_blueberry","kindId":"quail","type":"animal","name":"蓝莓鹌鹑","set":3},
-    {"id":"rabbit_lop","kindId":"rabbit","type":"animal","name":"垂耳奶兔","set":1},
-    {"id":"rabbit_strawberry","kindId":"rabbit","type":"animal","name":"草莓雪兔","set":2},
-    {"id":"rabbit_moon","kindId":"rabbit","type":"animal","name":"月影兔","set":3},
-    {"id":"goose_lake","kindId":"goose","type":"animal","name":"湖蓝鹅","set":1},
-    {"id":"goose_peach","kindId":"goose","type":"animal","name":"蜜桃鹅","set":2},
-    {"id":"goose_brownsugar","kindId":"goose","type":"animal","name":"黑糖鹅","set":3},
-    {"id":"sheep_strawberry","kindId":"sheep","type":"animal","name":"草莓绵羊","set":1},
-    {"id":"sheep_mint","kindId":"sheep","type":"animal","name":"薄荷绵羊","set":2},
-    {"id":"sheep_cloud","kindId":"sheep","type":"animal","name":"乌云绵羊","set":3},
-    {"id":"goat_latte","kindId":"goat","type":"animal","name":"奶咖山羊","set":1},
-    {"id":"goat_apple","kindId":"goat","type":"animal","name":"青苹果山羊","set":2},
-    {"id":"goat_sesame","kindId":"goat","type":"animal","name":"黑芝麻山羊","set":3},
-    {"id":"cow_strawberry","kindId":"cow","type":"animal","name":"草莓奶牛","set":1},
-    {"id":"cow_blueberry","kindId":"cow","type":"animal","name":"蓝莓奶牛","set":2},
-    {"id":"cow_caramel","kindId":"cow","type":"animal","name":"焦糖奶牛","set":3},
-    {"id":"bee_cherry","kindId":"bee","type":"animal","name":"樱桃蜂","set":1},
-    {"id":"bee_mint","kindId":"bee","type":"animal","name":"薄荷蜂","set":2},
-    {"id":"bee_moon","kindId":"bee","type":"animal","name":"月光蜂","set":3},
-    {"id":"turkey_maple","kindId":"turkey","type":"animal","name":"枫糖火鸡","set":1},
-    {"id":"turkey_blueberry","kindId":"turkey","type":"animal","name":"蓝莓火鸡","set":2},
-    {"id":"turkey_snow","kindId":"turkey","type":"animal","name":"雪团火鸡","set":3},
-    {"id":"pig_peach","kindId":"pig","type":"animal","name":"桃花猪","set":1},
-    {"id":"pig_latte","kindId":"pig","type":"animal","name":"奶咖猪","set":2},
-    {"id":"pig_blackbean","kindId":"pig","type":"animal","name":"黑豆猪","set":3},
-    {"id":"alpaca_strawberry","kindId":"alpaca","type":"animal","name":"草莓羊驼","set":1},
-    {"id":"alpaca_matcha","kindId":"alpaca","type":"animal","name":"抹茶羊驼","set":2},
-    {"id":"alpaca_cocoa","kindId":"alpaca","type":"animal","name":"可可羊驼","set":3},
-    {"id":"silk_moth_mist","kindId":"silk_moth","type":"animal","name":"晨雾月光蚕","set":1},
-    {"id":"silk_moth_peach","kindId":"silk_moth","type":"animal","name":"桃霞月光蚕","set":2},
-    {"id":"silk_moth_aurora","kindId":"silk_moth","type":"animal","name":"极光月光蚕","set":3},
-    {"id":"ember_hen_blue","kindId":"ember_hen","type":"animal","name":"蓝焰母鸡","set":1},
-    {"id":"ember_hen_cherry","kindId":"ember_hen","type":"animal","name":"樱火母鸡","set":2},
-    {"id":"ember_hen_white","kindId":"ember_hen","type":"animal","name":"白烬母鸡","set":3},
-    {"id":"cloud_sheep_sunset","kindId":"cloud_sheep","type":"animal","name":"晚霞云绵羊","set":1},
-    {"id":"cloud_sheep_storm","kindId":"cloud_sheep","type":"animal","name":"雷雨云绵羊","set":2},
-    {"id":"cloud_sheep_aurora","kindId":"cloud_sheep","type":"animal","name":"极光云绵羊","set":3},
-    {"id":"dream_cat_strawberry","kindId":"dream_cat","type":"animal","name":"草莓梦貘猫","set":1},
-    {"id":"dream_cat_mint","kindId":"dream_cat","type":"animal","name":"薄荷梦貘猫","set":2},
-    {"id":"dream_cat_starry","kindId":"dream_cat","type":"animal","name":"星夜梦貘猫","set":3},
-    {"id":"cat_tuxedo","kindId":"cat","type":"pet","name":"奶牛猫","set":1},
-    {"id":"cat_british_blue","kindId":"cat","type":"pet","name":"英短蓝猫","set":2},
-    {"id":"cat_calico","kindId":"cat","type":"pet","name":"三花猫","set":3},
-    {"id":"dog_corgi","kindId":"dog","type":"pet","name":"柯基","set":1},
-    {"id":"dog_golden","kindId":"dog","type":"pet","name":"金毛","set":2},
-    {"id":"dog_samoyed","kindId":"dog","type":"pet","name":"萨摩耶","set":3},
-    {"id":"patrol_goose_sheriff","kindId":"patrol_goose","type":"goose","name":"巡逻鹅·小警长","set":1},
-    {"id":"patrol_goose_raincoat","kindId":"patrol_goose","type":"goose","name":"巡逻鹅·黄雨衣","set":2},
-    {"id":"patrol_goose_detective","kindId":"patrol_goose","type":"goose","name":"巡逻鹅·小侦探","set":3},
-    {"id": "crab_sakura", "kindId": "crab", "type": "animal", "name": "樱花蟹", "set": 1},
-    {"id": "crab_celadon", "kindId": "crab", "type": "animal", "name": "青瓷蟹", "set": 2},
-    {"id": "crab_starsand", "kindId": "crab", "type": "animal", "name": "星砂蟹", "set": 3},
-    {"id": "frost_antler_deer_peachsnow", "kindId": "frost_antler_deer", "type": "animal", "name": "桃雪鹿", "set": 1},
-    {"id": "frost_antler_deer_aurora", "kindId": "frost_antler_deer", "type": "animal", "name": "极光鹿", "set": 2},
-    {"id": "frost_antler_deer_smokycrystal", "kindId": "frost_antler_deer", "type": "animal", "name": "墨晶鹿", "set": 3},
-    {"id": "amber_dragon_beeswax", "kindId": "amber_dragon", "type": "animal", "name": "蜜蜡龙", "set": 1},
-    {"id": "amber_dragon_cherry", "kindId": "amber_dragon", "type": "animal", "name": "樱珀龙", "set": 2},
-    {"id": "amber_dragon_blue", "kindId": "amber_dragon", "type": "animal", "name": "蓝珀龙", "set": 3}
+    {
+      "id": "chicken_strawberry",
+      "kindId": "chicken",
+      "type": "animal",
+      "name": "草莓冠鸡",
+      "set": 1
+    },
+    {
+      "id": "chicken_cream",
+      "kindId": "chicken",
+      "type": "animal",
+      "name": "奶油花鸡",
+      "set": 2
+    },
+    {
+      "id": "chicken_cloud",
+      "kindId": "chicken",
+      "type": "animal",
+      "name": "乌云鸡",
+      "set": 3
+    },
+    {
+      "id": "duck_mint",
+      "kindId": "duck",
+      "type": "animal",
+      "name": "薄荷鸭",
+      "set": 1
+    },
+    {
+      "id": "duck_peach",
+      "kindId": "duck",
+      "type": "animal",
+      "name": "蜜桃鸭",
+      "set": 2
+    },
+    {
+      "id": "duck_starry",
+      "kindId": "duck",
+      "type": "animal",
+      "name": "星河鸭",
+      "set": 3
+    },
+    {
+      "id": "quail_chestnut",
+      "kindId": "quail",
+      "type": "animal",
+      "name": "栗子鹌鹑",
+      "set": 1
+    },
+    {
+      "id": "quail_milkcandy",
+      "kindId": "quail",
+      "type": "animal",
+      "name": "奶糖鹌鹑",
+      "set": 2
+    },
+    {
+      "id": "quail_blueberry",
+      "kindId": "quail",
+      "type": "animal",
+      "name": "蓝莓鹌鹑",
+      "set": 3
+    },
+    {
+      "id": "rabbit_lop",
+      "kindId": "rabbit",
+      "type": "animal",
+      "name": "垂耳奶兔",
+      "set": 1
+    },
+    {
+      "id": "rabbit_strawberry",
+      "kindId": "rabbit",
+      "type": "animal",
+      "name": "草莓雪兔",
+      "set": 2
+    },
+    {
+      "id": "rabbit_moon",
+      "kindId": "rabbit",
+      "type": "animal",
+      "name": "月影兔",
+      "set": 3
+    },
+    {
+      "id": "goose_lake",
+      "kindId": "goose",
+      "type": "animal",
+      "name": "湖蓝鹅",
+      "set": 1
+    },
+    {
+      "id": "goose_peach",
+      "kindId": "goose",
+      "type": "animal",
+      "name": "蜜桃鹅",
+      "set": 2
+    },
+    {
+      "id": "goose_brownsugar",
+      "kindId": "goose",
+      "type": "animal",
+      "name": "黑糖鹅",
+      "set": 3
+    },
+    {
+      "id": "sheep_strawberry",
+      "kindId": "sheep",
+      "type": "animal",
+      "name": "草莓绵羊",
+      "set": 1
+    },
+    {
+      "id": "sheep_mint",
+      "kindId": "sheep",
+      "type": "animal",
+      "name": "薄荷绵羊",
+      "set": 2
+    },
+    {
+      "id": "sheep_cloud",
+      "kindId": "sheep",
+      "type": "animal",
+      "name": "乌云绵羊",
+      "set": 3
+    },
+    {
+      "id": "goat_latte",
+      "kindId": "goat",
+      "type": "animal",
+      "name": "奶咖山羊",
+      "set": 1
+    },
+    {
+      "id": "goat_apple",
+      "kindId": "goat",
+      "type": "animal",
+      "name": "青苹果山羊",
+      "set": 2
+    },
+    {
+      "id": "goat_sesame",
+      "kindId": "goat",
+      "type": "animal",
+      "name": "黑芝麻山羊",
+      "set": 3
+    },
+    {
+      "id": "cow_strawberry",
+      "kindId": "cow",
+      "type": "animal",
+      "name": "草莓奶牛",
+      "set": 1
+    },
+    {
+      "id": "cow_blueberry",
+      "kindId": "cow",
+      "type": "animal",
+      "name": "蓝莓奶牛",
+      "set": 2
+    },
+    {
+      "id": "cow_caramel",
+      "kindId": "cow",
+      "type": "animal",
+      "name": "焦糖奶牛",
+      "set": 3
+    },
+    {
+      "id": "bee_cherry",
+      "kindId": "bee",
+      "type": "animal",
+      "name": "樱桃蜂",
+      "set": 1
+    },
+    {
+      "id": "bee_mint",
+      "kindId": "bee",
+      "type": "animal",
+      "name": "薄荷蜂",
+      "set": 2
+    },
+    {
+      "id": "bee_moon",
+      "kindId": "bee",
+      "type": "animal",
+      "name": "月光蜂",
+      "set": 3
+    },
+    {
+      "id": "turkey_maple",
+      "kindId": "turkey",
+      "type": "animal",
+      "name": "枫糖火鸡",
+      "set": 1
+    },
+    {
+      "id": "turkey_blueberry",
+      "kindId": "turkey",
+      "type": "animal",
+      "name": "蓝莓火鸡",
+      "set": 2
+    },
+    {
+      "id": "turkey_snow",
+      "kindId": "turkey",
+      "type": "animal",
+      "name": "雪团火鸡",
+      "set": 3
+    },
+    {
+      "id": "pig_peach",
+      "kindId": "pig",
+      "type": "animal",
+      "name": "桃花猪",
+      "set": 1
+    },
+    {
+      "id": "pig_latte",
+      "kindId": "pig",
+      "type": "animal",
+      "name": "奶咖猪",
+      "set": 2
+    },
+    {
+      "id": "pig_blackbean",
+      "kindId": "pig",
+      "type": "animal",
+      "name": "黑豆猪",
+      "set": 3
+    },
+    {
+      "id": "alpaca_strawberry",
+      "kindId": "alpaca",
+      "type": "animal",
+      "name": "草莓羊驼",
+      "set": 1
+    },
+    {
+      "id": "alpaca_matcha",
+      "kindId": "alpaca",
+      "type": "animal",
+      "name": "抹茶羊驼",
+      "set": 2
+    },
+    {
+      "id": "alpaca_cocoa",
+      "kindId": "alpaca",
+      "type": "animal",
+      "name": "可可羊驼",
+      "set": 3
+    },
+    {
+      "id": "silk_moth_mist",
+      "kindId": "silk_moth",
+      "type": "animal",
+      "name": "晨雾月光蚕",
+      "set": 1
+    },
+    {
+      "id": "silk_moth_peach",
+      "kindId": "silk_moth",
+      "type": "animal",
+      "name": "桃霞月光蚕",
+      "set": 2
+    },
+    {
+      "id": "silk_moth_aurora",
+      "kindId": "silk_moth",
+      "type": "animal",
+      "name": "极光月光蚕",
+      "set": 3
+    },
+    {
+      "id": "ember_hen_blue",
+      "kindId": "ember_hen",
+      "type": "animal",
+      "name": "蓝焰母鸡",
+      "set": 1
+    },
+    {
+      "id": "ember_hen_cherry",
+      "kindId": "ember_hen",
+      "type": "animal",
+      "name": "樱火母鸡",
+      "set": 2
+    },
+    {
+      "id": "ember_hen_white",
+      "kindId": "ember_hen",
+      "type": "animal",
+      "name": "白烬母鸡",
+      "set": 3
+    },
+    {
+      "id": "cloud_sheep_sunset",
+      "kindId": "cloud_sheep",
+      "type": "animal",
+      "name": "晚霞云绵羊",
+      "set": 1
+    },
+    {
+      "id": "cloud_sheep_storm",
+      "kindId": "cloud_sheep",
+      "type": "animal",
+      "name": "雷雨云绵羊",
+      "set": 2
+    },
+    {
+      "id": "cloud_sheep_aurora",
+      "kindId": "cloud_sheep",
+      "type": "animal",
+      "name": "极光云绵羊",
+      "set": 3
+    },
+    {
+      "id": "dream_cat_strawberry",
+      "kindId": "dream_cat",
+      "type": "animal",
+      "name": "草莓梦貘猫",
+      "set": 1
+    },
+    {
+      "id": "dream_cat_mint",
+      "kindId": "dream_cat",
+      "type": "animal",
+      "name": "薄荷梦貘猫",
+      "set": 2
+    },
+    {
+      "id": "dream_cat_starry",
+      "kindId": "dream_cat",
+      "type": "animal",
+      "name": "星夜梦貘猫",
+      "set": 3
+    },
+    {
+      "id": "cat_tuxedo",
+      "kindId": "cat",
+      "type": "pet",
+      "name": "奶牛猫",
+      "set": 1
+    },
+    {
+      "id": "cat_british_blue",
+      "kindId": "cat",
+      "type": "pet",
+      "name": "英短蓝猫",
+      "set": 2
+    },
+    {
+      "id": "cat_calico",
+      "kindId": "cat",
+      "type": "pet",
+      "name": "三花猫",
+      "set": 3
+    },
+    {
+      "id": "dog_corgi",
+      "kindId": "dog",
+      "type": "pet",
+      "name": "柯基",
+      "set": 1
+    },
+    {
+      "id": "dog_golden",
+      "kindId": "dog",
+      "type": "pet",
+      "name": "金毛",
+      "set": 2
+    },
+    {
+      "id": "dog_samoyed",
+      "kindId": "dog",
+      "type": "pet",
+      "name": "萨摩耶",
+      "set": 3
+    },
+    {
+      "id": "patrol_goose_sheriff",
+      "kindId": "patrol_goose",
+      "type": "goose",
+      "name": "巡逻鹅·小警长",
+      "set": 1
+    },
+    {
+      "id": "patrol_goose_raincoat",
+      "kindId": "patrol_goose",
+      "type": "goose",
+      "name": "巡逻鹅·黄雨衣",
+      "set": 2
+    },
+    {
+      "id": "patrol_goose_detective",
+      "kindId": "patrol_goose",
+      "type": "goose",
+      "name": "巡逻鹅·小侦探",
+      "set": 3
+    },
+    {
+      "id": "crab_sakura",
+      "kindId": "crab",
+      "type": "animal",
+      "name": "樱花蟹",
+      "set": 1
+    },
+    {
+      "id": "crab_celadon",
+      "kindId": "crab",
+      "type": "animal",
+      "name": "青瓷蟹",
+      "set": 2
+    },
+    {
+      "id": "crab_starsand",
+      "kindId": "crab",
+      "type": "animal",
+      "name": "星砂蟹",
+      "set": 3
+    },
+    {
+      "id": "frost_antler_deer_peachsnow",
+      "kindId": "frost_antler_deer",
+      "type": "animal",
+      "name": "桃雪鹿",
+      "set": 1
+    },
+    {
+      "id": "frost_antler_deer_aurora",
+      "kindId": "frost_antler_deer",
+      "type": "animal",
+      "name": "极光鹿",
+      "set": 2
+    },
+    {
+      "id": "frost_antler_deer_smokycrystal",
+      "kindId": "frost_antler_deer",
+      "type": "animal",
+      "name": "墨晶鹿",
+      "set": 3
+    },
+    {
+      "id": "amber_dragon_beeswax",
+      "kindId": "amber_dragon",
+      "type": "animal",
+      "name": "蜜蜡龙",
+      "set": 1
+    },
+    {
+      "id": "amber_dragon_cherry",
+      "kindId": "amber_dragon",
+      "type": "animal",
+      "name": "樱珀龙",
+      "set": 2
+    },
+    {
+      "id": "amber_dragon_blue",
+      "kindId": "amber_dragon",
+      "type": "animal",
+      "name": "蓝珀龙",
+      "set": 3
+    }
   ],
   "encounters": [
-    {"id":"lost_backpack","name":"跑丢的背包","type":"instant","text":"🎒〔跑丢的背包〕草丛里卡着一只鼓鼓的背包，清单写得很详细，唯独没写主人是谁。你等了一会儿，只等来一张“捡到就是你的”字条。+120 金。","reward":{"kind":"coins","amount":120}},
-    {"id":"glimmer_spring","name":"流光泉","type":"instant","text":"💧〔流光泉〕泉里的倒影比你慢半拍。你抬手，它想了一会儿才跟着抬手，还顺便递出一瓶加速药水。+加速药水×1。","reward":{"kind":"item","id":"speed_potion","amount":1}},
-    {"id":"stardust_rain","name":"星屑雨","type":"instant","text":"🌠〔星屑雨〕几颗星屑落进兜里，摸起来像零钱，数起来也确实是零钱。+12 银。","reward":{"kind":"silver","amount":12}},
-    {"id":"empty_hollow","name":"空树洞","type":"instant","text":"🕳️〔空树洞〕树洞回了三声：“没有。”“真的没有。”“明天也不一定有。”你决定尊重它的坦率，空手而归。","reward":{"kind":"none"}},
-    {"id":"picnic_blanket","name":"旧野餐布","type":"instant","text":"🍱〔旧野餐布〕野餐布上只剩一份被玻璃罩严密保护的料理，旁边写着：“给饿肚子的下一位。”获得随机正常料理×1。","reward":{"kind":"dish"}},
-    {"id":"sleeping_herd","name":"沉睡兽群","type":"instant","text":"🐾〔沉睡兽群〕一群动物睡得东倒西歪，梦话却整齐得像报菜名。你记下了一种尚未收录动物喜欢的料理。","reward":{"kind":"favorite"}},
-    {"id":"windy_feeding_guide","name":"被风翻开的饲养手册","type":"instant","text":"📒〔被风翻开的饲养手册〕一本小册子被风翻得哗啦作响，只有“投喂偏好”那页被石头压住。你记下了一种尚未收录动物喜欢的料理。","reward":{"kind":"favorite"}},
-    {"id":"rolling_empty_plate","name":"会指路的空餐盘","type":"instant","text":"🥣〔会指路的空餐盘〕一只空餐盘一路骨碌碌滚在前面，最后停在几枚动物脚印旁。盘底刻着一种尚未收录动物喜欢的料理。","reward":{"kind":"favorite"}},
-    {"id":"lost_vendor","name":"迷路小贩","type":"instant","text":"🧺〔迷路小贩〕小贩坚称不是自己迷路，是流光原野偷偷转了半圈。为了证明方向感，它塞给你一份随机食材，然后朝相反方向走了。","reward":{"kind":"ingredient"}},
-    {"id":"tiny_tornado","name":"一米宽的龙卷风","type":"instant","text":"🌪️〔一米宽的龙卷风〕一小截龙卷风坚持跟在你脚边，气势很大，覆盖范围刚好够卷起一根鱼饵。获得普通蚯蚓×1。","reward":{"kind":"bait","id":"basic_worm","amount":1}},
-    {"id":"crow_conductor","name":"自称售票员的乌鸦","type":"choice","text":"🐦‍⬛〔自称售票员的乌鸦〕一只乌鸦拦住你，胸前挂着手写工牌：“本鸟只查假票，真票看不懂。”","options":{"A":{"label":"把真的通票给它看","text":"乌鸦研究半天，承认这票真得超出业务范围，赔给你 80 金。","reward":{"kind":"coins","amount":80}},"B":{"label":"请它给通票补一个鸟类专用章","text":"乌鸦郑重盖下一枚歪歪扭扭的爪印，又收了自己 10 银手续费，再把钱塞给你。+10 银。","reward":{"kind":"silver","amount":10}}}},
-    {"id":"upside_sign","name":"倒着长的路标","type":"choice","text":"🪧〔倒着长的路标〕箭头朝下，背面写着：“往哪走不重要，重要的是别听路标的。”","options":{"A":{"label":"老实跟着箭头走","text":"你绕了一圈回到原地。路标看起来很满意，你什么也没得到。","reward":{"kind":"none"}},"B":{"label":"坚决往反方向走","text":"路标气得转过身去，露出背后藏着的一份随机食材。","reward":{"kind":"ingredient"}}}},
-    {"id":"compliment_flower","name":"只收夸奖的花","type":"choice","text":"🌼〔只收夸奖的花〕一朵花挡在路中央：“不卖东西，只收夸奖。夸得具体一点。”","options":{"A":{"label":"认真夸它今天的花瓣层次","text":"花听得非常受用，从叶子底下推出一瓶加速药水：“你也挺有眼光。”","reward":{"kind":"item","id":"speed_potion","amount":1}},"B":{"label":"不会夸，给它浇点水","text":"花被浇得打了个喷嚏，喷出 8 枚银币。+8 银。","reward":{"kind":"silver","amount":8}}}},
-    {"id":"returning_chest","name":"会退货的宝箱","type":"choice","text":"📦〔会退货的宝箱〕宝箱自己弹开一条缝：“先说好，不满意可以退我，不接受退货。”","options":{"A":{"label":"直接打开","text":"宝箱递出 100 金，又迅速合上，生怕你真把它退了。","reward":{"kind":"coins","amount":100}},"B":{"label":"先礼貌敲门","text":"里面的小店员被礼貌感动，递给你一份随机食材。","reward":{"kind":"ingredient"}}}},
-    {"id":"shadow_puddle","name":"偷走影子的水坑","type":"choice","text":"🌑〔偷走影子的水坑〕你的影子突然留在水里不肯出来，还假装没听见你叫它。","options":{"A":{"label":"一脚跳进水坑抓它","text":"影子被你拎了回来，口袋里还多出 15 银，不知道是谁的。+15 银。","reward":{"kind":"silver","amount":15}},"B":{"label":"绕过去，看它能装多久","text":"你走出十几步，影子自己慌慌张张追了上来。除了鞋很干净，什么也没得到。","reward":{"kind":"none"}}}},
-    {"id":"lying_scarecrow","name":"躺平的稻草人","type":"choice","text":"🌾〔躺平的稻草人〕稻草人平躺在草地上：“站了一整季，今天轮到田自己吓鸟。”","options":{"A":{"label":"扶它起来继续上班","text":"稻草人很不情愿地站起来，从袖子里掉出一瓶加速药水。","reward":{"kind":"item","id":"speed_potion","amount":1}},"B":{"label":"在旁边躺五分钟陪它","text":"五分钟后你们都没起来。一只路过的小鸟留下了一份随机正常料理。","reward":{"kind":"dish"}}}},
-    {"id":"stone_sheep","name":"冒充石头的羊","type":"choice","text":"🐑〔冒充石头的羊〕一块毛茸茸的“石头”打了个喷嚏，然后坚持说刚才只是山体活动。","options":{"A":{"label":"为打扰山体活动道歉","text":"“石头”原谅了你，并告诉你一种尚未收录动物喜欢的料理。","reward":{"kind":"favorite"}},"B":{"label":"问它为什么要装石头","text":"它小声说是在躲剪毛，随后塞给你 80 金作为保密费。","reward":{"kind":"coins","amount":80}}}},
-    {"id":"dusk_tea_stall","name":"黄昏茶摊","type":"choice","text":"☕〔黄昏茶摊〕摊主把几张沾着爪印的点单纸摊开：“客人没留名字，只能靠脚印猜它们爱吃什么。”","options":{"A":{"label":"帮它整理点单纸","text":"你按脚印把点单纸分好，记下了一种尚未收录动物喜欢的料理。","reward":{"kind":"favorite"}},"B":{"label":"先买一份今日点心","text":"摊主送你一份随机正常料理：“吃饱了再查账。”","reward":{"kind":"dish"}}}},
-    {"id":"animal_post_wrong_letter","name":"动物邮局的错件","type":"choice","text":"📮〔动物邮局的错件〕邮差抱着一封只写了“送给最爱这道菜的动物”的信，急得团团转。","options":{"A":{"label":"根据信封上的气味帮忙投递","text":"信顺利送到了。邮差把对应关系抄给你，你记下了一种尚未收录动物喜欢的料理。","reward":{"kind":"favorite"}},"B":{"label":"先退回重写地址","text":"寄件人补写地址时塞来一份随机食材作为谢礼。","reward":{"kind":"ingredient"}}}},
-    {"id":"chicken_meeting","name":"正在开会的鸡","type":"choice","text":"🐔〔正在开会的鸡〕几只鸡围成一圈，严肃讨论“蛋到底算不算员工产出”。看见你后，全场突然安静。","options":{"A":{"label":"坐下旁听会议","text":"会议最终通过了《路人旁听补贴》，你获得一份随机蛋类牧场产物。","reward":{"kind":"egg"}},"B":{"label":"举手发表意见","text":"你刚说到“提高效率”，就被全体鸡一致请出会场。什么也没得到。","reward":{"kind":"none"}}}},
-    {"id": "crab_lost_property", "name": "横着开的失物招领处", "type": "instant", "text": "🦀〔横着开的失物招领处〕一只螃蟹把失物分成了“左边捡的”和“右边捡的”。你问有没有按物品分类，它沉默片刻，把“咨询费”那一栏划掉，退给你 80 金。+80 金。", "reward": {"kind": "coins", "amount": 80}},
-    {"id": "deer_antler_note", "name": "鹿角上的便签", "type": "instant", "text": "🦌〔鹿角上的便签〕一张便签挂在低枝上，纸角留着浅浅的鹿角压痕。上面把某道菜圈了三遍，旁边写着：“下次还吃这个。”你记下了一条动物的口味线索。", "reward": {"kind": "favorite"}},
-    {"id": "dragon_burnt_receipt", "name": "烤过头的收据", "type": "instant", "text": "🐉〔烤过头的收据〕小龙对着收据吹了口热气，想把折痕熨平。纸变成了焦糖色，字没了。摊主叹了口气，把剩下的一份食材交给你：“总得留点能认出来的。”获得随机食材×1。", "reward": {"kind": "ingredient"}},
-    {"id": "moon_clocking_off", "name": "坚持下班的月亮", "type": "choice", "text": "🌙〔坚持下班的月亮〕水洼里的月亮正在往岸边挪：“天上那个还在值班，我是倒影，先走了。”", "options": {"A": {"label": "给它让条路", "text": "倒影顺着水沟溜走，留下一小片银光。你捞起来一看，是 8 枚银币。+8 银。", "reward": {"kind": "silver", "amount": 8}}, "B": {"label": "指给它看另一处水洼", "text": "月亮探头一看，里面也有一个自己。它默默退回原位，决定明天再谈交接。什么也没得到。", "reward": {"kind": "none"}}}}
+    {
+      "id": "lost_backpack",
+      "name": "跑丢的背包",
+      "type": "instant",
+      "text": "🎒〔跑丢的背包〕草丛里卡着一只鼓鼓的背包，清单写得很详细，唯独没写主人是谁。你等了一会儿，只等来一张“捡到就是你的”字条。+120 金。",
+      "reward": {
+        "kind": "coins",
+        "amount": 120
+      }
+    },
+    {
+      "id": "glimmer_spring",
+      "name": "流光泉",
+      "type": "instant",
+      "text": "💧〔流光泉〕泉里的倒影比你慢半拍。你抬手，它想了一会儿才跟着抬手，还顺便递出一瓶加速药水。+加速药水×1。",
+      "reward": {
+        "kind": "item",
+        "id": "speed_potion",
+        "amount": 1
+      }
+    },
+    {
+      "id": "stardust_rain",
+      "name": "星屑雨",
+      "type": "instant",
+      "text": "🌠〔星屑雨〕几颗星屑落进兜里，摸起来像零钱，数起来也确实是零钱。+12 银。",
+      "reward": {
+        "kind": "silver",
+        "amount": 12
+      }
+    },
+    {
+      "id": "empty_hollow",
+      "name": "空树洞",
+      "type": "instant",
+      "text": "🕳️〔空树洞〕树洞回了三声：“没有。”“真的没有。”“明天也不一定有。”你决定尊重它的坦率，空手而归。",
+      "reward": {
+        "kind": "none"
+      }
+    },
+    {
+      "id": "picnic_blanket",
+      "name": "旧野餐布",
+      "type": "instant",
+      "text": "🍱〔旧野餐布〕野餐布上只剩一份被玻璃罩严密保护的料理，旁边写着：“给饿肚子的下一位。”获得随机正常料理×1。",
+      "reward": {
+        "kind": "dish"
+      }
+    },
+    {
+      "id": "sleeping_herd",
+      "name": "沉睡兽群",
+      "type": "instant",
+      "text": "🐾〔沉睡兽群〕一群动物睡得东倒西歪，梦话却整齐得像报菜名。你记下了一种尚未收录动物喜欢的料理。",
+      "reward": {
+        "kind": "favorite"
+      }
+    },
+    {
+      "id": "windy_feeding_guide",
+      "name": "被风翻开的饲养手册",
+      "type": "instant",
+      "text": "📒〔被风翻开的饲养手册〕一本小册子被风翻得哗啦作响，只有“投喂偏好”那页被石头压住。你记下了一种尚未收录动物喜欢的料理。",
+      "reward": {
+        "kind": "favorite"
+      }
+    },
+    {
+      "id": "rolling_empty_plate",
+      "name": "会指路的空餐盘",
+      "type": "instant",
+      "text": "🥣〔会指路的空餐盘〕一只空餐盘一路骨碌碌滚在前面，最后停在几枚动物脚印旁。盘底刻着一种尚未收录动物喜欢的料理。",
+      "reward": {
+        "kind": "favorite"
+      }
+    },
+    {
+      "id": "lost_vendor",
+      "name": "迷路小贩",
+      "type": "instant",
+      "text": "🧺〔迷路小贩〕小贩坚称不是自己迷路，是流光原野偷偷转了半圈。为了证明方向感，它塞给你一份随机食材，然后朝相反方向走了。",
+      "reward": {
+        "kind": "ingredient"
+      }
+    },
+    {
+      "id": "tiny_tornado",
+      "name": "一米宽的龙卷风",
+      "type": "instant",
+      "text": "🌪️〔一米宽的龙卷风〕一小截龙卷风坚持跟在你脚边，气势很大，覆盖范围刚好够卷起一根鱼饵。获得普通蚯蚓×1。",
+      "reward": {
+        "kind": "bait",
+        "id": "basic_worm",
+        "amount": 1
+      }
+    },
+    {
+      "id": "crow_conductor",
+      "name": "自称售票员的乌鸦",
+      "type": "choice",
+      "text": "🐦‍⬛〔自称售票员的乌鸦〕一只乌鸦拦住你，胸前挂着手写工牌：“本鸟只查假票，真票看不懂。”",
+      "options": {
+        "A": {
+          "label": "把真的通票给它看",
+          "text": "乌鸦研究半天，承认这票真得超出业务范围，赔给你 80 金。",
+          "reward": {
+            "kind": "coins",
+            "amount": 80
+          }
+        },
+        "B": {
+          "label": "请它给通票补一个鸟类专用章",
+          "text": "乌鸦郑重盖下一枚歪歪扭扭的爪印，又收了自己 10 银手续费，再把钱塞给你。+10 银。",
+          "reward": {
+            "kind": "silver",
+            "amount": 10
+          }
+        }
+      }
+    },
+    {
+      "id": "upside_sign",
+      "name": "倒着长的路标",
+      "type": "choice",
+      "text": "🪧〔倒着长的路标〕箭头朝下，背面写着：“往哪走不重要，重要的是别听路标的。”",
+      "options": {
+        "A": {
+          "label": "老实跟着箭头走",
+          "text": "你绕了一圈回到原地。路标看起来很满意，你什么也没得到。",
+          "reward": {
+            "kind": "none"
+          }
+        },
+        "B": {
+          "label": "坚决往反方向走",
+          "text": "路标气得转过身去，露出背后藏着的一份随机食材。",
+          "reward": {
+            "kind": "ingredient"
+          }
+        }
+      }
+    },
+    {
+      "id": "compliment_flower",
+      "name": "只收夸奖的花",
+      "type": "choice",
+      "text": "🌼〔只收夸奖的花〕一朵花挡在路中央：“不卖东西，只收夸奖。夸得具体一点。”",
+      "options": {
+        "A": {
+          "label": "认真夸它今天的花瓣层次",
+          "text": "花听得非常受用，从叶子底下推出一瓶加速药水：“你也挺有眼光。”",
+          "reward": {
+            "kind": "item",
+            "id": "speed_potion",
+            "amount": 1
+          }
+        },
+        "B": {
+          "label": "不会夸，给它浇点水",
+          "text": "花被浇得打了个喷嚏，喷出 8 枚银币。+8 银。",
+          "reward": {
+            "kind": "silver",
+            "amount": 8
+          }
+        }
+      }
+    },
+    {
+      "id": "returning_chest",
+      "name": "会退货的宝箱",
+      "type": "choice",
+      "text": "📦〔会退货的宝箱〕宝箱自己弹开一条缝：“先说好，不满意可以退我，不接受退货。”",
+      "options": {
+        "A": {
+          "label": "直接打开",
+          "text": "宝箱递出 100 金，又迅速合上，生怕你真把它退了。",
+          "reward": {
+            "kind": "coins",
+            "amount": 100
+          }
+        },
+        "B": {
+          "label": "先礼貌敲门",
+          "text": "里面的小店员被礼貌感动，递给你一份随机食材。",
+          "reward": {
+            "kind": "ingredient"
+          }
+        }
+      }
+    },
+    {
+      "id": "shadow_puddle",
+      "name": "偷走影子的水坑",
+      "type": "choice",
+      "text": "🌑〔偷走影子的水坑〕你的影子突然留在水里不肯出来，还假装没听见你叫它。",
+      "options": {
+        "A": {
+          "label": "一脚跳进水坑抓它",
+          "text": "影子被你拎了回来，口袋里还多出 15 银，不知道是谁的。+15 银。",
+          "reward": {
+            "kind": "silver",
+            "amount": 15
+          }
+        },
+        "B": {
+          "label": "绕过去，看它能装多久",
+          "text": "你走出十几步，影子自己慌慌张张追了上来。除了鞋很干净，什么也没得到。",
+          "reward": {
+            "kind": "none"
+          }
+        }
+      }
+    },
+    {
+      "id": "lying_scarecrow",
+      "name": "躺平的稻草人",
+      "type": "choice",
+      "text": "🌾〔躺平的稻草人〕稻草人平躺在草地上：“站了一整季，今天轮到田自己吓鸟。”",
+      "options": {
+        "A": {
+          "label": "扶它起来继续上班",
+          "text": "稻草人很不情愿地站起来，从袖子里掉出一瓶加速药水。",
+          "reward": {
+            "kind": "item",
+            "id": "speed_potion",
+            "amount": 1
+          }
+        },
+        "B": {
+          "label": "在旁边躺五分钟陪它",
+          "text": "五分钟后你们都没起来。一只路过的小鸟留下了一份随机正常料理。",
+          "reward": {
+            "kind": "dish"
+          }
+        }
+      }
+    },
+    {
+      "id": "stone_sheep",
+      "name": "冒充石头的羊",
+      "type": "choice",
+      "text": "🐑〔冒充石头的羊〕一块毛茸茸的“石头”打了个喷嚏，然后坚持说刚才只是山体活动。",
+      "options": {
+        "A": {
+          "label": "为打扰山体活动道歉",
+          "text": "“石头”原谅了你，并告诉你一种尚未收录动物喜欢的料理。",
+          "reward": {
+            "kind": "favorite"
+          }
+        },
+        "B": {
+          "label": "问它为什么要装石头",
+          "text": "它小声说是在躲剪毛，随后塞给你 80 金作为保密费。",
+          "reward": {
+            "kind": "coins",
+            "amount": 80
+          }
+        }
+      }
+    },
+    {
+      "id": "dusk_tea_stall",
+      "name": "黄昏茶摊",
+      "type": "choice",
+      "text": "☕〔黄昏茶摊〕摊主把几张沾着爪印的点单纸摊开：“客人没留名字，只能靠脚印猜它们爱吃什么。”",
+      "options": {
+        "A": {
+          "label": "帮它整理点单纸",
+          "text": "你按脚印把点单纸分好，记下了一种尚未收录动物喜欢的料理。",
+          "reward": {
+            "kind": "favorite"
+          }
+        },
+        "B": {
+          "label": "先买一份今日点心",
+          "text": "摊主送你一份随机正常料理：“吃饱了再查账。”",
+          "reward": {
+            "kind": "dish"
+          }
+        }
+      }
+    },
+    {
+      "id": "animal_post_wrong_letter",
+      "name": "动物邮局的错件",
+      "type": "choice",
+      "text": "📮〔动物邮局的错件〕邮差抱着一封只写了“送给最爱这道菜的动物”的信，急得团团转。",
+      "options": {
+        "A": {
+          "label": "根据信封上的气味帮忙投递",
+          "text": "信顺利送到了。邮差把对应关系抄给你，你记下了一种尚未收录动物喜欢的料理。",
+          "reward": {
+            "kind": "favorite"
+          }
+        },
+        "B": {
+          "label": "先退回重写地址",
+          "text": "寄件人补写地址时塞来一份随机食材作为谢礼。",
+          "reward": {
+            "kind": "ingredient"
+          }
+        }
+      }
+    },
+    {
+      "id": "chicken_meeting",
+      "name": "正在开会的鸡",
+      "type": "choice",
+      "text": "🐔〔正在开会的鸡〕几只鸡围成一圈，严肃讨论“蛋到底算不算员工产出”。看见你后，全场突然安静。",
+      "options": {
+        "A": {
+          "label": "坐下旁听会议",
+          "text": "会议最终通过了《路人旁听补贴》，你获得一份随机蛋类牧场产物。",
+          "reward": {
+            "kind": "egg"
+          }
+        },
+        "B": {
+          "label": "举手发表意见",
+          "text": "你刚说到“提高效率”，就被全体鸡一致请出会场。什么也没得到。",
+          "reward": {
+            "kind": "none"
+          }
+        }
+      }
+    },
+    {
+      "id": "crab_lost_property",
+      "name": "横着开的失物招领处",
+      "type": "instant",
+      "text": "🦀〔横着开的失物招领处〕一只螃蟹把失物分成了“左边捡的”和“右边捡的”。你问有没有按物品分类，它沉默片刻，把“咨询费”那一栏划掉，退给你 80 金。+80 金。",
+      "reward": {
+        "kind": "coins",
+        "amount": 80
+      }
+    },
+    {
+      "id": "deer_antler_note",
+      "name": "鹿角上的便签",
+      "type": "instant",
+      "text": "🦌〔鹿角上的便签〕一张便签挂在低枝上，纸角留着浅浅的鹿角压痕。上面把某道菜圈了三遍，旁边写着：“下次还吃这个。”你记下了一条动物的口味线索。",
+      "reward": {
+        "kind": "favorite"
+      }
+    },
+    {
+      "id": "dragon_burnt_receipt",
+      "name": "烤过头的收据",
+      "type": "instant",
+      "text": "🐉〔烤过头的收据〕小龙对着收据吹了口热气，想把折痕熨平。纸变成了焦糖色，字没了。摊主叹了口气，把剩下的一份食材交给你：“总得留点能认出来的。”获得随机食材×1。",
+      "reward": {
+        "kind": "ingredient"
+      }
+    },
+    {
+      "id": "moon_clocking_off",
+      "name": "坚持下班的月亮",
+      "type": "choice",
+      "text": "🌙〔坚持下班的月亮〕水洼里的月亮正在往岸边挪：“天上那个还在值班，我是倒影，先走了。”",
+      "options": {
+        "A": {
+          "label": "给它让条路",
+          "text": "倒影顺着水沟溜走，留下一小片银光。你捞起来一看，是 8 枚银币。+8 银。",
+          "reward": {
+            "kind": "silver",
+            "amount": 8
+          }
+        },
+        "B": {
+          "label": "指给它看另一处水洼",
+          "text": "月亮探头一看，里面也有一个自己。它默默退回原位，决定明天再谈交接。什么也没得到。",
+          "reward": {
+            "kind": "none"
+          }
+        }
+      }
+    },
+    {
+      "id": "firefly_stop",
+      "name": "萤火虫临时停靠站",
+      "type": "instant",
+      "text": "〔萤火虫临时停靠站〕一队萤火虫落在你的袖口，排得像一截发光的拉链。领头的亮了三下，全队才重新起飞。袖口留下了12枚银币，像是刚结清的停车费。+12银。",
+      "reward": {
+        "kind": "silver",
+        "amount": 12
+      }
+    },
+    {
+      "id": "snail_reverse_practice",
+      "name": "偷练倒车的蜗牛",
+      "type": "choice",
+      "text": "〔偷练倒车的蜗牛〕一只蜗牛正沿着叶脉倒着走。旁边立着小牌：“练习中，请勿催促。”它的壳已经蹭到了路边的蘑菇。",
+      "options": {
+        "A": {
+          "label": "帮它看着后面",
+          "text": "你指挥它绕开蘑菇，顺利退进一片叶子底下。蜗牛从壳里拿出80金，认真付了陪练费。+80金。",
+          "reward": {
+            "kind": "coins",
+            "amount": 80
+          }
+        },
+        "B": {
+          "label": "给它留一条宽路",
+          "text": "你往后让了让。蜗牛慢慢转正，把叶片上驮着的一份食材推到路边，朝你晃了晃触角。获得随机食材×1。",
+          "reward": {
+            "kind": "ingredient"
+          }
+        }
+      }
+    },
+    {
+      "id": "cloud_quilt",
+      "name": "云朵晒被子",
+      "type": "instant",
+      "text": "〔云朵晒被子〕两棵树之间晾着一床小小的云被。风一吹，被角飘起来，掉出一瓶没拧开的加速药水。衣夹上贴着纸条：“口袋又忘了掏。”获得加速药水×1。",
+      "reward": {
+        "kind": "item",
+        "id": "speed_potion",
+        "amount": 1
+      }
+    },
+    {
+      "id": "frog_soundcheck",
+      "name": "青蛙试音",
+      "type": "choice",
+      "text": "〔青蛙试音〕青蛙对着一截空芦苇试音，第一声很响，第二声却从身后的水塘传了回来。它回头看了看，似乎也没想到还有伴唱。",
+      "options": {
+        "A": {
+          "label": "坐下听完这一曲",
+          "text": "伴唱越来越多，最后连水边的草叶都在抖。青蛙把一份用荷叶盖好的夜宵递给你，谢你没在中途离席。获得随机正常料理×1。",
+          "reward": {
+            "kind": "dish"
+          }
+        },
+        "B": {
+          "label": "帮它扶稳芦苇",
+          "text": "芦苇不再东倒西歪，歌声也清楚了。青蛙从底下翻出一根普通蚯蚓，郑重地作为谢礼交给你。获得普通蚯蚓×1。",
+          "reward": {
+            "kind": "bait",
+            "id": "basic_worm",
+            "amount": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "dragon_cup_warming",
+      "name": "小龙的温杯服务",
+      "type": "choice",
+      "text": "〔小龙的温杯服务〕小龙守着几只杯子练习吹热气。第一只烫了，第二只凉了，第三只的杯柄被它紧张地攥在爪里。",
+      "options": {
+        "A": {
+          "label": "请它慢慢吹一口",
+          "text": "这回温度刚好。小龙高兴得尾巴拍了一下地，把练习桌上刚温好的一份料理送给你。获得随机正常料理×1。",
+          "reward": {
+            "kind": "dish"
+          }
+        },
+        "B": {
+          "label": "帮它把杯子摆开",
+          "text": "你把杯子隔开一点，小龙终于不再来回碰倒它们。它把攒下的100金推过来，说是今天第一笔工钱。+100金。",
+          "reward": {
+            "kind": "coins",
+            "amount": 100
+          }
+        }
+      }
+    },
+    {
+      "id": "antler_clothesline",
+      "name": "鹿角晾衣架",
+      "type": "instant",
+      "text": "〔鹿角晾衣架〕小鹿的角上挂着三条手帕。它低头喝水时，最短的那条落在你面前，上面绣着一道菜和几枚小蹄印。你帮它重新挂好，也记下了一条动物口味线索。",
+      "reward": {
+        "kind": "favorite"
+      }
+    },
+    {
+      "id": "crab_straight_race",
+      "name": "螃蟹的直线比赛",
+      "type": "choice",
+      "text": "〔螃蟹的直线比赛〕两只螃蟹在沙地上划好了起点和终点。哨子一响，它们同时横着出了赛道，又若无其事地回到起点。",
+      "options": {
+        "A": {
+          "label": "把赛道横过来",
+          "text": "这回它们顺利冲线，只是各自举着钳子坚持自己是第一名。裁判先把你的布场费结了。+10银。",
+          "reward": {
+            "kind": "silver",
+            "amount": 10
+          }
+        },
+        "B": {
+          "label": "当一次起跑裁判",
+          "text": "你刚举起手，它们就抢跑了。比赛重新开始了三次，最后送你一份食材，约好下回再比。获得随机食材×1。",
+          "reward": {
+            "kind": "ingredient"
+          }
+        }
+      }
+    },
+    {
+      "id": "sleepy_wishing_well",
+      "name": "打盹的许愿井",
+      "type": "instant",
+      "text": "〔打盹的许愿井〕你还没开口，井里先传来一声很轻的鼾声。水面浮着一块木牌：“愿望请明天再说。”你把歪掉的木牌扶正，没叫醒它，轻手轻脚地走了。",
+      "reward": {
+        "kind": "none"
+      }
+    },
+    {
+      "id": "pigeon_window_cleaner",
+      "name": "鸽子的收费擦窗服务",
+      "type": "choice",
+      "text": "〔鸽子的收费擦窗服务〕一只胖鸽子停在你的肩膀上，嘴里叼着半片湿树叶，煞有介事地在你的衣领上蹭来蹭去。旁边插着个小纸牌：“专业保洁，概不赊账。”",
+      "options": {
+        "A": {
+          "label": "任由它擦完",
+          "text": "鸽子不仅没擦干净，还顺便把树叶上的泥糊满了你的前胸。它歪着头伸出爪子“咕咕”叫，你硬着头皮被它叼走了6枚银币服务费。（-6银）",
+          "reward": {
+            "kind": "none"
+          },
+          "cost": {
+            "kind": "silver",
+            "amount": 6
+          }
+        },
+        "B": {
+          "label": "挥手把它轰走",
+          "text": "鸽子受了惊，“啪嗒”一声在你靴子上留下一摊热乎乎的白色鸟粪，扑棱着翅膀骂骂咧咧地飞走了。（无奖励，靴子变脏）",
+          "reward": {
+            "kind": "none"
+          }
+        }
+      }
+    },
+    {
+      "id": "hedgehog_collision_claim",
+      "name": "碰瓷的滚地刺猬",
+      "type": "choice",
+      "text": "〔碰瓷的滚地刺猬〕你刚往前迈了一步，草丛里忽然滚出一颗毛茸茸的刺猬，“哎哟”一声撞在你的脚尖上，随即四脚朝天躺在地上哼唧：“撞到刺了……没有十个银币起不来……”",
+      "options": {
+        "A": {
+          "label": "花钱消灾，给它10银",
+          "text": "刺猬拿到钱，骨碌一下翻过身，腿脚比谁都利索地钻回了草丛，临走前还吹了个口哨。（-10银）",
+          "reward": {
+            "kind": "none"
+          },
+          "cost": {
+            "kind": "silver",
+            "amount": 10
+          }
+        },
+        "B": {
+          "label": "蹲下来装作要给它量体温",
+          "text": "你刚掏出根小树枝做假体温计，刺猬以为治安官来了，吓得一激灵，骨碌一下滚没影了，原地还掉了一颗没吃完的野果。（获得随机食材×1）",
+          "reward": {
+            "kind": "ingredient"
+          }
+        }
+      }
+    },
+    {
+      "id": "coin_eating_machine",
+      "name": "会吞钱的售货机",
+      "type": "choice",
+      "text": "〔会吞钱的售货机〕路边立着一台锈迹斑斑的木制投币机，写着：“投入20银，随机掉落提神饮品。”",
+      "options": {
+        "A": {
+          "label": "投币试试手气",
+          "text": "钱币掉下去发出清脆的“叮当”声，里面齿轮卡壳地响了半天，最后“噗”的一声喷出一股白烟，窗口只吐出一张纸条：“感谢赞助，下次再来。”（-20银）",
+          "reward": {
+            "kind": "none"
+          },
+          "cost": {
+            "kind": "silver",
+            "amount": 20
+          }
+        },
+        "B": {
+          "label": "用力踹它一脚",
+          "text": "机器被你踹得晃了晃，内部一阵剧烈咳嗽，居然真的从出货口滚出一瓶没开封的加速药水。不过你的脚趾头也疼得够呛。（获得加速药水×1）",
+          "reward": {
+            "kind": "item",
+            "id": "speed_potion",
+            "amount": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "hamster_protection_fee",
+      "name": "仓鼠的强行保全费",
+      "type": "instant",
+      "text": "〔仓鼠的强行保全费〕你路过一片树丛，一只戴着墨镜的黑帮打扮仓鼠忽然从草里跳出来，双手叉腰：“此路是我开，此树是我……算了，看你面善，收你5金的安全保障金，保你今天走路不掉坑。”你还没反应过来，它已经跳起来从你钱袋里摸走5金，钻回洞里了。\n-5金。（金丝熊银行肯定不认这笔保费）",
+      "cost": {
+        "kind": "coins",
+        "amount": 5
+      },
+      "reward": {
+        "kind": "none"
+      }
+    },
+    {
+      "id": "magpie_wig_hairdresser",
+      "name": "喜鹊的假发理发师",
+      "type": "choice",
+      "text": "〔喜鹊的假发理发师〕一只喜鹊落在一根木桩上，脚边摆着一堆五颜六色的鸟毛和干草，牌子上写着：“独家定制潮流假发，只要5银。”",
+      "options": {
+        "A": {
+          "label": "掏钱买一顶试试",
+          "text": "喜鹊收了钱，利索地用草泥把一团杂毛糊在你的头顶。你低头照水洼，发现自己看起来像个刚被雷劈过的鸟巢。（-5银）",
+          "reward": {
+            "kind": "none"
+          },
+          "cost": {
+            "kind": "silver",
+            "amount": 5
+          }
+        },
+        "B": {
+          "label": "指指自己浓密的头发表示不需要",
+          "text": "喜鹊嫌弃地看了你的发型一眼，觉得毫无艺术感。它气愤地啄下一小撮干草扔你身上，草根里居然还夹着一根没烂透的普通蚯蚓。（获得普通蚯蚓×1）",
+          "reward": {
+            "kind": "bait",
+            "id": "basic_worm",
+            "amount": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "water_monkey_stones",
+      "name": "水猴子的赌石摊",
+      "type": "choice",
+      "text": "〔水猴子的赌石摊〕溪边一只湿漉漉的水猴子摆了三块长满青苔的石头，招揽你：“一块50金！里面可能裹着古代金币，也可能只是河泥，买定离手！”",
+      "options": {
+        "A": {
+          "label": "挑最重的那块砸开",
+          "text": "“啪”的一声砸开，里面除了湿漉漉的烂河泥和几只惊慌失措的小虾米，什么也没有。水猴子美滋滋地把你的50金塞进腮帮子里。（-50金）",
+          "reward": {
+            "kind": "none"
+          },
+          "cost": {
+            "kind": "coins",
+            "amount": 50
+          }
+        },
+        "B": {
+          "label": "砍价到10金买最小的",
+          "text": "水猴子翻了个白眼勉强同意。你敲开小石头，里面居然真的嵌着两片没被腐蚀的古老金箔，折算下来还小赚了一笔。（-10金，+80金）",
+          "reward": {
+            "kind": "coins",
+            "amount": 80
+          },
+          "cost": {
+            "kind": "coins",
+            "amount": 10
+          }
+        }
+      }
+    },
+    {
+      "id": "leaking_secondhand_lantern",
+      "name": "漏油的二手提灯",
+      "type": "choice",
+      "text": "〔漏油的二手提灯〕地摊上一只老穿山甲在低价处理一盏旧风灯：“15银，便宜甩卖，照亮你的夜路！”",
+      "options": {
+        "A": {
+          "label": "掏钱买下",
+          "text": "你刚接过来，灯底的锈铁皮直接脱落，里面的煤油泼了你一裤腿，灯架摔得粉碎。穿山甲收起钱摊了摊手：“二手物品，离柜概不退换。”（-15银）",
+          "reward": {
+            "kind": "none"
+          },
+          "cost": {
+            "kind": "silver",
+            "amount": 15
+          }
+        },
+        "B": {
+          "label": "弯腰仔细检查灯底",
+          "text": "你伸手戳了戳生锈的底座，穿山甲做贼心虚，连忙把灯收回摊位底下，顺手推给你一份它自己晒的野菜干打发你走开。（获得随机食材×1）",
+          "reward": {
+            "kind": "ingredient"
+          }
+        }
+      }
+    },
+    {
+      "id": "lucky_cat_curiosity_tax",
+      "name": "招财猫的营业税",
+      "type": "instant",
+      "text": "〔招财猫的营业税〕路边立着一只憨态可掬的木雕招财猫，它的爪子在一晃一晃。你好奇地上前摸了摸它的爪子，机关“咔哒”响了一声，招财猫的肚子忽然弹开一个小抽屉，直接把你挂在腰上的8枚银币吸了进去，上面弹出一行小字：“已缴纳今日好奇心税，祝您生活愉快。”\n-8银。（甚至不知道该去哪个部门投诉）",
+      "cost": {
+        "kind": "silver",
+        "amount": 8
+      },
+      "reward": {
+        "kind": "none"
+      }
+    }
   ],
   "coopEvents": [
-    {"id":"migration_help","name":"给迁徙队补一顿夜宵","kind":"dish","requirement":"一份正常料理"},
-    {"id":"fallen_tree","name":"把倒下的星光树扶起来","kind":"product","requirement":"一份牧场产物"},
-    {"id":"star_lamp","name":"点亮原野的旧星灯","kind":"cookable","requirement":"一份食材"},
-    {"id":"storm_nest","name":"替暴风雨后的水鸟补巢","kind":"bait","requirement":"一份鱼饵"}
+    {
+      "id": "migration_help",
+      "name": "给迁徙队补一顿夜宵",
+      "kind": "dish",
+      "requirement": "一份正常料理"
+    },
+    {
+      "id": "fallen_tree",
+      "name": "把倒下的星光树扶起来",
+      "kind": "product",
+      "requirement": "一份牧场产物"
+    },
+    {
+      "id": "star_lamp",
+      "name": "点亮原野的旧星灯",
+      "kind": "cookable",
+      "requirement": "一份食材"
+    },
+    {
+      "id": "storm_nest",
+      "name": "替暴风雨后的水鸟补巢",
+      "kind": "bait",
+      "requirement": "一份鱼饵"
+    },
+    {
+      "id": "firefly_patrol_supper",
+      "name": "给夜巡的萤火虫备一桌晚饭",
+      "kind": "dish",
+      "requirement": "一份正常料理"
+    },
+    {
+      "id": "lost_cub_provisions",
+      "name": "为迷路的幼兽准备返程干粮",
+      "kind": "dish",
+      "requirement": "一份正常料理"
+    },
+    {
+      "id": "field_kitchen_stock",
+      "name": "给原野小厨房补齐明早的食材",
+      "kind": "cookable",
+      "requirement": "一份食材"
+    },
+    {
+      "id": "night_fishing_class",
+      "name": "为溪边的夜钓课堂准备鱼饵",
+      "kind": "bait",
+      "requirement": "一份鱼饵"
+    },
+    {
+      "id": "migrant_station_supplies",
+      "name": "给候鸟驿站补一箱牧场物资",
+      "kind": "product",
+      "requirement": "一份牧场产物"
+    },
+    {
+      "id": "squirrel_picnic",
+      "name": "帮松鼠收集野餐用的食材",
+      "kind": "cookable",
+      "requirement": "一份食材"
+    }
   ]
 }
