@@ -42,10 +42,11 @@ export async function handleDoorbellSubmissionReviewCompleted(req, res, method, 
     }
 }
 
-function validIssueDateRequest(body) {
-    if (!isPlainObject(body) || Object.keys(body).length !== 1 ||
+function validIssueDateRequest(body, allowState = false) {
+    if (!isPlainObject(body) || Object.keys(body).some(key => key !== "issue_date" && !(allowState && key === "include_state")) ||
         !Object.hasOwn(body, "issue_date") ||
-        typeof body.issue_date !== "string" || !ISSUE_DATE_RE.test(body.issue_date))
+        typeof body.issue_date !== "string" || !ISSUE_DATE_RE.test(body.issue_date) ||
+        (Object.hasOwn(body, "include_state") && typeof body.include_state !== "boolean"))
         return null;
     return { issueDate: body.issue_date };
 }
@@ -213,7 +214,7 @@ export async function handleDoorbellReporterRelayPending(req, res, method, runti
         return;
     try {
         const body = await readJsonBody(req, MAX_BODY_BYTES);
-        const request = validIssueDateRequest(body);
+        const request = validIssueDateRequest(body, true);
         if (!request)
             return internalServiceError(res, 400, "invalid_request", "The reporter relay pending request is invalid");
         const issue = reporterRelayIssue(runtime.database, request.issueDate);
@@ -222,7 +223,7 @@ export async function handleDoorbellReporterRelayPending(req, res, method, runti
             : null;
         return jsonOut(res, 200, {
             ok: true,
-            data: { issue_date: request.issueDate, wake },
+            data: { issue_date: request.issueDate, ...(body.include_state === true ? { issue_status: issue?.status ?? null } : {}), wake },
         });
     }
     catch (error) {

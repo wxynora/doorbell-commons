@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import { advance, steal, visitorWater, tryWaterReward, buyPotionSet, ensureHumanKey, pushSocialInbox, pushLog, craft, cookingDebuffReason, cookingDebuffStatusText, bribeGuardDog } from "./engine.js";
 import { dispatch, farmView, viewShop, viewEncyclopedia, shopBrief, viewMarket, buyFromMarket, visitView, tendNpc, hasDamagedPublicName, viewKitchen } from "./game.js";
 import { harvestText, stealThiefText, statusFooter, waterText } from "./flavor.js";
-import { createFarm, getFarm, allFarms, playerFarms, replaceFarm, replaceFarmAndMysteryMerchantAtomic, save, getGlimmerWorld, getMysteryMerchantWorld, getPublicExpeditionWorld, getQixiLantern2026World, restoreWorldSnapshotInMemory, setWorldCommitCoordinator, setWorldPersistenceAdapter, settleLoadedWorld, snapshotWorldForRollback, withWorldCommitContext, advanceStoredMysteryMerchantWorld } from "./store.js";
+import { createFarm, getFarm, allFarms, playerFarms, replaceFarm, replaceFarmAndMysteryMerchantAtomic, save, getGlimmerWorld, getMysteryMerchantWorld, getPublicExpeditionWorld, getQixiLantern2026World, restoreCommittedWorldInMemory, setWorldCommitCoordinator, setWorldPersistenceAdapter, settleLoadedWorld, withWorldCommitContext, advanceStoredMysteryMerchantWorld } from "./store.js";
 import { MAX_FARMS, MESSAGE_TEXT_MAX, MESSAGES_MAX, NPC_ID, GROW_TICKS, BASE, REGISTRATION_OPEN, REGISTRATION_CLOSED_TEXT, REGISTRATION_CAP, REGISTRATION_FULL_TEXT, SHOW_MIGRATION_NOTICE, MIGRATION_NOTICE_TEXT, MIGRATION_NOTICE_HTML } from "./config.js";
 import { allowRequest, allowCreate, sweepGuard } from "./guard.js";
 import { sweepNonces, htmlReadme, htmlGuide } from "./agent.js";
@@ -104,13 +104,12 @@ function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
     return result;
 }
 function executeDoorbellFarmAction(farm, action, params, detail, now) {
-    const rollback = snapshotWorldForRollback();
     try {
         return withWorldCommitContext({ balanceAuthority: "farm", actor: "agent" }, () =>
             executeDoorbellFarmActionCore(farm, action, params, detail, now));
     }
     catch (error) {
-        restoreWorldSnapshotInMemory(rollback);
+        restoreCommittedWorldInMemory();
         throw error;
     }
 }
@@ -270,18 +269,15 @@ function agentReadyText(f, humanUrl, agentUrl, isNew) {
 （🏠 门牌号 ${f.id}，别人串门/偷菜认它、可公开。两条链接都不含主 token，AI 拿不到农场私钥。）`;
 }
 function runFarmCore(farmId, action, b, encArg, now, options = {}) {
-    const storedFarm = getFarm(farmId);
-    const currentFarm = storedFarm && action === "market"
-        ? discoverAndBroadcastMysteryMerchant(storedFarm, now).farm
-        : storedFarm;
+    let currentFarm = getFarm(farmId);
     if (!currentFarm)
         return { status: 400, json: { ok: false, text: `找不到农场 ${farmId || "(没给 farm)"}` } };
     const projectedRead = action === "visit" || action === "leaderboard" || action === "ranking" ||
         action === "help" || action === "shop" || action === "market" || action === "encyclopedia" ||
         (action === "kitchen" && (!b.op || b.op === "view")) ||
         (action === "guestbook" && b.on === undefined);
-    const f = projectedRead ? structuredClone(currentFarm) : currentFarm;
-    if (projectedRead) {
+    let f = projectedRead && action !== "market" ? structuredClone(currentFarm) : currentFarm;
+    if (projectedRead && action !== "market") {
         advance(f, now);
         if (f.id === NPC_ID)
             tendNpc(f, now);
@@ -523,9 +519,12 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
     // 视图（主人私有）
     if (!action || action === "status") {
         const cookingStatus = cookingDebuffStatusText(f, now);
-        const text = [dispatch(f, { action: "status" }, now).text, cookingStatus, ripeBroadcastText(now), stolenTodayText(f, now)].filter(Boolean).join("\n\n"); // 内部会 roll 季节事件（可能已改农场）
+        const changedFarmIds = new Set([f.id]);
+        const text = [dispatch(f, { action: "status" }, now).text, cookingStatus, ripeBroadcastText(now, changedFarmIds), stolenTodayText(f, now)].filter(Boolean).join("\n\n"); // 内部会 roll 季节事件（可能已改农场）
         bumpDaily(f, now, "logins"); // 网瘾榜（今日开自己农场主页次数）
-        save(); // 落盘：登录计数 + 状态里可能触发的季节事件
+        save(isTogetherSeason3(publicWorld)
+            ? { farmIds: [...changedFarmIds], componentKeys: [], allowCrossDomain: false }
+            : null); // 保留登录、季节事件和跨户成长，只提交实际变化的农场
         return { status: 200, json: { ok: true, text, ...vf(f) } };
     }
     if (action === "shop") {
@@ -534,6 +533,10 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         return { status: 200, json: { ok: true, text, ...vf(f) } };
     }
     if (action === "market") {
+        currentFarm = discoverAndBroadcastMysteryMerchant(currentFarm, now).farm;
+        f = structuredClone(currentFarm);
+        advance(f, now);
+        if (f.id === NPC_ID) tendNpc(f, now);
         const mysteryMerchantWorld = getMysteryMerchantWorld();
         const activeMerchant = activeMysteryMerchantEvent(mysteryMerchantWorld, now);
         const mysteryMerchant = projectMysteryMerchant(
@@ -803,7 +806,8 @@ function authenticatedResultFarm(farmId, body) {
     return own?.token && own.token === token ? own : undefined;
 }
 function runFarm(farmId, action, body = {}, encArg, now, options = {}) {
-    const publicWorldBefore = JSON.stringify(getPublicExpeditionWorld());
+    const initialPublicWorld = getPublicExpeditionWorld();
+    const publicWorldBefore = isTogetherSeason3(initialPublicWorld) ? null : JSON.stringify(initialPublicWorld);
     const out = runFarmCore(farmId, action, body, encArg, now, options);
     if (action === "together" && isTogetherSeason3(getPublicExpeditionWorld())) return out;
     const viewer = authenticatedResultFarm(farmId, body);
@@ -811,8 +815,8 @@ function runFarm(farmId, action, body = {}, encArg, now, options = {}) {
         return out;
     const world = getPublicExpeditionWorld();
     const season3 = isTogetherSeason3(world);
-    const publicFarms = playerFarms();
-    const publicFarmBefore = new Map(publicFarms.map((farm) => [farm.id, JSON.stringify(farm)]));
+    const publicFarms = season3 ? null : playerFarms();
+    const publicFarmBefore = season3 ? null : new Map(publicFarms.map((farm) => [farm.id, JSON.stringify(farm)]));
     const extras = [];
     if (season3) {
         const notices = storedTogetherSeason3Notices(viewer, now, { includeTasks: !action || action === "status" });
@@ -841,12 +845,11 @@ function runFarm(farmId, action, body = {}, encArg, now, options = {}) {
 }
 
 function runFarmWithRollback(farmId, action, body = {}, encArg, now, options = {}) {
-    const rollback = snapshotWorldForRollback();
     try {
         return runFarm(farmId, action, body, encArg, now, options);
     }
     catch (error) {
-        restoreWorldSnapshotInMemory(rollback);
+        restoreCommittedWorldInMemory();
         throw error;
     }
 }
@@ -1193,7 +1196,7 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
             // —— 人类页 /ui/<humanKey>[/section]（伴侣看农场观光 + 经营自己的牧场；AI 接口看不到这些）——
             //   只认低权限 humanKey：够看农场+经营人类牧场+改昵称，但不能当 API token。
             if (parts[0] === "ui") {
-                const rollback = method === "POST" ? snapshotWorldForRollback() : null;
+                const restoreOnFailure = method === "POST";
                 try {
                     return await handleLegacyHumanRoute({
                         req, res, url, parts, sp, method, now,
@@ -1202,8 +1205,8 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
                     });
                 }
                 catch (error) {
-                    if (rollback)
-                        restoreWorldSnapshotInMemory(rollback);
+                    if (restoreOnFailure)
+                        restoreCommittedWorldInMemory();
                     throw error;
                 }
             }

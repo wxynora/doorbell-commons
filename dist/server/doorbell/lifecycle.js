@@ -7,6 +7,7 @@ import {
     DoorbellWelcomeRewardError,
     findDoorbellFarmCreation,
     grantDoorbellWelcomeReward,
+    getFarm,
     playerFarms,
     save,
     withWorldCommitContext,
@@ -198,10 +199,10 @@ export async function handleDoorbellFarmExecution(req, res, method, executeFarmA
     try {
         const body = await readJsonBody(req, MAX_BODY_BYTES);
         const keys = isPlainObject(body) ? Object.keys(body) : [];
-        const allowedKeys = new Set(["farm_human_key", "expected_farm_doorplate", "action", "params", "detail"]);
-        if (!isPlainObject(body) || keys.some((key) => !allowedKeys.has(key)) || keys.some((key) => key !== "detail" && body[key] === undefined))
+        const allowedKeys = new Set(["farm_human_key", "expected_farm_doorplate", "action", "params", "detail", "include_status"]);
+        if (!isPlainObject(body) || keys.some((key) => !allowedKeys.has(key)) || keys.some((key) => !["detail", "include_status"].includes(key) && body[key] === undefined))
             return internalServiceError(res, 400, "invalid_request", "Submit only farm_human_key, expected_farm_doorplate, action, params, and optional detail");
-        if (typeof body.action !== "string" || !body.action.trim() || !isPlainObject(body.params) || (body.detail !== undefined && typeof body.detail !== "boolean"))
+        if (typeof body.action !== "string" || !body.action.trim() || !isPlainObject(body.params) || (body.detail !== undefined && typeof body.detail !== "boolean") || (body.include_status !== undefined && typeof body.include_status !== "boolean"))
             return internalServiceError(res, 400, "invalid_request", "action, params, or detail is invalid");
         if (DOORBELL_EXECUTION_BLOCKED_ACTIONS.has(body.action))
             return internalServiceError(res, 400, "unsupported_action", "This legacy farm action is not available through Doorbell");
@@ -219,6 +220,18 @@ export async function handleDoorbellFarmExecution(req, res, method, executeFarmA
             text: typeof out.json?.text === "string" ? out.json.text : "农场没有返回可读取的结果。",
             ...(body.detail === true && isPlainObject(out.json?.farm) ? { farm: out.json.farm } : {}),
         };
+        if (body.include_status === true && body.action !== "status") {
+            try {
+                const currentFarm = getFarm(binding.farm.id);
+                const status = executeFarmAction(currentFarm, "status", {}, false, Date.now());
+                if (status.json?.ok === true && typeof status.json.text === "string")
+                    publicResult.status_text = status.json.text;
+            }
+            catch {
+                // The original action has already completed; retain its authoritative receipt.
+                console.error("[doorbell-farm-execution] optional status failed");
+            }
+        }
         return jsonOut(res, out.status, publicResult);
     }
     catch (error) {

@@ -499,9 +499,14 @@ function generateAnimalCase(farm, state, day, now) {
 export function advanceP3Farm(farm, now = Date.now(), options = {}) {
     const day = beijingDay(now);
     const migrated = normalizeFarmAgronomyIssues(farm);
+    const previous = farm.lingyeP3;
+    // Empty actionReceipts live in their own SQLite table and are omitted on hydration.
+    const initialized = !previous || previous.version !== 1 || previous.history == null
+        || previous.lastAdvancedDay == null
+        || previous.lastAnimalRecoveryDay === undefined;
     const state = p3State(farm, day);
     const generated = [];
-    let changed = migrated;
+    let changed = migrated || initialized;
     for (let candidateDay = state.lastAdvancedDay + 1; candidateDay <= day; candidateDay += 1) {
         changed = advanceRecoveries(farm, state, candidateDay, now) || changed;
         if (options.generateNewCases !== false) {

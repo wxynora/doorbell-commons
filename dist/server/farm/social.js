@@ -40,9 +40,9 @@ export function visitListResult(me) {
     return { ok: true, text, farms: entries.map((entry) => ({ number: entry.number, name: entry.farm.name, aiName: entry.farm.aiName || "AI" })) };
 }
 /** 打开自家农场时看到的全服实时成熟广播；固定编号与串门列表共用。 */
-export function ripeBroadcastText(now) {
+export function ripeBroadcastText(now, changedFarmIds) {
     const entries = numberedPlayerFarms().map(({ number, farm }) => {
-        advance(farm, now);
+        advance(farm, now, changedFarmIds ? (id) => changedFarmIds.add(id) : undefined);
         return { number, farm, ripe: farm.plots.filter((plot) => plot.crop?.ripe).length };
     }).filter((entry) => entry.ripe > 0);
     if (!entries.length)

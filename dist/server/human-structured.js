@@ -88,8 +88,7 @@ function stripReceipts(value) {
         return value;
     const result = {};
     for (const [key, nested] of Object.entries(value)) {
-        if (key === "doorbellHumanHarvestReceipts" ||
-            key === "doorbellHumanLandUpgradeReceipts" ||
+        if ((key.startsWith("doorbellHuman") && key.endsWith("Receipts")) ||
             key === "doorbellHumanBulletinReadState")
             continue;
         result[key] = stripReceipts(nested);

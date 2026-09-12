@@ -355,6 +355,8 @@ export function createLingyeFarmBalanceCoordinator(database, backend, options = 
                 if (!residentId || byResident.has(residentId))
                     throw new Error("Migrated farm resident binding is unavailable or duplicated");
                 byResident.add(residentId);
+                if (candidateFarmIds && !candidateFarmIds.has(farm.id))
+                    continue;
                 const registeredAt = Number.isFinite(Date.parse(migration.revokedAt))
                     ? Date.parse(migration.revokedAt)
                     : Date.now();
@@ -376,6 +378,8 @@ export function createLingyeFarmBalanceCoordinator(database, backend, options = 
             const farmChanges = [];
             const persistenceFarmIds = new Set();
             for (const farm of migrated) {
+                if (candidateFarmIds && !candidateFarmIds.has(farm.id))
+                    continue;
                 const migration = farm.doorbellMcpMigration;
                 const residentId = migration.residentId;
                 const account = backend.trustedQueries.getAccount(residentId);

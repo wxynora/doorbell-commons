@@ -44,9 +44,8 @@ import {
     getQixiLantern2026World,
     playerFarms,
     replaceFarm,
-    restoreWorldSnapshotInMemory,
+    restoreCommittedWorldInMemory,
     save,
-    snapshotWorldForRollback,
 } from "../../store.js";
 import { BASE, HUMAN_HARVEST_DAILY_CAP, WELCOME_MAX } from "../../config.js";
 import {
@@ -670,13 +669,12 @@ export async function handleLegacyHumanRoute({
     // 🧭 铃野共行：独立于个人探险的全服公共副本，只读展示共享剧情、任务、结局与往期故事。
     if (section === "together") {
         const world = getPublicExpeditionWorld();
-        const rollback = snapshotWorldForRollback();
         try {
             advancePublicExpedition(world, playerFarms(), now);
             save();
         }
         catch (error) {
-            restoreWorldSnapshotInMemory(rollback);
+            restoreCommittedWorldInMemory();
             throw error;
         }
         persistHumanReadFarm();

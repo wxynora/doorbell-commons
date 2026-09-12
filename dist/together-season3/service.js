@@ -93,7 +93,7 @@ function identityFor(farm, now) {
   };
 }
 
-function prepare(raw, nature, farms, now) {
+function prepare(raw, nature, farms, now, isolateRewardFarms = false) {
   let state = assertResult(advanceTogetherSeason3(raw, nature, now)).state;
   state.storyTitle = content.title;
   for (const farm of farms) {
@@ -116,6 +116,9 @@ function prepare(raw, nature, farms, now) {
     state.endingTitle = content.ending.title;
     state.endingTitleId = content.ending.titleId;
     state.endingText = season3EndingText(state);
+    if (isolateRewardFarms) {
+      for (let index = 0; index < farms.length; index += 1) farms[index] = clone(farms[index]);
+    }
     settlePublicExpeditionRewards(state, farms, now);
   }
   return state;
@@ -123,7 +126,10 @@ function prepare(raw, nature, farms, now) {
 
 function commit(state, farms, nextNatureWorld) {
   return replaceFarmsAndPublicExpeditionAtomic({
-    replacements: farms.map((farm) => ({ id: farm.id, farm })),
+    replacements: farms.filter((farm) => {
+      const current = getFarm(farm.id);
+      return farm !== current && JSON.stringify(farm) !== JSON.stringify(current);
+    }).map((farm) => ({ id: farm.id, farm })),
     nextPublicExpeditionWorld: state,
     ...(nextNatureWorld === undefined ? {} : { nextNatureWorld }),
   });
@@ -210,10 +216,14 @@ function statusText(state, actor, now) {
 // Ordinary authenticated Farm results carry the same per-household notices as
 // earlier seasons. Nature catch-up and consumed markers commit together.
 export function storedTogetherSeason3Notices(farm, now, { includeTasks = false } = {}) {
-  const farms = playerFarms().map(clone);
-  const actor = farms.find((entry) => entry.id === farm.id);
-  if (!actor || !isTogetherSeason3(getPublicExpeditionWorld())) return "";
-  const state = prepare(getPublicExpeditionWorld(), getNatureWorld(), farms, now);
+  const farms = playerFarms();
+  const actorIndex = farms.findIndex((entry) => entry.id === farm.id);
+  if (actorIndex < 0 || !isTogetherSeason3(getPublicExpeditionWorld())) return "";
+  // Authority receipt collection reads other farms. Only ending rewards may
+  // mutate them; isolate those farms before settlement and otherwise clone the viewer.
+  const state = prepare(getPublicExpeditionWorld(), getNatureWorld(), farms, now, true);
+  const actor = clone(farms[actorIndex]);
+  farms[actorIndex] = actor;
   const messages = takePublicAiNotices(state, actor, now, farms);
   if (includeTasks || messages.length) {
     const deliveries = season3PendingDeliveryCalls(state, actor);

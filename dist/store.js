@@ -499,6 +499,13 @@ export function withWorldCommitContext(context, operation) {
 export function snapshotWorldForRollback() {
     return structuredClone(worldSnapshot());
 }
+/** Recover the latest durable checkpoint, including commits made during this request. */
+export function restoreCommittedWorldInMemory() {
+    const committed = worldPersistenceAdapter
+        ? worldPersistenceAdapter.loadLegacyWorld()
+        : JSON.parse(readFileSync(WORLD_FILE, "utf8"));
+    restoreWorldSnapshotInMemory(committed);
+}
 export function restoreWorldSnapshotInMemory(snapshot) {
     if (snapshot?.format !== "aifarm-world" || snapshot?.version !== 1 || !Array.isArray(snapshot?.farms))
         throw new TypeError("valid farm world snapshot is required");
@@ -637,9 +644,14 @@ export function replaceFarmsAndPublicExpeditionAtomic({ replacements = [], nextP
     const story = normalizePublicExpeditionWorld(structuredClone(nextPublicExpeditionWorld));
     const nature = nextNatureWorld === undefined ? natureWorld : normalizeNatureWorld(nextNatureWorld);
     const nextFarms = [...farms.values()].map(farm => staged.get(farm.id) ?? farm);
-    commitWorld({...worldSnapshot(nextFarms), publicExpedition:story, nature}, {
-        farmIds:[...staged.keys()],componentKeys:["publicExpedition", ...(nextNatureWorld === undefined ? [] : ["nature"])],allowCrossDomain:true,
-    });
+    const componentKeys = [];
+    if (JSON.stringify(story) !== JSON.stringify(publicExpeditionWorld)) componentKeys.push("publicExpedition");
+    if (nextNatureWorld !== undefined && JSON.stringify(nature) !== JSON.stringify(natureWorld)) componentKeys.push("nature");
+    if (staged.size > 0 || componentKeys.length > 0) {
+        commitWorld({...worldSnapshot(nextFarms), publicExpedition:story, nature}, {
+            farmIds:[...staged.keys()],componentKeys,allowCrossDomain:true,
+        });
+    }
     for (const [id,farm] of staged) farms.set(id,farm);
     publicExpeditionWorld = story;
     natureWorld = nature;
@@ -652,9 +664,9 @@ function ensureNpc() {
     farms.set(NPC_ID, makeNpcFarm());
     return true;
 }
-export function save() {
+export function save(hints = null) {
     try {
-        commitWorld(worldSnapshot());
+        commitWorld(worldSnapshot(), hints);
     }
     catch (error) {
         if (worldPersistenceAdapter)

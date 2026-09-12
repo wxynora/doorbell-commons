@@ -210,12 +210,15 @@ export function ensureHumanKey(farm) {
     return farm.humanKey;
 }
 // —— 惰性结算（纯时间生长，无缺水停滞）——
-export function advance(farm, now) {
-    if (farm.doorbellMcpMigration?.migrationId)
-        advanceP3Farm(farm, now);
+export function advance(farm, now, onChanged) {
+    const p3Changed = farm.doorbellMcpMigration?.migrationId
+        ? advanceP3Farm(farm, now).changed
+        : false;
     const elapsed = Math.floor((now - farm.lastTickAt) / TICK_MS);
-    if (elapsed <= 0)
+    if (elapsed <= 0) {
+        if (p3Changed) onChanged?.(farm.id);
         return 0;
+    }
     for (const p of farm.plots) {
         if (p.crop && !p.crop.ripe) {
             const growthEffect = agronomyGrowthEffect(p);
@@ -234,6 +237,7 @@ export function advance(farm, now) {
     }
     advanceRanch(farm, elapsed);
     farm.lastTickAt += elapsed * TICK_MS;
+    onChanged?.(farm.id);
     return elapsed;
 }
 // —— 揭晓 roll（收获/偷菜共用）——
