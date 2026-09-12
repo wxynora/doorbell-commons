@@ -1216,6 +1216,7 @@ export type CandidateTwoAction =
       residentName: string;
     }
   | { type: "permit-complete" }
+  | { type: "profile-identity-updated" }
   | {
       type: "home-settings-save";
       field: "climateType" | "environmentDescription" | "homeName";
@@ -1302,6 +1303,7 @@ const candidateTwoActionKeys = {
     "residentName",
   ],
   "permit-complete": ["type"],
+  "profile-identity-updated": ["type"],
   "home-settings-save": ["type", "field", "value"],
   "profile-add": ["type"],
   "owner-profile-career-open": ["type"],
@@ -1594,7 +1596,7 @@ export function parseCandidateTwoAction(value: unknown): CandidateTwoAction | nu
       : null;
   }
 
-  return type === "permit-complete" ||
+  return type === "profile-identity-updated" || type === "permit-complete" ||
     type === "logout" ||
     type === "shared-memes-open" ||
     type === "lingye-glimmer-open" ||
@@ -2020,6 +2022,15 @@ const PROFILE_RUNTIME_CONTENT = `        <div class="candidate2-profile-scale-sh
                         <p><span>农场门牌</span><strong class="profile-farm-doorplate">—</strong></p>
                         <p><span>职业</span><strong class="profile-career">—</strong></p>
                     </div>
+                    <form id="profile-identity-editor" class="candidate2-profile-editor" hidden>
+                        <label><span>居民姓名</span><input id="profile-resident-name-input" name="resident_name" required></label>
+                        <label><span>家园名称</span><input id="profile-home-name-input" name="home_name" required></label>
+                        <div class="candidate2-profile-editor-actions">
+                            <p class="candidate2-profile-editor-status" aria-live="polite"></p>
+                            <button class="candidate2-profile-editor-cancel" type="button">取消</button>
+                            <button class="candidate2-profile-editor-save" type="submit">保存</button>
+                        </div>
+                    </form>
                 </div>
             </div>
         </section>
@@ -3298,6 +3309,14 @@ const RUNTIME_STYLES = `
         }
 
         #screen-profile,
+        .candidate2-profile-note{padding-bottom:calc(18px + 24px / 1.08);border-color:#e0d7cd;box-shadow:1px 2px 4px rgba(83,63,53,.07)}
+        .candidate2-profile-header-stack{min-height:200px}
+        .candidate2-profile-action{top:168px}
+        .candidate2-profile-action:first-child{top:20px}
+        .candidate2-identity-summary span{color:#86766c}
+        .candidate2-identity-summary strong{color:#594b43}
+        .candidate2-empty-panel p,.candidate2-profile-empty{color:#887a71}
+        .candidate2-profile-note-title{letter-spacing:.075em}
         #screen-settings {
             --candidate2-copy-font: var(--ui-regular-font);
             --candidate2-handwritten-font: 'Gaegu', 'ZCOOL KuaiLe', 'Yuanti SC', 'STYuanti-SC-Regular', '圆体-简', 'YouYuan', cursive;
@@ -3530,6 +3549,82 @@ const RUNTIME_STYLES = `
             font-size: 8px;
             font-weight: 500;
             text-align: right;
+        }
+
+        .candidate2-identity-summary[hidden],
+        .candidate2-profile-editor[hidden] {
+            display: none;
+        }
+
+        .candidate2-profile-editor {
+            display: grid;
+            gap: 5px;
+            min-width: 0;
+            margin: -2px 0 0;
+        }
+
+        .candidate2-profile-editor label {
+            display: grid;
+            grid-template-columns: 48px minmax(0, 1fr);
+            gap: 7px;
+            align-items: center;
+            color: #a8958b;
+            font-size: 8px;
+        }
+
+        .candidate2-profile-editor input {
+            box-sizing: border-box;
+            width: 100%;
+            height: 21px;
+            padding: 2px 6px;
+            border: 0;
+            border-bottom: 1px solid #d8c8bb;
+            border-radius: 0;
+            outline: none;
+            color: #60483f;
+            background: rgba(255, 255, 255, 0.42);
+            font: 500 9px/1 var(--ui-regular-font);
+        }
+
+        .candidate2-profile-editor input:focus {
+            border-bottom-color: #92756a;
+            background: rgba(255, 255, 255, 0.72);
+        }
+
+        .candidate2-profile-editor-actions {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+            justify-content: flex-end;
+            min-height: 20px;
+        }
+
+        .candidate2-profile-editor-status {
+            min-width: 0;
+            flex: 1 1 auto;
+            margin: 0;
+            overflow: hidden;
+            color: #92756a;
+            font-size: 7px;
+            line-height: 1.2;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .candidate2-profile-editor button {
+            min-width: 36px;
+            height: 19px;
+            padding: 0 6px;
+            border: 0;
+            border-radius: 1px;
+            color: #60483f;
+            background: #eadfd5;
+            font: 500 8px/1 var(--ui-regular-font);
+            cursor: pointer;
+        }
+
+        .candidate2-profile-editor-save {
+            background: #d9c6bc;
         }
 
         .candidate2-empty-panel {
@@ -8581,7 +8676,7 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     const farmLookupButton = document.getElementById('farm-lookup-button');
     const profileSubmitButton = profileForm.querySelector('button[type="submit"]');
     const mainNav = document.getElementById('main-nav');
-    const settingsFeedback = document.querySelector('.candidate2-settings-feedback');
+    const settingsFeedback = document.querySelector('.candidate2-settings-feedback:not(.settings-game-feedback)');
     const settingsProfilesSection = document.querySelector('.candidate2-settings-profiles');
     const settingsProfileSelect = document.querySelector('.settings-profile-select');
     const settingsAddProfileButton = document.getElementById('settings-add-profile');
@@ -8744,6 +8839,16 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         row.append(from, document.createTextNode('至'), to, remove);
         gameRanges.append(row);
     }
+    function markGameSettingsEdited() {
+        if (gameSaving) return;
+        gamePanel.querySelector('.settings-game-save').textContent = '保存';
+        setStatus(gameFeedback, '');
+    }
+    gamePanel.addEventListener('input', markGameSettingsEdited);
+    gamePanel.addEventListener('click', (event) => {
+        const button = event.target.closest('button');
+        if (button && !button.matches('.settings-game-save')) markGameSettingsEdited();
+    }, true);
     gamePanel.querySelector('.settings-game-add-range').onclick = () => addGameRange();
     gameQuiet.onchange = () => {
         if (gameQuiet.checked && !gameRanges.children.length) addGameRange();
@@ -8764,6 +8869,7 @@ const CANDIDATE_RUNTIME_SCRIPT = `
             setStatus(gameFeedback, '演示设置已更新，不会保存到账号。'); return;
         }
         gameSaving = true;
+        gamePanel.querySelector('.settings-game-save').textContent = '保存中…';
         setStatus(gameFeedback, '正在保存…');
         sendAction({ type: 'game-preferences-save', value });
     };
@@ -8833,6 +8939,7 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         }
         if (gameSaving && !pending) {
             setStatus(gameFeedback, issueMessage || '已保存');
+            gamePanel.querySelector('.settings-game-save').textContent = issueMessage ? '保存' : '已保存';
             gameSaving = false;
         }
         applySettingValue(settingsHomeName, homeSettings.homeName, profileChanged);
@@ -9180,7 +9287,9 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         profileSubmitButton.disabled = profileForm.dataset.pending === 'true';
     }
 
+    let currentIdentity;
     function applyIdentity(identity) {
+        currentIdentity = identity;
         const doorplate = 'DB-' + identity.farmDoorplate;
         document.querySelector('.permit-resident-name').textContent = identity.residentName;
         document.querySelector('.permit-home-name').textContent = identity.homeName;
@@ -10493,9 +10602,34 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     document.getElementById('profile-design-button').addEventListener('click', () => {
         sendAction({type:'resident-avatar-open'});
     });
-    document.getElementById('profile-edit-button').addEventListener('click', () => {
-        showCandidateNotice('资料编辑暂未开放');
+    const identityEditButton = document.getElementById('profile-edit-button');
+    const identityForm = document.getElementById('profile-identity-editor');
+    const identitySummary = document.querySelector('.candidate2-identity-summary');
+    const identityName = document.getElementById('profile-resident-name-input');
+    const identityHome = document.getElementById('profile-home-name-input');
+    const identityFeedback = identityForm.querySelector('.candidate2-profile-editor-status');
+    function closeIdentityForm(){identityForm.hidden=true;identitySummary.hidden=false;identityEditButton.textContent='Edit Profile';}
+    identityEditButton.addEventListener('click',()=>{
+        if(!identityForm.hidden){closeIdentityForm();return;}
+        identityName.value=currentIdentity.residentName;identityHome.value=currentIdentity.homeName;
+        identitySummary.hidden=true;identityForm.hidden=false;identityEditButton.textContent='Editing';
+        setStatus(identityFeedback,'');identityName.focus();
     });
+    identityForm.querySelector('.candidate2-profile-editor-cancel').onclick=closeIdentityForm;
+    identityForm.onsubmit=async(event)=>{
+        event.preventDefault();
+        if(!identityName.value.trim()||!identityHome.value.trim()){setStatus(identityFeedback,'两项都需要填写');return;}
+        setFormDisabled(identityForm,true);identityEditButton.disabled=true;setStatus(identityFeedback,'正在保存…');
+        try{
+            const response=await fetch('/api/resident-profile',{method:'PATCH',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify({resident_name:identityName.value,home_name:identityHome.value})});
+            const result=await response.json();
+            if(!response.ok){setStatus(identityFeedback,result.error?.message||'保存失败，请重试');return;}
+            applyIdentity({...currentIdentity,residentName:result.resident_name,homeName:result.home_name});
+            closeIdentityForm();sendAction({type:'profile-identity-updated'});
+        }catch{setStatus(identityFeedback,'保存结果未确认，请刷新后查看');}
+        finally{setFormDisabled(identityForm,false);identityEditButton.disabled=false;}
+    };
+
     relationshipEditButton.addEventListener('click', () => {
         if (relationshipEditor.hidden) openRelationshipEditor();
         else closeRelationshipEditor();

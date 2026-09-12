@@ -996,6 +996,11 @@ export class RegistrationAuthService {
     return client.save(binding, body);
   }
 
+  async saveCurrentProfileNames(token: string, input: {resident_name:string;home_name:string}) {
+    const community = await this.getCurrentSessionWithMembership(token);
+    return this.#database.residentProfileStore.save(community.resident.residentId, community.home.homeId, input.resident_name, input.home_name);
+  }
+
   async readCurrentResidentAvatar(token: string, residentId?: string) {
     const community = await this.getCurrentSessionWithMembership(token);
     return this.#database.residentAvatarStore.read(residentId ?? community.resident.residentId);

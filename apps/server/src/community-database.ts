@@ -1,3 +1,4 @@
+import {ResidentProfileStore} from "./resident-profile/store.js";
 import { readGamePreferences, writeGamePreferences } from "./game-settings-store.js";
 import type { GamePreferences } from "@doorbell/protocol";
 import { ResidentAvatarStore } from "./resident-avatar/store.js";
@@ -1228,6 +1229,7 @@ export class CommunityDatabase {
   readonly #lingyeDailyStore: LingyeDailyStore;
   readonly humanBulletinStore: HumanBulletinStore;
   readonly residentAvatarStore: ResidentAvatarStore;
+  readonly residentProfileStore: ResidentProfileStore;
   readonly farmLayoutShareStore: FarmLayoutShareStore;
   readonly mysteryMerchantNightStore: MysteryMerchantNightStore;
   readonly mysteryMerchantReminderStore: MysteryMerchantReminderStore;
@@ -1262,6 +1264,7 @@ export class CommunityDatabase {
     this.#lingyeDailyStore = new LingyeDailyStore(this.#database);
     this.humanBulletinStore = new HumanBulletinStore(this.#database);
     this.residentAvatarStore = new ResidentAvatarStore(this.#database);
+    this.residentProfileStore = new ResidentProfileStore(this.#database);
     this.farmLayoutShareStore = new FarmLayoutShareStore(this.#database);
     this.mysteryMerchantNightStore = new MysteryMerchantNightStore(this.#database);
     this.mysteryMerchantReminderStore = new MysteryMerchantReminderStore(this.#database);

@@ -1,3 +1,4 @@
+import {registerResidentProfileRoutes} from "./resident-profile/routes.js";
 import { registerResidentAvatarRoutes } from "./resident-avatar/routes.js";
 import { registerFarmLayoutShareRoutes } from "./farm-layout-sharing/routes.js";
 import { installFaultReports, type FaultReports } from "./fault-reports/collector.js";
@@ -2062,6 +2063,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       done(null, new URLSearchParams(typeof body === "string" ? body : body.toString("utf8"))),
   );
 
+  registerResidentProfileRoutes(app, options.registrationAuth);
   registerHumanNpcRoutes(app, { registrationAuth: options.registrationAuth, secureCookies: options.secureCookies });
 
   if(options.lingyeDailyService) registerHumanBulletinRoutes(app, {

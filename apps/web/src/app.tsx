@@ -396,6 +396,7 @@ function LiveApp() {
     () => (isDoorbellFarmPath(window.location.pathname) ? "farm" : "community"),
   );
   const [showMcpAfterPermit, setShowMcpAfterPermit] = useState(false);
+  const [updatedPermit, setUpdatedPermit] = useState<HumanIdentity | null>(null);
   const [showBellAccess, setShowBellAccess] = useState(false);
   const [lingyeScreenActive, setLingyeScreenActive] = useState(false);
   const [lingyeMapActive, setLingyeMapActive] = useState(false);
@@ -701,6 +702,18 @@ function LiveApp() {
 
   const handleCandidateAction = useCallback(
     async (action: CandidateTwoAction) => {
+      if (action.type === "profile-identity-updated") {
+        const result = await getCurrentHumanSession();
+        if (result.ok) {
+          setAppState(current => current.stage === "authenticated" ? {
+            ...current, identity: result.identity,
+            homeSettings: current.homeSettings.stage === "ready" ? {stage:"ready",data:{...current.homeSettings.data,home:{...current.homeSettings.data.home,home_name:result.identity.home.home_name}}} : current.homeSettings,
+          } : current);
+          setUpdatedPermit(result.identity);
+        }
+        return;
+      }
+
       if (action.type === "lingye-presence-change") {
         setLingyeScreenActive(action.active);
         setLingyeMapActive(action.mapActive);
@@ -1350,6 +1363,7 @@ function LiveApp() {
 
   return (
     <div className="live-app">
+      {updatedPermit && appState.stage === "authenticated" ? <div style={{position:"fixed",inset:0,zIndex:1000,overflow:"auto"}}><ResidencePermitTransition identity={updatedPermit} onComplete={() => setUpdatedPermit(null)} /></div> : null}
       <CandidateTwoPreview
         onAction={handleCandidateAction}
         state={authenticatedViewState(appState)}
