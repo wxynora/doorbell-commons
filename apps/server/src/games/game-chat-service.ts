@@ -133,6 +133,7 @@ export class GameChatService {
     input: GameChatSendInput,
   ): Promise<GameChatMessage> {
     const actor = await this.authenticateSeat(caller, roomId);
+    if(this.roomStore.read(roomId)?.seats.some(s=>s.playerId===actor.playerId&&s.forfeited))throw new GameAccessError('not_seated');
     validateSendInput(input);
     if (input.replyToMessageId !== undefined && !this.chatStore.read(roomId, 0).some(message => String(message.sequence) === input.replyToMessageId)) {
       throw new GameStateError("game_chat_reply_not_found");

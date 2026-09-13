@@ -8,7 +8,7 @@ export type GameActor = Readonly<{
   /** Authenticated resident account; absent on legacy unbound seats. */
   residentId?: string | null;
 }>;
-export interface GameSeat extends GameActor { ready: boolean }
+export interface GameSeat extends GameActor { ready: boolean; forfeited?: boolean }
 export interface GameRoom {
   deadline?: import('./game-timeout.js').GameDeadline | null;
   roomId: string;

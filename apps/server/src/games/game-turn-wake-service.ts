@@ -315,6 +315,7 @@ export class GameTurnWakeService {
       const room = this.#options.tables.read(roomId);
       if (!room || room.roomId !== roomId || room.phase === "finished") continue;
       for (const seat of room.seats) {
+        if(seat.forfeited)continue;
         const residentId = residentIdForSeat(seat);
         if (!residentId) continue;
         const key = subscriptionKey(roomId, residentId);
@@ -385,6 +386,9 @@ export class GameTurnWakeService {
       return;
     }
     const decision = this.#eligibility(view.kind, view.game, actor.playerId);
+    if(view.seats.some(s=>s.playerId===actor.playerId&&s.forfeited)&&!decision.roundEnded){
+      this.#cancelRoomWakes(residentId,view.roomId,revision,true);return;
+    }
     if (!decision.needsDecision && !(decision.roundEnded && view.settlement)) {
       this.#cancelRoomWakes(residentId, view.roomId, revision, true);
       return;
@@ -521,4 +525,3 @@ export class GameTurnWakeService {
 export function createGameTurnWakeService(options: GameTurnWakeServiceOptions): GameTurnWakeService {
   return new GameTurnWakeService(options);
 }
-

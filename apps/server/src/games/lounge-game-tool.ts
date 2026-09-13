@@ -698,7 +698,10 @@ export class LoungeGameTool {
   async #inspectRoom(caller: GameCaller, table: LoungePublicTable): Promise<RoomInspection> {
     const room = table.room!;
     try {
-      return { table, view: await this.#gameService.view(caller, room.room_id), seated: true };
+      const view=await this.#gameService.view(caller,room.room_id);
+      const actor=await caller.authenticate();
+      if(view.seats.some(s=>s.playerId===actor.playerId&&s.forfeited))return{table,view:null,seated:false};
+      return { table, view, seated: true };
     } catch (error) {
       if (hasErrorCode(error, "not_seated")) return { table, view: null, seated: false };
       return { table, view: null, seated: false, error };
@@ -827,7 +830,7 @@ export class LoungeGameTool {
       this.#addGameActionOptions(lines, residentId, playerId, table, view);
     }
 
-    if (view.phase === "waiting" || view.phase === "finished") {
+    if (view.phase === "waiting" || view.phase === "finished" || view.phase === "playing") {
       if (this.#gameService.leave) {
         this.#addOption(lines, residentId, {
           kind: "leave",
@@ -1912,4 +1915,3 @@ function hasErrorCode(error: unknown, code: string): boolean {
   if (!(error instanceof Error)) return false;
   return error.message === code || error.message.includes(code);
 }
-

@@ -1,4 +1,5 @@
 import {gameDisplayProjection,playerDisplayName} from "./game-display-names";
+import {GameMidroundExit} from './game-midround-exit';
 import {useEffect,useMemo,useRef,useState,type SyntheticEvent} from "react";
 import {GameSessionContext,type GameSessionBinding} from "./game-session-binding";
 import {GameChatContext} from "./game-chat-window";
@@ -59,7 +60,8 @@ function Session({roomId,initialRoom,viewerId,profiles:registeredProfiles,watchO
     if(next.game && projection(next.game).viewer_id!==viewerId)throw new Error("玩家局面不匹配");
     if(active.current && (!current.current || next.revision>=current.current.revision)){
       current.current=next;setRoom(next);
-      if(next.phase==='finished' && (next.kind==='doudizhu'||next.kind==='uno') && projection(next.game).phase==='round_over')void onExit();
+      if(!watchOnly&&next.seats.some(s=>s.playerId===viewerId&&projection(s).forfeited))void onExit();
+      if(next.phase==='finished' && !next.seats.some(s=>projection(s).forfeited) && (next.kind==='doudizhu'||next.kind==='uno') && projection(next.game).phase==='round_over')void onExit();
     }
     return current.current ?? next;
   };
@@ -152,6 +154,7 @@ function Session({roomId,initialRoom,viewerId,profiles:registeredProfiles,watchO
   };
   return <div className={`game-session-host game-session--${room.kind}`}>
     {watchExit}
+    {!watchOnly&&room.phase==='playing'&&!['round_over','finished','game_over'].includes(String(projection(room.game).phase))&&projection(projection(room.game).public).game_result==null&&<GameMidroundExit baseStake={room.baseStake??0} onLeave={leave}/>}
     <div style={{display:"contents"}} onClickCapture={blockWatchAction} onPointerDownCapture={blockWatchAction} onKeyDownCapture={blockWatchAction}>
     {room.phase==="waiting"?<GameWaitingRoom room={room} viewerId={viewerId} profiles={profiles} connected={connected}
       onReady={async ready=>{const r=requireRoom();accept(await transport.ready(roomId,r.revision,ready));}}

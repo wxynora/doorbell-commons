@@ -1,4 +1,5 @@
 import { settlementView } from './game-settlement-result.js';
+import {forfeitSeat,forfeitDeltas} from './game-forfeit.js';
 import {advanceDoudizhuPasses} from './doudizhu-forced-pass.js';
 import { randomUUID } from "node:crypto";
 import {nextGameDeadline,timeoutCommand,isEndedWaitingRoom} from './game-timeout.js';
@@ -50,6 +51,7 @@ function publicSeat(seat: GameSeat): GameSeat {
     controllerType: seat.controllerType,
     ...(seat.residentId ? { residentId: seat.residentId } : {}),
     ready: seat.ready,
+    ...(seat.forfeited ? {forfeited:true} : {}),
   };
 }
 
@@ -139,6 +141,7 @@ export class GameService {
   async join(caller: GameCaller, roomId: string, revision: number) {
     const actor = await caller.authenticate();
     const room = this.current(roomId, revision);
+    if(room.seats.some(s=>s.playerId===actor.playerId&&s.forfeited))throw new GameAccessError('not_seated');
     if (
       room.seats.some(
         (seat) => seat.playerId === actor.playerId && seat.controllerType === actor.controllerType,
@@ -164,7 +167,7 @@ export class GameService {
       const room = this.store.read(roomId);
       if (
         room?.seats.some(
-          (seat) => seat.playerId === actor.playerId && seat.controllerType === actor.controllerType,
+          (seat) => !seat.forfeited && seat.playerId === actor.playerId && seat.controllerType === actor.controllerType,
         )
       ) {
         throw new GameStateError("already_seated");
@@ -188,7 +191,8 @@ export class GameService {
     this.seat(room, actor);
     const roundOverPlaying = room.phase === "playing" && isRoundOver(room.kind, room.snapshot);
     if (room.phase === "playing" && !roundOverPlaying) {
-      throw new GameStateError("game_in_progress");
+      if(!this.seat(room,actor).forfeited){forfeitSeat(room,actor.playerId);this.save(room);}
+      return this.lobbyView(room);
     }
 
     // A finished room must settle before a seat can disappear: the seat
@@ -260,7 +264,8 @@ export class GameService {
   ) {
     const actor = await caller.authenticate();
     const room = this.current(roomId, revision);
-    this.seat(room, actor);
+    const seat=this.seat(room, actor);
+    if(seat.forfeited && recordContext)throw new GameAccessError('not_seated');
     await this.settleDue(room);
     const outcome = await this.settlePendingOutcome(room);
     if (room.revision !== revision) throw new GameStateError("stale_room");
@@ -321,7 +326,7 @@ export class GameService {
     const actor=room.seats.find(s=>s.playerId===room.deadline!.playerId);
     if(!actor)return;
     const projection=await this.engine.project(room.kind,room.snapshot,actor.playerId);
-    const command=timeoutCommand(room.kind,projection,`timeout:${room.roomId}:${room.deadline.at}:${key}`);
+    const command=timeoutCommand(room.kind,projection,`timeout:${room.roomId}:${room.deadline.at}:${key}`,actor.forfeited===true);
     if(!command)throw new GameStateError('timeout_action_unavailable');
     const latest=this.current(roomId);
     if(latest.revision!==room.revision||latest.deadline?.at!==room.deadline.at||latest.deadline.key!==key)return;
@@ -440,13 +445,14 @@ export class GameService {
       }
     }
     const seatDeltas = settleSeatDeltas({ kind: room.kind, baseStake }, extracted.outcome);
-    const residentDeltas = aggregateResidentDeltas(seatDeltas, (playerId) =>
+    const residentDeltas = forfeitDeltas(room,seatDeltas,aggregateResidentDeltas(seatDeltas, (playerId) =>
       this.requireResidentId(seatByPlayer.get(playerId)!),
-    );
+    ),baseStake);
     const result = await this.economy.settle({ settlementId, deltas: residentDeltas });
     this.validateSettlementResult(result, settlementId, residentDeltas);
     room.lastSettlementId = settlementId;
     room.settlement = result;
+    if(isRoundOver(room.kind,room.snapshot)&&room.seats.some(s=>s.forfeited))room.phase='finished';
     this.save(room);
     await this.afterSettlement?.(room);
     return extracted;

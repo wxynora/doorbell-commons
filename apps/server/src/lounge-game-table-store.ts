@@ -39,7 +39,7 @@ export class LoungeGameTableStore extends GameStore {
       if (room.phase !== 'finished') {
         const others = this.listPublicTables().flatMap(table =>
           table.room && table.room.room_id !== room.roomId ? this.read(table.room.room_id)?.seats ?? [] : []);
-        if (room.seats.some(seat => others.some(other => other.playerId === seat.playerId))) {
+        if (room.seats.some(seat => !seat.forfeited&&others.some(other => !other.forfeited&&other.playerId === seat.playerId))) {
           throw new GameStateError('already_seated');
         }
       }

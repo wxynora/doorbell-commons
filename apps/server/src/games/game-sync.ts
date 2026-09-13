@@ -28,6 +28,7 @@ function publicSeat(seat: GameRoom["seats"][number]): GameRoom["seats"][number] 
     controllerType: seat.controllerType,
     ...(seat.residentId ? { residentId: seat.residentId } : {}),
     ready: seat.ready,
+    ...(seat.forfeited ? {forfeited:true} : {}),
   };
 }
 

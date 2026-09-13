@@ -20,6 +20,10 @@ export function nextGameDeadline(room:GameRoom,now:number):GameDeadline|null {
   const playerId=room.kind==='mahjong'?state.turn_player_id
     :room.kind==='monopoly'&&state.pending_debt?state.pending_debt.player_id:state.current_player_id;
   if(typeof playerId!=='string'||!room.seats.some(s=>s.playerId===playerId))return null;
+  if(room.seats.some(s=>s.playerId===playerId&&s.forfeited)){
+    const key=`forfeit:${room.revision}:${playerId}`;
+    return room.deadline?.key===key?room.deadline:{key,playerId,at:now};
+  }
   const key=JSON.stringify([room.kind,state.phase,playerId,
     room.kind==='uno'?state.pending?.card_id:null,
     room.kind==='mahjong'?state.last_discard:null]);
@@ -27,7 +31,7 @@ export function nextGameDeadline(room:GameRoom,now:number):GameDeadline|null {
 }
 
 /** Only legal, conservative single-step fallback. Never chooses social actions. */
-export function timeoutCommand(kind:GameKind,projection:unknown,commandId:string):Record<string,unknown>|null {
+export function timeoutCommand(kind:GameKind,projection:unknown,commandId:string,takeover=false):Record<string,unknown>|null {
   const view=rec(projection);
   if(kind==='leaf-game'){
     const actions=view.legal_actions as string[]|undefined;
@@ -46,6 +50,10 @@ export function timeoutCommand(kind:GameKind,projection:unknown,commandId:string
     :kind==='uno'?['keep','play','draw']
     :['roll','move','penalty_return'];
   for(const action of priority){
+    if(takeover&&kind==='doudizhu'&&action==='bid'){
+      const bid=moves.find(m=>m.action==='bid'&&m.value>0);
+      if(bid){const {label,...fields}=bid;return{...fields,command_id:commandId,expected_revision:view.revision};}
+    }
     const move=moves.find(m=>(kind==='mahjong'?m.kind:m.action)===action&&(action!=='bid'||m.value===0));
     if(!move)continue;
     if(kind==='mahjong')return {command_id:commandId,revision:view.revision,action_id:move.action_id};

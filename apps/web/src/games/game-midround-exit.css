@@ -1,0 +1,9 @@
+.game-midround-exit{position:fixed;bottom:max(16px,env(safe-area-inset-bottom));left:max(16px,env(safe-area-inset-left));z-index:90;width:44px;height:44px;display:grid;place-items:center;border:1px solid #526a4929;border-radius:50%;background:#fff8e9;color:#3b5147;cursor:pointer;}
+.game-midround-confirm{position:fixed;inset:0;margin:auto;box-sizing:border-box;width:min(360px,calc(100vw - 32px));max-height:calc(100dvh - 32px);overflow:auto;border:0;border-radius:18px;padding:24px;background:#fff8e9;color:#3b5147;font:16px/1.6 sans-serif;}
+.game-midround-confirm::backdrop{background:#15251d66;}
+.game-midround-confirm h2{font-size:20px;margin:0 0 12px;}
+.game-midround-confirm p{margin:0 0 18px;}
+.game-midround-confirm>div{display:flex;gap:12px;}
+.game-midround-confirm button{flex:1;min-height:44px;border:1px solid #526a4940;border-radius:10px;color:inherit;background:transparent;font:inherit;cursor:pointer;}
+.game-midround-confirm button:last-child{background:#ead397;border-color:transparent;}
+.game-midround-confirm button:disabled{opacity:.55;cursor:wait;}

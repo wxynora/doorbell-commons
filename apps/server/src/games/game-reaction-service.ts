@@ -21,8 +21,8 @@ export class GameReactionService {
     let record = this.store.find(actor.playerId,input.requestId);
     if (!record) {
       const room=this.rooms.read(input.roomId);
-      const sender=room?.seats.find(seat=>seat.playerId===actor.playerId);
-      const target=room?.seats.find(seat=>seat.playerId===input.targetId);
+      const sender=room?.seats.find(seat=>!seat.forfeited&&seat.playerId===actor.playerId);
+      const target=room?.seats.find(seat=>!seat.forfeited&&seat.playerId===input.targetId);
       if (!room || !sender || !target || sender.playerId===target.playerId || !actor.residentId || !target.residentId || sender.residentId!==actor.residentId) throw new Error("reaction_not_allowed");
       const senderName=await this.nameOf(actor.playerId);
       if (!senderName) throw new Error("sender_name_unavailable");

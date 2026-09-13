@@ -84,6 +84,7 @@ function validateRoom(room: GameRoom): { seatsJson: string; snapshotJson: string
     throw new GameStateError("The game room seats must be an array");
   }
   for (const seat of room.seats) {
+    if(seat.forfeited!==undefined&&typeof seat.forfeited!=='boolean')throw new GameStateError('invalid_forfeit');
     if (
       !seat ||
       typeof seat !== "object" ||
@@ -268,4 +269,3 @@ export class GameStore implements GameRoomStore {
 export function createGameStore(database: Database.Database): GameStore {
   return new GameStore(database);
 }
-

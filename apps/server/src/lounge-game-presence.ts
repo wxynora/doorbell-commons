@@ -51,6 +51,7 @@ export class LoungeGamePresenceAdapter {
       const room = this.#tables.read(table.room.room_id);
       if (!room || room.phase === "finished") continue;
       for (const seat of room.seats) {
+        if(seat.forfeited)continue;
         if (
           typeof seat.residentId !== "string" ||
           seat.residentId.length === 0 ||
