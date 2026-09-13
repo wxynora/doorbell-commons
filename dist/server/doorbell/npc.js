@@ -10,6 +10,7 @@ import { createLingyeNpcGiftAdapter } from "../../npc/gift-adapter.js";
 import { getLingyeNpcWorldState, listResidentLingyeNpcViews } from "../../npc/service.js";
 import { advanceLingyeNpcWorld, nextLingyeNpcWorldTransitionAt } from "../../npc/world-schedule.js";
 import { isLingyeNpcChatAvailable } from "../../npc/shift-policy.js";
+import { appendNpcReceiptGreeting } from "../../npc/receipt-greeting.js";
 
 const LOCATION_OPERATIONS = Object.freeze({
     bank: "go.bank.choose",
@@ -135,16 +136,20 @@ export function createLingyeNpcRuntime({ database, backend, issueOption, now = D
             return chooseInternal(residentId, row.operation, row.internal_option);
         },
         decorate(residentId, op, args, result) {
-            if (!result.ok || Object.keys(args).length !== 0 || op === "go.newsroom.like" || detained(residentId)) return result;
+            if (!result.ok || result.data?.npc_dialogue || op === "go.newsroom.like" || detained(residentId)) return result;
             // Human encounters also cover leisure locations; those locations do
             // not imply an AI farm-commission chat entry.
             if (!Object.values(LOCATION_OPERATIONS).includes(actionOperation(op))) return result;
-            const npcs = list(residentId).filter((npc) => LOCATION_OPERATIONS[npc.location_id] === actionOperation(op));
-            if (npcs.length === 0) return result;
-            return { ...result, data: { ...result.data, npcs,
-                options: [...(result.data?.options ?? []), ...npcs.filter((npc) => npc.talk_option)
-                    .map((npc) => ({ option: npc.talk_option, label: `和${npc.name}聊聊`, requires: [] }))],
-            } };
+            if (Object.keys(args).length === 0) {
+                const npcs = list(residentId).filter((npc) => LOCATION_OPERATIONS[npc.location_id] === actionOperation(op));
+                if (npcs.length > 0) result = { ...result, data: { ...result.data, npcs,
+                    options: [...(result.data?.options ?? []), ...npcs.filter((npc) => npc.talk_option)
+                        .map((npc) => ({ option: npc.talk_option, label: `和${npc.name}聊聊`, requires: [] }))],
+                } };
+            }
+            return appendNpcReceiptGreeting({ residentId, op, args, result,
+                npcs: listResidentLingyeNpcViews(database, residentId),
+            });
         },
         validateBinding(residentId, farm) {
             const identity = database.prepare("SELECT binding_reference FROM residents WHERE resident_id = ?").get(residentId);
