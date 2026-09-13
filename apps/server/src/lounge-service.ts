@@ -543,6 +543,12 @@ export class LoungeService {
     return retracted;
   }
 
+  recordGameResult(input: LoungePetInput): void {
+    if (this.#store.hasActivity(input.activityId)) return;
+    const activity = this.#store.appendActivity({ ...input, kind: "game_result" });
+    this.#emitChanged({ activity });
+  }
+
   pet(input: LoungePetInput): LoungeActivityRecord {
     this.#activeCommunity(input.residentId);
     if (this.#gamePresence.has(input.residentId)) {

@@ -148,7 +148,7 @@ function Session({roomId,initialRoom,viewerId,profiles:registeredProfiles,watchO
   if(!room)return <div className="game-session-status" role="status">{watchExit}{error||"正在连接游戏…"}{error&&<button type="button" onClick={()=>setReloadKey(key=>key+1)}>重新连接</button>}</div>;
   const Page=pages[room.kind];
   const blockWatchAction=(event:SyntheticEvent)=>{
-    if(watchOnly && !(event.target instanceof Element && event.target.closest('.game-chat-toggle, .game-chat-window, .game-watch-exit'))){event.preventDefault();event.stopPropagation();}
+    if(watchOnly && !(event.target instanceof Element && event.target.closest('.game-chat-toggle, .game-chat-window, .game-watch-exit, .leaf-rules'))){event.preventDefault();event.stopPropagation();}
   };
   return <div className={`game-session-host game-session--${room.kind}`}>
     {watchExit}

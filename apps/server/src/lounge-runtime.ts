@@ -1,3 +1,4 @@
+import { publishLoungeGameEffects } from './lounge-game-effects.js';
 import { pendingReactionContext } from "./games/game-reaction-context.js";
 import { WaitingSeatPresence } from "./games/waiting-seat-presence.js";
 import type { LoungeSnapshot } from "@doorbell/protocol";
@@ -256,6 +257,7 @@ export function createLoungeRuntime(options: LoungeRuntimeOptions) {
     database.residentSocialStore,
     now,
     async room => {
+      try { publishLoungeGameEffects(room, now(), event => lounge.recordGameResult(event)); } catch (error) { options.onError(error); }
       await Promise.all(room.seats.filter(seat=>seat.controllerType==="resident" && seat.residentId).map(async seat=>{
         try { await turnWakes.replay(seat.residentId!,room.roomId); } catch(error) { options.onError(error); }
       }));

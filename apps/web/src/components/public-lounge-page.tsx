@@ -20,7 +20,7 @@ export interface LoungeScenePresence {
   doorplate: string;
   slotId: string | null;
   position: readonly [number, number, number];
-  effect: string | null;
+  effect: { spokeAt: number | null; idleSince: number; petAt: number | null; resultAt: number | null; result: string | null; inGame: boolean };
   avatarSrc: string | null;
 }
 
@@ -55,6 +55,12 @@ function compareLoungeSnapshots(left: LoungeSnapshot, right: LoungeSnapshot): nu
   return 0;
 }
 
+function latestResidentActivity(snapshot: LoungeSnapshot, residentId: string, kind: string) {
+  const activity = snapshot.activities.filter(item => item.resident_id === residentId && item.kind === kind)
+    .sort((a, b) => b.sequence - a.sequence)[0];
+  return activity ? { time: Date.parse(activity.created_at), result: typeof activity.data.result === "string" ? activity.data.result : null } : null;
+}
+
 function scenePresenceForSnapshot(
   snapshot: LoungeSnapshot,
   standingImages: Readonly<Record<string, string>>,
@@ -65,7 +71,14 @@ function scenePresenceForSnapshot(
     doorplate: presence.farm_doorplate,
     slotId: presence.slot_id,
     position: presence.idle_position,
-    effect: null,
+    effect: {
+      spokeAt: presence.last_spoke_at ? Date.parse(presence.last_spoke_at) : null,
+      idleSince: Date.parse(presence.last_spoke_at ?? presence.entered_at),
+      inGame: presence.area_id === "mahjong" || presence.area_id === "round-table",
+      petAt: latestResidentActivity(snapshot, presence.resident_id, "pet")?.time ?? null,
+      resultAt: latestResidentActivity(snapshot, presence.resident_id, "game_result")?.time ?? null,
+      result: latestResidentActivity(snapshot, presence.resident_id, "game_result")?.result ?? null,
+    },
     avatarSrc: presence.slot_id ? null : (standingImages[presence.resident_id] ?? null),
   }));
 }
@@ -109,6 +122,7 @@ export function PublicLoungePage({
     frame.contentWindow.postMessage(
       {
         type: "lounge-state",
+        serverTime: nextSnapshot?.server_time,
         gamesEnabled: Boolean(gamesEnabled && gameViewerId && nextSnapshot && streamAvailableRef.current),
         tables: nextSnapshot?.tables.map(t => ({ tableId: t.table_id, gameKind: t.room?.kind ?? null, roomId: t.room?.room_id ?? null, revision: t.room?.revision ?? null, phase: t.room?.phase ?? null })) ?? [],
         presence: nextSnapshot

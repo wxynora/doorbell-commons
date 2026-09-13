@@ -310,6 +310,10 @@ export class LoungeStore {
     return transaction.immediate();
   }
 
+  hasActivity(activityId: string): boolean {
+    return this.database.prepare("SELECT 1 FROM lounge_public_activities WHERE activity_id=?").get(activityId) !== undefined;
+  }
+
   appendActivity(input: {
     activityId: string;
     residentId?: string | null;
