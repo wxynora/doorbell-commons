@@ -125,7 +125,7 @@ function Session({roomId,initialRoom,viewerId,profiles:registeredProfiles,watchO
     return {...game,players:game.players.map(p=>({...p,name:profiles[p.id]?.name??p.name}))};
   },[room?.game,profiles]);
   const session=useMemo<GameSessionBinding|null>(()=>room?.game?{
-    roomId,viewerId,connected,game:namedGame,settlement:room.settlement,playerNames:Object.fromEntries(Object.entries(profiles).map(([id,p])=>[id,p.name])),
+    roomId,viewerId,connected,game:namedGame,settlement:room.settlement??null,playerNames:Object.fromEntries(Object.entries(profiles).map(([id,p])=>[id,p.name])),
     refresh:async()=>accept(await transport.read(roomId)).game,
     command,
     again:async()=>{
