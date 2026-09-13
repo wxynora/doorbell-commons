@@ -1,3 +1,4 @@
+import { GameResultDialog } from "../game-result-dialog";
 import { GameSettlementResult } from "../game-settlement-result";
 import { gameViewportReader } from "../game-viewport";
 import { GameRulesIcon , GameRulesText } from "../game-rules-help";
@@ -512,7 +513,7 @@ export function UnoPage() {
             </section>
 
             {display.phase === "round_over" && display.last_results ? (
-              <section className="uno-result" aria-label="本局结算">
+              <GameResultDialog>
                 <span>本局赢家</span>
                 <strong>
                   {display.players.find((player) => player.id === display.last_results?.winner_id)
@@ -529,7 +530,7 @@ export function UnoPage() {
                   </button>
                 ) : null}
                 <GameRoundExit />
-              </section>
+              </GameResultDialog>
             ) : null}
           </>
         ) : (

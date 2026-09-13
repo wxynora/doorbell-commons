@@ -1,4 +1,5 @@
 /* A single landscape canvas: every card, seat and hit area scales together. */
+/* Portrait and landscape each have one shared design coordinate system. */
 :where(#leaf-game-root, .game-session--leaf-game) {
   color: #3f2b21;
   background: #f3f1e9;
@@ -52,6 +53,23 @@
   overflow: hidden;
   background: transparent;
 }
+.leaf-game-stage--portrait{width:430px;height:860px;}
+.leaf-game-stage--portrait .leaf-game-header{height:56px;flex-wrap:wrap;}
+.leaf-game-stage--portrait .leaf-game-header__tools{margin-left:auto;}
+.leaf-game-stage--portrait .leaf-game-header__tools button{min-height:40px;}
+.leaf-game-stage--portrait .leaf-game-header__status{position:absolute;top:58px;left:18px;right:18px;justify-content:center;}
+.leaf-game-stage--portrait .leaf-player--top{top:116px;left:152px;width:220px;}
+.leaf-game-stage--portrait .leaf-player--left{top:248px;left:16px;width:170px;}
+.leaf-game-stage--portrait .leaf-player--right{top:248px;right:16px;width:170px;}
+.leaf-game-stage--portrait .leaf-player--self{left:18px;bottom:159px;}
+.leaf-game-stage--portrait .leaf-table{left:0;width:430px;top:50%;}
+.leaf-game-stage--portrait .leaf-pile{left:67px;}
+.leaf-game-stage--portrait .leaf-table-actions{top:148px;left:127px;width:176px;flex-direction:row;}
+.leaf-game-stage--portrait .leaf-resolution{top:625px;height:auto;min-height:32px;}
+.leaf-game-stage--portrait .leaf-resolution>div{flex-direction:column;text-align:center;gap:4px;}
+.leaf-game-stage--portrait .leaf-hand{top:730px;width:430px;}
+.leaf-game-stage--portrait .leaf-hand__cards{left:18px;top:18px;width:346px;}
+.leaf-game-stage--portrait .leaf-rank-declaration{left:18px;right:18px;top:520px;width:auto;}
 .leaf-game-header {
   position: absolute;
   top: 0;
@@ -229,10 +247,11 @@
 }
 .leaf-table {
   position: absolute;
-  top: 98px;
+  top: 50%;
+  transform: translateY(-39px);
   left: 202px;
   width: 440px;
-  height: 172px;
+  height: 126px;
 }
 .leaf-pile {
   position: absolute;
@@ -291,7 +310,8 @@
   color: #54372a;
 }
 .leaf-pile > small {
-  grid-row: 4;
+  position: absolute;
+  bottom: 100%;
   font-size: 10px;
   color: #7c3f2c;
 }
@@ -320,10 +340,11 @@
 }
 .leaf-table-actions {
   position: absolute;
-  top: 132px;
-  left: 142px;
-  width: 156px;
+  top: 20px;
+  left: 326px;
+  width: 80px;
   display: flex;
+  flex-direction: column;
   justify-content: center;
   gap: 12px;
   padding: 0;

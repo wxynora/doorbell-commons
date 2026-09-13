@@ -1,3 +1,4 @@
+import { GameResultDialog } from "../game-result-dialog";
 import { GameSettlementResult } from "../game-settlement-result";
 import { gameViewportReader } from "../game-viewport";
 import { GameRulesHelp , GameRulesText } from "../game-rules-help";
@@ -389,7 +390,7 @@ function ActionPanel({
         className={`fc-turn fc-turn--${currentAccent}${pending && view.phase === "awaiting_roll" ? " is-rolling" : ""}${view.phase === "round_over" ? " is-round-over" : ""}`}
       >
         {view.phase === "round_over" ? (
-          <>
+          <GameResultDialog><strong>本局结束</strong>
           <button
             type="button"
             className="fc-rematch-button"
@@ -400,7 +401,7 @@ function ActionPanel({
           </button>
           <GameSettlementResult />
           <GameRoundExit />
-          </>
+          </GameResultDialog>
         ) : humanTurn && view.phase === "awaiting_roll" ? (
           <button
             type="button"

@@ -1,0 +1,14 @@
+.game-result-screen{position:fixed;inset:0;z-index:1000;box-sizing:border-box;display:grid;place-items:center;padding:16px;background:#16282066;font-family:"Avenir Next","PingFang SC",sans-serif;color:#304c40;}
+.game-result-panel{box-sizing:border-box;width:min(100%,400px);max-height:calc(100dvh - 32px);overflow:auto;overscroll-behavior:contain;background:#fff9e9;border-radius:22px;padding:24px;box-shadow:0 12px 40px #142e352b;font-size:16px;line-height:1.5;outline:none;}
+.game-result-content{display:grid;justify-items:stretch;gap:14px;text-align:center;}
+.game-result-content>strong,.game-result-content>h2{font-size:28px;line-height:1.2;margin:0;}
+.game-result-content>small,.game-result-content>span{font-size:15px;}
+.game-result-panel button{position:static;transform:none;box-sizing:border-box;min-height:44px;width:auto;max-width:100%;padding:10px 18px;border:0;border-radius:12px;background:#ead29a;color:#304c40;font:600 16px/1.4 "PingFang SC",sans-serif;cursor:pointer;}
+.game-result-panel button:disabled{opacity:.5;cursor:default;}
+.game-result-panel button:focus-visible{outline:2px solid #42674e;outline-offset:2px;}
+.game-result-panel .game-round-exit{position:static;transform:none;display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin:0;}
+.game-result-panel [aria-label="银币结算"]>div{display:flex;justify-content:space-between;gap:16px;text-align:left;overflow-wrap:anywhere;}
+.game-result-panel [aria-label="银币结算"] strong{white-space:nowrap;}
+.game-result-content--watch button{display:none;}
+.game-result-panel>.game-watch-exit{display:block;width:100%;margin-top:16px;}
+@media(max-height:450px){.game-result-panel{padding:16px 22px}.game-result-content{gap:8px}.game-result-content>strong,.game-result-content>h2{font-size:24px}}

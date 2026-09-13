@@ -1,3 +1,4 @@
+import { GameResultDialog } from "../game-result-dialog";
 import { GameSettlementResult } from "../game-settlement-result";
 import { gameViewportReader } from "../game-viewport";
 import { GameRulesIcon , GameRulesText } from "../game-rules-help";
@@ -318,7 +319,7 @@ function RoundResult({
 }) {
   const winner = view.round_winner === "landlord" ? "地主胜" : "农民胜";
   return (
-    <section className="ddz-round-result" aria-live="polite">
+    <GameResultDialog>
       <span>第 {view.round} 局</span>
       <strong>{winner}</strong>
       <GameSettlementResult />
@@ -330,7 +331,7 @@ function RoundResult({
         再来一局
       </button>
       <GameRoundExit />
-    </section>
+    </GameResultDialog>
   );
 }
 

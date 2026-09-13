@@ -1,3 +1,4 @@
+import { GameResultDialog } from "../game-result-dialog";
 import { GameSettlementResult } from "../game-settlement-result";
 import { gameViewportReader } from "../game-viewport";
 import { GameRulesIcon , GameRulesText } from "../game-rules-help";
@@ -141,6 +142,7 @@ function ResolutionNotice({ view }: { view: LeafGameView }) {
   const winner = playerById(view, resolution.winner_id)?.name ?? "赢家";
   const loser = resolution.loser_id ? playerById(view, resolution.loser_id)?.name : null;
   let title = `${winner} 赢下这一轮`;
+  if (resolution.type === "concede") title = `${loser ?? winner} 认罚`;
   let detail = loser
     ? `${loser} 收下 ${resolution.collected_card_count ?? 0} 张桌牌，醉意 +${
         resolution.pile_risk ?? 0
@@ -150,6 +152,7 @@ function ResolutionNotice({ view }: { view: LeafGameView }) {
     title = resolution.truthful ? "质疑失败，牌是真的" : "质疑成功，这手在唬人";
   }
   if (resolution.knocked_out && loser) {
+    title = `${loser} 出局`;
     detail =
       resolution.knockout_reason === "poison"
         ? `${loser} 抽中毒酒，醉倒啦。`
@@ -229,14 +232,7 @@ function TableControls({
   interactive: boolean;
 }) {
   if (view.status === "finished") {
-    const winner = playerById(view, view.winner_id);
-    return (
-      <section className="leaf-table-result">
-        <span>本局结束</span>
-        <strong>{winner?.name ?? "最后的玩家"} 赢啦</strong>
-        <GameSettlementResult />
-      </section>
-    );
+    return null;
   }
   if (!interactive || !view.legal_actions.length) {
     return null;
@@ -313,6 +309,7 @@ export function LeafGamePage() {
   const [playingCardIds, setPlayingCardIds] = useState<Set<string>>(new Set());
   const [flight, setFlight] = useState<{ key: number; count: number } | null>(null);
   const [narrowPreviewScale, setNarrowPreviewScale] = useState(1);
+  const [portrait, setPortrait] = useState(false);
   const initialStartRef = useRef(false);
   const residentActionKeyRef = useRef<string | null>(null);
 
@@ -324,7 +321,9 @@ export function LeafGamePage() {
         width: viewport?.width ?? window.innerWidth,
         height: viewport?.height ?? window.innerHeight,
       });
-      setNarrowPreviewScale(Math.min(width / CANVAS_WIDTH, height / CANVAS_HEIGHT));
+      const vertical=height>width;
+      setPortrait(vertical);
+      setNarrowPreviewScale(Math.min(width / (vertical?430:CANVAS_WIDTH), height / (vertical?860:CANVAS_HEIGHT)));
     };
 
     resize();
@@ -340,8 +339,8 @@ export function LeafGamePage() {
     position: "absolute" as const,
     left: "50%",
     top: "50%",
-    width: CANVAS_WIDTH,
-    height: CANVAS_HEIGHT,
+    width: portrait?430:CANVAS_WIDTH,
+    height: portrait?860:CANVAS_HEIGHT,
     transform: `translate(-50%, -50%) scale(${narrowPreviewScale})`,
   };
 
@@ -513,7 +512,7 @@ export function LeafGamePage() {
     return (
       <main className="leaf-game-shell">
         <div className="leaf-game-scaler" style={scalerStyle}>
-          <div className="leaf-game-stage">
+          <div className={`leaf-game-stage${portrait?' leaf-game-stage--portrait':''}`}>
             <section className="leaf-game-loading" aria-live="polite">
               <span aria-hidden="true">叶</span>
               <strong>{error ? "牌桌没铺好" : "正在洗牌开桌…"}</strong>
@@ -534,7 +533,7 @@ export function LeafGamePage() {
   const currentName = playerById(view, view.current_player_id)?.name;
   const stageMessage =
     view.status === "finished"
-      ? `${playerById(view, view.winner_id)?.name ?? "赢家"} 把手牌清空啦！`
+      ? `本局结束 · ${playerById(view, view.winner_id)?.name ?? "赢家"} 获胜`
       : view.phase === "final_challenge"
         ? `${currentName} 可在 3 秒内质疑最后一手`
         : view.phase === "lead"
@@ -548,7 +547,7 @@ export function LeafGamePage() {
   return (
     <main className="leaf-game-shell">
       <div className="leaf-game-scaler" style={scalerStyle}>
-        <div className="leaf-game-stage">
+        <div className={`leaf-game-stage${portrait?' leaf-game-stage--portrait':''}`}>
           <header className="leaf-game-header">
             <div className="leaf-game-brand">
               <span className="leaf-game-brand__leaf" aria-hidden="true">
@@ -563,6 +562,7 @@ export function LeafGamePage() {
               {stageMessage}
             </div>
             <div className="leaf-game-header__tools">
+              {live?.watchOnly && <button className="game-watch-exit" onClick={() => void live.exitWatch?.()} type="button">退出围观</button>}
               <GameChatWindow />
               <details
                 className="leaf-rules"
@@ -664,16 +664,17 @@ export function LeafGamePage() {
               className="leaf-hand__cards"
               style={
                 {
-                  "--hand-step": `${leafHandStep(visibleHand.length)}px`,
+                  "--hand-step": `${portrait?Math.min(34,282/Math.max(1,visibleHand.length-1)):leafHandStep(visibleHand.length)}px`,
                 } as React.CSSProperties
               }
             >
-              {humanTurn ? (
+              {currentViewer?.hand !== undefined ? (
                 visibleHand.map((card, index) => (
                   <LeafCardButton
                     card={card}
                     count={visibleHand.length}
                     disabled={
+                      !humanTurn ||
                       pending ||
                       pendingLeadCardIds.length > 0 ||
                       !view.legal_actions.some((action) => action === "lead" || action === "follow")
@@ -694,7 +695,7 @@ export function LeafGamePage() {
             </div>
           </section>
 
-          {view.status === "finished" && <GameRoundExit floating onAgain={() => void startGame()} />}
+          {view.status === "finished" && <GameResultDialog><span>本局结束</span><strong>{playerById(view,view.winner_id)?.name ?? '赢家'} 获胜</strong><GameSettlementResult /><GameRoundExit onAgain={() => void startGame()} /></GameResultDialog>}
           {flight ? (
             <div
               className={`leaf-card-flight ${flight.count > 1 ? "leaf-card-flight--stack" : ""}`}

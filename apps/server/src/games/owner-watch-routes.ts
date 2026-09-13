@@ -41,7 +41,7 @@ export function registerOwnerWatchRoutes(app: FastifyInstance, options: Options)
       if(!seat)throw new GameAccessError("not_seated");
       return seat;
     }} : ownerWatchCaller(human);
-    return {caller,publicOnly};
+    return {caller,publicOnly:false};
   };
   const failure = (request: FastifyRequest, reply: FastifyReply, error: unknown) => {
     if (error instanceof GameAccessError && error.message === "not_seated")

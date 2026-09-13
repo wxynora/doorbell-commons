@@ -120,6 +120,7 @@ function Session({roomId,initialRoom,viewerId,profiles:registeredProfiles,watchO
   };
   const namedGame=useMemo(()=>gameDisplayProjection(room?.game??null,profiles),[room?.game,profiles]);
   const session=useMemo<GameSessionBinding|null>(()=>room?.game?{
+    watchOnly,exitWatch:onExit,
     roomId,viewerId,connected,game:namedGame,settlement:room.settlement??null,playerNames:Object.fromEntries(Object.entries(profiles).map(([id,p])=>[id,p.name])),
     refresh:async()=>accept(await transport.read(roomId)).game,
     command,
@@ -134,7 +135,7 @@ function Session({roomId,initialRoom,viewerId,profiles:registeredProfiles,watchO
         if(active.current)await (onNewTable??onExit)();
       }else throw new Error("本局尚未结束");
     },
-  }:null,[room,namedGame,connected,transport]);
+  }:null,[room,namedGame,connected,transport,watchOnly,onExit]);
   const chat=useMemo(()=>({roomId,connected,readOnly:watchOnly,messages:messages.map(m=>({...m,name:playerDisplayName(m.playerId,profiles)})),send:async(text:string,id:string)=>{requireRoom();await transport.say(roomId,text,id);}}),[roomId,connected,messages,profiles,transport,watchOnly]);
   const defaultReaction=useMemo<GameReactionBinding>(()=>({roomId,viewerId,connected,
     send:async(targetId,kind,requestId)=>{requireRoom();await transport.sendReaction(roomId,targetId,kind,requestId);},
@@ -143,11 +144,11 @@ function Session({roomId,initialRoom,viewerId,profiles:registeredProfiles,watchO
   const reaction=reactions
     ?reactions.roomId===roomId&&reactions.viewerId===viewerId?{...reactions,connected:connected&&reactions.connected}:null
     :defaultReaction;
-  const watchExit=watchOnly?<button type="button" className="game-session-status" style={{top:12,bottom:"auto",zIndex:110}} onClick={()=>void onExit()}>退出围观</button>:null;
+  const watchExit=watchOnly&&!(room?.kind==='leaf-game'&&room.game)?<button type="button" className="game-session-status" style={{top:12,bottom:"auto",zIndex:110}} onClick={()=>void onExit()}>退出围观</button>:null;
   if(!room)return <div className="game-session-status" role="status">{watchExit}{error||"正在连接游戏…"}{error&&<button type="button" onClick={()=>setReloadKey(key=>key+1)}>重新连接</button>}</div>;
   const Page=pages[room.kind];
   const blockWatchAction=(event:SyntheticEvent)=>{
-    if(watchOnly && !(event.target instanceof Element && event.target.closest('.game-chat-toggle, .game-chat-window'))){event.preventDefault();event.stopPropagation();}
+    if(watchOnly && !(event.target instanceof Element && event.target.closest('.game-chat-toggle, .game-chat-window, .game-watch-exit'))){event.preventDefault();event.stopPropagation();}
   };
   return <div className={`game-session-host game-session--${room.kind}`}>
     {watchExit}
