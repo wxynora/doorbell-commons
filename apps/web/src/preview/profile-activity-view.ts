@@ -58,7 +58,7 @@ export const PROFILE_ACTIVITY_SCRIPT = `
         graph.hidden = profileRelationshipRows.length === 0;
         graphEmpty.hidden = profileRelationshipRows.length > 0;
         graphEmpty.textContent = loading ? '正在读取来往…' : unavailable ? '来往数据读取失败，请重新读取。' : '暂时没有来往记录';
-        document.getElementById('profile-relationship-edit').hidden = profileRelationshipRows.length === 0;
+        document.getElementById('profile-relationship-edit').hidden = false;
         document.getElementById('profile-relationship-editor').hidden = true;
         renderProfileRelationships();
     }

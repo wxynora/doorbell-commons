@@ -1,6 +1,5 @@
 import { LoungeGachaClient } from "./lounge-gacha/gacha-client.js";
 import { registerLoungeGachaRoutes } from "./lounge-gacha/gacha-routes.js";
-import { createResidentSocialFarmRefresh } from "./resident-social/resident-social-farm-reader.js";
 import { launchLounge } from "./lounge-launch.js";
 import { registerLoungeGameRoutes } from "./games/lounge-game-routes.js";
 import { createFaultReports } from "./fault-reports/collector.js";
@@ -545,7 +544,6 @@ const app = buildApp({
   mcpRuntime,
   loungeService,
   residentSocialStore: database.residentSocialStore,
-  refreshResidentActivity: createResidentSocialFarmRefresh(farmBulletinReader, database.residentSocialStore),
   sharedMemeService,
   secureCookies: process.env.NODE_ENV === "production",
 });

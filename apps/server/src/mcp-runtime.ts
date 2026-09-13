@@ -1,3 +1,4 @@
+import { recordResidentFarmAction } from "./resident-social/resident-farm-actions.js";
 import { LoungeGachaViewError } from "./lounge-gacha/gacha-view-options.js";
 import { LoungePetToolError } from "./lounge-pet/service.js";
 import { LoungeChatToolError } from "./lounge-chat-tool.js";
@@ -814,6 +815,7 @@ export class DoorbellMcpRuntime {
         detail,
         ...(shouldAppendStatus && op !== "farm.status" ? { includeStatus: true } : {}),
       });
+      recordResidentFarmAction(this.#database.residentSocialStore, context.residentId, op, result.ok, this.#now());
       let text = op === "farm.status" && result.ok
         ? this.#appendDailyPublicationNotice(result.text)
         : result.text;

@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 
-export type ResidentSocialSource = "farm" | "lounge" | "game";
+export type ResidentSocialSource = "farm" | "farm-action" | "lounge" | "game";
 export type ResidentSocialInteractionKind = "chat" | "game";
 export type ResidentSocialGameKind =
   | "leaf-game"
@@ -211,6 +211,13 @@ export class ResidentSocialStore {
     })();
   }
 
+  recordFarmAction(residentId: string, label: string, at: number): void {
+    assertIdentifier(residentId, "resident id");
+    assertIdentifier(label, "activity label");
+    assertTimestamp(at);
+    this.#database.transaction(() => this.#record({residentId, source: "farm-action", sequence: this.#takeNextSequence("farm"), at, label, interactions: []}))();
+  }
+
   read(residentId: string): ResidentSocialSnapshot {
     assertIdentifier(residentId, "resident id");
     return {
@@ -221,7 +228,12 @@ export class ResidentSocialStore {
                   occurred_at AS at,
                   label
            FROM resident_recent_activity
-           WHERE resident_id = ?
+           WHERE resident_id = ? AND source <> 'farm'
+             AND (source <> 'lounge' OR EXISTS (
+               SELECT 1 FROM lounge_public_messages AS message
+               WHERE message.sequence = resident_recent_activity.source_sequence
+                 AND message.resident_id = resident_recent_activity.resident_id
+             ))
            ORDER BY occurred_at DESC, source ASC, source_sequence DESC`,
         )
         .all(residentId) as ResidentSocialActivity[],
@@ -262,11 +274,11 @@ export class ResidentSocialStore {
       at: input.at,
       label: "休息室互动",
       interactions: [{ residentId: input.residentId, kind: "chat" }],
-    });
+    }, false);
     return authorRecorded || peerRecorded;
   }
 
-  #record(event: ResidentSocialEvent): boolean {
+  #record(event: ResidentSocialEvent, includeActivity = true): boolean {
     const advanced = this.#database
       .prepare(
         `INSERT INTO resident_social_cursors (resident_id, source, source_sequence)
@@ -278,7 +290,7 @@ export class ResidentSocialStore {
       .run(event.residentId, event.source, event.sequence);
     if (!advanced.changes) return false;
 
-    this.#database
+    if (includeActivity) this.#database
       .prepare(
         `INSERT INTO resident_recent_activity (
            resident_id, source, source_sequence, occurred_at, label
@@ -355,7 +367,7 @@ export class ResidentSocialStore {
     if (!event || typeof event !== "object")
       throw new TypeError("Resident social event is invalid");
     assertIdentifier(event.residentId, "resident id");
-    if (!(["farm", "lounge", "game"] as const).includes(event.source)) {
+    if (!(["farm", "farm-action", "lounge", "game"] as const).includes(event.source)) {
       throw new TypeError("Resident social event source is invalid");
     }
     assertSequence(event.sequence);

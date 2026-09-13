@@ -144,7 +144,7 @@ export function registerResidentSocialRoutes(
 
     try {
       const community = await options.registrationAuth.getCurrentSessionWithMembership(token);
-      let farmUnavailable = !options.refreshActivity;
+      let farmUnavailable = false;
       if (options.refreshActivity) {
         try {
           await options.refreshActivity(community);

@@ -3333,7 +3333,6 @@ const RUNTIME_STYLES = `
             opacity: 0.7;
         }
 
-        #screen-profile,
         .candidate2-profile-note{padding-bottom:calc(18px + 24px / 1.08);border-color:#e0d7cd;box-shadow:1px 2px 4px rgba(83,63,53,.07)}
         .candidate2-profile-header-stack{min-height:200px}
         .candidate2-profile-action{top:168px}
@@ -3342,6 +3341,7 @@ const RUNTIME_STYLES = `
         .candidate2-identity-summary strong{color:#594b43}
         .candidate2-empty-panel p,.candidate2-profile-empty{color:#887a71}
         .candidate2-profile-note-title{letter-spacing:.075em}
+        #screen-profile,
         #screen-settings {
             --candidate2-copy-font: var(--ui-regular-font);
             --candidate2-handwritten-font: 'Gaegu', 'ZCOOL KuaiLe', 'Yuanti SC', 'STYuanti-SC-Regular', '圆体-简', 'YouYuan', cursive;
@@ -10107,7 +10107,7 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         moreButton.hidden = visibleActivities.length <= 4;
         moreButton.dataset.expanded = 'false';
         moreButton.textContent = 'More';
-        relationshipEditButton.hidden = content.relationships.length === 0;
+        relationshipEditButton.hidden = false;
     }
 
     function normalizeLiveGlimmer(read) {
@@ -10373,7 +10373,7 @@ const CANDIDATE_RUNTIME_SCRIPT = `
     }
 
     function openRelationshipEditor() {
-        if (relationshipEditButton.hidden) {
+        if (![...document.querySelectorAll('.candidate2-demo-relation-node')].some(node => !node.hidden && node.querySelector('strong').textContent.trim())) {
             showCandidateNotice('暂无可编辑的来往数据');
             return;
         }
