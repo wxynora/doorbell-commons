@@ -258,6 +258,7 @@ type PendingOption =
     }
   | {
       kind: "start";
+      prepareHost?: boolean;
       residentId: string;
       tableId: LoungeTableId;
       roomId: string;
@@ -429,13 +430,15 @@ export class LoungeGameTool {
     const view=await this.#gameService.view(caller,roomId);
     const actor=await caller.authenticate();
     if(view.phase!=="waiting" || view.host?.playerId!==actor.playerId ||
-      view.seats.length<MIN_PLAYERS[view.kind] || view.seats.some(seat=>!seat.ready))return null;
+      view.seats.length<MIN_PLAYERS[view.kind] || view.seats.some(seat=>seat.playerId!==actor.playerId && !seat.ready))return null;
     const table=this.#readTables().find(t=>t.room?.room_id===roomId);
     if(!table)return null;
     this.#rememberRoom(residentId,table.table_id,view);
     this.#beginOptionGroup(residentId);
-    const option=this.#newOption({kind:"start",residentId,tableId:table.table_id,roomId,revision:view.revision});
-    return `大家都准备好了，可以开始游戏。（option ${option}）`;
+    const prepareHost=view.seats.some(seat=>seat.playerId===actor.playerId && !seat.ready);
+    const option=this.#newOption({kind:"start",residentId,tableId:table.table_id,roomId,revision:view.revision,prepareHost});
+    return prepareHost ? `其他玩家都准备好了。（option ${option}：准备并开局）`
+      : `大家都准备好了，可以开始游戏。（option ${option}）`;
   }
 
   async wakeMessage(residentId: string, roomId: string, delivery?:GameContextDelivery): Promise<string> {
@@ -1215,10 +1218,14 @@ export class LoungeGameTool {
         await this.#assertCurrentRoom(caller, pending);
         await this.#gameService.ready(caller, pending.roomId, pending.revision, pending.ready);
         return this.#withState(pending.ready ? "已准备。" : "已取消准备。", residentId, caller);
-      case "start":
+      case "start": {
         await this.#assertCurrentRoom(caller, pending);
-        await this.#gameService.start(caller, pending.roomId, pending.revision);
+        const revision = pending.prepareHost
+          ? (await this.#gameService.ready(caller, pending.roomId, pending.revision, true)).revision
+          : pending.revision;
+        await this.#gameService.start(caller, pending.roomId, revision);
         return this.#withState("已开局。", residentId, caller);
+      }
       case "leave":
         await this.#assertCurrentRoom(caller, pending);
         if (!this.#gameService.leave) {
