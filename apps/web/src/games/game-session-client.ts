@@ -52,7 +52,7 @@ return {
       seenReactions.add(event.id);handlers.reaction?.(event);
     };
     const open=()=>{
-    source=new EventSource(`${readPath(id)}/stream${watchOnly?"":`?afterChatSequence=${chatCursor}`}`);
+    source=new EventSource(`${readPath(id)}/stream?afterChatSequence=${chatCursor}`);
     source.onopen=()=>{handlers.connection(true);
       if(watchOnly)return;
       const initial=!historyReady;
@@ -84,7 +84,21 @@ return {
     source.addEventListener("reaction",event=>deliverReaction(JSON.parse((event as MessageEvent<string>).data) as GameReactionEvent));
     };
     open();
-    return()=>{closed=true;source.close();};
+    // Mobile browsers can retain a half-open stream while the page is suspended.
+    // Returning to the page/network starts a fresh stream with a current snapshot.
+    const resume=()=>{
+      if(closed || document.visibilityState==="hidden")return;
+      source.close();baseline=null;handlers.connection(false);open();
+    };
+    document.addEventListener("visibilitychange",resume);
+    window.addEventListener("online",resume);
+    window.addEventListener("pageshow",resume);
+    return()=>{
+      closed=true;source.close();
+      document.removeEventListener("visibilitychange",resume);
+      window.removeEventListener("online",resume);
+      window.removeEventListener("pageshow",resume);
+    };
   },
 };
 }

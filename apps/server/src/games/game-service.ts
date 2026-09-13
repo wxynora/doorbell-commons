@@ -247,6 +247,7 @@ export class GameService {
     roomId: string,
     revision: number,
     command: Record<string, unknown>,
+    recordContext = true,
   ) {
     const actor = await caller.authenticate();
     const room = this.current(roomId, revision);
@@ -273,7 +274,7 @@ export class GameService {
       wasRoundOver &&
       isRoundStart(room.kind, room.snapshot);
     if (!['call_uno','catch_uno','build','sell_house'].includes(String(command.action))) room.deadline = null;
-    this.save(room, advancedRound, applied?.changes);
+    this.save(room, advancedRound, applied?.changes, recordContext ? actor.playerId : undefined);
     await this.settlePendingOutcome(room);
     return applied ? { ...this.lobbyView(room), game: applied.actorView, settlement: settlementView(room) } : this.playerView(room, actor);
   }
@@ -305,7 +306,7 @@ export class GameService {
     const latest=this.current(roomId);
     if(latest.revision!==room.revision||latest.deadline?.at!==room.deadline.at||latest.deadline.key!==key)return;
     // This capability belongs only to the server scheduler, not an HTTP identity.
-    await this.command({authenticate:async()=>actor},roomId,room.revision,command);
+    await this.command({authenticate:async()=>actor},roomId,room.revision,command,false);
   }
 
   private async settleDue(room: GameRoom) {
@@ -490,7 +491,7 @@ export class GameService {
     return seat;
   }
 
-  private save(room: GameRoom, countRound = false, changes?: GameChanges) {
+  private save(room: GameRoom, countRound = false, changes?: GameChanges, actionPlayerId?: string) {
     room.deadline = nextGameDeadline(room,this.now());
     const previousRevision = room.revision;
     room.revision += 1;
@@ -507,11 +508,15 @@ export class GameService {
         saveWithSocial();
       }
     };
+    const commitAction = () => {
+      if(actionPlayerId && this.store.withActionContext) this.store.withActionContext(room,actionPlayerId,commit);
+      else commit();
+    };
     const withPostCommit = (this.store as LoungeTableStore).withPostCommit;
     if (withPostCommit) {
-      withPostCommit.call(this.store, commit);
+      withPostCommit.call(this.store, commitAction);
     } else {
-      commit();
+      commitAction();
     }
     try {
       this.publisher?.publish(room, changes);

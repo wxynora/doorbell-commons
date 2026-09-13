@@ -310,6 +310,7 @@ export function createLoungeRuntime(options: LoungeRuntimeOptions) {
     invitations: invitationService,
     nameOf: options.nameOf,
     ruleChoices: database.gameRuleChoiceStore,
+    actionCursor: (roomId,playerId)=>tables.contextCursor(roomId,playerId),
     historySince: (roomId,names,after)=>{const room=tables.read(roomId);return room?gameHistorySince(room.kind,room.snapshot,names,after):{lines:[],sequence:after};},
     history: (roomId,names)=>{const room=tables.read(roomId);return room?gameHistory(room.kind,room.snapshot,names):[];},
     afterSocial: async (residentId,roomId,eventId):Promise<void>=>{try{await turnWakes.remind(residentId,roomId,eventId);}catch(error){options.onError(error);}},
@@ -322,6 +323,7 @@ export function createLoungeRuntime(options: LoungeRuntimeOptions) {
     identity,
     gameTool: game,
     wakes: database.loungeWakeStore,
+    actionCursor:(residentId,roomId)=>tables.contextCursor(roomId,`resident:${residentId}`),
     bell: options.bell,
     formatter: options.turnFormatter,
     reactionContext: {
@@ -412,3 +414,4 @@ export function createLoungeRuntime(options: LoungeRuntimeOptions) {
     tools: new LoungeTools(lounge, say, game, options.petRewards ? new LoungePetService(database, lounge, options.petRewards, now) : undefined, options.gachaReader ? new LoungeGachaViewOptions(database, options.gachaReader) : undefined),
   };
 }
+

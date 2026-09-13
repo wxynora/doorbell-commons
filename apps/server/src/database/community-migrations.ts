@@ -9,7 +9,7 @@ import {
 } from "@doorbell/protocol";
 import type Database from "better-sqlite3";
 
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 45;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 46;
 const LEGACY_CONNECTOR_DELIVERY_GENERATION = "00000000-0000-0000-0000-000000000000";
 
 interface FarmCreationRequestRow {
@@ -2796,6 +2796,15 @@ export function migrateCommunityDatabase(
   if(databaseSchemaVersion < 45) database.transaction(()=>{
     database.exec("ALTER TABLE game_rooms ADD COLUMN settlement_json TEXT");
     database.pragma('user_version = 45');
+  })();
+
+  if(databaseSchemaVersion < 46) database.transaction(()=>{
+  database.exec(`CREATE TABLE game_action_cursors (
+    room_id TEXT NOT NULL REFERENCES game_rooms(room_id) ON DELETE CASCADE,
+    player_id TEXT NOT NULL, event_sequence INTEGER NOT NULL, chat_sequence INTEGER NOT NULL,
+    PRIMARY KEY(room_id,player_id)
+  )`);
+  database.pragma('user_version = 46');
   })();
 
 }

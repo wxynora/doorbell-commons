@@ -306,7 +306,7 @@ export function registerLoungeGameRoutes(
   options: LoungeGameRoutesOptions,
 ): void {
   registerOwnerWatchRoutes(app, {
-    games: options.games, sync: options.gameSync,
+    games: options.games, sync: options.gameSync, chat: options.gameChat,
     authenticate: async request => { assertSameOrigin(request); return (await authenticateRequest(request, options)).caller; },
     failure: (request, reply, error) => sendFailure(request, reply, error, options.secureCookies),
   });
@@ -494,3 +494,4 @@ export function registerLoungeGameRoutes(
     }
   });
 }
+

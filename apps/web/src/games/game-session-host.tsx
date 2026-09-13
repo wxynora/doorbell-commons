@@ -1,4 +1,5 @@
-import {useEffect,useMemo,useRef,useState} from "react";
+import {gameDisplayProjection,playerDisplayName} from "./game-display-names";
+import {useEffect,useMemo,useRef,useState,type SyntheticEvent} from "react";
 import {GameSessionContext,type GameSessionBinding} from "./game-session-binding";
 import {GameChatContext} from "./game-chat-window";
 import {GameReactionContext,type GameReactionBinding,type GameReactionEvent} from "./game-reaction-binding";
@@ -115,15 +116,7 @@ function Session({roomId,initialRoom,viewerId,profiles:registeredProfiles,watchO
     const {actor_id:_actor,...body}=move;
     return accept(await transport.command(roomId,latest.revision,body)).game;
   };
-  const namedGame=useMemo(()=>{
-    if(!room?.game)return null;
-    if(room.kind==="mahjong"){
-      const game=room.game as {participants:{player_id:string;display_name:string}[]};
-      return {...game,participants:game.participants.map(p=>({...p,display_name:profiles[p.player_id]?.name??p.display_name}))};
-    }
-    const game=room.game as {players:{id:string;name:string}[]};
-    return {...game,players:game.players.map(p=>({...p,name:profiles[p.id]?.name??p.name}))};
-  },[room?.game,profiles]);
+  const namedGame=useMemo(()=>gameDisplayProjection(room?.game??null,profiles),[room?.game,profiles]);
   const session=useMemo<GameSessionBinding|null>(()=>room?.game?{
     roomId,viewerId,connected,game:namedGame,settlement:room.settlement??null,playerNames:Object.fromEntries(Object.entries(profiles).map(([id,p])=>[id,p.name])),
     refresh:async()=>accept(await transport.read(roomId)).game,
@@ -140,7 +133,7 @@ function Session({roomId,initialRoom,viewerId,profiles:registeredProfiles,watchO
       }else throw new Error("本局尚未结束");
     },
   }:null,[room,namedGame,connected,transport]);
-  const chat=useMemo(()=>({roomId,connected,messages:messages.map(m=>({...m,name:profiles[m.playerId]?.name??m.playerId})),send:async(text:string,id:string)=>{requireRoom();await transport.say(roomId,text,id);}}),[roomId,connected,messages,profiles,transport]);
+  const chat=useMemo(()=>({roomId,connected,readOnly:watchOnly,messages:messages.map(m=>({...m,name:playerDisplayName(m.playerId,profiles)})),send:async(text:string,id:string)=>{requireRoom();await transport.say(roomId,text,id);}}),[roomId,connected,messages,profiles,transport,watchOnly]);
   const defaultReaction=useMemo<GameReactionBinding>(()=>({roomId,viewerId,connected,
     send:async(targetId,kind,requestId)=>{requireRoom();await transport.sendReaction(roomId,targetId,kind,requestId);},
     subscribe:listener=>{reactionListeners.current.add(listener);return()=>{reactionListeners.current.delete(listener);};},
@@ -151,9 +144,12 @@ function Session({roomId,initialRoom,viewerId,profiles:registeredProfiles,watchO
   const watchExit=watchOnly?<button type="button" className="game-session-status" style={{top:12,bottom:"auto",zIndex:110}} onClick={()=>void onExit()}>退出围观</button>:null;
   if(!room)return <div className="game-session-status" role="status">{watchExit}{error||"正在连接游戏…"}{error&&<button type="button" onClick={()=>setReloadKey(key=>key+1)}>重新连接</button>}</div>;
   const Page=pages[room.kind];
+  const blockWatchAction=(event:SyntheticEvent)=>{
+    if(watchOnly && !(event.target instanceof Element && event.target.closest('.game-chat-toggle, .game-chat-window'))){event.preventDefault();event.stopPropagation();}
+  };
   return <div className={`game-session-host game-session--${room.kind}`}>
     {watchExit}
-    <div style={{display:"contents"}} inert={watchOnly}>
+    <div style={{display:"contents"}} onClickCapture={blockWatchAction} onPointerDownCapture={blockWatchAction} onKeyDownCapture={blockWatchAction}>
     {room.phase==="waiting"?<GameWaitingRoom room={room} viewerId={viewerId} profiles={profiles} connected={connected}
       onReady={async ready=>{const r=requireRoom();accept(await transport.ready(roomId,r.revision,ready));}}
       onStart={async()=>{const r=requireRoom();accept(await transport.start(roomId,r.revision));}}

@@ -130,6 +130,7 @@ export interface LoungeGameIdentityPort {
 export interface LoungeGameToolOptions {
   ruleChoices?:Pick<GameRuleChoiceStore,'set'|'pending'|'shown'|'selected'>;
   history?: (roomId:string,names:Record<string,string>)=>string[];
+  actionCursor?: (roomId:string,playerId:string)=>import("./game-context-cursor.js").GameContextCursor;
   historySince?: (roomId:string,names:Record<string,string>,afterSequence:number)=>{lines:string[];sequence:number};
   afterSocial?: (residentId:string,roomId:string,eventId:string)=>Promise<void>;
   gameService: LoungeGameServicePort;
@@ -772,6 +773,7 @@ export class LoungeGameTool {
     includeChat = true,
     delivery?:GameContextDelivery,
   ): Promise<OptionLines> {
+    delivery ??= {after:this.#extra.actionCursor?.(view.roomId,playerId)??{eventSequence:0,chatSequence:0}};
     const lines: string[] = [this.#renderRoomSummary(playerId, table, view)];
     const names:Record<string,string>={};
     for(const seat of view.seats)names[seat.playerId]=seat.playerId===playerId?'你':this.#nameOf?await this.#nameOf(seat.playerId):'同桌';
@@ -1910,3 +1912,4 @@ function hasErrorCode(error: unknown, code: string): boolean {
   if (!(error instanceof Error)) return false;
   return error.message === code || error.message.includes(code);
 }
+

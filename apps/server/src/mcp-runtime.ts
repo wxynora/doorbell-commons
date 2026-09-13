@@ -678,6 +678,7 @@ export class DoorbellMcpRuntime {
         const input = parsed.data as Record<string, unknown>;
         const text = await this.#loungeTools.execute(context.residentId, op, {
           ...(typeof input.option === "string" ? { option: input.option } : {}),
+          ...(typeof input.to === "string" ? { to: input.to } : {}),
           ...(typeof input.text === "string" ? { text: input.text } : {}),
           ...(typeof input.replyToMessageId === "string" ? { replyToMessageId: input.replyToMessageId } : {}),
         });
@@ -923,3 +924,4 @@ class ProtocolToolError extends Error {
     this.code = code;
   }
 }
+

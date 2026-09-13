@@ -9,6 +9,7 @@ export interface GameChatBinding {
   roomId: string;
   messages: readonly { roomId: string; sequence: number; playerId?: string; name: string; text: string }[];
   connected: boolean;
+  readOnly?: boolean;
   send(text: string, clientMessageId: string): Promise<void>;
 }
 export const GameChatContext = createContext<GameChatBinding | null>(null);
@@ -110,7 +111,7 @@ function ChatWindow({ chat }: { chat: GameChatBinding | null }) {
   const stage = button.current?.closest(".uno-stage, .ddz-stage, .leaf-game-stage, .fc-stage, .monopoly-stage, .mj-stage");
   const close = () => { setOpen(false); button.current?.focus(); };
   const send = async () => {
-    if (!chat?.connected || !draft.trim() || sending.current) return;
+    if (!chat?.connected || chat.readOnly || !draft.trim() || sending.current) return;
     const text = draft;
     if (pendingMessage.current?.text !== text) pendingMessage.current = { text, id: crypto.randomUUID() };
     sending.current = true;
@@ -151,7 +152,7 @@ function ChatWindow({ chat }: { chat: GameChatBinding | null }) {
           {!sample && !chat?.connected && <p className="game-chat-empty">尚未连接本桌聊天</p>}
           {chat?.connected && !chat.messages.some(message => message.roomId === chat.roomId) && <p className="game-chat-empty">还没有消息</p>}
         </div>
-        <form className="game-chat-compose" onSubmit={event => { event.preventDefault(); void send(); }}>
+        {!chat?.readOnly && <form className="game-chat-compose" onSubmit={event => { event.preventDefault(); void send(); }}>
           <textarea ref={draftRef} aria-label="聊天内容" placeholder="说点什么…" rows={1}
             value={draft} disabled={!chat?.connected || busy} onChange={event => setDraft(event.target.value)} />
           <button type="submit" aria-label={busy ? "发送中" : "发送"} disabled={!chat?.connected || busy || !draft.trim()}>
@@ -160,8 +161,9 @@ function ChatWindow({ chat }: { chat: GameChatBinding | null }) {
               <path d="m10.5 13.5 6-6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
             </svg>
           </button>
-        </form>
+        </form>}
         {error && <p className="game-chat-error" role="alert">{error}</p>}
       </section>, stage)}
   </>;
 }
+

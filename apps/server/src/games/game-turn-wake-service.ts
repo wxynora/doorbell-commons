@@ -58,6 +58,7 @@ export interface GameTurnWakeServiceOptions {
   wakes: GameTurnWakeWakes;
   bell: GameTurnWakeBell;
   formatter: GameTurnWakeFormatter;
+  actionCursor?: (residentId:string,roomId:string)=>GameContextCursor;
   reactionContext?: {
     read(roomId:string,playerId:string): { ids:string[]; text:string };
     mark(ids:readonly string[],wakeId:string):void;
@@ -179,7 +180,7 @@ export class GameTurnWakeService {
     const view=await this.#options.games.view(caller,roomId);
     const actor=await caller.authenticate();
     if(!this.#eligibility(view.kind,view.game,actor.playerId).needsDecision)return;
-    const delivery:GameContextDelivery={after:this.#options.wakes.gameContextCursor?.(residentId,roomId)??{eventSequence:0,chatSequence:0}};
+    const delivery:GameContextDelivery={after:this.#options.actionCursor?.(residentId,roomId)??{eventSequence:0,chatSequence:0}};
     const message=await this.#options.gameTool.wakeMessage(residentId,roomId,delivery);
     const fresh=await this.#options.games.view(caller,roomId);
     if(fresh.revision!==view.revision||!this.#eligibility(fresh.kind,fresh.game,actor.playerId).needsDecision)return;
@@ -393,7 +394,7 @@ export class GameTurnWakeService {
     // at this revision remains eligible for durable deduplication.
     this.#cancelRoomWakes(residentId, view.roomId, revision, false);
     if (this.#options.wakes.get(residentId, gameTurnWakeSourceKey(view.roomId, revision, residentId))) return;
-    const delivery:GameContextDelivery={after:this.#options.wakes.gameContextCursor?.(residentId,view.roomId)??{eventSequence:0,chatSequence:0}};
+    const delivery:GameContextDelivery={after:this.#options.actionCursor?.(residentId,view.roomId)??{eventSequence:0,chatSequence:0}};
     let message: string;
     try {
       message = await this.#options.gameTool.wakeMessage(residentId, view.roomId, delivery);
@@ -520,3 +521,4 @@ export class GameTurnWakeService {
 export function createGameTurnWakeService(options: GameTurnWakeServiceOptions): GameTurnWakeService {
   return new GameTurnWakeService(options);
 }
+

@@ -1,3 +1,4 @@
+import {GameActionCursorStore} from './game-action-cursor-store.js';
 import type Database from "better-sqlite3";
 import {
   GAME_KINDS,
@@ -177,6 +178,9 @@ export class GameStore implements GameRoomStore {
     this.#database = database;
   }
 
+  contextCursor(roomId:string,playerId:string) { return new GameActionCursorStore(this.#database).read(roomId,playerId); }
+  withActionContext(room:GameRoom,playerId:string,save:()=>void) { new GameActionCursorStore(this.#database).commit(room,playerId,save); }
+
   create(room: GameRoom): void {
     const { seatsJson, snapshotJson } = validateRoom(room);
     try {
@@ -264,3 +268,4 @@ export class GameStore implements GameRoomStore {
 export function createGameStore(database: Database.Database): GameStore {
   return new GameStore(database);
 }
+

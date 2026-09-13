@@ -27,6 +27,7 @@ export interface GameRoom {
   snapshot: unknown | null;
 }
 export interface GameRoomStore {
+  withActionContext?(room:GameRoom,playerId:string,save:()=>void):void;
   create(room: GameRoom): void;
   createAtTable?(room: GameRoom, tableId: "square" | "round"): void;
   read(roomId: string): GameRoom | null;
@@ -59,3 +60,4 @@ export interface GameEngineAdapter {
 }
 export class GameAccessError extends Error {}
 export class GameStateError extends Error {}
+
