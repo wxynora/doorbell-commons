@@ -1,5 +1,6 @@
 import { CareerDomainError } from "./contracts.js";
 import { beijingDate, beijingTimestamp, runInTransaction } from "./persistence.js";
+import { manualReporterAssignment } from "./reporter-manual-transfer.js";
 
 const SOURCE_TYPE = "reporter_daily_submission_reviewing";
 
@@ -50,15 +51,16 @@ export function completeReporterSubmissionWork(database, backend, input) {
           WHERE role.duty_date = ? AND role.role = 'submission_reviewer' AND duty.status = 'scheduled'`)
             .get(issueDate);
         const fourRole = issue ? Boolean(issue.submission_reviewer_resident_id) : Boolean(submissionDuty);
-        const assignedResidentId = fourRole
+        const manual = manualReporterAssignment(database, issueDate, "submissions");
+        const assignedResidentId = manual?.resident_id ?? (fourRole
             ? issue?.submission_reviewer_resident_id ?? submissionDuty?.resident_id
-            : issue?.reviewer_resident_id;
+            : issue?.reviewer_resident_id);
         if (assignedResidentId !== residentId)
             fail("reporter_submission_reviewer_mismatch", "The completed batch reviewer does not match the assigned reporter job");
         const issueReference = issue?.issue_reference ?? `lingye-daily:${issueDate}`;
-        const jobId = fourRole
+        const jobId = manual?.job_id ?? (fourRole
             ? issue?.submission_reviewer_job_id ?? `reporter-relay-job:${issueDate}:submission-reviewer`
-            : issue?.reviewer_job_id;
+            : issue?.reviewer_job_id);
         if (!jobId)
             fail("reporter_submission_job_missing", "The issue has no assigned submission review job");
         if (fourRole && !database.prepare("SELECT 1 FROM career_jobs WHERE job_id = ?").get(jobId)) {
@@ -96,7 +98,7 @@ export function completeReporterSubmissionWork(database, backend, input) {
                 .run(SOURCE_TYPE, `${issueReference}:submission-reviewing`, issueReference, job.job_id);
         }
         else if (job.source_type !== SOURCE_TYPE ||
-            job.source_id !== `${issueReference}:submission-reviewing` ||
+            job.source_id !== `${issueReference}:submission-reviewing${manual?`:transfer:${manual.transfer_request_id}`:""}` ||
             job.object_type !== "reporter_submission_batch" || job.object_id !== issueReference) {
             fail("reporter_submission_job_source_mismatch", "The job is not the issue's submission review work");
         }

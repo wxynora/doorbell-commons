@@ -1,5 +1,6 @@
 import { handleDoorbellGameEconomyBalances, handleDoorbellGameEconomySettle } from "./game-economy.js";
 import { handleDoorbellLoungePet } from "./lounge-pet.js";
+import { handleDailyReporterTransfer } from "./daily-transfer.js";
 import { handleDoorbellGameReaction } from "./game-reaction.js";
 import { handleDoorbellHumanFarmDecorations } from "./farm-decoration.js";
 import {
@@ -157,12 +158,13 @@ export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExe
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" &&
             parts[2] === "lingye-daily" && parts[3] === "reporter-relay" &&
-            parts[4] === "handoff" && parts.length === 5) {
+            ["manual-transfer","transfer-candidates","handoff"].includes(parts[4]) && parts.length === 5) {
             if (!constableInterviewRuntime?.database || !constableInterviewRuntime?.backend) {
                 internalServiceError(res, 503, "service_unavailable", "The reporter relay service is unavailable");
                 return true;
             }
-            await handleDoorbellReporterRelayHandoff(req, res, method, constableInterviewRuntime);
+            if (parts[4] === "handoff") await handleDoorbellReporterRelayHandoff(req, res, method, constableInterviewRuntime);
+            else await handleDailyReporterTransfer(req,res,method,constableInterviewRuntime,parts[4]);
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" &&

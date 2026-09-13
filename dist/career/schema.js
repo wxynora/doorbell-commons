@@ -46,6 +46,13 @@ const REPORTER_RELAY_MATERIAL_COLUMNS = `(
   PRIMARY KEY (issue_reference, material_index)
 )`;
 export function installCareerSchema(database) {
+    database.exec(`CREATE TABLE IF NOT EXISTS career_reporter_manual_transfers (
+      request_id TEXT PRIMARY KEY, signature TEXT NOT NULL, result_json TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS career_reporter_manual_assignments (
+      issue_date TEXT NOT NULL, lane TEXT NOT NULL CHECK(lane IN ('voice','submissions')),
+      resident_id TEXT NOT NULL, job_id TEXT, transfer_request_id TEXT NOT NULL, PRIMARY KEY(issue_date,lane)
+    )`);
     database.exec(`
     CREATE TABLE IF NOT EXISTS career_tracks (
       resident_id TEXT NOT NULL,

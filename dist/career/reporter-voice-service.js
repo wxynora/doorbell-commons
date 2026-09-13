@@ -2,6 +2,7 @@ import { CareerDomainError } from "./contracts.js";
 import { beijingDate, runInTransaction } from "./persistence.js";
 import { installCareerSchema } from "./schema.js";
 import { reporterHasCompletedWork } from "./reporter-submission-work.js";
+import { manualReporterAssignment } from "./reporter-manual-transfer.js";
 
 function fail(code) {
     throw new CareerDomainError(code, code);
@@ -9,6 +10,8 @@ function fail(code) {
 
 export function reporterVoiceAuthor(database, issueDate) {
     installCareerSchema(database);
+    const manual = manualReporterAssignment(database, issueDate, "voice");
+    if (manual) return manual.resident_id;
     return database.prepare(`SELECT role.resident_id FROM career_reporter_duty_roles role
       JOIN career_duty_days duty ON duty.duty_id = role.duty_id
       JOIN career_employments employment ON employment.employment_id = duty.employment_id

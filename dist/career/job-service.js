@@ -66,6 +66,12 @@ function verifyServiceSilverSettlement(database, job, workerResidentId, receiptI
     return receiptId;
 }
 function reporterRelayRolePerformanceRate(database, jobId) {
+    const manual = database.prepare(`SELECT duty.performance_rate_bps
+      FROM career_reporter_manual_assignments assignment
+      JOIN career_reporter_duty_roles role ON role.duty_date=assignment.issue_date AND role.role='submission_reviewer'
+      JOIN career_duty_days duty ON duty.duty_id=role.duty_id
+      WHERE assignment.lane='submissions' AND assignment.job_id=?`).get(jobId);
+    if (manual) return manual.performance_rate_bps;
     const voice = database.prepare(`SELECT duty.performance_rate_bps
       FROM career_reporter_voice_work voice
       JOIN career_reporter_duty_roles role ON role.duty_date = voice.issue_date AND role.role = 'voice'

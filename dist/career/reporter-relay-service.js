@@ -664,6 +664,11 @@ export function startReporterRelayIssue(database, backend, input) {
                     .get(`reporter-relay-job:${window.issueDate}:submission-reviewer`,
                         role.submission_reviewer.residentId)?.job_id ?? null : null,
                 role.submission_reviewer?.residentId ?? null, now, now);
+        const manualSubmission = database.prepare(`SELECT resident_id,job_id FROM career_reporter_manual_assignments
+          WHERE issue_date=? AND lane='submissions'`).get(window.issueDate);
+        if (manualSubmission) database.prepare(`UPDATE career_reporter_relay_issues
+          SET submission_reviewer_resident_id=?,submission_reviewer_job_id=? WHERE issue_date=?`)
+            .run(manualSubmission.resident_id,manualSubmission.job_id,window.issueDate);
         const insertMaterial = database.prepare(`INSERT INTO career_reporter_relay_materials (
           issue_reference, material_index, source_id, category, occurred_at, title, content_json
         ) VALUES (?, ?, ?, ?, ?, ?, ?)`);
@@ -757,7 +762,7 @@ export function handoffReporterRelayDuty(database, backend, input) {
         }
         const currentResidentId = wakeRecipient(issue, expectedStage);
         const currentDuty = relayDutyRoleForResident(database, issueDate, currentResidentId);
-        const targetRole = expectedStage === "selection"
+        const targetRole = input.targetResidentId ? `manual:${input.requestId}` : expectedStage === "selection"
             ? currentDuty?.role === "selector"
                 ? "writer"
                 : currentDuty?.role === "writer"
@@ -766,7 +771,7 @@ export function handoffReporterRelayDuty(database, backend, input) {
             : currentDuty?.role === "writer"
                 ? "reviewer"
                 : null;
-        const targetDuty = targetRole
+        const targetDuty = input.targetResidentId ? { resident_id: input.targetResidentId } : targetRole
             ? relayDutyAssignment(database, issueDate, targetRole)
             : null;
         if (!targetDuty || targetDuty.resident_id === currentResidentId)
@@ -791,7 +796,9 @@ export function handoffReporterRelayDuty(database, backend, input) {
             backend.forResident(currentResidentId).returnReporterMaterialPack({
                 packId: issue.pack_id,
                 jobId: currentJobId,
-                idempotencyKey: `reporter-relay:${issue.issue_date}:writer:handoff:return`,
+                idempotencyKey: input.targetResidentId
+                    ? `reporter-relay:${issue.issue_date}:writer:handoff:${input.requestId}:return`
+                    : `reporter-relay:${issue.issue_date}:writer:handoff:return`,
             });
             backend.trustedSystemCommands.cancelJob(currentJobId);
             createReporterRelayHandoffJob(backend, originalJob, successorJobId, targetRole);
@@ -822,7 +829,7 @@ export function handoffReporterRelayDuty(database, backend, input) {
             backend.trustedSystemCommands.cancelJob(currentJobId);
             createReporterRelayHandoffJob(backend, originalJob, successorJobId, targetRole);
             backend.trustedSystemCommands.acceptJob(successorJobId, targetDuty.resident_id);
-            const transfersFutureWriting = currentDuty.role === "writer" && targetRole === "reviewer";
+            const transfersFutureWriting = !input.targetResidentId && currentDuty?.role === "writer" && targetRole === "reviewer";
             if (transfersFutureWriting && issue.writer_job_id !== null)
                 fail("reporter_relay_handoff_conflict");
             const updated = transfersFutureWriting
