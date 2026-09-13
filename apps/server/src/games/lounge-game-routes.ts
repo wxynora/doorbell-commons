@@ -1,3 +1,4 @@
+import type { WaitingSeatPresence } from "./waiting-seat-presence.js";
 import { startSseKeepalive } from "../sse-keepalive.js";
 import { registerOwnerWatchRoutes } from "./owner-watch-routes.js";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -61,6 +62,7 @@ export interface LoungeGameRoutesOptions {
   gameSync: LoungeGameRouteSyncService;
   reactions?: LoungeGameReactionPort;
   secureCookies: boolean;
+  waitingSeatPresence?: Pick<WaitingSeatPresence, "connect">;
 }
 
 export class LoungeGameRouteError extends Error {
@@ -402,6 +404,7 @@ export function registerLoungeGameRoutes(
     let gameSubscription: GameSubscription | undefined;
     let chatSubscription: GameChatSubscription | undefined;
     let reactionSubscription: LoungeGameReactionSubscription | undefined;
+    let releaseWaitingSeat: (() => void) | undefined;
     let streamStarted = false;
     let streamReady = false;
     let closed = false;
@@ -412,6 +415,7 @@ export function registerLoungeGameRoutes(
       gameSubscription?.close();
       chatSubscription?.close();
       reactionSubscription?.close();
+      releaseWaitingSeat?.();
       pendingEvents.length = 0;
       if (streamStarted && !reply.raw.writableEnded) reply.raw.end();
     };
@@ -461,6 +465,9 @@ export function registerLoungeGameRoutes(
         })(),
       ]);
       if (closed) return reply;
+      const actor = await caller.authenticate();
+      if (closed) return reply;
+      releaseWaitingSeat = options.waitingSeatPresence?.connect(roomId, actor);
       streamStarted = true;
       prepareStream(reply);
       startSseKeepalive(reply.raw);

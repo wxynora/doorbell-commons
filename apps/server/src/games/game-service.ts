@@ -201,6 +201,16 @@ export class GameService {
     return this.lobbyView(room);
   }
 
+  /** Only the server's waiting-seat connection tracker calls this expiry action. */
+  removeDisconnectedWaitingHumanSeat(roomId: string, playerId: string): boolean {
+    const room = this.store.read(roomId);
+    if (room?.phase !== "waiting" || !room.seats.some(seat => seat.controllerType === "human" && seat.playerId === playerId)) return false;
+    room.seats = room.seats.filter(seat => seat.controllerType !== "human" || seat.playerId !== playerId);
+    if (room.seats.length === 0) room.phase = "finished";
+    this.save(room);
+    return true;
+  }
+
   async start(caller: GameCaller, roomId: string, revision: number) {
     const actor = await caller.authenticate();
     const room = this.current(roomId, revision);

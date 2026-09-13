@@ -561,6 +561,7 @@ registerLoungeGachaRoutes(app, {
 if (loungeRuntime) registerLoungeGameRoutes(app, {
   auth: registrationAuth, identity: loungeRuntime.identity, games: loungeRuntime.games,
   gameChat: loungeRuntime.gameChat, gameSync: loungeRuntime.sync, reactions: loungeRuntime.reactions,
+  waitingSeatPresence: loungeRuntime.waitingSeatPresence,
   secureCookies: process.env.NODE_ENV === "production",
 });
 app.addHook("onClose", () => {

@@ -4,7 +4,7 @@ import {GameChatContext} from "./game-chat-window";
 import {GameReactionContext,type GameReactionBinding,type GameReactionEvent} from "./game-reaction-binding";
 import {GameRoundExitContext} from "./game-round-exit";
 import {GameWaitingRoom,type GameWaitingRoomProps} from "./game-waiting-room";
-import {gameSessionClient,ownerWatchClient,type GameSessionTransport,type SessionRoom,type SessionChatMessage} from "./game-session-client";
+import {gameSessionClient,ownerWatchClient,GameSessionRequestError,type GameSessionTransport,type SessionRoom,type SessionChatMessage} from "./game-session-client";
 import {UnoPage} from "./uno/uno-page";
 import {DoudizhuPage} from "./doudizhu/doudizhu-page";
 import {LeafGamePage} from "./leaf-game/leaf-game-page";
@@ -37,6 +37,14 @@ function Session({roomId,initialRoom,viewerId,profiles:registeredProfiles,watchO
   const [room,setRoom]=useState<SessionRoom|null>(initialRoom??null);
   const profiles=useMemo(()=>gamePlayerProfiles(room?.seats??[],registeredProfiles),[room?.seats,registeredProfiles]);
   const current=useRef<SessionRoom|null>(initialRoom??null);
+  const entryReceiptUsed=useRef(false);
+  const [pageVisible,setPageVisible]=useState(()=>typeof document==="undefined"||document.visibilityState!=="hidden");
+  const waitingSuspended=!watchOnly&&!pageVisible&&room?.phase==="waiting";
+  useEffect(()=>{
+    const visibility=()=>setPageVisible(document.visibilityState!=="hidden");
+    document.addEventListener("visibilitychange",visibility);
+    return()=>document.removeEventListener("visibilitychange",visibility);
+  },[]);
   const active=useRef(true);
   const [connected,setConnected]=useState(false);
   const connection=useRef(false);
@@ -57,6 +65,7 @@ function Session({roomId,initialRoom,viewerId,profiles:registeredProfiles,watchO
     setError("");
     connection.current=false;
     setConnected(false);
+    if(waitingSuspended)return()=>{active.current=false;};
     let disposed=false;
     let close:(()=>void)|undefined;
     const subscribe=()=>{
@@ -67,7 +76,8 @@ function Session({roomId,initialRoom,viewerId,profiles:registeredProfiles,watchO
         reaction:event=>{if(!disposed&&event.roomId===roomId)reactionListeners.current.forEach(listener=>listener(event));},
       });
     };
-    if(initialRoom && reloadKey===0){
+    if(initialRoom && reloadKey===0 && !entryReceiptUsed.current){
+      entryReceiptUsed.current=true;
       accept(initialRoom);
       subscribe();
     }else{
@@ -76,17 +86,25 @@ function Session({roomId,initialRoom,viewerId,profiles:registeredProfiles,watchO
       transport.read(roomId).then(next=>{
         if(disposed)return;
         accept(next);
-      }).catch(e=>{if(!disposed)setError((e as Error).message);});
+      }).catch(e=>{
+        if(disposed)return;
+        if(!watchOnly&&e instanceof GameSessionRequestError&&e.code==="not_seated"){
+          void onExit();
+          return;
+        }
+        setError((e as Error).message);
+      });
     }
     return()=>{disposed=true;active.current=false;connection.current=false;close?.();};
-  },[roomId,viewerId,transport,reloadKey,initialRoom]);
+  },[roomId,viewerId,transport,reloadKey,initialRoom,waitingSuspended]);
   const requireRoom=()=>{
     if(!connection.current||!current.current)throw new Error("尚未连接本桌");
     return current.current;
   };
   const leave=async()=>{
     if(watchOnly){await onExit();return;}
-    const latest=requireRoom();
+    const latest=current.current;
+    if(!latest)throw new Error("尚未读取本桌");
     await transport.leave(roomId,latest.revision);
     if(active.current)await onExit();
   };

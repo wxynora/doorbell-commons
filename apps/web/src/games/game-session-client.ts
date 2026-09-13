@@ -18,12 +18,15 @@ export interface GameSessionTransport {
   sendReaction(roomId:string,targetId:string,kind:GameReactionKind,requestId:string):Promise<unknown>;
   subscribe(roomId:string,afterChatSequence:number,handlers:SessionStream):()=>void;
 }
+export class GameSessionRequestError extends Error {
+  constructor(message:string,readonly code?:string){super(message);this.name="GameSessionRequestError";}
+}
 const ROOT="/api/lounge/games";
 const roomPath=(id:string)=>`${ROOT}/rooms/${encodeURIComponent(id)}`;
 async function request<T>(path:string,body?:unknown):Promise<T>{
   const response=await fetch(path,{credentials:"same-origin",...(body===undefined?{}:{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})});
   const data=await response.json();
-  if(!response.ok)throw new Error(data.error?.message ?? "游戏请求未完成");
+  if(!response.ok)throw new GameSessionRequestError(data.error?.message ?? "游戏请求未完成",data.error?.code);
   return data as T;
 }
 /** Uses cookie-authenticated same-origin routes; no player identity comes from a URL. */

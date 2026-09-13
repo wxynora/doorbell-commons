@@ -1,3 +1,4 @@
+import { WaitingSeatPresence } from "./games/waiting-seat-presence.js";
 import type { LoungeSnapshot } from "@doorbell/protocol";
 import type { BellService } from "./bell-service.js";
 import type { CommunityDatabase, HumanSettingsChatMode } from "./community-database.js";
@@ -377,13 +378,16 @@ export function createLoungeRuntime(options: LoungeRuntimeOptions) {
     onError: options.onError,
   });
   chatWakes.start();
+  const waitingSeatPresence = new WaitingSeatPresence(tables, games, options.onError);
   void reactionService.recoverDelivery().catch(options.onError);
   return {
     chatWakes,
+    waitingSeatPresence,
     close: () => {
       if (closed) return;
       closed = true;
       options.bell.setBeforePendingWakes(undefined);
+      waitingSeatPresence.close();
       chatWakes?.close();
       turnWakes.close();
       timeouts?.close();
