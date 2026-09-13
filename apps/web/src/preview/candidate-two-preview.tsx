@@ -3919,6 +3919,10 @@ const RUNTIME_STYLES = `
             place-items: center;
         }
 
+        .profile-relationships-empty[hidden] {
+            display: none;
+        }
+
         .candidate2-demo-relation-lines {
             position: absolute;
             inset: 0;
