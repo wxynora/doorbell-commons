@@ -9,8 +9,8 @@ export function forfeitSeat(room:GameRoom,playerId:string):void {
   room.deadline=null;
 }
 
-/** Replace, never add to, the quitting seat's ordinary result before account aggregation. */
-export function forfeitDeltas(room:GameRoom,seats:SeatStakeDelta[],accounts:ResidentStakeDelta[],baseStake:number):ResidentStakeDelta[]{
+/** Replace the quitting seat's share after the ordinary conserved result is aggregated. */
+export function forfeitDeltas(room:GameRoom,seats:readonly SeatStakeDelta[],accounts:readonly ResidentStakeDelta[],baseStake:number):ResidentStakeDelta[]{
   return accounts.map(account=>({...account,delta:account.delta+seats.reduce((adjustment,d)=>{
     const seat=room.seats.find(s=>s.playerId===d.playerId&&s.forfeited&&s.residentId===account.residentId);
     return adjustment+(seat?-baseStake-d.delta:0);
