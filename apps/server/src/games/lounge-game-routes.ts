@@ -23,7 +23,7 @@ import { GAME_KINDS, GameAccessError, type GameRoomView, GameStateError } from "
 
 export type LoungeGameRouteGameService = Pick<
   GameService,
-  "create" | "join" | "view" | "ready" | "start" | "command" | "leave"
+  "create" | "join" | "view" | "watchSeats" | "ready" | "start" | "command" | "leave"
 >;
 
 export type LoungeGameRouteChatService = Pick<GameChatService, "read" | "send" | "subscribe">;
@@ -494,4 +494,3 @@ export function registerLoungeGameRoutes(
     }
   });
 }
-

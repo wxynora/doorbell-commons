@@ -54,10 +54,9 @@ export interface GameEngineAdapter {
   create(kind: GameKind, roomId: string, actors: readonly GameActor[]): Promise<unknown>;
   apply(kind: GameKind, snapshot: unknown, actorId: string, command: Record<string, unknown>): Promise<unknown>;
   applyUpdate?(kind: GameKind, snapshot: unknown, actorId: string, command: Record<string, unknown>): Promise<GameAppliedUpdate>;
-  project(kind: GameKind, snapshot: unknown, viewerId: string): Promise<unknown>;
+  project(kind: GameKind, snapshot: unknown, viewerId: string | null): Promise<unknown>;
   isFinished(kind: GameKind, snapshot: unknown): boolean;
   settleDue?(kind: GameKind, snapshot: unknown): Promise<unknown | null>;
 }
 export class GameAccessError extends Error {}
 export class GameStateError extends Error {}
-

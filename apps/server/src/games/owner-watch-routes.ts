@@ -18,14 +18,29 @@ export function ownerWatchCaller(human: GameCaller): GameCaller {
 interface Options {
   authenticate(request: FastifyRequest): Promise<GameCaller>;
   failure(request: FastifyRequest, reply: FastifyReply, error: unknown): unknown;
-  games: Pick<GameService, "view">;
+  games: Pick<GameService, "view" | "watchSeats">;
   sync: Pick<GameSync, "subscribe">;
   chat: Pick<GameChatService, "subscribe">;
 }
 const params = z.strictObject({ roomId: z.string().min(1) });
-const streamQuery = z.strictObject({afterChatSequence:z.coerce.number().int().nonnegative().default(0)});
+const watchQuery = z.strictObject({playerId:z.string().min(1).optional()});
+const streamQuery = watchQuery.extend({afterChatSequence:z.coerce.number().int().nonnegative().default(0)});
 export function registerOwnerWatchRoutes(app: FastifyInstance, options: Options): void {
   const root = "/api/lounge/games/rooms/:roomId/watch";
+  const resolveWatch = async (request:FastifyRequest, roomId:string, requested?:string) => {
+    const human = await options.authenticate(request);
+    const choices = await options.games.watchSeats(human, roomId);
+    const playerId = choices.preferredPlayerId ?? requested;
+    if (!playerId || !choices.seats.some(s=>s.playerId===playerId)) throw new GameAccessError("watch_seat_required");
+    const publicOnly = choices.preferredPlayerId !== playerId;
+    const caller:GameCaller = publicOnly ? {authenticate:async()=>{
+      const current=await options.games.watchSeats(human,roomId);
+      const seat=current.seats.find(s=>s.playerId===playerId);
+      if(!seat)throw new GameAccessError("not_seated");
+      return seat;
+    }} : ownerWatchCaller(human);
+    return {caller,publicOnly};
+  };
   const failure = (request: FastifyRequest, reply: FastifyReply, error: unknown) => {
     if (error instanceof GameAccessError && error.message === "not_seated")
       return reply.code(403).send({ error: { code: "owner_not_seated", message: "你的小机不在这桌，不能围观。" } });
@@ -33,13 +48,21 @@ export function registerOwnerWatchRoutes(app: FastifyInstance, options: Options)
       return reply.code(409).send({ error: { code: "game_not_started", message: "这桌还没开始游戏。" } });
     return options.failure(request, reply, error);
   };
+  app.get(`${root}/seats`, async (request,reply)=>{
+    reply.header("cache-control","no-store");
+    try {
+      const {roomId}=params.parse(request.params);
+      z.strictObject({}).parse(request.query);
+      return await options.games.watchSeats(await options.authenticate(request),roomId);
+    } catch(error){return failure(request,reply,error);}
+  });
   app.get(root, async (request, reply) => {
     reply.header("cache-control", "no-store");
     try {
       const { roomId } = params.parse(request.params);
-      z.strictObject({}).parse(request.query);
-      const caller = ownerWatchCaller(await options.authenticate(request));
-      const view = await options.games.view(caller, roomId);
+      const {playerId}=watchQuery.parse(request.query);
+      const {caller,publicOnly} = await resolveWatch(request,roomId,playerId);
+      const view = await options.games.view(caller, roomId,publicOnly);
       if (view.phase === "waiting") throw new GameStateError("game_not_started");
       return view;
     } catch (error) { return failure(request, reply, error); }
@@ -53,9 +76,9 @@ export function registerOwnerWatchRoutes(app: FastifyInstance, options: Options)
     reply.raw.once("close", close);
     try {
       const { roomId } = params.parse(request.params);
-      const {afterChatSequence}=streamQuery.parse(request.query);
+      const {afterChatSequence,playerId}=streamQuery.parse(request.query);
       const cursor=request.headers["last-event-id"]===undefined?afterChatSequence:z.coerce.number().int().nonnegative().parse(request.headers["last-event-id"]);
-      const caller = ownerWatchCaller(await options.authenticate(request));
+      const {caller,publicOnly} = await resolveWatch(request,roomId,playerId);
       subscription = await options.sync.subscribe(caller, roomId, (view, delta) => {
         if (closed) return;
         if (view.phase === "waiting") throw new GameStateError("game_not_started");
@@ -64,7 +87,7 @@ export function registerOwnerWatchRoutes(app: FastifyInstance, options: Options)
         const payload = delta ? { ...room, baseRevision: delta.baseRevision, patch: delta.patch } : view;
         const frame = `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`;
         if (started) reply.raw.write(frame); else pending.push(frame);
-      });
+      },publicOnly);
       chatSubscription=await options.chat.subscribe(caller,roomId,cursor,message=>{
         if(closed)return;
         const frame=`id: ${message.sequence}\nevent: chat\ndata: ${JSON.stringify(message)}\n\n`;
@@ -88,4 +111,3 @@ export function registerOwnerWatchRoutes(app: FastifyInstance, options: Options)
     }
   });
 }
-

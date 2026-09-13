@@ -5,7 +5,7 @@ import {GameChatContext} from "./game-chat-window";
 import {GameReactionContext,type GameReactionBinding,type GameReactionEvent} from "./game-reaction-binding";
 import {GameRoundExitContext} from "./game-round-exit";
 import {GameWaitingRoom,type GameWaitingRoomProps} from "./game-waiting-room";
-import {gameSessionClient,ownerWatchClient,GameSessionRequestError,type GameSessionTransport,type SessionRoom,type SessionChatMessage} from "./game-session-client";
+import {gameSessionClient,createWatchClient,GameSessionRequestError,type GameSessionTransport,type SessionRoom,type SessionChatMessage} from "./game-session-client";
 import {UnoPage} from "./uno/uno-page";
 import {DoudizhuPage} from "./doudizhu/doudizhu-page";
 import {LeafGamePage} from "./leaf-game/leaf-game-page";
@@ -34,7 +34,8 @@ export function GameSessionHost(props:GameSessionHostProps){
 }
 const pages={uno:UnoPage,doudizhu:DoudizhuPage,"leaf-game":LeafGamePage,"flying-chess":FlyingChessPage,monopoly:MonopolyPage,mahjong:MahjongPage};
 const projection=(game:unknown)=>game as {viewer_id?:string;revision?:number;phase?:string};
-function Session({roomId,initialRoom,viewerId,profiles:registeredProfiles,watchOnly=false,transport=watchOnly?ownerWatchClient:gameSessionClient,reactions,onExit,onNewTable}:GameSessionHostProps){
+function Session({roomId,initialRoom,viewerId,profiles:registeredProfiles,watchOnly=false,transport:suppliedTransport,reactions,onExit,onNewTable}:GameSessionHostProps){
+  const transport=useMemo(()=>suppliedTransport??(watchOnly?createWatchClient(viewerId):gameSessionClient),[suppliedTransport,watchOnly,viewerId]);
   const [room,setRoom]=useState<SessionRoom|null>(initialRoom??null);
   const profiles=useMemo(()=>gamePlayerProfiles(room?.seats??[],registeredProfiles),[room?.seats,registeredProfiles]);
   const current=useRef<SessionRoom|null>(initialRoom??null);

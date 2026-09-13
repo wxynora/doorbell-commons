@@ -11,7 +11,8 @@ import { getPublicLoungeSnapshot, type PublicLoungeIssue } from "../lounge/publi
 import { mergeLoungeSnapshotDelta } from "../lounge/public-lounge-delta";
 import { ResidentStandingLoader } from "../lounge/resident-standing";
 import { GameSessionHost } from "../games/game-session-host";
-import { createGameTable, joinGameTable, type SessionRoom } from "../games/game-session-client";
+import { createGameTable, joinGameTable, gameWatchSeats, type SessionRoom } from "../games/game-session-client";
+import {gamePlayerProfiles} from '../games/game-player-names';
 
 export interface LoungeScenePresence {
   residentId: string;
@@ -81,6 +82,7 @@ export function PublicLoungePage({
   const [initialGameRoom, setInitialGameRoom] = useState<SessionRoom | null>(null);
   const [gameEntering, setGameEntering] = useState(false);
   const [watchViewerId, setWatchViewerId] = useState("");
+  const [watchChoices,setWatchChoices]=useState<{roomId:string;seats:SessionRoom['seats']}|null>(null);
   const [gameError, setGameError] = useState("");
   const enteringGame = useRef(false);
   const [dailyOpen, setDailyOpen] = useState(false);
@@ -126,10 +128,14 @@ export function PublicLoungePage({
       if (!table) return;
       if (data.type === "lounge-game-watch") {
         if (table.room?.phase !== "playing" || table.room.room_id !== data.roomId) return;
-        const residentId = snapshotRef.current?.self_resident_id;
-        if (!residentId) return;
-        setWatchViewerId(`resident:${residentId}`);
-        setGameError(""); setInitialGameRoom(null); setWatchOnly(true); setGameRoomId(table.room.room_id); return;
+        const roomId=table.room.room_id;
+        enteringGame.current=true;setGameEntering(true);setGameError("");
+        void gameWatchSeats(roomId).then(({seats,preferredPlayerId})=>{
+          if(preferredPlayerId){setWatchViewerId(preferredPlayerId);setInitialGameRoom(null);setWatchOnly(true);setGameRoomId(roomId);}
+          else setWatchChoices({roomId,seats});
+        }).catch(error=>setGameError(error instanceof Error?error.message:'未能进入游戏'))
+          .finally(()=>{enteringGame.current=false;setGameEntering(false);});
+        return;
       }
       const kinds = ["mahjong", "doudizhu", "leaf-game", "uno", "monopoly", "flying-chess"] as const;
       if (data.type === "lounge-game-create" && (table.room || !kinds.includes(data.kind))) return;
@@ -369,6 +375,15 @@ export function PublicLoungePage({
         status={loadState.stage}
       /> : null}
       {gameEntering && <div className="game-session-status" role="status">正在进入游戏…</div>}
+      {watchChoices && createPortal(<div style={{position:'fixed',inset:0,zIndex:1001,display:'grid',placeItems:'center',background:'#243d3540'}}>
+        <section role="dialog" aria-modal="true" aria-label="选择围观视角" style={{background:'#fff8e8',color:'#304d43',padding:24,borderRadius:20,width:'min(340px, calc(100vw - 32px))',boxSizing:'border-box'}}>
+          <h2 style={{margin:'0 0 16px',fontSize:20}}>选择围观视角</h2>
+          <div style={{display:'grid',gap:10}}>{watchChoices.seats.map((seat,index)=><button key={seat.playerId} type="button" style={{minHeight:44,padding:10,font:'inherit',color:'inherit',background:'#f2e6c9',border:0,borderRadius:12}} onClick={()=>{
+            setWatchViewerId(seat.playerId);setInitialGameRoom(null);setWatchOnly(true);setGameRoomId(watchChoices.roomId);setWatchChoices(null);
+          }}>{gamePlayerProfiles(watchChoices.seats,gameProfiles)[seat.playerId]?.name??`${index+1}号座位`}</button>)}</div>
+          <button type="button" style={{marginTop:16,font:'inherit',color:'inherit',background:'none',border:0,minHeight:40}} onClick={()=>setWatchChoices(null)}>取消</button>
+        </section>
+      </div>,document.body)}
       {gameError && <div role="alert">{gameError}<button type="button" onClick={() => setGameError("")}>关闭</button></div>}
       {gameRoomId && gameViewerId && createPortal(<div style={{ position: "fixed", inset: 0, zIndex: 1000 }}>
         <GameSessionHost roomId={gameRoomId} {...(initialGameRoom ? { initialRoom: initialGameRoom } : {})} viewerId={watchOnly?watchViewerId:gameViewerId} watchOnly={watchOnly} profiles={gameProfiles} onExit={returnFromGame} onNewTable={returnFromGame} />

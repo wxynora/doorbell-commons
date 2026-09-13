@@ -52,6 +52,7 @@ class RoomSubscription {
     private readonly engine: GameEngineAdapter,
     private readonly deliver: GameRoomDelivery,
     private readonly remove: (subscription: RoomSubscription) => void,
+    private readonly publicOnly = false,
   ) {
     let resolveClosed!: (reason: unknown | null) => void;
     this.closed = new Promise<unknown | null>((resolve) => {
@@ -92,13 +93,13 @@ class RoomSubscription {
     }
     requireSeat(room, actor);
 
-    const patch = changes && this.lastRevision === room.revision - 1 && this.game !== null
+    const patch = !this.publicOnly && changes && this.lastRevision === room.revision - 1 && this.game !== null
       && Object.hasOwn(changes.private, actor.playerId)
       ? changedGamePatch(this.game, [...changes.public, ...changes.private[actor.playerId]!]) : undefined;
     const baseRevision = this.lastRevision;
     const game = patch ? applyGamePatch(this.game, patch) : room.snapshot === null
       ? null
-      : await this.engine.project(room.kind, room.snapshot, actor.playerId);
+      : await this.engine.project(room.kind, room.snapshot, this.publicOnly ? null : actor.playerId);
     if (!this.active) return;
 
     // Re-check immediately before the externally visible delivery.  This also
@@ -120,7 +121,7 @@ class RoomSubscription {
       host: publicActor(room.host),
       baseStake: room.baseStake ?? null,
       settlement: settlementView(room),
-      game,
+      game: this.publicOnly && game ? {...game as object, viewer_id: actor.playerId} : game,
     };
     this.lastRevision = room.revision;
     this.game = structuredClone(game);
@@ -144,6 +145,7 @@ export class GameSync implements GameCommitPublisher {
     caller: GameCaller,
     roomId: string,
     deliver: GameRoomDelivery,
+    publicOnly = false,
   ): Promise<GameSubscription> {
     if (typeof deliver !== "function") {
       throw new TypeError("game subscription delivery must be a function");
@@ -163,6 +165,7 @@ export class GameSync implements GameCommitPublisher {
       this.engine,
       deliver,
       (closedSubscription) => this.remove(closedSubscription),
+      publicOnly,
     );
     let roomSubscriptions = this.subscriptions.get(roomId);
     if (!roomSubscriptions) {

@@ -106,7 +106,7 @@ def _apply(request: dict[str, Any], repository_root: Path) -> Any:
 def _project(request: dict[str, Any], repository_root: Path) -> Any:
     kind = request.get("kind")
     viewer_id = request.get("viewerId")
-    if not isinstance(kind, str) or not isinstance(viewer_id, str) or not viewer_id:
+    if not isinstance(kind, str) or (viewer_id is not None and (not isinstance(viewer_id, str) or not viewer_id)):
         raise ValueError("project requires kind and viewerId")
     engine = _engine(repository_root, kind)
     now_ms = request.get("nowMs")

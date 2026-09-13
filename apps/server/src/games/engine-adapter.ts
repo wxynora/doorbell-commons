@@ -35,7 +35,7 @@ type BridgeRequest =
       operation: "project";
       kind: GameKind;
       snapshot: unknown;
-      viewerId: string;
+      viewerId: string | null;
       nowMs?: number;
     };
 
@@ -124,7 +124,7 @@ export class PythonGameEngineAdapter implements GameEngineAdapter {
     });
   }
 
-  async project(kind: GameKind, snapshot: unknown, viewerId: string): Promise<unknown> {
+  async project(kind: GameKind, snapshot: unknown, viewerId: string | null): Promise<unknown> {
     return this.run({
       operation: "project",
       kind,

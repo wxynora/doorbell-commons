@@ -1,4 +1,5 @@
 /** Classifies an authenticated viewer projection; does not send bells or play moves. */
+import {isForcedDoudizhuPass} from './doudizhu-forced-pass.js';
 export type WakeGameKind = "uno" | "doudizhu" | "leaf-game" | "flying-chess" | "monopoly" | "mahjong";
 export interface GameWakeEligibility {
   needsDecision: boolean;
@@ -14,6 +15,7 @@ export function gameWakeEligibility(kind: WakeGameKind, projection: unknown, vie
   const view = record(projection);
   const none = {needsDecision:false, hasOptionalReaction:false, roundEnded:false};
   if (!viewerId || view.viewer_id !== viewerId) return none;
+  if (kind === 'doudizhu' && isForcedDoudizhuPass(view)) return none;
   if (kind === "mahjong") {
     const publicView = record(view.public);
     if (publicView.game_result != null) return {...none, roundEnded:true};

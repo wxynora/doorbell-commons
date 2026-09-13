@@ -30,11 +30,11 @@ async function request<T>(path:string,body?:unknown):Promise<T>{
   return data as T;
 }
 /** Uses cookie-authenticated same-origin routes; no player identity comes from a URL. */
-function createSessionClient(watchOnly = false):GameSessionTransport {
+function createSessionClient(watchOnly = false, watchPlayerId?:string):GameSessionTransport {
 const readPath=(id:string)=>watchOnly?`${roomPath(id)}/watch`:roomPath(id);
 const rejectWatch=()=>{if(watchOnly)throw new Error("围观时不能操作对局");};
 return {
-  read:id=>request(readPath(id)),
+  read:id=>request(readPath(id)+(watchOnly&&watchPlayerId?`?playerId=${encodeURIComponent(watchPlayerId)}`:"")),
   ready:(id,revision,ready)=>{rejectWatch();return request(`${roomPath(id)}/ready`,{revision,ready});},
   start:(id,revision)=>{rejectWatch();return request(`${roomPath(id)}/start`,{revision});},
   command:(id,revision,command)=>{rejectWatch();return request(`${roomPath(id)}/command`,{revision,command});},
@@ -52,7 +52,7 @@ return {
       seenReactions.add(event.id);handlers.reaction?.(event);
     };
     const open=()=>{
-    source=new EventSource(`${readPath(id)}/stream?afterChatSequence=${chatCursor}`);
+    source=new EventSource(`${readPath(id)}/stream?afterChatSequence=${chatCursor}${watchOnly&&watchPlayerId?`&playerId=${encodeURIComponent(watchPlayerId)}`:""}`);
     source.onopen=()=>{handlers.connection(true);
       if(watchOnly)return;
       const initial=!historyReady;
@@ -104,6 +104,10 @@ return {
 }
 export const gameSessionClient=createSessionClient();
 export const ownerWatchClient=createSessionClient(true);
+export const createWatchClient=(playerId:string)=>createSessionClient(true,playerId);
+export function gameWatchSeats(roomId:string):Promise<{seats:SessionRoom['seats'];preferredPlayerId:string|null}>{
+  return request(`${roomPath(roomId)}/watch/seats`);
+}
 export function createGameTable(tableId:"square"|"round",kind:WaitingGameKind,baseStake?:number):Promise<SessionRoom>{
   return request(`${ROOT}/tables/${tableId}/rooms`,{kind,...(baseStake===undefined?{}:{baseStake})});
 }

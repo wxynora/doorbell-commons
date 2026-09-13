@@ -1,4 +1,5 @@
 import { settlementView } from './game-settlement-result.js';
+import {advanceDoudizhuPasses} from './doudizhu-forced-pass.js';
 import { randomUUID } from "node:crypto";
 import {nextGameDeadline,timeoutCommand} from './game-timeout.js';
 import { GameEconomyError, type GameEconomyPort } from "./game-economy.js";
@@ -233,13 +234,21 @@ export class GameService {
     return this.playerView(room, actor);
   }
 
-  async view(caller: GameCaller, roomId: string) {
+  async watchSeats(caller: GameCaller, roomId: string) {
+    const human = await caller.authenticate();
+    if (human.controllerType !== "human") throw new GameAccessError("owner_watch_required");
+    const room = this.current(roomId);
+    if (room.phase === "waiting") throw new GameStateError("game_not_started");
+    return { seats: room.seats.map(publicSeat), preferredPlayerId: room.seats.find(s => s.controllerType === "resident" && s.residentId === human.residentId)?.playerId ?? null };
+  }
+
+  async view(caller: GameCaller, roomId: string, publicOnly = false) {
     const actor = await caller.authenticate();
     const room = this.current(roomId);
     this.seat(room, actor);
     await this.settleDue(room);
     await this.settlePendingOutcome(room);
-    return this.playerView(room, actor);
+    return this.playerView(room, actor, publicOnly);
   }
 
   async command(
@@ -276,6 +285,8 @@ export class GameService {
     if (!['call_uno','catch_uno','build','sell_house'].includes(String(command.action))) room.deadline = null;
     this.save(room, advancedRound, applied?.changes, recordContext ? actor.playerId : undefined);
     await this.settlePendingOutcome(room);
+    const advanced = await advanceDoudizhuPasses(room,this.engine,next=>this.save(next),()=>this.current(roomId));
+    if(advanced!==room)return this.playerView(advanced,actor);
     return applied ? { ...this.lobbyView(room), game: applied.actorView, settlement: settlementView(room) } : this.playerView(room, actor);
   }
 
@@ -538,11 +549,11 @@ export class GameService {
     };
   }
 
-  private async playerView(room: GameRoom, actor: GameActor) {
+  private async playerView(room: GameRoom, actor: GameActor, publicOnly = false) {
     const game =
       room.snapshot === null
         ? null
-        : await this.engine.project(room.kind, room.snapshot, actor.playerId);
-    return { ...this.lobbyView(room), game, settlement: settlementView(room) };
+        : await this.engine.project(room.kind, room.snapshot, publicOnly ? null : actor.playerId);
+    return { ...this.lobbyView(room), game: publicOnly && game ? {...game as object, viewer_id: actor.playerId} : game, settlement: settlementView(room) };
   }
 }
