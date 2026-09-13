@@ -1,4 +1,5 @@
 import type { GameChatService, GameChatSubscription } from "./game-chat-service.js";
+import type { LoungeGameReactionPort, LoungeGameReactionSubscription } from "./lounge-game-routes.js";
 import { startSseKeepalive } from "../sse-keepalive.js";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
@@ -21,6 +22,7 @@ interface Options {
   games: Pick<GameService, "view" | "watchSeats">;
   sync: Pick<GameSync, "subscribe">;
   chat: Pick<GameChatService, "subscribe">;
+  reactions?: Pick<LoungeGameReactionPort, "subscribe">;
 }
 const params = z.strictObject({ roomId: z.string().min(1) });
 const watchQuery = z.strictObject({playerId:z.string().min(1).optional()});
@@ -70,9 +72,10 @@ export function registerOwnerWatchRoutes(app: FastifyInstance, options: Options)
   app.get(`${root}/stream`, { exposeHeadRoute: false }, async (request, reply) => {
     let subscription: GameSubscription | undefined;
     let chatSubscription: GameChatSubscription | undefined;
+    let reactionSubscription: LoungeGameReactionSubscription | undefined;
     let started = false, closed = false;
     const pending: string[] = [];
-    const close = () => { closed = true; subscription?.close(); chatSubscription?.close(); if (started && !reply.raw.writableEnded) reply.raw.end(); };
+    const close = () => { closed = true; subscription?.close(); chatSubscription?.close(); reactionSubscription?.close(); if (started && !reply.raw.writableEnded) reply.raw.end(); };
     reply.raw.once("close", close);
     try {
       const { roomId } = params.parse(request.params);
@@ -93,7 +96,12 @@ export function registerOwnerWatchRoutes(app: FastifyInstance, options: Options)
         const frame=`id: ${message.sequence}\nevent: chat\ndata: ${JSON.stringify(message)}\n\n`;
         if(started)reply.raw.write(frame);else pending.push(frame);
       });
-      if (closed) { subscription.close(); chatSubscription.close(); return reply; }
+      reactionSubscription=await options.reactions?.subscribe(caller,roomId,reaction=>{
+        if(closed)return;
+        const frame=`event: reaction\ndata: ${JSON.stringify(reaction)}\n\n`;
+        if(started)reply.raw.write(frame);else pending.push(frame);
+      });
+      if (closed) { subscription.close(); chatSubscription.close(); reactionSubscription?.close(); return reply; }
       reply.hijack();
       reply.raw.writeHead(200, { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-store", connection: "keep-alive", "x-accel-buffering": "no" });
       started = true;
@@ -102,10 +110,12 @@ export function registerOwnerWatchRoutes(app: FastifyInstance, options: Options)
       pending.length = 0;
       void subscription.closed.then(close, close);
       void chatSubscription.closed.then(close,close);
+      if(reactionSubscription)void reactionSubscription.closed.then(close,close);
       return reply;
     } catch (error) {
       subscription?.close();
       chatSubscription?.close();
+      reactionSubscription?.close();
       if (started) { close(); return reply; }
       return failure(request, reply, error);
     }

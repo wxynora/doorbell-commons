@@ -1,7 +1,7 @@
 import { settlementView } from './game-settlement-result.js';
 import {advanceDoudizhuPasses} from './doudizhu-forced-pass.js';
 import { randomUUID } from "node:crypto";
-import {nextGameDeadline,timeoutCommand} from './game-timeout.js';
+import {nextGameDeadline,timeoutCommand,isEndedWaitingRoom} from './game-timeout.js';
 import { GameEconomyError, type GameEconomyPort } from "./game-economy.js";
 import type { GameCaller } from "./game-identity.js";
 import { type ExtractedGameOutcome, extractGameOutcome } from "./game-outcome.js";
@@ -308,6 +308,15 @@ export class GameService {
   async runTimeout(roomId:string,key:string):Promise<void> {
     const room=this.current(roomId);
     if(!room.deadline||room.deadline.key!==key||room.deadline.at>this.now())return;
+    if(key.startsWith('ended-idle:')){
+      if(!isEndedWaitingRoom(room))return;
+      await this.settlePendingOutcome(room);
+      const latest=this.current(roomId);
+      if(latest.deadline?.key!==key||latest.deadline.at>this.now()||!isEndedWaitingRoom(latest))return;
+      latest.phase='finished';
+      this.save(latest);
+      return;
+    }
     if(room.deadline.playerId==='system'){await this.settleDue(room);return;}
     const actor=room.seats.find(s=>s.playerId===room.deadline!.playerId);
     if(!actor)return;

@@ -2,8 +2,16 @@ import type {GameRoom,GameRoomStore,GameKind} from './types.js';
 export interface GameDeadline {key:string;playerId:string;at:number}
 const rec=(value:unknown):Record<string,any>=>value&&typeof value==='object'?value as Record<string,any>:{};
 
+export function isEndedWaitingRoom(room:GameRoom):boolean {
+  return room.phase==='playing' && (room.kind==='doudizhu'||room.kind==='uno') && rec(room.snapshot).phase==='round_over';
+}
+
 export function nextGameDeadline(room:GameRoom,now:number):GameDeadline|null {
   const outer=rec(room.snapshot), state=room.kind==='mahjong'?rec(outer.state):outer;
+  if(isEndedWaitingRoom(room)){
+    const key=`ended-idle:${room.kind}:${state.round}`;
+    return room.deadline?.key===key?room.deadline:{key,playerId:'system',at:now+300_000};
+  }
   if(room.phase!=='playing'||['round_over','game_over','finished'].includes(state.phase)||state.status==='finished')return null;
   if(room.kind==='leaf-game'&&state.phase==='final_challenge'){
     return typeof state.final_challenge_deadline_ms==='number'

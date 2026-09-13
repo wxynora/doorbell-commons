@@ -59,6 +59,7 @@ function Session({roomId,initialRoom,viewerId,profiles:registeredProfiles,watchO
     if(next.game && projection(next.game).viewer_id!==viewerId)throw new Error("玩家局面不匹配");
     if(active.current && (!current.current || next.revision>=current.current.revision)){
       current.current=next;setRoom(next);
+      if(next.phase==='finished' && (next.kind==='doudizhu'||next.kind==='uno') && projection(next.game).phase==='round_over')void onExit();
     }
     return current.current ?? next;
   };
@@ -126,7 +127,7 @@ function Session({roomId,initialRoom,viewerId,profiles:registeredProfiles,watchO
       if(watchOnly)throw new Error("围观时不能操作对局");
       const latest=requireRoom();
       const game=projection(latest.game);
-      if((latest.kind==="uno"||latest.kind==="doudizhu")&&game.phase==="round_over"){
+      if(latest.phase==='playing'&&(latest.kind==="uno"||latest.kind==="doudizhu")&&game.phase==="round_over"){
         await command({action:"next_round",command_id:crypto.randomUUID(),expected_revision:game.revision});
       }else if(latest.phase==="finished"){
         await transport.leave(roomId,latest.revision);

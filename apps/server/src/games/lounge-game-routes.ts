@@ -307,6 +307,7 @@ export function registerLoungeGameRoutes(
 ): void {
   registerOwnerWatchRoutes(app, {
     games: options.games, sync: options.gameSync, chat: options.gameChat,
+    ...(options.reactions ? {reactions: options.reactions} : {}),
     authenticate: async request => { assertSameOrigin(request); return (await authenticateRequest(request, options)).caller; },
     failure: (request, reply, error) => sendFailure(request, reply, error, options.secureCookies),
   });
