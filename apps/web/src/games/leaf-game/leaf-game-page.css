@@ -1,4 +1,11 @@
 /* A single landscape canvas: every card, seat and hit area scales together. */
+.leaf-latest-play{position:absolute;top:calc(100% + 8px);left:0;display:flex;align-items:center;gap:8px;white-space:nowrap;font-size:12px;color:#54372a;pointer-events:none;}
+.leaf-latest-play__backs{position:relative;height:34px;flex-shrink:0;}
+.leaf-latest-play__backs span{position:absolute;top:0;width:24px;height:34px;border:1px solid #d5ddce;border-radius:4px;background:#46594c;box-shadow:0 2px 3px #263e3729;}
+.leaf-latest-play__backs span::after{content:'叶';position:absolute;inset:6px 3px;border:1px solid #e4d09a;border-radius:50%;text-align:center;font-size:10px;color:#e4d09a;}
+.leaf-player--top .leaf-latest-play{top:0;left:calc(100% + 8px);}
+.leaf-player--self .leaf-latest-play{top:-46px;left:0;}
+.leaf-game-stage--portrait .leaf-player--top .leaf-latest-play{top:calc(100% + 8px);left:0;}
 /* Portrait and landscape each have one shared design coordinate system. */
 :where(#leaf-game-root, .game-session--leaf-game) {
   color: #3f2b21;
@@ -65,7 +72,7 @@
 .leaf-game-stage--portrait .leaf-table{left:0;width:430px;top:50%;}
 .leaf-game-stage--portrait .leaf-pile{left:67px;}
 .leaf-game-stage--portrait .leaf-table-actions{top:148px;left:127px;width:176px;flex-direction:row;}
-.leaf-game-stage--portrait .leaf-resolution{top:625px;height:auto;min-height:32px;}
+.leaf-game-stage--portrait .leaf-resolution{top:580px;height:auto;min-height:32px;}
 .leaf-game-stage--portrait .leaf-resolution>div{flex-direction:column;text-align:center;gap:4px;}
 .leaf-game-stage--portrait .leaf-hand{top:730px;width:430px;}
 .leaf-game-stage--portrait .leaf-hand__cards{left:18px;top:18px;width:346px;}
@@ -388,7 +395,7 @@
 }
 .leaf-resolution {
   position: absolute;
-  top: 270px;
+  top: 250px;
   left: 18px;
   right: 18px;
   height: 14px;

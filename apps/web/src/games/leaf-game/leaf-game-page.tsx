@@ -35,11 +35,13 @@ function PlayerStatus({
   position,
   isDealer,
   isCurrent,
+  latestPlay,
 }: {
   player: LeafPlayer;
   position: "left" | "top" | "right" | "self";
   isDealer: boolean;
   isCurrent: boolean;
+  latestPlay?: LeafGameView['pile'][number] | undefined;
 }) {
   return (
     <section
@@ -74,6 +76,10 @@ function PlayerStatus({
         </span>
       ) : null}
       {player.knocked_out ? <span className="leaf-player__knocked">醉倒啦</span> : null}
+      {latestPlay?.actor_id === player.id && <div className="leaf-latest-play" aria-label={`${player.name}刚出 ${latestPlay.card_count} 张，报 ${latestPlay.declared_rank} 点`}>
+        <div className="leaf-latest-play__backs" aria-hidden="true" style={{width:24+Math.max(0,latestPlay.card_count-1)*12}}>{Array.from({length:latestPlay.card_count},(_,i)=><span key={i} style={{left:i*12}} />)}</div>
+        <span>{latestPlay.card_count} 张 · 报 <b>{latestPlay.declared_rank}</b> 点</span>
+      </div>}
     </section>
   );
 }
@@ -186,8 +192,6 @@ function TablePile({
   onSubmitSelection: () => void;
   pending: boolean;
 }) {
-  const lastActor = view.pile.at(-1)?.actor_id ?? null;
-  const actorName = playerById(view, lastActor)?.name;
   return (
     <button
       aria-label={
@@ -209,11 +213,11 @@ function TablePile({
         {selectedCount
           ? `盖下 ${selectedCount} 张`
           : view.pile_card_count
-            ? `${view.pile_card_count} 张`
+            ? `总牌堆 ${view.pile_card_count} 张`
             : "等主家开牌"}
       </strong>
       <span>
-        {view.declared_rank ? `${view.declared_rank} 点${actorName ? ` · ${actorName}` : ""}` : ""}
+        本轮累计盖牌
       </span>
       {view.pile_card_count ? <small>本轮罚饮醉意 +{view.pile_risk_percent}%</small> : null}
     </button>
@@ -589,24 +593,28 @@ export function LeafGamePage() {
             isCurrent={view.current_player_id === orderedPlayers.left.id}
             isDealer={view.dealer_id === orderedPlayers.left.id}
             player={orderedPlayers.left}
+            latestPlay={view.pile.at(-1)}
             position="left"
           />
           <PlayerStatus
             isCurrent={view.current_player_id === orderedPlayers.top.id}
             isDealer={view.dealer_id === orderedPlayers.top.id}
             player={orderedPlayers.top}
+            latestPlay={view.pile.at(-1)}
             position="top"
           />
           <PlayerStatus
             isCurrent={view.current_player_id === orderedPlayers.right.id}
             isDealer={view.dealer_id === orderedPlayers.right.id}
             player={orderedPlayers.right}
+            latestPlay={view.pile.at(-1)}
             position="right"
           />
           <PlayerStatus
             isCurrent={view.current_player_id === orderedPlayers.self.id}
             isDealer={view.dealer_id === orderedPlayers.self.id}
             player={orderedPlayers.self}
+            latestPlay={view.pile.at(-1)}
             position="self"
           />
 
