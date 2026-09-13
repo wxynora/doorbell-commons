@@ -1,3 +1,4 @@
+import { readStandingImage, saveStandingImage } from "./standing-image-cache";
 import { type Dispatch, type SetStateAction, useEffect, useMemo, useRef, useState } from "react";
 
 function isStandingMessage(value: unknown): value is {
@@ -14,98 +15,65 @@ function isStandingMessage(value: unknown): value is {
   );
 }
 
-export function retainStandingImages(
-  current: Readonly<Record<string, string>>,
-  residentIds: readonly string[],
-): Readonly<Record<string, string>> {
-  const allowed = new Set(residentIds);
-  let changed = false;
-  const next: Record<string, string> = {};
-  for (const [residentId, image] of Object.entries(current)) {
-    if (allowed.has(residentId)) next[residentId] = image;
-    else changed = true;
-  }
-  return changed ? next : current;
-}
-
-export function retainStandingResidentIds(
-  current: Set<string>,
-  residentIds: readonly string[],
-): Set<string> {
-  const allowed = new Set(residentIds);
-  let changed = false;
-  const next = new Set<string>();
-  for (const residentId of current) {
-    if (allowed.has(residentId)) next.add(residentId);
-    else changed = true;
-  }
-  return changed ? next : current;
-}
-
 export function ResidentStandingLoader({
   active = true,
   onImagesChange,
-  residentIds,
+  residents,
 }: {
   active?: boolean;
   onImagesChange: Dispatch<SetStateAction<Record<string, string>>>;
-  residentIds: readonly string[];
+  residents: readonly { residentId: string; revision: number }[];
 }) {
   const frameRefs = useRef(new Map<string, HTMLIFrameElement>());
-  const [loadedIds, setLoadedIds] = useState<Set<string>>(new Set());
-  const pendingIds = useMemo(
-    () => residentIds.filter((residentId) => !loadedIds.has(residentId)),
-    [loadedIds, residentIds],
-  );
+  const [loaded, setLoaded] = useState<Record<string, number>>({});
+  const [checked, setChecked] = useState<Record<string, number>>({});
+  const pending = useMemo(() => residents.filter(person =>
+    checked[person.residentId] === person.revision && loaded[person.residentId] !== person.revision),
+    [checked, loaded, residents]);
+  const publish = (residentId: string, image: string | null) => onImagesChange(current => {
+    if (image) return current[residentId] === image ? current : { ...current, [residentId]: image };
+    if (!(residentId in current)) return current;
+    const next = { ...current }; delete next[residentId]; return next;
+  });
 
   useEffect(() => {
-    setLoadedIds((current) => retainStandingResidentIds(current, residentIds));
-    onImagesChange((current) => retainStandingImages(current, residentIds));
-  }, [onImagesChange, residentIds]);
+    let disposed = false;
+    for (const person of residents) {
+      void readStandingImage(person.residentId, person.revision).catch(() => null).then(saved => {
+        if (disposed) return;
+        if (saved) {
+          publish(person.residentId, saved.image);
+          setLoaded(current => ({ ...current, [person.residentId]: person.revision }));
+        }
+        setChecked(current => ({ ...current, [person.residentId]: person.revision }));
+      });
+    }
+    return () => { disposed = true; };
+  }, [residents, onImagesChange]);
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin || !isStandingMessage(event.data)) return;
-      const residentId = [...frameRefs.current.entries()].find(
-        ([, frame]) => frame.contentWindow === event.source,
-      )?.[0];
-      if (!residentId) return;
-      if (event.data.residentId !== null && event.data.residentId !== residentId) return;
-      const image =
-        typeof event.data.image === "string" &&
-        event.data.image.startsWith("data:image/png;base64,")
-          ? event.data.image
-          : null;
-      setLoadedIds((current) => new Set(current).add(residentId));
-      onImagesChange((current) => {
-        if (!image) {
-          if (!(residentId in current)) return current;
-          const next = { ...current };
-          delete next[residentId];
-          return next;
-        }
-        return { ...current, [residentId]: image };
-      });
+      const person = residents.find(person => frameRefs.current.get(person.residentId)?.contentWindow === event.source);
+      if (!person || (event.data.residentId !== null && event.data.residentId !== person.residentId)) return;
+      const image = typeof event.data.image === "string" && event.data.image.startsWith("data:image/png;base64,") ? event.data.image : null;
+      setLoaded(current => ({ ...current, [person.residentId]: person.revision }));
+      publish(person.residentId, image);
+      // A missing manifest is stable at revision zero; a failed nonempty avatar
+      // must not become a permanently saved missing image.
+      if (image || person.revision === 0) void saveStandingImage({ ...person, image }).catch(() => {});
     };
-
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [onImagesChange]);
+  }, [residents, onImagesChange]);
 
-  return (
-    <div className="public-lounge-portrait-loaders" aria-hidden="true">
-      {(active ? pendingIds : []).map((residentId) => (
-        <iframe
-          key={residentId}
-          ref={(frame) => {
-            if (frame) frameRefs.current.set(residentId, frame);
-            else frameRefs.current.delete(residentId);
-          }}
-          src={`/avatar-editor/?mode=standing&resident=${encodeURIComponent(residentId)}`}
-          title={`读取${residentId}的居民全身形象`}
-          tabIndex={-1}
-        />
-      ))}
-    </div>
-  );
+  return <div className="public-lounge-portrait-loaders" aria-hidden="true">
+    {(active ? pending : []).map(person => <iframe
+      key={`${person.residentId}:${person.revision}`}
+      ref={frame => { if (frame) frameRefs.current.set(person.residentId, frame); else frameRefs.current.delete(person.residentId); }}
+      src={`/avatar-editor/?mode=standing&resident=${encodeURIComponent(person.residentId)}`}
+      title={`读取${person.residentId}的居民全身形象`}
+      tabIndex={-1}
+    />)}
+  </div>;
 }

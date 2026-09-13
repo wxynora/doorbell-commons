@@ -69,7 +69,7 @@ export interface LoungeSayInput {
 }
 
 export interface LoungeServiceOptions {
-  database: Pick<CommunityDatabase, "listActiveHumanCommunities">;
+  database: Pick<CommunityDatabase, "listActiveHumanCommunities" | "residentAvatarStore">;
   registrationAuth: Pick<RegistrationAuthService, "getCurrentSession">;
   store: LoungeStore;
   now?: () => number;
@@ -284,7 +284,15 @@ export class LoungeService {
 
   async readHumanSnapshot(token: string): Promise<LoungeSnapshot> {
     const current = await this.#registrationAuth.getCurrentSession(token);
-    return this.readSnapshotForResident(current.resident.residentId);
+    const snapshot = this.readSnapshotForResident(current.resident.residentId);
+    return { ...snapshot, residents: this.#humanResidents(snapshot.residents) };
+  }
+
+  #humanResidents(residents: LoungeSnapshot["residents"]): LoungeSnapshot["residents"] {
+    return residents.map((resident) => ({
+      ...resident,
+      avatar_revision: this.#database.residentAvatarStore.read(resident.resident_id).revision,
+    }));
   }
 
   readSnapshotForResident(residentId: string): LoungeSnapshot {
@@ -393,7 +401,7 @@ export class LoungeService {
     };
     if (change.residents || change.presence) {
       const { communities, presence } = this.#readResidentsAndPresence();
-      if (change.residents) delta.residents = communities.map(residentSummary);
+      if (change.residents) delta.residents = this.#humanResidents(communities.map(residentSummary));
       if (change.presence) delta.presence = presence;
     }
     if (change.tables) delta.tables = this.#gameTables?.listPublicTables() ?? [];

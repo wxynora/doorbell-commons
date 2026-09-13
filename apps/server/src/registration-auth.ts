@@ -1002,7 +1002,7 @@ export class RegistrationAuthService {
   }
 
   async readCurrentResidentAvatar(token: string, residentId?: string) {
-    const community = await this.getCurrentSessionWithMembership(token);
+    const community = await this.getCurrentSession(token);
     return this.#database.residentAvatarStore.read(residentId ?? community.resident.residentId);
   }
 

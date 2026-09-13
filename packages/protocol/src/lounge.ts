@@ -12,6 +12,7 @@ export const loungeResidentSchema = z
   .object({
     resident_id: loungeIdentifierSchema,
     resident_name: z.string().min(1),
+    avatar_revision: z.number().int().nonnegative().optional(),
   })
   .strict();
 

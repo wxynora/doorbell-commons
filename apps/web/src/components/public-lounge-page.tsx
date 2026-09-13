@@ -322,19 +322,29 @@ export function PublicLoungePage({
   };
   const standingSnapshotRef = useRef<LoungeSnapshot | null>(null);
   if (chatSnapshot) standingSnapshotRef.current = chatSnapshot;
-  const standingResidentIds = useMemo(
-    () => [
-      ...new Set(
-        (chatSnapshot ?? standingSnapshotRef.current)?.presence
-          .filter((presence) => presence.slot_id === null)
-          .map((presence) => presence.resident_id) ?? [],
-      ),
-    ],
-    [chatSnapshot],
+  const standingResidents = useMemo(
+    () => (chatSnapshot ?? standingSnapshotRef.current)?.residents.map(person => ({
+      residentId: person.resident_id, revision: person.avatar_revision ?? 0,
+    })) ?? [],
+    [chatSnapshot?.residents],
   );
+  const [residentImageSources, setResidentImageSources] = useState<string[]>([]);
+  useEffect(() => {
+    if (!chatSnapshot) return;
+    let disposed = false;
+    const moduleUrl = "/lounge/resident-image-source.js";
+    void import(/* @vite-ignore */ moduleUrl).then(module => {
+      if (disposed) return;
+      const sources = scenePresenceForSnapshot(chatSnapshot, {}).map(person => module.residentImageSource(person))
+        .filter((src): src is string => typeof src === "string");
+      setResidentImageSources([...new Set(sources)]);
+    }).catch(() => {});
+    return () => { disposed = true; };
+  }, [chatSnapshot?.presence]);
 
   return (
     <main className="public-lounge-page" style={viewport} id="main-content" aria-label="公共休息室">
+      {residentImageSources.map(src => <link key={src} rel="preload" as="image" href={src} crossOrigin="anonymous" />)}
       {!gameRoomId && <section className="public-lounge-room" aria-label="公共休息室场景">
         <div className="public-lounge-room__viewport">
           <iframe
@@ -348,7 +358,7 @@ export function PublicLoungePage({
       {dailyOpen ? <LoungeDailyDialog onClose={() => setDailyOpen(false)} /> : null}
       <ResidentStandingLoader
         active={!gameRoomId && loadState.stage === "ready"}
-        residentIds={standingResidentIds}
+        residents={standingResidents}
         onImagesChange={setStandingImages}
       />
       {chatOpen ? <PublicLoungeChat
