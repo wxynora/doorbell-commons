@@ -1,3 +1,4 @@
+import { settlementView } from './game-settlement-result.js';
 import type { GameCaller } from "./game-identity.js";
 import { applyGamePatch, changedGamePatch } from './game-delta.js';
 import type { GameChanges, GamePatch } from './types.js';
@@ -118,6 +119,7 @@ class RoomSubscription {
       seats: room.seats.map(publicSeat),
       host: publicActor(room.host),
       baseStake: room.baseStake ?? null,
+      settlement: settlementView(room),
       game,
     };
     this.lastRevision = room.revision;

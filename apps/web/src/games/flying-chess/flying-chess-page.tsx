@@ -1,3 +1,4 @@
+import { GameSettlementResult } from "../game-settlement-result";
 import { gameViewportReader } from "../game-viewport";
 import { GameRulesHelp , GameRulesText } from "../game-rules-help";
 import { useGameSession, liveMove } from "../game-session-binding";
@@ -397,6 +398,7 @@ function ActionPanel({
           >
             再来一局
           </button>
+          <GameSettlementResult />
           <GameRoundExit />
           </>
         ) : humanTurn && view.phase === "awaiting_roll" ? (

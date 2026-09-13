@@ -13,6 +13,7 @@ type GamePhase = (typeof GAME_PHASES)[number];
 
 interface GameRoomRow {
   deadline_json: string | null;
+  settlement_json: string | null;
   room_id: string;
   kind: string;
   revision: number;
@@ -144,6 +145,7 @@ function roomFromRow(row: GameRoomRow): GameRoom {
     throw new GameStateError("The stored game room metadata is invalid");
   }
   const room = {
+    settlement: row.settlement_json == null ? null : decodeJson<GameRoom["settlement"]>(row.settlement_json, "settlement"),
     deadline: row.deadline_json === null ? null : decodeJson<NonNullable<GameRoom['deadline']>>(row.deadline_json, 'deadline'),
     roomId: row.room_id,
     kind: row.kind,
@@ -183,8 +185,8 @@ export class GameStore implements GameRoomStore {
           `INSERT INTO game_rooms (
              room_id, kind, revision, phase, seats_json,
              host_player_id, host_controller_type, base_stake,
-             last_settlement_id, snapshot_json, deadline_json
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             last_settlement_id, snapshot_json, deadline_json, settlement_json
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           room.roomId,
@@ -198,6 +200,7 @@ export class GameStore implements GameRoomStore {
           room.lastSettlementId ?? null,
           snapshotJson,
           room.deadline ? encodeJson(room.deadline, 'deadline') : null,
+        room.settlement ? encodeJson(room.settlement, 'settlement') : null,
         );
     } catch (error) {
       if (error instanceof Error && /(?:UNIQUE|PRIMARY KEY).*game_rooms/iu.test(error.message)) {
@@ -211,7 +214,7 @@ export class GameStore implements GameRoomStore {
     const row = this.#database
       .prepare(
         `SELECT room_id, kind, revision, phase, seats_json, snapshot_json
-                , host_player_id, host_controller_type, base_stake, last_settlement_id, deadline_json
+                , host_player_id, host_controller_type, base_stake, last_settlement_id, deadline_json, settlement_json
          FROM game_rooms
          WHERE room_id = ?`,
       )
@@ -234,7 +237,7 @@ export class GameStore implements GameRoomStore {
         `UPDATE game_rooms
          SET kind = ?, revision = ?, phase = ?, seats_json = ?,
              host_player_id = ?, host_controller_type = ?, base_stake = ?,
-             last_settlement_id = ?, snapshot_json = ?, deadline_json = ?
+             last_settlement_id = ?, snapshot_json = ?, deadline_json = ?, settlement_json = ?
          WHERE room_id = ? AND revision = ?`,
       )
       .run(
@@ -248,6 +251,7 @@ export class GameStore implements GameRoomStore {
         room.lastSettlementId ?? null,
         snapshotJson,
         room.deadline ? encodeJson(room.deadline, 'deadline') : null,
+        room.settlement ? encodeJson(room.settlement, 'settlement') : null,
         room.roomId,
         expectedRevision,
       );

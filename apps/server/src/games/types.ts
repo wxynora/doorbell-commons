@@ -1,3 +1,4 @@
+import type { GameSettlementReceipt, GameSettlementView } from './game-settlement-result.js';
 /** Internal game boundary; not a browser or model-facing protocol. */
 export const GAME_KINDS = ["leaf-game", "doudizhu", "flying-chess", "uno", "monopoly", "mahjong"] as const;
 export type GameKind = typeof GAME_KINDS[number];
@@ -21,6 +22,7 @@ export interface GameRoom {
   baseStake?: number | null;
   /** Null/absent before settlement-marker migration means no round is recorded. */
   lastSettlementId?: string | null;
+  settlement?: GameSettlementReceipt | null;
   /** Complete engine state including hidden information. Never return to clients. */
   snapshot: unknown | null;
 }
@@ -31,6 +33,7 @@ export interface GameRoomStore {
   replace(room: GameRoom, expectedRevision: number): void;
 }
 export interface GameRoomView {
+  settlement?: GameSettlementView | null;
   roomId: string;
   kind: GameKind;
   revision: number;

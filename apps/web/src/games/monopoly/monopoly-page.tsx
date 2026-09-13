@@ -1,3 +1,4 @@
+import { GameSettlementResult } from "../game-settlement-result";
 import { gameViewportReader } from "../game-viewport";
 import { GameRulesHelp , GameRulesText } from "../game-rules-help";
 import { useGameSession, liveMove, asSession } from "../game-session-binding";
@@ -770,7 +771,7 @@ export function MonopolyPage() {
               </div>
             ) : (
               <div className="monopoly-actions__waiting">
-                {winner ? <GameRoundExit onAgain={() => void startGame()} /> : busy ? "棋子旅行中…" : "马上轮到你"}
+                {winner ? <><GameSettlementResult /><GameRoundExit onAgain={() => void startGame()} /></> : busy ? "棋子旅行中…" : "马上轮到你"}
               </div>
             )}
             <button

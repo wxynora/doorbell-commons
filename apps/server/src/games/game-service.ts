@@ -1,3 +1,4 @@
+import { settlementView } from './game-settlement-result.js';
 import { randomUUID } from "node:crypto";
 import {nextGameDeadline,timeoutCommand} from './game-timeout.js';
 import { GameEconomyError, type GameEconomyPort } from "./game-economy.js";
@@ -95,6 +96,7 @@ export class GameService {
     private readonly roundLimits?: GameRoundLimitStore,
     private readonly residentSocial?: ResidentSocialStore,
     private readonly now:()=>number = Date.now,
+    private readonly afterSettlement?: (room: GameRoom) => Promise<void>,
   ) {}
 
   async create(
@@ -273,7 +275,7 @@ export class GameService {
     if (!['call_uno','catch_uno','build','sell_house'].includes(String(command.action))) room.deadline = null;
     this.save(room, advancedRound, applied?.changes);
     await this.settlePendingOutcome(room);
-    return applied ? { ...this.lobbyView(room), game: applied.actorView } : this.playerView(room, actor);
+    return applied ? { ...this.lobbyView(room), game: applied.actorView, settlement: settlementView(room) } : this.playerView(room, actor);
   }
 
   private current(roomId: string, revision?: number) {
@@ -423,7 +425,9 @@ export class GameService {
     const result = await this.economy.settle({ settlementId, deltas: residentDeltas });
     this.validateSettlementResult(result, settlementId, residentDeltas);
     room.lastSettlementId = settlementId;
+    room.settlement = result;
     this.save(room);
+    await this.afterSettlement?.(room);
     return extracted;
   }
 
@@ -534,6 +538,6 @@ export class GameService {
       room.snapshot === null
         ? null
         : await this.engine.project(room.kind, room.snapshot, actor.playerId);
-    return { ...this.lobbyView(room), game };
+    return { ...this.lobbyView(room), game, settlement: settlementView(room) };
   }
 }

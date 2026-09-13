@@ -1,3 +1,4 @@
+import { ownSettlementText } from './game-settlement-result.js';
 import type { GameContextDelivery } from "./game-context-cursor.js";
 import { loungeDisplayName } from "../lounge-display-name.js";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -447,7 +448,21 @@ export class LoungeGameTool {
     const table = this.#readTables().find(
       (candidate) => candidate.room?.room_id === roomId,
     );
-    if (!table) throw new LoungeGameToolError("game_room_not_found");
+    if (!table) {
+      const settled=await this.#gameService.view(caller,roomId);
+      const actor=await caller.authenticate();
+      const text=ownSettlementText(settled.settlement,actor.playerId);
+      if (!text) throw new LoungeGameToolError("game_room_not_found");
+      const lines=[text];
+      const names:Record<string,string>={};
+      for(const seat of settled.seats)names[seat.playerId]=seat.playerId===actor.playerId?'你':this.#nameOf?await this.#nameOf(seat.playerId):'同桌';
+      const delta=delivery?this.#extra.historySince?.(roomId,names,delivery.after.eventSequence):undefined;
+      const history=delta?.lines??this.#extra.history?.(roomId,names)??[];
+      if(history.length)lines.push('期间行动：',...history);
+      if(delivery)delivery.captured={eventSequence:delta?.sequence??delivery.after.eventSequence,chatSequence:delivery.after.chatSequence};
+      await this.#renderChatMessages(lines,caller,roomId,actor.playerId,delivery);
+      return lines.join("\n");
+    }
 
     let view: LoungeGamePlayerView;
     try {
@@ -758,6 +773,8 @@ export class LoungeGameTool {
     const names:Record<string,string>={};
     for(const seat of view.seats)names[seat.playerId]=seat.playerId===playerId?'你':this.#nameOf?await this.#nameOf(seat.playerId):'同桌';
     if(view.game)lines.push(...gameContext(view.kind,view.game,names));
+    const silver=ownSettlementText(view.settlement,playerId);
+    if(silver)lines.push(silver);
     const delta=delivery?this.#extra.historySince?.(view.roomId,names,delivery.after.eventSequence):undefined;
     const history=delta?.lines??this.#extra.history?.(view.roomId,names)??[];
     if(delivery)delivery.captured={eventSequence:delta?.sequence??delivery.after.eventSequence,chatSequence:delivery.after.chatSequence};

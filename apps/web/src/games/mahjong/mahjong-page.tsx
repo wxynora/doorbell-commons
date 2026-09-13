@@ -1,3 +1,4 @@
+import { GameSettlementResult } from "../game-settlement-result";
 import { gameViewportReader } from "../game-viewport";
 import { GameRulesIcon , GameRulesText } from "../game-rules-help";
 import { GameChatWindow, GameSpeechBubble } from "../game-chat-window";
@@ -194,12 +195,12 @@ export function MahjongPage() {
           {sorted.map(t => <button key={t.id} aria-label={t.label} aria-pressed={selected === t.id} disabled={busy || !actions.some(a => a.action_id === `discard:${t.id}`)} className={`mj-tile ${selected === t.id ? "selected" : ""} ${t.id === drawn ? "drawn" : ""}`} onClick={() => setSelected(selected === t.id ? null : t.id || null)}><TileFace tile={t} /></button>)}
         </div>
       </>}
-      {result && !review && !rules && <GameRoundExit floating onAgain={() => void start()} />}
+      {result && !review && !rules && <div style={{position:"absolute",left:"35%",top:"60%"}}><GameSettlementResult /><GameRoundExit onAgain={() => void start()} /></div>}
       {error && <div role="alert" className="mj-error">{error}<button onClick={() => location.reload()}>重新连接</button></div>}
       {(rules || review) && <div className="mj-overlay"><section role="dialog" aria-modal="true" aria-label={rules ? "规则" : "本手结果"}><button className="mj-close" onClick={() => { setRules(false); setReview(false); }}>关闭</button>
         {rules ? <><h2>国标麻将</h2><GameRulesText kind="mahjong" /></>
           : <><h2>{result?.draw ? "荒牌" : `${name(result?.winner_player_id)} · ${result?.total_fan} 番`}</h2>{result?.fans?.map((f, i) => <p key={i}>{f.name}<b className="mj-fan">{f.fan} 番</b></p>)}</>}
-        {!rules && result && <GameRoundExit onAgain={() => void start()} />}
+        {!rules && result && <><GameSettlementResult /><GameRoundExit onAgain={() => void start()} /></>}
       </section></div>}
     </main>
   </div>;

@@ -1,3 +1,4 @@
+import { GameSettlementResult } from "../game-settlement-result";
 import { gameViewportReader } from "../game-viewport";
 import { GameRulesIcon , GameRulesText } from "../game-rules-help";
 import { useGameSession, liveMove, asSession } from "../game-session-binding";
@@ -108,7 +109,7 @@ function PlayerEdge({ player, current }: { player: UnoPlayer; current: boolean }
   return (
     <article
       className={`uno-opponent${current ? " current" : ""}`}
-      aria-label={`${player.name}，${player.hand_count} 张牌，${player.score} 分${current ? "，行动中" : ""}`}
+      aria-label={`${player.name}，${player.hand_count} 张牌${current ? "，行动中" : ""}`}
     >
       <span className={`uno-avatar uno-avatar--${player.accent}`} aria-hidden="true">
         {Array.from(player.name)[0] ?? "?"}
@@ -120,7 +121,7 @@ function PlayerEdge({ player, current }: { player: UnoPlayer; current: boolean }
           {player.controller_type === "human" ? <small>人类</small> : null}
         </strong>
         <span>
-          {player.score} 分{current ? <b className="uno-seat-turn">行动中</b> : null}
+          {current ? <b className="uno-seat-turn">行动中</b> : null}
         </span>
       </div>
       <div className="uno-opponent-backs" aria-hidden="true">
@@ -453,7 +454,7 @@ export function UnoPage() {
                   <small>你的手牌</small>
                 </span>
                 <span className="uno-own-count">{hand.length} 张</span>
-                <span className="uno-own-score">{human?.score ?? 0} 分</span>
+
                 {humanTurn ? <b className="uno-seat-turn">轮到你</b> : null}
               </header>
               <section className="uno-hand" aria-label={`你的手牌，共 ${hand.length} 张`}>
@@ -517,14 +518,7 @@ export function UnoPage() {
                   {display.players.find((player) => player.id === display.last_results?.winner_id)
                     ?.name ?? "赢家"}
                 </strong>
-                <b>+{display.last_results.gain} 分</b>
-                <div>
-                  {display.last_results.players.map((player) => (
-                    <small key={player.player_id}>
-                      {display.players.find(seat => seat.id === player.player_id)?.name ?? "同桌玩家"} {player.score} 分
-                    </small>
-                  ))}
-                </div>
+                <GameSettlementResult />
                 {nextRoundMove ? (
                   <button
                     disabled={busy}

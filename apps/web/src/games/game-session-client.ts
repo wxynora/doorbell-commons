@@ -1,6 +1,6 @@
 import type { WaitingRoom, WaitingGameKind } from "./game-waiting-room";
 import type {GameReactionEvent,GameReactionKind} from "./game-reaction-binding";
-export interface SessionRoom extends WaitingRoom { game: unknown | null }
+export interface SessionRoom extends WaitingRoom { game: unknown | null; settlement?: import("./game-session-binding").GameSessionBinding["settlement"] }
 export interface SessionChatMessage {roomId:string; sequence:number; playerId:string; text:string}
 export interface SessionStream {
   game(room:SessionRoom):void;

@@ -1,3 +1,4 @@
+import { GameSettlementResult } from "../game-settlement-result";
 import { gameViewportReader } from "../game-viewport";
 import { GameRulesIcon , GameRulesText } from "../game-rules-help";
 import { useGameSession, liveMove } from "../game-session-binding";
@@ -233,6 +234,7 @@ function TableControls({
       <section className="leaf-table-result">
         <span>本局结束</span>
         <strong>{winner?.name ?? "最后的玩家"} 赢啦</strong>
+        <GameSettlementResult />
       </section>
     );
   }

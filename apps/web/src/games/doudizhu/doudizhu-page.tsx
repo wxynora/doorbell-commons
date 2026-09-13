@@ -1,3 +1,4 @@
+import { GameSettlementResult } from "../game-settlement-result";
 import { gameViewportReader } from "../game-viewport";
 import { GameRulesIcon , GameRulesText } from "../game-rules-help";
 import { useGameSession, liveMove } from "../game-session-binding";
@@ -91,7 +92,7 @@ function PlayerMarker({
   if (!player) return null;
   return (
     <section
-      aria-label={`${player.name}，${player.hand_count} 张牌，积分 ${player.score}${current ? "，当前行动" : ""}`}
+      aria-label={`${player.name}，${player.hand_count} 张牌${current ? "，当前行动" : ""}`}
       className={`ddz-player ddz-player--${side} ddz-player--${player.accent} ${current ? "ddz-player--current" : ""}`}
     >
       <div className="ddz-player__avatar" aria-hidden="true">
@@ -105,8 +106,7 @@ function PlayerMarker({
           {player.is_landlord ? <i>地主</i> : null}
         </span>
         <span className="ddz-player__meta">
-          {player.hand_count} 张 · {player.score >= 0 ? "+" : ""}
-          {player.score}
+          {player.hand_count} 张
         </span>
       </div>
       {player.passed ? <span className="ddz-player__bubble">不出</span> : null}
@@ -321,17 +321,7 @@ function RoundResult({
     <section className="ddz-round-result" aria-live="polite">
       <span>第 {view.round} 局</span>
       <strong>{winner}</strong>
-      <div className="ddz-round-result__scores">
-        {view.last_results?.map((result) => (
-          <span key={result.player_id}>
-            {view.players.find(player => player.id === result.player_id)?.name ?? "同桌玩家"}{" "}
-            <b>
-              {result.delta >= 0 ? "+" : ""}
-              {result.delta}
-            </b>
-          </span>
-        ))}
-      </div>
+      <GameSettlementResult />
       <small>
         {view.spring ? "春天 · " : view.anti_spring ? "反春 · " : ""}本局 ×{view.base ?? 1}
         ，牌型倍数 ×{view.multiplier}

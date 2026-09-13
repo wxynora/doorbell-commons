@@ -255,6 +255,11 @@ export function createLoungeRuntime(options: LoungeRuntimeOptions) {
     database.gameRoundLimitStore,
     database.residentSocialStore,
     now,
+    async room => {
+      await Promise.all(room.seats.filter(seat=>seat.controllerType==="resident" && seat.residentId).map(async seat=>{
+        try { await turnWakes.replay(seat.residentId!,room.roomId); } catch(error) { options.onError(error); }
+      }));
+    },
   );
   const gameChat = new GameChatService(tables, database.gameChatStore);
   const canChat = (residentId: string) =>

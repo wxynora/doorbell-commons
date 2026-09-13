@@ -254,7 +254,7 @@ export class GameTurnWakeService {
       const valid =
         parsed?.residentId === residentId &&
         room !== null &&
-        room.phase !== "finished" &&
+        (room.phase !== "finished" || !!room.settlement) &&
         seated &&
         room.revision === parsed.revision;
       if (valid) continue;
@@ -384,7 +384,7 @@ export class GameTurnWakeService {
       return;
     }
     const decision = this.#eligibility(view.kind, view.game, actor.playerId);
-    if (!decision.needsDecision) {
+    if (!decision.needsDecision && !(decision.roundEnded && view.settlement)) {
       this.#cancelRoomWakes(residentId, view.roomId, revision, true);
       return;
     }
@@ -419,7 +419,7 @@ export class GameTurnWakeService {
       return;
     }
     const finalDecision = this.#eligibility(fresh.kind, fresh.game, actor.playerId);
-    if (!finalDecision.needsDecision) {
+    if (!finalDecision.needsDecision && !(finalDecision.roundEnded && fresh.settlement)) {
       this.#cancelRoomWakes(residentId, fresh.roomId, freshRevision, true);
       return;
     }

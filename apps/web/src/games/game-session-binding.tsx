@@ -2,6 +2,8 @@ import { createContext, useContext } from "react";
 
 /** Authenticated host adapter, not an HTTP contract. Only this viewer's projection is accepted. */
 export interface GameSessionBinding {
+  settlement?: { settlementId: string; accounts: {playerIds: string[]; actualDelta: number}[] } | null;
+  playerNames?: Record<string,string>;
   roomId: string;
   viewerId: string;
   connected: boolean;
