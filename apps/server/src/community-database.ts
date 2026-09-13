@@ -27,6 +27,7 @@ import {
   type WeatherSeasonPhase,
 } from "@doorbell/protocol";
 import Database from "better-sqlite3";
+import { recordReporterWakeSent } from "./lingye-daily-transfer-store.js";
 import { MysteryMerchantNightStore } from "./mystery-merchant-night-store.js";
 import { MysteryMerchantReminderStore } from "./mystery-merchant-reminder-store.js";
 import { HumanSessionStore } from "./human-session-store.js";
@@ -3431,6 +3432,10 @@ export class CommunityDatabase {
 
   createReporterBellWake(input: ReporterBellWakeInput): ReporterBellWakeCreationStatus {
     return createReporterBellWake(this.#database, input);
+  }
+
+  recordReporterWakeSent(wakeId: string, now: number): void {
+    recordReporterWakeSent(this.#database, wakeId, now);
   }
 
   createCareerJobWake(input: CareerJobWakeInput): BellWakeRecord {

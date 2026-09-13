@@ -278,6 +278,8 @@ export class LingyeDailyStore {
       const batch = this.#database.prepare("SELECT * FROM lingye_daily_submission_batches WHERE option_id = ?")
         .get(option) as DailySubmissionBatch | undefined;
       if (!batch) return undefined;
+      if (this.#database.prepare("SELECT 1 FROM lingye_daily_reporter_transfers WHERE issue_date=? AND lane='submissions' AND status='prepared'").get(batch.issue_date))
+        throw new DailySubmissionError("review_closed");
       if(hasHumanSubmissionReview(this.#database,batch.issue_date))throw new DailySubmissionError("review_closed");
       if (batch.reviewer_resident_id !== residentId) throw new DailySubmissionError("reviewer_mismatch");
       const selection = text?.trim() ?? "";

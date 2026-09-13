@@ -11,6 +11,8 @@ export interface EditorDraft {
 export interface EditorProgressLane {
   lane:"farm"|"voice"|"submissions";status:"pending"|"completed"|"empty"|"not_started"|"unavailable";
   label:string;reporterName?:string;resendable:boolean;
+  timing?:{sentCount:number;waitingForDelivery:boolean;nextAt:number|null;canResend:boolean;canTransfer:boolean;
+    sourceWakeId:string;residentId:string;pendingTransfer:{requestId:string;targetResidentId:string}|null};
 }
 export interface EditorProgress {issueDate:string;lanes:EditorProgressLane[];}
 export async function editorRequest<T>(path:string,method="GET",body?:unknown):Promise<T> {
@@ -18,7 +20,7 @@ export async function editorRequest<T>(path:string,method="GET",body?:unknown):P
     headers:{accept:"application/json",...(body ? {"content-type":"application/json"} : {})},
     ...(body ? {body:JSON.stringify(body)} : {})});
   const payload=await response.json();
-  if(!response.ok)throw new Error(payload.error?.message ?? "工作台暂时无法连接，请重试。");
+  if(!response.ok)throw Object.assign(new Error(payload.error?.message ?? "工作台暂时无法连接，请重试。"),{status:response.status});
   if(payload.document) payload.document=dailyDocumentSchema.parse(payload.document);
   return payload as T;
 }

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { reporterTransferPending } from "./lingye-daily-transfer-store.js";
 import type Database from "better-sqlite3";
 import type { LingyeDailyPublishRequest, LingyeDailyVoiceArticle } from "@doorbell/protocol";
 import { LingyeDailyEditorStore } from "./lingye-daily-editor-store.js";
@@ -66,6 +67,7 @@ export class LingyeDailyVoiceStore {
   authorize(residentId: string, option: string): DailyVoiceTask {
     const task = this.taskForOption(option);
     if (!task) throw new DailyVoiceError("option_invalid");
+    if (reporterTransferPending(this.database,task.issue_date,"voice")) throw new DailyVoiceError("closed");
     if (task.resident_id !== residentId) throw new DailyVoiceError("author_mismatch");
     return task;
   }

@@ -373,6 +373,7 @@ export class BellService {
           created_at: new Date(wake.createdAt).toISOString(),
         });
         active.sentWakeIds.add(wake.wakeId);
+        if (wake.reason === "reporter_newsroom_work") this.#database.recordReporterWakeSent(wake.wakeId, this.#now());
       } catch (error) {
         this.#onError(error);
         this.#closeConnection(active, true);

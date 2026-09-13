@@ -1,4 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
+import { DailyReporterTransferService, type TransferTask } from "./lingye-daily-transfer-service.js";
+import type { ReporterLane } from "./lingye-daily-transfer-store.js";
 import {hasHumanSubmissionReview} from "./lingye-daily-human-submissions.js";
 import type { LingyeDailyPublishRequest, ReporterRelayWake } from "@doorbell/protocol";
 import { lingyeDailyReporterArticleSchema, type DailyDocument } from "@doorbell/protocol";
@@ -48,6 +50,7 @@ function readBearerCredential(authorization: string | undefined): string | undef
 
 export class LingyeDailyService {
   readonly editor: LingyeDailyEditorStore;
+  readonly transfers: DailyReporterTransferService;
   readonly #farm: LingyeDailyServiceOptions["farm"];
   readonly #database: CommunityDatabase;
   readonly #publishToken: string;
@@ -71,6 +74,43 @@ export class LingyeDailyService {
     this.#voice = options.voice;
     this.editor=new LingyeDailyEditorStore(options.database.lingyeDailyStore.database);
     this.#farm=options.farm;
+    this.transfers=new DailyReporterTransferService({editor:this.editor,now:this.#now,farm:options.farm,
+      current:(date,lane)=>this.currentReporterTask(date,lane),name:id=>this.reporterName(id),
+      notify:id=>this.#reporterRelay?.notifyResentWake(id),
+      persistTransferred:(date,lane,wakeId,wake)=>{
+        if(!this.#reporterRelay)throw new DailyEditorError(503,"铃服务暂时不可用。");
+        if(lane==='farm'&&wake)this.#reporterRelay.createResentFarmWake(wake,wakeId);
+        else if(lane==='voice') {
+          if(!this.#voice)throw new DailyEditorError(503,"记者任务服务暂时不可用。");
+          this.#voice.createResentWake(date,wakeId);
+        } else {
+          const review=this.editor.daily.submissionReviewStatus(date);
+          if(review.status!=="pending")throw new DailyEditorError(409,"投稿选稿已完成，不能转交。");
+          this.#reporterRelay.createResentSubmissionWake(review.review,wakeId);
+        }
+      }});
+  }
+
+  async currentReporterTask(date:string,lane:ReporterLane):Promise<TransferTask> {
+    if(!this.#reporterRelay)throw new DailyEditorError(503,"记者铃服务暂时不可用。");
+    if(this.editor.row(date).published_version!==null)throw new DailyEditorError(409,"这期已经出版，不能再调整记者任务。");
+    if(lane==='farm') {
+      const wake=await this.#reporterFlow?.pendingIssue(date);
+      if(!wake)throw new DailyEditorError(409,"当前没有待处理的农场记者任务。");
+      return {issueDate:date,lane,sourceWakeId:wake.wake_id,residentId:wake.recipient_resident_id,
+        transferable:['selection','writing'].includes(wake.stage),
+        persist:id=>this.#reporterRelay!.createResentFarmWake(wake,id)};
+    }
+    if(lane==='voice') {
+      const task=this.#voice?.store.task(date);
+      if(!task||task.body!==null)throw new DailyEditorError(409,"当前没有待提交的小机有话说任务。");
+      return {issueDate:date,lane,sourceWakeId:this.transfers.source(date,lane,`daily-voice:${date}`),residentId:task.resident_id,
+        persist:id=>this.#voice!.createResentWake(date,id)};
+    }
+    const review=this.editor.daily.submissionReviewStatus(date);
+    if(this.editor.get(date).humanReview||review.status!=='pending')throw new DailyEditorError(409,"当前没有待提交的匿名投稿选稿任务。");
+    return {issueDate:date,lane,sourceWakeId:this.transfers.source(date,lane,`daily-submissions:${date}`),residentId:review.review.reviewerResidentId,
+      persist:id=>this.#reporterRelay!.createResentSubmissionWake(review.review,id)};
   }
 
   authorize(authorization: string | undefined): void {
@@ -130,6 +170,8 @@ export class LingyeDailyService {
   }
 
   async publishDraft(date:string,version:number,publisher:DailyEditorPublisher) {
+    if(this.editor.database.prepare("SELECT 1 FROM lingye_daily_reporter_transfers WHERE issue_date=? AND status='prepared'").get(date))
+      throw new DailyEditorError(409,"记者任务正在转交，请先完成转交再出版。");
     const result=this.editor.publish(date,version,publisher,this.#now());
     const row=this.editor.row(date);
     if(!row.publication_synced) {
@@ -198,7 +240,14 @@ export class LingyeDailyService {
       submission.status==="empty" ? {lane:"submissions" as const,status:"empty" as const,label:"本期没有待审投稿",resendable:false} :
       {lane:"submissions" as const,status:"not_started" as const,label:"匿名投稿尚未派发",resendable:false};
     const voice=await this.#voice?.progress(date);
-    return {issueDate:date,lanes:[farm,submissions,...(voice?[voice]:[])]};
+    const lanes=await Promise.all([farm,submissions,...(voice?[voice]:[])].map(async lane=>{
+      if(!lane.resendable||draft.publishedVersion!==null)return {...lane,resendable:false};
+      try {
+        const timing=await this.transfers.progress(await this.currentReporterTask(date,lane.lane));
+        return {...lane,timing,resendable:timing.canResend&&!timing.pendingTransfer};
+      } catch { return {...lane,resendable:false}; }
+    }));
+    return {issueDate:date,lanes};
   }
 
   async resendEditorWake(date:string,lane:"farm"|"submissions"|"voice",requestId:string,accountId:string) {
@@ -220,16 +269,20 @@ export class LingyeDailyService {
     } else if(lane==="voice") {
       const task=this.#voice?.store.task(date);
       if(!task||task.body!==null) throw new DailyEditorError(409,"当前没有可补发的记者任务。");
-      sourceWakeId=`daily-voice:${date}`;recipientResidentId=task.resident_id;
+      sourceWakeId=this.transfers.source(date,lane,`daily-voice:${date}`);recipientResidentId=task.resident_id;
       persist=wakeId=>this.#voice!.createResentWake(date,wakeId).status;
     } else {
       const status=this.editor.daily.submissionReviewStatus(date);
       if(status.status!=="pending") throw new DailyEditorError(409,"当前没有可补发的匿名投稿审稿任务。");
-      sourceWakeId=`daily-submissions:${date}`;recipientResidentId=status.review.reviewerResidentId;
+      sourceWakeId=this.transfers.source(date,lane,`daily-submissions:${date}`);recipientResidentId=status.review.reviewerResidentId;
       persist=wakeId=>this.#reporterRelay!.createResentSubmissionWake(status.review,wakeId).status;
     }
     const result=this.editor.createResend({requestId,issueDate:date,lane,sourceWakeId,recipientResidentId,
-      requestedBy:accountId,now:this.#now()},persist);
+      requestedBy:accountId,now:this.#now()},wakeId=>{
+        if(this.editor.row(date).published_version!==null)throw new DailyEditorError(409,"这期已经出版，不能再补发任务。");
+        this.transfers.assertResend({issueDate:date,lane,sourceWakeId,residentId:recipientResidentId});
+        return persist(wakeId);
+      });
     this.#reporterRelay.notifyResentWake(result.recipientResidentId);
     return {status:result.status,lane,reporterName:this.reporterName(result.recipientResidentId)};
   }

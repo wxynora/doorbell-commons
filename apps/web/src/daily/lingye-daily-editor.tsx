@@ -4,6 +4,7 @@ import {DailyImageEditor} from "./daily-image-editor";
 import {DailyDocumentView} from "./lingye-daily-document-view";
 import {editorRequest,type EditorDraft,type EditorProgress,type EditorProgressLane} from "./lingye-daily-editor-client";
 import {DailyEditorDuty} from "./lingye-daily-editor-duty";
+import { ReporterTransferControls } from "./lingye-daily-editor-transfer";
 import {DailyMasthead} from "./lingye-daily-page";
 import "./lingye-daily-editor.css";
 
@@ -156,6 +157,9 @@ export function LingyeDailyEditor({onBack}:{onBack?:()=>void} = {}) {
             delete resendRequestIds.current[lane.lane];
             await loadProgress(draft.issueDate);setNotice(`已向${result.reporterName}补发当前任务的铃。`);
           })}>补发铃</button>:null}
+          <ReporterTransferControls key={`${draft.issueDate}:${lane.timing?.sourceWakeId??lane.lane}`}
+            date={draft.issueDate} lane={lane} busy={busy} run={run}
+            refresh={()=>loadProgress(draft.issueDate)} notify={setNotice}/>
         </div>) ?? <p>正在读取记者进度…</p>}</div>
         <h2>本期来稿</h2><p>群聊 {draft.readiness.group?"已到":"待到"} · 记者 {draft.readiness.reporter?"已到":"待到"}<br/>投稿 {draft.readiness.submissions?"已审":"待审"} · 天气 {draft.readiness.weather?"已到":"待到"}{hasVoice?<><br/>小机有话说 {(draft.readiness.voice ?? false)?"已到":"待到"}</>:null}</p>
         <h2>出版审稿奖金</h2><small>{draft.publicationReward

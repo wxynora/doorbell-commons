@@ -59,6 +59,12 @@ export function registerDailyEditorRoutes(app:FastifyInstance, options:{daily:Li
     return daily.rewardSubmissions(date(request),body.submissionIds,community.account.accountId);
   }));
   app.get("/api/lingye-daily/editor/issues/:date/progress",handle(request=>daily.editorProgress(date(request))));
+  app.get("/api/lingye-daily/editor/issues/:date/transfer-candidates",handle(request=>daily.transfers.candidates(date(request))));
+  app.post("/api/lingye-daily/editor/issues/:date/transfer",handle((request,community)=>{
+    const body=z.object({lane:z.enum(["farm","submissions","voice"]),requestId:z.uuid(),
+      sourceWakeId:z.string().min(1),targetResidentId:z.uuid()}).strict().parse(request.body);
+    return daily.transfers.transfer(date(request),body.lane,body.sourceWakeId,body.targetResidentId,body.requestId,community.account.accountId);
+  }));
   app.post("/api/lingye-daily/editor/issues/:date/resend",handle((request,community)=>{
     const body=z.object({lane:z.enum(["farm","submissions","voice"]),requestId:z.uuid()}).strict().parse(request.body);
     return daily.resendEditorWake(date(request),body.lane,body.requestId,community.account.accountId);

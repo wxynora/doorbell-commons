@@ -2788,6 +2788,19 @@ export function migrateCommunityDatabase(
     database.exec("ALTER TABLE game_rule_choices ADD COLUMN round_key TEXT NOT NULL DEFAULT '1'");
     database.pragma('user_version = 44');
   })();
+  database.exec(`CREATE TABLE IF NOT EXISTS lingye_daily_wake_sends (
+    wake_id TEXT PRIMARY KEY REFERENCES bell_wakes(wake_id) ON DELETE CASCADE,
+    sent_at INTEGER NOT NULL
+  )`);
+  database.exec(`CREATE TABLE IF NOT EXISTS lingye_daily_reporter_transfers (
+    request_id TEXT PRIMARY KEY, issue_date TEXT NOT NULL, lane TEXT NOT NULL,
+    source_wake_id TEXT NOT NULL, previous_resident_id TEXT NOT NULL,
+    target_resident_id TEXT NOT NULL, requested_by TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('prepared','completed','failed')),
+    replacement_wake_id TEXT, created_at INTEGER NOT NULL, completed_at INTEGER
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS daily_one_pending_transfer
+    ON lingye_daily_reporter_transfers(issue_date,lane) WHERE status='prepared';`);
   database.exec(`CREATE TABLE IF NOT EXISTS home_game_preferences (
     home_id TEXT PRIMARY KEY REFERENCES homes(home_id) ON DELETE CASCADE,
     preferences_json TEXT NOT NULL
