@@ -30,7 +30,7 @@ export interface GameTurnWakeTables {
 export type GameTurnWakeGameService = Pick<GameService, "view">;
 export type GameTurnWakeSync = Pick<GameSync, "subscribe">;
 export type GameTurnWakeIdentity = Pick<GameIdentity, "resident">;
-export type GameTurnWakeTool = Pick<LoungeGameTool, "wakeMessage"> & Partial<Pick<LoungeGameTool,"markRulesShown">>;
+export type GameTurnWakeTool = Pick<LoungeGameTool, "wakeMessage"> & Partial<Pick<LoungeGameTool,"markRulesShown"|"readyMessage">>;
 export type GameTurnWakeWakes = Pick<LoungeWakeStore, "enqueue" | "get" | "pending" | "finish"> & Partial<Pick<LoungeWakeStore,"gameContextCursor">>;
 export type GameTurnWakeBell = Pick<BellService, "notifyResident" | "notifyWakeCancelled">;
 
@@ -366,6 +366,23 @@ export class GameTurnWakeService {
     if (view.roomId.length === 0) throw new Error("game room view has no room id");
     const revision = this.#requireRevision(view.revision);
     const actor = await caller.authenticate();
+    if(view.phase==="waiting"){
+      this.#cancelRoomWakes(residentId,view.roomId,revision,false);
+      if(view.host?.playerId!==actor.playerId){
+        this.#cancelRoomWakes(residentId,view.roomId,revision,true);
+        return;
+      }
+      if(this.#options.wakes.get(residentId,gameTurnWakeSourceKey(view.roomId,revision,residentId)))return;
+      const message=await this.#options.gameTool.readyMessage?.(residentId,view.roomId);
+      if(!message){
+        this.#cancelRoomWakes(residentId,view.roomId,revision,true);
+        return;
+      }
+      const fresh=await this.#options.games.view(caller,view.roomId);
+      if(this.#closed || fresh.revision!==revision || fresh.phase!=="waiting")return;
+      await this.#enqueueWake(residentId,view.roomId,revision,message);
+      return;
+    }
     const decision = this.#eligibility(view.kind, view.game, actor.playerId);
     if (!decision.needsDecision) {
       this.#cancelRoomWakes(residentId, view.roomId, revision, true);

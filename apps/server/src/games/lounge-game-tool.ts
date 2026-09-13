@@ -422,6 +422,21 @@ export class LoungeGameTool {
     return this.#readState(residentId, caller);
   }
 
+  async readyMessage(residentId:string,roomId:string):Promise<string|null> {
+    this.#validateResidentId(residentId);
+    const caller=this.#gameIdentity.resident({residentId});
+    const view=await this.#gameService.view(caller,roomId);
+    const actor=await caller.authenticate();
+    if(view.phase!=="waiting" || view.host?.playerId!==actor.playerId ||
+      view.seats.length<MIN_PLAYERS[view.kind] || view.seats.some(seat=>!seat.ready))return null;
+    const table=this.#readTables().find(t=>t.room?.room_id===roomId);
+    if(!table)return null;
+    this.#rememberRoom(residentId,table.table_id,view);
+    this.#beginOptionGroup(residentId);
+    const option=this.#newOption({kind:"start",residentId,tableId:table.table_id,roomId,revision:view.revision});
+    return `大家都准备好了，可以开始游戏。（option ${option}）`;
+  }
+
   async wakeMessage(residentId: string, roomId: string, delivery?:GameContextDelivery): Promise<string> {
     this.#validateResidentId(residentId);
     if (typeof roomId !== "string" || roomId.trim().length === 0) {
