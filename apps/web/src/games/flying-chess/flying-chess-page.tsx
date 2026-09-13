@@ -1,3 +1,4 @@
+import { gameViewportReader } from "../game-viewport";
 import { GameRulesHelp , GameRulesText } from "../game-rules-help";
 import { useGameSession, liveMove } from "../game-session-binding";
 import { GameChatWindow, GameSpeechBubble } from "../game-chat-window";
@@ -448,7 +449,8 @@ function useCanvasScale() {
   useEffect(() => {
     const frame = frameRef.current;
     if (!frame) return;
-    const update = () => setViewport({ width: frame.clientWidth, height: frame.clientHeight });
+    const readViewport = gameViewportReader();
+    const update = () => setViewport(readViewport({ width: frame.clientWidth, height: frame.clientHeight }));
     const observer = new ResizeObserver(update);
     observer.observe(frame);
     update();

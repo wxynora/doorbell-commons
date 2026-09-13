@@ -1,3 +1,4 @@
+import { gameViewportReader } from "../game-viewport";
 import { GameRulesIcon , GameRulesText } from "../game-rules-help";
 import { useGameSession, liveMove } from "../game-session-binding";
 import { GameChatWindow, GameSpeechBubble } from "../game-chat-window";
@@ -323,7 +324,7 @@ function RoundResult({
       <div className="ddz-round-result__scores">
         {view.last_results?.map((result) => (
           <span key={result.player_id}>
-            {result.name}{" "}
+            {view.players.find(player => player.id === result.player_id)?.name ?? "同桌玩家"}{" "}
             <b>
               {result.delta >= 0 ? "+" : ""}
               {result.delta}
@@ -391,10 +392,13 @@ export function DoudizhuPage() {
   }, [startGame]);
 
   useEffect(() => {
+    const readViewport = gameViewportReader();
     const resize = () => {
       const viewport = window.visualViewport;
-      const width = viewport?.width ?? window.innerWidth;
-      const height = viewport?.height ?? window.innerHeight;
+      const { width, height } = readViewport({
+        width: viewport?.width ?? window.innerWidth,
+        height: viewport?.height ?? window.innerHeight,
+      });
       const portrait = height / width > 1.25;
       setLayout({
         scale: Math.min(
@@ -648,7 +652,6 @@ export function DoudizhuPage() {
                 thinking={false}
               />
               {(view.phase === "bidding" || view.phase === "playing") && self?.hand ? (
-                self.controller_type === "human" ? (
                   <Hand
                     cards={self.hand}
                     name={self.name}
@@ -657,12 +660,6 @@ export function DoudizhuPage() {
                     portrait={layout.portrait}
                     onChange={setSelected}
                   />
-                ) : (
-                  <div className="ddz-resident-hand">
-                    <strong>手牌已隐藏</strong>
-                    <small>{self.hand_count} 张</small>
-                  </div>
-                )
               ) : null}
             </section>
             {view.phase === "round_over" ? (

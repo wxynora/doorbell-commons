@@ -3,6 +3,7 @@ export type ReactionKind = "flower" | "bomb";
 export interface ReactionRecord {
   id: string; requestId: string; roomId: string; senderId: string; targetId: string;
   senderResidentId: string; targetResidentId: string; senderName: string;
+  bellWakeIds?: string[];
   actor: "human" | "agent"; targetController: "human" | "resident"; kind: ReactionKind; paid: boolean; delivered: boolean;
 }
 type Row = { payload_json: string; paid: number; delivered: number };
@@ -24,6 +25,10 @@ export class GameReactionStore {
   }
   inRoom(roomId:string):ReactionRecord[] {
     return (this.db.prepare("SELECT payload_json,paid,delivered FROM game_reactions WHERE paid=1 AND json_extract(payload_json,'$.roomId')=? ORDER BY rowid").all(roomId) as Row[]).map(row=>this.decode(row));
+  }
+  markInWake(ids: readonly string[], wakeId: string): void {
+    const update = this.db.prepare("UPDATE game_reactions SET payload_json=json_set(payload_json,'$.bellWakeIds',json_insert(COALESCE(json_extract(payload_json,'$.bellWakeIds'),'[]'),'$[#]',?)) WHERE event_id=? AND paid=1 AND NOT EXISTS (SELECT 1 FROM json_each(payload_json,'$.bellWakeIds') WHERE value=?)");
+    this.db.transaction(() => { for (const id of ids) update.run(wakeId,id,wakeId); })();
   }
   private decode(row: Row): ReactionRecord { return {...JSON.parse(row.payload_json),paid:row.paid===1,delivered:row.delivered===1} as ReactionRecord; }
 }

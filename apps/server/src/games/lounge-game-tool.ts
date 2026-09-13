@@ -1,3 +1,4 @@
+import type { GameContextDelivery } from "./game-context-cursor.js";
 import { loungeDisplayName } from "../lounge-display-name.js";
 import { randomBytes, randomUUID } from "node:crypto";
 import {gameContext} from './game-context.js';
@@ -39,6 +40,7 @@ export interface LoungePublicTable {
 
 export interface LoungeGameTablePort {
   listPublicTables(): readonly LoungePublicTable[];
+  read?(roomId: string): { kind: GameKind; seats: readonly unknown[] } | null;
 }
 
 export type LoungeGameLobbyView = Awaited<ReturnType<GameService["create"]>>;
@@ -85,6 +87,7 @@ export interface LoungeGameChatPort {
   read?(
     caller: GameCaller,
     roomId: string,
+    afterSequence?: number,
   ): Promise<readonly LoungeGameChatMessage[]>;
 }
 
@@ -126,6 +129,7 @@ export interface LoungeGameIdentityPort {
 export interface LoungeGameToolOptions {
   ruleChoices?:Pick<GameRuleChoiceStore,'set'|'pending'|'shown'|'selected'>;
   history?: (roomId:string,names:Record<string,string>)=>string[];
+  historySince?: (roomId:string,names:Record<string,string>,afterSequence:number)=>{lines:string[];sequence:number};
   afterSocial?: (residentId:string,roomId:string,eventId:string)=>Promise<void>;
   gameService: LoungeGameServicePort;
   gameIdentity: LoungeGameIdentityPort;
@@ -418,7 +422,7 @@ export class LoungeGameTool {
     return this.#readState(residentId, caller);
   }
 
-  async wakeMessage(residentId: string, roomId: string): Promise<string> {
+  async wakeMessage(residentId: string, roomId: string, delivery?:GameContextDelivery): Promise<string> {
     this.#validateResidentId(residentId);
     if (typeof roomId !== "string" || roomId.trim().length === 0) {
       throw new LoungeGameToolError("room_required");
@@ -453,6 +457,8 @@ export class LoungeGameTool {
       caller,
       table,
       view,
+      true,
+      delivery,
     );
     const roundKey=String(asRecord(view.game)?.round??1);
     this.#rulesWakeRounds.set(residentId+'\0'+roomId,roundKey);
@@ -642,6 +648,7 @@ export class LoungeGameTool {
     const base = `${this.#tableLabel(table)}：${GAME_LABELS[room.kind]}，${PHASE_LABELS[room.phase]}。`;
     if (room.phase !== "waiting") return `${base}这桌当前不能加入。`;
     if (alreadySeated) return `${base}你已在另一桌入座，不能再加入。`;
+    if (this.#roomFull(room.room_id)) return `${base}这桌已满。`;
 
     const lines = [base, "可以加入这桌："];
     this.#addOption(lines, residentId, {
@@ -730,15 +737,18 @@ export class LoungeGameTool {
     table: LoungePublicTable,
     view: LoungeGamePlayerView,
     includeChat = true,
+    delivery?:GameContextDelivery,
   ): Promise<OptionLines> {
     const lines: string[] = [this.#renderRoomSummary(playerId, table, view)];
     const names:Record<string,string>={};
     for(const seat of view.seats)names[seat.playerId]=this.#nameOf?await this.#nameOf(seat.playerId):'同桌';
     if(view.game)lines.push(...gameContext(view.kind,view.game,names));
-    const history=this.#extra.history?.(view.roomId,names)??[];
+    const delta=delivery?this.#extra.historySince?.(view.roomId,names,delivery.after.eventSequence):undefined;
+    const history=delta?.lines??this.#extra.history?.(view.roomId,names)??[];
+    if(delivery)delivery.captured={eventSequence:delta?.sequence??delivery.after.eventSequence,chatSequence:delivery.after.chatSequence};
     if(history.length)lines.push('期间行动：',...history);
     lines.push(...privateProjectionLines(view.kind, asRecord(view.game), playerId));
-    if (includeChat) await this.#renderChatMessages(lines, caller, view.roomId, playerId);
+    if (includeChat) await this.#renderChatMessages(lines, caller, view.roomId, playerId, delivery);
 
     if (view.phase === "waiting") {
       const ownSeat = view.seats.find((seat) => seat.playerId === playerId);
@@ -815,9 +825,12 @@ export class LoungeGameTool {
     caller: GameCaller,
     roomId: string,
     playerId: string,
+    delivery?:GameContextDelivery,
   ): Promise<void> {
     if (!this.#gameChat?.read) return;
-    const messages = await this.#gameChat.read(caller, roomId);
+    const after=delivery?.after.chatSequence??0;
+    const messages = (await this.#gameChat.read(caller, roomId, after)).filter(message=>Number(message.sequence)>after);
+    if(delivery?.captured)delivery.captured.chatSequence=messages.reduce((last,message)=>Math.max(last,Number(message.sequence)),after);
     if (messages.length === 0) return;
     lines.push("游戏聊天：");
     for (const message of messages) {
@@ -1162,6 +1175,7 @@ export class LoungeGameTool {
       case "create":
         return this.#executeCreate(residentId, caller, pending);
       case "join":
+        if (this.#roomFull(pending.roomId)) return "这桌已满。";
         await this.#assertCurrentRoom(caller, pending);
         await this.#assertNoOtherRoomSeat(caller, pending.roomId);
         await this.#gameService.join(caller, pending.roomId, pending.revision);
@@ -1448,6 +1462,11 @@ export class LoungeGameTool {
 
   async #withState(receipt: string, residentId: string, caller: GameCaller): Promise<string> {
     return `${receipt}\n\n${await this.#readState(residentId, caller)}`;
+  }
+
+  #roomFull(roomId: string): boolean {
+    const room = this.#gameTables.read?.(roomId);
+    return !!room && room.seats.length >= (room.kind === "doudizhu" ? 3 : 4);
   }
 
   async #assertCurrentRoom(

@@ -1,3 +1,4 @@
+import { gameViewportReader } from "../game-viewport";
 import { GameRulesIcon , GameRulesText } from "../game-rules-help";
 import { GameChatWindow, GameSpeechBubble } from "../game-chat-window";
 import { useGameSession } from "../game-session-binding";
@@ -85,7 +86,8 @@ export function MahjongPage() {
   useEffect(() => {
     const element = host.current;
     if (!element) return;
-    const observer = new ResizeObserver(([entry]) => { if (entry) setSize({ width: entry.contentRect.width, height: entry.contentRect.height }); });
+    const readViewport = gameViewportReader();
+    const observer = new ResizeObserver(([entry]) => { if (entry) setSize(readViewport({ width: entry.contentRect.width, height: entry.contentRect.height })); });
     observer.observe(element);
     return () => observer.disconnect();
   }, []);

@@ -1,3 +1,4 @@
+import { gameViewportReader } from "../game-viewport";
 import { GameRulesIcon , GameRulesText } from "../game-rules-help";
 import { useGameSession, liveMove, asSession } from "../game-session-binding";
 import { GameChatWindow, GameSpeechBubble } from "../game-chat-window";
@@ -154,12 +155,14 @@ export function UnoPage() {
   const [layout, setLayout] = useState({ scale: 1, portrait: false });
 
   useEffect(() => {
+    const readViewport = gameViewportReader();
     const resize = () => {
-      const portrait = window.innerHeight / window.innerWidth > 1.25;
+      const { width, height } = readViewport({ width: window.innerWidth, height: window.innerHeight });
+      const portrait = height / width > 1.25;
       setLayout({
         scale: Math.min(
-          window.innerWidth / (portrait ? 352 : CANVAS_WIDTH),
-          window.innerHeight / (portrait ? 694 : CANVAS_HEIGHT),
+          width / (portrait ? 352 : CANVAS_WIDTH),
+          height / (portrait ? 694 : CANVAS_HEIGHT),
         ),
         portrait,
       });
@@ -518,7 +521,7 @@ export function UnoPage() {
                 <div>
                   {display.last_results.players.map((player) => (
                     <small key={player.player_id}>
-                      {player.name} {player.score} 分
+                      {display.players.find(seat => seat.id === player.player_id)?.name ?? "同桌玩家"} {player.score} 分
                     </small>
                   ))}
                 </div>

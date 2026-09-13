@@ -1,3 +1,4 @@
+import { pendingReactionContext } from "./games/game-reaction-context.js";
 import { WaitingSeatPresence } from "./games/waiting-seat-presence.js";
 import type { LoungeSnapshot } from "@doorbell/protocol";
 import type { BellService } from "./bell-service.js";
@@ -16,7 +17,7 @@ import {
 } from "./games/lounge-game-invitation-service.js";
 import { LoungeGameTool } from "./games/lounge-game-tool.js";
 import {GameTimeoutScheduler} from './games/game-timeout.js';
-import {gameHistory} from './games/game-context.js';
+import {gameHistory,gameHistorySince} from './games/game-context.js';
 import type { GameEngineAdapter } from "./games/types.js";
 import type {
   LoungeChatMode,
@@ -304,6 +305,7 @@ export function createLoungeRuntime(options: LoungeRuntimeOptions) {
     invitations: invitationService,
     nameOf: options.nameOf,
     ruleChoices: database.gameRuleChoiceStore,
+    historySince: (roomId,names,after)=>{const room=tables.read(roomId);return room?gameHistorySince(room.kind,room.snapshot,names,after):{lines:[],sequence:after};},
     history: (roomId,names)=>{const room=tables.read(roomId);return room?gameHistory(room.kind,room.snapshot,names):[];},
     afterSocial: async (residentId,roomId,eventId):Promise<void>=>{try{await turnWakes.remind(residentId,roomId,eventId);}catch(error){options.onError(error);}},
     reactions: { send: (caller, input) => reactionService.send(caller, input) },
@@ -317,6 +319,11 @@ export function createLoungeRuntime(options: LoungeRuntimeOptions) {
     wakes: database.loungeWakeStore,
     bell: options.bell,
     formatter: options.turnFormatter,
+    reactionContext: {
+      read: (roomId,playerId) => pendingReactionContext(database.gameReactionStore.inRoom(roomId),playerId,
+        (residentId,wakeId) => database.loungeWakeStore.get(residentId,wakeId)?.status === "acked"),
+      mark: (ids,wakeId) => database.gameReactionStore.markInWake(ids,wakeId),
+    },
     now,
     onError: options.onError,
   });
@@ -327,19 +334,7 @@ export function createLoungeRuntime(options: LoungeRuntimeOptions) {
     options.reactionCharge,
     {
       publish: (event) => reactionHub.publish(event),
-      bell: async (id, residentId, text) => {
-        const wakeId = `game_reaction:${id}`;
-        if (database.loungeWakeStore.get(residentId, wakeId)) return;
-        const wake = database.loungeWakeStore.enqueue({
-          wakeId,
-          residentId,
-          reason: "game_reaction",
-          sourceKey: wakeId,
-          text,
-          now: now(),
-        });
-        if (wake.wakeId === wakeId) options.bell.notifyResident(residentId);
-      },
+
     },
     options.nameOf,
   );
@@ -354,6 +349,7 @@ export function createLoungeRuntime(options: LoungeRuntimeOptions) {
     if (closed) return;
     invitationService.cancelInvalid(residentId, now());
     turnWakes.cancelInvalid(residentId);
+    for(const id of database.loungeWakeStore.cancel(residentId,now(),"game_reaction")) options.bell.notifyWakeCancelled(residentId,id);
   });
   turnWakes.start();
   timeouts = new GameTimeoutScheduler(tables,(id,key)=>games.runTimeout(id,key),now,options.onError);

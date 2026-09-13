@@ -1,3 +1,4 @@
+import { gameViewportReader } from "../game-viewport";
 import { GameRulesIcon , GameRulesText } from "../game-rules-help";
 import { useGameSession, liveMove } from "../game-session-binding";
 import { GameChatWindow, GameSpeechBubble } from "../game-chat-window";
@@ -314,10 +315,13 @@ export function LeafGamePage() {
   const residentActionKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
+    const readViewport = gameViewportReader();
     const resize = () => {
       const viewport = window.visualViewport;
-      const width = viewport?.width ?? window.innerWidth;
-      const height = viewport?.height ?? window.innerHeight;
+      const { width, height } = readViewport({
+        width: viewport?.width ?? window.innerWidth,
+        height: viewport?.height ?? window.innerHeight,
+      });
       setNarrowPreviewScale(Math.min(width / CANVAS_WIDTH, height / CANVAS_HEIGHT));
     };
 

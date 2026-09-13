@@ -43,7 +43,13 @@ function SpeechBubble({ chat, playerId, name }: { chat: GameChatBinding | null; 
     if (!anchor || !stage) return;
     const measure = () => {
       const bounds = stage.getBoundingClientRect();
-      const avatar = anchor.querySelector('[class*="avatar"], [class*="portrait"]') ?? anchor;
+      const avatar = [
+        ...anchor.querySelectorAll('[class*="avatar"], [class*="portrait"]'),
+        ...anchor.querySelectorAll('[class*="name"]'),
+      ].find(element => {
+        const rect = element.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      }) ?? anchor;
       const a = avatar.getBoundingClientRect();
       const scale = bounds.width / stage.offsetWidth;
       const unit = Math.min(stage.offsetWidth, stage.offsetHeight) / 390 || 1;

@@ -1,3 +1,4 @@
+import type { GameContextCursor } from "./games/game-context-cursor.js";
 import type Database from "better-sqlite3";
 import type { BellWakeRecord } from "./community-database.js";
 
@@ -5,15 +6,22 @@ export type LoungeWakeReason = "lounge_chat" | "game_invitation" | "game_turn" |
 interface Row { wake_id:string; resident_id:string; source_key:string; record_json:string; expires_at:number|null; }
 export class LoungeWakeStore {
   constructor(private readonly db:Database.Database) {}
-  enqueue(input:{wakeId:string;residentId:string;reason:LoungeWakeReason;sourceKey:string;text:string;now:number;expiresAt?:number;sessionEnteredAt?:number}):BellWakeRecord {
+  enqueue(input:{wakeId:string;residentId:string;reason:LoungeWakeReason;sourceKey:string;text:string;now:number;expiresAt?:number;sessionEnteredAt?:number;gameContext?:GameContextCursor & {roomId:string}}):BellWakeRecord {
     return this.db.transaction(()=>{
       const old=this.db.prepare("SELECT * FROM lounge_wakes WHERE resident_id=? AND source_key=?").get(input.residentId,input.sourceKey) as Row|undefined;
       if(old)return JSON.parse(old.record_json) as BellWakeRecord;
       if(!input.text.trim())throw new Error("An approved wake message is required");
-      const record:BellWakeRecord={wakeId:input.wakeId,residentId:input.residentId,reason:input.reason,status:"pending",createdAt:input.now,endedAt:null,blockReason:null,errorCode:null,purchaseRequestId:null,letterId:null,payload:{text:input.text,...(input.sessionEnteredAt===undefined?{}:{sessionEnteredAt:input.sessionEnteredAt})}};
+      const record:BellWakeRecord={wakeId:input.wakeId,residentId:input.residentId,reason:input.reason,status:"pending",createdAt:input.now,endedAt:null,blockReason:null,errorCode:null,purchaseRequestId:null,letterId:null,payload:{text:input.text,...(input.gameContext?{gameContext:input.gameContext}:{}),...(input.sessionEnteredAt===undefined?{}:{sessionEnteredAt:input.sessionEnteredAt})}};
       this.db.prepare("INSERT INTO lounge_wakes(wake_id,resident_id,source_key,record_json,expires_at) VALUES (?,?,?,?,?)").run(input.wakeId,input.residentId,input.sourceKey,JSON.stringify(record),input.expiresAt??null);
       return record;
     }).immediate();
+  }
+  gameContextCursor(residentId:string,roomId:string):GameContextCursor {
+    const rows=this.db.prepare("SELECT json_extract(record_json,'$.payload.gameContext') AS cursor FROM lounge_wakes WHERE resident_id=? AND json_extract(record_json,'$.status')='acked' AND json_extract(record_json,'$.payload.gameContext.roomId')=?").all(residentId,roomId) as Array<{cursor:string}>;
+    return rows.reduce((last,row)=>{
+      const cursor=JSON.parse(row.cursor) as GameContextCursor;
+      return {eventSequence:Math.max(last.eventSequence,cursor.eventSequence),chatSequence:Math.max(last.chatSequence,cursor.chatSequence)};
+    },{eventSequence:0,chatSequence:0});
   }
   get(residentId:string,wakeId:string):BellWakeRecord|undefined {
     const row=this.db.prepare("SELECT record_json FROM lounge_wakes WHERE resident_id=? AND wake_id=?").get(residentId,wakeId) as Pick<Row,"record_json">|undefined;

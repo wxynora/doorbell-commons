@@ -1,3 +1,4 @@
+import type { GameContextDelivery, GameContextCursor } from "./game-context-cursor.js";
 import type { BellService } from "../bell-service.js";
 import type { LoungeGameTableStore } from "../lounge-game-table-store.js";
 import type { LoungeWakeStore } from "../lounge-wake-store.js";
@@ -30,7 +31,7 @@ export type GameTurnWakeGameService = Pick<GameService, "view">;
 export type GameTurnWakeSync = Pick<GameSync, "subscribe">;
 export type GameTurnWakeIdentity = Pick<GameIdentity, "resident">;
 export type GameTurnWakeTool = Pick<LoungeGameTool, "wakeMessage"> & Partial<Pick<LoungeGameTool,"markRulesShown">>;
-export type GameTurnWakeWakes = Pick<LoungeWakeStore, "enqueue" | "get" | "pending" | "finish">;
+export type GameTurnWakeWakes = Pick<LoungeWakeStore, "enqueue" | "get" | "pending" | "finish"> & Partial<Pick<LoungeWakeStore,"gameContextCursor">>;
 export type GameTurnWakeBell = Pick<BellService, "notifyResident" | "notifyWakeCancelled">;
 
 export interface GameTurnWakeFormatInput {
@@ -57,6 +58,10 @@ export interface GameTurnWakeServiceOptions {
   wakes: GameTurnWakeWakes;
   bell: GameTurnWakeBell;
   formatter: GameTurnWakeFormatter;
+  reactionContext?: {
+    read(roomId:string,playerId:string): { ids:string[]; text:string };
+    mark(ids:readonly string[],wakeId:string):void;
+  };
   eligibility?: GameTurnWakeEligibility;
   now?: () => number;
   onError: (error: unknown) => void;
@@ -174,12 +179,15 @@ export class GameTurnWakeService {
     const view=await this.#options.games.view(caller,roomId);
     const actor=await caller.authenticate();
     if(!this.#eligibility(view.kind,view.game,actor.playerId).needsDecision)return;
-    const message=await this.#options.gameTool.wakeMessage(residentId,roomId);
+    const delivery:GameContextDelivery={after:this.#options.wakes.gameContextCursor?.(residentId,roomId)??{eventSequence:0,chatSequence:0}};
+    const message=await this.#options.gameTool.wakeMessage(residentId,roomId,delivery);
     const fresh=await this.#options.games.view(caller,roomId);
     if(fresh.revision!==view.revision||!this.#eligibility(fresh.kind,fresh.game,actor.playerId).needsDecision)return;
     const wakeId=gameTurnWakeSourceKey(roomId,view.revision,residentId)+':'+encodeURIComponent(eventId);
     if(this.#options.wakes.get(residentId,wakeId))return;
-    this.#options.wakes.enqueue({wakeId,residentId,reason:'game_turn',sourceKey:wakeId,text:this.#options.formatter({residentId,roomId,kind:view.kind,revision:view.revision,message:'轮到你，尚未行动。\n'+message}),now:this.#now()});
+    const reactions=this.#options.reactionContext?.read(roomId,actor.playerId);
+    this.#options.wakes.enqueue({wakeId,residentId,reason:'game_turn',sourceKey:wakeId,text:this.#options.formatter({residentId,roomId,kind:view.kind,revision:view.revision,message:'轮到你，尚未行动。\n'+message+(reactions?.text?'\n'+reactions.text:'')}),now:this.#now(),...(delivery.captured?{gameContext:{roomId,...delivery.captured}}:{})});
+    if(reactions?.ids.length)this.#options.reactionContext?.mark(reactions.ids,wakeId);
     await this.#options.gameTool.markRulesShown?.(residentId,roomId);
     this.#options.bell.notifyResident(residentId);
   }
@@ -368,9 +376,10 @@ export class GameTurnWakeService {
     // at this revision remains eligible for durable deduplication.
     this.#cancelRoomWakes(residentId, view.roomId, revision, false);
     if (this.#options.wakes.get(residentId, gameTurnWakeSourceKey(view.roomId, revision, residentId))) return;
+    const delivery:GameContextDelivery={after:this.#options.wakes.gameContextCursor?.(residentId,view.roomId)??{eventSequence:0,chatSequence:0}};
     let message: string;
     try {
-      message = await this.#options.gameTool.wakeMessage(residentId, view.roomId);
+      message = await this.#options.gameTool.wakeMessage(residentId, view.roomId, delivery);
     } catch (error) {
       if (isStaleWakeReadError(error)) {
         this.#cancelRoomWakes(residentId, view.roomId, revision, true);
@@ -398,17 +407,18 @@ export class GameTurnWakeService {
       return;
     }
 
+    const reactions = this.#options.reactionContext?.read(fresh.roomId,actor.playerId);
     const text = this.#options.formatter({
       residentId,
       roomId: fresh.roomId,
       kind: fresh.kind,
       revision: freshRevision,
-      message,
+      message: message + (reactions?.text ? "\n" + reactions.text : ""),
     });
     if (typeof text !== "string" || text.trim().length === 0) {
       throw new Error("game turn wake formatter returned empty text");
     }
-    await this.#enqueueWake(residentId, fresh.roomId, freshRevision, text);
+    await this.#enqueueWake(residentId, fresh.roomId, freshRevision, text, reactions?.ids ?? [], delivery.captured);
   }
 
   async #enqueueWake(
@@ -416,6 +426,8 @@ export class GameTurnWakeService {
     roomId: string,
     revision: number,
     text: string,
+    reactionIds: readonly string[] = [],
+    context?:GameContextCursor,
   ): Promise<void> {
     const wakeId = gameTurnWakeSourceKey(roomId, revision, residentId);
     if (this.#options.wakes.get(residentId, wakeId)) return;
@@ -430,7 +442,9 @@ export class GameTurnWakeService {
         sourceKey: wakeId,
         text,
         now: this.#now(),
+        ...(context?{gameContext:{roomId,...context}}:{}),
       });
+      if(reactionIds.length)this.#options.reactionContext?.mark(reactionIds,wakeId);
       await this.#options.gameTool.markRulesShown?.(residentId,roomId);
       if (record.wakeId === wakeId) {
         try {

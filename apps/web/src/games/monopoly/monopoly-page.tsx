@@ -1,3 +1,4 @@
+import { gameViewportReader } from "../game-viewport";
 import { GameRulesHelp , GameRulesText } from "../game-rules-help";
 import { useGameSession, liveMove, asSession } from "../game-session-binding";
 import { GameChatWindow, GameSpeechBubble } from "../game-chat-window";
@@ -410,12 +411,14 @@ export function MonopolyPage() {
   }, [panel]);
 
   useEffect(() => {
+    const readViewport = gameViewportReader();
     const resize = () => {
-      const portrait = window.innerHeight / window.innerWidth > 1.12;
+      const { width, height } = readViewport({ width: window.innerWidth, height: window.innerHeight });
+      const portrait = height / width > 1.12;
       setLayout({
         scale: Math.min(
-          window.innerWidth / (portrait ? PORTRAIT.width : LANDSCAPE.width),
-          window.innerHeight / (portrait ? PORTRAIT.height : LANDSCAPE.height),
+          width / (portrait ? PORTRAIT.width : LANDSCAPE.width),
+          height / (portrait ? PORTRAIT.height : LANDSCAPE.height),
         ),
         portrait,
       });

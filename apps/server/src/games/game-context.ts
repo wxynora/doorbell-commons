@@ -44,9 +44,15 @@ export function gameContext(kind:GameKind,value:unknown,names:Record<string,stri
 }
 /** Explicit public fields only: covered cards and engine command logs never enter text. */
 export function gameHistory(kind:GameKind,snapshot:unknown,names:Record<string,string>):string[]{
+ return gameHistorySince(kind,snapshot,names,0).lines;
+}
+export function gameHistorySince(kind:GameKind,snapshot:unknown,names:Record<string,string>,afterSequence:number):{lines:string[];sequence:number}{
  const s=obj(snapshot),name=(id:unknown)=>names[String(id)]??'同桌';
  const events=kind==='mahjong'?list(obj(s.state).action_history):list(s.public_events);
- return events.flatMap(e=>{
+ const eventSequence=(e:Obj,index:number):number=>typeof e.seq==="number"?e.seq:typeof e.number==="number"?e.number:index+1;
+ const sequence=events.reduce((last,e,index)=>Math.max(last,eventSequence(e,index)),afterSequence);
+ const lines=events.flatMap((e,index)=>{
+  if(eventSequence(e,index)<=afterSequence)return [];
   if(typeof e.text==='string') {
    let text=e.text;
    for(const player of list(s.players)){if(typeof player.name==='string'&&player.name)text=text.split(player.name).join(name(player.id));}
@@ -61,4 +67,5 @@ export function gameHistory(kind:GameKind,snapshot:unknown,names:Record<string,s
   }
   return [];
  });
+ return {lines,sequence};
 }

@@ -8,8 +8,6 @@ export class ReactionChargeRejected extends Error {}
 export interface ReactionDelivery {
   /** Publish only to authenticated members of this room; deduplicate by id on clients. */
   publish(event: {id:string;roomId:string;senderId:string;targetId:string;kind:ReactionKind}): Promise<void>;
-  /** Persist through the existing Bell outbox, deduplicating this id. */
-  bell(id: string, residentId: string, text: string): Promise<void>;
 }
 export class GameReactionService {
   private readonly pending = new Map<string, Promise<{id:string}>>();
@@ -49,7 +47,6 @@ export class GameReactionService {
     return {id:record.id};
   }
   private async deliver(record: ReactionRecord) {
-    if(record.targetController==="resident") await this.delivery.bell(record.id,record.targetResidentId,`${record.senderName}给你${record.kind==="flower"?"送了 1 个🌹":"扔了 1 个💣"}。`);
     await this.delivery.publish({id:record.id,roomId:record.roomId,senderId:record.senderId,targetId:record.targetId,kind:record.kind});
     this.store.markDelivered(record.id);
   }
