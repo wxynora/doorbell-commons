@@ -322,7 +322,7 @@ export class GameService {
       this.save(latest);
       return;
     }
-    if(room.deadline.playerId==='system'){await this.settleDue(room);return;}
+    if(room.deadline.playerId==='system'){await this.settleDue(room);await this.settlePendingOutcome(room);return;}
     const actor=room.seats.find(s=>s.playerId===room.deadline!.playerId);
     if(!actor)return;
     const projection=await this.engine.project(room.kind,room.snapshot,actor.playerId);

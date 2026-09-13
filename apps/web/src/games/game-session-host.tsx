@@ -34,7 +34,7 @@ export function GameSessionHost(props:GameSessionHostProps){
   return <Session key={`${props.roomId}:${props.viewerId}`} {...props}/>;
 }
 const pages={uno:UnoPage,doudizhu:DoudizhuPage,"leaf-game":LeafGamePage,"flying-chess":FlyingChessPage,monopoly:MonopolyPage,mahjong:MahjongPage};
-const projection=(game:unknown)=>game as {viewer_id?:string;revision?:number;phase?:string};
+const projection=(game:unknown)=>(game??{}) as {viewer_id?:string;revision?:number;phase?:string;forfeited?:boolean;public?:{game_result?:unknown}};
 function Session({roomId,initialRoom,viewerId,profiles:registeredProfiles,watchOnly=false,transport:suppliedTransport,reactions,onExit,onNewTable}:GameSessionHostProps){
   const transport=useMemo(()=>suppliedTransport??(watchOnly?createWatchClient(viewerId):gameSessionClient),[suppliedTransport,watchOnly,viewerId]);
   const [room,setRoom]=useState<SessionRoom|null>(initialRoom??null);
@@ -154,7 +154,7 @@ function Session({roomId,initialRoom,viewerId,profiles:registeredProfiles,watchO
   };
   return <div className={`game-session-host game-session--${room.kind}`}>
     {watchExit}
-    {!watchOnly&&room.phase==='playing'&&!['round_over','finished','game_over'].includes(String(projection(room.game).phase))&&projection(projection(room.game).public).game_result==null&&<GameMidroundExit baseStake={room.baseStake??0} onLeave={leave}/>}
+    {!watchOnly&&room.phase==='playing'&&!['round_over','finished','game_over'].includes(String(projection(room.game).phase))&&projection(room.game).public?.game_result==null&&<GameMidroundExit baseStake={room.baseStake??0} onLeave={leave}/>}
     <div style={{display:"contents"}} onClickCapture={blockWatchAction} onPointerDownCapture={blockWatchAction} onKeyDownCapture={blockWatchAction}>
     {room.phase==="waiting"?<GameWaitingRoom room={room} viewerId={viewerId} profiles={profiles} connected={connected}
       onReady={async ready=>{const r=requireRoom();accept(await transport.ready(roomId,r.revision,ready));}}
