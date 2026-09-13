@@ -756,7 +756,7 @@ export class LoungeGameTool {
   ): Promise<OptionLines> {
     const lines: string[] = [this.#renderRoomSummary(playerId, table, view)];
     const names:Record<string,string>={};
-    for(const seat of view.seats)names[seat.playerId]=this.#nameOf?await this.#nameOf(seat.playerId):'同桌';
+    for(const seat of view.seats)names[seat.playerId]=seat.playerId===playerId?'你':this.#nameOf?await this.#nameOf(seat.playerId):'同桌';
     if(view.game)lines.push(...gameContext(view.kind,view.game,names));
     const delta=delivery?this.#extra.historySince?.(view.roomId,names,delivery.after.eventSequence):undefined;
     const history=delta?.lines??this.#extra.history?.(view.roomId,names)??[];
@@ -1169,7 +1169,6 @@ export class LoungeGameTool {
         return (pending.needsRules?GAME_RULES_COPY[view.kind].join('\n')+'\n':'')+result;
       }
       case "reaction":
-        await this.#assertCurrentRoom(caller, pending);
         if (!this.#reactions || !this.#nameOf) throw new LoungeGameToolError("game_reaction_unavailable");
         if (!to) throw new LoungeGameToolError("reaction_target_required");
         const current = await this.#gameService.view(caller, pending.roomId);
