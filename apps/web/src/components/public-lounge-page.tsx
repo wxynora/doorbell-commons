@@ -92,6 +92,7 @@ export function PublicLoungePage({
   const sceneFrameRef = useRef<HTMLIFrameElement>(null);
   const sceneReadyRef = useRef(false);
   const snapshotRef = useRef<LoungeSnapshot | null>(suppliedSnapshot ?? null);
+  const streamAvailableRef = useRef(Boolean(suppliedSnapshot));
   const [standingImages, setStandingImages] = useState<Record<string, string>>({});
   const standingImagesRef = useRef<Readonly<Record<string, string>>>({});
   const loader = loadSnapshot ?? getPublicLoungeSnapshot;
@@ -106,7 +107,7 @@ export function PublicLoungePage({
     frame.contentWindow.postMessage(
       {
         type: "lounge-state",
-        gamesEnabled: Boolean(gamesEnabled && gameViewerId && nextSnapshot),
+        gamesEnabled: Boolean(gamesEnabled && gameViewerId && nextSnapshot && streamAvailableRef.current),
         tables: nextSnapshot?.tables.map(t => ({ tableId: t.table_id, gameKind: t.room?.kind ?? null, roomId: t.room?.room_id ?? null, revision: t.room?.revision ?? null, phase: t.room?.phase ?? null })) ?? [],
         presence: nextSnapshot
           ? scenePresenceForSnapshot(nextSnapshot, standingImagesRef.current)
@@ -118,7 +119,7 @@ export function PublicLoungePage({
 
   useEffect(() => {
     const handleGameMessage = (event: MessageEvent) => {
-      if (!gamesEnabled || !gameViewerId || event.origin !== window.location.origin || event.source !== sceneFrameRef.current?.contentWindow) return;
+      if (!gamesEnabled || !gameViewerId || !streamAvailableRef.current || event.origin !== window.location.origin || event.source !== sceneFrameRef.current?.contentWindow) return;
       const data = event.data;
       if (!data || (data.type !== "lounge-game-create" && data.type !== "lounge-game-join" && data.type !== "lounge-game-watch") || enteringGame.current) return;
       const table = snapshotRef.current?.tables.find(t => t.table_id === data.tableId);
@@ -157,6 +158,7 @@ export function PublicLoungePage({
   useEffect(() => {
     void reloadKey;
     if (suppliedSnapshot) {
+      streamAvailableRef.current = true;
       snapshotRef.current = suppliedSnapshot;
       setLoadState({ stage: "ready", snapshot: suppliedSnapshot });
       return;
@@ -169,12 +171,14 @@ export function PublicLoungePage({
       .then((result) => {
         if (controller.signal.aborted) return;
         if (result.ok) {
+          streamAvailableRef.current = true;
           snapshotRef.current = result.data;
           setLoadState({ stage: "ready", snapshot: result.data });
 
           if (typeof EventSource === "undefined") return;
           stream = new EventSource("/api/lounge/stream", { withCredentials: true });
           const setStreamProtocolError = () => {
+            streamAvailableRef.current = false;
             snapshotRef.current = null;
             setLoadState({
               stage: "error",
@@ -198,6 +202,7 @@ export function PublicLoungePage({
             }
             const previous = snapshotRef.current;
             if (previous && compareLoungeSnapshots(parsed.data, previous) < 0) return;
+            streamAvailableRef.current = true;
             snapshotRef.current = parsed.data;
             setLoadState({ stage: "ready", snapshot: parsed.data });
           };
@@ -221,12 +226,10 @@ export function PublicLoungePage({
             setLoadState({ stage: "ready", snapshot: next });
           };
           const handleStreamError = () => {
-            snapshotRef.current = null;
-            setLoadState({
-              stage: "error",
-              issue: { code: "network_unavailable", serverMessage: null },
-            });
-            postSceneState(null);
+            // A dropped connection is not an empty room. Keep its last display,
+            // but wait for a fresh snapshot before accepting table actions.
+            streamAvailableRef.current = false;
+            postSceneState(snapshotRef.current);
           };
           stream.addEventListener("snapshot", handleSnapshot);
           stream.addEventListener("delta", handleDelta);

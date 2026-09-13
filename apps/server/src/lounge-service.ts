@@ -70,7 +70,7 @@ export interface LoungeSayInput {
 
 export interface LoungeServiceOptions {
   database: Pick<CommunityDatabase, "listActiveHumanCommunities">;
-  registrationAuth: Pick<RegistrationAuthService, "getCurrentSessionWithMembership">;
+  registrationAuth: Pick<RegistrationAuthService, "getCurrentSession">;
   store: LoungeStore;
   now?: () => number;
   random?: () => number;
@@ -283,7 +283,7 @@ export class LoungeService {
   }
 
   async readHumanSnapshot(token: string): Promise<LoungeSnapshot> {
-    const current = await this.#registrationAuth.getCurrentSessionWithMembership(token);
+    const current = await this.#registrationAuth.getCurrentSession(token);
     return this.readSnapshotForResident(current.resident.residentId);
   }
 

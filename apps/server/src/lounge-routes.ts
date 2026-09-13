@@ -1,3 +1,4 @@
+import { startSseKeepalive } from "./sse-keepalive.js";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { LoungeService } from "./lounge-service.js";
 import { OneBotUnavailableError } from "./qq-group-membership.js";
@@ -103,6 +104,7 @@ export function registerLoungeRoutes(
       const snapshot = await options.loungeService.readHumanSnapshot(token);
       started = true;
       prepareStream(reply);
+      startSseKeepalive(reply.raw);
       connection = options.loungeService.connectHumanStream(snapshot.self_resident_id, {
         send: (delta) => {
           if (!closed && !reply.raw.writableEnded) {

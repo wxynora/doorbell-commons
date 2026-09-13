@@ -1,3 +1,4 @@
+import { startSseKeepalive } from "../sse-keepalive.js";
 import { registerOwnerWatchRoutes } from "./owner-watch-routes.js";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
@@ -462,6 +463,7 @@ export function registerLoungeGameRoutes(
       if (closed) return reply;
       streamStarted = true;
       prepareStream(reply);
+      startSseKeepalive(reply.raw);
       streamReady = true;
       for (const pending of pendingEvents) writeEvent(reply, pending.event, pending.value);
       pendingEvents.length = 0;

@@ -1,3 +1,4 @@
+import { startSseKeepalive } from "../sse-keepalive.js";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import type { GameCaller } from "./game-identity.js";
@@ -64,6 +65,7 @@ export function registerOwnerWatchRoutes(app: FastifyInstance, options: Options)
       reply.hijack();
       reply.raw.writeHead(200, { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-store", connection: "keep-alive", "x-accel-buffering": "no" });
       started = true;
+      startSseKeepalive(reply.raw);
       for (const frame of pending) reply.raw.write(frame);
       pending.length = 0;
       void subscription.closed.then(close, close);
