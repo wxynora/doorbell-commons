@@ -55,24 +55,27 @@ function Session({roomId,initialRoom,viewerId,profiles:registeredProfiles,watchO
   useEffect(()=>{
     active.current=true;
     setError("");
+    connection.current=false;
+    setConnected(false);
     let disposed=false;
     let close:(()=>void)|undefined;
     const subscribe=()=>{
       close=transport.subscribe(roomId,0,{
-        game:value=>{try{accept(value);setError("");}catch(e){setError((e as Error).message);connection.current=false;setConnected(false);}},
-        chat:message=>{if(active.current&&message.roomId===roomId)setMessages(old=>old.some(m=>m.sequence===message.sequence)?old:[...old,message].sort((a,b)=>a.sequence-b.sequence));},
-        connection:value=>{if(active.current){connection.current=value;setConnected(value);}},
-        reaction:event=>{if(active.current&&event.roomId===roomId)reactionListeners.current.forEach(listener=>listener(event));},
+        game:value=>{if(disposed)return;try{accept(value);setError("");}catch(e){setError((e as Error).message);connection.current=false;setConnected(false);}},
+        chat:message=>{if(!disposed&&message.roomId===roomId)setMessages(old=>old.some(m=>m.sequence===message.sequence)?old:[...old,message].sort((a,b)=>a.sequence-b.sequence));},
+        connection:value=>{if(!disposed){connection.current=value;setConnected(value);}},
+        reaction:event=>{if(!disposed&&event.roomId===roomId)reactionListeners.current.forEach(listener=>listener(event));},
       });
     };
     if(initialRoom && reloadKey===0){
       accept(initialRoom);
       subscribe();
     }else{
+      // The stream supplies its own snapshot; do not wait for the HTTP read to connect.
+      subscribe();
       transport.read(roomId).then(next=>{
         if(disposed)return;
         accept(next);
-        subscribe();
       }).catch(e=>{if(!disposed)setError((e as Error).message);});
     }
     return()=>{disposed=true;active.current=false;connection.current=false;close?.();};

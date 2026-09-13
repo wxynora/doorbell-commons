@@ -311,11 +311,18 @@ export function PublicLoungePage({
   const gameProfiles = useMemo(() => ({
     ...Object.fromEntries((chatSnapshot?.residents ?? []).map(p => [`resident:${p.resident_id}`, { name: p.resident_name }])),
   }), [chatSnapshot?.residents]);
-  const returnFromGame = () => { setInitialGameRoom(null); setGameRoomId(null); setWatchOnly(false); setReloadKey(key => key + 1); };
+  const returnFromGame = () => {
+    snapshotRef.current = null;
+    sceneReadyRef.current = false;
+    setLoadState({ stage: "loading" });
+    setInitialGameRoom(null); setGameRoomId(null); setWatchOnly(false); setReloadKey(key => key + 1);
+  };
+  const standingSnapshotRef = useRef<LoungeSnapshot | null>(null);
+  if (chatSnapshot) standingSnapshotRef.current = chatSnapshot;
   const standingResidentIds = useMemo(
     () => [
       ...new Set(
-        chatSnapshot?.presence
+        (chatSnapshot ?? standingSnapshotRef.current)?.presence
           .filter((presence) => presence.slot_id === null)
           .map((presence) => presence.resident_id) ?? [],
       ),
@@ -336,10 +343,11 @@ export function PublicLoungePage({
         </div>
       </section>}
       {dailyOpen ? <LoungeDailyDialog onClose={() => setDailyOpen(false)} /> : null}
-      {!gameRoomId && <ResidentStandingLoader
+      <ResidentStandingLoader
+        active={!gameRoomId && loadState.stage === "ready"}
         residentIds={standingResidentIds}
         onImagesChange={setStandingImages}
-      />}
+      />
       {chatOpen ? <PublicLoungeChat
         onClose={() => setChatOpen(false)}
         issue={issue}

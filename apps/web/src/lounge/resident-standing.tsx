@@ -43,9 +43,11 @@ export function retainStandingResidentIds(
 }
 
 export function ResidentStandingLoader({
+  active = true,
   onImagesChange,
   residentIds,
 }: {
+  active?: boolean;
   onImagesChange: Dispatch<SetStateAction<Record<string, string>>>;
   residentIds: readonly string[];
 }) {
@@ -92,7 +94,7 @@ export function ResidentStandingLoader({
 
   return (
     <div className="public-lounge-portrait-loaders" aria-hidden="true">
-      {pendingIds.map((residentId) => (
+      {(active ? pendingIds : []).map((residentId) => (
         <iframe
           key={residentId}
           ref={(frame) => {

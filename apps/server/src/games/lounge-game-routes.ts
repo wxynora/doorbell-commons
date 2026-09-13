@@ -411,6 +411,7 @@ export function registerLoungeGameRoutes(
       gameSubscription?.close();
       chatSubscription?.close();
       reactionSubscription?.close();
+      pendingEvents.length = 0;
       if (streamStarted && !reply.raw.writableEnded) reply.raw.end();
     };
     const emit = (event: string, value: unknown): void => {
@@ -422,6 +423,7 @@ export function registerLoungeGameRoutes(
       writeEvent(reply, event, value);
     };
 
+    reply.raw.once("close", closeStream);
     try {
       const { roomId } = roomParamsSchema.parse(request.params) as RoomParams;
       const { afterChatSequence = 0 } = streamQuerySchema.parse(request.query);
@@ -431,28 +433,35 @@ export function registerLoungeGameRoutes(
         : sequenceQuerySchema.parse(lastEventId);
       assertSameOrigin(request);
       const { caller } = await authenticateRequest(request, options);
-      gameSubscription = await options.gameSync.subscribe(caller, roomId, (view: GameRoomView, delta) => {
-        if (delta) {
-          const { game: _game, ...room } = view;
-          emit("game_delta", { ...room, baseRevision: delta.baseRevision, patch: delta.patch });
-        } else emit("game", view);
-      });
-      chatSubscription = await options.gameChat.subscribe(
-        caller,
-        roomId,
-        chatCursor,
-        (message: GameChatMessage) => {
-          emit("chat", message);
-        },
-      );
-      if (options.reactions) {
-        reactionSubscription = await options.reactions.subscribe(caller, roomId, (reaction) => {
-          emit("reaction", reaction);
-        });
-      }
+      // Independent subscriptions still perform their own authorization. Buffer
+      // every event until all three have succeeded before starting the response.
+      await Promise.all([
+        (async () => {
+          gameSubscription = await options.gameSync.subscribe(caller, roomId, (view: GameRoomView, delta) => {
+            if (delta) {
+              const { game: _game, ...room } = view;
+              emit("game_delta", { ...room, baseRevision: delta.baseRevision, patch: delta.patch });
+            } else emit("game", view);
+          });
+          if (closed) gameSubscription.close();
+        })(),
+        (async () => {
+          chatSubscription = await options.gameChat.subscribe(caller, roomId, chatCursor, (message: GameChatMessage) => {
+            emit("chat", message);
+          });
+          if (closed) chatSubscription.close();
+        })(),
+        (async () => {
+          if (!options.reactions) return;
+          reactionSubscription = await options.reactions.subscribe(caller, roomId, (reaction) => {
+            emit("reaction", reaction);
+          });
+          if (closed) reactionSubscription.close();
+        })(),
+      ]);
+      if (closed) return reply;
       streamStarted = true;
       prepareStream(reply);
-      reply.raw.once("close", closeStream);
       streamReady = true;
       for (const pending of pendingEvents) writeEvent(reply, pending.event, pending.value);
       pendingEvents.length = 0;
@@ -462,8 +471,8 @@ export function registerLoungeGameRoutes(
           () => closeStream(),
         );
       };
-      watchClosed(gameSubscription);
-      watchClosed(chatSubscription);
+      if (gameSubscription) watchClosed(gameSubscription);
+      if (chatSubscription) watchClosed(chatSubscription);
       if (reactionSubscription) watchClosed(reactionSubscription);
       return reply;
     } catch (error) {
@@ -471,9 +480,7 @@ export function registerLoungeGameRoutes(
         closeStream();
         return reply;
       }
-      gameSubscription?.close();
-      chatSubscription?.close();
-      reactionSubscription?.close();
+      closeStream();
       return sendFailure(request, reply, error, options.secureCookies);
     }
   });

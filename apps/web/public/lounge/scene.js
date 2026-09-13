@@ -71,7 +71,7 @@ const residents=createResidents({scene,draw:requestDraw});
 let publicTables=[];
 let tableAppearance=JSON.stringify([null,null]);
 let gamesEnabled=false;
-addEventListener('message',event=>{if(event.source!==parent||event.origin!==location.origin||event.data?.type!=='lounge-state')return;document.querySelector("#online-count").textContent=String((event.data.presence||[]).length);residents.update(event.data.presence||[]);gamesEnabled=event.data.gamesEnabled===true;publicTables=event.data.tables||[];const nextAppearance=JSON.stringify(['square','round'].map(id=>publicTables.find(t=>t.tableId===id)?.gameKind??null));if(nextAppearance!==tableAppearance){tableAppearance=nextAppearance;room.userData.tabletopGames.update(publicTables);requestDraw();}});
+addEventListener('message',event=>{if(event.source!==parent||event.origin!==location.origin||event.data?.type!=='lounge-state')return;document.querySelector("#online-count").textContent=String((event.data.presence||[]).length);residents.update(event.data.presence||[]);gamesEnabled=event.data.gamesEnabled===true;publicTables=event.data.tables||[];if(gameDialog.open)renderGameChoices();const nextAppearance=JSON.stringify(['square','round'].map(id=>publicTables.find(t=>t.tableId===id)?.gameKind??null));if(nextAppearance!==tableAppearance){tableAppearance=nextAppearance;room.userData.tabletopGames.update(publicTables);requestDraw();}});
 requestAnimationFrame(()=>{draw();requestAnimationFrame(draw);});
 parent.postMessage({type:'lounge-ready'},location.origin);
 if(import.meta.hot)import.meta.hot.dispose(()=>{residents.dispose();cancelAnimationFrame(pendingDraw);clearTimeout(windowTimer);document.removeEventListener('visibilitychange',resumeWindow);removeEventListener('focus',resumeWindow);removeEventListener('pageshow',resumeWindow);windowViews.forEach(view=>view.userData.disposeWindow());outline.geometry.dispose();outline.material.dispose();renderer.dispose();});
@@ -108,6 +108,18 @@ for(const [kind,label] of [['mahjong','麻将'],['doudizhu','斗地主'],['leaf-
  button.onclick=()=>{if(gamesEnabled){parent.postMessage({type:'lounge-game-create',tableId:chosenTable,kind},location.origin);}else if(parent===window){room.userData.tabletopGames.set(chosenTable,kind);draw();}gameDialog.close();};
  gameDialog.querySelector('.game-choices').append(button);
 }
+function renderGameChoices(){
+ const active=publicTables.find(t=>t.tableId===chosenTable)?.gameKind;
+ const names={'mahjong':'麻将','doudizhu':'斗地主','leaf-game':'叶子戏','uno':'UNO','monopoly':'大富翁','flying-chess':'飞行棋'};
+ gameDialog.querySelector('h2').textContent=(chosenTable==='square'?'方桌':'圆桌')+(active?' · '+names[active]:' · 选个游戏');
+ gameDialog.querySelector('.game-choices').hidden=Boolean(active);
+ gameDialog.querySelector('.game-join').hidden=!active||publicTables.find(t=>t.tableId===chosenTable)?.phase==='playing';
+ gameDialog.querySelector('.game-watch').hidden=!gamesEnabled||publicTables.find(t=>t.tableId===chosenTable)?.phase!=='playing';
+ gameDialog.querySelector('.game-join').disabled=!gamesEnabled;
+ gameDialog.querySelectorAll('.game-choices button').forEach(button=>{button.disabled=!gamesEnabled&&parent!==window;});
+ gameDialog.querySelector('h2 + p').textContent=active?'这桌已有对局':'想玩哪一局？';
+ gameDialog.querySelector('.game-note').textContent=gamesEnabled?'':active?'加入入口尚未开放，暂时不能入座。':'当前为桌面外观预览，正式开局尚未开放。';
+}
 renderer.domElement.addEventListener('pointermove',e=>{if(e.pointerType==='mouse'&&!pointers.size)renderer.domElement.style.cursor=pickInteractive(e)?'pointer':'';if(clickStart&&Math.hypot(e.clientX-clickStart.x,e.clientY-clickStart.y)>5)clickCancelled=true;});
 renderer.domElement.addEventListener('pointerleave',()=>{renderer.domElement.style.cursor='';});
 renderer.domElement.addEventListener('pointerdown',e=>{if(pointers.size===1){clickStart={pointerId:e.pointerId,x:e.clientX,y:e.clientY};clickCancelled=false;}else clickCancelled=true;});
@@ -123,16 +135,7 @@ renderer.domElement.addEventListener('pointerup',e=>{
   else import('./gacha-dialog.js').then(module=>module.openGachaDialog({preview:true}));
   return;
  }
- if(object.userData.gameTable){chosenTable=object.userData.gameTable;const active=publicTables.find(t=>t.tableId===chosenTable)?.gameKind;
- const names={'mahjong':'麻将','doudizhu':'斗地主','leaf-game':'叶子戏','uno':'UNO','monopoly':'大富翁','flying-chess':'飞行棋'};
- gameDialog.querySelector('h2').textContent=(chosenTable==='square'?'方桌':'圆桌')+(active?' · '+names[active]:' · 选个游戏');
- gameDialog.querySelector('.game-choices').hidden=Boolean(active);
- gameDialog.querySelector('.game-join').hidden=!active||publicTables.find(t=>t.tableId===chosenTable)?.phase==='playing';
- gameDialog.querySelector('.game-watch').hidden=!gamesEnabled||publicTables.find(t=>t.tableId===chosenTable)?.phase!=='playing';
- gameDialog.querySelector('.game-join').disabled=!gamesEnabled;
- gameDialog.querySelectorAll('.game-choices button').forEach(button=>{button.disabled=!gamesEnabled&&parent!==window;});
- gameDialog.querySelector('h2 + p').textContent=active?'这桌已有对局':'想玩哪一局？';
- gameDialog.querySelector('.game-note').textContent=gamesEnabled?'':active?'加入入口尚未开放，暂时不能入座。':'当前为桌面外观预览，正式开局尚未开放。';
+ if(object.userData.gameTable){chosenTable=object.userData.gameTable;renderGameChoices();
  gameDialog.showModal();return;}
  if(parent!==window)parent.postMessage({type:'lounge-daily-open'},location.origin);
  else{const notice=document.querySelector('#chat-notice');notice.textContent='今天的日报请在公共休息室完整页面查看。';notice.showPopover();}
