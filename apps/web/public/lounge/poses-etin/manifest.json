@@ -1,0 +1,202 @@
+{
+  "character": "Étincelle",
+  "doorplate": "C6QMCE",
+  "note": "Original connected figure pixels, no stretching; alpha cleanup as existing character imports; 2px transparent border.",
+  "poses": [
+    {
+      "id": "01-sofa",
+      "label": "1 中央沙发",
+      "file": "01-sofa.png",
+      "width": 216,
+      "height": 287,
+      "sourceCrop": {
+        "left": 9,
+        "top": 78,
+        "width": 212,
+        "height": 283
+      }
+    },
+    {
+      "id": "02-armchair",
+      "label": "2 左单人沙发",
+      "file": "02-armchair.png",
+      "width": 210,
+      "height": 287,
+      "sourceCrop": {
+        "left": 231,
+        "top": 80,
+        "width": 206,
+        "height": 283
+      }
+    },
+    {
+      "id": "03-reading",
+      "label": "3 右沙发阅读",
+      "file": "03-reading.png",
+      "width": 226,
+      "height": 288,
+      "sourceCrop": {
+        "left": 462,
+        "top": 79,
+        "width": 222,
+        "height": 284
+      }
+    },
+    {
+      "id": "04-chair",
+      "label": "4 阅读区椅子",
+      "file": "04-chair.png",
+      "width": 217,
+      "height": 286,
+      "sourceCrop": {
+        "left": 695,
+        "top": 82,
+        "width": 213,
+        "height": 282
+      }
+    },
+    {
+      "id": "05-window-seat",
+      "label": "5 飘窗",
+      "file": "05-window-seat.png",
+      "width": 219,
+      "height": 281,
+      "sourceCrop": {
+        "left": 918,
+        "top": 87,
+        "width": 215,
+        "height": 277
+      }
+    },
+    {
+      "id": "06-bench-sit",
+      "label": "6 长凳坐姿",
+      "file": "06-bench-sit.png",
+      "width": 189,
+      "height": 238,
+      "sourceCrop": {
+        "left": 1136,
+        "top": 116,
+        "width": 185,
+        "height": 234
+      }
+    },
+    {
+      "id": "07-round-front-left",
+      "label": "7 圆桌左前",
+      "file": "07-round-front-left.png",
+      "width": 191,
+      "height": 260,
+      "sourceCrop": {
+        "left": 10,
+        "top": 400,
+        "width": 187,
+        "height": 256
+      }
+    },
+    {
+      "id": "07-round-front-right",
+      "label": "7 圆桌右前",
+      "file": "07-round-front-right.png",
+      "width": 184,
+      "height": 247,
+      "sourceCrop": {
+        "left": 202,
+        "top": 418,
+        "width": 180,
+        "height": 243
+      }
+    },
+    {
+      "id": "07-round-back-left",
+      "label": "7 圆桌左后",
+      "file": "07-round-back-left.png",
+      "width": 181,
+      "height": 242,
+      "sourceCrop": {
+        "left": 387,
+        "top": 417,
+        "width": 177,
+        "height": 238
+      }
+    },
+    {
+      "id": "07-round-back-right",
+      "label": "7 圆桌右后",
+      "file": "07-round-back-right.png",
+      "width": 186,
+      "height": 241,
+      "sourceCrop": {
+        "left": 573,
+        "top": 417,
+        "width": 182,
+        "height": 237
+      }
+    },
+    {
+      "id": "08-square-front-left",
+      "label": "8 方桌左前",
+      "file": "08-square-front-left.png",
+      "width": 195,
+      "height": 264,
+      "sourceCrop": {
+        "left": 765,
+        "top": 401,
+        "width": 191,
+        "height": 260
+      }
+    },
+    {
+      "id": "08-square-front-right",
+      "label": "8 方桌右前",
+      "file": "08-square-front-right.png",
+      "width": 188,
+      "height": 258,
+      "sourceCrop": {
+        "left": 962,
+        "top": 407,
+        "width": 184,
+        "height": 254
+      }
+    },
+    {
+      "id": "08-square-back-left",
+      "label": "8 方桌左后",
+      "file": "08-square-back-left.png",
+      "width": 184,
+      "height": 239,
+      "sourceCrop": {
+        "left": 1148,
+        "top": 418,
+        "width": 180,
+        "height": 235
+      }
+    },
+    {
+      "id": "08-square-back-right",
+      "label": "8 方桌右后",
+      "file": "08-square-back-right.png",
+      "width": 190,
+      "height": 247,
+      "sourceCrop": {
+        "left": 1343,
+        "top": 412,
+        "width": 186,
+        "height": 243
+      }
+    },
+    {
+      "id": "09-pet",
+      "label": "9 和猫狗玩",
+      "file": "09-pet.png",
+      "width": 251,
+      "height": 278,
+      "sourceCrop": {
+        "left": 31,
+        "top": 720,
+        "width": 247,
+        "height": 274
+      }
+    }
+  ]
+}

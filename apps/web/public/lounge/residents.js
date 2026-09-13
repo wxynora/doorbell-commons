@@ -29,7 +29,7 @@ export function createResidents({scene,draw}){
    if(!texture){if(remove(person.residentId))draw();return;}
    const binding=slot?defaultMaterials[slot.pose]:null;
    const height=binding?.footprint.height??2.2;
-   const width=slot&&slot.pose!=='09-pet'?binding.footprint.width:height*Math.cos(Math.atan2(18,26))*texture.image.width/texture.image.height;
+   const width=slot&&slot.pose!=='09-pet'&&!character?.naturalAspect?binding.footprint.width:height*Math.cos(Math.atan2(18,26))*texture.image.width/texture.image.height;
    const geometry=new T.PlaneGeometry(width,height);geometry.translate(0,height/2,0);texture.colorSpace=T.SRGBColorSpace;
    const material=new T.MeshBasicMaterial({map:texture,transparent:true,alphaTest:.08,depthTest:slot?.occlusion??true,depthWrite:true,toneMapped:false,side:T.DoubleSide});
    applyMask(material,slot?.localMask);
