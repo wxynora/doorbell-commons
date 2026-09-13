@@ -145,7 +145,7 @@ function roomFromRow(row: GameRoomRow): GameRoom {
     throw new GameStateError("The stored game room metadata is invalid");
   }
   const room = {
-    settlement: row.settlement_json == null ? null : decodeJson<GameRoom["settlement"]>(row.settlement_json, "settlement"),
+    settlement: row.settlement_json == null ? null : decodeJson<NonNullable<GameRoom["settlement"]>>(row.settlement_json, "settlement"),
     deadline: row.deadline_json === null ? null : decodeJson<NonNullable<GameRoom['deadline']>>(row.deadline_json, 'deadline'),
     roomId: row.room_id,
     kind: row.kind,
