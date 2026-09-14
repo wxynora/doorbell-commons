@@ -19,11 +19,21 @@ export function registerGlimmerEditorRoutes(app: FastifyInstance, options: Optio
       try { originHost = new URL(request.headers.origin ?? '').host; } catch {}
       if (originHost !== request.headers.host) return reply.code(403).send({ error: { message: '请从社区工作台提交内容。' } });
       const body = request.body as Record<string, unknown> | null;
-      if (!body || !['save', 'publish', 'review', 'withdraw', 'import'].includes(String(body.action))) return reply.code(400).send({ error: { message: '操作不正确。' } });
+      if (!body || !['save', 'publish', 'review', 'withdraw', 'import', 'save_batch'].includes(String(body.action))) return reply.code(400).send({ error: { message: '操作不正确。' } });
     }
     const tools = [...farmOperations,...modelVisibleLingyeOperations].filter(operation => operation.op !== 'farm.help').map(operation => ({id: operation.op, name: operation.description}));
-    const mutation = request.body as {action?:string;content?:{category?:string;tools?:unknown}} | undefined;
-    if (request.method === 'POST' && ['save','import'].includes(mutation?.action??'') && mutation?.content?.category === 'npc' && mutation.content.tools !== undefined && (!Array.isArray(mutation.content.tools) || mutation.content.tools.some(op => !tools.some(tool => tool.id === op)))) return reply.code(400).send({error:{message:'请选择列表中的触发工具。'}});
+    const mutation = request.body as {action?:string;content?:unknown;contents?:unknown} | undefined;
+    if (request.method === 'POST' && ['save','import','save_batch'].includes(mutation?.action??'')) {
+      const input = mutation?.action === 'save_batch' ? mutation.contents : mutation?.content;
+      const contents = Array.isArray(input) ? input : [input];
+      const errors: string[] = [];
+      contents.forEach((value, index) => {
+        if (!value || typeof value !== 'object') return;
+        const content = value as {category?:string;tools?:unknown};
+        if (content.category === 'npc' && content.tools !== undefined && (!Array.isArray(content.tools) || content.tools.some(op => !tools.some(tool => tool.id === op)))) errors.push(`${Array.isArray(input)?`第${index+1}条：`:''}请选择列表中的触发工具。`);
+      });
+      if (errors.length) return reply.code(400).send({error:{message:errors.join('\n')}});
+    }
     try {
       const response = await fetch(new URL('/internal/doorbell/glimmer-editor', options.farm.apiBaseUrl), {
         method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${options.farm.serviceToken}` },
