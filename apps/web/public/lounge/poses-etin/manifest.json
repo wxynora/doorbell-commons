@@ -7,142 +7,142 @@
       "id": "01-sofa",
       "label": "1 中央沙发",
       "file": "01-sofa.png",
-      "width": 216,
-      "height": 287,
+      "width": 211,
+      "height": 293,
       "sourceCrop": {
-        "left": 9,
-        "top": 78,
-        "width": 212,
-        "height": 283
+        "left": 6,
+        "top": 75,
+        "width": 207,
+        "height": 289
       }
     },
     {
       "id": "02-armchair",
       "label": "2 左单人沙发",
       "file": "02-armchair.png",
-      "width": 210,
-      "height": 287,
+      "width": 216,
+      "height": 297,
       "sourceCrop": {
-        "left": 231,
-        "top": 80,
-        "width": 206,
-        "height": 283
+        "left": 225,
+        "top": 72,
+        "width": 212,
+        "height": 293
       }
     },
     {
       "id": "03-reading",
       "label": "3 右沙发阅读",
       "file": "03-reading.png",
-      "width": 226,
-      "height": 288,
+      "width": 219,
+      "height": 295,
       "sourceCrop": {
-        "left": 462,
-        "top": 79,
-        "width": 222,
-        "height": 284
+        "left": 456,
+        "top": 75,
+        "width": 215,
+        "height": 291
       }
     },
     {
       "id": "04-chair",
       "label": "4 阅读区椅子",
       "file": "04-chair.png",
-      "width": 217,
-      "height": 286,
+      "width": 218,
+      "height": 296,
       "sourceCrop": {
-        "left": 695,
-        "top": 82,
-        "width": 213,
-        "height": 282
+        "left": 676,
+        "top": 75,
+        "width": 214,
+        "height": 292
       }
     },
     {
       "id": "05-window-seat",
       "label": "5 飘窗",
       "file": "05-window-seat.png",
-      "width": 219,
-      "height": 281,
+      "width": 222,
+      "height": 294,
       "sourceCrop": {
-        "left": 918,
-        "top": 87,
-        "width": 215,
-        "height": 277
+        "left": 892,
+        "top": 77,
+        "width": 218,
+        "height": 290
       }
     },
     {
       "id": "06-bench-sit",
       "label": "6 长凳坐姿",
       "file": "06-bench-sit.png",
-      "width": 189,
-      "height": 238,
+      "width": 193,
+      "height": 259,
       "sourceCrop": {
-        "left": 1136,
-        "top": 116,
-        "width": 185,
-        "height": 234
+        "left": 1124,
+        "top": 98,
+        "width": 189,
+        "height": 255
       }
     },
     {
       "id": "07-round-front-left",
       "label": "7 圆桌左前",
       "file": "07-round-front-left.png",
-      "width": 191,
-      "height": 260,
+      "width": 187,
+      "height": 262,
       "sourceCrop": {
-        "left": 10,
-        "top": 400,
-        "width": 187,
-        "height": 256
+        "left": 15,
+        "top": 399,
+        "width": 183,
+        "height": 258
       }
     },
     {
       "id": "07-round-front-right",
       "label": "7 圆桌右前",
       "file": "07-round-front-right.png",
-      "width": 184,
-      "height": 247,
+      "width": 191,
+      "height": 255,
       "sourceCrop": {
-        "left": 202,
-        "top": 418,
-        "width": 180,
-        "height": 243
+        "left": 209,
+        "top": 411,
+        "width": 187,
+        "height": 251
       }
     },
     {
       "id": "07-round-back-left",
       "label": "7 圆桌左后",
       "file": "07-round-back-left.png",
-      "width": 181,
-      "height": 242,
+      "width": 180,
+      "height": 257,
       "sourceCrop": {
-        "left": 387,
-        "top": 417,
-        "width": 177,
-        "height": 238
+        "left": 404,
+        "top": 402,
+        "width": 176,
+        "height": 253
       }
     },
     {
       "id": "07-round-back-right",
       "label": "7 圆桌右后",
       "file": "07-round-back-right.png",
-      "width": 186,
-      "height": 241,
+      "width": 176,
+      "height": 251,
       "sourceCrop": {
-        "left": 573,
-        "top": 417,
-        "width": 182,
-        "height": 237
+        "left": 591,
+        "top": 402,
+        "width": 172,
+        "height": 247
       }
     },
     {
       "id": "08-square-front-left",
       "label": "8 方桌左前",
       "file": "08-square-front-left.png",
-      "width": 195,
+      "width": 187,
       "height": 264,
       "sourceCrop": {
-        "left": 765,
-        "top": 401,
-        "width": 191,
+        "left": 772,
+        "top": 398,
+        "width": 183,
         "height": 260
       }
     },
@@ -150,13 +150,13 @@
       "id": "08-square-front-right",
       "label": "8 方桌右前",
       "file": "08-square-front-right.png",
-      "width": 188,
-      "height": 258,
+      "width": 192,
+      "height": 260,
       "sourceCrop": {
-        "left": 962,
-        "top": 407,
-        "width": 184,
-        "height": 254
+        "left": 964,
+        "top": 405,
+        "width": 188,
+        "height": 256
       }
     },
     {
@@ -164,38 +164,38 @@
       "label": "8 方桌左后",
       "file": "08-square-back-left.png",
       "width": 184,
-      "height": 239,
+      "height": 251,
       "sourceCrop": {
-        "left": 1148,
-        "top": 418,
+        "left": 1156,
+        "top": 410,
         "width": 180,
-        "height": 235
+        "height": 247
       }
     },
     {
       "id": "08-square-back-right",
       "label": "8 方桌右后",
       "file": "08-square-back-right.png",
-      "width": 190,
-      "height": 247,
+      "width": 187,
+      "height": 253,
       "sourceCrop": {
-        "left": 1343,
-        "top": 412,
-        "width": 186,
-        "height": 243
+        "left": 1348,
+        "top": 408,
+        "width": 183,
+        "height": 249
       }
     },
     {
       "id": "09-pet",
       "label": "9 和猫狗玩",
       "file": "09-pet.png",
-      "width": 251,
-      "height": 278,
+      "width": 278,
+      "height": 294,
       "sourceCrop": {
-        "left": 31,
-        "top": 720,
-        "width": 247,
-        "height": 274
+        "left": 26,
+        "top": 701,
+        "width": 274,
+        "height": 290
       }
     }
   ]
