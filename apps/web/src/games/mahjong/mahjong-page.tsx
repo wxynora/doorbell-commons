@@ -198,7 +198,7 @@ export function MahjongPage() {
       </>}
       {result && !review && !rules && <GameResultDialog><strong>{result.draw ? "荒牌" : `${name(result.winner_player_id)} 获胜`}</strong><GameSettlementResult /><GameRoundExit onAgain={() => void start()} /></GameResultDialog>}
       {error && <div role="alert" className="mj-error">{error}<button onClick={() => location.reload()}>重新连接</button></div>}
-      {(rules || review) && <GameResultDialog><button className="mj-close" onClick={() => { setRules(false); setReview(false); }}>关闭</button>
+      {(rules || review) && <GameResultDialog rules={rules}><button className="mj-close" onClick={() => { setRules(false); setReview(false); }}>关闭</button>
         {rules ? <><h2>国标麻将</h2><GameRulesText kind="mahjong" /></>
           : <><h2>{result?.draw ? "荒牌" : `${name(result?.winner_player_id)} · ${result?.total_fan} 番`}</h2>{result?.fans?.map((f, i) => <p key={i}>{f.name}<b className="mj-fan">{f.fan} 番</b></p>)}</>}
         {!rules && result && <><GameSettlementResult /><GameRoundExit onAgain={() => void start()} /></>}
