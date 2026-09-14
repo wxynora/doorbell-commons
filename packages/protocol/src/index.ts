@@ -2871,6 +2871,7 @@ export const farmMcpActionRequestSchema = z
     farm_human_key: farmHumanKeySchema,
     expected_farm_doorplate: farmDoorplateSchema,
     action: z.string().trim().min(1),
+    source_op: z.string().regex(/^farm\.[a-z][a-z0-9_.-]*$/u).optional(),
     params: z.record(z.string(), z.unknown()),
     detail: z.boolean().optional(),
     include_status: z.boolean().optional(),

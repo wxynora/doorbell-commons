@@ -812,6 +812,7 @@ export class DoorbellMcpRuntime {
         farmDoorplate: context.farmDoorplate,
         farmHumanKey: context.farmHumanKey,
         action: plan.action,
+        sourceOp: op,
         params: plan.params,
         detail,
         ...(shouldAppendStatus && op !== "farm.status" ? { includeStatus: true } : {}),

@@ -1,3 +1,4 @@
+import { registerGlimmerEditorRoutes } from "./glimmer-editor/routes.js";
 import { LoungeGachaClient } from "./lounge-gacha/gacha-client.js";
 import { registerLoungeGachaRoutes } from "./lounge-gacha/gacha-routes.js";
 import { launchLounge } from "./lounge-launch.js";
@@ -547,6 +548,7 @@ const app = buildApp({
   sharedMemeService,
   secureCookies: process.env.NODE_ENV === "production",
 });
+registerGlimmerEditorRoutes(app, { auth: registrationAuth, ownerAccountId: process.env.DOORBELL_GLIMMER_EDITOR_ACCOUNT_ID ?? "", farm: { apiBaseUrl: serverConfig.farmApiBaseUrl, serviceToken: serverConfig.farmServiceToken, requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs } });
 registerLoungeGachaRoutes(app, {
   registrationAuth,
   gacha: new LoungeGachaClient({

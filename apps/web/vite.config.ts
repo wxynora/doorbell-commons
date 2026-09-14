@@ -89,6 +89,7 @@ export default defineConfig({
       input: {
         community: resolve(import.meta.dirname, "index.html"),
         dailyEditor: resolve(import.meta.dirname, "daily-editor/index.html"),
+        glimmerEditor: resolve(import.meta.dirname, "glimmer-editor/index.html"),
       },
     },
   },

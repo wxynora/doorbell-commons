@@ -563,8 +563,8 @@ const nonHelpOperations: FarmOperationDefinition[] = [
   }),
   defineOperation({
     op: "farm.fish.cast",
-    description: "购买鱼饵、选择钓点或抛竿。只买鱼饵时传 bait 和 buy，buy 是购买数量；不传 times 就不会抛竿。",
-    argsHint: "{times?, bait?, buy?, location?, stop?, detail?}",
+    description: "购买鱼饵、选择钓点或抛竿。只买鱼饵时传 bait 和 buy，buy 是购买数量；不传 times 就不会抛竿。传option回答当前钓鱼奇遇；回答时不抛竿。",
+    argsHint: "{times?, bait?, buy?, location?, stop?, option?, detail?}",
     branches: [
       {
         times: positiveInteger.optional(),
@@ -572,6 +572,7 @@ const nonHelpOperations: FarmOperationDefinition[] = [
         buy: positiveInteger.optional(),
         location: nonEmptyString.optional(),
         stop: z.enum(["new", "rare", "event"]).optional(),
+        option: nonEmptyString.optional(),
       },
     ],
     exampleArgs: [
@@ -661,7 +662,7 @@ const nonHelpOperations: FarmOperationDefinition[] = [
   }),
   defineOperation({
     op: "farm.glimmer.choose",
-    description: "在当前流光原野奇遇中提交一个选项。",
+    description: "提交当前流光原野奇遇的选项，或工具回执中 NPC 动向给出的选项编号。",
     argsHint: "{option, detail?}",
     branches: [{ option: nonEmptyString }],
     exampleArgs: [{ option: "A" }],

@@ -12,6 +12,7 @@ export interface FarmMcpActionInput {
   params: Record<string, unknown>;
   detail?: boolean;
   includeStatus?: boolean;
+  sourceOp?: string;
 }
 
 export interface FarmMcpActionExecutor {
@@ -85,6 +86,7 @@ export class FarmMcpActionClient implements FarmMcpActionExecutor {
       farm_human_key: input.farmHumanKey,
       expected_farm_doorplate: input.farmDoorplate,
       action: input.action,
+      ...(input.sourceOp === undefined ? {} : { source_op: input.sourceOp }),
       params: input.params,
       ...(input.detail === undefined ? {} : { detail: input.detail }),
       ...(input.includeStatus === undefined ? {} : { include_status: input.includeStatus }),
