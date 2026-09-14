@@ -1,4 +1,6 @@
 import {gameDisplayProjection,playerDisplayName} from "./game-display-names";
+import {cardPlaySound} from './game-card-sound';
+import {playReactionSound,retainReactionSound} from './game-reaction-sound';
 import {GameMidroundExit} from './game-midround-exit';
 import {useEffect,useMemo,useRef,useState,type SyntheticEvent} from "react";
 import {GameSessionContext,type GameSessionBinding} from "./game-session-binding";
@@ -55,10 +57,12 @@ function Session({roomId,initialRoom,viewerId,profiles:registeredProfiles,watchO
   const [reloadKey,setReloadKey]=useState(0);
   const [messages,setMessages]=useState<SessionChatMessage[]>([]);
   const reactionListeners=useRef(new Set<(event:GameReactionEvent)=>void>());
-  const accept=(next:SessionRoom)=>{
+  useEffect(retainReactionSound,[]);
+  const accept=(next:SessionRoom,audible=false)=>{
     if(next.roomId!==roomId)throw new Error("房间不匹配");
     if(next.game && projection(next.game).viewer_id!==viewerId)throw new Error("玩家局面不匹配");
     if(active.current && (!current.current || next.revision>=current.current.revision)){
+      if(audible && current.current){const sound=cardPlaySound(next.kind,current.current.game,next.game);if(sound)playReactionSound(sound);}
       current.current=next;setRoom(next);
       if(!watchOnly&&next.seats.some(s=>s.playerId===viewerId&&projection(s).forfeited))void onExit();
       if(next.phase==='finished' && !next.seats.some(s=>projection(s).forfeited) && (next.kind==='doudizhu'||next.kind==='uno') && projection(next.game).phase==='round_over')void onExit();
@@ -73,11 +77,12 @@ function Session({roomId,initialRoom,viewerId,profiles:registeredProfiles,watchO
     if(waitingSuspended)return()=>{active.current=false;};
     let disposed=false;
     let close:(()=>void)|undefined;
+    let soundPrimed=false;
     const subscribe=()=>{
       close=transport.subscribe(roomId,0,{
-        game:value=>{if(disposed)return;try{accept(value);setError("");}catch(e){setError((e as Error).message);connection.current=false;setConnected(false);}},
+        game:value=>{if(disposed)return;try{accept(value,soundPrimed);soundPrimed=true;setError("");}catch(e){setError((e as Error).message);connection.current=false;setConnected(false);}},
         chat:message=>{if(!disposed&&message.roomId===roomId)setMessages(old=>old.some(m=>m.sequence===message.sequence)?old:[...old,message].sort((a,b)=>a.sequence-b.sequence));},
-        connection:value=>{if(!disposed){connection.current=value;setConnected(value);}},
+        connection:value=>{if(!disposed){if(!value)soundPrimed=false;connection.current=value;setConnected(value);}},
         reaction:event=>{if(!disposed&&event.roomId===roomId)reactionListeners.current.forEach(listener=>listener(event));},
       });
     };
@@ -118,7 +123,7 @@ function Session({roomId,initialRoom,viewerId,profiles:registeredProfiles,watchO
     const latest=requireRoom();
     // Only the server binds actor_id. Both room and engine revisions travel intact.
     const {actor_id:_actor,...body}=move;
-    return accept(await transport.command(roomId,latest.revision,body)).game;
+    return accept(await transport.command(roomId,latest.revision,body),true).game;
   };
   const namedGame=useMemo(()=>gameDisplayProjection(room?.game??null,profiles),[room?.game,profiles]);
   const session=useMemo<GameSessionBinding|null>(()=>room?.game?{

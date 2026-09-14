@@ -2,6 +2,7 @@ import { useContext, useEffect, useRef, useState, type CSSProperties } from "rea
 import { createPortal } from "react-dom";
 import "./game-reaction-preview.css";
 import { GameReactionContext } from "./game-reaction-binding";
+import { playReactionSound, retainReactionSound } from "./game-reaction-sound";
 
 type Reaction = "flower" | "bomb";
 const STAGES = ".uno-stage, .ddz-stage, .leaf-game-stage, .fc-stage, .monopoly-stage, .mj-stage";
@@ -48,6 +49,7 @@ export function GameReactionPreview({ name, playerId }: { name: string; playerId
   const [menu, setMenu] = useState<{ stage: HTMLElement; x: number; y: number } | null>(null);
   const [effects, setEffects] = useState<{ stage: HTMLElement; kind: Reaction; id: string; style: CSSProperties }[]>([]);
   useEffect(() => () => { timers.current.forEach(clearTimeout); }, []);
+  useEffect(() => { if (demo || binding) return retainReactionSound(); }, [demo, !!binding]);
   useEffect(() => {
     if (!demo && !binding) return;
     const host = marker.current?.parentElement;
@@ -93,6 +95,11 @@ export function GameReactionPreview({ name, playerId }: { name: string; playerId
     const fromX = origin ? (origin.left + origin.width / 2 - s.left) / scale : stage.offsetWidth / 2;
     const fromY = origin ? (origin.top + origin.height / 2 - s.top) / scale : stage.offsetHeight - 40;
     setEffects(current => [...current, { stage, kind, id, style: { "--rx": `${x}px`, "--ry": `${y}px`, "--sx": `${fromX}px`, "--sy": `${fromY}px` } as CSSProperties }]);
+    const soundTimer = setTimeout(() => {
+      playReactionSound(kind);
+      timers.current = timers.current.filter(item => item !== soundTimer);
+    }, window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : kind === "flower" ? 880 : 850);
+    timers.current.push(soundTimer);
     const shake = kind === "bomb" && !window.matchMedia("(prefers-reduced-motion: reduce)").matches
       ? avatar.current.animate([{translate:"0px"},{translate:"-5px"},{translate:"5px"},{translate:"-3px"},{translate:"0px"}],{delay:850,duration:350}) : null;
     const timer = setTimeout(() => { setEffects(current => current.filter(item => item.id !== id)); shake?.cancel(); timers.current = timers.current.filter(item => item !== timer); }, 3400);
