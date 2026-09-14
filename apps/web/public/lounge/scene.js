@@ -2,13 +2,17 @@ import * as T from 'three';
 import {createRoomOutline} from './outlines.js';
 import {buildRoom} from './models.js';
 import {optimizeStaticRoom} from './scene-static.js';
-import {nextWindowChange} from './window-view.js';
+import {festivalForDate,nextFestivalChange} from './festival-calendar.js';
+import {createFestivalFireworks} from './festival-fireworks.js';
+import {createFestivalPalette} from './festival-palette.js';
+import {createFestivalDecor} from './festival-decor.js';
+import {nextWindowChange,windowTime} from './window-view.js';
 import {createResidents} from './residents.js';
 import {createResidentEffects} from './resident-effects.js';
 import {WIDTH,HEIGHT,CAMERA_OFFSET} from './view.js';
 const frame=document.querySelector('#frame'),renderer=new T.WebGLRenderer({antialias:true,alpha:true});
 renderer.setSize(WIDTH,HEIGHT);renderer.setPixelRatio(devicePixelRatio);renderer.shadowMap.enabled=true;renderer.shadowMap.type=T.PCFSoftShadowMap;renderer.toneMapping=T.ACESFilmicToneMapping;renderer.toneMappingExposure=1;frame.prepend(renderer.domElement);
-const scene=new T.Scene(),camera=new T.OrthographicCamera(-11.7,11.7,7.8,-7.8,.1,90);const room=buildRoom();optimizeStaticRoom(room);scene.add(room);const outline=createRoomOutline(room,WIDTH,HEIGHT);scene.add(outline);
+const scene=new T.Scene(),camera=new T.OrthographicCamera(-11.7,11.7,7.8,-7.8,.1,90);const room=buildRoom();optimizeStaticRoom(room);scene.add(room);let outline=createRoomOutline(room,WIDTH,HEIGHT);scene.add(outline);
 scene.add(new T.HemisphereLight('#fff6e3','#b7a68e',1.6));
 const sun=new T.DirectionalLight('#ffe7bb',2.2);sun.position.set(-8,16,10);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);Object.assign(sun.shadow.camera,{left:-10,right:10,top:10,bottom:-10,near:1,far:45});sun.shadow.normalBias=.035;scene.add(sun);
 const fill=new T.DirectionalLight('#e7efff',.6);fill.position.set(9,7,-3);scene.add(fill);
@@ -45,9 +49,9 @@ function renderWithChairOcclusion(){
  for(const [material,value] of writes)material.colorWrite=value;
  camera.layers.set(1);renderer.render(scene,camera);camera.layers.set(0);renderer.autoClear=true;
 }
-let effects;
+let effects,fireworks;
 let state={zoom:1,pan:0},scale=1;const right=new T.Vector3(CAMERA_OFFSET[2],0,-CAMERA_OFFSET[0]).normalize();
-function draw(){state.zoom=Math.max(1,state.zoom);const visible=innerWidth/(WIDTH*scale);const limit=7.8*Math.max(0,1-visible/state.zoom);state.pan=Math.max(-limit,Math.min(limit,state.pan));const target=new T.Vector3(0,1,.35).addScaledVector(right,state.pan);camera.position.copy(target).add(new T.Vector3(...CAMERA_OFFSET));camera.lookAt(target);camera.zoom=state.zoom;camera.updateProjectionMatrix();document.querySelector('#zoom').textContent=`${Math.round(state.zoom*100)}%`;renderWithChairOcclusion();effects?.redraw();}
+function draw(){state.zoom=Math.max(1,state.zoom);const visible=innerWidth/(WIDTH*scale);const limit=7.8*Math.max(0,1-visible/state.zoom);state.pan=Math.max(-limit,Math.min(limit,state.pan));const target=new T.Vector3(0,1,.35).addScaledVector(right,state.pan);camera.position.copy(target).add(new T.Vector3(...CAMERA_OFFSET));camera.lookAt(target);camera.zoom=state.zoom;camera.updateProjectionMatrix();document.querySelector('#zoom').textContent=`${Math.round(state.zoom*100)}%`;renderWithChairOcclusion();effects?.redraw();fireworks?.redraw();}
 let pendingDraw=0;
 function requestDraw(){if(!pendingDraw)pendingDraw=requestAnimationFrame(()=>{pendingDraw=0;draw();});}
 function resize(){scale=innerHeight/HEIGHT;const pixelRatio=scale*devicePixelRatio;if(renderer.getPixelRatio()!==pixelRatio)renderer.setPixelRatio(pixelRatio);frame.style.transform=`translate(${(innerWidth-WIDTH*scale)/2}px,${(innerHeight-HEIGHT*scale)/2}px) scale(${scale})`;requestAnimationFrame(draw);}addEventListener('resize',resize);
@@ -60,12 +64,16 @@ for(const type of ['pointerup','pointercancel','lostpointercapture'])renderer.do
 renderer.domElement.addEventListener('wheel',e=>{e.preventDefault();state.zoom*=Math.exp(-e.deltaY*.001);requestDraw();},{passive:false});resize();
 
 const windowViews=[];room.traverse(object=>{if(object.userData.updateWindow)windowViews.push(object);});
-let windowTimer;
+fireworks=createFestivalFireworks({frame,camera,room,width:WIDTH,height:HEIGHT});
+const festivalPalette=createFestivalPalette(room);
+let windowTimer,festivalLayer=null,festivalKind=null,festivalPreview=null;
+export function setFestivalPreview(kind){festivalPreview=kind;syncWindow();}
+function syncFestival(now){const kind=festivalPreview??festivalForDate(now);if(kind===festivalKind)return false;festivalLayer?.userData.dispose();festivalKind=kind;const snacks=room.getObjectByName('tea-table-cookie-plate');if(snacks)snacks.visible=kind==='ordinary';outline.removeFromParent();outline.geometry.dispose();outline.material.dispose();const hidden=[];room.traverse(o=>{if(o.isMesh){let visible=true;for(let p=o;p;p=p.parent)visible=visible&&p.visible;if(!visible){hidden.push([o,o.visible]);o.visible=false;}}});outline=createRoomOutline(room,WIDTH,HEIGHT);hidden.forEach(([o,visible])=>o.visible=visible);scene.add(outline);festivalPalette.apply(kind);festivalLayer=createFestivalDecor(kind,WIDTH,HEIGHT);scene.add(festivalLayer);return true;}
 function syncWindow(){
- const now=new Date();let changed=false;
+ const now=new Date();let changed=syncFestival(now);fireworks.set(festivalKind==='new-year'&&windowTime(now).night?'new-year':'ordinary');
  for(const view of windowViews)changed=view.userData.updateWindow(now)||changed;
  if(changed)draw();
- clearTimeout(windowTimer);windowTimer=setTimeout(syncWindow,nextWindowChange(now)-now.getTime());
+ clearTimeout(windowTimer);windowTimer=setTimeout(syncWindow,Math.min(nextWindowChange(now),nextFestivalChange(now))-now.getTime());
 }
 function resumeWindow(){if(document.visibilityState==='visible')syncWindow();}
 document.addEventListener('visibilitychange',resumeWindow);addEventListener('focus',resumeWindow);addEventListener('pageshow',resumeWindow);syncWindow();
@@ -77,7 +85,7 @@ let gamesEnabled=false;
 addEventListener('message',event=>{if(event.source!==parent||event.origin!==location.origin||event.data?.type!=='lounge-state')return;document.querySelector("#online-count").textContent=String((event.data.presence||[]).length);effects.clock(event.data.serverTime);residents.update(event.data.presence||[]);gamesEnabled=event.data.gamesEnabled===true;publicTables=event.data.tables||[];if(gameDialog.open)renderGameChoices();const nextAppearance=JSON.stringify(['square','round'].map(id=>publicTables.find(t=>t.tableId===id)?.gameKind??null));if(nextAppearance!==tableAppearance){tableAppearance=nextAppearance;room.userData.tabletopGames.update(publicTables);requestDraw();}});
 requestAnimationFrame(()=>{draw();requestAnimationFrame(draw);});
 parent.postMessage({type:'lounge-ready'},location.origin);
-if(import.meta.hot)import.meta.hot.dispose(()=>{residents.dispose();effects.dispose();cancelAnimationFrame(pendingDraw);clearTimeout(windowTimer);document.removeEventListener('visibilitychange',resumeWindow);removeEventListener('focus',resumeWindow);removeEventListener('pageshow',resumeWindow);windowViews.forEach(view=>view.userData.disposeWindow());outline.geometry.dispose();outline.material.dispose();renderer.dispose();});
+if(import.meta.hot)import.meta.hot.dispose(()=>{festivalLayer?.userData.dispose();festivalPalette.dispose();fireworks.dispose();residents.dispose();effects.dispose();cancelAnimationFrame(pendingDraw);clearTimeout(windowTimer);document.removeEventListener('visibilitychange',resumeWindow);removeEventListener('focus',resumeWindow);removeEventListener('pageshow',resumeWindow);windowViews.forEach(view=>view.userData.disposeWindow());outline.geometry.dispose();outline.material.dispose();renderer.dispose();});
 export {renderer,scene,draw};
 
 document.querySelector('#chat').addEventListener('click',()=>{if(parent!==window)parent.postMessage({type:'lounge-chat-focus'},location.origin);else document.querySelector('#chat-notice').togglePopover();});

@@ -1,3 +1,4 @@
+import { loungeFestivalDescription } from "./lounge-festival.js";
 import { LoungePetToolError, type LoungePetService } from "./lounge-pet/service.js";
 import { loungeDisplayName } from "./lounge-display-name.js";
 import type { LoungeGachaViewOptions } from "./lounge-gacha/gacha-view-options.js";
@@ -29,8 +30,10 @@ export class LoungeTools implements LoungeToolExecutor {
       return this.pets.execute(residentId, args.option);
     }
     const occupants = state.presence.map(person => loungeDisplayName(person.resident_name)).join("、");
+    const festivalDescription = loungeFestivalDescription();
     return [
       "公共休息室",
+      ...(festivalDescription ? [festivalDescription] : []),
       `在场：${occupants || "暂无居民"}`,
       ...state.tables.map(table => `${table.table_id === "square" ? "方桌" : "圆桌"}：${table.room ? table.room.kind : "空闲"}`),
       ...(this.pets?.list(residentId) ?? []),
