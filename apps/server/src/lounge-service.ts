@@ -1,3 +1,4 @@
+import { LoungePetIdle } from './lounge-pet/idle.js';
 import {
   type LoungePresence,
   type LoungeSnapshot,
@@ -240,6 +241,7 @@ export class LoungeService {
   readonly #registrationAuth: LoungeServiceOptions["registrationAuth"];
   readonly #store: LoungeStore;
   readonly #now: () => number;
+  readonly #petIdle: LoungePetIdle;
   readonly #random: () => number;
   readonly #publicSayState: LoungePublicSayState | undefined;
   readonly #gameTables: LoungeGameTableStore | undefined;
@@ -256,6 +258,7 @@ export class LoungeService {
     this.#registrationAuth = options.registrationAuth;
     this.#store = options.store;
     this.#now = options.now ?? Date.now;
+    this.#petIdle = new LoungePetIdle(id => this.#presence.get(id), id => { this.leave(id); }, this.#now);
     this.#random = options.random ?? Math.random;
     this.#publicSayState = options.publicSayState;
     this.#gameTables = options.gameTables;
@@ -272,6 +275,13 @@ export class LoungeService {
         );
       }
       this.#presence.set(presence.residentId, presence);
+    }
+    const lastPet = new Map<string, number>();
+    for (const activity of this.#store.listActivities()) {
+      if (activity.kind === "pet" && activity.residentId) lastPet.set(activity.residentId, Math.max(lastPet.get(activity.residentId) ?? 0, activity.createdAt));
+    }
+    for (const presence of this.#presence.values()) {
+      if (presence.areaId === "pet") this.#petIdle.touch(presence.residentId, lastPet.get(presence.residentId) ?? presence.enteredAt);
     }
   }
 
@@ -503,6 +513,7 @@ export class LoungeService {
   }
 
   leave(residentId: string, options: LoungeLeaveOptions = {}): boolean {
+    this.#petIdle.cancel(residentId);
     const removed = this.#store.deletePresence(residentId);
     this.#gamePresence.delete(residentId);
     this.#presence.delete(residentId);
@@ -528,6 +539,7 @@ export class LoungeService {
     };
     this.#store.upsertPresence(updated);
     this.#presence.set(updated.residentId, updated);
+    if (updated.areaId === "pet") this.#petIdle.touch(input.residentId, input.createdAt);
     this.#emitChanged({ presence: true, message });
     return message;
   }
@@ -567,6 +579,7 @@ export class LoungeService {
       ...(input.data === undefined ? {} : { data: input.data }),
       createdAt: input.createdAt,
     });
+    this.#petIdle.touch(input.residentId, input.createdAt);
     this.#emitChanged({ activity });
     return activity;
   }
@@ -686,6 +699,7 @@ export class LoungeService {
   }
 
   close(): void {
+    this.#petIdle.close();
     this.#unsubscribeTables?.();
     for (const residentId of this.#connections.keys()) {
       this.#closeResidentConnections(residentId);
