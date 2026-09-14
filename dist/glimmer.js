@@ -1,8 +1,9 @@
+import { selectOutcome } from "./domain/glimmer/random-outcome.js";
 import { settleEncounterCost } from "./domain/glimmer/encounter-cost.js";
 import { ranchSpriteIndexByKind } from "./content-assets.js";
 import { randomUUID } from "node:crypto";
 import {
-    glimmer, glimmerVariants, glimmerEncounters, glimmerCoopEvents, glimmerVariantById,
+    glimmer, glimmerVariants, glimmerEncounters, glimmerEncounterById, glimmerCoopEvents, glimmerVariantById,
     ranchSkinById, ranchVariantById,
     animals, animalById, pets, petById, cropById, cooking, cookingProducts,
     cookingProductById, cookingIngredients, cookingIngredientById, cookingRecipes,
@@ -266,7 +267,7 @@ function dishValue(recipe) {
     return Math.max(1, Math.round(base * (1 + cooking.processingFeeRate) * cooking.recyclePremium[recipe.rarity] * glimmer.buffs.dishValue));
 }
 
-function grantReward(farm, reward, rng, now) {
+export function grantReward(farm, reward, rng, now) {
     if (!reward || reward.kind === "none")
         return "";
     if (reward.kind === "coins") {
@@ -363,7 +364,7 @@ function choose(farm, now, option) {
     if (!gate.ok)
         return gate;
     const pending = gate.state.pending;
-    const event = pending ? glimmerEncounters.find((item) => item.id === pending.eventId) : null;
+    const event = pending ? glimmerEncounterById.get(pending.eventId) : null;
     if (!event || event.type !== "choice") {
         gate.state.pending = null;
         return { ok: false, text: "现在没有待处理的流光原野选择。" };
@@ -376,10 +377,11 @@ function choose(farm, now, option) {
     if (!settlement.ok) return { ok: false, text: settlement.text };
     gate.state.pending = null;
     const rng = new Rng(farm.rngState ?? 1);
-    const suffix = grantReward(farm, selected.reward, rng, now);
+    const outcome = selectOutcome(selected, rng);
+    const suffix = grantReward(farm, outcome.reward, rng, now);
     farm.rngState = rng.state;
-    history(farm, { at: now, kind: "choice", refId: event.id, option: key, text: selected.text });
-    return { ok: true, text: withStatus(farm, now, selected.text + suffix) };
+    history(farm, { at: now, kind: "choice", refId: event.id, option: key, text: outcome.text });
+    return { ok: true, text: withStatus(farm, now, outcome.text + suffix) };
 }
 
 function findDish(farm, query) {
@@ -678,7 +680,7 @@ export function glimmerView(farm, worldValue, now = Date.now()) {
         world.logs.length ? `📜 最新公共事件：\n${world.logs.map(publicLogText).join("\n")}` : "📜 最新公共事件：暂无",
     ].filter(Boolean);
     if (state.pending) {
-        const pending = glimmerEncounters.find((item) => item.id === state.pending.eventId);
+        const pending = glimmerEncounterById.get(state.pending.eventId);
         if (pending)
             lines.push(encounterPrompt(pending));
     }

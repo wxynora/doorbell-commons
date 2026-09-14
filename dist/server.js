@@ -1,3 +1,5 @@
+import { isNpcMotionChoice, npcMotionChoiceReceipt, appendNpcMotionReceipt } from './domain/glimmer/npc-motion.js';
+import { glimmerContentEditor } from './content.js';
 // 开放 HTTP 接口（node:http，零依赖）。业务逻辑复用 game.ts，保证与 CLI 同一套规则。
 import { createServer } from "node:http";
 import { randomUUID, randomBytes } from "node:crypto";
@@ -65,6 +67,7 @@ function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
     const detention = activeDetentionForFarm(farm, now);
     if (detention && !detentionAllowsFarmAction(action))
         return { status: 400, json: { ok: false, code: "RESIDENT_DETAINED", text: detentionBlockedFarmActionText(detention) } };
+    if (isNpcMotionChoice(action, params)) return npcMotionChoiceReceipt(farm, params.option, now, {save, view: farmView, detail});
     const careerBenefits = farmDoorbellKitchenCareerBenefits(
         activeLingyeWorldDatabase,
         activeLingyeWorldBackend,
@@ -112,10 +115,13 @@ function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
     }
     return result;
 }
-function executeDoorbellFarmAction(farm, action, params, detail, now) {
+function executeDoorbellFarmAction(farm, action, params, detail, now, sourceOp) {
     try {
-        return withWorldCommitContext({ balanceAuthority: "farm", actor: "agent" }, () =>
-            executeDoorbellFarmActionCore(farm, action, params, detail, now));
+        return withWorldCommitContext({ balanceAuthority: "farm", actor: "agent" }, () => {
+            const out = executeDoorbellFarmActionCore(farm, action, params, detail, now);
+            return appendNpcMotionReceipt(farm, out, isNpcMotionChoice(action, params) ? undefined : sourceOp, now,
+                { motions: glimmerContentEditor.motions, save, restore: restoreCommittedWorldInMemory, getFarm, view: farmView, context:{args:params,residentId:farm.doorbellMcpMigration?.residentId ?? farm.id} });
+        });
     }
     catch (error) {
         restoreCommittedWorldInMemory();
@@ -516,7 +522,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
     }
     if (action === "fish") {
         const r = runFishing(f, b, now, playerFarms());
-        const castRequested = b.leave === undefined && b.view === undefined && b.sell === undefined && b.open === undefined
+        const castRequested = b.option === undefined && b.leave === undefined && b.view === undefined && b.sell === undefined && b.open === undefined
             && (b.times !== undefined || (b.bait !== undefined && b.buy === undefined) || (b.buy === undefined && b.location === undefined));
         const qixi = r.ok && castRequested ? recordQixiLantern2026FarmAction(f, getQixiLantern2026World(), "fish", now) : null;
         if (qixi)
@@ -1039,7 +1045,7 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
         execute(input) {
             const operation = () => withWorldCommitContext(
                 { balanceAuthority: "ledger", actor: "human" },
-                () => rawLingyeActionExecutor.execute(input),
+                () => rawLingyeActionExecutor.execute({...input,deferNpcGreeting:true}),
             );
             const result = !rawLingyeActionExecutor.npc.isAction(input) &&
                 (input.op.startsWith("go.bank.") || input.op.startsWith("go.school."))
@@ -1051,7 +1057,13 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
                 syncLedgerProjection();
             });
             rescheduleReporterEvaluation();
-            return result;
+            if (!input.farm || rawLingyeActionExecutor.npc.isAction(input)) return result;
+            return withWorldCommitContext({ balanceAuthority: "farm", actor: "agent" }, () =>
+                appendNpcMotionReceipt(input.farm, {status:200,json:result}, input.op, Date.now(),
+                    {motions:glimmerContentEditor.motions,save,restore:restoreCommittedWorldInMemory,getFarm,view:farmView,
+                     context:{residentId:input.residentId,args:input.args,npcs:rawLingyeActionExecutor.npc.receiptViews(input.residentId),
+                        disabled:!!activeDetentionForFarm(getFarm(input.farm.id),Date.now())}}).json);
+
         },
     });
     const runEmploymentCycle = () => {

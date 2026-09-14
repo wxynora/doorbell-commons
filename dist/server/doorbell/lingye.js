@@ -3976,7 +3976,7 @@ export function createLingyeActionExecutor(options) {
                     result = schoolChoose(database, backend, input.residentId, actionNow, args);
                 if (result !== undefined)
                     return publicLingyeResult(database, input.residentId, input.op,
-                        npc.decorate(input.residentId, input.op, input.args, result), actionNow);
+                        npc.decorate(input.residentId, input.op, input.args, result, input.deferNpcGreeting === true), actionNow);
                 const career = COMMISSION_CAREERS[input.op];
                 syncAuthorityJobs(database, backend, actionNow);
                 const sources = input.farm
@@ -4018,7 +4018,7 @@ export function createLingyeActionExecutor(options) {
                     result = commissionView(database, backend, input.residentId, career, args, sources, actionNow);
                 }
                 return publicLingyeResult(database, input.residentId, input.op,
-                    npc.decorate(input.residentId, input.op, input.args, result), actionNow);
+                    npc.decorate(input.residentId, input.op, input.args, result, input.deferNpcGreeting === true), actionNow);
             }
             catch (error) {
                 if (options.rethrowDomainErrorsForTesting === true)

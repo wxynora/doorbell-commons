@@ -199,10 +199,10 @@ export async function handleDoorbellFarmExecution(req, res, method, executeFarmA
     try {
         const body = await readJsonBody(req, MAX_BODY_BYTES);
         const keys = isPlainObject(body) ? Object.keys(body) : [];
-        const allowedKeys = new Set(["farm_human_key", "expected_farm_doorplate", "action", "params", "detail", "include_status"]);
-        if (!isPlainObject(body) || keys.some((key) => !allowedKeys.has(key)) || keys.some((key) => !["detail", "include_status"].includes(key) && body[key] === undefined))
+        const allowedKeys = new Set(["farm_human_key", "expected_farm_doorplate", "action", "params", "detail", "include_status", "source_op"]);
+        if (!isPlainObject(body) || keys.some((key) => !allowedKeys.has(key)) || keys.some((key) => !["detail", "include_status", "source_op"].includes(key) && body[key] === undefined))
             return internalServiceError(res, 400, "invalid_request", "Submit only farm_human_key, expected_farm_doorplate, action, params, and optional detail");
-        if (typeof body.action !== "string" || !body.action.trim() || !isPlainObject(body.params) || (body.detail !== undefined && typeof body.detail !== "boolean") || (body.include_status !== undefined && typeof body.include_status !== "boolean"))
+        if (typeof body.action !== "string" || !body.action.trim() || !isPlainObject(body.params) || (body.detail !== undefined && typeof body.detail !== "boolean") || (body.include_status !== undefined && typeof body.include_status !== "boolean") || (body.source_op !== undefined && (typeof body.source_op !== "string" || !/^farm\.[a-z][a-z0-9_.-]*$/u.test(body.source_op))))
             return internalServiceError(res, 400, "invalid_request", "action, params, or detail is invalid");
         if (DOORBELL_EXECUTION_BLOCKED_ACTIONS.has(body.action))
             return internalServiceError(res, 400, "unsupported_action", "This legacy farm action is not available through Doorbell");
@@ -214,7 +214,7 @@ export async function handleDoorbellFarmExecution(req, res, method, executeFarmA
             return internalServiceError(res, binding.error.status, binding.error.code, binding.error.message);
         if (!legacyAgentAccessRevoked(binding.farm))
             return internalServiceError(res, 409, "farm_migration_required", "Legacy farm access must be revoked before Doorbell execution is enabled");
-        const out = executeFarmAction(binding.farm, body.action, body.params, body.detail === true, Date.now());
+        const out = executeFarmAction(binding.farm, body.action, body.params, body.detail === true, Date.now(), body.source_op);
         const publicResult = {
             ok: out.json?.ok === true,
             text: typeof out.json?.text === "string" ? out.json.text : "农场没有返回可读取的结果。",

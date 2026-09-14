@@ -135,7 +135,8 @@ export function createLingyeNpcRuntime({ database, backend, issueOption, now = D
                 throw new Error("lingye_npc_option_invalid");
             return chooseInternal(residentId, row.operation, row.internal_option);
         },
-        decorate(residentId, op, args, result) {
+        receiptViews: residentId => listResidentLingyeNpcViews(database, residentId),
+        decorate(residentId, op, args, result, deferGreeting = false) {
             if (!result.ok || result.data?.npc_dialogue || op === "go.newsroom.like" || detained(residentId)) return result;
             // Human encounters also cover leisure locations; those locations do
             // not imply an AI farm-commission chat entry.
@@ -147,6 +148,7 @@ export function createLingyeNpcRuntime({ database, backend, issueOption, now = D
                         .map((npc) => ({ option: npc.talk_option, label: `和${npc.name}聊聊`, requires: [] }))],
                 } };
             }
+            if (deferGreeting) return result;
             return appendNpcReceiptGreeting({ residentId, op, args, result,
                 npcs: listResidentLingyeNpcViews(database, residentId),
             });

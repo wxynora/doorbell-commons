@@ -9,6 +9,10 @@ import { bumpDaily } from "./daily.js";
 import { randomBytes, randomUUID } from "node:crypto";
 import { glimmerBuffMultiplier } from "./glimmer.js";
 import { qixi2026FishText, submitQixi2026Fish } from "./qixi-2026.js";
+import {
+    beginFishingEncounter, answerFishingEncounter, fishingEncounterStatus, fishingEncounterOptionsText,
+    LOST_ROD_BLOCKED,
+} from "./fishing-encounters.js";
 
 const RARITY_RANK = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4, mythic: 5 };
 const ECOLOGY_NOTICE = "🌿 为了让鱼群休息、繁衍，也给水域留一点恢复时间，每座农场每天最多钓 20 竿。无论钓到鱼、宝箱还是旧靴子，只要鱼线抛进水里都算一竿；北京时间 0 点刷新。";
@@ -327,13 +331,17 @@ function addReward(farm, state, rng, reward) {
     return parts;
 }
 
-function resolveFishingEvent(farm, state, rng) {
+function resolveFishingEvent(farm, state, rng, now) {
     const pool = fishingEvents.filter((event) => {
         if (!event.unique || !event.messages?.length)
             return true;
         return (state.seenLetters[event.id]?.length ?? 0) < event.messages.length;
     });
     const event = weightedPick(rng, pool, (item) => item.weight);
+    if (event.type === "choice") {
+        beginFishingEncounter(farm, currentDayIndex(now), event.id);
+        return { kind: "event", text: event.intro };
+    }
     if (event.type === "bottle") {
         const seen = (state.seenLetters[event.id] ??= []);
         const unseen = event.messages.map((_, index) => index).filter((index) => !seen.includes(index));
@@ -406,7 +414,7 @@ function castStep(farm, state, rng, bait, now) {
     state.stats.totalCasts++;
     dailyCasts(state, now).count++;
     if (rng.next() < fishing.eventChance)
-        return { consumed: true, ...resolveFishingEvent(farm, state, rng) };
+        return { consumed: true, ...resolveFishingEvent(farm, state, rng, now) };
     const junkChance = fishing.junkChance * (bait.effects?.junk_chance_mult ?? 1) * glimmerBuffMultiplier("fishingJunk", now);
     if (rng.next() < junkChance) {
         const junk = fishing.junk[rng.int(0, fishing.junk.length - 1)];
@@ -522,7 +530,8 @@ function castMany(farm, state, farms, params, now) {
         const rare = (RARITY_RANK[result.rarity] ?? -1) >= RARITY_RANK.rare;
         if (times === 1 || result.first || rare || result.kind === "event" || result.luck)
             highlights.push(result.text);
-        const stopped = (parsedStop.stop.has("new") && result.first)
+        const stopped = Boolean(state.pendingEncounter)
+            || (parsedStop.stop.has("new") && result.first)
             || (parsedStop.stop.has("rare") && rare)
             || (parsedStop.stop.has("event") && (result.kind === "event" || result.luck));
         if (stopped) {
@@ -785,7 +794,15 @@ export function sellFishingCatchIds(farm, itemIds, qty) {
 /** 单一 farm 工具下的扁平 fish 动作。全服 farms 用于钓位容量判定。 */
 export function runFishing(farm, params, now, farms) {
     const state = ensureFishing(farm);
-    const finish = (result) => ({ ...result, text: `${result.text}\n${fishingStatusLine(farm, now)}` });
+    const day = currentDayIndex(now);
+    const finish = (result, remind = true) => {
+        const pendingText = fishingEncounterOptionsText(farm, day, remind);
+        return { ...result, text: [result.text, pendingText, fishingStatusLine(farm, now)].filter(Boolean).join("\n") };
+    };
+    if (params.option !== undefined) {
+        const result = answerFishingEncounter(farm, params.option, day);
+        return finish({ ok: result.ok, text: result.text });
+    }
     if (params.leave === true || params.leave === "true" || params.leave === "1") {
         state.activeUntil = 0;
         return finish({ ok: true, text: "🎣 已收竿离开，钓位立即释放。" });
@@ -806,6 +823,13 @@ export function runFishing(farm, params, now, farms) {
         return finish(openChest(farm, state, params.open, now));
     const shouldCast = params.times !== undefined || (params.bait !== undefined && params.buy === undefined)
         || (params.buy === undefined && params.location === undefined);
+    if (shouldCast) {
+        const rod = fishingEncounterStatus(farm, day);
+        if (rod.kind === "blocked")
+            return finish({ ok: false, text: LOST_ROD_BLOCKED });
+        if (rod.kind === "pending")
+            return finish({ ok: false, text: "" });
+    }
     if (shouldCast && FISHING_BLOCKED_WEATHER.has(currentWeather(now)?.condition))
         return finish({ ok: false, text: FISHING_BAD_WEATHER_TEXT });
     const out = [];
@@ -827,5 +851,5 @@ export function runFishing(farm, params, now, farms) {
             return finish({ ...cast, text: [...out, cast.text].join("\n") });
         out.push(cast.text);
     }
-    return finish({ ok: true, text: out.join("\n") });
+    return finish({ ok: true, text: out.join("\n") }, false);
 }

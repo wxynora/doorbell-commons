@@ -27,20 +27,29 @@ function canonical(value) {
     return value;
 }
 
-/** Receipt-only text. No dialogue preparation, options, affinity or reward writes.
- * A repeated business fixes the draw and institution NPC, not their presence:
- * if that NPC has left, omit the greeting instead of substituting someone else.
- * Farm commissions are not a location visit and deliberately have no mapping. */
-export function appendNpcReceiptGreeting({ residentId, op, args, result, npcs, roll = Math.random }) {
-    if (!result.ok || result.data?.npc_dialogue || typeof result.text !== "string") return result;
+export function npcReceiptKey(residentId, op, args) {
+    return args.option ? createHash("sha256").update(JSON.stringify([residentId, op, canonical(args)])).digest("hex") : null;
+}
+
+export function drawNpcReceiptEntry({ residentId, op, args = {}, result, npcs = [], motions = [], roll = Math.random }) {
+    if (!result.ok || result.data?.npc_dialogue || typeof result.text !== "string") return null;
+    const pool = [];
     const location = LOCATIONS[op];
-    if (!location) return result;
-    const [locationId, npcId] = location;
-    const npc = npcs.find((entry) => entry.npcId === npcId);
-    if (!npc || npc.locationId !== locationId || !isLingyeNpcChatAvailable(npcId, npc.workStatus)) return result;
-    const chance = !args.option ? roll()
-        : createHash("sha256").update(JSON.stringify([residentId, op, canonical(args)]))
-            .digest().readUInt32BE(0) / 0x1_0000_0000;
-    if (chance >= 0.2) return result;
-    return { ...result, text: `${result.text}\n${GREETINGS[npcId]}` };
+    if (location) {
+        const [locationId, npcId] = location;
+        const npc = npcs.find(entry => entry.npcId === npcId);
+        if (npc && npc.locationId === locationId && isLingyeNpcChatAvailable(npcId, npc.workStatus))
+            pool.push({ legacy: true, text: GREETINGS[npcId] });
+    }
+    pool.push(...motions.filter(entry => entry.tools.includes(op)));
+    if (!pool.length) return null;
+    const key = npcReceiptKey(residentId, op, args);
+    const chance = key ? parseInt(key.slice(0, 8), 16) / 0x1_0000_0000 : roll();
+    if (chance >= 0.2) return null;
+    return pool[Math.floor(chance / 0.2 * pool.length)];
+}
+
+export function appendNpcReceiptGreeting(input) {
+    const entry = drawNpcReceiptEntry(input);
+    return entry ? { ...input.result, text: `${input.result.text}\n${entry.text}` } : input.result;
 }

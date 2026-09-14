@@ -1287,7 +1287,7 @@
       "spots": [
         "all"
       ],
-      "individual_weight": 1.0
+      "individual_weight": 1
     }
   ],
   "baits": [
@@ -1309,7 +1309,7 @@
           "epic": 1.3
         },
         "tag_weight_mult": {
-          "nocturnal": 2.0
+          "nocturnal": 2
         },
         "junk_chance_mult": 0.8
       }
@@ -1325,8 +1325,8 @@
           "uncommon": 0.8,
           "rare": 1.4,
           "epic": 1.6,
-          "legendary": 2.0,
-          "mythic": 2.0
+          "legendary": 2,
+          "mythic": 2
         },
         "junk_chance_mult": 0.7
       }
@@ -1373,6 +1373,103 @@
     }
   ],
   "events": [
+    {
+      "id": "lost_fishing_rod",
+      "name": "你掉的是这根鱼竿吗？",
+      "type": "choice",
+      "weight": 18,
+      "intro": "鱼线猛地一绷，鱼竿脱手落水。水面冒出几个泡泡，一位湿漉漉的河神举着两根鱼竿探出头：\n“年轻的钓鱼人，你掉的是这根金鱼竿，还是这根银鱼竿？”",
+      "pendingText": "河神还在等你的回答。",
+      "choices": [
+        {
+          "id": "neither",
+          "label": "都不是",
+          "text": "河神笑了笑，把你的旧鱼竿递了回来：“诚实的钓鱼人，这是给你的奖励。”\n鱼竿已归还，获得100金币和20银币。",
+          "coins": 100,
+          "silver": 20
+        },
+        {
+          "id": "gold",
+          "label": "金",
+          "text": "河神收起两根鱼竿：“这不是你的。连原来的那根，今天也不还你了。”\n鱼竿被没收，今天不能再钓鱼；北京时间0点后恢复。",
+          "confiscateRod": true
+        },
+        {
+          "id": "silver",
+          "label": "银",
+          "text": "河神收起两根鱼竿：“这不是你的。连原来的那根，今天也不还你了。”\n鱼竿被没收，今天不能再钓鱼；北京时间0点后恢复。",
+          "confiscateRod": true
+        }
+      ]
+    },
+    {
+      "id": "reverse_fishing",
+      "name": "反向垂钓",
+      "type": "choice",
+      "weight": 10,
+      "intro": "一条鱼浮出水面，把挂着金币的小鱼钩甩到你面前：“别动，我今天第一次钓人。”",
+      "choices": [
+        {
+          "id": "play_along",
+          "coins": 30,
+          "label": "配合上钩",
+          "text": "你轻轻捏住鱼钩。鱼激动得尾巴直拍水：“中了！是野生的！”它付了你30金币出场费。"
+        },
+        {
+          "id": "pull_back",
+          "bait": {
+            "basic_worm": 3
+          },
+          "label": "反手提竿",
+          "text": "你一提竿，鱼吓得松开了手：“怎么还有反向操作！”三条普通蚯蚓被甩到了岸上。"
+        }
+      ]
+    },
+    {
+      "id": "octopus_boot",
+      "name": "穿靴子的章鱼",
+      "type": "choice",
+      "weight": 10,
+      "intro": "你钓到一只小皮靴。一只章鱼赶紧抱住鱼钩：“等一下，这是我上班穿的！”",
+      "choices": [
+        {
+          "id": "return_boot",
+          "silver": 15,
+          "label": "归还靴子",
+          "text": "章鱼付了15银币失物招领费，踩着小皮靴匆匆游走了。"
+        },
+        {
+          "id": "ask_shoes",
+          "bait": {
+            "basic_worm": 2
+          },
+          "label": "问其他七只鞋去哪了",
+          "text": "章鱼沉默了一会儿：“在另外七个钓鱼人那里。”它塞给你两条普通蚯蚓，请你别再问了。"
+        }
+      ]
+    },
+    {
+      "id": "underwater_vending",
+      "name": "水底售货机",
+      "type": "choice",
+      "weight": 10,
+      "intro": "你钓上来一台迷你售货机。屏幕亮着：“投入10金币，领取水底惊喜。”",
+      "choices": [
+        {
+          "id": "insert_coin",
+          "costGold": 10,
+          "label": "投入10金币",
+          "text": "机器吐出一张纸条：“谢谢惠顾。没想到吧？这就是惊喜。”"
+        },
+        {
+          "id": "tap_twice",
+          "coins": 20,
+          "label": "拍两下",
+          "text": "退币口滚出20金币，屏幕闪了闪：“别拍了，算我请你。”"
+        }
+      ],
+      "insufficientFundsText": "金币不足，需要10金币；本次没有扣款，可以重新选择。"
+    },
     {
       "id": "drift_bottle",
       "name": "漂流瓶",

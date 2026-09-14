@@ -1,3 +1,4 @@
+import { GlimmerContentEditor } from "./domain/glimmer/content-editor.js";
 // 内容加载层：读 content/*.json，建立类型与索引。加内容只改 JSON，不动引擎。
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
@@ -80,3 +81,9 @@ export function landTierByLevel(level) {
     return landTiers.find((t) => t.tier === level) ?? landTiers[0];
 }
 //# sourceMappingURL=content.js.map
+
+export const glimmerContentEditor = new GlimmerContentEditor({
+  file: resolve(process.env.AIFARM_DATA_DIR || resolve(DIR, "../data"), "glimmer-content-editor.json"),
+  encounters: glimmerEncounters, encounterById: glimmerEncounterById,
+  catalog: { item: [{ id: "speed_potion", name: "加速药水" }], bait: fishingBaits.map(({id,name}) => ({id,name})) },
+});
