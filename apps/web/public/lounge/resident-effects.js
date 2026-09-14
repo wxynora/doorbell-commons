@@ -8,9 +8,8 @@ export function effectFor(person,now){
  const recent=time=>Number.isFinite(time)&&now>=time&&now-time<EVENT_MS;
  if(recent(state.spokeAt))return 'speech';
  if(recent(state.resultAt)&&['win','sad'].includes(state.result))return state.result;
- if(recent(state.petAt))return 'pet';
  if(!state.inGame&&Number.isFinite(state.idleSince)&&now-state.idleSince>=IDLE_MS)return 'sleep';
- return null;
+ return state.inPet ? 'pet' : null;
 }
 
 function texture(kind){const c=document.createElement('canvas');c.width=c.height=128;const x=c.getContext('2d');x.lineCap='round';x.lineJoin='round';
@@ -46,13 +45,17 @@ export function createResidentEffects({frame,camera,width,height}){
    if(!kind){if(state&&!state.inGame&&Number.isFinite(state.idleSince))next=Math.min(next,state.idleSince+IDLE_MS-now);continue;}
    active=true;mesh.updateWorldMatrix(true,false);if(!mesh.geometry.boundingBox)mesh.geometry.computeBoundingBox();
    const h=mesh.geometry.boundingBox.max.y,w=mesh.geometry.boundingBox.max.x*2;
+   function flowers(kind){
+    const anchors=[[-.18,.86],[.16,.92]];
+    for(let i=0;i<2;i++){const wave=time*(kind==='pet'?1.5:2.1)+i*1.7,bloom=(Math.sin(wave)+1)/2;paint(mesh,'flower',w*anchors[i][0]+Math.sin(wave)*.025,h*anchors[i][1]+Math.cos(wave)*.045,(.43+i*.055)*(.8+.2*bloom),.55+.45*bloom,Math.sin(wave)*.22);}
+   }
+   if(state.inPet&&kind!=='pet'&&kind!=='win')flowers('pet');
    if(kind==='speech'){
     paint(mesh,'speech',w*.43,h+.12,.65);
     for(let i=0;i<3;i++)paint(mesh,'dot',w*.43+(i-1)*.115,h+.16+Math.max(0,Math.sin(time*5-i*.8))*.035,.09);
    }else if(kind==='sad')paint(mesh,'sad',0,h+.02-((time%1.8)/1.8)*.12,.56,.55+.25*Math.sin(time*2));
    else if(kind==='win'||kind==='pet'){
-    const anchors=[[-.18,.86],[.16,.92]];
-    for(let i=0;i<2;i++){const wave=time*(kind==='pet'?1.5:2.1)+i*1.7,bloom=(Math.sin(wave)+1)/2;paint(mesh,'flower',w*anchors[i][0]+Math.sin(wave)*.025,h*anchors[i][1]+Math.cos(wave)*.045,(.43+i*.055)*(.8+.2*bloom),.55+.45*bloom,Math.sin(wave)*.22);}
+    flowers(kind);
    }else for(let i=0;i<3;i++){const phase=(time/2.6+i/3)%1;paint(mesh,'sleep',w*.38+phase*.32,h*.92+phase*.72,.42+phase*.5,.65+Math.sin(phase*Math.PI)*.35);}
   }
   if(active)animation=requestAnimationFrame(render);

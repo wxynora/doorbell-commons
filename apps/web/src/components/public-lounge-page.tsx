@@ -20,7 +20,7 @@ export interface LoungeScenePresence {
   doorplate: string;
   slotId: string | null;
   position: readonly [number, number, number];
-  effect: { spokeAt: number | null; idleSince: number; petAt: number | null; resultAt: number | null; result: string | null; inGame: boolean };
+  effect: { spokeAt: number | null; idleSince: number; petAt: number | null; resultAt: number | null; result: string | null; inGame: boolean; inPet: boolean };
   avatarSrc: string | null;
 }
 
@@ -75,6 +75,7 @@ function scenePresenceForSnapshot(
       spokeAt: presence.last_spoke_at ? Date.parse(presence.last_spoke_at) : null,
       idleSince: Date.parse(presence.last_spoke_at ?? presence.entered_at),
       inGame: presence.area_id === "mahjong" || presence.area_id === "round-table",
+      inPet: presence.area_id === "pet",
       petAt: latestResidentActivity(snapshot, presence.resident_id, "pet")?.time ?? null,
       resultAt: latestResidentActivity(snapshot, presence.resident_id, "game_result")?.time ?? null,
       result: latestResidentActivity(snapshot, presence.resident_id, "game_result")?.result ?? null,
