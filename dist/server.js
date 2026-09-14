@@ -1,3 +1,4 @@
+import { appendCareerStatusNotices } from "./career/exam-status.js";
 import { isNpcMotionChoice, npcMotionChoiceReceipt, appendNpcMotionReceipt } from './domain/glimmer/npc-motion.js';
 import { glimmerContentEditor } from './content.js';
 // 开放 HTTP 接口（node:http，零依赖）。业务逻辑复用 game.ts，保证与 CLI 同一套规则。
@@ -106,12 +107,7 @@ function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
         : { ...body, ...(mysteryMerchantBuy ? { by: farm.id } : {}), token: farm.token };
     const result = runFarm(target, action, injected, social ? farm.id : body.id, now, { detail, careerBenefits });
     if (action === "status" && result.json?.ok === true) {
-        const residentId = farmResidentId(activeLingyeWorldDatabase, farm);
-        if (residentId) {
-            const wages = activeLingyeWorldBackend.trustedSystemCommands.takeDutyWageNoticeText(residentId);
-            if (wages)
-                result.json.text = `${wages}\n\n${result.json.text}`;
-        }
+        appendCareerStatusNotices(activeLingyeWorldDatabase, activeLingyeWorldBackend, farm, result);
     }
     return result;
 }

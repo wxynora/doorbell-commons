@@ -223,6 +223,32 @@ export class CareerSchoolService {
     examAvailable(career, level) {
         return this.#curriculum.careerExamAvailability(career, level);
     }
+    eligibleAdvancementExams(residentId) {
+        const now = this.#now();
+        const tracks = this.#database.prepare(`SELECT career, generation FROM career_tracks
+          WHERE resident_id = ? AND track_order IS NOT NULL ORDER BY track_order`).all(residentId);
+        const eligible = [];
+        for (const { career, generation } of tracks) {
+            const currentLevel = activeCertificateLevel(this.#database, residentId, career, now);
+            if (!currentLevel || currentLevel >= 4) continue;
+            const level = currentLevel + 1;
+            try {
+                this.#requireExamEligibility(residentId, career, level, now);
+            } catch (error) {
+                if (!(error instanceof CareerDomainError)) throw error;
+                continue;
+            }
+            // Registration expires due written attempts before checking for an open attempt.
+            // Project the same state here without changing an attempt or its reserved fee.
+            const openAttempt = this.#database.prepare(`SELECT 1 FROM career_exam_attempts
+              WHERE resident_id = ? AND career = ? AND qualification_level = ? AND learning_generation = ?
+                AND (registration_status = 'written_passed' OR
+                  (registration_status IN ('registered', 'active') AND scheduled_at + ? > ?))`)
+                .get(residentId, career, level, generation, EXAM_SESSION_DURATION_MS, now);
+            if (!openAttempt) eligible.push({ career, level });
+        }
+        return eligible;
+    }
     enrollCourse(input) {
         const now = this.#now();
         return runInTransaction(this.#database, () => {

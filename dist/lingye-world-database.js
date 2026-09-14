@@ -1256,6 +1256,7 @@ export function createLingyeWorldBackend(database, options) {
         careerResignationQuote: (residentId, career) => resignations.quote(residentId, career),
         courseAvailable: (career, level, courseIndex) => school.courseAvailable(career, level, courseIndex),
         examAvailable: (career, level) => school.examAvailable(career, level),
+        eligibleAdvancementExams: (residentId) => school.eligibleAdvancementExams(residentId),
         getWrittenExamPaper: (attemptId) => school.getWrittenExamPaper(attemptId),
         getConstableInterviewMaterial: (interviewId) => school.getConstableInterviewMaterial(interviewId),
         constableExaminerEligible: (interviewId, residentId) => school.constableExaminerEligible(interviewId, residentId),
