@@ -64,6 +64,16 @@ export function validateContent(value, catalog, draft = false) {
   } else reject('请选择触发方式。');
   return result;
 }
+export function validateBatch(contents, catalog) {
+  if (!Array.isArray(contents) || !contents.length) reject('请粘贴至少一条内容。');
+  const errors = [];
+  const clean = contents.map((content, index) => {
+    try { return validateContent(content, catalog, true); }
+    catch (error) { if (!(error instanceof ContentEditorError)) throw error; errors.push(`第${index + 1}条：${error.message}`); return null; }
+  });
+  if (errors.length) reject(errors.join('\n'));
+  return clean;
+}
 export class GlimmerContentEditor {
   constructor({ file, encounters, encounterById, catalog }) {
     this.file = file; this.encounters = encounters; this.encounterById = encounterById; this.catalog = catalog;
@@ -113,6 +123,12 @@ export class GlimmerContentEditor {
     writeFileSync(temp, JSON.stringify(state), { mode: 0o600 }); renameSync(temp, this.file); this.state = state;
   }
   list() { return { entries: structuredClone(this.state.entries), catalog: this.catalog }; }
+  saveBatch({ contents }) {
+    const clean = validateBatch(contents, this.catalog);
+    const rows = clean.map(content => ({ id: `editor_${randomUUID()}`, version: 1, status: 'draft', content, updatedAt: Date.now() }));
+    this.commit({ entries: [...this.state.entries, ...rows] });
+    return structuredClone(rows);
+  }
   save({ id, version, content }) {
     const clean = validateContent(content, this.catalog, true);
     const old = id ? this.state.entries.find(row => row.id === id) : null;

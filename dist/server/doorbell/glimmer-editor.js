@@ -2,7 +2,7 @@ import { glimmerContentEditor } from '../../content.js';
 import { MAX_BODY_BYTES } from '../../config.js';
 import { readJsonBody, jsonOut } from '../http.js';
 import { requireDoorbellHumanFieldService, humanFieldError } from './contract.js';
-import { ContentEditorError, validateContent } from '../../domain/glimmer/content-editor.js';
+import { ContentEditorError, validateContent, validateBatch } from '../../domain/glimmer/content-editor.js';
 export async function handleGlimmerEditor(req, res, method) {
   if (!requireDoorbellHumanFieldService(req, res, method)) return;
   try {
@@ -11,7 +11,8 @@ export async function handleGlimmerEditor(req, res, method) {
     const { action, ...input } = body;
     if (action === 'list' && Object.keys(input).length === 0) return jsonOut(res, 200, glimmerContentEditor.list());
     if (action === 'save') return jsonOut(res, 200, glimmerContentEditor.save(input));
-    if (action === 'import') return jsonOut(res, 200, validateContent(input.content, glimmerContentEditor.catalog, true));
+    if (action === 'import') return jsonOut(res, 200, Array.isArray(input.content) ? validateBatch(input.content, glimmerContentEditor.catalog) : validateContent(input.content, glimmerContentEditor.catalog, true));
+    if (action === 'save_batch') return jsonOut(res, 200, glimmerContentEditor.saveBatch(input));
     if (action === 'review') return jsonOut(res, 200, glimmerContentEditor.review(input));
     if (action === 'withdraw') return jsonOut(res, 200, glimmerContentEditor.withdraw(input));
     if (action === 'publish') return jsonOut(res, 200, glimmerContentEditor.publish(input));
