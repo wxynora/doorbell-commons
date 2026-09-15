@@ -84,6 +84,15 @@ function scenePresenceForSnapshot(
   }));
 }
 
+/** 重开或闪退后，若自己本人的座位仍在（未认输），返回该座位用于回座；否则返回 null 走围观。 */
+export function ownSeatPlayerId(
+  seats: ReadonlyArray<{ playerId: string; forfeited?: boolean }>,
+  viewerId: string,
+): string | null {
+  const seat = seats.find((item) => item.playerId === viewerId && !item.forfeited);
+  return seat ? seat.playerId : null;
+}
+
 export function PublicLoungePage({
   loadSnapshot,
   viewport,
@@ -146,7 +155,8 @@ export function PublicLoungePage({
         const roomId=table.room.room_id;
         enteringGame.current=true;setGameEntering(true);setGameError("");
         void gameWatchSeats(roomId).then(({seats,preferredPlayerId})=>{
-          if(preferredPlayerId){setWatchViewerId(preferredPlayerId);setInitialGameRoom(null);setWatchOnly(true);setGameRoomId(roomId);}
+          if(ownSeatPlayerId(seats,gameViewerId)){setInitialGameRoom(null);setWatchOnly(false);setGameRoomId(roomId);}
+          else if(preferredPlayerId){setWatchViewerId(preferredPlayerId);setInitialGameRoom(null);setWatchOnly(true);setGameRoomId(roomId);}
           else setWatchChoices({roomId,seats});
         }).catch(error=>setGameError(error instanceof Error?error.message:'未能进入游戏'))
           .finally(()=>{enteringGame.current=false;setGameEntering(false);});
