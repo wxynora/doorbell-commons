@@ -1,7 +1,9 @@
 import type Database from "better-sqlite3";
 import type { GameActor } from "./types.js";
+import {GameDanmakuCooldownError,type GameDanmaku} from './game-danmaku.js';
 
 export interface GameChatMessage {
+  danmaku?:GameDanmaku;
   roomId: string;
   sequence: number;
   playerId: string;
@@ -13,6 +15,7 @@ export interface GameChatMessage {
 }
 
 export interface GameChatAppendInput {
+  danmaku?:GameDanmaku;
   roomId: string;
   playerId: string;
   controllerType: GameActor["controllerType"];
@@ -28,6 +31,7 @@ export interface GameChatAppendResult {
 }
 
 export interface GameChatStore {
+  danmakuReadyAt(accountId:string):number;
   append(input: GameChatAppendInput): GameChatAppendResult;
   read(roomId: string, afterSequence: number): GameChatMessage[];
 }
@@ -40,6 +44,7 @@ export class GameChatConflictError extends Error {
 }
 
 interface GameChatRow {
+  danmaku_json: string | null;
   room_id: string;
   sequence: number;
   player_id: string;
@@ -52,6 +57,7 @@ interface GameChatRow {
 
 function mapMessage(row: GameChatRow): GameChatMessage {
   return {
+    ...(row.danmaku_json ? {danmaku:JSON.parse(row.danmaku_json) as GameDanmaku} : {}),
     roomId: row.room_id,
     sequence: row.sequence,
     playerId: row.player_id,
@@ -76,12 +82,17 @@ export class SqliteGameChatStore implements GameChatStore {
     this.#database = database;
   }
 
+  danmakuReadyAt(accountId:string):number {
+    const row=this.#database.prepare('SELECT last_sent_at FROM game_danmaku_cooldowns WHERE account_id=?').get(accountId) as {last_sent_at:number}|undefined;
+    return row ? row.last_sent_at+60_000 : 0;
+  }
+
   append(input: GameChatAppendInput): GameChatAppendResult {
     const transaction = this.#database.transaction(() => {
       const existing = this.#database
         .prepare(
           `SELECT room_id, sequence, player_id, controller_type,
-                  client_message_id, text, created_at, reply_to_message_id
+                  client_message_id, text, created_at, reply_to_message_id, danmaku_json
            FROM game_chat_messages
            WHERE room_id = ? AND player_id = ?
              AND controller_type = ? AND client_message_id = ?`,
@@ -90,10 +101,17 @@ export class SqliteGameChatStore implements GameChatStore {
         | GameChatRow
         | undefined;
       if (existing) {
-        if (existing.text !== input.text || (existing.reply_to_message_id ?? undefined) !== input.replyToMessageId) {
+        if (existing.text !== input.text || (existing.reply_to_message_id ?? undefined) !== input.replyToMessageId || (existing.danmaku_json ? JSON.parse(existing.danmaku_json).phraseId : undefined) !== input.danmaku?.phraseId) {
           throw new GameChatConflictError();
         }
         return { message: mapMessage(existing), duplicate: true };
+      }
+
+      if(input.danmaku){
+        const accountId=input.playerId.slice('human:'.length);
+        const retryAt=this.danmakuReadyAt(accountId);
+        if(input.createdAt<retryAt)throw new GameDanmakuCooldownError(retryAt);
+        this.#database.prepare('INSERT INTO game_danmaku_cooldowns(account_id,last_sent_at) VALUES (?,?) ON CONFLICT(account_id) DO UPDATE SET last_sent_at=excluded.last_sent_at').run(accountId,input.createdAt);
       }
 
       const next = this.#database
@@ -104,6 +122,7 @@ export class SqliteGameChatStore implements GameChatStore {
         )
         .get(input.roomId) as { next_sequence: number };
       const message: GameChatMessage = {
+        ...(input.danmaku ? {danmaku:input.danmaku} : {}),
         roomId: input.roomId,
         sequence: next.next_sequence,
         playerId: input.playerId,
@@ -117,8 +136,8 @@ export class SqliteGameChatStore implements GameChatStore {
         .prepare(
           `INSERT INTO game_chat_messages (
              room_id, sequence, player_id, controller_type,
-             client_message_id, text, created_at, reply_to_message_id
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+             client_message_id, text, created_at, reply_to_message_id, danmaku_json
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           message.roomId,
@@ -129,6 +148,7 @@ export class SqliteGameChatStore implements GameChatStore {
           message.text,
           message.createdAt,
           message.replyToMessageId ?? null,
+          message.danmaku ? JSON.stringify(message.danmaku) : null,
         );
       return { message, duplicate: false };
     });
@@ -140,7 +160,7 @@ export class SqliteGameChatStore implements GameChatStore {
     const rows = this.#database
       .prepare(
         `SELECT room_id, sequence, player_id, controller_type,
-                client_message_id, text, created_at, reply_to_message_id
+                client_message_id, text, created_at, reply_to_message_id, danmaku_json
          FROM game_chat_messages
          WHERE room_id = ? AND sequence > ?
          ORDER BY sequence ASC`,

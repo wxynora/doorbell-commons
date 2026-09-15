@@ -1,4 +1,5 @@
 import type { GameCaller } from "./game-identity.js";
+import {GAME_DANMAKU_PHRASES} from './game-danmaku.js';
 import {
   GameAccessError,
   GameStateError,
@@ -21,6 +22,7 @@ export interface GameChatSubscription {
 }
 
 export interface GameChatServiceOptions {
+  nameOf?:(playerId:string)=>Promise<string>;
   now?: () => number;
 }
 
@@ -118,6 +120,7 @@ class GameChatSubscriptionImpl implements GameChatSubscription {
 export class GameChatService {
   readonly #subscriptions = new Map<string, Set<GameChatSubscriptionImpl>>();
   readonly #now: () => number;
+  readonly #nameOf: GameChatServiceOptions['nameOf'];
 
   constructor(
     private readonly roomStore: GameRoomStore,
@@ -125,6 +128,36 @@ export class GameChatService {
     options: GameChatServiceOptions = {},
   ) {
     this.#now = options.now ?? Date.now;
+    this.#nameOf = options.nameOf;
+  }
+
+  private async authenticateSpectator(caller:GameCaller,roomId:string):Promise<GameActor>{
+    const actor=await caller.authenticate();
+    if(actor.controllerType!=='human'||!actor.playerId.startsWith('human:'))throw new GameAccessError('spectator_required');
+    const room=this.roomStore.read(roomId);
+    if(!room)throw new GameStateError('room_not_found');
+    if(room.phase==='waiting')throw new GameStateError('game_not_started');
+    if(room.seats.some(s=>s.playerId===actor.playerId&&!s.forfeited))throw new GameAccessError('spectator_required');
+    return actor;
+  }
+
+  async danmakuOptions(caller:GameCaller,roomId:string){
+    const actor=await this.authenticateSpectator(caller,roomId);
+    return {phrases:GAME_DANMAKU_PHRASES,retryAt:this.chatStore.danmakuReadyAt(actor.playerId.slice('human:'.length)),serverNow:this.#now()};
+  }
+
+  async sendDanmaku(caller:GameCaller,roomId:string,input:{phraseId:string;clientMessageId:string}):Promise<GameChatMessage>{
+    const actor=await this.authenticateSpectator(caller,roomId);
+    const phrase=GAME_DANMAKU_PHRASES.find(p=>p.id===input.phraseId);
+    if(!phrase)throw new GameStateError('danmaku_phrase_invalid');
+    validateSendInput({text:phrase.text,clientMessageId:input.clientMessageId});
+    if(!this.#nameOf)throw new GameStateError('danmaku_unavailable');
+    const senderName=await this.#nameOf(actor.playerId);
+    // Re-check after the asynchronous name lookup, before atomically charging the cooldown.
+    await this.authenticateSpectator(caller,roomId);
+    const result=this.chatStore.append({roomId,playerId:actor.playerId,controllerType:'human',clientMessageId:input.clientMessageId,text:phrase.text,createdAt:this.#now(),danmaku:{phraseId:phrase.id,senderName}});
+    if(!result.duplicate)this.publish(result.message);
+    return result.message;
   }
 
   async send(

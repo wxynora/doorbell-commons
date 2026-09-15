@@ -1,4 +1,5 @@
 import {gameDisplayProjection,playerDisplayName} from "./game-display-names";
+import {GameDanmakuLayer} from './game-danmaku';
 import {cardPlaySound} from './game-card-sound';
 import {playReactionSound,retainReactionSound} from './game-reaction-sound';
 import {GameMidroundExit} from './game-midround-exit';
@@ -143,7 +144,7 @@ function Session({roomId,initialRoom,viewerId,profiles:registeredProfiles,watchO
       }else throw new Error("本局尚未结束");
     },
   }:null,[room,namedGame,connected,transport,watchOnly,onExit]);
-  const chat=useMemo(()=>({roomId,connected,readOnly:watchOnly,messages:messages.map(m=>({...m,name:playerDisplayName(m.playerId,profiles)})),send:async(text:string,id:string)=>{requireRoom();await transport.say(roomId,text,id);}}),[roomId,connected,messages,profiles,transport,watchOnly]);
+  const chat=useMemo(()=>({roomId,connected,readOnly:watchOnly,messages:messages.filter(m=>!m.danmaku).map(m=>({...m,name:playerDisplayName(m.playerId,profiles)})),send:async(text:string,id:string)=>{requireRoom();await transport.say(roomId,text,id);}}),[roomId,connected,messages,profiles,transport,watchOnly]);
   const defaultReaction=useMemo<GameReactionBinding>(()=>({roomId,viewerId,connected,
     send:async(targetId,kind,requestId)=>{requireRoom();await transport.sendReaction(roomId,targetId,kind,requestId);},
     subscribe:listener=>{reactionListeners.current.add(listener);return()=>{reactionListeners.current.delete(listener);};},
@@ -159,6 +160,7 @@ function Session({roomId,initialRoom,viewerId,profiles:registeredProfiles,watchO
   };
   return <div className={`game-session-host game-session--${room.kind}`}>
     {watchExit}
+    {room.phase!=='waiting'&&<GameDanmakuLayer roomId={roomId} messages={messages} canSend={watchOnly&&connected}/>}
     {!watchOnly&&room.phase==='playing'&&!['round_over','finished','game_over'].includes(String(projection(room.game).phase))&&projection(room.game).public?.game_result==null&&<GameMidroundExit baseStake={room.baseStake??0} onLeave={leave}/>}
     <div style={{display:"contents"}} onClickCapture={blockWatchAction} onPointerDownCapture={blockWatchAction} onKeyDownCapture={blockWatchAction}>
     {room.phase==="waiting"?<GameWaitingRoom room={room} viewerId={viewerId} profiles={profiles} connected={connected}

@@ -73,6 +73,7 @@ export interface LoungeGameServicePort {
 }
 
 export interface LoungeGameChatMessage {
+  danmaku?:import('./game-danmaku.js').GameDanmaku;
   sequence: string | number;
   playerId?: string;
   text?: string;
@@ -872,8 +873,9 @@ export class LoungeGameTool {
     const messages = (await this.#gameChat.read(caller, roomId, after)).filter(message=>Number(message.sequence)>after);
     if(delivery?.captured)delivery.captured.chatSequence=messages.reduce((last,message)=>Math.max(last,Number(message.sequence)),after);
     if (messages.length === 0) return;
-    lines.push("游戏聊天：");
+    if(messages.some(message=>!message.danmaku))lines.push("游戏聊天：");
     for (const message of messages) {
+      if(message.danmaku){lines.push(gameDanmakuLine(message));continue;}
       const text = safeText(message.text) ?? "";
       const speaker = message.playerId === playerId ? "你"
         : message.playerId && this.#nameOf
@@ -1915,3 +1917,4 @@ function hasErrorCode(error: unknown, code: string): boolean {
   if (!(error instanceof Error)) return false;
   return error.message === code || error.message.includes(code);
 }
+import {gameDanmakuLine} from './game-danmaku.js';

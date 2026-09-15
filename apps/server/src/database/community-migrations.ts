@@ -9,7 +9,7 @@ import {
 } from "@doorbell/protocol";
 import type Database from "better-sqlite3";
 
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 46;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 47;
 const LEGACY_CONNECTOR_DELIVERY_GENERATION = "00000000-0000-0000-0000-000000000000";
 
 interface FarmCreationRequestRow {
@@ -2818,6 +2818,15 @@ export function migrateCommunityDatabase(
     PRIMARY KEY(room_id,player_id)
   )`);
   database.pragma('user_version = 46');
+  })();
+
+  if(databaseSchemaVersion < 47) database.transaction(()=>{
+    database.exec(`ALTER TABLE game_chat_messages ADD COLUMN danmaku_json TEXT;
+      CREATE TABLE game_danmaku_cooldowns (
+        account_id TEXT PRIMARY KEY REFERENCES human_accounts(account_id) ON DELETE CASCADE,
+        last_sent_at INTEGER NOT NULL
+      );`);
+    database.pragma('user_version = 47');
   })();
 
 }

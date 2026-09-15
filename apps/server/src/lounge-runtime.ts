@@ -263,7 +263,7 @@ export function createLoungeRuntime(options: LoungeRuntimeOptions) {
       }));
     },
   );
-  const gameChat = new GameChatService(tables, database.gameChatStore);
+  const gameChat = new GameChatService(tables, database.gameChatStore, {nameOf:options.nameOf});
   const canChat = (residentId: string) =>
     tables.listPublicTables().every((table) => {
       if (!table.room) return true;
@@ -416,4 +416,3 @@ export function createLoungeRuntime(options: LoungeRuntimeOptions) {
     tools: new LoungeTools(lounge, say, game, options.petRewards ? new LoungePetService(database, lounge, options.petRewards, now) : undefined, options.gachaReader ? new LoungeGachaViewOptions(database, options.gachaReader) : undefined),
   };
 }
-

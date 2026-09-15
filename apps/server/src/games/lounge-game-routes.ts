@@ -26,7 +26,7 @@ export type LoungeGameRouteGameService = Pick<
   "create" | "join" | "view" | "watchSeats" | "ready" | "start" | "command" | "leave"
 >;
 
-export type LoungeGameRouteChatService = Pick<GameChatService, "read" | "send" | "subscribe">;
+export type LoungeGameRouteChatService = Pick<GameChatService, "read" | "send" | "subscribe" | "sendDanmaku" | "danmakuOptions">;
 
 export type LoungeGameRouteSyncService = Pick<GameSync, "subscribe">;
 

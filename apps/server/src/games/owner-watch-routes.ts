@@ -7,6 +7,7 @@ import type { GameCaller } from "./game-identity.js";
 import type { GameService } from "./game-service.js";
 import type { GameSync, GameSubscription } from "./game-sync.js";
 import { GameAccessError, GameStateError } from "./types.js";
+import {GameDanmakuCooldownError} from './game-danmaku.js';
 
 /** Only used by these GET endpoints. Never accepted as an action caller. */
 export function ownerWatchCaller(human: GameCaller): GameCaller {
@@ -21,7 +22,7 @@ interface Options {
   failure(request: FastifyRequest, reply: FastifyReply, error: unknown): unknown;
   games: Pick<GameService, "view" | "watchSeats">;
   sync: Pick<GameSync, "subscribe">;
-  chat: Pick<GameChatService, "subscribe">;
+  chat: Pick<GameChatService, "subscribe" | "sendDanmaku" | "danmakuOptions">;
   reactions?: Pick<LoungeGameReactionPort, "subscribe">;
 }
 const params = z.strictObject({ roomId: z.string().min(1) });
@@ -44,6 +45,7 @@ export function registerOwnerWatchRoutes(app: FastifyInstance, options: Options)
     return {caller,publicOnly:false};
   };
   const failure = (request: FastifyRequest, reply: FastifyReply, error: unknown) => {
+    if(error instanceof GameDanmakuCooldownError)return reply.code(429).send({error:{code:'danmaku_cooldown',message:'每分钟只能发送一次弹幕。'},retryAt:error.retryAt,serverNow:Date.now()});
     if (error instanceof GameAccessError && error.message === "not_seated")
       return reply.code(403).send({ error: { code: "owner_not_seated", message: "你的小机不在这桌，不能围观。" } });
     if (error instanceof GameStateError && error.message === "game_not_started")
@@ -57,6 +59,26 @@ export function registerOwnerWatchRoutes(app: FastifyInstance, options: Options)
       z.strictObject({}).parse(request.query);
       return await options.games.watchSeats(await options.authenticate(request),roomId);
     } catch(error){return failure(request,reply,error);}
+  });
+  app.get(`${root}/danmaku`,async(request,reply)=>{
+    reply.header('cache-control','no-store');
+    try{
+      const {roomId}=params.parse(request.params);
+      z.strictObject({}).parse(request.query);
+      return await options.chat.danmakuOptions(await options.authenticate(request),roomId);
+    }catch(error){return failure(request,reply,error);}
+  });
+  app.post(`${root}/danmaku`,async(request,reply)=>{
+    reply.header('cache-control','no-store');
+    try{
+      const {roomId}=params.parse(request.params);
+      z.strictObject({}).parse(request.query);
+      const input=z.strictObject({phraseId:z.string().min(1),clientMessageId:z.string().min(1)}).parse(request.body);
+      const caller=await options.authenticate(request);
+      // Uses the authenticated human, never the selected seat's watch caller.
+      const message=await options.chat.sendDanmaku(caller,roomId,input);
+      return {message,retryAt:message.createdAt+60_000,serverNow:Date.now()};
+    }catch(error){return failure(request,reply,error);}
   });
   app.get(root, async (request, reply) => {
     reply.header("cache-control", "no-store");

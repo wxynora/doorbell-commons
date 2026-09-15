@@ -1,7 +1,7 @@
 import type { WaitingRoom, WaitingGameKind } from "./game-waiting-room";
 import type {GameReactionEvent,GameReactionKind} from "./game-reaction-binding";
 export interface SessionRoom extends WaitingRoom { game: unknown | null; settlement?: import("./game-session-binding").GameSessionBinding["settlement"] }
-export interface SessionChatMessage {roomId:string; sequence:number; playerId:string; text:string}
+export interface SessionChatMessage {roomId:string; sequence:number; playerId:string; text:string; createdAt?:number; danmaku?:{phraseId:string;senderName:string}}
 export interface SessionStream {
   game(room:SessionRoom):void;
   chat(message:SessionChatMessage):void;
@@ -19,14 +19,14 @@ export interface GameSessionTransport {
   subscribe(roomId:string,afterChatSequence:number,handlers:SessionStream):()=>void;
 }
 export class GameSessionRequestError extends Error {
-  constructor(message:string,readonly code?:string){super(message);this.name="GameSessionRequestError";}
+  constructor(message:string,readonly code?:string,readonly retryAt?:number,readonly serverNow?:number){super(message);this.name="GameSessionRequestError";}
 }
 const ROOT="/api/lounge/games";
 const roomPath=(id:string)=>`${ROOT}/rooms/${encodeURIComponent(id)}`;
 async function request<T>(path:string,body?:unknown):Promise<T>{
   const response=await fetch(path,{credentials:"same-origin",...(body===undefined?{}:{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})});
   const data=await response.json();
-  if(!response.ok)throw new GameSessionRequestError(data.error?.message ?? "游戏请求未完成",data.error?.code);
+  if(!response.ok)throw new GameSessionRequestError(data.error?.message ?? "游戏请求未完成",data.error?.code,data.retryAt,data.serverNow);
   return data as T;
 }
 /** Uses cookie-authenticated same-origin routes; no player identity comes from a URL. */
@@ -103,6 +103,9 @@ return {
 };
 }
 export const gameSessionClient=createSessionClient();
+export interface GameDanmakuOptions {phrases:{id:string;text:string}[];retryAt:number;serverNow:number}
+export const readGameDanmaku=(roomId:string)=>request<GameDanmakuOptions>(`${roomPath(roomId)}/watch/danmaku`);
+export const sendGameDanmaku=(roomId:string,phraseId:string,clientMessageId:string)=>request<{message:SessionChatMessage;retryAt:number;serverNow:number}>(`${roomPath(roomId)}/watch/danmaku`,{phraseId,clientMessageId});
 export const ownerWatchClient=createSessionClient(true);
 export const createWatchClient=(playerId:string)=>createSessionClient(true,playerId);
 export function gameWatchSeats(roomId:string):Promise<{seats:SessionRoom['seats'];preferredPlayerId:string|null}>{
