@@ -11,7 +11,7 @@ import { getPublicLoungeSnapshot, type PublicLoungeIssue } from "../lounge/publi
 import { mergeLoungeSnapshotDelta } from "../lounge/public-lounge-delta";
 import { ResidentStandingLoader } from "../lounge/resident-standing";
 import { GameSessionHost } from "../games/game-session-host";
-import { createGameTable, joinGameTable, gameWatchSeats, type SessionRoom } from "../games/game-session-client";
+import { createGameTable, joinGameTable, gameSessionClient, GameSessionRequestError, gameWatchSeats, type SessionRoom } from "../games/game-session-client";
 import {gamePlayerProfiles} from '../games/game-player-names';
 
 export interface LoungeScenePresence {
@@ -84,15 +84,6 @@ function scenePresenceForSnapshot(
   }));
 }
 
-/** 重开或闪退后，若自己本人的座位仍在（未认输），返回该座位用于回座；否则返回 null 走围观。 */
-export function ownSeatPlayerId(
-  seats: ReadonlyArray<{ playerId: string; forfeited?: boolean }>,
-  viewerId: string,
-): string | null {
-  const seat = seats.find((item) => item.playerId === viewerId && !item.forfeited);
-  return seat ? seat.playerId : null;
-}
-
 export function PublicLoungePage({
   loadSnapshot,
   viewport,
@@ -154,12 +145,19 @@ export function PublicLoungePage({
         if (table.room?.phase !== "playing" || table.room.room_id !== data.roomId) return;
         const roomId=table.room.room_id;
         enteringGame.current=true;setGameEntering(true);setGameError("");
-        void gameWatchSeats(roomId).then(({seats,preferredPlayerId})=>{
-          if(ownSeatPlayerId(seats,gameViewerId)){setInitialGameRoom(null);setWatchOnly(false);setGameRoomId(roomId);}
-          else if(preferredPlayerId){setWatchViewerId(preferredPlayerId);setInitialGameRoom(null);setWatchOnly(true);setGameRoomId(roomId);}
-          else setWatchChoices({roomId,seats});
-        }).catch(error=>setGameError(error instanceof Error?error.message:'未能进入游戏'))
-          .finally(()=>{enteringGame.current=false;setGameEntering(false);});
+        // watching 桌子的点击先从玩家身份读一局：读取成功就是自己的座位，原位恢复；
+        // 仅明确 not_seated 才回落到围观，其它错误照实报出，不伪装成“你不是玩家”。
+        void gameSessionClient.read(roomId).then(room=>{
+          setInitialGameRoom(room);setWatchOnly(false);setGameRoomId(roomId);
+        }).catch(error=>{
+          if(!(error instanceof GameSessionRequestError)||error.code!=='not_seated'){
+            setGameError(error instanceof Error?error.message:'未能进入游戏');return;
+          }
+          return gameWatchSeats(roomId).then(({seats,preferredPlayerId})=>{
+            if(preferredPlayerId){setWatchViewerId(preferredPlayerId);setInitialGameRoom(null);setWatchOnly(true);setGameRoomId(roomId);}
+            else setWatchChoices({roomId,seats});
+          }).catch(watchError=>setGameError(watchError instanceof Error?watchError.message:'未能进入游戏'));
+        }).finally(()=>{enteringGame.current=false;setGameEntering(false);});
         return;
       }
       const kinds = ["mahjong", "doudizhu", "leaf-game", "uno", "monopoly", "flying-chess"] as const;
