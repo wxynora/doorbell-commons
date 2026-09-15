@@ -3,14 +3,16 @@
 .game-danmaku-line {position:absolute;left:100%;top:calc(var(--dm-lane) * 38 * var(--dm-unit));width:max-content;white-space:nowrap;font-size:calc(18 * var(--dm-unit));font-weight:650;color:#fff8e8;text-shadow:0 1px 3px #21392b,0 0 4px #21392b;animation:game-danmaku-fly 8s linear both;}
 .game-danmaku-line span {margin-right:calc(10 * var(--dm-unit));color:#f1d89b;}
 @keyframes game-danmaku-fly {to{transform:translateX(calc(-100vw - 100%));}}
-.game-danmaku-toggle {position:absolute;right:calc(12 * var(--dm-unit));bottom:calc(76 * var(--dm-unit));pointer-events:auto;display:flex;align-items:center;gap:calc(5 * var(--dm-unit));padding:calc(10 * var(--dm-unit)) calc(12 * var(--dm-unit));border:0;border-radius:calc(24 * var(--dm-unit));color:#36584c;background:#fff7e6;font:600 calc(15 * var(--dm-unit))/1.2 "PingFang SC",sans-serif;box-shadow:0 2px 8px #203a3426;cursor:pointer;}
-.game-danmaku-toggle svg {width:calc(22 * var(--dm-unit));height:calc(22 * var(--dm-unit));}
-.game-danmaku-picker {position:absolute;pointer-events:auto;right:calc(12 * var(--dm-unit));bottom:calc(128 * var(--dm-unit));width:calc(300 * var(--dm-unit));max-width:calc(100% - 24 * var(--dm-unit));max-height:calc(100% - 150 * var(--dm-unit));overflow:auto;padding:calc(16 * var(--dm-unit));border-radius:calc(18 * var(--dm-unit));background:#fff8eb;color:#355649;box-shadow:0 6px 22px #18392c30;font-size:calc(15 * var(--dm-unit));}
+.game-danmaku-entry {position:fixed;z-index:66;pointer-events:none;}
+.game-danmaku-toggle {pointer-events:auto;display:flex;align-items:center;gap:calc(5 * var(--dm-unit));padding:calc(7 * var(--dm-unit)) calc(13 * var(--dm-unit));border:0;border-radius:calc(22 * var(--dm-unit));color:#36584c;background:#fff7e6;font:600 calc(16 * var(--dm-unit))/1.2 "PingFang SC",sans-serif;box-shadow:0 3px 8px #203a3426;cursor:pointer;}
+.game-danmaku-toggle svg {width:calc(20 * var(--dm-unit));height:calc(20 * var(--dm-unit));}
+.game-danmaku-picker {position:absolute;pointer-events:auto;right:0;top:calc(100% + calc(8 * var(--dm-unit)));width:calc(272 * var(--dm-unit));max-width:calc(100vw - 24px);max-height:min(60vh,calc(380 * var(--dm-unit)));overflow:auto;padding:calc(15 * var(--dm-unit));border-radius:calc(16 * var(--dm-unit));background:#fff8eb;color:#355649;box-shadow:0 6px 22px #18392c30;font-size:calc(15 * var(--dm-unit));}
 .game-danmaku-picker header {display:flex;align-items:center;justify-content:space-between;margin-bottom:calc(6 * var(--dm-unit));}
-.game-danmaku-picker header button {border:0;background:transparent;font-size:calc(24 * var(--dm-unit));color:inherit;min-width:calc(32 * var(--dm-unit));cursor:pointer;}
+.game-danmaku-picker header button {border:0;background:transparent;font-size:calc(21 * var(--dm-unit));color:inherit;min-width:calc(28 * var(--dm-unit));cursor:pointer;}
 .game-danmaku-picker small {color:#68735e;}
-.game-danmaku-picker>div {display:flex;flex-direction:column;gap:calc(6 * var(--dm-unit));margin-top:calc(12 * var(--dm-unit));}
-.game-danmaku-picker>div button {text-align:left;font:inherit;color:inherit;padding:calc(10 * var(--dm-unit));border:0;border-radius:calc(9 * var(--dm-unit));background:#f0ead8;cursor:pointer;}
+.game-danmaku-picker .game-danmaku-hint {margin:calc(10 * var(--dm-unit)) 0 0;color:#8a7550;}
+.game-danmaku-picker>div {display:flex;flex-direction:column;gap:calc(6 * var(--dm-unit));margin-top:calc(10 * var(--dm-unit));}
+.game-danmaku-picker>div button {text-align:left;font:inherit;color:inherit;padding:calc(9 * var(--dm-unit));border:0;border-radius:calc(9 * var(--dm-unit));background:#f0ead8;cursor:pointer;}
 .game-danmaku-picker button:disabled {opacity:.5;cursor:default;}
 .game-danmaku-picker button:focus-visible,.game-danmaku-toggle:focus-visible {outline:2px solid #b68138;outline-offset:2px;}
 @media(prefers-reduced-motion:reduce){.game-danmaku-line{left:5%;max-width:90%;white-space:normal;animation:game-danmaku-still 8s linear both;}@keyframes game-danmaku-still{0%,90%{opacity:1}100%{opacity:0}}}

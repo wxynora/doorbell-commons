@@ -160,7 +160,7 @@ function Session({roomId,initialRoom,viewerId,profiles:registeredProfiles,watchO
   };
   return <div className={`game-session-host game-session--${room.kind}`}>
     {watchExit}
-    {room.phase!=='waiting'&&<GameDanmakuLayer roomId={roomId} messages={messages} canSend={watchOnly&&connected}/>}
+    {room.phase!=='waiting'&&<GameDanmakuLayer roomId={roomId} messages={messages} visible={watchOnly} connected={connected}/>}
     {!watchOnly&&room.phase==='playing'&&!['round_over','finished','game_over'].includes(String(projection(room.game).phase))&&projection(room.game).public?.game_result==null&&<GameMidroundExit baseStake={room.baseStake??0} onLeave={leave}/>}
     <div style={{display:"contents"}} onClickCapture={blockWatchAction} onPointerDownCapture={blockWatchAction} onKeyDownCapture={blockWatchAction}>
     {room.phase==="waiting"?<GameWaitingRoom room={room} viewerId={viewerId} profiles={profiles} connected={connected}
