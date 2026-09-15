@@ -9,7 +9,7 @@ from typing import Any
 from uuid import uuid4
 
 
-RULES_VERSION = "doorbell.flying-chess.traditional.v3"
+RULES_VERSION = "doorbell.flying-chess.traditional.v4"
 MIN_PLAYER_COUNT = 2
 MAX_PLAYER_COUNT = 4
 PIECES_PER_PLAYER = 4
@@ -23,8 +23,10 @@ HOME_CROSS_PROGRESS = 54
 OWN_COLOR_PROGRESS = tuple(range(2, MAIN_STEPS + 1, 4))
 START_INDICES = (0, 13, 26, 39)
 ACCENTS = ("coral", "gold", "sky", "mint")
+# Any even roll lets a parked plane leave the airport; only 6 still grants another roll.
+TAKEOFF_ROLLS = (2, 4, 6)
 DEFAULT_RULES = {
-    "takeoff_roll": 6,
+    "takeoff_rolls": list(TAKEOFF_ROLLS),
     "extra_roll_on_six": True,
     "triple_six_penalty": "return_one_active_piece",
     "color_jump": True,
@@ -147,6 +149,10 @@ def _active_penalty_pieces(player: dict[str, Any]) -> list[dict[str, Any]]:
     return [piece for piece in player["pieces"] if 0 <= piece["progress"] < GOAL_PROGRESS]
 
 
+def _can_take_off(dice: int) -> bool:
+    return dice in TAKEOFF_ROLLS
+
+
 def _movable_pieces(state: dict[str, Any], player: dict[str, Any]) -> list[dict[str, Any]]:
     if state["phase"] != "awaiting_move" or state["dice"] is None:
         return []
@@ -155,7 +161,7 @@ def _movable_pieces(state: dict[str, Any], player: dict[str, Any]) -> list[dict[
         piece
         for piece in player["pieces"]
         if piece["progress"] < GOAL_PROGRESS
-        and (piece["progress"] >= 0 or dice == DEFAULT_RULES["takeoff_roll"])
+        and (piece["progress"] >= 0 or _can_take_off(dice))
     ]
 
 
