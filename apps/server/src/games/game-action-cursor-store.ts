@@ -13,8 +13,16 @@ export class GameActionCursorStore {
       const s=room.snapshot as {state?:{action_history?:Array<{seq?:number;number?:number}>};public_events?:Array<{seq?:number;number?:number}>}|null;
       const events=(room.kind==='mahjong'?s?.state?.action_history:s?.public_events)??[];
       const eventSequence=events.reduce((max,event,index)=>Math.max(max,event.seq??event.number??index+1),0);
-      const chat=this.db.prepare('SELECT COALESCE(MAX(sequence),0) AS sequence FROM game_chat_messages WHERE room_id=?').get(room.roomId) as {sequence:number};
-      this.db.prepare('INSERT INTO game_action_cursors(room_id,player_id,event_sequence,chat_sequence) VALUES(?,?,?,?) ON CONFLICT(room_id,player_id) DO UPDATE SET event_sequence=excluded.event_sequence,chat_sequence=excluded.chat_sequence').run(room.roomId,playerId,eventSequence,chat.sequence);
+      // The chat watermark is deliberately not written here. The room-wide maximum at
+      // the moment of an action already contains lines spoken after the bell this seat
+      // answered, and starting the next "期间" window there swallowed them for good.
+      // Renders record what they really put in front of the seat via markChat().
+      this.db.prepare('INSERT INTO game_action_cursors(room_id,player_id,event_sequence,chat_sequence) VALUES(?,?,?,0) ON CONFLICT(room_id,player_id) DO UPDATE SET event_sequence=excluded.event_sequence').run(room.roomId,playerId,eventSequence);
     })();
+  }
+  /** Chat this seat has actually been shown. Monotonic; never moves backwards. */
+  markChat(roomId:string,playerId:string,chatSequence:number):void {
+    if(!Number.isSafeInteger(chatSequence)||chatSequence<0)return;
+    this.db.prepare('INSERT INTO game_action_cursors(room_id,player_id,event_sequence,chat_sequence) VALUES(?,?,0,?) ON CONFLICT(room_id,player_id) DO UPDATE SET chat_sequence=MAX(chat_sequence,excluded.chat_sequence)').run(roomId,playerId,chatSequence);
   }
 }

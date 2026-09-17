@@ -250,6 +250,10 @@ export function createLoungeRuntime(options: LoungeRuntimeOptions) {
    * acted on, and (b) what we already put in front of them in a bell. A bell that was
    * later withdrawn still counts — it was replaced by a newer bell, and the home is
    * not expected to acknowledge in time.
+   *
+   * Both halves only ever follow content this seat was actually shown: the bell half
+   * from the wake record, the acted half from markGameChatShown() on every render.
+   * An action commit does not touch the chat watermark any more.
    */
   const sentCursor = (roomId:string,playerId:string):GameContextCursor => {
     const acted = tables.contextCursor(roomId,playerId);
@@ -325,6 +329,7 @@ export function createLoungeRuntime(options: LoungeRuntimeOptions) {
     nameOf: options.nameOf,
     ruleChoices: database.gameRuleChoiceStore,
     actionCursor: (roomId,playerId)=>sentCursor(roomId,playerId),
+    markChatShown: (roomId,playerId,chatSequence)=>tables.markGameChatShown(roomId,playerId,chatSequence),
     historySince: (roomId,names,after)=>{const room=tables.read(roomId);return room?gameHistorySince(room.kind,room.snapshot,names,after):{lines:[],sequence:after};},
     history: (roomId,names)=>{const room=tables.read(roomId);return room?gameHistory(room.kind,room.snapshot,names):[];},
     afterSocial: async (residentId,roomId,eventId):Promise<void>=>{try{await turnWakes.remind(residentId,roomId,eventId);}catch(error){options.onError(error);}},

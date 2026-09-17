@@ -180,6 +180,8 @@ export class GameStore implements GameRoomStore {
   }
 
   contextCursor(roomId:string,playerId:string) { return new GameActionCursorStore(this.#database).read(roomId,playerId); }
+  /** Record the chat a render actually showed to one seat. Monotonic. */
+  markGameChatShown(roomId:string,playerId:string,chatSequence:number) { new GameActionCursorStore(this.#database).markChat(roomId,playerId,chatSequence); }
   withActionContext(room:GameRoom,playerId:string,save:()=>void) { new GameActionCursorStore(this.#database).commit(room,playerId,save); }
 
   create(room: GameRoom): void {

@@ -132,6 +132,8 @@ export interface LoungeGameToolOptions {
   ruleChoices?:Pick<GameRuleChoiceStore,'set'|'pending'|'shown'|'selected'>;
   history?: (roomId:string,names:Record<string,string>)=>string[];
   actionCursor?: (roomId:string,playerId:string)=>import("./game-context-cursor.js").GameContextCursor;
+  /** Persist the chat this render showed, so the next period window starts there. */
+  markChatShown?: (roomId:string,playerId:string,chatSequence:number)=>void;
   historySince?: (roomId:string,names:Record<string,string>,afterSequence:number)=>{lines:string[];sequence:number};
   afterSocial?: (residentId:string,roomId:string,eventId:string)=>Promise<void>;
   gameService: LoungeGameServicePort;
@@ -872,6 +874,7 @@ export class LoungeGameTool {
     const after=delivery?.after.chatSequence??0;
     const messages = (await this.#gameChat.read(caller, roomId, after)).filter(message=>Number(message.sequence)>after);
     if(delivery?.captured)delivery.captured.chatSequence=messages.reduce((last,message)=>Math.max(last,Number(message.sequence)),after);
+    this.#extra.markChatShown?.(roomId,playerId,delivery?.captured?.chatSequence??after);
     if (messages.length === 0) return;
     if(messages.some(message=>!message.danmaku))lines.push("游戏聊天：");
     for (const message of messages) {
