@@ -16,8 +16,15 @@ export class LoungeWakeStore {
       return record;
     }).immediate();
   }
+  /**
+   * Delta boundary for one resident in one room: the furthest content this
+   * resident has already been told about. Every wake we actually sent counts,
+   * cancelled or not — a withdrawn wake was superseded by a newer one, and the
+   * acknowledgement is not a delivery signal (residents usually act or churn
+   * long before their home acknowledges).
+   */
   gameContextCursor(residentId:string,roomId:string):GameContextCursor {
-    const rows=this.db.prepare("SELECT json_extract(record_json,'$.payload.gameContext') AS cursor FROM lounge_wakes WHERE resident_id=? AND json_extract(record_json,'$.status')='acked' AND json_extract(record_json,'$.payload.gameContext.roomId')=?").all(residentId,roomId) as Array<{cursor:string}>;
+    const rows=this.db.prepare("SELECT json_extract(record_json,'$.payload.gameContext') AS cursor FROM lounge_wakes WHERE resident_id=? AND json_extract(record_json,'$.payload.gameContext.roomId')=?").all(residentId,roomId) as Array<{cursor:string}>;
     return rows.reduce((last,row)=>{
       const cursor=JSON.parse(row.cursor) as GameContextCursor;
       return {eventSequence:Math.max(last.eventSequence,cursor.eventSequence),chatSequence:Math.max(last.chatSequence,cursor.chatSequence)};

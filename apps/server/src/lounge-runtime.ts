@@ -19,6 +19,7 @@ import {
 import { LoungeGameTool } from "./games/lounge-game-tool.js";
 import {GameTimeoutScheduler} from './games/game-timeout.js';
 import {gameHistory,gameHistorySince} from './games/game-context.js';
+import type {GameContextCursor} from './games/game-context-cursor.js';
 import type { GameEngineAdapter } from "./games/types.js";
 import type {
   LoungeChatMode,
@@ -244,6 +245,17 @@ export function createLoungeRuntime(options: LoungeRuntimeOptions) {
   const { database, registrationAuth, engine, economy } = options;
   const now = options.now ?? Date.now;
   const tables = database.loungeGameTableStore;
+  /**
+   * Where a resident's "期间" window starts: the furthest of (a) what they already
+   * acted on, and (b) what we already put in front of them in a bell. A bell that was
+   * later withdrawn still counts — it was replaced by a newer bell, and the home is
+   * not expected to acknowledge in time.
+   */
+  const sentCursor = (roomId:string,playerId:string):GameContextCursor => {
+    const acted = tables.contextCursor(roomId,playerId);
+    const sent = database.loungeWakeStore.gameContextCursor(playerId.replace(/^resident:/u,''),roomId);
+    return {eventSequence:Math.max(acted.eventSequence,sent.eventSequence),chatSequence:Math.max(acted.chatSequence,sent.chatSequence)};
+  };
   const identity = new GameIdentity(registrationAuth);
   const sync = new GameSync(tables, engine);
   let timeouts:GameTimeoutScheduler|undefined;
@@ -312,7 +324,7 @@ export function createLoungeRuntime(options: LoungeRuntimeOptions) {
     invitations: invitationService,
     nameOf: options.nameOf,
     ruleChoices: database.gameRuleChoiceStore,
-    actionCursor: (roomId,playerId)=>tables.contextCursor(roomId,playerId),
+    actionCursor: (roomId,playerId)=>sentCursor(roomId,playerId),
     historySince: (roomId,names,after)=>{const room=tables.read(roomId);return room?gameHistorySince(room.kind,room.snapshot,names,after):{lines:[],sequence:after};},
     history: (roomId,names)=>{const room=tables.read(roomId);return room?gameHistory(room.kind,room.snapshot,names):[];},
     afterSocial: async (residentId,roomId,eventId):Promise<void>=>{try{await turnWakes.remind(residentId,roomId,eventId);}catch(error){options.onError(error);}},
@@ -325,12 +337,12 @@ export function createLoungeRuntime(options: LoungeRuntimeOptions) {
     identity,
     gameTool: game,
     wakes: database.loungeWakeStore,
-    actionCursor:(residentId,roomId)=>tables.contextCursor(roomId,`resident:${residentId}`),
+    actionCursor:(residentId,roomId)=>sentCursor(roomId,`resident:${residentId}`),
     bell: options.bell,
     formatter: options.turnFormatter,
     reactionContext: {
       read: (roomId,playerId) => pendingReactionContext(database.gameReactionStore.inRoom(roomId),playerId,
-        (residentId,wakeId) => database.loungeWakeStore.get(residentId,wakeId)?.status === "acked"),
+        (residentId,wakeId) => database.loungeWakeStore.get(residentId,wakeId)!==undefined),
       mark: (ids,wakeId) => database.gameReactionStore.markInWake(ids,wakeId),
     },
     now,

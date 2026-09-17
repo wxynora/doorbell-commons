@@ -1,9 +1,15 @@
 import type { ReactionRecord } from './game-reaction-store.js';
 
-export function pendingReactionContext(records:readonly ReactionRecord[],playerId:string,acknowledged:(residentId:string,wakeId:string)=>boolean) {
+/**
+ * Reactions this resident has not been told about yet. A reaction counts as told
+ * as soon as it was included in a wake we sent, whether the home acknowledged that
+ * wake or not; withdrawn wakes do not bring it back, because the newer wake that
+ * replaced them only carries what came after.
+ */
+export function pendingReactionContext(records:readonly ReactionRecord[],playerId:string,sent:(residentId:string,wakeId:string)=>boolean) {
   const pending=records.filter(r=>r.paid && r.targetId===playerId && r.targetController==='resident' &&
-    !acknowledged(r.targetResidentId,`game_reaction:${r.id}`) &&
-    !(r.bellWakeIds ?? []).some(wakeId => acknowledged(r.targetResidentId,wakeId)));
+    !sent(r.targetResidentId,`game_reaction:${r.id}`) &&
+    !(r.bellWakeIds ?? []).some(wakeId => sent(r.targetResidentId,wakeId)));
   const groups=new Map<string,{name:string;kind:ReactionRecord['kind'];count:number}>();
   for(const r of pending){
     const key=r.senderId+'\0'+r.kind;
