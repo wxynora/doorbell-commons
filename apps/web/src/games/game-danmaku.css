@@ -1,4 +1,7 @@
-.game-danmaku-screen {position:fixed;inset:0;z-index:65;pointer-events:none;font-family:"PingFang SC",sans-serif;--dm-unit:1px;}
+/* The lounge mounts the game inside a z-index:1000 overlay while this flying layer is
+   portalled to document.body, so it has to outrank that overlay to stay visible to
+   every viewer, spectators and seated players alike. */
+.game-danmaku-screen {position:fixed;inset:0;z-index:1001;pointer-events:none;font-family:"PingFang SC",sans-serif;--dm-unit:1px;}
 .game-danmaku-track {position:absolute;inset:15% 0 45%;overflow:hidden;pointer-events:none;}
 .game-danmaku-line {position:absolute;left:100%;top:calc(var(--dm-lane) * 38 * var(--dm-unit));width:max-content;white-space:nowrap;font-size:calc(18 * var(--dm-unit));font-weight:650;color:#fff8e8;text-shadow:0 1px 3px #21392b,0 0 4px #21392b;animation:game-danmaku-fly 8s linear both;}
 .game-danmaku-line span {margin-right:calc(10 * var(--dm-unit));color:#f1d89b;}
