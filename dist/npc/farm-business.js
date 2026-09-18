@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { NPC_ID } from "../config.js";
-import { buyNpcSeed } from "../game/visit-npc.js";
+import { buyNpcSeed, resolveSeedId } from "../game/visit-npc.js";
 import { farmResidentId } from "../career/farm-benefits.js";
 import { recordLingyeNpcBusinessAffinity } from "./business-affinity.js";
 import { advanceLingyeNpcWorld } from "./world-schedule.js";
@@ -12,13 +12,14 @@ export function buyAndPersistLingyeNpcSeed({ npc, buyer, seedId, now, persist })
     if (npc?.id !== NPC_ID || typeof persist !== "function")
         throw new TypeError("A real NPC seed purchase and synchronous persistence are required");
     const before = structuredClone(buyer);
-    const result = buyNpcSeed(npc, buyer, seedId, now);
+    const resolvedSeedId = resolveSeedId(seedId);
+    const result = buyNpcSeed(npc, buyer, resolvedSeedId, now);
     if (!result.ok)
         return result;
     const fact = Object.freeze({
-        buyerFarmId: buyer.id, seedId, occurredAt: now,
+        buyerFarmId: buyer.id, seedId: resolvedSeedId, occurredAt: now,
         cost: result.cost, quantity: result.qty,
-        coinsBefore: before.coins, seedsBefore: before.seeds[seedId] ?? 0,
+        coinsBefore: before.coins, seedsBefore: before.seeds[resolvedSeedId] ?? 0,
     });
     try {
         return npcPurchaseContext.run(fact, () => {

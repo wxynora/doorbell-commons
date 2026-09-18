@@ -52,7 +52,7 @@ export function handleCommerceAction(action, f, b, now) {
             const r = buyNpcSeed(f, f, id, now);
             if (r.ok)
                 f.shop.npcSeed = null; // 买走就清掉这次的刷出（每天限购由 limitedSeedBuys 兜底）
-            return { ok: r.ok, text: r.ok ? withFooter(f, now, `🛒 买下店里刷出的限定种子「${r.name}」×${r.qty}，-💰${r.cost}金\n${plantHint(f, id, r.name)}`) : r.error };
+            return { ok: r.ok, text: r.ok ? withFooter(f, now, `🛒 买下店里刷出的限定种子「${r.name}」×${r.qty}，-💰${r.cost}金\n${plantHint(f, r.id ?? id, r.name)}`) : r.error };
         }
         case "hot": return { ok: true, text: viewHot() };
         case "report": {

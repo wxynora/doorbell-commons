@@ -1,5 +1,5 @@
 import { decorLines, isUgcCrop, refreshShop } from "../engine.js";
-import { getCrop } from "../content.js";
+import { cropById, getCrop } from "../content.js";
 import { GROW_TICKS, MESSAGES_MAX, NPC_ID, NPC_NAME, SEED_PRICE } from "../config.js";
 import { currentDayIndex } from "../time.js";
 import { bumpDaily } from "../daily.js";
@@ -90,25 +90,36 @@ export function viewNpc(npc, targetRef = npc.id) {
         : "· （今天没刷出限定种子，看缘分，过会儿再来）");
     return lines.join("\n");
 }
+/** 购买引用解析：商店文案只展示作物名，小机常直接拿名字下单。已知 id 原样返回，否则按展示名翻回权威 id。 */
+export function resolveSeedId(ref) {
+    const text = String(ref ?? "");
+    if (!text || cropById.has(text))
+        return text;
+    for (const crop of cropById.values())
+        if (crop.name === text)
+            return crop.id;
+    return text;
+}
 /** 从阿土买他当前刷出的限定种子：金币结算（按官方 seedPrice），每种每人每天限 1 颗，入买家 seeds 库存。 */
 export function buyNpcSeed(npc, buyer, id, now) {
     const stock = npc.shop.npcSeed;
-    if (!stock || stock.id !== id)
+    const seedId = resolveSeedId(id);
+    if (!stock || stock.id !== seedId)
         return { ok: false, error: "阿土现在没在卖这个（限定种子随机刷新，看缘分，过会儿再来）。" };
-    const c = getCrop(id);
+    const c = getCrop(seedId);
     if (!c)
         return { ok: false, error: "没有这种作物" };
     // 每种限定每人每天限购 1 颗（和官方市场同口径）
     const day = currentDayIndex(now);
     if (!buyer.limitedSeedBuys || buyer.limitedSeedBuys.day !== day)
         buyer.limitedSeedBuys = { day, ids: [] };
-    if (buyer.limitedSeedBuys.ids.includes(id))
+    if (buyer.limitedSeedBuys.ids.includes(seedId))
         return { ok: false, error: "这种限定种子今天已经买过 1 颗了（每种每天限购 1，想多要去熔炼）。" };
     if (buyer.coins < stock.price)
         return { ok: false, error: `金币不足，${c.name}种子要 💰${stock.price}金，你只有 ${buyer.coins}。` };
     buyer.coins -= stock.price;
     bumpDaily(buyer, now, "coinSpend", stock.price);
-    buyer.seeds[id] = (buyer.seeds[id] ?? 0) + 1;
-    buyer.limitedSeedBuys.ids.push(id);
-    return { ok: true, name: c.name, qty: 1, cost: stock.price };
+    buyer.seeds[seedId] = (buyer.seeds[seedId] ?? 0) + 1;
+    buyer.limitedSeedBuys.ids.push(seedId);
+    return { ok: true, id: seedId, name: c.name, qty: 1, cost: stock.price };
 }
