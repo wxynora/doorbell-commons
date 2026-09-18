@@ -73,8 +73,14 @@ export const withFooter = (f, now, t) => {
     const welfare = takeWelfareWeekNotice(f);
     const notices = takeUnlockNotices(f);
     const tip = randomTip(f);
-    return `${t}${welfare ? "\n" + welfare : ""}${notices ? "\n" + notices : ""}\n${statusFooter(f, now)}${tip ? "\n" + tip : ""}`;
+    return `${t}${welfare ? "\n" + welfare : ""}${notices ? "\n" + notices : ""}${legacyMcpReminder(f)}\n${statusFooter(f, now)}${tip ? "\n" + tip : ""}`;
 };
+
+/** 旧 agent 链接仍在用的农场：在状态里提醒迁移到统一 doorbell MCP（只对未迁移的农场出现一次一行）。 */
+const legacyMcpReminder = (f) =>
+    f.agentKey && !f.doorbellMcpMigration
+        ? "\n🔗 这个农场还在用旧的 /a 链接。社区已统一到 doorbell MCP 连接，具体迁移步骤见 QQ 群群精华消息。"
+        : "";
 
 export function fmtHarvest(r, harvesterId) {
     const byDesigner = !!harvesterId && r.crop?.designerId === harvesterId; // 收的人是否就是设计者
