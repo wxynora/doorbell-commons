@@ -237,7 +237,10 @@ export class GameService {
     room.phase = "playing";
     this.save(room, true);
     const started = await advanceFlyingChessAutoPlay(room,this.engine,next=>this.save(next),()=>this.current(roomId));
-    if(started!==room)return this.playerView(started,actor);
+    if(started!==room){
+      await this.settlePendingOutcome(started);
+      return this.playerView(started,actor);
+    }
     return this.playerView(room, actor);
   }
 
@@ -296,7 +299,13 @@ export class GameService {
     const advanced = await advanceDoudizhuPasses(room,this.engine,next=>this.save(next),()=>this.current(roomId));
     if(advanced!==room)return this.playerView(advanced,actor);
     const autoPlayed = await advanceFlyingChessAutoPlay(room,this.engine,next=>this.save(next),()=>this.current(roomId));
-    if(autoPlayed!==room)return this.playerView(autoPlayed,actor);
+    if(autoPlayed!==room){
+      // A system move can be the winning move: settle right here, exactly like the
+      // player path does, so the settlement bell fires instead of waiting for a
+      // later page view that may never come.
+      await this.settlePendingOutcome(autoPlayed);
+      return this.playerView(autoPlayed,actor);
+    }
     return applied ? { ...this.lobbyView(room), game: applied.actorView, settlement: settlementView(room) } : this.playerView(room, actor);
   }
 
