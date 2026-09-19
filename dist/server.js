@@ -1,4 +1,6 @@
 import { appendCareerStatusNotices } from "./career/exam-status.js";
+import { isMidAutumnOption, runMidAutumnTogether, midAutumnEntryText } from './mid-autumn-orders/together.js';
+import { createMidAutumnRuntime } from './mid-autumn-orders/runtime.js';
 import { isNpcMotionChoice, npcMotionChoiceReceipt, appendNpcMotionReceipt } from './domain/glimmer/npc-motion.js';
 import { glimmerContentEditor } from './content.js';
 // 开放 HTTP 接口（node:http，零依赖）。业务逻辑复用 game.ts，保证与 CLI 同一套规则。
@@ -31,7 +33,7 @@ import { runFishing } from "./fishing.js";
 import { runGlimmer } from "./glimmer.js";
 import { advancePublicExpedition, checkPublicContribution, currentPublicTask, findPublicDish, findPublicHarvestPlot, findPublicWaterTarget, markPublicTrialPlot, publicExpeditionStatusLine, publicExpeditionText, recordPublicContribution, recordPublicPlantEncounter, runPublicChoice, takePublicAiNotices, takePublicDish } from "./public-expedition.js";
 import { qixi2026CompletionText, recordQixi2026Progress, recordQixi2026StealAttempt } from "./qixi-2026.js";
-import { recordMidAutumnSeedProgress, midAutumnSeedCompletionText, midAutumnSeedEntryText } from './mid-autumn-seeds.js';
+import { recordMidAutumnSeedProgress, midAutumnSeedCompletionText } from './mid-autumn-seeds.js';
 import { isQixiLantern2026Active, qixiLantern2026StatusText, reconcileQixiLantern2026Farm, recordQixiLantern2026FarmAction, runQixiLantern2026Ai, submitQixiLantern2026Dish } from "./qixi-lantern-2026.js";
 import { AGENT_HEADERS, RequestBodyError, clientIp, jsonOut, readBody, smartParams, textOut } from "./server/http.js";
 import { createAssetHandler } from "./server/assets.js";
@@ -70,6 +72,9 @@ function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
     if (detention && !detentionAllowsFarmAction(action))
         return { status: 400, json: { ok: false, code: "RESIDENT_DETAINED", text: detentionBlockedFarmActionText(detention) } };
     if (isNpcMotionChoice(action, params)) return npcMotionChoiceReceipt(farm, params.option, now, {save, view: farmView, detail});
+    if (action === 'together' && isMidAutumnOption(params.option)) {
+        return runMidAutumnTogether(activeLingyeWorldDatabase, farm.id, params.option, now, null, (database, options) => createMidAutumnRuntime(database, {...options, backend: activeLingyeWorldBackend}));
+    }
     const careerBenefits = farmDoorbellKitchenCareerBenefits(
         activeLingyeWorldDatabase,
         activeLingyeWorldBackend,
@@ -108,7 +113,7 @@ function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
         : { ...body, ...(mysteryMerchantBuy ? { by: farm.id } : {}), token: farm.token };
     const result = runFarm(target, action, injected, social ? farm.id : body.id, now, { detail, careerBenefits });
     if (action === 'together' && body.option === undefined && result.json?.ok === true) {
-        const entry = midAutumnSeedEntryText(now, farm);
+        const entry = midAutumnEntryText(now, farm);
         if (entry) result.json.text = `${result.json.text}\n\n${entry}`;
     }
     if (action === "status" && result.json?.ok === true) {

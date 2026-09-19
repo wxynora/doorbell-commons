@@ -1,4 +1,5 @@
 import { handleGlimmerEditor } from "./glimmer-editor.js";
+import { handleDoorbellMidAutumn } from "./mid-autumn.js";
 import { handleDoorbellGameEconomyBalances, handleDoorbellGameEconomySettle } from "./game-economy.js";
 import { handleDoorbellLoungePet } from "./lounge-pet.js";
 import { handleDailyReporterTransfer } from "./daily-transfer.js";
@@ -80,6 +81,13 @@ import {
 
 export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExecutor, careerBenefitsForFarm, constableInterviewRuntime, gachaRuntime) {
     return async function handleDoorbellInternal(req, res, parts, method) {
+        if (parts.length === 4 && parts[0] === 'internal' && parts[1] === 'doorbell' && parts[2] === 'mid-autumn' && ['ai', 'human'].includes(parts[3])) {
+            await handleDoorbellMidAutumn(req, res, method, {
+                database: constableInterviewRuntime?.database,
+                backend: constableInterviewRuntime?.backend,
+            }, parts[3]);
+            return true;
+        }
         if (parts.join("/") === "internal/doorbell/glimmer-editor") { await handleGlimmerEditor(req,res,method); return true; }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "lounge-pet" && parts.length === 3) {
             await handleDoorbellLoungePet(req, res, method, constableInterviewRuntime);

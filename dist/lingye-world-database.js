@@ -67,6 +67,7 @@ import { reporterWorkflowForJob } from "./career/reporter-newsroom-service.js";
 import { reporterHasCompletedWork } from "./career/reporter-submission-work.js";
 import { advanceReporterBoardSnapshotDay, amendReporterBoardSnapshotsForCommittedFarms, installReporterBoardSnapshotSchema } from "./career/reporter-board-snapshot.js";
 import { installLingyeNpcSchema } from "./npc/schema.js";
+import { installMidAutumnSchema } from "./mid-autumn-orders/schema.js";
 import { advanceLingyeNpcWorld } from "./npc/world-schedule.js";
 import { createLingyeNpcBusinessObserver } from "./npc/business-affinity-integration.js";
 
@@ -281,6 +282,7 @@ export function installLingyeWorldSchema(database) {
     ensureChefCommerceSchema(database);
     ensureChefStoreSchema(database);
     installReporterBoardSnapshotSchema(database);
+    installMidAutumnSchema(database);
 }
 
 export function openLingyeWorldDatabase(databasePath = DEFAULT_LINGYE_WORLD_DATABASE_PATH) {
