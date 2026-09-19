@@ -1,6 +1,7 @@
 import { settlementView } from './game-settlement-result.js';
 import {forfeitSeat,forfeitDeltas} from './game-forfeit.js';
 import {advanceDoudizhuPasses} from './doudizhu-forced-pass.js';
+import {advanceFlyingChessAutoPlay} from './flying-chess-auto-play.js';
 import { randomUUID } from "node:crypto";
 import {nextGameDeadline,timeoutCommand,isEndedWaitingRoom} from './game-timeout.js';
 import { GameEconomyError, type GameEconomyPort } from "./game-economy.js";
@@ -235,6 +236,8 @@ export class GameService {
     room.snapshot = await this.engine.create(room.kind, room.roomId, room.seats);
     room.phase = "playing";
     this.save(room, true);
+    const started = await advanceFlyingChessAutoPlay(room,this.engine,next=>this.save(next),()=>this.current(roomId));
+    if(started!==room)return this.playerView(started,actor);
     return this.playerView(room, actor);
   }
 
@@ -292,6 +295,8 @@ export class GameService {
     await this.settlePendingOutcome(room);
     const advanced = await advanceDoudizhuPasses(room,this.engine,next=>this.save(next),()=>this.current(roomId));
     if(advanced!==room)return this.playerView(advanced,actor);
+    const autoPlayed = await advanceFlyingChessAutoPlay(room,this.engine,next=>this.save(next),()=>this.current(roomId));
+    if(autoPlayed!==room)return this.playerView(autoPlayed,actor);
     return applied ? { ...this.lobbyView(room), game: applied.actorView, settlement: settlementView(room) } : this.playerView(room, actor);
   }
 
