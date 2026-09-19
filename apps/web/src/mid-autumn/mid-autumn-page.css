@@ -1,0 +1,48 @@
+.mid-autumn-page {
+  position: fixed;
+  z-index: 220;
+  inset: 0;
+  min-width: 320px;
+  background: #f4ece9;
+}
+
+.mid-autumn-page__status {
+  position: fixed;
+  z-index: 4;
+  top: max(18px, env(safe-area-inset-top, 0px) + 10px);
+  left: 50%;
+  max-width: calc(100% - 40px);
+  margin: 0;
+  padding: 8px 14px;
+  border: 1px solid rgba(151, 117, 126, 0.24);
+  border-radius: 999px;
+  color: #795f69;
+  background: rgba(255, 250, 246, 0.9);
+  box-shadow: 0 4px 16px rgba(113, 82, 91, 0.08);
+  font: 13px/1.4 "Noto Serif SC", "Songti SC", serif;
+  text-align: center;
+  transform: translateX(-50%);
+  pointer-events: auto;
+}
+
+.mid-autumn-page__back {
+  position: fixed;
+  z-index: 5;
+  top: max(18px, env(safe-area-inset-top, 0px) + 10px);
+  left: max(14px, env(safe-area-inset-left, 0px) + 10px);
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  color: #795f69;
+  background: rgba(255, 250, 246, 0.86);
+  box-shadow: 0 4px 16px rgba(113, 82, 91, 0.08);
+  cursor: pointer;
+  font: 30px/1 "Georgia", serif;
+}
+
+.mid-autumn-page__back:focus-visible {
+  outline: 2px solid #947a94;
+  outline-offset: 2px;
+}
+

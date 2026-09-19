@@ -62,6 +62,7 @@ import { FarmMcpMigrationClient } from "./mcp-farm-migration-client.js";
 import { LingyeMcpActionClient } from "./mcp-lingye-action-client.js";
 import { DoorbellMcpRuntime } from "./mcp-runtime.js";
 import { FarmHumanQixiMemorialClient } from "./qixi-memorial-client.js";
+import { FarmMidAutumnClient } from "./mid-autumn-client.js";
 import { OneBotGroupMembershipClient } from "./qq-group-membership.js";
 import { RegistrationAuthService } from "./registration-auth.js";
 import { ReporterDailyScheduler } from "./reporter-daily-scheduler.js";
@@ -209,6 +210,11 @@ const farmQixiMemorialReader = new FarmHumanQixiMemorialClient({
   requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
   serviceToken: serverConfig.farmServiceToken,
 });
+const midAutumnClient = new FarmMidAutumnClient({
+  apiBaseUrl: serverConfig.farmApiBaseUrl,
+  requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+  serviceToken: serverConfig.farmServiceToken,
+});
 const farmActionListAuthorityReader = new FarmActionListAuthorityClient({
   apiBaseUrl: serverConfig.farmApiBaseUrl,
   requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
@@ -236,6 +242,7 @@ const registrationAuth = new RegistrationAuthService({
   farmSmeltingActioner,
   farmLingyeReader,
   farmQixiMemorialReader,
+  midAutumnClient,
   farmConstableInterviewReader: farmConstableInterviewClient,
   farmConstableInterviewActioner: farmConstableInterviewClient,
   farmConstableInterviewPublicNoticeOpener: farmConstableInterviewClient,

@@ -1,0 +1,76 @@
+/* A single 390-wide paper canvas: art, cake slots and controls scale together. */
+.moon-memorial-viewport {
+  position: fixed;
+  inset: 0;
+  overflow: auto;
+  background: #eeeaf0;
+  color: #67546a;
+  font-family: "MoonDiySerif", "Songti SC", serif;
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+}
+.moon-memorial-frame { width: min(100%, 480px); margin: 0 auto; }
+.moon-memorial-space { position: relative; }
+.moon-memorial-paper {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 390px;
+  min-height: 844px;
+  padding: 0 0 26px;
+  box-sizing: border-box;
+  transform-origin: left top;
+  background: #f6f2f7 url("/lingye/memorial/memorial-entry-paper-v1.png") center / 100% 100% no-repeat;
+  isolation: isolate;
+}
+.moon-memorial-paper button { font: inherit; color: inherit; cursor: pointer; border: 0; background: transparent; }
+.moon-memorial-paper button:focus-visible { outline: 2px solid #947a94; outline-offset: 2px; }
+.moon-memorial-heading { height: 112px; box-sizing: border-box; padding: 16px 0 0 64px; }
+.moon-memorial-heading p { margin: 0 0 3px; font-size: 10px; letter-spacing: 3px; color: #89748b; }
+.moon-memorial-heading h1 { margin: 0; font: 400 45px/1.25 "MoonDiySong", "MoonDiySerif", serif; letter-spacing: 4px; color: #bb5f8f; }
+.moon-memorial-back { position: absolute; top: 28px; left: 14px; width: 44px; height: 44px; font-size: 29px !important; }
+.moon-memorial-dates { margin: 0 0 0 43px; font: 12px/1.5 Georgia, serif; letter-spacing: 1px; color: #89738b; }
+.moon-memorial-photo {
+  position: relative;
+  z-index: 1;
+  width: 244px;
+  height: 148px;
+  box-sizing: border-box;
+  margin: 17px 0 0 66px;
+  padding: 7px 7px 24px;
+  background: #fffbf5;
+  transform: rotate(-4deg);
+  box-shadow: 1px 4px 9px #62527120;
+}
+.moon-memorial-photo::before, .moon-memorial-letter::before {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  width: 63px;
+  height: 18px;
+  background: #b9aac5a6;
+  clip-path: polygon(2% 0, 98% 3%, 100% 95%, 0 100%);
+  transform: rotate(5deg);
+}
+.moon-memorial-photo::before { top: -9px; right: 31px; }
+.moon-memorial-photo img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 50% 42%; }
+.moon-memorial-photo figcaption { margin-top: 4px; text-align: center; font-size: 10px; letter-spacing: 2px; color: #8b778c; }
+.moon-memorial-keepsake { position: relative; padding-bottom: 56px; }
+.moon-memorial-collage { position: absolute; z-index: 2; width: 163px; height: 170px; bottom: 0; right: 16px; }
+.moon-memorial-lid { position: absolute; width: 83px; height: 83px; top: 0; right: 0; transform: rotate(13deg); }
+.moon-memorial-seal { position: absolute; z-index: 3; width: 23px; height: 38px; object-fit: contain; top: 7px; left: -10px; transform: rotate(-8deg); }
+.moon-memorial-box { position: absolute; z-index: 2; width: 130px; height: 130px; left: 0; top: 21px; transform: rotate(-9deg); }
+.moon-memorial-box-base { position: absolute; inset: 0; width: 100%; height: 100%; }
+.moon-memorial-box-slots { position: absolute; inset: 11.03%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 3.04%; }
+.moon-memorial-box-slot { min-width: 0; min-height: 0; }
+.moon-memorial-box-slot svg { display: block; width: 100%; height: 100%; }
+.moon-memorial-gift-label { position: absolute; z-index: 3; bottom: 0; right: 5px; margin: 0; padding: 4px 8px; background: #faf2e2; color: #907569; font-size: 10px; font-weight: 400; letter-spacing: 1px; transform: rotate(3deg); }
+.moon-memorial-letter { position: relative; display: flex; flex-direction: column; margin: 28px 29px 0 43px; padding: 33px 26px 128px; min-height: 390px; box-sizing: border-box; background: #fffaf0; border: 1px solid #dacdb7; outline: 3px solid #fffaf0; box-shadow: 1px 3px 5px #705b6c17; transform: rotate(1deg); }
+.moon-memorial-letter h2 { margin: 0 0 25px; font-size: 15px; font-weight: 400; letter-spacing: 3px; color: #937779; }
+.moon-memorial-letter::before { top: -11px; left: 87px; width: 52px; background: #c9b7bfa3; transform: rotate(-7deg); }
+.moon-memorial-letter p { margin: 0; font-size: 16px; line-height: 2; letter-spacing: 1px; color: #79625f; white-space: pre-wrap; overflow-wrap: anywhere; }
+.moon-memorial-letter footer { margin-top: auto; padding-top: 24px; font: 10px/1.4 Georgia, serif; letter-spacing: 1px; text-align: right; color: #9b8483; }
+.moon-memorial-empty { margin: 80px 38px; text-align: center; font-size: 14px; }
+.moon-memorial-pages { display: flex; align-items: center; justify-content: center; gap: 20px; margin-top: 12px; font: 12px Georgia, serif; }
+.moon-memorial-pages button { width: 44px; height: 44px; font-size: 24px; }
+.moon-memorial-pages button:disabled { opacity: .3; cursor: default; }
+

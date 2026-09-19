@@ -1,0 +1,736 @@
+@font-face {
+  font-family: "MoonDiySong";
+  src: url("/lingye/memorial/qixi-archive/moqu-gufeng-ti.ttf") format("truetype");
+  font-display: swap;
+}
+@font-face {
+  font-family: "MoonDiySerif";
+  src: url("/mid-autumn/diy/noto-serif-sc-400.ttf") format("truetype");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "MoonDiySerif";
+  src: url("/mid-autumn/diy/noto-serif-sc-600.ttf") format("truetype");
+  font-weight: 600;
+  font-display: swap;
+}
+.moon-diy-viewport {
+  position: fixed;
+  inset: 0;
+  background: #f4ece9;
+  color: #665449;
+  font-family: "MoonDiySerif", "Songti SC", "SimSun", serif;
+}
+.moon-diy-frame {
+  position: absolute;
+  inset: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+    env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+}
+.moon-diy-stage {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 390px;
+  height: 844px;
+  overflow: hidden;
+  transform-origin: center;
+  background:
+    #fff9f0 url("/mid-autumn/diy/workshop-background-v1.png") center / 100% 100% no-repeat;
+}
+.moon-diy-stage button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.moon-diy-stage button:focus-visible,
+.moon-diy-stage input:focus-visible {
+  outline: 2px solid #945469;
+  outline-offset: 3px;
+}
+.moon-diy-header {
+  position: absolute;
+  top: 22px;
+  left: 20px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.moon-diy-back {
+  width: 44px;
+  height: 52px;
+  border: 0;
+  background: transparent;
+  font-size: 38px !important;
+}
+.moon-diy-header > div {
+  position: absolute;
+  top: 10px;
+  left: 44px;
+  right: 0;
+  text-align: left;
+  color: #5e493f;
+}
+.moon-diy-header p {
+  margin: 0;
+  color: #9a685f;
+  font-size: 0.79rem;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  line-height: 1.5;
+}
+.moon-diy-header h1 {
+  font-family: "Noto Serif SC", "Songti SC", "STSong", serif;
+  margin: 2px 0 0;
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  line-height: 1.18;
+}
+.moon-diy-seal {
+  position: absolute;
+  right: 12px;
+  top: 112px;
+  width: 64px;
+  height: 87px;
+  object-fit: contain;
+  margin-left: auto;
+  opacity: 0.76;
+  filter: saturate(0.65);
+  transform: rotate(5deg);
+}
+.moon-diy-art {
+  position: absolute;
+  top: 99px;
+  left: 22px;
+  width: 346px;
+  height: 248px;
+}
+.moon-diy-plate {
+  position: absolute;
+  width: 244px;
+  height: 219px;
+  left: 14px;
+  top: 9px;
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse,
+    #fff9ee 0 56%,
+    #ecdccb 57% 58%,
+    #fffcf7 59% 66%,
+    #c7d7ca 67% 68%,
+    #f5faf4 69% 72%,
+    transparent 73%
+  );
+  filter: drop-shadow(0 9px 8px #88706421);
+}
+.moon-diy-plate > svg {
+  width: 226px;
+  height: 226px;
+  position: absolute;
+  left: 9px;
+  top: -17px;
+}
+.moon-diy-cut {
+  position: absolute;
+  right: -3px;
+  bottom: 8px;
+  width: 136px;
+  text-align: center;
+  transform: rotate(-7deg);
+}
+.moon-diy-cut svg {
+  width: 136px;
+  height: 136px;
+  display: block;
+  filter: drop-shadow(0 4px 3px #86674b22);
+}
+.moon-diy-cut span {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 2px;
+  margin-top: -23px;
+  color: #977869;
+}
+.moon-diy-art-note {
+  position: absolute;
+  left: 8px;
+  top: 10px;
+  writing-mode: vertical-rl;
+  font-size: 11px;
+  letter-spacing: 3px;
+  color: #ab8d75;
+}
+.moon-diy-name {
+  position: absolute;
+  top: 332px;
+  left: 0;
+  width: 100%;
+  text-align: center;
+}
+.moon-diy-name h2 {
+  margin: 0;
+  font-size: 20px;
+  letter-spacing: 1px;
+  font-weight: 400;
+}
+.moon-diy-name p {
+  margin: 7px 0 0;
+  font-size: 12px;
+  color: #9a8071;
+  letter-spacing: 2px;
+}
+.moon-diy-options {
+  position: absolute;
+  top: 392px;
+  left: 22px;
+  width: 346px;
+  height: 184px;
+  background: #fffdf6e8;
+  border-top: 1px solid #d8c8ab;
+  border-bottom: 1px solid #e1d4bb;
+}
+.moon-diy-tabs {
+  display: flex;
+  height: 43px;
+  border-bottom: 1px solid #e9dfce;
+}
+.moon-diy-tabs button {
+  position: relative;
+  width: 25%;
+  border: 0;
+  background: none;
+  font-size: 16px;
+  letter-spacing: 3px;
+}
+.moon-diy-tabs button[aria-selected="true"] {
+  color: #a25f70;
+}
+.moon-diy-tabs button[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  width: 28px;
+  height: 3px;
+  background: #cb949a;
+  bottom: -1px;
+  left: calc(50% - 14px);
+  border-radius: 3px;
+}
+.moon-diy-tab-content {
+  padding: 12px 8px 0;
+  height: 140px;
+}
+.moon-diy-fillings {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+}
+.moon-diy-fillings button {
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 5px 1px;
+  border-radius: 9px;
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+}
+.moon-diy-fillings button[aria-pressed="true"],
+.moon-diy-shapes button[aria-pressed="true"],
+.moon-diy-patterns button[aria-pressed="true"] {
+  background: #f6e9e5;
+  border-color: #dcb5ac;
+}
+.moon-diy-fillings strong {
+  font-size: 14px;
+  font-weight: 400;
+}
+.moon-diy-fillings small {
+  font-size: 9px;
+  color: #9f8679;
+}
+.moon-diy-filling-dot {
+  width: 26px;
+  height: 22px;
+  border-radius: 50% 50% 43% 43%;
+  background: radial-gradient(ellipse at 35% 25%, var(--filling-light), var(--filling));
+  box-shadow: inset 0 -2px 0 #4b304920;
+}
+.moon-diy-yolk {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: relative;
+  height: 51px;
+  padding: 0 9px;
+  cursor: pointer;
+}
+.moon-diy-yolk strong {
+  font-size: 13px;
+  font-weight: 400;
+}
+.moon-diy-yolk small {
+  font-size: 10px;
+  color: #a68c7b;
+  margin-left: 9px;
+}
+.moon-diy-yolk input {
+  position: absolute;
+  right: 4px;
+  width: 50px;
+  height: 44px;
+  opacity: 0;
+  cursor: pointer;
+}
+.moon-diy-yolk i {
+  pointer-events: none;
+  width: 39px;
+  height: 22px;
+  border-radius: 20px;
+  background: #d5cdc2;
+  padding: 3px;
+}
+.moon-diy-yolk i::after {
+  content: "";
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fffaf0;
+  box-shadow: 0 1px 3px #78644326;
+}
+.moon-diy-yolk input:checked + i {
+  background: #b6c6a9;
+}
+.moon-diy-yolk input:checked + i::after {
+  transform: translateX(17px);
+  background: #fff4d3;
+}
+.moon-diy-yolk input:focus-visible + i {
+  outline: 2px solid #945469;
+  outline-offset: 3px;
+}
+.moon-diy-shapes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 9px;
+}
+.moon-diy-shapes button {
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  height: 117px;
+  display: grid;
+  justify-items: center;
+}
+.moon-diy-shapes svg {
+  width: 85px;
+  height: 90px;
+}
+.moon-diy-shapes strong,
+.moon-diy-patterns strong {
+  font-size: 14px;
+  font-weight: 400;
+}
+.moon-diy-patterns {
+  max-height: 128px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 7px;
+}
+.moon-diy-patterns button {
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  height: 61px;
+  display: grid;
+  place-items: center;
+  padding: 4px 2px;
+  color: #b68c5e;
+}
+.moon-diy-patterns svg {
+  width: 34px;
+  height: 34px;
+}
+.moon-diy-bake {
+  padding: 7px 12px;
+}
+.moon-diy-bake label {
+  font-size: 14px;
+}
+.moon-diy-bake label span {
+  float: right;
+  font-size: 11px;
+  color: #a5856b;
+}
+.moon-diy-bake-colors {
+  display: flex;
+  justify-content: space-between;
+  margin: 14px 0 2px;
+}
+.moon-diy-bake-colors i {
+  width: 25px;
+  height: 18px;
+  border-radius: 50%;
+  background: #f7dfb3;
+}
+.moon-diy-bake-colors i:nth-child(2) {
+  background: #e4ad65;
+}
+.moon-diy-bake-colors i:last-child {
+  background: #b27747;
+}
+.moon-diy-bake input {
+  width: 100%;
+  height: 26px;
+  accent-color: #b88169;
+  cursor: pointer;
+}
+.moon-diy-bake-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #9a7a65;
+}
+.moon-diy-gift {
+  position: absolute;
+  top: 593px;
+  left: 24px;
+  width: 342px;
+}
+.moon-diy-gift header {
+  position: absolute;
+  left: 155px;
+  right: 0;
+  top: 17px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 3px 9px;
+}
+.moon-diy-gift h3 {
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 2px;
+  margin: 0;
+}
+.moon-diy-gift header > span {
+  font-size: 12px;
+  color: #9b8074;
+}
+.moon-diy-slots {
+  display: grid;
+  width: 138px;
+  height: 138px;
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 4px;
+  background: url("/mid-autumn/diy/gift-base-v1.png") center / 100% 100% no-repeat;
+  padding: 18px;
+  border: 0;
+  border-radius: 4px;
+  filter: drop-shadow(0 3px 4px #b69b8a33);
+}
+.moon-diy-slots button {
+  height: 49px;
+  min-width: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  border-radius: 4px;
+}
+.moon-diy-slots button[aria-pressed="true"] {
+  border: 1px dashed #b9848e;
+  background: #fff3ee30;
+}
+.moon-diy-slots svg {
+  width: 51px;
+  height: 51px;
+}
+
+.moon-diy-stage .moon-diy-pack-button {
+  position: absolute;
+  left: 155px;
+  top: 64px;
+  width: 160px;
+  height: 44px;
+  border: 1px solid #baa899;
+  border-radius: 8px;
+  background: #fffaf1;
+  color: #775f51;
+  font-size: 14px;
+  letter-spacing: 1px;
+}
+.moon-diy-footer button:disabled {
+  opacity: 0.48;
+  cursor: default;
+}
+.moon-diy-slot-note {
+  position: absolute;
+  left: 155px;
+  top: 116px;
+  margin: 0;
+  font-size: 11px;
+  color: #986e64;
+}
+.moon-diy-pack-scene {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  background: #fff8f0 url("/mid-autumn/diy/workshop-background-v1.png") center / 100% 100%;
+  text-align: center;
+}
+.moon-diy-pack-scene header {
+  position: absolute;
+  top: 112px;
+  left: 0;
+  width: 100%;
+}
+.moon-diy-pack-scene header p {
+  color: #ac8b76;
+  font-size: 13px;
+  letter-spacing: 4px;
+}
+.moon-diy-pack-scene h2 {
+  color: #7a5e51;
+  font-size: 25px;
+  letter-spacing: 3px;
+  font-weight: 400;
+}
+.moon-diy-pack-box {
+  position: absolute;
+  width: 310px;
+  height: 310px;
+  left: 40px;
+  top: 266px;
+}
+.moon-diy-pack-base,
+.moon-diy-pack-lid,
+.moon-diy-pack-ribbon {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.moon-diy-pack-base {
+  z-index: 1;
+}
+.moon-diy-pack-cakes {
+  position: absolute;
+  z-index: 2;
+  inset: 42px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 10px;
+}
+.moon-diy-pack-cakes > div {
+  animation: moon-diy-tuck 650ms ease-out both;
+  animation-delay: calc(var(--order) * 90ms);
+}
+.moon-diy-pack-cakes svg {
+  width: 100%;
+  height: 100%;
+}
+.moon-diy-pack-lid {
+  z-index: 3;
+  opacity: 1;
+  transform: translateY(0) rotate(0);
+  transition:
+    transform 750ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 600ms;
+}
+.phase-gather .moon-diy-pack-lid {
+  opacity: 0;
+  transform: translateY(-180px) rotate(-9deg);
+}
+.moon-diy-pack-ribbon {
+  z-index: 4;
+  transition:
+    transform 650ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 650ms;
+}
+.phase-gather .moon-diy-pack-ribbon,
+.phase-lid .moon-diy-pack-ribbon {
+  opacity: 0;
+  transform: scale(1.3);
+}
+.phase-ribbon .moon-diy-pack-ribbon,
+.phase-done .moon-diy-pack-ribbon {
+  opacity: 1;
+  transform: scale(1);
+}
+.phase-done .moon-diy-pack-box {
+  filter: drop-shadow(0 12px 10px #ad897935);
+}
+.moon-diy-pack-caption {
+  position: absolute;
+  top: 609px;
+  left: 0;
+  width: 100%;
+  font-size: 16px;
+  letter-spacing: 3px;
+  color: #9a7b68;
+}
+.moon-diy-pack-scene > button {
+  position: absolute;
+  left: 85px;
+  top: 690px;
+  width: 220px;
+  height: 48px;
+  border: 1px solid #c5a69f;
+  border-radius: 26px;
+  background: #fffaf2;
+  font-size: 15px;
+}
+@keyframes moon-diy-tuck {
+  from {
+    opacity: 0;
+    transform: translateY(-70px) scale(1.2) rotate(-8deg);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotate(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .moon-diy-pack-cakes > div {
+    animation: none;
+  }
+  .moon-diy-pack-lid,
+  .moon-diy-pack-ribbon {
+    transition: none;
+  }
+}
+.moon-diy-slot-plus {
+  font-size: 23px;
+  font-weight: 300;
+  color: #bb9a91;
+}
+.moon-diy-slots small {
+  font-size: 10px;
+  color: #ac9084;
+}
+.moon-diy-footer {
+  position: absolute;
+  top: 752px;
+  left: 24px;
+  width: 342px;
+  text-align: center;
+}
+.moon-diy-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.moon-diy-footer button {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid #966b73;
+  border-radius: 8px;
+  background: #a87780;
+  color: #fffaf3;
+  box-shadow: none;
+  font-size: 16px;
+  letter-spacing: 2px;
+}
+.moon-diy-footer button span {
+  margin-left: 12px;
+}
+.moon-diy-stage button:active {
+  filter: brightness(0.96);
+}
+
+.moon-diy-editable-art {
+  touch-action: none;
+  cursor: move;
+  overflow: visible;
+}
+.moon-diy-layout-editor {
+  position: fixed;
+  z-index: 30;
+  bottom: 10px;
+  left: 10px;
+  width: min(330px, calc(100vw - 20px));
+  background: #fffbf5;
+  border: 1px solid #bb9293;
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: 0 5px 25px #62504c22;
+  font:
+    12px / 1.5 -apple-system,
+    BlinkMacSystemFont,
+    "PingFang SC",
+    sans-serif;
+  color: #5e4648;
+}
+.moon-diy-layout-editor header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.moon-diy-layout-editor p {
+  margin: 6px 0;
+  color: #8e7270;
+  font-size: 11px;
+}
+.moon-diy-layout-editor > label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+}
+.moon-diy-layout-editor input[type="range"] {
+  flex: 1;
+  accent-color: #ac7786;
+}
+.moon-diy-editor-position {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.moon-diy-editor-position label {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.moon-diy-editor-position input {
+  width: 51px;
+  padding: 4px;
+  border: 1px solid #d7c3b9;
+  border-radius: 4px;
+  font: inherit;
+}
+.moon-diy-layout-editor button {
+  font: inherit;
+  color: inherit;
+  border: 1px solid #cdb1ad;
+  border-radius: 5px;
+  padding: 5px 9px;
+  background: #f7ebe5;
+  cursor: pointer;
+}
+.moon-diy-layout-editor > button {
+  margin-top: 8px;
+}
+.moon-diy-layout-editor > small {
+  display: block;
+  margin-top: 5px;
+  font-size: 10px;
+  color: #907577;
+}
+

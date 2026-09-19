@@ -20,6 +20,7 @@ import type {
   BoundQixiMemorialRead,
   BoundTogetherRead,
 } from "../auth/lingye-client";
+import type { MidAutumnView } from "../mid-autumn/api";
 import { DOORBELL_FARM_PATH } from "../routes";
 import { candidateTwoHtml } from "./candidate-two-source";
 import { npcSceneMarkup, npcSceneScript, NPC_SCENE_STYLES } from "../npc/scene";
@@ -428,6 +429,7 @@ export type CandidateTwoViewState =
       lingye: {
         glimmer: CandidateTwoLingyeReadState<BoundGlimmerRead>;
         memorial: CandidateTwoLingyeReadState<BoundQixiMemorialRead>;
+        midAutumn: CandidateTwoLingyeReadState<MidAutumnView>;
         together: CandidateTwoLingyeReadState<BoundTogetherRead>;
       };
     };
@@ -1129,6 +1131,7 @@ export function buildCandidateTwoDemoPreset(
       lingye: {
         glimmer: { stage: "idle" },
         memorial: { stage: "idle" },
+        midAutumn: { stage: "idle" },
         together: { stage: "idle" },
       },
     },
@@ -1279,6 +1282,7 @@ export type CandidateTwoAction =
   | { type: "lingye-glimmer-open" }
   | { type: "lingye-daily-open" }
   | { type: "lingye-memorial-open" }
+  | { type: "lingye-mid-autumn-open" }
   | { type: "lingye-together-open" }
   | { type: "lingye-presence-change"; active: boolean; mapActive: boolean }
   | { type: "home-mailbox-list"; category: MailboxCategory | null; page: number }
@@ -1324,6 +1328,7 @@ const candidateTwoActionKeys = {
   "lingye-glimmer-open": ["type"],
   "lingye-daily-open": ["type"],
   "lingye-memorial-open": ["type"],
+  "lingye-mid-autumn-open": ["type"],
   "lingye-together-open": ["type"],
   "lingye-presence-change": ["type", "active", "mapActive"],
   "home-mailbox-list": ["type", "category", "page"],
@@ -1607,6 +1612,7 @@ export function parseCandidateTwoAction(value: unknown): CandidateTwoAction | nu
     type === "lingye-glimmer-open" ||
     type === "lingye-daily-open" ||
     type === "lingye-memorial-open" ||
+    type === "lingye-mid-autumn-open" ||
     type === "lingye-together-open" ||
     type === "owner-profile-career-open" ||
     type === "lounge-open" ||
@@ -5001,6 +5007,19 @@ const LINGYE_PLACE_SCREENS = `
                                 <span class="candidate2-memorial-index-action">查看回忆 <span aria-hidden="true">›</span></span>
                             </span>
                         </button>
+                        <button class="candidate2-memorial-demo candidate2-mid-autumn-memorial-demo" type="button" aria-label="查看 2026 年中秋活动月满心间" onclick="openMidAutumnActivity()" data-memorial-event="mid-autumn" data-memorial-category="festival" data-memorial-editor-name="中秋活动票券" hidden>
+                            <span class="candidate2-memorial-index-number"><strong>02</strong><small>2026</small></span>
+                            <span class="candidate2-memorial-index-copy">
+                                <small>节日活动</small>
+                                <strong>中秋活动</strong>
+                                <span>月满心间</span>
+                                <time datetime="2026-09-24/2026-09-26">2026.09.24—09.26</time>
+                            </span>
+                            <span class="candidate2-memorial-index-banner">
+                                <img src="/mid-autumn/diy/event-home-selected.png" alt="" width="902" height="1744" draggable="false">
+                                <span class="candidate2-memorial-index-action">进入活动 <span aria-hidden="true">›</span></span>
+                            </span>
+                        </button>
                     </main>
                     </div>
                 </div>
@@ -7909,12 +7928,17 @@ const LINGYE_SCRIPT = `
         sendAction({ type: 'lingye-memorial-open' });
     }
 
+    function openMidAutumnActivity() {
+        sendAction({ type: 'lingye-mid-autumn-open' });
+    }
+
     function openLingyeDaily() {
         sendAction({ type: 'lingye-daily-open' });
     }
 
     let lingyeMemorialFilter = 'all';
     let qixiMemorialReady = false;
+    let midAutumnMemorialReady = false;
 
     function setLingyeMemorialFilter(filter) {
         if (filter !== 'all' && filter !== 'festival') return;
@@ -7925,7 +7949,11 @@ const LINGYE_SCRIPT = `
             button.setAttribute('aria-pressed', String(active));
         });
         document.querySelectorAll('.candidate2-memorial-list [data-memorial-category]').forEach((card) => {
-            card.hidden = (!window.__doorbellCandidateDemo && !qixiMemorialReady)
+            const ready = card.dataset.memorialEvent === 'mid-autumn'
+                ? midAutumnMemorialReady
+                : qixiMemorialReady;
+            card.hidden = (window.__doorbellCandidateDemo && card.dataset.memorialEvent === 'mid-autumn')
+                || (!window.__doorbellCandidateDemo && !ready)
                 || (filter !== 'all' && card.dataset.memorialCategory !== filter);
         });
     }
@@ -10372,10 +10400,24 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         setLingyeMemorialFilter(lingyeMemorialFilter);
     }
 
+    function applyLiveMidAutumnState(readState) {
+        const card = document.querySelector('.candidate2-mid-autumn-memorial-demo');
+        if (!readState || readState.stage !== 'ready') {
+            midAutumnMemorialReady = false;
+            if (card) card.hidden = true;
+            setLingyeMemorialFilter(lingyeMemorialFilter);
+            return;
+        }
+        midAutumnMemorialReady = readState.data.phase === 'open' || readState.data.phase === 'ended';
+        if (card) card.hidden = !midAutumnMemorialReady;
+        setLingyeMemorialFilter(lingyeMemorialFilter);
+    }
+
     function applyLiveLingyeState(lingye) {
         if (!lingye) return;
         applyLiveGlimmerState(lingye.glimmer);
         applyLiveQixiMemorialState(lingye.memorial);
+        applyLiveMidAutumnState(lingye.midAutumn);
         applyLiveTogetherState(lingye.together);
     }
 

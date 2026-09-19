@@ -7,6 +7,7 @@ import {
 import { registerLoungeRoutes } from "./lounge-routes.js";
 import { registerFarmLayoutShareRoutes } from "./farm-layout-sharing/routes.js";
 import { installFaultReports, type FaultReports } from "./fault-reports/collector.js";
+import { registerMidAutumnRoutes } from "./mid-autumn-routes.js";
 import { registerHumanBulletinRoutes } from "./human-bulletin-routes.js";
 import { registerHumanNpcRoutes } from "./lingye-npc/routes.js";
 import {dailyImageUrl, registerDailyImageRoutes} from "./lingye-daily-images.js";
@@ -2065,6 +2066,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
           },
   });
   installFaultReports(app, options.faultReports);
+  registerMidAutumnRoutes(app, { registrationAuth: options.registrationAuth, secureCookies: options.secureCookies });
   app.addContentTypeParser(
     "application/x-www-form-urlencoded",
     { parseAs: "string" },

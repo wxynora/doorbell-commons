@@ -1,0 +1,626 @@
+:root {
+  color: oklch(29% 0.045 56);
+  background: #f5eee4;
+  font-family: "Noto Serif SC", "Songti SC", "STSong", serif;
+  font-synthesis: none;
+}
+
+.moon-event-viewport {
+  position: fixed;
+  inset: 0;
+  background: #f4ece9;
+  overflow: hidden;
+}
+.moon-event-stage {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform-origin: center;
+  overflow: hidden;
+  background: #fff8ee;
+}
+.moon-event-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  user-select: none;
+}
+.moon-event-entries {
+  position: absolute;
+  inset: 0;
+}
+.moon-event-entries button {
+  position: absolute;
+  padding: 0;
+  border: 0;
+  border-radius: 48px;
+  background: transparent;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.moon-event-collect { left: 85px; top: 1040px; width: 300px; height: 125px; }
+.moon-event-craft { left: 510px; top: 1245px; width: 290px; height: 125px; }
+.moon-event-entries button:active { background: #b5799220; }
+.moon-event-entries button:focus-visible { outline: 5px solid #986881; outline-offset: -5px; }
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#mooncake-merge-root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+button,
+canvas {
+  font: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible {
+  outline: 3px solid oklch(66% 0.14 71);
+  outline-offset: 3px;
+}
+
+.moon-merge-viewport {
+  position: relative;
+  width: 100%;
+  min-height: 100svh;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 76% 12%, rgba(247, 214, 151, 0.28), transparent 28%),
+    linear-gradient(148deg, #e7f1e9, #f8eee9 68%);
+}
+
+.moon-merge-safe-area {
+  position: absolute;
+  inset: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0) env(safe-area-inset-bottom, 0)
+    env(safe-area-inset-left, 0);
+  overflow: hidden;
+}
+
+.moon-merge-stage {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 402px;
+  height: 874px;
+  overflow: hidden;
+  transform-origin: center;
+  background: #fff8ee url("/mid-autumn/merge/mooncake-workshop-bg-v2.png") center / cover no-repeat;
+  box-shadow: 0 22px 70px rgba(107, 80, 57, 0.24);
+  isolation: isolate;
+}
+
+.moon-merge-stage::before {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.08),
+    transparent 42% 80%,
+    rgba(168, 113, 81, 0.04)
+  );
+  content: "";
+  opacity: 1;
+  pointer-events: none;
+}
+
+.moon-merge-stage::after {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  border: 1px solid rgba(216, 179, 117, 0.42);
+  background: none;
+  content: "";
+  opacity: 1;
+  pointer-events: none;
+}
+
+.moon-merge-moon {
+  display: none;
+  position: absolute;
+  z-index: 0;
+  top: -64px;
+  left: 50%;
+  width: 244px;
+  height: 244px;
+  border: 1px solid oklch(85% 0.08 80 / 0.54);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 36% 34%, oklch(77% 0.045 78 / 0.2) 0 4%, transparent 5%),
+    radial-gradient(circle at 65% 60%, oklch(76% 0.045 78 / 0.18) 0 7%, transparent 8%),
+    oklch(96% 0.052 91 / 0.78);
+  box-shadow: 0 0 38px oklch(96% 0.05 91 / 0.5);
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.moon-merge-heading {
+  position: absolute;
+  z-index: 5;
+  top: 26px;
+  left: 24px;
+  width: 354px;
+  min-height: 104px;
+  padding: 14px 92px 14px 44px;
+  color: #5e493f;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.82);
+}
+
+.moon-merge-heading::before {
+  content: none;
+}
+
+.moon-merge-heading p,
+.moon-merge-heading h1 {
+  margin: 0;
+}
+
+.moon-merge-heading p {
+  color: #9a685f;
+  font-size: 0.79rem;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  line-height: 1.5;
+}
+
+.moon-merge-heading h1 {
+  margin-top: 2px;
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  line-height: 1.18;
+}
+
+.moon-merge-heading button {
+  position: absolute;
+  top: 28px;
+  right: 15px;
+  min-width: 76px;
+  min-height: 44px;
+  padding: 0 11px;
+  border: 1px solid rgba(190, 143, 97, 0.56);
+  border-radius: 999px;
+  background: rgba(255, 249, 238, 0.9);
+  color: #76584c;
+  box-shadow: 0 3px 0 rgba(163, 111, 76, 0.34);
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.moon-merge-heading button:active {
+  box-shadow: 0 1px 0 oklch(50% 0.075 60 / 0.32);
+  transform: translateY(2px);
+}
+
+.moon-merge-heading .moon-merge-open-workshop {
+  top: 0;
+  left: -4px;
+  right: auto;
+  width: 44px;
+  min-width: 44px;
+  height: 52px;
+  min-height: 52px;
+  padding: 0;
+  font-size: 38px;
+  font-weight: 400;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #5e493f;
+}
+
+.moon-merge-progress {
+  position: absolute;
+  z-index: 5;
+  top: 138px;
+  left: 23px;
+  display: grid;
+  width: 356px;
+  height: 70px;
+  grid-template-columns: 148px 1fr;
+  border-top: 1px solid rgba(202, 158, 105, 0.44);
+  border-bottom: 1px solid rgba(202, 158, 105, 0.44);
+  background: rgba(255, 252, 245, 0.86);
+  box-shadow: 0 5px 16px rgba(115, 78, 55, 0.12);
+}
+
+.moon-merge-next,
+.moon-merge-cupboard {
+  display: grid;
+  align-items: center;
+}
+
+.moon-merge-next {
+  grid-template-columns: 44px 50px 1fr;
+  padding: 5px 9px;
+  border-right: 1px solid rgba(202, 158, 105, 0.3);
+}
+
+.moon-merge-next > span,
+.moon-merge-cupboard > span {
+  color: #94695b;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.moon-merge-next strong,
+.moon-merge-cupboard strong {
+  color: #5b463e;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.moon-merge-cupboard {
+  grid-template-columns: 64px 1fr 31px;
+  padding: 5px 10px 5px 13px;
+}
+
+.moon-merge-cupboard > div {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+.moon-merge-cupboard i {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px dashed rgba(184, 132, 91, 0.58);
+  border-radius: 50%;
+  background: rgba(240, 224, 201, 0.28);
+  color: transparent;
+  font-size: 0.85rem;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.moon-merge-cupboard i.is-filled {
+  border-style: solid;
+  background: rgba(255, 247, 225, 0.72);
+  color: transparent;
+  box-shadow: none;
+}
+
+.moon-merge-cupboard i .moon-merge-token {
+  opacity: 0.26;
+  filter: grayscale(0.35);
+}
+
+.moon-merge-cupboard i.is-filled .moon-merge-token {
+  opacity: 1;
+  filter: none;
+}
+
+.moon-merge-token {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border: 0;
+  border-radius: 0;
+  background:
+    url("/mid-autumn/merge/crust-pieces-v3.png") var(--token-x) var(--token-y) / 400% 300% no-repeat;
+  color: transparent;
+  filter: drop-shadow(0 2px 2px rgba(58, 37, 22, 0.22));
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.moon-merge-token.is-compact {
+  width: 28px;
+  height: 28px;
+  font-size: 0.65rem;
+}
+
+.moon-merge-board-shell {
+  position: absolute;
+  z-index: 4;
+  top: 218px;
+  left: 23px;
+  width: 356px;
+  height: 522px;
+  overflow: hidden;
+  border: 3px solid #c8a56e;
+  border-radius: 42px 42px 26px 26px;
+  background: rgba(255, 255, 255, 0.38);
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 239, 204, 0.72),
+    inset 0 -18px 34px rgba(194, 151, 108, 0.06),
+    0 5px 0 rgba(173, 128, 87, 0.42),
+    0 12px 24px rgba(112, 77, 54, 0.14);
+}
+
+.moon-merge-board-shell::before,
+.moon-merge-board-shell::after {
+  display: none;
+  position: absolute;
+  z-index: 3;
+  top: 11px;
+  width: 18px;
+  height: calc(100% - 22px);
+  background: linear-gradient(90deg, oklch(62% 0.09 62), oklch(78% 0.085 72), oklch(50% 0.08 55));
+  content: "";
+  opacity: 0.24;
+  pointer-events: none;
+}
+
+.moon-merge-board-shell::before {
+  left: 0;
+  border-radius: 0 12px 12px 0;
+}
+
+.moon-merge-board-shell::after {
+  right: 0;
+  border-radius: 12px 0 0 12px;
+  transform: scaleX(-1);
+}
+
+.moon-merge-board-input {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  width: 356px;
+  height: 522px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.moon-merge-board {
+  position: absolute;
+  inset: 0;
+  width: 356px;
+  height: 522px;
+  pointer-events: none;
+}
+
+.moon-merge-drop-guide {
+  position: absolute;
+  z-index: 5;
+  top: 8px;
+  pointer-events: none;
+  transform: translateX(-50%);
+  transition: left 100ms cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.moon-merge-danger-label {
+  position: absolute;
+  z-index: 4;
+  top: 65px;
+  left: 19px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: oklch(91% 0.05 85);
+  color: oklch(46% 0.105 35);
+  font-size: 0.61rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  pointer-events: none;
+}
+
+.moon-merge-danger-label.is-active {
+  background: #c7464b;
+  color: #fff6ec;
+  animation: moon-merge-danger-pulse 600ms cubic-bezier(0.65, 0, 0.35, 1) infinite alternate;
+}
+}
+
+@keyframes moon-merge-danger-pulse {
+  from {
+    opacity: 0.72;
+    transform: scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.moon-merge-status {
+  position: absolute;
+  z-index: 6;
+  top: 752px;
+  left: 45px;
+  width: 312px;
+  margin: 0;
+  overflow: hidden;
+  color: oklch(39% 0.06 57);
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 20px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.moon-merge-result {
+  position: absolute;
+  z-index: 8;
+  inset: 86px 24px auto;
+  display: grid;
+  min-height: 258px;
+  place-items: center;
+  padding: 29px 24px 24px;
+  border: 1px solid oklch(66% 0.075 68);
+  background: oklch(96% 0.045 88);
+  color: oklch(32% 0.055 53);
+  box-shadow: 0 16px 34px oklch(31% 0.045 51 / 0.3);
+  clip-path: polygon(
+    0 3%,
+    7% 0,
+    15% 2%,
+    25% 0,
+    35% 2%,
+    47% 0,
+    59% 2%,
+    72% 0,
+    84% 2%,
+    94% 0,
+    100% 3%,
+    99% 96%,
+    92% 100%,
+    80% 98%,
+    69% 100%,
+    57% 98%,
+    45% 100%,
+    32% 98%,
+    20% 100%,
+    9% 98%,
+    1% 100%
+  );
+  text-align: center;
+}
+
+.moon-merge-result > span {
+  display: grid;
+  width: 58px;
+  height: 58px;
+  place-items: center;
+  border-radius: 50%;
+  background: oklch(86% 0.105 82);
+  color: oklch(47% 0.095 55);
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.moon-merge-result strong {
+  margin-top: 6px;
+  font-size: 1.45rem;
+  letter-spacing: 0.12em;
+}
+
+.moon-merge-result p {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.75;
+}
+
+.moon-merge-result button {
+  min-width: 126px;
+  min-height: 44px;
+  border: 1px solid oklch(45% 0.09 133);
+  border-radius: 999px;
+  background: oklch(55% 0.105 130);
+  color: oklch(96% 0.035 90);
+  box-shadow: 0 3px 0 oklch(37% 0.075 126);
+  cursor: pointer;
+  font-size: 0.83rem;
+  font-weight: 700;
+}
+
+.moon-merge-result button:active {
+  box-shadow: 0 1px 0 oklch(37% 0.075 126);
+  transform: translateY(2px);
+}
+
+.moon-merge-chain {
+  position: absolute;
+  z-index: 4;
+  right: 23px;
+  bottom: 18px;
+  left: 23px;
+  height: 78px;
+  padding: 8px 12px;
+  border-top: 1px solid oklch(53% 0.07 61 / 0.38);
+  border-bottom: 1px solid oklch(53% 0.07 61 / 0.28);
+  background: rgba(255, 250, 241, 0.86);
+}
+
+.moon-merge-chain header {
+  display: grid;
+  min-height: 22px;
+  align-items: baseline;
+  grid-template-columns: 64px 1fr auto;
+  color: #5d422d;
+}
+
+.moon-merge-chain header span {
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.moon-merge-chain header strong {
+  font-size: 0.76rem;
+  letter-spacing: 0.06em;
+}
+
+.moon-merge-chain header b {
+  font-family: "Quicksand", sans-serif;
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.moon-merge-chain ol {
+  display: grid;
+  gap: 4px;
+  margin: 3px 0 0;
+  padding: 0;
+  grid-template-columns: repeat(12, 1fr);
+  list-style: none;
+}
+
+.moon-merge-chain li {
+  height: 6px;
+  border: 1px solid rgba(93, 66, 45, 0.26);
+  border-radius: 999px;
+  background: rgba(104, 82, 59, 0.18);
+}
+
+.moon-merge-chain li.is-reached {
+  border-color: #a46d2b;
+  background: #d7a642;
+}
+
+.moon-merge-chain p {
+  margin: 6px 0 0;
+  color: oklch(43% 0.055 60);
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 1.3;
+  text-align: center;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .moon-merge-heading button:hover,
+  .moon-merge-result button:hover {
+    filter: saturate(1.08) brightness(1.03);
+    transform: translateY(-1px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .moon-merge-danger-label.is-active {
+    animation: none;
+  }
+
+  .moon-merge-drop-guide {
+    transition: none;
+  }
+
+  .moon-merge-heading button,
+  .moon-merge-result button {
+    transition: none;
+  }
+}
+
+
+

@@ -58,6 +58,7 @@ import { PublicLoungePage } from "./components/public-lounge-page";
 import { ResidencePermitTransition } from "./components/residence-permit-transition";
 import { FarmLazyBoundary, FarmLazyFailure, FarmLazyLoading } from "./farm/page/farm-lazy-boundary";
 import { LingyeBackgroundMusic } from "./lingye/lingye-background-music";
+import { readMidAutumn, type MidAutumnView } from "./mid-autumn/api";
 import {
   buildCandidateTwoDemoPreset,
   type CandidateTwoAction,
@@ -74,7 +75,12 @@ import {
   type CandidateTwoViewState,
   resolveCandidateTwoDemoPreset,
 } from "./preview/candidate-two-preview";
-import { DOORBELL_FARM_PATH, isDoorbellFarmPath } from "./routes";
+import {
+  DOORBELL_FARM_PATH,
+  isDoorbellFarmPath,
+  isMidAutumnPath,
+  MID_AUTUMN_PATH,
+} from "./routes";
 
 const LingyeDailyScreen = lazy(async () => {
   const module = await import("./daily/lingye-daily-screen");
@@ -84,6 +90,11 @@ const LingyeDailyScreen = lazy(async () => {
 const FarmPage = lazy(async () => {
   const module = await import("./farm/farm-page");
   return { default: module.FarmPage };
+});
+
+const MidAutumnPage = lazy(async () => {
+  const module = await import("./mid-autumn/mid-autumn-page");
+  return { default: module.MidAutumnPage };
 });
 
 const candidateTwoFarmPreviewSeedTypes = [
@@ -171,6 +182,7 @@ type AppState =
       lingye: {
         glimmer: CandidateTwoLingyeReadState<BoundGlimmerRead>;
         memorial: CandidateTwoLingyeReadState<BoundQixiMemorialRead>;
+        midAutumn: CandidateTwoLingyeReadState<MidAutumnView>;
         together: CandidateTwoLingyeReadState<BoundTogetherRead>;
       };
       mailbox: CandidateTwoMailboxView;
@@ -363,6 +375,7 @@ function authenticatedState(
     lingye: {
       glimmer: { stage: "idle" },
       memorial: { stage: "idle" },
+      midAutumn: { stage: "idle" },
       together: { stage: "idle" },
     },
     mailbox: {
@@ -403,8 +416,15 @@ function authenticatedViewState(
 function LiveApp() {
   const [appState, setAppState] = useState<AppState>({ stage: "checking-session" });
   const [activeInternalPage, setActiveInternalPage] = useState<
-    "community" | "daily" | "farm" | "lounge"
-  >(() => (isDoorbellFarmPath(window.location.pathname) ? "farm" : "community"));
+    "community" | "daily" | "farm" | "lounge" | "mid-autumn"
+  >(
+    () =>
+      isDoorbellFarmPath(window.location.pathname)
+        ? "farm"
+        : isMidAutumnPath(window.location.pathname)
+          ? "mid-autumn"
+          : "community",
+  );
   const [candidateTwoScreenCommand, setCandidateTwoScreenCommand] =
     useState<CandidateTwoScreenCommand | null>(null);
   const [showMcpAfterPermit, setShowMcpAfterPermit] = useState(false);
@@ -435,7 +455,7 @@ function LiveApp() {
     controller: AbortController | null;
     id: number;
   }>({ controller: null, id: 0 });
-  const lingyeRequestIdsRef = useRef({ glimmer: 0, memorial: 0, together: 0 });
+  const lingyeRequestIdsRef = useRef({ glimmer: 0, memorial: 0, midAutumn: 0, together: 0 });
   const lingyeControllersRef = useRef<{
     glimmer: AbortController | null;
     memorial: AbortController | null;
@@ -457,6 +477,8 @@ function LiveApp() {
       setActiveInternalPage(
         isDoorbellFarmPath(window.location.pathname)
           ? "farm"
+          : isMidAutumnPath(window.location.pathname)
+            ? "mid-autumn"
           : window.history.state?.doorbellInternalPage === "daily"
             ? "daily"
             : "community",
@@ -509,6 +531,27 @@ function LiveApp() {
   const openLoungePage = useCallback(() => {
     setCandidateTwoScreenCommand(null);
     setActiveInternalPage("lounge");
+  }, []);
+
+  const openMidAutumnPage = useCallback(() => {
+    if (!isMidAutumnPath(window.location.pathname)) {
+      window.history.pushState({ doorbellInternalPage: "mid-autumn" }, "", MID_AUTUMN_PATH);
+    }
+    setActiveInternalPage("mid-autumn");
+  }, []);
+
+  const closeMidAutumnPage = useCallback(() => {
+    if (
+      isMidAutumnPath(window.location.pathname) &&
+      window.history.state?.doorbellInternalPage === "mid-autumn"
+    ) {
+      window.history.back();
+      return;
+    }
+    if (isMidAutumnPath(window.location.pathname)) {
+      window.history.replaceState({}, "", "/");
+    }
+    setActiveInternalPage("community");
   }, []);
 
 
@@ -724,6 +767,65 @@ function LiveApp() {
     [appState.stage],
   );
 
+  const loadMidAutumn = useCallback(() => {
+    if (appState.stage !== "authenticated") {
+      return;
+    }
+    const requestId = lingyeRequestIdsRef.current.midAutumn + 1;
+    lingyeRequestIdsRef.current.midAutumn = requestId;
+    setAppState((current) =>
+      current.stage === "authenticated"
+        ? { ...current, lingye: { ...current.lingye, midAutumn: { stage: "loading" } } }
+        : current,
+    );
+    void readMidAutumn()
+      .then((data) => {
+        if (lingyeRequestIdsRef.current.midAutumn !== requestId) return;
+        setAppState((current) =>
+          current.stage === "authenticated"
+            ? {
+                ...current,
+                lingye: { ...current.lingye, midAutumn: { stage: "ready", data } },
+              }
+            : current,
+        );
+      })
+      .catch(() => {
+        if (lingyeRequestIdsRef.current.midAutumn !== requestId) return;
+        setAppState((current) =>
+          current.stage === "authenticated"
+            ? {
+                ...current,
+                lingye: {
+                  ...current.lingye,
+                  midAutumn: { stage: "error", message: "活动暂时无法读取，请重试。" },
+                },
+              }
+            : current,
+        );
+      });
+  }, [appState.stage]);
+
+  const midAutumnRead = appState.stage === "authenticated" ? appState.lingye.midAutumn : null;
+
+  useEffect(() => {
+    if (
+      activeInternalPage !== "community" ||
+      !midAutumnRead ||
+      midAutumnRead.stage !== "ready"
+    ) {
+      return;
+    }
+    const view = midAutumnRead.data;
+    const boundaryAt = view.phase === "upcoming" ? view.opensAt : view.closesAt;
+    if (!boundaryAt) return;
+    const timer = window.setTimeout(
+      () => loadMidAutumn(),
+      Math.max(0, boundaryAt - Date.now()),
+    );
+    return () => window.clearTimeout(timer);
+  }, [activeInternalPage, appState.stage, loadMidAutumn, midAutumnRead]);
+
   const handleCandidateAction = useCallback(
     async (action: CandidateTwoAction) => {
       if (action.type === "profile-identity-updated") {
@@ -838,6 +940,9 @@ function LiveApp() {
               ? "memorial"
               : "together",
         );
+        if (action.type === "lingye-memorial-open") {
+          loadMidAutumn();
+        }
         return;
       }
 
@@ -1020,6 +1125,11 @@ function LiveApp() {
         return;
       }
 
+      if (action.type === "lingye-mid-autumn-open") {
+        if (appState.stage === "authenticated") openMidAutumnPage();
+        return;
+      }
+
       if (action.type === "profile-switch") {
         if (
           appState.stage !== "authenticated" ||
@@ -1042,6 +1152,7 @@ function LiveApp() {
         ownerProfileCareerRequestRef.current.id += 1;
         lingyeRequestIdsRef.current.glimmer += 1;
         lingyeRequestIdsRef.current.memorial += 1;
+        lingyeRequestIdsRef.current.midAutumn += 1;
         lingyeRequestIdsRef.current.together += 1;
         setAppState({ ...appState, homeSettingsIssue: null, homeSettingsPending: true });
         const switched = await switchHumanProfile({ profile_id: action.profileId });
@@ -1348,6 +1459,7 @@ function LiveApp() {
         ownerProfileCareerRequestRef.current.id += 1;
         lingyeRequestIdsRef.current.glimmer += 1;
         lingyeRequestIdsRef.current.memorial += 1;
+        lingyeRequestIdsRef.current.midAutumn += 1;
         lingyeRequestIdsRef.current.together += 1;
         const authenticatedBeforeLogout = appState;
         setAppState({ ...appState, issue: null, pendingLogout: true });
@@ -1356,7 +1468,7 @@ function LiveApp() {
           setShowMcpAfterPermit(false);
           setLingyeScreenActive(false);
           setLingyeMapActive(false);
-          if (isDoorbellFarmPath(window.location.pathname)) {
+          if (isDoorbellFarmPath(window.location.pathname) || isMidAutumnPath(window.location.pathname)) {
             window.history.replaceState({}, "", "/");
           }
           setActiveInternalPage("community");
@@ -1375,7 +1487,16 @@ function LiveApp() {
         });
       }
     },
-    [activeInternalPage, appState, loadLingye, openDailyPage, openFarmPage, openLoungePage],
+    [
+      activeInternalPage,
+      appState,
+      loadLingye,
+      loadMidAutumn,
+      openDailyPage,
+      openFarmPage,
+      openLoungePage,
+      openMidAutumnPage,
+    ],
   );
 
   if (appState.stage === "checking-session") {
@@ -1449,6 +1570,16 @@ function LiveApp() {
             <LingyeDailyScreen onBack={closeDailyPage} />
           </Suspense>
         </FarmLazyBoundary>
+      ) : null}
+      {appState.stage === "authenticated" && activeInternalPage === "mid-autumn" ? (
+        <Suspense fallback={<FarmLazyLoading label="正在打开中秋活动" mode="page" />}>
+          <MidAutumnPage
+            {...(appState.lingye.midAutumn.stage === "ready"
+              ? { initialView: appState.lingye.midAutumn.data }
+              : {})}
+            onBack={closeMidAutumnPage}
+          />
+        </Suspense>
       ) : null}
       {appState.stage === "authenticated" && loungeOpen && loungeViewport ? (
         <PublicLoungePage viewport={loungeViewport} gamesEnabled gameViewerId={`human:${appState.identity.account.account_id}`} />

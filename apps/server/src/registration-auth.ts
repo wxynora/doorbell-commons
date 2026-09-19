@@ -34,6 +34,7 @@ import {
   type FarmConstableInterviewReader,
 } from "./farm-constable-interview-client.js";
 import type { FarmCreator } from "./farm-creation-client.js";
+import { MidAutumnUpstreamError, type MidAutumnHumanClient, type MidAutumnHumanRequest } from "./mid-autumn-client.js";
 import {
   FarmHumanCropCodexActionContractUnavailableError,
   type FarmHumanCropCodexActioner,
@@ -260,6 +261,7 @@ interface RegistrationAuthServiceOptions {
   farmSettingsActioner?: FarmHumanFarmSettingsActioner;
   farmLingyeReader?: FarmLingyeReader;
   farmQixiMemorialReader?: FarmHumanQixiMemorialReader;
+  midAutumnClient?: MidAutumnHumanClient;
   farmConstableInterviewReader?: FarmConstableInterviewReader;
   farmConstableInterviewActioner?: FarmConstableInterviewActioner;
   farmConstableInterviewPublicNoticeOpener?: FarmConstableInterviewPublicNoticeOpener;
@@ -314,6 +316,7 @@ export class RegistrationAuthService {
   readonly #farmSettingsActioner: FarmHumanFarmSettingsActioner | undefined;
   readonly #farmLingyeReader: FarmLingyeReader | undefined;
   readonly #farmQixiMemorialReader: FarmHumanQixiMemorialReader | undefined;
+  readonly #midAutumnClient: MidAutumnHumanClient | undefined;
   readonly #farmConstableInterviewReader: FarmConstableInterviewReader | undefined;
   readonly #farmConstableInterviewActioner: FarmConstableInterviewActioner | undefined;
   readonly #farmConstableInterviewPublicNoticeOpener:
@@ -354,6 +357,7 @@ export class RegistrationAuthService {
     this.#farmSettingsActioner = options.farmSettingsActioner;
     this.#farmLingyeReader = options.farmLingyeReader;
     this.#farmQixiMemorialReader = options.farmQixiMemorialReader;
+    this.#midAutumnClient = options.midAutumnClient;
     this.#farmConstableInterviewReader = options.farmConstableInterviewReader;
     this.#farmConstableInterviewActioner = options.farmConstableInterviewActioner;
     this.#farmConstableInterviewPublicNoticeOpener =
@@ -1556,6 +1560,15 @@ export class RegistrationAuthService {
       throw new FarmConstableInterviewContractUnavailableError();
     }
     return { candidateResidentName, eligibleVoterResidentIds: eligible };
+  }
+
+  async executeCurrentMidAutumn(token: string, input: MidAutumnHumanRequest) {
+    const community = await this.getCurrentSession(token);
+    const farmHumanKey = community.farmBinding.farmHumanKey;
+    if (farmHumanKey === null) throw new RegistrationProfileRequiredError();
+    if (!this.#midAutumnClient) throw new MidAutumnUpstreamError(503, "service_unavailable");
+    return this.#midAutumnClient.execute({ ...input,
+      farmDoorplate: community.farmBinding.farmDoorplate, farmHumanKey });
   }
 
   async harvestCurrentFarmField(
