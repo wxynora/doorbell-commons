@@ -3,6 +3,7 @@ import { cooking, cookingRecipeById, cookingRecipes } from "../../content.js";
 import { removeFishingCatchIds } from "../../fishing.js";
 import { glimmerBuffMultiplier } from "../../glimmer.js";
 import { submitQixi2026Dish } from "../../qixi-2026.js";
+import { submitMidAutumnSeedDish } from '../../mid-autumn-seeds.js';
 import { bumpDaily } from "../../daily.js";
 import { ensureKitchen } from "../ranch/state.js";
 import {
@@ -175,6 +176,7 @@ export function kitchenCook(farm, refs, now, options = {}) {
     if (!recipe)
         bumpDaily(farm, now, "oddDishes");
     const qixi = submitQixi2026Dish(farm, kitchen, dish, now);
+    const midAutumnSeed = submitMidAutumnSeedDish(farm, kitchen, dish, now);
     const cookingReceipt = isOriginalRecipe
         ? persistChefOriginalCookingReceipt(farm, recipe, dish, cookOptions, now)
         : null;
@@ -191,6 +193,7 @@ export function kitchenCook(farm, refs, now, options = {}) {
         baseValue,
         materialRefund,
         qixi,
+        midAutumnSeed,
         ...(cookingReceipt ? { cookingReceipt, originalRecipe: recipe } : {}),
     };
 }

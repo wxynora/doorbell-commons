@@ -5,6 +5,7 @@ import { currentSeason } from "../../time.js";
 import { taskView } from "../../tasks.js";
 import { allUgc } from "../../ugc.js";
 import { qixi2026CompletionText } from "../../qixi-2026.js";
+import { midAutumnSeedCompletionText } from '../../mid-autumn-seeds.js';
 import { takeWelfareWeekNotice } from "../../welfare-week.js";
 
 export function farmView(f, now) {
@@ -96,6 +97,9 @@ export function fmtHarvest(r, harvesterId) {
     const qt = qixi2026CompletionText(r.qixi);
     if (qt)
         t += "\n" + qt;
+    const mt = midAutumnSeedCompletionText(r.midAutumnSeed);
+    if (mt)
+        t += "\n" + mt;
     return t;
 }
 
@@ -152,6 +156,8 @@ export function composeHarvests(rs, compact, harvesterId) {
     if (ms)
         out.push(ms);
     for (const text of [...new Set(rs.map((r) => qixi2026CompletionText(r.qixi)).filter(Boolean))])
+        out.push(text);
+    for (const text of [...new Set(rs.map((r) => midAutumnSeedCompletionText(r.midAutumnSeed)).filter(Boolean))])
         out.push(text);
     return out.join("\n");
 }

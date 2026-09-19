@@ -3,8 +3,14 @@ import { statusFooter } from "../../flavor.js";
 import { animalById, cropById, getCrop, petById } from "../../content.js";
 import { ITEMS, POTION_CAP_LINE, POTION_DAILY_CAP, RANCH_PATROL_GOOSE_BUY_COST, RANCH_PATROL_GOOSE_NAME } from "../../config.js";
 import { qixi2026ShopRows } from "../../qixi-2026.js";
+import { midAutumnSeedShopRows } from "../../domain/field/mid-autumn-shop.js";
 import { itemName } from "../market.js";
 import { humanDisplay } from "./farm.js";
+
+function midAutumnShopText(farm, now) {
+    const rows = midAutumnSeedShopRows(farm, now);
+    return rows.length ? `\n🌕 中秋限定种子：${rows.map((item) => `${item.name}·${item.rarity} ${item.price}金（今日剩 ${item.left}/5）→ doorbell({"op":"farm.buy","args":{"source":"shop","kind":"seed","id":"${item.id}","qty":1}})`).join("\n")}` : "";
+}
 
 /** 精简商店（进农场/巡视时附带，免得单独查店）；完整两层见 viewShop */
 export function shopBrief(f, now) {
@@ -20,6 +26,7 @@ export function shopBrief(f, now) {
         line += `\n📜 配方在售【${cropById.get(f.shop.recipe)?.name ?? f.shop.recipe}】（500金）→ doorbell({"op":"farm.buy","args":{"source":"shop","kind":"recipe"}})`;
     if (qixi.length)
         line += `\n🎋 七夕限定种子：${qixi.map((item) => `${item.name}(${item.price}金·今日剩${item.left})`).join("、")} → doorbell({"op":"farm.buy","args":{"source":"shop","kind":"seed","id":"作物名"}})`;
+    line += midAutumnShopText(f, now);
     return line + "（查看完整两层商店：doorbell({\"op\":\"farm.shop\",\"args\":{}})）";
 }
 
@@ -42,7 +49,7 @@ export function viewShop(f, now) {
         : "🎁 药水套装：（暂无，每次刷新随机上架，看缘分；别人店里刷出的，串门也能买一份）";
     const layer1 = [
         "🏪 第一层 · 种子铺",
-        `普通种子 ${s.common.price}金 · 奇幻种子 ${s.fantasy.price}金${lim}${qixiLine}`,
+        `普通种子 ${s.common.price}金 · 奇幻种子 ${s.fantasy.price}金${lim}${qixiLine}${midAutumnShopText(f, now)}`,
         potionDailyLeft(f, now) > 0
             ? `🧪 ${potion.name} ${potion.price}金/瓶（官方店每天限 ${POTION_DAILY_CAP} 瓶/农场，今日已购 ${POTION_DAILY_CAP - potionDailyLeft(f, now)}/${POTION_DAILY_CAP}）`
             : `🧪 ${potion.name}：🌙 官方药水今日已购满 ${POTION_DAILY_CAP}/${POTION_DAILY_CAP}——${POTION_CAP_LINE}`,

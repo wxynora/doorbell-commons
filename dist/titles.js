@@ -4,6 +4,7 @@
 import { titles, cropById } from "./content.js";
 import { pushLog } from "./engine.js";
 import { qixi2026CollectionComplete } from "./qixi-2026.js";
+import { midAutumnSeedCollectionComplete } from './mid-autumn-seeds.js';
 /** 称号阈值判定用的指标值：把 field 名映射到农场当前数值。 */
 export function metricValue(f, field) {
     switch (field) {
@@ -38,6 +39,7 @@ export function metricValue(f, field) {
         case "togetherSameKitchenPublicKitchen": return f.publicExpeditionRewards?.endings?.includes("public_kitchen") ? 1 : 0;
         case "togetherRainNotYet": return f.publicExpeditionRewards?.endings?.includes("rain_together") ? 1 : 0;
         case "qixi2026Collection": return qixi2026CollectionComplete(f) ? 1 : 0;
+        case "midAutumnSeedCollection": return midAutumnSeedCollectionComplete(f) ? 1 : 0;
         default: return 0;
     }
 }

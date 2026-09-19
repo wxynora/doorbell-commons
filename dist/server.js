@@ -31,6 +31,7 @@ import { runFishing } from "./fishing.js";
 import { runGlimmer } from "./glimmer.js";
 import { advancePublicExpedition, checkPublicContribution, currentPublicTask, findPublicDish, findPublicHarvestPlot, findPublicWaterTarget, markPublicTrialPlot, publicExpeditionStatusLine, publicExpeditionText, recordPublicContribution, recordPublicPlantEncounter, runPublicChoice, takePublicAiNotices, takePublicDish } from "./public-expedition.js";
 import { qixi2026CompletionText, recordQixi2026Progress, recordQixi2026StealAttempt } from "./qixi-2026.js";
+import { recordMidAutumnSeedProgress, midAutumnSeedCompletionText, midAutumnSeedEntryText } from './mid-autumn-seeds.js';
 import { isQixiLantern2026Active, qixiLantern2026StatusText, reconcileQixiLantern2026Farm, recordQixiLantern2026FarmAction, runQixiLantern2026Ai, submitQixiLantern2026Dish } from "./qixi-lantern-2026.js";
 import { AGENT_HEADERS, RequestBodyError, clientIp, jsonOut, readBody, smartParams, textOut } from "./server/http.js";
 import { createAssetHandler } from "./server/assets.js";
@@ -106,6 +107,10 @@ function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
         ? { ...body, by: farm.id, token: farm.token, targetRef: String(resolved.number) }
         : { ...body, ...(mysteryMerchantBuy ? { by: farm.id } : {}), token: farm.token };
     const result = runFarm(target, action, injected, social ? farm.id : body.id, now, { detail, careerBenefits });
+    if (action === 'together' && body.option === undefined && result.json?.ok === true) {
+        const entry = midAutumnSeedEntryText(now, farm);
+        if (entry) result.json.text = `${result.json.text}\n\n${entry}`;
+    }
     if (action === "status" && result.json?.ok === true) {
         appendCareerStatusNotices(activeLingyeWorldDatabase, activeLingyeWorldBackend, farm, result);
     }
@@ -487,10 +492,11 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
             applyDroughtWatering(f, [target.plot.id], now);
             const got = tryWaterReward(f, principal, now);
             const qixi = recordQixi2026Progress(principal, "water", 1, now);
+            const autumn = recordMidAutumnSeedProgress(principal, 'water', 1, now);
             pushSocialInbox(f, `💧 「${principal.name}」为铃野共行照料了你的 ${target.plot.id} 号试验田`, now);
             const r = recordPublicContribution(publicWorld, principal, { kind: "water", targetFarmId: f.id, targetFarmName: f.name, plotId: target.plot.id }, now, publicFarms);
             save();
-            return { status: r.ok ? 200 : 400, json: { ok: r.ok, text: r.ok ? [`💧 已为「${f.name}」的 ${target.plot.id} 号任务试验田浇水${got ? "，并得到 1 瓶加速药水" : ""}。\n${r.text}`, qixi2026CompletionText(qixi)].filter(Boolean).join("\n") : r.text, ...vf(principal) } };
+            return { status: r.ok ? 200 : 400, json: { ok: r.ok, text: r.ok ? [`💧 已为「${f.name}」的 ${target.plot.id} 号任务试验田浇水${got ? "，并得到 1 瓶加速药水" : ""}。\n${r.text}`, qixi2026CompletionText(qixi), midAutumnSeedCompletionText(autumn)].filter(Boolean).join("\n") : r.text, ...vf(principal) } };
         }
     }
     if (action === "harvest" && publicTask?.id === "b_harvest") {
@@ -703,12 +709,13 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         recordSuccessfulWatering(visitor, now);
         onTaskEvent(visitor, "help_water", now); // 随机任务：帮邻居浇水（浇水者）
         const qixi = recordQixi2026Progress(visitor, "water", 1, now);
+        const autumn = recordMidAutumnSeedProgress(visitor, 'water', 1, now);
         onTaskEvent(f, "got_watered", now); // 随机任务：被人浇水（被浇者）
         const got = tryWaterReward(f, visitor, now);
         checkTitles(visitor); // 热心称号
         pushSocialInbox(f, `💧 「${visitor.name}」给你浇了水`, now);
         save();
-        return { status: 200, json: { ok: true, text: [`${waterText(false, visitor.name)}（帮「${f.name}」${r.plotId} 号地加速 30 分钟${r.ripened ? "，正好催熟啦" : ""}）${got ? "\n🧪 浇水有回报——掉了 1 瓶加速药水！" : ""}`, qixi2026CompletionText(qixi), statusFooter(visitor, now)].filter(Boolean).join("\n"), ...vf(visitor) } };
+        return { status: 200, json: { ok: true, text: [`${waterText(false, visitor.name)}（帮「${f.name}」${r.plotId} 号地加速 30 分钟${r.ripened ? "，正好催熟啦" : ""}）${got ? "\n🧪 浇水有回报——掉了 1 瓶加速药水！" : ""}`, qixi2026CompletionText(qixi), midAutumnSeedCompletionText(autumn), statusFooter(visitor, now)].filter(Boolean).join("\n"), ...vf(visitor) } };
     }
     // 串门买别家商店随机刷出的「药水套装」（钱由买家=by 出，每份每人限购 1）
     if (action === "buy-potion-set" && b.by) {

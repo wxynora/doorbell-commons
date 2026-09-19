@@ -14,6 +14,7 @@ import { bumpDaily } from "../../daily.js";
 import { Rng } from "../../rng.js";
 import { activeFestivals } from "../../time.js";
 import { isQixi2026CropId } from "../../qixi-2026.js";
+import { isMidAutumnSeedCropId } from "../../mid-autumn-seeds.js";
 import { pushLog } from "../shared/notifications.js";
 import { isLimitedAvailable } from "./availability.js";
 
@@ -45,7 +46,7 @@ export function limitedShopPool(farm, now, allUnlocked = false) {
     return [...cropById.values()].filter((c) => {
         if (c.category !== "limited")
             return false;
-        if (isQixi2026CropId(c.id))
+        if (isQixi2026CropId(c.id) || isMidAutumnSeedCropId(c.id))
             return false;
         if (c.unlockType === "festival")
             return activeFestivals(now).some((f) => f.cropId === c.id);
@@ -85,7 +86,7 @@ export function buyRecipe(farm, now) {
 //    没有任何限定常驻上架——解锁只是让它能进随机库被 roll。调用前请确保已 refreshShop(farm, now)。
 export function shopOffer(farm, _now) {
     const ns = farm.shop.npcSeed;
-    const lim = ns && !isQixi2026CropId(ns.id) ? cropById.get(ns.id) : null;
+    const lim = ns && !isQixi2026CropId(ns.id) && !isMidAutumnSeedCropId(ns.id) ? cropById.get(ns.id) : null;
     return {
         common: { type: "common", price: SEED_PRICE.common },
         fantasy: { type: "fantasy", price: SEED_PRICE.fantasy },

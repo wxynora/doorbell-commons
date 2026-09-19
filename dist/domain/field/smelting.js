@@ -11,6 +11,7 @@ import { cropById, crops, materialById, materials, recipes } from "../../content
 import { Rng } from "../../rng.js";
 import { onTaskEvent } from "../../tasks.js";
 import { isQixi2026CropId, recordQixi2026Progress } from "../../qixi-2026.js";
+import { recordMidAutumnSeedProgress, isMidAutumnSeedCropId } from '../../mid-autumn-seeds.js';
 import { pushLog } from "../shared/notifications.js";
 
 // —— 熔炼：投 CRAFT_COUNT 个素材 → 出一颗限定种子（混合：命中隐藏配方=固定，否则随机）——
@@ -55,7 +56,7 @@ export function craft(farm, materialIds, _now) {
         // 熔炼基础池=「纯熔炼组」：没有任何商店上架途径（非节日、无结构化解锁规则、非图鉴%解锁）的限定。
         // 这类作物的唯一发现来源就是熔炼，所以允许未收获就炼出（软保底帮你出没集齐的）。
         const normalPool = crops.filter((c) => c.category === "limited" && c.craftable !== false
-            && c.unlockType !== "festival" && c.unlockType !== "codex" && !c.unlockRule && !isQixi2026CropId(c.id));
+            && c.unlockType !== "festival" && c.unlockType !== "codex" && !c.unlockRule && !isQixi2026CropId(c.id) && !isMidAutumnSeedCropId(c.id));
         // 软保底：本农场还没集齐的限定，权重 ×FUSION_SOFT_PITY（避免随机长尾让人一直撞重复；SP 仍要努力，没集齐的更易出）
         const normalWeights = normalPool.map((c) => {
             const base = (LIMITED_BASE_WEIGHT[c.rarity] ?? 1) * Math.pow(1 + luck, rarityIndex(c.rarity) - rarityIndex("SR"));
@@ -65,6 +66,7 @@ export function craft(farm, materialIds, _now) {
         // 才以极低权重涓流进熔炼池：每个 ≈ FUSION_SPECIAL_UNLOCKED_RATE 概率。没收获过的永远不会被熔出。
         const specialPool = crops.filter((c) => c.category === "limited"
             && !isQixi2026CropId(c.id)
+            && !isMidAutumnSeedCropId(c.id)
             && (c.unlockType === "festival" || c.unlockType === "codex" || !!c.unlockRule) && farm.codex[c.id]);
         const normalSum = normalWeights.reduce((s, w) => s + w, 0);
         const specialWeights = specialPool.map(() => normalSum * FUSION_SPECIAL_UNLOCKED_RATE);
@@ -78,6 +80,7 @@ export function craft(farm, materialIds, _now) {
     farm.crafted = (farm.crafted ?? 0) + 1; // 匠人称号累计
     onTaskEvent(farm, "craft", _now); // 随机任务：熔炼一次
     const qixi = recordQixi2026Progress(farm, "craft", 1, _now);
+    const midAutumnSeed = recordMidAutumnSeedProgress(farm, "craft", 1, _now);
     pushLog(farm, `熔炼出限定种子：${crop.name}${byRecipe ? "（配方）" : ""}`);
-    return { ok: true, cropId, cropName: crop.name, rarity: crop.rarity, byRecipe, qixi };
+    return { ok: true, cropId, cropName: crop.name, rarity: crop.rarity, byRecipe, qixi, midAutumnSeed };
 }

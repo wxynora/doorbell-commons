@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { midAutumnSeedShopRows, MID_AUTUMN_DAILY_SEED_LIMIT } from "../domain/field/mid-autumn-shop.js";
+import { isMidAutumnSeedCropId } from "../mid-autumn-seeds.js";
 import { FARM_DECORATION_CATALOG } from "../domain/farm-decoration/catalog.js";
 import { decorationState } from "../domain/farm-decoration/state.js";
 import { housePurchaseError } from "../domain/farm-decoration/house.js";
@@ -235,7 +237,7 @@ function projectShop(farm, now) {
   }
 
   const limited = farm.shop.npcSeed;
-  if (isObject(limited) && typeof limited.id === "string" && limited.id) {
+  if (isObject(limited) && typeof limited.id === "string" && limited.id && !isMidAutumnSeedCropId(limited.id)) {
     const ugcById = new Map(allUgc().map((item) => [item.id, item]));
     const crop = cropDefinition(limited.id, ugcById);
     items.push(
@@ -256,6 +258,15 @@ function projectShop(farm, now) {
     );
   }
 
+  const midAutumnSeeds = midAutumnSeedShopRows(farm, now);
+  for (const item of midAutumnSeeds) {
+    items.push(projectShopItem({
+      kind: "seed", itemId: item.id, name: item.name, rarity: item.rarity,
+      price: item.price, currency: "gold", quantity: 1,
+      availableQuantity: item.left, dailyLimit: MID_AUTUMN_DAILY_SEED_LIMIT,
+      purchasedToday: item.bought, source: "persisted",
+    }));
+  }
   const decoration = decorationState(farm), decorationOwned = decoration.owned;
   for (const item of FARM_DECORATION_CATALOG) {
     const unlocked = item.purchase_mode === "unlock" && decorationOwned[item.item_id] > 0;
@@ -273,6 +284,7 @@ function projectShop(farm, now) {
     revision: opaqueRevision({
       shop: farm.shop,
       potion_buy: farm.potionBuy ?? null,
+      mid_autumn_seeds: midAutumnSeeds,
       decorations: { catalog: FARM_DECORATION_CATALOG, owned: decorationOwned, layout: decoration.layout },
     }),
     refreshed_at: refreshedAt,

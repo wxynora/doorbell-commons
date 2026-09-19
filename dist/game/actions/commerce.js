@@ -2,6 +2,7 @@ import { buyItem, buyPotionSet, buyRanchSkinItem, buyRecipe, potionDailyLeft } f
 import { buyFarmDecoration } from "../../domain/farm-decoration/state.js";
 import { POTION_DAILY_CAP, REPORT_THRESHOLD } from "../../config.js";
 import { buyAllQixi2026Seeds, buyQixi2026Seed } from "../../qixi-2026.js";
+import { buyMidAutumnSeed } from "../../domain/field/mid-autumn-shop.js";
 import { listForSale, reportUgc, unlistItem, viewHot, viewMarket } from "../market.js";
 import { buyNpcSeed, makeNpcFarm, viewNpc } from "../visit-npc.js";
 import { viewBag, viewEncyclopedia } from "../presentation/catalog.js";
@@ -33,6 +34,9 @@ export function handleCommerceAction(action, f, b, now) {
             return { ok: r.ok, text: r.ok ? withFooter(f, now, `🛒 从阿土买下限定种子「${r.name}」×${r.qty}，-💰${r.cost}金`) : r.error };
         }
         case "buy-seed": { // 买自己店当前刷出的限定种子（金币结算，每种每天限购 1；不填 id 默认买当前刷出的那颗）
+            const midAutumn = buyMidAutumnSeed(f, b.id ?? f.shop.npcSeed?.id, now, b.qty ?? 1);
+            if (midAutumn.handled)
+                return { ok: midAutumn.ok, text: midAutumn.ok ? withFooter(f, now, `🛒 买下中秋限定种子「${midAutumn.name}」×${midAutumn.qty}，-💰${midAutumn.cost}金（今日还可购买 ${midAutumn.left} 颗）\n${plantHint(f, midAutumn.id, midAutumn.name)}`) : midAutumn.error };
             if (b.allin === true) {
                 const all = buyAllQixi2026Seeds(f, now);
                 const details = all.ok ? all.items.map((item) => `${item.name}×${item.qty}`).join("、") : "";

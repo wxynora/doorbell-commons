@@ -694,5 +694,6 @@
   {
     "id": "nazhi_wangwang_delivery", "cat": "专属", "tier": 1,
     "manual": true, "name": "汪汪送餐员", "flavor": ""
-  }
+  },
+  {"id":"mid_autumn_2026_all_crops","cat":"中秋","tier":1,"field":"midAutumnSeedCollection","min":1,"name":"桂影拾秋","flavor":""}
 ]

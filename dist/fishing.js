@@ -9,6 +9,7 @@ import { bumpDaily } from "./daily.js";
 import { randomBytes, randomUUID } from "node:crypto";
 import { glimmerBuffMultiplier } from "./glimmer.js";
 import { qixi2026FishText, submitQixi2026Fish } from "./qixi-2026.js";
+import { submitMidAutumnSeedFish, midAutumnSeedCompletionText } from './mid-autumn-seeds.js';
 import {
     beginFishingEncounter, answerFishingEncounter, fishingEncounterStatus, fishingEncounterOptionsText,
     LOST_ROD_BLOCKED,
@@ -438,11 +439,12 @@ function castStep(farm, state, rng, bait, now) {
     const newCatchIds = state.catchInventory.filter((item) => !beforeCatchIds.has(item.id)).map((item) => item.id);
     const publicRefById = new Map(state.catchInventory.map((item) => [item.id, item.publicRef]));
     const qixi = submitQixi2026Fish(farm, state, newCatchIds, now);
+    const midAutumnSeed = submitMidAutumnSeedFish(farm, state, newCatchIds, now);
     const rarity = fishing.rarities[fishDef.rarity].label;
     const first = caught.first ? `\n🆕 首次收录，额外 +${caught.bonus} 银。` : "";
-    const luck = lucky && !(qixi?.submittedIds?.includes(caught.instance.id) && lucky.id === "golden_touch") ? `\n${lucky.text}` : "";
+    const luck = lucky && !((qixi?.submittedIds?.includes(caught.instance.id) || midAutumnSeed?.submittedIds?.includes(caught.instance.id)) && lucky.id === "golden_touch") ? `\n${lucky.text}` : "";
     let text = `🐟 ${fishDef.name} · ${rarity} · ${caught.instance.size}${fishDef.size_unit} · 可卖 ${caught.instance.sellSilver} 银〔${caught.instance.publicRef}〕${first}${feverText}${luck}`;
-    for (const id of qixi?.submittedIds ?? []) {
+    for (const id of [...(qixi?.submittedIds ?? []), ...(midAutumnSeed?.submittedIds ?? [])]) {
         const publicRef = publicRefById.get(id);
         if (publicRef)
             text = text.replace(new RegExp(` · 可卖 \\d+ 银〔${publicRef}〕`), "").replaceAll(`〔${publicRef}〕`, "");
@@ -450,7 +452,8 @@ function castStep(farm, state, rng, bait, now) {
     return {
         consumed: true, kind: "fish", fishName: fishDef.name, rarity: fishDef.rarity,
         first: caught.first, luck: lucky?.id, qixi,
-        text,
+        midAutumnSeed,
+        text: midAutumnSeed ? `${text}\n中秋任务：银鲦 ×${midAutumnSeed.submitted} 已自动提交（${midAutumnSeed.progress}/2）。\n${midAutumnSeedCompletionText(midAutumnSeed)}`.trim() : text,
     };
 }
 

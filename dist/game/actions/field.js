@@ -23,6 +23,7 @@ import { rollSeasonHarvest, rollSeasonStatus, seasonHeadline } from "../../seaso
 import { fishingStatusLine } from "../../fishing.js";
 import { GLIMMER_BUFF_TEXT, glimmerBuffActive, glimmerStatusLine } from "../../glimmer.js";
 import { qixi2026CompletionText, qixi2026TaskText, settleQixi2026QuietTask } from "../../qixi-2026.js";
+import { midAutumnSeedCompletionText } from '../../mid-autumn-seeds.js';
 import { welfareWeekText } from "../../welfare-week.js";
 import { POTION_DAILY_CAP } from "../../config.js";
 import {
@@ -199,7 +200,7 @@ export function handleFieldAction(action, f, b, now, options = {}) {
         }
         case "craft": {
             const r = craft(f, b.materials ?? [], now);
-            return { ok: r.ok, text: r.ok ? withFooter(f, now, [`⚗️ 熔炼成功！得到限定种子【${r.cropName}·${r.rarity}】${r.byRecipe ? "（命中隐藏配方！）" : ""}\n${plantHint(f, r.cropId, r.cropName)}`, qixi2026CompletionText(r.qixi)].filter(Boolean).join("\n")) : r.error };
+            return { ok: r.ok, text: r.ok ? withFooter(f, now, [`⚗️ 熔炼成功！得到限定种子【${r.cropName}·${r.rarity}】${r.byRecipe ? "（命中隐藏配方！）" : ""}\n${plantHint(f, r.cropId, r.cropName)}`, qixi2026CompletionText(r.qixi), midAutumnSeedCompletionText(r.midAutumnSeed)].filter(Boolean).join("\n")) : r.error };
         }
         case "design": {
             const r = designCrop(f, { name: b.name, desc: b.desc, latin: b.latin, plant: b.plant, harvest: b.harvest }, now);

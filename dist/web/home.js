@@ -5,6 +5,7 @@ import { currentSeason, activeFestivals } from "../time.js";
 import { playerFarms } from "../store.js";
 import { checkTitles, equippedTitle } from "../titles.js";
 import { qixi2026ShopRows, qixi2026TaskView } from "../qixi-2026.js";
+import { midAutumnSeedShopRows } from "../domain/field/mid-autumn-shop.js";
 import { isQixiLantern2026Active } from "../qixi-lantern-2026.js";
 import { agronomyObservationsForPlot } from "../career/p3-world.js";
 import { ago, clock, esc, farmLabel, farmNames, fmtDur, num, page, rarityDot, stamp } from "./shell.js";
@@ -146,6 +147,8 @@ export function uiHome(f, now, key, flash) {
         shopBits.push(`🎏 限定：${s.limited.map((l) => esc(l.name)).join("、")}`);
     for (const item of qixiShop)
         shopBits.push(`🎋 ${esc(item.name)} · ${num(item.price)} 金 · 今日还可买 ${item.left}/5`);
+    for (const item of midAutumnSeedShopRows(f, now))
+        shopBits.push(`🌕 ${esc(item.name)} · ${num(item.price)} 金 · 今日还可买 ${item.left}/5`);
     const shopCard = `<div class="card"><h3>🏪 今日商店</h3>
     ${shopBits.length
         ? shopBits.map((b) => `<div class="line small"><span>${b}</span></div>`).join("")

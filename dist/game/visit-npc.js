@@ -6,6 +6,7 @@ import { bumpDaily } from "../daily.js";
 import { titlePrefix } from "../titles.js";
 import { makeFarm } from "./factory.js";
 import { itemName, viewMarket } from "./market.js";
+import { isMidAutumnSeedCropId } from "../mid-autumn-seeds.js";
 
 // —— 串门公开页：只展示名称、欢迎语、可偷数、摊位和留言板；不含主人私密信息。——
 function renderMessages(f, targetRef = f.id) {
@@ -102,8 +103,10 @@ export function resolveSeedId(ref) {
 }
 /** 从阿土买他当前刷出的限定种子：金币结算（按官方 seedPrice），每种每人每天限 1 颗，入买家 seeds 库存。 */
 export function buyNpcSeed(npc, buyer, id, now) {
-    const stock = npc.shop.npcSeed;
     const seedId = resolveSeedId(id);
+    if (isMidAutumnSeedCropId(seedId))
+        return { ok: false, error: "中秋限定种子请在自己的商店按任务解锁后购买。" };
+    const stock = npc.shop.npcSeed;
     if (!stock || stock.id !== seedId)
         return { ok: false, error: "阿土现在没在卖这个（限定种子随机刷新，看缘分，过会儿再来）。" };
     const c = getCrop(seedId);

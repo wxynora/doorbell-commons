@@ -7,6 +7,7 @@ import {
     kitchenUse,
 } from "../../engine.js";
 import { qixi2026CompletionText } from "../../qixi-2026.js";
+import { midAutumnSeedCompletionText } from '../../mid-autumn-seeds.js';
 import { viewKitchen } from "../presentation/catalog.js";
 import { withFooter } from "../presentation/farm.js";
 import { kitchenToolOffer } from "../../domain/kitchen/tool-catalog.js";
@@ -120,6 +121,10 @@ export function handleKitchenAction(action, f, b, now, options = {}) {
         if (r.qixi) {
             const submitted = `黄油曲奇 ×1 已提交至七夕任务。`;
             return { ok: true, text: withFooter(f, now, [submitted, qixi2026CompletionText(r.qixi)].filter(Boolean).join("\n")) };
+        }
+        if (r.midAutumnSeed?.submitted) {
+            const submitted = '黄油曲奇 ×1 已自动提交至中秋任务并消耗，不再保留在背包。';
+            return { ok: true, text: withFooter(f, now, [submitted, midAutumnSeedCompletionText(r.midAutumnSeed)].filter(Boolean).join("\n")) };
         }
         const line = r.odd
             ? `🥴 锅里端出了一份「微妙的料理」：只能 1 金系统回收，或由你自己吃下并随机承受 2 小时负面效果。`

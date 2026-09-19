@@ -7,6 +7,7 @@ import { crops, getCrop, animals, animalById, pets, petById, qualities, material
 import { onTaskEvent } from "./tasks.js";
 import { glimmerBuffMultiplier } from "./glimmer.js";
 import { qixi2026HarvestSilver, qixi2026TransferAllowed, recordQixi2026Harvest } from "./qixi-2026.js";
+import { midAutumnSeedHarvestSilver, recordMidAutumnSeedHarvest } from './mid-autumn-seeds.js';
 import { recordWelfareWeekProgress } from "./welfare-week.js";
 import { bumpDaily } from "./daily.js";
 import { pushInbox, pushLog, pushSocialInbox, pushTrail, takeInbox } from "./domain/shared/notifications.js";
@@ -340,7 +341,7 @@ export function harvest(farm, plotId, now, seasonMod, options = {}) {
         const ripened = ev.effectType === "连收" ? ripenAdjacent(farm, plot, Number(ev.param) || 0) : 0;
         bonus = { name: ev.name, text: ev.text, effectType: ev.effectType, extraCoins, ripened };
     }
-    const qixiSilver = qixi2026HarvestSilver(crop, quality);
+    const qixiSilver = qixi2026HarvestSilver(crop, quality) ?? midAutumnSeedHarvestSilver(crop, quality);
     if (qixiSilver !== null && bonus?.effectType === "倍率")
         bonus = null; // 七夕作物只按审定的基础银币与品相倍率结算，不展示未生效的金币价值倍率事件
     let value = qixiSilver ?? cropValue(crop, quality);
@@ -394,6 +395,7 @@ export function harvest(farm, plotId, now, seasonMod, options = {}) {
     plot.crop = null;
     farm.harvested = (farm.harvested ?? 0) + 1; // 勤劳榜累计
     const qixiEvents = recordQixi2026Harvest(farm, crop, c.seedType, now);
+    const midAutumnSeed = recordMidAutumnSeedHarvest(farm, crop, c.seedType, now);
     onTaskEvent(farm, "harvest", now, { rarity: crop.rarity, isNew, isUgc: crop.category === "ugc" }); // 随机任务：收获N株R/SR/收新图鉴
     recordWelfareWeekProgress(farm, "harvest", 1, now);
     pushLog(farm, `收获 ${crop.name}（${quality.name}），+${value}${qixiSilver === null ? "金" : "银"}${drop ? ` 掉素材[${drop.name}]` : ""}${potionDrop ? " 掉药水" : ""}`);
@@ -405,6 +407,7 @@ export function harvest(farm, plotId, now, seasonMod, options = {}) {
         extraYield,
         extraValue,
         currency: qixiSilver === null ? "gold" : "silver",
+        midAutumnSeed,
         isNew,
         codexReward,
         bonus,
