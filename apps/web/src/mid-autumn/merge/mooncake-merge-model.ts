@@ -32,7 +32,7 @@ export interface MooncakeMergeStage {
   playWidth: number;
 }
 
-export const CRUST_STAGES: readonly MooncakeMergeStage[] = [
+export const CRUST_STAGES: readonly [MooncakeMergeStage, ...MooncakeMergeStage[]] = [
   {
     id: "harvest",
     title: "收麦",
@@ -381,4 +381,3 @@ export class MooncakeMergeModel {
     return levels[Math.floor(this.random() * levels.length)] ?? levels[0] ?? 0;
   }
 }
-
