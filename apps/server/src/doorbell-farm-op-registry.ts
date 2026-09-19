@@ -209,7 +209,7 @@ const nonHelpOperations: FarmOperationDefinition[] = [
       '{source:"shop", kind:"recipe"|"seed"|"item", ...}、{source:"farm-shop", kind:"potion-set", ...}、{source:"npc", id}、{source:"market", to, kind, id, qty?} 或 {source:"mystery-merchant", items:[稳定商品ID,…]}',
     branches: [
       { source: z.literal("shop"), kind: z.literal("recipe") },
-      { source: z.literal("shop"), kind: z.literal("seed"), id: nonEmptyString.optional() },
+      { source: z.literal("shop"), kind: z.literal("seed"), id: nonEmptyString.optional(), qty: positiveInteger.optional(), allin: z.boolean().optional() },
       {
         source: z.literal("shop"),
         kind: z.literal("item"),

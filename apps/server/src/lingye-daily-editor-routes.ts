@@ -70,7 +70,7 @@ export function registerDailyEditorRoutes(app:FastifyInstance, options:{daily:Li
     return daily.resendEditorWake(date(request),body.lane,body.requestId,community.account.accountId);
   }));
   // The pre-existing machine delivery URL now saves a draft, never a public issue.
-  app.post("/api/internal/lingye-daily/issues",{bodyLimit:8*1024*1024},async(request,reply)=>{
+  app.post("/api/internal/lingye-daily/issues",{bodyLimit:16*1024*1024},async(request,reply)=>{
     reply.header("cache-control","no-store");
     try{return await daily.stage(request.headers.authorization,lingyeDailyPublishRequestSchema.parse(request.body));}
     catch(error){
