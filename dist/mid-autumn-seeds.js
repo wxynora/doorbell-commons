@@ -13,7 +13,7 @@ export const MID_AUTUMN_SEED_TASKS = [
 const ids = new Set(MID_AUTUMN_SEED_TASKS.map(t=>t.cropId));
 export const isMidAutumnSeedActive = (now=Date.now()) => now >= MID_AUTUMN_SEED_OPENS_AT && now < MID_AUTUMN_SEED_CLOSES_AT;
 export const midAutumnSeedEntryText = (now, farm) => isMidAutumnSeedActive(now)
-  ? MID_AUTUMN_SEED_TASKS.map(task => `${task.label}：${farm?.midAutumnSeeds2026?.tasks?.[task.id]?.progress ?? 0}/${task.target}`).join('\n') : '';
+  ? MID_AUTUMN_SEED_TASKS.filter(task => !farm?.midAutumnSeeds2026?.tasks?.[task.id]?.completedAt).map(task => `${task.label}：${farm?.midAutumnSeeds2026?.tasks?.[task.id]?.progress ?? 0}/${task.target}`).join('\n') : '';
 export const isMidAutumnSeedCropId = id => ids.has(id);
 export function normalizeMidAutumnSeedFarm(farm, now=Date.now(), force=false) {
   if (!farm.midAutumnSeeds2026) {

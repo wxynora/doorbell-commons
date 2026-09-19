@@ -23,7 +23,7 @@ import { rollSeasonHarvest, rollSeasonStatus, seasonHeadline } from "../../seaso
 import { fishingStatusLine } from "../../fishing.js";
 import { GLIMMER_BUFF_TEXT, glimmerBuffActive, glimmerStatusLine } from "../../glimmer.js";
 import { qixi2026CompletionText, qixi2026TaskText, settleQixi2026QuietTask } from "../../qixi-2026.js";
-import { midAutumnSeedCompletionText } from '../../mid-autumn-seeds.js';
+import { midAutumnSeedCompletionText, midAutumnSeedEntryText } from '../../mid-autumn-seeds.js';
 import { welfareWeekText } from "../../welfare-week.js";
 import { POTION_DAILY_CAP } from "../../config.js";
 import {
@@ -133,12 +133,13 @@ export function handleFieldAction(action, f, b, now, options = {}) {
             const seLine = se ? seasonHeadline(se) + "\n————————————\n" : "";
             const quiet = settleQixi2026QuietTask(f, now);
             const qixi = [qixi2026CompletionText(quiet), qixi2026TaskText(f, now)].filter(Boolean).join("\n");
+            const midAutumn = midAutumnSeedEntryText(now, f);
             const welfare = welfareWeekText(f, now);
             const inbox = takeInbox(f);
             const box = inbox.length ? "📬 新消息：\n" + inbox.join("\n") + "\n————————————\n" : "";
             const roam = ranchRoamLine(f);
             const ptl = potionTargetLine(f, now); // 催熟候选（限定/稀有优先），让 POST AI 也能策略性指定催熟
-            return { ok: true, text: withFooter(f, now, seLine + box + describeFarm(f, now) + (welfare ? "\n" + welfare : "") + (qixi ? "\n" + qixi : "") + (roam ? "\n" + roam : "") + (ptl ? "\n" + ptl : "") + "\n" + fishingStatusLine(f, now) + "\n" + glimmerStatusLine(f, now) + (glimmerBuffActive(now) ? "\n" + GLIMMER_BUFF_TEXT : "") + "\n" + shopBrief(f, now)) };
+            return { ok: true, text: withFooter(f, now, seLine + box + describeFarm(f, now) + (welfare ? "\n" + welfare : "") + (qixi ? "\n" + qixi : "") + (midAutumn ? "\n" + midAutumn : "") + (roam ? "\n" + roam : "") + (ptl ? "\n" + ptl : "") + "\n" + fishingStatusLine(f, now) + "\n" + glimmerStatusLine(f, now) + (glimmerBuffActive(now) ? "\n" + GLIMMER_BUFF_TEXT : "") + "\n" + shopBrief(f, now)) };
         }
         case "run": return doRun(f, b, now, options);
         case "plant": {

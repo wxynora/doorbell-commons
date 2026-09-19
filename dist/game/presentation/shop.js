@@ -9,7 +9,7 @@ import { humanDisplay } from "./farm.js";
 
 function midAutumnShopText(farm, now) {
     const rows = midAutumnSeedShopRows(farm, now);
-    return rows.length ? `\n🌕 中秋限定种子：${rows.map((item) => `${item.name}·${item.rarity} ${item.price}金（今日剩 ${item.left}/5）→ doorbell({"op":"farm.buy","args":{"source":"shop","kind":"seed","id":"${item.id}","qty":1}})`).join("\n")}` : "";
+    return rows.length ? `\n🌕 中秋限定种子：${rows.map((item) => `${item.name}·${item.rarity} ${item.price}金（今日剩 ${item.left}/5）→ doorbell({"op":"farm.buy","args":{"source":"shop","kind":"seed","id":"${item.id}","qty":${item.left}}})`).join("\n")}\n一次买满：doorbell({"op":"farm.buy","args":{"source":"shop","kind":"seed","allin":true}})` : "";
 }
 
 /** 精简商店（进农场/巡视时附带，免得单独查店）；完整两层见 viewShop */

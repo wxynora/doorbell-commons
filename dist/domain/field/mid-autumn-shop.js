@@ -41,3 +41,26 @@ export function buyMidAutumnSeed(farm, ref, now = Date.now(), qty = 1) {
     state.seedBuys.counts[crop.id] = row.bought + qty;
     return { handled: true, ok: true, id: crop.id, name: crop.name, qty, cost, left: row.left - qty };
 }
+
+export function buyAllMidAutumnSeeds(farm, now = Date.now()) {
+    if (!isMidAutumnSeedActive(now)) return { handled: false };
+    const fail = error => ({ handled: true, ok: false, error });
+    if (!MID_AUTUMN_SEED_TASKS.some(task => farm.midAutumnSeeds2026?.tasks?.[task.id]?.completedAt))
+        return fail("还没有已解锁的中秋限定种子。");
+    const rows = midAutumnSeedShopRows(farm, now);
+    if (!rows.length) return fail("今天已经把所有已解锁的中秋限定种子买满了。");
+    const items = rows.map(row => ({ ...row, qty: row.left, cost: row.price * row.left }));
+    const cost = items.reduce((sum, item) => sum + item.cost, 0);
+    if (farm.coins < cost) return fail(`金币不足，全部买满还差 ${cost - farm.coins} 金，本次没有购买。`);
+    const state = normalizeMidAutumnSeedFarm(farm, now);
+    const day = currentDayIndex(now);
+    if (state.seedBuys.day !== day) state.seedBuys = { day, counts: {} };
+    farm.coins -= cost;
+    bumpDaily(farm, now, "coinSpend", cost);
+    farm.seeds ??= {};
+    for (const item of items) {
+        farm.seeds[item.id] = count(farm.seeds[item.id]) + item.qty;
+        state.seedBuys.counts[item.id] = item.bought + item.qty;
+    }
+    return { handled: true, ok: true, items, cost };
+}
