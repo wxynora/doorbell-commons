@@ -316,6 +316,14 @@ export class LingyeDailyService {
     return this.#database.getLatestLingyeDailyIssue();
   }
 
+  savePublicationNotice(date:string,notice:string) {
+    this.editor.row(date);
+    const trimmed=notice.trim();
+    if(trimmed) this.#database.lingyeDailyStore.setPublicationNotice(date,trimmed,this.#now());
+    else this.#database.lingyeDailyStore.clearPublicationNotice(date);
+    return this.editor.get(date);
+  }
+
   getPublishedImage(issueDate:string,revision:number,imageId:string) {
     return this.#database.lingyeDailyStore.getPublishedImage(issueDate,revision,imageId,this.#now());
   }

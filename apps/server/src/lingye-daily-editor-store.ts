@@ -56,6 +56,7 @@ export class LingyeDailyEditorStore {
         submissions:this.reviewReady(date),weather:edition.weather_forecast!==undefined},
       submissions:edition.submissions.map(sub=>({...sub,paid:this.paid(sub.submission_id ?? "")})),
       publicationReward:this.publicationReward(date),
+      publicationNotice:this.daily.getPublicationNotice(date),
       humanReview:new HumanSubmissionEditor(this).get(date),
     };
   }

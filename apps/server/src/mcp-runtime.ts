@@ -887,7 +887,9 @@ export class DoorbellMcpRuntime {
   #appendDailyPublicationNotice(text: string): string {
     try {
       const notice = publishedDailyNotice(this.#database, this.#now());
-      return notice ? `${text}\n\n${notice}` : text;
+      // Leading position: the notice is the hook to read today's issue,
+      // so it comes before the farm status body, not buried after it.
+      return notice ? `${notice}\n\n${text}` : text;
     } catch (error) {
       try { this.#onNotificationDeliveryError(error); } catch { /* Preserve the Farm result. */ }
       return text;
@@ -925,4 +927,3 @@ class ProtocolToolError extends Error {
     this.code = code;
   }
 }
-

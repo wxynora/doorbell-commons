@@ -58,6 +58,10 @@ export function registerDailyEditorRoutes(app:FastifyInstance, options:{daily:Li
     const body=z.object({submissionIds:z.array(z.string().min(1)).min(1)}).strict().parse(request.body);
     return daily.rewardSubmissions(date(request),body.submissionIds,community.account.accountId);
   }));
+  app.put("/api/lingye-daily/editor/issues/:date/publication-notice",handle((request,community)=>{
+    const body=z.object({notice:z.string().max(500)}).strict().parse(request.body);
+    return daily.savePublicationNotice(date(request),body.notice);
+  }));
   app.get("/api/lingye-daily/editor/issues/:date/progress",handle(request=>daily.editorProgress(date(request))));
   app.get("/api/lingye-daily/editor/issues/:date/transfer-candidates",handle(request=>daily.transfers.candidates(date(request))));
   app.post("/api/lingye-daily/editor/issues/:date/transfer",handle((request,community)=>{

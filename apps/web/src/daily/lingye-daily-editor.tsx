@@ -54,11 +54,13 @@ export function LingyeDailyEditor({onBack}:{onBack?:()=>void} = {}) {
   const [selected,setSelected]=useState<string[]>([]);
   const [picked,setPicked]=useState<string[]>([]);
   const [progress,setProgress]=useState<EditorProgress|null>(null);
+  const [publicationNoticeDraft,setPublicationNoticeDraft]=useState("");
+  const [publicationNoticeSaved,setPublicationNoticeSaved]=useState<string|null>(null);
   const paper=useRef<HTMLDivElement>(null);
   const resendRequestIds=useRef<Partial<Record<EditorProgressLane["lane"],string>>>({});
   const [epoch,setEpoch]=useState(0);
   const [editingImage,setEditingImage]=useState<HTMLElement|null>(null);
-  const install=(next:EditorDraft)=>{setDraft(next);setDirty(false);setEpoch(value=>value+1);setSelected([]);setPicked(next.humanReview?.selectedIds ?? []);};
+  const install=(next:EditorDraft)=>{setDraft(next);setDirty(false);setEpoch(value=>value+1);setSelected([]);setPicked(next.humanReview?.selectedIds ?? []);setPublicationNoticeDraft(next.publicationNotice ?? "");setPublicationNoticeSaved(next.publicationNotice);};
   const loadProgress=async(date:string)=>setProgress(await editorRequest<EditorProgress>(`/issues/${date}/progress`));
   const run=async(action:()=>Promise<void>)=>{if(busy)return;setBusy(true);setNotice("");try{await action();}catch(error){setNotice(error instanceof Error?error.message:"操作未完成，请重试。");}finally{setBusy(false);}};
   const open=async(date:string)=>{
@@ -165,6 +167,15 @@ export function LingyeDailyEditor({onBack}:{onBack?:()=>void} = {}) {
         <h2>出版审稿奖金</h2><small>{draft.publicationReward
           ? `${draft.publicationReward.recipientName} · ${draft.publicationReward.paid?"已发 5000 金":"5000 金待确认"}`
           : "以本期第一次成功出版时的登录账号为准，每期一次。"}</small>
+        <h2>出版通知</h2><small>小机在 farm.status 顶部看到的通知；留空则使用默认文案（含当日头版标题）。</small>
+        <textarea value={publicationNoticeDraft} maxLength={500} rows={4}
+          placeholder={"例如：今日铃野日报已出版，头条讲了个大瓜，快去围观！用 doorbell({op:\"go.newsroom.read\",args:{}}) 查看。"}
+          onChange={event=>{setPublicationNoticeDraft(event.target.value);setDirty(true);}} style={{width:"100%",whiteSpace:"pre-wrap"}}/>
+        <button disabled={busy||!dirty||publicationNoticeDraft.trim()===publicationNoticeSaved} onClick={()=>void run(async()=>{
+          if(!draft)return;
+          const next=await editorRequest<EditorDraft>(`/issues/${draft.issueDate}/publication-notice`,"PUT",{notice:publicationNoticeDraft.trim()});
+          install(next);setNotice("出版通知已保存，将随本期日报下发给小机。");
+        })}>保存通知</button>
         {draft.issueDate==="2026-09-10"&&draft.publishedVersion===null&&!draft.humanReview?<button disabled={busy||dirty} onClick={()=>void run(async()=>{
           install(await editorRequest<EditorDraft>(`/issues/${draft.issueDate}/submissions/takeover`,"POST",{}));await loadProgress(draft.issueDate);
         })}>接管投稿选稿</button>:null}

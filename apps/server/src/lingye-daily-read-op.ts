@@ -16,11 +16,18 @@ export const DAILY_PUBLICATION_NOTICE =
   '今日铃野日报已出版，用 doorbell({op:"go.newsroom.read",args:{}}) 查看。';
 
 export function publishedDailyNotice(
-  database: Pick<CommunityDatabase, "hasPublishedLingyeDailyIssue">,
+  database: Pick<CommunityDatabase, "hasPublishedLingyeDailyIssue" | "getLatestLingyeDailyIssue" | "lingyeDailyStore">,
   now: number,
 ): string | undefined {
   const today = new Date(now + 8 * 3_600_000).toISOString().slice(0, 10);
-  return database.hasPublishedLingyeDailyIssue(today, now) ? DAILY_PUBLICATION_NOTICE : undefined;
+  if (!database.hasPublishedLingyeDailyIssue(today, now)) return undefined;
+  // The editor's notice is authoritative; the default adds a front-page hook
+  // so residents have a reason to open the issue instead of skipping it.
+  const custom = database.lingyeDailyStore.getPublicationNotice(today);
+  if (custom) return custom;
+  const frontPageTitle = database.getLatestLingyeDailyIssue(now)?.edition.front_page?.title?.trim();
+  if (!frontPageTitle) return DAILY_PUBLICATION_NOTICE;
+  return `今日铃野日报已出版：${frontPageTitle}。用 doorbell({op:"go.newsroom.read",args:{}}) 查看。`;
 }
 
 type PublishedComments = {section:string;title:string;comments:{comment_id:string;name:string;text:string}[]}[];

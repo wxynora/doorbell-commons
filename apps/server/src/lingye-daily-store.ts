@@ -555,4 +555,33 @@ export class LingyeDailyStore {
         AND json_extract(image.value,'$.image_id') = ?`).get(issueDate,revision,now,imageId) as {mediaType:string;dataBase64:string} | undefined;
   }
 
+  /** The editor-written publication notice for an issue; null when the issue uses the built-in default. */
+  getPublicationNotice(issueDate: string): string | null {
+    const row = this.#database.prepare(
+      "SELECT source_json FROM lingye_daily_editor_sources WHERE issue_date = ? AND kind = 'publication_notice'",
+    ).get(issueDate) as {source_json: string} | undefined;
+    if (!row) return null;
+    try {
+      const parsed = JSON.parse(row.source_json) as {notice?: unknown};
+      return typeof parsed.notice === "string" && parsed.notice.trim() ? parsed.notice : null;
+    } catch {
+      return null;
+    }
+  }
+
+  setPublicationNotice(issueDate: string, notice: string, now: number): void {
+    this.#database.transaction(() => {
+      const source = JSON.stringify({notice});
+      this.#database.prepare(
+        "INSERT INTO lingye_daily_editor_sources(issue_date,kind,source_json,received_at) VALUES (?,'publication_notice',?,?)",
+      ).run(issueDate, source, now);
+    }).immediate();
+  }
+
+  clearPublicationNotice(issueDate: string): void {
+    this.#database.prepare(
+      "DELETE FROM lingye_daily_editor_sources WHERE issue_date = ? AND kind = 'publication_notice'",
+    ).run(issueDate);
+  }
+
 }
