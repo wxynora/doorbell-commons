@@ -1250,7 +1250,7 @@ export function publishReporterArticle(database, input) {
         const evaluationOpensAt = previous?.evaluation_opens_at ?? now;
         const evaluationClosesAt = previous?.evaluation_closes_at ?? now + REPORTER_EVALUATION_WINDOW_MS;
         const effectiveClosesAt = reporterEvaluationClosesAt(database, {
-            job_id:article.job_id,evaluation_closes_at:evaluationClosesAt,
+            job_id:article.job_id,article_id:article.article_id,evaluation_closes_at:evaluationClosesAt,
         });
         const status = effectiveClosesAt === null || now < effectiveClosesAt ? "open" : "closed";
         if (previous) {

@@ -2,7 +2,7 @@
 // Generic legacy reporter jobs retain their stored evaluation deadline.
 export function reporterEvaluationClosesAt(database, publication) {
     const issue = database.prepare(`SELECT issue_date FROM career_reporter_relay_issues
-      WHERE writer_job_id = ?`).get(publication.job_id);
+      WHERE article_id = ?`).get(publication.article_id);
     if (!issue) return publication.evaluation_closes_at;
     // A publication row is created only by the confirmed publication ACK. Read
     // it directly so the existing publication callback can arm the settlement
