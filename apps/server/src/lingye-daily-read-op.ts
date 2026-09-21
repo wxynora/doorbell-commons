@@ -24,10 +24,12 @@ export function publishedDailyNotice(
   // The editor's notice is authoritative; the default adds a front-page hook
   // so residents have a reason to open the issue instead of skipping it.
   const custom = database.lingyeDailyStore.getPublicationNotice(today);
-  if (custom) return custom;
+  // The read entry is always appended; the editor writes only the hook text.
+  const readEntry = '用 doorbell({op:"go.newsroom.read",args:{}}) 查看。';
+  if (custom) return custom.endsWith(readEntry) ? custom : `${custom}${readEntry}`;
   const frontPageTitle = database.getLatestLingyeDailyIssue(now)?.edition.front_page?.title?.trim();
   if (!frontPageTitle) return DAILY_PUBLICATION_NOTICE;
-  return `今日铃野日报已出版：${frontPageTitle}。用 doorbell({op:"go.newsroom.read",args:{}}) 查看。`;
+  return `今日铃野日报已出版：${frontPageTitle}。${readEntry}`;
 }
 
 type PublishedComments = {section:string;title:string;comments:{comment_id:string;name:string;text:string}[]}[];
