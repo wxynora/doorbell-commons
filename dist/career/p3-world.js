@@ -17,7 +17,7 @@ export const AGRONOMY_ADDITIONAL_TREATMENTS = Object.freeze({
 export const P4_SEASONAL_BASELINES = Object.freeze({
     spring: Object.freeze({ agronomyChance: 0.12, animalChance: 0.03 }),
     summer: Object.freeze({ agronomyChance: 0.08, animalChance: 0.02 }),
-    autumn: Object.freeze({ agronomyChance: 0.06, animalChance: 0.015 }),
+    autumn: Object.freeze({ agronomyChance: 0.1, animalChance: 0.03 }),
     winter: Object.freeze({ agronomyChance: 0.08, animalChance: 0.02 }),
 });
 const SEASON_ID_BY_NAME = Object.freeze({ "春": "spring", "夏": "summer", "秋": "autumn", "冬": "winter" });
