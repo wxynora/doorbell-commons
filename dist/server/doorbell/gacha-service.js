@@ -50,6 +50,8 @@ const GOLD_REWARD_WEIGHTS = Object.freeze([
   Object.freeze({ amount: 1_000, weight: 5 }),
 ]);
 const REWARD_CATEGORIES = Object.freeze(Object.keys(GACHA_WEIGHTS));
+export const GACHA_TEN_DRAW_SIZE = 10;
+export const GACHA_TEN_DRAW_PRICE_GOLD = GACHA_PRICE_GOLD * GACHA_TEN_DRAW_SIZE;
 const RARE_REWARD_CATEGORIES = Object.freeze([
   "decor",
   "sp_material",
@@ -849,6 +851,161 @@ export function createGachaService(options = {}) {
     return buildStatus({ ...resolved, queries, lists, now });
   };
 
+  const drawTen = (input) => {
+    const now = Number(nowSource());
+    if (!Number.isFinite(now)) throw new GachaError("GACHA_TIME_UNAVAILABLE", "The Farm clock is invalid");
+    const resolvedInput = assertInput(input, { action: "draw" });
+    let committedFarm = null;
+    let committedFarmMeta = null;
+    const result = runAtomic(() => {
+      const entry = farmStore.findByHumanKey(resolvedInput.humanKey);
+      const resolved = {
+        ...resolvedInput,
+        ...bindingFromEntry(entry, resolvedInput.humanKey, resolvedInput.doorplate),
+      };
+      const payload = {
+        farmId: resolved.farmId,
+        residentId: resolved.residentId,
+        farmHumanKey: resolved.humanKey,
+        expectedFarmDoorplate: resolved.doorplate,
+        action: "ten_draw",
+      };
+      const payloadHash = hashPayload(payload);
+      const previous = receiptStore.get(resolved.farmId, resolved.idempotencyKey);
+      if (previous) {
+        if (previous.payloadHash !== payloadHash) {
+          throw new GachaError(
+            "GACHA_IDEMPOTENCY_CONFLICT",
+            "This idempotency key was used for a different request",
+          );
+        }
+        return previous.result;
+      }
+
+      const day = beijingDay(now);
+      const quota = quotaFor(resolved.farm, day);
+      if (quota.count + GACHA_TEN_DRAW_SIZE > GACHA_DAILY_LIMIT) {
+        throw new GachaError("GACHA_QUOTA_EXCEEDED", "The daily gacha quota is exhausted", {
+          day: beijingDate(now),
+          count: quota.count,
+          limit: GACHA_DAILY_LIMIT,
+        });
+      }
+
+      let charged = null;
+      try {
+        charged = commands.chargeToSystem({
+          residentId: resolved.residentId,
+          currency: "gold",
+          amount: GACHA_TEN_DRAW_PRICE_GOLD,
+          actor: "human",
+          businessType: "lounge_gacha",
+          businessRef: `lounge-gacha:${resolved.farmId}:${resolved.idempotencyKey}:ten-cost`,
+          idempotencyKey: `lounge-gacha:${resolved.farmId}:${resolved.idempotencyKey}:ten-cost`,
+        });
+      } catch (error) {
+        throw mapEconomyError(error);
+      }
+
+      const rewards = [];
+      let pity = pityFor(resolved.farm);
+      for (let index = 0; index < GACHA_TEN_DRAW_SIZE; index += 1) {
+        const category = pickCategory(random, lists, resolved.farm, pity);
+        const item = category === "gold" || category === "silver"
+          ? null
+          : pickItem(random, itemPool(lists, category, resolved.farm));
+        const reward = makeReward(category, item, now, generateId, random, lists);
+        rewards.push(reward);
+        pity = nextPity(pity, category);
+      }
+
+      let awarded = charged;
+      const currencyTotals = new Map();
+      for (const reward of rewards) {
+        if (reward.currency) {
+          currencyTotals.set(reward.currency, (currencyTotals.get(reward.currency) ?? 0) + reward.amount);
+        }
+      }
+      for (const [currency, amount] of currencyTotals) {
+        try {
+          awarded = commands.creditFromSystem({
+            residentId: resolved.residentId,
+            currency,
+            amount,
+            actor: "system",
+            businessType: "lounge_gacha_reward",
+            businessRef: `lounge-gacha:${resolved.farmId}:${resolved.idempotencyKey}:ten-award:${currency}`,
+            idempotencyKey: `lounge-gacha:${resolved.farmId}:${resolved.idempotencyKey}:ten-award:${currency}`,
+          });
+        } catch (error) {
+          throw mapEconomyError(error);
+        }
+      }
+      for (const reward of rewards) {
+        if (!reward.currency) applyInventoryReward(resolved.farm, reward);
+      }
+
+      const balance = {
+        gold: availableBalance(awarded ?? accountSnapshot(queries, resolved.residentId), "gold"),
+        silver: availableBalance(awarded ?? accountSnapshot(queries, resolved.residentId), "silver"),
+      };
+      resolved.farm.doorbellGachaDaily = { day, count: quota.count + GACHA_TEN_DRAW_SIZE };
+      resolved.farm.doorbellGachaPity = pity;
+      writeBalanceProjection(resolved.farm, balance);
+      const result = {
+        ok: true,
+        request_id: resolved.idempotencyKey,
+        receipt_id: resolved.idempotencyKey,
+        farm_doorplate: resolved.farmId,
+        price_gold: GACHA_TEN_DRAW_PRICE_GOLD,
+        draw_count: GACHA_TEN_DRAW_SIZE,
+        rewards,
+        balance,
+        gold: balance.gold,
+        silver: balance.silver,
+        day: beijingDate(now),
+        count: quota.count + GACHA_TEN_DRAW_SIZE,
+        limit: GACHA_DAILY_LIMIT,
+        remaining_today: GACHA_DAILY_LIMIT - quota.count - GACHA_TEN_DRAW_SIZE,
+        pity: pityView(pity),
+        probabilities: probabilitiesFor(lists, resolved.farm, pity),
+      };
+      recordFarmGachaReceipt(resolved.farm, resolved.idempotencyKey, payloadHash, result);
+      farmStore.save({
+        farmId: resolved.farmId,
+        farm: resolved.farm,
+        expectedStateJson: entry.expectedStateJson,
+      });
+      try {
+        receiptStore.put({
+          farmId: resolved.farmId,
+          receiptKey: resolved.idempotencyKey,
+          payloadHash,
+          result,
+        });
+      } catch (error) {
+        const concurrent = receiptStore.get(resolved.farmId, resolved.idempotencyKey);
+        if (!concurrent || concurrent.payloadHash !== payloadHash) {
+          throw error;
+        }
+        return concurrent.result;
+      }
+      committedFarm = resolved.farm;
+      committedFarmMeta = {
+        expectedMemoryStateJson: entry.expectedMemoryStateJson,
+      };
+      return result;
+    });
+    if (committedFarm && onFarmCommit) {
+      onFarmCommit({
+        farmId: committedFarm.id,
+        farm: committedFarm,
+        ...committedFarmMeta,
+      });
+    }
+    return result;
+  };
+
   const draw = (input) => {
     const now = Number(nowSource());
     if (!Number.isFinite(now)) throw new GachaError("GACHA_TIME_UNAVAILABLE", "The Farm clock is invalid");
@@ -1005,7 +1162,7 @@ export function createGachaService(options = {}) {
     return result;
   };
 
-  return Object.freeze({ read, draw });
+  return Object.freeze({ read, draw, drawTen });
 }
 
 export function createDoorbellGachaService(options = {}) {
