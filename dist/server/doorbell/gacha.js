@@ -126,7 +126,7 @@ function invalidBodyError(res, error) {
 }
 
 function assertRuntime(runtime) {
-  if (!runtime || typeof runtime.read !== "function" || typeof runtime.draw !== "function") {
+  if (!runtime || typeof runtime.read !== "function" || typeof runtime.draw !== "function" || typeof runtime.drawTen !== "function") {
     throw new GachaError("GACHA_ECONOMY_UNAVAILABLE", "The gacha service is unavailable");
   }
   return runtime;
@@ -140,7 +140,23 @@ export function createDoorbellGachaRuntime(options = {}) {
   return Object.freeze({
     read: (input) => service.read(input),
     draw: (input) => service.draw(input),
+    drawTen: (input) => service.drawTen(input),
   });
+}
+
+export async function handleDoorbellHumanGachaTenAction(req, res, method, runtime) {
+  if (!requireDoorbellHumanFieldService(req, res, method)) return;
+  try {
+    const parsed = parseBody(await readJsonBody(req, MAX_BODY_BYTES), "draw");
+    const binding = validateFarmBinding(parsed.body);
+    if (binding.error) {
+      return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
+    }
+    const service = assertRuntime(runtime);
+    return jsonOut(res, 200, await service.drawTen(parsed.input));
+  } catch (error) {
+    return invalidBodyError(res, error);
+  }
 }
 
 export async function handleDoorbellHumanGachaRead(req, res, method, runtime) {
