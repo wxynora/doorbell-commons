@@ -64,9 +64,16 @@ export interface LoungeGachaDrawResult extends LoungeGachaStatus {
   reward: LoungeGachaReward;
 }
 
+export interface LoungeGachaTenDrawResult extends LoungeGachaStatus {
+  request_id: string;
+  draw_count: number;
+  rewards: LoungeGachaReward[];
+}
+
 export interface LoungeGachaReader {
   read(input: LoungeGachaReadInput): Promise<LoungeGachaStatus>;
   draw(input: LoungeGachaDrawInput): Promise<LoungeGachaDrawResult>;
+  drawTen(input: LoungeGachaDrawInput): Promise<LoungeGachaTenDrawResult>;
 }
 
 export class LoungeGachaInvalidRequestError extends Error {
@@ -147,6 +154,8 @@ export interface LoungeGachaClientOptions {
 }
 
 const GACHA_PRICE_GOLD = 500;
+const GACHA_TEN_DRAW_SIZE = 10;
+const GACHA_TEN_DRAW_PRICE_GOLD = GACHA_PRICE_GOLD * GACHA_TEN_DRAW_SIZE;
 const GACHA_DAILY_LIMIT = 100;
 const GACHA_PITY_LIMIT = 100;
 const farmDoorplateSchema = z
@@ -306,6 +315,7 @@ function remoteErrorCode(payload: unknown): string | null {
 export class LoungeGachaClient implements LoungeGachaReader {
   readonly #readEndpoint: URL;
   readonly #drawEndpoint: URL;
+  readonly #tenDrawEndpoint: URL;
   readonly #serviceToken: string;
   readonly #fetch: typeof fetch;
   readonly #requestTimeoutMs: number;
@@ -318,6 +328,7 @@ export class LoungeGachaClient implements LoungeGachaReader {
     if (!apiBaseUrl.pathname.endsWith("/")) apiBaseUrl.pathname += "/";
     this.#readEndpoint = new URL("internal/doorbell/human/gacha/read", apiBaseUrl);
     this.#drawEndpoint = new URL("internal/doorbell/human/gacha/action", apiBaseUrl);
+    this.#tenDrawEndpoint = new URL("internal/doorbell/human/gacha/ten/action", apiBaseUrl);
     this.#serviceToken = options.serviceToken;
     this.#fetch = options.fetchImplementation ?? fetch;
     this.#requestTimeoutMs = options.requestTimeoutMs;
@@ -348,6 +359,32 @@ export class LoungeGachaClient implements LoungeGachaReader {
     const reward = parseReward(payload.reward);
     if (!reward) throw new LoungeGachaContractUnavailableError();
     return { ...status, request_id: normalized.requestId, reward };
+  }
+
+  async drawTen(input: LoungeGachaDrawInput): Promise<LoungeGachaTenDrawResult> {
+    const normalized = normalizeDrawInput(input);
+    const payload = await this.#request(this.#tenDrawEndpoint, {
+      farm_human_key: normalized.farmHumanKey,
+      expected_farm_doorplate: normalized.farmDoorplate,
+      idempotency_key: normalized.requestId,
+    });
+    const status = parseStatus(payload, normalized.farmDoorplate);
+    if (!status || !isObject(payload) || payload.request_id !== normalized.requestId) {
+      throw new LoungeGachaContractUnavailableError();
+    }
+    if (payload.price_gold !== GACHA_TEN_DRAW_PRICE_GOLD || payload.draw_count !== GACHA_TEN_DRAW_SIZE) {
+      throw new LoungeGachaContractUnavailableError();
+    }
+    if (!Array.isArray(payload.rewards) || payload.rewards.length !== GACHA_TEN_DRAW_SIZE) {
+      throw new LoungeGachaContractUnavailableError();
+    }
+    const rewards: LoungeGachaReward[] = [];
+    for (const entry of payload.rewards) {
+      const reward = parseReward(entry);
+      if (!reward) throw new LoungeGachaContractUnavailableError();
+      rewards.push(reward);
+    }
+    return { ...status, request_id: normalized.requestId, draw_count: GACHA_TEN_DRAW_SIZE, rewards };
   }
 
   async #request(endpoint: URL, body: Record<string, string>): Promise<unknown> {

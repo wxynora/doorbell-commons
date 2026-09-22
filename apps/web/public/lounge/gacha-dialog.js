@@ -1,9 +1,10 @@
-import {newBatch,runBatch,storedBatch} from './gacha-batch.js';
+import {runBatch,storedBatch} from './gacha-batch.js';
 import {rewardLabel} from './gacha-reward-label.js';
 import {paintPrizeArt} from './gacha-prize-art.js';
 const labels={gold:'金币',silver:'银币',ingredient:'食材',dish:'菜肴',material:'普通熔炼素材',sr_seed:'SR 种子',decor:'未拥有的家具',sp_material:'SP 熔炼素材',sp_seed:'SP 种子',ssr_seed:'SSR 种子'};
 const previewProbabilities={gold: 29.1,silver:20,ingredient:18,dish:10,material:16,sr_seed:5.9,decor: 0.4,sp_material: 0.2,sp_seed: 0.1,ssr_seed: 0.3};
 const errors={authentication_required:'请先登录。',qq_not_group_member:'当前账号没有社区访问资格。',registration_profile_required:'请先完成社区注册。',onebot_unavailable:'暂时无法核验社区资格。',insufficient_gold:'金币不足 500，攒够再来吧。',quota_exceeded:'今天已经扭满 100 次，明天再来。',prize_pool_empty:'稀有奖品暂不可用，保底进度已保留。',farm_credential_invalid:'农场连接已失效，请在设置中重新连接。',farm_not_found:'没有找到绑定的农场。',farm_doorplate_mismatch:'农场绑定不一致，请检查设置。',idempotency_conflict:'这次请求未能确认，请重新打开查看。',gacha_unavailable:'扭蛋机暂时没连上，请稍后重试。'};
+const errorsTen={...errors,insufficient_gold:'金币不足 5000，攒够再来吧。'};
 let current=null;
 const pendingMemory=new Map();
 function pendingKey(plate){return `doorbell:gacha:pending:${plate}`;}
@@ -13,11 +14,11 @@ function pending(plate,value){
  try{return sessionStorage.getItem(key)||pendingMemory.get(key)||null;}catch{return pendingMemory.get(key)||null;}
 }
 function validStatus(data){return data?.ok===true&&typeof data.farm_doorplate==='string'&&Number.isSafeInteger(data.gold)&&data.gold>=0&&Number.isSafeInteger(data.count)&&data.count>=0&&data.count<=100&&data.price_gold===500&&data.limit===100&&data.pity?.limit===100&&Number.isSafeInteger(data.pity.misses)&&data.pity.misses>=0&&data.pity.misses<100&&data.pity.remaining===100-data.pity.misses&&data.probabilities&&typeof data.probabilities==='object';}
-async function request(path,body){
+async function request(path,body,errorMap=errors){
  let response;
  try{response=await fetch(path,{method:body?'POST':'GET',credentials:'same-origin',headers:body?{'content-type':'application/json'}:undefined,body:body?JSON.stringify(body):undefined});}catch{throw {uncertain:true,message:'这次结果还没确认，重试会查询同一扭。'};}
  let data;try{data=await response.json();}catch{throw {uncertain:true,message:'暂未收到完整结果，请重试确认。'};}
- if(!response.ok)throw {uncertain:response.status>=500||response.status===401,code:data?.error?.code,message:errors[data?.error?.code]||'暂时没能完成，请稍后重试。'};
+ if(!response.ok)throw {uncertain:response.status>=500||response.status===401,code:data?.error?.code,message:errorMap[data?.error?.code]||'暂时没能完成，请稍后重试。'};
  return data;
 }
 let styleReady=null;
@@ -58,8 +59,8 @@ export async function openGachaDialog({preview=false}={}){
   $('.gacha-prize-art').hidden=true;$('.gacha-prize-name').textContent=`已获得 ${batch.results.length} 份奖励`;$('.gacha-prize-amount').textContent='';$('.gacha-prize-heading').textContent=preview?'预览奖品 · 不会实际发放':'本轮十连奖励';
   if(batch.results.length===10){if(!preview)storedBatch(status.farm_doorplate,null);batch=null;}
   reward=null;revealed=true;render();$('.gacha-again').focus();
- }
- peek.onclick=showBatch;
+}
+peek.onclick=showBatch;
  function turn(){const knob=$('.gacha-knob');if(!knob.animate||globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches)return Promise.resolve();return knob.animate([{transform:'rotate(0deg)'},{transform:'rotate(360deg)'}],{duration:1400,easing:'cubic-bezier(.3,0,.2,1)'}).finished.catch(()=>{});}
  function probabilities(values){const dl=$('.gacha-probabilities');dl.replaceChildren();for(const [key,label] of Object.entries(labels)){const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=label;dd.textContent=`${Number(values[key]??0)}%`;dl.append(dt,dd);}}
  function render(){
@@ -69,7 +70,7 @@ export async function openGachaDialog({preview=false}={}){
   const emptyPity=status?.pity.remaining===1&&Object.values(status.probabilities).every(value=>value===0);
   button.disabled=busy||!!reward||!!batch||!status||(!id&&(status.gold<500||status.count>=100||emptyPity));
   button.textContent=busy?'咕噜咕噜……':reward?'点扭蛋，看看里面':id?'确认上一扭 · 不重复扣款':emptyPity?'奖池暂不可用':'投币 · 500 金币';
-  ten.disabled=busy||!!reward||!status||!!id||(!batch&&(status.gold<5000||status.count>90||emptyPity));
+  ten.disabled=busy||!!reward||!status||(!!batch&&batch.mode!=='legacy')||!!id||(!batch&&(status.gold<5000||status.count>90||emptyPity));
   ten.textContent=busy&&batch?`十连进行中 · ${batch.results.length}/10`:batch?`继续十连 · ${batch.results.length}/10`:'十连 · 5000 金币';
   ten.hidden=revealed;peek.hidden=revealed||busy||!batch?.results.length;peek.textContent=`查看已获得的 ${batch?.results.length??0} 份奖励`;
   $('.gacha-wallet').textContent=preview?'外观预览，不扣金币':status?`我的金币 ${status.gold.toLocaleString('zh-CN')}`:'正在连接农场……';
@@ -104,13 +105,24 @@ export async function openGachaDialog({preview=false}={}){
  ten.onclick=async()=>{
   if(busy||reward||!status||(!preview&&pending(status.farm_doorplate)))return;
   if(!batch&&(status.gold<5000||status.count>90))return;
-  batch ||= newBatch(()=>crypto.randomUUID());const plate=status.farm_doorplate;
+  if(batch&&batch.mode!=='legacy'){batch=null;}
+  if(!batch&&preview){batch={mode:'legacy',ids:Array.from({length:10},(unused,index)=>'preview-'+index),results:[]};}
+  if(!batch){const id=pending(status.farm_doorplate)||crypto.randomUUID();pending(status.farm_doorplate,id);batch={mode:'atomic',id:id,results:[]};}
+  const plate=status.farm_doorplate;
   busy=true;showError('');render();const motion=turn();
   try{
-   await runBatch(batch,{save:value=>{if(!preview)storedBatch(plate,value);},isClosed:()=>closed,draw:async id=>checked(preview?{...status,gold:status.gold-500,count:status.count+1,request_id:id,reward:{category:'silver',amount:3}}:await request('/api/lounge/gacha/draw',{requestId:id}),id,plate),onResult:result=>{status=result;if(!closed)render();}});
-   await motion;if(closed)return;
-   if(batch.results.length===10){reward=batch.results;$('.gacha-result').textContent='十颗到齐啦！点扭蛋查看奖励';}
-  }catch(error){await motion;if(!closed){showError(`已完成 ${batch.results.length}/10 抽。${error.message||'稍后继续本轮，不会重复扣款。'}`);}}
+   if(batch.mode==='legacy'){
+    await runBatch(batch,{save:value=>{if(!preview)storedBatch(plate,value);},isClosed:()=>closed,draw:async id=>checked(await request('/api/lounge/gacha/draw',{requestId:id}),id,plate),onResult:result=>{status=result;if(!closed)render();}});
+    await motion;if(closed)return;
+    if(batch.results.length===10){reward=batch.results;$('.gacha-result').textContent='十颗到齐啦！点扭蛋查看奖励';}
+   }else{
+    const result=preview?{...status,gold:status.gold-5000,count:status.count+10,request_id:batch.id,draw_count:10,rewards:Array.from({length:10},()=>({category:'silver',amount:3}))}:await request('/api/lounge/gacha/draw-ten',{requestId:batch.id},errorsTen);
+    if(!validStatus(result)||result.request_id!==batch.id||result.farm_doorplate!==plate||result.draw_count!==10||!Array.isArray(result.rewards)||result.rewards.length!==10)throw {uncertain:true,message:'结果尚未确认，请重试查询同一扭。'};
+    await motion;if(closed)return;
+    batch.results=result.rewards.map(entry=>({reward:entry}));status=result;
+    if(batch.results.length===10){reward=batch.results;$('.gacha-result').textContent='十颗到齐啦！点扭蛋查看奖励';pending(plate,'');}
+   }
+  }catch(error){await motion;if(!closed){showError(`十连没有完成。${error.message||'稍后继续本轮，不会重复扣款。'}`);}}
   finally{busy=false;if(!closed)render();}
  };
  $('.gacha-open').onclick=()=>{

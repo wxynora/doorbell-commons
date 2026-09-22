@@ -175,6 +175,27 @@ export function registerLoungeGachaRoutes(
       return sendGachaFailure(reply, error, options.secureCookies);
     }
   });
+
+  app.post("/api/lounge/gacha/draw-ten", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    if (!hasNoQuery(request)) return sendInvalidRequest(reply);
+    const origin = request.headers.origin;
+    if (origin !== undefined) {
+      let allowed = false;
+      try { allowed = new URL(origin).host === request.headers.host; } catch { /* Invalid origins are rejected. */ }
+      if (!allowed) return reply.code(403).send({ error: { code: "origin_mismatch", message: "请求来源无法通过安全校验。" } });
+    }
+    const parsedBody = drawBodySchema.safeParse(request.body);
+    if (!parsedBody.success) return sendInvalidRequest(reply);
+    try {
+      const binding = await currentFarmBinding(request, options);
+      return reply.send(
+        await options.gacha.drawTen({ ...binding, requestId: parsedBody.data.requestId }),
+      );
+    } catch (error) {
+      return sendGachaFailure(reply, error, options.secureCookies);
+    }
+  });
 }
 
 export { LoungeGachaClient };
