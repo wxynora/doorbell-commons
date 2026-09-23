@@ -851,6 +851,18 @@ export function createGachaService(options = {}) {
     return buildStatus({ ...resolved, queries, lists, now });
   };
 
+  const readReceipt = (input) => {
+    const resolved = resolve(input, "draw");
+    const previous = receiptStore.get(resolved.farmId, resolved.idempotencyKey);
+    return {
+      ok: true,
+      farm_doorplate: resolved.farmId,
+      request_id: resolved.idempotencyKey,
+      found: previous !== null,
+      ...(previous ? { result: previous.result } : {}),
+    };
+  };
+
   const drawTen = (input) => {
     const now = Number(nowSource());
     if (!Number.isFinite(now)) throw new GachaError("GACHA_TIME_UNAVAILABLE", "The Farm clock is invalid");
@@ -1162,7 +1174,7 @@ export function createGachaService(options = {}) {
     return result;
   };
 
-  return Object.freeze({ read, draw, drawTen });
+  return Object.freeze({ read, readReceipt, draw, drawTen });
 }
 
 export function createDoorbellGachaService(options = {}) {

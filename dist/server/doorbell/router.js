@@ -77,6 +77,7 @@ import { handleDoorbellHumanNpcRead, handleDoorbellHumanNpcInteract } from "./np
 import {
     handleDoorbellHumanGachaAction,
     handleDoorbellHumanGachaRead,
+    handleDoorbellHumanGachaReceiptRead,
     handleDoorbellHumanGachaTenAction,
 } from "./gacha.js";
 
@@ -275,6 +276,10 @@ export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExe
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "gacha" && parts[4] === "read" && parts.length === 5) {
             await handleDoorbellHumanGachaRead(req, res, method, gachaRuntime);
+            return true;
+        }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "gacha" && parts[4] === "receipt" && parts[5] === "read" && parts.length === 6) {
+            await handleDoorbellHumanGachaReceiptRead(req, res, method, gachaRuntime);
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "gacha" && parts[4] === "action" && parts.length === 5) {
