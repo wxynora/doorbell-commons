@@ -16,7 +16,7 @@ export const CRUST_LEVELS = [
   { id: "sifted-flour", label: "筛好面粉", shortLabel: "筛", radius: 56 },
   { id: "syrup-oil-dough", label: "糖浆油面", shortLabel: "拌", radius: 66 },
   { id: "first-kneaded-dough", label: "初揉面团", shortLabel: "揉", radius: 76 },
-  { id: "rested-dough", label: "醒好面剂", shortLabel: "醒", radius: 87 },
+  { id: "rested-dough", label: "醒好面剂", shortLabel: "醒", radius: 80 },
   { id: "pressed-wrapper", label: "压制饼皮", shortLabel: "皮", radius: 100 },
 ] as const;
 
@@ -69,8 +69,8 @@ export const CRUST_STAGES: readonly [MooncakeMergeStage, ...MooncakeMergeStage[]
     id: "press",
     title: "压皮",
     targetLevel: 11,
-    targetCount: 2,
-    dropLevels: [0, 1, 2, 3, 4],
+    targetCount: 1,
+    dropLevels: [1, 2, 3, 4, 5, 6, 7],
     playWidth: 348,
   },
 ] as const;

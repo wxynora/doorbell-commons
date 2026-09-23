@@ -32,6 +32,7 @@ function normalizeLiveTogether(read) {
     }
     return {
         artFile: data.art_asset_key,
+        phase: data.phase,
         archives: data.archives.map((archive) => ({
             artFile: archive.art_asset_key,
             history: archive.history.map((entry) => ({

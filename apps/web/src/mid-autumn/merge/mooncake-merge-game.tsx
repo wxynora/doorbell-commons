@@ -183,6 +183,7 @@ function CrustToken({ level, compact = false }: { level: number; compact?: boole
   );
 }
 
+
 export function MooncakeMergeGame({
   active = true,
   onBack,
@@ -323,7 +324,7 @@ export function MooncakeMergeGame({
 
   const statusText =
     snapshot.status === "complete"
-      ? "两张饼皮已经入柜"
+      ? "1 张饼皮已经入柜"
       : snapshot.status === "stage_complete"
         ? `${snapshot.stage.title}完成`
         : snapshot.status === "failed"
@@ -455,7 +456,7 @@ export function MooncakeMergeGame({
                       ? onComplete
                         ? settlement === "saved" ? "食材已解锁，可以去作坊做月饼了。"
                           : settlement === "error" ? "材料解锁尚未确认，请重试。" : "正在保存材料解锁……"
-                        : "五个小关已经完成，两张饼皮准备好了。"
+                        : "五个小关已经完成，1 张饼皮准备好了。"
                       : "已经完成的小关不会丢失；只需重试当前这一盘。"}
                   </p>
                 ) : null}
@@ -510,5 +511,3 @@ export function MooncakeMergeGame({
     </main>
   );
 }
-
-

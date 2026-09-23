@@ -6702,6 +6702,25 @@ const LINGYE_STYLES = `
             background: var(--candidate2-together-page-bg);
         }
 
+        .candidate2-together-cover.is-ended {
+            min-height: 64px;
+        }
+
+        .candidate2-together-cover.is-ended::after {
+            display: none;
+        }
+
+        .candidate2-together-cover.is-ended img {
+            display: none;
+        }
+
+        .candidate2-together-cover.is-ended .candidate2-place-back-link,
+        .candidate2-together-cover.is-ended .candidate2-together-history-button {
+            color: #344337;
+            filter: none;
+            text-shadow: none;
+        }
+
         .candidate2-together-cover::after {
             position: absolute;
             inset: 0;
@@ -9722,7 +9741,10 @@ const CANDIDATE_RUNTIME_SCRIPT = `
 
     function renderTogetherData(data) {
         const cover = document.querySelector('.candidate2-together-cover-image');
-        const coverAsset = data && togetherCoverAssets[data.artFile];
+        const ended = data?.phase === 'ended';
+        const coverFrame = document.querySelector('.candidate2-together-cover');
+        if (coverFrame) coverFrame.classList.toggle('is-ended', ended);
+        const coverAsset = data && !ended ? togetherCoverAssets[data.artFile] : null;
         if (cover) {
             cover.hidden = !coverAsset;
             if (coverAsset) {
@@ -9738,12 +9760,12 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         const liveEmpty = document.querySelector('.candidate2-together-live-empty');
         const taskList = document.querySelector('.candidate2-together-task-list');
         const choiceList = document.querySelector('.candidate2-together-choice-list');
-        if (!data) {
+        if (!data || ended) {
             if (currentContent) currentContent.hidden = true;
             if (liveEmpty) liveEmpty.hidden = false;
             if (taskList) taskList.replaceChildren();
             if (choiceList) choiceList.replaceChildren();
-            renderTogetherArchives([]);
+            renderTogetherArchives(data?.archives || []);
             setTogetherText('.candidate2-together-current-kicker', '');
             setTogetherText('#candidate2-together-current-title', '');
             setTogetherText('.candidate2-together-current-status', '');
@@ -9759,11 +9781,24 @@ const CANDIDATE_RUNTIME_SCRIPT = `
             const emptyStageRail = document.querySelector('.candidate2-together-stage-rail');
             if (emptyStageRail) emptyStageRail.replaceChildren();
             renderTogetherPublicFacts(null);
+            const taskSection = taskList?.closest('.candidate2-together-section');
+            const choiceSection = choiceList?.closest('.candidate2-together-section');
+            const rules = document.querySelector('#candidate2-together-rules');
+            if (taskSection) taskSection.hidden = ended;
+            if (choiceSection) choiceSection.hidden = ended;
+            if (rules) rules.hidden = ended;
+            if (ended) setTogetherText('.candidate2-together-live-empty', '当前没有进行中的铃野共行故事。');
             return;
         }
 
         if (liveEmpty) liveEmpty.hidden = true;
         if (currentContent) currentContent.hidden = false;
+        const taskSection = taskList?.closest('.candidate2-together-section');
+        const choiceSection = choiceList?.closest('.candidate2-together-section');
+        const rules = document.querySelector('#candidate2-together-rules');
+        if (taskSection) taskSection.hidden = false;
+        if (choiceSection) choiceSection.hidden = false;
+        if (rules) rules.hidden = false;
         renderTogetherArchives(data.archives);
         setTogetherText('.candidate2-together-current-kicker', data.episodeLabel || '');
         setTogetherText('#candidate2-together-current-title', data.title);
