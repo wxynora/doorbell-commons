@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { DIY_OPTIONS, scorePreferenceOrder } from './scoring.js';
-import { EVENT_ID, OPENS_AT, CLOSES_AT, ORDERS, ORDER_DESCRIPTIONS, initialState, rewardOrder, availableOptions, approvedFeedback } from './catalog.js';
+import { EVENT_ID, OPENS_AT, DELIVERY_AT, CLOSES_AT, ORDERS, ORDER_DESCRIPTIONS, initialState, rewardOrder, availableOptions, approvedFeedback } from './catalog.js';
 
 export class MidAutumnError extends Error {
   constructor(code, status = 409) { super(code); this.code = code; this.status = status; }
@@ -27,10 +27,12 @@ export class MidAutumnService {
   constructor(database, options = {}) {
     this.db = database;
     this.opensAt = options.opensAt ?? OPENS_AT;
+    this.deliveryAt = options.deliveryAt ?? DELIVERY_AT;
     this.closesAt = options.closesAt ?? CLOSES_AT;
     this.id = options.generateId ?? randomUUID;
     this.grantGiftReward = options.grantGiftReward;
-    if (this.opensAt !== null && (!Number.isSafeInteger(this.opensAt) || this.opensAt >= this.closesAt)) throw new TypeError('Invalid event window');
+    if (this.opensAt !== null && (!Number.isSafeInteger(this.opensAt) || this.opensAt >= this.deliveryAt)) throw new TypeError('Invalid event window');
+    if (!Number.isSafeInteger(this.deliveryAt) || this.deliveryAt >= this.closesAt) throw new TypeError('Invalid event window');
     if (!Number.isSafeInteger(this.closesAt)) throw new TypeError('Invalid event window');
   }
   phase(now) {
@@ -88,7 +90,7 @@ export class MidAutumnService {
     if (!['ai', 'human'].includes(side) || !Object.hasOwn(ARGUMENTS, op)) fail('invalid_request', 400);
     keys(args, ARGUMENTS[op], op === 'cook' ? ['cake'] : ['preview', 'deliver'].includes(op) ? ['orderId'] : ARGUMENTS[op]);
     const phase = this.phase(now);
-    if (op === 'view' || op === 'memorial') return this.view(farmId, side, phase, op === 'memorial');
+    if (op === 'view' || op === 'memorial') return this.view(farmId, side, phase, op === 'memorial', now);
     if (side === 'human' && ['begin', 'restock', 'accept', 'preview', 'deliver', 'choose_stamp'].includes(op)) fail('actor_not_allowed', 403);
     if (side !== 'human' && op === 'complete_collection') fail('actor_not_allowed', 403);
     if (!READS.has(op)) string(requestId);
@@ -220,12 +222,13 @@ export class MidAutumnService {
     }
     fail('invalid_request', 400);
   }
-  view(farmId, side, phase, memorial) {
+  view(farmId, side, phase, memorial, now) {
     if (phase === 'upcoming' || phase === 'unconfigured')
-      return { eventId: EVENT_ID, phase, opensAt: this.opensAt, closesAt: this.closesAt, gifts: [] };
+      return { eventId: EVENT_ID, phase, opensAt: this.opensAt, deliveryAt: this.deliveryAt, closesAt: this.closesAt, gifts: [] };
     const state = this.state(farmId);
     const boxes = this.db.prepare("SELECT * FROM mid_autumn_boxes WHERE event_id=? AND farm_id=? AND (side=? OR status='sent') ORDER BY created_at,id").all(EVENT_ID, farmId, side);
-    const gifts = boxes.filter(box => box.status !== 'delivered' && (!memorial || box.status === 'sent')).map(box => ({
+    const gifts = boxes.filter(box => box.status !== 'delivered' && (!memorial || box.status === 'sent') &&
+      (box.side === side || now >= this.deliveryAt)).map(box => ({
       id: box.id, side: box.side, letter: box.letter, status: box.status, sentAt: box.sent_at,
       cakes: JSON.parse(box.cakes_json).map(id => {
         const row = this.db.prepare('SELECT config_json FROM mid_autumn_cakes WHERE id=? AND event_id=? AND farm_id=?').get(id, EVENT_ID, farmId);
@@ -240,7 +243,7 @@ export class MidAutumnService {
       bake: { ...DIY_OPTIONS.bake }, stages: { pattern: true, bake: true },
     };
     options.yolk = side === 'ai' ? state.completed.includes('traditional') : Boolean(state.humanCollectionCompleted || state.humanChapters.includes('yolk'));
-    return { eventId: EVENT_ID, phase, opensAt: this.opensAt, closesAt: this.closesAt,
+    return { eventId: EVENT_ID, phase, opensAt: this.opensAt, deliveryAt: this.deliveryAt, closesAt: this.closesAt,
       started: side === 'ai' ? state.started : Boolean(state.humanCollectionCompleted || state.humanChapters.length > 0), options, materials: side === 'ai' ? state.materials : null,
       humanChapters: side === 'human' ? state.humanChapters : undefined, stampChoices: side === 'ai' ? state.stampChoices : 0,
       stampChoiceOptions: side === 'ai' ? DIY_OPTIONS.patterns.filter(pattern => !state.patterns.includes(pattern)) : [],

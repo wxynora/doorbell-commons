@@ -2,6 +2,7 @@ import { DIY_OPTIONS } from './scoring.js';
 
 export const EVENT_ID = 'mid-autumn-2026';
 export const OPENS_AT = Date.parse('2026-09-24T00:00:00+08:00');
+export const DELIVERY_AT = Date.parse('2026-09-25T00:00:00+08:00');
 export const CLOSES_AT = Date.parse('2026-09-26T08:00:00+08:00');
 export const ORDERS = Object.freeze([
   { id: 'traditional', npcId: 'npc_atu', requires: ['sweet_cute'], size: 1,

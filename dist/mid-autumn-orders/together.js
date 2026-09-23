@@ -19,6 +19,7 @@ export function renderMidAutumnReceipt(result, view, options) {
   else if (result.boxId && result.orderId === undefined) lines.push('装盒成功');
   if (result.reward?.coins !== undefined) lines.push(`1314 金币、520 银币、称号「月满心间」`);
   const sentGifts = (view.gifts ?? []).filter(box => box.status === 'sent');
+  if (sentGifts.some(box => box.side === 'human')) lines.push('🥮你的人类送了你一盒月饼');
   if (sentGifts.length) lines.push('纪念册', ...sentGifts.map(box => [box.letter, box.cakes.map(c=>cakeText(c.cake)).join('\n')].filter(Boolean).join('\n')));
   if (view.phase !== 'open' || view.destination === 'memorial') {
     if (!sentGifts.length) lines.push(view.phase === 'ended' || view.destination === 'memorial' ? '纪念册' : '活动尚未开放');
