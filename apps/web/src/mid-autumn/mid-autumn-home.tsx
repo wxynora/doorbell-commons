@@ -8,7 +8,7 @@ export interface MidAutumnHomeProps {
   onCraft?: () => void;
   onGifts?: () => void;
   giftCount?: number;
-  giftNotice?: string;
+  giftNotice?: string | undefined;
   interactive?: boolean;
 }
 
