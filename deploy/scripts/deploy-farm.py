@@ -164,8 +164,8 @@ def deploy(plan, paths=PATHS, run=run_command, clock=time.monotonic, sleep=time.
                 backup = location
                 result['backup'] = str(backup)
                 record()
-                for name in ('lingye-world.sqlite', 'world.json'):
-                    shutil.copy2(data / name, backup / name)
+                # Farm authority has migrated to SQLite; do not copy legacy world.json.
+                shutil.copy2(data / 'lingye-world.sqlite', backup / 'lingye-world.sqlite')
                 for suffix in ('-wal', '-shm'):
                     companion = data / ('lingye-world.sqlite' + suffix)
                     if companion.exists():
