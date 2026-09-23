@@ -15,22 +15,31 @@ export const midAutumnEntryText = (now, farm) => [
   midAutumnSeedEntryText(now, farm),
 ].filter(Boolean).join('\n');
 const cakeText = cake => `${DIY_OPTIONS.fillings[cake.filling]}·${cake.shape}·${cake.pattern}·火候${cake.bake}·${cake.yolk ? '加蛋黄' : '不加蛋黄'}`;
-export function renderMidAutumnReceipt(result, view, options) {
+export function renderMidAutumnReceipt(result, view, options, operation = 'view') {
   const lines = ['🧭 铃野共行｜中秋特别版《月满心间》'];
   if (result.cakeId) lines.push(`【制作结果】\n${result.cakeId}`);
   if (result.score !== undefined) lines.push(`【制作结果】\n${result.score}分\n${result.feedback ?? ''}`.trim());
   if (result.sentAt !== undefined) lines.push('赠送成功');
   else if (result.boxId && result.orderId === undefined) lines.push('装盒成功');
   if (result.reward?.coins !== undefined) lines.push(`1314 金币、520 银币、称号「月满心间」`);
+  if (operation === 'begin' && result.started) lines.push('已进入月饼任务');
+  if (operation === 'restock' && result.restocked) lines.push('食材已补足');
+  if (operation === 'accept' && result.accepted === true && result.orderId) lines.push(`已接取：${result.orderId}`);
+  if (operation === 'choose_stamp' && result.pattern) lines.push(`印纹已解锁：${result.pattern}`);
+  if (operation === 'unpack' && result.unpackedBoxId) lines.push('礼盒已拆开');
   const sentGifts = (view.gifts ?? []).filter(box => box.status === 'sent');
   if (sentGifts.some(box => box.side === 'human')) lines.push('🥮你的人类送了你一盒月饼');
-  if (sentGifts.length) lines.push('纪念册', ...sentGifts.map(box => [box.letter, box.cakes.map(c=>cakeText(c.cake)).join('\n')].filter(Boolean).join('\n')));
   if (view.phase !== 'open' || view.destination === 'memorial') {
+    if (sentGifts.length) lines.push('纪念册', ...sentGifts.map(box => [box.letter, box.cakes.map(c=>cakeText(c.cake)).join('\n')].filter(Boolean).join('\n')));
     if (!sentGifts.length) lines.push(view.phase === 'ended' || view.destination === 'memorial' ? '纪念册' : '活动尚未开放');
     return lines.join('\n\n');
   }
+  if (operation !== 'view') {
+    lines.push(`【下一步】\n读取当前状态\n${call('中秋')}`);
+    return lines.join('\n\n');
+  }
   const orders = view.orders.filter(o=>o.available);
-  if (orders.length) lines.push('【当前委托】\n'+orders.map(o=>`${o.request}\n${o.size}枚${o.size===4?'礼盒':''} · ${o.accepted?'已接取':'未接取'}`).join('\n\n'));
+  if (orders.length) lines.push('【当前委托】\n'+orders.map(o=>`${o.id}：${o.request}\n${o.size}枚${o.size===4?'礼盒':''} · ${o.accepted?'已接取':'未接取'}`).join('\n\n'));
   const next=[];
   if (!view.started) next.push(`开始\n${call(options.begin)}`);
   else {
@@ -46,15 +55,19 @@ export function renderMidAutumnReceipt(result, view, options) {
     if(options.cook.A.length&&options.cook.B.length) next.push(`制作：按上面的代号替换组合\n${call(options.cook.prefix+[options.cook.A[0].code,options.cook.B[0].code,...(view.options.stages.pattern?[options.cook.C[0].code]:[]),...(view.options.stages.bake?['D75']:[]),...(view.options.yolk?['E0']:[])].join('+'))}`);
     next.push(`补充食材\n${call(options.restock)}`);
   }
-  for(const entry of options.accept) if(!orders.find(o=>o.id===entry.orderId)?.accepted) next.push(`接取：${orders.find(o=>o.id===entry.orderId).request}\n${call(entry.option)}`);
-  for(const order of orders.filter(o=>o.accepted)) {
-    const items=order.size===1?view.cakes:view.gifts.filter(b=>b.side==='ai'&&b.status==='packed');
-    for(const item of items) next.push(`${order.request}\n${order.size===1?cakeText(item.cake):item.cakes.map(c=>cakeText(c.cake)).join('；')}\n评分预览\n${call(options.preview.prefix+order.id+'+'+item.id)}\n交付\n${call(options.deliver.prefix+order.id+'+'+item.id)}`);
+  const acceptOptions=options.accept.filter(entry=>!orders.find(order=>order.id===entry.orderId)?.accepted);
+  if(acceptOptions.length) next.push(`【接取委托】\n${acceptOptions.map(entry=>`${entry.orderId}：${call(entry.option)}`).join('\n')}`);
+  const packedBoxes=view.gifts.filter(box=>box.side==='ai'&&box.status==='packed');
+  const canReview=orders.some(order=>order.accepted&&(order.size===1?view.cakes.length>0:packedBoxes.length>0));
+  if(canReview) next.push(`【评分预览与交付】\n评分预览：${call(options.preview.prefix+'<委托编号>+<成品编号或礼盒编号>')}\n交付：${call(options.deliver.prefix+'<委托编号>+<成品编号或礼盒编号>')}`);
+  if(options.choose_stamp.length) {
+    const choices=options.choose_stamp.map(entry=>`C${DIY_OPTIONS.patterns.indexOf(entry.name)+1} ${entry.name}`).join('；');
+    const optionTemplate=options.choose_stamp[0].option.replace(/C\d+$/,'C<印纹编号>');
+    next.push(`【可解锁印纹】\n${choices}\n解锁：${call(optionTemplate)}`);
   }
   if(view.cakes.length) lines.push('【制作结果】\n'+view.cakes.map((c,i)=>`${i+1}. ${cakeText(c.cake)}\n${c.id}`).join('\n'));
   if(view.cakes.length>=4) next.push(`装盒：选择四枚成品；附信时在末尾加 | 和来信正文。\n${call(options.pack.prefix+view.cakes.slice(0,4).map(c=>c.id).join('+'))}`);
   for(const box of options.boxes) next.push(`礼盒 ${box.boxId}\n赠送\n${call(box.send)}\n拆盒\n${call(box.unpack)}`);
-  for(const entry of options.choose_stamp) next.push(`${entry.name}\n${call(entry.option)}`);
   lines.push('【下一步】\n'+next.join('\n\n'));
   return lines.join('\n\n');
 }
@@ -115,7 +128,7 @@ export function runMidAutumnTogether(database, farmId, option, now, opensAt = nu
       choose_stamp: view.stampChoices > 0 ? view.stampChoiceOptions.map(name=>({name,option:prefix('choose_stamp')+`C${DIY_OPTIONS.patterns.indexOf(name)+1}`})) : [],
       boxes: view.gifts.filter(box=>box.side==='ai'&&box.status==='packed').map(box=>({boxId:box.id,send:prefix('send')+box.id,unpack:prefix('unpack')+box.id})),
     } : {};
-    return {status:200,json:{ok:true,text:renderMidAutumnReceipt(result,view,options)}};
+    return {status:200,json:{ok:true,text:renderMidAutumnReceipt(result,view,options,command.op)}};
   } catch(error) {
     if (error instanceof MidAutumnError) return {status:error.status,json:{ok:false,code:error.code,text:error.code}};
     throw error;

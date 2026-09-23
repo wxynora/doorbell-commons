@@ -163,6 +163,8 @@ export function season3Text(
   farm,
   { actions = [], history = false, identity = null } = {},
 ) {
+  if (!history && state.phase === "ended")
+    return "🧭 铃野共行｜《雨还没落下来》已结束，可在往期故事回看。";
   const data = season3HumanData(state, farm);
   const paragraphs = [`🧭 铃野共行｜本期故事：《${content.title}》`];
   const scenes = history

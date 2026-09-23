@@ -110,6 +110,11 @@ function artAssetKey(artName) {
 
 function archiveEntryArtAssetKey(archive, entry, lastChoiceStep) {
   const storyId = String(archive.storyId ?? "");
+  if (storyId === TOGETHER_SEASON3_STORY_ID) {
+    const stage = /:stage:(preparation|flood|recovery|ended)$/u.exec(String(entry?.id ?? ""))?.[1];
+    const artStage = stage === "ended" ? "ending" : stage;
+    return artAssetKey(artStage ? `rain-not-yet-${artStage}-v4.png` : archive.artFile);
+  }
   if (storyId === String(publicExpeditionContent.id)) {
     if (entry?.kind === "ending")
       return artAssetKey(publicExpeditionContent.art?.[archive.endingId]);
@@ -154,7 +159,10 @@ function projectArchiveHistory(archive) {
 }
 
 function archiveArtAssetKey(archive) {
-  if (String(archive.storyId ?? "") !== String(publicExpeditionContent.id))
+  const storyId = String(archive.storyId ?? "");
+  if (storyId === TOGETHER_SEASON3_STORY_ID)
+    return artAssetKey(archive.artFile ?? "rain-not-yet-ending-v4.png");
+  if (storyId !== String(publicExpeditionContent.id))
     return archiveEntryArtAssetKey(archive, { kind: "ending" }, 6);
   const endingId = String(archive.endingId ?? "");
   const stage = String(archive.stage ?? "");
@@ -282,6 +290,23 @@ function projectHumanTogether(world, farm, now = Date.now(), publicFarms = []) {
   const history = season3
     ? (shared.history ?? []).filter((entry) => ["story", "clue", "ending"].includes(entry?.kind))
     : (shared.history ?? []);
+  const archives = projectArchives(shared.archives);
+  if (
+    season3 && world.phase === "ended" &&
+    !archives.some((archive) => archive.story_id === TOGETHER_SEASON3_STORY_ID)
+  ) {
+    const round = Math.max(0, ...archives.map((archive) => archive.round)) + 1;
+    const archive = projectArchive({
+      storyId: world.storyId,
+      storyTitle: shared.title,
+      round,
+      endingId: world.endingId,
+      stage: world.phase,
+      artFile: shared.artFile,
+      history,
+    });
+    if (archive) archives.push(archive);
+  }
   const data = {
     story_id: String(world.storyId ?? ""),
     title: safeText(shared.title ?? publicExpeditionContent.title),
@@ -291,7 +316,7 @@ function projectHumanTogether(world, farm, now = Date.now(), publicFarms = []) {
     stage: projectStage(world),
     art_asset_key: artAssetKey(shared.artFile),
     history: projectHistory(history.slice(-128)),
-    archives: projectArchives(shared.archives),
+    archives,
     current_task: projectTask(shared.currentTask),
     current_choice: season3 ? null : projectChoice(shared.currentChoice),
     cooldown: season3 ? null : projectCooldown(shared.cooldown),

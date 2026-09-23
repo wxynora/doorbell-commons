@@ -248,7 +248,7 @@ export class MidAutumnService {
       humanChapters: side === 'human' ? state.humanChapters : undefined, stampChoices: side === 'ai' ? state.stampChoices : 0,
       stampChoiceOptions: side === 'ai' ? DIY_OPTIONS.patterns.filter(pattern => !state.patterns.includes(pattern)) : [],
       orders: side === 'ai' ? ORDERS.map(order => ({ id: order.id, npcId: order.npcId, size: order.size,
-        available: state.started && order.requires.every(id => state.completed.includes(id)),
+        available: state.started && !state.completed.includes(order.id) && order.requires.every(id => state.completed.includes(id)),
         accepted: state.accepted.includes(order.id), completed: state.completed.includes(order.id),
         ...ORDER_DESCRIPTIONS[order.id] })) : [],
       cakes: this.db.prepare("SELECT id,config_json FROM mid_autumn_cakes WHERE event_id=? AND farm_id=? AND side=? AND status='available' ORDER BY created_at,id").all(EVENT_ID, farmId, side).map(row => ({ id: row.id, cake: JSON.parse(row.config_json) })), gifts };
