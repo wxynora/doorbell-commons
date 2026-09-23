@@ -43,7 +43,7 @@ export interface LoungeGachaStatus {
   silver: number;
   day: string;
   count: number;
-  price_gold: 500;
+  price_gold: 500 | 5000;
   limit: 100;
   remaining_today: number;
   pity: LoungeGachaPity;
@@ -65,13 +65,20 @@ export interface LoungeGachaDrawResult extends LoungeGachaStatus {
 }
 
 export interface LoungeGachaTenDrawResult extends LoungeGachaStatus {
+  price_gold: 5000;
   request_id: string;
   draw_count: number;
   rewards: LoungeGachaReward[];
 }
 
+export type LoungeGachaReceiptLookup =
+  | { ok: true; farm_doorplate: string; request_id: string; found: false }
+  | { ok: true; farm_doorplate: string; request_id: string; found: true; kind: "single"; result: LoungeGachaDrawResult }
+  | { ok: true; farm_doorplate: string; request_id: string; found: true; kind: "ten"; result: LoungeGachaTenDrawResult };
+
 export interface LoungeGachaReader {
   read(input: LoungeGachaReadInput): Promise<LoungeGachaStatus>;
+  readReceipt(input: LoungeGachaDrawInput): Promise<LoungeGachaReceiptLookup>;
   draw(input: LoungeGachaDrawInput): Promise<LoungeGachaDrawResult>;
   drawTen(input: LoungeGachaDrawInput): Promise<LoungeGachaTenDrawResult>;
 }
@@ -155,7 +162,7 @@ export interface LoungeGachaClientOptions {
 
 const GACHA_PRICE_GOLD = 500;
 const GACHA_TEN_DRAW_SIZE = 10;
-const GACHA_TEN_DRAW_PRICE_GOLD = GACHA_PRICE_GOLD * GACHA_TEN_DRAW_SIZE;
+const GACHA_TEN_DRAW_PRICE_GOLD = (GACHA_PRICE_GOLD * GACHA_TEN_DRAW_SIZE) as 5000;
 const GACHA_DAILY_LIMIT = 100;
 const GACHA_PITY_LIMIT = 100;
 const farmDoorplateSchema = z
@@ -222,10 +229,11 @@ function parsePity(value: unknown): LoungeGachaPity | null {
 function parseStatus(
   payload: unknown,
   expectedFarmDoorplate: string,
+  expectedPriceGold: 500 | 5000 = GACHA_PRICE_GOLD,
 ): LoungeGachaStatus | null {
   if (!isObject(payload) || payload.ok !== true) return null;
   if (payload.farm_doorplate !== expectedFarmDoorplate) return null;
-  if (payload.price_gold !== GACHA_PRICE_GOLD) return null;
+  if (payload.price_gold !== expectedPriceGold) return null;
   if (payload.limit !== GACHA_DAILY_LIMIT) return null;
   if (typeof payload.day !== "string" || !DATE_RE.test(payload.day)) return null;
   if (!safeInteger(payload.gold) || !safeInteger(payload.silver)) return null;
@@ -251,7 +259,7 @@ function parseStatus(
     silver: payload.silver,
     day: payload.day,
     count: payload.count,
-    price_gold: GACHA_PRICE_GOLD,
+    price_gold: expectedPriceGold,
     limit: GACHA_DAILY_LIMIT,
     remaining_today: payload.remaining_today,
     pity,
@@ -314,6 +322,7 @@ function remoteErrorCode(payload: unknown): string | null {
 
 export class LoungeGachaClient implements LoungeGachaReader {
   readonly #readEndpoint: URL;
+  readonly #receiptEndpoint: URL;
   readonly #drawEndpoint: URL;
   readonly #tenDrawEndpoint: URL;
   readonly #serviceToken: string;
@@ -327,6 +336,7 @@ export class LoungeGachaClient implements LoungeGachaReader {
     const apiBaseUrl = new URL(options.apiBaseUrl);
     if (!apiBaseUrl.pathname.endsWith("/")) apiBaseUrl.pathname += "/";
     this.#readEndpoint = new URL("internal/doorbell/human/gacha/read", apiBaseUrl);
+    this.#receiptEndpoint = new URL("internal/doorbell/human/gacha/receipt/read", apiBaseUrl);
     this.#drawEndpoint = new URL("internal/doorbell/human/gacha/action", apiBaseUrl);
     this.#tenDrawEndpoint = new URL("internal/doorbell/human/gacha/ten/action", apiBaseUrl);
     this.#serviceToken = options.serviceToken;
@@ -343,6 +353,44 @@ export class LoungeGachaClient implements LoungeGachaReader {
     const status = parseStatus(payload, normalized.farmDoorplate);
     if (!status) throw new LoungeGachaContractUnavailableError();
     return status;
+  }
+
+  async readReceipt(input: LoungeGachaDrawInput): Promise<LoungeGachaReceiptLookup> {
+    const normalized = normalizeDrawInput(input);
+    const payload = await this.#request(this.#receiptEndpoint, {
+      farm_human_key: normalized.farmHumanKey,
+      expected_farm_doorplate: normalized.farmDoorplate,
+      idempotency_key: normalized.requestId,
+    });
+    if (!isObject(payload) || payload.ok !== true ||
+        payload.farm_doorplate !== normalized.farmDoorplate ||
+        payload.request_id !== normalized.requestId) {
+      throw new LoungeGachaContractUnavailableError();
+    }
+    if (payload.found === false) {
+      return { ok: true, farm_doorplate: normalized.farmDoorplate, request_id: normalized.requestId, found: false };
+    }
+    if (payload.found !== true || !isObject(payload.result)) {
+      throw new LoungeGachaContractUnavailableError();
+    }
+    const result = payload.result;
+    if (result.request_id !== normalized.requestId) throw new LoungeGachaContractUnavailableError();
+    if (result.draw_count === GACHA_TEN_DRAW_SIZE) {
+      const status = parseStatus(result, normalized.farmDoorplate, GACHA_TEN_DRAW_PRICE_GOLD);
+      if (!status || !Array.isArray(result.rewards) || result.rewards.length !== GACHA_TEN_DRAW_SIZE) {
+        throw new LoungeGachaContractUnavailableError();
+      }
+      const rewards = result.rewards.map(parseReward);
+      if (rewards.some(reward => reward === null)) throw new LoungeGachaContractUnavailableError();
+      return { ok: true, farm_doorplate: normalized.farmDoorplate, request_id: normalized.requestId, found: true, kind: "ten",
+        result: { ...status, price_gold: GACHA_TEN_DRAW_PRICE_GOLD, request_id: normalized.requestId, draw_count: GACHA_TEN_DRAW_SIZE, rewards: rewards as LoungeGachaReward[] } };
+    }
+    if (result.draw_count !== undefined) throw new LoungeGachaContractUnavailableError();
+    const status = parseStatus(result, normalized.farmDoorplate);
+    const reward = parseReward(result.reward);
+    if (!status || !reward) throw new LoungeGachaContractUnavailableError();
+    return { ok: true, farm_doorplate: normalized.farmDoorplate, request_id: normalized.requestId, found: true, kind: "single",
+      result: { ...status, request_id: normalized.requestId, reward } };
   }
 
   async draw(input: LoungeGachaDrawInput): Promise<LoungeGachaDrawResult> {
@@ -368,7 +416,7 @@ export class LoungeGachaClient implements LoungeGachaReader {
       expected_farm_doorplate: normalized.farmDoorplate,
       idempotency_key: normalized.requestId,
     });
-    const status = parseStatus(payload, normalized.farmDoorplate);
+    const status = parseStatus(payload, normalized.farmDoorplate, GACHA_TEN_DRAW_PRICE_GOLD);
     if (!status || !isObject(payload) || payload.request_id !== normalized.requestId) {
       throw new LoungeGachaContractUnavailableError();
     }
@@ -384,7 +432,7 @@ export class LoungeGachaClient implements LoungeGachaReader {
       if (!reward) throw new LoungeGachaContractUnavailableError();
       rewards.push(reward);
     }
-    return { ...status, request_id: normalized.requestId, draw_count: GACHA_TEN_DRAW_SIZE, rewards };
+    return { ...status, price_gold: GACHA_TEN_DRAW_PRICE_GOLD, request_id: normalized.requestId, draw_count: GACHA_TEN_DRAW_SIZE, rewards };
   }
 
   async #request(endpoint: URL, body: Record<string, string>): Promise<unknown> {

@@ -13,9 +13,8 @@ export function LoungeDailyDialog({ onClose }: { onClose(): void }) {
     dialog.current?.showModal();
     let active = true;
     void loadLatestLingyeDaily().then(({ issue, reporterPublications }) => {
-      const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
       if (active) setPublications(reporterPublications);
-      if (active) setState({ status: "ready", issue: issue?.issueDate === today ? issue : null });
+      if (active) setState({ status: "ready", issue });
     }).catch(() => { if (active) setState({ status: "error", issue: null }); });
     return () => { active = false; };
   }, []);
@@ -26,7 +25,7 @@ export function LoungeDailyDialog({ onClose }: { onClose(): void }) {
     catch { setLikeError("点赞没成功，请稍后再试。"); }
     finally { liking.current = false; setPendingLikeRef(null); }
   }
-  return <dialog ref={dialog} aria-label="今天的铃野日报" onCancel={onClose} onClose={onClose}
+  return <dialog ref={dialog} aria-label="铃野日报" onCancel={onClose} onClose={onClose}
     style={{ width: "min(900px, 94vw)", maxHeight: "90dvh", padding: "20px", border: "1px solid #b9a080", borderRadius: "16px", background: "#fff8eb", color: "#6d5d55" }}>
     <button type="button" onClick={onClose} style={{ float: "right", position: "sticky", top: 0, zIndex: 1 }}>关闭日报 ×</button>
     {state.status === "ready" ? <LingyeDailyPage issue={state.issue} reporterPublications={publications} pendingLikeRef={pendingLikeRef} onReporterLike={like} /> : <p role="status">{state.status === "error" ? "日报暂时没打开，请稍后再来看看。" : "报纸正在送来。"}</p>}

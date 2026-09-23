@@ -27,6 +27,7 @@ import {
 } from "../session-cookie.js";
 
 const drawBodySchema = z.strictObject({ requestId: z.uuid() });
+const receiptQuerySchema = z.strictObject({ requestId: z.uuid() });
 
 export interface LoungeGachaRouteOptions {
   registrationAuth: Pick<
@@ -150,6 +151,19 @@ export function registerLoungeGachaRoutes(
     try {
       const binding = await currentFarmBinding(request, options);
       return reply.send(await options.gacha.read(binding));
+    } catch (error) {
+      return sendGachaFailure(reply, error, options.secureCookies);
+    }
+  });
+
+  app.get("/api/lounge/gacha/receipt", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    if (request.body !== undefined) return sendInvalidRequest(reply);
+    const query = receiptQuerySchema.safeParse(request.query);
+    if (!query.success) return sendInvalidRequest(reply);
+    try {
+      const binding = await currentFarmBinding(request, options);
+      return reply.send(await options.gacha.readReceipt({ ...binding, requestId: query.data.requestId }));
     } catch (error) {
       return sendGachaFailure(reply, error, options.secureCookies);
     }

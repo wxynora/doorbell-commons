@@ -1223,6 +1223,7 @@ export type CandidateTwoAction =
     }
   | { type: "permit-complete" }
   | { type: "profile-identity-updated" }
+  | { type: "profile-identity-save"; residentName: string; homeName: string }
   | {
       type: "home-settings-save";
       field: "climateType" | "environmentDescription" | "homeName";
@@ -1312,6 +1313,7 @@ const candidateTwoActionKeys = {
   ],
   "permit-complete": ["type"],
   "profile-identity-updated": ["type"],
+  "profile-identity-save": ["type", "residentName", "homeName"],
   "home-settings-save": ["type", "field", "value"],
   "profile-add": ["type"],
   "owner-profile-career-open": ["type"],
@@ -1431,6 +1433,16 @@ export function parseCandidateTwoAction(value: unknown): CandidateTwoAction | nu
           farmHumanUrl: value.farmHumanUrl as string,
           homeName: value.homeName as string,
           residentName: value.residentName as string,
+        }
+      : null;
+  }
+
+  if (type === "profile-identity-save") {
+    return hasStringFields(value, ["residentName", "homeName"])
+      ? {
+          type,
+          residentName: value.residentName as string,
+          homeName: value.homeName as string,
         }
       : null;
   }
@@ -10702,19 +10714,25 @@ const CANDIDATE_RUNTIME_SCRIPT = `
         setStatus(identityFeedback,'');identityName.focus();
     });
     identityForm.querySelector('.candidate2-profile-editor-cancel').onclick=closeIdentityForm;
-    identityForm.onsubmit=async(event)=>{
+    identityForm.onsubmit=(event)=>{
         event.preventDefault();
         if(!identityName.value.trim()||!identityHome.value.trim()){setStatus(identityFeedback,'两项都需要填写');return;}
         setFormDisabled(identityForm,true);identityEditButton.disabled=true;setStatus(identityFeedback,'正在保存…');
-        try{
-            const response=await fetch('/api/resident-profile',{method:'PATCH',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify({resident_name:identityName.value,home_name:identityHome.value})});
-            const result=await response.json();
-            if(!response.ok){setStatus(identityFeedback,result.error?.message||'保存失败，请重试');return;}
-            applyIdentity({...currentIdentity,residentName:result.resident_name,homeName:result.home_name});
-            closeIdentityForm();sendAction({type:'profile-identity-updated'});
-        }catch{setStatus(identityFeedback,'保存结果未确认，请刷新后查看');}
-        finally{setFormDisabled(identityForm,false);identityEditButton.disabled=false;}
+        sendAction({type:'profile-identity-save',residentName:identityName.value,homeName:identityHome.value});
     };
+    window.addEventListener('message',(event)=>{
+        if(event.source!==window.parent||event.data?.type!=='doorbell-candidate2:profile-identity-save-result')return;
+        const result=event.data;
+        if(identityForm.hidden)return;
+        if(result.ok===true&&typeof result.residentName==='string'&&typeof result.homeName==='string'){
+            applyIdentity({...currentIdentity,residentName:result.residentName,homeName:result.homeName});
+            closeIdentityForm();
+            sendAction({type:'profile-identity-updated'});
+        }else{
+            setStatus(identityFeedback,typeof result.message==='string'?result.message:'保存结果未确认，请刷新后查看');
+        }
+        setFormDisabled(identityForm,false);identityEditButton.disabled=false;
+    });
 
     relationshipEditButton.addEventListener('click', () => {
         if (relationshipEditor.hidden) openRelationshipEditor();
@@ -11268,6 +11286,47 @@ export function CandidateTwoPreview({
             "*",
           );
         }
+        return;
+      }
+
+      if (action.type === "profile-identity-save") {
+        const frame = iframeRef.current?.contentWindow;
+        if (!frame) return;
+        const sendResult = (result:
+          | { ok: true; residentName: string; homeName: string }
+          | { ok: false; message: string },
+        ) => frame.postMessage({ type: "doorbell-candidate2:profile-identity-save-result", ...result }, "*");
+        if (demoRef.current) {
+          sendResult({ ok: true, residentName: action.residentName, homeName: action.homeName });
+          return;
+        }
+        if (stateRef.current.stage !== "authenticated") {
+          sendResult({ ok: false, message: "请先登录。" });
+          return;
+        }
+        void (async () => {
+          try {
+            const response = await fetch("/api/resident-profile", {
+              method: "PATCH",
+              credentials: "same-origin",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                resident_name: action.residentName,
+                home_name: action.homeName,
+              }),
+            });
+            const result = await response.json();
+            if (!response.ok) {
+              sendResult({ ok: false, message: result?.error?.message || "保存失败，请重试" });
+            } else if (typeof result?.resident_name === "string" && typeof result?.home_name === "string") {
+              sendResult({ ok: true, residentName: result.resident_name, homeName: result.home_name });
+            } else {
+              sendResult({ ok: false, message: "保存结果未确认，请刷新后查看" });
+            }
+          } catch {
+            sendResult({ ok: false, message: "保存结果未确认，请刷新后查看" });
+          }
+        })();
         return;
       }
 
