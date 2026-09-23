@@ -6,6 +6,10 @@ import { midAutumnSeedEntryText } from '../mid-autumn-seeds.js';
 
 export const isMidAutumnOption = option => typeof option === 'string' && (option === '中秋' || option.startsWith('中秋:'));
 const call = option => `doorbell(${JSON.stringify({op:'farm.together.choose',args:{option}})})`;
+export const midAutumnActivityStatusText = now =>
+  now >= OPENS_AT && now < CLOSES_AT
+    ? `🌕 中秋特别活动《月满心间》已开放。使用 ${call('中秋')} 进入；月饼制作与赠送都在这里。`
+    : '';
 export const midAutumnEntryText = (now, farm) => [
   now >= OPENS_AT && now < CLOSES_AT ? `【下一步】\n中秋特别版《月满心间》\n${call('中秋')}` : '',
   midAutumnSeedEntryText(now, farm),

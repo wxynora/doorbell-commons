@@ -1,5 +1,5 @@
 import { appendCareerStatusNotices } from "./career/exam-status.js";
-import { isMidAutumnOption, runMidAutumnTogether, midAutumnEntryText } from './mid-autumn-orders/together.js';
+import { isMidAutumnOption, runMidAutumnTogether, midAutumnEntryText, midAutumnActivityStatusText } from './mid-autumn-orders/together.js';
 import { createMidAutumnRuntime } from './mid-autumn-orders/runtime.js';
 import { isNpcMotionChoice, npcMotionChoiceReceipt, appendNpcMotionReceipt } from './domain/glimmer/npc-motion.js';
 import { glimmerContentEditor } from './content.js';
@@ -118,6 +118,8 @@ function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
     }
     if (action === "status" && result.json?.ok === true) {
         appendCareerStatusNotices(activeLingyeWorldDatabase, activeLingyeWorldBackend, farm, result);
+        const entry = midAutumnActivityStatusText(now);
+        if (entry) result.json.text = `${result.json.text}\n\n${entry}`;
     }
     return result;
 }
