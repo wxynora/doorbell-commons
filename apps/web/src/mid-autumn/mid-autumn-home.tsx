@@ -8,6 +8,7 @@ export interface MidAutumnHomeProps {
   onCraft?: () => void;
   onGifts?: () => void;
   giftCount?: number;
+  giftNotice?: string;
   interactive?: boolean;
 }
 
@@ -16,6 +17,7 @@ export function MidAutumnHome({
   onCraft,
   onGifts,
   giftCount,
+  giftNotice,
   interactive = true,
 }: MidAutumnHomeProps) {
   const frame = useRef<HTMLDivElement>(null);
@@ -74,8 +76,9 @@ export function MidAutumnHome({
                 type="button"
                 style={{ position: "absolute", top: 36, right: 36 }}
                 onClick={onGifts}
+                aria-live="polite"
               >
-                月饼礼盒（{giftCount ?? 0}）
+                {giftNotice ?? `月饼礼盒（${giftCount ?? 0}）`}
               </button>
             ) : null}
           </nav>
@@ -84,4 +87,3 @@ export function MidAutumnHome({
     </div>
   );
 }
-

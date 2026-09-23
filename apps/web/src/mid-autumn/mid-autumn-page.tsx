@@ -62,11 +62,12 @@ export function MidAutumnPage({ onBack, initialView, readView = readMidAutumn }:
     if (
       !view ||
       (view.phase !== "upcoming" && view.phase !== "open") ||
-      (!view.opensAt && !view.closesAt)
+      (!view.opensAt && !view.deliveryAt && !view.closesAt)
     ) {
       return;
     }
-    const boundaryAt = view.phase === "upcoming" ? view.opensAt : view.closesAt;
+    const boundaryAt = view.phase === "upcoming" ? view.opensAt
+      : view.deliveryAt && Date.now() < view.deliveryAt ? view.deliveryAt : view.closesAt;
     if (!boundaryAt) return;
     const timer = window.setTimeout(() => {
       setBoundaryPending(true);
@@ -87,6 +88,8 @@ export function MidAutumnPage({ onBack, initialView, readView = readMidAutumn }:
   const isOpen = view?.phase === "open" && !boundaryPending && !error;
   const message = error ?? (boundaryPending ? "正在读取活动……" : gateMessage(view));
   const giftCount = view?.gifts.filter((gift) => gift.status === "sent").length ?? 0;
+  const giftNotice = view?.gifts.some((gift) => gift.status === "sent" && gift.side === "ai")
+    ? "🥮你的小机送了你一盒月饼" : undefined;
 
   const retry = () => {
     setBoundaryPending(true);
@@ -126,6 +129,7 @@ export function MidAutumnPage({ onBack, initialView, readView = readMidAutumn }:
           }}
           onGifts={() => setScene("gifts")}
           giftCount={giftCount}
+          giftNotice={giftNotice}
         />
       </div>
       {collectionOpened ? (
@@ -160,4 +164,3 @@ export function MidAutumnPage({ onBack, initialView, readView = readMidAutumn }:
     </div>
   );
 }
-

@@ -19,6 +19,7 @@ export interface MidAutumnView {
   phase: "upcoming" | "unconfigured" | "open" | "ended";
   destination?: "memorial";
   opensAt?: number;
+  deliveryAt?: number;
   closesAt?: number;
   options?: {
     fillings: { id: number; name: string }[];
@@ -56,4 +57,3 @@ export async function runMidAutumnCommand<T>(command: MidAutumnCommand): Promise
 }
 
 export const readMidAutumn = () => runMidAutumnCommand<MidAutumnView>({ op: "view", args: {} });
-
