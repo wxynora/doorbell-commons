@@ -4874,6 +4874,9 @@ const LINGYE_SCREEN = `
         <button class="candidate2-lingye-daily-entry" type="button" aria-label="打开铃野日报" onclick="openLingyeDaily()">
             <img src="/lingye/ui/lingye-daily-newspaper.png" alt="" width="256" height="256" draggable="false">
         </button>
+        <button class="candidate2-lingye-mid-autumn-entry" type="button" aria-label="进入月满心间中秋活动" onclick="openMidAutumnActivity()" hidden>
+            <span aria-hidden="true">月满心间</span>
+        </button>
     </div>
 `;
 
@@ -5322,7 +5325,8 @@ const LINGYE_STYLES = `
         }
 
         .candidate2-lingye-memories,
-        .candidate2-lingye-daily-entry {
+        .candidate2-lingye-daily-entry,
+        .candidate2-lingye-mid-autumn-entry {
             position: absolute;
             z-index: 30;
             right: 12px;
@@ -5343,6 +5347,17 @@ const LINGYE_STYLES = `
             top: calc(94px + clamp(52px, 14vw, 60px));
         }
 
+        .candidate2-lingye-mid-autumn-entry {
+            top: calc(102px + 2 * clamp(52px, 14vw, 60px));
+            display: grid;
+            place-items: end center;
+            filter: drop-shadow(0 3px 5px rgba(64, 53, 38, 0.42));
+        }
+
+        .candidate2-lingye-mid-autumn-entry[hidden] {
+            display: none;
+        }
+
         .candidate2-lingye-memories img,
         .candidate2-lingye-daily-entry img {
             display: block;
@@ -5355,8 +5370,42 @@ const LINGYE_STYLES = `
             -webkit-user-drag: none;
         }
 
+        .candidate2-lingye-mid-autumn-entry::before {
+            position: absolute;
+            top: 1px;
+            left: 50%;
+            display: grid;
+            place-items: center;
+            width: 80%;
+            aspect-ratio: 1;
+            border: 2px solid #fff8df;
+            border-radius: 50%;
+            background: radial-gradient(circle at 34% 30%, #fff9dd 8%, #f7dda0 65%, #d6a35f 100%);
+            box-shadow: inset -3px -4px 0 rgba(170, 110, 55, 0.2), 0 0 0 1px #ad784b;
+            color: #8b5a3b;
+            content: "月";
+            font: 600 26px/1 "Noto Serif SC", "Songti SC", serif;
+            transform: translateX(-50%);
+        }
+
+        .candidate2-lingye-mid-autumn-entry span {
+            position: absolute;
+            right: 0;
+            bottom: 0;
+            left: 0;
+            padding: 1px 0;
+            border: 1px solid #d5a15d;
+            border-radius: 8px;
+            background: #fff8df;
+            color: #74492f;
+            font: 600 11px/1.25 "Noto Serif SC", "Songti SC", serif;
+            white-space: nowrap;
+            pointer-events: none;
+        }
+
         .candidate2-lingye-memories:focus-visible,
-        .candidate2-lingye-daily-entry:focus-visible {
+        .candidate2-lingye-daily-entry:focus-visible,
+        .candidate2-lingye-mid-autumn-entry:focus-visible {
             outline: 3px solid rgba(255, 248, 222, 0.92);
             outline-offset: 2px;
             border-radius: 18px;
@@ -7943,6 +7992,25 @@ const LINGYE_SCRIPT = `
     function openMidAutumnActivity() {
         sendAction({ type: 'lingye-mid-autumn-open' });
     }
+
+    let midAutumnEntryTimer = 0;
+    function syncMidAutumnMapEntry() {
+        const midAutumnEntry = document.querySelector('.candidate2-lingye-mid-autumn-entry');
+        if (!midAutumnEntry) return;
+        const opensAt = Date.parse('2026-09-24T00:00:00+08:00');
+        const closesAt = Date.parse('2026-09-26T08:00:00+08:00');
+        const now = Date.now();
+        const active = now >= opensAt && now < closesAt;
+        midAutumnEntry.hidden = !active;
+        if (midAutumnEntryTimer) window.clearTimeout(midAutumnEntryTimer);
+        const nextBoundary = now < opensAt ? opensAt : now < closesAt ? closesAt : 0;
+        if (nextBoundary) midAutumnEntryTimer = window.setTimeout(syncMidAutumnMapEntry, Math.max(1, nextBoundary - now));
+    }
+    syncMidAutumnMapEntry();
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) syncMidAutumnMapEntry();
+    });
+    window.addEventListener('pageshow', syncMidAutumnMapEntry);
 
     function openLingyeDaily() {
         sendAction({ type: 'lingye-daily-open' });
