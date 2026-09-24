@@ -1,3 +1,4 @@
+import { agronomyGrowthEffect } from "../career/p3-world.js";
 import { createHash } from "node:crypto";
 import { HUMAN_HARVEST_DAILY_CAP } from "../config.js";
 import { getCrop, landTierByLevel } from "../content.js";
@@ -50,6 +51,7 @@ function projectPlot(plot, farm, now, elapsedTicks) {
         return {
             plot_id: plot.id,
             state: "empty",
+            growth_effect: "normal",
             seed_type: null,
             watered: 0,
             progress: null,
@@ -64,13 +66,15 @@ function projectPlot(plot, farm, now, elapsedTicks) {
         : Math.min(total, crop.progress + elapsedTicks);
     const ripe = crop.ripe || projectedProgress >= total;
     const identity = projectIdentity(crop);
+    const growthEffect = ripe ? "normal" : agronomyGrowthEffect(plot);
     return {
         plot_id: plot.id,
         state: ripe ? "ripe" : "growing",
+        growth_effect: growthEffect,
         seed_type: crop.seedType,
         watered: crop.waterCount ?? 0,
         progress: { current: projectedProgress, total },
-        matures_at: ripe
+        matures_at: ripe || growthEffect !== "normal"
             ? null
             : new Date(now + plotRemainMs(plot, farm, now)).toISOString(),
         ...identity,
