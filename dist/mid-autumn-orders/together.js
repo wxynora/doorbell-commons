@@ -6,6 +6,8 @@ import { midAutumnSeedEntryText } from '../mid-autumn-seeds.js';
 
 export const isMidAutumnOption = option => typeof option === 'string' && (option === '中秋' || option.startsWith('中秋:'));
 const call = option => `doorbell(${JSON.stringify({op:'farm.together.choose',args:{option}})})`;
+const OPENING = '中秋快到了，铃野的邻居们正好有几份委托，帮他们做完，也许能获得一些做月饼礼盒的食材。';
+const ENDING = '最后一张委托纸收进抽屉，食材、模具和印纹都备好了。桌上还留着一只空礼盒，现在可以做属于你自己的月饼礼盒了，送给你想念的那个ta。';
 export const midAutumnActivityStatusText = now =>
   now >= OPENS_AT && now < CLOSES_AT
     ? `🌕 中秋特别活动《月满心间》已开放。使用 ${call('中秋')} 进入；月饼制作与赠送都在这里。`
@@ -27,6 +29,7 @@ export function renderMidAutumnReceipt(result, view, options, operation = 'view'
   if (operation === 'accept' && result.accepted === true && result.orderId) lines.push(`已接取：${result.orderId}`);
   if (operation === 'choose_stamp' && result.pattern) lines.push(`印纹已解锁：${result.pattern}`);
   if (operation === 'unpack' && result.unpackedBoxId) lines.push('礼盒已拆开');
+  if (operation === 'deliver' && view.orders.length && view.orders.every(order => order.completed)) lines.push(ENDING);
   const sentGifts = (view.gifts ?? []).filter(box => box.status === 'sent');
   if (sentGifts.some(box => box.side === 'human')) lines.push('🥮你的人类送了你一盒月饼');
   if (view.phase !== 'open' || view.destination === 'memorial') {
@@ -41,7 +44,10 @@ export function renderMidAutumnReceipt(result, view, options, operation = 'view'
   const orders = view.orders.filter(o=>o.available);
   if (orders.length) lines.push('【当前委托】\n'+orders.map(o=>`${o.id}：${o.request}\n${o.size}枚${o.size===4?'礼盒':''} · ${o.accepted?'已接取':'未接取'}`).join('\n\n'));
   const next=[];
-  if (!view.started) next.push(`开始\n${call(options.begin)}`);
+  if (!view.started) {
+    lines.push(OPENING);
+    next.push(`开始\n${call(options.begin)}`);
+  }
   else {
     const traits=view.options.traits;
     const tags=(group,item)=> (traits[group].find(t=>group==='fillings'?t.id===Number(item.code.slice(1))-1:t.name===item.name)?.tags ?? []).join('、');
@@ -60,14 +66,12 @@ export function renderMidAutumnReceipt(result, view, options, operation = 'view'
   const packedBoxes=view.gifts.filter(box=>box.side==='ai'&&box.status==='packed');
   const canReview=orders.some(order=>order.accepted&&(order.size===1?view.cakes.length>0:packedBoxes.length>0));
   if(canReview) next.push(`【评分预览与交付】\n评分预览：${call(options.preview.prefix+'<委托编号>+<成品编号或礼盒编号>')}\n交付：${call(options.deliver.prefix+'<委托编号>+<成品编号或礼盒编号>')}`);
-  if(options.choose_stamp.length) {
-    const choices=options.choose_stamp.map(entry=>`C${DIY_OPTIONS.patterns.indexOf(entry.name)+1} ${entry.name}`).join('；');
-    const optionTemplate=options.choose_stamp[0].option.replace(/C\d+$/,'C<印纹编号>');
-    next.push(`【可解锁印纹】\n${choices}\n解锁：${call(optionTemplate)}`);
-  }
   if(view.cakes.length) lines.push('【制作结果】\n'+view.cakes.map((c,i)=>`${i+1}. ${cakeText(c.cake)}\n${c.id}`).join('\n'));
-  if(view.cakes.length>=4) next.push(`装盒：选择四枚成品；附信时在末尾加 | 和来信正文。\n${call(options.pack.prefix+view.cakes.slice(0,4).map(c=>c.id).join('+'))}`);
-  for(const box of options.boxes) next.push(`礼盒 ${box.boxId}\n赠送\n${call(box.send)}\n拆盒\n${call(box.unpack)}`);
+  const giftOptions=[];
+  for(const box of options.boxes) giftOptions.push(`礼盒 ${box.boxId}\n赠送\n${call(box.send)}\n拆盒\n${call(box.unpack)}`);
+  if(view.cakes.length>=4) giftOptions.push(`装盒：选择四枚成品；附信时在末尾加 | 和来信正文。\n${call(options.pack.prefix+view.cakes.slice(0,4).map(c=>c.id).join('+'))}`);
+  if(view.orders.length && view.orders.every(order=>order.completed)) next.unshift(...giftOptions);
+  else next.push(...giftOptions);
   lines.push('【下一步】\n'+next.join('\n\n'));
   return lines.join('\n\n');
 }
@@ -125,7 +129,6 @@ export function runMidAutumnTogether(database, farmId, option, now, opensAt = nu
       preview: {prefix:prefix('preview'),format:'orderId+cakeId_or_boxId'},
       deliver: {prefix:prefix('deliver'),format:'orderId+cakeId_or_boxId'},
       pack: {prefix:prefix('pack'),format:'cakeId+cakeId+cakeId+cakeId|来信正文'},
-      choose_stamp: view.stampChoices > 0 ? view.stampChoiceOptions.map(name=>({name,option:prefix('choose_stamp')+`C${DIY_OPTIONS.patterns.indexOf(name)+1}`})) : [],
       boxes: view.gifts.filter(box=>box.side==='ai'&&box.status==='packed').map(box=>({boxId:box.id,send:prefix('send')+box.id,unpack:prefix('unpack')+box.id})),
     } : {};
     return {status:200,json:{ok:true,text:renderMidAutumnReceipt(result,view,options,command.op)}};

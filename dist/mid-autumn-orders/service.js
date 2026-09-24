@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { DIY_OPTIONS, scorePreferenceOrder } from './scoring.js';
-import { EVENT_ID, OPENS_AT, DELIVERY_AT, CLOSES_AT, ORDERS, ORDER_DESCRIPTIONS, initialState, rewardOrder, availableOptions, approvedFeedback } from './catalog.js';
+import { EVENT_ID, OPENS_AT, DELIVERY_AT, CLOSES_AT, ORDERS, ORDER_DESCRIPTIONS, initialState, rewardOrder, availableOptions, unlockedPatterns, approvedFeedback } from './catalog.js';
 
 export class MidAutumnError extends Error {
   constructor(code, status = 409) { super(code); this.code = code; this.status = status; }
@@ -82,7 +82,7 @@ export class MidAutumnService {
   order(state, id) {
     const order = ORDERS.find(value => value.id === id);
     if (!order) fail('invalid_order', 400);
-    if (!state.started || order.requires.some(value => !state.completed.includes(value))) fail('order_locked');
+    if (!state.started || state.completed.includes(id) || order.requires.some(value => !state.completed.includes(value))) fail('order_locked');
     return order;
   }
   execute({ farmId, side, op, args = {}, requestId }, now = Date.now()) {
@@ -149,7 +149,7 @@ export class MidAutumnService {
       try { scorePreferenceOrder('sweet_cute', args.cake); } catch { fail('invalid_cake', 400); }
       const cake = args.cake;
       if (side === 'ai') {
-        if (!state.shapes.includes(cake.shape) || !state.patterns.includes(cake.pattern)) fail('option_locked');
+        if (!state.shapes.includes(cake.shape) || !unlockedPatterns(state).includes(cake.pattern)) fail('option_locked');
         if ((!state.completed.includes('sweet_cute') && cake.pattern !== '无') || (!state.completed.includes('traditional') && cake.bake !== 75)) fail('option_locked');
         if (!state.recipes.includes(cake.filling)) fail('recipe_locked');
         const stock = state.materials;
@@ -187,11 +187,7 @@ export class MidAutumnService {
         feedback: approvedFeedback(order.id, evaluation) };
     }
     if (op === 'choose_stamp') {
-      if (!DIY_OPTIONS.patterns.includes(args.pattern) || args.pattern === '无') fail('invalid_pattern', 400);
-      if (state.patterns.includes(args.pattern)) fail('already_unlocked');
-      if (state.stampChoices < 1) fail('no_stamp_choice');
-      state.stampChoices--; state.patterns.push(args.pattern);
-      return { pattern: args.pattern };
+      fail('option_locked');
     }
     if (op === 'pack') {
       if (typeof args.letter !== 'string') fail('invalid_letter', 400);
@@ -245,8 +241,8 @@ export class MidAutumnService {
     options.yolk = side === 'ai' ? state.completed.includes('traditional') : Boolean(state.humanCollectionCompleted || state.humanChapters.includes('yolk'));
     return { eventId: EVENT_ID, phase, opensAt: this.opensAt, deliveryAt: this.deliveryAt, closesAt: this.closesAt,
       started: side === 'ai' ? state.started : Boolean(state.humanCollectionCompleted || state.humanChapters.length > 0), options, materials: side === 'ai' ? state.materials : null,
-      humanChapters: side === 'human' ? state.humanChapters : undefined, stampChoices: side === 'ai' ? state.stampChoices : 0,
-      stampChoiceOptions: side === 'ai' ? DIY_OPTIONS.patterns.filter(pattern => !state.patterns.includes(pattern)) : [],
+      humanChapters: side === 'human' ? state.humanChapters : undefined, stampChoices: 0,
+      stampChoiceOptions: [],
       orders: side === 'ai' ? ORDERS.map(order => ({ id: order.id, npcId: order.npcId, size: order.size,
         available: state.started && !state.completed.includes(order.id) && order.requires.every(id => state.completed.includes(id)),
         accepted: state.accepted.includes(order.id), completed: state.completed.includes(order.id),

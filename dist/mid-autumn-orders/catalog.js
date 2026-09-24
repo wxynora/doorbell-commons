@@ -12,11 +12,11 @@ export const ORDERS = Object.freeze([
   { id: 'sweet_cute', npcId: 'npc_liyuan', requires: [], size: 1,
     reward: { recipe: 2, shape: '玉兔', patterns: ['乌萨奇', '星月'] } },
   { id: 'light_elegant', npcId: 'npc_pupu', requires: ['rich'], size: 1,
-    reward: { stampChoices: 1 } },
+    reward: { patterns: ['桂枝'] } },
   { id: 'variety', npcId: 'npc_modian', requires: ['rich'], size: 4,
-    reward: { stampChoices: 2 } },
+    reward: { patterns: ['星星', '流云'] } },
   { id: 'matching', npcId: 'npc_songmo', requires: ['traditional'], size: 4,
-    reward: { stampChoices: 2 } },
+    reward: { patterns: ['弯月', '足印'] } },
 ].map(order => Object.freeze(order)));
 
 export const SWEET_CUTE_TEXT = Object.freeze({
@@ -60,30 +60,36 @@ export function initialState() {
     stampChoices: 0, completed: [], accepted: [], humanChapters: [] };
 }
 
-export function rewardOrder(state, order) {
-  const first = !state.completed.includes(order.id);
-  const reward = order.reward;
-  if (first) {
-    if (reward.recipe !== undefined && !state.recipes.includes(reward.recipe)) state.recipes.push(reward.recipe);
-    if (reward.shape && !state.shapes.includes(reward.shape)) state.shapes.push(reward.shape);
-    for (const pattern of reward.patterns ?? []) if (!state.patterns.includes(pattern)) state.patterns.push(pattern);
-    state.stampChoices += reward.stampChoices ?? 0;
-    state.completed.push(order.id);
+export function unlockedPatterns(state) {
+  if (ORDERS.every(order => state.completed.includes(order.id))) return [...DIY_OPTIONS.patterns];
+  const earned = new Set(state.patterns);
+  for (const order of ORDERS) {
+    if (state.completed.includes(order.id)) for (const pattern of order.reward.patterns ?? []) earned.add(pattern);
   }
-  // A successful repeat supplies ingredients only, never another unlock reward.
+  return DIY_OPTIONS.patterns.filter(pattern => earned.has(pattern));
+}
+
+export function rewardOrder(state, order) {
+  const reward = order.reward;
+  if (state.completed.includes(order.id)) throw new Error('Completed Mid-Autumn order cannot reward again');
+  if (reward.recipe !== undefined && !state.recipes.includes(reward.recipe)) state.recipes.push(reward.recipe);
+  if (reward.shape && !state.shapes.includes(reward.shape)) state.shapes.push(reward.shape);
+  state.completed.push(order.id);
+  state.patterns = unlockedPatterns(state);
   for (const filling of state.recipes) state.materials.fillings[filling] += 4;
   state.materials.dough += state.recipes.length * 4;
-  state.materials.yolks += first ? reward.yolks ?? 0 : 0;
-  return { first, unlockedRecipe: first ? reward.recipe ?? null : null };
+  state.materials.yolks += reward.yolks ?? 0;
+  return { first: true, unlockedRecipe: reward.recipe ?? null };
 }
 
 export function availableOptions(state) {
+  const patterns = unlockedPatterns(state);
   return { stages: { pattern: state.completed.includes('sweet_cute'), bake: state.completed.includes('traditional') }, fillings: state.recipes.map(id => ({ id, name: DIY_OPTIONS.fillings[id] })),
     traits: {
       fillings: state.recipes.map(id => ({ id, tags: [['偏甜'],['甜润'],['浓郁'],['相对清淡','坚果香']][id] })),
       shapes: state.shapes.map(name => ({ name, tags: { 圆月:['传统'], 花朵:['雅致','可爱'], 玉兔:['可爱'] }[name] })),
-      patterns: state.patterns.map(name => ({ name, tags: name === '无' ? [] : [['樱花','小雏菊','桂枝'].includes(name) ? '花草' : ['星星','弯月','星月','流云'].includes(name) ? '星月' : '动物'] })),
+      patterns: patterns.map(name => ({ name, tags: name === '无' ? [] : [['樱花','小雏菊','桂枝'].includes(name) ? '花草' : ['星星','弯月','星月','流云'].includes(name) ? '星月' : '动物'] })),
       yolk: ['增加浓郁度','降低甜度与清淡度'],
     },
-    shapes: [...state.shapes], patterns: [...state.patterns], bake: DIY_OPTIONS.bake };
+    shapes: [...state.shapes], patterns, bake: DIY_OPTIONS.bake };
 }
