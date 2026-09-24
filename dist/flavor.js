@@ -2,7 +2,8 @@
 import { flavor, landTierByLevel, getCrop, totalCropCount } from "./content.js";
 import { currentSeason } from "./time.js";
 import { taskLine } from "./tasks.js";
-import { agronomyObservationsForPlot } from "./career/p3-world.js";
+import { agronomyGrowthEffect, agronomyObservationsForPlot } from "./career/p3-world.js";
+import { describeFarmNature } from "./game/presentation/nature-status.js";
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
 const RITUAL_RARITY = new Set(["SR", "SSR", "SP"]);
 const PLANT_LINES = [""];
@@ -10,12 +11,14 @@ const PLANT_LINES = [""];
 const LIMITED_PLANT_LINES = [""];
 // —— 状态条（HUD）= 可行动摘要：AI 看这一行就知道这轮能做什么 ——
 export function statusFooter(farm, now) {
-    let ripe = 0, grow = 0, empty = 0;
+    let ripe = 0, grow = 0, paused = 0, empty = 0;
     for (const p of farm.plots) {
         if (!p.crop)
             empty++;
         else if (p.crop.ripe)
             ripe++;
+        else if (agronomyGrowthEffect(p) === "paused")
+            paused++;
         else
             grow++;
     }
@@ -27,7 +30,8 @@ export function statusFooter(farm, now) {
     const matCount = Object.values(farm.materials ?? {}).reduce((a, b) => a + (b || 0), 0);
     const craftHint = matCount >= 3 ? " · ⚗️可熔炼" : "";
     // emoji 后各带一个汉字标签（图/药/金/银），万一 AI 端不渲染 emoji 也能认出含义
-    const hud = `🌾【${currentSeason(now).name}·${tier}】熟${ripe}·长${grow}·空${empty} · 📖图${codex} · 🧪药${potion} · 💰金${farm.coins}${silver}${craftHint}`;
+    const growing = `熟${ripe}·长${grow}${paused ? `·停${paused}` : ""}·空${empty}`;
+    const hud = `🌾【${currentSeason(now).name}·${tier}】${growing} · 📖图${codex} · 🧪药${potion} · 💰金${farm.coins}${silver}${craftHint}`;
     // 随机任务行（农场主页随机刷新一条；tickTask 在 taskLine 内推进状态机）
     const tl = taskLine(farm, now);
     return tl ? `${hud}\n${tl}` : hud;
@@ -150,9 +154,10 @@ export function stealVictimLog(crop, by) {
 export function describeFarm(farm, now, opts = {}) {
     const lines = [];
     const season = currentSeason(now);
+    const natureStatus = describeFarmNature(farm, now);
     // 原创(ugc)作物受保护、不能偷——串门时单独归类；ripe 仍含 ugc（主人自己能收）。
     const isUgc = (c) => c.seedType === "limited" && !!c.limitedId && getCrop(c.limitedId)?.category === "ugc";
-    let ripe = 0, growing = 0, empty = 0, protectedUgc = 0;
+    let ripe = 0, growing = 0, paused = 0, empty = 0, protectedUgc = 0;
     for (const p of farm.plots) {
         if (!p.crop)
             empty++;
@@ -161,6 +166,8 @@ export function describeFarm(farm, now, opts = {}) {
             if (isUgc(p.crop))
                 protectedUgc++;
         }
+        else if (agronomyGrowthEffect(p) === "paused")
+            paused++;
         else
             growing++;
     }
@@ -174,11 +181,14 @@ export function describeFarm(farm, now, opts = {}) {
             lines.push(`还有 ${protectedUgc} 块结着原创作物，受保护偷不了——想要就去集市买它的种子自己种。`);
         if (growing)
             lines.push(`${growing} 块地还在长，看不出是什么。`);
-        if (!stealable && !growing && !protectedUgc)
+        if (paused)
+            lines.push(`${paused} 块地里的未成熟作物暂停生长。`);
+        if (!stealable && !growing && !paused && !protectedUgc)
             lines.push("地里暂时没什么可下手的，空荡荡的。");
         return lines.join("\n");
     }
     lines.push(`🌾 你站在「${farm.name}」的地头。【${season.name} · ${landTierByLevel(farm.landTier).name}】`);
+    lines.push(...natureStatus.lines);
     lines.push(pick(season.ambience));
     if (ripe >= 3)
         lines.push(pick(flavor.ambient.bumper));
@@ -186,11 +196,15 @@ export function describeFarm(farm, now, opts = {}) {
         lines.push(pick(flavor.ambient.ripe));
     if (growing)
         lines.push(`${growing} 块地里的神秘幼苗正在长，收获才知是什么。`);
+    if (paused)
+        lines.push(`${paused} 块地里的未成熟作物暂停生长。`);
     if (empty && empty === farm.plots.length)
         lines.push(pick(flavor.ambient.allEmpty));
     else if (empty)
         lines.push(pick(flavor.ambient.empty));
     for (const plot of farm.plots) {
+        if (natureStatus.describedPlotIds.has(plot.id))
+            continue;
         const observations = agronomyObservationsForPlot(plot);
         if (observations.includes("leaf_damage") && observations.includes("visible_pest_trace"))
             lines.push(`⚠️ ${plot.id} 号地的叶片有啃咬痕迹，叶间还能看见虫迹；这块地需要农艺师检查。`);
