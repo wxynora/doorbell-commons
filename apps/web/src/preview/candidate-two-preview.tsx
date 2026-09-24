@@ -5022,7 +5022,7 @@ const LINGYE_PLACE_SCREENS = `
                                 <span class="candidate2-memorial-index-action">查看回忆 <span aria-hidden="true">›</span></span>
                             </span>
                         </button>
-                        <button class="candidate2-memorial-demo candidate2-mid-autumn-memorial-demo" type="button" aria-label="查看 2026 年中秋活动月满心间" onclick="openMidAutumnActivity()" data-memorial-event="mid-autumn" data-memorial-category="festival" data-memorial-editor-name="中秋活动票券" hidden>
+                        <button class="candidate2-memorial-demo candidate2-mid-autumn-memorial-demo" type="button" aria-label="查看 2026 年中秋活动月满心间" onclick="openMidAutumnActivity()" data-memorial-event="mid-autumn" data-memorial-category="festival" data-memorial-editor-id="mid-autumn-event-card" data-memorial-editor-name="中秋活动票券" data-memorial-editor-fill hidden>
                             <span class="candidate2-memorial-index-number"><strong>02</strong><small>2026</small></span>
                             <span class="candidate2-memorial-index-copy">
                                 <small>节日活动</small>
@@ -5032,7 +5032,7 @@ const LINGYE_PLACE_SCREENS = `
                             </span>
                             <span class="candidate2-memorial-index-banner">
                                 <img src="/mid-autumn/diy/event-home-selected.png" alt="" width="902" height="1744" draggable="false">
-                                <span class="candidate2-memorial-index-action">进入活动 <span aria-hidden="true">›</span></span>
+                                <span class="candidate2-memorial-index-action">查看回忆 <span aria-hidden="true">›</span></span>
                             </span>
                         </button>
                     </main>
@@ -5859,6 +5859,12 @@ const LINGYE_STYLES = `
         .candidate2-memorial-demo:focus-visible {
             outline: 3px solid rgba(120, 137, 69, 0.44);
             outline-offset: 4px;
+        }
+
+        .candidate2-mid-autumn-memorial-demo {
+            position: absolute;
+            top: 75px;
+            left: 0;
         }
 
         .candidate2-memorial-index-banner {
@@ -8105,6 +8111,7 @@ const LINGYE_SCRIPT = `
         'tab-all': { color: '#dfc6e2', rotate: 0, scale: 0.55, x: 81.6, y: 18.3, z: -1, kind: null, text: '全部' },
         'tab-festival': { color: '#dfc6e2', rotate: 0, scale: 0.52, x: -2.7, y: 17.7, z: -2, kind: null, text: '节日' },
         'event-card': { color: '#ffffff', rotate: 0.6, scale: 0.45, x: -89.5, y: -76.8, z: 10, kind: null, text: null },
+        'mid-autumn-event-card': { color: '#ffffff', rotate: 0.6, scale: 0.45, x: -89.5, y: -76.8, z: 10, kind: null, text: null },
         'event-number': { color: null, rotate: 0, scale: 1, x: -0.5, y: -3.2, z: 10, kind: null, text: null },
         'event-title': { color: null, rotate: 0, scale: 1, x: 0.1, y: 0, z: 10, kind: null, text: '七夕活动' },
         'event-theme': { color: null, rotate: 0, scale: 1, x: 0, y: 0, z: 10, kind: null, text: '灯河有信' },
@@ -8300,7 +8307,8 @@ const LINGYE_SCRIPT = `
 
     function applyMemorialEditorState(element) {
         const state = memorialEditorState(element);
-        element.hidden = Boolean(state.deleted);
+        element.hidden = Boolean(state.deleted) ||
+            (element.dataset.memorialEvent === 'mid-autumn' && !midAutumnMemorialReady);
         element.style.translate = state.x + 'px ' + state.y + 'px';
         element.style.scale = String(state.scale);
         element.style.rotate = state.rotate + 'deg';
@@ -10521,11 +10529,13 @@ const CANDIDATE_RUNTIME_SCRIPT = `
             midAutumnMemorialReady = false;
             if (card) card.hidden = true;
             setLingyeMemorialFilter(lingyeMemorialFilter);
+            scheduleMemorialLayoutFit('index');
             return;
         }
-        midAutumnMemorialReady = readState.data.phase === 'open' || readState.data.phase === 'ended';
+        midAutumnMemorialReady = readState.data.phase === 'ended';
         if (card) card.hidden = !midAutumnMemorialReady;
         setLingyeMemorialFilter(lingyeMemorialFilter);
+        scheduleMemorialLayoutFit('index');
     }
 
     function applyLiveLingyeState(lingye) {
