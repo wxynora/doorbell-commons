@@ -28,6 +28,8 @@ export function farmPlotStateLabel(plot: FarmPlot): string {
   if (plot.state === "ripe") {
     return "成熟";
   }
+  if (plot.growth_effect === "paused") return "暂停生长";
+  if (plot.growth_effect === "half") return "生长减缓";
   return "生长中";
 }
 

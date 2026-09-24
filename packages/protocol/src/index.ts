@@ -187,6 +187,7 @@ export const farmFieldPlotSchema = z
   .object({
     plot_id: z.number().int().positive(),
     state: z.enum(["empty", "growing", "ripe"]),
+    growth_effect: z.enum(["normal", "half", "paused"]).optional(),
     seed_type: z.enum(["common", "fantasy", "limited"]).nullable(),
     watered: z.number().int().nonnegative(),
     progress: z
@@ -249,7 +250,7 @@ export const farmFieldPlotSchema = z
         message: "a planted plot must expose its growth progress",
       });
     }
-    if (plot.state === "growing" && plot.matures_at === null) {
+    if (plot.state === "growing" && (!plot.growth_effect || plot.growth_effect === "normal") && plot.matures_at === null) {
       context.addIssue({
         code: "custom",
         path: ["matures_at"],
