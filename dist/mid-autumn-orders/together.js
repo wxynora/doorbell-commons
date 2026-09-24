@@ -56,6 +56,11 @@ export function renderMidAutumnReceipt(result, view, options, operation = 'view'
     lines.push(`【下一步】\n读取当前状态\n${call('中秋')}`);
     return lines.join('\n\n');
   }
+  const receivedGifts = sentGifts.filter(box => box.side === 'human');
+  if (receivedGifts.length) {
+    lines.push(...receivedGifts.map(box => [box.cakes.map(c => cakeText(c.cake)).join('\n'), box.letter].filter(Boolean).join('\n\n')));
+    if (view.orders.length && view.orders.every(order => order.completed)) return lines.join('\n\n');
+  }
   const orders = view.orders.filter(o=>o.available);
   if (orders.length) lines.push('【当前委托】\n'+orders.map(o=>`${o.id}：${o.request}\n${o.size}枚${o.size===4?'礼盒':''} · ${o.accepted?'已接取':'未接取'}`).join('\n\n'));
   const next=[];
