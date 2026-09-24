@@ -19,9 +19,9 @@ export function registerDailyEditorRoutes(app:FastifyInstance, options:{daily:Li
     }
     return community;
   };
-  const handle=(action:(request:FastifyRequest,community:HumanCommunityRecord)=>unknown|Promise<unknown>)=>async(request:FastifyRequest,reply:FastifyReply)=>{
+  const handle=(action:(request:FastifyRequest,community:HumanCommunityRecord,reply:FastifyReply)=>unknown|Promise<unknown>)=>async(request:FastifyRequest,reply:FastifyReply)=>{
     reply.header("cache-control","no-store");
-    try{return await action(request,await authorize(request));}
+    try{return await action(request,await authorize(request),reply);}
     catch(error){
       if(error instanceof DailyEditorError) return reply.code(error.status).send({error:{message:error.message}});
       if(error instanceof z.ZodError) return reply.code(400).send({error:{message:"提交内容格式不完整，请重新打开工作台后重试。"}});
@@ -44,6 +44,12 @@ export function registerDailyEditorRoutes(app:FastifyInstance, options:{daily:Li
     return {issues:daily.editor.list()};
   }));
   app.get("/api/lingye-daily/editor/issues/:date",handle(request=>daily.editor.get(date(request))));
+  app.get("/api/lingye-daily/editor/issues/:date/images/:imageId",handle((request,_community,reply)=>{
+    const imageId=z.object({imageId:z.string().min(1)}).parse(request.params).imageId;
+    const image=daily.editor.image(date(request),imageId);
+    reply.type(image.mediaType);
+    return image.data;
+  }));
   app.post("/api/lingye-daily/editor/issues/:date/refresh",handle(request=>daily.refreshDraft(date(request))));
   app.put("/api/lingye-daily/editor/issues/:date",{bodyLimit:8*1024*1024},handle((request,community)=>{
     const body=z.object({version:z.number().int().positive(),document:dailyDocumentSchema}).strict().parse(request.body);

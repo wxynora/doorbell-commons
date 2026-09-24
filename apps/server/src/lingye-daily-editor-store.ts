@@ -51,7 +51,7 @@ export class LingyeDailyEditorStore {
       document:dailyDocumentSchema.parse(JSON.parse(row.document_json)),
       editorModel:(JSON.parse(row.input_json) as LingyeDailyPublishRequest).editor_model,
       issueNumber,activeEditorName:activeEditor?.resident_name ?? null,
-      images:edition.images,
+      images:edition.images.map(({image_id,media_type})=>({image_id,media_type})),
       readiness:{group:true,reporter:edition.reporter_articles.length>0,voice:edition.voice_article!==undefined,
         submissions:this.reviewReady(date),weather:edition.weather_forecast!==undefined},
       submissions:edition.submissions.map(sub=>({...sub,paid:this.paid(sub.submission_id ?? "")})),
@@ -59,6 +59,12 @@ export class LingyeDailyEditorStore {
       publicationNotice:this.daily.getPublicationNotice(date),
       humanReview:new HumanSubmissionEditor(this).get(date),
     };
+  }
+  image(date:string,imageId:string) {
+    const edition=lingyeDailyEditionPublishSchema.parse(JSON.parse(this.row(date).edition_json));
+    const image=edition.images.find(item=>item.image_id===imageId);
+    if(!image)throw new DailyEditorError(404,"这张稿件图片不存在。");
+    return {mediaType:image.media_type,data:Buffer.from(image.data_base64,"base64")};
   }
   reviewReady(date:string):boolean {
     try {this.daily.selectedSubmissions(date);return true;} catch{return false;}

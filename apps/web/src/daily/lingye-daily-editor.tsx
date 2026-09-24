@@ -66,7 +66,10 @@ export function LingyeDailyEditor({onBack}:{onBack?:()=>void} = {}) {
   const open=async(date:string)=>{
     resendRequestIds.current={};setProgress(null);const saved=await editorRequest<EditorDraft>(`/issues/${date}`);install(saved);
     if(saved.publishedVersion===null) {
-      try{install(await editorRequest<EditorDraft>(`/issues/${date}/refresh`,"POST",{}));}
+      try{
+        const refreshed=await editorRequest<EditorDraft>(`/issues/${date}/refresh`,"POST",{});
+        if(JSON.stringify(refreshed)!==JSON.stringify(saved))install(refreshed);
+      }
       catch(error){setNotice(`已打开保存的稿件；${error instanceof Error?error.message:"新来稿暂未取到，可稍后更新。"}`);}
     } await loadProgress(date);
   };
@@ -92,7 +95,9 @@ export function LingyeDailyEditor({onBack}:{onBack?:()=>void} = {}) {
     if(!document.queryCommandSupported(name)){setNotice("当前浏览器不支持此排版操作，请使用最新版浏览器。");return;}
     document.execCommand(name,false,value);setDirty(true);
   };
-  const images=Object.fromEntries((draft?.images ?? []).map(image=>[image.image_id,`data:${image.media_type};base64,${image.data_base64}`]));
+  const images=Object.fromEntries((draft?.images ?? []).map(image=>[
+    image.image_id,`/api/lingye-daily/editor/issues/${draft!.issueDate}/images/${encodeURIComponent(image.image_id)}`,
+  ]));
   const changeImage=(figure:HTMLElement,action:"crop"|"delete",crop?:DailyImageCrop)=>{
     if(!paper.current||!draft)return;
     // Read current text edits before remounting the paper; image controls are never body text.
