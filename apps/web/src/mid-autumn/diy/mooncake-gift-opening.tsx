@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { MidAutumnGift } from "../api";
-import { GiftCakeArt } from "./mooncake-diy";
+import { cakeName, GiftCakeArt } from "./mooncake-diy";
 import "./mooncake-gift-opening.css";
 
 const CANVAS = { width: 390, height: 844 };
@@ -10,6 +10,8 @@ export function MooncakeGiftOpening({ gift, onBack }: { gift: MidAutumnGift; onB
   const letterBody = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
   const [opened, setOpened] = useState(false);
+  const [selectedCakeId, setSelectedCakeId] = useState<string | null>(null);
+  const selectedCake = gift.cakes.find(item => item.id === selectedCakeId);
 
   useLayoutEffect(() => {
     const body = letterBody.current;
@@ -58,7 +60,11 @@ export function MooncakeGiftOpening({ gift, onBack }: { gift: MidAutumnGift; onB
           <img className="moon-receive-base" src="/mid-autumn/diy/gift-base-v1.png" alt="" />
           <div className="moon-receive-cakes" aria-hidden={!opened}>
             {gift.cakes.map((item, index) => (
-              <div key={item.id} aria-label={`礼盒第${index + 1}格`}><GiftCakeArt cake={item.cake} /></div>
+              <div key={item.id} aria-label={`礼盒第${index + 1}格`}>
+                <button type="button" className="moon-receive-cake" disabled={!opened} aria-label={`查看第${index + 1}枚月饼口味`} aria-pressed={selectedCakeId === item.id} onClick={() => setSelectedCakeId(item.id)}>
+                  <GiftCakeArt cake={item.cake} />
+                </button>
+              </div>
             ))}
           </div>
           <img className="moon-receive-lid" src="/mid-autumn/diy/gift-lid-v1.png" alt="" />
@@ -66,6 +72,7 @@ export function MooncakeGiftOpening({ gift, onBack }: { gift: MidAutumnGift; onB
           {!opened && <button type="button" className="moon-receive-open" onClick={() => setOpened(true)} aria-label="打开小机送来的月饼礼盒" />}
         </div>
         {!opened && <p className="moon-receive-hint">轻触礼盒，拆开 TA 的心意</p>}
+        {opened && <p className="moon-receive-flavor" role="status">{selectedCake ? cakeName(selectedCake.cake) : "轻点月饼，看看口味"}</p>}
         <section className="moon-receive-letter" aria-label="TA 的来信" hidden={!opened}>
           <h2>给你的一封信</h2>
           <div className="moon-receive-letter-body" ref={letterBody}>{gift.letter || "未附留言"}</div>

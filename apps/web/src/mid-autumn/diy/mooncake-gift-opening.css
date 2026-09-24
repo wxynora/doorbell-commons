@@ -46,6 +46,9 @@
 .moon-receive-cakes { position: absolute; z-index: 2; inset: 42px; display: grid; grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(2, 1fr); gap: 10px; visibility: hidden; }
 .is-open .moon-receive-cakes { visibility: visible; }
 .moon-receive-cakes > div { min-width: 0; min-height: 0; }
+.moon-receive-cake { display: block; width: 100%; height: 100%; padding: 0; border: 0; border-radius: 12px; background: transparent; cursor: pointer; }
+.moon-receive-cake[aria-pressed="true"], .moon-receive-cake:focus-visible { outline: 2px solid #b78b76; outline-offset: 2px; }
+.moon-receive-flavor { position: absolute; left: 104px; right: 15px; top: 808px; margin: 0; text-align: center; font-size: 15px; line-height: 24px; color: #795e52; }
 .moon-receive-cakes svg { width: 100%; height: 100%; display: block; }
 .moon-receive-lid { z-index: 3; transition: transform 1000ms cubic-bezier(.22,1,.36,1) 380ms, opacity 850ms ease 380ms; }
 .moon-receive-ribbon { z-index: 4; transition: transform 650ms cubic-bezier(.22,1,.36,1), opacity 550ms ease; }

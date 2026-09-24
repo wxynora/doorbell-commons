@@ -340,7 +340,7 @@ function defaultLayout(shape: Shape): StampLayout {
   return { x: 120, y: shape === "玉兔" ? 140 : 103, scale: 1 };
 }
 
-function cakeName(cake: Cake) {
+export function cakeName(cake: Cake) {
   return `${cake.yolk ? "蛋黄" : ""}${FILLINGS[cake.filling]?.name ?? "豆沙"}月饼`;
 }
 
