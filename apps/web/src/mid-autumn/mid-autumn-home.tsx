@@ -6,18 +6,12 @@ export const MID_AUTUMN_HOME_CANVAS = { width: 902, height: 1744 } as const;
 export interface MidAutumnHomeProps {
   onCollect?: () => void;
   onCraft?: () => void;
-  onGifts?: () => void;
-  giftCount?: number;
-  giftNotice?: string | undefined;
   interactive?: boolean;
 }
 
 export function MidAutumnHome({
   onCollect,
   onCraft,
-  onGifts,
-  giftCount,
-  giftNotice,
   interactive = true,
 }: MidAutumnHomeProps) {
   const frame = useRef<HTMLDivElement>(null);
@@ -71,16 +65,6 @@ export function MidAutumnHome({
               aria-label="月饼作坊"
               onClick={onCraft}
             />
-            {onGifts ? (
-              <button
-                type="button"
-                style={{ position: "absolute", top: 36, right: 36 }}
-                onClick={onGifts}
-                aria-live="polite"
-              >
-                {giftNotice ?? `月饼礼盒（${giftCount ?? 0}）`}
-              </button>
-            ) : null}
           </nav>
         ) : null}
       </main>

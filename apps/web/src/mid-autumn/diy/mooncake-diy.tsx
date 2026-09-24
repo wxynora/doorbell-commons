@@ -393,6 +393,10 @@ function Stamp({ pattern }: { pattern: Pattern }) {
   );
 }
 
+export function GiftCakeArt({ cake }: { cake: Cake }) {
+  return <CakeArt cake={cake} layout={APPROVED_STAMP_LAYOUTS[`${cake.shape}:${cake.pattern}`] ?? defaultLayout(cake.shape)} />;
+}
+
 function CakeArt({
   cake,
   cut = false,

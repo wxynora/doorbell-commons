@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createMidAutumnCommand, runMidAutumnCommand, readMidAutumn, type MidAutumnCommand, type MidAutumnView } from "./api";
 import { MooncakeDiy, MooncakeGifts } from "./diy/mooncake-diy";
+import { MooncakeGiftOpening } from "./diy/mooncake-gift-opening";
 import { MidAutumnHome } from "./mid-autumn-home";
 import { MooncakeMergeGame } from "./merge/mooncake-merge-game";
 import "./mid-autumn-page.css";
 
-type MidAutumnScene = "home" | "merge" | "diy" | "gifts" | "memorial";
+type MidAutumnScene = "home" | "merge" | "diy" | "memorial";
 type ReadMidAutumnView = () => Promise<MidAutumnView>;
 
 export interface MidAutumnPageProps {
@@ -87,9 +88,9 @@ export function MidAutumnPage({ onBack, initialView, readView = readMidAutumn }:
   const displayScene = view?.phase === "ended" ? "memorial" : scene;
   const isOpen = view?.phase === "open" && !boundaryPending && !error;
   const message = error ?? (boundaryPending ? "正在读取活动……" : gateMessage(view));
-  const giftCount = view?.gifts.filter((gift) => gift.status === "sent").length ?? 0;
-  const giftNotice = view?.gifts.some((gift) => gift.status === "sent" && gift.side === "ai")
-    ? "🥮你的小机送了你一盒月饼" : undefined;
+  const sentGift = view?.gifts.some((gift) => gift.status === "sent" && gift.side === "human");
+  const receivedGift = sentGift && view?.deliveryAt !== undefined && Date.now() >= view.deliveryAt
+    ? view.gifts.find((gift) => gift.status === "sent" && gift.side === "ai") : undefined;
 
   const retry = () => {
     setBoundaryPending(true);
@@ -127,9 +128,6 @@ export function MidAutumnPage({ onBack, initialView, readView = readMidAutumn }:
             setWorkshopOpened(true);
             setScene("diy");
           }}
-          onGifts={() => setScene("gifts")}
-          giftCount={giftCount}
-          giftNotice={giftNotice}
         />
       </div>
       {collectionOpened ? (
@@ -139,7 +137,7 @@ export function MidAutumnPage({ onBack, initialView, readView = readMidAutumn }:
       ) : null}
       {workshopOpened ? (
         <div hidden={!isOpen || displayScene !== "diy"}>
-          <MooncakeDiy
+          {receivedGift ? <MooncakeGiftOpening key={receivedGift.id} gift={receivedGift} onBack={() => setScene("home")} /> : <MooncakeDiy
             onBack={() => setScene("home")}
             {...(view
               ? {
@@ -149,18 +147,12 @@ export function MidAutumnPage({ onBack, initialView, readView = readMidAutumn }:
                   },
                 }
               : {})}
-          />
+          />}
         </div>
       ) : null}
-      <div hidden={displayScene !== "gifts"}>
-        <MooncakeGifts
-          gifts={view?.gifts.filter((gift) => gift.status === "sent") ?? []}
-          onBack={() => setScene("home")}
-        />
-      </div>
-      <div hidden={displayScene !== "memorial"}>
+      {displayScene === "memorial" && <div>
         <MooncakeGifts memorial gifts={view?.gifts ?? []} onBack={onBack} />
-      </div>
+      </div>}
     </div>
   );
 }
