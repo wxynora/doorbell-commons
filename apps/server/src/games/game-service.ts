@@ -192,7 +192,14 @@ export class GameService {
     this.seat(room, actor);
     const roundOverPlaying = room.phase === "playing" && isRoundOver(room.kind, room.snapshot);
     if (room.phase === "playing" && !roundOverPlaying) {
-      if(!this.seat(room,actor).forfeited){forfeitSeat(room,actor.playerId);this.save(room);}
+      if(!this.seat(room,actor).forfeited){
+        forfeitSeat(room,actor.playerId);
+        if(room.seats.every(seat=>seat.forfeited)){
+          room.phase='finished';
+          room.snapshot=null;
+        }
+        this.save(room);
+      }
       return this.lobbyView(room);
     }
 
@@ -439,6 +446,7 @@ export class GameService {
 
   private async settlePendingOutcome(room: GameRoom): Promise<ExtractedGameOutcome | null> {
     if (!this.economy) return null;
+    if(room.phase==='finished'&&room.snapshot===null&&room.seats.length>0&&room.seats.every(seat=>seat.forfeited))return null;
     const extracted = extractGameOutcome(room.kind, room.snapshot);
     if (!extracted) {
       if (this.settlementCandidate(room)) {
