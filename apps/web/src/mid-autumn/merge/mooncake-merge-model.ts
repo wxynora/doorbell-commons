@@ -30,6 +30,7 @@ export interface MooncakeMergeStage {
   targetCount: number;
   dropLevels: readonly number[];
   playWidth: number;
+  dangerY?: number;
 }
 
 export const CRUST_STAGES: readonly [MooncakeMergeStage, ...MooncakeMergeStage[]] = [
@@ -70,8 +71,9 @@ export const CRUST_STAGES: readonly [MooncakeMergeStage, ...MooncakeMergeStage[]
     title: "压皮",
     targetLevel: 11,
     targetCount: 1,
-    dropLevels: [1, 2, 3, 4, 5, 6, 7],
+    dropLevels: [2, 3, 4, 5, 6, 7],
     playWidth: 348,
+    dangerY: 50,
   },
 ] as const;
 
@@ -95,6 +97,7 @@ export interface MooncakeMergeSnapshot {
   status: MooncakeMergeStatus;
   highestLevel: number;
   dangerProgress: number;
+  dangerY: number;
   stageIndex: number;
   stage: MooncakeMergeStage;
 }
@@ -133,6 +136,10 @@ export class MooncakeMergeModel {
 
   get stage() {
     return CRUST_STAGES[this.stageIndex] ?? CRUST_STAGES[0];
+  }
+
+  get dangerY() {
+    return this.stage.dangerY ?? MOONCAKE_MERGE_BOARD.dangerY;
   }
 
   dropAt(rawX: number) {
@@ -192,6 +199,7 @@ export class MooncakeMergeModel {
         0,
         1,
       ),
+      dangerY: this.dangerY,
       stageIndex: this.stageIndex,
       stage: this.stage,
     };
@@ -343,7 +351,7 @@ export class MooncakeMergeModel {
   private checkDanger(dt: number, events: MooncakeMergeEvent[]) {
     let crossedFor = 0;
     for (const piece of this.pieces) {
-      const warningCrossed = piece.y - radiusFor(piece.level) < MOONCAKE_MERGE_BOARD.dangerY;
+      const warningCrossed = piece.y - radiusFor(piece.level) < this.dangerY;
       if (piece.age >= DANGER_GRACE_SECONDS && warningCrossed) {
         piece.dangerFor += dt;
       } else {

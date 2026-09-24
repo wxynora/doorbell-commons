@@ -125,9 +125,9 @@ function drawBoard(
   context.strokeStyle = "rgba(173, 129, 104, 0.46)";
   context.lineWidth = 1.2;
   context.beginPath();
-  context.moveTo(frameLeft, MOONCAKE_MERGE_BOARD.dangerY);
+  context.moveTo(frameLeft, snapshot.dangerY);
   context.lineTo(frameLeft, height);
-  context.moveTo(frameRight, MOONCAKE_MERGE_BOARD.dangerY);
+  context.moveTo(frameRight, snapshot.dangerY);
   context.lineTo(frameRight, height);
   context.stroke();
 
@@ -137,8 +137,8 @@ function drawBoard(
     snapshot.dangerProgress > 0 ? "rgba(196, 67, 69, 0.9)" : "rgba(143, 68, 47, 0.52)";
   context.lineWidth = snapshot.dangerProgress > 0 ? 2.5 : 1.5;
   context.beginPath();
-  context.moveTo(frameLeft + 7, MOONCAKE_MERGE_BOARD.dangerY);
-  context.lineTo(frameRight - 7, MOONCAKE_MERGE_BOARD.dangerY);
+  context.moveTo(frameLeft + 7, snapshot.dangerY);
+  context.lineTo(frameRight - 7, snapshot.dangerY);
   context.stroke();
   context.restore();
 
@@ -384,6 +384,7 @@ export function MooncakeMergeGame({
           <section className="moon-merge-board-shell" aria-label="合成盘">
             <div
               className={`moon-merge-danger-label${snapshot.dangerProgress > 0 ? " is-active" : ""}`}
+              style={{ top: `${snapshot.dangerY - 45}px` }}
               aria-hidden="true"
             >
               {snapshot.dangerProgress > 0 ? "危险" : "警戒线"}
