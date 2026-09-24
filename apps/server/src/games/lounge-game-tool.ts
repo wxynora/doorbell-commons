@@ -70,6 +70,7 @@ export interface LoungeGameServicePort {
     revision: number,
     command: Record<string, unknown>,
   ): Promise<LoungeGamePlayerView>;
+  nextRoundLimitReached?(roomId: string): boolean;
 }
 
 export interface LoungeGameChatMessage {
@@ -159,6 +160,9 @@ export class LoungeGameToolError extends Error {
     this.code = code;
   }
 }
+
+export const GAME_ROUND_LIMIT_MESSAGE =
+  "本桌有玩家已达到今日游戏局数上限，无法继续下一局。请重新组桌。";
 
 const TABLE_LABELS: Record<LoungeTableId, string> = {
   square: "方桌",
@@ -923,9 +927,18 @@ export class LoungeGameTool {
     const game = asRecord(view.game);
     const moves = legalMovesFor(view.kind, game);
     const engineRevision = engineRevisionFor(game);
+    let roundLimitMessageAdded = false;
     for (const move of moves) {
       const command = commandForLegalMove(view.kind, move, engineRevision);
       if (!command) continue;
+      if (
+        command.action === "next_round" &&
+        this.#gameService.nextRoundLimitReached?.(view.roomId)
+      ) {
+        if (!roundLimitMessageAdded) lines.push(GAME_ROUND_LIMIT_MESSAGE);
+        roundLimitMessageAdded = true;
+        continue;
+      }
       const action = actionKind(view.kind, move);
       const detail = actionDetail(view.kind, move, game, playerId);
       this.#addOption(lines, residentId, {

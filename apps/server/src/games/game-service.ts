@@ -242,7 +242,14 @@ export class GameService {
     await this.checkBalances(room, "start");
     room.snapshot = await this.engine.create(room.kind, room.roomId, room.seats);
     room.phase = "playing";
-    this.save(room, true);
+    try {
+      this.save(room, true);
+    } catch (error) {
+      if (error instanceof GameStateError && error.message === "game_round_limit_reached") {
+        throw new GameStateError("game_start_round_limit_reached");
+      }
+      throw error;
+    }
     const started = await advanceFlyingChessAutoPlay(room,this.engine,next=>this.save(next),()=>this.current(roomId));
     if(started!==room){
       await this.settlePendingOutcome(started);
@@ -266,6 +273,16 @@ export class GameService {
     await this.settleDue(room);
     await this.settlePendingOutcome(room);
     return this.playerView(room, actor, publicOnly);
+  }
+
+  nextRoundLimitReached(roomId: string): boolean {
+    const room = this.store.read(roomId);
+    return Boolean(
+      room &&
+        room.phase === "playing" &&
+        isRoundOver(room.kind, room.snapshot) &&
+        this.roundLimits?.hasReachedLimit(room.seats, this.now()),
+    );
   }
 
   async command(
@@ -427,8 +444,8 @@ export class GameService {
     room.seats = room.seats.filter((seat) => !shortResidentIds.has(this.requireResidentId(seat)));
     this.save(room);
     throw new GameEconomyError(
-      reason === "start" ? "insufficient_balance" : "next_round_requires_new_room",
-      reason === "start" ? "insufficient_balance" : "next_round_requires_new_room",
+      reason === "start" ? "insufficient_balance" : "next_round_insufficient_balance",
+      reason === "start" ? "insufficient_balance" : "next_round_insufficient_balance",
       [...shortResidentIds],
     );
   }

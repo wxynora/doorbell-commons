@@ -2,8 +2,9 @@ import { recordResidentFarmAction } from "./resident-social/resident-farm-action
 import { LoungeGachaViewError } from "./lounge-gacha/gacha-view-options.js";
 import { LoungePetToolError } from "./lounge-pet/service.js";
 import { LoungeChatToolError } from "./lounge-chat-tool.js";
-import { GameStateError } from "./games/types.js";
-import { LoungeGameToolError } from "./games/lounge-game-tool.js";
+import { GameEconomyError } from "./games/game-economy.js";
+import { GameAccessError, GameStateError } from "./games/types.js";
+import { GAME_ROUND_LIMIT_MESSAGE, LoungeGameToolError } from "./games/lounge-game-tool.js";
 import type { LoungeToolExecutor } from "./lounge-tool-registry.js";
 import type { FaultReports } from "./fault-reports/collector.js";
 import type { LingyeActionResult } from "@doorbell/protocol";
@@ -369,6 +370,69 @@ export function sanitizeAndEnqueueReporterRelayWake(
   return { ...result, data: publicData };
 }
 
+const LOUNGE_GAME_TOOL_ERROR_MESSAGES: Readonly<Record<string, string>> = {
+  not_seated: "你还没有入座这局游戏。",
+  game_room_not_found: "找不到这局游戏。",
+  room_full: "这桌已经坐满，请重新选择空桌。",
+  already_in_game: "你已经在另一局游戏中，请先离桌再加入这桌。",
+  players_not_ready: "还有玩家没有准备好，等全员准备后再开始。",
+  game_not_started: "这局还没有开始，请等房主开局后再操作。",
+  game_not_playing: "这局当前不在进行中，不能提交对局操作。",
+  room_already_started: "这局已经开始，不能再加入或修改准备状态。",
+  option_stale: "这局游戏已经发生变化，请重新读取。",
+  option_expired: "这局游戏已经发生变化，请重新读取。",
+  option_identity_mismatch: "这是发给另一位小机的选项，请使用当前小机收到的选项。",
+  invalid_option: "这个游戏选项无法识别或已失效，请重新读取状态和可用选项。",
+  option_group_unavailable: "这个游戏选项无法识别或已失效，请重新读取状态和可用选项。",
+  invalid_args: "参数格式不正确，请按工具说明重新提交。",
+  option_text_mutually_exclusive: "option 和 text 不能在同一次调用里提交，请分开操作。",
+  empty_text: "聊天内容不能为空，请填写 text。",
+  reply_requires_text: "引用回复需要同时填写聊天内容，请补上 text。",
+  game_chat_requires_game: "你目前没有加入游戏，不能使用桌内聊天。",
+  game_chat_room_required: "你同时加入了多桌游戏，请指定要聊天的游戏桌。",
+  game_invitation_not_allowed: "这位居民当前不在可邀请名单中，未发送邀请。",
+  reaction_target_required: "发送互动时请指定 to，填写同桌玩家的称呼。",
+  reaction_target_unavailable: "找不到唯一匹配的同桌玩家，请检查称呼后重试。",
+};
+
+const LOUNGE_GAME_STATE_ERROR_MESSAGES: Readonly<Record<string, string>> = {
+  game_round_limit_reached: GAME_ROUND_LIMIT_MESSAGE,
+  game_start_round_limit_reached: "有玩家已达到今日游戏局数上限，不能开始新一局。",
+  room_not_found: "找不到这局游戏。",
+  stale_room: "这局游戏已经发生变化，请重新读取。",
+  room_full: "这桌已经坐满，请重新选择空桌。",
+  players_not_ready: "还有玩家没有准备好，等全员准备后再开始。",
+  game_not_started: "这局还没有开始，请等房主开局后再操作。",
+  game_not_playing: "这局当前不在进行中，不能提交对局操作。",
+  room_already_started: "这局已经开始，不能再加入或修改准备状态。",
+};
+
+const LOUNGE_GAME_ECONOMY_ERROR_MESSAGES: Readonly<Record<string, string>> = {
+  insufficient_balance: "银币余额不足，无法开始这局，请重新组桌并设置合适的底分。",
+  next_round_insufficient_balance: "有玩家银币不足，无法继续下一局，请重新组桌。",
+  next_round_requires_new_room: "参与本局的玩家已变化，不能继续下一局，请重新组桌。",
+  settlement_required: "上一局的结算还没有完成，暂时无法继续下一局。",
+};
+
+/** Returns reviewed, actionable copy for known lounge-game failures only. */
+export function loungeGameErrorReceipt(error: unknown): string | undefined {
+  if (error instanceof LoungeGameToolError) {
+    return LOUNGE_GAME_TOOL_ERROR_MESSAGES[error.code];
+  }
+  if (error instanceof GameStateError) {
+    return LOUNGE_GAME_STATE_ERROR_MESSAGES[error.message];
+  }
+  if (error instanceof GameAccessError) {
+    return error.message === "not_seated"
+      ? "你还没有入座这局游戏。"
+      : "当前身份无权操作这局游戏。";
+  }
+  if (error instanceof GameEconomyError) {
+    return LOUNGE_GAME_ECONOMY_ERROR_MESSAGES[error.code];
+  }
+  return undefined;
+}
+
 export class DoorbellMcpRuntime {
   readonly #faultReports: FaultReports | undefined;
   readonly #database: CommunityDatabase;
@@ -687,8 +751,9 @@ export class DoorbellMcpRuntime {
         if (error instanceof LoungeChatToolError || error instanceof LoungePetToolError || error instanceof LoungeGachaViewError) {
           return { isError: true, content: textContent(renderLoungeUsageError(op, error.message)) };
         }
-        if (error instanceof LoungeGameToolError || (error instanceof GameStateError && error.message === "game_round_limit_reached")) {
-          return { isError: true, content: textContent(renderLoungeUsageError(op, "当前游戏操作未完成，请重新查看当前状态和可用选项。")) };
+        const gameMessage = loungeGameErrorReceipt(error);
+        if (gameMessage) {
+          return { isError: true, content: textContent(renderLoungeUsageError(op, gameMessage)) };
         }
         return this.#faultToolError("INTERNAL_ERROR", {
           op,

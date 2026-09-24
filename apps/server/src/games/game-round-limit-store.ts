@@ -49,6 +49,13 @@ export class GameRoundLimitStore {
     transaction.immediate();
   }
 
+  hasReachedLimit(seats: readonly GameSeat[], at?: number): boolean {
+    const calendarDay = beijingCalendarDay(at ?? this.#now());
+    return this.#players(seats).some((player) =>
+      player.limit !== null && this.readCount(player.playerId, calendarDay) >= player.limit,
+    );
+  }
+
   readCount(playerId: string, calendarDay = beijingCalendarDay(this.#now())): number {
     const row = this.#database
       .prepare(

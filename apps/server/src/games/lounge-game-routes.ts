@@ -197,7 +197,7 @@ function sendDomainFailure(reply: FastifyReply, error: unknown): FastifyReply {
     const code = codeFromDomainError(error) ?? "game_state_error";
     const statusCode = code === "room_not_found" ? 404 : code === "unknown_game" ? 400 : 409;
     const message =
-      code === "game_round_limit_reached"
+      code === "game_round_limit_reached" || code === "game_start_round_limit_reached"
         ? "有玩家已达到今日游戏局数上限，不能开始新一局。"
         : code === "room_not_found"
         ? "找不到这局游戏。"
