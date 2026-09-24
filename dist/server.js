@@ -1,5 +1,5 @@
 import { appendCareerStatusNotices } from "./career/exam-status.js";
-import { isMidAutumnOption, runMidAutumnTogether, midAutumnEntryText, midAutumnActivityStatusText } from './mid-autumn-orders/together.js';
+import { isMidAutumnOption, runMidAutumnTogether, midAutumnEntryText, midAutumnActivityStatusText, midAutumnGiftStatusText } from './mid-autumn-orders/together.js';
 import { createMidAutumnRuntime } from './mid-autumn-orders/runtime.js';
 import { isNpcMotionChoice, npcMotionChoiceReceipt, appendNpcMotionReceipt } from './domain/glimmer/npc-motion.js';
 import { glimmerContentEditor } from './content.js';
@@ -544,7 +544,13 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
     if (!action || action === "status") {
         const cookingStatus = cookingDebuffStatusText(f, now);
         const changedFarmIds = new Set([f.id]);
-        const text = [dispatch(f, { action: "status" }, now).text, cookingStatus, ripeBroadcastText(now, changedFarmIds), stolenTodayText(f, now)].filter(Boolean).join("\n\n"); // 内部会 roll 季节事件（可能已改农场）
+        const midAutumnGiftStatus = activeLingyeWorldDatabase
+            ? midAutumnGiftStatusText(createMidAutumnRuntime(activeLingyeWorldDatabase, {
+                getFarm,
+                backend: activeLingyeWorldBackend,
+            }).execute({ farmId: f.id, side: "ai", op: "view" }, now), now)
+            : "";
+        const text = [midAutumnGiftStatus, dispatch(f, { action: "status" }, now).text, cookingStatus, ripeBroadcastText(now, changedFarmIds), stolenTodayText(f, now)].filter(Boolean).join("\n\n"); // 内部会 roll 季节事件（可能已改农场）
         bumpDaily(f, now, "logins"); // 网瘾榜（今日开自己农场主页次数）
         save(isTogetherSeason3(publicWorld)
             ? { farmIds: [...changedFarmIds], componentKeys: [], allowCrossDomain: false }

@@ -8,6 +8,9 @@ export const isMidAutumnOption = option => typeof option === 'string' && (option
 const call = option => `doorbell(${JSON.stringify({op:'farm.together.choose',args:{option}})})`;
 const OPENING = '中秋快到了，铃野的邻居们正好有几份委托，帮他们做完，也许能获得一些做月饼礼盒的食材。';
 const ENDING = '最后一张委托纸收进抽屉，食材、模具和印纹都备好了。桌上还留着一只空礼盒，现在可以做属于你自己的月饼礼盒了，送给你想念的那个ta。';
+const HUMAN_GIFT_NOTICE = '🥮你的人类送了你一盒月饼';
+const AI_GIFT_IN_TRANSIT = '你的礼盒正在龟速运输中，明天一定能准时送达';
+const AI_GIFT_DELIVERED = '你的月饼礼盒已经准时送达。';
 export const midAutumnActivityStatusText = now =>
   now >= OPENS_AT && now < CLOSES_AT
     ? `🌕 中秋特别活动《月满心间》已开放。使用 ${call('中秋')} 进入；月饼制作与赠送都在这里。`
@@ -17,6 +20,18 @@ export const midAutumnEntryText = (now, farm) => [
   midAutumnSeedEntryText(now, farm),
 ].filter(Boolean).join('\n');
 const cakeText = cake => `${DIY_OPTIONS.fillings[cake.filling]}·${cake.shape}·${cake.pattern}·火候${cake.bake}·${cake.yolk ? '加蛋黄' : '不加蛋黄'}`;
+export function midAutumnGiftStatusText(view, now) {
+  if (now < OPENS_AT || now >= CLOSES_AT) return '';
+  const gifts = Array.isArray(view?.gifts) ? view.gifts : [];
+  const received = gifts.some(box => box.side === 'human' && box.status === 'sent');
+  const sent = gifts.some(box => box.side === 'ai' && box.status === 'sent');
+  const lines = [];
+  if (received) lines.push(`${HUMAN_GIFT_NOTICE}\n${call('中秋')}`);
+  if (sent) lines.push(view?.phase === 'ended' || (Number.isSafeInteger(now) && Number.isSafeInteger(view?.deliveryAt) && now >= view.deliveryAt)
+    ? AI_GIFT_DELIVERED
+    : AI_GIFT_IN_TRANSIT);
+  return lines.join('\n\n');
+}
 export function renderMidAutumnReceipt(result, view, options, operation = 'view') {
   const lines = ['🧭 铃野共行｜中秋特别版《月满心间》'];
   if (result.cakeId) lines.push(`【制作结果】\n${result.cakeId}`);
@@ -31,7 +46,7 @@ export function renderMidAutumnReceipt(result, view, options, operation = 'view'
   if (operation === 'unpack' && result.unpackedBoxId) lines.push('礼盒已拆开');
   if (operation === 'deliver' && view.orders.length && view.orders.every(order => order.completed)) lines.push(ENDING);
   const sentGifts = (view.gifts ?? []).filter(box => box.status === 'sent');
-  if (sentGifts.some(box => box.side === 'human')) lines.push('🥮你的人类送了你一盒月饼');
+  if (sentGifts.some(box => box.side === 'human')) lines.push(HUMAN_GIFT_NOTICE);
   if (view.phase !== 'open' || view.destination === 'memorial') {
     if (sentGifts.length) lines.push('纪念册', ...sentGifts.map(box => [box.letter, box.cakes.map(c=>cakeText(c.cake)).join('\n')].filter(Boolean).join('\n')));
     if (!sentGifts.length) lines.push(view.phase === 'ended' || view.destination === 'memorial' ? '纪念册' : '活动尚未开放');
