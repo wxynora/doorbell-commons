@@ -43,6 +43,8 @@ interface Cake {
 }
 const INITIAL_CAKE: Cake = { filling: 1, yolk: true, shape: "圆月", pattern: "无", bake: 40 };
 const SLOTS = ["一", "二", "三", "四"] as const;
+const SENT_GIFT_IN_TRANSIT = "你的礼盒正在龟速运输中，明天一定能准时送达";
+const SENT_GIFT_DELIVERED = "你的月饼礼盒已经准时送达。";
 
 interface StampLayout {
   x: number;
@@ -512,16 +514,27 @@ export function MooncakeDiy({ onBack, live }: { onBack: () => void; live?: { vie
   const [slot, setSlot] = useState(0);
   const [notice, setNotice] = useState("");
   const [packing, setPacking] = useState<"idle" | "gather" | "lid" | "ribbon" | "done">("idle");
+  const [sentLocally, setSentLocally] = useState(false);
   const options = live?.view.options;
-  const canCraft = !live || (live.view.phase === "open" && !!options?.fillings.length && !!options.shapes.length);
+  const sentGift = live?.view.gifts.find((gift) => gift.side === "human" && gift.status === "sent");
+  const sent = sentLocally || !!sentGift;
+  const sentMessage = live?.view.deliveryAt && Date.now() >= live.view.deliveryAt
+    ? SENT_GIFT_DELIVERED
+    : SENT_GIFT_IN_TRANSIT;
+  const canCraft = !sent && (!live || (live.view.phase === "open" && !!options?.fillings.length && !!options.shapes.length));
   useEffect(() => {
     if (!live || restored.current) return;
     restored.current = true;
-    const packed = live.view.gifts.find((gift) => gift.side === "human" && gift.status === "packed");
-    const saved = packed?.cakes ?? live.view.cakes ?? [];
+    const savedGift = live.view.gifts.find((gift) => gift.side === "human" && (gift.status === "sent" || gift.status === "packed"));
+    const saved = savedGift?.cakes ?? live.view.cakes ?? [];
     setBox(SLOTS.map((_, i) => saved[i]?.cake ?? null));
     setCakeIds(SLOTS.map((_, i) => saved[i]?.id ?? null));
-    if (packed) { setPackedId(packed.id); setLetter(packed.letter); setPacking("done"); }
+    if (savedGift) {
+      setPackedId(savedGift.id);
+      setLetter(savedGift.letter);
+      setPacking("done");
+      setSentLocally(savedGift.status === "sent");
+    }
   }, [live]);
   useEffect(() => {
     if (!options) return;
@@ -556,7 +569,7 @@ export function MooncakeDiy({ onBack, live }: { onBack: () => void; live?: { vie
   const packageOpen = packing !== "idle";
   const unpackRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    if (!packageOpen) return;
+    if (!packageOpen || sent) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       setPacking("done");
       return;
@@ -567,7 +580,7 @@ export function MooncakeDiy({ onBack, live }: { onBack: () => void; live?: { vie
       window.setTimeout(() => setPacking("done"), 2200),
     ];
     return () => timers.forEach(window.clearTimeout);
-  }, [packageOpen]);
+  }, [packageOpen, sent]);
   useEffect(() => {
     if (packing === "done") unpackRef.current?.focus();
   }, [packing]);
@@ -601,7 +614,7 @@ export function MooncakeDiy({ onBack, live }: { onBack: () => void; live?: { vie
     setNotice("");
   };
   const save = () => {
-    if (!canCraft) return;
+    if (!canCraft || sent) return;
     const savedCake = { ...cake }, savedSlot = slot;
     const done = (result: Record<string, unknown>) => {
       setBox((old) => old.map((item, index) => (index === savedSlot ? savedCake : item)));
@@ -619,7 +632,7 @@ export function MooncakeDiy({ onBack, live }: { onBack: () => void; live?: { vie
           className="moon-diy-stage"
           style={{ transform: `translate(-50%, -50%) scale(${scale})` }}
         >
-          <div inert={packing !== "idle"}>
+          <div inert={packing !== "idle" || sent}>
             <header className="moon-diy-header">
               <button
                 type="button"
@@ -804,7 +817,7 @@ export function MooncakeDiy({ onBack, live }: { onBack: () => void; live?: { vie
                     key={number}
                     aria-label={`礼盒第${number}格${box[index] ? `：${cakeName(box[index])}` : "：空位"}`}
                     aria-pressed={slot === index}
-                    disabled={busy || !!pending.current}
+                    disabled={sent || busy || !!pending.current}
                     onClick={() => {
                       setSlot(index);
                       const saved = box[index];
@@ -832,7 +845,7 @@ export function MooncakeDiy({ onBack, live }: { onBack: () => void; live?: { vie
                 className="moon-diy-pack-button"
                 type="button"
                 onClick={save}
-                disabled={!canCraft || busy || !!pending.current}
+                disabled={!canCraft || sent || busy || !!pending.current}
               >
                 {box[slot] ? "替换这一只" : "装入礼盒"}
               </button>
@@ -844,19 +857,19 @@ export function MooncakeDiy({ onBack, live }: { onBack: () => void; live?: { vie
               <p className="moon-diy-status" aria-live="polite" style={live ? { top: -28, width: "100%", height: "auto", margin: 0, clipPath: "none", whiteSpace: "normal", overflow: "visible", fontSize: 12 } : undefined}>{packing === "idle" ? notice : ""}</p>
               <button
                 type="button"
-                disabled={busy || (!pending.current && (!box.every(Boolean) || (!!live && live.view.phase !== "open")))}
+                disabled={sent || busy || (!pending.current && (!box.every(Boolean) || (!!live && live.view.phase !== "open")))}
                 onClick={() => pending.current ? void performPending() : live ? submit("pack", { cakeIds, letter }, (result) => { setPackedId(String(result.boxId)); setPacking("gather"); setNotice(""); }) : setPacking("gather")}
               >
                 {pending.current ? "重试同一次操作" : "包装礼盒"}
               </button>
-              {live && <textarea aria-label="写给 TA 的信" placeholder="写给 TA 的信（选填）" value={letter} disabled={busy || !!pending.current}
+              {live && <textarea aria-label="写给 TA 的信" placeholder="写给 TA 的信（选填）" value={letter} disabled={sent || busy || !!pending.current}
                 onChange={(event) => setLetter(event.target.value)}
                 style={{ display: "block", boxSizing: "border-box", width: "100%", height: 32, marginTop: 6, resize: "none", border: "1px solid #baa899", borderRadius: 4, background: "#fffaf1", color: "#775f51", font: "inherit", fontSize: 12, padding: "5px 8px" }} />}
-              {!canCraft && <p>请先收集并解锁对应食材。</p>}
+              {!canCraft && !sent && <p>请先收集并解锁对应食材。</p>}
             </footer>
           </div>
           {packing !== "idle" && (
-            <section className={`moon-diy-pack-scene phase-${packing}`} aria-label="礼盒包装">
+            <section className={`moon-diy-pack-scene phase-${packing}${sent ? " is-sent" : ""}`} aria-label="礼盒包装">
               <header>
                 <h2 aria-live="polite">
                   {packing === "gather"
@@ -901,11 +914,15 @@ export function MooncakeDiy({ onBack, live }: { onBack: () => void; live?: { vie
                   alt="薄荷青丝带"
                 />
               </div>
-              <p role="status" style={{ position: "absolute", top: 584, left: 20, right: 20 }}>{notice}</p>
-              {packing === "done" && live && <button type="button" style={{ top: 628 }} disabled={busy || (!pending.current && live.view.phase !== "open")} onClick={() => pending.current ? void performPending() : submit("send", { boxId: packedId }, () => { setPackedId(null); setLetter(""); setBox([null,null,null,null]); setCakeIds([null,null,null,null]); setPacking("idle"); setNotice("已赠送给 TA"); })}>{pending.current ? "重试同一次操作" : "赠送给 TA"}</button>}
-              <button ref={unpackRef} type="button" disabled={busy || !!pending.current || (!!live && live.view.phase !== "open")} onClick={() => live ? submit("unpack", { boxId: packedId }, () => { setPackedId(null); setPacking("idle"); setNotice(""); }) : setPacking("idle")}>
-                {packing === "done" ? "拆开继续编辑" : "返回编辑"}
-              </button>
+              <p className={sent ? "moon-diy-sent-caption" : undefined} role="status" style={{ position: "absolute", top: 584, left: 20, right: 20 }}>{sent ? sentMessage : notice}</p>
+              {packing === "done" && live && !sent && <button type="button" style={{ top: 628 }} disabled={busy || (!pending.current && live.view.phase !== "open")} onClick={() => pending.current ? void performPending() : submit("send", { boxId: packedId }, () => { setSentLocally(true); setNotice(""); })}>{pending.current ? "重试同一次操作" : "赠送给 TA"}</button>}
+              {sent ? (
+                <button type="button" onClick={onBack}>返回活动主页</button>
+              ) : (
+                <button ref={unpackRef} type="button" disabled={busy || !!pending.current || (!!live && live.view.phase !== "open")} onClick={() => live ? submit("unpack", { boxId: packedId }, () => { setPackedId(null); setPacking("idle"); setNotice(""); }) : setPacking("idle")}>
+                  {packing === "done" ? "拆开继续编辑" : "返回编辑"}
+                </button>
+              )}
             </section>
           )}
         </main>
@@ -1058,4 +1075,3 @@ export function MooncakeGifts({ gifts, memorial = false, onBack }: { gifts: MidA
     </div>
   );
 }
-

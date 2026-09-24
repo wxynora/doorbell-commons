@@ -581,6 +581,12 @@
   letter-spacing: 3px;
   color: #9a7b68;
 }
+.moon-diy-pack-scene.is-sent .moon-diy-sent-caption {
+  color: #8f6e64;
+  font-size: 14px;
+  line-height: 1.6;
+  letter-spacing: 1px;
+}
 .moon-diy-pack-scene > button {
   position: absolute;
   left: 85px;
@@ -733,4 +739,3 @@
   font-size: 10px;
   color: #907577;
 }
-
