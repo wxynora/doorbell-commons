@@ -32,7 +32,7 @@ export function midAutumnGiftStatusText(view, now) {
     : AI_GIFT_IN_TRANSIT);
   return lines.join('\n\n');
 }
-export function renderMidAutumnReceipt(result, view, options, operation = 'view') {
+export function renderMidAutumnReceipt(result, view, options, operation = 'view', now = null) {
   const lines = ['🧭 铃野共行｜中秋特别版《月满心间》'];
   if (result.cakeId) lines.push(`【制作结果】\n${result.cakeId}`);
   if (result.score !== undefined) lines.push(`【制作结果】\n${result.score}分\n${result.feedback ?? ''}`.trim());
@@ -57,10 +57,15 @@ export function renderMidAutumnReceipt(result, view, options, operation = 'view'
     return lines.join('\n\n');
   }
   const receivedGifts = sentGifts.filter(box => box.side === 'human');
-  if (receivedGifts.length) {
-    lines.push(...receivedGifts.map(box => [box.cakes.map(c => cakeText(c.cake)).join('\n'), box.letter].filter(Boolean).join('\n\n')));
-    if (view.orders.length && view.orders.every(order => order.completed)) return lines.join('\n\n');
+  const mySent = sentGifts.some(box => box.side === 'ai');
+  const allDone = view.orders.length && view.orders.every(order => order.completed);
+  const renderGift = box => [box.cakes.map(c => cakeText(c.cake)).join('\n'), box.letter].filter(Boolean).join('\n\n');
+  if (allDone && mySent) {
+    if (receivedGifts.length) lines.push(...receivedGifts.map(renderGift));
+    else lines.push(view.phase === 'ended' || (Number.isSafeInteger(now) && Number.isSafeInteger(view.deliveryAt) && now >= view.deliveryAt) ? AI_GIFT_DELIVERED : AI_GIFT_IN_TRANSIT);
+    return lines.join('\n\n');
   }
+  if (receivedGifts.length) lines.push(...receivedGifts.map(renderGift));
   const orders = view.orders.filter(o=>o.available);
   if (orders.length) lines.push('【当前委托】\n'+orders.map(o=>`${o.id}：${o.request}\n${o.size}枚${o.size===4?'礼盒':''} · ${o.accepted?'已接取':'未接取'}`).join('\n\n'));
   const next=[];
@@ -151,7 +156,7 @@ export function runMidAutumnTogether(database, farmId, option, now, opensAt = nu
       pack: {prefix:prefix('pack'),format:'cakeId+cakeId+cakeId+cakeId|来信正文'},
       boxes: view.gifts.filter(box=>box.side==='ai'&&box.status==='packed').map(box=>({boxId:box.id,send:prefix('send')+box.id,unpack:prefix('unpack')+box.id})),
     } : {};
-    return {status:200,json:{ok:true,text:renderMidAutumnReceipt(result,view,options,command.op)}};
+    return {status:200,json:{ok:true,text:renderMidAutumnReceipt(result,view,options,command.op,now)}};
   } catch(error) {
     if (error instanceof MidAutumnError) return {status:error.status,json:{ok:false,code:error.code,text:error.code}};
     throw error;
