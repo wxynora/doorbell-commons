@@ -221,6 +221,30 @@ export function advanceStoredNatureWorld(now) {
         return natureWorld;
     return commitNatureWorld(next);
 }
+const SP_SEED_POOL = crops
+    .filter((crop) => crop?.rarity === "SP" && crop?.category !== "ugc" && crop?.seedPrice === 3600)
+    .sort((left, right) => String(left.id).localeCompare(String(right.id)));
+function maintenanceHash(text) {
+    let value = 2166136261;
+    for (const character of String(text)) {
+        value ^= character.charCodeAt(0);
+        value = Math.imul(value, 16777619);
+    }
+    return value >>> 0;
+}
+function pickUniqueMaintenanceSeeds(grantId, farms, count) {
+    const result = new Map();
+    for (const farm of farms) {
+        const available = [...SP_SEED_POOL];
+        const selected = [];
+        for (let index = 0; index < count && available.length > 0; index += 1) {
+            const picked = maintenanceHash(`${grantId}:${farm.id}:${index}`) % available.length;
+            selected.push(available.splice(picked, 1)[0]);
+        }
+        result.set(farm.id, selected);
+    }
+    return result;
+}
 /** 启动时依次应用尚未发放的维护福利；campaign id 保证全局幂等。 */
 export function applyMaintenanceSilverGrant(farmValues = farms.values(), now = Date.now()) {
     const players = [...farmValues].filter((farm) => farm && farm.id !== NPC_ID);
@@ -229,6 +253,7 @@ export function applyMaintenanceSilverGrant(farmValues = farms.values(), now = D
         const id = String(raw?.id ?? "").trim();
         const gold = Math.max(0, Math.floor(Number(raw?.gold) || 0));
         const silver = Math.max(0, Math.floor(Number(raw?.silver) || 0));
+        const spSeedCount = Math.max(0, Math.floor(Number(raw?.spSeedCount) || 0));
         const notice = String(raw?.notice ?? "").trim();
         const section = String(raw?.section ?? "").trim();
         const replaceSection = String(raw?.replaceSection ?? "").trim();
@@ -240,27 +265,36 @@ export function applyMaintenanceSilverGrant(farmValues = farms.values(), now = D
         const glimmerPityKindIds = glimmerPityBonus > 0
             ? [...new Set(glimmerTracks(glimmerTrackAt, structuredClone(glimmerWorld)).map((track) => track.kindId))]
             : [];
-        if (!id || (gold <= 0 && silver <= 0 && !notice && glimmerPityKindIds.length === 0) || appliedMaintenanceGrantIds.includes(id))
+        if (!id || (gold <= 0 && silver <= 0 && spSeedCount <= 0 && !notice && glimmerPityKindIds.length === 0) || appliedMaintenanceGrantIds.includes(id))
             continue;
+        const grantedSeeds = spSeedCount > 0 ? pickUniqueMaintenanceSeeds(id, players, spSeedCount) : [];
         for (const farm of players) {
             farm.coins = Math.max(0, Math.floor(Number(farm.coins) || 0)) + gold;
             farm.silver = Math.max(0, Math.floor(Number(farm.silver) || 0)) + silver;
+            const farmSeeds = grantedSeeds.get(farm.id) ?? [];
+            for (const seed of farmSeeds) {
+                farm.seeds ??= {};
+                farm.seeds[seed.id] = (farm.seeds[seed.id] ?? 0) + 1;
+            }
             if (glimmerPityKindIds.length > 0) {
                 const state = normalizeGlimmerFarm(farm);
                 for (const kindId of glimmerPityKindIds)
                     state.capturePity[kindId] = (state.capturePity[kindId] ?? 0) + glimmerPityBonus;
                 normalizeGlimmerFarm(farm);
             }
+            const seedSuffix = farmSeeds.length > 0
+                ? `、随机${farmSeeds[0].rarity}种子「${farmSeeds[0].name}」×${farmSeeds.length}`
+                : "";
             if (notice) {
                 if (sendInbox)
-                    pushInbox(farm, notice, now);
+                    pushInbox(farm, notice.replace(/\{seeds\}/g, seedSuffix.replace(/^、/, "")), now);
                 if (replaceSection && Array.isArray(farm.ranch?.notices))
                     farm.ranch.notices = farm.ranch.notices.filter((entry) => entry?.section !== replaceSection);
-                pushRanchNotice(farm, notice, now, section || undefined);
+                pushRanchNotice(farm, notice.replace(/\{seeds\}/g, seedSuffix.replace(/^、/, "")), now, section || undefined);
             }
         }
         appliedMaintenanceGrantIds.push(id);
-        campaigns.push({ id, gold, silver, amount: silver, count: players.length });
+        campaigns.push({ id, gold, silver, amount: silver, seeds: spSeedCount, count: players.length });
     }
     return { applied: campaigns.length > 0, campaigns };
 }

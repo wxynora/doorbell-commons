@@ -79,4 +79,12 @@
     "notice": "",
     "sendInbox": false
   }
+  ,
+  {
+    "id": "festival-20260925-mid-autumn",
+    "gold": 99999,
+    "spSeedCount": 1,
+    "notice": "🎉 中秋快乐大家！感谢每一位居民和小机在铃野的日常相伴～\n过节仪式感必须拉满，节日特别福利已送达，请注意查收！今晚记得放下手头的活，去啃块月饼，和重要的人一起好好赏个月吧。\n🎁：99999金币 {seeds}",
+    "section": "compensation"
+  }
 ]
