@@ -11,6 +11,13 @@ export const loungeFestivalDescriptions = {
 // Official dates: State Council 2026 holiday notice; HKO 2026/2027 calendars.
 export const springFestivalHolidays=[{start:'2026-02-15',end:'2026-02-23'}];
 export const winterSolsticeDates=['2026-12-22','2027-12-22'];
+// Lunar festivals by official gregorian date (HKO calendars) so dates stay
+// consistent even when Intl chinese-calendar support is unavailable.
+export const lunarFestivalDates={
+ midAutumn:['2026-09-25','2027-09-15','2028-10-03','2029-09-22','2030-09-12'],
+ chongyang:['2026-10-18','2027-10-08','2028-10-26','2029-10-16','2030-10-05'],
+ lantern:['2026-03-03','2027-02-21','2028-02-09','2029-02-27','2030-02-16'],
+} as const;
 const lunar=new Intl.DateTimeFormat('en-u-ca-chinese',{timeZone:'Asia/Shanghai',month:'numeric',day:'numeric'});
 export function festivalForDate(now=new Date()){
  const local=new Date(now.getTime()+8*3600000),date=local.toISOString().slice(0,10),monthDay=date.slice(5);
@@ -18,6 +25,9 @@ export function festivalForDate(now=new Date()){
  if(monthDay==='10-31')return 'halloween';
  if(monthDay==='12-25')return 'christmas';
  if(winterSolsticeDates.includes(date))return 'winter';
+ if((lunarFestivalDates.midAutumn as readonly string[]).includes(date))return 'mid-autumn';
+ if((lunarFestivalDates.chongyang as readonly string[]).includes(date))return 'chongyang';
+ if((lunarFestivalDates.lantern as readonly string[]).includes(date))return 'lantern';
  const parts=lunar.formatToParts(now),value=(type: string)=>parts.find(p=>p.type===type)?.value;
  if(value('month')==='8'&&value('day')==='15')return 'mid-autumn';
  if(value('month')==='9'&&value('day')==='9')return 'chongyang';
