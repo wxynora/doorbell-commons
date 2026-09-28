@@ -2,7 +2,7 @@
 import { flavor, landTierByLevel, getCrop, totalCropCount } from "./content.js";
 import { currentSeason } from "./time.js";
 import { taskLine } from "./tasks.js";
-import { agronomyGrowthEffect, agronomyObservationsForPlot } from "./career/p3-world.js";
+import { agronomyGrowthEffect, agronomyObservationsForPlot, plotAgronomyIssues } from "./career/p3-world.js";
 import { describeFarmNature } from "./game/presentation/nature-status.js";
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
 const RITUAL_RARITY = new Set(["SR", "SSR", "SP"]);
@@ -205,9 +205,19 @@ export function describeFarm(farm, now, opts = {}) {
     for (const plot of farm.plots) {
         if (natureStatus.describedPlotIds.has(plot.id))
             continue;
-        const observations = agronomyObservationsForPlot(plot);
-        if (observations.includes("leaf_damage") && observations.includes("visible_pest_trace"))
-            lines.push(`⚠️ ${plot.id} 号地的叶片有啃咬痕迹，叶间还能看见虫迹；这块地需要农艺师检查。`);
+        const issues = plotAgronomyIssues(plot).filter((issue) => issue.status !== "resolved");
+        const visibleSymptoms = {
+            drought: "叶片发蔫、土面干裂，作物迟迟不长",
+            waterlogging: "土面涝渍发亮、下部叶片发黄，作物迟迟不长",
+            local_pest: "叶片有啃咬痕迹，叶间还能看见虫迹",
+            nutrient_imbalance: "叶色深浅不匀、长势参差，作物长得慢",
+            root_damage: "整株打蔫、根际松动，作物停止生长",
+        };
+        for (const issue of issues) {
+            const symptom = visibleSymptoms[issue.condition];
+            if (symptom)
+                lines.push(`⚠️ ${plot.id} 号地的${symptom}；这块地需要农艺师检查。`);
+        }
     }
     return lines.join("\n");
 }
