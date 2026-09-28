@@ -682,7 +682,10 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         }
         const got = stealThiefText(r.crop) + `（${r.quality.name}·+${r.value}金）`;
         const reveal = r.isNewForThief ? `\n${harvestText(r.crop, r.quality, r.value, true, r.codexReward, false)}` : "";
-        return { status: 200, json: { ok: true, text: `${got}${reveal}\n${statusFooter(thief, now)}`, ...(securityResult ? { security: securityResult } : {}), ...vf(thief) } };
+        const caughtLine = securityResult?.detention?.scheduledReleaseAt && securityResult.detention.startedAt
+            ? `\n👮 你刚偷完${r.crop.name}，正准备溜之大吉，被巡逻路过的北衡当场人赃并获，连泥带菜全被扣下，喜提 ${Math.max(1, Math.ceil((securityResult.detention.scheduledReleaseAt - securityResult.detention.startedAt) / 3600000))} 小时看守所之旅。`
+            : "";
+        return { status: 200, json: { ok: true, text: `${got}${reveal}${caughtLine}\n${statusFooter(thief, now)}`, ...(securityResult ? { security: securityResult } : {}), ...vf(thief) } };
     }
     if (isGuardBribe) {
         const thief = getFarm(byId);
@@ -704,7 +707,10 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         save();
         const got = stealThiefText(r.crop) + `（${r.quality.name}·+${r.value}金）`;
         const reveal = r.isNewForThief ? `\n${harvestText(r.crop, r.quality, r.value, true, r.codexReward, false)}` : "";
-        return { status: 200, json: { ok: true, text: `🍖 用「${r.dishName}」哄住了看家狗，继续原本那次偷菜；料理已消耗，没有重复计算出手或冷却。\n${got}${reveal}\n${statusFooter(thief, now)}`, ...(securityResult ? { security: securityResult } : {}), ...vf(thief) } };
+        const caughtLine = securityResult?.detention?.scheduledReleaseAt && securityResult.detention.startedAt
+            ? `\n👮 你刚偷完${r.crop.name}，正准备溜之大吉，被巡逻路过的北衡当场人赃并获，连泥带菜全被扣下，喜提 ${Math.max(1, Math.ceil((securityResult.detention.scheduledReleaseAt - securityResult.detention.startedAt) / 3600000))} 小时看守所之旅。`
+            : "";
+        return { status: 200, json: { ok: true, text: `🍖 用「${r.dishName}」哄住了看家狗，继续原本那次偷菜；料理已消耗，没有重复计算出手或冷却。\n${got}${reveal}${caughtLine}\n${statusFooter(thief, now)}`, ...(securityResult ? { security: securityResult } : {}), ...vf(thief) } };
     }
     // 帮别人浇水：给对方加速 30 分钟 + 给浇水者(by)掉 1 瓶加速药水（1 家 1 天只能浇 1 次，防互刷）
     if (action === "water" && b.by) {
