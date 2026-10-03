@@ -1,5 +1,6 @@
 import { createHash, randomInt, randomUUID } from "node:crypto";
 import { installSecuritySchema } from "./schema.js";
+import { installPlayerPatrolSchema } from "./player-patrol-schema.js";
 
 export const FARM_CROP_THEFT_VIOLATION = "farm_crop_theft";
 export const BANK_SYSTEM_LOAN_REFUSAL_VIOLATION = "bank_system_loan_refusal";
@@ -166,10 +167,13 @@ export class LingyeSecurityService {
     #listPunishableSystemLoanFacts;
     #getPunishableSystemLoanFact;
     #payDetentionEarlyRelease;
+    #payCropTheftFine;
+    #hasPlayerPatrolDuty;
 
     constructor(database, options = {}) {
         assertDatabase(database);
         installSecuritySchema(database);
+        installPlayerPatrolSchema(database);
         this.#database = database;
         this.#now = options.now ?? (() => Date.now());
         this.#generateId = options.generateId ?? (() => randomUUID());
@@ -179,6 +183,8 @@ export class LingyeSecurityService {
         this.#listPunishableSystemLoanFacts = options.listPunishableSystemLoanFacts ?? null;
         this.#getPunishableSystemLoanFact = options.getPunishableSystemLoanFact ?? null;
         this.#payDetentionEarlyRelease = options.payDetentionEarlyRelease ?? null;
+        this.#payCropTheftFine = options.payCropTheftFine ?? null;
+        this.#hasPlayerPatrolDuty = options.hasPlayerPatrolDuty ?? null;
     }
 
     getPatrolStatus() {
@@ -198,12 +204,34 @@ export class LingyeSecurityService {
         };
     }
 
+    quoteCropTheftPenalty(input) {
+        const sourceId = identifier(input.sourceId, "source_id");
+        if (typeof this.#getCaughtCropTheftFact !== "function") fail("security_crop_theft_authority_unavailable");
+        const fact = assertSyncResult(this.#getCaughtCropTheftFact({sourceId}), "security_async_authority_forbidden");
+        if (!fact || fact.sourceId !== sourceId || fact.kind !== "stolen" || fact.successful !== true || fact.occurredAt > this.#now())
+            fail("security_crop_theft_not_caught");
+        const at = this.#now();
+        const previous = this.#database.prepare(`SELECT COUNT(*) AS count FROM security_violations
+            WHERE resident_id=? AND violation_code=? AND caught_at>? AND caught_at<=?`)
+            .get(fact.residentId, FARM_CROP_THEFT_VIOLATION, at-THEFT_ROLLING_WINDOW_MS, at).count;
+        const penalty = THEFT_PENALTIES.find(entry => previous+1 <= entry.maximumOccurrence);
+        return {repetitionIndex:previous+1,durationHours:penalty.durationHours,
+            amountGold:penalty.durationHours*penalty.hourlyReleaseRateGold};
+    }
     catchCropTheft(input) {
         const sourceId = identifier(input.sourceId, "source_id");
         const caughtBy = normalizeCaughtBy(input.caughtBy);
+        const disposition = input.disposition ?? "detention";
+        if (!["fine", "detention"].includes(disposition) ||
+            (caughtBy === "npc_patrol" && disposition !== "detention"))
+            fail("security_invalid_disposition");
         const existing = this.#violationBySource(FARM_CROP_THEFT_VIOLATION, sourceId);
-        if (existing)
-            return this.#resultForViolation(existing);
+        if (existing) {
+            const result = this.#resultForViolation(existing);
+            if ((result.fine ? "fine" : "detention") !== disposition)
+                fail("security_disposition_conflict");
+            return result;
+        }
         if (typeof this.#getCaughtCropTheftFact !== "function")
             fail("security_crop_theft_authority_unavailable");
         const fact = assertSyncResult(this.#getCaughtCropTheftFact({ sourceId }), "security_async_authority_forbidden");
@@ -229,6 +257,11 @@ export class LingyeSecurityService {
             `).get(residentId, FARM_CROP_THEFT_VIOLATION, lowerBound, caughtAt).count;
             const repetitionIndex = previous + 1;
             const penalty = THEFT_PENALTIES.find((entry) => repetitionIndex <= entry.maximumOccurrence);
+            if (disposition === "fine") {
+                return this.#createViolationAndFine({ sourceId, residentId, occurredAt,
+                    caughtAt, caughtBy, repetitionIndex, durationHours: penalty.durationHours,
+                    hourlyReleaseRateGold: penalty.hourlyReleaseRateGold });
+            }
             return this.#createViolationAndDetention({
                 violationCode: FARM_CROP_THEFT_VIOLATION,
                 sourceId,
@@ -438,6 +471,7 @@ export class LingyeSecurityService {
     }
 
     #constableOnDuty(at) {
+        if (this.#hasPlayerPatrolDuty) return this.#hasPlayerPatrolDuty(at);
         const row = this.#database.prepare(`
           SELECT 1
           FROM career_employments AS employment
@@ -485,9 +519,47 @@ export class LingyeSecurityService {
     #resultForViolation(violation) {
         const detention = this.#database.prepare("SELECT * FROM security_detentions WHERE violation_id = ?")
             .get(violation.violation_id);
-        if (!detention)
-            fail("security_violation_without_detention");
-        return { violation: mapViolation(violation), detention: mapDetention(detention) };
+        if (detention)
+            return { violation: mapViolation(violation), detention: mapDetention(detention) };
+        const fine = this.#database.prepare("SELECT * FROM security_fines WHERE violation_id = ?")
+            .get(violation.violation_id);
+        if (!fine) fail("security_violation_without_disposition");
+        return { violation: mapViolation(violation), detention: null, fine: {
+            violationId: fine.violation_id, amountGold: fine.amount_gold,
+            durationHours: fine.duration_hours, paymentReceiptId: fine.payment_receipt_id,
+            paidAt: fine.paid_at,
+        } };
+    }
+
+    #createViolationAndFine(input) {
+        if (typeof this.#payCropTheftFine !== "function")
+            fail("security_fine_payment_unavailable");
+        const violationId = identifier(this.#generateId(), "violation_id");
+        const amountGold = input.durationHours * input.hourlyReleaseRateGold;
+        const businessReference = `security:violation:${violationId}:fine`;
+        const payment = assertSyncResult(this.#payCropTheftFine({
+            residentId: input.residentId, amount: amountGold, businessReference,
+            idempotencyKey: `security:fine:${violationId}`,
+        }), "security_async_payment_forbidden");
+        const receipt = payment?.financialReceipt;
+        const paymentReceiptId = identifier(payment?.receiptId, "payment_receipt_id");
+        if (!receipt || receipt.receiptId !== paymentReceiptId ||
+            receipt.residentId !== input.residentId || receipt.kind !== "system_gold_charge" ||
+            receipt.currency !== "gold" || receipt.amount !== amountGold ||
+            receipt.businessReference !== businessReference ||
+            payment?.account?.residentId !== input.residentId)
+            fail("security_fine_payment_mismatch");
+        this.#database.prepare(`INSERT INTO security_violations (
+            violation_id, violation_code, source_id, resident_id,
+            occurred_at, caught_at, caught_by, repetition_index, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+            .run(violationId, FARM_CROP_THEFT_VIOLATION, input.sourceId, input.residentId,
+                input.occurredAt, input.caughtAt, input.caughtBy, input.repetitionIndex, input.caughtAt);
+        this.#database.prepare(`INSERT INTO security_fines (
+            violation_id, amount_gold, duration_hours, payment_receipt_id, paid_at
+        ) VALUES (?, ?, ?, ?, ?)`)
+            .run(violationId, amountGold, input.durationHours, paymentReceiptId, input.caughtAt);
+        return this.#resultForViolation(this.#violationBySource(FARM_CROP_THEFT_VIOLATION, input.sourceId));
     }
 
     #createViolationAndDetention(input) {

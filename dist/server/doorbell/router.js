@@ -1,3 +1,4 @@
+import { handleDoorbellSecurityPatrol } from "./security-patrol.js";
 import { handleGlimmerEditor } from "./glimmer-editor.js";
 import { handleDoorbellMidAutumn } from "./mid-autumn.js";
 import { handleDoorbellGameEconomyBalances, handleDoorbellGameEconomySettle } from "./game-economy.js";
@@ -83,6 +84,10 @@ import {
 
 export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExecutor, careerBenefitsForFarm, constableInterviewRuntime, gachaRuntime) {
     return async function handleDoorbellInternal(req, res, parts, method) {
+        if(parts.length===5 && parts[0]==="internal" && parts[1]==="doorbell" && parts[2]==="security" && parts[3]==="patrol" && ["pending","ack"].includes(parts[4])) {
+            await handleDoorbellSecurityPatrol(req,res,method,constableInterviewRuntime,parts[4]);
+            return true;
+        }
         if (parts.length === 4 && parts[0] === 'internal' && parts[1] === 'doorbell' && parts[2] === 'mid-autumn' && ['ai', 'human'].includes(parts[3])) {
             await handleDoorbellMidAutumn(req, res, method, {
                 database: constableInterviewRuntime?.database,

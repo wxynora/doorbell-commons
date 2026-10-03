@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { MAX_LOG, TRAIL_MAX } from "../../config.js";
+import { takeRecoveryNotices } from "../../nature/recovery.js";
 
 export function pushLog(farm, msg) {
     farm.log.push(msg);
@@ -16,7 +17,7 @@ export function pushTrail(farm, ev) {
 
 /** 取走 AI 收件箱里的未读消息（取出即清空）——打开农场(status)时调一次。 */
 export function takeInbox(farm) {
-    const msgs = (farm.inbox ?? []).map((m) => m.text);
+    const msgs = [...(farm.inbox ?? []).map((m) => m.text), ...takeRecoveryNotices(farm)];
     farm.inbox = [];
     return msgs;
 }

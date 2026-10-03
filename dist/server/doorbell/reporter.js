@@ -50,6 +50,7 @@ function projectPublications(backend, body, now) {
     }).map(({ authorResidentId, selectorResidentId, writerResidentId, reviewerResidentId, ...publication }) => ({
         ...publication,
         ...authorFacts(authorResidentId),
+        ...(publication.authorName ? {authorName:publication.authorName,authorFarmName:null}:{}),
     }));
 }
 

@@ -88,10 +88,16 @@ export function ensureReporterDutyRoles(database, now = Date.now(), options = {}
             return existing.map(mapRole);
         }
         const duties = reporterDutyRows(database, dutyDate);
-        if (duties.length !== REPORTER_DUTY_ROLES.length)
+        if (![3, REPORTER_DUTY_ROLES.length].includes(duties.length))
             return [];
         const drawInt = options.drawInt ?? cryptoRandomInt;
         const randomizedDuties = [...duties];
+        if (duties.length === 3) {
+            const selected = drawInt(duties.length);
+            if (!Number.isSafeInteger(selected) || selected < 0 || selected >= duties.length)
+                fail("reporter_duty_random_source_invalid");
+            randomizedDuties.push(duties[selected]);
+        }
         for (let index = randomizedDuties.length - 1; index > 0; index -= 1) {
             const selected = drawInt(index + 1);
             if (!Number.isSafeInteger(selected) || selected < 0 || selected > index)
@@ -329,6 +335,8 @@ export function markReporterWorkflowPublished(database, input) {
 
 export function reporterPublicationCredits(database, publicationId) {
     installCareerSchema(database);
+    const manual=database.prepare("SELECT manual.*,publication.job_id,publication.resident_id FROM career_reporter_manual_publications manual LEFT JOIN career_reporter_publications publication ON publication.publication_id=manual.career_publication_id WHERE manual.publication_id=?").get(publicationId);
+    if(manual) return {selectorJobId:manual.job_id,selectorResidentId:manual.resident_id,writerJobId:null,writerResidentId:null,reviewerJobId:null,reviewerResidentId:null,submissionReviewerJobId:null,submissionReviewerResidentId:null};
     const row = database.prepare(`
       SELECT * FROM career_reporter_story_workflows WHERE publication_id = ?
     `).get(identifier(publicationId, "publication_id"));

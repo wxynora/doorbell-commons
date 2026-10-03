@@ -1,3 +1,4 @@
+import { stageAnnualCounters } from "../../annual-statistics/world-buffer.js";
 import { randomUUID } from "node:crypto";
 import { Rng } from "../../rng.js";
 import { currentDayIndex } from "../../time.js";
@@ -89,6 +90,7 @@ export function dispatchRanchRaid(owner, target, animalIdx, durationHours, now) 
         status: "active",
     };
     ranch.raidHistory.entries.push(historyEntry);
+    stageAnnualCounters(owner,"dispatch",{actor_id:owner.id,target_id:target.id,animal_kind:raid.animalKindId},{dispatched:1},now);
     return { ok: true, raid, animal: animalName };
 }
 
@@ -113,6 +115,7 @@ export function catchRanchRaid(target, owners, raidId, now) {
             owner.ranch.raidLoss.n += compensation;
         }
         ensureRanch(target).coins += compensation;
+        stageAnnualCounters(owner,"dispatch",{actor_id:owner.id,target_id:raid.targetFarmId,animal_kind:raid.animalKindId},{returned:1,caught:1,compensation_gold:compensation},now);
         finishRanchRaidHistory(owner.ranch, raid, "caught", compensation);
         raids.splice(idx, 1);
         const animal = owner.ranch.animals.find((a) => a.kindId === raid.animalKindId);
@@ -196,6 +199,7 @@ export function settleRanchRaids(farms, now) {
                     pushSocialInbox(owner, attackerText, now);
                     pushRanchNotice(target, defenderText.replace("发放到牧场钱包", "发放到你的牧场钱包"), now, "ranch");
                     pushRanchNotice(owner, attackerText, now, "ranch");
+                    stageAnnualCounters(owner,"dispatch",{actor_id:owner.id,target_id:raid.targetFarmId,animal_kind:raid.animalKindId},{returned:1,goose_blocks:1},now);
                     gooseCaught += 1;
                     settled += 1;
                     continue;
@@ -236,6 +240,7 @@ export function settleRanchRaids(farms, now) {
                     pushRanchNotice(owner, ownerText, now, "ranch");
                 }
             }
+            stageAnnualCounters(owner,"dispatch",{actor_id:owner.id,target_id:raid.targetFarmId,animal_kind:raid.animalKindId},{returned:1,earned_gold:resultCoins},now);
             finishRanchRaidHistory(ranch, raid, "returned", resultCoins);
             settled += 1;
         }

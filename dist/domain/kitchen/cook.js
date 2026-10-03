@@ -1,3 +1,4 @@
+import { stageAnnualCounters } from "../../annual-statistics/world-buffer.js";
 import { randomUUID } from "node:crypto";
 import { cooking, cookingRecipeById, cookingRecipes } from "../../content.js";
 import { removeFishingCatchIds } from "../../fishing.js";
@@ -182,6 +183,7 @@ export function kitchenCook(farm, refs, now, options = {}) {
         : null;
     if (isOriginalRecipe && !cookingReceipt)
         return { ok: false, code: "original_cooking_receipt_unavailable" };
+    stageAnnualCounters(farm, "cooking", {actor_id:farm.id,recipe_id:dish.recipeId}, {cooked:1,unlocked:discovered && !isOriginalRecipe ? 1 : 0,odd:!recipe ? 1 : 0}, now);
     return {
         ok: true,
         dish,

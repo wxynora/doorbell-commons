@@ -1,3 +1,6 @@
+import { manualPerformanceWorkflow, registerManualPublication } from "./career/reporter-manual-publication.js";
+import { installAnnualStatisticsSchema } from "./annual-statistics/schema.js";
+import { PENDING_COUNTERS, flushAnnualCounters } from "./annual-statistics/world-buffer.js";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -37,6 +40,7 @@ import { installEconomySchema } from "./economy/economy-schema.js";
 import { EconomyError } from "./economy/economy-errors.js";
 import { EconomyService } from "./economy/economy-service.js";
 import { installSecuritySchema, LingyeSecurityService } from "./security/index.js";
+import { PlayerPatrolService } from "./security/player-patrol-service.js";
 import {
     claimReporterMaterialPack,
     createReporterSection,
@@ -281,6 +285,7 @@ export function installLingyeWorldSchema(database) {
     ensureChefRecipeSchema(database);
     ensureChefCommerceSchema(database);
     ensureChefStoreSchema(database);
+    installAnnualStatisticsSchema(database);
     installReporterBoardSnapshotSchema(database);
     installMidAutumnSchema(database);
 }
@@ -343,7 +348,7 @@ export function createLingyeFarmBalanceCoordinator(database, backend, options = 
                 ? new Set(persistenceHints.farmIds)
                 : null;
             world.farms = world.farms.map((farm) => {
-                if (!farm?.doorbellMcpMigration?.migrationId ||
+                if ((!farm?.doorbellMcpMigration?.migrationId && !farm?.[PENDING_COUNTERS]) ||
                     (candidateFarmIds && !candidateFarmIds.has(farm.id)))
                     return farm;
                 const staged = structuredClone(farm);
@@ -451,6 +456,12 @@ export function createLingyeFarmBalanceCoordinator(database, backend, options = 
                         silver: farm.silver,
                     };
                     persistenceFarmIds.add(farm.id);
+                }
+            }
+            if (ownsDurableTransaction) {
+                for (const farm of world.farms) {
+                    if (candidateFarmIds && !candidateFarmIds.has(farm.id)) continue;
+                    if (flushAnnualCounters(database, farm)) persistenceFarmIds.add(farm.id);
                 }
             }
             options.beforeWorldWrite?.({ world, context, balanceOperation });
@@ -622,12 +633,38 @@ export function createLingyeWorldBackend(database, options) {
         listPunishableSystemLoanFacts: (input) => economy.listPunishableSystemLoanFacts(input),
         getPunishableSystemLoanFact: (input) => economy.getPunishableSystemLoanFact(input),
         payDetentionEarlyRelease: (input) => economy.payDetentionEarlyRelease(input),
+        hasPlayerPatrolDuty: (at) => playerPatrol.hasPlayerDuty(at),
+        payCropTheftFine: (input) => {
+            const account = economy.chargeToSystem({
+                residentId: input.residentId, amount: input.amount, currency: "gold", actor: "system",
+                businessType: "security_fine", businessRef: input.businessReference,
+                exemption: "security_penalty", idempotencyKey: input.idempotencyKey,
+            });
+            return { account, receiptId: account.financialReceipt.receiptId,
+                financialReceipt: account.financialReceipt };
+        },
     });
     const school = new CareerSchoolService(shared);
     const employment = new CareerEmploymentService(shared);
     const resignations = new CareerResignationService({ ...shared, economy, employment });
     const jobs = new CareerJobService(shared);
-    const authorityAssignment = new CareerAuthorityAssignmentService({ ...shared, jobs });
+    const authorityAssignment = new CareerAuthorityAssignmentService({ ...shared, jobs,
+        constableCandidateMatches: (residentId, job) => {
+            const patrolCase = database.prepare("SELECT target_resident_id FROM security_patrol_cases WHERE job_id=?").get(job.jobId);
+            return residentId === (patrolCase?.target_resident_id ?? playerPatrol.ensureDay().residentId);
+        },
+    });
+    const playerPatrol = new PlayerPatrolService(database, {
+        ...(options.now === undefined ? {} : { now: options.now }),
+        getCaughtCropTheftFact: securityAuthority.getCaughtCropTheftFact,
+        createJob: (input) => jobs.createJob(input),
+        assignJob: (input) => authorityAssignment.assignJob(input),
+        getJob: (jobId) => jobs.getJob(jobId),
+        recordDecision: (input) => jobs.recordDecision(input),
+        completeJob: (input) => jobs.completeJob(input),
+        catchTheft: (input) => security.catchCropTheft(input),
+        quoteTheft: (input) => security.quoteCropTheftPenalty(input),
+    });
     const atomic = (operation) => {
         return runLingyeWorldTransaction(database, () => {
             // Also runs inside the existing midnight employment transaction.
@@ -1088,6 +1125,11 @@ export function createLingyeWorldBackend(database, options) {
         return publication;
     };
     const reporterCommands = {
+        registerManualPublication: input => {
+            const publication=atomic(()=>registerManualPublication(database,{trustedSystemCommands:{cancelJob:id=>jobs.cancelJob(id)}},input));
+            options.onReporterPublication?.(publication);
+            return publication;
+        },
         registerReporterSourceFact: (input) => atomic(() => registerReporterSourceFact(database, reporterWithClock(input))),
         createReporterMaterialPack: (input) => atomic(() => createReporterMaterialPack(database, reporterWithClock(input))),
         reviewReporterArticle: (input) => atomic(() => reviewReporterArticle(database, {
@@ -1131,7 +1173,7 @@ export function createLingyeWorldBackend(database, options) {
                     now,
                 });
             }
-            const workflow = reporterWorkflowForJob(database, quote.jobId);
+            const workflow = manualPerformanceWorkflow(database,quote.publicationId) ?? reporterWorkflowForJob(database, quote.jobId);
             const submissionJobId = workflow ? database.prepare(`SELECT submission_reviewer_job_id
               FROM career_reporter_relay_issues WHERE issue_reference = ?`)
                 .get(workflow.issueReference)?.submission_reviewer_job_id : null;
@@ -1222,6 +1264,10 @@ export function createLingyeWorldBackend(database, options) {
         releaseSilverEscrow: economyCommands.releaseSilverEscrow,
         openSystemLoan: economyCommands.openSystemLoan,
         refreshDebtStatus: economyCommands.refreshDebtStatus,
+        ensurePlayerPatrolDay: () => atomic(() => playerPatrol.ensureDay()),
+        capturePlayerPatrolTheft: (source) => atomic(() => playerPatrol.captureTheft(source)),
+        assignPendingPlayerPatrolCases: (residentId) => atomic(() => playerPatrol.assignPending(residentId)),
+        acknowledgePlayerPatrolNotices: (residentId, noticeIds) => atomic(() => playerPatrol.acknowledgeNotices(residentId, noticeIds)),
         runNpcLoanPatrol: (input) => security.runNpcLoanPatrol(input),
         catchCropTheft: (input) => atomic(() => security.catchCropTheft(input)),
         catchPunishableSystemLoan: (input) => atomic(() => security.catchPunishableSystemLoan(input)),
@@ -1242,6 +1288,8 @@ export function createLingyeWorldBackend(database, options) {
         listPunishableSystemLoanFacts: (input = {}) => economy.listPunishableSystemLoanFacts(input),
         getPunishableSystemLoanFact: (input) => economy.getPunishableSystemLoanFact(input),
         getSecurityPatrolStatus: (input) => security.getPatrolStatus(input),
+        getOwnPlayerPatrolDay: (residentId) => playerPatrol.getOwnDay(residentId),
+        pendingPlayerPatrolNotices: (residentId) => playerPatrol.pendingNotices(residentId),
         getResidentDetention: (residentId, input) => security.getResidentDetention(residentId, input),
         listResidentDetentions: (residentId, input) => security.listResidentDetentions(residentId, input),
         isResidentDetained: (residentId, input) => security.isResidentDetained(residentId, input),
@@ -1328,6 +1376,12 @@ export function createLingyeWorldBackend(database, options) {
             cancelPlayerLoan: (input) => residentCommands.cancelPlayerLoan({ ...input, actorResidentId: authenticatedResidentId }),
             repayPlayerLoan: (input) => residentCommands.repayPlayerLoan({ ...input, actorResidentId: authenticatedResidentId }),
             repayOwnSystemLoan: (input) => residentCommands.repaySystemLoan({ ...input, actorResidentId: authenticatedResidentId }),
+            inspectOwnPlayerPatrolCases: () => atomic(() => playerPatrol.inspectOwnCases(authenticatedResidentId)),
+            resolveOwnPlayerPatrolCase: (input) => atomic(() => playerPatrol.resolveOwnCase({...input,residentId:authenticatedResidentId})),
+            getOwnPlayerPatrolDay: () => playerPatrol.getOwnDay(authenticatedResidentId),
+            setOwnPlayerPatrolWindows: (input) => atomic(() => playerPatrol.setWindows({
+                ...input, residentId: authenticatedResidentId,
+            })),
             getOwnDetention: (input) => security.getResidentDetention(authenticatedResidentId, input),
             listOwnDetentions: (input) => security.listResidentDetentions(authenticatedResidentId, input),
             quoteOwnDetentionEarlyRelease: (input) => security.quoteEarlyRelease({

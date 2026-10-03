@@ -16,7 +16,7 @@ import { ensureKitchen } from "./state.js";
 import { animalUpgradeCost, ranchAnimalCurrentProduceValue } from "./value.js";
 
 /** 伴侣收牧场产品：欠款存在时按动物稳定顺序整份回收还债；可烹饪产物锁价入柜，其余当场回收为牧场金币。 */
-export function ranchCollect(farm, farms, now) {
+export function ranchCollect(farm, farms, now, collector = humanDisplay(farm)) {
     const ranch = farm.ranch;
     if (!ranch || !ranch.animals.length)
         return { ok: false, error: `牧场还没有动物——让${aiDisplay(farm)}在商店买一只送进来。` };
@@ -92,7 +92,7 @@ export function ranchCollect(farm, farms, now) {
             potion = 1;
             pd.n += 1;
             farm.items.speed_potion = (farm.items.speed_potion ?? 0) + 1;
-            pushLedger(farm, "potion", 1, `${humanDisplay(farm)}收获时掉落，入仓库`, now);
+            pushLedger(farm, "potion", 1, `${collector}收获时掉落，入仓库`, now);
         }
     }
     return { ok: true, gain, gross, debtPaid, detail, potion, storedCount, autoRecycled, nonCookableCount, nonCookableGain, nonCookableDetail };

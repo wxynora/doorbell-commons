@@ -1,3 +1,5 @@
+import { captureCommittedPlayerPatrolThefts } from "./security/player-patrol-runtime.js";
+import { aiRanchHarvestStatus } from "./domain/ranch/ai-harvest.js";
 import { appendCareerStatusNotices } from "./career/exam-status.js";
 import { isMidAutumnOption, runMidAutumnTogether, midAutumnEntryText, midAutumnActivityStatusText, midAutumnGiftStatusText } from './mid-autumn-orders/together.js';
 import { createMidAutumnRuntime } from './mid-autumn-orders/runtime.js';
@@ -179,6 +181,8 @@ function fresh(id) {
     return f;
 }
 function caughtCropTheftFact(database, input) {
+    const recorded=database.prepare("SELECT authority_json FROM security_patrol_cases WHERE source_id=?").get(input?.sourceId ?? "");
+    if(recorded) return JSON.parse(recorded.authority_json);
     const prefix = "p3:security:trail:";
     const eventId = typeof input?.sourceId === "string" && input.sourceId.startsWith(prefix)
         ? input.sourceId.slice(prefix.length)
@@ -550,7 +554,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
                 backend: activeLingyeWorldBackend,
             }).execute({ farmId: f.id, side: "ai", op: "view" }, now), now)
             : "";
-        const text = [midAutumnGiftStatus, dispatch(f, { action: "status" }, now).text, cookingStatus, ripeBroadcastText(now, changedFarmIds), stolenTodayText(f, now)].filter(Boolean).join("\n\n"); // 内部会 roll 季节事件（可能已改农场）
+        const text = [midAutumnGiftStatus, dispatch(f, { action: "status" }, now).text, aiRanchHarvestStatus(f, now), cookingStatus, ripeBroadcastText(now, changedFarmIds), stolenTodayText(f, now)].filter(Boolean).join("\n\n"); // 内部会 roll 季节事件（可能已改农场）
         bumpDaily(f, now, "logins"); // 网瘾榜（今日开自己农场主页次数）
         save(isTogetherSeason3(publicWorld)
             ? { farmIds: [...changedFarmIds], componentKeys: [], allowCrossDomain: false }
@@ -799,7 +803,8 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         : null;
     const season3Harvest = action === "harvest" || action === "run"
         ? captureStoredTogetherSeason3Harvest(f,now) : null;
-    const r = dispatch(f, { ...b, action }, now, careerBenefits);
+    const r = dispatch(f, { ...b, action }, now, action === "ranch-harvest"
+        ? { ...careerBenefits, ranchFarms: publicFarms } : careerBenefits);
     if(r?.ok && season3Harvest) attachStoredTogetherSeason3Harvest(f,season3Harvest,now);
     if (r?.ok && action === "water") {
         const plotIds = b.plotId != null ? [Number(b.plotId)] : f.plots.map((plot) => plot.id);
@@ -995,7 +1000,10 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
         },
     });
     const balanceCoordinator = createLingyeFarmBalanceCoordinator(lingyeWorldDatabase, lingyeWorldBackend, {
-        beforeWorldWrite: (input) => recordPendingLingyeNpcFarmBusiness(lingyeWorldDatabase, input),
+        beforeWorldWrite: (input) => {
+            recordPendingLingyeNpcFarmBusiness(lingyeWorldDatabase, input);
+            captureCommittedPlayerPatrolThefts(lingyeWorldDatabase, lingyeWorldBackend, input.world);
+        },
     });
     setWorldCommitCoordinator((world, ...args) => {
         const result = balanceCoordinator(world, ...args);
@@ -1091,7 +1099,11 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
     const runEmploymentCycle = () => {
         const result = runLingyeWorldTransaction(
             lingyeWorldDatabase,
-            () => lingyeWorldBackend.trustedSystemCommands.advanceEmploymentDays(),
+            () => {
+                const result=lingyeWorldBackend.trustedSystemCommands.advanceEmploymentDays();
+                lingyeWorldBackend.trustedSystemCommands.ensurePlayerPatrolDay();
+                return result;
+            },
         );
         withWorldCommitContext({ balanceAuthority: "ledger", actor: "system" }, () => {
             syncLedgerProjection();

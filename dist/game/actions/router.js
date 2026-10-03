@@ -65,9 +65,10 @@ export function dispatchImpl(f, b, now, options = {}) {
         case "buy-pet":
         case "buy-patrol-goose":
         case "send-ranch":
+        case "ranch-harvest":
         case "ranch-feed":
         case "ledger":
-            return handleRanchAction(action, f, b, now);
+            return handleRanchAction(action, f, b, now, options);
         case "upgrade-land":
         case "accept-task":
             return handleFieldAction(action, f, b, now);

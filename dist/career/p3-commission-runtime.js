@@ -389,7 +389,7 @@ function animalSource(farm, ownerResidentId, source) {
     };
 }
 
-function securityTrailSources(database, farm, ownerResidentId) {
+export function securityTrailSources(database, farm, ownerResidentId) {
     return (farm.trail ?? [])
         .filter((entry) => entry?.kind === "stolen" &&
             typeof entry.eventId === "string" && entry.eventId.length > 0)

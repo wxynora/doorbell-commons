@@ -10,10 +10,12 @@ export class CareerAuthorityAssignmentService {
     #database;
     #jobs;
     #now;
+    #constableCandidateMatches;
     constructor(options) {
         this.#database = options.database;
         this.#jobs = options.jobs;
         this.#now = options.now ?? Date.now;
+        this.#constableCandidateMatches = options.constableCandidateMatches ?? null;
         this.#assignJob = createCareerAuthorityJobBinder(options.jobs);
     }
     assignJob(input) {
@@ -62,6 +64,8 @@ export class CareerAuthorityAssignmentService {
             if (job.ownerResidentId !== null && job.career !== "veterinarian")
                 excludedResidents.add(job.ownerResidentId);
             const eligible = (entry) =>
+                (job.career !== "constable" || !this.#constableCandidateMatches ||
+                    this.#constableCandidateMatches(entry.resident_id, job)) &&
                 !excludedResidents.has(entry.resident_id) &&
                 entry.active_job_count < INSTITUTION_ASSIGNED_CONCURRENT_CAPACITY[entry.qualification_level];
             const otherCandidate = candidates.find((entry) =>

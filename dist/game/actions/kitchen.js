@@ -11,6 +11,8 @@ import { midAutumnSeedCompletionText } from '../../mid-autumn-seeds.js';
 import { viewKitchen } from "../presentation/catalog.js";
 import { withFooter } from "../presentation/farm.js";
 import { kitchenToolOffer } from "../../domain/kitchen/tool-catalog.js";
+import { cookingIngredients, cookingProducts } from "../../content.js";
+import { kitchenMethodDefinition } from "../../domain/kitchen/chef.js";
 
 export const KITCHEN_DOMAIN_ERROR_TEXT = Object.freeze({
     anchor_content_unavailable: "料理评分内容暂时不可用，本次没有执行。",
@@ -65,12 +67,76 @@ export function kitchenDomainErrorText(failure, fallback = "料理台暂时无�
     return KITCHEN_DOMAIN_ERROR_TEXT[code] ?? fallback;
 }
 
-function originalResearchStatusText(status) {
-    if (status === "failed")
-        return "没有研发成功，食材已经按本次结果结算";
-    if (status === "rejected")
-        return "没有通过研发条件，本次没有登记菜谱";
-    return "没有登记出新菜谱";
+const ORIGINAL_RESEARCH_EXCEPTION_TEXT = "原创研发发生异常，暂时无法确认本次登记和食材结算结果。";
+const COOKING_MATERIAL_NAMES = new Map([...cookingIngredients, ...cookingProducts]
+    .map(({ id, name }) => [id, name]));
+
+function originalResearchSettlementLines(researched) {
+    const lines = [];
+    if (researched.consumed === false)
+        lines.push("本次没有消耗食材。");
+    else if (researched.consumed === true) {
+        const consumed = researched.inventoryReceipt?.ingredients ?? researched.ingredients;
+        lines.push(`本次消耗：${consumed.map(({ id, quantity }) => `${COOKING_MATERIAL_NAMES.get(id) ?? id}×${quantity}`).join("、")}。`);
+    }
+    if (researched.refund?.applied === true) {
+        const { ingredientId, quantity } = researched.refund;
+        lines.push(`本次返还：${COOKING_MATERIAL_NAMES.get(ingredientId) ?? ingredientId}×${quantity}。`);
+    }
+    return lines;
+}
+
+function originalResearchResult(researched, farm, now) {
+    let line;
+    if (researched.status === "succeeded" && researched.recipe) {
+        line = `📜 原创菜谱「${researched.recipe.name}·${researched.recipe.rarity}」已经登记。`;
+    }
+    else if (researched.status === "failed" || researched.status === "rejected") {
+        switch (researched.failureCode) {
+            case "research_failed":
+                line = "这次原创研发未成功，未登记新菜谱。";
+                break;
+            case "odd_recipe":
+                line = "这组食材与做法没有达到原创研发条件，未登记新菜谱。";
+                break;
+            case "chef_recipe_identity_exists":
+                line = "这组食材和做法已经有菜谱，本次未重复登记。";
+                break;
+            case "chef_recipe_limit_reached":
+                line = `已达到当前料理师等级的原创菜谱上限（${researched.researchLimit}份），本次未登记菜谱。`;
+                break;
+            case "inventory_insufficient":
+            case "insufficient_inventory":
+            case "not_enough_inventory":
+            case "ingredient_insufficient":
+                line = "研发所需食材不足，本次未执行。";
+                break;
+            default:
+                return { ok: false, text: ORIGINAL_RESEARCH_EXCEPTION_TEXT };
+        }
+    }
+    else {
+        return { ok: false, text: ORIGINAL_RESEARCH_EXCEPTION_TEXT };
+    }
+    const ok = researched.status !== "rejected";
+    const text = [line, ...originalResearchSettlementLines(researched)].join("\n");
+    return { ok, text: ok ? withFooter(farm, now, text) : text };
+}
+
+function originalResearchErrorText(error, methodId) {
+    if (error?.code === "chef_recipe_method_tool_required") {
+        return kitchenDomainErrorText({
+            code: "tool_required",
+            toolId: kitchenMethodDefinition(methodId)?.toolId,
+        }, ORIGINAL_RESEARCH_EXCEPTION_TEXT);
+    }
+    if (error?.code === "chef_active_qualification_required")
+        return "只有已绑定并持有料理师资格的居民可以研发原创菜谱。";
+    if (error?.code === "chef_recipe_method_unavailable")
+        return kitchenDomainErrorText({ code: "method_unavailable" });
+    if (typeof error?.code === "string" && error.code.startsWith("chef_recipe_quality_"))
+        return kitchenDomainErrorText({ code: error.code.slice("chef_recipe_quality_".length) });
+    return ORIGINAL_RESEARCH_EXCEPTION_TEXT;
 }
 
 export function handleKitchenAction(action, f, b, now, options = {}) {
@@ -101,16 +167,10 @@ export function handleKitchenAction(action, f, b, now, options = {}) {
                     methodId: String(b.method ?? ""),
                     recipeName: String(b.name),
                 });
-                const recipe = researched.recipe ?? null;
-                return {
-                    ok: true,
-                    text: withFooter(f, now, recipe
-                        ? `📜 原创菜谱「${recipe.name}·${recipe.rarity}」已经登记。`
-                        : `🥴 这次原创研发${originalResearchStatusText(researched.status)}。`),
-                };
+                return originalResearchResult(researched, f, now);
             }
             catch (error) {
-                return { ok: false, text: kitchenDomainErrorText(error, "原创菜谱研发失败，本次没有登记菜谱。") };
+                return { ok: false, text: originalResearchErrorText(error, String(b.method ?? "")) };
             }
         }
         const r = b.recipe != null

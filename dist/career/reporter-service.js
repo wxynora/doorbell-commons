@@ -1,3 +1,4 @@
+import { manualPublication, standaloneManualPublications, recordStandaloneManualLike } from "./reporter-manual-publication.js";
 import { createHash } from "node:crypto";
 import { CareerDomainError, PERFORMANCE_PAY_GOLD } from "./contracts.js";
 import { recordFinancialReceipt, runInTransaction } from "./persistence.js";
@@ -1078,8 +1079,9 @@ export function listReporterPublicationsForHuman(database, input) {
         ORDER BY latest.article_version DESC LIMIT 1
       )
       ORDER BY publication.published_at DESC, publication.publication_id`).all();
-    return publications.map((publication) => {
+    return [...publications.map((publication) => {
         const credits = reporterPublicationCredits(database, publication.publication_id);
+        const manual = manualPublication(database,publication.publication_id);
         const hasLiked = Boolean(database.prepare(`SELECT 1 FROM career_reporter_human_likes
           WHERE job_id = ? AND human_actor_key = ?`).get(publication.job_id, humanActorKey));
         const creditedResidents = [
@@ -1099,6 +1101,7 @@ export function listReporterPublicationsForHuman(database, input) {
             selectorResidentId: credits?.selectorResidentId ?? publication.resident_id,
             writerResidentId: credits?.writerResidentId ?? publication.resident_id,
             reviewerResidentId: credits?.reviewerResidentId ?? null,
+            ...(manual ? {authorName:manual.author_credit,writerResidentId:null} : {}),
             articleText: publication.article_text,
             sectionName: publication.section_name,
             publishedAt: publication.published_at,
@@ -1109,14 +1112,14 @@ export function listReporterPublicationsForHuman(database, input) {
             ownHousehold,
             status: open ? "open" : "closed",
         };
-    });
+    }), ...standaloneManualPublications(database,{...input,now},"human")];
 }
 
 export function listReporterPublicationsForResident(database, input) {
     installBase(database);
     const now = nowOf(input);
     const residentId = identifier(input?.residentId, "resident_id");
-    return database.prepare(`SELECT publication.*, article.article_text,
+    return [...database.prepare(`SELECT publication.*, article.article_text,
         section.name AS section_name
       FROM career_reporter_publications publication
       JOIN career_reporter_articles article ON article.article_id = publication.article_id
@@ -1128,6 +1131,7 @@ export function listReporterPublicationsForResident(database, input) {
       )
       ORDER BY publication.published_at DESC, publication.publication_id`).all().map((publication) => {
         const credits = reporterPublicationCredits(database, publication.publication_id);
+        const manual = manualPublication(database,publication.publication_id);
         const hasLiked = Boolean(database.prepare(`SELECT 1
           FROM career_reporter_publication_likes
           WHERE job_id = ? AND resident_id = ?`).get(publication.job_id, residentId));
@@ -1146,6 +1150,7 @@ export function listReporterPublicationsForResident(database, input) {
             selectorResidentId: credits?.selectorResidentId ?? publication.resident_id,
             writerResidentId: credits?.writerResidentId ?? publication.resident_id,
             reviewerResidentId: credits?.reviewerResidentId ?? null,
+            ...(manual ? {authorName:manual.author_credit,writerResidentId:null} : {}),
             articleText: publication.article_text,
             sectionName: publication.section_name,
             publishedAt: publication.published_at,
@@ -1156,7 +1161,7 @@ export function listReporterPublicationsForResident(database, input) {
             ownArticle,
             status: open ? "open" : "closed",
         };
-    });
+    }), ...standaloneManualPublications(database,{...input,now},"resident")];
 }
 
 export function recordReporterHumanLike(database, input) {
@@ -1170,6 +1175,8 @@ export function recordReporterHumanLike(database, input) {
         fail("reporter_human_actor_mismatch");
     return runInTransaction(database, () => {
         requireResident(database, viaResidentId);
+        const manualLike=recordStandaloneManualLike(database,{...input,now},"human");
+        if(manualLike) return manualLike;
         const publication = publicationByLikeRef(database, input?.likeRef);
         const existing = database.prepare(`SELECT publication_id
           FROM career_reporter_human_likes
@@ -1290,6 +1297,8 @@ export function recordReporterLike(database, input) {
         fail("reporter_like_actor_forbidden");
     return runInTransaction(database, () => {
         requireResident(database, residentId);
+        const manualLike=recordStandaloneManualLike(database,{...input,now},"resident");
+        if(manualLike) return manualLike;
         const publication = requirePublication(database, publicationId);
         const existing = database.prepare(`
           SELECT publication_id FROM career_reporter_publication_likes

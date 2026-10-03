@@ -1,10 +1,11 @@
+import { harvestRanchForAi } from "../../domain/ranch/ai-harvest.js";
 import { buyAnimalForPartner, buyPatrolGoose, buyPetForPartner, farmSendRanch, ranchFeedAnimal } from "../../engine.js";
 import { animalById, petById } from "../../content.js";
 import { RANCH_PATROL_GOOSE_NAME } from "../../config.js";
 import { humanDisplay, withFooter } from "../presentation/farm.js";
 import { viewLedger } from "../presentation/shop.js";
 
-export function handleRanchAction(action, f, b, now) {
+export function handleRanchAction(action, f, b, now, options = {}) {
     switch (action) {
         case "buy-animal": { // 买一只已解锁的动物送给伴侣（机→人；动物进牧场，AI 看不到牧场内部，只在 ledger 记一笔）
             const aid = String(b.id ?? b.animal ?? "");
@@ -30,6 +31,13 @@ export function handleRanchAction(action, f, b, now) {
             const r = farmSendRanch(f, Number(b.amount), now);
             const who = humanDisplay(f);
             return { ok: r.ok, text: r.ok ? withFooter(f, now, `💌 你给${who}的牧场寄去了 ${r.amount} 金（主农场还剩 ${r.farmLeft} 金；牧场现有 ${r.ranchCoins} 金）。`) : r.error };
+        }
+        case "ranch-harvest": {
+            const result = harvestRanchForAi(f, options.ranchFarms ?? [f], now);
+            return { ok: result.ok, text: result.ok
+                ? `牧场帮收完成。今日牧场帮收次数：${result.remaining}`
+                : result.code === "ai_ranch_harvest_daily_limit"
+                    ? "今日牧场帮收次数已用完。" : result.error };
         }
         case "ranch-feed": {
             const r = ranchFeedAnimal(f, b.animal ?? b.animalIdx ?? b.id, now);

@@ -81,6 +81,8 @@ export function buildChefAnchorTables(recipes = cookingRecipes) {
     const methodScores = {};
     for (const recipe of recipes) {
         const rarity = idOf(recipe?.rarity);
+        if (rarity === "SP")
+            continue;
         const anchor = CHEF_ANCHOR_SCORE_BY_RARITY[rarity];
         const methodId = kitchenRecipeMethodId(recipe);
         const entries = normalizeIngredients(recipe?.ingredients);
@@ -251,7 +253,7 @@ function validateChefQualityContent(raw, { verifyAnchors = true } = {}) {
             return { ok: false, code: "recipe_anchor_invalid" };
         if (!isRecord(raw.anchor_source)
             || raw.anchor_source.recipe_catalog !== "content/cooking.json"
-            || raw.anchor_source.recipe_count !== cookingRecipes.length
+            || raw.anchor_source.recipe_count !== cookingRecipes.filter((recipe) => idOf(recipe?.rarity) !== "SP").length
             || JSON.stringify(raw.anchor_source.rarity_scores) !== JSON.stringify(CHEF_ANCHOR_SCORE_BY_RARITY))
             return { ok: false, code: "anchor_source_unavailable" };
         for (const [key, score] of Object.entries(mechanical.pairScores)) {

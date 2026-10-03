@@ -1,4 +1,5 @@
 import { animalById } from "../content.js";
+import { recoveredPlotNotices } from "../nature/recovery.js";
 import { plotAgronomyIssues, agronomyObservationsFor, animalObservationsFor } from "../career/p3-world.js";
 
 const AGRONOMY_STATUS_TEXT = {
@@ -38,7 +39,7 @@ function observationText(observations) {
 
 /** Read existing cases only; do not advance, diagnose, treat or persist them. */
 export function projectHealthBulletinNotices(farm) {
-    const notices = [];
+    const notices = recoveredPlotNotices(farm);
     for (const plot of Array.isArray(farm.plots) ? farm.plots : []) {
         if (!Number.isSafeInteger(plot?.id) || plot.id <= 0)
             continue;

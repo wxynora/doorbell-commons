@@ -1,4 +1,5 @@
 // 核心引擎：惰性生长 + 抽卡收获 + 浇水运气 + 偷菜 + 商店 + 土地升级。
+import { stageAnnualCounters } from "./annual-statistics/world-buffer.js";
 import { Rng } from "./rng.js";
 import { rollCrop, rollQuality, cropValue } from "./gacha.js";
 import { currentSeason, currentDayIndex, currentWeather } from "./time.js";
@@ -101,7 +102,7 @@ import {
 } from "./domain/ranch/index.js";
 import { ensureKitchen, ensureRanch } from "./domain/ranch/state.js";
 import { pushRanchNotice, takeRanchNotices } from "./domain/ranch/notices.js";
-import { advanceRanch } from "./domain/ranch/progression.js";
+import { advanceFarmGrowth } from "./domain/field/progression.js";
 import { aiDisplay, humanDisplay } from "./domain/ranch/display.js";
 import { pushLedger } from "./domain/ranch/ledger.js";
 import {
@@ -215,30 +216,8 @@ export function advance(farm, now, onChanged) {
     const p3Changed = farm.doorbellMcpMigration?.migrationId
         ? advanceP3Farm(farm, now).changed
         : false;
-    const elapsed = Math.floor((now - farm.lastTickAt) / TICK_MS);
-    if (elapsed <= 0) {
-        if (p3Changed) onChanged?.(farm.id);
-        return 0;
-    }
-    for (const p of farm.plots) {
-        if (p.crop && !p.crop.ripe) {
-            const growthEffect = agronomyGrowthEffect(p);
-            let growthTicks = elapsed;
-            if (growthEffect === "paused")
-                growthTicks = 0;
-            else if (growthEffect === "half") {
-                const accumulated = (p.crop.lingyeGrowthRemainder ?? 0) + elapsed;
-                growthTicks = Math.floor(accumulated / 2);
-                p.crop.lingyeGrowthRemainder = accumulated % 2;
-            }
-            p.crop.progress = Math.min(p.crop.growTicks, p.crop.progress + growthTicks);
-            if (p.crop.progress >= p.crop.growTicks)
-                p.crop.ripe = true;
-        }
-    }
-    advanceRanch(farm, elapsed);
-    farm.lastTickAt += elapsed * TICK_MS;
-    onChanged?.(farm.id);
+    const elapsed = advanceFarmGrowth(farm, now, onChanged);
+    if (elapsed <= 0 && p3Changed) onChanged?.(farm.id);
     return elapsed;
 }
 // —— 揭晓 roll（收获/偷菜共用）——
@@ -514,6 +493,7 @@ export function steal(victim, plotId, by, now, thief, options = {}) {
         if (foiled) {
             const guard = (victim.ranch?.pets ?? []).map((p) => ({ p, k: petById.get(p.kindId) })).find((x) => x.k?.buff === "guard");
             const dogName = guard ? (guard.p.name || guard.k.name) : "看家狗";
+            if (thief) stageAnnualCounters(thief, "theft", {actor_id:by,target_id:victim.id}, {attempts:1,dog_blocks:1}, now);
             recordStealAttempt(thief, now);
             victim.stealCooldowns[by] = now;
             if (thief) {
@@ -548,6 +528,7 @@ export function steal(victim, plotId, by, now, thief, options = {}) {
     let isNewForThief = false;
     let codexReward = 0;
     if (thief) {
+        stageAnnualCounters(thief, "theft", {actor_id:by,target_id:victim.id}, {attempts:options.resumeGuard ? 0 : 1,successes:1,crop_value:value}, now);
         thief.coins += value;
         thief.stolen = (thief.stolen ?? 0) + 1; // 大盗称号累计
         bumpDaily(thief, now, "stolen");

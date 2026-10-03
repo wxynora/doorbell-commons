@@ -526,7 +526,10 @@ export function advanceP3Farm(farm, now = Date.now(), options = {}) {
 export function agronomyGrowthEffect(plot) {
     const effects = plotAgronomyIssues(plot)
         .filter((issue) => issue.status !== "resolved")
-        .map((issue) => AGRONOMY_CONDITIONS[issue.condition]?.growth ?? "normal");
+        .map((issue) => issue.natureRecoveryWateredDay != null && issue.condition === 'drought'
+            ? 'normal' : issue.natureRecovery?.progress === 1 &&
+            ['drought', 'waterlogging'].includes(issue.condition)
+            ? 'half' : AGRONOMY_CONDITIONS[issue.condition]?.growth ?? "normal");
     return effects.includes("paused") ? "paused" : effects.includes("half") ? "half" : "normal";
 }
 
@@ -657,6 +660,16 @@ export function treatAgronomyIssue(farm, sourceId, treatment, qualificationLevel
     issue.resolvedAt = now;
     if (issue.condition === "drought" && treatment === "water-retaining-cover")
         issue.protectedForEvent = true;
+    if (issue.natureImpactId && ['drought', 'waterlogging'].includes(issue.condition)) {
+        for (const entry of agronomyIssuesForFarm(farm)) {
+            if (entry.issue.natureImpactId !== issue.natureImpactId) continue;
+            entry.issue.status = 'resolved';
+            entry.issue.resolvedAt = now;
+            entry.issue.natureResolution = 'career-treatment';
+            entry.issue.natureRecoveryNoticeEligible = true;
+            if (issue.protectedForEvent) entry.issue.protectedForEvent = true;
+        }
+    }
     return { sourceId, status: issue.status, resolved: true, materialGold: candidate.materialGold };
 }
 

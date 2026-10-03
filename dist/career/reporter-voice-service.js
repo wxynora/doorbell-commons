@@ -68,8 +68,9 @@ export function publishReporterVoiceWork(database, backend, input) {
         const publication = database.prepare(`SELECT publication.publication_id, publication.published_at
           FROM career_reporter_relay_issues issue JOIN career_reporter_publications publication
             ON publication.article_id = issue.article_id WHERE issue.issue_date = ?
-            AND issue.status = 'published' AND publication.publication_id = ?`)
-            .get(issueDate, publicationId);
+            AND issue.status = 'published' AND publication.publication_id = ?
+          UNION ALL SELECT publication_id,published_at FROM career_reporter_manual_publications WHERE issue_date=? AND publication_id=?`)
+            .get(issueDate, publicationId, issueDate, publicationId);
         if (!publication || publication.published_at !== publishedAt || publishedAt < work.submitted_at)
             fail("reporter_voice_publication_mismatch");
         if (work.publication_id !== null) {

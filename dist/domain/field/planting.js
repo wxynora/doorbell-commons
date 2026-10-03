@@ -5,6 +5,7 @@ import { currentDayIndex } from "../../time.js";
 import { canPlantQixi2026Crop } from "../../qixi-2026.js";
 import { recordWelfareWeekProgress } from "../../welfare-week.js";
 import { bumpDaily } from "../../daily.js";
+import { stageAnnualCounters } from "../../annual-statistics/world-buffer.js";
 import { pushLog, pushTrail } from "../shared/notifications.js";
 
 /** 把"限定/自创种子"的引用解析成作物 id：接受 id 或中文名（背包/熔炼都给中文名，玩家自然照着填）。
@@ -132,6 +133,7 @@ export function visitorWater(farm, visitorId, plotId, by, now) {
         crop.ripe = true;
     (farm.waterVisits ??= {})[visitorId] = day; // 标记今天已帮这家浇过（每家每天 1 次）
     pushLog(farm, `${by}帮 ${plot.id} 号地浇水，加速 30 分钟${ripened ? "，正好催熟" : ""}`);
+    stageAnnualCounters(farm, "watering", {actor_id:visitorId,target_id:farm.id}, {actions:1,plots:1}, now);
     pushTrail(farm, { t: now, kind: "watered", by, plotId: plot.id }); // 足迹：谁帮浇了水
     return { ok: true, plotId: plot.id, ripened };
 }

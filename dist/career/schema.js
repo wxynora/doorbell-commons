@@ -1,6 +1,6 @@
 import { runInTransaction } from "./persistence.js";
 
-export const CAREER_SCHEMA_VERSION = 17;
+export const CAREER_SCHEMA_VERSION = 18;
 
 const REPORTER_ARTICLE_COLUMNS = `(
   article_id TEXT PRIMARY KEY,
@@ -28,11 +28,10 @@ const REPORTER_ARTICLE_COLUMNS = `(
 const REPORTER_DUTY_ROLE_COLUMNS = `(
   duty_date TEXT NOT NULL,
   role TEXT NOT NULL CHECK (role IN ('selector', 'writer', 'reviewer', 'voice', 'submission_reviewer')),
-  duty_id TEXT NOT NULL UNIQUE REFERENCES career_duty_days(duty_id),
+  duty_id TEXT NOT NULL REFERENCES career_duty_days(duty_id),
   resident_id TEXT NOT NULL REFERENCES residents(resident_id),
   assigned_at INTEGER NOT NULL,
-  PRIMARY KEY (duty_date, role),
-  UNIQUE (duty_date, resident_id)
+  PRIMARY KEY (duty_date, role)
 )`;
 
 const REPORTER_RELAY_MATERIAL_COLUMNS = `(
@@ -46,6 +45,19 @@ const REPORTER_RELAY_MATERIAL_COLUMNS = `(
   PRIMARY KEY (issue_reference, material_index)
 )`;
 export function installCareerSchema(database) {
+    database.exec(`CREATE TABLE IF NOT EXISTS career_reporter_manual_publications (
+      publication_id TEXT PRIMARY KEY, issue_date TEXT NOT NULL,
+      article_text TEXT NOT NULL, author_credit TEXT NOT NULL, version INTEGER NOT NULL,
+      published_at INTEGER NOT NULL, career_publication_id TEXT UNIQUE
+        REFERENCES career_reporter_publications(publication_id)
+    );
+    CREATE TABLE IF NOT EXISTS career_reporter_manual_likes (
+      publication_id TEXT NOT NULL REFERENCES career_reporter_manual_publications(publication_id),
+      actor_kind TEXT NOT NULL CHECK(actor_kind IN ('human','resident')),
+      actor_id TEXT NOT NULL, via_resident_id TEXT NOT NULL REFERENCES residents(resident_id),
+      liked_at INTEGER NOT NULL, PRIMARY KEY(publication_id,actor_kind,actor_id)
+    );`);
+
     database.exec(`CREATE TABLE IF NOT EXISTS career_reporter_manual_transfers (
       request_id TEXT PRIMARY KEY, signature TEXT NOT NULL, result_json TEXT NOT NULL
     );
@@ -682,7 +694,9 @@ export function installCareerSchema(database) {
   `);
     const reporterRoleSql = database.prepare(`SELECT sql FROM sqlite_master
       WHERE type = 'table' AND name = 'career_reporter_duty_roles'`).get()?.sql ?? "";
-    if (!reporterRoleSql.includes("'voice'")) {
+    if (!reporterRoleSql.includes("'voice'") ||
+        reporterRoleSql.includes("duty_id TEXT NOT NULL UNIQUE") ||
+        reporterRoleSql.includes("UNIQUE (duty_date, resident_id)")) {
         runInTransaction(database, () => database.exec(`
           CREATE TABLE career_reporter_duty_roles_four ${REPORTER_DUTY_ROLE_COLUMNS};
           INSERT INTO career_reporter_duty_roles_four (duty_date, role, duty_id, resident_id, assigned_at)

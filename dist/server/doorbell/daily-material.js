@@ -1,3 +1,4 @@
+import { manualPublication, registerManualPublication } from "../../career/reporter-manual-publication.js";
 import { MAX_BODY_BYTES } from "../../config.js";
 import { PublicSyncError } from "../../public-sync.js";
 import { allFarms } from "../../store.js";
@@ -85,7 +86,7 @@ function validHandoffRequest(body) {
 }
 
 function validPublishedRequest(body) {
-    if (!isPlainObject(body) || Object.keys(body).length !== 3 ||
+    if (!isPlainObject(body) || Object.keys(body).length !== (Object.hasOwn(body,"manual_article") ? 4 : 3) ||
         !Object.hasOwn(body, "issue_date") ||
         !Object.hasOwn(body, "publication_id") ||
         !Object.hasOwn(body, "published_at") ||
@@ -306,10 +307,11 @@ export async function handleDoorbellReporterRelayPublished(req, res, method, run
         const request = validPublishedRequest(body);
         if (!request)
             return internalServiceError(res, 400, "invalid_request", "The reporter relay published request is invalid");
-        const result = acknowledgePublishedReporterRelay(runtime.database, runtime.backend, {
-            ...request,
-            now: runtime.now?.() ?? Date.now(),
-        });
+        const archived=manualPublication(runtime.database,request.publicationId);
+        const result = Object.hasOwn(body,"manual_article") || archived
+          ? runtime.backend.trustedSystemCommands.registerManualPublication({...request,manualArticle:Object.hasOwn(body,"manual_article") ? body.manual_article : {
+              article_text:archived.article_text,author_credit:archived.author_credit,version:archived.version}})
+          : acknowledgePublishedReporterRelay(runtime.database, runtime.backend, {...request,now:runtime.now?.() ?? Date.now()});
         return jsonOut(res, 200, {
             ok: true,
             data: {

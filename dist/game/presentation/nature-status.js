@@ -52,6 +52,7 @@ function growthText(entries, event) {
     const half = growing.filter(({ plot }) => agronomyGrowthEffect(plot) === "half").length;
     const causeCanPause = entries.some(({ issues }) => issues.some((issue) =>
         ["drought", "waterlogging", "root_damage"].includes(issue.condition) &&
+        issue.natureRecovery?.progress !== 1 && issue.natureRecoveryWateredDay == null &&
         AGRONOMY_CONDITIONS[issue.condition]?.growth === "paused"));
     if (paused > 0 && causeCanPause) {
         const cause = event.type === "flood" ? "积水" : event.type === "drought" ? "干旱" : "地块异常";
@@ -79,15 +80,20 @@ function conditionText(entries) {
 function recoveryGuidance(event, entries, hasFloodedPlots, now) {
     if (entries.length === 0) return "";
     if (event.type === "flood" && hasFloodedPlots) {
-        if (event.phase === "active" || beijingDayIndex(now) <= event.recoveryAtDay) {
-            return "可请农艺师或 NPC 提前排水；也可等待自然退水，进入恢复期后的下一天自动恢复。";
-        }
-        return "当前仍有积水异常未解除，请查看农艺师处理选项。";
+        const changed = entries.some(({ issues }) => issues.some(issue =>
+            issue.natureRecovery?.previous > issue.natureRecovery?.progress));
+        const partial = entries.some(({ issues }) => issues.some(issue => issue.natureRecovery?.progress === 1));
+        return [changed ? "暴雨或雷暴使尚未退水的地块积水加重。" : "",
+            partial ? "积水正在消退，但受淹地块尚未完全恢复。" : "",
+            "雨势减弱后开始退水，晴天、高温和干热风会加快退水；暴雨或雷暴会使尚未退水的地块积水加重。可请农艺师或 NPC 提前排水。"].filter(Boolean).join("\n");
     }
     if (event.type === "drought") {
-        return event.phase === "recovery"
-            ? "降雨已触发恢复；仍列出的地块异常尚未解除。"
-            : "干旱结束后，降雨会触发本次受旱地块的自然恢复。";
+        const changed = entries.some(({ issues }) => issues.some(issue =>
+            issue.natureRecovery?.previous > issue.natureRecovery?.progress));
+        const partial = entries.some(({ issues }) => issues.some(issue => issue.natureRecovery?.progress === 1));
+        return [changed ? "高温或干热风使尚未恢复的地块再次缺水。" : "",
+            partial ? "降雨已缓解本次缺水，但受旱地块尚未完全恢复。" : "",
+            "小雨有助于缓解缺水，暴雨或雷暴可使本次受旱地块恢复；高温和干热风会妨碍尚未完成的恢复。"].filter(Boolean).join("\n");
     }
     if (event.type === "pest") {
         return event.phase === "recovery"

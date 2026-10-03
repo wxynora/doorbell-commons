@@ -1,3 +1,4 @@
+import { stageAnnualCounters } from "../../annual-statistics/world-buffer.js";
 import { Rng } from "../../rng.js";
 import { currentDayIndex } from "../../time.js";
 import { bumpDaily } from "../../daily.js";
@@ -173,6 +174,7 @@ export function kitchenBuy(farm, kind, id, qty, now, options = {}) {
             return { ok: false, error: `银币不足，这张 ${recipe.rarity} 食谱要 🪙${cost}（你有 ${farm.silver}）。` };
         farm.silver -= cost;
         kitchen.knownRecipes.push(recipe.id);
+        stageAnnualCounters(farm,"cooking",{actor_id:farm.id,recipe_id:recipe.id},{unlocked:1},now);
         return { ok: true, kind, name: recipe.name, rarity: recipe.rarity, cost };
     }
     return { ok: false, error: "kind 只能是 ingredient 或 recipe。" };
