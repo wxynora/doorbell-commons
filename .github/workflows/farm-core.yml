@@ -1,10 +1,7 @@
 name: Farm core
 
 on:
-  push:
-    branches: [farm]
-  pull_request:
-    branches: [farm]
+  workflow_dispatch:
 
 permissions:
   contents: read
