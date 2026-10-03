@@ -1,3 +1,6 @@
+import { SecurityPatrolDeliveryService } from "./security-patrol/service.js";
+import { FarmSecurityPatrolClient } from "./security-patrol/client.js";
+import { renderPatrolNotice } from "./security-patrol/copy.js";
 import { registerGlimmerEditorRoutes } from "./glimmer-editor/routes.js";
 import { LoungeGachaClient } from "./lounge-gacha/gacha-client.js";
 import { registerLoungeGachaRoutes } from "./lounge-gacha/gacha-routes.js";
@@ -283,6 +286,7 @@ const reportBrowserPushError = (error: unknown): void => {
     `[doorbell-browser-push] ${error instanceof Error ? error.name : "UnknownError"}\n`,
   );
 };
+let securityPatrolDeliveryService: SecurityPatrolDeliveryService | undefined;
 const bellService = new BellService({
   database,
   registrationAuth,
@@ -290,6 +294,7 @@ const bellService = new BellService({
   replayIntervalMs: serverConfig.bellReplayIntervalMs,
   getSharedMemeLibraryVersion: () => sharedMemeService.getMetadata().library_version,
   onError: reportBellError,
+  beforeReplay: residentId=>securityPatrolDeliveryService?.sync(residentId)??Promise.resolve(),
 });
 const loungeRuntime = launchLounge(process.env.DOORBELL_LOUNGE_CONFIG, {
   humanName: async residentId => {
@@ -429,6 +434,11 @@ farmActionListScheduler.start();
 const mailboxService = new MailboxService({
   database,
   farmRewardGranter,
+});
+securityPatrolDeliveryService=new SecurityPatrolDeliveryService({
+  database,mailbox:mailboxService,bell:bellService,render:renderPatrolNotice,
+  client:new FarmSecurityPatrolClient({apiBaseUrl:serverConfig.farmApiBaseUrl,
+    serviceToken:serverConfig.farmServiceToken,requestTimeoutMs:serverConfig.upstreamRequestTimeoutMs}),
 });
 const lingyeNotificationDeliveryService = new LingyeNotificationDeliveryService({
   database,

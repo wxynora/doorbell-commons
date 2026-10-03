@@ -1,3 +1,4 @@
+import { AnnualGameStatisticsStore } from "./annual-statistics-store.js";
 import {GameActionCursorStore} from './game-action-cursor-store.js';
 import type Database from "better-sqlite3";
 import {
@@ -175,7 +176,7 @@ function roomFromRow(row: GameRoomRow): GameRoom {
 export class GameStore implements GameRoomStore {
   readonly #database: Database.Database;
 
-  constructor(database: Database.Database) {
+  constructor(database: Database.Database, private readonly now: () => number = Date.now) {
     this.#database = database;
   }
 
@@ -239,32 +240,37 @@ export class GameStore implements GameRoomStore {
     if (expectedRevision >= Number.MAX_SAFE_INTEGER || room.revision !== expectedRevision + 1) {
       throw new GameStateError("The game room revision must advance by exactly one");
     }
-    const result = this.#database
-      .prepare(
-        `UPDATE game_rooms
-         SET kind = ?, revision = ?, phase = ?, seats_json = ?,
-             host_player_id = ?, host_controller_type = ?, base_stake = ?,
-             last_settlement_id = ?, snapshot_json = ?, deadline_json = ?, settlement_json = ?
-         WHERE room_id = ? AND revision = ?`,
-      )
-      .run(
-        room.kind,
-        room.revision,
-        room.phase,
-        seatsJson,
-        room.host?.playerId ?? null,
-        room.host?.controllerType ?? null,
-        room.baseStake ?? null,
-        room.lastSettlementId ?? null,
-        snapshotJson,
-        room.deadline ? encodeJson(room.deadline, 'deadline') : null,
-        room.settlement ? encodeJson(room.settlement, 'settlement') : null,
-        room.roomId,
-        expectedRevision,
-      );
-    if (result.changes !== 1) {
-      throw new GameStateError("The game room revision conflict prevented the update");
-    }
+    this.#database.transaction(() => {
+      const previous = this.#database.prepare("SELECT last_settlement_id FROM game_rooms WHERE room_id=?")
+        .get(room.roomId) as { last_settlement_id: string | null } | undefined;
+      const result = this.#database
+        .prepare(
+          `UPDATE game_rooms
+           SET kind = ?, revision = ?, phase = ?, seats_json = ?,
+               host_player_id = ?, host_controller_type = ?, base_stake = ?,
+               last_settlement_id = ?, snapshot_json = ?, deadline_json = ?, settlement_json = ?
+           WHERE room_id = ? AND revision = ?`,
+        )
+        .run(
+          room.kind,
+          room.revision,
+          room.phase,
+          seatsJson,
+          room.host?.playerId ?? null,
+          room.host?.controllerType ?? null,
+          room.baseStake ?? null,
+          room.lastSettlementId ?? null,
+          snapshotJson,
+          room.deadline ? encodeJson(room.deadline, 'deadline') : null,
+          room.settlement ? encodeJson(room.settlement, 'settlement') : null,
+          room.roomId,
+          expectedRevision,
+        );
+      if (result.changes !== 1) {
+        throw new GameStateError("The game room revision conflict prevented the update");
+      }
+      new AnnualGameStatisticsStore(this.#database).recordSettlement(room, previous?.last_settlement_id ?? null, this.now());
+    })();
   }
 }
 

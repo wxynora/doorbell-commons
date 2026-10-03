@@ -10,6 +10,11 @@ import {HumanSubmissionEditor} from "./lingye-daily-human-submissions.js";
 export class DailyEditorError extends Error {
   constructor(readonly status: number, message: string) { super(message); }
 }
+function hasSavedFarmCopy(document:DailyDocument) {
+  return document.sections.some(section=>section.key==="farm" &&
+    section.blocks.some(block=>block.type==="paragraph" &&
+      block.runs.some(run=>run.text.trim().length>0)));
+}
 interface DraftRow {
   issue_date:string; input_json:string; edition_json:string; document_json:string;
   version:number; updated_at:number; updated_by:string|null; published_version:number|null; publication_synced:number;
@@ -39,6 +44,7 @@ export class LingyeDailyEditorStore {
   get(date:string) {
     const row=this.row(date);
     const edition=lingyeDailyEditionPublishSchema.parse(JSON.parse(row.edition_json));
+    const document=dailyDocumentSchema.parse(JSON.parse(row.document_json));
     const publishedIssue=this.database.prepare("SELECT issue_number FROM lingye_daily_issues WHERE issue_date=?")
       .get(date) as {issue_number:number}|undefined;
     const issueNumber=publishedIssue?.issue_number ?? (this.database.prepare(
@@ -48,11 +54,11 @@ export class LingyeDailyEditorStore {
       "SELECT resident_name FROM residents WHERE account_id=? ORDER BY created_at DESC LIMIT 1",
     ).get(row.updated_by) as {resident_name:string}|undefined : undefined;
     return {issueDate:date,version:row.version,updatedAt:row.updated_at,publishedVersion:row.published_version,
-      document:dailyDocumentSchema.parse(JSON.parse(row.document_json)),
+      document,
       editorModel:(JSON.parse(row.input_json) as LingyeDailyPublishRequest).editor_model,
       issueNumber,activeEditorName:activeEditor?.resident_name ?? null,
       images:edition.images.map(({image_id,media_type})=>({image_id,media_type})),
-      readiness:{group:true,reporter:edition.reporter_articles.length>0,voice:edition.voice_article!==undefined,
+      readiness:{group:true,reporter:edition.reporter_articles.length>0 || hasSavedFarmCopy(document),voice:edition.voice_article!==undefined,
         submissions:this.reviewReady(date),weather:edition.weather_forecast!==undefined},
       submissions:edition.submissions.map(sub=>({...sub,paid:this.paid(sub.submission_id ?? "")})),
       publicationReward:this.publicationReward(date),
@@ -167,7 +173,7 @@ export class LingyeDailyEditorStore {
       if(row.published_version===version && previous) return {duplicate:true};
       const document=dailyDocumentSchema.parse(JSON.parse(row.document_json));
       const edition=lingyeDailyEditionPublishSchema.parse(JSON.parse(row.edition_json));
-      if(!edition.reporter_articles.length || !this.reviewReady(date) || edition.weather_forecast===undefined)
+      if((!edition.reporter_articles.length && !hasSavedFarmCopy(document)) || !this.reviewReady(date) || edition.weather_forecast===undefined)
         throw new DailyEditorError(409,"记者稿、投稿审批或天气尚未到齐，请先更新来稿。");
       const input={...JSON.parse(row.input_json),...edition,revision:previous?previous.revision+1:1,
         revision_note:previous?"主编工作台修订":null};

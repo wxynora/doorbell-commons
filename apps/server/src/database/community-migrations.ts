@@ -9,7 +9,7 @@ import {
 } from "@doorbell/protocol";
 import type Database from "better-sqlite3";
 
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 47;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 48;
 const LEGACY_CONNECTOR_DELIVERY_GENERATION = "00000000-0000-0000-0000-000000000000";
 
 interface FarmCreationRequestRow {
@@ -2827,6 +2827,28 @@ export function migrateCommunityDatabase(
         last_sent_at INTEGER NOT NULL
       );`);
     database.pragma('user_version = 47');
+  })();
+
+  if (databaseSchemaVersion < 48) database.transaction(() => {
+    database.exec(`CREATE TABLE annual_game_statistics (
+      year INTEGER NOT NULL,
+      player_id TEXT NOT NULL,
+      controller_type TEXT NOT NULL CHECK(controller_type IN ('human','resident')),
+      resident_id TEXT REFERENCES residents(resident_id) ON DELETE CASCADE,
+      game_kind TEXT NOT NULL,
+      scope TEXT NOT NULL CHECK(scope IN ('total','companion')),
+      companion_id TEXT NOT NULL,
+      companion_controller_type TEXT NOT NULL,
+      companion_resident_id TEXT REFERENCES residents(resident_id) ON DELETE CASCADE,
+      games INTEGER NOT NULL DEFAULT 0 CHECK(games >= 0),
+      losses INTEGER NOT NULL DEFAULT 0 CHECK(losses >= 0 AND losses <= games),
+      first_at INTEGER NOT NULL,
+      last_at INTEGER NOT NULL,
+      CHECK((scope = 'total' AND companion_id = '' AND companion_controller_type = '')
+         OR (scope = 'companion' AND companion_id <> '' AND companion_controller_type IN ('human','resident'))),
+      PRIMARY KEY(year,player_id,controller_type,game_kind,scope,companion_id,companion_controller_type)
+    );`);
+    database.pragma('user_version = 48');
   })();
 
 }

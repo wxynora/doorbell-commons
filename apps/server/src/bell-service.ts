@@ -34,6 +34,7 @@ export interface BellServiceOptions {
   heartbeatIntervalMs: number;
   replayIntervalMs: number;
   getSharedMemeLibraryVersion?: () => number;
+  beforeReplay?: (residentId:string)=>Promise<void>;
   now?: () => number;
   generateConnectionEpoch?: () => string;
   onError?: (error: unknown) => void;
@@ -121,6 +122,7 @@ export class BellService {
   readonly #generateConnectionEpoch: () => string;
   readonly #onError: (error: unknown) => void;
   readonly #getSharedMemeLibraryVersion: (() => number) | undefined;
+  readonly #beforeReplay: ((residentId:string)=>Promise<void>) | undefined;
   readonly #connections = new Map<string, ActiveBellConnection>();
 
   constructor(options: BellServiceOptions) {
@@ -132,6 +134,7 @@ export class BellService {
     this.#generateConnectionEpoch = options.generateConnectionEpoch ?? randomUUID;
     this.#onError = options.onError ?? (() => undefined);
     this.#getSharedMemeLibraryVersion = options.getSharedMemeLibraryVersion;
+    this.#beforeReplay=options.beforeReplay;
   }
 
   async connect(credential: string, sink: BellStreamSink): Promise<BellConnection> {
@@ -161,6 +164,7 @@ export class BellService {
       if (!active || active.closed) return;
       try {
         this.refreshResident(binding.residentId);
+        void this.#syncBeforeReplay(binding.residentId);
       } catch (error) {
         this.#onError(error);
         this.#closeConnection(active, true);
@@ -187,6 +191,7 @@ export class BellService {
       });
       this.#emitSharedMemeUpdateAvailable(active);
       this.refreshResident(binding.residentId);
+      void this.#syncBeforeReplay(binding.residentId);
     } catch (error) {
       this.#closeConnection(active, true);
       throw error;
@@ -236,6 +241,12 @@ export class BellService {
     const result = this.#database.cancelPendingBellMailboxWakeForHome(homeId, this.#now());
     this.#emitCancellations(result);
     if (result.residentId !== null) this.#emitPendingWakes(result.residentId);
+  }
+
+  async #syncBeforeReplay(residentId:string):Promise<void> {
+    try {await this.#beforeReplay?.(residentId);} catch(error) {this.#onError(error);}
+    if(!this.#connections.has(residentId)) return;
+    this.notifyResident(residentId);
   }
 
   refreshResident(residentId: string): void {

@@ -442,6 +442,15 @@ const nonHelpOperations: FarmOperationDefinition[] = [
     { amount: positiveInteger },
     [{ amount: 100 }],
   ),
+  defineOperation({
+    op: "farm.ranch-harvest",
+    description: "帮人类收取本人牧场当前全部可收产物，每个北京时间自然日最多成功帮收3次；空收不占次数。",
+    argsHint: "{}",
+    branches: [{}],
+    supportsDetail: false,
+    exampleArgs: [{}],
+    adapt: () => ({ kind: "farm", action: "ranch-harvest", params: {} }),
+  }),
   direct(
     "farm.ranch-feed",
     "给指定生产动物投喂，强化它的下一份正常产物。",
@@ -710,8 +719,8 @@ export const farmOperationByName = new Map(
   farmOperations.map((operation) => [operation.op, operation] as const),
 );
 
-if (farmOperations.length !== 58 || farmOperationByName.size !== farmOperations.length) {
-  throw new Error("The initial Doorbell farm registry must contain 58 unique operations");
+if (farmOperations.length !== 59 || farmOperationByName.size !== farmOperations.length) {
+  throw new Error("The initial Doorbell farm registry must contain 59 unique operations");
 }
 for (const operation of farmOperations) {
   const parts = operation.op.split(".");

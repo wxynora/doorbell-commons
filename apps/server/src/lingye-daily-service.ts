@@ -1,3 +1,4 @@
+import { manualFarmPublication, saveManualPublicationReference, type PublishedManualIssueRow } from "./lingye-daily-manual-publication.js";
 import { timingSafeEqual } from "node:crypto";
 import { DailyReporterTransferService, type TransferTask } from "./lingye-daily-transfer-service.js";
 import type { ReporterLane } from "./lingye-daily-transfer-store.js";
@@ -177,7 +178,7 @@ export class LingyeDailyService {
     if(!row.publication_synced) {
       try {
       const edition=JSON.parse(row.edition_json);
-      const published=this.editor.database.prepare("SELECT published_at FROM lingye_daily_issues WHERE issue_date=?").get(date) as {published_at:number};
+      const published=this.editor.database.prepare("SELECT * FROM lingye_daily_issues WHERE issue_date=?").get(date) as PublishedManualIssueRow;
       const publishedAt=new Date(published.published_at).toISOString();
       // Farm finalizes/cancels the frozen roster when publication is confirmed.
       // Record real anonymous work first, including for historical three-role
@@ -187,13 +188,21 @@ export class LingyeDailyService {
         if(!this.#submissionRewards) throw new DailyEditorError(503,"投稿审批绩效服务未配置。");
         await this.#submissionRewards.recordReview(review);
       }
+      if(!edition.reporter_articles.length || edition.reporter_articles.every((article:{publication_id:string})=>article.publication_id.startsWith("main:lingye-daily:"))) {
+        const manual=manualFarmPublication({...published,edition:JSON.parse(published.edition_json)},row.published_version!);
+        const ack=await this.farmRequest("published",manual.request);
+        if(ack.publication_id!==manual.article.publication_id || ack.issue_date!==date || ack.published_at!==publishedAt ||
+          !["published","already_published"].includes(String(ack.status))) throw new Error("manual_publication_ack_invalid");
+        saveManualPublicationReference(this.editor.database,date,manual.article);
+        edition.reporter_articles=[manual.article];
+      }
       for(const article of edition.reporter_articles) {
         const ack=await this.farmRequest("published",{issue_date:date,publication_id:article.publication_id,published_at:publishedAt});
         if(ack.issue_date!==date||ack.publication_id!==article.publication_id||ack.published_at!==publishedAt||!["published","already_published"].includes(String(ack.status)))
           throw new DailyEditorError(502,"正文已出版，记者结算确认尚未完成；再次点出版即可继续，不会重复出版。");
       }
       if(edition.reporter_articles[0]) await this.#voice?.published(date,edition.reporter_articles[0].publication_id,
-        publishedAt,this.editor.get(date).document);
+        publishedAt,JSON.parse(published.edition_json).editor_document);
       this.editor.database.prepare("UPDATE lingye_daily_editor_drafts SET publication_synced=1 WHERE issue_date=? AND published_version=?")
         .run(date,version);
       } catch {
@@ -299,7 +308,7 @@ export class LingyeDailyService {
     return this.editor.get(date);
   }
 
-  private async farmRequest(operation:"publication"|"published",body:Record<string,string>):Promise<Record<string,unknown>> {
+  private async farmRequest(operation:"publication"|"published",body:Record<string,string> | ReturnType<typeof manualFarmPublication>["request"]):Promise<Record<string,unknown>> {
     if(!this.#farm) throw new DailyEditorError(503,"记者来稿服务未配置。");
     const base=new URL(this.#farm.apiBaseUrl);
     if(!base.pathname.endsWith("/")) base.pathname+="/";

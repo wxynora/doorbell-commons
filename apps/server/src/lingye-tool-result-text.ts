@@ -255,6 +255,14 @@ function dateText(value: unknown): string {
   return "暂无法读取";
 }
 
+function publicCommissionOwnerName(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const name = value.trim();
+  if (!name || UUID.test(name) || LONG_HEX.test(name) || INTERNAL_NAME.test(name) ||
+      SNAKE_CASE.test(name) || name.includes('\\"')) return undefined;
+  return name;
+}
+
 function publicFarmText(value: unknown): string | undefined {
   if (!isRecord(value)) return undefined;
   const doorplate = typeof value.doorplate === "string" ? value.doorplate.trim() : "";
@@ -856,6 +864,10 @@ function commissionItemLines(op: string, item: Record<string, unknown>, index: n
   if (op === "go.security.commission" && isRecord(item.sourceFacts)) facts.push(item.sourceFacts);
   const kind = commissionKind(op);
   const lines = [`- ${kind} ${index + 1}`];
+  if (op === "go.farm.commission" || op === "go.hospital.commission") {
+    const ownerName = publicCommissionOwnerName(item.ownerName);
+    if (ownerName) lines.push(`  委托人：${ownerName}`);
+  }
   const farm =
     publicFarmText(firstPublicField(facts, "farm")) ??
     farmDoorplateText(firstPublicField(facts, "farmDoorplate"));
@@ -980,7 +992,9 @@ function currentServiceCommissionLines(
 
 function renderChefFacts(value: unknown): string[] {
   if (!isRecord(value)) return [];
-  const lines = [`料理师资格：${numberText(value.qualificationLevel)} 级。`];
+  const lines = (integer(value.qualificationLevel) ?? 0) > 0
+    ? [`料理师资格：${numberText(value.qualificationLevel)} 级。`]
+    : [];
   const recipes = records(value.recipes);
   if (recipes.length > 0) {
     lines.push("原创菜谱：");
@@ -1049,11 +1063,6 @@ function commissionText(op: string, result: LingyeSuccess): string {
   if (workNotice) lines.push(workNotice);
   if (op === "go.farm.commission" || op === "go.hospital.commission") {
     const jobs = commissionJobs(data);
-    const completedJobCount = integer(data.completedJobCount);
-    lines.push(
-      "", "我处理的工作：",
-      `已完成委托：${completedJobCount !== undefined && completedJobCount >= 0 ? completedJobCount : 0}`,
-    );
     const currentWorkerJobId =
       typeof data.currentWorkerJobId === "string" && data.currentWorkerJobId.length > 0
         ? data.currentWorkerJobId
@@ -1065,8 +1074,15 @@ function commissionText(op: string, result: LingyeSuccess): string {
         typeof job.status === "string" &&
         ["accepted", "assigned", "active"].includes(job.status),
     );
-    if (currentJob) lines.push(...currentServiceCommissionLines(op, [currentJob]));
-    else lines.push("正在处理：无");
+    if (data.workerQualified === true || currentJob !== undefined) {
+      const completedJobCount = integer(data.completedJobCount);
+      lines.push(
+        "", "我处理的工作：",
+        `已完成委托：${completedJobCount !== undefined && completedJobCount >= 0 ? completedJobCount : 0}`,
+      );
+      if (currentJob) lines.push(...currentServiceCommissionLines(op, [currentJob]));
+      else lines.push("正在处理：无");
+    }
     const completedOwnerJobCount = integer(data.completedOwnerJobCount);
     lines.push(
       "", "我发出的委托：",
@@ -1079,6 +1095,13 @@ function commissionText(op: string, result: LingyeSuccess): string {
     );
     if (currentOwnerJobs.length > 0) lines.push(...currentServiceCommissionLines(op, currentOwnerJobs));
     else lines.push("正在处理：无");
+    const waitingJobs = jobs.filter((job) => job.status === "available" &&
+      !currentOwnerJobIds.includes(job.jobId) && job !== currentJob);
+    if (waitingJobs.length > 0) {
+      lines.push("", "待接委托：");
+      for (const [index, job] of waitingJobs.entries())
+        lines.push(...commissionItemLines(op, job, index));
+    }
   } else if (op === "go.security.commission") {
     const jobs = commissionJobs(data);
     const reportJobIds = data.reportJobIds ?? current?.reportJobIds;
