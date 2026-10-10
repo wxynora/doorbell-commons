@@ -2,7 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {planDecoration,cellName,parseCell,FACING} from './decorate-plan.js';
 import {validateDecorationLayout,footprint} from './layout.js';
-import {diagnoseDecorationPosition,fixtureCells} from './decoration-diagnostics.js';
+import {diagnoseDecorationPosition,fixtureCells,diagnoseFieldPosition} from './decoration-diagnostics.js';
 import {snapCells} from './placement-geometry.js';
 
 function layoutDifferences(before,after){
@@ -18,6 +18,7 @@ function layoutDifferences(before,after){
 }
 
 function inputDetails(change,code,resource){
+  if(code==='invalid_field_dimensions')return {};
   if(code==='invalid_shape')return {field:'shape',value:change.shape,allowed:['fill','border']};
   if(code==='invalid_cell_or_facing')return {fields:[
     ...['at','from','to'].filter(key=>Object.hasOwn(change,key)&&!parseCell(change[key])).map(field=>({field,value:change[field],expected:'A01..X27'})),
@@ -34,13 +35,13 @@ function inputDetails(change,code,resource){
   if(code==='unknown_item')return {item:change.item};
   if(change&&typeof change==='object'&&!Array.isArray(change)){
     let required,optional=['facing'];
-    if(Object.hasOwn(change,'fixture')){required=['fixture','at'];optional=change.fixture==='stall'?['facing']:[];}
+    if(Object.hasOwn(change,'fixture')){required=change.fixture==='field'?['fixture']:['fixture','at'];optional=change.fixture==='field'?['at','columns','rows']:change.fixture==='stall'?['facing']:[];}
     else if(Object.hasOwn(change,'remove')){required=['remove'];optional=[];}
     else if(Object.hasOwn(change,'instance'))required=['instance','at'];
     else if(Object.hasOwn(change,'item')){required=Object.hasOwn(change,'from')||Object.hasOwn(change,'to')?['item','from','to']:['item','at'];if(required.includes('from'))optional=['facing','shape'];}
     if(required)return {fields:Object.keys(change),missing_fields:required.filter(k=>!Object.hasOwn(change,k)),
       unexpected_fields:Object.keys(change).filter(k=>![...required,...optional].includes(k)),
-      ...(Object.hasOwn(change,'fixture')&&!['house','stall'].includes(change.fixture)?{field:'fixture',value:change.fixture,allowed:['house','stall']}:{}),
+      ...(Object.hasOwn(change,'fixture')&&!['house','stall','field'].includes(change.fixture)?{field:'fixture',value:change.fixture,allowed:['house','stall','field']}:{}),
       required_fields:required,optional_fields:optional};
   }
   return {value:change,required_one_of:['item','instance','remove','fixture']};
@@ -86,6 +87,7 @@ export function evaluateDecorationDraft(farm,resource,previous,{uuid=randomUUID}
       continue;
     }
     layout=result.layout;
+    if(entry.change.fixture==='field')entry.field=result.applied[0];
     const target=entry.change.instance??entry.change.remove;
     if(target)owners.set(target,entry.id);
     if(entry.change.fixture)owners.set(entry.change.fixture,entry.id);
@@ -103,8 +105,11 @@ export function evaluateDecorationDraft(farm,resource,previous,{uuid=randomUUID}
     if(baseIds.has(instance.instance_id))retained.set(instance.item_id,(retained.get(instance.item_id)??0)+1);
   }
   const fixtureInvalid=validateDecorationLayout(farm,{...layout,decorations:[]},owned);
+  const fieldCauses=owners.has('field')?diagnoseFieldPosition(farm,resource,layout):[];
+  if(fieldCauses.length)issues.push({id:owners.get('field'),fixture:'field',code:'invalid_field_position',causes:fieldCauses});
   if(fixtureInvalid) {
     for(const fixture of ['house','stall']){
+      if(fieldCauses.length&&!owners.has(fixture))continue;
       const causes=diagnoseDecorationPosition(farm,resource,layout,layout.stall,[2,2],{house:fixture==='house',stall:fixture==='stall'});
       if(causes.length)issues.push({id:owners.get(fixture)??null,fixture,code:fixtureInvalid,
         cells:fixtureCells(resource,layout,fixture),causes});

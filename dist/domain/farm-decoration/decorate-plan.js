@@ -2,7 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { validateDecorationLayout, footprint, CELL_SIZE, Z_ORIGIN } from './layout.js';
 import { snapCells, rectangle, touchedCells, boundsRectangle } from './placement-geometry.js';
 import { houseBaseRects, houseExtensionRect, DEFAULT_HOUSE_POSITION } from './house-geometry.js';
-import {fieldPlots} from './field-layout.js';
+import {fieldPlots,defaultFieldLayout,snapFieldPosition,validFieldLayout} from './field-layout.js';
+import {createPlacementTerrain} from './placement-terrain.js';
+import {createPlacementTerrain as explainTerrain} from './terrain-diagnostics.js';
 
 export const GRID = Object.freeze({ columns:24, rows:27, minCol:-12, minRow:-12 });
 // Model local +Z is its front. Positive Three.js Y rotation turns it towards +X.
@@ -16,6 +18,8 @@ const HOUSE_GRID_ANCHOR=[Math.floor(DEFAULT_HOUSE_POSITION.x/CELL_SIZE),Math.flo
 export const houseAnchor = position => cellName(
   HOUSE_GRID_ANCHOR[0]+Math.round((position.x-DEFAULT_HOUSE_POSITION.x)/CELL_SIZE),
   HOUSE_GRID_ANCHOR[1]+Math.round((position.z-DEFAULT_HOUSE_POSITION.z)/CELL_SIZE));
+// Field uses its existing center/snap lattice, not a guessed upper-left plot cell.
+export const fieldAnchor = position => cellName(Math.floor(position.x/CELL_SIZE+1e-7),Math.floor((position.z-Z_ORIGIN)/CELL_SIZE+1e-7));
 
 export function parseCell(cell) {
   if(typeof cell!=='string'||!/^([A-X])(0[1-9]|1[0-9]|2[0-7])$/.test(cell)) return null;
@@ -50,6 +54,27 @@ export function planDecoration(farm,resource,changes,{uuid=randomUUID,validate=t
   const applied=[];
   for(let index=0;index<changes.length;index++) {
     const change=changes[index],fail=(code,extra={})=>reject(code,{change:index+1,...extra});
+    if(change?.fixture==='field'){
+      if(!keys(change,['fixture'],['at','columns','rows']))return fail('invalid_change');
+      const plots=farm.plots??[],size=plots.reduce((n,p,i)=>Math.max(n,(p.id??p.plot_id??i+1)),0);
+      const current=layout.field??defaultFieldLayout(plots),field={...current};
+      if(Object.hasOwn(change,'columns')||Object.hasOwn(change,'rows')){
+        const key=Object.hasOwn(change,'columns')?'columns':'rows',upper=key==='columns'?Math.max(6,size):size;
+        if(Object.hasOwn(change,'columns')&&Object.hasOwn(change,'rows')||!Number.isSafeInteger(change[key])||change[key]<1||change[key]>upper)
+          return fail('invalid_field_dimensions',{field:key,value:change[key],maximum:upper,count:plots.length});
+        if(key==='columns'){field.columns=change.columns;delete field.rows;}
+        else {field.rows=change.rows;field.columns=Math.ceil(size/change.rows);}
+      }
+      if(Object.hasOwn(change,'at')){
+        const at=parseCell(change.at);if(!at)return fail('invalid_cell_or_facing');
+        const before=parseCell(fieldAnchor(current));
+        // A previous authoritative center may be outside the displayed grid; use its coordinates directly.
+        const col=before?.[0]??Math.floor(current.x/CELL_SIZE+1e-7),row=before?.[1]??Math.floor((current.z-Z_ORIGIN)/CELL_SIZE+1e-7);
+        Object.assign(field,snapFieldPosition(current.x+(at[0]-col)*CELL_SIZE,current.z+(at[1]-row)*CELL_SIZE,plots));
+      }
+      if(!validFieldLayout(field,plots))return fail('invalid_field_dimensions',{field:'columns',value:field.columns,maximum:Math.max(6,size),count:plots.length});
+      layout.field=field;applied.push({kind:'move',fixture:'field',at:fieldAnchor(field),columns:field.columns,rows:field.rows??Math.ceil(size/field.columns),count:plots.length});continue;
+    }
     if(keys(change,['fixture','at'],change?.fixture==='stall'?['facing']:[])) {
       if(change.fixture==='house') {
         const at=parseCell(change.at);if(!at)return fail('invalid_cell_or_facing');
@@ -131,8 +156,31 @@ export function projectDecorationGrid(farm,resource) {
     if(!records.some(r=>r.id===id))records.push({id,code});layers.set(name,records);
     cells[row-GRID.minRow][col-GRID.minCol]=records.length===1?code:'**';
   };
-  for(const [col,row]of resource.grid.river_cells){const n=cellName(col,row);if(n)cells[row-GRID.minRow][col-GRID.minCol]='~~';}
-  for(const [col,row]of resource.grid.land_cells){const n=cellName(col,row);if(n)cells[row-GRID.minRow][col-GRID.minCol]='..';}
+  // Candidate cellVisible includes partial edges; never present those as full usable cells.
+  // Classify only terrain here, then layer the actual fixtures below. Authority is unchanged.
+  const terrain=createPlacementTerrain([],null),explanation=explainTerrain([],null);
+  for(let r=0;r<GRID.rows;r++)for(let c=0;c<GRID.columns;c++){
+    const col=c+GRID.minCol,row=r+GRID.minRow,x=col*CELL_SIZE,z=Z_ORIGIN+row*CELL_SIZE;
+    const poly=boundsRectangle([x,z,x+CELL_SIZE,z+CELL_SIZE]);
+    if(terrain.canPlace(poly))cells[r][c]='..';
+    else if(terrain.canPlace(poly,true))cells[r][c]='~~';
+    else {
+      const causes=explanation.explain(poly);
+      if(causes.some(c=>c.reason==='blocked'&&c.blocker.kind==='bridge'))put(col,row,'BB','bridge');
+      else if(terrain.cellVisible(col,row)||terrain.cellVisible(col,row,true)
+        ||causes.some(c=>c.reason==='outside_buildable_land'))cells[r][c]='##';
+    }
+  }
+  // Main models/world.js fixed trunk coordinates; scenery references, not collision footprints.
+  const fixedTrees=[[4.45,-6.35],[-4.4,-5.34]].map(([x,z],i)=>{
+    const col=Math.floor(x/CELL_SIZE),row=Math.floor((z-Z_ORIGIN)/CELL_SIZE),code=`T${i+1}`;
+    put(col,row,code,`fixed-tree:${i+1}`);
+    return {code,x,z,cell:cellName(col,row)};
+  });
+  const fieldPosition=resource.layout.field??defaultFieldLayout(farm.plots??[]),plots=fieldPlots(farm.plots??[],fieldPosition);
+  const size=(farm.plots??[]).reduce((n,p,i)=>Math.max(n,(p.id??p.plot_id??i+1)),0);
+  const field={anchor:fieldAnchor(fieldPosition),columns:fieldPosition.columns,rows:fieldPosition.rows??Math.ceil(size/fieldPosition.columns),
+    plots:plots.map((plot,i)=>({id:plot.id??plot.plot_id??i+1,cells:touchedCells(boundsRectangle([plot.x-.435,plot.z-.456,plot.x+.435,plot.z+.456])).map(p=>cellName(...p))}))};
   for(const [i,plot]of fieldPlots(farm.plots??[],resource.layout.field).entries()) {
     const {x,z}=plot;
     for(const [col,row]of touchedCells(boundsRectangle([x-.435,z-.456,x+.435,z+.456])))put(col,row,'TT',`plot:${plot.id??i+1}`);
@@ -168,7 +216,7 @@ export function projectDecorationGrid(farm,resource) {
   const lines=[header,border];
   for(let row=0;row<GRID.rows;row++)lines.push(String(row+1).padStart(2,'0')+' |'+cells[row].map(v=>v.padEnd(codeWidth)).join('|')+'|',border);
   const overlaps=[...layers].filter(([,items])=>items.length>1).map(([cell,items])=>({cell,instances:items.map(i=>i.id)}));
-  return {columns:GRID.columns,rows:GRID.rows,grid:lines.join('\n'),instances,inventory:available,overlaps,offGrid,
+  return {columns:GRID.columns,rows:GRID.rows,grid:lines.join('\n'),instances,inventory:available,overlaps,offGrid,fixedTrees,field,
     stall:{facing:facingOf(resource.layout.stall.rotation),anchor:cellName(
       Math.round(resource.layout.stall.x/CELL_SIZE-snapCells([2,2],resource.layout.stall.rotation)[0]/2),
       Math.round((resource.layout.stall.z-Z_ORIGIN)/CELL_SIZE-snapCells([2,2],resource.layout.stall.rotation)[1]/2))},

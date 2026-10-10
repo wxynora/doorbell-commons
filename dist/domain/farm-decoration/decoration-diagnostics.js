@@ -3,8 +3,21 @@ import {houseBaseRects,houseExtensionRect,DEFAULT_HOUSE_POSITION} from './house-
 import {isGroundDecoration} from './house.js';
 import {createPlacementTerrain,intersectPolygon} from './terrain-diagnostics.js';
 import {cellName} from './decorate-plan.js';
+import {fieldPlots} from './field-layout.js';
 
 const named=causes=>causes.map(c=>({...c,cells:c.cells.map(([col,row])=>cellName(col,row)??{col,row})}));
+export function diagnoseFieldPosition(farm,resource,layout){
+  const terrain=createPlacementTerrain([],layout.house??DEFAULT_HOUSE_POSITION);
+  const definitions=new Map(resource.catalog.map(d=>[d.item_id,d]));
+  const fixtures=[...(resource.house.level>=2?[{polygon:boundsRectangle(houseExtensionRect(layout.house??DEFAULT_HOUSE_POSITION)),blocker:{kind:'house_extension'}}]:[]),
+    {polygon:rectangle(layout.stall,[2,2]),blocker:{kind:'stall'}},...layout.decorations.map(o=>({
+    polygon:rectangle(o,definitions.get(o.item_id).cells),blocker:{kind:'decoration',instance:o.instance_id,name:definitions.get(o.item_id).name}}))];
+  return fieldPlots(farm.plots??[],layout.field).flatMap((plot,i)=>{
+    const poly=boundsRectangle([plot.x-.435,plot.z-.456,plot.x+.435,plot.z+.456]),causes=terrain.explain(poly);
+    for(const fixture of fixtures)if(intersects(poly,fixture.polygon))causes.push({reason:'blocked',blocker:fixture.blocker,cells:touchedCells(intersectPolygon(poly,fixture.polygon))});
+    return named(causes).map(c=>({...c,plot_id:plot.id??plot.plot_id??i+1}));
+  });
+}
 export function fixtureCells(resource,layout,fixture){
   const position=layout.house??DEFAULT_HOUSE_POSITION;
   const polygons=fixture==='house'?[...houseBaseRects(position),...(resource.house.level>=2?[houseExtensionRect(position)]:[])].map(boundsRectangle):[rectangle(layout.stall,[2,2])];
