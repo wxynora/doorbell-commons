@@ -47,6 +47,7 @@ import type {
 } from "../panels/tool-panel";
 import type { NeighborhoodMessageActionExecutor } from "../scenes/neighborhood/neighborhood-scene";
 import type { RanchSceneAnimalDefinition } from "../scenes/ranch/ranch-scene";
+import { getRanchSceneSpritePlacement } from "../scenes/ranch/ranch-sprite-scale";
 import {
   FarmHarvestNotice,
   FarmHarvestReceipt,
@@ -458,7 +459,9 @@ export function FarmFieldContent({
                 id: animal.id,
                 layout,
                 name: animal.name,
-                placementStyle: getRanchAnimalPlacementStyle(animal),
+                placementStyle: getRanchSceneSpritePlacement(
+                  animal.id, animal.id, getRanchAnimalPlacementStyle(animal),
+                ),
                 spriteStyle: getRanchAnimalSpriteStyle(animal),
               },
             ]
@@ -480,7 +483,11 @@ export function FarmFieldContent({
               liveRanchSceneResidents.length + liveRanchVisitors.length,
             ),
             name: resident.resident.identity.custom_name ?? resident.resident.identity.name ?? "",
-            placementStyle: visual.placementStyle,
+            placementStyle: getRanchSceneSpritePlacement(
+              resident.resident.identity.kind_id ?? resident.spriteAnimal.id,
+              visual.kind === "base" ? resident.spriteAnimal.id : resident.resident.variants?.current_variant_id ?? resident.spriteAnimal.id,
+              visual.placementStyle,
+            ),
             randomizeInitialPosition: true,
             spriteStyle: visual.spriteStyle,
             staticSprite: visual.staticSprite,
@@ -499,7 +506,11 @@ export function FarmFieldContent({
               liveRanchSceneResidents.length + liveRanchVisitors.length,
             ),
             name: visitor.name,
-            placementStyle: visual.placementStyle,
+            placementStyle: getRanchSceneSpritePlacement(
+              visitor.spriteAnimal.id,
+              visual.kind === "base" ? visitor.spriteAnimal.id : visitor.variants.current_variant_id ?? visitor.spriteAnimal.id,
+              visual.placementStyle,
+            ),
             randomizeInitialPosition: true,
             spriteStyle: visual.spriteStyle,
             staticSprite: visual.staticSprite,
