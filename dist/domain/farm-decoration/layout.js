@@ -1,4 +1,4 @@
-import { decorationById, ROOF_COLORS } from "./catalog.js";
+import { decorationById, FARM_BOUNDARY_FENCE_ITEM_IDS, ROOF_COLORS } from "./catalog.js";
 import { houseState, overlapsHouseExtension, isGroundDecoration } from "./house.js";
 import { snapCells, rectangle, touchedCells } from "./placement-geometry.js";
 import { createPlacementTerrain, LAND } from "./placement-terrain.js";
@@ -34,8 +34,18 @@ const exactKeys = (object, keys) => object && typeof object === "object" && !Arr
 export function validateDecorationLayout(farm, layout, owned) {
   const keys = ["roof", "canopy", "stall", "decorations"];
   if (layout && Object.hasOwn(layout, "house")) keys.push("house");
+  if (layout && Object.hasOwn(layout, "boundary_item_id")) keys.push("boundary_item_id");
   if (!exactKeys(layout, keys) || !ROOF_COLORS.includes(layout.roof) || !["plain", "floral"].includes(layout.canopy) || !Array.isArray(layout.decorations) || !exactKeys(layout.stall, ["x", "z", "rotation"])) return "invalid_layout";
   if (keys.includes("house") && !exactKeys(layout.house, ["x", "z"])) return "invalid_layout";
+  if (keys.includes("boundary_item_id")) {
+    const boundaryItemId = layout.boundary_item_id;
+    if (boundaryItemId !== null && typeof boundaryItemId !== "string") return "invalid_layout";
+    if (boundaryItemId !== null) {
+      if (!FARM_BOUNDARY_FENCE_ITEM_IDS.includes(boundaryItemId)) return "invalid_layout";
+      const boundaryItem = decorationById.get(boundaryItemId);
+      if (!boundaryItem || boundaryItem.purchase_mode !== "unlock" || !(owned[boundaryItemId] > 0)) return "decoration_not_owned";
+    }
+  }
   const housePosition = layout.house ?? DEFAULT_HOUSE_POSITION;
   const house = houseState(owned, housePosition);
   if (!canPlaceHouse(housePosition, house.level, createPlacementTerrain(farm.plots ?? [], null))) return "invalid_layout";

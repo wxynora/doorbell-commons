@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { FARM_DECORATION_CATALOG, decorationById } from "./catalog.js";
+import { FARM_DECORATION_CATALOG, decorationById, isDecorationSaleOpen } from "./catalog.js";
 import { decorationGrid } from "./layout.js";
 import { bumpDaily } from "../../daily.js";
 import { houseState, housePurchaseError } from "./house.js";
@@ -50,6 +50,7 @@ export function buyFarmDecoration(farm, itemId, quantity, now = Date.now()) {
   const reject = error => ({ handled: true, ok: false, error });
   const item = decorationById.get(itemId);
   if (!item) return reject("农场装饰不存在。");
+  if (!isDecorationSaleOpen(item, now)) return reject("农场装饰不存在。");
   if (!Number.isSafeInteger(quantity) || quantity < 1 || (item.purchase_mode === "unlock" && quantity !== 1)) return reject("装饰购买数量无效；永久解锁物品每款购买一次。");
   let state;
   try { state = decorationState(farm); } catch { return reject("农场装饰持有状态无效。"); }

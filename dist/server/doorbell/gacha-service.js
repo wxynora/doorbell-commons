@@ -1,5 +1,6 @@
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { decorationState } from "../../domain/farm-decoration/state.js";
+import { isDecorationGachaEligible, isDecorationSaleOpen } from "../../domain/farm-decoration/catalog.js";
 import { decomposeFarmForPersistence } from "../../farm-world-sqlite-migration.js";
 import { runLingyeWorldTransaction } from "../../lingye-world-database.js";
 import { isQixi2026CropId } from "../../qixi-2026.js";
@@ -244,7 +245,7 @@ function normalLimitedCrop(item) {
   );
 }
 
-function itemPool(lists, category, farm) {
+function itemPool(lists, category, farm, now) {
   switch (category) {
     case "ingredient":
       return lists.ingredients.filter((item) => itemId(item));
@@ -277,7 +278,7 @@ function itemPool(lists, category, farm) {
       );
       return lists.decorations.filter((item) => {
         const id = itemId(item);
-        return id !== null && item.layer === "furniture" && !owned.has(id);
+        return id !== null && isDecorationGachaEligible(item, now) && !owned.has(id);
       });
     }
     default:
@@ -285,14 +286,14 @@ function itemPool(lists, category, farm) {
   }
 }
 
-function hasCategoryPool(category, lists, farm) {
-  return category === "gold" || category === "silver" || itemPool(lists, category, farm).length > 0;
+function hasCategoryPool(category, lists, farm, now) {
+  return category === "gold" || category === "silver" || itemPool(lists, category, farm, now).length > 0;
 }
 
-function effectiveWeights(lists, farm) {
+function effectiveWeights(lists, farm, now) {
   const weights = { ...GACHA_WEIGHTS };
   for (const category of REWARD_CATEGORIES) {
-    if (category !== "gold" && !hasCategoryPool(category, lists, farm)) {
+    if (category !== "gold" && !hasCategoryPool(category, lists, farm, now)) {
       weights.gold += weights[category];
       weights[category] = 0;
     }
@@ -300,8 +301,8 @@ function effectiveWeights(lists, farm) {
   return weights;
 }
 
-function probabilitiesFor(lists, farm, pity = { misses: 0 }) {
-  const weights = effectiveWeights(lists, farm);
+function probabilitiesFor(lists, farm, pity = { misses: 0 }, now = Date.now()) {
+  const weights = effectiveWeights(lists, farm, now);
   if (pity.misses === GACHA_PITY_LIMIT - 1) {
     const totalRareWeight = RARE_REWARD_CATEGORIES.reduce(
       (sum, category) => sum + weights[category],
@@ -333,8 +334,8 @@ function nextRandom(random) {
   return value;
 }
 
-function pickCategory(random, lists, farm, pity) {
-  const weights = effectiveWeights(lists, farm);
+function pickCategory(random, lists, farm, pity, now) {
+  const weights = effectiveWeights(lists, farm, now);
   const categories = pity.misses === GACHA_PITY_LIMIT - 1
     ? RARE_REWARD_CATEGORIES
     : REWARD_CATEGORIES;
@@ -429,7 +430,7 @@ function makeReward(category, item, now, generateId, random, lists) {
   return { category, id, name, rarity: itemRarity(item), quantity: 1 };
 }
 
-function applyInventoryReward(farm, reward) {
+function applyInventoryReward(farm, reward, now) {
   if (reward.category === "ingredient") {
     const kitchen = ensureKitchen(farm);
     kitchen.ingredients[reward.id] = (kitchen.ingredients[reward.id] ?? 0) + reward.quantity;
@@ -450,6 +451,9 @@ function applyInventoryReward(farm, reward) {
     return;
   }
   if (reward.category === "decor") {
+    if (!isDecorationSaleOpen(reward.id, now)) {
+      throw new GachaError("GACHA_STATE_INVALID", "The selected reward is invalid");
+    }
     let state;
     try {
       state = decorationState(farm);
@@ -545,7 +549,7 @@ function buildStatus({ farm, farmId, residentId, queries, lists, now }) {
     limit: GACHA_DAILY_LIMIT,
     remaining_today: Math.max(0, GACHA_DAILY_LIMIT - quota.count),
     pity: pityView(pity),
-    probabilities: probabilitiesFor(lists, farm, pity),
+    probabilities: probabilitiesFor(lists, farm, pity, now),
   };
 }
 
@@ -832,6 +836,11 @@ export function createGachaService(options = {}) {
   const { commands, queries } = economyParts(backend);
   const lists = catalogLists(options.catalog);
   const nowSource = options.now ?? Date.now;
+  const readNow = () => {
+    const now = Number(nowSource());
+    if (!Number.isFinite(now)) throw new GachaError("GACHA_TIME_UNAVAILABLE", "The Farm clock is invalid");
+    return now;
+  };
   const random = options.random ?? Math.random;
   const generateId = options.generateId ?? randomUUID;
 
@@ -845,8 +854,7 @@ export function createGachaService(options = {}) {
   };
 
   const read = (input) => {
-    const now = Number(nowSource());
-    if (!Number.isFinite(now)) throw new GachaError("GACHA_TIME_UNAVAILABLE", "The Farm clock is invalid");
+    const now = readNow();
     const resolved = resolve(input, "read");
     return buildStatus({ ...resolved, queries, lists, now });
   };
@@ -864,8 +872,6 @@ export function createGachaService(options = {}) {
   };
 
   const drawTen = (input) => {
-    const now = Number(nowSource());
-    if (!Number.isFinite(now)) throw new GachaError("GACHA_TIME_UNAVAILABLE", "The Farm clock is invalid");
     const resolvedInput = assertInput(input, { action: "draw" });
     let committedFarm = null;
     let committedFarmMeta = null;
@@ -894,6 +900,7 @@ export function createGachaService(options = {}) {
         return previous.result;
       }
 
+      const now = readNow();
       const day = beijingDay(now);
       const quota = quotaFor(resolved.farm, day);
       if (quota.count + GACHA_TEN_DRAW_SIZE > GACHA_DAILY_LIMIT) {
@@ -921,12 +928,23 @@ export function createGachaService(options = {}) {
 
       const rewards = [];
       let pity = pityFor(resolved.farm);
+      const pendingUnlockDecorationIds = new Set();
       for (let index = 0; index < GACHA_TEN_DRAW_SIZE; index += 1) {
-        const category = pickCategory(random, lists, resolved.farm, pity);
+        const selectionNow = readNow();
+        const selectionLists = pendingUnlockDecorationIds.size
+          ? {
+            ...lists,
+            decorations: lists.decorations.filter((item) => !pendingUnlockDecorationIds.has(itemId(item))),
+          }
+          : lists;
+        const category = pickCategory(random, selectionLists, resolved.farm, pity, selectionNow);
         const item = category === "gold" || category === "silver"
           ? null
-          : pickItem(random, itemPool(lists, category, resolved.farm));
-        const reward = makeReward(category, item, now, generateId, random, lists);
+          : pickItem(random, itemPool(selectionLists, category, resolved.farm, selectionNow));
+        if (category === "decor" && item?.purchase_mode === "unlock") {
+          pendingUnlockDecorationIds.add(itemId(item));
+        }
+        const reward = makeReward(category, item, selectionNow, generateId, random, lists);
         rewards.push(reward);
         pity = nextPity(pity, category);
       }
@@ -954,7 +972,10 @@ export function createGachaService(options = {}) {
         }
       }
       for (const reward of rewards) {
-        if (!reward.currency) applyInventoryReward(resolved.farm, reward);
+        if (!reward.currency) {
+          const grantNow = reward.category === "decor" ? readNow() : now;
+          applyInventoryReward(resolved.farm, reward, grantNow);
+        }
       }
 
       const balance = {
@@ -980,7 +1001,7 @@ export function createGachaService(options = {}) {
         limit: GACHA_DAILY_LIMIT,
         remaining_today: GACHA_DAILY_LIMIT - quota.count - GACHA_TEN_DRAW_SIZE,
         pity: pityView(pity),
-        probabilities: probabilitiesFor(lists, resolved.farm, pity),
+        probabilities: probabilitiesFor(lists, resolved.farm, pity, readNow()),
       };
       recordFarmGachaReceipt(resolved.farm, resolved.idempotencyKey, payloadHash, result);
       farmStore.save({
@@ -1019,8 +1040,6 @@ export function createGachaService(options = {}) {
   };
 
   const draw = (input) => {
-    const now = Number(nowSource());
-    if (!Number.isFinite(now)) throw new GachaError("GACHA_TIME_UNAVAILABLE", "The Farm clock is invalid");
     const resolvedInput = assertInput(input, { action: "draw" });
     let committedFarm = null;
     let committedFarmMeta = null;
@@ -1048,6 +1067,7 @@ export function createGachaService(options = {}) {
         return previous.result;
       }
 
+      const now = readNow();
       const quota = quotaFor(resolved.farm, beijingDay(now));
       if (quota.count >= GACHA_DAILY_LIMIT) {
         throw new GachaError("GACHA_QUOTA_EXCEEDED", "The daily gacha quota is exhausted", {
@@ -1058,9 +1078,10 @@ export function createGachaService(options = {}) {
       }
 
       const pityBefore = pityFor(resolved.farm);
+      const poolNow = readNow();
       if (pityBefore.misses === GACHA_PITY_LIMIT - 1) {
         const availableRare = RARE_REWARD_CATEGORIES.some(
-          (category) => itemPool(lists, category, resolved.farm).length > 0,
+          (category) => itemPool(lists, category, resolved.farm, poolNow).length > 0,
         );
         if (!availableRare) {
           throw new GachaError(
@@ -1086,11 +1107,12 @@ export function createGachaService(options = {}) {
         throw mapEconomyError(error);
       }
 
-      const category = pickCategory(random, lists, resolved.farm, pityBefore);
+      const selectionNow = readNow();
+      const category = pickCategory(random, lists, resolved.farm, pityBefore, selectionNow);
       const item = category === "gold" || category === "silver"
         ? null
-        : pickItem(random, itemPool(lists, category, resolved.farm));
-      const reward = makeReward(category, item, now, generateId, random, lists);
+        : pickItem(random, itemPool(lists, category, resolved.farm, selectionNow));
+      const reward = makeReward(category, item, selectionNow, generateId, random, lists);
       let awarded = charged;
       if (reward.currency) {
         try {
@@ -1107,7 +1129,8 @@ export function createGachaService(options = {}) {
           throw mapEconomyError(error);
         }
       } else {
-        applyInventoryReward(resolved.farm, reward);
+        const grantNow = reward.category === "decor" ? readNow() : now;
+        applyInventoryReward(resolved.farm, reward, grantNow);
       }
 
       const balance = {
@@ -1136,7 +1159,7 @@ export function createGachaService(options = {}) {
         limit: GACHA_DAILY_LIMIT,
         remaining_today: GACHA_DAILY_LIMIT - quota.count - 1,
         pity: pityView(pityAfter),
-        probabilities: probabilitiesFor(lists, resolved.farm, pityAfter),
+        probabilities: probabilitiesFor(lists, resolved.farm, pityAfter, readNow()),
       };
       recordFarmGachaReceipt(resolved.farm, resolved.idempotencyKey, payloadHash, result);
       farmStore.save({

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { midAutumnSeedShopRows, MID_AUTUMN_DAILY_SEED_LIMIT } from "../domain/field/mid-autumn-shop.js";
 import { isMidAutumnSeedCropId } from "../mid-autumn-seeds.js";
-import { FARM_DECORATION_CATALOG } from "../domain/farm-decoration/catalog.js";
+import { FARM_DECORATION_CATALOG, isDecorationSaleOpen } from "../domain/farm-decoration/catalog.js";
 import { decorationState } from "../domain/farm-decoration/state.js";
 import { housePurchaseError } from "../domain/farm-decoration/house.js";
 import {
@@ -269,6 +269,7 @@ function projectShop(farm, now) {
   }
   const decoration = decorationState(farm), decorationOwned = decoration.owned;
   for (const item of FARM_DECORATION_CATALOG) {
+    if (!isDecorationSaleOpen(item, now)) continue;
     const unlocked = item.purchase_mode === "unlock" && decorationOwned[item.item_id] > 0;
     const blocked = !!housePurchaseError(decoration, item.item_id);
     items.push(projectShopItem({
@@ -285,6 +286,7 @@ function projectShop(farm, now) {
       shop: farm.shop,
       potion_buy: farm.potionBuy ?? null,
       mid_autumn_seeds: midAutumnSeeds,
+      decoration_shop: FARM_DECORATION_CATALOG.filter(item => isDecorationSaleOpen(item, now)).map(item => item.item_id),
       decorations: { catalog: FARM_DECORATION_CATALOG, owned: decorationOwned, layout: decoration.layout },
     }),
     refreshed_at: refreshedAt,
