@@ -891,6 +891,9 @@ export class DoorbellMcpRuntime {
       }
       return farmToolResult(text, result.ok, result.farm);
     } catch (error) {
+      const unconfirmedMessage = op === "farm.decorate"
+        ? "装修请求的保存结果尚未确认。请先空参数调用 farm.decorate，核对最近保存的草稿编号和当前布局；有草稿编号时原样查询，不要重发另一笔装修。"
+        : FARM_RESULT_UNCONFIRMED_MESSAGE;
       if (
         error instanceof FarmMcpActionCredentialInvalidError ||
         error instanceof FarmMcpActionBindingMismatchError
@@ -903,18 +906,18 @@ export class DoorbellMcpRuntime {
       if (error instanceof FarmMcpActionUnavailableError) {
         return this.#faultToolError("UPSTREAM_UNAVAILABLE", {
           op,
-          message: FARM_RESULT_UNCONFIRMED_MESSAGE,
+          message: unconfirmedMessage,
         }, error);
       }
       if (error instanceof FarmMcpActionContractUnavailableError) {
         return this.#faultToolError("INTERNAL_ERROR", {
           op,
-          message: FARM_RESULT_UNCONFIRMED_MESSAGE,
+          message: unconfirmedMessage,
         }, error);
       }
       return this.#faultToolError("INTERNAL_ERROR", {
         op,
-        message: FARM_RESULT_UNCONFIRMED_MESSAGE,
+        message: unconfirmedMessage,
       }, error);
     }
   }

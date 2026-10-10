@@ -4,6 +4,7 @@ import type { SceneDecorationData, SceneDecorationLayout, SceneEditState, SceneE
 export interface SceneRuntime {
   previewLayout(layout: SceneDecorationLayout): LayoutShareSkip[];
   setActive(active: boolean): void;
+  setModelOutline(enabled: boolean): void;
   setPlots(plots: readonly FarmPlot[]): void;
   changeRoof(key: string): void;
   changeCanopy(key: "plain" | "floral"): void;
@@ -13,6 +14,9 @@ export interface SceneRuntime {
   selectPlot(id: number | null): void;
   startPlacement(id: string): void;
   startHouseMove(): void;
+  startFieldMove(): void;
+  changeFieldColumns(columns: number): boolean;
+  changeFieldRows(rows: number): boolean;
   rotate(): void;
   addOne(): void;
   remove(): void;

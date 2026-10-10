@@ -23,7 +23,7 @@ export function createPlacement(world, authoritativeGrid = null) {
   const stall = world.root.getObjectByName("market-stall");
   const decorations = (world.decorations ||= []);
   const isWaterwheel = (object) => object.userData.decorationId === "waterwheel";
-  const terrain = createPlacementTerrain(world.plots.map(o=>o.userData.plot),world.house.position);
+  const terrain = createPlacementTerrain(world.plots.map(o=>o.userData.plot),world.house.position,world.fieldLayout);
   let target = stall,
     isNew = false;
   world.root.updateMatrixWorld(true);

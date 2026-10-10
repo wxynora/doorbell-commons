@@ -288,7 +288,8 @@ export function createWorld(plotDefinitions = [], houseLevel = 1) {
         k % 2 ? "#9a895a" : "#67573e",
       );
   }
-  soilPebbles.finish(false);
+  const soilPebbleMesh=soilPebbles.finish(false);
+  const pebbleOffsets=new Map(plotDefinitions.map((plot,i)=>[plot.id,i*8]));
   // All leaf and flower meshes are shared and instanced, rather than thousands of draw calls.
   const leafMat = mat("#ffffff").clone();
   leafMat.side = T.DoubleSide;
@@ -565,9 +566,23 @@ export function createWorld(plotDefinitions = [], houseLevel = 1) {
     // FieldScene recreates the world only when IDs/coordinates or house level change.
     setPlots(nextPlots) {
       let sparklesChanged = false;
+      let pebblesChanged = false;
+      const pebbleMatrix = new T.Matrix4();
       for (const next of nextPlots) {
         const plot = plotsById.get(next.id);
         const cropChanged = plot.state !== next.state || plot.seed_type !== next.seed_type;
+        const dx=next.x-plot.x,dz=next.z-plot.z;
+        if(dx||dz){
+          root.getObjectByName(`plot-${plot.id}`).position.set(next.x,.255,next.z);
+          const offset=pebbleOffsets.get(plot.id);
+          for(let i=offset;i<offset+8;i++){
+            soilPebbleMesh.getMatrixAt(i,pebbleMatrix);
+            pebbleMatrix.elements[12]+=dx;pebbleMatrix.elements[14]+=dz;
+            soilPebbleMesh.setMatrixAt(i,pebbleMatrix);
+          }
+          const crop=cropModels.get(plot.id);if(crop)crop.position.set(next.x,.35,next.z);
+          pebblesChanged=true;sparklesChanged=true;
+        }
         sparklesChanged ||= (plot.state === "ripe" || next.state === "ripe") && cropChanged;
         // Keep the soil, snow and crop picking references current without walking meshes.
         Object.assign(plot, next);
@@ -578,6 +593,7 @@ export function createWorld(plotDefinitions = [], houseLevel = 1) {
         if (crop) { crop.position.set(plot.x, .35, plot.z); root.add(crop); }
         cropModels.set(plot.id, crop);
       }
+      if(pebblesChanged){soilPebbleMesh.instanceMatrix.needsUpdate=true;soilPebbleMesh.computeBoundingSphere();}
       if (sparklesChanged) {
         if (ripeSparkles) { ripeSparkles.points.removeFromParent(); disposeResources(ripeSparkles.points); }
         ripeSparkles = createRipeSparkles(plotDefinitions);

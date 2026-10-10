@@ -1,6 +1,7 @@
 import { LayoutSharingPanel } from "../../scenes/field/layout-sharing-panel";
 import type { SceneDecorationLayout } from "../../scenes/field/scene-types";
 import { useState } from "react";
+import { useModelOutlinePreference } from "../../scenes/field/model-outline-preference";
 import type { BoundFarmCatalogRead } from "../../../auth/farm-catalog-client";
 import {
   type FarmSettingsActionInput,
@@ -53,6 +54,7 @@ export function FarmSettingsPanelContent({
   onSave?: FarmSettingsActionExecutor | undefined;
 }) {
   const [actionState, setActionState] = useState<FarmSettingsActionState>({ stage: "idle" });
+  const [modelOutline,setModelOutline]=useModelOutlinePreference();
   const busy = actionState.stage === "submitting";
   const liveEditable = editable && Boolean(onSave && catalogRevision);
 
@@ -95,6 +97,10 @@ export function FarmSettingsPanelContent({
       className="farm-settings"
       onSubmit={(event) => event.preventDefault()}
     >
+      <fieldset className="farm-settings__group">
+        <legend>画面</legend>
+        <FarmSettingsSwitch editable label="建模描边" onLabel="开启" value={modelOutline} onChange={setModelOutline}/>
+      </fieldset>
       {actionState.stage === "success" ? (
         <p className="farm-settings__status" role="status">
           {actionState.message}

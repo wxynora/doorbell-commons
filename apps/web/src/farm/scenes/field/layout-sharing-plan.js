@@ -7,6 +7,8 @@ export function planSharedLayout(source, data, tryPlace, makeId = () => crypto.r
     else skipped.push({ name, quantity: 1, reason });
   };
   const layout = { roof: source.roof, canopy: source.canopy, stall: { ...data.layout.stall }, decorations: [] };
+  // Importing decorations must not replace this farm's field arrangement.
+  if(data.layout.field)layout.field={...data.layout.field};
   if (layout.canopy === "floral" && (!data.house?.canopy_unlocked || data.house.level < 2)) {
     layout.canopy = "plain";
     skip("花植雨棚", "missing");

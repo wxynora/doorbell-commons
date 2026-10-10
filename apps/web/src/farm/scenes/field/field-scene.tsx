@@ -5,6 +5,7 @@ import type { SceneDecorationData, SceneDecorationLayout, SceneEditState } from 
 export type { SceneDecorationData, SceneDecorationLayout } from "./scene-types";
 import type { FarmPlot } from "../../farm-overview";
 import { farmPlotStateLabel } from "../../farm-overview";
+import { useModelOutlinePreference } from "./model-outline-preference";
 import "./field-scene.css";
 
 const FARM_SEED_TYPE_LABELS: Readonly<Record<NonNullable<FarmPlot["seed_type"]>, string>> = {
@@ -74,6 +75,7 @@ export function FieldScene({
   onOpenHouse?: (()=>void) | undefined;
 }) {
   const host = useRef<HTMLDivElement>(null), runtime = useRef<SceneRuntime | null>(null);
+  const [modelOutline]=useModelOutlinePreference();
   const [shareSkipped, setShareSkipped] = useState<LayoutShareSkip[]>([]);
   const [failure, setFailure] = useState<string | null>(null);
   const [roofPalette, setRoofPalette] = useState(false);
@@ -83,6 +85,9 @@ export function FieldScene({
   const [requestedHouseItem,setRequestedHouseItem]=useState<string|null>(null);
   const [houseLevel,setHouseLevel]=useState(decorationData?.house?.level??1);
   const [edit, setEdit] = useState<SceneEditState>({editing:false,valid:false,title:"",canAdd:false,canRemove:false,message:"",boundaryItemId:null});
+  const [fieldSize,setFieldSize]=useState({rows:"6",columns:"6"});
+  const fieldDraftValid=useRef(true);
+  useEffect(()=>{if(edit.fieldMoving)setFieldSize({rows:String(edit.fieldRows??1),columns:String(edit.fieldColumns??6)});},[edit.fieldMoving,edit.fieldRows,edit.fieldColumns]);
   const [renderPlots, setRenderPlots] = useState(plots);
   const callbacks = useRef({onSelectPlot,onSaveLayout,onFinishEditing,onEditingChange,onOpenHouse,onClosePlot});
   callbacks.current={onSelectPlot,onSaveLayout,onFinishEditing,onEditingChange,onOpenHouse,onClosePlot};
@@ -102,7 +107,7 @@ export function FieldScene({
         onSelectHouse:()=>{if(currentData.current){setHouseMenu(true);setRequestedHouseItem(null);callbacks.current.onClosePlot();callbacks.current.onOpenHouse?.();}},
         onSelectPlot:id=>callbacks.current.onSelectPlot(id),
         onEditState:state=>{setEdit(state);callbacks.current.onEditingChange?.(state.editing);},
-        onSaveLayout:async layout=>{if(!callbacks.current.onSaveLayout)throw new Error("布置保存暂时不可用");await callbacks.current.onSaveLayout(layout);},
+        onSaveLayout:async layout=>{if(!fieldDraftValid.current)throw new Error("请先输入有效的行数或列数");if(!callbacks.current.onSaveLayout)throw new Error("布置保存暂时不可用");await callbacks.current.onSaveLayout(layout);},
         onFinishEditing:()=>callbacks.current.onFinishEditing?.(),
       });
       runtime.current=instance;
@@ -112,6 +117,7 @@ export function FieldScene({
   },[plotKey,houseLevel]);
   useEffect(()=>{runtime.current?.setPlots(renderPlots);},[renderPlots,houseLevel]);
   useEffect(()=>{runtime.current?.setActive(active);},[active,plotKey,houseLevel]);
+  useEffect(()=>{runtime.current?.setModelOutline(modelOutline);},[modelOutline,plotKey,houseLevel]);
   useEffect(()=>{runtime.current?.setEnvironment(environment);},[environment.season,environment.weather,environment.night,environment.disaster?.type,environment.disaster?.phase,JSON.stringify(environment.flood),plotKey,houseLevel]);
   useEffect(()=>{if(decorationData)runtime.current?.setDecorations(decorationData);},[decorationData,plotKey,houseLevel]);
   useEffect(()=>{runtime.current?.selectPlot(selectedPlot?.plot_id??null);},[selectedPlot?.plot_id,plotKey,houseLevel]);
@@ -132,6 +138,17 @@ export function FieldScene({
   const requestHouse=(id:string)=>{setRequestedHouseItem(id);onRequestHousePurchase?.(id);};
   const purchaseBusy=housePurchaseFeedback?.stage==="submitting";
   const boundaryChoices=(decorationData?.catalog??[]).filter(item=>["white_fence","timber_fence","stone_wall","hedge","ghost_fence"].includes(item.model_id)&&!!decorationData?.inventory.some(stock=>stock.item_id===item.item_id&&stock.unlocked));
+  const maxFieldColumns=Math.max(6,...renderPlots.map(plot=>plot.plot_id));
+  const fieldSlots=Math.max(0,...renderPlots.map(plot=>plot.plot_id));
+  const validDimension=(value:string,max:number)=>value.trim()!==""&&Number.isSafeInteger(Number(value))&&Number(value)>=1&&Number(value)<=max;
+  const validFieldSize=validDimension(fieldSize.rows,fieldSlots)&&validDimension(fieldSize.columns,maxFieldColumns);
+  fieldDraftValid.current=!edit.fieldMoving||validFieldSize;
+  const changeFieldSize=(axis:"rows"|"columns",value:string)=>{
+    if(!validDimension(value,axis==="rows"?fieldSlots:maxFieldColumns)){setFieldSize(current=>({...current,[axis]:value}));return;}
+    const other=String(Math.ceil(fieldSlots/Number(value)));
+    setFieldSize(axis==="rows"?{rows:value,columns:other}:{rows:other,columns:value});
+    if(axis==="rows")runtime.current?.changeFieldRows(Number(value));else runtime.current?.changeFieldColumns(Number(value));
+  };
   return (
     <section
       aria-labelledby="farm-field-title"
@@ -151,6 +168,7 @@ export function FieldScene({
         setRoofChoice(key);setRoofPalette(true);setCanopyEditor(false);setBoundaryEditor(false);runtime.current?.changeRoof(key);
       }}>屋顶换色</button>
         <button type="button" onClick={()=>runtime.current?.startHouseMove()}>移动房屋</button>
+        <button type="button" disabled={!renderPlots.length} onClick={()=>{onClosePlot();runtime.current?.startFieldMove();}}>调整田地</button>
         {decorationData.house?.canopy_unlocked ? <button type="button" onClick={()=>{
           const key=decorationData.layout.canopy??"plain";setCanopyChoice(key);setCanopyEditor(true);setRoofPalette(false);setBoundaryEditor(false);runtime.current?.changeCanopy(key);
         }}>更换雨棚</button> : null}</div>
@@ -166,9 +184,9 @@ export function FieldScene({
       {!edit.editing&&!houseMenu ? requestControls : null}
       {failure ? <p className="farm-scene__notice" role="alert">{failure}</p> : null}
       {!edit.editing && edit.message ? <p className="farm-scene__notice" role="status">{edit.message}</p> : null}
-      {edit.editing ? <section className="farm-field-editor" aria-label="装饰摆放">
-        <strong>{roofPalette ? "屋顶配色" : canopyEditor?"雨棚款式":boundaryEditor?"整圈外圈":edit.title}</strong>
-        <p role="status">{edit.message || (edit.layoutPreview ? "确认布置后保存" : roofPalette ? "选好颜色后保存，取消可恢复原色" : canopyEditor?"选好款式后保存，取消可恢复原款":boundaryEditor?"整圈围栏会保留原桥口；保存后生效，取消可恢复。":"拖动摆放 · 绿色位置可保存")}</p>
+      {edit.editing ? <section className={`farm-field-editor${edit.fieldMoving?" farm-field-editor--terrain":""}`} aria-label={edit.fieldMoving?"田地调整":"装饰摆放"}>
+        <strong>{edit.fieldMoving?"田地排布":roofPalette ? "屋顶配色" : canopyEditor?"雨棚款式":boundaryEditor?"整圈外圈":edit.title}</strong>
+        <p role="status">{edit.fieldMoving&&!validFieldSize?"请输入有效的行数或列数":edit.message || (edit.fieldMoving ? edit.valid?"整片拖动 · 绿色可保存":"有阻挡，请移动田地" : edit.layoutPreview ? "确认布置后保存" : roofPalette ? "选好颜色后保存，取消可恢复原色" : canopyEditor?"选好款式后保存，取消可恢复原款":boundaryEditor?"整圈围栏会保留原桥口；保存后生效，取消可恢复。":"拖动摆放 · 绿色位置可保存")}</p>
         {edit.layoutPreview ? <>
           <p>这是预览；保存后替换当前装饰布置，取消可恢复。</p>
           {shareSkipped.length ? <ul className="farm-layout-share-skipped">{shareSkipped.map(item=><li key={item.name+item.reason}>{item.name} × {item.quantity}：{item.reason === "missing" ? "未拥有或数量不足" : "位置冲突"}</li>)}</ul> : <p>所需装饰齐全，均可摆放。</p>}
@@ -180,19 +198,24 @@ export function FieldScene({
             {boundaryChoices.map(item=><option key={item.item_id} value={item.item_id}>{item.name}</option>)}
           </select>
         </label> : null}
+        {edit.fieldMoving ? <div className="farm-field-size" role="group" aria-label="田地行列，修改一边自动匹配另一边">
+          <label><input aria-label="田地行数" type="number" inputMode="numeric" min="1" max={fieldSlots} step="1" value={fieldSize.rows} aria-invalid={!validDimension(fieldSize.rows,fieldSlots)} onChange={event=>changeFieldSize("rows",event.currentTarget.value)}/>行</label>
+          <span aria-hidden="true">×</span>
+          <label><input aria-label="田地列数" type="number" inputMode="numeric" min="1" max={maxFieldColumns} step="1" value={fieldSize.columns} aria-invalid={!validDimension(fieldSize.columns,maxFieldColumns)} onChange={event=>changeFieldSize("columns",event.currentTarget.value)}/>列</label>
+        </div> : null}
         {roofPalette ? <div className="farm-roof-palette" aria-label="屋顶颜色">
           {roofChoices.map(choice=><button key={choice.id} type="button" disabled={!edit.valid} aria-pressed={roofChoice===choice.id} onClick={()=>{
             setRoofChoice(choice.id);runtime.current?.changeRoof(choice.id);
           }}><i aria-hidden="true" style={{backgroundColor:choice.color}}/>{choice.label}</button>)}
         </div> : null}
-        <div>
-          {!roofPalette&&!canopyEditor&&!boundaryEditor&&!edit.layoutPreview&&!edit.houseMoving ? <>
+        <div className={edit.fieldMoving?"farm-field-shape__actions":undefined}>
+          {!roofPalette&&!canopyEditor&&!boundaryEditor&&!edit.layoutPreview&&!edit.houseMoving&&!edit.fieldMoving ? <>
             <button type="button" onClick={()=>runtime.current?.rotate()}>旋转</button>
             <button type="button" disabled={!edit.canAdd} onClick={()=>runtime.current?.addOne()}>+1</button>
             <button type="button" disabled={!edit.canRemove} onClick={()=>runtime.current?.remove()}>收起</button>
           </> : null}
           <button type="button" onClick={()=>runtime.current?.cancel()}>取消</button>
-          <button type="button" disabled={!edit.valid} onClick={()=>void runtime.current?.save()}>保存</button>
+          <button type="button" disabled={!edit.valid||(edit.fieldMoving&&!validFieldSize)} onClick={()=>void runtime.current?.save()}>保存</button>
         </div>
       </section> : null}
 

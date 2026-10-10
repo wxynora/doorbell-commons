@@ -1,6 +1,7 @@
 export interface SceneFlood { plot_ids: readonly number[]; fish: readonly {id:string;fish_id:string;size:number}[] }
 export interface SceneDecorationPose { x: number; z: number; rotation: number }
 export interface SceneDecorationLayout {
+  field?: { x: number; z: number; columns: number; rows?: number } | undefined;
   house?: { x: number; z: number } | undefined;
   roof: string;
   canopy: "plain" | "floral";
@@ -24,6 +25,9 @@ export interface SceneEnvironment {
   flood?: SceneFlood | undefined;
 }
 export interface SceneEditState {
+  fieldMoving?: boolean;
+  fieldColumns?: number;
+  fieldRows?: number;
   layoutPreview?: boolean;
   houseMoving?: boolean;
   boundaryItemId: string | null;

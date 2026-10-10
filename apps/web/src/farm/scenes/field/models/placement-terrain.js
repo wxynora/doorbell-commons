@@ -1,6 +1,7 @@
 // Mirrored between the scene and Farm authority; grid cells are guides, not collision masks.
 import {CELL_SIZE,Z_ORIGIN,boundsRectangle,intersects} from "./placement-geometry.js";
 import {DEFAULT_HOUSE_POSITION,houseBaseRects} from "./house-geometry.js";
+import {fieldRects} from "./field-layout.js";
 // Expand by two existing grid cells per side; creek width and scene anchors stay unchanged.
 export const LAND={x:7.5+2*CELL_SIZE,z:8.7+2*CELL_SIZE,fenceInset:.3,riverWidth:1.6};
 const radius=a=>1+.025*Math.sin(a*5)+.02*Math.cos(a*9);
@@ -30,15 +31,11 @@ function inside(p,poly){
   }
   return yes;
 }
-export function createPlacementTerrain(plots=[],housePosition=DEFAULT_HOUSE_POSITION){
+export function createPlacementTerrain(plots=[],housePosition=DEFAULT_HOUSE_POSITION,field){
   const rects=[
     ...(housePosition===null?[]:houseBaseRects(housePosition)),
     [-.65,bridgeZ-1.15,.75,bridgeZ+1.15],
-    ...plots.map((plot,i)=>{
-      const index=Number.isInteger(plot.id)&&plot.id>0?plot.id-1:i;
-      const x=(index%6-2.5)*CELL_SIZE,z=-.97+Math.floor(index/6)*CELL_SIZE;
-      return [x-.435,z-.456,x+.435,z+.456];
-    })
+    ...fieldRects(plots,field)
   ],blockers=rects.map(boundsRectangle);
   const onTerrain=(p,water)=>water?inside(p,outer)&&!inside(p,inner):inside(p,land);
   function clip(a,b,water=false,obstacles=true){

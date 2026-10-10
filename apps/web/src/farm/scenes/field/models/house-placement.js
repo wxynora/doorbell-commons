@@ -6,7 +6,7 @@ import { disposeDecoration } from "./decorations.js";
 
 // Only exists during house editing; no extra frame loop or per-drag terrain rebuild.
 export function createHousePlacement(world,level){
-  const terrain=createPlacementTerrain(world.plots.map(o=>o.userData.plot),null);
+  const terrain=createPlacementTerrain(world.plots.map(o=>o.userData.plot),null,world.fieldLayout);
   const target=world.house,stall=world.root.getObjectByName("market-stall");
   const fixtures=[stall,...world.decorations].map(o=>{
     const model=o.userData.decorationId??"";
