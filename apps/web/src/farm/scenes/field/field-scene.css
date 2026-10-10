@@ -46,25 +46,24 @@
 .farm-layout-share-skipped { max-height:20cqw; overflow-y:auto; padding-left:4cqw; }
 
 /* Field controls stay on the scene's shared design-width scale. */
-.farm-field-editor--terrain { --field-ink:#435442; --field-line:#c7c4a9; --field-paper:#f5eedb; --field-accent:#d1dfb6; bottom:3%; padding:1.8cqw 2.2cqw; border-radius:2.2cqw; font-size:3.2cqw; }
-.farm-field-editor--terrain > strong { float:left; font-size:3.3cqw; font-weight:600; line-height:1.5; }
-.farm-field-editor--terrain > p { text-align:right; font-size:2.7cqw; margin:0 0 1.5cqw; line-height:1.85; }
-.farm-field-editor--terrain > .farm-field-size { clear:both; display:flex; flex-wrap:nowrap; justify-content:center; align-items:center; gap:4cqw; padding:.8cqw 0 1.2cqw; }
-.farm-field-size label { display:flex; align-items:center; gap:1.5cqw; }
-.farm-field-size input { width:20cqw; min-height:11.3cqw; padding:1cqw; border:1px solid var(--field-line); border-radius:1.4cqw; color:var(--field-ink); background:#fffaf0; text-align:center; font:inherit; font-size:4.2cqw; font-variant-numeric:tabular-nums; appearance:textfield; }
+.farm-field-editor--terrain { --field-ink:#435442; --field-line:#c7c4a9; --field-control-height:11.3cqw; --field-gap:2cqw; --field-control-font:3.6cqw; bottom:3%; padding:2.4cqw; border-radius:2.2cqw; font-size:3.2cqw; }
+.farm-field-editor--terrain > strong { display:block; padding-right:var(--field-control-height); font-size:3.6cqw; font-weight:600; line-height:1.5; }
+.farm-field-editor--terrain > p { padding-right:var(--field-control-height); text-align:left; font-size:2.8cqw; margin:.6cqw 0 var(--field-gap); line-height:1.5; }
+.farm-field-editor--terrain > .farm-field-size { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:var(--field-gap); }
+.farm-field-editor--terrain .farm-field-size label { position:relative; min-width:0; }
+.farm-field-editor--terrain .farm-field-size label > span { position:absolute; right:2cqw; top:50%; transform:translateY(-50%); font-size:var(--field-control-font); pointer-events:none; }
+.farm-field-editor--terrain .farm-field-size input { box-sizing:border-box; width:100%; height:var(--field-control-height); padding:1cqw 5.5cqw 1cqw 1.5cqw; border:1px solid var(--field-line); border-radius:1.4cqw; color:var(--field-ink); background:#fffaf0; text-align:center; font:inherit; font-size:var(--field-control-font); font-variant-numeric:tabular-nums; appearance:textfield; }
 .farm-field-size input::-webkit-inner-spin-button,.farm-field-size input::-webkit-outer-spin-button { appearance:none; margin:0; }
 .farm-field-size input:focus-visible { outline:2px solid #648775; outline-offset:1px; }
 .farm-field-size input[aria-invalid="true"] { border-color:#ae6957; }
-.farm-field-editor--terrain > .farm-field-shape__actions { display:grid; grid-template-columns:1fr 1.6fr; gap:1.6cqw; margin-top:1cqw; }
-.farm-field-shape__actions button { min-height:11.3cqw; font-size:3.3cqw; }
+.farm-field-editor--terrain .farm-field-size button { box-sizing:border-box; width:100%; height:var(--field-control-height); min-height:0; font-size:var(--field-control-font); }
+.farm-field-editor--terrain > .farm-field-editor__close { position:absolute; top:1cqw; right:1cqw; display:grid; place-items:center; width:var(--field-control-height); height:var(--field-control-height); min-height:0; min-width:0; padding:0; border:0; background:transparent; font-size:6cqw; line-height:1; }
 .farm-field-editor--terrain button:focus-visible { outline:2px solid #648775; outline-offset:2px; }
 @container (min-width:600px) {
-  .farm-field-editor--terrain { left:auto; right:3%; width:46cqw; padding:1.2cqw; border-radius:1.4cqw; font-size:1.8cqw; }
+  .farm-field-editor--terrain { --field-control-height:5.4cqw; --field-gap:1cqw; --field-control-font:1.9cqw; left:auto; right:3%; width:46cqw; padding:1.4cqw; border-radius:1.4cqw; font-size:1.8cqw; }
   .farm-field-editor--terrain > strong { font-size:2cqw; }
-  .farm-field-editor--terrain > p { font-size:1.5cqw; margin:0 0 .8cqw; line-height:2; }
-  .farm-field-editor--terrain > .farm-field-size { gap:2cqw; padding:.4cqw 0 .6cqw; }
-  .farm-field-size label { gap:.8cqw; }
-  .farm-field-size input { width:10cqw; min-height:5.4cqw; padding:.5cqw; border-radius:.8cqw; font-size:2.2cqw; }
-  .farm-field-editor--terrain > .farm-field-shape__actions { margin-top:.6cqw; gap:.8cqw; }
-  .farm-field-shape__actions button { min-height:5.4cqw; font-size:1.9cqw; }
+  .farm-field-editor--terrain > p { font-size:1.5cqw; margin:.3cqw 0 var(--field-gap); }
+  .farm-field-editor--terrain .farm-field-size label > span { right:1cqw; }
+  .farm-field-editor--terrain .farm-field-size input { padding:.5cqw 3cqw .5cqw .8cqw; }
+  .farm-field-editor--terrain > .farm-field-editor__close { top:.4cqw; right:.4cqw; font-size:3cqw; }
 }

@@ -185,6 +185,7 @@ export function FieldScene({
       {failure ? <p className="farm-scene__notice" role="alert">{failure}</p> : null}
       {!edit.editing && edit.message ? <p className="farm-scene__notice" role="status">{edit.message}</p> : null}
       {edit.editing ? <section className={`farm-field-editor${edit.fieldMoving?" farm-field-editor--terrain":""}`} aria-label={edit.fieldMoving?"田地调整":"装饰摆放"}>
+        {edit.fieldMoving ? <button className="farm-field-editor__close" type="button" aria-label="取消田地调整" onClick={()=>runtime.current?.cancel()}>×</button> : null}
         <strong>{edit.fieldMoving?"田地排布":roofPalette ? "屋顶配色" : canopyEditor?"雨棚款式":boundaryEditor?"整圈外圈":edit.title}</strong>
         <p role="status">{edit.fieldMoving&&!validFieldSize?"请输入有效的行数或列数":edit.message || (edit.fieldMoving ? edit.valid?"整片拖动 · 绿色可保存":"有阻挡，请移动田地" : edit.layoutPreview ? "确认布置后保存" : roofPalette ? "选好颜色后保存，取消可恢复原色" : canopyEditor?"选好款式后保存，取消可恢复原款":boundaryEditor?"整圈围栏会保留原桥口；保存后生效，取消可恢复。":"拖动摆放 · 绿色位置可保存")}</p>
         {edit.layoutPreview ? <>
@@ -199,24 +200,24 @@ export function FieldScene({
           </select>
         </label> : null}
         {edit.fieldMoving ? <div className="farm-field-size" role="group" aria-label="田地行列，修改一边自动匹配另一边">
-          <label><input aria-label="田地行数" type="number" inputMode="numeric" min="1" max={fieldSlots} step="1" value={fieldSize.rows} aria-invalid={!validDimension(fieldSize.rows,fieldSlots)} onChange={event=>changeFieldSize("rows",event.currentTarget.value)}/>行</label>
-          <span aria-hidden="true">×</span>
-          <label><input aria-label="田地列数" type="number" inputMode="numeric" min="1" max={maxFieldColumns} step="1" value={fieldSize.columns} aria-invalid={!validDimension(fieldSize.columns,maxFieldColumns)} onChange={event=>changeFieldSize("columns",event.currentTarget.value)}/>列</label>
+          <label><input aria-label="田地行数" type="number" inputMode="numeric" min="1" max={fieldSlots} step="1" value={fieldSize.rows} aria-invalid={!validDimension(fieldSize.rows,fieldSlots)} onChange={event=>changeFieldSize("rows",event.currentTarget.value)}/><span>行</span></label>
+          <label><input aria-label="田地列数" type="number" inputMode="numeric" min="1" max={maxFieldColumns} step="1" value={fieldSize.columns} aria-invalid={!validDimension(fieldSize.columns,maxFieldColumns)} onChange={event=>changeFieldSize("columns",event.currentTarget.value)}/><span>列</span></label>
+          <button type="button" disabled={!edit.valid||!validFieldSize} onClick={()=>void runtime.current?.save()}>保存</button>
         </div> : null}
         {roofPalette ? <div className="farm-roof-palette" aria-label="屋顶颜色">
           {roofChoices.map(choice=><button key={choice.id} type="button" disabled={!edit.valid} aria-pressed={roofChoice===choice.id} onClick={()=>{
             setRoofChoice(choice.id);runtime.current?.changeRoof(choice.id);
           }}><i aria-hidden="true" style={{backgroundColor:choice.color}}/>{choice.label}</button>)}
         </div> : null}
-        <div className={edit.fieldMoving?"farm-field-shape__actions":undefined}>
+        {!edit.fieldMoving ? <div>
           {!roofPalette&&!canopyEditor&&!boundaryEditor&&!edit.layoutPreview&&!edit.houseMoving&&!edit.fieldMoving ? <>
             <button type="button" onClick={()=>runtime.current?.rotate()}>旋转</button>
             <button type="button" disabled={!edit.canAdd} onClick={()=>runtime.current?.addOne()}>+1</button>
             <button type="button" disabled={!edit.canRemove} onClick={()=>runtime.current?.remove()}>收起</button>
           </> : null}
           <button type="button" onClick={()=>runtime.current?.cancel()}>取消</button>
-          <button type="button" disabled={!edit.valid||(edit.fieldMoving&&!validFieldSize)} onClick={()=>void runtime.current?.save()}>保存</button>
-        </div>
+          <button type="button" disabled={!edit.valid} onClick={()=>void runtime.current?.save()}>保存</button>
+        </div> : null}
       </section> : null}
 
       {plots.length > 0 ? (
