@@ -25,7 +25,15 @@ import image16 from "../../assets/furniture/double_swing.webp";
 import image17 from "../../assets/furniture/floral_arch.webp";
 import image18 from "../../assets/furniture/garden_mailbox.webp";
 
+const farmFurnitureImages: Readonly<Record<string, string>> = Object.fromEntries([
+  "white_fence", "timber_fence", "stone_wall", "hedge", "ghost_fence", "lavender", "daisies", "ferns", "ornamental_grass",
+  "log_steps", "moss_path", "checker_tiles", "garden_bench", "stone_fountain", "bird_bath", "flower_stand", "pumpkin_path",
+  "black_roses", "red_roses", "web_tiles", "witch_cauldron", "cat_pumpkin", "ghost_lamp", "pumpkin_lamppost", "ghost_rocker",
+  "bat_arch", "candy_cart", "haunted_lantern", "cherry_tree", "maple_tree", "ginkgo_tree", "birch_tree", "pine_tree", "osmanthus_tree",
+].map(id => [`farm_decor:${id}`, `/farm/furniture/${id}.webp`]));
+
 export const furnitureProductImages: Readonly<Record<string, string>> = {
+  ...farmFurnitureImages,
   "farm_decor:flowerbed": image0,
   "farm_decor:flowerbed_hydrangea": image1,
   "farm_decor:flowerbed_sunflower": image2,

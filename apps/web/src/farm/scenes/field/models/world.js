@@ -163,7 +163,8 @@ export function createWorld(plotDefinitions = [], houseLevel = 1) {
   const random = seededRandom();
   const mat = palette();
   const { water, waterMaterial } = terrain(root, mat);
-  createFence(root, groundPoint, LAND.fenceInset);
+  let fence = createFence(root, groundPoint, LAND.fenceInset);
+  let boundaryStyle = null;
   const riverFish = createRiverFish(root, groundPoint, LAND.riverWidth);
   const house = createHouseStudy(root, mat, houseLevel);
   house.position.set(.35,.24,-4.92);
@@ -548,6 +549,14 @@ export function createWorld(plotDefinitions = [], houseLevel = 1) {
     root,
     plots,
     house,
+    setBoundaryStyle(style = null) {
+      const nextStyle = style ?? null;
+      if (nextStyle === boundaryStyle) return;
+      fence.removeFromParent();
+      disposeResources(fence);
+      fence = createFence(root, groundPoint, LAND.fenceInset, nextStyle);
+      boundaryStyle = nextStyle;
+    },
     water,
     waterMaterial,
     glow,

@@ -5,6 +5,7 @@ import { buildGardenFurniture, updatePondFish } from "./garden-furniture.js";
 import { PAVING, buildPaving } from "./paving.js";
 import { FLOWERBEDS, buildFlowerbed } from "./flowerbeds.js";
 import { GARDEN_TRIO, buildGardenTrio } from './garden-trio.js';
+import { FARM_FURNITURE_IDS, SEASONAL_FURNITURE_IDS, createFarmFurniture } from "./farm-furniture/index.js";
 
 // First six IDs match ranch-items; new furniture IDs are local design candidates only.
 export const DECORATIONS = {
@@ -24,12 +25,46 @@ export const DECORATIONS = {
   garden_string_lights: { name: "木柱串灯", cells: [3, 1] },
   garden_lamppost: { name: "庭院路灯", cells: [1, 1] },
   ...PAVING,
+  white_fence: { name: "白木栅栏", cells: [1, 1] },
+  timber_fence: { name: "原木矮栏", cells: [1, 1] },
+  stone_wall: { name: "石砌矮墙", cells: [1, 1] },
+  hedge: { name: "修剪绿篱", cells: [1, 1] },
+  ghost_fence: { name: "幽灵木栅栏", cells: [1, 1] },
+  lavender: { name: "薰衣草花带", cells: [1, 1], groundCover: true },
+  daisies: { name: "雏菊花带", cells: [1, 1], groundCover: true },
+  ferns: { name: "蕨类花丛", cells: [1, 1], groundCover: true },
+  ornamental_grass: { name: "绣线草丛", cells: [1, 1], groundCover: true },
+  log_steps: { name: "圆木踏步", cells: [1, 1], groundCover: true },
+  moss_path: { name: "青苔石径", cells: [1, 1], groundCover: true },
+  checker_tiles: { name: "棋盘砖", cells: [1, 1], groundCover: true },
+  garden_bench: { name: "花园长椅", cells: [2, 1] },
+  stone_fountain: { name: "石砌喷泉", cells: [2, 2] },
+  bird_bath: { name: "鸟浴盆", cells: [1, 1] },
+  flower_stand: { name: "阶梯花架", cells: [2, 1] },
+  pumpkin_path: { name: "南瓜灯小径", cells: [1, 1], groundCover: true },
+  black_roses: { name: "黑蔷薇花圃", cells: [1, 1], groundCover: true },
+  red_roses: { name: "深红玫瑰花圃", cells: [1, 1], groundCover: true },
+  web_tiles: { name: "蛛网石砖", cells: [1, 1], groundCover: true },
+  witch_cauldron: { name: "巫师坩埚", cells: [2, 2] },
+  cat_pumpkin: { name: "大南瓜灯与小黑猫", cells: [2, 1] },
+  ghost_lamp: { name: "小幽灵灯", cells: [1, 1] },
+  pumpkin_lamppost: { name: "南瓜路灯", cells: [1, 1] },
+  ghost_rocker: { name: "幽灵摇椅", cells: [1, 1] },
+  bat_arch: { name: "蝙蝠拱门", cells: [2, 1] },
+  candy_cart: { name: "糖果推车", cells: [2, 1] },
+  haunted_lantern: { name: "歪歪鬼屋灯", cells: [1, 1] },
+  cherry_tree: { name: "樱花树", cells: [3, 3] },
+  maple_tree: { name: "红枫", cells: [3, 3] },
+  ginkgo_tree: { name: "银杏", cells: [3, 3] },
+  birch_tree: { name: "白桦", cells: [2, 2] },
+  pine_tree: { name: "松树", cells: [3, 3] },
+  osmanthus_tree: { name: "桂花树", cells: [2, 2] },
 };
 
 // Model structure is fixed after construction; frame updates only need these nodes.
 const animationNodes = new WeakMap();
 
-export function createDecoration(id) {
+export function createDecoration(id, season = "summer") {
   const definition = DECORATIONS[id];
   if (!definition) throw new Error(`Unknown decoration: ${id}`);
   const root = new T.Group(),
@@ -38,6 +73,7 @@ export function createDecoration(id) {
   root.userData.decorationId = id;
   root.userData.label = definition.name;
   root.userData.cells = definition.cells;
+  root.userData.season = season;
   if (definition.groundCover) root.userData.groundCover = true;
   root.position.y = 0.25;
   const wood = mat("#bc9369"),
@@ -74,7 +110,9 @@ export function createDecoration(id) {
     }
     beam(fruit, mat("#738048"), [0, size * 1.12, 0], [0.025, size * 1.55, 0.015], 0.022);
   }
-  if (id === "flowerbed") {
+  if (FARM_FURNITURE_IDS.has(id)) {
+    root.add(createFarmFurniture(id, season));
+  } else if (id === "flowerbed") {
     buildFlowerbed(root, id, mat);
   } else if (id === "scarecrow") {
     beam(root, edge, [0, 0, 0], [0, 1.14, 0], 0.035);
@@ -354,4 +392,23 @@ export function disposeDecoration(object) {
   textures.forEach((t) => t.dispose());
   animationNodes.delete(object);
   object.removeFromParent();
+}
+
+export function updateDecorationSeason(objects, season) {
+  let changed = false;
+  for (let i = 0; i < objects.length; i++) {
+    const current = objects[i];
+    if (!SEASONAL_FURNITURE_IDS.has(current.userData.decorationId) || current.userData.season === season) continue;
+    const replacement = createDecoration(current.userData.decorationId, season);
+    Object.assign(replacement.userData, current.userData);
+    replacement.userData.season = season;
+    replacement.position.copy(current.position);
+    replacement.rotation.copy(current.rotation);
+    replacement.scale.copy(current.scale);
+    current.parent?.add(replacement);
+    objects[i] = replacement;
+    disposeDecoration(current);
+    changed = true;
+  }
+  return changed;
 }

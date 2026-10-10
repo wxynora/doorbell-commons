@@ -7,6 +7,7 @@ export const farmDecorationLayoutSchema = z.object({
   roof: z.string(),
   canopy: z.enum(["plain", "floral"]),
   stall: z.object(point).strict(),
+  boundary_item_id: z.enum(["farm_decor:white_fence", "farm_decor:timber_fence", "farm_decor:stone_wall", "farm_decor:hedge", "farm_decor:ghost_fence"]).nullable().optional(),
   decorations: z.array(z.object({ instance_id: z.uuid(), item_id: itemId, ...point }).strict()),
 }).strict();
 export const farmDecorationsDataSchema = z.object({

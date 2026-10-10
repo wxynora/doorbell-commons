@@ -5,6 +5,7 @@ export interface SceneDecorationLayout {
   roof: string;
   canopy: "plain" | "floral";
   stall: SceneDecorationPose;
+  boundary_item_id?: "farm_decor:white_fence" | "farm_decor:timber_fence" | "farm_decor:stone_wall" | "farm_decor:hedge" | "farm_decor:ghost_fence" | null | undefined;
   decorations: (SceneDecorationPose & { instance_id: string; item_id: string })[];
 }
 export interface SceneDecorationData {
@@ -25,6 +26,7 @@ export interface SceneEnvironment {
 export interface SceneEditState {
   layoutPreview?: boolean;
   houseMoving?: boolean;
+  boundaryItemId: string | null;
   editing: boolean;
   valid: boolean;
   title: string;

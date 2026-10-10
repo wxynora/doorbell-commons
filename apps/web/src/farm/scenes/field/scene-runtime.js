@@ -9,7 +9,7 @@ import { createHousePlacement } from "./models/house-placement.js";
 import { DEFAULT_HOUSE_POSITION, houseExtensionRect } from "./models/house-geometry.js";
 import { setRoofColor, ROOF_COLORS } from "./models/cottage.js";
 import { setStudyCanopy } from "./models/local-house-upgrades.js";
-import { createDecoration, disposeDecoration, updateDecorationLights, updateDecorationMotion } from "./models/decorations.js";
+import { createDecoration, disposeDecoration, updateDecorationLights, updateDecorationMotion, updateDecorationSeason } from "./models/decorations.js";
 import { createNatureEffects } from "./models/nature-effects.js";
 
 export const roofChoices=Object.entries(ROOF_COLORS).map(([id,value])=>({id,...value}));
@@ -44,7 +44,7 @@ export function createFieldRuntime(host, options) {
   scene.add(world.root);
   const environment=createEnvironment(world.root), setSeason=createSeasonController(world.root), setNightLighting=createNightLighting(world);
   let nature=options.environment, data=null, placement=null, committed=null, pendingData=null;
-  let importing=false, editing=false, saving=false, disposed=false, light=nature.night, roof="mint",canopy="plain";
+  let importing=false, editing=false, saving=false, disposed=false, light=nature.night, roof="mint",canopy="plain",season=nature.season??"summer",boundaryItemId=null,pendingSeason=null;
   let placementKey="",fogWeather,housePlacement=null;
   const currentPlacement=()=>housePlacement??placement;
   const controls=new OrbitControls(camera,canvas);
@@ -59,7 +59,7 @@ export function createFieldRuntime(host, options) {
   const observer=new ResizeObserver(resize);observer.observe(host);resize();
   const ray=new T.Raycaster(),pointer=new T.Vector2(),plane=new T.Plane(new T.Vector3(0,1,0),-.25);
   const pose=o=>({x:o.position.x,z:o.position.z,rotation:o.rotation.y});
-  const capture=()=>({house:{x:world.house.position.x,z:world.house.position.z},roof,canopy,stall:pose(world.root.getObjectByName("market-stall")),decorations:world.decorations.map(o=>({instance_id:o.userData.instanceId,item_id:o.userData.itemId,...pose(o)}))});
+  const capture=()=>({house:{x:world.house.position.x,z:world.house.position.z},roof,canopy,boundary_item_id:boundaryItemId,stall:pose(world.root.getObjectByName("market-stall")),decorations:world.decorations.map(o=>({instance_id:o.userData.instanceId,item_id:o.userData.itemId,...pose(o)}))});
   const definition=id=>data?.catalog.find(d=>d.item_id===id);
   const inventory=id=>data?.inventory.find(d=>d.item_id===id);
   function remaining(id) {
@@ -70,7 +70,7 @@ export function createFieldRuntime(host, options) {
   }
   function emit(message="") {
     const current=currentPlacement(),object=current?.object,id=object?.userData.itemId;
-    options.onEditState({editing,valid:!saving&&(!current?.active||current.valid),houseMoving:!!housePlacement,title:housePlacement?"移动房屋":importing?"导入布局预览":object?.userData.label||"布置农场",layoutPreview:importing,canAdd:!saving&&!!id&&remaining(id),canRemove:!saving&&!!id,message});
+    options.onEditState({editing,valid:!saving&&(!current?.active||current.valid),houseMoving:!!housePlacement,boundaryItemId,title:housePlacement?"移动房屋":importing?"导入布局预览":object?.userData.label||"布置农场",layoutPreview:importing,canAdd:!saving&&!!id&&remaining(id),canRemove:!saving&&!!id,message});
   }
   function applyLayout(layout) {
     housePlacement?.cancel();housePlacement?.dispose();housePlacement=null;
@@ -86,6 +86,8 @@ export function createFieldRuntime(host, options) {
     if(roof!==layout.roof){roof=layout.roof;setRoofColor(world.house,roof);}
     const nextCanopy=layout.canopy??"plain";
     if(canopy!==nextCanopy){canopy=nextCanopy;setStudyCanopy(world.house,canopy==="floral");surfacesChanged=true;}
+    const nextBoundary=layout.boundary_item_id??null;
+    if(boundaryItemId!==nextBoundary){boundaryItemId=nextBoundary;world.setBoundaryStyle(boundaryItemId?.slice("farm_decor:".length)??null);}
     for(const item of layout.decorations) {
       const def=definition(item.item_id);
       if(!def)throw new Error("装饰目录尚未包含已保存的物品，请重新读取");
@@ -94,7 +96,7 @@ export function createFieldRuntime(host, options) {
       if(object&&(object.userData.itemId!==item.item_id||object.userData.decorationId!==def.model_id)){
         disposeDecoration(object);object=null;
       }
-      if(!object){object=createDecoration(def.model_id);world.root.add(object);surfacesChanged=true;}
+      if(!object){object=createDecoration(def.model_id,season);world.root.add(object);surfacesChanged=true;}
       object.userData.instanceId=item.instance_id;object.userData.itemId=item.item_id;
       if(object.position.x!==item.x||object.position.z!==item.z||object.rotation.y!==item.rotation)surfacesChanged=true;
       object.position.set(item.x,.25,item.z);object.rotation.y=item.rotation;
@@ -117,8 +119,11 @@ export function createFieldRuntime(host, options) {
     data=value;committed=structuredClone(value.layout);applyLayout(committed);
   }
   function finish() {
-    importing=false;editing=false;controls.enabled=true;emit();options.onFinishEditing();
+    importing=false;editing=false;controls.enabled=true;
+    const nextSeason=pendingSeason;pendingSeason=null;if(nextSeason)season=nextSeason;
+    emit();options.onFinishEditing();
     if(pendingData){const next=pendingData;pendingData=null;setDecorations(next);}
+    if(nextSeason)updateDecorationSeason(world.decorations,season);
   }
   function begin(object,adding=false) {
     if(saving)return;
@@ -137,7 +142,7 @@ export function createFieldRuntime(host, options) {
     const def=definition(id);
     if(!def||!remaining(id)){emit("背包里没有可用的这件装饰");return;}
     if(placement.active&&!placement.valid){emit("先摆好当前装饰，再追加下一件");return;}
-    const object=createDecoration(def.model_id);
+    const object=createDecoration(def.model_id,season);
     if(source)object.rotation.y=source.rotation.y;
     const free=placement.findFree(object,source?.position);
     if(!free){disposeDecoration(object);emit("没有合适的空位，请先调整或收起其他装饰");return;}
@@ -156,7 +161,7 @@ export function createFieldRuntime(host, options) {
           if(!placement.canPlace(pose,stall)){stall.rotation.y=rotation;return false;}
           stall.position.x=pose.x;stall.position.z=pose.z;return true;
         }
-        const def=definition(id),object=createDecoration(def.model_id);
+        const def=definition(id),object=createDecoration(def.model_id,season);
         object.position.set(pose.x,.25,pose.z);object.rotation.y=pose.rotation;
         if(!placement.canPlace(pose,object)){disposeDecoration(object);return false;}
         object.userData.itemId=id;world.root.add(object);world.decorations.push(object);return true;
@@ -180,6 +185,12 @@ export function createFieldRuntime(host, options) {
     if(key==="floral"&&!data.house?.canopy_unlocked)return;
     editing=true;controls.enabled=false;world.selector.visible=false;
     canopy=key;setStudyCanopy(world.house,key==="floral");emit();
+  }
+  function changeBoundary(id) {
+    const allowed=new Set(["farm_decor:white_fence","farm_decor:timber_fence","farm_decor:stone_wall","farm_decor:hedge","farm_decor:ghost_fence"]);
+    if(!data||saving||(id!==null&&(!allowed.has(id)||!inventory(id)?.unlocked)))return false;
+    editing=true;controls.enabled=false;world.selector.visible=false;boundaryItemId=id;
+    world.setBoundaryStyle(id?.slice("farm_decor:".length)??null);emit();return true;
   }
   async function save() {
     if(!editing||saving)return;
@@ -240,7 +251,8 @@ export function createFieldRuntime(host, options) {
     }
   }
   function setEnvironment(value){
-    nature=value;setSeason(value.season);
+    nature=value;const nextSeason=value.season??"summer";setSeason(nextSeason);
+    if(nextSeason!==season){if(editing)pendingSeason=nextSeason;else{season=nextSeason;updateDecorationSeason(world.decorations,season);}}
     natureEffects.setEvent(value.disaster,value.flood);
     environment.setWeather(["light_snow","blizzard"].includes(value.weather)?"snow":["light_rain","heavy_rain","thunderstorm"].includes(value.weather)?"rain":"clear");
     if(fogWeather!==value.weather){scene.fog=value.weather==="fog"?new T.FogExp2("#b8c9c8",.025):null;fogWeather=value.weather;}
@@ -272,7 +284,7 @@ export function createFieldRuntime(host, options) {
     frame=requestAnimationFrame(animate);
   }
   if(active)frame=requestAnimationFrame(animate);
-  return {previewLayout,setActive,setPlots,setEnvironment,setDecorations,selectPlot,startPlacement,startHouseMove,rotate,addOne,remove,cancel,save,changeRoof,changeCanopy,
+  return {previewLayout,setActive,setPlots,setEnvironment,setDecorations,selectPlot,startPlacement,startHouseMove,rotate,addOne,remove,cancel,save,changeRoof,changeCanopy,changeBoundary,
     zoom(factor){camera.zoom=T.MathUtils.clamp(camera.zoom*factor,MIN_ZOOM,MAX_ZOOM);camera.updateProjectionMatrix();},
     resetView(){controls.reset();},
     dispose(){disposed=true;if(frame!==null)cancelAnimationFrame(frame);frame=null;observer.disconnect();for(const [name,fn] of listeners)canvas.removeEventListener(name,fn);controls.dispose();environment.dispose();world.dispose();renderer.dispose();canvas.remove();}

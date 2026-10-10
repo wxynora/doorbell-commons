@@ -1,10 +1,30 @@
 import * as T from "three";
 import { beam, palette, Instances } from "./primitives.js";
+import { buildBorder } from "./farm-furniture/borders.js";
+import { batchStaticMeshes } from "./batch-static-meshes.js";
 
-export function createFence(parent, groundPoint, inset) {
+export function createFence(parent, groundPoint, inset, style = null) {
   const root = new T.Group();
   root.name = "farm-fence";
   parent.add(root);
+  if (style !== null) {
+    const sharedPalette = palette();
+    for (let i = 0; i < 56; i++) {
+      const a = (i / 56) * Math.PI * 2, b = ((i + 1) / 56) * Math.PI * 2;
+      if (Math.abs((a + b) / 2 - Math.PI / 2) < 0.15) continue;
+      const [ax, az] = groundPoint(a, -inset), [bx, bz] = groundPoint(b, -inset);
+      const segment = buildBorder(style, Math.hypot(bx - ax, bz - az), sharedPalette);
+      segment.position.set((ax + bx) / 2, 0.25, (az + bz) / 2);
+      segment.rotation.y = -Math.atan2(bz - az, bx - ax);
+      segment.updateMatrixWorld(true);
+      const meshes = [];
+      segment.traverse(object => { if (object.isMesh || object.isInstancedMesh) meshes.push(object); });
+      for (const object of meshes) root.attach(object);
+      segment.removeFromParent();
+    }
+    batchStaticMeshes(root);
+    return root;
+  }
   const mat = palette();
   const posts = new Instances(root, new T.BoxGeometry(0.075, 0.58, 0.075), mat("#eee9dc"));
   const slats = new Instances(root, new T.BoxGeometry(0.065, 0.4, 0.045), mat("#fffaf0"));

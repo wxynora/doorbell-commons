@@ -78,11 +78,11 @@ export function FieldScene({
   const [failure, setFailure] = useState<string | null>(null);
   const [roofPalette, setRoofPalette] = useState(false);
   const [roofChoice, setRoofChoice] = useState("mint");
-  const [houseMenu,setHouseMenu]=useState(false),[canopyEditor,setCanopyEditor]=useState(false);
+  const [houseMenu,setHouseMenu]=useState(false),[canopyEditor,setCanopyEditor]=useState(false),[boundaryEditor,setBoundaryEditor]=useState(false);
   const [canopyChoice,setCanopyChoice]=useState<"plain"|"floral">("plain");
   const [requestedHouseItem,setRequestedHouseItem]=useState<string|null>(null);
   const [houseLevel,setHouseLevel]=useState(decorationData?.house?.level??1);
-  const [edit, setEdit] = useState<SceneEditState>({editing:false,valid:false,title:"",canAdd:false,canRemove:false,message:""});
+  const [edit, setEdit] = useState<SceneEditState>({editing:false,valid:false,title:"",canAdd:false,canRemove:false,message:"",boundaryItemId:null});
   const [renderPlots, setRenderPlots] = useState(plots);
   const callbacks = useRef({onSelectPlot,onSaveLayout,onFinishEditing,onEditingChange,onOpenHouse,onClosePlot});
   callbacks.current={onSelectPlot,onSaveLayout,onFinishEditing,onEditingChange,onOpenHouse,onClosePlot};
@@ -125,12 +125,13 @@ export function FieldScene({
     } catch(error) {setFailure(error instanceof Error?error.message:"布局预览未完成，请重试。");}
   },[layoutPreviewRequest?.requestKey]);
   useEffect(()=>{if(!edit.editing)setRoofPalette(false);},[edit.editing]);
-  useEffect(()=>{if(edit.editing){setHouseMenu(false);}else setCanopyEditor(false);},[edit.editing]);
+  useEffect(()=>{if(edit.editing){setHouseMenu(false);}else{setCanopyEditor(false);setBoundaryEditor(false);}},[edit.editing]);
   const upgradeId=houseLevel===1?"farm_decor:house_level_two":"farm_decor:house_level_three";
   const upgrade=decorationData?.catalog.find(item=>item.item_id===upgradeId);
   const canopyProduct=decorationData?.catalog.find(item=>item.item_id==="farm_decor:floral_canopy");
   const requestHouse=(id:string)=>{setRequestedHouseItem(id);onRequestHousePurchase?.(id);};
   const purchaseBusy=housePurchaseFeedback?.stage==="submitting";
+  const boundaryChoices=(decorationData?.catalog??[]).filter(item=>["white_fence","timber_fence","stone_wall","hedge","ghost_fence"].includes(item.model_id)&&!!decorationData?.inventory.some(stock=>stock.item_id===item.item_id&&stock.unlocked));
   return (
     <section
       aria-labelledby="farm-field-title"
@@ -147,12 +148,15 @@ export function FieldScene({
         <button type="button" aria-label="关闭房屋编辑" onClick={()=>setHouseMenu(false)}>关闭</button>
         <div><button type="button" onClick={()=>{
         const key=decorationData.layout.roof;
-        setRoofChoice(key);setRoofPalette(true);setCanopyEditor(false);runtime.current?.changeRoof(key);
+        setRoofChoice(key);setRoofPalette(true);setCanopyEditor(false);setBoundaryEditor(false);runtime.current?.changeRoof(key);
       }}>屋顶换色</button>
         <button type="button" onClick={()=>runtime.current?.startHouseMove()}>移动房屋</button>
         {decorationData.house?.canopy_unlocked ? <button type="button" onClick={()=>{
-          const key=decorationData.layout.canopy??"plain";setCanopyChoice(key);setCanopyEditor(true);setRoofPalette(false);runtime.current?.changeCanopy(key);
+          const key=decorationData.layout.canopy??"plain";setCanopyChoice(key);setCanopyEditor(true);setRoofPalette(false);setBoundaryEditor(false);runtime.current?.changeCanopy(key);
         }}>更换雨棚</button> : null}</div>
+        <button type="button" onClick={()=>{
+          setBoundaryEditor(true);setRoofPalette(false);setCanopyEditor(false);runtime.current?.changeBoundary(decorationData.layout.boundary_item_id??null);
+        }}>更换整圈外圈</button>
         <p>升级由 TA 使用农场金币购买，购买后生效。</p>
         <div>{houseLevel<3&&upgrade ? <button type="button" disabled={!onRequestHousePurchase||purchaseBusy} onClick={()=>requestHouse(upgradeId)}>喊 TA 升到{houseLevel+1}级 · {upgrade.price_farm_coins.toLocaleString()}金币</button> : null}
         {!decorationData.house?.canopy_unlocked&&canopyProduct ? <button type="button" disabled={houseLevel<2||!onRequestHousePurchase||purchaseBusy} onClick={()=>requestHouse(canopyProduct.item_id)}>喊 TA 买花植雨棚 · {canopyProduct.price_farm_coins.toLocaleString()}金币{houseLevel<2?"（需二级）":""}</button> : null}</div>
@@ -163,20 +167,26 @@ export function FieldScene({
       {failure ? <p className="farm-scene__notice" role="alert">{failure}</p> : null}
       {!edit.editing && edit.message ? <p className="farm-scene__notice" role="status">{edit.message}</p> : null}
       {edit.editing ? <section className="farm-field-editor" aria-label="装饰摆放">
-        <strong>{roofPalette ? "屋顶配色" : canopyEditor?"雨棚款式":edit.title}</strong>
-        <p role="status">{edit.message || (edit.layoutPreview ? "确认布置后保存" : roofPalette ? "选好颜色后保存，取消可恢复原色" : canopyEditor?"选好款式后保存，取消可恢复原款":"拖动摆放 · 绿色位置可保存")}</p>
+        <strong>{roofPalette ? "屋顶配色" : canopyEditor?"雨棚款式":boundaryEditor?"整圈外圈":edit.title}</strong>
+        <p role="status">{edit.message || (edit.layoutPreview ? "确认布置后保存" : roofPalette ? "选好颜色后保存，取消可恢复原色" : canopyEditor?"选好款式后保存，取消可恢复原款":boundaryEditor?"整圈围栏会保留原桥口；保存后生效，取消可恢复。":"拖动摆放 · 绿色位置可保存")}</p>
         {edit.layoutPreview ? <>
           <p>这是预览；保存后替换当前装饰布置，取消可恢复。</p>
           {shareSkipped.length ? <ul className="farm-layout-share-skipped">{shareSkipped.map(item=><li key={item.name+item.reason}>{item.name} × {item.quantity}：{item.reason === "missing" ? "未拥有或数量不足" : "位置冲突"}</li>)}</ul> : <p>所需装饰齐全，均可摆放。</p>}
         </> : null}
         {canopyEditor ? <div>{([['plain','默认米白雨棚'],['floral','花植雨棚']] as const).map(([key,label])=><button key={key} type="button" disabled={!edit.valid} aria-pressed={canopyChoice===key} onClick={()=>{setCanopyChoice(key);runtime.current?.changeCanopy(key);}}>{label}</button>)}</div>:null}
+        {boundaryEditor&&decorationData ? <label>整圈外圈
+          <select aria-label="整圈外圈栅栏" value={edit.boundaryItemId??""} disabled={!edit.valid} onChange={event=>runtime.current?.changeBoundary(event.currentTarget.value||null)}>
+            <option value="">默认外圈</option>
+            {boundaryChoices.map(item=><option key={item.item_id} value={item.item_id}>{item.name}</option>)}
+          </select>
+        </label> : null}
         {roofPalette ? <div className="farm-roof-palette" aria-label="屋顶颜色">
           {roofChoices.map(choice=><button key={choice.id} type="button" disabled={!edit.valid} aria-pressed={roofChoice===choice.id} onClick={()=>{
             setRoofChoice(choice.id);runtime.current?.changeRoof(choice.id);
           }}><i aria-hidden="true" style={{backgroundColor:choice.color}}/>{choice.label}</button>)}
         </div> : null}
         <div>
-          {!roofPalette&&!canopyEditor&&!edit.layoutPreview&&!edit.houseMoving ? <>
+          {!roofPalette&&!canopyEditor&&!boundaryEditor&&!edit.layoutPreview&&!edit.houseMoving ? <>
             <button type="button" onClick={()=>runtime.current?.rotate()}>旋转</button>
             <button type="button" disabled={!edit.canAdd} onClick={()=>runtime.current?.addOne()}>+1</button>
             <button type="button" disabled={!edit.canRemove} onClick={()=>runtime.current?.remove()}>收起</button>
