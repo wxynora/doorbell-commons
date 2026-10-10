@@ -117,11 +117,12 @@ const nonHelpOperations: FarmOperationDefinition[] = [
   direct(
     "farm.decorate",
     "查看农场格子布局和仓库装饰，调整现有布置或摆放已有物品；支持整份装修与局部纠错。",
-    "空参数查看。changes可一次提交全部调整；preview:true只预览。item使用仓库物品代号；at指定格子，from/to包含起止格、默认填满矩形，shape: border只围外圈、中间不变。facing为N、NE、E、SE、S、SW、W、NW，上北下南；范围铺设只支持四个正方向，必须按实际占地完整铺设，不自动扩大或裁切。新摆物品默认朝南，移动保持原朝向。instance用于移动或转向现有物件，remove用于收回；fixture为house或stall时调整农舍或摊位，农舍不能转向。出现问题时保留整份草稿，后续带draft编号，用fixes按事项编号替换问题项，或用changes移动、收回问题实例；不必重发其他布置。没有问题且不是预览时保存整份布局；不自动购买。保存响应不明时先空参数核对最近保存的草稿和当前布局，不直接重发新装修。",
+    "空参数查看。changes可一次提交全部调整；preview:true只预览。item使用仓库物品代号；at指定格子，from/to包含起止格、默认填满矩形，shape: border只围外圈、中间不变。facing为N、NE、E、SE、S、SW、W、NW，上北下南；范围铺设只支持四个正方向，必须按实际占地完整铺设，不自动扩大或裁切。新摆物品默认朝南，移动保持原朝向。instance用于移动或转向现有物件，remove用于收回；fixture为house或stall时调整农舍或摊位，农舍不能转向。fixture:field调整整片田地；at是整片田地中心的格子锚点，不是左上角。columns或rows任选一个填写，另一边按已有地块数自动匹配；只改行列时省略at，保持中心不动。田地不拆分、不转向，原地块编号和作物进度不变。出现问题时保留整份草稿，后续带draft编号，用fixes按事项编号替换问题项，或用changes移动、收回问题实例；不必重发其他布置。没有问题且不是预览时保存整份布局；不自动购买。保存响应不明时先空参数核对最近保存的草稿和当前布局，不直接重发新装修。",
     "decorate",
     { changes: z.array(z.unknown()).optional(), draft: nonEmptyString.optional(), fixes: z.array(z.unknown()).optional(), preview: z.boolean().optional() },
     [{}, { changes: [{ item: "garden_bench", at: "F12", facing: "E" }] },
       { changes: [{ item: "moss_path", from: "F12", to: "J16", shape: "border" }], preview: true },
+      { changes: [{ fixture: "field", at: "M16", columns: 6 }], preview: true },
       { draft: "返回的草稿编号", fixes: [{ id: 2, change: { item: "moss_path", at: "G12" } }] }],
   ),
   direct("farm.status", "查看并刷新当前农场状态、可做事项和实时公告。", "{}", "status"),
