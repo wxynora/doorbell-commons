@@ -1,3 +1,4 @@
+import { handleFarmDecorationAction } from './server/farm-decoration-agent-action.js';
 import { captureCommittedPlayerPatrolThefts } from "./security/player-patrol-runtime.js";
 import { aiRanchHarvestStatus } from "./domain/ranch/ai-harvest.js";
 import { appendCareerStatusNotices } from "./career/exam-status.js";
@@ -73,6 +74,7 @@ function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
     const detention = activeDetentionForFarm(farm, now);
     if (detention && !detentionAllowsFarmAction(action))
         return { status: 400, json: { ok: false, code: "RESIDENT_DETAINED", text: detentionBlockedFarmActionText(detention) } };
+    if (action === 'decorate') return handleFarmDecorationAction(farm, params);
     if (isNpcMotionChoice(action, params)) return npcMotionChoiceReceipt(farm, params.option, now, {save, view: farmView, detail});
     if (action === 'together' && isMidAutumnOption(params.option)) {
         return runMidAutumnTogether(activeLingyeWorldDatabase, farm.id, params.option, now, null, (database, options) => createMidAutumnRuntime(database, {...options, backend: activeLingyeWorldBackend}));

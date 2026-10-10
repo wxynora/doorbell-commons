@@ -15,7 +15,7 @@ export function overlapsHouseExtension(pose, cells, position) {
 export function housePurchaseError(state, itemId, plots = []) {
   if ((itemId === THREE || itemId === CANOPY) && houseState(state.owned).level < 2) return "请先升级二级房屋。";
   if (itemId !== TWO && itemId !== THREE) return null;
-  if (!canPlaceHouse(state.layout.house, 2, createPlacementTerrain(plots, null))) return "升级区域超出院子或碰到田地，请先移动房屋。";
+  if (!canPlaceHouse(state.layout.house, 2, createPlacementTerrain(plots, null, state.layout.field))) return "升级区域超出院子或碰到田地，请先移动房屋。";
   if (overlapsHouseExtension(state.layout.stall, [2, 2], state.layout.house) || state.layout.decorations.some(instance => {
     const item = decorationById.get(instance.item_id);
     return item && !isGroundDecoration(item) && overlapsHouseExtension(instance, item.cells, state.layout.house);

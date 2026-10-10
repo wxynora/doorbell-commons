@@ -39,7 +39,7 @@ export function decorationResource(farm) {
       const placed_quantity = state.layout.decorations.filter(instance => instance.item_id === item.item_id).length;
       return { item_id: item.item_id, owned_quantity, placed_quantity, available_quantity: item.purchase_mode === "unlock" ? null : owned_quantity - placed_quantity, unlocked: owned_quantity > 0 };
     }),
-    layout: state.layout, coins: farm.coins, grid: decorationGrid(farm, state.layout.house),
+    layout: state.layout, coins: farm.coins, grid: decorationGrid(farm, state.layout.house, state.layout.field),
   };
 }
 
