@@ -7,6 +7,7 @@ export interface SceneRuntime {
   setPlots(plots: readonly FarmPlot[]): void;
   changeRoof(key: string): void;
   changeCanopy(key: "plain" | "floral"): void;
+  changeBoundary(id: string | null): boolean;
   setEnvironment(value: SceneEnvironment): void;
   setDecorations(value: SceneDecorationData): void;
   selectPlot(id: number | null): void;
