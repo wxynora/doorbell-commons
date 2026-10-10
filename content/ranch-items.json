@@ -87,6 +87,26 @@
   ],
   "skins": [
     {
+      "id": "halloween_ghost_sheep", "name": "幽灵棉花糖羊", "targetType": "animal", "targetKindId": "sheep",
+      "price": 100000, "startsAt": "2026-10-09T16:00:00.000Z", "endsAt": "2026-10-31T16:00:00.000Z",
+      "asset": "ranch/limited-skins/halloween-ghost-sheep.png", "bonus": { "produceValueMultiplier": 1.3 }
+    },
+    {
+      "id": "halloween_count_goose", "name": "小伯爵巡逻鹅", "targetType": "goose", "targetKindId": "patrol_goose",
+      "price": 100000, "startsAt": "2026-10-09T16:00:00.000Z", "endsAt": "2026-10-31T16:00:00.000Z",
+      "asset": "ranch/limited-skins/halloween-count-goose.png", "bonus": { "catchChanceAdd": 0.05 }
+    },
+    {
+      "id": "halloween_witch_peppa", "name": "巫师佩奇", "targetType": "animal", "targetKindId": "pig",
+      "price": 100000, "startsAt": "2026-10-09T16:00:00.000Z", "endsAt": "2026-10-31T16:00:00.000Z",
+      "asset": "ranch/limited-skins/halloween-witch-peppa.png", "bonus": { "produceValueMultiplier": 1.3 }
+    },
+    {
+      "id": "halloween_witch_kiiroitori", "name": "巫师小黄鸡", "targetType": "animal", "targetKindId": "chicken",
+      "price": 100000, "startsAt": "2026-10-09T16:00:00.000Z", "endsAt": "2026-10-31T16:00:00.000Z",
+      "asset": "ranch/limited-skins/halloween-witch-kiiroitori.png", "bonus": { "produceValueMultiplier": 1.3 }
+    },
+    {
       "id": "pompompurin",
       "name": "布丁狗",
       "targetType": "pet",

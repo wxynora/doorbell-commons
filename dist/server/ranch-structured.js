@@ -803,7 +803,7 @@ function projectSkinItem(skin, owned) {
     && safeId(skin.id) !== null
     && safeText(skin.name) !== null
     && safeId(skin.targetKindId) !== null
-    && ["animal", "pet"].includes(skin.targetType)
+    && ["animal", "pet", "goose"].includes(skin.targetType)
     && safeMoney(skin.price) !== null;
   return {
     status: known ? "known" : "unavailable",

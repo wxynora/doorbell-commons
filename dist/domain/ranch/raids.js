@@ -12,6 +12,7 @@ import { pushSocialInbox } from "../shared/notifications.js";
 import { pushRanchNotice } from "./notices.js";
 import { ensureRanch } from "./state.js";
 import { ranchAnimalCurrentProduceValue } from "./value.js";
+import { patrolGooseSkinCatchBonus } from "./skins.js";
 import { maybeApplyRanchRaidInjury, ranchHealthActionBlocked } from "../../career/p3-world.js";
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -151,7 +152,7 @@ function patrolGooseCatchesRaid(target, now) {
     if (catches.n >= RANCH_PATROL_GOOSE_DAILY_CAP)
         return false;
     const rng = new Rng(target.rngState ?? 1);
-    const caught = rng.next() < RANCH_PATROL_GOOSE_CATCH_CHANCE;
+    const caught = rng.next() < RANCH_PATROL_GOOSE_CATCH_CHANCE + patrolGooseSkinCatchBonus(target);
     target.rngState = rng.state;
     if (caught)
         catches.n += 1;

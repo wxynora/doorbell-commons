@@ -27,6 +27,12 @@ export function resolveRanchSkin(value) {
     return ranchSkinById.get(key) ?? ranchSkinByName.get(key);
 }
 
+export function patrolGooseSkinCatchBonus(farm) {
+    const skin = ranchSkinById.get(farm?.ranch?.patrolGoose?.variantId);
+    return skin?.targetType === "goose" && skin.targetKindId === "patrol_goose"
+        && farm.ranch.skins?.includes(skin.id) ? Number(skin.bonus?.catchChanceAdd) || 0 : 0;
+}
+
 export function buyRanchSkinItem(farm, value, now = Date.now()) {
     const skin = resolveRanchSkin(value);
     if (!skin)

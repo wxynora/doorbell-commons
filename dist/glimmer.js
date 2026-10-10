@@ -81,7 +81,8 @@ export function normalizeGlimmerFarm(farm) {
         goose.glimmerVariants = Array.isArray(goose.glimmerVariants)
             ? [...new Set(goose.glimmerVariants.filter((id) => unlocked.has(id)))]
             : glimmerVariants.filter((v) => v.type === "goose" && unlocked.has(v.id)).map((v) => v.id);
-        if (goose.variantId && !goose.glimmerVariants.includes(goose.variantId))
+        const skinIds = ranchSkinVariantsFor(farm, "goose", "patrol_goose").map((skin) => skin.id);
+        if (goose.variantId && !goose.glimmerVariants.includes(goose.variantId) && !skinIds.includes(goose.variantId))
             delete goose.variantId;
     }
     return state;
