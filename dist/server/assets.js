@@ -2,6 +2,10 @@ import { existsSync, readFileSync } from "node:fs";
 
 export function createAssetHandler(assetRoot) {
     const publicAssets = new Map([
+        ...["ghost-sheep", "count-goose", "witch-peppa", "witch-kiiroitori"].map(name => {
+            const path = `ranch/limited-skins/halloween-${name}.png`;
+            return [path, new URL(path, assetRoot)];
+        }),
         ["animal-codex-atlas.png", new URL("animal-codex-atlas.png", assetRoot)],
         ["alpaca-codex.png", new URL("alpaca-codex.png", assetRoot)],
         ["ranch-scene-background.png", new URL("ranch-scene-background.png", assetRoot)],
