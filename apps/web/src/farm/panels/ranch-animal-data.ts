@@ -30,8 +30,8 @@ export interface RanchAnimalLayout {
 export interface RanchSkinDefinition {
   id: string;
   name: string;
-  targetType: "animal" | "pet";
-  targetKindId: "dog" | "cat" | "rabbit" | "cloud_sheep";
+  targetType: "animal" | "pet" | "goose";
+  targetKindId: "dog" | "cat" | "rabbit" | "cloud_sheep" | "sheep" | "pig" | "chicken" | "patrol_goose";
   bonusText: string;
 }
 
@@ -62,6 +62,10 @@ export interface RanchResidentSpriteVisual {
 }
 
 export const RANCH_LIMITED_SKINS: readonly RanchSkinDefinition[] = [
+  { id: "halloween_ghost_sheep", name: "幽灵棉花糖羊", targetType: "animal", targetKindId: "sheep", bonusText: "绵羊当前单位产值 +30%" },
+  { id: "halloween_count_goose", name: "小伯爵巡逻鹅", targetType: "goose", targetKindId: "patrol_goose", bonusText: "巡逻鹅防守成功率 25% → 30%" },
+  { id: "halloween_witch_peppa", name: "巫师佩奇", targetType: "animal", targetKindId: "pig", bonusText: "猪当前单位产值 +30%" },
+  { id: "halloween_witch_kiiroitori", name: "巫师小黄鸡", targetType: "animal", targetKindId: "chicken", bonusText: "鸡当前单位产值 +30%" },
   {
     id: "pompompurin",
     name: "布丁狗",

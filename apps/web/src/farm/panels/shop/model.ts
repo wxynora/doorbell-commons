@@ -405,7 +405,8 @@ export function getLiveRanchShopItems(
       return [];
     }
     const skin = RANCH_LIMITED_SKINS.find((candidate) => candidate.id === item.skin_id);
-    const animal = RANCH_SHOP_ANIMALS.find((candidate) => candidate.id === item.target_kind_id);
+    const animal = RANCH_SHOP_ANIMALS.find((candidate) =>
+      candidate.id === (item.target_kind_id === "patrol_goose" ? "goose" : item.target_kind_id));
     return skin && animal
       ? [
           {

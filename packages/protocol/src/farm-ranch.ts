@@ -241,7 +241,7 @@ export const farmRanchShopSkinSchema = z
     status: ranchItemStatusSchema,
     skin_id: ranchIdSchema.nullable(),
     name: ranchTextSchema.nullable(),
-    target_type: z.enum(["animal", "pet"]).nullable(),
+    target_type: z.enum(["animal", "pet", "goose"]).nullable(),
     target_kind_id: ranchIdSchema.nullable(),
     price: nullableCountSchema,
     owned: z.boolean().nullable(),

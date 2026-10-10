@@ -98,6 +98,10 @@ function standaloneRanchSkin(
 }
 
 export const FARM_ASSET_MANIFEST = {
+  "ranch.skin.halloween_ghost_sheep": standaloneRanchSkin("halloween_ghost_sheep", "/farm/animals/limited-skins/halloween-ghost-sheep.png"),
+  "ranch.skin.halloween_count_goose": standaloneRanchSkin("halloween_count_goose", "/farm/animals/limited-skins/halloween-count-goose.png"),
+  "ranch.skin.halloween_witch_peppa": standaloneRanchSkin("halloween_witch_peppa", "/farm/animals/limited-skins/halloween-witch-peppa.png"),
+  "ranch.skin.halloween_witch_kiiroitori": standaloneRanchSkin("halloween_witch_kiiroitori", "/farm/animals/limited-skins/halloween-witch-kiiroitori.png"),
   "ranch.animal.crab": standaloneAnimal("crab", "/lingye/ranch-expansion/crab.png"),
   "ranch.animal.frost_antler_deer": standaloneAnimal("frost_antler_deer", "/lingye/ranch-expansion/frost_antler_deer.png"),
   "ranch.animal.amber_dragon": standaloneAnimal("amber_dragon", "/lingye/ranch-expansion/amber_dragon.png"),
@@ -884,6 +888,10 @@ export const RANCH_SKIN_ASSET_KEYS = {
   amber_dragon_cherry: "ranch.skin.amber_dragon_cherry",
   amber_dragon_blue: "ranch.skin.amber_dragon_blue",
 
+  halloween_ghost_sheep: "ranch.skin.halloween_ghost_sheep",
+  halloween_count_goose: "ranch.skin.halloween_count_goose",
+  halloween_witch_peppa: "ranch.skin.halloween_witch_peppa",
+  halloween_witch_kiiroitori: "ranch.skin.halloween_witch_kiiroitori",
   pompompurin: "ranch.skin.pompompurin",
   hachiware: "ranch.skin.hachiware",
   usagi: "ranch.skin.usagi",

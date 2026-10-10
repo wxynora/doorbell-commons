@@ -5,6 +5,10 @@
  * directory scans from becoming an implicit asset lookup protocol.
  */
 export const FARM_ASSET_SOURCE_URLS = {
+  "/farm/animals/limited-skins/halloween-ghost-sheep.png": new URL("./assets/animals/limited-skins/halloween-ghost-sheep.png", import.meta.url).href,
+  "/farm/animals/limited-skins/halloween-count-goose.png": new URL("./assets/animals/limited-skins/halloween-count-goose.png", import.meta.url).href,
+  "/farm/animals/limited-skins/halloween-witch-peppa.png": new URL("./assets/animals/limited-skins/halloween-witch-peppa.png", import.meta.url).href,
+  "/farm/animals/limited-skins/halloween-witch-kiiroitori.png": new URL("./assets/animals/limited-skins/halloween-witch-kiiroitori.png", import.meta.url).href,
   "/lingye/ranch-expansion/amber_dragon_blue.png": new URL("../../public/lingye/ranch-expansion/amber_dragon_blue.png", import.meta.url).href,
   "/lingye/ranch-expansion/crab_sakura.png": new URL("../../public/lingye/ranch-expansion/crab_sakura.png", import.meta.url).href,
   "/lingye/ranch-expansion/crab_celadon.png": new URL("../../public/lingye/ranch-expansion/crab_celadon.png", import.meta.url).href,
