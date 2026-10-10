@@ -30,7 +30,7 @@ const farmFurnitureImages: Readonly<Record<string, string>> = Object.fromEntries
   "log_steps", "moss_path", "checker_tiles", "garden_bench", "stone_fountain", "bird_bath", "flower_stand", "pumpkin_path",
   "black_roses", "red_roses", "web_tiles", "witch_cauldron", "cat_pumpkin", "ghost_lamp", "pumpkin_lamppost", "ghost_rocker",
   "bat_arch", "candy_cart", "haunted_lantern", "cherry_tree", "maple_tree", "ginkgo_tree", "birch_tree", "pine_tree", "osmanthus_tree",
-].map(id => [`farm_decor:${id}`, `/farm/furniture/${id}.webp`]));
+].map(id => [`farm_decor:${id}`, `/lounge/assets/farm-furniture/${id}.webp`]));
 
 export const furnitureProductImages: Readonly<Record<string, string>> = {
   ...farmFurnitureImages,
