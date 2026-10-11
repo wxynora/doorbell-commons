@@ -54,9 +54,11 @@ export function buildFurniture(id, season = "summer") {
   }
   if (id === "haunted_lantern") {
     cyl([0, .065, 0], .32, .13, "#948399"); const house = new T.Group(); house.rotation.z = -.09; g.add(house); const k = kit(house);
+    const windowGlow = k.mat("#f2d291").clone(), doorGlow = k.mat("#e8bc78").clone();
+    for (const glow of [windowGlow, doorGlow]) { glow.emissive.set("#ffc46b"); glow.emissiveIntensity = 0; glow.userData.decorationGlow = true; }
     k.block([0, .48, 0], [.47, .73, .37], "#87748e"); for (const x of [-.13, .13]) { const r = k.block([x, .92, 0], [.40, .07, .51], "#685d78"); r.rotation.z = x < 0 ? .72 : -.72; }
-    for (const x of [-.12, .12]) { k.block([x, .58, .19], [.11, .18, .013], "#f2d291"); k.block([x, .58, .20], [.014, .18, .012], "#7c6984"); }
-    k.block([0, .23, .194], [.13, .22, .018], "#e8bc78"); k.block([.16, 1.05, -.06], [.09, .30, .09], "#87748e"); pumpkin(g, [-.26, 0, .18], .12);
+    for (const x of [-.12, .12]) { k.block([x, .58, .19], [.11, .18, .013], "#f2d291").material = windowGlow; k.block([x, .58, .20], [.014, .18, .012], "#7c6984"); }
+    k.block([0, .23, .194], [.13, .22, .018], "#e8bc78").material = doorGlow; k.block([.16, 1.05, -.06], [.09, .30, .09], "#87748e"); pumpkin(g, [-.26, 0, .18], .12);
   }
   return g;
 }
