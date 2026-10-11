@@ -71,7 +71,8 @@ export function validateDecorationLayout(farm, layout, owned) {
   if (!place(layout.stall, [2, 2])) return "invalid_stall_position";
   if (house.level >= 2 && overlapsHouseExtension(layout.stall, [2, 2], housePosition)) return "invalid_stall_position";
   for (const item of layout.decorations) {
-    if (!exactKeys(item, ["instance_id", "item_id", "x", "z", "rotation"]) || typeof item.instance_id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(item.instance_id) || ids.has(item.instance_id)) return "invalid_instance";
+    if (!exactKeys(item, ["instance_id", "item_id", "x", "z", "rotation", ...(Object.hasOwn(item??{},"mirrored") ? ["mirrored"] : [])]) || typeof item.instance_id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(item.instance_id) || ids.has(item.instance_id)) return "invalid_instance";
+    if (Object.hasOwn(item,"mirrored") && (typeof item.mirrored !== "boolean" || !["farm_decor:cat_pumpkin","farm_decor:pumpkin_lamppost"].includes(item.item_id))) return "invalid_instance";
     ids.add(item.instance_id);
     const definition = decorationById.get(item.item_id);
     if (!definition || !(owned[item.item_id] > 0)) return "decoration_not_owned";
