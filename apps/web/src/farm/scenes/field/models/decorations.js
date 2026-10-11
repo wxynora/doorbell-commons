@@ -336,7 +336,7 @@ export function createDecoration(id, season = "summer") {
   }
   if (["parasol_lounger", "garden_pond", "garden_string_lights", "garden_lamppost"].includes(id))
     buildGardenFurniture(root, id, mat);
-  if (definition.groundCover) buildPaving(root, id, mat);
+  if (definition.groundCover && id !== "red_roses" && id !== "black_roses") buildPaving(root, id, mat);
   if (Object.hasOwn(GARDEN_TRIO,id)) buildGardenTrio(root,id,mat);
   if (Object.hasOwn(FLOWERBEDS, id)) buildFlowerbed(root, id, mat);
   batchStaticMeshes(root);
