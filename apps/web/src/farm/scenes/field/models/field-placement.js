@@ -1,7 +1,7 @@
 import * as T from "three";
 import { boundsRectangle, rectangle } from "./placement-geometry.js";
 import { createPlacementTerrain } from "./placement-terrain.js";
-import { houseExtensionRect } from "./house-geometry.js";
+import { houseExtensionRects } from "./house-geometry.js";
 import { defaultFieldLayout, fieldRects, snapFieldPosition, validFieldLayout, canPlaceField } from "./field-layout.js";
 import { disposeDecoration } from "./decorations.js";
 
@@ -13,7 +13,7 @@ export function createFieldPlacement(world, level, onChange) {
   const terrain = createPlacementTerrain([], world.house.position);
   const fixtures = [world.root.getObjectByName("market-stall"), ...world.decorations].map(object =>
     rectangle({x:object.position.x,z:object.position.z,rotation:object.rotation.y},object.userData.cells??[2,2]));
-  if(level>=2)fixtures.push(boundsRectangle(houseExtensionRect(world.house.position)));
+  fixtures.push(...houseExtensionRects(world.house.position,level).map(boundsRectangle));
   const grid = new T.Group();grid.name = "field-placement-grid";grid.visible = false;world.root.add(grid);
   const geometry = new T.PlaneGeometry(.87,.912);
   const material = new T.MeshBasicMaterial({color:"#b5e78c",transparent:true,opacity:.5,depthWrite:false});

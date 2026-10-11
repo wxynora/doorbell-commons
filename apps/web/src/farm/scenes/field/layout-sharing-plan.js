@@ -7,6 +7,7 @@ export function planSharedLayout(source, data, tryPlace, makeId = () => crypto.r
     else skipped.push({ name, quantity: 1, reason });
   };
   const layout = { roof: source.roof, canopy: source.canopy, stall: { ...data.layout.stall }, decorations: [] };
+  if(data.layout.house)layout.house={...data.layout.house};
   // Importing decorations must not replace this farm's field arrangement.
   if(data.layout.field)layout.field={...data.layout.field};
   // Native trees belong to this yard, not another player's shared furniture layout.

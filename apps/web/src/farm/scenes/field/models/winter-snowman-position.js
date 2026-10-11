@@ -1,6 +1,6 @@
 // Mirrored verbatim by the scene. Seasonal scenery, never a layout field/blocker.
 import {CELL_SIZE,boundsRectangle,rectangle,intersects} from './placement-geometry.js';
-import {DEFAULT_HOUSE_POSITION,houseBaseRects,houseExtensionRect} from './house-geometry.js';
+import {DEFAULT_HOUSE_POSITION,houseBaseRects,houseExtensionRects} from './house-geometry.js';
 import {createPlacementTerrain} from './placement-terrain.js';
 
 export function winterSnowmanPosition(plots,layout,houseLevel,catalog){
@@ -17,7 +17,7 @@ export function winterSnowmanPosition(plots,layout,houseLevel,catalog){
   const size=hash%2===0?.72:1.06;
   // Conservative horizontal bounds include arms and carrot, for either size.
   const bounds=[-.74*size,-.46*size,.74*size,.46*size];
-  const houseRects=[...houseBaseRects(house),...(houseLevel>=2?[houseExtensionRect(house)]:[])];
+  const houseRects=[...houseBaseRects(house),...houseExtensionRects(house,houseLevel)];
   const left=Math.min(...houseRects.map(r=>r[0])),right=Math.max(...houseRects.map(r=>r[2]));
   const front=Math.max(...houseRects.map(r=>r[3]));
   const terrain=createPlacementTerrain(plots,house,layout.field);

@@ -14,6 +14,7 @@ export interface SceneRuntime {
   selectPlot(id: number | null): void;
   startPlacement(id: string): void;
   startHouseMove(): void;
+  changeHouseStyle(style: string): void;
   startNativeTreeMove(index: 0 | 1): void;
   startFieldMove(): void;
   changeFieldColumns(columns: number): boolean;
@@ -33,7 +34,9 @@ export const SNOWMAN_MESSAGE: string;
 export function createFieldRuntime(host: HTMLElement, options: {
   active?: boolean;
   plots: readonly FarmPlot[];
-  houseLevel?: 1 | 2 | 3;
+  houseLevel?: 1 | 2 | 3 | 4;
+  houseStyle?: "classic"|"pumpkin"|"stump"|"mushroom";
+  classicHouseLevel?: 1|2|3;
   onSelectHouse?(): void;
   environment: SceneEnvironment;
   onSelectPlot(id: number): void;

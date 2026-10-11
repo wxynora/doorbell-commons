@@ -10,9 +10,12 @@ import { createHousePlacement } from "./models/house-placement.js";
 import { createFieldPlacement } from "./models/field-placement.js";
 import { fieldPlots } from "./models/field-layout.js";
 import { createModelOutline } from "./models/model-outline.js";
-import { DEFAULT_HOUSE_POSITION, houseExtensionRect } from "./models/house-geometry.js";
+import { DEFAULT_HOUSE_POSITION, houseExtensionRects } from "./models/house-geometry.js";
 import { setRoofColor, ROOF_COLORS } from "./models/cottage.js";
-import { setStudyCanopy } from "./models/local-house-upgrades.js";
+import { createHouseStudy } from "./models/local-house-upgrades.js";
+import { palette } from "./models/primitives.js";
+import { createFairytaleHouse } from "./models/fairytale-house.mjs";
+import { setStudyCanopy as setClassicCanopy } from "./models/local-house-upgrades.js";
 import { createDecoration, disposeDecoration, updateDecorationLights, updateDecorationMotion, updateDecorationSeason } from "./models/decorations.js";
 import { createNatureEffects } from "./models/nature-effects.js";
 import { createWinterSnowman, SNOWMAN_MESSAGE } from "./models/winter-snowman.js";
@@ -20,6 +23,7 @@ import { NATIVE_TREE_POSITIONS } from "./models/native-trees.js";
 
 export const roofChoices=Object.entries(ROOF_COLORS).map(([id,value])=>({id,...value}));
 export { SNOWMAN_MESSAGE };
+const setStudyCanopy=(house,floral)=>{if(!house.userData.houseKind)setClassicCanopy(house,floral);};
 
 export function createFieldRuntime(host, options) {
   const renderer = new T.WebGLRenderer({ antialias: true, alpha: true });
@@ -46,7 +50,7 @@ export function createFieldRuntime(host, options) {
   let fieldLayout=null,fieldPlacement=null,selectedPlotId=null;
   const definePlots=plots=>fieldPlots(plots.map(p=>({...p,id:p.plot_id})),fieldLayout??undefined);
   const definitions = definePlots(options.plots);
-  const world=createWorld(definitions,options.houseLevel??1);
+  const world=createWorld(definitions,options.classicHouseLevel??options.houseLevel??1,options.houseStyle??"classic");
   let modelOutline=null;
   function setModelOutline(enabled){
     if(enabled&&!modelOutline)modelOutline=createModelOutline(renderer,world);
@@ -56,7 +60,9 @@ export function createFieldRuntime(host, options) {
   const winterSnowman=createWinterSnowman(world,options.houseLevel??1);
   let natureEffects=createNatureEffects(world.root,definitions,groundPoint);
   scene.add(world.root);
-  const environment=createEnvironment(world.root), setSeason=createSeasonController(world.root), setNightLighting=createNightLighting(world);
+  const environment=createEnvironment(world.root), setNightLighting=createNightLighting(world);
+  const setSeason=createSeasonController(world.root);
+  let setHouseSeason=()=>{};
   let nature=options.environment, data=null, placement=null, committed=null, pendingData=null;
   let importing=false, editing=false, saving=false, disposed=false, light=nature.night, roof="mint",canopy="plain",season=nature.season??"summer",boundaryItemId=null,pendingSeason=null;
   let placementKey="",fogWeather,housePlacement=null;
@@ -73,7 +79,7 @@ export function createFieldRuntime(host, options) {
   const observer=new ResizeObserver(resize);observer.observe(host);resize();
   const ray=new T.Raycaster(),pointer=new T.Vector2(),plane=new T.Plane(new T.Vector3(0,1,0),-.25);
   const pose=o=>({x:o.position.x,z:o.position.z,rotation:o.rotation.y});
-  const capture=()=>({...fieldLayout?{field:{...fieldLayout}}:{},...(committed?.trees||world.nativeTrees.some((o,i)=>o.position.x!==NATIVE_TREE_POSITIONS[i].x||o.position.z!==NATIVE_TREE_POSITIONS[i].z)?{trees:world.nativeTrees.map(o=>({x:o.position.x,z:o.position.z}))}:{}),house:{x:world.house.position.x,z:world.house.position.z},roof,canopy,boundary_item_id:boundaryItemId,stall:pose(world.root.getObjectByName("market-stall")),decorations:world.decorations.map(o=>({instance_id:o.userData.instanceId,item_id:o.userData.itemId,...pose(o),...decorationMirrorPose(o)}))});
+  const capture=()=>({...fieldLayout?{field:{...fieldLayout}}:{},...(committed?.trees||world.nativeTrees.some((o,i)=>o.position.x!==NATIVE_TREE_POSITIONS[i].x||o.position.z!==NATIVE_TREE_POSITIONS[i].z)?{trees:world.nativeTrees.map(o=>({x:o.position.x,z:o.position.z}))}:{}),house:{x:world.house.position.x,z:world.house.position.z,...world.house.position.style&&world.house.position.style!=="classic"||committed?.house?.style?{style:world.house.position.style??"classic"}:{}},roof,canopy,boundary_item_id:boundaryItemId,stall:pose(world.root.getObjectByName("market-stall")),decorations:world.decorations.map(o=>({instance_id:o.userData.instanceId,item_id:o.userData.itemId,...pose(o),...decorationMirrorPose(o)}))});
   const definition=id=>data?.catalog.find(d=>d.item_id===id);
   const inventory=id=>data?.inventory.find(d=>d.item_id===id);
   function remaining(id) {
@@ -113,6 +119,15 @@ export function createFieldRuntime(host, options) {
     const next=[];
     const stall=world.root.getObjectByName("market-stall");
     const housePosition=layout.house??DEFAULT_HOUSE_POSITION;
+    const style=housePosition.style??'classic';
+    if((world.house.position.style??'classic')!==style){
+      const previous=world.house;
+      world.house=style==='classic'?createHouseStudy(world.root,palette(),data.house?.classic_level??Math.min(data.house?.level??1,3)):createFairytaleHouse(world.root,style);
+      world.house.position.set(previous.position.x,previous.position.y,previous.position.z);world.house.position.style=style;
+      world.house.traverse(o=>{o.userData.house=true;});world.glow=world.house.getObjectByName('cottage-exterior-light');
+      disposeDecoration(previous);setHouseSeason=createSeasonController(world.house);setHouseSeason(season);setNightLighting(light);
+      setRoofColor(world.house,roof);setStudyCanopy(world.house,canopy==='floral');
+    }
     setFieldLayout(layout.field);
     let surfacesChanged=world.house.position.x!==housePosition.x||world.house.position.z!==housePosition.z;
     world.house.position.x=housePosition.x;world.house.position.z=housePosition.z;
@@ -141,7 +156,7 @@ export function createFieldRuntime(host, options) {
     for(const object of existing.values()){disposeDecoration(object);surfacesChanged=true;}
     // Placement retains this array, so update its contents rather than replace it.
     world.decorations.splice(0,world.decorations.length,...next);
-    world.houseBlockedRects=(data.house?.level??1)>=2?[houseExtensionRect(housePosition)]:[];
+    world.houseBlockedRects=houseExtensionRects(housePosition,data.house?.classic_level??data.house?.level??1);
     const nextPlacementKey=JSON.stringify([data.grid,housePosition,world.houseBlockedRects,fieldLayout]);
     if(!placement||placementKey!==nextPlacementKey){
       const oldGrid=world.root.getObjectByName("placement-grid");
@@ -233,6 +248,13 @@ export function createFieldRuntime(host, options) {
     } catch(error) {applyLayout(committed);throw error;}
   }
   function cancel() {if(!editing||saving)return;applyLayout(committed);finish();}
+  function changeHouseStyle(style){
+    if(!data||saving||!data.house?.unlocked_styles?.includes(style))return;
+    const layout=capture();layout.house.style=style;
+    editing=true;controls.enabled=false;world.selector.visible=false;applyLayout(layout);
+    housePlacement=createHousePlacement(world,data.house?.classic_level??data.house?.level??1);
+    housePlacement.begin();emit();
+  }
   function changeRoof(key) {
     if(!data||saving||!ROOF_COLORS[key])return;
     editing=true;controls.enabled=false;world.selector.visible=false;
@@ -315,7 +337,7 @@ export function createFieldRuntime(host, options) {
     modelOutline?.refresh();
   }
   function setEnvironment(value){
-    nature=value;const nextSeason=value.season??"summer";setSeason(nextSeason);
+    nature=value;const nextSeason=value.season??"summer";setSeason(nextSeason);setHouseSeason(nextSeason);
     if(nextSeason!==season){if(editing)pendingSeason=nextSeason;else{season=nextSeason;updateDecorationSeason(world.decorations,season);}}
     natureEffects.setEvent(value.disaster,value.flood);
     environment.setWeather(["light_snow","blizzard"].includes(value.weather)?"snow":["light_rain","heavy_rain","thunderstorm"].includes(value.weather)?"rain":"clear");
@@ -351,7 +373,7 @@ export function createFieldRuntime(host, options) {
     frame=requestAnimationFrame(animate);
   }
   if(active)frame=requestAnimationFrame(animate);
-  return {previewLayout,setActive,setModelOutline,setPlots,setEnvironment,setDecorations,selectPlot,startPlacement,startNativeTreeMove,startHouseMove,startFieldMove,changeFieldColumns,changeFieldRows,rotate,flip,addOne,remove,cancel,save,changeRoof,changeCanopy,changeBoundary,
+  return {previewLayout,setActive,setModelOutline,setPlots,setEnvironment,setDecorations,selectPlot,startPlacement,startNativeTreeMove,startHouseMove,changeHouseStyle,startFieldMove,changeFieldColumns,changeFieldRows,rotate,flip,addOne,remove,cancel,save,changeRoof,changeCanopy,changeBoundary,
     zoom(factor){camera.zoom=T.MathUtils.clamp(camera.zoom*factor,MIN_ZOOM,MAX_ZOOM);camera.updateProjectionMatrix();},
     resetView(){controls.reset();},
     dispose(){disposed=true;if(frame!==null)cancelAnimationFrame(frame);frame=null;observer.disconnect();for(const [name,fn] of listeners)canvas.removeEventListener(name,fn);controls.dispose();modelOutline?.dispose();winterSnowman.dispose();environment.dispose();world.dispose();renderer.dispose();canvas.remove();}

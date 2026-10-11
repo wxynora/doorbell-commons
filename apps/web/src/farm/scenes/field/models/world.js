@@ -1,3 +1,4 @@
+import {createFairytaleHouse} from './fairytale-house.mjs';
 import { createRipeSparkles } from "./ripe-sparkles.js";
 import * as T from "three";
 import { batchStaticMeshes } from "./batch-static-meshes.js";
@@ -158,7 +159,7 @@ function disposeResources(root) {
   for (const texture of textures) texture.dispose();
 }
 
-export function createWorld(plotDefinitions = [], houseLevel = 1) {
+export function createWorld(plotDefinitions = [], houseLevel = 1, houseStyle = "classic") {
   const root = new T.Group();
   root.name = "farm-world";
   const random = seededRandom();
@@ -167,7 +168,8 @@ export function createWorld(plotDefinitions = [], houseLevel = 1) {
   let fence = createFence(root, groundPoint, LAND.fenceInset);
   let boundaryStyle = null;
   const riverFish = createRiverFish(root, groundPoint, LAND.riverWidth);
-  const house = createHouseStudy(root, mat, houseLevel);
+  const house = houseStyle==="classic"?createHouseStudy(root, mat, houseLevel):createFairytaleHouse(root,houseStyle);
+  house.position.style=houseStyle;
   house.position.set(.35,.24,-4.92);
   house.traverse(object=>{object.userData.house=true;});
   const glow = house.getObjectByName('cottage-exterior-light');

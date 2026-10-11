@@ -1,3 +1,4 @@
+import {setHouseNight} from './fairytale-model-kit.mjs';
 import { batchStaticMeshes } from "./batch-static-meshes.js";
 import * as T from "three";
 import { mesh, palette, seededRandom, Instances, leafGeometry } from "./primitives.js";
@@ -27,7 +28,7 @@ const FOLIAGE_LAYERS = {
 };
 
 export function createNightLighting(world) {
-  const interior = world.house.getObjectByName("interior-lamp");
+  let interior = world.house.getObjectByName("interior-lamp");
   const stars = new Set(),
     windows = new Set(),
     lights = [],
@@ -47,10 +48,12 @@ export function createNightLighting(world) {
     if (o.material?.userData.windowGlow) windows.add(o.material);
   });
   const setLight = (light, intensity) => { light.intensity = intensity; light.visible = intensity !== 0; };
-  let lastAmount;
+  let lastAmount,lastHouse;
   return (amount) => {
-    if (amount === lastAmount) return;
+    if (amount === lastAmount&&world.house===lastHouse) return;
+    if(world.house!==lastHouse){windows.clear();world.house.traverse(o=>{if(o.material?.userData.windowGlow)windows.add(o.material);});interior=world.house.getObjectByName('interior-lamp');lastHouse=world.house;}
     lastAmount = amount;
+    if(world.house.userData.houseKind)setHouseNight(world.house,amount>0);
     stars.forEach((m) => (m.emissiveIntensity = amount * 3.5));
     windows.forEach((m) => (m.emissiveIntensity = amount * 1.2));
     lights.forEach((l) => setLight(l, amount * 0.5));

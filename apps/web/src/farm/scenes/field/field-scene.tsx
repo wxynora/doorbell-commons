@@ -112,7 +112,7 @@ export function FieldScene({
     if(!host.current)return;
     try {
       const instance=createFieldRuntime(host.current,{
-        active:currentActive.current,plots:renderPlots,environment:currentEnvironment.current,houseLevel,
+        active:currentActive.current,plots:renderPlots,environment:currentEnvironment.current,houseLevel,houseStyle:currentData.current?.layout.house?.style??"classic",classicHouseLevel:currentData.current?.house?.classic_level??Math.min(houseLevel,3) as 1|2|3,
         onSelectHouse:()=>{if(currentData.current){setHouseMenu(true);setRequestedHouseItem(null);callbacks.current.onClosePlot();callbacks.current.onOpenHouse?.();}},
         onSelectPlot:id=>callbacks.current.onSelectPlot(id),
         onEditState:state=>{setEdit(state);setSnowmanNotice(!state.editing&&state.message===SNOWMAN_MESSAGE);callbacks.current.onEditingChange?.(state.editing);},
@@ -141,7 +141,10 @@ export function FieldScene({
   },[layoutPreviewRequest?.requestKey]);
   useEffect(()=>{if(!edit.editing)setRoofPalette(false);},[edit.editing]);
   useEffect(()=>{if(edit.editing){setHouseMenu(false);}else{setCanopyEditor(false);setBoundaryEditor(false);}},[edit.editing]);
-  const upgradeId=houseLevel===1?"farm_decor:house_level_two":"farm_decor:house_level_three";
+  const classicLevel=decorationData?.house?.classic_level??Math.min(houseLevel,3);
+  const houseStyle=decorationData?.layout.house?.style??"classic";
+  const fairyProducts=(decorationData?.catalog??[]).filter(item=>["house_pumpkin","house_stump","house_mushroom"].includes(item.model_id));
+  const upgradeId=classicLevel===1?"farm_decor:house_level_two":"farm_decor:house_level_three";
   const upgrade=decorationData?.catalog.find(item=>item.item_id===upgradeId);
   const canopyProduct=decorationData?.catalog.find(item=>item.item_id==="farm_decor:floral_canopy");
   const requestHouse=(id:string)=>{setRequestedHouseItem(id);onRequestHousePurchase?.(id);};
@@ -172,7 +175,7 @@ export function FieldScene({
       {!edit.editing&&houseMenu&&decorationData ? <section className="farm-field-editor farm-house-menu" aria-label="房屋编辑">
         <strong>{houseLevel}级房屋</strong>
         <button type="button" aria-label="关闭房屋编辑" onClick={()=>setHouseMenu(false)}>关闭</button>
-        <div><button type="button" onClick={()=>{
+        <div><button type="button" disabled={houseStyle!=="classic"} onClick={()=>{
         const key=decorationData.layout.roof;
         setRoofChoice(key);setRoofPalette(true);setCanopyEditor(false);setBoundaryEditor(false);runtime.current?.changeRoof(key);
       }}>屋顶换色</button>
@@ -180,15 +183,22 @@ export function FieldScene({
         <button type="button" onClick={()=>{onClosePlot();runtime.current?.startNativeTreeMove(0);}}>移动原有大树</button>
         <button type="button" onClick={()=>{onClosePlot();runtime.current?.startNativeTreeMove(1);}}>移动原有小树</button>
         <button type="button" disabled={!renderPlots.length} onClick={()=>{onClosePlot();runtime.current?.startFieldMove();}}>调整田地</button>
-        {decorationData.house?.canopy_unlocked ? <button type="button" onClick={()=>{
+        {houseStyle==="classic"&&decorationData.house?.canopy_unlocked ? <button type="button" onClick={()=>{
           const key=decorationData.layout.canopy??"plain";setCanopyChoice(key);setCanopyEditor(true);setRoofPalette(false);setBoundaryEditor(false);runtime.current?.changeCanopy(key);
         }}>更换雨棚</button> : null}</div>
         <button type="button" onClick={()=>{
           setBoundaryEditor(true);setRoofPalette(false);setCanopyEditor(false);runtime.current?.changeBoundary(decorationData.layout.boundary_item_id??null);
         }}>更换整圈外圈</button>
-        <p>升级由 TA 使用农场金币购买，购买后生效。</p>
-        <div>{houseLevel<3&&upgrade ? <button type="button" disabled={!onRequestHousePurchase||purchaseBusy} onClick={()=>requestHouse(upgradeId)}>喊 TA 升到{houseLevel+1}级 · {upgrade.price_farm_coins.toLocaleString()}金币</button> : null}
+        <p>升级由 TA 使用农场金币购买。童话屋购买后永久解锁，选好款式与位置并保存后换房。</p>
+        <div>{classicLevel<3&&upgrade ? <button type="button" disabled={!onRequestHousePurchase||purchaseBusy} onClick={()=>requestHouse(upgradeId)}>喊 TA 升到{classicLevel+1}级 · {upgrade.price_farm_coins.toLocaleString()}金币</button> : null}
         {!decorationData.house?.canopy_unlocked&&canopyProduct ? <button type="button" disabled={houseLevel<2||!onRequestHousePurchase||purchaseBusy} onClick={()=>requestHouse(canopyProduct.item_id)}>喊 TA 买花植雨棚 · {canopyProduct.price_farm_coins.toLocaleString()}金币{houseLevel<2?"（需二级）":""}</button> : null}</div>
+        <div aria-label="童话房屋款式">
+          {decorationData.house?.unlocked_styles?.filter(style=>style!=="classic").length ? <button type="button" disabled={!onSaveLayout} onClick={()=>runtime.current?.changeHouseStyle("classic")}>换回普通房屋 · 免费</button> : null}
+          {fairyProducts.map(item=>{
+            const style=item.model_id.slice("house_".length),owned=decorationData.house?.unlocked_styles?.includes(style);
+            return owned?<button key={item.item_id} type="button" disabled={houseStyle===style||!onSaveLayout} onClick={()=>runtime.current?.changeHouseStyle(style)}>{houseStyle===style?"正在使用":"换成"}{item.name} · 免费</button>:<button key={item.item_id} type="button" disabled={classicLevel<3||!onRequestHousePurchase||purchaseBusy} onClick={()=>requestHouse(item.item_id)}>喊 TA 买{item.name} · {item.price_farm_coins.toLocaleString()}金币{classicLevel<3?"（需三级）":""}</button>;
+          })}
+        </div>
         {requestedHouseItem ? <p role="status">{purchaseBusy?"正在发送购买请求…":housePurchaseFeedback?.stage==="success"?"已喊 TA 来买，实际购买后房屋才会更新。":housePurchaseFeedback?.message??""}</p> : null}
         {onOpenHouse?<button type="button" disabled={purchaseBusy} onClick={onOpenHouse}>刷新购买结果</button>:null}
       </section> : null}

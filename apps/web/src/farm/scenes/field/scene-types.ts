@@ -3,7 +3,7 @@ export interface SceneDecorationPose { x: number; z: number; rotation: number }
 export interface SceneDecorationLayout {
   trees?: [{x:number;z:number},{x:number;z:number}] | undefined;
   field?: { x: number; z: number; columns: number; rows?: number | undefined } | undefined;
-  house?: { x: number; z: number } | undefined;
+  house?: { x: number; z: number; style?: "classic"|"pumpkin"|"stump"|"mushroom" | undefined } | undefined;
   roof: string;
   canopy: "plain" | "floral";
   stall: SceneDecorationPose;
@@ -11,7 +11,7 @@ export interface SceneDecorationLayout {
   decorations: (SceneDecorationPose & { instance_id: string; item_id: string; mirrored?: boolean | undefined })[];
 }
 export interface SceneDecorationData {
-  house?: {level: 1 | 2 | 3; canopy_unlocked: boolean; blocked_rects: readonly (readonly number[])[]};
+  house?: {level: 1 | 2 | 3 | 4; classic_level?: 1|2|3; style?: "classic"|"pumpkin"|"stump"|"mushroom"; unlocked_styles?: readonly string[]; canopy_unlocked: boolean; blocked_rects: readonly (readonly number[])[]};
   catalog: readonly { item_id: string; model_id: string; name: string; cells: readonly number[]; layer: string; purchase_mode: string; price_farm_coins: number }[];
   inventory: readonly { item_id: string; owned_quantity: number; placed_quantity: number; available_quantity: number | null; unlocked: boolean }[];
   layout: SceneDecorationLayout;

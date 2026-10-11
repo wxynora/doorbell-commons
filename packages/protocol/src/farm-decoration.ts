@@ -5,7 +5,7 @@ const point = { x: z.number(), z: z.number(), rotation: z.number() };
 export const farmDecorationLayoutSchema = z.object({
   trees: z.tuple([z.object({x:z.number(),z:z.number()}).strict(),z.object({x:z.number(),z:z.number()}).strict()]).optional(),
   field: z.object({ x: z.number(), z: z.number(), columns: z.number().int().positive(), rows: z.number().int().positive().optional() }).strict().optional(),
-  house: z.object({ x: z.number(), z: z.number() }).strict().optional(),
+  house: z.object({ x: z.number(), z: z.number(), style: z.enum(["classic","pumpkin","stump","mushroom"]).optional() }).strict().optional(),
   roof: z.string(),
   canopy: z.enum(["plain", "floral"]),
   stall: z.object(point).strict(),
@@ -13,7 +13,7 @@ export const farmDecorationLayoutSchema = z.object({
   decorations: z.array(z.object({ instance_id: z.uuid(), item_id: itemId, ...point, mirrored: z.boolean().optional() }).strict().refine(item => item.mirrored === undefined || ["farm_decor:cat_pumpkin", "farm_decor:pumpkin_lamppost"].includes(item.item_id), { message: "mirrored is only supported for pumpkin lamps" })),
 }).strict();
 export const farmDecorationsDataSchema = z.object({
-  house: z.object({ level: z.union([z.literal(1), z.literal(2), z.literal(3)]), canopy_unlocked: z.boolean(), blocked_rects: z.array(z.tuple([z.number(), z.number(), z.number(), z.number()])) }).strict(),
+  house: z.object({ level: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]), classic_level: z.union([z.literal(1),z.literal(2),z.literal(3)]).optional(), style: z.enum(["classic","pumpkin","stump","mushroom"]).optional(), unlocked_styles: z.array(z.enum(["classic","pumpkin","stump","mushroom"])).optional(), canopy_unlocked: z.boolean(), blocked_rects: z.array(z.tuple([z.number(), z.number(), z.number(), z.number()])) }).strict(),
   catalog: z.array(z.object({
     item_id: itemId, model_id: z.string(), name: z.string(),
     cells: z.tuple([z.number().int().positive(), z.number().int().positive()]),
