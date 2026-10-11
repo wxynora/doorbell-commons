@@ -2,9 +2,7 @@ import * as T from "three";
 import { palette, mesh, beam } from "./primitives.js";
 import { batchStaticMeshes } from "./batch-static-meshes.js";
 import { disposeDecoration } from "./decorations.js";
-import { CELL_SIZE, boundsRectangle, rectangle, intersects } from "./placement-geometry.js";
-import { houseBaseRects, houseExtensionRect } from "./house-geometry.js";
-import { createPlacementTerrain } from "./placement-terrain.js";
+import { winterSnowmanPosition } from "./winter-snowman-position.js";
 
 export const SNOWMAN_MESSAGE = "镇上的孩子们悄悄来过，在你门前堆了个雪人。这样你回家的时候，就有一个笑脸在等你啦。";
 
@@ -39,48 +37,24 @@ export function buildSnowman(size = 1) {
 }
 
 // Seasonal scenery only: never enters inventory, layout capture or placement blockers.
-export function createWinterSnowman(world, houseLevel = 1, random = Math.random) {
-  let object = null, extent, point = null, anchor = "", shown = true;
+export function createWinterSnowman(world, houseLevel = 1) {
+  let object = null, currentSize = null, shown = true;
   function dispose() {
     const changed = !!object?.parent;
     if (object) disposeDecoration(object);
-    object = null; point = null; anchor = "";
+    object = null; currentSize = null;
     return changed;
   }
-  function sync(season) {
-    if (season !== "winter") return dispose();
-    if (!object) {
-      object = buildSnowman(random() < .5 ? .72 : 1.06);
-      extent = new T.Box3().setFromObject(object);
+  function sync(season, layout, catalog) {
+    if (season !== "winter" || !layout || !catalog) return dispose();
+    const point = winterSnowmanPosition(world.plots.map(o => o.userData.plot), layout, houseLevel, catalog);
+    if (!point) return dispose();
+    let changed = false;
+    if (!object || currentSize !== point.size) {
+      changed = dispose();
+      object = buildSnowman(point.size); currentSize = point.size;
     }
-    const house = world.house.position;
-    const houseRects = [...houseBaseRects(house), ...(houseLevel >= 2 ? [houseExtensionRect(house)] : [])];
-    const left = Math.min(...houseRects.map(r => r[0])), right = Math.max(...houseRects.map(r => r[2]));
-    const front = Math.max(...houseRects.map(r => r[3]));
-    const terrain = createPlacementTerrain(world.plots.map(o => o.userData.plot), house, world.fieldLayout);
-    const stall = world.root.getObjectByName("market-stall");
-    const fixtures = [stall, ...world.decorations].filter(Boolean).map(o => rectangle({x:o.position.x,z:o.position.z,rotation:o.rotation.y}, o.userData.cells || [2,2]));
-    const corners = [];
-    for (const side of [-1, 1]) for (let outward = 0; outward < 3; outward++) for (let row = 0; row < 2; row++) {
-      corners.push({x:side < 0 ? left - extent.max.x - .16 - outward * CELL_SIZE : right - extent.min.x + .16 + outward * CELL_SIZE,
-        z:front - extent.min.z + .16 + row * CELL_SIZE});
-    }
-    const free = p => {
-      const polygon = boundsRectangle([p.x + extent.min.x, p.z + extent.min.z, p.x + extent.max.x, p.z + extent.max.z]);
-      return terrain.canPlace(polygon) && !houseRects.some(r => intersects(polygon, boundsRectangle(r))) && !fixtures.some(r => intersects(polygon, r));
-    };
-    const nextAnchor = `${house.x},${house.z}`;
-    if (!point || anchor !== nextAnchor || !free(point)) {
-      const available = corners.filter(free);
-      point = available.length ? available[Math.floor(random() * available.length)] : null;
-    }
-    anchor = nextAnchor;
-    if (!point) {
-      const changed = !!object.parent;
-      object.removeFromParent();
-      return changed;
-    }
-    const changed = !object.parent || object.position.x !== point.x || object.position.z !== point.z;
+    changed ||= !object.parent || object.position.x !== point.x || object.position.z !== point.z;
     object.position.set(point.x, .25, point.z);
     object.visible = shown;
     if (!object.parent) world.root.add(object);

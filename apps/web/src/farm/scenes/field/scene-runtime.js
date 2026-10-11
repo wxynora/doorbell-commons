@@ -95,7 +95,7 @@ export function createFieldRuntime(host, options) {
     modelOutline?.refresh();
   }
   function refreshSnowman(){
-    if(winterSnowman.sync(data?season:null))environment.refreshRainSurfaces();
+    if(winterSnowman.sync(data?season:null,data?capture():null,data?.catalog))environment.refreshRainSurfaces();
   }
   function setFieldLayout(value){
     const next=value?{...value}:null;
