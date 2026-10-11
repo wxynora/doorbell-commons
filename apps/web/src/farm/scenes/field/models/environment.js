@@ -243,6 +243,7 @@ export function createEnvironment(parent) {
     [4.45, -6.35, 5.7],
     [-4.4, -5.34, 3.1],
   ];
+  const nativeTrees=[parent.getObjectByName("native-tree-1"),parent.getObjectByName("native-tree-2")];
   const petalSeeds = Array.from({ length: 90 }, (_, i) => ({
     tree: blossomTrees[i % blossomTrees.length],
     phase: random(),
@@ -326,6 +327,7 @@ export function createEnvironment(parent) {
       petals.visible = parent.userData.season === "spring";
       if (petals.visible) {
         petalSeeds.forEach(({ tree: [x, z, height], phase, angle }, i) => {
+          const movedTree=nativeTrees[i%2];if(movedTree){x=movedTree.position.x;z=movedTree.position.z;}
           const fall = (phase + time * 0.085) % 1;
           petalTransform.position.set(
             x + Math.cos(angle) * 0.65 + fall * 1.15 + Math.sin(time * 0.8 + i) * 0.17,

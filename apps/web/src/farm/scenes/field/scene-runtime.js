@@ -16,8 +16,10 @@ import { setStudyCanopy } from "./models/local-house-upgrades.js";
 import { createDecoration, disposeDecoration, updateDecorationLights, updateDecorationMotion, updateDecorationSeason } from "./models/decorations.js";
 import { createNatureEffects } from "./models/nature-effects.js";
 import { createWinterSnowman, SNOWMAN_MESSAGE } from "./models/winter-snowman.js";
+import { NATIVE_TREE_POSITIONS } from "./models/native-trees.js";
 
 export const roofChoices=Object.entries(ROOF_COLORS).map(([id,value])=>({id,...value}));
+export { SNOWMAN_MESSAGE };
 
 export function createFieldRuntime(host, options) {
   const renderer = new T.WebGLRenderer({ antialias: true, alpha: true });
@@ -71,7 +73,7 @@ export function createFieldRuntime(host, options) {
   const observer=new ResizeObserver(resize);observer.observe(host);resize();
   const ray=new T.Raycaster(),pointer=new T.Vector2(),plane=new T.Plane(new T.Vector3(0,1,0),-.25);
   const pose=o=>({x:o.position.x,z:o.position.z,rotation:o.rotation.y});
-  const capture=()=>({...fieldLayout?{field:{...fieldLayout}}:{},house:{x:world.house.position.x,z:world.house.position.z},roof,canopy,boundary_item_id:boundaryItemId,stall:pose(world.root.getObjectByName("market-stall")),decorations:world.decorations.map(o=>({instance_id:o.userData.instanceId,item_id:o.userData.itemId,...pose(o),...decorationMirrorPose(o)}))});
+  const capture=()=>({...fieldLayout?{field:{...fieldLayout}}:{},...(committed?.trees||world.nativeTrees.some((o,i)=>o.position.x!==NATIVE_TREE_POSITIONS[i].x||o.position.z!==NATIVE_TREE_POSITIONS[i].z)?{trees:world.nativeTrees.map(o=>({x:o.position.x,z:o.position.z}))}:{}),house:{x:world.house.position.x,z:world.house.position.z},roof,canopy,boundary_item_id:boundaryItemId,stall:pose(world.root.getObjectByName("market-stall")),decorations:world.decorations.map(o=>({instance_id:o.userData.instanceId,item_id:o.userData.itemId,...pose(o),...decorationMirrorPose(o)}))});
   const definition=id=>data?.catalog.find(d=>d.item_id===id);
   const inventory=id=>data?.inventory.find(d=>d.item_id===id);
   function remaining(id) {
@@ -84,7 +86,7 @@ export function createFieldRuntime(host, options) {
     winterSnowman.setVisible(!editing);
     const current=currentPlacement(),object=current?.object,id=object?.userData.itemId;
     const columns=fieldLayout?.columns??6;
-    options.onEditState({editing,valid:!saving&&(!current?.active||current.valid),houseMoving:!!housePlacement,fieldMoving:!!fieldPlacement,fieldColumns:columns,fieldRows:fieldLayout?.rows??Math.ceil(Math.max(0,...definitions.map(p=>p.id))/columns),boundaryItemId,title:fieldPlacement?"移动田地":housePlacement?"移动房屋":importing?"导入布局预览":object?.userData.label||"布置农场",layoutPreview:importing,canFlip:!saving&&!!placement?.active&&canMirrorDecoration(object),mirrored:!!object&&object.scale.x<0,canAdd:!saving&&!!id&&remaining(id),canRemove:!saving&&!!id,message});
+    options.onEditState({editing,valid:!saving&&(!current?.active||current.valid),treeMoving:!!placement?.active&&object?.userData.nativeTree!==undefined,houseMoving:!!housePlacement,fieldMoving:!!fieldPlacement,fieldColumns:columns,fieldRows:fieldLayout?.rows??Math.ceil(Math.max(0,...definitions.map(p=>p.id))/columns),boundaryItemId,title:fieldPlacement?"移动田地":housePlacement?"移动房屋":importing?"导入布局预览":object?.userData.label||"布置农场",layoutPreview:importing,canFlip:!saving&&!!placement?.active&&canMirrorDecoration(object),mirrored:!!object&&object.scale.x<0,canAdd:!saving&&!!id&&remaining(id),canRemove:!saving&&!!id,message});
   }
   function refreshNatureEffects(){
     disposeDecoration(world.root.getObjectByName("active-nature-event"));
@@ -114,6 +116,7 @@ export function createFieldRuntime(host, options) {
     setFieldLayout(layout.field);
     let surfacesChanged=world.house.position.x!==housePosition.x||world.house.position.z!==housePosition.z;
     world.house.position.x=housePosition.x;world.house.position.z=housePosition.z;
+    world.nativeTrees.forEach((object,i)=>{const point=(layout.trees??NATIVE_TREE_POSITIONS)[i];if(object.position.x!==point.x||object.position.z!==point.z)surfacesChanged=true;object.position.set(point.x,.24,point.z);});
     surfacesChanged||=stall.position.x!==layout.stall.x||stall.position.z!==layout.stall.z||stall.rotation.y!==layout.stall.rotation;
     stall.position.x=layout.stall.x;stall.position.z=layout.stall.z;stall.rotation.y=layout.stall.rotation;
     if(roof!==layout.roof){roof=layout.roof;setRoofColor(world.house,roof);}
@@ -167,6 +170,10 @@ export function createFieldRuntime(host, options) {
     if(placement.active&&!placement.confirm()){emit("先把当前装饰移到可放置的绿色格子");return;}
     editing=true;controls.enabled=false;world.selector.visible=false;
     placement.begin(object,adding);emit();canvas.focus();
+  }
+  function startNativeTreeMove(index){
+    if(!data||!placement||editing||saving||!world.nativeTrees[index])return;
+    begin(world.nativeTrees[index]);
   }
   function startHouseMove(){
     if(!data||!placement||editing||saving)return;
@@ -268,7 +275,7 @@ export function createFieldRuntime(host, options) {
   let down=null,moved=false,houseDrag=null;
   listen("pointerdown",e=>{
     down=[e.clientX,e.clientY];moved=false;houseDrag=null;
-    if(housePlacement||fieldPlacement){pointerRay(e);const p=ray.ray.intersectPlane(plane,new T.Vector3());const target=currentPlacement().object;if(p)houseDrag={x:p.x-target.position.x,z:p.z-target.position.z};}
+    if(housePlacement||fieldPlacement||(placement?.active&&placement.object.userData.nativeTree!==undefined)){pointerRay(e);const p=ray.ray.intersectPlane(plane,new T.Vector3());const target=currentPlacement().object;if(p)houseDrag={x:p.x-target.position.x,z:p.z-target.position.z};}
     if(editing)canvas.setPointerCapture(e.pointerId);
   });
   listen("pointermove",e=>{if(down&&Math.hypot(e.clientX-down[0],e.clientY-down[1])>7)moved=true;if(down&&currentPlacement()?.active&&!saving)move(e);});
@@ -279,6 +286,7 @@ export function createFieldRuntime(host, options) {
     if(!down||moved){down=null;return;}down=null;pointerRay(e);
     const hit=ray.intersectObject(world.root,true).find(h=>h.object.isMesh);
     if(hit?.object.userData.winterSnowman&&!editing)emit(SNOWMAN_MESSAGE);
+    else if(hit?.object.userData.nativeTree!==undefined&&!editing)startNativeTreeMove(hit.object.userData.nativeTree);
     else if(hit?.object.userData.house&&!editing)options.onSelectHouse?.();
     else if(hit?.object.userData.decoration&&placement)begin(hit.object.userData.decoration);
     else if(hit?.object.userData.stall&&placement)begin(placement.stall);
@@ -343,7 +351,7 @@ export function createFieldRuntime(host, options) {
     frame=requestAnimationFrame(animate);
   }
   if(active)frame=requestAnimationFrame(animate);
-  return {previewLayout,setActive,setModelOutline,setPlots,setEnvironment,setDecorations,selectPlot,startPlacement,startHouseMove,startFieldMove,changeFieldColumns,changeFieldRows,rotate,flip,addOne,remove,cancel,save,changeRoof,changeCanopy,changeBoundary,
+  return {previewLayout,setActive,setModelOutline,setPlots,setEnvironment,setDecorations,selectPlot,startPlacement,startNativeTreeMove,startHouseMove,startFieldMove,changeFieldColumns,changeFieldRows,rotate,flip,addOne,remove,cancel,save,changeRoof,changeCanopy,changeBoundary,
     zoom(factor){camera.zoom=T.MathUtils.clamp(camera.zoom*factor,MIN_ZOOM,MAX_ZOOM);camera.updateProjectionMatrix();},
     resetView(){controls.reset();},
     dispose(){disposed=true;if(frame!==null)cancelAnimationFrame(frame);frame=null;observer.disconnect();for(const [name,fn] of listeners)canvas.removeEventListener(name,fn);controls.dispose();modelOutline?.dispose();winterSnowman.dispose();environment.dispose();world.dispose();renderer.dispose();canvas.remove();}

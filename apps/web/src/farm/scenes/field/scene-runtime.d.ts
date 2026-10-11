@@ -14,6 +14,7 @@ export interface SceneRuntime {
   selectPlot(id: number | null): void;
   startPlacement(id: string): void;
   startHouseMove(): void;
+  startNativeTreeMove(index: 0 | 1): void;
   startFieldMove(): void;
   changeFieldColumns(columns: number): boolean;
   changeFieldRows(rows: number): boolean;
@@ -28,6 +29,7 @@ export interface SceneRuntime {
   dispose(): void;
 }
 export const roofChoices: readonly {id:string;label:string;color:string}[];
+export const SNOWMAN_MESSAGE: string;
 export function createFieldRuntime(host: HTMLElement, options: {
   active?: boolean;
   plots: readonly FarmPlot[];

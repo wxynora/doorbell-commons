@@ -4,6 +4,7 @@ import { disposeDecoration } from "./decorations.js";
 import { snapCells, rectangle, boundsRectangle, intersects } from "./placement-geometry.js";
 
 import { createPlacementTerrain } from "./placement-terrain.js";
+import { snapNativeTree } from "./native-trees.js";
 
 export const CELL_SIZE = 0.94;
 const Z_ORIGIN = -1.44;
@@ -90,9 +91,9 @@ export function createPlacement(world, authoritativeGrid = null) {
     valid = true;
   function move(x, z) {
     const cells = placementCells(target);
-    const point = snapPlacement(x, z, cells);
+    const point = target.userData.nativeTree!==undefined?snapNativeTree(target.userData.nativeTree,x,z):snapPlacement(x, z, cells);
     valid = canPlace(point);
-    target.position.set(point.x, 0.25, point.z);
+    target.position.set(point.x, target.userData.nativeTree!==undefined?.24:.25, point.z);
     const modelCells=target.userData.cells||[2,2];
     footprint.scale.set(modelCells[0] / 2, modelCells[1] / 2, 1);
     footprint.rotation.set(-Math.PI/2,0,target.rotation.y);
@@ -166,7 +167,7 @@ export function createPlacement(world, authoritativeGrid = null) {
       return false;
     },
     rotate() {
-      if (!active) return;
+      if (!active || target.userData.nativeTree!==undefined) return;
       const before=placementCells(target);
       const cornerX=target.position.x-before[0]*CELL_SIZE/2;
       const cornerZ=target.position.z-before[1]*CELL_SIZE/2;
@@ -194,7 +195,7 @@ export function createPlacement(world, authoritativeGrid = null) {
       isNew = false;
     },
     remove() {
-      if (!active || target === stall) return false;
+      if (!active || target === stall || target.userData.nativeTree!==undefined) return false;
       decorations.splice(decorations.indexOf(target), 1);
       disposeDecoration(target);
       active = false;

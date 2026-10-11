@@ -18,6 +18,7 @@ import { addTreeLights } from "./tree-lights.js";
 import { createFence } from "./fence.js";
 import { createCropModel } from "./crop-models.js";
 import { addSnowCover } from "./seasonal-cover.js";
+import { NATIVE_TREE_POSITIONS } from "./native-trees.js";
 
 import { LAND } from "./placement-terrain.js";
 export { LAND };
@@ -494,9 +495,9 @@ export function createWorld(plotDefinitions = [], houseLevel = 1) {
     core.finish().userData.seasonRole = "tree";
     tl.finish().userData.seasonRole = "tree";
     addTreeLights(tree);
+    return tree;
   }
-  tree(4.45, -6.35, 1.25, true);
-  tree(-4.4, -5.34, 0.67);
+  const nativeTrees = NATIVE_TREE_POSITIONS.map((p,i)=>tree(p.x,p.z,i===0?1.25:.67,i===0));
   // The bridge crosses the creek at z-positive. Every board and support is real geometry.
   const bridge = new T.Group();
   bridge.name = "bridge";
@@ -545,11 +546,17 @@ export function createWorld(plotDefinitions = [], houseLevel = 1) {
   let ripeSparkles = createRipeSparkles(plotDefinitions);
   if (ripeSparkles) root.add(ripeSparkles.points);
   batchStaticMeshes(root);
+  nativeTrees.forEach((tree,index)=>{
+    tree.name=`native-tree-${index+1}`;tree.userData.nativeTree=index;
+    tree.userData.cells=[1,1];tree.userData.label=`原有树T${index+1}`;
+    tree.traverse(object=>{if(object.isMesh)object.userData.nativeTree=index;});
+  });
   const plotsById = new Map(plotDefinitions.map(plot => [plot.id, plot]));
   return {
     root,
     plots,
     house,
+    nativeTrees,
     setBoundaryStyle(style = null) {
       const nextStyle = style ?? null;
       if (nextStyle === boundaryStyle) return;

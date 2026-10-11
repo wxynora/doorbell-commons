@@ -11,6 +11,10 @@
 }
 .farm-field-canvas { position:absolute; inset:0; touch-action:none; }
 .farm-field-canvas canvas { display:block; width:100%; height:100%; }
+.farm-snowman-notice { --snowman-ink:#51483e; --snowman-paper:#fffaf0f5; position:absolute; left:50%; top:50%; z-index:25; transform:translate(-50%,-50%); box-sizing:border-box; width:76cqw; max-width:100%; padding:6cqw 5cqw 4.5cqw; border:1px solid #c7c4a9; border-radius:2.4cqw; color:var(--snowman-ink); background:var(--snowman-paper); box-shadow:0 1.5cqw 5cqw #33453324; font:inherit; font-size:3.8cqw; line-height:1.8; }
+.farm-snowman-notice p { margin:0; }
+.farm-snowman-notice > button { position:absolute; top:1cqw; right:1cqw; width:8cqw; height:8cqw; display:grid; place-items:center; padding:0; border:0; background:transparent; color:var(--snowman-ink); font:inherit; font-size:5.8cqw; line-height:1; cursor:pointer; }
+.farm-snowman-notice > button:focus-visible { outline:2px solid #648775; border-radius:1cqw; }
 .farm-interface-toggle { position:absolute; left:2.5cqw; top:12cqw; z-index:30; border:1px solid #b7b498; border-radius:1.4cqw; padding:1.5cqw 2cqw; background:#f6efd9e8; color:#425143; font:inherit; font-size:2.8cqw; cursor:pointer; }
 .farm-interface-toggle { top:calc(var(--farm-control-size) / 3 + var(--farm-control-size) + 2cqw); width:8cqw; height:8cqw; padding:1.5cqw; display:grid; place-items:center; }
 .farm-interface-toggle svg { width:100%; height:100%; }

@@ -1,6 +1,6 @@
 import type { LayoutShareSkip } from "./layout-sharing-plan.js";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { createFieldRuntime, roofChoices, type SceneRuntime } from "./scene-runtime.js";
+import { createFieldRuntime, roofChoices, SNOWMAN_MESSAGE, type SceneRuntime } from "./scene-runtime.js";
 import type { SceneDecorationData, SceneDecorationLayout, SceneEditState } from "./scene-types";
 export type { SceneDecorationData, SceneDecorationLayout } from "./scene-types";
 import type { FarmPlot } from "../../farm-overview";
@@ -78,6 +78,15 @@ export function FieldScene({
   const [modelOutline]=useModelOutlinePreference();
   const [shareSkipped, setShareSkipped] = useState<LayoutShareSkip[]>([]);
   const [failure, setFailure] = useState<string | null>(null);
+  const [snowmanNotice,setSnowmanNotice]=useState(false);
+  const snowmanNoticeRef=useRef<HTMLDivElement>(null);
+  useEffect(()=>{
+    if(!snowmanNotice)return;
+    const dismiss=(event:PointerEvent)=>{if(!snowmanNoticeRef.current?.contains(event.target as Node))setSnowmanNotice(false);};
+    document.addEventListener("pointerdown",dismiss);
+    return()=>document.removeEventListener("pointerdown",dismiss);
+  },[snowmanNotice]);
+  useEffect(()=>{if(!active)setSnowmanNotice(false);},[active]);
   const [roofPalette, setRoofPalette] = useState(false);
   const [roofChoice, setRoofChoice] = useState("mint");
   const [houseMenu,setHouseMenu]=useState(false),[canopyEditor,setCanopyEditor]=useState(false),[boundaryEditor,setBoundaryEditor]=useState(false);
@@ -106,7 +115,7 @@ export function FieldScene({
         active:currentActive.current,plots:renderPlots,environment:currentEnvironment.current,houseLevel,
         onSelectHouse:()=>{if(currentData.current){setHouseMenu(true);setRequestedHouseItem(null);callbacks.current.onClosePlot();callbacks.current.onOpenHouse?.();}},
         onSelectPlot:id=>callbacks.current.onSelectPlot(id),
-        onEditState:state=>{setEdit(state);callbacks.current.onEditingChange?.(state.editing);},
+        onEditState:state=>{setEdit(state);setSnowmanNotice(!state.editing&&state.message===SNOWMAN_MESSAGE);callbacks.current.onEditingChange?.(state.editing);},
         onSaveLayout:async layout=>{if(!fieldDraftValid.current)throw new Error("请先输入有效的行数或列数");if(!callbacks.current.onSaveLayout)throw new Error("布置保存暂时不可用");await callbacks.current.onSaveLayout(layout);},
         onFinishEditing:()=>callbacks.current.onFinishEditing?.(),
       });
@@ -168,6 +177,8 @@ export function FieldScene({
         setRoofChoice(key);setRoofPalette(true);setCanopyEditor(false);setBoundaryEditor(false);runtime.current?.changeRoof(key);
       }}>屋顶换色</button>
         <button type="button" onClick={()=>runtime.current?.startHouseMove()}>移动房屋</button>
+        <button type="button" onClick={()=>{onClosePlot();runtime.current?.startNativeTreeMove(0);}}>移动原有大树</button>
+        <button type="button" onClick={()=>{onClosePlot();runtime.current?.startNativeTreeMove(1);}}>移动原有小树</button>
         <button type="button" disabled={!renderPlots.length} onClick={()=>{onClosePlot();runtime.current?.startFieldMove();}}>调整田地</button>
         {decorationData.house?.canopy_unlocked ? <button type="button" onClick={()=>{
           const key=decorationData.layout.canopy??"plain";setCanopyChoice(key);setCanopyEditor(true);setRoofPalette(false);setBoundaryEditor(false);runtime.current?.changeCanopy(key);
@@ -183,7 +194,11 @@ export function FieldScene({
       </section> : null}
       {!edit.editing&&!houseMenu ? requestControls : null}
       {failure ? <p className="farm-scene__notice" role="alert">{failure}</p> : null}
-      {!edit.editing && edit.message ? <p className="farm-scene__notice" role="status">{edit.message}</p> : null}
+      {!edit.editing && edit.message && edit.message!==SNOWMAN_MESSAGE ? <p className="farm-scene__notice" role="status">{edit.message}</p> : null}
+      {!edit.editing&&snowmanNotice ? <div className="farm-snowman-notice" role="dialog" aria-label="小雪人的留言" ref={snowmanNoticeRef}>
+        <button type="button" aria-label="关闭雪人留言" onClick={()=>setSnowmanNotice(false)}>×</button>
+        <p>{SNOWMAN_MESSAGE}</p>
+      </div> : null}
       {edit.editing ? <section className={`farm-field-editor${edit.fieldMoving?" farm-field-editor--terrain":""}`} aria-label={edit.fieldMoving?"田地调整":"装饰摆放"}>
         {edit.fieldMoving ? <button className="farm-field-editor__close" type="button" aria-label="取消田地调整" onClick={()=>runtime.current?.cancel()}>×</button> : null}
         <strong>{edit.fieldMoving?"田地排布":roofPalette ? "屋顶配色" : canopyEditor?"雨棚款式":boundaryEditor?"整圈外圈":edit.title}</strong>
@@ -210,7 +225,7 @@ export function FieldScene({
           }}><i aria-hidden="true" style={{backgroundColor:choice.color}}/>{choice.label}</button>)}
         </div> : null}
         {!edit.fieldMoving ? <div>
-          {!roofPalette&&!canopyEditor&&!boundaryEditor&&!edit.layoutPreview&&!edit.houseMoving&&!edit.fieldMoving ? <>
+          {!roofPalette&&!canopyEditor&&!boundaryEditor&&!edit.layoutPreview&&!edit.houseMoving&&!edit.fieldMoving&&!edit.treeMoving ? <>
             <button type="button" onClick={()=>runtime.current?.rotate()}>旋转</button>
             {edit.canFlip ? <button type="button" aria-pressed={edit.mirrored??false} onClick={()=>runtime.current?.flip()}>左右翻转</button> : null}
             <button type="button" disabled={!edit.canAdd} onClick={()=>runtime.current?.addOne()}>+1</button>
