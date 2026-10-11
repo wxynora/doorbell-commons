@@ -22,13 +22,17 @@ export function winterSnowmanPosition(plots,layout,houseLevel,catalog){
   const front=Math.max(...houseRects.map(r=>r[3]));
   const terrain=createPlacementTerrain(plots,house,layout.field);
   const fixtures=[rectangle(layout.stall,[2,2]),...decorations.map(o=>rectangle(o,o.cells))];
-  const available=[];
-  for(const side of [-1,1])for(let outward=0;outward<3;outward++)for(let row=0;row<2;row++){
-    const x=side<0?left-bounds[2]-.16-outward*CELL_SIZE:right-bounds[0]+.16+outward*CELL_SIZE;
-    const z=front-bounds[1]+.16+row*CELL_SIZE;
-    const area=[x+bounds[0],z+bounds[1],x+bounds[2],z+bounds[3]],polygon=boundsRectangle(area);
-    if(terrain.canPlace(polygon)&&!houseRects.some(r=>intersects(polygon,boundsRectangle(r)))&&!fixtures.some(r=>intersects(polygon,r)))
-      available.push({x,z,size,bounds:area});
+  // Preserve existing nearby choices; only search farther if all are occupied.
+  for(const [columns,rows]of [[3,2],[5,6]]){
+    const available=[];
+    for(const side of [-1,1])for(let outward=0;outward<columns;outward++)for(let row=0;row<rows;row++){
+      const x=side<0?left-bounds[2]-.16-outward*CELL_SIZE:right-bounds[0]+.16+outward*CELL_SIZE;
+      const z=front-bounds[1]+.16+row*CELL_SIZE;
+      const area=[x+bounds[0],z+bounds[1],x+bounds[2],z+bounds[3]],polygon=boundsRectangle(area);
+      if(terrain.canPlace(polygon)&&!houseRects.some(r=>intersects(polygon,boundsRectangle(r)))&&!fixtures.some(r=>intersects(polygon,r)))
+        available.push({x,z,size,bounds:area});
+    }
+    if(available.length)return available[(hash>>>1)%available.length];
   }
-  return available.length?available[(hash>>>1)%available.length]:null;
+  return null;
 }
