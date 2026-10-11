@@ -5,6 +5,7 @@ import { houseBaseRects, houseExtensionRect, DEFAULT_HOUSE_POSITION } from './ho
 import {fieldPlots,defaultFieldLayout,snapFieldPosition,validFieldLayout} from './field-layout.js';
 import {createPlacementTerrain} from './placement-terrain.js';
 import {createPlacementTerrain as explainTerrain} from './terrain-diagnostics.js';
+import {NATIVE_TREE_POSITIONS} from './native-trees.js';
 
 export const GRID = Object.freeze({ columns:24, rows:27, minCol:-12, minRow:-12 });
 // Model local +Z is its front. Positive Three.js Y rotation turns it towards +X.
@@ -80,6 +81,12 @@ export function planDecoration(farm,resource,changes,{uuid=randomUUID,validate=t
         const at=parseCell(change.at);if(!at)return fail('invalid_cell_or_facing');
         layout.house={x:DEFAULT_HOUSE_POSITION.x+(at[0]-HOUSE_GRID_ANCHOR[0])*CELL_SIZE,
           z:DEFAULT_HOUSE_POSITION.z+(at[1]-HOUSE_GRID_ANCHOR[1])*CELL_SIZE};
+      } else if(['tree_1','tree_2'].includes(change.fixture)) {
+        const at=parseCell(change.at);if(!at)return fail('invalid_cell_or_facing');
+        const index=change.fixture==='tree_1'?0:1,base=NATIVE_TREE_POSITIONS[index];
+        const col=Math.floor(base.x/CELL_SIZE),row=Math.floor((base.z-Z_ORIGIN)/CELL_SIZE);
+        layout.trees??=NATIVE_TREE_POSITIONS.map(p=>({...p}));
+        layout.trees[index]={x:base.x+(at[0]-col)*CELL_SIZE,z:base.z+(at[1]-row)*CELL_SIZE};
       } else if(change.fixture==='stall') {
         const pose=poseAt(change.at,[2,2],change.facing??facingOf(layout.stall.rotation));
         if(!pose)return fail('invalid_cell_or_facing');layout.stall=pose;
@@ -172,7 +179,7 @@ export function projectDecorationGrid(farm,resource) {
     }
   }
   // Main models/world.js fixed trunk coordinates; scenery references, not collision footprints.
-  const fixedTrees=[[4.45,-6.35],[-4.4,-5.34]].map(([x,z],i)=>{
+  const fixedTrees=(resource.layout.trees??NATIVE_TREE_POSITIONS).map(({x,z},i)=>{
     const col=Math.floor(x/CELL_SIZE),row=Math.floor((z-Z_ORIGIN)/CELL_SIZE),code=`T${i+1}`;
     put(col,row,code,`fixed-tree:${i+1}`);
     return {code,x,z,cell:cellName(col,row)};

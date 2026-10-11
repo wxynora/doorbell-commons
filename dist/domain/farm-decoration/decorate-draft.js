@@ -41,7 +41,7 @@ function inputDetails(change,code,resource){
     else if(Object.hasOwn(change,'item')){required=Object.hasOwn(change,'from')||Object.hasOwn(change,'to')?['item','from','to']:['item','at'];if(required.includes('from'))optional=['facing','shape'];}
     if(required)return {fields:Object.keys(change),missing_fields:required.filter(k=>!Object.hasOwn(change,k)),
       unexpected_fields:Object.keys(change).filter(k=>![...required,...optional].includes(k)),
-      ...(Object.hasOwn(change,'fixture')&&!['house','stall','field'].includes(change.fixture)?{field:'fixture',value:change.fixture,allowed:['house','stall','field']}:{}),
+      ...(Object.hasOwn(change,'fixture')&&!['house','stall','field','tree_1','tree_2'].includes(change.fixture)?{field:'fixture',value:change.fixture,allowed:['house','stall','field','tree_1','tree_2']}:{}),
       required_fields:required,optional_fields:optional};
   }
   return {value:change,required_one_of:['item','instance','remove','fixture']};
@@ -114,6 +114,12 @@ export function evaluateDecorationDraft(farm,resource,previous,{uuid=randomUUID}
       if(causes.length)issues.push({id:owners.get(fixture)??null,fixture,code:fixtureInvalid,
         cells:fixtureCells(resource,layout,fixture),causes});
     }
+  }
+  for(const fixture of ['tree_1','tree_2']){
+    const index=fixture==='tree_1'?0:1;
+    if(!layout.trees)continue;
+    const causes=diagnoseDecorationPosition(farm,resource,layout,{...layout.trees[index],rotation:0},[1,1]);
+    if(causes.length)issues.push({id:owners.get(fixture)??null,fixture,code:'invalid_decoration_position',cells:fixtureCells(resource,layout,fixture),causes});
   }
   for(const instance of layout.decorations) {
     const definition=definitions.get(instance.item_id);

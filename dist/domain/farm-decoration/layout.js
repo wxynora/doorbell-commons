@@ -4,6 +4,7 @@ import { snapCells, rectangle, touchedCells } from "./placement-geometry.js";
 import { createPlacementTerrain, LAND } from "./placement-terrain.js";
 import { DEFAULT_HOUSE_POSITION, canPlaceHouse } from "./house-geometry.js";
 import { validFieldLayout, canPlaceField } from "./field-layout.js";
+import { canPlaceNativeTrees } from "./native-trees.js";
 
 export const CELL_SIZE = .94;
 export const Z_ORIGIN = -1.44;
@@ -37,6 +38,7 @@ export function validateDecorationLayout(farm, layout, owned) {
   if (layout && Object.hasOwn(layout, "house")) keys.push("house");
   if (layout && Object.hasOwn(layout, "boundary_item_id")) keys.push("boundary_item_id");
   if (layout && Object.hasOwn(layout, "field")) keys.push("field");
+  if (layout && Object.hasOwn(layout, "trees")) keys.push("trees");
   if (!exactKeys(layout, keys) || !ROOF_COLORS.includes(layout.roof) || !["plain", "floral"].includes(layout.canopy) || !Array.isArray(layout.decorations) || !exactKeys(layout.stall, ["x", "z", "rotation"])) return "invalid_layout";
   if (keys.includes("house") && !exactKeys(layout.house, ["x", "z"])) return "invalid_layout";
   if (keys.includes("field") && (!exactKeys(layout.field,["x","z","columns",...(Object.hasOwn(layout.field??{},"rows")?["rows"]:[])]) || !validFieldLayout(layout.field,farm.plots??[]))) return "invalid_layout";
@@ -51,6 +53,7 @@ export function validateDecorationLayout(farm, layout, owned) {
   }
   const housePosition = layout.house ?? DEFAULT_HOUSE_POSITION;
   const house = houseState(owned, housePosition);
+  if (keys.includes("trees")&&!canPlaceNativeTrees(layout.trees,farm.plots??[],housePosition,layout.field,house.level))return "invalid_layout";
   if (!canPlaceHouse(housePosition, house.level, createPlacementTerrain(farm.plots ?? [], null, layout.field))) return "invalid_layout";
   if (layout.canopy === "floral" && (!house.canopy_unlocked || house.level < 2)) return "decoration_not_owned";
   const terrain = createPlacementTerrain(farm.plots ?? [], housePosition, layout.field);

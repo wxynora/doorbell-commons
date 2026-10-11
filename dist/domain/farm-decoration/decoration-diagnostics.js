@@ -4,6 +4,7 @@ import {isGroundDecoration} from './house.js';
 import {createPlacementTerrain,intersectPolygon} from './terrain-diagnostics.js';
 import {cellName} from './decorate-plan.js';
 import {fieldPlots} from './field-layout.js';
+import {NATIVE_TREE_POSITIONS,nativeTreeFootprint} from './native-trees.js';
 
 const named=causes=>causes.map(c=>({...c,cells:c.cells.map(([col,row])=>cellName(col,row)??{col,row})}));
 export function diagnoseFieldPosition(farm,resource,layout){
@@ -20,6 +21,7 @@ export function diagnoseFieldPosition(farm,resource,layout){
 }
 export function fixtureCells(resource,layout,fixture){
   const position=layout.house??DEFAULT_HOUSE_POSITION;
+  if(['tree_1','tree_2'].includes(fixture))return touchedCells(nativeTreeFootprint((layout.trees??NATIVE_TREE_POSITIONS)[fixture==='tree_1'?0:1])).map(([col,row])=>cellName(col,row)??{col,row});
   const polygons=fixture==='house'?[...houseBaseRects(position),...(resource.house.level>=2?[houseExtensionRect(position)]:[])].map(boundsRectangle):[rectangle(layout.stall,[2,2])];
   return [...new Map(polygons.flatMap(touchedCells).map(([col,row])=>{
     const cell=cellName(col,row)??{col,row};return [JSON.stringify(cell),cell];
