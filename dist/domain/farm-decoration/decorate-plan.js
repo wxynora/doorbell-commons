@@ -1,7 +1,8 @@
+import {HOUSE_STYLES,houseStyleItem} from './house.js';
 import { randomUUID } from 'node:crypto';
 import { validateDecorationLayout, footprint, CELL_SIZE, Z_ORIGIN } from './layout.js';
 import { snapCells, rectangle, touchedCells, boundsRectangle } from './placement-geometry.js';
-import { houseBaseRects, houseExtensionRect, DEFAULT_HOUSE_POSITION } from './house-geometry.js';
+import { houseBaseRects, houseExtensionRects, DEFAULT_HOUSE_POSITION } from './house-geometry.js';
 import {fieldPlots,defaultFieldLayout,snapFieldPosition,validFieldLayout} from './field-layout.js';
 import {createPlacementTerrain} from './placement-terrain.js';
 import {createPlacementTerrain as explainTerrain} from './terrain-diagnostics.js';
@@ -50,8 +51,9 @@ export function planDecoration(farm,resource,changes,{uuid=randomUUID,validate=t
   const definitions=new Map(resource.catalog.map(d=>[d.item_id,d]));
   const owned=Object.fromEntries(resource.inventory.filter(i=>i.unlocked).map(i=>[i.item_id,i.owned_quantity]));
   // House upgrades are not decoration inventory entries, but are part of authoritative holdings.
-  if(resource.house.level>=2)owned['farm_decor:house_level_two']=1;
-  if(resource.house.level>=3)owned['farm_decor:house_level_three']=1;
+  if((resource.house.classic_level??resource.house.level)>=2)owned['farm_decor:house_level_two']=1;
+  if((resource.house.classic_level??resource.house.level)>=3)owned['farm_decor:house_level_three']=1;
+  for(const style of resource.house.unlocked_styles??[])if(style!=='classic')owned[houseStyleItem(style)]=1;
   if(resource.house.canopy_unlocked)owned['farm_decor:floral_canopy']=1;
   const applied=[];
   for(let index=0;index<changes.length;index++) {
@@ -76,6 +78,20 @@ export function planDecoration(farm,resource,changes,{uuid=randomUUID,validate=t
       }
       if(!validFieldLayout(field,plots))return fail('invalid_field_dimensions',{field:'columns',value:field.columns,maximum:Math.max(6,size),count:plots.length});
       layout.field=field;applied.push({kind:'move',fixture:'field',at:fieldAnchor(field),columns:field.columns,rows:field.rows??Math.ceil(size/field.columns),count:plots.length});continue;
+    }
+    if(change?.fixture==='house'){
+      if(!keys(change,['fixture'],['at','style'])||!Object.hasOwn(change,'at')&&!Object.hasOwn(change,'style'))return fail('invalid_change');
+      if(Object.hasOwn(change,'style')){
+        if(!HOUSE_STYLES.includes(change.style))return fail('invalid_change',{field:'style',value:change.style,allowed:HOUSE_STYLES});
+        if(change.style!=='classic'&&!(owned[houseStyleItem(change.style)]>0))return fail('decoration_not_owned',{item:houseStyleItem(change.style),style:change.style});
+      }
+      layout.house={...(layout.house??DEFAULT_HOUSE_POSITION)};
+      if(Object.hasOwn(change,'style'))layout.house.style=change.style;
+      if(Object.hasOwn(change,'at')){
+        const at=parseCell(change.at);if(!at)return fail('invalid_cell_or_facing');
+        Object.assign(layout.house,{x:DEFAULT_HOUSE_POSITION.x+(at[0]-HOUSE_GRID_ANCHOR[0])*CELL_SIZE,z:DEFAULT_HOUSE_POSITION.z+(at[1]-HOUSE_GRID_ANCHOR[1])*CELL_SIZE});
+      }
+      applied.push({kind:'move',fixture:'house',at:houseAnchor(layout.house),style:layout.house.style??'classic'});continue;
     }
     if(keys(change,['fixture','at'],change?.fixture==='stall'?['facing']:[])) {
       if(change.fixture==='house') {
@@ -194,7 +210,7 @@ export function projectDecorationGrid(farm,resource) {
     for(const [col,row]of touchedCells(boundsRectangle([x-.435,z-.456,x+.435,z+.456])))put(col,row,'TT',`plot:${plot.id??i+1}`);
   }
   const house=resource.layout.house??DEFAULT_HOUSE_POSITION;
-  const houseRects=[...houseBaseRects(house),...(resource.house.level>=2?[houseExtensionRect(house)]:[])];
+  const houseRects=[...houseBaseRects(house),...houseExtensionRects(house,resource.house.classic_level??resource.house.level)];
   for(const rect of houseRects)for(const [col,row]of touchedCells(boundsRectangle(rect)))put(col,row,'HH','house');
   for(const [col,row]of footprint(resource.layout.stall,[2,2])??[])put(col,row,'SS','stall');
   const byId=new Map(resource.catalog.map(d=>[d.item_id,d]));

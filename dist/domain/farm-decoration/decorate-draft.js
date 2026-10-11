@@ -1,3 +1,4 @@
+import {HOUSE_STYLES,houseStyleItem} from './house.js';
 import {randomUUID} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {planDecoration,cellName,parseCell,FACING} from './decorate-plan.js';
@@ -25,7 +26,7 @@ function inputDetails(change,code,resource){
     ...(Object.hasOwn(change,'facing')&&!Object.hasOwn(FACING,change.facing)?[{field:'facing',value:change.facing,allowed:Object.keys(FACING)}]:[])]};
   if(code==='instance_not_found')return {instance:change.instance??change.remove};
   const definition=resource.catalog.find(d=>d.model_id===change.item);
-  if(code==='decoration_not_owned')return {item:change.item,owned:0};
+  if(code==='decoration_not_owned')return {item:change.style?houseStyleItem(change.style):change.item,owned:0,...change.style?{style:change.style}:{}};
   if(code==='range_not_tiled')return {item:change.item,from:change.from,to:change.to,
     cells:snapCells(definition.cells,FACING[change.facing??'S']),facing:change.facing??'S',
     shape:change.shape??'fill',range_cells:parseCell(change.to).map((v,i)=>v-parseCell(change.from)[i]+1)};
@@ -35,7 +36,7 @@ function inputDetails(change,code,resource){
   if(code==='unknown_item')return {item:change.item};
   if(change&&typeof change==='object'&&!Array.isArray(change)){
     let required,optional=['facing'];
-    if(Object.hasOwn(change,'fixture')){required=change.fixture==='field'?['fixture']:['fixture','at'];optional=change.fixture==='field'?['at','columns','rows']:change.fixture==='stall'?['facing']:[];}
+    if(Object.hasOwn(change,'fixture')){required=['field','house'].includes(change.fixture)?['fixture']:['fixture','at'];optional=change.fixture==='house'?['at','style']:change.fixture==='field'?['at','columns','rows']:change.fixture==='stall'?['facing']:[];}
     else if(Object.hasOwn(change,'remove')){required=['remove'];optional=[];}
     else if(Object.hasOwn(change,'instance'))required=['instance','at'];
     else if(Object.hasOwn(change,'item')){required=Object.hasOwn(change,'from')||Object.hasOwn(change,'to')?['item','from','to']:['item','at'];if(required.includes('from'))optional=['facing','shape'];}
@@ -95,8 +96,9 @@ export function evaluateDecorationDraft(farm,resource,previous,{uuid=randomUUID}
   }
   const definitions=new Map(resource.catalog.map(d=>[d.item_id,d]));
   const owned=Object.fromEntries(resource.inventory.filter(i=>i.unlocked).map(i=>[i.item_id,i.owned_quantity]));
-  if(resource.house.level>=2)owned['farm_decor:house_level_two']=1;
-  if(resource.house.level>=3)owned['farm_decor:house_level_three']=1;
+  if((resource.house.classic_level??resource.house.level)>=2)owned['farm_decor:house_level_two']=1;
+  if((resource.house.classic_level??resource.house.level)>=3)owned['farm_decor:house_level_three']=1;
+  for(const style of resource.house.unlocked_styles??[])if(style!=='classic')owned[houseStyleItem(style)]=1;
   if(resource.house.canopy_unlocked)owned['farm_decor:floral_canopy']=1;
   const counts=new Map();
   const totals=new Map(),retained=new Map(),baseIds=new Set(draft.base_layout.decorations.map(i=>i.instance_id));
@@ -104,11 +106,14 @@ export function evaluateDecorationDraft(farm,resource,previous,{uuid=randomUUID}
     totals.set(instance.item_id,(totals.get(instance.item_id)??0)+1);
     if(baseIds.has(instance.instance_id))retained.set(instance.item_id,(retained.get(instance.item_id)??0)+1);
   }
+  const houseCauses=owners.has('house')?diagnoseDecorationPosition(farm,resource,layout,layout.house,[1,1],{house:true}):[];
+  if(houseCauses.length)issues.push({id:owners.get('house'),fixture:'house',code:'invalid_layout',cells:fixtureCells(resource,layout,'house'),causes:houseCauses});
   const fixtureInvalid=validateDecorationLayout(farm,{...layout,decorations:[]},owned);
   const fieldCauses=owners.has('field')?diagnoseFieldPosition(farm,resource,layout):[];
   if(fieldCauses.length)issues.push({id:owners.get('field'),fixture:'field',code:'invalid_field_position',causes:fieldCauses});
   if(fixtureInvalid) {
     for(const fixture of ['house','stall']){
+      if(fixture==='house'&&houseCauses.length)continue;
       if(fieldCauses.length&&!owners.has(fixture))continue;
       const causes=diagnoseDecorationPosition(farm,resource,layout,layout.stall,[2,2],{house:fixture==='house',stall:fixture==='stall'});
       if(causes.length)issues.push({id:owners.get(fixture)??null,fixture,code:fixtureInvalid,

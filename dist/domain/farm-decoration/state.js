@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { FARM_DECORATION_CATALOG, decorationById, isDecorationSaleOpen } from "./catalog.js";
 import { decorationGrid } from "./layout.js";
 import { bumpDaily } from "../../daily.js";
-import { houseState, housePurchaseError } from "./house.js";
+import { houseState, housePurchaseError, HOUSE_STYLES, houseStyleItem } from "./house.js";
 import { relocateWaterwheels } from "./waterwheel-relocation.js";
 import { DEFAULT_HOUSE_POSITION } from "./house-geometry.js";
 
@@ -17,6 +17,8 @@ export function decorationState(farm) {
   const result = structuredClone(state);
   result.layout.canopy ??= "plain";
   result.layout.house ??= {...DEFAULT_HOUSE_POSITION};
+  const style=result.layout.house.style??'classic';
+  if(!HOUSE_STYLES.includes(style)||(style!=='classic'&&!(result.owned[houseStyleItem(style)]>0)))throw new Error('Invalid farm house style');
   // Project the old yard once; only existing save/buy paths persist the upgrade.
   if (result.version === 1) {
     relocateWaterwheels(result.layout, farm.plots ?? []);

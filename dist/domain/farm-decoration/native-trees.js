@@ -1,5 +1,5 @@
 import { CELL_SIZE, boundsRectangle, intersects } from "./placement-geometry.js";
-import { DEFAULT_HOUSE_POSITION, houseExtensionRect } from "./house-geometry.js";
+import { DEFAULT_HOUSE_POSITION, houseExtensionRects } from "./house-geometry.js";
 import { createPlacementTerrain } from "./placement-terrain.js";
 
 export const NATIVE_TREE_POSITIONS = Object.freeze([
@@ -22,7 +22,7 @@ export function nativeTreeFootprint(p) {
 }
 export function canPlaceNativeTree(point,terrain,housePosition=DEFAULT_HOUSE_POSITION,houseLevel=1) {
   const polygon=nativeTreeFootprint(point);
-  return terrain.canPlace(polygon)&&!(houseLevel>=2&&intersects(polygon,boundsRectangle(houseExtensionRect(housePosition))));
+  return terrain.canPlace(polygon)&&!houseExtensionRects(housePosition,houseLevel).some(r=>intersects(polygon,boundsRectangle(r)));
 }
 export function canPlaceNativeTrees(trees,plots,housePosition,field,houseLevel=1) {
   if(!validNativeTrees(trees))return false;

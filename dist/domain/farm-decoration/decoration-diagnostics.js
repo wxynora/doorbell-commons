@@ -1,5 +1,5 @@
 import {rectangle,boundsRectangle,touchedCells,intersects} from './placement-geometry.js';
-import {houseBaseRects,houseExtensionRect,DEFAULT_HOUSE_POSITION} from './house-geometry.js';
+import {houseBaseRects,houseExtensionRects,DEFAULT_HOUSE_POSITION} from './house-geometry.js';
 import {isGroundDecoration} from './house.js';
 import {createPlacementTerrain,intersectPolygon} from './terrain-diagnostics.js';
 import {cellName} from './decorate-plan.js';
@@ -10,7 +10,7 @@ const named=causes=>causes.map(c=>({...c,cells:c.cells.map(([col,row])=>cellName
 export function diagnoseFieldPosition(farm,resource,layout){
   const terrain=createPlacementTerrain([],layout.house??DEFAULT_HOUSE_POSITION);
   const definitions=new Map(resource.catalog.map(d=>[d.item_id,d]));
-  const fixtures=[...(resource.house.level>=2?[{polygon:boundsRectangle(houseExtensionRect(layout.house??DEFAULT_HOUSE_POSITION)),blocker:{kind:'house_extension'}}]:[]),
+  const fixtures=[...houseExtensionRects(layout.house??DEFAULT_HOUSE_POSITION,resource.house.level).map(r=>({polygon:boundsRectangle(r),blocker:{kind:'house_extension'}})),
     {polygon:rectangle(layout.stall,[2,2]),blocker:{kind:'stall'}},...layout.decorations.map(o=>({
     polygon:rectangle(o,definitions.get(o.item_id).cells),blocker:{kind:'decoration',instance:o.instance_id,name:definitions.get(o.item_id).name}}))];
   return fieldPlots(farm.plots??[],layout.field).flatMap((plot,i)=>{
@@ -22,7 +22,7 @@ export function diagnoseFieldPosition(farm,resource,layout){
 export function fixtureCells(resource,layout,fixture){
   const position=layout.house??DEFAULT_HOUSE_POSITION;
   if(['tree_1','tree_2'].includes(fixture))return touchedCells(nativeTreeFootprint((layout.trees??NATIVE_TREE_POSITIONS)[fixture==='tree_1'?0:1])).map(([col,row])=>cellName(col,row)??{col,row});
-  const polygons=fixture==='house'?[...houseBaseRects(position),...(resource.house.level>=2?[houseExtensionRect(position)]:[])].map(boundsRectangle):[rectangle(layout.stall,[2,2])];
+  const polygons=fixture==='house'?[...houseBaseRects(position),...houseExtensionRects(position,resource.house.level)].map(boundsRectangle):[rectangle(layout.stall,[2,2])];
   return [...new Map(polygons.flatMap(touchedCells).map(([col,row])=>{
     const cell=cellName(col,row)??{col,row};return [JSON.stringify(cell),cell];
   })).values()];
@@ -30,12 +30,17 @@ export function fixtureCells(resource,layout,fixture){
 export function diagnoseDecorationPosition(farm,resource,layout,pose,cells,{house=false,stall=false,definition}={}){
   const position=layout.house??DEFAULT_HOUSE_POSITION;
   const terrain=createPlacementTerrain(farm.plots??[],house?null:position,layout.field);
-  const polygons=house?[...houseBaseRects(position),...(resource.house.level>=2?[houseExtensionRect(position)]:[])].map(boundsRectangle):[rectangle(pose,cells)];
+  const polygons=house?[...houseBaseRects(position),...houseExtensionRects(position,resource.house.level)].map(boundsRectangle):[rectangle(pose,cells)];
   const causes=polygons.flatMap(poly=>terrain.explain(poly,definition?.model_id==='waterwheel'));
+  if(house){
+    const fixtures=[{polygon:rectangle(layout.stall,[2,2]),blocker:{kind:'stall'}},...layout.decorations.map(o=>{const d=resource.catalog.find(d=>d.item_id===o.item_id);return {polygon:rectangle(o,d.cells),groundFinish:isGroundDecoration(d),blocker:{kind:'decoration',instance:o.instance_id,name:d.name}}})];
+    for(const [index,poly] of polygons.entries())for(const f of fixtures)if(!(index>=houseBaseRects(position).length&&f.groundFinish)&&intersects(poly,f.polygon))causes.push({reason:'blocked',blocker:f.blocker,cells:touchedCells(intersectPolygon(poly,f.polygon))});
+  }
   // Native tree fixtures have no catalog definition but still block the extension.
   if(!house&&resource.house.level>=2&&(stall||definition===undefined||!isGroundDecoration(definition))){
-    const extension=boundsRectangle(houseExtensionRect(position)),poly=polygons[0];
-    if(intersects(poly,extension))causes.push({reason:'blocked',blocker:{kind:'house_extension'},cells:touchedCells(intersectPolygon(poly,extension))});
+    const poly=polygons[0];
+    for(const rect of houseExtensionRects(position,resource.house.level)){const extension=boundsRectangle(rect);
+    if(intersects(poly,extension))causes.push({reason:'blocked',blocker:{kind:'house_extension'},cells:touchedCells(intersectPolygon(poly,extension))});}
   }
   // Merge repeated house-part geometry reports while retaining every blocker identity.
   const merged=new Map();

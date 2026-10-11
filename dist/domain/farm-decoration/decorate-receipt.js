@@ -1,3 +1,4 @@
+import {houseStyleName} from './house.js';
 import {projectDecorationGrid} from './decorate-plan.js';
 
 const value=v=>JSON.stringify(v);
@@ -12,7 +13,7 @@ export function decorationViewText(farm,resource){
     '重叠规则：装饰与装饰、装饰与摊位允许重叠；原有树干不阻挡摆放。田地、农舍本体、桥梁不可重叠；农舍扩建部分只允许地面装饰和花坛重叠。水车必须完整放在河道，其余装饰与摊位必须完整放在可摆陆地内，不能压到岸边预留区域。',
     '格子图用于定位；斜向物品和边界格仍按实际占地检查，失败时会列出具体问题格。',
     '朝向：^朝上，>朝右，v朝下，<朝左；NE右上、SE右下、SW左下、NW左上。',
-    `农舍｜位置：${view.house.anchor}｜朝向：S`,
+    `农舍｜款式：${houseStyleName(resource.layout.house?.style??'classic')}｜已解锁：${resource.house.unlocked_styles.map(houseStyleName).join('、')}｜位置：${view.house.anchor}｜朝向：S`,
     `摊位｜位置：${view.stall.anchor}｜朝向：${view.stall.facing}`,
     `田地｜中心锚点：${view.field.anchor}｜排布：${view.field.rows}行×${view.field.columns}列｜地块：${view.field.plots.length}块`,
     ...view.field.plots.map(p=>`${p.id}号田｜占格：${cells(p.cells)}`),
@@ -25,7 +26,7 @@ export function decorationViewText(farm,resource){
 export function decorationSummary(draft){
   return draft.entries.map(({id,change:c,field})=>c.fixture==='field'
     ?`事项 ${id}｜田地｜中心锚点：${field.at}｜排布：${field.rows}行×${field.columns}列｜地块：${field.count}块`
-    :`事项 ${id}｜${c.remove?`收回实例${c.remove}`:c.instance?`移动实例${c.instance}至${c.at}${c.facing?`，朝${c.facing}`:''}`:c.fixture?`移动${c.fixture==='house'?'农舍':c.fixture==='tree_1'?'原有树T1':c.fixture==='tree_2'?'原有树T2':'摊位'}至${c.at}`:`${c.item}｜${c.at??`${c.from}至${c.to}，${c.shape==='border'?'仅外圈':'填满'}`}｜朝${c.facing??'S'}`}`).join('\n');
+    :`事项 ${id}｜${c.remove?`收回实例${c.remove}`:c.instance?`移动实例${c.instance}至${c.at}${c.facing?`，朝${c.facing}`:''}`:c.fixture==='house'&&c.style?`切换房屋：${houseStyleName(c.style)}${c.at?`，位置：${c.at}`:''}`:c.fixture?`移动${c.fixture==='house'?'农舍':c.fixture==='tree_1'?'原有树T1':c.fixture==='tree_2'?'原有树T2':'摊位'}至${c.at}`:`${c.item}｜${c.at??`${c.from}至${c.to}，${c.shape==='border'?'仅外圈':'填满'}`}｜朝${c.facing??'S'}`}`).join('\n');
 }
 function causeText(c,name){
   const at=cells(c.cells);
@@ -42,6 +43,7 @@ function causeText(c,name){
 }
 function inputText(i,name){
   if(i.code==='invalid_field_dimensions')return `田地共有${i.count}块，${i.field}填了${JSON.stringify(i.value)}；可填1至${i.maximum}的整数，rows与columns不能同时填写。`;
+  if(i.code==='decoration_not_owned'&&i.style)return `尚未解锁${houseStyleName(i.style)}，本次没有切换。`;
   if(i.code==='decoration_not_owned')return `${name}（${i.item}）持有0件，不能用于这项布置。`;
   if(i.code==='unknown_item')return `物品代号“${i.item}”不在当前装饰目录中。`;
   if(i.code==='decoration_quantity_exceeded')return `${name}：持有${i.owned}件；这份草稿保留原有${i.placed}件，另摆${i.requested}件，共需${i.final_placed}件；还可用${i.available}件，缺少${i.missing}件。超出的实例：${i.instance}（${cells(i.cells)}）。`;
@@ -52,6 +54,7 @@ function inputText(i,name){
   if(i.code==='diagonal_range')return `facing=${i.value}是斜向；from/to范围铺设只支持N、E、S、W。单件at仍支持八方向。`;
   if(i.code==='instance_not_found')return `实例“${i.instance}”不在这份布局中；该事项未应用，其他事项仍保留在草稿。`;
   if(i.code==='invalid_change'){
+    if(i.field==='style')return `style填了“${i.value}”，可用classic、pumpkin、stump、mushroom。`;
     if(i.field==='fixture')return `fixture填了“${i.value}”，可用${i.allowed.join('、')}。`;
     if(!i.required_fields)return '这一项没有item、instance、remove或fixture，无法判断要做哪种调整。';
     return [i.missing_fields.length?`这一项缺少字段${i.missing_fields.join('、')}。`:'',i.unexpected_fields.length?`这一项多了字段${i.unexpected_fields.join('、')}。`:'',

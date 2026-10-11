@@ -60,6 +60,9 @@ const rows = [
   ["birch_tree", "白桦", 2, 2, 130000],
   ["pine_tree", "松树", 3, 3, 240000],
   ["osmanthus_tree", "桂花树", 2, 2, 160000],
+  ["house_pumpkin", "南瓜屋", 1, 1, 400000, "unlock", "house"],
+  ["house_stump", "树桩屋", 1, 1, 400000, "unlock", "house"],
+  ["house_mushroom", "蘑菇屋", 1, 1, 400000, "unlock", "house"],
 ];
 export const FARM_DECORATION_CATALOG = Object.freeze(rows.map(([model_id, name, w, d, price_farm_coins, purchase_mode = "unit", layer = "furniture"]) => Object.freeze({
   item_id: `farm_decor:${model_id}`, model_id, name, cells: Object.freeze([w, d]),
