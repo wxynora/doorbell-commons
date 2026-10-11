@@ -32,7 +32,8 @@ export function diagnoseDecorationPosition(farm,resource,layout,pose,cells,{hous
   const terrain=createPlacementTerrain(farm.plots??[],house?null:position,layout.field);
   const polygons=house?[...houseBaseRects(position),...(resource.house.level>=2?[houseExtensionRect(position)]:[])].map(boundsRectangle):[rectangle(pose,cells)];
   const causes=polygons.flatMap(poly=>terrain.explain(poly,definition?.model_id==='waterwheel'));
-  if(!house&&resource.house.level>=2&&(stall||!isGroundDecoration(definition))){
+  // Native tree fixtures have no catalog definition but still block the extension.
+  if(!house&&resource.house.level>=2&&(stall||definition===undefined||!isGroundDecoration(definition))){
     const extension=boundsRectangle(houseExtensionRect(position)),poly=polygons[0];
     if(intersects(poly,extension))causes.push({reason:'blocked',blocker:{kind:'house_extension'},cells:touchedCells(intersectPolygon(poly,extension))});
   }
