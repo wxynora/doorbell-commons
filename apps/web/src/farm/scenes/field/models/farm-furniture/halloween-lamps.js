@@ -2,9 +2,18 @@ import { T, kit, mesh, branch, ghost } from "./model-kit.js";
 
 function jackLantern(parent, p, size) {
   const g = new T.Group(); g.position.set(...p); g.scale.setScalar(size); parent.add(g); const { mat, ball, rod } = kit(g);
-  for (let i = 0; i < 10; i++) { const a = i * Math.PI / 5; ball([Math.cos(a) * .32, .59, Math.sin(a) * .32], [.55, .59, .55], i % 2 ? "#d99451" : "#e3a35b"); }
+  // Warm translucent-shell impression without adding per-decoration lights.
+  const shell = ["#e3a35b", "#d99451"].map(color => {
+    const material = mat(color).clone();
+    material.emissive.set("#713308");
+    material.emissiveIntensity = 0;
+    material.userData.decorationGlow = true;
+    return material;
+  });
+  for (let i = 0; i < 10; i++) { const a = i * Math.PI / 5; mesh(g, new T.SphereGeometry(1, 12, 8), shell[i % 2], [Math.cos(a) * .32, .59, Math.sin(a) * .32], [.55, .59, .55]); }
   branch(g, mat("#7d8150"), [[0, 1.12, 0], [.035, 1.30, -.01], [.15, 1.36, -.02]], .065);
   const glow = new T.MeshToonMaterial({ color: "#ffe0a0", emissive: "#f9b94d", emissiveIntensity: .65, side: T.DoubleSide });
+  glow.userData.decorationGlow = true;
   function face(shape, x, y, z, angle = 0) { const outline = mesh(g, new T.ShapeGeometry(shape), mat("#765132"), [x, y, z - .008]); outline.scale.set(1.15, 1.15, 1); outline.rotation.y = angle; const o = mesh(g, new T.ShapeGeometry(shape), glow, [x, y, z]); o.rotation.y = angle; }
   const eye = new T.Shape(); eye.moveTo(-.10, -.07); eye.lineTo(.09, -.07); eye.lineTo(.025, .105); eye.closePath(); face(eye, -.25, .75, .79, -.23); face(eye, .25, .75, .79, .23);
   const nose = new T.Shape(); nose.moveTo(-.055, 0); nose.lineTo(.055, 0); nose.lineTo(0, .085); nose.closePath(); face(nose, 0, .52, .875);
@@ -21,7 +30,7 @@ function smallCat(parent) {
 
 export function buildHalloweenLamp(g, id) {
   const { cyl, ring, mat, rod, ball } = kit(g);
-  if (id === "cat_pumpkin") { jackLantern(g, [-.22, 0, -.03], .61); const cat = smallCat(g); cat.position.set(.48, 0, .26); cat.rotation.y = -.17; }
+  if (id === "cat_pumpkin") { g.scale.setScalar(1.35); jackLantern(g, [-.22, 0, -.03], .61); const cat = smallCat(g); cat.position.set(.48, 0, .26); cat.rotation.y = -.17; }
   if (id === "ghost_lamp") { cyl([0, .055, 0], .28, .11, "#95849d"); ring([0, .115, 0], .23, .023, "#c4ac84"); const body = ghost(g, [0, .14, 0], 1.05); body.traverse(o => { if (o.isMesh && o.material.color.getHexString() === "f5efdf") { const light = o.material.clone(); light.color.set("#fff0ca"); light.emissive.set("#ffd796"); light.emissiveIntensity = .38; o.material = light; } }); for (const x of [-.22, .22]) ball([x, .40, 0], [.07, .045, .055], "#f8e5bc"); g.userData.lamp = true; }
   if (id === "pumpkin_lamppost") { cyl([-.16, .06, 0], .22, .12, "#8b7b92"); cyl([-.16, .16, 0], .12, .12, "#75657f"); rod([-.16, .2, 0], [-.16, 1.73, 0], .042, "#76667f"); branch(g, mat("#76667f"), [[-.16, 1.69, 0], [-.15, 1.96, 0], [.08, 2.08, 0], [.39, 1.98, 0], [.42, 1.85, 0]], .033); ring([-.16, .32, 0], .066, .018, "#c4ac84"); ring([-.16, 1.6, 0], .06, .017, "#c4ac84"); rod([.42, 1.87, 0], [.42, 1.73, 0], .012, "#a09276"); ring([.42, 1.65, 0], .10, .012, "#a09276"); jackLantern(g, [.42, 1.22, 0], .31); }
 }

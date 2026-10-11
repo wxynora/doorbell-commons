@@ -212,6 +212,7 @@ export function FieldScene({
         {!edit.fieldMoving ? <div>
           {!roofPalette&&!canopyEditor&&!boundaryEditor&&!edit.layoutPreview&&!edit.houseMoving&&!edit.fieldMoving ? <>
             <button type="button" onClick={()=>runtime.current?.rotate()}>旋转</button>
+            {edit.canFlip ? <button type="button" aria-pressed={edit.mirrored??false} onClick={()=>runtime.current?.flip()}>左右翻转</button> : null}
             <button type="button" disabled={!edit.canAdd} onClick={()=>runtime.current?.addOne()}>+1</button>
             <button type="button" disabled={!edit.canRemove} onClick={()=>runtime.current?.remove()}>收起</button>
           </> : null}

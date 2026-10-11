@@ -1,3 +1,4 @@
+import { canMirrorDecoration, applyDecorationMirror, decorationMirrorPose } from "./models/decoration-mirror.js";
 import { planSharedLayout } from "./layout-sharing-plan.js";
 import * as T from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -68,7 +69,7 @@ export function createFieldRuntime(host, options) {
   const observer=new ResizeObserver(resize);observer.observe(host);resize();
   const ray=new T.Raycaster(),pointer=new T.Vector2(),plane=new T.Plane(new T.Vector3(0,1,0),-.25);
   const pose=o=>({x:o.position.x,z:o.position.z,rotation:o.rotation.y});
-  const capture=()=>({...fieldLayout?{field:{...fieldLayout}}:{},house:{x:world.house.position.x,z:world.house.position.z},roof,canopy,boundary_item_id:boundaryItemId,stall:pose(world.root.getObjectByName("market-stall")),decorations:world.decorations.map(o=>({instance_id:o.userData.instanceId,item_id:o.userData.itemId,...pose(o)}))});
+  const capture=()=>({...fieldLayout?{field:{...fieldLayout}}:{},house:{x:world.house.position.x,z:world.house.position.z},roof,canopy,boundary_item_id:boundaryItemId,stall:pose(world.root.getObjectByName("market-stall")),decorations:world.decorations.map(o=>({instance_id:o.userData.instanceId,item_id:o.userData.itemId,...pose(o),...decorationMirrorPose(o)}))});
   const definition=id=>data?.catalog.find(d=>d.item_id===id);
   const inventory=id=>data?.inventory.find(d=>d.item_id===id);
   function remaining(id) {
@@ -80,7 +81,7 @@ export function createFieldRuntime(host, options) {
   function emit(message="") {
     const current=currentPlacement(),object=current?.object,id=object?.userData.itemId;
     const columns=fieldLayout?.columns??6;
-    options.onEditState({editing,valid:!saving&&(!current?.active||current.valid),houseMoving:!!housePlacement,fieldMoving:!!fieldPlacement,fieldColumns:columns,fieldRows:fieldLayout?.rows??Math.ceil(Math.max(0,...definitions.map(p=>p.id))/columns),boundaryItemId,title:fieldPlacement?"移动田地":housePlacement?"移动房屋":importing?"导入布局预览":object?.userData.label||"布置农场",layoutPreview:importing,canAdd:!saving&&!!id&&remaining(id),canRemove:!saving&&!!id,message});
+    options.onEditState({editing,valid:!saving&&(!current?.active||current.valid),houseMoving:!!housePlacement,fieldMoving:!!fieldPlacement,fieldColumns:columns,fieldRows:fieldLayout?.rows??Math.ceil(Math.max(0,...definitions.map(p=>p.id))/columns),boundaryItemId,title:fieldPlacement?"移动田地":housePlacement?"移动房屋":importing?"导入布局预览":object?.userData.label||"布置农场",layoutPreview:importing,canFlip:!saving&&!!placement?.active&&canMirrorDecoration(object),mirrored:!!object&&object.scale.x<0,canAdd:!saving&&!!id&&remaining(id),canRemove:!saving&&!!id,message});
   }
   function refreshNatureEffects(){
     disposeDecoration(world.root.getObjectByName("active-nature-event"));
@@ -124,8 +125,8 @@ export function createFieldRuntime(host, options) {
       }
       if(!object){object=createDecoration(def.model_id,season);world.root.add(object);surfacesChanged=true;}
       object.userData.instanceId=item.instance_id;object.userData.itemId=item.item_id;
-      if(object.position.x!==item.x||object.position.z!==item.z||object.rotation.y!==item.rotation)surfacesChanged=true;
-      object.position.set(item.x,.25,item.z);object.rotation.y=item.rotation;
+      if(object.position.x!==item.x||object.position.z!==item.z||object.rotation.y!==item.rotation||(object.scale.x<0)!==(item.mirrored??false))surfacesChanged=true;
+      object.position.set(item.x,.25,item.z);object.rotation.y=item.rotation;applyDecorationMirror(object,item.mirrored);
       next.push(object);
     }
     for(const object of existing.values()){disposeDecoration(object);surfacesChanged=true;}
@@ -185,7 +186,7 @@ export function createFieldRuntime(host, options) {
     if(!def||!remaining(id)){emit("背包里没有可用的这件装饰");return;}
     if(placement.active&&!placement.valid){emit("先摆好当前装饰，再追加下一件");return;}
     const object=createDecoration(def.model_id,season);
-    if(source)object.rotation.y=source.rotation.y;
+    if(source){object.rotation.y=source.rotation.y;applyDecorationMirror(object,source.scale.x<0);}
     const free=placement.findFree(object,source?.position);
     if(!free){disposeDecoration(object);emit("没有合适的空位，请先调整或收起其他装饰");return;}
     object.userData.instanceId=crypto.randomUUID();object.userData.itemId=id;
@@ -204,7 +205,7 @@ export function createFieldRuntime(host, options) {
           stall.position.x=pose.x;stall.position.z=pose.z;return true;
         }
         const def=definition(id),object=createDecoration(def.model_id,season);
-        object.position.set(pose.x,.25,pose.z);object.rotation.y=pose.rotation;
+        object.position.set(pose.x,.25,pose.z);object.rotation.y=pose.rotation;applyDecorationMirror(object,pose.mirrored);
         if(!placement.canPlace(pose,object)){disposeDecoration(object);return false;}
         object.userData.itemId=id;world.root.add(object);world.decorations.push(object);return true;
       });
@@ -247,6 +248,11 @@ export function createFieldRuntime(host, options) {
     } catch(error) {saving=false;emit(error instanceof Error?error.message:"保存未完成，布置还在编辑中");}
   }
   function rotate(){if(saving||fieldPlacement||housePlacement||!placement?.active)return;placement.rotate();emit();}
+  function flip(){
+    if(saving||fieldPlacement||housePlacement||!placement?.active)return;
+    const object=placement.object;
+    if(applyDecorationMirror(object,object.scale.x>=0))emit();
+  }
   function addOne(){if(housePlacement||fieldPlacement)return;const source=placement?.object,id=source?.userData.itemId;if(id)startPlacement(id,source);}
   function remove(){if(!saving&&!fieldPlacement&&!housePlacement&&placement?.remove())emit("已收起，点击保存完成布置");}
   function pointerRay(e){const rect=canvas.getBoundingClientRect();pointer.set((e.clientX-rect.left)/rect.width*2-1,-(e.clientY-rect.top)/rect.height*2+1);ray.setFromCamera(pointer,camera);}
@@ -327,7 +333,7 @@ export function createFieldRuntime(host, options) {
     frame=requestAnimationFrame(animate);
   }
   if(active)frame=requestAnimationFrame(animate);
-  return {previewLayout,setActive,setModelOutline,setPlots,setEnvironment,setDecorations,selectPlot,startPlacement,startHouseMove,startFieldMove,changeFieldColumns,changeFieldRows,rotate,addOne,remove,cancel,save,changeRoof,changeCanopy,changeBoundary,
+  return {previewLayout,setActive,setModelOutline,setPlots,setEnvironment,setDecorations,selectPlot,startPlacement,startHouseMove,startFieldMove,changeFieldColumns,changeFieldRows,rotate,flip,addOne,remove,cancel,save,changeRoof,changeCanopy,changeBoundary,
     zoom(factor){camera.zoom=T.MathUtils.clamp(camera.zoom*factor,MIN_ZOOM,MAX_ZOOM);camera.updateProjectionMatrix();},
     resetView(){controls.reset();},
     dispose(){disposed=true;if(frame!==null)cancelAnimationFrame(frame);frame=null;observer.disconnect();for(const [name,fn] of listeners)canvas.removeEventListener(name,fn);controls.dispose();modelOutline?.dispose();environment.dispose();world.dispose();renderer.dispose();canvas.remove();}

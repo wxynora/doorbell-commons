@@ -7,7 +7,7 @@ export interface SceneDecorationLayout {
   canopy: "plain" | "floral";
   stall: SceneDecorationPose;
   boundary_item_id?: "farm_decor:white_fence" | "farm_decor:timber_fence" | "farm_decor:stone_wall" | "farm_decor:hedge" | "farm_decor:ghost_fence" | null | undefined;
-  decorations: (SceneDecorationPose & { instance_id: string; item_id: string })[];
+  decorations: (SceneDecorationPose & { instance_id: string; item_id: string; mirrored?: boolean | undefined })[];
 }
 export interface SceneDecorationData {
   house?: {level: 1 | 2 | 3; canopy_unlocked: boolean; blocked_rects: readonly (readonly number[])[]};
@@ -34,6 +34,8 @@ export interface SceneEditState {
   editing: boolean;
   valid: boolean;
   title: string;
+  canFlip?: boolean;
+  mirrored?: boolean;
   canAdd: boolean;
   canRemove: boolean;
   message: string;

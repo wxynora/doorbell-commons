@@ -1,3 +1,4 @@
+import { CELL_SIZE } from "../placement-geometry.js";
 import { buildBorder } from "./borders.js";
 import { buildPlant, buildPlanting } from "./plants.js";
 import { buildFurniture } from "./furniture.js";
@@ -19,7 +20,11 @@ export const SEASONAL_FURNITURE_IDS = new Set([
 ]);
 
 export function createFarmFurniture(id, season) {
-  if (["white_fence", "timber_fence", "stone_wall", "hedge", "ghost_fence"].includes(id)) return buildBorder(id, .86);
+  if (["white_fence", "timber_fence", "stone_wall", "hedge", "ghost_fence"].includes(id)) {
+    const border = buildBorder(id, CELL_SIZE);
+    border.position.z = -CELL_SIZE / 2;
+    return border;
+  }
   if (["cherry_tree", "maple_tree", "ginkgo_tree", "birch_tree", "pine_tree", "osmanthus_tree"].includes(id)) return buildPlant(id, season);
   if (["lavender", "daisies", "ferns", "ornamental_grass", "black_roses", "red_roses"].includes(id)) return buildPlanting(id, season);
   if (["log_steps", "moss_path", "checker_tiles", "pumpkin_path", "web_tiles"].includes(id)) return buildPath(id);

@@ -18,6 +18,7 @@ export interface SceneRuntime {
   changeFieldColumns(columns: number): boolean;
   changeFieldRows(rows: number): boolean;
   rotate(): void;
+  flip(): void;
   addOne(): void;
   remove(): void;
   cancel(): void;

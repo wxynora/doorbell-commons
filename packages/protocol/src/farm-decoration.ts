@@ -9,7 +9,7 @@ export const farmDecorationLayoutSchema = z.object({
   canopy: z.enum(["plain", "floral"]),
   stall: z.object(point).strict(),
   boundary_item_id: z.enum(["farm_decor:white_fence", "farm_decor:timber_fence", "farm_decor:stone_wall", "farm_decor:hedge", "farm_decor:ghost_fence"]).nullable().optional(),
-  decorations: z.array(z.object({ instance_id: z.uuid(), item_id: itemId, ...point }).strict()),
+  decorations: z.array(z.object({ instance_id: z.uuid(), item_id: itemId, ...point, mirrored: z.boolean().optional() }).strict().refine(item => item.mirrored === undefined || ["farm_decor:cat_pumpkin", "farm_decor:pumpkin_lamppost"].includes(item.item_id), { message: "mirrored is only supported for pumpkin lamps" })),
 }).strict();
 export const farmDecorationsDataSchema = z.object({
   house: z.object({ level: z.union([z.literal(1), z.literal(2), z.literal(3)]), canopy_unlocked: z.boolean(), blocked_rects: z.array(z.tuple([z.number(), z.number(), z.number(), z.number()])) }).strict(),

@@ -26,7 +26,7 @@ export function planSharedLayout(source, data, tryPlace, makeId = () => crypto.r
     }
     if (!tryPlace(item.item_id, item)) { skip(def.name, "conflict"); continue; }
     placed.set(item.item_id, count + 1);
-    layout.decorations.push({ item_id: item.item_id, instance_id: makeId(), x: item.x, z: item.z, rotation: item.rotation });
+    layout.decorations.push({ item_id: item.item_id, instance_id: makeId(), x: item.x, z: item.z, rotation: item.rotation, ...(item.mirrored ? {mirrored:true} : {}) });
   }
   return { layout, skipped };
 }
