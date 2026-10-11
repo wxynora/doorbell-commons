@@ -6,6 +6,7 @@ import {fieldPlots,defaultFieldLayout,snapFieldPosition,validFieldLayout} from '
 import {createPlacementTerrain} from './placement-terrain.js';
 import {createPlacementTerrain as explainTerrain} from './terrain-diagnostics.js';
 import {NATIVE_TREE_POSITIONS} from './native-trees.js';
+import {winterSnowmanPosition} from './winter-snowman-position.js';
 
 export const GRID = Object.freeze({ columns:24, rows:27, minCol:-12, minRow:-12 });
 // Model local +Z is its front. Positive Three.js Y rotation turns it towards +X.
@@ -213,6 +214,11 @@ export function projectDecorationGrid(farm,resource) {
     for(const [col,row]of occupied)put(col,row,code,o.instance_id);
     instances.push({instance:o.instance_id,code,item:definition.model_id,name:definition.name,facing,anchor,cells:names});
   }
+  const snowman=resource.season==='winter'?winterSnowmanPosition(farm.plots??[],resource.layout,resource.house.level,resource.catalog):null;
+  if(snowman){
+    snowman.anchor=cellName(Math.floor(snowman.x/CELL_SIZE),Math.floor((snowman.z-Z_ORIGIN)/CELL_SIZE));
+    snowman.cells=touchedCells(boundsRectangle(snowman.bounds)).map(([col,row])=>{put(col,row,'XM','snowman');return cellName(col,row);});
+  }
   const arrows={N:'^ ',NE:'NE',E:'> ',SE:'SE',S:'v ',SW:'SW',W:'< ',NW:'NW'};
   for(const o of instances) {
     if(!o.anchor||layers.get(o.anchor)?.length!==1)continue;
@@ -223,7 +229,7 @@ export function projectDecorationGrid(farm,resource) {
   const lines=[header,border];
   for(let row=0;row<GRID.rows;row++)lines.push(String(row+1).padStart(2,'0')+' |'+cells[row].map(v=>v.padEnd(codeWidth)).join('|')+'|',border);
   const overlaps=[...layers].filter(([,items])=>items.length>1).map(([cell,items])=>({cell,instances:items.map(i=>i.id)}));
-  return {columns:GRID.columns,rows:GRID.rows,grid:lines.join('\n'),instances,inventory:available,overlaps,offGrid,fixedTrees,field,
+  return {columns:GRID.columns,rows:GRID.rows,grid:lines.join('\n'),instances,inventory:available,overlaps,offGrid,fixedTrees,field,snowman,
     stall:{facing:facingOf(resource.layout.stall.rotation),anchor:cellName(
       Math.round(resource.layout.stall.x/CELL_SIZE-snapCells([2,2],resource.layout.stall.rotation)[0]/2),
       Math.round((resource.layout.stall.z-Z_ORIGIN)/CELL_SIZE-snapCells([2,2],resource.layout.stall.rotation)[1]/2))},

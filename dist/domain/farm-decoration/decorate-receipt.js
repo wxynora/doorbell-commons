@@ -6,7 +6,8 @@ export function decorationViewText(farm,resource){
   const view=projectDecorationGrid(farm,resource);
   return [
     '农场布局｜24列×27行，上北下南',view.grid,
-    '图例：空白=岛外，..=完整可摆陆地格，~~=完整河道格，##=岸边或边界混合格（不可整格铺满），BB=桥梁占位，TT=田地，HH=农舍，SS=摊位，T1/T2=原有树干位置，**=多个对象共用格子（不代表一定违规）。',
+    '图例：空白=岛外，..=完整可摆陆地格，~~=完整河道格，##=岸边或边界混合格（不可整格铺满），BB=桥梁占位，TT=田地，HH=农舍，SS=摊位，T1/T2=原有树干位置，XM=雪人位置，**=多个对象共用格子（不代表一定违规）。',
+    ...(resource.season==='winter'?[view.snowman?`雪人｜位置：${view.snowman.anchor}｜占格：${cells(view.snowman.cells)}｜冬季景物，不占库存，不阻挡摆放。`:'雪人｜屋前暂无空闲角落，当前未出现。']:[]),
     `原有树：${view.fixedTrees.map(t=>`${t.code}在${t.cell}`).join('，')}；仅标树干位置，不将树冠虚构成禁摆区。`,
     '重叠规则：装饰与装饰、装饰与摊位允许重叠；原有树干不阻挡摆放。田地、农舍本体、桥梁不可重叠；农舍扩建部分只允许地面装饰和花坛重叠。水车必须完整放在河道，其余装饰与摊位必须完整放在可摆陆地内，不能压到岸边预留区域。',
     '格子图用于定位；斜向物品和边界格仍按实际占地检查，失败时会列出具体问题格。',
@@ -63,7 +64,7 @@ export function decorationIssuesText(draftId,issues,resource){
   const lines=['装修草稿已保留，农场尚未保存。',`草稿编号：${draftId}`,'只需调整以下位置，其他修改不用重发：'];
   for(const i of issues){
     if(i.code==='layout_changed'){
-      lines.push(...i.changes.map(c=>`当前布局的${c.field??`实例${c.instance}`}已从${value(c.before)}变为${value(c.after)}，本次没有覆盖。装修草稿仍保留。`));continue;
+      lines.push(...i.changes.map(c=>`当前布局的${c.field??`实例${c.instance}`}已从${value(c.before)}变为${value(c.after)}，本次没有覆盖。装修草稿仍保留。`),'布局已变化时不覆盖；可用reset:true重新开始。');continue;
     }
     const d=resource.catalog.find(d=>d.item_id===i.item||d.model_id===i.item);
     const name=i.fixture?({house:'农舍',stall:'摊位',field:'田地',tree_1:'原有树T1',tree_2:'原有树T2'}[i.fixture]):d?.name??i.item??i.input?.item??'调整';
