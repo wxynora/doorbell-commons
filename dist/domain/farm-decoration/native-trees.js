@@ -24,8 +24,8 @@ export function canPlaceNativeTree(point,terrain,housePosition=DEFAULT_HOUSE_POS
   const polygon=nativeTreeFootprint(point);
   return terrain.canPlace(polygon)&&!houseExtensionRects(housePosition,houseLevel).some(r=>intersects(polygon,boundsRectangle(r)));
 }
-export function canPlaceNativeTrees(trees,plots,housePosition,field,houseLevel=1) {
+export function canPlaceNativeTrees(trees,plots,housePosition,field,houseLevel=1,hidden=[]) {
   if(!validNativeTrees(trees))return false;
   const terrain=createPlacementTerrain(plots,housePosition,field);
-  return trees.every(point=>canPlaceNativeTree(point,terrain,housePosition,houseLevel));
+  return trees.every((point,index)=>hidden[index]===true||canPlaceNativeTree(point,terrain,housePosition,houseLevel));
 }

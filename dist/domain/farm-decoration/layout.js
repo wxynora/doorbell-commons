@@ -40,6 +40,11 @@ const exactKeys = (object, keys) => object && typeof object === "object" && !Arr
 
 export function validateDecorationLayout(farm, layout, owned) {
   const keys = ["roof", "canopy", "stall", "decorations"];
+  if(layout&&Object.hasOwn(layout,"stall_hidden")){if(typeof layout.stall_hidden!=="boolean")return "invalid_layout";keys.push("stall_hidden");}
+  if(layout&&Object.hasOwn(layout,"hidden_trees")){
+    if(!Array.isArray(layout.hidden_trees)||layout.hidden_trees.length!==2||!layout.hidden_trees.every(v=>typeof v==="boolean"))return "invalid_layout";
+    keys.push("hidden_trees");
+  }
   if (layout && Object.hasOwn(layout, "house")) keys.push("house");
   if (layout && Object.hasOwn(layout, "boundary_item_id")) keys.push("boundary_item_id");
   if (layout && Object.hasOwn(layout, "field")) keys.push("field");
@@ -61,7 +66,7 @@ export function validateDecorationLayout(farm, layout, owned) {
   if(!HOUSE_STYLES.includes(housePosition.style??'classic'))return 'invalid_layout';
   if(housePosition.style&&housePosition.style!=='classic'&&!(owned[houseStyleItem(housePosition.style)]>0))return 'decoration_not_owned';
   const house = houseState(owned, housePosition);
-  if (keys.includes("trees")&&!canPlaceNativeTrees(layout.trees,farm.plots??[],housePosition,layout.field,house.level))return "invalid_layout";
+  if (keys.includes("trees")&&!canPlaceNativeTrees(layout.trees,farm.plots??[],housePosition,layout.field,house.level,layout.hidden_trees))return "invalid_layout";
   if (!canPlaceHouse(housePosition, house.level, createPlacementTerrain(farm.plots ?? [], null, layout.field))) return "invalid_layout";
   if (layout.canopy === "floral" && (!house.canopy_unlocked || house.level < 2)) return "decoration_not_owned";
   const terrain = createPlacementTerrain(farm.plots ?? [], housePosition, layout.field);
@@ -71,7 +76,7 @@ export function validateDecorationLayout(farm, layout, owned) {
        (house.level>=2&&overlapsHouseExtension(can,[1,1],housePosition)))return "invalid_layout";
   }
   if (layout.field) {
-    const fixtures=[rectangle(layout.stall,[2,2]),...(layout.watering_can?[rectangle(layout.watering_can,[1,1])]:[]),...layout.decorations.flatMap(item=>{
+    const fixtures=[...layout.stall_hidden?[]:[rectangle(layout.stall,[2,2])],...(layout.watering_can?[rectangle(layout.watering_can,[1,1])]:[]),...layout.decorations.flatMap(item=>{
       const definition=decorationById.get(item.item_id);
       return definition?[rectangle(item,definition.cells)]:[];
     })];
@@ -84,8 +89,8 @@ export function validateDecorationLayout(farm, layout, owned) {
     if (!terrain.canPlace(polygon, water)) return false;
     return true;
   }
-  if (!place(layout.stall, [2, 2])) return "invalid_stall_position";
-  if (house.level >= 2 && overlapsHouseExtension(layout.stall, [2, 2], housePosition)) return "invalid_stall_position";
+  if (layout.stall_hidden?!footprint(layout.stall,[2,2]):!place(layout.stall, [2, 2])) return "invalid_stall_position";
+  if (!layout.stall_hidden && house.level >= 2 && overlapsHouseExtension(layout.stall, [2, 2], housePosition)) return "invalid_stall_position";
   for (const item of layout.decorations) {
     if (!exactKeys(item, ["instance_id", "item_id", "x", "z", "rotation", ...(Object.hasOwn(item??{},"mirrored") ? ["mirrored"] : [])]) || typeof item.instance_id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(item.instance_id) || ids.has(item.instance_id)) return "invalid_instance";
     if (Object.hasOwn(item,"mirrored") && (typeof item.mirrored !== "boolean" || !["farm_decor:cat_pumpkin","farm_decor:pumpkin_lamppost"].includes(item.item_id))) return "invalid_instance";

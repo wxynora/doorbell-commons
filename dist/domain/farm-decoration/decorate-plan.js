@@ -205,8 +205,9 @@ export function projectDecorationGrid(farm,resource) {
   // Main models/world.js fixed trunk coordinates; scenery references, not collision footprints.
   const fixedTrees=(resource.layout.trees??NATIVE_TREE_POSITIONS).map(({x,z},i)=>{
     const col=Math.floor(x/CELL_SIZE),row=Math.floor((z-Z_ORIGIN)/CELL_SIZE),code=`T${i+1}`;
-    put(col,row,code,`fixed-tree:${i+1}`);
-    return {code,x,z,cell:cellName(col,row)};
+    const hidden=resource.layout.hidden_trees?.[i]===true;
+    if(!hidden)put(col,row,code,`fixed-tree:${i+1}`);
+    return {code,x,z,cell:cellName(col,row),hidden};
   });
   const fieldPosition=resource.layout.field??defaultFieldLayout(farm.plots??[]),plots=fieldPlots(farm.plots??[],fieldPosition);
   const size=(farm.plots??[]).reduce((n,p,i)=>Math.max(n,(p.id??p.plot_id??i+1)),0);
@@ -219,7 +220,7 @@ export function projectDecorationGrid(farm,resource) {
   const house=resource.layout.house??DEFAULT_HOUSE_POSITION;
   const houseRects=[...houseBaseRects(house),...houseExtensionRects(house,resource.house.classic_level??resource.house.level)];
   for(const rect of houseRects)for(const [col,row]of touchedCells(boundsRectangle(rect)))put(col,row,'HH','house');
-  for(const [col,row]of footprint(resource.layout.stall,[2,2])??[])put(col,row,'SS','stall');
+  if(!resource.layout.stall_hidden)for(const [col,row]of footprint(resource.layout.stall,[2,2])??[])put(col,row,'SS','stall');
   const byId=new Map(resource.catalog.map(d=>[d.item_id,d]));
   const available=resource.inventory.filter(i=>i.unlocked).map(i=>{
     const definition=byId.get(i.item_id),placed_quantity=resource.layout.decorations.filter(o=>o.item_id===i.item_id).length;
@@ -255,7 +256,7 @@ export function projectDecorationGrid(farm,resource) {
   const can=resource.layout.watering_can??{x:-.65,z:4.73,rotation:0};
   const wateringCan={anchor:cellName(Math.floor(can.x/CELL_SIZE+1e-7),Math.floor((can.z-Z_ORIGIN)/CELL_SIZE+1e-7)),facing:facingOf(can.rotation+Math.PI/2)};
   return {columns:GRID.columns,rows:GRID.rows,grid:lines.join('\n'),instances,inventory:available,overlaps,offGrid,fixedTrees,field,snowman,wateringCan,
-    stall:{facing:facingOf(resource.layout.stall.rotation),anchor:cellName(
+    stall:{hidden:resource.layout.stall_hidden===true,facing:facingOf(resource.layout.stall.rotation),anchor:cellName(
       Math.round(resource.layout.stall.x/CELL_SIZE-snapCells([2,2],resource.layout.stall.rotation)[0]/2),
       Math.round((resource.layout.stall.z-Z_ORIGIN)/CELL_SIZE-snapCells([2,2],resource.layout.stall.rotation)[1]/2))},
     house:{facing:'S',anchor:houseAnchor(house)}};

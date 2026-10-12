@@ -11,7 +11,7 @@ export function diagnoseFieldPosition(farm,resource,layout){
   const terrain=createPlacementTerrain([],layout.house??DEFAULT_HOUSE_POSITION);
   const definitions=new Map(resource.catalog.map(d=>[d.item_id,d]));
   const fixtures=[...houseExtensionRects(layout.house??DEFAULT_HOUSE_POSITION,resource.house.level).map(r=>({polygon:boundsRectangle(r),blocker:{kind:'house_extension'}})),
-    {polygon:rectangle(layout.stall,[2,2]),blocker:{kind:'stall'}},...layout.decorations.map(o=>({
+    ...layout.stall_hidden?[]:[{polygon:rectangle(layout.stall,[2,2]),blocker:{kind:'stall'}}],...layout.decorations.map(o=>({
     polygon:rectangle(o,definitions.get(o.item_id).cells),blocker:{kind:'decoration',instance:o.instance_id,name:definitions.get(o.item_id).name}}))];
   return fieldPlots(farm.plots??[],layout.field).flatMap((plot,i)=>{
     const poly=boundsRectangle([plot.x-.435,plot.z-.456,plot.x+.435,plot.z+.456]),causes=terrain.explain(poly);
@@ -34,7 +34,7 @@ export function diagnoseDecorationPosition(farm,resource,layout,pose,cells,{hous
   const polygons=house?[...houseBaseRects(position),...houseExtensionRects(position,resource.house.level)].map(boundsRectangle):[rectangle(pose,cells)];
   const causes=polygons.flatMap(poly=>terrain.explain(poly,definition?.model_id==='waterwheel'));
   if(house){
-    const fixtures=[{polygon:rectangle(layout.stall,[2,2]),blocker:{kind:'stall'}},...layout.decorations.map(o=>{const d=resource.catalog.find(d=>d.item_id===o.item_id);return {polygon:rectangle(o,d.cells),groundFinish:isGroundDecoration(d),blocker:{kind:'decoration',instance:o.instance_id,name:d.name}}})];
+    const fixtures=[...layout.stall_hidden?[]:[{polygon:rectangle(layout.stall,[2,2]),blocker:{kind:'stall'}}],...layout.decorations.map(o=>{const d=resource.catalog.find(d=>d.item_id===o.item_id);return {polygon:rectangle(o,d.cells),groundFinish:isGroundDecoration(d),blocker:{kind:'decoration',instance:o.instance_id,name:d.name}}})];
     for(const [index,poly] of polygons.entries())for(const f of fixtures)if(!(index>=houseBaseRects(position).length&&f.groundFinish)&&intersects(poly,f.polygon))causes.push({reason:'blocked',blocker:f.blocker,cells:touchedCells(intersectPolygon(poly,f.polygon))});
   }
   // Native tree fixtures have no catalog definition but still block the extension.

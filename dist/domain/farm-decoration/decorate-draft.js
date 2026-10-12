@@ -123,7 +123,7 @@ export function evaluateDecorationDraft(farm,resource,previous,{uuid=randomUUID}
   }
   for(const fixture of ['tree_1','tree_2']){
     const index=fixture==='tree_1'?0:1;
-    if(!layout.trees)continue;
+    if(!layout.trees||layout.hidden_trees?.[index])continue;
     const causes=diagnoseDecorationPosition(farm,resource,layout,{...layout.trees[index],rotation:0},[1,1]);
     if(causes.length)issues.push({id:owners.get(fixture)??null,fixture,code:'invalid_decoration_position',cells:fixtureCells(resource,layout,fixture),causes});
   }
