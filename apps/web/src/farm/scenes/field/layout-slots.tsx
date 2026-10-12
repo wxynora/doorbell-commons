@@ -3,7 +3,7 @@ import type {FarmLayoutSlot} from "../../../auth/farm-decoration-client";
 import "./layout-slots.css";
 
 export function LayoutSlots({slots,editing,busy,error,onSave,onLoad,onRename,onClose}:{
-  slots:readonly {slot:FarmLayoutSlot;name?:string;decoration_count:number}[];
+  slots:readonly {slot:FarmLayoutSlot;name?:string|undefined;decoration_count:number}[];
   editing:boolean;busy:boolean;error:string|null;
   onSave:(slot:FarmLayoutSlot,name:string)=>void;
   onLoad:(slot:FarmLayoutSlot)=>void;
