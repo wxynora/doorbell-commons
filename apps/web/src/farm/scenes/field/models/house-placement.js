@@ -10,7 +10,7 @@ export function createHousePlacement(world,level){
   const target=world.house,stall=world.root.getObjectByName("market-stall");
   const fixtures=[stall,...world.decorations].map(o=>{
     const model=o.userData.decorationId??"";
-    return {polygon:rectangle({x:o.position.x,z:o.position.z,rotation:o.rotation.y},o.userData.cells||[2,2]),
+    return {polygon:rectangle({x:o.position.x,z:o.position.z,rotation:o.rotation.y},o.userData.cells||[2,2],model),
       groundFinish:!!o.userData.groundCover||model==="flowerbed"||model.startsWith("flowerbed_")};
   });
   const grid=new T.Group();grid.name="house-placement-grid";grid.visible=false;world.root.add(grid);

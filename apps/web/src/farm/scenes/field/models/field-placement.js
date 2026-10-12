@@ -12,7 +12,7 @@ export function createFieldPlacement(world, level, onChange) {
   const target = new T.Group();target.position.set(layout.x, .255, layout.z);
   const terrain = createPlacementTerrain([], world.house.position);
   const fixtures = [world.root.getObjectByName("market-stall"), ...world.decorations].map(object =>
-    rectangle({x:object.position.x,z:object.position.z,rotation:object.rotation.y},object.userData.cells??[2,2]));
+    rectangle({x:object.position.x,z:object.position.z,rotation:object.rotation.y},object.userData.cells??[2,2],object.userData.decorationId));
   fixtures.push(...houseExtensionRects(world.house.position,level).map(boundsRectangle));
   const grid = new T.Group();grid.name = "field-placement-grid";grid.visible = false;world.root.add(grid);
   const geometry = new T.PlaneGeometry(.87,.912);

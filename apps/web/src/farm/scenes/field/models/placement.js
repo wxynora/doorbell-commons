@@ -1,7 +1,7 @@
 import * as T from "three";
 import { LAND } from "./world.js";
 import { disposeDecoration } from "./decorations.js";
-import { snapCells, rectangle, boundsRectangle, intersects } from "./placement-geometry.js";
+import { snapCells, rectangle, boundsRectangle, intersects, isTreeDecoration } from "./placement-geometry.js";
 
 import { createPlacementTerrain } from "./placement-terrain.js";
 import { snapNativeTree } from "./native-trees.js";
@@ -29,7 +29,7 @@ export function createPlacement(world, authoritativeGrid = null) {
     isNew = false;
   world.root.updateMatrixWorld(true);
   function canPlace({ x, z }, object = target) {
-    const polygon = rectangle({x,z,rotation:object.rotation.y}, object.userData.cells || [2,2]);
+    const polygon = rectangle({x,z,rotation:object.rotation.y}, object.userData.cells || [2,2], object.userData.decorationId);
     const model=object.userData.decorationId??"";
     const groundFinish=object.userData.groundCover||model==="flowerbed"||model.startsWith("flowerbed_");
     if(!groundFinish&&(world.houseBlockedRects??[]).some(rect=>
@@ -91,12 +91,14 @@ export function createPlacement(world, authoritativeGrid = null) {
     valid = true;
   function move(x, z) {
     const cells = placementCells(target);
-    const point = target.userData.nativeTree!==undefined?snapNativeTree(target.userData.nativeTree,x,z):snapPlacement(x, z, cells);
+    const tree = isTreeDecoration(target.userData.decorationId);
+    const point = target.userData.nativeTree!==undefined?snapNativeTree(target.userData.nativeTree,x,z):
+      tree&&!isNew?{x:saved.x+Math.round((x-saved.x)/CELL_SIZE)*CELL_SIZE,z:saved.z+Math.round((z-saved.z)/CELL_SIZE)*CELL_SIZE}:snapPlacement(x, z, cells);
     valid = canPlace(point);
     target.position.set(point.x, target.userData.nativeTree!==undefined?.24:.25, point.z);
     const modelCells=target.userData.cells||[2,2];
     footprint.scale.set(modelCells[0] / 2, modelCells[1] / 2, 1);
-    footprint.rotation.set(-Math.PI/2,0,target.rotation.y);
+    footprint.rotation.set(-Math.PI/2,0,tree?0:target.rotation.y);
     footprint.position.set(point.x, 0.3, point.z);
     footprint.material.color.set(valid ? "#b5e78c" : "#ec867c");
     return valid;
@@ -109,8 +111,8 @@ export function createPlacement(world, authoritativeGrid = null) {
       for (let x = -limitX; x <= limitX; x += CELL_SIZE) {
         const p = snapPlacement(x, z, placementCells(object));
         if (canPlace(p, object)) {
-          const polygon=rectangle({...p,rotation:object.rotation.y},object.userData.cells||[2,2]);
-          const occupied=[stall,...decorations].some(other=>other!==object&&intersects(polygon,rectangle({x:other.position.x,z:other.position.z,rotation:other.rotation.y},other.userData.cells||[2,2])));
+          const polygon=rectangle({...p,rotation:object.rotation.y},object.userData.cells||[2,2],object.userData.decorationId);
+          const occupied=[stall,...decorations].some(other=>other!==object&&intersects(polygon,rectangle({x:other.position.x,z:other.position.z,rotation:other.rotation.y},other.userData.cells||[2,2],other.userData.decorationId)));
           available.push({...p,occupied});
         }
       }

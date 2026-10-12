@@ -53,12 +53,12 @@ export const DECORATIONS = {
   bat_arch: { name: "蝙蝠拱门", cells: [2, 1] },
   candy_cart: { name: "糖果推车", cells: [2, 1] },
   haunted_lantern: { name: "歪歪鬼屋灯", cells: [1, 1] },
-  cherry_tree: { name: "樱花树", cells: [3, 3] },
-  maple_tree: { name: "红枫", cells: [3, 3] },
-  ginkgo_tree: { name: "银杏", cells: [3, 3] },
-  birch_tree: { name: "白桦", cells: [2, 2] },
-  pine_tree: { name: "松树", cells: [3, 3] },
-  osmanthus_tree: { name: "桂花树", cells: [2, 2] },
+  cherry_tree: { name: "樱花树", cells: [1, 1] },
+  maple_tree: { name: "红枫", cells: [1, 1] },
+  ginkgo_tree: { name: "银杏", cells: [1, 1] },
+  birch_tree: { name: "白桦", cells: [1, 1] },
+  pine_tree: { name: "松树", cells: [1, 1] },
+  osmanthus_tree: { name: "桂花树", cells: [1, 1] },
 };
 
 // Model structure is fixed after construction; frame updates only need these nodes.
