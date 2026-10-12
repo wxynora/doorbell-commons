@@ -12,7 +12,7 @@ export interface SceneDecorationLayout {
   decorations: (SceneDecorationPose & { instance_id: string; item_id: string; mirrored?: boolean | undefined })[];
 }
 export interface SceneDecorationData {
-  saved_layouts?: readonly {slot:1|2|3;name?:string;decoration_count:number}[] | undefined;
+  saved_layouts?: readonly {slot:1|2|3;name?:string|undefined;decoration_count:number}[] | undefined;
   house?: {level: 1 | 2 | 3 | 4; classic_level?: 1|2|3|undefined; style?: "classic"|"pumpkin"|"stump"|"mushroom"|undefined; unlocked_styles?: readonly string[]|undefined; canopy_unlocked: boolean; blocked_rects: readonly (readonly number[])[]};
   catalog: readonly { item_id: string; model_id: string; name: string; cells: readonly number[]; layer: string; purchase_mode: string; price_farm_coins: number }[];
   inventory: readonly { item_id: string; owned_quantity: number; placed_quantity: number; available_quantity: number | null; unlocked: boolean }[];
