@@ -1,0 +1,35 @@
+.farm-layout-slots-backdrop { position:absolute; inset:0; z-index:40; display:grid; place-items:center; background:#34443745; }
+.farm-layout-slots { --layout-ink:#435442; --layout-paper:#f6efdc; --layout-line:#b7b498; box-sizing:border-box; width:88cqw; max-height:86%; overflow:auto; padding:4cqw; color:var(--layout-ink); background:var(--layout-paper); border:1px solid var(--layout-line); border-radius:2cqw; box-shadow:0 2cqw 6cqw #253d382b; font:inherit; font-size:3.2cqw; outline:none; }
+.farm-layout-slots header { display:flex; align-items:center; justify-content:space-between; gap:2cqw; }
+.farm-layout-slots h3 { margin:0; font:inherit; font-size:4cqw; font-weight:600; }
+.farm-layout-slots small { margin-left:1cqw; font:inherit; font-size:3cqw; opacity:.7; }
+.farm-layout-slots p { margin:2cqw 0; line-height:1.6; }
+.farm-layout-slots button { font:inherit; color:inherit; background:#fffaf0; border:1px solid var(--layout-line); border-radius:1.4cqw; padding:1.6cqw 2cqw; cursor:pointer; }
+.farm-layout-slots button:disabled { opacity:.5; cursor:default; }
+.farm-layout-slots button:focus-visible { outline:2px solid #648775; outline-offset:2px; }
+.farm-layout-slots header button { border:0; background:transparent; padding:0; width:6cqw; height:6cqw; font-size:5cqw; }
+.farm-layout-slots-list { display:grid; gap:1.6cqw; }
+.farm-layout-slots-list > div { display:flex; gap:1.5cqw; }
+.farm-layout-slots-list > div > button:first-child { flex:1; min-width:0; display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:1cqw; text-align:left; }
+.farm-layout-slots-list strong { font-weight:600; overflow-wrap:anywhere; }
+.farm-layout-slots-list span { font-size:2.8cqw; opacity:.75; white-space:nowrap; }
+.farm-layout-slots-name { display:grid; gap:1cqw; margin-top:2cqw; }
+.farm-layout-slots-name input { box-sizing:border-box; width:100%; min-width:0; font:inherit; color:inherit; background:#fffaf0; border:1px solid var(--layout-line); border-radius:1cqw; padding:1.6cqw 2cqw; }
+.farm-layout-slots-name input:focus-visible { outline:2px solid #648775; outline-offset:2px; }
+.farm-layout-slots footer button { overflow-wrap:anywhere; }
+.farm-layout-slots-list .is-selected > button:first-child { background:#e0e8ce; border-color:#648775; }
+.farm-layout-slots .farm-layout-slots-note { font-size:2.8cqw; }
+.farm-layout-slots [role=alert] { color:#9a493f; }
+.farm-layout-slots footer { display:flex; justify-content:space-between; gap:2cqw; margin-top:3cqw; }
+.farm-layout-slots footer button:last-child { flex:1; background:#d1dfb6; }
+@container (min-width:700px) {
+ .farm-layout-slots { width:52cqw; padding:2.2cqw; font-size:1.8cqw; border-radius:1.2cqw; }
+ .farm-layout-slots h3 { font-size:2.4cqw; }
+ .farm-layout-slots small { font-size:1.8cqw; }
+ .farm-layout-slots p { margin:1.2cqw 0; }
+ .farm-layout-slots button { padding:.9cqw 1.2cqw; border-radius:.8cqw; }
+ .farm-layout-slots header button { width:3.5cqw; height:3.5cqw; font-size:3cqw; }
+ .farm-layout-slots-list { gap:1cqw; }
+ .farm-layout-slots-list span,.farm-layout-slots .farm-layout-slots-note { font-size:1.6cqw; }
+ .farm-layout-slots footer { margin-top:1.6cqw; gap:1.2cqw; }
+}

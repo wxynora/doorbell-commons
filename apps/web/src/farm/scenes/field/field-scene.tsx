@@ -7,6 +7,8 @@ import type { FarmPlot } from "../../farm-overview";
 import { farmPlotStateLabel } from "../../farm-overview";
 import { useModelOutlinePreference } from "./model-outline-preference";
 import "./field-scene.css";
+import {LayoutSlots} from "./layout-slots";
+import type {FarmLayoutSlot} from "../../../auth/farm-decoration-client";
 
 const FARM_SEED_TYPE_LABELS: Readonly<Record<NonNullable<FarmPlot["seed_type"]>, string>> = {
   common: "普通种子",
@@ -51,6 +53,8 @@ export function FieldScene({
   placementRequest,
   layoutPreviewRequest,
   onSaveLayout,
+  onLoadLayout,
+  onRenameLayout,
   onFinishEditing,
   onEditingChange,
   onRequestHousePurchase,
@@ -67,7 +71,9 @@ export function FieldScene({
   requestControls?: ReactNode;
   decorationData?: SceneDecorationData | undefined;
   placementRequest?: { decorationId: string; requestKey: string } | null | undefined;
-  onSaveLayout?: ((layout: SceneDecorationLayout) => Promise<void>) | undefined;
+  onSaveLayout?: ((layout: SceneDecorationLayout,saveSlot?:FarmLayoutSlot,name?:string) => Promise<void>) | undefined;
+  onLoadLayout?: ((slot:FarmLayoutSlot) => Promise<void>) | undefined;
+  onRenameLayout?: ((slot:FarmLayoutSlot,name:string) => Promise<void>) | undefined;
   onFinishEditing?: (() => void) | undefined;
   onEditingChange?: ((editing: boolean) => void) | undefined;
   onRequestHousePurchase?: ((itemId: string) => void) | undefined;
@@ -77,6 +83,8 @@ export function FieldScene({
   const host = useRef<HTMLDivElement>(null), runtime = useRef<SceneRuntime | null>(null);
   const [modelOutline]=useModelOutlinePreference();
   const [shareSkipped, setShareSkipped] = useState<LayoutShareSkip[]>([]);
+  const [slotsOpen,setSlotsOpen]=useState(false),[slotsBusy,setSlotsBusy]=useState(false),[slotsError,setSlotsError]=useState<string|null>(null);
+  const slotSaveTarget=useRef<{slot:FarmLayoutSlot;name:string}|undefined>(undefined);
   const [failure, setFailure] = useState<string | null>(null);
   const [snowmanNotice,setSnowmanNotice]=useState(false);
   const snowmanNoticeRef=useRef<HTMLDivElement>(null);
@@ -116,7 +124,16 @@ export function FieldScene({
         onSelectHouse:()=>{if(currentData.current){setHouseMenu(true);setRequestedHouseItem(null);callbacks.current.onClosePlot();callbacks.current.onOpenHouse?.();}},
         onSelectPlot:id=>callbacks.current.onSelectPlot(id),
         onEditState:state=>{setEdit(state);setSnowmanNotice(!state.editing&&state.message===SNOWMAN_MESSAGE);callbacks.current.onEditingChange?.(state.editing);},
-        onSaveLayout:async layout=>{if(!fieldDraftValid.current)throw new Error("请先输入有效的行数或列数");if(!callbacks.current.onSaveLayout)throw new Error("布置保存暂时不可用");await callbacks.current.onSaveLayout(layout);},
+        onSaveLayout:async layout=>{
+          const slot=slotSaveTarget.current;
+          try {
+            if(!fieldDraftValid.current)throw new Error("请先输入有效的行数或列数");
+            if(!callbacks.current.onSaveLayout)throw new Error("布置保存暂时不可用");
+            await callbacks.current.onSaveLayout(layout,slot?.slot,slot?.name);
+            if(slot!==undefined){setSlotsOpen(false);setSlotsError(null);}
+          } catch(error){if(slot!==undefined)setSlotsError(error instanceof Error?error.message:"布局保存未完成。");throw error;}
+          finally {slotSaveTarget.current=undefined;setSlotsBusy(false);}
+        },
         onFinishEditing:()=>callbacks.current.onFinishEditing?.(),
       });
       runtime.current=instance;
@@ -161,6 +178,29 @@ export function FieldScene({
     setFieldSize(axis==="rows"?{rows:value,columns:other}:{rows:other,columns:value});
     if(axis==="rows")runtime.current?.changeFieldRows(Number(value));else runtime.current?.changeFieldColumns(Number(value));
   };
+  const openSlots=()=>{setSlotsError(null);setHouseMenu(false);setSlotsOpen(true);};
+  const saveSlot=async(slot:FarmLayoutSlot,name:string)=>{
+    if(!onSaveLayout||!decorationData||slotsBusy)return;
+    setSlotsError(null);setSlotsBusy(true);
+    if(edit.editing){slotSaveTarget.current={slot,name};await runtime.current?.save();setSlotsBusy(false);slotSaveTarget.current=undefined;return;}
+    try{await onSaveLayout(decorationData.layout,slot,name);setSlotsOpen(false);}
+    catch(error){setSlotsError(error instanceof Error?error.message:"布局保存未完成。");}
+    finally{setSlotsBusy(false);}
+  };
+  const loadSlot=async(slot:FarmLayoutSlot)=>{
+    if(!onLoadLayout||slotsBusy||edit.editing)return;
+    setSlotsBusy(true);setSlotsError(null);
+    try{await onLoadLayout(slot);setSlotsOpen(false);setHouseMenu(false);}
+    catch(error){setSlotsError(error instanceof Error?error.message:"布局切换未完成。");}
+    finally{setSlotsBusy(false);}
+  };
+  const renameSlot=async(slot:FarmLayoutSlot,name:string)=>{
+    if(!onRenameLayout||slotsBusy)return;
+    setSlotsBusy(true);setSlotsError(null);
+    try{await onRenameLayout(slot,name);}
+    catch(error){setSlotsError(error instanceof Error?error.message:"布局改名未完成。");}
+    finally{setSlotsBusy(false);}
+  };
   return (
     <section
       aria-labelledby="farm-field-title"
@@ -170,10 +210,11 @@ export function FieldScene({
         农场
       </h2>
 
-      <div className="farm-field-canvas" ref={host} />
+      <div className="farm-field-canvas" ref={host} inert={slotsOpen} />
       {!edit.editing && decorationData ? <button className="farm-house-accessible" type="button" onClick={()=>{setHouseMenu(true);setRequestedHouseItem(null);onClosePlot();onOpenHouse?.();}}>编辑房屋</button> : null}
       {!edit.editing&&houseMenu&&decorationData ? <section className="farm-field-editor farm-house-menu" aria-label="房屋编辑">
         <strong>{houseLevel}级房屋</strong>
+        {onSaveLayout&&onLoadLayout&&decorationData.saved_layouts?<button type="button" onClick={openSlots}>我的布局 · {decorationData.saved_layouts.length}/3</button>:null}
         <button type="button" aria-label="关闭房屋编辑" onClick={()=>setHouseMenu(false)}>关闭</button>
         <div><button type="button" disabled={houseStyle!=="classic"} onClick={()=>{
         const key=decorationData.layout.roof;
@@ -212,6 +253,7 @@ export function FieldScene({
       {edit.editing ? <section className={`farm-field-editor${edit.fieldMoving?" farm-field-editor--terrain":""}`} aria-label={edit.fieldMoving?"田地调整":"装饰摆放"}>
         {edit.fieldMoving ? <button className="farm-field-editor__close" type="button" aria-label="取消田地调整" onClick={()=>runtime.current?.cancel()}>×</button> : null}
         <strong>{edit.fieldMoving?"田地排布":roofPalette ? "屋顶配色" : canopyEditor?"雨棚款式":boundaryEditor?"整圈外圈":edit.title}</strong>
+        {onSaveLayout&&onLoadLayout&&decorationData?.saved_layouts?<button type="button" disabled={!edit.valid||!fieldDraftValid.current} onClick={openSlots}>另存布局</button>:null}
         <p role="status">{edit.fieldMoving&&!validFieldSize?"请输入有效的行数或列数":edit.message || (edit.fieldMoving ? edit.valid?"整片拖动 · 绿色可保存":"有阻挡，请移动田地" : edit.layoutPreview ? "确认布置后保存" : roofPalette ? "选好颜色后保存，取消可恢复原色" : canopyEditor?"选好款式后保存，取消可恢复原款":boundaryEditor?"整圈围栏会保留原桥口；保存后生效，取消可恢复。":"拖动摆放 · 绿色位置可保存")}</p>
         {edit.layoutPreview ? <>
           <p>这是预览；保存后替换当前装饰布置，取消可恢复。</p>
@@ -245,6 +287,8 @@ export function FieldScene({
           <button type="button" disabled={!edit.valid} onClick={()=>void runtime.current?.save()}>保存</button>
         </div> : null}
       </section> : null}
+
+      {slotsOpen&&decorationData?<LayoutSlots slots={decorationData.saved_layouts??[]} editing={edit.editing} busy={slotsBusy} error={slotsError} onSave={(slot,name)=>void saveSlot(slot,name)} onLoad={slot=>void loadSlot(slot)} onRename={onRenameLayout?(slot,name)=>void renameSlot(slot,name):undefined} onClose={()=>{if(!slotsBusy)setSlotsOpen(false);}}/>:null}
 
       {plots.length > 0 ? (
         <fieldset className="farm-field-accessible-plots">

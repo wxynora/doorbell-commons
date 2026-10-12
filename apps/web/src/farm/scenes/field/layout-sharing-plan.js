@@ -12,6 +12,7 @@ export function planSharedLayout(source, data, tryPlace, makeId = () => crypto.r
   if(data.layout.field)layout.field={...data.layout.field};
   // Native trees belong to this yard, not another player's shared furniture layout.
   if(data.layout.trees)layout.trees=data.layout.trees.map(p=>({...p}));
+  if(data.layout.watering_can)layout.watering_can={...data.layout.watering_can};
   if (layout.canopy === "floral" && (!data.house?.canopy_unlocked || data.house.level < 2)) {
     layout.canopy = "plain";
     skip("花植雨棚", "missing");

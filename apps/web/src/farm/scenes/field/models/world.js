@@ -20,6 +20,7 @@ import { createFence } from "./fence.js";
 import { createCropModel } from "./crop-models.js";
 import { addSnowCover } from "./seasonal-cover.js";
 import { NATIVE_TREE_POSITIONS } from "./native-trees.js";
+import { createWateringCan } from "./watering-can.js";
 
 import { LAND } from "./placement-terrain.js";
 export { LAND };
@@ -516,20 +517,7 @@ export function createWorld(plotDefinitions = [], houseLevel = 1, houseStyle = "
     beam(bridge, bridgeWood, [x, 0.94, -0.9], [x, 0.94, 0.9], 0.035);
     box(bridge, mat("#82734f"), [x, 0.12, 0], [0.1, 0.12, 2.3]);
   }
-  // Watering can near the bridge-side path.
-  const can = new T.Group();
-  can.position.set(-0.65, 0.26, 4.73);
-  root.add(can);
-  const metal = mat("#93a9a4");
-  mesh(can, new T.CylinderGeometry(0.14, 0.18, 0.3, 14), metal, [0, 0.17, 0]);
-  beam(can, metal, [0.12, 0.14, 0], [0.37, 0.32, 0], 0.045);
-  const handle = mesh(
-    can,
-    new T.TorusGeometry(0.17, 0.018, 5, 18, Math.PI * 1.7),
-    metal,
-    [-0.08, 0.23, 0],
-  );
-  handle.rotation.y = Math.PI / 2;
+  const wateringCan = createWateringCan(root,mat);
   rocks.finish().name = "riverbank-stones";
   groundDetails.finish(false).userData.seasonRole = "leaf";
   leaves.finish().userData.seasonRole = "leaf";
@@ -559,6 +547,7 @@ export function createWorld(plotDefinitions = [], houseLevel = 1, houseStyle = "
     plots,
     house,
     nativeTrees,
+    wateringCan,
     setBoundaryStyle(style = null) {
       const nextStyle = style ?? null;
       if (nextStyle === boundaryStyle) return;

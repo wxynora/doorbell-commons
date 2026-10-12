@@ -4,6 +4,7 @@ import { createPlacementTerrain } from "./placement-terrain.js";
 import { houseExtensionRects } from "./house-geometry.js";
 import { defaultFieldLayout, fieldRects, snapFieldPosition, validFieldLayout, canPlaceField } from "./field-layout.js";
 import { disposeDecoration } from "./decorations.js";
+import { captureWateringCan } from "./watering-can.js";
 
 export function createFieldPlacement(world, level, onChange) {
   const plots = world.plots.map(object => object.userData.plot);
@@ -11,7 +12,7 @@ export function createFieldPlacement(world, level, onChange) {
   let layout = { ...saved }, active = false, valid = false;
   const target = new T.Group();target.position.set(layout.x, .255, layout.z);
   const terrain = createPlacementTerrain([], world.house.position);
-  const fixtures = [world.root.getObjectByName("market-stall"), ...world.decorations].map(object =>
+  const fixtures = [world.root.getObjectByName("market-stall"), ...(captureWateringCan(world.wateringCan)?[world.wateringCan]:[]), ...world.decorations].map(object =>
     rectangle({x:object.position.x,z:object.position.z,rotation:object.rotation.y},object.userData.cells??[2,2],object.userData.decorationId));
   fixtures.push(...houseExtensionRects(world.house.position,level).map(boundsRectangle));
   const grid = new T.Group();grid.name = "field-placement-grid";grid.visible = false;world.root.add(grid);

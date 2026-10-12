@@ -95,7 +95,7 @@ export function createPlacement(world, authoritativeGrid = null) {
     const point = target.userData.nativeTree!==undefined?snapNativeTree(target.userData.nativeTree,x,z):
       tree&&!isNew?{x:saved.x+Math.round((x-saved.x)/CELL_SIZE)*CELL_SIZE,z:saved.z+Math.round((z-saved.z)/CELL_SIZE)*CELL_SIZE}:snapPlacement(x, z, cells);
     valid = canPlace(point);
-    target.position.set(point.x, target.userData.nativeTree!==undefined?.24:.25, point.z);
+    target.position.set(point.x, target===world.wateringCan?.26:target.userData.nativeTree!==undefined?.24:.25, point.z);
     const modelCells=target.userData.cells||[2,2];
     footprint.scale.set(modelCells[0] / 2, modelCells[1] / 2, 1);
     footprint.rotation.set(-Math.PI/2,0,tree?0:target.rotation.y);
@@ -197,7 +197,7 @@ export function createPlacement(world, authoritativeGrid = null) {
       isNew = false;
     },
     remove() {
-      if (!active || target === stall || target.userData.nativeTree!==undefined) return false;
+      if (!active || target === stall || target === world.wateringCan || target.userData.nativeTree!==undefined) return false;
       decorations.splice(decorations.indexOf(target), 1);
       disposeDecoration(target);
       active = false;

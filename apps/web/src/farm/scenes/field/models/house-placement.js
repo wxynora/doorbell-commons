@@ -3,12 +3,13 @@ import { CELL_SIZE, Z_ORIGIN, rectangle } from "./placement-geometry.js";
 import { LAND, createPlacementTerrain } from "./placement-terrain.js";
 import { houseBaseRects, houseExtensionRects, snapHousePosition, canPlaceHouse } from "./house-geometry.js";
 import { disposeDecoration } from "./decorations.js";
+import { captureWateringCan } from "./watering-can.js";
 
 // Only exists during house editing; no extra frame loop or per-drag terrain rebuild.
 export function createHousePlacement(world,level){
   const terrain=createPlacementTerrain(world.plots.map(o=>o.userData.plot),null,world.fieldLayout);
   const target=world.house,stall=world.root.getObjectByName("market-stall");
-  const fixtures=[stall,...world.decorations].map(o=>{
+  const fixtures=[stall,...(captureWateringCan(world.wateringCan)?[world.wateringCan]:[]),...world.decorations].map(o=>{
     const model=o.userData.decorationId??"";
     return {polygon:rectangle({x:o.position.x,z:o.position.z,rotation:o.rotation.y},o.userData.cells||[2,2],model),
       groundFinish:!!o.userData.groundCover||model==="flowerbed"||model.startsWith("flowerbed_")};

@@ -20,6 +20,7 @@ import { createDecoration, disposeDecoration, updateDecorationLights, updateDeco
 import { createNatureEffects } from "./models/nature-effects.js";
 import { createWinterSnowman, SNOWMAN_MESSAGE } from "./models/winter-snowman.js";
 import { NATIVE_TREE_POSITIONS } from "./models/native-trees.js";
+import { captureWateringCan, applyWateringCanLayout } from "./models/watering-can.js";
 
 export const roofChoices=Object.entries(ROOF_COLORS).map(([id,value])=>({id,...value}));
 export { SNOWMAN_MESSAGE };
@@ -79,7 +80,7 @@ export function createFieldRuntime(host, options) {
   const observer=new ResizeObserver(resize);observer.observe(host);resize();
   const ray=new T.Raycaster(),pointer=new T.Vector2(),plane=new T.Plane(new T.Vector3(0,1,0),-.25);
   const pose=o=>({x:o.position.x,z:o.position.z,rotation:o.rotation.y});
-  const capture=()=>({...fieldLayout?{field:{...fieldLayout}}:{},...(committed?.trees||world.nativeTrees.some((o,i)=>o.position.x!==NATIVE_TREE_POSITIONS[i].x||o.position.z!==NATIVE_TREE_POSITIONS[i].z)?{trees:world.nativeTrees.map(o=>({x:o.position.x,z:o.position.z}))}:{}),house:{x:world.house.position.x,z:world.house.position.z,...world.house.position.style&&world.house.position.style!=="classic"||committed?.house?.style?{style:world.house.position.style??"classic"}:{}},roof,canopy,boundary_item_id:boundaryItemId,stall:pose(world.root.getObjectByName("market-stall")),decorations:world.decorations.map(o=>({instance_id:o.userData.instanceId,item_id:o.userData.itemId,...pose(o),...decorationMirrorPose(o)}))});
+  const capture=()=>({...captureWateringCan(world.wateringCan,committed?.watering_can)?{watering_can:pose(world.wateringCan)}:{},...fieldLayout?{field:{...fieldLayout}}:{},...(committed?.trees||world.nativeTrees.some((o,i)=>o.position.x!==NATIVE_TREE_POSITIONS[i].x||o.position.z!==NATIVE_TREE_POSITIONS[i].z)?{trees:world.nativeTrees.map(o=>({x:o.position.x,z:o.position.z}))}:{}),house:{x:world.house.position.x,z:world.house.position.z,...world.house.position.style&&world.house.position.style!=="classic"||committed?.house?.style?{style:world.house.position.style??"classic"}:{}},roof,canopy,boundary_item_id:boundaryItemId,stall:pose(world.root.getObjectByName("market-stall")),decorations:world.decorations.map(o=>({instance_id:o.userData.instanceId,item_id:o.userData.itemId,...pose(o),...decorationMirrorPose(o)}))});
   const definition=id=>data?.catalog.find(d=>d.item_id===id);
   const inventory=id=>data?.inventory.find(d=>d.item_id===id);
   function remaining(id) {
@@ -118,6 +119,8 @@ export function createFieldRuntime(host, options) {
     const existing=new Map(world.decorations.map(object=>[object.userData.instanceId,object]));
     const next=[];
     const stall=world.root.getObjectByName("market-stall");
+    const canBefore=captureWateringCan(world.wateringCan);
+    applyWateringCanLayout(world.wateringCan,layout.watering_can);
     const housePosition=layout.house??DEFAULT_HOUSE_POSITION;
     const style=housePosition.style??'classic';
     if((world.house.position.style??'classic')!==style){
@@ -130,6 +133,7 @@ export function createFieldRuntime(host, options) {
     }
     setFieldLayout(layout.field);
     let surfacesChanged=world.house.position.x!==housePosition.x||world.house.position.z!==housePosition.z;
+    surfacesChanged||=JSON.stringify(canBefore)!==JSON.stringify(captureWateringCan(world.wateringCan));
     world.house.position.x=housePosition.x;world.house.position.z=housePosition.z;
     world.nativeTrees.forEach((object,i)=>{const point=(layout.trees??NATIVE_TREE_POSITIONS)[i];if(object.position.x!==point.x||object.position.z!==point.z)surfacesChanged=true;object.position.set(point.x,.24,point.z);});
     surfacesChanged||=stall.position.x!==layout.stall.x||stall.position.z!==layout.stall.z||stall.rotation.y!==layout.stall.rotation;
@@ -310,6 +314,7 @@ export function createFieldRuntime(host, options) {
     if(hit?.object.userData.winterSnowman&&!editing)emit(SNOWMAN_MESSAGE);
     else if(hit?.object.userData.nativeTree!==undefined&&!editing)startNativeTreeMove(hit.object.userData.nativeTree);
     else if(hit?.object.userData.house&&!editing)options.onSelectHouse?.();
+    else if(hit?.object.userData.wateringCan&&placement)begin(world.wateringCan);
     else if(hit?.object.userData.decoration&&placement)begin(hit.object.userData.decoration);
     else if(hit?.object.userData.stall&&placement)begin(placement.stall);
     else if(hit?.object.userData.plot&&!editing)options.onSelectPlot(hit.object.userData.plot.id);

@@ -25,6 +25,8 @@ import { createBoundFarmHarvestRequest } from "../../auth/farm-harvest-request-c
 import {
   type BoundFarmDecorationsRead,
   type FarmDecorationLayout,
+  type FarmDecorationCommand,
+  type FarmLayoutSlot,
   farmDecorationIssueMessage,
   getBoundFarmDecorations,
   saveBoundFarmDecorationLayout,
@@ -144,7 +146,7 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
   const decorationSaveAttemptRef = useRef<{
     expectedRevision: string;
     idempotencyKey: string;
-    layout: FarmDecorationLayout;
+    command: FarmDecorationCommand;
   } | null>(null);
   const farmShopOpenAttemptRef = useRef<{
     expectedShopRevision: string | null;
@@ -280,17 +282,17 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
   );
 
   const refreshRanchReturn = useCallback(() => requireResource("ranch", true), [requireResource]);
-  const saveDecorationLayout = useCallback(
-    async (layout: FarmDecorationLayout) => {
+  const submitDecorationLayout = useCallback(
+    async (command: FarmDecorationCommand) => {
       const current = farmDecorationsRef.current;
       if (!current) throw new Error("装饰数据尚未读取，请刷新后再保存。");
       const previous = decorationSaveAttemptRef.current;
       const attempt =
-        previous && JSON.stringify(previous.layout) === JSON.stringify(layout)
+        previous && JSON.stringify(previous.command) === JSON.stringify(command)
           ? previous
-          : { layout, expectedRevision: current.revision, idempotencyKey: crypto.randomUUID() };
+          : { command, expectedRevision: current.revision, idempotencyKey: crypto.randomUUID() };
       decorationSaveAttemptRef.current = attempt;
-      const result = await saveBoundFarmDecorationLayout(attempt);
+      const result = await saveBoundFarmDecorationLayout({...attempt.command,expectedRevision:attempt.expectedRevision,idempotencyKey:attempt.idempotencyKey});
       if (!result.ok) {
         if (result.issue.code === "state_conflict") {
           decorationSaveAttemptRef.current = null;
@@ -314,6 +316,9 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
     },
     [requireResource],
   );
+  const saveDecorationLayout=useCallback((layout:FarmDecorationLayout,saveSlot?:FarmLayoutSlot,name?:string)=>submitDecorationLayout({layout,...(saveSlot?{save_slot:saveSlot,...(name!==undefined?{name}:{})}:{})}),[submitDecorationLayout]);
+  const loadDecorationLayout=useCallback((slot:FarmLayoutSlot)=>submitDecorationLayout({load_slot:slot}),[submitDecorationLayout]);
+  const renameDecorationLayout=useCallback((slot:FarmLayoutSlot,name:string)=>submitDecorationLayout({rename_slot:slot,name}),[submitDecorationLayout]);
   useRanchReturnRefresh(
     !previewData && resources.ranch.stage === "ready" ? resources.ranch.data : null,
     refreshRanchReturn,
@@ -1255,6 +1260,8 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
             onExpeditionAction={previewData ? undefined : submitExpeditionAction}
             onFarmPurchaseRequest={previewData ? undefined : submitFarmPurchaseRequestAction}
             onSaveDecorationLayout={previewData ? undefined : saveDecorationLayout}
+            onLoadDecorationLayout={previewData ? undefined : loadDecorationLayout}
+            onRenameDecorationLayout={previewData ? undefined : renameDecorationLayout}
             onHarvestAssist={previewData ? undefined : () => void submitHarvestAssist()}
             onHarvestRequest={previewData ? undefined : () => void requestHarvest()}
             onPlantRequest={previewData ? undefined : () => void requestPlant()}

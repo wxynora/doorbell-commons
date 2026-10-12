@@ -1,7 +1,7 @@
 import type { SceneDecorationLayout } from "../scenes/field/scene-types";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { BoundFarmField } from "../../auth/auth-client";
-import type { FarmDecorationLayout } from "../../auth/farm-decoration-client";
+import type { FarmDecorationLayout, FarmLayoutSlot } from "../../auth/farm-decoration-client";
 import type { BoundBulletinRead, BulletinAcknowledgementScope } from "../../auth/bulletin-client";
 import {
   type CreateFarmPurchaseRequestInput,
@@ -209,6 +209,8 @@ export function FarmFieldContent({
   onExpeditionAction,
   onFarmPurchaseRequest,
   onSaveDecorationLayout,
+  onLoadDecorationLayout,
+  onRenameDecorationLayout,
   farmShopOpenFeedback = { stage: "idle" },
   cookingShopOpenFeedback = { stage: "idle" },
   onHarvestAssist,
@@ -259,7 +261,9 @@ export function FarmFieldContent({
   onCropCodexAction?: CropCodexActionExecutor | undefined;
   onExpeditionAction?: ExpeditionActionExecutor | undefined;
   onFarmPurchaseRequest?: FarmPurchaseRequestExecutor | undefined;
-  onSaveDecorationLayout?: ((layout: FarmDecorationLayout) => Promise<void>) | undefined;
+  onSaveDecorationLayout?: ((layout: FarmDecorationLayout, saveSlot?:FarmLayoutSlot, name?:string) => Promise<void>) | undefined;
+  onLoadDecorationLayout?: ((slot:FarmLayoutSlot) => Promise<void>) | undefined;
+  onRenameDecorationLayout?: ((slot:FarmLayoutSlot,name:string) => Promise<void>) | undefined;
   farmShopOpenFeedback?: FarmShopOpenFeedback | undefined;
   cookingShopOpenFeedback?: CookingShopOpenFeedback | undefined;
   onHarvestAssist?: (() => void) | undefined;
@@ -991,6 +995,8 @@ export function FarmFieldContent({
                   placementRequest={placementRequest}
                   layoutPreviewRequest={layoutPreviewRequest}
                   onSaveLayout={onSaveDecorationLayout}
+                  onLoadLayout={onLoadDecorationLayout}
+                  onRenameLayout={onRenameDecorationLayout}
                   housePurchaseFeedback={getFarmCheckoutFeedback("field")}
                   onOpenHouse={()=>{onRequireResource?.("farmCatalog",true);onRequireResource?.("farmDecorations",true);}}
                   onRequestHousePurchase={!preview&&onFarmPurchaseRequest&&farmCatalog?.data.shop.status==="available" ? itemId=>{

@@ -55,7 +55,6 @@ export function createPumpkinHouse(parent) {
   tube(wing,'#82905a',[[0,3.23,0],[.03,3.68,0],[.3,3.9,-.1]],.15,12);
   roundWindow(wing,[.47,1.84,1.77],.46,.25,'side-room-window');
   roundWindow(wing,[2.15,1.75,0],.42,Math.PI/2,'side-room-east-window');
-  box(h,'#bc976e',[1.91,.35,1.14],[1.03,.16,.45]);
   const chimney=group(h,'clay-chimney',[-.95,2.83,-.54]);chimney.rotation.z=-.15;
   mesh(chimney,new T.CylinderGeometry(.17,.21,.94,10),'#d6bd97',[0,.47,0]);
   mesh(chimney,new T.CylinderGeometry(.24,.23,.12,10),'#c2a67e',[0,.99,0]);

@@ -2,7 +2,9 @@ import { z } from "zod";
 
 const itemId = z.string().regex(/^farm_decor:[a-z_]+$/);
 const point = { x: z.number(), z: z.number(), rotation: z.number() };
+const layoutSlot = z.union([z.literal(1),z.literal(2),z.literal(3)]);
 export const farmDecorationLayoutSchema = z.object({
+  watering_can: z.object(point).strict().optional(),
   trees: z.tuple([z.object({x:z.number(),z:z.number()}).strict(),z.object({x:z.number(),z:z.number()}).strict()]).optional(),
   field: z.object({ x: z.number(), z: z.number(), columns: z.number().int().positive(), rows: z.number().int().positive().optional() }).strict().optional(),
   house: z.object({ x: z.number(), z: z.number(), style: z.enum(["classic","pumpkin","stump","mushroom"]).optional() }).strict().optional(),
@@ -13,6 +15,7 @@ export const farmDecorationLayoutSchema = z.object({
   decorations: z.array(z.object({ instance_id: z.uuid(), item_id: itemId, ...point, mirrored: z.boolean().optional() }).strict().refine(item => item.mirrored === undefined || ["farm_decor:cat_pumpkin", "farm_decor:pumpkin_lamppost"].includes(item.item_id), { message: "mirrored is only supported for pumpkin lamps" })),
 }).strict();
 export const farmDecorationsDataSchema = z.object({
+  saved_layouts: z.array(z.object({slot:layoutSlot,name:z.string().optional(),decoration_count:z.number().int().nonnegative()}).strict()).max(3).refine(slots=>new Set(slots.map(s=>s.slot)).size===slots.length).optional(),
   house: z.object({ level: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]), classic_level: z.union([z.literal(1),z.literal(2),z.literal(3)]).optional(), style: z.enum(["classic","pumpkin","stump","mushroom"]).optional(), unlocked_styles: z.array(z.enum(["classic","pumpkin","stump","mushroom"])).optional(), canopy_unlocked: z.boolean(), blocked_rects: z.array(z.tuple([z.number(), z.number(), z.number(), z.number()])) }).strict(),
   catalog: z.array(z.object({
     item_id: itemId, model_id: z.string(), name: z.string(),
@@ -43,9 +46,12 @@ export const farmDecorationsDataSchema = z.object({
 }).strict();
 const resourceMetadata = { revision: z.string().min(1), server_time: z.iso.datetime() };
 export const boundFarmDecorationsReadSuccessSchema = z.object({ data: farmDecorationsDataSchema, ...resourceMetadata }).strict();
-export const boundFarmDecorationLayoutSaveRequestSchema = z.object({
-  idempotency_key: z.uuid(), expected_revision: z.string().min(1), layout: farmDecorationLayoutSchema,
-}).strict();
+const saveMetadata={idempotency_key:z.uuid(),expected_revision:z.string().min(1)};
+export const boundFarmDecorationLayoutSaveRequestSchema = z.union([
+  z.object({...saveMetadata,layout:farmDecorationLayoutSchema,save_slot:layoutSlot.optional(),name:z.string().optional()}).strict().refine(body=>body.name===undefined||body.save_slot!==undefined),
+  z.object({...saveMetadata,load_slot:layoutSlot}).strict(),
+  z.object({...saveMetadata,rename_slot:layoutSlot,name:z.string()}).strict(),
+]);
 export const boundFarmDecorationLayoutSaveSuccessSchema = z.object({
   data: z.object({ result: z.object({ receipt_id: z.string().min(1) }).strict(), resource: farmDecorationsDataSchema }).strict(),
   ...resourceMetadata,
@@ -56,7 +62,7 @@ export const boundFarmDecorationLayoutSaveErrorSchema = z.object({ error: z.obje
     "registration_profile_required", "farm_credential_not_found", "farm_doorplate_mismatch",
     "farm_credential_invalid", "farm_not_found", "farm_unavailable", "upstream_contract_unavailable",
     "state_conflict", "idempotency_conflict", "invalid_layout", "invalid_stall_position", "invalid_instance",
-    "decoration_not_owned", "decoration_quantity_exceeded", "invalid_decoration_position",
+    "decoration_not_owned", "decoration_quantity_exceeded", "invalid_decoration_position", "layout_slot_empty",
   ]), message: z.string(), current_revision: z.string().optional(),
 }).strict() }).strict();
 export type FarmDecorationsData = z.infer<typeof farmDecorationsDataSchema>;

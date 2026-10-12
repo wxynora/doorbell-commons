@@ -1,4 +1,7 @@
 import missingImage0 from "../../assets/furniture/house_level_two.webp";
+import pumpkinHouseImage from "../../assets/furniture/house_pumpkin.webp";
+import stumpHouseImage from "../../assets/furniture/house_stump.webp";
+import mushroomHouseImage from "../../assets/furniture/house_mushroom.webp";
 import missingImage1 from "../../assets/furniture/house_level_three.webp";
 import missingImage2 from "../../assets/furniture/floral_canopy.webp";
 import missingImage3 from "../../assets/furniture/paving_sandstone.webp";
@@ -34,6 +37,9 @@ const farmFurnitureImages: Readonly<Record<string, string>> = Object.fromEntries
 
 export const furnitureProductImages: Readonly<Record<string, string>> = {
   ...farmFurnitureImages,
+  "farm_decor:house_pumpkin": pumpkinHouseImage,
+  "farm_decor:house_stump": stumpHouseImage,
+  "farm_decor:house_mushroom": mushroomHouseImage,
   "farm_decor:flowerbed": image0,
   "farm_decor:flowerbed_hydrangea": image1,
   "farm_decor:flowerbed_sunflower": image2,

@@ -10,6 +10,8 @@ export type BoundFarmDecorationsRead = ReturnType<
   typeof boundFarmDecorationsReadSuccessSchema.parse
 >;
 export type FarmDecorationLayout = BoundFarmDecorationsRead["data"]["layout"];
+export type FarmLayoutSlot = 1 | 2 | 3;
+export type FarmDecorationCommand = {layout:FarmDecorationLayout;save_slot?:FarmLayoutSlot;name?:string} | {load_slot:FarmLayoutSlot} | {rename_slot:FarmLayoutSlot;name:string};
 export type BoundFarmDecorationLayoutSave = ReturnType<
   typeof boundFarmDecorationLayoutSaveSuccessSchema.parse
 >;
@@ -65,13 +67,12 @@ export async function saveBoundFarmDecorationLayout(
   options: ReadOptions & {
     expectedRevision: string;
     idempotencyKey: string;
-    layout: FarmDecorationLayout;
-  },
+  } & FarmDecorationCommand,
 ): Promise<ApiResult<BoundFarmDecorationLayoutSave, FarmDecorationIssue>> {
   const body = boundFarmDecorationLayoutSaveRequestSchema.parse({
     idempotency_key: options.idempotencyKey,
     expected_revision: options.expectedRevision,
-    layout: options.layout,
+    ...("rename_slot" in options?{rename_slot:options.rename_slot,name:options.name}:"load_slot" in options?{load_slot:options.load_slot}:{layout:options.layout,...(options.save_slot?{save_slot:options.save_slot,...(options.name!==undefined?{name:options.name}:{})}:{})}),
   });
   let response: Response;
   try {
@@ -94,6 +95,8 @@ export async function saveBoundFarmDecorationLayout(
 }
 
 export function farmDecorationIssueMessage(issue: FarmDecorationIssue): string {
+  if(issue.code==="layout_slot_empty")return "这套布局还没有保存，无法切换或改名。";
+  if(["invalid_layout","invalid_stall_position","invalid_decoration_position","decoration_not_owned","decoration_quantity_exceeded","invalid_instance"].includes(issue.code))return "当前库存、田地或房屋占位已变化，这套布置未能保存或切换，原布局仍保留。";
   if (issue.code === "network_unavailable") return "现在连不上农场，布置尚未保存，请重试。";
   if (issue.code === "unexpected_response") return "装饰数据暂时无法识别，请稍后重试。";
   return issue.serverMessage || "装饰暂时不可用，请稍后重试。";
