@@ -5,8 +5,11 @@ export function snapCells(cells, rotation = 0) {
   const eighth = ((Math.round(rotation / (Math.PI / 4)) % 8) + 8) % 8;
   return Math.floor(eighth / 2) % 2 ? [cells[1], cells[0]] : cells;
 }
-export function rectangle(pose, cells) {
-  const c = Math.cos(pose.rotation), s = Math.sin(pose.rotation);
+export const isTreeDecoration = model => ["cherry_tree", "maple_tree", "ginkgo_tree", "birch_tree", "pine_tree", "osmanthus_tree"].includes(model);
+export function rectangle(pose, cells, model = pose.item_id?.startsWith("farm_decor:") ? pose.item_id.slice(11) : undefined) {
+  const tree = isTreeDecoration(model), rotation = tree ? 0 : pose.rotation;
+  if (tree) cells = [1, 1];
+  const c = Math.cos(rotation), s = Math.sin(rotation);
   return [[-1,-1],[1,-1],[1,1],[-1,1]].map(([x,z]) => {
     x *= cells[0] * CELL_SIZE / 2; z *= cells[1] * CELL_SIZE / 2;
     return [pose.x + c*x + s*z, pose.z - s*x + c*z];

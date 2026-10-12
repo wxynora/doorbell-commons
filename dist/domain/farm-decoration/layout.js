@@ -25,9 +25,14 @@ export function footprint(pose, cells) {
   if (!pose || ![pose.x, pose.z, pose.rotation].every(Number.isFinite)) return null;
   const turns = pose.rotation / (Math.PI / 4);
   if (Math.abs(turns - Math.round(turns)) > 1e-7) return null;
-  const [w, d] = snapCells(cells, pose.rotation);
-  const c = pose.x / CELL_SIZE - w / 2, r = (pose.z - Z_ORIGIN) / CELL_SIZE - d / 2;
-  if (Math.abs(c - Math.round(c)) > 1e-7 || Math.abs(r - Math.round(r)) > 1e-7) return null;
+  // These two trees were sold on an even-cell lattice; keep old centers valid.
+  const legacy = ["farm_decor:birch_tree", "farm_decor:osmanthus_tree"].includes(pose.item_id);
+  const aligned = size => {
+    const [w, d] = snapCells(size, pose.rotation);
+    const c = pose.x / CELL_SIZE - w / 2, r = (pose.z - Z_ORIGIN) / CELL_SIZE - d / 2;
+    return Math.abs(c - Math.round(c)) <= 1e-7 && Math.abs(r - Math.round(r)) <= 1e-7;
+  };
+  if (!aligned(cells) && !(legacy && aligned([2, 2]))) return null;
   const used = touchedCells(rectangle(pose, cells));
   return used.length ? used : null;
 }
