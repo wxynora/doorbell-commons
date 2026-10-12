@@ -5,6 +5,7 @@ import { floodVisuals } from "../domain/farm-decoration/flood-visuals.js";
 import { decorationResource, decorationRevision, decorationState } from "../domain/farm-decoration/state.js";
 import { validateDecorationLayout } from "../domain/farm-decoration/layout.js";
 import { createMinimalHumanActionReceipt, replayMinimalHumanActionReceipt } from "../minimal-action-receipt.js";
+import { isLayoutSlot, savedLayoutSlots, layoutSlotSummaries, saveLayoutSlot, renameLayoutSlot } from "../domain/farm-decoration/layout-slots.js";
 
 export function projectHumanFarmDecorations(farm, now = Date.now()) {
   const world = getNatureWorld();
@@ -12,7 +13,7 @@ export function projectHumanFarmDecorations(farm, now = Date.now()) {
   const hour = ((now / 3600000 + 8) % 24 + 24) % 24;
   const night = hour < 5 || hour >= 19 ? 1 : hour < 7 ? (7 - hour) / 2 : hour < 17 ? 0 : (hour - 17) / 2;
   return {
-    data: { ...decorationResource(farm), environment: {
+    data: { ...decorationResource(farm), saved_layouts: layoutSlotSummaries(farm), environment: {
       status: nature.status,
       season: nature.season ? { id: nature.season.id, name: nature.season.name } : null,
       weather: nature.weather ? { condition: nature.weather.condition } : null,
@@ -36,8 +37,13 @@ function response(farm, now, result) {
   return { data: { result, resource: view.data }, revision: view.revision, server_time: view.server_time };
 }
 export function handleHumanFarmDecorationSave(farm, body, now = Date.now()) {
-  const keys = ["farm_human_key", "expected_farm_doorplate", "idempotency_key", "expected_revision", "layout"];
+  const loading=body&&Object.hasOwn(body,"load_slot");
+  const renaming=body&&Object.hasOwn(body,"rename_slot");
+  const keys = ["farm_human_key", "expected_farm_doorplate", "idempotency_key", "expected_revision", renaming?"rename_slot":loading?"load_slot":"layout"];
+  if(renaming)keys.push("name");
+  else if(!loading&&body&&Object.hasOwn(body,"save_slot")){keys.push("save_slot");if(Object.hasOwn(body,"name"))keys.push("name");}
   if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).length !== keys.length || !keys.every(key => Object.hasOwn(body, key)) || typeof body.farm_human_key !== "string" || !body.farm_human_key || !/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/.test(body.expected_farm_doorplate) || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.idempotency_key) || typeof body.expected_revision !== "string") return error("invalid_request");
+  if((loading&&!isLayoutSlot(body.load_slot))||(renaming&&!isLayoutSlot(body.rename_slot))||(Object.hasOwn(body,"save_slot")&&!isLayoutSlot(body.save_slot))||(Object.hasOwn(body,"name")&&typeof body.name!=="string"))return error("invalid_request");
   const fingerprint = createHash("sha256").update(JSON.stringify(canonical(body))).digest("hex");
   try {
     const receipts = farm.doorbellHumanFarmDecorationReceipts ?? {};
@@ -47,10 +53,16 @@ export function handleHumanFarmDecorationSave(farm, body, now = Date.now()) {
     }
     const revision = decorationRevision(farm);
     if (body.expected_revision !== revision) return error("state_conflict", revision);
-    const state = decorationState(farm), invalid = validateDecorationLayout(farm, body.layout, state.owned);
-    if (invalid) return error(invalid);
+    const layout=loading||renaming?savedLayoutSlots(farm).find(s=>s.slot===(renaming?body.rename_slot:body.load_slot))?.layout:body.layout;
+    if((loading||renaming)&&!layout)return error("layout_slot_empty");
     const working = structuredClone(farm);
-    working.farmDecorations = { ...state, layout: structuredClone(body.layout) };
+    if(renaming)renameLayoutSlot(working,body.rename_slot,body.name);
+    else {
+      const state = decorationState(farm), invalid = validateDecorationLayout(farm, layout, state.owned);
+      if (invalid) return error(invalid);
+      working.farmDecorations = { ...state, layout: structuredClone(layout) };
+      if(Object.hasOwn(body,"save_slot"))saveLayoutSlot(working,body.save_slot,layout,body.name);
+    }
     const out = response(working, now, { receipt_id: body.idempotency_key });
     working.doorbellHumanFarmDecorationReceipts = { ...receipts, [body.idempotency_key]: createMinimalHumanActionReceipt(fingerprint, out) };
     replaceFarm(farm.id, working);

@@ -28,7 +28,7 @@ export function decorationState(farm) {
 }
 export function decorationRevision(farm) {
   const state = decorationState(farm);
-  return `farm-decoration-v1:${createHash("sha256").update(JSON.stringify({ coins: farm.coins, state, plots: (farm.plots ?? []).map(plot => plot.id), catalog: FARM_DECORATION_CATALOG })).digest("hex")}`;
+  return `farm-decoration-v1:${createHash("sha256").update(JSON.stringify({ coins: farm.coins, state, plots: (farm.plots ?? []).map(plot => plot.id), catalog: FARM_DECORATION_CATALOG, saved_layouts:farm.farmDecorationLayouts })).digest("hex")}`;
 }
 export function decorationResource(farm) {
   const state = decorationState(farm);

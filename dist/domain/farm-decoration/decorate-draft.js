@@ -36,13 +36,13 @@ function inputDetails(change,code,resource){
   if(code==='unknown_item')return {item:change.item};
   if(change&&typeof change==='object'&&!Array.isArray(change)){
     let required,optional=['facing'];
-    if(Object.hasOwn(change,'fixture')){required=['field','house'].includes(change.fixture)?['fixture']:['fixture','at'];optional=change.fixture==='house'?['at','style']:change.fixture==='field'?['at','columns','rows']:change.fixture==='stall'?['facing']:[];}
+    if(Object.hasOwn(change,'fixture')){required=['field','house'].includes(change.fixture)?['fixture']:['fixture','at'];optional=change.fixture==='house'?['at','style']:change.fixture==='field'?['at','columns','rows']:['stall','watering_can'].includes(change.fixture)?['facing']:[];}
     else if(Object.hasOwn(change,'remove')){required=['remove'];optional=[];}
     else if(Object.hasOwn(change,'instance'))required=['instance','at'];
     else if(Object.hasOwn(change,'item')){required=Object.hasOwn(change,'from')||Object.hasOwn(change,'to')?['item','from','to']:['item','at'];if(required.includes('from'))optional=['facing','shape'];}
     if(required)return {fields:Object.keys(change),missing_fields:required.filter(k=>!Object.hasOwn(change,k)),
       unexpected_fields:Object.keys(change).filter(k=>![...required,...optional].includes(k)),
-      ...(Object.hasOwn(change,'fixture')&&!['house','stall','field','tree_1','tree_2'].includes(change.fixture)?{field:'fixture',value:change.fixture,allowed:['house','stall','field','tree_1','tree_2']}:{}),
+      ...(Object.hasOwn(change,'fixture')&&!['house','stall','field','tree_1','tree_2','watering_can'].includes(change.fixture)?{field:'fixture',value:change.fixture,allowed:['house','stall','field','tree_1','tree_2','watering_can']}:{}),
       required_fields:required,optional_fields:optional};
   }
   return {value:change,required_one_of:['item','instance','remove','fixture']};
@@ -89,6 +89,7 @@ export function evaluateDecorationDraft(farm,resource,previous,{uuid=randomUUID}
     }
     layout=result.layout;
     if(entry.change.fixture==='field')entry.field=result.applied[0];
+    if(entry.change.fixture==='watering_can')entry.watering_can=result.applied[0];
     const target=entry.change.instance??entry.change.remove;
     if(target)owners.set(target,entry.id);
     if(entry.change.fixture)owners.set(entry.change.fixture,entry.id);
@@ -125,6 +126,11 @@ export function evaluateDecorationDraft(farm,resource,previous,{uuid=randomUUID}
     if(!layout.trees)continue;
     const causes=diagnoseDecorationPosition(farm,resource,layout,{...layout.trees[index],rotation:0},[1,1]);
     if(causes.length)issues.push({id:owners.get(fixture)??null,fixture,code:'invalid_decoration_position',cells:fixtureCells(resource,layout,fixture),causes});
+  }
+  if(layout.watering_can){
+    const causes=diagnoseDecorationPosition(farm,resource,layout,layout.watering_can,[1,1]);
+    if(causes.length)issues.push({id:owners.get('watering_can')??owners.get('field')??owners.get('house')??null,
+      fixture:'watering_can',code:'invalid_decoration_position',cells:fixtureCells(resource,layout,'watering_can'),causes});
   }
   for(const instance of layout.decorations) {
     const definition=definitions.get(instance.item_id);

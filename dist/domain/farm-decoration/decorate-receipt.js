@@ -15,6 +15,7 @@ export function decorationViewText(farm,resource){
     '朝向：^朝上，>朝右，v朝下，<朝左；NE右上、SE右下、SW左下、NW左上。',
     `农舍｜款式：${houseStyleName(resource.layout.house?.style??'classic')}｜已解锁：${resource.house.unlocked_styles.map(houseStyleName).join('、')}｜位置：${view.house.anchor}｜朝向：S`,
     `摊位｜位置：${view.stall.anchor}｜朝向：${view.stall.facing}`,
+    `水壶｜位置：${view.wateringCan.anchor}｜朝向：${view.wateringCan.facing}`,
     `田地｜中心锚点：${view.field.anchor}｜排布：${view.field.rows}行×${view.field.columns}列｜地块：${view.field.plots.length}块`,
     ...view.field.plots.map(p=>`${p.id}号田｜占格：${cells(p.cells)}`),
     '已摆放：',
@@ -24,7 +25,9 @@ export function decorationViewText(farm,resource){
   ].join('\n');
 }
 export function decorationSummary(draft){
-  return draft.entries.map(({id,change:c,field})=>c.fixture==='field'
+  return draft.entries.map(({id,change:c,field,watering_can:can})=>c.fixture==='watering_can'
+    ?`事项 ${id}｜水壶｜位置：${c.at}｜朝向：${can.facing}`
+    :c.fixture==='field'
     ?`事项 ${id}｜田地｜中心锚点：${field.at}｜排布：${field.rows}行×${field.columns}列｜地块：${field.count}块`
     :`事项 ${id}｜${c.remove?`收回实例${c.remove}`:c.instance?`移动实例${c.instance}至${c.at}${c.facing?`，朝${c.facing}`:''}`:c.fixture==='house'&&c.style?`切换房屋：${houseStyleName(c.style)}${c.at?`，位置：${c.at}`:''}`:c.fixture?`移动${c.fixture==='house'?'农舍':c.fixture==='tree_1'?'原有树T1':c.fixture==='tree_2'?'原有树T2':'摊位'}至${c.at}`:`${c.item}｜${c.at??`${c.from}至${c.to}，${c.shape==='border'?'仅外圈':'填满'}`}｜朝${c.facing??'S'}`}`).join('\n');
 }
@@ -70,7 +73,7 @@ export function decorationIssuesText(draftId,issues,resource){
       lines.push(...i.changes.map(c=>`当前布局的${c.field??`实例${c.instance}`}已从${value(c.before)}变为${value(c.after)}，本次没有覆盖。装修草稿仍保留。`),'布局已变化时不覆盖；可用reset:true重新开始。');continue;
     }
     const d=resource.catalog.find(d=>d.item_id===i.item||d.model_id===i.item);
-    const name=i.fixture?({house:'农舍',stall:'摊位',field:'田地',tree_1:'原有树T1',tree_2:'原有树T2'}[i.fixture]):d?.name??i.item??i.input?.item??'调整';
+    const name=i.fixture?({house:'农舍',stall:'摊位',field:'田地',tree_1:'原有树T1',tree_2:'原有树T2',watering_can:'水壶'}[i.fixture]):d?.name??i.item??i.input?.item??'调整';
     const reasons=i.causes?.length?i.causes.map(c=>causeText(c,name)).join('\n'):inputText(i,name);
     lines.push(`事项 ${i.id??'现有布局'}｜${name}${i.cells&&i.code!=='range_not_tiled'?`｜占格：${cells(i.cells)}`:''}｜${reasons}`);
     if(i.instance)lines.push(`实例编号：${i.instance}`);

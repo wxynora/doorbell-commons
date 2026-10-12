@@ -20,6 +20,7 @@ export function diagnoseFieldPosition(farm,resource,layout){
   });
 }
 export function fixtureCells(resource,layout,fixture){
+  if(fixture==='watering_can')return touchedCells(rectangle(layout.watering_can,[1,1])).map(([col,row])=>cellName(col,row)??{col,row});
   const position=layout.house??DEFAULT_HOUSE_POSITION;
   if(['tree_1','tree_2'].includes(fixture))return touchedCells(nativeTreeFootprint((layout.trees??NATIVE_TREE_POSITIONS)[fixture==='tree_1'?0:1])).map(([col,row])=>cellName(col,row)??{col,row});
   const polygons=fixture==='house'?[...houseBaseRects(position),...houseExtensionRects(position,resource.house.level)].map(boundsRectangle):[rectangle(layout.stall,[2,2])];

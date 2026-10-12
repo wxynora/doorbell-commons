@@ -44,6 +44,7 @@ export function validateDecorationLayout(farm, layout, owned) {
   if (layout && Object.hasOwn(layout, "boundary_item_id")) keys.push("boundary_item_id");
   if (layout && Object.hasOwn(layout, "field")) keys.push("field");
   if (layout && Object.hasOwn(layout, "trees")) keys.push("trees");
+  if (layout && Object.hasOwn(layout, "watering_can")) keys.push("watering_can");
   if (!exactKeys(layout, keys) || !ROOF_COLORS.includes(layout.roof) || !["plain", "floral"].includes(layout.canopy) || !Array.isArray(layout.decorations) || !exactKeys(layout.stall, ["x", "z", "rotation"])) return "invalid_layout";
   if (keys.includes("house") && !exactKeys(layout.house, ["x", "z",...(Object.hasOwn(layout.house??{},"style")?["style"]:[])])) return "invalid_layout";
   if (keys.includes("field") && (!exactKeys(layout.field,["x","z","columns",...(Object.hasOwn(layout.field??{},"rows")?["rows"]:[])]) || !validFieldLayout(layout.field,farm.plots??[]))) return "invalid_layout";
@@ -64,6 +65,11 @@ export function validateDecorationLayout(farm, layout, owned) {
   if (!canPlaceHouse(housePosition, house.level, createPlacementTerrain(farm.plots ?? [], null, layout.field))) return "invalid_layout";
   if (layout.canopy === "floral" && (!house.canopy_unlocked || house.level < 2)) return "decoration_not_owned";
   const terrain = createPlacementTerrain(farm.plots ?? [], housePosition, layout.field);
+  if (keys.includes("watering_can")) {
+    const can=layout.watering_can;
+    if(!exactKeys(can,["x","z","rotation"])||!footprint(can,[1,1])||!terrain.canPlace(rectangle(can,[1,1]))||
+       (house.level>=2&&overlapsHouseExtension(can,[1,1],housePosition)))return "invalid_layout";
+  }
   if (layout.field) {
     const fixtures=[rectangle(layout.stall,[2,2]),...layout.decorations.flatMap(item=>{
       const definition=decorationById.get(item.item_id);

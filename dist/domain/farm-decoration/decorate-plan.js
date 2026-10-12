@@ -93,7 +93,7 @@ export function planDecoration(farm,resource,changes,{uuid=randomUUID,validate=t
       }
       applied.push({kind:'move',fixture:'house',at:houseAnchor(layout.house),style:layout.house.style??'classic'});continue;
     }
-    if(keys(change,['fixture','at'],change?.fixture==='stall'?['facing']:[])) {
+    if(keys(change,['fixture','at'],['stall','watering_can'].includes(change?.fixture)?['facing']:[])) {
       if(change.fixture==='house') {
         const at=parseCell(change.at);if(!at)return fail('invalid_cell_or_facing');
         layout.house={x:DEFAULT_HOUSE_POSITION.x+(at[0]-HOUSE_GRID_ANCHOR[0])*CELL_SIZE,
@@ -107,8 +107,13 @@ export function planDecoration(farm,resource,changes,{uuid=randomUUID,validate=t
       } else if(change.fixture==='stall') {
         const pose=poseAt(change.at,[2,2],change.facing??facingOf(layout.stall.rotation));
         if(!pose)return fail('invalid_cell_or_facing');layout.stall=pose;
+      } else if(change.fixture==='watering_can') {
+        // The existing can's spout points local +X, unlike furniture's +Z front.
+        const pose=poseAt(change.at,[1,1],change.facing??facingOf((layout.watering_can?.rotation??0)+Math.PI/2));
+        if(!pose)return fail('invalid_cell_or_facing');
+        pose.rotation=(pose.rotation+3*Math.PI/2)%(2*Math.PI);layout.watering_can=pose;
       } else return fail('invalid_change');
-      applied.push({kind:'move',fixture:change.fixture,at:change.at});continue;
+      applied.push({kind:'move',fixture:change.fixture,at:change.at,...change.fixture==='watering_can'?{facing:facingOf(layout.watering_can.rotation+Math.PI/2)}:{}});continue;
     }
     if(keys(change,['remove'])) {
       const at=layout.decorations.findIndex(o=>o.instance_id===change.remove);
@@ -245,7 +250,9 @@ export function projectDecorationGrid(farm,resource) {
   const lines=[header,border];
   for(let row=0;row<GRID.rows;row++)lines.push(String(row+1).padStart(2,'0')+' |'+cells[row].map(v=>v.padEnd(codeWidth)).join('|')+'|',border);
   const overlaps=[...layers].filter(([,items])=>items.length>1).map(([cell,items])=>({cell,instances:items.map(i=>i.id)}));
-  return {columns:GRID.columns,rows:GRID.rows,grid:lines.join('\n'),instances,inventory:available,overlaps,offGrid,fixedTrees,field,snowman,
+  const can=resource.layout.watering_can??{x:-.65,z:4.73,rotation:0};
+  const wateringCan={anchor:cellName(Math.floor(can.x/CELL_SIZE+1e-7),Math.floor((can.z-Z_ORIGIN)/CELL_SIZE+1e-7)),facing:facingOf(can.rotation+Math.PI/2)};
+  return {columns:GRID.columns,rows:GRID.rows,grid:lines.join('\n'),instances,inventory:available,overlaps,offGrid,fixedTrees,field,snowman,wateringCan,
     stall:{facing:facingOf(resource.layout.stall.rotation),anchor:cellName(
       Math.round(resource.layout.stall.x/CELL_SIZE-snapCells([2,2],resource.layout.stall.rotation)[0]/2),
       Math.round((resource.layout.stall.z-Z_ORIGIN)/CELL_SIZE-snapCells([2,2],resource.layout.stall.rotation)[1]/2))},
