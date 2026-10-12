@@ -1,5 +1,5 @@
 // Mirrored by Farm authority and the scene; IDs remain gameplay identities.
-import { CELL_SIZE, boundsRectangle, intersects } from "./placement-geometry.js";
+import { CELL_SIZE, Z_ORIGIN, boundsRectangle, intersects } from "./placement-geometry.js";
 
 const plotIndex = (plot, index) => (plot.id ?? plot.plot_id ?? index + 1) - 1;
 const slots = plots => plots.reduce((end, plot, index) => Math.max(end, plotIndex(plot, index) + 1), 0);
@@ -44,6 +44,14 @@ export function normalizeFieldLayout(field, plots) {
     const last=next.groups.at(-1);last.plot_ids.push(...extra);if(last.rows)last.columns=Math.ceil(last.plot_ids.length/last.rows);
   }
   return next;
+}
+// Explicit Human edits align each plot with the furniture cell centers. Legacy
+// saved centers and the existing whole-field tool anchor are left unchanged.
+export function snapFieldGroupPosition(x, z, columns, rows) {
+  const offsetX = (columns % 2) * CELL_SIZE / 2;
+  const offsetZ = (rows % 2) * CELL_SIZE / 2;
+  return { x: offsetX + Math.round((x - offsetX) / CELL_SIZE) * CELL_SIZE,
+    z: Z_ORIGIN + offsetZ + Math.round((z - Z_ORIGIN - offsetZ) / CELL_SIZE) * CELL_SIZE };
 }
 export function snapFieldPosition(x, z, plots) {
   const origin = defaultFieldLayout(plots);
