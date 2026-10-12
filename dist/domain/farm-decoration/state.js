@@ -5,6 +5,7 @@ import { bumpDaily } from "../../daily.js";
 import { houseState, housePurchaseError, HOUSE_STYLES, houseStyleItem } from "./house.js";
 import { relocateWaterwheels } from "./waterwheel-relocation.js";
 import { DEFAULT_HOUSE_POSITION } from "./house-geometry.js";
+import { normalizeFieldLayout } from "./field-layout.js";
 
 export function decorationState(farm) {
   if (farm.farmDecorations === undefined) return { version: 2, owned: {}, layout: { house: {...DEFAULT_HOUSE_POSITION}, roof: "mint", canopy: "plain", stall: { x: -3.76, z: 2.32, rotation: 0 }, decorations: [] } };
@@ -17,6 +18,7 @@ export function decorationState(farm) {
   const result = structuredClone(state);
   result.layout.canopy ??= "plain";
   result.layout.house ??= {...DEFAULT_HOUSE_POSITION};
+  if(result.layout.field)result.layout.field=normalizeFieldLayout(result.layout.field,farm.plots??[]);
   const style=result.layout.house.style??'classic';
   if(!HOUSE_STYLES.includes(style)||(style!=='classic'&&!(result.owned[houseStyleItem(style)]>0)))throw new Error('Invalid farm house style');
   // Project the old yard once; only existing save/buy paths persist the upgrade.

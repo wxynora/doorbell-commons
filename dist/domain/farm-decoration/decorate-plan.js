@@ -66,6 +66,8 @@ export function planDecoration(farm,resource,changes,{uuid=randomUUID,validate=t
         const key=Object.hasOwn(change,'columns')?'columns':'rows',upper=key==='columns'?Math.max(6,size):size;
         if(Object.hasOwn(change,'columns')&&Object.hasOwn(change,'rows')||!Number.isSafeInteger(change[key])||change[key]<1||change[key]>upper)
           return fail('invalid_field_dimensions',{field:key,value:change[key],maximum:upper,count:plots.length});
+        // The existing whole-field reshape command explicitly recombines the plots.
+        delete field.groups;
         if(key==='columns'){field.columns=change.columns;delete field.rows;}
         else {field.rows=change.rows;field.columns=Math.ceil(size/change.rows);}
       }
