@@ -1,7 +1,7 @@
 import * as T from "three";
 import { LAND } from "./world.js";
 import { disposeDecoration } from "./decorations.js";
-import { snapCells, rectangle, boundsRectangle, intersects, isTreeDecoration } from "./placement-geometry.js";
+import { snapCells, rectangle, boundsRectangle, intersects, isTreeDecoration, supportBounds } from "./placement-geometry.js";
 
 import { createPlacementTerrain } from "./placement-terrain.js";
 import { snapNativeTree } from "./native-trees.js";
@@ -96,10 +96,11 @@ export function createPlacement(world, authoritativeGrid = null) {
       tree&&!isNew?{x:saved.x+Math.round((x-saved.x)/CELL_SIZE)*CELL_SIZE,z:saved.z+Math.round((z-saved.z)/CELL_SIZE)*CELL_SIZE}:snapPlacement(x, z, cells);
     valid = canPlace(point);
     target.position.set(point.x, target===world.wateringCan?.26:target.userData.nativeTree!==undefined?.24:.25, point.z);
-    const modelCells=target.userData.cells||[2,2];
-    footprint.scale.set(modelCells[0] / 2, modelCells[1] / 2, 1);
+    const modelCells=target.userData.cells||[2,2],bounds=supportBounds(modelCells,target.userData.decorationId);
+    footprint.scale.set((bounds[2]-bounds[0])/(2*CELL_SIZE),(bounds[3]-bounds[1])/(2*CELL_SIZE),1);
     footprint.rotation.set(-Math.PI/2,0,tree?0:target.rotation.y);
-    footprint.position.set(point.x, 0.3, point.z);
+    const c=Math.cos(target.rotation.y),s=Math.sin(target.rotation.y),cx=(bounds[0]+bounds[2])/2,cz=(bounds[1]+bounds[3])/2;
+    footprint.position.set(point.x+c*cx+s*cz,0.3,point.z-s*cx+c*cz);
     footprint.material.color.set(valid ? "#b5e78c" : "#ec867c");
     return valid;
   }

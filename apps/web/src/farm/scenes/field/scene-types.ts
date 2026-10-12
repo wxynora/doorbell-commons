@@ -2,6 +2,8 @@ export interface SceneFlood { plot_ids: readonly number[]; fish: readonly {id:st
 export interface SceneDecorationPose { x: number; z: number; rotation: number }
 export interface SceneFieldGroup {x:number;z:number;columns:number;rows?:number|undefined;plot_ids:number[]}
 export interface SceneDecorationLayout {
+  stall_hidden?: boolean | undefined;
+  hidden_trees?: [boolean,boolean] | undefined;
   watering_can?: SceneDecorationPose | undefined;
   trees?: [{x:number;z:number},{x:number;z:number}] | undefined;
   field?: { x: number; z: number; columns: number; rows?: number | undefined; groups?:SceneFieldGroup[]|undefined } | undefined;

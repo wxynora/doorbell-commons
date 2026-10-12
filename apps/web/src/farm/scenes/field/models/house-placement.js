@@ -9,7 +9,7 @@ import { captureWateringCan } from "./watering-can.js";
 export function createHousePlacement(world,level){
   const terrain=createPlacementTerrain(world.plots.map(o=>o.userData.plot),null,world.fieldLayout);
   const target=world.house,stall=world.root.getObjectByName("market-stall");
-  const fixtures=[stall,...(captureWateringCan(world.wateringCan)?[world.wateringCan]:[]),...world.decorations].map(o=>{
+  const fixtures=[stall,...(captureWateringCan(world.wateringCan)?[world.wateringCan]:[]),...world.decorations].filter(object=>object.visible).map(o=>{
     const model=o.userData.decorationId??"";
     return {polygon:rectangle({x:o.position.x,z:o.position.z,rotation:o.rotation.y},o.userData.cells||[2,2],model),
       groundFinish:!!o.userData.groundCover||model==="flowerbed"||model.startsWith("flowerbed_")};

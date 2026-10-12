@@ -24,5 +24,6 @@ export function buildBorder(id, length = 1, paletteOverride) {
     }
     if (id === "ghost_fence") ghost(g, [0, .24, .075], .47, paletteOverride);
   }
+  if (["white_fence","timber_fence","ghost_fence"].includes(id)) g.scale.set(1,1.3,1.25);
   return g;
 }

@@ -15,7 +15,7 @@ export function createFieldPlacement(world, level, onChange) {
   const ensureGroups=()=>{layout.groups??=[{x:0,z:0,columns:layout.columns,...layout.rows?{rows:layout.rows}:{},plot_ids:plots.map(p=>p.id)}];};
   const target = new T.Group();target.position.set(layout.x, .255, layout.z);
   const terrain = createPlacementTerrain([], world.house.position);
-  const fixtures = [world.root.getObjectByName("market-stall"), ...(captureWateringCan(world.wateringCan)?[world.wateringCan]:[]), ...world.decorations].map(object =>
+  const fixtures = [world.root.getObjectByName("market-stall"), ...(captureWateringCan(world.wateringCan)?[world.wateringCan]:[]), ...world.decorations].filter(object=>object.visible).map(object =>
     rectangle({x:object.position.x,z:object.position.z,rotation:object.rotation.y},object.userData.cells??[2,2],object.userData.decorationId));
   fixtures.push(...houseExtensionRects(world.house.position,level).map(boundsRectangle));
   const grid = new T.Group();grid.name = "field-placement-grid";grid.visible = false;world.root.add(grid);

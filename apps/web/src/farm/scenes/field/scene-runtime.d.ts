@@ -16,6 +16,9 @@ export interface SceneRuntime {
   startHouseMove(): void;
   changeHouseStyle(style: string): void;
   startNativeTreeMove(index: 0 | 1): void;
+  hideNativeTree(index: 0 | 1): void;
+  hideStall(): void;
+  startStallMove(): void;
   startFieldMove(): void;
   changeFieldColumns(columns: number): boolean;
   changeFieldRows(rows: number): boolean;

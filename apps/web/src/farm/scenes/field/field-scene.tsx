@@ -222,8 +222,12 @@ export function FieldScene({
         setRoofChoice(key);setRoofPalette(true);setCanopyEditor(false);setBoundaryEditor(false);runtime.current?.changeRoof(key);
       }}>屋顶换色</button>
         <button type="button" onClick={()=>runtime.current?.startHouseMove()}>移动房屋</button>
-        <button type="button" onClick={()=>{onClosePlot();runtime.current?.startNativeTreeMove(0);}}>移动原有大树</button>
-        <button type="button" onClick={()=>{onClosePlot();runtime.current?.startNativeTreeMove(1);}}>移动原有小树</button>
+        <button type="button" onClick={()=>{onClosePlot();runtime.current?.startStallMove();}}>{decorationData.layout.stall_hidden?"放回":"移动"}售卖摊位</button>
+        {!decorationData.layout.stall_hidden?<button type="button" onClick={()=>{onClosePlot();runtime.current?.hideStall();}}>收起售卖摊位</button>:null}
+        {([0,1] as const).map(index=>{const hidden=decorationData.layout.hidden_trees?.[index]===true,label=index===0?"原有大树":"原有小树";return <span key={index}>
+          <button type="button" onClick={()=>{onClosePlot();runtime.current?.startNativeTreeMove(index);}}>{hidden?"放回":"移动"}{label}</button>
+          {!hidden?<button type="button" onClick={()=>{onClosePlot();runtime.current?.hideNativeTree(index);}}>收起{label}</button>:null}
+        </span>;})}
         <button type="button" disabled={!renderPlots.length} onClick={()=>{onClosePlot();runtime.current?.startFieldMove();}}>调整田地</button>
         {houseStyle==="classic"&&decorationData.house?.canopy_unlocked ? <button type="button" onClick={()=>{
           const key=decorationData.layout.canopy??"plain";setCanopyChoice(key);setCanopyEditor(true);setRoofPalette(false);setBoundaryEditor(false);runtime.current?.changeCanopy(key);
@@ -285,6 +289,7 @@ export function FieldScene({
             <button type="button" disabled={!edit.canAdd} onClick={()=>runtime.current?.addOne()}>+1</button>
             <button type="button" disabled={!edit.canRemove} onClick={()=>runtime.current?.remove()}>收起</button>
           </> : null}
+          {edit.treeMoving&&edit.canRemove?<button type="button" onClick={()=>runtime.current?.remove()}>收起</button>:null}
           <button type="button" onClick={()=>runtime.current?.cancel()}>取消</button>
           <button type="button" disabled={!edit.valid} onClick={()=>void runtime.current?.save()}>保存</button>
         </div> : null}

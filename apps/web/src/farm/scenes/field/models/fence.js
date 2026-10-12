@@ -48,6 +48,7 @@ export function createFence(parent, groundPoint, inset, style = null) {
       slats.add([x, 0.57, z], [1, 1, 1], [0, -(a + b) / 2, 0]);
     }
   }
+  root.scale.y=1.3;root.position.y=-.25*.3;
   posts.finish();
   slats.finish();
   caps.finish();
