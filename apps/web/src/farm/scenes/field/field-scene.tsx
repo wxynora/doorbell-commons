@@ -8,6 +8,7 @@ import { farmPlotStateLabel } from "../../farm-overview";
 import { useModelOutlinePreference } from "./model-outline-preference";
 import "./field-scene.css";
 import {LayoutSlots} from "./layout-slots";
+import {FieldGroups} from "./field-groups";
 import type {FarmLayoutSlot} from "../../../auth/farm-decoration-client";
 
 const FARM_SEED_TYPE_LABELS: Readonly<Record<NonNullable<FarmPlot["seed_type"]>, string>> = {
@@ -104,7 +105,7 @@ export function FieldScene({
   const [edit, setEdit] = useState<SceneEditState>({editing:false,valid:false,title:"",canAdd:false,canRemove:false,message:"",boundaryItemId:null});
   const [fieldSize,setFieldSize]=useState({rows:"6",columns:"6"});
   const fieldDraftValid=useRef(true);
-  useEffect(()=>{if(edit.fieldMoving)setFieldSize({rows:String(edit.fieldRows??1),columns:String(edit.fieldColumns??6)});},[edit.fieldMoving,edit.fieldRows,edit.fieldColumns]);
+  useEffect(()=>{if(edit.fieldMoving)setFieldSize({rows:String(edit.fieldRows??1),columns:String(edit.fieldColumns??6)});},[edit.fieldMoving,edit.fieldRows,edit.fieldColumns,edit.fieldGroup,edit.fieldGroups?.length]);
   const [renderPlots, setRenderPlots] = useState(plots);
   const callbacks = useRef({onSelectPlot,onSaveLayout,onFinishEditing,onEditingChange,onOpenHouse,onClosePlot});
   callbacks.current={onSelectPlot,onSaveLayout,onFinishEditing,onEditingChange,onOpenHouse,onClosePlot};
@@ -167,8 +168,8 @@ export function FieldScene({
   const requestHouse=(id:string)=>{setRequestedHouseItem(id);onRequestHousePurchase?.(id);};
   const purchaseBusy=housePurchaseFeedback?.stage==="submitting";
   const boundaryChoices=(decorationData?.catalog??[]).filter(item=>["white_fence","timber_fence","stone_wall","hedge","ghost_fence"].includes(item.model_id)&&!!decorationData?.inventory.some(stock=>stock.item_id===item.item_id&&stock.unlocked));
-  const maxFieldColumns=Math.max(6,...renderPlots.map(plot=>plot.plot_id));
-  const fieldSlots=Math.max(0,...renderPlots.map(plot=>plot.plot_id));
+  const fieldSlots=edit.fieldGroups?.[edit.fieldGroup??0]?.count??Math.max(0,...renderPlots.map(plot=>plot.plot_id));
+  const maxFieldColumns=Math.max(6,fieldSlots);
   const validDimension=(value:string,max:number)=>value.trim()!==""&&Number.isSafeInteger(Number(value))&&Number(value)>=1&&Number(value)<=max;
   const validFieldSize=validDimension(fieldSize.rows,fieldSlots)&&validDimension(fieldSize.columns,maxFieldColumns);
   fieldDraftValid.current=!edit.fieldMoving||validFieldSize;
@@ -254,7 +255,8 @@ export function FieldScene({
         {edit.fieldMoving ? <button className="farm-field-editor__close" type="button" aria-label="取消田地调整" onClick={()=>runtime.current?.cancel()}>×</button> : null}
         <strong>{edit.fieldMoving?"田地排布":roofPalette ? "屋顶配色" : canopyEditor?"雨棚款式":boundaryEditor?"整圈外圈":edit.title}</strong>
         {onSaveLayout&&onLoadLayout&&decorationData?.saved_layouts?<button type="button" disabled={!edit.valid||!fieldDraftValid.current} onClick={openSlots}>另存布局</button>:null}
-        <p role="status">{edit.fieldMoving&&!validFieldSize?"请输入有效的行数或列数":edit.message || (edit.fieldMoving ? edit.valid?"整片拖动 · 绿色可保存":"有阻挡，请移动田地" : edit.layoutPreview ? "确认布置后保存" : roofPalette ? "选好颜色后保存，取消可恢复原色" : canopyEditor?"选好款式后保存，取消可恢复原款":boundaryEditor?"整圈围栏会保留原桥口；保存后生效，取消可恢复。":"拖动摆放 · 绿色位置可保存")}</p>
+        <p role="status">{edit.fieldMoving&&!validFieldSize?"请输入有效的行数或列数":edit.message || (edit.fieldMoving ? edit.valid?"拖动当前田块 · 绿色可保存":"有阻挡，请调整红色田块" : edit.layoutPreview ? "确认布置后保存" : roofPalette ? "选好颜色后保存，取消可恢复原色" : canopyEditor?"选好款式后保存，取消可恢复原款":boundaryEditor?"整圈围栏会保留原桥口；保存后生效，取消可恢复。":"拖动摆放 · 绿色位置可保存")}</p>
+        {edit.fieldMoving&&edit.fieldGroups?<FieldGroups groups={edit.fieldGroups} selected={edit.fieldGroup??0} onSelect={index=>runtime.current?.selectFieldGroup(index)} onSplit={count=>runtime.current?.splitFieldGroup(count)} onMerge={index=>runtime.current?.mergeFieldGroup(index)}/>:null}
         {edit.layoutPreview ? <>
           <p>这是预览；保存后替换当前装饰布置，取消可恢复。</p>
           {shareSkipped.length ? <ul className="farm-layout-share-skipped">{shareSkipped.map(item=><li key={item.name+item.reason}>{item.name} × {item.quantity}：{item.reason === "missing" ? "未拥有或数量不足" : "位置冲突"}</li>)}</ul> : <p>所需装饰齐全，均可摆放。</p>}

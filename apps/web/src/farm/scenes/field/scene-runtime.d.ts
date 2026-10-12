@@ -19,6 +19,9 @@ export interface SceneRuntime {
   startFieldMove(): void;
   changeFieldColumns(columns: number): boolean;
   changeFieldRows(rows: number): boolean;
+  selectFieldGroup(index:number): boolean;
+  splitFieldGroup(count:number): boolean;
+  mergeFieldGroup(index:number): boolean;
   rotate(): void;
   flip(): void;
   addOne(): void;

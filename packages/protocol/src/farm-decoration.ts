@@ -3,10 +3,11 @@ import { z } from "zod";
 const itemId = z.string().regex(/^farm_decor:[a-z_]+$/);
 const point = { x: z.number(), z: z.number(), rotation: z.number() };
 const layoutSlot = z.union([z.literal(1),z.literal(2),z.literal(3)]);
+const fieldGroup=z.object({x:z.number(),z:z.number(),columns:z.number().int().positive(),rows:z.number().int().positive().optional(),plot_ids:z.array(z.number().int().positive()).min(1)}).strict();
 export const farmDecorationLayoutSchema = z.object({
   watering_can: z.object(point).strict().optional(),
   trees: z.tuple([z.object({x:z.number(),z:z.number()}).strict(),z.object({x:z.number(),z:z.number()}).strict()]).optional(),
-  field: z.object({ x: z.number(), z: z.number(), columns: z.number().int().positive(), rows: z.number().int().positive().optional() }).strict().optional(),
+  field: z.object({ x: z.number(), z: z.number(), columns: z.number().int().positive(), rows: z.number().int().positive().optional(), groups:z.array(fieldGroup).min(1).optional() }).strict().optional(),
   house: z.object({ x: z.number(), z: z.number(), style: z.enum(["classic","pumpkin","stump","mushroom"]).optional() }).strict().optional(),
   roof: z.string(),
   canopy: z.enum(["plain", "floral"]),

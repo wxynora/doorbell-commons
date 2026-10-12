@@ -1,9 +1,10 @@
 export interface SceneFlood { plot_ids: readonly number[]; fish: readonly {id:string;fish_id:string;size:number}[] }
 export interface SceneDecorationPose { x: number; z: number; rotation: number }
+export interface SceneFieldGroup {x:number;z:number;columns:number;rows?:number|undefined;plot_ids:number[]}
 export interface SceneDecorationLayout {
   watering_can?: SceneDecorationPose | undefined;
   trees?: [{x:number;z:number},{x:number;z:number}] | undefined;
-  field?: { x: number; z: number; columns: number; rows?: number | undefined } | undefined;
+  field?: { x: number; z: number; columns: number; rows?: number | undefined; groups?:SceneFieldGroup[]|undefined } | undefined;
   house?: { x: number; z: number; style?: "classic"|"pumpkin"|"stump"|"mushroom" | undefined } | undefined;
   roof: string;
   canopy: "plain" | "floral";
@@ -32,6 +33,8 @@ export interface SceneEditState {
   fieldMoving?: boolean;
   fieldColumns?: number;
   fieldRows?: number;
+  fieldGroup?: number;
+  fieldGroups?: {count:number}[];
   layoutPreview?: boolean;
   houseMoving?: boolean;
   boundaryItemId: string | null;

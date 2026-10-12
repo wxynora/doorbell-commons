@@ -8,7 +8,7 @@ import { createEnvironment, createSeasonController, createNightLighting } from "
 import { createPlacement, CELL_SIZE } from "./models/placement.js";
 import { createHousePlacement } from "./models/house-placement.js";
 import { createFieldPlacement } from "./models/field-placement.js";
-import { fieldPlots } from "./models/field-layout.js";
+import { fieldPlots, normalizeFieldLayout } from "./models/field-layout.js";
 import { createModelOutline } from "./models/model-outline.js";
 import { DEFAULT_HOUSE_POSITION, houseExtensionRects } from "./models/house-geometry.js";
 import { setRoofColor, ROOF_COLORS } from "./models/cottage.js";
@@ -92,8 +92,8 @@ export function createFieldRuntime(host, options) {
   function emit(message="") {
     winterSnowman.setVisible(!editing);
     const current=currentPlacement(),object=current?.object,id=object?.userData.itemId;
-    const columns=fieldLayout?.columns??6;
-    options.onEditState({editing,valid:!saving&&(!current?.active||current.valid),treeMoving:!!placement?.active&&object?.userData.nativeTree!==undefined,houseMoving:!!housePlacement,fieldMoving:!!fieldPlacement,fieldColumns:columns,fieldRows:fieldLayout?.rows??Math.ceil(Math.max(0,...definitions.map(p=>p.id))/columns),boundaryItemId,title:fieldPlacement?"移动田地":housePlacement?"移动房屋":importing?"导入布局预览":object?.userData.label||"布置农场",layoutPreview:importing,canFlip:!saving&&!!placement?.active&&canMirrorDecoration(object),mirrored:!!object&&object.scale.x<0,canAdd:!saving&&!!id&&remaining(id),canRemove:!saving&&!!id,message});
+    const group=fieldPlacement?.groups[fieldPlacement.selected],columns=group?.columns??fieldLayout?.columns??6;
+    options.onEditState({editing,valid:!saving&&(!current?.active||current.valid),treeMoving:!!placement?.active&&object?.userData.nativeTree!==undefined,houseMoving:!!housePlacement,fieldMoving:!!fieldPlacement,fieldColumns:columns,fieldRows:group?.rows??fieldLayout?.rows??Math.ceil(Math.max(0,...definitions.map(p=>p.id))/columns),...(fieldPlacement?{fieldGroup:fieldPlacement.selected,fieldGroups:fieldPlacement.groups.map(g=>({count:g.count}))}:{}),boundaryItemId,title:fieldPlacement?"移动田地":housePlacement?"移动房屋":importing?"导入布局预览":object?.userData.label||"布置农场",layoutPreview:importing,canFlip:!saving&&!!placement?.active&&canMirrorDecoration(object),mirrored:!!object&&object.scale.x<0,canAdd:!saving&&!!id&&remaining(id),canRemove:!saving&&!!id,message});
   }
   function refreshNatureEffects(){
     disposeDecoration(world.root.getObjectByName("active-nature-event"));
@@ -105,10 +105,11 @@ export function createFieldRuntime(host, options) {
     if(winterSnowman.sync(data?season:null,data?capture():null,data?.catalog))environment.refreshRainSurfaces();
   }
   function setFieldLayout(value){
-    const next=value?{...value}:null;
+    const next=value?normalizeFieldLayout(value,definitions):null;
     if(JSON.stringify(next)===JSON.stringify(fieldLayout))return;
     fieldLayout=next;world.fieldLayout=next??undefined;
-    world.setPlots(fieldPlots(definitions,fieldLayout??undefined));
+    const positions=fieldPlots(definitions,fieldLayout??undefined);
+    definitions.splice(0,definitions.length,...positions);world.setPlots(definitions);
     refreshNatureEffects();
     if(!editing)selectPlot(selectedPlotId);
   }
@@ -214,6 +215,9 @@ export function createFieldRuntime(host, options) {
     if(saving||!fieldPlacement)return false;
     const changed=fieldPlacement.setRows(rows);emit();return changed;
   }
+  function selectFieldGroup(index){if(saving||!fieldPlacement)return false;const changed=fieldPlacement.select(index);emit();return changed;}
+  function splitFieldGroup(count){if(saving||!fieldPlacement)return false;const changed=fieldPlacement.split(count);emit();modelOutline?.refresh();return changed;}
+  function mergeFieldGroup(index){if(saving||!fieldPlacement)return false;const changed=fieldPlacement.merge(index);emit();modelOutline?.refresh();return changed;}
   function startPlacement(id, source = null) {
     if(!data||!placement||saving||housePlacement||fieldPlacement)return;
     const def=definition(id);
@@ -334,6 +338,7 @@ export function createFieldRuntime(host, options) {
   function setPlots(value){
     const next=definePlots(value);
     const occupancyChanged=next.some((plot,i)=>(plot.state==="empty")!==(definitions[i].state==="empty"));
+    definitions.splice(0,definitions.length,...next);
     world.setPlots(next);
     if(occupancyChanged){
       // Pest nodes depend on planted/empty plots; keep the rest of the farm alive.
@@ -378,7 +383,7 @@ export function createFieldRuntime(host, options) {
     frame=requestAnimationFrame(animate);
   }
   if(active)frame=requestAnimationFrame(animate);
-  return {previewLayout,setActive,setModelOutline,setPlots,setEnvironment,setDecorations,selectPlot,startPlacement,startNativeTreeMove,startHouseMove,changeHouseStyle,startFieldMove,changeFieldColumns,changeFieldRows,rotate,flip,addOne,remove,cancel,save,changeRoof,changeCanopy,changeBoundary,
+  return {previewLayout,setActive,setModelOutline,setPlots,setEnvironment,setDecorations,selectPlot,startPlacement,startNativeTreeMove,startHouseMove,changeHouseStyle,startFieldMove,changeFieldColumns,changeFieldRows,selectFieldGroup,splitFieldGroup,mergeFieldGroup,rotate,flip,addOne,remove,cancel,save,changeRoof,changeCanopy,changeBoundary,
     zoom(factor){camera.zoom=T.MathUtils.clamp(camera.zoom*factor,MIN_ZOOM,MAX_ZOOM);camera.updateProjectionMatrix();},
     resetView(){controls.reset();},
     dispose(){disposed=true;if(frame!==null)cancelAnimationFrame(frame);frame=null;observer.disconnect();for(const [name,fn] of listeners)canvas.removeEventListener(name,fn);controls.dispose();modelOutline?.dispose();winterSnowman.dispose();environment.dispose();world.dispose();renderer.dispose();canvas.remove();}

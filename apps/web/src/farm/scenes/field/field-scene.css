@@ -50,6 +50,18 @@
 .farm-layout-share-skipped { max-height:20cqw; overflow-y:auto; padding-left:4cqw; }
 
 /* Field controls stay on the scene's shared design-width scale. */
+.farm-field-editor--terrain .farm-field-groups { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:var(--field-gap); margin-bottom:var(--field-gap); }
+.farm-field-groups label { min-width:0; }
+.farm-field-editor--terrain select { box-sizing:border-box; width:100%; height:var(--field-control-height); min-width:0; border:1px solid var(--field-line); border-radius:1.4cqw; padding:0 2cqw; background:#fffaf0; color:var(--field-ink); font:inherit; }
+.farm-field-editor--terrain .farm-field-groups > button { height:var(--field-control-height); background:transparent; }
+.farm-field-editor--terrain .farm-field-group-tools { display:grid; gap:var(--field-gap); margin-bottom:var(--field-gap); padding-bottom:var(--field-gap); border-bottom:1px solid var(--field-line); }
+.farm-field-group-tools__row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:var(--field-gap); align-items:center; }
+.farm-field-group-tools__row label { display:flex; align-items:center; gap:2cqw; min-width:0; }
+.farm-field-group-tools__row label > span { flex:none; }
+.farm-field-group-tools__row input { box-sizing:border-box; min-width:0; width:100%; height:var(--field-control-height); border:1px solid var(--field-line); border-radius:1.4cqw; background:#fffaf0; color:var(--field-ink); text-align:center; font:inherit; }
+.farm-field-group-tools__row button { height:var(--field-control-height); min-width:14cqw; }
+.farm-field-editor--terrain > .farm-field-group-tools .farm-field-group-tools__row button { background:#f6efd9; }
+.farm-field-editor--terrain .farm-field-groups button:focus-visible,.farm-field-editor--terrain select:focus-visible,.farm-field-group-tools__row input:focus-visible { outline:2px solid #648775; outline-offset:1px; }
 .farm-field-editor--terrain { --field-ink:#435442; --field-line:#c7c4a9; --field-control-height:11.3cqw; --field-gap:2cqw; --field-control-font:3.6cqw; bottom:3%; padding:2.4cqw; border-radius:2.2cqw; font-size:3.2cqw; }
 .farm-field-editor--terrain > strong { display:block; padding-right:var(--field-control-height); font-size:3.6cqw; font-weight:600; line-height:1.5; }
 .farm-field-editor--terrain > p { padding-right:var(--field-control-height); text-align:left; font-size:2.8cqw; margin:.6cqw 0 var(--field-gap); line-height:1.5; }
