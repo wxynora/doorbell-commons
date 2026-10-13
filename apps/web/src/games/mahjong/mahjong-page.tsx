@@ -8,12 +8,14 @@ import "./mahjong-page.css";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { request, type Tile, type View } from "./mahjong-client";
 
+const flowers: Record<string, string> = { H1: "春", H2: "夏", H3: "秋", H4: "冬", H5: "梅", H6: "兰", H7: "竹", H8: "菊" };
 const honors: Record<string, string> = { F1: "東", F2: "南", F3: "西", F4: "北", J1: "中", J2: "發", J3: "白" };
 const numbers = ["", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
 
 function TileFace({ tile }: { tile: Tile }) {
   if (tile.back) return <span className="mj-back" />;
   const code = tile.code || "J3";
+  if (flowers[code]) return <span className="mj-honor green">{flowers[code]}</span>;
   const n = Number(code[1]);
   if (code[0] === "W") return <span className="mj-wan"><b>{numbers[n]}</b><strong>萬</strong></span>;
   if (code[0] === "B" || code[0] === "T") {
@@ -39,9 +41,9 @@ function SmallTile({ tile, recent = false }: { tile: Tile; recent?: boolean }) {
 }
 
 function MeldTiles({ tiles, kind }: { tiles: Tile[]; kind: string }) {
-  const label = ({ chi: "吃", peng: "碰", ming_gang: "明杠", concealed_gang: "暗杠", added_gang: "加杠" } as Record<string, string>)[kind];
+  const label = ({ chi: "吃", peng: "碰", ming_gang: "明杠", concealed_gang: "暗杠", added_gang: "加杠", flowers: "花牌" } as Record<string, string>)[kind];
   return <span className="mj-meld" title={label} aria-label={label}>
-    {tiles.map((tile, index) => <span className={index === 3 ? "mj-kong-top" : "mj-meld-slot"} key={tile.id || index}><SmallTile tile={tile} /></span>)}
+    {tiles.map((tile, index) => <span className={index === 3 && kind !== "flowers" ? "mj-kong-top" : "mj-meld-slot"} key={tile.id || index}><SmallTile tile={tile} /></span>)}
   </span>;
 }
 
@@ -156,7 +158,7 @@ export function MahjongPage() {
 
   return <div className="mj-host" ref={host}>
     <main className={`mj-stage ${portrait ? "portrait" : "landscape"}`} style={style}>
-      <header><h1>麻将<span>国标</span></h1><nav><GameChatWindow /><button className="game-rules-icon" aria-label="查看麻将规则" onClick={() => setRules(true)}><GameRulesIcon /></button>{!live && <button disabled={busy} onClick={() => void start()}>重新开桌</button>}</nav></header>
+      <header><h1>麻将<span>{state?.rules_version === "mcr-east-one-136-v1" ? "国标" : "大众"}</span></h1><nav><GameChatWindow /><button className="game-rules-icon" aria-label="查看麻将规则" onClick={() => setRules(true)}><GameRulesIcon /></button>{!live && <button disabled={busy} onClick={() => void start()}>重新开桌</button>}</nav></header>
       {!view && <div className="mj-loading">正在摆牌…</div>}
       {view && state && <>
         {participants.map((p, i) => <div key={p.player_id} className={`mj-seat ${state.turn_player_id === p.player_id && !result ? "active" : ""}`} style={{ left: seats[i]!.x, top: seats[i]!.y }}>
@@ -166,9 +168,10 @@ export function MahjongPage() {
         {participants.slice(1).map((p, j) => {
           const pos = handSeats[j + 1]!;
           const tiles: Tile[] = state.terminal_hands?.[p.player_id] || Array.from({ length: state.hand_counts[p.player_id]! }, () => ({ back: true }));
-          const melds = state.melds[p.player_id]!;
+          const exposedFlowers = state.flowers?.[p.player_id] ?? [];
+          const melds = [...(state.melds[p.player_id] ?? []), ...(exposedFlowers.length ? [{kind: "flowers", tiles: exposedFlowers}] : [])];
           const lane = portrait ? 500 : 340;
-          const meldWidth = melds.length ? melds.length * 160 + (melds.length - 1) * 12 : 0;
+          const meldWidth = melds.length ? melds.reduce((sum, m) => sum + (m.kind === "flowers" ? m.tiles.length * 54 - 2 : 160), 0) + (melds.length - 1) * 12 : 0;
           const meldScale = meldWidth ? Math.min(1, (lane - (tiles.length ? 52 : 0)) / meldWidth) : 1;
           const backWidth = tiles.length ? Math.min(tiles.length * 42 - 2, lane - meldWidth * meldScale - (melds.length ? 12 : 0)) : 0;
           const backStep = tiles.length > 1 ? (backWidth - 40) / (tiles.length - 1) : 0;
@@ -191,6 +194,9 @@ export function MahjongPage() {
             {!actions.length && <span className="mj-wait">{name(state.turn_player_id)}{state.phase === "response" ? " 响应中" : " 的回合"}</span>}
           </>}
         </div>
+        {!!state.flowers?.[viewerId]?.length && <div className="mj-anchor" aria-label="花牌" style={{left: portrait ? w / 2 : w - 260, top: portrait ? 875 : 500, display: "flex", gap: 2}}>
+          {state.flowers[viewerId]!.map(t => <SmallTile key={t.id} tile={t} />)}
+        </div>}
         <div className="mj-own-hand mj-anchor" style={{ left: w / 2, top: ownY }}>
           {view.private?.own_melds.map((m, i) => <MeldTiles key={`meld-${i}`} tiles={m.tiles} kind={m.kind} />)}
           {sorted.map(t => <button key={t.id} aria-label={t.label} aria-pressed={selected === t.id} disabled={busy || !actions.some(a => a.action_id === `discard:${t.id}`)} className={`mj-tile ${selected === t.id ? "selected" : ""} ${t.id === drawn ? "drawn" : ""}`} onClick={() => setSelected(selected === t.id ? null : t.id || null)}><TileFace tile={t} /></button>)}
@@ -199,7 +205,7 @@ export function MahjongPage() {
       {result && !review && !rules && <GameResultDialog><strong>{result.draw ? "荒牌" : `${name(result.winner_player_id)} 获胜`}</strong><GameSettlementResult /><GameRoundExit onAgain={() => void start()} /></GameResultDialog>}
       {error && <div role="alert" className="mj-error">{error}<button onClick={() => location.reload()}>重新连接</button></div>}
       {(rules || review) && <GameResultDialog rules={rules}><button className="mj-close" onClick={() => { setRules(false); setReview(false); }}>关闭</button>
-        {rules ? <><h2>国标麻将</h2><GameRulesText kind="mahjong" /></>
+        {rules ? <><h2>{state?.rules_version === "mcr-east-one-136-v1" ? "国标麻将" : "大众麻将"}</h2><GameRulesText kind="mahjong" rulesVersion={state?.rules_version} /></>
           : <><h2>{result?.draw ? "荒牌" : `${name(result?.winner_player_id)} · ${result?.total_fan} 番`}</h2>{result?.fans?.map((f, i) => <p key={i}>{f.name}<b className="mj-fan">{f.fan} 番</b></p>)}</>}
         {!rules && result && <><GameSettlementResult /><GameRoundExit onAgain={() => void start()} /></>}
       </GameResultDialog>}

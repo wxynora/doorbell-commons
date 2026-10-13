@@ -7,6 +7,8 @@ export type View = {
   viewer_id: string | null;
   participants: { player_id: string; display_name: string; seat_index: number }[];
   public: {
+    rules_version?: string;
+    flowers?: Record<string, Tile[]>;
     phase: string;
     turn_player_id: string | null;
     wall_remaining: number;

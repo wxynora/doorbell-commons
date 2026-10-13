@@ -207,7 +207,7 @@ function mahjongDeltas(stake: number, outcome: Record<string, unknown>, ids: rea
   }
   const winnerId = nonEmptyString(outcome.winnerId, "winnerId");
   includesPlayer(ids, winnerId, "winnerId");
-  const fan = integer(outcome.fan, "fan", 8);
+  const fan = integer(outcome.fan, "fan", 1);
   const unit = stake * mahjongMultiplier(fan);
   if (result === "self_draw") {
     return ids.map((playerId) => ({ playerId, delta: playerId === winnerId ? unit * 3 : -unit }));

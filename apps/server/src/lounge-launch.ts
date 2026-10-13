@@ -1,3 +1,4 @@
+import { verifyMahjongRuntime } from './games/mahjong-runtime.js';
 import { loungeDisplayName, loungeHumanName } from "./lounge-display-name.js";
 import { readFileSync } from 'node:fs';
 import { z } from 'zod';
@@ -19,6 +20,7 @@ export function launchLounge(path:string|undefined, options:Pick<LoungeRuntimeOp
 }) {
   if(!path)return null;
   const config=launchSchema.parse(JSON.parse(readFileSync(path,'utf8')));
+  verifyMahjongRuntime(config);
   const names:Record<string,string>={mahjong:'麻将',doudizhu:'斗地主','leaf-game':'叶子戏',uno:'UNO',monopoly:'大富翁','flying-chess':'飞行棋'};
   const format=(template:string,values:Record<string,string>)=>template.replace(/\{(sender|game)\}/g,(_,key:string)=>values[key]??'');
   return createLoungeRuntime({

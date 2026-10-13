@@ -14,7 +14,10 @@ export function gameContext(kind:GameKind,value:unknown,names:Record<string,stri
  if(kind==='mahjong'){
   lines.push(String(p.round_label??'')+'，余牌'+p.wall_remaining+'张。');
   for(const [id,count] of Object.entries(obj(p.hand_counts))){
-   lines.push(name(id)+'：手牌'+count+'张；弃牌：'+cards(obj(p.discards)[id])+'；副露：'+(list(obj(p.melds)[id]).map(m=>cards(m.tiles)).join(' / ')||'无')+'。');
+   const exposed = list(obj(p.melds)[id]).map(m=>cards(m.tiles));
+   const flowers = obj(p.flowers)[id];
+   if(Array.isArray(flowers)&&flowers.length)exposed.push(cards(flowers));
+   lines.push(name(id)+'：手牌'+count+'张；弃牌：'+cards(obj(p.discards)[id])+'；副露：'+(exposed.join(' / ')||'无')+'。');
   }
  } else {
   for(const player of list(g.players)){

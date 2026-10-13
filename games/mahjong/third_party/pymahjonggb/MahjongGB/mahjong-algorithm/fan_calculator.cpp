@@ -66,6 +66,8 @@
 
 //#define STRICT_98_RULE
 
+#include "dazhong_fan.h"
+
 namespace mahjong {
 
 #if 0  // Debug
@@ -1840,6 +1842,12 @@ static void calculate_regular_fan(const pack_t (&packs)[5], const tile_table_t &
         adjust_by_tiles_hog(merged_table, melded_kong_cnt + concealed_kong_cnt, fan_table);
     }
 
+    if (calculate_param->dazhong) {
+        // Clear all-melded BEFORE wait detection: it otherwise suppresses the
+        // legitimate single-pair wait in this profile.
+        prepare_dazhong_context(fan_table, win_flag);
+    }
+
     if (unique_waiting) {
         // 根据听牌方式调整——涉及番种：边张、嵌张、单钓将
         adjust_by_waiting_form(packs + fixed_cnt, 5 - fixed_cnt, win_tile, fan_table);
@@ -1849,7 +1857,7 @@ static void calculate_regular_fan(const pack_t (&packs)[5], const tile_table_t &
     final_adjust(fan_table);
 
     // 调整圈风刻、门风刻（大四喜不计圈风刻、门风刻）
-    if (fan_table[BIG_FOUR_WINDS] == 0) {
+    if (!calculate_param->dazhong && fan_table[BIG_FOUR_WINDS] == 0) {
         wind_t prevalent_wind = calculate_param->prevalent_wind;
         wind_t seat_wind = calculate_param->seat_wind;
 
@@ -1939,7 +1947,9 @@ static bool calculate_knitted_straight_fan(const tile_table_t &fixed_table, cons
             if (is_winds(involved_tile)) {
                 // 先标记为幺九刻，再根据圈风、门风调整
                 fan_table[PUNG_OF_TERMINALS_OR_HONORS] = 1;
-                adjust_by_winds(involved_tile, calculate_param->prevalent_wind, calculate_param->seat_wind, fan_table);
+                if (!calculate_param->dazhong) {
+                    adjust_by_winds(involved_tile, calculate_param->prevalent_wind, calculate_param->seat_wind, fan_table);
+                }
 
                 // 风牌刻子+箭牌雀头时，为五门齐
                 if (is_dragons(pair_tile)) {
@@ -2308,13 +2318,14 @@ static bool calculate_nine_gates_fan(const tile_table_t &standing_table, tile_t 
 }
 
 // 从番表计算番数
-static int get_fan_by_table(const fan_table_t &fan_table) {
+static int get_fan_by_table(fan_table_t &fan_table, bool dazhong, win_flag_t flag, bool seven_honors) {
+    if (dazhong) finish_dazhong_table(fan_table, flag, seven_honors);
     int fan = 0;
     for (int i = 1; i < FAN_TABLE_SIZE; ++i) {
         if (fan_table[i] == 0) {
             continue;
         }
-        fan += fan_value_table[i] * fan_table[i];
+        fan += (dazhong ? dazhong_fan_value(i) : fan_value_table[i]) * fan_table[i];
 #if 0  // Debug
         if (fan_table[i] == 1) {
             LOG("%s %hu\n", fan_name[i], fan_value_table[i]);
@@ -2380,6 +2391,9 @@ int calculate_fan(const calculate_param_t *calculate_param, fan_table_t *fan_tab
         }
     }
 
+    const bool seven_honors = unique_cnt == 7
+        && std::all_of(unique_tiles, unique_tiles + unique_cnt, &is_honor);
+
     // 最大番标记
     int max_fan = 0;
     fan_table_t tmp_table = { 0 };
@@ -2390,13 +2404,13 @@ int calculate_fan(const calculate_param_t *calculate_param, fan_table_t *fan_tab
         if (calculate_special_form_fan(standing_table, win_tile, unique_tiles, unique_cnt, calculate_param->seat_wind, win_flag, tmp_table)
             || calculate_knitted_straight_fan(fixed_table, standing_table, calculate_param, win_flag, tmp_table)
             || calculate_nine_gates_fan(standing_table, win_tile, calculate_param->seat_wind, win_flag, tmp_table)) {
-            max_fan = get_fan_by_table(tmp_table);
+            max_fan = get_fan_by_table(tmp_table, calculate_param->dazhong, win_flag, seven_honors);
             LOG("fan = %d\n\n", max_fan);
         }
     }
     else if (fixed_cnt == 1) {  // 1副露状态，有可能是基本和型组合龙
         if (calculate_knitted_straight_fan(fixed_table, standing_table, calculate_param, win_flag, tmp_table)) {
-            max_fan = get_fan_by_table(tmp_table);
+            max_fan = get_fan_by_table(tmp_table, calculate_param->dazhong, win_flag, seven_honors);
             LOG("fan = %d\n\n", max_fan);
         }
     }
@@ -2425,7 +2439,7 @@ int calculate_fan(const calculate_param_t *calculate_param, fan_table_t *fan_tab
                 fan_table_t &current_table = fan_tables[i];
                 calculate_regular_fan(result.divisions[i].packs, fixed_table, standing_table, unique_tiles, unique_cnt,
                     calculate_param, unique_waiting, win_flag, current_table);
-                int current_fan = get_fan_by_table(current_table);
+                int current_fan = get_fan_by_table(current_table, calculate_param->dazhong, win_flag, seven_honors);
                 if (current_fan > max_fan) {
                     max_fan = current_fan;
                     selected_fan_table = &current_table;

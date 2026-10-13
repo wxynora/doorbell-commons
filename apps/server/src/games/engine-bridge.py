@@ -33,6 +33,10 @@ def _engine(repository_root: Path, kind: str) -> Any:
     source = (repository_root / relative_source).resolve()
     if not source.is_dir():
         raise ValueError(f"game source directory does not exist: {source}")
+    if kind == "mahjong":
+        # The library follows the runtime directory's atomic switch/rollback.
+        native = repository_root / "games/mahjong/native"
+        sys.path.insert(0, str(native))
     source_text = str(source)
     if source_text not in sys.path:
         sys.path.insert(0, source_text)

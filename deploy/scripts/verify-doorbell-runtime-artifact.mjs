@@ -19,6 +19,9 @@ const REQUIRED_PATHS = [
   "games/monopoly/src/doorbell_monopoly/engine.py",
   "games/mahjong/src/doorbell_mahjong/engine.py",
   "games/mahjong/third_party/pymahjonggb/setup.py",
+  "games/mahjong/native/MahjongGB.abi3.so",
+  "games/mahjong/native/manifest.json",
+  "deploy/scripts/verify-mahjong-native.py",
   "games/mahjong/THIRD_PARTY_LICENSE",
   "apps/web/dist/index.html",
   "apps/web/dist/service-worker.js",
@@ -68,6 +71,13 @@ export async function verifyDoorbellRuntimeArtifact(rootDirectory, expectedSha, 
   }
 
   await Promise.all(REQUIRED_PATHS.map((path) => requirePath(root, path)));
+  const native=JSON.parse(await readFile(join(root,"games/mahjong/native/manifest.json"),"utf8"));
+  const machine=runtime.arch==="x64"?"x86_64":runtime.arch==="arm64"?"aarch64":null;
+  if(native.schema!==1 || native.platform!=="linux" || runtime.platform!=="linux" ||
+     native.machine!==machine || native.abi!=="abi3" || native.minimum_python!=="3.10" ||
+     native.profile!=="dazhong-friend-144-v1") {
+    throw new Error("Mahjong native artifact does not match this release host/profile");
+  }
 }
 
 async function main() {

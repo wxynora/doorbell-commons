@@ -12,4 +12,4 @@ No upstream room/account/MCP/model runtime is included.
 
 Native dependency: PyMahjongGB 1.4.0, CedarDuet-vendored revision
 bb404f3f3480c2569e14d54043ad06e366e128df. MIT licenses and notice are under
-third_party/pymahjonggb. Native sources are unmodified.
+third_party/pymahjonggb. Native sources are locally adapted for a versioned Tencent classic DaZhong profile; the original MCR path remains available for persisted hands. The added profile retains upstream structural detectors and selection, calculates DaZhong scores before selecting the best decomposition, and adds the Big Seven Stars pattern. See third_party/pymahjonggb/NOTICE.md.

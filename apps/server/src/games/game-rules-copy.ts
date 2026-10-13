@@ -26,6 +26,17 @@ export const GAME_RULES_COPY = {
     "付不起债务就会破产，最后没破产的人获胜。这一版没有拍卖、交易和抵押。",
   ],
   mahjong: [
-    "四人国标麻将，136张无花牌，至少8番起和，不是凑齐牌型就能和。只能吃上家的牌，碰、杠不限上家；加杠可以被抢杠和。一人和牌或牌摸完，本手结束。",
+    "四人大众麻将，共144张，包含万、条、筒、东南西北、中发白和八张花牌；花牌自动亮出并补牌。没有起胡番数门槛，通常凑成四组顺子或刻子加一对将即可胡牌，也支持七对、十三幺等特殊牌型。只能吃上家的牌，碰、杠不限上家；加杠可以被抢杠胡。可以点胡或自摸；多人同时能胡时，按离出牌者由近到远，只取一人胡。一人胡牌或牌摸完，本手结束。无赖子，不扎鸟。",
   ],
 } as const;
+
+// Persisted hands retain their original rule version until that hand ends.
+export const LEGACY_MAHJONG_RULES_COPY = ["四人国标麻将，136张无花牌，至少8番起和，不是凑齐牌型就能和。只能吃上家的牌，碰、杠不限上家；加杠可以被抢杠和。一人和牌或牌摸完，本手结束。"] as const;
+export function mahjongRulesCopy(version?: string): readonly string[] {
+  return version === "mcr-east-one-136-v1" ? LEGACY_MAHJONG_RULES_COPY : GAME_RULES_COPY.mahjong;
+}
+export function getGameRulesCopy(kind: keyof typeof GAME_RULES_COPY, game: unknown): readonly string[] {
+  if (kind !== "mahjong") return GAME_RULES_COPY[kind];
+  const projected = game as {public?: {rules_version?: string}} | null;
+  return mahjongRulesCopy(projected?.public?.rules_version);
+}

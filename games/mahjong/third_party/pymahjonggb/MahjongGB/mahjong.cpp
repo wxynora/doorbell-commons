@@ -52,6 +52,7 @@ static const char *fan_name_en[] = {
 #if SUPPORT_BLESSINGS
 , "Blessing of Heaven", "Blessing of Earth", "Blessing of Human I", "Blessing of Human II"
 #endif
+, "Big Seven Stars"
 };
 
 static_assert(sizeof(fan_name_en) / sizeof(fan_name_en[0]) == mahjong::FAN_TABLE_SIZE,
@@ -117,13 +118,13 @@ static PyObject *MahjongFanCalculator(PyObject *self, PyObject *args, PyObject *
 		// Parse arguments
 		static char *kwlist[] = {"pack", "hand", "winTile", "flowerCount"
 			, "isSelfDrawn", "is4thTile", "isAboutKong", "isWallLast"
-			, "seatWind", "prevalentWind", "verbose", nullptr};
+			, "seatWind", "prevalentWind", "verbose", "dazhong", nullptr};
 		PyObject *packs = nullptr, *hands = nullptr;
 		const char *winTile = nullptr;
-		int flowerCount, isSelfDrawn, is4thTile, isAboutKong, isWallLast, seatWind, prevalentWind, verbose = 0;
-		if(!PyArg_ParseTupleAndKeywords(args, kwargs, "OOsippppii|p", kwlist
+		int flowerCount, isSelfDrawn, is4thTile, isAboutKong, isWallLast, seatWind, prevalentWind, verbose = 0, dazhong = 0;
+		if(!PyArg_ParseTupleAndKeywords(args, kwargs, "OOsippppii|pp", kwlist
 			, &packs, &hands, &winTile, &flowerCount
-			, &isSelfDrawn, &is4thTile, &isAboutKong, &isWallLast, &seatWind, &prevalentWind, &verbose))
+			, &isSelfDrawn, &is4thTile, &isAboutKong, &isWallLast, &seatWind, &prevalentWind, &verbose, &dazhong))
 			return nullptr;
 		// Prepare params
 		mahjong::calculate_param_t calculate_param = {};
@@ -133,7 +134,7 @@ static PyObject *MahjongFanCalculator(PyObject *self, PyObject *args, PyObject *
 		calculate_param.hand_tiles.pack_count = packSize;
 		for(int i = 0; i < packSize; ++i) {
 			// Parse pack info
-			PyObject *pack = PyTuple_GET_ITEM(packs, i);
+			PyObject *pack = PyTuple_GetItem(packs, i);
 			if(!PyTuple_Check(pack)) throw "Param `pack` must be a tuple of tuples!";
 			const char *type = nullptr, *tile = nullptr;
 			int offer, packCode;
@@ -152,9 +153,9 @@ static PyObject *MahjongFanCalculator(PyObject *self, PyObject *args, PyObject *
 		calculate_param.hand_tiles.tile_count = handSize;
 		for(int i = 0; i < handSize; ++i) {
 			// Parse hand tile
-			PyObject *hand = PyTuple_GET_ITEM(hands, i);
+			PyObject *hand = PyTuple_GetItem(hands, i);
 			if(!PyUnicode_Check(hand)) throw "Param `hand` must be a tuple of strs!";
-			const char *tile = PyUnicode_AsUTF8(hand);
+			const char *tile = PyUnicode_AsUTF8AndSize(hand, nullptr);
 			if(str2tile.find(tile) == str2tile.end()) throw "ERROE_WRONG_TILE_CODE";
 			calculate_param.hand_tiles.standing_tiles[i] = str2tile[tile];
 		}
@@ -162,6 +163,7 @@ static PyObject *MahjongFanCalculator(PyObject *self, PyObject *args, PyObject *
 		if(str2tile.find(winTile) == str2tile.end()) throw "ERROE_WRONG_TILE_CODE";
 		calculate_param.win_tile = str2tile[winTile];
 		calculate_param.flower_count = flowerCount;
+		calculate_param.dazhong = dazhong;
 		calculate_param.win_flag = 
 			isSelfDrawn * WIN_FLAG_SELF_DRAWN +
 			is4thTile * WIN_FLAG_LAST_TILE +
@@ -185,8 +187,17 @@ static PyObject *MahjongFanCalculator(PyObject *self, PyObject *args, PyObject *
 		for(int i = 0; i < mahjong::FAN_TABLE_SIZE; i++)
 			if(fan_table[i]) {
 				PyObject *item;
-				if(!verbose) item = Py_BuildValue("is", mahjong::fan_value_table[i] * fan_table[i], mahjong::fan_name[i]);
-				else item = Py_BuildValue("iiss", mahjong::fan_value_table[i], fan_table[i], mahjong::fan_name[i], fan_name_en[i]);
+				int points = dazhong && i == mahjong::CHICKEN_HAND ? 1 : mahjong::fan_value_table[i];
+				const char *name = mahjong::fan_name[i];
+				if (dazhong) {
+					if (i == mahjong::CHICKEN_HAND) name = "鸡胡";
+					else if (i == mahjong::ALL_CHOWS) name = "平胡";
+					else if (i == mahjong::EDGE_WAIT) name = "边张";
+					else if (i == mahjong::CLOSED_WAIT) name = "坎张";
+					else if (i == mahjong::SINGLE_WAIT) name = "单钓将";
+				}
+				if(!verbose) item = Py_BuildValue("is", points * fan_table[i], name);
+				else item = Py_BuildValue("iiss", points, fan_table[i], name, fan_name_en[i]);
 				PyTuple_SetItem(ans, l++, item);
 			}
 		return ans;
@@ -210,7 +221,7 @@ static PyObject *MahjongShanten(PyObject *self, PyObject *args, PyObject *kwargs
 		hand_tiles.pack_count = packSize;
 		for(int i = 0; i < packSize; ++i) {
 			// Parse pack info
-			PyObject *pack = PyTuple_GET_ITEM(packs, i);
+			PyObject *pack = PyTuple_GetItem(packs, i);
 			if(!PyTuple_Check(pack)) throw "Param `pack` must be a tuple of tuples!";
 			const char *type = nullptr, *tile = nullptr;
 			int offer, packCode;
@@ -229,9 +240,9 @@ static PyObject *MahjongShanten(PyObject *self, PyObject *args, PyObject *kwargs
 		hand_tiles.tile_count = handSize;
 		for(int i = 0; i < handSize; ++i) {
 			// Parse hand tile
-			PyObject *hand = PyTuple_GET_ITEM(hands, i);
+			PyObject *hand = PyTuple_GetItem(hands, i);
 			if(!PyUnicode_Check(hand)) throw "Param `hand` must be a tuple of strs!";
-			const char *tile = PyUnicode_AsUTF8(hand);
+			const char *tile = PyUnicode_AsUTF8AndSize(hand, nullptr);
 			if(str2tile.find(tile) == str2tile.end()) throw "ERROE_WRONG_TILE_CODE";
 			hand_tiles.standing_tiles[i] = str2tile[tile];
 		}
@@ -266,9 +277,9 @@ static PyObject *name(PyObject *self, PyObject *args, PyObject *kwargs) { \
 		hand_tiles.tile_count = handSize; \
 		for(int i = 0; i < handSize; ++i) { \
 			/* Parse hand tile */ \
-			PyObject *hand = PyTuple_GET_ITEM(hands, i); \
+			PyObject *hand = PyTuple_GetItem(hands, i); \
 			if(!PyUnicode_Check(hand)) throw "Param `hand` must be a tuple of strs!"; \
-			const char *tile = PyUnicode_AsUTF8(hand); \
+			const char *tile = PyUnicode_AsUTF8AndSize(hand, nullptr); \
 			if(str2tile.find(tile) == str2tile.end()) throw "ERROE_WRONG_TILE_CODE"; \
 			hand_tiles.standing_tiles[i] = str2tile[tile]; \
 		} \

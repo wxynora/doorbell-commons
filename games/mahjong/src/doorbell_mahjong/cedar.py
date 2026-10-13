@@ -23,10 +23,14 @@ TILE_CODES = tuple(
     + [f"F{rank}" for rank in range(1, 5)]
     + [f"J{rank}" for rank in range(1, 4)]
 )
-TILE_ORDER = {code: index for index, code in enumerate(TILE_CODES)}
+FLOWER_LABELS = dict(zip((f"H{i}" for i in range(1, 9)), ("春", "夏", "秋", "冬", "梅", "兰", "竹", "菊")))
+DAZHONG_RULES = "dazhong-friend-144-v1"
+TILE_ORDER = {code: index for index, code in enumerate((*TILE_CODES, *FLOWER_LABELS))}
 
 
 def tile_label(code: str) -> str:
+    if code in FLOWER_LABELS:
+        return FLOWER_LABELS[code]
     if code in HONOR_LABELS:
         return HONOR_LABELS[code]
     return f"{code[1]}{SUIT_LABELS[code[0]]}"
@@ -37,7 +41,7 @@ def build_wall() -> list[dict[str, str]]:
         {"id": f"{code}-{copy_index}", "code": code}
         for code in TILE_CODES
         for copy_index in range(1, 5)
-    ]
+    ] + [{"id": f"{code}-1", "code": code} for code in FLOWER_LABELS]
 
 
 def _tile_sort_key(tile: dict[str, Any]) -> tuple[int, str]:
@@ -64,7 +68,7 @@ class Mahjong(GamePlugin):
     def _empty_state(order: list[str]) -> dict[str, Any]:
         return {
             "board_kind": "mahjong",
-            "rules_version": "mcr-east-one-136-v1",
+            "rules_version": DAZHONG_RULES,
             "participant_order": order,
             "seat_winds": {
                 player_id: WINDS[index] for index, player_id in enumerate(order)
@@ -78,6 +82,7 @@ class Mahjong(GamePlugin):
             "wall": [],
             "hands": {player_id: [] for player_id in order},
             "melds": {player_id: [] for player_id in order},
+            "flowers": {player_id: [] for player_id in order},
             "discards": {player_id: [] for player_id in order},
             "drawn_tile_id": None,
             "draw_context": None,
@@ -129,7 +134,8 @@ class Mahjong(GamePlugin):
         state["wall"] = wall
         for _round in range(13):
             for player_id in order:
-                state["hands"][player_id].append(state["wall"].pop(0))
+                if not self._draw(state, player_id, replacement=False):
+                    raise RuntimeError("麻将开局牌墙不足")
         dealer = order[0]
         if not self._draw(state, dealer, replacement=False):
             raise RuntimeError("麻将开局牌墙不足")
@@ -236,12 +242,13 @@ class Mahjong(GamePlugin):
             else source_kind == "discard" and not state.get("wall")
         )
         seat_wind = state["participant_order"].index(player_id)
+        dazhong = state.get("rules_version") == DAZHONG_RULES
         try:
             raw_fans = MahjongFanCalculator(
                 pack=self._engine_packs_for(state, player_id),
                 hand=tuple(str(tile["code"]) for tile in hand),
                 winTile=code,
-                flowerCount=0,
+                flowerCount=len(state.get("flowers", {}).get(player_id, [])) if dazhong else 0,
                 isSelfDrawn=is_self_drawn,
                 is4thTile=is_fourth,
                 isAboutKong=is_about_kong,
@@ -249,6 +256,7 @@ class Mahjong(GamePlugin):
                 seatWind=seat_wind,
                 prevalentWind=0,
                 verbose=True,
+                dazhong=dazhong,
             )
         except TypeError:
             return None
@@ -263,7 +271,7 @@ class Mahjong(GamePlugin):
             for points, count, name, name_en in raw_fans
         ]
         total = sum(item["fan"] for item in fans)
-        return {"total_fan": total, "fans": fans, "meets_minimum": total >= 8}
+        return {"total_fan": total, "fans": fans, "meets_minimum": dazhong or total >= 8}
 
     def _hu_action(
         self,
@@ -521,20 +529,29 @@ class Mahjong(GamePlugin):
     @staticmethod
     def _draw(state: dict[str, Any], player_id: str, *, replacement: bool) -> bool:
         wall = state.get("wall") or []
-        if not wall:
-            return False
-        tile = wall.pop(-1 if replacement else 0)
-        state["hands"][player_id].append(tile)
-        state["drawn_tile_id"] = tile["id"]
-        state["draw_context"] = {
-            "player_id": player_id,
-            "replacement": replacement,
-            "wall_last": len(wall) == 0,
-        }
-        state["phase"] = "discard"
-        state["flow"]["phase"] = "discard"
-        state["turn_player_id"] = player_id
-        return True
+        from_tail = replacement
+        flower_replacement = False
+        state["drawn_tile_id"] = None
+        state["draw_context"] = None
+        while wall:
+            tile = wall.pop(-1 if from_tail else 0)
+            if tile["code"] in FLOWER_LABELS:
+                state["flowers"][player_id].append(tile)
+                from_tail = True
+                flower_replacement = True
+                continue
+            state["hands"][player_id].append(tile)
+            state["drawn_tile_id"] = tile["id"]
+            state["draw_context"] = {
+                "player_id": player_id,
+                "replacement": replacement and not flower_replacement,
+                "wall_last": len(wall) == 0,
+            }
+            state["phase"] = "discard"
+            state["flow"]["phase"] = "discard"
+            state["turn_player_id"] = player_id
+            return True
+        return False
 
     @staticmethod
     def _record_action(
@@ -596,7 +613,7 @@ class Mahjong(GamePlugin):
             "fans": deepcopy(action["fans"]),
             "seat_wind": state["seat_winds"][winner_id],
             "prevalent_wind": "东",
-            "minimum_fan": 8,
+            "minimum_fan": 0 if state.get("rules_version") == DAZHONG_RULES else 8,
             "single_hand_end": True,
         }
         state["phase"] = "finished"
@@ -945,6 +962,10 @@ class Mahjong(GamePlugin):
                 ]
                 for player_id, melds in state.get("melds", {}).items()
             },
+            "flowers": {
+                player_id: [self._public_tile(tile) for tile in state.get("flowers", {}).get(player_id, [])]
+                for player_id in state.get("participant_order", [])
+            },
             "discards": {
                 player_id: [self._public_tile(tile) for tile in pile]
                 for player_id, pile in state.get("discards", {}).items()
@@ -1135,6 +1156,14 @@ class Mahjong(GamePlugin):
         for key in ("phase", "turn_player_id", "wall_remaining"):
             if before.get(key) != after.get(key):
                 delta[key] = deepcopy(after.get(key))
+
+        for player_id, flowers in after["flowers"].items():
+            previous = before.get("flowers", {}).get(player_id, [])
+            added = flowers[len(previous):]
+            if added:
+                delta.setdefault("flowers_added", {})[player_id] = [
+                    self._delta_tile(tile) for tile in added
+                ]
 
         for player_id, after_pile in after["discards"].items():
             before_pile = before["discards"].get(player_id, [])

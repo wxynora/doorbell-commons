@@ -9,7 +9,8 @@ module = Extension('MahjongGB', sources=[
     'MahjongGB/mahjong.cpp',
     'MahjongGB/mahjong-algorithm/fan_calculator.cpp',
     'MahjongGB/mahjong-algorithm/shanten.cpp'
-    ], language='c++', extra_compile_args=compile_args)
+    ], language='c++', extra_compile_args=compile_args,
+    define_macros=[('Py_LIMITED_API', '0x030A0000')], py_limited_api=True)
 
 setup(name = "PyMahjongGB",
     version = "1.4.0",
@@ -20,6 +21,6 @@ setup(name = "PyMahjongGB",
     long_description_content_type = "text/markdown",
     url = "https://github.com/ailab-pku/MahjongGB",
     ext_modules = [module],
-    python_requires = ">=3.5",
+    python_requires = ">=3.10",
     packages=["MahjongGB"],
 )

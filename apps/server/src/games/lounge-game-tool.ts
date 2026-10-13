@@ -3,7 +3,7 @@ import type { GameContextDelivery } from "./game-context-cursor.js";
 import { loungeDisplayName } from "../lounge-display-name.js";
 import { randomBytes, randomUUID } from "node:crypto";
 import {gameContext} from './game-context.js';
-import {GAME_RULES_COPY} from './game-rules-copy.js';
+import {getGameRulesCopy} from './game-rules-copy.js';
 import type {GameRuleChoiceStore} from './game-rule-choice-store.js';
 
 import type { GamePreferences } from "@doorbell/protocol";
@@ -504,7 +504,7 @@ export class LoungeGameTool {
     const roundKey=String(asRecord(view.game)?.round??1);
     this.#rulesWakeRounds.set(residentId+'\0'+roomId,roundKey);
     if(view.phase==='playing'&&this.#extra.ruleChoices?.pending(roomId,actor.playerId,roundKey)){
-      lines.unshift(...GAME_RULES_COPY[view.kind]);
+      lines.unshift(...getGameRulesCopy(view.kind, view.game));
     }
     return lines.join("\n");
   }
@@ -1209,7 +1209,7 @@ export class LoungeGameTool {
         this.#extra.ruleChoices.set(pending.roomId,actor.playerId,pending.needsRules,pending.roundKey);
         const result=await this.#readState(residentId,caller);
         this.#extra.ruleChoices.shown(pending.roomId,actor.playerId,pending.roundKey);
-        return (pending.needsRules?GAME_RULES_COPY[view.kind].join('\n')+'\n':'')+result;
+        return (pending.needsRules?getGameRulesCopy(view.kind, view.game).join('\n')+'\n':'')+result;
       }
       case "reaction":
         if (!this.#reactions || !this.#nameOf) throw new LoungeGameToolError("game_reaction_unavailable");

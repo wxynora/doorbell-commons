@@ -22,7 +22,8 @@ def MahjongFanCalculator(
     isWallLast: bool,
     seatWind: int,
     prevalentWind: int,
-    verbose: bool = False
+    verbose: bool = False,
+    dazhong: bool = False
 ) -> Union[Tuple[Tuple[int, str], ...], Tuple[Tuple[int, int, str, str], ...]]:
     """
     Calculate Mahjong Fans.

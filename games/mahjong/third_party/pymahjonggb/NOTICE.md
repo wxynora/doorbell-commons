@@ -29,10 +29,38 @@ PYTHONPATH=/tmp/pymahjonggb-runtime \
 
 ## Local changes
 
-The Mahjong algorithm source, headers, Python binding, type stub, license files,
-readmes, and tests remain byte-for-byte copies from the revision above. Only
-build metadata is adapted: `setup.py` uses `/std:c++14` for Windows/MSVC and
-`-std=c++11` for GCC/Clang, while `pyproject.toml` declares the isolated
-setuptools build backend. Build directories and platform-specific compiled
-artifacts are not vendored; they are produced by the requirements installation
-step.
+The build metadata is adapted for local CPython builds. The native calculator,
+Python binding and type stub now expose optional `dazhong=False`; the default
+retains the original MCR behavior for saved hands. The added `dazhong_fan.h`
+profile follows Tencent classic friend-room150's structural fan table and
+removes MCR-only contextual bonuses before choosing the maximum-fan form.
+It preserves native non-duplication rules, keeps a single-pair wait after
+removing All Melded, and recognizes seven distinct honor pairs as Big Seven
+Stars. Tencent's names/points are rule facts, not copied executable code.
+
+Rule evidence: official Android8.19.111 `ModuleFanConfig` (rows264..334,
+game type150), `MJGameBaseConfig`, `PrivateRoomSettingConfig`, and the
+in-package flower rules. Source entry:
+https://majiang.qq.com/zlkdatasys/mct/d/play.shtml?device=Android
+
+MIT license files and upstream attribution remain intact. The binding uses
+CPython's stable ABI from 3.10 (`Py_LIMITED_API=0x030A0000`); tuple and UTF-8
+access use the corresponding public functions. Local source installation
+requires Python 3.10 or newer.
+
+The Main artifact builder invokes `deploy/scripts/build-mahjong-native.sh`
+on an isolated official manylinux2014 Docker runner, with networking disabled
+during compilation. The Linux library and platform/profile manifest are bundled
+under `games/mahjong/native`, independently of the VPS's installed Python
+packages. Default target is linux/amd64; linux/arm64 is explicit through
+`DOORBELL_NATIVE_PLATFORM`. No macOS binary or build cache is published.
+The actual configured Python verifies this release's DaZhong and legacy MCR
+interfaces before lounge startup. Runtime replacement and rollback therefore
+select the library together with the rules, without changing the shared venv.
+
+Verified locally with Linux x86_64 / CPython 3.10.22 and macOS arm64 /
+CPython 3.14.3. An original upstream-format 1.4.0 binary was rejected because
+it does not support `dazhong`; the version number alone is not compatibility
+proof. This candidate has not been deployed.
+
+Stable ABI reference: https://docs.python.org/3/c-api/stable.html

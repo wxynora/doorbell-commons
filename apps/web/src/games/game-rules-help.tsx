@@ -1,9 +1,10 @@
 import { useRef, type ReactNode } from "react";
 import "./game-rules-help.css";
-import { GAME_RULES_COPY } from "./game-rules-copy";
+import { GAME_RULES_COPY, mahjongRulesCopy } from "./game-rules-copy";
 
-export function GameRulesText({ kind }: { kind: keyof typeof GAME_RULES_COPY }) {
-  return <>{GAME_RULES_COPY[kind].map(text => <p key={text}>{text}</p>)}</>;
+export function GameRulesText({ kind, rulesVersion }: { kind: keyof typeof GAME_RULES_COPY; rulesVersion?: string | undefined }) {
+  const text = kind === "mahjong" ? mahjongRulesCopy(rulesVersion) : GAME_RULES_COPY[kind];
+  return <>{text.map(text => <p key={text}>{text}</p>)}</>;
 }
 
 export function GameRulesIcon() {

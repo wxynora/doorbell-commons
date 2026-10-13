@@ -106,6 +106,7 @@ cp -a \
   "${build_directory}/deploy/scripts/resolve-approved-pwa-release.mjs" \
   "${build_directory}/deploy/scripts/restore-community-database.mjs" \
   "${build_directory}/deploy/scripts/verify-doorbell-runtime-artifact.mjs" \
+  "${build_directory}/deploy/scripts/verify-mahjong-native.py" \
   "${runtime_directory}/deploy/scripts/"
 
 # Python bridge resolves engines relative to the deployed repository root.
@@ -129,6 +130,10 @@ find "${runtime_directory}/games" -type d \
   \( -name __pycache__ -o -name .venv -o -name build -o -name '*.egg-info' \) -prune -exec rm -rf -- {} +
 find "${runtime_directory}/games" -type f \
   \( -name '*.pyc' -o -name '*.so' -o -name preview_server.py \) -delete
+
+# Native code is built on the publisher's Linux runner after removing host binaries.
+bash "${build_directory}/deploy/scripts/build-mahjong-native.sh" \
+  "${build_directory}" "${runtime_directory}/games/mahjong/native"
 
 printf '%s\n' \
   "{\"schema\":2,\"source_sha\":\"${TARGET_SHA}\",\"node_major\":24,\"dependency_mode\":\"reuse-exact-lock\"}" \

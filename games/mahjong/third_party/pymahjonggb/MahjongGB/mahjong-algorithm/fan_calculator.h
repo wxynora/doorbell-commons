@@ -158,6 +158,7 @@ enum fan_t {
     BLESSING_OF_HUMAN_2,                ///< 人和Ⅱ（自摸）
 #endif
 
+    BIG_SEVEN_STARS,                    ///< 大众麻将大七星
     FAN_TABLE_SIZE
 };
 
@@ -209,6 +210,7 @@ struct calculate_param_t {
     win_flag_t win_flag;        ///< 和牌标记
     wind_t prevalent_wind;      ///< 圈风
     wind_t seat_wind;           ///< 门风
+    bool dazhong;               ///< 腾讯经典大众好友房，无起胡番／无赖子／无鸟
 };
 
 /**
@@ -289,6 +291,7 @@ UNUSED static const char *fan_name[] = {
 #if SUPPORT_BLESSINGS
     , "Blessing of Heaven", "Blessing of Earth", "Blessing of Human I", "Blessing of Human II"
 #endif
+    , "Big Seven Stars"
 };
 
 #else
@@ -346,6 +349,7 @@ UNUSED static const char *fan_name[] = {
 #if SUPPORT_BLESSINGS
     , __UTF8("天和"), __UTF8("地和"), __UTF8("人和Ⅰ"), __UTF8("人和Ⅱ")
 #endif
+    , __UTF8("大七星")
 };
 
 #endif
@@ -380,6 +384,7 @@ static const uint16_t fan_value_table[FAN_TABLE_SIZE] = {
 #if SUPPORT_BLESSINGS
     , 8, 8, 8, 8
 #endif
+    , 88
 };
 
 /**
