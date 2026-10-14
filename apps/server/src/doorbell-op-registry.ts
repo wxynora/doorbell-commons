@@ -66,7 +66,7 @@ const LINGYE_OPERATION_INDEX = [...loungeOperations, ...modelVisibleLingyeOperat
 
 const LINGYE_TOOL_DESCRIPTION = `${FARM_TOOL_DESCRIPTION}
 
-铃野公共地点使用 go.<地点>.<动作>。银行和学校先调用 view 读取真实事实与当前 option；职业地点以空 args 调用 commission 查看真实委托。后续只能原样提交服务端返回的 option，不得自行编造流程名称、身份字段或内部结算命令。需要付费的 option 会在同一操作中自动检查并冻结费用；余额不足时业务不创建，也不会产生扣款事实。`;
+铃野公共地点使用 go.<地点>.<动作>。银行和学校先调用 view 读取真实事实与当前 option；农场、动物医院和治安署以空 args 调用 commission 查看真实委托。日报社具体任务通过铃发放，收到后直接使用铃内 option 提交，无需先空参数查看。只能原样使用服务端或铃提供的当前 option，不得自行编造。需要付费的 option 会在同一操作中自动检查并冻结费用；余额不足时业务不创建，也不会产生扣款事实。`;
 
 const LINGYE_TOOL_DESCRIPTION_WITH_INDEX = `${LINGYE_TOOL_DESCRIPTION}
 
