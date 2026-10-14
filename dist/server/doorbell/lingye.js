@@ -1,3 +1,4 @@
+import { reporterRelayWorkAllowed } from "../../career/reporter-relay-qualification.js";
 import { playerPatrolView,playerPatrolAction,PATROL_SELECTION_INSTRUCTION } from "../../security/player-patrol-presentation.js";
 import { expireNatureRecoveredCommissions } from "../../career/nature-commission-recovery.js";
 import { readCareerPaySummary } from "../../career/pay-summary.js";
@@ -2881,21 +2882,8 @@ function requireReporterRelayQualification(database, residentId, job, relay, exp
     if (qualificationLevel(database, residentId, "reporter", now) < job.requiredLevel) {
         throw new LingyeBusinessError("QUALIFICATION_REQUIRED", "当前记者资格不满足这项工作。");
     }
-    const duties = database.prepare(`SELECT role.role
-      FROM career_reporter_duty_roles AS role
-      JOIN career_duty_days AS duty ON duty.duty_id = role.duty_id
-      JOIN career_employments AS employment ON employment.employment_id = duty.employment_id
-      WHERE role.duty_date = ? AND role.resident_id = ?
-        AND duty.status = 'scheduled' AND employment.status = 'active'
-        AND employment.availability = 'available'`).all(relay.issueDate, residentId);
-    const hasRole = (...roles) => duties.some(duty => roles.includes(duty.role));
-    const handedOffSelector = expectedRole === "selector" &&
-        hasRole("writer", "reviewer") &&
-        relay.selectorResidentId === residentId;
-    const handedOffWriter = expectedRole === "writer" && hasRole("reviewer") &&
-        relay.writerResidentId === residentId;
-    if (beijingDate(now) !== relay.issueDate || duties.length === 0 ||
-        (!hasRole(expectedRole) && !handedOffSelector && !handedOffWriter)) {
+    if (beijingDate(now) !== relay.issueDate ||
+        !reporterRelayWorkAllowed(database, residentId, job, relay, expectedRole)) {
         throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.NO_DUTY);
     }
 }
