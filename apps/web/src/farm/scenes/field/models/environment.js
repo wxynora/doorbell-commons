@@ -179,45 +179,6 @@ export function createEnvironment(parent) {
   const nightBottom = new T.Color("#18263b"),
     nightTop = new T.Color("#050918");
   let lastSkyWeather, lastSkyEvening;
-  const cloudMaterials = ["#fff8ed", "#e3edf0", "#abc5d3"].map(
-    (color) => new T.MeshBasicMaterial({ color, vertexColors: true, toneMapped: false }),
-  );
-  const cloudGeometry = new T.SphereGeometry(1, 20, 12);
-  const puffColors = [];
-  for (let i = 0; i < cloudGeometry.attributes.position.count; i++) {
-    const shade = 0.79 + (0.21 * (cloudGeometry.attributes.position.getY(i) + 1)) / 2;
-    puffColors.push(shade, shade, shade);
-  }
-  cloudGeometry.setAttribute("color", new T.Float32BufferAttribute(puffColors, 3));
-  const clouds = [];
-  for (const [x, y, z] of [
-    [-9, 6, -8],
-    [-4, 8, -11],
-    [5, 7, -11],
-    [10, 7, -6],
-  ]) {
-    const cloud = new T.Group();
-    cloud.name = "drifting-cloud";
-    cloud.position.set(x * 1.3 - 4.2, y + 3, z * 1.3 + 4.2);
-    cloud.scale.setScalar(0.72);
-    root.add(cloud);
-    clouds.push({ cloud, x: x * 1.3 - 4.2, z: z * 1.3 + 4.2 });
-    // Broad shaded underside, overlapping middle billows and smaller sunlit crests.
-    for (const [cx, cy, cz, sx, sy, sz, layer] of [
-      [0, -0.2, 0, 1.7, 0.19, 0.62, 2],
-      [-1.18, -0.04, 0.05, 0.7, 0.26, 0.48, 1],
-      [0.98, -0.02, -0.07, 0.83, 0.3, 0.51, 1],
-      [-0.58, 0.16, 0, 0.82, 0.4, 0.56, 0],
-      [0.33, 0.24, -0.1, 0.88, 0.52, 0.59, 0],
-      [1.38, 0.04, 0.04, 0.49, 0.23, 0.4, 0],
-      [-0.19, 0.5, -0.2, 0.49, 0.31, 0.41, 0],
-      [0.64, -0.1, 0.42, 0.57, 0.21, 0.3, 1],
-    ]) {
-      const puff = mesh(cloud, cloudGeometry, cloudMaterials[layer], [cx, cy, cz], [sx, sy, sz]);
-      puff.castShadow = false;
-      puff.receiveShadow = false;
-    }
-  }
   const snowData = new Float32Array(420 * 3);
   const seeds = Array.from({ length: 420 }, () => [
     random() * 24 - 12,
@@ -282,12 +243,6 @@ export function createEnvironment(parent) {
     },
     update(time, evening, scene, camera) {
       if (camera) foreground.rotation.y = Math.atan2(camera.position.x, camera.position.z);
-      clouds.forEach(({ cloud, x, z }) => {
-        const depth = (x + z) / Math.SQRT2,
-          horizontal = (((x - z) / Math.SQRT2 + time * 0.12 + 18) % 36) - 18;
-        cloud.position.x = (depth + horizontal) / Math.SQRT2;
-        cloud.position.z = (depth - horizontal) / Math.SQRT2;
-      });
       if (lastSkyWeather !== weather || lastSkyEvening !== evening) {
         const colors =
           weather === "clear"
@@ -313,15 +268,6 @@ export function createEnvironment(parent) {
           );
         }
         skyGradient.needsUpdate = true;
-        const dayCloud =
-          weather === "clear"
-            ? ["#fff8ed", "#e3edf0", "#abc5d3"]
-            : ["#d1dce2", "#b9cbd4", "#91aaba"];
-        cloudMaterials.forEach((material, i) =>
-          material.color
-            .set(dayCloud[i])
-            .lerp(new T.Color(["#263347", "#1b293c", "#121e30"][i]), evening),
-        );
         lastSkyWeather = weather;
         lastSkyEvening = evening;
       }

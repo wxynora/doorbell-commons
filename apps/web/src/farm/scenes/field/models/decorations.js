@@ -339,7 +339,7 @@ export function createDecoration(id, season = "summer") {
   if (definition.groundCover && id !== "red_roses" && id !== "black_roses") buildPaving(root, id, mat);
   if (Object.hasOwn(GARDEN_TRIO,id)) buildGardenTrio(root,id,mat);
   if (Object.hasOwn(FLOWERBEDS, id)) buildFlowerbed(root, id, mat);
-  batchStaticMeshes(root);
+  batchStaticMeshes(root, { descendants: true });
   const nodes = { lights: [], materials: new Set(), motion: [] };
   root.traverse((o) => {
     if (o.isMesh) o.userData.decoration = root;

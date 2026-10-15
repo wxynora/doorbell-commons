@@ -379,16 +379,23 @@ export function createFieldRuntime(host, options) {
   const reduce=matchMedia("(prefers-reduced-motion: reduce)");
   const nightSun=new T.Color("#acc4e4"),nightSky=new T.Color("#f4f1d6"),nightGround=new T.Color("#819474");
   let time=0,last=performance.now(),frame=null,active=options.active??true;
+  function syncActivity(){
+    if(disposed)return;
+    if(active&&!document.hidden){
+      if(frame===null){resize();last=performance.now();frame=requestAnimationFrame(animate);}
+    } else if(frame!==null){cancelAnimationFrame(frame);frame=null;}
+  }
   function setActive(value){
     if(disposed||active===value)return;
     active=value;down=null;
-    if(active){resize();last=performance.now();frame=requestAnimationFrame(animate);}
-    else if(frame!==null){cancelAnimationFrame(frame);frame=null;}
+    syncActivity();
   }
+  const visibilityChanged=()=>{down=null;syncActivity();};
+  document.addEventListener("visibilitychange",visibilityChanged);
   function animate(now){
     frame=null;
-    if(disposed||!active)return;
-    const dt=document.hidden?0:Math.min((now-last)/1000,.08);last=now;if(!reduce.matches)time+=dt;
+    if(disposed||!active||document.hidden)return;
+    const dt=Math.min((now-last)/1000,.08);last=now;if(!reduce.matches)time+=dt;
     light=T.MathUtils.damp(light,nature.night,3,dt);
     const overcast=["cloudy","fog","heavy_rain","thunderstorm","blizzard"].includes(nature.weather);
     sun.color.set(nature.weather==="hot"?"#ffedc0":"#fff0cc").lerp(nightSun,light);
@@ -402,10 +409,10 @@ export function createFieldRuntime(host, options) {
     if(modelOutline)modelOutline.render(scene,camera);else renderer.render(scene,camera);
     frame=requestAnimationFrame(animate);
   }
-  if(active)frame=requestAnimationFrame(animate);
+  if(active&&!document.hidden)frame=requestAnimationFrame(animate);
   return {previewLayout,setActive,setModelOutline,setPlots,setEnvironment,setDecorations,selectPlot,startPlacement,startNativeTreeMove,hideNativeTree,startStallMove,hideStall,startHouseMove,changeHouseStyle,startFieldMove,changeFieldColumns,changeFieldRows,selectFieldGroup,splitFieldGroup,mergeFieldGroup,rotate,flip,addOne,remove,cancel,save,changeRoof,changeCanopy,changeBoundary,
     zoom(factor){camera.zoom=T.MathUtils.clamp(camera.zoom*factor,MIN_ZOOM,MAX_ZOOM);camera.updateProjectionMatrix();},
     resetView(){controls.reset();},
-    dispose(){disposed=true;if(frame!==null)cancelAnimationFrame(frame);frame=null;observer.disconnect();for(const [name,fn] of listeners)canvas.removeEventListener(name,fn);controls.dispose();modelOutline?.dispose();winterSnowman.dispose();environment.dispose();world.dispose();renderer.dispose();canvas.remove();}
+    dispose(){disposed=true;if(frame!==null)cancelAnimationFrame(frame);frame=null;document.removeEventListener("visibilitychange",visibilityChanged);observer.disconnect();for(const [name,fn] of listeners)canvas.removeEventListener(name,fn);controls.dispose();modelOutline?.dispose();winterSnowman.dispose();environment.dispose();world.dispose();renderer.dispose();canvas.remove();}
   };
 }
