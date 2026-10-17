@@ -47,6 +47,11 @@ function candidateTwoAssetUrlPlugin(): Plugin {
 
 function farmAssetCoveragePlugin(): Plugin {
   let outputDir = "";
+  const excludedPublicDirs = [
+    "farm/cooking-tools/approved-source",
+    "farm/environment-candidates",
+    "lingye/institutions/candidates",
+  ];
 
   return {
     name: "farm-asset-coverage",
@@ -63,21 +68,22 @@ function farmAssetCoveragePlugin(): Plugin {
     generateBundle(_options, bundle) {
       const emittedImages = assertFarmAssetBuildOutput(bundle);
       this.info(`farm asset build output: ${emittedImages} image files with content-hashed names`);
-      const approvedSourceFiles = Object.keys(bundle).filter((fileName) =>
-        fileName.startsWith("farm/cooking-tools/approved-source/"),
+      const excludedFiles = Object.keys(bundle).filter((fileName) =>
+        excludedPublicDirs.some((directory) => fileName.startsWith(`${directory}/`)),
       );
-      for (const fileName of approvedSourceFiles) {
+      for (const fileName of excludedFiles) {
         delete bundle[fileName];
       }
-      if (approvedSourceFiles.length > 0) {
+      if (excludedFiles.length > 0) {
         this.info(
-          `farm asset build output: excluded ${approvedSourceFiles.length} approved-source files`,
+          `farm asset build output: excluded ${excludedFiles.length} non-runtime public source files`,
         );
       }
     },
     writeBundle() {
-      const approvedSourceDir = resolve(outputDir, "farm", "cooking-tools", "approved-source");
-      rmSync(approvedSourceDir, { force: true, recursive: true });
+      for (const directory of excludedPublicDirs) {
+        rmSync(resolve(outputDir, directory), { force: true, recursive: true });
+      }
     },
   };
 }

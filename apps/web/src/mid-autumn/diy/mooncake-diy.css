@@ -1,20 +1,3 @@
-@font-face {
-  font-family: "MoonDiySong";
-  src: url("/lingye/memorial/qixi-archive/moqu-gufeng-ti.ttf") format("truetype");
-  font-display: swap;
-}
-@font-face {
-  font-family: "MoonDiySerif";
-  src: url("/mid-autumn/diy/noto-serif-sc-400.ttf") format("truetype");
-  font-weight: 400;
-  font-display: swap;
-}
-@font-face {
-  font-family: "MoonDiySerif";
-  src: url("/mid-autumn/diy/noto-serif-sc-600.ttf") format("truetype");
-  font-weight: 600;
-  font-display: swap;
-}
 .moon-diy-viewport {
   position: fixed;
   inset: 0;

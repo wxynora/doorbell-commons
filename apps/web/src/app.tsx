@@ -93,8 +93,8 @@ const FarmPage = lazy(async () => {
 });
 
 const MidAutumnPage = lazy(async () => {
-  const module = await import("./mid-autumn/mid-autumn-page");
-  return { default: module.MidAutumnPage };
+  const module = await import("./mid-autumn/mid-autumn-entry");
+  return { default: module.MidAutumnEntry };
 });
 
 const candidateTwoFarmPreviewSeedTypes = [

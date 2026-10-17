@@ -17,7 +17,7 @@ export function LingyeMapPage({ notice, places, onOpenPlace, onOpenTogether }: L
             className="lingye-map-image"
             draggable="false"
             height="1536"
-            src="/lingye/map.png"
+            src="/lingye/map.webp"
             width="1024"
           />
 

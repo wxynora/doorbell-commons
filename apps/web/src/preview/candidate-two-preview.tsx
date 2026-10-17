@@ -4852,7 +4852,7 @@ const LINGYE_SCREEN = `
     <div id="screen-lingye" class="screen screen--lingye">
         <section class="candidate2-lingye-viewport" aria-label="铃野地图，可左右滑动查看全部地点" tabindex="0">
             <div class="candidate2-lingye-canvas">
-                <img class="candidate2-lingye-map" src="/lingye/map.png" width="1024" height="1536" alt="铃野公共世界地图" draggable="false">
+                <img class="candidate2-lingye-map" src="/lingye/map.webp" width="1024" height="1536" alt="铃野公共世界地图" draggable="false">
                 ${npcSceneMarkup("map")}
                 ${lingyePlaces
                   .filter(([id]) => !hiddenFishingPlaceIds.has(id))
@@ -5045,7 +5045,7 @@ const LINGYE_PLACE_SCREENS = `
                     <span aria-hidden="true">←</span>
                 </button>
                 <div class="candidate2-memorial-entry-stage" data-memorial-layout-stage="entry">
-                <img class="candidate2-memorial-entry-qixi-stickers" src="/lingye/memorial/qixi-stickers-v1.png" alt="" aria-hidden="true" draggable="false" data-memorial-entry-editor-id="entry-stickers" data-memorial-editor-name="七夕装饰贴纸" data-memorial-editor-asset="stickers" data-memorial-editor-removable>
+                <img class="candidate2-memorial-entry-qixi-stickers" src="/lingye/memorial/qixi-stickers-v1.webp" alt="" aria-hidden="true" draggable="false" data-memorial-entry-editor-id="entry-stickers" data-memorial-editor-name="七夕装饰贴纸" data-memorial-editor-asset="stickers" data-memorial-editor-removable>
                 <header class="candidate2-memorial-entry-heading">
                     <div>
                         <span data-memorial-entry-editor-id="entry-event-label" data-memorial-editor-name="年份与节日" data-memorial-editor-asset="event-label" data-memorial-editor-removable data-memorial-editor-text>2026 · 七夕</span>
@@ -6164,7 +6164,7 @@ const LINGYE_STYLES = `
             height: 136px;
             padding: 30px 38px 26px 46px;
             align-content: stretch;
-            background: url('/lingye/memorial/qixi-archive/qixi-letter-card-v1.png') center / 100% 100% no-repeat;
+            background: url('/lingye/memorial/qixi-archive/qixi-letter-card-v1.webp') center / 100% 100% no-repeat;
             color: #624d69;
         }
 
@@ -6429,7 +6429,7 @@ const LINGYE_STYLES = `
             margin: -16px -20px -126px;
             padding: 48px 24px 94px 34px;
             overflow: hidden;
-            background: #f7f5fa url('/lingye/memorial/memorial-entry-paper-v1.png') center top / 100% 100% no-repeat;
+            background: #f7f5fa url('/lingye/memorial/memorial-entry-paper-v1.webp') center top / 100% 100% no-repeat;
         }
 
         .candidate2-memorial-entry-view--qixi {

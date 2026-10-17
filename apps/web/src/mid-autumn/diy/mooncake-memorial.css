@@ -19,7 +19,7 @@
   padding: 0 0 26px;
   box-sizing: border-box;
   transform-origin: left top;
-  background: #f6f2f7 url("/lingye/memorial/memorial-entry-paper-v1.png") center / 100% 100% no-repeat;
+  background: #f6f2f7 url("/lingye/memorial/memorial-entry-paper-v1.webp") center / 100% 100% no-repeat;
   isolation: isolate;
 }
 .moon-memorial-paper button { font: inherit; color: inherit; cursor: pointer; border: 0; background: transparent; }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createMidAutumnCommand, runMidAutumnCommand, readMidAutumn, type MidAutumnCommand, type MidAutumnView } from "./api";
-import { MooncakeDiy, MooncakeGifts } from "./diy/mooncake-diy";
+import { MooncakeDiy } from "./diy/mooncake-diy";
+import { MooncakeGifts } from "./diy/mooncake-gifts";
 import { MooncakeGiftOpening } from "./diy/mooncake-gift-opening";
 import { MidAutumnHome } from "./mid-autumn-home";
 import { MooncakeMergeGame } from "./merge/mooncake-merge-game";

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { MidAutumnGift } from "../api";
-import { cakeName, GiftCakeArt } from "./mooncake-diy";
+import { cakeName, GiftCakeArt } from "./mooncake-art";
 import "./mooncake-gift-opening.css";
 
 const CANVAS = { width: 390, height: 844 };
