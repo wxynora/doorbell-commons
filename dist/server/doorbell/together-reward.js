@@ -1,4 +1,5 @@
 // Service-only activity payouts use the existing Farm ledger, never a second wallet.
+import { validTogetherTitles } from "../../domain/together/title-reward.js";
 export function createTogetherRewardService({ database, backend, decorationRewards }) {
   const credit = backend?.trustedSystemCommands?.creditFromSystem;
   if (!database || typeof credit !== "function") throw new Error("together_reward_unavailable");
@@ -6,12 +7,19 @@ export function createTogetherRewardService({ database, backend, decorationRewar
   return {
     grant(input) {
       if (!input || typeof input !== "object" || Array.isArray(input) ||
-          Object.keys(input).sort().join(",") !== (Object.hasOwn(input, "decoration") ? "decoration,gold,grant_id,resident_id,silver" : "gold,grant_id,resident_id,silver") ||
+          Object.keys(input).sort().join(",") !== ["gold", "grant_id", "resident_id", "silver", ...(Object.hasOwn(input, "decoration") ? ["decoration"] : []), ...(Object.hasOwn(input, "titles") ? ["titles"] : [])].sort().join(",") ||
           typeof input.grant_id !== "string" || !input.grant_id ||
           typeof input.resident_id !== "string" || !input.resident_id ||
           !Number.isSafeInteger(input.gold) || input.gold < 0 ||
-          !Number.isSafeInteger(input.silver) || input.silver < 0 || input.gold + input.silver === 0)
+          !Number.isSafeInteger(input.silver) || input.silver < 0 ||
+          (input.gold + input.silver === 0 && !validTogetherTitles(input)))
         throw new Error("invalid_together_reward");
+      if (Object.hasOwn(input, "titles") && !validTogetherTitles(input))
+        throw new Error("invalid_together_reward");
+      if (input.titles && (typeof decorationRewards?.grantTitles !== "function" ||
+          typeof decorationRewards?.assertTitleGrant !== "function"))
+        throw new Error("together_title_unavailable");
+      decorationRewards?.assertTitleGrant?.(input);
       if (input.decoration !== undefined && (!input.decoration || typeof input.decoration !== "object" ||
           Array.isArray(input.decoration) || Object.keys(input.decoration).sort().join(",") !== "item_id,quantity" ||
           input.decoration.item_id !== "farm_decor:snow_fort" || input.decoration.quantity !== 1))
@@ -20,7 +28,7 @@ export function createTogetherRewardService({ database, backend, decorationRewar
         throw new Error("together_decoration_unavailable");
       // Farm inventory must publish at its own durable world checkpoint, never
       // inside an older SQL transaction (the existing persistence contract).
-      if (input.decoration && (database.isTransaction || database.inTransaction))
+      if ((input.decoration || input.titles) && (database.isTransaction || database.inTransaction))
         throw new Error("together_decoration_nested_forbidden");
       const nested = database.isTransaction === true || database.inTransaction === true;
       const savepoint = `together_reward_${++sequence}`;
@@ -58,9 +66,10 @@ export function createTogetherRewardService({ database, backend, decorationRewar
       // A failed inventory checkpoint leaves the whole HTTP reward unconfirmed.
       // Retry the same grant: currency journals replay, then inventory resumes.
       const decoration = input.decoration ? decorationRewards.grant(input) : undefined;
+      const titles = input.titles ? decorationRewards.grantTitles(input) : undefined;
       return { ok: true, grant_id: input.grant_id, resident_id: input.resident_id,
         gold: input.gold, silver: input.silver, journal_ids: journals,
-        ...(decoration ? { decoration } : {}) };
+        ...(decoration ? { decoration } : {}), ...(titles ? { titles } : {}) };
     },
   };
 }
