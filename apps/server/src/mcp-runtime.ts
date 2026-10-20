@@ -1,3 +1,4 @@
+import type { TogetherActivity } from "./together-activity.js";
 import { recordResidentFarmAction } from "./resident-social/resident-farm-actions.js";
 import { LoungeGachaViewError } from "./lounge-gacha/gacha-view-options.js";
 import { LoungePetToolError } from "./lounge-pet/service.js";
@@ -326,6 +327,7 @@ export interface DoorbellMcpRuntimeOptions {
   faultReports?: FaultReports;
   database: CommunityDatabase;
   registrationAuth: RegistrationAuthService;
+  togetherActivity?: TogetherActivity;
   farmActions: FarmMcpActionExecutor;
   lingyeActions: LingyeMcpActionExecutor;
   careerExamReminders?: Pick<CareerExamReminderService, "reconcile">;
@@ -437,6 +439,7 @@ export class DoorbellMcpRuntime {
   readonly #faultReports: FaultReports | undefined;
   readonly #database: CommunityDatabase;
   readonly #registrationAuth: RegistrationAuthService;
+  readonly #togetherActivity: TogetherActivity | undefined;
   readonly #farmActions: FarmMcpActionExecutor;
   readonly #lingyeActions: LingyeMcpActionExecutor;
   readonly #careerExamReminders: Pick<CareerExamReminderService, "reconcile"> | undefined;
@@ -456,12 +459,14 @@ export class DoorbellMcpRuntime {
       ) => void)
     | undefined;
   readonly #onResidentNotificationsRead: ((residentId: string) => void) | undefined;
+  readonly #togetherDeliveredMessages = new WeakMap<DoorbellCallToolResult, string[]>();
   readonly #lastFarmCallAt = new Map<string, number>();
 
   constructor(options: DoorbellMcpRuntimeOptions) {
     this.#faultReports = options.faultReports;
     this.#database = options.database;
     this.#registrationAuth = options.registrationAuth;
+    this.#togetherActivity = options.togetherActivity;
     this.#farmActions = options.farmActions;
     this.#lingyeActions = options.lingyeActions;
     this.#careerExamReminders = options.careerExamReminders;
@@ -873,6 +878,30 @@ export class DoorbellMcpRuntime {
     }
 
     try {
+      if (
+        this.#togetherActivity &&
+        (op === "farm.together.view" || op === "farm.together.choose")
+      ) {
+        // Identity and the existing strict registry have already been checked.
+        // The adapter never receives the private Farm key or caller-chosen identity.
+        const activity = await this.#togetherActivity.execute({
+          residentId: context.residentId,
+          op,
+          args: businessArgs,
+        });
+        if (activity) {
+          const text = activity.text ?? JSON.stringify(activity.data);
+          const response: DoorbellCallToolResult = {
+            content: [{ type: "text", text }],
+            isError: !activity.ok,
+          };
+          const channel = activity.data.channel;
+          this.#togetherDeliveredMessages.set(response, Array.isArray(channel) ? channel.flatMap(message => isPlainObject(message) && typeof message.messageId === "string" ? [message.messageId] : []) : []);
+          return response;
+        }
+      }
+      if (op === "farm.together.choose" && businessArgs.action === "chat")
+        return doorbellToolError("INTERNAL_ERROR", { op });
       const result = await this.#farmActions.execute({
         farmDoorplate: context.farmDoorplate,
         farmHumanKey: context.farmHumanKey,
@@ -884,10 +913,10 @@ export class DoorbellMcpRuntime {
       });
       recordResidentFarmAction(this.#database.residentSocialStore, context.residentId, op, result.ok, this.#now());
       let text = op === "farm.status" && result.ok
-        ? this.#appendDailyPublicationNotice(result.text)
+        ? this.#decorateFarmStatus(result.text, context)
         : result.text;
       if (shouldAppendStatus && op !== "farm.status" && result.status_text !== undefined) {
-        text = `${text}\n\n【农场近况】\n${this.#appendDailyPublicationNotice(result.status_text)}`;
+        text = `${text}\n\n【农场近况】\n${this.#decorateFarmStatus(result.status_text, context)}`;
       }
       return farmToolResult(text, result.ok, result.farm);
     } catch (error) {
@@ -926,10 +955,9 @@ export class DoorbellMcpRuntime {
     result: DoorbellCallToolResult,
     context: DoorbellFarmContext,
   ): DoorbellCallToolResult {
-    const mailbox = this.#database.takeResidentMailboxNotifications(
-      context.homeId,
-      this.#now(),
-    );
+    const deliveredMessageIds = this.#togetherDeliveredMessages.get(result) ?? [];
+    const mailbox = this.#database.takeResidentMailboxNotifications(context.homeId, this.#now(),
+      this.#togetherActivity?.mailboxNotificationExclusions?.(context.residentId, deliveredMessageIds) ?? []);
     const notifications = [...mailbox,...(this.#dailyComments?.takeResidentNotifications(context.residentId) ?? [])];
     if (notifications.length === 0) {
       return result;
@@ -950,6 +978,11 @@ export class DoorbellMcpRuntime {
       ...result,
       content: [{ type: "text", text: combinedText }],
     };
+  }
+
+  #decorateFarmStatus(text: string, context: DoorbellFarmContext): string {
+    const published = this.#appendDailyPublicationNotice(text);
+    return this.#togetherActivity?.decorateFarmStatus?.(context.residentId, published) ?? published;
   }
 
   #appendDailyPublicationNotice(text: string): string {
@@ -979,7 +1012,7 @@ export class DoorbellMcpRuntime {
         action: "status",
         params: {},
       });
-      return status.ok ? `${text}\n\n【农场近况】\n${this.#appendDailyPublicationNotice(status.text)}` : text;
+      return status.ok ? `${text}\n\n【农场近况】\n${this.#decorateFarmStatus(status.text, context)}` : text;
     } catch {
       return text;
     }

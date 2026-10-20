@@ -1,3 +1,5 @@
+import { createTogetherStartup } from "./together/startup.js";
+import { TogetherRewardClient } from "./together/reward-client.js";
 import { SecurityPatrolDeliveryService } from "./security-patrol/service.js";
 import { FarmSecurityPatrolClient } from "./security-patrol/client.js";
 import { renderPatrolNotice } from "./security-patrol/copy.js";
@@ -492,11 +494,21 @@ const dailyVoiceService = new LingyeDailyVoiceService({ database, farm: reporter
   onSyncError: error => process.stderr.write(`[doorbell-daily-voice] ${error instanceof Error ? error.name : "UnknownError"}\n`),
 });
 const dailyCommentsService = new LingyeDailyCommentsService({database,farm:reporterRelayFarm});
+const togetherStartup = createTogetherStartup({
+  database, registrationAuth, mailbox: mailboxService, bell: bellService,
+  rewards: new TogetherRewardClient({ apiBaseUrl: serverConfig.farmApiBaseUrl,
+    serviceToken: serverConfig.farmServiceToken, requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs }),
+  onError: reportBellError,
+});
+bellService.addWakeSource(togetherStartup.bell);
+const refreshTogetherControl = () => { void togetherStartup.reconcile().catch(reportBellError); };
+process.on("SIGUSR2", refreshTogetherControl);
 const mcpRuntime = new DoorbellMcpRuntime({
   ...(loungeRuntime ? { loungeTools: loungeRuntime.tools } : {}),
   ...(faultReports ? { faultReports } : {}),
   database,
   registrationAuth,
+  togetherActivity: togetherStartup.tool,
   farmActions: farmMcpActions,
   lingyeActions: lingyeMcpActions,
   careerExamReminders: careerExamReminderService,
@@ -540,6 +552,7 @@ const lingyeDailyService = new LingyeDailyService({
   editorRewards:lingyeDailyRewards,
 });
 const app = buildApp({
+  togetherBoard: togetherStartup,
   ...(faultReports ? { faultReports } : {}),
   groupId: serverConfig.qqGroupId,
   groupMembership,
@@ -581,7 +594,9 @@ if (loungeRuntime) registerLoungeGameRoutes(app, {
   waitingSeatPresence: loungeRuntime.waitingSeatPresence,
   secureCookies: process.env.NODE_ENV === "production",
 });
-app.addHook("onClose", () => {
+app.addHook("onClose", async () => {
+  process.off("SIGUSR2", refreshTogetherControl);
+  await togetherStartup.stop();
   loungeRuntime?.close();
   farmActionListScheduler.close();
   reporterDailyScheduler.close();

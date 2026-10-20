@@ -9,7 +9,25 @@ import {
 } from "@doorbell/protocol";
 import type Database from "better-sqlite3";
 
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 48;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 49;
+// Also used by isolated activity stores; production always migrates the existing community connection.
+export const SNOW_WAR_SCHEMA_SQL = `
+  CREATE TABLE IF NOT EXISTS snow_war_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS snow_war_series (
+    series_id TEXT PRIMARY KEY, tick INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL, state_json TEXT NOT NULL, updated_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS snow_war_battle (
+    battle_id TEXT PRIMARY KEY, round_id TEXT NOT NULL, tick INTEGER NOT NULL,
+    status TEXT NOT NULL, state_json TEXT NOT NULL, updated_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS together_admin_commands (
+    command_id TEXT PRIMARY KEY, payload_json TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('pending','complete','rejected')),
+    result_json TEXT, created_at INTEGER NOT NULL
+  );
+`;
+
 const LEGACY_CONNECTOR_DELIVERY_GENERATION = "00000000-0000-0000-0000-000000000000";
 
 interface FarmCreationRequestRow {
@@ -2849,6 +2867,11 @@ export function migrateCommunityDatabase(
       PRIMARY KEY(year,player_id,controller_type,game_kind,scope,companion_id,companion_controller_type)
     );`);
     database.pragma('user_version = 48');
+  })();
+
+  if (databaseSchemaVersion < 49) database.transaction(() => {
+    database.exec(SNOW_WAR_SCHEMA_SQL);
+    database.pragma('user_version = 49');
   })();
 
 }

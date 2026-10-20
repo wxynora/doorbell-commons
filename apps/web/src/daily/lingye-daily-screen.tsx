@@ -1,3 +1,6 @@
+import type { TogetherBoard } from "@doorbell/protocol";
+import { TogetherDailyBoard, TOGETHER_BOARD_COPY } from "./together-board";
+import { loadTogetherBoard } from "./together-board-client";
 import { useEffect, useState } from "react";
 import "./lingye-daily-editor.css";
 import { likeLingyeDailyReporterPublication, loadLatestLingyeDaily, loadLingyeDailySectionComments, publishLingyeDailySectionComment } from "./lingye-daily-client";
@@ -38,6 +41,13 @@ function DailyLoadNotice({ error }: { error: boolean }) {
 
 export function LingyeDailyScreen({ onBack }: LingyeDailyScreenProps) {
   const [state, setState] = useState<DailyLoadState>({ status: "loading" });
+  const [board, setBoard] = useState<TogetherBoard | null>(null);
+  const [boardError, setBoardError] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void loadTogetherBoard().then(value => { if (active) setBoard(value); }).catch(() => { if (active) setBoardError(true); });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -83,6 +93,7 @@ export function LingyeDailyScreen({ onBack }: LingyeDailyScreenProps) {
       {state.status === "ready" ? (
         <LingyeDailyPage
           issue={state.issue}
+          togetherBoard={board} togetherCopy={TOGETHER_BOARD_COPY} togetherError={boardError}
           onReporterLike={likeReporterPublication}
           pendingLikeRef={state.pendingLikeRef}
           reporterPublications={state.reporterPublications}
@@ -90,7 +101,7 @@ export function LingyeDailyScreen({ onBack }: LingyeDailyScreenProps) {
           onPublishSectionComment={publishLingyeDailySectionComment}
         />
       ) : (
-        <DailyLoadNotice error={state.status === "error"} />
+        <><DailyLoadNotice error={state.status === "error"} /><TogetherDailyBoard board={board} copy={TOGETHER_BOARD_COPY} error={boardError} /></>
       )}
     </section>
   );

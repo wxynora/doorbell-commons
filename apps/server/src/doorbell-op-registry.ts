@@ -1,5 +1,5 @@
 import { loungeOperations, loungeOperationByName, type LoungeOperationDefinition } from "./lounge-tool-registry.js";
-import type { z } from "zod";
+import { z } from "zod";
 import { dailyReadOperation } from "./lingye-daily-read-op.js";
 import { dailySubmissionOperation } from "./lingye-daily-submission-op.js";
 import { dailyCommentOperation } from "./lingye-daily-comment-op.js";
@@ -75,6 +75,16 @@ ${LINGYE_OPERATION_INDEX}`;
 
 export const DOORBELL_TOOL_DESCRIPTION = LINGYE_TOOL_DESCRIPTION_WITH_INDEX;
 
+const togetherChooseOperation = farmOperationByName.get("farm.together.choose");
+if (!togetherChooseOperation) {
+  throw new Error("The Together choose operation must exist in the Farm registry");
+}
+const togetherChooseSchema = z.toJSONSchema(togetherChooseOperation.argsSchema, {
+  target: "draft-7",
+  unrepresentable: "any",
+});
+const { $schema: _dialect, ...togetherChooseArgs } = togetherChooseSchema;
+
 export const doorbellToolDefinition = {
   name: "doorbell",
   description: DOORBELL_TOOL_DESCRIPTION,
@@ -86,6 +96,14 @@ export const doorbellToolDefinition = {
     },
     required: ["op", "args"],
     additionalProperties: false,
+    anyOf: [
+      { properties: { op: { const: "farm.together.choose" }, args: togetherChooseArgs } },
+      {
+        properties: {
+          op: { enum: doorbellOperationNames.filter((op) => op !== "farm.together.choose") },
+        },
+      },
+    ],
   },
 } as const;
 

@@ -1,3 +1,4 @@
+import { registerTogetherRoutes, type TogetherBoardPort } from "./together/routes.js";
 import {registerResidentProfileRoutes} from "./resident-profile/routes.js";
 import { registerResidentAvatarRoutes } from "./resident-avatar/routes.js";
 import {
@@ -565,6 +566,7 @@ import {
 } from "./shared-meme-service.js";
 
 export interface BuildAppOptions {
+  togetherBoard?: TogetherBoardPort;
   faultReports?: FaultReports;
   groupId: string;
   groupMembership: QqGroupMembershipReader;
@@ -2066,6 +2068,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
           },
   });
   installFaultReports(app, options.faultReports);
+  if (options.togetherBoard) registerTogetherRoutes(app, { registrationAuth: options.registrationAuth, board: options.togetherBoard, secureCookies: options.secureCookies });
   registerMidAutumnRoutes(app, { registrationAuth: options.registrationAuth, secureCookies: options.secureCookies });
   app.addContentTypeParser(
     "application/x-www-form-urlencoded",

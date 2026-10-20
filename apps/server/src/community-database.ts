@@ -1,3 +1,6 @@
+import { createCommunityTogether, togetherIdentity } from "./together/community.js";
+import { queueTogetherControl, togetherControls } from "./together/control-store.js";
+import { takeResidentMailboxNotifications as takeMailboxNotifications } from "./mailbox-notification-store.js";
 import {ResidentProfileStore} from "./resident-profile/store.js";
 import {GameRuleChoiceStore} from './games/game-rule-choice-store.js';
 import { GameReactionStore } from "./games/game-reaction-store.js";
@@ -4634,32 +4637,29 @@ export class CommunityDatabase {
     return transaction.immediate();
   }
 
-  takeResidentMailboxNotifications(homeId: string, now: number): string[] {
-    const transaction = this.#database.transaction(() => {
-      const unread = this.#database
-        .prepare(
-          `SELECT l.letter_id, l.body
-           FROM mailbox_letters AS l
-           LEFT JOIN mailbox_read_states AS r
-             ON r.letter_id = l.letter_id AND r.audience = 'resident'
-           WHERE l.home_id = ? AND r.letter_id IS NULL
-           ORDER BY l.created_at ASC, l.letter_id ASC`,
-        )
-        .all(homeId) as Array<{ letter_id: string; body: string }>;
-      if (unread.length === 0) {
-        return [];
-      }
-      const markRead = this.#database.prepare(
-        `INSERT INTO mailbox_read_states (letter_id, audience, read_at)
-         VALUES (?, 'resident', ?)
-         ON CONFLICT(letter_id, audience) DO NOTHING`,
-      );
-      for (const letter of unread) {
-        markRead.run(letter.letter_id, now);
-      }
-      return unread.map((letter) => letter.body);
-    });
-    return transaction.immediate();
+  createTogetherActivity(options: Parameters<typeof createCommunityTogether>[1]) {
+    return createCommunityTogether(this.#database, options);
+  }
+
+  findTogetherIdentity(residentId: string) {
+    return togetherIdentity(this.#database, residentId);
+  }
+
+  queueTogetherControl(commandId: string, payload: unknown, now: number) {
+    return queueTogetherControl(this.#database, commandId, payload, now);
+  }
+
+  togetherControls() {
+    return togetherControls(this.#database);
+  }
+
+
+  takeResidentMailboxNotifications(
+    homeId: string,
+    now: number,
+    excludedLetterIds: readonly string[] = [],
+  ): string[] {
+    return takeMailboxNotifications(this.#database, homeId, now, excludedLetterIds);
   }
 
   listMailboxLetters(

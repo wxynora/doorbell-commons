@@ -3,6 +3,7 @@ import type {
   BellBindingState,
   BellWakeCancellationResult,
   BellWakeRecord,
+  BellWakeStatus,
   CommunityDatabase,
 } from "./community-database.js";
 
@@ -23,6 +24,37 @@ export interface BellStreamSink {
   close(): void;
 }
 
+/** A domain-owned wake source that participates in the existing Bell stream. */
+export interface BellWakeSourceRecord {
+  wakeId: string;
+  residentId: string;
+  reason: string;
+  status: BellWakeStatus;
+  createdAt: number;
+  endedAt: number | null;
+  blockReason: string | null;
+  errorCode: string | null;
+  purchaseRequestId: string | null;
+  letterId: string | null;
+  payload: Record<string, unknown> | null;
+}
+
+export type BellWakeSourceTransition = "acked" | "blocked" | "duplicate" | "conflict" | "missing";
+
+export interface BellWakeSource {
+  listPending(residentId: string): readonly BellWakeSourceRecord[];
+  get(residentId: string, wakeId: string): BellWakeSourceRecord | undefined;
+  acknowledge(residentId: string, wakeId: string, now: number): BellWakeSourceTransition;
+  block(
+    residentId: string,
+    wakeId: string,
+    now: number,
+    blockReason: string,
+    errorCode: string,
+  ): BellWakeSourceTransition;
+  cancel(residentId: string, wakeId: string, now: number): BellWakeCancellationResult;
+}
+
 export interface BellConnection {
   connectionEpoch: string;
   close(): void;
@@ -31,6 +63,7 @@ export interface BellConnection {
 export interface BellServiceOptions {
   database: CommunityDatabase;
   registrationAuth: BellRegistrationAuth;
+  wakeSources?: readonly BellWakeSource[];
   heartbeatIntervalMs: number;
   replayIntervalMs: number;
   getSharedMemeLibraryVersion?: () => number;
@@ -116,6 +149,7 @@ export class BellService {
 
   readonly #database: CommunityDatabase;
   readonly #registrationAuth: BellRegistrationAuth;
+  readonly #wakeSources: BellWakeSource[];
   readonly #heartbeatIntervalMs: number;
   readonly #replayIntervalMs: number;
   readonly #now: () => number;
@@ -128,6 +162,7 @@ export class BellService {
   constructor(options: BellServiceOptions) {
     this.#database = options.database;
     this.#registrationAuth = options.registrationAuth;
+    this.#wakeSources = [...(options.wakeSources ?? [])];
     this.#heartbeatIntervalMs = options.heartbeatIntervalMs;
     this.#replayIntervalMs = options.replayIntervalMs;
     this.#now = options.now ?? Date.now;
@@ -208,11 +243,10 @@ export class BellService {
     input: BellAckInput,
   ): Promise<{ version: 1; wake_id: string; status: "acked" }> {
     const binding = await this.#authenticateControl(credential, input.connectionEpoch);
-    const result = this.#database.acknowledgeBellWake(
-      binding.residentId,
-      input.wakeId,
-      this.#now(),
-    );
+    const source = this.#wakeSourceFor(binding.residentId, input.wakeId);
+    const result = source
+      ? source.acknowledge(binding.residentId, input.wakeId, this.#now())
+      : this.#database.acknowledgeBellWake(binding.residentId, input.wakeId, this.#now());
     if (result !== "acked" && result !== "duplicate") {
       throw new BellWakeControlError();
     }
@@ -224,13 +258,22 @@ export class BellService {
     input: BellBlockInput,
   ): Promise<{ version: 1; wake_id: string; status: "blocked" }> {
     const binding = await this.#authenticateControl(credential, input.connectionEpoch);
-    const result = this.#database.blockBellWake(
-      binding.residentId,
-      input.wakeId,
-      this.#now(),
-      input.blockReason,
-      input.errorCode,
-    );
+    const source = this.#wakeSourceFor(binding.residentId, input.wakeId);
+    const result = source
+      ? source.block(
+          binding.residentId,
+          input.wakeId,
+          this.#now(),
+          input.blockReason,
+          input.errorCode,
+        )
+      : this.#database.blockBellWake(
+          binding.residentId,
+          input.wakeId,
+          this.#now(),
+          input.blockReason,
+          input.errorCode,
+        );
     if (result !== "blocked" && result !== "duplicate") {
       throw new BellWakeControlError();
     }
@@ -284,6 +327,10 @@ export class BellService {
     }
   }
 
+  addWakeSource(source: BellWakeSource): void {
+    if (!this.#wakeSources.includes(source)) this.#wakeSources.push(source);
+  }
+
   /** Signal local data availability without creating, injecting, or acknowledging a model wake. */
   signalSharedMemeUpdateAvailable(availableVersion: number): void {
     for (const active of [...this.#connections.values()]) {
@@ -292,7 +339,10 @@ export class BellService {
   }
 
   cancelWake(residentId: string, wakeId: string, now = this.#now()): void {
-    const result = this.#database.cancelBellWake(residentId, wakeId, now);
+    const source = this.#wakeSourceFor(residentId, wakeId);
+    const result = source
+      ? source.cancel(residentId, wakeId, now)
+      : this.#database.cancelBellWake(residentId, wakeId, now);
     this.#emitCancellations(result);
   }
 
@@ -371,7 +421,12 @@ export class BellService {
     if (!active || active.closed) return;
     this.#emitCancellations(this.#database.mysteryMerchantNightStore.expirePending(residentId, this.#now()));
     this.#beforePendingWakes?.(residentId);
-    const pendingWakes = this.#database.listPendingBellWakes(residentId);
+    const pendingWakes: Array<BellWakeRecord | BellWakeSourceRecord> = [
+      ...this.#database.listPendingBellWakes(residentId),
+      ...this.#wakeSources.flatMap((source) => source.listPending(residentId)),
+    ].sort(
+      (left, right) => left.createdAt - right.createdAt || left.wakeId.localeCompare(right.wakeId),
+    );
     for (const wake of pendingWakes) {
       if (active.sentWakeIds.has(wake.wakeId)) continue;
       try {
@@ -391,6 +446,10 @@ export class BellService {
         return;
       }
     }
+  }
+
+  #wakeSourceFor(residentId: string, wakeId: string): BellWakeSource | undefined {
+    return this.#wakeSources.find((source) => source.get(residentId, wakeId) !== undefined);
   }
 
   #emitSharedMemeUpdateAvailable(active: ActiveBellConnection, availableVersion?: number): void {

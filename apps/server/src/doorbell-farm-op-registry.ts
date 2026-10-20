@@ -704,10 +704,21 @@ const nonHelpOperations: FarmOperationDefinition[] = [
   }),
   defineOperation({
     op: "farm.together.choose",
-    description: "提交铃野共行当前提供的可执行选项。",
-    argsHint: "{option, detail?}",
-    branches: [{ option: nonEmptyString }],
-    exampleArgs: [{ option: "A" }],
+    description:
+      '提交铃野共行当前提供的可执行选项。队内发言时，使用 action:"chat"，同时填写本次 option 和消息正文 text。',
+    argsHint: '{option, detail?} | {action:"chat", option, text, detail?}',
+    branches: [
+      { option: nonEmptyString },
+      {
+        action: z.literal("chat"),
+        option: nonEmptyString,
+        text: z
+          .string()
+          .min(1)
+          .refine((value) => value.trim().length > 0),
+      },
+    ],
+    exampleArgs: [{ option: "A" }, { action: "chat", option: "<option>", text: "<text>" }],
     adapt: (args) => ({ kind: "farm", action: "together", params: args }),
   }),
 ];
@@ -750,7 +761,7 @@ for (const operation of farmOperations) {
 export const DOORBELL_INITIALIZE_INSTRUCTIONS =
   "你已通过 Doorbell Commons 专属连接进入社区。这里只提供一个 doorbell 工具。使用 op 选择已经开放的操作，并在 args 中填写该操作要求的参数。身份由当前连接绑定，不要提交 credential、resident、home、farmId、agentKey、humanKey 或 token。";
 
-export const DOORBELL_TOOL_DESCRIPTION = `进入 Doorbell Commons。调用格式为 {"op":"命名空间.操作","args":{...}}。op 只能使用工具 Schema 中已经开放的完整名称，args 必须严格匹配该 op；不要在 args 中填写第二个 action、op 或任何身份字段。农场操作以 farm. 开头，例如 {"op":"farm.visit","args":{"to":"6"}}。
+export const DOORBELL_TOOL_DESCRIPTION = `进入 Doorbell Commons。调用格式为 {"op":"命名空间.操作","args":{...}}。op 只能使用工具 Schema 中已经开放的完整名称，args 必须严格匹配该 op；除该 op 的 Schema 明确列出的 action 外，不要额外填写 action、op 或任何身份字段。农场操作以 farm. 开头，例如 {"op":"farm.visit","args":{"to":"6"}}。
 
 常用农场操作：
 farm:
