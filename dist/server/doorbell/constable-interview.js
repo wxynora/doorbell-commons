@@ -15,7 +15,7 @@ const BASE_KEYS = ["farm_human_key", "expected_farm_doorplate", "account_id", "r
 const ACTION_KEYS = {
     signup: [...BASE_KEYS, "action", "interview_id"],
     confirm_attendance: [...BASE_KEYS, "action", "interview_id"],
-    score: [...BASE_KEYS, "action", "interview_id", "facts", "restraint", "procedure", "explanation"],
+    score: [...BASE_KEYS, "action", "interview_id", "score", "stars", "comment"],
 };
 const READ_KEYS = [...BASE_KEYS];
 const READ_WITH_INTERVIEW_KEYS = [...BASE_KEYS, "interview_id"];
@@ -111,13 +111,15 @@ function interviewFacts(database, backend, residentId, accountId, interviewId, n
         const review = database.prepare("SELECT outcome FROM career_constable_reviews WHERE interview_id = ?").get(row.interview_id);
         const answer = materialConfigured ? database.prepare("SELECT answer_text, submitted_at FROM career_constable_answers WHERE interview_id = ?").get(row.interview_id) : null;
         const originalScores = materialConfigured && review ? database.prepare(`SELECT facts_score AS facts, restraint_score AS restraint,
-            procedure_score AS procedure, explanation_score AS explanation FROM career_constable_review_original_scores
+            procedure_score AS procedure, explanation_score AS explanation, total_score AS score, stars_json, comment FROM career_constable_review_original_scores
             WHERE interview_id = ? ORDER BY signup_order`).all(row.interview_id) : null;
         return {
             phase: review ? "review" : "interview",
             review_outcome: review?.outcome ?? null,
             answer: answer ? { text: answer.answer_text, submitted_at: isoTime(answer.submitted_at) } : null,
-            original_scores: originalScores,
+            original_scores: originalScores?.map(value => value.score === null
+                ? { facts: value.facts, restraint: value.restraint, procedure: value.procedure, explanation: value.explanation }
+                : { score: value.score, stars: JSON.parse(value.stars_json), comment: value.comment }) ?? null,
             qualification_level: database.prepare("SELECT qualification_level FROM career_exam_attempts WHERE attempt_id = ?").get(row.attempt_id).qualification_level,
             interview_id: row.interview_id,
             attempt_id: row.attempt_id,
@@ -140,7 +142,7 @@ function interviewFacts(database, backend, residentId, accountId, interviewId, n
                 bank_version: row.interview_bank_version,
                 paper: parseSnapshot(row.interview_paper_snapshot_json),
                 fact_material: parseSnapshot(row.interview_fact_material_snapshot_json),
-                scoring_standard: parseSnapshot(row.interview_scoring_standard_snapshot_json),
+                scoring_standard: { scoreMaximum: 20, starsMaximum: 5, starsAffectScore: false },
             } : null,
             public_notice: notice ? {
                 notice_id: notice.notice_id,
@@ -243,8 +245,10 @@ export async function handleDoorbellHumanConstableInterviewAction(req, res, meth
         humanFieldError(res, 400, "invalid_request", "The constable interview request is invalid");
         return;
     }
-    if (body.action === "score" && [body.facts, body.restraint, body.procedure, body.explanation]
-        .some((value) => !Number.isSafeInteger(value) || value < 0 || value > 5)) {
+    if (body.action === "score" && (!Number.isInteger(body.score) || body.score < 0 || body.score > 20 ||
+        !body.stars || Object.keys(body.stars).sort().join(",") !== "clarity,fairness,reliability" ||
+        Object.values(body.stars).some(value => !Number.isInteger(value) || value < 1 || value > 5) ||
+        typeof body.comment !== "string")) {
         humanFieldError(res, 400, "invalid_request", "The constable interview request is invalid");
         return;
     }
@@ -276,10 +280,9 @@ export async function handleDoorbellHumanConstableInterviewAction(req, res, meth
                 interviewId: body.interview_id,
                 examinerAccountId: body.account_id,
                 examinerResidentId: residentId,
-                facts: body.facts,
-                restraint: body.restraint,
-                procedure: body.procedure,
-                explanation: body.explanation,
+                score: body.score,
+                stars: body.stars,
+                comment: body.comment,
             });
         }
         backend.trustedSystemCommands.advanceConstableInterviews(now);

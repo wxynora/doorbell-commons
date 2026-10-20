@@ -10,6 +10,7 @@ import {
 } from "./curriculum.js";
 import { activeCertificateLevel, EXAM_SESSION_DURATION_MS, isBeijingExamSessionOpen, isBeijingHour, nextBeijingDayStart, nextExamSessionAt, nextInterviewSessionAt, recordFinancialReceipt, requireCareerTrack, runInTransaction, } from "./persistence.js";
 import { ConstableInterviewAnswers } from "./constable-interview-answers.js";
+import { validateConstableScore, scoreResult, applyConstableRank } from "./constable-score-result.js";
 import { ConstableInterviewReview, CONSTABLE_REVIEW_POLICY, validConstableWrittenPass } from "./constable-interview-review.js";
 import { freezeConstableInterviewMaterial, hydrateConstableInterviewMaterial } from "./constable-interview-bank.js";
 import { installCareerSchema } from "./schema.js";
@@ -980,11 +981,8 @@ export class CareerSchoolService {
         });
     }
     submitConstableInterviewScore(input) {
-        for (const score of [input.facts, input.restraint, input.procedure, input.explanation]) {
-            if (!Number.isInteger(score) || score < 0 || score > 5) {
-                throw new CareerDomainError("invalid_interview_score", "Every interview dimension is 0 to 5");
-            }
-        }
+        validateConstableScore(input);
+        const starsJson = JSON.stringify({ clarity: input.stars.clarity, fairness: input.stars.fairness, reliability: input.stars.reliability });
         const now = this.#now();
         return runInTransaction(this.#database, () => {
             const interview = this.#requireInterview(input.interviewId);
@@ -1002,15 +1000,13 @@ export class CareerSchoolService {
             this.#requireConstableExaminerEligibility(interview, selected.examiner_resident_id);
             this.#requireInterviewMaterial(interview);
             const existing = this.#database
-                .prepare(`SELECT facts_score, restraint_score, procedure_score, explanation_score
+                .prepare(`SELECT total_score, stars_json, comment
              FROM career_constable_scores
              WHERE interview_id = ? AND examiner_account_id = ?`)
                 .get(input.interviewId, input.examinerAccountId);
             if (existing) {
-                if (existing.facts_score !== input.facts ||
-                    existing.restraint_score !== input.restraint ||
-                    existing.procedure_score !== input.procedure ||
-                    existing.explanation_score !== input.explanation) {
+                if (existing.total_score !== input.score ||
+                    existing.stars_json !== starsJson || existing.comment !== input.comment) {
                     throw new CareerDomainError("interview_score_conflict", "The examiner score is immutable");
                 }
                 return { status: interview.status, replay: true };
@@ -1022,9 +1018,9 @@ export class CareerSchoolService {
             this.#database
                 .prepare(`INSERT INTO career_constable_scores (
              interview_id, examiner_account_id, facts_score, restraint_score,
-             procedure_score, explanation_score, scored_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?)`)
-                .run(input.interviewId, input.examinerAccountId, input.facts, input.restraint, input.procedure, input.explanation, now);
+             procedure_score, explanation_score, scored_at, total_score, stars_json, comment
+           ) VALUES (?, ?, 0, 0, 0, 0, ?, ?, ?, ?)`)
+                .run(input.interviewId, input.examinerAccountId, now, input.score, starsJson, input.comment);
             this.#database
                 .prepare("UPDATE career_constable_interviews SET status = 'scoring' WHERE interview_id = ?")
                 .run(input.interviewId);
@@ -1051,21 +1047,13 @@ export class CareerSchoolService {
             }
             this.#interviewAnswers.require(interviewId);
             const scores = this.#database
-                .prepare(`SELECT facts_score, restraint_score, procedure_score, explanation_score
+                .prepare(`SELECT *
            FROM career_constable_scores WHERE interview_id = ?`)
                 .all(interviewId);
             if (scores.length !== 3) {
                 throw new CareerDomainError("interview_scores_incomplete", "Exactly three scores are required");
             }
-            const facts = scores.reduce((sum, score) => sum + score.facts_score, 0);
-            const restraint = scores.reduce((sum, score) => sum + score.restraint_score, 0);
-            const procedure = scores.reduce((sum, score) => sum + score.procedure_score, 0);
-            const explanation = scores.reduce((sum, score) => sum + score.explanation_score, 0);
-            if (facts < 9 ||
-                restraint < 9 ||
-                procedure < 9 ||
-                explanation < 9 ||
-                facts + restraint + procedure + explanation < 48) {
+            if (!scoreResult(scores).passed) {
                 this.#database
                     .prepare(`UPDATE career_constable_interviews
              SET status = 'failed', finalized_at = ? WHERE interview_id = ?`)
@@ -1555,8 +1543,8 @@ export class CareerSchoolService {
         requireCareerTrack(this.#database, residentId, career);
         const activeCertificate = this.#database
             .prepare(`SELECT 1 FROM career_certificates
-         WHERE resident_id = ? AND career = ? AND qualification_level = ? AND status = 'active'`)
-            .get(residentId, career, level);
+         WHERE resident_id = ? AND career = ? AND (qualification_level = ? OR (career = 'constable' AND qualification_level > ?)) AND status = 'active'`)
+            .get(residentId, career, level, level);
         if (activeCertificate) {
             throw new CareerDomainError("certificate_already_active", "The qualification certificate is already active");
         }
@@ -1662,6 +1650,7 @@ export class CareerSchoolService {
             .prepare(`UPDATE career_exam_attempts
            SET registration_status = 'passed', ended_at = ? WHERE attempt_id = ?`)
             .run(now, attempt.attempt_id);
+        applyConstableRank(this.#database, { interview_id: interviewId, attempt_id: attempt.attempt_id }, now);
         return "certificate_activated";
     }
 }

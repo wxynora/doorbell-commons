@@ -1,4 +1,5 @@
 import { CareerDomainError } from "./contracts.js";
+import { scoreResult, applyConstableRank } from "./constable-score-result.js";
 import { nextInterviewSessionAt, nextBeijingDayStart, runInTransaction, recordFinancialReceipt } from "./persistence.js";
 
 export const CONSTABLE_REVIEW_POLICY = Object.freeze({
@@ -59,10 +60,7 @@ export function settleConstableRetryFees(database, economy, now) {
     }
 }
 export function interviewScoresPass(scores) {
-    if (scores.length !== 3) return false;
-    const sums = ["facts_score", "restraint_score", "procedure_score", "explanation_score"]
-        .map(key => scores.reduce((sum, score) => sum + score[key], 0));
-    return sums.every(sum => sum >= 9) && sums.reduce((sum, value) => sum + value, 0) >= 48;
+    return scoreResult(scores)?.passed ?? false;
 }
 export class ConstableInterviewReview {
     constructor({ database, now }) { this.database = database; this.now = now; }
@@ -79,9 +77,10 @@ export class ConstableInterviewReview {
         const now = this.now();
         this.database.prepare(`INSERT INTO career_constable_review_original_scores
           (interview_id, examiner_account_id, examiner_resident_id, signup_order,
-           facts_score, restraint_score, procedure_score, explanation_score, scored_at)
+           facts_score, restraint_score, procedure_score, explanation_score, scored_at, total_score, stars_json, comment)
           SELECT score.interview_id, score.examiner_account_id, signup.examiner_resident_id, signup.signup_order,
-            score.facts_score, score.restraint_score, score.procedure_score, score.explanation_score, score.scored_at
+            score.facts_score, score.restraint_score, score.procedure_score, score.explanation_score, score.scored_at,
+            score.total_score, score.stars_json, score.comment
           FROM career_constable_scores score JOIN career_constable_examiner_signups signup
           ON signup.interview_id = score.interview_id AND signup.examiner_account_id = score.examiner_account_id
           WHERE score.interview_id = ?`).run(interview.interview_id);
@@ -118,6 +117,7 @@ export class ConstableInterviewReview {
             if (passed) {
                 this.database.prepare(`UPDATE career_certificates SET status = 'active', effective_at = ? WHERE source_attempt_id = ?`)
                   .run(nextBeijingDayStart(now), interview.attempt_id);
+                applyConstableRank(this.database, interview, now);
                 this.database.prepare(`UPDATE career_constable_public_notices SET status = 'certificate_activated',
                   finalized_at = ? WHERE interview_id = ?`).run(now, interview.interview_id);
             } else {

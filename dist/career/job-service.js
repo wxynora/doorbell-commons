@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { AGRONOMIST_CONCURRENT_CAPACITY, CareerDomainError, institutionForCareer, JOB_PERFORMANCE_UNITS, PERFORMANCE_PAY_GOLD, SERVICE_COMMISSION_DAILY_ACCEPT_LIMIT, SERVICE_COMMISSION_REST_MS, } from "./contracts.js";
 import { beijingDate, recordFinancialReceipt, requireActiveCertificate, runInTransaction } from "./persistence.js";
 import { installCareerSchema } from "./schema.js";
+import { promoteConstableTraining } from "./constable-score-result.js";
 const AUTHORITY_ASSIGN_JOB = Symbol("career-authority-assign-job");
 function compareText(left, right) {
     return left < right ? -1 : left > right ? 1 : 0;
@@ -443,6 +444,7 @@ export class CareerJobService {
            ) VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?)`)
                 .run(this.#generateId(), job.job_id, input.workerResidentId, job.career, level,
                     job.difficulty_level, performanceUnits, performanceRateBps, now);
+            if (job.career === "constable") promoteConstableTraining(this.#database, input.workerResidentId, now);
             return mapJob(this.#requireJob(job.job_id));
         });
     }
@@ -531,6 +533,7 @@ export class CareerJobService {
              difficulty_level, record_kind, performance_units, recorded_at
            ) VALUES (?, ?, ?, ?, ?, ?, 'qualified_transfer', 0, ?)`)
                 .run(this.#generateId(), job.job_id, input.workerResidentId, job.career, level, job.difficulty_level, now);
+            if (job.career === "constable") promoteConstableTraining(this.#database, input.workerResidentId, now);
             this.#database
                 .prepare(`INSERT INTO career_jobs (
              job_id, parent_job_id, career, source_type, source_id, object_type, object_id,

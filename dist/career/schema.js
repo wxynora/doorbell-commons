@@ -1,6 +1,6 @@
 import { runInTransaction } from "./persistence.js";
 
-export const CAREER_SCHEMA_VERSION = 19;
+export const CAREER_SCHEMA_VERSION = 20;
 
 const REPORTER_ARTICLE_COLUMNS = `(
   article_id TEXT PRIMARY KEY,
@@ -969,6 +969,7 @@ export function installCareerSchema(database) {
       );
     `);
     installResignationSchema(database);
+    installConstableScoreSchema(database);
     database.exec(`INSERT OR IGNORE INTO career_constable_written_passes (attempt_id, source_attempt_id, passed_at)
       SELECT paper.exam_attempt_id, paper.exam_attempt_id, MIN(submission.submitted_at)
       FROM career_assessment_submissions submission
@@ -976,6 +977,19 @@ export function installCareerSchema(database) {
       JOIN career_exam_attempts attempt ON attempt.attempt_id = paper.exam_attempt_id
       WHERE submission.kind = 'written_exam' AND submission.passed = 1 AND attempt.career = 'constable'
       GROUP BY paper.exam_attempt_id`);
+}
+
+function installConstableScoreSchema(database) {
+    for (const table of ["career_constable_scores", "career_constable_review_original_scores"]) {
+        const columns = database.prepare(`PRAGMA table_info(${table})`).all();
+        for (const [name, type] of [["total_score", "INTEGER CHECK(total_score BETWEEN 0 AND 20)"], ["stars_json", "TEXT"], ["comment", "TEXT"]]) {
+            if (!columns.some(column => column.name === name)) database.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`);
+        }
+    }
+    database.exec(`CREATE TABLE IF NOT EXISTS career_constable_training (
+        attempt_id TEXT PRIMARY KEY REFERENCES career_exam_attempts(attempt_id),
+        resident_id TEXT NOT NULL, started_at INTEGER NOT NULL, promoted_at INTEGER
+    )`);
 }
 
 function installResignationSchema(database) {

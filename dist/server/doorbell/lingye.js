@@ -17,6 +17,7 @@ import { careerExamAvailability, curriculumCatalogAvailability } from "../../car
 import { courseCatalog } from "../../career/course-catalog.js";
 import { INTERVIEW_ANSWER_MESSAGES, INTERVIEW_ANSWER_RECEIPT } from "../../career/constable-interview-answers.js";
 import { INTERVIEW_REVIEW_MESSAGES, validConstableWrittenPass } from "../../career/constable-interview-review.js";
+import { constableResultMessage } from "../../career/constable-score-result.js";
 import { careerAdvancementWorkEligibility } from "../../career/school-service.js";
 import {
     resignationExplanation,
@@ -1093,6 +1094,7 @@ function constableInterviewFacts(database, backend, residentId, optionRevision) 
         const review = database.prepare("SELECT outcome FROM career_constable_reviews WHERE interview_id = ?").get(interview.interviewId);
         return {
             candidate,
+            result: interview.candidateResidentId === residentId ? constableResultMessage(database, interview.interviewId) : null,
             review: review ? { outcome: review.outcome, message: INTERVIEW_REVIEW_MESSAGES[review.outcome] } : null,
             interviewId: interview.interviewId,
             scheduledAt: isoTime(interview.scheduledAt),
