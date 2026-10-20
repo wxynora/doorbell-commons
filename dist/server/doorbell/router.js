@@ -82,8 +82,19 @@ import {
     handleDoorbellHumanGachaTenAction,
 } from "./gacha.js";
 
+import { handleTogetherReward, handleTogetherRegistration } from "./together-reward.js";
+import { readBody as readTogetherBody, jsonOut as togetherJsonOut } from "../http.js";
+import { requireDoorbellService as authorizeTogetherReward } from "./contract.js";
+
 export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExecutor, careerBenefitsForFarm, constableInterviewRuntime, gachaRuntime) {
     return async function handleDoorbellInternal(req, res, parts, method) {
+        if (["internal/doorbell/together/reward", "internal/doorbell/together/registration"].includes(parts.join("/"))) {
+            const handler = parts[3] === "registration" ? handleTogetherRegistration : handleTogetherReward;
+            await handler(req, res, method, constableInterviewRuntime, {
+                authorize: authorizeTogetherReward, readBody: readTogetherBody, jsonOut: togetherJsonOut, error: internalServiceError,
+            });
+            return true;
+        }
         if(parts.length===5 && parts[0]==="internal" && parts[1]==="doorbell" && parts[2]==="security" && parts[3]==="patrol" && ["pending","ack"].includes(parts[4])) {
             await handleDoorbellSecurityPatrol(req,res,method,constableInterviewRuntime,parts[4]);
             return true;

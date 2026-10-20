@@ -1220,7 +1220,10 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
         executeDoorbellFarmAction,
         lingyeActionExecutor,
         doorbellCareerBenefitsForFarm,
-        { database: lingyeWorldDatabase, backend: lingyeWorldBackend, economyRules: lingyeEconomyRules },
+        {
+            database: lingyeWorldDatabase, backend: lingyeWorldBackend, economyRules: lingyeEconomyRules,
+            syncTogetherBalances: () => withWorldCommitContext({ balanceAuthority: "ledger", actor: "system" }, syncLedgerProjection),
+        },
         gachaRuntime,
     );
     const stopP3Scheduler = startRegisteredP3Scheduler(lingyeWorldDatabase);
