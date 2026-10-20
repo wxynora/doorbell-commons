@@ -12,7 +12,7 @@ export function decorateSnowStatus(text, state, residentId, now) {
           "报名费付款结果尚未确认，暂不算报名成功。请保留原编号，不要换编号重复报名。",
           JSON.stringify({ op: "farm.together.choose", args: { option: payment.option } }),
         ].join("\n")
-      : SNOW_WAR_NOTICE_COPY.registration;
+      : (state.copy?.registration ?? SNOW_WAR_NOTICE_COPY.registration);
   const lines = text.split("\n");
   const daily = lines.findIndex((line) => line.includes("日报"));
   lines.splice(daily < 0 ? lines.length : daily + 1, 0, hint);

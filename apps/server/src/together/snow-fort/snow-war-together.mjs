@@ -728,7 +728,8 @@ export function openSnowWarTogether({
         typeof activityId !== "string" ||
         !activityId ||
         !Number.isSafeInteger(opensAt) ||
-        closesAt !== opensAt + 3 * DAY ||
+        !Number.isSafeInteger(closesAt) ||
+        closesAt <= opensAt ||
         !Array.isArray(matchStartsAt) ||
         matchStartsAt.length !== 3 ||
         matchStartsAt.some((value) => !Number.isSafeInteger(value)) ||
