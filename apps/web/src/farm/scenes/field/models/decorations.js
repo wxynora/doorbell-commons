@@ -9,6 +9,7 @@ import { FARM_FURNITURE_IDS, SEASONAL_FURNITURE_IDS, createFarmFurniture } from 
 
 // First six IDs match ranch-items; new furniture IDs are local design candidates only.
 export const DECORATIONS = {
+  snow_fort: { name: "团团雪堡", cells: [3, 2] },
   ...GARDEN_TRIO,
   flowerbed: { name: "花圃", cells: [1, 1] },
   ...FLOWERBEDS,
@@ -362,7 +363,7 @@ export function updateDecorationLights(objects, night) {
       light.intensity = night * (light.userData.nightIntensity ?? 0.8);
       light.visible = light.intensity !== 0;
     }
-    for (const material of nodes.materials) material.emissiveIntensity = night * 2.3;
+    for (const material of nodes.materials) material.emissiveIntensity = night * (material.userData.nightIntensity ?? 2.3);
   }
 }
 

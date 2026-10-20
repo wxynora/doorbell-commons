@@ -243,7 +243,7 @@ export function openSnowWarTogether({
     });
     const rewards = Object.values(state.rewards ?? {})
       .filter((reward) => reward.residentId === residentId)
-      .map(({ grantId, gold, silver, status, kind, matchIndex, roundIndex }) => ({
+      .map(({ grantId, gold, silver, status, kind, matchIndex, roundIndex, decoration }) => ({
         grantId,
         gold,
         silver,
@@ -251,6 +251,7 @@ export function openSnowWarTogether({
         kind,
         matchIndex,
         roundIndex,
+        ...(decoration ? { decoration: structuredClone(decoration) } : {}),
       }));
     const expectedRewards =
       series?.status === "complete" && state.configuration.rewards && side
@@ -962,7 +963,10 @@ export function openSnowWarTogether({
           receipt.grantId !== id ||
           receipt.residentId !== reward.residentId ||
           receipt.gold !== reward.gold ||
-          receipt.silver !== reward.silver
+          receipt.silver !== reward.silver ||
+          (reward.decoration
+            ? receipt.decoration?.itemId !== reward.decoration.itemId || receipt.decoration?.quantity !== reward.decoration.quantity
+            : receipt.decoration !== undefined)
         )
           fail("reward_receipt_mismatch");
         reward.status = "paid";

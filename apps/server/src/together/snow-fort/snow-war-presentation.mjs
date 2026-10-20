@@ -302,6 +302,8 @@ export function renderSnowResult(data) {
     lines.push(
       `${label}：${reward.gold}金币、${reward.silver}银币，${reward.status === "paid" ? "已确认到账。" : "正在确认入账，尚未确认到账。"}`,
     );
+    if (reward.status === "paid" && reward.decoration?.itemId === "farm_decor:snow_fort" && reward.decoration.quantity === 1)
+      lines.push("限定家具：团团雪堡×1（已放入装修仓库）。");
   }
   if (data.phase === "complete" && data.rewardsSettled === true)
     lines.push("三场比赛与奖励结算已完成。");

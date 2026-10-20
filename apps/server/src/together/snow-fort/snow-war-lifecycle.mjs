@@ -205,6 +205,7 @@ export function advanceSnowLifecycle({
       roundIndex,
       gold: amounts.gold,
       silver: amounts.silver,
+      ...(kind === "champion" ? { decoration: { itemId: "farm_decor:snow_fort", quantity: 1 } } : {}),
       status: "pending",
       receipt: null,
     };

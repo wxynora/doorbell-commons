@@ -29,12 +29,17 @@ export interface SnowNotice {
   blockReason?: string | null;
   errorCode?: string | null;
 }
+export interface SnowDecorationReward {
+  itemId: "farm_decor:snow_fort";
+  quantity: 1;
+}
 export interface SnowReward {
   grantId: string;
   residentId: string;
   gold: number;
   silver: number;
   status: "pending" | "paid";
+  decoration?: SnowDecorationReward;
 }
 export interface SnowRewardReceipt {
   grantId: string;
@@ -42,6 +47,7 @@ export interface SnowRewardReceipt {
   gold: number;
   silver: number;
   journalIds: string[];
+  decoration?: SnowDecorationReward;
 }
 export interface SnowRegistrationPayment {
   paymentId: string;
