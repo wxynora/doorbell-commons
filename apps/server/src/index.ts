@@ -20,7 +20,7 @@ import { BrowserPushService } from "./browser-push-service.js";
 import { CareerExamReminderService } from "./career-exam-reminder-service.js";
 import { CommunityDatabase } from "./community-database.js";
 import { readDoorbellServerConfig } from "./config.js";
-import { ConstableInterviewSignupMailService } from "./constable-interview-signup-mail-service.js";
+import { ConstableInterviewDeliveryService } from "./constable-interview-delivery-service.js";
 import { FarmActionListAuthority } from "./farm-action-list-authority.js";
 import { FarmActionListAuthorityClient } from "./farm-action-list-authority-client.js";
 import { FarmActionListScheduler } from "./farm-action-list-scheduler.js";
@@ -451,16 +451,10 @@ const sharedMemeBackendService = new SharedMemeBackendService({
   database,
   registrationAuth,
 });
-const constableInterviewSignupMailService = serverConfig.constableInterviewSignupMailCopy
-  ? new ConstableInterviewSignupMailService({
-      database,
-      registrationAuth,
-      farmInterviews: farmConstableInterviewClient,
-      mailboxService,
-      copy: serverConfig.constableInterviewSignupMailCopy,
-      onError: reportConstableInterviewMailError,
-    })
-  : null;
+const constableInterviewSignupMailService = new ConstableInterviewDeliveryService({
+  database, registrationAuth, farmInterviews: farmConstableInterviewClient,
+  mailboxService, onError: reportConstableInterviewMailError,
+});
 constableInterviewSignupMailService?.start();
 disconnectRealtimeResident = (residentId): void => {
   bellService.disconnectResident(residentId);

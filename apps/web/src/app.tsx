@@ -77,6 +77,7 @@ import {
 } from "./preview/candidate-two-preview";
 import {
   DOORBELL_FARM_PATH,
+  isConstableInterviewPath,
   isDoorbellFarmPath,
   isMidAutumnPath,
   MID_AUTUMN_PATH,
@@ -85,6 +86,11 @@ import {
 const LingyeDailyScreen = lazy(async () => {
   const module = await import("./daily/lingye-daily-screen");
   return { default: module.LingyeDailyScreen };
+});
+
+const ConstableInterviewPage = lazy(async () => {
+  const module = await import("./components/constable-interview-page");
+  return { default: module.ConstableInterviewPage };
 });
 
 const FarmPage = lazy(async () => {
@@ -1546,6 +1552,12 @@ function LiveApp() {
 
   if (appState.stage === "authenticated" && showMcpAfterPermit) {
     return <McpAccessPage onComplete={() => setShowMcpAfterPermit(false)} />;
+  }
+
+  if (appState.stage === "authenticated" && isConstableInterviewPath(window.location.pathname)) {
+    return <Suspense fallback={<FarmLazyLoading label="正在打开面试安排" mode="page" />}>
+      <ConstableInterviewPage key={appState.identity.resident.resident_id} onBack={() => window.location.assign("/")} />
+    </Suspense>;
   }
 
   return (

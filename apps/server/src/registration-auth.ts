@@ -1,3 +1,5 @@
+import type { FarmHumanConstableInterviewSuccess } from "@doorbell/protocol";
+import type { FarmConstableInterviewIdentity } from "./farm-constable-interview-client.js";
 import { residentAvatarSaveSchema } from "@doorbell/protocol";
 import { AvatarRevisionConflict } from "./resident-avatar/store.js";
 import type { FarmBulletinAckScope, OwnerProfileCareerSummarySuccess, LingyeNpcInteractRequest, BoundFarmDecorationLayoutSaveRequest } from "@doorbell/protocol";
@@ -1417,7 +1419,7 @@ export class RegistrationAuthService {
   }
 
   async getCurrentConstableInterview(token: string, interviewId?: string) {
-    const community = await this.getCurrentSession(token);
+    const community = await this.getCurrentSessionWithMembership(token);
     const farmHumanKey = community.farmBinding.farmHumanKey;
     if (farmHumanKey === null) {
       throw new RegistrationProfileRequiredError();
@@ -1425,17 +1427,20 @@ export class RegistrationAuthService {
     if (!this.#farmConstableInterviewReader) {
       throw new FarmConstableInterviewContractUnavailableError();
     }
-    return this.#farmConstableInterviewReader.readConstableInterview({
+    const identity = {
       farmDoorplate: community.farmBinding.farmDoorplate,
       farmHumanKey,
       accountId: community.account.accountId,
       residentId: community.resident.residentId,
-      ...(interviewId === undefined ? {} : { interviewId }),
+    };
+    const result = await this.#farmConstableInterviewReader.readConstableInterview({
+      ...identity, ...(interviewId === undefined ? {} : { interviewId }),
     });
+    return this.#settleConstableInterviewScores(result, identity, interviewId);
   }
 
   async signupCurrentConstableInterview(token: string, interviewId: string) {
-    const community = await this.getCurrentSession(token);
+    const community = await this.getCurrentSessionWithMembership(token);
     const farmHumanKey = community.farmBinding.farmHumanKey;
     if (farmHumanKey === null) {
       throw new RegistrationProfileRequiredError();
@@ -1454,7 +1459,7 @@ export class RegistrationAuthService {
   }
 
   async confirmCurrentConstableInterviewAttendance(token: string, interviewId: string) {
-    const community = await this.getCurrentSession(token);
+    const community = await this.getCurrentSessionWithMembership(token);
     const farmHumanKey = community.farmBinding.farmHumanKey;
     if (farmHumanKey === null) {
       throw new RegistrationProfileRequiredError();
@@ -1482,7 +1487,7 @@ export class RegistrationAuthService {
       explanation: number;
     },
   ) {
-    const community = await this.getCurrentSession(token);
+    const community = await this.getCurrentSessionWithMembership(token);
     const farmHumanKey = community.farmBinding.farmHumanKey;
     if (farmHumanKey === null) {
       throw new RegistrationProfileRequiredError();
@@ -1508,27 +1513,36 @@ export class RegistrationAuthService {
       procedure: input.procedure,
       explanation: input.explanation,
     });
-    const interview = scored.data.interviews.find(
-      (candidate) => candidate.interview_id === input.interviewId,
-    );
-    if (!interview) {
+    if (!scored.data.interviews.some(item => item.interview_id === input.interviewId))
       throw new FarmConstableInterviewContractUnavailableError();
-    }
-    if (interview.status !== "scoring" || interview.score_count !== 3) {
-      return scored;
-    }
+    return this.#settleConstableInterviewScores(scored, identity, input.interviewId);
+  }
 
-    const publicNoticeAudience = await this.#resolveConstablePublicNoticeAudience(
-      interview.candidate_resident_id,
-    );
-    await opener.openConstablePublicNotice({
-      interviewId: interview.interview_id,
-      candidateResidentName: publicNoticeAudience.candidateResidentName,
-      eligibleVoterResidentIds: publicNoticeAudience.eligibleVoterResidentIds,
-    });
+  async #settleConstableInterviewScores(
+    result: FarmHumanConstableInterviewSuccess,
+    identity: FarmConstableInterviewIdentity,
+    interviewId?: string,
+  ) {
+    const pending = result.data.interviews.filter(item =>
+      item.status === "scoring" && item.score_count === 3);
+    if (!pending.length) return result;
+    const opener = this.#farmConstableInterviewPublicNoticeOpener;
+    const reader = this.#farmConstableInterviewReader;
+    if (!opener || !reader) throw new FarmConstableInterviewContractUnavailableError();
+    for (const interview of pending) {
+      const audience = interview.phase === "review"
+        ? { candidateResidentName: this.#database.listActiveHumanCommunities()
+              .find(item => item.resident.residentId === interview.candidate_resident_id)?.resident.residentName,
+            eligibleVoterResidentIds: [] as string[] }
+        : await this.#resolveConstablePublicNoticeAudience(interview.candidate_resident_id);
+      if (!audience.candidateResidentName) throw new FarmConstableInterviewContractUnavailableError();
+      await opener.openConstablePublicNotice({
+        interviewId: interview.interview_id, candidateResidentName: audience.candidateResidentName,
+        eligibleVoterResidentIds: audience.eligibleVoterResidentIds,
+      });
+    }
     return reader.readConstableInterview({
-      ...identity,
-      interviewId: interview.interview_id,
+      ...identity, ...(interviewId === undefined ? {} : { interviewId }),
     });
   }
 

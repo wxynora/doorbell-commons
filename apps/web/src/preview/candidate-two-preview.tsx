@@ -21,7 +21,7 @@ import type {
   BoundTogetherRead,
 } from "../auth/lingye-client";
 import type { MidAutumnView } from "../mid-autumn/api";
-import { DOORBELL_FARM_PATH } from "../routes";
+import { DOORBELL_FARM_PATH, CONSTABLE_INTERVIEW_PATH } from "../routes";
 import { candidateTwoHtml } from "./candidate-two-source";
 import { npcSceneMarkup, npcSceneScript, NPC_SCENE_STYLES } from "../npc/scene";
 import { useNpcBridge } from "../npc/use-npc-bridge";
@@ -89,7 +89,7 @@ interface CandidateTwoGlimmerEncounterDefinition {
   name: string;
 }
 
-const candidateTwoInternalPaths = [DOORBELL_FARM_PATH] as const;
+const candidateTwoInternalPaths = [DOORBELL_FARM_PATH, CONSTABLE_INTERVIEW_PATH] as const;
 
 const candidateTwoGlimmerAnimalPositionParams: Record<
   CandidateTwoGlimmerAnimalPositionId,
@@ -1875,7 +1875,10 @@ const HOME_RUNTIME_CONTENT = `        <button class="home-parlor-entry" type="bu
                     <p class="home-mailbox-detail-body"></p>
                     <div class="home-mailbox-detail-footer">
                         <span class="home-mailbox-detail-status"></span>
-                        <span class="home-mailbox-detail-actions" hidden>
+                        <span class="home-mailbox-detail-actions home-mailbox-interview-entry" hidden>
+                            <button type="button" onclick="openLingyeRoute('/lingye/constable-interview', '面试安排')">面试安排</button>
+                        </span>
+                        <span class="home-mailbox-detail-actions home-mailbox-claim-actions" hidden>
                             <button type="button" onclick="claimHomeMailboxAttachment()">领取附件</button>
                         </span>
                     </div>
@@ -2022,7 +2025,8 @@ const HOME_SCRIPT = `
         detail.querySelector('.home-mailbox-detail-status').textContent = window.__doorbellCandidateDemo
             ? message.status
             : '';
-        detail.querySelector('.home-mailbox-detail-actions').hidden = true;
+        detail.querySelector('.home-mailbox-claim-actions').hidden = true;
+        detail.querySelector('.home-mailbox-interview-entry').hidden = true;
         setStatus(detail.querySelector('.home-mailbox-detail-feedback'), '');
         detail.querySelector('.home-mailbox-detail-back').focus();
         if (!window.__doorbellCandidateDemo && message.letterId) {
@@ -10134,7 +10138,8 @@ const CANDIDATE_RUNTIME_SCRIPT = `
             homeMailboxSelectedLetterId = detail.letterId;
             detailView.querySelector('.home-mailbox-detail-body').textContent =
                 detail.stage === 'loading' ? '正在读取信件……' : detail.message;
-            detailView.querySelector('.home-mailbox-detail-actions').hidden = true;
+            detailView.querySelector('.home-mailbox-claim-actions').hidden = true;
+            detailView.querySelector('.home-mailbox-interview-entry').hidden = true;
             setStatus(detailFeedback, '');
         } else if (detail.stage === 'ready') {
             const letter = detail.data.letter;
@@ -10143,12 +10148,14 @@ const CANDIDATE_RUNTIME_SCRIPT = `
             detailView.querySelector('.home-mailbox-detail-heading time').textContent = formatHomeMailboxTime(letter.created_at);
             detailView.querySelector('.home-mailbox-detail-title').textContent = letter.title;
             detailView.querySelector('.home-mailbox-detail-body').textContent = letter.body;
+            detailView.querySelector('.home-mailbox-interview-entry').hidden = !(letter.category === 'lingye' &&
+                ['治安官面试｜考官报名', '治安官面试｜请确认到场', '治安官面试｜考官席位确认', '治安官面试｜场次顺延'].includes(letter.title));
             const claimable = letter.attachment && letter.attachment.status === 'available';
             detailView.querySelector('.home-mailbox-detail-status').textContent = letter.attachment
                 ? letter.attachment.status === 'claimed' ? '附件已领取' : '有一份附件待领取'
                 : '已读';
-            detailView.querySelector('.home-mailbox-detail-actions').hidden = !claimable;
-            detailView.querySelector('.home-mailbox-detail-actions button').disabled = mailbox.claimPending;
+            detailView.querySelector('.home-mailbox-claim-actions').hidden = !claimable;
+            detailView.querySelector('.home-mailbox-claim-actions button').disabled = mailbox.claimPending;
             setStatus(
                 detailFeedback,
                 mailbox.claimPending ? '正在领取附件……' : mailbox.claimMessage,

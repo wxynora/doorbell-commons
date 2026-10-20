@@ -67,6 +67,12 @@ const constableInterviewPublicNoticeSchema = z
  */
 export const farmConstableInterviewViewSchema = z
   .object({
+    phase: z.enum(["interview", "review"]),
+    review_outcome: z.enum(["pending", "passed", "failed"]).nullable(),
+    answer: z.object({ text: z.string().min(1), submitted_at: dateTimeSchema }).strict().nullable(),
+    original_scores: z.array(z.object({ facts: scoreSchema, restraint: scoreSchema,
+      procedure: scoreSchema, explanation: scoreSchema }).strict()).length(3).nullable(),
+    qualification_level: z.number().int().min(1).max(4),
     interview_id: interviewIdSchema,
     attempt_id: attemptIdSchema,
     candidate_resident_id: residentIdSchema,
@@ -89,6 +95,12 @@ export const farmConstableInterviewViewSchema = z
         path: ["interview_material"],
         message: "Selected examiners must receive the frozen interview material",
       });
+    }
+    if (!materialRequired && (view.answer !== null || view.original_scores !== null)) {
+      context.addIssue({ code: "custom", message: "Answers and original scores are private to the selected panel" });
+    }
+    if (view.phase !== "review" && view.original_scores !== null) {
+      context.addIssue({ code: "custom", message: "Original scores belong only to a review panel" });
     }
     if (!materialRequired && view.interview_material !== null) {
       context.addIssue({
@@ -150,6 +162,12 @@ export const farmConstableInterviewPublicNoticeRequestSchema = z
 const farmConstableInterviewDataSchema = z
   .object({
     interviews: z.array(farmConstableInterviewViewSchema),
+    events: z.array(z.object({
+      event_id: z.number().int().positive(), interview_id: interviewIdSchema,
+      kind: z.enum(["selected", "postponed"]), scheduled_at: dateTimeSchema,
+      next_scheduled_at: dateTimeSchema.nullable(), candidate_resident_id: residentIdSchema,
+      qualification_level: z.number().int().min(1).max(4),
+    }).strict()),
   })
   .strict();
 
@@ -174,6 +192,7 @@ export const farmConstableInterviewPublicNoticeSuccessSchema = z
     data: z.discriminatedUnion("status", [
       z.object({ status: z.literal("public_notice"), notice_id: z.string().min(1) }).strict(),
       z.object({ status: z.literal("failed"), notice_id: z.null() }).strict(),
+      z.object({ status: z.literal("certificate_activated"), notice_id: z.null() }).strict(),
     ]),
     server_time: dateTimeSchema,
   })
@@ -204,6 +223,7 @@ export const farmConstableInterviewErrorCodeSchema = z.enum([
   "interview_score_conflict",
   "invalid_interview_score",
   "interview_not_scoring",
+  "interview_answer_required",
   "examiner_not_selected",
   "public_notice_closed",
   "public_notice_vote_unavailable",
@@ -256,6 +276,12 @@ const boundConstableInterviewPublicNoticeSchema = constableInterviewPublicNotice
 
 export const boundConstableInterviewViewSchema = z
   .object({
+    phase: z.enum(["interview", "review"]),
+    review_outcome: z.enum(["pending", "passed", "failed"]).nullable(),
+    answer: z.object({ text: z.string().min(1), submitted_at: dateTimeSchema }).strict().nullable(),
+    original_scores: z.array(z.object({ facts: scoreSchema, restraint: scoreSchema,
+      procedure: scoreSchema, explanation: scoreSchema }).strict()).length(3).nullable(),
+    qualification_level: z.number().int().min(1).max(4),
     interview_id: interviewIdSchema,
     scheduled_at: dateTimeSchema,
     status: constableInterviewStatusSchema,
@@ -276,6 +302,12 @@ export const boundConstableInterviewViewSchema = z
         path: ["interview_material"],
         message: "Selected examiners must receive the frozen interview material",
       });
+    }
+    if (!materialRequired && (view.answer !== null || view.original_scores !== null)) {
+      context.addIssue({ code: "custom", message: "Answers and original scores are private to the selected panel" });
+    }
+    if (view.phase !== "review" && view.original_scores !== null) {
+      context.addIssue({ code: "custom", message: "Original scores belong only to a review panel" });
     }
     if (!materialRequired && view.interview_material !== null) {
       context.addIssue({
@@ -318,6 +350,7 @@ export const boundConstableInterviewErrorCodeSchema = z.enum([
   "interview_score_conflict",
   "invalid_interview_score",
   "interview_not_scoring",
+  "interview_answer_required",
   "examiner_not_selected",
 ]);
 

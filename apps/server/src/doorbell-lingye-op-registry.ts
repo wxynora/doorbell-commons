@@ -162,9 +162,10 @@ export const lingyeOperations = [
     op: "go.school.choose",
     modelVisible: true,
     description:
-      '提交 go.school.view 当前返回的 option。课程练习和正式笔试必须一次提交整卷 answers；每题用数组表示所选答案，例如 ["A"] 或 ["A","C"]。需要付费时系统自动扣款或冻结，余额不足则业务不创建。',
-    argsHint: '{option} 或 {option,answers:[...["A"]|["A","C"]]}',
-    branches: [{ option: nonEmptyString }, { option: nonEmptyString, answers: schoolAnswers }],
+      '提交 go.school.view 当前返回的 option。课程练习和正式笔试必须一次提交整卷 answers；每题用数组表示所选答案，例如 ["A"] 或 ["A","C"]。需要付费时系统自动扣款或冻结，余额不足则业务不创建。治安官面试使用当前返回的 option 和 text 提交整份答复；答卷提交后不能修改，由本场三名人类考官独立评分。',
+    argsHint: '{option} 或 {option,answers:[...["A"]|["A","C"]]}；治安官面试使用当前返回的 option 和 text 提交整份答复；答卷提交后不能修改，由本场三名人类考官独立评分。',
+    branches: [{ option: nonEmptyString }, { option: nonEmptyString, answers: schoolAnswers },
+      { option: nonEmptyString, text: z.string().refine(value => value.trim().length > 0) }],
     exampleArgs: [{ option: "returned-option" }],
   }),
   defineOperation({

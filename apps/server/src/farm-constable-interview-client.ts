@@ -239,12 +239,12 @@ export class FarmConstableInterviewClient
       throw new FarmConstableInterviewUnavailableError();
     }
     if (response.status === 502) throw new FarmConstableInterviewContractUnavailableError();
-    if (response.status >= 500) throw new FarmConstableInterviewUnavailableError();
 
     let payload: unknown;
     try {
       payload = await response.json();
     } catch {
+      if (response.status >= 500) throw new FarmConstableInterviewUnavailableError();
       throw new FarmConstableInterviewContractUnavailableError();
     }
     if (response.ok) {
@@ -278,12 +278,12 @@ export class FarmConstableInterviewClient
       throw new FarmConstableInterviewUnavailableError();
     }
     if (response.status === 502) throw new FarmConstableInterviewContractUnavailableError();
-    if (response.status >= 500) throw new FarmConstableInterviewUnavailableError();
 
     let payload: unknown;
     try {
       payload = await response.json();
     } catch {
+      if (response.status >= 500) throw new FarmConstableInterviewUnavailableError();
       throw new FarmConstableInterviewContractUnavailableError();
     }
     if (!response.ok) this.#throwError(payload, response.status);
