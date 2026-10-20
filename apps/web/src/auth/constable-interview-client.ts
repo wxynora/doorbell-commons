@@ -80,7 +80,7 @@ const messages: Record<InterviewIssue["code"], string> = {
   interview_not_ready: "本场面试尚未到开场时间。",
   interview_scores_incomplete: "还没有收齐三名考官的评分，暂不能结算。",
   interview_score_conflict: "你已提交过另一份评分，已提交的评分不能修改。",
-  invalid_interview_score: "四项评分都须填写0至5之间的整数。",
+  invalid_interview_score: "请填写0至20之间的整数评分，并完成三项星评。",
   interview_not_scoring: "本场还不能评分，或已经结束评分。",
   interview_answer_required: "请先提交本场面试答卷。",
   examiner_not_selected: "只有本场最终选定的三名人类考官可以评分。",

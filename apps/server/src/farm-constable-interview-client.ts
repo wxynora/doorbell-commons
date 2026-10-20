@@ -32,10 +32,9 @@ export interface FarmHumanConstableInterviewAttendanceInput extends FarmConstabl
 
 export interface FarmHumanConstableInterviewScoreInput extends FarmConstableInterviewIdentity {
   interviewId: string;
-  facts: number;
-  restraint: number;
-  procedure: number;
-  explanation: number;
+  score: number;
+  stars: { clarity: number; fairness: number; reliability: number };
+  comment: string;
 }
 
 export type FarmHumanConstableInterviewActionInput =
@@ -202,10 +201,9 @@ export class FarmConstableInterviewClient
               ...identityFields(input),
               interview_id: input.interviewId,
               action: "score",
-              facts: input.facts,
-              restraint: input.restraint,
-              procedure: input.procedure,
-              explanation: input.explanation,
+              score: input.score,
+              stars: input.stars,
+              comment: input.comment,
             };
     const requestBody = farmHumanConstableInterviewActionRequestSchema.parse(request);
     return this.#requestHuman(

@@ -1,11 +1,44 @@
 .interview-page { overflow: auto; }
-.interview-page .bell-access__section-heading { flex-wrap: wrap; }
+.interview-page .bell-access__section-heading { flex-wrap: wrap; gap: 8px 16px; }
 .interview-page h2 { margin: 0; }
-.interview-page h3 { font: inherit; font-weight: 700; margin: 1.5em 0 .5em; }
+.interview-page h3, .interview-page form > fieldset > legend { font: 600 16px/1.5 "Noto Serif SC", "Songti SC", serif; }
+.interview-page h3 { margin: 28px 0 12px; }
 .interview-page p, .interview-page dd { overflow-wrap: anywhere; white-space: pre-wrap; }
-.interview-page dd { margin-inline-start: 1em; }
-.interview-page__id { font-size: .85em; opacity: .75; }
-.interview-page fieldset { border: 0; padding: 0; margin-top: 1.5em; }
-.interview-page__scores { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1em; margin: 1em 0; }
-.interview-page__scores label { display: flex; flex-direction: column; gap: .5em; }
-.interview-page__scores input { min-width: 0; padding: .65em; color: inherit; background: transparent; border: 1px solid currentColor; border-radius: .4em; font: inherit; }
+.interview-page .bell-access__content { font-size: 14px; line-height: 1.8; }
+.interview-page p { margin: 6px 0 12px; }
+.interview-page ol { padding-inline-start: 22px; margin: 0; }
+.interview-page li + li { margin-top: 14px; }
+.interview-page dl { margin: 0; }
+.interview-page dd { margin-inline-start: 0; }
+.interview-page__id { font-size: 12px; color: #9b8175; }
+.interview-page__answer { padding: 16px; background: #f8f1e9; border-left: 2px solid #cfb6a6; }
+.interview-page details { padding: 12px 0; border-bottom: 1px solid #eee5dc; }
+.interview-page summary { cursor: pointer; }
+.interview-page fieldset { min-width: 0; border: 0; padding: 0; margin: 0; }
+.interview-page form { margin-top: 28px; }
+.interview-page__hint { color: #9b8175; font-size: 12px; }
+.interview-page .bell-access__actions:empty { display: none; }
+.interview-page__refresh { margin: 0 0 24px; }
+.interview-page__ratings { margin: 16px 0 24px; }
+.interview-page .interview-page__rating { position: relative; padding: 10px 0; border-bottom: 1px solid #eee5dc; }
+.interview-page__rating legend { float: left; padding: 0; line-height: 40px; font-size: 13px; }
+.interview-page__stars { display: flex; justify-content: flex-end; }
+.interview-page__stars label { position: relative; display: grid; place-items: center; width: 36px; height: 40px; cursor: pointer; color: #ded2c8; }
+.interview-page__stars input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.interview-page__stars span { font-size: 27px; line-height: 1; }
+.interview-page__stars .is-lit { color: #ba8b47; }
+.interview-page__stars label:focus-within { outline: 2px solid #ba8b47; outline-offset: 1px; }
+.interview-page__score, .interview-page__comment { display: grid; gap: 10px; font-size: 13px; font-weight: 600; }
+.interview-page__score { grid-template-columns: 1fr auto; align-items: center; margin-bottom: 22px; }
+.interview-page__score > span { display: flex; gap: 8px; align-items: center; font-weight: 400; }
+.interview-page__score input, .interview-page__comment textarea {
+  box-sizing: border-box; color: #60483f; background: #fffdf9;
+  border: 1px solid #cfbfb0; border-radius: 2px; padding: 10px 12px; font: inherit;
+}
+.interview-page__score input { width: 108px; text-align: center; min-height: 44px; }
+.interview-page__comment textarea { width: 100%; resize: vertical; font-weight: 400; line-height: 1.7; }
+.interview-page input:focus-visible, .interview-page textarea:focus-visible { outline: 2px solid #cba89d; outline-offset: 2px; }
+@media (max-width: 360px) {
+  .interview-page__stars label { width: 30px; }
+  .interview-page__stars span { font-size: 24px; }
+}

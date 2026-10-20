@@ -4449,10 +4449,9 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     try {
       const result = await options.registrationAuth.scoreCurrentConstableInterview(token, {
         interviewId: parsedBody.data.interview_id,
-        facts: parsedBody.data.facts,
-        restraint: parsedBody.data.restraint,
-        procedure: parsedBody.data.procedure,
-        explanation: parsedBody.data.explanation,
+        score: parsedBody.data.score,
+        stars: parsedBody.data.stars,
+        comment: parsedBody.data.comment,
       });
       reply.header("cache-control", "no-store");
       return boundConstableInterviewResponse(result);

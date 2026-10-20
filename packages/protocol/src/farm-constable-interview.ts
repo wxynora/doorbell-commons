@@ -7,6 +7,17 @@ const residentIdSchema = z.string().min(1);
 const interviewIdSchema = z.string().min(1);
 const attemptIdSchema = z.string().min(1);
 const scoreSchema = z.number().int().min(0).max(5);
+const starsSchema = z.object({
+  clarity: z.number().int().min(1).max(5),
+  fairness: z.number().int().min(1).max(5),
+  reliability: z.number().int().min(1).max(5),
+}).strict();
+const examinerScoreSchema = z.object({
+  score: z.number().int().min(0).max(20), stars: starsSchema, comment: z.string(),
+}).strict();
+const originalScoreSchema = z.union([examinerScoreSchema, z.object({
+  facts: scoreSchema, restraint: scoreSchema, procedure: scoreSchema, explanation: scoreSchema,
+}).strict()]);
 const dateTimeSchema = z.iso.datetime();
 const interviewMaterialPartSchema = z
   .record(z.string(), z.unknown())
@@ -70,8 +81,7 @@ export const farmConstableInterviewViewSchema = z
     phase: z.enum(["interview", "review"]),
     review_outcome: z.enum(["pending", "passed", "failed"]).nullable(),
     answer: z.object({ text: z.string().min(1), submitted_at: dateTimeSchema }).strict().nullable(),
-    original_scores: z.array(z.object({ facts: scoreSchema, restraint: scoreSchema,
-      procedure: scoreSchema, explanation: scoreSchema }).strict()).length(3).nullable(),
+    original_scores: z.array(originalScoreSchema).length(3).nullable(),
     qualification_level: z.number().int().min(1).max(4),
     interview_id: interviewIdSchema,
     attempt_id: attemptIdSchema,
@@ -143,10 +153,7 @@ export const farmHumanConstableInterviewActionRequestSchema = z.discriminatedUni
   farmHumanConstableInterviewActionBaseSchema
     .extend({
       action: z.literal("score"),
-      facts: scoreSchema,
-      restraint: scoreSchema,
-      procedure: scoreSchema,
-      explanation: scoreSchema,
+      ...examinerScoreSchema.shape,
     })
     .strict(),
 ]);
@@ -263,10 +270,7 @@ export const boundConstableInterviewActionRequestSchema = z
 export const boundConstableInterviewScoreRequestSchema = z
   .object({
     interview_id: interviewIdSchema,
-    facts: scoreSchema,
-    restraint: scoreSchema,
-    procedure: scoreSchema,
-    explanation: scoreSchema,
+    ...examinerScoreSchema.shape,
   })
   .strict();
 
@@ -279,8 +283,7 @@ export const boundConstableInterviewViewSchema = z
     phase: z.enum(["interview", "review"]),
     review_outcome: z.enum(["pending", "passed", "failed"]).nullable(),
     answer: z.object({ text: z.string().min(1), submitted_at: dateTimeSchema }).strict().nullable(),
-    original_scores: z.array(z.object({ facts: scoreSchema, restraint: scoreSchema,
-      procedure: scoreSchema, explanation: scoreSchema }).strict()).length(3).nullable(),
+    original_scores: z.array(originalScoreSchema).length(3).nullable(),
     qualification_level: z.number().int().min(1).max(4),
     interview_id: interviewIdSchema,
     scheduled_at: dateTimeSchema,

@@ -1481,10 +1481,9 @@ export class RegistrationAuthService {
     token: string,
     input: {
       interviewId: string;
-      facts: number;
-      restraint: number;
-      procedure: number;
-      explanation: number;
+      score: number;
+      stars: { clarity: number; fairness: number; reliability: number };
+      comment: string;
     },
   ) {
     const community = await this.getCurrentSessionWithMembership(token);
@@ -1508,10 +1507,9 @@ export class RegistrationAuthService {
       action: "score",
       ...identity,
       interviewId: input.interviewId,
-      facts: input.facts,
-      restraint: input.restraint,
-      procedure: input.procedure,
-      explanation: input.explanation,
+      score: input.score,
+      stars: input.stars,
+      comment: input.comment,
     });
     if (!scored.data.interviews.some(item => item.interview_id === input.interviewId))
       throw new FarmConstableInterviewContractUnavailableError();
