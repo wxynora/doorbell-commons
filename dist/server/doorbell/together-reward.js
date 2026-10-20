@@ -1,22 +1,34 @@
 // Service-only activity payouts use the existing Farm ledger, never a second wallet.
-export function createTogetherRewardService({ database, backend }) {
+export function createTogetherRewardService({ database, backend, decorationRewards }) {
   const credit = backend?.trustedSystemCommands?.creditFromSystem;
   if (!database || typeof credit !== "function") throw new Error("together_reward_unavailable");
   let sequence = 0;
   return {
     grant(input) {
       if (!input || typeof input !== "object" || Array.isArray(input) ||
-          Object.keys(input).sort().join(",") !== "gold,grant_id,resident_id,silver" ||
+          Object.keys(input).sort().join(",") !== (Object.hasOwn(input, "decoration") ? "decoration,gold,grant_id,resident_id,silver" : "gold,grant_id,resident_id,silver") ||
           typeof input.grant_id !== "string" || !input.grant_id ||
           typeof input.resident_id !== "string" || !input.resident_id ||
           !Number.isSafeInteger(input.gold) || input.gold < 0 ||
           !Number.isSafeInteger(input.silver) || input.silver < 0 || input.gold + input.silver === 0)
         throw new Error("invalid_together_reward");
+      if (input.decoration !== undefined && (!input.decoration || typeof input.decoration !== "object" ||
+          Array.isArray(input.decoration) || Object.keys(input.decoration).sort().join(",") !== "item_id,quantity" ||
+          input.decoration.item_id !== "farm_decor:snow_fort" || input.decoration.quantity !== 1))
+        throw new Error("invalid_together_reward");
+      if (input.decoration && typeof decorationRewards?.grant !== "function")
+        throw new Error("together_decoration_unavailable");
+      // Farm inventory must publish at its own durable world checkpoint, never
+      // inside an older SQL transaction (the existing persistence contract).
+      if (input.decoration && (database.isTransaction || database.inTransaction))
+        throw new Error("together_decoration_nested_forbidden");
       const nested = database.isTransaction === true || database.inTransaction === true;
       const savepoint = `together_reward_${++sequence}`;
       database.exec(nested ? `SAVEPOINT ${savepoint}` : "BEGIN IMMEDIATE");
+      let journals;
       try {
-        const reference = JSON.stringify(["together", input.grant_id, input.resident_id, input.gold, input.silver]);
+        const reference = JSON.stringify(["together", input.grant_id, input.resident_id, input.gold, input.silver,
+          ...(input.decoration ? [[input.decoration.item_id, input.decoration.quantity]] : [])]);
         // Both currencies bind the entire grant, including zero amounts. Replaying
         // a one-currency grant cannot silently add the previously absent currency.
         for (const currency of ["gold", "silver"]) {
@@ -27,7 +39,7 @@ export function createTogetherRewardService({ database, backend }) {
             const error = new Error("together_reward_conflict"); error.code = "IDEMPOTENCY_CONFLICT"; throw error;
           }
         }
-        const journals = [];
+        journals = [];
         for (const currency of ["gold", "silver"]) {
           if (input[currency] === 0) continue;
           const key = `together-reward:${input.grant_id}:${currency}`;
@@ -38,13 +50,17 @@ export function createTogetherRewardService({ database, backend }) {
           journals.push(record.journal_id);
         }
         database.exec(nested ? `RELEASE SAVEPOINT ${savepoint}` : "COMMIT");
-        return { ok: true, grant_id: input.grant_id, resident_id: input.resident_id,
-          gold: input.gold, silver: input.silver, journal_ids: journals };
       } catch (error) {
         if (nested) { database.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`); database.exec(`RELEASE SAVEPOINT ${savepoint}`); }
         else if (database.isTransaction || database.inTransaction) database.exec("ROLLBACK");
         throw error;
       }
+      // A failed inventory checkpoint leaves the whole HTTP reward unconfirmed.
+      // Retry the same grant: currency journals replay, then inventory resumes.
+      const decoration = input.decoration ? decorationRewards.grant(input) : undefined;
+      return { ok: true, grant_id: input.grant_id, resident_id: input.resident_id,
+        gold: input.gold, silver: input.silver, journal_ids: journals,
+        ...(decoration ? { decoration } : {}) };
     },
   };
 }

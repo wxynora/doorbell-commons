@@ -1,5 +1,6 @@
 // Separate namespace: old ranch decoration holdings are never imported here.
 const rows = [
+  ["snow_fort", "团团雪堡", 3, 2, 0],
   ["house_level_two", "二级房屋升级", 1, 1, 150000, "unlock", "house"],
   ["house_level_three", "三级房屋升级", 1, 1, 300000, "unlock", "house"],
   ["floral_canopy", "花植雨棚", 1, 1, 50000, "unlock", "house"],
@@ -89,6 +90,7 @@ const HALLOWEEN_DECORATION_IDS = new Set([
 export const HALLOWEEN_DECORATION_SALE_UNTIL = Date.parse("2026-11-01T00:00:00+08:00");
 export function isDecorationSaleOpen(item, now = Date.now()) {
   const id = typeof item === "string" ? item : item?.item_id;
+  if (id === "farm_decor:snow_fort") return false; // Activity reward only; also excluded from gacha.
   return !HALLOWEEN_DECORATION_IDS.has(id) || Number(now) < HALLOWEEN_DECORATION_SALE_UNTIL;
 }
 export function isDecorationGachaEligible(item, now = Date.now()) {

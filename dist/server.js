@@ -1,3 +1,4 @@
+import { createTogetherDecorationRewards } from "./server/doorbell/together-decoration.js";
 import { handleFarmDecorationAction } from './server/farm-decoration-agent-action.js';
 import { captureCommittedPlayerPatrolThefts } from "./security/player-patrol-runtime.js";
 import { aiRanchHarvestStatus } from "./domain/ranch/ai-harvest.js";
@@ -1222,6 +1223,7 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
         doorbellCareerBenefitsForFarm,
         {
             database: lingyeWorldDatabase, backend: lingyeWorldBackend, economyRules: lingyeEconomyRules,
+            decorationRewards: createTogetherDecorationRewards(),
             syncTogetherBalances: () => withWorldCommitContext({ balanceAuthority: "ledger", actor: "system" }, syncLedgerProjection),
         },
         gachaRuntime,
