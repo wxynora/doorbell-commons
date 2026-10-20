@@ -1,6 +1,8 @@
 import type { CommunityDatabase } from "./community-database.js";
 import type { FarmConstableInterviewReader } from "./farm-constable-interview-client.js";
 import type { MailboxService } from "./mailbox-service.js";
+import type { BrowserPushService } from "./browser-push-service.js";
+import type { ConstableInterviewPushStore } from "./constable-interview-push-store.js";
 
 const DAY = 86400000, OFFSET = 8 * 3600000;
 const LETTERS = {
@@ -20,6 +22,10 @@ interface Options {
   registrationAuth: { confirmCurrentResidentMembership(residentId: string): Promise<unknown> };
   farmInterviews: FarmConstableInterviewReader;
   mailboxService: Pick<MailboxService, "deliver">;
+  browserPush?: {
+    service: Pick<BrowserPushService, "sendActivityReminder">;
+    receipts: Pick<ConstableInterviewPushStore, "claim" | "confirm">;
+  };
   now?: () => number;
   onError?: (error: unknown) => void;
 }
@@ -52,9 +58,9 @@ export class ConstableInterviewDeliveryService {
           farmDoorplate: community.farmBinding.farmDoorplate, farmHumanKey,
           accountId: community.account.accountId, residentId: community.resident.residentId,
         });
-        const deliver = (kind: keyof typeof LETTERS, id: string, fields: Record<string, string>) => {
+        const deliver = async (kind: keyof typeof LETTERS, id: string, fields: Record<string, string>) => {
           const copy = LETTERS[kind];
-          this.#options.mailboxService.deliver({
+          const letter = this.#options.mailboxService.deliver({
             homeId: community.home.homeId, category: "lingye",
             idempotencyKey: "lingye:constable-interview:" + kind + ":" + id + ":" + community.resident.residentId,
             title: copy.title, body: copy.body.replace(/\{([^}]+)\}/gu, (whole, key: string) => {
@@ -62,6 +68,17 @@ export class ConstableInterviewDeliveryService {
               return fields[key]!;
             }), sensitiveValues: [farmHumanKey],
           });
+          try {
+            const push = this.#options.browserPush;
+            if (push && push.receipts.claim(letter.letterId, now)) {
+              const confirmed = await push.service.sendActivityReminder({
+                residentId: community.resident.residentId, homeId: community.home.homeId,
+                title: letter.title, body: letter.body, url: "/lingye/constable-interview",
+                tag: "constable-interview:" + letter.letterId, createdAt: letter.createdAt,
+              });
+              if (confirmed) push.receipts.confirm(letter.letterId, this.#now());
+            }
+          } catch (error) { this.#options.onError?.(error); }
         };
         for (const interview of result.data.interviews) {
           const scheduled = Date.parse(interview.scheduled_at);
@@ -70,11 +87,11 @@ export class ConstableInterviewDeliveryService {
           if (interview.self.signup_eligible) {
             const name = names.get(interview.candidate_resident_id);
             if (!name) throw new Error("Constable candidate public name unavailable");
-            deliver("signup", id, { ...fields, "考生名": name, "等级": ["初级", "中级", "高级", "特级"][interview.qualification_level - 1]! });
+            await deliver("signup", id, { ...fields, "考生名": name, "等级": ["初级", "中级", "高级", "特级"][interview.qualification_level - 1]! });
           }
           if (interview.status === "signup_open" && interview.self.signed_up &&
               !interview.self.attendance_confirmed && now >= scheduled - 1800000 && now < scheduled)
-            deliver("attendance", id, fields);
+            await deliver("attendance", id, fields);
         }
         for (const event of result.data.events) {
           const fields = { "时间": date(event.scheduled_at), "原时间": date(event.scheduled_at),
@@ -82,9 +99,9 @@ export class ConstableInterviewDeliveryService {
           if (event.kind === "selected") {
             const interview = result.data.interviews.find(item => item.interview_id === event.interview_id &&
               item.scheduled_at === event.scheduled_at && ["panel_ready", "scoring"].includes(item.status) && item.self.selected);
-            if (interview) deliver("selected", String(event.event_id), fields);
+            if (interview) await deliver("selected", String(event.event_id), fields);
           } else if (event.next_scheduled_at && Date.parse(event.next_scheduled_at) > now) {
-            deliver("postponed", String(event.event_id), { ...fields, "新时间": date(event.next_scheduled_at) });
+            await deliver("postponed", String(event.event_id), { ...fields, "新时间": date(event.next_scheduled_at) });
           }
         }
       } catch (error) { this.#options.onError?.(error); }

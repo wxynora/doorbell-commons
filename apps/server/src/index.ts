@@ -454,6 +454,7 @@ const sharedMemeBackendService = new SharedMemeBackendService({
 const constableInterviewSignupMailService = new ConstableInterviewDeliveryService({
   database, registrationAuth, farmInterviews: farmConstableInterviewClient,
   mailboxService, onError: reportConstableInterviewMailError,
+  ...(browserPushService ? { browserPush: { service: browserPushService, receipts: database.constableInterviewPushStore } } : {}),
 });
 constableInterviewSignupMailService?.start();
 disconnectRealtimeResident = (residentId): void => {

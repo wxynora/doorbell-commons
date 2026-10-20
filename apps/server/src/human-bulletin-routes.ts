@@ -18,8 +18,8 @@ export function registerHumanBulletinRoutes(app: FastifyInstance, options: {
     if(!token) return reply.code(401).send({error:{code:"authentication_required",message:"请先登录。"}});
     try {
       const current=await options.registrationAuth.getCurrentSession(token);
-      if(body?.success) options.store.acknowledge(current.account.accountId,body.data.ids);
-      return {notices:options.store.unread(current.account.accountId)};
+      if(body?.success) options.store.acknowledge(current.account.accountId,body.data.ids,Date.now(),current.home.homeId);
+      return {notices:options.store.unread(current.account.accountId,Date.now(),current.home.homeId)};
     } catch(error) {
       if(error instanceof AuthenticationRequiredError) return reply.code(401).send({error:{code:"authentication_required",message:"请先登录。"}});
       if(error instanceof QqNotGroupMemberError) {

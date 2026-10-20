@@ -97,6 +97,7 @@ function BulletinSystemList({ bulletin }: { bulletin?: BoundBulletinRead | null 
           <img alt="" aria-hidden="true" src={getFarmAssetUrl("neighborhood.message-board")} />
           <div className="farm-bulletin__empty-copy">
             <strong>{notice.title}</strong><span style={{whiteSpace:"pre-line"}}>{notice.text}</span><small>{formatBulletinTime(notice.at)}</small>
+            {notice.id.startsWith("constable-interview:") ? <a href="/lingye/constable-interview">面试安排</a> : null}
           </div>
         </li>
       ))}

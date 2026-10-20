@@ -1236,12 +1236,14 @@ function mapMailboxLetter(row: MailboxLetterRow): MailboxLetterRecord {
 
 import { LingyeDailyStore, type LingyeDailyIssueRecord, type LingyeDailyPublishResult } from "./lingye-daily-store.js";
 import { HumanBulletinStore } from "./human-bulletin-store.js";
+import { ConstableInterviewPushStore } from "./constable-interview-push-store.js";
 export { LingyeDailyIdempotencyConflictError, type LingyeDailyIssueRecord, type LingyeDailyPublishResult, type LingyeDailyPublishStatus } from "./lingye-daily-store.js";
 
 export class CommunityDatabase {
   readonly #database: Database.Database;
   readonly #lingyeDailyStore: LingyeDailyStore;
   readonly humanBulletinStore: HumanBulletinStore;
+  readonly constableInterviewPushStore: ConstableInterviewPushStore;
   readonly residentAvatarStore: ResidentAvatarStore;
   readonly residentProfileStore: ResidentProfileStore;
   readonly loungeWakeStore: LoungeWakeStore;
@@ -1286,6 +1288,7 @@ export class CommunityDatabase {
     migrateCommunityDatabase(this.#database, this.#generateProfileId);
     this.#lingyeDailyStore = new LingyeDailyStore(this.#database);
     this.humanBulletinStore = new HumanBulletinStore(this.#database);
+    this.constableInterviewPushStore = new ConstableInterviewPushStore(this.#database);
     this.residentAvatarStore = new ResidentAvatarStore(this.#database);
     this.residentProfileStore = new ResidentProfileStore(this.#database);
     this.loungeWakeStore = new LoungeWakeStore(this.#database);
