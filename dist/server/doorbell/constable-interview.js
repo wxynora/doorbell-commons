@@ -1,3 +1,4 @@
+import { INTERVIEW_ANSWER_MESSAGES } from "../../career/constable-interview-answers.js";
 import { CareerDomainError } from "../../career/contracts.js";
 import { MAX_BODY_BYTES } from "../../config.js";
 import { jsonOut, readJsonBody } from "../http.js";
@@ -107,7 +108,17 @@ function interviewFacts(database, backend, residentId, accountId, interviewId, n
             now >= row.scheduled_at - 43200000 && now < row.scheduled_at;
         const signupEligible = signupOpen && !signup &&
             backend.trustedQueries.constableExaminerEligible(row.interview_id, residentId);
+        const review = database.prepare("SELECT outcome FROM career_constable_reviews WHERE interview_id = ?").get(row.interview_id);
+        const answer = materialConfigured ? database.prepare("SELECT answer_text, submitted_at FROM career_constable_answers WHERE interview_id = ?").get(row.interview_id) : null;
+        const originalScores = materialConfigured && review ? database.prepare(`SELECT facts_score AS facts, restraint_score AS restraint,
+            procedure_score AS procedure, explanation_score AS explanation FROM career_constable_review_original_scores
+            WHERE interview_id = ? ORDER BY signup_order`).all(row.interview_id) : null;
         return {
+            phase: review ? "review" : "interview",
+            review_outcome: review?.outcome ?? null,
+            answer: answer ? { text: answer.answer_text, submitted_at: isoTime(answer.submitted_at) } : null,
+            original_scores: originalScores,
+            qualification_level: database.prepare("SELECT qualification_level FROM career_exam_attempts WHERE attempt_id = ?").get(row.attempt_id).qualification_level,
             interview_id: row.interview_id,
             attempt_id: row.attempt_id,
             candidate_resident_id: row.candidate_resident_id,
@@ -139,12 +150,26 @@ function interviewFacts(database, backend, residentId, accountId, interviewId, n
             } : null,
         };
     });
-    return { interviews };
+    const events = database.prepare(`SELECT event.event_id, event.interview_id, event.kind, event.scheduled_at,
+        event.next_scheduled_at, interview.candidate_resident_id, attempt.qualification_level
+        FROM career_constable_interview_events event
+        JOIN career_constable_interviews interview ON interview.interview_id = event.interview_id
+        JOIN career_exam_attempts attempt ON attempt.attempt_id = interview.attempt_id
+        JOIN career_tracks track ON track.resident_id = attempt.resident_id AND track.career = attempt.career
+          AND track.track_order IS NOT NULL AND track.generation = attempt.learning_generation
+        WHERE event.examiner_account_id = ? AND event.examiner_resident_id = ?
+          AND NOT EXISTS(SELECT 1 FROM career_resignation_exam_refunds refund WHERE refund.attempt_id = attempt.attempt_id)
+        ORDER BY event.event_id`).all(accountId, residentId).map(event => ({
+            ...event, scheduled_at: isoTime(event.scheduled_at), next_scheduled_at: isoTime(event.next_scheduled_at),
+        }));
+    return { interviews, events };
 }
 
 function actionError(error) {
     if (!(error instanceof CareerDomainError))
         return { status: 503, code: "farm_unavailable", message: "The constable interview service is unavailable" };
+    if (Object.hasOwn(INTERVIEW_ANSWER_MESSAGES, error.code))
+        return { status: 409, code: error.code, message: INTERVIEW_ANSWER_MESSAGES[error.code] };
     if (error.code === "interview_material_not_configured")
         return { status: 503, code: "interview_material_not_configured", message: "The constable interview material is unavailable" };
     if (error.code === "examiner_not_eligible" || error.code === "examiner_account_identity_conflict")

@@ -1,6 +1,6 @@
 import { runInTransaction } from "./persistence.js";
 
-export const CAREER_SCHEMA_VERSION = 18;
+export const CAREER_SCHEMA_VERSION = 19;
 
 const REPORTER_ARTICLE_COLUMNS = `(
   article_id TEXT PRIMARY KEY,
@@ -938,7 +938,44 @@ export function installCareerSchema(database) {
       CREATE INDEX IF NOT EXISTS career_reporter_material_packs_issue_index
         ON career_reporter_material_packs(issue_reference, pack_id);
     `);
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS career_constable_answers (
+        interview_id TEXT PRIMARY KEY REFERENCES career_constable_interviews(interview_id),
+        candidate_resident_id TEXT NOT NULL, answer_text TEXT NOT NULL CHECK(length(trim(answer_text)) > 0),
+        submitted_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS career_constable_written_passes (
+        attempt_id TEXT PRIMARY KEY REFERENCES career_exam_attempts(attempt_id),
+        source_attempt_id TEXT NOT NULL REFERENCES career_exam_attempts(attempt_id), passed_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS career_constable_reviews (
+        interview_id TEXT PRIMARY KEY REFERENCES career_constable_interviews(interview_id),
+        opened_at INTEGER NOT NULL, outcome TEXT NOT NULL CHECK(outcome IN ('pending','passed','failed')),
+        finalized_at INTEGER
+      );
+      CREATE TABLE IF NOT EXISTS career_constable_review_original_scores (
+        interview_id TEXT NOT NULL REFERENCES career_constable_interviews(interview_id),
+        examiner_account_id TEXT NOT NULL, examiner_resident_id TEXT NOT NULL, signup_order INTEGER NOT NULL,
+        facts_score INTEGER NOT NULL, restraint_score INTEGER NOT NULL, procedure_score INTEGER NOT NULL,
+        explanation_score INTEGER NOT NULL, scored_at INTEGER NOT NULL,
+        PRIMARY KEY(interview_id, examiner_account_id)
+      );
+      CREATE TABLE IF NOT EXISTS career_constable_interview_events (
+        event_id INTEGER PRIMARY KEY, interview_id TEXT NOT NULL REFERENCES career_constable_interviews(interview_id),
+        kind TEXT NOT NULL CHECK(kind IN ('selected','postponed')),
+        examiner_account_id TEXT NOT NULL, examiner_resident_id TEXT NOT NULL,
+        scheduled_at INTEGER NOT NULL, next_scheduled_at INTEGER, created_at INTEGER NOT NULL,
+        UNIQUE(interview_id,kind,scheduled_at,examiner_account_id)
+      );
+    `);
     installResignationSchema(database);
+    database.exec(`INSERT OR IGNORE INTO career_constable_written_passes (attempt_id, source_attempt_id, passed_at)
+      SELECT paper.exam_attempt_id, paper.exam_attempt_id, MIN(submission.submitted_at)
+      FROM career_assessment_submissions submission
+      JOIN career_assessment_papers paper ON paper.paper_id = submission.paper_id
+      JOIN career_exam_attempts attempt ON attempt.attempt_id = paper.exam_attempt_id
+      WHERE submission.kind = 'written_exam' AND submission.passed = 1 AND attempt.career = 'constable'
+      GROUP BY paper.exam_attempt_id`);
 }
 
 function installResignationSchema(database) {

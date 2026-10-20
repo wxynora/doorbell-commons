@@ -13,6 +13,7 @@ import { CareerDomainError } from "./career/contracts.js";
 import { CareerJobService } from "./career/job-service.js";
 import { beijingDate, EXAM_SESSION_DURATION_MS } from "./career/persistence.js";
 import { installCareerSchema } from "./career/schema.js";
+import { settleConstableRetryFees } from "./career/constable-interview-review.js";
 import { CareerSchoolService } from "./career/school-service.js";
 import { CareerResignationService } from "./career/resignation-service.js";
 import { nextReporterEvaluationDueAt } from "./career/reporter-evaluation-window.js";
@@ -979,9 +980,18 @@ export function createLingyeWorldBackend(database, options) {
             scheduleConstableInterview: (attemptId, scheduledAt) => atomic(() => school.scheduleConstableInterview(attemptId, scheduledAt)),
             signupConstableExaminer: (input) => atomic(() => school.signupConstableExaminer(input)),
             confirmConstableExaminerAttendance: (input) => atomic(() => school.confirmConstableExaminerAttendance(input)),
-            finalizeConstableExaminerPanel: (interviewId) => atomic(() => school.finalizeConstableExaminerPanel(interviewId)),
+            finalizeConstableExaminerPanel: (interviewId) => atomic(() => {
+                const result = school.finalizeConstableExaminerPanel(interviewId);
+                settleConstableRetryFees(database, economy, options.now?.() ?? Date.now());
+                return result;
+            }),
+            submitConstableInterviewAnswer: (input) => atomic(() => school.submitConstableInterviewAnswer(input)),
             submitConstableInterviewScore: (input) => atomic(() => school.submitConstableInterviewScore(input)),
-            advanceConstableInterviews: (now) => atomic(() => school.advanceConstableInterviews(now)),
+            advanceConstableInterviews: (now) => atomic(() => {
+                const result = school.advanceConstableInterviews(now);
+                settleConstableRetryFees(database, economy, options.now?.() ?? Date.now());
+                return result;
+            }),
             openConstablePublicNotice: (interviewId, eligibleVoterResidentIds, candidateResidentName) => atomic(() => school.openConstablePublicNotice(interviewId, eligibleVoterResidentIds, candidateResidentName)),
             voteConstablePublicNotice: (noticeId, residentId, choice) => atomic(() => school.voteConstablePublicNotice(noticeId, residentId, choice)),
             finalizeConstablePublicNotice: (noticeId, reviewPolicy) => atomic(() => school.finalizeConstablePublicNotice(noticeId, reviewPolicy)),
@@ -1308,6 +1318,7 @@ export function createLingyeWorldBackend(database, options) {
         examAvailable: (career, level) => school.examAvailable(career, level),
         eligibleAdvancementExams: (residentId) => school.eligibleAdvancementExams(residentId),
         getWrittenExamPaper: (attemptId) => school.getWrittenExamPaper(attemptId),
+        getConstableCandidateInterview: (interviewId, residentId) => school.getConstableCandidateInterview(interviewId, residentId),
         getConstableInterviewMaterial: (interviewId) => school.getConstableInterviewMaterial(interviewId),
         constableExaminerEligible: (interviewId, residentId) => school.constableExaminerEligible(interviewId, residentId),
         hasScheduledDuty: (residentId, career, dutyDate) => employment.hasScheduledDuty(residentId, career, dutyDate),

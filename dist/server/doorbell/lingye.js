@@ -15,6 +15,8 @@ import {
 } from "../../career/contracts.js";
 import { careerExamAvailability, curriculumCatalogAvailability } from "../../career/curriculum.js";
 import { courseCatalog } from "../../career/course-catalog.js";
+import { INTERVIEW_ANSWER_MESSAGES, INTERVIEW_ANSWER_RECEIPT } from "../../career/constable-interview-answers.js";
+import { INTERVIEW_REVIEW_MESSAGES, validConstableWrittenPass } from "../../career/constable-interview-review.js";
 import { careerAdvancementWorkEligibility } from "../../career/school-service.js";
 import {
     resignationExplanation,
@@ -83,6 +85,7 @@ import {
     EXAM_SESSION_START_HOUR,
     beijingDate,
     isBeijingExamSessionOpen,
+    nextInterviewSessionAt,
 } from "../../career/persistence.js";
 import { MAX_BODY_BYTES } from "../../config.js";
 import { PublicSyncError } from "../../public-sync.js";
@@ -314,7 +317,8 @@ function validateArgs(op, args) {
         return;
     }
     if (op === "go.school.choose") {
-        assertExactKeys(args, [["option"], ["answers", "option"]]);
+        assertExactKeys(args, [["option"], ["answers", "option"], ["option", "text"]]);
+        if (Object.hasOwn(args, "text")) assertNonEmptyString(args.text, "text");
         assertNonEmptyString(args.option, "option");
         if (Object.hasOwn(args, "answers")) {
             if (!Array.isArray(args.answers) || ![5, 20].includes(args.answers.length) ||
@@ -439,6 +443,7 @@ const SCHOOL_OPTION_LABELS = Object.freeze({
     "exam-start": "开始资格考试",
     "exam-release": "取消尚未开始的考试报名",
     "exam-submit": "提交整份资格考试答案",
+    "constable-interview-answer": "提交整份资格考试答案",
     "employment-hire": "申请正式受聘",
     "employment-leave": "请假",
     "employment-resume": "恢复在岗",
@@ -1050,7 +1055,7 @@ function careerSchoolAvailable(backend, career) {
     return backend.trustedQueries.courseAvailable(career, 1, 1);
 }
 
-function constableInterviewFacts(database, residentId, optionRevision) {
+function constableInterviewFacts(database, backend, residentId, optionRevision) {
     const interviews = mapRows(database.prepare(`
       SELECT interview_id, candidate_resident_id, scheduled_at, status,
              last_postponed_at, postponed_count
@@ -1083,7 +1088,12 @@ function constableInterviewFacts(database, residentId, optionRevision) {
           SELECT notice_id, status, opened_at, closes_at
           FROM career_constable_public_notices WHERE interview_id = ?
         `).all(interview.interviewId))[0] ?? null;
+        const candidate = interview.candidateResidentId === residentId
+            ? backend.trustedQueries.getConstableCandidateInterview(interview.interviewId, residentId) : null;
+        const review = database.prepare("SELECT outcome FROM career_constable_reviews WHERE interview_id = ?").get(interview.interviewId);
         return {
+            candidate,
+            review: review ? { outcome: review.outcome, message: INTERVIEW_REVIEW_MESSAGES[review.outcome] } : null,
             interviewId: interview.interviewId,
             scheduledAt: isoTime(interview.scheduledAt),
             status: interview.status,
@@ -1119,22 +1129,29 @@ function constableInterviewFacts(database, residentId, optionRevision) {
           WHERE refund.attempt_id = attempt.attempt_id
         )
       ORDER BY notice.opened_at DESC, notice.notice_id
-    `).all(residentId)).map((notice) => ({
+    `).all(residentId)).map((notice) => {
+        const review = database.prepare("SELECT outcome FROM career_constable_reviews WHERE interview_id = ?").get(notice.interviewId);
+        return {
+        review: review ? { outcome: review.outcome, message: INTERVIEW_REVIEW_MESSAGES[review.outcome] } : null,
         noticeId: notice.noticeId,
         interviewId: notice.interviewId,
         status: notice.status,
         candidate: { residentName: notice.candidateResidentName },
         career: "constable",
         qualificationLevel: notice.qualificationLevel,
-        outcome: "interview_passed_pending_public_notice",
+        outcome: review ? `review_${review.outcome}` : "interview_passed_pending_public_notice",
         openedAt: isoTime(notice.openedAt),
         closesAt: isoTime(notice.closesAt),
         myChoice: notice.choice,
         options: notice.status === "open" && notice.choice === null
             ? ["no_objection", "review_request"]
             : [],
-    }));
+    }; });
     const options = [];
+    for (const interview of interviews) {
+        if (interview.candidate?.canSubmit)
+            options.push(option(schoolOption(optionRevision, "constable-interview-answer", interview.interviewId), ["text"]));
+    }
     for (const notice of publicNotices) {
         if (notice.status !== "open" || notice.myChoice !== null)
             continue;
@@ -1224,7 +1241,7 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
             externalCount: counts.external_count ?? 0,
         };
     });
-    const constable = constableInterviewFacts(database, residentId, optionRevision);
+    const constable = constableInterviewFacts(database, backend, residentId, optionRevision);
     const options = [...constable.options];
     const advancement = [];
     if (backend.trustedQueries.availableCareerSlot(residentId)) {
@@ -1253,6 +1270,10 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
         const nextLevel = activeLevel + 1;
         if (nextLevel > 4)
             continue;
+        if (track.career === "constable" && validConstableWrittenPass(database, residentId, nextLevel, nextInterviewSessionAt(now))) {
+            options.push(option(schoolOption(optionRevision, "exam-register", `constable:${nextLevel}`)));
+            continue;
+        }
         const workEligibility = careerAdvancementWorkEligibility(database, residentId, track.career, nextLevel);
         advancement.push({
             career: track.career,
@@ -1456,6 +1477,15 @@ function schoolView(database, backend, residentId, now, args) {
 }
 
 function schoolChoose(database, backend, residentId, now, args) {
+    const interviewAnswerMatch = /^school:constable-interview-answer:\d+:(.+)$/u.exec(args.option);
+    if (interviewAnswerMatch) {
+        const result = backend.trustedSystemCommands.submitConstableInterviewAnswer({
+            interviewId: interviewAnswerMatch[1], residentId, text: args.text,
+        });
+        return success(INTERVIEW_ANSWER_RECEIPT, { result, current: readSchoolFacts(database, backend, residentId, now) });
+    }
+    if (Object.hasOwn(args, "text"))
+        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个职业学校 option 当前不可用。");
     if (Array.isArray(args.answers)) {
         args = {
             ...args,
@@ -3840,6 +3870,9 @@ function mapDomainError(error) {
         return failure("OP_REJECTED", "治安系统拒绝了本次操作。");
     }
     if (error instanceof CareerDomainError) {
+        if (Object.hasOwn(INTERVIEW_ANSWER_MESSAGES, error.code))
+            return failure(error.code === "interview_answer_conflict" ? "CONFLICT" : "OP_REJECTED",
+                INTERVIEW_ANSWER_MESSAGES[error.code]);
         if (Object.hasOwn(RESIGNATION_ERROR_MESSAGES, error.code))
             return failure("OPTION_NOT_AVAILABLE", RESIGNATION_ERROR_MESSAGES[error.code]);
         if (["reporter_publication_not_found", "reporter_evaluation_window_not_open"].includes(error.code))

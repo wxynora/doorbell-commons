@@ -9,6 +9,9 @@ import {
     gradeAssessment,
 } from "./curriculum.js";
 import { activeCertificateLevel, EXAM_SESSION_DURATION_MS, isBeijingExamSessionOpen, isBeijingHour, nextBeijingDayStart, nextExamSessionAt, nextInterviewSessionAt, recordFinancialReceipt, requireCareerTrack, runInTransaction, } from "./persistence.js";
+import { ConstableInterviewAnswers } from "./constable-interview-answers.js";
+import { ConstableInterviewReview, CONSTABLE_REVIEW_POLICY, validConstableWrittenPass } from "./constable-interview-review.js";
+import { freezeConstableInterviewMaterial, hydrateConstableInterviewMaterial } from "./constable-interview-bank.js";
 import { installCareerSchema } from "./schema.js";
 import { activateCareerTrack, careerCourseBusinessReference, careerCourseTuition, careerLearningGeneration, careerProgressPredicate } from "./learning-state.js";
 const DEFAULT_CURRICULUM = Object.freeze({
@@ -105,57 +108,6 @@ export function careerAdvancementWorkEligibility(database, residentId, career, t
     };
 }
 
-function snapshotJson(value, field) {
-    if (value === null || typeof value !== "object")
-        throw new CareerDomainError("interview_material_not_configured", `The constable interview ${field} is unavailable`);
-    if ((Array.isArray(value) && value.length === 0) ||
-        (!Array.isArray(value) && Object.keys(value).length === 0))
-        throw new CareerDomainError("interview_material_not_configured", `The constable interview ${field} is unavailable`);
-    let serialized;
-    try {
-        serialized = JSON.stringify(value);
-        if (!serialized)
-            throw new Error("empty_snapshot");
-        JSON.parse(serialized);
-    }
-    catch {
-        throw new CareerDomainError("interview_material_not_configured", `The constable interview ${field} is unavailable`);
-    }
-    return serialized;
-}
-
-function freezeConstableInterviewMaterial(provider, input) {
-    if (!provider || typeof provider.getConstableInterviewPaper !== "function")
-        return null;
-    let material;
-    try {
-        material = provider.getConstableInterviewPaper(input);
-    }
-    catch {
-        throw new CareerDomainError("interview_material_not_configured", "The constable interview material is unavailable");
-    }
-    if (!material || typeof material !== "object" || Array.isArray(material) ||
-        typeof material.bankVersion !== "string" || material.bankVersion.trim().length === 0) {
-        throw new CareerDomainError("interview_material_not_configured", "The constable interview material is unavailable");
-    }
-    const scoringStandard = material.scoringStandard;
-    if (!scoringStandard || typeof scoringStandard !== "object" || Array.isArray(scoringStandard) ||
-        typeof scoringStandard.version !== "string" || scoringStandard.version.trim().length === 0 ||
-        !Array.isArray(scoringStandard.dimensions) ||
-        scoringStandard.dimensions.length !== CONSTABLE_INTERVIEW_DIMENSIONS.length ||
-        scoringStandard.dimensions.some((dimension, index) => dimension !== CONSTABLE_INTERVIEW_DIMENSIONS[index]) ||
-        scoringStandard.minimumDimensionAverage !== 3 ||
-        scoringStandard.minimumTotalAverage !== 16) {
-        throw new CareerDomainError("interview_material_not_configured", "The constable interview scoring standard is unavailable");
-    }
-    return {
-        bankVersion: material.bankVersion,
-        paperSnapshotJson: snapshotJson(material.paper, "paper"),
-        factMaterialSnapshotJson: snapshotJson(material.factMaterial, "fact material"),
-        scoringStandardSnapshotJson: snapshotJson(scoringStandard, "scoring standard"),
-    };
-}
-
 export class CareerSchoolService {
     #database;
     #now;
@@ -163,6 +115,8 @@ export class CareerSchoolService {
     #curriculum;
     #constableInterviewBank;
     #constableExamEligibility;
+    #interviewAnswers;
+    #interviewReview;
     constructor(options) {
         this.#database = options.database;
         this.#now = options.now ?? Date.now;
@@ -171,6 +125,12 @@ export class CareerSchoolService {
         this.#constableInterviewBank = options.constableInterviewBank ?? null;
         this.#constableExamEligibility = options.constableExamEligibility ?? null;
         installCareerSchema(this.#database);
+        this.#interviewAnswers = new ConstableInterviewAnswers({
+            database: this.#database, now: this.#now,
+            requireInterview: id => this.#requireInterview(id),
+            readMaterial: interview => this.#readInterviewMaterial(interview),
+        });
+        this.#interviewReview = new ConstableInterviewReview({ database: this.#database, now: this.#now });
     }
     selectCareer(residentId, career) {
         const now = this.#now();
@@ -436,6 +396,12 @@ export class CareerSchoolService {
                     kind: reservationReceipt.kind,
                     residentId: reservationReceipt.resident_id,
                 }, now);
+                const writtenPass = this.#database.prepare("SELECT * FROM career_constable_written_passes WHERE attempt_id = ? AND source_attempt_id != attempt_id").get(existing.attempt_id);
+                if (writtenPass) {
+                    const interview = this.#database.prepare("SELECT interview_id FROM career_constable_interviews WHERE attempt_id = ?").get(existing.attempt_id);
+                    return { attemptId: existing.attempt_id, feeGold: reservationReceipt.amount,
+                        scheduledAt: existing.scheduled_at, interviewId: interview.interview_id, phase: "interview" };
+                }
                 const paper = this.#ensureExamPaper(existing, now);
                 return {
                     attemptId: existing.attempt_id,
@@ -445,7 +411,11 @@ export class CareerSchoolService {
                     bankVersion: paper.bankVersion,
                 };
             }
-            this.#requireExamEligibility(input.residentId, input.career, input.level, now);
+            const interviewAt = nextInterviewSessionAt(now);
+            const writtenPass = input.career === "constable"
+                ? validConstableWrittenPass(this.#database, input.residentId, input.level, interviewAt) : null;
+            if (writtenPass) this.#requireConstableRecentTheftEligibility(input.residentId, now);
+            else this.#requireExamEligibility(input.residentId, input.career, input.level, now);
             const openAttempt = this.#database
                 .prepare(`SELECT 1 FROM career_exam_attempts
            WHERE resident_id = ? AND career = ? AND qualification_level = ? AND learning_generation = ?
@@ -464,6 +434,18 @@ export class CareerSchoolService {
                 kind: "system_gold_reserve",
                 residentId: input.residentId,
             }, now);
+            if (writtenPass) {
+                this.#database.prepare(`INSERT INTO career_exam_attempts (
+                    attempt_id,resident_id,career,qualification_level,scheduled_at,registration_status,
+                    reservation_receipt_id,registered_at,learning_generation,ended_at)
+                    VALUES (?,?,'constable',?,?,'written_passed',?,?,?,?)`)
+                  .run(input.attemptId,input.residentId,input.level,interviewAt,input.reservationReceipt.receiptId,
+                    now,careerLearningGeneration(this.#database,input.residentId,input.career),writtenPass.passed_at);
+                this.#database.prepare(`INSERT INTO career_constable_written_passes (attempt_id,source_attempt_id,passed_at)
+                    VALUES (?,?,?)`).run(input.attemptId,writtenPass.source_attempt_id,writtenPass.passed_at);
+                const interviewId = this.scheduleConstableInterview(input.attemptId, interviewAt);
+                return { attemptId: input.attemptId,feeGold,scheduledAt:interviewAt,interviewId,phase:"interview" };
+            }
             const scheduledAt = nextExamSessionAt(now);
             this.#database
                 .prepare(`INSERT INTO career_exam_attempts (
@@ -713,6 +695,9 @@ export class CareerSchoolService {
             if (scheduledAt <= now || !isBeijingHour(scheduledAt, 20)) {
                 throw new CareerDomainError("invalid_interview_session", "Constable interviews start at 20:00 Beijing time");
             }
+            this.#database.prepare(`INSERT OR IGNORE INTO career_constable_written_passes
+                (attempt_id, source_attempt_id, passed_at) VALUES (?, ?, ?)`)
+                .run(attemptId, attemptId, attempt.ended_at);
             const existing = this.#database
                 .prepare(`SELECT interview_id, scheduled_at, status, candidate_resident_id,
                          interview_bank_version, interview_paper_snapshot_json,
@@ -724,6 +709,7 @@ export class CareerSchoolService {
                 const material = freezeConstableInterviewMaterial(this.#constableInterviewBank, {
                     interviewId: existing.interview_id,
                     candidateResidentId: existing.candidate_resident_id,
+                    qualificationLevel: attempt.qualification_level,
                     scheduledAt,
                 });
                 this.#database
@@ -756,6 +742,7 @@ export class CareerSchoolService {
                     const material = freezeConstableInterviewMaterial(this.#constableInterviewBank, {
                         interviewId: existing.interview_id,
                         candidateResidentId: existing.candidate_resident_id,
+                    qualificationLevel: attempt.qualification_level,
                         scheduledAt: existing.scheduled_at,
                     });
                     this.#database
@@ -776,6 +763,7 @@ export class CareerSchoolService {
             const material = freezeConstableInterviewMaterial(this.#constableInterviewBank, {
                 interviewId,
                 candidateResidentId: attempt.resident_id,
+                qualificationLevel: attempt.qualification_level,
                 scheduledAt,
             });
             this.#database
@@ -793,6 +781,10 @@ export class CareerSchoolService {
                 now);
             return interviewId;
         });
+    }
+    submitConstableInterviewAnswer(input) { return this.#interviewAnswers.submit(input); }
+    getConstableCandidateInterview(interviewId, residentId) {
+        return this.#interviewAnswers.candidateView(interviewId, residentId);
     }
     getConstableInterviewMaterial(interviewId) {
         return this.#readInterviewMaterial(this.#requireInterview(interviewId));
@@ -823,6 +815,8 @@ export class CareerSchoolService {
                 throw new CareerDomainError("examiner_not_eligible", "The examiner eligibility and conflict check failed");
             }
             this.#requireConstableExaminerEligibility(interview, input.examinerResidentId);
+            if (this.#interviewReview.excludes(input.interviewId, input.examinerResidentId, input.examinerAccountId))
+                throw new CareerDomainError("examiner_not_eligible", "Original examiners may not review their interview");
             const existing = this.#database
                 .prepare(`SELECT signup_order FROM career_constable_examiner_signups
            WHERE interview_id = ? AND examiner_account_id = ?`)
@@ -919,8 +913,15 @@ export class CareerSchoolService {
                 }
             }).slice(0, 3);
             if (eligibleConfirmed.length < 3) {
+                if (this.#interviewReview.read(interviewId)) {
+                    const nextScheduledAt = nextInterviewSessionAt(now);
+                    this.#recordConstablePanelEvents(interview, "postponed", nextScheduledAt);
+                    return this.#interviewReview.postpone(interview);
+                }
                 const scheduledAt = nextInterviewSessionAt(now);
                 const attempt = this.#requireExamAttempt(interview.attempt_id);
+                this.#recordConstablePanelEvents(interview, "postponed",
+                    (attempt.ended_at ?? now) + THIRTY_DAYS_MS < scheduledAt ? null : scheduledAt);
                 if ((attempt.ended_at ?? now) + THIRTY_DAYS_MS < scheduledAt) {
                     this.#database
                         .prepare(`UPDATE career_constable_interviews
@@ -937,6 +938,7 @@ export class CareerSchoolService {
                 const material = freezeConstableInterviewMaterial(this.#constableInterviewBank, {
                     interviewId,
                     candidateResidentId: interview.candidate_resident_id,
+                    qualificationLevel: attempt.qualification_level,
                     scheduledAt,
                 });
                 this.#database
@@ -973,6 +975,7 @@ export class CareerSchoolService {
             this.#database
                 .prepare("UPDATE career_constable_interviews SET status = 'panel_ready' WHERE interview_id = ?")
                 .run(interviewId);
+            this.#recordConstablePanelEvents(interview, "selected");
             return "panel_ready";
         });
     }
@@ -1015,6 +1018,7 @@ export class CareerSchoolService {
             if (interview.status !== "panel_ready" && interview.status !== "scoring") {
                 throw new CareerDomainError("interview_not_scoring", "The final examiner panel is not ready");
             }
+            this.#interviewAnswers.require(input.interviewId);
             this.#database
                 .prepare(`INSERT INTO career_constable_scores (
              interview_id, examiner_account_id, facts_score, restraint_score,
@@ -1034,6 +1038,8 @@ export class CareerSchoolService {
         const now = this.#now();
         return runInTransaction(this.#database, () => {
             const interview = this.#requireInterview(interviewId);
+            if (this.#interviewReview.read(interviewId))
+                return this.#interviewReview.finish(interview);
             if (interview.status === "public_notice") {
                 const existing = this.#database
                     .prepare("SELECT notice_id FROM career_constable_public_notices WHERE interview_id = ?")
@@ -1043,6 +1049,7 @@ export class CareerSchoolService {
             if (interview.status !== "scoring") {
                 throw new CareerDomainError("interview_scores_incomplete", "The interview is not scored");
             }
+            this.#interviewAnswers.require(interviewId);
             const scores = this.#database
                 .prepare(`SELECT facts_score, restraint_score, procedure_score, explanation_score
            FROM career_constable_scores WHERE interview_id = ?`)
@@ -1116,7 +1123,7 @@ export class CareerSchoolService {
             throw new CareerDomainError("public_notice_vote_unavailable", "The resident is ineligible or already voted");
         }
     }
-    finalizeConstablePublicNotice(noticeId, reviewPolicy) {
+    finalizeConstablePublicNotice(noticeId, reviewPolicy = CONSTABLE_REVIEW_POLICY) {
         const now = this.#now();
         return runInTransaction(this.#database, () => {
             const notice = this.#database
@@ -1156,12 +1163,15 @@ export class CareerSchoolService {
                     notice.eligible_voter_count * reviewPolicy.ratioNumerator;
             if (reviewRequired) {
                 this.#setPublicNoticeStatus(noticeId, notice.interview_id, attempt, "review_required", now);
+                this.#interviewAnswers.require(notice.interview_id);
+                this.#interviewReview.begin(interview);
                 return "review_required";
             }
             return this.#activateConstablePublicNotice(noticeId, notice.interview_id, attempt, now);
         });
     }
     advanceConstableInterviews(now = this.#now()) {
+        hydrateConstableInterviewMaterial(this.#database, this.#constableInterviewBank);
         const progressed = [];
         const duePanels = this.#database
             .prepare(`SELECT interview.interview_id FROM career_constable_interviews AS interview
@@ -1181,7 +1191,7 @@ export class CareerSchoolService {
           JOIN career_constable_interviews AS interview ON interview.interview_id = notice.interview_id
           JOIN career_exam_attempts AS attempt ON attempt.attempt_id = interview.attempt_id
           JOIN career_tracks AS track ON track.resident_id = attempt.resident_id AND track.career = attempt.career
-          WHERE notice.status = 'open' AND notice.closes_at <= ?
+          WHERE notice.status IN ('open', 'pending_review_configuration') AND notice.closes_at <= ?
             AND track.track_order IS NOT NULL AND track.generation = attempt.learning_generation
             AND NOT EXISTS (SELECT 1 FROM career_resignation_exam_refunds AS refund WHERE refund.attempt_id = attempt.attempt_id)
           ORDER BY notice.closes_at, notice.notice_id`)
@@ -1191,6 +1201,13 @@ export class CareerSchoolService {
             progressed.push({ noticeId: row.notice_id, result });
         }
         return progressed;
+    }
+    #recordConstablePanelEvents(interview, kind, nextScheduledAt = null) {
+        this.#database.prepare(`INSERT OR IGNORE INTO career_constable_interview_events
+          (interview_id, kind, examiner_account_id, examiner_resident_id, scheduled_at, next_scheduled_at, created_at)
+          SELECT interview_id, ?, examiner_account_id, examiner_resident_id, ?, ?, ?
+          FROM career_constable_examiner_signups WHERE interview_id = ? AND (? != 'selected' OR selected = 1)`)
+          .run(kind, interview.scheduled_at, nextScheduledAt, this.#now(), interview.interview_id, kind);
     }
     #readInterviewMaterial(interview) {
         if (!interview?.interview_bank_version ||
@@ -1242,6 +1259,8 @@ export class CareerSchoolService {
             examinerResidentId === interview.candidate_resident_id) {
             throw new CareerDomainError("examiner_not_eligible", "The examiner eligibility and conflict check failed");
         }
+        if (this.#interviewReview.excludes(interview.interview_id, examinerResidentId))
+            throw new CareerDomainError("examiner_not_eligible", "Original examiners may not review their interview");
         if (this.#sameConstableHousehold(interview.candidate_resident_id, examinerResidentId) ||
             this.#hasCurrentConstableRelationship(interview.candidate_resident_id, examinerResidentId)) {
             throw new CareerDomainError("examiner_not_eligible", "The examiner eligibility and conflict check failed");
@@ -1524,16 +1543,15 @@ export class CareerSchoolService {
             throw new CareerDomainError("previous_certificate_required", "Qualification certificates must be earned in order");
         }
     }
+    #requireConstableRecentTheftEligibility(residentId, now) {
+        if (this.#constableExamEligibility && this.#constableExamEligibility(residentId, now)?.eligible !== true)
+            throw new CareerDomainError("constable_recent_theft_record", "A successful theft within the previous 72 hours blocks constable exam registration");
+    }
     #requireExamEligibility(residentId, career, level, now) {
         if (!this.#curriculum.careerExamAvailability(career, level)) {
             throw new CareerDomainError("assessment_content_not_available", "This written exam is not available");
         }
-        if (career === "constable" && this.#constableExamEligibility) {
-            const eligibility = this.#constableExamEligibility(residentId, now);
-            if (!eligibility || eligibility.eligible !== true) {
-                throw new CareerDomainError("constable_recent_theft_record", "A successful theft within the previous 72 hours blocks constable exam registration");
-            }
-        }
+        if (career === "constable") this.#requireConstableRecentTheftEligibility(residentId, now);
         requireCareerTrack(this.#database, residentId, career);
         const activeCertificate = this.#database
             .prepare(`SELECT 1 FROM career_certificates
