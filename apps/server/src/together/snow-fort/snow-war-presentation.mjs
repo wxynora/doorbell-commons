@@ -5,6 +5,7 @@ import {
   renderSnowRuleCatalog,
   snowRuleInstructions,
 } from "./snow-war-rules.mjs";
+import { SNOW_TITLE_NAMES } from "./snow-war-title-rewards.mjs";
 
 export const snowViewCall = { op: "farm.together.view", args: {} };
 const paymentUnconfirmedText =
@@ -291,6 +292,13 @@ export function renderSnowResult(data) {
   if (data.series?.seriesWinner && data.phase !== "complete")
     lines.push(`${data.series.seriesWinner}队已取得两场胜利，冠军已确定；第三场仍按赛程进行。`);
   for (const reward of data.rewards ?? []) {
+    if (reward.kind === "titles") {
+      if (reward.status === "paid")
+        for (const id of reward.titles ?? [])
+          lines.push(`限定称号：${SNOW_TITLE_NAMES[id]}（已解锁，可在原称号页佩戴）。`);
+      else lines.push("限定称号正在确认发放，尚未确认到账。");
+      continue;
+    }
     const label =
       reward.kind === "round"
         ? `第${reward.matchIndex + 1}场第${reward.roundIndex + 1}局奖励`
@@ -302,7 +310,11 @@ export function renderSnowResult(data) {
     lines.push(
       `${label}：${reward.gold}金币、${reward.silver}银币，${reward.status === "paid" ? "已确认到账。" : "正在确认入账，尚未确认到账。"}`,
     );
-    if (reward.status === "paid" && reward.decoration?.itemId === "farm_decor:snow_fort" && reward.decoration.quantity === 1)
+    if (
+      reward.status === "paid" &&
+      reward.decoration?.itemId === "farm_decor:snow_fort" &&
+      reward.decoration.quantity === 1
+    )
       lines.push("限定家具：团团雪堡×1（已放入装修仓库）。");
   }
   if (data.phase === "complete" && data.rewardsSettled === true)

@@ -212,7 +212,7 @@ export function createTogetherStartup(options: TogetherStartupOptions) {
               // not a new resident action. Membership still gates player access
               // and registration; it must not strand settlement after departure.
               const receipt =
-                reward.gold + reward.silver === 0
+                reward.gold + reward.silver === 0 && !reward.decoration && !reward.titles
                   ? {
                       grantId: reward.grantId,
                       residentId: reward.residentId,

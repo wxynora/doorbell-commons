@@ -35,7 +35,12 @@ export class TogetherRewardClient implements SnowRewardPort {
         resident_id: input.residentId,
         gold: input.gold,
         silver: input.silver,
-        ...(input.decoration ? { decoration: { item_id: input.decoration.itemId, quantity: input.decoration.quantity } } : {}),
+        ...(input.decoration
+          ? {
+              decoration: { item_id: input.decoration.itemId, quantity: input.decoration.quantity },
+            }
+          : {}),
+        ...(input.titles ? { titles: input.titles } : {}),
       }),
       signal: AbortSignal.timeout(this.options.requestTimeoutMs),
     });
@@ -44,7 +49,19 @@ export class TogetherRewardClient implements SnowRewardPort {
       throw new Error("together_reward_unavailable");
     const value = raw as Record<string, unknown>;
     if (
-      Object.keys(value).sort().join(",") !== (input.decoration ? "decoration,gold,grant_id,journal_ids,ok,resident_id,silver" : "gold,grant_id,journal_ids,ok,resident_id,silver") ||
+      Object.keys(value).sort().join(",") !==
+        [
+          "gold",
+          "grant_id",
+          "journal_ids",
+          "ok",
+          "resident_id",
+          "silver",
+          ...(input.decoration ? ["decoration"] : []),
+          ...(input.titles ? ["titles"] : []),
+        ]
+          .sort()
+          .join(",") ||
       value.ok !== true ||
       value.grant_id !== input.grantId ||
       value.resident_id !== input.residentId ||
@@ -56,11 +73,24 @@ export class TogetherRewardClient implements SnowRewardPort {
       new Set(value.journal_ids).size !== value.journal_ids.length
     )
       throw new Error("together_reward_receipt_invalid");
+    const receivedTitles = value.titles;
+    if (
+      input.titles &&
+      (!Array.isArray(receivedTitles) ||
+        receivedTitles.length !== input.titles.length ||
+        input.titles.some((title, index) => receivedTitles[index] !== title))
+    )
+      throw new Error("together_reward_receipt_invalid");
     if (input.decoration) {
       const decoration = value.decoration as Record<string, unknown> | null;
-      if (!decoration || typeof decoration !== "object" || Array.isArray(decoration) ||
-          Object.keys(decoration).sort().join(",") !== "item_id,quantity" ||
-          decoration.item_id !== input.decoration.itemId || decoration.quantity !== input.decoration.quantity)
+      if (
+        !decoration ||
+        typeof decoration !== "object" ||
+        Array.isArray(decoration) ||
+        Object.keys(decoration).sort().join(",") !== "item_id,quantity" ||
+        decoration.item_id !== input.decoration.itemId ||
+        decoration.quantity !== input.decoration.quantity
+      )
         throw new Error("together_reward_receipt_invalid");
     }
     return {
@@ -70,6 +100,7 @@ export class TogetherRewardClient implements SnowRewardPort {
       silver: input.silver,
       journalIds: value.journal_ids as string[],
       ...(input.decoration ? { decoration: { ...input.decoration } } : {}),
+      ...(input.titles ? { titles: [...input.titles] } : {}),
     };
   }
   async chargeRegistration(input: SnowRegistrationPayment): Promise<SnowRegistrationReceipt> {

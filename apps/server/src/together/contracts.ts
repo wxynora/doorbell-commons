@@ -40,6 +40,7 @@ export interface SnowReward {
   silver: number;
   status: "pending" | "paid";
   decoration?: SnowDecorationReward;
+  titles?: string[];
 }
 export interface SnowRewardReceipt {
   grantId: string;
@@ -48,6 +49,7 @@ export interface SnowRewardReceipt {
   silver: number;
   journalIds: string[];
   decoration?: SnowDecorationReward;
+  titles?: string[];
 }
 export interface SnowRegistrationPayment {
   paymentId: string;

@@ -1,6 +1,7 @@
 import { activeSnowChatTurn, currentSnowChatNotice, snowChatWindow } from "./snow-war-chat.mjs";
 import { activateSnowMatch } from "./snow-war-schedule.mjs";
 import { createSeries } from "./snow-war-series.mjs";
+import { ensureSnowTitleRewards } from "./snow-war-title-rewards.mjs";
 import { completeSnowDraft, playedSnowRound } from "./snow-war-waits.mjs";
 
 const has = (object, key) => Object.hasOwn(object, key);
@@ -194,6 +195,7 @@ export function advanceSnowLifecycle({
       Object.assign(entry, { status: "cancelled", endedAt: now });
   }
   const rewards = state.configuration.rewards;
+  ensureSnowTitleRewards(state, series);
   if (!rewards) return;
   const grant = (id, residentId, amounts, kind, matchIndex, roundIndex) => {
     if (has(state.rewards, id)) return;
@@ -205,7 +207,9 @@ export function advanceSnowLifecycle({
       roundIndex,
       gold: amounts.gold,
       silver: amounts.silver,
-      ...(kind === "champion" ? { decoration: { itemId: "farm_decor:snow_fort", quantity: 1 } } : {}),
+      ...(kind === "champion"
+        ? { decoration: { itemId: "farm_decor:snow_fort", quantity: 1 } }
+        : {}),
       status: "pending",
       receipt: null,
     };
