@@ -24,6 +24,7 @@ export interface SnowNotice {
   createdAt: number;
   status: "pending" | "acked" | "blocked" | "cancelled";
   letterId: string | null;
+  bellEligible?: boolean; // Absent on previously published notices; preserve their original delivery.
   endedAt?: number;
   blockReason?: string | null;
   errorCode?: string | null;

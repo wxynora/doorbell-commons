@@ -28,6 +28,7 @@ const skillName = (key) =>
 const currentMatch = (data) => data.series?.matches.findIndex((match) => !match.winner) ?? -1;
 
 export function describeSnowOption(action, data) {
+  if (action.kind === "rules") return "查看比赛规则";
   if (action.kind === "register")
     return `报名本期雪堡战（${SNOW_WAR_ECONOMY.registrationFeeGold}金币）`;
   if (action.kind === "chat") return "发送队内消息";
@@ -147,6 +148,16 @@ function phaseText(data) {
 }
 
 export function renderSnowResult(data) {
+  if (data.result) return data.result.text ?? renderSnowOperation(data.result);
+  if (data.section === "rules")
+    return [
+      "两队按队长排好的顺序逐局一对一，每局是独立战场，由出场队员自己操作。第1场A队进攻、B队防守，第2场交换，第3场抽签决定攻守。每场打完全部对阵，赢得局数较多的队伍赢得该场；先赢两场的队伍夺冠，第三场仍照常进行。",
+      "队长赛前安排出场顺序，为每人配置2个指挥技能；双方确认后公开对阵。轮到你时先确认准备，双方就绪后开始计时，每局最多10分钟。",
+      "战场有3路，每路12格。攻方选择路线派兵，单位自动前进；守方在地面位部署阻挡单位，在高台位部署远程或治疗单位。部署消耗本局费用，费用随时间恢复。使用当前返回的编号派兵、部署、撤退或释放技能；操作后可继续查看战场并下达下一条指令。",
+      "攻方单位越过第12格会扣减核心耐久。10分钟内核心降到0，攻方获胜；时间结束核心仍有耐久，守方获胜。下一局重新开始，费用、单位、生命和冷却不继承。",
+      ...snowRuleInstructions(data.rules ?? CFG),
+      ...renderSnowRuleCatalog(data.rules ?? CFG),
+    ].join("\n\n");
   const knownErrors = {
     option_not_available:
       "这个编号当前不可用，本次没有执行该编号对应的操作。请重新读取当前共行状态，使用返回的编号。",
@@ -166,8 +177,6 @@ export function renderSnowResult(data) {
     ].join("\n");
   }
   const lines = [];
-  if (data.replay) lines.push("这是该编号原先保存的结果，没有再次执行，也没有重复扣费。");
-  if (data.result) lines.push(data.result.text ?? renderSnowOperation(data.result));
   lines.push(phaseText(data));
   const activeMatch = data.series?.matches[currentMatch(data)];
   if (activeMatch && data.phase === "lineup")
@@ -200,26 +209,6 @@ export function renderSnowResult(data) {
     lines.push(
       `你在${data.viewer.side}队，本队队长是${memberName(data, ownTeam.captainId)}。本队成员：${ownTeam.members.map((member) => memberName(data, member.id)).join("、")}。`,
     );
-  if (
-    [
-      "scheduled",
-      "registration",
-      "awaiting_teams",
-      "lineup",
-      "scheduled_match",
-      "waiting_round",
-      "preparation",
-      "battle",
-    ].includes(data.phase)
-  ) {
-    lines.push(
-      "战场有3路，每路12格。双方准备就绪后开始计时，每局最多10分钟。攻方单位越过第12格会扣减核心耐久；限时内核心降到0，攻方获胜，否则守方获胜。一场按各局胜负决定胜队，先赢两场的队伍获得冠军；即使已经2:0，第三场仍照常进行。",
-    );
-    lines.push(
-      ...snowRuleInstructions(data.rules ?? CFG),
-      ...renderSnowRuleCatalog(data.rules ?? CFG),
-    );
-  }
   if (["scheduled", "registration", "awaiting_teams"].includes(data.phase)) {
     lines.push(JSON.stringify({ 比赛安排: data.schedule.matchStartsAt.map(time) }));
     if (data.rewardPlan)
@@ -341,5 +330,16 @@ export function renderSnowChatMessage(residentName, text) {
 }
 
 export function presentSnowResult(result) {
-  return result ? { ...result, text: renderSnowResult(result.data) } : undefined;
+  if (!result) return undefined;
+  const { rules: _rules, ...status } = result.data;
+  const data = result.data.result
+    ? {
+        activityId: result.data.activityId,
+        result: result.data.result,
+        ...(result.data.replay ? { replay: true } : {}),
+      }
+    : result.data.section === "rules"
+      ? result.data
+      : status;
+  return { ...result, data, text: renderSnowResult(data) };
 }

@@ -221,7 +221,7 @@ export function openSnowWarTogether({
         .filter(([, value]) => value.residentId === residentId && value.serial === serial)
         .map(([token, value]) => [JSON.stringify(value.action), [token, value]]),
     );
-    const options = actions.map((action) => {
+    const options = [...actions, { kind: "rules" }].map((action) => {
       let record = issued.get(JSON.stringify(action));
       if (!record) {
         let token;
@@ -933,7 +933,10 @@ export function openSnowWarTogether({
           store.saveActivity(state);
           return structuredClone(notice);
         }
-        if (!notice.letterId) notice.letterId = deliver(structuredClone(notice));
+        if (!notice.letterId) {
+          notice.bellEligible = notice.kind === "team" || notice.kind === "started";
+          notice.letterId = deliver(structuredClone(notice));
+        }
         store.saveActivity(state);
         return structuredClone(notice);
       });
@@ -1069,9 +1072,17 @@ export function openSnowWarTogether({
         const current = available(state, residentId);
         if (
           record.serial !== (state.serials[residentId] ?? 0) ||
-          !current.actions.some((action) => equal(action, record.action))
+          (record.action.kind !== "rules" &&
+            !current.actions.some((action) => equal(action, record.action)))
         )
           return decline("option_not_available");
+        if (record.action.kind === "rules") {
+          store.saveActivity(state);
+          return {
+            ok: true,
+            data: { activityId: state.activityId, section: "rules", rules: structuredClone(CFG) },
+          };
+        }
         const result = perform(state, residentId, record.action, option, text);
         if (record.action.kind === "chat" || record.action.kind === "chat_pass") advance(state);
         state.receipts[option] = result;

@@ -137,14 +137,15 @@ export function createTogetherStartup(options: TogetherStartupOptions) {
   const publishNotices = (control: SnowControl) => {
     for (const notice of control.notices) {
       if (notice.status === "cancelled") {
-        options.bell.notifyWakeCancelled(notice.residentId, `together:${notice.id}`);
+        if (notice.bellEligible !== false)
+          options.bell.notifyWakeCancelled(notice.residentId, `together:${notice.id}`);
         continue;
       }
       if (notice.status !== "pending" || notice.letterId !== null) continue;
       const identity = options.database.findTogetherIdentity(notice.residentId);
       if (!identity) continue;
       try {
-        activity.publishNotice(
+        const published = activity.publishNotice(
           notice.id,
           (current) =>
             options.mailbox.deliver({
@@ -156,7 +157,12 @@ export function createTogetherStartup(options: TogetherStartupOptions) {
               sensitiveValues: [],
             }).letterId,
         );
-        options.bell.notifyResident(notice.residentId);
+        if (
+          published.status === "pending" &&
+          published.letterId &&
+          published.bellEligible !== false
+        )
+          options.bell.notifyResident(notice.residentId);
       } catch (error) {
         report(error);
       }

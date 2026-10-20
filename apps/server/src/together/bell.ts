@@ -13,6 +13,7 @@ export function togetherBellSource(
         (notice) => notice.residentId === residentId && `together:${notice.id}` === id,
       );
   const project = (notice: SnowNotice): BellWakeSourceRecord | undefined => {
+    if (notice.bellEligible === false) return undefined;
     const identity = database.findTogetherIdentity(notice.residentId);
     if (!identity || !notice.letterId) return undefined;
     const letter = database.findMailboxLetter(identity.homeId, "resident", notice.letterId);
