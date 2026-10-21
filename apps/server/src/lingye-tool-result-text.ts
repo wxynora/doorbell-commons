@@ -308,7 +308,7 @@ function collectOptions(data: Record<string, unknown>): LingyeOption[] {
       seen.add(raw.option);
       options.push({
         option: raw.option,
-        ...(typeof raw.label === "string" ? { label: raw.label } : {}),
+        ...(typeof raw.label === "string" ? { label: raw.label === "提交整份资格考试答案" && Array.isArray(raw.requires) && raw.requires.length === 1 && raw.requires[0] === "text" ? "提交面试答卷" : raw.label } : {}),
         ...(Array.isArray(raw.requires)
           ? { requires: raw.requires.filter((field): field is string => typeof field === "string") }
           : {}),
@@ -653,14 +653,27 @@ function renderInterviews(value: unknown): string[] {
   if (interviews.length === 0) return ["治安官面试：暂无记录。"];
   return [
     "治安官面试：",
-    ...interviews.map((interview) => {
+    ...interviews.flatMap((interview) => {
       const role =
         interview.role === "candidate"
           ? "候选人"
           : interview.role === "examiner"
             ? "面试官"
             : "参与者";
-      return `- 身份：${role}；时间：${dateText(interview.scheduledAt)}；状态：${statusText(interview.status)}。`;
+      const lines = [`- 身份：${role}；时间：${dateText(interview.scheduledAt)}；状态：${statusText(interview.status)}。`];
+      const material = interview.role === "candidate" && isRecord(interview.candidate) && isRecord(interview.candidate.material)
+        ? interview.candidate.material : null;
+      if (material) {
+        for (const [title, content] of [["面试题目", material.paper], ["事实材料", material.factMaterial]] as const) {
+          if (isRecord(content) && Array.isArray(content.questions)) {
+            lines.push(title);
+            content.questions.forEach((question, index) => {
+              if (typeof question === "string") lines.push(`${index + 1}. ${question}`);
+            });
+          }
+        }
+      }
+      return lines;
     }),
   ];
 }
@@ -782,6 +795,7 @@ function schoolText(op: string, result: LingyeSuccess): string {
       lines.push(...renderExams(facts.exams));
       lines.push(...renderCertificates(facts.certificates));
       lines.push(...renderEmployment(facts.employment));
+      lines.push(...renderInterviews(facts.interviews));
     }
   }
 

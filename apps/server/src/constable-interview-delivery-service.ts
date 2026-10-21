@@ -3,6 +3,7 @@ import type { FarmConstableInterviewReader } from "./farm-constable-interview-cl
 import type { MailboxService } from "./mailbox-service.js";
 import type { BrowserPushService } from "./browser-push-service.js";
 import type { ConstableInterviewPushStore } from "./constable-interview-push-store.js";
+import { CONSTABLE_INTERVIEW_OPEN_MESSAGE, needsConstableCandidateWake, type ConstableInterviewCandidateWakeStore } from "./constable-interview-candidate-wake-store.js";
 
 const DAY = 86400000, OFFSET = 8 * 3600000;
 const LETTERS = {
@@ -22,6 +23,10 @@ interface Options {
   registrationAuth: { confirmCurrentResidentMembership(residentId: string): Promise<unknown> };
   farmInterviews: FarmConstableInterviewReader;
   mailboxService: Pick<MailboxService, "deliver">;
+  candidateWake?: {
+    store: Pick<ConstableInterviewCandidateWakeStore, "enqueue">;
+    bell: { notifyResident(residentId: string): void };
+  };
   browserPush?: {
     service: Pick<BrowserPushService, "sendActivityReminder">;
     receipts: Pick<ConstableInterviewPushStore, "claim" | "confirm">;
@@ -81,6 +86,22 @@ export class ConstableInterviewDeliveryService {
           } catch (error) { this.#options.onError?.(error); }
         };
         for (const interview of result.data.interviews) {
+          const candidateWake = this.#options.candidateWake;
+          if (candidateWake && needsConstableCandidateWake(interview, now)) {
+            const candidate = communities.find(c => c.resident.residentId === interview.candidate_resident_id);
+            if (candidate) {
+              await this.#options.registrationAuth.confirmCurrentResidentMembership(candidate.resident.residentId);
+              const letter = this.#options.mailboxService.deliver({
+                homeId: candidate.home.homeId, category: "lingye", title: "面试题目",
+                body: CONSTABLE_INTERVIEW_OPEN_MESSAGE, sensitiveValues: [farmHumanKey],
+                idempotencyKey: `lingye:constable-interview:open:${interview.interview_id}:${interview.scheduled_at}`,
+              });
+              if (candidateWake.store.enqueue({ residentId: candidate.resident.residentId,
+                letterId: letter.letterId, createdAt: now })) {
+                candidateWake.bell.notifyResident(candidate.resident.residentId);
+              }
+            }
+          }
           const scheduled = Date.parse(interview.scheduled_at);
           const fields = { "时间": date(interview.scheduled_at), "页面地址": "/lingye/constable-interview?interview_id=" + encodeURIComponent(interview.interview_id) };
           const id = interview.interview_id + ":" + interview.scheduled_at;

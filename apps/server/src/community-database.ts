@@ -1237,6 +1237,7 @@ function mapMailboxLetter(row: MailboxLetterRow): MailboxLetterRecord {
 import { LingyeDailyStore, type LingyeDailyIssueRecord, type LingyeDailyPublishResult } from "./lingye-daily-store.js";
 import { HumanBulletinStore } from "./human-bulletin-store.js";
 import { ConstableInterviewPushStore } from "./constable-interview-push-store.js";
+import { ConstableInterviewCandidateWakeStore } from "./constable-interview-candidate-wake-store.js";
 export { LingyeDailyIdempotencyConflictError, type LingyeDailyIssueRecord, type LingyeDailyPublishResult, type LingyeDailyPublishStatus } from "./lingye-daily-store.js";
 
 export class CommunityDatabase {
@@ -1244,6 +1245,7 @@ export class CommunityDatabase {
   readonly #lingyeDailyStore: LingyeDailyStore;
   readonly humanBulletinStore: HumanBulletinStore;
   readonly constableInterviewPushStore: ConstableInterviewPushStore;
+  readonly constableInterviewCandidateWakeStore: ConstableInterviewCandidateWakeStore;
   readonly residentAvatarStore: ResidentAvatarStore;
   readonly residentProfileStore: ResidentProfileStore;
   readonly loungeWakeStore: LoungeWakeStore;
@@ -1289,6 +1291,7 @@ export class CommunityDatabase {
     this.#lingyeDailyStore = new LingyeDailyStore(this.#database);
     this.humanBulletinStore = new HumanBulletinStore(this.#database);
     this.constableInterviewPushStore = new ConstableInterviewPushStore(this.#database);
+    this.constableInterviewCandidateWakeStore = new ConstableInterviewCandidateWakeStore(this.#database);
     this.residentAvatarStore = new ResidentAvatarStore(this.#database);
     this.residentProfileStore = new ResidentProfileStore(this.#database);
     this.loungeWakeStore = new LoungeWakeStore(this.#database);
