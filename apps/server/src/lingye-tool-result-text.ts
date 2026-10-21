@@ -661,6 +661,18 @@ function renderInterviews(value: unknown): string[] {
             ? "面试官"
             : "参与者";
       const lines = [`- 身份：${role}；时间：${dateText(interview.scheduledAt)}；状态：${statusText(interview.status)}。`];
+      const scores = interview.role === "candidate" && isRecord(interview.candidate) && isRecord(interview.candidate.scores)
+        ? interview.candidate.scores : null;
+      if (scores && Array.isArray(scores.examiners) && scores.examiners.length === 3) {
+        lines.push(typeof interview.result === "string" ? interview.result : `面试平均分：${numberText(scores.average)}／20分`);
+        records(scores.examiners).forEach((score, index) => {
+          lines.push(`考官${index + 1}：${numberText(score.score)}／20分`);
+          if (isRecord(score.stars)) {
+            lines.push(`说人话程度：${numberText(score.stars.clarity)}／5星；一碗水端平：${numberText(score.stars.fairness)}／5星；靠谱程度：${numberText(score.stars.reliability)}／5星`);
+          }
+          lines.push(`评语：${typeof score.comment === "string" && score.comment.trim() ? score.comment : "未填写"}`);
+        });
+      }
       const material = interview.role === "candidate" && isRecord(interview.candidate) && isRecord(interview.candidate.material)
         ? interview.candidate.material : null;
       if (material) {
