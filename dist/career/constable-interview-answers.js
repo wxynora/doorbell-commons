@@ -1,5 +1,6 @@
 import { CareerDomainError } from "./contracts.js";
 import { runInTransaction } from "./persistence.js";
+import { scoreResult } from "./constable-score-result.js";
 
 export const INTERVIEW_ANSWER_MESSAGES = Object.freeze({
     interview_not_started: "现在还没到本场面试时间。",
@@ -33,12 +34,26 @@ export class ConstableInterviewAnswers {
         if (interview.candidate_resident_id !== residentId)
             throw new CareerDomainError("interview_candidate_mismatch", INTERVIEW_ANSWER_MESSAGES.interview_candidate_mismatch);
         const answer = this.read(interviewId);
-        if (answer) return { answer, material: null, canSubmit: false };
+        if (answer) {
+            const rows = this.database.prepare(`SELECT total_score, stars_json, comment,
+                facts_score, restraint_score, procedure_score, explanation_score
+                FROM career_constable_scores WHERE interview_id = ? ORDER BY scored_at, examiner_account_id`).all(interviewId);
+            const result = scoreResult(rows);
+            const scores = result ? {
+                average: Number(result.average.toFixed(2)),
+                examiners: rows.map(row => ({
+                    score: row.total_score ?? row.facts_score + row.restraint_score + row.procedure_score + row.explanation_score,
+                    stars: row.stars_json ? JSON.parse(row.stars_json) : null,
+                    comment: row.comment ?? "",
+                })),
+            } : null;
+            return { answer, material: null, canSubmit: false, ...(scores ? { scores } : {}) };
+        }
         if (this.now() < interview.scheduled_at || !["panel_ready", "scoring"].includes(interview.status))
             return { answer: null, material: null, canSubmit: false };
         this.requirePanel(interviewId);
         const material = this.readMaterial(interview);
-        // The candidate never receives the examiners' grading rubric or scores.
+        // Before submission the candidate receives questions, never the private rubric.
         return { answer: null, material: { bankVersion: material.bankVersion, paper: material.paper,
             factMaterial: material.factMaterial }, canSubmit: true };
     }
