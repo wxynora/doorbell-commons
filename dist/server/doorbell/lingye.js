@@ -535,6 +535,10 @@ function internalOptionLabel(internalOption) {
         return BANK_OPTION_LABELS[bank] ?? "办理银行业务";
     const school = /^school:([a-z-]+):/u.exec(internalOption)?.[1];
     if (school) {
+        if (school === "constable-public-notice-vote") {
+            if (internalOption.endsWith(":no_objection")) return "无异议";
+            if (internalOption.endsWith(":review_request")) return "申请复核";
+        }
         const career = /:(chef|agronomist|veterinarian|reporter|constable)(?::|$)/u.exec(internalOption)?.[1];
         if (school.startsWith("career-resignation-") && career)
             return resignationLabel(school.slice("career-resignation-".length), CAREER_LABELS[career]);
