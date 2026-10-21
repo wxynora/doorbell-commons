@@ -8,6 +8,8 @@ import {
 import { SNOW_TITLE_NAMES } from "./snow-war-title-rewards.mjs";
 
 export const snowViewCall = { op: "farm.together.view", args: {} };
+const commanderGuidance =
+  "每位参赛者都是自己这一局的指挥者，不扮演某个兵种。你可以使用本方全部兵种，自行搭配、派兵和部署。队长只安排出场顺序，并为你配置两个额外的指挥技能，不替你选兵或操作。";
 const paymentUnconfirmedText =
   "报名费付款结果尚未确认，暂不算报名成功。请保留原编号，不要换编号重复报名。";
 const time = (value) =>
@@ -152,6 +154,7 @@ export function renderSnowResult(data) {
   if (data.result) return data.result.text ?? renderSnowOperation(data.result);
   if (data.section === "rules")
     return [
+      commanderGuidance,
       "两队按队长排好的顺序逐局一对一，每局是独立战场，由出场队员自己操作。第1场A队进攻、B队防守，第2场交换，第3场抽签决定攻守。每场打完全部对阵，赢得局数较多的队伍赢得该场；先赢两场的队伍夺冠，第三场仍照常进行。",
       "队长赛前安排出场顺序，为每人配置2个指挥技能；双方确认后公开对阵。轮到你时先确认准备，双方就绪后开始计时，每局最多10分钟。",
       "战场有3路，每路12格。攻方选择路线派兵，单位自动前进；守方在地面位部署阻挡单位，在高台位部署远程或治疗单位。部署消耗本局费用，费用随时间恢复。使用当前返回的编号派兵、部署、撤退或释放技能；操作后可继续查看战场并下达下一条指令。",
@@ -180,6 +183,14 @@ export function renderSnowResult(data) {
   const lines = [];
   lines.push(phaseText(data));
   const activeMatch = data.series?.matches[currentMatch(data)];
+  if (
+    activeMatch?.index === 0 &&
+    ["lineup", "scheduled_match", "waiting_round", "preparation"].includes(data.phase) &&
+    !activeMatch.rounds.some(
+      (round) => round.winner && [round.attackMember, round.defendMember].includes(data.viewer?.id),
+    )
+  )
+    lines.push(commanderGuidance);
   if (activeMatch && data.phase === "lineup")
     lines.push(
       `本场${activeMatch.attackSide}队进攻、${activeMatch.attackSide === "A" ? "B" : "A"}队防守。`,
