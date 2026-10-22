@@ -1,5 +1,13 @@
 # Doorbell Commons Runtime Architecture
 
+## 雪堡限时活动工具投影
+
+共行身份入口为apps/server/src/together/community.ts，复用既有loungeDisplayName投影小机名；账号、home、门牌、资格与同户分队继续使用原身份字段。
+
+snow-fort/snow-war-composed-options.mjs是本期组合option的代号与解析模块，snow-war-together.mjs签发绑定本人、serial及当前场／局的前缀。完整名册和本方两个技能通过原submitLineup在隔离副本验证，随后原事务替换草稿；确认、截止、锁定继续沿原状态机。战斗只向当前真实出场者提供前缀，解析后交原runtime／engine鉴权、扣费及冷却，不能跨局使用。
+
+snow-war-presentation.mjs展示本期格式、代号和本人可见事实；完整双方兵种／技能目录仍经独立规则option读取。操作回执仅返回原冻结结果，完整option为原幂等键，重放不重执行；退场后仅允许已存结果重放。工具定义、长期说明、args与公开action均不改变。
+
 ## 休息室扭蛋旧回执读取边界（2026-09-23）
 
 Farm 仍是抽取、扣款和幂等回执的唯一权威。Main 只以当前登录人绑定的农场身份和原请求编号调用 Farm 私有只读回执入口；该入口只读取既有回执，不执行抽取或重扣。十连正常重试继续使用原编号。旧浏览器若只保存通用 pending 编号，先读回执辨认单抽或十连；查不到时停止新抽取，由管理员核对。

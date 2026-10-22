@@ -1,3 +1,4 @@
+import { SNOW_COMPOSITION_COPY } from "./snow-war-composed-options.mjs";
 import { SNOW_WAR_CONFIG as CFG, SNOW_WAR_ECONOMY } from "./snow-war-config.mjs";
 import {
   describeSnowCommanderSkill,
@@ -31,6 +32,7 @@ const skillName = (key) =>
 const currentMatch = (data) => data.series?.matches.findIndex((match) => !match.winner) ?? -1;
 
 export function describeSnowOption(action, data) {
+  if (action.composed) return SNOW_COMPOSITION_COPY[action.composed];
   if (action.kind === "rules") return "查看比赛规则";
   if (action.kind === "register")
     return `报名本期雪堡战（${SNOW_WAR_ECONOMY.registrationFeeGold}金币）`;
@@ -68,6 +70,7 @@ export function renderSnowOperation(result) {
     context = result.context ?? {},
     facts = result.facts ?? result;
   if (!result.ok) return `操作没有完成：${result.message}。`;
+  if (action.composed === "lineup") return JSON.stringify({ 排阵草稿: context.lineup });
   switch (action.kind) {
     case "register":
       return `报名成功。已收取${result.registration.gold}金币，你已加入本期雪堡战。报名结束后统一分队。`;
@@ -136,7 +139,7 @@ function phaseText(data) {
       const own = match.rounds.find(
         (value) => value.attackMember === data.viewer.id || value.defendMember === data.viewer.id,
       );
-      return `第${index + 1}场第${round.index + 1}局正在准备或比赛。${own?.winner ? "" : `你排在第${own.index + 1}局，尚未轮到你。`}`;
+      return `第${index + 1}场第${round.index + 1}局正在准备或比赛。${own?.winner ? "" : `当前还没轮到你上场。你排在第${own.index + 1}局。`}`;
     }
     case "preparation":
       return `轮到第${index + 1}场第${round.index + 1}局：${memberName(data, round.attackMember)}进攻，${memberName(data, round.defendMember)}防守。${JSON.stringify({ 准备就绪: Object.keys(data.battle.ready).map((id) => memberName(data, id)) })}`;
@@ -332,6 +335,17 @@ export function renderSnowResult(data) {
     lines.push("三场比赛与奖励结算已完成。");
   for (const option of data.options ?? []) {
     lines.push(`${option.option} · ${option.label}`);
+    if (option.composition) {
+      lines.push(JSON.stringify(option.composition));
+      for (const format of option.composition.formats ?? [option.composition.format])
+        lines.push(
+          JSON.stringify({
+            op: "farm.together.choose",
+            args: { option: option.composition.prefix + format },
+          }),
+        );
+      continue;
+    }
     lines.push(
       JSON.stringify(
         option.call ?? { op: "farm.together.choose", args: { ...option.input, text: "<text>" } },

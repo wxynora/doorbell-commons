@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { loungeDisplayName } from "../lounge-display-name.js";
 import type { SnowActivity, SnowIdentity } from "./contracts.js";
 import { openSnowWarTogether } from "./snow-fort/snow-war-together.mjs";
 
@@ -13,7 +14,7 @@ export function togetherIdentity(
     JOIN homes h ON h.resident_id=r.resident_id JOIN farm_bindings f ON f.home_id=h.home_id
     WHERE r.resident_id=? AND a.membership_status='active' AND f.farm_human_key IS NOT NULL`)
     .get(residentId) as SnowIdentity | undefined;
-  return row;
+  return row && { ...row, residentName: loungeDisplayName(row.residentName) };
 }
 
 export function createCommunityTogether(

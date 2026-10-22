@@ -7,8 +7,8 @@ import {
   currentSnowChatNotice,
   snowChatWindow,
 } from "./snow-war-chat.mjs";
+import { resolveSnowComposition, snowCompositionMenu } from "./snow-war-composed-options.mjs";
 import { SNOW_WAR_CONFIG as CFG, SNOW_WAR_ECONOMY } from "./snow-war-config.mjs";
-import { restoreBattle, submitCommand } from "./snow-war-engine.mjs";
 import {
   advanceSnowLifecycle,
   currentSnowCaptainNotice,
@@ -120,29 +120,21 @@ export function openSnowWarTogether({
         const key = `${matchIndex}:${side}`;
         const draft = state.drafts[key] ?? { order: [], skills: {} };
         const members = series.teams[side].members.map((member) => member.id);
-        if (!match.lineups[side]) {
-          if (draft.order.length < members.length) {
-            for (const member of members.filter((id) => !draft.order.includes(id)))
-              actions.push({ kind: "lineup_order", matchIndex, member });
-          } else {
-            const member = draft.order.find(
-              (id) => (draft.skills[id]?.length ?? 0) < CFG.maxCommanderSkillsPerMember,
-            );
-            if (member) {
-              const role = match.attackSide === side ? "attack" : "defend";
-              for (const skill of Object.keys(CFG.commanderSkills[role])) {
-                if (!draft.skills[member]?.includes(skill))
-                  actions.push({ kind: "lineup_skill", matchIndex, member, skill });
-              }
-            } else if (
+        if (!match.lineups[side] && now() < state.lineupDeadlines[matchIndex]) {
+          actions.push({ kind: "lineup_order", matchIndex, composed: "lineup" });
+          if (
+            draft.order.length === members.length &&
+            draft.order.every((id) => draft.skills[id]?.length === CFG.maxCommanderSkillsPerMember)
+          ) {
+            if (
               !state.chatEnabled ||
               now() >= snowChatWindow(state, series, side, now()).closesAt
             ) {
               actions.push({ kind: "lineup_confirm", matchIndex });
             }
           }
+          if (draft.order.length) actions.push({ kind: "lineup_reset", matchIndex });
         }
-        if (draft.order.length) actions.push({ kind: "lineup_reset", matchIndex });
         return { phase: "lineup", series: summary, draft, channel, actions };
       }
       return { phase: "lineup", series: summary, channel, actions };
@@ -163,39 +155,7 @@ export function openSnowWarTogether({
       if (!own(view.ready, residentId)) actions.push({ kind: "ready", battleId: round.battleId });
       return { phase: "preparation", series: summary, battle: view, channel, actions };
     }
-    const battle = restoreBattle(store.loadBattle(round.battleId));
-    const role = round.attackMember === residentId ? "attack" : "defend";
-    const candidates = [];
-    for (let lane = 1; lane <= CFG.laneCount; lane++) {
-      if (role === "attack") {
-        for (const unitType of Object.keys(CFG.attackerUnits))
-          candidates.push({ type: "spawn", unitType, lane });
-      } else {
-        for (const [unitType, definition] of Object.entries(CFG.defenderUnits)) {
-          for (const cell of definition.ground ? CFG.groundSlots : CFG.highSlots)
-            candidates.push({ type: "deploy", unitType, lane, cell });
-        }
-      }
-      for (const skill of battle.assignments[role][residentId])
-        candidates.push({ type: "commander_skill", skill, lane });
-    }
-    for (const unit of view.visibleUnits.filter((unit) => unit.side === role)) {
-      if (role === "defend") candidates.push({ type: "retreat", unitId: unit.id });
-      else candidates.push({ type: "unit_skill", unitId: unit.id });
-    }
-    for (const command of candidates) {
-      // The actual engine decides affordability, cells, own-unit eligibility and cooldowns.
-      // Probe only a clone; never mutate authoritative cost, receipts or hidden state.
-      const probe = submitCommand(restoreBattle(structuredClone(battle)), {
-        ...command,
-        requestId: "option-probe",
-        side: role,
-        member: residentId,
-        battleId: battle.battleId,
-        roundId: battle.roundId,
-      });
-      if (probe.ok) actions.push({ kind: "command", battleId: round.battleId, command });
-    }
+    actions.push({ kind: "command", battleId: round.battleId, composed: "command" });
     return { phase: "battle", series: summary, battle: view, channel, actions };
   };
 
@@ -232,13 +192,16 @@ export function openSnowWarTogether({
         state.options[token] = value;
         record = [token, value];
       }
+      const composition = snowCompositionMenu(action, { ...facts, viewer }, record[0]);
       return {
-        option: record[0],
+        option: composition ? composition.prefix : record[0],
         action,
         label: describeSnowOption(action, { ...facts, viewer }),
-        ...(action.kind === "chat"
-          ? { input: { action: "chat", option: record[0] } }
-          : { call: { op: "farm.together.choose", args: { option: record[0] } } }),
+        ...(composition
+          ? { composition }
+          : action.kind === "chat"
+            ? { input: { action: "chat", option: record[0] } }
+            : { call: { op: "farm.together.choose", args: { option: record[0] } } }),
       };
     });
     const rewards = Object.values(state.rewards ?? {})
@@ -401,7 +364,8 @@ export function openSnowWarTogether({
       state.drafts[key] = { order: [], skills: {} };
       series.matches[action.matchIndex].lineups[side] = null;
       store.saveSeries(series);
-    } else if (action.kind === "lineup_order") draft.order.push(action.member);
+    } else if (action.composed === "lineup") state.drafts[key] = structuredClone(action.lineup);
+    else if (action.kind === "lineup_order") draft.order.push(action.member);
     else if (action.kind === "lineup_skill") {
       draft.skills[action.member] ??= [];
       draft.skills[action.member].push(action.skill);
@@ -419,6 +383,16 @@ export function openSnowWarTogether({
       action: structuredClone(action),
     };
     const context = {};
+    if (action.composed === "lineup") {
+      const name = (id) => identityForResident(id)?.residentName ?? id;
+      const series = store.loadSeries(state.activityId);
+      const side = ["A", "B"].find((key) => series.captains[key] === residentId);
+      const role = series.matches[action.matchIndex].attackSide === side ? "attack" : "defend";
+      context.lineup = action.lineup.order.map((id) => ({
+        name: name(id),
+        skills: action.lineup.skills[id].map((key) => CFG.commanderSkills[role][key].name),
+      }));
+    }
     if (action.member) {
       const series = store.loadSeries(state.activityId);
       const side = ["A", "B"].find((key) => series.captains[key] === residentId);
@@ -1022,7 +996,8 @@ export function openSnowWarTogether({
           return undefined;
         const option = args.option;
         const text = args.action === "chat" ? args.text : null;
-        const record = own(active.options, option) ? active.options[option] : undefined;
+        const token = option.split(":", 1)[0];
+        const record = own(active.options, token) ? active.options[token] : undefined;
         if (record?.residentId !== residentId || !identityForResident(residentId))
           return { ok: false, data: { error: "option_not_available" } };
         if ((active.receiptInputs?.[option] ?? null) !== text)
@@ -1059,11 +1034,10 @@ export function openSnowWarTogether({
           return { ok: true, data };
         }
         const option = args.option;
+        const token = typeof option === "string" ? option.split(":", 1)[0] : undefined;
         const text = args.action === "chat" ? args.text : undefined;
         const record =
-          typeof option === "string" && own(state.options, option)
-            ? state.options[option]
-            : undefined;
+          typeof token === "string" && own(state.options, token) ? state.options[token] : undefined;
         if (!record || record.residentId !== residentId) return decline("option_not_available");
         if ((record.action.kind === "chat") !== (args.action === "chat"))
           return decline("option_not_available");
@@ -1093,7 +1067,23 @@ export function openSnowWarTogether({
             data: { activityId: state.activityId, section: "rules", rules: structuredClone(CFG) },
           };
         }
-        const result = perform(state, residentId, record.action, option, text);
+        let action = record.action;
+        if (action.composed) {
+          try {
+            action = resolveSnowComposition(
+              action,
+              option.slice(token.length + 1),
+              store.loadSeries(state.activityId),
+              residentId,
+              current.battle,
+            );
+            if (option[token.length] !== ":") return decline("option_not_available");
+          } catch (error) {
+            if (error.message !== "option_not_available") throw error;
+            return decline("option_not_available");
+          }
+        } else if (option !== token) return decline("option_not_available");
+        const result = perform(state, residentId, action, option, text);
         if (record.action.kind === "chat" || record.action.kind === "chat_pass") advance(state);
         state.receipts[option] = result;
         state.receiptInputs ??= {};

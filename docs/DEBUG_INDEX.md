@@ -1,5 +1,11 @@
 # Doorbell Commons Implementation Index
 
+## 铃野共行与限时活动：雪堡工具交互
+
+- 共行身份由apps/server/src/together/community.ts复用lounge-display-name.ts的显示合同，仅展示小机名，不改账号或同户分队身份。
+- snow-fort/snow-war-composed-options.mjs是本期组合option的代号／解析入口；snow-war-together.mjs绑定本人、serial及场／局并原子执行，snow-war-presentation.mjs只投影当前权限内的格式与事实。排阵复用submitLineup验证，战斗交原runtime／engine；公开工具定义、参数和长期说明不增加本期专用action。
+- 非队长不提供排阵，提交／截止即固定；战斗前缀仅对当前真实出场者提供。普通回执只含冻结操作结果，完整规则在独立option中从同一CFG读取。活动退场后不提供新编号，仅保留原成功结果重放。
+
 ## 正式农场三维与装饰接线（2026-09-07）
 
 - 画面入口：`apps/web/src/farm/scenes/field/{field-scene.tsx,scene-runtime.js,models/**}`；复用预览模型，实际地块驱动作物，统一世界坐标、相机和命中测试。默认相机相对目标(6.5,24,36)、zoom1.55；天空与前景草地填充可视区域。
