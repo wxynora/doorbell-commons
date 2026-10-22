@@ -9,6 +9,7 @@ import {
 } from "./snow-war-chat.mjs";
 import { resolveSnowComposition, snowCompositionMenu } from "./snow-war-composed-options.mjs";
 import { SNOW_WAR_CONFIG as CFG, SNOW_WAR_ECONOMY } from "./snow-war-config.mjs";
+import { currentSnowDecision, reconcileSnowDecisions } from "./snow-war-decision-wakes.mjs";
 import {
   advanceSnowLifecycle,
   currentSnowCaptainNotice,
@@ -16,7 +17,11 @@ import {
   registeredHomes,
 } from "./snow-war-lifecycle.mjs";
 import { SNOW_WAR_NOTICE_COPY } from "./snow-war-notice-copy.mjs";
-import { describeSnowOption, renderSnowOperation } from "./snow-war-presentation.mjs";
+import {
+  describeSnowOption,
+  renderSnowOperation,
+  renderSnowResult,
+} from "./snow-war-presentation.mjs";
 import { openSnowWarRuntime } from "./snow-war-runtime.mjs";
 import { createSeries, seriesView } from "./snow-war-series.mjs";
 import { decorateSnowStatus } from "./snow-war-status.mjs";
@@ -52,6 +57,7 @@ export function openSnowWarTogether({
     automatic,
     npcPolicy,
     onTerminal: onChange,
+    onDecisionDue: onChange,
   });
   const phase = (state) =>
     now() < state.opensAt
@@ -64,7 +70,7 @@ export function openSnowWarTogether({
             ? "awaiting_teams"
             : "competition";
 
-  const advance = (state) =>
+  const advance = (state) => {
     advanceSnowLifecycle({
       state,
       store,
@@ -73,6 +79,15 @@ export function openSnowWarTogether({
       eligibleResidents: listEligibleResidents(),
       identityForResident,
     });
+    reconcileSnowDecisions(state, {
+      runtime,
+      loadBattle: (id) => store.loadBattle(id),
+      identityForResident,
+      present,
+      render: renderSnowResult,
+      at: now(),
+    });
+  };
 
   const available = (state, residentId) => {
     const stage = phase(state);
@@ -113,7 +128,8 @@ export function openSnowWarTogether({
         );
     }
     const matchIndex = series.matches.findIndex((match) => !match.winner);
-    if (matchIndex < 0) return { phase: "complete", series: summary, channel, actions };
+    if (series.status === "complete" || matchIndex < 0)
+      return { phase: "complete", series: summary, channel, actions };
     const match = series.matches[matchIndex];
     if (!match.locked) {
       if (series.captains[side] === residentId) {
@@ -228,9 +244,9 @@ export function openSnowWarTogether({
                 .filter((round) => playedSnowRound(round, residentId))
                 .map((round) => `${round.battleId}:reward:${residentId}`),
             ),
-            ...(series.matches.every((match) =>
-              match.rounds.some((round) => playedSnowRound(round, residentId)),
-            )
+            ...(series.matches
+              .filter((match) => match.winner)
+              .every((match) => match.rounds.some((round) => playedSnowRound(round, residentId)))
               ? [`${state.activityId}:complete:${residentId}`]
               : []),
             ...(series.seriesWinner === side &&
@@ -352,8 +368,13 @@ export function openSnowWarTogether({
     }
     const actor = runtime.forResident(residentId);
     if (action.kind === "ready") return { ok: true, ...actor.ready(action.battleId) };
-    if (action.kind === "command")
-      return actor.command(action.battleId, { ...action.command, requestId: option });
+    if (action.kind === "command") {
+      const result = action.waitOnly
+        ? { ok: true }
+        : actor.command(action.battleId, { ...action.command, requestId: option });
+      const decisionWait = actor.waitForDecision(action.battleId, option, action.waitTicks);
+      return { ...result, ...(decisionWait ? { decisionWait } : {}) };
+    }
     const series = store.loadSeries(state.activityId);
     const side = ["A", "B"].find((key) => series.captains[key] === residentId);
     if (!side) fail("not_team_captain");
@@ -409,7 +430,7 @@ export function openSnowWarTogether({
         (key) => CFG.commanderSkills[role][key].name,
       );
     }
-    if (action.kind === "command") {
+    if (action.kind === "command" && !action.waitOnly) {
       const command = action.command;
       const battle = store.loadBattle(action.battleId);
       const role = battle.participants.attack.includes(residentId) ? "attack" : "defend";
@@ -498,12 +519,18 @@ export function openSnowWarTogether({
           (notice) =>
             notice.residentId === residentId &&
             notice.letterId &&
-            ["registration", "chat_turn", "captain"].includes(notice.kind),
+            ["registration", "chat_turn", "captain", "action_due"].includes(notice.kind),
         )
         .filter(
           (notice) =>
             state.retired ||
             notice.status === "cancelled" ||
+            (notice.kind === "action_due" &&
+              !currentSnowDecision(
+                store.loadBattle(notice.facts.battleId),
+                residentId,
+                notice.id,
+              )) ||
             (notice.kind === "registration" &&
               (now() < state.opensAt ||
                 now() >= state.closesAt ||
@@ -904,8 +931,14 @@ export function openSnowWarTogether({
           notice = state?.notices?.[id];
         if (!notice) fail("notice_missing");
         if (
-          notice.kind === "chat_turn" &&
-          !currentSnowChatNotice(state, store.loadSeries(state.activityId), notice, now())
+          (notice.kind === "chat_turn" &&
+            !currentSnowChatNotice(state, store.loadSeries(state.activityId), notice, now())) ||
+          (notice.kind === "action_due" &&
+            !currentSnowDecision(
+              store.loadBattle(notice.facts.battleId),
+              notice.residentId,
+              notice.id,
+            ))
         ) {
           if (notice.status === "pending")
             Object.assign(notice, { status: "cancelled", endedAt: now() });
@@ -913,7 +946,7 @@ export function openSnowWarTogether({
           return structuredClone(notice);
         }
         if (!notice.letterId) {
-          notice.bellEligible = notice.kind === "team" || notice.kind === "round";
+          notice.bellEligible = ["team", "round", "action_due"].includes(notice.kind);
           notice.letterId = deliver(structuredClone(notice));
         }
         store.saveActivity(state);
@@ -1084,11 +1117,11 @@ export function openSnowWarTogether({
           }
         } else if (option !== token) return decline("option_not_available");
         const result = perform(state, residentId, action, option, text);
-        if (record.action.kind === "chat" || record.action.kind === "chat_pass") advance(state);
         state.receipts[option] = result;
         state.receiptInputs ??= {};
         state.receiptInputs[option] = text ?? null;
         state.serials[residentId] = (state.serials[residentId] ?? 0) + 1;
+        if (["chat", "chat_pass", "ready", "command"].includes(record.action.kind)) advance(state);
         const data = { ...present(state, residentId), result };
         store.saveActivity(state);
         return { ok: result.ok, data };

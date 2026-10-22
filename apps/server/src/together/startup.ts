@@ -122,8 +122,13 @@ export function createTogetherStartup(options: TogetherStartupOptions) {
       }
     }
   };
-  const render = (control: SnowControl, notice: SnowNotice) =>
-    notice.kind === "chat_turn"
+  const render = (control: SnowControl, notice: SnowNotice): string => {
+    if (notice.kind === "action_due") {
+      const body = notice.facts.body;
+      if (typeof body !== "string") throw new Error("decision_notice_missing_body");
+      return body;
+    }
+    return notice.kind === "chat_turn"
       ? [
           SNOW_WAR_CHAT_NOTICE_COPY,
           ...activity
@@ -134,6 +139,7 @@ export function createTogetherStartup(options: TogetherStartupOptions) {
           /\{(team|match|round)\}/gu,
           (placeholder, key: string) => notice.facts[key] ?? placeholder,
         );
+  };
   const publishNotices = (control: SnowControl) => {
     for (const notice of control.notices) {
       if (notice.status === "cancelled") {
@@ -173,7 +179,12 @@ export function createTogetherStartup(options: TogetherStartupOptions) {
     timer = undefined;
     if (closed || options.automatic === false) return;
     const state = activity.controlView();
-    if (!state || state.retired) return;
+    if (
+      !state ||
+      state.retired ||
+      (state.series as { status?: string } | undefined)?.status === "complete"
+    )
+      return;
     const config = state.configuration;
     const future = [
       config.opensAt,

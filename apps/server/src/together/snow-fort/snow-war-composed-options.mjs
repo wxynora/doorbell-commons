@@ -1,11 +1,13 @@
 // Activity-local composition, like the Mid-Autumn option prefixes. No MCP action or args change.
 import { SNOW_WAR_CONFIG as CFG } from "./snow-war-config.mjs";
+import { MIN_SNOW_DECISION_TICKS } from "./snow-war-decision-wakes.mjs";
 import { describeSnowCommanderSkill } from "./snow-war-rules.mjs";
 import { submitLineup } from "./snow-war-series.mjs";
 
 export const SNOW_COMPOSITION_COPY = {
   lineup: "排阵：按出场顺序组合队员与两个技能，一次提交。",
-  command: "战斗：按返回代号组合兵种、路线、位置或技能，一次提交。",
+  command:
+    "战斗：按返回代号组合兵种、路线、位置或技能，一次提交。行动末尾加 | 和等待tick数。到点后铃会带来当前战场，请继续决策，直到本局结束。",
 };
 
 const invalid = () => {
@@ -66,11 +68,15 @@ export function snowCompositionMenu(action, data, token) {
       ...(role === "defend" ? { cells: units[key].ground ? CFG.groundSlots : CFG.highSlots } : {}),
     }));
     menu.formats = [
-      ...(role === "attack"
-        ? ["出兵+<U>+<路线>", "技能+<己方单位编号>"]
-        : ["部署+<U>+<路线>+<格子>", "撤退+<己方单位编号>"]),
-      "指挥+<S>+<路线>",
+      ...[
+        ...(role === "attack"
+          ? ["出兵+<U>+<路线>", "技能+<己方单位编号>"]
+          : ["部署+<U>+<路线>+<格子>", "撤退+<己方单位编号>"]),
+        "指挥+<S>+<路线>",
+        "等待",
+      ].map((format) => `${format}|<等待tick>`),
     ];
+    menu.minimumWaitTicks = MIN_SNOW_DECISION_TICKS;
     menu.lanes = Array.from({ length: CFG.laneCount }, (_, index) => index + 1);
   }
   return menu;
@@ -115,7 +121,13 @@ export function resolveSnowComposition(action, payload, series, residentId, batt
   }
   if (action.composed !== "command" || !battleView?.started || battleView.substituted)
     return invalid();
-  const fields = payload.split("+");
+  const parts = payload.split("|");
+  if (parts.length !== 2) return invalid();
+  const waitTicks = positive(parts[1]);
+  if (waitTicks < MIN_SNOW_DECISION_TICKS || !Number.isSafeInteger(battleView.tick + waitTicks))
+    return invalid();
+  if (parts[0] === "等待") return { ...action, waitOnly: true, waitTicks };
+  const fields = parts[0].split("+");
   let command;
   const skills = skillKeys(role, match.lineups[side]?.skills[residentId] ?? []);
   if (fields[0] === "出兵" && fields.length === 3 && role === "attack")
@@ -146,5 +158,5 @@ export function resolveSnowComposition(action, payload, series, residentId, batt
     command = { type: fields[0] === "撤退" ? "retreat" : "unit_skill", unitId: fields[1] };
   } else return invalid();
   // Costs, occupancy, cooldowns and unit abilities remain authoritative in the original engine.
-  return { ...action, command };
+  return { ...action, command, waitTicks };
 }

@@ -6,6 +6,9 @@
 - snow-fort/snow-war-composed-options.mjs是本期组合option的代号／解析入口；snow-war-together.mjs绑定本人、serial及场／局并原子执行，snow-war-presentation.mjs只投影当前权限内的格式与事实。排阵复用submitLineup验证，战斗交原runtime／engine；公开工具定义、参数和长期说明不增加本期专用action。
 - 非队长不提供排阵，提交／截止即固定；战斗前缀仅对当前真实出场者提供。普通回执只含冻结操作结果，完整规则在独立option中从同一CFG读取。活动退场后不提供新编号，仅保留原成功结果重放。
 
+- 局内行动续接由`together/snow-fort/snow-war-decision-wakes.mjs`管理原battle.runtime中的本人等待／开局／到期／取消，runtime沿原tick持久推进，Together在同连接事务关联action_due notice与原信箱，startup交原Bell source。组合option的`|N`和纯等待沿同源解析，最低30tick；本人可见战场来自原投影，不含敌方费用或隐藏单位。新决策／终局使旧行动信失效，MCP附加过滤与Bell读取共用notice事实，不新增正文存储或协议。
+- 系列赛到两胜即complete，未举行第三场cancelled；series、schedule及lifecycle共同控制后续可执行项，奖励按实际举行场次判全勤，未举行局不发奖。固定检查入口为`output/snow-action-wake-20261022/{action-wake,player-bell-transport}.test.mjs`，覆盖开局、到期、重放／ACK、恢复、终局取消、本人可见信息和2:0实际场次结算；范围与运行命令见同目录README。
+
 ## 正式农场三维与装饰接线（2026-09-07）
 
 - 画面入口：`apps/web/src/farm/scenes/field/{field-scene.tsx,scene-runtime.js,models/**}`；复用预览模型，实际地块驱动作物，统一世界坐标、相机和命中测试。默认相机相对目标(6.5,24,36)、zoom1.55；天空与前景草地填充可视区域。

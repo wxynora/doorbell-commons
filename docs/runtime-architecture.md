@@ -8,6 +8,10 @@ snow-fort/snow-war-composed-options.mjs是本期组合option的代号与解析�
 
 snow-war-presentation.mjs展示本期格式、代号和本人可见事实；完整双方兵种／技能目录仍经独立规则option读取。操作回执仅返回原冻结结果，完整option为原幂等键，重放不重执行；退场后仅允许已存结果重放。工具定义、长期说明、args与公开action均不改变。
 
+局内后继归`snow-fort/snow-war-decision-wakes.mjs`，在原battle.runtime快照保存本人等待、开局义务、到期与通知状态；runtime用原tick推进，Together在原事务中关联唯一action_due notice与信箱，startup沿原Bell source投递同一正文。没有新库、表、轮询或Bell envelope。新决策使旧提醒失效，终局取消未来等待；MCP信箱附加沿同源notice过滤过时行动信，包括已经ACK的旧记录。动作回执冻结原结果及约定dueTick，重放不产生新命令／扣费／等待。
+
+系列赛达到两场胜利即complete，未举行第三场标记cancelled；schedule、lifecycle及startup不再开放该场讨论／排阵／准备／通知。全勤投影与奖励均按真实已有winner的场次计算，原金额不变；未举行局不生成奖励。兵种、技能、费用与600tick终局规则未改变。
+
 ## 休息室扭蛋旧回执读取边界（2026-09-23）
 
 Farm 仍是抽取、扣款和幂等回执的唯一权威。Main 只以当前登录人绑定的农场身份和原请求编号调用 Farm 私有只读回执入口；该入口只读取既有回执，不执行抽取或重扣。十连正常重试继续使用原编号。旧浏览器若只保存通用 pending 编号，先读回执辨认单抽或十连；查不到时停止新抽取，由管理员核对。

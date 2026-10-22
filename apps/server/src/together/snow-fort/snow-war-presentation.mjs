@@ -65,7 +65,7 @@ export function describeSnowOption(action, data) {
 }
 
 // This string is persisted with the operation, not re-created from a later phase.
-export function renderSnowOperation(result) {
+function renderSnowOperationBody(result) {
   const action = result.action,
     context = result.context ?? {},
     facts = result.facts ?? result;
@@ -91,8 +91,9 @@ export function renderSnowOperation(result) {
     case "ready":
       return result.started
         ? "双方已准备就绪，本局开始。"
-        : "你已准备就绪，正在等对手准备；战斗计时尚未开始。";
+        : "你已准备就绪，正在等对手准备；战斗计时尚未开始。本局开始时，铃会带来战场和可执行指令。";
     case "command": {
+      if (action.waitOnly) return "";
       const command = action.command;
       if (command.type === "spawn")
         return `已在第${command.lane}路派出${context.unitName}（${facts.unitId}），消耗${facts.cost}点部署费用，剩余${facts.remainingCost}点。`;
@@ -106,6 +107,19 @@ export function renderSnowOperation(result) {
         : `已在第${command.lane}路使用「${context.skillName}」。${JSON.stringify(effect)}`;
     }
   }
+}
+
+export function renderSnowOperation(result) {
+  const text = renderSnowOperationBody(result);
+  const wait = result.decisionWait;
+  return [
+    text,
+    ...(wait
+      ? [`等待${wait.waitTicks}tick，下一次决策在战斗第${wait.dueTick}tick；到点由铃通知。`]
+      : []),
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function phaseText(data) {
@@ -146,7 +160,7 @@ function phaseText(data) {
     case "battle":
       return `第${index + 1}场第${round.index + 1}局正在进行，你是${data.viewer.side === match.attackSide ? "攻方" : "守方"}。战斗已过${data.battle.tick}秒，核心耐久${data.battle.coreHp}/${CFG.coreMaxHp}，本方部署费用${data.battle.ownCost}。`;
     case "complete":
-      return `三场比赛已结束。场比分：A队${data.series.matchWins.A}：${data.series.matchWins.B}B队，冠军是${data.series.seriesWinner}队。`;
+      return `系列赛已结束。场比分：A队${data.series.matchWins.A}：${data.series.matchWins.B}B队，冠军是${data.series.seriesWinner}队。`;
     case "ended":
       return "本期雪堡战已结束。下面是这个编号当时已经保存的操作结果，不会再次执行。";
   }
@@ -158,7 +172,7 @@ export function renderSnowResult(data) {
   if (data.section === "rules")
     return [
       commanderGuidance,
-      "两队按队长排好的顺序逐局一对一，每局是独立战场，由出场队员自己操作。第1场A队进攻、B队防守，第2场交换，第3场抽签决定攻守。每场打完全部对阵，赢得局数较多的队伍赢得该场；先赢两场的队伍夺冠，第三场仍照常进行。",
+      "两队按队长排好的顺序逐局一对一，每局是独立战场，由出场队员自己操作。第1场A队进攻、B队防守，第2场交换。每场打完全部对阵，赢得局数较多的队伍赢得该场；先赢两场的队伍夺冠。2:0立即结束；1:1才打第三场，抽签决定攻守。",
       "队长赛前安排出场顺序，为每人配置2个指挥技能；双方确认后公开对阵。轮到你时先确认准备，双方就绪后开始计时，每局最多10分钟。",
       "战场有3路，每路12格。攻方选择路线派兵，单位自动前进；守方在地面位部署阻挡单位，在高台位部署远程或治疗单位。部署消耗本局费用，费用随时间恢复。使用当前返回的编号派兵、部署、撤退或释放技能；操作后可继续查看战场并下达下一条指令。",
       "攻方单位越过第12格会扣减核心耐久。10分钟内核心降到0，攻方获胜；时间结束核心仍有耐久，守方获胜。下一局重新开始，费用、单位、生命和冷却不继承。",
@@ -230,7 +244,7 @@ export function renderSnowResult(data) {
       lines.push(
         JSON.stringify({
           单局奖励: data.rewardPlan.round,
-          三场全勤奖励: data.rewardPlan.complete,
+          全勤奖励: data.rewardPlan.complete,
           冠军奖励: data.rewardPlan.champion,
         }),
       );
@@ -303,8 +317,6 @@ export function renderSnowResult(data) {
         `第${index + 1}场结束，局比分A队${match.rounds.filter((r) => r.winner === "A").length}：${match.rounds.filter((r) => r.winner === "B").length}B队，${match.winner}队赢得本场。`,
       );
   }
-  if (data.series?.seriesWinner && data.phase !== "complete")
-    lines.push(`${data.series.seriesWinner}队已取得两场胜利，冠军已确定；第三场仍按赛程进行。`);
   for (const reward of data.rewards ?? []) {
     if (reward.kind === "titles") {
       if (reward.status === "paid")
@@ -317,7 +329,7 @@ export function renderSnowResult(data) {
       reward.kind === "round"
         ? `第${reward.matchIndex + 1}场第${reward.roundIndex + 1}局奖励`
         : reward.kind === "complete"
-          ? "三场全勤奖励"
+          ? "全勤奖励"
           : reward.kind === "champion"
             ? "冠军奖励"
             : "奖励";
@@ -332,7 +344,7 @@ export function renderSnowResult(data) {
       lines.push("限定家具：团团雪堡×1（已放入装修仓库）。");
   }
   if (data.phase === "complete" && data.rewardsSettled === true)
-    lines.push("三场比赛与奖励结算已完成。");
+    lines.push("系列赛与奖励结算已完成。");
   for (const option of data.options ?? []) {
     lines.push(`${option.option} · ${option.label}`);
     if (option.composition) {

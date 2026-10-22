@@ -24,7 +24,7 @@ export function reconcileSnowRegistrationEligibility(state, identityForResident,
 export function currentSnowCaptainNotice(state, series, notice, now) {
   const match = series?.matches[Number(notice.facts.match) - 1];
   const side = notice.facts.team;
-  if (!match || match.locked || match.lineups[side]) return false;
+  if (series?.status === "complete" || !match || match.locked || match.lineups[side]) return false;
   const closesAt =
     state.chatWindows?.[side]?.[match.index]?.closesAt ?? state.matchStartsAt[match.index];
   const confirming = Boolean(state.chatEnabled && now >= closesAt);
@@ -100,7 +100,8 @@ export function advanceSnowLifecycle({
   }
   if (!series) return;
   activateSnowMatch(state, series, now);
-  const unplayed = series.matches.find((match) => !match.winner);
+  const unplayed =
+    series.status === "complete" ? undefined : series.matches.find((match) => !match.winner);
   if (unplayed && !unplayed.locked && now >= state.lineupDeadlines[unplayed.index]) {
     state.autoLineups ??= {};
     for (const side of ["A", "B"]) {
@@ -122,7 +123,8 @@ export function advanceSnowLifecycle({
   );
   for (const member of members.filter((member) => !member.isNpc))
     notice(`${state.activityId}:team:${member.id}`, member.id, "team");
-  const index = series.matches.findIndex((match) => !match.winner);
+  const index =
+    series.status === "complete" ? -1 : series.matches.findIndex((match) => !match.winner);
   if (state.chatEnabled && index >= 0) {
     for (const side of ["A", "B"]) {
       const turn = activeSnowChatTurn(state, series, side, now, identityForResident);
@@ -185,6 +187,8 @@ export function advanceSnowLifecycle({
     const match = series.matches[Number(entry.facts.match) - 1];
     const round = match?.rounds[Number(entry.facts.round) - 1];
     const obsolete =
+      (series.status === "complete" &&
+        ["captain", "round", "started", "chat_turn"].includes(entry.kind)) ||
       (entry.kind === "registration" && now >= state.closesAt) ||
       (entry.kind === "captain" && !currentSnowCaptainNotice(state, series, entry, now)) ||
       (entry.kind === "round" &&
@@ -231,7 +235,10 @@ export function advanceSnowLifecycle({
       if (match.winner)
         notice(`${state.activityId}:result:${match.index}:${member.id}`, member.id, "result");
     }
-    if (completed === series.matches.length)
+    if (
+      series.status === "complete" &&
+      completed === series.matches.filter((match) => match.winner).length
+    )
       grant(`${state.activityId}:complete:${member.id}`, member.id, rewards.complete, "complete");
     if (series.status === "complete" && member.side === series.seriesWinner && completed > 0)
       grant(`${state.activityId}:champion:${member.id}`, member.id, rewards.champion, "champion");

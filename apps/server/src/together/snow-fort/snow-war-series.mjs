@@ -133,6 +133,7 @@ function requireMatch(state, matchIndex) {
 
 export function submitLineup(state, matchIndex, side, lineup) {
   const match = requireMatch(state, matchIndex);
+  if (state.status === "complete") throw new Error("系列赛已结束");
   if (side !== "A" && side !== "B") throw new Error("排阵必须属于 A 队或 B 队");
   if (match.locked) throw new Error("本场排阵已锁定并公开，不能再修改");
   const { captain, order, skills } = lineup ?? {};
@@ -175,8 +176,9 @@ export function submitLineup(state, matchIndex, side, lineup) {
 
 export function startRound(state, matchIndex, roundIndex) {
   const match = requireMatch(state, matchIndex);
+  if (state.status === "complete") throw new Error("系列赛已结束");
   if (!match.locked) throw new Error("本场双方排阵尚未锁定");
-  // 赛程顺序：前一场未出结果，不能开下一场（第 3 场在 2:0 后仍按此规则正常可开）。
+  // 赛程顺序：前一场未出结果，不能开下一场；第三场仅在1:1时开放。
   if (matchIndex > 0 && !state.matches[matchIndex - 1].winner) {
     throw new Error("前一场尚未结束，不能开下一场");
   }
@@ -235,14 +237,14 @@ export function reportRound(state, matchIndex, roundIndex, winnerSide) {
     if (aWins === bWins) throw new Error("局数相等，场胜无法判定——席位奇偶规则被破坏");
     match.winner = aWins > bWins ? "A" : "B";
     state.matchWins[match.winner] += 1;
-    // 先获得两场胜利者赢系列赛；2:0 后第 3 天仍按排期举行，结果照常记录，冠军只记录一次（审阅稿 3.1、11.3）。
+    // Best of three: the second match win ends the series; an unused third match never opens.
     if (state.matchWins[match.winner] >= 2 && !state.seriesWinner) {
       state.seriesWinner = match.winner;
     }
   }
-  // status 只表示三场全部出结果；冠军提前决出（2:0）不改它，第 3 天照常开赛。
-  if (state.matches.every((m) => m.winner)) {
+  if (state.seriesWinner) {
     state.status = "complete";
+    for (const unused of state.matches.filter((value) => !value.winner)) unused.cancelled = true;
   }
   return { ok: true };
 }

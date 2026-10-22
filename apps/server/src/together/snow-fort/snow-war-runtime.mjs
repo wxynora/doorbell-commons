@@ -3,6 +3,12 @@
 
 import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
+import {
+  advanceSnowDecisionWakes,
+  markSnowDecisionNotified,
+  pendingSnowDecisions,
+  scheduleSnowDecision,
+} from "./snow-war-decision-wakes.mjs";
 import { restoreBattle, submitCommand, tick, viewForSide } from "./snow-war-engine.mjs";
 import { snowWarNpcPolicy } from "./snow-war-npc.mjs";
 import { readSnowProcessIdentity } from "./snow-war-process-identity.mjs";
@@ -38,6 +44,7 @@ export function openSnowWarRuntime({
   automatic = true,
   npcPolicy = snowWarNpcPolicy,
   onTerminal = () => {},
+  onDecisionDue = () => {},
 }) {
   const store = providedStore ?? openSnowWarStore(dbPath);
   const owner = { pid: process.pid, nonce: randomUUID() };
@@ -75,12 +82,14 @@ export function openSnowWarRuntime({
     fail("battle_not_in_series");
   };
   const persist = (battle) => {
+    const decisionDue = advanceSnowDecisionWakes(battle);
     if (battle.status === "running") store.saveBattle(battle);
     else {
       const { series, match, round } = locate(battle);
       settleRoundFromBattle(series, match.index, round.index, battle);
       store.saveSeriesAndBattle(series, battle);
     }
+    if (decisionDue) queueMicrotask(onDecisionDue);
   };
   const authorize = (battle, residentId) => {
     const sides = ["attack", "defend"].filter((side) =>
@@ -109,7 +118,7 @@ export function openSnowWarRuntime({
       for (const id of missing) state.ready[id] = true;
       state.started = true;
       started = true;
-      store.saveBattle(battle);
+      persist(battle);
     });
     if (started) {
       lastTicks.set(battleId, clock());
@@ -123,7 +132,10 @@ export function openSnowWarRuntime({
       for (const entry of store.listBattles()) {
         const battle = battleAt(entry.battleId);
         if (battle.status !== "running") persist(battle);
-        else if (battle.runtime?.started) lastTicks.set(battle.battleId, clock());
+        else if (battle.runtime?.started) {
+          persist(battle);
+          lastTicks.set(battle.battleId, clock());
+        }
       }
     });
   } catch (error) {
@@ -243,7 +255,7 @@ export function openSnowWarRuntime({
             runtime.started = true;
             startedNow = true;
           }
-          store.saveBattle(battle);
+          persist(battle);
           return { started: runtime.started, ready: copy(runtime.ready) };
         });
         if (startedNow) {
@@ -290,6 +302,16 @@ export function openSnowWarRuntime({
           return { ...copy(result), requestId: input.requestId };
         });
       },
+      waitForDecision(battleId, requestId, waitTicks) {
+        requireOpen();
+        return store.transaction(() => {
+          const battle = battleAt(battleId);
+          authorize(battle, residentId);
+          const waiting = scheduleSnowDecision(battle, residentId, requestId, waitTicks);
+          persist(battle);
+          return waiting;
+        });
+      },
       view(battleId) {
         requireOpen();
         pump();
@@ -319,6 +341,14 @@ export function openSnowWarRuntime({
     forResident,
     pump,
     expirePreparation,
+    pendingDecisions() {
+      return store.listBattles().flatMap((entry) => pendingSnowDecisions(battleAt(entry.battleId)));
+    },
+    markDecisionNotified(battleId, id) {
+      const battle = battleAt(battleId);
+      markSnowDecisionNotified(battle, id);
+      store.saveBattle(battle);
+    },
     // Trusted Together assembly only: option receipt and authoritative operation
     // commit together. Never expose this capability to a resident facade.
     atomic(operation) {

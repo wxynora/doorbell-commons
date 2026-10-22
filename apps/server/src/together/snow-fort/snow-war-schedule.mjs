@@ -4,6 +4,7 @@ import { SNOW_WAIT_MS } from "./snow-war-waits.mjs";
 // move on a read/restart. A delayed previous match cannot consume the next
 // team's discussion before that team could use it.
 export function activateSnowMatch(state, series, now) {
+  if (series.status === "complete") return;
   const match = series.matches.find((entry) => !entry.winner);
   if (!match) return;
   state.activatedMatches ??= {};

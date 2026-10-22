@@ -19,7 +19,7 @@ export interface SnowIdentity {
 export interface SnowNotice {
   id: string;
   residentId: string;
-  kind: keyof SnowConfiguration["copy"] | "chat_turn";
+  kind: keyof SnowConfiguration["copy"] | "chat_turn" | "action_due";
   facts: Record<string, string>;
   createdAt: number;
   status: "pending" | "acked" | "blocked" | "cancelled";
