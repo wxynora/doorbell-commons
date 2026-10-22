@@ -13,6 +13,7 @@ import { currentSnowDecision, reconcileSnowDecisions } from "./snow-war-decision
 import {
   advanceSnowLifecycle,
   currentSnowCaptainNotice,
+  currentSnowDiscussionNotice,
   reconcileSnowRegistrationEligibility,
   registeredHomes,
 } from "./snow-war-lifecycle.mjs";
@@ -519,12 +520,21 @@ export function openSnowWarTogether({
           (notice) =>
             notice.residentId === residentId &&
             notice.letterId &&
-            ["registration", "chat_turn", "captain", "action_due"].includes(notice.kind),
+            ["registration", "chat_turn", "captain", "action_due", "discussion_start"].includes(
+              notice.kind,
+            ),
         )
         .filter(
           (notice) =>
             state.retired ||
             notice.status === "cancelled" ||
+            (notice.kind === "discussion_start" &&
+              !currentSnowDiscussionNotice(
+                state,
+                store.loadSeries(state.activityId),
+                notice,
+                now(),
+              )) ||
             (notice.kind === "action_due" &&
               !currentSnowDecision(
                 store.loadBattle(notice.facts.battleId),
@@ -932,6 +942,13 @@ export function openSnowWarTogether({
         if (!notice) fail("notice_missing");
         if (notice.status !== "pending") return structuredClone(notice);
         if (
+          (notice.kind === "discussion_start" &&
+            !currentSnowDiscussionNotice(
+              state,
+              store.loadSeries(state.activityId),
+              notice,
+              now(),
+            )) ||
           (notice.kind === "captain" &&
             !currentSnowCaptainNotice(state, store.loadSeries(state.activityId), notice, now())) ||
           (notice.kind === "chat_turn" &&
@@ -948,7 +965,13 @@ export function openSnowWarTogether({
           store.saveActivity(state);
           return structuredClone(notice);
         }
-        notice.bellEligible = ["team", "captain", "round", "action_due"].includes(notice.kind);
+        notice.bellEligible = [
+          "team",
+          "captain",
+          "round",
+          "action_due",
+          "discussion_start",
+        ].includes(notice.kind);
         if (!notice.letterId) {
           notice.letterId = deliver(structuredClone(notice));
         }

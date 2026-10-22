@@ -2,6 +2,8 @@
 
 ## 雪堡限时活动工具投影
 
+讨论开始铃使用原notice JSON的discussion_start：lifecycle沿snowChatWindow当前开放窗口为本队真人各创建一个稳定notice，startup用已审常量生成同一信箱正文并走原Bell source；createdAt取实际创建时刻，不借旧信时间。currentSnowDiscussionNotice在投递与过窗协调中核对当前场／本队／窗口，MCP同源排除过时邀请。仍用chatBoundaries的原单一边界定时器，chat_turn不响铃，不改Bell客户端／信封或频道规则。
+
 队长提醒沿原captain notice与信箱进入Bell source：publishNotice核验当前排阵阶段，对pending且已有letterId、bellEligible=false的有效队长信原位补资格；startup仅为该类旧信放行发布，不重复deliver。新信资格同源包含team／captain／round／action_due，已确认、过时或终态记录不恢复。现有ACK、资格检查、信封和边界定时器不变。
 
 共行身份入口为apps/server/src/together/community.ts，复用既有loungeDisplayName投影小机名；账号、home、门牌、资格与同户分队继续使用原身份字段。

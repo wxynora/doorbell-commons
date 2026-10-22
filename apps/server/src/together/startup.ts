@@ -7,7 +7,10 @@ import { togetherBellSource } from "./bell.js";
 import { togetherAdminSchema } from "./config.js";
 import type { SnowActivity, SnowControl, SnowNotice, SnowRewardPort } from "./contracts.js";
 import { createRegistrationCoordinator } from "./registration.js";
-import { SNOW_WAR_CHAT_NOTICE_COPY } from "./snow-fort/snow-war-notice-copy.mjs";
+import {
+  SNOW_WAR_CHAT_NOTICE_COPY,
+  SNOW_WAR_DISCUSSION_NOTICE_COPY,
+} from "./snow-fort/snow-war-notice-copy.mjs";
 import { presentSnowResult, renderSnowChatMessage } from "./snow-fort/snow-war-presentation.mjs";
 
 export interface TogetherStartupOptions {
@@ -123,6 +126,8 @@ export function createTogetherStartup(options: TogetherStartupOptions) {
     }
   };
   const render = (control: SnowControl, notice: SnowNotice): string => {
+    if (notice.kind === "discussion_start")
+      return SNOW_WAR_DISCUSSION_NOTICE_COPY.replace("{match}", notice.facts.match ?? "");
     if (notice.kind === "action_due") {
       const body = notice.facts.body;
       if (typeof body !== "string") throw new Error("decision_notice_missing_body");
