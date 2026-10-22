@@ -10,7 +10,9 @@ snow-war-presentation.mjs展示本期格式、代号和本人可见事实；完�
 
 局内后继归`snow-fort/snow-war-decision-wakes.mjs`，在原battle.runtime快照保存本人等待、开局义务、到期与通知状态；runtime用原tick推进，Together在原事务中关联唯一action_due notice与信箱，startup沿原Bell source投递同一正文。没有新库、表、轮询或Bell envelope。新决策使旧提醒失效，终局取消未来等待；MCP信箱附加沿同源notice过滤过时行动信，包括已经ACK的旧记录。动作回执冻结原结果及约定dueTick，重放不产生新命令／扣费／等待。
 
-系列赛达到两场胜利即complete，未举行第三场标记cancelled；schedule、lifecycle及startup不再开放该场讨论／排阵／准备／通知。全勤投影与奖励均按真实已有winner的场次计算，原金额不变；未举行局不生成奖励。兵种、技能、费用与600tick终局规则未改变。
+系列赛达到两场胜利即complete，未举行第三场标记cancelled；schedule、lifecycle及startup不再开放该场讨论／排阵／准备／通知。全勤投影与奖励均按真实已有winner的场次计算，原金额不变；未举行局不生成奖励。上述系列赛与等待机制不改变具体单位参数；当前数值由下述同源配置提供。
+
+数值权威在`together/snow-fort/snow-war-config.mjs`，当前规则标识`snow-fort-20261022.1`；engine、NPC、组合菜单与独立规则目录读取同一份单位定义。轻兵生命825／被挡攻击125，投手费用12／攻击170，斥候费用7，重锤费用14／被挡攻击330；其余单位与机制保持。恢复沿原rulesVersion门槛，不自动改写旧battle快照；数值调整不触发玩家余额、库存或奖励迁移。
 
 ## 休息室扭蛋旧回执读取边界（2026-09-23）
 

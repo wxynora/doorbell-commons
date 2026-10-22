@@ -1,5 +1,5 @@
 // 雪堡战参数配置表（候选）。
-// 初版来源为雪堡审阅稿第七、八节；2026-10-17按自主优化授权仅调整攻方费用。
+// 2026-10-22数值候选：仅调整攻方单位费用／属性，战斗与等待规则保持。
 // 当前有限试打与运行边界见README。时间单位为战斗秒／tick（1 tick = 1 战斗秒）。
 
 export const SNOW_WAR_ECONOMY = {
@@ -12,7 +12,7 @@ export const SNOW_WAR_ECONOMY = {
 };
 
 export const SNOW_WAR_CONFIG = {
-  rulesVersion: "snow-fort-20261017.1",
+  rulesVersion: "snow-fort-20261022.1",
   laneCount: 3,
   laneCells: 12, // 地面位置 1..12，越过第 12 格抵达终点
   groundSlots: [4, 7, 10], // 守方地面部署位
@@ -108,12 +108,12 @@ export const SNOW_WAR_CONFIG = {
     light_inf: {
       name: "雪地轻兵",
       cost: 4,
-      hp: 650,
+      hp: 825,
       armor: 10,
       spellResist: 0,
       moveSeconds: 8,
       blockedAttackInterval: 3,
-      blockedAttack: 100,
+      blockedAttack: 125,
       breakthrough: 1,
     },
     heavy_t: {
@@ -129,13 +129,13 @@ export const SNOW_WAR_CONFIG = {
     },
     thrower: {
       name: "远程投手",
-      cost: 9,
+      cost: 12,
       hp: 900,
       armor: 20,
       spellResist: 0,
       moveSeconds: 12,
       attackInterval: 4,
-      attack: 180,
+      attack: 170,
       damageType: "physical",
       range: 3,
       breakthrough: 2,
@@ -154,7 +154,7 @@ export const SNOW_WAR_CONFIG = {
     },
     scout: {
       name: "潜行斥候",
-      cost: 11,
+      cost: 7,
       hp: 700,
       armor: 10,
       spellResist: 0,
@@ -173,13 +173,13 @@ export const SNOW_WAR_CONFIG = {
     },
     hammer: {
       name: "破阵重锤手",
-      cost: 15,
+      cost: 14,
       hp: 1700,
       armor: 50,
       spellResist: 0,
       moveSeconds: 14,
       blockedAttackInterval: 6,
-      blockedAttack: 300,
+      blockedAttack: 330,
       breakthrough: 3,
       unitSkill: { kind: "silence", name: "破阵震击", silenceTicks: 3, cooldownTicks: 60 }, // 令阻挡自己的地面单位停止普通攻击，不解除阻挡
     },
