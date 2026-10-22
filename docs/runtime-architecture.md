@@ -2,6 +2,8 @@
 
 ## 雪堡限时活动工具投影
 
+队长提醒沿原captain notice与信箱进入Bell source：publishNotice核验当前排阵阶段，对pending且已有letterId、bellEligible=false的有效队长信原位补资格；startup仅为该类旧信放行发布，不重复deliver。新信资格同源包含team／captain／round／action_due，已确认、过时或终态记录不恢复。现有ACK、资格检查、信封和边界定时器不变。
+
 共行身份入口为apps/server/src/together/community.ts，复用既有loungeDisplayName投影小机名；账号、home、门牌、资格与同户分队继续使用原身份字段。
 
 snow-fort/snow-war-composed-options.mjs是本期组合option的代号与解析模块，snow-war-together.mjs签发绑定本人、serial及当前场／局的前缀。完整名册和本方两个技能通过原submitLineup在隔离副本验证，随后原事务替换草稿；确认、截止、锁定继续沿原状态机。战斗只向当前真实出场者提供前缀，解析后交原runtime／engine鉴权、扣费及冷却，不能跨局使用。

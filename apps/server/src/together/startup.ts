@@ -147,7 +147,8 @@ export function createTogetherStartup(options: TogetherStartupOptions) {
           options.bell.notifyWakeCancelled(notice.residentId, `together:${notice.id}`);
         continue;
       }
-      if (notice.status !== "pending" || notice.letterId !== null) continue;
+      const captainNeedsBell = notice.kind === "captain" && notice.bellEligible === false;
+      if (notice.status !== "pending" || (notice.letterId !== null && !captainNeedsBell)) continue;
       const identity = options.database.findTogetherIdentity(notice.residentId);
       if (!identity) continue;
       try {

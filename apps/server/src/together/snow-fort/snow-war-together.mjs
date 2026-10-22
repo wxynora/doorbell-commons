@@ -930,7 +930,10 @@ export function openSnowWarTogether({
         const state = store.readActivity(),
           notice = state?.notices?.[id];
         if (!notice) fail("notice_missing");
+        if (notice.status !== "pending") return structuredClone(notice);
         if (
+          (notice.kind === "captain" &&
+            !currentSnowCaptainNotice(state, store.loadSeries(state.activityId), notice, now())) ||
           (notice.kind === "chat_turn" &&
             !currentSnowChatNotice(state, store.loadSeries(state.activityId), notice, now())) ||
           (notice.kind === "action_due" &&
@@ -945,8 +948,8 @@ export function openSnowWarTogether({
           store.saveActivity(state);
           return structuredClone(notice);
         }
+        notice.bellEligible = ["team", "captain", "round", "action_due"].includes(notice.kind);
         if (!notice.letterId) {
-          notice.bellEligible = ["team", "round", "action_due"].includes(notice.kind);
           notice.letterId = deliver(structuredClone(notice));
         }
         store.saveActivity(state);
