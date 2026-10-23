@@ -1,6 +1,6 @@
 // 雪堡战组赛与赛程层（候选）。
 // 实现 docs/snow-fort-war-proposal-20261012.md（2026-10-14 审阅稿）第三、四、十一节：
-// 报名分队（按机数平衡、NPC 补齐、奇数席位规则）、三天三场两胜赛程、第三场抽签、
+// 报名分队（按机数平衡、NPC 补齐、奇数席位规则）、三场累计小局总分赛程、第三场抽签、
 // 队长排阵同时暗排、逐局开局对接战斗引擎、场与系列赛结算。
 // 状态是可 JSON 序列化的普通对象；抽签用 seriesId 的确定性哈希，可复现、可审计。
 // 频道、通知、日报、时段与奖励等产品层不在本文件。
@@ -94,7 +94,7 @@ export function createSeries({ seriesId, humanEntries }) {
   }));
   return {
     seriesId,
-    status: "awaiting_lineup", // awaiting_lineup | complete（三场全部出结果；冠军提前决出不改此值，第 3 天照常）
+    status: "awaiting_lineup", // awaiting_lineup | complete（三场全部出结果后按总分决出冠军）
     teams,
     matchWins: { A: 0, B: 0 },
     seriesWinner: null,
@@ -124,7 +124,6 @@ function teamMemberIds(state, side) {
 
 function requireMatch(state, matchIndex) {
   const match = state.matches[matchIndex];
-  // 冠军已定不封锁后续场次：2:0 后第 3 天仍按排期举行，结果照常记录，冠军不因后续结果改写（审阅稿 3.1）。
   if (!match) throw new Error("场次不存在");
   return match;
 }
@@ -178,7 +177,7 @@ export function startRound(state, matchIndex, roundIndex) {
   const match = requireMatch(state, matchIndex);
   if (state.status === "complete") throw new Error("系列赛已结束");
   if (!match.locked) throw new Error("本场双方排阵尚未锁定");
-  // 赛程顺序：前一场未出结果，不能开下一场；第三场仅在1:1时开放。
+  // 赛程顺序：前一场未出结果，不能开下一场；三场均须完成。
   if (matchIndex > 0 && !state.matches[matchIndex - 1].winner) {
     throw new Error("前一场尚未结束，不能开下一场");
   }
@@ -237,14 +236,11 @@ export function reportRound(state, matchIndex, roundIndex, winnerSide) {
     if (aWins === bWins) throw new Error("局数相等，场胜无法判定——席位奇偶规则被破坏");
     match.winner = aWins > bWins ? "A" : "B";
     state.matchWins[match.winner] += 1;
-    // Best of three: the second match win ends the series; an unused third match never opens.
-    if (state.matchWins[match.winner] >= 2 && !state.seriesWinner) {
-      state.seriesWinner = match.winner;
-    }
   }
-  if (state.seriesWinner) {
+  if (state.matches.every((value) => value.winner)) {
+    const totals = totalRoundWins(state);
+    state.seriesWinner = totals.A > totals.B ? "A" : "B";
     state.status = "complete";
-    for (const unused of state.matches.filter((value) => !value.winner)) unused.cancelled = true;
   }
   return { ok: true };
 }
@@ -269,11 +265,20 @@ export function settleRoundFromBattle(state, matchIndex, roundIndex, battle) {
   return result;
 }
 
+function totalRoundWins(state) {
+  const totals = { A: 0, B: 0 };
+  for (const match of state.matches)
+    for (const round of match.rounds)
+      if (round.winner === "A" || round.winner === "B") totals[round.winner] += 1;
+  return totals;
+}
+
 export function seriesView(state) {
   return {
     seriesId: state.seriesId,
     status: state.status,
     matchWins: { ...state.matchWins },
+    roundWins: totalRoundWins(state),
     seriesWinner: state.seriesWinner,
     day3AttackSide: state.matches[2]?.attackSide ?? null,
     teams: {

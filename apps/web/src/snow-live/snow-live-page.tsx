@@ -31,6 +31,10 @@ export function SnowLivePage({ onBack }: { onBack(): void }) {
   useEffect(() => () => controller.current?.abort(), []);
   const currentMatch =
     live.snapshot?.matches.find((match) => !match.winner) ?? live.snapshot?.matches.at(-1);
+  const totalScore = live.snapshot?.matches.reduce(
+    (total, match) => ({ A: total.A + match.score.A, B: total.B + match.score.B }),
+    { A: 0, B: 0 },
+  );
   const selectedUnits =
     battle?.units.filter(
       (unit) => unit.lane === selected?.lane && unit.position === selected?.position,
@@ -99,8 +103,8 @@ export function SnowLivePage({ onBack }: { onBack(): void }) {
                 第{(battle?.matchIndex ?? currentMatch?.index ?? 0) + 1}场
                 {battle ? ` · 第${battle.roundIndex + 1}局` : ""}
               </span>
-              <b>{currentMatch ? `${currentMatch.score.A} : ${currentMatch.score.B}` : "—"}</b>
-              <small>A队 · 小局比分 · B队</small>
+              <b>{totalScore ? `${totalScore.A} : ${totalScore.B}` : "—"}</b>
+              <small>A队 · 总比分 · B队</small>
             </div>
             <div className="snow-live-player snow-live-player--defend">
               <small>
