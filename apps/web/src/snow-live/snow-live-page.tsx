@@ -31,10 +31,12 @@ export function SnowLivePage({ onBack }: { onBack(): void }) {
   useEffect(() => () => controller.current?.abort(), []);
   const currentMatch =
     live.snapshot?.matches.find((match) => !match.winner) ?? live.snapshot?.matches.at(-1);
-  const totalScore = live.snapshot?.matches.reduce(
-    (total, match) => ({ A: total.A + match.score.A, B: total.B + match.score.B }),
-    { A: 0, B: 0 },
+  const scoreMatch = live.snapshot?.matches.find(
+    (match) => match.index === (battle?.matchIndex ?? currentMatch?.index),
   );
+  const attackSide = battle?.attackSide ?? scoreMatch?.attackSide ?? "A";
+  const defendSide = attackSide === "A" ? "B" : "A";
+  const matchScore = scoreMatch?.score;
   const selectedUnits =
     battle?.units.filter(
       (unit) => unit.lane === selected?.lane && unit.position === selected?.position,
@@ -95,7 +97,7 @@ export function SnowLivePage({ onBack }: { onBack(): void }) {
         <section className="snow-live-main" aria-label="战场直播">
           <div className="snow-live-scoreboard">
             <div className="snow-live-player">
-              <small>{battle?.attackSide ?? currentMatch?.attackSide ?? "A"}队 · 进攻</small>
+              <small>{attackSide}队 · 进攻</small>
               <strong>{battle?.attack.name ?? "等待出场"}</strong>
             </div>
             <div className="snow-live-score">
@@ -103,12 +105,12 @@ export function SnowLivePage({ onBack }: { onBack(): void }) {
                 第{(battle?.matchIndex ?? currentMatch?.index ?? 0) + 1}场
                 {battle ? ` · 第${battle.roundIndex + 1}局` : ""}
               </span>
-              <b>{totalScore ? `${totalScore.A} : ${totalScore.B}` : "—"}</b>
-              <small>A队 · 总比分 · B队</small>
+              <b>{matchScore ? `${matchScore[attackSide]} : ${matchScore[defendSide]}` : "—"}</b>
+              <small>{attackSide}队 · 本场比分 · {defendSide}队</small>
             </div>
             <div className="snow-live-player snow-live-player--defend">
               <small>
-                {(battle?.attackSide ?? currentMatch?.attackSide) === "B" ? "A" : "B"}队 · 防守
+                {defendSide}队 · 防守
               </small>
               <strong>{battle?.defend.name ?? "等待出场"}</strong>
             </div>
