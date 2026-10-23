@@ -1,4 +1,4 @@
-import { CareerDomainError } from "./contracts.js";
+import { CareerDomainError, CAREER_TITLES } from "./contracts.js";
 
 export function validateConstableScore(input) {
     if (!Number.isInteger(input.score) || input.score < 0 || input.score > 20 ||
@@ -26,13 +26,10 @@ export function applyConstableRank(database, interview, now) {
     if (!result?.passed || result.legacy) return;
     const certificate = database.prepare("SELECT * FROM career_certificates WHERE source_attempt_id = ?").get(interview.attempt_id);
     if (!certificate || certificate.qualification_level !== 1 || certificate.status !== "active") return;
-    if (result.formal) {
-        database.prepare("UPDATE career_certificates SET qualification_level = 2 WHERE source_attempt_id = ?").run(interview.attempt_id);
-    } else {
-        database.prepare(`INSERT OR IGNORE INTO career_constable_training
-            (attempt_id, resident_id, started_at) VALUES (?, ?, ?)`)
-            .run(interview.attempt_id, certificate.resident_id, certificate.effective_at ?? now);
-    }
+    const startsAt = certificate.effective_at ?? now;
+    database.prepare(`INSERT OR IGNORE INTO career_constable_training
+      (attempt_id, resident_id, started_at, promoted_at) VALUES (?, ?, ?, ?)`)
+        .run(interview.attempt_id, certificate.resident_id, startsAt, result.formal ? startsAt : null);
 }
 
 export function promoteConstableTraining(database, residentId, now) {
@@ -49,9 +46,22 @@ export function promoteConstableTraining(database, residentId, now) {
           AND record_kind IN ('completed', 'qualified_transfer') AND recorded_at >= ?`)
         .get(residentId, training.started_at);
     if (count < 3) return false;
-    database.prepare("UPDATE career_certificates SET qualification_level = 2 WHERE source_attempt_id = ?").run(training.attempt_id);
     database.prepare("UPDATE career_constable_training SET promoted_at = ? WHERE attempt_id = ?").run(now, training.attempt_id);
     return true;
+}
+export function careerTitle(database, residentId, career, level, now, sourceAttemptId = null) {
+    if (career === "constable" && level === 1) {
+        const formal = database.prepare(`SELECT 1 FROM career_constable_training training
+          JOIN career_certificates certificate ON certificate.source_attempt_id = training.attempt_id
+          WHERE certificate.resident_id = ? AND certificate.career = 'constable'
+            AND certificate.qualification_level = 1 AND certificate.status = 'active'
+            AND (certificate.effective_at IS NULL OR certificate.effective_at <= ?)
+            AND training.promoted_at <= ?
+            AND (? IS NULL OR certificate.source_attempt_id = ?)`)
+            .get(residentId, now, now, sourceAttemptId, sourceAttemptId);
+        if (formal) return CAREER_TITLES.constable[2];
+    }
+    return CAREER_TITLES[career]?.[level] ?? null;
 }
 
 export function constableResultMessage(database, interviewId) {

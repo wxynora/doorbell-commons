@@ -7,7 +7,6 @@ import {
     CareerDomainError,
     CAREER_IDS,
     CAREER_INSTITUTION,
-    CAREER_TITLES,
     AGRONOMY_COMMISSION_REWARD_GOLD,
     EXAM_PASS_COUNT,
     EXAM_QUESTION_COUNT,
@@ -17,7 +16,7 @@ import { careerExamAvailability, curriculumCatalogAvailability } from "../../car
 import { courseCatalog } from "../../career/course-catalog.js";
 import { INTERVIEW_ANSWER_MESSAGES, INTERVIEW_ANSWER_RECEIPT } from "../../career/constable-interview-answers.js";
 import { INTERVIEW_REVIEW_MESSAGES, validConstableWrittenPass } from "../../career/constable-interview-review.js";
-import { constableResultMessage } from "../../career/constable-score-result.js";
+import { constableResultMessage, careerTitle } from "../../career/constable-score-result.js";
 import { careerAdvancementWorkEligibility } from "../../career/school-service.js";
 import {
     resignationExplanation,
@@ -1207,7 +1206,7 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
         ...certificate,
         canWork: certificate.status === "active" &&
             (certificate.effectiveAt === null || certificate.effectiveAt <= now),
-        title: CAREER_TITLES[certificate.career]?.[certificate.qualificationLevel] ?? null,
+        title: careerTitle(database, residentId, certificate.career, certificate.qualificationLevel, now, certificate.sourceAttemptId),
     }));
     const employment = mapRows(database.prepare(`
       SELECT employment_id, career, institution, seat_number, employment_class, status,
@@ -1222,7 +1221,7 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
         return {
             ...record,
             seatNumber: record.employmentClass === "staff" ? record.seatNumber : null,
-            title: CAREER_TITLES[record.career]?.[activeLevel] ?? null,
+            title: careerTitle(database, residentId, record.career, activeLevel, now),
         };
     });
     const duties = mapRows(database.prepare(`
@@ -1699,7 +1698,7 @@ function schoolChoose(database, backend, residentId, now, args) {
                 }),
                 career,
                 institution: CAREER_INSTITUTION[career],
-                title: CAREER_TITLES[career]?.[qualificationLevel(database, residentId, career, now)] ?? null,
+                title: careerTitle(database, residentId, career, qualificationLevel(database, residentId, career, now), now),
             };
         }
         else if (availabilityMatch) {
