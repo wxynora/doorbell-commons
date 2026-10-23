@@ -70,7 +70,11 @@ function renderSnowOperationBody(result) {
   const action = result.action,
     context = result.context ?? {},
     facts = result.facts ?? result;
-  if (!result.ok) return `操作没有完成：${result.message}。`;
+  if (!result.ok)
+    return result.batchRejected
+      ? `第${result.failedCommand}条指令未执行：${result.message}。本批指令均未生效，费用未扣除。`
+      : `操作没有完成：${result.message}。`;
+  if (action.commands) return result.commands.map((command) => command.text).join("\n");
   if (action.composed === "lineup") return JSON.stringify({ 排阵草稿: context.lineup });
   switch (action.kind) {
     case "register":
@@ -115,12 +119,23 @@ export function renderSnowOperation(result) {
   const wait = result.decisionWait;
   return [
     text,
-    ...(wait
-      ? [`等待${wait.waitTicks}tick，下一次决策在战斗第${wait.dueTick}tick；到点由铃通知。`]
-      : []),
+    ...(wait ? [`已安排${wait.waitTicks}tick后响铃（战斗第${wait.dueTick}tick）。`] : []),
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function renderCommandOptions(options = []) {
+  return options.flatMap((option) => [
+    `${option.option} · ${option.label}`,
+    JSON.stringify(option.composition),
+    ...option.composition.formats.map((format) =>
+      JSON.stringify({
+        op: "farm.together.choose",
+        args: { option: option.composition.prefix + format },
+      }),
+    ),
+  ]);
 }
 
 function phaseText(data) {
@@ -169,7 +184,11 @@ function phaseText(data) {
 }
 
 export function renderSnowResult(data) {
-  if (data.result) return data.result.text ?? renderSnowOperation(data.result);
+  if (data.result)
+    return [
+      data.result.text ?? renderSnowOperation(data.result),
+      ...renderCommandOptions(data.commandOptions),
+    ].join("\n");
   if (data.section === "rules")
     return [
       commanderGuidance,
@@ -195,6 +214,7 @@ export function renderSnowResult(data) {
       knownErrors[data.error] ??
         "暂时无法确认这次操作的结果，请保留原编号，不要换一个编号重复提交。",
       ...(data.waitMessages ?? []),
+      ...renderCommandOptions(data.commandOptions),
       JSON.stringify(snowViewCall),
     ].join("\n");
   }
@@ -413,6 +433,14 @@ export function presentSnowResult(result) {
     ? {
         activityId: result.data.activityId,
         result: result.data.result,
+        ...(!result.data.result.ok &&
+        result.data.result.action?.kind === "command" &&
+        !result.data.replay
+          ? {
+              commandOptions:
+                result.data.options?.filter((option) => option.action.composed === "command") ?? [],
+            }
+          : {}),
         ...(result.data.replay ? { replay: true } : {}),
       }
     : result.data.section === "rules"

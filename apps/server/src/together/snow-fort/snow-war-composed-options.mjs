@@ -6,8 +6,7 @@ import { submitLineup } from "./snow-war-series.mjs";
 
 export const SNOW_COMPOSITION_COPY = {
   lineup: "排阵：按出场顺序组合队员与两个技能，一次提交。",
-  command:
-    "战斗：按返回代号组合兵种、路线、位置或技能，一次提交。行动末尾加 | 和等待tick数。到点后铃会带来当前战场，请继续决策，直到本局结束。",
+  command: "可用 / 连接多条指令，按顺序一次执行，最后填写 |等待tick。",
 };
 
 const invalid = () => {
@@ -77,6 +76,11 @@ export function snowCompositionMenu(action, data, token) {
       ].map((format) => `${format}|<等待tick>`),
     ];
     menu.minimumWaitTicks = MIN_SNOW_DECISION_TICKS;
+    menu.batchFormat =
+      role === "attack"
+        ? "出兵+<U>+<路线>/出兵+<U>+<路线>|<等待tick>"
+        : "部署+<U>+<路线>+<格子>/部署+<U>+<路线>+<格子>|<等待tick>";
+    menu.formats.push(menu.batchFormat);
     menu.lanes = Array.from({ length: CFG.laneCount }, (_, index) => index + 1);
   }
   return menu;
@@ -127,36 +131,43 @@ export function resolveSnowComposition(action, payload, series, residentId, batt
   if (waitTicks < MIN_SNOW_DECISION_TICKS || !Number.isSafeInteger(battleView.tick + waitTicks))
     return invalid();
   if (parts[0] === "等待") return { ...action, waitOnly: true, waitTicks };
-  const fields = parts[0].split("+");
-  let command;
-  const skills = skillKeys(role, match.lineups[side]?.skills[residentId] ?? []);
-  if (fields[0] === "出兵" && fields.length === 3 && role === "attack")
-    command = {
-      type: "spawn",
-      unitType: codeAt(fields[1], "U", unitKeys(role)),
-      lane: positive(fields[2]),
-    };
-  else if (fields[0] === "部署" && fields.length === 4 && role === "defend")
-    command = {
-      type: "deploy",
-      unitType: codeAt(fields[1], "U", unitKeys(role)),
-      lane: positive(fields[2]),
-      cell: positive(fields[3]),
-    };
-  else if (fields[0] === "指挥" && fields.length === 3)
-    command = {
-      type: "commander_skill",
-      skill: codeAt(fields[1], "S", skills),
-      lane: positive(fields[2]),
-    };
-  else if (
-    fields.length === 2 &&
-    ((fields[0] === "撤退" && role === "defend") || (fields[0] === "技能" && role === "attack"))
-  ) {
-    if (!battleView.visibleUnits.some((unit) => unit.side === role && unit.id === fields[1]))
-      return invalid();
-    command = { type: fields[0] === "撤退" ? "retreat" : "unit_skill", unitId: fields[1] };
-  } else return invalid();
-  // Costs, occupancy, cooldowns and unit abilities remain authoritative in the original engine.
-  return { ...action, command, waitTicks };
+  const commands = parts[0].split("/").map((part) => resolveCommand(part));
+  return commands.length === 1
+    ? { ...action, command: commands[0], waitTicks }
+    : { ...action, commands, waitTicks };
+
+  function resolveCommand(part) {
+    const fields = part.split("+");
+    let command;
+    const skills = skillKeys(role, match.lineups[side]?.skills[residentId] ?? []);
+    if (fields[0] === "出兵" && fields.length === 3 && role === "attack")
+      command = {
+        type: "spawn",
+        unitType: codeAt(fields[1], "U", unitKeys(role)),
+        lane: positive(fields[2]),
+      };
+    else if (fields[0] === "部署" && fields.length === 4 && role === "defend")
+      command = {
+        type: "deploy",
+        unitType: codeAt(fields[1], "U", unitKeys(role)),
+        lane: positive(fields[2]),
+        cell: positive(fields[3]),
+      };
+    else if (fields[0] === "指挥" && fields.length === 3)
+      command = {
+        type: "commander_skill",
+        skill: codeAt(fields[1], "S", skills),
+        lane: positive(fields[2]),
+      };
+    else if (
+      fields.length === 2 &&
+      ((fields[0] === "撤退" && role === "defend") || (fields[0] === "技能" && role === "attack"))
+    ) {
+      if (!battleView.visibleUnits.some((unit) => unit.side === role && unit.id === fields[1]))
+        return invalid();
+      command = { type: fields[0] === "撤退" ? "retreat" : "unit_skill", unitId: fields[1] };
+    } else return invalid();
+    // Costs, occupancy, cooldowns and unit abilities remain authoritative in the original engine.
+    return command;
+  }
 }

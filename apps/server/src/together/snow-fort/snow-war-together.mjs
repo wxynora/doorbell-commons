@@ -372,7 +372,16 @@ export function openSnowWarTogether({
     if (action.kind === "command") {
       const result = action.waitOnly
         ? { ok: true }
-        : actor.command(action.battleId, { ...action.command, requestId: option });
+        : action.commands
+          ? actor.commands(
+              action.battleId,
+              action.commands.map((command, index) => ({
+                ...command,
+                requestId: JSON.stringify([option, index]),
+              })),
+            )
+          : actor.command(action.battleId, { ...action.command, requestId: option });
+      if (!result.ok) return result;
       const decisionWait = actor.waitForDecision(action.battleId, option, action.waitTicks);
       return { ...result, ...(decisionWait ? { decisionWait } : {}) };
     }
@@ -399,7 +408,6 @@ export function openSnowWarTogether({
 
   const perform = (state, residentId, action, option, text) => {
     const before = action.kind === "command" ? store.loadBattle(action.battleId) : undefined;
-    const unit = before?.units[action.command?.unitId];
     const result = {
       ...apply(state, residentId, action, option, text),
       action: structuredClone(action),
@@ -431,60 +439,69 @@ export function openSnowWarTogether({
         (key) => CFG.commanderSkills[role][key].name,
       );
     }
-    if (action.kind === "command" && !action.waitOnly) {
-      const command = action.command;
+    if (action.kind === "command" && !action.waitOnly && result.ok) {
       const battle = store.loadBattle(action.battleId);
       const role = battle.participants.attack.includes(residentId) ? "attack" : "defend";
-      const definition =
-        role === "attack"
-          ? CFG.attackerUnits[command.unitType ?? unit?.typeKey]
-          : CFG.defenderUnits[command.unitType ?? unit?.typeKey];
-      context.unitName = definition?.name;
-      context.skillName =
-        command.type === "unit_skill"
-          ? definition?.unitSkill?.name
-          : CFG.commanderSkills[role][command.skill]?.name;
-      const key =
-        command.type === "unit_skill"
-          ? `${command.unitId}:skill`
-          : `${role}:${residentId}:${command.skill}`;
-      context.cooldownUntil = battle.cooldowns[key];
-      const actual = result.facts ?? result;
-      context.effect = {
-        ...(actual.effect && Object.keys(actual.effect).length
-          ? {
-              效果: {
-                ...(actual.effect.armorMult === undefined
-                  ? {}
-                  : { 护甲倍率: actual.effect.armorMult }),
-                ...(actual.effect.intervalMult === undefined
-                  ? {}
-                  : { 攻击间隔倍率: actual.effect.intervalMult }),
-                ...(actual.effect.speedMult === undefined
-                  ? {}
-                  : { 速度倍率: actual.effect.speedMult }),
-              },
-            }
-          : {}),
-        ...(actual.targetUnitIds === undefined ? {} : { 目标编号: actual.targetUnitIds }),
-        ...(actual.shields === undefined
-          ? {}
-          : {
-              效果: {
-                新增护盾: Object.fromEntries(
-                  actual.shields.map((target) => [target.unitId, target.added]),
+      for (const [index, command] of (action.commands ?? [action.command]).entries()) {
+        const unit = before?.units[command.unitId] ?? battle.units[command.unitId];
+        const commandContext = action.commands ? {} : context;
+        const definition =
+          role === "attack"
+            ? CFG.attackerUnits[command.unitType ?? unit?.typeKey]
+            : CFG.defenderUnits[command.unitType ?? unit?.typeKey];
+        commandContext.unitName = definition?.name;
+        commandContext.skillName =
+          command.type === "unit_skill"
+            ? definition?.unitSkill?.name
+            : CFG.commanderSkills[role][command.skill]?.name;
+        const key =
+          command.type === "unit_skill"
+            ? `${command.unitId}:skill`
+            : `${role}:${residentId}:${command.skill}`;
+        commandContext.cooldownUntil = battle.cooldowns[key];
+        const commandResult = action.commands ? result.commands[index] : result;
+        const actual = commandResult.facts ?? commandResult;
+        commandContext.effect = {
+          ...(actual.effect && Object.keys(actual.effect).length
+            ? {
+                效果: {
+                  ...(actual.effect.armorMult === undefined
+                    ? {}
+                    : { 护甲倍率: actual.effect.armorMult }),
+                  ...(actual.effect.intervalMult === undefined
+                    ? {}
+                    : { 攻击间隔倍率: actual.effect.intervalMult }),
+                  ...(actual.effect.speedMult === undefined
+                    ? {}
+                    : { 速度倍率: actual.effect.speedMult }),
+                },
+              }
+            : {}),
+          ...(actual.targetUnitIds === undefined ? {} : { 目标编号: actual.targetUnitIds }),
+          ...(actual.shields === undefined
+            ? {}
+            : {
+                效果: {
+                  新增护盾: Object.fromEntries(
+                    actual.shields.map((target) => [target.unitId, target.added]),
+                  ),
+                },
+                生效至战斗秒: Object.fromEntries(
+                  actual.shields.map((target) => [target.unitId, target.untilTick]),
                 ),
-              },
-              生效至战斗秒: Object.fromEntries(
-                actual.shields.map((target) => [target.unitId, target.untilTick]),
-              ),
-            }),
-        ...(actual.healed === undefined ? {} : { 实际治疗: actual.healed }),
-        ...(actual.untilTick === undefined ? {} : { 生效至战斗秒: actual.untilTick }),
-        ...(actual.blockerId === undefined
-          ? {}
-          : { 目标编号: actual.blockerId, 停止攻击至战斗秒: actual.silencedUntilTick }),
-      };
+              }),
+          ...(actual.healed === undefined ? {} : { 实际治疗: actual.healed }),
+          ...(actual.untilTick === undefined ? {} : { 生效至战斗秒: actual.untilTick }),
+          ...(actual.blockerId === undefined
+            ? {}
+            : { 目标编号: actual.blockerId, 停止攻击至战斗秒: actual.silencedUntilTick }),
+        };
+        if (action.commands) {
+          commandResult.action = { kind: "command", command };
+          commandResult.context = commandContext;
+          commandResult.text = renderSnowOperation(commandResult);
+        }
+      }
     }
     result.context = context;
     result.text = renderSnowOperation(result);
@@ -1079,7 +1096,14 @@ export function openSnowWarTogether({
         const decline = (error) => {
           const data = present(state, residentId);
           store.saveActivity(state);
-          return { ok: false, data: { error, waitMessages: data.waitMessages } };
+          return {
+            ok: false,
+            data: {
+              error,
+              waitMessages: data.waitMessages,
+              commandOptions: data.options.filter((option) => option.action.composed === "command"),
+            },
+          };
         };
         if (state.registrationPayments?.[residentId]?.excludedFromSeries)
           return decline("resident_not_eligible");

@@ -2,6 +2,8 @@
 
 ## 雪堡限时活动工具投影
 
+批量战斗仍归原composed-options／runtime／together链：`/`分隔指令，单一`|N`安排一次后继铃。runtime在同一加载快照顺序调用原engine，全部通过后才保存；拒绝不落部分单位、费用、冷却或新等待。外层原事务同时保存动作receipt及serial，失败回执附当前可重交组合编号，成功不附重复状态或轮询引导；旧单条、身份／当前局权限、最低响铃间隔和原回放不变。
+
 snow-war-battle-grid.mjs只接收原viewForSide的visibleUnits，不读取权威隐藏状态，按3路12格分地面／高台投影可见单位及空部署位；同格多单位完整保留。snow-war-presentation.mjs的battle分支用于主动读取及原action_due正文，过滤已结束讨论、全场对阵与旧频道／奖励，保留本局对阵、战况、效果及原组合指令。非战斗阶段的队内频道读取不变。
 
 队内发言铃沿原chat_turn按当前轮次进入Bell source，lifecycle不再新建discussion_start开场全队邀请，旧discussion_start事实及过时过滤保留。snow-war-chat在首次建序及进入新场时把队长固定到首位，其余真人随机顺序只保存一次；重启同场不重排游标。首铃只叫队长，发言／pass／原超时推进后只叫下一位，startup仍从原同队消息截止ID渲染已审正文与前文；没有新通知正文、表、工具或Bell客户端改动。

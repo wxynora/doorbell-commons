@@ -302,6 +302,61 @@ export function openSnowWarRuntime({
           return { ...copy(result), requestId: input.requestId };
         });
       },
+      commands(battleId, inputs) {
+        requireOpen();
+        pump();
+        if (!Array.isArray(inputs) || !inputs.length) fail("invalid_command_shape");
+        const normalized = inputs.map((input) => {
+          if (
+            !input ||
+            !own(COMMAND_FIELDS, input.type) ||
+            typeof input.requestId !== "string" ||
+            !input.requestId ||
+            Object.keys(input).some((key) => !COMMAND_FIELDS[input.type].includes(key))
+          )
+            fail("invalid_command_shape");
+          return Object.fromEntries(
+            Object.keys(input)
+              .sort()
+              .map((key) => [key, input[key]]),
+          );
+        });
+        if (new Set(inputs.map((input) => input.requestId)).size !== inputs.length)
+          fail("request_conflict");
+        return store.transaction(() => {
+          // One isolated loaded snapshot: failed suffixes never persist successful prefixes.
+          const battle = battleAt(battleId);
+          const side = authorize(battle, residentId);
+          if (battle.runtime.substitutes?.includes(residentId)) fail("not_battle_participant");
+          if (!battle.runtime.started) fail("battle_not_ready");
+          const commands = [];
+          for (const [index, input] of normalized.entries()) {
+            const key = JSON.stringify([residentId, input.requestId]);
+            const payload = JSON.stringify(input);
+            if (own(battle.runtime.requests, key) && battle.runtime.requests[key] !== payload)
+              fail("request_conflict");
+            const result = submitCommand(battle, {
+              ...input,
+              requestId: key,
+              side,
+              member: residentId,
+              battleId,
+              roundId: battle.roundId,
+            });
+            if (!result.ok)
+              return {
+                ...copy(result),
+                requestId: input.requestId,
+                batchRejected: true,
+                failedCommand: index + 1,
+              };
+            battle.runtime.requests[key] = payload;
+            commands.push({ ...copy(result), requestId: input.requestId });
+          }
+          persist(battle);
+          return { ok: true, commands };
+        });
+      },
       waitForDecision(battleId, requestId, waitTicks) {
         requireOpen();
         return store.transaction(() => {
