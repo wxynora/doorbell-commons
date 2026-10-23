@@ -1,4 +1,4 @@
-import { activeSnowChatTurn, currentSnowChatNotice, snowChatWindow } from "./snow-war-chat.mjs";
+import { activeSnowChatTurn, currentSnowChatNotice, snowChatWindow, snowMatchMessages } from "./snow-war-chat.mjs";
 import { activateSnowMatch } from "./snow-war-schedule.mjs";
 import { createSeries } from "./snow-war-series.mjs";
 import { ensureSnowTitleRewards } from "./snow-war-title-rewards.mjs";
@@ -145,7 +145,7 @@ export function advanceSnowLifecycle({
     for (const side of ["A", "B"]) {
       const turn = activeSnowChatTurn(state, series, side, now, identityForResident);
       if (turn?.currentResidentId) {
-        const messages = (state.messages ?? []).filter((message) => message.side === side);
+        const messages = snowMatchMessages(state, side, turn.matchIndex);
         notice(
           `${state.activityId}:chat:${side}:${turn.turn}:${turn.currentResidentId}`,
           turn.currentResidentId,

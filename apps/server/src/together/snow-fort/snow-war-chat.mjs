@@ -153,3 +153,14 @@ export function currentSnowChatNotice(state, series, notice, at) {
       turn.order[turn.cursor] === notice.residentId,
   );
 }
+
+// Persisted match identity is authoritative; older records use the saved discussion window.
+export function snowMatchMessages(state, side, matchIndex) {
+  if (!Number.isInteger(matchIndex) || matchIndex < 0) return [];
+  const window = state.chatWindows?.[side]?.[matchIndex];
+  return (state.messages ?? []).filter((message) => {
+    if (message.side !== side) return false;
+    if (Number.isInteger(message.matchIndex)) return message.matchIndex === matchIndex;
+    return Boolean(window && message.createdAt >= window.opensAt && message.createdAt < window.closesAt);
+  });
+}

@@ -6,6 +6,7 @@ import {
   advanceSnowChatTurn,
   currentSnowChatNotice,
   snowChatWindow,
+  snowMatchMessages,
 } from "./snow-war-chat.mjs";
 import { resolveSnowComposition, snowCompositionMenu } from "./snow-war-composed-options.mjs";
 import { SNOW_WAR_CONFIG as CFG, SNOW_WAR_ECONOMY } from "./snow-war-config.mjs";
@@ -114,8 +115,7 @@ export function openSnowWarTogether({
     );
     // No observer privileges are inferred from registration or a forged ID.
     if (!side) return { phase: "not_participant", actions };
-    const channel = (state.messages ?? [])
-      .filter((message) => message.side === side)
+    const channel = snowMatchMessages(state, side, series.matches.findIndex((match) => !match.winner))
       .map(({ residentId, text, createdAt, messageId }) => ({
         residentId,
         text,
@@ -368,7 +368,7 @@ export function openSnowWarTogether({
       });
       if (action.kind === "chat") {
         state.messages ??= [];
-        state.messages.push({ messageId: option, side, residentId, text, createdAt: now() });
+        state.messages.push({ messageId: option, side, residentId, text, createdAt: now(), matchIndex: window.matchIndex });
         return { ok: true, messageId: option };
       }
       return { ok: true };
@@ -527,9 +527,7 @@ export function openSnowWarTogether({
       const delivered = new Set(deliveredMessageIds);
       const represented = (notice) => {
         if (!notice.facts.lastMessageId) return false;
-        const messages = (state.messages ?? []).filter(
-          (message) => message.side === notice.facts.team,
-        );
+        const messages = snowMatchMessages(state, notice.facts.team, Number(notice.facts.matchIndex));
         const end = messages.findIndex(
           (message) => message.messageId === notice.facts.lastMessageId,
         );
@@ -588,9 +586,9 @@ export function openSnowWarTogether({
       const state = store.readActivity(),
         notice = state?.notices?.[id];
       if (notice?.kind !== "chat_turn" || !notice.facts.lastMessageId) return [];
-      const messages = (state.messages ?? []).filter(
-        (message) => message.side === notice.facts.team,
-      );
+      const currentMatch = store.loadSeries(state.activityId).matches.findIndex((match) => !match.winner);
+      if (Number(notice.facts.matchIndex) !== currentMatch) return [];
+      const messages = snowMatchMessages(state, notice.facts.team, Number(notice.facts.matchIndex));
       const end = messages.findIndex((message) => message.messageId === notice.facts.lastMessageId);
       if (end < 0) fail("chat_history_missing");
       return messages.slice(0, end + 1).map((message) => ({
