@@ -49,6 +49,7 @@ export function openSnowWarTogether({
   automatic = true,
   npcPolicy,
   onChange = () => {},
+  onSnapshot = () => {},
 }) {
   const store = openSnowWarStore(database ?? dbPath);
   const runtime = openSnowWarRuntime({
@@ -59,6 +60,7 @@ export function openSnowWarTogether({
     npcPolicy,
     onTerminal: onChange,
     onDecisionDue: onChange,
+    onSnapshot,
   });
   const phase = (state) =>
     now() < state.opensAt

@@ -1,4 +1,8 @@
 export const DOORBELL_FARM_PATH = "/lingye/farm" as const;
+export const SNOW_LIVE_PATH = "/lingye/snow-fort-live" as const;
+export function isSnowLivePath(pathname: string): boolean {
+  return pathname === SNOW_LIVE_PATH || pathname === `${SNOW_LIVE_PATH}/`;
+}
 export const MID_AUTUMN_PATH = "/lingye/mid-autumn" as const;
 export const CONSTABLE_INTERVIEW_PATH = "/lingye/constable-interview" as const;
 

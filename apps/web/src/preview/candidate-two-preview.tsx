@@ -26,6 +26,7 @@ import { candidateTwoHtml } from "./candidate-two-source";
 import { npcSceneMarkup, npcSceneScript, NPC_SCENE_STYLES } from "../npc/scene";
 import { useNpcBridge } from "../npc/use-npc-bridge";
 import { TOGETHER_HUMAN_VIEW_SCRIPT } from "./together-human-view";
+import { SNOW_LIVE_ENTRY, SNOW_LIVE_ENTRY_STYLES } from "../snow-live/entry";
 import {
   FEEDBACK_CONTRIBUTION_ENTRY,
   FEEDBACK_CONTRIBUTION_MODAL,
@@ -4878,6 +4879,7 @@ const LINGYE_SCREEN = `
         <button class="candidate2-lingye-daily-entry" type="button" aria-label="打开铃野日报" onclick="openLingyeDaily()">
             <img src="/lingye/ui/lingye-daily-newspaper.png" alt="" width="256" height="256" draggable="false">
         </button>
+        ${SNOW_LIVE_ENTRY}
         <button class="candidate2-lingye-mid-autumn-entry" type="button" aria-label="进入月满心间中秋活动" onclick="openMidAutumnActivity()" hidden>
             <span aria-hidden="true">月满心间</span>
         </button>
@@ -5235,8 +5237,9 @@ const LINGYE_NAV_ITEM = `
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"></path></svg>
         </div>`;
 
-const LINGYE_STYLES = `
+const LINGYE_STYLES = `${SNOW_LIVE_ENTRY_STYLES}
         .screen.screen--lingye {
+            --candidate2-lingye-rail-icon-size: clamp(52px, 14vw, 60px);
             padding: 0;
             overflow: hidden;
             background: #d7e9d0;
@@ -5334,7 +5337,7 @@ const LINGYE_STYLES = `
             position: absolute;
             z-index: 30;
             right: 12px;
-            width: clamp(52px, 14vw, 60px);
+            width: var(--candidate2-lingye-rail-icon-size);
             aspect-ratio: 1;
             padding: 0;
             border: 0;
@@ -5348,11 +5351,11 @@ const LINGYE_STYLES = `
         }
 
         .candidate2-lingye-daily-entry {
-            top: calc(94px + clamp(52px, 14vw, 60px));
+            top: calc(94px + var(--candidate2-lingye-rail-icon-size));
         }
 
         .candidate2-lingye-mid-autumn-entry {
-            top: calc(102px + 2 * clamp(52px, 14vw, 60px));
+            top: calc(110px + 3 * var(--candidate2-lingye-rail-icon-size));
             display: grid;
             place-items: end center;
             filter: drop-shadow(0 3px 5px rgba(64, 53, 38, 0.42));

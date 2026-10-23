@@ -3199,3 +3199,4 @@ export type OwnerProfileCareerSummaryError = z.infer<typeof ownerProfileCareerSu
 export type HumanAuthenticationError = z.infer<typeof humanAuthenticationErrorSchema>;
 export type FarmHumanUiError = z.infer<typeof farmHumanUiErrorSchema>;
 export * from "./farm-decoration.js";
+export * from "./snow-live.js";

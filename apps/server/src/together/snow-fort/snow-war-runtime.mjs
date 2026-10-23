@@ -45,6 +45,7 @@ export function openSnowWarRuntime({
   npcPolicy = snowWarNpcPolicy,
   onTerminal = () => {},
   onDecisionDue = () => {},
+  onSnapshot = () => {},
 }) {
   const store = providedStore ?? openSnowWarStore(dbPath);
   const owner = { pid: process.pid, nonce: randomUUID() };
@@ -90,6 +91,7 @@ export function openSnowWarRuntime({
       store.saveSeriesAndBattle(series, battle);
     }
     if (decisionDue) queueMicrotask(onDecisionDue);
+    queueMicrotask(onSnapshot); // Read-only observers run after the enclosing SQLite commit.
   };
   const authorize = (battle, residentId) => {
     const sides = ["attack", "defend"].filter((side) =>

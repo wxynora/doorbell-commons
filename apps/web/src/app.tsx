@@ -80,6 +80,7 @@ import {
   isConstableInterviewPath,
   isDoorbellFarmPath,
   isMidAutumnPath,
+  isSnowLivePath,
   MID_AUTUMN_PATH,
 } from "./routes";
 
@@ -101,6 +102,11 @@ const FarmPage = lazy(async () => {
 const MidAutumnPage = lazy(async () => {
   const module = await import("./mid-autumn/mid-autumn-entry");
   return { default: module.MidAutumnEntry };
+});
+
+const SnowLivePage = lazy(async () => {
+  const module = await import("./snow-live/snow-live-page");
+  return { default: module.SnowLivePage };
 });
 
 const candidateTwoFarmPreviewSeedTypes = [
@@ -1557,6 +1563,12 @@ function LiveApp() {
   if (appState.stage === "authenticated" && isConstableInterviewPath(window.location.pathname)) {
     return <Suspense fallback={<FarmLazyLoading label="正在打开面试安排" mode="page" />}>
       <ConstableInterviewPage key={appState.identity.resident.resident_id} onBack={() => window.location.assign("/")} />
+    </Suspense>;
+  }
+
+  if (appState.stage === "authenticated" && isSnowLivePath(window.location.pathname)) {
+    return <Suspense fallback={<FarmLazyLoading label="正在打开雪堡直播" mode="page" />}>
+      <SnowLivePage onBack={() => window.location.assign("/")} />
     </Suspense>;
   }
 

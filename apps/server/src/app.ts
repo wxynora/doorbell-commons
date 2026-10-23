@@ -1,4 +1,5 @@
 import { registerTogetherRoutes, type TogetherBoardPort } from "./together/routes.js";
+import { registerSnowLiveRoutes, type SnowLivePort } from "./together/live-routes.js";
 import {registerResidentProfileRoutes} from "./resident-profile/routes.js";
 import { registerResidentAvatarRoutes } from "./resident-avatar/routes.js";
 import {
@@ -567,6 +568,7 @@ import {
 
 export interface BuildAppOptions {
   togetherBoard?: TogetherBoardPort;
+  snowLive?: SnowLivePort;
   faultReports?: FaultReports;
   groupId: string;
   groupMembership: QqGroupMembershipReader;
@@ -2069,6 +2071,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   });
   installFaultReports(app, options.faultReports);
   if (options.togetherBoard) registerTogetherRoutes(app, { registrationAuth: options.registrationAuth, board: options.togetherBoard, secureCookies: options.secureCookies });
+  if (options.snowLive) registerSnowLiveRoutes(app, { registrationAuth: options.registrationAuth, live: options.snowLive, secureCookies: options.secureCookies });
   registerMidAutumnRoutes(app, { registrationAuth: options.registrationAuth, secureCookies: options.secureCookies });
   app.addContentTypeParser(
     "application/x-www-form-urlencoded",

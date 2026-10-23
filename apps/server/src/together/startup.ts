@@ -23,6 +23,7 @@ export interface TogetherStartupOptions {
   clock?: () => number;
   automatic?: boolean;
   onError?: (error: unknown) => void;
+  onSnapshot?: () => void;
 }
 
 export function createTogetherStartup(options: TogetherStartupOptions) {
@@ -44,6 +45,7 @@ export function createTogetherStartup(options: TogetherStartupOptions) {
     ...(options.clock ? { clock: options.clock } : {}),
     ...(options.automatic === undefined ? {} : { automatic: options.automatic }),
     onChange: signal,
+    ...(options.onSnapshot ? { onSnapshot: options.onSnapshot } : {}),
   });
   const registration = createRegistrationCoordinator(
     activity,
@@ -249,6 +251,7 @@ export function createTogetherStartup(options: TogetherStartupOptions) {
           activity.reconcile();
           const current = activity.controlView();
           if (current) publishNotices(current);
+          options.onSnapshot?.();
           schedule();
         }
       })

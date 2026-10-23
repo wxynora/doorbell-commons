@@ -9,7 +9,17 @@ import {
 } from "@doorbell/protocol";
 import type Database from "better-sqlite3";
 
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 50;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 51;
+export const SNOW_LIVE_SCHEMA_SQL = `
+  CREATE TABLE IF NOT EXISTS snow_spectator_messages (
+    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+    activity_id TEXT NOT NULL,
+    account_id TEXT NOT NULL REFERENCES human_accounts(account_id) ON DELETE CASCADE,
+    client_message_id TEXT NOT NULL,
+    sender_name TEXT NOT NULL, text TEXT NOT NULL, created_at INTEGER NOT NULL,
+    UNIQUE(activity_id,account_id,client_message_id)
+  );
+`;
 // Also used by isolated activity stores; production always migrates the existing community connection.
 export const SNOW_WAR_SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS snow_war_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -2881,6 +2891,11 @@ export function migrateCommunityDatabase(
       confirmed_at INTEGER
     )`);
     database.pragma('user_version = 50');
+  })();
+
+  if (databaseSchemaVersion < 51) database.transaction(() => {
+    database.exec(SNOW_LIVE_SCHEMA_SQL);
+    database.pragma('user_version = 51');
   })();
 
 }

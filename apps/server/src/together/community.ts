@@ -24,6 +24,7 @@ export function createCommunityTogether(
     clock?: () => number;
     automatic?: boolean;
     onChange?: () => void;
+    onSnapshot?: () => void;
   },
 ): SnowActivity {
   return openSnowWarTogether({

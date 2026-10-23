@@ -490,11 +490,13 @@ const dailyVoiceService = new LingyeDailyVoiceService({ database, farm: reporter
   onSyncError: error => process.stderr.write(`[doorbell-daily-voice] ${error instanceof Error ? error.name : "UnknownError"}\n`),
 });
 const dailyCommentsService = new LingyeDailyCommentsService({database,farm:reporterRelayFarm});
+const snowLive = database.createSnowLiveService();
 const togetherStartup = createTogetherStartup({
   database, registrationAuth, mailbox: mailboxService, bell: bellService,
   rewards: new TogetherRewardClient({ apiBaseUrl: serverConfig.farmApiBaseUrl,
     serviceToken: serverConfig.farmServiceToken, requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs }),
   onError: reportBellError,
+  onSnapshot: () => snowLive.notify(),
 });
 bellService.addWakeSource(togetherStartup.bell);
 const refreshTogetherControl = () => { void togetherStartup.reconcile().catch(reportBellError); };
@@ -549,6 +551,7 @@ const lingyeDailyService = new LingyeDailyService({
 });
 const app = buildApp({
   togetherBoard: togetherStartup,
+  snowLive,
   ...(faultReports ? { faultReports } : {}),
   groupId: serverConfig.qqGroupId,
   groupMembership,

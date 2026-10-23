@@ -1,4 +1,5 @@
 import { createCommunityTogether, togetherIdentity } from "./together/community.js";
+import { SnowLiveService } from "./together/live-service.js";
 import { queueTogetherControl, togetherControls } from "./together/control-store.js";
 import { takeResidentMailboxNotifications as takeMailboxNotifications } from "./mailbox-notification-store.js";
 import {ResidentProfileStore} from "./resident-profile/store.js";
@@ -4645,6 +4646,10 @@ export class CommunityDatabase {
 
   createTogetherActivity(options: Parameters<typeof createCommunityTogether>[1]) {
     return createCommunityTogether(this.#database, options);
+  }
+
+  createSnowLiveService() {
+    return new SnowLiveService(this.#database);
   }
 
   findTogetherIdentity(residentId: string) {
