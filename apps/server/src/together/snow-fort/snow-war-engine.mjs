@@ -1,8 +1,9 @@
 // 雪堡战战斗引擎（候选）。
 // 实现 docs/snow-fort-war-proposal-20261012.md（2026-10-14 审阅稿）第六、七、八、十、十一节的逐局攻防：
-// 纯函数风格，状态是可 JSON 序列化的普通对象，无随机数；命令幂等；tick 按审阅稿 10.3 的固定阶段推进。
+// 状态及随机序列可 JSON 序列化恢复；命令幂等；tick 按固定阶段推进。
 // 组赛、报名、频道、日报与视图产品层不在本文件。
 
+import { randomInt } from "node:crypto";
 import { SNOW_WAR_CONFIG as CFG } from "./snow-war-config.mjs";
 
 const EXIT_POS = CFG.laneCells + 1; // 越过第 12 格（pos >= 13）抵达终点
@@ -98,6 +99,7 @@ export function createBattle({
   defendSideId,
   participants,
   assignments,
+  randomSeed,
 }) {
   if (!battleId || !roundId) throw new Error("雪堡战对局必须携带 battleId 与 roundId");
   if (!Array.isArray(participants?.attack) || !Array.isArray(participants?.defend)) {
@@ -132,6 +134,10 @@ export function createBattle({
     coreHp: CFG.coreMaxHp,
     cost: { attack: CFG.initialCost, defend: CFG.initialCost },
     costAccum: 0,
+    randomState: randomSeed === undefined ? randomInt(1, 0x100000000) : (randomSeed >>> 0) || 1,
+    defenderDecayTicks: CFG.defenderDecayTicks,
+    tankTargetWeight: CFG.tankTargetWeight,
+    systemWaves: { ...structuredClone(CFG.systemWaves), next: 0, releases: [] },
     participants: { attack: [...participants.attack], defend: [...participants.defend] },
     assignments: { attack: { ...assignments.attack }, defend: { ...assignments.defend } },
     units: {}, // id -> unit
@@ -150,7 +156,7 @@ export function restoreBattle(state) {
     throw new Error("无法从给定状态恢复雪堡战对局");
   }
   const historicalTerminal =
-    state.rulesVersion === "snow-fort-20261022.1" &&
+    ["snow-fort-20261022.1", "snow-fort-20261023.1"].includes(state.rulesVersion) &&
     (state.status === "attack_win" || state.status === "defend_win");
   if (state.rulesVersion !== CFG.rulesVersion && !historicalTerminal)
     throw new Error("snow_war_rules_version_mismatch");
@@ -287,9 +293,9 @@ function handleDeploy(state, side, command) {
   return { facts: { unitId: id, cost: def.cost, remainingCost: state.cost.defend } };
 }
 
-function handleSpawn(state, side, command) {
+function handleSpawn(state, side, command, systemDefinition = null) {
   if (side !== "attack") throw new Error("只有攻方可以出兵");
-  const def = unitDef(side, command.unitType);
+  const def = systemDefinition ?? unitDef(side, command.unitType);
   if (!def) throw new Error("未知攻方单位类型");
   const lane = command.lane;
   if (!Number.isInteger(lane) || lane < 1 || lane > CFG.laneCount) throw new Error("非法路线");
@@ -507,11 +513,54 @@ function applyLaneEffect(state, kind, side, lane, value, untilTick) {
 
 // —— tick ——
 
+function battleRandom(state) {
+  let x = state.randomState;
+  x ^= x << 13;
+  x ^= x >>> 17;
+  x ^= x << 5;
+  state.randomState = x >>> 0;
+  return state.randomState / 0x100000000;
+}
+
+function releaseSystemWaves(state, t) {
+  const waves = state.systemWaves;
+  if (!waves) return;
+  while (waves.next < waves.ticks.length && waves.ticks[waves.next] <= t) {
+    const lane = 1 + Math.floor(battleRandom(state) * CFG.laneCount);
+    const definition = {
+      ...CFG.attackerUnits.light_inf, ...waves.unit,
+      cost: 0, heal: 0, range: 0, splash: 0, stealth: false, unitSkill: null,
+    };
+    const unitIds = [];
+    for (let i = 0; i < waves.count; i++) {
+      const result = handleSpawn(state, "attack", { unitType: "light_inf", lane }, definition);
+      const unit = state.units[result.facts.unitId];
+      unit.systemWave = true;
+      unitIds.push(unit.id);
+    }
+    waves.releases.push({ tick: waves.ticks[waves.next], lane, unitIds });
+    waves.next++;
+  }
+}
+
+function pickTankWeightedTarget(state, eligible, fallback) {
+  const weight = state.tankTargetWeight ?? 1;
+  if (weight <= 1 || !eligible.some((unit) => unit.typeKey === "heavy_t")) return fallback;
+  const total = eligible.reduce((sum, unit) => sum + (unit.typeKey === "heavy_t" ? weight : 1), 0);
+  let draw = battleRandom(state) * total;
+  for (const unit of eligible) {
+    draw -= unit.typeKey === "heavy_t" ? weight : 1;
+    if (draw < 0) return unit;
+  }
+  return eligible.at(-1);
+}
+
 export function tick(state) {
   if (state.status !== "running") return state.status;
   state.tick += 1;
   const t = state.tick;
 
+  releaseSystemWaves(state, t);
   moveAndBlock(state, t);
   const actions = collectActions(state, t);
   resolveActions(state, actions, t);
@@ -636,15 +685,18 @@ function pickAttackTargets(state, u) {
       }
       return results;
     }
-    // 高台：本路向入口覆盖 range 格，优先最接近核心者，平手按稳定编号；潜行／烟幕遵守可见性。
+    // 高台：仍按路线、射程与可见性筛选；范围内有T时使用加权选择。
+    const eligible = [];
     let best = null;
     for (const e of aliveUnits(state)) {
       if (e.side !== "attack" || e.lane !== u.lane) continue;
       const distance = u.pos - e.pos;
       if (distance < 0 || distance > u.range) continue;
       if (isHiddenFromDefenderRanged(state, e, t)) continue;
+      eligible.push(e);
       if (!best || e.pos > best.pos || (e.pos === best.pos && e.id < best.id)) best = e;
     }
+    best = pickTankWeightedTarget(state, eligible, best);
     if (best) {
       if (u.splash > 0) {
         const center = unitCell(best);
@@ -700,6 +752,15 @@ function resolveActions(state, actions, t) {
   // 同一快照结算：阶段开始时仍存活的单位都能产生一次合法效果；伤害先经护盾，再与本阶段合法治疗合并。
   const hpDamage = {};
   const heals = {};
+  if (state.defenderDecayTicks > 0) {
+    for (const unit of aliveUnits(state)) {
+      if (unit.side !== "defend") continue;
+      unit.decayStartTick ??= t - 1;
+      const age = t - unit.decayStartTick;
+      hpDamage[unit.id] = Math.floor(unit.maxHp * age / state.defenderDecayTicks)
+        - Math.floor(unit.maxHp * (age - 1) / state.defenderDecayTicks);
+    }
+  }
   for (const action of actions) {
     for (const { unit, amount, damageType } of action.targets) {
       if (action.kind === "heal") {
@@ -766,6 +827,8 @@ export function viewForSide(state, side) {
       pos: u.pos,
       hp: u.hp,
       maxHp: u.maxHp,
+      ...(u.systemWave ? { systemWave: true, attack: u.attack, attackInterval: u.attackInterval,
+        moveSeconds: u.moveSeconds, breakthrough: u.breakthrough } : {}),
       shieldAmount: u.shield?.untilTick >= t ? u.shield.amount : 0,
       blockedBy: u.blockedBy ?? null,
       blocking: [...(u.blocking ?? [])],
@@ -803,6 +866,13 @@ export function viewForSide(state, side) {
     ticksLeft: Math.max(0, CFG.battleTicks - state.tick),
     coreHp: state.coreHp,
     ownCost: state.cost[side],
+    ...(state.defenderDecayTicks ? { defenderDecayTicks: state.defenderDecayTicks } : {}),
+    ...(state.tankTargetWeight > 1 ? { tankTargetWeight: state.tankTargetWeight } : {}),
+    ...(state.systemWaves ? { systemWaves: {
+      ticks: [...state.systemWaves.ticks], count: state.systemWaves.count,
+      unit: { ...state.systemWaves.unit },
+      releasedTicks: state.systemWaves.releases.map((wave) => wave.tick),
+    } } : {}),
     ownCommanderSkills: state.participants[side].flatMap((member) =>
       state.assignments[side][member].map((skill) => ({
         member,

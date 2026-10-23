@@ -18,7 +18,7 @@ import {
   reconcileSnowRegistrationEligibility,
   registeredHomes,
 } from "./snow-war-lifecycle.mjs";
-import { SNOW_WAR_NOTICE_COPY } from "./snow-war-notice-copy.mjs";
+import { SNOW_WAR_BALANCE_NOTICE, SNOW_WAR_NOTICE_COPY } from "./snow-war-notice-copy.mjs";
 import {
   describeSnowOption,
   renderSnowOperation,
@@ -990,6 +990,14 @@ export function openSnowWarTogether({
           notice.kind,
         );
         if (!notice.letterId) {
+          if (
+            notice.kind === "chat_turn" &&
+            state.activityId === SNOW_WAR_BALANCE_NOTICE.activityId &&
+            notice.facts.matchIndex === SNOW_WAR_BALANCE_NOTICE.matchIndex &&
+            !Object.values(state.notices).some((previous) =>
+              previous.residentId === notice.residentId && previous.letterId &&
+              previous.facts.balanceUpdate === SNOW_WAR_BALANCE_NOTICE.version)
+          ) notice.facts.balanceUpdate = SNOW_WAR_BALANCE_NOTICE.version;
           notice.letterId = deliver(structuredClone(notice));
         }
         store.saveActivity(state);

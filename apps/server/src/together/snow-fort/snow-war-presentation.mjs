@@ -56,7 +56,7 @@ export function describeSnowOption(action, data) {
     return `部署${definition.name} · 第${command.lane}路第${command.cell}格 · ${definition.cost}点部署费用`;
   const unit = data.battle?.visibleUnits.find((value) => value.id === command.unitId);
   if (command.type === "retreat")
-    return `撤退${unitDefinition(unit.typeKey).name}（${unit.id}）· 返还${Math.floor(unitDefinition(unit.typeKey).cost / 2)}点部署费用`;
+    return `撤退${unitDefinition(unit.typeKey).name}（${unit.id}）· 返还${Math.floor(unitDefinition(unit.typeKey).cost * CFG.retreatRefundNumerator / CFG.retreatRefundDenominator)}点部署费用`;
   if (command.type === "unit_skill") {
     const skill = describeSnowUnitSkill(unitDefinition(unit.typeKey).unitSkill);
     return `${unitDefinition(unit.typeKey).name}（${unit.id}）· ${skill.技能} · ${skill.效果} ${JSON.stringify({ 冷却秒: skill.冷却秒 })}`;
@@ -293,10 +293,16 @@ export function renderSnowResult(data) {
   }
   if (data.battle?.started) {
     lines.push(renderSnowBattleGrid(data.battle));
+    if (data.battle.systemWaves)
+      lines.push(JSON.stringify({ 系统兵潮: {
+        时点tick: data.battle.systemWaves.ticks,
+        已释放tick: data.battle.systemWaves.releasedTicks,
+        每波数量: data.battle.systemWaves.count,
+      } }));
     for (const unit of data.battle.visibleUnits)
       lines.push(
         JSON.stringify({
-          单位: unitDefinition(unit.typeKey).name,
+          单位: unit.systemWave ? "系统小兵" : unitDefinition(unit.typeKey).name,
           编号: unit.id,
           阵营: unit.side,
           路线: unit.lane,
@@ -306,6 +312,10 @@ export function renderSnowResult(data) {
           blockedBy: unit.blockedBy,
           blocking: unit.blocking,
           activeEffects: unit.activeEffects,
+          ...(unit.systemWave ? {
+            攻击: unit.attack, 攻击间隔秒: unit.attackInterval,
+            移动每格秒: unit.moveSeconds, 突破扣核心耐久: unit.breakthrough,
+          } : {}),
           ...(unit.unitSkillReadyInTicks === undefined
             ? {}
             : { 技能冷却剩余秒: unit.unitSkillReadyInTicks }),

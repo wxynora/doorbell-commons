@@ -65,7 +65,9 @@ export function projectSnowLive({ state, series, loadBattle, nameOf, now }) {
           units: view.visibleUnits.map((u) => ({
             id: u.id,
             type: u.typeKey,
-            name: (u.side === "attack" ? CFG.attackerUnits : CFG.defenderUnits)[u.typeKey].name,
+            name: u.systemWave
+              ? "系统小兵"
+              : (u.side === "attack" ? CFG.attackerUnits : CFG.defenderUnits)[u.typeKey].name,
             role: u.side,
             ground: u.side === "attack" || CFG.defenderUnits[u.typeKey].ground,
             lane: u.lane,

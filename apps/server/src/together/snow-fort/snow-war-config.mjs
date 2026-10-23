@@ -1,6 +1,5 @@
-// 雪堡战参数配置表（候选）。
-// 2026-10-22数值候选：仅调整攻方单位费用／属性，战斗与等待规则保持。
-// 当前有限试打与运行边界见README。时间单位为战斗秒／tick（1 tick = 1 战斗秒）。
+// 雪堡战权威数值；引擎、NPC与玩家规则目录共用。
+// 时间单位为战斗秒／tick（1 tick = 1 战斗秒）。
 
 export const SNOW_WAR_ECONOMY = {
   registrationFeeGold: 10000,
@@ -12,7 +11,7 @@ export const SNOW_WAR_ECONOMY = {
 };
 
 export const SNOW_WAR_CONFIG = {
-  rulesVersion: "snow-fort-20261023.1",
+  rulesVersion: "snow-fort-20261024.1",
   laneCount: 3,
   laneCells: 12, // 地面位置 1..12，越过第 12 格抵达终点
   groundSlots: [4, 7, 10], // 守方地面部署位
@@ -21,8 +20,15 @@ export const SNOW_WAR_CONFIG = {
   initialCost: 30,
   costRegenEveryTicks: 3, // 每 3 个战斗秒自然 +1，不设存量截断
   battleTicks: 600, // 10 分钟
-  retreatRefundNumerator: 1, // 撤退返还部署费用的 1/2，向下取整
-  retreatRefundDenominator: 2,
+  retreatRefundNumerator: 1, // 撤退返还部署费用的 10%，向下取整
+  retreatRefundDenominator: 10,
+  defenderDecayTicks: 900,
+  tankTargetWeight: 4,
+  systemWaves: {
+    ticks: [200, 450],
+    count: 3,
+    unit: { hp: 1200, blockedAttack: 80, blockedAttackInterval: 3, moveSeconds: 3, breakthrough: 0.5 },
+  },
   commanderSkillCooldownTicks: 60, // 指挥技能统一 60 秒冷却，成功施放后开始计时
   unitSkillCooldownTicks: 60,
   maxCommanderSkillsPerMember: 2, // 每位队员 2 个不同的本方指挥技能（4 选 2）
@@ -31,7 +37,7 @@ export const SNOW_WAR_CONFIG = {
   defenderUnits: {
     shield_guard: {
       name: "持盾卫兵",
-      cost: 12,
+      cost: 13,
       hp: 1200,
       armor: 60,
       spellResist: 0,
@@ -43,7 +49,7 @@ export const SNOW_WAR_CONFIG = {
     },
     heavy_guard: {
       name: "重盾卫兵",
-      cost: 22,
+      cost: 23,
       hp: 2200,
       armor: 110,
       spellResist: 0,
@@ -55,7 +61,7 @@ export const SNOW_WAR_CONFIG = {
     },
     crossbow: {
       name: "弩手",
-      cost: 16,
+      cost: 17,
       hp: 700,
       armor: 10,
       spellResist: 0,
@@ -67,7 +73,7 @@ export const SNOW_WAR_CONFIG = {
     },
     snow_mage: {
       name: "雪术师",
-      cost: 20,
+      cost: 21,
       hp: 650,
       armor: 10,
       spellResist: 0,
@@ -79,7 +85,7 @@ export const SNOW_WAR_CONFIG = {
     },
     artillery: {
       name: "雪炮台手",
-      cost: 24,
+      cost: 25,
       hp: 650,
       armor: 10,
       spellResist: 0,
@@ -92,7 +98,7 @@ export const SNOW_WAR_CONFIG = {
     },
     medic: {
       name: "救护员",
-      cost: 18,
+      cost: 19,
       hp: 750,
       armor: 15,
       spellResist: 0,
@@ -111,7 +117,7 @@ export const SNOW_WAR_CONFIG = {
       hp: 825,
       armor: 10,
       spellResist: 0,
-      moveSeconds: 8,
+      moveSeconds: 6,
       blockedAttackInterval: 3,
       blockedAttack: 125,
       breakthrough: 1,
@@ -122,7 +128,7 @@ export const SNOW_WAR_CONFIG = {
       hp: 2600,
       armor: 90,
       spellResist: 0.2,
-      moveSeconds: 18,
+      moveSeconds: 9,
       blockedAttackInterval: 4,
       blockedAttack: 100,
       breakthrough: 3,
@@ -133,7 +139,7 @@ export const SNOW_WAR_CONFIG = {
       hp: 900,
       armor: 20,
       spellResist: 0,
-      moveSeconds: 12,
+      moveSeconds: 8,
       attackInterval: 4,
       attack: 170,
       damageType: "physical",
@@ -146,7 +152,7 @@ export const SNOW_WAR_CONFIG = {
       hp: 850,
       armor: 20,
       spellResist: 0,
-      moveSeconds: 12,
+      moveSeconds: 8,
       attackInterval: 5,
       heal: 120,
       healRadius: 3,
@@ -154,11 +160,11 @@ export const SNOW_WAR_CONFIG = {
     },
     scout: {
       name: "潜行斥候",
-      cost: 7,
+      cost: 8,
       hp: 700,
       armor: 10,
       spellResist: 0,
-      moveSeconds: 10,
+      moveSeconds: 7,
       blockedAttackInterval: 2,
       blockedAttack: 140,
       breakthrough: 2,
@@ -177,7 +183,7 @@ export const SNOW_WAR_CONFIG = {
       hp: 1700,
       armor: 50,
       spellResist: 0,
-      moveSeconds: 14,
+      moveSeconds: 9,
       blockedAttackInterval: 6,
       blockedAttack: 330,
       breakthrough: 3,

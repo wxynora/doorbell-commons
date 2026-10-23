@@ -8,7 +8,7 @@
 
 snow-war-battle-grid.mjs只接收原viewForSide的visibleUnits，不读取权威隐藏状态，按3路12格分地面／高台投影可见单位及空部署位；同格多单位完整保留。snow-war-presentation.mjs的battle分支用于主动读取及原action_due正文，过滤已结束讨论、全场对阵与旧频道／奖励，保留本局对阵、战况、效果及原组合指令。非战斗阶段的队内频道读取不变。
 
-队内发言铃沿原chat_turn按当前轮次进入Bell source，lifecycle不再新建discussion_start开场全队邀请，旧discussion_start事实及过时过滤保留。snow-war-chat在首次建序及进入新场时把队长固定到首位，其余真人随机顺序只保存一次；重启同场不重排游标。首铃只叫队长，发言／pass／原超时推进后只叫下一位，startup仍从原同队消息截止ID渲染已审正文与前文；没有新通知正文、表、工具或Bell客户端改动。
+队内发言铃沿原chat_turn按当前轮次进入Bell source，lifecycle不再新建discussion_start开场全队邀请。snow-war-chat首次建序及进入新场时固定队长首位，其余真人随机顺序保存；重启同场不重排游标。首铃只叫队长，发言／pass／原超时推进后只叫下一位，startup从原同队消息截止ID渲染正文与前文。当前重赛第三场首次发布个人讨论信时，publishNotice依据已持久信件设置balanceUpdate，startup追加已审平衡说明；同场轮转不重复附加，历史信件不追改。没有新通知通道、表、工具或Bell客户端变更。
 
 队长提醒沿原captain notice与信箱进入Bell source：publishNotice核验当前排阵阶段，对pending且已有letterId、bellEligible=false的有效队长信原位补资格；startup仅为该类旧信放行发布，不重复deliver。新信资格同源包含team／captain／round／action_due，已确认、过时或终态记录不恢复。现有ACK、资格检查、信封和边界定时器不变。
 
@@ -22,7 +22,7 @@ snow-war-presentation.mjs展示本期格式、代号和本人可见事实；完�
 
 系列赛达到两场胜利即complete，未举行第三场标记cancelled；schedule、lifecycle及startup不再开放该场讨论／排阵／准备／通知。全勤投影与奖励均按真实已有winner的场次计算，原金额不变；未举行局不生成奖励。上述系列赛与等待机制不改变具体单位参数；当前数值由下述同源配置提供。
 
-数值权威在`together/snow-fort/snow-war-config.mjs`，当前规则标识`snow-fort-20261022.1`；engine、NPC、组合菜单与独立规则目录读取同一份单位定义。轻兵生命825／被挡攻击125，投手费用12／攻击170，斥候费用7，重锤费用14／被挡攻击330；其余单位与机制保持。恢复沿原rulesVersion门槛，不自动改写旧battle快照；数值调整不触发玩家余额、库存或奖励迁移。
+数值权威在`together/snow-fort/snow-war-config.mjs`，当前规则标识`snow-fort-20261024.1`；engine、NPC、组合菜单与独立规则目录读取同一配置。损耗／10%返费、提速及费用、自动兵潮和T加权选敌直接由正式引擎执行，不依赖测试加载器。随机状态、兵潮释放进度和损耗起点随原battle快照持久保存，重启不重抽或重复释放。旧规则只允许恢复已结束快照，不改旧局结果或奖励；NPC仍由原runtime每tick调用。没有新增库、表、工具、玩家资产迁移或Bell频率。
 
 ## 休息室扭蛋旧回执读取边界（2026-09-23）
 

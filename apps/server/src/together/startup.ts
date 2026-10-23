@@ -8,6 +8,7 @@ import { togetherAdminSchema } from "./config.js";
 import type { SnowActivity, SnowControl, SnowNotice, SnowRewardPort } from "./contracts.js";
 import { createRegistrationCoordinator } from "./registration.js";
 import {
+  SNOW_WAR_BALANCE_NOTICE,
   SNOW_WAR_CHAT_NOTICE_COPY,
   SNOW_WAR_DISCUSSION_NOTICE_COPY,
 } from "./snow-fort/snow-war-notice-copy.mjs";
@@ -141,6 +142,9 @@ export function createTogetherStartup(options: TogetherStartupOptions) {
           ...activity
             .chatNoticeMessages(notice.id)
             .map((message) => renderSnowChatMessage(message.residentName, message.text)),
+          ...(notice.facts.balanceUpdate === SNOW_WAR_BALANCE_NOTICE.version
+            ? [SNOW_WAR_BALANCE_NOTICE.body]
+            : []),
         ].join("\n")
       : control.configuration.copy[notice.kind].replace(
           /\{(team|match|round)\}/gu,

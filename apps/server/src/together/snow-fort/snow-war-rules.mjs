@@ -1,7 +1,10 @@
 // Approved player explanations, with numeric facts from the same public rules.
 export function snowRuleInstructions(rules) {
   return [
-    "攻方从第1格出兵，单位自动前进；被地面单位挡住时停下交战。守方在地面位或高台位部署。物理伤害扣护甲，术式伤害按术式减伤计算。守方可撤退，返还一半部署费用，向下取整。",
+    "攻方从第1格出兵，单位自动前进；被地面单位挡住时停下交战。守方在地面位或高台位部署。物理伤害扣护甲，术式伤害按术式减伤计算。",
+    `守方单位每tick损耗最大生命的1/${rules.defenderDecayTicks}，治疗可补回；撤退返还部署费用的${100 * rules.retreatRefundNumerator / rules.retreatRefundDenominator}%，向下取整。`,
+    `第${rules.systemWaves.ticks.join("、")}tick各自动出现一波系统小兵，每波${rules.systemWaves.count}只，随机选择一路、整波同路。每只生命${rules.systemWaves.unit.hp}、攻击${rules.systemWaves.unit.blockedAttack}、每${rules.systemWaves.unit.blockedAttackInterval}秒攻击一次、每${rules.systemWaves.unit.moveSeconds}秒前进一格，突破扣${rules.systemWaves.unit.breakthrough}核心耐久；不消耗部署费用，无特殊技能。`,
+    rangedTargeting(rules),
     `队长为每位队员从本场攻守方的${Object.keys(rules.commanderSkills.attack).length}个指挥技能中选${rules.maxCommanderSkillsPerMember}个。指挥技能不消耗部署费用，各自冷却。`,
     "同类加速取较强效果；同类护盾取较大剩余量。",
   ];
@@ -39,14 +42,18 @@ export function describeSnowUnitSkill(skill) {
   };
 }
 
-function unitAbilities(side, definition) {
+function rangedTargeting(rules) {
+  return `守方远程只攻击本路向入口方向、射程内的可见敌人。有厚甲先锋T时，按T权重${rules.tankTargetWeight}、其他单位权重1选择目标；没有T时优先攻击最接近核心的敌人。`;
+}
+
+function unitAbilities(side, definition, rules) {
   const abilities = [];
   if (definition.heal) abilities.push("治疗本路范围内生命比例最低的受伤友军，包含自己；不攻击。");
   else if (side === "defend")
     abilities.push(
       definition.ground
         ? "攻击自己挡住的所有敌人。"
-        : "攻击本路向入口方向射程内的敌人，优先最接近核心者。",
+        : rangedTargeting(rules),
     );
   else
     abilities.push(
@@ -68,6 +75,10 @@ export function renderSnowRuleCatalog(rules) {
       费用恢复间隔秒: rules.costRegenEveryTicks,
       地面格子: rules.groundSlots,
       高台格子: rules.highSlots,
+      撤退返还比例: rules.retreatRefundNumerator / rules.retreatRefundDenominator,
+      每tick损耗最大生命比例: 1 / rules.defenderDecayTicks,
+      系统兵潮: rules.systemWaves,
+      范围内T选中权重: rules.tankTargetWeight,
     }),
   ];
   for (const [side, units] of [
@@ -83,7 +94,7 @@ export function renderSnowRuleCatalog(rules) {
           生命: definition.hp,
           护甲: definition.armor,
           术式减伤: definition.spellResist ?? 0,
-          特殊能力: unitAbilities(side, definition),
+          特殊能力: unitAbilities(side, definition, rules),
           ...(side === "defend" ? { 部署位置: definition.ground ? "地面位" : "高台位" } : {}),
           ...(definition.block ? { 阻挡数: definition.block } : {}),
           ...(definition.range
