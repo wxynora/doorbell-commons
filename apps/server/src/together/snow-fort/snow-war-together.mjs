@@ -139,7 +139,11 @@ export function openSnowWarTogether({
         const key = `${matchIndex}:${side}`;
         const draft = state.drafts[key] ?? { order: [], skills: {} };
         const members = series.teams[side].members.map((member) => member.id);
-        if (!match.lineups[side] && now() < state.lineupDeadlines[matchIndex]) {
+        if (
+          !match.lineups[side] &&
+          ((state.awaitFreshCaptainLineups === true && matchIndex === 0) ||
+            now() < state.lineupDeadlines[matchIndex])
+        ) {
           actions.push({ kind: "lineup_order", matchIndex, composed: "lineup" });
           if (
             draft.order.length === members.length &&
