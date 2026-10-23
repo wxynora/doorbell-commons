@@ -1,3 +1,65 @@
+.snow-live-hit-token {
+  animation: snow-hit-shake 280ms ease-out;
+}
+.snow-live-hit-burst {
+  animation: snow-hit-burst 450ms ease-out both;
+}
+.snow-live-hit-number {
+  fill: #b34e35;
+  stroke: #fffaf0;
+  stroke-width: 3px;
+  paint-order: stroke;
+  font-size: 25px;
+  font-weight: 800;
+  animation: snow-hit-number 900ms ease-out both;
+}
+@keyframes snow-hit-shake {
+  20%,
+  60% {
+    transform: translateX(-3px);
+    filter: brightness(1.8);
+  }
+  40%,
+  80% {
+    transform: translateX(3px);
+  }
+}
+@keyframes snow-hit-burst {
+  from {
+    opacity: 1;
+    transform: scale(0.5);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.4);
+  }
+}
+@keyframes snow-hit-number {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-32px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .snow-live-hit-token {
+    animation: none;
+  }
+  .snow-live-hit-burst {
+    display: none;
+  }
+  .snow-live-hit-number {
+    animation-name: snow-hit-fade;
+  }
+  @keyframes snow-hit-fade {
+    to {
+      opacity: 0;
+    }
+  }
+}
 .snow-live-page {
   --snow-ink: #35505b;
   --snow-muted: #768b8e;
@@ -5,6 +67,8 @@
   --snow-paper: #fffcf5;
   --snow-blue: #91b7ca;
   --snow-rust: #b97c65;
+  width: 100%;
+  min-width: 0;
   min-height: 100dvh;
   background: #f1f4ef;
   color: var(--snow-ink);
@@ -262,14 +326,14 @@
   font-size: 13px;
   fill: #809fae;
 }
-.snow-live-token circle {
+.snow-live-token > circle {
   stroke: #fff9ef;
   stroke-width: 2.5;
 }
-.snow-live-token--attack circle {
+.snow-live-token--attack > circle {
   fill: #c18c73;
 }
-.snow-live-token--defend circle {
+.snow-live-token--defend > circle {
   fill: #80a9bf;
 }
 .snow-live-token text {

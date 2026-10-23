@@ -1,5 +1,6 @@
 import type { SnowDanmaku, SnowLiveSnapshot } from "@doorbell/protocol";
 import { useLayoutEffect, useRef, useState } from "react";
+import { SnowUnitSprite } from "./unit-sprite";
 
 type Battle = NonNullable<SnowLiveSnapshot["battle"]>;
 type Cell = { lane: number; position: number };
@@ -38,6 +39,50 @@ export function SnowBattleCanvas({
   onSelect(cell: Cell): void;
 }) {
   const viewport = useRef<HTMLDivElement>(null);
+  const previous = useRef<Battle | null>(null);
+  const [hits, setHits] = useState<
+    { id: string; tick: number; damage: number; x: number; y: number }[]
+  >([]);
+  useLayoutEffect(() => {
+    const before = previous.current;
+    previous.current = battle;
+    if (!before || before.id !== battle.id || battle.tick < before.tick) {
+      setHits([]);
+      return;
+    }
+    if (battle.tick === before.tick) return;
+    const next = battle.units.flatMap((unit) => {
+      const prior = before.units.find((value) => value.id === unit.id);
+      if (!prior || prior.hp <= unit.hp) return [];
+      const group = battle.units.filter(
+        (value) =>
+          value.lane === unit.lane &&
+          value.position === unit.position &&
+          value.ground === unit.ground,
+      );
+      const ordinal = group.findIndex((value) => value.id === unit.id);
+      const columns = Math.ceil(Math.sqrt(group.length));
+      const size = Math.min(34, 60 / columns);
+      return [
+        {
+          id: unit.id,
+          tick: battle.tick,
+          damage: prior.hp - unit.hp,
+          x:
+            SNOW_CANVAS.left +
+            (unit.position - 1) * SNOW_CANVAS.cell +
+            7 +
+            size * ((ordinal % columns) + 0.5),
+          y:
+            SNOW_CANVAS.laneTop +
+            (unit.lane - 1) * SNOW_CANVAS.laneGap +
+            (unit.ground ? 59 : 7) +
+            size * (Math.floor(ordinal / columns) + 0.5),
+        },
+      ];
+    });
+    if (next.length) setHits(next);
+  }, [battle]);
   const [width, setWidth] = useState(0),
     [zoom, setZoom] = useState(1),
     [showDanmaku, setShowDanmaku] = useState(true);
@@ -162,8 +207,18 @@ export function SnowBattleCanvas({
                               transform={`translate(${cx},${cy})`}
                               pointerEvents="none"
                             >
-                              <circle r={size * 0.46} filter="url(#snow-shadow)" />
+                              <g
+                                key={hits.find((hit) => hit.id === unit.id)?.tick ?? "idle"}
+                                className={
+                                  hits.some((hit) => hit.id === unit.id)
+                                    ? "snow-live-hit-token"
+                                    : undefined
+                                }
+                              >
+                                <SnowUnitSprite type={unit.type} role={unit.role} size={size} />
+                              </g>
                               <text
+                                display="none"
                                 textAnchor="middle"
                                 dominantBaseline="central"
                                 fontSize={size * 0.33}
@@ -241,6 +296,38 @@ export function SnowBattleCanvas({
                     </g>
                   );
                 })}
+                <g pointerEvents="none">
+                  {hits.map((hit) => (
+                    <g
+                      key={`${battle.id}:${hit.id}:${hit.tick}`}
+                      transform={`translate(${hit.x},${hit.y})`}
+                    >
+                      <g className="snow-live-hit-burst">
+                        <circle r="24" fill="none" stroke="#fff5be" strokeWidth="4" />
+                        <path
+                          d="M-34 0h10M24 0h10M0-34v10M0 24v10M-24-24l7 7M17 17l7 7M24-24l-7 7M-17 17l-7 7"
+                          stroke="#e4ab63"
+                          strokeWidth="4"
+                          strokeLinecap="round"
+                        />
+                      </g>
+                      <text
+                        className="snow-live-hit-number"
+                        textAnchor="middle"
+                        y="-20"
+                        onAnimationEnd={() =>
+                          setHits((current) =>
+                            current.filter(
+                              (value) => value.id !== hit.id || value.tick !== hit.tick,
+                            ),
+                          )
+                        }
+                      >
+                        −{hit.damage}
+                      </text>
+                    </g>
+                  ))}
+                </g>
                 <text x="557" y="614" textAnchor="middle" className="snow-live-map-note">
                   进攻 → 雪堡
                 </text>
