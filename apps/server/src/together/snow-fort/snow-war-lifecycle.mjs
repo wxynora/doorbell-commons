@@ -113,7 +113,12 @@ export function advanceSnowLifecycle({
   activateSnowMatch(state, series, now);
   const unplayed =
     series.status === "complete" ? undefined : series.matches.find((match) => !match.winner);
-  if (unplayed && !unplayed.locked && now >= state.lineupDeadlines[unplayed.index]) {
+  if (
+    unplayed &&
+    !unplayed.locked &&
+    !(state.awaitFreshCaptainLineups === true && unplayed.index === 0) &&
+    now >= state.lineupDeadlines[unplayed.index]
+  ) {
     state.autoLineups ??= {};
     for (const side of ["A", "B"]) {
       if (unplayed.lineups[side]) continue;
