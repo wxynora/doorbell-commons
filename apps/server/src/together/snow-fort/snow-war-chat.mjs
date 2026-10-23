@@ -33,6 +33,9 @@ export function activeSnowChatTurn(state, series, side, at, identityForResident)
   snowChatTurn(state, series, side, identityForResident);
   const stored = state.chatTurns[side];
   if (stored.matchIndex !== window.matchIndex) {
+    const captain = series.captains[side];
+    if (stored.order.includes(captain))
+      stored.order = [captain, ...stored.order.filter((id) => id !== captain)];
     if (stored.matchIndex !== undefined) stored.revision++;
     stored.matchIndex = window.matchIndex;
     stored.cursor = 0;
@@ -74,13 +77,16 @@ export function activeSnowChatTurn(state, series, side, at, identityForResident)
 export function snowChatTurn(state, series, side, identityForResident, draw = randomInt) {
   state.chatTurns ??= {};
   if (!state.chatTurns[side]) {
+    const captain = series.captains[side];
     const order = series.teams[side].members
-      .filter((member) => !member.isNpc)
+      .filter((member) => !member.isNpc && member.id !== captain)
       .map((member) => member.id);
     for (let index = order.length - 1; index > 0; index--) {
       const chosen = draw(index + 1);
       [order[index], order[chosen]] = [order[chosen], order[index]];
     }
+    if (series.teams[side].members.some((member) => !member.isNpc && member.id === captain))
+      order.unshift(captain);
     state.chatTurns[side] = { order, cursor: 0, revision: 0 };
   }
   const turn = state.chatTurns[side];

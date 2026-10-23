@@ -138,14 +138,6 @@ export function advanceSnowLifecycle({
     series.status === "complete" ? -1 : series.matches.findIndex((match) => !match.winner);
   if (state.chatEnabled && index >= 0) {
     for (const side of ["A", "B"]) {
-      if (snowChatWindow(state, series, side, now)?.open)
-        for (const member of members.filter((member) => member.side === side && !member.isNpc))
-          notice(
-            `${state.activityId}:discussion:${index}:${member.id}`,
-            member.id,
-            "discussion_start",
-            { team: side, match: String(index + 1) },
-          );
       const turn = activeSnowChatTurn(state, series, side, now, identityForResident);
       if (turn?.currentResidentId) {
         const messages = (state.messages ?? []).filter((message) => message.side === side);

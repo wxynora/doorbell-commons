@@ -2,7 +2,9 @@
 
 ## 雪堡限时活动工具投影
 
-讨论开始铃使用原notice JSON的discussion_start：lifecycle沿snowChatWindow当前开放窗口为本队真人各创建一个稳定notice，startup用已审常量生成同一信箱正文并走原Bell source；createdAt取实际创建时刻，不借旧信时间。currentSnowDiscussionNotice在投递与过窗协调中核对当前场／本队／窗口，MCP同源排除过时邀请。仍用chatBoundaries的原单一边界定时器，chat_turn不响铃，不改Bell客户端／信封或频道规则。
+snow-war-battle-grid.mjs只接收原viewForSide的visibleUnits，不读取权威隐藏状态，按3路12格分地面／高台投影可见单位及空部署位；同格多单位完整保留。snow-war-presentation.mjs的battle分支用于主动读取及原action_due正文，过滤已结束讨论、全场对阵与旧频道／奖励，保留本局对阵、战况、效果及原组合指令。非战斗阶段的队内频道读取不变。
+
+队内发言铃沿原chat_turn按当前轮次进入Bell source，lifecycle不再新建discussion_start开场全队邀请，旧discussion_start事实及过时过滤保留。snow-war-chat在首次建序及进入新场时把队长固定到首位，其余真人随机顺序只保存一次；重启同场不重排游标。首铃只叫队长，发言／pass／原超时推进后只叫下一位，startup仍从原同队消息截止ID渲染已审正文与前文；没有新通知正文、表、工具或Bell客户端改动。
 
 队长提醒沿原captain notice与信箱进入Bell source：publishNotice核验当前排阵阶段，对pending且已有letterId、bellEligible=false的有效队长信原位补资格；startup仅为该类旧信放行发布，不重复deliver。新信资格同源包含team／captain／round／action_due，已确认、过时或终态记录不恢复。现有ACK、资格检查、信封和边界定时器不变。
 

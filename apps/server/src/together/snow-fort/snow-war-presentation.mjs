@@ -1,3 +1,4 @@
+import { renderSnowBattleGrid, snowBattleGrid } from "./snow-war-battle-grid.mjs";
 import { SNOW_COMPOSITION_COPY } from "./snow-war-composed-options.mjs";
 import { SNOW_WAR_CONFIG as CFG, SNOW_WAR_ECONOMY } from "./snow-war-config.mjs";
 import {
@@ -198,6 +199,7 @@ export function renderSnowResult(data) {
     ].join("\n");
   }
   const lines = [];
+  const inBattle = data.phase === "battle";
   lines.push(phaseText(data));
   const activeMatch = data.series?.matches[currentMatch(data)];
   if (
@@ -213,10 +215,11 @@ export function renderSnowResult(data) {
       `本场${activeMatch.attackSide}队进攻、${activeMatch.attackSide === "A" ? "B" : "A"}队防守。`,
       JSON.stringify({ 比赛安排: [time(data.schedule.matchStartsAt[activeMatch.index])] }),
     );
-  lines.push(...(data.waitMessages ?? []));
-  if (data.discussion) lines.push(JSON.stringify({ discussion: data.discussion }));
-  if (data.waiting) lines.push(JSON.stringify({ waiting: data.waiting }));
-  if (data.participation?.length) lines.push(JSON.stringify({ participation: data.participation }));
+  if (!inBattle) lines.push(...(data.waitMessages ?? []));
+  if (!inBattle && data.discussion) lines.push(JSON.stringify({ discussion: data.discussion }));
+  if (!inBattle && data.waiting) lines.push(JSON.stringify({ waiting: data.waiting }));
+  if (!inBattle && data.participation?.length)
+    lines.push(JSON.stringify({ participation: data.participation }));
   const ownTeam = data.series?.teams[data.viewer?.side];
   if (
     data.phase === "lineup" &&
@@ -234,7 +237,7 @@ export function renderSnowResult(data) {
     lines.push(
       `排阵草稿已填齐。赛前讨论将在${time(data.discussion.closesAt)}结束，结束后才能确认排阵；最迟请在${time(data.waiting.lineupDeadlineAt)}前确认。`,
     );
-  if (ownTeam?.captainId)
+  if (!inBattle && ownTeam?.captainId)
     lines.push(
       `你在${data.viewer.side}队，本队队长是${memberName(data, ownTeam.captainId)}。本队成员：${ownTeam.members.map((member) => memberName(data, member.id)).join("、")}。`,
     );
@@ -251,7 +254,9 @@ export function renderSnowResult(data) {
   }
   const current = data.series?.matches[currentMatch(data)];
   if (current?.locked)
-    for (const round of current.rounds)
+    for (const round of current.rounds.filter(
+      (round) => !inBattle || round === current.rounds.find((value) => !value.winner),
+    ))
       lines.push(
         JSON.stringify({
           对阵: round.index + 1,
@@ -267,6 +272,7 @@ export function renderSnowResult(data) {
     );
   }
   if (data.battle?.started) {
+    lines.push(renderSnowBattleGrid(data.battle));
     for (const unit of data.battle.visibleUnits)
       lines.push(
         JSON.stringify({
@@ -297,7 +303,7 @@ export function renderSnowResult(data) {
     for (const skill of data.battle.ownCommanderSkills)
       lines.push(JSON.stringify({ 技能: skillName(skill.skill), 冷却剩余秒: skill.readyInTicks }));
   }
-  for (const [index, match] of (data.series?.matches ?? []).entries()) {
+  for (const [index, match] of (inBattle ? [] : (data.series?.matches ?? [])).entries()) {
     for (const round of match.rounds.filter(
       (value) => value.winner && [value.attackMember, value.defendMember].includes(data.viewer?.id),
     )) {
@@ -317,7 +323,7 @@ export function renderSnowResult(data) {
         `第${index + 1}场结束，局比分A队${match.rounds.filter((r) => r.winner === "A").length}：${match.rounds.filter((r) => r.winner === "B").length}B队，${match.winner}队赢得本场。`,
       );
   }
-  for (const reward of data.rewards ?? []) {
+  for (const reward of inBattle ? [] : (data.rewards ?? [])) {
     if (reward.kind === "titles") {
       if (reward.status === "paid")
         for (const id of reward.titles ?? [])
@@ -365,7 +371,7 @@ export function renderSnowResult(data) {
     );
   }
   if (!data.options?.length && data.phase !== "ended") lines.push(JSON.stringify(snowViewCall));
-  for (const message of data.channel ?? [])
+  for (const message of inBattle ? [] : (data.channel ?? []))
     lines.push(
       renderSnowChatMessage(
         members(data).find((member) => member.id === message.residentId)?.residentName ??
@@ -383,6 +389,26 @@ export function renderSnowChatMessage(residentName, text) {
 export function presentSnowResult(result) {
   if (!result) return undefined;
   const { rules: _rules, ...status } = result.data;
+  if (status.phase === "battle" && !status.result) {
+    for (const key of [
+      "channel",
+      "discussion",
+      "waiting",
+      "waitMessages",
+      "participation",
+      "rewards",
+    ])
+      delete status[key];
+    const current = status.series.matches.find((match) => !match.winner);
+    status.series = {
+      ...status.series,
+      matches: status.series.matches.map((match) => ({
+        ...match,
+        rounds: match === current ? match.rounds.filter((round) => !round.winner).slice(0, 1) : [],
+      })),
+    };
+    status.battle = { ...status.battle, grid: snowBattleGrid(status.battle) };
+  }
   const data = result.data.result
     ? {
         activityId: result.data.activityId,

@@ -965,13 +965,9 @@ export function openSnowWarTogether({
           store.saveActivity(state);
           return structuredClone(notice);
         }
-        notice.bellEligible = [
-          "team",
-          "captain",
-          "round",
-          "action_due",
-          "discussion_start",
-        ].includes(notice.kind);
+        notice.bellEligible = ["team", "captain", "round", "action_due", "chat_turn"].includes(
+          notice.kind,
+        );
         if (!notice.letterId) {
           notice.letterId = deliver(structuredClone(notice));
         }
