@@ -56,7 +56,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-"${builder}" "${TARGET_SHA}" "${artifact}"
 git -C "${repository_root}" archive --format=tar --output="${control_archive}" \
   "${TARGET_SHA}" \
   deploy/scripts/deploy-doorbell-main.sh \
@@ -74,6 +73,25 @@ git -C "${repository_root}" merge-base --is-ancestor "${remote_base_sha}" "${TAR
   fail "remote runtime is not an ancestor of the requested release"
   exit 1
 }
+
+
+native_mode="$(bash "${script_directory}/prepare-mahjong-native.sh" --mode \
+  "${repository_root}" "${remote_base_sha}" "${TARGET_SHA}")"
+native_reference="${publish_directory}/native"
+mkdir "${native_reference}"
+if [[ "${native_mode}" == reuse ]]; then
+  ssh -- "${SSH_HOST}" \
+    "set -Eeuo pipefail; \
+test \"\$(cat /opt/doorbell-commons/.doorbell-release-sha)\" = '${remote_base_sha}'; \
+tar --no-xattrs --create --file=- --directory=/opt/doorbell-commons/games/mahjong/native \
+  MahjongGB.abi3.so manifest.json; \
+test \"\$(cat /opt/doorbell-commons/.doorbell-release-sha)\" = '${remote_base_sha}'" \
+    >"${publish_directory}/native.tar"
+  tar --extract --file "${publish_directory}/native.tar" --directory "${native_reference}"
+fi
+DOORBELL_NATIVE_BASE_SHA="${remote_base_sha}" \
+DOORBELL_NATIVE_REUSE_DIRECTORY="${native_reference}" \
+  "${builder}" "${TARGET_SHA}" "${artifact}"
 
 ssh -- "${SSH_HOST}" \
   "set -Eeuo pipefail; \

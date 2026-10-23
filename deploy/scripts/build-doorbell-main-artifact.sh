@@ -17,6 +17,8 @@ fi
 
 readonly TARGET_SHA="$1"
 readonly OUTPUT_PATH="$2"
+script_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+readonly script_directory
 
 for required_command in git node npm tar; do
   command -v "${required_command}" >/dev/null || {
@@ -72,6 +74,10 @@ rm -f -- "${source_archive}"
 # Verification sources are local-only and are not part of a production build.
 find "${build_directory}/apps/server/src" "${build_directory}/apps/web/src" -type f \
   \( -name '*.test.ts' -o -name '*.test.tsx' -o -name '*.test.mjs' \) -delete
+
+# Prepare native dependencies before the application build, not on the VPS.
+bash "${script_directory}/prepare-mahjong-native.sh" \
+  "${repository_root}" "${build_directory}" "${build_directory}/.doorbell-native" "${TARGET_SHA}"
 
 (
   cd "${build_directory}"
@@ -131,9 +137,7 @@ find "${runtime_directory}/games" -type d \
 find "${runtime_directory}/games" -type f \
   \( -name '*.pyc' -o -name '*.so' -o -name preview_server.py \) -delete
 
-# Native code is built on the publisher's Linux runner after removing host binaries.
-bash "${build_directory}/deploy/scripts/build-mahjong-native.sh" \
-  "${build_directory}" "${runtime_directory}/games/mahjong/native"
+cp -a "${build_directory}/.doorbell-native" "${runtime_directory}/games/mahjong/native"
 
 printf '%s\n' \
   "{\"schema\":2,\"source_sha\":\"${TARGET_SHA}\",\"node_major\":24,\"dependency_mode\":\"reuse-exact-lock\"}" \

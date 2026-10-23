@@ -1294,6 +1294,8 @@ npm run registration-code
 
 ## Test deployment and production boundary
 
+Main发布在应用构建前读取线上基线；麻将原生源码、构建及验证合同不变时复用该基线的Linux原生库及manifest，不重复编译。缺失或平台／ABI／profile不匹配在上传前停止，原生构建输入改变才调用原Linux构建。运行包仍携带完整原生依赖与验证脚本，传输保持rsync差异同步。直播入口沿现有沙箱受信postMessage与认证宿主导航，不放开顶层导航或其他沙箱权限。
+
 The existing test VPS now runs the Doorbell Commons server through `doorbell-commons.service` from
 `/opt/doorbell-commons`, bound to `127.0.0.1:3000`, with its environment in
 `/etc/doorbell-commons/doorbell-commons.env` and its mode-0600 authoritative SQLite at

@@ -82,6 +82,7 @@ import {
   isMidAutumnPath,
   isSnowLivePath,
   MID_AUTUMN_PATH,
+  SNOW_LIVE_PATH,
 } from "./routes";
 
 const LingyeDailyScreen = lazy(async () => {
@@ -1134,6 +1135,11 @@ function LiveApp() {
 
       if (action.type === "lingye-daily-open") {
         if (appState.stage === "authenticated") openDailyPage();
+        return;
+      }
+
+      if (action.type === "lingye-snow-live-open") {
+        if (appState.stage === "authenticated") window.location.assign(SNOW_LIVE_PATH);
         return;
       }
 

@@ -27,6 +27,8 @@ requirements.
 
 ## Runtime
 
+- Main发布原生依赖准备入口为deploy/scripts/prepare-mahjong-native.sh；publish-doorbell-main.sh读取同一线上基线，build-doorbell-main-artifact.sh按原生构建输入差异复用或构建。制品保留库、manifest及原接口验证脚本；依赖缺失／不匹配在上传前停止。定向检查入口deploy/scripts/prepare-mahjong-native.test.mjs。雪堡直播入口由Web消息桥严格校验来源与动作后交认证宿主导航，不扩大沙箱权限。
+
 | Area | Entry point | Current behavior | Verification |
 | --- | --- | --- | --- |
 | 休息室十连与旧回执找回 | Main `apps/server/src/lounge-gacha/{gacha-client,gacha-routes}.ts`、`apps/web/public/lounge/gacha-dialog.js`；Farm `dist/server/doorbell/{gacha-service,gacha,router}.js` | 十连按权威 5000 金回执核对，失败可用原请求编号重试且不重复结算；刷新后若只剩旧 pending 编号，Main 经当前绑定只读查询 Farm 回执并恢复单抽／十连结果。没有回执或查询失败时不猜测抽取类型，也不发新抽取。Farm 私有查询只读既有幂等回执，不改奖池或钱包。 | Farm 查得／未查得／绑定不符定向 3/3、运行文件语法；Main 回执客户端／路由／前端旧十连恢复定向通过，Server／Web typecheck 和构建、限定 diff 通过；未向生产玩家发抽取请求。 |

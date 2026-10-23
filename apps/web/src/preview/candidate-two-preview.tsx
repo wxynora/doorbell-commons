@@ -1283,6 +1283,7 @@ export type CandidateTwoAction =
   | { type: "lounge-open" }
   | { type: "lingye-glimmer-open" }
   | { type: "lingye-daily-open" }
+  | { type: "lingye-snow-live-open" }
   | { type: "lingye-memorial-open" }
   | { type: "lingye-mid-autumn-open" }
   | { type: "lingye-together-open" }
@@ -1330,6 +1331,7 @@ const candidateTwoActionKeys = {
   "lounge-open": ["type"],
   "lingye-glimmer-open": ["type"],
   "lingye-daily-open": ["type"],
+  "lingye-snow-live-open": ["type"],
   "lingye-memorial-open": ["type"],
   "lingye-mid-autumn-open": ["type"],
   "lingye-together-open": ["type"],
@@ -1624,6 +1626,7 @@ export function parseCandidateTwoAction(value: unknown): CandidateTwoAction | nu
     type === "shared-memes-open" ||
     type === "lingye-glimmer-open" ||
     type === "lingye-daily-open" ||
+    type === "lingye-snow-live-open" ||
     type === "lingye-memorial-open" ||
     type === "lingye-mid-autumn-open" ||
     type === "lingye-together-open" ||
@@ -8046,6 +8049,10 @@ const LINGYE_SCRIPT = `
 
     function openLingyeDaily() {
         sendAction({ type: 'lingye-daily-open' });
+    }
+
+    function openSnowLive() {
+        sendAction({ type: 'lingye-snow-live-open' });
     }
 
     let lingyeMemorialFilter = 'all';
