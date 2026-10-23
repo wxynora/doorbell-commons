@@ -149,7 +149,11 @@ export function restoreBattle(state) {
   if (!state || typeof state !== "object" || typeof state.tick !== "number" || !state.units) {
     throw new Error("无法从给定状态恢复雪堡战对局");
   }
-  if (state.rulesVersion !== CFG.rulesVersion) throw new Error("snow_war_rules_version_mismatch");
+  const historicalTerminal =
+    state.rulesVersion === "snow-fort-20261022.1" &&
+    (state.status === "attack_win" || state.status === "defend_win");
+  if (state.rulesVersion !== CFG.rulesVersion && !historicalTerminal)
+    throw new Error("snow_war_rules_version_mismatch");
   // JSON 恢复后把回执索引重新落到无原型对象上，覆盖 "__proto__" 等键的读写安全。
   if (state.processedCommands && Object.getPrototypeOf(state.processedCommands) !== null) {
     state.processedCommands = Object.assign(Object.create(null), state.processedCommands);
