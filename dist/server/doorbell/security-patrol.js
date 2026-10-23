@@ -18,7 +18,10 @@ export async function handleDoorbellSecurityPatrol(req,res,method,runtime,action
         }
         const notices=runtime.backend.trustedQueries.pendingPlayerPatrolNotices(body.resident_id).map(notice=>({
             notice_id:notice.noticeId,kind:notice.kind,created_at:notice.createdAt,
-            facts:notice.kind==="patrol_day"?{beijing_date:notice.fact.beijingDate}:{
+            facts:notice.kind==="patrol_result"?{
+                actor_resident_id:notice.fact.actorResidentId,disposition:notice.fact.disposition,
+                ...(notice.fact.disposition==="fine"?{amount_gold:notice.fact.amountGold}:{duration_hours:notice.fact.durationHours}),
+            }:notice.kind==="patrol_day"?{beijing_date:notice.fact.beijingDate}:{
                 occurred_at:notice.fact.event.t,thief_name:notice.fact.event.by,
                 victim_name:notice.fact.victimName,crop_name:notice.fact.event.crop,
             },

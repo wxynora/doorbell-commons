@@ -36,7 +36,7 @@ export function installPlayerPatrolSchema(database) {
       CREATE TABLE IF NOT EXISTS security_patrol_outbox (
         notice_id TEXT PRIMARY KEY,
         recipient_resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE RESTRICT,
-        kind TEXT NOT NULL CHECK(kind IN ('patrol_day', 'patrol_theft')),
+        kind TEXT NOT NULL CHECK(kind IN ('patrol_day', 'patrol_theft', 'patrol_result')),
         fact_json TEXT NOT NULL CHECK(json_valid(fact_json)),
         created_at INTEGER NOT NULL,
         acknowledged_at INTEGER
@@ -49,4 +49,23 @@ export function installPlayerPatrolSchema(database) {
         paid_at INTEGER NOT NULL
       );
     `);
+    const sql=database.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='security_patrol_outbox'").get().sql;
+    if (!sql.includes("'patrol_result'")) {
+        database.exec("SAVEPOINT patrol_result_schema");
+        try {
+            database.exec(`CREATE TABLE security_patrol_outbox_result (
+                notice_id TEXT PRIMARY KEY,
+                recipient_resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE RESTRICT,
+                kind TEXT NOT NULL CHECK(kind IN ('patrol_day','patrol_theft','patrol_result')),
+                fact_json TEXT NOT NULL CHECK(json_valid(fact_json)),
+                created_at INTEGER NOT NULL, acknowledged_at INTEGER);
+                INSERT INTO security_patrol_outbox_result SELECT * FROM security_patrol_outbox;
+                DROP TABLE security_patrol_outbox;
+                ALTER TABLE security_patrol_outbox_result RENAME TO security_patrol_outbox;
+                RELEASE SAVEPOINT patrol_result_schema;`);
+        } catch(error) {
+            database.exec("ROLLBACK TO SAVEPOINT patrol_result_schema; RELEASE SAVEPOINT patrol_result_schema");
+            throw error;
+        }
+    }
 }

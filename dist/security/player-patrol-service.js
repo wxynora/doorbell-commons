@@ -216,6 +216,10 @@ export class PlayerPatrolService {
             this.#database.prepare(`INSERT INTO security_patrol_resolutions
                 (job_id,resident_id,disposition,result_json,resolved_at) VALUES (?,?,?,?,?)`)
                 .run(jobId,residentId,disposition,JSON.stringify(result),at);
+            this.enqueue({noticeId:`patrol-result:${jobId}`,residentId:enforcement.violation.residentId,
+                kind:"patrol_result",fact:{actorResidentId:residentId,disposition,
+                    ...(disposition==="fine"?{amountGold:enforcement.fine.amountGold}:
+                        {durationHours:(enforcement.detention.scheduledReleaseAt-enforcement.detention.startedAt)/3600000})},at});
             this.#database.prepare(`UPDATE security_patrol_outbox SET acknowledged_at=?
                 WHERE notice_id=? AND acknowledged_at IS NULL`).run(at,`patrol-theft:${row.source_id}`);
             this.assignPending(residentId);
@@ -232,6 +236,7 @@ export class PlayerPatrolService {
           WHERE recipient_resident_id=? AND acknowledged_at IS NULL ORDER BY created_at,notice_id`)
             .all(residentId).filter(row=> {
                 const fact=JSON.parse(row.fact_json);
+                if(row.kind==="patrol_result") return true;
                 if(row.kind==="patrol_day") return fact.beijingDate===patrolDate(this.#now()) && this.getOwnDay(residentId).onDuty;
                 return Boolean(this.#database.prepare(`SELECT 1 FROM career_jobs WHERE job_id=?
                     AND status IN ('available','assigned','accepted','active')`).get(fact.jobId));
