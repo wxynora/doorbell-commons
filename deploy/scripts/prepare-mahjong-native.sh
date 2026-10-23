@@ -58,4 +58,8 @@ fi
 
 [[ -s "${output}/MahjongGB.abi3.so" && -s "${output}/manifest.json" ]] ||
   fail 'native preparation did not produce both required runtime files'
+# The publisher extracts under umask 077; match the original Linux build's
+# runtime modes rather than preserving owner-only staging permissions.
+chmod 0755 "${output}" "${output}/MahjongGB.abi3.so"
+chmod 0644 "${output}/manifest.json"
 printf 'Mahjong native dependency: %s\n' "${mode}"
