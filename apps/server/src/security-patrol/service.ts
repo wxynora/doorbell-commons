@@ -1,15 +1,15 @@
 import type {MailboxService} from "../mailbox-service.js";
 import type {PatrolClient,PatrolNotice} from "./contracts.js";
 interface PatrolDeliveryDatabase {
-  findActiveHumanCommunityByResidentId(residentId:string):{home:{homeId:string}}|undefined;
+  findActiveHumanCommunityByResidentId(residentId:string):{home:{homeId:string};resident?:{residentName:string}}|undefined;
   createCareerJobWake(input:{wakeId:string;residentId:string;letterId:string;message:string;createdAt:number}):unknown;
 }
 export class SecurityPatrolDeliveryService {
   readonly #database:PatrolDeliveryDatabase; readonly #mailbox:MailboxService; readonly #client:PatrolClient;
-  readonly #bell:{notifyResident(residentId:string):void}; readonly #render:(notice:PatrolNotice)=>{title:string;body:string};
+  readonly #bell:{notifyResident(residentId:string):void}; readonly #render:(notice:PatrolNotice,actorName?:string)=>{title:string;body:string};
   readonly #pending=new Map<string,Promise<void>>();
   constructor(options:{database:PatrolDeliveryDatabase;mailbox:MailboxService;client:PatrolClient;
-    bell:{notifyResident(residentId:string):void};render:(notice:PatrolNotice)=>{title:string;body:string}}) {
+    bell:{notifyResident(residentId:string):void};render:(notice:PatrolNotice,actorName?:string)=>{title:string;body:string}}) {
     this.#database=options.database;this.#mailbox=options.mailbox;this.#client=options.client;
     this.#bell=options.bell;this.#render=options.render;
   }
@@ -24,7 +24,10 @@ export class SecurityPatrolDeliveryService {
     const community=this.#database.findActiveHumanCommunityByResidentId(residentId);
     if(!community) return;
     for(const notice of notices) {
-      const copy=this.#render(notice);
+      const actorName=notice.kind==="patrol_result"
+        ?this.#database.findActiveHumanCommunityByResidentId(notice.facts.actor_resident_id)?.resident?.residentName.split(/[&＆]/u).at(-1)?.trim()
+        :undefined;
+      const copy=this.#render(notice,actorName);
       const letter=this.#mailbox.deliver({homeId:community.home.homeId,
         idempotencyKey:`security-patrol:${notice.notice_id}`,category:"system",...copy,sensitiveValues:[]});
       this.#database.createCareerJobWake({wakeId:`career-job:security-patrol:${notice.notice_id}`,
