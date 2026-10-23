@@ -12,7 +12,7 @@ export const SNOW_WAR_ECONOMY = {
 };
 
 export const SNOW_WAR_CONFIG = {
-  rulesVersion: "snow-fort-20261022.1",
+  rulesVersion: "snow-fort-20261023.1",
   laneCount: 3,
   laneCells: 12, // 地面位置 1..12，越过第 12 格抵达终点
   groundSlots: [4, 7, 10], // 守方地面部署位

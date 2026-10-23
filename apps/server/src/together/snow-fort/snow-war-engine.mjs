@@ -413,6 +413,16 @@ function handleCommanderSkill(state, side, command) {
 
   const t = state.tick;
   const facts = { member, skill: command.skill, lane };
+  if (command.skill === "break_armor") {
+    facts.dispelledShields = [];
+    for (const unit of aliveUnits(state)) {
+      if (unit.side !== "defend" || !unit.ground || unit.lane !== lane) continue;
+      if (!unit.shield || unit.shield.untilTick < t || unit.shield.amount <= 0) continue;
+      facts.dispelledShields.push({ unitId: unit.id, removed: unit.shield.amount });
+      unit.shield = null;
+    }
+  }
+
   if (skill.instant) {
     // 应急救护：即时恢复，不产生持续效果条目；合法施放各自生效，不做去重。
     let healed = 0;

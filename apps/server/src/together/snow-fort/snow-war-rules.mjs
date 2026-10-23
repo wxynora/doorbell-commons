@@ -11,7 +11,7 @@ export function describeSnowCommanderSkill(key, rules) {
   const definition = rules.commanderSkills.attack[key] ?? rules.commanderSkills.defend[key];
   const effects = {
     break_armor: () =>
-      `指定路敌方地面单位护甲×${definition.armorMult}，持续${definition.durationTicks}秒。`,
+      `立即清除指定路敌方地面单位当前已有的护盾，并使其护甲×${definition.armorMult}，持续${definition.durationTicks}秒；之后新施加的护盾不受本次清除影响。`,
     assault: () =>
       `指定路己方单位移动速度×${definition.speedMult}，持续${definition.durationTicks}秒。`,
     smoke: () =>
