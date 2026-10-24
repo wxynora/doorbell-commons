@@ -2,7 +2,13 @@ const common = "snow_fort_participant";
 const outcomes = ["snow_fort_winner", "snow_fort_loser"];
 
 export function validTogetherTitles(input) {
-  return input.gold === 0 && input.silver === 0 && input.decoration === undefined &&
+  const decoration = input.decoration;
+  const validDecoration = decoration === undefined || (
+    input.titles?.[1] === "snow_fort_loser" && decoration && typeof decoration === "object" &&
+    !Array.isArray(decoration) && Object.keys(decoration).sort().join(",") === "item_id,quantity" &&
+    decoration.item_id === "farm_decor:small_snow_fort" && decoration.quantity === 1
+  );
+  return input.gold === 0 && input.silver === 0 && validDecoration &&
     Array.isArray(input.titles) && input.titles.length === 2 &&
     input.titles[0] === common && outcomes.includes(input.titles[1]);
 }

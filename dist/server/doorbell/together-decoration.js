@@ -1,5 +1,5 @@
 import { allFarms, replaceFarm, withWorldCommitContext } from "../../store.js";
-import { stageTogetherDecoration } from "../../domain/farm-decoration/activity-reward.js";
+import { stageTogetherDecoration, assertTogetherDecorationReplay } from "../../domain/farm-decoration/activity-reward.js";
 import { assertTogetherTitleReplay, stageTogetherTitles } from "../../domain/together/title-reward.js";
 
 // Uses the existing migrated resident binding, including accrued rewards after
@@ -8,6 +8,7 @@ export function createTogetherDecorationRewards() {
   return {
     assertTitleGrant(input) {
       assertTogetherTitleReplay(allFarms(), input);
+      assertTogetherDecorationReplay(allFarms(), input);
     },
     grantTitles(input) {
       assertTogetherTitleReplay(allFarms(), input);

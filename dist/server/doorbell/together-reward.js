@@ -22,7 +22,7 @@ export function createTogetherRewardService({ database, backend, decorationRewar
       decorationRewards?.assertTitleGrant?.(input);
       if (input.decoration !== undefined && (!input.decoration || typeof input.decoration !== "object" ||
           Array.isArray(input.decoration) || Object.keys(input.decoration).sort().join(",") !== "item_id,quantity" ||
-          input.decoration.item_id !== "farm_decor:snow_fort" || input.decoration.quantity !== 1))
+          !["farm_decor:snow_fort", "farm_decor:small_snow_fort"].includes(input.decoration.item_id) || input.decoration.quantity !== 1))
         throw new Error("invalid_together_reward");
       if (input.decoration && typeof decorationRewards?.grant !== "function")
         throw new Error("together_decoration_unavailable");
