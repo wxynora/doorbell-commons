@@ -30,7 +30,7 @@ export interface SnowNotice {
   errorCode?: string | null;
 }
 export interface SnowDecorationReward {
-  itemId: "farm_decor:snow_fort";
+  itemId: "farm_decor:snow_fort" | "farm_decor:small_snow_fort";
   quantity: 1;
 }
 export interface SnowReward {

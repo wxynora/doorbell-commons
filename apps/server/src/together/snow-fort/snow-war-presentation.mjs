@@ -355,6 +355,12 @@ export function renderSnowResult(data) {
   }
   for (const reward of inBattle ? [] : (data.rewards ?? [])) {
     if (reward.kind === "titles") {
+      if (reward.decoration?.itemId === "farm_decor:small_snow_fort" && reward.decoration.quantity === 1) {
+        lines.push(reward.status === "paid"
+          ? "限定家具：团团小雪堡×1（已放入装修仓库）。"
+          : "限定家具：团团小雪堡×1（正在确认入库，尚未确认到账）。");
+        continue;
+      }
       if (reward.status === "paid")
         for (const id of reward.titles ?? [])
           lines.push(`限定称号：${SNOW_TITLE_NAMES[id]}（已解锁，可在原称号页佩戴）。`);

@@ -1,3 +1,4 @@
+import { createSmallSnowFort } from "./small-snow-fort.js";
 import { createSnowFort } from "./snow-fort.js";
 import { CELL_SIZE } from "../placement-geometry.js";
 import { buildBorder } from "./borders.js";
@@ -6,7 +7,7 @@ import { buildFurniture } from "./furniture.js";
 import { buildPath } from "./paths.js";
 
 export const FARM_FURNITURE_IDS = new Set([
-  "snow_fort",
+  "snow_fort", "small_snow_fort",
   "white_fence", "timber_fence", "stone_wall", "hedge", "ghost_fence",
   "lavender", "daisies", "ferns", "ornamental_grass", "black_roses", "red_roses",
   "log_steps", "moss_path", "checker_tiles", "pumpkin_path", "web_tiles",
@@ -23,6 +24,7 @@ export const SEASONAL_FURNITURE_IDS = new Set([
 
 export function createFarmFurniture(id, season) {
   if (id === "snow_fort") return createSnowFort();
+  if (id === "small_snow_fort") return createSmallSnowFort();
   if (["white_fence", "timber_fence", "stone_wall", "hedge", "ghost_fence"].includes(id)) {
     const border = buildBorder(id, CELL_SIZE);
     border.position.z = -CELL_SIZE / 2;

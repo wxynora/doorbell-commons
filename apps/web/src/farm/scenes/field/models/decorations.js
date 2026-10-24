@@ -10,6 +10,7 @@ import { FARM_FURNITURE_IDS, SEASONAL_FURNITURE_IDS, createFarmFurniture } from 
 // First six IDs match ranch-items; new furniture IDs are local design candidates only.
 export const DECORATIONS = {
   snow_fort: { name: "团团雪堡", cells: [3, 2] },
+  small_snow_fort: { name: "团团小雪堡", cells: [1, 1] },
   ...GARDEN_TRIO,
   flowerbed: { name: "花圃", cells: [1, 1] },
   ...FLOWERBEDS,
