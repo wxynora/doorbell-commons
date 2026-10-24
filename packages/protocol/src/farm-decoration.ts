@@ -61,7 +61,7 @@ export const boundFarmDecorationLayoutSaveSuccessSchema = z.object({
 }).strict();
 export const boundFarmDecorationLayoutSaveErrorSchema = z.object({ error: z.object({
   code: z.enum([
-    "invalid_request", "authentication_required", "qq_not_group_member", "onebot_unavailable",
+    "invalid_request", "body_too_large", "authentication_required", "qq_not_group_member", "onebot_unavailable",
     "registration_profile_required", "farm_credential_not_found", "farm_doorplate_mismatch",
     "farm_credential_invalid", "farm_not_found", "farm_unavailable", "upstream_contract_unavailable",
     "state_conflict", "idempotency_conflict", "invalid_layout", "invalid_stall_position", "invalid_instance",
