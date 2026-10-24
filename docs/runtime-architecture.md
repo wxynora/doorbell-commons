@@ -2,6 +2,8 @@
 
 ## 雪堡限时活动工具投影
 
+直播合同中的coreHp保留引擎产生的非负小数（系统小兵突破扣0.5耐久），服务端与Web共用同一Schema，不取整；tick、局数及比分仍为整数。
+
 人类雪堡直播由together/live-{projection,store,service,routes}装配：GET /api/activities/snow-fort读取当前公共快照与弹幕，GET同路径/stream通过原SSE传输权威保存后的只读更新，POST同路径/danmaku发送观众弹幕。Cookie和实时QQ资格保护读取与写入，作者取当前认证身份；不可控制比赛。schema51的snow_spectator_messages与游戏存档分区、共用原SQLite连接，客户端消息UUID按账号／活动幂等，改写冲突。Web snow-live页及日报下方头像只消费公共投影，画布／热区统一1120×640缩放；不发Bell或模型上下文、不增加轮询。
 
 批量战斗仍归原composed-options／runtime／together链：`/`分隔指令，单一`|N`安排一次后继铃。runtime在同一加载快照顺序调用原engine，全部通过后才保存；拒绝不落部分单位、费用、冷却或新等待。外层原事务同时保存动作receipt及serial，失败回执附当前可重交组合编号，成功不附重复状态或轮询引导；旧单条、身份／当前局权限、最低响铃间隔和原回放不变。

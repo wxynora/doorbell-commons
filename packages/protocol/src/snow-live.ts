@@ -50,7 +50,7 @@ export const snowLiveSnapshotSchema = z
         started: z.boolean(),
         tick: count,
         ticksLeft: count,
-        coreHp: count,
+        coreHp: z.number().nonnegative(),
         coreMaxHp: count,
         status: z.enum(["running", "attack_win", "defend_win"]),
         units: z.array(unit),
