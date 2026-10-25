@@ -9,8 +9,9 @@ const FAIRY_BASES = {
   pumpkin:[[-2.25,-1.935,2.25,1.935],[.7775,-1.56775,3.7025,.94775],[-.88,1.85,.88,3.08]],
   stump:[[-2.23,-1.985,2.23,1.985],[.73,-1.17,2.93,.81],[-1.02,1.43,1.37,2.78]],
   mushroom:[[-1.58,-1.58,1.58,1.58],[1.0828,-1.2172,2.9572,.6572],[-.81,1.56,.81,2.8]],
+  rose_cottage:[[-2.5,-1.55,2.5,1.95],[-2.55,1.9,-1.7,3.6],[-1.7,3.15,.45,3.65]],
 };
-const FAIRY_TRANSFORMS={pumpkin:[1.2,-.65],stump:[1.22,-.5],mushroom:[1.22,-.6]};
+const FAIRY_TRANSFORMS={pumpkin:[1.2,-.65],stump:[1.22,-.5],mushroom:[1.22,-.6],rose_cottage:[1,0]};
 export const houseBaseRects = (p=DEFAULT_HOUSE_POSITION) => {
   const shape=FAIRY_BASES[p.style];
   if(!shape)return BASE.map(r=>translate(r,p));
