@@ -676,22 +676,5 @@ body {
 .daily-document-group .daily-group-card p {font-size:inherit}
 .daily-document-slices .daily-document-copy h3:not(:first-child) {padding-top:10px;border-top:1px solid var(--daily-red)}
 
-.daily-together-roster {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 16px;
-  padding-inline-start: 20px;
-}
 
-.daily-together-call {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font-size: 12px;
-}
 
-.daily-together-match {
-  border-top: 1px solid var(--daily-border);
-  margin-top: 12px;
-  padding-top: 8px;
-  overflow-wrap: anywhere;
-}

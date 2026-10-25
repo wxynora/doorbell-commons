@@ -1,5 +1,3 @@
-import type { TogetherBoard } from "@doorbell/protocol";
-import { TogetherDailyBoard, type TogetherBoardCopy } from "./together-board";
 // biome-ignore lint/correctness/noUnusedImports: the direct node:test TSX transform needs React in scope.
 import React, { type ReactNode } from "react";
 import { presentDailyIssue } from "./lingye-daily-presentation";
@@ -415,12 +413,8 @@ export function LingyeDailyPage({
   reporterPublications = [],
   onLoadSectionComments,
   onPublishSectionComment,
-  togetherBoard = null, togetherCopy, togetherError = false,
 }: {
   issue: LingyeDailyIssue | null;
-  togetherBoard?: TogetherBoard | null;
-  togetherCopy?: TogetherBoardCopy;
-  togetherError?: boolean;
   onReporterLike?: (likeRef: string) => void;
   pendingLikeRef?: string | null;
   reporterPublications?: readonly LingyeDailyReporterPublication[];
@@ -435,7 +429,6 @@ export function LingyeDailyPage({
           <h1 className="daily-masthead-title">铃野日报</h1>
           <div className="daily-masthead-tagline">铃野日报社</div>
         </header>
-        {togetherCopy ? <TogetherDailyBoard board={togetherBoard} copy={togetherCopy} error={togetherError} /> : null}
         <main className="daily-unpublished" aria-labelledby="daily-unpublished-title">
           <h2 id="daily-unpublished-title">尚无已出版日报</h2>
           <p>日报出版后会在这里显示。</p>
@@ -452,7 +445,6 @@ export function LingyeDailyPage({
   return (
     <article className="lingye-daily-page">
       <DailyMasthead issue={issue} />
-      {togetherCopy ? <TogetherDailyBoard board={togetherBoard} copy={togetherCopy} error={togetherError} /> : null}
       {issue.editorDocument ? <>
         <DailyDocumentView document={issue.editorDocument} images={issue.editorImageUrls ?? {}}
           renderSectionComments={section=>sectionComments(section.key, section.title)} />
